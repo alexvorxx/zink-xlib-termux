@@ -2191,6 +2191,14 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       cw.IndirectDataStartAddress       = push_const_offset;
       cw.IndirectDataLength             = push_const_size;
 
+#if GFX_VERx10 >= 125
+      cw.GenerateLocalID                = cs_prog_data->generate_local_id != 0;
+      cw.EmitLocal                      = cs_prog_data->generate_local_id;
+      cw.WalkOrder                      = cs_prog_data->walk_order;
+      cw.TileLayout = cs_prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+                      TileY32bpe : Linear;
+#endif
+
       cw.InterfaceDescriptor = (struct GENX(INTERFACE_DESCRIPTOR_DATA)) {
          .KernelStartPointer = params->cs_prog_kernel,
          .SamplerStatePointer = samplers_offset,
@@ -2335,6 +2343,7 @@ xy_bcb_tiling(const struct isl_surf *surf)
    case ISL_TILING_4:
       return XY_TILE_4;
    case ISL_TILING_64:
+   case ISL_TILING_64_XE2:
       return XY_TILE_64;
 #else
    case ISL_TILING_Y0:

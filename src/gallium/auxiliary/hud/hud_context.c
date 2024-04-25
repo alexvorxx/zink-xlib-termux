@@ -998,16 +998,16 @@ hud_graph_add_value(struct hud_graph *gr, double value)
    value = value > gr->pane->ceiling ? gr->pane->ceiling : value;
 
    if (gr->fd) {
-      if (gr->fd == stdout) {
+      if (gr->fd == stdout && !gr->separator) {
          fprintf(gr->fd, "%s: ", gr->name);
       }
       if (fabs(value - lround(value)) > FLT_EPSILON) {
          fprintf(gr->fd, get_float_modifier(value), value);
-         fprintf(gr->fd, "\n");
       }
       else {
-         fprintf(gr->fd, "%" PRIu64 "\n", (uint64_t) lround(value));
+         fprintf(gr->fd, "%" PRIu64, (uint64_t) lround(value));
       }
+      fprintf(gr->fd, "%s", gr->separator ? gr->separator : "\n");
    }
 
    if (gr->index == gr->pane->max_num_vertices) {
@@ -1073,7 +1073,8 @@ static void strcat_without_spaces(char *dst, const char *src)
  * is a HUD variable such as "fps", or "cpu"
  */
 static void
-hud_graph_set_dump_file(struct hud_graph *gr, const char *hud_dump_dir, bool to_stdout)
+hud_graph_set_dump_file(struct hud_graph *gr, const char *hud_dump_dir,
+                        bool to_stdout, const char *separator)
 {
    if (hud_dump_dir) {
       char *dump_file = malloc(strlen(hud_dump_dir) + sizeof(PATH_SEP)
@@ -1093,6 +1094,8 @@ hud_graph_set_dump_file(struct hud_graph *gr, const char *hud_dump_dir, bool to_
       /* flush output after each line is written */
       setvbuf(gr->fd, NULL, _IOLBF, 0);
    }
+
+   gr->separator = separator;
 }
 
 /**
@@ -1231,6 +1234,7 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
    bool dyn_ceiling = false;
    bool reset_colors = false;
    bool sort_items = false;
+   bool is_csv = false;
    bool to_stdout = false;
    const char *period_env;
 
@@ -1395,6 +1399,10 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
       else if (strcmp(name, "stdout") == 0) {
          to_stdout = true;
       }
+      else if (strcmp(name, "csv") == 0) {
+         to_stdout = true;
+         is_csv = true;
+      }
       else {
          bool processed = false;
 
@@ -1551,7 +1559,16 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
          struct hud_graph *gr;
 
          LIST_FOR_EACH_ENTRY(gr, &pane->graph_list, head) {
-            hud_graph_set_dump_file(gr, hud_dump_dir, to_stdout);
+            char *separator = NULL;
+
+            if (is_csv) {
+               if (gr ==
+                   list_last_entry(&pane->graph_list, struct hud_graph, head))
+                  separator = "\n";
+               else
+                  separator = ", ";
+            }
+            hud_graph_set_dump_file(gr, hud_dump_dir, to_stdout, separator);
          }
       }
    }
@@ -1610,6 +1627,7 @@ print_help(struct pipe_screen *screen)
    puts("");
    puts("  Available names:");
    puts("    stdout (prints the counters value to stdout)");
+   puts("    csv (prints the counter values to stdout as CSV, use + to separate names)");
    puts("    fps");
    puts("    frametime");
    puts("    cpu");

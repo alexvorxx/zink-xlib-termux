@@ -1225,7 +1225,7 @@ static void virgl_bind_sampler_states(struct pipe_context *ctx,
                                      void **samplers)
 {
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handles[PIPE_MAX_SHADER_SAMPLER_VIEWS];
+   uint32_t handles[PIPE_MAX_SAMPLERS];
    int i;
    for (i = 0; i < num_samplers; i++) {
       handles[i] = (unsigned long)(samplers[i]);

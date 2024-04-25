@@ -48,6 +48,19 @@ is_ubo_or_input(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
 }
 
 static inline bool
+is_not_used_in_single_if(const nir_alu_instr *instr)
+{
+   unsigned if_uses = 0;
+   nir_foreach_use(src, &instr->def) {
+      if (nir_src_is_if(src))
+         if_uses++;
+      else
+         return true;
+   }
+   return if_uses != 1;
+}
+
+static inline bool
 is_only_used_by_load_ubo_vec4(const nir_alu_instr *instr)
 {
    nir_foreach_use(src, &instr->def) {
@@ -65,6 +78,8 @@ is_only_used_by_load_ubo_vec4(const nir_alu_instr *instr)
    return true;
 }
 
+bool r300_is_only_used_as_float(const nir_alu_instr *instr);
+
 char *r300_finalize_nir(struct pipe_screen *pscreen, void *nir);
 
 extern bool r300_transform_vs_trig_input(struct nir_shader *shader);
@@ -75,9 +90,11 @@ extern bool r300_nir_fuse_fround_d3d9(struct nir_shader *shader);
 
 extern bool r300_nir_lower_bool_to_float(struct nir_shader *shader);
 
+extern bool r300_nir_lower_bool_to_float_fs(struct nir_shader *shader);
+
 extern bool r300_nir_prepare_presubtract(struct nir_shader *shader);
 
-extern bool r300_nir_clean_double_fneg(struct nir_shader *shader);
+extern bool r300_nir_opt_algebraic_late(struct nir_shader *shader);
 
 extern bool r300_nir_post_integer_lowering(struct nir_shader *shader);
 
@@ -86,5 +103,7 @@ extern bool r300_nir_lower_fcsel_r500(nir_shader *shader);
 extern bool r300_nir_lower_fcsel_r300(nir_shader *shader);
 
 extern bool r300_nir_lower_flrp(nir_shader *shader);
+
+extern bool r300_nir_lower_comparison_fs(nir_shader *shader);
 
 #endif /* R300_NIR_H */

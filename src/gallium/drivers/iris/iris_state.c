@@ -833,6 +833,7 @@ static void
 iris_emit_l3_config(struct iris_batch *batch,
                     const struct intel_l3_config *cfg)
 {
+#if GFX_VER < 20
    assert(cfg || GFX_VER >= 12);
 
 #if GFX_VER >= 12
@@ -870,6 +871,7 @@ iris_emit_l3_config(struct iris_batch *batch,
 #endif
       }
    }
+#endif /* GFX_VER < 20 */
 }
 
 #if GFX_VER == 9
@@ -8675,6 +8677,14 @@ iris_upload_compute_walker(struct iris_context *ice,
          cw.PostSync.MOCS                  = iris_mocs(NULL, &screen->isl_dev, 0);
          cw.InterfaceDescriptor            = idd;
 
+#if GFX_VERx10 >= 125
+         cw.GenerateLocalID = cs_prog_data->generate_local_id != 0;
+         cw.EmitLocal       = cs_prog_data->generate_local_id;
+         cw.WalkOrder       = cs_prog_data->walk_order;
+         cw.TileLayout = cs_prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+                         TileY32bpe : Linear;
+#endif
+
          assert(brw_cs_push_const_total_size(cs_prog_data, dispatch.threads) == 0);
       }
    }
@@ -9630,6 +9640,22 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
                                  PIPE_CONTROL_CS_STALL, NULL, 0, 0);
    }
 
+   batch_mark_sync_for_pipe_control(batch, flags);
+
+#if INTEL_NEEDS_WA_14010840176
+   /* "If the intention of “constant cache invalidate” is
+    *  to invalidate the L1 cache (which can cache constants), use “HDC
+    *  pipeline flush” instead of Constant Cache invalidate command."
+    *
+    * "If L3 invalidate is needed, the w/a should be to set state invalidate
+    * in the pipe control command, in addition to the HDC pipeline flush."
+    */
+   if (flags & PIPE_CONTROL_CONST_CACHE_INVALIDATE) {
+      flags &= ~PIPE_CONTROL_CONST_CACHE_INVALIDATE;
+      flags |= PIPE_CONTROL_FLUSH_HDC | PIPE_CONTROL_STATE_CACHE_INVALIDATE;
+   }
+#endif
+
    /* Emit --------------------------------------------------------------- */
 
    if (INTEL_DEBUG(DEBUG_PIPE_CONTROL)) {
@@ -9665,7 +9691,6 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
               imm, reason);
    }
 
-   batch_mark_sync_for_pipe_control(batch, flags);
    iris_batch_sync_region_start(batch);
 
    const bool trace_pc =

@@ -27,7 +27,7 @@ v3d-rpi4-gl:arm64:
     - .igalia-bcm2711-rpi-4:arm64
     - .broadcom-test:arm64
     - .v3d-rules
-  parallel: 10
+  parallel: 8
   variables:
     HWCI_START_WESTON: 1
     DEQP_SUITE: broadcom-rpi4
@@ -81,9 +81,10 @@ v3dv-rpi4-vk-full:arm64:
     - igalia-rpi4
     - igalia-fullrun
   parallel: 6
-  timeout: 1h 30m
+  timeout: 2h
   variables:
-    TEST_PHASE_TIMEOUT: 180
+    # Keep 10 minutes for boot + setup + uploading the artifacts at the end
+    TEST_PHASE_TIMEOUT: 110
     DEQP_FRACTION: 1
 
 
@@ -103,7 +104,8 @@ v3dv-rpi5-vk-full:arm64:
   extends:
     - .v3dv-rpi5-vk:arm64
     - .v3dv-manual-rules
-  timeout: 2h 30m
+  timeout: 3h
   variables:
-    TEST_PHASE_TIMEOUT: 180
+    # Keep 10 minutes for boot + setup + uploading the artifacts at the end
+    TEST_PHASE_TIMEOUT: 170
     DEQP_FRACTION: 1

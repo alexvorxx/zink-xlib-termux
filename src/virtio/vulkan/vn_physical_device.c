@@ -142,6 +142,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
 
       /* KHR */
       VkPhysicalDeviceShaderClockFeaturesKHR shader_clock;
+      VkPhysicalDeviceShaderExpectAssumeFeaturesKHR expect_assume;
 
       /* EXT */
       VkPhysicalDeviceBorderColorSwizzleFeaturesEXT border_color_swizzle;
@@ -244,6 +245,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
 
    /* KHR */
    VN_ADD_PNEXT_EXT(feats2, SHADER_CLOCK_FEATURES_KHR, local_feats.shader_clock, exts->KHR_shader_clock);
+   VN_ADD_PNEXT_EXT(feats2, SHADER_EXPECT_ASSUME_FEATURES_KHR, local_feats.expect_assume, exts->KHR_shader_expect_assume);
 
    /* EXT */
    VN_ADD_PNEXT_EXT(feats2, BORDER_COLOR_SWIZZLE_FEATURES_EXT, local_feats.border_color_swizzle, exts->EXT_border_color_swizzle);
@@ -833,14 +835,14 @@ vn_physical_device_init_external_memory(
       physical_dev->external_memory.renderer_handle_type =
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       physical_dev->external_memory.supported_handle_types |=
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
-#else  /* ANDROID */
+#else  /* DETECT_OS_ANDROID */
       physical_dev->external_memory.supported_handle_types =
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-#endif /* ANDROID */
+#endif /* DETECT_OS_ANDROID */
    }
 }
 
@@ -979,7 +981,7 @@ vn_physical_device_get_native_extensions(
    const bool can_external_mem =
       vn_physical_device_get_external_memory_support(physical_dev);
    if (can_external_mem) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       exts->ANDROID_external_memory_android_hardware_buffer = true;
 
       /* For wsi, we require renderer:
@@ -995,10 +997,10 @@ vn_physical_device_get_native_extensions(
       if (physical_dev->renderer_sync_fd.semaphore_importable &&
           physical_dev->renderer_sync_fd.fence_exportable)
          exts->ANDROID_native_buffer = true;
-#else  /* ANDROID */
+#else  /* DETECT_OS_ANDROID */
       exts->KHR_external_memory_fd = true;
       exts->EXT_external_memory_dma_buf = true;
-#endif /* ANDROID */
+#endif /* DETECT_OS_ANDROID */
    }
 
 #ifdef VN_USE_WSI_PLATFORM
@@ -1122,6 +1124,7 @@ vn_physical_device_get_passthrough_extensions(
       .KHR_pipeline_library = true,
       .KHR_push_descriptor = true,
       .KHR_shader_clock = true,
+      .KHR_shader_expect_assume = true,
 
       /* EXT */
       .EXT_border_color_swizzle = true,
@@ -1135,7 +1138,7 @@ vn_physical_device_get_passthrough_extensions(
       .EXT_extended_dynamic_state3 = true,
       .EXT_dynamic_rendering_unused_attachments = true,
       .EXT_fragment_shader_interlock = true,
-      .EXT_graphics_pipeline_library = VN_DEBUG(GPL),
+      .EXT_graphics_pipeline_library = !VN_DEBUG(NO_GPL),
       .EXT_image_2d_view_of_3d = true,
       .EXT_image_drm_format_modifier = true,
       .EXT_image_view_min_lod = true,

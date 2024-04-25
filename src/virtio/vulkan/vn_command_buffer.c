@@ -681,7 +681,6 @@ vn_CreateCommandPool(VkDevice device,
    pool->queue_family_index = pCreateInfo->queueFamilyIndex;
    list_inithead(&pool->command_buffers);
    list_inithead(&pool->free_query_batches);
-   list_inithead(&pool->free_query_feedback_cmds);
 
    VkCommandPool pool_handle = vn_command_pool_to_handle(pool);
    vn_async_vkCreateCommandPool(dev->primary_ring, device, pCreateInfo, NULL,
@@ -692,16 +691,6 @@ vn_CreateCommandPool(VkDevice device,
    *pCommandPool = pool_handle;
 
    return VK_SUCCESS;
-}
-
-static inline void
-vn_recycle_query_feedback_cmd(struct vn_command_buffer *cmd)
-{
-   vn_ResetCommandBuffer(
-      vn_command_buffer_to_handle(cmd->linked_query_feedback_cmd), 0);
-   list_add(&cmd->linked_query_feedback_cmd->feedback_head,
-            &cmd->linked_query_feedback_cmd->pool->free_query_feedback_cmds);
-   cmd->linked_query_feedback_cmd = NULL;
 }
 
 void
@@ -719,11 +708,6 @@ vn_DestroyCommandPool(VkDevice device,
 
    alloc = pAllocator ? pAllocator : &pool->allocator;
 
-   /* We must emit vkDestroyCommandPool before freeing the command buffers in
-    * pool->command_buffers.  Otherwise, another thread might reuse their
-    * object ids while they still refer to the command buffers in the
-    * renderer.
-    */
    vn_async_vkDestroyCommandPool(dev->primary_ring, device, commandPool,
                                  NULL);
 
@@ -739,8 +723,10 @@ vn_DestroyCommandPool(VkDevice device,
                                &cmd->builder.query_batches, head)
          vk_free(alloc, batch);
 
-      if (cmd->linked_query_feedback_cmd)
-         vn_recycle_query_feedback_cmd(cmd);
+      if (cmd->linked_query_feedback_cmd) {
+         vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+         cmd->linked_query_feedback_cmd = NULL;
+      }
 
       vk_free(alloc, cmd);
    }
@@ -771,8 +757,10 @@ vn_cmd_reset(struct vn_command_buffer *cmd)
                             &cmd->builder.query_batches, head)
       list_move_to(&batch->head, &cmd->pool->free_query_batches);
 
-   if (cmd->linked_query_feedback_cmd)
-      vn_recycle_query_feedback_cmd(cmd);
+   if (cmd->linked_query_feedback_cmd) {
+      vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+      cmd->linked_query_feedback_cmd = NULL;
+   }
 
    memset(&cmd->builder, 0, sizeof(cmd->builder));
 
@@ -791,6 +779,12 @@ vn_ResetCommandPool(VkDevice device,
    list_for_each_entry_safe(struct vn_command_buffer, cmd,
                             &pool->command_buffers, head)
       vn_cmd_reset(cmd);
+
+   if (flags & VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT) {
+      list_for_each_entry_safe(struct vn_feedback_query_batch, batch,
+                               &pool->free_query_batches, head)
+         vk_free(&pool->allocator, batch);
+   }
 
    vn_async_vkResetCommandPool(dev->primary_ring, device, commandPool, flags);
 
@@ -891,8 +885,10 @@ vn_FreeCommandBuffers(VkDevice device,
                                &cmd->builder.query_batches, head)
          list_move_to(&batch->head, &cmd->pool->free_query_batches);
 
-      if (cmd->linked_query_feedback_cmd)
-         vn_recycle_query_feedback_cmd(cmd);
+      if (cmd->linked_query_feedback_cmd) {
+         vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+         cmd->linked_query_feedback_cmd = NULL;
+      }
 
       vn_object_base_fini(&cmd->base);
       vk_free(alloc, cmd);

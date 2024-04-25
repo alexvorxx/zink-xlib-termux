@@ -136,6 +136,7 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
          .physical_storage_buffer_address = true,
          .runtime_descriptor_array = true,
          .shader_clock = true,
+         .shader_sm_builtins_nv = true,
          .shader_viewport_index_layer = true,
          .storage_8bit = true,
          .storage_16bit = true,
@@ -358,6 +359,9 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    if (use_nak(pdev, nir->info.stage) &&
        !(pdev->debug_flags & NVK_DEBUG_NO_CBUF)) {
       cbuf_map = cbuf_map_out;
+
+      /* Large constant support assumes cbufs */
+      NIR_PASS(_, nir, nir_opt_large_constants, NULL, 32);
    } else {
       /* Codegen sometimes puts stuff in cbuf 1 and adds 1 to our cbuf indices
        * so we can't really rely on it for lowering to cbufs and instead place
@@ -389,6 +393,21 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    }
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_shared,
             nir_address_format_32bit_offset);
+
+   if (nir->info.zero_initialize_shared_memory && nir->info.shared_size > 0) {
+      /* QMD::SHARED_MEMORY_SIZE requires an alignment of 256B so it's safe to
+       * align everything up to 16B so we can write whole vec4s.
+       */
+      nir->info.shared_size = align(nir->info.shared_size, 16);
+      NIR_PASS(_, nir, nir_zero_initialize_shared_memory,
+               nir->info.shared_size, 16);
+
+      /* We need to call lower_compute_system_values again because
+       * nir_zero_initialize_shared_memory generates load_invocation_id which
+       * has to be lowered to load_invocation_index.
+       */
+      NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
+   }
 }
 
 #ifndef NDEBUG
@@ -467,13 +486,36 @@ nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
                 struct nvk_shader *shader)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   VkResult result;
 
    if (use_nak(pdev, nir->info.stage)) {
-      return nvk_compile_nir_with_nak(pdev, nir, pipeline_flags, rs,
-                                      fs_key, shader);
+      result = nvk_compile_nir_with_nak(pdev, nir, pipeline_flags, rs,
+                                       fs_key, shader);
    } else {
-      return nvk_cg_compile_nir(pdev, nir, fs_key, shader);
+      result = nvk_cg_compile_nir(pdev, nir, fs_key, shader);
    }
+   if (result != VK_SUCCESS)
+      return result;
+
+   if (nir->constant_data_size > 0) {
+      uint32_t data_align = nvk_min_cbuf_alignment(&dev->pdev->info);
+      uint32_t data_size = align(nir->constant_data_size, data_align);
+
+      void *data = malloc(data_size);
+      if (data == NULL)
+         return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      memcpy(data, nir->constant_data, nir->constant_data_size);
+
+      assert(nir->constant_data_size <= data_size);
+      memset(data + nir->constant_data_size, 0,
+             data_size - nir->constant_data_size);
+
+      shader->data_ptr = data;
+      shader->data_size = data_size;
+   }
+
+   return VK_SUCCESS;
 }
 
 VkResult
@@ -491,23 +533,40 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
     * Kepler+ needs the first instruction to be 0x80 aligned, so we waste 0x30 bytes
     */
    int alignment = dev->pdev->info.cls_eng3d >= KEPLER_A ? 0x80 : 0x40;
-   int offset = 0;
 
+   uint32_t total_size = 0;
    if (dev->pdev->info.cls_eng3d >= KEPLER_A &&
        dev->pdev->info.cls_eng3d < TURING_A &&
        hdr_size > 0) {
-      /* offset will be 0x30 */
-      offset = alignment - hdr_size;
+      /* The instructions are what has to be aligned so we need to start at a
+       * small offset (0x30 B) into the upload area.
+       */
+      total_size = alignment - hdr_size;
    }
 
-   uint32_t total_size = shader->code_size + hdr_size + offset;
+   const uint32_t hdr_offset = total_size;
+   total_size += hdr_size;
+
+   const uint32_t code_offset = total_size;
+   assert(code_offset % alignment == 0);
+   total_size += shader->code_size;
+
+   uint32_t data_offset = 0;
+   if (shader->data_size > 0) {
+      total_size = align(total_size, nvk_min_cbuf_alignment(&dev->pdev->info));
+      data_offset = total_size;
+      total_size += shader->data_size;
+   }
+
    char *data = malloc(total_size);
    if (data == NULL)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    assert(hdr_size <= sizeof(shader->info.hdr));
-   memcpy(data + offset, shader->info.hdr, hdr_size);
-   memcpy(data + offset + hdr_size, shader->code_ptr, shader->code_size);
+   memcpy(data + hdr_offset, shader->info.hdr, hdr_size);
+   memcpy(data + code_offset, shader->code_ptr, shader->code_size);
+   if (shader->data_size > 0)
+      memcpy(data + data_offset, shader->data_ptr, shader->data_size);
 
 #ifndef NDEBUG
    if (debug_get_bool_option("NV50_PROG_DEBUG", false))
@@ -518,7 +577,8 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
                                      total_size, alignment, &shader->upload_addr);
    if (result == VK_SUCCESS) {
       shader->upload_size = total_size;
-      shader->upload_padding = offset;
+      shader->hdr_offset = hdr_offset;
+      shader->data_offset = data_offset;
    }
    free(data);
 
@@ -543,6 +603,8 @@ nvk_shader_finish(struct nvk_device *dev, struct nvk_shader *shader)
       /* This came from codegen or deserialize, just free it */
       free((void *)shader->code_ptr);
    }
+
+   free((void *)shader->data_ptr);
 
    vk_free(&dev->vk.alloc, shader);
 }
@@ -622,6 +684,8 @@ nvk_shader_serialize(struct vk_pipeline_cache_object *object,
    blob_write_bytes(blob, &shader->cbuf_map, sizeof(shader->cbuf_map));
    blob_write_uint32(blob, shader->code_size);
    blob_write_bytes(blob, shader->code_ptr, shader->code_size);
+   blob_write_uint32(blob, shader->data_size);
+   blob_write_bytes(blob, shader->data_ptr, shader->data_size);
 
    return true;
 }
@@ -650,6 +714,14 @@ nvk_shader_deserialize(struct vk_pipeline_cache *cache,
 
    blob_copy_bytes(blob, code_ptr, shader->code_size);
    shader->code_ptr = code_ptr;
+
+   shader->data_size = blob_read_uint32(blob);
+   void *data_ptr = malloc(shader->data_size);
+   if (!data_ptr)
+      goto fail;
+
+   blob_copy_bytes(blob, data_ptr, shader->data_size);
+   shader->data_ptr = data_ptr;
 
    return &shader->base;
 

@@ -1396,6 +1396,8 @@ VkResult anv_CreateDescriptorPool(
 
    list_inithead(&pool->desc_sets);
 
+   ANV_RMV(descriptor_pool_create, device, pCreateInfo, pool, false);
+
    *pDescriptorPool = anv_descriptor_pool_to_handle(pool);
 
    return VK_SUCCESS;
@@ -1411,6 +1413,8 @@ void anv_DestroyDescriptorPool(
 
    if (!pool)
       return;
+
+   ANV_RMV(resource_destroy, device, pool);
 
    list_for_each_entry_safe(struct anv_descriptor_set, set,
                             &pool->desc_sets, pool_link) {
@@ -2026,9 +2030,8 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       if (image_view) {
          for (unsigned p = 0; p < image_view->n_planes; p++) {
             const struct anv_surface_state *sstate =
-               (desc->layout == VK_IMAGE_LAYOUT_GENERAL) ?
-               &image_view->planes[p].general_sampler :
-               &image_view->planes[p].optimal_sampler;
+               anv_image_view_texture_surface_state(image_view, p,
+                                                    desc->layout);
             desc_data[p].image =
                anv_surface_state_to_handle(device->physical, sstate->state);
          }
@@ -2053,7 +2056,7 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
          struct anv_storage_image_descriptor desc_data = {
             .vanilla = anv_surface_state_to_handle(
                device->physical,
-               image_view->planes[0].storage.state),
+               anv_image_view_storage_surface_state(image_view)->state),
             .image_depth = image_view->vk.storage.z_slice_count,
          };
          memcpy(desc_surface_map, &desc_data, sizeof(desc_data));
@@ -2204,10 +2207,7 @@ anv_descriptor_write_surface_state(struct anv_device *device,
    bview->general.state = surface_state;
 
    isl_surf_usage_flags_t usage =
-      (desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-       desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) ?
-      ISL_SURF_USAGE_CONSTANT_BUFFER_BIT :
-      ISL_SURF_USAGE_STORAGE_BIT;
+      anv_isl_usage_for_descriptor_type(desc->type);
 
    enum isl_format format =
       anv_isl_format_for_descriptor_type(device, desc->type);
@@ -2278,9 +2278,7 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
 
    if (data & ANV_DESCRIPTOR_SURFACE) {
       isl_surf_usage_flags_t usage =
-         desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ?
-         ISL_SURF_USAGE_CONSTANT_BUFFER_BIT :
-         ISL_SURF_USAGE_STORAGE_BIT;
+         anv_isl_usage_for_descriptor_type(desc->type);
 
       enum isl_format format =
          anv_isl_format_for_descriptor_type(device, desc->type);

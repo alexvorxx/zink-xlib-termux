@@ -207,7 +207,7 @@ radv_are_formats_dcc_compatible(const struct radv_physical_device *pdev, const v
 static bool
 radv_format_is_atomic_allowed(struct radv_device *device, VkFormat format)
 {
-   if (format == VK_FORMAT_R32_SFLOAT && !device->image_float32_atomics)
+   if (format == VK_FORMAT_R32_SFLOAT && !radv_uses_image_float32_atomics(device))
       return false;
 
    return radv_is_atomic_format_supported(format);
@@ -388,7 +388,7 @@ radv_use_htile_for_image(const struct radv_device *device, const struct radv_ima
     */
    if (image->vk.extent.width * image->vk.extent.height < 8 * 8 &&
        !(device->instance->debug_flags & RADV_DEBUG_FORCE_COMPRESS) &&
-       !(gfx_level == GFX10_3 && device->attachment_vrs_enabled))
+       !(gfx_level == GFX10_3 && device->vk.enabled_features.attachmentFragmentShadingRate))
       return false;
 
    return (image->vk.mip_levels == 1 || use_htile_for_mips) && !image->shareable;
@@ -1292,7 +1292,7 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
    }
 
    if (image->vk.external_handle_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       image->vk.ahb_format = radv_ahb_format_for_vk_format(image->vk.format);
 #endif
 
@@ -1560,7 +1560,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                  VkImage *pImage)
 {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    const VkNativeBufferANDROID *gralloc_info = vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
 
    if (gralloc_info)

@@ -956,11 +956,11 @@ static int
 batch_find_resource(struct zink_batch_state *bs, struct zink_resource_object *obj, struct zink_batch_obj_list *list)
 {
    unsigned hash = obj->bo->unique_id & (BUFFER_HASHLIST_SIZE-1);
-   int i = bs->buffer_indices_hashlist[hash];
+   int buffer_index = bs->buffer_indices_hashlist[hash];
 
    /* not found or found */
-   if (i < 0 || (i < list->num_buffers && list->objs[i] == obj))
-      return i;
+   if (buffer_index < 0 || (buffer_index < list->num_buffers && list->objs[buffer_index] == obj))
+      return buffer_index;
 
    /* Hash collision, look for the BO in the list of list->objs linearly. */
    for (int i = list->num_buffers - 1; i >= 0; i--) {

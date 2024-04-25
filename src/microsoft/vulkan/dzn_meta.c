@@ -79,7 +79,7 @@ dzn_meta_compile_shader(struct dzn_device *device, nir_shader *nir,
 
    if ((instance->debug_flags & DZN_DEBUG_DXIL) &&
        (instance->debug_flags & DZN_DEBUG_INTERNAL) &&
-       !res) {
+       !res && !(instance->debug_flags & DZN_DEBUG_EXPERIMENTAL)) {
       fprintf(stderr,
             "== VALIDATION ERROR =============================================\n"
             "%s\n"
@@ -87,7 +87,7 @@ dzn_meta_compile_shader(struct dzn_device *device, nir_shader *nir,
             err ? err : "unknown");
       ralloc_free(err);
    }
-   assert(res);
+   assert(res || (instance->debug_flags & DZN_DEBUG_EXPERIMENTAL));
 #endif
 
    void *data;
@@ -590,17 +590,15 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
          },
          .ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX,
       },
-   };
-
-   D3D12_VERSIONED_ROOT_SIGNATURE_DESC root_sig_desc = {
-      .Version = D3D_ROOT_SIGNATURE_VERSION_1_1,
-      .Desc_1_1 = {
-         .NumParameters = ARRAY_SIZE(root_params),
-         .pParameters = root_params,
-         .NumStaticSamplers = ARRAY_SIZE(samplers),
-         .pStaticSamplers = samplers,
-         .Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE,
-      },
+      {
+         .ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+         .Constants = {
+            .ShaderRegister = 0,
+            .RegisterSpace = 0,
+            .Num32BitValues = 1,
+         },
+         .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
+      }
    };
 
    uint32_t samples = key->resolve_mode == dzn_blit_resolve_none ?
@@ -627,8 +625,24 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
       .sampler_dim = key->sampler_dim,
       .src_is_array = key->src_is_array,
       .resolve_mode = key->resolve_mode,
+      .stencil_fallback = key->loc == FRAG_RESULT_STENCIL && key->stencil_bit != 0xf,
       .padding = 0,
    };
+
+   D3D12_VERSIONED_ROOT_SIGNATURE_DESC root_sig_desc = {
+      .Version = D3D_ROOT_SIGNATURE_VERSION_1_1,
+      .Desc_1_1 = {
+         .NumParameters = ARRAY_SIZE(root_params),
+         .pParameters = root_params,
+         .NumStaticSamplers = ARRAY_SIZE(samplers),
+         .pStaticSamplers = samplers,
+         .Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE,
+      },
+   };
+
+   /* Don't need fs constants unless we're doing the stencil fallback */
+   if (!blit_fs_info.stencil_fallback)
+      root_sig_desc.Desc_1_1.NumParameters--;
 
    blit->root_sig = dzn_device_create_root_sig(device, &root_sig_desc);
    if (!blit->root_sig) {
@@ -675,7 +689,7 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
       } else {
          assert(key->loc == FRAG_RESULT_STENCIL);
          desc.DepthStencilState.StencilEnable = true;
-         desc.DepthStencilState.StencilWriteMask = 0xff;
+         desc.DepthStencilState.StencilWriteMask = key->stencil_bit == 0xf ? 0xff : (1 << key->stencil_bit);
          desc.DepthStencilState.FrontFace.StencilFailOp = D3D12_STENCIL_OP_REPLACE;
          desc.DepthStencilState.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_REPLACE;
          desc.DepthStencilState.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;

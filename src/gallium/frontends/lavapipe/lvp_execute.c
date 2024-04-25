@@ -108,6 +108,8 @@ struct rendering_state {
 
    struct pipe_grid_info dispatch_info;
    struct pipe_framebuffer_state framebuffer;
+   int fb_map[PIPE_MAX_COLOR_BUFS];
+   bool fb_remapped;
 
    struct pipe_blend_state blend_state;
    struct {
@@ -391,6 +393,22 @@ static void emit_compute_state(struct rendering_state *state)
 }
 
 static void
+emit_fb_state(struct rendering_state *state)
+{
+   if (state->fb_remapped) {
+      struct pipe_framebuffer_state fb = state->framebuffer;
+      memset(fb.cbufs, 0, sizeof(fb.cbufs));
+      for (unsigned i = 0; i < fb.nr_cbufs; i++) {
+         if (state->fb_map[i] < PIPE_MAX_COLOR_BUFS)
+            fb.cbufs[state->fb_map[i]] = state->framebuffer.cbufs[i];
+      }
+      state->pctx->set_framebuffer_state(state->pctx, &fb);
+   } else {
+      state->pctx->set_framebuffer_state(state->pctx, &state->framebuffer);
+   }
+}
+
+static void
 update_min_samples(struct rendering_state *state)
 {
    state->min_samples = 1;
@@ -405,7 +423,7 @@ update_min_samples(struct rendering_state *state)
       state->min_samples = state->rast_samples;
    if (state->rast_samples != state->framebuffer.samples) {
       state->framebuffer.samples = state->rast_samples;
-      state->pctx->set_framebuffer_state(state->pctx, &state->framebuffer);
+      emit_fb_state(state);
    }
 }
 
@@ -430,7 +448,17 @@ static void emit_state(struct rendering_state *state)
             state->blend_state.rt[att].colormask = 0;
          }
       }
-      cso_set_blend(state->cso, &state->blend_state);
+      if (state->fb_remapped) {
+         struct pipe_blend_state blend = state->blend_state;
+         for (unsigned i = 0; i < state->framebuffer.nr_cbufs; i++) {
+            if (state->fb_map[i] < PIPE_MAX_COLOR_BUFS) {
+               blend.rt[state->fb_map[i]] = state->blend_state.rt[i];
+            }
+         }
+         cso_set_blend(state->cso, &blend);
+      } else {
+         cso_set_blend(state->cso, &state->blend_state);
+      }
       /* reset colormasks using saved bitmask */
       if (state->color_write_disables) {
          const uint32_t att_mask = BITFIELD_MASK(4);
@@ -500,6 +528,7 @@ static void emit_state(struct rendering_state *state)
    if (state->vb_strides_dirty) {
       for (unsigned i = 0; i < state->velem.count; i++)
          state->velem.velems[i].src_stride = state->vb_strides[state->velem.velems[i].vertex_buffer_index];
+      state->ve_dirty = true;
       state->vb_strides_dirty = false;
    }
 
@@ -1738,6 +1767,10 @@ handle_begin_rendering(struct vk_cmd_queue_entry *cmd,
    bool resuming = (info->flags & VK_RENDERING_RESUMING_BIT) == VK_RENDERING_RESUMING_BIT;
    bool suspending = (info->flags & VK_RENDERING_SUSPENDING_BIT) == VK_RENDERING_SUSPENDING_BIT;
 
+   state->fb_remapped = false;
+   for (unsigned i = 0; i < PIPE_MAX_COLOR_BUFS; i++)
+      state->fb_map[i] = i;
+
    const VkMultisampledRenderToSingleSampledInfoEXT *ssi =
          vk_find_struct_const(info->pNext, MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_INFO_EXT);
    if (ssi && ssi->multisampledRenderToSingleSampledEnable) {
@@ -1758,6 +1791,7 @@ handle_begin_rendering(struct vk_cmd_queue_entry *cmd,
    state->framebuffer.height = info->renderArea.offset.y +
                                info->renderArea.extent.height;
    state->framebuffer.layers = info->viewMask ? util_last_bit(info->viewMask) : info->layerCount;
+   assert(info->colorAttachmentCount <= PIPE_MAX_COLOR_BUFS);
    state->framebuffer.nr_cbufs = info->colorAttachmentCount;
 
    state->color_att_count = info->colorAttachmentCount;
@@ -1874,6 +1908,27 @@ static void handle_end_rendering(struct vk_cmd_queue_entry *cmd,
                                           false);
       }
    }
+}
+
+static void
+handle_rendering_attachment_locations(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   VkRenderingAttachmentLocationInfoKHR *set = cmd->u.set_rendering_attachment_locations_khr.location_info;
+   state->fb_remapped = true;
+   memset(state->fb_map, PIPE_MAX_COLOR_BUFS, sizeof(state->fb_map));
+   assert(state->color_att_count == set->colorAttachmentCount);
+   for (unsigned i = 0; i < state->color_att_count; i++) {
+      if (set->pColorAttachmentLocations[i] == VK_ATTACHMENT_UNUSED)
+         continue;
+      state->fb_map[i] = set->pColorAttachmentLocations[i];
+   }
+   emit_fb_state(state);
+}
+
+static void
+handle_rendering_input_attachment_indices(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+{
+   /* do nothing */
 }
 
 static void handle_draw(struct vk_cmd_queue_entry *cmd,
@@ -3450,8 +3505,8 @@ static void handle_set_stencil_op(struct vk_cmd_queue_entry *cmd,
 static void handle_set_line_stipple(struct vk_cmd_queue_entry *cmd,
                                     struct rendering_state *state)
 {
-   state->rs_state.line_stipple_factor = cmd->u.set_line_stipple_ext.line_stipple_factor - 1;
-   state->rs_state.line_stipple_pattern = cmd->u.set_line_stipple_ext.line_stipple_pattern;
+   state->rs_state.line_stipple_factor = cmd->u.set_line_stipple_khr.line_stipple_factor - 1;
+   state->rs_state.line_stipple_pattern = cmd->u.set_line_stipple_khr.line_stipple_pattern;
    state->rs_dirty = true;
 }
 
@@ -3602,13 +3657,13 @@ static void handle_set_halfz(struct vk_cmd_queue_entry *cmd,
 static void handle_set_line_rasterization_mode(struct vk_cmd_queue_entry *cmd,
                                                struct rendering_state *state)
 {
-   VkLineRasterizationModeEXT lineRasterizationMode = cmd->u.set_line_rasterization_mode_ext.line_rasterization_mode;
+   VkLineRasterizationModeKHR lineRasterizationMode = cmd->u.set_line_rasterization_mode_ext.line_rasterization_mode;
    /* not even going to bother trying dirty tracking on this */
    state->rs_dirty = true;
-   state->rs_state.line_smooth = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT;
-   state->rs_state.line_rectangular = lineRasterizationMode != VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;;
-   state->disable_multisample = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT ||
-                                lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT;
+   state->rs_state.line_smooth = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR;
+   state->rs_state.line_rectangular = lineRasterizationMode != VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR;;
+   state->disable_multisample = lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR ||
+                                lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR;
 }
 
 static void handle_set_line_stipple_enable(struct vk_cmd_queue_entry *cmd,
@@ -3871,7 +3926,7 @@ process_sequence(struct rendering_state *state,
       }
       case VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV: {
          VkBindVertexBufferIndirectCommandNV *data = input;
-         cmd_size += sizeof(*cmd->u.bind_vertex_buffers.buffers) + sizeof(*cmd->u.bind_vertex_buffers.offsets);
+         cmd_size += sizeof(*cmd->u.bind_vertex_buffers2.buffers) + sizeof(*cmd->u.bind_vertex_buffers2.offsets);
          cmd_size += sizeof(*cmd->u.bind_vertex_buffers2.sizes) + sizeof(*cmd->u.bind_vertex_buffers2.strides);
          if (max_size < size + cmd_size)
             abort();
@@ -3880,12 +3935,20 @@ process_sequence(struct rendering_state *state,
          cmd->u.bind_vertex_buffers2.binding_count = 1;
 
          cmd->u.bind_vertex_buffers2.buffers = (void*)cmdptr;
-         cmd->u.bind_vertex_buffers2.offsets = (void*)(cmdptr + sizeof(*cmd->u.bind_vertex_buffers2.buffers));
+         uint32_t alloc_offset = sizeof(*cmd->u.bind_vertex_buffers2.buffers);
+
+         cmd->u.bind_vertex_buffers2.offsets = (void*)(cmdptr + alloc_offset);
+         alloc_offset += sizeof(*cmd->u.bind_vertex_buffers2.offsets);
+
+         cmd->u.bind_vertex_buffers2.sizes = (void*)(cmdptr + alloc_offset);
+         alloc_offset += sizeof(*cmd->u.bind_vertex_buffers2.sizes);
+
          cmd->u.bind_vertex_buffers2.offsets[0] = 0;
          cmd->u.bind_vertex_buffers2.buffers[0] = data->bufferAddress ? get_buffer(state, (void*)(uintptr_t)data->bufferAddress, (size_t*)&cmd->u.bind_vertex_buffers2.offsets[0]) : VK_NULL_HANDLE;
+         cmd->u.bind_vertex_buffers2.sizes[0] = data->size;
 
          if (token->vertexDynamicStride) {
-            cmd->u.bind_vertex_buffers2.strides = (void*)(cmdptr + sizeof(*cmd->u.bind_vertex_buffers2.buffers) + sizeof(*cmd->u.bind_vertex_buffers2.offsets) + sizeof(*cmd->u.bind_vertex_buffers2.sizes));
+            cmd->u.bind_vertex_buffers2.strides = (void*)(cmdptr + alloc_offset);
             cmd->u.bind_vertex_buffers2.strides[0] = data->stride;
          } else {
             cmd->u.bind_vertex_buffers2.strides = NULL;
@@ -4320,6 +4383,7 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdSetStencilTestEnable)
    ENQUEUE_CMD(CmdSetStencilOp)
    ENQUEUE_CMD(CmdSetLineStippleEXT)
+   ENQUEUE_CMD(CmdSetLineStippleKHR)
    ENQUEUE_CMD(CmdSetDepthBiasEnable)
    ENQUEUE_CMD(CmdSetLogicOpEXT)
    ENQUEUE_CMD(CmdSetPatchControlPointsEXT)
@@ -4382,6 +4446,9 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdDispatchGraphIndirectAMDX)
    ENQUEUE_CMD(CmdDispatchGraphAMDX)
 #endif
+
+   ENQUEUE_CMD(CmdSetRenderingAttachmentLocationsKHR)
+   ENQUEUE_CMD(CmdSetRenderingInputAttachmentIndicesKHR)
 
 #undef ENQUEUE_CMD
 }
@@ -4607,7 +4674,7 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
       case VK_CMD_SET_STENCIL_OP:
          handle_set_stencil_op(cmd, state);
          break;
-      case VK_CMD_SET_LINE_STIPPLE_EXT:
+      case VK_CMD_SET_LINE_STIPPLE_KHR:
          handle_set_line_stipple(cmd, state);
          break;
       case VK_CMD_SET_DEPTH_BIAS_ENABLE:
@@ -4743,6 +4810,12 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
          handle_dispatch_graph(cmd, state);
          break;
 #endif
+      case VK_CMD_SET_RENDERING_ATTACHMENT_LOCATIONS_KHR:
+         handle_rendering_attachment_locations(cmd, state);
+         break;
+      case VK_CMD_SET_RENDERING_INPUT_ATTACHMENT_INDICES_KHR:
+         handle_rendering_input_attachment_indices(cmd, state);
+         break;
       default:
          fprintf(stderr, "Unsupported command %s\n", vk_cmd_queue_type_names[cmd->type]);
          unreachable("Unsupported command");

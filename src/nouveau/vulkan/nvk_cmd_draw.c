@@ -22,12 +22,9 @@
 #include "nouveau_context.h"
 
 #include "nvk_cl902d.h"
-#include "nvk_cl9039.h"
+#include "nvk_cl9097.h"
 #include "nvk_cl90b5.h"
 #include "nvk_cl90c0.h"
-#include "nvk_clb0c0.h"
-
-#include "nvk_cl9097.h"
 #include "nvk_cla097.h"
 #include "nvk_clb097.h"
 #include "nvk_clb197.h"
@@ -80,37 +77,20 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
 }
 
 VkResult
-nvk_queue_init_context_draw_state(struct nvk_queue *queue)
+nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
 {
-   struct nvk_device *dev = nvk_queue_device(queue);
-
-   uint32_t push_data[2048];
-   struct nv_push push;
-   nv_push_init(&push, push_data, ARRAY_SIZE(push_data));
-   struct nv_push *p = &push;
-
-   /* M2MF state */
-   if (dev->pdev->info.cls_m2mf <= FERMI_MEMORY_TO_MEMORY_FORMAT_A) {
-      /* we absolutely do not support Fermi, but if somebody wants to toy
-       * around with it, this is a must
-       */
-      P_MTHD(p, NV9039, SET_OBJECT);
-      P_NV9039_SET_OBJECT(p, {
-         .class_id = dev->pdev->info.cls_m2mf,
-         .engine_id = 0,
-      });
-   }
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    /* 3D state */
    P_MTHD(p, NV9097, SET_OBJECT);
    P_NV9097_SET_OBJECT(p, {
-      .class_id = dev->pdev->info.cls_eng3d,
+      .class_id = pdev->info.cls_eng3d,
       .engine_id = 0,
    });
 
    for (uint32_t mme = 0, mme_pos = 0; mme < NVK_MME_COUNT; mme++) {
       size_t size;
-      uint32_t *dw = nvk_build_mme(&nvk_device_physical(dev)->info, mme, &size);
+      uint32_t *dw = nvk_build_mme(&pdev->info, mme, &size);
       if (dw == NULL)
          return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -387,11 +367,34 @@ nvk_queue_init_context_draw_state(struct nvk_queue *queue)
 
    P_IMMD(p, NV9097, SET_CT_MRT_ENABLE, V_TRUE);
 
+   if (pdev->info.cls_eng3d < VOLTA_A) {
+      uint64_t shader_base_addr =
+         nvk_heap_contiguous_base_address(&dev->shader_heap);
+
+      P_MTHD(p, NV9097, SET_PROGRAM_REGION_A);
+      P_NV9097_SET_PROGRAM_REGION_A(p, shader_base_addr >> 32);
+      P_NV9097_SET_PROGRAM_REGION_B(p, shader_base_addr);
+   }
+
    for (uint32_t i = 0; i < 6; i++) {
       P_IMMD(p, NV9097, SET_PIPELINE_SHADER(i), {
          .enable  = ENABLE_FALSE,
          .type    = i,
       });
+   }
+
+   P_MTHD(p, NV9097, SET_CONSTANT_BUFFER_SELECTOR_A);
+   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_A(p, 0);
+   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, 0);
+   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, 0);
+
+   for (uint32_t group = 0; group < 5; group++) {
+      for (uint32_t slot = 0; slot < 16; slot++) {
+         P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
+            .valid = VALID_FALSE,
+            .shader_slot = slot,
+         });
+      }
    }
 
 //   P_MTHD(cmd->push, NVC0_3D, MACRO_GP_SELECT);
@@ -425,18 +428,7 @@ nvk_queue_init_context_draw_state(struct nvk_queue *queue)
    if (dev->pdev->info.cls_eng3d == MAXWELL_A)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
-   /* Compute state */
-   P_MTHD(p, NV90C0, SET_OBJECT);
-   P_NV90C0_SET_OBJECT(p, {
-      .class_id = dev->pdev->info.cls_compute,
-      .engine_id = 0,
-   });
-
-   if (dev->pdev->info.cls_compute == MAXWELL_COMPUTE_A)
-      P_IMMD(p, NVB0C0, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
-
-   return nvk_queue_submit_simple(queue, nv_push_dw_count(&push), push_data,
-                                  0, NULL);
+   return VK_SUCCESS;
 }
 
 static void
@@ -659,7 +651,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          P_MTHD(p, NV9097, SET_COLOR_TARGET_A(i));
          P_NV9097_SET_COLOR_TARGET_A(p, i, addr >> 32);
          P_NV9097_SET_COLOR_TARGET_B(p, i, addr);
-         
+
          if (level->tiling.is_tiled) {
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, level_extent_sa.w);
             P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
@@ -677,7 +669,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
                   (image->planes[ip].nil.dim == NIL_IMAGE_DIM_3D) ?
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_DEPTH_SIZE :
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,
-         });
+            });
 
             P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i,
                iview->vk.base_array_layer + layer_count);
@@ -700,7 +692,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
              */
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, pitch);
             P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
-            
+
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
 
@@ -1363,18 +1355,18 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_LINE_MODE)) {
       switch (dyn->rs.line.mode) {
-      case VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT:
-      case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT:
+      case VK_LINE_RASTERIZATION_MODE_DEFAULT_KHR:
+      case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_KHR:
          P_IMMD(p, NV9097, SET_LINE_MULTISAMPLE_OVERRIDE, ENABLE_FALSE);
          P_IMMD(p, NV9097, SET_ANTI_ALIASED_LINE, ENABLE_FALSE);
          break;
 
-      case VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT:
+      case VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR:
          P_IMMD(p, NV9097, SET_LINE_MULTISAMPLE_OVERRIDE, ENABLE_TRUE);
          P_IMMD(p, NV9097, SET_ANTI_ALIASED_LINE, ENABLE_FALSE);
          break;
 
-      case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT:
+      case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR:
          P_IMMD(p, NV9097, SET_LINE_MULTISAMPLE_OVERRIDE, ENABLE_TRUE);
          P_IMMD(p, NV9097, SET_ANTI_ALIASED_LINE, ENABLE_TRUE);
          break;
@@ -1965,24 +1957,27 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
    memcpy(root_desc_map, &desc->root, sizeof(desc->root));
 
    /* Find cbuf maps for the 5 cbuf groups */
-   const struct nvk_cbuf_map *cbuf_maps[5] = { NULL, };
+   const struct nvk_shader *cbuf_shaders[5] = { NULL, };
    for (gl_shader_stage stage = 0; stage < MESA_SHADER_STAGES; stage++) {
       const struct nvk_shader *shader = pipeline->base.shaders[stage];
       if (!shader || shader->code_size == 0)
          continue;
 
       uint32_t group = nvk_cbuf_binding_for_stage(stage);
-      assert(group < ARRAY_SIZE(cbuf_maps));
-      cbuf_maps[group] = &shader->cbuf_map;
+      assert(group < ARRAY_SIZE(cbuf_shaders));
+      cbuf_shaders[group] = shader;
    }
 
    uint32_t root_cbuf_count = 0;
-   for (uint32_t group = 0; group < ARRAY_SIZE(cbuf_maps); group++) {
-      if (cbuf_maps[group] == NULL)
+   for (uint32_t group = 0; group < ARRAY_SIZE(cbuf_shaders); group++) {
+      if (cbuf_shaders[group] == NULL)
          continue;
 
-      for (uint32_t c = 0; c < cbuf_maps[group]->cbuf_count; c++) {
-         const struct nvk_cbuf *cbuf = &cbuf_maps[group]->cbufs[c];
+      const struct nvk_shader *shader = cbuf_shaders[group];
+      const struct nvk_cbuf_map *cbuf_map = &shader->cbuf_map;
+
+      for (uint32_t c = 0; c < cbuf_map->cbuf_count; c++) {
+         const struct nvk_cbuf *cbuf = &cbuf_map->cbufs[c];
 
          /* We bind these at the very end */
          if (cbuf->type == NVK_CBUF_TYPE_ROOT_DESC) {
@@ -1991,7 +1986,7 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
          }
 
          struct nvk_buffer_address ba;
-         if (nvk_cmd_buffer_get_cbuf_descriptor(cmd, desc, cbuf, &ba)) {
+         if (nvk_cmd_buffer_get_cbuf_descriptor(cmd, desc, shader, cbuf, &ba)) {
             assert(ba.base_addr % min_cbuf_alignment == 0);
             ba.size = align(ba.size, min_cbuf_alignment);
             ba.size = MIN2(ba.size, NVK_MAX_CBUF_SIZE);
@@ -2044,12 +2039,14 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
    P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, root_desc_addr >> 32);
    P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, root_desc_addr);
 
-   for (uint32_t group = 0; group < ARRAY_SIZE(cbuf_maps); group++) {
-      if (cbuf_maps[group] == NULL)
+   for (uint32_t group = 0; group < ARRAY_SIZE(cbuf_shaders); group++) {
+      if (cbuf_shaders[group] == NULL)
          continue;
 
-      for (uint32_t c = 0; c < cbuf_maps[group]->cbuf_count; c++) {
-         const struct nvk_cbuf *cbuf = &cbuf_maps[group]->cbufs[c];
+      const struct nvk_cbuf_map *cbuf_map = &cbuf_shaders[group]->cbuf_map;
+
+      for (uint32_t c = 0; c < cbuf_map->cbuf_count; c++) {
+         const struct nvk_cbuf *cbuf = &cbuf_map->cbufs[c];
          if (cbuf->type == NVK_CBUF_TYPE_ROOT_DESC) {
             P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
                .valid = VALID_TRUE,
@@ -2075,7 +2072,7 @@ vk_to_nv_index_format(VkIndexType type)
       return NVC597_SET_INDEX_BUFFER_E_INDEX_SIZE_TWO_BYTES;
    case VK_INDEX_TYPE_UINT32:
       return NVC597_SET_INDEX_BUFFER_E_INDEX_SIZE_FOUR_BYTES;
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       return NVC597_SET_INDEX_BUFFER_E_INDEX_SIZE_ONE_BYTE;
    default:
       unreachable("Invalid index type");
@@ -2090,7 +2087,7 @@ vk_index_to_restart(VkIndexType index_type)
       return 0xffff;
    case VK_INDEX_TYPE_UINT32:
       return 0xffffffff;
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       return 0xff;
    default:
       unreachable("unexpected index type");

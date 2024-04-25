@@ -390,6 +390,8 @@ vn_CreateDescriptorPool(VkDevice device,
    vn_async_vkCreateDescriptorPool(dev->primary_ring, device, pCreateInfo,
                                    NULL, &pool_handle);
 
+   vn_tls_set_async_pipeline_create();
+
    *pDescriptorPool = pool_handle;
 
    return VK_SUCCESS;
@@ -411,10 +413,6 @@ vn_DestroyDescriptorPool(VkDevice device,
 
    alloc = pAllocator ? pAllocator : &pool->allocator;
 
-   /* We must emit vkDestroyDescriptorPool before freeing the sets in
-    * pool->descriptor_sets.  Otherwise, another thread might reuse their
-    * object ids while they still refer to the sets in the renderer.
-    */
    vn_async_vkDestroyDescriptorPool(dev->primary_ring, device, descriptorPool,
                                     NULL);
 

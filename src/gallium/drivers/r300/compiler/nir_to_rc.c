@@ -1048,7 +1048,13 @@ ntr_swizzle_for_write_mask(struct ureg_src src, uint32_t write_mask)
 static struct ureg_dst
 ntr_get_ssa_def_decl(struct ntr_compile *c, nir_def *ssa)
 {
-   uint32_t writemask = BITSET_MASK(ssa->num_components);
+   uint32_t writemask;
+   /* Fix writemask for nir_intrinsic_load_ubo_vec4 accoring to uses. */
+   if (ssa->parent_instr->type == nir_instr_type_intrinsic &&
+       nir_instr_as_intrinsic(ssa->parent_instr)->intrinsic == nir_intrinsic_load_ubo_vec4)
+      writemask = nir_def_components_read(ssa);
+   else
+      writemask = BITSET_MASK(ssa->num_components);
 
    struct ureg_dst dst;
    if (!ntr_try_store_ssa_in_tgsi_output(c, &dst, ssa))
@@ -2459,8 +2465,10 @@ const void *nir_to_rc_options(struct nir_shader *s,
       else
          NIR_PASS_V(s, r300_nir_lower_fcsel_r300);
       NIR_PASS_V(s, r300_nir_lower_flrp);
+   } else {
+      NIR_PASS_V(s, r300_nir_lower_comparison_fs);
    }
-   NIR_PASS_V(s, r300_nir_clean_double_fneg);
+   NIR_PASS_V(s, r300_nir_opt_algebraic_late);
    NIR_PASS_V(s, nir_opt_dce);
 
    nir_move_options move_all =

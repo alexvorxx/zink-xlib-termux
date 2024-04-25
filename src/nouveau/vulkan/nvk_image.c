@@ -189,7 +189,7 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
 {
    VK_FROM_HANDLE(nvk_physical_device, pdev, physicalDevice);
 
-   const VkPhysicalDeviceExternalImageFormatInfo *external_info = NULL;
+   const VkPhysicalDeviceExternalImageFormatInfo *external_info =
       vk_find_struct_const(pImageFormatInfo->pNext,
                            PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO);
 
@@ -219,13 +219,8 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
    }
    if (features == 0)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
-   
-   if (pImageFormatInfo->tiling == VK_IMAGE_TILING_LINEAR && 
-       pImageFormatInfo->type != VK_IMAGE_TYPE_2D)
-      return VK_ERROR_FORMAT_NOT_SUPPORTED;
-   
 
-   if (vk_format_is_compressed(pImageFormatInfo->format) &&
+   if (pImageFormatInfo->tiling == VK_IMAGE_TILING_LINEAR &&
        pImageFormatInfo->type != VK_IMAGE_TYPE_2D)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
@@ -687,11 +682,6 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
          nvk_image_plane_add_req(&image->planes[plane], &size_B, &align_B);
    }
 
-   assert(image->vk.external_handle_types == 0 || image->plane_count == 1);
-   bool needs_dedicated =
-      image->vk.external_handle_types != 0 &&
-      image->planes[0].nil.pte_kind != 0;
-
    if (image->stencil_copy_temp.nil.size_B > 0)
       nvk_image_plane_add_req(&image->stencil_copy_temp, &size_B, &align_B);
 
@@ -703,8 +693,8 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS: {
          VkMemoryDedicatedRequirements *dedicated = (void *)ext;
-         dedicated->prefersDedicatedAllocation = needs_dedicated;
-         dedicated->requiresDedicatedAllocation = needs_dedicated;
+         dedicated->prefersDedicatedAllocation = false;
+         dedicated->requiresDedicatedAllocation = false;
          break;
       }
       default:
@@ -840,21 +830,15 @@ nvk_image_plane_bind(struct nvk_device *dev,
    *offset_B = align64(*offset_B, (uint64_t)plane->nil.align_B);
 
    if (plane->vma_size_B) {
-      if (mem != NULL) {
-         nouveau_ws_bo_bind_vma(dev->ws_dev,
-                                mem->bo,
-                                plane->addr,
-                                plane->vma_size_B,
-                                *offset_B,
-                                plane->nil.pte_kind);
-      } else {
-         nouveau_ws_bo_unbind_vma(dev->ws_dev,
-                                  plane->addr,
-                                  plane->vma_size_B);
-      }
+      nouveau_ws_bo_bind_vma(dev->ws_dev,
+                             mem->bo,
+                             plane->addr,
+                             plane->vma_size_B,
+                             *offset_B,
+                             plane->nil.pte_kind);
    } else {
       assert(plane->nil.pte_kind == 0);
-      plane->addr = mem != NULL ? mem->bo->offset + *offset_B : 0;
+      plane->addr = mem->bo->offset + *offset_B;
    }
 
    *offset_B += plane->nil.size_B;

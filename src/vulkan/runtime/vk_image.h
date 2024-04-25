@@ -49,6 +49,7 @@ struct vk_image {
    VkSampleCountFlagBits samples;
    VkImageTiling tiling;
    VkImageUsageFlags usage;
+   VkSharingMode sharing_mode;
 
    /* Derived from format */
    VkImageAspectFlags aspects;
@@ -75,7 +76,7 @@ struct vk_image {
    uint64_t drm_format_mod;
 #endif
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    /* AHARDWAREBUFFER_FORMAT for this image or 0
     *
     * A default is provided by the Vulkan runtime code based on the VkFormat

@@ -104,6 +104,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_draw_indirect_count               = true,
    .KHR_driver_properties                 = true,
    .KHR_dynamic_rendering                 = true,
+   .KHR_dynamic_rendering_local_read      = true,
    .KHR_format_feature_flags2             = true,
    .KHR_external_fence                    = true,
    .KHR_external_memory                   = true,
@@ -118,6 +119,9 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
 #endif
    .KHR_image_format_list                 = true,
    .KHR_imageless_framebuffer             = true,
+   .KHR_index_type_uint8                  = true,
+   .KHR_line_rasterization                = true,
+   .KHR_load_store_op_none                = true,
    .KHR_maintenance1                      = true,
    .KHR_maintenance2                      = true,
    .KHR_maintenance3                      = true,
@@ -135,6 +139,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_shader_atomic_int64               = true,
    .KHR_shader_clock                      = true,
    .KHR_shader_draw_parameters            = true,
+   .KHR_shader_expect_assume              = true,
    .KHR_shader_float16_int8               = true,
    .KHR_shader_integer_dot_product        = true,
    .KHR_shader_non_semantic_info          = true,
@@ -150,6 +155,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_timeline_semaphore                = true,
    .KHR_uniform_buffer_standard_layout    = true,
    .KHR_variable_pointers                 = true,
+   .KHR_vertex_attribute_divisor          = true,
    .KHR_vulkan_memory_model               = true,
    .KHR_zero_initialize_workgroup_memory  = true,
    .ARM_rasterization_order_attachment_access = true,
@@ -585,6 +591,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .nestedCommandBufferRendering = true,
       .nestedCommandBufferSimultaneousUse = true,
 
+      /* VK_KHR_dynamic_rendering_local_read */
+      .dynamicRenderingLocalRead = true,
+
       /* VK_EXT_mesh_shader */
       .taskShader = true,
       .meshShader = true,
@@ -606,6 +615,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* maintenance6 */
       .maintenance6 = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
 
       /* VK_AMDX_shader_enqueue */
 #ifdef VK_ENABLE_BETA_EXTENSIONS
@@ -2462,6 +2474,8 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetGeneratedCommandsMemoryRequirementsNV(
          unreachable("unknown type!");
       }
    }
+
+   size *= pInfo->maxSequencesCount;
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits = 1;
    pMemoryRequirements->memoryRequirements.alignment = 4;

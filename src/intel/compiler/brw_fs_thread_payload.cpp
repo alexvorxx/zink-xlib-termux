@@ -113,6 +113,11 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
    urb_handles = bld.vgrf(BRW_REGISTER_TYPE_UD);
    bld.AND(urb_handles, brw_ud8_grf(r, 0),
          v.devinfo->ver >= 20 ? brw_imm_ud(0xFFFFFF) : brw_imm_ud(0xFFFF));
+
+   /* R1: Instance ID stored in bits 31:27 */
+   instance_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   bld.SHR(instance_id, brw_ud8_grf(r, 0), brw_imm_ud(27u));
+
    r += reg_unit(v.devinfo);
 
    if (gs_prog_data->include_primitive_id) {
@@ -466,13 +471,31 @@ fs_thread_payload::fs_thread_payload(const fs_visitor &v,
 
 cs_thread_payload::cs_thread_payload(const fs_visitor &v)
 {
+   struct brw_cs_prog_data *prog_data = brw_cs_prog_data(v.prog_data);
+
+   unsigned r = reg_unit(v.devinfo);
+
    /* See nir_setup_uniforms for subgroup_id in earlier versions. */
-   if (v.devinfo->verx10 >= 125)
+   if (v.devinfo->verx10 >= 125) {
       subgroup_id_ = brw_ud1_grf(0, 2);
 
-   /* TODO: Fill out uses_btd_stack_ids automatically */
-   num_regs = (1 + brw_cs_prog_data(v.prog_data)->uses_btd_stack_ids) *
-              reg_unit(v.devinfo);
+      for (int i = 0; i < 3; i++) {
+         if (prog_data->generate_local_id & (1 << i)) {
+            local_invocation_id[i] = brw_uw8_grf(r, 0);
+            r += reg_unit(v.devinfo);
+            if (v.devinfo->ver < 20 && v.dispatch_width == 32)
+               r += reg_unit(v.devinfo);
+         } else {
+            local_invocation_id[i] = brw_imm_uw(0);
+         }
+      }
+
+      /* TODO: Fill out uses_btd_stack_ids automatically */
+      if (prog_data->uses_btd_stack_ids)
+         r += reg_unit(v.devinfo);
+   }
+
+   num_regs = r;
 }
 
 void

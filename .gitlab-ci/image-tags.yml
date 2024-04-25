@@ -7,7 +7,7 @@
 
 variables:
    DEBIAN_X86_64_BUILD_BASE_IMAGE: "debian/x86_64_build-base"
-   DEBIAN_BASE_TAG: "2024-01-10-deb-fix"
+   DEBIAN_BASE_TAG: "2024-01-28-virglrenderer"
 
    DEBIAN_X86_64_BUILD_IMAGE_PATH: "debian/x86_64_build"
    DEBIAN_BUILD_TAG: "2024-01-04-find"
@@ -18,23 +18,22 @@ variables:
    DEBIAN_X86_64_TEST_IMAGE_VK_PATH: "debian/x86_64_test-vk"
    DEBIAN_X86_64_TEST_ANDROID_IMAGE_PATH: "debian/x86_64_test-android"
 
-   DEBIAN_X86_64_TEST_ANDROID_TAG: "2024-01-14-check-deqp"
-   DEBIAN_X86_64_TEST_GL_TAG: "2024-01-14-check-deqp"
-   DEBIAN_X86_64_TEST_VK_TAG: "2024-01-14-check-deqp"
-
+   DEBIAN_X86_64_TEST_ANDROID_TAG: "2024-01-24-split"
+   DEBIAN_X86_64_TEST_GL_TAG: "2024-01-29-piglit-e931"
+   DEBIAN_X86_64_TEST_VK_TAG: "2024-01-29-piglit-e931"
    ALPINE_X86_64_BUILD_TAG: "2023-01-07-libdrm2_4_119"
    ALPINE_X86_64_LAVA_SSH_TAG: "2023-06-26-first-version"
-   FEDORA_X86_64_BUILD_TAG: "2024-01-06-libdrm"
-   KERNEL_ROOTFS_TAG: "2024-01-14-check-deqp"
-   KERNEL_TAG: "v6.6.4-for-mesa-ci-e4f4c500f7fb"
+   FEDORA_X86_64_BUILD_TAG: "2024-01-23-teflon-3"
+   KERNEL_ROOTFS_TAG: "2024-01-29-piglit-e931"
+   KERNEL_TAG: "v6.6.13-mesa-9916"
    KERNEL_REPO: "gfx-ci/linux"
-   PKG_REPO_REV: "67f2c46b"
+   PKG_REPO_REV: "3cc12a2a"
 
    WINDOWS_X64_MSVC_PATH: "windows/x86_64_msvc"
    WINDOWS_X64_MSVC_TAG: "2023-12-22-msvc"
 
    WINDOWS_X64_BUILD_PATH: "windows/x86_64_build"
-   WINDOWS_X64_BUILD_TAG: "2023-12-22-msvc"
+   WINDOWS_X64_BUILD_TAG: "2024-01-17-vulkan-sdk"
 
    WINDOWS_X64_TEST_PATH: "windows/x86_64_test"
-   WINDOWS_X64_TEST_TAG: "2024-01-10-warp"
+   WINDOWS_X64_TEST_TAG: "2024-01-17-vulkan-sdk"

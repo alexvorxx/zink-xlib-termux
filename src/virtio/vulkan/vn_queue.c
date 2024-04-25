@@ -48,7 +48,6 @@ struct vn_queue_submission {
    const struct vn_device_memory *wsi_mem;
    uint32_t feedback_cmd_buffer_count;
    struct vn_sync_payload_external external_payload;
-   struct vn_command_buffer *recycle_query_feedback_cmd;
 
    /* Temporary storage allocation for submission
     * A single alloc for storage is performed and the offsets inside
@@ -278,6 +277,19 @@ vn_queue_submission_count_batch_feedback(struct vn_queue_submission *submit,
             vn_get_cmd_handle(submit, batch_index, i));
          if (!list_is_empty(&cmd->builder.query_batches))
             batch_has_feedback_query = true;
+
+         /* If a cmd that was submitted previously and already has a feedback
+          * cmd linked, as long as
+          * VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT was not set we can
+          * assume it has completed execution and is no longer in the pending
+          * state so its safe to recycle the old feedback command.
+          */
+         if (cmd->linked_query_feedback_cmd) {
+            assert(!cmd->builder.is_simultaneous);
+
+            vn_feedback_query_cmd_free(cmd->linked_query_feedback_cmd);
+            cmd->linked_query_feedback_cmd = NULL;
+         }
       }
    }
 
@@ -519,7 +531,7 @@ vn_combine_query_feedback_batches_and_record(
    uint32_t cmd_count,
    uint32_t stride,
    struct vn_feedback_cmd_pool *feedback_cmd_pool,
-   VkCommandBuffer *out_feedback_cmd_handle)
+   struct vn_query_feedback_cmd **out_feedback_cmd)
 {
    struct vn_command_pool *cmd_pool =
       vn_command_pool_from_handle(feedback_cmd_pool->pool);
@@ -573,9 +585,24 @@ vn_combine_query_feedback_batches_and_record(
       cmd_handle_ptr += stride;
    }
 
-   result = vn_feedback_query_batch_record(dev_handle, feedback_cmd_pool,
-                                           &combined_batches,
-                                           out_feedback_cmd_handle);
+   if (list_is_empty(&combined_batches)) {
+      /* On the off chance the combined list resolves to empty due to
+       * resets, we can return with a null feedback cmd to indicate
+       * the query feedback cmd is noop and can be skipped.
+       */
+      *out_feedback_cmd = NULL;
+      return VK_SUCCESS;
+   }
+
+   struct vn_query_feedback_cmd *feedback_cmd;
+   result = vn_feedback_query_cmd_alloc(dev_handle, feedback_cmd_pool,
+                                        &feedback_cmd);
+   if (result == VK_SUCCESS) {
+      result = vn_feedback_query_batch_record(dev_handle, feedback_cmd,
+                                              &combined_batches);
+      if (result != VK_SUCCESS)
+         vn_feedback_query_cmd_free(feedback_cmd);
+   }
 
 recycle_combined_batches:
    simple_mtx_lock(&feedback_cmd_pool->mutex);
@@ -584,12 +611,14 @@ recycle_combined_batches:
       list_move_to(&batch_clone->head, &cmd_pool->free_query_batches);
    simple_mtx_unlock(&feedback_cmd_pool->mutex);
 
+   *out_feedback_cmd = feedback_cmd;
+
    return result;
 }
 
 static VkResult
 vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
-                                       uint32_t cmd_count,
+                                       uint32_t *cmd_count,
                                        struct vn_feedback_cmds *feedback_cmds)
 {
    struct vk_queue *queue_vk = vk_queue_from_handle(submit->queue_handle);
@@ -598,7 +627,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
    VkCommandBuffer *src_cmd_handles =
       vn_get_feedback_cmd_handle(submit, feedback_cmds, 0);
    VkCommandBuffer *feedback_cmd_handle =
-      vn_get_feedback_cmd_handle(submit, feedback_cmds, cmd_count);
+      vn_get_feedback_cmd_handle(submit, feedback_cmds, *cmd_count);
    const uint32_t stride = submit->batch_type == VK_STRUCTURE_TYPE_SUBMIT_INFO
                               ? sizeof(VkCommandBuffer *)
                               : sizeof(VkCommandBufferSubmitInfo);
@@ -611,11 +640,17 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
       }
    }
 
+   struct vn_query_feedback_cmd *feedback_cmd;
    VkResult result = vn_combine_query_feedback_batches_and_record(
-      dev_handle, src_cmd_handles, cmd_count, stride, feedback_cmd_pool,
-      feedback_cmd_handle);
+      dev_handle, src_cmd_handles, *cmd_count, stride, feedback_cmd_pool,
+      &feedback_cmd);
    if (result != VK_SUCCESS)
       return result;
+
+   if (!feedback_cmd) {
+      /* No query feedback needed, return without incrementing cmd_count */
+      return VK_SUCCESS;
+   }
 
    /* link query feedback cmd lifecycle with a cmd in the original batch so
     * that the feedback cmd can be reset and recycled when that cmd gets
@@ -625,37 +660,26 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
     * since we don't know if all its instances have completed execution.
     * Should be rare enough to just log and leak the feedback cmd.
     */
-   struct vn_command_buffer *linked_cmd = NULL;
-   for (uint32_t i = 0; i < cmd_count; i++) {
+   bool found_companion_cmd = false;
+   for (uint32_t i = 0; i < *cmd_count; i++) {
       VkCommandBuffer *cmd_handle =
          vn_get_feedback_cmd_handle(submit, feedback_cmds, i);
       struct vn_command_buffer *cmd =
          vn_command_buffer_from_handle(*cmd_handle);
       if (!cmd->builder.is_simultaneous) {
-         linked_cmd = cmd;
+         cmd->linked_query_feedback_cmd = feedback_cmd;
+         found_companion_cmd = true;
          break;
       }
    }
 
-   if (!linked_cmd) {
+   if (!found_companion_cmd) {
       vn_log(dev->instance,
              "Could not find non simultaneous cmd to link query feedback\n");
-      return VK_SUCCESS;
    }
 
-   /* If a cmd that was submitted previously and already has a feedback cmd
-    * linked, as long as VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is not
-    * set we can assume it has completed execution and is no longer in the
-    * pending state so its safe to recycle the old feedback command before
-    * linking a new one. Defer the actual recycle operation to
-    * vn_queue_submission_cleanup.
-    */
-   if (linked_cmd->linked_query_feedback_cmd)
-      submit->recycle_query_feedback_cmd =
-         linked_cmd->linked_query_feedback_cmd;
-
-   linked_cmd->linked_query_feedback_cmd =
-      vn_command_buffer_from_handle(*feedback_cmd_handle);
+   (*cmd_count)++;
+   *feedback_cmd_handle = vn_command_buffer_to_handle(feedback_cmd->cmd);
 
    return VK_SUCCESS;
 }
@@ -663,7 +687,7 @@ vn_queue_submission_add_query_feedback(struct vn_queue_submission *submit,
 static VkResult
 vn_queue_submission_add_sem_feedback(struct vn_queue_submission *submit,
                                      uint32_t batch_index,
-                                     uint32_t cmd_buffer_count,
+                                     uint32_t *cmd_buffer_count,
                                      struct vn_feedback_cmds *feedback_cmds)
 {
    struct vn_queue *queue = vn_queue_from_handle(submit->queue_handle);
@@ -674,7 +698,7 @@ vn_queue_submission_add_sem_feedback(struct vn_queue_submission *submit,
    /* Set the sem feedback cmds we appended in our copy of cmd buffers
     * with cmds to write the signal value.
     */
-   uint32_t cmd_index = cmd_buffer_count;
+   uint32_t cmd_index = *cmd_buffer_count;
    for (uint32_t i = 0; i < signal_semaphore_count; i++) {
       struct vn_semaphore *sem = vn_semaphore_from_handle(
          vn_get_signal_semaphore(submit, batch_index, i));
@@ -694,6 +718,7 @@ vn_queue_submission_add_sem_feedback(struct vn_queue_submission *submit,
       }
    }
 
+   *cmd_buffer_count = cmd_index;
    return VK_SUCCESS;
 }
 
@@ -701,13 +726,26 @@ static VkResult
 vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
                                       uint32_t batch_index,
                                       uint32_t cmd_buffer_count,
-                                      uint32_t feedback_cmd_count,
                                       bool batch_has_feedback_query,
                                       bool batch_has_feedback_sem,
                                       struct vn_feedback_cmds *feedback_cmds)
 {
    VkResult result;
-   uint32_t new_cmd_buffer_count = cmd_buffer_count + feedback_cmd_count;
+   uint32_t new_cmd_buffer_count = cmd_buffer_count;
+
+   if (batch_has_feedback_query) {
+      result = vn_queue_submission_add_query_feedback(
+         submit, &new_cmd_buffer_count, feedback_cmds);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (batch_has_feedback_sem) {
+      result = vn_queue_submission_add_sem_feedback(
+         submit, batch_index, &new_cmd_buffer_count, feedback_cmds);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
    /* Update SubmitInfo to use our copy of cmd buffers with sem adn query
     * feedback cmds appended and update the cmd buffer count.
@@ -741,23 +779,6 @@ vn_queue_submission_add_feedback_cmds(struct vn_queue_submission *submit,
    }
    default:
       unreachable("unexpected batch type");
-   }
-
-   if (batch_has_feedback_query) {
-      result = vn_queue_submission_add_query_feedback(
-         submit, cmd_buffer_count, feedback_cmds);
-      if (result != VK_SUCCESS)
-         return result;
-
-      /* increment for the cmd buffer used for query feedback cmd */
-      cmd_buffer_count++;
-   }
-
-   if (batch_has_feedback_sem) {
-      result = vn_queue_submission_add_sem_feedback(
-         submit, batch_index, cmd_buffer_count, feedback_cmds);
-      if (result != VK_SUCCESS)
-         return result;
    }
 
    return VK_SUCCESS;
@@ -911,8 +932,8 @@ vn_queue_submission_setup_batches(struct vn_queue_submission *submit)
          }
 
          result = vn_queue_submission_add_feedback_cmds(
-            submit, batch_index, cmd_buffer_count, feedback_cmd_count,
-            batch_has_feedback_query, batch_has_feedback_sem, &feedback_cmds);
+            submit, batch_index, cmd_buffer_count, batch_has_feedback_query,
+            batch_has_feedback_sem, &feedback_cmds);
          if (result != VK_SUCCESS)
             return result;
 
@@ -987,14 +1008,6 @@ vn_queue_submission_cleanup(struct vn_queue_submission *submit)
 {
    struct vn_queue *queue = vn_queue_from_handle(submit->queue_handle);
    const VkAllocationCallbacks *alloc = &queue->base.base.base.device->alloc;
-
-   if (submit->recycle_query_feedback_cmd) {
-      vn_ResetCommandBuffer(
-         vn_command_buffer_to_handle(submit->recycle_query_feedback_cmd), 0);
-      list_add(
-         &submit->recycle_query_feedback_cmd->feedback_head,
-         &submit->recycle_query_feedback_cmd->pool->free_query_feedback_cmds);
-   }
 
    /* TODO clean up pending src feedbacks on failure? */
    if (submit->has_feedback_semaphore)

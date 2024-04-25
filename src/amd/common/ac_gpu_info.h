@@ -102,6 +102,7 @@ struct radeon_info {
    bool has_vgt_flush_ngg_legacy_bug;
    bool has_cs_regalloc_hang_bug;
    bool has_async_compute_threadgroup_bug;
+   bool has_async_compute_align32_bug;
    bool has_32bit_predication;
    bool has_3d_cube_border_color_mipmap;
    bool has_image_opcodes;
@@ -203,9 +204,7 @@ struct radeon_info {
    uint32_t max_submitted_ibs[AMD_NUM_IP_TYPES];
    bool is_amdgpu;
    bool has_userptr;
-   bool has_syncobj;
    bool has_timeline_syncobj;
-   bool has_fence_to_handle;
    bool has_local_buffers;
    bool has_bo_metadata;
    bool has_eqaa_surface_allocator;

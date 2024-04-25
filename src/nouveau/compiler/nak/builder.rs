@@ -12,7 +12,7 @@ pub trait Builder {
         self.push_instr(Instr::new_boxed(op))
     }
 
-    fn predicate<'a>(&'a mut self, pred: Pred) -> PredicatedBuilder<'a, Self>
+    fn predicate(&mut self, pred: Pred) -> PredicatedBuilder<'_, Self>
     where
         Self: Sized,
     {
@@ -43,13 +43,13 @@ pub trait Builder {
             }
             if is_predicate {
                 self.push_op(OpPLop3 {
-                    dsts: [dst.into(), Dst::None],
+                    dsts: [dst, Dst::None],
                     srcs: [x, y, true.into()],
                     ops: [op, LogicOp3::new_const(false)],
                 });
             } else {
                 self.push_op(OpLop3 {
-                    dst: dst.into(),
+                    dst: dst,
                     srcs: [x, y, 0.into()],
                     op: op,
                 });
@@ -68,13 +68,13 @@ pub trait Builder {
                     }
                 };
                 self.push_op(OpPSetP {
-                    dsts: [dst.into(), Dst::None],
+                    dsts: [dst, Dst::None],
                     ops: [cmp_op, PredSetOp::And],
                     srcs: [x, y, true.into()],
                 });
             } else {
                 self.push_op(OpLop2 {
-                    dst: dst.into(),
+                    dst: dst,
                     srcs: [x, y],
                     op: op,
                 });
@@ -231,10 +231,22 @@ pub trait SSABuilder: Builder {
 
     fn iabs(&mut self, i: Src) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
-        self.push_op(OpIAbs {
-            dst: dst.into(),
-            src: i,
-        });
+        if self.sm() >= 70 {
+            self.push_op(OpIAbs {
+                dst: dst.into(),
+                src: i,
+            });
+        } else {
+            self.push_op(OpI2I {
+                dst: dst.into(),
+                src: i,
+                src_type: IntType::I32,
+                dst_type: IntType::I32,
+                saturate: false,
+                abs: true,
+                neg: false,
+            });
+        }
         dst
     }
 
@@ -444,6 +456,53 @@ pub trait SSABuilder: Builder {
         dst
     }
 
+    fn fsin(&mut self, src: Src) -> SSARef {
+        let tmp = if self.sm() >= 70 {
+            let frac_1_2pi = 1.0 / (2.0 * std::f32::consts::PI);
+            self.fmul(src, frac_1_2pi.into())
+        } else {
+            let tmp = self.alloc_ssa(RegFile::GPR, 1);
+            self.push_op(OpRro {
+                dst: tmp.into(),
+                op: RroOp::SinCos,
+                src,
+            });
+            tmp
+        };
+        self.mufu(MuFuOp::Sin, tmp.into())
+    }
+
+    fn fcos(&mut self, src: Src) -> SSARef {
+        let tmp = if self.sm() >= 70 {
+            let frac_1_2pi = 1.0 / (2.0 * std::f32::consts::PI);
+            self.fmul(src, frac_1_2pi.into())
+        } else {
+            let tmp = self.alloc_ssa(RegFile::GPR, 1);
+            self.push_op(OpRro {
+                dst: tmp.into(),
+                op: RroOp::SinCos,
+                src,
+            });
+            tmp
+        };
+        self.mufu(MuFuOp::Cos, tmp.into())
+    }
+
+    fn fexp2(&mut self, src: Src) -> SSARef {
+        let tmp = if self.sm() >= 70 {
+            src
+        } else {
+            let tmp = self.alloc_ssa(RegFile::GPR, 1);
+            self.push_op(OpRro {
+                dst: tmp.into(),
+                op: RroOp::Exp2,
+                src,
+            });
+            tmp.into()
+        };
+        self.mufu(MuFuOp::Exp2, tmp)
+    }
+
     fn prmt(&mut self, x: Src, y: Src, sel: [u8; 4]) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
         self.prmt_to(dst.into(), x, y, sel);
@@ -493,14 +552,28 @@ pub trait SSABuilder: Builder {
         assert!(x.is_predicate() == y.is_predicate());
         if x.is_predicate() {
             let dst = self.alloc_ssa(RegFile::Pred, 1);
-            self.push_op(OpPLop3 {
-                dsts: [dst.into(), Dst::None],
-                srcs: [cond, x, y],
-                ops: [
-                    LogicOp3::new_lut(&|c, x, y| (c & x) | (!c & y)),
-                    LogicOp3::new_const(false),
-                ],
-            });
+            if self.sm() >= 70 {
+                self.push_op(OpPLop3 {
+                    dsts: [dst.into(), Dst::None],
+                    srcs: [cond, x, y],
+                    ops: [
+                        LogicOp3::new_lut(&|c, x, y| (c & x) | (!c & y)),
+                        LogicOp3::new_const(false),
+                    ],
+                });
+            } else {
+                let tmp = self.alloc_ssa(RegFile::Pred, 1);
+                self.push_op(OpPSetP {
+                    dsts: [tmp.into(), Dst::None],
+                    ops: [PredSetOp::And, PredSetOp::And],
+                    srcs: [cond, x, true.into()],
+                });
+                self.push_op(OpPSetP {
+                    dsts: [dst.into(), Dst::None],
+                    ops: [PredSetOp::And, PredSetOp::Or],
+                    srcs: [cond.bnot(), y, tmp.into()],
+                });
+            }
             dst
         } else {
             let dst = self.alloc_ssa(RegFile::GPR, 1);

@@ -139,7 +139,7 @@ get_drm_device(struct intel_device_info *devinfo)
          if (fd < 0)
             continue;
 
-         if (!intel_get_device_info_from_fd(fd, devinfo) ||
+         if (!intel_get_device_info_from_fd(fd, devinfo, -1, -1) ||
              devinfo->ver < 8) {
             close(fd);
             fd = -1;

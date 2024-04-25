@@ -78,7 +78,7 @@ struct panfrost_vtable {
 
    /* Get blend shader */
    struct pan_blend_shader_variant *(*get_blend_shader)(
-      const struct panfrost_device *, const struct pan_blend_state *,
+      struct pan_blend_shader_cache *cache, const struct pan_blend_state *,
       nir_alu_type, nir_alu_type, unsigned rt);
 
    /* Shader compilation methods */

@@ -535,7 +535,10 @@ void si_compute_shorten_ubyte_buffer(struct si_context *sctx, struct pipe_resour
    if (!sctx->cs_ubyte_to_ushort)
       sctx->cs_ubyte_to_ushort = si_create_ubyte_to_ushort_compute_shader(sctx);
 
-   enum si_coherency coher = SI_COHERENCY_SHADER;
+   /* Use COHERENCY_NONE to get SI_CONTEXT_WB_L2 automatically used in
+    * si_launch_grid_internal_ssbos.
+    */
+   enum si_coherency coher = SI_COHERENCY_NONE;
 
    si_improve_sync_flags(sctx, dst, src, &flags);
 
@@ -656,12 +659,30 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
     */
    if (!util_format_is_compressed(src->format) &&
        !util_format_is_compressed(dst->format) &&
-       !util_format_is_subsampled_422(src->format) &&
-       (!si_can_use_compute_blit(sctx, dst->format, dst->nr_samples, true,
-                                 vi_dcc_enabled(sdst, dst_level)) ||
-        !si_can_use_compute_blit(sctx, src->format, src->nr_samples, false,
-                                 vi_dcc_enabled(ssrc, src_level))))
-      return false;
+       !util_format_is_subsampled_422(src->format)) {
+      bool src_can_use_compute_blit =
+         si_can_use_compute_blit(sctx, src->format, src->nr_samples, false,
+                                 vi_dcc_enabled(ssrc, src_level));
+
+      if (!src_can_use_compute_blit)
+         return false;
+
+      bool dst_can_use_compute_blit =
+         si_can_use_compute_blit(sctx, dst->format, dst->nr_samples, true,
+                                 vi_dcc_enabled(sdst, dst_level));
+
+      if (!dst_can_use_compute_blit && !sctx->has_graphics &&
+          si_can_use_compute_blit(sctx, dst->format, dst->nr_samples, false,
+                                  vi_dcc_enabled(sdst, dst_level))) {
+         /* Non-graphics context don't have a blitter, so try harder to do
+          * a compute blit by disabling dcc on the destination texture.
+          */
+         dst_can_use_compute_blit = si_texture_disable_dcc(sctx, sdst);
+      }
+
+      if (!dst_can_use_compute_blit)
+         return false;
+   }
 
    enum pipe_format src_format = util_format_linear(src->format);
    enum pipe_format dst_format = util_format_linear(dst->format);

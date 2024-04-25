@@ -1064,6 +1064,7 @@ Rusticl environment variables
    - ``clc`` dumps all OpenCL C source being compiled
    - ``program`` dumps compilation logs to stderr
    - ``sync`` waits on the GPU to complete after every event
+   - ``validate`` validates any internally generated SPIR-Vs, e.g. through compiling OpenCL C code
 
 .. _clc-env-var:
 
@@ -1340,24 +1341,28 @@ RADV driver environment variables
       rt extensions with older hardware.
    ``gewave32``
       enable wave32 for vertex/tess/geometry shaders (GFX10+)
+   ``gsfastlaunch2``
+      use GS_FAST_LAUNCH=2 for Mesh shaders (GFX11+)
    ``localbos``
       enable local BOs
+   ``nggc``
+      enable NGG culling on GPUs where it's not enabled by default (GFX10.1 only).
+   ``nircache``
+      cache per-stage NIR for graphics pipelines
    ``nosam``
       disable optimizations that get enabled when all VRAM is CPU visible.
    ``pswave32``
       enable wave32 for pixel shaders (GFX10+)
-   ``nggc``
-      enable NGG culling on GPUs where it's not enabled by default (GFX10.1 only).
-   ``sam``
-      enable optimizations to move more driver internal objects to VRAM.
    ``rtwave64``
       enable wave64 for ray tracing shaders (GFX10+)
+   ``sam``
+      enable optimizations to move more driver internal objects to VRAM.
+   ``shader_object``
+      enable experimental implementation of VK_EXT_shader_object (GFX6-8)
    ``transfer_queue``
       enable experimental transfer queue support (GFX9+, not yet spec compliant)
    ``video_decode``
       enable experimental video decoding support
-   ``gsfastlaunch2``
-      use GS_FAST_LAUNCH=2 for Mesh shaders (GFX11+)
 
 .. envvar:: RADV_TEX_ANISO
 

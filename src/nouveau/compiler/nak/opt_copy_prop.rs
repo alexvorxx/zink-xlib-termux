@@ -73,7 +73,7 @@ impl CopyPropPass {
                 _ => return,
             };
 
-            let entry = match self.get_copy(&src_ssa) {
+            let entry = match self.get_copy(src_ssa) {
                 Some(e) => e,
                 None => return,
             };

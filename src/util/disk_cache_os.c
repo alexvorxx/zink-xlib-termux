@@ -34,6 +34,7 @@
 
 #include "util/compress.h"
 #include "util/crc32.h"
+#include "util/u_debug.h"
 #include "util/disk_cache.h"
 #include "util/disk_cache_os.h"
 
@@ -95,6 +96,7 @@ disk_cache_get_function_identifier(void *ptr, struct mesa_sha1 *ctx)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "utime.h"
 
 #include "util/blob.h"
 #include "util/crc32.h"
@@ -890,10 +892,10 @@ disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
    else if (cache_type == DISK_CACHE_DATABASE)
       cache_dir_name = CACHE_DIR_NAME_DB;
 
-   char *path = getenv("MESA_SHADER_CACHE_DIR");
+   char *path = secure_getenv("MESA_SHADER_CACHE_DIR");
 
    if (!path) {
-      path = getenv("MESA_GLSL_CACHE_DIR");
+      path = secure_getenv("MESA_GLSL_CACHE_DIR");
       if (path)
          fprintf(stderr,
                  "*** MESA_GLSL_CACHE_DIR is deprecated; "
@@ -910,7 +912,7 @@ disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
    }
 
    if (path == NULL) {
-      char *xdg_cache_home = getenv("XDG_CACHE_HOME");
+      char *xdg_cache_home = secure_getenv("XDG_CACHE_HOME");
 
       if (xdg_cache_home) {
          if (mkdir_if_needed(xdg_cache_home) == -1)
@@ -980,7 +982,7 @@ disk_cache_enabled()
       return false;
 
    /* If running as a users other than the real user disable cache */
-   if (geteuid() != getuid())
+   if (!__normal_user())
       return false;
 
    /* At user request, disable shader cache entirely. */
@@ -1041,6 +1043,29 @@ disk_cache_load_cache_index_foz(void *mem_ctx, struct disk_cache *cache)
 {
    /* Load cache index into a hash map (from fossilise files) */
    return foz_prepare(&cache->foz_db, cache->path);
+}
+
+
+void
+disk_cache_touch_cache_user_marker(char *path)
+{
+   char *marker_path = NULL;
+   asprintf(&marker_path, "%s/marker", path);
+   if (!marker_path)
+      return;
+
+   time_t now = time(NULL);
+
+   struct stat attr;
+   if (stat(marker_path, &attr) == -1) {
+      int fd = open(marker_path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+      if (fd != -1) {
+         close(fd);
+      }
+   } else if (now - attr.st_mtime < 60 * 60 * 24 /* One day */) {
+      (void)utime(marker_path, NULL);
+   }
+   free(marker_path);
 }
 
 bool

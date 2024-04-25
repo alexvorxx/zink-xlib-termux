@@ -135,6 +135,12 @@ struct intel_device_info_pat_entry {
    .coherency = INTEL_DEVICE_INFO_COHERENCY_MODE_##coh_     \
 }
 
+enum intel_cmat_scope
+{
+   INTEL_CMAT_SCOPE_NONE = 0,
+   INTEL_CMAT_SCOPE_SUBGROUP,
+};
+
 enum intel_cooperative_matrix_component_type
 {
    INTEL_CMAT_FLOAT16,
@@ -147,7 +153,7 @@ enum intel_cooperative_matrix_component_type
 
 struct intel_cooperative_matrix_configuration
 {
-   mesa_scope scope;
+   enum intel_cmat_scope scope;
 
    /* Matrix A is MxK.
     * Matrix B is KxN.
@@ -635,7 +641,7 @@ intel_vram_all_mappable(const struct intel_device_info *devinfo)
    return devinfo->mem.vram.unmappable.size == 0;
 }
 
-bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo);
+bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo, int min_ver, int max_ver);
 bool intel_get_device_info_from_pci_id(int pci_id,
                                        struct intel_device_info *devinfo);
 

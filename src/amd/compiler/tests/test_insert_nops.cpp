@@ -1282,7 +1282,7 @@ BEGIN_TEST(insert_nops.setpc_gfx11)
    /* VcmpxPermlaneHazard */
    //! p_unit_test 2
    //! s2: %0:exec = v_cmpx_eq_u32 0, 0
-   //! v1: %0:v[0] = v_mov_b32 %0:v[0]
+   //! v_nop
    //! s_setpc_b64 0
    bld.pseudo(aco_opcode::p_unit_test, Operand::c32(2));
    bld.vopc_e64(aco_opcode::v_cmpx_eq_u32, Definition(exec, s2), Operand::zero(), Operand::zero());

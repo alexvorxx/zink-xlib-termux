@@ -643,6 +643,8 @@ anv_queue_exec_utrace_locked(struct anv_queue *queue,
    if (result != VK_SUCCESS)
       goto error;
 
+   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
+
    int ret = queue->device->info->no_hw ? 0 :
       anv_gem_execbuffer(queue->device, &execbuf.execbuf);
    if (ret)
@@ -745,6 +747,8 @@ i915_companion_rcs_queue_exec_locked(struct anv_queue *queue,
    anv_cmd_buffer_exec_batch_debug(queue, 1, &companion_rcs_cmd_buffer, NULL, 0);
 
    setup_execbuf_fence_params(&execbuf);
+
+   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
 
    int ret = queue->device->info->no_hw ? 0 :
       anv_gem_execbuffer(queue->device, &execbuf.execbuf);
@@ -895,6 +899,8 @@ i915_queue_exec_locked(struct anv_queue *queue,
          result = vk_queue_set_lost(&queue->vk, "execbuf2 failed: %m");
    }
 
+   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
+
    int ret = queue->device->info->no_hw ? 0 :
       anv_gem_execbuffer(queue->device, &execbuf.execbuf);
    if (ret) {
@@ -957,6 +963,8 @@ i915_execute_simple_batch(struct anv_queue *queue, struct anv_bo *batch_bo,
       .rsvd1 = context_id,
       .rsvd2 = 0,
    };
+
+   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
 
    if (anv_gem_execbuffer(device, &execbuf.execbuf)) {
       result = vk_device_set_lost(&device->vk, "anv_gem_execbuffer failed: %m");
@@ -1050,6 +1058,8 @@ i915_execute_trtt_batch(struct anv_sparse_submission *submit,
       .rsvd2 = 0,
    };
    setup_execbuf_fence_params(&execbuf);
+
+   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
 
    int ret = queue->device->info->no_hw ? 0 :
       anv_gem_execbuffer(device, &execbuf.execbuf);

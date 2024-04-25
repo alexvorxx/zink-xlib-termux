@@ -137,6 +137,13 @@ pub struct GLCtxManager {
     gl_ctx: GLCtx,
 }
 
+// SAFETY: We do have a few pointers inside [GLCtxManager], but nothing really relevant here:
+//  * pointers of the GLX/EGL context and _XDisplay/EGLDisplay, but we don't do much with them
+//    except calling into our mesa internal GL sharing extension, which properly locks data.
+//  * pointer to the _XDisplay/EGLDisplay
+unsafe impl Send for GLCtxManager {}
+unsafe impl Sync for GLCtxManager {}
+
 impl GLCtxManager {
     pub fn new(
         gl_context: *mut c_void,

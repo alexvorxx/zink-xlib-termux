@@ -33,6 +33,7 @@
 #include "driver_trace/tr_context.h"
 #include "util/log.h"
 #include "util/perf/cpu_trace.h"
+#include "util/thread_sched.h"
 #include "compiler/shader_info.h"
 
 #if TC_DEBUG >= 1
@@ -3551,11 +3552,10 @@ tc_set_context_param(struct pipe_context *_pipe,
 {
    struct threaded_context *tc = threaded_context(_pipe);
 
-   if (param == PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE) {
-      /* Pin the gallium thread as requested. */
-      util_set_thread_affinity(tc->queue.threads[0],
-                               util_get_cpu_caps()->L3_affinity_mask[value],
-                               NULL, util_get_cpu_caps()->num_cpu_mask_bits);
+   if (param == PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING) {
+      util_thread_sched_apply_policy(tc->queue.threads[0],
+                                     UTIL_THREAD_THREADED_CONTEXT, value,
+                                     NULL);
 
       /* Execute this immediately (without enqueuing).
        * It's required to be thread-safe.

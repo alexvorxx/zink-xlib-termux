@@ -201,13 +201,6 @@ option(
 )
 
 option(
-  'opencl-external-clang-headers',
-  type : 'feature',
-  description : 'Use system Clang headers at runtime for OpenCL kernel ' +
-                'compilation.',
-)
-
-option(
   'd3d-drivers-path',
   type : 'string',
   value : '',
@@ -233,7 +226,7 @@ option(
   'freedreno-kmds',
   type : 'array',
   value : ['msm'],
-  choices : ['msm', 'kgsl', 'virtio'],
+  choices : ['msm', 'kgsl', 'virtio', 'wsl'],
   description : 'List of kernel-mode drivers to enable for freedreno ' +
                 'gallium and vulkan driver',
 )
@@ -589,6 +582,13 @@ option(
   description : 'List of Perfetto datasources to build. If this is set to ' +
                 '`auto`, datasources that can not be build are skipped. ' +
                 'Default: [`auto`]'
+)
+
+option(
+  'teflon',
+  type : 'boolean',
+  value : false,
+  description : 'Enable TensorFlow Lite delegate. Default: false'
 )
 
 option(

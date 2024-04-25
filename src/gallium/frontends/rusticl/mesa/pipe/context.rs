@@ -520,7 +520,8 @@ impl PipeContext {
         unsafe { self.pipe.as_ref().sampler_view_destroy.unwrap()(self.pipe.as_ptr(), view) }
     }
 
-    pub fn set_shader_images(&self, images: &[pipe_image_view]) {
+    pub fn set_shader_images(&self, images: &[PipeImageView]) {
+        let images = PipeImageView::slice_to_pipe(images);
         unsafe {
             self.pipe.as_ref().set_shader_images.unwrap()(
                 self.pipe.as_ptr(),

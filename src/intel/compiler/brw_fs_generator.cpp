@@ -1732,7 +1732,17 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       const bool compressed =
            inst->dst.component_size(inst->exec_size) > REG_SIZE;
       brw_set_default_compression(p, compressed);
-      brw_set_default_group(p, inst->group);
+
+      if ((devinfo->ver >= 20 || devinfo->ver < 7) && inst->group % 8 != 0) {
+         assert(inst->force_writemask_all);
+         assert(!inst->predicate && !inst->conditional_mod);
+         assert(!inst->writes_accumulator_implicitly(devinfo) &&
+                !inst->reads_accumulator_implicitly());
+         assert(inst->opcode != SHADER_OPCODE_SEL_EXEC);
+         brw_set_default_group(p, 0);
+      } else {
+         brw_set_default_group(p, inst->group);
+      }
 
       for (unsigned int i = 0; i < inst->sources; i++) {
          src[i] = brw_reg_from_fs_reg(devinfo, inst,

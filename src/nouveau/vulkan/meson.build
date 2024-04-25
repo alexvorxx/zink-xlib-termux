@@ -57,6 +57,8 @@ nvk_files = files(
   'nvk_sampler.h',
   'nvk_shader.c',
   'nvk_shader.h',
+  'nvk_upload_queue.c',
+  'nvk_upload_queue.h',
   'nvk_wsi.c',
   'nvk_wsi.h'
 )
@@ -126,7 +128,7 @@ nouveau_icd = custom_target(
   output : 'nouveau_icd.@0@.json'.format(host_machine.cpu()),
   command : [
     prog_python, '@INPUT0@',
-    '--api-version', '1.1', '--xml', '@INPUT1@',
+    '--api-version', '1.3', '--xml', '@INPUT1@',
     '--lib-path', join_paths(icd_lib_path, icd_file_name),
     '--out', '@OUTPUT@',
   ],
@@ -144,7 +146,7 @@ if meson.version().version_compare('>= 0.58')
     output : _dev_icdname,
     command : [
       prog_python, '@INPUT0@',
-      '--api-version', '1.1', '--xml', '@INPUT1@',
+      '--api-version', '1.3', '--xml', '@INPUT1@',
       '--lib-path', meson.current_build_dir() / icd_file_name,
       '--out', '@OUTPUT@',
     ],

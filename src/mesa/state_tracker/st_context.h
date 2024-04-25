@@ -53,7 +53,7 @@ struct st_context;
 struct st_program;
 struct u_upload_mgr;
 
-#define ST_L3_PINNING_DISABLED 0xffffffff
+#define ST_THREAD_SCHEDULER_DISABLED 0xffffffff
 
 struct st_bitmap_cache
 {

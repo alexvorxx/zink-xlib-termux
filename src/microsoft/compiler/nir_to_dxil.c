@@ -118,7 +118,6 @@ nir_options = {
    .lower_uadd_carry = true,
    .lower_usub_borrow = true,
    .lower_mul_high = true,
-   .lower_rotate = true,
    .lower_pack_half_2x16 = true,
    .lower_pack_unorm_4x8 = true,
    .lower_pack_snorm_4x8 = true,
@@ -388,6 +387,8 @@ enum dxil_intr {
 
    DXIL_INTR_IS_HELPER_LANE = 221,
    DXIL_INTR_SAMPLE_CMP_LEVEL = 224,
+   DXIL_INTR_SAMPLE_CMP_GRAD = 254,
+   DXIL_INTR_SAMPLE_CMP_BIAS = 255,
 };
 
 enum dxil_atomic_op {
@@ -1882,6 +1883,11 @@ get_module_flags(struct ntd_context *ctx)
       flags |= (1ull << 34);
    if (ctx->mod.feats.writable_msaa)
       flags |= (1ull << 35);
+   // Bit 36 is wave MMA
+   if (ctx->mod.feats.sample_cmp_bias_gradient)
+      flags |= (1ull << 37);
+   if (ctx->mod.feats.extended_command_info)
+      flags |= (1ull << 38);
 
    if (ctx->opts->disable_math_refactoring)
       flags |= (1 << 1);
@@ -5287,6 +5293,27 @@ emit_sample_cmp_level(struct ntd_context *ctx, struct texop_parameters *params)
 }
 
 static const struct dxil_value *
+emit_sample_cmp_bias(struct ntd_context *ctx, struct texop_parameters *params)
+{
+   const struct dxil_func *func = dxil_get_function(&ctx->mod, "dx.op.sampleCmpBias", params->overload);
+   if (!func)
+      return NULL;
+
+   assert(params->bias != NULL);
+   ctx->mod.feats.sample_cmp_bias_gradient = 1;
+
+   const struct dxil_value *args[13] = {
+      dxil_module_get_int32_const(&ctx->mod, DXIL_INTR_SAMPLE_CMP_BIAS),
+      params->tex, params->sampler,
+      params->coord[0], params->coord[1], params->coord[2], params->coord[3],
+      params->offset[0], params->offset[1], params->offset[2],
+      params->cmp, params->bias, params->min_lod
+   };
+
+   return dxil_emit_call(&ctx->mod, func, args, ARRAY_SIZE(args));
+}
+
+static const struct dxil_value *
 emit_sample_grad(struct ntd_context *ctx, struct texop_parameters *params)
 {
    const struct dxil_func *func = dxil_get_function(&ctx->mod, "dx.op.sampleGrad", params->overload);
@@ -5298,6 +5325,29 @@ emit_sample_grad(struct ntd_context *ctx, struct texop_parameters *params)
       params->tex, params->sampler,
       params->coord[0], params->coord[1], params->coord[2], params->coord[3],
       params->offset[0], params->offset[1], params->offset[2],
+      params->dx[0], params->dx[1], params->dx[2],
+      params->dy[0], params->dy[1], params->dy[2],
+      params->min_lod
+   };
+
+   return dxil_emit_call(&ctx->mod, func, args, ARRAY_SIZE(args));
+}
+
+static const struct dxil_value *
+emit_sample_cmp_grad(struct ntd_context *ctx, struct texop_parameters *params)
+{
+   const struct dxil_func *func = dxil_get_function(&ctx->mod, "dx.op.sampleCmpGrad", params->overload);
+   if (!func)
+      return false;
+   
+   ctx->mod.feats.sample_cmp_bias_gradient = 1;
+
+   const struct dxil_value *args[18] = {
+      dxil_module_get_int32_const(&ctx->mod, DXIL_INTR_SAMPLE_CMP_GRAD),
+      params->tex, params->sampler,
+      params->coord[0], params->coord[1], params->coord[2], params->coord[3],
+      params->offset[0], params->offset[1], params->offset[2],
+      params->cmp,
       params->dx[0], params->dx[1], params->dx[2],
       params->dy[0], params->dy[1], params->dy[2],
       params->min_lod
@@ -5535,7 +5585,10 @@ emit_tex(struct ntd_context *ctx, nir_tex_instr *instr)
    const struct dxil_value *sample = NULL;
    switch (instr->op) {
    case nir_texop_txb:
-      sample = emit_sample_bias(ctx, &params);
+      if (params.cmp != NULL && ctx->mod.minor_version >= 8)
+         sample = emit_sample_cmp_bias(ctx, &params);
+      else
+         sample = emit_sample_bias(ctx, &params);
       break;
 
    case nir_texop_tex:
@@ -5550,7 +5603,7 @@ emit_tex(struct ntd_context *ctx, nir_tex_instr *instr)
       lod_is_zero = true;
       FALLTHROUGH;
    case nir_texop_txl:
-      if (lod_is_zero && params.cmp != NULL && ctx->opts->shader_model_max < SHADER_MODEL_6_7) {
+      if (lod_is_zero && params.cmp != NULL && ctx->mod.minor_version < 7) {
          /* Prior to SM 6.7, if the level is constant 0.0, ignore the LOD argument,
           * so level-less DXIL instructions are used. This is needed to avoid emitting
           * dx.op.sampleCmpLevel, which would not be available.
@@ -5567,7 +5620,10 @@ emit_tex(struct ntd_context *ctx, nir_tex_instr *instr)
    case nir_texop_txd:
       PAD_SRC(ctx, params.dx, dx_components, float_undef);
       PAD_SRC(ctx, params.dy, dy_components,float_undef);
-      sample = emit_sample_grad(ctx, &params);
+      if (params.cmp != NULL && ctx->mod.minor_version >= 8)
+         sample = emit_sample_cmp_grad(ctx, &params);
+      else
+         sample = emit_sample_grad(ctx, &params);
       break;
 
    case nir_texop_txf:
@@ -6428,9 +6484,9 @@ type_size_vec4(const struct glsl_type *type, bool bindless)
 }
 
 static const unsigned dxil_validator_min_capable_version = DXIL_VALIDATOR_1_4;
-static const unsigned dxil_validator_max_capable_version = DXIL_VALIDATOR_1_7;
+static const unsigned dxil_validator_max_capable_version = DXIL_VALIDATOR_1_8;
 static const unsigned dxil_min_shader_model = SHADER_MODEL_6_0;
-static const unsigned dxil_max_shader_model = SHADER_MODEL_6_7;
+static const unsigned dxil_max_shader_model = SHADER_MODEL_6_8;
 
 bool
 nir_to_dxil(struct nir_shader *s, const struct nir_to_dxil_options *opts,

@@ -50,6 +50,8 @@ struct radv_meta_saved_state {
    struct radv_compute_pipeline *old_compute_pipeline;
    struct radv_dynamic_state dynamic;
 
+   struct radv_shader_object *old_shader_objs[MESA_VULKAN_SHADER_STAGES];
+
    char push_constants[MAX_PUSH_CONSTANTS_SIZE];
 
    struct radv_rendering_state render;

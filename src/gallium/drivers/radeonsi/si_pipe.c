@@ -470,7 +470,7 @@ static void si_set_context_param(struct pipe_context *ctx, enum pipe_context_par
    struct radeon_winsys *ws = ((struct si_context *)ctx)->ws;
 
    switch (param) {
-   case PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE:
+   case PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING:
       ws->pin_threads_to_L3_cache(ws, value);
       break;
    default:;
@@ -980,6 +980,9 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
 
    si_resource_reference(&sscreen->attribute_ring, NULL);
 
+   util_queue_destroy(&sscreen->shader_compiler_queue);
+   util_queue_destroy(&sscreen->shader_compiler_queue_opt_variants);
+
    for (unsigned i = 0; i < ARRAY_SIZE(sscreen->aux_contexts); i++) {
       if (!sscreen->aux_contexts[i].ctx)
          continue;
@@ -1001,9 +1004,6 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
    if (sscreen->async_compute_context) {
       sscreen->async_compute_context->destroy(sscreen->async_compute_context);
    }
-
-   util_queue_destroy(&sscreen->shader_compiler_queue);
-   util_queue_destroy(&sscreen->shader_compiler_queue_opt_variants);
 
    /* Release the reference on glsl types of the compiler threads. */
    glsl_type_singleton_decref();

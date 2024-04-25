@@ -18,7 +18,7 @@ nvk_EnumerateInstanceVersion(uint32_t *pApiVersion)
 {
    uint32_t version_override = vk_get_version_override();
    *pApiVersion = version_override ? version_override :
-                  VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION);
+                  VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION);
 
    return VK_SUCCESS;
 }
@@ -70,6 +70,11 @@ static const driOptionDescription nvk_dri_options[] = {
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)
       DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
+   DRI_CONF_SECTION_END
+
+   DRI_CONF_SECTION_DEBUG
+      DRI_CONF_VK_WSI_FORCE_SWAPCHAIN_TO_CURRENT_EXTENT(false)
+      DRI_CONF_VK_X11_IGNORE_SUBOPTIMAL(false)
    DRI_CONF_SECTION_END
 };
 

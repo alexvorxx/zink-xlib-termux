@@ -1358,7 +1358,6 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		printf("drm = %i.%i.%i\n", rscreen->info.drm_major,
 		       rscreen->info.drm_minor, rscreen->info.drm_patchlevel);
 		printf("has_userptr = %i\n", rscreen->info.has_userptr);
-		printf("has_syncobj = %u\n", rscreen->info.has_syncobj);
 
 		printf("r600_max_quad_pipes = %i\n", rscreen->info.r600_max_quad_pipes);
 		printf("max_gpu_freq_mhz = %i\n", rscreen->info.max_gpu_freq_mhz);
@@ -1395,7 +1394,6 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		.lower_insert_byte = true,
 		.lower_insert_word = true,
 		.lower_ldexp = true,
-		.lower_rotate = true,
 		/* due to a bug in the shader compiler, some loops hang
 		 * if they are not unrolled, see:
 		 *    https://bugs.freedesktop.org/show_bug.cgi?id=86720
@@ -1454,7 +1452,8 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 			nir_lower_dceil |
 			nir_lower_dmod |
 			nir_lower_dsub |
-			nir_lower_dtrunc;
+			nir_lower_dtrunc |
+			nir_lower_dround_even;
 	}
 
         rscreen->nir_options_fs = rscreen->nir_options;

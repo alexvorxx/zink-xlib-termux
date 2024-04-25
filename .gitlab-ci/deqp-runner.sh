@@ -169,7 +169,13 @@ fi
 
 uncollapsed_section_switch deqp "deqp: deqp-runner"
 
-cat /deqp/version-log
+# Print the detailed version with the list of backports and local patches
+for api in vk gl; do
+  deqp_version_log=/deqp/version-$api
+  if [ -r "$deqp_version_log" ]; then
+    cat "$deqp_version_log"
+  fi
+done
 
 set +e
 if [ -z "$DEQP_SUITE" ]; then

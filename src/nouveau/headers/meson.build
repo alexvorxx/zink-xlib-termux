@@ -19,7 +19,9 @@ nvk_classes = [
   'clc3c0',
   'clc597',
   'clc5c0',
+  'clc697',
   'clc6c0',
+  'clc7c0',
 ]
 
 nvk_cl_header_depend_files = [
@@ -50,4 +52,12 @@ idep_nvidia_headers = declare_dependency(
   include_directories : include_directories('.', 'nvidia/classes'),
   sources : cl_generated,
   link_with : _libnvidia_headers,
+)
+
+executable(
+  'nv_push_dump',
+  'nv_push_dump.c',
+  dependencies : [ idep_mesautil, idep_nvidia_headers ],
+  build_by_default : with_tools.contains('nouveau'),
+  install : with_tools.contains('nouveau'),
 )

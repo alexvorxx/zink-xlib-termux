@@ -336,7 +336,7 @@ radv_update_buffer_cp(struct radv_cmd_buffer *cmd_buffer, uint64_t va, const voi
    radeon_emit(cmd_buffer->cs, va >> 32);
    radeon_emit_array(cmd_buffer->cs, data, words);
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 

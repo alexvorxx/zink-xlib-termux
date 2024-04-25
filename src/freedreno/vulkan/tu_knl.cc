@@ -187,7 +187,7 @@ l1_dcache_size()
       return 0;
 
 #if DETECT_ARCH_AARCH64 &&                                                   \
-   (!defined(_SC_LEVEL1_DCACHE_LINESIZE) || defined(ANDROID))
+   (!defined(_SC_LEVEL1_DCACHE_LINESIZE) || DETECT_OS_ANDROID)
    /* Bionic does not implement _SC_LEVEL1_DCACHE_LINESIZE properly: */
    uint64_t ctr_el0;
    asm("mrs\t%x0, ctr_el0" : "=r"(ctr_el0));

@@ -20,6 +20,11 @@
 struct nak_compiler;
 struct nvk_instance;
 
+struct nvk_queue_family {
+   VkQueueFlags queue_flags;
+   uint32_t queue_count;
+};
+
 struct nvk_physical_device {
    struct vk_physical_device vk;
    struct nv_device_info info;
@@ -36,6 +41,9 @@ struct nvk_physical_device {
    VkMemoryType mem_types[2];
    uint8_t mem_heap_count;
    uint8_t mem_type_count;
+
+   struct nvk_queue_family queue_families[3];
+   uint8_t queue_family_count;
 
    struct vk_sync_type syncobj_sync_type;
    const struct vk_sync_type *sync_types[2];

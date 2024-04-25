@@ -17,8 +17,10 @@
 #include "cla1c0.h"
 #include "clc0c0.h"
 #include "clc5c0.h"
+#include "nvk_cl90c0.h"
 #include "nvk_cl9097.h"
 #include "nvk_cla0c0.h"
+#include "nvk_clb0c0.h"
 #include "nvk_clb1c0.h"
 #include "nvk_clc3c0.h"
 #include "nvk_clc597.h"
@@ -38,6 +40,32 @@
 #define NVC3C0_QMDV02_02_DEF_SET(p,a...) NVDEF_MW_SET((p), NVC3C0, QMDV02_02, ##a)
 #define NVC6C0_QMDV03_00_VAL_SET(p,a...) NVVAL_MW_SET((p), NVC6C0, QMDV03_00, ##a)
 #define NVC6C0_QMDV03_00_DEF_SET(p,a...) NVDEF_MW_SET((p), NVC6C0, QMDV03_00, ##a)
+
+VkResult
+nvk_push_dispatch_state_init(struct nvk_device *dev, struct nv_push *p)
+{
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
+   P_MTHD(p, NV90C0, SET_OBJECT);
+   P_NV90C0_SET_OBJECT(p, {
+      .class_id = pdev->info.cls_compute,
+      .engine_id = 0,
+   });
+
+   if (pdev->info.cls_compute == MAXWELL_COMPUTE_A)
+      P_IMMD(p, NVB0C0, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
+
+   if (pdev->info.cls_eng3d < VOLTA_COMPUTE_A) {
+      uint64_t shader_base_addr =
+         nvk_heap_contiguous_base_address(&dev->shader_heap);
+
+      P_MTHD(p, NVA0C0, SET_PROGRAM_REGION_A);
+      P_NVA0C0_SET_PROGRAM_REGION_A(p, shader_base_addr >> 32);
+      P_NVA0C0_SET_PROGRAM_REGION_B(p, shader_base_addr);
+   }
+
+   return VK_SUCCESS;
+}
 
 static inline uint16_t
 nvk_cmd_buffer_compute_cls(struct nvk_cmd_buffer *cmd)
@@ -229,7 +257,7 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
          };
       } else {
          ASSERTED bool direct_descriptor =
-            nvk_cmd_buffer_get_cbuf_descriptor(cmd, desc, cbuf, &ba);
+            nvk_cmd_buffer_get_cbuf_descriptor(cmd, desc, shader, cbuf, &ba);
          assert(direct_descriptor);
       }
 

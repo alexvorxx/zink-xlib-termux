@@ -60,13 +60,6 @@
 
 #include <directx/d3d12sdklayers.h>
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR) || \
-    defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
-    defined(VK_USE_PLATFORM_XCB_KHR) || \
-    defined(VK_USE_PLATFORM_XLIB_KHR)
-#define DZN_USE_WSI_PLATFORM
-#endif
-
 #define DZN_API_VERSION VK_MAKE_VERSION(1, 2, VK_HEADER_VERSION)
 
 #define MAX_TIER2_MEMORY_TYPES 4
@@ -135,6 +128,7 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
       .KHR_sampler_mirror_clamp_to_edge      = true,
       .KHR_separate_depth_stencil_layouts    = true,
       .KHR_shader_draw_parameters            = true,
+      .KHR_shader_expect_assume              = true,
       .KHR_shader_float16_int8               = pdev->options4.Native16BitShaderOpsSupported,
       .KHR_shader_float_controls             = true,
       .KHR_shader_integer_dot_product        = true,
@@ -186,6 +180,7 @@ static const struct debug_control dzn_debug_options[] = {
    { "redirects", DZN_DEBUG_REDIRECTS },
    { "bindless", DZN_DEBUG_BINDLESS },
    { "nobindless", DZN_DEBUG_NO_BINDLESS },
+   { "experimental", DZN_DEBUG_EXPERIMENTAL },
    { NULL, 0 }
 };
 
@@ -267,6 +262,7 @@ try_find_d3d12core_next_to_self(char *path, size_t path_arr_size)
       return NULL;
    }
 
+   *(last_slash + 1) = '\0';
    return path;
 }
 #endif
@@ -394,8 +390,8 @@ dzn_physical_device_cache_caps(struct dzn_physical_device *pdev)
    pdev->feature_level = levels.MaxSupportedFeatureLevel;
 
    static const D3D_SHADER_MODEL valid_shader_models[] = {
-      D3D_SHADER_MODEL_6_7, D3D_SHADER_MODEL_6_6, D3D_SHADER_MODEL_6_5, D3D_SHADER_MODEL_6_4,
-      D3D_SHADER_MODEL_6_3, D3D_SHADER_MODEL_6_2, D3D_SHADER_MODEL_6_1,
+      D3D_SHADER_MODEL_6_8 ,D3D_SHADER_MODEL_6_7, D3D_SHADER_MODEL_6_6, D3D_SHADER_MODEL_6_5,
+      D3D_SHADER_MODEL_6_4, D3D_SHADER_MODEL_6_3, D3D_SHADER_MODEL_6_2, D3D_SHADER_MODEL_6_1,
    };
    for (UINT i = 0; i < ARRAY_SIZE(valid_shader_models); ++i) {
       D3D12_FEATURE_DATA_SHADER_MODEL shader_model = { valid_shader_models[i] };
@@ -783,6 +779,7 @@ dzn_physical_device_get_features(const struct dzn_physical_device *pdev,
       .dynamicRendering                   = true,
       .shaderIntegerDotProduct            = true,
       .maintenance4                       = false,
+      .shaderExpectAssume                 = true,
 
       .vertexAttributeInstanceRateDivisor = true,
       .vertexAttributeInstanceRateZeroDivisor = true,
@@ -1806,8 +1803,10 @@ dzn_instance_create(const VkInstanceCreateInfo *pCreateInfo,
 
    bool missing_validator = false;
 #ifdef _WIN32
-   instance->dxil_validator = dxil_create_validator(NULL);
-   missing_validator = !instance->dxil_validator;
+   if ((instance->debug_flags & DZN_DEBUG_EXPERIMENTAL) == 0) {
+      instance->dxil_validator = dxil_create_validator(NULL);
+      missing_validator = !instance->dxil_validator;
+   }
 #endif
 
    if (missing_validator) {

@@ -211,13 +211,9 @@ impl<'a> CoalesceGraph<'a> {
         let mut dom = Vec::new();
 
         for n in MergedIter::new(a.nodes.iter(), b.nodes.iter()) {
-            loop {
-                if let Some(p) = dom.last() {
-                    if !self.node_dominates(*p, *n, cfg) {
-                        dom.pop();
-                    } else {
-                        break;
-                    }
+            while let Some(p) = dom.last() {
+                if !self.node_dominates(*p, *n, cfg) {
+                    dom.pop();
                 } else {
                     break;
                 }
@@ -236,8 +232,8 @@ impl<'a> CoalesceGraph<'a> {
     }
 
     pub fn sets_merge(&mut self, a: usize, b: usize) -> usize {
-        let a_nodes = std::mem::replace(&mut self.sets[a].nodes, Vec::new());
-        let b_nodes = std::mem::replace(&mut self.sets[b].nodes, Vec::new());
+        let a_nodes = std::mem::take(&mut self.sets[a].nodes);
+        let b_nodes = std::mem::take(&mut self.sets[b].nodes);
         let nodes = MergedIter::new(a_nodes.into_iter(), b_nodes.into_iter());
 
         self.sets[a].nodes = nodes
@@ -315,8 +311,7 @@ impl Function {
         cg.init_sets(&self.blocks);
 
         for bi in 0..self.blocks.len() {
-            let block_instrs =
-                std::mem::replace(&mut self.blocks[bi].instrs, Vec::new());
+            let block_instrs = std::mem::take(&mut self.blocks[bi].instrs);
 
             let mut instrs = Vec::new();
             for mut instr in block_instrs.into_iter() {

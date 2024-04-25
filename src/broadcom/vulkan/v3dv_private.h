@@ -65,7 +65,9 @@
 #define VG(x) ((void)0)
 #endif
 
-#ifdef ANDROID
+#include "util/detect_os.h"
+
+#if DETECT_OS_ANDROID
 #include <vndk/hardware_buffer.h>
 #include "util/u_gralloc/u_gralloc.h"
 #endif
@@ -597,7 +599,7 @@ struct v3dv_device {
    void *device_address_mem_ctx;
    struct util_dynarray device_address_bo_list; /* Array of struct v3dv_bo * */
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    struct u_gralloc *gralloc;
 #endif
 };
@@ -738,7 +740,7 @@ struct v3dv_image {
     */
    struct v3dv_image *shadow;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    /* Image is backed by VK_ANDROID_native_buffer, */
    bool is_native_buffer_memory;
    /* Image is backed by VK_ANDROID_external_memory_android_hardware_buffer */
@@ -2678,7 +2680,7 @@ v3dv_update_image_layout(struct v3dv_device *device,
                          bool disjoint,
                          const VkImageDrmFormatModifierExplicitCreateInfoEXT *explicit_mod_info);
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 VkResult
 v3dv_gralloc_to_drm_explicit_layout(struct u_gralloc *gralloc,
                                     struct u_gralloc_buffer_handle *in_hnd,
@@ -2691,6 +2693,6 @@ v3dv_import_native_buffer_fd(VkDevice device_h,
                              int dma_buf,
                              const VkAllocationCallbacks *alloc,
                              VkImage image_h);
-#endif /* ANDROID */
+#endif /* DETECT_OS_ANDROID */
 
 #endif /* V3DV_PRIVATE_H */

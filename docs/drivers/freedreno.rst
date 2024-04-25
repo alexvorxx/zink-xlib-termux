@@ -369,9 +369,8 @@ Command Stream Capture
 ^^^^^^^^^^^^^^^^^^^^^^
 
 During Mesa development, it's often useful to look at the command streams we
-send to the kernel.  Mesa itself doesn't implement a way to stream them out
-(though it maybe should!).  Instead, we have an interface for the kernel to
-capture all submitted command streams:
+send to the kernel.  We have an interface for the kernel to capture all
+submitted command streams:
 
 .. code-block:: sh
 
@@ -390,6 +389,28 @@ a heavyweight game.  Instead, to capture a command stream within a game, you
 probably want to cause a crash in the GPU during a frame of interest so that a
 single GPU core dump is generated.  Emitting ``0xdeadbeef`` in the CS should be
 enough to cause a fault.
+
+``fd_rd_output`` facilities provide support for generating the command stream
+capture from inside Mesa. Different ``FD_RD_DUMP`` options are available:
+
+- ``enable`` simply enables dumping the command stream on each submit for a
+  given logical device. When a more advanced option is specified, ``enable`` is
+  implied as specified.
+- ``combine`` will combine all dumps into a single file instead of writing the
+  dump for each submit into a standalone file.
+- ``full`` will dump every buffer object, which is necessary for replays of
+  command streams (see below).
+- ``trigger`` will establish a trigger file through which dumps can be better
+  controlled. Writing a positive integer value into the file will enable dumping
+  of that many subsequent submits. Writing -1 will enable dumping of submits
+  until disabled. Writing 0 (or any other value) will disable dumps.
+
+Output dump files and trigger file (when enabled) are hard-coded to be placed
+under ``/tmp``, or ``/data/local/tmp`` under Android.
+
+Functionality is generic to any Freedreno-based backend, but is currently only
+integrated in the MSM backend of Turnip. Using the existing ``TU_DEBUG=rd``
+option will translate to ``FD_RD_DUMP=enable``.
 
 Capturing Hang RD
 +++++++++++++++++

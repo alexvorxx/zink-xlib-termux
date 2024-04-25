@@ -131,23 +131,14 @@ typedef enum {
 	/** vec4 instruction: dst.c = (src0.c >= src1.c) ? 1.0 : 0.0 */
 	RC_OPCODE_SGE,
 
-	/** vec4 instruction: dst.c = (src0.c > src1.c) ? 1.0 : 0.0 */
-	RC_OPCODE_SGT,
-
 	/** scalar instruction: dst = sin(src0.x) */
 	RC_OPCODE_SIN,
-
-	/** vec4 instruction: dst.c = (src0.c <= src1.c) ? 1.0 : 0.0 */
-	RC_OPCODE_SLE,
 
 	/** vec4 instruction: dst.c = (src0.c < src1.c) ? 1.0 : 0.0 */
 	RC_OPCODE_SLT,
 
 	/** vec4 instruction: dst.c = (src0.c != src1.c) ? 1.0 : 0.0 */
 	RC_OPCODE_SNE,
-
-	/** vec4 instruction: dst.c = src0.c - src1.c */
-	RC_OPCODE_SUB,
 
 	RC_OPCODE_TEX,
 	RC_OPCODE_TXB,

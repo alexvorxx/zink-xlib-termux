@@ -401,6 +401,7 @@ struct fd_submit_funcs {
 struct fd_submit {
    int32_t refcnt;
    struct fd_pipe *pipe;
+   struct fd_device *dev;
    const struct fd_submit_funcs *funcs;
 
    struct fd_ringbuffer *primary;

@@ -122,6 +122,7 @@ struct gs_thread_payload : public thread_payload {
 
    fs_reg urb_handles;
    fs_reg primitive_id;
+   fs_reg instance_id;
    fs_reg icp_handle_start;
 };
 
@@ -145,6 +146,8 @@ struct cs_thread_payload : public thread_payload {
    cs_thread_payload(const fs_visitor &v);
 
    void load_subgroup_id(const brw::fs_builder &bld, fs_reg &dest) const;
+
+   fs_reg local_invocation_id[3];
 
 protected:
    fs_reg subgroup_id_;

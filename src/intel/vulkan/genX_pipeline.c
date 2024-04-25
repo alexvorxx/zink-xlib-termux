@@ -185,6 +185,7 @@ genX(emit_vertex_input)(struct anv_batch *batch,
                                                   vi->attributes[a].format,
                                                   VK_IMAGE_ASPECT_COLOR_BIT,
                                                   VK_IMAGE_TILING_LINEAR);
+      assume(format < ISL_NUM_FORMATS);
 
       uint32_t binding = vi->attributes[a].binding;
       assert(binding < MAX_VBS);
@@ -1493,13 +1494,6 @@ emit_3dstate_gs(struct anv_graphics_pipeline *pipeline)
    }
 }
 
-static bool
-state_has_ds_self_dep(const struct vk_graphics_pipeline_state *state)
-{
-   return state->pipeline_flags &
-      VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
-}
-
 static void
 emit_3dstate_wm(struct anv_graphics_pipeline *pipeline,
                 const struct vk_input_assembly_state *ia,
@@ -1641,11 +1635,11 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
    const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    if (!anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT)) {
-      anv_pipeline_emit(pipeline, final.ps_extra, GENX(3DSTATE_PS_EXTRA), ps);
+      anv_pipeline_emit(pipeline, partial.ps_extra, GENX(3DSTATE_PS_EXTRA), ps);
       return;
    }
 
-   anv_pipeline_emit(pipeline, final.ps_extra, GENX(3DSTATE_PS_EXTRA), ps) {
+   anv_pipeline_emit(pipeline, partial.ps_extra, GENX(3DSTATE_PS_EXTRA), ps) {
       ps.PixelShaderValid              = true;
 #if GFX_VER < 20
       ps.AttributeEnable               = wm_prog_data->num_varying_inputs > 0;
@@ -1656,15 +1650,6 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
       ps.PixelShaderComputedDepthMode  = wm_prog_data->computed_depth_mode;
       ps.PixelShaderUsesSourceDepth    = wm_prog_data->uses_src_depth;
       ps.PixelShaderUsesSourceW        = wm_prog_data->uses_src_w;
-
-      /* If the subpass has a depth or stencil self-dependency, then we need
-       * to force the hardware to do the depth/stencil write *after* fragment
-       * shader execution.  Otherwise, the writes may hit memory before we get
-       * around to fetching from the input attachment and we may get the depth
-       * or stencil value from the current draw rather than the previous one.
-       */
-      ps.PixelShaderKillsPixel         = state_has_ds_self_dep(state) ||
-                                         wm_prog_data->uses_kill;
 
       ps.PixelShaderComputesStencil = wm_prog_data->computed_stencil;
 #if GFX_VER >= 20
@@ -1735,8 +1720,11 @@ compute_kill_pixel(struct anv_graphics_pipeline *pipeline,
     * 3DSTATE_PS_BLEND::AlphaTestEnable since Vulkan doesn't have a concept
     * of an alpha test.
     */
+   pipeline->rp_has_ds_self_dep =
+      (state->pipeline_flags &
+       VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT) != 0;
    pipeline->kill_pixel =
-      state_has_ds_self_dep(state) ||
+      pipeline->rp_has_ds_self_dep ||
       wm_prog_data->uses_kill ||
       wm_prog_data->uses_omask ||
       (ms && ms->alpha_to_coverage_enable);

@@ -82,9 +82,9 @@ namespace {
       /* SBID token write completion.  Only used on Gfx12+. */
       EU_DEPENDENCY_ID_SBID_WR0 = EU_DEPENDENCY_ID_FLAG0 + 8,
       /* SBID token read completion.  Only used on Gfx12+. */
-      EU_DEPENDENCY_ID_SBID_RD0 = EU_DEPENDENCY_ID_SBID_WR0 + 16,
+      EU_DEPENDENCY_ID_SBID_RD0 = EU_DEPENDENCY_ID_SBID_WR0 + 32,
       /* Number of computation dependencies currently tracked. */
-      EU_NUM_DEPENDENCY_IDS = EU_DEPENDENCY_ID_SBID_RD0 + 16
+      EU_NUM_DEPENDENCY_IDS = EU_DEPENDENCY_ID_SBID_RD0 + 32
    };
 
    /**

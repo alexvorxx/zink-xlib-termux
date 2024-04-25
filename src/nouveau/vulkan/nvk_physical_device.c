@@ -68,7 +68,7 @@ nvk_get_vk_version(const struct nv_device_info *info)
    if (!nvk_use_nak(info))
       return VK_MAKE_VERSION(1, 0, VK_HEADER_VERSION);
 
-   return VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION);
+   return VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION);
 }
 
 static void
@@ -102,6 +102,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_get_memory_requirements2 = true,
       .KHR_image_format_list = true,
       .KHR_imageless_framebuffer = true,
+      .KHR_index_type_uint8 = true,
+      .KHR_line_rasterization = true,
+      .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
       .KHR_maintenance2 = true,
       .KHR_maintenance3 = true,
@@ -127,6 +130,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
                                  nvk_use_nak(info),
       .KHR_shader_clock = true,
       .KHR_shader_draw_parameters = true,
+      .KHR_shader_expect_assume = true,
       .KHR_shader_float_controls = true,
       .KHR_shader_float16_int8 = true,
       .KHR_shader_integer_dot_product = true,
@@ -146,6 +150,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_variable_pointers = true,
       .KHR_vulkan_memory_model = nvk_use_nak(info),
       .KHR_workgroup_memory_explicit_layout = true,
+      .KHR_zero_initialize_workgroup_memory = true,
       .EXT_4444_formats = true,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_border_color_swizzle = true,
@@ -202,6 +207,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_vertex_input_dynamic_state = true,
       .EXT_ycbcr_2plane_444_formats = true,
       .EXT_ycbcr_image_arrays = true,
+      .NV_shader_sm_builtins = true,
    };
 }
 
@@ -334,6 +340,7 @@ nvk_get_device_features(const struct nv_device_info *info,
       .subgroupSizeControl = true,
       .computeFullSubgroups = true,
       .synchronization2 = true,
+      .shaderZeroInitializeWorkgroupMemory = true,
       .dynamicRendering = true,
       .shaderIntegerDotProduct = true,
       .maintenance4 = true,
@@ -452,10 +459,10 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_image_view_min_lod */
       .minLod = true,
 
-      /* VK_EXT_index_type_uint8 */
+      /* VK_KHR_index_type_uint8 */
       .indexTypeUint8 = true,
 
-      /* VK_EXT_line_rasterization */
+      /* VK_KHR_line_rasterization */
       .rectangularLines = true,
       .bresenhamLines = true,
       .smoothLines = true,
@@ -516,8 +523,14 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_ycbcr_image_arrays */
       .ycbcrImageArrays = true,
 
+      /* VK_NV_shader_sm_builtins */
+      .shaderSMBuiltins = true,
+
       /* VK_VALVE_mutable_descriptor_type */
       .mutableDescriptorType = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
    };
 }
 
@@ -598,7 +611,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .maxFragmentOutputAttachments = NVK_MAX_RTS,
       .maxFragmentDualSrcAttachments = 1,
       .maxFragmentCombinedOutputResources = 16,
-      .maxComputeSharedMemorySize = 49152,
+      .maxComputeSharedMemorySize = NVK_MAX_SHARED_SIZE,
       .maxComputeWorkGroupCount = {0x7fffffff, 65535, 65535},
       .maxComputeWorkGroupInvocations = 1024,
       .maxComputeWorkGroupSize = {1024, 1024, 64},
@@ -735,6 +748,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .filterMinmaxSingleComponentFormats = true,
       .filterMinmaxImageComponentMapping = true,
       .maxTimelineSemaphoreValueDifference = UINT64_MAX,
+      .framebufferIntegerColorSampleCounts = sample_counts,
 
       /* Vulkan 1.3 properties */
       .minSubgroupSize = 32,
@@ -746,6 +760,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .maxPerStageDescriptorUpdateAfterBindInlineUniformBlocks = 32,
       .maxDescriptorSetInlineUniformBlocks = 6 * 32,
       .maxDescriptorSetUpdateAfterBindInlineUniformBlocks = 6 * 32,
+      .maxInlineUniformTotalSize = 1 << 16,
       .integerDotProduct4x8BitPackedUnsignedAccelerated
          = info->cls_eng3d >= VOLTA_A,
       .integerDotProduct4x8BitPackedSignedAccelerated
@@ -767,7 +782,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       /* VK_EXT_extended_dynamic_state3 */
       .dynamicPrimitiveTopologyUnrestricted = true,
 
-      /* VK_EXT_line_rasterization */
+      /* VK_KHR_line_rasterization */
       .lineSubPixelPrecisionBits = 8,
 
       /* VK_EXT_multi_draw */
@@ -814,6 +829,10 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* VK_KHR_fragment_shader_barycentric */
       .triStripVertexOrderIndependentOfProvokingVertex = false,
+
+      /* VK_NV_shader_sm_builtins */
+      .shaderSMCount = (uint32_t)info->tpc_count * info->mp_per_tpc,
+      .shaderWarpsPerSM = info->max_warps_per_mp,
    };
 
    snprintf(properties->deviceName, sizeof(properties->deviceName),
@@ -1067,6 +1086,15 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    assert(pdev->mem_heap_count <= ARRAY_SIZE(pdev->mem_heaps));
    assert(pdev->mem_type_count <= ARRAY_SIZE(pdev->mem_types));
 
+   pdev->queue_families[pdev->queue_family_count++] = (struct nvk_queue_family) {
+      .queue_flags = VK_QUEUE_GRAPHICS_BIT |
+                     VK_QUEUE_COMPUTE_BIT |
+                     VK_QUEUE_TRANSFER_BIT |
+                     VK_QUEUE_SPARSE_BINDING_BIT,
+      .queue_count = 1,
+   };
+   assert(pdev->queue_family_count <= ARRAY_SIZE(pdev->queue_families));
+
    unsigned st_idx = 0;
    pdev->syncobj_sync_type = syncobj_sync_type;
    pdev->sync_types[st_idx++] = &pdev->syncobj_sync_type;
@@ -1138,18 +1166,20 @@ nvk_GetPhysicalDeviceQueueFamilyProperties2(
    uint32_t *pQueueFamilyPropertyCount,
    VkQueueFamilyProperties2 *pQueueFamilyProperties)
 {
-   // VK_FROM_HANDLE(nvk_physical_device, pdev, physicalDevice);
-   VK_OUTARRAY_MAKE_TYPED(
-      VkQueueFamilyProperties2, out, pQueueFamilyProperties, pQueueFamilyPropertyCount);
+   VK_FROM_HANDLE(nvk_physical_device, pdev, physicalDevice);
+   VK_OUTARRAY_MAKE_TYPED(VkQueueFamilyProperties2, out, pQueueFamilyProperties,
+                          pQueueFamilyPropertyCount);
 
-   vk_outarray_append_typed(VkQueueFamilyProperties2, &out, p) {
-      p->queueFamilyProperties.queueFlags = VK_QUEUE_GRAPHICS_BIT |
-                                            VK_QUEUE_COMPUTE_BIT |
-                                            VK_QUEUE_TRANSFER_BIT;
-      p->queueFamilyProperties.queueFlags |= VK_QUEUE_SPARSE_BINDING_BIT;
-      p->queueFamilyProperties.queueCount = 1;
-      p->queueFamilyProperties.timestampValidBits = 64;
-      p->queueFamilyProperties.minImageTransferGranularity = (VkExtent3D){1, 1, 1};
+   for (uint8_t i = 0; i < pdev->queue_family_count; i++) {
+      const struct nvk_queue_family *queue_family = &pdev->queue_families[i];
+
+      vk_outarray_append_typed(VkQueueFamilyProperties2, &out, p) {
+         p->queueFamilyProperties.queueFlags = queue_family->queue_flags;
+         p->queueFamilyProperties.queueCount = queue_family->queue_count;
+         p->queueFamilyProperties.timestampValidBits = 64;
+         p->queueFamilyProperties.minImageTransferGranularity =
+            (VkExtent3D){1, 1, 1};
+      }
    }
 }
 

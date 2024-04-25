@@ -201,7 +201,7 @@ vk_extent3d_el_to_px(const VkExtent3D extent_el,
 static bool
 isl_tiling_supports_standard_block_shapes(enum isl_tiling tiling)
 {
-   return tiling == ISL_TILING_64 ||
+   return isl_tiling_is_64(tiling) ||
           tiling == ISL_TILING_ICL_Ys ||
           tiling == ISL_TILING_SKL_Ys;
 }
@@ -593,6 +593,9 @@ anv_sparse_bind_trtt(struct anv_device *device,
 
    if (trtt_submit.l3l2_binds_len || trtt_submit.l1_binds_len)
       result = anv_genX(device->info, write_trtt_entries)(&trtt_submit);
+
+   if (result == VK_SUCCESS)
+      ANV_RMV(vm_binds, device, sparse_submit->binds, sparse_submit->binds_len);
 
 out:
    pthread_mutex_unlock(&trtt->mutex);

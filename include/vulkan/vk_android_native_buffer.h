@@ -18,7 +18,7 @@
 #define __VK_ANDROID_NATIVE_BUFFER_H__
 
 /* MESA: A hack to avoid #ifdefs in driver code. */
-#ifdef ANDROID
+#ifdef __ANDROID__
 #include <cutils/native_handle.h>
 #include <vulkan/vulkan.h>
 

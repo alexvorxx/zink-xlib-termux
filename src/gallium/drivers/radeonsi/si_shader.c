@@ -1105,7 +1105,7 @@ bool si_shader_binary_upload(struct si_screen *sscreen, struct si_shader *shader
                              uint64_t scratch_va)
 {
    bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS)) &&
-                     sscreen->info.has_dedicated_vram;
+                     sscreen->info.has_dedicated_vram && !sscreen->info.all_vram_visible;
 
    if (shader->binary.type == SI_SHADER_BINARY_ELF) {
       return upload_binary_elf(sscreen, shader, scratch_va, dma_upload);
@@ -1266,45 +1266,53 @@ void si_shader_dump_stats_for_shader_db(struct si_screen *screen, struct si_shad
       si_shader_dump_disassembly(screen, &shader->binary, shader->selector->stage,
                                  shader->wave_size, debug, "main", NULL);
 
-   unsigned num_outputs = 0;
+   unsigned num_ls_outputs = 0;
+   unsigned num_hs_outputs = 0;
+   unsigned num_es_outputs = 0;
+   unsigned num_gs_outputs = 0;
+   unsigned num_vs_outputs = 0;
+   unsigned num_ps_outputs = 0;
 
    if (shader->selector->stage <= MESA_SHADER_GEOMETRY) {
       /* This doesn't include pos exports because only param exports are interesting
        * for performance and can be optimized.
        */
-      if (shader->gs_copy_shader)
-         num_outputs = shader->gs_copy_shader->info.nr_param_exports;
-      else if (shader->key.ge.as_es)
-         num_outputs = shader->selector->info.esgs_vertex_stride / 16;
-      else if (shader->key.ge.as_ls)
-         num_outputs = shader->selector->info.lshs_vertex_stride / 16;
-      else if (shader->selector->stage == MESA_SHADER_VERTEX ||
-               shader->selector->stage == MESA_SHADER_TESS_EVAL ||
-               shader->key.ge.as_ngg)
-         num_outputs = shader->info.nr_param_exports;
+      if (shader->key.ge.as_ls)
+         num_ls_outputs = shader->selector->info.lshs_vertex_stride / 16;
       else if (shader->selector->stage == MESA_SHADER_TESS_CTRL)
-         num_outputs = util_last_bit64(shader->selector->info.outputs_written_before_tes_gs);
+         num_hs_outputs = util_last_bit64(shader->selector->info.outputs_written_before_tes_gs);
+      else if (shader->key.ge.as_es)
+         num_es_outputs = shader->selector->info.esgs_vertex_stride / 16;
+      else if (shader->gs_copy_shader)
+         num_gs_outputs = shader->gs_copy_shader->info.nr_param_exports;
+      else if (shader->selector->stage == MESA_SHADER_GEOMETRY)
+         num_gs_outputs = shader->info.nr_param_exports;
+      else if (shader->selector->stage == MESA_SHADER_VERTEX ||
+               shader->selector->stage == MESA_SHADER_TESS_EVAL)
+         num_vs_outputs = shader->info.nr_param_exports;
       else
          unreachable("invalid shader key");
    } else if (shader->selector->stage == MESA_SHADER_FRAGMENT) {
-      num_outputs = util_bitcount(shader->selector->info.colors_written) +
-                    (shader->selector->info.writes_z ||
-                     shader->selector->info.writes_stencil ||
-                     shader->ps.writes_samplemask);
+      num_ps_outputs = util_bitcount(shader->selector->info.colors_written) +
+                       (shader->selector->info.writes_z ||
+                        shader->selector->info.writes_stencil ||
+                        shader->ps.writes_samplemask);
    }
 
    util_debug_message(debug, SHADER_INFO,
                       "Shader Stats: SGPRS: %d VGPRS: %d Code Size: %d "
                       "LDS: %d Scratch: %d Max Waves: %d Spilled SGPRs: %d "
-                      "Spilled VGPRs: %d PrivMem VGPRs: %d Outputs: %u PatchOutputs: %u DivergentLoop: %d "
-                      "InlineUniforms: %d (%s, W%u)",
+                      "Spilled VGPRs: %d PrivMem VGPRs: %d LSOutputs: %u HSOutputs: %u "
+                      "HSPatchOuts: %u ESOutputs: %u GSOutputs: %u VSOutputs: %u PSOutputs: %u "
+                      "InlineUniforms: %u DivergentLoop: %u (%s, W%u)",
                       conf->num_sgprs, conf->num_vgprs, si_get_shader_binary_size(screen, shader),
                       conf->lds_size, conf->scratch_bytes_per_wave, shader->info.max_simd_waves,
                       conf->spilled_sgprs, conf->spilled_vgprs, shader->info.private_mem_vgprs,
-                      num_outputs,
+                      num_ls_outputs, num_hs_outputs,
                       util_last_bit64(shader->selector->info.patch_outputs_written),
-                      shader->selector->info.has_divergent_loop,
+                      num_es_outputs, num_gs_outputs, num_vs_outputs, num_ps_outputs,
                       shader->selector->info.base.num_inlinable_uniforms,
+                      shader->selector->info.has_divergent_loop,
                       stages[shader->selector->stage], shader->wave_size);
 }
 
@@ -1918,7 +1926,7 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
    const union si_shader_key *key = &shader->key;
    assert(key->ge.as_ngg);
 
-   unsigned clipdist_mask =
+   uint8_t clip_cull_dist_mask =
       (sel->info.clipdist_mask & ~key->ge.opt.kill_clip_distances) |
       sel->info.culldist_mask;
 
@@ -1931,7 +1939,7 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
       .disable_streamout = !si_shader_uses_streamout(shader),
       .vs_output_param_offset = shader->info.vs_output_param_offset,
       .has_param_exports = shader->info.nr_param_exports,
-      .clipdist_enable_mask = clipdist_mask,
+      .clip_cull_dist_mask = clip_cull_dist_mask,
       .kill_pointsize = key->ge.opt.kill_pointsize,
       .kill_layer = key->ge.opt.kill_layer,
       .force_vrs = sel->screen->options.vrs2x2,
@@ -1958,8 +1966,9 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
 
       unsigned clip_plane_enable =
          SI_NGG_CULL_GET_CLIP_PLANE_ENABLE(key->ge.opt.ngg_culling);
+      unsigned num_vertices = gfx10_ngg_get_vertices_per_prim(shader);
 
-      options.num_vertices_per_primitive = gfx10_ngg_get_vertices_per_prim(shader);
+      options.num_vertices_per_primitive = num_vertices ? num_vertices : 3;
       options.early_prim_export = gfx10_ngg_export_prim_early(shader);
       options.passthrough = gfx10_is_ngg_passthrough(shader);
       options.use_edgeflags = gfx10_edgeflags_have_effect(shader);
@@ -1976,6 +1985,8 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
       options.gs_out_vtx_bytes = sel->info.gsvs_vertex_size;
       options.has_gen_prim_query = options.has_xfb_prim_query =
          sel->screen->info.gfx_level >= GFX11;
+      options.has_gs_invocations_query = sel->screen->info.gfx_level < GFX11;
+      options.has_gs_primitives_query = true;
 
       /* For monolithic ES/GS to add vscnt wait when GS export pos0. */
       if (key->ge.part.gs.es)
@@ -3574,9 +3585,11 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
         shader->key.ge.mono.u.vs_export_prim_id));
 
    shader->uses_gs_state_outprim = sscreen->use_ngg &&
-                                   /* Only used by streamout in vertex shaders. */
+                                   /* Only used by streamout and the PrimID export in vertex
+                                    * shaders. */
                                    sel->stage == MESA_SHADER_VERTEX &&
-                                   si_shader_uses_streamout(shader);
+                                   (si_shader_uses_streamout(shader) ||
+                                    shader->uses_vs_state_provoking_vertex);
 
    if (sel->stage == MESA_SHADER_VERTEX) {
       shader->uses_base_instance = sel->info.uses_base_instance ||

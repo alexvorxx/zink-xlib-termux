@@ -17,6 +17,10 @@
 #include "nvk_clc397.h"
 #include "nvk_clc3c0.h"
 #include "nvk_clc597.h"
+#include "nvk_clc5c0.h"
+#include "nvk_clc697.h"
+#include "nvk_clc6c0.h"
+#include "nvk_clc7c0.h"
 
 #ifndef NDEBUG
 void
@@ -106,7 +110,9 @@ vk_push_print(FILE *fp, const struct nv_push *push,
          } else {
             switch (subchan) {
             case 0:
-               if (devinfo->cls_eng3d >= 0xc597)
+               if (devinfo->cls_eng3d >= 0xc697)
+                  mthd_name = P_PARSE_NVC697_MTHD(mthd);
+               else if (devinfo->cls_eng3d >= 0xc597)
                   mthd_name = P_PARSE_NVC597_MTHD(mthd);
                else if (devinfo->cls_eng3d >= 0xc397)
                   mthd_name = P_PARSE_NVC397_MTHD(mthd);
@@ -118,7 +124,13 @@ vk_push_print(FILE *fp, const struct nv_push *push,
                   mthd_name = P_PARSE_NV9097_MTHD(mthd);
                break;
             case 1:
-               if (devinfo->cls_compute >= 0xc3c0)
+               if (devinfo->cls_compute >= 0xc7c0)
+                  mthd_name = P_PARSE_NVC7C0_MTHD(mthd);
+               else if (devinfo->cls_compute >= 0xc6c0)
+                  mthd_name = P_PARSE_NVC6C0_MTHD(mthd);
+               else if (devinfo->cls_compute >= 0xc5c0)
+                  mthd_name = P_PARSE_NVC5C0_MTHD(mthd);
+               else if (devinfo->cls_compute >= 0xc3c0)
                   mthd_name = P_PARSE_NVC3C0_MTHD(mthd);
                else if (devinfo->cls_compute >= 0xc0c0)
                   mthd_name = P_PARSE_NVC0C0_MTHD(mthd);

@@ -549,6 +549,7 @@ can_use_VOP3(opt_ctx& ctx, const aco_ptr<Instruction>& instr)
           instr->opcode != aco_opcode::v_madmk_f16 && instr->opcode != aco_opcode::v_madak_f16 &&
           instr->opcode != aco_opcode::v_fmamk_f32 && instr->opcode != aco_opcode::v_fmaak_f32 &&
           instr->opcode != aco_opcode::v_fmamk_f16 && instr->opcode != aco_opcode::v_fmaak_f16 &&
+          instr->opcode != aco_opcode::v_permlane64_b32 &&
           instr->opcode != aco_opcode::v_readlane_b32 &&
           instr->opcode != aco_opcode::v_writelane_b32 &&
           instr->opcode != aco_opcode::v_readfirstlane_b32;
@@ -631,6 +632,7 @@ can_apply_sgprs(opt_ctx& ctx, aco_ptr<Instruction>& instr)
           instr->opcode != aco_opcode::v_writelane_b32_e64 &&
           instr->opcode != aco_opcode::v_permlane16_b32 &&
           instr->opcode != aco_opcode::v_permlanex16_b32 &&
+          instr->opcode != aco_opcode::v_permlane64_b32 &&
           instr->opcode != aco_opcode::v_interp_p1_f32 &&
           instr->opcode != aco_opcode::v_interp_p2_f32 &&
           instr->opcode != aco_opcode::v_interp_mov_f32 &&
@@ -2020,7 +2022,8 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       break;
    case aco_opcode::s_not_b32:
    case aco_opcode::s_not_b64:
-      if (ctx.info[instr->operands[0].tempId()].is_uniform_bool()) {
+      if (!instr->operands[0].isTemp()) {
+      } else if (ctx.info[instr->operands[0].tempId()].is_uniform_bool()) {
          ctx.info[instr->definitions[0].tempId()].set_uniform_bitwise();
          ctx.info[instr->definitions[1].tempId()].set_scc_invert(
             ctx.info[instr->operands[0].tempId()].temp);

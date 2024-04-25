@@ -20,8 +20,6 @@
 #include "vn_renderer.h"
 #include "vn_ring.h"
 
-#define VN_INSTANCE_RING_SIZE (128 * 1024)
-
 /*
  * Instance extensions add instance-level or physical-device-level
  * functionalities.  It seems renderer support is either unnecessary or
@@ -130,10 +128,17 @@ vn_instance_init_ring(struct vn_instance *instance)
 {
    /* 32-bit seqno for renderer roundtrips */
    static const size_t extra_size = sizeof(uint32_t);
-   struct vn_ring_layout layout;
-   vn_ring_get_layout(VN_INSTANCE_RING_SIZE, extra_size, &layout);
 
-   instance->ring.ring = vn_ring_create(instance, &layout);
+   /* default instance ring size */
+   static const size_t buf_size = 128 * 1024;
+
+   /* order of 4 for performant async cmd enqueue */
+   static const uint8_t direct_order = 4;
+
+   struct vn_ring_layout layout;
+   vn_ring_get_layout(buf_size, extra_size, &layout);
+
+   instance->ring.ring = vn_ring_create(instance, &layout, direct_order);
    if (!instance->ring.ring)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 

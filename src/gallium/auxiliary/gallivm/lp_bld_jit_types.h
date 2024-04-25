@@ -215,10 +215,11 @@ struct lp_texture_functions {
    void **image_functions;
 
    struct lp_static_texture_state state;
-   uint32_t ref_count;
 
    bool sampled;
    bool storage;
+
+   void *matrix;
 };
 
 struct lp_texture_handle {

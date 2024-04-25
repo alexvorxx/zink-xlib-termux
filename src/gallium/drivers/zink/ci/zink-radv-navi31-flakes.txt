@@ -6,6 +6,8 @@ dEQP-GLES31.functional.texture.multisample.samples_4.use_texture_depth_2d_array
 dEQP-GLES31.functional.texture.multisample.samples_8.use_texture_depth_2d
 dEQP-GLES31.functional.texture.multisample.samples_8.use_texture_depth_2d_array
 dEQP-GLES3.functional.transform_feedback.array_element.interleaved.points.lowp_uint
+KHR-GL46.geometry_shader.primitive_counter.points_to_line_strip
+KHR-GL46.geometry_shader.primitive_counter.points_to_line_strip_rp
 glx@glx_arb_sync_control@swapbuffersmsc-divisor-zero
 glx@glx_arb_sync_control@waitformsc
 spec@arb_compute_variable_group_size@execution@basic-local-size
@@ -124,62 +126,41 @@ spec@arb_copy_image@arb_copy_image-formats --samples=4@Source: GL_RGBA8_SNORM/De
 spec@arb_copy_image@arb_copy_image-formats --samples=4@Source: GL_RGBA8_SNORM/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=4@Source: GL_RGBA8_SNORM/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8
-spec@arb_copy_image@arb_copy_image-formats --samples=8
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RG16
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RG16I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_R32F/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RG16I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RG16
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16I/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RG16
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RG16I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16_SNORM/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RG16
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RG16I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG16UI/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG32F/Destination: GL_RG32I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RG32F/Destination: GL_RG32UI
@@ -222,30 +203,21 @@ spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destinat
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RGBA8I
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RGBA8I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RG16
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RG16I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RGBA8
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RGBA8_SNORM
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8I/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RG16
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RG16I
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RG16_SNORM
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RG16UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RGBA8
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RGBA8
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RGBA8I
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RGBA8I
-spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-formats --samples=8@Source: GL_RGBA8_SNORM/Destination: GL_RGBA8UI
 spec@arb_copy_image@arb_copy_image-targets .* 32 32 1 gl_texture_1d 32 1 1 11 23 0 5 0 0 14 1 1
 spec@arb_fragment_shader_interlock@arb_fragment_shader_interlock-image-load-store

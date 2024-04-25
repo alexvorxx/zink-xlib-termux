@@ -906,14 +906,25 @@ void gfx9_get_gs_info(struct si_shader_selector *es, struct si_shader_selector *
    assert(out->max_prims_per_subgroup <= max_out_prims);
 }
 
+static void gfx9_set_gs_sgpr_num_es_outputs(struct si_context *sctx, unsigned esgs_vertex_stride)
+{
+   /* The stride must always be odd (e.g. a multiple of 4 + 1) to reduce LDS bank conflicts. */
+   assert(esgs_vertex_stride % 4 == 1);
+   unsigned num_es_outputs = (esgs_vertex_stride - 1) / 4;
+
+   /* If there are no ES outputs, GS doesn't use this SGPR field, so only set it if the number
+    * is non-zero.
+    */
+   if (num_es_outputs)
+      SET_FIELD(sctx->current_gs_state, GS_STATE_NUM_ES_OUTPUTS, num_es_outputs);
+}
+
 static void si_emit_shader_gs(struct si_context *sctx, unsigned index)
 {
    struct si_shader *shader = sctx->queued.named.gs;
 
-   if (sctx->gfx_level >= GFX9) {
-      SET_FIELD(sctx->current_gs_state, GS_STATE_ESGS_VERTEX_STRIDE,
-                shader->key.ge.part.gs.es->info.esgs_vertex_stride / 4);
-   }
+   if (sctx->gfx_level >= GFX9)
+      gfx9_set_gs_sgpr_num_es_outputs(sctx, shader->key.ge.part.gs.es->info.esgs_vertex_stride / 4);
 
    radeon_begin(&sctx->gfx_cs);
 
@@ -1167,8 +1178,8 @@ static void gfx10_emit_shader_ngg(struct si_context *sctx, unsigned index)
 {
    struct si_shader *shader = sctx->queued.named.gs;
 
-   SET_FIELD(sctx->current_gs_state, GS_STATE_ESGS_VERTEX_STRIDE,
-             shader->ngg.esgs_vertex_stride);
+   if (shader->selector->stage == MESA_SHADER_GEOMETRY)
+      gfx9_set_gs_sgpr_num_es_outputs(sctx, shader->ngg.esgs_vertex_stride);
 
    radeon_begin(&sctx->gfx_cs);
    if (HAS_TESS) {
@@ -1226,8 +1237,8 @@ static void gfx11_dgpu_emit_shader_ngg(struct si_context *sctx, unsigned index)
 {
    struct si_shader *shader = sctx->queued.named.gs;
 
-   SET_FIELD(sctx->current_gs_state, GS_STATE_ESGS_VERTEX_STRIDE,
-             shader->ngg.esgs_vertex_stride);
+   if (shader->selector->stage == MESA_SHADER_GEOMETRY)
+      gfx9_set_gs_sgpr_num_es_outputs(sctx, shader->ngg.esgs_vertex_stride);
 
    radeon_begin(&sctx->gfx_cs);
    gfx11_begin_packed_context_regs();
@@ -2120,14 +2131,14 @@ void si_vs_key_update_inputs(struct si_context *sctx)
    if (vs->info.base.vs.blit_sgprs_amd) {
       si_clear_vs_key_inputs(sctx, key, &key->ge.part.vs.prolog);
       key->ge.opt.prefer_mono = 0;
-      sctx->uses_nontrivial_vs_prolog = false;
+      sctx->uses_nontrivial_vs_inputs = false;
       return;
    }
 
-   bool uses_nontrivial_vs_prolog = false;
+   bool uses_nontrivial_vs_inputs = false;
 
    if (elts->instance_divisor_is_one || elts->instance_divisor_is_fetched)
-      uses_nontrivial_vs_prolog = true;
+      uses_nontrivial_vs_inputs = true;
 
    key->ge.part.vs.prolog.instance_divisor_is_one = elts->instance_divisor_is_one;
    key->ge.part.vs.prolog.instance_divisor_is_fetched = elts->instance_divisor_is_fetched;
@@ -2160,24 +2171,24 @@ void si_vs_key_update_inputs(struct si_context *sctx)
 
       key->ge.mono.vs_fix_fetch[i].bits = fix_fetch;
       if (fix_fetch)
-         uses_nontrivial_vs_prolog = true;
+         uses_nontrivial_vs_inputs = true;
    }
    key->ge.mono.vs_fetch_opencode = opencode;
    if (opencode)
-      uses_nontrivial_vs_prolog = true;
+      uses_nontrivial_vs_inputs = true;
 
-   sctx->uses_nontrivial_vs_prolog = uses_nontrivial_vs_prolog;
+   sctx->uses_nontrivial_vs_inputs = uses_nontrivial_vs_inputs;
 
    /* draw_vertex_state (display lists) requires a trivial VS prolog that ignores
     * the current vertex buffers and vertex elements.
     *
-    * We just computed the prolog key because we needed to set uses_nontrivial_vs_prolog,
+    * We just computed the prolog key because we needed to set uses_nontrivial_vs_inputs,
     * so that we know whether the VS prolog should be updated when we switch from
     * draw_vertex_state to draw_vbo. Now clear the VS prolog for draw_vertex_state.
     * This should happen rarely because the VS prolog should be trivial in most
     * cases.
     */
-   if (uses_nontrivial_vs_prolog && sctx->force_trivial_vs_prolog)
+   if (uses_nontrivial_vs_inputs && sctx->force_trivial_vs_inputs)
       si_clear_vs_key_inputs(sctx, key, &key->ge.part.vs.prolog);
 }
 
@@ -3484,7 +3495,7 @@ static void si_update_rasterized_prim(struct si_context *sctx)
    }
 
    /* This must be done unconditionally because it also depends on si_shader fields. */
-   si_update_ngg_prim_state_sgpr(sctx, hw_vs, sctx->ngg);
+   si_update_ngg_sgpr_state_out_prim(sctx, hw_vs, sctx->ngg);
 }
 
 static void si_update_common_shader_state(struct si_context *sctx, struct si_shader_selector *sel,

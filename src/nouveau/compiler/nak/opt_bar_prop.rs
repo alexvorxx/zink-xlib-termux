@@ -23,8 +23,7 @@ impl PhiMap {
         for (idx, src) in op.srcs.iter() {
             if let SrcRef::SSA(ssa) = &src.src_ref {
                 assert!(ssa.comps() == 1);
-                let phi_srcs =
-                    self.phi_ssa.entry(*idx).or_insert_with(|| Vec::new());
+                let phi_srcs = self.phi_ssa.entry(*idx).or_default();
                 phi_srcs.push(ssa[0]);
             }
         }

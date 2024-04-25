@@ -1507,7 +1507,7 @@ radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer)
       &cmd_buffer->gfx9_fence_idx, cmd_buffer->gfx9_fence_va, radv_cmd_buffer_uses_mec(cmd_buffer),
       cmd_buffer->state.flush_bits, &cmd_buffer->state.sqtt_flush_bits, cmd_buffer->gfx9_eop_bug_va);
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 
    if (cmd_buffer->state.flush_bits & RADV_CMD_FLAG_INV_L2)
@@ -1606,12 +1606,6 @@ radv_cs_emit_cp_dma(struct radv_device *device, struct radeon_cmdbuf *cs, bool p
    /* Sync flags. */
    if (flags & CP_DMA_SYNC)
       header |= S_411_CP_SYNC(1);
-   else {
-      if (device->physical_device->rad_info.gfx_level >= GFX9)
-         command |= S_415_DISABLE_WR_CONFIRM_GFX9(1);
-      else
-         command |= S_415_DISABLE_WR_CONFIRM_GFX6(1);
-   }
 
    if (flags & CP_DMA_RAW_WAIT)
       command |= S_415_RAW_WAIT(1);
@@ -1671,7 +1665,7 @@ radv_emit_cp_dma(struct radv_cmd_buffer *cmd_buffer, uint64_t dst_va, uint64_t s
       cmd_buffer->state.dma_is_busy = false;
    }
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 
@@ -1717,7 +1711,7 @@ radv_cp_dma_prefetch(struct radv_cmd_buffer *cmd_buffer, uint64_t va, unsigned s
 {
    radv_cs_cp_dma_prefetch(cmd_buffer->device, cmd_buffer->cs, va, size, cmd_buffer->state.predicating);
 
-   if (unlikely(cmd_buffer->device->trace_bo))
+   if (radv_device_fault_detection_enabled(cmd_buffer->device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 

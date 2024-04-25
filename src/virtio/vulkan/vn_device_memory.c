@@ -120,7 +120,7 @@ vn_device_memory_pool_grow_alloc(struct vn_device *dev,
    if (!mem)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   vn_object_set_id(mem, (uintptr_t)mem, VK_OBJECT_TYPE_DEVICE_MEMORY);
+   vn_object_set_id(mem, vn_get_next_obj_id(), VK_OBJECT_TYPE_DEVICE_MEMORY);
 
    VkResult result = vn_device_memory_alloc_simple(dev, mem, &alloc_info);
    if (result != VK_SUCCESS)
@@ -544,7 +544,7 @@ vn_device_memory_emit_report(struct vn_device *dev,
                                       .memoryTypes[mem_vk->memory_type_index];
    vn_device_emit_device_memory_report(dev, type, mem_obj_id, mem_vk->size,
                                        VK_OBJECT_TYPE_DEVICE_MEMORY,
-                                       mem->base.id, mem_type->heapIndex);
+                                       (uintptr_t)mem, mem_type->heapIndex);
 }
 
 VkResult
@@ -585,7 +585,7 @@ vn_AllocateMemory(VkDevice device,
    if (!mem)
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   vn_object_set_id(mem, (uintptr_t)mem, VK_OBJECT_TYPE_DEVICE_MEMORY);
+   vn_object_set_id(mem, vn_get_next_obj_id(), VK_OBJECT_TYPE_DEVICE_MEMORY);
 
    VkResult result;
    if (mem->base.base.ahardware_buffer) {

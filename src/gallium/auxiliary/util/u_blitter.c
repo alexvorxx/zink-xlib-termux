@@ -2386,7 +2386,7 @@ void util_blitter_clear_render_target(struct blitter_context *blitter,
 {
    struct blitter_context_priv *ctx = (struct blitter_context_priv*)blitter;
    struct pipe_context *pipe = ctx->base.pipe;
-   struct pipe_framebuffer_state fb_state;
+   struct pipe_framebuffer_state fb_state = { 0 };
    bool msaa;
    unsigned num_layers;
    blitter_get_vs_func get_vs;
@@ -2457,7 +2457,7 @@ void util_blitter_clear_depth_stencil(struct blitter_context *blitter,
 {
    struct blitter_context_priv *ctx = (struct blitter_context_priv*)blitter;
    struct pipe_context *pipe = ctx->base.pipe;
-   struct pipe_framebuffer_state fb_state;
+   struct pipe_framebuffer_state fb_state = { 0 };
    struct pipe_stencil_ref sr = { { 0 } };
    unsigned num_layers;
 
@@ -2537,7 +2537,7 @@ void util_blitter_custom_depth_stencil(struct blitter_context *blitter,
 {
    struct blitter_context_priv *ctx = (struct blitter_context_priv*)blitter;
    struct pipe_context *pipe = ctx->base.pipe;
-   struct pipe_framebuffer_state fb_state;
+   struct pipe_framebuffer_state fb_state = { 0 };
 
    assert(zsurf->texture);
    if (!zsurf->texture)
@@ -2671,7 +2671,7 @@ void util_blitter_custom_resolve_color(struct blitter_context *blitter,
 {
    struct blitter_context_priv *ctx = (struct blitter_context_priv*)blitter;
    struct pipe_context *pipe = ctx->base.pipe;
-   struct pipe_framebuffer_state fb_state;
+   struct pipe_framebuffer_state fb_state = { 0 };
    struct pipe_surface *srcsurf, *dstsurf, surf_tmpl;
 
    util_blitter_set_running_flag(blitter);
@@ -2733,7 +2733,7 @@ void util_blitter_custom_color(struct blitter_context *blitter,
 {
    struct blitter_context_priv *ctx = (struct blitter_context_priv*)blitter;
    struct pipe_context *pipe = ctx->base.pipe;
-   struct pipe_framebuffer_state fb_state;
+   struct pipe_framebuffer_state fb_state = { 0 };
 
    assert(dstsurf->texture);
    if (!dstsurf->texture)

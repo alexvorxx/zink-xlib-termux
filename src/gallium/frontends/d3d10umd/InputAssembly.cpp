@@ -177,7 +177,7 @@ IaSetVertexBuffers(D3D10DDI_HDEVICE hDevice,                                    
 
    /* Resubmit old and new vertex buffers.
     */
-   cso_set_vertex_buffers(pDevice->cso, PIPE_MAX_ATTRIBS, 0, false, pDevice->vertex_buffers);
+   cso_set_vertex_buffers(pDevice->cso, PIPE_MAX_ATTRIBS, false, pDevice->vertex_buffers);
    pDevice->velems_changed = true;
 }
 

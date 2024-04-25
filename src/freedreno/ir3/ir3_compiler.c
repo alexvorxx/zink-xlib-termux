@@ -47,6 +47,8 @@ static const struct debug_named_value shader_debug_options[] = {
    {"nocache",    IR3_DBG_NOCACHE,    "Disable shader cache"},
    {"spillall",   IR3_DBG_SPILLALL,   "Spill as much as possible to test the spiller"},
    {"nopreamble", IR3_DBG_NOPREAMBLE, "Disable the preamble pass"},
+   {"fullsync",   IR3_DBG_FULLSYNC,   "Add (sy) + (ss) after each cat5/cat6"},
+   {"fullnop",    IR3_DBG_FULLNOP,    "Add nops before each instruction"},
 #ifdef DEBUG
    /* DEBUG-only options: */
    {"schedmsgs",  IR3_DBG_SCHEDMSGS,  "Enable scheduler debug messages"},
@@ -109,7 +111,6 @@ static const nir_shader_compiler_options ir3_base_options = {
    .lower_unpack_unorm_2x16 = true,
    .lower_pack_split = true,
    .use_interpolated_input_intrinsics = true,
-   .lower_rotate = true,
    .lower_to_scalar = true,
    .has_imul24 = true,
    .has_fsub = true,
@@ -134,7 +135,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
 
    ir3_shader_debug = debug_get_option_ir3_shader_debug();
    ir3_shader_override_path =
-      !__check_suid() ? debug_get_option_ir3_shader_override_path() : NULL;
+      __normal_user() ? debug_get_option_ir3_shader_override_path() : NULL;
 
    if (ir3_shader_override_path) {
       ir3_shader_debug |= IR3_DBG_NOCACHE;

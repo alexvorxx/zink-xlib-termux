@@ -437,7 +437,7 @@ vk_to_grl_IndexFormat(VkIndexType type)
 {
    switch (type) {
    case VK_INDEX_TYPE_NONE_KHR:  return INDEX_FORMAT_NONE;
-   case VK_INDEX_TYPE_UINT8_EXT: unreachable("No UINT8 support yet");
+   case VK_INDEX_TYPE_UINT8_KHR: unreachable("No UINT8 support yet");
    case VK_INDEX_TYPE_UINT16:    return INDEX_FORMAT_R16_UINT;
    case VK_INDEX_TYPE_UINT32:    return INDEX_FORMAT_R32_UINT;
    default:

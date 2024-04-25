@@ -339,14 +339,6 @@ static intptr_t readlink(const char *path, char *buf, size_t bufsiz)
 
 #define CIK_TILE_MODE_COLOR_2D 14
 
-static bool has_syncobj(int fd)
-{
-   uint64_t value;
-   if (drmGetCap(fd, DRM_CAP_SYNCOBJ, &value))
-      return false;
-   return value ? true : false;
-}
-
 static bool has_timeline_syncobj(int fd)
 {
    uint64_t value;
@@ -628,6 +620,13 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       fprintf(stderr, "amdgpu: DRM version is %u.%u.%u, but this driver is "
                       "only compatible with 3.27.0 (kernel 4.20+) or later.\n",
               info->drm_major, info->drm_minor, info->drm_patchlevel);
+      return false;
+   }
+
+   uint64_t cap;
+   r = drmGetCap(fd, DRM_CAP_SYNCOBJ, &cap);
+   if (r != 0 || cap == 0) {
+      fprintf(stderr, "amdgpu: syncobj support is missing but is required.\n");
       return false;
    }
 
@@ -1013,9 +1012,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->memory_freq_mhz_effective *= ac_memory_ops_per_clock(info->vram_type);
 
    info->has_userptr = true;
-   info->has_syncobj = has_syncobj(fd);
    info->has_timeline_syncobj = has_timeline_syncobj(fd);
-   info->has_fence_to_handle = info->has_syncobj;
    info->has_local_buffers = true;
    info->has_bo_metadata = true;
    info->has_eqaa_surface_allocator = info->gfx_level < GFX11;
@@ -1254,6 +1251,11 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
     */
    info->has_async_compute_threadgroup_bug = info->family == CHIP_ICELAND ||
                                              info->family == CHIP_TONGA;
+
+   /* GFX7 CP requires 32 bytes alignment for the indirect buffer arguments on
+    * the compute queue.
+    */
+   info->has_async_compute_align32_bug = info->gfx_level == GFX7;
 
    /* Support for GFX10.3 was added with F32_ME_FEATURE_VERSION_31 but the
     * feature version wasn't bumped.
@@ -1817,9 +1819,7 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
    fprintf(f, "Kernel & winsys capabilities:\n");
    fprintf(f, "    drm = %i.%i.%i\n", info->drm_major, info->drm_minor, info->drm_patchlevel);
    fprintf(f, "    has_userptr = %i\n", info->has_userptr);
-   fprintf(f, "    has_syncobj = %u\n", info->has_syncobj);
    fprintf(f, "    has_timeline_syncobj = %u\n", info->has_timeline_syncobj);
-   fprintf(f, "    has_fence_to_handle = %u\n", info->has_fence_to_handle);
    fprintf(f, "    has_local_buffers = %u\n", info->has_local_buffers);
    fprintf(f, "    has_bo_metadata = %u\n", info->has_bo_metadata);
    fprintf(f, "    has_eqaa_surface_allocator = %u\n", info->has_eqaa_surface_allocator);

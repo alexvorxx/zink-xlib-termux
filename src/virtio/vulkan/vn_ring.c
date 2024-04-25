@@ -40,6 +40,11 @@ struct vn_ring {
     */
    mtx_t mutex;
 
+   /* size limit for cmd submission via ring shmem, derived from
+    * (buffer_size >> direct_order) upon vn_ring_create
+    */
+   uint32_t direct_size;
+
    /* used for indirect submission of large command (non-VkCommandBuffer) */
    struct vn_cs_encoder upload;
 
@@ -251,7 +256,8 @@ vn_ring_get_layout(size_t buf_size,
 
 struct vn_ring *
 vn_ring_create(struct vn_instance *instance,
-               const struct vn_ring_layout *layout)
+               const struct vn_ring_layout *layout,
+               uint8_t direct_order)
 {
    VN_TRACE_FUNC();
 
@@ -288,6 +294,9 @@ vn_ring_create(struct vn_instance *instance,
    ring->shared.extra = shared + layout->extra_offset;
 
    mtx_init(&ring->mutex, mtx_plain);
+
+   ring->direct_size = layout->buffer_size >> direct_order;
+   assert(ring->direct_size);
 
    vn_cs_encoder_init(&ring->upload, instance,
                       VN_CS_ENCODER_STORAGE_SHMEM_ARRAY, 1 * 1024 * 1024);
@@ -346,6 +355,7 @@ vn_ring_destroy(struct vn_ring *ring)
       vk_free(alloc, submit);
 
    vn_cs_encoder_fini(&ring->upload);
+   vn_renderer_shmem_unref(ring->instance->renderer, ring->shmem);
 
    mtx_destroy(&ring->mutex);
 
@@ -528,7 +538,7 @@ static inline bool
 vn_ring_submission_can_direct(const struct vn_ring *ring,
                               const struct vn_cs_encoder *cs)
 {
-   return vn_cs_encoder_get_len(cs) <= (ring->buffer_size >> 4);
+   return vn_cs_encoder_get_len(cs) <= ring->direct_size;
 }
 
 static struct vn_cs_encoder *

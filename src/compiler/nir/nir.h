@@ -1668,6 +1668,12 @@ typedef struct {
    nir_def def;
 } nir_deref_instr;
 
+/**
+ * Returns true if the cast is trivial, i.e. the source and destination type is
+ * the same.
+ */
+bool nir_deref_cast_is_trivial(nir_deref_instr *cast);
+
 /** Returns true if deref might have one of the given modes
  *
  * For multi-mode derefs, this returns true if any of the possible modes for
@@ -3838,8 +3844,10 @@ typedef struct nir_shader_compiler_options {
    /* Lowers when 32x32->64 bit multiplication is not supported */
    bool lower_mul_2x32_64;
 
-   /* Lowers when rotate instruction is not supported */
-   bool lower_rotate;
+   /* Indicates that urol and uror are supported */
+   bool has_rotate8;
+   bool has_rotate16;
+   bool has_rotate32;
 
    /** Backend supports ternary addition */
    bool has_iadd3;
@@ -5635,6 +5643,7 @@ typedef struct nir_lower_subgroups_options {
    bool lower_ballot_bit_count_to_mbcnt_amd : 1;
    bool lower_inverse_ballot : 1;
    bool lower_boolean_reduce : 1;
+   bool lower_boolean_shuffle : 1;
 } nir_lower_subgroups_options;
 
 bool nir_lower_subgroups(nir_shader *shader,
@@ -6243,7 +6252,6 @@ bool nir_lower_ssbo(nir_shader *shader);
 bool nir_lower_helper_writes(nir_shader *shader, bool lower_plain_stores);
 
 typedef struct nir_lower_printf_options {
-   bool treat_doubles_as_floats : 1;
    unsigned max_buffer_size;
 } nir_lower_printf_options;
 

@@ -31,6 +31,8 @@
 #include "vk_semaphore.h"
 #include "vk_sync.h"
 
+#include "ac_debug.h"
+
 enum radeon_ctx_priority
 radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *pObj)
 {
@@ -981,8 +983,10 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
 
    if (descriptor_bo != queue->descriptor_bo) {
       uint32_t *map = (uint32_t *)ws->buffer_map(descriptor_bo);
-      if (!map)
+      if (!map) {
+         result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
          goto fail;
+      }
 
       radv_fill_shader_rings(device, map, scratch_bo, needs->esgs_ring_size, esgs_ring_bo, needs->gsvs_ring_size,
                              gsvs_ring_bo, tess_rings_bo, task_rings_bo, mesh_scratch_ring_bo, needs->attr_ring_size,
@@ -1506,14 +1510,14 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
    }
 
    const unsigned cmd_buffer_count = submission->command_buffer_count;
-   const unsigned max_cs_submission = queue->device->trace_bo ? 1 : cmd_buffer_count;
+   const unsigned max_cs_submission = radv_device_fault_detection_enabled(queue->device) ? 1 : cmd_buffer_count;
    const unsigned cs_array_size = (use_ace ? 2 : 1) * MIN2(max_cs_submission, cmd_buffer_count);
 
    struct radeon_cmdbuf **cs_array = malloc(sizeof(struct radeon_cmdbuf *) * cs_array_size);
    if (!cs_array)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   if (queue->device->trace_bo)
+   if (radv_device_fault_detection_enabled(queue->device))
       simple_mtx_lock(&queue->device->trace_mtx);
 
    for (uint32_t j = 0; j < submission->command_buffer_count; j++) {
@@ -1612,7 +1616,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
       bool submit_ace = false;
       unsigned num_submitted_cs = 0;
 
-      if (queue->device->trace_bo)
+      if (radv_device_fault_detection_enabled(queue->device))
          *queue->device->trace_id_ptr = 0;
 
       struct radeon_cmdbuf *chainable = NULL;
@@ -1641,8 +1645,11 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
          }
 
          queue->device->ws->cs_unchain(cmd_buffer->cs);
-         if (!chainable || !queue->device->ws->cs_chain(chainable, cmd_buffer->cs, queue->state.uses_shadow_regs))
-            cs_array[num_submitted_cs++] = cmd_buffer->cs;
+         if (!chainable || !queue->device->ws->cs_chain(chainable, cmd_buffer->cs, queue->state.uses_shadow_regs)) {
+            /* don't submit empty command buffers to the kernel. */
+            if (radv_queue_ring(queue) != AMD_IP_VCN_ENC || cmd_buffer->cs->cdw != 0)
+               cs_array[num_submitted_cs++] = cmd_buffer->cs;
+         }
 
          chainable = can_chain_next ? cmd_buffer->cs : NULL;
       }
@@ -1658,7 +1665,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
       if (result != VK_SUCCESS)
          goto fail;
 
-      if (queue->device->trace_bo) {
+      if (radv_device_fault_detection_enabled(queue->device)) {
          radv_check_gpu_hangs(queue, &submit);
       }
 
@@ -1672,14 +1679,28 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
 
    queue->last_shader_upload_seq = MAX2(queue->last_shader_upload_seq, shader_upload_seq);
 
+   radv_dump_printf_data(queue->device);
+
 fail:
    free(cs_array);
    if (waits != submission->waits)
       free(waits);
-   if (queue->device->trace_bo)
+   if (radv_device_fault_detection_enabled(queue->device))
       simple_mtx_unlock(&queue->device->trace_mtx);
 
    return result;
+}
+
+static void
+radv_report_gpuvm_fault(struct radv_device *device)
+{
+   struct radv_winsys_gpuvm_fault_info fault_info = {0};
+
+   if (!radv_vm_fault_occurred(device, &fault_info))
+      return;
+
+   fprintf(stderr, "radv: GPUVM fault detected at address 0x%08" PRIx64 ".\n", fault_info.addr);
+   ac_print_gpuvm_fault_status(stderr, device->physical_device->rad_info.gfx_level, fault_info.status);
 }
 
 static VkResult
@@ -1709,7 +1730,7 @@ radv_queue_sparse_submit(struct vk_queue *vqueue, struct vk_queue_submit *submis
    }
 
 fail:
-   if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST) {
+   if (result != VK_SUCCESS) {
       /* When something bad happened during the submission, such as
        * an out of memory issue, it might be hard to recover from
        * this inconsistent state. To avoid this sort of problem, we
@@ -1717,6 +1738,7 @@ fail:
        * VK_ERROR_DEVICE_LOST to ensure the clients do not attempt
        * to submit the same job again to this device.
        */
+      radv_report_gpuvm_fault(queue->device);
       result = vk_device_set_lost(&queue->device->vk, "vkQueueSubmit() failed");
    }
    return result;
@@ -1746,7 +1768,7 @@ radv_queue_submit(struct vk_queue *vqueue, struct vk_queue_submit *submission)
    }
 
 fail:
-   if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST) {
+   if (result != VK_SUCCESS) {
       /* When something bad happened during the submission, such as
        * an out of memory issue, it might be hard to recover from
        * this inconsistent state. To avoid this sort of problem, we
@@ -1754,6 +1776,7 @@ fail:
        * VK_ERROR_DEVICE_LOST to ensure the clients do not attempt
        * to submit the same job again to this device.
        */
+      radv_report_gpuvm_fault(queue->device);
       result = vk_device_set_lost(&queue->device->vk, "vkQueueSubmit() failed");
    }
    return result;

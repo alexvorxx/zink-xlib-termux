@@ -222,7 +222,8 @@ panfrost_get_blend(struct panfrost_batch *batch, unsigned rti,
    pthread_mutex_lock(&dev->blend_shaders.lock);
    struct pan_blend_shader_variant *shader =
       pan_screen(ctx->base.screen)
-         ->vtbl.get_blend_shader(dev, &pan_blend, col0_type, col1_type, rti);
+         ->vtbl.get_blend_shader(&dev->blend_shaders, &pan_blend, col0_type,
+                                 col1_type, rti);
 
    /* Size check and upload */
    unsigned offset = *shader_offset;
@@ -283,7 +284,7 @@ panfrost_set_shader_images(struct pipe_context *pctx,
        */
       if (drm_is_afbc(rsrc->image.layout.modifier)) {
          pan_resource_modifier_convert(
-            ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED,
+            ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, true,
             "Shader image");
       }
 
@@ -683,10 +684,10 @@ panfrost_get_query_result(struct pipe_context *pipe, struct pipe_query *q,
    case PIPE_QUERY_OCCLUSION_PREDICATE:
    case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
       panfrost_flush_writer(ctx, rsrc, "Occlusion query");
-      panfrost_bo_wait(rsrc->image.data.bo, INT64_MAX, false);
+      panfrost_bo_wait(rsrc->bo, INT64_MAX, false);
 
       /* Read back the query results */
-      uint64_t *result = (uint64_t *)rsrc->image.data.bo->ptr.cpu;
+      uint64_t *result = (uint64_t *)rsrc->bo->ptr.cpu;
 
       if (query->type == PIPE_QUERY_OCCLUSION_COUNTER) {
          uint64_t passed = 0;
@@ -828,7 +829,7 @@ panfrost_set_global_binding(struct pipe_context *pctx, unsigned first,
       static_assert(sizeof(addr) == 8, "size out of sync");
 
       memcpy(&addr, handles[i], sizeof(addr));
-      addr += rsrc->image.data.bo->ptr.gpu;
+      addr += rsrc->image.data.base;
 
       memcpy(handles[i], &addr, sizeof(addr));
    }

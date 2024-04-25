@@ -52,6 +52,7 @@
 #include "util/u_thread.h"
 #include "util/perf/u_trace.h"
 #include "util/u_cpu_detect.h"
+#include "util/thread_sched.h"
 #include "util/strndup.h"
 #include "nir.h"
 #include "nir_builder.h"
@@ -176,6 +177,7 @@ zink_context_destroy(struct pipe_context *pctx)
    while (bs) {
       struct zink_batch_state *bs_next = bs->next;
       zink_clear_batch_state(ctx, bs);
+      bs->ctx = NULL;
       /* restore link as we insert them into the screens free_batch_states
        * list below
        */
@@ -343,11 +345,10 @@ zink_set_context_param(struct pipe_context *pctx, enum pipe_context_param param,
    struct zink_screen *screen = zink_screen(ctx->base.screen);
 
    switch (param) {
-   case PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE:
+   case PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING:
       if (screen->threaded_submit)
-         util_set_thread_affinity(screen->flush_queue.threads[0],
-                                 util_get_cpu_caps()->L3_affinity_mask[value],
-                                 NULL, util_get_cpu_caps()->num_cpu_mask_bits);
+         util_thread_sched_apply_policy(screen->flush_queue.threads[0],
+                                        UTIL_THREAD_DRIVER_SUBMIT, value, NULL);
       break;
    default:
       break;
@@ -2420,7 +2421,7 @@ zink_create_image_handle(struct pipe_context *pctx, const struct pipe_image_view
       debug_printf("couldn't create storage image!");
       return 0;
    }
-   bd = malloc(sizeof(struct zink_bindless_descriptor));
+   bd = calloc(1, sizeof(struct zink_bindless_descriptor));
    if (!bd)
       return 0;
    bd->sampler = NULL;

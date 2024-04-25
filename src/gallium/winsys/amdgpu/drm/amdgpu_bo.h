@@ -251,19 +251,32 @@ struct pb_slab *amdgpu_bo_slab_alloc(void *priv, unsigned heap, unsigned entry_s
 void amdgpu_bo_slab_free(struct amdgpu_winsys *ws, struct pb_slab *slab);
 uint64_t amdgpu_bo_get_va(struct pb_buffer_lean *buf);
 
-static inline
-struct amdgpu_winsys_bo *amdgpu_winsys_bo(struct pb_buffer_lean *bo)
+static inline struct amdgpu_winsys_bo *
+amdgpu_winsys_bo(struct pb_buffer_lean *bo)
 {
    return (struct amdgpu_winsys_bo *)bo;
 }
 
-static inline
-void amdgpu_winsys_bo_reference(struct amdgpu_winsys *ws,
-                                struct amdgpu_winsys_bo **dst,
-                                struct amdgpu_winsys_bo *src)
+static inline void
+amdgpu_winsys_bo_reference(struct amdgpu_winsys *ws, struct amdgpu_winsys_bo **dst,
+                           struct amdgpu_winsys_bo *src)
 {
    radeon_bo_reference(&ws->dummy_ws.base,
                        (struct pb_buffer_lean**)dst, (struct pb_buffer_lean*)src);
+}
+
+/* Same as amdgpu_winsys_bo_reference, but ignore the value in *dst. */
+static inline void
+amdgpu_winsys_bo_set_reference(struct amdgpu_winsys_bo **dst, struct amdgpu_winsys_bo *src)
+{
+   radeon_bo_set_reference((struct pb_buffer_lean**)dst, (struct pb_buffer_lean*)src);
+}
+
+/* Unreference dst, but don't assign anything. */
+static inline void
+amdgpu_winsys_bo_drop_reference(struct amdgpu_winsys *ws, struct amdgpu_winsys_bo *dst)
+{
+   radeon_bo_drop_reference(&ws->dummy_ws.base, &dst->base);
 }
 
 #endif

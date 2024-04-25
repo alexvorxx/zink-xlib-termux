@@ -1322,6 +1322,15 @@ struct brw_push_const_block {
    unsigned size;       /* Bytes, register aligned */
 };
 
+enum PACKED brw_compute_walk_order {
+   BRW_WALK_ORDER_XYZ = 0,
+   BRW_WALK_ORDER_XZY = 1,
+   BRW_WALK_ORDER_YXZ = 2,
+   BRW_WALK_ORDER_YZX = 3,
+   BRW_WALK_ORDER_ZXY = 4,
+   BRW_WALK_ORDER_ZYX = 5,
+};
+
 struct brw_cs_prog_data {
    struct brw_stage_prog_data base;
 
@@ -1344,6 +1353,8 @@ struct brw_cs_prog_data {
    bool uses_inline_data;
    bool uses_btd_stack_ids;
    bool uses_systolic;
+   uint8_t generate_local_id;
+   enum brw_compute_walk_order walk_order;
 
    struct {
       struct brw_push_const_block cross_thread;

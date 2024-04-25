@@ -492,7 +492,8 @@ blorp_measure_end(struct blorp_batch *blorp_batch,
                          params->num_samples,
                          params->shader_pipeline,
                          params->dst.view.format,
-                         params->src.view.format);
+                         params->src.view.format,
+                         (blorp_batch->flags & BLORP_BATCH_PREDICATE_ENABLE));
 }
 
 void

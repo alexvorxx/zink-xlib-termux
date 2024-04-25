@@ -52,7 +52,7 @@ struct SSAUseMap {
 
 impl SSAUseMap {
     fn add_fixed_reg_use(&mut self, ip: usize, ssa: SSAValue, reg: u32) {
-        let v = self.ssa_map.entry(ssa).or_insert_with(|| Vec::new());
+        let v = self.ssa_map.entry(ssa).or_default();
         v.push((ip, SSAUse::FixedReg(reg)));
     }
 
@@ -62,7 +62,7 @@ impl SSAUseMap {
         }
 
         for ssa in vec.iter() {
-            let v = self.ssa_map.entry(*ssa).or_insert_with(|| Vec::new());
+            let v = self.ssa_map.entry(*ssa).or_default();
             v.push((ip, SSAUse::Vec(vec)));
         }
     }
@@ -409,8 +409,6 @@ impl<'a> PinnedRegAllocator<'a> {
         align: u32,
         comps: u8,
     ) -> Option<u32> {
-        let align = align;
-
         let mut next_reg = start_reg;
         loop {
             let reg: u32 = self
@@ -714,8 +712,7 @@ fn instr_assign_regs_file(
     let mut vec_dsts_map_to_killed_srcs = true;
     let mut could_trivially_allocate = true;
     for vec_dst in vec_dsts.iter_mut().rev() {
-        while !killed_vecs.is_empty() {
-            let src = killed_vecs.pop().unwrap();
+        while let Some(src) = killed_vecs.pop() {
             if src.comps() >= vec_dst.comps {
                 vec_dst.killed = Some(src);
                 break;
@@ -1205,11 +1202,8 @@ impl Shader {
                 live = SimpleLiveness::for_function(f);
                 max_live = live.calc_max_live(f);
 
-                match file {
-                    RegFile::Bar => {
-                        tmp_gprs = max(tmp_gprs, 2);
-                    }
-                    _ => (),
+                if file == RegFile::Bar {
+                    tmp_gprs = max(tmp_gprs, 2);
                 }
             }
         }

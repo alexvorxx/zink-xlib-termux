@@ -75,6 +75,13 @@
 
 #define dzn_stub() unreachable("Unsupported feature")
 
+#if defined(VK_USE_PLATFORM_WIN32_KHR) || \
+    defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
+    defined(VK_USE_PLATFORM_XCB_KHR) || \
+    defined(VK_USE_PLATFORM_XLIB_KHR)
+#define DZN_USE_WSI_PLATFORM
+#endif
+
 struct dxil_validator;
 struct util_dl_library;
 
@@ -152,7 +159,8 @@ struct dzn_meta_blit_key {
          uint32_t src_is_array : 1;
          uint32_t resolve_mode : 3;
          uint32_t linear_filter : 1;
-         uint32_t padding : 9;
+         uint32_t stencil_bit : 4;
+         uint32_t padding : 5;
       };
       const uint64_t u64;
    };
@@ -1246,6 +1254,7 @@ enum dzn_debug_flags {
    DZN_DEBUG_REDIRECTS = 1 << 9,
    DZN_DEBUG_BINDLESS = 1 << 10,
    DZN_DEBUG_NO_BINDLESS = 1 << 11,
+   DZN_DEBUG_EXPERIMENTAL = 1 << 12,
 };
 
 struct dzn_instance {

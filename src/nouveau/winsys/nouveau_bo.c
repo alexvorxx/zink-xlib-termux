@@ -63,6 +63,10 @@ nouveau_ws_alloc_vma(struct nouveau_ws_device *dev,
 {
    assert(dev->has_vm_bind);
 
+   /* if the caller doesn't care, use the GPU page size */
+   if (align == 0)
+      align = 0x1000;
+
    uint64_t offset;
    simple_mtx_lock(&dev->vma_mutex);
    if (bda_capture_replay) {

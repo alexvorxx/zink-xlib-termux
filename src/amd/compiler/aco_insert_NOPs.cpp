@@ -1397,13 +1397,13 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
    if (instr->isVOPC() && instr->definitions[0].physReg() == exec) {
       ctx.has_Vcmpx = true;
    } else if (ctx.has_Vcmpx && (instr->opcode == aco_opcode::v_permlane16_b32 ||
-                                instr->opcode == aco_opcode::v_permlanex16_b32)) {
+                                instr->opcode == aco_opcode::v_permlanex16_b32 ||
+                                instr->opcode == aco_opcode::v_permlane64_b32)) {
       ctx.has_Vcmpx = false;
 
-      /* v_nop would be discarded by SQ, so use v_mov with the first operand of the permlane */
-      bld.vop1(aco_opcode::v_mov_b32, Definition(instr->operands[0].physReg(), v1),
-               Operand(instr->operands[0].physReg(), v1));
-   } else if (instr->isVALU() && instr->opcode != aco_opcode::v_nop) {
+      /* Unlike on GFX10, v_nop should resolve the hazard on GFX11. */
+      bld.vop1(aco_opcode::v_nop);
+   } else if (instr->isVALU()) {
       ctx.has_Vcmpx = false;
    }
 
@@ -1612,7 +1612,7 @@ resolve_all_gfx11(State& state, NOP_ctx_gfx11& ctx,
    /* VcmpxPermlaneHazard */
    if (ctx.has_Vcmpx) {
       ctx.has_Vcmpx = false;
-      bld.vop1(aco_opcode::v_mov_b32, Definition(PhysReg(256), v1), Operand(PhysReg(256), v1));
+      bld.vop1(aco_opcode::v_nop);
    }
 
    /* VALUMaskWriteHazard */

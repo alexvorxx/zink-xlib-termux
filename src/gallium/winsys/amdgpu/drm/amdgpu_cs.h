@@ -16,7 +16,7 @@
  * waiting for buffers and fences. Proof:
  *   http://www.phoronix.com/scan.php?page=article&item=mesa-111-si&num=1
  */
-#define IB_MAX_SUBMIT_DWORDS (20 * 1024)
+#define IB_MAX_SUBMIT_BYTES (80 * 1024)
 
 struct amdgpu_ctx {
    struct pipe_reference reference;
@@ -59,7 +59,7 @@ struct amdgpu_ib {
     */
    unsigned                max_check_space_size;
 
-   unsigned                max_ib_size_dw;
+   unsigned                max_ib_bytes;
    /* ptr_ib_size initially points to cs->csc->chunk_ib->ib_bytes.
     * If in amdgpu_cs_check_space() ib chaining is required, then ptr_ib_size will point
     * to indirect buffer packet size field.
@@ -94,7 +94,7 @@ struct amdgpu_cs_context {
    unsigned                    last_added_bo_usage;
 
    struct amdgpu_seq_no_fences seq_no_dependencies;
-   struct amdgpu_fence_list    fence_dependencies;
+
    struct amdgpu_fence_list    syncobj_dependencies;
    struct amdgpu_fence_list    syncobj_to_signal;
 
@@ -154,13 +154,15 @@ struct amdgpu_cs {
 
 struct amdgpu_fence {
    struct pipe_reference reference;
-   /* If ctx == NULL, this fence is syncobj-based. */
    uint32_t syncobj;
 
    struct amdgpu_winsys *ws;
+
+   /* The following field aren't set for imported fences. */
    struct amdgpu_ctx *ctx;  /* submission context */
-   struct amdgpu_cs_fence fence;
+   uint32_t ip_type;
    uint64_t *user_fence_cpu_address;
+   uint64_t seq_no;
 
    /* If the fence has been submitted. This is unsignalled for deferred fences
     * (cs->next_fence) and while an IB is still being submitted in the submit
@@ -172,6 +174,8 @@ struct amdgpu_fence {
    uint8_t queue_index;       /* for non-imported fences */
    uint_seq_no queue_seq_no;  /* winsys-generated sequence number */
 };
+
+void amdgpu_fence_destroy(struct amdgpu_fence *fence);
 
 static inline bool amdgpu_fence_is_syncobj(struct amdgpu_fence *fence)
 {
@@ -197,18 +201,27 @@ static inline void amdgpu_fence_reference(struct pipe_fence_handle **dst,
    struct amdgpu_fence **adst = (struct amdgpu_fence **)dst;
    struct amdgpu_fence *asrc = (struct amdgpu_fence *)src;
 
-   if (pipe_reference(&(*adst)->reference, &asrc->reference)) {
-      struct amdgpu_fence *fence = *adst;
+   if (pipe_reference(&(*adst)->reference, &asrc->reference))
+      amdgpu_fence_destroy(*adst);
 
-      if (amdgpu_fence_is_syncobj(fence))
-         amdgpu_cs_destroy_syncobj(fence->ws->dev, fence->syncobj);
-      else
-         amdgpu_ctx_reference(&fence->ctx, NULL);
-
-      util_queue_fence_destroy(&fence->submitted);
-      FREE(fence);
-   }
    *adst = asrc;
+}
+
+/* Same as amdgpu_fence_reference, but ignore the value in *dst. */
+static inline void amdgpu_fence_set_reference(struct pipe_fence_handle **dst,
+                                              struct pipe_fence_handle *src)
+{
+   *dst = src;
+   pipe_reference(NULL, &((struct amdgpu_fence *)src)->reference); /* only increment refcount */
+}
+
+/* Unreference dst, but don't assign anything. */
+static inline void amdgpu_fence_drop_reference(struct pipe_fence_handle *dst)
+{
+   struct amdgpu_fence *adst = (struct amdgpu_fence *)dst;
+
+   if (pipe_reference(&adst->reference, NULL)) /* only decrement refcount */
+      amdgpu_fence_destroy(adst);
 }
 
 struct amdgpu_cs_buffer *

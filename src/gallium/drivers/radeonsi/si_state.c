@@ -1330,7 +1330,7 @@ static void si_bind_rs_state(struct pipe_context *ctx, void *state)
       si_update_vrs_flat_shading(sctx);
 
    if (old_rs->flatshade_first != rs->flatshade_first)
-      si_update_ngg_prim_state_sgpr(sctx, si_get_vs(sctx)->current, sctx->ngg);
+      si_update_ngg_sgpr_state_provoking_vtx(sctx, si_get_vs(sctx)->current, sctx->ngg);
 }
 
 static void si_delete_rs_state(struct pipe_context *ctx, void *state)
@@ -1688,24 +1688,22 @@ static void si_emit_db_render_state(struct si_context *sctx, unsigned index)
    }
 
    if (sctx->gfx_level >= GFX11) {
-      unsigned max_allowed_tiles_in_wave = 0;
+      unsigned max_allowed_tiles_in_wave;
 
       if (sctx->screen->info.has_dedicated_vram) {
          if (sctx->framebuffer.nr_samples == 8)
-            max_allowed_tiles_in_wave = 7;
+            max_allowed_tiles_in_wave = 6;
          else if (sctx->framebuffer.nr_samples == 4)
-            max_allowed_tiles_in_wave = 14;
+            max_allowed_tiles_in_wave = 13;
+         else
+            max_allowed_tiles_in_wave = 0;
       } else {
          if (sctx->framebuffer.nr_samples == 8)
-            max_allowed_tiles_in_wave = 8;
-      }
-
-      /* TODO: We may want to disable this workaround for future chips. */
-      if (sctx->framebuffer.nr_samples >= 4) {
-         if (max_allowed_tiles_in_wave)
-            max_allowed_tiles_in_wave--;
-         else
+            max_allowed_tiles_in_wave = 7;
+         else if (sctx->framebuffer.nr_samples == 4)
             max_allowed_tiles_in_wave = 15;
+         else
+            max_allowed_tiles_in_wave = 0;
       }
 
       db_render_control |= S_028000_MAX_ALLOWED_TILES_IN_WAVE(max_allowed_tiles_in_wave);

@@ -115,6 +115,7 @@
 #include "shader_info.h"
 #include "ac_binary.h"
 #include "ac_gpu_info.h"
+#include "util/mesa-sha1.h"
 #include "util/u_live_shader_cache.h"
 #include "util/u_queue.h"
 #include "si_pm4.h"
@@ -252,8 +253,12 @@ enum
  * in the shader via vs_state_bits in legacy GS, the GS copy shader, and any NGG shader.
  */
 /* bit gap */
-#define GS_STATE_ESGS_VERTEX_STRIDE__SHIFT      10
-#define GS_STATE_ESGS_VERTEX_STRIDE__MASK       0xff /* max 32 * 4 + 1 */
+/* The number of ES outputs is derived from the last output index of SI_UNIQUE_SLOT_* + 1, which
+ * can be 55 at most. The ESGS vertex stride in dwords is: NUM_ES_OUTPUTS * 4 + 1
+ * Only used by GFX9+ to compute LDS addresses of GS inputs.
+ */
+#define GS_STATE_NUM_ES_OUTPUTS__SHIFT          13
+#define GS_STATE_NUM_ES_OUTPUTS__MASK           0x3f
 /* Small prim filter precision = num_samples / quant_mode, which can only be equal to 1/2^n
  * where n is between 4 and 12. Knowing that, we only need to store 4 bits of the FP32 exponent.
  * Set it like this: value = (fui(num_samples / quant_mode) >> 23) & 0xf;
@@ -261,14 +266,14 @@ enum
  * With 0x70 = 112, we get 2^(112 + value - 127) = 2^(value - 15), which is always a negative
  * exponent and it's equal to 1/2^(15 - value).
  */
-#define GS_STATE_SMALL_PRIM_PRECISION_NO_AA__SHIFT 18
+#define GS_STATE_SMALL_PRIM_PRECISION_NO_AA__SHIFT 19
 #define GS_STATE_SMALL_PRIM_PRECISION_NO_AA__MASK  0xf
-#define GS_STATE_SMALL_PRIM_PRECISION__SHIFT    22
+#define GS_STATE_SMALL_PRIM_PRECISION__SHIFT    23
 #define GS_STATE_SMALL_PRIM_PRECISION__MASK     0xf
-#define GS_STATE_STREAMOUT_QUERY_ENABLED__SHIFT 26
+#define GS_STATE_STREAMOUT_QUERY_ENABLED__SHIFT 27
 #define GS_STATE_STREAMOUT_QUERY_ENABLED__MASK  0x1
-#define GS_STATE_PROVOKING_VTX_INDEX__SHIFT     27
-#define GS_STATE_PROVOKING_VTX_INDEX__MASK      0x3
+#define GS_STATE_PROVOKING_VTX_FIRST__SHIFT     28
+#define GS_STATE_PROVOKING_VTX_FIRST__MASK      0x1
 #define GS_STATE_OUTPRIM__SHIFT                 29
 #define GS_STATE_OUTPRIM__MASK                  0x3
 #define GS_STATE_PIPELINE_STATS_EMU__SHIFT      31
@@ -305,6 +310,14 @@ enum
 #define SI_NGG_CULL_SMALL_LINES_DIAMOND_EXIT (1 << 4)   /* cull small lines according to the diamond exit rule */
 #define SI_NGG_CULL_CLIP_PLANE_ENABLE(enable) (((enable) & 0xff) << 5)
 #define SI_NGG_CULL_GET_CLIP_PLANE_ENABLE(x)  (((x) >> 5) & 0xff)
+
+struct si_shader_profile {
+   uint32_t sha1[SHA1_DIGEST_LENGTH32];
+   uint32_t options;
+};
+
+extern struct si_shader_profile si_shader_profiles[];
+unsigned si_get_num_shader_profiles(void);
 
 #define SI_PROFILE_WAVE32                    (1 << 0)
 #define SI_PROFILE_GFX10_WAVE64              (1 << 1)

@@ -127,6 +127,116 @@ gl_nir_opts(nir_shader *nir)
    NIR_PASS(_, nir, nir_lower_var_copies);
 }
 
+struct emit_vertex_state {
+   int max_stream_allowed;
+   int invalid_stream_id;
+   bool invalid_stream_id_from_emit_vertex;
+   bool end_primitive_found;
+   unsigned used_streams;
+};
+
+/**
+ * Determine the highest stream id to which a (geometry) shader emits
+ * vertices. Also check whether End{Stream}Primitive is ever called.
+ */
+static void
+find_emit_vertex(struct emit_vertex_state *state, nir_shader *shader) {
+   nir_function_impl *impl = nir_shader_get_entrypoint(shader);
+
+   nir_foreach_block_safe(block, impl) {
+      nir_foreach_instr_safe(instr, block) {
+         if (instr->type == nir_instr_type_intrinsic) {
+            nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+
+            if (intr->intrinsic == nir_intrinsic_emit_vertex ||
+                intr->intrinsic == nir_intrinsic_end_primitive) {
+               int stream_id = nir_intrinsic_stream_id(intr);
+               bool from_emit_vertex =
+                  intr->intrinsic == nir_intrinsic_emit_vertex;
+               state->end_primitive_found |=
+                  intr->intrinsic == nir_intrinsic_end_primitive;
+
+               if (stream_id < 0) {
+                  state->invalid_stream_id = stream_id;
+                  state->invalid_stream_id_from_emit_vertex = from_emit_vertex;
+                  return;
+               }
+
+               if (stream_id > state->max_stream_allowed) {
+                  state->invalid_stream_id = stream_id;
+                  state->invalid_stream_id_from_emit_vertex = from_emit_vertex;
+                  return;
+               }
+
+               state->used_streams |= 1 << stream_id;
+            }
+         }
+      }
+   }
+}
+
+/**
+ * Check if geometry shaders emit to non-zero streams and do corresponding
+ * validations.
+ */
+static void
+validate_geometry_shader_emissions(const struct gl_constants *consts,
+                                   struct gl_shader_program *prog)
+{
+   struct gl_linked_shader *sh = prog->_LinkedShaders[MESA_SHADER_GEOMETRY];
+
+   if (sh != NULL) {
+      struct emit_vertex_state state;
+      state.max_stream_allowed = consts->MaxVertexStreams - 1;
+      state.invalid_stream_id = 0;
+      state.invalid_stream_id_from_emit_vertex = false;
+      state.end_primitive_found = false;
+      state.used_streams = 0;
+
+      find_emit_vertex(&state, sh->Program->nir);
+
+      if (state.invalid_stream_id != 0) {
+         linker_error(prog, "Invalid call %s(%d). Accepted values for the "
+                      "stream parameter are in the range [0, %d].\n",
+                      state.invalid_stream_id_from_emit_vertex ?
+                         "EmitStreamVertex" : "EndStreamPrimitive",
+                      state.invalid_stream_id, state.max_stream_allowed);
+      }
+      prog->Geom.ActiveStreamMask = state.used_streams;
+      prog->Geom.UsesEndPrimitive = state.end_primitive_found;
+
+      /* From the ARB_gpu_shader5 spec:
+       *
+       *   "Multiple vertex streams are supported only if the output primitive
+       *    type is declared to be "points".  A program will fail to link if it
+       *    contains a geometry shader calling EmitStreamVertex() or
+       *    EndStreamPrimitive() if its output primitive type is not "points".
+       *
+       * However, in the same spec:
+       *
+       *   "The function EmitVertex() is equivalent to calling EmitStreamVertex()
+       *    with <stream> set to zero."
+       *
+       * And:
+       *
+       *   "The function EndPrimitive() is equivalent to calling
+       *    EndStreamPrimitive() with <stream> set to zero."
+       *
+       * Since we can call EmitVertex() and EndPrimitive() when we output
+       * primitives other than points, calling EmitStreamVertex(0) or
+       * EmitEndPrimitive(0) should not produce errors. This it also what Nvidia
+       * does. We can use prog->Geom.ActiveStreamMask to check whether only the
+       * first (zero) stream is active.
+       * stream.
+       */
+      if (prog->Geom.ActiveStreamMask & ~(1 << 0) &&
+          sh->Program->info.gs.output_primitive != MESA_PRIM_POINTS) {
+         linker_error(prog, "EmitStreamVertex(n) and EndStreamPrimitive(n) "
+                      "with n>0 requires point output\n");
+      }
+   }
+}
+
 bool
 gl_nir_can_add_pointsize_to_program(const struct gl_constants *consts,
                                     struct gl_program *prog)
@@ -1328,6 +1438,9 @@ gl_nir_link_glsl(const struct gl_constants *consts,
       return true;
 
    MESA_TRACE_FUNC();
+
+   /* Check and validate stream emissions in geometry shaders */
+   validate_geometry_shader_emissions(consts, prog);
 
    prog->last_vert_prog = NULL;
    for (int i = MESA_SHADER_GEOMETRY; i >= MESA_SHADER_VERTEX; i--) {

@@ -357,100 +357,6 @@ public:
    }
 };
 
-/**
- * Visitor that determines the highest stream id to which a (geometry) shader
- * emits vertices. It also checks whether End{Stream}Primitive is ever called.
- */
-class find_emit_vertex_visitor : public ir_hierarchical_visitor {
-public:
-   find_emit_vertex_visitor(int max_allowed)
-      : max_stream_allowed(max_allowed),
-        invalid_stream_id(0),
-        invalid_stream_id_from_emit_vertex(false),
-        end_primitive_found(false),
-        used_streams(0)
-   {
-      /* empty */
-   }
-
-   virtual ir_visitor_status visit_leave(ir_emit_vertex *ir)
-   {
-      int stream_id = ir->stream_id();
-
-      if (stream_id < 0) {
-         invalid_stream_id = stream_id;
-         invalid_stream_id_from_emit_vertex = true;
-         return visit_stop;
-      }
-
-      if (stream_id > max_stream_allowed) {
-         invalid_stream_id = stream_id;
-         invalid_stream_id_from_emit_vertex = true;
-         return visit_stop;
-      }
-
-      used_streams |= 1 << stream_id;
-
-      return visit_continue;
-   }
-
-   virtual ir_visitor_status visit_leave(ir_end_primitive *ir)
-   {
-      end_primitive_found = true;
-
-      int stream_id = ir->stream_id();
-
-      if (stream_id < 0) {
-         invalid_stream_id = stream_id;
-         invalid_stream_id_from_emit_vertex = false;
-         return visit_stop;
-      }
-
-      if (stream_id > max_stream_allowed) {
-         invalid_stream_id = stream_id;
-         invalid_stream_id_from_emit_vertex = false;
-         return visit_stop;
-      }
-
-      used_streams |= 1 << stream_id;
-
-      return visit_continue;
-   }
-
-   bool error()
-   {
-      return invalid_stream_id != 0;
-   }
-
-   const char *error_func()
-   {
-      return invalid_stream_id_from_emit_vertex ?
-         "EmitStreamVertex" : "EndStreamPrimitive";
-   }
-
-   int error_stream()
-   {
-      return invalid_stream_id;
-   }
-
-   unsigned active_stream_mask()
-   {
-      return used_streams;
-   }
-
-   bool uses_end_primitive()
-   {
-      return end_primitive_found;
-   }
-
-private:
-   int max_stream_allowed;
-   int invalid_stream_id;
-   bool invalid_stream_id_from_emit_vertex;
-   bool end_primitive_found;
-   unsigned used_streams;
-};
-
 } /* anonymous namespace */
 
 void
@@ -702,61 +608,6 @@ validate_geometry_shader_executable(struct gl_shader_program *prog,
    prog->Geom.VerticesIn = num_vertices;
 
    analyze_clip_cull_usage(prog, shader, consts, &shader->Program->info);
-}
-
-/**
- * Check if geometry shaders emit to non-zero streams and do corresponding
- * validations.
- */
-static void
-validate_geometry_shader_emissions(const struct gl_constants *consts,
-                                   struct gl_shader_program *prog)
-{
-   struct gl_linked_shader *sh = prog->_LinkedShaders[MESA_SHADER_GEOMETRY];
-
-   if (sh != NULL) {
-      find_emit_vertex_visitor emit_vertex(consts->MaxVertexStreams - 1);
-      emit_vertex.run(sh->ir);
-      if (emit_vertex.error()) {
-         linker_error(prog, "Invalid call %s(%d). Accepted values for the "
-                      "stream parameter are in the range [0, %d].\n",
-                      emit_vertex.error_func(),
-                      emit_vertex.error_stream(),
-                      consts->MaxVertexStreams - 1);
-      }
-      prog->Geom.ActiveStreamMask = emit_vertex.active_stream_mask();
-      prog->Geom.UsesEndPrimitive = emit_vertex.uses_end_primitive();
-
-      /* From the ARB_gpu_shader5 spec:
-       *
-       *   "Multiple vertex streams are supported only if the output primitive
-       *    type is declared to be "points".  A program will fail to link if it
-       *    contains a geometry shader calling EmitStreamVertex() or
-       *    EndStreamPrimitive() if its output primitive type is not "points".
-       *
-       * However, in the same spec:
-       *
-       *   "The function EmitVertex() is equivalent to calling EmitStreamVertex()
-       *    with <stream> set to zero."
-       *
-       * And:
-       *
-       *   "The function EndPrimitive() is equivalent to calling
-       *    EndStreamPrimitive() with <stream> set to zero."
-       *
-       * Since we can call EmitVertex() and EndPrimitive() when we output
-       * primitives other than points, calling EmitStreamVertex(0) or
-       * EmitEndPrimitive(0) should not produce errors. This it also what Nvidia
-       * does. We can use prog->Geom.ActiveStreamMask to check whether only the
-       * first (zero) stream is active.
-       * stream.
-       */
-      if (prog->Geom.ActiveStreamMask & ~(1 << 0) &&
-          sh->Program->info.gs.output_primitive != MESA_PRIM_POINTS) {
-         linker_error(prog, "EmitStreamVertex(n) and EndStreamPrimitive(n) "
-                      "with n>0 requires point output\n");
-      }
-   }
 }
 
 bool
@@ -3098,9 +2949,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
          do_common_optimization(ir, true, gl_options, consts->NativeIntegers);
       }
    }
-
-   /* Check and validate stream emissions in geometry shaders */
-   validate_geometry_shader_emissions(consts, prog);
 
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {

@@ -80,11 +80,8 @@ fn get_ssa_or_phi(
     }
 }
 
-fn get_or_insert_phi_dsts<'a>(bb: &'a mut BasicBlock) -> &'a mut OpPhiDsts {
-    let has_phi = match &bb.instrs[0].op {
-        Op::PhiDsts(_) => true,
-        _ => false,
-    };
+fn get_or_insert_phi_dsts(bb: &mut BasicBlock) -> &mut OpPhiDsts {
+    let has_phi = matches!(&bb.instrs[0].op, Op::PhiDsts(_));
     if !has_phi {
         bb.instrs.insert(0, Instr::new_boxed(OpPhiDsts::new()));
     }
@@ -94,7 +91,7 @@ fn get_or_insert_phi_dsts<'a>(bb: &'a mut BasicBlock) -> &'a mut OpPhiDsts {
     }
 }
 
-fn get_or_insert_phi_srcs<'a>(bb: &'a mut BasicBlock) -> &'a mut OpPhiSrcs {
+fn get_or_insert_phi_srcs(bb: &mut BasicBlock) -> &mut OpPhiSrcs {
     let mut has_phi = false;
     let mut ip = bb.instrs.len();
     for (i, instr) in bb.instrs.iter_mut().enumerate().rev() {
@@ -248,12 +245,8 @@ impl Function {
                         for (_, p_ssa) in phi.srcs.iter_mut() {
                             // Apply the remap to the phi sources so that we
                             // pick up any remaps from previous loop iterations.
-                            loop {
-                                if let Some(new_ssa) = ssa_map.get(p_ssa) {
-                                    *p_ssa = *new_ssa;
-                                } else {
-                                    break;
-                                }
+                            while let Some(new_ssa) = ssa_map.get(p_ssa) {
+                                *p_ssa = *new_ssa;
                             }
 
                             if *p_ssa == phi.dst {
@@ -306,11 +299,9 @@ impl Function {
             // Fix up any remapped SSA values in sources
             if !ssa_map.is_empty() {
                 for instr in &mut bb.instrs {
-                    instr.for_each_ssa_use_mut(|ssa| loop {
-                        if let Some(new_ssa) = ssa_map.get(ssa) {
+                    instr.for_each_ssa_use_mut(|ssa| {
+                        while let Some(new_ssa) = ssa_map.get(ssa) {
                             *ssa = *new_ssa;
-                        } else {
-                            break;
                         }
                     });
                 }
@@ -321,8 +312,11 @@ impl Function {
                 if !s_phis.is_empty() {
                     let phi_src = get_or_insert_phi_srcs(bb);
                     for phi in s_phis.iter() {
-                        let ssa = *phi.srcs.get(&b_idx).unwrap();
-                        phi_src.srcs.push(phi.idx, ssa.into());
+                        let mut ssa = phi.srcs.get(&b_idx).unwrap();
+                        while let Some(new_ssa) = ssa_map.get(ssa) {
+                            ssa = new_ssa;
+                        }
+                        phi_src.srcs.push(phi.idx, (*ssa).into());
                     }
                 }
             }

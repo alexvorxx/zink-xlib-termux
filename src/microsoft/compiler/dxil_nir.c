@@ -1021,6 +1021,36 @@ dxil_nir_lower_double_math_instr(nir_builder *b,
                                  nir_instr *instr,
                                  UNUSED void *cb_data)
 {
+   if (instr->type == nir_instr_type_intrinsic) {
+      nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+      switch (intr->intrinsic) {
+         case nir_intrinsic_reduce:
+         case nir_intrinsic_exclusive_scan:
+         case nir_intrinsic_inclusive_scan:
+            break;
+         default:
+            return false;
+      }
+      if (intr->def.bit_size != 64)
+         return false;
+      nir_op reduction = nir_intrinsic_reduction_op(intr);
+      switch (reduction) {
+         case nir_op_fmul:
+         case nir_op_fadd:
+         case nir_op_fmin:
+         case nir_op_fmax:
+            break;
+         default:
+            return false;
+      }
+      b->cursor = nir_before_instr(instr);
+      nir_src_rewrite(&intr->src[0], nir_pack_double_2x32_dxil(b, nir_unpack_64_2x32(b, intr->src[0].ssa)));
+      b->cursor = nir_after_instr(instr);
+      nir_def *result = nir_pack_64_2x32(b, nir_unpack_double_2x32_dxil(b, &intr->def));
+      nir_def_rewrite_uses_after(&intr->def, result, result->parent_instr);
+      return true;
+   }
+
    if (instr->type != nir_instr_type_alu)
       return false;
 

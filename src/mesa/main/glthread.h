@@ -190,6 +190,7 @@ struct glthread_state
    /** Whether GLThread is enabled. */
    bool enabled;
    bool inside_begin_end;
+   bool thread_sched_enabled;
 
    /** Display lists. */
    GLenum16 ListMode; /**< Zero if not inside display list, else list mode. */
@@ -198,6 +199,7 @@ struct glthread_state
 
    /** For L3 cache pinning. */
    unsigned pin_thread_counter;
+   unsigned thread_sched_state;
 
    /** The ring of batches in memory. */
    struct glthread_batch batches[MARSHAL_MAX_BATCHES];

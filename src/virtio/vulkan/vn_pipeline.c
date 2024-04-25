@@ -356,7 +356,7 @@ vn_CreatePipelineLayout(VkDevice device,
       }
    }
 
-   layout->has_push_constant_ranges = pCreateInfo->pPushConstantRanges > 0;
+   layout->has_push_constant_ranges = pCreateInfo->pushConstantRangeCount > 0;
 
    VkPipelineLayout layout_handle = vn_pipeline_layout_to_handle(layout);
    vn_async_vkCreatePipelineLayout(dev->primary_ring, device, pCreateInfo,
@@ -461,8 +461,6 @@ vn_get_target_ring(struct vn_device *dev)
        * ready on the renderer side.
        *
        * TODO:
-       * - For pipeline objects, avoid object id re-use between async pipeline
-       *   destroy on the primary ring and sync pipeline create on TLS ring.
        * - For pipeline create, track ring seqnos of layout and renderpass
        *   objects it depends on, and only wait for those seqnos once.
        * - For pipeline cache retrieval, track ring seqno of pipeline cache
@@ -850,10 +848,6 @@ vn_render_pass_state_update(
     * we don't read it, the host driver may read it.
     */
 
-   /* XXX: Should this ignore the render pass for some state subsets when
-    * rasterization is statically disabled? The spec suggests "yes" and "no".
-    */
-
    /* VUID-VkGraphicsPipelineCreateInfo-flags-06643
     *
     * If VkGraphicsPipelineLibraryCreateInfoEXT::flags includes
@@ -1221,6 +1215,31 @@ vn_graphics_pipeline_state_fill(
       state->gpl.fragment_output = true;
    }
 
+   /* After direct_gpl states collection, check the final state to validate
+    * VkPipelineLayout in case of being the final layout in linked pipeline.
+    *
+    * From the Vulkan 1.3.275 spec:
+    *    VUID-VkGraphicsPipelineCreateInfo-layout-06602
+    *
+    *    If the pipeline requires fragment shader state or pre-rasterization
+    *    shader state, layout must be a valid VkPipelineLayout handle
+    */
+   if ((state->gpl.fragment_shader && !is_raster_statically_disabled) ||
+       state->gpl.pre_raster_shaders)
+      valid.self.pipeline_layout = true;
+
+   /* Pipeline Derivatives
+    *
+    *    VUID-VkGraphicsPipelineCreateInfo-flags-07984
+    *
+    *    If flags contains the VK_PIPELINE_CREATE_DERIVATIVE_BIT flag, and
+    *    basePipelineIndex is -1, basePipelineHandle must be a valid graphics
+    *    VkPipeline handle
+    */
+   if ((info->flags & VK_PIPELINE_CREATE_DERIVATIVE_BIT) &&
+       info->basePipelineIndex == -1)
+      valid.self.base_pipeline_handle = true;
+
    *out_fix_desc = (struct vn_graphics_pipeline_fix_desc) {
       .self = {
          /* clang-format off */
@@ -1526,10 +1545,6 @@ vn_CreateGraphicsPipelines(VkDevice device,
 
    for (uint32_t i = 0; i < createInfoCount; i++) {
       struct vn_pipeline *pipeline = vn_pipeline_from_handle(pPipelines[i]);
-
-      /* Grab a refcount on the pipeline layout when needed. Take care; the
-       * pipeline layout may be omitted or ignored in incomplete pipelines.
-       */
       struct vn_pipeline_layout *layout =
          vn_pipeline_layout_from_handle(pCreateInfos[i].layout);
       if (layout && (layout->push_descriptor_set_layout ||

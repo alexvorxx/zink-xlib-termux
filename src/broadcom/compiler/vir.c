@@ -1568,6 +1568,36 @@ lower_subgroup_intrinsics(struct v3d_compile *c,
                 case nir_intrinsic_load_subgroup_size:
                 case nir_intrinsic_load_subgroup_invocation:
                 case nir_intrinsic_elect:
+                case nir_intrinsic_ballot:
+                case nir_intrinsic_inverse_ballot:
+                case nir_intrinsic_ballot_bitfield_extract:
+                case nir_intrinsic_ballot_bit_count_reduce:
+                case nir_intrinsic_ballot_find_lsb:
+                case nir_intrinsic_ballot_find_msb:
+                case nir_intrinsic_ballot_bit_count_exclusive:
+                case nir_intrinsic_ballot_bit_count_inclusive:
+                case nir_intrinsic_reduce:
+                case nir_intrinsic_inclusive_scan:
+                case nir_intrinsic_exclusive_scan:
+                case nir_intrinsic_read_invocation:
+                case nir_intrinsic_read_first_invocation:
+                case nir_intrinsic_load_subgroup_eq_mask:
+                case nir_intrinsic_load_subgroup_ge_mask:
+                case nir_intrinsic_load_subgroup_gt_mask:
+                case nir_intrinsic_load_subgroup_le_mask:
+                case nir_intrinsic_load_subgroup_lt_mask:
+                case nir_intrinsic_shuffle:
+                case nir_intrinsic_shuffle_xor:
+                case nir_intrinsic_shuffle_up:
+                case nir_intrinsic_shuffle_down:
+                case nir_intrinsic_vote_all:
+                case nir_intrinsic_vote_any:
+                case nir_intrinsic_vote_feq:
+                case nir_intrinsic_vote_ieq:
+                case nir_intrinsic_quad_broadcast:
+                case nir_intrinsic_quad_swap_horizontal:
+                case nir_intrinsic_quad_swap_vertical:
+                case nir_intrinsic_quad_swap_diagonal:
                         c->has_subgroups = true;
                         break;
                 default:
@@ -1680,6 +1710,18 @@ v3d_attempt_compile(struct v3d_compile *c)
         NIR_PASS(_, c->s, v3d_nir_lower_load_store_bitsize);
 
         NIR_PASS(_, c->s, v3d_nir_lower_subgroup_intrinsics, c);
+
+        const nir_lower_subgroups_options subgroup_opts = {
+                .subgroup_size = V3D_CHANNELS,
+                .ballot_components = 1,
+                .ballot_bit_size = 32,
+                .lower_to_scalar = true,
+                .lower_inverse_ballot = true,
+                .lower_subgroup_masks = true,
+                .lower_relative_shuffle = true,
+                .lower_quad = true,
+        };
+        NIR_PASS(_, c->s, nir_lower_subgroups, &subgroup_opts);
 
         v3d_optimize_nir(c, c->s);
 

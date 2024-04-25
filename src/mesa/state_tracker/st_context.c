@@ -66,6 +66,7 @@
 #include "util/u_vbuf.h"
 #include "util/u_memory.h"
 #include "util/hash_table.h"
+#include "util/thread_sched.h"
 #include "cso_cache/cso_context.h"
 #include "compiler/glsl/glsl_parser_extras.h"
 
@@ -730,9 +731,8 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
          !st->lower_ucp;
    st->shader_has_one_variant[MESA_SHADER_COMPUTE] = st->has_shareable_shaders;
 
-   if (util_get_cpu_caps()->num_L3_caches == 1 ||
-       !st->pipe->set_context_param)
-      st->pin_thread_counter = ST_L3_PINNING_DISABLED;
+   if (!st->pipe->set_context_param || !util_thread_scheduler_enabled())
+      st->pin_thread_counter = ST_THREAD_SCHEDULER_DISABLED;
 
    st->bitmap.cache.empty = true;
 

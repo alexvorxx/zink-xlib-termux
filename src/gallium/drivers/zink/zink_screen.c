@@ -963,7 +963,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return screen->info.feats.features.shaderCullDistance;
 
    case PIPE_CAP_SPARSE_BUFFER_PAGE_SIZE:
-      return screen->info.feats.features.sparseBinding ? ZINK_SPARSE_BUFFER_PAGE_SIZE : 0;
+      return screen->info.feats.features.sparseResidencyBuffer ? ZINK_SPARSE_BUFFER_PAGE_SIZE : 0;
 
    /* Sparse texture */
    case PIPE_CAP_MAX_SPARSE_TEXTURE_SIZE:
@@ -2427,8 +2427,8 @@ zink_screen_import_dmabuf_semaphore(struct zink_screen *screen, struct zink_reso
          .flags = DMA_BUF_SYNC_RW,
          .fd = sync_file_fd,
       };
-      int ret = drmIoctl(fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &import);
-      if (ret) {
+      int ioctl_ret = drmIoctl(fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &import);
+      if (ioctl_ret) {
          if (errno == ENOTTY || errno == EBADF || errno == ENOSYS) {
             assert(!"how did this fail?");
          } else {

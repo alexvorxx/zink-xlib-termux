@@ -159,13 +159,15 @@ typedef struct {
 
    unsigned max_workgroup_size;
    unsigned wave_size;
-   uint32_t clipdist_enable_mask;
+   uint8_t clip_cull_dist_mask;
    const uint8_t *vs_output_param_offset; /* GFX11+ */
    bool has_param_exports;
    bool can_cull;
    bool disable_streamout;
    bool has_gen_prim_query;
    bool has_xfb_prim_query;
+   bool has_gs_invocations_query;
+   bool has_gs_primitives_query;
    bool kill_pointsize;
    bool kill_layer;
    bool force_vrs;
@@ -268,7 +270,8 @@ ac_nir_lower_legacy_vs(nir_shader *nir,
 bool
 ac_nir_gs_shader_query(nir_builder *b,
                        bool has_gen_prim_query,
-                       bool has_pipeline_stats_query,
+                       bool has_gs_invocations_query,
+                       bool has_gs_primitives_query,
                        unsigned num_vertices_per_primitive,
                        unsigned wave_size,
                        nir_def *vertex_count[4],

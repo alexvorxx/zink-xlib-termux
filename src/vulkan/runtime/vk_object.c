@@ -243,7 +243,7 @@ vk_object_base_private_data(struct vk_device *device,
     * vkGet/SetPrivateData call on a swapchain because the loader will
     * handle it.
     */
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    if (objectType == VK_OBJECT_TYPE_SWAPCHAIN_KHR ||
        objectType == VK_OBJECT_TYPE_SURFACE_KHR) {
 #else

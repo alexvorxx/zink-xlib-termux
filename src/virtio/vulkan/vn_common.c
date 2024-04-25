@@ -33,7 +33,7 @@ static const struct debug_control vn_debug_options[] = {
    { "log_ctx_info", VN_DEBUG_LOG_CTX_INFO },
    { "cache", VN_DEBUG_CACHE },
    { "no_sparse", VN_DEBUG_NO_SPARSE },
-   { "gpl", VN_DEBUG_GPL },
+   { "no_gpl", VN_DEBUG_NO_GPL },
    { NULL, 0 },
    /* clang-format on */
 };
@@ -57,6 +57,7 @@ static const struct debug_control vn_perf_options[] = {
    /* clang-format on */
 };
 
+uint64_t vn_next_obj_id = 1;
 struct vn_env vn_env;
 
 static void
@@ -96,7 +97,7 @@ vn_env_init(void)
 void
 vn_trace_init(void)
 {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    atrace_init();
 #else
    util_cpu_trace_init();
@@ -275,10 +276,13 @@ vn_tls_get_ring(struct vn_instance *instance)
    /* only need a small ring for synchronous cmds on tls ring */
    static const size_t buf_size = 16 * 1024;
 
+   /* single cmd can use the entire ring shmem on tls ring */
+   static const uint8_t direct_order = 0;
+
    struct vn_ring_layout layout;
    vn_ring_get_layout(buf_size, extra_size, &layout);
 
-   tls_ring->ring = vn_ring_create(instance, &layout);
+   tls_ring->ring = vn_ring_create(instance, &layout, direct_order);
    if (!tls_ring->ring) {
       free(tls_ring);
       return NULL;

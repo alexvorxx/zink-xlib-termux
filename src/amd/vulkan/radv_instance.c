@@ -101,6 +101,8 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"dmashaders", RADV_PERFTEST_DMA_SHADERS},
                                                              {"gsfastlaunch2", RADV_PERFTEST_GS_FAST_LAUNCH_2},
                                                              {"transfer_queue", RADV_PERFTEST_TRANSFER_QUEUE},
+                                                             {"shader_object", RADV_PERFTEST_SHADER_OBJECT},
+                                                             {"nircache", RADV_PERFTEST_NIR_CACHE},
                                                              {NULL, 0}};
 
 const char *
@@ -137,6 +139,7 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_OVERRIDE_VRAM_SIZE()
       DRI_CONF_VK_WSI_FORCE_BGRA8_UNORM_FIRST(false)
       DRI_CONF_VK_WSI_FORCE_SWAPCHAIN_TO_CURRENT_EXTENT(false)
+      DRI_CONF_VK_X11_IGNORE_SUBOPTIMAL(false)
       DRI_CONF_VK_REQUIRE_ETC2(false)
       DRI_CONF_VK_REQUIRE_ASTC(false)
       DRI_CONF_RADV_ZERO_VRAM(false)
@@ -160,6 +163,7 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_RADV_OVERRIDE_COMPUTE_SHADER_VERSION(0)
       DRI_CONF_RADV_OVERRIDE_RAY_TRACING_SHADER_VERSION(0)
       DRI_CONF_RADV_SSBO_NON_UNIFORM(false)
+      DRI_CONF_RADV_FORCE_ACTIVE_ACCEL_STRUCT_LEAVES(false)
       DRI_CONF_RADV_APP_LAYER()
    DRI_CONF_SECTION_END
 };
@@ -251,6 +255,9 @@ radv_init_dri_options(struct radv_instance *instance)
 
    instance->drirc.vk_require_etc2 = driQueryOptionb(&instance->drirc.options, "vk_require_etc2");
    instance->drirc.vk_require_astc = driQueryOptionb(&instance->drirc.options, "vk_require_astc");
+
+   instance->drirc.force_active_accel_struct_leaves =
+      driQueryOptionb(&instance->drirc.options, "radv_force_active_accel_struct_leaves");
 }
 
 static const struct vk_instance_extension_table radv_instance_extensions_supported = {
@@ -293,7 +300,7 @@ static const struct vk_instance_extension_table radv_instance_extensions_support
 static void
 radv_handle_legacy_sqtt_trigger(struct vk_instance *instance)
 {
-   char *trigger_file = getenv("RADV_THREAD_TRACE_TRIGGER");
+   char *trigger_file = secure_getenv("RADV_THREAD_TRACE_TRIGGER");
    if (trigger_file) {
       instance->trace_trigger_file = trigger_file;
       instance->trace_mode |= RADV_TRACE_MODE_RGP;

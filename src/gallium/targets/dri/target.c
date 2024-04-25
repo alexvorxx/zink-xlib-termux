@@ -1,3 +1,5 @@
+#include "util/detect_os.h"
+
 #include "target-helpers/drm_helper.h"
 #include "target-helpers/sw_helper.h"
 
@@ -123,6 +125,7 @@ DEFINE_LOADER_DRM_ENTRYPOINT(pl111)
 DEFINE_LOADER_DRM_ENTRYPOINT(rcar_du)
 DEFINE_LOADER_DRM_ENTRYPOINT(repaper)
 DEFINE_LOADER_DRM_ENTRYPOINT(rockchip)
+DEFINE_LOADER_DRM_ENTRYPOINT(ssd130x)
 DEFINE_LOADER_DRM_ENTRYPOINT(st7586)
 DEFINE_LOADER_DRM_ENTRYPOINT(st7735r)
 DEFINE_LOADER_DRM_ENTRYPOINT(sti)
@@ -136,7 +139,7 @@ DEFINE_LOADER_DRM_ENTRYPOINT(lima)
 #endif
 
 #if defined(GALLIUM_ZINK) && !defined(__APPLE__)
-#if defined(ANDROID)
+#if DETECT_OS_ANDROID
 DEFINE_LOADER_DRM_ENTRYPOINT(zink);
 #else
 const __DRIextension **__driDriverGetExtensions_zink(void);

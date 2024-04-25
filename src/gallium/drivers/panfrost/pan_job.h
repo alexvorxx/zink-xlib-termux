@@ -154,6 +154,9 @@ struct panfrost_batch {
    /* Tiler context */
    struct pan_tiler_context tiler_ctx;
 
+   /* Only used on midgard. */
+   struct panfrost_bo *polygon_list_bo;
+
    /* Keep the num_work_groups sysval around for indirect dispatch */
    mali_ptr num_wg_sysval[3];
 
@@ -199,6 +202,9 @@ struct panfrost_batch {
     */
    struct pan_tristate sprite_coord_origin;
    struct pan_tristate first_provoking_vertex;
+
+   /** This one is always on the batch */
+   struct pan_tristate line_smoothing;
 
    /* Number of effective draws in the batch. Draws with rasterization disabled
     * don't count as effective draws. It's basically the number of IDVS or

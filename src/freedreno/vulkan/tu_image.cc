@@ -726,7 +726,7 @@ tu_CreateImage(VkDevice _device,
          modifier = DRM_FORMAT_MOD_LINEAR;
    }
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    const VkNativeBufferANDROID *gralloc_info =
       vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
    int dma_buf;
@@ -746,7 +746,7 @@ tu_CreateImage(VkDevice _device,
 
    *pImage = tu_image_to_handle(image);
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    if (gralloc_info)
       return tu_import_memory_from_gralloc_handle(_device, dma_buf, alloc,
                                                   *pImage);
@@ -765,7 +765,7 @@ tu_DestroyImage(VkDevice _device,
    if (!image)
       return;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    if (image->owned_memory != VK_NULL_HANDLE)
       tu_FreeMemory(_device, image->owned_memory, pAllocator);
 #endif

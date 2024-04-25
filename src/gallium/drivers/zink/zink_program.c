@@ -1105,17 +1105,16 @@ zink_create_gfx_program(struct zink_context *ctx,
       util_dynarray_init(&prog->shader_cache[i][1][1], prog);
       if (stages[i]) {
          prog->shaders[i] = stages[i];
-         util_queue_fence_wait(&stages[i]->precompile.fence);
          prog->stages_present |= BITFIELD_BIT(i);
          if (i != MESA_SHADER_FRAGMENT)
             prog->optimal_keys &= !prog->shaders[i]->non_fs.is_generated;
          prog->needs_inlining |= prog->shaders[i]->needs_inlining;
-         nir[i] = zink_shader_deserialize(screen, stages[i]);
       } else {
          nir[i] = NULL;
       }
    }
    if (stages[MESA_SHADER_TESS_EVAL] && !stages[MESA_SHADER_TESS_CTRL]) {
+      util_queue_fence_wait(&stages[MESA_SHADER_TESS_EVAL]->precompile.fence);
       prog->shaders[MESA_SHADER_TESS_EVAL]->non_fs.generated_tcs =
       prog->shaders[MESA_SHADER_TESS_CTRL] =
         zink_shader_tcs_create(screen, vertices_per_patch);
@@ -1150,6 +1149,13 @@ zink_create_gfx_program(struct zink_context *ctx,
       }
    }
 
+   for (unsigned i = 0; i < ZINK_GFX_SHADER_COUNT; i++) {
+      if (prog->shaders[i]) {
+         util_queue_fence_wait(&prog->shaders[i]->precompile.fence);
+         /* generated TCS retains nir at this point */
+         nir[i] = prog->shaders[i]->nir ? prog->shaders[i]->nir : zink_shader_deserialize(screen, prog->shaders[i]);
+      }
+   }
    assign_io(screen, nir);
    for (unsigned i = 0; i < ZINK_GFX_SHADER_COUNT; i++) {
       if (nir[i])

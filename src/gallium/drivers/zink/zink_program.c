@@ -46,7 +46,7 @@
 #include "util/xxhash.h"
 
 static void
-precompile_job(void *data, void *gdata, int thread_index);
+gfx_program_precompile_job(void *data, void *gdata, int thread_index);
 struct zink_gfx_program *
 create_gfx_program_separable(struct zink_context *ctx, struct zink_shader **stages, unsigned vertices_per_patch);
 
@@ -1230,7 +1230,7 @@ create_linked_separable_job(void *data, void *gdata, int thread_index)
    zink_gfx_program_reference(zink_screen(prog->base.ctx->base.screen), NULL, prog->full_prog);
    /* this is otherwise a dead program */
    if (prog->full_prog->stages_present == prog->full_prog->stages_remaining)
-      precompile_job(prog->full_prog, gdata, thread_index);
+      gfx_program_precompile_job(prog->full_prog, gdata, thread_index);
    util_queue_fence_signal(&prog->full_prog->base.cache_fence);
 }
 
@@ -2162,7 +2162,7 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct uti
 }
 
 static void
-precompile_job(void *data, void *gdata, int thread_index)
+gfx_program_precompile_job(void *data, void *gdata, int thread_index)
 {
    struct zink_screen *screen = gdata;
    struct zink_gfx_program *prog = data;
@@ -2237,9 +2237,9 @@ zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
       if (zink_screen(pctx->screen)->info.have_EXT_shader_object)
          prog->base.uses_shobj = !BITSET_TEST(zshaders[MESA_SHADER_FRAGMENT]->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);
       if (zink_debug & ZINK_DEBUG_NOBGC)
-         precompile_job(prog, pctx->screen, 0);
+         gfx_program_precompile_job(prog, pctx->screen, 0);
       else
-         util_queue_add_job(&zink_screen(pctx->screen)->cache_get_thread, prog, &prog->base.cache_fence, precompile_job, NULL, 0);
+         util_queue_add_job(&zink_screen(pctx->screen)->cache_get_thread, prog, &prog->base.cache_fence, gfx_program_precompile_job, NULL, 0);
    }
 }
 

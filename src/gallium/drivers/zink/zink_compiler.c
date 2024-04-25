@@ -1961,55 +1961,53 @@ update_so_info(struct zink_shader *zs, nir_shader *nir, uint64_t outputs_written
       unsigned xfb_components = util_bitcount(output->component_mask);
       /* always set stride to be used during draw */
       zs->sinfo.stride[output->buffer] = nir->xfb_info->buffers[output->buffer].stride;
-      if (zs->info.stage != MESA_SHADER_GEOMETRY || util_bitcount(zs->info.gs.active_stream_mask) == 1) {
-         for (unsigned c = 0; !is_inlined(inlined[output->location], output) && c < xfb_components; c++) {
-            unsigned slot = output->location;
-            if (inlined[slot][output->component_offset + c])
-               continue;
-            nir_variable *var = NULL;
-            while (!var && slot < VARYING_SLOT_TESS_MAX)
-               var = find_var_with_location_frac(nir, slot--, output->component_offset + c, have_psiz, nir_var_shader_out);
-            slot = output->location;
-            unsigned slot_count = var ? get_var_slot_count(nir, var) : 0;
-            if (!var || var->data.location > slot || var->data.location + slot_count <= slot) {
-               /* if no variable is found for the xfb output, no output exists */
-               inlined[slot][c + output->component_offset] = true;
-               continue;
-            }
-            if (var->data.explicit_xfb_buffer) {
-               /* handle dvec3 where gallium splits streamout over 2 registers */
-               for (unsigned j = 0; j < xfb_components; j++)
-                  inlined[slot][c + output->component_offset + j] = true;
-            }
-            if (is_inlined(inlined[slot], output))
-               continue;
-            assert(!glsl_type_is_array(var->type) || is_clipcull_dist(var->data.location));
-            assert(!glsl_type_is_struct_or_ifc(var->type));
-            unsigned num_components = glsl_type_is_array(var->type) ? glsl_get_aoa_size(var->type) : glsl_get_vector_elements(var->type);
-            if (glsl_type_is_64bit(glsl_without_array(var->type)))
-               num_components *= 2;
-            /* if this is the entire variable, try to blast it out during the initial declaration
-            * structs must be handled later to ensure accurate analysis
-            */
-            if ((num_components == xfb_components ||
-                 num_components < xfb_components ||
-                 (num_components > xfb_components && xfb_components == 4))) {
-               var->data.explicit_xfb_buffer = 1;
-               var->data.xfb.buffer = output->buffer;
-               var->data.xfb.stride = zs->sinfo.stride[output->buffer];
-               var->data.offset = (output->offset + c * sizeof(uint32_t));
-               var->data.stream = nir->xfb_info->buffer_to_stream[output->buffer];
-               for (unsigned j = 0; j < MIN2(num_components, xfb_components); j++)
-                  inlined[slot][c + output->component_offset + j] = true;
-            } else {
-               /* otherwise store some metadata for later */
-               packed |= BITFIELD64_BIT(slot);
-               packed_components[slot] += xfb_components;
-               packed_streams[slot] |= BITFIELD_BIT(nir->xfb_info->buffer_to_stream[output->buffer]);
-               packed_buffers[slot] |= BITFIELD_BIT(output->buffer);
-               for (unsigned j = 0; j < xfb_components; j++)
-                  packed_offsets[output->location][j + output->component_offset + c] = output->offset + j * sizeof(uint32_t);
-            }
+      for (unsigned c = 0; !is_inlined(inlined[output->location], output) && c < xfb_components; c++) {
+         unsigned slot = output->location;
+         if (inlined[slot][output->component_offset + c])
+            continue;
+         nir_variable *var = NULL;
+         while (!var && slot < VARYING_SLOT_TESS_MAX)
+            var = find_var_with_location_frac(nir, slot--, output->component_offset + c, have_psiz, nir_var_shader_out);
+         slot = output->location;
+         unsigned slot_count = var ? get_var_slot_count(nir, var) : 0;
+         if (!var || var->data.location > slot || var->data.location + slot_count <= slot) {
+            /* if no variable is found for the xfb output, no output exists */
+            inlined[slot][c + output->component_offset] = true;
+            continue;
+         }
+         if (var->data.explicit_xfb_buffer) {
+            /* handle dvec3 where gallium splits streamout over 2 registers */
+            for (unsigned j = 0; j < xfb_components; j++)
+               inlined[slot][c + output->component_offset + j] = true;
+         }
+         if (is_inlined(inlined[slot], output))
+            continue;
+         assert(!glsl_type_is_array(var->type) || is_clipcull_dist(var->data.location));
+         assert(!glsl_type_is_struct_or_ifc(var->type));
+         unsigned num_components = glsl_type_is_array(var->type) ? glsl_get_aoa_size(var->type) : glsl_get_vector_elements(var->type);
+         if (glsl_type_is_64bit(glsl_without_array(var->type)))
+            num_components *= 2;
+         /* if this is the entire variable, try to blast it out during the initial declaration
+         * structs must be handled later to ensure accurate analysis
+         */
+         if ((num_components == xfb_components ||
+               num_components < xfb_components ||
+               (num_components > xfb_components && xfb_components == 4))) {
+            var->data.explicit_xfb_buffer = 1;
+            var->data.xfb.buffer = output->buffer;
+            var->data.xfb.stride = zs->sinfo.stride[output->buffer];
+            var->data.offset = (output->offset + c * sizeof(uint32_t));
+            var->data.stream = nir->xfb_info->buffer_to_stream[output->buffer];
+            for (unsigned j = 0; j < MIN2(num_components, xfb_components); j++)
+               inlined[slot][c + output->component_offset + j] = true;
+         } else {
+            /* otherwise store some metadata for later */
+            packed |= BITFIELD64_BIT(slot);
+            packed_components[slot] += xfb_components;
+            packed_streams[slot] |= BITFIELD_BIT(nir->xfb_info->buffer_to_stream[output->buffer]);
+            packed_buffers[slot] |= BITFIELD_BIT(output->buffer);
+            for (unsigned j = 0; j < xfb_components; j++)
+               packed_offsets[output->location][j + output->component_offset + c] = output->offset + j * sizeof(uint32_t);
          }
       }
    }
@@ -2023,63 +2021,61 @@ update_so_info(struct zink_shader *zs, nir_shader *nir, uint64_t outputs_written
       unsigned slot = output->location;
       if (is_inlined(inlined[slot], output))
          continue;
-      if (zs->info.stage != MESA_SHADER_GEOMETRY || util_bitcount(zs->info.gs.active_stream_mask) == 1) {
-         nir_variable *var = NULL;
-         while (!var)
-            var = find_var_with_location_frac(nir, slot--, output->component_offset, have_psiz, nir_var_shader_out);
-         slot = output->location;
-         unsigned slot_count = var ? get_var_slot_count(nir, var) : 0;
-         if (!var || var->data.location > slot || var->data.location + slot_count <= slot)
-            continue;
-         /* this is a lowered 64bit variable that can't be exported due to packing */
-         if (var->data.is_xfb)
+      nir_variable *var = NULL;
+      while (!var)
+         var = find_var_with_location_frac(nir, slot--, output->component_offset, have_psiz, nir_var_shader_out);
+      slot = output->location;
+      unsigned slot_count = var ? get_var_slot_count(nir, var) : 0;
+      if (!var || var->data.location > slot || var->data.location + slot_count <= slot)
+         continue;
+      /* this is a lowered 64bit variable that can't be exported due to packing */
+      if (var->data.is_xfb)
+         goto out;
+
+      unsigned num_slots = is_clipcull_dist(var->data.location) ?
+                           glsl_array_size(var->type) / 4 :
+                           glsl_count_vec4_slots(var->type, false, false);
+      /* for each variable, iterate over all the variable's slots and inline the outputs */
+      for (unsigned j = 0; j < num_slots; j++) {
+         slot = var->data.location + j;
+         const nir_xfb_output_info *packed_output = find_packed_output(nir->xfb_info, slot);
+         if (!packed_output)
             goto out;
 
-         unsigned num_slots = is_clipcull_dist(var->data.location) ?
-                              glsl_array_size(var->type) / 4 :
-                              glsl_count_vec4_slots(var->type, false, false);
-         /* for each variable, iterate over all the variable's slots and inline the outputs */
-         for (unsigned j = 0; j < num_slots; j++) {
-            slot = var->data.location + j;
-            const nir_xfb_output_info *packed_output = find_packed_output(nir->xfb_info, slot);
-            if (!packed_output)
-               goto out;
+         /* if this slot wasn't packed or isn't in the same stream/buffer, skip consolidation */
+         if (!(packed & BITFIELD64_BIT(slot)) ||
+               util_bitcount(packed_streams[slot]) != 1 ||
+               util_bitcount(packed_buffers[slot]) != 1)
+            goto out;
 
-            /* if this slot wasn't packed or isn't in the same stream/buffer, skip consolidation */
-            if (!(packed & BITFIELD64_BIT(slot)) ||
-                util_bitcount(packed_streams[slot]) != 1 ||
-                util_bitcount(packed_buffers[slot]) != 1)
-               goto out;
+         /* if all the components the variable exports to this slot aren't captured, skip consolidation */
+         unsigned num_components = get_slot_components(var, slot, var->data.location);
+         if (num_components != packed_components[slot])
+            goto out;
 
-            /* if all the components the variable exports to this slot aren't captured, skip consolidation */
-            unsigned num_components = get_slot_components(var, slot, var->data.location);
-            if (num_components != packed_components[slot])
+         /* in order to pack the xfb output, all the offsets must be sequentially incrementing */
+         uint32_t prev_offset = packed_offsets[packed_output->location][0];
+         for (unsigned k = 1; k < num_components; k++) {
+            /* if the offsets are not incrementing as expected, skip consolidation */
+            if (packed_offsets[packed_output->location][k] != prev_offset + sizeof(uint32_t))
                goto out;
-
-            /* in order to pack the xfb output, all the offsets must be sequentially incrementing */
-            uint32_t prev_offset = packed_offsets[packed_output->location][0];
-            for (unsigned k = 1; k < num_components; k++) {
-               /* if the offsets are not incrementing as expected, skip consolidation */
-               if (packed_offsets[packed_output->location][k] != prev_offset + sizeof(uint32_t))
-                  goto out;
-               prev_offset = packed_offsets[packed_output->location][k + packed_output->component_offset];
-            }
+            prev_offset = packed_offsets[packed_output->location][k + packed_output->component_offset];
          }
-         /* this output can be consolidated: blast out all the data inlined */
-         var->data.explicit_xfb_buffer = 1;
-         var->data.xfb.buffer = output->buffer;
-         var->data.xfb.stride = zs->sinfo.stride[output->buffer];
-         var->data.offset = output->offset;
-         var->data.stream = nir->xfb_info->buffer_to_stream[output->buffer];
-         /* mark all slot components inlined to skip subsequent loop iterations */
-         for (unsigned j = 0; j < num_slots; j++) {
-            slot = var->data.location + j;
-            for (unsigned k = 0; k < packed_components[slot]; k++)
-               inlined[slot][k] = true;
-            packed &= ~BITFIELD64_BIT(slot);
-         }
-         continue;
       }
+      /* this output can be consolidated: blast out all the data inlined */
+      var->data.explicit_xfb_buffer = 1;
+      var->data.xfb.buffer = output->buffer;
+      var->data.xfb.stride = zs->sinfo.stride[output->buffer];
+      var->data.offset = output->offset;
+      var->data.stream = nir->xfb_info->buffer_to_stream[output->buffer];
+      /* mark all slot components inlined to skip subsequent loop iterations */
+      for (unsigned j = 0; j < num_slots; j++) {
+         slot = var->data.location + j;
+         for (unsigned k = 0; k < packed_components[slot]; k++)
+            inlined[slot][k] = true;
+         packed &= ~BITFIELD64_BIT(slot);
+      }
+      continue;
 out:
       unreachable("xfb should be inlined by now!");
    }

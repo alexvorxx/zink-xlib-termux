@@ -3548,11 +3548,8 @@ rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, struct z
       } else {
          dest = nir_f2fN(b, &tex->def, dest_size);
       }
-      if (rewrite_depth)
-         return dest;
-      nir_def_rewrite_uses_after(&tex->def, dest, dest->parent_instr);
-   } else if (rewrite_depth) {
-      return dest;
+      if (!rewrite_depth)
+         nir_def_rewrite_uses_after(&tex->def, dest, dest->parent_instr);
    }
    return dest;
 }

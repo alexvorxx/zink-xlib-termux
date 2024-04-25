@@ -90,6 +90,24 @@ radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdevice)
           !(pdevice->rad_info.family == CHIP_RAVEN || pdevice->rad_info.family == CHIP_RAVEN2);
 }
 
+bool
+radv_enable_rt(const struct radv_physical_device *pdevice, bool rt_pipelines)
+{
+   if (pdevice->rad_info.gfx_level < GFX10_3 && !radv_emulate_rt(pdevice))
+      return false;
+
+   if (rt_pipelines && pdevice->use_llvm)
+      return false;
+
+   return true;
+}
+
+bool
+radv_emulate_rt(const struct radv_physical_device *pdevice)
+{
+   return pdevice->instance->perftest_flags & RADV_PERFTEST_EMULATE_RT;
+}
+
 static bool
 radv_is_conformant(const struct radv_physical_device *pdevice)
 {
@@ -436,6 +454,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
+      .KHR_maintenance6 = true,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_performance_query = radv_perf_query_supported(device),
@@ -1075,6 +1094,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_EXT_depth_clamp_zero_one */
       .depthClampZeroOne = true,
+
+      /* VK_KHR_maintenance6 */
+      .maintenance6 = true,
    };
 }
 
@@ -1751,6 +1773,11 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
 
    /* VK_KHR_cooperative_matrix */
    p->cooperativeMatrixSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
+
+   /* VK_KHR_maintenance6 */
+   p->blockTexelViewCompatibleMultipleLayers = true;
+   p->maxCombinedImageSamplerDescriptorCount = 1;
+   p->fragmentShadingRateClampCombinerInputs = true;
 }
 
 static VkResult

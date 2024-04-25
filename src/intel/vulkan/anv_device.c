@@ -257,6 +257,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_maintenance3                      = true,
       .KHR_maintenance4                      = true,
       .KHR_maintenance5                      = true,
+      .KHR_maintenance6                      = true,
       .KHR_map_memory2                       = true,
       .KHR_multiview                         = true,
       .KHR_performance_query =
@@ -859,6 +860,9 @@ get_features(const struct anv_physical_device *pdevice,
       /* VK_KHR_maintenance5 */
       .maintenance5 = true,
 
+      /* VK_KHR_maintenance6 */
+      .maintenance6 = true,
+
       /* VK_EXT_nested_command_buffer */
       .nestedCommandBuffer = true,
       .nestedCommandBufferRendering = true,
@@ -1372,15 +1376,7 @@ get_properties(const struct anv_physical_device *pdevice,
       props->fragmentShadingRateWithConservativeRasterization = true;
       props->fragmentShadingRateWithFragmentShaderInterlock = true;
       props->fragmentShadingRateWithCustomSampleLocations = true;
-
-      /* Fix in DG2_G10_C0 and DG2_G11_B0. Consider any other Sku as having
-       * the fix.
-       */
-      props->fragmentShadingRateStrictMultiplyCombiner =
-         pdevice->info.platform == INTEL_PLATFORM_DG2_G10 ?
-         pdevice->info.revision >= 8 :
-         pdevice->info.platform == INTEL_PLATFORM_DG2_G11 ?
-         pdevice->info.revision >= 4 : true;
+      props->fragmentShadingRateStrictMultiplyCombiner = true;
 
       if (pdevice->info.has_coarse_pixel_primitive_and_cb) {
          props->minFragmentShadingRateAttachmentTexelSize = (VkExtent2D) { 8, 8 };
@@ -1402,6 +1398,13 @@ get_properties(const struct anv_physical_device *pdevice,
       props->polygonModePointSize = true;
       props->nonStrictSinglePixelWideLinesUseParallelogram = false;
       props->nonStrictWideLinesUseParallelogram = false;
+   }
+
+   /* VK_KHR_maintenance6 */
+   {
+      props->blockTexelViewCompatibleMultipleLayers = true;
+      props->maxCombinedImageSamplerDescriptorCount = 3;
+      props->fragmentShadingRateClampCombinerInputs = true;
    }
 
    /* VK_KHR_performance_query */
@@ -4479,6 +4482,9 @@ anv_bind_buffer_memory(const VkBindBufferMemoryInfo *pBindInfo)
    assert(pBindInfo->sType == VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO);
    assert(!anv_buffer_is_sparse(buffer));
 
+   const VkBindMemoryStatusKHR *bind_status =
+      vk_find_struct_const(pBindInfo->pNext, BIND_MEMORY_STATUS_KHR);
+
    if (mem) {
       assert(pBindInfo->memoryOffset < mem->vk.size);
       assert(mem->vk.size - pBindInfo->memoryOffset >= buffer->vk.size);
@@ -4489,6 +4495,9 @@ anv_bind_buffer_memory(const VkBindBufferMemoryInfo *pBindInfo)
    } else {
       buffer->address = ANV_NULL_ADDRESS;
    }
+
+   if (bind_status)
+      *bind_status->pResult = VK_SUCCESS;
 }
 
 VkResult anv_BindBufferMemory2(

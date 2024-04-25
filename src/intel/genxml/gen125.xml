@@ -13,6 +13,13 @@
     <exclude name="MEDIA_STATE_FLUSH" />
     <exclude name="MEDIA_VFE_STATE" />
   </import>
+  <enum name="L1_CACHE_CONTROL" prefix="L1CC">
+    <value name="WBP" value="0" />
+    <value name="UC" value="1" />
+    <value name="WB" value="2" />
+    <value name="WT" value="3" />
+    <value name="WS" value="4" />
+  </enum>
   <enum name="PREF_SLM_ALLOCATION_SIZE">
     <value name="SLM_ENCODES_0K" value="8" />
     <value name="SLM_ENCODES_16K" value="9" />
@@ -22,6 +29,16 @@
     <value name="SLM_ENCODES_128K" value="13" />
     <value name="SLM_ENCODES_192K" value="14" />
     <value name="SLM_ENCODES_256K" value="15" />
+  </enum>
+  <enum name="STATE_SURFACE_TYPE">
+    <value name="SURFTYPE_1D" value="0" />
+    <value name="SURFTYPE_2D" value="1" />
+    <value name="SURFTYPE_3D" value="2" />
+    <value name="SURFTYPE_CUBE" value="3" />
+    <value name="SURFTYPE_BUFFER" value="4" />
+    <value name="SURFTYPE_RES5" value="5" />
+    <value name="SURFTYPE_SCRATCH" value="6" />
+    <value name="SURFTYPE_NULL" value="7" />
   </enum>
   <struct name="INTERFACE_DESCRIPTOR_DATA" length="8">
     <field name="Kernel Start Pointer" start="6" end="31" type="offset" />
@@ -300,16 +317,7 @@
     </field>
     <field name="Surface Format" start="18" end="26" type="uint" />
     <field name="Surface Array" start="28" end="28" type="bool" />
-    <field name="Surface Type" start="29" end="31" type="uint">
-      <value name="SURFTYPE_1D" value="0" />
-      <value name="SURFTYPE_2D" value="1" />
-      <value name="SURFTYPE_3D" value="2" />
-      <value name="SURFTYPE_CUBE" value="3" />
-      <value name="SURFTYPE_BUFFER" value="4" />
-      <value name="SURFTYPE_STRBUF" value="5" />
-      <value name="SURFTYPE_SCRATCH" value="6" />
-      <value name="SURFTYPE_NULL" value="7" />
-    </field>
+    <field name="Surface Type" start="29" end="31" type="STATE_SURFACE_TYPE" />
     <field name="Surface QPitch" start="32" end="46" type="uint" />
     <field name="Sample Tap Discard Disable" start="47" end="47" type="bool" />
     <field name="Double Fetch Disable" start="49" end="49" type="bool" />
@@ -347,13 +355,7 @@
     <field name="Surface Min LOD" start="164" end="167" type="uint" />
     <field name="Mip Tail Start LOD" start="168" end="171" type="uint" />
     <field name="Coherency Type" start="174" end="174" type="mbz" />
-    <field name="L1 Cache Control" start="176" end="178" type="uint" prefix="L1CC">
-      <value name="WBP" value="0" />
-      <value name="UC" value="1" />
-      <value name="WB" value="2" />
-      <value name="WT" value="3" />
-      <value name="WS" value="4" />
-    </field>
+    <field name="L1 Cache Control" start="176" end="178" type="L1_CACHE_CONTROL" />
     <field name="EWA Disable For Cube" start="180" end="180" type="bool" />
     <field name="Y Offset" start="181" end="183" type="uint" />
     <field name="X Offset" start="185" end="191" type="uint" />

@@ -333,7 +333,12 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    }
 
    NIR_PASS_V(nir, nir_lower_system_values);
-   NIR_PASS_V(nir, nir_lower_compute_system_values, NULL);
+
+   nir_lower_compute_system_values_options options = {
+      .has_base_workgroup_id = false,
+   };
+
+   NIR_PASS_V(nir, nir_lower_compute_system_values, &options);
 
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_lower_var_copies);

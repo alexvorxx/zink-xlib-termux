@@ -820,7 +820,7 @@ compile_rt_prolog(struct radv_device *device, struct radv_ray_tracing_pipeline *
 static VkResult
 radv_rt_pipeline_compile(struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                          struct radv_ray_tracing_pipeline *pipeline, struct vk_pipeline_cache *cache,
-                         struct radv_shader_stage_key *stage_keys,
+                         const struct radv_ray_tracing_state_key *rt_state,
                          struct radv_serialized_shader_arena_block *capture_replay_blocks,
                          const VkPipelineCreationFeedbackCreateInfo *creation_feedback)
 {
@@ -854,7 +854,7 @@ radv_rt_pipeline_compile(struct radv_device *device, const VkRayTracingPipelineC
       goto done;
    }
 
-   result = radv_rt_compile_shaders(device, cache, pCreateInfo, creation_feedback, stage_keys, pipeline,
+   result = radv_rt_compile_shaders(device, cache, pCreateInfo, creation_feedback, rt_state->stage_keys, pipeline,
                                     capture_replay_blocks);
 
    if (result != VK_SUCCESS)
@@ -977,7 +977,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    if (result != VK_SUCCESS)
       goto fail;
 
-   result = radv_rt_pipeline_compile(device, pCreateInfo, pipeline, cache, rt_state.stage_keys, capture_replay_blocks,
+   result = radv_rt_pipeline_compile(device, pCreateInfo, pipeline, cache, &rt_state, capture_replay_blocks,
                                      creation_feedback);
    if (result != VK_SUCCESS)
       goto fail;

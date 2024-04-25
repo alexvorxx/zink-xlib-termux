@@ -858,7 +858,12 @@ etna_get_specs(struct etna_screen *screen)
       screen->specs.pixel_pipes = info->gpu.pixel_pipes;
       screen->specs.num_constants = info->gpu.num_constants;
       screen->specs.max_varyings = MIN2(info->gpu.max_varyings, ETNA_NUM_VARYINGS);
-   } else {
+
+      if (screen->npu)
+         info = etna_gpu_get_core_info(screen->npu);
+   }
+
+   if (info->type == ETNA_CORE_NPU) {
       screen->specs.nn_core_count = info->npu.nn_core_count;
       screen->specs.nn_mad_per_core = info->npu.nn_mad_per_core;
       screen->specs.tp_core_count = info->npu.tp_core_count;

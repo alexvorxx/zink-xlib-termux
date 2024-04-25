@@ -74,7 +74,7 @@ static int
 get_refresh_rate(void)
 {
 #ifndef _GAMING_XBOX
-   DEVMODE devModes;
+   DEVMODE devModes = { .dmSize = sizeof(DEVMODE) };
 
    if (EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &devModes)) {
       /* clamp the value, just in case we get garbage */

@@ -1134,20 +1134,25 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
       print_no_dest_padding(state);
    }
 
-   fprintf(fp, "@%s (", info->name);
+   fprintf(fp, "@%s", info->name);
 
    for (unsigned i = 0; i < num_srcs; i++) {
-      if (i != 0)
+      if (i == 0)
+         fprintf(fp, " (");
+      else
          fprintf(fp, ", ");
 
       print_src(&instr->src[i], state, nir_intrinsic_instr_src_type(instr, i));
    }
 
-   fprintf(fp, ") (");
+   if (num_srcs)
+      fprintf(fp, ")");
 
    for (unsigned i = 0; i < info->num_indices; i++) {
       unsigned idx = info->indices[i];
-      if (i != 0)
+      if (i == 0)
+         fprintf(fp, " (");
+      else
          fprintf(fp, ", ");
       switch (idx) {
       case NIR_INTRINSIC_WRITE_MASK: {
@@ -1384,6 +1389,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          if (io.high_16bits)
             fprintf(fp, " high_16bits");
 
+         if (io.invariant)
+            fprintf(fp, " invariant");
+
          if (io.high_dvec2)
             fprintf(fp, " high_dvec2");
 
@@ -1600,7 +1608,8 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
       }
       }
    }
-   fprintf(fp, ")");
+   if (info->num_indices)
+      fprintf(fp, ")");
 
    if (!state->shader)
       return;
@@ -2064,7 +2073,8 @@ print_block(nir_block *block, print_state *state, unsigned tabs)
       state->padding_for_no_dest = 0;
 
    print_indentation(tabs, fp);
-   fprintf(fp, "block b%u:", block->index);
+   fprintf(fp, "%s block b%u:",
+           block->divergent ? "div" : "con", block->index);
 
    const bool empty_block = exec_list_is_empty(&block->instr_list);
    if (empty_block) {

@@ -165,13 +165,6 @@ elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
       if (devinfo->ver > 7 && op == ELK_OPCODE_F16TO32)
          return "f16to32";
 
-      /* DPAS instructions may transiently exist on platforms that do not
-       * support DPAS. They will eventually be lowered, but in the meantime it
-       * must be possible to query the instruction name.
-       */
-      if (devinfo->verx10 < 125 && op == ELK_OPCODE_DPAS)
-         return "dpas";
-
       assert(elk_opcode_desc(isa, op)->name);
       return elk_opcode_desc(isa, op)->name;
    case ELK_FS_OPCODE_FB_WRITE:
@@ -180,10 +173,6 @@ elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
       return "fb_write_logical";
    case ELK_FS_OPCODE_REP_FB_WRITE:
       return "rep_fb_write";
-   case ELK_FS_OPCODE_FB_READ:
-      return "fb_read";
-   case ELK_FS_OPCODE_FB_READ_LOGICAL:
-      return "fb_read_logical";
 
    case ELK_SHADER_OPCODE_RCP:
       return "rcp";
@@ -520,17 +509,10 @@ elk_instruction_name(const struct elk_isa_info *isa, enum elk_opcode op)
    case ELK_TES_OPCODE_GET_PRIMITIVE_ID:
       return "tes_get_primitive_id";
 
-   case ELK_RT_OPCODE_TRACE_RAY_LOGICAL:
-      return "rt_trace_ray_logical";
-
    case ELK_SHADER_OPCODE_RND_MODE:
       return "rnd_mode";
    case ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE:
       return "float_control_mode";
-   case ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL:
-      return "btd_spawn_logical";
-   case ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL:
-      return "btd_retire_logical";
    case ELK_SHADER_OPCODE_READ_SR_REG:
       return "read_sr_reg";
    }
@@ -835,7 +817,6 @@ elk_backend_instruction::is_commutative() const
    case ELK_OPCODE_OR:
    case ELK_OPCODE_XOR:
    case ELK_OPCODE_ADD:
-   case ELK_OPCODE_ADD3:
    case ELK_OPCODE_MUL:
    case ELK_SHADER_OPCODE_MULH:
       return true;
@@ -940,11 +921,7 @@ elk_backend_instruction::can_do_source_mods() const
    case ELK_OPCODE_CBIT:
    case ELK_OPCODE_FBH:
    case ELK_OPCODE_FBL:
-   case ELK_OPCODE_ROL:
-   case ELK_OPCODE_ROR:
    case ELK_OPCODE_SUBB:
-   case ELK_OPCODE_DP4A:
-   case ELK_OPCODE_DPAS:
    case ELK_SHADER_OPCODE_BROADCAST:
    case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
    case ELK_SHADER_OPCODE_MOV_INDIRECT:
@@ -962,7 +939,6 @@ elk_backend_instruction::can_do_saturate() const
 {
    switch (opcode) {
    case ELK_OPCODE_ADD:
-   case ELK_OPCODE_ADD3:
    case ELK_OPCODE_ASR:
    case ELK_OPCODE_AVG:
    case ELK_OPCODE_CSEL:
@@ -970,7 +946,6 @@ elk_backend_instruction::can_do_saturate() const
    case ELK_OPCODE_DP3:
    case ELK_OPCODE_DP4:
    case ELK_OPCODE_DPH:
-   case ELK_OPCODE_DP4A:
    case ELK_OPCODE_F16TO32:
    case ELK_OPCODE_F32TO16:
    case ELK_OPCODE_LINE:
@@ -1009,7 +984,6 @@ elk_backend_instruction::can_do_cmod() const
 {
    switch (opcode) {
    case ELK_OPCODE_ADD:
-   case ELK_OPCODE_ADD3:
    case ELK_OPCODE_ADDC:
    case ELK_OPCODE_AND:
    case ELK_OPCODE_ASR:
@@ -1083,7 +1057,6 @@ elk_backend_instruction::has_side_effects() const
    case ELK_SHADER_OPCODE_SEND:
       return send_has_side_effects;
 
-   case ELK_OPCODE_SYNC:
    case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
    case ELK_SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
    case ELK_SHADER_OPCODE_GFX4_SCRATCH_WRITE:
@@ -1110,9 +1083,6 @@ elk_backend_instruction::has_side_effects() const
    case ELK_FS_OPCODE_SCHEDULING_FENCE:
    case ELK_SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL:
    case ELK_SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-   case ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL:
-   case ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL:
-   case ELK_RT_OPCODE_TRACE_RAY_LOGICAL:
    case ELK_VEC4_OPCODE_ZERO_OOB_PUSH_REGS:
       return true;
    default:
@@ -1293,7 +1263,6 @@ elk_compile_tes(const struct elk_compiler *compiler,
    const unsigned *assembly;
 
    prog_data->base.base.stage = MESA_SHADER_TESS_EVAL;
-   prog_data->base.base.ray_queries = nir->info.ray_queries;
 
    nir->info.inputs_read = key->inputs_read;
    nir->info.patch_inputs_read = key->patch_inputs_read;
@@ -1374,7 +1343,7 @@ elk_compile_tes(const struct elk_compiler *compiler,
    }
 
    if (is_scalar) {
-      const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
+      const unsigned dispatch_width = 8;
       elk_fs_visitor v(compiler, &params->base, &key->base,
                    &prog_data->base.base, nir, dispatch_width,
                    params->base.stats != NULL, debug_enabled);

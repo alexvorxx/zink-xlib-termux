@@ -736,17 +736,7 @@ struct PACKED explicit_matrix_key {
    uintptr_t row_major;
 };
 
-static uint32_t
-hash_explicit_matrix_key(const void *a)
-{
-   return _mesa_hash_data(a, sizeof(struct explicit_matrix_key));
-}
-
-static bool
-compare_explicit_matrix_key(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct explicit_matrix_key)) == 0;
-}
+DERIVE_HASH_TABLE(explicit_matrix_key);
 
 static const glsl_type *
 get_explicit_matrix_instance(unsigned int base_type, unsigned int rows, unsigned int columns,
@@ -773,7 +763,7 @@ get_explicit_matrix_instance(unsigned int base_type, unsigned int rows, unsigned
    key.explicit_alignment = explicit_alignment;
    key.row_major = row_major;
 
-   const uint32_t key_hash = hash_explicit_matrix_key(&key);
+   const uint32_t key_hash = explicit_matrix_key_hash(&key);
 
    simple_mtx_lock(&glsl_type_cache_mutex);
    assert(glsl_type_cache.users > 0);
@@ -781,7 +771,7 @@ get_explicit_matrix_instance(unsigned int base_type, unsigned int rows, unsigned
 
    if (glsl_type_cache.explicit_matrix_types == NULL) {
       glsl_type_cache.explicit_matrix_types =
-         _mesa_hash_table_create(mem_ctx, hash_explicit_matrix_key, compare_explicit_matrix_key);
+         explicit_matrix_key_table_create(mem_ctx);
    }
    struct hash_table *explicit_matrix_types = glsl_type_cache.explicit_matrix_types;
 
@@ -1249,17 +1239,7 @@ struct PACKED array_key {
    uintptr_t explicit_stride;
 };
 
-static uint32_t
-hash_array_key(const void *a)
-{
-   return _mesa_hash_data(a, sizeof(struct array_key));
-}
-
-static bool
-compare_array_key(const void *a, const void *b)
-{
-   return memcmp(a, b, sizeof(struct array_key)) == 0;
-}
+DERIVE_HASH_TABLE(array_key);
 
 const glsl_type *
 glsl_array_type(const glsl_type *element,
@@ -1274,15 +1254,14 @@ glsl_array_type(const glsl_type *element,
    key.array_size = array_size;
    key.explicit_stride = explicit_stride;
 
-   const uint32_t key_hash = hash_array_key(&key);
+   const uint32_t key_hash = array_key_hash(&key);
 
    simple_mtx_lock(&glsl_type_cache_mutex);
    assert(glsl_type_cache.users > 0);
    void *mem_ctx = glsl_type_cache.mem_ctx;
 
    if (glsl_type_cache.array_types == NULL) {
-      glsl_type_cache.array_types =
-         _mesa_hash_table_create(mem_ctx, hash_array_key, compare_array_key);
+      glsl_type_cache.array_types = array_key_table_create(mem_ctx);
    }
    struct hash_table *array_types = glsl_type_cache.array_types;
 
@@ -3161,6 +3140,11 @@ encode_type_to_blob(struct blob *blob, const glsl_type *type)
       encode_type_to_blob(blob, type->fields.array);
       return;
    case GLSL_TYPE_COOPERATIVE_MATRIX:
+      /* The first 5 bits of encoded/decoded are used to identify the
+       * actual type, but cmat_desc already is 32-bit without that tag, so
+       * encode just the cmat base type first, then the actual cmat desc.
+       */
+      blob_write_uint32(blob, encoded.u32);
       encoded.cmat_desc = type->cmat_desc;
       blob_write_uint32(blob, encoded.u32);
       return;
@@ -3271,6 +3255,7 @@ decode_type_from_blob(struct blob_reader *blob)
                              explicit_stride);
    }
    case GLSL_TYPE_COOPERATIVE_MATRIX: {
+      encoded.u32 = blob_read_uint32(blob);
       return glsl_cmat_type(&encoded.cmat_desc);
    }
    case GLSL_TYPE_STRUCT:

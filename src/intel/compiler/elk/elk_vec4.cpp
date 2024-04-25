@@ -1208,7 +1208,7 @@ vec4_visitor::eliminate_find_live_channel()
    bool progress = false;
    unsigned depth = 0;
 
-   if (!elk_stage_has_packed_dispatch(devinfo, stage, 0, stage_prog_data)) {
+   if (!elk_stage_has_packed_dispatch(devinfo, stage, stage_prog_data)) {
       /* The optimization below assumes that channel zero is live on thread
        * dispatch, which may not be the case if the fixed function dispatches
        * threads sparsely.
@@ -2559,7 +2559,6 @@ elk_compile_vs(const struct elk_compiler *compiler,
                                    params->base.debug_flag : DEBUG_VS);
 
    prog_data->base.base.stage = MESA_SHADER_VERTEX;
-   prog_data->base.base.ray_queries = nir->info.ray_queries;
    prog_data->base.base.total_scratch = 0;
 
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_VERTEX];
@@ -2649,7 +2648,7 @@ elk_compile_vs(const struct elk_compiler *compiler,
    }
 
    if (is_scalar) {
-      const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
+      const unsigned dispatch_width = 8;
       prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
       elk_fs_visitor v(compiler, &params->base, &key->base,

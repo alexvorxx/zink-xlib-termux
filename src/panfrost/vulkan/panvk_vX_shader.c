@@ -218,6 +218,10 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
                               const VkAllocationCallbacks *alloc)
 {
    VK_FROM_HANDLE(vk_shader_module, module, stage_info->module);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+   struct panvk_instance *instance =
+      to_panvk_instance(dev->vk.physical->instance);
    struct panvk_shader *shader;
 
    shader = vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*shader), 8,
@@ -253,7 +257,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
               true, true);
 
    struct panfrost_compile_inputs inputs = {
-      .gpu_id = dev->physical_device->kmod.props.gpu_prod_id,
+      .gpu_id = phys_dev->kmod.props.gpu_prod_id,
       .no_ubo_to_push = true,
       .no_idvs = true, /* TODO */
    };
@@ -337,8 +341,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    NIR_PASS_V(nir, nir_lower_global_vars_to_local);
 
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
-   if (unlikely(dev->physical_device->instance->debug_flags &
-                PANVK_DEBUG_NIR)) {
+   if (unlikely(instance->debug_flags & PANVK_DEBUG_NIR)) {
       fprintf(stderr, "translated nir:\n");
       nir_print_shader(nir, stderr);
    }

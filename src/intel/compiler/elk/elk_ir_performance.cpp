@@ -127,16 +127,8 @@ namespace {
          sc(elk_has_bank_conflict(isa, inst) ? sd : 0),
          desc(inst->desc), sfid(inst->sfid)
       {
-         /* We typically want the maximum source size, except for split send
-          * messages which require the total size.
-          */
-         if (inst->opcode == ELK_SHADER_OPCODE_SEND) {
-            ss = DIV_ROUND_UP(inst->size_read(2), REG_SIZE) +
-                 DIV_ROUND_UP(inst->size_read(3), REG_SIZE);
-         } else {
-            for (unsigned i = 0; i < inst->sources; i++)
-               ss = MAX2(ss, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
-         }
+         for (unsigned i = 0; i < inst->sources; i++)
+            ss = MAX2(ss, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
 
          /* Convert the execution size to GRF units. */
          sx = DIV_ROUND_UP(inst->exec_size * type_sz(tx), REG_SIZE);
@@ -148,8 +140,6 @@ namespace {
              !elk_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
              type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
             tx = elk_int_type(8, tx == ELK_REGISTER_TYPE_D);
-
-         rcount = inst->opcode == ELK_OPCODE_DPAS ? inst->rcount : 0;
       }
 
       instruction_info(const struct elk_isa_info *isa,
@@ -157,7 +147,7 @@ namespace {
          isa(isa), devinfo(isa->devinfo), op(inst->opcode),
          td(inst->dst.type), sd(DIV_ROUND_UP(inst->size_written, REG_SIZE)),
          tx(get_exec_type(inst)), sx(0), ss(0), sc(0),
-         desc(inst->desc), sfid(inst->sfid), rcount(0)
+         desc(inst->desc), sfid(inst->sfid)
       {
          /* Compute the maximum source size. */
          for (unsigned i = 0; i < ARRAY_SIZE(inst->src); i++)
@@ -197,8 +187,6 @@ namespace {
       uint32_t desc;
       /** Send message shared function ID. */
       uint8_t sfid;
-      /** Repeat count for DPAS instructions. */
-      uint8_t rcount;
    };
 
    /**
@@ -299,7 +287,6 @@ namespace {
       const struct intel_device_info *devinfo = info.devinfo;
 
       switch (info.op) {
-      case ELK_OPCODE_SYNC:
       case ELK_OPCODE_SEL:
       case ELK_OPCODE_NOT:
       case ELK_OPCODE_AND:
@@ -326,8 +313,6 @@ namespace {
       case ELK_OPCODE_FBL:
       case ELK_OPCODE_CBIT:
       case ELK_OPCODE_ADDC:
-      case ELK_OPCODE_ROR:
-      case ELK_OPCODE_ROL:
       case ELK_OPCODE_SUBB:
       case ELK_OPCODE_SAD2:
       case ELK_OPCODE_SADA2:
@@ -364,10 +349,7 @@ namespace {
       case ELK_TCS_OPCODE_GET_PRIMITIVE_ID:
       case ELK_TES_OPCODE_GET_PRIMITIVE_ID:
       case ELK_SHADER_OPCODE_READ_SR_REG:
-         if (devinfo->ver >= 11) {
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
-                                  0, 10, 6 /* XXX */, 14, 0, 0);
-         } else if (devinfo->ver >= 8) {
+         if (devinfo->ver >= 8) {
             if (type_sz(info.tx) > 4)
                return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
                                      0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
@@ -385,14 +367,10 @@ namespace {
       case ELK_OPCODE_MOV:
       case ELK_OPCODE_CMP:
       case ELK_OPCODE_ADD:
-      case ELK_OPCODE_ADD3:
       case ELK_OPCODE_MUL:
       case ELK_SHADER_OPCODE_MOV_RELOC_IMM:
       case ELK_VEC4_OPCODE_MOV_FOR_SCRATCH:
-         if (devinfo->ver >= 11) {
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
-                                  0, 10, 6, 14, 0, 0);
-         } else if (devinfo->ver >= 8) {
+         if (devinfo->ver >= 8) {
             if (type_sz(info.tx) > 4)
                return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
                                      0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
@@ -423,10 +401,7 @@ namespace {
       case ELK_OPCODE_BFE:
       case ELK_OPCODE_BFI2:
       case ELK_OPCODE_CSEL:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
                                   0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          else if (devinfo->verx10 >= 75)
@@ -439,10 +414,7 @@ namespace {
             abort();
 
       case ELK_OPCODE_MAD:
-         if (devinfo->ver >= 11) {
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         } else if (devinfo->ver >= 8) {
+         if (devinfo->ver >= 8) {
             if (type_sz(info.tx) > 4)
                return calculate_desc(info, EU_UNIT_FPU, 0, 4, 1, 0, 4,
                                      0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
@@ -473,10 +445,7 @@ namespace {
          }
 
       case ELK_OPCODE_F32TO16:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
                                   0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          else if (devinfo->verx10 >= 75)
@@ -501,39 +470,6 @@ namespace {
          else
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 12, 8 /* XXX */, 18 /* XXX */, 0, 0);
-
-      case ELK_OPCODE_DP4A:
-         if (devinfo->ver >= 12)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else
-            abort();
-
-      case ELK_OPCODE_DPAS: {
-         unsigned ld;
-
-         switch (info.rcount) {
-         case 1:
-            ld = 21;
-            break;
-         case 2:
-            ld = 22;
-            break;
-         case 8:
-         default:
-            ld = 32;
-            break;
-         }
-
-         /* DPAS cannot write the accumulator or the flags, so pass UINT_MAX
-          * for la and lf.
-          */
-         if (devinfo->verx10 >= 125)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 1, 0, 2,
-                                  0, ld, UINT_MAX, UINT_MAX, 0, 0);
-         else
-            abort();
-      }
 
       case ELK_SHADER_OPCODE_RCP:
       case ELK_SHADER_OPCODE_RSQ:
@@ -668,11 +604,7 @@ namespace {
             abort();
 
       case ELK_FS_OPCODE_PACK_HALF_2x16_SPLIT:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 20, 6, 0, 0, 6,
-                                  0, 10 /* XXX */, 6 /* XXX */,
-                                  14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 16, 6, 0, 0, 6,
                                   0, 8 /* XXX */, 4 /* XXX */,
                                   12 /* XXX */, 0, 0);
@@ -688,11 +620,7 @@ namespace {
             abort();
 
       case ELK_SHADER_OPCODE_MOV_INDIRECT:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 34, 0, 0, 34, 0,
-                                  0, 10 /* XXX */, 6 /* XXX */,
-                                  14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 34, 0, 0, 34, 0,
                                   0, 8 /* XXX */, 4 /* XXX */,
                                   12 /* XXX */, 0, 0);
@@ -706,10 +634,7 @@ namespace {
                                   18 /* XXX */, 0, 0);
 
       case ELK_SHADER_OPCODE_BROADCAST:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 20 /* XXX */, 0, 0, 4, 0,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 18, 0, 0, 4, 0,
                                   0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          else if (devinfo->verx10 >= 75)
@@ -723,10 +648,7 @@ namespace {
 
       case ELK_SHADER_OPCODE_FIND_LIVE_CHANNEL:
       case ELK_SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 2, 0, 0, 2, 0,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 2, 0, 0, 2, 0,
                                   0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          else if (devinfo->verx10 >= 75)
@@ -740,11 +662,7 @@ namespace {
 
       case ELK_SHADER_OPCODE_RND_MODE:
       case ELK_SHADER_OPCODE_FLOAT_CONTROL_MODE:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 24 /* XXX */, 0, 0,
-                                  4 /* XXX */, 0,
-                                  0, 0, 0, 0, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 20 /* XXX */, 0, 0,
                                   4 /* XXX */, 0,
                                   0, 0, 0, 0, 0, 0);
@@ -760,12 +678,7 @@ namespace {
             abort();
 
       case ELK_SHADER_OPCODE_SHUFFLE:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 44 /* XXX */, 0, 0,
-                                  44 /* XXX */, 0,
-                                  0, 10 /* XXX */, 6 /* XXX */,
-                                  14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 42 /* XXX */, 0, 0,
                                   42 /* XXX */, 0,
                                   0, 8 /* XXX */, 4 /* XXX */,
@@ -784,12 +697,7 @@ namespace {
             abort();
 
       case ELK_SHADER_OPCODE_SEL_EXEC:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 10 /* XXX */, 4 /* XXX */, 0,
-                                  0, 4 /* XXX */,
-                                  0, 10 /* XXX */, 6 /* XXX */,
-                                  14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 8 /* XXX */, 4 /* XXX */, 0,
                                   0, 4 /* XXX */,
                                   0, 8 /* XXX */, 4 /* XXX */,
@@ -806,12 +714,7 @@ namespace {
                                   18 /* XXX */, 0, 0);
 
       case ELK_SHADER_OPCODE_QUAD_SWIZZLE:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 0 /* XXX */, 8 /* XXX */, 0,
-                                  0, 8 /* XXX */,
-                                  0, 10 /* XXX */, 6 /* XXX */,
-                                  14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0 /* XXX */, 8 /* XXX */, 0,
                                   0, 8 /* XXX */,
                                   0, 8 /* XXX */, 4 /* XXX */,
@@ -828,10 +731,7 @@ namespace {
                                   18 /* XXX */, 0, 0);
 
       case ELK_FS_OPCODE_DDY_FINE:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 0, 14, 0, 0, 4,
-                                  0, 10, 6 /* XXX */, 14 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 8, 4 /* XXX */, 12 /* XXX */, 0, 0);
          else if (devinfo->verx10 >= 75)
@@ -842,11 +742,7 @@ namespace {
                                   0, 14, 10 /* XXX */, 20 /* XXX */, 0, 0);
 
       case ELK_FS_OPCODE_LOAD_LIVE_CHANNELS:
-         if (devinfo->ver >= 11)
-            return calculate_desc(info, EU_UNIT_FPU, 2 /* XXX */, 0, 0,
-                                  2 /* XXX */, 0,
-                                  0, 0, 0, 10 /* XXX */, 0, 0);
-         else if (devinfo->ver >= 8)
+         if (devinfo->ver >= 8)
             return calculate_desc(info, EU_UNIT_FPU, 0, 2 /* XXX */, 0,
                                   0, 2 /* XXX */,
                                   0, 0, 0, 8 /* XXX */, 0, 0);
@@ -976,9 +872,6 @@ namespace {
 
          case ELK_SFID_URB:
          case GFX7_SFID_DATAPORT_DATA_CACHE:
-         case GFX12_SFID_SLM:
-         case GFX12_SFID_TGM:
-         case GFX12_SFID_UGM:
          case HSW_SFID_DATAPORT_DATA_CACHE_1:
             if (devinfo->ver >= 7)
                return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0, 30 /* XXX */, 0,
@@ -1016,7 +909,6 @@ namespace {
             abort();
 
       case ELK_FS_OPCODE_FB_WRITE:
-      case ELK_FS_OPCODE_FB_READ:
       case ELK_FS_OPCODE_REP_FB_WRITE:
          return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0, 0, 450 /* XXX */,
                                10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);
@@ -1143,47 +1035,6 @@ namespace {
                                      0, 90 /* XXX */, 0, 0, 0, 0);
             else
                abort();
-
-         case GFX12_SFID_UGM:
-         case GFX12_SFID_TGM:
-         case GFX12_SFID_SLM:
-            switch (lsc_msg_desc_opcode(devinfo, info.desc)) {
-            case LSC_OP_LOAD:
-            case LSC_OP_STORE:
-            case LSC_OP_LOAD_CMASK:
-            case LSC_OP_STORE_CMASK:
-               return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
-                                     0, 20 /* XXX */,
-                                     10 /* XXX */, 100 /* XXX */, 0, 0,
-                                     0, 0);
-
-            case LSC_OP_FENCE:
-            case LSC_OP_ATOMIC_INC:
-            case LSC_OP_ATOMIC_DEC:
-            case LSC_OP_ATOMIC_LOAD:
-            case LSC_OP_ATOMIC_STORE:
-            case LSC_OP_ATOMIC_ADD:
-            case LSC_OP_ATOMIC_SUB:
-            case LSC_OP_ATOMIC_MIN:
-            case LSC_OP_ATOMIC_MAX:
-            case LSC_OP_ATOMIC_UMIN:
-            case LSC_OP_ATOMIC_UMAX:
-            case LSC_OP_ATOMIC_CMPXCHG:
-            case LSC_OP_ATOMIC_FADD:
-            case LSC_OP_ATOMIC_FSUB:
-            case LSC_OP_ATOMIC_FMIN:
-            case LSC_OP_ATOMIC_FMAX:
-            case LSC_OP_ATOMIC_FCMPXCHG:
-            case LSC_OP_ATOMIC_AND:
-            case LSC_OP_ATOMIC_OR:
-            case LSC_OP_ATOMIC_XOR:
-               return calculate_desc(info, EU_UNIT_DP_DC, 2, 0, 0,
-                                     30 /* XXX */, 400 /* XXX */,
-                                     10 /* XXX */, 100 /* XXX */, 0, 0,
-                                     0, 400 /* XXX */);
-            default:
-               abort();
-            }
 
          case ELK_SFID_URB:
             return calculate_desc(info, EU_UNIT_URB, 2, 0, 0, 0, 6 /* XXX */,
@@ -1326,38 +1177,6 @@ namespace {
    }
 
    /**
-    * Return the dependency ID corresponding to the SBID read completion
-    * condition of a Gfx12+ SWSB.
-    */
-   enum intel_eu_dependency_id
-   tgl_swsb_rd_dependency_id(tgl_swsb swsb)
-   {
-      if (swsb.mode) {
-         assert(swsb.sbid <
-                EU_NUM_DEPENDENCY_IDS - EU_DEPENDENCY_ID_SBID_RD0);
-         return intel_eu_dependency_id(EU_DEPENDENCY_ID_SBID_RD0 + swsb.sbid);
-      } else {
-         return EU_NUM_DEPENDENCY_IDS;
-      }
-   }
-
-   /**
-    * Return the dependency ID corresponding to the SBID write completion
-    * condition of a Gfx12+ SWSB.
-    */
-   enum intel_eu_dependency_id
-   tgl_swsb_wr_dependency_id(tgl_swsb swsb)
-   {
-      if (swsb.mode) {
-         assert(swsb.sbid <
-                EU_DEPENDENCY_ID_SBID_RD0 - EU_DEPENDENCY_ID_SBID_WR0);
-         return intel_eu_dependency_id(EU_DEPENDENCY_ID_SBID_WR0 + swsb.sbid);
-      } else {
-         return EU_NUM_DEPENDENCY_IDS;
-      }
-   }
-
-   /**
     * Return the implicit accumulator register accessed by channel \p i of the
     * instruction.
     */
@@ -1438,12 +1257,6 @@ namespace {
          }
       }
 
-      /* Stall on any SBID dependencies. */
-      if (inst->sched.mode & (TGL_SBID_SET | TGL_SBID_DST))
-         stall_on_dependency(st, tgl_swsb_wr_dependency_id(inst->sched));
-      else if (inst->sched.mode & TGL_SBID_SRC)
-         stall_on_dependency(st, tgl_swsb_rd_dependency_id(inst->sched));
-
       /* Execute the instruction. */
       execute_instruction(st, perf);
 
@@ -1485,12 +1298,6 @@ namespace {
             if (mask & (1 << i))
                mark_write_dependency(st, perf, flag_dependency_id(i));
          }
-      }
-
-      /* Mark any SBID dependencies. */
-      if (inst->sched.mode & TGL_SBID_SET) {
-         mark_read_dependency(st, perf, tgl_swsb_rd_dependency_id(inst->sched));
-         mark_write_dependency(st, perf, tgl_swsb_wr_dependency_id(inst->sched));
       }
    }
 
@@ -1631,16 +1438,8 @@ namespace {
        *
        *       In the meantime use values that roughly match the control flow
        *       weights used elsewhere in the compiler back-end.
-       *
-       *       Note that we provide slightly more pessimistic weights on
-       *       Gfx12+ for SIMD32, since the effective warp size on that
-       *       platform is 2x the SIMD width due to EU fusion, which increases
-       *       the likelihood of divergent control flow in comparison to
-       *       previous generations, giving narrower SIMD modes a performance
-       *       advantage in several test-cases with non-uniform discard jumps.
        */
-      const float discard_weight = (dispatch_width > 16 || s->devinfo->ver < 12 ?
-                                    1.0 : 0.5);
+      const float discard_weight = 1.0;
       const float loop_weight = 10;
       unsigned halt_count = 0;
       unsigned elapsed = 0;

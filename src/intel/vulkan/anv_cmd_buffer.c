@@ -104,8 +104,8 @@ anv_cmd_buffer_ensure_rcs_companion(struct anv_cmd_buffer *cmd_buffer)
 
    cmd_buffer->companion_rcs_cmd_buffer =
       container_of(tmp_cmd_buffer, struct anv_cmd_buffer, vk);
-   cmd_buffer->companion_rcs_cmd_buffer->vk.level = cmd_buffer->vk.level;
-   cmd_buffer->companion_rcs_cmd_buffer->is_companion_rcs_cmd_buffer = true;
+   anv_genX(cmd_buffer->device->info, cmd_buffer_begin_companion)(
+      cmd_buffer->companion_rcs_cmd_buffer, cmd_buffer->vk.level);
 
 unlock_and_return:
    pthread_mutex_unlock(&cmd_buffer->device->mutex);

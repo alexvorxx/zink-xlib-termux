@@ -398,13 +398,11 @@ dEQP-GLES31.functional.fbo.no_attachments.npot_size.129x127,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.129x129,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.15x15,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.15x511,Fail
-dEQP-GLES31.functional.fbo.no_attachments.npot_size.17x17,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.1x1,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.2047x1025,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.2047x2047,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.255x255,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.257x257,Fail
-dEQP-GLES31.functional.fbo.no_attachments.npot_size.31x31,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.33x33,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.3x3,Fail
 dEQP-GLES31.functional.fbo.no_attachments.npot_size.511x127,Fail

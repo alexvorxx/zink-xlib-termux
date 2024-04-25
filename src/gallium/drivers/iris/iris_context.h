@@ -1059,6 +1059,9 @@ struct iris_context {
       /** State tracking for Wa_18020335297. */
       bool viewport_ptr_set;
 
+      /** State for Wa_14015055625, Wa_14019166699 */
+      bool uses_primitive_id;
+
       /** Do we have integer RT in current framebuffer state? */
       bool has_integer_rt;
 
@@ -1237,7 +1240,7 @@ void iris_fill_cs_push_const_buffer(struct iris_screen *screen,
 /* iris_blit.c */
 #define IRIS_BLORP_RELOC_FLAGS_EXEC_OBJECT_WRITE      (1 << 2)
 
-void iris_blorp_surf_for_resource(struct isl_device *isl_dev,
+void iris_blorp_surf_for_resource(struct iris_batch *batch,
                                   struct blorp_surf *surf,
                                   struct pipe_resource *p_res,
                                   enum isl_aux_usage aux_usage,
@@ -1262,6 +1265,21 @@ iris_blorp_flags_for_batch(struct iris_batch *batch)
       return BLORP_BATCH_USE_BLITTER;
 
    return 0;
+}
+
+static inline isl_surf_usage_flags_t
+iris_blorp_batch_usage(struct iris_batch *batch, bool is_dest)
+{
+   switch (batch->name) {
+   case IRIS_BATCH_RENDER:
+      return is_dest ? ISL_SURF_USAGE_RENDER_TARGET_BIT : ISL_SURF_USAGE_TEXTURE_BIT;
+   case IRIS_BATCH_COMPUTE:
+      return is_dest ? ISL_SURF_USAGE_STORAGE_BIT : ISL_SURF_USAGE_TEXTURE_BIT;
+   case IRIS_BATCH_BLITTER:
+      return is_dest ? ISL_SURF_USAGE_BLITTER_DST_BIT : ISL_SURF_USAGE_BLITTER_SRC_BIT;
+   default:
+      unreachable("Unhandled batch type");
+   }
 }
 
 /* iris_draw.c */

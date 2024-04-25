@@ -237,7 +237,6 @@ elk_fs_inst::is_send_from_grf() const
    case ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return src[1].file == VGRF;
    case ELK_FS_OPCODE_FB_WRITE:
-   case ELK_FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:
       return false;
@@ -281,7 +280,7 @@ elk_fs_inst::is_control_source(unsigned arg) const
       return arg == 1 || arg == 2;
 
    case ELK_SHADER_OPCODE_SEND:
-      return arg == 0 || arg == 1;
+      return arg == 0;
 
    default:
       return false;
@@ -293,7 +292,6 @@ elk_fs_inst::is_payload(unsigned arg) const
 {
    switch (opcode) {
    case ELK_FS_OPCODE_FB_WRITE:
-   case ELK_FS_OPCODE_FB_READ:
    case ELK_VEC4_OPCODE_UNTYPED_ATOMIC:
    case ELK_VEC4_OPCODE_UNTYPED_SURFACE_READ:
    case ELK_VEC4_OPCODE_UNTYPED_SURFACE_WRITE:
@@ -322,7 +320,7 @@ elk_fs_inst::is_payload(unsigned arg) const
       return arg == 0;
 
    case ELK_SHADER_OPCODE_SEND:
-      return arg == 2 || arg == 3;
+      return arg == 1;
 
    default:
       return false;
@@ -391,21 +389,6 @@ elk_fs_inst::has_source_and_destination_hazard() const
       default:
          return !is_uniform(src[0]);
       }
-   case ELK_OPCODE_DPAS:
-      /* This is overly conservative. The actual hazard is more complicated to
-       * describe. When the repeat count is N, the single instruction behaves
-       * like N instructions with a repeat count of one, but the destination
-       * and source registers are incremented (in somewhat complex ways) for
-       * each instruction.
-       *
-       * This means the source and destination register is actually a range of
-       * registers. The hazard exists of an earlier iteration would write a
-       * register that should be read by a later iteration.
-       *
-       * There may be some advantage to properly modeling this, but for now,
-       * be overly conservative.
-       */
-      return rcount > 1;
    default:
       /* The SIMD16 compressed instruction
        *
@@ -452,28 +435,7 @@ elk_fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
    if (is_send_from_grf())
       return false;
 
-   /* From Wa_1604601757:
-    *
-    * "When multiplying a DW and any lower precision integer, source modifier
-    *  is not supported."
-    */
-   if (devinfo->ver >= 12 && (opcode == ELK_OPCODE_MUL ||
-                              opcode == ELK_OPCODE_MAD)) {
-      const elk_reg_type exec_type = get_exec_type(this);
-      const unsigned min_type_sz = opcode == ELK_OPCODE_MAD ?
-         MIN2(type_sz(src[1].type), type_sz(src[2].type)) :
-         MIN2(type_sz(src[0].type), type_sz(src[1].type));
-
-      if (elk_reg_type_is_integer(exec_type) &&
-          type_sz(exec_type) >= 4 &&
-          type_sz(exec_type) != min_type_sz)
-         return false;
-   }
-
-   if (!elk_backend_instruction::can_do_source_mods())
-      return false;
-
-   return true;
+   return elk_backend_instruction::can_do_source_mods();
 }
 
 bool
@@ -855,9 +817,6 @@ elk_fs_inst::components_read(unsigned i) const
       else
          return 1;
 
-   case ELK_OPCODE_DPAS:
-      unreachable("Do not use components_read() for DPAS.");
-
    default:
       return 1;
    }
@@ -868,10 +827,8 @@ elk_fs_inst::size_read(int arg) const
 {
    switch (opcode) {
    case ELK_SHADER_OPCODE_SEND:
-      if (arg == 2) {
+      if (arg == 1) {
          return mlen * REG_SIZE;
-      } else if (arg == 3) {
-         return ex_mlen * REG_SIZE;
       }
       break;
 
@@ -885,7 +842,6 @@ elk_fs_inst::size_read(int arg) const
       }
       break;
 
-   case ELK_FS_OPCODE_FB_READ:
    case ELK_FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case ELK_FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       if (arg == 0)
@@ -915,26 +871,6 @@ elk_fs_inst::size_read(int arg) const
       if (arg == 0) {
          assert(src[2].file == IMM);
          return src[2].ud;
-      }
-      break;
-
-   case ELK_OPCODE_DPAS:
-      switch (arg) {
-      case 0:
-         if (src[0].type == ELK_REGISTER_TYPE_HF) {
-            return rcount * REG_SIZE / 2;
-         } else {
-            return rcount * REG_SIZE;
-         }
-      case 1:
-         return sdepth * REG_SIZE;
-      case 2:
-         /* This is simpler than the formula described in the Bspec, but it
-          * covers all of the cases that we support on DG2.
-          */
-         return rcount * REG_SIZE;
-      default:
-         unreachable("Invalid source number.");
       }
       break;
 
@@ -982,24 +918,20 @@ namespace {
    unsigned
    predicate_width(const intel_device_info *devinfo, elk_predicate predicate)
    {
-      if (devinfo->ver >= 20) {
-         return 1;
-      } else {
-         switch (predicate) {
-         case ELK_PREDICATE_NONE:            return 1;
-         case ELK_PREDICATE_NORMAL:          return 1;
-         case ELK_PREDICATE_ALIGN1_ANY2H:    return 2;
-         case ELK_PREDICATE_ALIGN1_ALL2H:    return 2;
-         case ELK_PREDICATE_ALIGN1_ANY4H:    return 4;
-         case ELK_PREDICATE_ALIGN1_ALL4H:    return 4;
-         case ELK_PREDICATE_ALIGN1_ANY8H:    return 8;
-         case ELK_PREDICATE_ALIGN1_ALL8H:    return 8;
-         case ELK_PREDICATE_ALIGN1_ANY16H:   return 16;
-         case ELK_PREDICATE_ALIGN1_ALL16H:   return 16;
-         case ELK_PREDICATE_ALIGN1_ANY32H:   return 32;
-         case ELK_PREDICATE_ALIGN1_ALL32H:   return 32;
-         default: unreachable("Unsupported predicate");
-         }
+      switch (predicate) {
+      case ELK_PREDICATE_NONE:            return 1;
+      case ELK_PREDICATE_NORMAL:          return 1;
+      case ELK_PREDICATE_ALIGN1_ANY2H:    return 2;
+      case ELK_PREDICATE_ALIGN1_ALL2H:    return 2;
+      case ELK_PREDICATE_ALIGN1_ANY4H:    return 4;
+      case ELK_PREDICATE_ALIGN1_ALL4H:    return 4;
+      case ELK_PREDICATE_ALIGN1_ANY8H:    return 8;
+      case ELK_PREDICATE_ALIGN1_ALL8H:    return 8;
+      case ELK_PREDICATE_ALIGN1_ANY16H:   return 16;
+      case ELK_PREDICATE_ALIGN1_ALL16H:   return 16;
+      case ELK_PREDICATE_ALIGN1_ANY32H:   return 32;
+      case ELK_PREDICATE_ALIGN1_ALL32H:   return 32;
+      default: unreachable("Unsupported predicate");
       }
    }
 
@@ -1039,8 +971,8 @@ namespace {
 unsigned
 elk_fs_inst::flags_read(const intel_device_info *devinfo) const
 {
-   if (devinfo->ver < 20 && (predicate == ELK_PREDICATE_ALIGN1_ANYV ||
-                             predicate == ELK_PREDICATE_ALIGN1_ALLV)) {
+   if (predicate == ELK_PREDICATE_ALIGN1_ANYV ||
+       predicate == ELK_PREDICATE_ALIGN1_ALLV) {
       /* The vertical predication modes combine corresponding bits from
        * f0.0 and f1.0 on Gfx7+, and f0.0 and f0.1 on older hardware.
        */
@@ -1318,74 +1250,6 @@ elk_fs_visitor::assign_curb_setup()
    prog_data->curb_read_length = uniform_push_length + ubo_push_length;
 
    uint64_t used = 0;
-   bool is_compute = gl_shader_stage_is_compute(stage);
-
-   if (is_compute && elk_cs_prog_data(prog_data)->uses_inline_data) {
-      /* With COMPUTE_WALKER, we can push up to one register worth of data via
-       * the inline data parameter in the COMPUTE_WALKER command itself.
-       *
-       * TODO: Support inline data and push at the same time.
-       */
-      assert(devinfo->verx10 >= 125);
-      assert(uniform_push_length <= reg_unit(devinfo));
-   } else if (is_compute && devinfo->verx10 >= 125) {
-      assert(devinfo->has_lsc);
-      fs_builder ubld = fs_builder(this, 1).exec_all().at(
-         cfg->first_block(), cfg->first_block()->start());
-
-      /* The base offset for our push data is passed in as R0.0[31:6]. We have
-       * to mask off the bottom 6 bits.
-       */
-      elk_fs_reg base_addr = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-      ubld.AND(base_addr,
-               retype(elk_vec1_grf(0, 0), ELK_REGISTER_TYPE_UD),
-               elk_imm_ud(INTEL_MASK(31, 6)));
-
-      /* On Gfx12-HP we load constants at the start of the program using A32
-       * stateless messages.
-       */
-      for (unsigned i = 0; i < uniform_push_length;) {
-         /* Limit ourselves to LSC HW limit of 8 GRFs (256bytes D32V64). */
-         unsigned num_regs = MIN2(uniform_push_length - i, 8);
-         assert(num_regs > 0);
-         num_regs = 1 << util_logbase2(num_regs);
-
-         elk_fs_reg addr = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-         ubld.ADD(addr, base_addr, elk_imm_ud(i * REG_SIZE));
-
-         elk_fs_reg srcs[4] = {
-            elk_imm_ud(0), /* desc */
-            elk_imm_ud(0), /* ex_desc */
-            addr,          /* payload */
-            elk_fs_reg(),      /* payload2 */
-         };
-
-         elk_fs_reg dest = retype(elk_vec8_grf(payload().num_regs + i, 0),
-                              ELK_REGISTER_TYPE_UD);
-         elk_fs_inst *send = ubld.emit(ELK_SHADER_OPCODE_SEND, dest, srcs, 4);
-
-         send->sfid = GFX12_SFID_UGM;
-         send->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                   1 /* exec_size */,
-                                   LSC_ADDR_SURFTYPE_FLAT,
-                                   LSC_ADDR_SIZE_A32,
-                                   1 /* num_coordinates */,
-                                   LSC_DATA_SIZE_D32,
-                                   num_regs * 8 /* num_channels */,
-                                   true /* transpose */,
-                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                   true /* has_dest */);
-         send->header_size = 0;
-         send->mlen = lsc_msg_desc_src0_len(devinfo, send->desc);
-         send->size_written =
-            lsc_msg_desc_dest_len(devinfo, send->desc) * REG_SIZE;
-         send->send_is_volatile = true;
-
-         i += num_regs;
-      }
-
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
-   }
 
    /* Map the offsets in the UNIFORM file to fixed HW regs. */
    foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
@@ -1641,48 +1505,14 @@ elk_fs_visitor::assign_urb_setup()
              *      3       Attr0.w  a1-a0  a2-a0   N/A    a0
              *      4       Attr1.x  a1-a0  a2-a0   N/A    a0
              *     ...
-             *
-             * In multipolygon mode that no longer works since
-             * different channels may be processing polygons with
-             * different plane parameters, so each parameter above is
-             * represented as a dispatch_width-wide vector:
-             *
-             *  elk_fs_reg::nr     elk_fs_reg::offset    Input      Comp0     ...    CompN
-             *      0                 0          Attr0.x  a1[0]-a0[0] ... a1[N]-a0[N]
-             *      0        4 * dispatch_width  Attr0.x  a2[0]-a0[0] ... a2[N]-a0[N]
-             *      0        8 * dispatch_width  Attr0.x     N/A      ...     N/A
-             *      0       12 * dispatch_width  Attr0.x    a0[0]     ...    a0[N]
-             *      1                 0          Attr0.y  a1[0]-a0[0] ... a1[N]-a0[N]
-             *     ...
-             *
-             * Note that many of the components on a single row above
-             * are likely to be replicated multiple times (if, say, a
-             * single SIMD thread is only processing 2 different
-             * polygons), so plane parameters aren't actually stored
-             * in GRF memory with that layout to avoid wasting space.
-             * Instead we compose ATTR register regions with a 2D
-             * region that walks through the parameters of each
-             * polygon with the correct stride, reading the parameter
-             * corresponding to each channel directly from the PS
-             * thread payload.
-             *
-             * The latter layout corresponds to a param_width equal to
-             * dispatch_width, while the former (scalar parameter)
-             * layout has a param_width of 1.
-             *
-             * Gfx20+ represent plane parameters in a format similar
-             * to the above, except the parameters are packed in 12B
-             * and ordered like "a0, a1-a0, a2-a0" instead of the
-             * above vec4 representation with a missing component.
              */
-            const unsigned param_width = (max_polygons > 1 ? dispatch_width : 1);
+            const unsigned param_width = 1;
 
             /* Size of a single scalar component of a plane parameter
              * in bytes.
              */
             const unsigned chan_sz = 4;
             struct elk_reg reg;
-            assert(max_polygons > 0);
 
             /* Calculate the base register on the thread payload of
              * either the block of vertex setup data or the block of
@@ -1694,7 +1524,7 @@ elk_fs_visitor::assign_urb_setup()
             const unsigned base = urb_start +
                (per_prim ? 0 :
                 ALIGN(prog_data->num_per_primitive_inputs / 2,
-                      reg_unit(devinfo)) * max_polygons);
+                      reg_unit(devinfo)));
             const unsigned idx = per_prim ? inst->src[i].nr :
                inst->src[i].nr - prog_data->num_per_primitive_inputs;
 
@@ -1702,78 +1532,22 @@ elk_fs_visitor::assign_urb_setup()
              * representation described above into an offset and a
              * grf, which contains the plane parameters for the first
              * polygon processed by the thread.
+             *
+             * Earlier platforms and per-primitive block pack 2 logical
+             * input components per 32B register.
              */
-            if (devinfo->ver >= 20 && !per_prim) {
-               /* Gfx20+ is able to pack 5 logical input components
-                * per 64B register for vertex setup data.
-                */
-               const unsigned grf = base + idx / 5 * 2 * max_polygons;
-               assert(inst->src[i].offset / param_width < 12);
-               const unsigned delta = idx % 5 * 12 +
-                  inst->src[i].offset / (param_width * chan_sz) * chan_sz +
-                  inst->src[i].offset % chan_sz;
-               reg = byte_offset(retype(elk_vec8_grf(grf, 0), inst->src[i].type),
-                                 delta);
-            } else {
-               /* Earlier platforms and per-primitive block pack 2 logical
-                * input components per 32B register.
-                */
-               const unsigned grf = base + idx / 2 * max_polygons;
-               assert(inst->src[i].offset / param_width < REG_SIZE / 2);
-               const unsigned delta = (idx % 2) * (REG_SIZE / 2) +
-                  inst->src[i].offset / (param_width * chan_sz) * chan_sz +
-                  inst->src[i].offset % chan_sz;
-               reg = byte_offset(retype(elk_vec8_grf(grf, 0), inst->src[i].type),
-                                 delta);
-            }
+            const unsigned grf = base + idx / 2;
+            assert(inst->src[i].offset / param_width < REG_SIZE / 2);
+            const unsigned delta = (idx % 2) * (REG_SIZE / 2) +
+               inst->src[i].offset / (param_width * chan_sz) * chan_sz +
+               inst->src[i].offset % chan_sz;
+            reg = byte_offset(retype(elk_vec8_grf(grf, 0), inst->src[i].type),
+                              delta);
 
-            if (max_polygons > 1) {
-               assert(devinfo->ver >= 12);
-               /* Misaligned channel strides that would lead to
-                * cross-channel access in the representation above are
-                * disallowed.
-                */
-               assert(inst->src[i].stride * type_sz(inst->src[i].type) == chan_sz);
-
-               /* Number of channels processing the same polygon. */
-               const unsigned poly_width = dispatch_width / max_polygons;
-               assert(dispatch_width % max_polygons == 0);
-
-               /* Accessing a subset of channels of a parameter vector
-                * starting from "chan" is necessary to handle
-                * SIMD-lowered instructions though.
-                */
-               const unsigned chan = inst->src[i].offset %
-                  (param_width * chan_sz) / chan_sz;
-               assert(chan < dispatch_width);
-               assert(chan % poly_width == 0);
-               const unsigned reg_size = reg_unit(devinfo) * REG_SIZE;
-               reg = byte_offset(reg, chan / poly_width * reg_size);
-
-               if (inst->exec_size > poly_width) {
-                  /* Accessing the parameters for multiple polygons.
-                   * Corresponding parameters for different polygons
-                   * are stored a GRF apart on the thread payload, so
-                   * use that as vertical stride.
-                   */
-                  const unsigned vstride = reg_size / type_sz(inst->src[i].type);
-                  assert(vstride <= 32);
-                  assert(chan % poly_width == 0);
-                  reg = stride(reg, vstride, poly_width, 0);
-               } else {
-                  /* Accessing one parameter for a single polygon --
-                   * Translate to a scalar region.
-                   */
-                  assert(chan % poly_width + inst->exec_size <= poly_width);
-                  reg = stride(reg, 0, 1, 0);
-               }
-
-            } else {
-               const unsigned width = inst->src[i].stride == 0 ?
-                  1 : MIN2(inst->exec_size, 8);
-               reg = stride(reg, width * inst->src[i].stride,
-                            width, inst->src[i].stride);
-            }
+            const unsigned width = inst->src[i].stride == 0 ?
+               1 : MIN2(inst->exec_size, 8);
+            reg = stride(reg, width * inst->src[i].stride,
+                         width, inst->src[i].stride);
 
             reg.abs = inst->src[i].abs;
             reg.negate = inst->src[i].negate;
@@ -1786,13 +1560,13 @@ elk_fs_visitor::assign_urb_setup()
     * but they may be replicated multiple times for multipolygon
     * dispatch.
     */
-   this->first_non_payload_grf += prog_data->num_varying_inputs * 2 * max_polygons;
+   this->first_non_payload_grf += prog_data->num_varying_inputs * 2;
 
    /* Unlike regular attributes, per-primitive attributes have all 4 channels
     * in the same slot, so each GRF can store two slots.
     */
    assert(prog_data->num_per_primitive_inputs % 2 == 0);
-   this->first_non_payload_grf += prog_data->num_per_primitive_inputs / 2 * max_polygons;
+   this->first_non_payload_grf += prog_data->num_per_primitive_inputs / 2;
 }
 
 void
@@ -2176,9 +1950,6 @@ elk_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                 const elk_stage_prog_data *prog_data)
 {
    if (prog_data->nr_params == 0)
-      return -1;
-
-   if (devinfo->verx10 >= 125)
       return -1;
 
    /* The local thread id is always the last parameter in the list */
@@ -2831,10 +2602,6 @@ elk_fs_visitor::opt_zero_samples()
       if (send->keep_payload_trailing_zeros)
          continue;
 
-      /* This pass works on SENDs before splitting. */
-      if (send->ex_mlen > 0)
-         continue;
-
       elk_fs_inst *lp = (elk_fs_inst *) send->prev;
 
       if (lp->is_head_sentinel() || lp->opcode != ELK_SHADER_OPCODE_LOAD_PAYLOAD)
@@ -2868,97 +2635,6 @@ elk_fs_visitor::opt_zero_samples()
 
    if (progress)
       invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL);
-
-   return progress;
-}
-
-/**
- * Opportunistically split SEND message payloads.
- *
- * Gfx9+ supports "split" SEND messages, which take two payloads that are
- * implicitly concatenated.  If we find a SEND message with a single payload,
- * we can split that payload in two.  This results in smaller contiguous
- * register blocks for us to allocate.  But it can help beyond that, too.
- *
- * We try and split a LOAD_PAYLOAD between sources which change registers.
- * For example, a sampler message often contains a x/y/z coordinate that may
- * already be in a contiguous VGRF, combined with an LOD, shadow comparitor,
- * or array index, which comes from elsewhere.  In this case, the first few
- * sources will be different offsets of the same VGRF, then a later source
- * will be a different VGRF.  So we split there, possibly eliminating the
- * payload concatenation altogether.
- */
-bool
-elk_fs_visitor::opt_split_sends()
-{
-   if (devinfo->ver < 9)
-      return false;
-
-   bool progress = false;
-
-   foreach_block_and_inst(block, elk_fs_inst, send, cfg) {
-      if (send->opcode != ELK_SHADER_OPCODE_SEND ||
-          send->mlen <= reg_unit(devinfo) || send->ex_mlen > 0)
-         continue;
-
-      assert(send->src[2].file == VGRF);
-
-      /* Currently don't split sends that reuse a previously used payload. */
-      elk_fs_inst *lp = (elk_fs_inst *) send->prev;
-
-      if (lp->is_head_sentinel() || lp->opcode != ELK_SHADER_OPCODE_LOAD_PAYLOAD)
-         continue;
-
-      if (lp->dst.file != send->src[2].file || lp->dst.nr != send->src[2].nr)
-         continue;
-
-      /* Split either after the header (if present), or when consecutive
-       * sources switch from one VGRF to a different one.
-       */
-      unsigned mid = lp->header_size;
-      if (mid == 0) {
-         for (mid = 1; mid < lp->sources; mid++) {
-            if (lp->src[mid].file == BAD_FILE)
-               continue;
-
-            if (lp->src[0].file != lp->src[mid].file ||
-                lp->src[0].nr != lp->src[mid].nr)
-               break;
-         }
-      }
-
-      /* SEND mlen might be smaller than what LOAD_PAYLOAD provides, so
-       * find out how many sources from the payload does it really need.
-       */
-      const unsigned end =
-         load_payload_sources_read_for_size(lp, send->mlen * REG_SIZE);
-
-      /* Nothing to split. */
-      if (end <= mid)
-         continue;
-
-      const fs_builder ibld(this, block, lp);
-      elk_fs_inst *lp1 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[0], mid, lp->header_size);
-      elk_fs_inst *lp2 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[mid], end - mid, 0);
-
-      assert(lp1->size_written % REG_SIZE == 0);
-      assert(lp2->size_written % REG_SIZE == 0);
-      assert((lp1->size_written + lp2->size_written) / REG_SIZE == send->mlen);
-
-      lp1->dst = elk_fs_reg(VGRF, alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
-      lp2->dst = elk_fs_reg(VGRF, alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
-
-      send->resize_sources(4);
-      send->src[2] = lp1->dst;
-      send->src[3] = lp2->dst;
-      send->ex_mlen = lp2->size_written / REG_SIZE;
-      send->mlen -= send->ex_mlen;
-
-      progress = true;
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }
@@ -3221,8 +2897,7 @@ elk_fs_visitor::eliminate_find_live_channel()
    bool progress = false;
    unsigned depth = 0;
 
-   if (!elk_stage_has_packed_dispatch(devinfo, stage, max_polygons,
-                                      stage_prog_data)) {
+   if (!elk_stage_has_packed_dispatch(devinfo, stage, stage_prog_data)) {
       /* The optimization below assumes that channel zero is live on thread
        * dispatch, which may not be the case if the fixed function dispatches
        * threads sparsely.
@@ -3313,11 +2988,10 @@ elk_fs_visitor::emit_repclear_shader()
 
       if (devinfo->ver >= 7) {
          write = bld.emit(ELK_SHADER_OPCODE_SEND);
-         write->resize_sources(3);
+         write->resize_sources(2);
          write->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
          write->src[0] = elk_imm_ud(0);
-         write->src[1] = elk_imm_ud(0);
-         write->src[2] = i == 0 ? color_output : header;
+         write->src[1] = i == 0 ? color_output : header;
          write->check_tdr = true;
          write->send_has_side_effects = true;
          write->desc = elk_fb_write_desc(devinfo, i,
@@ -3983,20 +3657,7 @@ elk_fs_visitor::lower_mul_dword_inst(elk_fs_inst *inst, elk_bblock_t *block)
 
       bool do_addition = true;
       if (devinfo->ver >= 7) {
-         /* From Wa_1604601757:
-          *
-          * "When multiplying a DW and any lower precision integer, source modifier
-          *  is not supported."
-          *
-          * An unsupported negate modifier on src[1] would ordinarily be
-          * lowered by the subsequent lower_regioning pass.  In this case that
-          * pass would spawn another dword multiply.  Instead, lower the
-          * modifier first.
-          */
-         const bool source_mods_unsupported = (devinfo->ver >= 12);
-
-         if (inst->src[1].abs || (inst->src[1].negate &&
-                                  source_mods_unsupported))
+         if (inst->src[1].abs)
             lower_src_modifiers(this, block, inst, 1);
 
          if (inst->src[1].file == IMM) {
@@ -4223,8 +3884,7 @@ elk_fs_visitor::lower_integer_multiplication()
          } else if (!inst->dst.is_accumulator() &&
                     (inst->dst.type == ELK_REGISTER_TYPE_D ||
                      inst->dst.type == ELK_REGISTER_TYPE_UD) &&
-                    (!devinfo->has_integer_dword_mul ||
-                     devinfo->verx10 >= 125)) {
+                    !devinfo->has_integer_dword_mul) {
             lower_mul_dword_inst(inst, block);
             inst->remove(block);
             progress = true;
@@ -4388,7 +4048,6 @@ elk_sample_mask_reg(const fs_builder &bld)
       return elk_flag_subreg(sample_mask_flag_subreg(s) + bld.group() / 16);
    } else {
       assert(s.devinfo->ver >= 6 && bld.dispatch_width() <= 16);
-      assert(s.devinfo->ver < 20);
       return retype(elk_vec1_grf((bld.group() >= 16 ? 2 : 1), 7),
                     ELK_REGISTER_TYPE_UW);
    }
@@ -4454,7 +4113,6 @@ elk_emit_predicate_on_sample_mask(const fs_builder &bld, elk_fs_inst *inst)
       assert(inst->predicate == ELK_PREDICATE_NORMAL);
       assert(!inst->predicate_inverse);
       assert(inst->flag_subreg == 0);
-      assert(s.devinfo->ver < 20);
       /* Combine the sample mask with the existing predicate by using a
        * vertical predication mode.
        */
@@ -4533,19 +4191,6 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
    /* Maximum execution size representable in the instruction controls. */
    unsigned max_width = MIN2(32, inst->exec_size);
 
-   /* Number of channels per polygon handled by a multipolygon PS shader. */
-   const unsigned poly_width = shader->dispatch_width /
-                               MAX2(1, shader->max_polygons);
-
-   /* Number of registers that will be read by an ATTR source if
-    * present for multipolygon PS shaders, since the PS vertex setup
-    * data for each polygon is stored in different contiguous GRFs.
-    */
-   const unsigned attr_reg_count = (shader->stage != MESA_SHADER_FRAGMENT ||
-                                    shader->max_polygons < 2 ? 0 :
-                                    DIV_ROUND_UP(inst->exec_size,
-                                                 poly_width) * reg_unit(devinfo));
-
    /* According to the PRMs:
     *  "A. In Direct Addressing mode, a source cannot span more than 2
     *      adjacent GRF registers.
@@ -4558,8 +4203,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
    unsigned reg_count = DIV_ROUND_UP(inst->size_written, REG_SIZE);
 
    for (unsigned i = 0; i < inst->sources; i++)
-      reg_count = MAX3(reg_count, DIV_ROUND_UP(inst->size_read(i), REG_SIZE),
-                       (inst->src[i].file == ATTR ? attr_reg_count : 0));
+      reg_count = MAX2(reg_count, DIV_ROUND_UP(inst->size_read(i), REG_SIZE));
 
    /* Calculate the maximum execution size of the instruction based on the
     * factor by which it goes over the hardware limit of 2 GRFs.
@@ -4654,7 +4298,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
     *  "Ternary instruction with condition modifiers must not use SIMD32."
     */
    if (inst->conditional_mod && (devinfo->ver < 8 ||
-                                 (inst->elk_is_3src(compiler) && devinfo->ver < 12)))
+                                 inst->elk_is_3src(compiler)))
       max_width = MIN2(max_width, 16);
 
    /* From the IVB PRMs (applies to other devices that don't have the
@@ -4717,7 +4361,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
     * instructions do not support HF types and conversions from/to F are
     * required.
     */
-   if (is_mixed_float_with_fp32_dst(inst) && devinfo->ver < 20)
+   if (is_mixed_float_with_fp32_dst(inst))
       max_width = MIN2(max_width, 8);
 
    /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
@@ -4726,7 +4370,7 @@ get_fpu_lowered_simd_width(const elk_fs_visitor *shader,
     *    "No SIMD16 in mixed mode when destination is packed f16 for both
     *     Align1 and Align16."
     */
-   if (is_mixed_float_with_packed_fp16_dst(inst) && devinfo->ver < 20)
+   if (is_mixed_float_with_packed_fp16_dst(inst))
       max_width = MIN2(max_width, 8);
 
    /* Only power-of-two execution sizes are representable in the instruction
@@ -4762,7 +4406,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     */
    if (inst->opcode != ELK_SHADER_OPCODE_TEX &&
        inst->components_read(TEX_LOGICAL_SRC_MIN_LOD))
-      return devinfo->ver < 20 ? 8 : 16;
+      return 8;
 
    /* Calculate the number of coordinate components that have to be present
     * assuming that additional arguments follow the texel coordinates in the
@@ -4777,14 +4421,6 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
                             inst->opcode != ELK_SHADER_OPCODE_TXF_CMS_LOGICAL) ? 4 :
       3;
 
-   /* On Gfx9+ the LOD argument is for free if we're able to use the LZ
-    * variant of the TXL or TXF message.
-    */
-   const bool implicit_lod = devinfo->ver >= 9 &&
-                             (inst->opcode == ELK_SHADER_OPCODE_TXL ||
-                              inst->opcode == ELK_SHADER_OPCODE_TXF) &&
-                             inst->src[TEX_LOGICAL_SRC_LOD].is_zero();
-
    /* Calculate the total number of argument components that need to be passed
     * to the sampler unit.
     */
@@ -4792,7 +4428,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
       MAX2(inst->components_read(TEX_LOGICAL_SRC_COORDINATE),
            req_coord_components) +
       inst->components_read(TEX_LOGICAL_SRC_SHADOW_C) +
-      (implicit_lod ? 0 : inst->components_read(TEX_LOGICAL_SRC_LOD)) +
+      inst->components_read(TEX_LOGICAL_SRC_LOD) +
       inst->components_read(TEX_LOGICAL_SRC_LOD2) +
       inst->components_read(TEX_LOGICAL_SRC_SAMPLE_INDEX) +
       (inst->opcode == ELK_SHADER_OPCODE_TG4_OFFSET_LOGICAL ?
@@ -4822,7 +4458,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
    const struct intel_device_info *devinfo = compiler->devinfo;
 
    switch (inst->opcode) {
-   case ELK_OPCODE_DP4A:
    case ELK_OPCODE_MOV:
    case ELK_OPCODE_SEL:
    case ELK_OPCODE_NOT:
@@ -4832,8 +4467,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
    case ELK_OPCODE_SHR:
    case ELK_OPCODE_SHL:
    case ELK_OPCODE_ASR:
-   case ELK_OPCODE_ROR:
-   case ELK_OPCODE_ROL:
    case ELK_OPCODE_CMPN:
    case ELK_OPCODE_CSEL:
    case ELK_OPCODE_F32TO16:
@@ -4855,7 +4488,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
    case ELK_OPCODE_SAD2:
    case ELK_OPCODE_MAD:
    case ELK_OPCODE_LRP:
-   case ELK_OPCODE_ADD3:
    case ELK_FS_OPCODE_PACK:
    case ELK_SHADER_OPCODE_SEL_EXEC:
    case ELK_SHADER_OPCODE_CLUSTER_BROADCAST:
@@ -4981,8 +4613,7 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
       /* MULH is lowered to the MUL/MACH sequence using the accumulator, which
        * is 8-wide on Gfx7+.
        */
-      return (devinfo->ver >= 20 ? 16 :
-              devinfo->ver >= 7 ? 8 :
+      return (devinfo->ver >= 7 ? 8 :
               get_fpu_lowered_simd_width(shader, inst));
 
    case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
@@ -4995,9 +4626,6 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
       /* Dual-source FB writes are unsupported in SIMD16 mode. */
       return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
               8 : MIN2(16, inst->exec_size));
-
-   case ELK_FS_OPCODE_FB_READ_LOGICAL:
-      return MIN2(16, inst->exec_size);
 
    case ELK_SHADER_OPCODE_TEX_LOGICAL:
    case ELK_SHADER_OPCODE_TXF_CMS_LOGICAL:
@@ -5020,7 +4648,7 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
       /* TXD is unsupported in SIMD16 mode previous to Xe2. SIMD32 is still
        * unsuppported on Xe2.
        */
-      return devinfo->ver < 20 ? 8 : 16;
+      return 8;
 
    case ELK_SHADER_OPCODE_TXL_LOGICAL:
    case ELK_FS_OPCODE_TXB_LOGICAL:
@@ -5073,13 +4701,13 @@ get_lowered_simd_width(const elk_fs_visitor *shader, const elk_fs_inst *inst)
 
    case ELK_SHADER_OPCODE_URB_READ_LOGICAL:
    case ELK_SHADER_OPCODE_URB_WRITE_LOGICAL:
-      return MIN2(devinfo->ver < 20 ? 8 : 16, inst->exec_size);
+      return MIN2(8, inst->exec_size);
 
    case ELK_SHADER_OPCODE_QUAD_SWIZZLE: {
       const unsigned swiz = inst->src[1].ud;
       return (is_uniform(inst->src[0]) ?
                  get_fpu_lowered_simd_width(shader, inst) :
-              devinfo->ver < 11 && type_sz(inst->src[0].type) == 4 ? 8 :
+              type_sz(inst->src[0].type) == 4 ? 8 :
               swiz == ELK_SWIZZLE_XYXY || swiz == ELK_SWIZZLE_ZWZW ? 4 :
               get_fpu_lowered_simd_width(shader, inst));
    }
@@ -5452,7 +5080,7 @@ bool
 elk_fs_visitor::lower_barycentrics()
 {
    const bool has_interleaved_layout = devinfo->has_pln ||
-      (devinfo->ver >= 7 && devinfo->ver < 20);
+                                       devinfo->ver >= 7;
    bool progress = false;
 
    if (stage != MESA_SHADER_FRAGMENT || !has_interleaved_layout)
@@ -5514,65 +5142,6 @@ elk_fs_visitor::lower_barycentrics()
    return progress;
 }
 
-/**
- * Lower a derivative instruction as the floating-point difference of two
- * swizzles of the source, specified as \p swz0 and \p swz1.
- */
-static bool
-lower_derivative(elk_fs_visitor *v, elk_bblock_t *block, elk_fs_inst *inst,
-                 unsigned swz0, unsigned swz1)
-{
-   const fs_builder ubld = fs_builder(v, block, inst).exec_all();
-   const elk_fs_reg tmp0 = ubld.vgrf(inst->src[0].type);
-   const elk_fs_reg tmp1 = ubld.vgrf(inst->src[0].type);
-
-   ubld.emit(ELK_SHADER_OPCODE_QUAD_SWIZZLE, tmp0, inst->src[0], elk_imm_ud(swz0));
-   ubld.emit(ELK_SHADER_OPCODE_QUAD_SWIZZLE, tmp1, inst->src[0], elk_imm_ud(swz1));
-
-   inst->resize_sources(2);
-   inst->src[0] = negate(tmp0);
-   inst->src[1] = tmp1;
-   inst->opcode = ELK_OPCODE_ADD;
-
-   return true;
-}
-
-/**
- * Lower derivative instructions on platforms where codegen cannot implement
- * them efficiently (i.e. XeHP).
- */
-bool
-elk_fs_visitor::lower_derivatives()
-{
-   bool progress = false;
-
-   if (devinfo->verx10 < 125)
-      return false;
-
-   foreach_block_and_inst(block, elk_fs_inst, inst, cfg) {
-      if (inst->opcode == ELK_FS_OPCODE_DDX_COARSE)
-         progress |= lower_derivative(this, block, inst,
-                                      ELK_SWIZZLE_XXXX, ELK_SWIZZLE_YYYY);
-
-      else if (inst->opcode == ELK_FS_OPCODE_DDX_FINE)
-         progress |= lower_derivative(this, block, inst,
-                                      ELK_SWIZZLE_XXZZ, ELK_SWIZZLE_YYWW);
-
-      else if (inst->opcode == ELK_FS_OPCODE_DDY_COARSE)
-         progress |= lower_derivative(this, block, inst,
-                                      ELK_SWIZZLE_XXXX, ELK_SWIZZLE_ZZZZ);
-
-      else if (inst->opcode == ELK_FS_OPCODE_DDY_FINE)
-         progress |= lower_derivative(this, block, inst,
-                                      ELK_SWIZZLE_XYXY, ELK_SWIZZLE_ZWZW);
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-
-   return progress;
-}
-
 bool
 elk_fs_visitor::lower_find_live_channel()
 {
@@ -5582,8 +5151,7 @@ elk_fs_visitor::lower_find_live_channel()
       return false;
 
    bool packed_dispatch =
-      elk_stage_has_packed_dispatch(devinfo, stage, max_polygons,
-                                    stage_prog_data);
+      elk_stage_has_packed_dispatch(devinfo, stage, stage_prog_data);
    bool vmask =
       stage == MESA_SHADER_FRAGMENT &&
       elk_wm_prog_data(stage_prog_data)->uses_vmask;
@@ -5712,10 +5280,6 @@ elk_fs_visitor::dump_instruction_to_file(const elk_backend_instruction *be_inst,
 
    if (inst->mlen) {
       fprintf(file, "(mlen: %d) ", inst->mlen);
-   }
-
-   if (inst->ex_mlen) {
-      fprintf(file, "(ex_mlen: %d) ", inst->ex_mlen);
    }
 
    if (inst->eot) {
@@ -6051,9 +5615,6 @@ elk_fs_visitor::optimize()
          OPT(opt_algebraic);
    }
 
-   OPT(opt_split_sends);
-   OPT(fixup_nomask_control_flow);
-
    if (progress) {
       if (OPT(opt_copy_propagation))
          OPT(opt_algebraic);
@@ -6105,7 +5666,6 @@ elk_fs_visitor::optimize()
    }
 
    progress = false;
-   OPT(lower_derivatives);
    OPT(lower_regioning);
    if (progress) {
       if (OPT(opt_copy_propagation))
@@ -6114,61 +5674,11 @@ elk_fs_visitor::optimize()
       OPT(lower_simd_width);
    }
 
-   OPT(fixup_sends_duplicate_payload);
-
    OPT(lower_uniform_pull_constant_loads);
 
    OPT(lower_find_live_channel);
 
    validate();
-}
-
-/**
- * From the Skylake PRM Vol. 2a docs for sends:
- *
- *    "It is required that the second block of GRFs does not overlap with the
- *    first block."
- *
- * There are plenty of cases where we may accidentally violate this due to
- * having, for instance, both sources be the constant 0.  This little pass
- * just adds a new vgrf for the second payload and copies it over.
- */
-bool
-elk_fs_visitor::fixup_sends_duplicate_payload()
-{
-   bool progress = false;
-
-   foreach_block_and_inst_safe (block, elk_fs_inst, inst, cfg) {
-      if (inst->opcode == ELK_SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
-          regions_overlap(inst->src[2], inst->mlen * REG_SIZE,
-                          inst->src[3], inst->ex_mlen * REG_SIZE)) {
-         elk_fs_reg tmp = elk_fs_reg(VGRF, alloc.allocate(inst->ex_mlen),
-                             ELK_REGISTER_TYPE_UD);
-         /* Sadly, we've lost all notion of channels and bit sizes at this
-          * point.  Just WE_all it.
-          */
-         const fs_builder ibld = fs_builder(this, block, inst).exec_all().group(16, 0);
-         elk_fs_reg copy_src = retype(inst->src[3], ELK_REGISTER_TYPE_UD);
-         elk_fs_reg copy_dst = tmp;
-         for (unsigned i = 0; i < inst->ex_mlen; i += 2) {
-            if (inst->ex_mlen == i + 1) {
-               /* Only one register left; do SIMD8 */
-               ibld.group(8, 0).MOV(copy_dst, copy_src);
-            } else {
-               ibld.MOV(copy_dst, copy_src);
-            }
-            copy_src = offset(copy_src, ibld, 1);
-            copy_dst = offset(copy_dst, ibld, 1);
-         }
-         inst->src[3] = tmp;
-         progress = true;
-      }
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-
-   return progress;
 }
 
 /**
@@ -6191,266 +5701,6 @@ elk_fs_visitor::fixup_3src_null_dest()
    if (progress)
       invalidate_analysis(DEPENDENCY_INSTRUCTION_DETAIL |
                           DEPENDENCY_VARIABLES);
-}
-
-static bool
-needs_dummy_fence(const intel_device_info *devinfo, elk_fs_inst *inst)
-{
-   /* This workaround is about making sure that any instruction writing
-    * through UGM has completed before we hit EOT.
-    */
-   if (inst->sfid != GFX12_SFID_UGM)
-      return false;
-
-   /* Any UGM, non-Scratch-surface Stores (not including Atomic) messages,
-    * where the L1-cache override is NOT among {WB, WS, WT}
-    */
-   enum elk_lsc_opcode opcode = lsc_msg_desc_opcode(devinfo, inst->desc);
-   if (elk_lsc_opcode_is_store(opcode)) {
-      switch (lsc_msg_desc_cache_ctrl(devinfo, inst->desc)) {
-      case LSC_CACHE_STORE_L1STATE_L3MOCS:
-      case LSC_CACHE_STORE_L1WB_L3WB:
-      case LSC_CACHE_STORE_L1S_L3UC:
-      case LSC_CACHE_STORE_L1S_L3WB:
-      case LSC_CACHE_STORE_L1WT_L3UC:
-      case LSC_CACHE_STORE_L1WT_L3WB:
-         return false;
-
-      default:
-         return true;
-      }
-   }
-
-   /* Any UGM Atomic message WITHOUT return value */
-   if (elk_lsc_opcode_is_atomic(opcode) && inst->dst.file == BAD_FILE)
-      return true;
-
-   return false;
-}
-
-/* Wa_14015360517
- *
- * The first instruction of any kernel should have non-zero emask.
- * Make sure this happens by introducing a dummy mov instruction.
- */
-void
-elk_fs_visitor::emit_dummy_mov_instruction()
-{
-   if (!intel_needs_workaround(devinfo, 14015360517))
-      return;
-
-   struct elk_backend_instruction *first_inst =
-      cfg->first_block()->start();
-
-   /* We can skip the WA if first instruction is marked with
-    * force_writemask_all or exec_size equals dispatch_width.
-    */
-   if (first_inst->force_writemask_all ||
-       first_inst->exec_size == dispatch_width)
-      return;
-
-   /* Insert dummy mov as first instruction. */
-   const fs_builder ubld =
-      fs_builder(this, cfg->first_block(), (elk_fs_inst *)first_inst).exec_all().group(8, 0);
-   ubld.MOV(ubld.null_reg_ud(), elk_imm_ud(0u));
-
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-}
-
-/* Wa_22013689345
- *
- * We need to emit UGM fence message before EOT, if shader has any UGM write
- * or atomic message.
- *
- * TODO/FINISHME: According to Curro we could avoid the fence in some cases.
- *                We probably need a better criteria in needs_dummy_fence().
- */
-void
-elk_fs_visitor::emit_dummy_memory_fence_before_eot()
-{
-   bool progress = false;
-   bool has_ugm_write_or_atomic = false;
-
-   if (!intel_needs_workaround(devinfo, 22013689345))
-      return;
-
-   foreach_block_and_inst_safe (block, elk_fs_inst, inst, cfg) {
-      if (!inst->eot) {
-         if (needs_dummy_fence(devinfo, inst))
-            has_ugm_write_or_atomic = true;
-         continue;
-      }
-
-      if (!has_ugm_write_or_atomic)
-         break;
-
-      const fs_builder ibld(this, block, inst);
-      const fs_builder ubld = ibld.exec_all().group(1, 0);
-
-      elk_fs_reg dst = ubld.vgrf(ELK_REGISTER_TYPE_UD);
-      elk_fs_inst *dummy_fence = ubld.emit(ELK_SHADER_OPCODE_MEMORY_FENCE,
-                                       dst, elk_vec8_grf(0, 0),
-                                       /* commit enable */ elk_imm_ud(1),
-                                       /* bti */ elk_imm_ud(0));
-      dummy_fence->sfid = GFX12_SFID_UGM;
-      dummy_fence->desc = lsc_fence_msg_desc(devinfo, LSC_FENCE_TILE,
-                                             LSC_FLUSH_TYPE_NONE_6, false);
-      ubld.emit(ELK_FS_OPCODE_SCHEDULING_FENCE, ubld.null_reg_ud(), dst);
-      progress = true;
-      /* TODO: remove this break if we ever have shader with multiple EOT. */
-      break;
-   }
-
-   if (progress) {
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS |
-                          DEPENDENCY_VARIABLES);
-   }
-}
-
-/**
- * Find the first instruction in the program that might start a region of
- * divergent control flow due to a HALT jump.  There is no
- * find_halt_control_flow_region_end(), the region of divergence extends until
- * the only ELK_SHADER_OPCODE_HALT_TARGET in the program.
- */
-static const elk_fs_inst *
-find_halt_control_flow_region_start(const elk_fs_visitor *v)
-{
-   foreach_block_and_inst(block, elk_fs_inst, inst, v->cfg) {
-      if (inst->opcode == ELK_OPCODE_HALT ||
-          inst->opcode == ELK_SHADER_OPCODE_HALT_TARGET)
-         return inst;
-   }
-
-   return NULL;
-}
-
-/**
- * Work around the Gfx12 hardware bug filed as Wa_1407528679.  EU fusion
- * can cause a BB to be executed with all channels disabled, which will lead
- * to the execution of any NoMask instructions in it, even though any
- * execution-masked instructions will be correctly shot down.  This may break
- * assumptions of some NoMask SEND messages whose descriptor depends on data
- * generated by live invocations of the shader.
- *
- * This avoids the problem by predicating certain instructions on an ANY
- * horizontal predicate that makes sure that their execution is omitted when
- * all channels of the program are disabled.
- */
-bool
-elk_fs_visitor::fixup_nomask_control_flow()
-{
-   if (devinfo->ver != 12)
-      return false;
-
-   const elk_predicate pred = dispatch_width > 16 ? ELK_PREDICATE_ALIGN1_ANY32H :
-                              dispatch_width > 8 ? ELK_PREDICATE_ALIGN1_ANY16H :
-                              ELK_PREDICATE_ALIGN1_ANY8H;
-   const elk_fs_inst *halt_start = find_halt_control_flow_region_start(this);
-   unsigned depth = 0;
-   bool progress = false;
-
-   const fs_live_variables &live_vars = live_analysis.require();
-
-   /* Scan the program backwards in order to be able to easily determine
-    * whether the flag register is live at any point.
-    */
-   foreach_block_reverse_safe(block, cfg) {
-      BITSET_WORD flag_liveout = live_vars.block_data[block->num]
-                                               .flag_liveout[0];
-      STATIC_ASSERT(ARRAY_SIZE(live_vars.block_data[0].flag_liveout) == 1);
-
-      foreach_inst_in_block_reverse_safe(elk_fs_inst, inst, block) {
-         if (!inst->predicate && inst->exec_size >= 8)
-            flag_liveout &= ~inst->flags_written(devinfo);
-
-         switch (inst->opcode) {
-         case ELK_OPCODE_DO:
-         case ELK_OPCODE_IF:
-            /* Note that this doesn't handle ELK_OPCODE_HALT since only
-             * the first one in the program closes the region of divergent
-             * control flow due to any HALT instructions -- Instead this is
-             * handled with the halt_start check below.
-             */
-            depth--;
-            break;
-
-         case ELK_OPCODE_WHILE:
-         case ELK_OPCODE_ENDIF:
-         case ELK_SHADER_OPCODE_HALT_TARGET:
-            depth++;
-            break;
-
-         default:
-            /* Note that the vast majority of NoMask SEND instructions in the
-             * program are harmless while executed in a block with all
-             * channels disabled, since any instructions with side effects we
-             * could hit here should be execution-masked.
-             *
-             * The main concern is NoMask SEND instructions where the message
-             * descriptor or header depends on data generated by live
-             * invocations of the shader (RESINFO and
-             * ELK_FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD with a dynamically
-             * computed surface index seem to be the only examples right now
-             * where this could easily lead to GPU hangs).  Unfortunately we
-             * have no straightforward way to detect that currently, so just
-             * predicate any NoMask SEND instructions we find under control
-             * flow.
-             *
-             * If this proves to have a measurable performance impact it can
-             * be easily extended with a whitelist of messages we know we can
-             * safely omit the predication for.
-             */
-            if (depth && inst->force_writemask_all &&
-                is_send(inst) && !inst->predicate) {
-               /* We need to load the execution mask into the flag register by
-                * using a builder with channel group matching the whole shader
-                * (rather than the default which is derived from the original
-                * instruction), in order to avoid getting a right-shifted
-                * value.
-                */
-               const fs_builder ubld = fs_builder(this, block, inst)
-                                       .exec_all().group(dispatch_width, 0);
-               const elk_fs_reg flag = retype(elk_flag_reg(0, 0),
-                                          ELK_REGISTER_TYPE_UD);
-
-               /* Due to the lack of flag register allocation we need to save
-                * and restore the flag register if it's live.
-                */
-               const bool save_flag = flag_liveout &
-                                      flag_mask(flag, dispatch_width / 8);
-               const elk_fs_reg tmp = ubld.group(8, 0).vgrf(flag.type);
-
-               if (save_flag) {
-                  ubld.group(8, 0).UNDEF(tmp);
-                  ubld.group(1, 0).MOV(tmp, flag);
-               }
-
-               ubld.emit(ELK_FS_OPCODE_LOAD_LIVE_CHANNELS);
-
-               set_predicate(pred, inst);
-               inst->flag_subreg = 0;
-               inst->predicate_trivial = true;
-
-               if (save_flag)
-                  ubld.group(1, 0).at(block, inst->next).MOV(flag, tmp);
-
-               progress = true;
-            }
-            break;
-         }
-
-         if (inst == halt_start)
-            depth--;
-
-         flag_liveout |= inst->flags_read(devinfo);
-      }
-   }
-
-   if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
-
-   return progress;
 }
 
 uint32_t
@@ -6692,10 +5942,6 @@ elk_fs_visitor::run_vs()
    assign_vs_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6709,18 +5955,9 @@ elk_fs_visitor::set_tcs_invocation_id()
    struct elk_vue_prog_data *vue_prog_data = &tcs_prog_data->base;
    const fs_builder bld = fs_builder(this).at_end();
 
-   const unsigned instance_id_mask =
-      (devinfo->verx10 >= 125) ? INTEL_MASK(7, 0) :
-      (devinfo->ver >= 11)     ? INTEL_MASK(22, 16) :
-                                 INTEL_MASK(23, 17);
-   const unsigned instance_id_shift =
-      (devinfo->verx10 >= 125) ? 0 : (devinfo->ver >= 11) ? 16 : 17;
+   const unsigned instance_id_mask = INTEL_MASK(23, 17);
+   const unsigned instance_id_shift = 17;
 
-   /* Get instance number from g0.2 bits:
-    *  * 7:0 on DG2+
-    *  * 22:16 on gfx11+
-    *  * 23:17 otherwise
-    */
    elk_fs_reg t = bld.vgrf(ELK_REGISTER_TYPE_UD);
    bld.AND(t, elk_fs_reg(retype(elk_vec1_grf(0, 2), ELK_REGISTER_TYPE_UD)),
            elk_imm_ud(instance_id_mask));
@@ -6822,10 +6059,6 @@ elk_fs_visitor::run_tcs()
    assign_tcs_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6854,10 +6087,6 @@ elk_fs_visitor::run_tes()
    assign_tes_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
 
@@ -6903,41 +6132,10 @@ elk_fs_visitor::run_gs()
    assign_gs_urb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
 
    return !failed;
-}
-
-/* From the SKL PRM, Volume 16, Workarounds:
- *
- *   0877  3D   Pixel Shader Hang possible when pixel shader dispatched with
- *              only header phases (R0-R2)
- *
- *   WA: Enable a non-header phase (e.g. push constant) when dispatch would
- *       have been header only.
- *
- * Instead of enabling push constants one can alternatively enable one of the
- * inputs. Here one simply chooses "layer" which shouldn't impose much
- * overhead.
- */
-static void
-gfx9_ps_header_only_workaround(struct elk_wm_prog_data *wm_prog_data)
-{
-   if (wm_prog_data->num_varying_inputs)
-      return;
-
-   if (wm_prog_data->base.curb_read_length)
-      return;
-
-   wm_prog_data->urb_setup[VARYING_SLOT_LAYER] = 0;
-   wm_prog_data->num_varying_inputs = 1;
-
-   elk_compute_urb_setup_index(wm_prog_data);
 }
 
 bool
@@ -6973,11 +6171,9 @@ elk_fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
          for (unsigned i = 0; i < dispatch_width / lower_width; i++) {
             /* According to the "PS Thread Payload for Normal
              * Dispatch" pages on the BSpec, the dispatch mask is
-             * stored in R0.15/R1.15 on gfx20+ and in R1.7/R2.7 on
-             * gfx6+.
+             * stored in R1.7/R2.7 on gfx6+.
              */
             const elk_fs_reg dispatch_mask =
-               devinfo->ver >= 20 ? xe2_vec1_grf(i, 15) :
                devinfo->ver >= 6 ? elk_vec1_grf(i + 1, 7) :
                elk_vec1_grf(0, 0);
             bld.exec_all().group(1, 0)
@@ -7005,16 +6201,9 @@ elk_fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
       assign_curb_setup();
 
-      if (devinfo->ver == 9)
-         gfx9_ps_header_only_workaround(wm_prog_data);
-
       assign_urb_setup();
 
       fixup_3src_null_dest();
-      emit_dummy_memory_fence_before_eot();
-
-      /* Wa_14015360517 */
-      emit_dummy_mov_instruction();
 
       allocate_registers(allow_spilling);
    }
@@ -7052,10 +6241,6 @@ elk_fs_visitor::run_cs(bool allow_spilling)
    assign_curb_setup();
 
    fixup_3src_null_dest();
-   emit_dummy_memory_fence_before_eot();
-
-   /* Wa_14015360517 */
-   emit_dummy_mov_instruction();
 
    allocate_registers(allow_spilling);
 
@@ -7270,7 +6455,6 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
    prog_data->uses_omask = !key->ignore_sample_mask_out &&
       (shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK));
    prog_data->color_outputs_written = key->color_outputs_valid;
-   prog_data->max_polygons = 1;
    prog_data->computed_depth_mode = computed_depth_mode(shader);
    prog_data->computed_stencil =
       shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL);
@@ -7343,26 +6527,6 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
       (prog_data->barycentric_interp_modes &
       ELK_BARYCENTRIC_NONPERSPECTIVE_BITS) != 0;
 
-   /* The current VK_EXT_graphics_pipeline_library specification requires
-    * coarse to specified at compile time. But per sample interpolation can be
-    * dynamic. So we should never be in a situation where coarse &
-    * persample_interp are both respectively true & ELK_ALWAYS.
-    *
-    * Coarse will dynamically turned off when persample_interp is active.
-    */
-   assert(!key->coarse_pixel || key->persample_interp != ELK_ALWAYS);
-
-   prog_data->coarse_pixel_dispatch =
-      elk_sometimes_invert(prog_data->persample_dispatch);
-   if (!key->coarse_pixel ||
-       prog_data->uses_omask ||
-       prog_data->sample_shading ||
-       prog_data->uses_sample_mask ||
-       (prog_data->computed_depth_mode != ELK_PSCDEPTH_OFF) ||
-       prog_data->computed_stencil) {
-      prog_data->coarse_pixel_dispatch = ELK_NEVER;
-   }
-
    /* ICL PRMs, Volume 9: Render Engine, Shared Functions Pixel Interpolater,
     * Message Descriptor :
     *
@@ -7389,25 +6553,17 @@ elk_nir_populate_wm_prog_data(nir_shader *shader,
     * pixel shading if we have any intrinsic that will result in a pixel
     * interpolater message at sample.
     */
-   if (intel_nir_pulls_at_sample(shader))
-      prog_data->coarse_pixel_dispatch = ELK_NEVER;
+   intel_nir_pulls_at_sample(shader);
 
    /* We choose to always enable VMask prior to XeHP, as it would cause
     * us to lose out on the eliminate_find_live_channel() optimization.
     */
-   prog_data->uses_vmask = devinfo->verx10 < 125 ||
-                           shader->info.fs.needs_quad_helper_invocations ||
-                           shader->info.uses_wide_subgroup_intrinsics ||
-                           prog_data->coarse_pixel_dispatch != ELK_NEVER;
+   prog_data->uses_vmask = true;
 
    prog_data->uses_src_w =
       BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD);
    prog_data->uses_src_depth =
-      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
-      prog_data->coarse_pixel_dispatch != ELK_ALWAYS;
-   prog_data->uses_depth_w_coefficients =
-      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD) &&
-      prog_data->coarse_pixel_dispatch != ELK_NEVER;
+      BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_FRAG_COORD);
 
    calculate_urb_setup(devinfo, key, prog_data, shader);
    elk_compute_flat_inputs(prog_data, shader);
@@ -7437,7 +6593,6 @@ elk_compile_fs(const struct elk_compiler *compiler,
                                    params->base.debug_flag : DEBUG_WM);
 
    prog_data->base.stage = MESA_SHADER_FRAGMENT;
-   prog_data->base.ray_queries = nir->info.ray_queries;
    prog_data->base.total_scratch = 0;
 
    const struct intel_device_info *devinfo = compiler->devinfo;
@@ -7470,32 +6625,29 @@ elk_compile_fs(const struct elk_compiler *compiler,
    elk_nir_populate_wm_prog_data(nir, compiler->devinfo, key, prog_data);
 
    std::unique_ptr<elk_fs_visitor> v8, v16, v32, vmulti;
-   elk_cfg_t *simd8_cfg = NULL, *simd16_cfg = NULL, *simd32_cfg = NULL,
-      *multi_cfg = NULL;
+   elk_cfg_t *simd8_cfg = NULL, *simd16_cfg = NULL, *simd32_cfg = NULL;
    float throughput = 0;
    bool has_spilled = false;
 
-   if (devinfo->ver < 20) {
-      v8 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                        prog_data, nir, 8, 1,
-                                        params->base.stats != NULL,
-                                        debug_enabled);
-      if (!v8->run_fs(allow_spilling, false /* do_rep_send */)) {
-         params->base.error_str = ralloc_strdup(params->base.mem_ctx,
-                                                v8->fail_msg);
-         return NULL;
-      } else if (INTEL_SIMD(FS, 8)) {
-         simd8_cfg = v8->cfg;
+   v8 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
+                                     prog_data, nir, 8,
+                                     params->base.stats != NULL,
+                                     debug_enabled);
+   if (!v8->run_fs(allow_spilling, false /* do_rep_send */)) {
+      params->base.error_str = ralloc_strdup(params->base.mem_ctx,
+                                             v8->fail_msg);
+      return NULL;
+   } else if (INTEL_SIMD(FS, 8)) {
+      simd8_cfg = v8->cfg;
 
-         assert(v8->payload().num_regs % reg_unit(devinfo) == 0);
-         prog_data->base.dispatch_grf_start_reg = v8->payload().num_regs / reg_unit(devinfo);
+      assert(v8->payload().num_regs % reg_unit(devinfo) == 0);
+      prog_data->base.dispatch_grf_start_reg = v8->payload().num_regs / reg_unit(devinfo);
 
-         prog_data->reg_blocks_8 = elk_register_blocks(v8->grf_used);
-         const performance &perf = v8->performance_analysis.require();
-         throughput = MAX2(throughput, perf.throughput);
-         has_spilled = v8->spilled_any_registers;
-         allow_spilling = false;
-      }
+      prog_data->reg_blocks_8 = elk_register_blocks(v8->grf_used);
+      const performance &perf = v8->performance_analysis.require();
+      throughput = MAX2(throughput, perf.throughput);
+      has_spilled = v8->spilled_any_registers;
+      allow_spilling = false;
    }
 
    /* Limit dispatch width to simd8 with dual source blending on gfx8.
@@ -7508,24 +6660,12 @@ elk_compile_fs(const struct elk_compiler *compiler,
                                "using SIMD8 when dual src blending.\n");
    }
 
-   if (key->coarse_pixel && devinfo->ver < 20) {
-      if (prog_data->dual_src_blend) {
-         v8->limit_dispatch_width(8, "SIMD16 coarse pixel shading cannot"
-                                  " use SIMD8 messages.\n");
-      }
-      v8->limit_dispatch_width(16, "SIMD32 not supported with coarse"
-                               " pixel shading.\n");
-   }
-
-   if (nir->info.ray_queries > 0 && v8)
-      v8->limit_dispatch_width(16, "SIMD32 with ray queries.\n");
-
    if (!has_spilled &&
        (!v8 || v8->max_dispatch_width >= 16) &&
        (INTEL_SIMD(FS, 16) || params->use_rep_send)) {
       /* Try a SIMD16 compile */
       v16 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                         prog_data, nir, 16, 1,
+                                         prog_data, nir, 16,
                                          params->base.stats != NULL,
                                          debug_enabled);
       if (v8)
@@ -7558,7 +6698,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
        INTEL_SIMD(FS, 32)) {
       /* Try a SIMD32 compile */
       v32 = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                         prog_data, nir, 32, 1,
+                                         prog_data, nir, 32,
                                          params->base.stats != NULL,
                                          debug_enabled);
       if (v8)
@@ -7585,78 +6725,6 @@ elk_compile_fs(const struct elk_compiler *compiler,
             prog_data->reg_blocks_32 = elk_register_blocks(v32->grf_used);
             throughput = MAX2(throughput, perf.throughput);
          }
-      }
-   }
-
-   if (devinfo->ver >= 12 && !has_spilled &&
-       params->max_polygons >= 2 && !key->coarse_pixel) {
-      elk_fs_visitor *vbase = v8 ? v8.get() : v16 ? v16.get() : v32.get();
-      assert(vbase);
-
-      if (devinfo->ver >= 20 &&
-          params->max_polygons >= 4 &&
-          vbase->max_dispatch_width >= 32 &&
-          4 * prog_data->num_varying_inputs <= MAX_VARYING &&
-          INTEL_SIMD(FS, 4X8)) {
-         /* Try a quad-SIMD8 compile */
-         vmulti = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                               prog_data, nir, 32, 4,
-                                               params->base.stats != NULL,
-                                               debug_enabled);
-         vmulti->import_uniforms(vbase);
-         if (!vmulti->run_fs(false, params->use_rep_send)) {
-            elk_shader_perf_log(compiler, params->base.log_data,
-                                "Quad-SIMD8 shader failed to compile: %s\n",
-                                vmulti->fail_msg);
-         } else {
-            multi_cfg = vmulti->cfg;
-            assert(!vmulti->spilled_any_registers);
-         }
-      }
-
-      if (!multi_cfg && devinfo->ver >= 20 &&
-          vbase->max_dispatch_width >= 32 &&
-          2 * prog_data->num_varying_inputs <= MAX_VARYING &&
-          INTEL_SIMD(FS, 2X16)) {
-         /* Try a dual-SIMD16 compile */
-         vmulti = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                               prog_data, nir, 32, 2,
-                                               params->base.stats != NULL,
-                                               debug_enabled);
-         vmulti->import_uniforms(vbase);
-         if (!vmulti->run_fs(false, params->use_rep_send)) {
-            elk_shader_perf_log(compiler, params->base.log_data,
-                                "Dual-SIMD16 shader failed to compile: %s\n",
-                                vmulti->fail_msg);
-         } else {
-            multi_cfg = vmulti->cfg;
-            assert(!vmulti->spilled_any_registers);
-         }
-      }
-
-      if (!multi_cfg && vbase->max_dispatch_width >= 16 &&
-          2 * prog_data->num_varying_inputs <= MAX_VARYING &&
-          INTEL_SIMD(FS, 2X8)) {
-         /* Try a dual-SIMD8 compile */
-         vmulti = std::make_unique<elk_fs_visitor>(compiler, &params->base, key,
-                                               prog_data, nir, 16, 2,
-                                               params->base.stats != NULL,
-                                               debug_enabled);
-         vmulti->import_uniforms(vbase);
-         if (!vmulti->run_fs(allow_spilling, params->use_rep_send)) {
-            elk_shader_perf_log(compiler, params->base.log_data,
-                                "Dual-SIMD8 shader failed to compile: %s\n",
-                                vmulti->fail_msg);
-         } else {
-            multi_cfg = vmulti->cfg;
-         }
-      }
-
-      if (multi_cfg) {
-         assert(vmulti->payload().num_regs % reg_unit(devinfo) == 0);
-         prog_data->base.dispatch_grf_start_reg = vmulti->payload().num_regs / reg_unit(devinfo);
-
-         prog_data->reg_blocks_8 = elk_register_blocks(vmulti->grf_used);
       }
    }
 
@@ -7708,19 +6776,10 @@ elk_compile_fs(const struct elk_compiler *compiler,
    struct elk_compile_stats *stats = params->base.stats;
    uint32_t max_dispatch_width = 0;
 
-   if (multi_cfg) {
-      prog_data->dispatch_multi = vmulti->dispatch_width;
-      prog_data->max_polygons = vmulti->max_polygons;
-      g.generate_code(multi_cfg, vmulti->dispatch_width, vmulti->shader_stats,
-                      vmulti->performance_analysis.require(),
-                      stats, vmulti->max_polygons);
-      stats = stats ? stats + 1 : NULL;
-      max_dispatch_width = vmulti->dispatch_width;
-
-   } else if (simd8_cfg) {
+   if (simd8_cfg) {
       prog_data->dispatch_8 = true;
       g.generate_code(simd8_cfg, 8, v8->shader_stats,
-                      v8->performance_analysis.require(), stats, 1);
+                      v8->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
       max_dispatch_width = 8;
    }
@@ -7729,7 +6788,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
       prog_data->dispatch_16 = true;
       prog_data->prog_offset_16 = g.generate_code(
          simd16_cfg, 16, v16->shader_stats,
-         v16->performance_analysis.require(), stats, 1);
+         v16->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
       max_dispatch_width = 16;
    }
@@ -7738,7 +6797,7 @@ elk_compile_fs(const struct elk_compiler *compiler,
       prog_data->dispatch_32 = true;
       prog_data->prog_offset_32 = g.generate_code(
          simd32_cfg, 32, v32->shader_stats,
-         v32->performance_analysis.require(), stats, 1);
+         v32->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
       max_dispatch_width = 32;
    }
@@ -7869,7 +6928,6 @@ elk_compile_cs(const struct elk_compiler *compiler,
 
    prog_data->base.stage = MESA_SHADER_COMPUTE;
    prog_data->base.total_shared = nir->info.shared_size;
-   prog_data->base.ray_queries = nir->info.ray_queries;
    prog_data->base.total_scratch = 0;
 
    if (!nir->info.workgroup_size_variable) {
@@ -8037,7 +7095,6 @@ elk_fs_test_dispatch_packing(const fs_builder &bld)
       elk_wm_prog_data(shader->stage_prog_data)->uses_vmask;
 
    if (elk_stage_has_packed_dispatch(shader->devinfo, stage,
-                                     shader->max_polygons,
                                      shader->stage_prog_data)) {
       const fs_builder ubld = bld.exec_all().group(1, 0);
       const elk_fs_reg tmp = component(bld.vgrf(ELK_REGISTER_TYPE_UD), 0);
@@ -8103,8 +7160,6 @@ namespace elk {
    {
       if (!regs[0])
          return elk_fs_reg();
-      else if (bld.shader->devinfo->ver >= 20)
-         return fetch_payload_reg(bld, regs, ELK_REGISTER_TYPE_F, 2);
 
       const elk_fs_reg tmp = bld.vgrf(ELK_REGISTER_TYPE_F, 2);
       const elk::fs_builder hbld = bld.exec_all().group(8, 0);

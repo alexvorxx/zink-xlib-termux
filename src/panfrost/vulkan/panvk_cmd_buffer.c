@@ -33,8 +33,9 @@
 
 #include "util/rounding.h"
 #include "vk_format.h"
+#include "vk_framebuffer.h"
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding,
                            uint32_t bindingCount, const VkBuffer *pBuffers,
                            const VkDeviceSize *pOffsets)
@@ -59,7 +60,7 @@ panvk_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding,
    desc_state->vs_attrib_bufs = desc_state->vs_attribs = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer,
                          VkDeviceSize offset, VkIndexType indexType)
 {
@@ -106,7 +107,7 @@ panvk_set_dyn_ssbo_pointers(struct panvk_descriptor_state *desc_state,
    desc_state->sysvals_ptr = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
                             VkPipelineBindPoint pipelineBindPoint,
                             VkPipelineLayout layout, uint32_t firstSet,
@@ -183,7 +184,7 @@ panvk_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
    assert(dynoffset_idx == dynamicOffsetCount);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout,
                        VkShaderStageFlags stageFlags, uint32_t offset,
                        uint32_t size, const void *pValues)
@@ -209,7 +210,7 @@ panvk_CmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout,
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdBindPipeline(VkCommandBuffer commandBuffer,
                       VkPipelineBindPoint pipelineBindPoint,
                       VkPipeline _pipeline)
@@ -241,7 +242,7 @@ panvk_CmdBindPipeline(VkCommandBuffer commandBuffer,
    cmdbuf->bind_points[pipelineBindPoint].desc_state.ubos = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport,
                      uint32_t viewportCount, const VkViewport *pViewports)
 {
@@ -254,7 +255,7 @@ panvk_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport,
    cmdbuf->state.dirty |= PANVK_DYNAMIC_VIEWPORT;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor,
                     uint32_t scissorCount, const VkRect2D *pScissors)
 {
@@ -267,7 +268,7 @@ panvk_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor,
    cmdbuf->state.dirty |= PANVK_DYNAMIC_SCISSOR;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetLineWidth(VkCommandBuffer commandBuffer, float lineWidth)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
@@ -276,7 +277,7 @@ panvk_CmdSetLineWidth(VkCommandBuffer commandBuffer, float lineWidth)
    cmdbuf->state.dirty |= PANVK_DYNAMIC_LINE_WIDTH;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetDepthBias(VkCommandBuffer commandBuffer,
                       float depthBiasConstantFactor, float depthBiasClamp,
                       float depthBiasSlopeFactor)
@@ -290,7 +291,7 @@ panvk_CmdSetDepthBias(VkCommandBuffer commandBuffer,
    cmdbuf->state.fs_rsd = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetBlendConstants(VkCommandBuffer commandBuffer,
                            const float blendConstants[4])
 {
@@ -303,14 +304,14 @@ panvk_CmdSetBlendConstants(VkCommandBuffer commandBuffer,
    cmdbuf->state.fs_rsd = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetDepthBounds(VkCommandBuffer commandBuffer, float minDepthBounds,
                         float maxDepthBounds)
 {
    panvk_stub();
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetStencilCompareMask(VkCommandBuffer commandBuffer,
                                VkStencilFaceFlags faceMask,
                                uint32_t compareMask)
@@ -327,7 +328,7 @@ panvk_CmdSetStencilCompareMask(VkCommandBuffer commandBuffer,
    cmdbuf->state.fs_rsd = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetStencilWriteMask(VkCommandBuffer commandBuffer,
                              VkStencilFaceFlags faceMask, uint32_t writeMask)
 {
@@ -343,7 +344,7 @@ panvk_CmdSetStencilWriteMask(VkCommandBuffer commandBuffer,
    cmdbuf->state.fs_rsd = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdSetStencilReference(VkCommandBuffer commandBuffer,
                              VkStencilFaceFlags faceMask, uint32_t reference)
 {
@@ -359,7 +360,7 @@ panvk_CmdSetStencilReference(VkCommandBuffer commandBuffer,
    cmdbuf->state.fs_rsd = 0;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateCommandPool(VkDevice _device,
                         const VkCommandPoolCreateInfo *pCreateInfo,
                         const VkAllocationCallbacks *pAllocator,
@@ -424,9 +425,8 @@ panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf)
 {
    const struct panvk_subpass *subpass = cmdbuf->state.subpass;
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
-   const struct panvk_framebuffer *fb = cmdbuf->state.framebuffer;
+   const struct vk_framebuffer *fb = cmdbuf->state.framebuffer;
    const struct panvk_clear_value *clears = cmdbuf->state.clear;
-   struct panvk_image_view *view;
 
    fbinfo->nr_samples = 1;
    fbinfo->rt_count = subpass->color_count;
@@ -435,9 +435,12 @@ panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf)
 
    for (unsigned cb = 0; cb < subpass->color_count; cb++) {
       int idx = subpass->color_attachments[cb].idx;
-      view = idx != VK_ATTACHMENT_UNUSED ? fb->attachments[idx].iview : NULL;
-      if (!view)
+
+      if (idx == VK_ATTACHMENT_UNUSED)
          continue;
+
+      VK_FROM_HANDLE(panvk_image_view, view, fb->attachments[idx]);
+
       fbinfo->rts[cb].view = &view->pview;
       fbinfo->rts[cb].clear = subpass->color_attachments[cb].clear;
       fbinfo->rts[cb].preload = subpass->color_attachments[cb].preload;
@@ -450,7 +453,8 @@ panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf)
    }
 
    if (subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED) {
-      view = fb->attachments[subpass->zs_attachment.idx].iview;
+      VK_FROM_HANDLE(panvk_image_view, view,
+                     fb->attachments[subpass->zs_attachment.idx]);
       const struct util_format_description *fdesc =
          util_format_description(view->pview.format);
 
@@ -477,14 +481,16 @@ panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf)
 void
 panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf)
 {
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
-   const struct panvk_framebuffer *fb = cmdbuf->state.framebuffer;
+   const struct vk_framebuffer *fb = cmdbuf->state.framebuffer;
 
    memset(cmdbuf->state.fb.crc_valid, 0, sizeof(cmdbuf->state.fb.crc_valid));
 
    *fbinfo = (struct pan_fb_info){
-      .tile_buf_budget = panfrost_query_optimal_tib_size(
-         cmdbuf->device->physical_device->model),
+      .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .width = fb->width,
       .height = fb->height,
       .extent.maxx = fb->width - 1,
@@ -492,29 +498,25 @@ panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf)
    };
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
                           const VkRenderPassBeginInfo *pRenderPassBegin,
                           const VkSubpassBeginInfo *pSubpassBeginInfo)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(panvk_render_pass, pass, pRenderPassBegin->renderPass);
-   VK_FROM_HANDLE(panvk_framebuffer, fb, pRenderPassBegin->framebuffer);
+   VK_FROM_HANDLE(vk_framebuffer, fb, pRenderPassBegin->framebuffer);
 
    cmdbuf->state.pass = pass;
    cmdbuf->state.subpass = pass->subpasses;
    cmdbuf->state.framebuffer = fb;
    cmdbuf->state.render_area = pRenderPassBegin->renderArea;
-   cmdbuf->state.batch =
-      vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
-   util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
+   panvk_cmd_open_batch(cmdbuf);
    assert(pRenderPassBegin->clearValueCount <= pass->attachment_count);
    cmdbuf->state.clear =
       vk_zalloc(&cmdbuf->vk.pool->alloc,
                 sizeof(*cmdbuf->state.clear) * pass->attachment_count, 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    panvk_cmd_prepare_clear_values(cmdbuf, pRenderPassBegin->pClearValues);
    panvk_cmd_fb_info_init(cmdbuf);
    panvk_cmd_fb_info_set_subpass(cmdbuf);
@@ -550,19 +552,21 @@ panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf)
    assert(!cmdbuf->state.batch);
    cmdbuf->state.batch =
       vk_zalloc(&cmdbuf->vk.pool->alloc, sizeof(*cmdbuf->state.batch), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
+   util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
    assert(cmdbuf->state.batch);
    return cmdbuf->state.batch;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer _buffer,
                       VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
 {
    panvk_stub();
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer _buffer,
                              VkDeviceSize offset, uint32_t drawCount,
                              uint32_t stride)
@@ -570,7 +574,7 @@ panvk_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer _buffer,
    panvk_stub();
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdDispatchBase(VkCommandBuffer commandBuffer, uint32_t base_x,
                       uint32_t base_y, uint32_t base_z, uint32_t x, uint32_t y,
                       uint32_t z)
@@ -578,7 +582,7 @@ panvk_CmdDispatchBase(VkCommandBuffer commandBuffer, uint32_t base_x,
    panvk_stub();
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_CmdDispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer _buffer,
                           VkDeviceSize offset)
 {

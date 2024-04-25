@@ -87,7 +87,6 @@ struct elk_compiler {
    void (*shader_perf_log)(void *, unsigned *id, const char *str, ...) PRINTFLIKE(3, 4);
 
    bool scalar_stage[MESA_ALL_SHADER_STAGES];
-   bool use_tcs_multi_patch;
    struct nir_shader_compiler_options *nir_options[MESA_ALL_SHADER_STAGES];
 
    /**
@@ -117,29 +116,6 @@ struct elk_compiler {
    bool indirect_ubos_use_sampler;
 
    /**
-    * Gfx12.5+ has a bit in the SEND instruction extending the bindless
-    * surface offset range from 20 to 26 bits, effectively giving us 4Gb of
-    * bindless surface descriptors instead of 64Mb previously.
-    */
-   bool extended_bindless_surface_offset;
-
-   /**
-    * Gfx11+ has a bit in the dword 3 of the sampler message header that
-    * indicates whether the sampler handle is relative to the dynamic state
-    * base address (0) or the bindless sampler base address (1). The driver
-    * can select this.
-    */
-   bool use_bindless_sampler_offset;
-
-   /**
-    * Should DPAS instructions be lowered?
-    *
-    * This will be set for all platforms before Gfx12.5. It may also be set
-    * platforms that support DPAS for testing purposes.
-    */
-   bool lower_dpas;
-
-   /**
     * Calling the ra_allocate function after each register spill can take
     * several minutes. This option speeds up shader compilation by spilling
     * more registers after the ra_allocate failure. Required for
@@ -147,8 +123,6 @@ struct elk_compiler {
     * in case the render thread hasn't responded within 2 minutes.
     */
    int spilling_rate;
-
-   struct nir_shader *clc_shader;
 };
 
 #define elk_shader_debug_log(compiler, data, fmt, ... ) do {    \
@@ -539,9 +513,8 @@ struct elk_wm_prog_key {
 
    bool coherent_fb_fetch:1;
    bool ignore_sample_mask_out:1;
-   bool coarse_pixel:1;
 
-   uint64_t padding:55;
+   uint64_t padding:56;
 };
 
 struct elk_cs_prog_key {
@@ -762,9 +735,6 @@ struct elk_stage_prog_data {
    /** Does this program pull from any UBO or other constant buffers? */
    bool has_ubo_pull;
 
-   /** How many ray queries objects in this shader. */
-   unsigned ray_queries;
-
    /**
     * Register where the thread expects to find input data from the URB
     * (typically uniforms, followed by vertex or fragment attributes).
@@ -853,18 +823,6 @@ struct elk_wm_prog_data {
    uint8_t color_outputs_written;
    uint8_t computed_depth_mode;
 
-   /**
-    * Number of polygons handled in parallel by the multi-polygon PS
-    * kernel.
-    */
-   uint8_t max_polygons;
-
-   /**
-    * Dispatch width of the multi-polygon PS kernel, or 0 if no
-    * multi-polygon kernel was built.
-    */
-   uint8_t dispatch_multi;
-
    bool computed_stencil;
    bool early_fragment_tests;
    bool post_depth_coverage;
@@ -878,7 +836,6 @@ struct elk_wm_prog_data {
    bool uses_kill;
    bool uses_src_depth;
    bool uses_src_w;
-   bool uses_depth_w_coefficients;
    bool uses_sample_mask;
    bool uses_vmask;
    bool has_side_effects;
@@ -897,11 +854,6 @@ struct elk_wm_prog_data {
 
    /** Should this shader be dispatched per-sample */
    enum elk_sometimes persample_dispatch;
-
-   /**
-    * Shader is ran at the coarse pixel shading dispatch rate (3DSTATE_CPS).
-    */
-   enum elk_sometimes coarse_pixel_dispatch;
 
    /**
     * Shader writes the SampleMask and this is AND-ed with the API's
@@ -959,39 +911,6 @@ struct elk_wm_prog_data {
 
 #ifdef GFX_VERx10
 
-#if GFX_VERx10 >= 200
-
-/** Returns the SIMD width corresponding to a given KSP index
- *
- * The "Variable Pixel Dispatch" table in the PRM (which can be found, for
- * example in Vol. 7 of the SKL PRM) has a mapping from dispatch widths to
- * kernel start pointer (KSP) indices that is based on what dispatch widths
- * are enabled.  This function provides, effectively, the reverse mapping.
- *
- * If the given KSP is enabled, a SIMD width of 8, 16, or 32 is
- * returned.  Note that for a multipolygon dispatch kernel 8 is always
- * returned, since multipolygon kernels use the "_8" fields from
- * elk_wm_prog_data regardless of their SIMD width.  If the KSP is
- * invalid, 0 is returned.
- */
-static inline unsigned
-elk_fs_simd_width_for_ksp(unsigned ksp_idx, bool enabled, unsigned width_sel)
-{
-   assert(ksp_idx < 2);
-   return !enabled ? 0 :
-          width_sel ? 32 :
-          16;
-}
-
-#define elk_wm_state_simd_width_for_ksp(wm_state, ksp_idx)              \
-        (ksp_idx == 0 && (wm_state).Kernel0MaximumPolysperThread ? 8 :  \
-         ksp_idx == 0 ? elk_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel0Enable, \
-                                                  (wm_state).Kernel0SIMDWidth): \
-         elk_fs_simd_width_for_ksp(ksp_idx, (wm_state).Kernel1Enable,   \
-                                   (wm_state).Kernel1SIMDWidth))
-
-#else
-
 /** Returns the SIMD width corresponding to a given KSP index
  *
  * The "Variable Pixel Dispatch" table in the PRM (which can be found, for
@@ -1025,8 +944,6 @@ elk_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
    elk_fs_simd_width_for_ksp((ksp_idx), (wm_state)._8PixelDispatchEnable, \
                              (wm_state)._16PixelDispatchEnable, \
                              (wm_state)._32PixelDispatchEnable)
-
-#endif
 
 #endif
 
@@ -1172,25 +1089,6 @@ elk_wm_prog_data_barycentric_modes(const struct elk_wm_prog_data *prog_data,
    return modes;
 }
 
-static inline bool
-elk_wm_prog_data_is_coarse(const struct elk_wm_prog_data *prog_data,
-                           enum intel_msaa_flags pushed_msaa_flags)
-{
-   if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
-      if (pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES)
-         assert(prog_data->coarse_pixel_dispatch != ELK_NEVER);
-      else
-         assert(prog_data->coarse_pixel_dispatch != ELK_ALWAYS);
-
-      return pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES;
-   }
-
-   assert(prog_data->coarse_pixel_dispatch == ELK_ALWAYS ||
-          prog_data->coarse_pixel_dispatch == ELK_NEVER);
-
-   return prog_data->coarse_pixel_dispatch;
-}
-
 struct elk_push_const_block {
    unsigned dwords;     /* Dword count, not reg aligned */
    unsigned regs;
@@ -1216,11 +1114,6 @@ struct elk_cs_prog_data {
 
    bool uses_barrier;
    bool uses_num_work_groups;
-   bool uses_inline_data;
-   bool uses_btd_stack_ids;
-   bool uses_systolic;
-   uint8_t generate_local_id;
-   enum intel_compute_walk_order walk_order;
 
    struct {
       struct elk_push_const_block cross_thread;
@@ -1791,15 +1684,9 @@ elk_encode_slm_size(unsigned gen, uint32_t bytes)
       slm_size = elk_calculate_slm_size(gen, bytes);
       assert(util_is_power_of_two_nonzero(slm_size));
 
-      if (gen >= 9) {
-         /* Turn an exponent of 10 (1024 kB) into 1. */
-         assert(slm_size >= 1024);
-         slm_size = ffs(slm_size) - 10;
-      } else {
-         assert(slm_size >= 4096);
-         /* Convert to the pre-Gfx9 representation. */
-         slm_size = slm_size / 4096;
-      }
+      assert(slm_size >= 4096);
+      /* Convert to the pre-Gfx9 representation. */
+      slm_size = slm_size / 4096;
    }
 
    return slm_size;
@@ -1838,7 +1725,7 @@ elk_cs_get_dispatch_info(const struct intel_device_info *devinfo,
  */
 static inline bool
 elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
-                              gl_shader_stage stage, unsigned max_polygons,
+                              gl_shader_stage stage,
                               const struct elk_stage_prog_data *prog_data)
 {
    /* The code below makes assumptions about the hardware's thread dispatch
@@ -1846,7 +1733,7 @@ elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
     * to do a full test run with elk_fs_test_dispatch_packing() hooked up to
     * the NIR front-end before changing this assertion.
     */
-   assert(devinfo->ver <= 12);
+   assert(devinfo->ver <= 8);
 
    switch (stage) {
    case MESA_SHADER_FRAGMENT: {
@@ -1860,10 +1747,8 @@ elk_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
        */
       const struct elk_wm_prog_data *wm_prog_data =
          (const struct elk_wm_prog_data *)prog_data;
-      return devinfo->verx10 < 125 &&
-             !wm_prog_data->persample_dispatch &&
-             wm_prog_data->uses_vmask &&
-             max_polygons < 2;
+      return !wm_prog_data->persample_dispatch &&
+             wm_prog_data->uses_vmask;
    }
    case MESA_SHADER_COMPUTE:
       /* Compute shaders will be spawned with either a fully enabled dispatch
@@ -1910,24 +1795,6 @@ elk_compute_first_urb_slot_required(uint64_t inputs_read,
 
    return 0;
 }
-
-/**
- * This enum is used as the base indice of the nir_load_topology_id_intel
- * intrinsic. This is used to return different values based on some aspect of
- * the topology of the device.
- */
-enum elk_topology_id
-{
-   /* A value based of the DSS identifier the shader is currently running on.
-    * Be mindful that the DSS ID can be higher than the total number of DSS on
-    * the device. This is because of the fusing that can occur on different
-    * parts.
-    */
-   ELK_TOPOLOGY_ID_DSS,
-
-   /* A value composed of EU ID, thread ID & SIMD lane ID. */
-   ELK_TOPOLOGY_ID_EU_THREAD_SIMD,
-};
 
 #ifdef __cplusplus
 } /* extern "C" */

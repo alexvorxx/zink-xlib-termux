@@ -2511,3 +2511,13 @@ vn_CmdSetTessellationDomainOriginEXT(VkCommandBuffer commandBuffer,
    VN_CMD_ENQUEUE(vkCmdSetTessellationDomainOriginEXT, commandBuffer,
                   domainOrigin);
 }
+
+void
+vn_CmdSetFragmentShadingRateKHR(
+   VkCommandBuffer commandBuffer,
+   const VkExtent2D *pFragmentSize,
+   const VkFragmentShadingRateCombinerOpKHR combinerOps[2])
+{
+   VN_CMD_ENQUEUE(vkCmdSetFragmentShadingRateKHR, commandBuffer,
+                  pFragmentSize, combinerOps);
+}

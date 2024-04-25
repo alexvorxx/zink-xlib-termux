@@ -64,7 +64,7 @@ elk_fs_visitor::lower_pack()
                const uint32_t half = _mesa_float_to_half(inst->src[i].f);
                ibld.MOV(subscript(dst, ELK_REGISTER_TYPE_UW, i),
                         elk_imm_uw(half));
-            } else if (i == 1 && devinfo->ver < 9) {
+            } else if (i == 1) {
                /* Pre-Skylake requires DWord aligned destinations */
                elk_fs_reg tmp = ibld.vgrf(ELK_REGISTER_TYPE_UD);
                ibld.F32TO16(subscript(tmp, ELK_REGISTER_TYPE_HF, 0),

@@ -1355,7 +1355,7 @@ static void
 anv_bo_unmap_close(struct anv_device *device, struct anv_bo *bo)
 {
    if (bo->map && !bo->from_host_ptr)
-      anv_device_unmap_bo(device, bo, bo->map, bo->size);
+      anv_device_unmap_bo(device, bo, bo->map, bo->size, false /* replace */);
 
    assert(bo->gem_handle != 0);
    device->kmd_backend->gem_close(device, bo);
@@ -1375,7 +1375,7 @@ static void
 anv_bo_finish(struct anv_device *device, struct anv_bo *bo)
 {
    /* Not releasing vma in case unbind fails */
-   if (device->kmd_backend->vm_unbind_bo(device, bo) == 0)
+   if (device->kmd_backend->vm_unbind_bo(device, bo) == VK_SUCCESS)
       anv_bo_vma_free(device, bo);
 
    anv_bo_unmap_close(device, bo);
@@ -1546,7 +1546,8 @@ anv_device_alloc_bo(struct anv_device *device,
    };
 
    if (alloc_flags & ANV_BO_ALLOC_MAPPED) {
-      VkResult result = anv_device_map_bo(device, &new_bo, 0, size, &new_bo.map);
+      VkResult result = anv_device_map_bo(device, &new_bo, 0, size,
+                                          NULL, &new_bo.map);
       if (unlikely(result != VK_SUCCESS)) {
          device->kmd_backend->gem_close(device, &new_bo);
          return result;
@@ -1559,10 +1560,11 @@ anv_device_alloc_bo(struct anv_device *device,
    if (result != VK_SUCCESS)
       return result;
 
-   if (device->kmd_backend->vm_bind_bo(device, &new_bo)) {
+   result = device->kmd_backend->vm_bind_bo(device, &new_bo);
+   if (result != VK_SUCCESS) {
       anv_bo_vma_free(device, &new_bo);
       anv_bo_unmap_close(device, &new_bo);
-      return vk_errorf(device, VK_ERROR_UNKNOWN, "vm bind failed");
+      return result;
    }
 
    assert(new_bo.gem_handle);
@@ -1585,16 +1587,20 @@ anv_device_map_bo(struct anv_device *device,
                   struct anv_bo *bo,
                   uint64_t offset,
                   size_t size,
+                  void *placed_addr,
                   void **map_out)
 {
    assert(!bo->from_host_ptr);
    assert(size > 0);
 
-   void *map = anv_gem_mmap(device, bo, offset, size);
+   void *map = device->kmd_backend->gem_mmap(device, bo, offset, size, placed_addr);
    if (unlikely(map == MAP_FAILED))
       return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED, "mmap failed: %m");
 
+   assert(placed_addr == NULL || map == placed_addr);
+
    assert(map != NULL);
+   VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
 
    if (map_out)
       *map_out = map;
@@ -1602,14 +1608,26 @@ anv_device_map_bo(struct anv_device *device,
    return VK_SUCCESS;
 }
 
-void
+VkResult
 anv_device_unmap_bo(struct anv_device *device,
                     struct anv_bo *bo,
-                    void *map, size_t map_size)
+                    void *map, size_t map_size,
+                    bool replace)
 {
    assert(!bo->from_host_ptr);
 
-   anv_gem_munmap(device, map, map_size);
+   if (replace) {
+      map = mmap(map, map_size, PROT_NONE,
+                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+      if (map == MAP_FAILED) {
+         return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+                          "Failed to map over original mapping");
+      }
+   } else {
+      VG(VALGRIND_FREELIKE_BLOCK(map, 0));
+      munmap(map, map_size);
+   }
+   return VK_SUCCESS;
 }
 
 VkResult
@@ -1700,11 +1718,11 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
          return result;
       }
 
-      if (device->kmd_backend->vm_bind_bo(device, &new_bo)) {
-         VkResult res = vk_errorf(device, VK_ERROR_UNKNOWN, "vm bind failed: %m");
+      result = device->kmd_backend->vm_bind_bo(device, &new_bo);
+      if (result != VK_SUCCESS) {
          anv_bo_vma_free(device, &new_bo);
          pthread_mutex_unlock(&cache->mutex);
-         return res;
+         return result;
       }
 
       *bo = new_bo;
@@ -1796,10 +1814,11 @@ anv_device_import_bo(struct anv_device *device,
          return result;
       }
 
-      if (device->kmd_backend->vm_bind_bo(device, &new_bo)) {
+      result = device->kmd_backend->vm_bind_bo(device, &new_bo);
+      if (result != VK_SUCCESS) {
          anv_bo_vma_free(device, &new_bo);
          pthread_mutex_unlock(&cache->mutex);
-         return vk_errorf(device, VK_ERROR_UNKNOWN, "vm bind failed");
+         return result;
       }
 
       *bo = new_bo;

@@ -35,9 +35,9 @@
 #include "util/u_atomic.h"
 #include "util/os_time.h"
 
+#include "vk_format.h"
 #include "vk_nir_convert_ycbcr.h"
 #include "vk_pipeline.h"
-#include "vulkan/util/vk_format.h"
 
 static VkResult
 compute_vpm_config(struct v3dv_pipeline *pipeline);

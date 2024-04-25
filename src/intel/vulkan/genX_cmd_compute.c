@@ -587,8 +587,7 @@ genX(cmd_buffer_dispatch_kernel)(struct anv_cmd_buffer *cmd_buffer,
 
    genX(cmd_buffer_config_l3)(cmd_buffer, kernel->l3_config);
 
-   if (anv_cmd_buffer_is_render_queue(cmd_buffer))
-      genX(flush_pipeline_select_gpgpu)(cmd_buffer);
+   genX(flush_pipeline_select_gpgpu)(cmd_buffer);
 
    /* Apply any pending pipeline flushes we may have.  We want to apply them
     * now because, if any of those flushes are for things like push constants,

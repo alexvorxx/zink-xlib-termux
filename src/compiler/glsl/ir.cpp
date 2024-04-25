@@ -2212,7 +2212,7 @@ ir_function::has_user_signature()
 ir_rvalue *
 ir_rvalue::error_value(void *mem_ctx)
 {
-   ir_rvalue *v = new(mem_ctx) ir_rvalue(ir_type_unset);
+   ir_rvalue *v = new(mem_ctx) ir_rvalue(ir_type_error);
 
    v->type = &glsl_type_builtin_error;
    return v;
@@ -2221,6 +2221,14 @@ ir_rvalue::error_value(void *mem_ctx)
 
 void
 visit_exec_list(exec_list *list, ir_visitor *visitor)
+{
+   foreach_in_list(ir_instruction, node, list) {
+      node->accept(visitor);
+   }
+}
+
+void
+visit_exec_list_safe(exec_list *list, ir_visitor *visitor)
 {
    foreach_in_list_safe(ir_instruction, node, list) {
       node->accept(visitor);

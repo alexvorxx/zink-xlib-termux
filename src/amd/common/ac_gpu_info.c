@@ -292,6 +292,11 @@ static int amdgpu_query_hw_ip_info(amdgpu_device_handle dev, unsigned type,
 {
    return -EINVAL;
 }
+static int amdgpu_query_hw_ip_count(amdgpu_device_handle dev, unsigned type,
+   uint32_t *count)
+{
+   return -EINVAL;
+}
 static int amdgpu_query_heap_info(amdgpu_device_handle dev, uint32_t heap,
    uint32_t flags, struct amdgpu_heap_info *info)
 {
@@ -678,7 +683,15 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
                   device_info.family == FAMILY_MDN)
             info->ip[AMD_IP_GFX].ver_minor = info->ip[AMD_IP_COMPUTE].ver_minor = 3;
       }
-      info->ip[ip_type].num_queues = util_bitcount(ip_info.available_rings);
+      if (ip_type >= AMD_IP_VCN_DEC && ip_type <= AMD_IP_VCN_JPEG) {
+         uint32_t num_inst;
+         r = amdgpu_query_hw_ip_count(dev, ip_type, &num_inst);
+         if (r)
+            fprintf(stderr, "amdgpu: failed to query ip count for vcn or jpeg\n");
+         else
+            info->ip[ip_type].num_queues = num_inst;
+      } else
+         info->ip[ip_type].num_queues = util_bitcount(ip_info.available_rings);
 
       /* According to the kernel, only SDMA and VPE require 256B alignment, but use it
        * for all queues because the kernel reports wrong limits for some of the queues.
@@ -858,6 +871,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
          break;
       case FAMILY_GFX1150:
          identify_chip(GFX1150);
+         identify_chip(GFX1151);
          break;
       }
 
@@ -974,6 +988,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
          break;
       case VCN_IP_VERSION(4, 0, 5):
          info->vcn_ip_version = VCN_4_0_5;
+         break;
+      case VCN_IP_VERSION(4, 0, 6):
+         info->vcn_ip_version = VCN_4_0_6;
          break;
       default:
          info->vcn_ip_version = VCN_UNKNOWN;

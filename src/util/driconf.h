@@ -724,10 +724,6 @@
 #define DRI_CONF_RADV_CLEAR_LDS(def) \
    DRI_CONF_OPT_B(radv_clear_lds, def, "Clear LDS at the end of shaders. Might decrease performance.")
 
-#define DRI_CONF_RADV_FORCE_ACTIVE_ACCEL_STRUCT_LEAVES(def) \
-   DRI_CONF_OPT_B(radv_force_active_accel_struct_leaves, def, \
-                  "Force leaf nodes of acceleration structures to be marked active.")
-
 #define DRI_CONF_RADV_DISABLE_NGG_GS(def) \
    DRI_CONF_OPT_B(radv_disable_ngg_gs, def, "Disable NGG GS on GFX10/GFX10.3.")
 

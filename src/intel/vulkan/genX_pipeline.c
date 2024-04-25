@@ -1961,12 +1961,18 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
 #endif
 
 #if GFX_VERx10 >= 125
+   bool needs_instance_granularity =
+      intel_needs_workaround(pipeline->base.base.device->info, 14019166699) &&
+      (sbe_primitive_id_override(pipeline) ||
+       geom_or_tess_prim_id_used(pipeline));
+
    anv_pipeline_emit(pipeline, partial.vfg, GENX(3DSTATE_VFG), vfg) {
       /* If 3DSTATE_TE: TE Enable == 1 then RR_STRICT else RR_FREE*/
       vfg.DistributionMode =
          anv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL) ? RR_STRICT :
          RR_FREE;
-      vfg.DistributionGranularity = BatchLevelGranularity;
+      vfg.DistributionGranularity = needs_instance_granularity ?
+         InstanceLevelGranularity : BatchLevelGranularity;
 #if INTEL_WA_14014851047_GFX_VER
       vfg.GranularityThresholdDisable =
          intel_needs_workaround(pipeline->base.base.device->info, 14014851047);

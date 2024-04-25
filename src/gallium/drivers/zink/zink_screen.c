@@ -1030,7 +1030,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0;
 
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
-      return screen->info.props.limits.maxTessellationControlPerVertexOutputComponents / 4;
+      return screen->info.props.limits.maxTessellationControlPerPatchOutputComponents / 4;
    case PIPE_CAP_MAX_VARYINGS:
       /* need to reserve up to 60 of our varying components and 16 slots for streamout */
       return MIN2(screen->info.props.limits.maxVertexOutputComponents / 4 / 2, 16);
@@ -1576,12 +1576,6 @@ static void
 zink_destroy_screen(struct pipe_screen *pscreen)
 {
    struct zink_screen *screen = zink_screen(pscreen);
-   struct zink_batch_state *bs = screen->free_batch_states;
-   while (bs) {
-      struct zink_batch_state *bs_next = bs->next;
-      zink_batch_state_destroy(screen, bs);
-      bs = bs_next;
-   }
 
 #ifdef HAVE_RENDERDOC_APP_H
    if (screen->renderdoc_capture_all && p_atomic_dec_zero(&num_screens))
@@ -1593,6 +1587,13 @@ zink_destroy_screen(struct pipe_screen *pscreen)
 
    if (screen->copy_context)
       screen->copy_context->base.destroy(&screen->copy_context->base);
+
+   struct zink_batch_state *bs = screen->free_batch_states;
+   while (bs) {
+      struct zink_batch_state *bs_next = bs->next;
+      zink_batch_state_destroy(screen, bs);
+      bs = bs_next;
+   }
 
    if (VK_NULL_HANDLE != screen->debugUtilsCallbackHandle) {
       VKSCR(DestroyDebugUtilsMessengerEXT)(screen->instance, screen->debugUtilsCallbackHandle, NULL);
@@ -2439,7 +2440,7 @@ zink_screen_export_dmabuf_semaphore(struct zink_screen *screen, struct zink_reso
       .fd = -1,
    };
 
-   int fd;
+   int fd = -1;
    if (res->obj->is_aux) {
       fd = os_dupfd_cloexec(res->obj->handle);
    } else {
@@ -2448,6 +2449,11 @@ zink_screen_export_dmabuf_semaphore(struct zink_screen *screen, struct zink_reso
       fd_info.memory = zink_bo_get_mem(res->obj->bo);
       fd_info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
       VKSCR(GetMemoryFdKHR)(screen->dev, &fd_info, &fd);
+   }
+
+   if (unlikely(fd < 0)) {
+      mesa_loge("MESA: Unable to get a valid memory fd");
+      return VK_NULL_HANDLE;
    }
 
    int ret = drmIoctl(fd, DMA_BUF_IOCTL_EXPORT_SYNC_FILE, &export);
@@ -2783,9 +2789,11 @@ zink_get_sparse_texture_virtual_page_size(struct pipe_screen *pscreen,
    default:
       return 0;
    }
-   VkImageUsageFlags flags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-   flags |= is_zs ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+   VkImageUsageFlags use_flags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                 VK_IMAGE_USAGE_STORAGE_BIT;
+   use_flags |= is_zs ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+   VkImageUsageFlags flags = screen->format_props[pformat].optimalTilingFeatures & use_flags;
    VkSparseImageFormatProperties props[4]; //planar?
    unsigned prop_count = ARRAY_SIZE(props);
    VKSCR(GetPhysicalDeviceSparseImageFormatProperties)(screen->pdev, format, type,
@@ -2794,11 +2802,16 @@ zink_get_sparse_texture_virtual_page_size(struct pipe_screen *pscreen,
                                                        VK_IMAGE_TILING_OPTIMAL,
                                                        &prop_count, props);
    if (!prop_count) {
-      if (pformat == PIPE_FORMAT_R9G9B9E5_FLOAT) {
-         screen->faked_e5sparse = true;
-         goto hack_it_up;
-      }
-      return 0;
+      /* format may not support storage; try without */
+      flags &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+      prop_count = ARRAY_SIZE(props);
+      VKSCR(GetPhysicalDeviceSparseImageFormatProperties)(screen->pdev, format, type,
+                                                         multi_sample ? VK_SAMPLE_COUNT_2_BIT : VK_SAMPLE_COUNT_1_BIT,
+                                                         flags,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         &prop_count, props);
+      if (!prop_count)
+         return 0;
    }
 
    if (size) {

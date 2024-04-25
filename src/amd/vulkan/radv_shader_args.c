@@ -205,10 +205,6 @@ declare_vs_input_vgprs(enum amd_gfx_level gfx_level, const struct radv_shader_in
          ac_add_arg(&args->ac, AC_ARG_VGPR, 4, AC_ARG_INT, &args->vs_inputs[i]);
          args->ac.args[args->vs_inputs[i].arg_index].pending_vmem = true;
       }
-      /* Ensure the main shader doesn't use less vgprs than the prolog. The prolog requires one
-       * VGPR more than the number of shader arguments in the case of non-trivial divisors on GFX8.
-       */
-      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, NULL);
    }
 }
 
@@ -411,7 +407,7 @@ declare_unmerged_vs_tcs_args(const enum amd_gfx_level gfx_level, const struct ra
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
    add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
-   add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_epilog_pc, AC_UD_TCS_EPILOG_PC);
+   add_ud_arg(args, 1, AC_ARG_INT, &args->epilog_pc, AC_UD_EPILOG_PC);
    add_ud_arg(args, 1, AC_ARG_INT, &args->next_stage_pc, AC_UD_NEXT_STAGE_PC);
 
    /* VGPRs (TCS first, then VS) */
@@ -436,7 +432,7 @@ declare_unmerged_vs_tcs_args(const enum amd_gfx_level gfx_level, const struct ra
    ac_add_preserved(&args->ac, &args->ac.push_constants);
    ac_add_preserved(&args->ac, &args->ac.view_index);
    ac_add_preserved(&args->ac, &args->tcs_offchip_layout);
-   ac_add_preserved(&args->ac, &args->tcs_epilog_pc);
+   ac_add_preserved(&args->ac, &args->epilog_pc);
 
    /* Preserved VGPRs */
    ac_add_preserved(&args->ac, &args->ac.tcs_patch_id);
@@ -492,6 +488,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
 
    ac_add_preserved(&args->ac, &args->descriptor_sets[0]);
    ac_add_preserved(&args->ac, &args->ac.push_constants);
+   ac_add_preserved(&args->ac, &args->streamout_buffers);
    ac_add_preserved(&args->ac, &args->ac.view_index);
    ac_add_preserved(&args->ac, &args->tes_state);
    ac_add_preserved(&args->ac, &args->shader_query_state);
@@ -676,7 +673,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             }
 
             if (info->has_epilog) {
-               add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_epilog_pc, AC_UD_TCS_EPILOG_PC);
+               add_ud_arg(args, 1, AC_ARG_INT, &args->epilog_pc, AC_UD_EPILOG_PC);
             }
 
             ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.tcs_patch_id);
@@ -696,7 +693,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
          }
 
          if (info->has_epilog) {
-            add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_epilog_pc, AC_UD_TCS_EPILOG_PC);
+            add_ud_arg(args, 1, AC_ARG_INT, &args->epilog_pc, AC_UD_EPILOG_PC);
          }
 
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.tess_offchip_offset);
@@ -833,7 +830,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
       declare_global_input_sgprs(info, user_sgpr_info, args);
 
       if (info->has_epilog) {
-         add_ud_arg(args, 1, AC_ARG_INT, &args->ps_epilog_pc, AC_UD_PS_EPILOG_PC);
+         add_ud_arg(args, 1, AC_ARG_INT, &args->epilog_pc, AC_UD_EPILOG_PC);
       }
 
       if (radv_ps_needs_state_sgpr(info, gfx_state))

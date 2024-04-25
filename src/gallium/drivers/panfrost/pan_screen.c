@@ -37,6 +37,7 @@
 #include "util/u_process.h"
 #include "util/u_screen.h"
 #include "util/u_video.h"
+#include "util/xmlconfig.h"
 
 #include <fcntl.h>
 
@@ -834,6 +835,9 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
 
    struct panfrost_device *dev = pan_device(&screen->base);
 
+   driParseConfigFiles(config->options, config->options_info, 0,
+                       "panfrost", NULL, NULL, NULL, 0, NULL, 0);
+
    /* Debug must be set first for pandecode to work correctly */
    dev->debug =
       debug_get_flags_option("PAN_MESA_DEBUG", panfrost_debug_options, 0);
@@ -851,6 +855,11 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
       panfrost_destroy_screen(&(screen->base));
       return NULL;
    }
+
+   screen->force_afbc_packing = dev->debug & PAN_DBG_FORCE_PACK;
+   if (!screen->force_afbc_packing)
+      screen->force_afbc_packing = driQueryOptionb(config->options,
+                                                   "pan_force_afbc_packing");
 
    dev->ro = ro;
 

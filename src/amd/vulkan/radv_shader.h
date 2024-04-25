@@ -30,7 +30,7 @@
 
 #include "util/mesa-blake3.h"
 #include "util/u_math.h"
-#include "vulkan/runtime/vk_pipeline_cache.h"
+#include "vk_pipeline_cache.h"
 #include "vulkan/vulkan.h"
 #include "ac_binary.h"
 #include "ac_shader_util.h"
@@ -217,12 +217,12 @@ enum radv_ud_index {
    AC_UD_TASK_RING_ENTRY = 13,
    AC_UD_NUM_VERTS_PER_PRIM = 14,
    AC_UD_NEXT_STAGE_PC = 15,
-   AC_UD_SHADER_START = 16,
+   AC_UD_EPILOG_PC = 16,
+   AC_UD_SHADER_START = 17,
    AC_UD_VS_VERTEX_BUFFERS = AC_UD_SHADER_START,
    AC_UD_VS_BASE_VERTEX_START_INSTANCE,
    AC_UD_VS_PROLOG_INPUTS,
    AC_UD_VS_MAX_UD,
-   AC_UD_PS_EPILOG_PC,
    AC_UD_PS_STATE,
    AC_UD_PS_MAX_UD,
    AC_UD_CS_GRID_SIZE = AC_UD_SHADER_START,
@@ -236,7 +236,6 @@ enum radv_ud_index {
    AC_UD_CS_MAX_UD,
    AC_UD_GS_MAX_UD,
    AC_UD_TCS_OFFCHIP_LAYOUT = AC_UD_VS_MAX_UD,
-   AC_UD_TCS_EPILOG_PC,
    AC_UD_TCS_MAX_UD,
    /* We might not know the previous stage when compiling a geometry shader, so we just
     * declare both TES and VS user SGPRs.
@@ -778,10 +777,15 @@ bool radv_shader_should_clear_lds(const struct radv_device *device, const nir_sh
 
 void radv_nir_lower_rt_io(nir_shader *shader, bool monolithic, uint32_t payload_offset);
 
+struct radv_ray_tracing_stage_info;
+
 void radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                            const struct radv_shader_args *args, const struct radv_shader_info *info,
                            uint32_t *stack_size, bool resume_shader, struct radv_device *device,
-                           struct radv_ray_tracing_pipeline *pipeline, bool monolithic);
+                           struct radv_ray_tracing_pipeline *pipeline, bool monolithic,
+                           const struct radv_ray_tracing_stage_info *traversal_info);
+
+void radv_gather_unused_args(struct radv_ray_tracing_stage_info *info, nir_shader *nir);
 
 struct radv_shader_stage;
 
@@ -1014,8 +1018,11 @@ bool radv_consider_culling(const struct radv_physical_device *pdevice, struct ni
 
 void radv_get_nir_options(struct radv_physical_device *device);
 
+struct radv_ray_tracing_stage_info;
+
 nir_shader *radv_build_traversal_shader(struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline,
-                                        const VkRayTracingPipelineCreateInfoKHR *pCreateInfo);
+                                        const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+                                        struct radv_ray_tracing_stage_info *info);
 
 enum radv_rt_priority {
    radv_rt_priority_raygen = 0,

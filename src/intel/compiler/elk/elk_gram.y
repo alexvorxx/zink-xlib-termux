@@ -199,12 +199,6 @@ i965_asm_binary_instruction(int opcode,
 	case ELK_OPCODE_PLN:
 		elk_PLN(p, dest, src0, src1);
 		break;
-	case ELK_OPCODE_ROL:
-		elk_ROL(p, dest, src0, src1);
-		break;
-	case ELK_OPCODE_ROR:
-		elk_ROR(p, dest, src0, src1);
-		break;
 	case ELK_OPCODE_SAD2:
 		fprintf(stderr, "Opcode ELK_OPCODE_SAD2 unhandled\n");
 		break;
@@ -279,12 +273,6 @@ i965_asm_ternary_instruction(int opcode,
 	case ELK_OPCODE_BFI2:
 		elk_BFI2(p, dest, src0, src1, src2);
 		break;
-	case ELK_OPCODE_DP4A:
-		elk_DP4A(p, dest, src0, src1, src2);
-		break;
-	case ELK_OPCODE_ADD3:
-		elk_ADD3(p, dest, src0, src1, src2);
-		break;
 	default:
 		fprintf(stderr, "Unsupported ternary opcode\n");
 	}
@@ -298,17 +286,12 @@ i965_asm_set_instruction_options(struct elk_codegen *p,
 			         options.access_mode);
 	elk_inst_set_mask_control(p->devinfo, elk_last_inst,
 				  options.mask_control);
-	if (p->devinfo->ver < 12) {
-		elk_inst_set_thread_control(p->devinfo, elk_last_inst,
-					    options.thread_control);
-		elk_inst_set_no_dd_check(p->devinfo, elk_last_inst,
-					 options.no_dd_check);
-		elk_inst_set_no_dd_clear(p->devinfo, elk_last_inst,
-					 options.no_dd_clear);
-	} else {
-		elk_inst_set_swsb(p->devinfo, elk_last_inst,
-		                  tgl_swsb_encode(p->devinfo, options.depinfo));
-	}
+        elk_inst_set_thread_control(p->devinfo, elk_last_inst,
+                                    options.thread_control);
+        elk_inst_set_no_dd_check(p->devinfo, elk_last_inst,
+                                 options.no_dd_check);
+        elk_inst_set_no_dd_clear(p->devinfo, elk_last_inst,
+                                 options.no_dd_clear);
 	elk_inst_set_debug_control(p->devinfo, elk_last_inst,
 			           options.debug_control);
 	if (p->devinfo->ver >= 6)
@@ -366,7 +349,6 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 	struct options options;
 	struct instoption instoption;
 	struct msgdesc msgdesc;
-	struct tgl_swsb depinfo;
 	elk_inst *instruction;
 }
 
@@ -397,10 +379,10 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <string> JUMP_LABEL_TARGET
 
 /* opcodes */
-%token <integer> ADD ADD3 ADDC AND ASR AVG
+%token <integer> ADD ADDC AND ASR AVG
 %token <integer> BFE BFI1 BFI2 BFB BFREV BRC BRD BREAK
 %token <integer> CALL CALLA CASE CBIT CMP CMPN CONT CSEL
-%token <integer> DIM DO DPAS DPASW DP2 DP3 DP4 DP4A DPH
+%token <integer> DIM DO DP2 DP3 DP4 DPH
 %token <integer> ELSE ENDIF F16TO32 F32TO16 FBH FBL FORK FRC
 %token <integer> GOTO
 %token <integer> HALT
@@ -411,20 +393,15 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> NENOP NOP NOT
 %token <integer> OR
 %token <integer> PLN POP PUSH
-%token <integer> RET RNDD RNDE RNDU RNDZ ROL ROR
-%token <integer> SAD2 SADA2 SEL SENDS SENDSC SHL SHR SMOV SUBB SYNC
-%token <integer> SEND_GFX4 SENDC_GFX4 SEND_GFX12 SENDC_GFX12
+%token <integer> RET RNDD RNDE RNDU RNDZ
+%token <integer> SAD2 SADA2 SEL SHL SHR SMOV SUBB
+%token <integer> SEND SENDC
 %token <integer> WAIT WHILE
 %token <integer> XOR
 
 /* extended math functions */
 %token <integer> COS EXP FDIV INV INVM INTDIV INTDIVMOD INTMOD LOG POW RSQ
 %token <integer> RSQRTM SIN SINCOS SQRT
-
-/* sync instruction */
-%token <integer> ALLRD ALLWR FENCE BAR HOST
-%type <integer> sync_function
-%type <reg> sync_arg
 
 /* shared functions for send */
 %token CONST CRE DATA DP_DATA_1 GATEWAY MATH PIXEL_INTERP READ RENDER SAMPLER
@@ -538,7 +515,6 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 %type <reg> indirectgenreg indirectregion
 %type <reg> immreg src reg32 payload directgenreg_list addrparam region
 %type <reg> region_wh directgenreg directmsgreg indirectmsgreg
-%type <reg> desc ex_desc reg32a
 %type <integer> swizzle
 
 /* registers */
@@ -554,41 +530,19 @@ add_label(struct elk_codegen *p, const char* label_name, enum instr_label_type t
 
 /* instruction opcodes */
 %type <integer> unaryopcodes binaryopcodes binaryaccopcodes ternaryopcodes
-%type <integer> sendop sendsop
-%type <instruction> sendopcode sendsopcode
+%type <integer> sendop
+%type <instruction> sendopcode
 
 %type <integer> negate abs chansel math_function sharedfunction
 
 %type <string> jumplabeltarget
 %type <string> jumplabel
 
-/* SWSB */
-%token <integer> REG_DIST_CURRENT
-%token <integer> REG_DIST_FLOAT
-%token <integer> REG_DIST_INT
-%token <integer> REG_DIST_LONG
-%token <integer> REG_DIST_ALL
-%token <integer> SBID_ALLOC
-%token <integer> SBID_WAIT_SRC
-%token <integer> SBID_WAIT_DST
-
-%type <depinfo> depinfo
-
 %code {
 
 static void
 add_instruction_option(struct options *options, struct instoption opt)
 {
-	if (opt.type == INSTOPTION_DEP_INFO) {
-		if (opt.depinfo_value.regdist) {
-			options->depinfo.regdist = opt.depinfo_value.regdist;
-			options->depinfo.pipe = opt.depinfo_value.pipe;
-		} else {
-			options->depinfo.sbid = opt.depinfo_value.sbid;
-			options->depinfo.mode = opt.depinfo_value.mode;
-		}
-		return;
-	}
 	switch (opt.uint_value) {
 	case ALIGN1:
 		options->access_mode = ELK_ALIGN_1;
@@ -705,7 +659,6 @@ instruction:
 	| ternaryinstruction
 	| sendinstruction
 	| illegalinstruction
-	| syncinstruction
 	;
 
 relocatableinstruction:
@@ -825,8 +778,6 @@ binaryopcodes:
 	| MACH
 	| MUL
 	| PLN
-	| ROL
-	| ROR
 	| SAD2
 	| SADA2
 	| SUBB
@@ -938,7 +889,7 @@ ternaryinstruction:
 		elk_inst_set_cond_modifier(p->devinfo, elk_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 && p->devinfo->ver < 12) {
+		if (p->devinfo->ver >= 7) {
 			elk_inst_set_3src_a16_flag_reg_nr(p->devinfo, elk_last_inst,
 					         $4.flag_reg_nr);
 			elk_inst_set_3src_a16_flag_subreg_nr(p->devinfo, elk_last_inst,
@@ -963,8 +914,6 @@ ternaryopcodes:
 	| BFI2
 	| LRP
 	| MAD
-	| DP4A
-	| ADD3
 	;
 
 /* Wait instruction */
@@ -1033,7 +982,7 @@ sendinstruction:
 	}
 	| predicate sendopcode execsize dst payload payload exp2 sharedfunction msgdesc instoptions
 	{
-		assert(p->devinfo->ver >= 6 && p->devinfo->ver < 12);
+		assert(p->devinfo->ver >= 6);
 
 		i965_asm_set_instruction_options(p, $10);
 		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
@@ -1052,68 +1001,15 @@ sendinstruction:
 
 		elk_pop_insn_state(p);
 	}
-	| predicate sendsopcode execsize dst payload payload desc ex_desc sharedfunction msgdesc instoptions
-	{
-		assert(p->devinfo->ver >= 9);
-
-		i965_asm_set_instruction_options(p, $11);
-		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $3);
-		elk_set_dest(p, elk_last_inst, $4);
-		elk_set_src0(p, elk_last_inst, $5);
-		elk_set_src1(p, elk_last_inst, $6);
-
-		if ($7.file == ELK_IMMEDIATE_VALUE) {
-			elk_inst_set_send_sel_reg32_desc(p->devinfo, elk_last_inst, 0);
-			elk_inst_set_send_desc(p->devinfo, elk_last_inst, $7.ud);
-		} else {
-			elk_inst_set_send_sel_reg32_desc(p->devinfo, elk_last_inst, 1);
-		}
-
-		if ($8.file == ELK_IMMEDIATE_VALUE) {
-			elk_inst_set_send_sel_reg32_ex_desc(p->devinfo, elk_last_inst, 0);
-			elk_inst_set_sends_ex_desc(p->devinfo, elk_last_inst, $8.ud);
-		} else {
-			elk_inst_set_send_sel_reg32_ex_desc(p->devinfo, elk_last_inst, 1);
-			elk_inst_set_send_ex_desc_ia_subreg_nr(p->devinfo, elk_last_inst, $8.subnr >> 2);
-		}
-
-		elk_inst_set_sfid(p->devinfo, elk_last_inst, $9);
-		elk_inst_set_eot(p->devinfo, elk_last_inst, $11.end_of_thread);
-		// TODO: set instruction group instead of qtr and nib ctrl
-		elk_inst_set_qtr_control(p->devinfo, elk_last_inst,
-				         $11.qtr_ctrl);
-
-		elk_inst_set_nib_control(p->devinfo, elk_last_inst,
-					 $11.nib_ctrl);
-
-		if (p->devinfo->verx10 >= 125 && $10.ex_bso) {
-			elk_inst_set_send_ex_bso(p->devinfo, elk_last_inst, 1);
-			elk_inst_set_send_src1_len(p->devinfo, elk_last_inst,
-						   $10.src1_len);
-		}
-
-		elk_pop_insn_state(p);
-	}
 	;
 
 sendop:
-	SEND_GFX4
-	| SENDC_GFX4
-	;
-
-sendsop:
-	SEND_GFX12
-	| SENDC_GFX12
-	| SENDS
-	| SENDSC
+	SEND
+	| SENDC
 	;
 
 sendopcode:
 	sendop   { $$ = elk_next_insn(p, $1); }
-	;
-
-sendsopcode:
-	sendsop  { $$ = elk_next_insn(p, $1); }
 	;
 
 sharedfunction:
@@ -1133,40 +1029,12 @@ sharedfunction:
 	| CRE 		        { $$ = HSW_SFID_CRE; }
 	| SAMPLER	        { $$ = ELK_SFID_SAMPLER; }
 	| DP_SAMPLER	        { $$ = GFX6_SFID_DATAPORT_SAMPLER_CACHE; }
-	| SLM			{ $$ = GFX12_SFID_SLM; }
-	| TGM			{ $$ = GFX12_SFID_TGM; }
-	| UGM			{ $$ = GFX12_SFID_UGM; }
 	;
 
 exp2:
 	LONG 		{ $$ = $1; }
 	| MINUS LONG 	{ $$ = -$2; }
 	;
-
-desc:
-	reg32a
-	| exp2
-	{
-		$$ = elk_imm_ud($1);
-	}
-	;
-
-ex_desc:
-	reg32a
-	| exp2
-	{
-		$$ = elk_imm_ud($1);
-	}
-	;
-
-reg32a:
-	addrreg region reg_type
-	{
-		$$ = set_direct_src_operand(&$1, $3);
-		$$ = stride($$, $2.vstride, $2.width, $2.hstride);
-	}
-	;
-
 
 /* Jump instruction */
 jumpinstruction:
@@ -1255,8 +1123,7 @@ branchinstruction:
 		} else {
 			elk_set_dest(p, elk_last_inst, retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0));
+                        elk_set_src0(p, elk_last_inst, elk_imm_d(0));
 		}
 	}
 	| ELSE execsize relativelocation rellocation instoptions
@@ -1304,8 +1171,7 @@ branchinstruction:
 			elk_set_dest(p, elk_last_inst,
 				     vec1(retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D)));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
 		elk_pop_insn_state(p);
@@ -1355,8 +1221,7 @@ branchinstruction:
 			elk_set_dest(p, elk_last_inst,
 				     vec1(retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D)));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
 		elk_pop_insn_state(p);
@@ -1435,7 +1300,7 @@ breakinstruction:
 			elk_set_src0(p, elk_last_inst, retype(elk_null_reg(),
 				     ELK_REGISTER_TYPE_D));
 			elk_set_src1(p, elk_last_inst, elk_imm_d(0x0));
-		} else if (p->devinfo->ver < 12) {
+		} else {
 			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		}
 
@@ -1491,8 +1356,7 @@ loopinstruction:
 			elk_set_dest(p, elk_last_inst,
 						retype(elk_null_reg(),
 						ELK_REGISTER_TYPE_D));
-			if (p->devinfo->ver < 12)
-				elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
+			elk_set_src0(p, elk_last_inst, elk_imm_d(0x0));
 		} else if (p->devinfo->ver == 7) {
 			elk_set_dest(p, elk_last_inst,
 						retype(elk_null_reg(),
@@ -1541,54 +1405,6 @@ loopinstruction:
 			elk_inst_set_qtr_control(p->devinfo, elk_last_inst, ELK_COMPRESSION_NONE);
 		}
 	}
-	;
-
-/* sync instruction */
-syncinstruction:
-	predicate SYNC sync_function execsize sync_arg instoptions
-	{
-		if (p->devinfo->ver < 12) {
-			error(&@2, "sync instruction is supported only on gfx12+\n");
-		}
-
-		if ($5.file == ELK_IMMEDIATE_VALUE &&
-		    $3 != TGL_SYNC_ALLRD &&
-		    $3 != TGL_SYNC_ALLWR) {
-			error(&@2, "Only allrd and allwr support immediate argument\n");
-		}
-
-		elk_set_default_access_mode(p, $6.access_mode);
-		elk_SYNC(p, $3);
-		i965_asm_set_instruction_options(p, $6);
-		elk_inst_set_exec_size(p->devinfo, elk_last_inst, $4);
-		elk_set_src0(p, elk_last_inst, $5);
-		elk_inst_set_eot(p->devinfo, elk_last_inst, $6.end_of_thread);
-		elk_inst_set_qtr_control(p->devinfo, elk_last_inst, $6.qtr_ctrl);
-		elk_inst_set_nib_control(p->devinfo, elk_last_inst, $6.nib_ctrl);
-
-		elk_pop_insn_state(p);
-	}
-	;
-
-sync_function:
-	NOP		{ $$ = TGL_SYNC_NOP; }
-	| ALLRD
-	| ALLWR
-	| FENCE
-	| BAR
-	| HOST
-	;
-
-sync_arg:
-	nullreg region reg_type
-	{
-		$$ = $1;
-		$$.vstride = $2.vstride;
-		$$.width = $2.width;
-		$$.hstride = $2.hstride;
-		$$.type = $3;
-	}
-	| immreg
 	;
 
 /* Relative location */
@@ -2033,7 +1849,7 @@ maskreg:
 notifyreg:
 	NOTIFYREG subregnum
 	{
-		int subnr = (p->devinfo->ver >= 11) ? 2 : 3;
+		int subnr = 3;
 		if ($2 > subnr)
 			error(&@2, "Notification sub register number %d"
 				   " out of range\n", $2);
@@ -2099,9 +1915,7 @@ performancereg:
 	PERFORMANCEREG subregnum
 	{
 		int subnr;
-		if (p->devinfo->ver >= 10)
-			subnr = 5;
-		else if (p->devinfo->ver <= 8)
+		if (p->devinfo->ver <= 8)
 			subnr = 3;
 		else
 			subnr = 4;
@@ -2467,84 +2281,33 @@ instoption_list:
 	}
 	;
 
-depinfo:
-	REG_DIST_CURRENT
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_NONE;
-	}
-	| REG_DIST_FLOAT
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_FLOAT;
-	}
-	| REG_DIST_INT
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_INT;
-	}
-	| REG_DIST_LONG
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_LONG;
-	}
-	| REG_DIST_ALL
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.regdist = $1;
-		$$.pipe = TGL_PIPE_ALL;
-	}
-	| SBID_ALLOC
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.sbid = $1;
-		$$.mode = TGL_SBID_SET;
-	}
-	| SBID_WAIT_SRC
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.sbid = $1;
-		$$.mode = TGL_SBID_SRC;
-	}
-	| SBID_WAIT_DST
-	{
-		memset(&$$, 0, sizeof($$));
-		$$.sbid = $1;
-		$$.mode = TGL_SBID_DST;
-	}
-
 instoption:
-	ALIGN1 	        { $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN1;}
-	| ALIGN16 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN16; }
-	| ACCWREN 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ACCWREN; }
-	| SECHALF 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = SECHALF; }
-	| COMPR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = COMPR; }
-	| COMPR4 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = COMPR4; }
-	| BREAKPOINT 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = BREAKPOINT; }
-	| NODDCLR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCLR; }
-	| NODDCHK 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCHK; }
-	| MASK_DISABLE 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = MASK_DISABLE; }
-	| EOT 	        { $$.type = INSTOPTION_FLAG; $$.uint_value = EOT; }
-	| SWITCH 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = SWITCH; }
-	| ATOMIC 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ATOMIC; }
-	| CMPTCTRL 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = CMPTCTRL; }
-	| WECTRL 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = WECTRL; }
-	| QTR_2Q 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_2Q; }
-	| QTR_3Q 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_3Q; }
-	| QTR_4Q 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_4Q; }
-	| QTR_2H 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_2H; }
-	| QTR_2N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_2N; }
-	| QTR_3N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_3N; }
-	| QTR_4N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_4N; }
-	| QTR_5N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_5N; }
-	| QTR_6N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_6N; }
-	| QTR_7N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_7N; }
-	| QTR_8N 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = QTR_8N; }
-	| depinfo	{ $$.type = INSTOPTION_DEP_INFO; $$.depinfo_value = $1; }
+	ALIGN1 	        { $$.uint_value = ALIGN1;}
+	| ALIGN16 	{ $$.uint_value = ALIGN16; }
+	| ACCWREN 	{ $$.uint_value = ACCWREN; }
+	| SECHALF 	{ $$.uint_value = SECHALF; }
+	| COMPR 	{ $$.uint_value = COMPR; }
+	| COMPR4 	{ $$.uint_value = COMPR4; }
+	| BREAKPOINT 	{ $$.uint_value = BREAKPOINT; }
+	| NODDCLR 	{ $$.uint_value = NODDCLR; }
+	| NODDCHK 	{ $$.uint_value = NODDCHK; }
+	| MASK_DISABLE 	{ $$.uint_value = MASK_DISABLE; }
+	| EOT 	        { $$.uint_value = EOT; }
+	| SWITCH 	{ $$.uint_value = SWITCH; }
+	| ATOMIC 	{ $$.uint_value = ATOMIC; }
+	| CMPTCTRL 	{ $$.uint_value = CMPTCTRL; }
+	| WECTRL 	{ $$.uint_value = WECTRL; }
+	| QTR_2Q 	{ $$.uint_value = QTR_2Q; }
+	| QTR_3Q 	{ $$.uint_value = QTR_3Q; }
+	| QTR_4Q 	{ $$.uint_value = QTR_4Q; }
+	| QTR_2H 	{ $$.uint_value = QTR_2H; }
+	| QTR_2N 	{ $$.uint_value = QTR_2N; }
+	| QTR_3N 	{ $$.uint_value = QTR_3N; }
+	| QTR_4N 	{ $$.uint_value = QTR_4N; }
+	| QTR_5N 	{ $$.uint_value = QTR_5N; }
+	| QTR_6N 	{ $$.uint_value = QTR_6N; }
+	| QTR_7N 	{ $$.uint_value = QTR_7N; }
+	| QTR_8N 	{ $$.uint_value = QTR_8N; }
 	;
 
 %%

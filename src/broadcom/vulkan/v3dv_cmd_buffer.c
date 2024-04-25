@@ -24,8 +24,8 @@
 #include "broadcom/common/v3d_csd.h"
 #include "v3dv_private.h"
 #include "util/u_pack_color.h"
+#include "vk_common_entrypoints.h"
 #include "vk_util.h"
-#include "vulkan/runtime/vk_common_entrypoints.h"
 
 void
 v3dv_job_add_bo(struct v3dv_job *job, struct v3dv_bo *bo)

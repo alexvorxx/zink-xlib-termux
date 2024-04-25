@@ -146,8 +146,10 @@ brw_fs_optimize(fs_visitor &s)
    OPT(brw_fs_lower_derivatives);
    OPT(brw_fs_lower_regioning);
    if (progress) {
-      if (OPT(brw_fs_opt_copy_propagation))
+      if (OPT(brw_fs_opt_copy_propagation)) {
          OPT(brw_fs_opt_algebraic);
+         OPT(brw_fs_opt_combine_constants);
+      }
       OPT(brw_fs_opt_dead_code_eliminate);
       OPT(brw_fs_lower_simd_width);
    }

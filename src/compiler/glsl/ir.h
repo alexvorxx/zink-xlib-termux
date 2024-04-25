@@ -94,7 +94,8 @@ enum ir_node_type {
    ir_type_end_primitive,
    ir_type_barrier,
    ir_type_max, /**< maximum ir_type enum number, for validation */
-   ir_type_unset = ir_type_max
+   ir_type_unset = ir_type_max,
+   ir_type_error
 };
 
 
@@ -132,7 +133,8 @@ public:
              ir_type == ir_type_constant ||
              ir_type == ir_type_expression ||
              ir_type == ir_type_swizzle ||
-             ir_type == ir_type_texture;
+             ir_type == ir_type_texture ||
+             ir_type == ir_type_error;
    }
 
    bool is_dereference() const
@@ -2424,6 +2426,9 @@ public:
  */
 void
 visit_exec_list(exec_list *list, ir_visitor *visitor);
+
+void
+visit_exec_list_safe(exec_list *list, ir_visitor *visitor);
 
 /**
  * Validate invariants on each IR node in a list

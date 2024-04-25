@@ -3,13 +3,13 @@ deqp = "/deqp/external/openglcts/modules/glcts"
 caselists = [
     # The GL* tests include the tests for the previous versions, but the GLES*
     # tests don't.
-    "/deqp/mustpass/gles2-master.txt",
-    "/deqp/mustpass/gles3-master.txt",
-    "/deqp/mustpass/gles31-master.txt",
-    "/deqp/mustpass/gles2-khr-master.txt",
-    "/deqp/mustpass/gles3-khr-master.txt",
-    "/deqp/mustpass/gles31-khr-master.txt",
-    "/deqp/mustpass/gl46-master.txt",
+    "/deqp/mustpass/gles2-main.txt",
+    "/deqp/mustpass/gles3-main.txt",
+    "/deqp/mustpass/gles31-main.txt",
+    "/deqp/mustpass/gles2-khr-main.txt",
+    "/deqp/mustpass/gles3-khr-main.txt",
+    "/deqp/mustpass/gles31-khr-main.txt",
+    "/deqp/mustpass/gl46-main.txt",
     "/deqp/mustpass/gl46-khr-single.txt",
 ]
 deqp_args = [

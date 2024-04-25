@@ -263,7 +263,7 @@ build_blit_shader(const struct vk_meta_blit_key *key)
       switch (aspect) {
       case VK_IMAGE_ASPECT_COLOR_BIT:
          tex_name = "color_tex";
-         if (vk_format_is_int(key->dst_format))
+         if (vk_format_is_sint(key->dst_format))
             base_type = GLSL_TYPE_INT;
          else if (vk_format_is_uint(key->dst_format))
             base_type = GLSL_TYPE_UINT;
@@ -362,6 +362,7 @@ get_blit_pipeline_layout(struct vk_device *device,
 
    const VkDescriptorSetLayoutCreateInfo desc_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
       .bindingCount = ARRAY_SIZE(bindings),
       .pBindings = bindings,
    };

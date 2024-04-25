@@ -3618,7 +3618,7 @@ struct anv_image_create_info {
 };
 
 VkResult anv_image_init(struct anv_device *device, struct anv_image *image,
-                        const struct anv_image_create_info *create_info);
+                        struct anv_image_create_info *create_info);
 
 void anv_image_finish(struct anv_image *image);
 

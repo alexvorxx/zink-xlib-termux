@@ -660,8 +660,7 @@ instruction_requires_packed_data(elk_fs_inst *inst)
 static bool
 try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
                    acp_entry *entry, int arg,
-                   const elk::simple_allocator &alloc,
-                   uint8_t max_polygons)
+                   const elk::simple_allocator &alloc)
 {
    if (inst->src[arg].file != VGRF)
       return false;
@@ -715,12 +714,8 @@ try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
        * allow this if the registers aren't too large.
        */
       if (inst->opcode == ELK_SHADER_OPCODE_SEND && entry->src.file == VGRF) {
-         int other_src = arg == 2 ? 3 : 2;
-         unsigned other_size = inst->src[other_src].file == VGRF ?
-                               alloc.sizes[inst->src[other_src].nr] :
-                               inst->size_read(other_src);
          unsigned prop_src_size = alloc.sizes[entry->src.nr];
-         if (other_size + prop_src_size > 15)
+         if (prop_src_size > 15)
             return false;
       }
    }
@@ -801,17 +796,6 @@ try_copy_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
    if (has_dst_aligned_region_restriction(devinfo, inst, dst_type) &&
        entry_stride != 0 &&
        (reg_offset(inst->dst) % REG_SIZE) != (reg_offset(entry->src) % REG_SIZE))
-      return false;
-
-   /* The <8;8,0> regions used for FS attributes in multipolygon
-    * dispatch mode could violate regioning restrictions, don't copy
-    * propagate them in such cases.
-    */
-   if (entry->src.file == ATTR && max_polygons > 1 &&
-       (has_dst_aligned_region_restriction(devinfo, inst, dst_type) ||
-	instruction_requires_packed_data(inst) ||
-	(inst->elk_is_3src(compiler) && arg == 2) ||
-	entry->dst.type != inst->src[arg].type))
       return false;
 
    /* Bail if the source FIXED_GRF region of the copy cannot be trivially
@@ -1104,30 +1088,6 @@ try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
       }
       break;
 
-   case ELK_OPCODE_ADD3:
-      /* add3 can have a single imm16 source. Proceed if the source type is
-       * already W or UW or the value can be coerced to one of those types.
-       */
-      if (val.type == ELK_REGISTER_TYPE_W || val.type == ELK_REGISTER_TYPE_UW)
-         ; /* Nothing to do. */
-      else if (val.ud <= 0xffff)
-         val = elk_imm_uw(val.ud);
-      else if (val.d >= -0x8000 && val.d <= 0x7fff)
-         val = elk_imm_w(val.d);
-      else
-         break;
-
-      if (arg == 2) {
-         inst->src[arg] = val;
-         progress = true;
-      } else if (inst->src[2].file != IMM) {
-         inst->src[arg] = inst->src[2];
-         inst->src[2] = val;
-         progress = true;
-      }
-
-      break;
-
    case ELK_OPCODE_CMP:
    case ELK_OPCODE_IF:
       if (arg == 1) {
@@ -1178,11 +1138,10 @@ try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
       break;
 
    case ELK_FS_OPCODE_FB_WRITE_LOGICAL:
-      /* The stencil and omask sources of ELK_FS_OPCODE_FB_WRITE_LOGICAL are
+      /* The omask source of ELK_FS_OPCODE_FB_WRITE_LOGICAL is
        * bit-cast using a strided region so they cannot be immediates.
        */
-      if (arg != FB_WRITE_LOGICAL_SRC_SRC_STENCIL &&
-          arg != FB_WRITE_LOGICAL_SRC_OMASK) {
+      if (arg != FB_WRITE_LOGICAL_SRC_OMASK) {
          inst->src[arg] = val;
          progress = true;
       }
@@ -1204,8 +1163,6 @@ try_constant_propagate(const elk_compiler *compiler, elk_fs_inst *inst,
    case ELK_OPCODE_BFE:
    case ELK_OPCODE_BFI1:
    case ELK_OPCODE_BFI2:
-   case ELK_OPCODE_ROL:
-   case ELK_OPCODE_ROR:
    case ELK_OPCODE_SHL:
    case ELK_OPCODE_SHR:
    case ELK_OPCODE_OR:
@@ -1276,8 +1233,7 @@ can_propagate_from(elk_fs_inst *inst)
 static bool
 opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
                            elk_bblock_t *block, struct acp &acp,
-                           const elk::simple_allocator &alloc,
-                           uint8_t max_polygons)
+                           const elk::simple_allocator &alloc)
 {
    bool progress = false;
 
@@ -1297,8 +1253,7 @@ opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
                   break;
                }
             } else {
-               if (try_copy_propagate(compiler, inst, *iter, i, alloc,
-                                      max_polygons)) {
+               if (try_copy_propagate(compiler, inst, *iter, i, alloc)) {
                   instruction_progress = true;
                   break;
                }
@@ -1308,15 +1263,6 @@ opt_copy_propagation_local(const elk_compiler *compiler, linear_ctx *lin_ctx,
 
       if (instruction_progress) {
          progress = true;
-
-         /* ADD3 can only have the immediate as src0. */
-         if (inst->opcode == ELK_OPCODE_ADD3) {
-            if (inst->src[2].file == IMM) {
-               const auto src0 = inst->src[0];
-               inst->src[0] = inst->src[2];
-               inst->src[2] = src0;
-            }
-         }
 
          /* If only one of the sources of a 2-source, commutative instruction (e.g.,
           * AND) is immediate, it must be src1. If both are immediate, opt_algebraic
@@ -1413,8 +1359,7 @@ elk_fs_visitor::opt_copy_propagation()
     */
    foreach_block (block, cfg) {
       progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            out_acp[block->num], alloc,
-                                            max_polygons) || progress;
+                                            out_acp[block->num], alloc) || progress;
 
       /* If the destination of an ACP entry exists only within this block,
        * then there's no need to keep it for dataflow analysis.  We can delete
@@ -1454,7 +1399,7 @@ elk_fs_visitor::opt_copy_propagation()
       }
 
       progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            in_acp, alloc, max_polygons) ||
+                                            in_acp, alloc) ||
                  progress;
    }
 

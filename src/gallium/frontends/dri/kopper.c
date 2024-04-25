@@ -639,13 +639,11 @@ kopper_flush_frontbuffer(struct dri_context *ctx,
     */
    _mesa_glthread_finish(ctx->st->ctx);
 
-   if (drawable) {
-      /* prevent recursion */
-      if (drawable->flushing)
-         return true;
+   /* prevent recursion */
+   if (drawable->flushing)
+      return true;
 
-      drawable->flushing = true;
-   }
+   drawable->flushing = true;
 
    if (drawable->stvis.samples > 1) {
       /* Resolve the front buffer. */
@@ -664,9 +662,8 @@ kopper_flush_frontbuffer(struct dri_context *ctx,
       st = ctx->st;
 
       st_context_flush(st, ST_FLUSH_FRONT, &new_fence, NULL, NULL);
-      if (drawable) {
-         drawable->flushing = false;
-      }
+      drawable->flushing = false;
+
       /* throttle on the previous fence */
       if (drawable->throttle_fence) {
          screen->fence_finish(screen, NULL, drawable->throttle_fence, OS_TIMEOUT_INFINITE);

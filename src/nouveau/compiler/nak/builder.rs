@@ -467,6 +467,26 @@ pub trait SSABuilder: Builder {
         dst
     }
 
+    fn brev(&mut self, x: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        if self.sm() >= 70 {
+            self.push_op(OpBRev {
+                dst: dst.into(),
+                src: x,
+            });
+        } else {
+            // No BREV in Maxwell
+            self.push_op(OpBfe {
+                dst: dst.into(),
+                base: x,
+                signed: false,
+                range: Src::new_imm_u32(0x2000),
+                reverse: true,
+            });
+        }
+        dst
+    }
+
     fn mufu(&mut self, op: MuFuOp, src: Src) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
         self.push_op(OpMuFu {

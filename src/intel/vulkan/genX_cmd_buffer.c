@@ -341,10 +341,9 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
    enum anv_pipe_bits bits =
       ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
       ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT |
-#if GFX_VERx10 == 125
-      ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT |
-#endif
-      ANV_PIPE_STATE_CACHE_INVALIDATE_BIT;
+      ANV_PIPE_STATE_CACHE_INVALIDATE_BIT |
+      (intel_needs_workaround(cmd_buffer->device->info, 16013000631) ?
+          ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0);
 
 #if GFX_VER >= 9 && GFX_VER <= 11
       /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
@@ -365,15 +364,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
    assert(cmd_buffer->state.current_db_mode !=
           ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
    if (db_mode_changed) {
-#if GFX_VER == 11
-      anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_SLICE_TABLE_STATE_POINTERS), ptr) {
-         ptr.SliceHashStatePointerValid = true;
-         ptr.SliceHashTableStatePointer = cmd_buffer->state.current_db_mode ==
-                                          ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-                                          device->slice_hash_db.offset :
-                                          device->slice_hash.offset;
-      }
-#elif GFX_VERx10 == 125
+#if GFX_VER == 11 || GFX_VER == 125
       anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_SLICE_TABLE_STATE_POINTERS), ptr) {
          ptr.SliceHashStatePointerValid = true;
          ptr.SliceHashTableStatePointer = cmd_buffer->state.current_db_mode ==
@@ -410,6 +401,9 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 void
 genX(cmd_buffer_emit_bt_pool_base_address)(struct anv_cmd_buffer *cmd_buffer)
 {
+   if (!anv_cmd_buffer_is_render_or_compute_queue(cmd_buffer))
+      return;
+
    /* If we are emitting a new state base address we probably need to re-emit
     * binding tables.
     */
@@ -1944,7 +1938,16 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
    if (trace_flush) {
       trace_intel_end_stall(&cmd_buffer->trace,
                             bits & ~cmd_buffer->state.pending_pipe_bits,
-                            anv_pipe_flush_bit_to_ds_stall_flag, NULL);
+                            anv_pipe_flush_bit_to_ds_stall_flag,
+                            cmd_buffer->state.pc_reasons[0],
+                            cmd_buffer->state.pc_reasons[1],
+                            cmd_buffer->state.pc_reasons[2],
+                            cmd_buffer->state.pc_reasons[3]);
+      cmd_buffer->state.pc_reasons[0] = NULL;
+      cmd_buffer->state.pc_reasons[1] = NULL;
+      cmd_buffer->state.pc_reasons[2] = NULL;
+      cmd_buffer->state.pc_reasons[3] = NULL;
+      cmd_buffer->state.pc_reasons_count = 0;
    }
 }
 
@@ -2540,6 +2543,8 @@ genX(batch_emit_pipe_control_write)(struct anv_batch *batch,
 
       pipe.DepthStallEnable = bits & ANV_PIPE_DEPTH_STALL_BIT;
 
+      pipe.TLBInvalidate = bits & ANV_PIPE_TLB_INVALIDATE_BIT;
+
 #if GFX_VERx10 >= 125
       pipe.PSSStallSyncEnable = bits & ANV_PIPE_PSS_STALL_SYNC_BIT;
 #endif
@@ -2741,6 +2746,45 @@ genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
    }
 
    cmd_buffer->state.descriptor_buffers.dirty = false;
+}
+
+void
+genX(cmd_buffer_begin_companion)(struct anv_cmd_buffer *cmd_buffer,
+                                 VkCommandBufferLevel level)
+{
+   cmd_buffer->vk.level = level;
+   cmd_buffer->is_companion_rcs_cmd_buffer = true;
+
+   trace_intel_begin_cmd_buffer(&cmd_buffer->trace);
+
+#if GFX_VER >= 12
+   /* Reenable prefetching at the beginning of secondary command buffers. We
+    * do this so that the return instruction edition is not prefetched before
+    * completion.
+    */
+   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY) {
+      anv_batch_emit(&cmd_buffer->batch, GENX(MI_ARB_CHECK), arb) {
+         arb.PreParserDisableMask = true;
+         arb.PreParserDisable = false;
+      }
+   }
+#endif
+
+   /* A companion command buffer is only used for blorp commands atm, so
+    * default to the legacy mode.
+    */
+   cmd_buffer->state.current_db_mode = ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY;
+   genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
+
+   /* Re-emit the aux table register in every command buffer.  This way we're
+    * ensured that we have the table even if this command buffer doesn't
+    * initialize any images.
+    */
+   if (cmd_buffer->device->info->has_aux_map) {
+      anv_add_pending_pipe_bits(cmd_buffer,
+                                ANV_PIPE_AUX_TABLE_INVALIDATE_BIT,
+                                "new cmd buffer with aux-tt");
+   }
 }
 
 VkResult
@@ -3359,6 +3403,12 @@ anv_pipe_flush_bits_for_access_flags(struct anv_cmd_buffer *cmd_buffer,
             pipe_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
             pipe_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
          } else {
+            /* We can use the data port when trying to stay in compute mode on
+             * the RCS.
+             */
+            pipe_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+            pipe_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+            /* Most operations are done through RT/detph writes */
             pipe_bits |= ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT;
             pipe_bits |= ANV_PIPE_DEPTH_CACHE_FLUSH_BIT;
          }
@@ -5922,8 +5972,12 @@ VkResult
 genX(write_trtt_entries)(struct anv_trtt_submission *submit)
 {
 #if GFX_VER >= 12
+   const struct intel_device_info *devinfo =
+      submit->sparse->queue->device->info;
+
    size_t batch_size = submit->l3l2_binds_len * 20 +
-                       submit->l1_binds_len * 16 + 8;
+                       submit->l1_binds_len * 16 +
+                       GENX(PIPE_CONTROL_length) * sizeof(uint32_t) + 8;
    STACK_ARRAY(uint32_t, cmds, batch_size);
    struct anv_batch batch = {
       .start = cmds,
@@ -6015,6 +6069,10 @@ genX(write_trtt_entries)(struct anv_trtt_submission *submit)
 
       i += extra_writes;
    }
+
+   genx_batch_emit_pipe_control(&batch, devinfo, _3D,
+                                ANV_PIPE_CS_STALL_BIT |
+                                ANV_PIPE_TLB_INVALIDATE_BIT);
 
    anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
 

@@ -52,7 +52,6 @@ anv_shader_stage_to_nir(struct anv_device *device,
                         void *mem_ctx)
 {
    const struct anv_physical_device *pdevice = device->physical;
-   const struct anv_instance *instance = pdevice->instance;
    const struct elk_compiler *compiler = pdevice->compiler;
    gl_shader_stage stage = vk_to_mesa_shader_stage(stage_info->stage);
    const nir_shader_compiler_options *nir_options =
@@ -75,11 +74,7 @@ anv_shader_stage_to_nir(struct anv_device *device,
          .fragment_shader_sample_interlock = pdevice->info.ver >= 9,
          .fragment_shader_pixel_interlock = pdevice->info.ver >= 9,
          .geometry_streams = true,
-         /* When using Vulkan 1.3 or KHR_format_feature_flags2 is enabled, the
-          * read/write without format is per format, so just report true. It's
-          * up to the application to check.
-          */
-         .image_read_without_format = instance->vk.app_info.api_version >= VK_API_VERSION_1_3 || device->vk.enabled_extensions.KHR_format_feature_flags2,
+         .image_read_without_format = true,
          .image_write_without_format = true,
          .int8 = pdevice->info.ver >= 8,
          .int16 = pdevice->info.ver >= 8,

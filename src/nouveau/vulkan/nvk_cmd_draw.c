@@ -15,9 +15,9 @@
 
 #include "nil_format.h"
 #include "util/bitpack_helpers.h"
-#include "vulkan/runtime/vk_render_pass.h"
-#include "vulkan/runtime/vk_standard_sample_locations.h"
-#include "vulkan/util/vk_format.h"
+#include "vk_format.h"
+#include "vk_render_pass.h"
+#include "vk_standard_sample_locations.h"
 
 #include "nouveau_context.h"
 
@@ -35,7 +35,9 @@
 static inline uint16_t
 nvk_cmd_buffer_3d_cls(struct nvk_cmd_buffer *cmd)
 {
-   return nvk_cmd_buffer_device(cmd)->pdev->info.cls_eng3d;
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   return pdev->info.cls_eng3d;
 }
 
 void
@@ -59,21 +61,12 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
    mme_mthd(b, NV9097_SET_FALCON04);
    mme_emit(b, mme_load(b));
 
-   mme_if(b, ieq, s26, mme_imm(2)) {
-      struct mme_value loop_cond = mme_mov(b, mme_zero());
-      mme_while(b, ine, loop_cond, mme_imm(1)) {
-         mme_state_to(b, loop_cond, NV9097_SET_MME_SHADOW_SCRATCH(0));
-         mme_mthd(b, NV9097_NO_OPERATION);
-         mme_emit(b, mme_zero());
-      };
-   }
-
-   mme_if(b, ine, s26, mme_imm(2)) {
-      mme_loop(b, mme_imm(10)) {
-         mme_mthd(b, NV9097_NO_OPERATION);
-         mme_emit(b, mme_zero());
-      }
-   }
+   struct mme_value loop_cond = mme_mov(b, mme_zero());
+   mme_while(b, ine, loop_cond, mme_imm(1)) {
+      mme_state_to(b, loop_cond, NV9097_SET_MME_SHADOW_SCRATCH(0));
+      mme_mthd(b, NV9097_NO_OPERATION);
+      mme_emit(b, mme_zero());
+   };
 }
 
 VkResult
@@ -110,7 +103,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       free(dw);
    }
 
-   if (dev->pdev->info.cls_eng3d >= TURING_A)
+   if (pdev->info.cls_eng3d >= TURING_A)
       P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
 
    /* Enable FP hepler invocation memory loads
@@ -118,12 +111,68 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     * For generations with firmware support for our `SET_PRIV_REG` mme method
     * we simply use that. On older generations we'll let the kernel do it.
     * Starting with GSP we have to do it via the firmware anyway.
+    *
+    * This clears bit 3 of gr_gpcs_tpcs_sm_disp_ctrl
     */
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B) {
-      unsigned reg = dev->pdev->info.cls_eng3d >= VOLTA_A ? 0x419ba4 : 0x419f78;
+   if (pdev->info.cls_eng3d >= MAXWELL_B) {
+      unsigned reg = pdev->info.cls_eng3d >= VOLTA_A ? 0x419ba4 : 0x419f78;
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_PRIV_REG));
       P_INLINE_DATA(p, 0);
       P_INLINE_DATA(p, BITFIELD_BIT(3));
+      P_INLINE_DATA(p, reg);
+   }
+
+   /* Disable Out Of Range Address exceptions
+    *
+    * From the SPH documentation:
+    *
+    *    "The SPH fields StoreReqStart and StoreReqEnd set a range of
+    *    attributes whose corresponding Odmap values of ST or ST_LAST are
+    *    treated as ST_REQ. Normally, for an attribute whose Omap bit is TRUE
+    *    and Odmap value is ST, when the shader writes data to this output, it
+    *    can not count on being able to read it back, since the next
+    *    downstream shader might have its Imap bit FALSE, thereby causing the
+    *    Bmap bit to be FALSE. By including a ST type of attribute in the
+    *    range of StoreReqStart and StoreReqEnd, the attribute’s Odmap value
+    *    is treated as ST_REQ, so an Omap bit being TRUE causes the Bmap bit
+    *    to be TRUE. This guarantees the shader program can output the value
+    *    and then read it back later. This will save register space."
+    *
+    * It's unclear exactly what's going on but this seems to imply that the
+    * hardware actually ANDs the output mask of one shader stage together with
+    * the input mask of the subsequent shader stage to determine which values
+    * are actually used.
+    *
+    * In the case when we have an empty fragment shader, it seems the hardware
+    * doesn't allocate any output memory for final geometry stage at all and
+    * so any writes to outputs from the final shader stage generates an Out Of
+    * Range Address exception.  We could fix this by eliminating unused
+    * outputs via cross-stage linking but that won't work in the case of
+    * VK_EXT_shader_object and VK_EXT_graphics_pipeline_library fast-link.
+    * Instead, the easiest solution is to just disable the exception.
+    *
+    * NOTE (Faith):
+    *
+    *    This above analysis is 100% conjecture on my part based on a creative
+    *    reading of the SPH docs and what I saw when trying to run certain
+    *    OpenGL CTS tests on NVK + Zink.  Without access to NVIDIA HW
+    *    engineers, have no way of verifying this analysis.
+    *
+    *    The CTS test in question is:
+    *
+    *    KHR-GL46.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_tessLevel
+    *
+    * This should also prevent any issues with array overruns on I/O arrays.
+    * Before, they would get an exception and kill the context whereas now
+    * they should gently get ignored.
+    *
+    * This clears bit 14 of gr_gpcs_tpcs_sms_hww_warp_esr_report_mask
+    */
+   if (pdev->info.cls_eng3d >= MAXWELL_B) {
+      unsigned reg = pdev->info.cls_eng3d >= VOLTA_A ? 0x419ea8 : 0x419e44;
+      P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_PRIV_REG));
+      P_INLINE_DATA(p, 0);
+      P_INLINE_DATA(p, BITFIELD_BIT(14));
       P_INLINE_DATA(p, reg);
    }
 
@@ -178,7 +227,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .all_covered_all_hit_once = 0xff,
    });
 
-   if (dev->pdev->info.cls_eng3d < VOLTA_A)
+   if (pdev->info.cls_eng3d < VOLTA_A)
       P_IMMD(p, NV9097, SET_ALPHA_FRACTION, 0x3f);
 
    P_IMMD(p, NV9097, CHECK_SPH_VERSION, {
@@ -190,7 +239,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .oldest_supported = 2,
    });
 
-   if (dev->pdev->info.cls_eng3d < MAXWELL_A)
+   if (pdev->info.cls_eng3d < MAXWELL_A)
       P_IMMD(p, NV9097, SET_SHADER_SCHEDULING, MODE_OLDEST_THREAD_FIRST);
 
    P_IMMD(p, NV9097, SET_L2_CACHE_CONTROL_FOR_ROP_PREFETCH_READ_REQUESTS,
@@ -225,18 +274,18 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       .qualify_by_anti_alias_enable = QUALIFY_BY_ANTI_ALIAS_ENABLE_ENABLE,
    });
 
-   if (dev->pdev->info.cls_eng3d < VOLTA_A)
+   if (pdev->info.cls_eng3d < VOLTA_A)
       P_IMMD(p, NV9097, SET_PRIM_CIRCULAR_BUFFER_THROTTLE, 0x3fffff);
 
    P_IMMD(p, NV9097, SET_BLEND_OPT_CONTROL, ALLOW_FLOAT_PIXEL_KILLS_TRUE);
    P_IMMD(p, NV9097, SET_BLEND_FLOAT_OPTION, ZERO_TIMES_ANYTHING_IS_ZERO_TRUE);
    P_IMMD(p, NV9097, SET_BLEND_STATE_PER_TARGET, ENABLE_TRUE);
 
-   if (dev->pdev->info.cls_eng3d < MAXWELL_A)
+   if (pdev->info.cls_eng3d < MAXWELL_A)
       P_IMMD(p, NV9097, SET_MAX_TI_WARPS_PER_BATCH, 3);
 
-   if (dev->pdev->info.cls_eng3d >= KEPLER_A &&
-       dev->pdev->info.cls_eng3d < MAXWELL_A) {
+   if (pdev->info.cls_eng3d >= KEPLER_A &&
+       pdev->info.cls_eng3d < MAXWELL_A) {
       P_IMMD(p, NVA097, SET_TEXTURE_INSTRUCTION_OPERAND,
                         ORDERING_KEPLER_ORDER);
    }
@@ -301,7 +350,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
    /* OpenGL's GL_POINT_SMOOTH */
    P_IMMD(p, NV9097, SET_ANTI_ALIASED_POINT, ENABLE_FALSE);
 
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B)
+   if (pdev->info.cls_eng3d >= MAXWELL_B)
       P_IMMD(p, NVB197, SET_FILL_VIA_TRIANGLE, MODE_DISABLED);
 
    P_IMMD(p, NV9097, SET_POLY_SMOOTH, ENABLE_FALSE);
@@ -319,7 +368,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     */
    P_IMMD(p, NV9097, SET_ANTI_ALIAS_ENABLE, V_TRUE);
 
-   if (dev->pdev->info.cls_eng3d >= MAXWELL_B) {
+   if (pdev->info.cls_eng3d >= MAXWELL_B) {
       P_IMMD(p, NVB197, SET_OFFSET_RENDER_TARGET_INDEX,
                         BY_VIEWPORT_INDEX_FALSE);
    }
@@ -397,8 +446,8 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_A(p, zero_addr >> 32);
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_B(p, zero_addr);
 
-   if (dev->pdev->info.cls_eng3d >= FERMI_A &&
-       dev->pdev->info.cls_eng3d < MAXWELL_A) {
+   if (pdev->info.cls_eng3d >= FERMI_A &&
+       pdev->info.cls_eng3d < MAXWELL_A) {
       assert(dev->vab_memory);
       uint64_t vab_addr = dev->vab_memory->offset;
       P_MTHD(p, NV9097, SET_VAB_MEMORY_AREA_A);
@@ -407,7 +456,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       P_NV9097_SET_VAB_MEMORY_AREA_C(p, SIZE_BYTES_256K);
    }
 
-   if (dev->pdev->info.cls_eng3d == MAXWELL_A)
+   if (pdev->info.cls_eng3d == MAXWELL_A)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
    return VK_SUCCESS;
@@ -621,28 +670,44 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
           */
          assert(iview->plane_count == 1);
          const uint8_t ip = iview->planes[0].image_plane;
-
+         const struct nil_image *nil_image = &image->planes[ip].nil;
          const struct nil_image_level *level =
-            &image->planes[ip].nil.levels[iview->vk.base_mip_level];
+            &nil_image->levels[iview->vk.base_mip_level];
          struct nil_extent4d level_extent_sa =
-            nil_image_level_extent_sa(&image->planes[ip].nil, iview->vk.base_mip_level);
+            nil_image_level_extent_sa(nil_image, iview->vk.base_mip_level);
 
          assert(sample_layout == NIL_SAMPLE_LAYOUT_INVALID ||
-                sample_layout == image->planes[ip].nil.sample_layout);
-         sample_layout = image->planes[ip].nil.sample_layout;
+                sample_layout == nil_image->sample_layout);
+         sample_layout = nil_image->sample_layout;
          render->samples = image->vk.samples;
 
          uint64_t addr = nvk_image_base_address(image, ip) + level->offset_B;
+
+         if (nil_image->dim == NIL_IMAGE_DIM_3D) {
+            addr += nil_image_level_z_offset_B(nil_image,
+                                               iview->vk.base_mip_level,
+                                               iview->vk.base_array_layer);
+         } else {
+            addr += iview->vk.base_array_layer *
+                    (uint64_t)nil_image->array_stride_B;
+         }
 
          P_MTHD(p, NV9097, SET_COLOR_TARGET_A(i));
          P_NV9097_SET_COLOR_TARGET_A(p, i, addr >> 32);
          P_NV9097_SET_COLOR_TARGET_B(p, i, addr);
 
          if (level->tiling.is_tiled) {
-            P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, level_extent_sa.w);
-            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
             const enum pipe_format p_format =
                vk_format_to_pipe_format(iview->vk.format);
+
+            /* We use the stride for depth/stencil targets because the Z/S
+             * hardware has no concept of a tile width.  Instead, we just set
+             * the width to the stride divided by bpp.
+             */
+            const uint32_t row_stride_el =
+               level->row_stride_B / util_format_get_blocksize(p_format);
+            P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, row_stride_el);
+            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
 
@@ -651,20 +716,18 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
                .block_height  = level->tiling.y_log2,
                .block_depth   = level->tiling.z_log2,
                .layout        = LAYOUT_BLOCKLINEAR,
-               .third_dimension_control =
-                  (image->planes[ip].nil.dim == NIL_IMAGE_DIM_3D) ?
+               .third_dimension_control = (nil_image->dim == NIL_IMAGE_DIM_3D) ?
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_DEPTH_SIZE :
                   THIRD_DIMENSION_CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,
             });
 
-            P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i,
-               iview->vk.base_array_layer + layer_count);
+            P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i, layer_count);
             P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i,
-               image->planes[ip].nil.array_stride_B >> 2);
-            P_NV9097_SET_COLOR_TARGET_LAYER(p, i, iview->vk.base_array_layer);
+               nil_image->array_stride_B >> 2);
+            P_NV9097_SET_COLOR_TARGET_LAYER(p, i, 0);
          } else {
             /* NVIDIA can only render to 2D linear images */
-            assert(image->planes[ip].nil.dim == NIL_IMAGE_DIM_2D);
+            assert(nil_image->dim == NIL_IMAGE_DIM_2D);
             /* NVIDIA can only render to non-multisampled images */
             assert(sample_layout == NIL_SAMPLE_LAYOUT_1X1);
             /* NVIDIA doesn't support linear array images */
@@ -673,8 +736,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             uint32_t pitch = level->row_stride_B;
             const enum pipe_format p_format =
                vk_format_to_pipe_format(iview->vk.format);
-            /* When memory layout is set to LAYOUT_PITCH, the WIDTH field 
-             * takes row pitch 
+            /* When memory layout is set to LAYOUT_PITCH, the WIDTH field
+             * takes row pitch
              */
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, pitch);
             P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
@@ -773,8 +836,15 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       struct nil_extent4d level_extent_sa =
          nil_image_level_extent_sa(&nil_image, mip_level);
 
+      /* We use the stride for depth/stencil targets because the Z/S hardware
+       * has no concept of a tile width.  Instead, we just set the width to
+       * the stride divided by bpp.
+       */
+      const uint32_t row_stride_el =
+         level->row_stride_B / util_format_get_blocksize(p_format);
+
       P_MTHD(p, NV9097, SET_ZT_SIZE_A);
-      P_NV9097_SET_ZT_SIZE_A(p, level_extent_sa.w);
+      P_NV9097_SET_ZT_SIZE_A(p, row_stride_el);
       P_NV9097_SET_ZT_SIZE_B(p, level_extent_sa.h);
       P_NV9097_SET_ZT_SIZE_C(p, {
          .third_dimension  = base_array_layer + layer_count,
@@ -3367,7 +3437,7 @@ nvk_CmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuffer,
       uint64_t offset = pCounterBufferOffsets ? pCounterBufferOffsets[i] : 0;
       uint64_t cb_addr = nvk_buffer_address(buffer, offset);
 
-      if (nvk_cmd_buffer_device(cmd)->pdev->info.cls_eng3d >= TURING_A) {
+      if (nvk_cmd_buffer_3d_cls(cmd) >= TURING_A) {
          struct nv_push *p = nvk_cmd_buffer_push(cmd, 4);
          P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_XFB_COUNTER_LOAD));
          /* The STREAM_OUT_BUFFER_LOAD_WRITE_POINTER registers are 8 dword stride */
@@ -3432,44 +3502,60 @@ nvk_CmdBeginConditionalRenderingEXT(VkCommandBuffer commandBuffer,
    bool inverted = pConditionalRenderingBegin->flags &
       VK_CONDITIONAL_RENDERING_INVERTED_BIT_EXT;
 
-   if (addr & 0x3f || buffer->is_local) {
-      uint64_t tmp_addr;
-      VkResult result = nvk_cmd_buffer_cond_render_alloc(cmd, &tmp_addr);
-      if (result != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd->vk, result);
-         return;
-      }
-
-      struct nv_push *p = nvk_cmd_buffer_push(cmd, 12);
-      P_MTHD(p, NV90B5, OFFSET_IN_UPPER);
-      P_NV90B5_OFFSET_IN_UPPER(p, addr >> 32);
-      P_NV90B5_OFFSET_IN_LOWER(p, addr & 0xffffffff);
-      P_NV90B5_OFFSET_OUT_UPPER(p, tmp_addr >> 32);
-      P_NV90B5_OFFSET_OUT_LOWER(p, tmp_addr & 0xffffffff);
-      P_NV90B5_PITCH_IN(p, 4);
-      P_NV90B5_PITCH_OUT(p, 4);
-      P_NV90B5_LINE_LENGTH_IN(p, 4);
-      P_NV90B5_LINE_COUNT(p, 1);
-
-      P_IMMD(p, NV90B5, LAUNCH_DMA, {
-            .data_transfer_type = DATA_TRANSFER_TYPE_PIPELINED,
-            .multi_line_enable = MULTI_LINE_ENABLE_TRUE,
-            .flush_enable = FLUSH_ENABLE_TRUE,
-            .src_memory_layout = SRC_MEMORY_LAYOUT_PITCH,
-            .dst_memory_layout = DST_MEMORY_LAYOUT_PITCH,
-         });
-      addr = tmp_addr;
+   /* From the Vulkan 1.3.280 spec:
+    *
+    *    "If the 32-bit value at offset in buffer memory is zero,
+    *     then the rendering commands are discarded,
+    *     otherwise they are executed as normal."
+    *
+    * The hardware compare a 64-bit value, as such we are required to copy it.
+    */
+   uint64_t tmp_addr;
+   VkResult result = nvk_cmd_buffer_cond_render_alloc(cmd, &tmp_addr);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd->vk, result);
+      return;
    }
 
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 12);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 26);
+
+   P_MTHD(p, NV90B5, OFFSET_IN_UPPER);
+   P_NV90B5_OFFSET_IN_UPPER(p, addr >> 32);
+   P_NV90B5_OFFSET_IN_LOWER(p, addr & 0xffffffff);
+   P_NV90B5_OFFSET_OUT_UPPER(p, tmp_addr >> 32);
+   P_NV90B5_OFFSET_OUT_LOWER(p, tmp_addr & 0xffffffff);
+   P_NV90B5_PITCH_IN(p, 4);
+   P_NV90B5_PITCH_OUT(p, 4);
+   P_NV90B5_LINE_LENGTH_IN(p, 4);
+   P_NV90B5_LINE_COUNT(p, 1);
+
+   P_IMMD(p, NV90B5, SET_REMAP_COMPONENTS, {
+      .dst_x = DST_X_SRC_X,
+      .dst_y = DST_Y_SRC_X,
+      .dst_z = DST_Z_NO_WRITE,
+      .dst_w = DST_W_NO_WRITE,
+      .component_size = COMPONENT_SIZE_ONE,
+      .num_src_components = NUM_SRC_COMPONENTS_ONE,
+      .num_dst_components = NUM_DST_COMPONENTS_TWO,
+   });
+
+   P_IMMD(p, NV90B5, LAUNCH_DMA, {
+      .data_transfer_type = DATA_TRANSFER_TYPE_PIPELINED,
+      .multi_line_enable = MULTI_LINE_ENABLE_TRUE,
+      .flush_enable = FLUSH_ENABLE_TRUE,
+      .src_memory_layout = SRC_MEMORY_LAYOUT_PITCH,
+      .dst_memory_layout = DST_MEMORY_LAYOUT_PITCH,
+      .remap_enable = REMAP_ENABLE_TRUE,
+   });
+
    P_MTHD(p, NV9097, SET_RENDER_ENABLE_A);
-   P_NV9097_SET_RENDER_ENABLE_A(p, addr >> 32);
-   P_NV9097_SET_RENDER_ENABLE_B(p, addr & 0xfffffff0);
+   P_NV9097_SET_RENDER_ENABLE_A(p, tmp_addr >> 32);
+   P_NV9097_SET_RENDER_ENABLE_B(p, tmp_addr & 0xfffffff0);
    P_NV9097_SET_RENDER_ENABLE_C(p, inverted ? MODE_RENDER_IF_EQUAL : MODE_RENDER_IF_NOT_EQUAL);
 
    P_MTHD(p, NV90C0, SET_RENDER_ENABLE_A);
-   P_NV90C0_SET_RENDER_ENABLE_A(p, addr >> 32);
-   P_NV90C0_SET_RENDER_ENABLE_B(p, addr & 0xfffffff0);
+   P_NV90C0_SET_RENDER_ENABLE_A(p, tmp_addr >> 32);
+   P_NV90C0_SET_RENDER_ENABLE_B(p, tmp_addr & 0xfffffff0);
    P_NV90C0_SET_RENDER_ENABLE_C(p, inverted ? MODE_RENDER_IF_EQUAL : MODE_RENDER_IF_NOT_EQUAL);
 }
 

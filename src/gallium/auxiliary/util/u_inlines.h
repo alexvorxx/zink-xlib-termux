@@ -906,13 +906,16 @@ pipe_create_multimedia_context(struct pipe_screen *screen)
 {
    unsigned flags = 0;
 
-   if (!screen->get_param(screen, PIPE_CAP_GRAPHICS))
+   if (!screen->get_param(screen, PIPE_CAP_GRAPHICS) &&
+      !screen->get_param(screen, PIPE_CAP_COMPUTE))
+      flags |= PIPE_CONTEXT_MEDIA_ONLY;
+   else if (!screen->get_param(screen, PIPE_CAP_GRAPHICS))
       flags |= PIPE_CONTEXT_COMPUTE_ONLY;
 
    return screen->context_create(screen, NULL, flags);
 }
 
-static inline unsigned util_res_sample_count(struct pipe_resource *res)
+static inline unsigned util_res_sample_count(const struct pipe_resource *res)
 {
    return res->nr_samples > 0 ? res->nr_samples : 1;
 }

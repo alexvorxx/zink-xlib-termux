@@ -44,12 +44,11 @@ libpanvk_files = files(
   'panvk_mempool.c',
   'panvk_pass.c',
   'panvk_pipeline.c',
-  'panvk_pipeline_cache.c',
   'panvk_private.h',
   'panvk_query.c',
   'panvk_shader.c',
   'panvk_wsi.c',
-) + [vk_cmd_enqueue_entrypoints[0], vk_common_entrypoints[0]]
+)
 
 panvk_deps = []
 panvk_flags = []
@@ -76,8 +75,6 @@ foreach arch : ['6', '7']
     include_directories : [
       inc_include,
       inc_src,
-      inc_gallium, # XXX: util/format/u_formats.h
-      inc_gallium_aux, # XXX: renderonly
       inc_panfrost,
     ],
     dependencies : [
@@ -110,8 +107,6 @@ libvulkan_panfrost = shared_library(
   include_directories : [
     inc_include,
     inc_src,
-    inc_gallium, # XXX: util/format/u_formats.h
-    inc_gallium_aux, # XXX: renderonly
     inc_panfrost,
   ],
   link_whole : [panvk_per_arch_libs],

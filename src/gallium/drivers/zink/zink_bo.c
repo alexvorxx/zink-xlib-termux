@@ -970,9 +970,6 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
    struct zink_bo *bo = res->obj->bo;
    VkSemaphore cur_sem = VK_NULL_HANDLE;
 
-   if (screen->faked_e5sparse && res->base.b.format == PIPE_FORMAT_R9G9B9E5_FLOAT)
-      return true;
-
    simple_mtx_lock(&screen->queue_lock);
    simple_mtx_lock(&bo->lock);
    if (res->base.b.target == PIPE_BUFFER) {

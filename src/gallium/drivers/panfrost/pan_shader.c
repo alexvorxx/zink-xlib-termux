@@ -168,6 +168,9 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
 
    NIR_PASS_V(s, panfrost_nir_lower_sysvals, &out->sysvals);
 
+   /* Lower resource indices */
+   NIR_PASS_V(s, panfrost_nir_lower_res_indices, &inputs);
+
    screen->vtbl.compile_shader(s, &inputs, &out->binary, &out->info);
 
    assert(req_local_mem >= out->info.wls_size);

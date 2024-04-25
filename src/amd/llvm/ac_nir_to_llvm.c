@@ -1935,7 +1935,6 @@ static LLVMValueRef visit_load_buffer(struct ac_nir_context *ctx, nir_intrinsic_
    LLVMValueRef offset = get_src(ctx, instr->src[1]);
    LLVMValueRef rsrc = ctx->abi->load_ssbo ?
       ctx->abi->load_ssbo(ctx->abi, rsrc_base, false, false) : rsrc_base;
-   LLVMValueRef vindex = ctx->ac.i32_0;
 
    LLVMTypeRef def_type = get_def_type(ctx, &instr->def);
    LLVMTypeRef def_elem_type = num_components > 1 ? LLVMGetElementType(def_type) : def_type;
@@ -1964,7 +1963,7 @@ static LLVMValueRef visit_load_buffer(struct ac_nir_context *ctx, nir_intrinsic_
          int num_channels = util_next_power_of_two(load_bytes) / 4;
          bool can_speculate = access & ACCESS_CAN_REORDER;
 
-         ret = ac_build_buffer_load(&ctx->ac, rsrc, num_channels, vindex, voffset, ctx->ac.i32_0,
+         ret = ac_build_buffer_load(&ctx->ac, rsrc, num_channels, NULL, voffset, ctx->ac.i32_0,
                                     ctx->ac.f32, access, can_speculate, false);
       }
 

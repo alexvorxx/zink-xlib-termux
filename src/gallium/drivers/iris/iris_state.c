@@ -6089,7 +6089,9 @@ batch_emit_fast_color_dummy_blit(struct iris_batch *batch)
 #if GFX_VERx10 >= 125
    iris_emit_cmd(batch, GENX(XY_FAST_COLOR_BLT), blt) {
       blt.DestinationBaseAddress = batch->screen->workaround_address;
-      blt.DestinationMOCS = batch->screen->isl_dev.mocs.blitter_dst;
+      blt.DestinationMOCS = iris_mocs(batch->screen->workaround_address.bo,
+                                      &batch->screen->isl_dev,
+                                      ISL_SURF_USAGE_BLITTER_DST_BIT);
       blt.DestinationPitch = 63;
       blt.DestinationX2 = 1;
       blt.DestinationY2 = 4;
@@ -6583,24 +6585,21 @@ iris_preemption_streamout_wa(struct iris_context *ice,
 }
 
 static void
-shader_program_needs_wa_14015055625(struct iris_context *ice,
-                                    struct iris_batch *batch,
-                                    struct iris_compiled_shader *shader,
-                                    gl_shader_stage stage,
-                                    bool *program_needs_wa_14015055625)
+shader_program_uses_primitive_id(struct iris_context *ice,
+                                 struct iris_batch *batch,
+                                 struct iris_compiled_shader *shader,
+                                 gl_shader_stage stage,
+                                 bool *uses_primitive_id)
 {
-   if (!intel_needs_workaround(batch->screen->devinfo, 14015055625))
-      return;
-
    switch (stage) {
    case MESA_SHADER_TESS_CTRL: {
       struct iris_tcs_data *tcs_data = iris_tcs_data(shader);
-      *program_needs_wa_14015055625 |= tcs_data->include_primitive_id;
+      *uses_primitive_id |= tcs_data->include_primitive_id;
       break;
    }
    case MESA_SHADER_TESS_EVAL: {
       struct iris_tes_data *tes_data = iris_tes_data(shader);
-      *program_needs_wa_14015055625 |= tes_data->include_primitive_id;
+      *uses_primitive_id |= tes_data->include_primitive_id;
       break;
    }
    default:
@@ -6612,7 +6611,7 @@ shader_program_needs_wa_14015055625(struct iris_context *ice,
    const struct iris_gs_data *gs_data =
       gs_shader ? iris_gs_data(gs_shader) : NULL;
 
-   *program_needs_wa_14015055625 |= gs_data && gs_data->include_primitive_id;
+   *uses_primitive_id |= gs_data && gs_data->include_primitive_id;
 }
 
 static void
@@ -7151,20 +7150,17 @@ iris_upload_dirty_render_state(struct iris_context *ice,
    }
 
 #if GFX_VERx10 >= 125
-   /* This is only used on >= gfx125 for dynamic 3DSTATE_TE emission
-    * related workarounds.
+   /* This is only used on >= gfx125 for dynamic 3DSTATE_TE and
+    * 3DSTATE_VFG emission related workarounds.
     */
-   bool program_needs_wa_14015055625 = false;
-#endif
+   bool program_uses_primitive_id = false;
 
-#if INTEL_WA_14015055625_GFX_VER
-   /* Check if FS stage will use primitive ID overrides for Wa_14015055625. */
+   /* Check if FS stage will use primitive ID overrides. */
    const struct intel_vue_map *last_vue_map =
       &iris_vue_data(ice->shaders.last_vue_shader)->vue_map;
    if ((fs_data->inputs & VARYING_BIT_PRIMITIVE_ID) &&
-       last_vue_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1 &&
-       intel_needs_workaround(batch->screen->devinfo, 14015055625)) {
-      program_needs_wa_14015055625 = true;
+       last_vue_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1) {
+      program_uses_primitive_id = true;
    }
 #endif
 
@@ -7181,9 +7177,9 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          uint32_t scratch_addr =
             pin_scratch_space(ice, batch, shader, stage);
 
-#if INTEL_WA_14015055625_GFX_VER
-         shader_program_needs_wa_14015055625(ice, batch, shader, stage,
-                                             &program_needs_wa_14015055625);
+#if GFX_VERx10 >= 125
+         shader_program_uses_primitive_id(ice, batch, shader, stage,
+                                          &program_uses_primitive_id);
 #endif
 
          if (stage == MESA_SHADER_FRAGMENT) {
@@ -7284,7 +7280,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             uint32_t te_state[GENX(3DSTATE_TE_length)] = { 0 };
             iris_pack_command(GENX(3DSTATE_TE), te_state, te) {
                if (intel_needs_workaround(screen->devinfo, 14015055625) &&
-                   program_needs_wa_14015055625)
+                   program_uses_primitive_id)
                   te.TessellationDistributionMode = TEDMODE_OFF;
                else if (intel_needs_workaround(screen->devinfo, 22012699309))
                   te.TessellationDistributionMode = TEDMODE_RR_STRICT;
@@ -7311,7 +7307,13 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             switch (stage) {
             case MESA_SHADER_VERTEX:    MERGE_SCRATCH_ADDR(3DSTATE_VS); break;
             case MESA_SHADER_TESS_CTRL: MERGE_SCRATCH_ADDR(3DSTATE_HS); break;
-            case MESA_SHADER_TESS_EVAL: MERGE_SCRATCH_ADDR(3DSTATE_DS); break;
+            case MESA_SHADER_TESS_EVAL: {
+               uint32_t *shader_ds = (uint32_t *) shader->derived_data;
+               uint32_t *shader_te = shader_ds + GENX(3DSTATE_DS_length);
+               iris_batch_emit(batch, shader_te, 4 * GENX(3DSTATE_TE_length));
+               MERGE_SCRATCH_ADDR(3DSTATE_DS);
+               break;
+            }
             case MESA_SHADER_GEOMETRY:  MERGE_SCRATCH_ADDR(3DSTATE_GS); break;
             }
          } else {
@@ -7328,6 +7330,15 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          }
       }
    }
+
+#if GFX_VERx10 >= 125
+   /* Inspect program_uses_primitive_id state and dirty VFG if required. */
+   if (intel_needs_workaround(batch->screen->devinfo, 14019166699) &&
+       program_uses_primitive_id != ice->state.uses_primitive_id) {
+      dirty |= IRIS_DIRTY_VFG;
+      ice->state.uses_primitive_id = program_uses_primitive_id;
+   }
+#endif
 
    if (ice->state.streamout_active) {
       if (dirty & IRIS_DIRTY_SO_BUFFERS) {
@@ -8047,7 +8058,11 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          vfg.DistributionMode =
             ice->shaders.prog[MESA_SHADER_TESS_EVAL] != NULL ? RR_STRICT :
                                                                RR_FREE;
-         vfg.DistributionGranularity = BatchLevelGranularity;
+         if (intel_needs_workaround(batch->screen->devinfo, 14019166699) &&
+             program_uses_primitive_id)
+            vfg.DistributionGranularity = InstanceLevelGranularity;
+         else
+            vfg.DistributionGranularity = BatchLevelGranularity;
 #if INTEL_WA_14014851047_GFX_VER
          vfg.GranularityThresholdDisable =
             intel_needs_workaround(batch->screen->devinfo, 14014851047);
@@ -9974,7 +9989,7 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
    if (trace_pc) {
       trace_intel_end_stall(&batch->trace, flags,
                             iris_utrace_pipe_flush_bit_to_ds_stall_flag,
-                            reason);
+                            reason,0,0,0);
    }
 
    iris_batch_sync_region_end(batch);

@@ -25,8 +25,8 @@
  *      Alyssa Rosenzweig <alyssa.rosenzweig@collabora.com>
  */
 
-#include "compiler/glsl_types.h"
 #include "compiler/glsl/glsl_to_nir.h"
+#include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
 #include "util/u_debug.h"
 
@@ -362,6 +362,18 @@ bi_reg_fmt_for_nir(nir_alu_type T)
    }
 }
 
+static bool
+va_is_valid_const_narrow_index(bi_index idx)
+{
+   if (idx.type != BI_INDEX_CONSTANT)
+      return false;
+
+   unsigned index = pan_res_handle_get_index(idx.value);
+   unsigned table_index = pan_res_handle_get_table(idx.value);
+
+   return index < 1024 && va_is_valid_const_table(table_index);
+}
+
 /* Checks if the _IMM variant of an intrinsic can be used, returning in imm the
  * immediate to be used (which applies even if _IMM can't be used) */
 
@@ -376,6 +388,40 @@ bi_is_intr_immediate(nir_intrinsic_instr *instr, unsigned *immediate,
 
    *immediate = nir_intrinsic_base(instr) + nir_src_as_uint(*offset);
    return (*immediate) < max;
+}
+
+static bool
+bi_is_imm_desc_handle(bi_builder *b, nir_intrinsic_instr *instr,
+                      uint32_t *immediate, unsigned max)
+{
+   nir_src *offset = nir_get_io_offset_src(instr);
+
+   if (!nir_src_is_const(*offset))
+      return false;
+
+   if (b->shader->arch >= 9) {
+      uint32_t res_handle =
+         nir_intrinsic_base(instr) + nir_src_as_uint(*offset);
+      uint32_t table_index = pan_res_handle_get_table(res_handle);
+      uint32_t res_index = pan_res_handle_get_index(res_handle);
+
+      if (!va_is_valid_const_table(table_index) || res_index >= max)
+         return false;
+
+      *immediate = res_handle;
+      return true;
+   }
+
+   return bi_is_intr_immediate(instr, immediate, max);
+}
+
+static bool
+bi_is_imm_var_desc_handle(bi_builder *b, nir_intrinsic_instr *instr,
+                          uint32_t *immediate)
+{
+   unsigned max = b->shader->arch >= 9 ? 256 : 20;
+
+   return bi_is_imm_desc_handle(b, instr, immediate, max);
 }
 
 static void bi_make_vec_to(bi_builder *b, bi_index final_dst, bi_index *src,
@@ -427,14 +473,17 @@ bi_emit_load_attr(bi_builder *b, nir_intrinsic_instr *instr)
    unsigned imm_index = 0;
    unsigned base = nir_intrinsic_base(instr);
    bool constant = nir_src_is_const(*offset);
-   bool immediate = bi_is_intr_immediate(instr, &imm_index, 16);
+   bool immediate = bi_is_imm_desc_handle(b, instr, &imm_index, 16);
    bi_index dest =
       (component == 0) ? bi_def_index(&instr->def) : bi_temp(b->shader);
    bi_instr *I;
 
    if (immediate) {
       I = bi_ld_attr_imm_to(b, dest, bi_vertex_id(b), bi_instance_id(b), regfmt,
-                            vecsize, imm_index);
+                            vecsize, pan_res_handle_get_index(imm_index));
+
+      if (b->shader->arch >= 9)
+         I->table = va_res_fold_table_idx(pan_res_handle_get_table(base));
    } else {
       bi_index idx = bi_src_index(&instr->src[0]);
 
@@ -446,9 +495,6 @@ bi_emit_load_attr(bi_builder *b, nir_intrinsic_instr *instr)
       I = bi_ld_attr_to(b, dest, bi_vertex_id(b), bi_instance_id(b), idx,
                         regfmt, vecsize);
    }
-
-   if (b->shader->arch >= 9)
-      I->table = PAN_TABLE_ATTRIBUTE;
 
    bi_copy_component(b, instr, dest);
 }
@@ -532,23 +578,38 @@ bi_emit_load_vary(bi_builder *b, nir_intrinsic_instr *instr)
 
    nir_src *offset = nir_get_io_offset_src(instr);
    unsigned imm_index = 0;
-   bool immediate = bi_is_intr_immediate(instr, &imm_index, 20);
-   bi_instr *I = NULL;
+   bool immediate = bi_is_imm_var_desc_handle(b, instr, &imm_index);
+   unsigned base = nir_intrinsic_base(instr);
+
+   /* On Valhall, ensure the table and index are valid for usage with immediate
+    * form when IDVS isn't used */
+   if (b->shader->arch >= 9 && !b->shader->malloc_idvs)
+      immediate &= va_is_valid_const_table(pan_res_handle_get_table(base)) &&
+                   pan_res_handle_get_index(base) < 256;
 
    if (b->shader->malloc_idvs && immediate) {
       /* Immediate index given in bytes. */
       bi_ld_var_buf_imm_to(b, sz, dest, src0, regfmt, sample, source_format,
                            update, vecsize,
                            bi_varying_offset(b->shader, instr));
-   } else if (immediate && smooth) {
-      I = bi_ld_var_imm_to(b, dest, src0, regfmt, sample, update, vecsize,
-                           imm_index);
-   } else if (immediate && !smooth) {
-      I = bi_ld_var_flat_imm_to(b, dest, BI_FUNCTION_NONE, regfmt, vecsize,
-                                imm_index);
+   } else if (immediate) {
+      bi_instr *I;
+
+      if (smooth) {
+         I = bi_ld_var_imm_to(b, dest, src0, regfmt, sample, update, vecsize,
+                              pan_res_handle_get_index(imm_index));
+      } else {
+         I = bi_ld_var_flat_imm_to(b, dest, BI_FUNCTION_NONE, regfmt, vecsize,
+                                   pan_res_handle_get_index(imm_index));
+      }
+
+      /* Valhall usually uses machine-allocated IDVS. If this is disabled,
+       * use a simple Midgard-style ABI.
+       */
+      if (b->shader->arch >= 9)
+         I->table = va_res_fold_table_idx(pan_res_handle_get_table(base));
    } else {
       bi_index idx = bi_src_index(offset);
-      unsigned base = nir_intrinsic_base(instr);
 
       if (b->shader->malloc_idvs) {
          /* Index needs to be in bytes, but NIR gives the index
@@ -562,24 +623,16 @@ bi_emit_load_vary(bi_builder *b, nir_intrinsic_instr *instr)
 
          bi_ld_var_buf_to(b, sz, dest, src0, idx_bytes, regfmt, sample,
                           source_format, update, vecsize);
-      } else if (smooth) {
-         if (base != 0)
-            idx = bi_iadd_u32(b, idx, bi_imm_u32(base), false);
-
-         I = bi_ld_var_to(b, dest, src0, idx, regfmt, sample, update, vecsize);
       } else {
          if (base != 0)
             idx = bi_iadd_u32(b, idx, bi_imm_u32(base), false);
 
-         I = bi_ld_var_flat_to(b, dest, idx, BI_FUNCTION_NONE, regfmt, vecsize);
+         if (smooth)
+            bi_ld_var_to(b, dest, src0, idx, regfmt, sample, update, vecsize);
+         else
+            bi_ld_var_flat_to(b, dest, idx, BI_FUNCTION_NONE, regfmt, vecsize);
       }
    }
-
-   /* Valhall usually uses machine-allocated IDVS. If this is disabled, use
-    * a simple Midgard-style ABI.
-    */
-   if (b->shader->arch >= 9 && I != NULL)
-      I->table = PAN_TABLE_ATTRIBUTE;
 
    bi_copy_component(b, instr, dest);
 }
@@ -807,6 +860,33 @@ bi_emit_atest(bi_builder *b, bi_index alpha)
    b->shader->emitted_atest = true;
 }
 
+static bi_index
+bi_src_color_vec4(bi_builder *b, nir_src *src, nir_alu_type T)
+{
+   unsigned num_components = nir_src_num_components(*src);
+   bi_index base = bi_src_index(src);
+
+   /* short-circuit the common case */
+   if (num_components == 4)
+      return base;
+
+   unsigned size = nir_alu_type_get_type_size(T);
+   assert(size == 16 || size == 32);
+
+   bi_index src_vals[4];
+
+   unsigned i;
+   for (i = 0; i < num_components; i++)
+      src_vals[i] = bi_extract(b, base, i);
+
+   for(; i < 3; i++)
+      src_vals[i] = (size == 16) ? bi_imm_f16(0.0) : bi_imm_f32(0.0);
+   src_vals[3] = (size == 16) ? bi_imm_f16(1.0) : bi_imm_f32(1.0);
+   bi_index temp = bi_temp(b->shader);
+   bi_make_vec_to(b, temp, src_vals, NULL, 4, size);
+   return temp;
+}
+
 static void
 bi_emit_fragment_out(bi_builder *b, nir_intrinsic_instr *instr)
 {
@@ -837,15 +917,18 @@ bi_emit_fragment_out(bi_builder *b, nir_intrinsic_instr *instr)
       nir_alu_type T = nir_intrinsic_src_type(instr);
 
       bi_index rgba = bi_src_index(&instr->src[0]);
-      bi_index alpha = (T == nir_type_float16)
-                          ? bi_half(bi_extract(b, rgba, 1), true)
-                       : (T == nir_type_float32) ? bi_extract(b, rgba, 3)
-                                                 : bi_dontcare(b);
+      bi_index alpha;
 
-      /* Don't read out-of-bounds */
-      if (nir_src_num_components(instr->src[0]) < 4)
+      if (nir_src_num_components(instr->src[0]) < 4) {
+         /* Don't read out-of-bounds */
          alpha = bi_imm_f32(1.0);
-
+      } else if (T == nir_type_float16) {
+         alpha = bi_half(bi_extract(b, rgba, 1), true);
+      } else if (T == nir_type_float32) {
+         alpha = bi_extract(b, rgba, 3);
+      } else {
+         alpha = bi_dontcare(b);
+      }
       bi_emit_atest(b, alpha);
    }
 
@@ -866,9 +949,10 @@ bi_emit_fragment_out(bi_builder *b, nir_intrinsic_instr *instr)
    if (emit_blend) {
       unsigned rt = loc ? (loc - FRAG_RESULT_DATA0) : 0;
       bool dual = (writeout & PAN_WRITEOUT_2);
-      bi_index color = bi_src_index(&instr->src[0]);
-      bi_index color2 = dual ? bi_src_index(&instr->src[4]) : bi_null();
+      nir_alu_type T = nir_intrinsic_src_type(instr);
       nir_alu_type T2 = dual ? nir_intrinsic_dest_type(instr) : 0;
+      bi_index color = bi_src_color_vec4(b, &instr->src[0], T);
+      bi_index color2 = dual ? bi_src_color_vec4(b, &instr->src[4], T2) : bi_null();
 
       /* Explicit copy since BLEND inputs are precoloured to R0-R3,
        * TODO: maybe schedule around this or implement in RA as a
@@ -1340,12 +1424,21 @@ bi_emit_image_load(bi_builder *b, nir_intrinsic_instr *instr)
    assert(dim != GLSL_SAMPLER_DIM_MS && "MSAA'd image not lowered");
 
    if (b->shader->arch >= 9 && nir_src_is_const(instr->src[0])) {
-      bi_instr *I = bi_ld_tex_imm_to(b, dest, xy, zw, regfmt, vecsize,
-                                     nir_src_as_uint(instr->src[0]));
+      const unsigned raw_value = nir_src_as_uint(instr->src[0]);
+      const unsigned table_index = pan_res_handle_get_table(raw_value);
+      const unsigned texture_index = pan_res_handle_get_index(raw_value);
 
-      I->table = PAN_TABLE_IMAGE;
+      if (texture_index < 16 && va_is_valid_const_table(table_index)) {
+         bi_instr *I =
+            bi_ld_tex_imm_to(b, dest, xy, zw, regfmt, vecsize, texture_index);
+         I->table = va_res_fold_table_idx(table_index);
+      } else {
+         bi_ld_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), regfmt,
+                      vecsize);
+      }
    } else if (b->shader->arch >= 9) {
-      unreachable("Indirect images on Valhall not yet supported");
+      bi_ld_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), regfmt,
+                   vecsize);
    } else {
       bi_ld_attr_tex_to(b, dest, xy, zw, bi_emit_image_index(b, instr), regfmt,
                         vecsize);
@@ -1373,12 +1466,18 @@ bi_emit_lea_image_to(bi_builder *b, bi_index dest, nir_intrinsic_instr *instr)
    bi_index zw = bi_emit_image_coord(b, coords, 1, coord_comps, array);
 
    if (b->shader->arch >= 9 && nir_src_is_const(instr->src[0])) {
-      bi_instr *I = bi_lea_tex_imm_to(b, dest, xy, zw, false,
-                                      nir_src_as_uint(instr->src[0]));
+      const unsigned raw_value = nir_src_as_uint(instr->src[0]);
+      unsigned table_index = pan_res_handle_get_table(raw_value);
+      unsigned texture_index = pan_res_handle_get_index(raw_value);
 
-      I->table = PAN_TABLE_IMAGE;
+      if (texture_index < 16 && va_is_valid_const_table(table_index)) {
+         bi_instr *I = bi_lea_tex_imm_to(b, dest, xy, zw, false, texture_index);
+         I->table = va_res_fold_table_idx(table_index);
+      } else {
+         bi_lea_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), false);
+      }
    } else if (b->shader->arch >= 9) {
-      unreachable("Indirect images on Valhall not yet supported");
+      bi_lea_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), false);
    } else {
       bi_instr *I = bi_lea_attr_tex_to(b, dest, xy, zw,
                                        bi_emit_image_index(b, instr), type);
@@ -3453,7 +3552,6 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    bi_index sregs[VALHALL_TEX_SREG_COUNT] = {};
    bi_index sampler = bi_imm_u32(instr->sampler_index);
    bi_index texture = bi_imm_u32(instr->texture_index);
-   uint32_t tables = (PAN_TABLE_SAMPLER << 11) | (PAN_TABLE_TEXTURE << 27);
 
    for (unsigned i = 0; i < instr->num_srcs; ++i) {
       bi_index index = bi_src_index(&instr->src[i].src);
@@ -3516,10 +3614,16 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
          break;
 
       case nir_tex_src_texture_offset:
+         /* This should always be 0 as lower_index_to_offset is expected to be
+          * set */
+         assert(instr->texture_index == 0);
          texture = index;
          break;
 
       case nir_tex_src_sampler_offset:
+         /* This should always be 0 as lower_index_to_offset is expected to be
+          * set */
+         assert(instr->sampler_index == 0);
          sampler = index;
          break;
 
@@ -3551,9 +3655,31 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    if (sr_count)
       bi_make_vec_to(b, idx, sregs, NULL, sr_count, 32);
 
-   bi_index image_src = bi_imm_u32(tables);
-   image_src = bi_lshift_or_i32(b, sampler, image_src, bi_imm_u8(0));
-   image_src = bi_lshift_or_i32(b, texture, image_src, bi_imm_u8(16));
+   bool narrow_indices = va_is_valid_const_narrow_index(texture) &&
+                         va_is_valid_const_narrow_index(sampler);
+
+   bi_index src0;
+   bi_index src1;
+
+   if (narrow_indices) {
+      unsigned tex_set =
+         va_res_fold_table_idx(pan_res_handle_get_table(texture.value));
+      unsigned sampler_set =
+         va_res_fold_table_idx(pan_res_handle_get_table(sampler.value));
+      unsigned texture_index = pan_res_handle_get_index(texture.value);
+      unsigned sampler_index = pan_res_handle_get_index(sampler.value);
+
+      unsigned packed_handle = (tex_set << 27) | (texture_index << 16) |
+                               (sampler_set << 11) | sampler_index;
+
+      src0 = bi_imm_u32(packed_handle);
+
+      /* TODO: narrow offsetms */
+      src1 = bi_zero();
+   } else {
+      src0 = sampler;
+      src1 = texture;
+   }
 
    /* Only write the components that we actually read */
    unsigned mask = nir_def_components_read(&instr->def);
@@ -3568,19 +3694,19 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    case nir_texop_tex:
    case nir_texop_txl:
    case nir_texop_txb:
-      bi_tex_single_to(b, dest, idx, image_src, bi_zero(), instr->is_array, dim,
-                       regfmt, instr->is_shadow, explicit_offset, lod_mode,
-                       mask, sr_count);
+      bi_tex_single_to(b, dest, idx, src0, src1, instr->is_array, dim, regfmt,
+                       instr->is_shadow, explicit_offset, lod_mode,
+                       !narrow_indices, mask, sr_count);
       break;
    case nir_texop_txf:
    case nir_texop_txf_ms:
-      bi_tex_fetch_to(b, dest, idx, image_src, bi_zero(), instr->is_array, dim,
-                      regfmt, explicit_offset, mask, sr_count);
+      bi_tex_fetch_to(b, dest, idx, src0, src1, instr->is_array, dim, regfmt,
+                      explicit_offset, !narrow_indices, mask, sr_count);
       break;
    case nir_texop_tg4:
-      bi_tex_gather_to(b, dest, idx, image_src, bi_zero(), instr->is_array, dim,
+      bi_tex_gather_to(b, dest, idx, src0, src1, instr->is_array, dim,
                        instr->component, false, regfmt, instr->is_shadow,
-                       explicit_offset, mask, sr_count);
+                       explicit_offset, !narrow_indices, mask, sr_count);
       break;
    default:
       unreachable("Unhandled Valhall texture op");
@@ -3695,8 +3821,11 @@ bi_emit_tex(bi_builder *b, nir_tex_instr *instr)
     * it for txf operations, since there may be no other valid samplers. This is
     * a workaround: txf does not require a sampler in NIR (so sampler_index is
     * undefined) but we need one in the hardware. This is ABI with the driver.
+    *
+    * On Valhall, as the descriptor table is encoded in the index, this should
+    * be handled by the driver.
     */
-   if (!nir_tex_instr_need_sampler(instr))
+   if (!nir_tex_instr_need_sampler(instr) && b->shader->arch < 9)
       instr->sampler_index = 0;
 
    if (b->shader->arch >= 9)
@@ -4351,7 +4480,7 @@ bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
       NIR_PASS(progress, nir, nir_opt_undef);
       NIR_PASS(progress, nir, nir_lower_undef_to_zero);
 
-      NIR_PASS(progress, nir, nir_opt_shrink_vectors);
+      NIR_PASS(progress, nir, nir_opt_shrink_vectors, false);
       NIR_PASS(progress, nir, nir_opt_loop_unroll);
    } while (progress);
 

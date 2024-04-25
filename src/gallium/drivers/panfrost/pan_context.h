@@ -305,6 +305,24 @@ struct panfrost_sysvals {
    unsigned sysval_count;
 };
 
+/* On Valhall, the driver gives the hardware a table of resource tables.
+ * Resources are addressed as the index of the table together with the index of
+ * the resource within the table. For simplicity, we put one type of resource
+ * in each table and fix the numbering of the tables.
+ *
+ * This numbering is arbitrary.
+ */
+enum panfrost_resource_table {
+   PAN_TABLE_UBO = 0,
+   PAN_TABLE_ATTRIBUTE,
+   PAN_TABLE_ATTRIBUTE_BUFFER,
+   PAN_TABLE_SAMPLER,
+   PAN_TABLE_TEXTURE,
+   PAN_TABLE_IMAGE,
+
+   PAN_NUM_RESOURCE_TABLES
+};
+
 #define RSD_WORDS 16
 
 /* Variants bundle together to form the backing CSO, bundling multiple
@@ -435,6 +453,9 @@ bool panfrost_nir_remove_fragcolor_stores(nir_shader *s, unsigned nr_cbufs);
 
 bool panfrost_nir_lower_sysvals(nir_shader *s,
                                 struct panfrost_sysvals *sysvals);
+
+bool panfrost_nir_lower_res_indices(nir_shader *shader,
+                                    struct panfrost_compile_inputs *inputs);
 
 /** (Vertex buffer index, divisor) tuple that will become an Attribute Buffer
  * Descriptor at draw-time on Midgard

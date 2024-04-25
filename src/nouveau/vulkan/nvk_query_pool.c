@@ -1094,7 +1094,8 @@ nvk_cmd_copy_query_pool_results_mme(struct nvk_cmd_buffer *cmd,
                                     VkQueryResultFlags flags)
 {
    /* TODO: vkCmdCopyQueryPoolResults() with a compute shader */
-   assert(nvk_cmd_buffer_device(cmd)->pdev->info.cls_eng3d >= TURING_A);
+   ASSERTED struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   assert(nvk_device_physical(dev)->info.cls_eng3d >= TURING_A);
 
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 13);
    P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);

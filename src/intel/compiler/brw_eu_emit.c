@@ -1459,47 +1459,6 @@ void gfx6_math(struct brw_codegen *p,
  * Return the right surface index to access the thread scratch space using
  * stateless dataport messages.
  */
-unsigned
-brw_scratch_surface_idx(const struct brw_codegen *p)
-{
-   /* The scratch space is thread-local so IA coherency is unnecessary. */
-   return GFX8_BTI_STATELESS_NON_COHERENT;
-}
-
-void
-gfx7_block_read_scratch(struct brw_codegen *p,
-                        struct brw_reg dest,
-                        int num_regs,
-                        unsigned offset)
-{
-   brw_inst *insn = next_insn(p, BRW_OPCODE_SEND);
-   assert(brw_inst_pred_control(p->devinfo, insn) == BRW_PREDICATE_NONE);
-
-   brw_set_dest(p, insn, retype(dest, BRW_REGISTER_TYPE_UW));
-
-   /* The HW requires that the header is present; this is to get the g0.5
-    * scratch offset.
-    */
-   brw_set_src0(p, insn, brw_vec8_grf(0, 0));
-
-   /* According to the docs, offset is "A 12-bit HWord offset into the memory
-    * Immediate Memory buffer as specified by binding table 0xFF."  An HWORD
-    * is 32 bytes, which happens to be the size of a register.
-    */
-   offset /= REG_SIZE;
-   assert(offset < (1 << 12));
-
-   gfx7_set_dp_scratch_message(p, insn,
-                               false, /* scratch read */
-                               false, /* OWords */
-                               false, /* invalidate after read */
-                               num_regs,
-                               offset,
-                               1,        /* mlen: just g0 */
-                               num_regs, /* rlen */
-                               true);    /* header present */
-}
-
 brw_inst *
 gfx9_fb_READ(struct brw_codegen *p,
              struct brw_reg dst,
@@ -1524,48 +1483,6 @@ gfx9_fb_READ(struct brw_codegen *p,
    brw_inst_set_rt_slot_group(devinfo, insn, brw_get_default_group(p) / 16);
 
    return insn;
-}
-
-/* Adjust the message header's sampler state pointer to
- * select the correct group of 16 samplers.
- */
-void brw_adjust_sampler_state_pointer(struct brw_codegen *p,
-                                      struct brw_reg header,
-                                      struct brw_reg sampler_index)
-{
-   /* The "Sampler Index" field can only store values between 0 and 15.
-    * However, we can add an offset to the "Sampler State Pointer"
-    * field, effectively selecting a different set of 16 samplers.
-    *
-    * The "Sampler State Pointer" needs to be aligned to a 32-byte
-    * offset, and each sampler state is only 16-bytes, so we can't
-    * exclusively use the offset - we have to use both.
-    */
-
-   if (sampler_index.file == BRW_IMMEDIATE_VALUE) {
-      const int sampler_state_size = 16; /* 16 bytes */
-      uint32_t sampler = sampler_index.ud;
-
-      if (sampler >= 16) {
-         brw_ADD(p,
-                 get_element_ud(header, 3),
-                 get_element_ud(brw_vec8_grf(0, 0), 3),
-                 brw_imm_ud(16 * (sampler / 16) * sampler_state_size));
-      }
-   } else {
-      /* Non-const sampler array indexing case */
-      struct brw_reg temp = get_element_ud(header, 3);
-
-      brw_push_insn_state(p);
-      brw_AND(p, temp, get_element_ud(sampler_index, 0), brw_imm_ud(0x0f0));
-      brw_set_default_swsb(p, tgl_swsb_regdist(1));
-      brw_SHL(p, temp, temp, brw_imm_ud(4));
-      brw_ADD(p,
-              get_element_ud(header, 3),
-              get_element_ud(brw_vec8_grf(0, 0), 3),
-              temp);
-      brw_pop_insn_state(p);
-   }
 }
 
 void
@@ -1770,43 +1687,6 @@ brw_send_indirect_split_message(struct brw_codegen *p,
    brw_inst_set_eot(devinfo, send, eot);
 }
 
-static void
-brw_send_indirect_surface_message(struct brw_codegen *p,
-                                  unsigned sfid,
-                                  struct brw_reg dst,
-                                  struct brw_reg payload,
-                                  struct brw_reg surface,
-                                  unsigned desc_imm)
-{
-   if (surface.file != BRW_IMMEDIATE_VALUE) {
-      const struct tgl_swsb swsb = brw_get_default_swsb(p);
-      struct brw_reg addr = retype(brw_address_reg(0), BRW_REGISTER_TYPE_UD);
-
-      brw_push_insn_state(p);
-      brw_set_default_access_mode(p, BRW_ALIGN_1);
-      brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-      brw_set_default_exec_size(p, BRW_EXECUTE_1);
-      brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
-      brw_set_default_flag_reg(p, 0, 0);
-      brw_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-
-      /* Mask out invalid bits from the surface index to avoid hangs e.g. when
-       * some surface array is accessed out of bounds.
-       */
-      brw_AND(p, addr,
-              suboffset(vec1(retype(surface, BRW_REGISTER_TYPE_UD)),
-                        BRW_GET_SWZ(surface.swizzle, 0)),
-              brw_imm_ud(0xff));
-
-      brw_pop_insn_state(p);
-
-      surface = addr;
-      brw_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   brw_send_indirect_message(p, sfid, dst, payload, surface, desc_imm, false);
-}
-
 static bool
 while_jumps_before_offset(const struct intel_device_info *devinfo,
                           brw_inst *insn, int while_offset, int start_offset)
@@ -1963,91 +1843,6 @@ brw_set_uip_jip(struct brw_codegen *p, int start_offset)
          break;
       }
    }
-}
-
-static unsigned
-brw_surface_payload_size(unsigned num_channels,
-                         unsigned exec_size /**< 0 for SIMD4x2 */)
-{
-   if (exec_size == 0)
-      return 1; /* SIMD4x2 */
-   else if (exec_size <= 8)
-      return num_channels;
-   else
-      return 2 * num_channels;
-}
-
-void
-brw_untyped_atomic(struct brw_codegen *p,
-                   struct brw_reg dst,
-                   struct brw_reg payload,
-                   struct brw_reg surface,
-                   unsigned atomic_op,
-                   unsigned msg_length,
-                   bool response_expected,
-                   bool header_present)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const unsigned sfid = HSW_SFID_DATAPORT_DATA_CACHE_1;
-   const bool align1 = brw_get_default_access_mode(p) == BRW_ALIGN_1;
-   const unsigned exec_size = align1 ? 1 << brw_get_default_exec_size(p) : 0;
-   const unsigned response_length =
-      brw_surface_payload_size(response_expected, exec_size);
-   const unsigned desc =
-      brw_message_desc(devinfo, msg_length, response_length, header_present) |
-      brw_dp_untyped_atomic_desc(devinfo, exec_size, atomic_op,
-                                 response_expected);
-   /* Mask out unused components -- This is especially important in Align16
-    * mode on generations that don't have native support for SIMD4x2 atomics,
-    * because unused but enabled components will cause the dataport to perform
-    * additional atomic operations on the addresses that happen to be in the
-    * uninitialized Y, Z and W coordinates of the payload.
-    */
-   const unsigned mask = align1 ? WRITEMASK_XYZW : WRITEMASK_X;
-
-   brw_send_indirect_surface_message(p, sfid, brw_writemask(dst, mask),
-                                     payload, surface, desc);
-}
-
-void
-brw_untyped_surface_read(struct brw_codegen *p,
-                         struct brw_reg dst,
-                         struct brw_reg payload,
-                         struct brw_reg surface,
-                         unsigned msg_length,
-                         unsigned num_channels)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const unsigned sfid = HSW_SFID_DATAPORT_DATA_CACHE_1;
-   const bool align1 = brw_get_default_access_mode(p) == BRW_ALIGN_1;
-   const unsigned exec_size = align1 ? 1 << brw_get_default_exec_size(p) : 0;
-   const unsigned response_length =
-      brw_surface_payload_size(num_channels, exec_size);
-   const unsigned desc =
-      brw_message_desc(devinfo, msg_length, response_length, false) |
-      brw_dp_untyped_surface_rw_desc(devinfo, exec_size, num_channels, false);
-
-   brw_send_indirect_surface_message(p, sfid, dst, payload, surface, desc);
-}
-
-void
-brw_untyped_surface_write(struct brw_codegen *p,
-                          struct brw_reg payload,
-                          struct brw_reg surface,
-                          unsigned msg_length,
-                          unsigned num_channels,
-                          bool header_present)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   const unsigned sfid = HSW_SFID_DATAPORT_DATA_CACHE_1;
-   const bool align1 = brw_get_default_access_mode(p) == BRW_ALIGN_1;
-   const unsigned exec_size = align1 ? 1 << brw_get_default_exec_size(p) : 0;
-   const unsigned desc =
-      brw_message_desc(devinfo, msg_length, 0, header_present) |
-      brw_dp_untyped_surface_rw_desc(devinfo, exec_size, num_channels, true);
-
-   brw_send_indirect_surface_message(p, sfid, brw_null_reg(),
-                                     payload, surface, desc);
 }
 
 static void

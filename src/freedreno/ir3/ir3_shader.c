@@ -523,6 +523,11 @@ ir3_setup_used_key(struct ir3_shader *shader)
                                 SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID) ||
                     BITSET_TEST(info->system_values_read,
                                 SYSTEM_VALUE_BARYCENTRIC_LINEAR_CENTROID)));
+
+      /* Only enable this shader key bit if "dual_color_blend_by_location" is
+       * enabled:
+       */
+      key->force_dual_color_blend = shader->compiler->options.dual_color_blend_by_location;
    } else if (info->stage == MESA_SHADER_COMPUTE) {
       key->fastc_srgb = ~0;
       key->fsamples = ~0;

@@ -29,7 +29,7 @@
 #include "perf/intel_perf.h"
 #include "util/perf/cpu_trace.h"
 
-#include "vulkan/runtime/vk_common_entrypoints.h"
+#include "vk_common_entrypoints.h"
 
 /** Timestamp structure format */
 union anv_utrace_timestamp {
@@ -279,6 +279,14 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
 
          anv_genX(device->info, emit_so_memcpy_end)(&submit->memcpy_state);
       } else {
+         struct anv_shader_bin *copy_kernel;
+         VkResult ret =
+            anv_device_get_internal_shader(device,
+                                           ANV_INTERNAL_KERNEL_MEMCPY_COMPUTE,
+                                           &copy_kernel);
+         if (ret != VK_SUCCESS)
+            goto error_batch;
+
          trace_intel_begin_trace_copy_cb(&submit->ds.trace, &submit->batch);
 
          submit->simple_state = (struct anv_simple_shader) {
@@ -286,8 +294,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
             .dynamic_state_stream = &submit->dynamic_state_stream,
             .general_state_stream = &submit->general_state_stream,
             .batch                = &submit->batch,
-            .kernel               = device->internal_kernels[
-               ANV_INTERNAL_KERNEL_MEMCPY_COMPUTE],
+            .kernel               = copy_kernel,
             .l3_config            = device->internal_kernels_l3_config,
          };
          anv_genX(device->info, emit_simple_shader_init)(&submit->simple_state);

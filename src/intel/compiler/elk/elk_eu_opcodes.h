@@ -13,7 +13,6 @@ extern "C" {
 enum elk_opcode {
    /* These are the actual hardware instructions. */
    ELK_OPCODE_ILLEGAL,
-   ELK_OPCODE_SYNC,
    ELK_OPCODE_MOV,
    ELK_OPCODE_SEL,
    ELK_OPCODE_MOVI, /**< G45+ */
@@ -26,8 +25,6 @@ enum elk_opcode {
    ELK_OPCODE_DIM, /**< Gfx7.5 only */
    ELK_OPCODE_SMOV, /**< Gfx8+ */
    ELK_OPCODE_ASR,
-   ELK_OPCODE_ROR,  /**< Gfx11+ */
-   ELK_OPCODE_ROL,  /**< Gfx11+ */
    ELK_OPCODE_CMP,
    ELK_OPCODE_CMPN,
    ELK_OPCODE_CSEL, /**< Gfx8+ */
@@ -62,8 +59,6 @@ enum elk_opcode {
    ELK_OPCODE_WAIT,
    ELK_OPCODE_SEND,
    ELK_OPCODE_SENDC,
-   ELK_OPCODE_SENDS, /**< Gfx9+ */
-   ELK_OPCODE_SENDSC, /**< Gfx9+ */
    ELK_OPCODE_MATH, /**< Gfx6+ */
    ELK_OPCODE_ADD,
    ELK_OPCODE_MUL,
@@ -83,14 +78,11 @@ enum elk_opcode {
    ELK_OPCODE_SUBB, /**< Gfx7+ */
    ELK_OPCODE_SAD2,
    ELK_OPCODE_SADA2,
-   ELK_OPCODE_ADD3, /* Gen12+ only */
    ELK_OPCODE_DP4,
    ELK_OPCODE_DPH,
    ELK_OPCODE_DP3,
    ELK_OPCODE_DP2,
-   ELK_OPCODE_DP4A, /**< Gfx12+ */
    ELK_OPCODE_LINE,
-   ELK_OPCODE_DPAS,  /**< Gfx12.5+ */
    ELK_OPCODE_PLN, /**< G45+ */
    ELK_OPCODE_MAD, /**< Gfx6+ */
    ELK_OPCODE_LRP, /**< Gfx6+ */
@@ -115,9 +107,6 @@ enum elk_opcode {
 
    ELK_FS_OPCODE_REP_FB_WRITE,
 
-   ELK_FS_OPCODE_FB_READ,
-   ELK_FS_OPCODE_FB_READ_LOGICAL,
-
    ELK_SHADER_OPCODE_RCP,
    ELK_SHADER_OPCODE_RSQ,
    ELK_SHADER_OPCODE_SQRT,
@@ -130,9 +119,8 @@ enum elk_opcode {
    ELK_SHADER_OPCODE_COS,
 
    /**
-    * A generic "send" opcode.  The first two sources are the message
-    * descriptor and extended message descriptor respectively.  The third
-    * and optional fourth sources are the message payload
+    * A generic "send" opcode.  The first source is the descriptor and
+    * the second source is the message payload.
     */
    ELK_SHADER_OPCODE_SEND,
 
@@ -612,12 +600,7 @@ enum elk_opcode {
    ELK_TES_OPCODE_CREATE_INPUT_READ_HEADER,
    ELK_TES_OPCODE_ADD_INDIRECT_URB_OFFSET,
 
-   ELK_SHADER_OPCODE_BTD_SPAWN_LOGICAL,
-   ELK_SHADER_OPCODE_BTD_RETIRE_LOGICAL,
-
    ELK_SHADER_OPCODE_READ_SR_REG,
-
-   ELK_RT_OPCODE_TRACE_RAY_LOGICAL,
 };
 
 

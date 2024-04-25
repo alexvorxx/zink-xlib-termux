@@ -524,8 +524,6 @@ elk_nir_lower_fs_inputs(nir_shader *nir,
 
    nir_lower_io(nir, nir_var_shader_in, elk_type_size_vec4,
                 nir_lower_io_lower_64bit_to_32);
-   if (devinfo->ver >= 11)
-      nir_lower_interpolation(nir, ~0);
 
    if (key->multisample_fbo == ELK_NEVER) {
       nir_lower_single_sampled(nir);
@@ -630,14 +628,11 @@ elk_nir_optimize(nir_shader *nir, bool is_scalar,
       OPT(nir_opt_dead_write_vars);
       OPT(nir_opt_combine_stores, nir_var_all);
 
-      OPT(nir_opt_ray_queries);
-      OPT(nir_opt_ray_query_ranges);
-
       if (is_scalar) {
          OPT(nir_lower_alu_to_scalar, NULL, NULL);
       } else {
          OPT(nir_opt_shrink_stores, true);
-         OPT(nir_opt_shrink_vectors);
+         OPT(nir_opt_shrink_vectors, false);
       }
 
       OPT(nir_copy_prop);
@@ -730,9 +725,6 @@ elk_nir_optimize(nir_shader *nir, bool is_scalar,
 static unsigned
 lower_bit_size_callback(const nir_instr *instr, UNUSED void *data)
 {
-   const struct elk_compiler *compiler = (const struct elk_compiler *) data;
-   const struct intel_device_info *devinfo = compiler->devinfo;
-
    switch (instr->type) {
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(instr);
@@ -778,7 +770,7 @@ lower_bit_size_callback(const nir_instr *instr, UNUSED void *data)
       case nir_op_flog2:
       case nir_op_fsin:
       case nir_op_fcos:
-         return devinfo->ver < 9 ? 32 : 0;
+         return 32;
       case nir_op_isign:
          assert(!"Should have been lowered by nir_opt_algebraic.");
          return 0;
@@ -909,8 +901,7 @@ elk_preprocess_nir(const struct elk_compiler *compiler, nir_shader *nir,
       OPT(nir_lower_gs_intrinsics, 0);
 
    /* See also elk_nir_trig_workarounds.py */
-   if (compiler->precise_trig &&
-       !(devinfo->ver >= 10 || devinfo->platform == INTEL_PLATFORM_KBL))
+   if (compiler->precise_trig)
       OPT(elk_nir_apply_trig_workarounds);
 
    /* This workaround existing for performance reasons. Since it requires not
@@ -927,26 +918,15 @@ elk_preprocess_nir(const struct elk_compiler *compiler, nir_shader *nir,
       .lower_txf_offset = true,
       .lower_rect_offset = true,
       .lower_txd_cube_map = true,
-      /* For below, See bspec 45942, "Enable new message layout for cube array" */
-      .lower_txd_3d = devinfo->verx10 >= 125,
-      .lower_txd_array = devinfo->verx10 >= 125,
       .lower_txb_shadow_clamp = true,
       .lower_txd_shadow_clamp = true,
       .lower_txd_offset_clamp = true,
       .lower_tg4_offsets = true,
       .lower_txs_lod = true, /* Wa_14012320009 */
-      .lower_offset_filter =
-         devinfo->verx10 >= 125 ? lower_xehp_tg4_offset_filter : NULL,
       .lower_invalid_implicit_lod = true,
    };
 
-   /* In the case where TG4 coords are lowered to offsets and we have a
-    * lower_xehp_tg4_offset_filter lowering those offsets further, we need to
-    * rerun the pass because the instructions inserted by the first lowering
-    * are not visible during that first pass.
-    */
-   if (OPT(nir_lower_tex, &tex_options))
-      OPT(nir_lower_tex, &tex_options);
+   OPT(nir_lower_tex, &tex_options);
    OPT(nir_normalize_cubemap_coords);
 
    OPT(nir_lower_global_vars_to_local);
@@ -1028,14 +1008,6 @@ elk_preprocess_nir(const struct elk_compiler *compiler, nir_shader *nir,
    OPT(nir_lower_array_deref_of_vec,
        nir_var_mem_ubo | nir_var_mem_ssbo,
        nir_lower_direct_array_deref_of_vec_load);
-
-   /* Clamp load_per_vertex_input of the TCS stage so that we do not generate
-    * loads reading out of bounds. We can do this here because we called
-    * nir_lower_system_values above.
-    */
-   if (nir->info.stage == MESA_SHADER_TESS_CTRL &&
-       compiler->use_tcs_multi_patch)
-      OPT(intel_nir_clamp_per_vertex_loads);
 
    /* Get rid of split copies */
    elk_nir_optimize(nir, is_scalar, devinfo);
@@ -1337,31 +1309,6 @@ elk_vectorize_lower_mem_access(nir_shader *nir,
          options.robust_modes |= nir_var_mem_ssbo | nir_var_mem_global;
 
       OPT(nir_opt_load_store_vectorize, &options);
-
-      /* Only run the blockify optimization on Gfx9+ because although prior HW
-       * versions have support for block loads, they do have limitations on
-       * alignment as well as requiring split sends which are not supported
-       * there.
-       */
-      if (compiler->devinfo->ver >= 9) {
-         /* Required for nir_divergence_analysis() */
-         OPT(nir_convert_to_lcssa, true, true);
-
-         /* When HW supports block loads, using the divergence analysis, try
-          * to find uniform SSBO loads and turn them into block loads.
-          *
-          * Rerun the vectorizer after that to make the largest possible block
-          * loads.
-          *
-          * This is a win on 2 fronts :
-          *   - fewer send messages
-          *   - reduced register pressure
-          */
-         nir_divergence_analysis(nir);
-         if (OPT(intel_nir_blockify_uniform_loads, compiler->devinfo))
-            OPT(nir_opt_load_store_vectorize, &options);
-         OPT(nir_opt_remove_phis);
-      }
    }
 
    nir_lower_mem_access_bit_sizes_options mem_access_options = {
@@ -1426,18 +1373,6 @@ elk_postprocess_nir(nir_shader *nir, const struct elk_compiler *compiler,
       OPT(nir_opt_algebraic_before_ffma);
    } while (progress);
 
-   if (devinfo->verx10 >= 125) {
-      /* Lower integer division by constants before nir_lower_idiv. */
-      OPT(nir_opt_idiv_const, 32);
-      const nir_lower_idiv_options options = {
-         .allow_fp16 = false
-      };
-      OPT(nir_lower_idiv, &options);
-   }
-
-   if (gl_shader_stage_can_set_fragment_shading_rate(nir->info.stage))
-      NIR_PASS(_, nir, intel_nir_lower_shading_rate_output);
-
    elk_nir_optimize(nir, is_scalar, devinfo);
 
    if (is_scalar && nir_shader_has_local_variables(nir)) {
@@ -1466,7 +1401,7 @@ elk_postprocess_nir(nir_shader *nir, const struct elk_compiler *compiler,
        *    vec1  ssa_2 = ffma ssa_1, ...
        */
       if (OPT(intel_nir_opt_peephole_ffma))
-         OPT(nir_opt_shrink_vectors);
+         OPT(nir_opt_shrink_vectors, false);
    }
 
    if (is_scalar)
@@ -1727,9 +1662,7 @@ elk_nir_apply_key(nir_shader *nir,
 
    OPT(elk_nir_apply_sampler_key, compiler, &key->tex);
 
-   const struct intel_nir_lower_texture_opts tex_opts = {
-      .combined_lod_and_array_index = compiler->devinfo->ver >= 20,
-   };
+   const struct intel_nir_lower_texture_opts tex_opts = {0};
    OPT(intel_nir_lower_texture, &tex_opts);
 
    const nir_lower_subgroups_options subgroups_options = {

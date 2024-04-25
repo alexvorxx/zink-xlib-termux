@@ -149,12 +149,6 @@ elk_get_default_access_mode(struct elk_codegen *p)
    return p->current->access_mode;
 }
 
-struct tgl_swsb
-elk_get_default_swsb(struct elk_codegen *p)
-{
-   return p->current->swsb;
-}
-
 void
 elk_set_default_exec_size(struct elk_codegen *p, unsigned value)
 {
@@ -253,11 +247,7 @@ void
 elk_inst_set_group(const struct intel_device_info *devinfo,
                    elk_inst *inst, unsigned group)
 {
-   if (devinfo->ver >= 20) {
-      assert(group % 8 == 0 && group < 32);
-      elk_inst_set_qtr_control(devinfo, inst, group / 8);
-
-   } else if (devinfo->ver >= 7) {
+   if (devinfo->ver >= 7) {
       assert(group % 4 == 0 && group < 32);
       elk_inst_set_qtr_control(devinfo, inst, group / 8);
       elk_inst_set_nib_control(devinfo, inst, (group / 4) % 2);
@@ -299,11 +289,6 @@ void elk_set_default_saturate( struct elk_codegen *p, bool enable )
 void elk_set_default_acc_write_control(struct elk_codegen *p, unsigned value)
 {
    p->current->acc_wr_control = value;
-}
-
-void elk_set_default_swsb(struct elk_codegen *p, struct tgl_swsb value)
-{
-   p->current->swsb = value;
 }
 
 void elk_push_insn_state( struct elk_codegen *p )
@@ -647,7 +632,6 @@ elk_disassemble(const struct elk_isa_info *isa,
 static const struct elk_opcode_desc opcode_descs[] = {
    /* IR,                 HW,  name,      nsrc, ndst, gfx_vers */
    { ELK_OPCODE_ILLEGAL,  0,   "illegal", 0,    0,    GFX_ALL },
-   { ELK_OPCODE_SYNC,     1,   "sync",    1,    0,    GFX_GE(GFX12) },
    { ELK_OPCODE_MOV,      1,   "mov",     1,    1,    GFX_LT(GFX12) },
    { ELK_OPCODE_MOV,      97,  "mov",     1,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_SEL,      2,   "sel",     2,    1,    GFX_LT(GFX12) },
@@ -671,10 +655,6 @@ static const struct elk_opcode_desc opcode_descs[] = {
    { ELK_OPCODE_SMOV,     106, "smov",    0,    0,    GFX_GE(GFX12) },
    { ELK_OPCODE_ASR,      12,  "asr",     2,    1,    GFX_LT(GFX12) },
    { ELK_OPCODE_ASR,      108, "asr",     2,    1,    GFX_GE(GFX12) },
-   { ELK_OPCODE_ROR,      14,  "ror",     2,    1,    GFX11 },
-   { ELK_OPCODE_ROR,      110, "ror",     2,    1,    GFX_GE(GFX12) },
-   { ELK_OPCODE_ROL,      15,  "rol",     2,    1,    GFX11 },
-   { ELK_OPCODE_ROL,      111, "rol",     2,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_CMP,      16,  "cmp",     2,    1,    GFX_LT(GFX12) },
    { ELK_OPCODE_CMP,      112, "cmp",     2,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_CMPN,     17,  "cmpn",    2,    1,    GFX_LT(GFX12) },
@@ -718,8 +698,6 @@ static const struct elk_opcode_desc opcode_descs[] = {
    { ELK_OPCODE_SENDC,    50,  "sendc",   1,    1,    GFX_LT(GFX12) },
    { ELK_OPCODE_SEND,     49,  "send",    2,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_SENDC,    50,  "sendc",   2,    1,    GFX_GE(GFX12) },
-   { ELK_OPCODE_SENDS,    51,  "sends",   2,    1,    GFX_GE(GFX9) & GFX_LT(GFX12) },
-   { ELK_OPCODE_SENDSC,   52,  "sendsc",  2,    1,    GFX_GE(GFX9) & GFX_LT(GFX12) },
    { ELK_OPCODE_MATH,     56,  "math",    2,    1,    GFX_GE(GFX6) },
    { ELK_OPCODE_ADD,      64,  "add",     2,    1,    GFX_ALL },
    { ELK_OPCODE_MUL,      65,  "mul",     2,    1,    GFX_ALL },
@@ -739,14 +717,11 @@ static const struct elk_opcode_desc opcode_descs[] = {
    { ELK_OPCODE_SUBB,     79,  "subb",    2,    1,    GFX_GE(GFX7) },
    { ELK_OPCODE_SAD2,     80,  "sad2",    2,    1,    GFX_ALL },
    { ELK_OPCODE_SADA2,    81,  "sada2",   2,    1,    GFX_ALL },
-   { ELK_OPCODE_ADD3,     82,  "add3",    3,    1,    GFX_GE(GFX125) },
    { ELK_OPCODE_DP4,      84,  "dp4",     2,    1,    GFX_LT(GFX11) },
    { ELK_OPCODE_DPH,      85,  "dph",     2,    1,    GFX_LT(GFX11) },
    { ELK_OPCODE_DP3,      86,  "dp3",     2,    1,    GFX_LT(GFX11) },
    { ELK_OPCODE_DP2,      87,  "dp2",     2,    1,    GFX_LT(GFX11) },
-   { ELK_OPCODE_DP4A,     88,  "dp4a",    3,    1,    GFX_GE(GFX12) },
    { ELK_OPCODE_LINE,     89,  "line",    2,    1,    GFX_LE(GFX10) },
-   { ELK_OPCODE_DPAS,     89,  "dpas",    3,    1,    GFX_GE(GFX125) },
    { ELK_OPCODE_PLN,      90,  "pln",     2,    1,    GFX_GE(GFX45) & GFX_LE(GFX10) },
    { ELK_OPCODE_MAD,      91,  "mad",     3,    1,    GFX_GE(GFX6) },
    { ELK_OPCODE_LRP,      92,  "lrp",     3,    1,    GFX_GE(GFX6) & GFX_LE(GFX10) },

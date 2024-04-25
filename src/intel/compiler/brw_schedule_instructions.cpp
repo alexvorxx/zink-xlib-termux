@@ -522,7 +522,8 @@ schedule_node::set_latency(const struct brw_isa_info *isa)
          }
          break;
 
-      case GEN_RT_SFID_BINDLESS_THREAD_DISPATCH:
+      case BRW_SFID_MESSAGE_GATEWAY:
+      case GEN_RT_SFID_BINDLESS_THREAD_DISPATCH: /* or THREAD_SPAWNER */
       case GEN_RT_SFID_RAY_TRACE_ACCELERATOR:
          /* TODO.
           *

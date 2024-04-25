@@ -425,7 +425,6 @@ struct radv_instance {
       bool report_llvm9_version_string;
       bool vk_require_etc2;
       bool vk_require_astc;
-      bool force_active_accel_struct_leaves;
       char *app_layer;
       uint8_t override_graphics_shader_version;
       uint8_t override_compute_shader_version;
@@ -702,6 +701,7 @@ struct radv_meta_state {
    struct {
       VkPipelineLayout leaf_p_layout;
       VkPipeline leaf_pipeline;
+      VkPipeline leaf_updateable_pipeline;
       VkPipelineLayout morton_p_layout;
       VkPipeline morton_pipeline;
       VkPipelineLayout lbvh_main_p_layout;
@@ -2043,6 +2043,9 @@ uint32_t radv_get_vgt_index_size(uint32_t type);
 void radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                                  const struct radv_vgt_shader_key *key);
 
+void radv_emit_blend_state(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps, uint32_t spi_shader_col_format,
+                           uint32_t cb_shader_mask);
+
 unsigned radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t instance_rate_inputs);
 
 struct radv_ps_epilog_state {
@@ -2323,9 +2326,6 @@ struct radv_graphics_pipeline {
    /* Last pre-PS API stage */
    gl_shader_stage last_vgt_api_stage;
 
-   /* Not NULL if graphics pipeline uses streamout. */
-   struct radv_shader *streamout_shader;
-
    unsigned rast_prim;
 
    /* For vk_graphics_pipeline_state */
@@ -2364,13 +2364,41 @@ struct radv_ray_tracing_group {
    struct radv_pipeline_group_handle handle;
 };
 
+enum radv_rt_const_arg_state {
+   RADV_RT_CONST_ARG_STATE_UNINITIALIZED,
+   RADV_RT_CONST_ARG_STATE_VALID,
+   RADV_RT_CONST_ARG_STATE_INVALID,
+};
+
+struct radv_rt_const_arg_info {
+   enum radv_rt_const_arg_state state;
+   uint32_t value;
+};
+
+struct radv_ray_tracing_stage_info {
+   bool can_inline;
+
+   BITSET_DECLARE(unused_args, AC_MAX_ARGS);
+
+   struct radv_rt_const_arg_info tmin;
+   struct radv_rt_const_arg_info tmax;
+
+   struct radv_rt_const_arg_info sbt_offset;
+   struct radv_rt_const_arg_info sbt_stride;
+
+   struct radv_rt_const_arg_info miss_index;
+
+   uint32_t set_flags;
+   uint32_t unset_flags;
+};
+
 struct radv_ray_tracing_stage {
    struct vk_pipeline_cache_object *nir;
    struct radv_shader *shader;
    gl_shader_stage stage;
    uint32_t stack_size;
 
-   bool can_inline;
+   struct radv_ray_tracing_stage_info info;
 
    uint8_t sha1[SHA1_DIGEST_LENGTH];
 };
@@ -2489,8 +2517,6 @@ radv_pipeline_has_stage(const struct radv_graphics_pipeline *pipeline, gl_shader
 {
    return pipeline->base.shaders[stage];
 }
-
-bool radv_pipeline_has_ngg_passthrough(const struct radv_graphics_pipeline *pipeline);
 
 bool radv_pipeline_has_gs_copy_shader(const struct radv_pipeline *pipeline);
 
@@ -3445,6 +3471,9 @@ radv_get_num_vertices_per_prim(const struct radv_graphics_state_key *gfx_state)
 }
 
 uint32_t radv_get_vgt_gs_out(struct radv_shader **shaders, uint32_t primitive_topology);
+
+struct radv_vgt_shader_key radv_get_vgt_shader_key(const struct radv_device *device, struct radv_shader **shaders,
+                                                   const struct radv_shader *gs_copy_shader);
 
 static inline uint32_t
 radv_translate_fill(VkPolygonMode func)

@@ -67,6 +67,27 @@ struct gl_context;
 struct gl_buffer_object;
 struct _glapi_table;
 
+/**
+ * Client pixel packing/unpacking attributes
+ */
+struct gl_pixelstore_attrib
+{
+   GLint Alignment;
+   GLint RowLength;
+   GLint SkipPixels;
+   GLint SkipRows;
+   GLint ImageHeight;
+   GLint SkipImages;
+   GLboolean SwapBytes;
+   GLboolean LsbFirst;
+   GLboolean Invert;        /**< GL_MESA_pack_invert */
+   GLint CompressedBlockWidth;   /**< GL_ARB_compressed_texture_pixel_storage */
+   GLint CompressedBlockHeight;
+   GLint CompressedBlockDepth;
+   GLint CompressedBlockSize;
+   struct gl_buffer_object *BufferObj; /**< GL_ARB_pixel_buffer_object */
+};
+
 /* Used by both glthread and gl_context. */
 union gl_vertex_format_user {
    struct {
@@ -280,6 +301,8 @@ struct glthread_state
    /** Global mutex update info. */
    unsigned GlobalLockUpdateBatchCounter;
    bool LockGlobalMutexes;
+
+   struct gl_pixelstore_attrib Unpack;
 };
 
 void _mesa_glthread_init(struct gl_context *ctx);
@@ -379,6 +402,8 @@ void _mesa_glthread_UnrollDrawElements(struct gl_context *ctx,
                                        GLenum mode, GLsizei count, GLenum type,
                                        const GLvoid *indices, GLint basevertex);
 void _mesa_glthread_unbind_uploaded_vbos(struct gl_context *ctx);
+void _mesa_glthread_PixelStorei(struct gl_context *ctx, GLenum pname,
+                                GLint param);
 
 #ifdef __cplusplus
 }

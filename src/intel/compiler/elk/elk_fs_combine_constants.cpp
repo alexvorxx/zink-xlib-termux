@@ -993,124 +993,6 @@ get_alignment_for_imm(const struct imm *imm)
       return imm->size;
 }
 
-static bool
-representable_as_hf(float f, uint16_t *hf)
-{
-   union fi u;
-   uint16_t h = _mesa_float_to_half(f);
-   u.f = _mesa_half_to_float(h);
-
-   if (u.f == f) {
-      *hf = h;
-      return true;
-   }
-
-   return false;
-}
-
-static bool
-representable_as_w(int d, int16_t *w)
-{
-   int res = ((d & 0xffff8000) + 0x8000) & 0xffff7fff;
-   if (!res) {
-      *w = d;
-      return true;
-   }
-
-   return false;
-}
-
-static bool
-representable_as_uw(unsigned ud, uint16_t *uw)
-{
-   if (!(ud & 0xffff0000)) {
-      *uw = ud;
-      return true;
-   }
-
-   return false;
-}
-
-static bool
-supports_src_as_imm(const struct intel_device_info *devinfo, const elk_fs_inst *inst)
-{
-   if (devinfo->ver < 12)
-      return false;
-
-   switch (inst->opcode) {
-   case ELK_OPCODE_ADD3:
-      /* ADD3 only exists on Gfx12.5+. */
-      return true;
-
-   case ELK_OPCODE_MAD:
-      /* Integer types can always mix sizes. Floating point types can mix
-       * sizes on Gfx12. On Gfx12.5, floating point sources must all be HF or
-       * all be F.
-       */
-      return devinfo->verx10 < 125 || inst->src[0].type != ELK_REGISTER_TYPE_F;
-
-   default:
-      return false;
-   }
-}
-
-static bool
-can_promote_src_as_imm(const struct intel_device_info *devinfo, elk_fs_inst *inst,
-                       unsigned src_idx)
-{
-   bool can_promote = false;
-
-   /* Experiment shows that we can only support src0 as immediate for MAD on
-    * Gfx12. ADD3 can use src0 or src2 in Gfx12.5, but constant propagation
-    * only propagates into src0. It's possible that src2 works for W or UW MAD
-    * on Gfx12.5.
-    */
-   if (src_idx != 0)
-      return false;
-
-   if (!supports_src_as_imm(devinfo, inst))
-      return false;
-
-   /* TODO - Fix the codepath below to use a bfloat16 immediate on XeHP,
-    *        since HF/F mixed mode has been removed from the hardware.
-    */
-   switch (inst->src[src_idx].type) {
-   case ELK_REGISTER_TYPE_F: {
-      uint16_t hf;
-      if (representable_as_hf(inst->src[src_idx].f, &hf)) {
-         inst->src[src_idx] = retype(elk_imm_uw(hf), ELK_REGISTER_TYPE_HF);
-         can_promote = true;
-      }
-      break;
-   }
-   case ELK_REGISTER_TYPE_D: {
-      int16_t w;
-      if (representable_as_w(inst->src[src_idx].d, &w)) {
-         inst->src[src_idx] = elk_imm_w(w);
-         can_promote = true;
-      }
-      break;
-   }
-   case ELK_REGISTER_TYPE_UD: {
-      uint16_t uw;
-      if (representable_as_uw(inst->src[src_idx].ud, &uw)) {
-         inst->src[src_idx] = elk_imm_uw(uw);
-         can_promote = true;
-      }
-      break;
-   }
-   case ELK_REGISTER_TYPE_W:
-   case ELK_REGISTER_TYPE_UW:
-   case ELK_REGISTER_TYPE_HF:
-      can_promote = true;
-      break;
-   default:
-      break;
-   }
-
-   return can_promote;
-}
-
 static void
 add_candidate_immediate(struct table *table, elk_fs_inst *inst, unsigned ip,
                         unsigned i,
@@ -1357,13 +1239,9 @@ elk_fs_visitor::opt_combine_constants()
 
          break;
 
-      case ELK_OPCODE_ADD3:
       case ELK_OPCODE_MAD: {
          for (int i = 0; i < inst->sources; i++) {
             if (inst->src[i].file != IMM)
-               continue;
-
-            if (can_promote_src_as_imm(devinfo, inst, i))
                continue;
 
             add_candidate_immediate(&table, inst, ip, i, true, false, block,
@@ -1411,8 +1289,6 @@ elk_fs_visitor::opt_combine_constants()
 
       case ELK_OPCODE_ASR:
       case ELK_OPCODE_BFI1:
-      case ELK_OPCODE_ROL:
-      case ELK_OPCODE_ROR:
       case ELK_OPCODE_SHL:
       case ELK_OPCODE_SHR:
          if (inst->src[0].file == IMM) {

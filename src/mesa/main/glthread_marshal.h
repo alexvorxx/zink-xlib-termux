@@ -137,15 +137,15 @@ _mesa_glthread_call_is_last(struct glthread_state *glthread,
 }
 
 static inline bool
-_mesa_glthread_has_no_pack_buffer(const struct gl_context *ctx)
+_mesa_glthread_has_pack_buffer(const struct gl_context *ctx)
 {
-   return ctx->GLThread.CurrentPixelPackBufferName == 0;
+   return ctx->GLThread.CurrentPixelPackBufferName != 0;
 }
 
 static inline bool
-_mesa_glthread_has_no_unpack_buffer(const struct gl_context *ctx)
+_mesa_glthread_has_unpack_buffer(const struct gl_context *ctx)
 {
-   return ctx->GLThread.CurrentPixelUnpackBufferName == 0;
+   return ctx->GLThread.CurrentPixelUnpackBufferName != 0;
 }
 
 static inline unsigned

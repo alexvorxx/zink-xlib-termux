@@ -96,11 +96,13 @@ static const struct vk_instance_extension_table lvp_instance_extensions_supporte
 static const struct vk_device_extension_table lvp_device_extensions_supported = {
    .KHR_8bit_storage                      = true,
    .KHR_16bit_storage                     = true,
+   .KHR_acceleration_structure            = true,
    .KHR_bind_memory2                      = true,
    .KHR_buffer_device_address             = true,
    .KHR_create_renderpass2                = true,
    .KHR_copy_commands2                    = true,
    .KHR_dedicated_allocation              = true,
+   .KHR_deferred_host_operations          = true,
    .KHR_depth_stencil_resolve             = true,
    .KHR_descriptor_update_template        = true,
    .KHR_device_group                      = true,
@@ -135,6 +137,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_multiview                         = true,
    .KHR_push_descriptor                   = true,
    .KHR_pipeline_library                  = true,
+   .KHR_ray_query                         = true,
    .KHR_relaxed_block_layout              = true,
    .KHR_sampler_mirror_clamp_to_edge      = true,
    .KHR_sampler_ycbcr_conversion          = true,
@@ -395,6 +398,13 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .shaderIntegerDotProduct = true,
       .maintenance4 = true,
 
+      /* VK_KHR_acceleration_structure */
+      .accelerationStructure = true,
+      .accelerationStructureCaptureReplay = false,
+      .accelerationStructureIndirectBuild = false,
+      .accelerationStructureHostCommands = false,
+      .descriptorBindingAccelerationStructureUpdateAfterBind = true,
+
       /* VK_EXT_descriptor_buffer */
       .descriptorBuffer = true,
       .descriptorBufferCaptureReplay = false,
@@ -453,6 +463,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* VK_EXT_attachment_feedback_loop_layout_dynamic_state */
       .attachmentFeedbackLoopDynamicState = true,
+
+      /* VK_KHR_ray_query */
+      .rayQuery = true,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
@@ -994,12 +1007,12 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .storageBufferDescriptorSize = sizeof(struct lp_descriptor),
       .robustStorageBufferDescriptorSize = sizeof(struct lp_descriptor),
       .inputAttachmentDescriptorSize = sizeof(struct lp_descriptor),
-      .accelerationStructureDescriptorSize = 0,
-      .maxSamplerDescriptorBufferRange = 1<<27, //spec minimum
-      .maxResourceDescriptorBufferRange = 1<<28, //spec minimum
-      .resourceDescriptorBufferAddressSpaceSize = 1<<27, //spec minimum
-      .samplerDescriptorBufferAddressSpaceSize = 1<<27, //spec minimum
-      .descriptorBufferAddressSpaceSize = 1<<27, //spec minimum
+      .accelerationStructureDescriptorSize = sizeof(struct lp_descriptor),
+      .maxSamplerDescriptorBufferRange = UINT32_MAX,
+      .maxResourceDescriptorBufferRange = UINT32_MAX,
+      .resourceDescriptorBufferAddressSpaceSize = UINT32_MAX,
+      .samplerDescriptorBufferAddressSpaceSize = UINT32_MAX,
+      .descriptorBufferAddressSpaceSize = UINT32_MAX,
 
       /* VK_EXT_graphics_pipeline_library */
       .graphicsPipelineLibraryFastLinking = VK_TRUE,
@@ -1053,6 +1066,16 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .maxExecutionGraphShaderPayloadCount = LVP_MAX_EXEC_GRAPH_PAYLOADS,
       .executionGraphDispatchAddressAlignment = 4,
 #endif
+
+      /* VK_KHR_acceleration_structure */
+      .maxGeometryCount = (1 << 24) - 1,
+      .maxInstanceCount = (1 << 24) - 1,
+      .maxPrimitiveCount = (1 << 24) - 1,
+      .maxPerStageDescriptorAccelerationStructures = MAX_DESCRIPTORS,
+      .maxPerStageDescriptorUpdateAfterBindAccelerationStructures = MAX_DESCRIPTORS,
+      .maxDescriptorSetAccelerationStructures = MAX_DESCRIPTORS,
+      .maxDescriptorSetUpdateAfterBindAccelerationStructures = MAX_DESCRIPTORS,
+      .minAccelerationStructureScratchOffsetAlignment = 128,
    };
 
    /* Vulkan 1.0 */

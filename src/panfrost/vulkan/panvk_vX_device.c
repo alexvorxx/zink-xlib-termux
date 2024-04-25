@@ -34,14 +34,19 @@
 #include "panvk_private.h"
 
 #include "vk_drm_syncobj.h"
+#include "vk_framebuffer.h"
 
 static void
 panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
                          uint32_t *bos, unsigned nr_bos, uint32_t *in_fences,
                          unsigned nr_in_fences)
 {
-   const struct panvk_device *dev = queue->device;
-   unsigned debug = dev->physical_device->instance->debug_flags;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+   struct panvk_instance *instance =
+      to_panvk_instance(dev->vk.physical->instance);
+   unsigned debug = instance->debug_flags;
    int ret;
 
    /* Reset the batch if it's already been issued */
@@ -77,7 +82,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 
       if (debug & PANVK_DEBUG_TRACE) {
          pandecode_jc(dev->debug.decode_ctx, batch->jc.first_job,
-                      dev->physical_device->kmod.props.gpu_prod_id);
+                      phys_dev->kmod.props.gpu_prod_id);
       }
 
       if (debug & PANVK_DEBUG_DUMP)
@@ -111,7 +116,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 
       if (debug & PANVK_DEBUG_TRACE)
          pandecode_jc(dev->debug.decode_ctx, batch->fragment_job,
-                      dev->physical_device->kmod.props.gpu_prod_id);
+                      phys_dev->kmod.props.gpu_prod_id);
 
       if (debug & PANVK_DEBUG_DUMP)
          pandecode_dump_mappings(dev->debug.decode_ctx);
@@ -126,7 +131,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
 static void
 panvk_queue_transfer_sync(struct panvk_queue *queue, uint32_t syncobj)
 {
-   struct panvk_device *dev = queue->device;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
    int ret;
 
    struct drm_syncobj_handle handle = {
@@ -150,7 +155,7 @@ static void
 panvk_add_wait_event_syncobjs(struct panvk_batch *batch, uint32_t *in_fences,
                               unsigned *nr_in_fences)
 {
-   util_dynarray_foreach(&batch->event_ops, struct panvk_event_op, op) {
+   util_dynarray_foreach(&batch->event_ops, struct panvk_cmd_event_op, op) {
       switch (op->type) {
       case PANVK_EVENT_OP_SET:
          /* Nothing to do yet */
@@ -162,7 +167,7 @@ panvk_add_wait_event_syncobjs(struct panvk_batch *batch, uint32_t *in_fences,
          in_fences[(*nr_in_fences)++] = op->event->syncobj;
          break;
       default:
-         unreachable("bad panvk_event_op type\n");
+         unreachable("bad panvk_cmd_event_op type\n");
       }
    }
 }
@@ -171,9 +176,9 @@ static void
 panvk_signal_event_syncobjs(struct panvk_queue *queue,
                             struct panvk_batch *batch)
 {
-   struct panvk_device *dev = queue->device;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
-   util_dynarray_foreach(&batch->event_ops, struct panvk_event_op, op) {
+   util_dynarray_foreach(&batch->event_ops, struct panvk_cmd_event_op, op) {
       switch (op->type) {
       case PANVK_EVENT_OP_SET: {
          panvk_queue_transfer_sync(queue, op->event->syncobj);
@@ -194,7 +199,7 @@ panvk_signal_event_syncobjs(struct panvk_queue *queue,
          /* Nothing left to do */
          break;
       default:
-         unreachable("bad panvk_event_op type\n");
+         unreachable("bad panvk_cmd_event_op type\n");
       }
    }
 }
@@ -204,7 +209,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
                              struct vk_queue_submit *submit)
 {
    struct panvk_queue *queue = container_of(vk_queue, struct panvk_queue, vk);
-   struct panvk_device *dev = queue->device;
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
    unsigned nr_semaphores = submit->wait_count + 1;
    uint32_t semaphores[nr_semaphores];
@@ -245,8 +250,8 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
          if (batch->fb.info) {
             for (unsigned i = 0; i < batch->fb.info->attachment_count; i++) {
-               struct panvk_image_view *iview =
-                  batch->fb.info->attachments[i].iview;
+               VK_FROM_HANDLE(panvk_image_view, iview,
+                              batch->fb.info->attachments[i]);
                struct panvk_image *img =
                   container_of(iview->vk.image, struct panvk_image, vk);
 
@@ -278,7 +283,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
 
          unsigned nr_in_fences = 0;
          unsigned max_wait_event_syncobjs = util_dynarray_num_elements(
-            &batch->event_ops, struct panvk_event_op);
+            &batch->event_ops, struct panvk_cmd_event_op);
          uint32_t in_fences[nr_semaphores + max_wait_event_syncobjs];
          memcpy(in_fences, semaphores, nr_semaphores * sizeof(*in_fences));
          nr_in_fences += nr_semaphores;
@@ -304,7 +309,7 @@ panvk_per_arch(queue_submit)(struct vk_queue *vk_queue,
    return VK_SUCCESS;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateSampler)(VkDevice _device,
                               const VkSamplerCreateInfo *pCreateInfo,
                               const VkAllocationCallbacks *pAllocator,
@@ -315,8 +320,8 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
 
-   sampler = vk_object_alloc(&device->vk, pAllocator, sizeof(*sampler),
-                             VK_OBJECT_TYPE_SAMPLER);
+   sampler =
+      vk_sampler_create(&device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
    if (!sampler)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 

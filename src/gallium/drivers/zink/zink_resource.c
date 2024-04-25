@@ -284,10 +284,8 @@ create_bci(struct zink_screen *screen, const struct pipe_resource *templ, unsign
    if (bind & ZINK_BIND_DESCRIPTOR) {
       /* gallium sizes are all uint32_t, while the total size of this buffer may exceed that limit */
       bci.usage = 0;
-      if (bind & ZINK_BIND_SAMPLER_DESCRIPTOR)
-         bci.usage |= VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-      if (bind & ZINK_BIND_RESOURCE_DESCRIPTOR)
-         bci.usage |= VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT;
+      bci.usage |= VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
+                   VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT;
    } else {
       bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                   VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -1148,10 +1146,10 @@ create_buffer(struct zink_screen *screen, struct zink_resource_object *obj,
    VkExternalMemoryBufferCreateInfo embci;
    VkMemoryRequirements reqs = {0};
 
-   if (alloc_info->user_mem) {
-      embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+   embci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+   if (alloc_info->external) {
       embci.pNext = bci.pNext;
-      embci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      embci.handleTypes = alloc_info->export_types;
       bci.pNext = &embci;
    }
 
@@ -1446,7 +1444,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       .whandle = whandle,
       .need_dedicated = false,
       .external = 0,
-      .export_types = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
+      .export_types = user_mem ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT : ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
       .shared = templ->bind & PIPE_BIND_SHARED,
       .user_mem = user_mem
    };
@@ -1552,12 +1550,9 @@ resource_create(struct pipe_screen *pscreen,
 
    bool linear = false;
    struct pipe_resource templ2 = *templ;
-   if (templ2.flags & PIPE_RESOURCE_FLAG_SPARSE)
+   if (templ2.flags & PIPE_RESOURCE_FLAG_SPARSE &&
+       (util_res_sample_count(templ) == 1 || screen->info.feats.features.shaderStorageImageMultisample))
       templ2.bind |= PIPE_BIND_SHADER_IMAGE;
-   if (screen->faked_e5sparse && templ->format == PIPE_FORMAT_R9G9B9E5_FLOAT) {
-      templ2.flags &= ~PIPE_RESOURCE_FLAG_SPARSE;
-      res->base.b.flags &= ~PIPE_RESOURCE_FLAG_SPARSE;
-   }
    res->obj = resource_object_create(screen, &templ2, whandle, &linear, res->modifiers, res->modifiers_count, loader_private, user_mem);
    if (!res->obj) {
       free(res->modifiers);

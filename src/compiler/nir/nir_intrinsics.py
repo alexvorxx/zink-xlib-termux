@@ -402,6 +402,13 @@ intrinsic("is_sparse_texels_resident", dest_comp=1, src_comp=[1], bit_sizes=[1,3
 intrinsic("sparse_residency_code_and", dest_comp=1, src_comp=[1, 1], bit_sizes=[32],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Unlike is_sparse_texels_resident, this intrinsic is required to consume
+# the destination of the nir_tex_instr or sparse_load intrinsic directly.
+# As such it is allowed to ignore the .e component where we usually store
+# sparse information.
+intrinsic("is_sparse_resident_zink", dest_comp=1, src_comp=[0], bit_sizes=[1],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # a barrier is an intrinsic with no inputs/outputs but which can't be moved
 # around/optimized in general
 def barrier(name):
@@ -516,7 +523,7 @@ intrinsic("quad_vote_all", src_comp=[1], dest_comp=1, flags=[CAN_ELIMINATE])
 
 # Rotate operation from SPIR-V: SpvOpGroupNonUniformRotateKHR.
 intrinsic("rotate", src_comp=[0, 1], dest_comp=0, bit_sizes=src0,
-          indices=[EXECUTION_SCOPE, CLUSTER_SIZE], flags=[CAN_ELIMINATE]);
+          indices=[CLUSTER_SIZE], flags=[CAN_ELIMINATE]);
 
 intrinsic("reduce", src_comp=[0], dest_comp=0, bit_sizes=src0,
           indices=[REDUCTION_OP, CLUSTER_SIZE], flags=[CAN_ELIMINATE])
@@ -1750,6 +1757,9 @@ store("tlb_sample_color_v3d", [1], [BASE, COMPONENT, SRC_TYPE], [])
 # V3D-specific intrinsic to load the number of layers attached to
 # the target framebuffer
 intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
+
+# V3D-specific intrinsic to load W coordinate from the fragment shader payload
+intrinsic("load_fep_w_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Active invocation index within the subgroup.
 # Equivalent to popcount(ballot(true) & ((1 << subgroup_invocation) - 1))

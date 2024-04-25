@@ -237,6 +237,7 @@ union si_state_atoms {
       struct si_atom cache_flush;
       struct si_atom streamout_begin; /* this must be done after cache_flush */
       struct si_atom render_cond; /* this must be after cache_flush */
+      struct si_atom spi_ge_ring_state; /* this must be last because it waits for idle. */
    } s;
    struct si_atom array[sizeof(struct si_atoms_s) / sizeof(struct si_atom)];
 };
@@ -342,7 +343,7 @@ enum si_tracked_reg
 
    /* The slots below can be reused by other generations. */
    SI_TRACKED_VGT_ESGS_RING_ITEMSIZE,        /* GFX6-8 (GFX9+ can reuse this slot) */
-   SI_TRACKED_VGT_REUSE_OFF,                 /* GFX6-8 (GFX9+ can reuse this slot) */
+   SI_TRACKED_VGT_REUSE_OFF,                 /* GFX6-8,10.3 */
    SI_TRACKED_IA_MULTI_VGT_PARAM,            /* GFX6-8 (GFX9+ can reuse this slot) */
 
    SI_TRACKED_VGT_GS_MAX_PRIMS_PER_SUBGROUP, /* GFX9 - the slots above can be reused */

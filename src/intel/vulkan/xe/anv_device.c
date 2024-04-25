@@ -86,6 +86,7 @@ anv_xe_physical_device_get_parameters(struct anv_physical_device *device)
                        "unable to query device config");
 
    device->has_exec_timeline = true;
+   device->has_vm_control = true;
    device->max_context_priority =
          drm_sched_priority_to_vk_priority(config->info[DRM_XE_QUERY_CONFIG_MAX_EXEC_QUEUE_PRIORITY]);
 

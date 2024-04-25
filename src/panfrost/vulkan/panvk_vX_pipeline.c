@@ -38,13 +38,14 @@
 #include "util/u_debug.h"
 #include "vk_blend.h"
 #include "vk_format.h"
+#include "vk_pipeline_cache.h"
 #include "vk_util.h"
 
 #include "panfrost/util/pan_lower_framebuffer.h"
 
 struct panvk_pipeline_builder {
    struct panvk_device *device;
-   struct panvk_pipeline_cache *cache;
+   struct vk_pipeline_cache *cache;
    const VkAllocationCallbacks *alloc;
    struct {
       const VkGraphicsPipelineCreateInfo *gfx;
@@ -413,7 +414,9 @@ panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
    if (!pan_blend_is_homogenous_constant(constant_mask, state->constants))
       return true;
 
-   unsigned arch = pan_arch(dev->physical_device->kmod.props.gpu_prod_id);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
    bool supports_2src = pan_blend_supports_2src(arch);
    return !pan_blend_can_fixed_function(state->rts[rt].equation, supports_2src);
 }
@@ -849,7 +852,7 @@ panvk_pipeline_builder_build(struct panvk_pipeline_builder *builder,
 static void
 panvk_pipeline_builder_init_graphics(
    struct panvk_pipeline_builder *builder, struct panvk_device *dev,
-   struct panvk_pipeline_cache *cache,
+   struct vk_pipeline_cache *cache,
    const VkGraphicsPipelineCreateInfo *create_info,
    const VkAllocationCallbacks *alloc)
 {
@@ -893,14 +896,14 @@ panvk_pipeline_builder_init_graphics(
    }
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateGraphicsPipelines)(
    VkDevice device, VkPipelineCache pipelineCache, uint32_t count,
    const VkGraphicsPipelineCreateInfo *pCreateInfos,
    const VkAllocationCallbacks *pAllocator, VkPipeline *pPipelines)
 {
    VK_FROM_HANDLE(panvk_device, dev, device);
-   VK_FROM_HANDLE(panvk_pipeline_cache, cache, pipelineCache);
+   VK_FROM_HANDLE(vk_pipeline_cache, cache, pipelineCache);
 
    for (uint32_t i = 0; i < count; i++) {
       struct panvk_pipeline_builder builder;
@@ -929,7 +932,7 @@ panvk_per_arch(CreateGraphicsPipelines)(
 static void
 panvk_pipeline_builder_init_compute(
    struct panvk_pipeline_builder *builder, struct panvk_device *dev,
-   struct panvk_pipeline_cache *cache,
+   struct vk_pipeline_cache *cache,
    const VkComputePipelineCreateInfo *create_info,
    const VkAllocationCallbacks *alloc)
 {
@@ -944,14 +947,14 @@ panvk_pipeline_builder_init_compute(
    };
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateComputePipelines)(
    VkDevice device, VkPipelineCache pipelineCache, uint32_t count,
    const VkComputePipelineCreateInfo *pCreateInfos,
    const VkAllocationCallbacks *pAllocator, VkPipeline *pPipelines)
 {
    VK_FROM_HANDLE(panvk_device, dev, device);
-   VK_FROM_HANDLE(panvk_pipeline_cache, cache, pipelineCache);
+   VK_FROM_HANDLE(vk_pipeline_cache, cache, pipelineCache);
 
    for (uint32_t i = 0; i < count; i++) {
       struct panvk_pipeline_builder builder;

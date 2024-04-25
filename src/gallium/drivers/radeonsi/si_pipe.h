@@ -712,6 +712,10 @@ struct si_screen {
 
    struct si_resource *attribute_ring;
 
+   simple_mtx_t tess_ring_lock;
+   struct pipe_resource *tess_rings;
+   struct pipe_resource *tess_rings_tmz;
+
    /* NGG streamout. */
    simple_mtx_t gds_mutex;
    struct pb_buffer_lean *gds_oa;
@@ -1129,6 +1133,7 @@ struct si_context {
    bool vs_uses_base_instance;
    bool vs_uses_draw_id;
    uint8_t patch_vertices;
+   bool has_tessellation; /* whether si_screen::tess_rings* are valid */
 
    /* shader descriptors */
    struct si_descriptors descriptors[SI_NUM_DESCS];
@@ -1147,8 +1152,6 @@ struct si_context {
    struct pipe_constant_buffer null_const_buf; /* used for set_constant_buffer(NULL) on GFX7 */
    struct pipe_resource *esgs_ring;
    struct pipe_resource *gsvs_ring;
-   struct pipe_resource *tess_rings;
-   struct pipe_resource *tess_rings_tmz;
    union pipe_color_union *border_color_table; /* in CPU memory, any endian */
    struct si_resource *border_color_buffer;
    union pipe_color_union *border_color_map; /* in VRAM (slow access), little endian */
@@ -1349,7 +1352,10 @@ struct si_context {
    struct list_head shader_query_buffers;
    unsigned num_active_shader_queries;
 
-   bool force_cb_shader_coherent;
+   struct {
+      bool with_cb;
+      bool with_db;
+   } force_shader_coherency;
 
    struct si_tracked_regs tracked_regs;
 
@@ -1887,7 +1893,7 @@ static inline void si_make_CB_shader_coherent(struct si_context *sctx, unsigned 
                                               bool shaders_read_metadata, bool dcc_pipe_aligned)
 {
    sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_CB | SI_CONTEXT_INV_VCACHE;
-   sctx->force_cb_shader_coherent = false;
+   sctx->force_shader_coherency.with_cb = false;
 
    if (sctx->gfx_level >= GFX10) {
       if (sctx->screen->info.tcc_rb_non_coherent)
@@ -1915,6 +1921,7 @@ static inline void si_make_DB_shader_coherent(struct si_context *sctx, unsigned 
                                               bool include_stencil, bool shaders_read_metadata)
 {
    sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_DB | SI_CONTEXT_INV_VCACHE;
+   sctx->force_shader_coherency.with_db = false;
 
    if (sctx->gfx_level >= GFX10) {
       if (sctx->screen->info.tcc_rb_non_coherent)

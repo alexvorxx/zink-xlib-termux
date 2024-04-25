@@ -92,7 +92,7 @@ void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_h
    /* If we use s_sendmsg to set tess factors to all 0 or all 1 instead of writing to the tess
     * factor buffer, we need this at the end of command buffers:
     */
-   if ((ctx->gfx_level == GFX11 || ctx->gfx_level == GFX11_5) && ctx->tess_rings) {
+   if ((ctx->gfx_level == GFX11 || ctx->gfx_level == GFX11_5) && ctx->has_tessellation) {
       radeon_begin(cs);
       radeon_emit(PKT3(PKT3_EVENT_WRITE, 0, 0));
       radeon_emit(EVENT_TYPE(V_028A90_SQ_NON_EVENT) | EVENT_INDEX(0));
@@ -411,6 +411,7 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
       ctx->flags |= SI_CONTEXT_VGT_FLUSH;
 
    si_mark_atom_dirty(ctx, &ctx->atoms.s.cache_flush);
+   si_mark_atom_dirty(ctx, &ctx->atoms.s.spi_ge_ring_state);
 
    if (ctx->screen->attribute_ring) {
       radeon_add_to_buffer_list(ctx, &ctx->gfx_cs, ctx->screen->attribute_ring,
@@ -447,9 +448,10 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
       return;
    }
 
-   if (ctx->tess_rings) {
+   if (ctx->has_tessellation) {
       radeon_add_to_buffer_list(ctx, &ctx->gfx_cs,
-                                unlikely(is_secure) ? si_resource(ctx->tess_rings_tmz) : si_resource(ctx->tess_rings),
+                                unlikely(is_secure) ? si_resource(ctx->screen->tess_rings_tmz)
+                                                    : si_resource(ctx->screen->tess_rings),
                                 RADEON_USAGE_READWRITE | RADEON_PRIO_SHADER_RINGS);
    }
 
@@ -579,10 +581,11 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
 
    /* All buffer references are removed on a flush, so si_check_needs_implicit_sync
     * cannot determine if si_make_CB_shader_coherent() needs to be called.
-    * ctx->force_cb_shader_coherent will be cleared by the first call to
+    * ctx->force_shader_coherency.with_cb will be cleared by the first call to
     * si_make_CB_shader_coherent.
     */
-   ctx->force_cb_shader_coherent = true;
+   ctx->force_shader_coherency.with_cb = true;
+   ctx->force_shader_coherency.with_db = true;
 }
 
 void si_trace_emit(struct si_context *sctx)

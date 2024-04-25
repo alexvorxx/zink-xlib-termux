@@ -546,25 +546,7 @@ impl<'a> ShaderFromNir<'a> {
                 });
                 dst
             }
-            nir_op_bitfield_reverse => {
-                let dst = b.alloc_ssa(RegFile::GPR, 1);
-                if self.info.sm >= 70 {
-                    b.push_op(OpBRev {
-                        dst: dst.into(),
-                        src: srcs[0],
-                    });
-                } else {
-                    // No BREV in Maxwell
-                    b.push_op(OpBfe {
-                        dst: dst.into(),
-                        base: srcs[0],
-                        signed: false,
-                        range: Src::new_imm_u32(0x2000),
-                        reverse: true,
-                    });
-                }
-                dst
-            }
+            nir_op_bitfield_reverse => b.brev(srcs[0]),
             nir_op_ibitfield_extract | nir_op_ubitfield_extract => {
                 let range = b.alloc_ssa(RegFile::GPR, 1);
                 b.push_op(OpPrmt {
@@ -647,16 +629,12 @@ impl<'a> ShaderFromNir<'a> {
                 dst
             }
             nir_op_find_lsb => {
-                let tmp = b.alloc_ssa(RegFile::GPR, 1);
-                b.push_op(OpBRev {
-                    dst: tmp.into(),
-                    src: srcs[0],
-                });
+                let rev = b.brev(srcs[0]);
                 let dst = b.alloc_ssa(RegFile::GPR, 1);
                 b.push_op(OpFlo {
                     dst: dst.into(),
-                    src: tmp.into(),
-                    signed: alu.op == nir_op_ifind_msb,
+                    src: rev.into(),
+                    signed: false,
                     return_shift_amount: true,
                 });
                 dst
@@ -668,17 +646,39 @@ impl<'a> ShaderFromNir<'a> {
                 let src_type = FloatType::from_bits(src_bits);
                 let dst = b.alloc_ssa(RegFile::GPR, dst_bits.div_ceil(32));
                 let dst_is_signed = alu.info().output_type & 2 != 0;
-                b.push_op(OpF2I {
-                    dst: dst.into(),
-                    src: srcs[0],
-                    src_type: src_type,
-                    dst_type: IntType::from_bits(
-                        dst_bits.into(),
-                        dst_is_signed,
-                    ),
-                    rnd_mode: FRndMode::Zero,
-                    ftz: self.float_ctl[src_type].ftz,
-                });
+                let dst_type =
+                    IntType::from_bits(dst_bits.into(), dst_is_signed);
+                if b.sm() < 70 && dst_bits == 8 {
+                    // F2I doesn't support 8-bit destinations pre-Volta
+                    let tmp = b.alloc_ssa(RegFile::GPR, 1);
+                    let tmp_type = IntType::from_bits(32, dst_is_signed);
+                    b.push_op(OpF2I {
+                        dst: tmp.into(),
+                        src: srcs[0],
+                        src_type,
+                        dst_type: tmp_type,
+                        rnd_mode: FRndMode::Zero,
+                        ftz: self.float_ctl[src_type].ftz,
+                    });
+                    b.push_op(OpI2I {
+                        dst: dst.into(),
+                        src: tmp.into(),
+                        src_type: tmp_type,
+                        dst_type,
+                        saturate: true,
+                        abs: false,
+                        neg: false,
+                    });
+                } else {
+                    b.push_op(OpF2I {
+                        dst: dst.into(),
+                        src: srcs[0],
+                        src_type,
+                        dst_type,
+                        rnd_mode: FRndMode::Zero,
+                        ftz: self.float_ctl[src_type].ftz,
+                    });
+                }
                 dst
             }
             nir_op_fabs | nir_op_fadd | nir_op_fneg => {
@@ -1566,7 +1566,10 @@ impl<'a> ShaderFromNir<'a> {
             unsafe { std::mem::transmute_copy(&tex.backend_flags) };
 
         let mask = tex.def.components_read();
-        let mask = u8::try_from(mask).unwrap();
+        let mut mask = u8::try_from(mask).unwrap();
+        if flags.is_sparse() {
+            mask &= !(1 << (tex.def.num_components - 1));
+        }
 
         let dst_comps = u8::try_from(mask.count_ones()).unwrap();
         let dst = b.alloc_ssa(RegFile::GPR, dst_comps);
@@ -1580,8 +1583,15 @@ impl<'a> ShaderFromNir<'a> {
             dsts[0] = dst.into();
         }
 
+        let fault = if flags.is_sparse() {
+            b.alloc_ssa(RegFile::Pred, 1).into()
+        } else {
+            Dst::None
+        };
+
         if tex.op == nir_texop_hdr_dim_nv {
             let src = self.get_src(&srcs[0].src);
+            assert!(fault.is_none());
             b.push_op(OpTxq {
                 dsts: dsts,
                 src: src,
@@ -1590,6 +1600,7 @@ impl<'a> ShaderFromNir<'a> {
             });
         } else if tex.op == nir_texop_tex_type_nv {
             let src = self.get_src(&srcs[0].src);
+            assert!(fault.is_none());
             b.push_op(OpTxq {
                 dsts: dsts,
                 src: src,
@@ -1622,7 +1633,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(!flags.has_z_cmpr());
                 b.push_op(OpTxd {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     offset: offset_mode == Tld4OffsetMode::AddOffI,
@@ -1640,7 +1651,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(offset_mode != Tld4OffsetMode::PerPx);
                 b.push_op(OpTld {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     lod_mode: lod_mode,
@@ -1651,7 +1662,7 @@ impl<'a> ShaderFromNir<'a> {
             } else if tex.op == nir_texop_tg4 {
                 b.push_op(OpTld4 {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     comp: tex.component().try_into().unwrap(),
@@ -1663,7 +1674,7 @@ impl<'a> ShaderFromNir<'a> {
                 assert!(offset_mode != Tld4OffsetMode::PerPx);
                 b.push_op(OpTex {
                     dsts: dsts,
-                    resident: Dst::None,
+                    fault,
                     srcs: srcs,
                     dim: dim,
                     lod_mode: lod_mode,
@@ -1677,7 +1688,12 @@ impl<'a> ShaderFromNir<'a> {
         let mut di = 0_usize;
         let mut nir_dst = Vec::new();
         for i in 0..tex.def.num_components() {
-            if mask & (1 << i) == 0 {
+            if flags.is_sparse() && i == tex.def.num_components - 1 {
+                let Dst::SSA(fault) = fault else {
+                    panic!("No fault value for sparse op");
+                };
+                nir_dst.push(b.sel(fault.into(), 0.into(), 1.into())[0]);
+            } else if mask & (1 << i) == 0 {
                 nir_dst.push(b.copy(0.into())[0]);
             } else {
                 nir_dst.push(dst[di]);
@@ -1988,7 +2004,7 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.push_op(OpSuAtom {
                     dst: dst.into(),
-                    resident: Dst::None,
+                    fault: Dst::None,
                     handle: handle,
                     coord: coord,
                     data: data,
@@ -2015,7 +2031,7 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.push_op(OpSuLd {
                     dst: dst.into(),
-                    resident: Dst::None,
+                    fault: Dst::None,
                     image_dim: dim,
                     mem_order: MemOrder::Strong(MemScope::System),
                     mem_eviction_priority: self
@@ -2025,6 +2041,39 @@ impl<'a> ShaderFromNir<'a> {
                     coord: coord,
                 });
                 self.set_dst(&intrin.def, dst);
+            }
+            nir_intrinsic_bindless_image_sparse_load => {
+                let handle = self.get_src(&srcs[0]);
+                let dim = self.get_image_dim(intrin);
+                let coord = self.get_image_coord(intrin, dim);
+                // let sample = self.get_src(&srcs[2]);
+
+                let comps = intrin.num_components;
+                assert!(intrin.def.bit_size() == 32);
+                assert!(comps == 5);
+
+                let dst = b.alloc_ssa(RegFile::GPR, comps - 1);
+                let fault = b.alloc_ssa(RegFile::Pred, 1);
+
+                b.push_op(OpSuLd {
+                    dst: dst.into(),
+                    fault: fault.into(),
+                    image_dim: dim,
+                    mem_order: MemOrder::Strong(MemScope::System),
+                    mem_eviction_priority: self
+                        .get_eviction_priority(intrin.access()),
+                    mask: (1 << (comps - 1)) - 1,
+                    handle: handle,
+                    coord: coord,
+                });
+
+                let mut final_dst = Vec::new();
+                for i in 0..usize::from(comps) - 1 {
+                    final_dst.push(dst[i]);
+                }
+                final_dst.push(b.sel(fault.into(), 0.into(), 1.into())[0]);
+
+                self.set_ssa(&intrin.def, final_dst);
             }
             nir_intrinsic_bindless_image_store => {
                 let handle = self.get_src(&srcs[0]);
@@ -2706,6 +2755,11 @@ impl<'a> ShaderFromNir<'a> {
                     vote: dst.into(),
                     pred: src,
                 });
+                self.set_dst(&intrin.def, dst);
+            }
+            nir_intrinsic_is_sparse_texels_resident => {
+                let src = self.get_src(&srcs[0]);
+                let dst = b.isetp(IntCmpType::I32, IntCmpOp::Ne, src, 0.into());
                 self.set_dst(&intrin.def, dst);
             }
             _ => panic!(

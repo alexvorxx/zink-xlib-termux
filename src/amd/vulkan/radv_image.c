@@ -27,7 +27,6 @@
 
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
-#include "vulkan/util/vk_format.h"
 #include "ac_drm_fourcc.h"
 #include "radv_debug.h"
 #include "radv_private.h"
@@ -35,6 +34,7 @@
 #include "sid.h"
 #include "vk_format.h"
 #include "vk_render_pass.h"
+#include "vk_format.h"
 #include "vk_util.h"
 
 #include "gfx10_format_table.h"

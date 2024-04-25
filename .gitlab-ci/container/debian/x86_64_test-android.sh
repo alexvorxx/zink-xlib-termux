@@ -41,6 +41,7 @@ rm "$ndk.zip"
 ############### Build dEQP runner
 
 export ANDROID_NDK_HOME=/$ndk
+export RUST_TARGET=x86_64-linux-android
 . .gitlab-ci/container/build-rust.sh
 . .gitlab-ci/container/build-deqp-runner.sh
 

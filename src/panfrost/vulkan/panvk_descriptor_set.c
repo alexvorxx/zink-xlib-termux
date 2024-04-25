@@ -42,7 +42,7 @@
 #define PANVK_MAX_SAMPLERS (1 << 16)
 #define PANVK_MAX_UBOS     255
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetDescriptorSetLayoutSupport(
    VkDevice _device, const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
    VkDescriptorSetLayoutSupport *pSupport)
@@ -116,7 +116,7 @@ panvk_GetDescriptorSetLayoutSupport(
  * just multiple descriptor set layouts pasted together.
  */
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreatePipelineLayout(VkDevice _device,
                            const VkPipelineLayoutCreateInfo *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator,
@@ -203,7 +203,7 @@ panvk_CreatePipelineLayout(VkDevice _device,
    return VK_SUCCESS;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateDescriptorPool(VkDevice _device,
                            const VkDescriptorPoolCreateInfo *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator,
@@ -266,7 +266,7 @@ panvk_CreateDescriptorPool(VkDevice _device,
    return VK_SUCCESS;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyDescriptorPool(VkDevice _device, VkDescriptorPool _pool,
                             const VkAllocationCallbacks *pAllocator)
 {
@@ -277,7 +277,7 @@ panvk_DestroyDescriptorPool(VkDevice _device, VkDescriptorPool _pool,
       vk_object_free(&device->vk, pAllocator, pool);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_ResetDescriptorPool(VkDevice _device, VkDescriptorPool _pool,
                           VkDescriptorPoolResetFlags flags)
 {
@@ -291,19 +291,13 @@ panvk_descriptor_set_destroy(struct panvk_device *device,
                              struct panvk_descriptor_pool *pool,
                              struct panvk_descriptor_set *set)
 {
-   vk_free(&device->vk.alloc, set->textures);
-   vk_free(&device->vk.alloc, set->samplers);
-   vk_free(&device->vk.alloc, set->ubos);
-   vk_free(&device->vk.alloc, set->dyn_ubos);
-   vk_free(&device->vk.alloc, set->dyn_ssbos);
-   vk_free(&device->vk.alloc, set->img_fmts);
-   vk_free(&device->vk.alloc, set->img_attrib_bufs);
    if (set->desc_bo)
       panvk_priv_bo_destroy(set->desc_bo, NULL);
+
    vk_object_free(&device->vk, NULL, set);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_FreeDescriptorSets(VkDevice _device, VkDescriptorPool descriptorPool,
                          uint32_t count, const VkDescriptorSet *pDescriptorSets)
 {
@@ -317,22 +311,4 @@ panvk_FreeDescriptorSets(VkDevice _device, VkDescriptorPool descriptorPool,
          panvk_descriptor_set_destroy(device, pool, set);
    }
    return VK_SUCCESS;
-}
-
-VkResult
-panvk_CreateSamplerYcbcrConversion(
-   VkDevice device, const VkSamplerYcbcrConversionCreateInfo *pCreateInfo,
-   const VkAllocationCallbacks *pAllocator,
-   VkSamplerYcbcrConversion *pYcbcrConversion)
-{
-   panvk_stub();
-   return VK_SUCCESS;
-}
-
-void
-panvk_DestroySamplerYcbcrConversion(VkDevice device,
-                                    VkSamplerYcbcrConversion ycbcrConversion,
-                                    const VkAllocationCallbacks *pAllocator)
-{
-   panvk_stub();
 }

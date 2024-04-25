@@ -50,10 +50,12 @@
 #include "util/macros.h"
 #include "vk_alloc.h"
 #include "vk_buffer.h"
+#include "vk_buffer_view.h"
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_descriptor_set_layout.h"
 #include "vk_device.h"
+#include "vk_device_memory.h"
 #include "vk_image.h"
 #include "vk_instance.h"
 #include "vk_log.h"
@@ -61,6 +63,7 @@
 #include "vk_physical_device.h"
 #include "vk_pipeline_layout.h"
 #include "vk_queue.h"
+#include "vk_sampler.h"
 #include "vk_sync.h"
 #include "wsi_common.h"
 
@@ -95,11 +98,9 @@ typedef uint32_t xcb_window_t;
 #define MAX_VERTEX_ATTRIBS          16
 #define MAX_RTS                     8
 #define MAX_VSC_PIPES               32
-#define MAX_VIEWPORTS               1
 #define MAX_SCISSORS                16
 #define MAX_DISCARD_RECTANGLES      4
 #define MAX_PUSH_CONSTANTS_SIZE     128
-#define MAX_PUSH_DESCRIPTORS        32
 #define MAX_DYNAMIC_UNIFORM_BUFFERS 16
 #define MAX_DYNAMIC_STORAGE_BUFFERS 8
 #define MAX_DYNAMIC_BUFFERS                                                    \
@@ -209,8 +210,6 @@ struct panvk_physical_device {
       const struct panfrost_format *all;
    } formats;
 
-   struct panvk_instance *instance;
-
    char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
    uint8_t driver_uuid[VK_UUID_SIZE];
    uint8_t device_uuid[VK_UUID_SIZE];
@@ -223,6 +222,12 @@ struct panvk_physical_device {
 
    int master_fd;
 };
+
+static inline struct panvk_physical_device *
+to_panvk_physical_device(struct vk_physical_device *phys_dev)
+{
+   return container_of(phys_dev, struct panvk_physical_device, vk);
+}
 
 enum panvk_debug_flags {
    PANVK_DEBUG_STARTUP = 1 << 0,
@@ -247,6 +252,12 @@ struct panvk_instance {
    } kmod;
 };
 
+static inline struct panvk_instance *
+to_panvk_instance(struct vk_instance *instance)
+{
+   return container_of(instance, struct panvk_instance, vk);
+}
+
 VkResult panvk_wsi_init(struct panvk_physical_device *physical_device);
 void panvk_wsi_finish(struct panvk_physical_device *physical_device);
 
@@ -256,16 +267,10 @@ bool
 panvk_physical_device_extension_supported(struct panvk_physical_device *dev,
                                           const char *name);
 
-struct panvk_pipeline_cache {
-   struct vk_object_base base;
-   VkAllocationCallbacks alloc;
-};
-
 #define PANVK_MAX_QUEUE_FAMILIES 1
 
 struct panvk_queue {
    struct vk_queue vk;
-   struct panvk_device *device;
    uint32_t sync;
 };
 
@@ -285,30 +290,18 @@ struct panvk_device {
 
    struct vk_device_dispatch_table cmd_dispatch;
 
-   struct panvk_instance *instance;
-
    struct panvk_queue *queues[PANVK_MAX_QUEUE_FAMILIES];
    int queue_count[PANVK_MAX_QUEUE_FAMILIES];
-
-   struct panvk_physical_device *physical_device;
 
    struct {
       struct pandecode_context *decode_ctx;
    } debug;
-
-   int _lost;
 };
 
-VkResult _panvk_device_set_lost(struct panvk_device *device, const char *file,
-                                int line, const char *msg, ...)
-   PRINTFLIKE(4, 5);
-#define panvk_device_set_lost(dev, ...)                                        \
-   _panvk_device_set_lost(dev, __FILE__, __LINE__, __VA_ARGS__)
-
-static inline bool
-panvk_device_is_lost(struct panvk_device *device)
+static inline struct panvk_device *
+to_panvk_device(struct vk_device *dev)
 {
-   return unlikely(p_atomic_read(&device->_lost));
+   return container_of(dev, struct panvk_device, vk);
 }
 
 #define TILER_DESC_WORDS 56
@@ -319,7 +312,7 @@ struct panvk_batch {
    struct util_dynarray event_ops;
    struct pan_jc jc;
    struct {
-      const struct panvk_framebuffer *info;
+      const struct vk_framebuffer *info;
       struct panfrost_ptr desc;
    } fb;
    struct {
@@ -337,19 +330,19 @@ struct panvk_batch {
    bool issued;
 };
 
-enum panvk_event_op_type {
+enum panvk_cmd_event_op_type {
    PANVK_EVENT_OP_SET,
    PANVK_EVENT_OP_RESET,
    PANVK_EVENT_OP_WAIT,
 };
 
-struct panvk_event_op {
-   enum panvk_event_op_type type;
+struct panvk_cmd_event_op {
+   enum panvk_cmd_event_op_type type;
    struct panvk_event *event;
 };
 
 struct panvk_device_memory {
-   struct vk_object_base base;
+   struct vk_device_memory vk;
    struct pan_kmod_bo *bo;
    struct {
       mali_ptr dev;
@@ -768,7 +761,7 @@ struct panvk_cmd_state {
 
    const struct panvk_render_pass *pass;
    const struct panvk_subpass *subpass;
-   const struct panvk_framebuffer *framebuffer;
+   const struct vk_framebuffer *framebuffer;
    VkRect2D render_area;
 
    struct panvk_clear_value *clear;
@@ -795,20 +788,14 @@ struct panvk_cmd_bind_point_state {
 struct panvk_cmd_buffer {
    struct vk_command_buffer vk;
 
-   struct panvk_device *device;
-
    struct panvk_pool desc_pool;
    struct panvk_pool varying_pool;
    struct panvk_pool tls_pool;
    struct list_head batches;
 
-   VkCommandBufferUsageFlags usage_flags;
-
    struct panvk_cmd_state state;
 
    uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
-   VkShaderStageFlags push_constant_stages;
-   struct panvk_descriptor_set meta_push_descriptors;
 
    struct panvk_cmd_bind_point_state bind_points[MAX_BIND_POINTS];
 };
@@ -829,9 +816,6 @@ void panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf);
 void panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
-
-void panvk_pack_color(struct panvk_clear_value *out,
-                      const VkClearColorValue *in, enum pipe_format format);
 
 struct panvk_event {
    struct vk_object_base base;
@@ -975,9 +959,6 @@ struct panvk_image {
    struct pan_image pimage;
 };
 
-unsigned panvk_image_get_plane_size(const struct panvk_image *image,
-                                    unsigned plane);
-
 unsigned panvk_image_get_total_size(const struct panvk_image *image);
 
 #define TEXTURE_DESC_WORDS    8
@@ -998,34 +979,21 @@ struct panvk_image_view {
 #define SAMPLER_DESC_WORDS 8
 
 struct panvk_sampler {
-   struct vk_object_base base;
+   struct vk_sampler vk;
    uint32_t desc[SAMPLER_DESC_WORDS];
 };
 
 struct panvk_buffer_view {
-   struct vk_object_base base;
+   struct vk_buffer_view vk;
    struct panvk_priv_bo *bo;
    struct {
       uint32_t tex[TEXTURE_DESC_WORDS];
       uint32_t img_attrib_buf[ATTRIB_BUF_DESC_WORDS * 2];
    } descs;
-   enum pipe_format fmt;
-   uint32_t elems;
 };
 
 struct panvk_attachment_info {
    struct panvk_image_view *iview;
-};
-
-struct panvk_framebuffer {
-   struct vk_object_base base;
-
-   uint32_t width;
-   uint32_t height;
-   uint32_t layers;
-
-   uint32_t attachment_count;
-   struct panvk_attachment_info attachments[0];
 };
 
 struct panvk_clear_value {
@@ -1094,7 +1062,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_cmd_pool, vk.base, VkCommandPool,
                                VK_OBJECT_TYPE_COMMAND_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer, vk.base, VkBuffer,
                                VK_OBJECT_TYPE_BUFFER)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer_view, base, VkBufferView,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer_view, vk.base, VkBufferView,
                                VK_OBJECT_TYPE_BUFFER_VIEW)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_pool, base, VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)
@@ -1103,24 +1071,20 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set, base, VkDescriptorSet,
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
                                VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, base, VkDeviceMemory,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_framebuffer, base, VkFramebuffer,
-                               VK_OBJECT_TYPE_FRAMEBUFFER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
                                VK_OBJECT_TYPE_IMAGE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView,
                                VK_OBJECT_TYPE_IMAGE_VIEW);
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_cache, base, VkPipelineCache,
-                               VK_OBJECT_TYPE_PIPELINE_CACHE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
                                VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_render_pass, base, VkRenderPass,
                                VK_OBJECT_TYPE_RENDER_PASS)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, base, VkSampler,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, vk.base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
 
 #define panvk_arch_name(name, version) panvk_##version##_##name

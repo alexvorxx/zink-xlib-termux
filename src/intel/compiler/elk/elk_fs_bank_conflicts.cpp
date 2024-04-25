@@ -592,21 +592,6 @@ namespace {
    }
 
    /**
-    * Return whether the hardware will be able to prevent a bank conflict by
-    * optimizing out the read cycle of a source register.  The formula was
-    * found experimentally.
-    */
-   bool
-   is_conflict_optimized_out(const intel_device_info *devinfo,
-                             const elk_fs_inst *inst)
-   {
-      return devinfo->ver >= 9 &&
-         ((is_grf(inst->src[0]) && (reg_of(inst->src[0]) == reg_of(inst->src[1]) ||
-                                    reg_of(inst->src[0]) == reg_of(inst->src[2]))) ||
-          reg_of(inst->src[1]) == reg_of(inst->src[2]));
-   }
-
-   /**
     * Return a matrix that allows reasonably efficient computation of the
     * cycle-count cost of bank conflicts incurred throughout the whole program
     * for any given atom-to-bank assignment.
@@ -662,10 +647,9 @@ namespace {
                                                                     REG_SIZE);
 
             /* Neglect same-atom conflicts (since they're either trivial or
-             * impossible to avoid without splitting the atom), and conflicts
-             * known to be optimized out by the hardware.
+             * impossible to avoid without splitting the atom).
              */
-            if (r != s && !is_conflict_optimized_out(v->devinfo, inst)) {
+            if (r != s) {
                /* Calculate the parity of the sources relative to the start of
                 * their respective atoms.  If their parity is the same (and
                 * none of the atoms straddle the 2KB mark), the instruction
@@ -911,10 +895,6 @@ elk_fs_visitor::opt_bank_conflicts()
 {
    assert(grf_used || !"Must be called after register allocation");
 
-   /* TODO: Re-work this pass for Gfx20+. */
-   if (devinfo->ver >= 20)
-      return false;
-
    /* No ternary instructions -- No bank conflicts. */
    if (devinfo->ver < 6)
       return false;
@@ -950,6 +930,5 @@ elk_has_bank_conflict(const struct elk_isa_info *isa, const elk_fs_inst *inst)
 {
    return elk_is_3src(isa, inst->opcode) &&
           is_grf(inst->src[1]) && is_grf(inst->src[2]) &&
-          bank_of(reg_of(inst->src[1])) == bank_of(reg_of(inst->src[2])) &&
-          !is_conflict_optimized_out(isa->devinfo, inst);
+          bank_of(reg_of(inst->src[1])) == bank_of(reg_of(inst->src[2]));
 }

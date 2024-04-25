@@ -246,19 +246,10 @@ compile_shader(struct anv_device *device,
 }
 
 VkResult
-anv_device_init_internal_kernels(struct anv_device *device)
+anv_device_get_internal_shader(struct anv_device *device,
+                               enum anv_internal_kernel_name name,
+                               struct anv_shader_bin **out_bin)
 {
-   const struct intel_l3_weights w =
-      intel_get_default_l3_weights(device->info,
-                                   true /* wants_dc_cache */,
-                                   false /* needs_slm */);
-   device->internal_kernels_l3_config = intel_get_l3_config(device->info, w);
-
-   void *mem_ctx = ralloc_context(NULL);
-
-   nir_shader *libanv_shaders =
-      anv_genX(device->info, load_libanv_shader)(device, mem_ctx);
-
    const struct {
       struct {
          char name[40];
@@ -313,38 +304,63 @@ anv_device_init_internal_kernels(struct anv_device *device)
       },
    };
 
-   VkResult result = VK_SUCCESS;
-   for (uint32_t i = 0; i < ARRAY_SIZE(internal_kernels); i++) {
-      device->internal_kernels[i] =
-         anv_device_search_for_kernel(device,
-                                      device->internal_cache,
-                                      &internal_kernels[i].key,
-                                      sizeof(internal_kernels[i].key),
-                                      NULL);
-      if (device->internal_kernels[i] == NULL) {
-         device->internal_kernels[i] =
-            compile_shader(device,
-                           libanv_shaders,
-                           i,
-                           internal_kernels[i].stage,
-                           internal_kernels[i].key.name,
-                           &internal_kernels[i].key,
-                           sizeof(internal_kernels[i].key),
-                           internal_kernels[i].send_count);
-      }
-      if (device->internal_kernels[i] == NULL) {
-         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-         goto error;
-      }
-
-      /* The cache already has a reference and it's not going anywhere so
-       * there is no need to hold a second reference.
-       */
-      anv_shader_bin_unref(device, device->internal_kernels[i]);
+   struct anv_shader_bin *bin =
+      p_atomic_read(&device->internal_kernels[name]);
+   if (bin != NULL) {
+      *out_bin = bin;
+      return VK_SUCCESS;
    }
 
- error:
-   return result;
+   bin =
+      anv_device_search_for_kernel(device,
+                                   device->internal_cache,
+                                   &internal_kernels[name].key,
+                                   sizeof(internal_kernels[name].key),
+                                   NULL);
+   if (bin != NULL) {
+      p_atomic_set(&device->internal_kernels[name], bin);
+      *out_bin = bin;
+      return VK_SUCCESS;
+   }
+
+   void *mem_ctx = ralloc_context(NULL);
+
+   nir_shader *libanv_shaders =
+      anv_genX(device->info, load_libanv_shader)(device, mem_ctx);
+
+   bin = compile_shader(device,
+                        libanv_shaders,
+                        name,
+                        internal_kernels[name].stage,
+                        internal_kernels[name].key.name,
+                        &internal_kernels[name].key,
+                        sizeof(internal_kernels[name].key),
+                        internal_kernels[name].send_count);
+   if (bin == NULL)
+      return vk_errorf(device, VK_ERROR_OUT_OF_HOST_MEMORY,
+                       "Unable to compiler internal kernel");
+
+   /* The cache already has a reference and it's not going anywhere so
+    * there is no need to hold a second reference.
+    */
+   anv_shader_bin_unref(device, bin);
+
+   p_atomic_set(&device->internal_kernels[name], bin);
+
+   *out_bin = bin;
+   return VK_SUCCESS;
+}
+
+VkResult
+anv_device_init_internal_kernels(struct anv_device *device)
+{
+   const struct intel_l3_weights w =
+      intel_get_default_l3_weights(device->info,
+                                   true /* wants_dc_cache */,
+                                   false /* needs_slm */);
+   device->internal_kernels_l3_config = intel_get_l3_config(device->info, w);
+
+   return VK_SUCCESS;
 }
 
 void

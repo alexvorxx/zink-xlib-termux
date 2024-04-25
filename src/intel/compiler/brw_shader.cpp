@@ -294,9 +294,16 @@ fs_inst::is_commutative() const
    case BRW_OPCODE_XOR:
    case BRW_OPCODE_ADD:
    case BRW_OPCODE_ADD3:
-   case BRW_OPCODE_MUL:
    case SHADER_OPCODE_MULH:
       return true;
+
+   case BRW_OPCODE_MUL:
+      /* Integer multiplication of dword and word sources is not actually
+       * commutative. The DW source must be first.
+       */
+      return !brw_reg_type_is_integer(src[0].type) ||
+             type_sz(src[0].type) == type_sz(src[1].type);
+
    case BRW_OPCODE_SEL:
       /* MIN and MAX are commutative. */
       if (conditional_mod == BRW_CONDITIONAL_GE ||

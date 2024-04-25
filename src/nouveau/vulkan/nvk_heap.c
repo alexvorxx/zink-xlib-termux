@@ -55,7 +55,10 @@ nvk_heap_finish(struct nvk_device *dev, struct nvk_heap *heap)
          nouveau_ws_bo_unbind_vma(dev->ws_dev, heap->bos[bo_idx].addr,
                                   heap->bos[bo_idx].bo->size);
       }
-      nouveau_ws_bo_unmap(heap->bos[bo_idx].bo, heap->bos[bo_idx].map);
+      if (heap->map_flags) {
+         assert(heap->bos[bo_idx].map);
+         nouveau_ws_bo_unmap(heap->bos[bo_idx].bo, heap->bos[bo_idx].map);
+      }
       nouveau_ws_bo_destroy(heap->bos[bo_idx].bo);
    }
 

@@ -1375,11 +1375,11 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
       for (uint32_t i = partition[p]; i < partition[p + 1]; i++) {
          struct vk_pipeline_stage *stage = &stages[i];
 
-         if (stage->shader == NULL) {
-            shader_key.stage = stage->stage;
-            vk_shader_init_cache_obj(device, shaders[i], &shader_key,
-                                     sizeof(shader_key));
+         shader_key.stage = stage->stage;
+         vk_shader_init_cache_obj(device, shaders[i], &shader_key,
+                                  sizeof(shader_key));
 
+         if (stage->shader == NULL) {
             struct vk_pipeline_cache_object *cache_obj =
                &shaders[i]->pipeline.cache_obj;
             if (cache != NULL)
@@ -1395,7 +1395,8 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
             assert(memcmp(&stage->shader->pipeline.cache_key,
                           &shaders[i]->pipeline.cache_key,
                           sizeof(shaders[i]->pipeline.cache_key)) == 0);
-            vk_shader_destroy(device, shaders[i], &device->alloc);
+
+            vk_shader_unref(device, shaders[i]);
          }
 
          stage_feedbacks[stage->stage].duration += part_end - part_start;

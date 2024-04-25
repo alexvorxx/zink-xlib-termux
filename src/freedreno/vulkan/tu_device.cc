@@ -38,6 +38,7 @@
 #include "tu_image.h"
 #include "tu_pass.h"
 #include "tu_query.h"
+#include "tu_rmv.h"
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"
 
@@ -163,11 +164,15 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_image_format_list = true,
       .KHR_imageless_framebuffer = true,
       .KHR_incremental_present = TU_HAS_SURFACE,
+      .KHR_index_type_uint8 = true,
+      .KHR_line_rasterization = true,
+      .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
       .KHR_maintenance2 = true,
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
+      .KHR_map_memory2 = true,
       .KHR_multiview = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .KHR_performance_query = TU_DEBUG(PERFC),
       .KHR_pipeline_executable_properties = true,
@@ -210,6 +215,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_timeline_semaphore = true,
       .KHR_uniform_buffer_standard_layout = true,
       .KHR_variable_pointers = true,
+      .KHR_vertex_attribute_divisor = true,
       .KHR_vulkan_memory_model = true,
       .KHR_zero_initialize_workgroup_memory = true,
 
@@ -307,7 +313,7 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->depthBiasClamp = true;
    features->fillModeNonSolid = true;
    features->depthBounds = true;
-   features->wideLines = false;
+   features->wideLines = pdevice->info->a6xx.line_width_max > 1.0;
    features->largePoints = true;
    features->alphaToOne = true;
    features->multiViewport = true;
@@ -421,34 +427,73 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->shaderIntegerDotProduct             = true;
    features->maintenance4                        = true;
 
-   /* VK_EXT_conditional_rendering */
-   features->conditionalRendering = true;
-   features->inheritedConditionalRendering = true;
-
-   /* VK_EXT_transform_feedback */
-   features->transformFeedback = true;
-   features->geometryStreams = true;
-
-   /* VK_EXT_index_type_uint8 */
+   /* VK_KHR_index_type_uint8 */
    features->indexTypeUint8 = true;
-   /* VK_EXT_vertex_attribute_divisor */
+
+   /* VK_KHR_line_rasterization */
+   features->rectangularLines = true;
+   features->bresenhamLines = true;
+   features->smoothLines = false;
+   features->stippledRectangularLines = false;
+   features->stippledBresenhamLines = false;
+   features->stippledSmoothLines = false;
+
+   /* VK_KHR_maintenance5 */
+   features->maintenance5 = true;
+
+   /* VK_KHR_performance_query */
+   features->performanceCounterQueryPools = true;
+   features->performanceCounterMultipleQueryPools = false;
+
+   /* VK_KHR_pipeline_executable_properties */
+   features->pipelineExecutableInfo = true;
+
+   /* VK_KHR_present_id */
+   features->presentId = pdevice->vk.supported_extensions.KHR_present_id;
+
+   /* VK_KHR_present_wait */
+   features->presentWait = pdevice->vk.supported_extensions.KHR_present_wait;
+
+   /* VK_KHR_shader_expect_assume */
+   features->shaderExpectAssume = true;
+
+   /* VK_KHR_vertex_attribute_divisor */
    features->vertexAttributeInstanceRateDivisor = true;
    features->vertexAttributeInstanceRateZeroDivisor = true;
-
-   /* VK_EXT_depth_clip_enable */
-   features->depthClipEnable = true;
 
    /* VK_EXT_4444_formats */
    features->formatA4R4G4B4 = true;
    features->formatA4B4G4R4 = true;
 
+   /* VK_EXT_attachment_feedback_loop_layout */
+   features->attachmentFeedbackLoopLayout = true;
+
    /* VK_EXT_border_color_swizzle */
    features->borderColorSwizzle = true;
    features->borderColorSwizzleFromImage = true;
 
+   /* VK_EXT_color_write_enable */
+   features->colorWriteEnable = true;
+
+   /* VK_EXT_conditional_rendering */
+   features->conditionalRendering = true;
+   features->inheritedConditionalRendering = true;
+
    /* VK_EXT_custom_border_color */
    features->customBorderColors = true;
    features->customBorderColorWithoutFormat = true;
+
+   /* VK_EXT_depth_clip_control */
+   features->depthClipControl = true;
+
+   /* VK_EXT_depth_clip_enable */
+   features->depthClipEnable = true;
+
+   /* VK_EXT_descriptor_buffer */
+   features->descriptorBuffer = true;
+   features->descriptorBufferCaptureReplay = pdevice->has_set_iova;
+   features->descriptorBufferImageLayoutIgnored = true;
+   features->descriptorBufferPushDescriptors = true;
 
    /* VK_EXT_extended_dynamic_state */
    features->extendedDynamicState = true;
@@ -491,105 +536,67 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->extendedDynamicState3RepresentativeFragmentTestEnable = false;
    features->extendedDynamicState3ColorBlendAdvanced = false;
 
-   /* VK_KHR_performance_query */
-   features->performanceCounterQueryPools = true;
-   features->performanceCounterMultipleQueryPools = false;
+   /* VK_EXT_fragment_density_map */
+   features->fragmentDensityMap = true;
+   features->fragmentDensityMapDynamic = false;
+   features->fragmentDensityMapNonSubsampledImages = true;
 
-   /* VK_KHR_pipeline_executable_properties */
-   features->pipelineExecutableInfo = true;
+   /* VK_EXT_global_priority_query */
+   features->globalPriorityQuery = true;
 
-   /* VK_EXT_robustness2 */
-   features->robustBufferAccess2 = true;
-   features->robustImageAccess2 = true;
-   features->nullDescriptor = true;
+   /* VK_EXT_graphics_pipeline_library */
+   features->graphicsPipelineLibrary = true;
 
-   /* VK_EXT_provoking_vertex */
-   features->provokingVertexLast = true;
+   /* VK_EXT_image_2d_view_of_3d  */
+   features->image2DViewOf3D = true;
+   features->sampler2DViewOf3D = true;
+
+   /* VK_EXT_image_view_min_lod */
+   features->minLod = true;
+
+   /* VK_EXT_multi_draw */
+   features->multiDraw = true;
 
    /* VK_EXT_mutable_descriptor_type */
    features->mutableDescriptorType = true;
 
-   /* VK_EXT_line_rasterization */
-   features->rectangularLines = true;
-   features->bresenhamLines = true;
-   features->smoothLines = false;
-   features->stippledRectangularLines = false;
-   features->stippledBresenhamLines = false;
-   features->stippledSmoothLines = false;
+   /* VK_EXT_non_seamless_cube_map */
+   features->nonSeamlessCubeMap = true;
 
    /* VK_EXT_primitive_topology_list_restart */
    features->primitiveTopologyListRestart = true;
    features->primitiveTopologyPatchListRestart = false;
-
-   /* VK_EXT_rasterization_order_attachment_access */
-   features->rasterizationOrderColorAttachmentAccess = true;
-   features->rasterizationOrderDepthAttachmentAccess = true;
-   features->rasterizationOrderStencilAttachmentAccess = true;
-
-   /* VK_EXT_depth_clip_control */
-   features->depthClipControl = true;
-
-   /* VK_EXT_texel_buffer_alignment */
-   features->texelBufferAlignment = true;
 
    /* VK_EXT_primitives_generated_query */
    features->primitivesGeneratedQuery = true;
    features->primitivesGeneratedQueryWithRasterizerDiscard = false;
    features->primitivesGeneratedQueryWithNonZeroStreams = false;
 
-   /* VK_EXT_image_view_min_lod */
-   features->minLod = true;
+   /* VK_EXT_provoking_vertex */
+   features->provokingVertexLast = true;
 
-   /* VK_EXT_image_2d_view_of_3d  */
-   features->image2DViewOf3D = true;
-   features->sampler2DViewOf3D = true;
+   /* VK_EXT_rasterization_order_attachment_access */
+   features->rasterizationOrderColorAttachmentAccess = true;
+   features->rasterizationOrderDepthAttachmentAccess = true;
+   features->rasterizationOrderStencilAttachmentAccess = true;
 
-   /* VK_EXT_color_write_enable */
-   features->colorWriteEnable = true;
+   /* VK_EXT_robustness2 */
+   features->robustBufferAccess2 = true;
+   features->robustImageAccess2 = true;
+   features->nullDescriptor = true;
 
    /* VK_EXT_shader_module_identifier */
    features->shaderModuleIdentifier = true;
 
+   /* VK_EXT_texel_buffer_alignment */
+   features->texelBufferAlignment = true;
+
+   /* VK_EXT_transform_feedback */
+   features->transformFeedback = true;
+   features->geometryStreams = true;
+
    /* VK_EXT_vertex_input_dynamic_state */
    features->vertexInputDynamicState = true;
-
-   /* VK_EXT_non_seamless_cube_map */
-   features->nonSeamlessCubeMap = true;
-
-   /* VK_EXT_attachment_feedback_loop_layout */
-   features->attachmentFeedbackLoopLayout = true;
-
-   /* VK_EXT_global_priority_query */
-   features->globalPriorityQuery = true;
-
-   /* VK_EXT_multi_draw */
-   features->multiDraw = true;
-
-   /* VK_EXT_graphics_pipeline_library */
-   features->graphicsPipelineLibrary = true;
-
-   /* VK_KHR_present_id */
-   features->presentId = pdevice->vk.supported_extensions.KHR_present_id;
-
-   /* VK_KHR_present_wait */
-   features->presentWait = pdevice->vk.supported_extensions.KHR_present_wait;
-
-   /* VK_EXT_descriptor_buffer */
-   features->descriptorBuffer = true;
-   features->descriptorBufferCaptureReplay = pdevice->has_set_iova;
-   features->descriptorBufferImageLayoutIgnored = true;
-   features->descriptorBufferPushDescriptors = true;
-
-   /* VK_EXT_fragment_density_map */
-   features->fragmentDensityMap = true;
-   features->fragmentDensityMapDynamic = false;
-   features->fragmentDensityMapNonSubsampledImages = true;
-
-   /* VK_KHR_maintenance5 */
-   features->maintenance5 = true;
-
-   /* VK_KHR_shader_expect_assume */
-   features->shaderExpectAssume = true;
 }
 
 static void
@@ -894,10 +901,11 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->discreteQueuePriorities = 2;
    props->pointSizeRange[0] = 1;
    props->pointSizeRange[1] = 4092;
-   props->lineWidthRange[0] = 
-      props->lineWidthRange[1] = 1.0;
+   props->lineWidthRange[0] = pdevice->info->a6xx.line_width_min;
+   props->lineWidthRange[1] = pdevice->info->a6xx.line_width_max;
    props->pointSizeGranularity = 	0.0625;
-   props->lineWidthGranularity = 0.0;
+   props->lineWidthGranularity =
+      pdevice->info->a6xx.line_width_max == 1.0 ? 1.0 : 0.5;
    props->strictLines = true;
    props->standardSampleLocations = true;
    props->optimalBufferCopyOffsetAlignment = 128;
@@ -955,6 +963,7 @@ tu_get_properties(struct tu_physical_device *pdevice,
 
    /* VK_KHR_vertex_attribute_divisor */
    props->maxVertexAttribDivisor = UINT32_MAX;
+   props->supportsNonZeroFirstInstance = true;
    
    /* VK_EXT_custom_border_color */
    props->maxCustomBorderColorSamplers = TU_BORDER_COLOR_COUNT;
@@ -972,7 +981,7 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->provokingVertexModePerPipeline = true;
    props->transformFeedbackPreservesTriangleFanProvokingVertex = false;
 
-   /* VK_EXT_line_rasterization */
+   /* VK_KHR_line_rasterization */
   props->lineSubPixelPrecisionBits = 8;
   
    /* VK_EXT_physical_device_drm */
@@ -1618,7 +1627,7 @@ tu_trace_create_ts_buffer(struct u_trace_context *utctx, uint32_t size)
       container_of(utctx, struct tu_device, trace_context);
 
    struct tu_bo *bo;
-   tu_bo_init_new(device, &bo, size, TU_BO_ALLOC_NO_FLAGS, "trace");
+   tu_bo_init_new(device, &bo, size, TU_BO_ALLOC_INTERNAL_RESOURCE, "trace");
 
    return bo;
 }
@@ -2136,8 +2145,16 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       return vk_startup_errorf(physical_device->instance, VK_ERROR_OUT_OF_HOST_MEMORY, "OOM");
 
    struct vk_device_dispatch_table dispatch_table;
+   bool override_initial_entrypoints = true;
+
+   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
+      vk_device_dispatch_table_from_entrypoints(
+         &dispatch_table, &tu_rmv_device_entrypoints, true);
+      override_initial_entrypoints = false;
+   }
+
    vk_device_dispatch_table_from_entrypoints(
-      &dispatch_table, &tu_device_entrypoints, true);
+      &dispatch_table, &tu_device_entrypoints, override_initial_entrypoints);
 
    switch (fd_dev_gen(&physical_device->dev_id)) {
    case 6:
@@ -2195,6 +2212,9 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    if (TU_DEBUG(BOS))
       device->bo_sizes = _mesa_hash_table_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
+
+   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
+      tu_memory_trace_init(device);
 
    /* kgsl is not a drm device: */
    if (!is_kgsl(physical_device->instance))
@@ -2277,16 +2297,24 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    tu_bo_suballocator_init(
       &device->pipeline_suballoc, device, 128 * 1024,
-      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_GPU_READ_ONLY | TU_BO_ALLOC_ALLOW_DUMP), "pipeline_suballoc");
+      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_GPU_READ_ONLY |
+                                TU_BO_ALLOC_ALLOW_DUMP |
+                                TU_BO_ALLOC_INTERNAL_RESOURCE),
+      "pipeline_suballoc");
    tu_bo_suballocator_init(&device->autotune_suballoc, device,
-                           128 * 1024, TU_BO_ALLOC_NO_FLAGS, "autotune_suballoc");
+                           128 * 1024, TU_BO_ALLOC_INTERNAL_RESOURCE,
+                           "autotune_suballoc");
    if (is_kgsl(physical_device->instance)) {
       tu_bo_suballocator_init(&device->kgsl_profiling_suballoc, device,
-                              128 * 1024, TU_BO_ALLOC_NO_FLAGS, "kgsl_profiling_suballoc");
+                              128 * 1024, TU_BO_ALLOC_INTERNAL_RESOURCE,
+                              "kgsl_profiling_suballoc");
    }
 
-   result = tu_bo_init_new(device, &device->global_bo, global_size,
-                           TU_BO_ALLOC_ALLOW_DUMP, "global");
+   result = tu_bo_init_new(
+      device, &device->global_bo, global_size,
+      (enum tu_bo_alloc_flags) (TU_BO_ALLOC_ALLOW_DUMP |
+                                TU_BO_ALLOC_INTERNAL_RESOURCE),
+      "global");
    if (result != VK_SUCCESS) {
       vk_startup_errorf(device->instance, result, "BO init");
       goto fail_global_bo;
@@ -2487,6 +2515,7 @@ fail_dynamic_rendering:
 fail_empty_shaders:
    tu_destroy_clear_blit_shaders(device);
 fail_global_bo_map:
+   TU_RMV(resource_destroy, device, device->global_bo);
    tu_bo_finish(device, device->global_bo);
    vk_free(&device->vk.alloc, device->bo_list);
 fail_global_bo:
@@ -2517,6 +2546,8 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    if (!device)
       return;
+
+   tu_memory_trace_finish(device);
 
    if (FD_RD_DUMP(ENABLE))
       fd_rd_output_fini(&device->rd_output);
@@ -2632,7 +2663,7 @@ tu_get_scratch_bo(struct tu_device *dev, uint64_t size, struct tu_bo **bo)
 
    unsigned bo_size = 1ull << size_log2;
    VkResult result = tu_bo_init_new(dev, &dev->scratch_bos[index].bo, bo_size,
-                                    TU_BO_ALLOC_NO_FLAGS, "scratch");
+                                    TU_BO_ALLOC_INTERNAL_RESOURCE, "scratch");
    if (result != VK_SUCCESS) {
       mtx_unlock(&dev->scratch_bos[index].construct_mtx);
       return result;
@@ -2803,6 +2834,8 @@ tu_AllocateMemory(VkDevice _device,
       mem->image = NULL;
    }
 
+   TU_RMV(heap_create, device, pAllocateInfo, mem);
+
    *pMem = tu_device_memory_to_handle(mem);
 
    return VK_SUCCESS;
@@ -2819,21 +2852,18 @@ tu_FreeMemory(VkDevice _device,
    if (mem == NULL)
       return;
 
+   TU_RMV(resource_destroy, device, mem);
+
    p_atomic_add(&device->physical_device->heap.used, -mem->bo->size);
    tu_bo_finish(device, mem->bo);
    vk_object_free(&device->vk, pAllocator, mem);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-tu_MapMemory(VkDevice _device,
-             VkDeviceMemory _memory,
-             VkDeviceSize offset,
-             VkDeviceSize size,
-             VkMemoryMapFlags flags,
-             void **ppData)
+tu_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, void **ppData)
 {
    TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_device_memory, mem, _memory);
+   TU_FROM_HANDLE(tu_device_memory, mem, pMemoryMapInfo->memory);
    VkResult result;
 
    if (mem == NULL) {
@@ -2847,14 +2877,15 @@ tu_MapMemory(VkDevice _device,
          return result;
    }
 
-   *ppData = (char *) mem->bo->map + offset;
+   *ppData = (char *) mem->bo->map + pMemoryMapInfo->offset;
    return VK_SUCCESS;
 }
 
-VKAPI_ATTR void VKAPI_CALL
-tu_UnmapMemory(VkDevice _device, VkDeviceMemory _memory)
+VKAPI_ATTR VkResult VKAPI_CALL
+tu_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInfo)
 {
    /* TODO: unmap here instead of waiting for FreeMemory */
+   return VK_SUCCESS;
 }
 
 static void
@@ -2933,6 +2964,8 @@ tu_BindBufferMemory2(VkDevice device,
       } else {
          buffer->bo = NULL;
       }
+
+      TU_RMV(buffer_bind, dev, buffer);
    }
    return VK_SUCCESS;
 }
@@ -2968,6 +3001,8 @@ tu_BindImageMemory2(VkDevice _device,
          image->map = NULL;
          image->iova = 0;
       }
+
+      TU_RMV(image_bind, device, image);
    }
 
    return VK_SUCCESS;
@@ -3005,6 +3040,8 @@ tu_CreateEvent(VkDevice _device,
    if (result != VK_SUCCESS)
       goto fail_map;
 
+   TU_RMV(event_create, device, pCreateInfo, event);
+
    *pEvent = tu_event_to_handle(event);
 
    return VK_SUCCESS;
@@ -3026,6 +3063,8 @@ tu_DestroyEvent(VkDevice _device,
 
    if (!event)
       return;
+
+   TU_RMV(resource_destroy, device, event);
 
    tu_bo_finish(device, event->bo);
    vk_object_free(&device->vk, pAllocator, event);
@@ -3077,6 +3116,8 @@ tu_CreateBuffer(VkDevice _device,
    if (buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   TU_RMV(buffer_create, device, buffer);
+
    *pBuffer = tu_buffer_to_handle(buffer);
 
    return VK_SUCCESS;
@@ -3092,6 +3133,8 @@ tu_DestroyBuffer(VkDevice _device,
 
    if (!buffer)
       return;
+
+   TU_RMV(buffer_destroy, device, buffer);
 
    vk_buffer_destroy(&device->vk, pAllocator, &buffer->vk);
 }

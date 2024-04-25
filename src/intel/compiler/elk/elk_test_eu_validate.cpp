@@ -2228,8 +2228,7 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
       elk_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
       elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
-      if (devinfo.platform == INTEL_PLATFORM_CHV ||
-          intel_device_info_is_9lp(&devinfo)) {
+      if (devinfo.platform == INTEL_PLATFORM_CHV) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2361,8 +2360,7 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
       elk_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
       elk_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
-      if (devinfo.platform == INTEL_PLATFORM_CHV ||
-          intel_device_info_is_9lp(&devinfo)) {
+      if (devinfo.platform == INTEL_PLATFORM_CHV) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2513,7 +2511,6 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
        * of DWord multiplication cannot be the accumulator.
        */
       if (devinfo.platform == INTEL_PLATFORM_CHV ||
-          intel_device_info_is_9lp(&devinfo) ||
           (devinfo.ver == 8 &&
            inst[i].opcode == ELK_OPCODE_MUL &&
            elk_inst_dst_reg_file(&devinfo, last_inst) == ELK_ARCHITECTURE_REGISTER_FILE &&
@@ -2533,8 +2530,7 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
    elk_MAC(p, retype(g0, ELK_REGISTER_TYPE_DF),
               retype(stride(g0, 4, 4, 1), ELK_REGISTER_TYPE_DF),
               retype(stride(g0, 4, 4, 1), ELK_REGISTER_TYPE_DF));
-   if (devinfo.platform == INTEL_PLATFORM_CHV ||
-       intel_device_info_is_9lp(&devinfo)) {
+   if (devinfo.platform == INTEL_PLATFORM_CHV) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -2736,8 +2732,7 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
       elk_inst_set_no_dd_check(&devinfo, last_inst, inst[i].no_dd_check);
       elk_inst_set_no_dd_clear(&devinfo, last_inst, inst[i].no_dd_clear);
 
-      if (devinfo.platform == INTEL_PLATFORM_CHV ||
-          intel_device_info_is_9lp(&devinfo)) {
+      if (devinfo.platform == INTEL_PLATFORM_CHV) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));

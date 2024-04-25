@@ -346,8 +346,10 @@ dri2_create_image_from_renderbuffer2(__DRIcontext *context,
     * it's in a shareable state. Do this now while we still have the access to
     * the context.
     */
-   if (dri2_get_mapping_by_format(img->dri_format))
+   if (dri2_get_mapping_by_format(img->dri_format)) {
       p_ctx->flush_resource(p_ctx, tex);
+      st_context_flush(st, 0, NULL, NULL, NULL);
+   }
 
    ctx->Shared->HasExternallySharedImages = true;
    *error = __DRI_IMAGE_ERROR_SUCCESS;
@@ -455,8 +457,10 @@ dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
     * it's in a shareable state. Do this now while we still have the access to
     * the context.
     */
-   if (dri2_get_mapping_by_format(img->dri_format))
+   if (dri2_get_mapping_by_format(img->dri_format)) {
       p_ctx->flush_resource(p_ctx, glimg->pt);
+      st_context_flush(st, 0, NULL, NULL, NULL);
+   }
 
    ctx->Shared->HasExternallySharedImages = true;
    *error = __DRI_IMAGE_ERROR_SUCCESS;

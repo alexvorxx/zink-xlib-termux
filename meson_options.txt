@@ -679,6 +679,13 @@ option(
 )
 
 option(
+  'gallium-d3d12-graphics',
+  type : 'feature',
+  value : 'auto',
+  description : 'build gallium d3d12 with graphics pipeline support.',
+)
+
+option(
   'radv-build-id',
   type : 'string',
   value : '',
@@ -703,11 +710,4 @@ option(
   description : 'Build custom xmlconfig (driconf) support. If disabled, ' +
                 'the default driconf file is hardcoded into Mesa. ' +
                 'Requires expat.'
-)
-
-option (
-  'intel-xe-kmd',
-  type : 'feature',
-  value : 'disabled',
-  description: 'Enable Intel Xe KMD support.'
 )

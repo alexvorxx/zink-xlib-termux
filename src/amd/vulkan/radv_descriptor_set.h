@@ -26,8 +26,8 @@
 
 #include "radv_constants.h"
 
-#include "vulkan/runtime/vk_descriptor_set_layout.h"
-#include "vulkan/runtime/vk_object.h"
+#include "vk_descriptor_set_layout.h"
+#include "vk_object.h"
 
 #include <vulkan/vulkan.h>
 

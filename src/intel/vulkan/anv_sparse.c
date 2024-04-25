@@ -609,48 +609,11 @@ anv_sparse_bind_vm_bind(struct anv_device *device,
                         struct anv_sparse_submission *submit)
 {
    struct anv_queue *queue = submit->queue;
-   VkResult result;
 
    if (!queue)
       assert(submit->wait_count == 0 && submit->signal_count == 0);
 
-   /* TODO: make both the syncs and signals be passed as part of the vm_bind
-    * ioctl so they can be waited asynchronously. For now this doesn't matter
-    * as we're doing synchronous vm_bind, but later when we make it async this
-    * will make a difference.
-    */
-   result = vk_sync_wait_many(&device->vk, submit->wait_count, submit->waits,
-                              VK_SYNC_WAIT_COMPLETE, INT64_MAX);
-   if (result != VK_SUCCESS)
-      return vk_queue_set_lost(&queue->vk, "vk_sync_wait failed");
-
-   /* FIXME: here we were supposed to issue a single vm_bind ioctl by calling
-    * vm_bind(device, num_binds, binds), but for an unknown reason some
-    * shader-related tests fail when we do that, so work around it for now.
-    * See: https://gitlab.freedesktop.org/drm/xe/kernel/-/issues/746
-    */
-   for (int b = 0; b < submit->binds_len; b++) {
-      struct anv_sparse_submission s = {
-         .queue = submit->queue,
-         .binds = &submit->binds[b],
-         .binds_len = 1,
-         .binds_capacity = 1,
-         .wait_count = 0,
-         .signal_count = 0,
-      };
-      int rc = device->kmd_backend->vm_bind(device, &s);
-      if (rc)
-         return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-   }
-
-   for (uint32_t i = 0; i < submit->signal_count; i++) {
-      struct vk_sync_signal *s = &submit->signals[i];
-      result = vk_sync_signal(&device->vk, s->sync, s->signal_value);
-      if (result != VK_SUCCESS)
-         return vk_queue_set_lost(&queue->vk, "vk_sync_signal failed");
-   }
-
-   return VK_SUCCESS;
+   return device->kmd_backend->vm_bind(device, submit);
 }
 
 VkResult
@@ -662,7 +625,7 @@ anv_sparse_bind(struct anv_device *device,
          dump_anv_vm_bind(device, &submit->binds[b]);
    }
 
-   return device->physical->sparse_uses_trtt ?
+   return device->physical->sparse_type == ANV_SPARSE_TYPE_TRTT ?
             anv_sparse_bind_trtt(device, submit) :
             anv_sparse_bind_vm_bind(device, submit);
 }
@@ -677,7 +640,7 @@ anv_init_sparse_bindings(struct anv_device *device,
 {
    uint64_t size = align64(size_, ANV_SPARSE_BLOCK_SIZE);
 
-   if (device->physical->sparse_uses_trtt)
+   if (device->physical->sparse_type == ANV_SPARSE_TYPE_TRTT)
       alloc_flags |= ANV_BO_ALLOC_TRTT;
 
    sparse->address = anv_vma_alloc(device, size, ANV_SPARSE_BLOCK_SIZE,

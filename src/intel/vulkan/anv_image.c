@@ -1874,7 +1874,7 @@ VkResult anv_CreateImage(
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
 
-   if (!device->physical->has_sparse &&
+   if ((device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) &&
        INTEL_DEBUG(DEBUG_SPARSE) &&
        pCreateInfo->flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
                              VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT |
@@ -2084,7 +2084,7 @@ void anv_GetDeviceImageMemoryRequirements(
    ANV_FROM_HANDLE(anv_device, device, _device);
    struct anv_image image = { 0 };
 
-   if (!device->physical->has_sparse &&
+   if ((device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) &&
        INTEL_DEBUG(DEBUG_SPARSE) &&
        pInfo->pCreateInfo->flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
                                     VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT |
@@ -2194,7 +2194,8 @@ void anv_GetImageSparseMemoryRequirements2(
    ANV_FROM_HANDLE(anv_image, image, pInfo->image);
 
    if (!anv_sparse_residency_is_enabled(device)) {
-      if (!device->physical->has_sparse && INTEL_DEBUG(DEBUG_SPARSE))
+      if ((device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) &&
+          INTEL_DEBUG(DEBUG_SPARSE))
          fprintf(stderr, "=== [%s:%d] [%s]\n", __FILE__, __LINE__, __func__);
 
       *pSparseMemoryRequirementCount = 0;
@@ -2216,7 +2217,8 @@ void anv_GetDeviceImageSparseMemoryRequirements(
    struct anv_image image = { 0 };
 
    if (!anv_sparse_residency_is_enabled(device)) {
-      if (!device->physical->has_sparse && INTEL_DEBUG(DEBUG_SPARSE))
+      if ((device->physical->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) &&
+          INTEL_DEBUG(DEBUG_SPARSE))
          fprintf(stderr, "=== [%s:%d] [%s]\n", __FILE__, __LINE__, __func__);
 
       *pSparseMemoryRequirementCount = 0;
@@ -3673,8 +3675,7 @@ anv_fill_buffer_view_surface_state(struct anv_device *device,
 {
    anv_fill_buffer_surface_state(device,
                                  state->state_data.data,
-                                 format, swizzle,
-                                 ISL_SURF_USAGE_TEXTURE_BIT,
+                                 format, swizzle, usage,
                                  address, range, stride);
 
    if (state->state.map)

@@ -366,7 +366,6 @@ elk_compile_tcs(const struct elk_compiler *compiler,
    const unsigned *assembly;
 
    vue_prog_data->base.stage = MESA_SHADER_TESS_CTRL;
-   prog_data->base.base.ray_queries = nir->info.ray_queries;
    prog_data->base.base.total_scratch = 0;
 
    nir->info.outputs_written = key->outputs_written;
@@ -391,21 +390,12 @@ elk_compile_tcs(const struct elk_compiler *compiler,
    elk_postprocess_nir(nir, compiler, debug_enabled,
                        key->base.robust_flags);
 
-   bool has_primitive_id =
-      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID);
-
    prog_data->patch_count_threshold = elk::get_patch_count_threshold(key->input_vertices);
 
-   if (compiler->use_tcs_multi_patch) {
-      vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_MULTI_PATCH;
-      prog_data->instances = nir->info.tess.tcs_vertices_out;
-      prog_data->include_primitive_id = has_primitive_id;
-   } else {
-      unsigned verts_per_thread = is_scalar ? 8 : 2;
-      vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH;
-      prog_data->instances =
-         DIV_ROUND_UP(nir->info.tess.tcs_vertices_out, verts_per_thread);
-   }
+   unsigned verts_per_thread = is_scalar ? 8 : 2;
+   vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH;
+   prog_data->instances =
+      DIV_ROUND_UP(nir->info.tess.tcs_vertices_out, verts_per_thread);
 
    /* Compute URB entry size.  The maximum allowed URB entry size is 32k.
     * That divides up as follows:
@@ -448,7 +438,7 @@ elk_compile_tcs(const struct elk_compiler *compiler,
    }
 
    if (is_scalar) {
-      const unsigned dispatch_width = devinfo->ver >= 20 ? 16 : 8;
+      const unsigned dispatch_width = 8;
       elk_fs_visitor v(compiler, &params->base, &key->base,
                    &prog_data->base.base, nir, dispatch_width,
                    params->base.stats != NULL, debug_enabled);

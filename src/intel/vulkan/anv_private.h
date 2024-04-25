@@ -1013,14 +1013,18 @@ struct anv_physical_device {
     /** True if we can create protected contexts. */
     bool                                        has_protected_contexts;
 
-    /** Whether the i915 driver has the ability to create VM objects */
+    /** Whether KMD has the ability to create VM objects */
     bool                                        has_vm_control;
 
     /** True if we have the means to do sparse binding (e.g., a Kernel driver
      * a vm_bind ioctl).
      */
-    bool                                        has_sparse;
-    bool                                        sparse_uses_trtt;
+    enum anv_sparse_type {
+      ANV_SPARSE_TYPE_NOT_SUPPORTED = 0,
+      ANV_SPARSE_TYPE_VM_BIND,
+      ANV_SPARSE_TYPE_TRTT,
+      ANV_SPARSE_TYPE_FAKE,
+    } sparse_type;
 
     /** True if HW supports ASTC LDR */
     bool                                        has_astc_ldr;
@@ -1201,6 +1205,9 @@ struct anv_physical_device {
     void (*cmd_emit_timestamp)(struct anv_batch *, struct anv_device *, struct anv_address,
                                enum anv_timestamp_capture_type, void *);
     struct intel_measure_device                 measure_device;
+
+    /* Value of PIPELINE_SELECT::PipelineSelection == GPGPU */
+    uint32_t                                    gpgpu_pipeline_value;
 };
 
 static inline uint32_t
@@ -2013,10 +2020,12 @@ VkResult anv_device_map_bo(struct anv_device *device,
                            struct anv_bo *bo,
                            uint64_t offset,
                            size_t size,
+                           void *placed_addr,
                            void **map_out);
-void anv_device_unmap_bo(struct anv_device *device,
-                         struct anv_bo *bo,
-                         void *map, size_t map_size);
+VkResult anv_device_unmap_bo(struct anv_device *device,
+                             struct anv_bo *bo,
+                             void *map, size_t map_size,
+                             bool replace);
 VkResult anv_device_import_bo_from_host_ptr(struct anv_device *device,
                                             void *host_ptr, uint32_t size,
                                             enum anv_bo_alloc_flags alloc_flags,
@@ -2097,10 +2106,6 @@ anv_queue_post_submit(struct anv_queue *queue, VkResult submit_result)
    return result;
 }
 
-void *
-anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-             uint64_t size);
-void anv_gem_munmap(struct anv_device *device, void *p, uint64_t size);
 int anv_gem_wait(struct anv_device *device, uint32_t gem_handle, int64_t *timeout_ns);
 int anv_gem_set_tiling(struct anv_device *device, uint32_t gem_handle,
                        uint32_t stride, uint32_t tiling);
@@ -3100,6 +3105,8 @@ enum anv_pipe_bits {
     */
    ANV_PIPE_CCS_CACHE_FLUSH_BIT              = (1 << 17),
 
+   ANV_PIPE_TLB_INVALIDATE_BIT               = (1 << 18),
+
    ANV_PIPE_CS_STALL_BIT                     = (1 << 20),
    ANV_PIPE_END_OF_PIPE_SYNC_BIT             = (1 << 21),
 
@@ -3663,6 +3670,8 @@ struct anv_cmd_state {
    struct anv_cmd_ray_tracing_state             rt;
 
    enum anv_pipe_bits                           pending_pipe_bits;
+   const char *                                 pc_reasons[4];
+   uint32_t                                     pc_reasons_count;
 
    /**
     * Whether the last programmed STATE_BASE_ADDRESS references
@@ -3988,6 +3997,13 @@ anv_cmd_buffer_is_blitter_queue(const struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_queue_family *queue_family = cmd_buffer->queue_family;
    return queue_family->engine_class == INTEL_ENGINE_CLASS_COPY;
+}
+
+static inline bool
+anv_cmd_buffer_is_render_or_compute_queue(const struct anv_cmd_buffer *cmd_buffer)
+{
+   return anv_cmd_buffer_is_render_queue(cmd_buffer) ||
+          anv_cmd_buffer_is_compute_queue(cmd_buffer);
 }
 
 static inline struct anv_address
@@ -5831,6 +5847,12 @@ anv_add_pending_pipe_bits(struct anv_cmd_buffer* cmd_buffer,
       anv_dump_pipe_bits(bits, stdout);
       fprintf(stdout, "reason: %s\n", reason);
    }
+   /* store reason, if space available*/
+   if (cmd_buffer->state.pc_reasons_count <
+       ARRAY_SIZE(cmd_buffer->state.pc_reasons)) {
+      cmd_buffer->state.pc_reasons[
+         cmd_buffer->state.pc_reasons_count++] = reason;
+   }
 }
 
 struct anv_performance_configuration_intel {
@@ -5865,6 +5887,9 @@ struct anv_memcpy_state {
 
 VkResult anv_device_init_internal_kernels(struct anv_device *device);
 void anv_device_finish_internal_kernels(struct anv_device *device);
+VkResult anv_device_get_internal_shader(struct anv_device *device,
+                                        enum anv_internal_kernel_name name,
+                                        struct anv_shader_bin **out_bin);
 
 VkResult anv_device_init_astc_emu(struct anv_device *device);
 void anv_device_finish_astc_emu(struct anv_device *device);

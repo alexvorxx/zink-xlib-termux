@@ -840,7 +840,7 @@ tu6_update_msaa_disable(struct tu_cmd_buffer *cmd)
        cmd->state.shaders[MESA_SHADER_TESS_EVAL]->variant &&
        cmd->state.shaders[MESA_SHADER_TESS_EVAL]->variant->key.tessellation == IR3_TESS_ISOLINES);
    bool msaa_disable = is_line &&
-      cmd->vk.dynamic_graphics_state.rs.line.mode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
+      cmd->vk.dynamic_graphics_state.rs.line.mode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_KHR;
 
    if (cmd->state.msaa_disable != msaa_disable) {
       cmd->state.msaa_disable = msaa_disable;
@@ -2238,7 +2238,7 @@ tu_cmd_buffer_begin(struct tu_cmd_buffer *cmd_buffer,
    vk_command_buffer_begin(&cmd_buffer->vk, pBeginInfo);
 
    memset(&cmd_buffer->state, 0, sizeof(cmd_buffer->state));
-   cmd_buffer->vk.dynamic_graphics_state = vk_default_dynamic_graphics_state;
+   vk_dynamic_graphics_state_init(&cmd_buffer->vk.dynamic_graphics_state);
    cmd_buffer->vk.dynamic_graphics_state.vi = &cmd_buffer->state.vi;
    cmd_buffer->vk.dynamic_graphics_state.ms.sample_locations = &cmd_buffer->state.sl;
    cmd_buffer->state.index_size = 0xff; /* dirty restart index */
@@ -2451,7 +2451,7 @@ tu_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
       index_size = INDEX4_SIZE_32_BIT;
       index_shift = 2;
       break;
-   case VK_INDEX_TYPE_UINT8_EXT:
+   case VK_INDEX_TYPE_UINT8_KHR:
       index_size = INDEX4_SIZE_8_BIT;
       index_shift = 0;
       break;
@@ -3158,6 +3158,17 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    tu_bind_tes(cmd, pipeline->shaders[MESA_SHADER_TESS_EVAL]);
    tu_bind_gs(cmd, pipeline->shaders[MESA_SHADER_GEOMETRY]);
    tu_bind_fs(cmd, pipeline->shaders[MESA_SHADER_FRAGMENT]);
+
+   /* We precompile static state and count it as dynamic, so we have to
+    * manually clear bitset that tells which dynamic state is set, in order to
+    * make sure that future dynamic state will be emitted. The issue is that
+    * framework remembers only a past REAL dynamic state and compares a new
+    * dynamic state against it, and not against our static state masquaraded
+    * as dynamic.
+    */
+   BITSET_ANDNOT(cmd->vk.dynamic_graphics_state.set,
+                 cmd->vk.dynamic_graphics_state.set,
+                 pipeline->static_state_mask);
 
    vk_cmd_set_dynamic_graphics_state(&cmd->vk,
                                      &gfx_pipeline->dynamic_state);

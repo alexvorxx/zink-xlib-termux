@@ -501,11 +501,11 @@ Vulkan 1.3 -- all DONE: anv, lvp, nvk, radv, tu, vn
 
 Khronos extensions that are not part of any Vulkan version:
 
-  VK_KHR_acceleration_structure                         DONE (anv/gfx12.5+, radv/gfx10.3+)
+  VK_KHR_acceleration_structure                         DONE (anv/gfx12.5+, lvp, radv/gfx10.3+)
   VK_KHR_android_surface                                not started
   VK_KHR_calibrated_timestamps                          DONE (anv, radv)
   VK_KHR_cooperative_matrix                             DONE (anv, radv/gfx11+)
-  VK_KHR_deferred_host_operations                       DONE (anv, hasvk, radv)
+  VK_KHR_deferred_host_operations                       DONE (anv, hasvk, lvp, radv)
   VK_KHR_display                                        DONE (anv, nvk, pvr, radv, tu, v3dv)
   VK_KHR_display_swapchain                              not started
   VK_KHR_dynamic_rendering_local_read                   DONE (lvp)
@@ -516,14 +516,14 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_external_semaphore_fd                          DONE (anv, dzn, hasvk, nvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_external_semaphore_win32                       DONE (dzn)
   VK_KHR_fragment_shader_barycentric                    DONE (nvk/Turing+, radv/gfx10.3+)
-  VK_KHR_fragment_shading_rate                          DONE (anv/gen11+, radv/gfx10.3+)
+  VK_KHR_fragment_shading_rate                          DONE (anv/gen11+, radv/gfx10.3+, vn)
   VK_KHR_get_display_properties2                        DONE (anv, nvk, pvr, radv, tu, v3dv)
   VK_KHR_get_surface_capabilities2                      DONE (anv, lvp, nvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_global_priority                                DONE (anv, radv, tu)
   VK_KHR_incremental_present                            DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
-  VK_KHR_index_type_uint8                               DONE (anv, nvk, radv)
-  VK_KHR_line_rasterization                             DONE (anv, nvk, radv)
-  VK_KHR_load_store_op_none                             DONE (anv, nvk, radv)
+  VK_KHR_index_type_uint8                               DONE (anv, nvk, radv, tu, v3dv)
+  VK_KHR_line_rasterization                             DONE (anv, nvk, radv, tu, v3dv)
+  VK_KHR_load_store_op_none                             DONE (anv, nvk, radv, tu, v3dv)
   VK_KHR_maintenance5                                   DONE (anv, lvp, nvk, radv, tu)
   VK_KHR_maintenance6                                   DONE (anv, lvp)
   VK_KHR_performance_query                              DONE (anv, radv/gfx10.3+, tu, v3dv)
@@ -531,7 +531,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_pipeline_library                               DONE (anv, lvp, nvk, radv, tu, vn)
   VK_KHR_present_wait                                   DONE (anv, nvk, radv, tu, x11/display)
   VK_KHR_push_descriptor                                DONE (anv, hasvk, lvp, nvk, radv, tu, vn)
-  VK_KHR_ray_query                                      DONE (anv/gfx12.5+, radv/gfx10.3+)
+  VK_KHR_ray_query                                      DONE (anv/gfx12.5+, lvp, radv/gfx10.3+)
   VK_KHR_ray_tracing_maintenance1                       DONE (anv/gfx12.5+, radv/gfx10.3+)
   VK_KHR_ray_tracing_pipeline                           DONE (anv/gfx12.5+, radv/gfx10.3+)
   VK_KHR_ray_tracing_position_fetch                     DONE (anv, radv/gfx10.3+)
@@ -539,14 +539,14 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_shader_expect_assume                           DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_shader_maximal_reconvergence                   DONE (lvp, radv)
   VK_KHR_shader_subgroup_rotate                         DONE (anv, radv)
-  VK_KHR_shader_subgroup_uniform_control_flow           DONE (anv, hasvk, radv)
+  VK_KHR_shader_subgroup_uniform_control_flow           DONE (anv, hasvk, nvk, radv)
   VK_KHR_shader_quad_control                            DONE (radv)
   VK_KHR_shared_presentable_image                       not started
   VK_KHR_surface                                        DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_surface_protected_capabilities                 DONE (anv, lvp, nvk, radv, v3dv, vn)
   VK_KHR_swapchain                                      DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_swapchain_mutable_format                       DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
-  VK_KHR_vertex_attribute_divisor                       DONE (anv, radv)
+  VK_KHR_vertex_attribute_divisor                       DONE (anv, nvk, radv, tu, v3dv)
   VK_KHR_wayland_surface                                DONE (anv, dzn, lvp, nvk, panvk, radv, tu, v3dv, vn)
   VK_KHR_workgroup_memory_explicit_layout               DONE (anv, nvk, hasvk, radv, v3dv)
   VK_KHR_win32_keyed_mutex                              not started
@@ -555,7 +555,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_xlib_surface                                   DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_acquire_xlib_display                           DONE (anv, lvp, nvk, radv, tu, v3dv)
   VK_EXT_attachment_feedback_loop_dynamic_state         DONE (anv, lvp, radv)
-  VK_EXT_attachment_feedback_loop_layout                DONE (anv, lvp, nvk, radv, tu, v3dv)
+  VK_EXT_attachment_feedback_loop_layout                DONE (anv, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_border_color_swizzle                           DONE (anv, hasvk, lvp, nvk, radv/gfx10+, tu, v3dv, vn)
   VK_EXT_buffer_device_address                          DONE (anv, hasvk, nvk, radv)
   VK_EXT_calibrated_timestamps                          DONE (anv, hasvk, lvp, radv, vn)
@@ -659,7 +659,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_EXT_swapchain_colorspace                           DONE (radv, anv, tu)
   VK_EXT_depth_clamp_zero_one                           DONE (anv, radv)
   VK_INTEL_shader_integer_functions2                    DONE (anv, hasvk, radv)
-  VK_KHR_map_memory2                                    DONE (anv, nvk, radv)
+  VK_KHR_map_memory2                                    DONE (anv, nvk, radv, tu)
 
 
 
@@ -962,7 +962,7 @@ Rusticl extensions that are not part of any OpenCL version:
   cl_khr_subgroup_rotate                                not started
   cl_khr_subgroup_shuffle                               DONE (iris, llvmpipe, radeonsi)
   cl_khr_subgroup_shuffle_relative                      DONE (iris, llvmpipe, radeonsi)
-  cl_khr_suggested_local_work_size                      not started
+  cl_khr_suggested_local_work_size                      DONE
   cl_khr_terminate_context                              not started
   cl_khr_throttle_hints                                 not started
   cl_khr_work_group_uniform_arithmetic                  not started

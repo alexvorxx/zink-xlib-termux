@@ -427,8 +427,6 @@ public:
    bool last_rt:1;
    bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
    bool keep_payload_trailing_zeros;
-
-   tgl_swsb sched; /**< Scheduling info. */
 };
 
 /**
@@ -575,8 +573,7 @@ is_send(const elk_fs_inst *inst)
 static inline bool
 is_unordered(const intel_device_info *devinfo, const elk_fs_inst *inst)
 {
-   return is_send(inst) || (devinfo->ver < 20 && inst->is_math()) ||
-          inst->opcode == ELK_OPCODE_DPAS ||
+   return is_send(inst) || inst->is_math() ||
           (devinfo->has_64bit_float_via_math_pipe &&
            (get_exec_type(inst) == ELK_REGISTER_TYPE_DF ||
             inst->dst.type == ELK_REGISTER_TYPE_DF));
@@ -614,12 +611,7 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
 
    if (type_sz(dst_type) > 4 || type_sz(exec_type) > 4 ||
        (type_sz(exec_type) == 4 && is_dword_multiply))
-      return devinfo->platform == INTEL_PLATFORM_CHV ||
-             intel_device_info_is_9lp(devinfo) ||
-             devinfo->verx10 >= 125;
-
-   else if (elk_reg_type_is_floating_point(dst_type))
-      return devinfo->verx10 >= 125;
+      return devinfo->platform == INTEL_PLATFORM_CHV;
 
    else
       return false;

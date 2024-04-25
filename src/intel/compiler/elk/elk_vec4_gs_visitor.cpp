@@ -597,7 +597,6 @@ elk_compile_gs(const struct elk_compiler *compiler,
    const bool debug_enabled = elk_should_print_shader(nir, DEBUG_GS);
 
    prog_data->base.base.stage = MESA_SHADER_GEOMETRY;
-   prog_data->base.base.ray_queries = nir->info.ray_queries;
    prog_data->base.base.total_scratch = 0;
 
    /* The GLSL linker will have already matched up GS inputs and the outputs

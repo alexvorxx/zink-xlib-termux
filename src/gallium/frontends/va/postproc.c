@@ -690,6 +690,13 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
          return VA_STATUS_SUCCESS;
    }
 
+   /* Some devices may be media only (PIPE_VIDEO_ENTRYPOINT_PROCESSING with video engine)
+    * and won't have shader support
+    */
+   if (!drv->vscreen->pscreen->get_param(drv->vscreen->pscreen, PIPE_CAP_GRAPHICS) &&
+       !drv->vscreen->pscreen->get_param(drv->vscreen->pscreen, PIPE_CAP_COMPUTE))
+      return VA_STATUS_ERROR_UNSUPPORTED_ENTRYPOINT;
+
    vlVaSetProcParameters(drv, src_surface, dst_surface, param);
 
    /* Try other post proc implementations */

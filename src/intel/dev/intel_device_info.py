@@ -237,7 +237,6 @@ Struct("intel_device_info",
                comment="Driver internal numbers used to differentiate platforms."),
 
         Member("int", "verx10", compiler_field=True),
-        Member("int", "display_ver"),
 
         Member("int", "revision", compiler_field=True,
                comment=dedent("""\

@@ -184,17 +184,9 @@ unsigned
 elk_reg_type_to_a16_hw_3src_type(const struct intel_device_info *devinfo,
                                  enum elk_reg_type type);
 
-unsigned
-elk_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
-                                enum elk_reg_type type);
-
 enum elk_reg_type
 elk_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
                                  unsigned hw_type);
-
-enum elk_reg_type
-elk_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
-                                unsigned hw_type, unsigned exec_type);
 
 unsigned
 elk_reg_type_to_size(enum elk_reg_type type);

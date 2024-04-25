@@ -194,7 +194,7 @@ emit_bpermute(isel_context* ctx, Builder& bld, Temp index, Temp data)
       ctx->options->gfx_level >= GFX10 && ctx->options->gfx_level < GFX11 &&
       ctx->program->wave_size == 64 &&
       (ctx->program->info.has_epilog || ctx->program->info.merged_shader_compiled_separately ||
-       ctx->stage == raytracing_cs);
+       ctx->program->info.vs.has_prolog || ctx->stage == raytracing_cs);
 
    if (ctx->options->gfx_level <= GFX7 || avoid_shared_vgprs) {
       /* GFX6-7: there is no bpermute instruction */
@@ -759,7 +759,7 @@ get_alu_src(struct isel_context* ctx, nir_alu_src src, unsigned size = 1)
       vec_instr->definitions[0] = Definition(dst);
       ctx->block->instructions.emplace_back(std::move(vec_instr));
       ctx->allocated_vec.emplace(dst.id(), elems);
-      return vec.type() == RegType::sgpr ? Builder(ctx->program, ctx->block).as_uniform(dst) : dst;
+      return as_uniform ? Builder(ctx->program, ctx->block).as_uniform(dst) : dst;
    }
 }
 
@@ -6095,8 +6095,11 @@ emit_mimg(Builder& bld, aco_opcode op, Temp dst, Temp rsrc, Operand samp, std::v
    mimg->operands[0] = Operand(rsrc);
    mimg->operands[1] = samp;
    mimg->operands[2] = vdata;
-   for (unsigned i = 0; i < coords.size(); i++)
+   for (unsigned i = 0; i < coords.size(); i++) {
       mimg->operands[3 + i] = Operand(coords[i]);
+      if (coords[i].regClass().is_linear_vgpr())
+         mimg->operands[3 + i].setLateKill(true);
+   }
    mimg->strict_wqm = strict_wqm;
 
    MIMG_instruction* res = mimg.get();
@@ -8475,7 +8478,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
       Temp delta = get_ssa_temp(ctx, instr->src[1].ssa);
       Temp dst = get_ssa_temp(ctx, &instr->def);
-      assert(nir_intrinsic_execution_scope(instr) == SCOPE_SUBGROUP);
       assert(instr->def.bit_size > 1 && instr->def.bit_size <= 32);
 
       if (!nir_src_is_divergent(instr->src[0])) {
@@ -9272,7 +9274,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_strict_wqm_coord_amd: {
       Temp dst = get_ssa_temp(ctx, &instr->def);
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
-      Temp tmp = bld.tmp(RegClass::get(RegType::vgpr, dst.bytes()));
       unsigned begin_size = nir_intrinsic_base(instr);
 
       unsigned num_src = 1;
@@ -9281,7 +9282,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          num_src = src.bytes() / it->second[0].bytes();
 
       aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
-         aco_opcode::p_create_vector, Format::PSEUDO, num_src + !!begin_size, 1)};
+         aco_opcode::p_start_linear_vgpr, Format::PSEUDO, num_src + !!begin_size, 1)};
 
       if (begin_size)
          vec->operands[0] = Operand(RegClass::get(RegType::vgpr, begin_size));
@@ -9290,10 +9291,8 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          vec->operands[i + !!begin_size] = Operand(comp);
       }
 
-      vec->definitions[0] = Definition(tmp);
+      vec->definitions[0] = Definition(dst);
       ctx->block->instructions.emplace_back(std::move(vec));
-
-      bld.pseudo(aco_opcode::p_start_linear_vgpr, Definition(dst), tmp);
       break;
    }
    case nir_intrinsic_load_lds_ngg_scratch_base_amd: {
@@ -9309,11 +9308,13 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    }
    case nir_intrinsic_store_scalar_arg_amd: {
+      BITSET_SET(ctx->output_args, nir_intrinsic_base(instr));
       ctx->arg_temps[nir_intrinsic_base(instr)] =
          bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
       break;
    }
    case nir_intrinsic_store_vector_arg_amd: {
+      BITSET_SET(ctx->output_args, nir_intrinsic_base(instr));
       ctx->arg_temps[nir_intrinsic_base(instr)] =
          as_vgpr(ctx, get_ssa_temp(ctx, instr->src[0].ssa));
       break;
@@ -10324,8 +10325,11 @@ visit_block(isel_context* ctx, nir_block* block)
 {
    if (ctx->block->kind & block_kind_top_level) {
       Builder bld(ctx->program, ctx->block);
-      for (Temp tmp : ctx->unended_linear_vgprs)
-         bld.pseudo(aco_opcode::p_end_linear_vgpr, tmp);
+      for (Temp tmp : ctx->unended_linear_vgprs) {
+         Operand op(tmp);
+         op.setLateKill(true);
+         bld.pseudo(aco_opcode::p_end_linear_vgpr, op);
+      }
       ctx->unended_linear_vgprs.clear();
    }
 
@@ -11126,7 +11130,7 @@ create_fs_jump_to_epilog(isel_context* ctx)
       }
    }
 
-   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.ps.epilog_pc));
+   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{create_instruction<Pseudo_instruction>(
       aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + exports.size(), 0)};
@@ -11271,8 +11275,7 @@ create_tcs_jump_to_epilog(isel_context* ctx)
                  Operand::c32(0u), Operand::c32(8u), Operand::c32(0u));
    rel_patch_id.setFixed(vgpr_start.advance(8u));
 
-   Temp continue_pc =
-      convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.tcs.epilog_pc));
+   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{
       create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 9, 0)};
@@ -11666,19 +11669,27 @@ merged_wave_info_to_mask(isel_context* ctx, unsigned i)
 static void
 insert_rt_jump_next(isel_context& ctx, const struct ac_shader_args* args)
 {
-   unsigned src_count = ctx.args->arg_count;
+   unsigned src_count = 0;
+   for (unsigned i = 0; i < ctx.args->arg_count; i++)
+      src_count += !!BITSET_TEST(ctx.output_args, i);
+
    Pseudo_instruction* ret =
       create_instruction<Pseudo_instruction>(aco_opcode::p_return, Format::PSEUDO, src_count, 0);
    ctx.block->instructions.emplace_back(ret);
 
-   for (unsigned i = 0; i < src_count; i++) {
+   src_count = 0;
+   for (unsigned i = 0; i < ctx.args->arg_count; i++) {
+      if (!BITSET_TEST(ctx.output_args, i))
+         continue;
+
       enum ac_arg_regfile file = ctx.args->args[i].file;
       unsigned size = ctx.args->args[i].size;
       unsigned reg = ctx.args->args[i].offset + (file == AC_ARG_SGPR ? 0 : 256);
       RegClass type = RegClass(file == AC_ARG_SGPR ? RegType::sgpr : RegType::vgpr, size);
       Operand op = ctx.arg_temps[i].id() ? Operand(ctx.arg_temps[i], PhysReg{reg})
                                          : Operand(PhysReg{reg}, type);
-      ret->operands[i] = op;
+      ret->operands[src_count] = op;
+      src_count++;
    }
 
    Builder bld(ctx.program, ctx.block);
@@ -12756,6 +12767,20 @@ select_rt_prolog(Program* program, ac_shader_config* config,
    program->config->num_sgprs = get_sgpr_alloc(program, num_sgprs);
 }
 
+PhysReg
+get_next_vgpr(unsigned size, unsigned* num, int *offset = NULL)
+{
+   unsigned reg = *num + (offset ? *offset : 0);
+   if (reg + size >= *num) {
+      *num = reg + size;
+      if (offset)
+         *offset = 0;
+   } else if (offset) {
+      *offset += size;
+   }
+   return PhysReg(256 + reg);
+}
+
 void
 select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_shader_config* config,
                  const struct aco_compiler_options* options, const struct aco_shader_info* info,
@@ -12797,13 +12822,30 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
    Operand start_instance = get_arg_fixed(args, args->start_instance);
    Operand instance_id = get_arg_fixed(args, args->instance_id);
 
-   PhysReg attributes_start(256 + args->num_vgprs_used);
-   /* choose vgprs that won't be used for anything else until the last attribute load */
-   PhysReg vertex_index(attributes_start.reg() + pinfo->num_attributes * 4 - 1);
-   PhysReg instance_index(attributes_start.reg() + pinfo->num_attributes * 4 - 2);
-   PhysReg start_instance_vgpr(attributes_start.reg() + pinfo->num_attributes * 4 - 3);
-   PhysReg nontrivial_tmp_vgpr0(attributes_start.reg() + pinfo->num_attributes * 4 - 4);
-   PhysReg nontrivial_tmp_vgpr1(attributes_start.reg() + pinfo->num_attributes * 4);
+   bool needs_instance_index =
+      pinfo->instance_rate_inputs &
+      ~(pinfo->zero_divisors | pinfo->nontrivial_divisors); /* divisor is 1 */
+   bool needs_start_instance = pinfo->instance_rate_inputs & pinfo->zero_divisors;
+   bool needs_vertex_index = ~pinfo->instance_rate_inputs & attrib_mask;
+   bool needs_tmp_vgpr0 = has_nontrivial_divisors;
+   bool needs_tmp_vgpr1 = has_nontrivial_divisors &&
+                          (program->gfx_level <= GFX8 || program->gfx_level >= GFX11);
+
+   int vgpr_offset = pinfo->misaligned_mask & (1u << (pinfo->num_attributes - 1)) ? 0 : -4;
+
+   unsigned num_vgprs = args->num_vgprs_used;
+   PhysReg attributes_start = get_next_vgpr(pinfo->num_attributes * 4, &num_vgprs);
+   PhysReg vertex_index, instance_index, start_instance_vgpr, nontrivial_tmp_vgpr0, nontrivial_tmp_vgpr1;
+   if (needs_vertex_index)
+      vertex_index = get_next_vgpr(1, &num_vgprs, &vgpr_offset);
+   if (needs_instance_index)
+      instance_index = get_next_vgpr(1, &num_vgprs, &vgpr_offset);
+   if (needs_start_instance)
+      start_instance_vgpr = get_next_vgpr(1, &num_vgprs, &vgpr_offset);
+   if (needs_tmp_vgpr0)
+      nontrivial_tmp_vgpr0 = get_next_vgpr(1, &num_vgprs, &vgpr_offset);
+   if (needs_tmp_vgpr1)
+      nontrivial_tmp_vgpr1 = get_next_vgpr(1, &num_vgprs, &vgpr_offset);
 
    bld.sop1(aco_opcode::s_mov_b32, Definition(vertex_buffers, s1),
             get_arg_fixed(args, args->vertex_buffers));
@@ -12815,16 +12857,10 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
                Operand::c32((unsigned)options->address32_hi));
    }
 
-   /* calculate vgpr requirements */
-   unsigned num_vgprs = attributes_start.reg() - 256;
-   num_vgprs += pinfo->num_attributes * 4;
-   if (has_nontrivial_divisors && program->gfx_level <= GFX8)
-      num_vgprs++; /* make space for nontrivial_tmp_vgpr1 */
-   unsigned num_sgprs = 0;
-
    const struct ac_vtx_format_info* vtx_info_table =
       ac_get_vtx_format_info_table(GFX8, CHIP_POLARIS10);
 
+   unsigned num_sgprs = 0;
    for (unsigned loc = 0; loc < pinfo->num_attributes;) {
       unsigned num_descs =
          load_vb_descs(bld, desc, Operand(vertex_buffers, s2), loc, pinfo->num_attributes - loc);
@@ -12864,11 +12900,6 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
             }
          }
 
-         bool needs_instance_index =
-            pinfo->instance_rate_inputs &
-            ~(pinfo->zero_divisors | pinfo->nontrivial_divisors); /* divisor is 1 */
-         bool needs_start_instance = pinfo->instance_rate_inputs & pinfo->zero_divisors;
-         bool needs_vertex_index = ~pinfo->instance_rate_inputs & attrib_mask;
          if (needs_vertex_index)
             bld.vadd32(Definition(vertex_index, v1), get_arg_fixed(args, args->base_vertex),
                        get_arg_fixed(args, args->vertex_id), false, Operand(s2), true);

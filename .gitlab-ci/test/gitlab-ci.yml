@@ -171,12 +171,6 @@ python-test:
     reports:
       junit: results/junit.xml
 
-.deqp-test-vk:
-  extends:
-    - .deqp-test
-  variables:
-    DEQP_VER: vk
-
 .fossilize-test:
   script:
     - ./install/fossilize-runner.sh

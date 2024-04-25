@@ -3828,7 +3828,7 @@ static struct ir3_instruction *
 fold_conditional_branch(struct ir3_context *ctx, struct nir_src *nir_cond)
 {
    if (!ctx->compiler->has_branch_and_or)
-      return false;
+      return NULL;
 
    if (nir_cond->ssa->parent_instr->type != nir_instr_type_alu)
       return NULL;

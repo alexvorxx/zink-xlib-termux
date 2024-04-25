@@ -617,7 +617,6 @@ namespace elk {
       }
 
       ALU2(ADD)
-      ALU3(ADD3)
       ALU2_ACC(ADDC)
       ALU2(AND)
       ALU2(ASR)
@@ -635,7 +634,6 @@ namespace elk {
       ALU1(FBH)
       ALU1(FBL)
       ALU1(FRC)
-      ALU3(DP4A)
       ALU2(LINE)
       ALU1(LZD)
       ALU2(MAC)
@@ -650,8 +648,6 @@ namespace elk {
       ALU1(RNDE)
       ALU1(RNDU)
       ALU1(RNDZ)
-      ALU2(ROL)
-      ALU2(ROR)
       ALU2(SAD2)
       ALU2_ACC(SADA2)
       ALU2(SEL)
@@ -785,7 +781,7 @@ namespace elk {
       LRP(const dst_reg &dst, const src_reg &x, const src_reg &y,
           const src_reg &a) const
       {
-         if (shader->devinfo->ver >= 6 && shader->devinfo->ver <= 10) {
+         if (shader->devinfo->ver >= 6) {
             /* The LRP instruction actually does op1 * op0 + op2 * (1 - op0), so
              * we need to reorder the operands.
              */
@@ -830,27 +826,6 @@ namespace elk {
          instruction *inst = emit(ELK_SHADER_OPCODE_UNDEF,
                                   retype(dst, ELK_REGISTER_TYPE_UD));
          inst->size_written = shader->alloc.sizes[dst.nr] * REG_SIZE - dst.offset;
-
-         return inst;
-      }
-
-      instruction *
-      DPAS(const dst_reg &dst, const src_reg &src0, const src_reg &src1, const src_reg &src2,
-           unsigned sdepth, unsigned rcount) const
-      {
-         assert(_dispatch_width == 8);
-         assert(sdepth == 8);
-         assert(rcount == 1 || rcount == 2 || rcount == 4 || rcount == 8);
-
-         instruction *inst = emit(ELK_OPCODE_DPAS, dst, src0, src1, src2);
-         inst->sdepth = sdepth;
-         inst->rcount = rcount;
-
-         if (dst.type == ELK_REGISTER_TYPE_HF) {
-            inst->size_written = rcount * REG_SIZE / 2;
-         } else {
-            inst->size_written = rcount * REG_SIZE;
-         }
 
          return inst;
       }

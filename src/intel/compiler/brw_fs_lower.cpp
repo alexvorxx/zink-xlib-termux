@@ -207,7 +207,8 @@ brw_fs_lower_sub_sat(fs_visitor &s)
           */
          if (inst->exec_size == 8 && inst->src[0].type != BRW_REGISTER_TYPE_Q &&
              inst->src[0].type != BRW_REGISTER_TYPE_UQ) {
-            fs_reg acc(ARF, BRW_ARF_ACCUMULATOR, inst->src[1].type);
+            fs_reg acc = retype(brw_acc_reg(inst->exec_size),
+                                inst->src[1].type);
 
             ibld.MOV(acc, inst->src[1]);
             fs_inst *add = ibld.ADD(inst->dst, acc, inst->src[0]);
@@ -505,16 +506,19 @@ brw_fs_lower_sends_overlapping_payload(fs_visitor &s)
       if (inst->opcode == SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
           regions_overlap(inst->src[2], inst->mlen * REG_SIZE,
                           inst->src[3], inst->ex_mlen * REG_SIZE)) {
-         fs_reg tmp = fs_reg(VGRF, s.alloc.allocate(inst->ex_mlen),
+         const unsigned arg = inst->mlen < inst->ex_mlen ? 2 : 3;
+         const unsigned len = MIN2(inst->mlen, inst->ex_mlen);
+
+         fs_reg tmp = fs_reg(VGRF, s.alloc.allocate(len),
                              BRW_REGISTER_TYPE_UD);
          /* Sadly, we've lost all notion of channels and bit sizes at this
           * point.  Just WE_all it.
           */
          const fs_builder ibld = fs_builder(&s, block, inst).exec_all().group(16, 0);
-         fs_reg copy_src = retype(inst->src[3], BRW_REGISTER_TYPE_UD);
+         fs_reg copy_src = retype(inst->src[arg], BRW_REGISTER_TYPE_UD);
          fs_reg copy_dst = tmp;
-         for (unsigned i = 0; i < inst->ex_mlen; i += 2) {
-            if (inst->ex_mlen == i + 1) {
+         for (unsigned i = 0; i < len; i += 2) {
+            if (len == i + 1) {
                /* Only one register left; do SIMD8 */
                ibld.group(8, 0).MOV(copy_dst, copy_src);
             } else {
@@ -523,7 +527,7 @@ brw_fs_lower_sends_overlapping_payload(fs_visitor &s)
             copy_src = offset(copy_src, ibld, 1);
             copy_dst = offset(copy_dst, ibld, 1);
          }
-         inst->src[3] = tmp;
+         inst->src[arg] = tmp;
          progress = true;
       }
    }

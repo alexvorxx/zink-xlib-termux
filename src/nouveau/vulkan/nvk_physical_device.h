@@ -10,8 +10,8 @@
 #include "nouveau_device.h"
 #include "nv_device_info.h"
 
-#include "vulkan/runtime/vk_physical_device.h"
-#include "vulkan/runtime/vk_sync.h"
+#include "vk_physical_device.h"
+#include "vk_sync.h"
 
 #include "wsi_common.h"
 
@@ -49,7 +49,7 @@ struct nvk_physical_device {
    uint8_t device_uuid[VK_UUID_SIZE];
 
    // TODO: add mapable VRAM heap if possible
-   struct nvk_memory_heap mem_heaps[2];
+   struct nvk_memory_heap mem_heaps[3];
    VkMemoryType mem_types[3];
    uint8_t mem_heap_count;
    uint8_t mem_type_count;

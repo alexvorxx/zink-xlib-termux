@@ -228,3 +228,6 @@ dEQP-GLES2.functional.texture.format.l8_cube_pot
 spec@ati_fragment_shader@ati_fragment_shader-error04-endshader
 spec@ext_texture_compression_s3tc@compressedteximage gl_compressed_rgba_s3tc_dxt1_ext
 
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56260516
+spec@!opengl 1.4@copy-pixels

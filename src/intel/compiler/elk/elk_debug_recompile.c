@@ -171,7 +171,6 @@ debug_fs_recompile(const struct elk_compiler *c, void *log,
    found |= check("force dual color blending", force_dual_color_blend);
    found |= check("coherent fb fetch", coherent_fb_fetch);
    found |= check("ignore sample mask out", ignore_sample_mask_out);
-   found |= check("coarse pixel", coarse_pixel);
 
    found |= check("input slots valid", input_slots_valid);
    found |= check("mrt alpha test function", alpha_test_func);

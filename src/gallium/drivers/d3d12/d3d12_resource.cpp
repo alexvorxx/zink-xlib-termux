@@ -300,6 +300,18 @@ init_texture(struct d3d12_screen *screen,
    HRESULT hres = E_FAIL;
    enum d3d12_residency_status init_residency;
 
+   if (heap && screen->max_feature_level == D3D_FEATURE_LEVEL_1_0_GENERIC) {
+      D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO capData;
+      capData.Dimension = desc.Dimension;
+      capData.Format = desc.Format;
+      capData.DestHeapProperties = GetDesc(heap).Properties;
+      capData.Supported = false;
+      if (FAILED(screen->dev->CheckFeatureSupport(D3D12_FEATURE_PLACED_RESOURCE_SUPPORT_INFO, &capData, sizeof(capData))) || !capData.Supported) {
+         debug_printf("D3D12: d3d12_resource_create_or_place cannot place a resource since D3D12_FEATURE_DATA_PLACED_RESOURCE_SUPPORT_INFO is not supported\n");
+         return false;
+      }
+   }
+
    if (screen->opts12.RelaxedFormatCastingSupported) {
       D3D12_RESOURCE_DESC1 desc1 = {
          desc.Dimension,
@@ -1295,6 +1307,7 @@ transfer_image_to_buf(struct d3d12_context *ctx,
    }
 
    struct pipe_resource *resolved_resource = nullptr;
+#ifdef HAVE_GALLIUM_D3D12_GRAPHICS
    if (res->base.b.nr_samples > 1) {
       struct pipe_resource tmpl = res->base.b;
       tmpl.nr_samples = 0;
@@ -1315,7 +1328,7 @@ transfer_image_to_buf(struct d3d12_context *ctx,
       d3d12_blit(&ctx->base, &resolve_info);
       res = (struct d3d12_resource *)resolved_resource;
    }
-
+#endif // HAVE_GALLIUM_D3D12_GRAPHICS
 
    if (res->base.b.target == PIPE_TEXTURE_3D) {
       transfer_image_part_to_buf(ctx, res, staging_res, trans, resid,

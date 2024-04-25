@@ -7,3 +7,5 @@ KHR-GL46.pipeline_statistics_query_tests_ARB.functional_primitives_vertices_subm
 KHR-Single-GL46.arrays_of_arrays_gl.SizedDeclarationsPrimitive
 
 spec@arb_timer_query@timestamp-get
+
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread

@@ -263,34 +263,13 @@ struct elk_reg {
 static inline unsigned
 phys_nr(const struct intel_device_info *devinfo, const struct elk_reg reg)
 {
-   if (devinfo->ver >= 20) {
-      if (reg.file == ELK_GENERAL_REGISTER_FILE)
-         return reg.nr / 2;
-      else if (reg.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-               reg.nr >= ELK_ARF_ACCUMULATOR &&
-               reg.nr < ELK_ARF_FLAG)
-         return ELK_ARF_ACCUMULATOR + (reg.nr - ELK_ARF_ACCUMULATOR) / 2;
-      else
-         return reg.nr;
-   } else {
-      return reg.nr;
-   }
+   return reg.nr;
 }
 
 static inline unsigned
 phys_subnr(const struct intel_device_info *devinfo, const struct elk_reg reg)
 {
-   if (devinfo->ver >= 20) {
-      if (reg.file == ELK_GENERAL_REGISTER_FILE ||
-          (reg.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-           reg.nr >= ELK_ARF_ACCUMULATOR &&
-           reg.nr < ELK_ARF_FLAG))
-         return (reg.nr & 1) * REG_SIZE + reg.subnr;
-      else
-         return reg.subnr;
-   } else {
-      return reg.subnr;
-   }
+   return reg.subnr;
 }
 
 static inline bool

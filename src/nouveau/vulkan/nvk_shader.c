@@ -133,6 +133,7 @@ nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
          .fragment_barycentric = true,
          .geometry_streams = true,
          .image_atomic_int64 = true,
+         .image_ms_array = true,
          .image_read_without_format = true,
          .image_write_without_format = true,
          .int8 = true,
@@ -146,13 +147,16 @@ nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
          .shader_clock = true,
          .shader_sm_builtins_nv = true,
          .shader_viewport_index_layer = true,
+         .sparse_residency = true,
          .storage_8bit = true,
          .storage_16bit = true,
+         .storage_image_ms = true,
          .subgroup_arithmetic = true,
          .subgroup_ballot = true,
          .subgroup_basic = true,
          .subgroup_quad = true,
          .subgroup_shuffle = true,
+         .subgroup_uniform_control_flow = true,
          .subgroup_vote = true,
          .tessellation = true,
          .transform_feedback = true,
@@ -385,7 +389,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    /* TODO: Kepler image lowering requires image params to be loaded from the
     * descriptor set which we don't currently support.
     */
-   assert(dev->pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
+   assert(pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
 
    struct nvk_cbuf_map *cbuf_map = NULL;
    if (use_nak(pdev, nir->info.stage) &&
@@ -533,9 +537,11 @@ nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
 VkResult
 nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
    uint32_t hdr_size = 0;
    if (shader->info.stage != MESA_SHADER_COMPUTE) {
-      if (dev->pdev->info.cls_eng3d >= TURING_A)
+      if (pdev->info.cls_eng3d >= TURING_A)
          hdr_size = TU102_SHADER_HEADER_SIZE;
       else
          hdr_size = GF100_SHADER_HEADER_SIZE;
@@ -544,11 +550,11 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
    /* Fermi   needs 0x40 alignment
     * Kepler+ needs the first instruction to be 0x80 aligned, so we waste 0x30 bytes
     */
-   int alignment = dev->pdev->info.cls_eng3d >= KEPLER_A ? 0x80 : 0x40;
+   int alignment = pdev->info.cls_eng3d >= KEPLER_A ? 0x80 : 0x40;
 
    uint32_t total_size = 0;
-   if (dev->pdev->info.cls_eng3d >= KEPLER_A &&
-       dev->pdev->info.cls_eng3d < TURING_A &&
+   if (pdev->info.cls_eng3d >= KEPLER_A &&
+       pdev->info.cls_eng3d < TURING_A &&
        hdr_size > 0) {
       /* The instructions are what has to be aligned so we need to start at a
        * small offset (0x30 B) into the upload area.
@@ -565,7 +571,7 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 
    uint32_t data_offset = 0;
    if (shader->data_size > 0) {
-      total_size = align(total_size, nvk_min_cbuf_alignment(&dev->pdev->info));
+      total_size = align(total_size, nvk_min_cbuf_alignment(&pdev->info));
       data_offset = total_size;
       total_size += shader->data_size;
    }
@@ -592,7 +598,7 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
       shader->upload_size = total_size;
 
       shader->hdr_addr = shader->upload_addr + hdr_offset;
-      if (dev->pdev->info.cls_eng3d < VOLTA_A) {
+      if (pdev->info.cls_eng3d < VOLTA_A) {
          const uint64_t heap_base_addr =
             nvk_heap_contiguous_base_address(&dev->shader_heap);
          assert(shader->upload_addr - heap_base_addr < UINT32_MAX);

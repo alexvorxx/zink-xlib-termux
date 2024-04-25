@@ -37,7 +37,7 @@ project(
 cc = meson.get_compiler('c')
 cpp = meson.get_compiler('cpp')
 
-sizeof_pointer = meson.get_compiler('c', native : true).sizeof('void*').to_string()
+sizeof_pointer = cc.sizeof('void*').to_string()
 
 null_dep = dependency('', required : false)
 
@@ -259,20 +259,6 @@ with_any_vk = _vulkan_drivers.length() != 0
 if with_any_vk and host_machine.system() == 'windows' and meson.version().version_compare('< 1.3')
   error('Vulkan drivers on Windows require meson 1.3 or newer')
 endif
-
-with_vk_compiler = [
-  with_intel_vk,
-  with_intel_hasvk,
-  with_amd_vk,
-  with_freedreno_vk,
-  with_panfrost_vk,
-  with_swrast_vk,
-  with_broadcom_vk,
-  with_imagination_vk,
-  with_microsoft_vk,
-  with_nouveau_vk,
-].contains(true)
-pre_args += '-DUSE_VK_COMPILER=@0@'.format(with_vk_compiler ? '1' : '0')
 
 freedreno_kmds = get_option('freedreno-kmds')
 if freedreno_kmds.length() != 0 and freedreno_kmds != [ 'msm' ] and with_freedreno_vk
@@ -622,7 +608,7 @@ vdpau = get_option('gallium-vdpau') \
   .require(with_platform_x11, error_message : 'VDPAU state tracker requires X11 support.') \
   .require(_vdpau_drivers.contains(true), error_message : 'VDPAU state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video, virgl).')
 
-dep_vdpau = dependency('vdpau', version : '>= 1.4', required : vdpau)
+dep_vdpau = dependency('vdpau', version : '>= 1.5', required : vdpau)
 if dep_vdpau.found()
   dep_vdpau = dep_vdpau.partial_dependency(compile_args : true)
   pre_args += '-DHAVE_ST_VDPAU'
@@ -1539,11 +1525,6 @@ if with_any_intel and ['x86', 'x86_64'].contains(host_machine.cpu_family())
   pre_args += '-DSUPPORT_INTEL_INTEGRATED_GPUS'
 endif
 
-if get_option('intel-xe-kmd').enabled()
-  pre_args += '-DINTEL_XE_KMD_SUPPORTED'
-endif
-
-
 if with_gallium_i915 and host_machine.cpu_family().startswith('x86') == false
   error('Intel "i915" Gallium driver requires x86 or x86_64 CPU family')
 endif
@@ -1652,12 +1633,10 @@ endif
 # bar are both on use 2.4.3 for both of them
 dep_libdrm_amdgpu = null_dep
 dep_libdrm_radeon = null_dep
-dep_libdrm_nouveau = null_dep
 dep_libdrm_intel = null_dep
 
 _drm_amdgpu_ver = '2.4.119'
 _drm_radeon_ver = '2.4.71'
-_drm_nouveau_ver = '2.4.102'
 _drm_intel_ver = '2.4.75'
 _drm_ver = '2.4.109'
 
@@ -1665,7 +1644,6 @@ _libdrm_checks = [
   ['intel', with_gallium_i915],
   ['amdgpu', (with_amd_vk and not with_platform_windows) or with_gallium_radeonsi],
   ['radeon', (with_gallium_radeonsi or with_gallium_r300 or with_gallium_r600)],
-  ['nouveau', with_any_nouveau],
 ]
 
 # Loop over the enables versions and get the highest libdrm requirement for all

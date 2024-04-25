@@ -613,24 +613,12 @@ done:
         v3d_job_free(v3d, job);
 }
 
-static bool
-v3d_job_compare(const void *a, const void *b)
-{
-        return memcmp(a, b, sizeof(struct v3d_job_key)) == 0;
-}
-
-static uint32_t
-v3d_job_hash(const void *key)
-{
-        return _mesa_hash_data(key, sizeof(struct v3d_job_key));
-}
+DERIVE_HASH_TABLE(v3d_job_key);
 
 void
 v3d_job_init(struct v3d_context *v3d)
 {
-        v3d->jobs = _mesa_hash_table_create(v3d,
-                                            v3d_job_hash,
-                                            v3d_job_compare);
+        v3d->jobs = v3d_job_key_table_create(v3d);
         v3d->write_jobs = _mesa_hash_table_create(v3d,
                                                   _mesa_hash_pointer,
                                                   _mesa_key_pointer_equal);

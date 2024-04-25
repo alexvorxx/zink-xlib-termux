@@ -158,12 +158,10 @@ struct elk_backend_instruction {
 
    uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
    uint8_t mlen; /**< SEND message length */
-   uint8_t ex_mlen; /**< SENDS extended message length */
    int8_t base_mrf; /**< First MRF in the SEND message, if mlen is nonzero. */
    uint8_t target; /**< MRT target. */
    uint8_t sfid; /**< SFID for SEND instructions */
    uint32_t desc; /**< SEND[S] message descriptor immediate */
-   uint32_t ex_desc; /**< SEND[S] extended message descriptor immediate */
    unsigned size_written; /**< Data written to the destination register in bytes. */
 
    enum elk_opcode opcode; /* ELK_OPCODE_* or ELK_FS_OPCODE_* */
@@ -179,13 +177,6 @@ struct elk_backend_instruction {
    bool check_tdr:1; /**< Only valid for SEND; turns it into a SENDC */
    bool send_has_side_effects:1; /**< Only valid for ELK_SHADER_OPCODE_SEND */
    bool send_is_volatile:1; /**< Only valid for ELK_SHADER_OPCODE_SEND */
-   bool send_ex_desc_scratch:1; /**< Only valid for ELK_SHADER_OPCODE_SEND, use
-                                 *   the scratch surface offset to build
-                                 *   extended descriptor
-                                 */
-   bool send_ex_bso:1; /**< Only for ELK_SHADER_OPCODE_SEND, use extended bindless
-                        *   surface offset (26bits instead of 20bits)
-                        */
    bool predicate_trivial:1; /**< The predication mask applied to this
                               *   instruction is guaranteed to be uniform and
                               *   a superset of the execution mask of the
@@ -198,16 +189,6 @@ struct elk_backend_instruction {
     * mod and predication.
     */
    unsigned flag_subreg:3;
-
-   /**
-    * Systolic depth used by DPAS instruction.
-    */
-   unsigned sdepth:4;
-
-   /**
-    * Repeat count used by DPAS instruction.
-    */
-   unsigned rcount:4;
 
    /** The number of hardware registers used for a message header. */
    uint8_t header_size;

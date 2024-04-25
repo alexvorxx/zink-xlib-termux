@@ -55,7 +55,6 @@ elk_gfx6_resolve_implied_move(struct elk_codegen *p,
       return;
 
    if (src->file != ELK_ARCHITECTURE_REGISTER_FILE || src->nr != ELK_ARF_NULL) {
-      assert(devinfo->ver < 12);
       elk_push_insn_state(p);
       elk_set_default_exec_size(p, ELK_EXECUTE_8);
       elk_set_default_mask_control(p, ELK_MASK_DISABLE);
@@ -109,75 +108,46 @@ elk_set_dest(struct elk_codegen *p, elk_inst *inst, struct elk_reg dest)
 
    gfx7_convert_mrf_to_grf(p, &dest);
 
-   if (devinfo->ver >= 12 &&
-       (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC)) {
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             dest.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(dest.address_mode == ELK_ADDRESS_DIRECT);
-      assert(dest.subnr == 0);
-      assert(elk_inst_exec_size(devinfo, inst) == ELK_EXECUTE_1 ||
-             (dest.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              dest.vstride == dest.width + 1));
-      assert(!dest.negate && !dest.abs);
-      elk_inst_set_dst_reg_file(devinfo, inst, dest.file);
+   elk_inst_set_dst_file_type(devinfo, inst, dest.file, dest.type);
+   elk_inst_set_dst_address_mode(devinfo, inst, dest.address_mode);
+
+   if (dest.address_mode == ELK_ADDRESS_DIRECT) {
       elk_inst_set_dst_da_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
 
-   } else if (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-              elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC) {
-      assert(devinfo->ver < 12);
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             dest.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(dest.address_mode == ELK_ADDRESS_DIRECT);
-      assert(dest.subnr % 16 == 0);
-      assert(dest.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-             dest.vstride == dest.width + 1);
-      assert(!dest.negate && !dest.abs);
-      elk_inst_set_dst_da_reg_nr(devinfo, inst, dest.nr);
-      elk_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
-      elk_inst_set_send_dst_reg_file(devinfo, inst, dest.file);
-   } else {
-      elk_inst_set_dst_file_type(devinfo, inst, dest.file, dest.type);
-      elk_inst_set_dst_address_mode(devinfo, inst, dest.address_mode);
-
-      if (dest.address_mode == ELK_ADDRESS_DIRECT) {
-         elk_inst_set_dst_da_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
-
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            elk_inst_set_dst_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
-            if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
-               dest.hstride = ELK_HORIZONTAL_STRIDE_1;
-            elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
-         } else {
-            elk_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
-            elk_inst_set_da16_writemask(devinfo, inst, dest.writemask);
-            if (dest.file == ELK_GENERAL_REGISTER_FILE ||
-                dest.file == ELK_MESSAGE_REGISTER_FILE) {
-               assert(dest.writemask != 0);
-            }
-            /* From the Ivybridge PRM, Vol 4, Part 3, Section 5.2.4.1:
-             *    Although Dst.HorzStride is a don't care for Align16, HW needs
-             *    this to be programmed as "01".
-             */
-            elk_inst_set_dst_hstride(devinfo, inst, 1);
-         }
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         elk_inst_set_dst_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
+         if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
+            dest.hstride = ELK_HORIZONTAL_STRIDE_1;
+         elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
       } else {
-         elk_inst_set_dst_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
-
-         /* These are different sizes in align1 vs align16:
-          */
-         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            elk_inst_set_dst_ia1_addr_imm(devinfo, inst,
-                                          dest.indirect_offset);
-            if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
-               dest.hstride = ELK_HORIZONTAL_STRIDE_1;
-            elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
-         } else {
-            elk_inst_set_dst_ia16_addr_imm(devinfo, inst,
-                                           dest.indirect_offset);
-            /* even ignored in da16, still need to set as '01' */
-            elk_inst_set_dst_hstride(devinfo, inst, 1);
+         elk_inst_set_dst_da16_subreg_nr(devinfo, inst, dest.subnr / 16);
+         elk_inst_set_da16_writemask(devinfo, inst, dest.writemask);
+         if (dest.file == ELK_GENERAL_REGISTER_FILE ||
+             dest.file == ELK_MESSAGE_REGISTER_FILE) {
+            assert(dest.writemask != 0);
          }
+         /* From the Ivybridge PRM, Vol 4, Part 3, Section 5.2.4.1:
+          *    Although Dst.HorzStride is a don't care for Align16, HW needs
+          *    this to be programmed as "01".
+          */
+         elk_inst_set_dst_hstride(devinfo, inst, 1);
+      }
+   } else {
+      elk_inst_set_dst_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
+
+      /* These are different sizes in align1 vs align16:
+       */
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         elk_inst_set_dst_ia1_addr_imm(devinfo, inst,
+                                       dest.indirect_offset);
+         if (dest.hstride == ELK_HORIZONTAL_STRIDE_0)
+            dest.hstride = ELK_HORIZONTAL_STRIDE_1;
+         elk_inst_set_dst_hstride(devinfo, inst, dest.hstride);
+      } else {
+         elk_inst_set_dst_ia16_addr_imm(devinfo, inst,
+                                        dest.indirect_offset);
+         /* even ignored in da16, still need to set as '01' */
+         elk_inst_set_dst_hstride(devinfo, inst, 1);
       }
    }
 
@@ -219,9 +189,7 @@ elk_set_src0(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
 
    if (devinfo->ver >= 6 &&
        (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC)) {
+        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC)) {
       /* Any source modifiers or regions will be ignored, since this just
        * identifies the MRF/GRF to start reading the message contents from.
        * Check for some likely failures.
@@ -231,110 +199,84 @@ elk_set_src0(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
       assert(reg.address_mode == ELK_ADDRESS_DIRECT);
    }
 
-   if (devinfo->ver >= 12 &&
-       (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-        elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC)) {
-      assert(reg.file != ELK_IMMEDIATE_VALUE);
-      assert(reg.address_mode == ELK_ADDRESS_DIRECT);
-      assert(reg.subnr == 0);
-      assert(has_scalar_region(reg) ||
-             (reg.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              reg.vstride == reg.width + 1));
-      assert(!reg.negate && !reg.abs);
-      elk_inst_set_send_src0_reg_file(devinfo, inst, reg.file);
-      elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
+   elk_inst_set_src0_file_type(devinfo, inst, reg.file, reg.type);
+   elk_inst_set_src0_abs(devinfo, inst, reg.abs);
+   elk_inst_set_src0_negate(devinfo, inst, reg.negate);
+   elk_inst_set_src0_address_mode(devinfo, inst, reg.address_mode);
 
-   } else if (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-              elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC) {
-      assert(reg.file == ELK_GENERAL_REGISTER_FILE);
-      assert(reg.address_mode == ELK_ADDRESS_DIRECT);
-      assert(reg.subnr % 16 == 0);
-      assert(has_scalar_region(reg) ||
-             (reg.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              reg.vstride == reg.width + 1));
-      assert(!reg.negate && !reg.abs);
-      elk_inst_set_src0_da_reg_nr(devinfo, inst, reg.nr);
-      elk_inst_set_src0_da16_subreg_nr(devinfo, inst, reg.subnr / 16);
+   if (reg.file == ELK_IMMEDIATE_VALUE) {
+      if (reg.type == ELK_REGISTER_TYPE_DF ||
+          elk_inst_opcode(p->isa, inst) == ELK_OPCODE_DIM)
+         elk_inst_set_imm_df(devinfo, inst, reg.df);
+      else if (reg.type == ELK_REGISTER_TYPE_UQ ||
+               reg.type == ELK_REGISTER_TYPE_Q)
+         elk_inst_set_imm_uq(devinfo, inst, reg.u64);
+      else
+         elk_inst_set_imm_ud(devinfo, inst, reg.ud);
+
+      if (type_sz(reg.type) < 8) {
+         elk_inst_set_src1_reg_file(devinfo, inst,
+                                    ELK_ARCHITECTURE_REGISTER_FILE);
+         elk_inst_set_src1_reg_hw_type(devinfo, inst,
+                                       elk_inst_src0_reg_hw_type(devinfo, inst));
+      }
    } else {
-      elk_inst_set_src0_file_type(devinfo, inst, reg.file, reg.type);
-      elk_inst_set_src0_abs(devinfo, inst, reg.abs);
-      elk_inst_set_src0_negate(devinfo, inst, reg.negate);
-      elk_inst_set_src0_address_mode(devinfo, inst, reg.address_mode);
-
-      if (reg.file == ELK_IMMEDIATE_VALUE) {
-         if (reg.type == ELK_REGISTER_TYPE_DF ||
-             elk_inst_opcode(p->isa, inst) == ELK_OPCODE_DIM)
-            elk_inst_set_imm_df(devinfo, inst, reg.df);
-         else if (reg.type == ELK_REGISTER_TYPE_UQ ||
-                  reg.type == ELK_REGISTER_TYPE_Q)
-            elk_inst_set_imm_uq(devinfo, inst, reg.u64);
-         else
-            elk_inst_set_imm_ud(devinfo, inst, reg.ud);
-
-         if (devinfo->ver < 12 && type_sz(reg.type) < 8) {
-            elk_inst_set_src1_reg_file(devinfo, inst,
-                                       ELK_ARCHITECTURE_REGISTER_FILE);
-            elk_inst_set_src1_reg_hw_type(devinfo, inst,
-                                          elk_inst_src0_reg_hw_type(devinfo, inst));
+      if (reg.address_mode == ELK_ADDRESS_DIRECT) {
+         elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
+         if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+            elk_inst_set_src0_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
+         } else {
+            elk_inst_set_src0_da16_subreg_nr(devinfo, inst, reg.subnr / 16);
          }
       } else {
-         if (reg.address_mode == ELK_ADDRESS_DIRECT) {
-            elk_inst_set_src0_da_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
-            if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-               elk_inst_set_src0_da1_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
-            } else {
-               elk_inst_set_src0_da16_subreg_nr(devinfo, inst, reg.subnr / 16);
-            }
-         } else {
-            elk_inst_set_src0_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
-
-            if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-               elk_inst_set_src0_ia1_addr_imm(devinfo, inst, reg.indirect_offset);
-            } else {
-               elk_inst_set_src0_ia16_addr_imm(devinfo, inst, reg.indirect_offset);
-            }
-         }
+         elk_inst_set_src0_ia_subreg_nr(devinfo, inst, phys_subnr(devinfo, reg));
 
          if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-            if (reg.width == ELK_WIDTH_1 &&
-                elk_inst_exec_size(devinfo, inst) == ELK_EXECUTE_1) {
-               elk_inst_set_src0_hstride(devinfo, inst, ELK_HORIZONTAL_STRIDE_0);
-               elk_inst_set_src0_width(devinfo, inst, ELK_WIDTH_1);
-               elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_0);
-            } else {
-               elk_inst_set_src0_hstride(devinfo, inst, reg.hstride);
-               elk_inst_set_src0_width(devinfo, inst, reg.width);
-               elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
-            }
+            elk_inst_set_src0_ia1_addr_imm(devinfo, inst, reg.indirect_offset);
          } else {
-            elk_inst_set_src0_da16_swiz_x(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_X));
-            elk_inst_set_src0_da16_swiz_y(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Y));
-            elk_inst_set_src0_da16_swiz_z(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Z));
-            elk_inst_set_src0_da16_swiz_w(devinfo, inst,
-               ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_W));
+            elk_inst_set_src0_ia16_addr_imm(devinfo, inst, reg.indirect_offset);
+         }
+      }
 
-            if (reg.vstride == ELK_VERTICAL_STRIDE_8) {
-               /* This is an oddity of the fact we're using the same
-                * descriptions for registers in align_16 as align_1:
-                */
-               elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
-            } else if (devinfo->verx10 == 70 &&
-                       reg.type == ELK_REGISTER_TYPE_DF &&
-                       reg.vstride == ELK_VERTICAL_STRIDE_2) {
-               /* From SNB PRM:
-                *
-                * "For Align16 access mode, only encodings of 0000 and 0011
-                *  are allowed. Other codes are reserved."
-                *
-                * Presumably the DevSNB behavior applies to IVB as well.
-                */
-               elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
-            } else {
-               elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
-            }
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+         if (reg.width == ELK_WIDTH_1 &&
+             elk_inst_exec_size(devinfo, inst) == ELK_EXECUTE_1) {
+            elk_inst_set_src0_hstride(devinfo, inst, ELK_HORIZONTAL_STRIDE_0);
+            elk_inst_set_src0_width(devinfo, inst, ELK_WIDTH_1);
+            elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_0);
+         } else {
+            elk_inst_set_src0_hstride(devinfo, inst, reg.hstride);
+            elk_inst_set_src0_width(devinfo, inst, reg.width);
+            elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
+         }
+      } else {
+         elk_inst_set_src0_da16_swiz_x(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_X));
+         elk_inst_set_src0_da16_swiz_y(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Y));
+         elk_inst_set_src0_da16_swiz_z(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_Z));
+         elk_inst_set_src0_da16_swiz_w(devinfo, inst,
+            ELK_GET_SWZ(reg.swizzle, ELK_CHANNEL_W));
+
+         if (reg.vstride == ELK_VERTICAL_STRIDE_8) {
+            /* This is an oddity of the fact we're using the same
+             * descriptions for registers in align_16 as align_1:
+             */
+            elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
+         } else if (devinfo->verx10 == 70 &&
+                    reg.type == ELK_REGISTER_TYPE_DF &&
+                    reg.vstride == ELK_VERTICAL_STRIDE_2) {
+            /* From SNB PRM:
+             *
+             * "For Align16 access mode, only encodings of 0000 and 0011
+             *  are allowed. Other codes are reserved."
+             *
+             * Presumably the DevSNB behavior applies to IVB as well.
+             */
+            elk_inst_set_src0_vstride(devinfo, inst, ELK_VERTICAL_STRIDE_4);
+         } else {
+            elk_inst_set_src0_vstride(devinfo, inst, reg.vstride);
          }
       }
    }
@@ -349,22 +291,7 @@ elk_set_src1(struct elk_codegen *p, elk_inst *inst, struct elk_reg reg)
    if (reg.file == ELK_GENERAL_REGISTER_FILE)
       assert(reg.nr < XE2_MAX_GRF);
 
-   if (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDS ||
-       elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDSC ||
-       (devinfo->ver >= 12 &&
-        (elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
-         elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC))) {
-      assert(reg.file == ELK_GENERAL_REGISTER_FILE ||
-             reg.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(reg.address_mode == ELK_ADDRESS_DIRECT);
-      assert(reg.subnr == 0);
-      assert(has_scalar_region(reg) ||
-             (reg.hstride == ELK_HORIZONTAL_STRIDE_1 &&
-              reg.vstride == reg.width + 1));
-      assert(!reg.negate && !reg.abs);
-      elk_inst_set_send_src1_reg_nr(devinfo, inst, phys_nr(devinfo, reg));
-      elk_inst_set_send_src1_reg_file(devinfo, inst, reg.file);
-   } else {
+   {
       /* From the IVB PRM Vol. 4, Pt. 3, Section 3.3.3.5:
        *
        *    "Accumulator registers may be accessed explicitly as src0
@@ -458,12 +385,9 @@ elk_set_desc_ex(struct elk_codegen *p, elk_inst *inst,
    const struct intel_device_info *devinfo = p->devinfo;
    assert(elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SEND ||
           elk_inst_opcode(p->isa, inst) == ELK_OPCODE_SENDC);
-   if (devinfo->ver < 12)
-      elk_inst_set_src1_file_type(devinfo, inst,
-                                  ELK_IMMEDIATE_VALUE, ELK_REGISTER_TYPE_UD);
+   elk_inst_set_src1_file_type(devinfo, inst,
+                               ELK_IMMEDIATE_VALUE, ELK_REGISTER_TYPE_UD);
    elk_inst_set_send_desc(devinfo, inst, desc);
-   if (devinfo->ver >= 9)
-      elk_inst_set_send_ex_desc(devinfo, inst, ex_desc);
 }
 
 static void elk_set_math_message( struct elk_codegen *p,
@@ -621,8 +545,6 @@ elk_inst_set_state(const struct elk_isa_info *isa,
    elk_inst_set_compression(devinfo, insn, state->compressed);
    elk_inst_set_access_mode(devinfo, insn, state->access_mode);
    elk_inst_set_mask_control(devinfo, insn, state->mask_control);
-   if (devinfo->ver >= 12)
-      elk_inst_set_swsb(devinfo, insn, tgl_swsb_encode(devinfo, state->swsb));
    elk_inst_set_saturate(devinfo, insn, state->saturate);
    elk_inst_set_pred_control(devinfo, insn, state->predicate);
    elk_inst_set_pred_inv(devinfo, insn, state->pred_inv);
@@ -638,7 +560,7 @@ elk_inst_set_state(const struct elk_isa_info *isa,
          elk_inst_set_flag_reg_nr(devinfo, insn, state->flag_subreg / 2);
    }
 
-   if (devinfo->ver >= 6 && devinfo->ver < 20)
+   if (devinfo->ver >= 6)
       elk_inst_set_acc_wr_control(devinfo, insn, state->acc_wr_control);
 }
 
@@ -768,11 +690,7 @@ to_3src_align1_vstride(const struct intel_device_info *devinfo,
    switch (vstride) {
    case ELK_VERTICAL_STRIDE_0:
       return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_0;
-   case ELK_VERTICAL_STRIDE_1:
-      assert(devinfo->ver >= 12);
-      return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_1;
    case ELK_VERTICAL_STRIDE_2:
-      assert(devinfo->ver < 12);
       return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_2;
    case ELK_VERTICAL_STRIDE_4:
       return ELK_ALIGN1_3SRC_VERTICAL_STRIDE_4;
@@ -813,10 +731,6 @@ elk_alu3(struct elk_codegen *p, unsigned opcode, struct elk_reg dest,
 
    assert(dest.nr < XE2_MAX_GRF);
 
-   if (devinfo->ver >= 10)
-      assert(!(src0.file == ELK_IMMEDIATE_VALUE &&
-               src2.file == ELK_IMMEDIATE_VALUE));
-
    assert(src0.file == ELK_IMMEDIATE_VALUE || src0.nr < XE2_MAX_GRF);
    assert(src1.file != ELK_IMMEDIATE_VALUE && src1.nr < XE2_MAX_GRF);
    assert(src2.file == ELK_IMMEDIATE_VALUE || src2.nr < XE2_MAX_GRF);
@@ -825,248 +739,74 @@ elk_alu3(struct elk_codegen *p, unsigned opcode, struct elk_reg dest,
    assert(src1.address_mode == ELK_ADDRESS_DIRECT);
    assert(src2.address_mode == ELK_ADDRESS_DIRECT);
 
-   if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             (dest.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-              dest.nr == ELK_ARF_ACCUMULATOR));
-
-      if (devinfo->ver >= 12) {
-         elk_inst_set_3src_a1_dst_reg_file(devinfo, inst, dest.file);
-         elk_inst_set_3src_dst_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
-      } else {
-         if (dest.file == ELK_ARCHITECTURE_REGISTER_FILE) {
-            elk_inst_set_3src_a1_dst_reg_file(devinfo, inst,
-                                              ELK_ALIGN1_3SRC_ACCUMULATOR);
-            elk_inst_set_3src_dst_reg_nr(devinfo, inst, ELK_ARF_ACCUMULATOR);
-         } else {
-            elk_inst_set_3src_a1_dst_reg_file(devinfo, inst,
-                                              ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE);
-            elk_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
-         }
-      }
-      elk_inst_set_3src_a1_dst_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest) / 8);
-
-      elk_inst_set_3src_a1_dst_hstride(devinfo, inst, ELK_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_1);
-
-      if (elk_reg_type_is_floating_point(dest.type)) {
-         elk_inst_set_3src_a1_exec_type(devinfo, inst,
-                                        ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
-      } else {
-         elk_inst_set_3src_a1_exec_type(devinfo, inst,
-                                        ELK_ALIGN1_3SRC_EXEC_TYPE_INT);
-      }
-
-      elk_inst_set_3src_a1_dst_type(devinfo, inst, dest.type);
-      elk_inst_set_3src_a1_src0_type(devinfo, inst, src0.type);
-      elk_inst_set_3src_a1_src1_type(devinfo, inst, src1.type);
-      elk_inst_set_3src_a1_src2_type(devinfo, inst, src2.type);
-
-      if (src0.file == ELK_IMMEDIATE_VALUE) {
-         elk_inst_set_3src_a1_src0_imm(devinfo, inst, src0.ud);
-      } else {
-         elk_inst_set_3src_a1_src0_vstride(
-            devinfo, inst, to_3src_align1_vstride(devinfo, src0.vstride));
-         elk_inst_set_3src_a1_src0_hstride(devinfo, inst,
-                                           to_3src_align1_hstride(src0.hstride));
-         elk_inst_set_3src_a1_src0_subreg_nr(devinfo, inst, phys_subnr(devinfo, src0));
-         if (src0.type == ELK_REGISTER_TYPE_NF) {
-            elk_inst_set_3src_src0_reg_nr(devinfo, inst, ELK_ARF_ACCUMULATOR);
-         } else {
-            elk_inst_set_3src_src0_reg_nr(devinfo, inst, phys_nr(devinfo, src0));
-         }
-         elk_inst_set_3src_src0_abs(devinfo, inst, src0.abs);
-         elk_inst_set_3src_src0_negate(devinfo, inst, src0.negate);
-      }
-      elk_inst_set_3src_a1_src1_vstride(
-         devinfo, inst, to_3src_align1_vstride(devinfo, src1.vstride));
-      elk_inst_set_3src_a1_src1_hstride(devinfo, inst,
-                                        to_3src_align1_hstride(src1.hstride));
-
-      elk_inst_set_3src_a1_src1_subreg_nr(devinfo, inst, phys_subnr(devinfo, src1));
-      if (src1.file == ELK_ARCHITECTURE_REGISTER_FILE) {
-         elk_inst_set_3src_src1_reg_nr(devinfo, inst, ELK_ARF_ACCUMULATOR);
-      } else {
-         elk_inst_set_3src_src1_reg_nr(devinfo, inst, phys_nr(devinfo, src1));
-      }
-      elk_inst_set_3src_src1_abs(devinfo, inst, src1.abs);
-      elk_inst_set_3src_src1_negate(devinfo, inst, src1.negate);
-
-      if (src2.file == ELK_IMMEDIATE_VALUE) {
-         elk_inst_set_3src_a1_src2_imm(devinfo, inst, src2.ud);
-      } else {
-         elk_inst_set_3src_a1_src2_hstride(devinfo, inst,
-                                           to_3src_align1_hstride(src2.hstride));
-         /* no vstride on src2 */
-         elk_inst_set_3src_a1_src2_subreg_nr(devinfo, inst, phys_subnr(devinfo, src2));
-         elk_inst_set_3src_src2_reg_nr(devinfo, inst, phys_nr(devinfo, src2));
-         elk_inst_set_3src_src2_abs(devinfo, inst, src2.abs);
-         elk_inst_set_3src_src2_negate(devinfo, inst, src2.negate);
-      }
-
-      assert(src0.file == ELK_GENERAL_REGISTER_FILE ||
-             src0.file == ELK_IMMEDIATE_VALUE ||
-             (src0.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-              src0.type == ELK_REGISTER_TYPE_NF));
-      assert(src1.file == ELK_GENERAL_REGISTER_FILE ||
-             (src1.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-              src1.nr == ELK_ARF_ACCUMULATOR));
-      assert(src2.file == ELK_GENERAL_REGISTER_FILE ||
-             src2.file == ELK_IMMEDIATE_VALUE);
-
-      if (devinfo->ver >= 12) {
-         if (src0.file == ELK_IMMEDIATE_VALUE) {
-            elk_inst_set_3src_a1_src0_is_imm(devinfo, inst, 1);
-         } else {
-            elk_inst_set_3src_a1_src0_reg_file(devinfo, inst, src0.file);
-         }
-
-         elk_inst_set_3src_a1_src1_reg_file(devinfo, inst, src1.file);
-
-         if (src2.file == ELK_IMMEDIATE_VALUE) {
-            elk_inst_set_3src_a1_src2_is_imm(devinfo, inst, 1);
-         } else {
-            elk_inst_set_3src_a1_src2_reg_file(devinfo, inst, src2.file);
-         }
-      } else {
-         elk_inst_set_3src_a1_src0_reg_file(devinfo, inst,
-                                            src0.file == ELK_GENERAL_REGISTER_FILE ?
-                                            ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE :
-                                            ELK_ALIGN1_3SRC_IMMEDIATE_VALUE);
-         elk_inst_set_3src_a1_src1_reg_file(devinfo, inst,
-                                            src1.file == ELK_GENERAL_REGISTER_FILE ?
-                                            ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE :
-                                            ELK_ALIGN1_3SRC_ACCUMULATOR);
-         elk_inst_set_3src_a1_src2_reg_file(devinfo, inst,
-                                            src2.file == ELK_GENERAL_REGISTER_FILE ?
-                                            ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE :
-                                            ELK_ALIGN1_3SRC_IMMEDIATE_VALUE);
-      }
-
-   } else {
-      assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
-             dest.file == ELK_MESSAGE_REGISTER_FILE);
-      assert(dest.type == ELK_REGISTER_TYPE_F  ||
-             dest.type == ELK_REGISTER_TYPE_DF ||
-             dest.type == ELK_REGISTER_TYPE_D  ||
-             dest.type == ELK_REGISTER_TYPE_UD ||
-             (dest.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 8));
-      if (devinfo->ver == 6) {
-         elk_inst_set_3src_a16_dst_reg_file(devinfo, inst,
-                                            dest.file == ELK_MESSAGE_REGISTER_FILE);
-      }
-      elk_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
-      elk_inst_set_3src_a16_dst_subreg_nr(devinfo, inst, dest.subnr / 4);
-      elk_inst_set_3src_a16_dst_writemask(devinfo, inst, dest.writemask);
-
-      assert(src0.file == ELK_GENERAL_REGISTER_FILE);
-      elk_inst_set_3src_a16_src0_swizzle(devinfo, inst, src0.swizzle);
-      elk_inst_set_3src_a16_src0_subreg_nr(devinfo, inst, get_3src_subreg_nr(src0));
-      elk_inst_set_3src_src0_reg_nr(devinfo, inst, src0.nr);
-      elk_inst_set_3src_src0_abs(devinfo, inst, src0.abs);
-      elk_inst_set_3src_src0_negate(devinfo, inst, src0.negate);
-      elk_inst_set_3src_a16_src0_rep_ctrl(devinfo, inst,
-                                          src0.vstride == ELK_VERTICAL_STRIDE_0);
-
-      assert(src1.file == ELK_GENERAL_REGISTER_FILE);
-      elk_inst_set_3src_a16_src1_swizzle(devinfo, inst, src1.swizzle);
-      elk_inst_set_3src_a16_src1_subreg_nr(devinfo, inst, get_3src_subreg_nr(src1));
-      elk_inst_set_3src_src1_reg_nr(devinfo, inst, src1.nr);
-      elk_inst_set_3src_src1_abs(devinfo, inst, src1.abs);
-      elk_inst_set_3src_src1_negate(devinfo, inst, src1.negate);
-      elk_inst_set_3src_a16_src1_rep_ctrl(devinfo, inst,
-                                          src1.vstride == ELK_VERTICAL_STRIDE_0);
-
-      assert(src2.file == ELK_GENERAL_REGISTER_FILE);
-      elk_inst_set_3src_a16_src2_swizzle(devinfo, inst, src2.swizzle);
-      elk_inst_set_3src_a16_src2_subreg_nr(devinfo, inst, get_3src_subreg_nr(src2));
-      elk_inst_set_3src_src2_reg_nr(devinfo, inst, src2.nr);
-      elk_inst_set_3src_src2_abs(devinfo, inst, src2.abs);
-      elk_inst_set_3src_src2_negate(devinfo, inst, src2.negate);
-      elk_inst_set_3src_a16_src2_rep_ctrl(devinfo, inst,
-                                          src2.vstride == ELK_VERTICAL_STRIDE_0);
-
-      if (devinfo->ver >= 7) {
-         /* Set both the source and destination types based on dest.type,
-          * ignoring the source register types.  The MAD and LRP emitters ensure
-          * that all four types are float.  The BFE and BFI2 emitters, however,
-          * may send us mixed D and UD types and want us to ignore that and use
-          * the destination type.
-          */
-         elk_inst_set_3src_a16_src_type(devinfo, inst, dest.type);
-         elk_inst_set_3src_a16_dst_type(devinfo, inst, dest.type);
-
-         /* From the Bspec, 3D Media GPGPU, Instruction fields, srcType:
-          *
-          *    "Three source instructions can use operands with mixed-mode
-          *     precision. When SrcType field is set to :f or :hf it defines
-          *     precision for source 0 only, and fields Src1Type and Src2Type
-          *     define precision for other source operands:
-          *
-          *     0b = :f. Single precision Float (32-bit).
-          *     1b = :hf. Half precision Float (16-bit)."
-          */
-         if (src1.type == ELK_REGISTER_TYPE_HF)
-            elk_inst_set_3src_a16_src1_type(devinfo, inst, 1);
-
-         if (src2.type == ELK_REGISTER_TYPE_HF)
-            elk_inst_set_3src_a16_src2_type(devinfo, inst, 1);
-      }
+   assert(dest.file == ELK_GENERAL_REGISTER_FILE ||
+          dest.file == ELK_MESSAGE_REGISTER_FILE);
+   assert(dest.type == ELK_REGISTER_TYPE_F  ||
+          dest.type == ELK_REGISTER_TYPE_DF ||
+          dest.type == ELK_REGISTER_TYPE_D  ||
+          dest.type == ELK_REGISTER_TYPE_UD ||
+          (dest.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 8));
+   if (devinfo->ver == 6) {
+      elk_inst_set_3src_a16_dst_reg_file(devinfo, inst,
+                                         dest.file == ELK_MESSAGE_REGISTER_FILE);
    }
+   elk_inst_set_3src_dst_reg_nr(devinfo, inst, dest.nr);
+   elk_inst_set_3src_a16_dst_subreg_nr(devinfo, inst, dest.subnr / 4);
+   elk_inst_set_3src_a16_dst_writemask(devinfo, inst, dest.writemask);
 
-   return inst;
-}
-
-static elk_inst *
-elk_dpas_three_src(struct elk_codegen *p, enum elk_gfx12_systolic_depth opcode,
-                   unsigned sdepth, unsigned rcount, struct elk_reg dest,
-                   struct elk_reg src0, struct elk_reg src1, struct elk_reg src2)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   elk_inst *inst = next_insn(p, opcode);
-
-   assert(dest.file == ELK_GENERAL_REGISTER_FILE);
-   elk_inst_set_dpas_3src_dst_reg_file(devinfo, inst,
-                                       ELK_GENERAL_REGISTER_FILE);
-   elk_inst_set_dpas_3src_dst_reg_nr(devinfo, inst, dest.nr);
-   elk_inst_set_dpas_3src_dst_subreg_nr(devinfo, inst, dest.subnr);
-
-   if (elk_reg_type_is_floating_point(dest.type)) {
-      elk_inst_set_dpas_3src_exec_type(devinfo, inst,
-                                       ELK_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
-   } else {
-      elk_inst_set_dpas_3src_exec_type(devinfo, inst,
-                                       ELK_ALIGN1_3SRC_EXEC_TYPE_INT);
-   }
-
-   elk_inst_set_dpas_3src_sdepth(devinfo, inst, sdepth);
-   elk_inst_set_dpas_3src_rcount(devinfo, inst, rcount - 1);
-
-   elk_inst_set_dpas_3src_dst_type(devinfo, inst, dest.type);
-   elk_inst_set_dpas_3src_src0_type(devinfo, inst, src0.type);
-   elk_inst_set_dpas_3src_src1_type(devinfo, inst, src1.type);
-   elk_inst_set_dpas_3src_src2_type(devinfo, inst, src2.type);
-
-   assert(src0.file == ELK_GENERAL_REGISTER_FILE ||
-          (src0.file == ELK_ARCHITECTURE_REGISTER_FILE &&
-           src0.nr == ELK_ARF_NULL));
-
-   elk_inst_set_dpas_3src_src0_reg_file(devinfo, inst, src0.file);
-   elk_inst_set_dpas_3src_src0_reg_nr(devinfo, inst, src0.nr);
-   elk_inst_set_dpas_3src_src0_subreg_nr(devinfo, inst, src0.subnr);
+   assert(src0.file == ELK_GENERAL_REGISTER_FILE);
+   elk_inst_set_3src_a16_src0_swizzle(devinfo, inst, src0.swizzle);
+   elk_inst_set_3src_a16_src0_subreg_nr(devinfo, inst, get_3src_subreg_nr(src0));
+   elk_inst_set_3src_src0_reg_nr(devinfo, inst, src0.nr);
+   elk_inst_set_3src_src0_abs(devinfo, inst, src0.abs);
+   elk_inst_set_3src_src0_negate(devinfo, inst, src0.negate);
+   elk_inst_set_3src_a16_src0_rep_ctrl(devinfo, inst,
+                                       src0.vstride == ELK_VERTICAL_STRIDE_0);
 
    assert(src1.file == ELK_GENERAL_REGISTER_FILE);
-
-   elk_inst_set_dpas_3src_src1_reg_file(devinfo, inst, src1.file);
-   elk_inst_set_dpas_3src_src1_reg_nr(devinfo, inst, src1.nr);
-   elk_inst_set_dpas_3src_src1_subreg_nr(devinfo, inst, src1.subnr);
-   elk_inst_set_dpas_3src_src1_subbyte(devinfo, inst, ELK_SUB_BYTE_PRECISION_NONE);
+   elk_inst_set_3src_a16_src1_swizzle(devinfo, inst, src1.swizzle);
+   elk_inst_set_3src_a16_src1_subreg_nr(devinfo, inst, get_3src_subreg_nr(src1));
+   elk_inst_set_3src_src1_reg_nr(devinfo, inst, src1.nr);
+   elk_inst_set_3src_src1_abs(devinfo, inst, src1.abs);
+   elk_inst_set_3src_src1_negate(devinfo, inst, src1.negate);
+   elk_inst_set_3src_a16_src1_rep_ctrl(devinfo, inst,
+                                       src1.vstride == ELK_VERTICAL_STRIDE_0);
 
    assert(src2.file == ELK_GENERAL_REGISTER_FILE);
+   elk_inst_set_3src_a16_src2_swizzle(devinfo, inst, src2.swizzle);
+   elk_inst_set_3src_a16_src2_subreg_nr(devinfo, inst, get_3src_subreg_nr(src2));
+   elk_inst_set_3src_src2_reg_nr(devinfo, inst, src2.nr);
+   elk_inst_set_3src_src2_abs(devinfo, inst, src2.abs);
+   elk_inst_set_3src_src2_negate(devinfo, inst, src2.negate);
+   elk_inst_set_3src_a16_src2_rep_ctrl(devinfo, inst,
+                                       src2.vstride == ELK_VERTICAL_STRIDE_0);
 
-   elk_inst_set_dpas_3src_src2_reg_file(devinfo, inst, src2.file);
-   elk_inst_set_dpas_3src_src2_reg_nr(devinfo, inst, src2.nr);
-   elk_inst_set_dpas_3src_src2_subreg_nr(devinfo, inst, src2.subnr);
-   elk_inst_set_dpas_3src_src2_subbyte(devinfo, inst, ELK_SUB_BYTE_PRECISION_NONE);
+   if (devinfo->ver >= 7) {
+      /* Set both the source and destination types based on dest.type,
+       * ignoring the source register types.  The MAD and LRP emitters ensure
+       * that all four types are float.  The BFE and BFI2 emitters, however,
+       * may send us mixed D and UD types and want us to ignore that and use
+       * the destination type.
+       */
+      elk_inst_set_3src_a16_src_type(devinfo, inst, dest.type);
+      elk_inst_set_3src_a16_dst_type(devinfo, inst, dest.type);
+
+      /* From the Bspec, 3D Media GPGPU, Instruction fields, srcType:
+       *
+       *    "Three source instructions can use operands with mixed-mode
+       *     precision. When SrcType field is set to :f or :hf it defines
+       *     precision for source 0 only, and fields Src1Type and Src2Type
+       *     define precision for other source operands:
+       *
+       *     0b = :f. Single precision Float (32-bit).
+       *     1b = :hf. Half precision Float (16-bit)."
+       */
+      if (src1.type == ELK_REGISTER_TYPE_HF)
+         elk_inst_set_3src_a16_src1_type(devinfo, inst, 1);
+
+      if (src2.type == ELK_REGISTER_TYPE_HF)
+         elk_inst_set_3src_a16_src2_type(devinfo, inst, 1);
+   }
 
    return inst;
 }
@@ -1148,8 +888,6 @@ ALU2(SHR)
 ALU2(SHL)
 ALU1(DIM)
 ALU2(ASR)
-ALU2(ROL)
-ALU2(ROR)
 ALU3(CSEL)
 ALU1(FRC)
 ALU1(RNDD)
@@ -1163,7 +901,6 @@ ALU2(DP4)
 ALU2(DPH)
 ALU2(DP3)
 ALU2(DP2)
-ALU3(DP4A)
 ALU3(MAD)
 ALU3F(LRP)
 ALU1(BFREV)
@@ -1175,7 +912,6 @@ ALU1(FBL)
 ALU1(CBIT)
 ALU2(ADDC)
 ALU2(SUBB)
-ALU3(ADD3)
 
 elk_inst *
 elk_MOV(struct elk_codegen *p, struct elk_reg dest, struct elk_reg src0)
@@ -1303,15 +1039,6 @@ elk_PLN(struct elk_codegen *p, struct elk_reg dest,
 }
 
 elk_inst *
-elk_DPAS(struct elk_codegen *p, enum elk_gfx12_systolic_depth sdepth,
-         unsigned rcount, struct elk_reg dest, struct elk_reg src0,
-         struct elk_reg src1, struct elk_reg src2)
-{
-   return elk_dpas_three_src(p, ELK_OPCODE_DPAS, sdepth, rcount, dest, src0,
-                             src1, src2);
-}
-
-elk_inst *
 elk_F32TO16(struct elk_codegen *p, struct elk_reg dst, struct elk_reg src)
 {
    assert(p->devinfo->ver == 7);
@@ -1357,12 +1084,6 @@ void elk_NOP(struct elk_codegen *p)
    elk_inst *insn = next_insn(p, ELK_OPCODE_NOP);
    memset(insn, 0, sizeof(*insn));
    elk_inst_set_opcode(p->isa, insn, ELK_OPCODE_NOP);
-}
-
-void elk_SYNC(struct elk_codegen *p, enum tgl_sync_function func)
-{
-   elk_inst *insn = next_insn(p, ELK_OPCODE_SYNC);
-   elk_inst_set_cond_modifier(p->devinfo, insn, func);
 }
 
 /***********************************************************************
@@ -1467,8 +1188,7 @@ elk_IF(struct elk_codegen *p, unsigned execute_size)
       elk_inst_set_uip(devinfo, insn, 0);
    } else {
       elk_set_dest(p, insn, vec1(retype(elk_null_reg(), ELK_REGISTER_TYPE_D)));
-      if (devinfo->ver < 12)
-         elk_set_src0(p, insn, elk_imm_d(0));
+      elk_set_src0(p, insn, elk_imm_d(0));
       elk_inst_set_jip(devinfo, insn, 0);
       elk_inst_set_uip(devinfo, insn, 0);
    }
@@ -1633,7 +1353,7 @@ patch_IF_ELSE(struct elk_codegen *p,
 	 /* The IF instruction's UIP and ELSE's JIP should point to ENDIF */
          elk_inst_set_uip(devinfo, if_inst, br * (endif_inst - if_inst));
 
-         if (devinfo->ver >= 8 && devinfo->ver < 11) {
+         if (devinfo->ver >= 8) {
             /* Set the ELSE instruction to use branch_ctrl with a join
              * jump target pointing at the NOP inserted right before
              * the ENDIF instruction in order to make sure it is
@@ -1685,8 +1405,7 @@ elk_ELSE(struct elk_codegen *p)
       elk_inst_set_uip(devinfo, insn, 0);
    } else {
       elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
-      if (devinfo->ver < 12)
-         elk_set_src0(p, insn, elk_imm_d(0));
+      elk_set_src0(p, insn, elk_imm_d(0));
       elk_inst_set_jip(devinfo, insn, 0);
       elk_inst_set_uip(devinfo, insn, 0);
    }
@@ -1711,7 +1430,7 @@ elk_ENDIF(struct elk_codegen *p)
 
    assert(p->if_stack_depth > 0);
 
-   if (devinfo->ver >= 8 && devinfo->ver < 11 &&
+   if (devinfo->ver >= 8 &&
        elk_inst_opcode(p->isa, &p->store[p->if_stack[
                              p->if_stack_depth - 1]]) == ELK_OPCODE_ELSE) {
       /* Insert a NOP to be specified as join instruction within the
@@ -1867,7 +1586,8 @@ elk_HALT(struct elk_codegen *p)
    } else if (devinfo->ver < 8) {
       elk_set_src0(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
       elk_set_src1(p, insn, elk_imm_d(0x0)); /* UIP and JIP, updated later. */
-   } else if (devinfo->ver < 12) {
+   } else {
+      assert(devinfo->ver == 8);
       elk_set_src0(p, insn, elk_imm_d(0x0));
    }
 
@@ -1964,8 +1684,7 @@ elk_WHILE(struct elk_codegen *p)
 
       if (devinfo->ver >= 8) {
          elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
-         if (devinfo->ver < 12)
-            elk_set_src0(p, insn, elk_imm_d(0));
+         elk_set_src0(p, insn, elk_imm_d(0));
          elk_inst_set_jip(devinfo, insn, br * (do_insn - insn));
       } else if (devinfo->ver == 7) {
          elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_D));
@@ -2170,10 +1889,8 @@ void elk_gfx6_math(struct elk_codegen *p,
       assert(!src1.negate);
       assert(!src1.abs);
    } else {
-      assert(src0.type == ELK_REGISTER_TYPE_F ||
-             (src0.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 9));
-      assert(src1.type == ELK_REGISTER_TYPE_F ||
-             (src1.type == ELK_REGISTER_TYPE_HF && devinfo->ver >= 9));
+      assert(src0.type == ELK_REGISTER_TYPE_F);
+      assert(src1.type == ELK_REGISTER_TYPE_F);
    }
 
    /* Source modifiers are ignored for extended math instructions on Gfx6. */
@@ -2222,7 +1939,6 @@ void elk_oword_block_write_scratch(struct elk_codegen *p,
       (devinfo->ver >= 7 ? GFX7_SFID_DATAPORT_DATA_CACHE :
        devinfo->ver >= 6 ? GFX6_SFID_DATAPORT_RENDER_CACHE :
        ELK_SFID_DATAPORT_WRITE);
-   const struct tgl_swsb swsb = elk_get_default_swsb(p);
    uint32_t msg_type;
 
    if (devinfo->ver >= 6)
@@ -2242,13 +1958,11 @@ void elk_oword_block_write_scratch(struct elk_codegen *p,
       elk_set_default_exec_size(p, ELK_EXECUTE_8);
       elk_set_default_mask_control(p, ELK_MASK_DISABLE);
       elk_set_default_compression_control(p, ELK_COMPRESSION_NONE);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
 
       elk_MOV(p, mrf, retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
 
       /* set message header global offset field (reg 0, element 2) */
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_swsb(p, tgl_swsb_null());
       elk_MOV(p,
 	      retype(elk_vec1_reg(ELK_MESSAGE_REGISTER_FILE,
 				  mrf.nr,
@@ -2256,7 +1970,6 @@ void elk_oword_block_write_scratch(struct elk_codegen *p,
 	      elk_imm_ud(offset));
 
       elk_pop_insn_state(p);
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
    }
 
    {
@@ -2330,7 +2043,6 @@ elk_oword_block_read_scratch(struct elk_codegen *p,
 			     unsigned offset)
 {
    const struct intel_device_info *devinfo = p->devinfo;
-   const struct tgl_swsb swsb = elk_get_default_swsb(p);
 
    if (devinfo->ver >= 6)
       offset /= 16;
@@ -2357,7 +2069,6 @@ elk_oword_block_read_scratch(struct elk_codegen *p,
 
    {
       elk_push_insn_state(p);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
       elk_set_default_exec_size(p, ELK_EXECUTE_8);
       elk_set_default_compression_control(p, ELK_COMPRESSION_NONE);
       elk_set_default_mask_control(p, ELK_MASK_DISABLE);
@@ -2366,11 +2077,9 @@ elk_oword_block_read_scratch(struct elk_codegen *p,
 
       /* set message header global offset field (reg 0, element 2) */
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_swsb(p, tgl_swsb_null());
       elk_MOV(p, get_element_ud(mrf, 2), elk_imm_ud(offset));
 
       elk_pop_insn_state(p);
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
    }
 
    {
@@ -2447,7 +2156,6 @@ void elk_oword_block_read(struct elk_codegen *p,
       (devinfo->ver >= 6 ? GFX6_SFID_DATAPORT_CONSTANT_CACHE :
        ELK_SFID_DATAPORT_READ);
    const unsigned exec_size = 1 << elk_get_default_exec_size(p);
-   const struct tgl_swsb swsb = elk_get_default_swsb(p);
 
    /* On newer hardware, offset is in units of owords. */
    if (devinfo->ver >= 6)
@@ -2463,20 +2171,16 @@ void elk_oword_block_read(struct elk_codegen *p,
 
    elk_push_insn_state(p);
    elk_set_default_exec_size(p, ELK_EXECUTE_8);
-   elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
    elk_MOV(p, mrf, retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UD));
 
    /* set message header global offset field (reg 0, element 2) */
    elk_set_default_exec_size(p, ELK_EXECUTE_1);
-   elk_set_default_swsb(p, tgl_swsb_null());
    elk_MOV(p,
 	   retype(elk_vec1_reg(ELK_MESSAGE_REGISTER_FILE,
 			       mrf.nr,
 			       2), ELK_REGISTER_TYPE_UD),
 	   elk_imm_ud(offset));
    elk_pop_insn_state(p);
-
-   elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
 
    elk_inst *insn = next_insn(p, ELK_OPCODE_SEND);
 
@@ -2553,32 +2257,6 @@ elk_fb_WRITE(struct elk_codegen *p,
                                   last_render_target,
                                   false /* coarse_write */));
    elk_inst_set_eot(devinfo, insn, eot);
-
-   return insn;
-}
-
-elk_inst *
-elk_gfx9_fb_READ(struct elk_codegen *p,
-             struct elk_reg dst,
-             struct elk_reg payload,
-             unsigned binding_table_index,
-             unsigned msg_length,
-             unsigned response_length,
-             bool per_sample)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   assert(devinfo->ver >= 9);
-   elk_inst *insn = next_insn(p, ELK_OPCODE_SENDC);
-
-   elk_inst_set_sfid(devinfo, insn, GFX6_SFID_DATAPORT_RENDER_CACHE);
-   elk_set_dest(p, insn, dst);
-   elk_set_src0(p, insn, payload);
-   elk_set_desc(
-      p, insn,
-      elk_message_desc(devinfo, msg_length, response_length, true) |
-      elk_fb_read_desc(devinfo, binding_table_index, 0 /* msg_control */,
-                       1 << elk_get_default_exec_size(p), per_sample));
-   elk_inst_set_rt_slot_group(devinfo, insn, elk_get_default_group(p) / 16);
 
    return insn;
 }
@@ -2676,7 +2354,6 @@ void elk_adjust_sampler_state_pointer(struct elk_codegen *p,
 
       elk_push_insn_state(p);
       elk_AND(p, temp, get_element_ud(sampler_index, 0), elk_imm_ud(0x0f0));
-      elk_set_default_swsb(p, tgl_swsb_regdist(1));
       elk_SHL(p, temp, temp, elk_imm_ud(4));
       elk_ADD(p,
               get_element_ud(header, 3),
@@ -2759,7 +2436,6 @@ elk_send_indirect_message(struct elk_codegen *p,
       elk_set_src0(p, send, retype(payload, ELK_REGISTER_TYPE_UD));
       elk_set_desc(p, send, desc.ud | desc_imm);
    } else {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
       struct elk_reg addr = retype(elk_address_reg(0), ELK_REGISTER_TYPE_UD);
 
       elk_push_insn_state(p);
@@ -2768,7 +2444,6 @@ elk_send_indirect_message(struct elk_codegen *p,
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
       elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
       elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
 
       /* Load the indirect descriptor to an address register using OR so the
        * caller can specify additional descriptor bits with the desc_imm
@@ -2778,164 +2453,12 @@ elk_send_indirect_message(struct elk_codegen *p,
 
       elk_pop_insn_state(p);
 
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
       send = next_insn(p, ELK_OPCODE_SEND);
       elk_set_src0(p, send, retype(payload, ELK_REGISTER_TYPE_UD));
-
-      if (devinfo->ver >= 12)
-         elk_inst_set_send_sel_reg32_desc(devinfo, send, true);
-      else
-         elk_set_src1(p, send, addr);
+      elk_set_src1(p, send, addr);
    }
 
    elk_set_dest(p, send, dst);
-   elk_inst_set_sfid(devinfo, send, sfid);
-   elk_inst_set_eot(devinfo, send, eot);
-}
-
-void
-elk_send_indirect_split_message(struct elk_codegen *p,
-                                unsigned sfid,
-                                struct elk_reg dst,
-                                struct elk_reg payload0,
-                                struct elk_reg payload1,
-                                struct elk_reg desc,
-                                unsigned desc_imm,
-                                struct elk_reg ex_desc,
-                                unsigned ex_desc_imm,
-                                bool ex_desc_scratch,
-                                bool ex_bso,
-                                bool eot)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   struct elk_inst *send;
-
-   dst = retype(dst, ELK_REGISTER_TYPE_UW);
-
-   assert(desc.type == ELK_REGISTER_TYPE_UD);
-
-   if (desc.file == ELK_IMMEDIATE_VALUE) {
-      desc.ud |= desc_imm;
-   } else {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
-      struct elk_reg addr = retype(elk_address_reg(0), ELK_REGISTER_TYPE_UD);
-
-      elk_push_insn_state(p);
-      elk_set_default_access_mode(p, ELK_ALIGN_1);
-      elk_set_default_mask_control(p, ELK_MASK_DISABLE);
-      elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
-      elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-
-      /* Load the indirect descriptor to an address register using OR so the
-       * caller can specify additional descriptor bits with the desc_imm
-       * immediate.
-       */
-      elk_OR(p, addr, desc, elk_imm_ud(desc_imm));
-
-      elk_pop_insn_state(p);
-      desc = addr;
-
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   if (ex_desc.file == ELK_IMMEDIATE_VALUE &&
-       !ex_desc_scratch &&
-       (devinfo->ver >= 12 ||
-        ((ex_desc.ud | ex_desc_imm) & INTEL_MASK(15, 12)) == 0)) {
-      /* ATS-M PRMs, Volume 2d: Command Reference: Structures,
-       * EU_INSTRUCTION_SEND instruction
-       *
-       *    "ExBSO: Exists If: ([ExDesc.IsReg]==true)"
-       */
-      assert(!ex_bso);
-      ex_desc.ud |= ex_desc_imm;
-   } else {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
-      struct elk_reg addr = retype(elk_address_reg(2), ELK_REGISTER_TYPE_UD);
-
-      elk_push_insn_state(p);
-      elk_set_default_access_mode(p, ELK_ALIGN_1);
-      elk_set_default_mask_control(p, ELK_MASK_DISABLE);
-      elk_set_default_exec_size(p, ELK_EXECUTE_1);
-      elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
-      elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-
-      /* Load the indirect extended descriptor to an address register using OR
-       * so the caller can specify additional descriptor bits with the
-       * desc_imm immediate.
-       *
-       * Even though the instruction dispatcher always pulls the SFID and EOT
-       * fields from the instruction itself, actual external unit which
-       * processes the message gets the SFID and EOT from the extended
-       * descriptor which comes from the address register.  If we don't OR
-       * those two bits in, the external unit may get confused and hang.
-       */
-      unsigned imm_part = ex_bso ? 0 : (ex_desc_imm | sfid | eot << 5);
-
-      if (ex_desc_scratch) {
-         /* Or the scratch surface offset together with the immediate part of
-          * the extended descriptor.
-          */
-         assert(devinfo->verx10 >= 125);
-         elk_AND(p, addr,
-                 retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
-                 elk_imm_ud(INTEL_MASK(31, 10)));
-         elk_OR(p, addr, addr, elk_imm_ud(imm_part));
-      } else if (ex_desc.file == ELK_IMMEDIATE_VALUE) {
-         /* ex_desc bits 15:12 don't exist in the instruction encoding prior
-          * to Gfx12, so we may have fallen back to an indirect extended
-          * descriptor.
-          */
-         elk_MOV(p, addr, elk_imm_ud(ex_desc.ud | imm_part));
-      } else {
-         elk_OR(p, addr, ex_desc, elk_imm_ud(imm_part));
-      }
-
-      elk_pop_insn_state(p);
-      ex_desc = addr;
-
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
-   }
-
-   send = next_insn(p, devinfo->ver >= 12 ? ELK_OPCODE_SEND : ELK_OPCODE_SENDS);
-   elk_set_dest(p, send, dst);
-   elk_set_src0(p, send, retype(payload0, ELK_REGISTER_TYPE_UD));
-   elk_set_src1(p, send, retype(payload1, ELK_REGISTER_TYPE_UD));
-
-   if (desc.file == ELK_IMMEDIATE_VALUE) {
-      elk_inst_set_send_sel_reg32_desc(devinfo, send, 0);
-      elk_inst_set_send_desc(devinfo, send, desc.ud);
-   } else {
-      assert(desc.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(desc.nr == ELK_ARF_ADDRESS);
-      assert(desc.subnr == 0);
-      elk_inst_set_send_sel_reg32_desc(devinfo, send, 1);
-   }
-
-   if (ex_desc.file == ELK_IMMEDIATE_VALUE) {
-      elk_inst_set_send_sel_reg32_ex_desc(devinfo, send, 0);
-      elk_inst_set_sends_ex_desc(devinfo, send, ex_desc.ud);
-   } else {
-      assert(ex_desc.file == ELK_ARCHITECTURE_REGISTER_FILE);
-      assert(ex_desc.nr == ELK_ARF_ADDRESS);
-      assert((ex_desc.subnr & 0x3) == 0);
-      elk_inst_set_send_sel_reg32_ex_desc(devinfo, send, 1);
-      elk_inst_set_send_ex_desc_ia_subreg_nr(devinfo, send, phys_subnr(devinfo, ex_desc) >> 2);
-   }
-
-   if (ex_bso) {
-      /* The send instruction ExBSO field does not exist with UGM on Gfx20+,
-       * it is assumed.
-       *
-       * BSpec 56890
-       */
-      if (devinfo->ver < 20 || sfid != GFX12_SFID_UGM)
-         elk_inst_set_send_ex_bso(devinfo, send, true);
-      elk_inst_set_send_src1_len(devinfo, send, GET_BITS(ex_desc_imm, 10, 6));
-   }
    elk_inst_set_sfid(devinfo, send, sfid);
    elk_inst_set_eot(devinfo, send, eot);
 }
@@ -2949,7 +2472,6 @@ elk_send_indirect_surface_message(struct elk_codegen *p,
                                   unsigned desc_imm)
 {
    if (surface.file != ELK_IMMEDIATE_VALUE) {
-      const struct tgl_swsb swsb = elk_get_default_swsb(p);
       struct elk_reg addr = retype(elk_address_reg(0), ELK_REGISTER_TYPE_UD);
 
       elk_push_insn_state(p);
@@ -2958,7 +2480,6 @@ elk_send_indirect_surface_message(struct elk_codegen *p,
       elk_set_default_exec_size(p, ELK_EXECUTE_1);
       elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
       elk_set_default_flag_reg(p, 0, 0);
-      elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
 
       /* Mask out invalid bits from the surface index to avoid hangs e.g. when
        * some surface array is accessed out of bounds.
@@ -2971,7 +2492,6 @@ elk_send_indirect_surface_message(struct elk_codegen *p,
       elk_pop_insn_state(p);
 
       surface = addr;
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
    }
 
    elk_send_indirect_message(p, sfid, dst, payload, surface, desc_imm, false);
@@ -3338,55 +2858,8 @@ elk_set_memory_fence_message(struct elk_codegen *p,
    if (commit_enable)
       elk_inst_set_dp_msg_control(devinfo, insn, 1 << 5);
 
-   assert(devinfo->ver >= 11 || bti == 0);
+   assert(bti == 0);
    elk_inst_set_binding_table_index(devinfo, insn, bti);
-}
-
-static void
-gfx12_set_memory_fence_message(struct elk_codegen *p,
-                               struct elk_inst *insn,
-                               enum elk_message_target sfid,
-                               uint32_t desc)
-{
-   const unsigned mlen = 1 * reg_unit(p->devinfo); /* g0 header */
-    /* Completion signaled by write to register. No data returned. */
-   const unsigned rlen = 1 * reg_unit(p->devinfo);
-
-   elk_inst_set_sfid(p->devinfo, insn, sfid);
-
-   if (sfid == ELK_SFID_URB && p->devinfo->ver < 20) {
-      elk_set_desc(p, insn, elk_urb_fence_desc(p->devinfo) |
-                            elk_message_desc(p->devinfo, mlen, rlen, true));
-   } else {
-      enum lsc_fence_scope scope = lsc_fence_msg_desc_scope(p->devinfo, desc);
-      enum lsc_flush_type flush_type = lsc_fence_msg_desc_flush_type(p->devinfo, desc);
-
-      if (sfid == GFX12_SFID_TGM) {
-         scope = LSC_FENCE_TILE;
-         flush_type = LSC_FLUSH_TYPE_EVICT;
-      }
-
-      /* Wa_14012437816:
-       *
-       *   "For any fence greater than local scope, always set flush type to
-       *    at least invalidate so that fence goes on properly."
-       *
-       *   "The bug is if flush_type is 'None', the scope is always downgraded
-       *    to 'local'."
-       *
-       * Here set scope to NONE_6 instead of NONE, which has the same effect
-       * as NONE but avoids the downgrade to scope LOCAL.
-       */
-      if (intel_needs_workaround(p->devinfo, 14012437816) &&
-          scope > LSC_FENCE_LOCAL &&
-          flush_type == LSC_FLUSH_TYPE_NONE) {
-         flush_type = LSC_FLUSH_TYPE_NONE_6;
-      }
-
-      elk_set_desc(p, insn, lsc_fence_msg_desc(p->devinfo, scope,
-                                               flush_type, false) |
-                            elk_message_desc(p->devinfo, mlen, rlen, false));
-   }
 }
 
 void
@@ -3413,11 +2886,7 @@ elk_memory_fence(struct elk_codegen *p,
    elk_set_dest(p, insn, dst);
    elk_set_src0(p, insn, src);
 
-   /* All DG2 hardware requires LSC for fence messages, even A-step */
-   if (devinfo->has_lsc)
-      gfx12_set_memory_fence_message(p, insn, sfid, desc);
-   else
-      elk_set_memory_fence_message(p, insn, sfid, commit_enable, bti);
+   elk_set_memory_fence_message(p, insn, sfid, commit_enable, bti);
 }
 
 void
@@ -3544,7 +3013,6 @@ elk_broadcast(struct elk_codegen *p,
       if (type_sz(src.type) > 4 && !devinfo->has_64bit_int) {
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 0),
                     subscript(src, ELK_REGISTER_TYPE_D, 0));
-         elk_set_default_swsb(p, tgl_swsb_null());
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 1),
                     subscript(src, ELK_REGISTER_TYPE_D, 1));
       } else {
@@ -3588,19 +3056,15 @@ elk_broadcast(struct elk_codegen *p,
           * register is above this limit.
           */
          if (offset >= limit) {
-            elk_set_default_swsb(p, tgl_swsb_regdist(1));
             elk_ADD(p, addr, addr, elk_imm_ud(offset - offset % limit));
             offset = offset % limit;
          }
 
          elk_pop_insn_state(p);
 
-         elk_set_default_swsb(p, tgl_swsb_regdist(1));
-
          /* Use indirect addressing to fetch the specified component. */
          if (type_sz(src.type) > 4 &&
-             (devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo) ||
-              !devinfo->has_64bit_int)) {
+             (devinfo->platform == INTEL_PLATFORM_CHV || !devinfo->has_64bit_int)) {
             /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
              *
              *    "When source or destination datatype is 64b or operation is
@@ -3616,7 +3080,6 @@ elk_broadcast(struct elk_codegen *p,
             elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 0),
                        retype(elk_vec1_indirect(addr.subnr, offset),
                               ELK_REGISTER_TYPE_D));
-            elk_set_default_swsb(p, tgl_swsb_null());
             elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 1),
                        retype(elk_vec1_indirect(addr.subnr, offset + 4),
                               ELK_REGISTER_TYPE_D));
@@ -3709,27 +3172,18 @@ elk_float_controls_mode(struct elk_codegen *p,
     *   does not ensure execution pipeline coherency. Software must set the
     *   thread control field to ‘switch’ for an instruction that uses
     *   control register as an explicit operand."
-    *
-    * On Gfx12+ this is implemented in terms of SWSB annotations instead.
     */
-   elk_set_default_swsb(p, tgl_swsb_regdist(1));
-
    elk_inst *inst = elk_AND(p, elk_cr0_reg(0), elk_cr0_reg(0),
                             elk_imm_ud(~mask));
    elk_inst_set_exec_size(p->devinfo, inst, ELK_EXECUTE_1);
-   if (p->devinfo->ver < 12)
-      elk_inst_set_thread_control(p->devinfo, inst, ELK_THREAD_SWITCH);
+   elk_inst_set_thread_control(p->devinfo, inst, ELK_THREAD_SWITCH);
 
    if (mode) {
       elk_inst *inst_or = elk_OR(p, elk_cr0_reg(0), elk_cr0_reg(0),
                                  elk_imm_ud(mode));
       elk_inst_set_exec_size(p->devinfo, inst_or, ELK_EXECUTE_1);
-      if (p->devinfo->ver < 12)
-         elk_inst_set_thread_control(p->devinfo, inst_or, ELK_THREAD_SWITCH);
+      elk_inst_set_thread_control(p->devinfo, inst_or, ELK_THREAD_SWITCH);
    }
-
-   if (p->devinfo->ver >= 12)
-      elk_SYNC(p, TGL_SYNC_NOP);
 }
 
 void

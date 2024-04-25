@@ -321,11 +321,9 @@ elk_fs_generator::patch_halt_jumps()
 
 void
 elk_fs_generator::generate_send(elk_fs_inst *inst,
-                            struct elk_reg dst,
-                            struct elk_reg desc,
-                            struct elk_reg ex_desc,
-                            struct elk_reg payload,
-                            struct elk_reg payload2)
+                                struct elk_reg dst,
+                                struct elk_reg desc,
+                                struct elk_reg payload)
 {
    const bool dst_is_null = dst.file == ELK_ARCHITECTURE_REGISTER_FILE &&
                             dst.nr == ELK_ARF_NULL;
@@ -334,27 +332,10 @@ elk_fs_generator::generate_send(elk_fs_inst *inst,
    uint32_t desc_imm = inst->desc |
       elk_message_desc(devinfo, inst->mlen, rlen, inst->header_size);
 
-   uint32_t ex_desc_imm = inst->ex_desc |
-      elk_message_ex_desc(devinfo, inst->ex_mlen);
-
-   if (ex_desc.file != ELK_IMMEDIATE_VALUE || ex_desc.ud || ex_desc_imm ||
-       inst->send_ex_desc_scratch) {
-      /* If we have any sort of extended descriptor, then we need SENDS.  This
-       * also covers the dual-payload case because ex_mlen goes in ex_desc.
-       */
-      elk_send_indirect_split_message(p, inst->sfid, dst, payload, payload2,
-                                      desc, desc_imm, ex_desc, ex_desc_imm,
-                                      inst->send_ex_desc_scratch,
-                                      inst->send_ex_bso, inst->eot);
-      if (inst->check_tdr)
-         elk_inst_set_opcode(p->isa, elk_last_inst,
-                             devinfo->ver >= 12 ? ELK_OPCODE_SENDC : ELK_OPCODE_SENDSC);
-   } else {
-      elk_send_indirect_message(p, inst->sfid, dst, payload, desc, desc_imm,
-                                   inst->eot);
-      if (inst->check_tdr)
-         elk_inst_set_opcode(p->isa, elk_last_inst, ELK_OPCODE_SENDC);
-   }
+   elk_send_indirect_message(p, inst->sfid, dst, payload, desc, desc_imm,
+                             inst->eot);
+   if (inst->check_tdr)
+      elk_inst_set_opcode(p->isa, elk_last_inst, ELK_OPCODE_SENDC);
 }
 
 void
@@ -444,20 +425,6 @@ elk_fs_generator::generate_fb_write(elk_fs_inst *inst, struct elk_reg payload)
 }
 
 void
-elk_fs_generator::generate_fb_read(elk_fs_inst *inst, struct elk_reg dst,
-                               struct elk_reg payload)
-{
-   assert(inst->size_written % REG_SIZE == 0);
-   struct elk_wm_prog_data *prog_data = elk_wm_prog_data(this->prog_data);
-   /* We assume that render targets start at binding table index 0. */
-   const unsigned surf_index = inst->target;
-
-   elk_gfx9_fb_READ(p, dst, payload, surf_index,
-                inst->header_size, inst->size_written / REG_SIZE,
-                prog_data->persample_dispatch);
-}
-
-void
 elk_fs_generator::generate_mov_indirect(elk_fs_inst *inst,
                                     struct elk_reg dst,
                                     struct elk_reg reg,
@@ -489,7 +456,6 @@ elk_fs_generator::generate_mov_indirect(elk_fs_inst *inst,
       if (type_sz(reg.type) > 4 && !devinfo->has_64bit_float) {
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 0),
                     subscript(reg, ELK_REGISTER_TYPE_D, 0));
-         elk_set_default_swsb(p, tgl_swsb_null());
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 1),
                     subscript(reg, ELK_REGISTER_TYPE_D, 1));
       } else {
@@ -553,22 +519,16 @@ elk_fs_generator::generate_mov_indirect(elk_fs_inst *inst,
          insn = elk_MOV(p, addr, elk_imm_uw(imm_byte_offset));
          elk_inst_set_mask_control(devinfo, insn, ELK_MASK_DISABLE);
          elk_inst_set_pred_control(devinfo, insn, ELK_PREDICATE_NONE);
-         if (devinfo->ver >= 12)
-            elk_set_default_swsb(p, tgl_swsb_null());
-         else
-            elk_inst_set_no_dd_clear(devinfo, insn, use_dep_ctrl);
+         elk_inst_set_no_dd_clear(devinfo, insn, use_dep_ctrl);
       }
 
       insn = elk_ADD(p, addr, indirect_byte_offset, elk_imm_uw(imm_byte_offset));
-      if (devinfo->ver >= 12)
-         elk_set_default_swsb(p, tgl_swsb_regdist(1));
-      else if (devinfo->ver >= 7)
+      if (devinfo->ver >= 7)
          elk_inst_set_no_dd_check(devinfo, insn, use_dep_ctrl);
 
       if (type_sz(reg.type) > 4 &&
-          ((devinfo->verx10 == 70) ||
-           devinfo->platform == INTEL_PLATFORM_CHV || intel_device_info_is_9lp(devinfo) ||
-           !devinfo->has_64bit_float || devinfo->verx10 >= 125)) {
+          (devinfo->verx10 == 70 || devinfo->platform == INTEL_PLATFORM_CHV ||
+           !devinfo->has_64bit_float)) {
          /* IVB has an issue (which we found empirically) where it reads two
           * address register components per channel for indirectly addressed
           * 64-bit sources.
@@ -586,7 +546,6 @@ elk_fs_generator::generate_mov_indirect(elk_fs_inst *inst,
           */
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 0),
                     retype(elk_VxH_indirect(0, 0), ELK_REGISTER_TYPE_D));
-         elk_set_default_swsb(p, tgl_swsb_null());
          elk_MOV(p, subscript(dst, ELK_REGISTER_TYPE_D, 1),
                     retype(elk_VxH_indirect(0, 4), ELK_REGISTER_TYPE_D));
       } else {
@@ -717,28 +676,20 @@ elk_fs_generator::generate_shuffle(elk_fs_inst *inst,
          insn = elk_MOV(p, addr, elk_imm_uw(src_start_offset));
          elk_inst_set_mask_control(devinfo, insn, ELK_MASK_DISABLE);
          elk_inst_set_pred_control(devinfo, insn, ELK_PREDICATE_NONE);
-         if (devinfo->ver >= 12)
-            elk_set_default_swsb(p, tgl_swsb_null());
-         else
-            elk_inst_set_no_dd_clear(devinfo, insn, use_dep_ctrl);
+         elk_inst_set_no_dd_clear(devinfo, insn, use_dep_ctrl);
 
          /* Take into account the component size and horizontal stride. */
          assert(src.vstride == src.hstride + src.width);
          insn = elk_SHL(p, addr, group_idx,
                         elk_imm_uw(util_logbase2(type_sz(src.type)) +
                                    src.hstride - 1));
-         if (devinfo->ver >= 12)
-            elk_set_default_swsb(p, tgl_swsb_regdist(1));
-         else
-            elk_inst_set_no_dd_check(devinfo, insn, use_dep_ctrl);
+         elk_inst_set_no_dd_check(devinfo, insn, use_dep_ctrl);
 
          /* Add on the register start offset */
          elk_ADD(p, addr, addr, elk_imm_uw(src_start_offset));
          elk_MOV(p, suboffset(dst, group << (dst.hstride - 1)),
                  retype(elk_VxH_indirect(0, 0), src.type));
       }
-
-      elk_set_default_swsb(p, tgl_swsb_null());
    }
 }
 
@@ -755,7 +706,7 @@ elk_fs_generator::generate_quad_swizzle(const elk_fs_inst *inst,
       /* The value is uniform across all channels */
       elk_MOV(p, dst, src);
 
-   } else if (devinfo->ver < 11 && type_sz(src.type) == 4) {
+   } else if (type_sz(src.type) == 4) {
       /* This only works on 8-wide 32-bit values */
       assert(inst->exec_size == 8);
       assert(src.hstride == ELK_HORIZONTAL_STRIDE_1);
@@ -799,12 +750,8 @@ elk_fs_generator::generate_quad_swizzle(const elk_fs_inst *inst,
                          4 * inst->dst.stride, 1, 4 * inst->dst.stride),
                stride(suboffset(src, ELK_GET_SWZ(swiz, c)), 4, 1, 0));
 
-            if (devinfo->ver < 12) {
-               elk_inst_set_no_dd_clear(devinfo, insn, c < 3);
-               elk_inst_set_no_dd_check(devinfo, insn, c > 0);
-            }
-
-            elk_set_default_swsb(p, tgl_swsb_null());
+            elk_inst_set_no_dd_clear(devinfo, insn, c < 3);
+            elk_inst_set_no_dd_check(devinfo, insn, c > 0);
          }
 
          break;
@@ -821,17 +768,9 @@ elk_fs_generator::generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payloa
 
    elk_set_dest(p, insn, retype(elk_null_reg(), ELK_REGISTER_TYPE_UW));
    elk_set_src0(p, insn, retype(payload, ELK_REGISTER_TYPE_UW));
-   if (devinfo->ver < 12)
-      elk_set_src1(p, insn, elk_imm_ud(0u));
+   elk_set_src1(p, insn, elk_imm_ud(0u));
 
-   /* For XeHP and newer send a message to the message gateway to terminate a
-    * compute shader. For older devices, a message is sent to the thread
-    * spawner.
-    */
-   if (devinfo->verx10 >= 125)
-      elk_inst_set_sfid(devinfo, insn, ELK_SFID_MESSAGE_GATEWAY);
-   else
-      elk_inst_set_sfid(devinfo, insn, ELK_SFID_THREAD_SPAWNER);
+   elk_inst_set_sfid(devinfo, insn, ELK_SFID_THREAD_SPAWNER);
    elk_inst_set_mlen(devinfo, insn, 1);
    elk_inst_set_rlen(devinfo, insn, 0);
    elk_inst_set_eot(devinfo, insn, inst->eot);
@@ -839,15 +778,13 @@ elk_fs_generator::generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payloa
 
    elk_inst_set_ts_opcode(devinfo, insn, 0); /* Dereference resource */
 
-   if (devinfo->ver < 11) {
-      elk_inst_set_ts_request_type(devinfo, insn, 0); /* Root thread */
+   elk_inst_set_ts_request_type(devinfo, insn, 0); /* Root thread */
 
-      /* Note that even though the thread has a URB resource associated with it,
-       * we set the "do not dereference URB" bit, because the URB resource is
-       * managed by the fixed-function unit, so it will free it automatically.
-       */
-      elk_inst_set_ts_resource_select(devinfo, insn, 1); /* Do not dereference URB */
-   }
+   /* Note that even though the thread has a URB resource associated with it,
+    * we set the "do not dereference URB" bit, because the URB resource is
+    * managed by the fixed-function unit, so it will free it automatically.
+    */
+   elk_inst_set_ts_resource_select(devinfo, insn, 1); /* Do not dereference URB */
 
    elk_inst_set_mask_control(devinfo, insn, ELK_MASK_DISABLE);
 }
@@ -856,12 +793,7 @@ void
 elk_fs_generator::generate_barrier(elk_fs_inst *, struct elk_reg src)
 {
    elk_barrier(p, src);
-   if (devinfo->ver >= 12) {
-      elk_set_default_swsb(p, tgl_swsb_null());
-      elk_SYNC(p, TGL_SYNC_BAR);
-   } else {
-      elk_WAIT(p);
-   }
+   elk_WAIT(p);
 }
 
 bool
@@ -892,11 +824,6 @@ elk_fs_generator::generate_linterp(elk_fs_inst *inst,
    struct elk_reg delta_y = offset(src[0], inst->exec_size / 8);
    struct elk_reg interp = src[1];
    elk_inst *i[2];
-
-   /* nir_lower_interpolation() will do the lowering to MAD instructions for
-    * us on gfx11+
-    */
-   assert(devinfo->ver < 11);
 
    if (devinfo->has_pln) {
       if (devinfo->ver <= 6 && (delta_x.nr & 1) != 0) {
@@ -1153,18 +1080,15 @@ elk_fs_generator::generate_tex(elk_fs_inst *inst, struct elk_reg dst,
          /* Set up an implied move from g0 to the MRF. */
          src = retype(elk_vec8_grf(0, 0), ELK_REGISTER_TYPE_UW);
       } else {
-         const tgl_swsb swsb = elk_get_default_swsb(p);
          assert(inst->base_mrf != -1);
          struct elk_reg header_reg = elk_message_reg(inst->base_mrf);
 
          elk_push_insn_state(p);
-         elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
          elk_set_default_exec_size(p, ELK_EXECUTE_8);
          elk_set_default_mask_control(p, ELK_MASK_DISABLE);
          elk_set_default_compression_control(p, ELK_COMPRESSION_NONE);
          /* Explicitly set up the message header by copying g0 to the MRF. */
          elk_MOV(p, header_reg, elk_vec8_grf(0, 0));
-         elk_set_default_swsb(p, tgl_swsb_regdist(1));
 
          elk_set_default_exec_size(p, ELK_EXECUTE_1);
          if (inst->offset) {
@@ -1174,7 +1098,6 @@ elk_fs_generator::generate_tex(elk_fs_inst *inst, struct elk_reg dst,
          }
 
          elk_pop_insn_state(p);
-         elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
       }
    }
 
@@ -1300,8 +1223,7 @@ elk_fs_generator::generate_ddy(const elk_fs_inst *inst,
        * So for half-float operations we use the Gfx11+ Align1 path. CHV
        * inherits its FP16 hardware from SKL, so it is not affected.
        */
-      if (devinfo->ver >= 11 ||
-          (devinfo->platform == INTEL_PLATFORM_BDW && src.type == ELK_REGISTER_TYPE_HF)) {
+      if (devinfo->platform == INTEL_PLATFORM_BDW && src.type == ELK_REGISTER_TYPE_HF) {
          src = stride(src, 0, 2, 1);
 
          elk_push_insn_state(p);
@@ -1311,7 +1233,6 @@ elk_fs_generator::generate_ddy(const elk_fs_inst *inst,
             elk_ADD(p, byte_offset(dst, g * type_size),
                        negate(byte_offset(src,  g * type_size)),
                        byte_offset(src, (g + 2) * type_size));
-            elk_set_default_swsb(p, tgl_swsb_null());
          }
          elk_pop_insn_state(p);
       } else {
@@ -1374,7 +1295,6 @@ elk_fs_generator::generate_scratch_write(elk_fs_inst *inst, struct elk_reg src)
    const unsigned lower_size = inst->force_writemask_all ? inst->exec_size :
                                MIN2(16, inst->exec_size);
    const unsigned block_size = 4 * lower_size / REG_SIZE;
-   const tgl_swsb swsb = elk_get_default_swsb(p);
    assert(inst->mlen != 0);
 
    elk_push_insn_state(p);
@@ -1384,17 +1304,9 @@ elk_fs_generator::generate_scratch_write(elk_fs_inst *inst, struct elk_reg src)
    for (unsigned i = 0; i < inst->exec_size / lower_size; i++) {
       elk_set_default_group(p, inst->group + lower_size * i);
 
-      if (i > 0) {
-         assert(swsb.mode & TGL_SBID_SET);
-         elk_set_default_swsb(p, tgl_swsb_sbid(TGL_SBID_SRC, swsb.sbid));
-      } else {
-         elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-      }
-
       elk_MOV(p, elk_uvec_mrf(lower_size, inst->base_mrf + 1, 0),
               retype(offset(src, block_size * i), ELK_REGISTER_TYPE_UD));
 
-      elk_set_default_swsb(p, tgl_swsb_dst_dep(swsb, 1));
       elk_oword_block_write_scratch(p, elk_message_reg(inst->base_mrf),
                                     block_size,
                                     inst->offset + block_size * REG_SIZE * i);
@@ -1468,27 +1380,21 @@ elk_fs_generator::generate_scratch_header(elk_fs_inst *inst, struct elk_reg dst)
    dst.type = ELK_REGISTER_TYPE_UD;
 
    elk_inst *insn = elk_MOV(p, dst, elk_imm_ud(0));
-   if (devinfo->ver >= 12)
-      elk_set_default_swsb(p, tgl_swsb_null());
-   else
-      elk_inst_set_no_dd_clear(p->devinfo, insn, true);
+   elk_inst_set_no_dd_clear(p->devinfo, insn, true);
 
    /* Copy the per-thread scratch space size from g0.3[3:0] */
    elk_set_default_exec_size(p, ELK_EXECUTE_1);
    insn = elk_AND(p, suboffset(dst, 3),
                      retype(elk_vec1_grf(0, 3), ELK_REGISTER_TYPE_UD),
                      elk_imm_ud(INTEL_MASK(3, 0)));
-   if (devinfo->ver < 12) {
-      elk_inst_set_no_dd_clear(p->devinfo, insn, true);
-      elk_inst_set_no_dd_check(p->devinfo, insn, true);
-   }
+   elk_inst_set_no_dd_clear(p->devinfo, insn, true);
+   elk_inst_set_no_dd_check(p->devinfo, insn, true);
 
    /* Copy the scratch base address from g0.5[31:10] */
    insn = elk_AND(p, suboffset(dst, 5),
                      retype(elk_vec1_grf(0, 5), ELK_REGISTER_TYPE_UD),
                      elk_imm_ud(INTEL_MASK(31, 10)));
-   if (devinfo->ver < 12)
-      elk_inst_set_no_dd_check(p->devinfo, insn, true);
+   elk_inst_set_no_dd_check(p->devinfo, insn, true);
 }
 
 void
@@ -1597,7 +1503,6 @@ elk_fs_generator::generate_set_sample_id(elk_fs_inst *inst,
       elk_inst_set_exec_size(devinfo, insn, cvt(lower_size) - 1);
       elk_inst_set_group(devinfo, insn, inst->group + lower_size * i);
       elk_inst_set_compression(devinfo, insn, lower_size > 8);
-      elk_set_default_swsb(p, tgl_swsb_null());
    }
 }
 
@@ -1608,25 +1513,11 @@ elk_fs_generator::enable_debug(const char *shader_name)
    this->shader_name = shader_name;
 }
 
-static elk_gfx12_systolic_depth
-translate_systolic_depth(unsigned d)
-{
-   /* Could also return (ffs(d) - 1) & 3. */
-   switch (d) {
-   case 2:  return ELK_SYSTOLIC_DEPTH_2;
-   case 4:  return ELK_SYSTOLIC_DEPTH_4;
-   case 8:  return ELK_SYSTOLIC_DEPTH_8;
-   case 16: return ELK_SYSTOLIC_DEPTH_16;
-   default: unreachable("Invalid systolic depth.");
-   }
-}
-
 int
 elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
                             struct shader_stats shader_stats,
                             const elk::performance &perf,
-                            struct elk_compile_stats *stats,
-                            unsigned max_polygons)
+                            struct elk_compile_stats *stats)
 {
    /* align to 64 byte boundary. */
    elk_realign(p, 64);
@@ -1647,7 +1538,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       struct elk_reg src[4], dst;
       unsigned int last_insn_offset = p->next_insn_offset;
       bool multiple_instructions_emitted = false;
-      tgl_swsb swsb = inst->sched;
 
       /* From the Broadwell PRM, Volume 7, "3D-Media-GPGPU", in the
        * "Register Region Restrictions" section: for BDW, SKL:
@@ -1659,7 +1549,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
        * and empirically this affects CHV as well.
        */
       if (devinfo->ver >= 8 &&
-          devinfo->ver <= 9 &&
           p->nr_insn > 1 &&
           elk_inst_opcode(p->isa, elk_last_inst) == ELK_OPCODE_MATH &&
           elk_inst_math_function(devinfo, elk_last_inst) == ELK_MATH_FUNCTION_POW &&
@@ -1685,33 +1574,13 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          elk_set_default_mask_control(p, ELK_MASK_DISABLE);
          elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
          elk_set_default_flag_reg(p, 0, 0);
-         elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
          elk_MOV(p, elk_acc_reg(8), elk_imm_f(0.0f));
          last_insn_offset = p->next_insn_offset;
-         swsb = tgl_swsb_dst_dep(swsb, 1);
       }
 
       if (!is_accum_used && !inst->eot) {
          is_accum_used = inst->writes_accumulator_implicitly(devinfo) ||
                          inst->dst.is_accumulator();
-      }
-
-      /* Wa_14013672992:
-       *
-       * Always use @1 SWSB for EOT.
-       */
-      if (inst->eot && intel_needs_workaround(devinfo, 14013672992)) {
-         if (tgl_swsb_src_dep(swsb).mode) {
-            elk_set_default_exec_size(p, ELK_EXECUTE_1);
-            elk_set_default_mask_control(p, ELK_MASK_DISABLE);
-            elk_set_default_predicate_control(p, ELK_PREDICATE_NONE);
-            elk_set_default_flag_reg(p, 0, 0);
-            elk_set_default_swsb(p, tgl_swsb_src_dep(swsb));
-            elk_SYNC(p, TGL_SYNC_NOP);
-            last_insn_offset = p->next_insn_offset;
-         }
-
-         swsb = tgl_swsb_dst_dep(swsb, 1);
       }
 
       if (unlikely(debug_flag))
@@ -1734,7 +1603,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
            inst->dst.component_size(inst->exec_size) > REG_SIZE;
       elk_set_default_compression(p, compressed);
 
-      if ((devinfo->ver >= 20 || devinfo->ver < 7) && inst->group % 8 != 0) {
+      if (devinfo->ver < 7 && inst->group % 8 != 0) {
          assert(inst->force_writemask_all);
          assert(!inst->predicate && !inst->conditional_mod);
          assert(!inst->writes_accumulator_implicitly(devinfo) &&
@@ -1773,15 +1642,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       elk_set_default_flag_reg(p, flag_subreg / 2, flag_subreg % 2);
       elk_set_default_saturate(p, inst->saturate);
       elk_set_default_mask_control(p, inst->force_writemask_all);
-      if (devinfo->ver >= 20 && inst->writes_accumulator) {
-         assert(inst->dst.is_accumulator() ||
-                inst->opcode == ELK_OPCODE_ADDC ||
-                inst->opcode == ELK_OPCODE_MACH ||
-                inst->opcode == ELK_OPCODE_SUBB);
-      } else {
-         elk_set_default_acc_write_control(p, inst->writes_accumulator);
-      }
-      elk_set_default_swsb(p, swsb);
+      elk_set_default_acc_write_control(p, inst->writes_accumulator);
 
       unsigned exec_size = inst->exec_size;
       if (devinfo->verx10 == 70 &&
@@ -1797,13 +1658,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       assert(inst->mlen <= ELK_MAX_MSG_LENGTH * reg_unit(devinfo));
 
       switch (inst->opcode) {
-      case ELK_OPCODE_SYNC:
-         assert(src[0].file == ELK_IMMEDIATE_VALUE);
-         elk_SYNC(p, tgl_sync_function(src[0].ud));
-
-         if (tgl_sync_function(src[0].ud) == TGL_SYNC_NOP)
-            ++sync_nop_count;
-         break;
       case ELK_OPCODE_MOV:
 	 elk_MOV(p, dst, src[0]);
 	 break;
@@ -1820,39 +1674,21 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 	 elk_MACH(p, dst, src[0], src[1]);
 	 break;
 
-      case ELK_OPCODE_DP4A:
-         assert(devinfo->ver >= 12);
-         elk_DP4A(p, dst, src[0], src[1], src[2]);
-         break;
-
       case ELK_OPCODE_LINE:
          elk_LINE(p, dst, src[0], src[1]);
          break;
 
-      case ELK_OPCODE_DPAS:
-         assert(devinfo->verx10 >= 125);
-         elk_DPAS(p, translate_systolic_depth(inst->sdepth), inst->rcount,
-                  dst, src[0], src[1], src[2]);
-         break;
-
       case ELK_OPCODE_MAD:
          assert(devinfo->ver >= 6);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_MAD(p, dst, src[0], src[1], src[2]);
 	 break;
 
       case ELK_OPCODE_LRP:
-         assert(devinfo->ver >= 6 && devinfo->ver <= 10);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         assert(devinfo->ver >= 6);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_LRP(p, dst, src[0], src[1], src[2]);
 	 break;
-
-      case ELK_OPCODE_ADD3:
-         assert(devinfo->verx10 >= 125);
-         elk_ADD3(p, dst, src[0], src[1], src[2]);
-         break;
 
       case ELK_OPCODE_FRC:
 	 elk_FRC(p, dst, src[0]);
@@ -1887,16 +1723,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 	 break;
       case ELK_OPCODE_SHL:
 	 elk_SHL(p, dst, src[0], src[1]);
-	 break;
-      case ELK_OPCODE_ROL:
-	 assert(devinfo->ver >= 11);
-	 assert(src[0].type == dst.type);
-	 elk_ROL(p, dst, src[0], src[1]);
-	 break;
-      case ELK_OPCODE_ROR:
-	 assert(devinfo->ver >= 11);
-	 assert(src[0].type == dst.type);
-	 elk_ROR(p, dst, src[0], src[1]);
 	 break;
       case ELK_OPCODE_F32TO16:
          elk_F32TO16(p, dst, src[0]);
@@ -1933,8 +1759,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 	 break;
       case ELK_OPCODE_CSEL:
          assert(devinfo->ver >= 8);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_CSEL(p, dst, src[0], src[1], src[2]);
          break;
       case ELK_OPCODE_BFREV:
@@ -1973,8 +1798,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
       case ELK_OPCODE_BFE:
          assert(devinfo->ver >= 7);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_BFE(p, dst, src[0], src[1], src[2]);
          break;
 
@@ -1984,8 +1808,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          break;
       case ELK_OPCODE_BFI2:
          assert(devinfo->ver >= 7);
-         if (devinfo->ver < 10)
-            elk_set_default_access_mode(p, ELK_ALIGN_16);
+         elk_set_default_access_mode(p, ELK_ALIGN_16);
          elk_BFI2(p, dst, src[0], src[1], src[2]);
          break;
 
@@ -2048,7 +1871,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       case ELK_SHADER_OPCODE_INT_QUOTIENT:
       case ELK_SHADER_OPCODE_INT_REMAINDER:
       case ELK_SHADER_OPCODE_POW:
-         assert(devinfo->verx10 < 125);
          assert(inst->conditional_mod == ELK_CONDITIONAL_NONE);
          if (devinfo->ver >= 6) {
             assert(inst->mlen == 0);
@@ -2093,8 +1915,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          break;
 
       case ELK_SHADER_OPCODE_SEND:
-         generate_send(inst, dst, src[0], src[1], src[2],
-                       inst->ex_mlen > 0 ? src[3] : elk_null_reg());
+         generate_send(inst, dst, src[0], src[1]);
          send_count++;
          break;
 
@@ -2169,11 +1990,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          send_count++;
 	 break;
 
-      case ELK_FS_OPCODE_FB_READ:
-         generate_fb_read(inst, dst, src[0]);
-         send_count++;
-         break;
-
       case ELK_OPCODE_HALT:
          generate_halt(inst);
          break;
@@ -2196,32 +2012,22 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
       }
 
       case ELK_FS_OPCODE_SCHEDULING_FENCE:
-         if (inst->sources == 0 && swsb.regdist == 0 &&
-                                   swsb.mode == TGL_SBID_NULL) {
+         if (inst->sources == 0) {
             if (unlikely(debug_flag))
                elk_disasm_info->use_tail = true;
             break;
          }
 
-         if (devinfo->ver >= 12) {
-            /* Use the available SWSB information to stall.  A single SYNC is
-             * sufficient since if there were multiple dependencies, the
-             * scoreboard algorithm already injected other SYNCs before this
-             * instruction.
+         for (unsigned i = 0; i < inst->sources; i++) {
+            /* Emit a MOV to force a stall until the instruction producing the
+             * registers finishes.
              */
-            elk_SYNC(p, TGL_SYNC_NOP);
-         } else {
-            for (unsigned i = 0; i < inst->sources; i++) {
-               /* Emit a MOV to force a stall until the instruction producing the
-                * registers finishes.
-                */
-               elk_MOV(p, retype(elk_null_reg(), ELK_REGISTER_TYPE_UW),
-                       retype(src[i], ELK_REGISTER_TYPE_UW));
-            }
-
-            if (inst->sources > 1)
-               multiple_instructions_emitted = true;
+            elk_MOV(p, retype(elk_null_reg(), ELK_REGISTER_TYPE_UW),
+                    retype(src[i], ELK_REGISTER_TYPE_UW));
          }
+
+         if (inst->sources > 1)
+            multiple_instructions_emitted = true;
 
          break;
 
@@ -2257,7 +2063,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          elk_set_default_mask_control(p, ELK_MASK_DISABLE);
          elk_MOV(p, dst, src[1]);
          elk_set_default_mask_control(p, ELK_MASK_ENABLE);
-         elk_set_default_swsb(p, tgl_swsb_null());
          elk_MOV(p, dst, src[0]);
          break;
 
@@ -2269,7 +2074,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
       case ELK_SHADER_OPCODE_CLUSTER_BROADCAST: {
          assert((devinfo->platform != INTEL_PLATFORM_CHV &&
-                 !intel_device_info_is_9lp(devinfo) &&
                  devinfo->has_64bit_float) || type_sz(src[0].type) <= 4);
          assert(!src[0].negate && !src[0].abs);
          assert(src[1].file == ELK_IMMEDIATE_VALUE);
@@ -2346,21 +2150,7 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
          break;
 
       case ELK_SHADER_OPCODE_READ_SR_REG:
-         if (devinfo->ver >= 12) {
-            /* There is a SWSB restriction that requires that any time sr0 is
-             * accessed both the instruction doing the access and the next one
-             * have SWSB set to RegDist(1).
-             */
-            if (elk_get_default_swsb(p).mode != TGL_SBID_NULL)
-               elk_SYNC(p, TGL_SYNC_NOP);
-            assert(src[0].file == ELK_IMMEDIATE_VALUE);
-            elk_set_default_swsb(p, tgl_swsb_regdist(1));
-            elk_MOV(p, dst, elk_sr0_reg(src[0].ud));
-            elk_set_default_swsb(p, tgl_swsb_regdist(1));
-            elk_AND(p, dst, dst, elk_imm_ud(0xffffffff));
-         } else {
-            elk_MOV(p, dst, elk_sr0_reg(src[0].ud));
-         }
+         elk_MOV(p, dst, elk_sr0_reg(src[0].ud));
          break;
 
       default:
@@ -2382,18 +2172,8 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
 
          if (inst->conditional_mod)
             elk_inst_set_cond_modifier(p->devinfo, last, inst->conditional_mod);
-         if (devinfo->ver < 12) {
-            elk_inst_set_no_dd_clear(p->devinfo, last, inst->no_dd_clear);
-            elk_inst_set_no_dd_check(p->devinfo, last, inst->no_dd_check);
-         }
-      }
-
-      /* When enabled, insert sync NOP after every instruction and make sure
-       * that current instruction depends on the previous instruction.
-       */
-      if (INTEL_DEBUG(DEBUG_SWSB_STALL) && devinfo->ver >= 12) {
-         elk_set_default_swsb(p, tgl_swsb_regdist(1));
-         elk_SYNC(p, TGL_SYNC_NOP);
+         elk_inst_set_no_dd_clear(p->devinfo, last, inst->no_dd_clear);
+         elk_inst_set_no_dd_check(p->devinfo, last, inst->no_dd_check);
       }
    }
 
@@ -2492,7 +2272,6 @@ elk_fs_generator::generate_code(const elk_cfg_t *cfg, int dispatch_width,
                         before_size, after_size);
    if (stats) {
       stats->dispatch_width = dispatch_width;
-      stats->max_polygons = max_polygons;
       stats->max_dispatch_width = dispatch_width;
       stats->instructions = before_size / 16 - nop_count - sync_nop_count;
       stats->sends = send_count;

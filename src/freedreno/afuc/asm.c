@@ -45,7 +45,7 @@ struct encode_state {
 };
 
 static afuc_opc
-__instruction_case(struct encode_state *s, struct afuc_instr *instr)
+__instruction_case(struct encode_state *s, const struct afuc_instr *instr)
 {
    switch (instr->opc) {
 #define ALU(name) \

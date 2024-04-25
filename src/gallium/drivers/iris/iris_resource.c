@@ -1477,34 +1477,6 @@ iris_resource_from_memobj_wrapper(struct pipe_screen *pscreen,
    return prsc;
 }
 
-static void
-iris_flush_resource(struct pipe_context *ctx, struct pipe_resource *resource)
-{
-   struct iris_context *ice = (struct iris_context *)ctx;
-   struct iris_resource *res = (void *) resource;
-   const struct isl_drm_modifier_info *mod = res->mod_info;
-
-   iris_resource_prepare_access(ice, res,
-                                0, INTEL_REMAINING_LEVELS,
-                                0, INTEL_REMAINING_LAYERS,
-                                mod ? res->aux.usage : ISL_AUX_USAGE_NONE,
-                                mod ? mod->supports_clear_color : false);
-
-   if (!res->mod_info && res->aux.usage != ISL_AUX_USAGE_NONE) {
-      /* flush_resource may be used to prepare an image for sharing external
-       * to the driver (e.g. via eglCreateImage). To account for this, make
-       * sure to get rid of any compression that a consumer wouldn't know how
-       * to handle.
-       */
-      iris_foreach_batch(ice, batch) {
-         if (iris_batch_references(batch, res->bo))
-            iris_batch_flush(batch);
-      }
-
-      iris_resource_disable_aux(res);
-   }
-}
-
 /**
  * Reallocate a (non-external) resource into new storage, copying the data
  * and modifying the original resource to point at the new storage.
@@ -1559,18 +1531,13 @@ iris_reallocate_resource_inplace(struct iris_context *ice,
       }
    }
 
-   iris_flush_resource(&ice->ctx, &new_res->base.b);
-   iris_foreach_batch(ice, batch) {
-      if (iris_batch_references(batch, new_res->bo))
-         iris_batch_flush(batch);
-   }
-
    struct iris_bo *old_bo = old_res->bo;
    struct iris_bo *old_aux_bo = old_res->aux.bo;
    struct iris_bo *old_clear_color_bo = old_res->aux.clear_color_bo;
 
    /* Replace the structure fields with the new ones */
    old_res->base.b.bind = templ.bind;
+   old_res->surf = new_res->surf;
    old_res->bo = new_res->bo;
    old_res->aux.surf = new_res->aux.surf;
    old_res->aux.bo = new_res->aux.bo;
@@ -1604,41 +1571,43 @@ iris_reallocate_resource_inplace(struct iris_context *ice,
 }
 
 static void
-iris_resource_disable_suballoc_on_first_query(struct pipe_screen *pscreen,
-                                              struct pipe_context *ctx,
-                                              struct iris_resource *res)
+iris_flush_resource(struct pipe_context *ctx, struct pipe_resource *resource)
 {
-   if (iris_bo_is_real(res->bo))
-      return;
+   struct iris_context *ice = (struct iris_context *)ctx;
+   struct iris_resource *res = (void *) resource;
+   const struct isl_drm_modifier_info *mod = res->mod_info;
+   bool newly_external = false;
 
-   assert(!(res->base.b.bind & PIPE_BIND_SHARED));
-
-   bool destroy_context;
-   if (ctx) {
-      ctx = threaded_context_unwrap_sync(ctx);
-      destroy_context = false;
-   } else {
-      /* We need to execute a blit on some GPU context, but the DRI layer
-       * often doesn't give us one.  So we have to invent a temporary one.
-       *
-       * We can't store a permanent context in the screen, as it would cause
-       * circular refcounting where screens reference contexts that reference
-       * resources, while resources reference screens...causing nothing to be
-       * freed.  So we just create and destroy a temporary one here.
-       */
-      ctx = iris_create_context(pscreen, NULL, 0);
-      destroy_context = true;
+   /* flush_resource() may be used to prepare an image for sharing externally
+    * with other clients (e.g. via eglCreateImage).  To account for this, we
+    * make sure to eliminate suballocation and any compression that a consumer
+    * wouldn't know how to handle.
+    */
+   if (!iris_bo_is_real(res->bo)) {
+      assert(!(res->base.b.bind & PIPE_BIND_SHARED));
+      iris_reallocate_resource_inplace(ice, res, PIPE_BIND_SHARED);
+      assert(res->base.b.bind & PIPE_BIND_SHARED);
+      newly_external = true;
    }
 
-   struct iris_context *ice = (struct iris_context *)ctx;
+   iris_resource_prepare_access(ice, res,
+                                0, INTEL_REMAINING_LEVELS,
+                                0, INTEL_REMAINING_LAYERS,
+                                mod ? res->aux.usage : ISL_AUX_USAGE_NONE,
+                                mod ? mod->supports_clear_color : false);
 
-   iris_reallocate_resource_inplace(ice, res, PIPE_BIND_SHARED);
-   assert(res->base.b.bind & PIPE_BIND_SHARED);
+   bool disable_aux = !res->mod_info && res->aux.usage != ISL_AUX_USAGE_NONE;
 
-   if (destroy_context)
-      iris_destroy_context(ctx);
+   if (newly_external || disable_aux) {
+      iris_foreach_batch(ice, batch) {
+         if (iris_batch_references(batch, res->bo))
+            iris_batch_flush(batch);
+      }
+   }
+
+   if (disable_aux)
+      iris_resource_disable_aux(res);
 }
-
 
 static void
 iris_resource_disable_aux_on_first_query(struct pipe_resource *resource,
@@ -1687,7 +1656,6 @@ iris_resource_get_param(struct pipe_screen *pscreen,
    unsigned handle;
 
    iris_resource_disable_aux_on_first_query(resource, handle_usage);
-   iris_resource_disable_suballoc_on_first_query(pscreen, ctx, res);
 
    struct iris_bo *bo = wants_cc ? res->aux.clear_color_bo :
                         wants_aux ? res->aux.bo : res->bo;
@@ -1777,7 +1745,6 @@ iris_resource_get_handle(struct pipe_screen *pscreen,
       res->mod_info && isl_drm_modifier_has_aux(res->mod_info->modifier);
 
    iris_resource_disable_aux_on_first_query(resource, usage);
-   iris_resource_disable_suballoc_on_first_query(pscreen, ctx, res);
 
    assert(iris_bo_is_real(res->bo));
 

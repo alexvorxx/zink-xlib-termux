@@ -328,6 +328,8 @@ a6xx_base = A6XXProps(
         prim_alloc_threshold = 0x7,
         vs_max_inputs_count = 32,
         max_sets = 5,
+        line_width_min = 1.0,
+        line_width_max = 1.0,
     )
 
 
@@ -787,6 +789,8 @@ a7xx_base = A6XXProps(
         has_lrz_dir_tracking = True,
         has_per_view_viewport = True,
         supports_ibo_ubwc = True,
+        line_width_min = 1.0,
+        line_width_max = 127.5,
     )
 
 a7xx_725 = A7XXProps(

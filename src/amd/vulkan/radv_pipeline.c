@@ -562,7 +562,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    NIR_PASS_V(stage->nir, radv_nir_apply_pipeline_layout, device, stage);
 
    if (!stage->key.optimisations_disabled) {
-      NIR_PASS(_, stage->nir, nir_opt_shrink_vectors);
+      NIR_PASS(_, stage->nir, nir_opt_shrink_vectors, true);
    }
 
    NIR_PASS(_, stage->nir, nir_lower_alu_width, opt_vectorize_callback, device);

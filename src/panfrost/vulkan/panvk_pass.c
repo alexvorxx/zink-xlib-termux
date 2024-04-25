@@ -30,7 +30,7 @@
 #include "vk_format.h"
 #include "vk_util.h"
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateRenderPass2(VkDevice _device,
                         const VkRenderPassCreateInfo2 *pCreateInfo,
                         const VkAllocationCallbacks *pAllocator,
@@ -201,7 +201,7 @@ panvk_CreateRenderPass2(VkDevice _device,
    return VK_SUCCESS;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyRenderPass(VkDevice _device, VkRenderPass _pass,
                         const VkAllocationCallbacks *pAllocator)
 {
@@ -215,7 +215,7 @@ panvk_DestroyRenderPass(VkDevice _device, VkRenderPass _pass,
    vk_object_free(&device->vk, pAllocator, pass);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetRenderAreaGranularity(VkDevice _device, VkRenderPass renderPass,
                                VkExtent2D *pGranularity)
 {

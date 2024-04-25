@@ -375,6 +375,7 @@ struct emit_memory_barrier {
       } else {
          bmb.srcAccessMask = res->obj->access;
       }
+      bmb.dstAccessMask = flags;
       VKCTX(CmdPipelineBarrier)(
           cmdbuf,
           stages,

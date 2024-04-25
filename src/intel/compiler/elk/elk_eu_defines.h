@@ -240,7 +240,6 @@ enum fb_write_logical_srcs {
    FB_WRITE_LOGICAL_SRC_SRC0_ALPHA,
    FB_WRITE_LOGICAL_SRC_SRC_DEPTH,   /* gl_FragDepth */
    FB_WRITE_LOGICAL_SRC_DST_DEPTH,   /* GFX4-5: passthrough from thread */
-   FB_WRITE_LOGICAL_SRC_SRC_STENCIL, /* gl_FragStencilRefARB */
    FB_WRITE_LOGICAL_SRC_OMASK,       /* Sample Mask (gl_SampleMask) */
    FB_WRITE_LOGICAL_SRC_COMPONENTS,  /* REQUIRED */
    FB_WRITE_LOGICAL_NUM_SRCS
@@ -353,19 +352,6 @@ enum a64_logical_srcs {
    A64_LOGICAL_ENABLE_HELPERS,
 
    A64_LOGICAL_NUM_SRCS
-};
-
-enum rt_logical_srcs {
-   /** Address of the globals */
-   RT_LOGICAL_SRC_GLOBALS,
-   /** Level at which the tracing should start */
-   RT_LOGICAL_SRC_BVH_LEVEL,
-   /** Type of tracing operation */
-   RT_LOGICAL_SRC_TRACE_RAY_CONTROL,
-   /** Synchronous tracing (ray query) */
-   RT_LOGICAL_SRC_SYNCHRONOUS,
-
-   RT_LOGICAL_NUM_SRCS
 };
 
 enum urb_logical_srcs {
@@ -516,285 +502,6 @@ enum ENUM_PACKED elk_width {
 };
 
 /**
- * Gfx12+ SWSB SBID synchronization mode.
- *
- * This is represented as a bitmask including any required SBID token
- * synchronization modes, used to synchronize out-of-order instructions.  Only
- * the strongest mode of the mask will be provided to the hardware in the SWSB
- * field of an actual hardware instruction, but virtual instructions may be
- * able to take into account multiple of them.
- */
-enum tgl_sbid_mode {
-   TGL_SBID_NULL = 0,
-   TGL_SBID_SRC = 1,
-   TGL_SBID_DST = 2,
-   TGL_SBID_SET = 4
-};
-
-
-enum gfx12_sub_byte_precision {
-   ELK_SUB_BYTE_PRECISION_NONE = 0,
-
-   /** 4 bits. Signedness determined by base type */
-   ELK_SUB_BYTE_PRECISION_4BIT = 1,
-
-   /** 2 bits. Signedness determined by base type */
-   ELK_SUB_BYTE_PRECISION_2BIT = 2,
-};
-
-enum elk_gfx12_systolic_depth {
-   ELK_SYSTOLIC_DEPTH_16 = 0,
-   ELK_SYSTOLIC_DEPTH_2 = 1,
-   ELK_SYSTOLIC_DEPTH_4 = 2,
-   ELK_SYSTOLIC_DEPTH_8 = 3,
-};
-
-#ifdef __cplusplus
-/**
- * Allow bitwise arithmetic of tgl_sbid_mode enums.
- */
-inline tgl_sbid_mode
-operator|(tgl_sbid_mode x, tgl_sbid_mode y)
-{
-   return tgl_sbid_mode(unsigned(x) | unsigned(y));
-}
-
-inline tgl_sbid_mode
-operator&(tgl_sbid_mode x, tgl_sbid_mode y)
-{
-   return tgl_sbid_mode(unsigned(x) & unsigned(y));
-}
-
-inline tgl_sbid_mode &
-operator|=(tgl_sbid_mode &x, tgl_sbid_mode y)
-{
-   return x = x | y;
-}
-
-#endif
-
-/**
- * TGL+ SWSB RegDist synchronization pipeline.
- *
- * On TGL all instructions that use the RegDist synchronization mechanism are
- * considered to be executed as a single in-order pipeline, therefore only the
- * TGL_PIPE_FLOAT pipeline is applicable.  On XeHP+ platforms there are two
- * additional asynchronous ALU pipelines (which still execute instructions
- * in-order and use the RegDist synchronization mechanism).  TGL_PIPE_NONE
- * doesn't provide any RegDist pipeline synchronization information and allows
- * the hardware to infer the pipeline based on the source types of the
- * instruction.  TGL_PIPE_ALL can be used when synchronization with all ALU
- * pipelines is intended.
- */
-enum tgl_pipe {
-   TGL_PIPE_NONE = 0,
-   TGL_PIPE_FLOAT,
-   TGL_PIPE_INT,
-   TGL_PIPE_LONG,
-   TGL_PIPE_MATH,
-   TGL_PIPE_ALL
-};
-
-/**
- * Logical representation of the SWSB scheduling information of a hardware
- * instruction.  The binary representation is slightly more compact.
- */
-struct tgl_swsb {
-   unsigned regdist : 3;
-   enum tgl_pipe pipe : 3;
-   unsigned sbid : 5;
-   enum tgl_sbid_mode mode : 3;
-};
-
-/**
- * Construct a scheduling annotation with a single RegDist dependency.  This
- * synchronizes with the completion of the d-th previous in-order instruction.
- * The index is one-based, zero causes a no-op tgl_swsb to be constructed.
- */
-static inline struct tgl_swsb
-tgl_swsb_regdist(unsigned d)
-{
-   const struct tgl_swsb swsb = { d, d ? TGL_PIPE_ALL : TGL_PIPE_NONE };
-   assert(swsb.regdist == d);
-   return swsb;
-}
-
-/**
- * Construct a scheduling annotation that synchronizes with the specified SBID
- * token.
- */
-static inline struct tgl_swsb
-tgl_swsb_sbid(enum tgl_sbid_mode mode, unsigned sbid)
-{
-   const struct tgl_swsb swsb = { 0, TGL_PIPE_NONE, sbid, mode };
-   assert(swsb.sbid == sbid);
-   return swsb;
-}
-
-/**
- * Construct a no-op scheduling annotation.
- */
-static inline struct tgl_swsb
-tgl_swsb_null(void)
-{
-   return tgl_swsb_regdist(0);
-}
-
-/**
- * Return a scheduling annotation that allocates the same SBID synchronization
- * token as \p swsb.  In addition it will synchronize against a previous
- * in-order instruction if \p regdist is non-zero.
- */
-static inline struct tgl_swsb
-tgl_swsb_dst_dep(struct tgl_swsb swsb, unsigned regdist)
-{
-   swsb.regdist = regdist;
-   swsb.mode = swsb.mode & TGL_SBID_SET;
-   swsb.pipe = (regdist ? TGL_PIPE_ALL : TGL_PIPE_NONE);
-   return swsb;
-}
-
-/**
- * Return a scheduling annotation that synchronizes against the same SBID and
- * RegDist dependencies as \p swsb, but doesn't allocate any SBID token.
- */
-static inline struct tgl_swsb
-tgl_swsb_src_dep(struct tgl_swsb swsb)
-{
-   swsb.mode = swsb.mode & (TGL_SBID_SRC | TGL_SBID_DST);
-   return swsb;
-}
-
-/**
- * Convert the provided tgl_swsb to the hardware's binary representation of an
- * SWSB annotation.
- */
-static inline uint32_t
-tgl_swsb_encode(const struct intel_device_info *devinfo, struct tgl_swsb swsb)
-{
-   if (!swsb.mode) {
-      const unsigned pipe = devinfo->verx10 < 125 ? 0 :
-         swsb.pipe == TGL_PIPE_FLOAT ? 0x10 :
-         swsb.pipe == TGL_PIPE_INT ? 0x18 :
-         swsb.pipe == TGL_PIPE_LONG ? 0x20 :
-         swsb.pipe == TGL_PIPE_MATH ? 0x28 :
-         swsb.pipe == TGL_PIPE_ALL ? 0x8 : 0;
-      return pipe | swsb.regdist;
-
-   } else if (swsb.regdist) {
-      if (devinfo->ver >= 20) {
-         if ((swsb.mode & TGL_SBID_SET)) {
-            assert(swsb.pipe == TGL_PIPE_ALL ||
-                   swsb.pipe == TGL_PIPE_INT || swsb.pipe == TGL_PIPE_FLOAT);
-            return (swsb.pipe == TGL_PIPE_INT ? 0x300 :
-                    swsb.pipe == TGL_PIPE_FLOAT ? 0x200 : 0x100) |
-                   swsb.regdist << 5 | swsb.sbid;
-         } else {
-            assert(!(swsb.mode & ~(TGL_SBID_DST | TGL_SBID_SRC)));
-            return (swsb.pipe == TGL_PIPE_ALL ? 0x300 :
-                    swsb.mode == TGL_SBID_SRC ? 0x200 : 0x100) |
-                   swsb.regdist << 5 | swsb.sbid;
-         }
-      } else {
-         assert(!(swsb.sbid & ~0xfu));
-         return 0x80 | swsb.regdist << 4 | swsb.sbid;
-      }
-
-   } else {
-      if (devinfo->ver >= 20) {
-         return swsb.sbid | (swsb.mode & TGL_SBID_SET ? 0xc0 :
-                             swsb.mode & TGL_SBID_DST ? 0x80 : 0xa0);
-      } else {
-         assert(!(swsb.sbid & ~0xfu));
-         return swsb.sbid | (swsb.mode & TGL_SBID_SET ? 0x40 :
-                             swsb.mode & TGL_SBID_DST ? 0x20 : 0x30);
-      }
-   }
-}
-
-/**
- * Convert the provided binary representation of an SWSB annotation to a
- * tgl_swsb.
- */
-static inline struct tgl_swsb
-tgl_swsb_decode(const struct intel_device_info *devinfo,
-                const bool is_unordered, const uint32_t x)
-{
-   if (devinfo->ver >= 20) {
-      if (x & 0x300) {
-         if (is_unordered) {
-            const struct tgl_swsb swsb = {
-               (x & 0xe0u) >> 5,
-               ((x & 0x300) == 0x300 ? TGL_PIPE_INT :
-                (x & 0x300) == 0x200 ? TGL_PIPE_FLOAT :
-                TGL_PIPE_ALL),
-               x & 0x1fu,
-               TGL_SBID_SET
-            };
-            return swsb;
-         } else {
-            const struct tgl_swsb swsb = {
-               (x & 0xe0u) >> 5,
-               ((x & 0x300) == 0x300 ? TGL_PIPE_ALL : TGL_PIPE_NONE),
-               x & 0x1fu,
-               ((x & 0x300) == 0x200 ? TGL_SBID_SRC : TGL_SBID_DST)
-            };
-            return swsb;
-         }
-
-      } else if ((x & 0xe0) == 0x80) {
-         return tgl_swsb_sbid(TGL_SBID_DST, x & 0x1f);
-      } else if ((x & 0xe0) == 0xa0) {
-         return tgl_swsb_sbid(TGL_SBID_SRC, x & 0x1fu);
-      } else if ((x & 0xe0) == 0xc0) {
-         return tgl_swsb_sbid(TGL_SBID_SET, x & 0x1fu);
-      } else {
-            const struct tgl_swsb swsb = { x & 0x7u,
-                                           ((x & 0x38) == 0x10 ? TGL_PIPE_FLOAT :
-                                            (x & 0x38) == 0x18 ? TGL_PIPE_INT :
-                                            (x & 0x38) == 0x20 ? TGL_PIPE_LONG :
-                                            (x & 0x38) == 0x28 ? TGL_PIPE_MATH :
-                                            (x & 0x38) == 0x8 ? TGL_PIPE_ALL :
-                                            TGL_PIPE_NONE) };
-            return swsb;
-      }
-
-   } else {
-      if (x & 0x80) {
-         const struct tgl_swsb swsb = { (x & 0x70u) >> 4, TGL_PIPE_NONE,
-                                        x & 0xfu,
-                                        is_unordered ?
-                                        TGL_SBID_SET : TGL_SBID_DST };
-         return swsb;
-      } else if ((x & 0x70) == 0x20) {
-         return tgl_swsb_sbid(TGL_SBID_DST, x & 0xfu);
-      } else if ((x & 0x70) == 0x30) {
-         return tgl_swsb_sbid(TGL_SBID_SRC, x & 0xfu);
-      } else if ((x & 0x70) == 0x40) {
-         return tgl_swsb_sbid(TGL_SBID_SET, x & 0xfu);
-      } else {
-         const struct tgl_swsb swsb = { x & 0x7u,
-                                        ((x & 0x78) == 0x10 ? TGL_PIPE_FLOAT :
-                                         (x & 0x78) == 0x18 ? TGL_PIPE_INT :
-                                         (x & 0x78) == 0x50 ? TGL_PIPE_LONG :
-                                         (x & 0x78) == 0x8 ? TGL_PIPE_ALL :
-                                         TGL_PIPE_NONE) };
-         assert(devinfo->verx10 >= 125 || swsb.pipe == TGL_PIPE_NONE);
-         return swsb;
-      }
-   }
-}
-
-enum tgl_sync_function {
-   TGL_SYNC_NOP = 0x0,
-   TGL_SYNC_ALLRD = 0x2,
-   TGL_SYNC_ALLWR = 0x3,
-   TGL_SYNC_FENCE = 0xd,
-   TGL_SYNC_BAR = 0xe,
-   TGL_SYNC_HOST = 0xf
-};
-
-/**
  * Message target: Shared Function ID for where to SEND a message.
  *
  * These are enumerated in the ISA reference under "send - Send Message".
@@ -822,10 +529,6 @@ enum elk_message_target {
    GFX7_SFID_PIXEL_INTERPOLATOR      = 11,
    HSW_SFID_DATAPORT_DATA_CACHE_1    = 12,
    HSW_SFID_CRE                      = 13,
-
-   GFX12_SFID_TGM                      = 13, /* Typed Global Memory */
-   GFX12_SFID_SLM                      = 14, /* Shared Local Memory */
-   GFX12_SFID_UGM                      = 15, /* Untyped Global Memory */
 };
 
 #define GFX7_MESSAGE_TARGET_DP_DATA_CACHE     10
@@ -871,13 +574,7 @@ enum elk_message_target {
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C    16
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO   17
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_C 18
-#define XE2_SAMPLER_MESSAGE_SAMPLE_MLOD          18
-#define XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD  19
 #define HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE 20
-#define GFX9_SAMPLER_MESSAGE_SAMPLE_LZ           24
-#define GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ         25
-#define GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ        26
-#define GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W     28
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS       29
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS       30
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS       31
@@ -888,31 +585,16 @@ enum elk_message_target {
 #define ELK_SAMPLER_SIMD_MODE_SIMD16                    2
 #define ELK_SAMPLER_SIMD_MODE_SIMD32_64                 3
 
-#define GFX10_SAMPLER_SIMD_MODE_SIMD8H                  5
-#define GFX10_SAMPLER_SIMD_MODE_SIMD16H                 6
-
-#define XE2_SAMPLER_SIMD_MODE_SIMD16                  1
-#define XE2_SAMPLER_SIMD_MODE_SIMD32                  2
-#define XE2_SAMPLER_SIMD_MODE_SIMD16H                 5
-#define XE2_SAMPLER_SIMD_MODE_SIMD32H                 6
-
-/* GFX9 changes SIMD mode 0 to mean SIMD8D, but lets us get the SIMD4x2
- * behavior by setting bit 22 of dword 2 in the message header. */
-#define GFX9_SAMPLER_SIMD_MODE_SIMD8D                   0
-#define GFX9_SAMPLER_SIMD_MODE_EXTENSION_SIMD4X2        (1 << 22)
-
 #define ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW   0
 #define ELK_DATAPORT_OWORD_BLOCK_1_OWORDHIGH  1
 #define ELK_DATAPORT_OWORD_BLOCK_2_OWORDS     2
 #define ELK_DATAPORT_OWORD_BLOCK_4_OWORDS     3
 #define ELK_DATAPORT_OWORD_BLOCK_8_OWORDS     4
-#define GFX12_DATAPORT_OWORD_BLOCK_16_OWORDS  5
 #define ELK_DATAPORT_OWORD_BLOCK_OWORDS(n)              \
    ((n) == 1 ? ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
     (n) == 2 ? ELK_DATAPORT_OWORD_BLOCK_2_OWORDS :      \
     (n) == 4 ? ELK_DATAPORT_OWORD_BLOCK_4_OWORDS :      \
     (n) == 8 ? ELK_DATAPORT_OWORD_BLOCK_8_OWORDS :      \
-    (n) == 16 ? GFX12_DATAPORT_OWORD_BLOCK_16_OWORDS :  \
     (abort(), ~0))
 #define ELK_DATAPORT_OWORD_BLOCK_DWORDS(n)              \
    ((n) == 4 ? ELK_DATAPORT_OWORD_BLOCK_1_OWORDLOW :    \
@@ -1034,18 +716,10 @@ enum elk_message_target {
 #define GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ                   0x10
 #define GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ             0x11
 #define GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP                0x12
-#define GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP      0x13
-#define GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ                 0x14
-#define GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE                0x15
+#define GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ                 0x14
+#define GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE                0x15
 #define GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE            0x19
 #define GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE                  0x1a
-#define GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP              0x1b
-#define GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP          0x1d
-#define GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP    0x1e
-
-/* GFX9 */
-#define GFX9_DATAPORT_RC_RENDER_TARGET_WRITE                        12
-#define GFX9_DATAPORT_RC_RENDER_TARGET_READ                         13
 
 /* A64 scattered message subtype */
 #define GFX8_A64_SCATTERED_SUBTYPE_BYTE                             0
@@ -1090,12 +764,6 @@ enum elk_message_target {
  */
 #define GFX8_BTI_STATELESS_IA_COHERENT   255
 #define GFX8_BTI_STATELESS_NON_COHERENT  253
-#define GFX9_BTI_BINDLESS                252
-
-/* This ID doesn't map anything HW related value. It exists to inform the
- * lowering code to not use the bindless heap.
- */
-#define GFX125_NON_BINDLESS              (1u << 16)
 
 /* Dataport atomic operations for Untyped Atomic Integer Operation message
  * (and others).
@@ -1159,7 +827,6 @@ enum elk_message_target {
 #define GFX8_URB_OPCODE_ATOMIC_ADD  6
 #define GFX8_URB_OPCODE_SIMD8_WRITE 7
 #define GFX8_URB_OPCODE_SIMD8_READ  8
-#define GFX125_URB_OPCODE_FENCE     9
 
 #define ELK_URB_SWIZZLE_NONE          0
 #define ELK_URB_SWIZZLE_INTERLEAVE    1

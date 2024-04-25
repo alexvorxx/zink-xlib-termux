@@ -321,38 +321,6 @@ elk_nir_lower_cs_intrinsics(nir_shader *nir,
       }
    }
 
-   if (devinfo->verx10 >= 125 && prog_data &&
-       nir->info.stage == MESA_SHADER_COMPUTE &&
-       nir->info.cs.derivative_group != DERIVATIVE_GROUP_QUADS &&
-       !nir->info.workgroup_size_variable &&
-       util_is_power_of_two_nonzero(nir->info.workgroup_size[0]) &&
-       util_is_power_of_two_nonzero(nir->info.workgroup_size[1])) {
-
-      state.hw_generated_local_id = true;
-
-      /* TODO: more heuristics about 1D/SLM access vs. 2D access */
-      bool linear =
-         BITSET_TEST(nir->info.system_values_read,
-                     SYSTEM_VALUE_LOCAL_INVOCATION_INDEX) ||
-         (nir->info.workgroup_size[1] == 1 &&
-          nir->info.workgroup_size[2] == 1) ||
-         (nir->info.num_images == 0 && nir->info.num_textures == 0);
-
-      prog_data->walk_order =
-         linear ? INTEL_WALK_ORDER_XYZ : INTEL_WALK_ORDER_YXZ;
-
-      /* nir_lower_compute_system_values will replace any references to
-       * SYSTEM_VALUE_LOCAL_INVOCATION_ID vector components with zero for
-       * any dimension where the workgroup size is 1, so we can skip
-       * generating those.  However, the hardware can only generate
-       * X, XY, or XYZ - it can't skip earlier components.
-       */
-      prog_data->generate_local_id =
-         (nir->info.workgroup_size[0] > 1 ? WRITEMASK_X   : 0) |
-         (nir->info.workgroup_size[1] > 1 ? WRITEMASK_XY  : 0) |
-         (nir->info.workgroup_size[2] > 1 ? WRITEMASK_XYZ : 0);
-   }
-
    nir_foreach_function_impl(impl, nir) {
       state.impl = impl;
       lower_cs_intrinsics_convert_impl(&state);

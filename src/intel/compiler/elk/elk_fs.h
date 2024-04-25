@@ -177,7 +177,6 @@ public:
               struct elk_wm_prog_data *prog_data,
               const nir_shader *shader,
               unsigned dispatch_width,
-              unsigned num_polygons,
               bool needs_register_pressure,
               bool debug_enabled);
    elk_fs_visitor(const struct elk_compiler *compiler,
@@ -212,11 +211,7 @@ public:
    void optimize();
    void allocate_registers(bool allow_spilling);
    uint32_t compute_max_register_pressure();
-   bool fixup_sends_duplicate_payload();
    void fixup_3src_null_dest();
-   void emit_dummy_memory_fence_before_eot();
-   void emit_dummy_mov_instruction();
-   bool fixup_nomask_control_flow();
    void assign_curb_setup();
    void assign_urb_setup();
    void convert_attr_sources_to_hw_regs(elk_fs_inst *inst);
@@ -249,7 +244,6 @@ public:
 
    bool opt_copy_propagation();
    bool opt_bank_conflicts();
-   bool opt_split_sends();
    bool register_coalesce();
    bool compute_to_mrf();
    bool eliminate_find_live_channel();
@@ -279,7 +273,6 @@ public:
    bool lower_minmax();
    bool lower_simd_width();
    bool lower_barycentrics();
-   bool lower_derivatives();
    bool lower_find_live_channel();
    bool lower_scoreboard();
    bool lower_sub_sat();
@@ -406,7 +399,6 @@ public:
    bool needs_register_pressure;
 
    const unsigned dispatch_width; /**< 8, 16 or 32 */
-   const unsigned max_polygons;
    unsigned max_dispatch_width;
 
    /* The API selected subgroup size */
@@ -457,8 +449,7 @@ public:
    int generate_code(const elk_cfg_t *cfg, int dispatch_width,
                      struct shader_stats shader_stats,
                      const elk::performance &perf,
-                     struct elk_compile_stats *stats,
-                     unsigned max_polygons = 0);
+                     struct elk_compile_stats *stats);
    void add_const_data(void *data, unsigned size);
    const unsigned *get_assembly();
 
@@ -470,12 +461,8 @@ private:
    void generate_send(elk_fs_inst *inst,
                       struct elk_reg dst,
                       struct elk_reg desc,
-                      struct elk_reg ex_desc,
-                      struct elk_reg payload,
-                      struct elk_reg payload2);
+                      struct elk_reg payload);
    void generate_fb_write(elk_fs_inst *inst, struct elk_reg payload);
-   void generate_fb_read(elk_fs_inst *inst, struct elk_reg dst,
-                         struct elk_reg payload);
    void generate_cs_terminate(elk_fs_inst *inst, struct elk_reg payload);
    void generate_barrier(elk_fs_inst *inst, struct elk_reg src);
    bool generate_linterp(elk_fs_inst *inst, struct elk_reg dst,
@@ -593,8 +580,6 @@ void elk_emit_predicate_on_sample_mask(const elk::fs_builder &bld, elk_fs_inst *
 
 int elk_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                     const elk_stage_prog_data *prog_data);
-
-bool elk_lower_dpas(elk_fs_visitor &v);
 
 void nir_to_elk(elk_fs_visitor *s);
 

@@ -42,7 +42,6 @@ struct panfrost_ptr;
 struct pan_pool;
 
 union panvk_sysval_data;
-struct panvk_framebuffer;
 struct panvk_cmd_state;
 struct panvk_compute_dim;
 struct panvk_device;

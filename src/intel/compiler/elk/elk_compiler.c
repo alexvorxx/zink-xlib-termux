@@ -47,16 +47,8 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 
    compiler->precise_trig = debug_get_bool_option("INTEL_PRECISE_TRIG", false);
 
-   compiler->use_tcs_multi_patch = devinfo->ver >= 12;
-
    /* Default to the sampler since that's what we've done since forever */
    compiler->indirect_ubos_use_sampler = true;
-
-   compiler->lower_dpas = devinfo->verx10 < 125 ||
-      intel_device_info_is_mtl(devinfo) ||
-      (intel_device_info_is_arl(devinfo) &&
-       devinfo->platform != INTEL_PLATFORM_ARL_H) ||
-      debug_get_bool_option("INTEL_LOWER_DPAS", false);
 
    /* There is no vec4 mode on Gfx10+, and we don't use it at all on Gfx8+. */
    for (int i = MESA_SHADER_VERTEX; i < MESA_ALL_SHADER_STAGES; i++) {
@@ -94,7 +86,7 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
     * destination type can be Quadword and source type Doubleword for Gfx8 and
     * Gfx9. So, lower 64 bit multiply instruction on rest of the platforms.
     */
-   if (devinfo->ver < 8 || devinfo->ver > 9)
+   if (devinfo->ver < 8)
       int64_options |= nir_lower_imul_2x32_64;
 
    /* We want the GLSL compiler to emit code that uses condition codes */
@@ -115,26 +107,15 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       nir_options->lower_ffma16 = devinfo->ver < 6;
       nir_options->lower_ffma32 = devinfo->ver < 6;
       nir_options->lower_ffma64 = devinfo->ver < 6;
-      nir_options->lower_flrp32 = devinfo->ver < 6 || devinfo->ver >= 11;
-      nir_options->lower_fpow = devinfo->ver >= 12;
+      nir_options->lower_flrp32 = devinfo->ver < 6;
 
       nir_options->has_bfe = devinfo->ver >= 7;
       nir_options->has_bfm = devinfo->ver >= 7;
       nir_options->has_bfi = devinfo->ver >= 7;
 
-      nir_options->has_rotate16 = devinfo->ver >= 11;
-      nir_options->has_rotate32 = devinfo->ver >= 11;
       nir_options->lower_bitfield_reverse = devinfo->ver < 7;
       nir_options->lower_find_lsb = devinfo->ver < 7;
       nir_options->lower_ifind_msb = devinfo->ver < 7;
-      nir_options->has_iadd3 = devinfo->verx10 >= 125;
-
-      nir_options->has_sdot_4x8 = devinfo->ver >= 12;
-      nir_options->has_udot_4x8 = devinfo->ver >= 12;
-      nir_options->has_sudot_4x8 = devinfo->ver >= 12;
-      nir_options->has_sdot_4x8_sat = devinfo->ver >= 12;
-      nir_options->has_udot_4x8_sat = devinfo->ver >= 12;
-      nir_options->has_sudot_4x8_sat = devinfo->ver >= 12;
 
       nir_options->lower_int64_options = int64_options;
       nir_options->lower_doubles_options = fp64_options;
@@ -145,15 +126,8 @@ elk_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
          elk_nir_no_indirect_mask(compiler, i);
       nir_options->force_indirect_unrolling_sampler = devinfo->ver < 7;
 
-      if (compiler->use_tcs_multi_patch) {
-         /* TCS MULTI_PATCH mode has multiple patches per subgroup */
-         nir_options->divergence_analysis_options &=
-            ~nir_divergence_single_patch_per_tcs_subgroup;
-      }
-
-      if (devinfo->ver < 12)
-         nir_options->divergence_analysis_options |=
-            nir_divergence_single_prim_per_subgroup;
+      nir_options->divergence_analysis_options |=
+         nir_divergence_single_prim_per_subgroup;
 
       compiler->nir_options[i] = nir_options;
    }
@@ -174,8 +148,6 @@ elk_get_compiler_config_value(const struct elk_compiler *compiler)
    unsigned bits = 0;
 
    insert_u64_bit(&config, compiler->precise_trig);
-   bits++;
-   insert_u64_bit(&config, compiler->lower_dpas);
    bits++;
 
    uint64_t mask = DEBUG_DISK_CACHE_MASK;

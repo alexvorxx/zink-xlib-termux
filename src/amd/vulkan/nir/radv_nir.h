@@ -84,6 +84,8 @@ void radv_nir_lower_poly_line_smooth(nir_shader *nir, const struct radv_graphics
 
 bool radv_nir_lower_cooperative_matrix(nir_shader *shader, unsigned wave_size);
 
+bool radv_nir_lower_draw_id_to_zero(nir_shader *shader);
+
 #ifdef __cplusplus
 }
 #endif

@@ -173,14 +173,4 @@ etna_immediate_int(int x)
 int
 etna_assemble(uint32_t *out, const struct etna_inst *inst, bool has_no_oneconst_limit);
 
-/**
- * Set field imm of already-assembled instruction.
- * This is used for filling in jump destinations in a separate pass.
- */
-static inline void
-etna_assemble_set_imm(uint32_t *out, uint32_t imm)
-{
-    out[3] |= VIV_ISA_WORD_3_SRC2_IMM(imm);
-}
-
 #endif

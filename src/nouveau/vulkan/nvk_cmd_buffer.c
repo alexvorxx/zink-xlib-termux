@@ -508,6 +508,9 @@ nvk_cmd_invalidate_deps(struct nvk_cmd_buffer *cmd,
                         uint32_t dep_count,
                         const VkDependencyInfo *deps)
 {
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
    enum nvk_barrier barriers = 0;
 
    for (uint32_t d = 0; d < dep_count; d++) {
@@ -554,7 +557,7 @@ nvk_cmd_invalidate_deps(struct nvk_cmd_buffer *cmd,
    if (barriers & (NVK_BARRIER_INVALIDATE_MME_DATA)) {
       __push_immd(p, SUBC_NV9097, NV906F_SET_REFERENCE, 0);
 
-      if (nvk_cmd_buffer_device(cmd)->pdev->info.cls_eng3d >= TURING_A)
+      if (pdev->info.cls_eng3d >= TURING_A)
          P_IMMD(p, NVC597, MME_DMA_SYSMEMBAR, 0);
    }
 }
@@ -843,6 +846,7 @@ void
 nvk_cmd_buffer_dump(struct nvk_cmd_buffer *cmd, FILE *fp)
 {
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    util_dynarray_foreach(&cmd->pushes, struct nvk_cmd_push, p) {
       if (p->map) {
@@ -850,7 +854,7 @@ nvk_cmd_buffer_dump(struct nvk_cmd_buffer *cmd, FILE *fp)
             .start = (uint32_t *)p->map,
             .end = (uint32_t *)((char *)p->map + p->range),
          };
-         vk_push_print(fp, &push, &dev->pdev->info);
+         vk_push_print(fp, &push, &pdev->info);
       } else {
          const uint64_t addr = p->addr;
          fprintf(fp, "<%u B of INDIRECT DATA at 0x%" PRIx64 ">\n",

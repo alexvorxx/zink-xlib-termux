@@ -2739,6 +2739,8 @@ emit_interpolate(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_interp_deref_at_sample:
       op = GLSLstd450InterpolateAtSample;
       src1 = get_src(ctx, &intr->src[1], &atype);
+      if (atype != nir_type_int)
+         src1 = emit_bitcast(ctx, get_ivec_type(ctx, 32, 1), src1);
       break;
    case nir_intrinsic_interp_deref_at_offset:
       op = GLSLstd450InterpolateAtOffset;
@@ -3138,11 +3140,7 @@ emit_is_sparse_texels_resident(struct ntv_context *ctx, nir_intrinsic_instr *int
 
    SpvId type = get_def_type(ctx, &intr->def, nir_type_uint);
 
-   /* this will always be stored with the ssa index of the parent instr */
-   nir_def *ssa = intr->src[0].ssa;
-   assert(ssa->parent_instr->type == nir_instr_type_alu);
-   nir_alu_instr *alu = nir_instr_as_alu(ssa->parent_instr);
-   unsigned index = alu->src[0].src.ssa->index;
+   unsigned index = intr->src[0].ssa->index;
    assert(index < ctx->num_defs);
    assert(ctx->resident_defs[index] != 0);
    SpvId resident = ctx->resident_defs[index];
@@ -3478,7 +3476,7 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       emit_vote(ctx, intr);
       break;
 
-   case nir_intrinsic_is_sparse_texels_resident:
+   case nir_intrinsic_is_sparse_resident_zink:
       emit_is_sparse_texels_resident(ctx, intr);
       break;
 

@@ -498,7 +498,6 @@ private:
                       struct brw_reg payload2);
    void generate_fb_read(fs_inst *inst, struct brw_reg dst,
                          struct brw_reg payload);
-   void generate_cs_terminate(fs_inst *inst, struct brw_reg payload);
    void generate_barrier(fs_inst *inst, struct brw_reg src);
    bool generate_linterp(fs_inst *inst, struct brw_reg dst,
 			 struct brw_reg *src);

@@ -358,6 +358,11 @@ struct ir3_shader_key {
           * the limit:
           */
          unsigned safe_constlen : 1;
+
+         /* Whether driconf "dual_color_blend_by_location" workaround is
+          * enabled
+          */
+         unsigned force_dual_color_blend : 1;
       };
       uint32_t global;
    };

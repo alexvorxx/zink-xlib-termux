@@ -52,7 +52,6 @@ null 		{ BEGIN(REG); return NULL_TOKEN; }
 
  /* Opcodes */
 add		{ yylval.integer = ELK_OPCODE_ADD; return ADD; }
-add3		{ yylval.integer = ELK_OPCODE_ADD3; return ADD3; }
 addc		{ yylval.integer = ELK_OPCODE_ADDC; return ADDC; }
 and		{ yylval.integer = ELK_OPCODE_AND; return AND; }
 asr		{ yylval.integer = ELK_OPCODE_ASR; return ASR; }
@@ -77,7 +76,6 @@ do 		{ yylval.integer = ELK_OPCODE_DO; return DO; }
 dp2 		{ yylval.integer = ELK_OPCODE_DP2; return DP2; }
 dp3 		{ yylval.integer = ELK_OPCODE_DP3; return DP3; }
 dp4 		{ yylval.integer = ELK_OPCODE_DP4; return DP4; }
-dp4a		{ yylval.integer = ELK_OPCODE_DP4A; return DP4A; }
 dph 		{ yylval.integer = ELK_OPCODE_DPH; return DPH; }
 else 		{ yylval.integer = ELK_OPCODE_ELSE; return ELSE; }
 endif 		{ yylval.integer = ELK_OPCODE_ENDIF; return ENDIF; }
@@ -117,21 +115,11 @@ rndd 		{ yylval.integer = ELK_OPCODE_RNDD; return RNDD; }
 rnde 		{ yylval.integer = ELK_OPCODE_RNDE; return RNDE; }
 rndu 		{ yylval.integer = ELK_OPCODE_RNDU; return RNDU; }
 rndz 		{ yylval.integer = ELK_OPCODE_RNDZ; return RNDZ; }
-rol 		{ yylval.integer = ELK_OPCODE_ROL; return ROL; }
-ror 		{ yylval.integer = ELK_OPCODE_ROR; return ROR; }
 sad2 		{ yylval.integer = ELK_OPCODE_SAD2; return SAD2; }
 sada2 		{ yylval.integer = ELK_OPCODE_SADA2; return SADA2; }
 sel 		{ yylval.integer = ELK_OPCODE_SEL; return SEL; }
-send 		{
-			yylval.integer = ELK_OPCODE_SEND;
-			return p->devinfo->ver < 12 ? SEND_GFX4 : SEND_GFX12;
-		}
-sendc 		{
-			yylval.integer = ELK_OPCODE_SENDC;
-			return  p->devinfo->ver < 12 ? SENDC_GFX4 : SENDC_GFX12;
-		}
-sends 	        { yylval.integer = ELK_OPCODE_SENDS; return SENDS; }
-sendsc        	{ yylval.integer = ELK_OPCODE_SENDSC; return SENDSC; }
+send 		{ yylval.integer = ELK_OPCODE_SEND; return SEND; }
+sendc 		{ yylval.integer = ELK_OPCODE_SENDC; return SENDC; }
 shl 		{ yylval.integer = ELK_OPCODE_SHL; return SHL; }
 shr 		{ yylval.integer = ELK_OPCODE_SHR; return SHR; }
 smov 		{ yylval.integer = ELK_OPCODE_SMOV; return SMOV; }
@@ -139,7 +127,6 @@ subb 		{ yylval.integer = ELK_OPCODE_SUBB; return SUBB; }
 wait 		{ yylval.integer = ELK_OPCODE_WAIT; return WAIT; }
 while 		{ yylval.integer = ELK_OPCODE_WHILE; return WHILE; }
 xor 		{ yylval.integer = ELK_OPCODE_XOR; return XOR; }
-sync		{ yylval.integer = ELK_OPCODE_SYNC; return SYNC; }
 
  /* extended math functions */
 cos 		{ yylval.integer = ELK_MATH_FUNCTION_COS; return COS; }
@@ -167,13 +154,6 @@ rsqrtm       	{ yylval.integer = GFX8_MATH_FUNCTION_RSQRTM; return RSQRTM; }
 sin 		{ yylval.integer = ELK_MATH_FUNCTION_SIN; return SIN; }
 sqrt 		{ yylval.integer = ELK_MATH_FUNCTION_SQRT; return SQRT; }
 sincos       	{ yylval.integer = ELK_MATH_FUNCTION_SINCOS; return SINCOS; }
-
- /* sync instruction */
-allrd		{ yylval.integer = TGL_SYNC_ALLRD; return ALLRD; }
-allwr		{ yylval.integer = TGL_SYNC_ALLWR; return ALLWR; }
-fence		{ yylval.integer = TGL_SYNC_FENCE; return FENCE; }
-bar		{ yylval.integer = TGL_SYNC_BAR; return BAR; }
-host		{ yylval.integer = TGL_SYNC_HOST; return HOST; }
 
  /* shared functions for send instruction */
 sampler 		{ return SAMPLER; }
@@ -430,17 +410,6 @@ sr[0-9]+ 	{ yylval.integer = atoi(yytext + 2); return STATEREG; }
 	BEGIN(INITIAL);
 	return JUMP_LABEL;
 }
-
- /* SWSB */
-"@"[1-7]	{ yylval.integer = atoi(yytext + 1); return REG_DIST_CURRENT; }
-"F@"[1-7]	{ yylval.integer = atoi(yytext + 2); return REG_DIST_FLOAT; }
-"I@"[1-7]	{ yylval.integer = atoi(yytext + 2); return REG_DIST_INT; }
-"L@"[1-7]	{ yylval.integer = atoi(yytext + 2); return REG_DIST_LONG; }
-"A@"[1-7]	{ yylval.integer = atoi(yytext + 2); return REG_DIST_ALL; }
-
-"$"[0-9]*	{ yylval.integer = atoi(yytext + 1); return SBID_ALLOC; }
-"$"[0-9]*".src"	{ yylval.integer = atoi(yytext + 1); return SBID_WAIT_SRC; }
-"$"[0-9]*".dst"	{ yylval.integer = atoi(yytext + 1); return SBID_WAIT_DST; }
 
 \n 	{ yycolumn = 1; }
 

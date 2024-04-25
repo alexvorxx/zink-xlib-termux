@@ -510,6 +510,11 @@ extern "C" fn cl_get_extension_function_address(
         "clGetGLObjectInfo" => cl_get_gl_object_info as *mut ::std::ffi::c_void,
         "clGetGLTextureInfo" => cl_get_gl_texture_info as *mut ::std::ffi::c_void,
 
+        // cl_khr_suggested_local_work_size
+        "clGetKernelSuggestedLocalWorkSizeKHR" => {
+            cl_get_kernel_suggested_local_work_size_khr as *mut ::std::ffi::c_void
+        }
+
         // cl_arm_shared_virtual_memory
         "clEnqueueSVMFreeARM" => cl_enqueue_svm_free_arm as *mut ::std::ffi::c_void,
         "clEnqueueSVMMapARM" => cl_enqueue_svm_map_arm as *mut ::std::ffi::c_void,

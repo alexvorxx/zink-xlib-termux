@@ -5,6 +5,8 @@
 
 #include "tu_cs.h"
 
+#include "tu_device.h"
+#include "tu_rmv.h"
 #include "tu_suballoc.h"
 
 /**
@@ -70,10 +72,12 @@ void
 tu_cs_finish(struct tu_cs *cs)
 {
    for (uint32_t i = 0; i < cs->read_only.bo_count; ++i) {
+      TU_RMV(resource_destroy, cs->device, cs->read_only.bos[i]);
       tu_bo_finish(cs->device, cs->read_only.bos[i]);
    }
 
    for (uint32_t i = 0; i < cs->read_write.bo_count; ++i) {
+      TU_RMV(resource_destroy, cs->device, cs->read_write.bos[i]);
       tu_bo_finish(cs->device, cs->read_write.bos[i]);
    }
 
@@ -165,6 +169,8 @@ tu_cs_add_bo(struct tu_cs *cs, uint32_t size)
       tu_bo_finish(cs->device, new_bo);
       return result;
    }
+
+   TU_RMV(cmd_buffer_bo_create, cs->device, new_bo);
 
    bos->bos[bos->bo_count++] = new_bo;
 
@@ -482,10 +488,12 @@ tu_cs_reset(struct tu_cs *cs)
    }
 
    for (uint32_t i = 0; i + 1 < cs->read_only.bo_count; ++i) {
+      TU_RMV(resource_destroy, cs->device, cs->read_only.bos[i]);
       tu_bo_finish(cs->device, cs->read_only.bos[i]);
    }
 
    for (uint32_t i = 0; i + 1 < cs->read_write.bo_count; ++i) {
+      TU_RMV(resource_destroy, cs->device, cs->read_write.bos[i]);
       tu_bo_finish(cs->device, cs->read_write.bos[i]);
    }
 

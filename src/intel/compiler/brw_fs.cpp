@@ -890,7 +890,6 @@ fs_inst::size_read(int arg) const
          return retype(src[arg], BRW_REGISTER_TYPE_UD).component_size(8);
       break;
 
-   case CS_OPCODE_CS_TERMINATE:
    case SHADER_OPCODE_BARRIER:
       return REG_SIZE;
 
@@ -1271,8 +1270,17 @@ fs_visitor::assign_curb_setup()
          assert(num_regs > 0);
          num_regs = 1 << util_logbase2(num_regs);
 
-         fs_reg addr = ubld.vgrf(BRW_REGISTER_TYPE_UD);
-         ubld.ADD(addr, base_addr, brw_imm_ud(i * REG_SIZE));
+         fs_reg addr;
+
+         /* This pass occurs after all of the optimization passes, so don't
+          * emit an 'ADD addr, base_addr, 0' instruction.
+          */
+         if (i != 0) {
+            addr = ubld.vgrf(BRW_REGISTER_TYPE_UD);
+            ubld.ADD(addr, base_addr, brw_imm_ud(i * REG_SIZE));
+         } else {
+            addr = base_addr;
+         }
 
          fs_reg srcs[4] = {
             brw_imm_ud(0), /* desc */
@@ -2440,8 +2448,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       return "interp_per_slot_offset";
 
-   case CS_OPCODE_CS_TERMINATE:
-      return "cs_terminate";
    case SHADER_OPCODE_BARRIER:
       return "barrier";
    case SHADER_OPCODE_MULH:
@@ -2518,6 +2524,8 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
       break;
    case FIXED_GRF:
       fprintf(file, "g%d", inst->dst.nr);
+      if (inst->dst.subnr != 0)
+         fprintf(file, ".%d", inst->dst.subnr / type_sz(inst->dst.type));
       break;
    case BAD_FILE:
       fprintf(file, "(null)");
@@ -2647,7 +2655,11 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
          break;
       }
 
-      if (inst->src[i].offset ||
+      if (inst->src[i].file == FIXED_GRF && inst->src[i].subnr != 0) {
+         assert(inst->src[i].offset == 0);
+
+         fprintf(file, ".%d", inst->src[i].subnr / type_sz(inst->src[i].type));
+      } else if (inst->src[i].offset ||
           (inst->src[i].file == VGRF &&
            alloc.sizes[inst->src[i].nr] * REG_SIZE != inst->size_read(i))) {
          const unsigned reg_size = (inst->src[i].file == UNIFORM ? 4 : REG_SIZE);

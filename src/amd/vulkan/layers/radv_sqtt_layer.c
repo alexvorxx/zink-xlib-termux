@@ -26,7 +26,6 @@
 #include "radv_shader.h"
 #include "vk_common_entrypoints.h"
 #include "vk_semaphore.h"
-#include "wsi_common_entrypoints.h"
 
 #include "ac_rgp.h"
 #include "ac_sqtt.h"
@@ -1320,13 +1319,6 @@ sqtt_CmdDebugMarkerInsertEXT(VkCommandBuffer commandBuffer, const VkDebugMarkerM
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    radv_write_user_event_marker(cmd_buffer, UserEventTrigger, pMarkerInfo->pMarkerName);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-sqtt_DebugMarkerSetObjectNameEXT(VkDevice device, const VkDebugMarkerObjectNameInfoEXT *pNameInfo)
-{
-   /* no-op */
-   return VK_SUCCESS;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

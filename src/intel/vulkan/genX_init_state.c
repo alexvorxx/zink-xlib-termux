@@ -770,6 +770,8 @@ genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 #endif
 
    pdevice->cmd_emit_timestamp = genX(cmd_emit_timestamp);
+
+   pdevice->gpgpu_pipeline_value = GPGPU;
 }
 
 VkResult
@@ -1388,10 +1390,16 @@ genX(init_trtt_context_state)(struct anv_queue *queue)
    anv_batch_write_reg(&batch, GENX(GFX_TRTT_NULL), trtt_null) {
       trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
    }
+#if GFX_VER >= 20
+   anv_batch_write_reg(&batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
+      trtt_va_range.TRVABase = device->physical->va.trtt.addr >> 44;
+   }
+#else
    anv_batch_write_reg(&batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
       trtt_va_range.TRVAMaskValue = 0xF;
       trtt_va_range.TRVADataValue = 0xF;
    }
+#endif
 
    uint64_t l3_addr = trtt->l3_addr;
    assert((l3_addr & 0xFFF) == 0);

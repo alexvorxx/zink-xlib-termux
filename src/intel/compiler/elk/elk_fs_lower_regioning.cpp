@@ -145,9 +145,8 @@ namespace {
           * Work around both of the above and handle platforms that
           * don't support 64-bit types at all.
           */
-         if ((!devinfo->has_64bit_int ||
-              devinfo->platform == INTEL_PLATFORM_CHV ||
-              intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
+         if ((!devinfo->has_64bit_int || devinfo->platform == INTEL_PLATFORM_CHV) &&
+             type_sz(t) > 4)
             return ELK_REGISTER_TYPE_UD;
          else if (has_dst_aligned_region_restriction(devinfo, inst))
             return elk_int_type(type_sz(t), false);
@@ -174,30 +173,19 @@ namespace {
           *    integer DWord multiply, indirect addressing must not be
           *    used."
           *
-          * For MTL (verx10 == 125), float64 is supported, but int64 is not.
-          * Therefore we need to lower cluster broadcast using 32-bit int ops.
-          *
-          * For gfx12.5+ platforms that support int64, the register regions
-          * used by cluster broadcast aren't supported by the 64-bit pipeline.
-          *
           * Work around the above and handle platforms that don't
           * support 64-bit types at all.
           */
-         if ((!has_64bit || devinfo->verx10 >= 125 ||
-              devinfo->platform == INTEL_PLATFORM_CHV ||
-              intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
+         if ((!has_64bit || devinfo->platform == INTEL_PLATFORM_CHV) &&
+             type_sz(t) > 4)
             return ELK_REGISTER_TYPE_UD;
          else
             return elk_int_type(type_sz(t), false);
 
       case ELK_SHADER_OPCODE_BROADCAST:
       case ELK_SHADER_OPCODE_MOV_INDIRECT:
-         if (((devinfo->verx10 == 70 ||
-               devinfo->platform == INTEL_PLATFORM_CHV ||
-               intel_device_info_is_9lp(devinfo) ||
-               devinfo->verx10 >= 125) && type_sz(inst->src[0].type) > 4) ||
-             (devinfo->verx10 >= 125 &&
-              elk_reg_type_is_floating_point(inst->src[0].type)))
+         if ((devinfo->verx10 == 70 || devinfo->platform == INTEL_PLATFORM_CHV) &&
+             type_sz(inst->src[0].type) > 4)
             return elk_int_type(type_sz(t), false);
          else
             return t;
@@ -253,8 +241,7 @@ namespace {
    has_invalid_src_region(const intel_device_info *devinfo, const elk_fs_inst *inst,
                           unsigned i)
    {
-      if (is_send(inst) || inst->is_math() || inst->is_control_source(i) ||
-          inst->opcode == ELK_OPCODE_DPAS) {
+      if (is_send(inst) || inst->is_math() || inst->is_control_source(i)) {
          return false;
       }
 

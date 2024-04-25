@@ -58,6 +58,7 @@ nvk_slm_area_ensure(struct nvk_device *dev,
                     struct nvk_slm_area *area,
                     uint32_t bytes_per_thread)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    assert(bytes_per_thread < (1 << 24));
 
    /* TODO: Volta+doesn't use CRC */
@@ -70,8 +71,8 @@ nvk_slm_area_ensure(struct nvk_device *dev,
     */
    bytes_per_warp = align64(bytes_per_warp, 0x200);
 
-   uint64_t bytes_per_mp = bytes_per_warp * dev->pdev->info.max_warps_per_mp;
-   uint64_t bytes_per_tpc = bytes_per_mp * dev->pdev->info.mp_per_tpc;
+   uint64_t bytes_per_mp = bytes_per_warp * pdev->info.max_warps_per_mp;
+   uint64_t bytes_per_tpc = bytes_per_mp * pdev->info.mp_per_tpc;
 
    /* The hardware seems to require this alignment for
     * NVA0C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A_SIZE_LOWER.
@@ -88,7 +89,7 @@ nvk_slm_area_ensure(struct nvk_device *dev,
    if (likely(bytes_per_tpc <= area->bytes_per_tpc))
       return VK_SUCCESS;
 
-   uint64_t size = bytes_per_tpc * dev->pdev->info.tpc_count;
+   uint64_t size = bytes_per_tpc * pdev->info.tpc_count;
 
    /* The hardware seems to require this alignment for
     * NV9097_SET_SHADER_LOCAL_MEMORY_D_SIZE_LOWER.
@@ -167,7 +168,6 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    vk_device_set_drm_fd(&dev->vk, dev->ws_dev->fd);
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
-   dev->pdev = pdev;
 
    result = nvk_upload_queue_init(dev, &dev->upload);
    if (result != VK_SUCCESS)
@@ -207,7 +207,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
                           NOUVEAU_WS_BO_LOCAL | NOUVEAU_WS_BO_NO_SHARE,
                           shader_map_flags,
                           4096 /* overalloc */,
-                          dev->pdev->info.cls_eng3d < VOLTA_A);
+                          pdev->info.cls_eng3d < VOLTA_A);
    if (result != VK_SUCCESS)
       goto fail_samplers;
 
@@ -231,8 +231,8 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    memset(zero_map, 0, 0x1000);
    nouveau_ws_bo_unmap(dev->zero_page, zero_map);
 
-   if (dev->pdev->info.cls_eng3d >= FERMI_A &&
-       dev->pdev->info.cls_eng3d < MAXWELL_A) {
+   if (pdev->info.cls_eng3d >= FERMI_A &&
+       pdev->info.cls_eng3d < MAXWELL_A) {
       /* max size is 256k */
       dev->vab_memory = nouveau_ws_bo_new(dev->ws_dev, 1 << 17, 1 << 20,
                                           NOUVEAU_WS_BO_LOCAL |

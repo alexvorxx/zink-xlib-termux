@@ -543,8 +543,8 @@ elk_schedule_node::set_latency_gfx7(const struct elk_isa_info *isa)
          case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ:
          case GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE:
          case GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ:
-         case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
-         case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
+         case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
+         case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
             /* See also GFX7_DATAPORT_DC_UNTYPED_SURFACE_READ */
             latency = 300;
             break;
@@ -553,11 +553,7 @@ elk_schedule_node::set_latency_gfx7(const struct elk_isa_info *isa)
          case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP_SIMD4X2:
          case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
          case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP:
-         case GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP:
          case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP:
-         case GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP:
-         case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP:
-         case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP:
             /* See also GFX7_DATAPORT_DC_UNTYPED_ATOMIC_OP */
             latency = 14000;
             break;
@@ -571,64 +567,12 @@ elk_schedule_node::set_latency_gfx7(const struct elk_isa_info *isa)
          latency = 50; /* TODO */
          break;
 
-      case GFX12_SFID_UGM:
-      case GFX12_SFID_TGM:
-      case GFX12_SFID_SLM:
-         switch (lsc_msg_desc_opcode(isa->devinfo, inst->desc)) {
-         case LSC_OP_LOAD:
-         case LSC_OP_STORE:
-         case LSC_OP_LOAD_CMASK:
-         case LSC_OP_STORE_CMASK:
-            latency = 300;
-            break;
-         case LSC_OP_FENCE:
-         case LSC_OP_ATOMIC_INC:
-         case LSC_OP_ATOMIC_DEC:
-         case LSC_OP_ATOMIC_LOAD:
-         case LSC_OP_ATOMIC_STORE:
-         case LSC_OP_ATOMIC_ADD:
-         case LSC_OP_ATOMIC_SUB:
-         case LSC_OP_ATOMIC_MIN:
-         case LSC_OP_ATOMIC_MAX:
-         case LSC_OP_ATOMIC_UMIN:
-         case LSC_OP_ATOMIC_UMAX:
-         case LSC_OP_ATOMIC_CMPXCHG:
-         case LSC_OP_ATOMIC_FADD:
-         case LSC_OP_ATOMIC_FSUB:
-         case LSC_OP_ATOMIC_FMIN:
-         case LSC_OP_ATOMIC_FMAX:
-         case LSC_OP_ATOMIC_FCMPXCHG:
-         case LSC_OP_ATOMIC_AND:
-         case LSC_OP_ATOMIC_OR:
-         case LSC_OP_ATOMIC_XOR:
-            latency = 1400;
-            break;
-         default:
-            unreachable("unsupported new data port message instruction");
-         }
-         break;
-
       case ELK_SFID_URB:
          latency = 200;
          break;
 
       default:
          unreachable("Unknown SFID");
-      }
-      break;
-
-   case ELK_OPCODE_DPAS:
-      switch (inst->rcount) {
-      case 1:
-         latency = 21;
-         break;
-      case 2:
-         latency = 22;
-         break;
-      case 8:
-      default:
-         latency = 32;
-         break;
       }
       break;
 

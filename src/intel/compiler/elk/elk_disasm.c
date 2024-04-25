@@ -88,19 +88,7 @@ static bool
 is_send(unsigned opcode)
 {
    return opcode == ELK_OPCODE_SEND ||
-          opcode == ELK_OPCODE_SENDC ||
-          opcode == ELK_OPCODE_SENDS ||
-          opcode == ELK_OPCODE_SENDSC;
-}
-
-static bool
-is_split_send(UNUSED const struct intel_device_info *devinfo, unsigned opcode)
-{
-   if (devinfo->ver >= 12)
-      return is_send(opcode);
-   else
-      return opcode == ELK_OPCODE_SENDS ||
-             opcode == ELK_OPCODE_SENDSC;
+          opcode == ELK_OPCODE_SENDC;
 }
 
 const char *const elk_conditional_modifier[16] = {
@@ -231,12 +219,6 @@ static const char *const pred_ctrl_align1[16] = {
    [ELK_PREDICATE_ALIGN1_ALL32H] = ".all32h",
 };
 
-static const char *const xe2_pred_ctrl[4] = {
-   [ELK_PREDICATE_NORMAL]        = "",
-   [XE2_PREDICATE_ANY]           = ".any",
-   [XE2_PREDICATE_ALL]           = ".all",
-};
-
 static const char *const thread_ctrl[4] = {
    [ELK_THREAD_NORMAL] = "",
    [ELK_THREAD_ATOMIC] = "atomic",
@@ -325,9 +307,6 @@ static const char *const gfx6_sfid[16] = {
    [GFX7_SFID_PIXEL_INTERPOLATOR]      = "pixel interp",
    [HSW_SFID_DATAPORT_DATA_CACHE_1]    = "dp data 1",
    [HSW_SFID_CRE]                      = "cre",
-   [GFX12_SFID_SLM]                    = "slm",
-   [GFX12_SFID_TGM]                    = "tgm",
-   [GFX12_SFID_UGM]                    = "ugm",
 };
 
 static const char *const gfx7_gateway_subfuncid[8] = {
@@ -397,16 +376,10 @@ static const char *const dp_rc_msg_type_gfx7[16] = {
    [GFX7_DATAPORT_RC_TYPED_SURFACE_WRITE] = "typed surface write"
 };
 
-static const char *const dp_rc_msg_type_gfx9[16] = {
-   [GFX9_DATAPORT_RC_RENDER_TARGET_WRITE] = "RT write",
-   [GFX9_DATAPORT_RC_RENDER_TARGET_READ] = "RT read"
-};
-
 static const char *const *
 dp_rc_msg_type(const struct intel_device_info *devinfo)
 {
-   return (devinfo->ver >= 9 ? dp_rc_msg_type_gfx9 :
-           devinfo->ver >= 7 ? dp_rc_msg_type_gfx7 :
+   return (devinfo->ver >= 7 ? dp_rc_msg_type_gfx7 :
            devinfo->ver >= 6 ? dp_rc_msg_type_gfx6 :
            dp_write_port_msg_type);
 }
@@ -461,21 +434,12 @@ static const char *const dp_dc1_msg_type_hsw[32] = {
    [HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP_SIMD4X2] =
       "DC 4x2 atomic counter op",
    [HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_WRITE] = "DC typed surface write",
-   [GFX9_DATAPORT_DC_PORT1_A64_SCATTERED_READ] = "DC A64 scattered read",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_READ] = "DC A64 untyped surface read",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP] = "DC A64 untyped atomic op",
-   [GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ] = "DC A64 oword block read",
-   [GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE] = "DC A64 oword block write",
+   [GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ] = "DC A64 oword block read",
+   [GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE] = "DC A64 oword block write",
    [GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_SURFACE_WRITE] = "DC A64 untyped surface write",
    [GFX8_DATAPORT_DC_PORT1_A64_SCATTERED_WRITE] = "DC A64 scattered write",
-   [GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP] =
-      "DC untyped atomic float op",
-   [GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP] =
-      "DC A64 untyped atomic float op",
-   [GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP] =
-      "DC A64 untyped atomic half-integer op",
-   [GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP] =
-      "DC A64 untyped atomic half-float op",
 };
 
 static const char *const aop[16] = {
@@ -494,13 +458,6 @@ static const char *const aop[16] = {
    [ELK_AOP_UMIN]   = "umin",
    [ELK_AOP_CMPWR]  = "cmpwr",
    [ELK_AOP_PREDEC] = "predec",
-};
-
-static const char *const aop_float[5] = {
-   [ELK_AOP_FMAX]   = "fmax",
-   [ELK_AOP_FMIN]   = "fmin",
-   [ELK_AOP_FCMPWR] = "fcmpwr",
-   [ELK_AOP_FADD]   = "fadd",
 };
 
 static const char * const pixel_interpolator_msg_types[4] = {
@@ -526,15 +483,6 @@ static const char *const math_function[16] = {
    [ELK_MATH_FUNCTION_INT_DIV_REMAINDER] = "intmod",
    [GFX8_MATH_FUNCTION_INVM]  = "invm",
    [GFX8_MATH_FUNCTION_RSQRTM] = "rsqrtm",
-};
-
-static const char *const sync_function[16] = {
-   [TGL_SYNC_NOP] = "nop",
-   [TGL_SYNC_ALLRD] = "allrd",
-   [TGL_SYNC_ALLWR] = "allwr",
-   [TGL_SYNC_FENCE] = "fence",
-   [TGL_SYNC_BAR] = "bar",
-   [TGL_SYNC_HOST] = "host",
 };
 
 static const char *const math_saturate[2] = {
@@ -572,8 +520,7 @@ static const char *const gfx7_urb_opcode[] = {
    [GFX8_URB_OPCODE_ATOMIC_ADD] = "atomic add",  /* Gfx8+ */
    [GFX8_URB_OPCODE_SIMD8_WRITE] = "SIMD8 write", /* Gfx8+ */
    [GFX8_URB_OPCODE_SIMD8_READ] = "SIMD8 read",  /* Gfx8+ */
-   [GFX125_URB_OPCODE_FENCE] = "fence",  /* Gfx12.5+ */
-   /* [10-15] - reserved */
+   /* [9-15] - reserved */
 };
 
 static const char *const urb_swizzle[4] = {
@@ -614,37 +561,6 @@ static const char *const gfx5_sampler_msg_type[] = {
    [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO]   = "gather4_po",
    [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_C] = "gather4_po_c",
    [HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE] = "sample_d_c",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_LZ]           = "sample_lz",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ]         = "sample_c_lz",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ]        = "ld_lz",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W]     = "ld2dms_w",
-   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS]       = "ld_mcs",
-   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS]       = "ld2dms",
-   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS]       = "ld2dss",
-};
-
-static const char *const xe2_sampler_msg_type[] = {
-   [GFX5_SAMPLER_MESSAGE_SAMPLE]              = "sample",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS]         = "sample_b",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_LOD]          = "sample_l",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE]      = "sample_c",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_DERIVS]       = "sample_d",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS_COMPARE] = "sample_b_c",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_LOD_COMPARE]  = "sample_l_c",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_LD]           = "ld",
-   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4]      = "gather4",
-   [GFX5_SAMPLER_MESSAGE_LOD]                 = "lod",
-   [GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO]      = "resinfo",
-   [GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO]   = "sampleinfo",
-   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C]    = "gather4_c",
-   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO]   = "gather4_po",
-   [XE2_SAMPLER_MESSAGE_SAMPLE_MLOD]          = "sample_mlod",
-   [XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD]  = "sample_c_mlod",
-   [HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE] = "sample_d_c",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_LZ]           = "sample_lz",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ]         = "sample_c_lz",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ]        = "ld_lz",
-   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W]     = "ld2dms_w",
    [GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS]       = "ld_mcs",
    [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS]       = "ld2dms",
    [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS]       = "ld2dss",
@@ -655,178 +571,12 @@ static const char *const gfx5_sampler_simd_mode[7] = {
    [ELK_SAMPLER_SIMD_MODE_SIMD8]     = "SIMD8",
    [ELK_SAMPLER_SIMD_MODE_SIMD16]    = "SIMD16",
    [ELK_SAMPLER_SIMD_MODE_SIMD32_64] = "SIMD32/64",
-   [GFX10_SAMPLER_SIMD_MODE_SIMD8H]  = "SIMD8H",
-   [GFX10_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
-};
-
-static const char *const xe2_sampler_simd_mode[7] = {
-   [XE2_SAMPLER_SIMD_MODE_SIMD16]  = "SIMD16",
-   [XE2_SAMPLER_SIMD_MODE_SIMD32]  = "SIMD32",
-   [XE2_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
-   [XE2_SAMPLER_SIMD_MODE_SIMD32H] = "SIMD32H",
 };
 
 static const char *const sampler_target_format[4] = {
    [0] = "F",
    [2] = "UD",
    [3] = "D"
-};
-
-static const char *const lsc_operation[] = {
-   [LSC_OP_LOAD]            = "load",
-   [LSC_OP_LOAD_CMASK]      = "load_cmask",
-   [LSC_OP_STORE]           = "store",
-   [LSC_OP_STORE_CMASK]     = "store_cmask",
-   [LSC_OP_FENCE]           = "fence",
-   [LSC_OP_ATOMIC_INC]      = "atomic_inc",
-   [LSC_OP_ATOMIC_DEC]      = "atomic_dec",
-   [LSC_OP_ATOMIC_LOAD]     = "atomic_load",
-   [LSC_OP_ATOMIC_STORE]    = "atomic_store",
-   [LSC_OP_ATOMIC_ADD]      = "atomic_add",
-   [LSC_OP_ATOMIC_SUB]      = "atomic_sub",
-   [LSC_OP_ATOMIC_MIN]      = "atomic_min",
-   [LSC_OP_ATOMIC_MAX]      = "atomic_max",
-   [LSC_OP_ATOMIC_UMIN]     = "atomic_umin",
-   [LSC_OP_ATOMIC_UMAX]     = "atomic_umax",
-   [LSC_OP_ATOMIC_CMPXCHG]  = "atomic_cmpxchg",
-   [LSC_OP_ATOMIC_FADD]     = "atomic_fadd",
-   [LSC_OP_ATOMIC_FSUB]     = "atomic_fsub",
-   [LSC_OP_ATOMIC_FMIN]     = "atomic_fmin",
-   [LSC_OP_ATOMIC_FMAX]     = "atomic_fmax",
-   [LSC_OP_ATOMIC_FCMPXCHG] = "atomic_fcmpxchg",
-   [LSC_OP_ATOMIC_AND]      = "atomic_and",
-   [LSC_OP_ATOMIC_OR]       = "atomic_or",
-   [LSC_OP_ATOMIC_XOR]      = "atomic_xor",
-};
-
-static const char *const lsc_addr_surface_type[] = {
-   [LSC_ADDR_SURFTYPE_FLAT] = "flat",
-   [LSC_ADDR_SURFTYPE_BSS]  = "bss",
-   [LSC_ADDR_SURFTYPE_SS]   = "ss",
-   [LSC_ADDR_SURFTYPE_BTI]  = "bti",
-};
-
-static const char* const lsc_fence_scope[] = {
-   [LSC_FENCE_THREADGROUP]     = "threadgroup",
-   [LSC_FENCE_LOCAL]           = "local",
-   [LSC_FENCE_TILE]            = "tile",
-   [LSC_FENCE_GPU]             = "gpu",
-   [LSC_FENCE_ALL_GPU]         = "all_gpu",
-   [LSC_FENCE_SYSTEM_RELEASE]  = "system_release",
-   [LSC_FENCE_SYSTEM_ACQUIRE]  = "system_acquire",
-};
-
-static const char* const lsc_flush_type[] = {
-   [LSC_FLUSH_TYPE_NONE]       = "none",
-   [LSC_FLUSH_TYPE_EVICT]      = "evict",
-   [LSC_FLUSH_TYPE_INVALIDATE] = "invalidate",
-   [LSC_FLUSH_TYPE_DISCARD]    = "discard",
-   [LSC_FLUSH_TYPE_CLEAN]      = "clean",
-   [LSC_FLUSH_TYPE_L3ONLY]     = "l3only",
-   [LSC_FLUSH_TYPE_NONE_6]     = "none_6",
-};
-
-static const char* const lsc_addr_size[] = {
-   [LSC_ADDR_SIZE_A16] = "a16",
-   [LSC_ADDR_SIZE_A32] = "a32",
-   [LSC_ADDR_SIZE_A64] = "a64",
-};
-
-static const char* const lsc_backup_fence_routing[] = {
-   [LSC_NORMAL_ROUTING]  = "normal_routing",
-   [LSC_ROUTE_TO_LSC]    = "route_to_lsc",
-};
-
-static const char* const lsc_data_size[] = {
-   [LSC_DATA_SIZE_D8]      = "d8",
-   [LSC_DATA_SIZE_D16]     = "d16",
-   [LSC_DATA_SIZE_D32]     = "d32",
-   [LSC_DATA_SIZE_D64]     = "d64",
-   [LSC_DATA_SIZE_D8U32]   = "d8u32",
-   [LSC_DATA_SIZE_D16U32]  = "d16u32",
-   [LSC_DATA_SIZE_D16BF32] = "d16bf32",
-};
-
-static const char* const lsc_vect_size_str[] = {
-   [LSC_VECT_SIZE_V1] = "V1",
-   [LSC_VECT_SIZE_V2] = "V2",
-   [LSC_VECT_SIZE_V3] = "V3",
-   [LSC_VECT_SIZE_V4] = "V4",
-   [LSC_VECT_SIZE_V8] = "V8",
-   [LSC_VECT_SIZE_V16] = "V16",
-   [LSC_VECT_SIZE_V32] = "V32",
-   [LSC_VECT_SIZE_V64] = "V64",
-};
-
-static const char* const lsc_cmask_str[] = {
-   [LSC_CMASK_X]      = "x",
-   [LSC_CMASK_Y]      = "y",
-   [LSC_CMASK_XY]     = "xy",
-   [LSC_CMASK_Z]      = "z",
-   [LSC_CMASK_XZ]     = "xz",
-   [LSC_CMASK_YZ]     = "yz",
-   [LSC_CMASK_XYZ]    = "xyz",
-   [LSC_CMASK_W]      = "w",
-   [LSC_CMASK_XW]     = "xw",
-   [LSC_CMASK_YW]     = "yw",
-   [LSC_CMASK_XYW]    = "xyw",
-   [LSC_CMASK_ZW]     = "zw",
-   [LSC_CMASK_XZW]    = "xzw",
-   [LSC_CMASK_YZW]    = "yzw",
-   [LSC_CMASK_XYZW]   = "xyzw",
-};
-
-static const char* const lsc_cache_load[] = {
-   [LSC_CACHE_LOAD_L1STATE_L3MOCS]   = "L1STATE_L3MOCS",
-   [LSC_CACHE_LOAD_L1UC_L3UC]        = "L1UC_L3UC",
-   [LSC_CACHE_LOAD_L1UC_L3C]         = "L1UC_L3C",
-   [LSC_CACHE_LOAD_L1C_L3UC]         = "L1C_L3UC",
-   [LSC_CACHE_LOAD_L1C_L3C]          = "L1C_L3C",
-   [LSC_CACHE_LOAD_L1S_L3UC]         = "L1S_L3UC",
-   [LSC_CACHE_LOAD_L1S_L3C]          = "L1S_L3C",
-   [LSC_CACHE_LOAD_L1IAR_L3C]        = "L1IAR_L3C",
-};
-
-static const char* const lsc_cache_store[] = {
-   [LSC_CACHE_STORE_L1STATE_L3MOCS]  = "L1STATE_L3MOCS",
-   [LSC_CACHE_STORE_L1UC_L3UC]       = "L1UC_L3UC",
-   [LSC_CACHE_STORE_L1UC_L3WB]       = "L1UC_L3WB",
-   [LSC_CACHE_STORE_L1WT_L3UC]       = "L1WT_L3UC",
-   [LSC_CACHE_STORE_L1WT_L3WB]       = "L1WT_L3WB",
-   [LSC_CACHE_STORE_L1S_L3UC]        = "L1S_L3UC",
-   [LSC_CACHE_STORE_L1S_L3WB]        = "L1S_L3WB",
-   [LSC_CACHE_STORE_L1WB_L3WB]       = "L1WB_L3WB",
-};
-
-static const char* const xe2_lsc_cache_load[] = {
-   [XE2_LSC_CACHE_LOAD_L1STATE_L3MOCS]   = "L1STATE_L3MOCS",
-   [XE2_LSC_CACHE_LOAD_L1UC_L3UC]        = "L1UC_L3UC",
-   [XE2_LSC_CACHE_LOAD_L1UC_L3C]         = "L1UC_L3C",
-   [XE2_LSC_CACHE_LOAD_L1UC_L3CC]        = "L1UC_L3CC",
-   [XE2_LSC_CACHE_LOAD_L1C_L3UC]         = "L1C_L3UC",
-   [XE2_LSC_CACHE_LOAD_L1C_L3C]          = "L1C_L3C",
-   [XE2_LSC_CACHE_LOAD_L1C_L3CC]         = "L1C_L3CC",
-   [XE2_LSC_CACHE_LOAD_L1S_L3UC]         = "L1S_L3UC",
-   [XE2_LSC_CACHE_LOAD_L1S_L3C]          = "L1S_L3C",
-   [XE2_LSC_CACHE_LOAD_L1IAR_L3IAR]      = "L1IAR_L3IAR",
-};
-
-static const char* const xe2_lsc_cache_store[] = {
-   [XE2_LSC_CACHE_STORE_L1STATE_L3MOCS]  = "L1STATE_L3MOCS",
-   [XE2_LSC_CACHE_STORE_L1UC_L3UC]       = "L1UC_L3UC",
-   [XE2_LSC_CACHE_STORE_L1UC_L3WB]       = "L1UC_L3WB",
-   [XE2_LSC_CACHE_STORE_L1WT_L3UC]       = "L1WT_L3UC",
-   [XE2_LSC_CACHE_STORE_L1WT_L3WB]       = "L1WT_L3WB",
-   [XE2_LSC_CACHE_STORE_L1S_L3UC]        = "L1S_L3UC",
-   [XE2_LSC_CACHE_STORE_L1S_L3WB]        = "L1S_L3WB",
-   [XE2_LSC_CACHE_STORE_L1WB_L3WB]       = "L1WB_L3WB",
-};
-
-static const char* const dpas_systolic_depth[4] = {
-   [0] = "16",
-   [1] = "2",
-   [2] = "4",
-   [3] = "8"
 };
 
 static int column;
@@ -973,32 +723,7 @@ dest(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
    unsigned elem_size = elk_reg_type_to_size(type);
    int err = 0;
 
-   if (is_split_send(devinfo, elk_inst_opcode(isa, inst))) {
-      /* These are fixed for split sends */
-      type = ELK_REGISTER_TYPE_UD;
-      elem_size = 4;
-      if (devinfo->ver >= 12) {
-         err |= reg(file, elk_inst_send_dst_reg_file(devinfo, inst),
-                    elk_inst_dst_da_reg_nr(devinfo, inst));
-         string(file, elk_reg_type_to_letters(type));
-      } else if (elk_inst_dst_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
-         err |= reg(file, elk_inst_send_dst_reg_file(devinfo, inst),
-                    elk_inst_dst_da_reg_nr(devinfo, inst));
-         unsigned subreg_nr = elk_inst_dst_da16_subreg_nr(devinfo, inst);
-         if (subreg_nr)
-            format(file, ".%u", subreg_nr);
-         string(file, elk_reg_type_to_letters(type));
-      } else {
-         string(file, "g[a0");
-         if (elk_inst_dst_ia_subreg_nr(devinfo, inst))
-            format(file, ".%"PRIu64, elk_inst_dst_ia_subreg_nr(devinfo, inst) /
-                   elem_size);
-         if (elk_inst_send_dst_ia16_addr_imm(devinfo, inst))
-            format(file, " %d", elk_inst_send_dst_ia16_addr_imm(devinfo, inst));
-         string(file, "]<");
-         string(file, elk_reg_type_to_letters(type));
-      }
-   } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+   if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
       if (elk_inst_dst_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
          err |= reg(file, elk_inst_dst_reg_file(devinfo, inst),
                     elk_inst_dst_da_reg_nr(devinfo, inst));
@@ -1056,15 +781,11 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
    unsigned subreg_nr;
    enum elk_reg_type type;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
    if (devinfo->ver == 6 && elk_inst_3src_a16_dst_reg_file(devinfo, inst))
       reg_file = ELK_MESSAGE_REGISTER_FILE;
-   else if (devinfo->ver >= 12)
-      reg_file = elk_inst_3src_a1_dst_reg_file(devinfo, inst);
-   else if (is_align1 && elk_inst_3src_a1_dst_reg_file(devinfo, inst))
-      reg_file = ELK_ARCHITECTURE_REGISTER_FILE;
    else
       reg_file = ELK_GENERAL_REGISTER_FILE;
 
@@ -1072,13 +793,8 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
    if (err == -1)
       return 0;
 
-   if (is_align1) {
-      type = elk_inst_3src_a1_dst_type(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_dst_subreg_nr(devinfo, inst);
-   } else {
-      type = elk_inst_3src_a16_dst_type(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_dst_subreg_nr(devinfo, inst) * 4;
-   }
+   type = elk_inst_3src_a16_dst_type(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_dst_subreg_nr(devinfo, inst) * 4;
    subreg_nr /= elk_reg_type_to_size(type);
 
    if (subreg_nr)
@@ -1089,27 +805,6 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
       err |= control(file, "writemask", writemask,
                      elk_inst_3src_a16_dst_writemask(devinfo, inst), NULL);
    }
-   string(file, elk_reg_type_to_letters(type));
-
-   return 0;
-}
-
-static int
-dest_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
-               const elk_inst *inst)
-{
-   uint32_t reg_file = elk_inst_dpas_3src_dst_reg_file(devinfo, inst);
-
-   if (reg(file, reg_file, elk_inst_dpas_3src_dst_reg_nr(devinfo, inst)) == -1)
-      return 0;
-
-   enum elk_reg_type type = elk_inst_dpas_3src_dst_type(devinfo, inst);
-   unsigned subreg_nr = elk_inst_dpas_3src_dst_subreg_nr(devinfo, inst);
-
-   if (subreg_nr)
-      format(file, ".%u", subreg_nr);
-   string(file, "<1>");
-
    string(file, elk_reg_type_to_letters(type));
 
    return 0;
@@ -1260,11 +955,7 @@ vstride_from_align1_3src_vstride(const struct intel_device_info *devinfo,
 {
    switch (vstride) {
    case ELK_ALIGN1_3SRC_VERTICAL_STRIDE_0: return ELK_VERTICAL_STRIDE_0;
-   case ELK_ALIGN1_3SRC_VERTICAL_STRIDE_2:
-      if (devinfo->ver >= 12)
-         return ELK_VERTICAL_STRIDE_1;
-      else
-         return ELK_VERTICAL_STRIDE_2;
+   case ELK_ALIGN1_3SRC_VERTICAL_STRIDE_2: return ELK_VERTICAL_STRIDE_2;
    case ELK_ALIGN1_3SRC_VERTICAL_STRIDE_4: return ELK_VERTICAL_STRIDE_4;
    case ELK_ALIGN1_3SRC_VERTICAL_STRIDE_8: return ELK_VERTICAL_STRIDE_8;
    default:
@@ -1354,57 +1045,24 @@ src0_3src(FILE *file, const struct intel_device_info *devinfo,
    bool is_scalar_region;
    bool is_align1 = elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
-   if (is_align1) {
-      if (devinfo->ver >= 12 && !elk_inst_3src_a1_src0_is_imm(devinfo, inst)) {
-         _file = elk_inst_3src_a1_src0_reg_file(devinfo, inst);
-      } else if (elk_inst_3src_a1_src0_reg_file(devinfo, inst) ==
-                 ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
-         _file = ELK_GENERAL_REGISTER_FILE;
-      } else if (elk_inst_3src_a1_src0_type(devinfo, inst) ==
-                 ELK_REGISTER_TYPE_NF) {
-         _file = ELK_ARCHITECTURE_REGISTER_FILE;
-      } else {
-         _file = ELK_IMMEDIATE_VALUE;
-         uint16_t imm_val = elk_inst_3src_a1_src0_imm(devinfo, inst);
-         enum elk_reg_type type = elk_inst_3src_a1_src0_type(devinfo, inst);
+   _file = ELK_GENERAL_REGISTER_FILE;
+   reg_nr = elk_inst_3src_src0_reg_nr(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_src0_subreg_nr(devinfo, inst) * 4;
+   type = elk_inst_3src_a16_src_type(devinfo, inst);
 
-         if (type == ELK_REGISTER_TYPE_W) {
-            format(file, "%dW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_UW) {
-            format(file, "0x%04xUW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_HF) {
-            format(file, "0x%04xHF", imm_val);
-         }
-         return 0;
-      }
-
-      reg_nr = elk_inst_3src_src0_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_src0_subreg_nr(devinfo, inst);
-      type = elk_inst_3src_a1_src0_type(devinfo, inst);
-      _vert_stride = vstride_from_align1_3src_vstride(
-         devinfo, elk_inst_3src_a1_src0_vstride(devinfo, inst));
-      _horiz_stride = hstride_from_align1_3src_hstride(
-                         elk_inst_3src_a1_src0_hstride(devinfo, inst));
-      _width = implied_width(_vert_stride, _horiz_stride);
+   if (elk_inst_3src_a16_src0_rep_ctrl(devinfo, inst)) {
+      _vert_stride = ELK_VERTICAL_STRIDE_0;
+      _width = ELK_WIDTH_1;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
    } else {
-      _file = ELK_GENERAL_REGISTER_FILE;
-      reg_nr = elk_inst_3src_src0_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_src0_subreg_nr(devinfo, inst) * 4;
-      type = elk_inst_3src_a16_src_type(devinfo, inst);
-
-      if (elk_inst_3src_a16_src0_rep_ctrl(devinfo, inst)) {
-         _vert_stride = ELK_VERTICAL_STRIDE_0;
-         _width = ELK_WIDTH_1;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
-      } else {
-         _vert_stride = ELK_VERTICAL_STRIDE_4;
-         _width = ELK_WIDTH_4;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
-      }
+      _vert_stride = ELK_VERTICAL_STRIDE_4;
+      _width = ELK_WIDTH_4;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
    }
+
    is_scalar_region = _vert_stride == ELK_VERTICAL_STRIDE_0 &&
                       _width == ELK_WIDTH_1 &&
                       _horiz_stride == ELK_HORIZONTAL_STRIDE_0;
@@ -1441,44 +1099,24 @@ src1_3src(FILE *file, const struct intel_device_info *devinfo,
    bool is_scalar_region;
    bool is_align1 = elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
-   if (is_align1) {
-      if (devinfo->ver >= 12) {
-         _file = elk_inst_3src_a1_src1_reg_file(devinfo, inst);
-      } else if (elk_inst_3src_a1_src1_reg_file(devinfo, inst) ==
-                 ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
-         _file = ELK_GENERAL_REGISTER_FILE;
-      } else {
-         _file = ELK_ARCHITECTURE_REGISTER_FILE;
-      }
+   _file = ELK_GENERAL_REGISTER_FILE;
+   reg_nr = elk_inst_3src_src1_reg_nr(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_src1_subreg_nr(devinfo, inst) * 4;
+   type = elk_inst_3src_a16_src_type(devinfo, inst);
 
-      reg_nr = elk_inst_3src_src1_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_src1_subreg_nr(devinfo, inst);
-      type = elk_inst_3src_a1_src1_type(devinfo, inst);
-
-      _vert_stride = vstride_from_align1_3src_vstride(
-         devinfo, elk_inst_3src_a1_src1_vstride(devinfo, inst));
-      _horiz_stride = hstride_from_align1_3src_hstride(
-                         elk_inst_3src_a1_src1_hstride(devinfo, inst));
-      _width = implied_width(_vert_stride, _horiz_stride);
+   if (elk_inst_3src_a16_src1_rep_ctrl(devinfo, inst)) {
+      _vert_stride = ELK_VERTICAL_STRIDE_0;
+      _width = ELK_WIDTH_1;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
    } else {
-      _file = ELK_GENERAL_REGISTER_FILE;
-      reg_nr = elk_inst_3src_src1_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_src1_subreg_nr(devinfo, inst) * 4;
-      type = elk_inst_3src_a16_src_type(devinfo, inst);
-
-      if (elk_inst_3src_a16_src1_rep_ctrl(devinfo, inst)) {
-         _vert_stride = ELK_VERTICAL_STRIDE_0;
-         _width = ELK_WIDTH_1;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
-      } else {
-         _vert_stride = ELK_VERTICAL_STRIDE_4;
-         _width = ELK_WIDTH_4;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
-      }
+      _vert_stride = ELK_VERTICAL_STRIDE_4;
+      _width = ELK_WIDTH_4;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
    }
+
    is_scalar_region = _vert_stride == ELK_VERTICAL_STRIDE_0 &&
                       _width == ELK_WIDTH_1 &&
                       _horiz_stride == ELK_HORIZONTAL_STRIDE_0;
@@ -1515,58 +1153,24 @@ src2_3src(FILE *file, const struct intel_device_info *devinfo,
    bool is_scalar_region;
    bool is_align1 = elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1;
 
-   if (devinfo->ver < 10 && is_align1)
+   if (is_align1)
       return 0;
 
-   if (is_align1) {
-      if (devinfo->ver >= 12 && !elk_inst_3src_a1_src2_is_imm(devinfo, inst)) {
-         _file = elk_inst_3src_a1_src2_reg_file(devinfo, inst);
-      } else if (elk_inst_3src_a1_src2_reg_file(devinfo, inst) ==
-                 ELK_ALIGN1_3SRC_GENERAL_REGISTER_FILE) {
-         _file = ELK_GENERAL_REGISTER_FILE;
-      } else {
-         _file = ELK_IMMEDIATE_VALUE;
-         uint16_t imm_val = elk_inst_3src_a1_src2_imm(devinfo, inst);
-         enum elk_reg_type type = elk_inst_3src_a1_src2_type(devinfo, inst);
+   _file = ELK_GENERAL_REGISTER_FILE;
+   reg_nr = elk_inst_3src_src2_reg_nr(devinfo, inst);
+   subreg_nr = elk_inst_3src_a16_src2_subreg_nr(devinfo, inst) * 4;
+   type = elk_inst_3src_a16_src_type(devinfo, inst);
 
-         if (type == ELK_REGISTER_TYPE_W) {
-            format(file, "%dW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_UW) {
-            format(file, "0x%04xUW", imm_val);
-         } else if (type == ELK_REGISTER_TYPE_HF) {
-            format(file, "0x%04xHF", imm_val);
-         }
-         return 0;
-      }
-
-      reg_nr = elk_inst_3src_src2_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a1_src2_subreg_nr(devinfo, inst);
-      type = elk_inst_3src_a1_src2_type(devinfo, inst);
-      /* FINISHME: No vertical stride on src2. Is using the hstride in place
-       *           correct? Doesn't seem like it, since there's hstride=1 but
-       *           no vstride=1.
-       */
-      _vert_stride = vstride_from_align1_3src_hstride(
-                        elk_inst_3src_a1_src2_hstride(devinfo, inst));
-      _horiz_stride = hstride_from_align1_3src_hstride(
-                         elk_inst_3src_a1_src2_hstride(devinfo, inst));
-      _width = implied_width(_vert_stride, _horiz_stride);
+   if (elk_inst_3src_a16_src2_rep_ctrl(devinfo, inst)) {
+      _vert_stride = ELK_VERTICAL_STRIDE_0;
+      _width = ELK_WIDTH_1;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
    } else {
-      _file = ELK_GENERAL_REGISTER_FILE;
-      reg_nr = elk_inst_3src_src2_reg_nr(devinfo, inst);
-      subreg_nr = elk_inst_3src_a16_src2_subreg_nr(devinfo, inst) * 4;
-      type = elk_inst_3src_a16_src_type(devinfo, inst);
-
-      if (elk_inst_3src_a16_src2_rep_ctrl(devinfo, inst)) {
-         _vert_stride = ELK_VERTICAL_STRIDE_0;
-         _width = ELK_WIDTH_1;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_0;
-      } else {
-         _vert_stride = ELK_VERTICAL_STRIDE_4;
-         _width = ELK_WIDTH_4;
-         _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
-      }
+      _vert_stride = ELK_VERTICAL_STRIDE_4;
+      _width = ELK_WIDTH_4;
+      _horiz_stride = ELK_HORIZONTAL_STRIDE_1;
    }
+
    is_scalar_region = _vert_stride == ELK_VERTICAL_STRIDE_0 &&
                       _width == ELK_WIDTH_1 &&
                       _horiz_stride == ELK_HORIZONTAL_STRIDE_0;
@@ -1587,69 +1191,6 @@ src2_3src(FILE *file, const struct intel_device_info *devinfo,
       err |= src_swizzle(file, elk_inst_3src_a16_src2_swizzle(devinfo, inst));
    string(file, elk_reg_type_to_letters(type));
    return err;
-}
-
-static int
-src0_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
-               const elk_inst *inst)
-{
-   uint32_t reg_file = elk_inst_dpas_3src_src0_reg_file(devinfo, inst);
-
-   if (reg(file, reg_file, elk_inst_dpas_3src_src0_reg_nr(devinfo, inst)) == -1)
-      return 0;
-
-   unsigned subreg_nr = elk_inst_dpas_3src_src0_subreg_nr(devinfo, inst);
-   enum elk_reg_type type = elk_inst_dpas_3src_src0_type(devinfo, inst);
-
-   if (subreg_nr)
-      format(file, ".%d", subreg_nr);
-   src_align1_region(file, 1, 1, 0);
-
-   string(file, elk_reg_type_to_letters(type));
-
-   return 0;
-}
-
-static int
-src1_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
-               const elk_inst *inst)
-{
-   uint32_t reg_file = elk_inst_dpas_3src_src1_reg_file(devinfo, inst);
-
-   if (reg(file, reg_file, elk_inst_dpas_3src_src1_reg_nr(devinfo, inst)) == -1)
-      return 0;
-
-   unsigned subreg_nr = elk_inst_dpas_3src_src1_subreg_nr(devinfo, inst);
-   enum elk_reg_type type = elk_inst_dpas_3src_src1_type(devinfo, inst);
-
-   if (subreg_nr)
-      format(file, ".%d", subreg_nr);
-   src_align1_region(file, 1, 1, 0);
-
-   string(file, elk_reg_type_to_letters(type));
-
-   return 0;
-}
-
-static int
-src2_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
-               const elk_inst *inst)
-{
-   uint32_t reg_file = elk_inst_dpas_3src_src2_reg_file(devinfo, inst);
-
-   if (reg(file, reg_file, elk_inst_dpas_3src_src2_reg_nr(devinfo, inst)) == -1)
-      return 0;
-
-   unsigned subreg_nr = elk_inst_dpas_3src_src2_subreg_nr(devinfo, inst);
-   enum elk_reg_type type = elk_inst_dpas_3src_src2_type(devinfo, inst);
-
-   if (subreg_nr)
-      format(file, ".%d", subreg_nr);
-   src_align1_region(file, 1, 1, 0);
-
-   string(file, elk_reg_type_to_letters(type));
-
-   return 0;
 }
 
 static int
@@ -1727,44 +1268,6 @@ imm(FILE *file, const struct elk_isa_info *isa, enum elk_reg_type type,
 }
 
 static int
-src_sends_da(FILE *file,
-             const struct intel_device_info *devinfo,
-             enum elk_reg_type type,
-             enum elk_reg_file _reg_file,
-             unsigned _reg_nr,
-             unsigned _reg_subnr)
-{
-   int err = 0;
-
-   err |= reg(file, _reg_file, _reg_nr);
-   if (err == -1)
-      return 0;
-   if (_reg_subnr)
-      format(file, ".1");
-   string(file, elk_reg_type_to_letters(type));
-
-   return err;
-}
-
-static int
-src_sends_ia(FILE *file,
-             const struct intel_device_info *devinfo,
-             enum elk_reg_type type,
-             int _addr_imm,
-             unsigned _addr_subreg_nr)
-{
-   string(file, "g[a0");
-   if (_addr_subreg_nr)
-      format(file, ".1");
-   if (_addr_imm)
-      format(file, " %d", _addr_imm);
-   string(file, "]");
-   string(file, elk_reg_type_to_letters(type));
-
-   return 0;
-}
-
-static int
 src_send_desc_ia(FILE *file,
                  const struct intel_device_info *devinfo,
                  unsigned _addr_subreg_nr)
@@ -1782,29 +1285,7 @@ src0(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   if (is_split_send(devinfo, elk_inst_opcode(isa, inst))) {
-      if (devinfo->ver >= 12) {
-         return src_sends_da(file,
-                             devinfo,
-                             ELK_REGISTER_TYPE_UD,
-                             elk_inst_send_src0_reg_file(devinfo, inst),
-                             elk_inst_src0_da_reg_nr(devinfo, inst),
-                             0);
-      } else if (elk_inst_send_src0_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
-         return src_sends_da(file,
-                             devinfo,
-                             ELK_REGISTER_TYPE_UD,
-                             ELK_GENERAL_REGISTER_FILE,
-                             elk_inst_src0_da_reg_nr(devinfo, inst),
-                             elk_inst_src0_da16_subreg_nr(devinfo, inst));
-      } else {
-         return src_sends_ia(file,
-                             devinfo,
-                             ELK_REGISTER_TYPE_UD,
-                             elk_inst_send_src0_ia16_addr_imm(devinfo, inst),
-                             elk_inst_src0_ia_subreg_nr(devinfo, inst));
-      }
-   } else if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
+   if (elk_inst_src0_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
       return imm(file, isa, elk_inst_src0_type(devinfo, inst), inst);
    } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
       if (elk_inst_src0_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
@@ -1861,14 +1342,7 @@ src1(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
 
-   if (is_split_send(devinfo, elk_inst_opcode(isa, inst))) {
-      return src_sends_da(file,
-                          devinfo,
-                          ELK_REGISTER_TYPE_UD,
-                          elk_inst_send_src1_reg_file(devinfo, inst),
-                          elk_inst_send_src1_reg_nr(devinfo, inst),
-                          0 /* subreg_nr */);
-   } else if (elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
+   if (elk_inst_src1_reg_file(devinfo, inst) == ELK_IMMEDIATE_VALUE) {
       return imm(file, isa, elk_inst_src1_type(devinfo, inst), inst);
    } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
       if (elk_inst_src1_address_mode(devinfo, inst) == ELK_ADDRESS_DIRECT) {
@@ -1926,8 +1400,8 @@ qtr_ctrl(FILE *file, const struct intel_device_info *devinfo,
 {
    int qtr_ctl = elk_inst_qtr_control(devinfo, inst);
    int exec_size = 1 << elk_inst_exec_size(devinfo, inst);
-   const unsigned nib_ctl = devinfo->ver < 7 || devinfo->ver >= 20 ? 0 :
-                            elk_inst_nib_control(devinfo, inst);
+   const unsigned nib_ctl =
+      devinfo->ver < 7 ? 0 : elk_inst_nib_control(devinfo, inst);
 
    if (exec_size < 8 || nib_ctl) {
       format(file, " %dN", qtr_ctl * 2 + nib_ctl + 1);
@@ -1967,44 +1441,13 @@ inst_has_type(const struct elk_isa_info *isa,
       return true;
 
    if (num_sources >= 3) {
-      if (elk_inst_3src_access_mode(devinfo, inst) == ELK_ALIGN_1)
-         return elk_inst_3src_a1_src0_type(devinfo, inst) == type ||
-                elk_inst_3src_a1_src1_type(devinfo, inst) == type ||
-                elk_inst_3src_a1_src2_type(devinfo, inst) == type;
-      else
-         return elk_inst_3src_a16_src_type(devinfo, inst) == type;
+      return elk_inst_3src_a16_src_type(devinfo, inst) == type;
    } else if (num_sources == 2) {
       return elk_inst_src0_type(devinfo, inst) == type ||
              elk_inst_src1_type(devinfo, inst) == type;
    } else {
       return elk_inst_src0_type(devinfo, inst) == type;
    }
-}
-
-static int
-swsb(FILE *file, const struct elk_isa_info *isa, const elk_inst *inst)
-{
-   const struct intel_device_info *devinfo = isa->devinfo;
-   const enum elk_opcode opcode = elk_inst_opcode(isa, inst);
-   const uint32_t x = elk_inst_swsb(devinfo, inst);
-   const bool is_unordered =
-      opcode == ELK_OPCODE_SEND || opcode == ELK_OPCODE_SENDC ||
-      opcode == ELK_OPCODE_MATH || opcode == ELK_OPCODE_DPAS ||
-      (devinfo->has_64bit_float_via_math_pipe &&
-       inst_has_type(isa, inst, ELK_REGISTER_TYPE_DF));
-   const struct tgl_swsb swsb = tgl_swsb_decode(devinfo, is_unordered, x);
-   if (swsb.regdist)
-      format(file, " %s@%d",
-             (swsb.pipe == TGL_PIPE_FLOAT ? "F" :
-              swsb.pipe == TGL_PIPE_INT ? "I" :
-              swsb.pipe == TGL_PIPE_LONG ? "L" :
-              swsb.pipe == TGL_PIPE_ALL ? "A"  : "" ),
-             swsb.regdist);
-   if (swsb.mode)
-      format(file, " $%d%s", swsb.sbid,
-             (swsb.mode & TGL_SBID_SET ? "" :
-              swsb.mode & TGL_SBID_DST ? ".dst" : ".src"));
-   return 0;
 }
 
 #ifdef DEBUG
@@ -2063,21 +1506,6 @@ lsc_disassemble_ex_desc(const struct intel_device_info *devinfo,
    }
 }
 
-static inline bool
-elk_sfid_is_lsc(unsigned sfid)
-{
-   switch (sfid) {
-   case GFX12_SFID_UGM:
-   case GFX12_SFID_SLM:
-   case GFX12_SFID_TGM:
-      return true;
-   default:
-      break;
-   }
-
-   return false;
-}
-
 int
 elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                      const elk_inst *inst, bool is_compacted,
@@ -2098,10 +1526,7 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
       format(file, "f%"PRIu64".%"PRIu64,
              devinfo->ver >= 7 ? elk_inst_flag_reg_nr(devinfo, inst) : 0,
              elk_inst_flag_subreg_nr(devinfo, inst));
-      if (devinfo->ver >= 20) {
-         err |= control(file, "predicate control", xe2_pred_ctrl,
-                        elk_inst_pred_control(devinfo, inst), NULL);
-      } else if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
+      if (elk_inst_access_mode(devinfo, inst) == ELK_ALIGN_1) {
          err |= control(file, "predicate control align1", pred_ctrl_align1,
                         elk_inst_pred_control(devinfo, inst), NULL);
       } else {
@@ -2125,24 +1550,7 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
       err |= control(file, "function", math_function,
                      elk_inst_math_function(devinfo, inst), NULL);
 
-   } else if (opcode == ELK_OPCODE_SYNC) {
-      string(file, " ");
-      err |= control(file, "function", sync_function,
-                     elk_inst_cond_modifier(devinfo, inst), NULL);
-
-   } else if (opcode == ELK_OPCODE_DPAS) {
-      string(file, ".");
-
-      err |= control(file, "systolic depth", dpas_systolic_depth,
-                     elk_inst_dpas_3src_sdepth(devinfo, inst), NULL);
-
-      const unsigned rcount = elk_inst_dpas_3src_rcount(devinfo, inst) + 1;
-
-      format(file, "x%d", rcount);
-   } else if (!is_send(opcode) &&
-              (devinfo->ver < 12 ||
-               elk_inst_src0_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE ||
-               type_sz(elk_inst_src0_type(devinfo, inst)) < 8)) {
+   } else if (!is_send(opcode)) {
       err |= control(file, "conditional modifier", elk_conditional_modifier,
                      elk_inst_cond_modifier(devinfo, inst), NULL);
 
@@ -2210,19 +1618,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
    } else if (opcode == ELK_OPCODE_JMPI) {
       pad(file, 16);
       err |= src1(file, isa, inst);
-   } else if (opcode == ELK_OPCODE_DPAS) {
-      pad(file, 16);
-      err |= dest_dpas_3src(file, devinfo, inst);
-
-      pad(file, 32);
-      err |= src0_dpas_3src(file, devinfo, inst);
-
-      pad(file, 48);
-      err |= src1_dpas_3src(file, devinfo, inst);
-
-      pad(file, 64);
-      err |= src2_dpas_3src(file, devinfo, inst);
-
    } else if (desc && desc->nsrc == 3) {
       pad(file, 16);
       err |= dest_3src(file, devinfo, inst);
@@ -2257,28 +1652,7 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
 
       bool has_imm_desc = false, has_imm_ex_desc = false;
       uint32_t imm_desc = 0, imm_ex_desc = 0;
-      if (is_split_send(devinfo, opcode)) {
-         pad(file, 64);
-         if (elk_inst_send_sel_reg32_desc(devinfo, inst)) {
-            /* show the indirect descriptor source */
-            err |= src_send_desc_ia(file, devinfo, 0);
-         } else {
-            has_imm_desc = true;
-            imm_desc = elk_inst_send_desc(devinfo, inst);
-            fprintf(file, "0x%08"PRIx32, imm_desc);
-         }
-
-         pad(file, 80);
-         if (elk_inst_send_sel_reg32_ex_desc(devinfo, inst)) {
-            /* show the indirect descriptor source */
-            err |= src_send_desc_ia(file, devinfo,
-                                    elk_inst_send_ex_desc_ia_subreg_nr(devinfo, inst));
-         } else {
-            has_imm_ex_desc = true;
-            imm_ex_desc = elk_inst_sends_ex_desc(devinfo, inst);
-            fprintf(file, "0x%08"PRIx32, imm_ex_desc);
-         }
-      } else {
+      {
          if (elk_inst_src1_reg_file(devinfo, inst) != ELK_IMMEDIATE_VALUE) {
             /* show the indirect descriptor source */
             pad(file, 48);
@@ -2321,20 +1695,7 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                            elk_inst_math_msg_precision(devinfo, inst), &space);
             break;
          case ELK_SFID_SAMPLER:
-            if (devinfo->ver >= 20) {
-               err |= control(file, "sampler message", xe2_sampler_msg_type,
-                              elk_sampler_desc_msg_type(devinfo, imm_desc),
-                              &space);
-               err |= control(file, "sampler simd mode", xe2_sampler_simd_mode,
-                              elk_sampler_desc_simd_mode(devinfo, imm_desc),
-                              &space);
-               if (elk_sampler_desc_return_format(devinfo, imm_desc)) {
-                  string(file, " HP");
-               }
-               format(file, " Surface = %u Sampler = %u",
-                      elk_sampler_desc_binding_table_index(devinfo, imm_desc),
-                      elk_sampler_desc_sampler(devinfo, imm_desc));
-            } else if (devinfo->ver >= 5) {
+            if (devinfo->ver >= 5) {
                err |= control(file, "sampler message", gfx5_sampler_msg_type,
                               elk_sampler_desc_msg_type(devinfo, imm_desc),
                               &space);
@@ -2406,9 +1767,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                   string(file, " Hi");
                if (elk_fb_write_desc_last_render_target(devinfo, imm_desc))
                   string(file, " LastRT");
-               if (devinfo->ver >= 10 &&
-                   elk_fb_write_desc_coarse_write(devinfo, imm_desc))
-                  string(file, " CoarseWrite");
                if (devinfo->ver < 7 &&
                    elk_fb_write_desc_write_commit(devinfo, imm_desc))
                   string(file, " WriteCommit");
@@ -2423,95 +1781,41 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
          }
 
          case ELK_SFID_URB: {
-            if (devinfo->ver >= 20) {
-               format(file, " (");
-               const enum elk_lsc_opcode op = lsc_msg_desc_opcode(devinfo, imm_desc);
-               err |= control(file, "operation", lsc_operation,
-                              op, &space);
-               format(file, ",");
-               err |= control(file, "addr_size", lsc_addr_size,
-                              lsc_msg_desc_addr_size(devinfo, imm_desc),
-                              &space);
+            unsigned urb_opcode = elk_inst_urb_opcode(devinfo, inst);
 
-               format(file, ",");
-               err |= control(file, "data_size", lsc_data_size,
-                              lsc_msg_desc_data_size(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               if (elk_lsc_opcode_has_cmask(op)) {
-                  err |= control(file, "component_mask",
-                                 lsc_cmask_str,
-                                 lsc_msg_desc_cmask(devinfo, imm_desc),
-                                 &space);
-               } else {
-                  err |= control(file, "vector_size",
-                                 lsc_vect_size_str,
-                                 lsc_msg_desc_vect_size(devinfo, imm_desc),
-                                 &space);
-                  if (lsc_msg_desc_transpose(devinfo, imm_desc))
-                     format(file, ", transpose");
-               }
-               switch(op) {
-               case LSC_OP_LOAD_CMASK:
-               case LSC_OP_LOAD:
-                  format(file, ",");
-                  err |= control(file, "cache_load",
-                                 lsc_cache_load,
-                                 lsc_msg_desc_cache_ctrl(devinfo, imm_desc),
-                                 &space);
-                  break;
-               default:
-                  format(file, ",");
-                  err |= control(file, "cache_store",
-                                 lsc_cache_store,
-                                 lsc_msg_desc_cache_ctrl(devinfo, imm_desc),
-                                 &space);
-                  break;
-               }
+            format(file, " offset %"PRIu64, elk_inst_urb_global_offset(devinfo, inst));
 
-               format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
-               format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
-               format(file, " src1_len = %d", elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
-               err |= control(file, "address_type", lsc_addr_surface_type,
-                              lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
-               format(file, " )");
+            space = 1;
+
+            err |= control(file, "urb opcode",
+                           devinfo->ver >= 7 ? gfx7_urb_opcode
+                           : gfx5_urb_opcode,
+                           urb_opcode, &space);
+
+            if (devinfo->ver >= 7 &&
+                elk_inst_urb_per_slot_offset(devinfo, inst)) {
+               string(file, " per-slot");
+            }
+
+            if (urb_opcode == GFX8_URB_OPCODE_SIMD8_WRITE ||
+                urb_opcode == GFX8_URB_OPCODE_SIMD8_READ) {
+               if (elk_inst_urb_channel_mask_present(devinfo, inst))
+                  string(file, " masked");
             } else {
-               unsigned urb_opcode = elk_inst_urb_opcode(devinfo, inst);
+               err |= control(file, "urb swizzle", urb_swizzle,
+                              elk_inst_urb_swizzle_control(devinfo, inst),
+                              &space);
+            }
 
-               format(file, " offset %"PRIu64, elk_inst_urb_global_offset(devinfo, inst));
-
-               space = 1;
-
-               err |= control(file, "urb opcode",
-                              devinfo->ver >= 7 ? gfx7_urb_opcode
-                              : gfx5_urb_opcode,
-                              urb_opcode, &space);
-
-               if (devinfo->ver >= 7 &&
-                   elk_inst_urb_per_slot_offset(devinfo, inst)) {
-                  string(file, " per-slot");
-               }
-
-               if (urb_opcode == GFX8_URB_OPCODE_SIMD8_WRITE ||
-                   urb_opcode == GFX8_URB_OPCODE_SIMD8_READ) {
-                  if (elk_inst_urb_channel_mask_present(devinfo, inst))
-                     string(file, " masked");
-               } else if (urb_opcode != GFX125_URB_OPCODE_FENCE) {
-                  err |= control(file, "urb swizzle", urb_swizzle,
-                                 elk_inst_urb_swizzle_control(devinfo, inst),
-                                 &space);
-               }
-
-               if (devinfo->ver < 7) {
-                  err |= control(file, "urb allocate", urb_allocate,
-                                 elk_inst_urb_allocate(devinfo, inst), &space);
-                  err |= control(file, "urb used", urb_used,
-                                 elk_inst_urb_used(devinfo, inst), &space);
-               }
-               if (devinfo->ver < 8) {
-                  err |= control(file, "urb complete", urb_complete,
-                                 elk_inst_urb_complete(devinfo, inst), &space);
-               }
+            if (devinfo->ver < 7) {
+               err |= control(file, "urb allocate", urb_allocate,
+                              elk_inst_urb_allocate(devinfo, inst), &space);
+               err |= control(file, "urb used", urb_used,
+                              elk_inst_urb_used(devinfo, inst), &space);
+            }
+            if (devinfo->ver < 8) {
+               err |= control(file, "urb complete", urb_complete,
+                              elk_inst_urb_complete(devinfo, inst), &space);
             }
             break;
          }
@@ -2522,87 +1826,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
             format(file, " (%s)",
                    gfx7_gateway_subfuncid[elk_inst_gateway_subfuncid(devinfo, inst)]);
             break;
-
-         case GFX12_SFID_SLM:
-         case GFX12_SFID_TGM:
-         case GFX12_SFID_UGM: {
-            assert(devinfo->has_lsc);
-            format(file, " (");
-            const enum elk_lsc_opcode op = lsc_msg_desc_opcode(devinfo, imm_desc);
-            err |= control(file, "operation", lsc_operation,
-                           op, &space);
-            format(file, ",");
-            err |= control(file, "addr_size", lsc_addr_size,
-                           lsc_msg_desc_addr_size(devinfo, imm_desc),
-                           &space);
-
-            if (op == LSC_OP_FENCE) {
-               format(file, ",");
-               err |= control(file, "scope", lsc_fence_scope,
-                              lsc_fence_msg_desc_scope(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               err |= control(file, "flush_type", lsc_flush_type,
-                              lsc_fence_msg_desc_flush_type(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               err |= control(file, "backup_mode_fence_routing",
-                              lsc_backup_fence_routing,
-                              lsc_fence_msg_desc_backup_routing(devinfo, imm_desc),
-                              &space);
-            } else {
-               format(file, ",");
-               err |= control(file, "data_size", lsc_data_size,
-                              lsc_msg_desc_data_size(devinfo, imm_desc),
-                              &space);
-               format(file, ",");
-               if (elk_lsc_opcode_has_cmask(op)) {
-                  err |= control(file, "component_mask",
-                                 lsc_cmask_str,
-                                 lsc_msg_desc_cmask(devinfo, imm_desc),
-                                 &space);
-               } else {
-                  err |= control(file, "vector_size",
-                                 lsc_vect_size_str,
-                                 lsc_msg_desc_vect_size(devinfo, imm_desc),
-                                 &space);
-                  if (lsc_msg_desc_transpose(devinfo, imm_desc))
-                     format(file, ", transpose");
-               }
-               switch(op) {
-               case LSC_OP_LOAD_CMASK:
-               case LSC_OP_LOAD:
-                  format(file, ",");
-                  err |= control(file, "cache_load",
-                                 devinfo->ver >= 20 ?
-                                 xe2_lsc_cache_load :
-                                 lsc_cache_load,
-                                 lsc_msg_desc_cache_ctrl(devinfo, imm_desc),
-                                 &space);
-                  break;
-               default:
-                  format(file, ",");
-                  err |= control(file, "cache_store",
-                                 devinfo->ver >= 20 ?
-                                 xe2_lsc_cache_store :
-                                 lsc_cache_store,
-                                 lsc_msg_desc_cache_ctrl(devinfo, imm_desc),
-                                 &space);
-                  break;
-               }
-            }
-            format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
-            format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
-
-            if (!elk_inst_send_sel_reg32_ex_desc(devinfo, inst))
-               format(file, " src1_len = %d",
-                      elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
-
-            err |= control(file, "address_type", lsc_addr_surface_type,
-                           lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
-            format(file, " )");
-            break;
-         }
 
          case GFX7_SFID_DATAPORT_DATA_CACHE:
             if (devinfo->ver >= 7) {
@@ -2664,7 +1887,6 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
                case HSW_DATAPORT_DC_PORT1_ATOMIC_COUNTER_OP_SIMD4X2:
                case GFX8_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_OP:
-               case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_INT_OP:
                   control(file, "atomic op", aop, msg_ctrl & 0xf, &space);
                   break;
                case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_READ:
@@ -2678,15 +1900,8 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                          simd_modes[msg_ctrl >> 4], msg_ctrl & 0xf);
                   break;
                }
-               case GFX9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP:
-               case GFX9_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_FLOAT_OP:
-               case GFX12_DATAPORT_DC_PORT1_A64_UNTYPED_ATOMIC_HALF_FLOAT_OP:
-                  format(file, "SIMD%d,", (msg_ctrl & (1 << 4)) ? 8 : 16);
-                  control(file, "atomic float op", aop_float, msg_ctrl & 0xf,
-                          &space);
-                  break;
-               case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
-               case GFX9_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
+               case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_WRITE:
+               case GFX8_DATAPORT_DC_PORT1_A64_OWORD_BLOCK_READ:
                   assert(dp_oword_block_rw[msg_ctrl & 7]);
                   format(file, "owords = %s, aligned = %d",
                         dp_oword_block_rw[msg_ctrl & 7], (msg_ctrl >> 3) & 3);
@@ -2723,27 +1938,14 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
          if (space)
             string(file, " ");
       }
-      if (devinfo->verx10 >= 125 &&
-          elk_inst_send_sel_reg32_ex_desc(devinfo, inst) &&
-          elk_inst_send_ex_bso(devinfo, inst)) {
-         format(file, " src1_len = %u",
-                (unsigned) elk_inst_send_src1_len(devinfo, inst));
-
-         format(file, " ex_bso");
+      if (has_imm_desc)
+         format(file, " mlen %u", elk_message_desc_mlen(devinfo, imm_desc));
+      if (has_imm_ex_desc) {
+         format(file, " ex_mlen %u",
+                elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
       }
-      if (elk_sfid_is_lsc(sfid) ||
-          (sfid == ELK_SFID_URB && devinfo->ver >= 20)) {
-            lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
-      } else {
-         if (has_imm_desc)
-            format(file, " mlen %u", elk_message_desc_mlen(devinfo, imm_desc));
-         if (has_imm_ex_desc) {
-            format(file, " ex_mlen %u",
-                   elk_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
-         }
-         if (has_imm_desc)
-            format(file, " rlen %u", elk_message_desc_rlen(devinfo, imm_desc));
-      }
+      if (has_imm_desc)
+         format(file, " rlen %u", elk_message_desc_rlen(devinfo, imm_desc));
    }
    pad(file, 64);
    if (opcode != ELK_OPCODE_NOP && opcode != ELK_OPCODE_NENOP) {
@@ -2759,11 +1961,9 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
                         elk_inst_mask_control(devinfo, inst), &space);
       }
 
-      if (devinfo->ver < 12) {
-         err |= control(file, "dependency control", dep_ctrl,
-                        ((elk_inst_no_dd_check(devinfo, inst) << 1) |
-                         elk_inst_no_dd_clear(devinfo, inst)), &space);
-      }
+      err |= control(file, "dependency control", dep_ctrl,
+                     ((elk_inst_no_dd_check(devinfo, inst) << 1) |
+                      elk_inst_no_dd_clear(devinfo, inst)), &space);
 
       if (devinfo->ver >= 6)
          err |= qtr_ctrl(file, devinfo, inst);
@@ -2779,18 +1979,14 @@ elk_disassemble_inst(FILE *file, const struct elk_isa_info *isa,
          }
       }
 
-      if (devinfo->ver >= 12)
-         err |= swsb(file, isa, inst);
-
       err |= control(file, "compaction", cmpt_ctrl, is_compacted, &space);
       err |= control(file, "thread control", thread_ctrl,
-                     (devinfo->ver >= 12 ? elk_inst_atomic_control(devinfo, inst) :
-                                           elk_inst_thread_control(devinfo, inst)),
+                     elk_inst_thread_control(devinfo, inst),
                      &space);
       if (has_branch_ctrl(devinfo, opcode)) {
          err |= control(file, "branch ctrl", branch_ctrl,
                         elk_inst_branch_control(devinfo, inst), &space);
-      } else if (devinfo->ver >= 6 && devinfo->ver < 20) {
+      } else if (devinfo->ver >= 6) {
          err |= control(file, "acc write control", accwr,
                         elk_inst_acc_wr_control(devinfo, inst), &space);
       }

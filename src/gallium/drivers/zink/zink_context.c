@@ -1247,10 +1247,10 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
       }
       assert(ivci.format);
 
-      sampler_view->image_view = (struct zink_surface*)zink_get_surface(ctx, pres, &templ, &ivci);
+      sampler_view->image_view = zink_get_surface(ctx, pres, &templ, &ivci);
       if (!screen->info.have_EXT_non_seamless_cube_map && viewtype_is_cube(&sampler_view->image_view->ivci)) {
          ivci.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-         sampler_view->cube_array = (struct zink_surface*)zink_get_surface(ctx, pres, &templ, &ivci);
+         sampler_view->cube_array = zink_get_surface(ctx, pres, &templ, &ivci);
       } else if (red_depth_sampler_view) {
          /* there is only one component, and real swizzling can't be done here,
           * so ensure the shader gets the sampled data
@@ -1259,7 +1259,7 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
          ivci.components.g = VK_COMPONENT_SWIZZLE_R;
          ivci.components.b = VK_COMPONENT_SWIZZLE_R;
          ivci.components.a = VK_COMPONENT_SWIZZLE_R;
-         sampler_view->zs_view = (struct zink_surface*)zink_get_surface(ctx, pres, &templ, &ivci);
+         sampler_view->zs_view = zink_get_surface(ctx, pres, &templ, &ivci);
       }
       err = !sampler_view->image_view;
    } else {
@@ -1371,9 +1371,8 @@ zink_set_vertex_buffers(struct pipe_context *pctx,
    const bool have_input_state = zink_screen(pctx->screen)->info.have_EXT_vertex_input_dynamic_state;
    const bool need_state_change = !zink_screen(pctx->screen)->info.have_EXT_extended_dynamic_state &&
                                   !have_input_state;
-   uint32_t enabled_buffers = ctx->gfx_pipeline_state.vertex_buffers_enabled_mask;
-   unsigned last_count = util_last_bit(enabled_buffers);
-   enabled_buffers = u_bit_consecutive(0, num_buffers);
+   unsigned last_count = util_last_bit(ctx->gfx_pipeline_state.vertex_buffers_enabled_mask);
+   uint32_t enabled_buffers = BITFIELD_MASK(num_buffers);
 
    assert(!num_buffers || buffers);
 
@@ -1858,10 +1857,9 @@ create_image_surface(struct zink_context *ctx, const struct pipe_image_view *vie
       /* mutable not set by default */
       zink_resource_object_init_mutable(ctx, res);
    VkImageViewCreateInfo ivci = create_ivci(screen, res, &tmpl, target);
-   struct pipe_surface *psurf = zink_get_surface(ctx, view->resource, &tmpl, &ivci);
-   if (!psurf)
+   struct zink_surface *surface = zink_get_surface(ctx, view->resource, &tmpl, &ivci);
+   if (!surface)
       return NULL;
-   struct zink_surface *surface = zink_surface(psurf);
    if (is_compute)
       flush_pending_clears(ctx, res);
    return surface;

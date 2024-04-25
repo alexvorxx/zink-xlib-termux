@@ -95,7 +95,7 @@ elk_fs_visitor::validate()
    foreach_block_and_inst (block, elk_fs_inst, inst, cfg) {
       switch (inst->opcode) {
       case ELK_SHADER_OPCODE_SEND:
-         fsv_assert(is_uniform(inst->src[0]) && is_uniform(inst->src[1]));
+         fsv_assert(is_uniform(inst->src[0]));
          break;
 
       case ELK_OPCODE_MOV:
@@ -119,32 +119,7 @@ elk_fs_visitor::validate()
          fsv_assert((integer_sources == 3 && float_sources == 0) ||
                     (integer_sources == 0 && float_sources == 3));
 
-         if (devinfo->ver >= 10) {
-            for (unsigned i = 0; i < 3; i++) {
-               if (inst->src[i].file == ELK_IMMEDIATE_VALUE)
-                  continue;
-
-               switch (inst->src[i].vstride) {
-               case ELK_VERTICAL_STRIDE_0:
-               case ELK_VERTICAL_STRIDE_4:
-               case ELK_VERTICAL_STRIDE_8:
-               case ELK_VERTICAL_STRIDE_16:
-                  break;
-
-               case ELK_VERTICAL_STRIDE_1:
-                  fsv_assert_lte(12, devinfo->ver);
-                  break;
-
-               case ELK_VERTICAL_STRIDE_2:
-                  fsv_assert_lte(devinfo->ver, 11);
-                  break;
-
-               default:
-                  fsv_assert(!"invalid vstride");
-                  break;
-               }
-            }
-         } else if (grf_used != 0) {
+         if (grf_used != 0) {
             /* Only perform the pre-Gfx10 checks after register allocation has
              * occured.
              *
@@ -182,17 +157,6 @@ elk_fs_visitor::validate()
             fsv_assert_lte(inst->src[i].offset / REG_SIZE + regs_read(inst, i),
                            alloc.sizes[inst->src[i].nr]);
          }
-      }
-
-      /* Accumulator Registers, bspec 47251:
-       *
-       * "When destination is accumulator with offset 0, destination
-       * horizontal stride must be 1."
-       */
-      if (intel_needs_workaround(devinfo, 14014617373) &&
-          inst->dst.is_accumulator() &&
-          inst->dst.offset == 0) {
-         fsv_assert_eq(inst->dst.stride, 1);
       }
    }
 }

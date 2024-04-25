@@ -31,7 +31,6 @@
 #include "util/format_r11g11b10f.h"
 #include "util/format_srgb.h"
 #include "util/half_float.h"
-#include "vulkan/util/vk_format.h"
 #include "vk_format.h"
 #include "vk_util.h"
 
@@ -100,7 +99,7 @@ end:
    out_properties->bufferFeatures = buffer;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
                                         VkFormat format,
                                         VkFormatProperties *pFormatProperties)
@@ -110,7 +109,7 @@ panvk_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    get_format_properties(physical_device, format, pFormatProperties);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
                                          VkFormat format,
                                          VkFormatProperties2 *pFormatProperties)
@@ -275,7 +274,7 @@ unsupported:
    return VK_ERROR_FORMAT_NOT_SUPPORTED;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_GetPhysicalDeviceImageFormatProperties(
    VkPhysicalDevice physicalDevice, VkFormat format, VkImageType type,
    VkImageTiling tiling, VkImageUsageFlags usage,
@@ -354,7 +353,7 @@ panvk_get_external_image_format_properties(
    return VK_SUCCESS;
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_GetPhysicalDeviceImageFormatProperties2(
    VkPhysicalDevice physicalDevice,
    const VkPhysicalDeviceImageFormatInfo2 *base_info,
@@ -456,7 +455,7 @@ fail:
    return result;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetPhysicalDeviceSparseImageFormatProperties(
    VkPhysicalDevice physicalDevice, VkFormat format, VkImageType type,
    VkSampleCountFlagBits samples, VkImageUsageFlags usage, VkImageTiling tiling,
@@ -466,7 +465,7 @@ panvk_GetPhysicalDeviceSparseImageFormatProperties(
    *pNumProperties = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetPhysicalDeviceSparseImageFormatProperties2(
    VkPhysicalDevice physicalDevice,
    const VkPhysicalDeviceSparseImageFormatInfo2 *pFormatInfo,
@@ -476,7 +475,7 @@ panvk_GetPhysicalDeviceSparseImageFormatProperties2(
    *pPropertyCount = 0;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetPhysicalDeviceExternalBufferProperties(
    VkPhysicalDevice physicalDevice,
    const VkPhysicalDeviceExternalBufferInfo *pExternalBufferInfo,

@@ -18,6 +18,7 @@
 
 #include "vulkan/runtime/vk_device.h"
 #include "vulkan/runtime/vk_drm_syncobj.h"
+#include "vulkan/runtime/vk_shader_module.h"
 #include "vulkan/wsi/wsi_common.h"
 
 #include <sys/stat.h>
@@ -174,6 +175,8 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_mutable_descriptor_type = true,
       .EXT_non_seamless_cube_map = true,
       .EXT_pci_bus_info = info->type == NV_DEVICE_TYPE_DIS,
+      .EXT_pipeline_creation_cache_control = true,
+      .EXT_pipeline_creation_feedback = true,
       .EXT_physical_device_drm = true,
       .EXT_primitive_topology_list_restart = true,
       .EXT_private_data = true,
@@ -187,6 +190,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_shader_image_atomic_int64 = info->cls_eng3d >= MAXWELL_A &&
                                        nvk_use_nak(info),
       .EXT_shader_demote_to_helper_invocation = true,
+      .EXT_shader_module_identifier = true,
       .EXT_shader_subgroup_ballot = true,
       .EXT_shader_subgroup_vote = true,
       .EXT_shader_viewport_index_layer = info->cls_eng3d >= MAXWELL_B,
@@ -324,6 +328,7 @@ nvk_get_device_features(const struct nv_device_info *info,
       .robustImageAccess = true,
       .inlineUniformBlock = true,
       .descriptorBindingInlineUniformBlockUpdateAfterBind = true,
+      .pipelineCreationCacheControl = true,
       .privateData = true,
       .shaderDemoteToHelperInvocation = true,
       .shaderTerminateInvocation = true,
@@ -488,6 +493,9 @@ nvk_get_device_features(const struct nv_device_info *info,
                                  nvk_use_nak(info),
       .sparseImageInt64Atomics = info->cls_eng3d >= MAXWELL_A &&
                                  nvk_use_nak(info),
+
+      /* VK_EXT_shader_module_identifier */
+      .shaderModuleIdentifier = true,
 
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,
@@ -811,6 +819,13 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
    snprintf(properties->deviceName, sizeof(properties->deviceName),
             "%s", info->device_name);
+
+   /* VK_EXT_shader_module_identifier */
+   STATIC_ASSERT(sizeof(vk_shaderModuleIdentifierAlgorithmUUID) ==
+      sizeof(properties->shaderModuleIdentifierAlgorithmUUID));
+   memcpy(properties->shaderModuleIdentifierAlgorithmUUID,
+            vk_shaderModuleIdentifierAlgorithmUUID,
+            sizeof(properties->shaderModuleIdentifierAlgorithmUUID));
 
    const struct {
       uint16_t vendor_id;

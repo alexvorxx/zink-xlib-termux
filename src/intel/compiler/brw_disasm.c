@@ -523,6 +523,7 @@ static const char *const sync_function[16] = {
    [TGL_SYNC_NOP] = "nop",
    [TGL_SYNC_ALLRD] = "allrd",
    [TGL_SYNC_ALLWR] = "allwr",
+   [TGL_SYNC_FENCE] = "fence",
    [TGL_SYNC_BAR] = "bar",
    [TGL_SYNC_HOST] = "host",
 };
@@ -1672,7 +1673,11 @@ imm(FILE *file, const struct brw_isa_info *isa, enum brw_reg_type type,
       format(file, "/* %-gDF */", brw_inst_imm_df(devinfo, inst));
       break;
    case BRW_REGISTER_TYPE_HF:
-      string(file, "Half Float IMM");
+      format(file, "0x%04xHF",
+             (uint16_t) brw_inst_imm_ud(devinfo, inst));
+      pad(file, 48);
+      format(file, "/* %-gHF */",
+             _mesa_half_to_float((uint16_t) brw_inst_imm_ud(devinfo, inst)));
       break;
    case BRW_REGISTER_TYPE_NF:
    case BRW_REGISTER_TYPE_UB:
@@ -2533,7 +2538,11 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
             }
             format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
             format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
-            format(file, " src1_len = %d", brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
+
+            if (!brw_inst_send_sel_reg32_ex_desc(devinfo, inst))
+               format(file, " src1_len = %d",
+                      brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
+
             err |= control(file, "address_type", lsc_addr_surface_type,
                            lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
             format(file, " )");
@@ -2668,8 +2677,14 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
          if (space)
             string(file, " ");
       }
-      if (devinfo->verx10 >= 125 && brw_inst_send_ex_bso(devinfo, inst))
+      if (devinfo->verx10 >= 125 &&
+          brw_inst_send_sel_reg32_ex_desc(devinfo, inst) &&
+          brw_inst_send_ex_bso(devinfo, inst)) {
+         format(file, " src1_len = %u",
+                (unsigned) brw_inst_send_src1_len(devinfo, inst));
+
          format(file, " ex_bso");
+      }
       if (brw_sfid_is_lsc(sfid)) {
             lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
       } else {

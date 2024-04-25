@@ -73,7 +73,6 @@ struct amdgpu_bo_real {
 
    amdgpu_bo_handle bo_handle;
    amdgpu_va_handle va_handle;
-   uint64_t gpu_address;
    void *cpu_ptr; /* for user_ptr and permanent maps */
    int map_count;
    uint32_t kms_handle;
@@ -104,7 +103,6 @@ struct amdgpu_bo_real_reusable {
 struct amdgpu_bo_sparse {
    struct amdgpu_winsys_bo b;
    amdgpu_va_handle va_handle;
-   uint64_t gpu_address;
 
    uint32_t num_va_pages;
    uint32_t num_backing_pages;

@@ -152,7 +152,8 @@ void amdgpu_bo_destroy(struct amdgpu_winsys *ws, struct pb_buffer_lean *_buf)
    _mesa_hash_table_remove_key(ws->bo_export_table, bo->bo_handle);
 
    if (bo->b.base.placement & RADEON_DOMAIN_VRAM_GTT) {
-      amdgpu_bo_va_op(bo->bo_handle, 0, bo->b.base.size, bo->gpu_address, 0, AMDGPU_VA_OP_UNMAP);
+      amdgpu_bo_va_op(bo->bo_handle, 0, bo->b.base.size,
+                      amdgpu_va_get_start_addr(bo->va_handle), 0, AMDGPU_VA_OP_UNMAP);
       amdgpu_va_range_free(bo->va_handle);
    }
 
@@ -572,7 +573,6 @@ static struct amdgpu_winsys_bo *amdgpu_create_bo(struct amdgpu_winsys *ws,
    bo->b.base.alignment_log2 = util_logbase2(alignment);
    bo->b.base.usage = flags;
    bo->b.base.size = size;
-   bo->gpu_address = va;
    bo->b.unique_id = __sync_fetch_and_add(&ws->next_bo_unique_id, 1);
    bo->bo_handle = buf_handle;
    bo->va_handle = va_handle;
@@ -1003,7 +1003,7 @@ static void amdgpu_bo_sparse_destroy(struct radeon_winsys *rws, struct pb_buffer
 
    r = amdgpu_bo_va_op_raw(ws->dev, NULL, 0,
                            (uint64_t)bo->num_va_pages * RADEON_SPARSE_PAGE_SIZE,
-                           bo->gpu_address, 0, AMDGPU_VA_OP_CLEAR);
+                           amdgpu_va_get_start_addr(bo->va_handle), 0, AMDGPU_VA_OP_CLEAR);
    if (r) {
       fprintf(stderr, "amdgpu: clearing PRT VA region on destroy failed (%d)\n", r);
    }
@@ -1060,14 +1060,15 @@ amdgpu_bo_sparse_create(struct amdgpu_winsys *ws, uint64_t size,
    /* For simplicity, we always map a multiple of the page size. */
    map_size = align64(size, RADEON_SPARSE_PAGE_SIZE);
    va_gap_size = ws->check_vm ? 4 * RADEON_SPARSE_PAGE_SIZE : 0;
+
+   uint64_t gpu_address;
    r = amdgpu_va_range_alloc(ws->dev, amdgpu_gpu_va_range_general,
                              map_size + va_gap_size, RADEON_SPARSE_PAGE_SIZE,
-                             0, &bo->gpu_address, &bo->va_handle,
-			     AMDGPU_VA_RANGE_HIGH);
+                             0, &gpu_address, &bo->va_handle, AMDGPU_VA_RANGE_HIGH);
    if (r)
       goto error_va_alloc;
 
-   r = amdgpu_bo_va_op_raw(ws->dev, NULL, 0, map_size, bo->gpu_address,
+   r = amdgpu_bo_va_op_raw(ws->dev, NULL, 0, map_size, gpu_address,
                            AMDGPU_VM_PAGE_PRT, AMDGPU_VA_OP_MAP);
    if (r)
       goto error_va_map;
@@ -1140,7 +1141,8 @@ amdgpu_bo_sparse_commit(struct radeon_winsys *rws, struct pb_buffer_lean *buf,
             r = amdgpu_bo_va_op_raw(ws->dev, backing->bo->bo_handle,
                                     (uint64_t)backing_start * RADEON_SPARSE_PAGE_SIZE,
                                     (uint64_t)backing_size * RADEON_SPARSE_PAGE_SIZE,
-                                    bo->gpu_address + (uint64_t)span_va_page * RADEON_SPARSE_PAGE_SIZE,
+                                    amdgpu_va_get_start_addr(bo->va_handle) +
+                                    (uint64_t)span_va_page * RADEON_SPARSE_PAGE_SIZE,
                                     AMDGPU_VM_PAGE_READABLE |
                                     AMDGPU_VM_PAGE_WRITEABLE |
                                     AMDGPU_VM_PAGE_EXECUTABLE,
@@ -1165,7 +1167,8 @@ amdgpu_bo_sparse_commit(struct radeon_winsys *rws, struct pb_buffer_lean *buf,
    } else {
       r = amdgpu_bo_va_op_raw(ws->dev, NULL, 0,
                               (uint64_t)(end_va_page - va_page) * RADEON_SPARSE_PAGE_SIZE,
-                              bo->gpu_address + (uint64_t)va_page * RADEON_SPARSE_PAGE_SIZE,
+                              amdgpu_va_get_start_addr(bo->va_handle) +
+                              (uint64_t)va_page * RADEON_SPARSE_PAGE_SIZE,
                               AMDGPU_VM_PAGE_PRT, AMDGPU_VA_OP_REPLACE);
       if (r) {
          ok = false;
@@ -1544,7 +1547,6 @@ static struct pb_buffer_lean *amdgpu_bo_from_handle(struct radeon_winsys *rws,
    bo->b.base.usage = flags;
    bo->b.base.size = result.alloc_size;
    bo->b.type = AMDGPU_BO_REAL;
-   bo->gpu_address = va;
    bo->b.unique_id = __sync_fetch_and_add(&ws->next_bo_unique_id, 1);
    simple_mtx_init(&bo->map_lock, mtx_plain);
    bo->bo_handle = result.buf_handle;
@@ -1698,7 +1700,6 @@ static struct pb_buffer_lean *amdgpu_bo_from_ptr(struct radeon_winsys *rws,
     bo->b.base.alignment_log2 = 0;
     bo->b.base.size = size;
     bo->b.type = AMDGPU_BO_REAL;
-    bo->gpu_address = va;
     bo->b.unique_id = __sync_fetch_and_add(&ws->next_bo_unique_id, 1);
     simple_mtx_init(&bo->map_lock, mtx_plain);
     bo->bo_handle = buf_handle;
@@ -1746,11 +1747,11 @@ uint64_t amdgpu_bo_get_va(struct pb_buffer_lean *buf)
       struct amdgpu_bo_real_reusable_slab *slab_bo =
          (struct amdgpu_bo_real_reusable_slab *)get_slab_entry_real_bo(bo);
 
-      return slab_bo->b.b.gpu_address + get_slab_entry_offset(bo);
+      return amdgpu_va_get_start_addr(slab_bo->b.b.va_handle) + get_slab_entry_offset(bo);
    } else if (bo->type == AMDGPU_BO_SPARSE) {
-      return get_sparse_bo(bo)->gpu_address;
+      return amdgpu_va_get_start_addr(get_sparse_bo(bo)->va_handle);
    } else {
-      return get_real_bo(bo)->gpu_address;
+      return amdgpu_va_get_start_addr(get_real_bo(bo)->va_handle);
    }
 }
 

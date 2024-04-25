@@ -56,8 +56,11 @@ struct nvk_root_descriptor_table {
    /* Dynamic buffer bindings */
    struct nvk_buffer_address dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
 
+   /* Start index in dynamic_buffers where each set starts */
+   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
+
    /* enfore alignment to 0x100 as needed pre pascal */
-   uint8_t __padding[0x20];
+   uint8_t __padding[0x18];
 };
 
 /* helper macro for computing root descriptor byte offsets */
@@ -88,6 +91,7 @@ struct nvk_rendering_state {
    VkRect2D area;
    uint32_t layer_count;
    uint32_t view_mask;
+   uint32_t samples;
 
    uint32_t color_att_count;
    struct nvk_attachment color_att[NVK_MAX_RTS];
@@ -200,6 +204,9 @@ void nvk_cmd_buffer_begin_graphics(struct nvk_cmd_buffer *cmd,
                                    const VkCommandBufferBeginInfo *pBeginInfo);
 void nvk_cmd_buffer_begin_compute(struct nvk_cmd_buffer *cmd,
                                   const VkCommandBufferBeginInfo *pBeginInfo);
+
+void nvk_cmd_invalidate_graphics_state(struct nvk_cmd_buffer *cmd);
+void nvk_cmd_invalidate_compute_state(struct nvk_cmd_buffer *cmd);
 
 void nvk_cmd_bind_graphics_pipeline(struct nvk_cmd_buffer *cmd,
                                     struct nvk_graphics_pipeline *pipeline);

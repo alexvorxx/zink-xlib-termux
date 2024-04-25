@@ -78,11 +78,13 @@ nak_bindings_rs = rust.bindgen(
     '--allowlist-type', 'mesa_scope',
     '--allowlist-type', 'mesa_prim',
     '--allowlist-type', 'tess_primitive_mode',
+    '--allowlist-var', 'NAK_.*',
     '--allowlist-var', 'nir_.*_infos',
     '--allowlist-function', '_mesa_shader_stage_to_string',
     '--allowlist-function', 'nak_.*',
     '--allowlist-function', 'nir_.*',
     '--allowlist-function', 'glsl_.*',
+    '--explicit-padding',
     '--no-prepend-enum-name',
   ],
   dependencies : libnak_deps,
@@ -125,9 +127,10 @@ nak_nir_algebraic_c = custom_target(
   input : 'nak_nir_algebraic.py',
   output : 'nak_nir_algebraic.c',
   command : [
-    prog_python, '@INPUT@', '-p', dir_compiler_nir,
+    prog_python, '@INPUT@',
+    '-p', dir_compiler_nir,
+    '--out', '@OUTPUT@',
   ],
-  capture : true,
   depend_files : nir_algebraic_depends,
 )
 

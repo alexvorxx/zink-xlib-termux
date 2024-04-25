@@ -2240,11 +2240,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    if (debug_get_bool_option("ANV_QUEUE_THREAD_DISABLE", false))
       device->has_exec_timeline = false;
 
-
-   device->generated_indirect_draws =
-      debug_get_bool_option("ANV_ENABLE_GENERATED_INDIRECT_DRAWS",
-                            true);
-
    device->has_cooperative_matrix =
       device->info.cooperative_matrix_configurations[0].scope != SCOPE_NONE;
 
@@ -5121,13 +5116,15 @@ const struct intel_device_info_pat_entry *
 anv_device_get_pat_entry(struct anv_device *device,
                          enum anv_bo_alloc_flags alloc_flags)
 {
+   if (alloc_flags & ANV_BO_ALLOC_IMPORTED)
+      return &device->info->pat.cached_coherent;
+
    /* PAT indexes has no actual effect in DG2 and DG1, smem caches will always
     * be snopped by GPU and lmem will always be WC.
     * This might change in future discrete platforms.
     */
    if (anv_physical_device_has_vram(device->physical)) {
-      if ((alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM) ||
-          (alloc_flags & ANV_BO_ALLOC_IMPORTED))
+      if (alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM)
          return &device->info->pat.cached_coherent;
       return &device->info->pat.writecombining;
    }

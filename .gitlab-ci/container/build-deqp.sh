@@ -98,9 +98,17 @@ if [ "${DEQP_TARGET}" != 'android' ]; then
 fi
 
 cmake -S /VK-GL-CTS -B . -G Ninja \
-      -DDEQP_TARGET=${DEQP_TARGET:-x11_glx} \
+      -DDEQP_TARGET=${DEQP_TARGET:-default} \
       -DCMAKE_BUILD_TYPE=Release \
       $EXTRA_CMAKE_ARGS
+
+# Make sure `default` doesn't silently stop detecting one of the platforms we care about
+if [ "${DEQP_TARGET}" = 'default' ]; then
+  grep -q DEQP_SUPPORT_WAYLAND=1 build.ninja
+  grep -q DEQP_SUPPORT_X11=1 build.ninja
+  grep -q DEQP_SUPPORT_XCB=1 build.ninja
+fi
+
 mold --run ninja
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
@@ -148,8 +156,7 @@ rm -rf /deqp/external/openglcts/modules/cts-runner
 rm -rf /deqp/modules/internal
 rm -rf /deqp/execserver
 rm -rf /deqp/framework
-# shellcheck disable=SC2038,SC2185 # TODO: rewrite find
-find -iname '*cmake*' -o -name '*ninja*' -o -name '*.o' -o -name '*.a' | xargs rm -rf
+find . -depth \( -iname '*cmake*' -o -name '*ninja*' -o -name '*.o' -o -name '*.a' \) -exec rm -rf {} \;
 ${STRIP_CMD:-strip} external/vulkancts/modules/vulkan/deqp-vk
 ${STRIP_CMD:-strip} external/openglcts/modules/glcts
 ${STRIP_CMD:-strip} modules/*/deqp-*

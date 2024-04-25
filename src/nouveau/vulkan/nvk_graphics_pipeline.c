@@ -47,22 +47,6 @@ nvk_populate_fs_key(struct nak_fs_key *key,
 }
 
 static void
-emit_pipeline_ms_state(struct nv_push *p,
-                       const struct vk_multisample_state *ms,
-                       bool force_max_samples)
-{
-   const float min_sample_shading = force_max_samples ? 1 :
-      (ms->sample_shading_enable ? CLAMP(ms->min_sample_shading, 0, 1) : 0);
-   uint32_t min_samples = ceilf(ms->rasterization_samples * min_sample_shading);
-   min_samples = util_next_power_of_two(MAX2(1, min_samples));
-
-   P_IMMD(p, NV9097, SET_HYBRID_ANTI_ALIAS_CONTROL, {
-      .passes = min_samples,
-      .centroid = min_samples > 1 ? CENTROID_PER_PASS : CENTROID_PER_FRAGMENT,
-   });
-}
-
-static void
 emit_pipeline_ct_write_state(struct nv_push *p,
                              const struct vk_color_blend_state *cb,
                              const struct vk_render_pass_state *rp)
@@ -287,7 +271,8 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
          }
 
          nvk_lower_nir(dev, nir[stage], &robustness[stage],
-                       state.rp->view_mask != 0, pipeline_layout, shader);
+                       state.rp->view_mask != 0, pipeline_layout,
+                       &shader->cbuf_map);
 
          result = nvk_compile_nir(dev, nir[stage],
                                   pipeline_flags, &robustness[stage],
@@ -352,7 +337,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
 
       P_MTHD(p, NVC397, SET_PIPELINE_REGISTER_COUNT(idx));
       P_NVC397_SET_PIPELINE_REGISTER_COUNT(p, idx, shader->info.num_gprs);
-      P_NVC397_SET_PIPELINE_BINDING(p, idx, stage);
+      P_NVC397_SET_PIPELINE_BINDING(p, idx, nvk_cbuf_binding_for_stage(stage));
 
       switch (stage) {
       case MESA_SHADER_VERTEX:
@@ -434,10 +419,16 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
 
    emit_pipeline_xfb_state(&push, &last_geom->info.vtg.xfb);
 
-   if (state.ms) emit_pipeline_ms_state(&push, state.ms, force_max_samples);
    emit_pipeline_ct_write_state(&push, state.cb, state.rp);
 
    pipeline->push_dw_count = nv_push_dw_count(&push);
+
+   if (force_max_samples)
+      pipeline->min_sample_shading = 1;
+   else if (state.ms != NULL && state.ms->sample_shading_enable)
+      pipeline->min_sample_shading = CLAMP(state.ms->min_sample_shading, 0, 1);
+   else
+      pipeline->min_sample_shading = 0;
 
    pipeline->dynamic.vi = &pipeline->_dynamic_vi;
    pipeline->dynamic.ms.sample_locations = &pipeline->_dynamic_sl;

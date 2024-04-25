@@ -24,7 +24,6 @@
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
 
-#include "nir/radv_nir.h"
 #include "radv_debug.h"
 #include "radv_private.h"
 #include "radv_shader.h"
@@ -288,7 +287,7 @@ radv_init_rt_stage_hashes(struct radv_device *device, const VkRayTracingPipeline
       struct radv_shader_stage stage;
       radv_pipeline_stage_init(&pCreateInfo->pStages[idx], pipeline_layout, &stage);
 
-      radv_hash_shaders(stages[idx].sha1, &stage, 1, NULL, key, radv_get_hash_flags(device, false));
+      radv_hash_shaders(device, stages[idx].sha1, &stage, 1, NULL, key);
    }
 }
 
@@ -365,8 +364,6 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
    struct radv_shader_binary *binary;
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.base.create_flags);
-
-   radv_nir_lower_rt_io(stage->nir, monolithic);
 
    /* Gather shader info. */
    nir_shader_gather_info(stage->nir, nir_shader_get_entrypoint(stage->nir));
@@ -520,9 +517,7 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
       radv_pipeline_stage_init(&pCreateInfo->pStages[i], pipeline_layout, stage);
 
       /* precompile the shader */
-      stage->nir = radv_shader_spirv_to_nir(device, stage, key, false);
-
-      NIR_PASS(_, stage->nir, radv_nir_lower_hit_attrib_derefs);
+      stage->nir = radv_parse_rt_stage(device, &pCreateInfo->pStages[i], key, pipeline_layout);
 
       rt_stages[i].can_inline = radv_rt_can_inline_shader(stage->nir);
 
@@ -737,6 +732,8 @@ compile_rt_prolog(struct radv_device *device, struct radv_ray_tracing_pipeline *
       combine_config(config, &pipeline->base.base.shaders[MESA_SHADER_INTERSECTION]->config);
 
    postprocess_rt_config(config, device->physical_device->rad_info.gfx_level, device->physical_device->rt_wave_size);
+
+   pipeline->prolog->max_waves = radv_get_max_waves(device, config, &pipeline->prolog->info);
 }
 
 static VkResult
@@ -788,11 +785,9 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    if (result != VK_SUCCESS)
       goto fail;
 
-   bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.base.create_flags);
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.base.create_flags);
 
-   radv_hash_rt_shaders(pipeline->sha1, pCreateInfo, &key, pipeline->groups,
-                        radv_get_hash_flags(device, keep_statistic_info));
+   radv_hash_rt_shaders(device, pipeline->sha1, pCreateInfo, &key, pipeline->groups);
    pipeline->base.base.pipeline_hash = *(uint64_t *)pipeline->sha1;
 
    bool cache_hit = false;

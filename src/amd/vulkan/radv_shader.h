@@ -116,26 +116,18 @@ struct radv_pipeline_key {
 
    uint32_t has_multiview_view_index : 1;
    uint32_t optimisations_disabled : 1;
-   uint32_t invariant_geom : 1;
-   uint32_t use_ngg : 1;
    uint32_t adjust_frag_coord_z : 1;
-   uint32_t disable_aniso_single_level : 1;
-   uint32_t disable_trunc_coord : 1;
-   uint32_t disable_sinking_load_input_fs : 1;
-   uint32_t image_2d_view_of_3d : 1;
-   uint32_t primitives_generated_query : 1;
    uint32_t dynamic_patch_control_points : 1;
    uint32_t dynamic_rasterization_samples : 1;
    uint32_t dynamic_provoking_vtx_mode : 1;
    uint32_t dynamic_line_rast_mode : 1;
-   uint32_t tex_non_uniform : 1;
-   uint32_t ssbo_non_uniform : 1;
    uint32_t enable_remove_point_size : 1;
    uint32_t unknown_rast_prim : 1;
-   uint32_t mesh_shader_queries : 1;
 
    uint32_t vertex_robustness1 : 1;
    uint32_t mesh_fast_launch_2 : 1;
+
+   uint32_t keep_statistic_info : 1;
 
    /* Pipeline shader version (up to 8) to force re-compilation when RADV_BUILD_ID_OVERRIDE is enabled. */
    uint32_t shader_version : 3;
@@ -165,7 +157,6 @@ struct radv_pipeline_key {
       uint8_t num_samples;
       bool sample_shading_enable;
 
-      bool lower_discard_to_demote;
       bool force_vrs_enabled;
 
       /* Used to export alpha through MRTZ for alpha-to-coverage (GFX11+). */
@@ -726,7 +717,9 @@ void radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline
 
 bool radv_shader_should_clear_lds(const struct radv_device *device, const nir_shader *shader);
 
-void radv_nir_lower_rt_io(nir_shader *shader, bool monolithic);
+nir_shader *radv_parse_rt_stage(struct radv_device *device, const VkPipelineShaderStageCreateInfo *sinfo,
+                                const struct radv_pipeline_key *key,
+                                const struct radv_pipeline_layout *pipeline_layout);
 
 void radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                            const struct radv_shader_args *args, const struct radv_shader_info *info,
@@ -809,6 +802,9 @@ struct radv_shader_part *radv_shader_part_cache_get(struct radv_device *device, 
 
 uint64_t radv_shader_get_va(const struct radv_shader *shader);
 struct radv_shader *radv_find_shader(struct radv_device *device, uint64_t pc);
+
+unsigned radv_get_max_waves(const struct radv_device *device, const struct ac_shader_config *conf,
+                            const struct radv_shader_info *info);
 
 unsigned radv_get_max_scratch_waves(const struct radv_device *device, struct radv_shader *shader);
 

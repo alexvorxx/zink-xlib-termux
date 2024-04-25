@@ -18,6 +18,7 @@ struct nak_shader_bin;
 struct nvk_device;
 struct nvk_physical_device;
 struct nvk_pipeline_compilation_ctx;
+struct vk_descriptor_set_layout;
 struct vk_pipeline_cache;
 struct vk_pipeline_layout;
 struct vk_pipeline_robustness_state;
@@ -26,6 +27,12 @@ struct vk_shader_module;
 #define GF100_SHADER_HEADER_SIZE (20 * 4)
 #define TU102_SHADER_HEADER_SIZE (32 * 4)
 #define NVC0_MAX_SHADER_HEADER_SIZE TU102_SHADER_HEADER_SIZE
+
+static inline uint32_t
+nvk_cbuf_binding_for_stage(gl_shader_stage stage)
+{
+   return stage;
+}
 
 enum ENUM_PACKED nvk_cbuf_type {
    NVK_CBUF_TYPE_INVALID = 0,
@@ -104,7 +111,8 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
 bool
 nvk_nir_lower_descriptors(nir_shader *nir,
                           const struct vk_pipeline_robustness_state *rs,
-                          const struct vk_pipeline_layout *layout,
+                          uint32_t set_layout_count,
+                          struct vk_descriptor_set_layout * const *set_layouts,
                           struct nvk_cbuf_map *cbuf_map_out);
 
 VkResult
@@ -119,7 +127,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               const struct vk_pipeline_robustness_state *rs,
               bool is_multiview,
               const struct vk_pipeline_layout *layout,
-              struct nvk_shader *shader);
+              struct nvk_cbuf_map *cbuf_map_out);
 
 VkResult
 nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,

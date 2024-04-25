@@ -1750,7 +1750,8 @@ vector_immediate_restrictions(const struct brw_isa_info *isa,
    unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (num_sources == 3 || num_sources == 0)
+   if (num_sources == 3 || num_sources == 0 ||
+       (devinfo->ver >= 12 && inst_is_send(isa, inst)))
       return (struct string){};
 
    unsigned file = num_sources == 1 ?
@@ -1976,7 +1977,7 @@ special_requirements_for_handling_double_precision_data_types(
                   "source and destination are not supported except for "
                   "broadcast of a scalar.");
 
-         ERROR_IF((file == BRW_ARCHITECTURE_REGISTER_FILE &&
+         ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == BRW_ARCHITECTURE_REGISTER_FILE &&
                    reg != BRW_ARF_NULL && !(reg >= BRW_ARF_ACCUMULATOR && reg < BRW_ARF_FLAG)) ||
                   (dst_file == BRW_ARCHITECTURE_REGISTER_FILE &&
                    dst_reg != BRW_ARF_NULL && dst_reg != BRW_ARF_ACCUMULATOR),

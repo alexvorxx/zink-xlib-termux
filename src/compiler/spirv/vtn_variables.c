@@ -913,7 +913,7 @@ vtn_get_builtin_location(struct vtn_builder *b,
          *mode = nir_var_shader_in;
       else if (b->shader->info.stage == MESA_SHADER_GEOMETRY)
          *mode = nir_var_shader_out;
-      else if (b->options && b->options->caps.shader_viewport_index_layer &&
+      else if (b->supported_capabilities.ShaderViewportIndexLayerEXT &&
                (b->shader->info.stage == MESA_SHADER_VERTEX ||
                 b->shader->info.stage == MESA_SHADER_TESS_EVAL ||
                 b->shader->info.stage == MESA_SHADER_MESH))
@@ -925,7 +925,7 @@ vtn_get_builtin_location(struct vtn_builder *b,
       *location = VARYING_SLOT_VIEWPORT;
       if (b->shader->info.stage == MESA_SHADER_GEOMETRY)
          *mode = nir_var_shader_out;
-      else if (b->options && b->options->caps.shader_viewport_index_layer &&
+      else if (b->supported_capabilities.ShaderViewportIndexLayerEXT &&
                (b->shader->info.stage == MESA_SHADER_VERTEX ||
                 b->shader->info.stage == MESA_SHADER_TESS_EVAL ||
                 b->shader->info.stage == MESA_SHADER_MESH))

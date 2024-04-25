@@ -982,7 +982,7 @@ vtn_type_needs_explicit_layout(struct vtn_builder *b, struct vtn_type *type,
       return true;
 
    case vtn_variable_mode_workgroup:
-      return b->options->caps.workgroup_memory_explicit_layout;
+      return b->supported_capabilities.WorkgroupMemoryExplicitLayoutKHR;
 
    default:
       return false;
@@ -1790,7 +1790,7 @@ vtn_handle_type(struct vtn_builder *b, SpvOp opcode,
          /* Only certain storage classes use ArrayStride. */
          switch (storage_class) {
          case SpvStorageClassWorkgroup:
-            if (!b->options->caps.workgroup_memory_explicit_layout)
+            if (!b->supported_capabilities.WorkgroupMemoryExplicitLayoutKHR)
                break;
             FALLTHROUGH;
 
@@ -1827,7 +1827,7 @@ vtn_handle_type(struct vtn_builder *b, SpvOp opcode,
       } else {
          vtn_fail_if(sampled_type->base_type != vtn_base_type_scalar,
                      "Sampled type of OpTypeImage must be a scalar");
-         if (b->options->caps.image_atomic_int64) {
+         if (b->supported_capabilities.Int64ImageEXT) {
             vtn_fail_if(glsl_get_bit_size(sampled_type->type) != 32 &&
                         glsl_get_bit_size(sampled_type->type) != 64,
                         "Sampled type of OpTypeImage must be a 32 or 64-bit "
@@ -2560,14 +2560,14 @@ vtn_mem_semantics_to_nir_mem_semantics(struct vtn_builder *b,
    }
 
    if (semantics & SpvMemorySemanticsMakeAvailableMask) {
-      vtn_fail_if(!b->options->caps.vk_memory_model,
+      vtn_fail_if(!b->supported_capabilities.VulkanMemoryModel,
                   "To use MakeAvailable memory semantics the VulkanMemoryModel "
                   "capability must be declared.");
       nir_semantics |= NIR_MEMORY_MAKE_AVAILABLE;
    }
 
    if (semantics & SpvMemorySemanticsMakeVisibleMask) {
-      vtn_fail_if(!b->options->caps.vk_memory_model,
+      vtn_fail_if(!b->supported_capabilities.VulkanMemoryModel,
                   "To use MakeVisible memory semantics the VulkanMemoryModel "
                   "capability must be declared.");
       nir_semantics |= NIR_MEMORY_MAKE_VISIBLE;
@@ -2620,15 +2620,15 @@ vtn_translate_scope(struct vtn_builder *b, SpvScope scope)
 {
    switch (scope) {
    case SpvScopeDevice:
-      vtn_fail_if(b->options->caps.vk_memory_model &&
-                  !b->options->caps.vk_memory_model_device_scope,
+      vtn_fail_if(b->supported_capabilities.VulkanMemoryModel &&
+                  !b->supported_capabilities.VulkanMemoryModelDeviceScope,
                   "If the Vulkan memory model is declared and any instruction "
                   "uses Device scope, the VulkanMemoryModelDeviceScope "
                   "capability must be declared.");
       return SCOPE_DEVICE;
 
    case SpvScopeQueueFamily:
-      vtn_fail_if(!b->options->caps.vk_memory_model,
+      vtn_fail_if(!b->supported_capabilities.VulkanMemoryModel,
                   "To use Queue Family scope, the VulkanMemoryModel capability "
                   "must be declared.");
       return SCOPE_QUEUE_FAMILY;
@@ -5127,8 +5127,7 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
          b->physical_ptrs = false;
          break;
       case SpvAddressingModelPhysicalStorageBuffer64:
-         vtn_fail_if(!b->options ||
-                     !b->options->caps.physical_storage_buffer_address,
+         vtn_fail_if(!b->supported_capabilities.PhysicalStorageBufferAddresses,
                      "AddressingModelPhysicalStorageBuffer64 not supported");
          break;
       default:
@@ -5144,7 +5143,7 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
       case SpvMemoryModelOpenCL:
          break;
       case SpvMemoryModelVulkan:
-         vtn_fail_if(!b->options->caps.vk_memory_model,
+         vtn_fail_if(!b->supported_capabilities.VulkanMemoryModel,
                      "Vulkan memory model is unsupported by this driver");
          break;
       default:
@@ -7175,7 +7174,7 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
    bool dxsc = b->generator_id == vtn_generator_spiregg;
    b->convert_discard_to_demote = ((dxsc && !b->enabled_capabilities.DemoteToHelperInvocation) ||
                                    (is_glslang(b) && b->source_lang == SpvSourceLanguageHLSL)) &&
-                                  options->caps.demote_to_helper_invocation;
+                                  b->supported_capabilities.DemoteToHelperInvocation;
 
    if (!options->create_library && b->entry_point == NULL) {
       vtn_fail("Entry point not found for %s shader \"%s\"",
@@ -7311,7 +7310,7 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
     */
    nir_foreach_variable_with_modes(var, b->shader, nir_var_mem_shared) {
       if (glsl_type_is_interface(var->type)) {
-         assert(b->options->caps.workgroup_memory_explicit_layout);
+         assert(b->supported_capabilities.WorkgroupMemoryExplicitLayoutKHR);
          b->shader->info.shared_memory_explicit_layout = true;
          break;
       }

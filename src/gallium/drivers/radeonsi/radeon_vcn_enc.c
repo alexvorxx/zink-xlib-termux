@@ -1160,7 +1160,7 @@ static void radeon_enc_encode_bitstream(struct pipe_video_codec *encoder,
 
    if (vid_buf->base.statistics_data) {
       enc->get_buffer(vid_buf->base.statistics_data, &enc->stats, NULL);
-      if (enc->stats->size < sizeof(rvcn_encode_stats_type_0_t)) {
+      if (enc->stats->base.size < sizeof(rvcn_encode_stats_type_0_t)) {
          RVID_ERR("Encoder statistics output buffer is too small.\n");
          enc->stats = NULL;
       }
@@ -1229,7 +1229,7 @@ static void radeon_enc_destroy_fence(struct pipe_video_codec *encoder,
 {
    struct radeon_encoder *enc = (struct radeon_encoder *)encoder;
 
-   enc->ws->fence_reference(&fence, NULL);
+   enc->ws->fence_reference(enc->ws, &fence, NULL);
 }
 
 struct pipe_video_codec *radeon_create_encoder(struct pipe_context *context,

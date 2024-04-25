@@ -405,7 +405,7 @@ static void r600_reallocate_texture_inplace(struct r600_common_context *rctx,
 
 	/* Replace the structure fields of rtex. */
 	rtex->resource.b.b.bind = templ.bind;
-	pb_reference(&rtex->resource.buf, new_tex->resource.buf);
+	radeon_bo_reference(rctx->ws, &rtex->resource.buf, new_tex->resource.buf);
 	rtex->resource.gpu_address = new_tex->resource.gpu_address;
 	rtex->resource.vram_usage = new_tex->resource.vram_usage;
 	rtex->resource.gart_usage = new_tex->resource.gart_usage;
@@ -576,6 +576,7 @@ static bool r600_texture_get_handle(struct pipe_screen* screen,
 
 void r600_texture_destroy(struct pipe_screen *screen, struct pipe_resource *ptex)
 {
+	struct r600_common_screen *rscreen = (struct r600_common_screen*)screen;
 	struct r600_texture *rtex = (struct r600_texture*)ptex;
 	struct r600_resource *resource = &rtex->resource;
 
@@ -585,7 +586,7 @@ void r600_texture_destroy(struct pipe_screen *screen, struct pipe_resource *ptex
 	if (rtex->cmask_buffer != &rtex->resource) {
 	    r600_resource_reference(&rtex->cmask_buffer, NULL);
 	}
-	pb_reference(&resource->buf, NULL);
+	radeon_bo_reference(rscreen->ws, &resource->buf, NULL);
 	FREE(rtex);
 }
 
@@ -972,13 +973,13 @@ r600_texture_create_object(struct pipe_screen *screen,
 	} else {
 		resource->buf = buf;
 		resource->gpu_address = rscreen->ws->buffer_get_virtual_address(resource->buf);
-		resource->bo_size = buf->size;
-		resource->bo_alignment = 1 << buf->alignment_log2;
+		resource->bo_size = buf->base.size;
+		resource->bo_alignment = 1 << buf->base.alignment_log2;
 		resource->domains = rscreen->ws->buffer_get_initial_domain(resource->buf);
 		if (resource->domains & RADEON_DOMAIN_VRAM)
-			resource->vram_usage = buf->size;
+			resource->vram_usage = buf->base.size;
 		else if (resource->domains & RADEON_DOMAIN_GTT)
-			resource->gart_usage = buf->size;
+			resource->gart_usage = buf->base.size;
 	}
 
 	if (rtex->cmask.size) {
@@ -1003,7 +1004,7 @@ r600_texture_create_object(struct pipe_screen *screen,
 	if (rscreen->debug_flags & DBG_VM) {
 		fprintf(stderr, "VM start=0x%"PRIX64"  end=0x%"PRIX64" | Texture %ix%ix%i, %i levels, %i samples, %s\n",
 			rtex->resource.gpu_address,
-			rtex->resource.gpu_address + rtex->resource.buf->size,
+			rtex->resource.gpu_address + rtex->resource.buf->base.size,
 			base->width0, base->height0, util_num_layers(base, 0), base->last_level+1,
 			base->nr_samples ? base->nr_samples : 1, util_format_short_name(base->format));
 	}
@@ -1485,7 +1486,7 @@ void r600_texture_transfer_unmap(struct pipe_context *ctx,
 	}
 
 	if (rtransfer->staging) {
-		rctx->num_alloc_tex_transfer_bytes += rtransfer->staging->buf->size;
+		rctx->num_alloc_tex_transfer_bytes += rtransfer->staging->buf->base.size;
 		r600_resource_reference(&rtransfer->staging, NULL);
 	}
 
@@ -1802,9 +1803,10 @@ static void
 r600_memobj_destroy(struct pipe_screen *screen,
 		    struct pipe_memory_object *_memobj)
 {
+	struct r600_common_screen *rscreen = (struct r600_common_screen*)screen;
 	struct r600_memory_object *memobj = (struct r600_memory_object *)_memobj;
 
-	pb_reference(&memobj->buf, NULL);
+	radeon_bo_reference(rscreen->ws, &memobj->buf, NULL);
 	free(memobj);
 }
 
@@ -1870,7 +1872,7 @@ r600_texture_from_memobj(struct pipe_screen *screen,
 	/* r600_texture_create_object doesn't increment refcount of
 	 * memobj->buf, so increment it here.
 	 */
-	pb_reference(&buf, memobj->buf);
+	radeon_bo_reference(rscreen->ws, &buf, memobj->buf);
 
 	rtex->resource.b.is_shared = true;
 	rtex->resource.external_usage = PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE;

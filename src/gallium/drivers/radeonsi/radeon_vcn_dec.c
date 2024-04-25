@@ -2164,14 +2164,14 @@ static struct pb_buffer *rvcn_dec_message_decode(struct radeon_decoder *dec,
    luma   = (struct si_texture *)((struct vl_video_buffer *)out_surf)->resources[0];
    chroma = (struct si_texture *)((struct vl_video_buffer *)out_surf)->resources[1];
 
-   decode->dpb_size = (dec->dpb_type != DPB_DYNAMIC_TIER_2) ? dec->dpb.res->buf->size : 0;
+   decode->dpb_size = (dec->dpb_type != DPB_DYNAMIC_TIER_2) ? dec->dpb.res->buf->base.size : 0;
 
    /* When texture being created, the bo will be created with total size of planes,
     * and all planes point to the same buffer */
-   assert(si_resource(((struct vl_video_buffer *)out_surf)->resources[0])->buf->size ==
-      si_resource(((struct vl_video_buffer *)out_surf)->resources[1])->buf->size);
+   assert(si_resource(((struct vl_video_buffer *)out_surf)->resources[0])->buf->base.size ==
+      si_resource(((struct vl_video_buffer *)out_surf)->resources[1])->buf->base.size);
 
-   decode->dt_size = si_resource(((struct vl_video_buffer *)out_surf)->resources[0])->buf->size;
+   decode->dt_size = si_resource(((struct vl_video_buffer *)out_surf)->resources[0])->buf->base.size;
 
    decode->sct_size = 0;
    decode->sc_coeff_size = 0;
@@ -2364,7 +2364,7 @@ static struct pb_buffer *rvcn_dec_message_decode(struct radeon_decoder *dec,
    }
 
    if (dec->ctx.res)
-      decode->hw_ctxt_size = dec->ctx.res->buf->size;
+      decode->hw_ctxt_size = dec->ctx.res->buf->base.size;
 
    if (dec->dpb_type == DPB_DYNAMIC_TIER_2)
       if (rvcn_dec_dynamic_dpb_t2_message(dec, decode, dynamic_dpb_t2, encrypted))
@@ -2781,10 +2781,10 @@ static void radeon_dec_destroy(struct pipe_video_codec *decoder)
       send_msg_buf(dec);
       flush(dec, 0, &dec->destroy_fence);
       dec->ws->fence_wait(dec->ws, dec->destroy_fence, PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS);
-      dec->ws->fence_reference(&dec->destroy_fence, NULL);
+      dec->ws->fence_reference(dec->ws, &dec->destroy_fence, NULL);
    }
 
-   dec->ws->fence_reference(&dec->prev_fence, NULL);
+   dec->ws->fence_reference(dec->ws, &dec->prev_fence, NULL);
    dec->ws->cs_destroy(&dec->cs);
 
    if (dec->stream_type == RDECODE_CODEC_JPEG) {
@@ -2882,7 +2882,7 @@ static void radeon_dec_decode_bitstream(struct pipe_video_codec *decoder,
 
    struct rvid_buffer *buf = &dec->bs_buffers[dec->cur_buffer];
 
-   if (total_bs_size > buf->res->buf->size) {
+   if (total_bs_size > buf->res->buf->base.size) {
       dec->ws->buffer_unmap(dec->ws, buf->res->buf);
       dec->bs_ptr = NULL;
       if (!si_vid_resize_buffer(dec->screen, &dec->cs, buf, total_bs_size, NULL)) {
@@ -2964,7 +2964,7 @@ static void radeon_dec_end_frame(struct pipe_video_codec *decoder, struct pipe_v
    dec->send_cmd(dec, target, picture);
    flush(dec, PIPE_FLUSH_ASYNC, picture->fence);
    if (picture->fence)
-      dec->ws->fence_reference(&dec->prev_fence, *picture->fence);
+      dec->ws->fence_reference(dec->ws, &dec->prev_fence, *picture->fence);
    next_buffer(dec);
 }
 
@@ -3017,7 +3017,7 @@ static void radeon_dec_destroy_fence(struct pipe_video_codec *decoder,
 {
    struct radeon_decoder *dec = (struct radeon_decoder *)decoder;
 
-   dec->ws->fence_reference(&fence, NULL);
+   dec->ws->fence_reference(dec->ws, &fence, NULL);
 }
 
 /**

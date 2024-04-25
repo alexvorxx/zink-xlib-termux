@@ -634,14 +634,14 @@ amdgpu_lookup_or_add_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_b
 static struct amdgpu_cs_buffer *
 amdgpu_lookup_or_add_slab_buffer(struct amdgpu_cs_context *cs, struct amdgpu_winsys_bo *bo)
 {
-   struct amdgpu_buffer_list *list = &cs->buffer_lists[AMDGPU_BO_SLAB];
+   struct amdgpu_buffer_list *list = &cs->buffer_lists[AMDGPU_BO_SLAB_ENTRY];
    struct amdgpu_cs_buffer *buffer = amdgpu_lookup_buffer(cs, bo, list);
 
    if (buffer)
       return buffer;
 
    struct amdgpu_cs_buffer *real_buffer =
-      amdgpu_lookup_or_add_buffer(cs, &get_slab_bo(bo)->real->b, AMDGPU_BO_REAL);
+      amdgpu_lookup_or_add_buffer(cs, &get_slab_entry_real_bo(bo)->b, AMDGPU_BO_REAL);
    if (!real_buffer)
       return NULL;
 
@@ -671,7 +671,7 @@ static unsigned amdgpu_cs_add_buffer(struct radeon_cmdbuf *rcs,
        (usage & cs->last_added_bo_usage) == usage)
       return 0;
 
-   if (bo->type == AMDGPU_BO_SLAB) {
+   if (bo->type == AMDGPU_BO_SLAB_ENTRY) {
       buffer = amdgpu_lookup_or_add_slab_buffer(cs, bo);
       if (!buffer)
          return 0;
@@ -755,6 +755,7 @@ static bool amdgpu_ib_new_buffer(struct amdgpu_winsys *ws,
    radeon_bo_reference(&ws->dummy_ws.base, &main_ib->big_buffer, pb);
    radeon_bo_reference(&ws->dummy_ws.base, &pb, NULL);
 
+   main_ib->gpu_address = amdgpu_bo_get_va(main_ib->big_buffer);
    main_ib->big_buffer_cpu_ptr = mapped;
    main_ib->used_ib_space = 0;
 
@@ -794,12 +795,12 @@ static bool amdgpu_get_new_ib(struct amdgpu_winsys *ws,
 
    /* Allocate a new buffer for IBs if the current buffer is all used. */
    if (!main_ib->big_buffer ||
-       main_ib->used_ib_space + ib_size > main_ib->big_buffer->size) {
+       main_ib->used_ib_space + ib_size > main_ib->big_buffer->base.size) {
       if (!amdgpu_ib_new_buffer(ws, main_ib, cs))
          return false;
    }
 
-   chunk_ib->va_start = amdgpu_winsys_bo(main_ib->big_buffer)->va + main_ib->used_ib_space;
+   chunk_ib->va_start = main_ib->gpu_address + main_ib->used_ib_space;
    chunk_ib->ib_bytes = 0;
    /* ib_bytes is in dwords and the conversion to bytes will be done before
     * the CS ioctl. */
@@ -813,7 +814,7 @@ static bool amdgpu_get_new_ib(struct amdgpu_winsys *ws,
 
    cs->csc->ib_main_addr = rcs->current.buf;
 
-   ib_size = main_ib->big_buffer->size - main_ib->used_ib_space;
+   ib_size = main_ib->big_buffer->base.size - main_ib->used_ib_space;
    rcs->current.max_dw = ib_size / 4 - amdgpu_cs_epilog_dws(cs);
    return true;
 }
@@ -1052,7 +1053,7 @@ amdgpu_cs_setup_preemption(struct radeon_cmdbuf *rcs, const uint32_t *preamble_i
    amdgpu_bo_unmap(&ws->dummy_ws.base, preamble_bo);
 
    for (unsigned i = 0; i < 2; i++) {
-      csc[i]->chunk_ib[IB_PREAMBLE].va_start = amdgpu_winsys_bo(preamble_bo)->va;
+      csc[i]->chunk_ib[IB_PREAMBLE].va_start = amdgpu_bo_get_va(preamble_bo);
       csc[i]->chunk_ib[IB_PREAMBLE].ib_bytes = preamble_num_dw * 4;
 
       csc[i]->chunk_ib[IB_MAIN].flags |= AMDGPU_IB_FLAG_PREEMPT;
@@ -1115,7 +1116,7 @@ static bool amdgpu_cs_check_space(struct radeon_cmdbuf *rcs, unsigned dw)
       return false;
 
    assert(main_ib->used_ib_space == 0);
-   uint64_t va = amdgpu_winsys_bo(main_ib->big_buffer)->va;
+   uint64_t va = main_ib->gpu_address;
 
    /* This space was originally reserved. */
    rcs->current.max_dw += cs_epilog_dw;
@@ -1145,7 +1146,7 @@ static bool amdgpu_cs_check_space(struct radeon_cmdbuf *rcs, unsigned dw)
    rcs->current.cdw = 0;
 
    rcs->current.buf = (uint32_t*)(main_ib->big_buffer_cpu_ptr + main_ib->used_ib_space);
-   rcs->current.max_dw = main_ib->big_buffer->size / 4 - cs_epilog_dw;
+   rcs->current.max_dw = main_ib->big_buffer->base.size / 4 - cs_epilog_dw;
 
    amdgpu_cs_add_buffer(rcs, main_ib->big_buffer,
                         RADEON_USAGE_READ | RADEON_PRIO_IB, 0);
@@ -1162,8 +1163,8 @@ static unsigned amdgpu_cs_get_buffer_list(struct radeon_cmdbuf *rcs,
 
     if (list) {
         for (unsigned i = 0; i < num_real_buffers; i++) {
-            list[i].bo_size = real_buffers->buffers[i].bo->base.size;
-            list[i].vm_address = real_buffers->buffers[i].bo->va;
+            list[i].bo_size = real_buffers->buffers[i].bo->base.base.size;
+            list[i].vm_address = get_real_bo(real_buffers->buffers[i].bo)->gpu_address;
             list[i].priority_usage = real_buffers->buffers[i].usage;
         }
     }
@@ -1619,9 +1620,9 @@ cleanup:
    for (i = 0; i < initial_num_real_buffers; i++)
       p_atomic_dec(&cs->buffer_lists[AMDGPU_BO_REAL].buffers[i].bo->num_active_ioctls);
 
-   unsigned num_slab_buffers = cs->buffer_lists[AMDGPU_BO_SLAB].num_buffers;
+   unsigned num_slab_buffers = cs->buffer_lists[AMDGPU_BO_SLAB_ENTRY].num_buffers;
    for (i = 0; i < num_slab_buffers; i++)
-      p_atomic_dec(&cs->buffer_lists[AMDGPU_BO_SLAB].buffers[i].bo->num_active_ioctls);
+      p_atomic_dec(&cs->buffer_lists[AMDGPU_BO_SLAB_ENTRY].buffers[i].bo->num_active_ioctls);
 
    unsigned num_sparse_buffers = cs->buffer_lists[AMDGPU_BO_SPARSE].num_buffers;
    for (i = 0; i < num_sparse_buffers; i++)
@@ -1803,6 +1804,13 @@ static void amdgpu_cs_set_mcbp_reg_shadowing_va(struct radeon_cmdbuf *rcs,uint64
    cs->mcbp_fw_shadow_chunk.flags = AMDGPU_CS_CHUNK_CP_GFX_SHADOW_FLAGS_INIT_SHADOW;
 }
 
+static void amdgpu_winsys_fence_reference(struct radeon_winsys *rws,
+                                          struct pipe_fence_handle **dst,
+                                          struct pipe_fence_handle *src)
+{
+   amdgpu_fence_reference(dst, src);
+}
+
 void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *ws)
 {
    ws->base.ctx_create = amdgpu_ctx_create;
@@ -1824,7 +1832,7 @@ void amdgpu_cs_init_functions(struct amdgpu_screen_winsys *ws)
    ws->base.cs_add_syncobj_signal = amdgpu_cs_add_syncobj_signal;
    ws->base.cs_get_ip_type = amdgpu_cs_get_ip_type;
    ws->base.fence_wait = amdgpu_fence_wait_rel_timeout;
-   ws->base.fence_reference = amdgpu_fence_reference;
+   ws->base.fence_reference = amdgpu_winsys_fence_reference;
    ws->base.fence_import_syncobj = amdgpu_fence_import_syncobj;
    ws->base.fence_import_sync_file = amdgpu_fence_import_sync_file;
    ws->base.fence_export_sync_file = amdgpu_fence_export_sync_file;

@@ -63,6 +63,7 @@ enum radeon_bo_flag
     * This guarantees that this buffer will never be moved to GTT.
     */
   RADEON_FLAG_DISCARDABLE = (1 << 10),
+  RADEON_FLAG_WINSYS_SLAB_BACKING = (1 << 11), /* only used by the winsys */
 };
 
 static inline void
@@ -335,6 +336,11 @@ struct radeon_winsys {
     */
    struct pb_buffer *(*buffer_create)(struct radeon_winsys *ws, uint64_t size, unsigned alignment,
                                       enum radeon_bo_domain domain, enum radeon_bo_flag flags);
+
+   /**
+    * Don't use directly. Use radeon_bo_reference.
+    */
+   void (*buffer_destroy)(struct radeon_winsys *ws, struct pb_buffer *buf);
 
    /**
     * Map the entire data store of a buffer object into the client's address
@@ -692,7 +698,8 @@ struct radeon_winsys {
    /**
     * Reference counting for fences.
     */
-   void (*fence_reference)(struct pipe_fence_handle **dst, struct pipe_fence_handle *src);
+   void (*fence_reference)(struct radeon_winsys *ws, struct pipe_fence_handle **dst,
+                           struct pipe_fence_handle *src);
 
    /**
     * Create a new fence object corresponding to the given syncobj fd.
@@ -776,7 +783,11 @@ static inline bool radeon_uses_secure_bos(struct radeon_winsys* ws)
 static inline void
 radeon_bo_reference(struct radeon_winsys *rws, struct pb_buffer **dst, struct pb_buffer *src)
 {
-   pb_reference_with_winsys(rws, dst, src);
+   struct pb_buffer *old = *dst;
+
+   if (pipe_reference(&(*dst)->base.reference, &src->base.reference))
+      rws->buffer_destroy(rws, old);
+   *dst = src;
 }
 
 /* The following bits describe the heaps managed by slab allocators (pb_slab) and

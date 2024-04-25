@@ -50,6 +50,7 @@ struct amdgpu_ib {
    /* A buffer out of which new IBs are allocated. */
    struct pb_buffer        *big_buffer;
    uint8_t                 *big_buffer_cpu_ptr;
+   uint64_t                gpu_address;
    unsigned                used_ib_space;
 
    /* The maximum seen size from cs_check_space. If the driver does
@@ -224,7 +225,7 @@ amdgpu_bo_is_referenced_by_cs(struct amdgpu_cs *cs,
 
 static inline unsigned get_buf_list_idx(struct amdgpu_winsys_bo *bo)
 {
-   /* AMDGPU_BO_REAL_REUSABLE maps to AMDGPU_BO_REAL. */
+   /* AMDGPU_BO_REAL_REUSABLE* maps to AMDGPU_BO_REAL. */
    static_assert(ARRAY_SIZE(((struct amdgpu_cs_context*)NULL)->buffer_lists) == NUM_BO_LIST_TYPES, "");
    return MIN2(bo->type, AMDGPU_BO_REAL);
 }

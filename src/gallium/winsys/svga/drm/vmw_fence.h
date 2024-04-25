@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2015 Broadcom. All Rights Reserved.
+ * Copyright (c) 2009-2024 Broadcom. All Rights Reserved.
  * The term “Broadcom” refers to Broadcom Inc.
  * and/or its subsidiaries.
  * SPDX-License-Identifier: MIT

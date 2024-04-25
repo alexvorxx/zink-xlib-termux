@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998-2022 Broadcom. All Rights Reserved.
+ * Copyright (c) 1998-2024 Broadcom. All Rights Reserved.
  * The term “Broadcom” refers to Broadcom Inc.
  * and/or its subsidiaries.
  * SPDX-License-Identifier: GPL-3.0 OR MIT

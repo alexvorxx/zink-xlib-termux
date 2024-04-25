@@ -399,6 +399,7 @@ void pan_print_alu_type(nir_alu_type t, FILE *fp);
 bool pan_nir_lower_zs_store(nir_shader *nir);
 bool pan_nir_lower_store_component(nir_shader *shader);
 
+bool pan_nir_lower_image_ms(nir_shader *shader);
 bool pan_nir_lower_64bit_intrin(nir_shader *shader);
 
 bool pan_lower_helper_invocation(nir_shader *shader);
@@ -423,38 +424,6 @@ pan_subgroup_size(unsigned arch)
       return 4;
    else
       return 1;
-}
-
-/* Architectural maximums, since this register may be not implemented
- * by a given chip. G31 is actually 512 instead of 768 but it doesn't
- * really matter. */
-
-static inline unsigned
-panfrost_max_thread_count(unsigned arch, unsigned work_reg_count)
-{
-   switch (arch) {
-   /* Midgard */
-   case 4:
-   case 5:
-      if (work_reg_count > 8)
-         return 64;
-      else if (work_reg_count > 4)
-         return 128;
-      else
-         return 256;
-
-   /* Bifrost, first generation */
-   case 6:
-      return 384;
-
-   /* Bifrost, second generation (G31 is 512 but it doesn't matter) */
-   case 7:
-      return work_reg_count > 32 ? 384 : 768;
-
-   /* Valhall (for completeness) */
-   default:
-      return work_reg_count > 32 ? 512 : 1024;
-   }
 }
 
 #endif

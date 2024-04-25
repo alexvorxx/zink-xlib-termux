@@ -292,21 +292,25 @@ vbo_save_playback_vertex_list_gallium(struct gl_context *ctx,
       const uint8_t *mode = node->modes;
       unsigned num_draws = node->num_draws;
 
-      /* Find consecutive draws where mode doesn't vary. */
-      for (unsigned i = 0, first = 0; i <= num_draws; i++) {
-         if (i == num_draws || mode[i] != mode[first]) {
-            unsigned current_num_draws = i - first;
+      if (!mode) {
+         pipe->draw_vertex_state(pipe, state, velem_mask, info, draws, num_draws);
+      } else {
+         /* Find consecutive draws where mode doesn't vary. */
+         for (unsigned i = 0, first = 0; i <= num_draws; i++) {
+            if (i == num_draws || mode[i] != mode[first]) {
+               unsigned current_num_draws = i - first;
 
-            /* Increase refcount to be able to use take_vertex_state_ownership
-             * with all draws.
-             */
-            if (i != num_draws && info.take_vertex_state_ownership)
-               p_atomic_inc(&state->reference.count);
+               /* Increase refcount to be able to use take_vertex_state_ownership
+                * with all draws.
+                */
+               if (i != num_draws && info.take_vertex_state_ownership)
+                  p_atomic_inc(&state->reference.count);
 
-            info.mode = mode[first];
-            pipe->draw_vertex_state(pipe, state, velem_mask, info, &draws[first],
-                                    current_num_draws);
-            first = i;
+               info.mode = mode[first];
+               pipe->draw_vertex_state(pipe, state, velem_mask, info, &draws[first],
+                                       current_num_draws);
+               first = i;
+            }
          }
       }
    } else if (node->num_draws) {

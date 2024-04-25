@@ -512,7 +512,7 @@ radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys
          return result;
       }
 
-      map = device->ws->buffer_map(bo);
+      map = radv_buffer_map(device->ws, bo);
       if (!map) {
          ws->buffer_destroy(ws, bo);
          simple_mtx_unlock(&device->sqtt_timestamp_mtx);
@@ -652,7 +652,7 @@ radv_sqtt_init_bo(struct radv_device *device)
    if (result != VK_SUCCESS)
       return false;
 
-   device->sqtt.ptr = ws->buffer_map(device->sqtt.bo);
+   device->sqtt.ptr = radv_buffer_map(ws, device->sqtt.bo);
    if (!device->sqtt.ptr)
       return false;
 

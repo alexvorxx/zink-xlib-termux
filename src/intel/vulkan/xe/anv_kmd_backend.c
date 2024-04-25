@@ -111,6 +111,16 @@ xe_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
                device->fd, args.offset);
 }
 
+static inline uint32_t
+capture_vm_in_error_dump(struct anv_device *device, struct anv_bo *bo)
+{
+   enum anv_bo_alloc_flags alloc_flags = bo ? bo->alloc_flags : 0;
+   bool capture = INTEL_DEBUG(DEBUG_CAPTURE_ALL) ||
+                  (alloc_flags & ANV_BO_ALLOC_CAPTURE);
+
+   return capture ? DRM_XE_VM_BIND_FLAG_DUMPABLE : 0;
+}
+
 static inline int
 xe_vm_bind_op(struct anv_device *device,
               struct anv_sparse_submission *submit)
@@ -145,6 +155,10 @@ xe_vm_bind_op(struct anv_device *device,
    for (int i = 0; i < submit->binds_len; i++) {
       struct anv_vm_bind *bind = &submit->binds[i];
       struct anv_bo *bo = bind->bo;
+      uint16_t pat_index = 0;
+
+      if (bo)
+         pat_index = anv_device_get_pat_entry(device, bo->alloc_flags)->index;
 
       struct drm_xe_vm_bind_op *xe_bind = &xe_binds[i];
       *xe_bind = (struct drm_xe_vm_bind_op) {
@@ -153,14 +167,12 @@ xe_vm_bind_op(struct anv_device *device,
          .range = bind->size,
          .addr = intel_48b_address(bind->address),
          .op = DRM_XE_VM_BIND_OP_UNMAP,
-         .flags = 0,
+         .flags = capture_vm_in_error_dump(device, bo),
          .prefetch_mem_region_instance = 0,
+         .pat_index = pat_index,
       };
 
       if (bind->op == ANV_VM_BIND) {
-         const enum anv_bo_alloc_flags alloc_flags = bo ? bo->alloc_flags : 0;
-
-         xe_bind->pat_index = anv_device_get_pat_entry(device, alloc_flags)->index;
          if (!bo) {
             xe_bind->op = DRM_XE_VM_BIND_OP_MAP;
             xe_bind->flags |= DRM_XE_VM_BIND_FLAG_NULL;
@@ -171,6 +183,13 @@ xe_vm_bind_op(struct anv_device *device,
             xe_bind->op = DRM_XE_VM_BIND_OP_MAP;
             xe_bind->obj = bo->gem_handle;
          }
+      } else if (bind->op == ANV_VM_UNBIND_ALL) {
+         xe_bind->op = DRM_XE_VM_BIND_OP_UNMAP_ALL;
+         xe_bind->obj = bo->gem_handle;
+         assert(bind->address == 0);
+         assert(bind->size == 0);
+      } else {
+         assert(bind->op == ANV_VM_UNBIND);
       }
 
       /* userptr and bo_offset are an union! */
@@ -223,10 +242,10 @@ static int xe_vm_unbind_bo(struct anv_device *device, struct anv_bo *bo)
 {
    struct anv_vm_bind bind = {
       .bo = bo,
-      .address = bo->offset,
+      .address = 0,
       .bo_offset = 0,
-      .size = bo->actual_size,
-      .op = ANV_VM_UNBIND,
+      .size = 0,
+      .op = ANV_VM_UNBIND_ALL,
    };
    struct anv_sparse_submission submit = {
       .queue = NULL,

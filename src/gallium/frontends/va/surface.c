@@ -499,7 +499,7 @@ vlVaPutSurface(VADriverContextP ctx, VASurfaceID surface_id, void* draw, short s
    drv->pipe->flush(drv->pipe, NULL, 0);
 
    screen->flush_frontbuffer(screen, drv->pipe, tex, 0, 0,
-                             vscreen->get_private(vscreen), NULL);
+                             vscreen->get_private(vscreen), 0, NULL);
 
 
    pipe_resource_reference(&tex, NULL);

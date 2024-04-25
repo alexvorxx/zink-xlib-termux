@@ -1094,10 +1094,10 @@ impl SM50Instr {
         self.set_tex_dim(28..31, op.dim);
         self.set_field(31..35, op.mask);
         self.set_bit(35, false); // ToDo: NDV
+        self.set_bit(36, op.offset);
         self.set_tex_lod_mode(37..39, op.lod_mode);
         self.set_bit(49, false); // TODO: .NODEP
         self.set_bit(50, op.z_cmpr);
-        self.set_bit(54, op.offset);
     }
 
     fn encode_tld(&mut self, op: &OpTld) {
@@ -1118,7 +1118,7 @@ impl SM50Instr {
         assert!(
             op.lod_mode == TexLodMode::Zero || op.lod_mode == TexLodMode::Lod
         );
-        self.set_bit(55, op.lod_mode == TexLodMode::Zero);
+        self.set_bit(55, op.lod_mode == TexLodMode::Lod);
     }
 
     fn encode_tld4(&mut self, op: &OpTld4) {

@@ -234,7 +234,7 @@ impl CLInfo<cl_mem_info> for cl_mem {
             CL_MEM_FLAGS => cl_prop::<cl_mem_flags>(mem.flags),
             // TODO debugging feature
             CL_MEM_MAP_COUNT => cl_prop::<cl_uint>(0),
-            CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
+            CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr()),
             CL_MEM_OFFSET => cl_prop::<usize>(if mem.is_buffer() {
                 Buffer::ref_from_raw(*self)?.offset
             } else {
@@ -1060,6 +1060,8 @@ fn enqueue_read_buffer(
         return Err(CL_INVALID_OPERATION);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_READ_BUFFER,
@@ -1113,6 +1115,8 @@ fn enqueue_write_buffer(
         return Err(CL_INVALID_OPERATION);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { ConstMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_WRITE_BUFFER,
@@ -1282,6 +1286,8 @@ fn enqueue_read_buffer_rect(
         return Err(CL_INVALID_CONTEXT);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_READ_BUFFER_RECT,
@@ -1405,6 +1411,8 @@ fn enqueue_write_buffer_rect(
         return Err(CL_INVALID_CONTEXT);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { ConstMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_WRITE_BUFFER_RECT,
@@ -1670,7 +1678,7 @@ fn enqueue_map_buffer(
         Box::new(move |q, ctx| b.sync_shadow(q, ctx, ptr)),
     )?;
 
-    Ok(ptr)
+    Ok(ptr.as_ptr())
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if buffer is a sub-buffer object and offset specified when the sub-buffer object is created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN value for the device associated with queue. This error code is missing before version 1.1.
@@ -1741,6 +1749,8 @@ fn enqueue_read_image(
         slice_pitch = row_pitch * r[1];
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_READ_IMAGE,
@@ -1819,6 +1829,8 @@ fn enqueue_write_image(
         slice_pitch = row_pitch * r[1];
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let ptr = unsafe { ConstMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_WRITE_BUFFER_RECT,
@@ -2118,13 +2130,15 @@ fn enqueue_map_image(
         image_slice_pitch,
     )?;
 
+    // SAFETY: it's required that applications do not cause data races
+    let sync_ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_MAP_IMAGE,
         evs,
         event,
         block,
-        Box::new(move |q, ctx| i.sync_shadow(q, ctx, ptr)),
+        Box::new(move |q, ctx| i.sync_shadow(q, ctx, sync_ptr)),
     )?;
 
     Ok(ptr)
@@ -2181,6 +2195,8 @@ fn enqueue_unmap_mem_object(
         return Err(CL_INVALID_VALUE);
     }
 
+    // SAFETY: it's required that applications do not cause data races
+    let mapped_ptr = unsafe { MutMemoryPtr::from_ptr(mapped_ptr) };
     create_and_queue(
         q,
         CL_COMMAND_UNMAP_MEM_OBJECT,
@@ -2296,7 +2312,7 @@ pub fn svm_alloc(
         return Err(CL_OUT_OF_HOST_MEMORY);
     }
 
-    c.add_svm_ptr(ptr.cast(), layout);
+    c.add_svm_ptr(ptr as usize, layout);
     Ok(ptr.cast())
 
     // Values specified in flags do not follow rules described for supported values in the SVM Memory Flags table.
@@ -2306,17 +2322,17 @@ pub fn svm_alloc(
     // There was a failure to allocate resources.
 }
 
-fn svm_free_impl(c: &Context, svm_pointer: *mut c_void) {
+fn svm_free_impl(c: &Context, svm_pointer: usize) {
     if let Some(layout) = c.remove_svm_ptr(svm_pointer) {
         // SAFETY: we make sure that svm_pointer is a valid allocation and reuse the same layout
         // from the allocation
         unsafe {
-            alloc::dealloc(svm_pointer.cast(), layout);
+            alloc::dealloc(svm_pointer as *mut u8, layout);
         }
     }
 }
 
-pub fn svm_free(context: cl_context, svm_pointer: *mut c_void) -> CLResult<()> {
+pub fn svm_free(context: cl_context, svm_pointer: usize) -> CLResult<()> {
     let c = Context::ref_from_raw(context)?;
     svm_free_impl(c, svm_pointer);
     Ok(())
@@ -2353,7 +2369,7 @@ fn enqueue_svm_free_impl(
     // function returns so we have to make a copy.
     // SAFETY: num_svm_pointers specifies the amount of elements in svm_pointers
     let mut svm_pointers =
-        unsafe { slice::from_raw_parts(svm_pointers, num_svm_pointers as usize) }.to_vec();
+        unsafe { slice::from_raw_parts(svm_pointers.cast(), num_svm_pointers as usize) }.to_vec();
     // SAFETY: The requirements on `SVMFreeCb::new` match the requirements
     // imposed by the OpenCL specification. It is the caller's duty to uphold them.
     let cb_opt = unsafe { SVMFreeCb::new(pfn_free_func, user_data) }.ok();
@@ -2884,8 +2900,8 @@ fn enqueue_svm_migrate_mem(
 
     let num_svm_pointers = num_svm_pointers as usize;
     // SAFETY: Just hoping the application is alright.
-    let mut svm_pointers =
-        unsafe { cl_slice::from_raw_parts(svm_pointers, num_svm_pointers)? }.to_owned();
+    let mut svm_pointers: Vec<usize> =
+        unsafe { cl_slice::from_raw_parts(svm_pointers.cast(), num_svm_pointers)? }.to_owned();
     // if sizes is NULL, every allocation containing the pointers need to be migrated
     let mut sizes = if sizes.is_null() {
         vec![0; num_svm_pointers]
@@ -2896,15 +2912,15 @@ fn enqueue_svm_migrate_mem(
     // CL_INVALID_VALUE if sizes[i] is non-zero range [svm_pointers[i], svm_pointers[i]+sizes[i]) is
     // not contained within an existing clSVMAlloc allocation.
     for (ptr, size) in svm_pointers.iter_mut().zip(&mut sizes) {
-        if let Some((alloc, layout)) = q.context.find_svm_alloc(ptr.cast()) {
-            let ptr_addr = *ptr as usize;
+        if let Some((alloc, layout)) = q.context.find_svm_alloc(*ptr) {
+            let ptr_addr = *ptr;
             let alloc_addr = alloc as usize;
 
             // if the offset + size is bigger than the allocation we are out of bounds
             if (ptr_addr - alloc_addr) + *size <= layout.size() {
                 // if the size is 0, the entire allocation should be migrated
                 if *size == 0 {
-                    *ptr = alloc.cast();
+                    *ptr = alloc as usize;
                     *size = layout.size();
                 }
                 continue;

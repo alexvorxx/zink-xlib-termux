@@ -40,7 +40,7 @@
 
 #include "util/u_prim.h"
 
-#define PAN_GPU_INDIRECTS (PAN_ARCH == 7)
+#define PAN_GPU_INDIRECTS (PAN_ARCH == 7 || PAN_ARCH >= 10)
 
 struct panfrost_rasterizer {
    struct pipe_rasterizer_state base;

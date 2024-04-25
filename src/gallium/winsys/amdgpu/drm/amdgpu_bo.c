@@ -31,6 +31,43 @@ struct amdgpu_sparse_backing_chunk {
    uint32_t begin, end;
 };
 
+static bool amdgpu_bo_fence_wait(struct amdgpu_winsys *ws,
+                                 struct pipe_fence_handle **fence,
+                                 uint64_t timeout, int64_t abs_timeout)
+{
+   if (timeout == 0) {
+      bool idle = amdgpu_fence_wait(*fence, 0, false);
+
+      if (!idle) {
+         simple_mtx_unlock(&ws->bo_fence_lock);
+         return false; /* busy */
+      }
+
+      /* It's idle. Remove it from the ring to skip checking it again later. */
+      amdgpu_fence_reference(fence, NULL);
+   } else {
+      struct pipe_fence_handle *tmp_fence = NULL;
+      amdgpu_fence_reference(&tmp_fence, *fence);
+
+      /* While waiting, unlock the mutex. */
+      simple_mtx_unlock(&ws->bo_fence_lock);
+
+      bool idle = amdgpu_fence_wait(tmp_fence, abs_timeout, true);
+      if (!idle) {
+         amdgpu_fence_reference(&tmp_fence, NULL);
+         return false; /* busy */
+      }
+
+      simple_mtx_lock(&ws->bo_fence_lock);
+      /* It's idle. Remove it from the ring to skip checking it again later. */
+      if (tmp_fence == *fence)
+         amdgpu_fence_reference(fence, NULL);
+      amdgpu_fence_reference(&tmp_fence, NULL);
+   }
+
+   return true;
+}
+
 static bool amdgpu_bo_wait(struct radeon_winsys *rws,
                            struct pb_buffer_lean *_buf, uint64_t timeout,
                            unsigned usage)
@@ -53,10 +90,14 @@ static bool amdgpu_bo_wait(struct radeon_winsys *rws,
          return false;
    }
 
-   if (is_real_bo(bo) && get_real_bo(bo)->is_shared) {
-      /* We can't use user fences for shared buffers, because user fences
-       * are local to this process only. If we want to wait for all buffer
-       * uses in all processes, we have to use amdgpu_bo_wait_for_idle.
+   if (is_real_bo(bo) && (get_real_bo(bo)->is_shared || get_real_bo(bo)->slab_has_busy_alt_fences)) {
+      /* We can't use user fences for shared buffers, because user fences are local to this
+       * process only. If we want to wait for all buffer uses in all processes, we have to
+       * use amdgpu_bo_wait_for_idle.
+       *
+       * Additionally, if this is a slab buffer and one of the slab entries has non-NULL
+       * alt_fence, we can't easily wait for that here. Instead, use the kernel ioctl to wait
+       * for the buffer.
        */
       bool buffer_busy = true;
       int r;
@@ -64,6 +105,9 @@ static bool amdgpu_bo_wait(struct radeon_winsys *rws,
       r = amdgpu_bo_wait_for_idle(get_real_bo(bo)->bo_handle, timeout, &buffer_busy);
       if (r)
          fprintf(stderr, "%s: amdgpu_bo_wait_for_idle failed %i\n", __func__, r);
+
+      if (!buffer_busy)
+         get_real_bo(bo)->slab_has_busy_alt_fences = false;
       return !buffer_busy;
    }
 
@@ -73,38 +117,19 @@ static bool amdgpu_bo_wait(struct radeon_winsys *rws,
       struct pipe_fence_handle **fence = get_fence_from_ring(ws, &bo->fences, i);
 
       if (fence) {
-         if (timeout == 0) {
-            bool idle = amdgpu_fence_wait(*fence, 0, false);
-
-            if (!idle) {
-               simple_mtx_unlock(&ws->bo_fence_lock);
-               return false; /* busy */
-            }
-
-            /* It's idle. Remove it from the ring to skip checking it again later. */
-            amdgpu_fence_reference(fence, NULL);
-         } else {
-            struct pipe_fence_handle *tmp_fence = NULL;
-            amdgpu_fence_reference(&tmp_fence, *fence);
-
-            /* While waiting, unlock the mutex. */
-            simple_mtx_unlock(&ws->bo_fence_lock);
-
-            bool idle = amdgpu_fence_wait(tmp_fence, abs_timeout, true);
-            if (!idle) {
-               amdgpu_fence_reference(&tmp_fence, NULL);
-               return false; /* busy */
-            }
-
-            simple_mtx_lock(&ws->bo_fence_lock);
-            /* It's idle. Remove it from the ring to skip checking it again later. */
-            if (tmp_fence == *fence)
-               amdgpu_fence_reference(fence, NULL);
-            amdgpu_fence_reference(&tmp_fence, NULL);
-         }
+         /* This also unlocks the mutex on failure. */
+         if (!amdgpu_bo_fence_wait(ws, fence, timeout, abs_timeout))
+            return false;
       }
 
       bo->fences.valid_fence_mask &= ~BITFIELD_BIT(i); /* remove the fence from the BO */
+   }
+
+   /* Also wait for alt_fence. */
+   if (bo->alt_fence) {
+      /* This also unlocks the mutex on failure. */
+      if (!amdgpu_bo_fence_wait(ws, &bo->alt_fence, timeout, abs_timeout))
+         return false;
    }
 
    simple_mtx_unlock(&ws->bo_fence_lock);
@@ -136,6 +161,7 @@ static enum radeon_bo_flag amdgpu_bo_get_flags(
 static void amdgpu_bo_remove_fences(struct amdgpu_winsys_bo *bo)
 {
    bo->fences.valid_fence_mask = 0;
+   amdgpu_fence_reference(&bo->alt_fence, NULL);
 }
 
 void amdgpu_bo_destroy(struct amdgpu_winsys *ws, struct pb_buffer_lean *_buf)

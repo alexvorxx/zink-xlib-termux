@@ -2269,6 +2269,16 @@ isl_tiling_to_i915_tiling(enum isl_tiling tiling);
 enum isl_tiling
 isl_tiling_from_i915_tiling(uint32_t tiling);
 
+
+/**
+ * Return an isl_aux_state to describe an auxiliary surface that is either
+ * uninitialized or zeroed.
+ */
+enum isl_aux_state
+isl_aux_get_initial_state(const struct intel_device_info *devinfo,
+                          enum isl_aux_usage usage,
+                          bool zeroed);
+
 /**
  * Return an isl_aux_op needed to enable an access to occur in an
  * isl_aux_state suitable for the isl_aux_usage.

@@ -213,12 +213,6 @@ vn_instance_init_renderer(struct vn_instance *instance)
              renderer_info->vk_ext_command_serialization_spec_version);
       vn_log(instance, "VK_MESA_venus_protocol spec version %d",
              renderer_info->vk_mesa_venus_protocol_spec_version);
-      vn_log(instance, "supports blob id 0: %d",
-             renderer_info->supports_blob_id_0);
-      vn_log(instance, "allow_vk_wait_syncs: %d",
-             renderer_info->allow_vk_wait_syncs);
-      vn_log(instance, "supports_multiple_timelines: %d",
-             renderer_info->supports_multiple_timelines);
    }
 
    return VK_SUCCESS;
@@ -393,6 +387,11 @@ vn_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    if (VN_DEBUG(INIT)) {
       vn_log(instance, "supports multi-plane wsi format modifiers: %s",
              instance->enable_wsi_multi_plane_modifiers ? "yes" : "no");
+   }
+
+   const char *engine_name = instance->base.base.app_info.engine_name;
+   if (engine_name) {
+      instance->engine_is_zink = strcmp(engine_name, "mesa zink") == 0;
    }
 
    *pInstance = instance_handle;

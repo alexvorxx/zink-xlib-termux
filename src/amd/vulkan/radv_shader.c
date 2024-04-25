@@ -425,8 +425,8 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                .func = radv_spirv_nir_debug,
                .private_data = &spirv_debug_data,
             },
-         .force_tex_non_uniform = device->cache_key.tex_non_uniform,
-         .force_ssbo_non_uniform = device->cache_key.ssbo_non_uniform,
+         .force_tex_non_uniform = device->physical_device->cache_key.tex_non_uniform,
+         .force_ssbo_non_uniform = device->physical_device->cache_key.ssbo_non_uniform,
       };
       nir = spirv_to_nir(spirv, stage->spirv.size / 4, spec_entries, num_spec_entries, stage->stage, stage->entrypoint,
                          &spirv_options, &device->physical_device->nir_options[stage->stage]);
@@ -506,7 +506,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
 
       NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
-      NIR_PASS(_, nir, nir_propagate_invariant, device->cache_key.invariant_geom);
+      NIR_PASS(_, nir, nir_propagate_invariant, device->physical_device->cache_key.invariant_geom);
 
       NIR_PASS(_, nir, nir_lower_clip_cull_distance_arrays);
 
@@ -514,7 +514,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
           nir->info.stage == MESA_SHADER_GEOMETRY)
          NIR_PASS_V(nir, nir_shader_gather_xfb_info);
 
-      NIR_PASS(_, nir, nir_lower_discard_or_demote, device->cache_key.lower_discard_to_demote);
+      NIR_PASS(_, nir, nir_lower_discard_or_demote, device->physical_device->cache_key.lower_discard_to_demote);
 
       nir_lower_doubles_options lower_doubles = nir->options->lower_doubles_options;
 
@@ -536,7 +536,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
       /* Mesh shaders run as NGG which can implement local_invocation_index from
        * the wave ID in merged_wave_info, but they don't have local_invocation_ids on GFX10.3.
        */
-      .lower_cs_local_id_to_index = nir->info.stage == MESA_SHADER_MESH && !device->mesh_fast_launch_2,
+      .lower_cs_local_id_to_index = nir->info.stage == MESA_SHADER_MESH && !device->physical_device->mesh_fast_launch_2,
       .lower_local_invocation_index = nir->info.stage == MESA_SHADER_COMPUTE &&
                                       ((nir->info.workgroup_size[0] == 1) + (nir->info.workgroup_size[1] == 1) +
                                        (nir->info.workgroup_size[2] == 1)) == 2,
@@ -770,43 +770,6 @@ radv_consider_culling(const struct radv_physical_device *pdevice, struct nir_sha
    return true;
 }
 
-static void
-setup_ngg_lds_layout(struct radv_device *device, nir_shader *nir, struct radv_shader_info *info, unsigned max_vtx_in)
-{
-   unsigned scratch_lds_base = 0;
-   gl_shader_stage stage = nir->info.stage;
-
-   if (stage == MESA_SHADER_VERTEX || stage == MESA_SHADER_TESS_EVAL) {
-      /* Get pervertex LDS usage. */
-      bool uses_instanceid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INSTANCE_ID);
-      bool uses_primitive_id = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID);
-      bool streamout_enabled = nir->xfb_info && device->physical_device->use_ngg_streamout;
-      unsigned pervertex_lds_bytes = ac_ngg_nogs_get_pervertex_lds_size(
-         stage, nir->num_outputs, streamout_enabled, info->outinfo.export_prim_id, false, /* user edge flag */
-         info->has_ngg_culling, uses_instanceid, uses_primitive_id);
-
-      unsigned total_es_lds_bytes = pervertex_lds_bytes * max_vtx_in;
-      scratch_lds_base = ALIGN(total_es_lds_bytes, 8u);
-   } else if (stage == MESA_SHADER_GEOMETRY) {
-      unsigned esgs_ring_lds_bytes = info->ngg_info.esgs_ring_size;
-      unsigned gs_total_out_vtx_bytes = info->ngg_info.ngg_emit_size * 4u;
-      scratch_lds_base = ALIGN(esgs_ring_lds_bytes + gs_total_out_vtx_bytes, 8u /* for the repacking code */);
-   } else {
-      /* not handled here */
-      return;
-   }
-
-   /* Get scratch LDS usage. */
-   unsigned scratch_lds_size = ac_ngg_get_scratch_lds_size(
-      stage, info->workgroup_size, info->wave_size, device->physical_device->use_ngg_streamout, info->has_ngg_culling);
-
-   /* Get total LDS usage. */
-   nir->info.shared_size = scratch_lds_base + scratch_lds_size;
-
-   /* Record scratch base for abi lower of nir_load_lds_ngg_scratch_base_amd. */
-   info->ngg_info.scratch_lds_base = scratch_lds_base;
-}
-
 void
 radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
                const struct radv_graphics_state_key *gfx_state)
@@ -817,7 +780,6 @@ radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
    assert(nir->info.stage == MESA_SHADER_VERTEX || nir->info.stage == MESA_SHADER_TESS_EVAL ||
           nir->info.stage == MESA_SHADER_GEOMETRY || nir->info.stage == MESA_SHADER_MESH);
 
-   const struct gfx10_ngg_info *ngg_info = &info->ngg_info;
    unsigned num_vertices_per_prim = 3;
 
    /* Get the number of vertices per input primitive */
@@ -851,10 +813,8 @@ radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
       unreachable("NGG needs to be VS, TES or GS.");
    }
 
-   /* Invocations that process an input vertex */
-   unsigned max_vtx_in = MIN2(256, ngg_info->hw_max_esverts);
-
-   setup_ngg_lds_layout(device, nir, &ngg_stage->info, max_vtx_in);
+   if (nir->info.stage != MESA_SHADER_MESH)
+      nir->info.shared_size = info->ngg_info.lds_size;
 
    ac_nir_lower_ngg_options options = {0};
    options.family = device->physical_device->rad_info.family;
@@ -902,7 +862,7 @@ radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
       NIR_PASS_V(nir, ac_nir_lower_ngg_ms, options.gfx_level, options.clip_cull_dist_mask,
                  options.vs_output_param_offset, options.has_param_exports, &scratch_ring, info->wave_size,
                  hw_workgroup_size, gfx_state->has_multiview_view_index, info->ms.has_query,
-                 device->mesh_fast_launch_2);
+                 device->physical_device->mesh_fast_launch_2);
       ngg_stage->info.ms.needs_ms_scratch_ring = scratch_ring;
    } else {
       unreachable("invalid SW stage passed to radv_lower_ngg");
@@ -992,6 +952,13 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
    if (replayable)
       flags |= RADEON_FLAG_REPLAYABLE;
 
+   /* vkCmdUpdatePipelineIndirectBufferNV() can be called on any queue supporting transfer
+    * operations and it's not required to call it on the same queue as DGC execute. To make sure the
+    * compute shader BO is part of the DGC execute submission, force all shaders to be local BOs.
+    */
+   if (device->vk.enabled_features.deviceGeneratedComputePipelines)
+      flags |= RADEON_FLAG_PREFER_LOCAL_BO;
+
    VkResult result;
    result = device->ws->buffer_create(device->ws, arena_size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_VRAM, flags,
                                       RADV_BO_PRIORITY_SHADER, replay_va, &arena->bo);
@@ -1014,7 +981,7 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
       add_hole(free_list, alloc);
 
    if (!(flags & RADEON_FLAG_NO_CPU_ACCESS)) {
-      arena->ptr = (char *)device->ws->buffer_map(arena->bo);
+      arena->ptr = (char *)radv_buffer_map(device->ws, arena->bo);
       if (!arena->ptr)
          goto fail;
    }
@@ -1949,7 +1916,7 @@ radv_shader_dma_resize_upload_buf(struct radv_shader_dma_submission *submission,
    if (result != VK_SUCCESS)
       return result;
 
-   submission->ptr = ws->buffer_map(submission->bo);
+   submission->ptr = radv_buffer_map(ws, submission->bo);
    submission->bo_size = size;
 
    return VK_SUCCESS;
@@ -2663,7 +2630,6 @@ radv_create_rt_prolog(struct radv_device *device)
    info.workgroup_size = info.wave_size;
    info.user_data_0 = R_00B900_COMPUTE_USER_DATA_0;
    info.cs.is_rt_shader = true;
-   info.cs.uses_ray_launch_size = true;
    info.cs.uses_dynamic_rt_callable_stack = true;
    info.cs.block_size[0] = 8;
    info.cs.block_size[1] = device->physical_device->rt_wave_size == 64 ? 8 : 4;

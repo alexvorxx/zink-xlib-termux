@@ -144,11 +144,18 @@ class A6xxGPUInfo(GPUInfo):
                  tile_align_w, tile_align_h, num_vsc_pipes,
                  cs_shared_mem_size, wave_granularity, fibers_per_sp,
                  magic_regs, raw_magic_regs = None):
+        if chip == CHIP.A6XX:
+            tile_max_w   = 1024 # max_bitfield_val(5, 0, 5)
+            tile_max_h   = max_bitfield_val(14, 8, 4) # 1008
+        else:
+            tile_max_w   = 1728
+            tile_max_h   = 1728
+
         super().__init__(chip, gmem_align_w = 16, gmem_align_h = 4,
                          tile_align_w = tile_align_w,
                          tile_align_h = tile_align_h,
-                         tile_max_w   = 1024, # max_bitfield_val(5, 0, 5)
-                         tile_max_h   = max_bitfield_val(14, 8, 4),
+                         tile_max_w   = tile_max_w,
+                         tile_max_h   = tile_max_h,
                          num_vsc_pipes = num_vsc_pipes,
                          cs_shared_mem_size = cs_shared_mem_size,
                          num_sp_cores = num_ccu, # The # of SP cores seems to always match # of CCU
@@ -779,6 +786,7 @@ a7xx_base = A6XXProps(
         enable_lrz_fast_clear = True,
         has_lrz_dir_tracking = True,
         has_per_view_viewport = True,
+        supports_ibo_ubwc = True,
     )
 
 a7xx_725 = A7XXProps(
@@ -790,6 +798,7 @@ a7xx_730 = A7XXProps()
 a7xx_740 = A7XXProps(
         stsc_duplication_quirk = True,
         has_event_write_sample_count = True,
+        ubwc_unorm_snorm_int_compatible = True,
     )
 
 a7xx_750 = A7XXProps(
@@ -799,6 +808,7 @@ a7xx_750 = A7XXProps(
         has_gmem_vpc_attr_buf = True,
         sysmem_vpc_attr_buf_size = 0x20000,
         gmem_vpc_attr_buf_size = 0xc000,
+        ubwc_unorm_snorm_int_compatible = True,
     )
 
 a730_magic_regs = dict(
@@ -851,6 +861,16 @@ a730_raw_magic_regs = [
 
         [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_80A7, 0x00000000],
         [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_810B, 0x3],
+
+        [A6XXRegs.REG_A7XX_HLSQ_UNKNOWN_A9AC, 0x00000000],
+        [A6XXRegs.REG_A7XX_RB_UNKNOWN_8E79,   0x00000000],
+        [A6XXRegs.REG_A7XX_RB_UNKNOWN_8899,   0x00000000],
+        [A6XXRegs.REG_A7XX_RB_UNKNOWN_88F5,   0x00000000],
+
+        # Shading rate group
+        [A6XXRegs.REG_A6XX_RB_UNKNOWN_88F4,   0x00000000],
+        [A6XXRegs.REG_A7XX_HLSQ_UNKNOWN_A9AD, 0x00000000],
+        [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_80F4, 0x00000000],
     ]
 
 add_gpus([
@@ -896,7 +916,7 @@ add_gpus([
         CHIP.A7XX,
         [a7xx_base, a7xx_740],
         num_ccu = 6,
-        tile_align_w = 64,
+        tile_align_w = 96,
         tile_align_h = 32,
         num_vsc_pipes = 32,
         cs_shared_mem_size = 32 * 1024,
@@ -960,6 +980,16 @@ add_gpus([
 
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_80A7, 0x00000000],
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_810B, 0x3],
+
+            [A6XXRegs.REG_A7XX_HLSQ_UNKNOWN_A9AC, 0x00000000],
+            [A6XXRegs.REG_A7XX_RB_UNKNOWN_8E79,   0x00000000],
+            [A6XXRegs.REG_A7XX_RB_UNKNOWN_8899,   0x00000000],
+            [A6XXRegs.REG_A7XX_RB_UNKNOWN_88F5,   0x00000000],
+
+            # Shading rate group
+            [A6XXRegs.REG_A6XX_RB_UNKNOWN_88F4,   0x00000000],
+            [A6XXRegs.REG_A7XX_HLSQ_UNKNOWN_A9AD, 0x00000000],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_80F4, 0x00000000],
         ],
     ))
 
@@ -1025,6 +1055,16 @@ add_gpus([
 
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_80A7, 0x00000000],
             [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_810B, 0x3],
+
+            [A6XXRegs.REG_A7XX_HLSQ_UNKNOWN_A9AC, 0x00000000],
+            [A6XXRegs.REG_A7XX_RB_UNKNOWN_8E79,   0x00000000],
+            [A6XXRegs.REG_A7XX_RB_UNKNOWN_8899,   0x00000000],
+            [A6XXRegs.REG_A7XX_RB_UNKNOWN_88F5,   0x00000000],
+
+            # Shading rate group
+            [A6XXRegs.REG_A6XX_RB_UNKNOWN_88F4,   0x00000000],
+            [A6XXRegs.REG_A7XX_HLSQ_UNKNOWN_A9AD, 0x00000000],
+            [A6XXRegs.REG_A7XX_GRAS_UNKNOWN_80F4, 0x00000000],
 
             [0x930a, 0],
             [0x960a, 1],

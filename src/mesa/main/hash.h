@@ -36,47 +36,39 @@
 
 #include "c11/threads.h"
 #include "util/simple_mtx.h"
-
-struct util_idalloc;
+#include "util/sparse_array.h"
+#include "util/u_idalloc.h"
 
 /**
- * The hash table data structure.
+ * The not-really-hash-table data structure. It pretends to be a hash table,
+ * but it uses util_idalloc to keep track of GL object IDs and
+ * util_sparse_array for storing entries. Lookups only access the array.
  */
 struct _mesa_HashTable {
-   struct hash_table *ht;
-   GLuint MaxKey;                        /**< highest key inserted so far */
-   simple_mtx_t Mutex;                   /**< mutual exclusion lock */
+   struct util_sparse_array array;
    /* Used when name reuse is enabled */
-   struct util_idalloc *id_alloc;
-
-   /** Value that would be in the table for DELETED_KEY_VALUE. */
-   void *deleted_key_data;
+   struct util_idalloc id_alloc;
+   simple_mtx_t Mutex;
+   GLuint MaxKey;                        /**< highest key inserted so far */
+   bool alloc_via_idalloc;
 };
 
-struct _mesa_HashTable *
-_mesa_NewHashTable(void);
+void
+_mesa_InitHashTable(struct _mesa_HashTable *table);
 
 void
-_mesa_DeleteHashTable(struct _mesa_HashTable *table,
+_mesa_DeinitHashTable(struct _mesa_HashTable *table,
                       void (*free_callback)(void *data, void *userData),
                       void *userData);
 
-void *
-_mesa_HashLookup(struct _mesa_HashTable *table, GLuint key);
-
 void
-_mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data,
-                 GLboolean isGenName);
+_mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data);
 
 void
 _mesa_HashRemove(struct _mesa_HashTable *table, GLuint key);
 
-void *
-_mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key);
-
 void
-_mesa_HashInsertLocked(struct _mesa_HashTable *table,
-                       GLuint key, void *data, GLboolean isGenName);
+_mesa_HashInsertLocked(struct _mesa_HashTable *table, GLuint key, void *data);
 
 void
 _mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key);
@@ -129,16 +121,6 @@ _mesa_HashUnlockMutex(struct _mesa_HashTable *table)
    simple_mtx_unlock(&table->Mutex);
 }
 
-static inline struct gl_buffer_object *
-_mesa_HashLookupMaybeLocked(struct _mesa_HashTable *table, GLuint key,
-                            bool locked)
-{
-   if (locked)
-      return _mesa_HashLookupLocked(table, key);
-   else
-      return _mesa_HashLookup(table, key);
-}
-
 static inline void
 _mesa_HashLockMaybeLocked(struct _mesa_HashTable *table, bool locked)
 {
@@ -151,6 +133,45 @@ _mesa_HashUnlockMaybeLocked(struct _mesa_HashTable *table, bool locked)
 {
    if (!locked)
       _mesa_HashUnlockMutex(table);
+}
+
+/**
+ * Lookup an entry in the hash table without locking the mutex.
+ *
+ * The hash table mutex must be locked manually by calling
+ * _mesa_HashLockMutex() before calling this function.
+ *
+ * \return pointer to user's data or NULL if key not in table
+ */
+static inline void *
+_mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key)
+{
+   assert(key);
+   return *(void**)util_sparse_array_get(&table->array, key);
+}
+
+/**
+ * Lookup an entry in the hash table.
+ *
+ * \return pointer to user's data or NULL if key not in table
+ */
+static inline void *
+_mesa_HashLookup(struct _mesa_HashTable *table, GLuint key)
+{
+   _mesa_HashLockMutex(table);
+   void *res = _mesa_HashLookupLocked(table, key);
+   _mesa_HashUnlockMutex(table);
+   return res;
+}
+
+static inline void *
+_mesa_HashLookupMaybeLocked(struct _mesa_HashTable *table, GLuint key,
+                            bool locked)
+{
+   if (locked)
+      return _mesa_HashLookupLocked(table, key);
+   else
+      return _mesa_HashLookup(table, key);
 }
 
 #endif

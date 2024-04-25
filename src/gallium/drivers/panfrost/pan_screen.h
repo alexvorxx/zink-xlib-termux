@@ -70,8 +70,13 @@ struct panfrost_vtable {
    /* Populate context vtable */
    void (*context_populate_vtbl)(struct pipe_context *pipe);
 
-   /* Device-dependent initialization of a panfrost_batch */
+   /* Initialize/cleanup a Gallium context */
+   void (*context_init)(struct panfrost_context *ctx);
+   void (*context_cleanup)(struct panfrost_context *ctx);
+
+   /* Device-dependent initialization/cleanup of a panfrost_batch */
    void (*init_batch)(struct panfrost_batch *batch);
+   void (*cleanup_batch)(struct panfrost_batch *batch);
 
    /* Device-dependent submission of a panfrost_batch */
    int (*submit_batch)(struct panfrost_batch *batch, struct pan_fb_info *fb);
@@ -134,6 +139,7 @@ void panfrost_cmdstream_screen_init_v5(struct panfrost_screen *screen);
 void panfrost_cmdstream_screen_init_v6(struct panfrost_screen *screen);
 void panfrost_cmdstream_screen_init_v7(struct panfrost_screen *screen);
 void panfrost_cmdstream_screen_init_v9(struct panfrost_screen *screen);
+void panfrost_cmdstream_screen_init_v10(struct panfrost_screen *screen);
 
 #define perf_debug(dev, ...)                                                   \
    do {                                                                        \

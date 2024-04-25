@@ -42,8 +42,12 @@ struct anv_sparse_submission;
 struct anv_trtt_batch_bo;
 
 enum anv_vm_bind_op {
+   /* bind vma specified in anv_vm_bind */
    ANV_VM_BIND,
+   /* unbind vma specified in anv_vm_bind */
    ANV_VM_UNBIND,
+   /* unbind all vmas of anv_vm_bind::bo, address and size fields must be set to 0 */
+   ANV_VM_UNBIND_ALL,
 };
 
 struct anv_vm_bind {

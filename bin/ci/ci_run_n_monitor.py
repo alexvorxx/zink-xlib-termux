@@ -20,7 +20,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from itertools import chain
-from subprocess import check_output
+from subprocess import check_output, CalledProcessError
 from typing import TYPE_CHECKING, Iterable, Literal, Optional
 
 import gitlab
@@ -267,7 +267,7 @@ def print_log(project, job_id) -> None:
         job = project.jobs.get(job_id)
 
         # GitLab's REST API doesn't offer pagination for logs, so we have to refetch it all
-        lines = job.trace().decode("raw_unicode_escape").splitlines()
+        lines = job.trace().decode().splitlines()
         for line in lines[printed_lines:]:
             print(line)
         printed_lines = len(lines)
@@ -426,26 +426,32 @@ if __name__ == "__main__":
                 REV = check_output(['git', 'rev-parse', REV]).decode('ascii').strip()
 
                 if args.rev == 'HEAD':
-                    branch_name = check_output([
-                        'git', 'symbolic-ref', '-q', 'HEAD',
-                    ]).decode('ascii').strip()
+                    try:
+                        branch_name = check_output([
+                            'git', 'symbolic-ref', '-q', 'HEAD',
+                        ]).decode('ascii').strip()
+                    except CalledProcessError:
+                        branch_name = ""
 
-                    tracked_remote = check_output([
-                        'git', 'for-each-ref', '--format=%(upstream)',
-                        branch_name,
-                    ]).decode('ascii').strip()
-
-                    if tracked_remote:
-                        remote_rev = check_output([
-                            'git', 'rev-parse', tracked_remote,
+                    # Ignore detached heads
+                    if branch_name:
+                        tracked_remote = check_output([
+                            'git', 'for-each-ref', '--format=%(upstream)',
+                            branch_name,
                         ]).decode('ascii').strip()
 
-                        if REV != remote_rev:
-                            print(
-                                f"Local HEAD commit {REV[:10]} is different than "
-                                f"tracked remote HEAD commit {remote_rev[:10]}"
-                            )
-                            print("Did you forget to `git push` ?")
+                        # Ignore local branches that do not track any remote
+                        if tracked_remote:
+                            remote_rev = check_output([
+                                'git', 'rev-parse', tracked_remote,
+                            ]).decode('ascii').strip()
+
+                            if REV != remote_rev:
+                                print(
+                                    f"Local HEAD commit {REV[:10]} is different than "
+                                    f"tracked remote HEAD commit {remote_rev[:10]}"
+                                )
+                                print("Did you forget to `git push` ?")
 
                 projects.append(get_gitlab_project(gl, args.project))
             (pipe, cur_project) = wait_for_pipeline(projects, REV)

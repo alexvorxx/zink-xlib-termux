@@ -127,7 +127,7 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
     */
    bool lock_mutexes = ctx->GLThread.LockGlobalMutexes;
    if (lock_mutexes) {
-      _mesa_HashLockMutex(shared->BufferObjects);
+      _mesa_HashLockMutex(&shared->BufferObjects);
       ctx->BufferObjectsLocked = true;
       simple_mtx_lock(&shared->TexMutex);
       ctx->TexturesLocked = true;
@@ -144,7 +144,7 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
       ctx->TexturesLocked = false;
       simple_mtx_unlock(&shared->TexMutex);
       ctx->BufferObjectsLocked = false;
-      _mesa_HashUnlockMutex(shared->BufferObjects);
+      _mesa_HashUnlockMutex(&shared->BufferObjects);
    }
 
    assert(pos == used);
@@ -222,18 +222,13 @@ _mesa_glthread_init(struct gl_context *ctx)
       return;
    }
 
-   glthread->VAOs = _mesa_NewHashTable();
-   if (!glthread->VAOs) {
-      util_queue_destroy(&glthread->queue);
-      return;
-   }
-
+   _mesa_InitHashTable(&glthread->VAOs);
    _mesa_glthread_reset_vao(&glthread->DefaultVAO);
    glthread->CurrentVAO = &glthread->DefaultVAO;
 
    ctx->MarshalExec = _mesa_alloc_dispatch_table(true);
    if (!ctx->MarshalExec) {
-      _mesa_DeleteHashTable(glthread->VAOs, NULL, NULL);
+      _mesa_DeinitHashTable(&glthread->VAOs, NULL, NULL);
       util_queue_destroy(&glthread->queue);
       return;
    }
@@ -250,9 +245,6 @@ _mesa_glthread_init(struct gl_context *ctx)
 
    _mesa_glthread_init_call_fence(&glthread->LastProgramChangeBatch);
    _mesa_glthread_init_call_fence(&glthread->LastDListChangeBatchIndex);
-
-   /* glthread takes over all L3 pinning */
-   ctx->st->pin_thread_counter = ST_THREAD_SCHEDULER_DISABLED;
 
    _mesa_glthread_enable(ctx);
 
@@ -289,7 +281,7 @@ _mesa_glthread_destroy(struct gl_context *ctx)
       for (unsigned i = 0; i < MARSHAL_MAX_BATCHES; i++)
          util_queue_fence_destroy(&glthread->batches[i].fence);
 
-      _mesa_DeleteHashTable(glthread->VAOs, free_vao, NULL);
+      _mesa_DeinitHashTable(&glthread->VAOs, free_vao, NULL);
       _mesa_glthread_release_upload_buffer(ctx);
    }
 }
@@ -303,6 +295,9 @@ void _mesa_glthread_enable(struct gl_context *ctx)
 
    ctx->GLThread.enabled = true;
    ctx->GLApi = ctx->MarshalExec;
+
+   /* glthread takes over all thread scheduling. */
+   ctx->st->pin_thread_counter = ST_THREAD_SCHEDULER_DISABLED;
 
    /* Update the dispatch only if the dispatch is current. */
    if (_glapi_get_dispatch() == ctx->Dispatch.Current) {
@@ -320,6 +315,10 @@ void _mesa_glthread_disable(struct gl_context *ctx)
    ctx->GLThread.enabled = false;
    ctx->GLApi = ctx->Dispatch.Current;
 
+   /* Re-enable thread scheduling in st/mesa when glthread is disabled. */
+   if (ctx->pipe->set_context_param && util_thread_scheduler_enabled())
+      ctx->st->pin_thread_counter = 0;
+
    /* Update the dispatch only if the dispatch is current. */
    if (_glapi_get_dispatch() == ctx->MarshalExec) {
        _glapi_set_dispatch(ctx->GLApi);
@@ -330,6 +329,26 @@ void _mesa_glthread_disable(struct gl_context *ctx)
     */
    if (ctx->API != API_OPENGL_CORE)
       _mesa_glthread_unbind_uploaded_vbos(ctx);
+}
+
+static void
+glthread_finalize_batch(struct glthread_state *glthread,
+                        unsigned *num_items_counter)
+{
+   struct glthread_batch *next = glthread->next_batch;
+
+   /* Mark the end of the batch, but don't increment "used". */
+   struct marshal_cmd_base *last =
+      (struct marshal_cmd_base *)&next->buffer[glthread->used];
+   last->cmd_id = NUM_DISPATCH_CMD;
+
+   p_atomic_add(num_items_counter, glthread->used);
+   next->used = glthread->used;
+   glthread->used = 0;
+
+   glthread->LastCallList = NULL;
+   glthread->LastBindBuffer1 = NULL;
+   glthread->LastBindBuffer2 = NULL;
 }
 
 void
@@ -348,26 +367,15 @@ _mesa_glthread_flush_batch(struct gl_context *ctx)
       return; /* the batch is empty */
 
    glthread_apply_thread_sched_policy(ctx, false);
+   glthread_finalize_batch(glthread, &glthread->stats.num_offloaded_items);
 
    struct glthread_batch *next = glthread->next_batch;
-
-   /* Mark the end of the batch, but don't increment "used". */
-   struct marshal_cmd_base *last =
-      (struct marshal_cmd_base *)&next->buffer[glthread->used];
-   last->cmd_id = NUM_DISPATCH_CMD;
-
-   p_atomic_add(&glthread->stats.num_offloaded_items, glthread->used);
-   next->used = glthread->used;
 
    util_queue_add_job(&glthread->queue, next, &next->fence,
                       glthread_unmarshal_batch, NULL, 0);
    glthread->last = glthread->next;
    glthread->next = (glthread->next + 1) % MARSHAL_MAX_BATCHES;
    glthread->next_batch = &glthread->batches[glthread->next];
-   glthread->used = 0;
-
-   glthread->LastCallList = NULL;
-   glthread->LastBindBuffer = NULL;
 }
 
 /**
@@ -403,17 +411,7 @@ _mesa_glthread_finish(struct gl_context *ctx)
    glthread_apply_thread_sched_policy(ctx, false);
 
    if (glthread->used) {
-      /* Mark the end of the batch, but don't increment "used". */
-      struct marshal_cmd_base *last =
-         (struct marshal_cmd_base *)&next->buffer[glthread->used];
-      last->cmd_id = NUM_DISPATCH_CMD;
-
-      p_atomic_add(&glthread->stats.num_direct_items, glthread->used);
-      next->used = glthread->used;
-      glthread->used = 0;
-
-      glthread->LastCallList = NULL;
-      glthread->LastBindBuffer = NULL;
+      glthread_finalize_batch(glthread, &glthread->stats.num_direct_items);
 
       /* Since glthread_unmarshal_batch changes the dispatch to direct,
        * restore it after it's done.

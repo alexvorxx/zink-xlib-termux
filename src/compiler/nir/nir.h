@@ -268,6 +268,7 @@ typedef enum {
    nir_resource_intel_pushable = 1u << 1,
    nir_resource_intel_sampler = 1u << 2,
    nir_resource_intel_non_uniform = 1u << 3,
+   nir_resource_intel_sampler_embedded = 1u << 4,
 } nir_resource_data_intel;
 
 /**
@@ -1106,6 +1107,15 @@ nir_def_used_by_if(const nir_def *def)
       return true;
 
    return false;
+}
+
+static inline bool
+nir_def_only_used_by_if(const nir_def *def)
+{
+   nir_foreach_use(_, def)
+      return false;
+
+   return true;
 }
 
 static inline nir_src
@@ -3875,6 +3885,9 @@ typedef struct nir_shader_compiler_options {
     * to imul with masked inputs */
    bool has_umul24;
 
+   /** Backend supports 32-bit imad */
+   bool has_imad32;
+
    /** Backend supports umad24, if not set  umad24 will automatically be lowered
     * to imul with masked inputs and iadd */
    bool has_umad24;
@@ -6389,6 +6402,9 @@ bool nir_opt_undef(nir_shader *shader);
 bool nir_lower_undef_to_zero(nir_shader *shader);
 
 bool nir_opt_uniform_atomics(nir_shader *shader);
+
+bool nir_opt_uniform_subgroup(nir_shader *shader,
+                              const nir_lower_subgroups_options *);
 
 bool nir_opt_vectorize(nir_shader *shader, nir_vectorize_cb filter,
                        void *data);

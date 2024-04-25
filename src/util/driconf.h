@@ -594,6 +594,10 @@
    DRI_CONF_OPT_B(tu_dont_reserve_descriptor_set, def, \
                   "Don't internally reserve one of the HW descriptor sets for descriptor set dynamic offset support, this frees up an extra descriptor set at the cost of that feature")
 
+#define DRI_CONF_TU_ALLOW_OOB_INDIRECT_UBO_LOADS(def) \
+   DRI_CONF_OPT_B(tu_allow_oob_indirect_ubo_loads, def, \
+                  "Some D3D11 games rely on out-of-bounds indirect UBO loads to return real values from underlying bound descriptor, this prevents us from lowering indirectly accessed UBOs to consts")
+
 /**
  * \brief venus specific configuration options
  */
@@ -779,6 +783,9 @@
 #define DRI_CONF_ANV_DISABLE_FCV(def) \
    DRI_CONF_OPT_B(anv_disable_fcv, def, \
                   "Disable FCV optimization")
+
+#define DRI_CONF_ANV_EXTERNAL_MEMORY_IMPLICIT_SYNC(def) \
+   DRI_CONF_OPT_B(anv_external_memory_implicit_sync, def, "Implicit sync on external BOs")
 
 #define DRI_CONF_ANV_HASVK_OVERRIDE_API_VERSION(def) \
    DRI_CONF_OPT_B(hasvk_report_vk_1_3_version, def, \

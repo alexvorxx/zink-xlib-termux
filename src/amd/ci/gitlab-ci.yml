@@ -160,10 +160,23 @@ radeonsi-raven-va-full:x86_64:
     - farm:$RUNNER_FARM_LOCATION
     - amdgpu:codename:STONEY
 
+vkcts-tahiti-valve:
+  extends:
+    - .vkcts-test-valve
+    - .tahiti-test-valve
+    - .radv-valve-manual-rules  # Make sure this job is *always* run manually
+  timeout: 6h
+  variables:
+    GPU_VERSION: radv-tahiti-aco
+    B2C_TIMEOUT_BOOT_MINUTES: 350
+    B2C_TIMEOUT_OVERALL_MINUTES: 350
+    B2C_TIMEOUT_BOOT_RETRIES: 0
+    RADV_PERFTEST: shader_object
+
 vkcts-polaris10-valve:
   extends:
     - .vkcts-test-valve
-    - .polaris10-test-valve-mupuf
+    - .polaris10-test-valve-kws
     - .radv-valve-manual-rules
   timeout: 1h 15m
   variables:
@@ -288,6 +301,16 @@ radv-fossils:
       ./install/fossilize-runner.sh
 
 ############### vkd3d-proton
+
+vkd3d-tahiti-valve:
+  extends:
+    - .vkd3d-test-valve
+    - .tahiti-test-valve
+    - .radv-valve-manual-rules
+  variables:
+    VKD3D_PROTON_RESULTS: radv-tahiti-vkd3d
+    # These vkd3d-proton tests are skipped because they trigger GPU hangs.
+    VKD3D_TEST_EXCLUDE: test_execute_indirect_state,test_execute_indirect_state_predication,test_undefined_descriptor_heap_mismatch_types
 
 vkd3d-polaris10-valve:
   extends:

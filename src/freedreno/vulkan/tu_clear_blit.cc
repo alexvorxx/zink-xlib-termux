@@ -67,8 +67,9 @@ format_to_ifmt(enum pipe_format format)
    }
 }
 
+template <chip CHIP>
 static struct tu_native_format
-blit_format_texture(enum pipe_format format, enum a6xx_tile_mode tile_mode)
+blit_format_texture(enum pipe_format format, enum a6xx_tile_mode tile_mode, bool gmem)
 {
    struct tu_native_format fmt = tu6_format_texture(format, tile_mode);
 
@@ -79,8 +80,12 @@ blit_format_texture(enum pipe_format format, enum a6xx_tile_mode tile_mode)
        * FMT6_Z24_UNORM_S8_UINT_AS_R8G8B8A8 or FMT6_8_8_8_8_UNORM for blit
        * src.  Since this is called when there is no image and thus no ubwc,
        * we can always use FMT6_8_8_8_8_UNORM.
+       *
+       * Note (A7XX): Since it's erroneous to use FMT6_8_8_8_8_UNORM for a GMEM
+       * image (see blit_base_format), we use FMT6_Z24_UNORM_S8_UINT_AS_R8G8B8A8
+       * instead.
        */
-      fmt.fmt = FMT6_8_8_8_8_UNORM;
+      fmt.fmt = CHIP >= A7XX && gmem ? FMT6_Z24_UNORM_S8_UINT_AS_R8G8B8A8 : FMT6_8_8_8_8_UNORM;
       break;
    default:
       break;
@@ -107,9 +112,18 @@ blit_format_color(enum pipe_format format, enum a6xx_tile_mode tile_mode)
    return fmt;
 }
 
+template <chip CHIP>
 static enum a6xx_format
-blit_base_format(enum pipe_format format, bool ubwc)
+blit_base_format(enum pipe_format format, bool ubwc, bool gmem)
 {
+   if (CHIP >= A7XX && gmem)
+      /* A7XX requires D24S8 in GMEM to always be treated as
+       * FMT6_Z24_UNORM_S8_UINT_AS_R8G8B8A8 regardless of if the image
+       * is UBWC-compatible. Using FMT6_8_8_8_8_UNORM instead will result
+       * in misrendering around the edges of the destination image.
+       */
+      ubwc = true;
+
    if (ubwc) {
       switch (format) {
       case PIPE_FORMAT_Z24X8_UNORM:
@@ -320,7 +334,7 @@ r2d_src_buffer(struct tu_cmd_buffer *cmd,
                uint32_t width, uint32_t height,
                enum pipe_format dst_format)
 {
-   struct tu_native_format fmt = blit_format_texture(format, TILE6_LINEAR);
+   struct tu_native_format fmt = blit_format_texture<CHIP>(format, TILE6_LINEAR, false);
    enum a6xx_format color_format = fmt.fmt;
    fixup_src_format(&format, dst_format, &color_format);
 
@@ -412,7 +426,7 @@ r2d_setup_common(struct tu_cmd_buffer *cmd,
       tu_cs_emit_call(cs, cmd->device->dbg_renderpass_stomp_cs);
    }
 
-   enum a6xx_format fmt = blit_base_format(dst_format, ubwc);
+   enum a6xx_format fmt = blit_base_format<CHIP>(dst_format, ubwc, false);
    fixup_dst_format(src_format, &dst_format, &fmt);
    enum a6xx_2d_ifmt ifmt = format_to_ifmt(dst_format);
 
@@ -1119,6 +1133,7 @@ r3d_src(struct tu_cmd_buffer *cmd,
                   filter);
 }
 
+template <chip CHIP>
 static void
 r3d_src_buffer(struct tu_cmd_buffer *cmd,
                struct tu_cs *cs,
@@ -1129,7 +1144,7 @@ r3d_src_buffer(struct tu_cmd_buffer *cmd,
 {
    uint32_t desc[A6XX_TEX_CONST_DWORDS];
 
-   struct tu_native_format fmt = blit_format_texture(format, TILE6_LINEAR);
+   struct tu_native_format fmt = blit_format_texture<CHIP>(format, TILE6_LINEAR, false);
    enum a6xx_format color_format = fmt.fmt;
    fixup_src_format(&format, dst_format, &color_format);
 
@@ -1261,6 +1276,7 @@ r3d_src_gmem_load(struct tu_cmd_buffer *cmd,
                   VK_FILTER_NEAREST);
 }
 
+template <chip CHIP>
 static void
 r3d_src_gmem(struct tu_cmd_buffer *cmd,
              struct tu_cs *cs,
@@ -1273,7 +1289,7 @@ r3d_src_gmem(struct tu_cmd_buffer *cmd,
    uint32_t desc[A6XX_TEX_CONST_DWORDS];
    memcpy(desc, iview->view.descriptor, sizeof(desc));
 
-   enum a6xx_format fmt = blit_format_texture(format, TILE6_LINEAR).fmt;
+   enum a6xx_format fmt = blit_format_texture<CHIP>(format, TILE6_LINEAR, true).fmt;
    fixup_src_format(&format, dst_format, &fmt);
 
    /* patch the format so that depth/stencil get the right format and swizzle */
@@ -1301,6 +1317,7 @@ r3d_src_gmem(struct tu_cmd_buffer *cmd,
    r3d_src_common(cmd, cs, desc, 0, 0, VK_FILTER_NEAREST);
 }
 
+template <chip CHIP>
 static void
 r3d_dst(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer,
         enum pipe_format src_format)
@@ -1321,6 +1338,9 @@ r3d_dst(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer,
 
    tu_cs_emit_pkt4(cs, REG_A6XX_RB_MRT_FLAG_BUFFER(0), 3);
    tu_cs_image_flag_ref(cs, iview, layer);
+
+   if (CHIP >= A7XX)
+      tu_cs_emit_regs(cs, A7XX_GRAS_LRZ_DEPTH_BUFFER_INFO(0));
 
    /* Use color format from RB_MRT_BUF_INFO. This register is relevant for
     * FMT6_NV12_Y.
@@ -1455,7 +1475,7 @@ r3d_setup(struct tu_cmd_buffer *cmd,
       tu_cs_emit_call(cs, cmd->device->dbg_renderpass_stomp_cs);
    }
 
-   enum a6xx_format fmt = blit_base_format(dst_format, ubwc);
+   enum a6xx_format fmt = blit_base_format<CHIP>(dst_format, ubwc, false);
    fixup_dst_format(src_format, &dst_format, &fmt);
 
    if (!cmd->state.pass) {
@@ -1640,8 +1660,8 @@ static const struct blit_ops r3d_ops = {
    .coords = r3d_coords,
    .clear_value = r3d_clear_value,
    .src = r3d_src,
-   .src_buffer = r3d_src_buffer,
-   .dst = r3d_dst,
+   .src_buffer = r3d_src_buffer<CHIP>,
+   .dst = r3d_dst<CHIP>,
    .dst_depth = r3d_dst_depth,
    .dst_stencil = r3d_dst_stencil,
    .dst_buffer = r3d_dst_buffer,
@@ -1999,7 +2019,7 @@ tu_CmdBlitImage2(VkCommandBuffer commandBuffer,
    }
 
    if (dst_image->lrz_height) {
-      tu_disable_lrz(cmd, &cmd->cs, dst_image);
+      tu_disable_lrz<CHIP>(cmd, &cmd->cs, dst_image);
    }
 }
 TU_GENX(tu_CmdBlitImage2);
@@ -2117,7 +2137,7 @@ tu_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
                               pCopyBufferToImageInfo->pRegions + i);
 
    if (dst_image->lrz_height) {
-      tu_disable_lrz(cmd, &cmd->cs, dst_image);
+      tu_disable_lrz<CHIP>(cmd, &cmd->cs, dst_image);
    }
 }
 TU_GENX(tu_CmdCopyBufferToImage2);
@@ -2217,11 +2237,12 @@ TU_GENX(tu_CmdCopyImageToBuffer2);
  * format, i.e. only when the other image is linear.
  */
 
+template <chip CHIP>
 static bool
 is_swapped_format(enum pipe_format format)
 {
-   struct tu_native_format linear = blit_format_texture(format, TILE6_LINEAR);
-   struct tu_native_format tiled = blit_format_texture(format, TILE6_3);
+   struct tu_native_format linear = blit_format_texture<CHIP>(format, TILE6_LINEAR, false);
+   struct tu_native_format tiled = blit_format_texture<CHIP>(format, TILE6_3, false);
    return linear.fmt != tiled.fmt || linear.swap != tiled.swap;
 }
 
@@ -2308,8 +2329,8 @@ tu_copy_image_to_image(struct tu_cmd_buffer *cmd,
        * due to the different tile layout.
        */
       use_staging_blit = true;
-   } else if (is_swapped_format(src_format) ||
-              is_swapped_format(dst_format)) {
+   } else if (is_swapped_format<CHIP>(src_format) ||
+              is_swapped_format<CHIP>(dst_format)) {
       /* If either format has a non-identity swap, then we can't copy
        * to/from it.
        */
@@ -2460,7 +2481,7 @@ tu_CmdCopyImage2(VkCommandBuffer commandBuffer,
    }
 
    if (dst_image->lrz_height) {
-      tu_disable_lrz(cmd, &cmd->cs, dst_image);
+      tu_disable_lrz<CHIP>(cmd, &cmd->cs, dst_image);
    }
 }
 TU_GENX(tu_CmdCopyImage2);
@@ -2823,7 +2844,7 @@ tu_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
       clear_image<CHIP>(cmd, image, (const VkClearValue*) pDepthStencil, range, range->aspectMask);
    }
 
-   tu_lrz_clear_depth_image(cmd, image, pDepthStencil, rangeCount, pRanges);
+   tu_lrz_clear_depth_image<CHIP>(cmd, image, pDepthStencil, rangeCount, pRanges);
 }
 TU_GENX(tu_CmdClearDepthStencilImage);
 
@@ -3098,7 +3119,7 @@ clear_gmem_attachment(struct tu_cmd_buffer *cmd,
 {
    tu_cs_emit_pkt4(cs, REG_A6XX_RB_BLIT_DST_INFO, 1);
    tu_cs_emit(cs, A6XX_RB_BLIT_DST_INFO_COLOR_FORMAT(
-            blit_base_format(format, false)));
+            blit_base_format<CHIP>(format, false, true)));
 
    tu_cs_emit_regs(cs, A6XX_RB_BLIT_INFO(.gmem = 1, .clear_mask = clear_mask));
 
@@ -3113,6 +3134,9 @@ clear_gmem_attachment(struct tu_cmd_buffer *cmd,
 
    tu_cs_emit_pkt4(cs, REG_A6XX_RB_BLIT_CLEAR_COLOR_DW0, 4);
    tu_cs_emit_array(cs, clear_vals, 4);
+
+   if (CHIP >= A7XX)
+      tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_88E4(.unk0 = 1));
 
    tu_emit_event_write<CHIP>(cmd, cs, FD_BLIT);
 }
@@ -3153,6 +3177,8 @@ tu_emit_clear_gmem_attachment(struct tu_cmd_buffer *cmd,
                                tu_attachment_gmem_offset(cmd, att, layer), value);
       }
    }
+
+   tu_flush_for_access(&cmd->state.renderpass_cache, TU_ACCESS_BLIT_WRITE_GMEM, TU_ACCESS_NONE);
 
    trace_end_gmem_clear(&cmd->trace, cs);
 }
@@ -3434,8 +3460,13 @@ tu_emit_blit(struct tu_cmd_buffer *cmd,
       tu_cs_emit_pkt4(cs, REG_A6XX_RB_UNKNOWN_88D0, 1);
       tu_cs_emit(cs, 0);
 
+      if (CHIP >= A7XX)
+         tu_cs_emit_regs(cs, A7XX_RB_UNKNOWN_88E4(.unk0 = 1));
+
       tu_emit_event_write<CHIP>(cmd, cs, FD_BLIT);
    }
+
+   tu_flush_for_access(&cmd->state.cache, TU_ACCESS_BLIT_WRITE_GMEM, TU_ACCESS_NONE);
 }
 
 static bool
@@ -3454,7 +3485,7 @@ blit_can_resolve(VkFormat format)
     * note: this includes all float formats
     * note2: single channel integer formats seem OK
     */
-   if (desc->channel[0].size > 10)
+   if (desc->channel[0].size > 10 && vk_format_is_color(format))
       return false;
 
    switch (format) {
@@ -3465,8 +3496,6 @@ blit_can_resolve(VkFormat format)
    case VK_FORMAT_R8G8_UINT:
    case VK_FORMAT_R8G8_SINT:
    case VK_FORMAT_R8G8_SRGB:
-   /* TODO: this one should be able to work? */
-   case VK_FORMAT_D24_UNORM_S8_UINT:
       return false;
    default:
       break;
@@ -3702,7 +3731,7 @@ store_cp_blit(struct tu_cmd_buffer *cmd,
       r2d_dst<CHIP>(cs, &iview->view, layer, src_format);
    }
 
-   enum a6xx_format fmt = blit_format_texture(src_format, TILE6_2).fmt;
+   enum a6xx_format fmt = blit_format_texture<CHIP>(src_format, TILE6_2, true).fmt;
    fixup_src_format(&src_format, dst_format, &fmt);
 
    tu_cs_emit_regs(cs,
@@ -3722,8 +3751,13 @@ store_cp_blit(struct tu_cmd_buffer *cmd,
 
    /* sync GMEM writes with CACHE. */
    tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+   if (CHIP >= A7XX)
+      /* On A7XX, we need to wait for any CP_EVENT_WRITE::BLIT operations
+       * arising from GMEM load/clears to land before we can continue.
+       */
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_BLIT_CACHE);
 
-   /* Wait for CACHE_INVALIDATE to land */
+   /* Wait for cache event to land */
    tu_cs_emit_wfi(cs);
 
    r2d_run(cmd, cs);
@@ -3778,10 +3812,10 @@ store_3d_blit(struct tu_cmd_buffer *cmd,
          r3d_dst_stencil(cs, iview, layer);
       }
    } else {
-      r3d_dst(cs, &iview->view, layer, src_format);
+      r3d_dst<CHIP>(cs, &iview->view, layer, src_format);
    }
 
-   r3d_src_gmem(cmd, cs, iview, src_format, dst_format, gmem_offset, cpp);
+   r3d_src_gmem<CHIP>(cmd, cs, iview, src_format, dst_format, gmem_offset, cpp);
 
    /* sync GMEM writes with CACHE. */
    tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
@@ -3855,7 +3889,7 @@ tu_attachment_store_unaligned(struct tu_cmd_buffer *cmd, uint32_t a)
  * current attachments will need.  This has to happen at vkBeginRenderPass()
  * time because tu_attachment_store_unaligned() looks at the image views, which
  * are only available at that point.  This should match the logic for the
- * !unaligned case in tu_store_gmem_attachment().
+ * !use_fast_path case in tu_store_gmem_attachment().
  */
 void
 tu_choose_gmem_layout(struct tu_cmd_buffer *cmd)
@@ -3870,6 +3904,11 @@ tu_choose_gmem_layout(struct tu_cmd_buffer *cmd)
          &cmd->state.pass->attachments[i];
       if ((att->store || att->store_stencil) &&
           tu_attachment_store_unaligned(cmd, i))
+         cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
+      if (att->store && att->format == VK_FORMAT_S8_UINT)
+         /* We cannot pick out S8 from D24S8/D32S8, so we conservatively disable
+          * blit events for the S8_UINT format.
+          */
          cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
       if (att->will_be_resolved && !blit_can_resolve(att->format))
          cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;

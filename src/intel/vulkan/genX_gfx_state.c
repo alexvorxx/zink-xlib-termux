@@ -68,7 +68,7 @@ static const uint32_t genX(vk_to_intel_blend_op)[] = {
 static void
 genX(streamout_prologue)(struct anv_cmd_buffer *cmd_buffer)
 {
-#if GFX_VERx10 >= 120
+#if INTEL_WA_16013994831_GFX_VER
    /* Wa_16013994831 - Disable preemption during streamout, enable back
     * again if XFB not used by the current pipeline.
     *
@@ -93,11 +93,19 @@ genX(streamout_prologue)(struct anv_cmd_buffer *cmd_buffer)
 
 #if GFX_VER >= 12
 static uint32_t
-get_cps_state_offset(struct anv_device *device, bool cps_enabled,
+get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
                      const struct vk_fragment_shading_rate_state *fsr)
 {
-   if (!cps_enabled)
-      return device->cps_states.offset;
+   struct anv_device *device = cmd_buffer->device;
+
+   if (!cps_enabled) {
+      assert(cmd_buffer->state.current_db_mode !=
+             ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
+      return cmd_buffer->state.current_db_mode ==
+             ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
+             device->cps_states_db.offset :
+             device->cps_states.offset;
+   }
 
    uint32_t offset;
    static const uint32_t size_index[] = {
@@ -122,7 +130,12 @@ get_cps_state_offset(struct anv_device *device, bool cps_enabled,
 
    offset *= MAX_VIEWPORTS * GENX(CPS_STATE_length) * 4;
 
-   return device->cps_states.offset + offset;
+   assert(cmd_buffer->state.current_db_mode !=
+          ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
+   return (cmd_buffer->state.current_db_mode ==
+           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
+           device->cps_states_db.offset :
+           device->cps_states.offset) + offset;
 }
 #endif /* GFX_VER >= 12 */
 
@@ -589,7 +602,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       SET(CPS, cps.MinCPSizeY, dyn->fsr.fragment_size.height);
 #elif GFX_VER >= 12
       SET(CPS, cps.CoarsePixelShadingStateArrayPointer,
-               get_cps_state_offset(device, cps_enable, &dyn->fsr));
+               get_cps_state_offset(cmd_buffer, cps_enable, &dyn->fsr));
 #endif
    }
 #endif /* GFX_VER >= 11 */

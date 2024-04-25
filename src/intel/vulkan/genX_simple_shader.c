@@ -30,7 +30,7 @@
 
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
-#include "common/intel_genX_state.h"
+#include "common/intel_genX_state_brw.h"
 
 static void
 genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
@@ -52,7 +52,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
     *
     * Find more about how to set up a 3D pipeline with a fragment shader but
     * without a vertex shader in blorp_emit_vertex_elements() in
-    * blorp_genX_exec.h.
+    * blorp_genX_exec_brw.h.
     */
    GENX(VERTEX_ELEMENT_STATE_pack)(
       batch, dw + 1, &(struct GENX(VERTEX_ELEMENT_STATE)) {
@@ -291,7 +291,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
       /* Re-emit state base addresses so we get the new surface state base
        * address before we start emitting binding tables etc.
        */
-      genX(cmd_buffer_emit_state_base_address)(state->cmd_buffer);
+      genX(cmd_buffer_emit_bt_pool_base_address)(state->cmd_buffer);
 
       state->bt_state =
          anv_cmd_buffer_alloc_binding_table(state->cmd_buffer, 1, &bt_offset);
@@ -567,7 +567,7 @@ genX(emit_simple_shader_dispatch)(struct anv_simple_shader *state,
          cw.GenerateLocalID                = prog_data->generate_local_id != 0;
          cw.EmitLocal                      = prog_data->generate_local_id;
          cw.WalkOrder                      = prog_data->walk_order;
-         cw.TileLayout = prog_data->walk_order == BRW_WALK_ORDER_YXZ ?
+         cw.TileLayout = prog_data->walk_order == INTEL_WALK_ORDER_YXZ ?
                          TileY32bpe : Linear;
 #endif
 

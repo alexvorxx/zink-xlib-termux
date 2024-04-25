@@ -211,12 +211,13 @@ enum radv_ud_index {
    AC_UD_NGG_PROVOKING_VTX = 7,
    AC_UD_NGG_CULLING_SETTINGS = 8,
    AC_UD_NGG_VIEWPORT = 9,
-   AC_UD_VGT_ESGS_RING_ITEMSIZE = 10,
-   AC_UD_FORCE_VRS_RATES = 11,
-   AC_UD_TASK_RING_ENTRY = 12,
-   AC_UD_NUM_VERTS_PER_PRIM = 13,
-   AC_UD_NEXT_STAGE_PC = 14,
-   AC_UD_SHADER_START = 15,
+   AC_UD_NGG_LDS_LAYOUT = 10,
+   AC_UD_VGT_ESGS_RING_ITEMSIZE = 11,
+   AC_UD_FORCE_VRS_RATES = 12,
+   AC_UD_TASK_RING_ENTRY = 13,
+   AC_UD_NUM_VERTS_PER_PRIM = 14,
+   AC_UD_NEXT_STAGE_PC = 15,
+   AC_UD_SHADER_START = 16,
    AC_UD_VS_VERTEX_BUFFERS = AC_UD_SHADER_START,
    AC_UD_VS_BASE_VERTEX_START_INSTANCE,
    AC_UD_VS_PROLOG_INPUTS,
@@ -260,6 +261,11 @@ enum radv_ud_index {
 #define TES_STATE_TCS_VERTICES_OUT__MASK  0xff
 #define TES_STATE_NUM_TCS_OUTPUTS__SHIFT  16
 #define TES_STATE_NUM_TCS_OUTPUTS__MASK   0xff
+
+#define NGG_LDS_LAYOUT_GS_OUT_VERTEX_BASE__SHIFT 0
+#define NGG_LDS_LAYOUT_GS_OUT_VERTEX_BASE__MASK  0xffff
+#define NGG_LDS_LAYOUT_SCRATCH_BASE__SHIFT       16
+#define NGG_LDS_LAYOUT_SCRATCH_BASE__MASK        0xffff
 
 #define PS_STATE_NUM_SAMPLES__SHIFT    0
 #define PS_STATE_NUM_SAMPLES__MASK     0xf
@@ -322,6 +328,7 @@ struct gfx10_ngg_info {
    uint32_t vgt_esgs_ring_itemsize;
    uint32_t esgs_ring_size;
    uint32_t scratch_lds_base;
+   uint32_t lds_size;
    bool max_vert_out_per_gs_instance;
 };
 
@@ -380,6 +387,7 @@ struct radv_shader_info {
       bool has_prolog;
       bool dynamic_inputs;
       bool dynamic_num_verts_per_prim;
+      uint32_t num_outputs; /* For NGG streamout only */
    } vs;
    struct {
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
@@ -408,6 +416,7 @@ struct radv_shader_info {
       unsigned tcs_vertices_out;
       uint8_t num_linked_inputs;
       uint8_t num_linked_outputs;
+      uint32_t num_outputs; /* For NGG streamout only */
    } tes;
    struct {
       bool uses_sample_shading;
@@ -471,7 +480,6 @@ struct radv_shader_info {
       unsigned block_size[3];
 
       bool is_rt_shader;
-      bool uses_ray_launch_size;
       bool uses_dynamic_rt_callable_stack;
       bool uses_rt;
       bool uses_full_subgroups;
@@ -728,40 +736,30 @@ struct radv_shader_object {
 
    gl_shader_stage stage;
 
+   VkShaderCodeTypeEXT code_type;
+
    /* Main shader */
    struct radv_shader *shader;
    struct radv_shader_binary *binary;
 
    /* Shader variants */
-   union {
-      struct {
-         /* VS + TCS */
-         struct {
-            struct radv_shader *shader;
-            struct radv_shader_binary *binary;
-         } as_ls;
+   /* VS before TCS */
+   struct {
+      struct radv_shader *shader;
+      struct radv_shader_binary *binary;
+   } as_ls;
 
-         /* VS + GS */
-         struct {
-            struct radv_shader *shader;
-            struct radv_shader_binary *binary;
-         } as_es;
-      } vs;
+   /* VS/TES before GS */
+   struct {
+      struct radv_shader *shader;
+      struct radv_shader_binary *binary;
+   } as_es;
 
-      struct {
-         /* TES + GS */
-         struct {
-            struct radv_shader *shader;
-            struct radv_shader_binary *binary;
-         } as_es;
-      } tes;
-
-      struct {
-         /* GS copy shader */
-         struct radv_shader *copy_shader;
-         struct radv_shader_binary *copy_binary;
-      } gs;
-   };
+   /* GS copy shader */
+   struct {
+      struct radv_shader *copy_shader;
+      struct radv_shader_binary *copy_binary;
+   } gs;
 
    uint32_t push_constant_size;
    uint32_t dynamic_offset_count;
@@ -1059,6 +1057,9 @@ void radv_nir_shader_info_init(gl_shader_stage stage, gl_shader_stage next_stage
 
 void radv_nir_shader_info_link(struct radv_device *device, const struct radv_graphics_state_key *gfx_state,
                                struct radv_shader_stage *stages);
+
+void gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info,
+                        struct radv_shader_info *gs_info, struct gfx10_ngg_info *out);
 
 void radv_shader_combine_cfg_vs_tcs(const struct radv_shader *vs, const struct radv_shader *tcs, uint32_t *rsrc1_out,
                                     uint32_t *rsrc2_out);

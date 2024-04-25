@@ -23,11 +23,13 @@
 
 #include "anv_private.h"
 
+#include "compiler/intel_nir.h"
 #include "compiler/brw_compiler.h"
 #include "compiler/brw_nir.h"
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 #include "dev/intel_debug.h"
+#include "intel/compiler/intel_nir.h"
 #include "util/macros.h"
 
 #include "vk_nir.h"

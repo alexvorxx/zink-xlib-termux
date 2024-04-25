@@ -344,6 +344,7 @@ template = """\
 #include <stdbool.h>
 #include <stdint.h>
 #include <util/bitset.h>
+#include <util/log.h>
 
 <%
 isa = s.isa

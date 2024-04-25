@@ -251,7 +251,7 @@ struct radeon_winsys {
                              struct radeon_winsys_bo **out_bo);
 
    void (*buffer_destroy)(struct radeon_winsys *ws, struct radeon_winsys_bo *bo);
-   void *(*buffer_map)(struct radeon_winsys_bo *bo);
+   void *(*buffer_map)(struct radeon_winsys *ws, struct radeon_winsys_bo *bo, bool use_fixed_addr, void *fixed_addr);
 
    VkResult (*buffer_from_ptr)(struct radeon_winsys *ws, void *pointer, uint64_t size, unsigned priority,
                                struct radeon_winsys_bo **out_bo);
@@ -264,7 +264,7 @@ struct radeon_winsys {
    bool (*buffer_get_flags_from_fd)(struct radeon_winsys *ws, int fd, enum radeon_bo_domain *domains,
                                     enum radeon_bo_flag *flags);
 
-   void (*buffer_unmap)(struct radeon_winsys_bo *bo);
+   void (*buffer_unmap)(struct radeon_winsys *ws, struct radeon_winsys_bo *bo, bool replace);
 
    void (*buffer_set_metadata)(struct radeon_winsys *ws, struct radeon_winsys_bo *bo, struct radeon_bo_metadata *md);
    void (*buffer_get_metadata)(struct radeon_winsys *ws, struct radeon_winsys_bo *bo, struct radeon_bo_metadata *md);
@@ -358,6 +358,12 @@ radv_cs_add_buffer(struct radeon_winsys *ws, struct radeon_cmdbuf *cs, struct ra
       return;
 
    ws->cs_add_buffer(cs, bo);
+}
+
+static inline void *
+radv_buffer_map(struct radeon_winsys *ws, struct radeon_winsys_bo *bo)
+{
+   return ws->buffer_map(ws, bo, false, NULL);
 }
 
 #endif /* RADV_RADEON_WINSYS_H */

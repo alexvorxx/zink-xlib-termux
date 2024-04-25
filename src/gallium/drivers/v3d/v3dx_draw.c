@@ -174,7 +174,7 @@ v3d_predraw_check_stage_inputs(struct pipe_context *pctx,
                         v3d_update_shadow_texture(pctx, &view->base);
 
                 v3d_flush_jobs_writing_resource(v3d, view->texture,
-                                                V3D_FLUSH_DEFAULT,
+                                                V3D_FLUSH_NOT_CURRENT_JOB,
                                                 s == PIPE_SHADER_COMPUTE);
         }
 
@@ -1026,12 +1026,16 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
                 u_foreach_bit(i, v3d->ssbo[s].enabled_mask) {
                         v3d_job_add_write_resource(job,
                                                    v3d->ssbo[s].sb[i].buffer);
+                        struct v3d_resource *rsc= v3d_resource(v3d->ssbo[s].sb[i].buffer);
+                        rsc->graphics_written = true;
                         job->tmu_dirty_rcl = true;
                 }
 
                 u_foreach_bit(i, v3d->shaderimg[s].enabled_mask) {
                         v3d_job_add_write_resource(job,
                                                    v3d->shaderimg[s].si[i].base.resource);
+                        struct v3d_resource *rsc= v3d_resource(v3d->shaderimg[s].si[i].base.resource);
+                        rsc->graphics_written = true;
                         job->tmu_dirty_rcl = true;
                 }
         }
@@ -1390,7 +1394,7 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
                 v3d->compute_shared_memory =
                         v3d_bo_alloc(v3d->screen,
                                      v3d->prog.compute->prog_data.compute->shared_size *
-                                     wgs_per_sg,
+                                     num_wgs,
                                      "shared_vars");
         }
 

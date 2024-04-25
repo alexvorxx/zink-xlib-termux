@@ -36,7 +36,6 @@
 #include "util/u_inlines.h"
 #include "util/u_transfer.h"
 #include "util/u_upload_mgr.h"
-#include "intel/compiler/brw_compiler.h"
 #include "compiler/shader_info.h"
 #include "iris_context.h"
 #include "iris_defines.h"
@@ -66,7 +65,6 @@ iris_update_draw_info(struct iris_context *ice,
 {
    struct iris_screen *screen = (struct iris_screen *)ice->ctx.screen;
    const struct intel_device_info *devinfo = screen->devinfo;
-   const struct brw_compiler *compiler = screen->compiler;
 
    if (ice->state.prim_mode != info->mode) {
       ice->state.prim_mode = info->mode;
@@ -87,7 +85,7 @@ iris_update_draw_info(struct iris_context *ice,
       ice->state.dirty |= IRIS_DIRTY_VF_TOPOLOGY;
 
       /* MULTI_PATCH TCS needs this for key->input_vertices */
-      if (compiler->use_tcs_multi_patch)
+      if (iris_use_tcs_multi_patch(screen))
          ice->state.stage_dirty |= IRIS_STAGE_DIRTY_UNCOMPILED_TCS;
 
       /* Flag constants dirty for gl_PatchVerticesIn if needed. */
@@ -309,7 +307,7 @@ iris_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info *info,
    iris_update_compiled_shaders(ice);
 
    if (ice->state.dirty & IRIS_DIRTY_RENDER_RESOLVES_AND_FLUSHES) {
-      bool draw_aux_buffer_disabled[BRW_MAX_DRAW_BUFFERS] = { };
+      bool draw_aux_buffer_disabled[IRIS_MAX_DRAW_BUFFERS] = { };
       for (gl_shader_stage stage = 0; stage < MESA_SHADER_COMPUTE; stage++) {
          if (ice->shaders.prog[stage])
             iris_predraw_resolve_inputs(ice, batch, draw_aux_buffer_disabled,

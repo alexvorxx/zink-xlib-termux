@@ -57,7 +57,7 @@
 void
 _mesa_init_performance_monitors(struct gl_context *ctx)
 {
-   ctx->PerfMonitor.Monitors = _mesa_NewHashTable();
+   _mesa_InitHashTable(&ctx->PerfMonitor.Monitors);
    ctx->PerfMonitor.NumGroups = 0;
    ctx->PerfMonitor.Groups = NULL;
 }
@@ -496,7 +496,7 @@ free_performance_monitor(void *data, void *user)
 void
 _mesa_free_performance_monitors(struct gl_context *ctx)
 {
-   _mesa_DeleteHashTable(ctx->PerfMonitor.Monitors, free_performance_monitor,
+   _mesa_DeinitHashTable(&ctx->PerfMonitor.Monitors, free_performance_monitor,
                          ctx);
 }
 
@@ -504,7 +504,7 @@ static inline struct gl_perf_monitor_object *
 lookup_monitor(struct gl_context *ctx, GLuint id)
 {
    return (struct gl_perf_monitor_object *)
-      _mesa_HashLookup(ctx->PerfMonitor.Monitors, id);
+      _mesa_HashLookup(&ctx->PerfMonitor.Monitors, id);
 }
 
 static inline const struct gl_perf_monitor_group *
@@ -734,7 +734,7 @@ _mesa_GenPerfMonitorsAMD(GLsizei n, GLuint *monitors)
    if (monitors == NULL)
       return;
 
-   if (_mesa_HashFindFreeKeys(ctx->PerfMonitor.Monitors, monitors, n)) {
+   if (_mesa_HashFindFreeKeys(&ctx->PerfMonitor.Monitors, monitors, n)) {
       GLsizei i;
       for (i = 0; i < n; i++) {
          struct gl_perf_monitor_object *m =
@@ -743,7 +743,7 @@ _mesa_GenPerfMonitorsAMD(GLsizei n, GLuint *monitors)
             _mesa_error(ctx, GL_OUT_OF_MEMORY, "glGenPerfMonitorsAMD");
             return;
          }
-         _mesa_HashInsert(ctx->PerfMonitor.Monitors, monitors[i], m, true);
+         _mesa_HashInsert(&ctx->PerfMonitor.Monitors, monitors[i], m);
       }
    } else {
       _mesa_error(ctx, GL_OUT_OF_MEMORY, "glGenPerfMonitorsAMD");
@@ -778,7 +778,7 @@ _mesa_DeletePerfMonitorsAMD(GLsizei n, GLuint *monitors)
             m->Ended = false;
          }
 
-         _mesa_HashRemove(ctx->PerfMonitor.Monitors, monitors[i]);
+         _mesa_HashRemove(&ctx->PerfMonitor.Monitors, monitors[i]);
          ralloc_free(m->ActiveGroups);
          ralloc_free(m->ActiveCounters);
          delete_perf_monitor(ctx, m);

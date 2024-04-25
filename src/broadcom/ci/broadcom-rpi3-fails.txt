@@ -906,7 +906,6 @@ spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT24- swizzled,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT32,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT32- NPOT,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT32- swizzled,Fail
-spec@arb_draw_buffers@fbo-mrt-alphatest,Fail
 spec@arb_draw_elements_base_vertex@arb_draw_elements_base_vertex-negative-index,Crash
 spec@arb_draw_elements_base_vertex@arb_draw_elements_base_vertex-negative-index-user_varrays,Crash
 spec@arb_es2_compatibility@texwrap formats,Fail

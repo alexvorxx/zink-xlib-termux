@@ -35,6 +35,7 @@
 #include "anv_private.h"
 #include "compiler/brw_nir.h"
 #include "compiler/brw_nir_rt.h"
+#include "compiler/intel_nir.h"
 #include "anv_nir.h"
 #include "nir/nir_xfb_info.h"
 #include "spirv/nir_spirv.h"
@@ -144,6 +145,7 @@ anv_shader_stage_to_nir(struct anv_device *device,
    const bool rt_enabled = ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
    const struct spirv_to_nir_options spirv_options = {
       .caps = {
+         .amd_image_gather_bias_lod = pdevice->info.ver >= 20,
          .cooperative_matrix = anv_has_cooperative_matrix(pdevice),
          .demote_to_helper_invocation = true,
          .derivative_group = true,
@@ -418,6 +420,7 @@ struct anv_pipeline_stage {
 
    struct anv_pipeline_binding surface_to_descriptor[256];
    struct anv_pipeline_binding sampler_to_descriptor[256];
+   struct anv_pipeline_embedded_sampler_binding embedded_sampler_to_binding[2048];
    struct anv_pipeline_bind_map bind_map;
 
    bool uses_bt_for_push_descs;
@@ -575,7 +578,7 @@ populate_mesh_prog_key(struct anv_pipeline_stage *stage,
 static uint32_t
 rp_color_mask(const struct vk_render_pass_state *rp)
 {
-   if (rp == NULL || rp->attachment_aspects == VK_IMAGE_ASPECT_METADATA_BIT)
+   if (rp == NULL || !vk_render_pass_state_has_attachment_info(rp))
       return ((1u << MAX_RTS) - 1);
 
    uint32_t color_mask = 0;
@@ -711,13 +714,7 @@ anv_stage_write_shader_hash(struct anv_pipeline_stage *stage,
 
    vk_pipeline_hash_shader_stage(stage->info, &stage->rstate, stage->shader_sha1);
 
-   stage->robust_flags =
-      ((stage->rstate.storage_buffers !=
-        VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT) ?
-       BRW_ROBUSTNESS_SSBO : 0) |
-      ((stage->rstate.uniform_buffers !=
-        VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT) ?
-       BRW_ROBUSTNESS_UBO : 0);
+   stage->robust_flags = anv_get_robust_flags(&stage->rstate);
 
    /* Use lowest dword of source shader sha1 for shader hash. */
    stage->source_hash = ((uint32_t*)stage->shader_sha1)[0];
@@ -1048,13 +1045,10 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
             &(struct brw_nir_lower_storage_image_opts) {
                /* Anv only supports Gfx9+ which has better defined typed read
                 * behavior. It allows us to only have to care about lowering
-                * loads/atomics.
+                * loads.
                 */
                .devinfo = compiler->devinfo,
                .lower_loads = true,
-               .lower_stores = false,
-               .lower_atomics = true,
-               .lower_get_size = false,
             });
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
@@ -1125,8 +1119,8 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
                   .callback = NULL,
                });
 
-      NIR_PASS(_, nir, brw_nir_lower_non_uniform_resource_intel);
-      NIR_PASS(_, nir, brw_nir_cleanup_resource_intel);
+      NIR_PASS(_, nir, intel_nir_lower_non_uniform_resource_intel);
+      NIR_PASS(_, nir, intel_nir_cleanup_resource_intel);
       NIR_PASS(_, nir, nir_opt_dce);
    }
 
@@ -1137,7 +1131,8 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
    NIR_PASS_V(nir, anv_nir_compute_push_layout,
               pdevice, stage->key.base.robust_flags,
               anv_graphics_pipeline_stage_fragment_dynamic(stage),
-              prog_data, &stage->bind_map, &push_map, mem_ctx);
+              prog_data, &stage->bind_map, &push_map,
+              pipeline->layout.type, mem_ctx);
 
    NIR_PASS_V(nir, anv_nir_lower_resource_intel, pdevice,
               pipeline->layout.type);
@@ -1639,6 +1634,12 @@ anv_pipeline_add_executable(struct anv_pipeline *pipeline,
                fprintf(stream, "Vulkan push constants and API params");
                break;
 
+            case ANV_DESCRIPTOR_SET_DESCRIPTORS_BUFFER:
+               fprintf(stream, "Descriptor buffer (desc buffer) for set %d (start=%dB)",
+                       stage->bind_map.push_ranges[i].index,
+                       stage->bind_map.push_ranges[i].start * 32);
+               break;
+
             case ANV_DESCRIPTOR_SET_DESCRIPTORS:
                fprintf(stream, "Descriptor buffer for set %d (start=%dB)",
                        stage->bind_map.push_ranges[i].index,
@@ -1733,7 +1734,7 @@ anv_pipeline_account_shader(struct anv_pipeline *pipeline,
 
    if (shader->push_desc_info.used_set_buffer) {
       pipeline->use_push_descriptor_buffer |=
-         BITFIELD_BIT(mesa_to_vk_shader_stage(shader->stage));
+         mesa_to_vk_shader_stage(shader->stage);
    }
    if (shader->push_desc_info.used_descriptors &
        ~shader->push_desc_info.fully_promoted_ubo_descriptors)
@@ -2012,7 +2013,8 @@ anv_graphics_pipeline_load_nir(struct anv_graphics_base_pipeline *pipeline,
 
       stages[s].bind_map = (struct anv_pipeline_bind_map) {
          .surface_to_descriptor = stages[s].surface_to_descriptor,
-         .sampler_to_descriptor = stages[s].sampler_to_descriptor
+         .sampler_to_descriptor = stages[s].sampler_to_descriptor,
+         .embedded_sampler_to_binding = stages[s].embedded_sampler_to_binding,
       };
 
       /* Only use the create NIR from the pStages[] element if we don't have
@@ -2621,7 +2623,8 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
 
       stage.bind_map = (struct anv_pipeline_bind_map) {
          .surface_to_descriptor = stage.surface_to_descriptor,
-         .sampler_to_descriptor = stage.sampler_to_descriptor
+         .sampler_to_descriptor = stage.sampler_to_descriptor,
+         .embedded_sampler_to_binding = stage.embedded_sampler_to_binding,
       };
 
       /* Set up a binding for the gl_NumWorkGroups */
@@ -3025,7 +3028,8 @@ anv_graphics_pipeline_import_lib(struct anv_graphics_base_pipeline *pipeline,
 
       stages[s].bind_map = (struct anv_pipeline_bind_map) {
          .surface_to_descriptor = stages[s].surface_to_descriptor,
-         .sampler_to_descriptor = stages[s].sampler_to_descriptor
+         .sampler_to_descriptor = stages[s].sampler_to_descriptor,
+         .embedded_sampler_to_binding = stages[s].embedded_sampler_to_binding,
       };
    }
 
@@ -3418,9 +3422,6 @@ compile_upload_rt_shader(struct anv_ray_tracing_pipeline *pipeline,
    if (stage->code == NULL)
       return vk_error(pipeline, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   /* Ray-tracing shaders don't have a "real" bind map */
-   struct anv_pipeline_bind_map empty_bind_map = {};
-
    struct anv_shader_upload_params upload_params = {
       .stage               = stage->stage,
       .key_data            = &stage->cache_key,
@@ -3431,7 +3432,7 @@ compile_upload_rt_shader(struct anv_ray_tracing_pipeline *pipeline,
       .prog_data_size      = brw_prog_data_size(stage->stage),
       .stats               = stage->stats,
       .num_stats           = 1,
-      .bind_map            = &empty_bind_map,
+      .bind_map            = &stage->bind_map,
       .push_desc_info      = &stage->push_desc_info,
       .dynamic_push_values = stage->dynamic_push_values,
    };
@@ -3556,6 +3557,9 @@ anv_pipeline_init_ray_tracing_stages(struct anv_ray_tracing_pipeline *pipeline,
             .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
          },
       };
+
+      stages[i].bind_map.embedded_sampler_to_binding =
+         stages[i].embedded_sampler_to_binding;
 
       pipeline->base.active_stages |= sinfo->stage;
 

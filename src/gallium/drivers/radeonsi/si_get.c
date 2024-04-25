@@ -164,6 +164,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_HAS_CONST_BW:
    case PIPE_CAP_FENCE_SIGNAL:
    case PIPE_CAP_NATIVE_FENCE_FD:
+   case PIPE_CAP_CL_GL_SHARING:
       return 1;
 
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
@@ -904,7 +905,7 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
       return 1;
    case PIPE_VIDEO_CAP_MIN_WIDTH:
    case PIPE_VIDEO_CAP_MIN_HEIGHT:
-      return 64;
+      return (codec == PIPE_VIDEO_FORMAT_AV1) ? 16 : 64;
    case PIPE_VIDEO_CAP_MAX_WIDTH:
       if (codec != PIPE_VIDEO_FORMAT_UNKNOWN && QUERYABLE_KERNEL)
             return KERNEL_DEC_CAP(codec, max_width);

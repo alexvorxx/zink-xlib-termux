@@ -40,7 +40,13 @@ struct ac_wave_info {
    bool matched; /* whether the wave is used by a currently-bound shader */
 };
 
-typedef void *(*ac_debug_addr_callback)(void *data, uint64_t addr);
+struct ac_addr_info {
+   void *cpu_addr;
+   bool valid;
+   bool use_after_free;
+};
+
+typedef void (*ac_debug_addr_callback)(void *data, uint64_t addr, struct ac_addr_info *info);
 
 /* ac_debug.c */
 const struct si_reg *ac_find_register(enum amd_gfx_level gfx_level, enum radeon_family family,

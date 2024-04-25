@@ -577,7 +577,7 @@ radv_emit_tess_factor_ring(struct radv_device *device, struct radeon_cmdbuf *cs,
 static VkResult
 radv_initialise_task_control_buffer(struct radv_device *device, struct radeon_winsys_bo *task_rings_bo)
 {
-   uint32_t *ptr = (uint32_t *)device->ws->buffer_map(task_rings_bo);
+   uint32_t *ptr = (uint32_t *)radv_buffer_map(device->ws, task_rings_bo);
    if (!ptr)
       return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 
@@ -601,7 +601,7 @@ radv_initialise_task_control_buffer(struct radv_device *device, struct radeon_wi
    ptr[7] = task_draw_ring_va;
    ptr[8] = task_draw_ring_va >> 32;
 
-   device->ws->buffer_unmap(task_rings_bo);
+   device->ws->buffer_unmap(device->ws, task_rings_bo, false);
    return VK_SUCCESS;
 }
 
@@ -982,7 +982,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
    }
 
    if (descriptor_bo != queue->descriptor_bo) {
-      uint32_t *map = (uint32_t *)ws->buffer_map(descriptor_bo);
+      uint32_t *map = (uint32_t *)radv_buffer_map(ws, descriptor_bo);
       if (!map) {
          result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
          goto fail;
@@ -992,7 +992,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
                              gsvs_ring_bo, tess_rings_bo, task_rings_bo, mesh_scratch_ring_bo, needs->attr_ring_size,
                              attr_ring_bo);
 
-      ws->buffer_unmap(descriptor_bo);
+      ws->buffer_unmap(ws, descriptor_bo, false);
    }
 
    for (int i = 0; i < 3; ++i) {
@@ -1169,6 +1169,8 @@ radv_update_preambles(struct radv_queue_state *queue, struct radv_device *device
                       struct vk_command_buffer *const *cmd_buffers, uint32_t cmd_buffer_count, bool *use_perf_counters,
                       bool *has_follower)
 {
+   bool has_indirect_pipeline_binds = false;
+
    if (queue->qf != RADV_QUEUE_GENERAL && queue->qf != RADV_QUEUE_COMPUTE) {
       for (uint32_t j = 0; j < cmd_buffer_count; j++) {
          struct radv_cmd_buffer *cmd_buffer = container_of(cmd_buffers[j], struct radv_cmd_buffer, vk);
@@ -1207,6 +1209,16 @@ radv_update_preambles(struct radv_queue_state *queue, struct radv_device *device
       needs.sample_positions |= cmd_buffer->sample_positions_needed;
       *use_perf_counters |= cmd_buffer->state.uses_perf_counters;
       *has_follower |= !!cmd_buffer->gang.cs;
+
+      has_indirect_pipeline_binds |= cmd_buffer->has_indirect_pipeline_binds;
+   }
+
+   if (has_indirect_pipeline_binds) {
+      /* Use the maximum possible scratch size for indirect compute pipelines with DGC. */
+      simple_mtx_lock(&device->compute_scratch_mtx);
+      needs.compute_scratch_size_per_wave = MAX2(needs.compute_scratch_waves, device->compute_scratch_size_per_wave);
+      needs.compute_scratch_waves = MAX2(needs.compute_scratch_waves, device->compute_scratch_waves);
+      simple_mtx_unlock(&device->compute_scratch_mtx);
    }
 
    /* Sanitize scratch size information. */
@@ -1751,7 +1763,7 @@ radv_queue_submit(struct vk_queue *vqueue, struct vk_queue_submit *submission)
    struct radv_queue *queue = (struct radv_queue *)vqueue;
    VkResult result;
 
-   if (queue->device->instance->drirc.legacy_sparse_binding) {
+   if (!radv_sparse_queue_enabled(queue->device->physical_device)) {
       result = radv_queue_submit_bind_sparse_memory(queue->device, submission);
       if (result != VK_SUCCESS)
          goto fail;

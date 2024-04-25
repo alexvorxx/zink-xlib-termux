@@ -389,7 +389,7 @@ update_vao(struct gl_context *ctx,
    assert((vao_enabled & ~(*vao)->VertexAttribBufferMask) == 0);
 
    /* Finalize and freeze the VAO */
-   _mesa_update_vao_derived_arrays(ctx, *vao);
+   _mesa_update_vao_derived_arrays(ctx, *vao, true);
    (*vao)->SharedAndImmutable = true;
 }
 

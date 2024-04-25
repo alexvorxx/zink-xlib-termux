@@ -20,7 +20,6 @@
 #include "util/u_upload_mgr.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir/nir_serialize.h"
-#include "intel/compiler/brw_compiler.h"
 #include "intel/common/intel_aux_map.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_sample_positions.h"
@@ -33,7 +32,14 @@
 #include "iris_utrace.h"
 
 #include "iris_genx_macros.h"
-#include "intel/common/intel_genX_state.h"
+
+#if GFX_VER >= 9
+#include "intel/compiler/brw_compiler.h"
+#include "intel/common/intel_genX_state_brw.h"
+#else
+#include "intel/compiler/elk/elk_compiler.h"
+#include "intel/common/intel_genX_state_elk.h"
+#endif
 
 #include "drm-uapi/i915_drm.h"
 
@@ -73,7 +79,11 @@ static nir_shader *
 load_shader_lib(struct iris_screen *screen, void *mem_ctx)
 {
    const nir_shader_compiler_options *nir_options =
-      screen->compiler->nir_options[MESA_SHADER_KERNEL];
+#if GFX_VER >= 9
+      screen->brw->nir_options[MESA_SHADER_KERNEL];
+#else
+      screen->elk->nir_options[MESA_SHADER_KERNEL];
+#endif
 
    struct blob_reader blob;
    blob_reader_init(&blob, (void *)genX(intel_shaders_nir),
@@ -263,14 +273,14 @@ emit_indirect_generate_draw(struct iris_batch *batch,
       raster.CullMode = CULLMODE_NONE;
    }
 
-   const struct brw_wm_prog_data *wm_prog_data = (void *)
-      ice->draw.generation.shader->prog_data;
+   const struct iris_compiled_shader *shader = ice->draw.generation.shader;
+   const struct iris_fs_data *fs_data = iris_fs_data_const(shader);
 
    iris_emit_cmd(batch, GENX(3DSTATE_SBE), sbe) {
       sbe.VertexURBEntryReadOffset = 1;
-      sbe.NumberofSFOutputAttributes = wm_prog_data->num_varying_inputs;
-      sbe.VertexURBEntryReadLength = MAX2((wm_prog_data->num_varying_inputs + 1) / 2, 1);
-      sbe.ConstantInterpolationEnable = wm_prog_data->flat_inputs;
+      sbe.NumberofSFOutputAttributes = fs_data->num_varying_inputs;
+      sbe.VertexURBEntryReadLength = MAX2((fs_data->num_varying_inputs + 1) / 2, 1);
+      sbe.ConstantInterpolationEnable = fs_data->flat_inputs;
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
 #if GFX_VER >= 9
@@ -280,23 +290,29 @@ emit_indirect_generate_draw(struct iris_batch *batch,
    }
 
    iris_emit_cmd(batch, GENX(3DSTATE_WM), wm) {
-      if (wm_prog_data->has_side_effects || wm_prog_data->uses_kill)
+      if (fs_data->has_side_effects || fs_data->uses_kill)
          wm.ForceThreadDispatchEnable = ForceON;
    }
 
    iris_emit_cmd(batch, GENX(3DSTATE_PS), ps) {
+#if GFX_VER >= 9
+      struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(shader->brw_prog_data);
+#else
+      struct elk_wm_prog_data *wm_prog_data = elk_wm_prog_data(shader->elk_prog_data);
+#endif
       intel_set_ps_dispatch_state(&ps, devinfo, wm_prog_data,
                                   1 /* rasterization_samples */,
                                   0 /* msaa_flags */);
 
-      ps.VectorMaskEnable       = wm_prog_data->uses_vmask;
+      ps.VectorMaskEnable       = fs_data->uses_vmask;
 
       ps.BindingTableEntryCount = GFX_VER == 9 ? 1 : 0;
 #if GFX_VER < 20
-      ps.PushConstantEnable     = wm_prog_data->base.nr_params > 0 ||
-                                  wm_prog_data->base.ubo_ranges[0].length;
+      ps.PushConstantEnable     = shader->nr_params > 0 ||
+                                  shader->ubo_ranges[0].length;
 #endif
 
+#if GFX_VER >= 9
       ps.DispatchGRFStartRegisterForConstantSetupData0 =
          brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
       ps.DispatchGRFStartRegisterForConstantSetupData1 =
@@ -314,6 +330,21 @@ emit_indirect_generate_draw(struct iris_batch *batch,
       ps.KernelStartPointer2 = KSP(ice->draw.generation.shader) +
          brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
 #endif
+#else
+      ps.DispatchGRFStartRegisterForConstantSetupData0 =
+         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
+      ps.DispatchGRFStartRegisterForConstantSetupData1 =
+         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
+      ps.DispatchGRFStartRegisterForConstantSetupData2 =
+         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
+
+      ps.KernelStartPointer0 = KSP(ice->draw.generation.shader) +
+         elk_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
+      ps.KernelStartPointer1 = KSP(ice->draw.generation.shader) +
+         elk_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
+      ps.KernelStartPointer2 = KSP(ice->draw.generation.shader) +
+         elk_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
+#endif
 
       ps.MaximumNumberofThreadsPerPSD = devinfo->max_threads_per_psd - 1;
    }
@@ -321,17 +352,17 @@ emit_indirect_generate_draw(struct iris_batch *batch,
    iris_emit_cmd(batch, GENX(3DSTATE_PS_EXTRA), psx) {
       psx.PixelShaderValid = true;
 #if GFX_VER < 20
-      psx.AttributeEnable = wm_prog_data->num_varying_inputs > 0;
+      psx.AttributeEnable = fs_data->num_varying_inputs > 0;
 #endif
-      psx.PixelShaderIsPerSample = wm_prog_data->persample_dispatch;
-      psx.PixelShaderComputedDepthMode = wm_prog_data->computed_depth_mode;
+      psx.PixelShaderIsPerSample = fs_data->is_per_sample;
+      psx.PixelShaderComputedDepthMode = fs_data->computed_depth_mode;
 #if GFX_VER >= 9
 #if GFX_VER >= 20
-      assert(!wm_prog_data->pulls_bary);
+      assert(!fs_data->pulls_bary);
 #else
-      psx.PixelShaderPullsBary = wm_prog_data->pulls_bary;
+      psx.PixelShaderPullsBary = fs_data->pulls_bary;
 #endif
-      psx.PixelShaderComputesStencil = wm_prog_data->computed_stencil;
+      psx.PixelShaderComputesStencil = fs_data->computed_stencil;
 #endif
       psx.PixelShaderHasUAV = GFX_VER == 8;
    }
@@ -548,8 +579,7 @@ ensure_ring_bo(struct iris_context *ice, struct iris_screen *screen)
       iris_bo_alloc(bufmgr, "gen ring",
                     RING_SIZE, 8, IRIS_MEMZONE_OTHER,
                     BO_ALLOC_NO_SUBALLOC);
-   iris_get_backing_bo(ice->draw.generation.ring_bo)->real.kflags |= EXEC_OBJECT_CAPTURE;
-
+   iris_get_backing_bo(ice->draw.generation.ring_bo)->real.capture = true;
 }
 
 struct iris_gen_indirect_params *

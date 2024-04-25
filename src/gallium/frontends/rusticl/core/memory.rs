@@ -111,6 +111,50 @@ impl Mappings {
     }
 }
 
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct ConstMemoryPtr {
+    ptr: *const c_void,
+}
+unsafe impl Send for ConstMemoryPtr {}
+unsafe impl Sync for ConstMemoryPtr {}
+
+impl ConstMemoryPtr {
+    pub fn as_ptr(&self) -> *const c_void {
+        self.ptr
+    }
+
+    /// # Safety
+    ///
+    /// Users need to ensure that `ptr` is only accessed in a thread-safe manner sufficient for
+    /// [Send] and [Sync]
+    pub unsafe fn from_ptr(ptr: *const c_void) -> Self {
+        Self { ptr: ptr }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct MutMemoryPtr {
+    ptr: *mut c_void,
+}
+unsafe impl Send for MutMemoryPtr {}
+unsafe impl Sync for MutMemoryPtr {}
+
+impl MutMemoryPtr {
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.ptr
+    }
+
+    /// # Safety
+    ///
+    /// Users need to ensure that `ptr` is only accessed in a thread-safe manner sufficient for
+    /// [Send] and [Sync]
+    pub unsafe fn from_ptr(ptr: *mut c_void) -> Self {
+        Self { ptr: ptr }
+    }
+}
+
 pub enum Mem {
     Buffer(Arc<Buffer>),
     Image(Arc<Image>),
@@ -128,7 +172,7 @@ impl Deref for Mem {
 }
 
 impl Mem {
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
         match self {
             Self::Buffer(b) => b.unmap(q, ctx, ptr),
             Self::Image(i) => i.unmap(q, ctx, ptr),
@@ -168,7 +212,9 @@ pub struct MemBase {
     pub mem_type: cl_mem_object_type,
     pub flags: cl_mem_flags,
     pub size: usize,
-    pub host_ptr: *mut c_void,
+    // it's a bit hacky, but storing the pointer as `usize` gives us `Send` and `Sync`. The
+    // application is required to ensure no data races exist on the memory anyway.
+    pub host_ptr: usize,
     pub props: Vec<cl_mem_properties>,
     pub cbs: Mutex<Vec<MemCB>>,
     pub gl_obj: Option<GLObject>,
@@ -372,9 +418,9 @@ impl MemBase {
         )?;
 
         let host_ptr = if bit_check(flags, CL_MEM_USE_HOST_PTR) {
-            host_ptr
+            host_ptr as usize
         } else {
-            ptr::null_mut()
+            0
         };
 
         Ok(Arc::new(Buffer {
@@ -402,10 +448,10 @@ impl MemBase {
         offset: usize,
         size: usize,
     ) -> Arc<Buffer> {
-        let host_ptr = if parent.host_ptr.is_null() {
-            ptr::null_mut()
+        let host_ptr = if parent.host_ptr().is_null() {
+            0
         } else {
-            unsafe { parent.host_ptr.add(offset) }
+            unsafe { parent.host_ptr().add(offset) as usize }
         };
 
         Arc::new(Buffer {
@@ -485,9 +531,9 @@ impl MemBase {
         };
 
         let host_ptr = if bit_check(flags, CL_MEM_USE_HOST_PTR) {
-            host_ptr
+            host_ptr as usize
         } else {
-            ptr::null_mut()
+            0
         };
 
         let pipe_format = image_format.to_pipe_format().unwrap();
@@ -600,7 +646,7 @@ impl MemBase {
             mem_type: mem_type,
             flags: flags,
             size: gl_mem_props.size(),
-            host_ptr: ptr::null_mut(),
+            host_ptr: 0,
             props: Vec::new(),
             gl_obj: Some(GLObject {
                 gl_object_target: gl_export_manager.export_in.target,
@@ -654,7 +700,7 @@ impl MemBase {
     // implement this.
     pub fn is_svm(&self) -> bool {
         let mem = self.get_parent();
-        self.context.find_svm_alloc(mem.host_ptr.cast()).is_some()
+        self.context.find_svm_alloc(mem.host_ptr).is_some()
             && bit_check(mem.flags, CL_MEM_USE_HOST_PTR)
     }
 
@@ -677,6 +723,10 @@ impl MemBase {
     fn has_user_shadow_buffer(&self, d: &Device) -> CLResult<bool> {
         let r = self.get_res_of_dev(d)?;
         Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
+    }
+
+    pub fn host_ptr(&self) -> *mut c_void {
+        self.host_ptr as *mut c_void
     }
 
     pub fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
@@ -845,9 +895,9 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn map(&self, dev: &'static Device, offset: usize) -> CLResult<*mut c_void> {
+    pub fn map(&self, dev: &'static Device, offset: usize) -> CLResult<MutMemoryPtr> {
         let ptr = if self.has_user_shadow_buffer(dev)? {
-            self.host_ptr
+            self.host_ptr()
         } else {
             let mut lock = self.maps.lock().unwrap();
 
@@ -862,7 +912,8 @@ impl Buffer {
         };
 
         let ptr = unsafe { ptr.add(offset) };
-        Ok(ptr)
+        // SAFETY: it's required that applications do not cause data races
+        Ok(unsafe { MutMemoryPtr::from_ptr(ptr) })
     }
 
     pub fn read(
@@ -870,9 +921,10 @@ impl Buffer {
         q: &Queue,
         ctx: &PipeContext,
         offset: usize,
-        ptr: *mut c_void,
+        ptr: MutMemoryPtr,
         size: usize,
     ) -> CLResult<()> {
+        let ptr = ptr.as_ptr();
         let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
 
         unsafe {
@@ -884,7 +936,7 @@ impl Buffer {
 
     pub fn read_rect(
         &self,
-        dst: *mut c_void,
+        dst: MutMemoryPtr,
         q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
@@ -895,6 +947,7 @@ impl Buffer {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
+        let dst = dst.as_ptr();
         let (offset, size) =
             CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
         let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
@@ -916,14 +969,22 @@ impl Buffer {
     }
 
     // TODO: only sync on map when the memory is not mapped with discard
-    pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+    pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+        let ptr = ptr.as_ptr();
         let mut lock = self.maps.lock().unwrap();
         if !lock.increase_ref(q.device, ptr) {
             return Ok(());
         }
 
         if self.has_user_shadow_buffer(q.device)? {
-            self.read(q, ctx, 0, self.host_ptr, self.size)
+            self.read(
+                q,
+                ctx,
+                0,
+                // SAFETY: it's required that applications do not cause data races
+                unsafe { MutMemoryPtr::from_ptr(self.host_ptr()) },
+                self.size,
+            )
         } else {
             if let Some(shadow) = lock.tx.get(&q.device).and_then(|tx| tx.shadow.as_ref()) {
                 let res = self.get_res_of_dev(q.device)?;
@@ -992,7 +1053,8 @@ impl Buffer {
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+        let ptr = ptr.as_ptr();
         let mut lock = self.maps.lock().unwrap();
         if !lock.contains_ptr(ptr) {
             return Ok(());
@@ -1011,7 +1073,14 @@ impl Buffer {
 
                 ctx.resource_copy_region(shadow, res, &[offset, 0, 0], &bx);
             } else if self.has_user_shadow_buffer(q.device)? {
-                self.write(q, ctx, 0, self.host_ptr, self.size)?;
+                self.write(
+                    q,
+                    ctx,
+                    0,
+                    // SAFETY: it's required that applications do not cause data races
+                    unsafe { ConstMemoryPtr::from_ptr(self.host_ptr()) },
+                    self.size,
+                )?;
             }
         }
 
@@ -1025,9 +1094,10 @@ impl Buffer {
         q: &Queue,
         ctx: &PipeContext,
         offset: usize,
-        ptr: *const c_void,
+        ptr: ConstMemoryPtr,
         size: usize,
     ) -> CLResult<()> {
+        let ptr = ptr.as_ptr();
         let offset = self.apply_offset(offset)?;
         let r = self.get_res_of_dev(q.device)?;
         ctx.buffer_subdata(
@@ -1041,7 +1111,7 @@ impl Buffer {
 
     pub fn write_rect(
         &self,
-        src: *const c_void,
+        src: ConstMemoryPtr,
         q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
@@ -1052,6 +1122,7 @@ impl Buffer {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
+        let src = src.as_ptr();
         let (offset, size) =
             CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
         let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
@@ -1292,11 +1363,11 @@ impl Image {
         let ptr = if self.has_user_shadow_buffer(dev)? {
             *row_pitch = self.image_desc.image_row_pitch;
             *slice_pitch = self.image_desc.image_slice_pitch;
-            self.host_ptr
+            self.host_ptr()
         } else if let Some(Mem::Buffer(buffer)) = &self.parent {
             *row_pitch = self.image_desc.image_row_pitch;
             *slice_pitch = self.image_desc.image_slice_pitch;
-            buffer.map(dev, 0)?
+            buffer.map(dev, 0)?.as_ptr()
         } else {
             let mut lock = self.maps.lock().unwrap();
 
@@ -1349,7 +1420,7 @@ impl Image {
 
     pub fn read(
         &self,
-        dst: *mut c_void,
+        dst: MutMemoryPtr,
         q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
@@ -1357,6 +1428,7 @@ impl Image {
         dst_row_pitch: usize,
         dst_slice_pitch: usize,
     ) -> CLResult<()> {
+        let dst = dst.as_ptr();
         let pixel_size = self.image_format.pixel_size().unwrap();
 
         let tx;
@@ -1397,7 +1469,8 @@ impl Image {
     }
 
     // TODO: only sync on map when the memory is not mapped with discard
-    pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+    pub fn sync_shadow(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+        let ptr = ptr.as_ptr();
         let mut lock = self.maps.lock().unwrap();
         if !lock.increase_ref(q.device, ptr) {
             return Ok(());
@@ -1405,7 +1478,8 @@ impl Image {
 
         if self.has_user_shadow_buffer(q.device)? {
             self.read(
-                self.host_ptr,
+                // SAFETY: it's required that applications do not cause data races
+                unsafe { MutMemoryPtr::from_ptr(self.host_ptr()) },
                 q,
                 ctx,
                 &self.image_desc.size(),
@@ -1476,7 +1550,8 @@ impl Image {
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: *mut c_void) -> CLResult<()> {
+    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+        let ptr = ptr.as_ptr();
         let mut lock = self.maps.lock().unwrap();
         if !lock.contains_ptr(ptr) {
             return Ok(());
@@ -1490,7 +1565,8 @@ impl Image {
                 ctx.resource_copy_region(shadow, res, &[0, 0, 0], &bx);
             } else if self.has_user_shadow_buffer(q.device)? {
                 self.write(
-                    self.host_ptr,
+                    // SAFETY: it's required that applications do not cause data races
+                    unsafe { ConstMemoryPtr::from_ptr(self.host_ptr()) },
                     q,
                     ctx,
                     &self.image_desc.size(),
@@ -1508,7 +1584,7 @@ impl Image {
 
     pub fn write(
         &self,
-        src: *const c_void,
+        src: ConstMemoryPtr,
         q: &Queue,
         ctx: &PipeContext,
         region: &CLVec<usize>,
@@ -1516,6 +1592,7 @@ impl Image {
         mut src_slice_pitch: usize,
         dst_origin: &CLVec<usize>,
     ) -> CLResult<()> {
+        let src = src.as_ptr();
         let dst_row_pitch = self.image_desc.image_row_pitch;
         let dst_slice_pitch = self.image_desc.image_slice_pitch;
 

@@ -1074,8 +1074,7 @@ zink_create_quads_emulation_gs(const nir_shader_compiler_options *options,
    memcpy(nir->info.xfb_stride, prev_stage->info.xfb_stride, sizeof(prev_stage->info.xfb_stride));
    if (prev_stage->xfb_info) {
       size_t size = nir_xfb_info_size(prev_stage->xfb_info->output_count);
-      nir->xfb_info = ralloc_size(nir, size);
-      memcpy(nir->xfb_info, prev_stage->xfb_info, size);
+      nir->xfb_info = ralloc_memdup(nir, prev_stage->xfb_info, size);
    }
 
    nir_variable *in_vars[VARYING_SLOT_MAX];
@@ -5321,11 +5320,20 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 
    assert(util_is_power_of_two_nonzero(align));
 
-   return (nir_mem_access_size_align){
-      .num_components = MIN2(bytes / (bit_size / 8), 4),
-      .bit_size = bit_size,
-      .align = bit_size / 8,
-   };
+   /* simply drop the bit_size for unaligned load/stores */
+   if (align < (bit_size / 8)) {
+      return (nir_mem_access_size_align){
+         .num_components = MIN2(bytes / align, 4),
+         .bit_size = align * 8,
+         .align = align,
+      };
+   } else {
+      return (nir_mem_access_size_align){
+         .num_components = MIN2(bytes / (bit_size / 8), 4),
+         .bit_size = bit_size,
+         .align = bit_size / 8,
+      };
+   }
 }
 
 static nir_mem_access_size_align
@@ -5493,9 +5501,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    NIR_PASS_V(nir, nir_lower_frexp); /* TODO: Use the spirv instructions for this. */
 
    if (screen->info.have_EXT_shader_demote_to_helper_invocation) {
-      NIR_PASS_V(nir, nir_lower_discard_or_demote,
-                 screen->driconf.glsl_correct_derivatives_after_discard ||
-                 nir->info.use_legacy_math_rules);
+      NIR_PASS_V(nir, nir_lower_discard_or_demote, true);
    }
 
    if (screen->need_2D_zs)

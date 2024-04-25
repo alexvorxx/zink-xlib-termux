@@ -263,11 +263,8 @@ radv_shader_layout_init(const struct radv_pipeline_layout *pipeline_layout, gl_s
    }
 
    layout->push_constant_size = pipeline_layout->push_constant_size;
-
-   if (pipeline_layout->dynamic_offset_count &&
-       (pipeline_layout->dynamic_shader_stages & mesa_to_vk_shader_stage(stage))) {
-      layout->use_dynamic_descriptors = true;
-   }
+   layout->use_dynamic_descriptors = pipeline_layout->dynamic_offset_count &&
+                                     (pipeline_layout->dynamic_shader_stages & mesa_to_vk_shader_stage(stage));
 }
 
 static const struct vk_ycbcr_conversion_state *
@@ -573,7 +570,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    nir_move_options sink_opts = nir_move_const_undef | nir_move_copies;
 
    if (!stage->key.optimisations_disabled) {
-      if (stage->stage != MESA_SHADER_FRAGMENT || !device->cache_key.disable_sinking_load_input_fs)
+      if (stage->stage != MESA_SHADER_FRAGMENT || !device->physical_device->cache_key.disable_sinking_load_input_fs)
          sink_opts |= nir_move_load_input;
 
       NIR_PASS(_, stage->nir, nir_opt_sink, sink_opts);

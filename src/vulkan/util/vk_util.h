@@ -384,6 +384,17 @@ vk_index_type_to_bytes(enum VkIndexType type)
    }
 }
 
+static inline uint32_t
+vk_index_to_restart(enum VkIndexType type)
+{
+   switch (type) {
+   case VK_INDEX_TYPE_UINT8_KHR: return 0xff;
+   case VK_INDEX_TYPE_UINT16:    return 0xffff;
+   case VK_INDEX_TYPE_UINT32:    return 0xffffffff;
+   default:                      unreachable("unexpected index type");
+   }
+}
+
 #ifdef __cplusplus
 }
 #endif

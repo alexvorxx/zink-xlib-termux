@@ -252,10 +252,10 @@ crocus_init_batch(struct crocus_context *ice,
       const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS |
          (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0);
 
-      intel_batch_decode_ctx_init(&batch->decoder, &screen->compiler->isa,
-                                  &screen->devinfo, stderr,
-                                  decode_flags, NULL, decode_get_bo,
-                                  decode_get_state_size, batch);
+      intel_batch_decode_ctx_init_elk(&batch->decoder, &screen->compiler->isa,
+                                      &screen->devinfo, stderr,
+                                      decode_flags, NULL, decode_get_bo,
+                                      decode_get_state_size, batch);
       batch->decoder.max_vbo_decoded_lines = 32;
    }
 

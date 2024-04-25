@@ -312,6 +312,14 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
    nir_scalar scalar_idx = nir_scalar_resolved(intrin->src[buffer_src].ssa, 0);
    nir_def *descriptor_idx = nir_channel(b, intrin->src[buffer_src].ssa, 1);
 
+   if (intrin->intrinsic == nir_intrinsic_load_ubo &&
+       dev->instance->allow_oob_indirect_ubo_loads) {
+      nir_scalar offset = nir_scalar_resolved(intrin->src[1].ssa, 0);
+      if (!nir_scalar_is_const(offset)) {
+         nir_intrinsic_set_range(intrin, ~0);
+      }
+   }
+
    /* For isam, we need to use the appropriate descriptor if 16-bit storage is
     * enabled. Descriptor 0 is the 16-bit one, descriptor 1 is the 32-bit one.
     */

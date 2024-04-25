@@ -187,7 +187,7 @@ cl_callback!(
 );
 
 impl SVMFreeCb {
-    pub fn call(self, queue: &Queue, svm_pointers: &mut [*mut c_void]) {
+    pub fn call(self, queue: &Queue, svm_pointers: &mut [usize]) {
         let cl = cl_command_queue::from_ptr(queue);
         // SAFETY: `cl` must be a valid pointer to an OpenCL queue, which is where we just got it from.
         // All other requirements are covered by this callback's type invariants.
@@ -195,7 +195,7 @@ impl SVMFreeCb {
             (self.func)(
                 cl,
                 svm_pointers.len() as u32,
-                svm_pointers.as_mut_ptr(),
+                svm_pointers.as_mut_ptr().cast(),
                 self.data,
             )
         };

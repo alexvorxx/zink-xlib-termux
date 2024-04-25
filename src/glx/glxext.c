@@ -794,7 +794,7 @@ AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv, Bool zink)
 	 psc = priv->windowsdriDisplay->createScreen(i, priv);
 #endif
 
-      if (psc == NULL && priv->driswDisplay)
+      if ((psc == GLX_LOADER_USE_ZINK || psc == NULL) && priv->driswDisplay)
 	 psc = priv->driswDisplay->createScreen(i, priv);
 #endif /* GLX_DIRECT_RENDERING && !GLX_USE_APPLEGL */
 
@@ -903,8 +903,12 @@ __glXInitialize(Display * dpy)
 #if defined(GLX_USE_DRM)
    if (glx_direct && glx_accel && !zink) {
 #if defined(HAVE_DRI3)
-      if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false))
+      if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false)) {
          dpyPriv->dri3Display = dri3_create_display(dpy);
+         /* nouveau wants to fallback to zink so if we get a screen enable try_zink */
+         if (dpyPriv->dri3Display)
+            try_zink = !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false);
+      }
 #endif /* HAVE_DRI3 */
       if (!debug_get_bool_option("LIBGL_DRI2_DISABLE", false))
          dpyPriv->dri2Display = dri2CreateDisplay(dpy);
@@ -914,7 +918,8 @@ __glXInitialize(Display * dpy)
    }
 #endif /* GLX_USE_DRM */
    if (glx_direct)
-      dpyPriv->driswDisplay = driswCreateDisplay(dpy, zink | try_zink);
+      dpyPriv->driswDisplay = driswCreateDisplay(dpy, zink ? TRY_ZINK_YES :
+                                                             try_zink ? TRY_ZINK_INFER : TRY_ZINK_NO);
 
 #ifdef GLX_USE_WINDOWSGL
    if (glx_direct && glx_accel)
@@ -935,7 +940,7 @@ __glXInitialize(Display * dpy)
       if (try_zink) {
          free(dpyPriv->screens);
          dpyPriv->driswDisplay->destroyDisplay(dpyPriv->driswDisplay);
-         dpyPriv->driswDisplay = driswCreateDisplay(dpy, false);
+         dpyPriv->driswDisplay = driswCreateDisplay(dpy, TRY_ZINK_NO);
          fail = !AllocAndFetchScreenConfigs(dpy, dpyPriv, False);
       }
 #endif

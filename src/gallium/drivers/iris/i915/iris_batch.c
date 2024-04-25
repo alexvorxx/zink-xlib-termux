@@ -25,7 +25,7 @@
 #include "iris/iris_batch.h"
 #include "iris/iris_context.h"
 
-#include "common/intel_defines.h"
+#include "common/i915/intel_defines.h"
 #include "common/intel_gem.h"
 #include "util/u_debug.h"
 

@@ -1269,6 +1269,8 @@ RADV driver environment variables
       disable FMASK compression on MSAA images (GFX6-GFX10.3)
    ``nogpl``
       disable VK_EXT_graphics_pipeline_library
+   ``nogsfastlaunch2``
+      disable GS_FAST_LAUNCH=2 for Mesh shaders (GFX11 only)
    ``nohiz``
       disable HIZ for depthstencil images
    ``noibs``
@@ -1346,8 +1348,6 @@ RADV driver environment variables
       rt extensions with older hardware.
    ``gewave32``
       enable wave32 for vertex/tess/geometry shaders (GFX10+)
-   ``gsfastlaunch2``
-      use GS_FAST_LAUNCH=2 for Mesh shaders (GFX11+)
    ``localbos``
       enable local BOs
    ``nggc``
@@ -1365,8 +1365,8 @@ RADV driver environment variables
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
    ``shader_object``
-      enable experimental implementation of VK_EXT_shader_object (GFX6-8 and
-      VEGA10)
+      enable experimental implementation of VK_EXT_shader_object (GFX6-8,
+      VEGA10, and GFX11)
    ``transfer_queue``
       enable experimental transfer queue support (GFX9+, not yet spec compliant)
    ``video_decode``

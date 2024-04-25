@@ -70,7 +70,6 @@
 #include "i915/iris_bufmgr.h"
 #include "xe/iris_bufmgr.h"
 
-#include "drm-uapi/i915_drm.h"
 #include <xf86drm.h>
 
 #ifdef HAVE_VALGRIND
@@ -781,6 +780,8 @@ iris_slab_alloc(void *priv,
       flags = BO_ALLOC_SMEM;
    else if (heap == IRIS_HEAP_DEVICE_LOCAL)
       flags = BO_ALLOC_LMEM;
+   else if (heap == IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR)
+      flags = BO_ALLOC_LMEM | BO_ALLOC_CPU_VISIBLE;
    else
       flags = BO_ALLOC_PLAIN;
 
@@ -847,8 +848,13 @@ flags_to_heap(struct iris_bufmgr *bufmgr, unsigned flags)
          return IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT;
 
       if ((flags & BO_ALLOC_LMEM) ||
-          ((flags & BO_ALLOC_SCANOUT) && !(flags & BO_ALLOC_SHARED)))
+          ((flags & BO_ALLOC_SCANOUT) && !(flags & BO_ALLOC_SHARED))) {
+
+         if ((flags & BO_ALLOC_CPU_VISIBLE) && !intel_vram_all_mappable(devinfo))
+            return IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR;
+
          return IRIS_HEAP_DEVICE_LOCAL;
+      }
 
       return IRIS_HEAP_DEVICE_LOCAL_PREFERRED;
    } else if (devinfo->has_llc) {
@@ -1009,6 +1015,9 @@ alloc_bo_from_cache(struct iris_bufmgr *bufmgr,
       if (match_zone && memzone != iris_memzone_for_address(cur->address))
          continue;
 
+      if (cur->real.capture != !!(flags & BO_ALLOC_CAPTURE))
+         continue;
+
       /* If the last BO in the cache is busy, there are no idle BOs.  Bail,
        * either falling back to a non-matching memzone, or if that fails,
        * allocating a fresh buffer.
@@ -1102,6 +1111,7 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
          regions[num_regions++] = bufmgr->sys.region;
          break;
       case IRIS_HEAP_DEVICE_LOCAL:
+      case IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR:
          regions[num_regions++] = bufmgr->vram.region;
          break;
       case IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT:
@@ -1127,6 +1137,7 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
    bo->size = bo_size;
    bo->idle = true;
    bo->zeroed = true;
+   bo->real.capture = (flags & BO_ALLOC_CAPTURE) != 0;
 
    return bo;
 }
@@ -1136,6 +1147,7 @@ iris_heap_to_string[IRIS_HEAP_MAX] = {
    [IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT] = "system-cached-coherent",
    [IRIS_HEAP_SYSTEM_MEMORY_UNCACHED] = "system-uncached",
    [IRIS_HEAP_DEVICE_LOCAL] = "local",
+   [IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR] = "local-cpu-visible-small-bar",
    [IRIS_HEAP_DEVICE_LOCAL_PREFERRED] = "local-preferred",
 };
 
@@ -1147,6 +1159,7 @@ heap_to_mmap_mode(struct iris_bufmgr *bufmgr, enum iris_heap heap)
    switch (heap) {
    case IRIS_HEAP_DEVICE_LOCAL:
       return intel_vram_all_mappable(devinfo) ? IRIS_MMAP_WC : IRIS_MMAP_NONE;
+   case IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR:
    case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
       return IRIS_MMAP_WC;
    case IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT:
@@ -1174,6 +1187,12 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
 
    if (memzone != IRIS_MEMZONE_OTHER || (flags & BO_ALLOC_COHERENT))
       flags |= BO_ALLOC_NO_SUBALLOC;
+
+   /* By default, capture all driver-internal buffers like shader kernels,
+    * surface states, dynamic states, border colors, and so on.
+    */
+   if (memzone < IRIS_MEMZONE_OTHER || INTEL_DEBUG(DEBUG_CAPTURE_ALL))
+      flags |= BO_ALLOC_CAPTURE;
 
    bo = alloc_bo_from_slabs(bufmgr, name, size, alignment, flags);
 
@@ -1226,14 +1245,7 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
    bo->real.reusable = bucket && bufmgr->bo_reuse;
    bo->real.protected = flags & BO_ALLOC_PROTECTED;
    bo->index = -1;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
    bo->real.prime_fd = -1;
-
-   /* By default, capture all driver-internal buffers like shader kernels,
-    * surface states, dynamic states, border colors, and so on.
-    */
-   if (memzone < IRIS_MEMZONE_OTHER || INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
 
    assert(bo->real.map == NULL || bo->real.mmap_mode == mmap_mode);
    bo->real.mmap_mode = mmap_mode;
@@ -1294,10 +1306,9 @@ iris_bo_create_userptr(struct iris_bufmgr *bufmgr, const char *name,
    bo->real.userptr = true;
 
    bo->bufmgr = bufmgr;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
 
    if (INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.capture = true;
 
    simple_mtx_lock(&bufmgr->lock);
    bo->address = vma_alloc(bufmgr, memzone, size, 1);
@@ -1414,9 +1425,8 @@ iris_bo_gem_create_from_name(struct iris_bufmgr *bufmgr,
    /* Xe KMD expects at least 1-way coherency for imports */
    bo->real.heap = IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT;
    bo->real.mmap_mode = IRIS_MMAP_NONE;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
    if (INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.capture = true;
    bo->address = vma_alloc(bufmgr, IRIS_MEMZONE_OTHER, bo->size, 1);
    if (bo->address == 0ull)
       goto err_free;
@@ -1842,29 +1852,18 @@ iris_gem_get_tiling(struct iris_bo *bo, uint32_t *tiling)
    struct iris_bufmgr *bufmgr = bo->bufmgr;
 
    if (!bufmgr->devinfo.has_tiling_uapi) {
-      *tiling = I915_TILING_NONE;
+      *tiling = 0;
       return 0;
    }
 
-   struct drm_i915_gem_get_tiling ti = { .handle = bo->gem_handle };
-   int ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_GET_TILING, &ti);
-
-   if (ret) {
-      DBG("gem_get_tiling failed for BO %u: %s\n",
-          bo->gem_handle, strerror(errno));
-   }
-
-   *tiling = ti.tiling_mode;
-
-   return ret;
+   assert(iris_bufmgr_get_device_info(bo->bufmgr)->kmd_type == INTEL_KMD_TYPE_I915);
+   return iris_i915_bo_get_tiling(bo, tiling);
 }
 
 int
 iris_gem_set_tiling(struct iris_bo *bo, const struct isl_surf *surf)
 {
    struct iris_bufmgr *bufmgr = bo->bufmgr;
-   uint32_t tiling_mode = isl_tiling_to_i915_tiling(surf->tiling);
-   int ret;
 
    /* If we can't do map_gtt, the set/get_tiling API isn't useful. And it's
     * actually not supported by the kernel in those cases.
@@ -1872,22 +1871,8 @@ iris_gem_set_tiling(struct iris_bo *bo, const struct isl_surf *surf)
    if (!bufmgr->devinfo.has_tiling_uapi)
       return 0;
 
-   /* GEM_SET_TILING is slightly broken and overwrites the input on the
-    * error path, so we have to open code intel_ioctl().
-    */
-   struct drm_i915_gem_set_tiling set_tiling = {
-      .handle = bo->gem_handle,
-      .tiling_mode = tiling_mode,
-      .stride = surf->row_pitch_B,
-   };
-
-   ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling);
-   if (ret) {
-      DBG("gem_set_tiling failed for BO %u: %s\n",
-          bo->gem_handle, strerror(errno));
-   }
-
-   return ret;
+   assert(iris_bufmgr_get_device_info(bo->bufmgr)->kmd_type == INTEL_KMD_TYPE_I915);
+   return iris_i915_bo_set_tiling(bo, surf);
 }
 
 struct iris_bo *
@@ -1938,9 +1923,8 @@ iris_bo_import_dmabuf(struct iris_bufmgr *bufmgr, int prime_fd,
    /* Xe KMD expects at least 1-way coherency for imports */
    bo->real.heap = IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT;
    bo->real.mmap_mode = IRIS_MMAP_NONE;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED;
    if (INTEL_DEBUG(DEBUG_CAPTURE_ALL))
-      bo->real.kflags |= EXEC_OBJECT_CAPTURE;
+      bo->real.capture = true;
    bo->gem_handle = handle;
    bo->real.prime_fd = needs_prime_fd(bufmgr) ? dup(prime_fd) : -1;
 
@@ -2192,7 +2176,7 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
    unsigned int page_size = getpagesize();
    size = MAX2(ALIGN(size, page_size), page_size);
 
-   struct iris_bo *bo = alloc_fresh_bo(bufmgr, size, 0);
+   struct iris_bo *bo = alloc_fresh_bo(bufmgr, size, BO_ALLOC_CAPTURE);
    if (!bo) {
       free(buf);
       return NULL;
@@ -2212,8 +2196,6 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
    bo->name = "aux-map";
    p_atomic_set(&bo->refcount, 1);
    bo->index = -1;
-   bo->real.kflags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS | EXEC_OBJECT_PINNED |
-                     EXEC_OBJECT_CAPTURE;
    bo->real.mmap_mode = heap_to_mmap_mode(bufmgr, bo->real.heap);
    bo->real.prime_fd = -1;
 
@@ -2609,6 +2591,7 @@ iris_heap_to_pat_entry(const struct intel_device_info *devinfo,
    case IRIS_HEAP_SYSTEM_MEMORY_UNCACHED:
       return &devinfo->pat.writecombining;
    case IRIS_HEAP_DEVICE_LOCAL:
+   case IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR:
    case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
       return &devinfo->pat.writecombining;
    default:

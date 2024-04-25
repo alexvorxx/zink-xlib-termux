@@ -288,7 +288,7 @@ struct gl_program *
 _mesa_lookup_program(struct gl_context *ctx, GLuint id)
 {
    if (id)
-      return (struct gl_program *) _mesa_HashLookup(ctx->Shared->Programs, id);
+      return (struct gl_program *) _mesa_HashLookup(&ctx->Shared->Programs, id);
    else
       return NULL;
 }

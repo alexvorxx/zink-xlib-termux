@@ -42,15 +42,8 @@ struct vn_command_pool {
     */
    struct list_head free_query_batches;
 
-   /* Temporary storage for scrubbing VK_IMAGE_LAYOUT_PRESENT_SRC_KHR. The
-    * storage's lifetime is the command pool's lifetime. We increase the
-    * storage as needed, but never shrink it. Upon used by the cmd buffer, the
-    * storage must fit within command scope to avoid locking or suballocation.
-    */
-   struct {
-      void *data;
-      size_t size;
-   } tmp;
+   /* for scrubbing VK_IMAGE_LAYOUT_PRESENT_SRC_KHR */
+   struct vn_cached_storage storage;
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vn_command_pool,
                                base.base,
@@ -98,7 +91,7 @@ struct vn_command_buffer {
 
    struct vn_command_buffer_builder builder;
 
-   struct vn_query_feedback_cmd *linked_query_feedback_cmd;
+   struct vn_query_feedback_cmd *linked_qfb_cmd;
 
    struct list_head head;
 };

@@ -27,7 +27,7 @@
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
-#include "common/intel_genX_state.h"
+#include "common/intel_genX_state_brw.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "nir/nir_xfb_info.h"
@@ -513,6 +513,20 @@ emit_urb_setup(struct anv_graphics_pipeline *pipeline,
 
 }
 
+static bool
+sbe_primitive_id_override(struct anv_graphics_pipeline *pipeline)
+{
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   if (!wm_prog_data)
+      return false;
+
+   const struct intel_vue_map *fs_input_map =
+      &anv_pipeline_get_last_vue_prog_data(pipeline)->vue_map;
+
+   return (wm_prog_data->inputs & VARYING_BIT_PRIMITIVE_ID) &&
+          fs_input_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1;
+}
+
 static void
 emit_3dstate_sbe(struct anv_graphics_pipeline *pipeline)
 {
@@ -615,15 +629,13 @@ emit_3dstate_sbe(struct anv_graphics_pipeline *pipeline)
          /* Ask the hardware to supply PrimitiveID if the fragment shader
           * reads it but a previous stage didn't write one.
           */
-         if ((wm_prog_data->inputs & VARYING_BIT_PRIMITIVE_ID) &&
-             fs_input_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1) {
+         if (sbe_primitive_id_override(pipeline)) {
             sbe.PrimitiveIDOverrideAttributeSelect =
                wm_prog_data->urb_setup[VARYING_SLOT_PRIMITIVE_ID];
             sbe.PrimitiveIDOverrideComponentX = true;
             sbe.PrimitiveIDOverrideComponentY = true;
             sbe.PrimitiveIDOverrideComponentZ = true;
             sbe.PrimitiveIDOverrideComponentW = true;
-            pipeline->primitive_id_override = true;
          }
       } else {
          assert(anv_pipeline_is_mesh(pipeline));
@@ -1423,7 +1435,7 @@ emit_3dstate_te(struct anv_graphics_pipeline *pipeline)
              *
              * Disable Tessellation Distribution when primitive Id is enabled.
              */
-            if (pipeline->primitive_id_override ||
+            if (sbe_primitive_id_override(pipeline) ||
                 geom_or_tess_prim_id_used(pipeline))
                te.TessellationDistributionMode = TEDMODE_OFF;
          }

@@ -54,6 +54,11 @@ DEQP_TARGET="android" \
 EXTRA_CMAKE_ARGS="-DDEQP_TARGET_TOOLCHAIN=ndk-modern -DANDROID_NDK_PATH=/$ndk -DANDROID_ABI=x86_64 -DDE_ANDROID_API=28" \
 . .gitlab-ci/container/build-deqp.sh
 
+DEQP_API=GLES \
+DEQP_TARGET="android" \
+EXTRA_CMAKE_ARGS="-DDEQP_TARGET_TOOLCHAIN=ndk-modern -DANDROID_NDK_PATH=/$ndk -DANDROID_ABI=x86_64 -DDE_ANDROID_API=28" \
+. .gitlab-ci/container/build-deqp.sh
+
 ############### Downloading Cuttlefish resources ...
 
 CUTTLEFISH_VERSION=9082637   # Chosen from https://ci.android.com/builds/branches/aosp-master/grid?
@@ -74,8 +79,14 @@ popd
 
 ############### Building and installing Debian package ...
 
-git clone --depth 1 https://github.com/google/android-cuttlefish.git
+ANDROID_CUTTLEFISH_VERSION=f6494d9fbeaa9974b56923e3029909e5d5f440dd
+
+mkdir android-cuttlefish
 pushd android-cuttlefish
+git init
+git remote add origin https://github.com/google/android-cuttlefish.git
+git fetch --depth 1 origin "$ANDROID_CUTTLEFISH_VERSION"
+git checkout FETCH_HEAD
 
 pushd base
 dpkg-buildpackage -uc -us

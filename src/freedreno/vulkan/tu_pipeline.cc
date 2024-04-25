@@ -2783,13 +2783,13 @@ tu_calc_bandwidth(struct tu_bandwidth *bandwidth,
 
    bandwidth->color_bandwidth_per_sample = total_bpp / 8;
 
-   if (rp->attachment_aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+   if (rp->attachments & MESA_VK_RP_ATTACHMENT_DEPTH_BIT) {
       bandwidth->depth_cpp_per_sample = util_format_get_component_bits(
             vk_format_to_pipe_format(rp->depth_attachment_format),
             UTIL_FORMAT_COLORSPACE_ZS, 0) / 8;
    }
 
-   if (rp->attachment_aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+   if (rp->attachments & MESA_VK_RP_ATTACHMENT_STENCIL_BIT) {
       bandwidth->stencil_cpp_per_sample = util_format_get_component_bits(
             vk_format_to_pipe_format(rp->stencil_attachment_format),
             UTIL_FORMAT_COLORSPACE_ZS, 1) / 8;
@@ -3149,7 +3149,7 @@ tu6_emit_rb_depth_cntl(struct tu_cs *cs,
                        const struct vk_render_pass_state *rp,
                        const struct vk_rasterization_state *rs)
 {
-   if (rp->attachment_aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+   if (rp->attachments & MESA_VK_RP_ATTACHMENT_DEPTH_BIT) {
       bool depth_test = ds->depth.test_enable;
       enum adreno_compare_func zfunc = tu6_compare_func(ds->depth.compare_op);
 
@@ -3272,13 +3272,12 @@ tu_pipeline_builder_emit_state(struct tu_pipeline_builder *builder,
               builder->graphics_state.rs);
    bool attachments_valid =
       builder->graphics_state.rp &&
-      !(builder->graphics_state.rp->attachment_aspects &
-                              VK_IMAGE_ASPECT_METADATA_BIT);
+      vk_render_pass_state_has_attachment_info(builder->graphics_state.rp);
    struct vk_color_blend_state dummy_cb = {};
    const struct vk_color_blend_state *cb = builder->graphics_state.cb;
    if (attachments_valid &&
-       !(builder->graphics_state.rp->attachment_aspects &
-         VK_IMAGE_ASPECT_COLOR_BIT)) {
+       !(builder->graphics_state.rp->attachments &
+         MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS)) {
       /* If there are no color attachments, then the original blend state may
        * be NULL and the common code sanitizes it to always be NULL. In this
        * case we want to emit an empty blend/bandwidth/etc.  rather than
@@ -3306,8 +3305,8 @@ tu_pipeline_builder_emit_state(struct tu_pipeline_builder *builder,
                         builder->graphics_state.rp);
    DRAW_STATE(blend_constants, TU_DYNAMIC_STATE_BLEND_CONSTANTS, cb);
    if (attachments_valid &&
-       !(builder->graphics_state.rp->attachment_aspects &
-         VK_IMAGE_ASPECT_COLOR_BIT)) {
+       !(builder->graphics_state.rp->attachments &
+         MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS)) {
       /* Don't actually make anything dynamic as that may mean a partially-set
        * state group where the group is NULL which angers common code.
        */
@@ -3539,10 +3538,10 @@ tu_pipeline_builder_parse_depth_stencil(
    const VkPipelineDepthStencilStateCreateInfo *ds_info =
       builder->create_info->pDepthStencilState;
 
-   if ((builder->graphics_state.rp->attachment_aspects &
-        VK_IMAGE_ASPECT_METADATA_BIT) ||
-       (builder->graphics_state.rp->attachment_aspects &
-        VK_IMAGE_ASPECT_DEPTH_BIT)) {
+   if ((builder->graphics_state.rp->attachments ==
+        MESA_VK_RP_ATTACHMENT_INFO_INVALID) ||
+       (builder->graphics_state.rp->attachments &
+        MESA_VK_RP_ATTACHMENT_DEPTH_BIT)) {
       pipeline->ds.raster_order_attachment_access =
          ds_info && (ds_info->flags &
          (VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS_BIT_EXT |
@@ -3577,11 +3576,13 @@ tu_pipeline_builder_parse_multisample_and_color_blend(
    static const VkPipelineColorBlendStateCreateInfo dummy_blend_info = {};
 
    const VkPipelineColorBlendStateCreateInfo *blend_info =
-      (builder->graphics_state.rp->attachment_aspects &
-       VK_IMAGE_ASPECT_COLOR_BIT) ? builder->create_info->pColorBlendState :
-      &dummy_blend_info;
+      (builder->graphics_state.rp->attachments &
+       MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS)
+      ? builder->create_info->pColorBlendState
+      : &dummy_blend_info;
 
-   if (builder->graphics_state.rp->attachment_aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
+   if (builder->graphics_state.rp->attachments &
+       MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS) {
       pipeline->output.raster_order_attachment_access =
          blend_info && (blend_info->flags &
             VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT);
@@ -3848,16 +3849,16 @@ tu_fill_render_pass_state(struct vk_render_pass_state *rp,
    const uint32_t a = subpass->depth_stencil_attachment.attachment;
    rp->depth_attachment_format = VK_FORMAT_UNDEFINED;
    rp->stencil_attachment_format = VK_FORMAT_UNDEFINED;
-   rp->attachment_aspects = 0;
+   rp->attachments = MESA_VK_RP_ATTACHMENT_NONE;
    if (a != VK_ATTACHMENT_UNUSED) {
       VkFormat ds_format = pass->attachments[a].format;
       if (vk_format_has_depth(ds_format)) {
          rp->depth_attachment_format = ds_format;
-         rp->attachment_aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
+         rp->attachments |= MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
       }
       if (vk_format_has_stencil(ds_format)) {
          rp->stencil_attachment_format = ds_format;
-         rp->attachment_aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+         rp->attachments |= MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
       }
    }
 
@@ -3869,7 +3870,7 @@ tu_fill_render_pass_state(struct vk_render_pass_state *rp,
       }
 
       rp->color_attachment_formats[i] = pass->attachments[a].format;
-      rp->attachment_aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
+      rp->attachments |= MESA_VK_RP_ATTACHMENT_COLOR_BIT(i);
    }
 }
 

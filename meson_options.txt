@@ -221,7 +221,7 @@ option(
   value : ['auto'],
   choices : ['auto', 'amd', 'broadcom', 'freedreno', 'intel', 'intel_hasvk',
              'panfrost', 'swrast', 'virtio', 'imagination-experimental',
-             'microsoft-experimental', 'nouveau-experimental', 'all'],
+             'microsoft-experimental', 'nouveau', 'all'],
   description : 'List of vulkan drivers to build. If this is set to auto ' +
                 'all drivers applicable to the target OS/architecture ' +
                 'will be built'
@@ -634,7 +634,7 @@ option(
 option(
   'intel-clc',
   type : 'combo',
-  deprecated: {'true': 'enabled', 'false': 'disabled'},
+  deprecated: {'true': 'enabled'},
   value : 'auto',
   choices : [
     'enabled', 'system', 'auto'
@@ -651,12 +651,8 @@ option(
 
 option(
   'intel-rt',
-  type : 'combo',
+  type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
-  value : 'disabled',
-  choices : [
-    'enabled', 'disabled',
-  ],
   description : 'Build Ray Tracing on supported hardware.'
 )
 

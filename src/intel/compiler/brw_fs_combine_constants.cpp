@@ -764,30 +764,6 @@ brw_combine_constants(struct value *candidates, unsigned num_candidates)
    return combine_constants_greedy(candidates, num_candidates);
 }
 
-/* Returns whether an instruction could co-issue if its immediate source were
- * replaced with a GRF source.
- */
-static bool
-could_coissue(const struct intel_device_info *devinfo, const fs_inst *inst)
-{
-   assert(inst->opcode == BRW_OPCODE_MOV ||
-          inst->opcode == BRW_OPCODE_CMP ||
-          inst->opcode == BRW_OPCODE_ADD ||
-          inst->opcode == BRW_OPCODE_MUL);
-
-   if (devinfo->ver != 7)
-      return false;
-
-   /* Only float instructions can coissue.  We don't have a great
-    * understanding of whether or not something like float(int(a) + int(b))
-    * would be considered float (based on the destination type) or integer
-    * (based on the source types), so we take the conservative choice of
-    * only promoting when both destination and source are float.
-    */
-   return inst->dst.type == BRW_REGISTER_TYPE_F &&
-          inst->src[0].type == BRW_REGISTER_TYPE_F;
-}
-
 /**
  * Box for storing fs_inst and some other necessary data
  *
@@ -1305,8 +1281,9 @@ parcel_out_registers(struct imm *imm, unsigned len, const bblock_t *cur_block,
 }
 
 bool
-fs_visitor::opt_combine_constants()
+brw_fs_opt_combine_constants(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
    void *const_ctx = ralloc_context(NULL);
 
    struct table table;
@@ -1325,14 +1302,14 @@ fs_visitor::opt_combine_constants()
    table.num_boxes = 0;
    table.boxes = ralloc_array(const_ctx, fs_inst_box, table.size_boxes);
 
-   const brw::idom_tree &idom = idom_analysis.require();
+   const brw::idom_tree &idom = s.idom_analysis.require();
    unsigned ip = -1;
 
    /* Make a pass through all instructions and count the number of times each
     * constant is used by coissueable instructions or instructions that cannot
     * take immediate arguments.
     */
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       ip++;
 
       switch (inst->opcode) {
@@ -1345,12 +1322,6 @@ fs_visitor::opt_combine_constants()
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
                                     devinfo, const_ctx);
          }
-
-         if (inst->src[1].file == IMM && devinfo->ver < 8) {
-            add_candidate_immediate(&table, inst, ip, 1, true, false, block,
-                                    devinfo, const_ctx);
-         }
-
          break;
 
       case BRW_OPCODE_ADD3:
@@ -1413,24 +1384,6 @@ fs_visitor::opt_combine_constants()
       case BRW_OPCODE_SHR:
          if (inst->src[0].file == IMM) {
             add_candidate_immediate(&table, inst, ip, 0, true, false, block,
-                                    devinfo, const_ctx);
-         }
-         break;
-
-      case BRW_OPCODE_MOV:
-         if (could_coissue(devinfo, inst) && inst->src[0].file == IMM) {
-            add_candidate_immediate(&table, inst, ip, 0, false, false, block,
-                                    devinfo, const_ctx);
-         }
-         break;
-
-      case BRW_OPCODE_CMP:
-      case BRW_OPCODE_ADD:
-      case BRW_OPCODE_MUL:
-         assert(inst->src[0].file != IMM);
-
-         if (could_coissue(devinfo, inst) && inst->src[1].file == IMM) {
-            add_candidate_immediate(&table, inst, ip, 1, false, false, block,
                                     devinfo, const_ctx);
          }
          break;
@@ -1548,49 +1501,23 @@ fs_visitor::opt_combine_constants()
       ralloc_free(const_ctx);
       return false;
    }
-   if (cfg->num_blocks != 1)
+   if (s.cfg->num_blocks != 1)
       qsort(table.imm, table.len, sizeof(struct imm), compare);
 
-   if (devinfo->ver > 7) {
-      struct register_allocation *regs =
-         (struct register_allocation *) calloc(table.len, sizeof(regs[0]));
+   struct register_allocation *regs =
+      (struct register_allocation *) calloc(table.len, sizeof(regs[0]));
 
-      for (int i = 0; i < table.len; i++) {
-         regs[i].nr = UINT_MAX;
-         regs[i].avail = 0xffff;
-      }
-
-      foreach_block(block, cfg) {
-         parcel_out_registers(table.imm, table.len, block, regs, table.len,
-                              alloc, devinfo->ver);
-      }
-
-      free(regs);
-   } else {
-      fs_reg reg(VGRF, alloc.allocate(1));
-      reg.stride = 0;
-
-      for (int i = 0; i < table.len; i++) {
-         struct imm *imm = &table.imm[i];
-
-         /* Put the immediate in an offset aligned to its size. Some
-          * instructions seem to have additional alignment requirements, so
-          * account for that too.
-          */
-         reg.offset = ALIGN(reg.offset, get_alignment_for_imm(imm));
-
-         /* Ensure we have enough space in the register to copy the immediate */
-         if (reg.offset + imm->size > REG_SIZE) {
-            reg.nr = alloc.allocate(1);
-            reg.offset = 0;
-         }
-
-         imm->nr = reg.nr;
-         imm->subreg_offset = reg.offset;
-
-         reg.offset += imm->size;
-      }
+   for (int i = 0; i < table.len; i++) {
+      regs[i].nr = UINT_MAX;
+      regs[i].avail = 0xffff;
    }
+
+   foreach_block(block, s.cfg) {
+      parcel_out_registers(table.imm, table.len, block, regs, table.len,
+                           s.alloc, devinfo->ver);
+   }
+
+   free(regs);
 
    bool rebuild_cfg = false;
 
@@ -1660,8 +1587,8 @@ fs_visitor::opt_combine_constants()
        * replicating the single one we want. To avoid this, we always populate
        * both HF slots within a DWord with the constant.
        */
-      const uint32_t width = devinfo->ver == 8 && imm->is_half_float ? 2 : 1;
-      const fs_builder ibld = fs_builder(this, width).at(insert_block, n).exec_all();
+      const uint32_t width = 1;
+      const fs_builder ibld = fs_builder(&s, width).at(insert_block, n).exec_all();
 
       fs_reg reg(VGRF, imm->nr);
       reg.offset = imm->subreg_offset;
@@ -1680,7 +1607,7 @@ fs_visitor::opt_combine_constants()
 
       ibld.MOV(retype(reg, imm_reg.type), imm_reg);
    }
-   shader_stats.promoted_constants = table.len;
+   s.shader_stats.promoted_constants = table.len;
 
    /* Rewrite the immediate sources to refer to the new GRFs. */
    for (int i = 0; i < table.len; i++) {
@@ -1839,20 +1766,20 @@ fs_visitor::opt_combine_constants()
        * is used for membership in that list and in a block list.  So we need
        * to pull them back before rebuilding the CFG.
        */
-      assert(exec_list_length(&instructions) == 0);
-      foreach_block(block, cfg) {
-         exec_list_append(&instructions, &block->instructions);
+      assert(exec_list_length(&s.instructions) == 0);
+      foreach_block(block, s.cfg) {
+         exec_list_append(&s.instructions, &block->instructions);
       }
 
-      delete cfg;
-      cfg = NULL;
-      calculate_cfg();
+      delete s.cfg;
+      s.cfg = NULL;
+      s.calculate_cfg();
    }
 
    ralloc_free(const_ctx);
 
-   invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES |
-                       (rebuild_cfg ? DEPENDENCY_BLOCKS : DEPENDENCY_NOTHING));
+   s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES |
+                         (rebuild_cfg ? DEPENDENCY_BLOCKS : DEPENDENCY_NOTHING));
 
    return true;
 }

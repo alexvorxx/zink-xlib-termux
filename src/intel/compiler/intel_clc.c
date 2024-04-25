@@ -278,14 +278,17 @@ print_usage(char *exec_name, FILE *f)
 "Options:\n"
 "  -h  --help              Print this help.\n"
 "  -e, --entrypoint <name> Specify the entry-point name.\n"
+"  -L, --llvm17-wa         Enable LLVM 17 workarounds for opaque pointers"
 "  -p, --platform <name>   Specify the target platform name.\n"
 "      --prefix <prefix>   Prefix for variable names in generated C code.\n"
 "  -o, --out <filename>    Specify the output filename.\n"
 "  -i, --in <filename>     Specify one input filename. Accepted multiple times.\n"
 "  -s, --spv <filename>    Specify the output filename for spirv.\n"
 "  -n, --nir               Specify whether to output serialized NIR instead of ISA.\n"
+"  -g, --gfx-version <ver> Specify the Gfx version used for NIR output.\n"
 "  -t, --text <filename>   Specify the output filename for the parsed text\n"
 "  -v, --verbose           Print more information during compilation.\n"
+"  -M, --llvm-version      Print LLVM version.\n"
    , exec_name);
 }
 
@@ -299,8 +302,11 @@ struct intel_clc_params {
    char *txt_outfile;
    char *prefix;
 
+   unsigned gfx_version;
+
    bool output_nir;
    bool print_info;
+   bool llvm17_wa;
 
    void *mem_ctx;
 
@@ -356,10 +362,12 @@ output_nir(const struct intel_clc_params *params, struct clc_binary *binary)
    spirv_library_to_nir_builder(fp, binary->data, binary->size / 4,
                                 &spirv_options);
 
-   nir_shader *nir = brw_nir_from_spirv(params->mem_ctx,
-                                        binary->data, binary->size);
+   nir_shader *nir = brw_nir_from_spirv(params->mem_ctx, params->gfx_version,
+                                        binary->data, binary->size,
+                                        params->llvm17_wa);
    if (!nir) {
       fprintf(stderr, "Failed to generate NIR out of SPIRV\n");
+      fclose(fp);
       return -1;
    }
 
@@ -435,23 +443,32 @@ output_isa(const struct intel_clc_params *params, struct clc_binary *binary)
    return 0;
 }
 
+static void
+print_llvm_version(FILE *out)
+{
+   fprintf(out, "%s\n", MESA_LLVM_VERSION_STRING);
+}
+
 int main(int argc, char **argv)
 {
    int exit_code = 0;
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    static struct option long_options[] ={
-      {"help",       no_argument,         0, 'h'},
-      {"entrypoint", required_argument,   0, 'e'},
-      {"platform",   required_argument,   0, 'p'},
-      {"prefix",     required_argument,   0, OPT_PREFIX},
-      {"in",         required_argument,   0, 'i'},
-      {"out",        required_argument,   0, 'o'},
-      {"spv",        required_argument,   0, 's'},
-      {"text",       required_argument,   0, 't'},
-      {"nir",        no_argument,         0, 'n'},
-      {"verbose",    no_argument,         0, 'v'},
+      {"help",         no_argument,         0, 'h'},
+      {"entrypoint",   required_argument,   0, 'e'},
+      {"platform",     required_argument,   0, 'p'},
+      {"prefix",       required_argument,   0, OPT_PREFIX},
+      {"in",           required_argument,   0, 'i'},
+      {"out",          required_argument,   0, 'o'},
+      {"spv",          required_argument,   0, 's'},
+      {"text",         required_argument,   0, 't'},
+      {"gfx-version",  required_argument,   0, 'g'},
+      {"nir",          no_argument,         0, 'n'},
+      {"llvm17-wa",    no_argument,         0, 'L'},
+      {"llvm-version", no_argument,         0, 'M'},
+      {"verbose",      no_argument,         0, 'v'},
       {0, 0, 0, 0}
    };
 
@@ -470,7 +487,7 @@ int main(int argc, char **argv)
    util_dynarray_init(&input_files, params.mem_ctx);
 
    int ch;
-   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:v", long_options, NULL)) != -1)
+   while ((ch = getopt_long(argc, argv, "he:p:s:t:i:no:MLvg:", long_options, NULL)) != -1)
    {
       switch (ch)
       {
@@ -500,6 +517,15 @@ int main(int argc, char **argv)
          break;
       case 'v':
          params.print_info = true;
+         break;
+      case 'L':
+         params.llvm17_wa = true;
+         break;
+      case 'M':
+         print_llvm_version(stdout);
+         return EXIT_SUCCESS;
+      case 'g':
+         params.gfx_version = strtoul(optarg, NULL, 10);
          break;
       case OPT_PREFIX:
          params.prefix = optarg;
@@ -592,6 +618,12 @@ int main(int argc, char **argv)
    glsl_type_singleton_init_or_ref();
 
    if (params.output_nir) {
+      if (params.gfx_version == 0) {
+         fprintf(stderr, "No target Gfx version specified.\n");
+         print_usage(argv[0], stderr);
+         goto fail;
+      }
+
       exit_code = output_nir(&params, &spirv_obj);
    } else {
       if (params.platform == NULL) {
@@ -614,6 +646,12 @@ int main(int argc, char **argv)
       if (params.devinfo.verx10 < 125) {
          fprintf(stderr, "Platform currently not supported.\n");
          goto fail;
+      }
+
+      if (params.gfx_version) {
+         fprintf(stderr, "WARNING: Ignorining unnecessary parameter for "
+                         "gfx version, using version based on platform.\n");
+         /* Keep going. */
       }
 
       if (params.entry_point == NULL) {

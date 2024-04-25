@@ -52,7 +52,7 @@ radv_spm_init_bo(struct radv_device *device)
    if (result != VK_SUCCESS)
       return false;
 
-   device->spm.ptr = ws->buffer_map(device->spm.bo);
+   device->spm.ptr = radv_buffer_map(ws, device->spm.bo);
    if (!device->spm.ptr)
       return false;
 

@@ -1221,11 +1221,11 @@ st_destroy_program_variants(struct st_context *st)
       return;
 
    /* ARB vert/frag program */
-   _mesa_HashWalk(st->ctx->Shared->Programs,
+   _mesa_HashWalk(&st->ctx->Shared->Programs,
                   destroy_program_variants_cb, st);
 
    /* GLSL vert/frag/geom shaders */
-   _mesa_HashWalk(st->ctx->Shared->ShaderObjects,
+   _mesa_HashWalk(&st->ctx->Shared->ShaderObjects,
                   destroy_shader_program_variants_cb, st);
 }
 

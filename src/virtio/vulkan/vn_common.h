@@ -122,7 +122,7 @@ enum vn_perf {
    VN_PERF_NO_FENCE_FEEDBACK = 1ull << 4,
    VN_PERF_NO_MEMORY_SUBALLOC = 1ull << 5,
    VN_PERF_NO_CMD_BATCHING = 1ull << 6,
-   VN_PERF_NO_TIMELINE_SEM_FEEDBACK = 1ull << 7,
+   VN_PERF_NO_SEMAPHORE_FEEDBACK = 1ull << 7,
    VN_PERF_NO_QUERY_FEEDBACK = 1ull << 8,
    VN_PERF_NO_ASYNC_MEM_ALLOC = 1ull << 9,
    VN_PERF_NO_TILED_WSI_IMAGE = 1ull << 10,
@@ -236,6 +236,22 @@ struct vn_tls {
    bool async_pipeline_create;
    /* Track TLS rings owned across instances. */
    struct list_head tls_rings;
+};
+
+/* A cached storage for object internal usages with below constraints:
+ * - It belongs to the object and shares the lifetime.
+ * - The storage reuse is protected by external synchronization.
+ * - The returned storage is not zero-initialized.
+ * - It never shrinks unless being purged via fini.
+ *
+ * The current users are:
+ * - VkCommandPool
+ * - VkQueue
+ */
+struct vn_cached_storage {
+   const VkAllocationCallbacks *alloc;
+   size_t size;
+   void *data;
 };
 
 void
@@ -546,6 +562,37 @@ static inline bool
 vn_cache_key_equal_function(const void *key1, const void *key2)
 {
    return memcmp(key1, key2, SHA1_DIGEST_LENGTH) == 0;
+}
+
+static inline void
+vn_cached_storage_init(struct vn_cached_storage *storage,
+                       const VkAllocationCallbacks *alloc)
+{
+   storage->alloc = alloc;
+   storage->size = 0;
+   storage->data = NULL;
+}
+
+static inline void *
+vn_cached_storage_get(struct vn_cached_storage *storage, size_t size)
+{
+   if (size > storage->size) {
+      void *data =
+         vk_realloc(storage->alloc, storage->data, size, VN_DEFAULT_ALIGN,
+                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (!data)
+         return NULL;
+
+      storage->size = size;
+      storage->data = data;
+   }
+   return storage->data;
+}
+
+static inline void
+vn_cached_storage_fini(struct vn_cached_storage *storage)
+{
+   vk_free(storage->alloc, storage->data);
 }
 
 #endif /* VN_COMMON_H */

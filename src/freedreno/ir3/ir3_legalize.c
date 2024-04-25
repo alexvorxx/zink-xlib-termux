@@ -576,6 +576,21 @@ retarget_jump(struct ir3_instruction *instr, struct ir3_block *new_target)
 }
 
 static bool
+is_invertible_branch(struct ir3_instruction *instr)
+{
+   switch (instr->opc) {
+   case OPC_BR:
+   case OPC_BRAA:
+   case OPC_BRAO:
+   case OPC_BANY:
+   case OPC_BALL:
+      return true;
+   default:
+      return false;
+   }
+}
+
+static bool
 opt_jump(struct ir3 *ir)
 {
    bool progress = false;
@@ -625,13 +640,14 @@ opt_jump(struct ir3 *ir)
 
       if (jumps[0]->opc == OPC_JUMP)
          jumps[1] = NULL;
-      else if (jumps[0]->opc != OPC_B || !jumps[1] || jumps[1]->opc != OPC_B)
+      else if (!is_invertible_branch(jumps[0]) || !jumps[1] ||
+               !is_invertible_branch(jumps[1])) {
          continue;
+      }
 
       for (unsigned i = 0; i < 2; i++) {
          if (!jumps[i])
             continue;
-
          struct ir3_block *tblock = jumps[i]->cat0.target;
          if (&tblock->node == block->node.next) {
             list_delinit(&jumps[i]->node);
@@ -686,82 +702,83 @@ mark_xvergence_points(struct ir3 *ir)
    }
 }
 
+static void
+invert_branch(struct ir3_instruction *branch)
+{
+   switch (branch->opc) {
+   case OPC_BR:
+      break;
+   case OPC_BALL:
+      branch->opc = OPC_BANY;
+      break;
+   case OPC_BANY:
+      branch->opc = OPC_BALL;
+      break;
+   case OPC_BRAA:
+      branch->opc = OPC_BRAO;
+      break;
+   case OPC_BRAO:
+      branch->opc = OPC_BRAA;
+      break;
+   default:
+      unreachable("can't get here");
+   }
+
+   branch->cat0.inv1 = !branch->cat0.inv1;
+   branch->cat0.inv2 = !branch->cat0.inv2;
+   branch->cat0.target = branch->block->successors[1];
+}
+
 /* Insert the branch/jump instructions for flow control between blocks.
  * Initially this is done naively, without considering if the successor
  * block immediately follows the current block (ie. so no jump required),
  * but that is cleaned up in opt_jump().
- *
- * TODO what ensures that the last write to p0.x in a block is the
- * branch condition?  Have we been getting lucky all this time?
  */
 static void
 block_sched(struct ir3 *ir)
 {
    foreach_block (block, &ir->block_list) {
+      struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+
       if (block->successors[1]) {
          /* if/else, conditional branches to "then" or "else": */
          struct ir3_instruction *br1, *br2;
 
-         if (block->brtype == IR3_BRANCH_GETONE ||
-             block->brtype == IR3_BRANCH_GETLAST ||
-             block->brtype == IR3_BRANCH_SHPS) {
+         assert(terminator);
+         unsigned opc = terminator->opc;
+
+         if (opc == OPC_GETONE || opc == OPC_SHPS || opc == OPC_GETLAST) {
             /* getone/shps can't be inverted, and it wouldn't even make sense
              * to follow it with an inverted branch, so follow it by an
              * unconditional branch.
              */
-            assert(!block->condition);
-            if (block->brtype == IR3_BRANCH_GETONE)
-               br1 = ir3_GETONE(block);
-            else if (block->brtype == IR3_BRANCH_GETLAST)
-               br1 = ir3_GETLAST(block);
-            else
-               br1 = ir3_SHPS(block);
+            assert(terminator->srcs_count == 0);
+            br1 = terminator;
             br1->cat0.target = block->successors[1];
 
             br2 = ir3_JUMP(block);
             br2->cat0.target = block->successors[0];
          } else {
-            assert(block->condition);
-
             /* create "else" branch first (since "then" block should
              * frequently/always end up being a fall-thru):
              */
-            br1 = ir3_instr_create(block, OPC_B, 0, 1);
-            ir3_src_create(br1, regid(REG_P0, 0), 0)->def =
-               block->condition->dsts[0];
-            br1->cat0.inv1 = true;
-            br1->cat0.target = block->successors[1];
-
-            /* "then" branch: */
-            br2 = ir3_instr_create(block, OPC_B, 0, 1);
-            ir3_src_create(br2, regid(REG_P0, 0), 0)->def =
-               block->condition->dsts[0];
+            br1 = terminator;
+            br2 = ir3_instr_clone(br1);
+            invert_branch(br1);
             br2->cat0.target = block->successors[0];
-
-            switch (block->brtype) {
-            case IR3_BRANCH_COND:
-               br1->cat0.brtype = br2->cat0.brtype = BRANCH_PLAIN;
-               break;
-            case IR3_BRANCH_ALL:
-               br1->cat0.brtype = BRANCH_ANY;
-               br2->cat0.brtype = BRANCH_ALL;
-               break;
-            case IR3_BRANCH_ANY:
-               br1->cat0.brtype = BRANCH_ALL;
-               br2->cat0.brtype = BRANCH_ANY;
-               break;
-            case IR3_BRANCH_GETONE:
-            case IR3_BRANCH_GETLAST:
-            case IR3_BRANCH_SHPS:
-               unreachable("can't get here");
-            }
          }
-      } else if (block->successors[0]) {
-         /* otherwise unconditional jump to next block: */
-         struct ir3_instruction *jmp;
 
-         jmp = ir3_JUMP(block);
-         jmp->cat0.target = block->successors[0];
+         /* Creating br2 caused it to be moved before the terminator b1, move it
+          * back.
+          */
+         ir3_instr_move_after(br2, br1);
+      } else if (block->successors[0]) {
+         /* otherwise unconditional jump to next block which should already have
+          * been inserted.
+          */
+         assert(terminator);
+         assert(terminator->opc == OPC_JUMP);
+         terminator->cat0.target = block->successors[0];
       }
    }
 }
@@ -786,6 +803,8 @@ block_sched(struct ir3 *ir)
 static void
 kill_sched(struct ir3 *ir, struct ir3_shader_variant *so)
 {
+   ir3_count_instructions(ir);
+
    /* True if we know that this block will always eventually lead to the end
     * block:
     */
@@ -807,7 +826,7 @@ kill_sched(struct ir3 *ir, struct ir3_shader_variant *so)
          if (instr->opc != OPC_KILL)
             continue;
 
-         struct ir3_instruction *br = ir3_instr_create(block, OPC_B, 0, 1);
+         struct ir3_instruction *br = ir3_instr_create(block, OPC_BR, 0, 1);
          ir3_src_create(br, instr->srcs[0]->num, instr->srcs[0]->flags)->wrmask =
             1;
          br->cat0.target =
@@ -957,11 +976,13 @@ helper_sched(struct ir3_legalize_ctx *ctx, struct ir3 *ir,
          }
       }
 
-      if (block->brtype == IR3_BRANCH_ALL ||
-          block->brtype == IR3_BRANCH_ANY ||
-          block->brtype == IR3_BRANCH_GETONE) {
-         bd->uses_helpers_beginning = true;
-         bd->uses_helpers_end = true;
+      struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+      if (terminator) {
+         if (terminator->opc == OPC_BALL || terminator->opc == OPC_BANY ||
+             terminator->opc == OPC_GETONE) {
+            bd->uses_helpers_beginning = true;
+            bd->uses_helpers_end = true;
+         }
       }
 
       block->data = bd;
@@ -1175,19 +1196,20 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
 
    *max_bary = ctx->max_bary;
 
+   foreach_block (block, &ir->block_list) {
+      struct ir3_instruction *terminator = ir3_block_get_terminator(block);
+      if (terminator && terminator->opc == OPC_GETONE) {
+         apply_push_consts_load_macro(ctx, block->successors[0]);
+         break;
+      }
+   }
+
    block_sched(ir);
    if (so->type == MESA_SHADER_FRAGMENT)
       kill_sched(ir, so);
 
    foreach_block (block, &ir->block_list) {
       progress |= apply_fine_deriv_macro(ctx, block);
-   }
-
-   foreach_block (block, &ir->block_list) {
-      if (block->brtype == IR3_BRANCH_GETONE) {
-         apply_push_consts_load_macro(ctx, block->successors[0]);
-         break;
-      }
    }
 
    nop_sched(ir, so);

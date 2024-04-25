@@ -13,7 +13,7 @@
 #include "nvk_entrypoints.h"
 #include "nvk_mme.h"
 #include "nvk_physical_device.h"
-#include "nvk_pipeline.h"
+#include "nvk_shader.h"
 
 #include "vk_pipeline_layout.h"
 #include "vk_synchronization.h"
@@ -29,11 +29,26 @@
 #include "nvk_clc597.h"
 
 static void
+nvk_descriptor_state_fini(struct nvk_cmd_buffer *cmd,
+                          struct nvk_descriptor_state *desc)
+{
+   struct nvk_cmd_pool *pool = nvk_cmd_buffer_pool(cmd);
+
+   for (unsigned i = 0; i < NVK_MAX_SETS; i++) {
+      vk_free(&pool->vk.alloc, desc->push[i]);
+      desc->push[i] = NULL;
+   }
+}
+
+static void
 nvk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 {
    struct nvk_cmd_buffer *cmd =
       container_of(vk_cmd_buffer, struct nvk_cmd_buffer, vk);
    struct nvk_cmd_pool *pool = nvk_cmd_buffer_pool(cmd);
+
+   nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
+   nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
    nvk_cmd_pool_free_bo_list(pool, &cmd->bos);
    nvk_cmd_pool_free_bo_list(pool, &cmd->gart_bos);
@@ -85,6 +100,9 @@ nvk_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer,
    struct nvk_cmd_pool *pool = nvk_cmd_buffer_pool(cmd);
 
    vk_command_buffer_reset(&cmd->vk);
+
+   nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
+   nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
    nvk_cmd_pool_free_bo_list(pool, &cmd->bos);
    nvk_cmd_pool_free_gart_bo_list(pool, &cmd->gart_bos);
@@ -551,33 +569,27 @@ nvk_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
    nvk_cmd_invalidate_deps(cmd, 1, pDependencyInfo);
 }
 
-VKAPI_ATTR void VKAPI_CALL
-nvk_CmdBindPipeline(VkCommandBuffer commandBuffer,
-                    VkPipelineBindPoint pipelineBindPoint,
-                    VkPipeline _pipeline)
+void
+nvk_cmd_bind_shaders(struct vk_command_buffer *vk_cmd,
+                     uint32_t stage_count,
+                     const gl_shader_stage *stages,
+                     struct vk_shader ** const shaders)
 {
-   VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(nvk_pipeline, pipeline, _pipeline);
+   struct nvk_cmd_buffer *cmd = container_of(vk_cmd, struct nvk_cmd_buffer, vk);
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
 
-   for (unsigned s = 0; s < ARRAY_SIZE(pipeline->shaders); s++) {
-      if(!pipeline->shaders[s])
-         continue;
-      if (pipeline->shaders[s]->info.slm_size)
-         nvk_device_ensure_slm(dev, pipeline->shaders[s]->info.slm_size);
-   }
+   for (uint32_t i = 0; i < stage_count; i++) {
+      struct nvk_shader *shader =
+         container_of(shaders[i], struct nvk_shader, vk);
 
-   switch (pipelineBindPoint) {
-   case VK_PIPELINE_BIND_POINT_GRAPHICS:
-      assert(pipeline->type == NVK_PIPELINE_GRAPHICS);
-      nvk_cmd_bind_graphics_pipeline(cmd, (void *)pipeline);
-      break;
-   case VK_PIPELINE_BIND_POINT_COMPUTE:
-      assert(pipeline->type == NVK_PIPELINE_COMPUTE);
-      nvk_cmd_bind_compute_pipeline(cmd, (void *)pipeline);
-      break;
-   default:
-      unreachable("Unhandled bind point");
+      if (shader != NULL && shader->info.slm_size > 0)
+         nvk_device_ensure_slm(dev, shader->info.slm_size);
+
+      if (stages[i] == MESA_SHADER_COMPUTE ||
+          stages[i] == MESA_SHADER_KERNEL)
+         nvk_cmd_bind_compute_shader(cmd, shader);
+      else
+         nvk_cmd_bind_graphics_shader(cmd, stages[i], shader);
    }
 }
 

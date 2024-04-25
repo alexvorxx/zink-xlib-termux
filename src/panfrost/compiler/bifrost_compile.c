@@ -1328,7 +1328,6 @@ bi_emit_image_load(bi_builder *b, nir_intrinsic_instr *instr)
    enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
    unsigned coord_comps = nir_image_intrinsic_coord_components(instr);
    bool array = nir_intrinsic_image_array(instr);
-   ASSERTED unsigned nr_dim = glsl_get_sampler_dim_coordinate_components(dim);
 
    bi_index coords = bi_src_index(&instr->src[1]);
    bi_index xy = bi_emit_image_coord(b, coords, 0, coord_comps, array);
@@ -1338,8 +1337,7 @@ bi_emit_image_load(bi_builder *b, nir_intrinsic_instr *instr)
       bi_reg_fmt_for_nir(nir_intrinsic_dest_type(instr));
    enum bi_vecsize vecsize = instr->num_components - 1;
 
-   /* TODO: MSAA */
-   assert(nr_dim != GLSL_SAMPLER_DIM_MS && "MSAA'd images not supported");
+   assert(dim != GLSL_SAMPLER_DIM_MS && "MSAA'd image not lowered");
 
    if (b->shader->arch >= 9 && nir_src_is_const(instr->src[0])) {
       bi_instr *I = bi_ld_tex_imm_to(b, dest, xy, zw, regfmt, vecsize,
@@ -1361,11 +1359,9 @@ bi_emit_lea_image_to(bi_builder *b, bi_index dest, nir_intrinsic_instr *instr)
 {
    enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
    bool array = nir_intrinsic_image_array(instr);
-   ASSERTED unsigned nr_dim = glsl_get_sampler_dim_coordinate_components(dim);
    unsigned coord_comps = nir_image_intrinsic_coord_components(instr);
 
-   /* TODO: MSAA */
-   assert(nr_dim != GLSL_SAMPLER_DIM_MS && "MSAA'd images not supported");
+   assert(dim != GLSL_SAMPLER_DIM_MS && "MSAA'd image not lowered");
 
    enum bi_register_format type =
       (instr->intrinsic == nir_intrinsic_image_store)
@@ -4643,6 +4639,9 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
       if (psiz != NULL)
          psiz->data.precision = GLSL_PRECISION_MEDIUM;
    }
+
+   /* lower MSAA load/stores to 3D load/stores */
+   NIR_PASS_V(nir, pan_nir_lower_image_ms);
 
    /* Get rid of any global vars before we lower to scratch. */
    NIR_PASS_V(nir, nir_lower_global_vars_to_local);

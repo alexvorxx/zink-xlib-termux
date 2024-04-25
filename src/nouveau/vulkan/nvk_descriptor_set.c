@@ -436,14 +436,11 @@ nvk_CreateDescriptorPool(VkDevice _device,
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    if (bo_size) {
-      uint32_t flags = NOUVEAU_WS_BO_GART | NOUVEAU_WS_BO_MAP | NOUVEAU_WS_BO_NO_SHARE;
-      pool->bo = nouveau_ws_bo_new(dev->ws_dev, bo_size, 0, flags);
+      uint32_t flags = NOUVEAU_WS_BO_GART | NOUVEAU_WS_BO_NO_SHARE;
+      pool->bo = nouveau_ws_bo_new_mapped(dev->ws_dev, bo_size, 0, flags,
+                                          NOUVEAU_WS_BO_WR,
+                                          (void **)&pool->mapped_ptr);
       if (!pool->bo) {
-         nvk_destroy_descriptor_pool(dev, pAllocator, pool);
-         return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-      }
-      pool->mapped_ptr = nouveau_ws_bo_map(pool->bo, NOUVEAU_WS_BO_WR);
-      if (!pool->mapped_ptr) {
          nvk_destroy_descriptor_pool(dev, pAllocator, pool);
          return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       }

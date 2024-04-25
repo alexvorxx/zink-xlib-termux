@@ -222,21 +222,21 @@
       <param name="framebuffer" type="GLuint" />
       <param name="buffer" type="GLenum" />
       <param name="drawbuffer" type="GLint" />
-      <param name="value" type="const GLint *" count="_mesa_buffer_enum_to_count(buffer)"/>
+      <param name="value" type="const GLint *" marshal_count="_mesa_buffer_enum_to_count(buffer)"/>
    </function>
 
    <function name="ClearNamedFramebufferuiv">
       <param name="framebuffer" type="GLuint" />
       <param name="buffer" type="GLenum" />
       <param name="drawbuffer" type="GLint" />
-      <param name="value" type="const GLuint *" count="_mesa_buffer_enum_to_count(buffer)"/>
+      <param name="value" type="const GLuint *" marshal_count="_mesa_buffer_enum_to_count(buffer)"/>
    </function>
 
    <function name="ClearNamedFramebufferfv">
       <param name="framebuffer" type="GLuint" />
       <param name="buffer" type="GLenum" />
       <param name="drawbuffer" type="GLint" />
-      <param name="value" type="const GLfloat *" count="_mesa_buffer_enum_to_count(buffer)"/>
+      <param name="value" type="const GLfloat *" marshal_count="_mesa_buffer_enum_to_count(buffer)"/>
    </function>
 
    <function name="ClearNamedFramebufferfi">
@@ -493,7 +493,7 @@
    <function name="TextureParameterfv">
       <param name="texture" type="GLuint" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLfloat *" count="_mesa_tex_param_enum_to_count(pname)"/>
+      <param name="param" type="const GLfloat *" marshal_count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="TextureParameteri">
@@ -505,19 +505,19 @@
    <function name="TextureParameterIiv">
       <param name="texture" type="GLuint" />
       <param name="pname" type="GLenum" />
-      <param name="params" type="const GLint *" count="_mesa_tex_param_enum_to_count(pname)"/>
+      <param name="params" type="const GLint *" marshal_count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="TextureParameterIuiv">
       <param name="texture" type="GLuint" />
       <param name="pname" type="GLenum" />
-      <param name="params" type="const GLuint *" count="_mesa_tex_param_enum_to_count(pname)"/>
+      <param name="params" type="const GLuint *" marshal_count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="TextureParameteriv">
       <param name="texture" type="GLuint" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLint *" count="_mesa_tex_param_enum_to_count(pname)"/>
+      <param name="param" type="const GLint *" marshal_count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="GenerateTextureMipmap" no_error="true">

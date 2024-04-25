@@ -365,8 +365,10 @@ nvk_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
 
       const VkExtent3D extent_px =
          vk_image_sanitize_extent(&dst->vk, region->imageExtent);
+      const uint32_t layer_count =
+         vk_image_subresource_layer_count(&dst->vk, &region->imageSubresource);
       const struct nil_extent4d extent4d_px =
-         vk_to_nil_extent(extent_px, region->imageSubresource.layerCount);
+         vk_to_nil_extent(extent_px, layer_count);
 
       const VkImageAspectFlagBits aspects = region->imageSubresource.aspectMask;
       uint8_t plane = nvk_image_aspects_to_plane(dst, aspects);
@@ -470,8 +472,10 @@ nvk_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
 
       const VkExtent3D extent_px =
          vk_image_sanitize_extent(&src->vk, region->imageExtent);
+      const uint32_t layer_count =
+         vk_image_subresource_layer_count(&src->vk, &region->imageSubresource);
       const struct nil_extent4d extent4d_px =
-         vk_to_nil_extent(extent_px, region->imageSubresource.layerCount);
+         vk_to_nil_extent(extent_px, layer_count);
 
       const VkImageAspectFlagBits aspects = region->imageSubresource.aspectMask;
       uint8_t plane = nvk_image_aspects_to_plane(src, aspects);
@@ -579,8 +583,10 @@ nvk_CmdCopyImage2(VkCommandBuffer commandBuffer,
        */
       const VkExtent3D extent_px =
          vk_image_sanitize_extent(&src->vk, region->extent);
+      const uint32_t layer_count =
+         vk_image_subresource_layer_count(&src->vk, &region->srcSubresource);
       const struct nil_extent4d extent4d_px =
-         vk_to_nil_extent(extent_px, region->srcSubresource.layerCount);
+         vk_to_nil_extent(extent_px, layer_count);
 
       const VkImageAspectFlagBits src_aspects =
          region->srcSubresource.aspectMask;

@@ -584,6 +584,8 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
    if (!param->num_filters &&
        src_region->width == dst_region->width &&
        src_region->height == dst_region->height &&
+       src_region->x == dst_region->x &&
+       src_region->y == dst_region->y &&
        can_convert_with_efc(src_surface, dst_surface) &&
        pscreen->get_video_param(pscreen,
                                 PIPE_VIDEO_PROFILE_UNKNOWN,

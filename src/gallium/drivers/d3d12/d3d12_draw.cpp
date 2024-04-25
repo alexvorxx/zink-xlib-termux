@@ -858,7 +858,7 @@ update_draw_auto(struct d3d12_context *ctx,
    d3d12_stream_output_target *target = (d3d12_stream_output_target *)so_arg;
 
    ctx->transform_state_vars[0] = ctx->gfx_pipeline_state.ves->strides[0];
-   ctx->transform_state_vars[1] = ctx->vbs[0].buffer_offset - so_arg->buffer_offset;
+   ctx->transform_state_vars[1] = 0;
    
    pipe_shader_buffer new_cs_ssbo;
    new_cs_ssbo.buffer = target->fill_buffer;

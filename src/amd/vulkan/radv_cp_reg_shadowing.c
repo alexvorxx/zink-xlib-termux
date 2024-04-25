@@ -76,7 +76,7 @@ radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_q
    /* copy the cs to queue_state->shadow_regs_ib. This will be the first preamble ib
     * added in radv_update_preamble_cs.
     */
-   void *map = ws->buffer_map(queue_state->shadow_regs_ib);
+   void *map = radv_buffer_map(ws, queue_state->shadow_regs_ib);
    if (!map) {
       result = VK_ERROR_MEMORY_MAP_FAILED;
       goto fail_map;
@@ -84,7 +84,7 @@ radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_q
    memcpy(map, cs->buf, cs->cdw * 4);
    queue_state->shadow_regs_ib_size_dw = cs->cdw;
 
-   ws->buffer_unmap(queue_state->shadow_regs_ib);
+   ws->buffer_unmap(ws, queue_state->shadow_regs_ib, false);
    ws->cs_destroy(cs);
    return VK_SUCCESS;
 fail_map:

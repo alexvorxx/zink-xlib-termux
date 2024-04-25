@@ -166,6 +166,14 @@ struct tu_instance
     * core, this is enabled by default.
     */
    bool reserve_descriptor_set;
+
+   /* Allow out of bounds UBO access by disabling lowering of UBO loads for
+    * indirect access, which rely on the UBO bounds specified in the shader,
+    * rather than the bound UBO size which isn't known until draw time.
+    *
+    * See: https://github.com/doitsujin/dxvk/issues/3861
+    */
+   bool allow_oob_indirect_ubo_loads;
 };
 VK_DEFINE_HANDLE_CASTS(tu_instance, vk.base, VkInstance,
                        VK_OBJECT_TYPE_INSTANCE)

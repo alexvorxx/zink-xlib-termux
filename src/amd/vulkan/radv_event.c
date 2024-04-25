@@ -69,7 +69,7 @@ radv_create_event(struct radv_device *device, const VkEventCreateInfo *pCreateIn
    }
 
    if (!(pCreateInfo->flags & VK_EVENT_CREATE_DEVICE_ONLY_BIT)) {
-      event->map = (uint64_t *)device->ws->buffer_map(event->bo);
+      event->map = (uint64_t *)radv_buffer_map(device->ws, event->bo);
       if (!event->map) {
          radv_destroy_event(device, pAllocator, event);
          return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);

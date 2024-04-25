@@ -32,7 +32,7 @@
 #include "crocus_context.h"
 #include "crocus_resource.h"
 #include "crocus_screen.h"
-#include "common/intel_defines.h"
+#include "common/i915/intel_defines.h"
 #include "common/intel_sample_positions.h"
 
 /**

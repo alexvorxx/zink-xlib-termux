@@ -230,7 +230,7 @@ setup_fs_payload_gfx20(fs_thread_payload &payload,
 }
 
 static inline void
-setup_fs_payload_gfx6(fs_thread_payload &payload,
+setup_fs_payload_gfx9(fs_thread_payload &payload,
                       const fs_visitor &v,
                       bool &source_depth_to_render_target)
 {
@@ -238,7 +238,7 @@ setup_fs_payload_gfx6(fs_thread_payload &payload,
 
    const unsigned payload_width = MIN2(16, v.dispatch_width);
    assert(v.dispatch_width % payload_width == 0);
-   assert(v.devinfo->ver >= 6 && v.devinfo->ver < 20);
+   assert(v.devinfo->ver < 20);
 
    payload.num_regs = 0;
 
@@ -285,7 +285,6 @@ setup_fs_payload_gfx6(fs_thread_payload &payload,
 
       /* R32-33: MSAA input coverage mask */
       if (prog_data->uses_sample_mask) {
-         assert(v.devinfo->ver >= 7);
          payload.sample_mask_in_reg[j] = payload.num_regs;
          payload.num_regs += payload_width / 8;
       }
@@ -303,153 +302,8 @@ setup_fs_payload_gfx6(fs_thread_payload &payload,
    }
 }
 
-#undef P                        /* prompted depth */
-#undef C                        /* computed */
-#undef N                        /* non-promoted? */
-
-#define P 0
-#define C 1
-#define N 2
-
-static const struct {
-   GLuint mode:2;
-   GLuint sd_present:1;
-   GLuint sd_to_rt:1;
-   GLuint dd_present:1;
-   GLuint ds_present:1;
-} wm_iz_table[BRW_WM_IZ_BIT_MAX] =
-{
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { N, 1, 1, 0, 0 },
- { N, 0, 1, 0, 0 },
- { N, 0, 1, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { C, 0, 1, 1, 0 },
- { C, 0, 1, 1, 0 },
- { P, 0, 0, 0, 0 },
- { N, 1, 1, 0, 0 },
- { C, 0, 1, 1, 0 },
- { C, 0, 1, 1, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { N, 1, 1, 0, 0 },
- { N, 0, 1, 0, 0 },
- { N, 0, 1, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { C, 0, 1, 1, 0 },
- { C, 0, 1, 1, 0 },
- { P, 0, 0, 0, 0 },
- { N, 1, 1, 0, 0 },
- { C, 0, 1, 1, 0 },
- { C, 0, 1, 1, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { N, 1, 1, 0, 1 },
- { N, 0, 1, 0, 1 },
- { N, 0, 1, 0, 1 },
- { P, 0, 0, 0, 0 },
- { P, 0, 0, 0, 0 },
- { C, 0, 1, 1, 1 },
- { C, 0, 1, 1, 1 },
- { P, 0, 0, 0, 0 },
- { N, 1, 1, 0, 1 },
- { C, 0, 1, 1, 1 },
- { C, 0, 1, 1, 1 },
- { P, 0, 0, 0, 0 },
- { C, 0, 0, 0, 1 },
- { P, 0, 0, 0, 0 },
- { C, 0, 1, 0, 1 },
- { P, 0, 0, 0, 0 },
- { C, 1, 1, 0, 1 },
- { C, 0, 1, 0, 1 },
- { C, 0, 1, 0, 1 },
- { P, 0, 0, 0, 0 },
- { C, 1, 1, 1, 1 },
- { C, 0, 1, 1, 1 },
- { C, 0, 1, 1, 1 },
- { P, 0, 0, 0, 0 },
- { C, 1, 1, 1, 1 },
- { C, 0, 1, 1, 1 },
- { C, 0, 1, 1, 1 }
-};
-
-/**
- * \param line_aa  BRW_NEVER, BRW_ALWAYS or BRW_SOMETIMES
- * \param lookup  bitmask of BRW_WM_IZ_* flags
- */
-static inline void
-setup_fs_payload_gfx4(fs_thread_payload &payload,
-                      const fs_visitor &v,
-                      bool &source_depth_to_render_target,
-                      bool &runtime_check_aads_emit)
-{
-   assert(v.dispatch_width <= 16);
-
-   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(v.prog_data);
-   brw_wm_prog_key *key = (brw_wm_prog_key *) v.key;
-
-   GLuint reg = 1;
-   bool kill_stats_promoted_workaround = false;
-   int lookup = key->iz_lookup;
-
-   assert(lookup < BRW_WM_IZ_BIT_MAX);
-
-   /* Crazy workaround in the windowizer, which we need to track in
-    * our register allocation and render target writes.  See the "If
-    * statistics are enabled..." paragraph of 11.5.3.2: Early Depth
-    * Test Cases [Pre-DevGT] of the 3D Pipeline - Windower B-Spec.
-    */
-   if (key->stats_wm &&
-       (lookup & BRW_WM_IZ_PS_KILL_ALPHATEST_BIT) &&
-       wm_iz_table[lookup].mode == P) {
-      kill_stats_promoted_workaround = true;
-   }
-
-   payload.subspan_coord_reg[0] = reg++;
-
-   if (wm_iz_table[lookup].sd_present || prog_data->uses_src_depth ||
-       kill_stats_promoted_workaround) {
-      payload.source_depth_reg[0] = reg;
-      reg += 2;
-   }
-
-   if (wm_iz_table[lookup].sd_to_rt || kill_stats_promoted_workaround)
-      source_depth_to_render_target = true;
-
-   if (wm_iz_table[lookup].ds_present || key->line_aa != BRW_NEVER) {
-      payload.aa_dest_stencil_reg[0] = reg;
-      runtime_check_aads_emit =
-         !wm_iz_table[lookup].ds_present && key->line_aa == BRW_SOMETIMES;
-      reg++;
-   }
-
-   if (wm_iz_table[lookup].dd_present) {
-      payload.dest_depth_reg[0] = reg;
-      reg+=2;
-   }
-
-   payload.num_regs = reg;
-}
-
-#undef P                        /* prompted depth */
-#undef C                        /* computed */
-#undef N                        /* non-promoted? */
-
 fs_thread_payload::fs_thread_payload(const fs_visitor &v,
-                                     bool &source_depth_to_render_target,
-                                     bool &runtime_check_aads_emit)
+                                     bool &source_depth_to_render_target)
   : subspan_coord_reg(),
     source_depth_reg(),
     source_w_reg(),
@@ -462,11 +316,8 @@ fs_thread_payload::fs_thread_payload(const fs_visitor &v,
 {
    if (v.devinfo->ver >= 20)
       setup_fs_payload_gfx20(*this, v, source_depth_to_render_target);
-   else if (v.devinfo->ver >= 6)
-      setup_fs_payload_gfx6(*this, v, source_depth_to_render_target);
    else
-      setup_fs_payload_gfx4(*this, v, source_depth_to_render_target,
-                            runtime_check_aads_emit);
+      setup_fs_payload_gfx9(*this, v, source_depth_to_render_target);
 }
 
 cs_thread_payload::cs_thread_payload(const fs_visitor &v)
@@ -512,7 +363,7 @@ cs_thread_payload::load_subgroup_id(const fs_builder &bld,
       assert(devinfo->verx10 < 125);
       assert(gl_shader_stage_is_compute(bld.shader->stage));
       int index = brw_get_subgroup_id_param_index(devinfo,
-                                                  bld.shader->stage_prog_data);
+                                                  bld.shader->prog_data);
       bld.MOV(dest, fs_reg(UNIFORM, index, BRW_REGISTER_TYPE_UD));
    }
 }

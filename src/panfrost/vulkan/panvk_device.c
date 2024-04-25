@@ -489,7 +489,8 @@ panvk_physical_device_init(struct panvk_physical_device *device,
 
    unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
 
-   device->model = panfrost_get_model(device->kmod.props.gpu_prod_id);
+   device->model = panfrost_get_model(device->kmod.props.gpu_prod_id,
+                                      device->kmod.props.gpu_variant);
    device->formats.all = panfrost_format_table(arch);
    device->formats.blendable = panfrost_blendable_format_table(arch);
 
@@ -1458,43 +1459,29 @@ panvk_BindBufferMemory2(VkDevice device, uint32_t bindInfoCount,
       VK_FROM_HANDLE(panvk_buffer, buffer, pBindInfos[i].buffer);
       struct pan_kmod_bo *old_bo = buffer->bo;
 
-      if (mem) {
-         buffer->bo = pan_kmod_bo_get(mem->bo);
-         buffer->dev_addr = mem->addr.dev + pBindInfos[i].memoryOffset;
+      assert(mem != NULL);
 
-         /* FIXME: Only host map for index buffers so we can do the min/max
-          * index retrieval on the CPU. This is all broken anyway and the
-          * min/max search should be done with a compute shader that also
-          * patches the job descriptor accordingly (basically an indirect draw).
-          *
-          * Make sure this goes away as soon as we fixed indirect draws.
-          */
-         if (buffer->vk.usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
-            VkDeviceSize offset = pBindInfos[i].memoryOffset;
-            VkDeviceSize pgsize = getpagesize();
-            off_t map_start = offset & ~(pgsize - 1);
-            off_t map_end = offset + buffer->vk.size;
-            void *map_addr =
-               pan_kmod_bo_mmap(mem->bo, map_start, map_end - map_start,
-                                PROT_WRITE, MAP_SHARED, NULL);
+      buffer->bo = pan_kmod_bo_get(mem->bo);
+      buffer->dev_addr = mem->addr.dev + pBindInfos[i].memoryOffset;
 
-            assert(map_addr != MAP_FAILED);
-            buffer->host_ptr = map_addr + (offset & pgsize);
-         }
-      } else {
-         buffer->bo = NULL;
-         buffer->dev_addr = 0;
-         buffer->host_ptr = NULL;
-         if (buffer->host_ptr) {
-            VkDeviceSize pgsize = getpagesize();
-            uintptr_t map_start = (uintptr_t)buffer->host_ptr & ~(pgsize - 1);
-            uintptr_t map_end = (uintptr_t)buffer->host_ptr + buffer->vk.size;
-            ASSERTED int ret =
-               os_munmap((void *)map_start, map_end - map_start);
+      /* FIXME: Only host map for index buffers so we can do the min/max
+         * index retrieval on the CPU. This is all broken anyway and the
+         * min/max search should be done with a compute shader that also
+         * patches the job descriptor accordingly (basically an indirect draw).
+         *
+         * Make sure this goes away as soon as we fixed indirect draws.
+         */
+      if (buffer->vk.usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
+         VkDeviceSize offset = pBindInfos[i].memoryOffset;
+         VkDeviceSize pgsize = getpagesize();
+         off_t map_start = offset & ~(pgsize - 1);
+         off_t map_end = offset + buffer->vk.size;
+         void *map_addr =
+            pan_kmod_bo_mmap(mem->bo, map_start, map_end - map_start,
+                              PROT_WRITE, MAP_SHARED, NULL);
 
-            assert(!ret);
-            buffer->host_ptr = NULL;
-         }
+         assert(map_addr != MAP_FAILED);
+         buffer->host_ptr = map_addr + (offset & pgsize);
       }
 
       pan_kmod_bo_put(old_bo);

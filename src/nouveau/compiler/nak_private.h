@@ -201,9 +201,36 @@ enum nak_fs_out {
    NAK_FS_OUT_DEPTH = 0x84,
 };
 
+#define NAK_FS_OUT_COLOR(n) (NAK_FS_OUT_COLOR0 + (n) * 16)
+
 bool nak_nir_add_barriers(nir_shader *nir, const struct nak_compiler *nak);
 
-#define NAK_FS_OUT_COLOR(n) (NAK_FS_OUT_COLOR0 + (n) * 16)
+static inline bool
+nak_is_only_used_by_iadd(const nir_alu_instr *instr)
+{
+   nir_foreach_use(src, &instr->def) {
+      nir_instr *use = nir_src_parent_instr(src);
+      if (use->type != nir_instr_type_alu)
+         return false;
+
+      if (nir_instr_as_alu(use)->op != nir_op_iadd)
+         return false;
+   }
+
+   return true;
+}
+
+struct nak_memstream {
+   FILE *stream;
+   char *buffer;
+   size_t written;
+};
+
+void nak_open_memstream(struct nak_memstream *memstream);
+void nak_close_memstream(struct nak_memstream *memstream);
+void nak_flush_memstream(struct nak_memstream *memstream);
+void nak_clear_memstream(struct nak_memstream *memstream);
+void nak_nir_asprint_instr(struct nak_memstream *memstream, const nir_instr *instr);
 
 #ifdef __cplusplus
 }

@@ -33,7 +33,6 @@
 #include "iris_context.h"
 #include "iris_resource.h"
 #include "iris_screen.h"
-#include "intel/compiler/brw_compiler.h"
 
 static bool
 iris_is_color_fast_clear_compatible(struct iris_context *ice,

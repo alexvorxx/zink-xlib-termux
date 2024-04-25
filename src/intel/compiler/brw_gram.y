@@ -117,12 +117,6 @@ i965_asm_unary_instruction(int opcode, struct brw_codegen *p,
 	case BRW_OPCODE_CBIT:
 		brw_CBIT(p, dest, src0);
 		break;
-	case BRW_OPCODE_F32TO16:
-		brw_F32TO16(p, dest, src0);
-		break;
-	case BRW_OPCODE_F16TO32:
-		brw_F16TO32(p, dest, src0);
-		break;
 	case BRW_OPCODE_MOV:
 		brw_MOV(p, dest, src0);
 		break;
@@ -149,9 +143,6 @@ i965_asm_unary_instruction(int opcode, struct brw_codegen *p,
 		break;
 	case BRW_OPCODE_LZD:
 		brw_LZD(p, dest, src0);
-		break;
-	case BRW_OPCODE_DIM:
-		brw_DIM(p, dest, src0);
 		break;
 	case BRW_OPCODE_RNDU:
 		fprintf(stderr, "Opcode BRW_OPCODE_RNDU unhandled\n");
@@ -311,24 +302,10 @@ i965_asm_set_instruction_options(struct brw_codegen *p,
 	}
 	brw_inst_set_debug_control(p->devinfo, brw_last_inst,
 			           options.debug_control);
-	if (p->devinfo->ver >= 6)
-		brw_inst_set_acc_wr_control(p->devinfo, brw_last_inst,
-					    options.acc_wr_control);
+	brw_inst_set_acc_wr_control(p->devinfo, brw_last_inst,
+				    options.acc_wr_control);
 	brw_inst_set_cmpt_control(p->devinfo, brw_last_inst,
 				  options.compaction);
-}
-
-static void
-i965_asm_set_dst_nr(struct brw_codegen *p,
-	            struct brw_reg *reg,
-	            struct options options)
-{
-	if (p->devinfo->ver <= 6) {
-		if (reg->file == BRW_MESSAGE_REGISTER_FILE &&
-		    options.qtr_ctrl == BRW_COMPRESSION_COMPRESSED &&
-		    !options.is_compr)
-			reg->nr |= BRW_MRF_COMPR4;
-	}
 }
 
 static void
@@ -401,13 +378,13 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> BFE BFI1 BFI2 BFB BFREV BRC BRD BREAK
 %token <integer> CALL CALLA CASE CBIT CMP CMPN CONT CSEL
 %token <integer> DIM DO DPAS DPASW DP2 DP3 DP4 DP4A DPH
-%token <integer> ELSE ENDIF F16TO32 F32TO16 FBH FBL FORK FRC
+%token <integer> ELSE ENDIF FBH FBL FORK FRC
 %token <integer> GOTO
 %token <integer> HALT
-%token <integer> IF IFF ILLEGAL
+%token <integer> IF ILLEGAL
 %token <integer> JMPI JOIN
 %token <integer> LINE LRP LZD
-%token <integer> MAC MACH MAD MADM MOV MOVI MUL MREST MSAVE
+%token <integer> MAC MACH MAD MADM MATH MOV MOVI MUL MREST MSAVE
 %token <integer> NENOP NOP NOT
 %token <integer> OR
 %token <integer> PLN POP PUSH
@@ -427,8 +404,8 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %type <reg> sync_arg
 
 /* shared functions for send */
-%token CONST CRE DATA DP_DATA_1 GATEWAY MATH PIXEL_INTERP READ RENDER SAMPLER
-%token THREAD_SPAWNER URB VME WRITE DP_SAMPLER RT_ACCEL SLM TGM UGM
+%token CONST CRE DATA DP_DATA_1 GATEWAY PIXEL_INTERP RENDER SAMPLER
+%token THREAD_SPAWNER URB VME DP_SAMPLER RT_ACCEL SLM TGM UGM
 
 /* message details for send */
 %token MSGDESC_BEGIN SRC1_LEN EX_BSO MSGDESC_END
@@ -446,9 +423,6 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 
 /* compaction control */
 %token CMPTCTRL
-
-/* compression control */
-%token COMPR COMPR4 SECHALF
 
 /* mask control (WeCtrl) */
 %token WECTRL
@@ -486,13 +460,13 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> X Y Z W
 
 /* reg files */
-%token GENREGFILE MSGREGFILE
+%token GENREGFILE
 
 /* vertical stride in register region */
 %token VxH
 
 /* register type */
-%token <integer> GENREG MSGREG ADDRREG ACCREG FLAGREG NOTIFYREG STATEREG
+%token <integer> GENREG ADDRREG ACCREG FLAGREG NOTIFYREG STATEREG
 %token <integer> CONTROLREG IPREG PERFORMANCEREG THREADREG CHANNELENABLEREG
 %token <integer> MASKREG
 
@@ -506,7 +480,7 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %nonassoc EMPTYEXECSIZE
 %nonassoc LPAREN
 
-%type <integer> execsize simple_int exp
+%type <integer> execsize exp
 %type <llint> exp2
 
 /* predicate control */
@@ -529,7 +503,7 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %type <reg> dst dstoperand dstoperandex dstoperandex_typed dstreg
 %type <integer> dstregion
 
-%type <integer> saturate relativelocation rellocation
+%type <integer> saturate
 %type <reg> relativelocation2
 
 /* src operand */
@@ -537,7 +511,7 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %type <reg> srcarcoperandex srcaccimm srcarcoperandex_typed srcimm
 %type <reg> indirectgenreg indirectregion
 %type <reg> immreg src reg32 payload directgenreg_list addrparam region
-%type <reg> region_wh directgenreg directmsgreg indirectmsgreg
+%type <reg> region_wh directgenreg
 %type <reg> desc ex_desc reg32a
 %type <integer> swizzle
 
@@ -596,16 +570,6 @@ add_instruction_option(struct options *options, struct instoption opt)
 	case ALIGN16:
 		options->access_mode = BRW_ALIGN_16;
 		break;
-	case SECHALF:
-		options->qtr_ctrl |= BRW_COMPRESSION_2NDHALF;
-		break;
-	case COMPR:
-		options->qtr_ctrl |= BRW_COMPRESSION_COMPRESSED;
-		options->is_compr = true;
-		break;
-	case COMPR4:
-		options->qtr_ctrl |= BRW_COMPRESSION_COMPRESSED;
-		break;
 	case SWITCH:
 		options->thread_control |= BRW_THREAD_SWITCH;
 		break;
@@ -616,7 +580,7 @@ add_instruction_option(struct options *options, struct instoption opt)
 		options->no_dd_check = true;
 		break;
 	case NODDCLR:
-		options->no_dd_clear = BRW_DEPENDENCY_NOTCLEARED;
+		options->no_dd_clear = true;
 		break;
 	case MASK_DISABLE:
 		options->mask_control |= BRW_MASK_DISABLE;
@@ -728,7 +692,6 @@ illegalinstruction:
 unaryinstruction:
 	predicate unaryopcodes saturate cond_mod execsize dst srcaccimm	instoptions
 	{
-		i965_asm_set_dst_nr(p, &$6, $8);
 		brw_set_default_access_mode(p, $8.access_mode);
 		i965_asm_unary_instruction($2, p, $6, $7);
 		brw_pop_insn_state(p);
@@ -736,8 +699,7 @@ unaryinstruction:
 		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 && $2 != BRW_OPCODE_DIM &&
-		    !brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
+		if (!brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
 			brw_inst_set_flag_reg_nr(p->devinfo,
 						 brw_last_inst,
 						 $4.flag_reg_nr);
@@ -756,9 +718,8 @@ unaryinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $8.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $8.nib_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $8.nib_ctrl);
 	}
 	;
 
@@ -766,8 +727,6 @@ unaryopcodes:
 	BFREV
 	| CBIT
 	| DIM
-	| F16TO32
-	| F32TO16
 	| FBH
 	| FBL
 	| FRC
@@ -784,15 +743,13 @@ unaryopcodes:
 binaryinstruction:
 	predicate binaryopcodes saturate cond_mod execsize dst srcimm srcimm instoptions
 	{
-		i965_asm_set_dst_nr(p, &$6, $9);
 		brw_set_default_access_mode(p, $9.access_mode);
 		i965_asm_binary_instruction($2, p, $6, $7, $8);
 		i965_asm_set_instruction_options(p, $9);
 		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 &&
-		    !brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
+		if (!brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
 			brw_inst_set_flag_reg_nr(p->devinfo, brw_last_inst,
 					         $4.flag_reg_nr);
 			brw_inst_set_flag_subreg_nr(p->devinfo, brw_last_inst,
@@ -805,9 +762,8 @@ binaryinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $9.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $9.nib_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $9.nib_ctrl);
 
 		brw_pop_insn_state(p);
 	}
@@ -836,7 +792,6 @@ binaryopcodes:
 binaryaccinstruction:
 	predicate binaryaccopcodes saturate cond_mod execsize dst srcacc srcimm instoptions
 	{
-		i965_asm_set_dst_nr(p, &$6, $9);
 		brw_set_default_access_mode(p, $9.access_mode);
 		i965_asm_binary_instruction($2, p, $6, $7, $8);
 		brw_pop_insn_state(p);
@@ -844,8 +799,7 @@ binaryaccinstruction:
 		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 &&
-		    !brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
+		if (!brw_inst_flag_reg_nr(p->devinfo, brw_last_inst)) {
 			brw_inst_set_flag_reg_nr(p->devinfo,
 						 brw_last_inst,
 						 $4.flag_reg_nr);
@@ -860,9 +814,8 @@ binaryaccinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $9.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $9.nib_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $9.nib_ctrl);
 	}
 	;
 
@@ -893,9 +846,8 @@ mathinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $9.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $9.nib_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $9.nib_ctrl);
 
 		brw_pop_insn_state(p);
 	}
@@ -938,7 +890,7 @@ ternaryinstruction:
 		brw_inst_set_cond_modifier(p->devinfo, brw_last_inst,
 					   $4.cond_modifier);
 
-		if (p->devinfo->ver >= 7 && p->devinfo->ver < 12) {
+		if (p->devinfo->ver < 12) {
 			brw_inst_set_3src_a16_flag_reg_nr(p->devinfo, brw_last_inst,
 					         $4.flag_reg_nr);
 			brw_inst_set_3src_a16_flag_subreg_nr(p->devinfo, brw_last_inst,
@@ -951,9 +903,8 @@ ternaryinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $10.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $10.nib_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $10.nib_ctrl);
 	}
 	;
 
@@ -1004,36 +955,14 @@ sendinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $9.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $9.nib_ctrl);
-
-		brw_pop_insn_state(p);
-	}
-	| predicate sendopcode execsize exp dst payload exp2 sharedfunction msgdesc instoptions
-	{
-		assert(p->devinfo->ver < 6);
-
-		i965_asm_set_instruction_options(p, $10);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_base_mrf(p->devinfo, brw_last_inst, $4);
-		brw_set_dest(p, brw_last_inst, $5);
-		brw_set_src0(p, brw_last_inst, $6);
-		brw_inst_set_bits(brw_last_inst, 127, 96, $7);
-		brw_inst_set_src1_file_type(p->devinfo, brw_last_inst,
-				            BRW_IMMEDIATE_VALUE,
-					    BRW_REGISTER_TYPE_UD);
-		brw_inst_set_sfid(p->devinfo, brw_last_inst, $8);
-		brw_inst_set_eot(p->devinfo, brw_last_inst, $10.end_of_thread);
-		// TODO: set instruction group instead of qtr and nib ctrl
-		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
-				         $10.qtr_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $9.nib_ctrl);
 
 		brw_pop_insn_state(p);
 	}
 	| predicate sendopcode execsize dst payload payload exp2 sharedfunction msgdesc instoptions
 	{
-		assert(p->devinfo->ver >= 6 && p->devinfo->ver < 12);
+		assert(p->devinfo->ver < 12);
 
 		i965_asm_set_instruction_options(p, $10);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
@@ -1046,16 +975,13 @@ sendinstruction:
 		brw_inst_set_qtr_control(p->devinfo, brw_last_inst,
 				         $10.qtr_ctrl);
 
-		if (p->devinfo->ver >= 7)
-			brw_inst_set_nib_control(p->devinfo, brw_last_inst,
-					         $10.nib_ctrl);
+		brw_inst_set_nib_control(p->devinfo, brw_last_inst,
+				         $10.nib_ctrl);
 
 		brw_pop_insn_state(p);
 	}
 	| predicate sendsopcode execsize dst payload payload desc ex_desc sharedfunction msgdesc instoptions
 	{
-		assert(p->devinfo->ver >= 9);
-
 		i965_asm_set_instruction_options(p, $11);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
 		brw_set_dest(p, brw_last_inst, $4);
@@ -1118,10 +1044,7 @@ sendsopcode:
 
 sharedfunction:
 	NULL_TOKEN 	        { $$ = BRW_SFID_NULL; }
-	| MATH 		        { $$ = BRW_SFID_MATH; }
 	| GATEWAY 	        { $$ = BRW_SFID_MESSAGE_GATEWAY; }
-	| READ 		        { $$ = BRW_SFID_DATAPORT_READ; }
-	| WRITE 	        { $$ = BRW_SFID_DATAPORT_WRITE; }
 	| URB 		        { $$ = BRW_SFID_URB; }
 	| THREAD_SPAWNER 	{ $$ = BRW_SFID_THREAD_SPAWNER; }
 	| VME 		        { $$ = BRW_SFID_VME; }
@@ -1196,39 +1119,7 @@ branchinstruction:
 		i965_asm_set_instruction_options(p, $5);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
 
-		if (p->devinfo->ver == 6) {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0x0));
-		} else {
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
-		}
-
-		brw_pop_insn_state(p);
-	}
-	| predicate ENDIF execsize relativelocation instoptions
-	{
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-
-		brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-					BRW_REGISTER_TYPE_D));
-		brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-					BRW_REGISTER_TYPE_D));
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $4);
-
-		brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						BRW_THREAD_SWITCH);
+		brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
 
 		brw_pop_insn_state(p);
 	}
@@ -1241,40 +1132,10 @@ branchinstruction:
 		i965_asm_set_instruction_options(p, $5);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
 
-		if (p->devinfo->ver == 6) {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0));
-		} else {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0));
-		}
-	}
-	| ELSE execsize relativelocation rellocation instoptions
-	{
-		brw_next_insn(p, $1);
-		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
-
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $3);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $4);
-
-		if (!p->single_program_flow)
-			brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						    BRW_THREAD_SWITCH);
+		brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
+			     BRW_REGISTER_TYPE_D));
+		if (p->devinfo->ver < 12)
+			brw_set_src0(p, brw_last_inst, brw_imm_d(0));
 	}
 	| predicate IF execsize JUMP_LABEL jumplabel instoptions
 	{
@@ -1285,97 +1146,11 @@ branchinstruction:
 		i965_asm_set_instruction_options(p, $6);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
 
-		if (p->devinfo->ver == 6) {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0x0));
-		} else {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
-		}
-
-		brw_pop_insn_state(p);
-	}
-	| predicate IF execsize relativelocation rellocation instoptions
-	{
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $5);
-
-		if (!p->single_program_flow)
-			brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						    BRW_THREAD_SWITCH);
-
-		brw_pop_insn_state(p);
-	}
-	| predicate IFF execsize JUMP_LABEL instoptions
-	{
-		add_label(p, $4, INSTR_LABEL_JIP);
-
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-
-		if (p->devinfo->ver == 6) {
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src0(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			brw_set_src1(p, brw_last_inst, brw_imm_w(0x0));
-		} else {
-			brw_set_dest(p, brw_last_inst,
-				     vec1(retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D)));
-			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
-		}
-
-		brw_pop_insn_state(p);
-	}
-	| predicate IFF execsize relativelocation instoptions
-	{
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_set_src1(p, brw_last_inst, brw_imm_d($4));
-
-		if (!p->single_program_flow)
-			brw_inst_set_thread_control(p->devinfo, brw_last_inst,
-						    BRW_THREAD_SWITCH);
+		brw_set_dest(p, brw_last_inst,
+			     vec1(retype(brw_null_reg(),
+			     BRW_REGISTER_TYPE_D)));
+		if (p->devinfo->ver < 12)
+			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
 
 		brw_pop_insn_state(p);
 	}
@@ -1392,31 +1167,9 @@ breakinstruction:
 		i965_asm_set_instruction_options(p, $6);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
 
-		if (p->devinfo->ver >= 8) {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
-		} else {
-			brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		}
-
-		brw_pop_insn_state(p);
-	}
-	| predicate BREAK execsize relativelocation relativelocation instoptions
-	{
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $5);
+		brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
+			     BRW_REGISTER_TYPE_D));
+		brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
 
 		brw_pop_insn_state(p);
 	}
@@ -1432,11 +1185,7 @@ breakinstruction:
 		brw_set_dest(p, brw_last_inst, retype(brw_null_reg(),
 			     BRW_REGISTER_TYPE_D));
 
-		if (p->devinfo->ver < 8) {
-			brw_set_src0(p, brw_last_inst, retype(brw_null_reg(),
-				     BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		} else if (p->devinfo->ver < 12) {
+		if (p->devinfo->ver < 12) {
 			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
 		}
 
@@ -1452,27 +1201,7 @@ breakinstruction:
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
 		brw_set_dest(p, brw_last_inst, brw_ip_reg());
 
-		if (p->devinfo->ver >= 8) {
-			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
-		} else {
-			brw_set_src0(p, brw_last_inst, brw_ip_reg());
-			brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		}
-
-		brw_pop_insn_state(p);
-	}
-	| predicate CONT execsize relativelocation relativelocation instoptions
-	{
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $6);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, $5);
+		brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
 
 		brw_pop_insn_state(p);
 	}
@@ -1488,59 +1217,17 @@ loopinstruction:
 		i965_asm_set_instruction_options(p, $5);
 		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
 
-		if (p->devinfo->ver >= 8) {
-			brw_set_dest(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			if (p->devinfo->ver < 12)
-				brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
-		} else if (p->devinfo->ver == 7) {
-			brw_set_dest(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			brw_set_src0(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst,
-						brw_imm_w(0x0));
-		} else {
-			brw_set_dest(p, brw_last_inst, brw_imm_w(0x0));
-			brw_set_src0(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-			brw_set_src1(p, brw_last_inst,
-						retype(brw_null_reg(),
-						BRW_REGISTER_TYPE_D));
-		}
-
-		brw_pop_insn_state(p);
-	}
-	| predicate WHILE execsize relativelocation instoptions
-	{
-		brw_next_insn(p, $2);
-		i965_asm_set_instruction_options(p, $5);
-		brw_inst_set_exec_size(p->devinfo, brw_last_inst, $3);
-
-		brw_set_dest(p, brw_last_inst, brw_ip_reg());
-		brw_set_src0(p, brw_last_inst, brw_ip_reg());
-		brw_set_src1(p, brw_last_inst, brw_imm_d(0x0));
-		brw_inst_set_gfx4_jump_count(p->devinfo, brw_last_inst, $4);
-		brw_inst_set_gfx4_pop_count(p->devinfo, brw_last_inst, 0);
+		brw_set_dest(p, brw_last_inst,
+					retype(brw_null_reg(),
+					BRW_REGISTER_TYPE_D));
+		if (p->devinfo->ver < 12)
+			brw_set_src0(p, brw_last_inst, brw_imm_d(0x0));
 
 		brw_pop_insn_state(p);
 	}
 	| DO execsize instoptions
 	{
 		brw_next_insn(p, $1);
-		if (p->devinfo->ver < 6) {
-			brw_inst_set_exec_size(p->devinfo, brw_last_inst, $2);
-			i965_asm_set_instruction_options(p, $3);
-			brw_set_dest(p, brw_last_inst, brw_null_reg());
-			brw_set_src0(p, brw_last_inst, brw_null_reg());
-			brw_set_src1(p, brw_last_inst, brw_null_reg());
-
-			brw_inst_set_qtr_control(p->devinfo, brw_last_inst, BRW_COMPRESSION_NONE);
-		}
 	}
 	;
 
@@ -1596,25 +1283,6 @@ sync_arg:
 relativelocation2:
 	immreg
 	| reg32
-	;
-
-simple_int:
-	INTEGER 	        { $$ = $1; }
-	| MINUS INTEGER 	{ $$ = -$2; }
-	| LONG 		        { $$ = $1; }
-	| MINUS LONG 	        { $$ = -$2; }
-	;
-
-rellocation:
-	relativelocation
-	| /* empty */ { $$ = 0; }
-	;
-
-relativelocation:
-	simple_int
-	{
-		$$ = $1;
-	}
 	;
 
 jumplabel:
@@ -1704,16 +1372,6 @@ dstreg:
 		$$.address_mode = BRW_ADDRESS_DIRECT;
 	}
 	| indirectgenreg
-	{
-		$$ = $1;
-		$$.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
-	}
-	| directmsgreg
-	{
-		$$ = $1;
-		$$.address_mode = BRW_ADDRESS_DIRECT;
-	}
-	| indirectmsgreg
 	{
 		$$ = $1;
 		$$.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
@@ -1878,7 +1536,6 @@ indirectsrcoperand:
 
 directgenreg_list:
 	directgenreg
-	| directmsgreg
 	| notifyreg
 	| addrreg
 	| performancereg
@@ -1944,29 +1601,10 @@ indirectgenreg:
 	}
 	;
 
-directmsgreg:
-	MSGREG subregnum
-	{
-		$$.file = BRW_MESSAGE_REGISTER_FILE;
-		$$.nr = $1;
-		$$.subnr = $2;
-	}
-	;
-
-indirectmsgreg:
-	MSGREGFILE LSQUARE addrparam RSQUARE
-	{
-		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_MESSAGE_REGISTER_FILE;
-		$$.subnr = $3.subnr;
-		$$.indirect_offset = $3.indirect_offset;
-	}
-	;
-
 addrreg:
 	ADDRREG subregnum
 	{
-		int subnr = (p->devinfo->ver >= 8) ? 16 : 8;
+		int subnr = 16;
 
 		if ($2 > subnr)
 			error(&@2, "Address sub register number %d"
@@ -1981,11 +1619,7 @@ addrreg:
 accreg:
 	ACCREG subregnum
 	{
-		int nr_reg;
-		if (p->devinfo->ver < 8)
-			nr_reg = 2;
-		else
-			nr_reg = 10;
+		int nr_reg = 10;
 
 		if ($1 > nr_reg)
 			error(&@1, "Accumulator register number %d"
@@ -2001,8 +1635,8 @@ accreg:
 flagreg:
 	FLAGREG subregnum
 	{
-		// SNB = 1 flag reg and IVB+ = 2 flag reg
-		int nr_reg = (p->devinfo->ver >= 7) ? 2 : 1;
+		// 2 flag reg
+		int nr_reg = 2;
 		int subnr = nr_reg;
 
 		if ($1 > nr_reg)
@@ -2102,8 +1736,6 @@ performancereg:
 		int subnr;
 		if (p->devinfo->ver >= 10)
 			subnr = 5;
-		else if (p->devinfo->ver <= 8)
-			subnr = 3;
 		else
 			subnr = 4;
 
@@ -2522,9 +2154,6 @@ instoption:
 	ALIGN1 	        { $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN1;}
 	| ALIGN16 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN16; }
 	| ACCWREN 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ACCWREN; }
-	| SECHALF 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = SECHALF; }
-	| COMPR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = COMPR; }
-	| COMPR4 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = COMPR4; }
 	| BREAKPOINT 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = BREAKPOINT; }
 	| NODDCLR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCLR; }
 	| NODDCHK 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCHK; }

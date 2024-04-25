@@ -790,6 +790,7 @@ d3d12_flush_frontbuffer(struct pipe_screen * pscreen,
                         struct pipe_resource *pres,
                         unsigned level, unsigned layer,
                         void *winsys_drawable_handle,
+                        unsigned nboxes,
                         struct pipe_box *sub_box)
 {
    struct d3d12_screen *screen = d3d12_screen(pscreen);
@@ -851,7 +852,7 @@ d3d12_flush_frontbuffer(struct pipe_screen * pscreen,
    }
 #endif
 
-   winsys->displaytarget_display(winsys, res->dt, winsys_drawable_handle, sub_box);
+   winsys->displaytarget_display(winsys, res->dt, winsys_drawable_handle, nboxes, sub_box);
 }
 
 #ifndef _GAMING_XBOX

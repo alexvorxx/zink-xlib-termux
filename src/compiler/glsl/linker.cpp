@@ -2919,17 +2919,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
       if (!prog->data->LinkStatus)
          goto done;
 
-      lower_vector_derefs(shader);
-
-      lower_packing_builtins(ir, ctx->Extensions.ARB_shading_language_packing,
-                             ctx->Extensions.ARB_gpu_shader5,
-                             ctx->Const.GLSLHasHalfFloatPacking);
-      do_mat_op_to_vec(ir);
-
-      lower_instructions(ir, ctx->Extensions.ARB_gpu_shader5);
-
-      do_vec_index_to_cond_assign(ir);
-
       const struct gl_shader_compiler_options *gl_options =
          &consts->ShaderCompilerOptions[i];
 

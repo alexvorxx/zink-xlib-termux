@@ -389,8 +389,8 @@ vk_instance_add_driver_trace_modes(struct vk_instance *instance,
 static VkResult
 enumerate_drm_physical_devices_locked(struct vk_instance *instance)
 {
-   /* TODO: Check for more devices ? */
-   drmDevicePtr devices[8];
+   /* libdrm returns a maximum of 256 devices (see MAX_DRM_NODES in libdrm) */
+   drmDevicePtr devices[256];
    int max_devices = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
 
    if (max_devices < 1)

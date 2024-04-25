@@ -922,7 +922,7 @@ radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCr
             radv_destroy_descriptor_pool(device, pAllocator, pool);
             return vk_error(device, result);
          }
-         pool->mapped_ptr = (uint8_t *)device->ws->buffer_map(pool->bo);
+         pool->mapped_ptr = (uint8_t *)radv_buffer_map(device->ws, pool->bo);
          if (!pool->mapped_ptr) {
             radv_destroy_descriptor_pool(device, pAllocator, pool);
             return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);

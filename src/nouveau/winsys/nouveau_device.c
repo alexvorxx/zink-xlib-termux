@@ -317,6 +317,10 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
    else
       device->local_mem_domain = NOUVEAU_GEM_DOMAIN_VRAM;
 
+   if (drm_device->bustype == DRM_BUS_PCI &&
+       !nouveau_ws_param(fd, NOUVEAU_GETPARAM_VRAM_BAR_SIZE, &value))
+      device->info.bar_size_B = value;
+
    if (nouveau_ws_param(fd, NOUVEAU_GETPARAM_GRAPH_UNITS, &value))
       goto out_err;
 
@@ -351,6 +355,7 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
 out_err:
    if (device->has_vm_bind) {
       util_vma_heap_finish(&device->vma_heap);
+      util_vma_heap_finish(&device->bda_heap);
       simple_mtx_destroy(&device->vma_mutex);
    }
    if (ver)
@@ -372,9 +377,25 @@ nouveau_ws_device_destroy(struct nouveau_ws_device *device)
 
    if (device->has_vm_bind) {
       util_vma_heap_finish(&device->vma_heap);
+      util_vma_heap_finish(&device->bda_heap);
       simple_mtx_destroy(&device->vma_mutex);
    }
 
    close(device->fd);
    FREE(device);
+}
+
+uint64_t
+nouveau_ws_device_vram_used(struct nouveau_ws_device *device)
+{
+   uint64_t used = 0;
+   if (nouveau_ws_param(device->fd, NOUVEAU_GETPARAM_VRAM_USED, &used))
+      return 0;
+
+   /* Zero memory used would be very strange given that it includes kernel
+    * internal allocations.
+    */
+   assert(used > 0);
+
+   return used;
 }

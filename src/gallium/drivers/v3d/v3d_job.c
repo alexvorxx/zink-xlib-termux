@@ -192,20 +192,23 @@ v3d_flush_jobs_writing_resource(struct v3d_context *v3d,
 {
         struct hash_entry *entry = _mesa_hash_table_search(v3d->write_jobs,
                                                            prsc);
+        if (!entry)
+                return;
+
         struct v3d_resource *rsc = v3d_resource(prsc);
 
         /* We need to sync if graphics pipeline reads a resource written
-         * by the compute pipeline. The same would be needed for the case of
-         * graphics-compute dependency but nowadays all compute jobs
-         * are serialized with the previous submitted job.
+         * by the compute pipeline. The same is needed for the case of
+         * graphics-compute dependency but flushing the job.
          */
         if (!is_compute_pipeline && rsc->bo != NULL && rsc->compute_written) {
-           v3d->sync_on_last_compute_job = true;
-           rsc->compute_written = false;
+                v3d->sync_on_last_compute_job = true;
+                rsc->compute_written = false;
         }
-
-        if (!entry)
-                return;
+        if (is_compute_pipeline && rsc->bo != NULL && rsc->graphics_written) {
+                flush_cond = V3D_FLUSH_ALWAYS;
+                rsc->graphics_written = false;
+        }
 
         struct v3d_job *job = entry->data;
 

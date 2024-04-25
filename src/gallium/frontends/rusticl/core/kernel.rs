@@ -18,7 +18,6 @@ use mesa_rust_util::math::*;
 use mesa_rust_util::serialize::*;
 use rusticl_opencl_gen::*;
 
-use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -26,6 +25,8 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 // ugh, we are not allowed to take refs, so...
 #[derive(Clone)]
@@ -299,8 +300,8 @@ pub struct Kernel {
     pub base: CLObjectBase<CL_INVALID_KERNEL>,
     pub prog: Arc<Program>,
     pub name: String,
-    pub values: Vec<RefCell<Option<KernelArgValue>>>,
-    pub builds: HashMap<&'static Device, Arc<NirKernelBuild>>,
+    values: Mutex<Vec<Option<KernelArgValue>>>,
+    builds: HashMap<&'static Device, Arc<NirKernelBuild>>,
     pub kernel_info: KernelInfo,
 }
 
@@ -818,18 +819,12 @@ impl Kernel {
             .filter_map(|(&dev, b)| b.kernels.get(&name).map(|k| (dev, k.clone())))
             .collect();
 
-        // can't use vec!...
-        let values = kernel_info
-            .args
-            .iter()
-            .map(|_| RefCell::new(None))
-            .collect();
-
+        let values = vec![None; kernel_info.args.len()];
         Arc::new(Self {
             base: CLObjectBase::new(RusticlTypes::Kernel),
             prog: prog.clone(),
             name: name,
-            values: values,
+            values: Mutex::new(values),
             builds: builds,
             kernel_info: kernel_info,
         })
@@ -908,7 +903,8 @@ impl Kernel {
 
         self.optimize_local_size(q.device, &mut grid, &mut block);
 
-        for (arg, val) in self.kernel_info.args.iter().zip(&self.values) {
+        let arg_values = self.arg_values();
+        for (arg, val) in self.kernel_info.args.iter().zip(arg_values.iter()) {
             if arg.dead {
                 continue;
             }
@@ -920,7 +916,7 @@ impl Kernel {
             {
                 input.resize(arg.offset, 0);
             }
-            match val.borrow().as_ref().unwrap() {
+            match val.as_ref().unwrap() {
                 KernelArgValue::Constant(c) => input.extend_from_slice(c),
                 KernelArgValue::Buffer(buffer) => {
                     let res = buffer.get_res_of_dev(q.device)?;
@@ -1153,6 +1149,20 @@ impl Kernel {
         }))
     }
 
+    pub fn arg_values(&self) -> MutexGuard<Vec<Option<KernelArgValue>>> {
+        self.values.lock().unwrap()
+    }
+
+    pub fn set_kernel_arg(&self, idx: usize, arg: KernelArgValue) -> CLResult<()> {
+        self.values
+            .lock()
+            .unwrap()
+            .get_mut(idx)
+            .ok_or(CL_INVALID_ARG_INDEX)?
+            .replace(arg);
+        Ok(())
+    }
+
     pub fn access_qualifier(&self, idx: cl_uint) -> cl_kernel_arg_access_qualifier {
         let aq = self.kernel_info.args[idx as usize].spirv.access_qualifier;
 
@@ -1298,7 +1308,7 @@ impl Clone for Kernel {
             base: CLObjectBase::new(RusticlTypes::Kernel),
             prog: self.prog.clone(),
             name: self.name.clone(),
-            values: self.values.clone(),
+            values: Mutex::new(self.arg_values().clone()),
             builds: self.builds.clone(),
             kernel_info: self.kernel_info.clone(),
         }

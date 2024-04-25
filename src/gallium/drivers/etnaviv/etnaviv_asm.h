@@ -97,7 +97,6 @@ struct etna_inst {
    unsigned sel_bit0:1; /* select low half mediump */
    unsigned sel_bit1:1; /* select high half mediump */
    unsigned dst_full:1; /* write to highp register */
-   unsigned no_oneconst_limit:1; /* allow multiple different uniform sources */
    struct etna_inst_dst dst; /* destination operand */
    struct etna_inst_tex tex; /* texture operand */
    struct etna_inst_src src[ETNA_NUM_SRC]; /* source operand */
@@ -172,7 +171,7 @@ etna_immediate_int(int x)
  * value otherwise.
  */
 int
-etna_assemble(uint32_t *out, const struct etna_inst *inst);
+etna_assemble(uint32_t *out, const struct etna_inst *inst, bool has_no_oneconst_limit);
 
 /**
  * Set field imm of already-assembled instruction.

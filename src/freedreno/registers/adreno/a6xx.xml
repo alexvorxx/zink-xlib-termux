@@ -1733,6 +1733,15 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x00122" name="RBBM_CGC_P2S_STATUS" variants="A7XX-">
 		<bitfield name="TXDONE" pos="0" type="boolean"/>
 	</reg32>
+	<reg32 offset="0x00123" name="RBBM_CLOCK_CNTL_FCHE"/>
+	<reg32 offset="0x00124" name="RBBM_CLOCK_DELAY_FCHE"/>
+	<reg32 offset="0x00125" name="RBBM_CLOCK_HYST_FCHE"/>
+	<reg32 offset="0x00126" name="RBBM_CLOCK_CNTL_MHUB"/>
+	<reg32 offset="0x00127" name="RBBM_CLOCK_DELAY_MHUB"/>
+	<reg32 offset="0x00128" name="RBBM_CLOCK_HYST_MHUB"/>
+	<reg32 offset="0x00129" name="RBBM_CLOCK_DELAY_GLC"/>
+	<reg32 offset="0x0012a" name="RBBM_CLOCK_HYST_GLC"/>
+	<reg32 offset="0x0012b" name="RBBM_CLOCK_CNTL_GLC"/>
 	<reg32 offset="0x0012f" name="RBBM_CLOCK_HYST2_VFD" variants="A7XX-"/>
 	<reg32 offset="0x005ff" name="RBBM_LPAC_GBIF_CLIENT_QOS_CNTL"/>
 
@@ -1942,6 +1951,8 @@ to upconvert to 32b float internally?
 		<reg32 offset="0x0" name="REG"/>
 	</array>
 
+	<reg32 offset="0x0d08" name="VSC_UNKNOWN_0D08" variants="A7XX-" usage="rp_blit"/>
+
 	<reg32 offset="0x0E10" name="UCHE_UNKNOWN_0E10" variants="A7XX-" usage="cmd"/>
 	<reg32 offset="0x0E11" name="UCHE_UNKNOWN_0E11" variants="A7XX-" usage="cmd"/>
 	<!-- always 0x03200000 ? -->
@@ -1996,7 +2007,7 @@ to upconvert to 32b float internally?
 	<!-- Something connected to depth-stencil attachment size -->
 	<reg32 offset="0x8007" name="GRAS_UNKNOWN_8007" variants="A7XX-" usage="rp_blit"/>
 
-	<reg32 offset="0x8008" name="GRAS_UNKNOWN_8008" variants="A7XX-" usage="rp_blit"/>
+	<reg32 offset="0x8008" name="GRAS_UNKNOWN_8008" variants="A7XX-" usage="cmd"/>
 
 	<reg32 offset="0x8009" name="GRAS_UNKNOWN_8009" variants="A7XX-" usage="cmd"/>
 	<reg32 offset="0x800a" name="GRAS_UNKNOWN_800A" variants="A7XX-" usage="cmd"/>
@@ -2211,12 +2222,12 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x80f1" name="GRAS_SC_WINDOW_SCISSOR_BR" type="a6xx_reg_xy" usage="rp_blit"/>
 
 	<!-- 0x80f4 - 0x80fa are used for VK_KHR_fragment_shading_rate -->
-	<reg64 offset="0x80f4" name="GRAS_UNKNOWN_80F4" variants="A7XX-"/>
-	<reg64 offset="0x80f5" name="GRAS_UNKNOWN_80F5" variants="A7XX-"/>
-	<reg64 offset="0x80f6" name="GRAS_UNKNOWN_80F6" variants="A7XX-"/>
-	<reg64 offset="0x80f8" name="GRAS_UNKNOWN_80F8" variants="A7XX-"/>
-	<reg64 offset="0x80f9" name="GRAS_UNKNOWN_80F9" variants="A7XX-"/>
-	<reg64 offset="0x80fa" name="GRAS_UNKNOWN_80FA" variants="A7XX-"/>
+	<reg64 offset="0x80f4" name="GRAS_UNKNOWN_80F4" variants="A7XX-" usage="cmd"/>
+	<reg64 offset="0x80f5" name="GRAS_UNKNOWN_80F5" variants="A7XX-" usage="cmd"/>
+	<reg64 offset="0x80f6" name="GRAS_UNKNOWN_80F6" variants="A7XX-" usage="cmd"/>
+	<reg64 offset="0x80f8" name="GRAS_UNKNOWN_80F8" variants="A7XX-" usage="cmd"/>
+	<reg64 offset="0x80f9" name="GRAS_UNKNOWN_80F9" variants="A7XX-" usage="cmd"/>
+	<reg64 offset="0x80fa" name="GRAS_UNKNOWN_80FA" variants="A7XX-" usage="cmd"/>
 
 	<enum name="a6xx_lrz_dir_status">
 		<value value="0x1" name="LRZ_DIR_LE"/>
@@ -2331,7 +2342,7 @@ to upconvert to 32b float internally?
 	<!-- A bit tentative but it's a color and it is followed by LRZ_CLEAR -->
 	<reg32 offset="0x8111" name="GRAS_LRZ_CLEAR_DEPTH_F32" type="float" variants="A7XX-"/>
 
-	<reg32 offset="0x8113" name="GRAS_UNKNOWN_8113" variants="A7XX-" usage="rp_blit"/>
+	<reg32 offset="0x8113" name="GRAS_LRZ_DEPTH_BUFFER_INFO" variants="A7XX-" usage="rp_blit"/>
 
 	<!-- Always written together and always equal 09510840 00000a62 -->
 	<reg32 offset="0x8120" name="GRAS_UNKNOWN_8120" variants="A7XX-" usage="cmd"/>
@@ -2776,7 +2787,7 @@ to upconvert to 32b float internally?
 		 -->
 		<bitfield name="BUFFER_ID" low="12" high="15"/>
 	</reg32>
-	<reg32 offset="0x88e4" name="RB_UNKNOWN_88E4" variants="A7XX-">
+	<reg32 offset="0x88e4" name="RB_UNKNOWN_88E4" variants="A7XX-" usage="rp_blit">
 		<!-- Value conditioned based on predicate, changed before blits -->
 		<bitfield name="UNK0" pos="0" type="boolean"/>
 	</reg32>
@@ -2830,7 +2841,7 @@ to upconvert to 32b float internally?
 		</reg32>
 	</array>
 	<!-- 0x891b-0x8926 invalid -->
-	<reg64 offset="0x8927" name="RB_SAMPLE_COUNT_ADDR" type="waddress" align="16" usage="cmd"/>
+	<reg64 offset="0x8927" name="RB_SAMPLE_COUNT_ADDR" type="waddress" align="16" usage="cmd" variants="A6XX"/>
 	<!-- 0x8929-0x89ff invalid -->
 
 	<!-- TODO: there are some registers in the 0x8a00-0x8bff range -->
@@ -4329,10 +4340,10 @@ to upconvert to 32b float internally?
 	</reg32>
 
 	<!-- Always 0 -->
-	<reg32 offset="0xa9ac" name="HLSQ_UNKNOWN_A9AC" variants="A7XX-"/>
+	<reg32 offset="0xa9ac" name="HLSQ_UNKNOWN_A9AC" variants="A7XX-" usage="cmd"/>
 
 	<!-- Used in VK_KHR_fragment_shading_rate -->
-	<reg32 offset="0xa9ad" name="HLSQ_UNKNOWN_A9AD" variants="A7XX-"/>
+	<reg32 offset="0xa9ad" name="HLSQ_UNKNOWN_A9AD" variants="A7XX-" usage="cmd"/>
 
 	<reg32 offset="0xa9ae" name="HLSQ_UNKNOWN_A9AE" variants="A7XX-" usage="rp_blit">
 		<bitfield name="SYSVAL_REGS_COUNT" low="0" high="7" type="uint"/>

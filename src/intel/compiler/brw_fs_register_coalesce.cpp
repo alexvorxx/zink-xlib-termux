@@ -189,10 +189,12 @@ can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
 }
 
 bool
-fs_visitor::register_coalesce()
+brw_fs_opt_register_coalesce(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
+
    bool progress = false;
-   fs_live_variables &live = live_analysis.require();
+   fs_live_variables &live = s.live_analysis.require();
    int src_size = 0;
    int channels_remaining = 0;
    unsigned src_reg = ~0u, dst_reg = ~0u;
@@ -201,8 +203,8 @@ fs_visitor::register_coalesce()
    int *dst_var = new int[MAX_VGRF_SIZE(devinfo)];
    int *src_var = new int[MAX_VGRF_SIZE(devinfo)];
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
-      if (!is_coalesce_candidate(this, inst))
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
+      if (!is_coalesce_candidate(&s, inst))
          continue;
 
       if (is_nop_mov(inst)) {
@@ -214,7 +216,7 @@ fs_visitor::register_coalesce()
       if (src_reg != inst->src[0].nr) {
          src_reg = inst->src[0].nr;
 
-         src_size = alloc.sizes[inst->src[0].nr];
+         src_size = s.alloc.sizes[inst->src[0].nr];
          assert(src_size <= MAX_VGRF_SIZE(devinfo));
 
          channels_remaining = src_size;
@@ -265,7 +267,7 @@ fs_visitor::register_coalesce()
          dst_var[i] = live.var_from_vgrf[dst_reg] + dst_reg_offset[i];
          src_var[i] = live.var_from_vgrf[src_reg] + i;
 
-         if (!can_coalesce_vars(live, cfg, block, inst, dst_var[i], src_var[i])) {
+         if (!can_coalesce_vars(live, s.cfg, block, inst, dst_var[i], src_var[i])) {
             can_coalesce = false;
             src_reg = ~0u;
             break;
@@ -301,7 +303,7 @@ fs_visitor::register_coalesce()
          }
       }
 
-      foreach_block_and_inst(block, fs_inst, scan_inst, cfg) {
+      foreach_block_and_inst(block, fs_inst, scan_inst, s.cfg) {
          if (scan_inst->dst.file == VGRF &&
              scan_inst->dst.nr == src_reg) {
             scan_inst->dst.nr = dst_reg;
@@ -329,15 +331,15 @@ fs_visitor::register_coalesce()
    }
 
    if (progress) {
-      foreach_block_and_inst_safe (block, backend_instruction, inst, cfg) {
+      foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
          if (inst->opcode == BRW_OPCODE_NOP) {
             inst->remove(block, true);
          }
       }
 
-      cfg->adjust_block_ips();
+      s.cfg->adjust_block_ips();
 
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
    }
 
    delete[] src_var;

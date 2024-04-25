@@ -427,10 +427,18 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
       break;
 
    case nir_intrinsic_load_lds_ngg_gs_out_vertex_base_amd:
-      replacement = nir_imm_int(b, s->info->ngg_info.esgs_ring_size);
+      if (s->info->merged_shader_compiled_separately) {
+         replacement = GET_SGPR_FIELD_NIR(s->args->ngg_lds_layout, NGG_LDS_LAYOUT_GS_OUT_VERTEX_BASE);
+      } else {
+         replacement = nir_imm_int(b, s->info->ngg_info.esgs_ring_size);
+      }
       break;
    case nir_intrinsic_load_lds_ngg_scratch_base_amd:
-      replacement = nir_imm_int(b, s->info->ngg_info.scratch_lds_base);
+      if (s->info->merged_shader_compiled_separately) {
+         replacement = GET_SGPR_FIELD_NIR(s->args->ngg_lds_layout, NGG_LDS_LAYOUT_SCRATCH_BASE);
+      } else {
+         replacement = nir_imm_int(b, s->info->ngg_info.scratch_lds_base);
+      }
       break;
    case nir_intrinsic_load_num_vertices_per_primitive_amd: {
       unsigned num_vertices;

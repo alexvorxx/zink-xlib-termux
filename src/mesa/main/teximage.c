@@ -2881,7 +2881,7 @@ _mesa_update_fbo_texture(struct gl_context *ctx,
       info.texObj = texObj;
       info.level = level;
       info.face = face;
-      _mesa_HashWalk(ctx->Shared->FrameBuffers, check_rtt_cb, &info);
+      _mesa_HashWalk(&ctx->Shared->FrameBuffers, check_rtt_cb, &info);
    }
 }
 
@@ -3065,9 +3065,7 @@ lookup_texture_ext_dsa(struct gl_context *ctx, GLenum target, GLuint texture,
       texObj = ctx->Shared->DefaultTex[targetIndex];
       assert(texObj);
    } else {
-      bool isGenName;
       texObj = _mesa_lookup_texture(ctx, texture);
-      isGenName = texObj != NULL;
       if (!texObj && _mesa_is_desktop_gl_core(ctx)) {
          _mesa_error(ctx, GL_INVALID_OPERATION, "%s(non-gen name)", caller);
          return NULL;
@@ -3081,7 +3079,7 @@ lookup_texture_ext_dsa(struct gl_context *ctx, GLenum target, GLuint texture,
          }
 
          /* insert into hash table */
-         _mesa_HashInsert(ctx->Shared->TexObjects, texObj->Name, texObj, isGenName);
+         _mesa_HashInsert(&ctx->Shared->TexObjects, texObj->Name, texObj);
       }
 
       if (texObj->Target != boundTarget) {

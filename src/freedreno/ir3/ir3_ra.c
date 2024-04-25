@@ -2070,12 +2070,10 @@ insert_liveout_copy(struct ir3_block *block, physreg_t dst, physreg_t src,
                     struct ir3_register *reg)
 {
    struct ir3_instruction *old_pcopy = NULL;
-   if (!list_is_empty(&block->instr_list)) {
-      struct ir3_instruction *last =
-         list_entry(block->instr_list.prev, struct ir3_instruction, node);
-      if (last->opc == OPC_META_PARALLEL_COPY)
-         old_pcopy = last;
-   }
+   struct ir3_instruction *last = ir3_block_get_last_non_terminator(block);
+
+   if (last && last->opc == OPC_META_PARALLEL_COPY)
+      old_pcopy = last;
 
    unsigned old_pcopy_srcs = old_pcopy ? old_pcopy->srcs_count : 0;
    struct ir3_instruction *pcopy = ir3_instr_create(
@@ -2545,6 +2543,9 @@ int
 ir3_ra(struct ir3_shader_variant *v)
 {
    ir3_calc_dominance(v->ir);
+
+   /* Predicate RA needs dominance. */
+   ir3_ra_predicates(v);
 
    ir3_create_parallel_copies(v->ir);
 

@@ -619,25 +619,9 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
     *     The following restrictions apply for align1 mode: Scalar source is
     *     supported. Source and destination horizontal stride must be the
     *     same.
-    *
-    * From the Haswell PRM Volume 2b "Command Reference - Instructions", page
-    * 134 ("Extended Math Function"):
-    *
-    *    Scalar source is supported. Source and destination horizontal stride
-    *    must be 1.
-    *
-    * and similar language exists for IVB and SNB. Pre-SNB, math instructions
-    * are sends, so the sources are moved to MRF's and there are no
-    * restrictions.
     */
-   if (inst->is_math()) {
-      if (devinfo->ver == 6 || devinfo->ver == 7) {
-         assert(inst->dst.stride == 1);
-         return stride == 1 || stride == 0;
-      } else if (devinfo->ver >= 8) {
-         return stride == inst->dst.stride || stride == 0;
-      }
-   }
+   if (inst->is_math())
+      return stride == inst->dst.stride || stride == 0;
 
    return true;
 }
@@ -725,15 +709,6 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
       }
    }
 
-   /* Avoid propagating odd-numbered FIXED_GRF registers into the first source
-    * of a LINTERP instruction on platforms where the PLN instruction has
-    * register alignment restrictions.
-    */
-   if (devinfo->has_pln && devinfo->ver <= 6 &&
-       entry->src.file == FIXED_GRF && (entry->src.nr & 1) &&
-       inst->opcode == FS_OPCODE_LINTERP && arg == 0)
-      return false;
-
    /* we can't generally copy-propagate UD negations because we
     * can end up accessing the resulting values as signed integers
     * instead. See also resolve_ud_negate() and comment in
@@ -750,15 +725,10 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
 
    /* Reject cases that would violate register regioning restrictions. */
    if ((entry->src.file == UNIFORM || !entry->src.is_contiguous()) &&
-       ((devinfo->ver == 6 && inst->is_math()) ||
-        inst->is_send_from_grf() ||
+       (inst->is_send_from_grf() ||
         inst->uses_indirect_addressing())) {
       return false;
    }
-
-   if (has_source_modifiers &&
-       inst->opcode == SHADER_OPCODE_GFX4_SCRATCH_WRITE)
-      return false;
 
    /* Some instructions implemented in the generator backend, such as
     * derivatives, assume that their operands are packed so we can't
@@ -867,7 +837,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
         type_sz(entry->dst.type) != type_sz(inst->src[arg].type)))
       return false;
 
-   if (devinfo->ver >= 8 && (entry->src.negate || entry->src.abs) &&
+   if ((entry->src.negate || entry->src.abs) &&
        is_logic_op(inst->opcode)) {
       return false;
    }
@@ -946,7 +916,6 @@ static bool
 try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
                        acp_entry *entry, int arg)
 {
-   const struct intel_device_info *devinfo = compiler->devinfo;
    bool progress = false;
 
    if (type_sz(entry->src.type) > 4)
@@ -1002,15 +971,15 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    val.type = inst->src[arg].type;
 
    if (inst->src[arg].abs) {
-      if ((devinfo->ver >= 8 && is_logic_op(inst->opcode)) ||
-          !brw_abs_immediate(val.type, &val.as_brw_reg())) {
+      if (is_logic_op(inst->opcode) ||
+          !fs_reg_abs_immediate(&val)) {
          return false;
       }
    }
 
    if (inst->src[arg].negate) {
-      if ((devinfo->ver >= 8 && is_logic_op(inst->opcode)) ||
-          !brw_negate_immediate(val.type, &val.as_brw_reg())) {
+      if (is_logic_op(inst->opcode) ||
+          !fs_reg_negate_immediate(&val)) {
          return false;
       }
    }
@@ -1024,13 +993,6 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       break;
 
    case SHADER_OPCODE_POW:
-      /* Allow constant propagation into src1 (except on Gen 6 which
-       * doesn't support scalar source math), and let constant combining
-       * promote the constant on Gen < 8.
-       */
-      if (devinfo->ver == 6)
-         break;
-
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
@@ -1190,15 +1152,6 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 
    case SHADER_OPCODE_INT_QUOTIENT:
    case SHADER_OPCODE_INT_REMAINDER:
-      /* Allow constant propagation into either source (except on Gen 6
-       * which doesn't support scalar source math). Constant combining
-       * promote the src1 constant on Gen < 8, and it will promote the src0
-       * constant on all platforms.
-       */
-      if (devinfo->ver == 6)
-         break;
-
-      FALLTHROUGH;
    case BRW_OPCODE_AND:
    case BRW_OPCODE_ASR:
    case BRW_OPCODE_BFE:
@@ -1215,14 +1168,17 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    case SHADER_OPCODE_TXL_LOGICAL:
    case SHADER_OPCODE_TXS_LOGICAL:
    case FS_OPCODE_TXB_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
    case SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL:
-   case SHADER_OPCODE_TXF_UMS_LOGICAL:
    case SHADER_OPCODE_TXF_MCS_LOGICAL:
    case SHADER_OPCODE_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_BIAS_LOGICAL:
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
    case SHADER_OPCODE_SAMPLEINFO_LOGICAL:
    case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
@@ -1399,22 +1355,22 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
 }
 
 bool
-fs_visitor::opt_copy_propagation()
+brw_fs_opt_copy_propagation(fs_visitor &s)
 {
    bool progress = false;
    void *copy_prop_ctx = ralloc_context(NULL);
    linear_ctx *lin_ctx = linear_context(copy_prop_ctx);
-   struct acp out_acp[cfg->num_blocks];
+   struct acp out_acp[s.cfg->num_blocks];
 
-   const fs_live_variables &live = live_analysis.require();
+   const fs_live_variables &live = s.live_analysis.require();
 
    /* First, walk through each block doing local copy propagation and getting
     * the set of copies available at the end of the block.
     */
-   foreach_block (block, cfg) {
-      progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            out_acp[block->num], alloc,
-                                            max_polygons) || progress;
+   foreach_block (block, s.cfg) {
+      progress = opt_copy_propagation_local(s.compiler, lin_ctx, block,
+                                            out_acp[block->num], s.alloc,
+                                            s.max_polygons) || progress;
 
       /* If the destination of an ACP entry exists only within this block,
        * then there's no need to keep it for dataflow analysis.  We can delete
@@ -1437,12 +1393,12 @@ fs_visitor::opt_copy_propagation()
    }
 
    /* Do dataflow analysis for those available copies. */
-   fs_copy_prop_dataflow dataflow(lin_ctx, cfg, live, out_acp);
+   fs_copy_prop_dataflow dataflow(lin_ctx, s.cfg, live, out_acp);
 
    /* Next, re-run local copy propagation, this time with the set of copies
     * provided by the dataflow analysis available at the start of a block.
     */
-   foreach_block (block, cfg) {
+   foreach_block (block, s.cfg) {
       struct acp in_acp;
 
       for (int i = 0; i < dataflow.num_acp; i++) {
@@ -1453,16 +1409,16 @@ fs_visitor::opt_copy_propagation()
          }
       }
 
-      progress = opt_copy_propagation_local(compiler, lin_ctx, block,
-                                            in_acp, alloc, max_polygons) ||
+      progress = opt_copy_propagation_local(s.compiler, lin_ctx, block,
+                                            in_acp, s.alloc, s.max_polygons) ||
                  progress;
    }
 
    ralloc_free(copy_prop_ctx);
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
-                          DEPENDENCY_INSTRUCTION_DETAIL);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                            DEPENDENCY_INSTRUCTION_DETAIL);
 
    return progress;
 }

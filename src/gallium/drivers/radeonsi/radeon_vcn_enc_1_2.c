@@ -25,7 +25,7 @@
 #define RENCODE_IB_PARAM_LAYER_SELECT              0x00000005
 #define RENCODE_IB_PARAM_RATE_CONTROL_SESSION_INIT 0x00000006
 #define RENCODE_IB_PARAM_RATE_CONTROL_LAYER_INIT   0x00000007
-#define RENCODE_IB_PARAM_RATE_CONTROL_PER_PICTURE  0x00000008
+#define RENCODE_IB_PARAM_RATE_CONTROL_PER_PICTURE  0x0000001d
 #define RENCODE_IB_PARAM_QUALITY_PARAMS            0x00000009
 #define RENCODE_IB_PARAM_SLICE_HEADER              0x0000000a
 #define RENCODE_IB_PARAM_ENCODE_PARAMS             0x0000000b
@@ -114,8 +114,6 @@ static void radeon_enc_layer_control(struct radeon_encoder *enc)
 
 static void radeon_enc_layer_select(struct radeon_encoder *enc)
 {
-   enc->enc_pic.layer_sel.temporal_layer_index = enc->enc_pic.temporal_id;
-
    RADEON_ENC_BEGIN(enc->cmd.layer_select);
    RADEON_ENC_CS(enc->enc_pic.layer_sel.temporal_layer_index);
    RADEON_ENC_END();
@@ -183,7 +181,7 @@ static void radeon_enc_rc_session_init(struct radeon_encoder *enc)
 
 static void radeon_enc_rc_layer_init(struct radeon_encoder *enc)
 {
-   unsigned int i = enc->enc_pic.temporal_id;
+   unsigned int i = enc->enc_pic.layer_sel.temporal_layer_index;
    RADEON_ENC_BEGIN(enc->cmd.rc_layer_init);
    RADEON_ENC_CS(enc->enc_pic.rc_layer_init[i].target_bit_rate);
    RADEON_ENC_CS(enc->enc_pic.rc_layer_init[i].peak_bit_rate);
@@ -1189,14 +1187,25 @@ static void radeon_enc_intra_refresh(struct radeon_encoder *enc)
 
 static void radeon_enc_rc_per_pic(struct radeon_encoder *enc)
 {
+   enc->enc_pic.rc_per_pic.reserved_0xff = 0xFFFFFFFF;
+
    RADEON_ENC_BEGIN(enc->cmd.rc_per_pic);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.min_qp_app);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_qp_app);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_au_size);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp_i);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp_p);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp_b);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.min_qp_i);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_qp_i);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.min_qp_p);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_qp_p);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.min_qp_b);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_qp_b);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_au_size_i);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_au_size_p);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_au_size_b);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.enabled_filler_data);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.skip_frame_enable);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.enforce_hrd);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.reserved_0xff);
    RADEON_ENC_END();
 }
 
@@ -1350,7 +1359,7 @@ static void begin(struct radeon_encoder *enc)
 
    i = 0;
    do {
-      enc->enc_pic.temporal_id = i;
+      enc->enc_pic.layer_sel.temporal_layer_index = i;
       enc->layer_select(enc);
       enc->rc_layer_init(enc);
       enc->layer_select(enc);
@@ -1399,12 +1408,18 @@ static void encode(struct radeon_encoder *enc)
    enc->total_task_size = 0;
    enc->task_info(enc, enc->need_feedback);
 
-   if (enc->need_rate_control) {
+   if (enc->need_rate_control || enc->need_rc_per_pic) {
       i = 0;
       do {
-         enc->enc_pic.temporal_id = i;
-         enc->layer_select(enc);
-         enc->rc_layer_init(enc);
+         enc->enc_pic.layer_sel.temporal_layer_index = i;
+         if (enc->need_rate_control) {
+            enc->layer_select(enc);
+            enc->rc_layer_init(enc);
+         }
+         if (enc->need_rc_per_pic) {
+            enc->layer_select(enc);
+            enc->rc_per_pic(enc);
+         }
       } while (++i < enc->enc_pic.num_temporal_layers);
    }
 

@@ -169,6 +169,15 @@ struct intel_cs_dispatch_info {
    uint32_t right_mask;
 };
 
+enum PACKED intel_compute_walk_order {
+   INTEL_WALK_ORDER_XYZ = 0,
+   INTEL_WALK_ORDER_XZY = 1,
+   INTEL_WALK_ORDER_YXZ = 2,
+   INTEL_WALK_ORDER_YZX = 3,
+   INTEL_WALK_ORDER_ZXY = 4,
+   INTEL_WALK_ORDER_ZYX = 5,
+};
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

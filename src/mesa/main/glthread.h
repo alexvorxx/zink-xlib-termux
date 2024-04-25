@@ -56,6 +56,7 @@
 #include "util/u_queue.h"
 #include "compiler/shader_enums.h"
 #include "main/config.h"
+#include "main/hash.h"
 #include "util/glheader.h"
 
 #ifdef __cplusplus
@@ -64,7 +65,6 @@ extern "C" {
 
 struct gl_context;
 struct gl_buffer_object;
-struct _mesa_HashTable;
 struct _glapi_table;
 
 /* Used by both glthread and gl_context. */
@@ -89,11 +89,6 @@ union gl_vertex_format_user {
       .Integer = integer, \
       .Doubles = doubles \
    }}
-
-struct glthread_attrib_binding {
-   struct gl_buffer_object *buffer; /**< where non-VBO data was uploaded */
-   int offset;                      /**< offset to uploaded non-VBO data */
-};
 
 struct glthread_attrib {
    /* Per attrib: */
@@ -230,7 +225,7 @@ struct glthread_state
    GLuint _RestartIndex[4]; /**< Restart index for index_size = 1,2,4. */
 
    /** Vertex Array objects tracked by glthread independently of Mesa. */
-   struct _mesa_HashTable *VAOs;
+   struct _mesa_HashTable VAOs;
    struct glthread_vao *CurrentVAO;
    struct glthread_vao *LastLookedUpVAO;
    struct glthread_vao DefaultVAO;
@@ -279,7 +274,8 @@ struct glthread_state
 
    /** The last added call of the given function. */
    struct marshal_cmd_CallList *LastCallList;
-   struct marshal_cmd_BindBuffer *LastBindBuffer;
+   struct marshal_cmd_BindBuffer *LastBindBuffer1;
+   struct marshal_cmd_BindBuffer *LastBindBuffer2;
 
    /** Global mutex update info. */
    unsigned GlobalLockUpdateBatchCounter;

@@ -1239,6 +1239,9 @@ dEQP-VK.pipeline.monolithic.render_to_image.core.cube.small.r8g8b8a8_unorm_d24_u
 dEQP-VK.pipeline.monolithic.render_to_image.core.cube.small.r8g8b8a8_unorm_d32_sfloat_s8_uint,Fail
 dEQP-VK.pipeline.monolithic.render_to_image.core.cube.small.r8g8b8a8_unorm,Fail
 
+# New test from VKCTS 1.3.8.x failing
+dEQP-VK.pipeline.monolithic.vertex_input.misc.stride_change_vert_frag,Fail
+
 # uprev Piglit in Mesa
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 

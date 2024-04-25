@@ -3498,10 +3498,8 @@ prune_io(nir_shader *nir)
 static void
 flag_shadow_tex(nir_variable *var, struct zink_shader *zs)
 {
-   /* unconvert from zink_binding() */
-   uint32_t sampler_id = var->data.binding - (PIPE_MAX_SAMPLERS * MESA_SHADER_FRAGMENT);
-   assert(sampler_id < 32); //bitfield size for tracking
-   zs->fs.legacy_shadow_mask |= BITFIELD_BIT(sampler_id);
+   assert(var->data.driver_location < 32); //bitfield size for tracking
+   zs->fs.legacy_shadow_mask |= BITFIELD_BIT(var->data.driver_location);
 }
 
 static nir_def *

@@ -225,7 +225,7 @@ create_spirv_options(const device &dev, std::string &r_log)
    spirv_options.caps.int64_atomics = dev.has_int64_atomics();
    spirv_options.debug.func = &debug_function;
    spirv_options.debug.private_data = &r_log;
-   spirv_options.caps.printf = true;
+   spirv_options.printf = true;
    return spirv_options;
 }
 

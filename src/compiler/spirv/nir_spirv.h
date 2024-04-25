@@ -85,6 +85,9 @@ struct spirv_to_nir_options {
    bool amd_trinary_minmax;
    bool amd_shader_explicit_vertex_parameter;
 
+   /* Whether or not printf is supported */
+   bool printf;
+
    struct spirv_supported_capabilities caps;
 
    /* Address format for various kinds of pointers. */

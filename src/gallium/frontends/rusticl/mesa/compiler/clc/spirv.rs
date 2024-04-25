@@ -328,6 +328,8 @@ impl SPIRVBin {
             float_controls_execution_mode: float_controls::FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32
                 as u32,
 
+            printf: true,
+
             caps: spirv_supported_capabilities {
                 address: true,
                 float16: true,
@@ -343,7 +345,6 @@ impl SPIRVBin {
                 kernel_image_read_write: true,
                 linkage: true,
                 literal_sampler: true,
-                printf: true,
                 ..Default::default()
             },
 

@@ -4201,7 +4201,7 @@ zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shad
 struct zink_shader_object
 zink_shader_compile_separate(struct zink_screen *screen, struct zink_shader *zs)
 {
-   nir_shader *nir = zink_shader_deserialize(screen, zs);
+   nir_shader *nir = zs->nir;
    /* TODO: maybe compile multiple variants for different set counts for compact mode? */
    int set = zs->info.stage == MESA_SHADER_FRAGMENT;
    if (screen->info.have_EXT_shader_object)
@@ -4255,7 +4255,6 @@ zink_shader_compile_separate(struct zink_screen *screen, struct zink_shader *zs)
          zs->non_fs.generated_tcs->nir = NULL;
       }
    }
-   ralloc_free(nir);
    spirv_shader_delete(obj.spirv);
    obj.spirv = NULL;
    return obj;

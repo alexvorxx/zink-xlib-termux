@@ -1105,6 +1105,7 @@ zink_create_gfx_program(struct zink_context *ctx,
       util_dynarray_init(&prog->shader_cache[i][1][1], prog);
       if (stages[i]) {
          prog->shaders[i] = stages[i];
+         util_queue_fence_wait(&stages[i]->precompile.fence);
          prog->stages_present |= BITFIELD_BIT(i);
          if (i != MESA_SHADER_FRAGMENT)
             prog->optimal_keys &= !prog->shaders[i]->non_fs.is_generated;
@@ -2215,17 +2216,38 @@ zink_delete_shader_state(struct pipe_context *pctx, void *cso)
 }
 
 static void
-precompile_separate_shader_job(void *data, void *gdata, int thread_index)
+precompile_separate_shader(struct zink_shader *zs, struct zink_screen *screen)
 {
-   struct zink_screen *screen = gdata;
-   struct zink_shader *zs = data;
-
    zs->precompile.obj = zink_shader_compile_separate(screen, zs);
    if (!screen->info.have_EXT_shader_object) {
       struct zink_shader_object objs[ZINK_GFX_SHADER_COUNT] = {0};
       objs[zs->info.stage].mod = zs->precompile.obj.mod;
       zs->precompile.gpl = zink_create_gfx_pipeline_separate(screen, objs, zs->precompile.layout, zs->info.stage);
    }
+}
+
+static void
+gfx_shader_init_job(void *data, void *gdata, int thread_index)
+{
+   struct zink_screen *screen = gdata;
+   struct zink_shader *zs = data;
+
+   zink_shader_init(screen, zs);
+
+   if (zink_debug & ZINK_DEBUG_NOPC) {
+      ralloc_free(zs->nir);
+      zs->nir = NULL;
+      return;
+   }
+   if (zs->info.separate_shader && zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB &&
+      (screen->info.have_EXT_shader_object ||
+      (screen->info.have_EXT_graphics_pipeline_library && (zs->info.stage == MESA_SHADER_FRAGMENT || zs->info.stage == MESA_SHADER_VERTEX)))) {
+      /* sample shading can't precompile */
+      if (zs->info.stage != MESA_SHADER_FRAGMENT || !zs->info.fs.uses_sample_shading)
+         precompile_separate_shader(zs, screen);
+   }
+   ralloc_free(zs->nir);
+   zs->nir = NULL;
 }
 
 void *
@@ -2244,22 +2266,10 @@ zink_create_gfx_shader_state(struct pipe_context *pctx, const struct pipe_shader
       zink_descriptors_init_bindless(zink_context(pctx));
 
    struct zink_shader *zs = zink_shader_create(zink_screen(pctx->screen), nir);
-   zink_shader_init(zink_screen(pctx->screen), zs);
-
-   if (!(zink_debug & ZINK_DEBUG_NOPC)) {
-      if (nir->info.separate_shader && zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB &&
-         (screen->info.have_EXT_shader_object ||
-         (screen->info.have_EXT_graphics_pipeline_library && (nir->info.stage == MESA_SHADER_FRAGMENT || nir->info.stage == MESA_SHADER_VERTEX)))) {
-         /* sample shading can't precompile */
-         if (nir->info.stage != MESA_SHADER_FRAGMENT || !nir->info.fs.uses_sample_shading) {
-            if (zink_debug & ZINK_DEBUG_NOBGC)
-               precompile_separate_shader_job(zs, screen, 0);
-            else
-               util_queue_add_job(&screen->cache_get_thread, zs, &zs->precompile.fence, precompile_separate_shader_job, NULL, 0);
-         }
-      }
-   }
-   ralloc_free(nir);
+   if (zink_debug & ZINK_DEBUG_NOBGC)
+      gfx_shader_init_job(zs, screen, 0);
+   else
+      util_queue_add_job(&screen->cache_get_thread, zs, &zs->precompile.fence, gfx_shader_init_job, NULL, 0);
 
    return zs;
 }
@@ -2513,6 +2523,7 @@ zink_set_primitive_emulation_keys(struct zink_context *ctx)
           ctx->gfx_stages[MESA_SHADER_GEOMETRY]->info.gs.input_primitive != ctx->gfx_pipeline_state.gfx_prim_mode)) {
 
          if (!ctx->gfx_stages[prev_vertex_stage]->non_fs.generated_gs[ctx->gfx_pipeline_state.gfx_prim_mode][zink_prim_type]) {
+            util_queue_fence_wait(&ctx->gfx_stages[prev_vertex_stage]->precompile.fence);
             nir_shader *prev_stage = zink_shader_deserialize(screen, ctx->gfx_stages[prev_vertex_stage]);
             nir_shader *nir;
             if (lower_filled_quad) {

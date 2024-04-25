@@ -5,6 +5,7 @@
  */
 
 #include "ac_nir.h"
+#include "ac_nir_helpers.h"
 #include "sid.h"
 #include "nir_builder.h"
 #include "nir_xfb_info.h"
@@ -1410,7 +1411,7 @@ split_pack_half(nir_builder *b, nir_instr *instr, void *param)
 
    b->cursor = nir_before_instr(instr);
 
-   /* Split pack_half into two f2f16 to create v_fma_mix{lo,hi}_f16 
+   /* Split pack_half into two f2f16 to create v_fma_mix{lo,hi}_f16
     * in the backend.
     */
    nir_def *lo = nir_f2f16(b, nir_ssa_for_alu_src(b, alu, 0));

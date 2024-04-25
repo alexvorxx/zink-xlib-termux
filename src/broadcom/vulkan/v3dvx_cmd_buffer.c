@@ -1434,6 +1434,11 @@ v3dX(cmd_buffer_emit_stencil)(struct v3dv_cmd_buffer *cmd_buffer)
    struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
+   bool has_stencil =
+      pipeline->rendering_info.stencil_attachment_format != VK_FORMAT_UNDEFINED;
+
+   if (!(dyn->ds.stencil.test_enable && has_stencil))
+      return;
 
    v3dv_cl_ensure_space_with_branch(&job->bcl,
                                     2 * cl_packet_length(STENCIL_CFG));
@@ -1452,36 +1457,36 @@ v3dX(cmd_buffer_emit_stencil)(struct v3dv_cmd_buffer *cmd_buffer)
    const bool needs_front_and_back = any_dynamic_stencil_state ?
       memcmp(front, back, sizeof(*front)) != 0 :
       pipeline->emit_stencil_cfg[1] == true;
-   const unsigned stencil_packets = needs_front_and_back ? 2 : 1;
 
-   for (uint32_t i = 0; i < stencil_packets; i++) {
-      if (pipeline->emit_stencil_cfg[i]) {
-         if (any_dynamic_stencil_state) {
-            const struct vk_stencil_test_face_state *stencil_state =
-               i == 0 ? front : back;
-
-            /* If we have any dynamic stencil state we just emit the entire
-             * packet since for simplicity
-             */
-            cl_emit(&job->bcl, STENCIL_CFG, config) {
-               config.front_config = !needs_front_and_back || i == 0;
-               config.back_config = !needs_front_and_back || i == 1;
-               config.stencil_test_mask = stencil_state->compare_mask & 0xff;
-               config.stencil_write_mask = stencil_state->write_mask & 0xff;
-               config.stencil_ref_value = stencil_state->reference & 0xff;
-               config.stencil_test_function = stencil_state->op.compare;
-               config.stencil_pass_op =
-                  v3dX(translate_stencil_op)(stencil_state->op.pass);
-               config.depth_test_fail_op =
-                  v3dX(translate_stencil_op)(stencil_state->op.depth_fail);
-               config.stencil_test_fail_op =
-                  v3dX(translate_stencil_op)(stencil_state->op.fail);
-            }
-         } else {
-            cl_emit_prepacked(&job->bcl, &pipeline->stencil_cfg[i]);
+   for (uint32_t i = 0; i < 2; i++) {
+      if (any_dynamic_stencil_state) {
+         const struct vk_stencil_test_face_state *stencil_state =
+            i == 0 ? front : back;
+         /* If we have any dynamic stencil state we just emit the entire
+          * packet since for simplicity
+          */
+         cl_emit(&job->bcl, STENCIL_CFG, config) {
+            config.front_config = !needs_front_and_back || i == 0;
+            config.back_config = !needs_front_and_back || i == 1;
+            config.stencil_test_mask = stencil_state->compare_mask & 0xff;
+            config.stencil_write_mask = stencil_state->write_mask & 0xff;
+            config.stencil_ref_value = stencil_state->reference & 0xff;
+            config.stencil_test_function = stencil_state->op.compare;
+            config.stencil_pass_op =
+               v3dX(translate_stencil_op)(stencil_state->op.pass);
+            config.depth_test_fail_op =
+               v3dX(translate_stencil_op)(stencil_state->op.depth_fail);
+            config.stencil_test_fail_op =
+               v3dX(translate_stencil_op)(stencil_state->op.fail);
          }
-         emitted_stencil = true;
+      } else {
+         assert(pipeline->emit_stencil_cfg[i]);
+         cl_emit_prepacked(&job->bcl, &pipeline->stencil_cfg[i]);
       }
+      emitted_stencil = true;
+
+      if (!needs_front_and_back)
+         break;
    }
    if (emitted_stencil) {
       BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK);

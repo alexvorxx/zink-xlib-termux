@@ -300,10 +300,8 @@ pack_stencil_cfg(struct v3dv_pipeline *pipeline,
 {
    assert(sizeof(pipeline->stencil_cfg) == 2 * cl_packet_length(STENCIL_CFG));
 
-   if ((!ds_info || !ds_info->stencilTestEnable) &&
-       (!BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE))) {
+   if (!ds_info || !ds_info->stencilTestEnable)
       return;
-   }
 
    const struct vk_render_pass_state *ri = &pipeline->rendering_info;
    if (ri->stencil_attachment_format == VK_FORMAT_UNDEFINED)

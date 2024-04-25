@@ -4247,10 +4247,12 @@ zink_shader_compile_separate(struct zink_screen *screen, struct zink_shader *zs)
       if (zs->info.stage == MESA_SHADER_TESS_EVAL) {
          nir_shader *nir_tcs = NULL;
          /* use max pcp for compat */
-         zs->non_fs.generated_tcs = zink_shader_tcs_create(screen, nir_clone, 32, &nir_tcs);
+         zs->non_fs.generated_tcs = zink_shader_tcs_create(screen, 32);
+         zink_shader_tcs_init(screen, zs->non_fs.generated_tcs, nir_clone, &nir_tcs);
          nir_tcs->info.separate_shader = true;
          zs->non_fs.generated_tcs->precompile.obj = zink_shader_compile_separate(screen, zs->non_fs.generated_tcs);
          ralloc_free(nir_tcs);
+         zs->non_fs.generated_tcs->nir = NULL;
       }
    }
    ralloc_free(nir);
@@ -6555,21 +6557,12 @@ void main()
 }
 
 */
-struct zink_shader *
-zink_shader_tcs_create(struct zink_screen *screen, nir_shader *tes, unsigned vertices_per_patch, nir_shader **nir_ret)
+void
+zink_shader_tcs_init(struct zink_screen *screen, struct zink_shader *zs, nir_shader *tes, nir_shader **nir_ret)
 {
-   struct zink_shader *zs = rzalloc(NULL, struct zink_shader);
-   util_queue_fence_init(&zs->precompile.fence);
-   zs->hash = _mesa_hash_pointer(zs);
-   zs->programs = _mesa_pointer_set_create(NULL);
-   simple_mtx_init(&zs->lock, mtx_plain);
+   nir_shader *nir = zs->nir;
 
-   nir_shader *nir = nir_shader_create(NULL, MESA_SHADER_TESS_CTRL, &screen->nir_options, NULL);
-   nir_function *fn = nir_function_create(nir, "main");
-   fn->is_entrypoint = true;
-   nir_function_impl *impl = nir_function_impl_create(fn);
-
-   nir_builder b = nir_builder_at(nir_before_impl(impl));
+   nir_builder b = nir_builder_at(nir_before_impl(nir_shader_get_entrypoint(nir)));
 
    nir_def *invocation_id = nir_load_invocation_id(&b);
 
@@ -6583,7 +6576,7 @@ zink_shader_tcs_create(struct zink_screen *screen, nir_shader *tes, unsigned ver
       if (!nir_is_arrayed_io(var, MESA_SHADER_TESS_EVAL)) {
          const struct glsl_type *type = var->type;
          in_type = glsl_array_type(type, 32 /* MAX_PATCH_VERTICES */, 0);
-         out_type = glsl_array_type(type, vertices_per_patch, 0);
+         out_type = glsl_array_type(type, nir->info.tess.tcs_vertices_out, 0);
       }
 
       nir_variable *in = nir_variable_create(nir, nir_var_shader_in, in_type, var->name);
@@ -6626,7 +6619,6 @@ zink_shader_tcs_create(struct zink_screen *screen, nir_shader *tes, unsigned ver
       nir_store_deref(&b, store_idx, nir_channel(&b, load_outer, i), 0xff);
    }
 
-   nir->info.tess.tcs_vertices_out = vertices_per_patch;
    nir_validate_shader(nir, "created");
 
    optimize_nir(nir, NULL, true);
@@ -6635,6 +6627,24 @@ zink_shader_tcs_create(struct zink_screen *screen, nir_shader *tes, unsigned ver
 
    *nir_ret = nir;
    zink_shader_serialize_blob(nir, &zs->blob);
+}
+
+struct zink_shader *
+zink_shader_tcs_create(struct zink_screen *screen, unsigned vertices_per_patch)
+{
+   struct zink_shader *zs = rzalloc(NULL, struct zink_shader);
+   util_queue_fence_init(&zs->precompile.fence);
+   zs->hash = _mesa_hash_pointer(zs);
+   zs->programs = _mesa_pointer_set_create(NULL);
+   simple_mtx_init(&zs->lock, mtx_plain);
+
+   nir_shader *nir = nir_shader_create(NULL, MESA_SHADER_TESS_CTRL, &screen->nir_options, NULL);
+   nir_function *fn = nir_function_create(nir, "main");
+   fn->is_entrypoint = true;
+   nir_function_impl_create(fn);
+   zs->nir = nir;
+
+   nir->info.tess.tcs_vertices_out = vertices_per_patch;
    memcpy(&zs->info, &nir->info, sizeof(nir->info));
    zs->non_fs.is_generated = true;
    return zs;

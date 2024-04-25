@@ -110,7 +110,6 @@ struct panvk_cmd_graphics_state {
 
    struct panvk_graphics_sysvals sysvals;
 
-   struct panvk_varyings_info varyings;
    mali_ptr fs_rsd;
 
    struct {

@@ -21,13 +21,19 @@
 #include "pan_blend.h"
 #include "pan_desc.h"
 
-#include "panvk_varyings.h"
+#include "panvk_shader.h"
 
 #define MAX_RTS 8
 
 struct panvk_pipeline_shader {
    mali_ptr code;
    mali_ptr rsd;
+
+   struct {
+      mali_ptr attribs;
+      unsigned buf_strides[PANVK_VARY_BUF_MAX];
+   } varyings;
+
    struct pan_shader_info info;
    bool has_img_access;
 };
@@ -55,8 +61,6 @@ struct panvk_graphics_pipeline {
 
    struct panvk_pipeline_shader vs;
    struct panvk_pipeline_shader fs;
-
-   struct panvk_varyings_info varyings;
 
    struct {
       struct {

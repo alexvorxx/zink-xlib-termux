@@ -26,6 +26,15 @@ struct nir_shader;
 struct pan_blend_state;
 struct panvk_device;
 
+enum panvk_varying_buf_id {
+   PANVK_VARY_BUF_GENERAL,
+   PANVK_VARY_BUF_POSITION,
+   PANVK_VARY_BUF_PSIZ,
+
+   /* Keep last */
+   PANVK_VARY_BUF_MAX,
+};
+
 struct panvk_graphics_sysvals {
    struct {
       struct {

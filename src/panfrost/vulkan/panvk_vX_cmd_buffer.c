@@ -696,78 +696,53 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
                             struct panvk_draw_info *draw)
 {
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
-   struct panvk_varyings_info *varyings = &cmdbuf->state.gfx.varyings;
-
-   panvk_varyings_alloc(varyings, &cmdbuf->varying_pool.base,
-                        draw->padded_vertex_count * draw->instance_count);
-
-   unsigned buf_count = panvk_varyings_buf_count(varyings);
    struct panfrost_ptr bufs = pan_pool_alloc_desc_array(
-      &cmdbuf->desc_pool.base, buf_count + 1, ATTRIBUTE_BUFFER);
+      &cmdbuf->desc_pool.base, PANVK_VARY_BUF_MAX + 1, ATTRIBUTE_BUFFER);
    struct mali_attribute_buffer_packed *buf_descs = bufs.cpu;
    const struct vk_input_assembly_state *ia =
       &cmdbuf->vk.dynamic_graphics_state.ia;
    bool writes_point_size =
       pipeline->vs.info.vs.writes_point_size &&
       ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+   unsigned vertex_count = draw->padded_vertex_count * draw->instance_count;
+   mali_ptr psiz_buf = 0;
 
-   for (unsigned i = 0, buf_idx = 0; i < PANVK_VARY_BUF_MAX; i++) {
-      if (varyings->buf_mask & (1 << i)) {
-         pan_pack(&buf_descs[buf_idx], ATTRIBUTE_BUFFER, cfg) {
-            unsigned offset = varyings->buf[buf_idx].address & 63;
+   for (unsigned i = 0; i < PANVK_VARY_BUF_MAX; i++) {
+      unsigned buf_size = vertex_count * pipeline->vs.varyings.buf_strides[i];
+      mali_ptr buf_addr =
+         buf_size
+            ? pan_pool_alloc_aligned(&cmdbuf->varying_pool.base, buf_size, 64)
+                 .gpu
+            : 0;
 
-            cfg.stride = varyings->buf[buf_idx].stride;
-            cfg.size = varyings->buf[buf_idx].size + offset;
-            cfg.pointer = varyings->buf[buf_idx].address & ~63ULL;
-         }
-
-         buf_idx++;
+      pan_pack(&buf_descs[i], ATTRIBUTE_BUFFER, cfg) {
+         cfg.stride = pipeline->vs.varyings.buf_strides[i];
+         cfg.size = buf_size;
+         cfg.pointer = buf_addr;
       }
+
+      if (i == PANVK_VARY_BUF_POSITION)
+         draw->position = buf_addr;
+
+      if (i == PANVK_VARY_BUF_PSIZ)
+         psiz_buf = buf_addr;
    }
 
    /* We need an empty entry to stop prefetching on Bifrost */
-   memset(bufs.cpu + (pan_size(ATTRIBUTE_BUFFER) * buf_count), 0,
+   memset(bufs.cpu + (pan_size(ATTRIBUTE_BUFFER) * PANVK_VARY_BUF_MAX), 0,
           pan_size(ATTRIBUTE_BUFFER));
 
-   if (BITSET_TEST(varyings->active, VARYING_SLOT_POS)) {
-      draw->position =
-         varyings->buf[varyings->varying[VARYING_SLOT_POS].buf].address +
-         varyings->varying[VARYING_SLOT_POS].offset;
-   }
-
-   if (writes_point_size) {
-      draw->psiz =
-         varyings->buf[varyings->varying[VARYING_SLOT_PSIZ].buf].address +
-         varyings->varying[VARYING_SLOT_POS].offset;
-   } else if (ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_LIST ||
-              ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP) {
+   if (writes_point_size)
+      draw->psiz = psiz_buf;
+   else if (ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_LIST ||
+            ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP)
       draw->line_width = cmdbuf->vk.dynamic_graphics_state.rs.line.width;
-   } else {
+   else
       draw->line_width = 1.0f;
-   }
+
    draw->varying_bufs = bufs.gpu;
-
-   for (unsigned s = 0; s < MESA_SHADER_STAGES; s++) {
-      if (!varyings->stage[s].count)
-         continue;
-
-      struct panfrost_ptr attribs = pan_pool_alloc_desc_array(
-         &cmdbuf->desc_pool.base, varyings->stage[s].count, ATTRIBUTE);
-      struct mali_attribute_packed *attrib_descs = attribs.cpu;
-
-      draw->stages[s].varyings = attribs.gpu;
-      for (unsigned i = 0; i < varyings->stage[s].count; i++) {
-         gl_varying_slot loc = varyings->stage[s].loc[i];
-
-         pan_pack(&attrib_descs[i], ATTRIBUTE, cfg) {
-            cfg.buffer_index = varyings->varying[loc].buf;
-            cfg.offset = varyings->varying[loc].offset;
-            cfg.offset_enable = false;
-            cfg.format =
-               panvk_varying_hw_format(s, loc, varyings->varying[loc].format);
-         }
-      }
-   }
+   draw->stages[MESA_SHADER_VERTEX].varyings = pipeline->vs.varyings.attribs;
+   draw->stages[MESA_SHADER_FRAGMENT].varyings = pipeline->fs.varyings.attribs;
 }
 
 static void
@@ -2198,7 +2173,6 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
                                         &gfx_pipeline->state.dynamic);
 
       cmdbuf->state.gfx.fs_rsd = 0;
-      cmdbuf->state.gfx.varyings = gfx_pipeline->varyings;
       cmdbuf->state.gfx.pipeline = gfx_pipeline;
       break;
    }

@@ -403,6 +403,10 @@ a6xx_gen4 = A6XXProps(
         has_per_view_viewport = True,
     )
 
+a6xx_a690_quirk = A6XXProps(
+        broken_ds_ubwc_quirk = True,
+    )
+
 add_gpus([
         GPUId(605), # TODO: Test it, based only on libwrapfake dumps
         GPUId(608), # TODO: Test it, based only on libwrapfake dumps
@@ -710,7 +714,7 @@ add_gpus([
         GPUId(chip_id=0xffff06090000, name="FD690"), # Default no-speedbin fallback
     ], A6xxGPUInfo(
         CHIP.A6XX,
-        [a6xx_base, a6xx_gen4],
+        [a6xx_base, a6xx_gen4, a6xx_a690_quirk],
         num_ccu = 8,
         tile_align_w = 64,
         tile_align_h = 32,
@@ -720,19 +724,22 @@ add_gpus([
         fibers_per_sp = 128 * 2 * 16,
         magic_regs = dict(
             PC_POWER_CNTL = 7,
-            TPL1_DBG_ECO_CNTL = 0x01008000,
+            TPL1_DBG_ECO_CNTL = 0x04c00000,
             GRAS_DBG_ECO_CNTL = 0x0,
             SP_CHICKEN_BITS = 0x00001400,
             UCHE_CLIENT_PF = 0x00000084,
             PC_MODE_CNTL = 0x1f,
-            SP_DBG_ECO_CNTL = 0x00000000,
-            RB_DBG_ECO_CNTL = 0x00100000,
+            SP_DBG_ECO_CNTL = 0x1200000,
+            RB_DBG_ECO_CNTL = 0x100000,
             RB_DBG_ECO_CNTL_blit = 0x00100000,  # ???
             HLSQ_DBG_ECO_CNTL = 0x0,
             RB_UNKNOWN_8E01 = 0x0,
-            VPC_DBG_ECO_CNTL = 0x02000000,
+            VPC_DBG_ECO_CNTL = 0x2000400,
             UCHE_UNKNOWN_0E12 = 0x00000001
-        )
+        ),
+        raw_magic_regs = [
+            [A6XXRegs.REG_A6XX_SP_UNKNOWN_AAF2, 0x00c00000],
+        ],
     ))
 
 # Based on a6xx_base + a6xx_gen4

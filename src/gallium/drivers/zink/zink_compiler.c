@@ -6077,44 +6077,44 @@ trivial_revectorize(nir_shader *nir)
 struct zink_shader *
 zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 {
-   struct zink_shader *ret = rzalloc(NULL, struct zink_shader);
+   struct zink_shader *zs = rzalloc(NULL, struct zink_shader);
    bool have_psiz = false;
 
-   ret->has_edgeflags = nir->info.stage == MESA_SHADER_VERTEX &&
+   zs->has_edgeflags = nir->info.stage == MESA_SHADER_VERTEX &&
                         nir->info.outputs_written & VARYING_BIT_EDGE;
 
-   ret->sinfo.have_vulkan_memory_model = screen->info.have_KHR_vulkan_memory_model;
-   ret->sinfo.have_workgroup_memory_explicit_layout = screen->info.have_KHR_workgroup_memory_explicit_layout;
+   zs->sinfo.have_vulkan_memory_model = screen->info.have_KHR_vulkan_memory_model;
+   zs->sinfo.have_workgroup_memory_explicit_layout = screen->info.have_KHR_workgroup_memory_explicit_layout;
    if (screen->info.have_KHR_shader_float_controls) {
       if (screen->info.props12.shaderDenormFlushToZeroFloat16)
-         ret->sinfo.float_controls.flush_denorms |= 0x1;
+         zs->sinfo.float_controls.flush_denorms |= 0x1;
       if (screen->info.props12.shaderDenormFlushToZeroFloat32)
-         ret->sinfo.float_controls.flush_denorms |= 0x2;
+         zs->sinfo.float_controls.flush_denorms |= 0x2;
       if (screen->info.props12.shaderDenormFlushToZeroFloat64)
-         ret->sinfo.float_controls.flush_denorms |= 0x4;
+         zs->sinfo.float_controls.flush_denorms |= 0x4;
 
       if (screen->info.props12.shaderDenormPreserveFloat16)
-         ret->sinfo.float_controls.preserve_denorms |= 0x1;
+         zs->sinfo.float_controls.preserve_denorms |= 0x1;
       if (screen->info.props12.shaderDenormPreserveFloat32)
-         ret->sinfo.float_controls.preserve_denorms |= 0x2;
+         zs->sinfo.float_controls.preserve_denorms |= 0x2;
       if (screen->info.props12.shaderDenormPreserveFloat64)
-         ret->sinfo.float_controls.preserve_denorms |= 0x4;
+         zs->sinfo.float_controls.preserve_denorms |= 0x4;
 
-      ret->sinfo.float_controls.denorms_all_independence =
+      zs->sinfo.float_controls.denorms_all_independence =
          screen->info.props12.denormBehaviorIndependence == VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL;
 
-      ret->sinfo.float_controls.denorms_32_bit_independence =
-         ret->sinfo.float_controls.denorms_all_independence ||
+      zs->sinfo.float_controls.denorms_32_bit_independence =
+         zs->sinfo.float_controls.denorms_all_independence ||
          screen->info.props12.denormBehaviorIndependence == VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_32_BIT_ONLY;
    }
-   ret->sinfo.bindless_set_idx = screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS];
+   zs->sinfo.bindless_set_idx = screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS];
 
-   util_queue_fence_init(&ret->precompile.fence);
-   util_dynarray_init(&ret->pipeline_libs, ret);
-   ret->hash = _mesa_hash_pointer(ret);
+   util_queue_fence_init(&zs->precompile.fence);
+   util_dynarray_init(&zs->pipeline_libs, zs);
+   zs->hash = _mesa_hash_pointer(zs);
 
-   ret->programs = _mesa_pointer_set_create(NULL);
-   simple_mtx_init(&ret->lock, mtx_plain);
+   zs->programs = _mesa_pointer_set_create(NULL);
+   simple_mtx_init(&zs->lock, mtx_plain);
 
    if (nir->info.stage == MESA_SHADER_KERNEL) {
       nir_lower_mem_access_bit_sizes_options lower_mem_access_options = {
@@ -6141,12 +6141,12 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       nir_gather_xfb_info_from_intrinsics(nir);
    NIR_PASS_V(nir, fix_vertex_input_locations);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
-   scan_nir(screen, nir, ret);
+   scan_nir(screen, nir, zs);
    NIR_PASS_V(nir, nir_opt_vectorize, NULL, NULL);
    NIR_PASS_V(nir, trivial_revectorize);
    if (nir->info.io_lowered) {
-      rework_io_vars(nir, nir_var_shader_in, ret);
-      rework_io_vars(nir, nir_var_shader_out, ret);
+      rework_io_vars(nir, nir_var_shader_in, zs);
+      rework_io_vars(nir, nir_var_shader_out, zs);
       nir_sort_variables_by_location(nir, nir_var_shader_in);
       nir_sort_variables_by_location(nir, nir_var_shader_out);
    }
@@ -6161,7 +6161,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    if (nir->info.stage < MESA_SHADER_FRAGMENT)
       have_psiz = check_psiz(nir);
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      ret->flat_flags = zink_flat_flags(nir);
+      zs->flat_flags = zink_flat_flags(nir);
 
    if (!gl_shader_stage_is_compute(nir->info.stage) && nir->info.separate_shader)
       NIR_PASS_V(nir, fixup_io_locations);
@@ -6201,13 +6201,13 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
                                           nir_lower_demote_if_to_cf |
                                           nir_lower_terminate_if_to_cf));
 
-   bool needs_size = analyze_io(ret, nir);
-   NIR_PASS_V(nir, unbreak_bos, ret, needs_size);
+   bool needs_size = analyze_io(zs, nir);
+   NIR_PASS_V(nir, unbreak_bos, zs, needs_size);
    /* run in compile if there could be inlined uniforms */
    if (!screen->driconf.inline_uniforms && !nir->info.num_inlinable_uniforms) {
       NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_global | nir_var_mem_ubo | nir_var_mem_ssbo | nir_var_mem_shared, NULL, NULL);
       NIR_PASS_V(nir, rewrite_bo_access, screen);
-      NIR_PASS_V(nir, remove_bo_access, ret);
+      NIR_PASS_V(nir, remove_bo_access, zs);
    }
 
    struct zink_bindless_info bindless = {0};
@@ -6224,13 +6224,13 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       enum zink_descriptor_type ztype = ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW;
       VkDescriptorType vktype = VK_DESCRIPTOR_TYPE_SAMPLER;
       u_foreach_bit(s, sampler_mask) {
-         ret->bindings[ztype][ret->num_bindings[ztype]].index = s;
-         ret->bindings[ztype][ret->num_bindings[ztype]].binding = zink_binding(MESA_SHADER_KERNEL, vktype, s, screen->compact_descriptors);
-         ret->bindings[ztype][ret->num_bindings[ztype]].type = vktype;
-         ret->bindings[ztype][ret->num_bindings[ztype]].size = 1;
-         ret->num_bindings[ztype]++;
+         zs->bindings[ztype][zs->num_bindings[ztype]].index = s;
+         zs->bindings[ztype][zs->num_bindings[ztype]].binding = zink_binding(MESA_SHADER_KERNEL, vktype, s, screen->compact_descriptors);
+         zs->bindings[ztype][zs->num_bindings[ztype]].type = vktype;
+         zs->bindings[ztype][zs->num_bindings[ztype]].size = 1;
+         zs->num_bindings[ztype]++;
       }
-      ret->sinfo.sampler_mask = sampler_mask;
+      zs->sinfo.sampler_mask = sampler_mask;
    }
 
    unsigned ubo_binding_mask = 0;
@@ -6256,14 +6256,14 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
             int binding = var->data.binding;
 
             if (!var->data.driver_location) {
-               ret->has_uniforms = true;
+               zs->has_uniforms = true;
             } else if (!(ubo_binding_mask & BITFIELD_BIT(binding))) {
-               ret->bindings[ztype][ret->num_bindings[ztype]].index = var->data.driver_location;
-               ret->bindings[ztype][ret->num_bindings[ztype]].binding = binding;
-               ret->bindings[ztype][ret->num_bindings[ztype]].type = vktype;
-               ret->bindings[ztype][ret->num_bindings[ztype]].size = glsl_get_length(var->type);
-               assert(ret->bindings[ztype][ret->num_bindings[ztype]].size);
-               ret->num_bindings[ztype]++;
+               zs->bindings[ztype][zs->num_bindings[ztype]].index = var->data.driver_location;
+               zs->bindings[ztype][zs->num_bindings[ztype]].binding = binding;
+               zs->bindings[ztype][zs->num_bindings[ztype]].type = vktype;
+               zs->bindings[ztype][zs->num_bindings[ztype]].size = glsl_get_length(var->type);
+               assert(zs->bindings[ztype][zs->num_bindings[ztype]].size);
+               zs->num_bindings[ztype]++;
                ubo_binding_mask |= BITFIELD_BIT(binding);
             }
          } else if (var->data.mode == nir_var_mem_ssbo) {
@@ -6274,19 +6274,19 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
                                              var->data.driver_location,
                                              screen->compact_descriptors);
             if (!(ssbo_binding_mask & BITFIELD_BIT(var->data.binding))) {
-               ret->bindings[ztype][ret->num_bindings[ztype]].index = var->data.driver_location;
-               ret->bindings[ztype][ret->num_bindings[ztype]].binding = var->data.binding;
-               ret->bindings[ztype][ret->num_bindings[ztype]].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-               ret->bindings[ztype][ret->num_bindings[ztype]].size = glsl_get_length(var->type);
-               assert(ret->bindings[ztype][ret->num_bindings[ztype]].size);
-               ret->num_bindings[ztype]++;
+               zs->bindings[ztype][zs->num_bindings[ztype]].index = var->data.driver_location;
+               zs->bindings[ztype][zs->num_bindings[ztype]].binding = var->data.binding;
+               zs->bindings[ztype][zs->num_bindings[ztype]].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+               zs->bindings[ztype][zs->num_bindings[ztype]].size = glsl_get_length(var->type);
+               assert(zs->bindings[ztype][zs->num_bindings[ztype]].size);
+               zs->num_bindings[ztype]++;
                ssbo_binding_mask |= BITFIELD_BIT(var->data.binding);
             }
          } else {
             assert(var->data.mode == nir_var_uniform ||
                    var->data.mode == nir_var_image);
             if (var->data.bindless) {
-               ret->bindless = true;
+               zs->bindless = true;
                handle_bindless_var(nir, var, type, &bindless);
             } else if (glsl_type_is_sampler(type) || glsl_type_is_image(type)) {
                VkDescriptorType vktype = glsl_type_is_image(type) ? zink_image_type(type) : zink_sampler_type(type);
@@ -6296,14 +6296,14 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
                var->data.driver_location = var->data.binding;
                var->data.descriptor_set = screen->desc_set_id[ztype];
                var->data.binding = zink_binding(nir->info.stage, vktype, var->data.driver_location, screen->compact_descriptors);
-               ret->bindings[ztype][ret->num_bindings[ztype]].index = var->data.driver_location;
-               ret->bindings[ztype][ret->num_bindings[ztype]].binding = var->data.binding;
-               ret->bindings[ztype][ret->num_bindings[ztype]].type = vktype;
+               zs->bindings[ztype][zs->num_bindings[ztype]].index = var->data.driver_location;
+               zs->bindings[ztype][zs->num_bindings[ztype]].binding = var->data.binding;
+               zs->bindings[ztype][zs->num_bindings[ztype]].type = vktype;
                if (glsl_type_is_array(var->type))
-                  ret->bindings[ztype][ret->num_bindings[ztype]].size = glsl_get_aoa_size(var->type);
+                  zs->bindings[ztype][zs->num_bindings[ztype]].size = glsl_get_aoa_size(var->type);
                else
-                  ret->bindings[ztype][ret->num_bindings[ztype]].size = 1;
-               ret->num_bindings[ztype]++;
+                  zs->bindings[ztype][zs->num_bindings[ztype]].size = 1;
+               zs->num_bindings[ztype]++;
             } else if (var->data.mode == nir_var_uniform) {
                /* this is a dead uniform */
                var->data.mode = 0;
@@ -6314,25 +6314,25 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    }
    bool bindless_lowered = false;
    NIR_PASS(bindless_lowered, nir, lower_bindless, &bindless);
-   ret->bindless |= bindless_lowered;
+   zs->bindless |= bindless_lowered;
 
    if (!screen->info.feats.features.shaderInt64 || !screen->info.feats.features.shaderFloat64)
       NIR_PASS_V(nir, lower_64bit_vars, screen->info.feats.features.shaderInt64);
    if (nir->info.stage != MESA_SHADER_KERNEL)
-      NIR_PASS_V(nir, match_tex_dests, ret);
+      NIR_PASS_V(nir, match_tex_dests, zs);
 
    if (!nir->info.internal)
       nir_foreach_shader_out_variable(var, nir)
          var->data.explicit_xfb_buffer = 0;
    if (nir->xfb_info && nir->xfb_info->output_count && nir->info.outputs_written)
-      update_so_info(ret, nir, nir->info.outputs_written, have_psiz);
-   zink_shader_serialize_blob(nir, &ret->blob);
-   memcpy(&ret->info, &nir->info, sizeof(nir->info));
-   ret->info.name = ralloc_strdup(ret, nir->info.name);
+      update_so_info(zs, nir, nir->info.outputs_written, have_psiz);
+   zink_shader_serialize_blob(nir, &zs->blob);
+   memcpy(&zs->info, &nir->info, sizeof(nir->info));
+   zs->info.name = ralloc_strdup(zs, nir->info.name);
 
-   ret->can_inline = true;
+   zs->can_inline = true;
 
-   return ret;
+   return zs;
 }
 
 char *
@@ -6517,11 +6517,11 @@ void main()
 struct zink_shader *
 zink_shader_tcs_create(struct zink_screen *screen, nir_shader *tes, unsigned vertices_per_patch, nir_shader **nir_ret)
 {
-   struct zink_shader *ret = rzalloc(NULL, struct zink_shader);
-   util_queue_fence_init(&ret->precompile.fence);
-   ret->hash = _mesa_hash_pointer(ret);
-   ret->programs = _mesa_pointer_set_create(NULL);
-   simple_mtx_init(&ret->lock, mtx_plain);
+   struct zink_shader *zs = rzalloc(NULL, struct zink_shader);
+   util_queue_fence_init(&zs->precompile.fence);
+   zs->hash = _mesa_hash_pointer(zs);
+   zs->programs = _mesa_pointer_set_create(NULL);
+   simple_mtx_init(&zs->lock, mtx_plain);
 
    nir_shader *nir = nir_shader_create(NULL, MESA_SHADER_TESS_CTRL, &screen->nir_options, NULL);
    nir_function *fn = nir_function_create(nir, "main");
@@ -6593,10 +6593,10 @@ zink_shader_tcs_create(struct zink_screen *screen, nir_shader *tes, unsigned ver
    NIR_PASS_V(nir, nir_convert_from_ssa, true);
 
    *nir_ret = nir;
-   zink_shader_serialize_blob(nir, &ret->blob);
-   memcpy(&ret->info, &nir->info, sizeof(nir->info));
-   ret->non_fs.is_generated = true;
-   return ret;
+   zink_shader_serialize_blob(nir, &zs->blob);
+   memcpy(&zs->info, &nir->info, sizeof(nir->info));
+   zs->non_fs.is_generated = true;
+   return zs;
 }
 
 bool

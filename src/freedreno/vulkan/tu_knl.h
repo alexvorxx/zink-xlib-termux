@@ -142,6 +142,9 @@ tu_bo_finish(struct tu_device *dev, struct tu_bo *bo);
 VkResult
 tu_bo_map(struct tu_device *dev, struct tu_bo *bo);
 
+VkResult
+tu_bo_unmap(struct tu_device *dev, struct tu_bo *bo, bool reserve);
+
 void tu_bo_allow_dump(struct tu_device *dev, struct tu_bo *bo);
 
 void tu_bo_set_metadata(struct tu_device *dev, struct tu_bo *bo,

@@ -2889,8 +2889,13 @@ tu_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, voi
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInfo)
 {
-   /* TODO: unmap here instead of waiting for FreeMemory */
-   return VK_SUCCESS;
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device_memory, mem, pMemoryUnmapInfo->memory);
+
+   if (mem == NULL)
+      return VK_SUCCESS;
+
+   return tu_bo_unmap(device, mem->bo, false);
 }
 
 static void

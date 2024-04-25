@@ -37,11 +37,6 @@ void radv_hash_shaders(const struct radv_device *device, unsigned char *hash, co
 void radv_hash_graphics_spirv_to_nir(blake3_hash hash, const struct radv_shader_stage *stage,
                                      const struct radv_spirv_to_nir_options *options);
 
-void radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash,
-                          const struct radv_ray_tracing_stage *stages,
-                          const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                          const struct radv_ray_tracing_group *groups);
-
 struct radv_shader *radv_shader_create(struct radv_device *device, struct vk_pipeline_cache *cache,
                                        const struct radv_shader_binary *binary, bool skip_cache);
 

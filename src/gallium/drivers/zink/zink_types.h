@@ -809,6 +809,8 @@ struct zink_shader {
    uint32_t hash;
    struct blob blob;
    struct shader_info info;
+   /* this is deleted in zink_shader_init */
+   nir_shader *nir;
 
    struct zink_shader_info sinfo;
 

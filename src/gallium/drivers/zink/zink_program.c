@@ -1371,6 +1371,7 @@ precompile_compute_job(void *data, void *gdata, int thread_index)
    struct zink_screen *screen = gdata;
 
    comp->shader = zink_shader_create(screen, comp->nir);
+   zink_shader_init(screen, comp->shader);
    comp->curr = comp->module = CALLOC_STRUCT(zink_shader_module);
    assert(comp->module);
    comp->module->shobj = false;
@@ -2242,6 +2243,7 @@ zink_create_gfx_shader_state(struct pipe_context *pctx, const struct pipe_shader
       zink_descriptors_init_bindless(zink_context(pctx));
 
    struct zink_shader *zs = zink_shader_create(zink_screen(pctx->screen), nir);
+   zink_shader_init(zink_screen(pctx->screen), zs);
 
    if (!(zink_debug & ZINK_DEBUG_NOPC)) {
       if (nir->info.separate_shader && zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB &&
@@ -2535,6 +2537,7 @@ zink_set_primitive_emulation_keys(struct zink_context *ctx)
             zink_add_inline_uniform(nir, ZINK_INLINE_VAL_PV_LAST_VERT);
             ralloc_free(prev_stage);
             struct zink_shader *shader = zink_shader_create(screen, nir);
+            zink_shader_init(screen, shader);
             shader->needs_inlining = true;
             ctx->gfx_stages[prev_vertex_stage]->non_fs.generated_gs[ctx->gfx_pipeline_state.gfx_prim_mode][zink_prim_type] = shader;
             shader->non_fs.is_generated = true;

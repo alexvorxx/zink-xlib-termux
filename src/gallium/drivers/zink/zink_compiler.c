@@ -6108,10 +6108,9 @@ struct zink_shader *
 zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 {
    struct zink_shader *zs = rzalloc(NULL, struct zink_shader);
-   bool have_psiz = false;
 
    zs->has_edgeflags = nir->info.stage == MESA_SHADER_VERTEX &&
-                        nir->info.outputs_written & VARYING_BIT_EDGE;
+                       nir->info.outputs_written & VARYING_BIT_EDGE;
 
    zs->sinfo.have_vulkan_memory_model = screen->info.have_KHR_vulkan_memory_model;
    zs->sinfo.have_workgroup_memory_explicit_layout = screen->info.have_KHR_workgroup_memory_explicit_layout;
@@ -6145,9 +6144,23 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 
    zs->programs = _mesa_pointer_set_create(NULL);
    simple_mtx_init(&zs->lock, mtx_plain);
+   memcpy(&zs->info, &nir->info, sizeof(nir->info));
+   zs->info.name = ralloc_strdup(zs, nir->info.name);
+
+   zs->can_inline = true;
+   zs->nir = nir;
 
    if (nir->info.stage != MESA_SHADER_KERNEL)
       match_tex_dests(nir, zs, true);
+
+   return zs;
+}
+
+void
+zink_shader_init(struct zink_screen *screen, struct zink_shader *zs)
+{
+   bool have_psiz = false;
+   nir_shader *nir = zs->nir;
 
    if (nir->info.stage == MESA_SHADER_KERNEL) {
       nir_lower_mem_access_bit_sizes_options lower_mem_access_options = {
@@ -6361,11 +6374,6 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       update_so_info(zs, nir, nir->info.outputs_written, have_psiz);
    zink_shader_serialize_blob(nir, &zs->blob);
    memcpy(&zs->info, &nir->info, sizeof(nir->info));
-   zs->info.name = ralloc_strdup(zs, nir->info.name);
-
-   zs->can_inline = true;
-
-   return zs;
 }
 
 char *

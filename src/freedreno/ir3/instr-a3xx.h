@@ -609,8 +609,9 @@ is_sat_compatible(opc_t opc)
       return false;
 
    switch (opc) {
-   /* On a3xx and a6xx saturation doesn't work on bary.f */
+   /* On a3xx and a6xx saturation doesn't work on bary.f/flat.b */
    case OPC_BARY_F:
+   case OPC_FLAT_B:
    /* On a6xx saturation doesn't work on sel.* */
    case OPC_SEL_B16:
    case OPC_SEL_B32:

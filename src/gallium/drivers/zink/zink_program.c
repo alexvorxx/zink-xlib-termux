@@ -1079,8 +1079,8 @@ find_or_create_lib_cache(struct zink_screen *screen, struct zink_gfx_program *pr
    return libs;
 }
 
-struct zink_gfx_program *
-zink_create_gfx_program(struct zink_context *ctx,
+static struct zink_gfx_program *
+gfx_program_create(struct zink_context *ctx,
                         struct zink_shader **stages,
                         unsigned vertices_per_patch,
                         uint32_t gfx_hash)
@@ -1093,8 +1093,6 @@ zink_create_gfx_program(struct zink_context *ctx,
    prog->gfx_hash = gfx_hash;
    prog->base.removed = true;
    prog->optimal_keys = screen->optimal_keys;
-
-   nir_shader *nir[ZINK_GFX_SHADER_COUNT];
 
    prog->has_edgeflags = prog->shaders[MESA_SHADER_VERTEX] &&
                          prog->shaders[MESA_SHADER_VERTEX]->has_edgeflags;
@@ -1109,8 +1107,6 @@ zink_create_gfx_program(struct zink_context *ctx,
          if (i != MESA_SHADER_FRAGMENT)
             prog->optimal_keys &= !prog->shaders[i]->non_fs.is_generated;
          prog->needs_inlining |= prog->shaders[i]->needs_inlining;
-      } else {
-         nir[i] = NULL;
       }
    }
    if (stages[MESA_SHADER_TESS_EVAL] && !stages[MESA_SHADER_TESS_CTRL]) {
@@ -1118,7 +1114,6 @@ zink_create_gfx_program(struct zink_context *ctx,
       prog->shaders[MESA_SHADER_TESS_EVAL]->non_fs.generated_tcs =
       prog->shaders[MESA_SHADER_TESS_CTRL] =
         zink_shader_tcs_create(screen, vertices_per_patch);
-      zink_shader_tcs_init(screen, prog->shaders[MESA_SHADER_TESS_CTRL], nir[MESA_SHADER_TESS_EVAL], &nir[MESA_SHADER_TESS_CTRL]);
       prog->stages_present |= BITFIELD_BIT(MESA_SHADER_TESS_CTRL);
    }
    prog->stages_remaining = prog->stages_present;
@@ -1148,12 +1143,31 @@ zink_create_gfx_program(struct zink_context *ctx,
             break;
       }
    }
+   return prog;
 
-   for (unsigned i = 0; i < ZINK_GFX_SHADER_COUNT; i++) {
+fail:
+   if (prog)
+      zink_destroy_gfx_program(screen, prog);
+   return NULL;
+}
+
+static struct zink_gfx_program *
+gfx_program_init(struct zink_context *ctx, struct zink_gfx_program *prog)
+{
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
+   nir_shader *nir[ZINK_GFX_SHADER_COUNT];
+
+   /* iterate in reverse order to create TES before generated TCS */
+   for (int i = MESA_SHADER_FRAGMENT; i >= MESA_SHADER_VERTEX; i--) {
       if (prog->shaders[i]) {
          util_queue_fence_wait(&prog->shaders[i]->precompile.fence);
-         /* generated TCS retains nir at this point */
-         nir[i] = prog->shaders[i]->nir ? prog->shaders[i]->nir : zink_shader_deserialize(screen, prog->shaders[i]);
+         /* this may have already been precompiled for separate shader */
+         if (i == MESA_SHADER_TESS_CTRL && prog->shaders[i]->non_fs.is_generated && prog->shaders[MESA_SHADER_TESS_CTRL]->nir)
+            zink_shader_tcs_init(screen, prog->shaders[MESA_SHADER_TESS_CTRL], nir[MESA_SHADER_TESS_EVAL], &nir[i]);
+         else
+            nir[i] = zink_shader_deserialize(screen, prog->shaders[i]);
+      } else {
+         nir[i] = NULL;
       }
    }
    assign_io(screen, nir);
@@ -1185,6 +1199,18 @@ fail:
    if (prog)
       zink_destroy_gfx_program(screen, prog);
    return NULL;
+}
+
+struct zink_gfx_program *
+zink_create_gfx_program(struct zink_context *ctx,
+                        struct zink_shader **stages,
+                        unsigned vertices_per_patch,
+                        uint32_t gfx_hash)
+{
+   struct zink_gfx_program *prog = gfx_program_create(ctx, stages, vertices_per_patch, gfx_hash);
+   if (prog)
+      prog = gfx_program_init(ctx, prog);
+   return prog;
 }
 
 /* Creates a replacement, optimized zink_gfx_program for this set of separate shaders, which will

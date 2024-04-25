@@ -2241,13 +2241,12 @@ zink_create_gfx_shader_state(struct pipe_context *pctx, const struct pipe_shader
    if (nir->info.uses_bindless)
       zink_descriptors_init_bindless(zink_context(pctx));
 
-   void *ret = zink_shader_create(zink_screen(pctx->screen), nir);
+   struct zink_shader *zs = zink_shader_create(zink_screen(pctx->screen), nir);
 
    if (!(zink_debug & ZINK_DEBUG_NOPC)) {
       if (nir->info.separate_shader && zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB &&
          (screen->info.have_EXT_shader_object ||
          (screen->info.have_EXT_graphics_pipeline_library && (nir->info.stage == MESA_SHADER_FRAGMENT || nir->info.stage == MESA_SHADER_VERTEX)))) {
-         struct zink_shader *zs = ret;
          /* sample shading can't precompile */
          if (nir->info.stage != MESA_SHADER_FRAGMENT || !nir->info.fs.uses_sample_shading) {
             if (zink_debug & ZINK_DEBUG_NOBGC)
@@ -2259,7 +2258,7 @@ zink_create_gfx_shader_state(struct pipe_context *pctx, const struct pipe_shader
    }
    ralloc_free(nir);
 
-   return ret;
+   return zs;
 }
 
 static void

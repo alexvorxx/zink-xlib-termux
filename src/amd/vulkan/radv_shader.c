@@ -403,7 +403,6 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                .subgroup_quad = true,
                .subgroup_rotate = true,
                .subgroup_shuffle = true,
-               .subgroup_uniform_control_flow = true,
                .subgroup_vote = true,
                .tessellation = true,
                .transform_feedback = true,

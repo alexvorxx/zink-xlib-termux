@@ -5555,9 +5555,7 @@ vtn_handle_execution_mode(struct vtn_builder *b, struct vtn_value *entry_point,
       break;
 
    case SpvExecutionModeSubgroupUniformControlFlowKHR:
-      /* There's no corresponding SPIR-V capability, so check here. */
-      vtn_fail_if(!b->options->caps.subgroup_uniform_control_flow,
-                  "SpvExecutionModeSubgroupUniformControlFlowKHR not supported.");
+      /* Nothing to do here */
       break;
 
    case SpvExecutionModeEarlyAndLateFragmentTestsAMD:

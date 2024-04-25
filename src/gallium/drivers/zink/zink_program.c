@@ -1151,6 +1151,7 @@ fail:
    return NULL;
 }
 
+/* NO THREAD-UNSAFE ctx USAGE! */
 static struct zink_gfx_program *
 gfx_program_init(struct zink_context *ctx, struct zink_gfx_program *prog)
 {
@@ -1223,7 +1224,7 @@ create_linked_separable_job(void *data, void *gdata, int thread_index)
    /* this is a dead program */
    if (prog->base.removed)
       return;
-   prog->full_prog = zink_create_gfx_program(prog->base.ctx, prog->shaders, 0, prog->gfx_hash);
+   prog->full_prog = gfx_program_create(prog->base.ctx, prog->shaders, 0, prog->gfx_hash);
    /* block gfx_shader_prune in the main thread */
    util_queue_fence_reset(&prog->full_prog->base.cache_fence);
    /* add an ownership ref */
@@ -2167,6 +2168,9 @@ gfx_program_precompile_job(void *data, void *gdata, int thread_index)
    struct zink_screen *screen = gdata;
    struct zink_gfx_program *prog = data;
 
+   /* this is threadsafe */
+   gfx_program_init(prog->base.ctx, prog);
+
    struct zink_gfx_pipeline_state state = {0};
    state.shader_keys_optimal.key.vs_base.last_vertex_stage = true;
    state.shader_keys_optimal.key.tcs.patch_vertices = 3; //random guess, generated tcs precompile is hard
@@ -2216,7 +2220,7 @@ zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
       simple_mtx_unlock(&ctx->program_lock[zink_program_cache_stages(shader_stages)]);
       return;
    }
-   struct zink_gfx_program *prog = zink_create_gfx_program(ctx, zshaders, 3, hash);
+   struct zink_gfx_program *prog = gfx_program_create(ctx, zshaders, 3, hash);
    u_foreach_bit(i, shader_stages)
       assert(prog->shaders[i]);
    _mesa_hash_table_insert_pre_hashed(ht, hash, prog->shaders, prog);
@@ -2224,6 +2228,7 @@ zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
    simple_mtx_unlock(&ctx->program_lock[zink_program_cache_stages(shader_stages)]);
    if (zink_debug & ZINK_DEBUG_SHADERDB) {
       struct zink_screen *screen = zink_screen(pctx->screen);
+      gfx_program_init(ctx, prog);
       if (screen->optimal_keys)
          generate_gfx_program_modules_optimal(ctx, screen,  prog, &ctx->gfx_pipeline_state);
       else

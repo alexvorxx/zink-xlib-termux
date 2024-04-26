@@ -71,7 +71,7 @@ struct panvk_draw_info {
       mali_ptr varyings;
       mali_ptr attributes;
       mali_ptr attribute_bufs;
-   } stages[MESA_SHADER_STAGES];
+   } vs, fs;
    mali_ptr push_uniforms;
    mali_ptr varying_bufs;
    mali_ptr textures;
@@ -741,8 +741,8 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
       draw->line_width = 1.0f;
 
    draw->varying_bufs = bufs.gpu;
-   draw->stages[MESA_SHADER_VERTEX].varyings = pipeline->vs.varyings.attribs;
-   draw->stages[MESA_SHADER_FRAGMENT].varyings = pipeline->fs.varyings.attribs;
+   draw->vs.varyings = pipeline->vs.varyings.attribs;
+   draw->fs.varyings = pipeline->fs.varyings.attribs;
 }
 
 static void
@@ -978,15 +978,13 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
 
    panvk_draw_prepare_vs_attribs(cmdbuf, draw);
-   draw->stages[MESA_SHADER_VERTEX].attributes = cmdbuf->state.gfx.vs.attribs;
-   draw->stages[MESA_SHADER_VERTEX].attribute_bufs =
-      cmdbuf->state.gfx.vs.attrib_bufs;
+   draw->vs.attributes = cmdbuf->state.gfx.vs.attribs;
+   draw->vs.attribute_bufs = cmdbuf->state.gfx.vs.attrib_bufs;
 
    if (pipeline->fs.has_img_access) {
       panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
-      draw->stages[MESA_SHADER_FRAGMENT].attributes = desc_state->img.attribs;
-      draw->stages[MESA_SHADER_FRAGMENT].attribute_bufs =
-         desc_state->img.attrib_bufs;
+      draw->fs.attributes = desc_state->img.attribs;
+      draw->fs.attribute_bufs = desc_state->img.attrib_bufs;
    }
 }
 
@@ -1066,9 +1064,9 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
 
    pan_section_pack(ptr.cpu, COMPUTE_JOB, DRAW, cfg) {
       cfg.state = pipeline->vs.rsd;
-      cfg.attributes = draw->stages[MESA_SHADER_VERTEX].attributes;
-      cfg.attribute_buffers = draw->stages[MESA_SHADER_VERTEX].attribute_bufs;
-      cfg.varyings = draw->stages[MESA_SHADER_VERTEX].varyings;
+      cfg.attributes = draw->vs.attributes;
+      cfg.attribute_buffers = draw->vs.attribute_bufs;
+      cfg.varyings = draw->vs.varyings;
       cfg.varying_buffers = draw->varying_bufs;
       cfg.thread_storage = draw->tls;
       cfg.offset_start = draw->offset_start;
@@ -1189,10 +1187,10 @@ panvk_emit_tiler_dcd(struct panvk_cmd_buffer *cmdbuf,
       cfg.cull_back_face = (rs->cull_mode & VK_CULL_MODE_BACK_BIT) != 0;
       cfg.position = draw->position;
       cfg.state = draw->fs_rsd;
-      cfg.attributes = draw->stages[MESA_SHADER_FRAGMENT].attributes;
-      cfg.attribute_buffers = draw->stages[MESA_SHADER_FRAGMENT].attribute_bufs;
+      cfg.attributes = draw->fs.attributes;
+      cfg.attribute_buffers = draw->fs.attribute_bufs;
       cfg.viewport = draw->viewport;
-      cfg.varyings = draw->stages[MESA_SHADER_FRAGMENT].varyings;
+      cfg.varyings = draw->fs.varyings;
       cfg.varying_buffers = cfg.varyings ? draw->varying_bufs : 0;
       cfg.thread_storage = draw->tls;
 

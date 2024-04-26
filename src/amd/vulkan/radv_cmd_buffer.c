@@ -2521,18 +2521,18 @@ radv_emit_primitive_restart_enable(struct radv_cmd_buffer *cmd_buffer)
       radeon_set_uconfig_reg(cs, R_03092C_VGT_MULTI_PRIM_IB_RESET_EN, en);
    } else {
       radeon_set_context_reg(cs, R_028A94_VGT_MULTI_PRIM_IB_RESET_EN, en);
-   }
 
-   /* GFX6-7: All 32 bits are compared.
-    * GFX8: Only index type bits are compared.
-    * GFX9+: Default is same as GFX8, MATCH_ALL_BITS=1 selects GFX6-7 behavior
-    */
-   if (en && gfx_level <= GFX7) {
-      const uint32_t primitive_reset_index = radv_get_primitive_reset_index(cmd_buffer);
+      /* GFX6-7: All 32 bits are compared.
+       * GFX8: Only index type bits are compared.
+       * GFX9+: Default is same as GFX8, MATCH_ALL_BITS=1 selects GFX6-7 behavior
+       */
+      if (en && gfx_level <= GFX7) {
+         const uint32_t primitive_reset_index = radv_get_primitive_reset_index(cmd_buffer);
 
-      if (primitive_reset_index != cmd_buffer->state.last_primitive_reset_index) {
-         radeon_set_context_reg(cs, R_02840C_VGT_MULTI_PRIM_IB_RESET_INDX, primitive_reset_index);
-         cmd_buffer->state.last_primitive_reset_index = primitive_reset_index;
+         if (primitive_reset_index != cmd_buffer->state.last_primitive_reset_index) {
+            radeon_set_context_reg(cs, R_02840C_VGT_MULTI_PRIM_IB_RESET_INDX, primitive_reset_index);
+            cmd_buffer->state.last_primitive_reset_index = primitive_reset_index;
+         }
       }
    }
 }

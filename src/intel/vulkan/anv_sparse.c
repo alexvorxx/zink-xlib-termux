@@ -988,7 +988,8 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
    isl_surf_get_tile_info(surf, &tile_info);
    uint32_t tile_size = tile_info.logical_extent_el.width * Bpb *
                         tile_info.logical_extent_el.height *
-                        tile_info.logical_extent_el.depth;
+                        tile_info.logical_extent_el.depth *
+                        surf->samples;
 
    uint64_t layer1_offset;
    uint32_t x_off, y_off;
@@ -1002,6 +1003,7 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
     * nothing and focus our efforts into making things use the appropriate
     * tiling formats that give us the standard block shapes.
     */
+   assert(tile_size == 64 * 1024 || tile_size == 4096);
    if (tile_size != ANV_SPARSE_BLOCK_SIZE)
       goto out_everything_is_miptail;
 

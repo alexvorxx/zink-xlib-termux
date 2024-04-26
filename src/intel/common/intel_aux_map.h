@@ -65,6 +65,9 @@ struct intel_device_info;
  *    Render Surface State. CCS buffer's size is based on the padded main
  *    surface (after following Halign and Valign requirements mentioned in the
  *    Render Surface State). CCS_Buffer_Size = Padded_Main_Surface_Size/256"
+ *
+ * The aux-map only exists on Xe, so this is equivalent to
+ * ISL_MAIN_TO_CCS_SIZE_RATIO_XE.
  */
 #define INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN 256
 

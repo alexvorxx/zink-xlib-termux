@@ -6484,6 +6484,9 @@ calculate_tile_dimensions(struct iris_context *ice,
    struct iris_screen *screen = (void *)ice->ctx.screen;
    const struct intel_device_info *devinfo = screen->devinfo;
 
+   assert(GFX_VER == 12);
+   const unsigned aux_scale = ISL_MAIN_TO_CCS_SIZE_RATIO_XE;
+
    /* Perform a rough calculation of the tile cache footprint of the
     * pixel pipeline, approximating it as the sum of the amount of
     * memory used per pixel by every render target, depth, stencil and
@@ -6509,7 +6512,11 @@ calculate_tile_dimensions(struct iris_context *ice,
           */
          if (ice->state.draw_aux_usage[i]) {
             pixel_size += intel_calculate_surface_pixel_size(&res->aux.surf);
-            pixel_size += intel_calculate_surface_pixel_size(&res->aux.extra_aux.surf);
+
+            if (isl_aux_usage_has_ccs(res->aux.usage)) {
+               pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
+                                             &res->surf), aux_scale);
+            }
          }
       }
    }
@@ -6527,7 +6534,11 @@ calculate_tile_dimensions(struct iris_context *ice,
           */
          if (iris_resource_level_has_hiz(devinfo, zres, cso->zsbuf->u.tex.level)) {
             pixel_size += intel_calculate_surface_pixel_size(&zres->aux.surf);
-            pixel_size += intel_calculate_surface_pixel_size(&zres->aux.extra_aux.surf);
+
+            if (isl_aux_usage_has_ccs(zres->aux.usage)) {
+               pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
+                                             &zres->surf), aux_scale);
+            }
          }
       }
 

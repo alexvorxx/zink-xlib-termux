@@ -372,7 +372,10 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
 {
    const struct anv_device *device = cmd_buffer->device;
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
-   const unsigned aux_scale = 256;
+
+   assert(GFX_VER == 12);
+   const unsigned aux_scale = ISL_MAIN_TO_CCS_SIZE_RATIO_XE;
+
    unsigned pixel_size = 0;
 
    /* Perform a rough calculation of the tile cache footprint of the
@@ -396,10 +399,6 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
             pixel_size += intel_calculate_surface_pixel_size(
                &plane->aux_surface.isl);
 
-         /* XXX - Use proper implicit CCS surface metadata tracking
-          *       instead of inferring pixel size from primary
-          *       surface.
-          */
          if (isl_aux_usage_has_ccs(att->aux_usage))
             pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
                                           &plane->primary_surface.isl),
@@ -422,10 +421,6 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
          pixel_size += intel_calculate_surface_pixel_size(
             &plane->aux_surface.isl);
 
-      /* XXX - Use proper implicit CCS surface metadata tracking
-       *       instead of inferring pixel size from primary
-       *       surface.
-       */
       if (isl_aux_usage_has_ccs(image->planes[p].aux_usage))
          pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
                                        &plane->primary_surface.isl),

@@ -2709,6 +2709,16 @@ isl_surf_get_ccs_surf(const struct isl_device *dev,
                       struct isl_surf *ccs_surf,
                       uint32_t row_pitch_B);
 
+/* The value is from Bspec 47709, MCS/CCS Buffers for Render Target(s):
+ *
+ *    "CCS is a linear buffer created for storing meta-data (AUX data) for
+ *    lossless compression. This buffer related information is mentioned in
+ *    Render Surface State. CCS buffer's size is based on the padded main
+ *    surface (after following Halign and Valign requirements mentioned in the
+ *    Render Surface State). CCS_Buffer_Size = Padded_Main_Surface_Size/256"
+ */
+#define ISL_MAIN_TO_CCS_SIZE_RATIO_XE 256
+
 #define isl_surf_fill_state(dev, state, ...) \
    (dev)->surf_fill_state_s(dev, state, \
                          &(struct isl_surf_fill_state_info) {  __VA_ARGS__ });

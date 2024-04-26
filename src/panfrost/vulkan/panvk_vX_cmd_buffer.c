@@ -44,9 +44,11 @@
 
 #include "pan_blitter.h"
 #include "pan_desc.h"
+#include "pan_earlyzs.h"
 #include "pan_encoder.h"
 #include "pan_props.h"
 #include "pan_samples.h"
+#include "pan_shader.h"
 
 #include "util/rounding.h"
 #include "util/u_pack_color.h"
@@ -533,80 +535,287 @@ panvk_cmd_prepare_samplers(struct panvk_cmd_buffer *cmdbuf,
    desc_state->samplers = samplers.gpu;
 }
 
+static bool
+has_depth_att(struct panvk_cmd_buffer *cmdbuf)
+{
+   return (cmdbuf->state.gfx.fb.bound_attachments &
+           MESA_VK_RP_ATTACHMENT_DEPTH_BIT) != 0;
+}
+
+static bool
+has_stencil_att(struct panvk_cmd_buffer *cmdbuf)
+{
+   return (cmdbuf->state.gfx.fb.bound_attachments &
+           MESA_VK_RP_ATTACHMENT_STENCIL_BIT) != 0;
+}
+
+static bool
+writes_depth(struct panvk_cmd_buffer *cmdbuf)
+{
+   const struct vk_depth_stencil_state *ds =
+      &cmdbuf->vk.dynamic_graphics_state.ds;
+
+   return has_depth_att(cmdbuf) && ds->depth.test_enable &&
+          ds->depth.write_enable && ds->depth.compare_op != VK_COMPARE_OP_NEVER;
+}
+
+static bool
+writes_stencil(struct panvk_cmd_buffer *cmdbuf)
+{
+   const struct vk_depth_stencil_state *ds =
+      &cmdbuf->vk.dynamic_graphics_state.ds;
+
+   return has_stencil_att(cmdbuf) && ds->stencil.test_enable &&
+          ((ds->stencil.front.write_mask &&
+            (ds->stencil.front.op.fail != VK_STENCIL_OP_KEEP ||
+             ds->stencil.front.op.pass != VK_STENCIL_OP_KEEP ||
+             ds->stencil.front.op.depth_fail != VK_STENCIL_OP_KEEP)) ||
+           (ds->stencil.back.write_mask &&
+            (ds->stencil.back.op.fail != VK_STENCIL_OP_KEEP ||
+             ds->stencil.back.op.pass != VK_STENCIL_OP_KEEP ||
+             ds->stencil.back.op.depth_fail != VK_STENCIL_OP_KEEP)));
+}
+
+static bool
+ds_test_always_passes(struct panvk_cmd_buffer *cmdbuf)
+{
+   const struct vk_depth_stencil_state *ds =
+      &cmdbuf->vk.dynamic_graphics_state.ds;
+
+   if (!has_depth_att(cmdbuf))
+      return true;
+
+   if (ds->depth.test_enable && ds->depth.compare_op != VK_COMPARE_OP_ALWAYS)
+      return false;
+
+   if (ds->stencil.test_enable &&
+       (ds->stencil.front.op.compare != VK_COMPARE_OP_ALWAYS ||
+        ds->stencil.back.op.compare != VK_COMPARE_OP_ALWAYS))
+      return false;
+
+   return true;
+}
+
+static inline enum mali_func
+translate_compare_func(VkCompareOp comp)
+{
+   STATIC_ASSERT(VK_COMPARE_OP_NEVER == (VkCompareOp)MALI_FUNC_NEVER);
+   STATIC_ASSERT(VK_COMPARE_OP_LESS == (VkCompareOp)MALI_FUNC_LESS);
+   STATIC_ASSERT(VK_COMPARE_OP_EQUAL == (VkCompareOp)MALI_FUNC_EQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_LESS_OR_EQUAL == (VkCompareOp)MALI_FUNC_LEQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_GREATER == (VkCompareOp)MALI_FUNC_GREATER);
+   STATIC_ASSERT(VK_COMPARE_OP_NOT_EQUAL == (VkCompareOp)MALI_FUNC_NOT_EQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_GREATER_OR_EQUAL ==
+                 (VkCompareOp)MALI_FUNC_GEQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_ALWAYS == (VkCompareOp)MALI_FUNC_ALWAYS);
+
+   return (enum mali_func)comp;
+}
+
+static enum mali_stencil_op
+translate_stencil_op(VkStencilOp in)
+{
+   switch (in) {
+   case VK_STENCIL_OP_KEEP:
+      return MALI_STENCIL_OP_KEEP;
+   case VK_STENCIL_OP_ZERO:
+      return MALI_STENCIL_OP_ZERO;
+   case VK_STENCIL_OP_REPLACE:
+      return MALI_STENCIL_OP_REPLACE;
+   case VK_STENCIL_OP_INCREMENT_AND_CLAMP:
+      return MALI_STENCIL_OP_INCR_SAT;
+   case VK_STENCIL_OP_DECREMENT_AND_CLAMP:
+      return MALI_STENCIL_OP_DECR_SAT;
+   case VK_STENCIL_OP_INCREMENT_AND_WRAP:
+      return MALI_STENCIL_OP_INCR_WRAP;
+   case VK_STENCIL_OP_DECREMENT_AND_WRAP:
+      return MALI_STENCIL_OP_DECR_WRAP;
+   case VK_STENCIL_OP_INVERT:
+      return MALI_STENCIL_OP_INVERT;
+   default:
+      unreachable("Invalid stencil op");
+   }
+}
+
+static bool
+fs_required(const struct vk_color_blend_state *cb,
+            const struct pan_shader_info *fs_info)
+{
+   /* If we generally have side effects */
+   if (fs_info->fs.sidefx)
+      return true;
+
+   /* If colour is written we need to execute */
+   for (unsigned i = 0; i < cb->attachment_count; ++i) {
+      if ((cb->color_write_enables & BITFIELD_BIT(i)) &&
+          cb->attachments[i].write_mask)
+         return true;
+   }
+
+   /* If depth is written and not implied we need to execute.
+    * TODO: Predicate on Z/S writes being enabled */
+   return (fs_info->fs.writes_depth || fs_info->fs.writes_stencil);
+}
+
 static void
 panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
                           struct panvk_draw_info *draw)
 {
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
 
-   if (!pipeline->state.fs.dynamic_rsd) {
-      draw->fs.rsd = pipeline->fs.rsd;
+   bool dirty =
+      is_dirty(cmdbuf, RS_RASTERIZER_DISCARD_ENABLE) ||
+      is_dirty(cmdbuf, RS_DEPTH_CLAMP_ENABLE) ||
+      is_dirty(cmdbuf, RS_DEPTH_BIAS_ENABLE) ||
+      is_dirty(cmdbuf, RS_DEPTH_BIAS_FACTORS) ||
+      is_dirty(cmdbuf, CB_LOGIC_OP_ENABLE) || is_dirty(cmdbuf, CB_LOGIC_OP) ||
+      is_dirty(cmdbuf, CB_ATTACHMENT_COUNT) ||
+      is_dirty(cmdbuf, CB_COLOR_WRITE_ENABLES) ||
+      is_dirty(cmdbuf, CB_BLEND_ENABLES) ||
+      is_dirty(cmdbuf, CB_BLEND_EQUATIONS) ||
+      is_dirty(cmdbuf, CB_WRITE_MASKS) ||
+      is_dirty(cmdbuf, CB_BLEND_CONSTANTS) ||
+      is_dirty(cmdbuf, DS_DEPTH_TEST_ENABLE) ||
+      is_dirty(cmdbuf, DS_DEPTH_WRITE_ENABLE) ||
+      is_dirty(cmdbuf, DS_DEPTH_COMPARE_OP) ||
+      is_dirty(cmdbuf, DS_DEPTH_COMPARE_OP) ||
+      is_dirty(cmdbuf, DS_STENCIL_TEST_ENABLE) ||
+      is_dirty(cmdbuf, DS_STENCIL_OP) ||
+      is_dirty(cmdbuf, DS_STENCIL_COMPARE_MASK) ||
+      is_dirty(cmdbuf, DS_STENCIL_WRITE_MASK) ||
+      is_dirty(cmdbuf, DS_STENCIL_REFERENCE) ||
+      is_dirty(cmdbuf, MS_RASTERIZATION_SAMPLES) ||
+      is_dirty(cmdbuf, MS_SAMPLE_MASK) ||
+      is_dirty(cmdbuf, MS_ALPHA_TO_COVERAGE_ENABLE) ||
+      is_dirty(cmdbuf, MS_ALPHA_TO_ONE_ENABLE) || !cmdbuf->state.gfx.fs.rsd;
+
+   if (!dirty) {
+      draw->fs.rsd = cmdbuf->state.gfx.fs.rsd;
       return;
    }
 
-   bool dirty = is_dirty(cmdbuf, RS_DEPTH_BIAS_FACTORS) ||
-                is_dirty(cmdbuf, CB_BLEND_CONSTANTS) ||
-                is_dirty(cmdbuf, DS_STENCIL_COMPARE_MASK) ||
-                is_dirty(cmdbuf, DS_STENCIL_WRITE_MASK) ||
-                is_dirty(cmdbuf, DS_STENCIL_REFERENCE) ||
-                !cmdbuf->state.gfx.fs.rsd;
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   const struct vk_dynamic_graphics_state *dyns =
+      &cmdbuf->vk.dynamic_graphics_state;
+   const struct vk_rasterization_state *rs = &dyns->rs;
+   const struct vk_color_blend_state *cb = &dyns->cb;
+   const struct vk_depth_stencil_state *ds = &dyns->ds;
+   const struct pan_shader_info *fs_info = &pipeline->fs.info;
+   unsigned bd_count = MAX2(cb->attachment_count, 1);
+   bool test_s = has_stencil_att(cmdbuf) && ds->stencil.test_enable;
+   bool test_z = has_depth_att(cmdbuf) && ds->depth.test_enable;
+   bool writes_z = writes_depth(cmdbuf);
+   bool writes_s = writes_stencil(cmdbuf);
+   bool needs_fs = fs_required(cb, fs_info);
+   bool blend_shader_loads_blend_const = false;
+   bool blend_reads_dest = false;
 
-   if (dirty) {
-      const struct vk_rasterization_state *rs =
-         &cmdbuf->vk.dynamic_graphics_state.rs;
-      const struct vk_color_blend_state *cb =
-         &cmdbuf->vk.dynamic_graphics_state.cb;
-      const struct vk_depth_stencil_state *ds =
-         &cmdbuf->vk.dynamic_graphics_state.ds;
-      struct panfrost_ptr rsd = pan_pool_alloc_desc_aggregate(
-         &cmdbuf->desc_pool.base, PAN_DESC(RENDERER_STATE),
-         PAN_DESC_ARRAY(pipeline->state.blend.pstate.rt_count, BLEND));
+   struct panfrost_ptr ptr = pan_pool_alloc_desc_aggregate(
+      &cmdbuf->desc_pool.base, PAN_DESC(RENDERER_STATE),
+      PAN_DESC_ARRAY(bd_count, BLEND));
+   struct mali_renderer_state_packed *rsd = ptr.cpu;
+   struct mali_blend_packed *bds = ptr.cpu + pan_size(RENDERER_STATE);
 
-      struct mali_renderer_state_packed rsd_dyn;
-      const struct mali_renderer_state_packed *rsd_templ =
-         &pipeline->state.fs.rsd_template;
+   panvk_per_arch(blend_emit_descs)(
+      dev, cb, cmdbuf->state.gfx.fb.color_attachments.fmts,
+      cmdbuf->state.gfx.fb.color_attachments.samples, fs_info,
+      pipeline->fs.code, bds, &blend_reads_dest,
+      &blend_shader_loads_blend_const);
 
-      pan_pack(&rsd_dyn, RENDERER_STATE, cfg) {
-         cfg.depth_units = rs->depth_bias.constant * 2.0f;
-         cfg.depth_factor = rs->depth_bias.slope;
-         cfg.depth_bias_clamp = rs->depth_bias.clamp;
+   pan_pack(rsd, RENDERER_STATE, cfg) {
+      bool alpha_to_coverage = dyns->ms.alpha_to_coverage_enable;
 
-         cfg.stencil_front.mask = ds->stencil.front.compare_mask;
-         cfg.stencil_back.mask = ds->stencil.back.compare_mask;
-         cfg.stencil_mask_misc.stencil_mask_front =
-            ds->stencil.front.write_mask;
-         cfg.stencil_mask_misc.stencil_mask_back = ds->stencil.back.write_mask;
-         cfg.stencil_front.reference_value = ds->stencil.front.reference;
-         cfg.stencil_back.reference_value = ds->stencil.back.reference;
-      }
+      if (needs_fs) {
+         pan_shader_prepare_rsd(fs_info, pipeline->fs.code, &cfg);
 
-      pan_merge(rsd_dyn, (*rsd_templ), RENDERER_STATE);
-      memcpy(rsd.cpu, &rsd_dyn, sizeof(rsd_dyn));
-
-      void *bd = rsd.cpu + pan_size(RENDERER_STATE);
-      for (unsigned i = 0; i < pipeline->state.blend.pstate.rt_count; i++) {
-         if (pipeline->state.blend.constant[i].index != (uint8_t)~0) {
-            struct mali_blend_packed bd_dyn;
-            const struct mali_blend_packed *bd_templ =
-               &pipeline->state.blend.bd_template[i];
-            unsigned constant_idx = pipeline->state.blend.constant[i].index;
-            float constant = cb->blend_constants[constant_idx] *
-                             pipeline->state.blend.constant[i].bifrost_factor;
-
-            pan_pack(&bd_dyn, BLEND, cfg) {
-               cfg.enable = false;
-               cfg.constant = constant;
-            }
-
-            pan_merge(bd_dyn, (*bd_templ), BLEND);
-            memcpy(bd, &bd_dyn, sizeof(bd_dyn));
+         if (blend_shader_loads_blend_const) {
+            /* Preload the blend constant if the blend shader depends on it. */
+            cfg.preload.uniform_count = MAX2(
+               cfg.preload.uniform_count,
+               DIV_ROUND_UP(256 + sizeof(struct panvk_graphics_sysvals), 8));
          }
-         bd += pan_size(BLEND);
+
+         uint8_t rt_written = fs_info->outputs_written >> FRAG_RESULT_DATA0;
+         uint8_t rt_mask = cmdbuf->state.gfx.fb.bound_attachments &
+                           MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS;
+         cfg.properties.allow_forward_pixel_to_kill =
+            fs_info->fs.can_fpk && !(rt_mask & ~rt_written) &&
+            !alpha_to_coverage && !blend_reads_dest;
+
+         bool writes_zs = writes_z || writes_s;
+         bool zs_always_passes = ds_test_always_passes(cmdbuf);
+         bool oq = false; /* TODO: Occlusion queries */
+
+         struct pan_earlyzs_state earlyzs =
+            pan_earlyzs_get(pan_earlyzs_analyze(fs_info), writes_zs || oq,
+                            alpha_to_coverage, zs_always_passes);
+
+         cfg.properties.pixel_kill_operation = earlyzs.kill;
+         cfg.properties.zs_update_operation = earlyzs.update;
+      } else {
+         cfg.properties.depth_source = MALI_DEPTH_SOURCE_FIXED_FUNCTION;
+         cfg.properties.allow_forward_pixel_to_kill = true;
+         cfg.properties.allow_forward_pixel_to_be_killed = true;
+         cfg.properties.zs_update_operation = MALI_PIXEL_KILL_STRONG_EARLY;
       }
 
-      cmdbuf->state.gfx.fs.rsd = rsd.gpu;
+      bool msaa = dyns->ms.rasterization_samples > 1;
+      cfg.multisample_misc.multisample_enable = msaa;
+      cfg.multisample_misc.sample_mask =
+         msaa ? dyns->ms.sample_mask : UINT16_MAX;
+
+      cfg.multisample_misc.depth_function =
+         test_z ? translate_compare_func(ds->depth.compare_op)
+                : MALI_FUNC_ALWAYS;
+
+      cfg.multisample_misc.depth_write_mask = writes_z;
+      cfg.multisample_misc.fixed_function_near_discard =
+         !rs->depth_clamp_enable;
+      cfg.multisample_misc.fixed_function_far_discard = !rs->depth_clamp_enable;
+      cfg.multisample_misc.shader_depth_range_fixed = true;
+
+      cfg.stencil_mask_misc.stencil_enable = test_s;
+      cfg.stencil_mask_misc.alpha_to_coverage = alpha_to_coverage;
+      cfg.stencil_mask_misc.alpha_test_compare_function = MALI_FUNC_ALWAYS;
+      cfg.stencil_mask_misc.front_facing_depth_bias = rs->depth_bias.enable;
+      cfg.stencil_mask_misc.back_facing_depth_bias = rs->depth_bias.enable;
+      cfg.stencil_mask_misc.single_sampled_lines =
+         dyns->ms.rasterization_samples <= 1;
+
+      cfg.depth_units = rs->depth_bias.constant * 2.0f;
+      cfg.depth_factor = rs->depth_bias.slope;
+      cfg.depth_bias_clamp = rs->depth_bias.clamp;
+
+      cfg.stencil_front.mask = ds->stencil.front.compare_mask;
+      cfg.stencil_back.mask = ds->stencil.back.compare_mask;
+
+      cfg.stencil_mask_misc.stencil_mask_front = ds->stencil.front.write_mask;
+      cfg.stencil_mask_misc.stencil_mask_back = ds->stencil.back.write_mask;
+
+      cfg.stencil_front.reference_value = ds->stencil.front.reference;
+      cfg.stencil_back.reference_value = ds->stencil.back.reference;
+
+      if (test_s) {
+         cfg.stencil_front.compare_function =
+            translate_compare_func(ds->stencil.front.op.compare);
+         cfg.stencil_front.stencil_fail =
+            translate_stencil_op(ds->stencil.front.op.fail);
+         cfg.stencil_front.depth_fail =
+            translate_stencil_op(ds->stencil.front.op.depth_fail);
+         cfg.stencil_front.depth_pass =
+            translate_stencil_op(ds->stencil.front.op.pass);
+         cfg.stencil_back.compare_function =
+            translate_compare_func(ds->stencil.back.op.compare);
+         cfg.stencil_back.stencil_fail =
+            translate_stencil_op(ds->stencil.back.op.fail);
+         cfg.stencil_back.depth_fail =
+            translate_stencil_op(ds->stencil.back.op.depth_fail);
+         cfg.stencil_back.depth_pass =
+            translate_stencil_op(ds->stencil.back.op.pass);
+      }
    }
 
+   cmdbuf->state.gfx.fs.rsd = ptr.gpu;
    draw->fs.rsd = cmdbuf->state.gfx.fs.rsd;
 }
 
@@ -1826,12 +2035,14 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
    uint32_t att_width = 0, att_height = 0;
-   bool has_attachments = false;
 
    cmdbuf->state.gfx.fb.bo_count = 0;
    memset(cmdbuf->state.gfx.fb.bos, 0, sizeof(cmdbuf->state.gfx.fb.bos));
    memset(cmdbuf->state.gfx.fb.crc_valid, 0,
           sizeof(cmdbuf->state.gfx.fb.crc_valid));
+   memset(&cmdbuf->state.gfx.fb.color_attachments, 0,
+          sizeof(cmdbuf->state.gfx.fb.color_attachments));
+   cmdbuf->state.gfx.fb.bound_attachments = 0;
 
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
@@ -1854,7 +2065,10 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      has_attachments = true;
+      cmdbuf->state.gfx.fb.bound_attachments |=
+         MESA_VK_RP_ATTACHMENT_COLOR_BIT(i);
+      cmdbuf->state.gfx.fb.color_attachments.fmts[i] = iview->vk.format;
+      cmdbuf->state.gfx.fb.color_attachments.samples[i] = img->vk.samples;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
@@ -1888,7 +2102,7 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      has_attachments = true;
+      cmdbuf->state.gfx.fb.bound_attachments |= MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
@@ -1914,7 +2128,8 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      has_attachments = true;
+      cmdbuf->state.gfx.fb.bound_attachments |=
+         MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
@@ -1937,7 +2152,7 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
    fbinfo->height = pRenderingInfo->renderArea.offset.y +
                     pRenderingInfo->renderArea.extent.height;
 
-   if (has_attachments) {
+   if (cmdbuf->state.gfx.fb.bound_attachments) {
       /* We need the rendering area to be aligned on a 32x32 section for tile
        * buffer preloading to work correctly.
        */
@@ -1949,6 +2164,9 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
 
    fbinfo->extent.maxx = fbinfo->width - 1;
    fbinfo->extent.maxy = fbinfo->height - 1;
+
+   /* We need to re-emit the FS RSD when the color attachments change. */
+   cmdbuf->state.gfx.fs.rsd = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL

@@ -61,20 +61,12 @@ load_sysval_from_push_const(nir_builder *b, nir_intrinsic_instr *intr,
       .range = intr->def.num_components * intr->def.bit_size / 8);
 }
 
-struct sysval_options {
-   /* If non-null, a vec4 of blend constants known at pipeline compile time. If
-    * null, blend constants are dynamic.
-    */
-   float *static_blend_constants;
-};
-
 static bool
 panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
-   struct sysval_options *opts = data;
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
    nir_def *val = NULL;
    b->cursor = nir_before_instr(instr);
@@ -110,19 +102,8 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
                                         SYSVAL(graphics, vs.base_instance));
       break;
    case nir_intrinsic_load_blend_const_color_rgba:
-      if (opts->static_blend_constants) {
-         const nir_const_value constants[4] = {
-            {.f32 = opts->static_blend_constants[0]},
-            {.f32 = opts->static_blend_constants[1]},
-            {.f32 = opts->static_blend_constants[2]},
-            {.f32 = opts->static_blend_constants[3]},
-         };
-
-         val = nir_build_imm(b, 4, 32, constants);
-      } else {
-         val = load_sysval_from_push_const(b, intr,
-                                           SYSVAL(graphics, blend.constants));
-      }
+      val = load_sysval_from_push_const(b, intr,
+                                        SYSVAL(graphics, blend.constants));
       break;
 
    case nir_intrinsic_load_layer_id:
@@ -215,8 +196,6 @@ struct panvk_shader *
 panvk_per_arch(shader_create)(struct panvk_device *dev,
                               const VkPipelineShaderStageCreateInfo *stage_info,
                               const struct panvk_pipeline_layout *layout,
-                              struct pan_blend_state *blend_state,
-                              bool static_blend_constants,
                               const VkAllocationCallbacks *alloc)
 {
    VK_FROM_HANDLE(vk_shader_module, module, stage_info->module);
@@ -371,30 +350,11 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
 
    pan_shader_preprocess(nir, inputs.gpu_id);
 
-   if (stage == MESA_SHADER_FRAGMENT) {
-      panvk_lower_blend(dev, nir, &inputs, blend_state);
-   }
-
    if (stage == MESA_SHADER_VERTEX)
       NIR_PASS_V(nir, pan_lower_image_index, MAX_VS_ATTRIBS);
 
-   struct sysval_options sysval_options = {
-      .static_blend_constants =
-         static_blend_constants ? blend_state->constants : NULL,
-   };
-
    NIR_PASS_V(nir, nir_shader_instructions_pass, panvk_lower_sysvals,
-              nir_metadata_block_index | nir_metadata_dominance,
-              &sysval_options);
-
-   if (stage == MESA_SHADER_FRAGMENT) {
-      enum pipe_format rt_formats[MAX_RTS] = {PIPE_FORMAT_NONE};
-
-      for (unsigned rt = 0; rt < MAX_RTS; ++rt)
-         rt_formats[rt] = blend_state->rts[rt].format;
-
-      NIR_PASS_V(nir, GENX(pan_inline_rt_conversion), rt_formats);
-   }
+              nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    GENX(pan_shader_compile)(nir, &inputs, &shader->binary, &shader->info);
 

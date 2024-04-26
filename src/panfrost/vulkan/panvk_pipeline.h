@@ -63,23 +63,6 @@ struct panvk_graphics_pipeline {
    struct panvk_pipeline_shader fs;
 
    struct {
-      struct {
-         bool required;
-         bool dynamic_rsd;
-         uint8_t rt_mask;
-         struct mali_renderer_state_packed rsd_template;
-      } fs;
-
-      struct {
-         struct pan_blend_state pstate;
-         struct {
-            uint8_t index;
-            uint16_t bifrost_factor;
-         } constant[8];
-         struct mali_blend_packed bd_template[8];
-         bool reads_dest;
-      } blend;
-
       struct vk_dynamic_graphics_state dynamic;
       struct vk_vertex_input_state vi;
       struct vk_sample_locations_state sl;

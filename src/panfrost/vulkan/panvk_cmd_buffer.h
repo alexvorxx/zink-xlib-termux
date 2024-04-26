@@ -133,6 +133,11 @@ struct panvk_cmd_graphics_state {
    } ib;
 
    struct {
+      enum vk_rp_attachment_flags bound_attachments;
+      struct {
+         VkFormat fmts[MAX_RTS];
+         uint8_t samples[MAX_RTS];
+      } color_attachments;
       struct pan_fb_info info;
       bool crc_valid[MAX_RTS];
       uint32_t bo_count;

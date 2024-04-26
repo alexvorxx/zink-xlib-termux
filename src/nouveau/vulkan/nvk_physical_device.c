@@ -179,6 +179,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_depth_bias_control = true,
       .EXT_depth_clip_control = true,
       .EXT_depth_clip_enable = true,
+      .EXT_depth_range_unrestricted = info->cls_eng3d >= VOLTA_A,
       .EXT_descriptor_indexing = true,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control = true,

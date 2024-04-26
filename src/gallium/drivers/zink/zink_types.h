@@ -640,6 +640,8 @@ struct zink_batch_state {
     * batch_find_resource uses this hint to speed up buffers look up.
     */
    int16_t buffer_indices_hashlist[BUFFER_HASHLIST_SIZE];
+   uint16_t hashlist_min;
+   uint16_t hashlist_max;
    struct zink_batch_obj_list real_objs;
    struct zink_batch_obj_list slab_objs;
    struct zink_batch_obj_list sparse_objs;

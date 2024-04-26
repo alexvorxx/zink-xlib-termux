@@ -610,7 +610,10 @@ post_submit(void *data, void *gdata, int thread_index)
       zink_screen_timeline_wait(screen, bs->fence.batch_id - 2500, OS_TIMEOUT_INFINITE);
    }
    /* this resets the buffer hashlist for the state's next use */
-   memset(&bs->buffer_indices_hashlist, -1, sizeof(bs->buffer_indices_hashlist));
+   if (bs->hashlist_min != UINT16_MAX)
+      /* only reset a min/max region */
+      memset(&bs->buffer_indices_hashlist[bs->hashlist_min], -1, (bs->hashlist_max - bs->hashlist_min + 1) * sizeof(int16_t));
+   bs->hashlist_min = bs->hashlist_max = UINT16_MAX;
 }
 
 typedef enum {
@@ -897,6 +900,13 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
 #endif
 }
 
+ALWAYS_INLINE static void
+batch_hashlist_update(struct zink_batch_state *bs, unsigned hash)
+{
+   bs->hashlist_min = bs->hashlist_min == UINT16_MAX ? hash : MIN2(hash, bs->hashlist_min);
+   bs->hashlist_max = bs->hashlist_max == UINT16_MAX ? hash : MAX2(hash, bs->hashlist_max);
+}
+
 static int
 batch_find_resource(struct zink_batch_state *bs, struct zink_resource_object *obj, struct zink_batch_obj_list *list)
 {
@@ -920,6 +930,7 @@ batch_find_resource(struct zink_batch_state *bs, struct zink_resource_object *ob
           * will collide here: ^ and here:   ^,
           * meaning that we should get very few collisions in the end. */
          bs->buffer_indices_hashlist[hash] = i & (BUFFER_HASHLIST_SIZE-1);
+         batch_hashlist_update(bs, hash);
          return i;
       }
    }
@@ -1033,6 +1044,7 @@ zink_batch_reference_resource_move(struct zink_batch *batch, struct zink_resourc
    list->objs[idx] = res->obj;
    unsigned hash = bo->unique_id & (BUFFER_HASHLIST_SIZE-1);
    bs->buffer_indices_hashlist[hash] = idx & 0x7fff;
+   batch_hashlist_update(bs, hash);
    bs->last_added_obj = res->obj;
    if (!(res->base.b.flags & PIPE_RESOURCE_FLAG_SPARSE)) {
       bs->resource_size += res->obj->size;

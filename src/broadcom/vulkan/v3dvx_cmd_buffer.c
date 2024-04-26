@@ -2711,7 +2711,6 @@ v3dX(cmd_buffer_emit_draw_indexed)(struct v3dv_cmd_buffer *cmd_buffer,
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
 
-   const struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
    uint32_t hw_prim_type = v3dv_pipeline_primitive(dyn->ia.primitive_topology);
@@ -2739,7 +2738,7 @@ v3dX(cmd_buffer_emit_draw_indexed)(struct v3dv_cmd_buffer *cmd_buffer,
          prim.length = indexCount;
          prim.index_offset = index_offset;
          prim.mode = hw_prim_type;
-         prim.enable_primitive_restarts = pipeline->primitive_restart;
+         prim.enable_primitive_restarts = dyn->ia.primitive_restart_enable;
       }
    } else if (instanceCount > 1) {
       v3dv_cl_ensure_space_with_branch(
@@ -2750,7 +2749,7 @@ v3dX(cmd_buffer_emit_draw_indexed)(struct v3dv_cmd_buffer *cmd_buffer,
          prim.index_type = index_type;
          prim.index_offset = index_offset;
          prim.mode = hw_prim_type;
-         prim.enable_primitive_restarts = pipeline->primitive_restart;
+         prim.enable_primitive_restarts = dyn->ia.primitive_restart_enable;
          prim.number_of_instances = instanceCount;
          prim.instance_length = indexCount;
       }
@@ -2794,7 +2793,6 @@ v3dX(cmd_buffer_emit_indexed_indirect)(struct v3dv_cmd_buffer *cmd_buffer,
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
 
-   const struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
    uint32_t hw_prim_type = v3dv_pipeline_primitive(dyn->ia.primitive_topology);
@@ -2807,7 +2805,7 @@ v3dX(cmd_buffer_emit_indexed_indirect)(struct v3dv_cmd_buffer *cmd_buffer,
    cl_emit(&job->bcl, INDIRECT_INDEXED_INSTANCED_PRIM_LIST, prim) {
       prim.index_type = index_type;
       prim.mode = hw_prim_type;
-      prim.enable_primitive_restarts = pipeline->primitive_restart;
+      prim.enable_primitive_restarts = dyn->ia.primitive_restart_enable;
       prim.number_of_draw_indirect_indexed_records = drawCount;
       prim.stride_in_multiples_of_4_bytes = stride >> 2;
       prim.address = v3dv_cl_address(buffer->mem->bo,

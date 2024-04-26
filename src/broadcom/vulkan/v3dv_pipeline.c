@@ -2987,9 +2987,6 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    pipeline_set_sample_rate_shading(pipeline, ms_info);
    pipeline->line_smooth = enable_line_smooth(pipeline->topology, rs_info);
 
-   pipeline->primitive_restart =
-      pCreateInfo->pInputAssemblyState->primitiveRestartEnable;
-
    result = pipeline_compile_graphics(pipeline, cache, pCreateInfo, pAllocator);
 
    if (result != VK_SUCCESS) {

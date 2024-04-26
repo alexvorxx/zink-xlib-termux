@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef _NINE_DEVICE9_H_
 #define _NINE_DEVICE9_H_
@@ -49,8 +32,8 @@ struct NineStateBlock9;
 struct NineDevice9
 {
     struct NineUnknown base;
-    boolean ex;
-    boolean may_swvp;
+    bool ex;
+    bool may_swvp;
 
     /* G3D context */
     struct pipe_screen *screen;
@@ -88,8 +71,8 @@ struct NineDevice9
     struct list_head managed_buffers;
     struct list_head managed_textures;
 
-    boolean is_recording;
-    boolean in_scene;
+    bool is_recording;
+    bool in_scene;
     unsigned end_scene_since_present;
 
     uint16_t vs_const_size;
@@ -122,29 +105,29 @@ struct NineDevice9
         POINT hotspot; /* -1, -1 if no cursor image set */
         POINT pos;
         BOOL visible;
-        boolean software;
+        bool software;
         void *hw_upload_temp;
     } cursor;
 
     struct {
-        boolean user_sw_vbufs;
-        boolean window_space_position_support;
-        boolean disabling_depth_clipping_support;
-        boolean vs_integer;
-        boolean ps_integer;
-        boolean offset_units_unscaled;
-        boolean alpha_test_emulation;
-        boolean always_output_pointsize;
-        boolean emulate_ucp;
-        boolean shader_emulate_features;
+        bool user_sw_vbufs;
+        bool window_space_position_support;
+        bool disabling_depth_clipping_support;
+        bool vs_integer;
+        bool ps_integer;
+        bool offset_units_unscaled;
+        bool alpha_test_emulation;
+        bool always_output_pointsize;
+        bool emulate_ucp;
+        bool shader_emulate_features;
     } driver_caps;
 
     struct {
-        boolean buggy_barycentrics;
+        bool buggy_barycentrics;
     } driver_bugs;
 
     struct {
-        boolean dynamic_texture_workaround;
+        bool dynamic_texture_workaround;
     } workarounds;
 
     struct u_upload_mgr *vertex_uploader;
@@ -158,15 +141,16 @@ struct NineDevice9
     /* dummy vbo (containing 0 0 0 0) to bind if vertex shader input
      * is not bound to anything by the vertex declaration */
     struct pipe_resource *dummy_vbo;
+    struct pipe_resource *dummy_vbo_sw;
     BOOL device_needs_reset;
     int minor_version_num;
     long long available_texture_mem;
     long long available_texture_limit;
 
     /* software vertex processing */
-    boolean swvp;
+    bool swvp;
     /* pure device */
-    boolean pure;
+    bool pure;
 
     unsigned frame_count; /* It's ok if we overflow */
 
@@ -188,7 +172,7 @@ NineDevice9_new( struct pipe_screen *pScreen,
                  IDirect3D9 *pD3D9,
                  ID3DPresentGroup *pPresentationGroup,
                  struct d3dadapter9_context *pCTX,
-                 boolean ex,
+                 bool ex,
                  D3DDISPLAYMODEEX *pFullscreenDisplayMode,
                  struct NineDevice9 **ppOut,
                  int minorVersionNum );
@@ -203,7 +187,7 @@ NineDevice9_ctor( struct NineDevice9 *This,
                   IDirect3D9 *pD3D9,
                   ID3DPresentGroup *pPresentationGroup,
                   struct d3dadapter9_context *pCTX,
-                  boolean ex,
+                  bool ex,
                   D3DDISPLAYMODEEX *pFullscreenDisplayMode,
                   int minorVersionNum );
 
@@ -217,7 +201,7 @@ nine_resource_create_with_retry( struct NineDevice9 *This,
                                  const struct pipe_resource *templat );
 
 void
-NineDevice9_SetDefaultState( struct NineDevice9 *This, boolean is_reset );
+NineDevice9_SetDefaultState( struct NineDevice9 *This, bool is_reset );
 
 struct pipe_screen *
 NineDevice9_GetScreen( struct NineDevice9 *This );

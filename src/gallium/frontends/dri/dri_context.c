@@ -169,7 +169,7 @@ dri_create_context(struct dri_screen *screen,
    if (debug_get_bool_option("MESA_NO_ERROR", false) ||
        driQueryOptionb(&screen->dev->option_cache, "mesa_no_error"))
 #if !defined(_WIN32)
-      if (geteuid() == getuid())
+      if (__normal_user())
 #endif
          attribs.flags |= ST_CONTEXT_FLAG_NO_ERROR;
 
@@ -279,7 +279,7 @@ dri_destroy_context(struct dri_context *ctx)
 }
 
 /* This is called inside MakeCurrent to unbind the context. */
-GLboolean
+bool
 dri_unbind_context(struct dri_context *ctx)
 {
    /* dri_util.c ensures cPriv is not null */
@@ -310,7 +310,7 @@ dri_unbind_context(struct dri_context *ctx)
    return GL_TRUE;
 }
 
-GLboolean
+bool
 dri_make_current(struct dri_context *ctx,
 		 struct dri_drawable *draw,
 		 struct dri_drawable *read)

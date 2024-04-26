@@ -335,7 +335,7 @@ nv84_create_decoder(struct pipe_context *context,
          goto fail;
 
       ret = nouveau_pushbuf_create(screen, &nv50->base, dec->client, dec->bsp_channel,
-                                   4, 32 * 1024, true, &dec->bsp_pushbuf);
+                                   4, 32 * 1024, &dec->bsp_pushbuf);
       if (ret)
          goto fail;
 
@@ -350,7 +350,7 @@ nv84_create_decoder(struct pipe_context *context,
    if (ret)
       goto fail;
    ret = nouveau_pushbuf_create(screen, &nv50->base, dec->client, dec->vp_channel,
-                                4, 32 * 1024, true, &dec->vp_pushbuf);
+                                4, 32 * 1024, &dec->vp_pushbuf);
    if (ret)
       goto fail;
 
@@ -554,6 +554,21 @@ fail:
    return NULL;
 }
 
+static void
+nv84_video_buffer_resources(struct pipe_video_buffer *buffer,
+                            struct pipe_resource **resources)
+{
+   struct nv84_video_buffer *buf = (struct nv84_video_buffer *)buffer;
+   unsigned num_planes = util_format_get_num_planes(buffer->buffer_format);
+   unsigned i;
+
+   assert(buf);
+
+   for (i = 0; i < num_planes; ++i) {
+      resources[i] = buf->resources[i];
+   }
+}
+
 static struct pipe_sampler_view **
 nv84_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
 {
@@ -639,6 +654,7 @@ nv84_video_buffer_create(struct pipe_context *pipe,
    buffer->base.destroy = nv84_video_buffer_destroy;
    buffer->base.width = template->width;
    buffer->base.height = template->height;
+   buffer->base.get_resources = nv84_video_buffer_resources;
    buffer->base.get_sampler_view_planes = nv84_video_buffer_sampler_view_planes;
    buffer->base.get_sampler_view_components = nv84_video_buffer_sampler_view_components;
    buffer->base.get_surfaces = nv84_video_buffer_surfaces;

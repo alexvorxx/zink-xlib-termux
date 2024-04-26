@@ -18,8 +18,6 @@
 #include "util/u_inlines.h"
 #include "state_tracker/st_context.h"
 
-#include "GLView.h"
-
 
 #ifdef DEBUG
 #   define TRACE(x...) printf("hgl:frontend: " x)
@@ -72,7 +70,7 @@ hgl_st_framebuffer_flush_front(struct st_context *st,
 
 	// TODO: pipe_context here??? Might be needed for hw renderers
 	buffer->screen->flush_frontbuffer(buffer->screen, NULL, ptex, 0, 0,
-		buffer->winsysContext, NULL);
+		buffer->winsysContext, 0, NULL);
 
 	return true;
 }
@@ -135,7 +133,7 @@ hgl_st_framebuffer_validate_textures(struct pipe_frontend_drawable *drawable,
 				buffer->textures[i] = buffer->screen->resource_create(buffer->screen,
 					&templat);
 				if (!buffer->textures[i])
-					return FALSE;
+					return false;
 			}
 		}
 	}
@@ -177,7 +175,7 @@ hgl_st_framebuffer_validate(struct st_context *st,
 		|| (buffer->height != buffer->newHeight);
 
 	if (resized || newMask) {
-		boolean ret;
+		bool ret;
 		TRACE("%s: resize event. old:  %d x %d; new: %d x %d\n", __func__,
 			buffer->width, buffer->height, buffer->newWidth, buffer->newHeight);
 
@@ -321,39 +319,39 @@ hgl_get_st_visual(struct st_visual* visual, ulong options)
 	assert(visual);
 
 	// Determine color format
-	if ((options & BGL_INDEX) != 0) {
+	if ((options & HGL_INDEX) != 0) {
 		// Index color
 		visual->color_format = PIPE_FORMAT_B5G6R5_UNORM;
 		// TODO: Indexed color depth buffer?
 		visual->depth_stencil_format = PIPE_FORMAT_NONE;
 	} else {
 		// RGB color
-		visual->color_format = (options & BGL_ALPHA)
+		visual->color_format = (options & HGL_ALPHA)
 			? PIPE_FORMAT_BGRA8888_UNORM : PIPE_FORMAT_BGRX8888_UNORM;
 		// TODO: Determine additional stencil formats
-		visual->depth_stencil_format = (options & BGL_DEPTH)
+		visual->depth_stencil_format = (options & HGL_DEPTH)
 			? PIPE_FORMAT_Z24_UNORM_S8_UINT : PIPE_FORMAT_NONE;
     }
 
-	visual->accum_format = (options & BGL_ACCUM)
+	visual->accum_format = (options & HGL_ACCUM)
 		? PIPE_FORMAT_R16G16B16A16_SNORM : PIPE_FORMAT_NONE;
 
 	visual->buffer_mask |= ST_ATTACHMENT_FRONT_LEFT_MASK;
 
-	if ((options & BGL_DOUBLE) != 0) {
+	if ((options & HGL_DOUBLE) != 0) {
 		TRACE("double buffer enabled\n");
 		visual->buffer_mask |= ST_ATTACHMENT_BACK_LEFT_MASK;
 	}
 
 #if 0
-	if ((options & BGL_STEREO) != 0) {
+	if ((options & HGL_STEREO) != 0) {
 		visual->buffer_mask |= ST_ATTACHMENT_FRONT_RIGHT_MASK;
-		if ((options & BGL_DOUBLE) != 0)
+		if ((options & HGL_DOUBLE) != 0)
 			visual->buffer_mask |= ST_ATTACHMENT_BACK_RIGHT_MASK;
   }
 #endif
 
-	if ((options & BGL_DEPTH) || (options & BGL_STENCIL))
+	if ((options & HGL_DEPTH) || (options & HGL_STENCIL))
 		visual->buffer_mask |= ST_ATTACHMENT_DEPTH_STENCIL_MASK;
 
 	TRACE("%s: Visual color format: %s\n", __func__,

@@ -62,6 +62,8 @@ files_r300 = files(
   'r300_vs.h',
   'compiler/memory_pool.c',
   'compiler/memory_pool.h',
+  'compiler/nir_to_rc.c',
+  'compiler/nir_to_rc.h',
   'compiler/r300_fragprog.c',
   'compiler/r300_fragprog_emit.c',
   'compiler/r300_fragprog.h',
@@ -73,6 +75,9 @@ files_r300 = files(
   'compiler/r500_fragprog.c',
   'compiler/r500_fragprog_emit.c',
   'compiler/r500_fragprog.h',
+  'compiler/r300_nir.c',
+  'compiler/r300_nir.h',
+  'compiler/r500_nir_lower_fcsel.c',
   'compiler/radeon_code.c',
   'compiler/radeon_code.h',
   'compiler/radeon_compiler.c',
@@ -140,32 +145,3 @@ driver_r300 = declare_dependency(
   compile_args : '-DGALLIUM_R300',
   link_with : [libr300, libradeonwinsys],
 )
-
-if with_tests
-  test(
-    'r300_compiler_test',
-    executable(
-      'r300_compiler_test',
-      files(
-        'compiler/tests/r300_compiler_tests.c',
-        'compiler/tests/radeon_compiler_optimize_tests.c',
-        'compiler/tests/radeon_compiler_regalloc_tests.c',
-        'compiler/tests/radeon_compiler_util_tests.c',
-        'compiler/tests/rc_test_helpers.c',
-        'compiler/tests/unit_test.c',
-      ),
-      c_args : [
-        '-DTEST_PATH="@0@"'.format(
-          join_paths(meson.current_source_dir(), 'compiler', 'tests')
-        )
-      ],
-      include_directories : [
-        inc_src, inc_include, inc_gallium, inc_gallium_aux,
-        include_directories('compiler'),
-      ],
-      link_with : [libr300, libgallium],
-      dependencies : [dep_m, dep_clock, dep_dl, dep_unwind, idep_mesautil],
-    ),
-    suite : ['r300'],
-  )
-endif

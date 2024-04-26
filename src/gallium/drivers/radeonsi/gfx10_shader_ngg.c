@@ -1,37 +1,19 @@
 /*
  * Copyright 2017 Advanced Micro Devices, Inc.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "si_pipe.h"
 #include "si_query.h"
 #include "si_shader_internal.h"
-#include "util/u_prim.h"
 
 unsigned gfx10_ngg_get_vertices_per_prim(struct si_shader *shader)
 {
    const struct si_shader_info *info = &shader->selector->info;
 
    if (shader->selector->stage == MESA_SHADER_GEOMETRY)
-      return u_vertices_per_prim(info->base.gs.output_primitive);
+      return mesa_vertices_per_prim(info->base.gs.output_primitive);
    else if (shader->selector->stage == MESA_SHADER_VERTEX) {
       if (info->base.vs.blit_sgprs_amd) {
          /* Blits always use axis-aligned rectangles with 3 vertices. */
@@ -39,11 +21,12 @@ unsigned gfx10_ngg_get_vertices_per_prim(struct si_shader *shader)
       } else if (shader->key.ge.opt.ngg_culling & SI_NGG_CULL_LINES)
          return 2;
       else {
-         /* We always build up all three indices for the prim export
-          * independent of the primitive type. The additional garbage
-          * data shouldn't hurt. This is used by exports and streamout.
+         /* The shader compiler replaces 0 with 3. The generated code will be correct regardless
+          * of the draw primitive type, but it's less efficient.
+          *
+          * Computing prim export values for non-existent vertices has no effect.
           */
-         return 3;
+         return 0; /* unknown */
       }
    } else {
       assert(shader->selector->stage == MESA_SHADER_TESS_EVAL);
@@ -102,8 +85,8 @@ bool gfx10_ngg_calculate_subgroup_info(struct si_shader *shader)
    const unsigned gs_num_invocations = MAX2(gs_sel->info.base.gs.invocations, 1);
    const unsigned input_prim = si_get_input_prim(gs_sel, &shader->key);
    const bool use_adjacency =
-      input_prim >= PIPE_PRIM_LINES_ADJACENCY && input_prim <= PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY;
-   const unsigned max_verts_per_prim = u_vertices_per_prim(input_prim);
+      input_prim >= MESA_PRIM_LINES_ADJACENCY && input_prim <= MESA_PRIM_TRIANGLE_STRIP_ADJACENCY;
+   const unsigned max_verts_per_prim = mesa_vertices_per_prim(input_prim);
    const unsigned min_verts_per_prim = gs_stage == MESA_SHADER_GEOMETRY ? max_verts_per_prim : 1;
 
    /* All these are in dwords. The maximum is 16K dwords (64KB) of LDS per workgroup. */
@@ -157,8 +140,8 @@ retry_select_mode:
       bool uses_primitive_id = gs_sel->info.uses_primid;
       if (gs_stage == MESA_SHADER_VERTEX) {
          uses_instance_id |=
-            shader->key.ge.part.vs.prolog.instance_divisor_is_one ||
-            shader->key.ge.part.vs.prolog.instance_divisor_is_fetched;
+            shader->key.ge.mono.instance_divisor_is_one ||
+            shader->key.ge.mono.instance_divisor_is_fetched;
       } else {
          uses_primitive_id |= shader->key.ge.mono.u.vs_export_prim_id;
       }
@@ -251,17 +234,9 @@ retry_select_mode:
               : max_esverts;
    assert(max_out_vertices <= 256);
 
-   unsigned prim_amp_factor = 1;
-   if (gs_stage == MESA_SHADER_GEOMETRY) {
-      /* Number of output primitives per GS input primitive after
-       * GS instancing. */
-      prim_amp_factor = gs_sel->info.base.gs.vertices_out;
-   }
-
    shader->ngg.hw_max_esverts = max_esverts;
    shader->ngg.max_gsprims = max_gsprims;
    shader->ngg.max_out_verts = max_out_vertices;
-   shader->ngg.prim_amp_factor = prim_amp_factor;
    shader->ngg.max_vert_out_per_gs_instance = max_vert_out_per_gs_instance;
 
    /* Don't count unusable vertices. */

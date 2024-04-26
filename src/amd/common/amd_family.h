@@ -2,24 +2,8 @@
  * Copyright 2008 Corbin Simpson <MostAwesomeDude@gmail.com>
  * Copyright 2010 Marek Olšák <maraeo@gmail.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef AMD_FAMILY_H
 #define AMD_FAMILY_H
@@ -129,11 +113,14 @@ enum radeon_family
    CHIP_NAVI24,         /* Radeon 6400, 6500 (formerly "Beige Goby") */
    CHIP_REMBRANDT,      /* Ryzen 6000 (formerly "Yellow Carp") */
    CHIP_RAPHAEL_MENDOCINO, /* Ryzen 7000(X), Ryzen 7045, Ryzen 7020 */
-   CHIP_GFX1100,
-   CHIP_GFX1101,
-   CHIP_GFX1102,
+   /* GFX11 (RDNA 3) */
+   CHIP_NAVI31,         /* Radeon 7900 */
+   CHIP_NAVI32,         /* Radeon 7800, 7700 */
+   CHIP_NAVI33,         /* Radeon 7600, 7700S (mobile) */
    CHIP_GFX1103_R1,
    CHIP_GFX1103_R2,
+   CHIP_GFX1150,
+   CHIP_GFX1151,
    CHIP_LAST,
 };
 
@@ -154,6 +141,7 @@ enum amd_gfx_level
    GFX10,
    GFX10_3,
    GFX11,
+   GFX11_5,
 
    NUM_GFX_VERSIONS,
 };
@@ -170,6 +158,7 @@ enum amd_ip_type
    AMD_IP_VCN_ENC,
    AMD_IP_VCN_UNIFIED = AMD_IP_VCN_ENC,
    AMD_IP_VCN_JPEG,
+   AMD_IP_VPE,
    AMD_NUM_IP_TYPES,
 };
 
@@ -212,9 +201,48 @@ enum vcn_version{
    VCN_4_0_2,
    VCN_4_0_3,
    VCN_4_0_4,
+   VCN_4_0_5,
+   VCN_4_0_6,
+};
+
+#define SDMA_VERSION_VALUE(major, minor) (((major) << 8) | (minor))
+
+enum sdma_version {
+   SDMA_UNKNOWN = 0,
+   /* GFX6 */
+   SDMA_1_0 = SDMA_VERSION_VALUE(1, 0),
+
+   /* GFX7 */
+   SDMA_2_0 = SDMA_VERSION_VALUE(2, 0),
+
+   /* GFX8 */
+   SDMA_2_4 = SDMA_VERSION_VALUE(2, 4),
+   SDMA_3_0 = SDMA_VERSION_VALUE(3, 0),
+   SDMA_3_1 = SDMA_VERSION_VALUE(3, 1),
+
+   /* GFX9 */
+   SDMA_4_0 = SDMA_VERSION_VALUE(4, 0),
+   SDMA_4_1 = SDMA_VERSION_VALUE(4, 1),
+   SDMA_4_2 = SDMA_VERSION_VALUE(4, 2),
+   SDMA_4_4 = SDMA_VERSION_VALUE(4, 4),
+
+   /* GFX10 */
+   SDMA_5_0 = SDMA_VERSION_VALUE(5, 0),
+
+   /* GFX10.3 */
+   SDMA_5_2 = SDMA_VERSION_VALUE(5, 2),
+
+   /* GFX11 */
+   SDMA_6_0 = SDMA_VERSION_VALUE(6, 0),
+
+   /* GFX11.5 */
+   SDMA_6_1 = SDMA_VERSION_VALUE(6, 1),
 };
 
 const char *ac_get_family_name(enum radeon_family family);
+enum amd_gfx_level ac_get_gfx_level(enum radeon_family family);
+unsigned ac_get_family_id(enum radeon_family family);
+const char *ac_get_llvm_processor_name(enum radeon_family family);
 
 #ifdef __cplusplus
 }

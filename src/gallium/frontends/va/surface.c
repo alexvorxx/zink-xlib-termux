@@ -35,6 +35,7 @@
 #include "util/u_sampler.h"
 #include "util/u_surface.h"
 #include "util/u_video.h"
+#include "util/set.h"
 
 #include "vl/vl_compositor.h"
 #include "vl/vl_video_buffer.h"
@@ -83,6 +84,12 @@ vlVaDestroySurfaces(VADriverContextP ctx, VASurfaceID *surface_list, int num_sur
       }
       if (surf->buffer)
          surf->buffer->destroy(surf->buffer);
+      if (surf->ctx) {
+         assert(_mesa_set_search(surf->ctx->surfaces, surf));
+         _mesa_set_remove_key(surf->ctx->surfaces, surf);
+         if (surf->fence && surf->ctx->decoder && surf->ctx->decoder->destroy_fence)
+            surf->ctx->decoder->destroy_fence(surf->ctx->decoder, surf->fence);
+      }
       util_dynarray_fini(&surf->subpics);
       FREE(surf);
       handle_table_remove(drv->htab, surface_list[i]);
@@ -92,8 +99,8 @@ vlVaDestroySurfaces(VADriverContextP ctx, VASurfaceID *surface_list, int num_sur
    return VA_STATUS_SUCCESS;
 }
 
-VAStatus
-vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
+static VAStatus
+_vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target, uint64_t timeout_ns)
 {
    vlVaDriver *drv;
    vlVaContext *context;
@@ -126,7 +133,7 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
       return VA_STATUS_SUCCESS;
    }
 
-   context = handle_table_get(drv->htab, surf->ctx);
+   context = surf->ctx;
    if (!context) {
       mtx_unlock(&drv->mutex);
       return VA_STATUS_ERROR_INVALID_CONTEXT;
@@ -137,13 +144,25 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
       return VA_STATUS_ERROR_UNSUPPORTED_ENTRYPOINT;
    }
 
-   if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_BITSTREAM) {
+   if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_PROCESSING) {
+      /* If driver does not implement get_processor_fence assume no
+       * async work needed to be waited on and return success
+       */
+      int ret = (context->decoder->get_processor_fence) ? 0 : 1;
+
+      if (context->decoder->get_processor_fence)
+         ret = context->decoder->get_processor_fence(context->decoder,
+                                                     surf->fence, timeout_ns);
+
+      mtx_unlock(&drv->mutex);
+      // Assume that the GPU has hung otherwise.
+      return ret ? VA_STATUS_SUCCESS : VA_STATUS_ERROR_TIMEDOUT;
+   } else if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_BITSTREAM) {
       int ret = 0;
 
       if (context->decoder->get_decoder_fence)
          ret = context->decoder->get_decoder_fence(context->decoder,
-                                                   surf->fence,
-                                                   PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS);
+                                                   surf->fence, timeout_ns);
 
       mtx_unlock(&drv->mutex);
       // Assume that the GPU has hung otherwise.
@@ -167,7 +186,7 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
             }
          }
       }
-      context->decoder->get_feedback(context->decoder, surf->feedback, &(surf->coded_buf->coded_size));
+      context->decoder->get_feedback(context->decoder, surf->feedback, &(surf->coded_buf->coded_size), &(surf->coded_buf->extended_metadata));
       surf->feedback = NULL;
       surf->coded_buf->feedback = NULL;
       surf->coded_buf->associated_encode_input_surf = VA_INVALID_ID;
@@ -175,6 +194,20 @@ vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
    mtx_unlock(&drv->mutex);
    return VA_STATUS_SUCCESS;
 }
+
+VAStatus
+vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target)
+{
+   return _vlVaSyncSurface(ctx, render_target, VA_TIMEOUT_INFINITE);
+}
+
+#if VA_CHECK_VERSION(1, 15, 0)
+VAStatus
+vlVaSyncSurface2(VADriverContextP ctx, VASurfaceID surface, uint64_t timeout_ns)
+{
+   return _vlVaSyncSurface(ctx, surface, timeout_ns);
+}
+#endif
 
 VAStatus
 vlVaQuerySurfaceStatus(VADriverContextP ctx, VASurfaceID render_target, VASurfaceStatus *status)
@@ -211,7 +244,7 @@ vlVaQuerySurfaceStatus(VADriverContextP ctx, VASurfaceID render_target, VASurfac
       return VA_STATUS_SUCCESS;
    }
 
-   context = handle_table_get(drv->htab, surf->ctx);
+   context = surf->ctx;
    if (!context) {
       mtx_unlock(&drv->mutex);
       return VA_STATUS_ERROR_INVALID_CONTEXT;
@@ -245,6 +278,19 @@ vlVaQuerySurfaceStatus(VADriverContextP ctx, VASurfaceID render_target, VASurfac
        * VA_STATUS_SUCCESS, the client would be within his/her rights to use a
        * potentially uninitialized/invalid status value unknowingly.
        */
+         *status = VASurfaceRendering;
+   } else if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_PROCESSING) {
+      /* If driver does not implement get_processor_fence assume no
+       * async work needed to be waited on and return surface ready
+       */
+      int ret = (context->decoder->get_processor_fence) ? 0 : 1;
+
+      if (context->decoder->get_processor_fence)
+         ret = context->decoder->get_processor_fence(context->decoder,
+                                                     surf->fence, 0);
+      if (ret)
+         *status = VASurfaceReady;
+      else
          *status = VASurfaceRendering;
    }
 
@@ -453,7 +499,7 @@ vlVaPutSurface(VADriverContextP ctx, VASurfaceID surface_id, void* draw, short s
    drv->pipe->flush(drv->pipe, NULL, 0);
 
    screen->flush_frontbuffer(screen, drv->pipe, tex, 0, 0,
-                             vscreen->get_private(vscreen), NULL);
+                             vscreen->get_private(vscreen), 0, NULL);
 
 
    pipe_resource_reference(&tex, NULL);
@@ -821,7 +867,7 @@ surface_from_prime_2(VADriverContextP ctx, vlVaSurface *surface,
        desc->num_layers < 1)
       return VA_STATUS_ERROR_INVALID_PARAMETER;
 
-   if (desc->num_layers != num_format_planes)
+   if (desc->num_layers > VL_NUM_COMPONENTS)
       return VA_STATUS_ERROR_INVALID_PARAMETER;
 
    input_planes = 0;
@@ -855,8 +901,6 @@ surface_from_prime_2(VADriverContextP ctx, vlVaSurface *surface,
    res_templ.last_level = 0;
    res_templ.depth0 = 1;
    res_templ.array_size = 1;
-   res_templ.width0 = desc->width;
-   res_templ.height0 = desc->height;
    res_templ.bind = PIPE_BIND_SAMPLER_VIEW;
    res_templ.usage = PIPE_USAGE_DEFAULT;
    res_templ.format = templat->buffer_format;
@@ -881,6 +925,10 @@ surface_from_prime_2(VADriverContextP ctx, vlVaSurface *surface,
          if (plane < num_format_planes)
             res_templ.format = resource_formats[plane];
 
+         res_templ.width0 = util_format_get_plane_width(templat->buffer_format, plane,
+                                                        desc->width);
+         res_templ.height0 = util_format_get_plane_height(templat->buffer_format, plane,
+                                                          desc->height);
          whandle.stride = desc->layers[layer].pitch[layer_plane];
          whandle.offset = desc->layers[layer].offset[layer_plane];
          whandle.handle = desc->objects[desc->layers[layer].object_index[layer_plane]].fd;
@@ -981,21 +1029,23 @@ vlVaHandleSurfaceAllocate(vlVaDriver *drv, vlVaSurface *surface,
       return VA_STATUS_ERROR_ALLOCATION_FAILED;
 
    surfaces = surface->buffer->get_surfaces(surface->buffer);
-   for (i = 0; i < VL_MAX_SURFACES; ++i) {
-      union pipe_color_union c;
-      memset(&c, 0, sizeof(c));
+   if (surfaces) {
+      for (i = 0; i < VL_MAX_SURFACES; ++i) {
+         union pipe_color_union c;
+         memset(&c, 0, sizeof(c));
 
-      if (!surfaces[i])
-         continue;
+         if (!surfaces[i])
+            continue;
 
-      if (i > !!surface->buffer->interlaced)
-         c.f[0] = c.f[1] = c.f[2] = c.f[3] = 0.5f;
+         if (i > !!surface->buffer->interlaced)
+            c.f[0] = c.f[1] = c.f[2] = c.f[3] = 0.5f;
 
-      drv->pipe->clear_render_target(drv->pipe, surfaces[i], &c, 0, 0,
-				     surfaces[i]->width, surfaces[i]->height,
-				     false);
+         drv->pipe->clear_render_target(drv->pipe, surfaces[i], &c, 0, 0,
+                  surfaces[i]->width, surfaces[i]->height,
+                  false);
+      }
+      drv->pipe->flush(drv->pipe, NULL, 0);
    }
-   drv->pipe->flush(drv->pipe, NULL, 0);
 
    return VA_STATUS_SUCCESS;
 }
@@ -1178,7 +1228,11 @@ vlVaCreateSurfaces2(VADriverContextP ctx, unsigned int format,
    if (expected_fourcc) {
       enum pipe_format expected_format = VaFourccToPipeFormat(expected_fourcc);
 
+#ifndef _WIN32
+      if (expected_format != templat.buffer_format || memory_attribute || prime_desc)
+#else
       if (expected_format != templat.buffer_format || memory_attribute)
+#endif
         templat.interlaced = 0;
 
       templat.buffer_format = expected_format;
@@ -1332,11 +1386,13 @@ vlVaQueryVideoProcFilterCaps(VADriverContextP ctx, VAContextID context,
 }
 
 static VAProcColorStandardType vpp_input_color_standards[] = {
-   VAProcColorStandardBT601
+   VAProcColorStandardBT601,
+   VAProcColorStandardBT709
 };
 
 static VAProcColorStandardType vpp_output_color_standards[] = {
-   VAProcColorStandardBT601
+   VAProcColorStandardBT601,
+   VAProcColorStandardBT709
 };
 
 VAStatus
@@ -1525,7 +1581,6 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
       struct u_rect src_rect, dst_rect;
 
       surf->templat.interlaced = false;
-      surf->obsolete_buf = surf->buffer;
 
       ret = vlVaHandleSurfaceAllocate(drv, surf, &surf->templat, NULL, 0);
       if (ret != VA_STATUS_SUCCESS) {
@@ -1542,10 +1597,11 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
                                    interlaced, surf->buffer,
                                    &src_rect, &dst_rect,
                                    VL_COMPOSITOR_WEAVE);
+      if (interlaced->codec && interlaced->codec->update_decoder_target)
+         interlaced->codec->update_decoder_target(interlaced->codec, interlaced, surf->buffer);
 
       interlaced->destroy(interlaced);
-   } else
-      surf->obsolete_buf = NULL;
+   }
 
    surfaces = surf->buffer->get_surfaces(surf->buffer);
 
@@ -1580,7 +1636,7 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
    desc->width  = surf->templat.width;
    desc->height = surf->templat.height;
 
-   for (p = 0; p < VL_MAX_SURFACES; p++) {
+   for (p = 0; p < ARRAY_SIZE(desc->objects); p++) {
       struct winsys_handle whandle;
       struct pipe_resource *resource;
       uint32_t drm_format;

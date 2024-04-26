@@ -32,15 +32,16 @@
 #include "util/u_memory.h"
 #include "util/u_inlines.h"
 #include "draw/draw_context.h"
+#include "draw/draw_tess.h"
 #include "tgsi/tgsi_dump.h"
-#include "tgsi/tgsi_scan.h"
-#include "tgsi/tgsi_parse.h"
 
 
 static void *
 llvmpipe_create_tcs_state(struct pipe_context *pipe,
                           const struct pipe_shader_state *templ)
 {
+   llvmpipe_register_shader(pipe, templ);
+
    struct llvmpipe_context *llvmpipe = llvmpipe_context(pipe);
    struct lp_tess_ctrl_shader *state;
 
@@ -109,6 +110,8 @@ static void *
 llvmpipe_create_tes_state(struct pipe_context *pipe,
                           const struct pipe_shader_state *templ)
 {
+   llvmpipe_register_shader(pipe, templ);
+
    struct llvmpipe_context *llvmpipe = llvmpipe_context(pipe);
    struct lp_tess_eval_shader *state;
 

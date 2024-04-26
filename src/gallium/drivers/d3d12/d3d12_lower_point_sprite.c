@@ -23,10 +23,17 @@
 
 #include "nir.h"
 #include "nir_builder.h"
+#include "util/u_dynarray.h"
 #include "d3d12_compiler.h"
 #include "d3d12_nir_passes.h"
 #include "dxil_nir.h"
 #include "program/prog_statevars.h"
+
+struct output_writes {
+   nir_def *val;
+   nir_deref_instr *deref;
+   unsigned write_mask;
+};
 
 struct lower_state {
    nir_variable *uniform; /* (1/w, 1/h, pt_sz, max_sz) */
@@ -34,16 +41,15 @@ struct lower_state {
    nir_variable *psiz_out;
    nir_variable *point_coord_out[10];
    unsigned num_point_coords;
-   nir_variable *varying_out[VARYING_SLOT_MAX];
 
-   nir_ssa_def *point_dir_imm[4];
-   nir_ssa_def *point_coord_imm[4];
+   nir_def *point_dir_imm[4];
+   nir_def *point_coord_imm[4];
 
    /* Current point primitive */
-   nir_ssa_def *point_pos;
-   nir_ssa_def *point_size;
-   nir_ssa_def *varying[VARYING_SLOT_MAX];
-   unsigned varying_write_mask[VARYING_SLOT_MAX];
+   nir_def *point_pos;
+   nir_def *point_size;
+
+   struct util_dynarray output_writes;
 
    bool sprite_origin_lower_left;
    bool point_size_per_vertex;
@@ -61,14 +67,11 @@ find_outputs(nir_shader *shader, struct lower_state *state)
       case VARYING_SLOT_PSIZ:
          state->psiz_out = var;
          break;
-      default:
-         state->varying_out[var->data.location] = var;
-         break;
       }
    }
 }
 
-static nir_ssa_def *
+static nir_def *
 get_point_dir(nir_builder *b, struct lower_state *state, unsigned i)
 {
    if (state->point_dir_imm[0] == NULL) {
@@ -81,7 +84,7 @@ get_point_dir(nir_builder *b, struct lower_state *state, unsigned i)
    return state->point_dir_imm[i];
 }
 
-static nir_ssa_def *
+static nir_def *
 get_point_coord(nir_builder *b, struct lower_state *state, unsigned i)
 {
    if (state->point_coord_imm[0] == NULL) {
@@ -106,11 +109,11 @@ get_point_coord(nir_builder *b, struct lower_state *state, unsigned i)
  */
 static void
 get_scaled_point_size(nir_builder *b, struct lower_state *state,
-                      nir_ssa_def **x, nir_ssa_def **y)
+                      nir_def **x, nir_def **y)
 {
    /* State uniform contains: (1/ViewportWidth, 1/ViewportHeight, PointSize, MaxPointSize) */
-   nir_ssa_def *uniform = nir_load_var(b, state->uniform);
-   nir_ssa_def *point_size = state->point_size;
+   nir_def *uniform = nir_load_var(b, state->uniform);
+   nir_def *point_size = state->point_size;
 
    /* clamp point-size to valid range */
    if (point_size && state->point_size_per_vertex) {
@@ -140,10 +143,15 @@ lower_store(nir_intrinsic_instr *instr, nir_builder *b, struct lower_state *stat
       case VARYING_SLOT_PSIZ:
          state->point_size = instr->src[1].ssa;
          break;
-      default:
-         state->varying[var->data.location] = instr->src[1].ssa;
-         state->varying_write_mask[var->data.location] = nir_intrinsic_write_mask(instr);
-         break;
+      default: {
+            struct output_writes data = {
+               .val = instr->src[1].ssa,
+               .deref = nir_src_as_deref(instr->src[0]),
+               .write_mask = nir_intrinsic_write_mask(instr),
+            };
+            util_dynarray_append(&state->output_writes, struct output_writes, data);
+            break;
+         }
       }
 
       nir_instr_remove(&instr->instr);
@@ -158,23 +166,20 @@ lower_emit_vertex(nir_intrinsic_instr *instr, nir_builder *b, struct lower_state
 {
    unsigned stream_id = nir_intrinsic_stream_id(instr);
 
-   nir_ssa_def *point_width, *point_height;
+   nir_def *point_width, *point_height;
    get_scaled_point_size(b, state, &point_width, &point_height);
 
    nir_instr_remove(&instr->instr);
    if (stream_id == 0) {
       for (unsigned i = 0; i < 4; i++) {
          /* All outputs need to be emitted for each vertex */
-         for (unsigned slot = 0; slot < VARYING_SLOT_MAX; ++slot) {
-            if (state->varying[slot] != NULL) {
-               nir_store_var(b, state->varying_out[slot], state->varying[slot],
-                             state->varying_write_mask[slot]);
-            }
+         util_dynarray_foreach(&state->output_writes, struct output_writes, data) {
+            nir_store_deref(b, data->deref, data->val, data->write_mask);
          }
 
          /* pos = scaled_point_size * point_dir + point_pos */
-         nir_ssa_def *point_dir = get_point_dir(b, state, i);
-         nir_ssa_def *pos = nir_vec4(b,
+         nir_def *point_dir = get_point_dir(b, state, i);
+         nir_def *pos = nir_vec4(b,
                                      nir_ffma(b,
                                               point_width,
                                               nir_channel(b, point_dir, 0),
@@ -188,7 +193,7 @@ lower_emit_vertex(nir_intrinsic_instr *instr, nir_builder *b, struct lower_state
          nir_store_var(b, state->pos_out, pos, 0xf);
 
          /* point coord */
-         nir_ssa_def *point_coord = get_point_coord(b, state, i);
+         nir_def *point_coord = get_point_coord(b, state, i);
          for (unsigned j = 0; j < state->num_point_coords; ++j) {
             unsigned num_channels = glsl_get_components(state->point_coord_out[j]->type);
             unsigned mask = (1 << num_channels) - 1;
@@ -206,8 +211,7 @@ lower_emit_vertex(nir_intrinsic_instr *instr, nir_builder *b, struct lower_state
    /* Reset everything */
    state->point_pos = NULL;
    state->point_size = NULL;
-   for (unsigned i = 0; i < VARYING_SLOT_MAX; ++i)
-      state->varying[i] = NULL;
+   util_dynarray_clear(&state->output_writes);
 
    return true;
 }
@@ -239,9 +243,10 @@ d3d12_lower_point_sprite(nir_shader *shader,
    const gl_state_index16 tokens[4] = { STATE_INTERNAL_DRIVER,
                                         D3D12_STATE_VAR_PT_SPRITE };
    struct lower_state state;
+   util_dynarray_init(&state.output_writes, shader);
    bool progress = false;
 
-   assert(shader->info.gs.output_primitive == GL_POINTS);
+   assert(shader->info.gs.output_primitive == MESA_PRIM_POINTS);
 
    memset(&state, 0, sizeof(state));
    find_outputs(shader, &state);
@@ -250,15 +255,8 @@ d3d12_lower_point_sprite(nir_shader *shader,
 
    /* Create uniform to retrieve inverse of viewport size and point size:
     * (1/ViewportWidth, 1/ViewportHeight, PointSize, MaxPointSize) */
-   state.uniform = nir_variable_create(shader,
-                                       nir_var_uniform,
-                                       glsl_vec4_type(),
-                                       "d3d12_ViewportSizeRcp");
-   state.uniform->num_state_slots = 1;
-   state.uniform->state_slots = ralloc_array(state.uniform, nir_state_slot, 1);
-   memcpy(state.uniform->state_slots[0].tokens, tokens,
-          sizeof(state.uniform->state_slots[0].tokens));
-   shader->num_uniforms++;
+   state.uniform = nir_state_variable_create(shader, glsl_vec4_type(),
+                                             "d3d12_ViewportSizeRcp", tokens);
 
    /* Create new outputs for point tex coordinates */
    unsigned count = 0;
@@ -292,25 +290,23 @@ d3d12_lower_point_sprite(nir_shader *shader,
                                      next_inputs_read);
    }
 
-   nir_foreach_function(function, shader) {
-      if (function->impl) {
-         nir_builder builder;
-         nir_builder_init(&builder, function->impl);
-         nir_foreach_block(block, function->impl) {
-            nir_foreach_instr_safe(instr, block) {
-               if (instr->type == nir_instr_type_intrinsic)
-                  progress |= lower_instr(nir_instr_as_intrinsic(instr),
-                                          &builder,
-                                          &state);
-            }
+   nir_foreach_function_impl(impl, shader) {
+      nir_builder builder = nir_builder_create(impl);
+      nir_foreach_block(block, impl) {
+         nir_foreach_instr_safe(instr, block) {
+            if (instr->type == nir_instr_type_intrinsic)
+               progress |= lower_instr(nir_instr_as_intrinsic(instr),
+                                       &builder,
+                                       &state);
          }
-
-         nir_metadata_preserve(function->impl, nir_metadata_block_index |
-                                               nir_metadata_dominance);
       }
+
+      nir_metadata_preserve(impl, nir_metadata_block_index |
+                                  nir_metadata_dominance);
    }
 
-   shader->info.gs.output_primitive = GL_TRIANGLE_STRIP;
+   util_dynarray_fini(&state.output_writes);
+   shader->info.gs.output_primitive = MESA_PRIM_TRIANGLE_STRIP;
    shader->info.gs.vertices_out = shader->info.gs.vertices_out * 4 /
       util_bitcount(shader->info.gs.active_stream_mask);
    shader->info.gs.active_stream_mask = 1;

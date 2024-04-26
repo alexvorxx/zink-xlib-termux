@@ -58,7 +58,7 @@ GeometryShader::do_scan_instruction(nir_instr *instr)
 bool
 GeometryShader::process_store_output(nir_intrinsic_instr *instr)
 {
-   auto location = nir_intrinsic_io_semantics(instr).location;
+   auto location = static_cast<gl_varying_slot>(nir_intrinsic_io_semantics(instr).location);
    auto index = nir_src_as_const_value(instr->src[1]);
    assert(index);
 
@@ -74,13 +74,11 @@ GeometryShader::process_store_output(nir_intrinsic_instr *instr)
        location == VARYING_SLOT_PSIZ || location == VARYING_SLOT_LAYER ||
        location == VARYING_SLOT_VIEWPORT || location == VARYING_SLOT_FOGC) {
 
-      auto semantic = r600_get_varying_semantic(location);
-      tgsi_semantic name = (tgsi_semantic)semantic.first;
       auto write_mask = nir_intrinsic_write_mask(instr);
-      ShaderOutput output(driver_location, name, write_mask);
+      ShaderOutput output(driver_location, write_mask, location);
 
-      if (!nir_intrinsic_io_semantics(instr).no_varying)
-         output.set_sid(semantic.second);
+      if (nir_intrinsic_io_semantics(instr).no_varying)
+         output.set_no_varying(true);
       if (nir_intrinsic_io_semantics(instr).location != VARYING_SLOT_CLIP_VERTEX)
          add_output(output);
 
@@ -107,7 +105,7 @@ GeometryShader::process_store_output(nir_intrinsic_instr *instr)
 bool
 GeometryShader::process_load_input(nir_intrinsic_instr *instr)
 {
-   auto location = nir_intrinsic_io_semantics(instr).location;
+   auto location = static_cast<gl_varying_slot>(nir_intrinsic_io_semantics(instr).location);
    auto index = nir_src_as_const_value(instr->src[1]);
    assert(index);
 
@@ -124,9 +122,7 @@ GeometryShader::process_load_input(nir_intrinsic_instr *instr)
 
       uint64_t bit = 1ull << location;
       if (!(bit & m_input_mask)) {
-         auto semantic = r600_get_varying_semantic(location);
-         ShaderInput input(driver_location, semantic.first);
-         input.set_sid(semantic.second);
+         ShaderInput input(driver_location, location);
          input.set_ring_offset(16 * driver_location);
          add_input(input);
          m_next_input_ring_offset += 16;
@@ -185,9 +181,9 @@ GeometryShader::process_stage_intrinsic(nir_intrinsic_instr *intr)
    case nir_intrinsic_end_primitive:
       return emit_vertex(intr, true);
    case nir_intrinsic_load_primitive_id:
-      return emit_simple_mov(intr->dest, 0, m_primitive_id);
+      return emit_simple_mov(intr->def, 0, m_primitive_id);
    case nir_intrinsic_load_invocation_id:
-      return emit_simple_mov(intr->dest, 0, m_invocation_id);
+      return emit_simple_mov(intr->def, 0, m_invocation_id);
    case nir_intrinsic_load_per_vertex_input:
       return emit_load_per_vertex_input(intr);
    default:;
@@ -320,10 +316,10 @@ GeometryShader::store_output(nir_intrinsic_instr *instr)
 bool
 GeometryShader::emit_load_per_vertex_input(nir_intrinsic_instr *instr)
 {
-   auto dest = value_factory().dest_vec4(instr->dest, pin_group);
+   auto dest = value_factory().dest_vec4(instr->def, pin_group);
 
    RegisterVec4::Swizzle dest_swz{7, 7, 7, 7};
-   for (unsigned i = 0; i < nir_dest_num_components(instr->dest); ++i) {
+   for (unsigned i = 0; i < instr->def.num_components; ++i) {
       dest_swz[i] = i + nir_intrinsic_component(instr);
    }
 

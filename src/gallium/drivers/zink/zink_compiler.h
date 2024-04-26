@@ -29,8 +29,9 @@
 #define ZINK_WORKGROUP_SIZE_X 1
 #define ZINK_WORKGROUP_SIZE_Y 2
 #define ZINK_WORKGROUP_SIZE_Z 3
+#define ZINK_VARIABLE_SHARED_MEM 4
 #define ZINK_INLINE_VAL_FLAT_MASK 0
-#define ZINK_INLINE_VAL_PV_LAST_VERT 1
+#define ZINK_INLINE_VAL_PV_LAST_VERT 2
 
 /* stop inlining shaders if they have >limit ssa vals after inlining:
  * recompile time isn't worth the inline
@@ -73,8 +74,7 @@ zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shad
 struct zink_shader_object
 zink_shader_compile_separate(struct zink_screen *screen, struct zink_shader *zs);
 struct zink_shader *
-zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
-                 const struct pipe_stream_output_info *so_info);
+zink_shader_create(struct zink_screen *screen, struct nir_shader *nir);
 
 char *
 zink_shader_finalize(struct pipe_screen *pscreen, void *nirptr);

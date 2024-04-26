@@ -97,6 +97,13 @@ ds_pattern_bitmode(unsigned and_mask, unsigned or_mask, unsigned xor_mask)
     return and_mask | (or_mask << 5) | (xor_mask << 10);
 }
 
+inline unsigned
+ds_pattern_rotate(unsigned delta, unsigned mask)
+{
+    assert(delta < 32 && mask < 32);
+    return mask | (delta << 5) | 0xc000;
+}
+
 aco_ptr<Instruction> create_s_mov(Definition dst, Operand src);
 
 enum sendmsg {
@@ -134,6 +141,21 @@ enum bperm_swiz {
    bperm_b7_sign = 11,
    bperm_0 = 12,
    bperm_255 = 13,
+};
+
+enum class alu_delay_wait {
+   NO_DEP = 0,
+   VALU_DEP_1 = 1,
+   VALU_DEP_2 = 2,
+   VALU_DEP_3 = 3,
+   VALU_DEP_4 = 4,
+   TRANS32_DEP_1 = 5,
+   TRANS32_DEP_2 = 6,
+   TRANS32_DEP_3 = 7,
+   FMA_ACCUM_CYCLE_1 = 8,
+   SALU_CYCLE_1 = 9,
+   SALU_CYCLE_2 = 10,
+   SALU_CYCLE_3 = 11,
 };
 
 class Builder {
@@ -482,7 +504,7 @@ public:
       aco_opcode op;
       Temp carry;
       if (carry_out) {
-         carry = tmp(s2);
+         carry = tmp(lm);
          if (borrow.op.isUndefined())
             op = reverse ? aco_opcode::v_subrev_co_u32 : aco_opcode::v_sub_co_u32;
          else
@@ -538,7 +560,7 @@ formats = [("pseudo", [Format.PSEUDO], 'Pseudo_instruction', list(itertools.prod
            ("sopk", [Format.SOPK], 'SOPK_instruction', itertools.product([0, 1, 2], [0, 1])),
            ("sopp", [Format.SOPP], 'SOPP_instruction', itertools.product([0, 1], [0, 1])),
            ("sopc", [Format.SOPC], 'SOPC_instruction', [(1, 2)]),
-           ("smem", [Format.SMEM], 'SMEM_instruction', [(0, 4), (0, 3), (1, 0), (1, 3), (1, 2), (0, 0)]),
+           ("smem", [Format.SMEM], 'SMEM_instruction', [(0, 4), (0, 3), (1, 0), (1, 3), (1, 2), (1, 1), (0, 0)]),
            ("ds", [Format.DS], 'DS_instruction', [(1, 1), (1, 2), (1, 3), (0, 3), (0, 4)]),
            ("ldsdir", [Format.LDSDIR], 'LDSDIR_instruction', [(1, 1)]),
            ("mubuf", [Format.MUBUF], 'MUBUF_instruction', [(0, 4), (1, 3)]),
@@ -556,6 +578,7 @@ formats = [("pseudo", [Format.PSEUDO], 'Pseudo_instruction', list(itertools.prod
            ("vopc_sdwa", [Format.VOPC, Format.SDWA], 'SDWA_instruction', itertools.product([1, 2], [2])),
            ("vop3", [Format.VOP3], 'VALU_instruction', [(1, 3), (1, 2), (1, 1), (2, 2)]),
            ("vop3p", [Format.VOP3P], 'VALU_instruction', [(1, 2), (1, 3)]),
+           ("vopd", [Format.VOPD], 'VOPD_instruction', [(2, 2), (2, 3), (2, 4), (2, 5), (2, 6)]),
            ("vinterp_inreg", [Format.VINTERP_INREG], 'VINTERP_inreg_instruction', [(1, 3)]),
            ("vintrp", [Format.VINTRP], 'VINTRP_instruction', [(1, 2), (1, 3)]),
            ("vop1_dpp", [Format.VOP1, Format.DPP16], 'DPP16_instruction', [(1, 1)]),

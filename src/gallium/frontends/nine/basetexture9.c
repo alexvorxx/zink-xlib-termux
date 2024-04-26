@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "basetexture9.h"
 #include "device9.h"
@@ -74,7 +57,7 @@ NineBaseTexture9_ctor( struct NineBaseTexture9 *This,
     /* Mark the texture as dirty to trigger first upload when we need the texture,
      * even if it wasn't set by the application */
     if (Pool == D3DPOOL_MANAGED)
-        This->managed.dirty = TRUE;
+        This->managed.dirty = true;
     /* When a depth buffer is sampled, it is for shadow mapping, except for
      * D3DFMT_INTZ, D3DFMT_DF16 and D3DFMT_DF24.
      * In addition D3DFMT_INTZ can be used for both texturing and depth buffering
@@ -156,7 +139,7 @@ NineBaseTexture9_SetAutoGenFilterType( struct NineBaseTexture9 *This,
     user_assert(FilterType != D3DTEXF_NONE, D3DERR_INVALIDCALL);
 
     This->mipfilter = FilterType;
-    This->dirty_mip = TRUE;
+    This->dirty_mip = true;
     NineBaseTexture9_GenerateMipSubLevels(This);
 
     return D3D_OK;
@@ -204,7 +187,7 @@ NineBaseTexture9_UploadSelf( struct NineBaseTexture9 *This )
         res = This->base.resource;
 
         if (This->managed.lod_resident == -1) {/* no levels were resident */
-            This->managed.dirty = FALSE; /* We are going to upload everything. */
+            This->managed.dirty = false; /* We are going to upload everything. */
             This->managed.lod_resident = This->level_count;
         }
 
@@ -309,7 +292,7 @@ NineBaseTexture9_UploadSelf( struct NineBaseTexture9 *This )
         } else {
             assert(!"invalid texture type");
         }
-        This->managed.dirty = FALSE;
+        This->managed.dirty = false;
     }
 
     /* Upload the new levels */
@@ -359,7 +342,7 @@ NineBaseTexture9_UploadSelf( struct NineBaseTexture9 *This )
     }
 
     if (This->base.usage & D3DUSAGE_AUTOGENMIPMAP)
-        This->dirty_mip = TRUE;
+        This->dirty_mip = true;
 
     /* Set again the textures currently bound to update the texture data */
     if (This->bind_count) {
@@ -405,7 +388,7 @@ NineBaseTexture9_GenerateMipSubLevels( struct NineBaseTexture9 *This )
                             base_level, last_level,
                             first_layer, last_layer, filter);
 
-    This->dirty_mip = FALSE;
+    This->dirty_mip = false;
 }
 
 HRESULT
@@ -598,7 +581,7 @@ NineBaseTexture9_UnLoad( struct NineBaseTexture9 *This )
     DBG("This=%p, releasing resource\n", This);
     pipe_resource_reference(&This->base.resource, NULL);
     This->managed.lod_resident = -1;
-    This->managed.dirty = TRUE;
+    This->managed.dirty = true;
 
     /* If the texture is bound, we have to re-upload it */
     BASETEX_REGISTER_UPDATE(This);

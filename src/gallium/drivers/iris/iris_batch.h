@@ -31,7 +31,7 @@
 #include "util/u_dynarray.h"
 #include "util/perf/u_trace.h"
 
-#include "common/intel_decoder.h"
+#include "decoder/intel_decoder.h"
 #include "ds/intel_driver_ds.h"
 #include "ds/intel_tracepoints.h"
 
@@ -51,7 +51,7 @@ struct iris_context;
 #define BATCH_RESERVED 60
 
 /* Our target batch size - flush approximately at this point. */
-#define BATCH_SZ (64 * 1024 - BATCH_RESERVED)
+#define BATCH_SZ (128 * 1024 - BATCH_RESERVED)
 
 enum iris_batch_name {
    IRIS_BATCH_RENDER,
@@ -99,7 +99,7 @@ struct iris_batch {
          uint32_t exec_flags;
       } i915;
       struct {
-         uint32_t engine_id;
+         uint32_t exec_queue_id;
       } xe;
    };
 
@@ -212,6 +212,8 @@ struct iris_batch {
 
    /** Batch wrapper structure for perfetto */
    struct intel_ds_queue ds;
+
+   uint8_t num_3d_primitives_emitted;
 };
 
 void iris_init_batches(struct iris_context *ice);
@@ -233,10 +235,18 @@ void iris_use_pinned_bo(struct iris_batch *batch, struct iris_bo *bo,
 
 enum pipe_reset_status iris_batch_check_for_reset(struct iris_batch *batch);
 
+bool iris_batch_syncobj_to_sync_file_fd(struct iris_batch *batch, int *out_fd);
+
 static inline unsigned
 iris_batch_bytes_used(struct iris_batch *batch)
 {
    return batch->map_next - batch->map;
+}
+
+static inline uint64_t
+iris_batch_current_address_u64(struct iris_batch *batch)
+{
+   return batch->bo->address + (batch->map_next - batch->map);
 }
 
 /**
@@ -441,6 +451,9 @@ iris_batch_mark_reset_sync(struct iris_batch *batch)
 
 const char *
 iris_batch_name_to_string(enum iris_batch_name name);
+
+bool
+iris_batch_is_banned(struct iris_bufmgr *bufmgr, int ret);
 
 #define iris_foreach_batch(ice, batch)                \
    for (struct iris_batch *batch = &ice->batches[0];  \

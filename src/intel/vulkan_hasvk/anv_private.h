@@ -41,20 +41,20 @@
 #define VG(x) ((void)0)
 #endif
 
-#include "common/intel_clflush.h"
-#include "common/intel_decoder.h"
 #include "common/intel_engine.h"
 #include "common/intel_gem.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_measure.h"
+#include "common/intel_mem.h"
 #include "common/intel_sample_positions.h"
+#include "decoder/intel_decoder.h"
 #include "dev/intel_device_info.h"
 #include "blorp/blorp.h"
-#include "compiler/brw_compiler.h"
-#include "compiler/brw_rt.h"
+#include "compiler/elk/elk_compiler.h"
 #include "ds/intel_driver_ds.h"
 #include "util/bitset.h"
 #include "util/bitscan.h"
+#include "util/detect_os.h"
 #include "util/macros.h"
 #include "util/hash_table.h"
 #include "util/list.h"
@@ -463,11 +463,7 @@ anv_bo_unwrap(struct anv_bo *bo)
 static inline bool
 anv_bo_is_pinned(struct anv_bo *bo)
 {
-#if defined(GFX_VERx10) && GFX_VERx10 >= 90
-   /* Sky Lake and later always uses softpin */
-   assert(bo->flags & EXEC_OBJECT_PINNED);
-   return true;
-#elif defined(GFX_VERx10) && GFX_VERx10 < 80
+#if defined(GFX_VERx10) && GFX_VERx10 < 80
    /* Haswell and earlier never use softpin */
    assert(!(bo->flags & EXEC_OBJECT_PINNED));
    assert(!bo->has_fixed_address);
@@ -536,7 +532,7 @@ union anv_free_list {
    /* Make sure it's aligned to 64 bits. This will make atomic operations
     * faster on 32 bit platforms.
     */
-   uint64_t u64 __attribute__ ((aligned (8)));
+   alignas(8) uint64_t u64;
 };
 
 #define ANV_FREE_LIST_EMPTY ((union anv_free_list) { { UINT32_MAX, 0 } })
@@ -550,7 +546,7 @@ struct anv_block_state {
       /* Make sure it's aligned to 64 bits. This will make atomic operations
        * faster on 32 bit platforms.
        */
-      uint64_t u64 __attribute__ ((aligned (8)));
+      alignas(8) uint64_t u64;
    };
 };
 
@@ -836,7 +832,7 @@ struct anv_memory_heap {
     *
     * Align it to 64 bits to make atomic operations faster on 32 bit platforms.
     */
-   VkDeviceSize      used __attribute__ ((aligned (8)));
+   alignas(8) VkDeviceSize used;
 };
 
 struct anv_memregion {
@@ -860,7 +856,7 @@ struct anv_physical_device {
     char                                        path[20];
     struct intel_device_info                      info;
     bool                                        supports_48bit_addresses;
-    struct brw_compiler *                       compiler;
+    struct elk_compiler *                       compiler;
     struct isl_device                           isl_dev;
     struct intel_perf_config *                    perf;
    /* True if hardware support is incomplete/alpha */
@@ -907,7 +903,7 @@ struct anv_physical_device {
       struct anv_memory_type                    types[VK_MAX_MEMORY_TYPES];
       uint32_t                                  heap_count;
       struct anv_memory_heap                    heaps[VK_MAX_MEMORY_HEAPS];
-      bool                                      need_clflush;
+      bool                                      need_flush;
     } memory;
 
     struct anv_memregion                        sys;
@@ -944,10 +940,11 @@ struct anv_instance {
     /**
      * Workarounds for game bugs.
      */
-    bool                                        assume_full_subgroups;
+    uint8_t                                     assume_full_subgroups;
     bool                                        limit_trig_input_range;
     bool                                        sample_mask_out_opengl_behaviour;
     float                                       lower_depth_range_rate;
+    bool                                        report_vk_1_3;
 
     /* HW workarounds */
     bool                                        no_16bit;
@@ -988,9 +985,9 @@ anv_device_upload_kernel(struct anv_device *device,
                          gl_shader_stage stage,
                          const void *key_data, uint32_t key_size,
                          const void *kernel_data, uint32_t kernel_size,
-                         const struct brw_stage_prog_data *prog_data,
+                         const struct elk_stage_prog_data *prog_data,
                          uint32_t prog_data_size,
-                         const struct brw_compile_stats *stats,
+                         const struct elk_compile_stats *stats,
                          uint32_t num_stats,
                          const struct nir_xfb_info *xfb_info,
                          const struct anv_pipeline_bind_map *bind_map);
@@ -1077,6 +1074,8 @@ struct anv_device {
 
     struct anv_scratch_pool                     scratch_pool;
 
+    bool                                        robust_buffer_access;
+
     pthread_mutex_t                             mutex;
     pthread_cond_t                              queue_submit;
 
@@ -1097,20 +1096,10 @@ struct anv_device {
     struct intel_ds_device                       ds;
 };
 
-#if defined(GFX_VERx10) && GFX_VERx10 >= 90
-#define ANV_ALWAYS_SOFTPIN true
-#else
-#define ANV_ALWAYS_SOFTPIN false
-#endif
-
 static inline bool
 anv_use_relocations(const struct anv_physical_device *pdevice)
 {
-#if defined(GFX_VERx10) && GFX_VERx10 >= 90
-   /* Sky Lake and later always uses softpin */
-   assert(!pdevice->use_relocations);
-   return false;
-#elif defined(GFX_VERx10) && GFX_VERx10 < 80
+#if defined(GFX_VERx10) && GFX_VERx10 < 80
    /* Haswell and earlier never use softpin */
    assert(pdevice->use_relocations);
    return true;
@@ -1393,16 +1382,9 @@ anv_batch_emit_reloc(struct anv_batch *batch,
                      void *location, struct anv_bo *bo, uint32_t delta)
 {
    uint64_t address_u64 = 0;
-   VkResult result;
-
-   if (ANV_ALWAYS_SOFTPIN) {
-      address_u64 = bo->offset + delta;
-      result = anv_reloc_list_add_bo(batch->relocs, batch->alloc, bo);
-   } else {
-      result = anv_reloc_list_add(batch->relocs, batch->alloc,
-                                  location - batch->start, bo, delta,
-                                  &address_u64);
-   }
+   VkResult result = anv_reloc_list_add(batch->relocs, batch->alloc,
+                                        location - batch->start, bo, delta,
+                                        &address_u64);
    if (unlikely(result != VK_SUCCESS)) {
       anv_batch_set_error(batch, result);
       return 0;
@@ -1414,7 +1396,7 @@ anv_batch_emit_reloc(struct anv_batch *batch,
 static inline void
 write_reloc(const struct anv_device *device, void *p, uint64_t v, bool flush)
 {
-   unsigned reloc_size = 0;
+   UNUSED unsigned reloc_size = 0;
    if (device->info->ver >= 8) {
       reloc_size = sizeof(uint64_t);
       *(uint64_t *)p = intel_canonical_address(v);
@@ -1423,8 +1405,10 @@ write_reloc(const struct anv_device *device, void *p, uint64_t v, bool flush)
       *(uint32_t *)p = v;
    }
 
-   if (flush && device->physical->memory.need_clflush)
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
+   if (flush && device->physical->memory.need_flush)
       intel_flush_range(p, reloc_size);
+#endif
 }
 
 static inline uint64_t
@@ -1796,7 +1780,7 @@ struct anv_buffer_view {
    struct anv_state storage_surface_state;
    struct anv_state lowered_storage_surface_state;
 
-   struct brw_image_param lowered_storage_image_param;
+   struct isl_image_param lowered_storage_image_param;
 };
 
 struct anv_push_descriptor_set {
@@ -2787,10 +2771,10 @@ struct anv_shader_bin {
    struct anv_state kernel;
    uint32_t kernel_size;
 
-   const struct brw_stage_prog_data *prog_data;
+   const struct elk_stage_prog_data *prog_data;
    uint32_t prog_data_size;
 
-   struct brw_compile_stats stats[3];
+   struct elk_compile_stats stats[3];
    uint32_t num_stats;
 
    struct nir_xfb_info *xfb_info;
@@ -2803,9 +2787,9 @@ anv_shader_bin_create(struct anv_device *device,
                       gl_shader_stage stage,
                       const void *key, uint32_t key_size,
                       const void *kernel, uint32_t kernel_size,
-                      const struct brw_stage_prog_data *prog_data,
+                      const struct elk_stage_prog_data *prog_data,
                       uint32_t prog_data_size,
-                      const struct brw_compile_stats *stats, uint32_t num_stats,
+                      const struct elk_compile_stats *stats, uint32_t num_stats,
                       const struct nir_xfb_info *xfb_info,
                       const struct anv_pipeline_bind_map *bind_map);
 
@@ -2824,7 +2808,7 @@ anv_shader_bin_unref(struct anv_device *device, struct anv_shader_bin *shader)
 struct anv_pipeline_executable {
    gl_shader_stage stage;
 
-   struct brw_compile_stats stats;
+   struct elk_compile_stats stats;
 
    char *nir;
    char *disasm;
@@ -2983,11 +2967,11 @@ anv_cmd_graphic_state_update_has_uint_rt(struct anv_cmd_graphics_state *state)
 }
 
 #define ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(prefix, stage)             \
-static inline const struct brw_##prefix##_prog_data *                   \
+static inline const struct elk_##prefix##_prog_data *                   \
 get_##prefix##_prog_data(const struct anv_graphics_pipeline *pipeline)  \
 {                                                                       \
    if (anv_pipeline_has_stage(pipeline, stage)) {                       \
-      return (const struct brw_##prefix##_prog_data *)                  \
+      return (const struct elk_##prefix##_prog_data *)                  \
              pipeline->shaders[stage]->prog_data;                       \
    } else {                                                             \
       return NULL;                                                      \
@@ -3000,14 +2984,14 @@ ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(tes, MESA_SHADER_TESS_EVAL)
 ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(gs, MESA_SHADER_GEOMETRY)
 ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(wm, MESA_SHADER_FRAGMENT)
 
-static inline const struct brw_cs_prog_data *
+static inline const struct elk_cs_prog_data *
 get_cs_prog_data(const struct anv_compute_pipeline *pipeline)
 {
    assert(pipeline->cs);
-   return (const struct brw_cs_prog_data *) pipeline->cs->prog_data;
+   return (const struct elk_cs_prog_data *) pipeline->cs->prog_data;
 }
 
-static inline const struct brw_vue_prog_data *
+static inline const struct elk_vue_prog_data *
 anv_pipeline_get_last_vue_prog_data(const struct anv_graphics_pipeline *pipeline)
 {
    if (anv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY))
@@ -3603,7 +3587,7 @@ struct anv_image_view {
       struct anv_surface_state storage_surface_state;
       struct anv_surface_state lowered_storage_surface_state;
 
-      struct brw_image_param lowered_storage_image_param;
+      struct isl_image_param lowered_storage_image_param;
    } planes[3];
 };
 
@@ -3621,7 +3605,7 @@ void anv_image_fill_surface_state(struct anv_device *device,
                                   const union isl_color_value *clear_color,
                                   enum anv_image_view_state_flags flags,
                                   struct anv_surface_state *state_inout,
-                                  struct brw_image_param *image_param_out);
+                                  struct isl_image_param *image_param_out);
 
 struct anv_image_create_info {
    const VkImageCreateInfo *vk_info;
@@ -3634,7 +3618,7 @@ struct anv_image_create_info {
 };
 
 VkResult anv_image_init(struct anv_device *device, struct anv_image *image,
-                        const struct anv_image_create_info *create_info);
+                        struct anv_image_create_info *create_info);
 
 void anv_image_finish(struct anv_image *image);
 

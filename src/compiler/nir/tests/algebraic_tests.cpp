@@ -22,51 +22,34 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <gtest/gtest.h>
-
-#include "nir.h"
-#include "nir_builder.h"
+#include "nir_test.h"
 
 namespace {
 
-class algebraic_test_base : public ::testing::Test {
+class algebraic_test_base : public nir_test {
 protected:
    algebraic_test_base();
-   ~algebraic_test_base();
 
    virtual void run_pass()=0;
 
-   void test_op(nir_op op, nir_ssa_def *src0, nir_ssa_def *src1, nir_ssa_def *src2,
-                nir_ssa_def *src3, const char *desc);
+   void test_op(nir_op op, nir_def *src0, nir_def *src1, nir_def *src2,
+                nir_def *src3, const char *desc);
 
    void test_2src_op(nir_op op, int64_t src0, int64_t src1);
 
    nir_variable *res_var;
-   nir_builder *b, _b;
 };
 
 algebraic_test_base::algebraic_test_base()
+   : nir_test::nir_test("nir_opt_algebraic_test")
 {
-   glsl_type_singleton_init_or_ref();
-
-   static const nir_shader_compiler_options options = { };
-   _b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, &options, "opt_algebraic test");
-   b = &_b;
-
    res_var = nir_local_variable_create(b->impl, glsl_int_type(), "res");
 }
 
-algebraic_test_base::~algebraic_test_base()
+void algebraic_test_base::test_op(nir_op op, nir_def *src0, nir_def *src1,
+                                     nir_def *src2, nir_def *src3, const char *desc)
 {
-   ralloc_free(b->shader);
-
-   glsl_type_singleton_decref();
-}
-
-void algebraic_test_base::test_op(nir_op op, nir_ssa_def *src0, nir_ssa_def *src1,
-                                     nir_ssa_def *src2, nir_ssa_def *src3, const char *desc)
-{
-   nir_ssa_def *res_deref = &nir_build_deref_var(b, res_var)->dest.ssa;
+   nir_def *res_deref = &nir_build_deref_var(b, res_var)->def;
 
    /* create optimized expression */
    nir_intrinsic_instr *optimized_instr = nir_build_store_deref(
@@ -147,6 +130,46 @@ TEST_F(nir_opt_algebraic_test, irem_pow2_src2)
    test_2src_op(nir_op_irem, INT32_MAX, -4);
    test_2src_op(nir_op_irem, INT32_MIN, 4);
    test_2src_op(nir_op_irem, INT32_MIN, -4);
+}
+
+TEST_F(nir_opt_algebraic_test, msad)
+{
+   options.lower_bitfield_extract = true;
+   options.has_bfe = true;
+   options.has_msad = true;
+
+   nir_def *src0 = nir_load_var(b, nir_local_variable_create(b->impl, glsl_int_type(), "src0"));
+   nir_def *src1 = nir_load_var(b, nir_local_variable_create(b->impl, glsl_int_type(), "src1"));
+
+   /* This mimics the sequence created by vkd3d-proton. */
+   nir_def *res = NULL;
+   for (unsigned i = 0; i < 4; i++) {
+      nir_def *ref = nir_ubitfield_extract(b, src0, nir_imm_int(b, i * 8), nir_imm_int(b, 8));
+      nir_def *src = nir_ubitfield_extract(b, src1, nir_imm_int(b, i * 8), nir_imm_int(b, 8));
+      nir_def *is_ref_zero = nir_ieq_imm(b, ref, 0);
+      nir_def *abs_diff = nir_iabs(b, nir_isub(b, ref, src));
+      nir_def *masked_diff = nir_bcsel(b, is_ref_zero, nir_imm_int(b, 0), abs_diff);
+      if (res)
+         res = nir_iadd(b, res, masked_diff);
+      else
+         res = masked_diff;
+   }
+
+   nir_store_var(b, res_var, res, 0x1);
+
+   while (nir_opt_algebraic(b->shader)) {
+      nir_opt_constant_folding(b->shader);
+      nir_opt_dce(b->shader);
+   }
+
+   unsigned count = 0;
+   nir_foreach_instr(instr, nir_start_block(b->impl)) {
+      if (instr->type == nir_instr_type_alu) {
+         ASSERT_TRUE(nir_instr_as_alu(instr)->op == nir_op_msad_4x8);
+         ASSERT_EQ(count, 0);
+         count++;
+      }
+   }
 }
 
 TEST_F(nir_opt_idiv_const_test, umod)

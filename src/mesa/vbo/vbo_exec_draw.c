@@ -34,6 +34,7 @@
 #include "main/enums.h"
 #include "main/state.h"
 #include "main/varray.h"
+#include "state_tracker/st_draw.h"
 
 #include "vbo_private.h"
 
@@ -151,6 +152,8 @@ vbo_exec_bind_arrays(struct gl_context *ctx,
 
    _mesa_save_and_set_draw_vao(ctx, vao, vao_filter,
                                old_vao, old_vp_input_filter);
+   _mesa_set_varying_vp_inputs(ctx, vao_filter &
+                               ctx->Array._DrawVAO->_EnabledWithMapMode);
 }
 
 
@@ -337,6 +340,8 @@ vbo_exec_vtx_flush(struct vbo_exec_context *exec)
          if (0)
             printf("%s %d %d\n", __func__, exec->vtx.prim_count,
                    exec->vtx.vert_count);
+
+         st_prepare_draw(ctx, ST_PIPELINE_RENDER_STATE_MASK);
 
          ctx->Driver.DrawGalliumMultiMode(ctx, &exec->vtx.info,
                                           exec->vtx.draw,

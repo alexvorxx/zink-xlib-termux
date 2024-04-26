@@ -8,7 +8,7 @@
 #ifndef VN_PROTOCOL_DRIVER_PIPELINE_H
 #define VN_PROTOCOL_DRIVER_PIPELINE_H
 
-#include "vn_instance.h"
+#include "vn_ring.h"
 #include "vn_protocol_driver_structs.h"
 
 /* struct VkSpecializationMapEntry */
@@ -1532,12 +1532,96 @@ vn_encode_VkPipelineColorBlendAttachmentState(struct vn_cs_encoder *enc, const V
     vn_encode_VkFlags(enc, &val->colorWriteMask);
 }
 
+/* struct VkPipelineColorWriteCreateInfoEXT chain */
+
+static inline size_t
+vn_sizeof_VkPipelineColorWriteCreateInfoEXT_pnext(const void *val)
+{
+    /* no known/supported struct */
+    return vn_sizeof_simple_pointer(NULL);
+}
+
+static inline size_t
+vn_sizeof_VkPipelineColorWriteCreateInfoEXT_self(const VkPipelineColorWriteCreateInfoEXT *val)
+{
+    size_t size = 0;
+    /* skip val->{sType,pNext} */
+    size += vn_sizeof_uint32_t(&val->attachmentCount);
+    if (val->pColorWriteEnables) {
+        size += vn_sizeof_array_size(val->attachmentCount);
+        size += vn_sizeof_VkBool32_array(val->pColorWriteEnables, val->attachmentCount);
+    } else {
+        size += vn_sizeof_array_size(0);
+    }
+    return size;
+}
+
+static inline size_t
+vn_sizeof_VkPipelineColorWriteCreateInfoEXT(const VkPipelineColorWriteCreateInfoEXT *val)
+{
+    size_t size = 0;
+
+    size += vn_sizeof_VkStructureType(&val->sType);
+    size += vn_sizeof_VkPipelineColorWriteCreateInfoEXT_pnext(val->pNext);
+    size += vn_sizeof_VkPipelineColorWriteCreateInfoEXT_self(val);
+
+    return size;
+}
+
+static inline void
+vn_encode_VkPipelineColorWriteCreateInfoEXT_pnext(struct vn_cs_encoder *enc, const void *val)
+{
+    /* no known/supported struct */
+    vn_encode_simple_pointer(enc, NULL);
+}
+
+static inline void
+vn_encode_VkPipelineColorWriteCreateInfoEXT_self(struct vn_cs_encoder *enc, const VkPipelineColorWriteCreateInfoEXT *val)
+{
+    /* skip val->{sType,pNext} */
+    vn_encode_uint32_t(enc, &val->attachmentCount);
+    if (val->pColorWriteEnables) {
+        vn_encode_array_size(enc, val->attachmentCount);
+        vn_encode_VkBool32_array(enc, val->pColorWriteEnables, val->attachmentCount);
+    } else {
+        vn_encode_array_size(enc, 0);
+    }
+}
+
+static inline void
+vn_encode_VkPipelineColorWriteCreateInfoEXT(struct vn_cs_encoder *enc, const VkPipelineColorWriteCreateInfoEXT *val)
+{
+    assert(val->sType == VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT);
+    vn_encode_VkStructureType(enc, &(VkStructureType){ VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT });
+    vn_encode_VkPipelineColorWriteCreateInfoEXT_pnext(enc, val->pNext);
+    vn_encode_VkPipelineColorWriteCreateInfoEXT_self(enc, val);
+}
+
 /* struct VkPipelineColorBlendStateCreateInfo chain */
 
 static inline size_t
 vn_sizeof_VkPipelineColorBlendStateCreateInfo_pnext(const void *val)
 {
-    /* no known/supported struct */
+    const VkBaseInStructure *pnext = val;
+    size_t size = 0;
+
+    while (pnext) {
+        switch ((int32_t)pnext->sType) {
+        case VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT:
+            if (!vn_cs_renderer_protocol_has_extension(382 /* VK_EXT_color_write_enable */))
+                break;
+            size += vn_sizeof_simple_pointer(pnext);
+            size += vn_sizeof_VkStructureType(&pnext->sType);
+            size += vn_sizeof_VkPipelineColorBlendStateCreateInfo_pnext(pnext->pNext);
+            size += vn_sizeof_VkPipelineColorWriteCreateInfoEXT_self((const VkPipelineColorWriteCreateInfoEXT *)pnext);
+            return size;
+        default:
+            /* ignore unknown/unsupported struct */
+            break;
+        }
+        pnext = pnext->pNext;
+    }
+
     return vn_sizeof_simple_pointer(NULL);
 }
 
@@ -1577,7 +1661,25 @@ vn_sizeof_VkPipelineColorBlendStateCreateInfo(const VkPipelineColorBlendStateCre
 static inline void
 vn_encode_VkPipelineColorBlendStateCreateInfo_pnext(struct vn_cs_encoder *enc, const void *val)
 {
-    /* no known/supported struct */
+    const VkBaseInStructure *pnext = val;
+
+    while (pnext) {
+        switch ((int32_t)pnext->sType) {
+        case VK_STRUCTURE_TYPE_PIPELINE_COLOR_WRITE_CREATE_INFO_EXT:
+            if (!vn_cs_renderer_protocol_has_extension(382 /* VK_EXT_color_write_enable */))
+                break;
+            vn_encode_simple_pointer(enc, pnext);
+            vn_encode_VkStructureType(enc, &pnext->sType);
+            vn_encode_VkPipelineColorBlendStateCreateInfo_pnext(enc, pnext->pNext);
+            vn_encode_VkPipelineColorWriteCreateInfoEXT_self(enc, (const VkPipelineColorWriteCreateInfoEXT *)pnext);
+            return;
+        default:
+            /* ignore unknown/unsupported struct */
+            break;
+        }
+        pnext = pnext->pNext;
+    }
+
     vn_encode_simple_pointer(enc, NULL);
 }
 
@@ -1676,6 +1778,73 @@ vn_encode_VkPipelineDynamicStateCreateInfo(struct vn_cs_encoder *enc, const VkPi
     vn_encode_VkPipelineDynamicStateCreateInfo_self(enc, val);
 }
 
+/* struct VkPipelineLibraryCreateInfoKHR chain */
+
+static inline size_t
+vn_sizeof_VkPipelineLibraryCreateInfoKHR_pnext(const void *val)
+{
+    /* no known/supported struct */
+    return vn_sizeof_simple_pointer(NULL);
+}
+
+static inline size_t
+vn_sizeof_VkPipelineLibraryCreateInfoKHR_self(const VkPipelineLibraryCreateInfoKHR *val)
+{
+    size_t size = 0;
+    /* skip val->{sType,pNext} */
+    size += vn_sizeof_uint32_t(&val->libraryCount);
+    if (val->pLibraries) {
+        size += vn_sizeof_array_size(val->libraryCount);
+        for (uint32_t i = 0; i < val->libraryCount; i++)
+            size += vn_sizeof_VkPipeline(&val->pLibraries[i]);
+    } else {
+        size += vn_sizeof_array_size(0);
+    }
+    return size;
+}
+
+static inline size_t
+vn_sizeof_VkPipelineLibraryCreateInfoKHR(const VkPipelineLibraryCreateInfoKHR *val)
+{
+    size_t size = 0;
+
+    size += vn_sizeof_VkStructureType(&val->sType);
+    size += vn_sizeof_VkPipelineLibraryCreateInfoKHR_pnext(val->pNext);
+    size += vn_sizeof_VkPipelineLibraryCreateInfoKHR_self(val);
+
+    return size;
+}
+
+static inline void
+vn_encode_VkPipelineLibraryCreateInfoKHR_pnext(struct vn_cs_encoder *enc, const void *val)
+{
+    /* no known/supported struct */
+    vn_encode_simple_pointer(enc, NULL);
+}
+
+static inline void
+vn_encode_VkPipelineLibraryCreateInfoKHR_self(struct vn_cs_encoder *enc, const VkPipelineLibraryCreateInfoKHR *val)
+{
+    /* skip val->{sType,pNext} */
+    vn_encode_uint32_t(enc, &val->libraryCount);
+    if (val->pLibraries) {
+        vn_encode_array_size(enc, val->libraryCount);
+        for (uint32_t i = 0; i < val->libraryCount; i++)
+            vn_encode_VkPipeline(enc, &val->pLibraries[i]);
+    } else {
+        vn_encode_array_size(enc, 0);
+    }
+}
+
+static inline void
+vn_encode_VkPipelineLibraryCreateInfoKHR(struct vn_cs_encoder *enc, const VkPipelineLibraryCreateInfoKHR *val)
+{
+    assert(val->sType == VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR);
+    vn_encode_VkStructureType(enc, &(VkStructureType){ VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR });
+    vn_encode_VkPipelineLibraryCreateInfoKHR_pnext(enc, val->pNext);
+    vn_encode_VkPipelineLibraryCreateInfoKHR_self(enc, val);
+}
+
 /* struct VkPipelineCreationFeedback */
 
 static inline size_t
@@ -1766,6 +1935,63 @@ vn_encode_VkPipelineCreationFeedbackCreateInfo(struct vn_cs_encoder *enc, const 
     vn_encode_VkPipelineCreationFeedbackCreateInfo_self(enc, val);
 }
 
+/* struct VkPipelineFragmentShadingRateStateCreateInfoKHR chain */
+
+static inline size_t
+vn_sizeof_VkPipelineFragmentShadingRateStateCreateInfoKHR_pnext(const void *val)
+{
+    /* no known/supported struct */
+    return vn_sizeof_simple_pointer(NULL);
+}
+
+static inline size_t
+vn_sizeof_VkPipelineFragmentShadingRateStateCreateInfoKHR_self(const VkPipelineFragmentShadingRateStateCreateInfoKHR *val)
+{
+    size_t size = 0;
+    /* skip val->{sType,pNext} */
+    size += vn_sizeof_VkExtent2D(&val->fragmentSize);
+    size += vn_sizeof_array_size(2);
+    size += vn_sizeof_VkFragmentShadingRateCombinerOpKHR_array(val->combinerOps, 2);
+    return size;
+}
+
+static inline size_t
+vn_sizeof_VkPipelineFragmentShadingRateStateCreateInfoKHR(const VkPipelineFragmentShadingRateStateCreateInfoKHR *val)
+{
+    size_t size = 0;
+
+    size += vn_sizeof_VkStructureType(&val->sType);
+    size += vn_sizeof_VkPipelineFragmentShadingRateStateCreateInfoKHR_pnext(val->pNext);
+    size += vn_sizeof_VkPipelineFragmentShadingRateStateCreateInfoKHR_self(val);
+
+    return size;
+}
+
+static inline void
+vn_encode_VkPipelineFragmentShadingRateStateCreateInfoKHR_pnext(struct vn_cs_encoder *enc, const void *val)
+{
+    /* no known/supported struct */
+    vn_encode_simple_pointer(enc, NULL);
+}
+
+static inline void
+vn_encode_VkPipelineFragmentShadingRateStateCreateInfoKHR_self(struct vn_cs_encoder *enc, const VkPipelineFragmentShadingRateStateCreateInfoKHR *val)
+{
+    /* skip val->{sType,pNext} */
+    vn_encode_VkExtent2D(enc, &val->fragmentSize);
+    vn_encode_array_size(enc, 2);
+    vn_encode_VkFragmentShadingRateCombinerOpKHR_array(enc, val->combinerOps, 2);
+}
+
+static inline void
+vn_encode_VkPipelineFragmentShadingRateStateCreateInfoKHR(struct vn_cs_encoder *enc, const VkPipelineFragmentShadingRateStateCreateInfoKHR *val)
+{
+    assert(val->sType == VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR);
+    vn_encode_VkStructureType(enc, &(VkStructureType){ VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR });
+    vn_encode_VkPipelineFragmentShadingRateStateCreateInfoKHR_pnext(enc, val->pNext);
+    vn_encode_VkPipelineFragmentShadingRateStateCreateInfoKHR_self(enc, val);
+}
+
 /* struct VkPipelineRenderingCreateInfo chain */
 
 static inline size_t
@@ -1837,6 +2063,59 @@ vn_encode_VkPipelineRenderingCreateInfo(struct vn_cs_encoder *enc, const VkPipel
     vn_encode_VkPipelineRenderingCreateInfo_self(enc, val);
 }
 
+/* struct VkGraphicsPipelineLibraryCreateInfoEXT chain */
+
+static inline size_t
+vn_sizeof_VkGraphicsPipelineLibraryCreateInfoEXT_pnext(const void *val)
+{
+    /* no known/supported struct */
+    return vn_sizeof_simple_pointer(NULL);
+}
+
+static inline size_t
+vn_sizeof_VkGraphicsPipelineLibraryCreateInfoEXT_self(const VkGraphicsPipelineLibraryCreateInfoEXT *val)
+{
+    size_t size = 0;
+    /* skip val->{sType,pNext} */
+    size += vn_sizeof_VkFlags(&val->flags);
+    return size;
+}
+
+static inline size_t
+vn_sizeof_VkGraphicsPipelineLibraryCreateInfoEXT(const VkGraphicsPipelineLibraryCreateInfoEXT *val)
+{
+    size_t size = 0;
+
+    size += vn_sizeof_VkStructureType(&val->sType);
+    size += vn_sizeof_VkGraphicsPipelineLibraryCreateInfoEXT_pnext(val->pNext);
+    size += vn_sizeof_VkGraphicsPipelineLibraryCreateInfoEXT_self(val);
+
+    return size;
+}
+
+static inline void
+vn_encode_VkGraphicsPipelineLibraryCreateInfoEXT_pnext(struct vn_cs_encoder *enc, const void *val)
+{
+    /* no known/supported struct */
+    vn_encode_simple_pointer(enc, NULL);
+}
+
+static inline void
+vn_encode_VkGraphicsPipelineLibraryCreateInfoEXT_self(struct vn_cs_encoder *enc, const VkGraphicsPipelineLibraryCreateInfoEXT *val)
+{
+    /* skip val->{sType,pNext} */
+    vn_encode_VkFlags(enc, &val->flags);
+}
+
+static inline void
+vn_encode_VkGraphicsPipelineLibraryCreateInfoEXT(struct vn_cs_encoder *enc, const VkGraphicsPipelineLibraryCreateInfoEXT *val)
+{
+    assert(val->sType == VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT);
+    vn_encode_VkStructureType(enc, &(VkStructureType){ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT });
+    vn_encode_VkGraphicsPipelineLibraryCreateInfoEXT_pnext(enc, val->pNext);
+    vn_encode_VkGraphicsPipelineLibraryCreateInfoEXT_self(enc, val);
+}
+
 /* struct VkGraphicsPipelineCreateInfo chain */
 
 static inline size_t
@@ -1847,6 +2126,14 @@ vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(const void *val)
 
     while (pnext) {
         switch ((int32_t)pnext->sType) {
+        case VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR:
+            if (!vn_cs_renderer_protocol_has_extension(291 /* VK_KHR_pipeline_library */))
+                break;
+            size += vn_sizeof_simple_pointer(pnext);
+            size += vn_sizeof_VkStructureType(&pnext->sType);
+            size += vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(pnext->pNext);
+            size += vn_sizeof_VkPipelineLibraryCreateInfoKHR_self((const VkPipelineLibraryCreateInfoKHR *)pnext);
+            return size;
         case VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO:
             if (!vn_cs_renderer_protocol_has_extension(193 /* VK_EXT_pipeline_creation_feedback */))
                 break;
@@ -1855,6 +2142,14 @@ vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(const void *val)
             size += vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(pnext->pNext);
             size += vn_sizeof_VkPipelineCreationFeedbackCreateInfo_self((const VkPipelineCreationFeedbackCreateInfo *)pnext);
             return size;
+        case VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR:
+            if (!vn_cs_renderer_protocol_has_extension(227 /* VK_KHR_fragment_shading_rate */))
+                break;
+            size += vn_sizeof_simple_pointer(pnext);
+            size += vn_sizeof_VkStructureType(&pnext->sType);
+            size += vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(pnext->pNext);
+            size += vn_sizeof_VkPipelineFragmentShadingRateStateCreateInfoKHR_self((const VkPipelineFragmentShadingRateStateCreateInfoKHR *)pnext);
+            return size;
         case VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO:
             if (!vn_cs_renderer_protocol_has_extension(45 /* VK_KHR_dynamic_rendering */))
                 break;
@@ -1862,6 +2157,14 @@ vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(const void *val)
             size += vn_sizeof_VkStructureType(&pnext->sType);
             size += vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(pnext->pNext);
             size += vn_sizeof_VkPipelineRenderingCreateInfo_self((const VkPipelineRenderingCreateInfo *)pnext);
+            return size;
+        case VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT:
+            if (!vn_cs_renderer_protocol_has_extension(321 /* VK_EXT_graphics_pipeline_library */))
+                break;
+            size += vn_sizeof_simple_pointer(pnext);
+            size += vn_sizeof_VkStructureType(&pnext->sType);
+            size += vn_sizeof_VkGraphicsPipelineCreateInfo_pnext(pnext->pNext);
+            size += vn_sizeof_VkGraphicsPipelineLibraryCreateInfoEXT_self((const VkGraphicsPipelineLibraryCreateInfoEXT *)pnext);
             return size;
         default:
             /* ignore unknown/unsupported struct */
@@ -1941,6 +2244,14 @@ vn_encode_VkGraphicsPipelineCreateInfo_pnext(struct vn_cs_encoder *enc, const vo
 
     while (pnext) {
         switch ((int32_t)pnext->sType) {
+        case VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR:
+            if (!vn_cs_renderer_protocol_has_extension(291 /* VK_KHR_pipeline_library */))
+                break;
+            vn_encode_simple_pointer(enc, pnext);
+            vn_encode_VkStructureType(enc, &pnext->sType);
+            vn_encode_VkGraphicsPipelineCreateInfo_pnext(enc, pnext->pNext);
+            vn_encode_VkPipelineLibraryCreateInfoKHR_self(enc, (const VkPipelineLibraryCreateInfoKHR *)pnext);
+            return;
         case VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO:
             if (!vn_cs_renderer_protocol_has_extension(193 /* VK_EXT_pipeline_creation_feedback */))
                 break;
@@ -1949,6 +2260,14 @@ vn_encode_VkGraphicsPipelineCreateInfo_pnext(struct vn_cs_encoder *enc, const vo
             vn_encode_VkGraphicsPipelineCreateInfo_pnext(enc, pnext->pNext);
             vn_encode_VkPipelineCreationFeedbackCreateInfo_self(enc, (const VkPipelineCreationFeedbackCreateInfo *)pnext);
             return;
+        case VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR:
+            if (!vn_cs_renderer_protocol_has_extension(227 /* VK_KHR_fragment_shading_rate */))
+                break;
+            vn_encode_simple_pointer(enc, pnext);
+            vn_encode_VkStructureType(enc, &pnext->sType);
+            vn_encode_VkGraphicsPipelineCreateInfo_pnext(enc, pnext->pNext);
+            vn_encode_VkPipelineFragmentShadingRateStateCreateInfoKHR_self(enc, (const VkPipelineFragmentShadingRateStateCreateInfoKHR *)pnext);
+            return;
         case VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO:
             if (!vn_cs_renderer_protocol_has_extension(45 /* VK_KHR_dynamic_rendering */))
                 break;
@@ -1956,6 +2275,14 @@ vn_encode_VkGraphicsPipelineCreateInfo_pnext(struct vn_cs_encoder *enc, const vo
             vn_encode_VkStructureType(enc, &pnext->sType);
             vn_encode_VkGraphicsPipelineCreateInfo_pnext(enc, pnext->pNext);
             vn_encode_VkPipelineRenderingCreateInfo_self(enc, (const VkPipelineRenderingCreateInfo *)pnext);
+            return;
+        case VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT:
+            if (!vn_cs_renderer_protocol_has_extension(321 /* VK_EXT_graphics_pipeline_library */))
+                break;
+            vn_encode_simple_pointer(enc, pnext);
+            vn_encode_VkStructureType(enc, &pnext->sType);
+            vn_encode_VkGraphicsPipelineCreateInfo_pnext(enc, pnext->pNext);
+            vn_encode_VkGraphicsPipelineLibraryCreateInfoEXT_self(enc, (const VkGraphicsPipelineLibraryCreateInfoEXT *)pnext);
             return;
         default:
             /* ignore unknown/unsupported struct */
@@ -2375,7 +2702,7 @@ static inline void vn_decode_vkDestroyPipeline_reply(struct vn_cs_decoder *dec, 
     /* skip pAllocator */
 }
 
-static inline void vn_submit_vkCreateGraphicsPipelines(struct vn_instance *vn_instance, VkCommandFlagsEXT cmd_flags, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines, struct vn_instance_submit_command *submit)
+static inline void vn_submit_vkCreateGraphicsPipelines(struct vn_ring *vn_ring, VkCommandFlagsEXT cmd_flags, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines, struct vn_ring_submit_command *submit)
 {
     uint8_t local_cmd_data[VN_SUBMIT_LOCAL_CMD_SIZE];
     void *cmd_data = local_cmd_data;
@@ -2387,16 +2714,16 @@ static inline void vn_submit_vkCreateGraphicsPipelines(struct vn_instance *vn_in
     }
     const size_t reply_size = cmd_flags & VK_COMMAND_GENERATE_REPLY_BIT_EXT ? vn_sizeof_vkCreateGraphicsPipelines_reply(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines) : 0;
 
-    struct vn_cs_encoder *enc = vn_instance_submit_command_init(vn_instance, submit, cmd_data, cmd_size, reply_size);
+    struct vn_cs_encoder *enc = vn_ring_submit_command_init(vn_ring, submit, cmd_data, cmd_size, reply_size);
     if (cmd_size) {
         vn_encode_vkCreateGraphicsPipelines(enc, cmd_flags, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
-        vn_instance_submit_command(vn_instance, submit);
+        vn_ring_submit_command(vn_ring, submit);
         if (cmd_data != local_cmd_data)
             free(cmd_data);
     }
 }
 
-static inline void vn_submit_vkCreateComputePipelines(struct vn_instance *vn_instance, VkCommandFlagsEXT cmd_flags, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines, struct vn_instance_submit_command *submit)
+static inline void vn_submit_vkCreateComputePipelines(struct vn_ring *vn_ring, VkCommandFlagsEXT cmd_flags, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines, struct vn_ring_submit_command *submit)
 {
     uint8_t local_cmd_data[VN_SUBMIT_LOCAL_CMD_SIZE];
     void *cmd_data = local_cmd_data;
@@ -2408,16 +2735,16 @@ static inline void vn_submit_vkCreateComputePipelines(struct vn_instance *vn_ins
     }
     const size_t reply_size = cmd_flags & VK_COMMAND_GENERATE_REPLY_BIT_EXT ? vn_sizeof_vkCreateComputePipelines_reply(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines) : 0;
 
-    struct vn_cs_encoder *enc = vn_instance_submit_command_init(vn_instance, submit, cmd_data, cmd_size, reply_size);
+    struct vn_cs_encoder *enc = vn_ring_submit_command_init(vn_ring, submit, cmd_data, cmd_size, reply_size);
     if (cmd_size) {
         vn_encode_vkCreateComputePipelines(enc, cmd_flags, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
-        vn_instance_submit_command(vn_instance, submit);
+        vn_ring_submit_command(vn_ring, submit);
         if (cmd_data != local_cmd_data)
             free(cmd_data);
     }
 }
 
-static inline void vn_submit_vkDestroyPipeline(struct vn_instance *vn_instance, VkCommandFlagsEXT cmd_flags, VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator, struct vn_instance_submit_command *submit)
+static inline void vn_submit_vkDestroyPipeline(struct vn_ring *vn_ring, VkCommandFlagsEXT cmd_flags, VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator, struct vn_ring_submit_command *submit)
 {
     uint8_t local_cmd_data[VN_SUBMIT_LOCAL_CMD_SIZE];
     void *cmd_data = local_cmd_data;
@@ -2429,76 +2756,76 @@ static inline void vn_submit_vkDestroyPipeline(struct vn_instance *vn_instance, 
     }
     const size_t reply_size = cmd_flags & VK_COMMAND_GENERATE_REPLY_BIT_EXT ? vn_sizeof_vkDestroyPipeline_reply(device, pipeline, pAllocator) : 0;
 
-    struct vn_cs_encoder *enc = vn_instance_submit_command_init(vn_instance, submit, cmd_data, cmd_size, reply_size);
+    struct vn_cs_encoder *enc = vn_ring_submit_command_init(vn_ring, submit, cmd_data, cmd_size, reply_size);
     if (cmd_size) {
         vn_encode_vkDestroyPipeline(enc, cmd_flags, device, pipeline, pAllocator);
-        vn_instance_submit_command(vn_instance, submit);
+        vn_ring_submit_command(vn_ring, submit);
         if (cmd_data != local_cmd_data)
             free(cmd_data);
     }
 }
 
-static inline VkResult vn_call_vkCreateGraphicsPipelines(struct vn_instance *vn_instance, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
+static inline VkResult vn_call_vkCreateGraphicsPipelines(struct vn_ring *vn_ring, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
 {
     VN_TRACE_FUNC();
 
-    struct vn_instance_submit_command submit;
-    vn_submit_vkCreateGraphicsPipelines(vn_instance, VK_COMMAND_GENERATE_REPLY_BIT_EXT, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
-    struct vn_cs_decoder *dec = vn_instance_get_command_reply(vn_instance, &submit);
+    struct vn_ring_submit_command submit;
+    vn_submit_vkCreateGraphicsPipelines(vn_ring, VK_COMMAND_GENERATE_REPLY_BIT_EXT, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
+    struct vn_cs_decoder *dec = vn_ring_get_command_reply(vn_ring, &submit);
     if (dec) {
         const VkResult ret = vn_decode_vkCreateGraphicsPipelines_reply(dec, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
-        vn_instance_free_command_reply(vn_instance, &submit);
+        vn_ring_free_command_reply(vn_ring, &submit);
         return ret;
     } else {
         return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 }
 
-static inline void vn_async_vkCreateGraphicsPipelines(struct vn_instance *vn_instance, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
+static inline void vn_async_vkCreateGraphicsPipelines(struct vn_ring *vn_ring, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
 {
-    struct vn_instance_submit_command submit;
-    vn_submit_vkCreateGraphicsPipelines(vn_instance, 0, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
+    struct vn_ring_submit_command submit;
+    vn_submit_vkCreateGraphicsPipelines(vn_ring, 0, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
 }
 
-static inline VkResult vn_call_vkCreateComputePipelines(struct vn_instance *vn_instance, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
+static inline VkResult vn_call_vkCreateComputePipelines(struct vn_ring *vn_ring, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
 {
     VN_TRACE_FUNC();
 
-    struct vn_instance_submit_command submit;
-    vn_submit_vkCreateComputePipelines(vn_instance, VK_COMMAND_GENERATE_REPLY_BIT_EXT, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
-    struct vn_cs_decoder *dec = vn_instance_get_command_reply(vn_instance, &submit);
+    struct vn_ring_submit_command submit;
+    vn_submit_vkCreateComputePipelines(vn_ring, VK_COMMAND_GENERATE_REPLY_BIT_EXT, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
+    struct vn_cs_decoder *dec = vn_ring_get_command_reply(vn_ring, &submit);
     if (dec) {
         const VkResult ret = vn_decode_vkCreateComputePipelines_reply(dec, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
-        vn_instance_free_command_reply(vn_instance, &submit);
+        vn_ring_free_command_reply(vn_ring, &submit);
         return ret;
     } else {
         return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 }
 
-static inline void vn_async_vkCreateComputePipelines(struct vn_instance *vn_instance, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
+static inline void vn_async_vkCreateComputePipelines(struct vn_ring *vn_ring, VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines)
 {
-    struct vn_instance_submit_command submit;
-    vn_submit_vkCreateComputePipelines(vn_instance, 0, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
+    struct vn_ring_submit_command submit;
+    vn_submit_vkCreateComputePipelines(vn_ring, 0, device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines, &submit);
 }
 
-static inline void vn_call_vkDestroyPipeline(struct vn_instance *vn_instance, VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator)
+static inline void vn_call_vkDestroyPipeline(struct vn_ring *vn_ring, VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator)
 {
     VN_TRACE_FUNC();
 
-    struct vn_instance_submit_command submit;
-    vn_submit_vkDestroyPipeline(vn_instance, VK_COMMAND_GENERATE_REPLY_BIT_EXT, device, pipeline, pAllocator, &submit);
-    struct vn_cs_decoder *dec = vn_instance_get_command_reply(vn_instance, &submit);
+    struct vn_ring_submit_command submit;
+    vn_submit_vkDestroyPipeline(vn_ring, VK_COMMAND_GENERATE_REPLY_BIT_EXT, device, pipeline, pAllocator, &submit);
+    struct vn_cs_decoder *dec = vn_ring_get_command_reply(vn_ring, &submit);
     if (dec) {
         vn_decode_vkDestroyPipeline_reply(dec, device, pipeline, pAllocator);
-        vn_instance_free_command_reply(vn_instance, &submit);
+        vn_ring_free_command_reply(vn_ring, &submit);
     }
 }
 
-static inline void vn_async_vkDestroyPipeline(struct vn_instance *vn_instance, VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator)
+static inline void vn_async_vkDestroyPipeline(struct vn_ring *vn_ring, VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator)
 {
-    struct vn_instance_submit_command submit;
-    vn_submit_vkDestroyPipeline(vn_instance, 0, device, pipeline, pAllocator, &submit);
+    struct vn_ring_submit_command submit;
+    vn_submit_vkDestroyPipeline(vn_ring, 0, device, pipeline, pAllocator, &submit);
 }
 
 #endif /* VN_PROTOCOL_DRIVER_PIPELINE_H */

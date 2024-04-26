@@ -46,12 +46,11 @@ protected:
    , devinfo(rzalloc(mem_ctx, intel_device_info))
    , prog_data(rzalloc(mem_ctx, struct brw_cs_prog_data))
    , simd_state{
-      .mem_ctx = mem_ctx,
       .devinfo = devinfo,
       .prog_data = prog_data,
      }
    {
-      brw_process_intel_debug_variable();
+      process_intel_debug_variable();
    }
 
    ~SIMDSelectionTest() {

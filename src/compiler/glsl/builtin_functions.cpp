@@ -144,7 +144,7 @@ deprecated_texture(const _mesa_glsl_parse_state *state)
 static bool
 deprecated_texture_derivatives_only(const _mesa_glsl_parse_state *state)
 {
-   return deprecated_texture(state) && derivatives_only(state);
+   return (deprecated_texture(state) && derivatives_only(state)) || state->allow_vertex_texture_bias;
 }
 
 static bool
@@ -460,6 +460,12 @@ gpu_shader5_or_es31_or_integer_functions(const _mesa_glsl_parse_state *state)
 }
 
 static bool
+gpu_shader_half_float(const _mesa_glsl_parse_state *state)
+{
+   return state->AMD_gpu_shader_half_float_enable;
+}
+
+static bool
 fs_interpolate_at(const _mesa_glsl_parse_state *state)
 {
    return state->stage == MESA_SHADER_FRAGMENT &&
@@ -468,6 +474,11 @@ fs_interpolate_at(const _mesa_glsl_parse_state *state)
            state->OES_shader_multisample_interpolation_enable);
 }
 
+static bool
+fs_half_float_interpolate_at(const _mesa_glsl_parse_state *state)
+{
+   return fs_interpolate_at(state) && gpu_shader_half_float(state);
+}
 
 static bool
 texture_array_lod(const _mesa_glsl_parse_state *state)
@@ -614,6 +625,18 @@ derivative_control(const _mesa_glsl_parse_state *state)
            state->ARB_derivative_control_enable);
 }
 
+static bool
+half_float_derivatives(const _mesa_glsl_parse_state *state)
+{
+   return derivatives(state) && gpu_shader_half_float(state);
+}
+
+static bool
+half_float_derivative_control(const _mesa_glsl_parse_state *state)
+{
+   return derivative_control(state) && gpu_shader_half_float(state);
+}
+
 /** True if sampler3D exists */
 static bool
 tex3d(const _mesa_glsl_parse_state *state)
@@ -699,6 +722,12 @@ static bool
 shader_trinary_minmax(const _mesa_glsl_parse_state *state)
 {
    return state->AMD_shader_trinary_minmax_enable;
+}
+
+static bool
+shader_trinary_minmax_half_float(const _mesa_glsl_parse_state *state)
+{
+   return shader_trinary_minmax(state) && gpu_shader_half_float(state);
 }
 
 static bool
@@ -825,12 +854,6 @@ static bool
 vote_or_v460_desktop(const _mesa_glsl_parse_state *state)
 {
    return state->EXT_shader_group_vote_enable || state->ARB_shader_group_vote_enable || v460_desktop(state);
-}
-
-static bool
-integer_functions_supported(const _mesa_glsl_parse_state *state)
-{
-   return state->extensions->MESA_shader_integer_functions;
 }
 
 static bool
@@ -1023,6 +1046,7 @@ private:
    ir_variable *out_lowp_var(const glsl_type *type, const char *name);
    ir_variable *out_highp_var(const glsl_type *type, const char *name);
    ir_variable *as_highp(ir_factory &body, ir_variable *var);
+   ir_constant *imm(float16_t f16, unsigned vector_elements=1);
    ir_constant *imm(float f, unsigned vector_elements=1);
    ir_constant *imm(bool b, unsigned vector_elements=1);
    ir_constant *imm(int i, unsigned vector_elements=1);
@@ -1035,7 +1059,6 @@ private:
    ir_dereference_record *record_ref(ir_variable *var, const char *field);
 
    ir_expression *asin_expr(ir_variable *x, float p0, float p1);
-   void do_atan(ir_factory &body, const glsl_type *type, ir_variable *res, operand y_over_x);
 
    /**
     * Call function \param f with parameters specified as the linked
@@ -1101,26 +1124,26 @@ private:
 #define B3(X) ir_function_signature *_##X(const glsl_type *, const glsl_type *, const glsl_type *);
 #define BA1(X) ir_function_signature *_##X(builtin_available_predicate, const glsl_type *);
 #define BA2(X) ir_function_signature *_##X(builtin_available_predicate, const glsl_type *, const glsl_type *);
-   B1(radians)
-   B1(degrees)
-   B1(sin)
-   B1(cos)
-   B1(tan)
-   B1(asin)
-   B1(acos)
-   B1(atan2)
-   B1(atan)
-   B1(sinh)
-   B1(cosh)
-   B1(tanh)
-   B1(asinh)
-   B1(acosh)
-   B1(atanh)
-   B1(pow)
-   B1(exp)
-   B1(log)
-   B1(exp2)
-   B1(log2)
+   BA1(radians)
+   BA1(degrees)
+   BA1(sin)
+   BA1(cos)
+   BA1(tan)
+   BA1(asin)
+   BA1(acos)
+   BA1(atan2)
+   BA1(atan)
+   BA1(sinh)
+   BA1(cosh)
+   BA1(tanh)
+   BA1(asinh)
+   BA1(acosh)
+   BA1(atanh)
+   BA1(pow)
+   BA1(exp)
+   BA1(log)
+   BA1(exp2)
+   BA1(log2)
    BA1(sqrt)
    BA1(inversesqrt)
    BA1(abs)
@@ -1165,6 +1188,8 @@ private:
    ir_function_signature *_unpackSnorm4x8(builtin_available_predicate avail);
    ir_function_signature *_packHalf2x16(builtin_available_predicate avail);
    ir_function_signature *_unpackHalf2x16(builtin_available_predicate avail);
+   ir_function_signature *_packFloat2x16(builtin_available_predicate avail);
+   ir_function_signature *_unpackFloat2x16(builtin_available_predicate avail);
    ir_function_signature *_packDouble2x32(builtin_available_predicate avail);
    ir_function_signature *_unpackDouble2x32(builtin_available_predicate avail);
    ir_function_signature *_packInt2x32(builtin_available_predicate avail);
@@ -1242,15 +1267,15 @@ private:
    BA2(textureQueryLod);
    BA1(textureQueryLevels);
    BA2(textureSamplesIdentical);
-   B1(dFdx);
-   B1(dFdy);
-   B1(fwidth);
-   B1(dFdxCoarse);
-   B1(dFdyCoarse);
-   B1(fwidthCoarse);
-   B1(dFdxFine);
-   B1(dFdyFine);
-   B1(fwidthFine);
+   BA1(dFdx);
+   BA1(dFdy);
+   BA1(fwidth);
+   BA1(dFdxCoarse);
+   BA1(dFdyCoarse);
+   BA1(fwidthCoarse);
+   BA1(dFdxFine);
+   BA1(dFdyFine);
+   BA1(fwidthFine);
    B1(noise1);
    B1(noise2);
    B1(noise3);
@@ -1277,9 +1302,9 @@ private:
    BA1(averageRounded)
    B1(mulExtended)
    BA1(multiply32x16)
-   B1(interpolateAtCentroid)
-   B1(interpolateAtOffset)
-   B1(interpolateAtSample)
+   BA1(interpolateAtCentroid)
+   BA1(interpolateAtOffset)
+   BA1(interpolateAtSample)
 
    ir_function_signature *_atomic_counter_intrinsic(builtin_available_predicate avail,
                                                     enum ir_intrinsic_id id);
@@ -1307,9 +1332,9 @@ private:
                                       builtin_available_predicate avail,
                                       const glsl_type *type);
 
-   B1(min3)
-   B1(max3)
-   B1(mid3)
+   BA1(min3)
+   BA1(max3)
+   BA1(mid3)
 
    ir_function_signature *_image_prototype(const glsl_type *image_type,
                                            unsigned num_arguments,
@@ -1498,134 +1523,134 @@ builtin_builder::create_intrinsics()
 
    add_function("__intrinsic_atomic_add",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_add),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_add),
                 _atomic_intrinsic2(NV_shader_atomic_float_supported,
-                                   glsl_type::float_type,
+                                   &glsl_type_builtin_float,
                                    ir_intrinsic_generic_atomic_add),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_add),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_add),
                 NULL);
    add_function("__intrinsic_atomic_min",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_min),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_min),
                 _atomic_intrinsic2(INTEL_shader_atomic_float_minmax_supported,
-                                   glsl_type::float_type,
+                                   &glsl_type_builtin_float,
                                    ir_intrinsic_generic_atomic_min),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::uint64_t_type,
+                                   &glsl_type_builtin_uint64_t,
                                    ir_intrinsic_generic_atomic_min),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_min),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_min),
                 NULL);
    add_function("__intrinsic_atomic_max",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_max),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_max),
                 _atomic_intrinsic2(INTEL_shader_atomic_float_minmax_supported,
-                                   glsl_type::float_type,
+                                   &glsl_type_builtin_float,
                                    ir_intrinsic_generic_atomic_max),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::uint64_t_type,
+                                   &glsl_type_builtin_uint64_t,
                                    ir_intrinsic_generic_atomic_max),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_max),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_max),
                 NULL);
    add_function("__intrinsic_atomic_and",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_and),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_and),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::uint64_t_type,
+                                   &glsl_type_builtin_uint64_t,
                                    ir_intrinsic_generic_atomic_and),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_and),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_and),
                 NULL);
    add_function("__intrinsic_atomic_or",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_or),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_or),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::uint64_t_type,
+                                   &glsl_type_builtin_uint64_t,
                                    ir_intrinsic_generic_atomic_or),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_or),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_or),
                 NULL);
    add_function("__intrinsic_atomic_xor",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_xor),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_xor),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::uint64_t_type,
+                                   &glsl_type_builtin_uint64_t,
                                    ir_intrinsic_generic_atomic_xor),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_xor),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_xor),
                 NULL);
    add_function("__intrinsic_atomic_exchange",
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_exchange),
                 _atomic_intrinsic2(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_exchange),
                 _atomic_intrinsic2(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_exchange),
                 _atomic_intrinsic2(NV_shader_atomic_float_supported,
-                                   glsl_type::float_type,
+                                   &glsl_type_builtin_float,
                                    ir_intrinsic_generic_atomic_exchange),
                 _atomic_counter_intrinsic1(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_exchange),
                 NULL);
    add_function("__intrinsic_atomic_comp_swap",
                 _atomic_intrinsic3(buffer_atomics_supported,
-                                   glsl_type::uint_type,
+                                   &glsl_type_builtin_uint,
                                    ir_intrinsic_generic_atomic_comp_swap),
                 _atomic_intrinsic3(buffer_atomics_supported,
-                                   glsl_type::int_type,
+                                   &glsl_type_builtin_int,
                                    ir_intrinsic_generic_atomic_comp_swap),
                 _atomic_intrinsic3(buffer_int64_atomics_supported,
-                                   glsl_type::int64_t_type,
+                                   &glsl_type_builtin_int64_t,
                                    ir_intrinsic_generic_atomic_comp_swap),
                 _atomic_intrinsic3(INTEL_shader_atomic_float_minmax_supported,
-                                   glsl_type::float_type,
+                                   &glsl_type_builtin_float,
                                    ir_intrinsic_generic_atomic_comp_swap),
                 _atomic_counter_intrinsic2(shader_atomic_counter_ops_or_v460_desktop,
                                            ir_intrinsic_atomic_counter_comp_swap),
@@ -1670,7 +1695,7 @@ builtin_builder::create_intrinsics()
 
    add_function("__intrinsic_shader_clock",
                 _shader_clock_intrinsic(shader_clock,
-                                        glsl_type::uvec2_type),
+                                        &glsl_type_builtin_uvec2),
                 NULL);
 
    add_function("__intrinsic_vote_all",
@@ -1686,37 +1711,37 @@ builtin_builder::create_intrinsics()
    add_function("__intrinsic_ballot", _ballot_intrinsic(), NULL);
 
    add_function("__intrinsic_read_invocation",
-                _read_invocation_intrinsic(glsl_type::float_type),
-                _read_invocation_intrinsic(glsl_type::vec2_type),
-                _read_invocation_intrinsic(glsl_type::vec3_type),
-                _read_invocation_intrinsic(glsl_type::vec4_type),
+                _read_invocation_intrinsic(&glsl_type_builtin_float),
+                _read_invocation_intrinsic(&glsl_type_builtin_vec2),
+                _read_invocation_intrinsic(&glsl_type_builtin_vec3),
+                _read_invocation_intrinsic(&glsl_type_builtin_vec4),
 
-                _read_invocation_intrinsic(glsl_type::int_type),
-                _read_invocation_intrinsic(glsl_type::ivec2_type),
-                _read_invocation_intrinsic(glsl_type::ivec3_type),
-                _read_invocation_intrinsic(glsl_type::ivec4_type),
+                _read_invocation_intrinsic(&glsl_type_builtin_int),
+                _read_invocation_intrinsic(&glsl_type_builtin_ivec2),
+                _read_invocation_intrinsic(&glsl_type_builtin_ivec3),
+                _read_invocation_intrinsic(&glsl_type_builtin_ivec4),
 
-                _read_invocation_intrinsic(glsl_type::uint_type),
-                _read_invocation_intrinsic(glsl_type::uvec2_type),
-                _read_invocation_intrinsic(glsl_type::uvec3_type),
-                _read_invocation_intrinsic(glsl_type::uvec4_type),
+                _read_invocation_intrinsic(&glsl_type_builtin_uint),
+                _read_invocation_intrinsic(&glsl_type_builtin_uvec2),
+                _read_invocation_intrinsic(&glsl_type_builtin_uvec3),
+                _read_invocation_intrinsic(&glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("__intrinsic_read_first_invocation",
-                _read_first_invocation_intrinsic(glsl_type::float_type),
-                _read_first_invocation_intrinsic(glsl_type::vec2_type),
-                _read_first_invocation_intrinsic(glsl_type::vec3_type),
-                _read_first_invocation_intrinsic(glsl_type::vec4_type),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_float),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_vec2),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_vec3),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_vec4),
 
-                _read_first_invocation_intrinsic(glsl_type::int_type),
-                _read_first_invocation_intrinsic(glsl_type::ivec2_type),
-                _read_first_invocation_intrinsic(glsl_type::ivec3_type),
-                _read_first_invocation_intrinsic(glsl_type::ivec4_type),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_int),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_ivec2),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_ivec3),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_ivec4),
 
-                _read_first_invocation_intrinsic(glsl_type::uint_type),
-                _read_first_invocation_intrinsic(glsl_type::uvec2_type),
-                _read_first_invocation_intrinsic(glsl_type::uvec3_type),
-                _read_first_invocation_intrinsic(glsl_type::uvec4_type),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_uint),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_uvec2),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_uvec3),
+                _read_first_invocation_intrinsic(&glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("__intrinsic_helper_invocation",
@@ -1736,427 +1761,680 @@ builtin_builder::create_builtins()
 {
 #define F(NAME)                                 \
    add_function(#NAME,                          \
-                _##NAME(glsl_type::float_type), \
-                _##NAME(glsl_type::vec2_type),  \
-                _##NAME(glsl_type::vec3_type),  \
-                _##NAME(glsl_type::vec4_type),  \
+                _##NAME(&glsl_type_builtin_float), \
+                _##NAME(&glsl_type_builtin_vec2),  \
+                _##NAME(&glsl_type_builtin_vec3),  \
+                _##NAME(&glsl_type_builtin_vec4),  \
+                NULL);
+
+#define FHF(NAME)                                 \
+   add_function(#NAME,                          \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
+                NULL);
+
+#define FHF_DERIVATIVES(NAME)                                               \
+   add_function(#NAME,                                                      \
+                _##NAME(derivatives, &glsl_type_builtin_float),                \
+                _##NAME(derivatives, &glsl_type_builtin_vec2),                 \
+                _##NAME(derivatives, &glsl_type_builtin_vec3),                 \
+                _##NAME(derivatives, &glsl_type_builtin_vec4),                 \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_float16_t), \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_f16vec2),   \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_f16vec3),   \
+                _##NAME(half_float_derivatives, &glsl_type_builtin_f16vec4),   \
+                NULL);
+
+#define FHF_DERIVATIVE_CONTROL(NAME)                                               \
+   add_function(#NAME,                                                             \
+                _##NAME(derivative_control, &glsl_type_builtin_float),                \
+                _##NAME(derivative_control, &glsl_type_builtin_vec2),                 \
+                _##NAME(derivative_control, &glsl_type_builtin_vec3),                 \
+                _##NAME(derivative_control, &glsl_type_builtin_vec4),                 \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_float16_t), \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_f16vec2),   \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_f16vec3),   \
+                _##NAME(half_float_derivative_control, &glsl_type_builtin_f16vec4),   \
+                NULL);
+
+#define FHF130(NAME)                                 \
+   add_function(#NAME,                          \
+                _##NAME(v130, &glsl_type_builtin_float), \
+                _##NAME(v130, &glsl_type_builtin_vec2),  \
+                _##NAME(v130, &glsl_type_builtin_vec3),  \
+                _##NAME(v130, &glsl_type_builtin_vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define FD(NAME)                                 \
    add_function(#NAME,                          \
-                _##NAME(always_available, glsl_type::float_type), \
-                _##NAME(always_available, glsl_type::vec2_type),  \
-                _##NAME(always_available, glsl_type::vec3_type),  \
-                _##NAME(always_available, glsl_type::vec4_type),  \
-                _##NAME(fp64, glsl_type::double_type),  \
-                _##NAME(fp64, glsl_type::dvec2_type),    \
-                _##NAME(fp64, glsl_type::dvec3_type),     \
-                _##NAME(fp64, glsl_type::dvec4_type),      \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(fp64, &glsl_type_builtin_double),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),     \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                NULL);
+
+#define FDHF(NAME)                                 \
+   add_function(#NAME,                          \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(fp64, &glsl_type_builtin_double),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),     \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define FD130(NAME)                                 \
    add_function(#NAME,                          \
-                _##NAME(v130, glsl_type::float_type), \
-                _##NAME(v130, glsl_type::vec2_type),  \
-                _##NAME(v130, glsl_type::vec3_type),                  \
-                _##NAME(v130, glsl_type::vec4_type),  \
-                _##NAME(fp64, glsl_type::double_type),  \
-                _##NAME(fp64, glsl_type::dvec2_type),    \
-                _##NAME(fp64, glsl_type::dvec3_type),     \
-                _##NAME(fp64, glsl_type::dvec4_type),      \
+                _##NAME(v130, &glsl_type_builtin_float), \
+                _##NAME(v130, &glsl_type_builtin_vec2),  \
+                _##NAME(v130, &glsl_type_builtin_vec3),                  \
+                _##NAME(v130, &glsl_type_builtin_vec4),  \
+                _##NAME(fp64, &glsl_type_builtin_double),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),     \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                NULL);
+
+#define FDHF130(NAME)                                                      \
+   add_function(#NAME,                                                     \
+                _##NAME(v130, &glsl_type_builtin_float),                      \
+                _##NAME(v130, &glsl_type_builtin_vec2),                       \
+                _##NAME(v130, &glsl_type_builtin_vec3),                       \
+                _##NAME(v130, &glsl_type_builtin_vec4),                       \
+                _##NAME(fp64, &glsl_type_builtin_double),                     \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),   \
+                NULL);
+
+#define FDHF130GS4(NAME)                                                   \
+   add_function(#NAME,                                                     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_float),    \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec2),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec3),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec4),     \
+                _##NAME(fp64, &glsl_type_builtin_double),                  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),   \
                 NULL);
 
 #define FD130GS4(NAME)                          \
    add_function(#NAME,                          \
-                _##NAME(v130_or_gpu_shader4, glsl_type::float_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::vec2_type),  \
-                _##NAME(v130_or_gpu_shader4, glsl_type::vec3_type),  \
-                _##NAME(v130_or_gpu_shader4, glsl_type::vec4_type),  \
-                _##NAME(fp64, glsl_type::double_type),  \
-                _##NAME(fp64, glsl_type::dvec2_type),    \
-                _##NAME(fp64, glsl_type::dvec3_type),     \
-                _##NAME(fp64, glsl_type::dvec4_type),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_float), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec2),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec3),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_vec4),  \
+                _##NAME(fp64, &glsl_type_builtin_double),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),     \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),      \
                 NULL);
 
 #define FDGS5(NAME)                                 \
    add_function(#NAME,                          \
-                _##NAME(gpu_shader5_es, glsl_type::float_type), \
-                _##NAME(gpu_shader5_es, glsl_type::vec2_type),  \
-                _##NAME(gpu_shader5_es, glsl_type::vec3_type),                  \
-                _##NAME(gpu_shader5_es, glsl_type::vec4_type),  \
-                _##NAME(fp64, glsl_type::double_type),  \
-                _##NAME(fp64, glsl_type::dvec2_type),    \
-                _##NAME(fp64, glsl_type::dvec3_type),     \
-                _##NAME(fp64, glsl_type::dvec4_type),      \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_float), \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec2),  \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec3),                  \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec4),  \
+                _##NAME(fp64, &glsl_type_builtin_double),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),     \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),      \
+                NULL);
+
+#define FDHFGS5(NAME)                                                      \
+   add_function(#NAME,                                                     \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_float),            \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec2),             \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec3),             \
+                _##NAME(gpu_shader5_es, &glsl_type_builtin_vec4),             \
+                _##NAME(fp64, &glsl_type_builtin_double),                     \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),                      \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),   \
                 NULL);
 
 #define FI(NAME)                                \
    add_function(#NAME,                          \
-                _##NAME(glsl_type::float_type), \
-                _##NAME(glsl_type::vec2_type),  \
-                _##NAME(glsl_type::vec3_type),  \
-                _##NAME(glsl_type::vec4_type),  \
-                _##NAME(glsl_type::int_type),   \
-                _##NAME(glsl_type::ivec2_type), \
-                _##NAME(glsl_type::ivec3_type), \
-                _##NAME(glsl_type::ivec4_type), \
+                _##NAME(&glsl_type_builtin_float), \
+                _##NAME(&glsl_type_builtin_vec2),  \
+                _##NAME(&glsl_type_builtin_vec3),  \
+                _##NAME(&glsl_type_builtin_vec4),  \
+                _##NAME(&glsl_type_builtin_int),   \
+                _##NAME(&glsl_type_builtin_ivec2), \
+                _##NAME(&glsl_type_builtin_ivec3), \
+                _##NAME(&glsl_type_builtin_ivec4), \
                 NULL);
 
 #define FI64(NAME)                                \
    add_function(#NAME,                          \
-                _##NAME(always_available, glsl_type::float_type), \
-                _##NAME(always_available, glsl_type::vec2_type),  \
-                _##NAME(always_available, glsl_type::vec3_type),  \
-                _##NAME(always_available, glsl_type::vec4_type),  \
-                _##NAME(always_available, glsl_type::int_type),   \
-                _##NAME(always_available, glsl_type::ivec2_type), \
-                _##NAME(always_available, glsl_type::ivec3_type), \
-                _##NAME(always_available, glsl_type::ivec4_type), \
-                _##NAME(fp64, glsl_type::double_type), \
-                _##NAME(fp64, glsl_type::dvec2_type),  \
-                _##NAME(fp64, glsl_type::dvec3_type),  \
-                _##NAME(fp64, glsl_type::dvec4_type),  \
-                _##NAME(int64_avail, glsl_type::int64_t_type), \
-                _##NAME(int64_avail, glsl_type::i64vec2_type),  \
-                _##NAME(int64_avail, glsl_type::i64vec3_type),  \
-                _##NAME(int64_avail, glsl_type::i64vec4_type),  \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(always_available, &glsl_type_builtin_int),   \
+                _##NAME(always_available, &glsl_type_builtin_ivec2), \
+                _##NAME(always_available, &glsl_type_builtin_ivec3), \
+                _##NAME(always_available, &glsl_type_builtin_ivec4), \
+                _##NAME(fp64, &glsl_type_builtin_double), \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),  \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4),  \
                 NULL);
 
-#define FIUD_VEC(NAME)                                            \
+#define FI64HF(NAME)                                \
+   add_function(#NAME,                          \
+                _##NAME(always_available, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
+                _##NAME(always_available, &glsl_type_builtin_int),   \
+                _##NAME(always_available, &glsl_type_builtin_ivec2), \
+                _##NAME(always_available, &glsl_type_builtin_ivec3), \
+                _##NAME(always_available, &glsl_type_builtin_ivec4), \
+                _##NAME(fp64, &glsl_type_builtin_double), \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),  \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
+                NULL);
+
+#define FIUDHF_VEC(NAME)                                          \
    add_function(#NAME,                                            \
-                _##NAME(always_available, glsl_type::vec2_type),  \
-                _##NAME(always_available, glsl_type::vec3_type),  \
-                _##NAME(always_available, glsl_type::vec4_type),  \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
                                                                   \
-                _##NAME(always_available, glsl_type::ivec2_type), \
-                _##NAME(always_available, glsl_type::ivec3_type), \
-                _##NAME(always_available, glsl_type::ivec4_type), \
+                _##NAME(always_available, &glsl_type_builtin_ivec2), \
+                _##NAME(always_available, &glsl_type_builtin_ivec3), \
+                _##NAME(always_available, &glsl_type_builtin_ivec4), \
                                                                   \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec2_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec3_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec4_type), \
-                _##NAME(fp64, glsl_type::dvec2_type),  \
-                _##NAME(fp64, glsl_type::dvec3_type),  \
-                _##NAME(fp64, glsl_type::dvec4_type),  \
-                _##NAME(int64_avail, glsl_type::int64_t_type), \
-                _##NAME(int64_avail, glsl_type::i64vec2_type),  \
-                _##NAME(int64_avail, glsl_type::i64vec3_type),  \
-                _##NAME(int64_avail, glsl_type::i64vec4_type),  \
-                _##NAME(int64_avail, glsl_type::uint64_t_type), \
-                _##NAME(int64_avail, glsl_type::u64vec2_type),  \
-                _##NAME(int64_avail, glsl_type::u64vec3_type),  \
-                _##NAME(int64_avail, glsl_type::u64vec4_type),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4), \
+                _##NAME(fp64, &glsl_type_builtin_dvec2),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec3),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec4),  \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4),  \
+                _##NAME(int64_avail, &glsl_type_builtin_uint64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define IU(NAME)                                \
    add_function(#NAME,                          \
-                _##NAME(glsl_type::int_type),   \
-                _##NAME(glsl_type::ivec2_type), \
-                _##NAME(glsl_type::ivec3_type), \
-                _##NAME(glsl_type::ivec4_type), \
+                _##NAME(&glsl_type_builtin_int),   \
+                _##NAME(&glsl_type_builtin_ivec2), \
+                _##NAME(&glsl_type_builtin_ivec3), \
+                _##NAME(&glsl_type_builtin_ivec4), \
                                                 \
-                _##NAME(glsl_type::uint_type),  \
-                _##NAME(glsl_type::uvec2_type), \
-                _##NAME(glsl_type::uvec3_type), \
-                _##NAME(glsl_type::uvec4_type), \
+                _##NAME(&glsl_type_builtin_uint),  \
+                _##NAME(&glsl_type_builtin_uvec2), \
+                _##NAME(&glsl_type_builtin_uvec3), \
+                _##NAME(&glsl_type_builtin_uvec4), \
                 NULL);
 
-#define FIUBD_VEC(NAME)                                           \
+#define FIUBDHF_VEC(NAME)                                           \
    add_function(#NAME,                                            \
-                _##NAME(always_available, glsl_type::vec2_type),  \
-                _##NAME(always_available, glsl_type::vec3_type),  \
-                _##NAME(always_available, glsl_type::vec4_type),  \
+                _##NAME(always_available, &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4),  \
                                                                   \
-                _##NAME(always_available, glsl_type::ivec2_type), \
-                _##NAME(always_available, glsl_type::ivec3_type), \
-                _##NAME(always_available, glsl_type::ivec4_type), \
+                _##NAME(always_available, &glsl_type_builtin_ivec2), \
+                _##NAME(always_available, &glsl_type_builtin_ivec3), \
+                _##NAME(always_available, &glsl_type_builtin_ivec4), \
                                                                   \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec2_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec3_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec4_type), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4), \
                                                                   \
-                _##NAME(always_available, glsl_type::bvec2_type), \
-                _##NAME(always_available, glsl_type::bvec3_type), \
-                _##NAME(always_available, glsl_type::bvec4_type), \
+                _##NAME(always_available, &glsl_type_builtin_bvec2), \
+                _##NAME(always_available, &glsl_type_builtin_bvec3), \
+                _##NAME(always_available, &glsl_type_builtin_bvec4), \
                                                                   \
-                _##NAME(fp64, glsl_type::dvec2_type), \
-                _##NAME(fp64, glsl_type::dvec3_type), \
-                _##NAME(fp64, glsl_type::dvec4_type), \
-                _##NAME(int64_avail, glsl_type::int64_t_type), \
-                _##NAME(int64_avail, glsl_type::i64vec2_type),  \
-                _##NAME(int64_avail, glsl_type::i64vec3_type),  \
-                _##NAME(int64_avail, glsl_type::i64vec4_type),  \
-                _##NAME(int64_avail, glsl_type::uint64_t_type), \
-                _##NAME(int64_avail, glsl_type::u64vec2_type),  \
-                _##NAME(int64_avail, glsl_type::u64vec3_type),  \
-                _##NAME(int64_avail, glsl_type::u64vec4_type),  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2), \
+                _##NAME(fp64, &glsl_type_builtin_dvec3), \
+                _##NAME(fp64, &glsl_type_builtin_dvec4), \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4),  \
+                _##NAME(int64_avail, &glsl_type_builtin_uint64_t), \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2),  \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3),  \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3),  \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4),  \
                 NULL);
 
 #define FIUD2_MIXED(NAME)                                                                 \
    add_function(#NAME,                                                                   \
-                _##NAME(always_available, glsl_type::float_type, glsl_type::float_type), \
-                _##NAME(always_available, glsl_type::vec2_type,  glsl_type::float_type), \
-                _##NAME(always_available, glsl_type::vec3_type,  glsl_type::float_type), \
-                _##NAME(always_available, glsl_type::vec4_type,  glsl_type::float_type), \
+                _##NAME(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_float), \
+                _##NAME(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_float), \
                                                                                          \
-                _##NAME(always_available, glsl_type::vec2_type,  glsl_type::vec2_type),  \
-                _##NAME(always_available, glsl_type::vec3_type,  glsl_type::vec3_type),  \
-                _##NAME(always_available, glsl_type::vec4_type,  glsl_type::vec4_type),  \
+                _##NAME(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),  \
+                _##NAME(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),  \
+                _##NAME(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),  \
                                                                                          \
-                _##NAME(always_available, glsl_type::int_type,   glsl_type::int_type),   \
-                _##NAME(always_available, glsl_type::ivec2_type, glsl_type::int_type),   \
-                _##NAME(always_available, glsl_type::ivec3_type, glsl_type::int_type),   \
-                _##NAME(always_available, glsl_type::ivec4_type, glsl_type::int_type),   \
+                _##NAME(always_available, &glsl_type_builtin_int,   &glsl_type_builtin_int),   \
+                _##NAME(always_available, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),   \
+                _##NAME(always_available, &glsl_type_builtin_ivec3, &glsl_type_builtin_int),   \
+                _##NAME(always_available, &glsl_type_builtin_ivec4, &glsl_type_builtin_int),   \
                                                                                          \
-                _##NAME(always_available, glsl_type::ivec2_type, glsl_type::ivec2_type), \
-                _##NAME(always_available, glsl_type::ivec3_type, glsl_type::ivec3_type), \
-                _##NAME(always_available, glsl_type::ivec4_type, glsl_type::ivec4_type), \
+                _##NAME(always_available, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2), \
+                _##NAME(always_available, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3), \
+                _##NAME(always_available, &glsl_type_builtin_ivec4, &glsl_type_builtin_ivec4), \
                                                                                          \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uint_type,  glsl_type::uint_type),  \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec2_type, glsl_type::uint_type),  \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec3_type, glsl_type::uint_type),  \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec4_type, glsl_type::uint_type),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uint,  &glsl_type_builtin_uint),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2, &glsl_type_builtin_uint),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3, &glsl_type_builtin_uint),  \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4, &glsl_type_builtin_uint),  \
                                                                                          \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec2_type, glsl_type::uvec2_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec3_type, glsl_type::uvec3_type), \
-                _##NAME(v130_or_gpu_shader4, glsl_type::uvec4_type, glsl_type::uvec4_type), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2, &glsl_type_builtin_uvec2), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3, &glsl_type_builtin_uvec3), \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4, &glsl_type_builtin_uvec4), \
                                                                                          \
-                _##NAME(fp64, glsl_type::double_type, glsl_type::double_type),           \
-                _##NAME(fp64, glsl_type::dvec2_type, glsl_type::double_type),           \
-                _##NAME(fp64, glsl_type::dvec3_type, glsl_type::double_type),           \
-                _##NAME(fp64, glsl_type::dvec4_type, glsl_type::double_type),           \
-                _##NAME(fp64, glsl_type::dvec2_type, glsl_type::dvec2_type),           \
-                _##NAME(fp64, glsl_type::dvec3_type, glsl_type::dvec3_type),           \
-                _##NAME(fp64, glsl_type::dvec4_type, glsl_type::dvec4_type),           \
+                _##NAME(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),           \
+                _##NAME(fp64, &glsl_type_builtin_dvec2, &glsl_type_builtin_double),           \
+                _##NAME(fp64, &glsl_type_builtin_dvec3, &glsl_type_builtin_double),           \
+                _##NAME(fp64, &glsl_type_builtin_dvec4, &glsl_type_builtin_double),           \
+                _##NAME(fp64, &glsl_type_builtin_dvec2, &glsl_type_builtin_dvec2),           \
+                _##NAME(fp64, &glsl_type_builtin_dvec3, &glsl_type_builtin_dvec3),           \
+                _##NAME(fp64, &glsl_type_builtin_dvec4, &glsl_type_builtin_dvec4),           \
                                                                         \
-                _##NAME(int64_avail, glsl_type::int64_t_type, glsl_type::int64_t_type),     \
-                _##NAME(int64_avail, glsl_type::i64vec2_type, glsl_type::int64_t_type),     \
-                _##NAME(int64_avail, glsl_type::i64vec3_type, glsl_type::int64_t_type),     \
-                _##NAME(int64_avail, glsl_type::i64vec4_type, glsl_type::int64_t_type),     \
-                _##NAME(int64_avail, glsl_type::i64vec2_type, glsl_type::i64vec2_type),     \
-                _##NAME(int64_avail, glsl_type::i64vec3_type, glsl_type::i64vec3_type),     \
-                _##NAME(int64_avail, glsl_type::i64vec4_type, glsl_type::i64vec4_type),     \
-                _##NAME(int64_avail, glsl_type::uint64_t_type, glsl_type::uint64_t_type),   \
-                _##NAME(int64_avail, glsl_type::u64vec2_type, glsl_type::uint64_t_type),    \
-                _##NAME(int64_avail, glsl_type::u64vec3_type, glsl_type::uint64_t_type),    \
-                _##NAME(int64_avail, glsl_type::u64vec4_type, glsl_type::uint64_t_type),    \
-                _##NAME(int64_avail, glsl_type::u64vec2_type, glsl_type::u64vec2_type),     \
-                _##NAME(int64_avail, glsl_type::u64vec3_type, glsl_type::u64vec3_type),     \
-                _##NAME(int64_avail, glsl_type::u64vec4_type, glsl_type::u64vec4_type),     \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t, &glsl_type_builtin_int64_t),     \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_int64_t),     \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_int64_t),     \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_int64_t),     \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_i64vec2),     \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_i64vec3),     \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_i64vec4),     \
+                _##NAME(int64_avail, &glsl_type_builtin_uint64_t, &glsl_type_builtin_uint64_t),   \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_uint64_t),    \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_uint64_t),    \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_uint64_t),    \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_u64vec2),     \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_u64vec3),     \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_u64vec4),     \
                 NULL);
 
-   F(radians)
-   F(degrees)
-   F(sin)
-   F(cos)
-   F(tan)
-   F(asin)
-   F(acos)
+#define FIUDHF2_MIXED(NAME)                                                                           \
+   add_function(#NAME,                                                                                \
+                _##NAME(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),        \
+                _##NAME(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_float),        \
+                _##NAME(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_float),        \
+                _##NAME(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_float),        \
+                                                                                                      \
+                _##NAME(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),         \
+                _##NAME(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),         \
+                _##NAME(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),         \
+                                                                                                      \
+                _##NAME(always_available, &glsl_type_builtin_int,   &glsl_type_builtin_int),          \
+                _##NAME(always_available, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),          \
+                _##NAME(always_available, &glsl_type_builtin_ivec3, &glsl_type_builtin_int),          \
+                _##NAME(always_available, &glsl_type_builtin_ivec4, &glsl_type_builtin_int),          \
+                                                                                                      \
+                _##NAME(always_available, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),        \
+                _##NAME(always_available, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),        \
+                _##NAME(always_available, &glsl_type_builtin_ivec4, &glsl_type_builtin_ivec4),        \
+                                                                                                      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uint,  &glsl_type_builtin_uint),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2, &glsl_type_builtin_uint),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3, &glsl_type_builtin_uint),      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4, &glsl_type_builtin_uint),      \
+                                                                                                      \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec2, &glsl_type_builtin_uvec2),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec3, &glsl_type_builtin_uvec3),     \
+                _##NAME(v130_or_gpu_shader4, &glsl_type_builtin_uvec4, &glsl_type_builtin_uvec4),     \
+                                                                                                      \
+                _##NAME(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),                  \
+                _##NAME(fp64, &glsl_type_builtin_dvec2, &glsl_type_builtin_double),                   \
+                _##NAME(fp64, &glsl_type_builtin_dvec3, &glsl_type_builtin_double),                   \
+                _##NAME(fp64, &glsl_type_builtin_dvec4, &glsl_type_builtin_double),                   \
+                _##NAME(fp64, &glsl_type_builtin_dvec2, &glsl_type_builtin_dvec2),                    \
+                _##NAME(fp64, &glsl_type_builtin_dvec3, &glsl_type_builtin_dvec3),                    \
+                _##NAME(fp64, &glsl_type_builtin_dvec4, &glsl_type_builtin_dvec4),                    \
+                                                                                                      \
+                _##NAME(int64_avail, &glsl_type_builtin_int64_t, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_int64_t),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_i64vec2),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_i64vec3),         \
+                _##NAME(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_i64vec4),         \
+                _##NAME(int64_avail, &glsl_type_builtin_uint64_t, &glsl_type_builtin_uint64_t),       \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_uint64_t),        \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_uint64_t),        \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_uint64_t),        \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_u64vec2),         \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_u64vec3),         \
+                _##NAME(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_u64vec4),         \
+                                                                                                      \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t), \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2, &glsl_type_builtin_float16_t),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3, &glsl_type_builtin_float16_t),   \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4, &glsl_type_builtin_float16_t),   \
+                                                                                                            \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec2, &glsl_type_builtin_f16vec2),     \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec3, &glsl_type_builtin_f16vec3),     \
+                _##NAME(gpu_shader_half_float, &glsl_type_builtin_f16vec4, &glsl_type_builtin_f16vec4),     \
+                NULL);
+
+   FHF(radians)
+   FHF(degrees)
+   FHF(sin)
+   FHF(cos)
+   FHF(tan)
+   FHF(asin)
+   FHF(acos)
 
    add_function("atan",
-                _atan(glsl_type::float_type),
-                _atan(glsl_type::vec2_type),
-                _atan(glsl_type::vec3_type),
-                _atan(glsl_type::vec4_type),
-                _atan2(glsl_type::float_type),
-                _atan2(glsl_type::vec2_type),
-                _atan2(glsl_type::vec3_type),
-                _atan2(glsl_type::vec4_type),
+                _atan(always_available, &glsl_type_builtin_float),
+                _atan(always_available, &glsl_type_builtin_vec2),
+                _atan(always_available, &glsl_type_builtin_vec3),
+                _atan(always_available, &glsl_type_builtin_vec4),
+                _atan2(always_available, &glsl_type_builtin_float),
+                _atan2(always_available, &glsl_type_builtin_vec2),
+                _atan2(always_available, &glsl_type_builtin_vec3),
+                _atan2(always_available, &glsl_type_builtin_vec4),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_float16_t),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_f16vec2),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_f16vec3),
+                _atan(gpu_shader_half_float, &glsl_type_builtin_f16vec4),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_float16_t),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_f16vec2),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_f16vec3),
+                _atan2(gpu_shader_half_float, &glsl_type_builtin_f16vec4),
                 NULL);
 
-   F(sinh)
-   F(cosh)
-   F(tanh)
-   F(asinh)
-   F(acosh)
-   F(atanh)
-   F(pow)
-   F(exp)
-   F(log)
-   F(exp2)
-   F(log2)
-   FD(sqrt)
-   FD(inversesqrt)
-   FI64(abs)
-   FI64(sign)
-   FD(floor)
-   FD130(trunc)
-   FD130GS4(round)
-   FD130(roundEven)
-   FD(ceil)
-   FD(fract)
+   FHF130(sinh)
+   FHF130(cosh)
+   FHF130(tanh)
+   FHF130(asinh)
+   FHF130(acosh)
+   FHF130(atanh)
+   FHF(pow)
+   FHF(exp)
+   FHF(log)
+   FHF(exp2)
+   FHF(log2)
+   FDHF(sqrt)
+   FDHF(inversesqrt)
+   FI64HF(abs)
+   FI64HF(sign)
+   FDHF(floor)
+   FDHF130(trunc)
+   FDHF130GS4(round)
+   FDHF130(roundEven)
+   FDHF(ceil)
+   FDHF(fract)
 
    add_function("truncate",
-                _truncate(gpu_shader4, glsl_type::float_type),
-                _truncate(gpu_shader4, glsl_type::vec2_type),
-                _truncate(gpu_shader4, glsl_type::vec3_type),
-                _truncate(gpu_shader4, glsl_type::vec4_type),
+                _truncate(gpu_shader4, &glsl_type_builtin_float),
+                _truncate(gpu_shader4, &glsl_type_builtin_vec2),
+                _truncate(gpu_shader4, &glsl_type_builtin_vec3),
+                _truncate(gpu_shader4, &glsl_type_builtin_vec4),
                 NULL);
 
 
    add_function("mod",
-                _mod(always_available, glsl_type::float_type, glsl_type::float_type),
-                _mod(always_available, glsl_type::vec2_type,  glsl_type::float_type),
-                _mod(always_available, glsl_type::vec3_type,  glsl_type::float_type),
-                _mod(always_available, glsl_type::vec4_type,  glsl_type::float_type),
+                _mod(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),
+                _mod(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_float),
+                _mod(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_float),
+                _mod(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_float),
 
-                _mod(always_available, glsl_type::vec2_type,  glsl_type::vec2_type),
-                _mod(always_available, glsl_type::vec3_type,  glsl_type::vec3_type),
-                _mod(always_available, glsl_type::vec4_type,  glsl_type::vec4_type),
+                _mod(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),
+                _mod(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),
+                _mod(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),
 
-                _mod(fp64, glsl_type::double_type, glsl_type::double_type),
-                _mod(fp64, glsl_type::dvec2_type,  glsl_type::double_type),
-                _mod(fp64, glsl_type::dvec3_type,  glsl_type::double_type),
-                _mod(fp64, glsl_type::dvec4_type,  glsl_type::double_type),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_float16_t),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_float16_t),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_float16_t),
 
-                _mod(fp64, glsl_type::dvec2_type,  glsl_type::dvec2_type),
-                _mod(fp64, glsl_type::dvec3_type,  glsl_type::dvec3_type),
-                _mod(fp64, glsl_type::dvec4_type,  glsl_type::dvec4_type),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _mod(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
+
+                _mod(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),
+                _mod(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_double),
+                _mod(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_double),
+                _mod(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_double),
+
+                _mod(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_dvec2),
+                _mod(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_dvec3),
+                _mod(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
                 NULL);
 
-   FD130(modf)
+   FDHF130(modf)
 
-   FIUD2_MIXED(min)
-   FIUD2_MIXED(max)
-   FIUD2_MIXED(clamp)
+   FIUDHF2_MIXED(min)
+   FIUDHF2_MIXED(max)
+   FIUDHF2_MIXED(clamp)
 
    add_function("mix",
-                _mix_lrp(always_available, glsl_type::float_type, glsl_type::float_type),
-                _mix_lrp(always_available, glsl_type::vec2_type,  glsl_type::float_type),
-                _mix_lrp(always_available, glsl_type::vec3_type,  glsl_type::float_type),
-                _mix_lrp(always_available, glsl_type::vec4_type,  glsl_type::float_type),
+                _mix_lrp(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),
+                _mix_lrp(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_float),
+                _mix_lrp(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_float),
+                _mix_lrp(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_float),
 
-                _mix_lrp(always_available, glsl_type::vec2_type,  glsl_type::vec2_type),
-                _mix_lrp(always_available, glsl_type::vec3_type,  glsl_type::vec3_type),
-                _mix_lrp(always_available, glsl_type::vec4_type,  glsl_type::vec4_type),
+                _mix_lrp(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),
+                _mix_lrp(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),
+                _mix_lrp(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),
 
-                _mix_lrp(fp64, glsl_type::double_type, glsl_type::double_type),
-                _mix_lrp(fp64, glsl_type::dvec2_type,  glsl_type::double_type),
-                _mix_lrp(fp64, glsl_type::dvec3_type,  glsl_type::double_type),
-                _mix_lrp(fp64, glsl_type::dvec4_type,  glsl_type::double_type),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_float16_t),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_float16_t),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_float16_t),
 
-                _mix_lrp(fp64, glsl_type::dvec2_type,  glsl_type::dvec2_type),
-                _mix_lrp(fp64, glsl_type::dvec3_type,  glsl_type::dvec3_type),
-                _mix_lrp(fp64, glsl_type::dvec4_type,  glsl_type::dvec4_type),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _mix_lrp(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
 
-                _mix_sel(v130, glsl_type::float_type, glsl_type::bool_type),
-                _mix_sel(v130, glsl_type::vec2_type,  glsl_type::bvec2_type),
-                _mix_sel(v130, glsl_type::vec3_type,  glsl_type::bvec3_type),
-                _mix_sel(v130, glsl_type::vec4_type,  glsl_type::bvec4_type),
+                _mix_lrp(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),
+                _mix_lrp(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_double),
+                _mix_lrp(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_double),
+                _mix_lrp(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_double),
 
-                _mix_sel(fp64, glsl_type::double_type, glsl_type::bool_type),
-                _mix_sel(fp64, glsl_type::dvec2_type,  glsl_type::bvec2_type),
-                _mix_sel(fp64, glsl_type::dvec3_type,  glsl_type::bvec3_type),
-                _mix_sel(fp64, glsl_type::dvec4_type,  glsl_type::bvec4_type),
+                _mix_lrp(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_dvec2),
+                _mix_lrp(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_dvec3),
+                _mix_lrp(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
 
-                _mix_sel(shader_integer_mix, glsl_type::int_type,   glsl_type::bool_type),
-                _mix_sel(shader_integer_mix, glsl_type::ivec2_type, glsl_type::bvec2_type),
-                _mix_sel(shader_integer_mix, glsl_type::ivec3_type, glsl_type::bvec3_type),
-                _mix_sel(shader_integer_mix, glsl_type::ivec4_type, glsl_type::bvec4_type),
+                _mix_sel(v130, &glsl_type_builtin_float, &glsl_type_builtin_bool),
+                _mix_sel(v130, &glsl_type_builtin_vec2,  &glsl_type_builtin_bvec2),
+                _mix_sel(v130, &glsl_type_builtin_vec3,  &glsl_type_builtin_bvec3),
+                _mix_sel(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_bvec4),
 
-                _mix_sel(shader_integer_mix, glsl_type::uint_type,  glsl_type::bool_type),
-                _mix_sel(shader_integer_mix, glsl_type::uvec2_type, glsl_type::bvec2_type),
-                _mix_sel(shader_integer_mix, glsl_type::uvec3_type, glsl_type::bvec3_type),
-                _mix_sel(shader_integer_mix, glsl_type::uvec4_type, glsl_type::bvec4_type),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_bool),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_bvec2),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_bvec3),
+                _mix_sel(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_bvec4),
 
-                _mix_sel(shader_integer_mix, glsl_type::bool_type,  glsl_type::bool_type),
-                _mix_sel(shader_integer_mix, glsl_type::bvec2_type, glsl_type::bvec2_type),
-                _mix_sel(shader_integer_mix, glsl_type::bvec3_type, glsl_type::bvec3_type),
-                _mix_sel(shader_integer_mix, glsl_type::bvec4_type, glsl_type::bvec4_type),
+                _mix_sel(fp64, &glsl_type_builtin_double, &glsl_type_builtin_bool),
+                _mix_sel(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_bvec2),
+                _mix_sel(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_bvec3),
+                _mix_sel(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_bvec4),
 
-                _mix_sel(int64_avail, glsl_type::int64_t_type, glsl_type::bool_type),
-                _mix_sel(int64_avail, glsl_type::i64vec2_type, glsl_type::bvec2_type),
-                _mix_sel(int64_avail, glsl_type::i64vec3_type, glsl_type::bvec3_type),
-                _mix_sel(int64_avail, glsl_type::i64vec4_type, glsl_type::bvec4_type),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_int,   &glsl_type_builtin_bool),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_ivec2, &glsl_type_builtin_bvec2),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_ivec3, &glsl_type_builtin_bvec3),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_ivec4, &glsl_type_builtin_bvec4),
 
-                _mix_sel(int64_avail, glsl_type::uint64_t_type,  glsl_type::bool_type),
-                _mix_sel(int64_avail, glsl_type::u64vec2_type, glsl_type::bvec2_type),
-                _mix_sel(int64_avail, glsl_type::u64vec3_type, glsl_type::bvec3_type),
-                _mix_sel(int64_avail, glsl_type::u64vec4_type, glsl_type::bvec4_type),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_uint,  &glsl_type_builtin_bool),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_uvec2, &glsl_type_builtin_bvec2),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_uvec3, &glsl_type_builtin_bvec3),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_uvec4, &glsl_type_builtin_bvec4),
+
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_bool,  &glsl_type_builtin_bool),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_bvec2, &glsl_type_builtin_bvec2),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_bvec3, &glsl_type_builtin_bvec3),
+                _mix_sel(shader_integer_mix, &glsl_type_builtin_bvec4, &glsl_type_builtin_bvec4),
+
+                _mix_sel(int64_avail, &glsl_type_builtin_int64_t, &glsl_type_builtin_bool),
+                _mix_sel(int64_avail, &glsl_type_builtin_i64vec2, &glsl_type_builtin_bvec2),
+                _mix_sel(int64_avail, &glsl_type_builtin_i64vec3, &glsl_type_builtin_bvec3),
+                _mix_sel(int64_avail, &glsl_type_builtin_i64vec4, &glsl_type_builtin_bvec4),
+
+                _mix_sel(int64_avail, &glsl_type_builtin_uint64_t,  &glsl_type_builtin_bool),
+                _mix_sel(int64_avail, &glsl_type_builtin_u64vec2, &glsl_type_builtin_bvec2),
+                _mix_sel(int64_avail, &glsl_type_builtin_u64vec3, &glsl_type_builtin_bvec3),
+                _mix_sel(int64_avail, &glsl_type_builtin_u64vec4, &glsl_type_builtin_bvec4),
                 NULL);
 
    add_function("step",
-                _step(always_available, glsl_type::float_type, glsl_type::float_type),
-                _step(always_available, glsl_type::float_type, glsl_type::vec2_type),
-                _step(always_available, glsl_type::float_type, glsl_type::vec3_type),
-                _step(always_available, glsl_type::float_type, glsl_type::vec4_type),
+                _step(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),
+                _step(always_available, &glsl_type_builtin_float, &glsl_type_builtin_vec2),
+                _step(always_available, &glsl_type_builtin_float, &glsl_type_builtin_vec3),
+                _step(always_available, &glsl_type_builtin_float, &glsl_type_builtin_vec4),
 
-                _step(always_available, glsl_type::vec2_type,  glsl_type::vec2_type),
-                _step(always_available, glsl_type::vec3_type,  glsl_type::vec3_type),
-                _step(always_available, glsl_type::vec4_type,  glsl_type::vec4_type),
-                _step(fp64, glsl_type::double_type, glsl_type::double_type),
-                _step(fp64, glsl_type::double_type, glsl_type::dvec2_type),
-                _step(fp64, glsl_type::double_type, glsl_type::dvec3_type),
-                _step(fp64, glsl_type::double_type, glsl_type::dvec4_type),
+                _step(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),
+                _step(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),
+                _step(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),
+                _step(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),
+                _step(fp64, &glsl_type_builtin_double, &glsl_type_builtin_dvec2),
+                _step(fp64, &glsl_type_builtin_double, &glsl_type_builtin_dvec3),
+                _step(fp64, &glsl_type_builtin_double, &glsl_type_builtin_dvec4),
 
-                _step(fp64, glsl_type::dvec2_type,  glsl_type::dvec2_type),
-                _step(fp64, glsl_type::dvec3_type,  glsl_type::dvec3_type),
-                _step(fp64, glsl_type::dvec4_type,  glsl_type::dvec4_type),
+                _step(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_dvec2),
+                _step(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_dvec3),
+                _step(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
+
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec2),
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec3),
+                _step(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec4),
+
+                _step(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _step(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _step(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
                 NULL);
 
    add_function("smoothstep",
-                _smoothstep(always_available, glsl_type::float_type, glsl_type::float_type),
-                _smoothstep(always_available, glsl_type::float_type, glsl_type::vec2_type),
-                _smoothstep(always_available, glsl_type::float_type, glsl_type::vec3_type),
-                _smoothstep(always_available, glsl_type::float_type, glsl_type::vec4_type),
+                _smoothstep(always_available, &glsl_type_builtin_float, &glsl_type_builtin_float),
+                _smoothstep(always_available, &glsl_type_builtin_float, &glsl_type_builtin_vec2),
+                _smoothstep(always_available, &glsl_type_builtin_float, &glsl_type_builtin_vec3),
+                _smoothstep(always_available, &glsl_type_builtin_float, &glsl_type_builtin_vec4),
 
-                _smoothstep(always_available, glsl_type::vec2_type,  glsl_type::vec2_type),
-                _smoothstep(always_available, glsl_type::vec3_type,  glsl_type::vec3_type),
-                _smoothstep(always_available, glsl_type::vec4_type,  glsl_type::vec4_type),
-                _smoothstep(fp64, glsl_type::double_type, glsl_type::double_type),
-                _smoothstep(fp64, glsl_type::double_type, glsl_type::dvec2_type),
-                _smoothstep(fp64, glsl_type::double_type, glsl_type::dvec3_type),
-                _smoothstep(fp64, glsl_type::double_type, glsl_type::dvec4_type),
+                _smoothstep(always_available, &glsl_type_builtin_vec2,  &glsl_type_builtin_vec2),
+                _smoothstep(always_available, &glsl_type_builtin_vec3,  &glsl_type_builtin_vec3),
+                _smoothstep(always_available, &glsl_type_builtin_vec4,  &glsl_type_builtin_vec4),
+                _smoothstep(fp64, &glsl_type_builtin_double, &glsl_type_builtin_double),
+                _smoothstep(fp64, &glsl_type_builtin_double, &glsl_type_builtin_dvec2),
+                _smoothstep(fp64, &glsl_type_builtin_double, &glsl_type_builtin_dvec3),
+                _smoothstep(fp64, &glsl_type_builtin_double, &glsl_type_builtin_dvec4),
 
-                _smoothstep(fp64, glsl_type::dvec2_type,  glsl_type::dvec2_type),
-                _smoothstep(fp64, glsl_type::dvec3_type,  glsl_type::dvec3_type),
-                _smoothstep(fp64, glsl_type::dvec4_type,  glsl_type::dvec4_type),
+                _smoothstep(fp64, &glsl_type_builtin_dvec2,  &glsl_type_builtin_dvec2),
+                _smoothstep(fp64, &glsl_type_builtin_dvec3,  &glsl_type_builtin_dvec3),
+                _smoothstep(fp64, &glsl_type_builtin_dvec4,  &glsl_type_builtin_dvec4),
+
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_float16_t),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec2),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec3),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_float16_t, &glsl_type_builtin_f16vec4),
+
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_f16vec2,  &glsl_type_builtin_f16vec2),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_f16vec3,  &glsl_type_builtin_f16vec3),
+                _smoothstep(gpu_shader_half_float, &glsl_type_builtin_f16vec4,  &glsl_type_builtin_f16vec4),
                 NULL);
 
-   FD130(isnan)
-   FD130(isinf)
+   FDHF130(isnan)
+   FDHF130(isinf)
 
    F(floatBitsToInt)
    F(floatBitsToUint)
    add_function("intBitsToFloat",
-                _intBitsToFloat(glsl_type::int_type),
-                _intBitsToFloat(glsl_type::ivec2_type),
-                _intBitsToFloat(glsl_type::ivec3_type),
-                _intBitsToFloat(glsl_type::ivec4_type),
+                _intBitsToFloat(&glsl_type_builtin_int),
+                _intBitsToFloat(&glsl_type_builtin_ivec2),
+                _intBitsToFloat(&glsl_type_builtin_ivec3),
+                _intBitsToFloat(&glsl_type_builtin_ivec4),
                 NULL);
    add_function("uintBitsToFloat",
-                _uintBitsToFloat(glsl_type::uint_type),
-                _uintBitsToFloat(glsl_type::uvec2_type),
-                _uintBitsToFloat(glsl_type::uvec3_type),
-                _uintBitsToFloat(glsl_type::uvec4_type),
+                _uintBitsToFloat(&glsl_type_builtin_uint),
+                _uintBitsToFloat(&glsl_type_builtin_uvec2),
+                _uintBitsToFloat(&glsl_type_builtin_uvec3),
+                _uintBitsToFloat(&glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("doubleBitsToInt64",
-                _doubleBitsToInt64(int64_fp64, glsl_type::double_type),
-                _doubleBitsToInt64(int64_fp64, glsl_type::dvec2_type),
-                _doubleBitsToInt64(int64_fp64, glsl_type::dvec3_type),
-                _doubleBitsToInt64(int64_fp64, glsl_type::dvec4_type),
+                _doubleBitsToInt64(int64_fp64, &glsl_type_builtin_double),
+                _doubleBitsToInt64(int64_fp64, &glsl_type_builtin_dvec2),
+                _doubleBitsToInt64(int64_fp64, &glsl_type_builtin_dvec3),
+                _doubleBitsToInt64(int64_fp64, &glsl_type_builtin_dvec4),
                 NULL);
 
    add_function("doubleBitsToUint64",
-                _doubleBitsToUint64(int64_fp64, glsl_type::double_type),
-                _doubleBitsToUint64(int64_fp64, glsl_type::dvec2_type),
-                _doubleBitsToUint64(int64_fp64, glsl_type::dvec3_type),
-                _doubleBitsToUint64(int64_fp64, glsl_type::dvec4_type),
+                _doubleBitsToUint64(int64_fp64, &glsl_type_builtin_double),
+                _doubleBitsToUint64(int64_fp64, &glsl_type_builtin_dvec2),
+                _doubleBitsToUint64(int64_fp64, &glsl_type_builtin_dvec3),
+                _doubleBitsToUint64(int64_fp64, &glsl_type_builtin_dvec4),
                 NULL);
 
    add_function("int64BitsToDouble",
-                _int64BitsToDouble(int64_fp64, glsl_type::int64_t_type),
-                _int64BitsToDouble(int64_fp64, glsl_type::i64vec2_type),
-                _int64BitsToDouble(int64_fp64, glsl_type::i64vec3_type),
-                _int64BitsToDouble(int64_fp64, glsl_type::i64vec4_type),
+                _int64BitsToDouble(int64_fp64, &glsl_type_builtin_int64_t),
+                _int64BitsToDouble(int64_fp64, &glsl_type_builtin_i64vec2),
+                _int64BitsToDouble(int64_fp64, &glsl_type_builtin_i64vec3),
+                _int64BitsToDouble(int64_fp64, &glsl_type_builtin_i64vec4),
                 NULL);
 
    add_function("uint64BitsToDouble",
-                _uint64BitsToDouble(int64_fp64, glsl_type::uint64_t_type),
-                _uint64BitsToDouble(int64_fp64, glsl_type::u64vec2_type),
-                _uint64BitsToDouble(int64_fp64, glsl_type::u64vec3_type),
-                _uint64BitsToDouble(int64_fp64, glsl_type::u64vec4_type),
+                _uint64BitsToDouble(int64_fp64, &glsl_type_builtin_uint64_t),
+                _uint64BitsToDouble(int64_fp64, &glsl_type_builtin_u64vec2),
+                _uint64BitsToDouble(int64_fp64, &glsl_type_builtin_u64vec3),
+                _uint64BitsToDouble(int64_fp64, &glsl_type_builtin_u64vec4),
                 NULL);
 
    add_function("packUnorm2x16",   _packUnorm2x16(shader_packing_or_es3_or_gpu_shader5),   NULL);
@@ -2169,6 +2447,8 @@ builtin_builder::create_builtins()
    add_function("unpackSnorm4x8",  _unpackSnorm4x8(shader_packing_or_es31_or_gpu_shader5), NULL);
    add_function("packHalf2x16",    _packHalf2x16(shader_packing_or_es3),                   NULL);
    add_function("unpackHalf2x16",  _unpackHalf2x16(shader_packing_or_es3),                 NULL);
+   add_function("packFloat2x16",    _packFloat2x16(gpu_shader_half_float),                 NULL);
+   add_function("unpackFloat2x16",  _unpackFloat2x16(gpu_shader_half_float),               NULL);
    add_function("packDouble2x32",    _packDouble2x32(fp64),                   NULL);
    add_function("unpackDouble2x32",  _unpackDouble2x32(fp64),                 NULL);
 
@@ -2177,2553 +2457,2587 @@ builtin_builder::create_builtins()
    add_function("packUint2x32",    _packUint2x32(int64_avail),                   NULL);
    add_function("unpackUint2x32",  _unpackUint2x32(int64_avail),                 NULL);
 
-   FD(length)
-   FD(distance)
-   FD(dot)
+   FDHF(length)
+   FDHF(distance)
+   FDHF(dot)
 
-   add_function("cross", _cross(always_available, glsl_type::vec3_type),
-                _cross(fp64, glsl_type::dvec3_type), NULL);
+   add_function("cross", _cross(always_available, &glsl_type_builtin_vec3),
+                _cross(fp64, &glsl_type_builtin_dvec3),
+                _cross(gpu_shader_half_float, &glsl_type_builtin_f16vec3),
+                NULL);
 
-   FD(normalize)
+   FDHF(normalize)
    add_function("ftransform", _ftransform(), NULL);
-   FD(faceforward)
-   FD(reflect)
-   FD(refract)
+   FDHF(faceforward)
+   FDHF(reflect)
+   FDHF(refract)
    // ...
    add_function("matrixCompMult",
-                _matrixCompMult(always_available, glsl_type::mat2_type),
-                _matrixCompMult(always_available, glsl_type::mat3_type),
-                _matrixCompMult(always_available, glsl_type::mat4_type),
-                _matrixCompMult(always_available, glsl_type::mat2x3_type),
-                _matrixCompMult(always_available, glsl_type::mat2x4_type),
-                _matrixCompMult(always_available, glsl_type::mat3x2_type),
-                _matrixCompMult(always_available, glsl_type::mat3x4_type),
-                _matrixCompMult(always_available, glsl_type::mat4x2_type),
-                _matrixCompMult(always_available, glsl_type::mat4x3_type),
-                _matrixCompMult(fp64, glsl_type::dmat2_type),
-                _matrixCompMult(fp64, glsl_type::dmat3_type),
-                _matrixCompMult(fp64, glsl_type::dmat4_type),
-                _matrixCompMult(fp64, glsl_type::dmat2x3_type),
-                _matrixCompMult(fp64, glsl_type::dmat2x4_type),
-                _matrixCompMult(fp64, glsl_type::dmat3x2_type),
-                _matrixCompMult(fp64, glsl_type::dmat3x4_type),
-                _matrixCompMult(fp64, glsl_type::dmat4x2_type),
-                _matrixCompMult(fp64, glsl_type::dmat4x3_type),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat2),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat3),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat4),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat2x3),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat2x4),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat3x2),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat3x4),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat4x2),
+                _matrixCompMult(always_available, &glsl_type_builtin_mat4x3),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat2),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat3),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat4),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat2x3),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat2x4),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat3x2),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat3x4),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat4x2),
+                _matrixCompMult(fp64, &glsl_type_builtin_dmat4x3),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat2x3),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat2x4),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat3x2),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat3x4),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
+                _matrixCompMult(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
    add_function("outerProduct",
-                _outerProduct(v120, glsl_type::mat2_type),
-                _outerProduct(v120, glsl_type::mat3_type),
-                _outerProduct(v120, glsl_type::mat4_type),
-                _outerProduct(v120, glsl_type::mat2x3_type),
-                _outerProduct(v120, glsl_type::mat2x4_type),
-                _outerProduct(v120, glsl_type::mat3x2_type),
-                _outerProduct(v120, glsl_type::mat3x4_type),
-                _outerProduct(v120, glsl_type::mat4x2_type),
-                _outerProduct(v120, glsl_type::mat4x3_type),
-                _outerProduct(fp64, glsl_type::dmat2_type),
-                _outerProduct(fp64, glsl_type::dmat3_type),
-                _outerProduct(fp64, glsl_type::dmat4_type),
-                _outerProduct(fp64, glsl_type::dmat2x3_type),
-                _outerProduct(fp64, glsl_type::dmat2x4_type),
-                _outerProduct(fp64, glsl_type::dmat3x2_type),
-                _outerProduct(fp64, glsl_type::dmat3x4_type),
-                _outerProduct(fp64, glsl_type::dmat4x2_type),
-                _outerProduct(fp64, glsl_type::dmat4x3_type),
+                _outerProduct(v120, &glsl_type_builtin_mat2),
+                _outerProduct(v120, &glsl_type_builtin_mat3),
+                _outerProduct(v120, &glsl_type_builtin_mat4),
+                _outerProduct(v120, &glsl_type_builtin_mat2x3),
+                _outerProduct(v120, &glsl_type_builtin_mat2x4),
+                _outerProduct(v120, &glsl_type_builtin_mat3x2),
+                _outerProduct(v120, &glsl_type_builtin_mat3x4),
+                _outerProduct(v120, &glsl_type_builtin_mat4x2),
+                _outerProduct(v120, &glsl_type_builtin_mat4x3),
+                _outerProduct(fp64, &glsl_type_builtin_dmat2),
+                _outerProduct(fp64, &glsl_type_builtin_dmat3),
+                _outerProduct(fp64, &glsl_type_builtin_dmat4),
+                _outerProduct(fp64, &glsl_type_builtin_dmat2x3),
+                _outerProduct(fp64, &glsl_type_builtin_dmat2x4),
+                _outerProduct(fp64, &glsl_type_builtin_dmat3x2),
+                _outerProduct(fp64, &glsl_type_builtin_dmat3x4),
+                _outerProduct(fp64, &glsl_type_builtin_dmat4x2),
+                _outerProduct(fp64, &glsl_type_builtin_dmat4x3),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat2x3),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat2x4),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat3x2),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat3x4),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
+                _outerProduct(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
    add_function("determinant",
-                _determinant_mat2(v120, glsl_type::mat2_type),
-                _determinant_mat3(v120, glsl_type::mat3_type),
-                _determinant_mat4(v120, glsl_type::mat4_type),
-                _determinant_mat2(fp64, glsl_type::dmat2_type),
-                _determinant_mat3(fp64, glsl_type::dmat3_type),
-                _determinant_mat4(fp64, glsl_type::dmat4_type),
-
+                _determinant_mat2(v120, &glsl_type_builtin_mat2),
+                _determinant_mat3(v120, &glsl_type_builtin_mat3),
+                _determinant_mat4(v120, &glsl_type_builtin_mat4),
+                _determinant_mat2(fp64, &glsl_type_builtin_dmat2),
+                _determinant_mat3(fp64, &glsl_type_builtin_dmat3),
+                _determinant_mat4(fp64, &glsl_type_builtin_dmat4),
+                _determinant_mat2(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _determinant_mat3(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _determinant_mat4(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
                 NULL);
    add_function("inverse",
-                _inverse_mat2(v140_or_es3, glsl_type::mat2_type),
-                _inverse_mat3(v140_or_es3, glsl_type::mat3_type),
-                _inverse_mat4(v140_or_es3, glsl_type::mat4_type),
-                _inverse_mat2(fp64, glsl_type::dmat2_type),
-                _inverse_mat3(fp64, glsl_type::dmat3_type),
-                _inverse_mat4(fp64, glsl_type::dmat4_type),
+                _inverse_mat2(v140_or_es3, &glsl_type_builtin_mat2),
+                _inverse_mat3(v140_or_es3, &glsl_type_builtin_mat3),
+                _inverse_mat4(v140_or_es3, &glsl_type_builtin_mat4),
+                _inverse_mat2(fp64, &glsl_type_builtin_dmat2),
+                _inverse_mat3(fp64, &glsl_type_builtin_dmat3),
+                _inverse_mat4(fp64, &glsl_type_builtin_dmat4),
+                _inverse_mat2(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _inverse_mat3(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _inverse_mat4(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
                 NULL);
    add_function("transpose",
-                _transpose(v120, glsl_type::mat2_type),
-                _transpose(v120, glsl_type::mat3_type),
-                _transpose(v120, glsl_type::mat4_type),
-                _transpose(v120, glsl_type::mat2x3_type),
-                _transpose(v120, glsl_type::mat2x4_type),
-                _transpose(v120, glsl_type::mat3x2_type),
-                _transpose(v120, glsl_type::mat3x4_type),
-                _transpose(v120, glsl_type::mat4x2_type),
-                _transpose(v120, glsl_type::mat4x3_type),
-                _transpose(fp64, glsl_type::dmat2_type),
-                _transpose(fp64, glsl_type::dmat3_type),
-                _transpose(fp64, glsl_type::dmat4_type),
-                _transpose(fp64, glsl_type::dmat2x3_type),
-                _transpose(fp64, glsl_type::dmat2x4_type),
-                _transpose(fp64, glsl_type::dmat3x2_type),
-                _transpose(fp64, glsl_type::dmat3x4_type),
-                _transpose(fp64, glsl_type::dmat4x2_type),
-                _transpose(fp64, glsl_type::dmat4x3_type),
+                _transpose(v120, &glsl_type_builtin_mat2),
+                _transpose(v120, &glsl_type_builtin_mat3),
+                _transpose(v120, &glsl_type_builtin_mat4),
+                _transpose(v120, &glsl_type_builtin_mat2x3),
+                _transpose(v120, &glsl_type_builtin_mat2x4),
+                _transpose(v120, &glsl_type_builtin_mat3x2),
+                _transpose(v120, &glsl_type_builtin_mat3x4),
+                _transpose(v120, &glsl_type_builtin_mat4x2),
+                _transpose(v120, &glsl_type_builtin_mat4x3),
+                _transpose(fp64, &glsl_type_builtin_dmat2),
+                _transpose(fp64, &glsl_type_builtin_dmat3),
+                _transpose(fp64, &glsl_type_builtin_dmat4),
+                _transpose(fp64, &glsl_type_builtin_dmat2x3),
+                _transpose(fp64, &glsl_type_builtin_dmat2x4),
+                _transpose(fp64, &glsl_type_builtin_dmat3x2),
+                _transpose(fp64, &glsl_type_builtin_dmat3x4),
+                _transpose(fp64, &glsl_type_builtin_dmat4x2),
+                _transpose(fp64, &glsl_type_builtin_dmat4x3),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat2),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat3),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat2x3),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat2x4),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat3x2),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat3x4),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4x2),
+                _transpose(gpu_shader_half_float, &glsl_type_builtin_f16mat4x3),
                 NULL);
-   FIUD_VEC(lessThan)
-   FIUD_VEC(lessThanEqual)
-   FIUD_VEC(greaterThan)
-   FIUD_VEC(greaterThanEqual)
-   FIUBD_VEC(notEqual)
-   FIUBD_VEC(equal)
+   FIUDHF_VEC(lessThan)
+   FIUDHF_VEC(lessThanEqual)
+   FIUDHF_VEC(greaterThan)
+   FIUDHF_VEC(greaterThanEqual)
+   FIUBDHF_VEC(notEqual)
+   FIUBDHF_VEC(equal)
 
    add_function("any",
-                _any(glsl_type::bvec2_type),
-                _any(glsl_type::bvec3_type),
-                _any(glsl_type::bvec4_type),
+                _any(&glsl_type_builtin_bvec2),
+                _any(&glsl_type_builtin_bvec3),
+                _any(&glsl_type_builtin_bvec4),
                 NULL);
 
    add_function("all",
-                _all(glsl_type::bvec2_type),
-                _all(glsl_type::bvec3_type),
-                _all(glsl_type::bvec4_type),
+                _all(&glsl_type_builtin_bvec2),
+                _all(&glsl_type_builtin_bvec3),
+                _all(&glsl_type_builtin_bvec4),
                 NULL);
 
    add_function("not",
-                _not(glsl_type::bvec2_type),
-                _not(glsl_type::bvec3_type),
-                _not(glsl_type::bvec4_type),
+                _not(&glsl_type_builtin_bvec2),
+                _not(&glsl_type_builtin_bvec3),
+                _not(&glsl_type_builtin_bvec4),
                 NULL);
 
    add_function("textureSize",
-                _textureSize(v130, glsl_type::int_type,   glsl_type::sampler1D_type),
-                _textureSize(v130, glsl_type::int_type,   glsl_type::isampler1D_type),
-                _textureSize(v130, glsl_type::int_type,   glsl_type::usampler1D_type),
+                _textureSize(v130, &glsl_type_builtin_int,   &glsl_type_builtin_sampler1D),
+                _textureSize(v130, &glsl_type_builtin_int,   &glsl_type_builtin_isampler1D),
+                _textureSize(v130, &glsl_type_builtin_int,   &glsl_type_builtin_usampler1D),
 
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::sampler2D_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::isampler2D_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::usampler2D_type),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2D),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler2D),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler2D),
 
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::sampler3D_type),
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::isampler3D_type),
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::usampler3D_type),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_sampler3D),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_isampler3D),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_usampler3D),
 
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::samplerCube_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::isamplerCube_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::usamplerCube_type),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_samplerCube),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_isamplerCube),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_usamplerCube),
 
-                _textureSize(v130, glsl_type::int_type,   glsl_type::sampler1DShadow_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::sampler2DShadow_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::samplerCubeShadow_type),
+                _textureSize(v130, &glsl_type_builtin_int,   &glsl_type_builtin_sampler1DShadow),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2DShadow),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_samplerCubeShadow),
 
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::sampler1DArray_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::isampler1DArray_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::usampler1DArray_type),
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::sampler2DArray_type),
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::isampler2DArray_type),
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::usampler2DArray_type),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler1DArray),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler1DArray),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler1DArray),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_sampler2DArray),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_isampler2DArray),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_usampler2DArray),
 
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::sampler1DArrayShadow_type),
-                _textureSize(v130, glsl_type::ivec3_type, glsl_type::sampler2DArrayShadow_type),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler1DArrayShadow),
+                _textureSize(v130, &glsl_type_builtin_ivec3, &glsl_type_builtin_sampler2DArrayShadow),
 
-                _textureSize(texture_cube_map_array, glsl_type::ivec3_type, glsl_type::samplerCubeArray_type),
-                _textureSize(texture_cube_map_array, glsl_type::ivec3_type, glsl_type::isamplerCubeArray_type),
-                _textureSize(texture_cube_map_array, glsl_type::ivec3_type, glsl_type::usamplerCubeArray_type),
-                _textureSize(texture_cube_map_array, glsl_type::ivec3_type, glsl_type::samplerCubeArrayShadow_type),
+                _textureSize(texture_cube_map_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_samplerCubeArray),
+                _textureSize(texture_cube_map_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_isamplerCubeArray),
+                _textureSize(texture_cube_map_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_usamplerCubeArray),
+                _textureSize(texture_cube_map_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_samplerCubeArrayShadow),
 
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::sampler2DRect_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::isampler2DRect_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::usampler2DRect_type),
-                _textureSize(v130, glsl_type::ivec2_type, glsl_type::sampler2DRectShadow_type),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2DRect),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler2DRect),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler2DRect),
+                _textureSize(v130, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2DRectShadow),
 
-                _textureSize(texture_buffer, glsl_type::int_type,   glsl_type::samplerBuffer_type),
-                _textureSize(texture_buffer, glsl_type::int_type,   glsl_type::isamplerBuffer_type),
-                _textureSize(texture_buffer, glsl_type::int_type,   glsl_type::usamplerBuffer_type),
-                _textureSize(texture_multisample, glsl_type::ivec2_type, glsl_type::sampler2DMS_type),
-                _textureSize(texture_multisample, glsl_type::ivec2_type, glsl_type::isampler2DMS_type),
-                _textureSize(texture_multisample, glsl_type::ivec2_type, glsl_type::usampler2DMS_type),
+                _textureSize(texture_buffer, &glsl_type_builtin_int,   &glsl_type_builtin_samplerBuffer),
+                _textureSize(texture_buffer, &glsl_type_builtin_int,   &glsl_type_builtin_isamplerBuffer),
+                _textureSize(texture_buffer, &glsl_type_builtin_int,   &glsl_type_builtin_usamplerBuffer),
+                _textureSize(texture_multisample, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2DMS),
+                _textureSize(texture_multisample, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler2DMS),
+                _textureSize(texture_multisample, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler2DMS),
 
-                _textureSize(texture_multisample_array, glsl_type::ivec3_type, glsl_type::sampler2DMSArray_type),
-                _textureSize(texture_multisample_array, glsl_type::ivec3_type, glsl_type::isampler2DMSArray_type),
-                _textureSize(texture_multisample_array, glsl_type::ivec3_type, glsl_type::usampler2DMSArray_type),
+                _textureSize(texture_multisample_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_sampler2DMSArray),
+                _textureSize(texture_multisample_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_isampler2DMSArray),
+                _textureSize(texture_multisample_array, &glsl_type_builtin_ivec3, &glsl_type_builtin_usampler2DMSArray),
 
-                _textureSize(texture_external_es3, glsl_type::ivec2_type, glsl_type::samplerExternalOES_type),
+                _textureSize(texture_external_es3, &glsl_type_builtin_ivec2, &glsl_type_builtin_samplerExternalOES),
                 NULL);
 
    add_function("textureSize1D",
-                _textureSize(gpu_shader4, glsl_type::int_type,   glsl_type::sampler1D_type),
-                _textureSize(gpu_shader4_integer, glsl_type::int_type,   glsl_type::isampler1D_type),
-                _textureSize(gpu_shader4_integer, glsl_type::int_type,   glsl_type::usampler1D_type),
+                _textureSize(gpu_shader4, &glsl_type_builtin_int,   &glsl_type_builtin_sampler1D),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_int,   &glsl_type_builtin_isampler1D),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_int,   &glsl_type_builtin_usampler1D),
                 NULL);
 
    add_function("textureSize2D",
-                _textureSize(gpu_shader4, glsl_type::ivec2_type, glsl_type::sampler2D_type),
-                _textureSize(gpu_shader4_integer, glsl_type::ivec2_type, glsl_type::isampler2D_type),
-                _textureSize(gpu_shader4_integer, glsl_type::ivec2_type, glsl_type::usampler2D_type),
+                _textureSize(gpu_shader4, &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2D),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler2D),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler2D),
                 NULL);
 
    add_function("textureSize3D",
-                _textureSize(gpu_shader4, glsl_type::ivec3_type, glsl_type::sampler3D_type),
-                _textureSize(gpu_shader4_integer, glsl_type::ivec3_type, glsl_type::isampler3D_type),
-                _textureSize(gpu_shader4_integer, glsl_type::ivec3_type, glsl_type::usampler3D_type),
+                _textureSize(gpu_shader4, &glsl_type_builtin_ivec3, &glsl_type_builtin_sampler3D),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_ivec3, &glsl_type_builtin_isampler3D),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_ivec3, &glsl_type_builtin_usampler3D),
                 NULL);
 
    add_function("textureSizeCube",
-                _textureSize(gpu_shader4, glsl_type::ivec2_type, glsl_type::samplerCube_type),
-                _textureSize(gpu_shader4_integer, glsl_type::ivec2_type, glsl_type::isamplerCube_type),
-                _textureSize(gpu_shader4_integer, glsl_type::ivec2_type, glsl_type::usamplerCube_type),
+                _textureSize(gpu_shader4, &glsl_type_builtin_ivec2, &glsl_type_builtin_samplerCube),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_isamplerCube),
+                _textureSize(gpu_shader4_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_usamplerCube),
                 NULL);
 
    add_function("textureSize1DArray",
-                _textureSize(gpu_shader4_array,         glsl_type::ivec2_type, glsl_type::sampler1DArray_type),
-                _textureSize(gpu_shader4_array_integer, glsl_type::ivec2_type, glsl_type::isampler1DArray_type),
-                _textureSize(gpu_shader4_array_integer, glsl_type::ivec2_type, glsl_type::usampler1DArray_type),
+                _textureSize(gpu_shader4_array,         &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler1DArray),
+                _textureSize(gpu_shader4_array_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler1DArray),
+                _textureSize(gpu_shader4_array_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler1DArray),
                 NULL);
 
    add_function("textureSize2DArray",
-                _textureSize(gpu_shader4_array,         glsl_type::ivec3_type, glsl_type::sampler2DArray_type),
-                _textureSize(gpu_shader4_array_integer, glsl_type::ivec3_type, glsl_type::isampler2DArray_type),
-                _textureSize(gpu_shader4_array_integer, glsl_type::ivec3_type, glsl_type::usampler2DArray_type),
+                _textureSize(gpu_shader4_array,         &glsl_type_builtin_ivec3, &glsl_type_builtin_sampler2DArray),
+                _textureSize(gpu_shader4_array_integer, &glsl_type_builtin_ivec3, &glsl_type_builtin_isampler2DArray),
+                _textureSize(gpu_shader4_array_integer, &glsl_type_builtin_ivec3, &glsl_type_builtin_usampler2DArray),
                 NULL);
 
    add_function("textureSize2DRect",
-                _textureSize(gpu_shader4_rect,         glsl_type::ivec2_type, glsl_type::sampler2DRect_type),
-                _textureSize(gpu_shader4_rect_integer, glsl_type::ivec2_type, glsl_type::isampler2DRect_type),
-                _textureSize(gpu_shader4_rect_integer, glsl_type::ivec2_type, glsl_type::usampler2DRect_type),
+                _textureSize(gpu_shader4_rect,         &glsl_type_builtin_ivec2, &glsl_type_builtin_sampler2DRect),
+                _textureSize(gpu_shader4_rect_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_isampler2DRect),
+                _textureSize(gpu_shader4_rect_integer, &glsl_type_builtin_ivec2, &glsl_type_builtin_usampler2DRect),
                 NULL);
 
    add_function("textureSizeBuffer",
-                _textureSize(gpu_shader4_tbo,         glsl_type::int_type,   glsl_type::samplerBuffer_type),
-                _textureSize(gpu_shader4_tbo_integer, glsl_type::int_type,   glsl_type::isamplerBuffer_type),
-                _textureSize(gpu_shader4_tbo_integer, glsl_type::int_type,   glsl_type::usamplerBuffer_type),
+                _textureSize(gpu_shader4_tbo,         &glsl_type_builtin_int,   &glsl_type_builtin_samplerBuffer),
+                _textureSize(gpu_shader4_tbo_integer, &glsl_type_builtin_int,   &glsl_type_builtin_isamplerBuffer),
+                _textureSize(gpu_shader4_tbo_integer, &glsl_type_builtin_int,   &glsl_type_builtin_usamplerBuffer),
                 NULL);
 
    add_function("textureSamples",
-                _textureSamples(shader_samples, glsl_type::sampler2DMS_type),
-                _textureSamples(shader_samples, glsl_type::isampler2DMS_type),
-                _textureSamples(shader_samples, glsl_type::usampler2DMS_type),
+                _textureSamples(shader_samples, &glsl_type_builtin_sampler2DMS),
+                _textureSamples(shader_samples, &glsl_type_builtin_isampler2DMS),
+                _textureSamples(shader_samples, &glsl_type_builtin_usampler2DMS),
 
-                _textureSamples(shader_samples, glsl_type::sampler2DMSArray_type),
-                _textureSamples(shader_samples, glsl_type::isampler2DMSArray_type),
-                _textureSamples(shader_samples, glsl_type::usampler2DMSArray_type),
+                _textureSamples(shader_samples, &glsl_type_builtin_sampler2DMSArray),
+                _textureSamples(shader_samples, &glsl_type_builtin_isampler2DMSArray),
+                _textureSamples(shader_samples, &glsl_type_builtin_usampler2DMSArray),
                 NULL);
 
    add_function("texture",
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type,   glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow,   &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
 
-                _texture(ir_tex, texture_cube_map_array, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type),
-                _texture(ir_tex, texture_cube_map_array, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type),
-                _texture(ir_tex, texture_cube_map_array, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type),
+                _texture(ir_tex, texture_cube_map_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4),
+                _texture(ir_tex, texture_cube_map_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4),
+                _texture(ir_tex, texture_cube_map_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
                 /* samplerCubeArrayShadow is special; it has an extra parameter
                  * for the shadow comparator since there is no vec5 type.
                  */
-                _textureCubeArrayShadow(ir_tex, texture_cube_map_array, glsl_type::samplerCubeArrayShadow_type),
+                _textureCubeArrayShadow(ir_tex, texture_cube_map_array, &glsl_type_builtin_samplerCubeArrayShadow),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3),
 
-                _texture(ir_tex, texture_external_es3, glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::vec2_type),
+                _texture(ir_tex, texture_external_es3, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_vec2),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler1DShadow_type,   glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow,   &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
 
-                _texture(ir_txb, derivatives_texture_cube_map_array, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type),
-                _texture(ir_txb, derivatives_texture_cube_map_array, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type),
-                _texture(ir_txb, derivatives_texture_cube_map_array, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type),
+                _texture(ir_txb, derivatives_texture_cube_map_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4),
+                _texture(ir_txb, derivatives_texture_cube_map_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4),
+                _texture(ir_txb, derivatives_texture_cube_map_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
-                _texture(ir_tex, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
-                _texture(ir_txb, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
+                _texture(ir_tex, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
+                _texture(ir_txb, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
 
-                _textureCubeArrayShadow(ir_tex, v130_or_gpu_shader4_and_tex_cube_map_array, glsl_type::samplerCubeArrayShadow_type),
-                _textureCubeArrayShadow(ir_txb, v130_or_gpu_shader4_and_tex_cube_map_array, glsl_type::samplerCubeArrayShadow_type),
+                _textureCubeArrayShadow(ir_tex, v130_or_gpu_shader4_and_tex_cube_map_array, &glsl_type_builtin_samplerCubeArrayShadow),
+                _textureCubeArrayShadow(ir_txb, v130_or_gpu_shader4_and_tex_cube_map_array, &glsl_type_builtin_samplerCubeArrayShadow),
                 NULL);
 
    add_function("textureLod",
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
 
-                _texture(ir_txl, texture_cube_map_array, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type),
-                _texture(ir_txl, texture_cube_map_array, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type),
-                _texture(ir_txl, texture_cube_map_array, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type),
+                _texture(ir_txl, texture_cube_map_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4),
+                _texture(ir_txl, texture_cube_map_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4),
+                _texture(ir_txl, texture_cube_map_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4),
 
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
-                _texture(ir_txl, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
-                _texture(ir_txl, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
-                _textureCubeArrayShadow(ir_txl, v130_or_gpu_shader4_and_tex_cube_map_array, glsl_type::samplerCubeArrayShadow_type),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
+                _texture(ir_txl, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
+                _texture(ir_txl, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
+                _textureCubeArrayShadow(ir_txl, v130_or_gpu_shader4_and_tex_cube_map_array, &glsl_type_builtin_samplerCubeArrayShadow),
                 NULL);
 
    add_function("textureOffset",
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 /* The next one was forgotten in GLSL 1.30 spec. It's from
                  * EXT_gpu_shader4 originally. It was added in 4.30 with the
                  * wrong syntax. This was corrected in 4.40. 4.30 indicates
                  * that it was intended to be included previously, so allow it
                  * in 1.30.
                  */
-                _texture(ir_tex, v130_desktop, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
+                _texture(ir_tex, v130_desktop, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
-                _texture(ir_txb, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
+                _texture(ir_txb, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
                 NULL);
 
    add_function("texture1DOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("texture3DOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DRectOffset",
-                _texture(ir_tex, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DRectOffset",
-                _texture(ir_tex, gpu_shader4_rect, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("texture1DArrayOffset",
-                _texture(ir_tex, gpu_shader4_array,                     glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_derivs_only,         glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array,                     &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_derivs_only,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DArrayOffset",
-                _texture(ir_tex, gpu_shader4_array,                     glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_derivs_only,         glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array,                     &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_derivs_only,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DArrayOffset",
-                _texture(ir_tex, gpu_shader4_array,             glsl_type::vec4_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_array_derivs_only, glsl_type::vec4_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array,             &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_array_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DArrayOffset",
-                _texture(ir_tex, gpu_shader4_array, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_array, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
                 NULL);
 
    add_function("textureProj",
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, texture_external_es3, glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, texture_external_es3, glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, texture_external_es3, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, texture_external_es3, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texelFetch",
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::int_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::int_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::int_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_int),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_int),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_int),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::ivec2_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_ivec2),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::ivec3_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::ivec3_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::ivec3_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_ivec3),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_ivec3),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_ivec3),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::ivec2_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_ivec2),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::ivec2_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_ivec2),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::ivec3_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::ivec3_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::ivec3_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_ivec3),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_ivec3),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_ivec3),
 
-                _texelFetch(texture_buffer, glsl_type::vec4_type,  glsl_type::samplerBuffer_type,  glsl_type::int_type),
-                _texelFetch(texture_buffer, glsl_type::ivec4_type, glsl_type::isamplerBuffer_type, glsl_type::int_type),
-                _texelFetch(texture_buffer, glsl_type::uvec4_type, glsl_type::usamplerBuffer_type, glsl_type::int_type),
+                _texelFetch(texture_buffer, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerBuffer,  &glsl_type_builtin_int),
+                _texelFetch(texture_buffer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerBuffer, &glsl_type_builtin_int),
+                _texelFetch(texture_buffer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerBuffer, &glsl_type_builtin_int),
 
-                _texelFetch(texture_multisample, glsl_type::vec4_type,  glsl_type::sampler2DMS_type,  glsl_type::ivec2_type),
-                _texelFetch(texture_multisample, glsl_type::ivec4_type, glsl_type::isampler2DMS_type, glsl_type::ivec2_type),
-                _texelFetch(texture_multisample, glsl_type::uvec4_type, glsl_type::usampler2DMS_type, glsl_type::ivec2_type),
+                _texelFetch(texture_multisample, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DMS,  &glsl_type_builtin_ivec2),
+                _texelFetch(texture_multisample, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DMS, &glsl_type_builtin_ivec2),
+                _texelFetch(texture_multisample, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DMS, &glsl_type_builtin_ivec2),
 
-                _texelFetch(texture_multisample_array, glsl_type::vec4_type,  glsl_type::sampler2DMSArray_type,  glsl_type::ivec3_type),
-                _texelFetch(texture_multisample_array, glsl_type::ivec4_type, glsl_type::isampler2DMSArray_type, glsl_type::ivec3_type),
-                _texelFetch(texture_multisample_array, glsl_type::uvec4_type, glsl_type::usampler2DMSArray_type, glsl_type::ivec3_type),
+                _texelFetch(texture_multisample_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DMSArray,  &glsl_type_builtin_ivec3),
+                _texelFetch(texture_multisample_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DMSArray, &glsl_type_builtin_ivec3),
+                _texelFetch(texture_multisample_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DMSArray, &glsl_type_builtin_ivec3),
 
-                _texelFetch(texture_external_es3, glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::ivec2_type),
+                _texelFetch(texture_external_es3, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_ivec2),
 
                 NULL);
 
    add_function("texelFetch1D",
-                _texelFetch(gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::int_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::int_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::int_type),
+                _texelFetch(gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_int),
                 NULL);
 
    add_function("texelFetch2D",
-                _texelFetch(gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::ivec2_type),
+                _texelFetch(gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_ivec2),
                 NULL);
 
    add_function("texelFetch3D",
-                _texelFetch(gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::ivec3_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::ivec3_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::ivec3_type),
+                _texelFetch(gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_ivec3),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_ivec3),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_ivec3),
                 NULL);
 
    add_function("texelFetch2DRect",
-                _texelFetch(gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::ivec2_type),
+                _texelFetch(gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_ivec2),
                 NULL);
 
    add_function("texelFetch1DArray",
-                _texelFetch(gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::ivec2_type),
+                _texelFetch(gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_ivec2),
                 NULL);
 
    add_function("texelFetch2DArray",
-                _texelFetch(gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::ivec3_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::ivec3_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::ivec3_type),
+                _texelFetch(gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_ivec3),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_ivec3),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_ivec3),
                 NULL);
 
    add_function("texelFetchBuffer",
-                _texelFetch(gpu_shader4_tbo,         glsl_type::vec4_type,  glsl_type::samplerBuffer_type,  glsl_type::int_type),
-                _texelFetch(gpu_shader4_tbo_integer, glsl_type::ivec4_type, glsl_type::isamplerBuffer_type, glsl_type::int_type),
-                _texelFetch(gpu_shader4_tbo_integer, glsl_type::uvec4_type, glsl_type::usamplerBuffer_type, glsl_type::int_type),
+                _texelFetch(gpu_shader4_tbo,         &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerBuffer,  &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_tbo_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerBuffer, &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_tbo_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerBuffer, &glsl_type_builtin_int),
                 NULL);
 
    add_function("texelFetchOffset",
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::int_type, glsl_type::int_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::int_type, glsl_type::int_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::int_type, glsl_type::int_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_int, &glsl_type_builtin_int),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_int, &glsl_type_builtin_int),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_int, &glsl_type_builtin_int),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::ivec3_type, glsl_type::ivec3_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::ivec3_type, glsl_type::ivec3_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::ivec3_type, glsl_type::ivec3_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::ivec2_type, glsl_type::int_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::ivec2_type, glsl_type::int_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::ivec2_type, glsl_type::int_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_ivec2, &glsl_type_builtin_int),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),
 
-                _texelFetch(v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::ivec3_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::ivec3_type, glsl_type::ivec2_type),
-                _texelFetch(v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::ivec3_type, glsl_type::ivec2_type),
+                _texelFetch(v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2),
+                _texelFetch(v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2),
 
                 NULL);
 
    add_function("texelFetch1DOffset",
-                _texelFetch(gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::int_type, glsl_type::int_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::int_type, glsl_type::int_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::int_type, glsl_type::int_type),
+                _texelFetch(gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_int, &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_int, &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_int, &glsl_type_builtin_int),
                 NULL);
 
    add_function("texelFetch2DOffset",
-                _texelFetch(gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
+                _texelFetch(gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
                 NULL);
 
    add_function("texelFetch3DOffset",
-                _texelFetch(gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::ivec3_type, glsl_type::ivec3_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::ivec3_type, glsl_type::ivec3_type),
-                _texelFetch(gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::ivec3_type, glsl_type::ivec3_type),
+                _texelFetch(gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),
+                _texelFetch(gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3),
                 NULL);
 
    add_function("texelFetch2DRectOffset",
-                _texelFetch(gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::ivec2_type, glsl_type::ivec2_type),
+                _texelFetch(gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2),
                 NULL);
 
    add_function("texelFetch1DArrayOffset",
-                _texelFetch(gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::ivec2_type, glsl_type::int_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::ivec2_type, glsl_type::int_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::ivec2_type, glsl_type::int_type),
+                _texelFetch(gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_ivec2, &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_ivec2, &glsl_type_builtin_int),
                 NULL);
 
    add_function("texelFetch2DArrayOffset",
-                _texelFetch(gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::ivec3_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::ivec3_type, glsl_type::ivec2_type),
-                _texelFetch(gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::ivec3_type, glsl_type::ivec2_type),
+                _texelFetch(gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2),
+                _texelFetch(gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2),
                 NULL);
 
    add_function("textureProjOffset",
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_tex, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, v130_derivatives_only, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, v130_derivatives_only, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture1DProjOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture2DProjOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture3DProjOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_integer,     glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_integer,     &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DProjOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DProjOffset",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture2DRectProjOffset",
-                _texture(ir_tex, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DRectProjOffset",
-                _texture(ir_tex, gpu_shader4_rect, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_tex, gpu_shader4_rect, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("textureLodOffset",
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, v130_or_gpu_shader4_and_tex_shadow_lod, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, v130_or_gpu_shader4_and_tex_shadow_lod, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
                 NULL);
 
    add_function("texture1DLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("texture3DLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("texture1DArrayLodOffset",
-                _texture(ir_txl, gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DArrayLodOffset",
-                _texture(ir_txl, gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DArrayLodOffset",
-                _texture(ir_txl, gpu_shader4_array, glsl_type::vec4_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_array, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("textureProjLod",
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("textureProjLodOffset",
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture1DProjLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture2DProjLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture3DProjLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DProjLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DProjLodOffset",
-                _texture(ir_txl, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txl, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("textureGrad",
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type,   glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow,   &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
 
-                _texture(ir_txd, texture_cube_map_array, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type),
-                _texture(ir_txd, texture_cube_map_array, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type),
-                _texture(ir_txd, texture_cube_map_array, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type),
+                _texture(ir_txd, texture_cube_map_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4),
+                _texture(ir_txd, texture_cube_map_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4),
+                _texture(ir_txd, texture_cube_map_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
                 NULL);
 
    add_function("textureGradOffset",
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
                 NULL);
 
    add_function("texture1DGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("texture3DGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DRectGradOffset",
-                _texture(ir_txd, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DRectGradOffset",
-                _texture(ir_txd, gpu_shader4_rect, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("texture1DArrayGradOffset",
-                _texture(ir_txd, gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET),
                 NULL);
 
    add_function("texture2DArrayGradOffset",
-                _texture(ir_txd, gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DArrayGradOffset",
-                _texture(ir_txd, gpu_shader4_array, glsl_type::vec4_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DArrayGradOffset",
-                _texture(ir_txd, gpu_shader4_array, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_array, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET),
                 NULL);
 
    add_function("textureProjGrad",
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("textureProjGradOffset",
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
 
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, v130, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, v130, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture1DProjGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture2DProjGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture3DProjGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("texture2DRectProjGradOffset",
-                _texture(ir_txd, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DRectProjGradOffset",
-                _texture(ir_txd, gpu_shader4_rect, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4_rect, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow1DProjGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("shadow2DProjGradOffset",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT | TEX_OFFSET),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT | TEX_OFFSET),
                 NULL);
 
    add_function("EmitVertex",   _EmitVertex(),   NULL);
    add_function("EndPrimitive", _EndPrimitive(), NULL);
    add_function("EmitStreamVertex",
-                _EmitStreamVertex(gs_streams, glsl_type::uint_type),
-                _EmitStreamVertex(gs_streams, glsl_type::int_type),
+                _EmitStreamVertex(gs_streams, &glsl_type_builtin_uint),
+                _EmitStreamVertex(gs_streams, &glsl_type_builtin_int),
                 NULL);
    add_function("EndStreamPrimitive",
-                _EndStreamPrimitive(gs_streams, glsl_type::uint_type),
-                _EndStreamPrimitive(gs_streams, glsl_type::int_type),
+                _EndStreamPrimitive(gs_streams, &glsl_type_builtin_uint),
+                _EndStreamPrimitive(gs_streams, &glsl_type_builtin_int),
                 NULL);
    add_function("barrier", _barrier(), NULL);
 
    add_function("textureQueryLOD",
-                _textureQueryLod(texture_query_lod, glsl_type::sampler1D_type,  glsl_type::float_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isampler1D_type, glsl_type::float_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usampler1D_type, glsl_type::float_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
 
-                _textureQueryLod(texture_query_lod, glsl_type::sampler2D_type,  glsl_type::vec2_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _textureQueryLod(texture_query_lod, glsl_type::sampler3D_type,  glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
 
-                _textureQueryLod(texture_query_lod, glsl_type::samplerCube_type,  glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _textureQueryLod(texture_query_lod, glsl_type::sampler1DArray_type,  glsl_type::float_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isampler1DArray_type, glsl_type::float_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usampler1DArray_type, glsl_type::float_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_float),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_float),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_float),
 
-                _textureQueryLod(texture_query_lod, glsl_type::sampler2DArray_type,  glsl_type::vec2_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isampler2DArray_type, glsl_type::vec2_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usampler2DArray_type, glsl_type::vec2_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec2),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec2),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec2),
 
-                _textureQueryLod(texture_query_lod, glsl_type::samplerCubeArray_type,  glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::isamplerCubeArray_type, glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::usamplerCubeArray_type, glsl_type::vec3_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec3),
 
-                _textureQueryLod(texture_query_lod, glsl_type::sampler1DShadow_type, glsl_type::float_type),
-                _textureQueryLod(texture_query_lod, glsl_type::sampler2DShadow_type, glsl_type::vec2_type),
-                _textureQueryLod(texture_query_lod, glsl_type::samplerCubeShadow_type, glsl_type::vec3_type),
-                _textureQueryLod(texture_query_lod, glsl_type::sampler1DArrayShadow_type, glsl_type::float_type),
-                _textureQueryLod(texture_query_lod, glsl_type::sampler2DArrayShadow_type, glsl_type::vec2_type),
-                _textureQueryLod(texture_query_lod, glsl_type::samplerCubeArrayShadow_type, glsl_type::vec3_type),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_float),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec2),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec3),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_float),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec2),
+                _textureQueryLod(texture_query_lod, &glsl_type_builtin_samplerCubeArrayShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("textureQueryLod",
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler1D_type,  glsl_type::float_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isampler1D_type, glsl_type::float_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usampler1D_type, glsl_type::float_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler2D_type,  glsl_type::vec2_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler3D_type,  glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::samplerCube_type,  glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler1DArray_type,  glsl_type::float_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isampler1DArray_type, glsl_type::float_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usampler1DArray_type, glsl_type::float_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_float),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_float),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_float),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler2DArray_type,  glsl_type::vec2_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isampler2DArray_type, glsl_type::vec2_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usampler2DArray_type, glsl_type::vec2_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec2),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec2),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec2),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::samplerCubeArray_type,  glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::isamplerCubeArray_type, glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::usamplerCubeArray_type, glsl_type::vec3_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec3),
 
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler1DShadow_type, glsl_type::float_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler2DShadow_type, glsl_type::vec2_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::samplerCubeShadow_type, glsl_type::vec3_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler1DArrayShadow_type, glsl_type::float_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::sampler2DArrayShadow_type, glsl_type::vec2_type),
-                _textureQueryLod(v400_derivatives_only, glsl_type::samplerCubeArrayShadow_type, glsl_type::vec3_type),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_float),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec2),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec3),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_float),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec2),
+                _textureQueryLod(v400_derivatives_only, &glsl_type_builtin_samplerCubeArrayShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("textureQueryLevels",
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler1D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler2D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler3D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::samplerCube_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler1DArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler2DArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::samplerCubeArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler1DShadow_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler2DShadow_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::samplerCubeShadow_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler1DArrayShadow_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::sampler2DArrayShadow_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::samplerCubeArrayShadow_type),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler1D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler2D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler3D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_samplerCube),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler1DArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler2DArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_samplerCubeArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler1DShadow),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler2DShadow),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_samplerCubeShadow),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler1DArrayShadow),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_sampler2DArrayShadow),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_samplerCubeArrayShadow),
 
-                _textureQueryLevels(texture_query_levels, glsl_type::isampler1D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::isampler2D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::isampler3D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::isamplerCube_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::isampler1DArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::isampler2DArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::isamplerCubeArray_type),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isampler1D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isampler2D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isampler3D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isamplerCube),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isampler1DArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isampler2DArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_isamplerCubeArray),
 
-                _textureQueryLevels(texture_query_levels, glsl_type::usampler1D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::usampler2D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::usampler3D_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::usamplerCube_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::usampler1DArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::usampler2DArray_type),
-                _textureQueryLevels(texture_query_levels, glsl_type::usamplerCubeArray_type),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usampler1D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usampler2D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usampler3D),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usamplerCube),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usampler1DArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usampler2DArray),
+                _textureQueryLevels(texture_query_levels, &glsl_type_builtin_usamplerCubeArray),
 
                 NULL);
 
    add_function("textureSamplesIdenticalEXT",
-                _textureSamplesIdentical(texture_samples_identical, glsl_type::sampler2DMS_type,  glsl_type::ivec2_type),
-                _textureSamplesIdentical(texture_samples_identical, glsl_type::isampler2DMS_type, glsl_type::ivec2_type),
-                _textureSamplesIdentical(texture_samples_identical, glsl_type::usampler2DMS_type, glsl_type::ivec2_type),
+                _textureSamplesIdentical(texture_samples_identical, &glsl_type_builtin_sampler2DMS,  &glsl_type_builtin_ivec2),
+                _textureSamplesIdentical(texture_samples_identical, &glsl_type_builtin_isampler2DMS, &glsl_type_builtin_ivec2),
+                _textureSamplesIdentical(texture_samples_identical, &glsl_type_builtin_usampler2DMS, &glsl_type_builtin_ivec2),
 
-                _textureSamplesIdentical(texture_samples_identical_array, glsl_type::sampler2DMSArray_type,  glsl_type::ivec3_type),
-                _textureSamplesIdentical(texture_samples_identical_array, glsl_type::isampler2DMSArray_type, glsl_type::ivec3_type),
-                _textureSamplesIdentical(texture_samples_identical_array, glsl_type::usampler2DMSArray_type, glsl_type::ivec3_type),
+                _textureSamplesIdentical(texture_samples_identical_array, &glsl_type_builtin_sampler2DMSArray,  &glsl_type_builtin_ivec3),
+                _textureSamplesIdentical(texture_samples_identical_array, &glsl_type_builtin_isampler2DMSArray, &glsl_type_builtin_ivec3),
+                _textureSamplesIdentical(texture_samples_identical_array, &glsl_type_builtin_usampler2DMSArray, &glsl_type_builtin_ivec3),
                 NULL);
 
    add_function("texture1D",
-                _texture(ir_tex, v110_deprecated_texture,                      glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::float_type),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture,     glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::float_type),
-                _texture(ir_tex, gpu_shader4_integer,               glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only,   glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_tex, gpu_shader4_integer,               glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::float_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only,   glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_tex, v110_deprecated_texture,                      &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_float),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture,     &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_float),
+                _texture(ir_tex, gpu_shader4_integer,               &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only,   &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_tex, gpu_shader4_integer,               &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only,   &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
                 NULL);
 
    add_function("texture1DArray",
-                _texture(ir_tex, texture_array,           glsl_type::vec4_type, glsl_type::sampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txb, texture_array_derivs_only,glsl_type::vec4_type, glsl_type::sampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_tex, texture_array,           &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txb, texture_array_derivs_only,&glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture1DProj",
-                _texture(ir_tex, v110_deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_tex, v110_deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v110_deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_tex, v110_deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture1DLod",
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::float_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_float),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
                 NULL);
 
    add_function("texture1DArrayLod",
-                _texture(ir_txl, texture_array_lod, glsl_type::vec4_type, glsl_type::sampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_txl, texture_array_lod, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture1DProjLod",
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture2D",
-                _texture(ir_tex, deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txb, deprecated_texture_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec2_type),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec2_type),
-                _texture(ir_tex, texture_external,        glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::vec2_type),
+                _texture(ir_tex, deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txb, deprecated_texture_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_tex, texture_external,        &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DArray",
-                _texture(ir_tex, texture_array,           glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txb, texture_array_derivs_only, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_tex, gpu_shader4_array_integer,             glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_tex, texture_array,           &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txb, texture_array_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_tex, gpu_shader4_array_integer,             &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txb, gpu_shader4_array_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture2DProj",
-                _texture(ir_tex, deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, deprecated_texture_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txb, deprecated_texture_derivatives_only, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, texture_external,        glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, texture_external,        glsl_type::vec4_type,  glsl_type::samplerExternalOES_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, deprecated_texture_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txb, deprecated_texture_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, texture_external,        &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, texture_external,        &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerExternalOES, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture2DLod",
-                _texture(ir_txl, lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_txl, lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DArrayLod",
-                _texture(ir_txl, texture_array_lod, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txl, gpu_shader4_array_integer, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_txl, texture_array_lod, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txl, gpu_shader4_array_integer, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture2DProjLod",
-                _texture(ir_txl, lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txl, lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txl, lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture3D",
-                _texture(ir_tex, tex3d,                   glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txb, derivatives_tex3d,       glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec3_type),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_tex, tex3d,                   &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txb, derivatives_tex3d,       &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture3DProj",
-                _texture(ir_tex, tex3d,                   glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, derivatives_tex3d,       glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, tex3d,                   &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, derivatives_tex3d,       &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture3DLod",
-                _texture(ir_txl, tex3d_lod, glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_txl, tex3d_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture3DProjLod",
-                _texture(ir_txl, tex3d_lod, glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, tex3d_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("textureCube",
-                _texture(ir_tex, deprecated_texture,                  glsl_type::vec4_type,  glsl_type::samplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txb, deprecated_texture_derivatives_only, glsl_type::vec4_type,  glsl_type::samplerCube_type, glsl_type::vec3_type),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::ivec4_type,  glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::ivec4_type,  glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_tex, gpu_shader4_integer,             glsl_type::uvec4_type,  glsl_type::usamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txb, gpu_shader4_integer_derivs_only, glsl_type::uvec4_type,  glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_tex, deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txb, deprecated_texture_derivatives_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_ivec4,  &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_tex, gpu_shader4_integer,             &glsl_type_builtin_uvec4,  &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txb, gpu_shader4_integer_derivs_only, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("textureCubeLod",
-                _texture(ir_txl, lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::samplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txl, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_txl, lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txl, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture2DRect",
-                _texture(ir_tex, texture_rectangle, glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::ivec4_type,  glsl_type::isampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::uvec4_type,  glsl_type::usampler2DRect_type, glsl_type::vec2_type),
+                _texture(ir_tex, texture_rectangle, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DRectProj",
-                _texture(ir_tex, texture_rectangle, glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, texture_rectangle, glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::ivec4_type,  glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::ivec4_type,  glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::uvec4_type,  glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_tex, gpu_shader4_rect_integer, glsl_type::uvec4_type,  glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, texture_rectangle, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, texture_rectangle, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_tex, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow1D",
-                _texture(ir_tex, v110_deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec3_type),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec3_type),
+                _texture(ir_tex, v110_deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DArray",
-                _texture(ir_tex, texture_array,    glsl_type::vec4_type,  glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
-                _texture(ir_txb, texture_array_derivs_only, glsl_type::vec4_type,  glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
+                _texture(ir_tex, texture_array,    &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
+                _texture(ir_txb, texture_array_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2D",
-                _texture(ir_tex, v110_deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec3_type),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec3_type),
+                _texture(ir_tex, v110_deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DArray",
-                _texture(ir_tex, texture_array,    glsl_type::vec4_type,  glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
-                _texture(ir_txb, texture_array_derivs_only, glsl_type::vec4_type,  glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
+                _texture(ir_tex, texture_array,    &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
+                _texture(ir_txb, texture_array_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
                 NULL);
 
    add_function("shadow1DProj",
-                _texture(ir_tex, v110_deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v110_deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DArray",
-                _texture(ir_tex, texture_array,    glsl_type::vec4_type,  glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
-                _texture(ir_txb, texture_array_derivs_only, glsl_type::vec4_type,  glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
+                _texture(ir_tex, texture_array,    &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
+                _texture(ir_txb, texture_array_derivs_only, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
                 NULL);
 
    add_function("shadowCube",
-                _texture(ir_tex, gpu_shader4,             glsl_type::vec4_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
-                _texture(ir_txb, gpu_shader4_derivs_only, glsl_type::vec4_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
+                _texture(ir_tex, gpu_shader4,             &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
+                _texture(ir_txb, gpu_shader4_derivs_only, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
                 NULL);
 
    add_function("shadow2DProj",
-                _texture(ir_tex, v110_deprecated_texture,                  glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txb, v110_derivatives_only_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, v110_deprecated_texture,                  &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txb, v110_derivatives_only_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow1DLod",
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DLod",
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DArrayLod",
-                _texture(ir_txl, texture_array_lod, glsl_type::vec4_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
+                _texture(ir_txl, texture_array_lod, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DProjLod",
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DProjLod",
-                _texture(ir_txl, v110_lod_deprecated_texture, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txl, v110_lod_deprecated_texture, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DRect",
-                _texture(ir_tex, texture_rectangle, glsl_type::vec4_type,  glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type),
+                _texture(ir_tex, texture_rectangle, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DRectProj",
-                _texture(ir_tex, texture_rectangle, glsl_type::vec4_type,  glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_tex, texture_rectangle, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture1DGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::float_type),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_float),
                 NULL);
 
    add_function("texture1DProjGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture2DGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec2_type),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DProjGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture3DGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec3_type),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture3DProjGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("textureCubeGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::samplerCube_type, glsl_type::vec3_type),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DProjGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DProjGradARB",
-                _texture(ir_txd, shader_texture_lod, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture2DRectGradARB",
-                _texture(ir_txd, shader_texture_lod_and_rect, glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec2_type),
+                _texture(ir_txd, shader_texture_lod_and_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DRectProjGradARB",
-                _texture(ir_txd, shader_texture_lod_and_rect, glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, shader_texture_lod_and_rect, glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod_and_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod_and_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DRectGradARB",
-                _texture(ir_txd, shader_texture_lod_and_rect, glsl_type::vec4_type,  glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, shader_texture_lod_and_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DRectProjGradARB",
-                _texture(ir_txd, shader_texture_lod_and_rect, glsl_type::vec4_type,  glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, shader_texture_lod_and_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture4",
-                _texture(ir_tg4, texture_texture4, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type),
+                _texture(ir_tg4, texture_texture4, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture1DGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::float_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::float_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::float_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_float),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_float),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_float),
                 NULL);
 
    add_function("texture1DProjGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec2_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler1D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec2, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture1DArrayGrad",
-                _texture(ir_txd, gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::ivec4_type,  glsl_type::isampler1DArray_type, glsl_type::vec2_type),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::uvec4_type,  glsl_type::usampler1DArray_type, glsl_type::vec2_type),
+                _texture(ir_txd, gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DProjGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler2D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("texture2DArrayGrad",
-                _texture(ir_txd, gpu_shader4_array,         glsl_type::vec4_type,  glsl_type::sampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::ivec4_type,  glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_txd, gpu_shader4_array_integer, glsl_type::uvec4_type,  glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4_array,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_txd, gpu_shader4_array_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture3DGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler3D_type, glsl_type::vec3_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler3D_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("texture3DProjGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usampler3D_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("textureCubeGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::samplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::ivec4_type,  glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_txd, gpu_shader4_integer, glsl_type::uvec4_type,  glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_txd, gpu_shader4_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow1DProjGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler1DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow1DArrayGrad",
-                _texture(ir_txd, gpu_shader4_array, glsl_type::vec4_type,  glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DProjGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::sampler2DShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DArrayGrad",
-                _texture(ir_txd, gpu_shader4_array, glsl_type::vec4_type,  glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type),
+                _texture(ir_txd, gpu_shader4_array, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4),
                 NULL);
 
    add_function("texture2DRectGrad",
-                _texture(ir_txd, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::ivec4_type,  glsl_type::isampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::uvec4_type,  glsl_type::usampler2DRect_type, glsl_type::vec2_type),
+                _texture(ir_txd, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("texture2DRectProjGrad",
-                _texture(ir_txd, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_rect,         glsl_type::vec4_type,  glsl_type::sampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::ivec4_type,  glsl_type::isampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::ivec4_type,  glsl_type::isampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::uvec4_type,  glsl_type::usampler2DRect_type, glsl_type::vec3_type, TEX_PROJECT),
-                _texture(ir_txd, gpu_shader4_rect_integer, glsl_type::uvec4_type,  glsl_type::usampler2DRect_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect,         &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_ivec4,  &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec3, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect_integer, &glsl_type_builtin_uvec4,  &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadow2DRectGrad",
-                _texture(ir_txd, gpu_shader4_rect, glsl_type::vec4_type,  glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type),
+                _texture(ir_txd, gpu_shader4_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3),
                 NULL);
 
    add_function("shadow2DRectProjGrad",
-                _texture(ir_txd, gpu_shader4_rect, glsl_type::vec4_type,  glsl_type::sampler2DRectShadow_type, glsl_type::vec4_type, TEX_PROJECT),
+                _texture(ir_txd, gpu_shader4_rect, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec4, TEX_PROJECT),
                 NULL);
 
    add_function("shadowCubeGrad",
-                _texture(ir_txd, gpu_shader4, glsl_type::vec4_type,  glsl_type::samplerCubeShadow_type, glsl_type::vec4_type),
+                _texture(ir_txd, gpu_shader4, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4),
                 NULL);
 
    add_function("textureGather",
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type),
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type),
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2),
 
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_tg4, gpu_shader5, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type),
-                _texture(ir_tg4, gpu_shader5, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2),
 
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type),
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3),
 
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::vec4_type, glsl_type::samplerCube_type, glsl_type::vec3_type),
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type),
-                _texture(ir_tg4, texture_gather_or_es31, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3),
+                _texture(ir_tg4, texture_gather_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3),
 
-                _texture(ir_tg4, texture_gather_cube_map_array, glsl_type::vec4_type, glsl_type::samplerCubeArray_type, glsl_type::vec4_type),
-                _texture(ir_tg4, texture_gather_cube_map_array, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type),
-                _texture(ir_tg4, texture_gather_cube_map_array, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type),
+                _texture(ir_tg4, texture_gather_cube_map_array, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeArray, &glsl_type_builtin_vec4),
+                _texture(ir_tg4, texture_gather_cube_map_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4),
+                _texture(ir_tg4, texture_gather_cube_map_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4),
 
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRect_type, glsl_type::vec2_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::vec4_type, glsl_type::samplerCube_type, glsl_type::vec3_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCube, &glsl_type_builtin_vec3, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, glsl_type::vec4_type, glsl_type::samplerCubeArray_type, glsl_type::vec4_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeArray, &glsl_type_builtin_vec4, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec2_type),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec3_type),
-                _texture(ir_tg4, gpu_shader5_or_es31, glsl_type::vec4_type, glsl_type::samplerCubeShadow_type, glsl_type::vec3_type),
-                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, glsl_type::vec4_type, glsl_type::samplerCubeArrayShadow_type, glsl_type::vec4_type),
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec2_type),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec2),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec3),
+                _texture(ir_tg4, gpu_shader5_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec3),
+                _texture(ir_tg4, gpu_shader5_or_OES_texture_cube_map_array, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeArrayShadow, &glsl_type_builtin_vec4),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec2),
                 NULL);
 
    add_function("textureGatherOffset",
-                _texture(ir_tg4, texture_gather_only_or_es31, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tg4, texture_gather_only_or_es31, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tg4, texture_gather_only_or_es31, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET),
+                _texture(ir_tg4, texture_gather_only_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tg4, texture_gather_only_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tg4, texture_gather_only_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET),
 
-                _texture(ir_tg4, texture_gather_only_or_es31, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tg4, texture_gather_only_or_es31, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
-                _texture(ir_tg4, texture_gather_only_or_es31, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tg4, texture_gather_only_or_es31, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tg4, texture_gather_only_or_es31, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
+                _texture(ir_tg4, texture_gather_only_or_es31, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET),
 
-                _texture(ir_tg4, es31_not_gs5, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_OFFSET | TEX_COMPONENT),
-                _texture(ir_tg4, es31_not_gs5, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET | TEX_COMPONENT),
-                _texture(ir_tg4, es31_not_gs5, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET | TEX_COMPONENT),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_OFFSET | TEX_COMPONENT),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET | TEX_COMPONENT),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET | TEX_COMPONENT),
 
-                _texture(ir_tg4, es31_not_gs5, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET | TEX_COMPONENT),
-                _texture(ir_tg4, es31_not_gs5, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET | TEX_COMPONENT),
-                _texture(ir_tg4, es31_not_gs5, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET | TEX_COMPONENT),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET | TEX_COMPONENT),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET | TEX_COMPONENT),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST),
 
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST),
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST),
 
-                _texture(ir_tg4, es31_not_gs5, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec2_type, TEX_OFFSET),
-                _texture(ir_tg4, es31_not_gs5, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec2, TEX_OFFSET),
+                _texture(ir_tg4, es31_not_gs5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET),
                 NULL);
 
    add_function("textureGatherOffsets",
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
 
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
-                _texture(ir_tg4, gpu_shader5, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY | TEX_COMPONENT),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY | TEX_COMPONENT),
 
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DShadow_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5_es, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY),
-                _texture(ir_tg4, gpu_shader5, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5_es, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY),
+                _texture(ir_tg4, gpu_shader5, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY),
                 NULL);
 
    add_function("sparseTextureARB",
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_tex, texture_cube_map_array_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_tex, texture_cube_map_array_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_tex, texture_cube_map_array_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_tex, texture_cube_map_array_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_tex, texture_cube_map_array_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_tex, texture_cube_map_array_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _textureCubeArrayShadow(ir_tex, texture_cube_map_array_and_sparse, glsl_type::samplerCubeArrayShadow_type, TEX_SPARSE),
+                _textureCubeArrayShadow(ir_tex, texture_cube_map_array_and_sparse, &glsl_type_builtin_samplerCubeArrayShadow, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureLodARB",
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txl, texture_cube_map_array_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_txl, texture_cube_map_array_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_txl, texture_cube_map_array_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_txl, texture_cube_map_array_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_txl, texture_cube_map_array_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_txl, texture_cube_map_array_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureOffsetARB",
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_tex, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_tex, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txb, v130_derivatives_only_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txb, v130_derivatives_only_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
                 NULL);
 
    add_function("sparseTexelFetchARB",
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::ivec2_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::ivec2_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::ivec2_type, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_ivec2, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_ivec2, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_ivec2, NULL, true),
 
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::ivec3_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::ivec3_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::ivec3_type, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_ivec3, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_ivec3, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_ivec3, NULL, true),
 
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::ivec2_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::ivec2_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::ivec2_type, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_ivec2, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_ivec2, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_ivec2, NULL, true),
 
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::ivec3_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::ivec3_type, NULL, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::ivec3_type, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_ivec3, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_ivec3, NULL, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_ivec3, NULL, true),
 
-                _texelFetch(texture_multisample_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DMS_type,  glsl_type::ivec2_type, NULL, true),
-                _texelFetch(texture_multisample_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DMS_type, glsl_type::ivec2_type, NULL, true),
-                _texelFetch(texture_multisample_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DMS_type, glsl_type::ivec2_type, NULL, true),
+                _texelFetch(texture_multisample_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DMS,  &glsl_type_builtin_ivec2, NULL, true),
+                _texelFetch(texture_multisample_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DMS, &glsl_type_builtin_ivec2, NULL, true),
+                _texelFetch(texture_multisample_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DMS, &glsl_type_builtin_ivec2, NULL, true),
 
-                _texelFetch(texture_multisample_array_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DMSArray_type,  glsl_type::ivec3_type, NULL, true),
-                _texelFetch(texture_multisample_array_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DMSArray_type, glsl_type::ivec3_type, NULL, true),
-                _texelFetch(texture_multisample_array_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DMSArray_type, glsl_type::ivec3_type, NULL, true),
+                _texelFetch(texture_multisample_array_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DMSArray,  &glsl_type_builtin_ivec3, NULL, true),
+                _texelFetch(texture_multisample_array_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DMSArray, &glsl_type_builtin_ivec3, NULL, true),
+                _texelFetch(texture_multisample_array_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DMSArray, &glsl_type_builtin_ivec3, NULL, true),
                 NULL);
 
    add_function("sparseTexelFetchOffsetARB",
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::ivec2_type, glsl_type::ivec2_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::ivec2_type, glsl_type::ivec2_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::ivec2_type, glsl_type::ivec2_type, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2, true),
 
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::ivec3_type, glsl_type::ivec3_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::ivec3_type, glsl_type::ivec3_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::ivec3_type, glsl_type::ivec3_type, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec3, true),
 
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::ivec2_type, glsl_type::ivec2_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::ivec2_type, glsl_type::ivec2_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::ivec2_type, glsl_type::ivec2_type, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_ivec2, &glsl_type_builtin_ivec2, true),
 
-                _texelFetch(v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::ivec3_type, glsl_type::ivec2_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::ivec3_type, glsl_type::ivec2_type, true),
-                _texelFetch(v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::ivec3_type, glsl_type::ivec2_type, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2, true),
+                _texelFetch(v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_ivec3, &glsl_type_builtin_ivec2, true),
                 NULL);
 
    add_function("sparseTextureLodOffsetARB",
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txl, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txl, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureGradARB",
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_txd, texture_cube_map_array_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_txd, texture_cube_map_array_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_txd, texture_cube_map_array_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_txd, texture_cube_map_array_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_txd, texture_cube_map_array_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_txd, texture_cube_map_array_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureGradOffsetARB",
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DRectShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DRectShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE),
 
-                _texture(ir_txd, v130_desktop_and_sparse, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET|TEX_SPARSE),
+                _texture(ir_txd, v130_desktop_and_sparse, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureGatherARB",
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_SPARSE),
 
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE),
 
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_tg4, texture_gather_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_tg4, texture_gather_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DShadow_type,        glsl_type::vec2_type, TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type,   glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::samplerCubeShadow_type,      glsl_type::vec3_type, TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::samplerCubeArrayShadow_type, glsl_type::vec4_type, TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type,    glsl_type::vec2_type, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow,        &glsl_type_builtin_vec2, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow,   &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeShadow,      &glsl_type_builtin_vec3, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_samplerCubeArrayShadow, &glsl_type_builtin_vec4, TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow,    &glsl_type_builtin_vec2, TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureGatherOffsetARB",
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DShadow_type,      glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type,  glsl_type::vec2_type, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow,      &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET_NONCONST|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow,  &glsl_type_builtin_vec2, TEX_OFFSET_NONCONST|TEX_SPARSE),
                 NULL);
 
    add_function("sparseTextureGatherOffsetsARB",
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type,  glsl_type::sampler2DRect_type,  glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::ivec4_type, glsl_type::isampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::uvec4_type, glsl_type::usampler2DRect_type, glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DRect,  &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DRect, &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_COMPONENT|TEX_SPARSE),
 
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DShadow_type,      glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
-                _texture(ir_tg4, gpu_shader5_and_sparse, glsl_type::vec4_type, glsl_type::sampler2DRectShadow_type,  glsl_type::vec2_type, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DShadow,      &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET_ARRAY|TEX_SPARSE),
+                _texture(ir_tg4, gpu_shader5_and_sparse, &glsl_type_builtin_vec4, &glsl_type_builtin_sampler2DRectShadow,  &glsl_type_builtin_vec2, TEX_OFFSET_ARRAY|TEX_SPARSE),
                 NULL);
 
    add_function("sparseTexelsResidentARB", _is_sparse_texels_resident(), NULL);
 
    add_function("sparseTextureClampARB",
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, texture_cube_map_array_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, texture_cube_map_array_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, texture_cube_map_array_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
 
-                _textureCubeArrayShadow(ir_tex, texture_cube_map_array_and_clamp, glsl_type::samplerCubeArrayShadow_type, TEX_SPARSE|TEX_CLAMP),
+                _textureCubeArrayShadow(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_samplerCubeArrayShadow, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
                 NULL);
 
    add_function("textureClampARB",
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DShadow_type,   glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow,   &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_tex, texture_cube_map_array_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_CLAMP),
-                _texture(ir_tex, texture_cube_map_array_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_CLAMP),
-                _texture(ir_tex, texture_cube_map_array_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_CLAMP),
+                _texture(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_CLAMP),
+                _texture(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _textureCubeArrayShadow(ir_tex, texture_cube_map_array_and_clamp, glsl_type::samplerCubeArrayShadow_type, TEX_CLAMP),
+                _textureCubeArrayShadow(ir_tex, texture_cube_map_array_and_clamp, &glsl_type_builtin_samplerCubeArrayShadow, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::sampler1DShadow_type,   glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow,   &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_CLAMP),
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_CLAMP),
-                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_CLAMP),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_CLAMP),
+                _texture(ir_txb, derivatives_texture_cube_map_array_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _texture(ir_txb, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txb, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_CLAMP),
                 NULL);
 
    add_function("sparseTextureOffsetClampARB",
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
                 NULL);
 
    add_function("textureOffsetClampARB",
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_tex, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_tex, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txb, v130_derivatives_only_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_derivatives_only_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txb, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txb, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
                 NULL);
 
    add_function("sparseTextureGradClampARB",
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, texture_cube_map_array_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, texture_cube_map_array_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, texture_cube_map_array_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, texture_cube_map_array_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, texture_cube_map_array_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, texture_cube_map_array_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_SPARSE|TEX_CLAMP),
                 NULL);
 
    add_function("textureGradClampARB",
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCube_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCube_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCube_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCube,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCube, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCube, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DShadow_type,   glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type,   glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::samplerCubeShadow_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow,   &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow,   &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_samplerCubeShadow, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_CLAMP),
 
-                _texture(ir_txd, texture_cube_map_array_and_clamp, glsl_type::vec4_type,  glsl_type::samplerCubeArray_type,  glsl_type::vec4_type, TEX_CLAMP),
-                _texture(ir_txd, texture_cube_map_array_and_clamp, glsl_type::ivec4_type, glsl_type::isamplerCubeArray_type, glsl_type::vec4_type, TEX_CLAMP),
-                _texture(ir_txd, texture_cube_map_array_and_clamp, glsl_type::uvec4_type, glsl_type::usamplerCubeArray_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_txd, texture_cube_map_array_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_samplerCubeArray,  &glsl_type_builtin_vec4, TEX_CLAMP),
+                _texture(ir_txd, texture_cube_map_array_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isamplerCubeArray, &glsl_type_builtin_vec4, TEX_CLAMP),
+                _texture(ir_txd, texture_cube_map_array_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usamplerCubeArray, &glsl_type_builtin_vec4, TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_CLAMP),
                 NULL);
 
    add_function("sparseTextureGradOffsetClampARB",
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_SPARSE|TEX_CLAMP),
                 NULL);
 
    add_function("textureGradOffsetClampARB",
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1D_type,  glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1D_type, glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1D_type, glsl_type::float_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1D,  &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1D, &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1D, &glsl_type_builtin_float, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2D_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2D_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2D,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2D, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler3D_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler3D_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler3D,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler3D, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler1DArray_type,  glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler1DArray_type, glsl_type::vec2_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler1DArray,  &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler1DArray, &glsl_type_builtin_vec2, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::vec4_type,  glsl_type::sampler2DArray_type,  glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::ivec4_type, glsl_type::isampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::uvec4_type, glsl_type::usampler2DArray_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_vec4,  &glsl_type_builtin_sampler2DArray,  &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_ivec4, &glsl_type_builtin_isampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_uvec4, &glsl_type_builtin_usampler2DArray, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
 
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler1DArrayShadow_type, glsl_type::vec3_type, TEX_OFFSET|TEX_CLAMP),
-                _texture(ir_txd, v130_desktop_and_clamp, glsl_type::float_type, glsl_type::sampler2DArrayShadow_type, glsl_type::vec4_type, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler1DArrayShadow, &glsl_type_builtin_vec3, TEX_OFFSET|TEX_CLAMP),
+                _texture(ir_txd, v130_desktop_and_clamp, &glsl_type_builtin_float, &glsl_type_builtin_sampler2DArrayShadow, &glsl_type_builtin_vec4, TEX_OFFSET|TEX_CLAMP),
                 NULL);
 
-   F(dFdx)
-   F(dFdy)
-   F(fwidth)
-   F(dFdxCoarse)
-   F(dFdyCoarse)
-   F(fwidthCoarse)
-   F(dFdxFine)
-   F(dFdyFine)
-   F(fwidthFine)
+   FHF_DERIVATIVES(dFdx)
+   FHF_DERIVATIVES(dFdy)
+   FHF_DERIVATIVES(fwidth)
+   FHF_DERIVATIVE_CONTROL(dFdxCoarse)
+   FHF_DERIVATIVE_CONTROL(dFdyCoarse)
+   FHF_DERIVATIVE_CONTROL(fwidthCoarse)
+   FHF_DERIVATIVE_CONTROL(dFdxFine)
+   FHF_DERIVATIVE_CONTROL(dFdyFine)
+   FHF_DERIVATIVE_CONTROL(fwidthFine)
    F(noise1)
    F(noise2)
    F(noise3)
@@ -4735,70 +5049,90 @@ builtin_builder::create_builtins()
    IU(bitCount)
    IU(findLSB)
    IU(findMSB)
-   FDGS5(fma)
+   FDHFGS5(fma)
 
    add_function("ldexp",
-                _ldexp(glsl_type::float_type, glsl_type::int_type),
-                _ldexp(glsl_type::vec2_type,  glsl_type::ivec2_type),
-                _ldexp(glsl_type::vec3_type,  glsl_type::ivec3_type),
-                _ldexp(glsl_type::vec4_type,  glsl_type::ivec4_type),
-                _ldexp(glsl_type::double_type, glsl_type::int_type),
-                _ldexp(glsl_type::dvec2_type,  glsl_type::ivec2_type),
-                _ldexp(glsl_type::dvec3_type,  glsl_type::ivec3_type),
-                _ldexp(glsl_type::dvec4_type,  glsl_type::ivec4_type),
+                _ldexp(&glsl_type_builtin_float, &glsl_type_builtin_int),
+                _ldexp(&glsl_type_builtin_vec2,  &glsl_type_builtin_ivec2),
+                _ldexp(&glsl_type_builtin_vec3,  &glsl_type_builtin_ivec3),
+                _ldexp(&glsl_type_builtin_vec4,  &glsl_type_builtin_ivec4),
+                _ldexp(&glsl_type_builtin_double, &glsl_type_builtin_int),
+                _ldexp(&glsl_type_builtin_dvec2,  &glsl_type_builtin_ivec2),
+                _ldexp(&glsl_type_builtin_dvec3,  &glsl_type_builtin_ivec3),
+                _ldexp(&glsl_type_builtin_dvec4,  &glsl_type_builtin_ivec4),
+                _ldexp(&glsl_type_builtin_float16_t, &glsl_type_builtin_int),
+                _ldexp(&glsl_type_builtin_f16vec2,  &glsl_type_builtin_ivec2),
+                _ldexp(&glsl_type_builtin_f16vec3,  &glsl_type_builtin_ivec3),
+                _ldexp(&glsl_type_builtin_f16vec4,  &glsl_type_builtin_ivec4),
                 NULL);
 
    add_function("frexp",
-                _frexp(glsl_type::float_type, glsl_type::int_type),
-                _frexp(glsl_type::vec2_type,  glsl_type::ivec2_type),
-                _frexp(glsl_type::vec3_type,  glsl_type::ivec3_type),
-                _frexp(glsl_type::vec4_type,  glsl_type::ivec4_type),
-                _frexp(glsl_type::double_type, glsl_type::int_type),
-                _frexp(glsl_type::dvec2_type,  glsl_type::ivec2_type),
-                _frexp(glsl_type::dvec3_type,  glsl_type::ivec3_type),
-                _frexp(glsl_type::dvec4_type,  glsl_type::ivec4_type),
+                _frexp(&glsl_type_builtin_float, &glsl_type_builtin_int),
+                _frexp(&glsl_type_builtin_vec2,  &glsl_type_builtin_ivec2),
+                _frexp(&glsl_type_builtin_vec3,  &glsl_type_builtin_ivec3),
+                _frexp(&glsl_type_builtin_vec4,  &glsl_type_builtin_ivec4),
+                _frexp(&glsl_type_builtin_double, &glsl_type_builtin_int),
+                _frexp(&glsl_type_builtin_dvec2,  &glsl_type_builtin_ivec2),
+                _frexp(&glsl_type_builtin_dvec3,  &glsl_type_builtin_ivec3),
+                _frexp(&glsl_type_builtin_dvec4,  &glsl_type_builtin_ivec4),
+                _frexp(&glsl_type_builtin_float16_t, &glsl_type_builtin_int),
+                _frexp(&glsl_type_builtin_f16vec2,  &glsl_type_builtin_ivec2),
+                _frexp(&glsl_type_builtin_f16vec3,  &glsl_type_builtin_ivec3),
+                _frexp(&glsl_type_builtin_f16vec4,  &glsl_type_builtin_ivec4),
                 NULL);
    add_function("uaddCarry",
-                _uaddCarry(glsl_type::uint_type),
-                _uaddCarry(glsl_type::uvec2_type),
-                _uaddCarry(glsl_type::uvec3_type),
-                _uaddCarry(glsl_type::uvec4_type),
+                _uaddCarry(&glsl_type_builtin_uint),
+                _uaddCarry(&glsl_type_builtin_uvec2),
+                _uaddCarry(&glsl_type_builtin_uvec3),
+                _uaddCarry(&glsl_type_builtin_uvec4),
                 NULL);
    add_function("usubBorrow",
-                _usubBorrow(glsl_type::uint_type),
-                _usubBorrow(glsl_type::uvec2_type),
-                _usubBorrow(glsl_type::uvec3_type),
-                _usubBorrow(glsl_type::uvec4_type),
+                _usubBorrow(&glsl_type_builtin_uint),
+                _usubBorrow(&glsl_type_builtin_uvec2),
+                _usubBorrow(&glsl_type_builtin_uvec3),
+                _usubBorrow(&glsl_type_builtin_uvec4),
                 NULL);
    add_function("imulExtended",
-                _mulExtended(glsl_type::int_type),
-                _mulExtended(glsl_type::ivec2_type),
-                _mulExtended(glsl_type::ivec3_type),
-                _mulExtended(glsl_type::ivec4_type),
+                _mulExtended(&glsl_type_builtin_int),
+                _mulExtended(&glsl_type_builtin_ivec2),
+                _mulExtended(&glsl_type_builtin_ivec3),
+                _mulExtended(&glsl_type_builtin_ivec4),
                 NULL);
    add_function("umulExtended",
-                _mulExtended(glsl_type::uint_type),
-                _mulExtended(glsl_type::uvec2_type),
-                _mulExtended(glsl_type::uvec3_type),
-                _mulExtended(glsl_type::uvec4_type),
+                _mulExtended(&glsl_type_builtin_uint),
+                _mulExtended(&glsl_type_builtin_uvec2),
+                _mulExtended(&glsl_type_builtin_uvec3),
+                _mulExtended(&glsl_type_builtin_uvec4),
                 NULL);
    add_function("interpolateAtCentroid",
-                _interpolateAtCentroid(glsl_type::float_type),
-                _interpolateAtCentroid(glsl_type::vec2_type),
-                _interpolateAtCentroid(glsl_type::vec3_type),
-                _interpolateAtCentroid(glsl_type::vec4_type),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_float),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_vec2),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_vec3),
+                _interpolateAtCentroid(fs_interpolate_at, &glsl_type_builtin_vec4),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_float16_t),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec2),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec3),
+                _interpolateAtCentroid(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec4),
                 NULL);
    add_function("interpolateAtOffset",
-                _interpolateAtOffset(glsl_type::float_type),
-                _interpolateAtOffset(glsl_type::vec2_type),
-                _interpolateAtOffset(glsl_type::vec3_type),
-                _interpolateAtOffset(glsl_type::vec4_type),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_float),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_vec2),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_vec3),
+                _interpolateAtOffset(fs_interpolate_at, &glsl_type_builtin_vec4),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_float16_t),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec2),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec3),
+                _interpolateAtOffset(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec4),
                 NULL);
    add_function("interpolateAtSample",
-                _interpolateAtSample(glsl_type::float_type),
-                _interpolateAtSample(glsl_type::vec2_type),
-                _interpolateAtSample(glsl_type::vec3_type),
-                _interpolateAtSample(glsl_type::vec4_type),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_float),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_vec2),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_vec3),
+                _interpolateAtSample(fs_interpolate_at, &glsl_type_builtin_vec4),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_float16_t),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec2),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec3),
+                _interpolateAtSample(fs_half_float_interpolate_at, &glsl_type_builtin_f16vec4),
                 NULL);
 
    add_function("atomicCounter",
@@ -4891,171 +5225,186 @@ builtin_builder::create_builtins()
    add_function("atomicAdd",
                 _atomic_op2("__intrinsic_atomic_add",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_add",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_add",
                             shader_atomic_float_add,
-                            glsl_type::float_type),
+                            &glsl_type_builtin_float),
                 _atomic_op2("__intrinsic_atomic_add",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 NULL);
    add_function("atomicMin",
                 _atomic_op2("__intrinsic_atomic_min",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_min",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_min",
                             shader_atomic_float_minmax,
-                            glsl_type::float_type),
+                            &glsl_type_builtin_float),
                 _atomic_op2("__intrinsic_atomic_min",
                             buffer_int64_atomics_supported,
-                            glsl_type::uint64_t_type),
+                            &glsl_type_builtin_uint64_t),
                 _atomic_op2("__intrinsic_atomic_min",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 NULL);
    add_function("atomicMax",
                 _atomic_op2("__intrinsic_atomic_max",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_max",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_max",
                             shader_atomic_float_minmax,
-                            glsl_type::float_type),
+                            &glsl_type_builtin_float),
                 _atomic_op2("__intrinsic_atomic_max",
                             buffer_int64_atomics_supported,
-                            glsl_type::uint64_t_type),
+                            &glsl_type_builtin_uint64_t),
                 _atomic_op2("__intrinsic_atomic_max",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 NULL);
    add_function("atomicAnd",
                 _atomic_op2("__intrinsic_atomic_and",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_and",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_and",
                             buffer_int64_atomics_supported,
-                            glsl_type::uint64_t_type),
+                            &glsl_type_builtin_uint64_t),
                 _atomic_op2("__intrinsic_atomic_and",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 NULL);
    add_function("atomicOr",
                 _atomic_op2("__intrinsic_atomic_or",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_or",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_or",
                             buffer_int64_atomics_supported,
-                            glsl_type::uint64_t_type),
+                            &glsl_type_builtin_uint64_t),
                 _atomic_op2("__intrinsic_atomic_or",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 NULL);
    add_function("atomicXor",
                 _atomic_op2("__intrinsic_atomic_xor",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_xor",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_xor",
                             buffer_int64_atomics_supported,
-                            glsl_type::uint64_t_type),
+                            &glsl_type_builtin_uint64_t),
                 _atomic_op2("__intrinsic_atomic_xor",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 NULL);
    add_function("atomicExchange",
                 _atomic_op2("__intrinsic_atomic_exchange",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op2("__intrinsic_atomic_exchange",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op2("__intrinsic_atomic_exchange",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 _atomic_op2("__intrinsic_atomic_exchange",
                             shader_atomic_float_exchange,
-                            glsl_type::float_type),
+                            &glsl_type_builtin_float),
                 NULL);
    add_function("atomicCompSwap",
                 _atomic_op3("__intrinsic_atomic_comp_swap",
                             buffer_atomics_supported,
-                            glsl_type::uint_type),
+                            &glsl_type_builtin_uint),
                 _atomic_op3("__intrinsic_atomic_comp_swap",
                             buffer_atomics_supported,
-                            glsl_type::int_type),
+                            &glsl_type_builtin_int),
                 _atomic_op3("__intrinsic_atomic_comp_swap",
                             buffer_int64_atomics_supported,
-                            glsl_type::int64_t_type),
+                            &glsl_type_builtin_int64_t),
                 _atomic_op3("__intrinsic_atomic_comp_swap",
                             shader_atomic_float_minmax,
-                            glsl_type::float_type),
+                            &glsl_type_builtin_float),
                 NULL);
 
    add_function("min3",
-                _min3(glsl_type::float_type),
-                _min3(glsl_type::vec2_type),
-                _min3(glsl_type::vec3_type),
-                _min3(glsl_type::vec4_type),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_float),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_vec2),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_vec3),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_vec4),
 
-                _min3(glsl_type::int_type),
-                _min3(glsl_type::ivec2_type),
-                _min3(glsl_type::ivec3_type),
-                _min3(glsl_type::ivec4_type),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_float16_t),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec2),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec3),
+                _min3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec4),
 
-                _min3(glsl_type::uint_type),
-                _min3(glsl_type::uvec2_type),
-                _min3(glsl_type::uvec3_type),
-                _min3(glsl_type::uvec4_type),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_int),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_ivec2),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_ivec3),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_ivec4),
+
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uint),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uvec2),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uvec3),
+                _min3(shader_trinary_minmax, &glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("max3",
-                _max3(glsl_type::float_type),
-                _max3(glsl_type::vec2_type),
-                _max3(glsl_type::vec3_type),
-                _max3(glsl_type::vec4_type),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_float),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_vec2),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_vec3),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_vec4),
 
-                _max3(glsl_type::int_type),
-                _max3(glsl_type::ivec2_type),
-                _max3(glsl_type::ivec3_type),
-                _max3(glsl_type::ivec4_type),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_float16_t),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec2),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec3),
+                _max3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec4),
 
-                _max3(glsl_type::uint_type),
-                _max3(glsl_type::uvec2_type),
-                _max3(glsl_type::uvec3_type),
-                _max3(glsl_type::uvec4_type),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_int),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_ivec2),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_ivec3),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_ivec4),
+
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uint),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uvec2),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uvec3),
+                _max3(shader_trinary_minmax, &glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("mid3",
-                _mid3(glsl_type::float_type),
-                _mid3(glsl_type::vec2_type),
-                _mid3(glsl_type::vec3_type),
-                _mid3(glsl_type::vec4_type),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_float),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_vec2),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_vec3),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_vec4),
 
-                _mid3(glsl_type::int_type),
-                _mid3(glsl_type::ivec2_type),
-                _mid3(glsl_type::ivec3_type),
-                _mid3(glsl_type::ivec4_type),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_float16_t),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec2),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec3),
+                _mid3(shader_trinary_minmax_half_float, &glsl_type_builtin_f16vec4),
 
-                _mid3(glsl_type::uint_type),
-                _mid3(glsl_type::uvec2_type),
-                _mid3(glsl_type::uvec3_type),
-                _mid3(glsl_type::uvec4_type),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_int),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_ivec2),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_ivec3),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_ivec4),
+
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uint),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uvec2),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uvec3),
+                _mid3(shader_trinary_minmax, &glsl_type_builtin_uvec4),
                 NULL);
 
    add_image_functions(true);
@@ -5088,47 +5437,47 @@ builtin_builder::create_builtins()
    add_function("ballotARB", _ballot(), NULL);
 
    add_function("readInvocationARB",
-                _read_invocation(glsl_type::float_type),
-                _read_invocation(glsl_type::vec2_type),
-                _read_invocation(glsl_type::vec3_type),
-                _read_invocation(glsl_type::vec4_type),
+                _read_invocation(&glsl_type_builtin_float),
+                _read_invocation(&glsl_type_builtin_vec2),
+                _read_invocation(&glsl_type_builtin_vec3),
+                _read_invocation(&glsl_type_builtin_vec4),
 
-                _read_invocation(glsl_type::int_type),
-                _read_invocation(glsl_type::ivec2_type),
-                _read_invocation(glsl_type::ivec3_type),
-                _read_invocation(glsl_type::ivec4_type),
+                _read_invocation(&glsl_type_builtin_int),
+                _read_invocation(&glsl_type_builtin_ivec2),
+                _read_invocation(&glsl_type_builtin_ivec3),
+                _read_invocation(&glsl_type_builtin_ivec4),
 
-                _read_invocation(glsl_type::uint_type),
-                _read_invocation(glsl_type::uvec2_type),
-                _read_invocation(glsl_type::uvec3_type),
-                _read_invocation(glsl_type::uvec4_type),
+                _read_invocation(&glsl_type_builtin_uint),
+                _read_invocation(&glsl_type_builtin_uvec2),
+                _read_invocation(&glsl_type_builtin_uvec3),
+                _read_invocation(&glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("readFirstInvocationARB",
-                _read_first_invocation(glsl_type::float_type),
-                _read_first_invocation(glsl_type::vec2_type),
-                _read_first_invocation(glsl_type::vec3_type),
-                _read_first_invocation(glsl_type::vec4_type),
+                _read_first_invocation(&glsl_type_builtin_float),
+                _read_first_invocation(&glsl_type_builtin_vec2),
+                _read_first_invocation(&glsl_type_builtin_vec3),
+                _read_first_invocation(&glsl_type_builtin_vec4),
 
-                _read_first_invocation(glsl_type::int_type),
-                _read_first_invocation(glsl_type::ivec2_type),
-                _read_first_invocation(glsl_type::ivec3_type),
-                _read_first_invocation(glsl_type::ivec4_type),
+                _read_first_invocation(&glsl_type_builtin_int),
+                _read_first_invocation(&glsl_type_builtin_ivec2),
+                _read_first_invocation(&glsl_type_builtin_ivec3),
+                _read_first_invocation(&glsl_type_builtin_ivec4),
 
-                _read_first_invocation(glsl_type::uint_type),
-                _read_first_invocation(glsl_type::uvec2_type),
-                _read_first_invocation(glsl_type::uvec3_type),
-                _read_first_invocation(glsl_type::uvec4_type),
+                _read_first_invocation(&glsl_type_builtin_uint),
+                _read_first_invocation(&glsl_type_builtin_uvec2),
+                _read_first_invocation(&glsl_type_builtin_uvec3),
+                _read_first_invocation(&glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("clock2x32ARB",
                 _shader_clock(shader_clock,
-                              glsl_type::uvec2_type),
+                              &glsl_type_builtin_uvec2),
                 NULL);
 
    add_function("clockARB",
                 _shader_clock(shader_clock_int64,
-                              glsl_type::uint64_t_type),
+                              &glsl_type_builtin_uint64_t),
                 NULL);
 
    add_function("beginInvocationInterlockARB",
@@ -5193,247 +5542,231 @@ builtin_builder::create_builtins()
 
    add_function("helperInvocationEXT", _helper_invocation(), NULL);
 
-   add_function("__builtin_idiv64",
-                generate_ir::idiv64(mem_ctx, integer_functions_supported),
-                NULL);
-
-   add_function("__builtin_imod64",
-                generate_ir::imod64(mem_ctx, integer_functions_supported),
-                NULL);
-
-   add_function("__builtin_udiv64",
-                generate_ir::udiv64(mem_ctx, integer_functions_supported),
-                NULL);
-
-   add_function("__builtin_umod64",
-                generate_ir::umod64(mem_ctx, integer_functions_supported),
-                NULL);
-
    add_function("countLeadingZeros",
                 _countLeadingZeros(shader_integer_functions2,
-                                   glsl_type::uint_type),
+                                   &glsl_type_builtin_uint),
                 _countLeadingZeros(shader_integer_functions2,
-                                   glsl_type::uvec2_type),
+                                   &glsl_type_builtin_uvec2),
                 _countLeadingZeros(shader_integer_functions2,
-                                   glsl_type::uvec3_type),
+                                   &glsl_type_builtin_uvec3),
                 _countLeadingZeros(shader_integer_functions2,
-                                   glsl_type::uvec4_type),
+                                   &glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("countTrailingZeros",
                 _countTrailingZeros(shader_integer_functions2,
-                                    glsl_type::uint_type),
+                                    &glsl_type_builtin_uint),
                 _countTrailingZeros(shader_integer_functions2,
-                                    glsl_type::uvec2_type),
+                                    &glsl_type_builtin_uvec2),
                 _countTrailingZeros(shader_integer_functions2,
-                                    glsl_type::uvec3_type),
+                                    &glsl_type_builtin_uvec3),
                 _countTrailingZeros(shader_integer_functions2,
-                                    glsl_type::uvec4_type),
+                                    &glsl_type_builtin_uvec4),
                 NULL);
 
    add_function("absoluteDifference",
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::int_type),
+                                    &glsl_type_builtin_int),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::ivec2_type),
+                                    &glsl_type_builtin_ivec2),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::ivec3_type),
+                                    &glsl_type_builtin_ivec3),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::ivec4_type),
+                                    &glsl_type_builtin_ivec4),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::uint_type),
+                                    &glsl_type_builtin_uint),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::uvec2_type),
+                                    &glsl_type_builtin_uvec2),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::uvec3_type),
+                                    &glsl_type_builtin_uvec3),
                 _absoluteDifference(shader_integer_functions2,
-                                    glsl_type::uvec4_type),
+                                    &glsl_type_builtin_uvec4),
 
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::int64_t_type),
+                                    &glsl_type_builtin_int64_t),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::i64vec2_type),
+                                    &glsl_type_builtin_i64vec2),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::i64vec3_type),
+                                    &glsl_type_builtin_i64vec3),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::i64vec4_type),
+                                    &glsl_type_builtin_i64vec4),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::uint64_t_type),
+                                    &glsl_type_builtin_uint64_t),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::u64vec2_type),
+                                    &glsl_type_builtin_u64vec2),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::u64vec3_type),
+                                    &glsl_type_builtin_u64vec3),
                 _absoluteDifference(shader_integer_functions2_int64,
-                                    glsl_type::u64vec4_type),
+                                    &glsl_type_builtin_u64vec4),
                 NULL);
 
    add_function("addSaturate",
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::int_type),
+                             &glsl_type_builtin_int),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::ivec2_type),
+                             &glsl_type_builtin_ivec2),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::ivec3_type),
+                             &glsl_type_builtin_ivec3),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::ivec4_type),
+                             &glsl_type_builtin_ivec4),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::uint_type),
+                             &glsl_type_builtin_uint),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::uvec2_type),
+                             &glsl_type_builtin_uvec2),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::uvec3_type),
+                             &glsl_type_builtin_uvec3),
                 _addSaturate(shader_integer_functions2,
-                             glsl_type::uvec4_type),
+                             &glsl_type_builtin_uvec4),
 
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::int64_t_type),
+                             &glsl_type_builtin_int64_t),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::i64vec2_type),
+                             &glsl_type_builtin_i64vec2),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::i64vec3_type),
+                             &glsl_type_builtin_i64vec3),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::i64vec4_type),
+                             &glsl_type_builtin_i64vec4),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::uint64_t_type),
+                             &glsl_type_builtin_uint64_t),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::u64vec2_type),
+                             &glsl_type_builtin_u64vec2),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::u64vec3_type),
+                             &glsl_type_builtin_u64vec3),
                 _addSaturate(shader_integer_functions2_int64,
-                             glsl_type::u64vec4_type),
+                             &glsl_type_builtin_u64vec4),
                 NULL);
 
    add_function("average",
                 _average(shader_integer_functions2,
-                         glsl_type::int_type),
+                         &glsl_type_builtin_int),
                 _average(shader_integer_functions2,
-                         glsl_type::ivec2_type),
+                         &glsl_type_builtin_ivec2),
                 _average(shader_integer_functions2,
-                         glsl_type::ivec3_type),
+                         &glsl_type_builtin_ivec3),
                 _average(shader_integer_functions2,
-                         glsl_type::ivec4_type),
+                         &glsl_type_builtin_ivec4),
                 _average(shader_integer_functions2,
-                         glsl_type::uint_type),
+                         &glsl_type_builtin_uint),
                 _average(shader_integer_functions2,
-                         glsl_type::uvec2_type),
+                         &glsl_type_builtin_uvec2),
                 _average(shader_integer_functions2,
-                         glsl_type::uvec3_type),
+                         &glsl_type_builtin_uvec3),
                 _average(shader_integer_functions2,
-                         glsl_type::uvec4_type),
+                         &glsl_type_builtin_uvec4),
 
                 _average(shader_integer_functions2_int64,
-                         glsl_type::int64_t_type),
+                         &glsl_type_builtin_int64_t),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::i64vec2_type),
+                         &glsl_type_builtin_i64vec2),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::i64vec3_type),
+                         &glsl_type_builtin_i64vec3),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::i64vec4_type),
+                         &glsl_type_builtin_i64vec4),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::uint64_t_type),
+                         &glsl_type_builtin_uint64_t),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::u64vec2_type),
+                         &glsl_type_builtin_u64vec2),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::u64vec3_type),
+                         &glsl_type_builtin_u64vec3),
                 _average(shader_integer_functions2_int64,
-                         glsl_type::u64vec4_type),
+                         &glsl_type_builtin_u64vec4),
                 NULL);
 
    add_function("averageRounded",
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::int_type),
+                                &glsl_type_builtin_int),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::ivec2_type),
+                                &glsl_type_builtin_ivec2),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::ivec3_type),
+                                &glsl_type_builtin_ivec3),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::ivec4_type),
+                                &glsl_type_builtin_ivec4),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::uint_type),
+                                &glsl_type_builtin_uint),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::uvec2_type),
+                                &glsl_type_builtin_uvec2),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::uvec3_type),
+                                &glsl_type_builtin_uvec3),
                 _averageRounded(shader_integer_functions2,
-                                glsl_type::uvec4_type),
+                                &glsl_type_builtin_uvec4),
 
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::int64_t_type),
+                                &glsl_type_builtin_int64_t),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::i64vec2_type),
+                                &glsl_type_builtin_i64vec2),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::i64vec3_type),
+                                &glsl_type_builtin_i64vec3),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::i64vec4_type),
+                                &glsl_type_builtin_i64vec4),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::uint64_t_type),
+                                &glsl_type_builtin_uint64_t),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::u64vec2_type),
+                                &glsl_type_builtin_u64vec2),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::u64vec3_type),
+                                &glsl_type_builtin_u64vec3),
                 _averageRounded(shader_integer_functions2_int64,
-                                glsl_type::u64vec4_type),
+                                &glsl_type_builtin_u64vec4),
                 NULL);
 
    add_function("subtractSaturate",
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::int_type),
+                                  &glsl_type_builtin_int),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::ivec2_type),
+                                  &glsl_type_builtin_ivec2),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::ivec3_type),
+                                  &glsl_type_builtin_ivec3),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::ivec4_type),
+                                  &glsl_type_builtin_ivec4),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::uint_type),
+                                  &glsl_type_builtin_uint),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::uvec2_type),
+                                  &glsl_type_builtin_uvec2),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::uvec3_type),
+                                  &glsl_type_builtin_uvec3),
                 _subtractSaturate(shader_integer_functions2,
-                                  glsl_type::uvec4_type),
+                                  &glsl_type_builtin_uvec4),
 
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::int64_t_type),
+                                  &glsl_type_builtin_int64_t),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::i64vec2_type),
+                                  &glsl_type_builtin_i64vec2),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::i64vec3_type),
+                                  &glsl_type_builtin_i64vec3),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::i64vec4_type),
+                                  &glsl_type_builtin_i64vec4),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::uint64_t_type),
+                                  &glsl_type_builtin_uint64_t),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::u64vec2_type),
+                                  &glsl_type_builtin_u64vec2),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::u64vec3_type),
+                                  &glsl_type_builtin_u64vec3),
                 _subtractSaturate(shader_integer_functions2_int64,
-                                  glsl_type::u64vec4_type),
+                                  &glsl_type_builtin_u64vec4),
                 NULL);
 
    add_function("multiply32x16",
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::int_type),
+                               &glsl_type_builtin_int),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::ivec2_type),
+                               &glsl_type_builtin_ivec2),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::ivec3_type),
+                               &glsl_type_builtin_ivec3),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::ivec4_type),
+                               &glsl_type_builtin_ivec4),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::uint_type),
+                               &glsl_type_builtin_uint),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::uvec2_type),
+                               &glsl_type_builtin_uvec2),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::uvec3_type),
+                               &glsl_type_builtin_uvec3),
                 _multiply32x16(shader_integer_functions2,
-                               glsl_type::uvec4_type),
+                               &glsl_type_builtin_uvec4),
                 NULL);
 
 #undef F
 #undef FI
-#undef FIUD_VEC
-#undef FIUBD_VEC
+#undef FIUDHF_VEC
+#undef FIUBDHF_VEC
 #undef FIU2_MIXED
 }
 
@@ -5472,39 +5805,39 @@ builtin_builder::add_image_function(const char *name,
                                     enum ir_intrinsic_id intrinsic_id)
 {
    static const glsl_type *const types[] = {
-      glsl_type::image1D_type,
-      glsl_type::image2D_type,
-      glsl_type::image3D_type,
-      glsl_type::image2DRect_type,
-      glsl_type::imageCube_type,
-      glsl_type::imageBuffer_type,
-      glsl_type::image1DArray_type,
-      glsl_type::image2DArray_type,
-      glsl_type::imageCubeArray_type,
-      glsl_type::image2DMS_type,
-      glsl_type::image2DMSArray_type,
-      glsl_type::iimage1D_type,
-      glsl_type::iimage2D_type,
-      glsl_type::iimage3D_type,
-      glsl_type::iimage2DRect_type,
-      glsl_type::iimageCube_type,
-      glsl_type::iimageBuffer_type,
-      glsl_type::iimage1DArray_type,
-      glsl_type::iimage2DArray_type,
-      glsl_type::iimageCubeArray_type,
-      glsl_type::iimage2DMS_type,
-      glsl_type::iimage2DMSArray_type,
-      glsl_type::uimage1D_type,
-      glsl_type::uimage2D_type,
-      glsl_type::uimage3D_type,
-      glsl_type::uimage2DRect_type,
-      glsl_type::uimageCube_type,
-      glsl_type::uimageBuffer_type,
-      glsl_type::uimage1DArray_type,
-      glsl_type::uimage2DArray_type,
-      glsl_type::uimageCubeArray_type,
-      glsl_type::uimage2DMS_type,
-      glsl_type::uimage2DMSArray_type
+      &glsl_type_builtin_image1D,
+      &glsl_type_builtin_image2D,
+      &glsl_type_builtin_image3D,
+      &glsl_type_builtin_image2DRect,
+      &glsl_type_builtin_imageCube,
+      &glsl_type_builtin_imageBuffer,
+      &glsl_type_builtin_image1DArray,
+      &glsl_type_builtin_image2DArray,
+      &glsl_type_builtin_imageCubeArray,
+      &glsl_type_builtin_image2DMS,
+      &glsl_type_builtin_image2DMSArray,
+      &glsl_type_builtin_iimage1D,
+      &glsl_type_builtin_iimage2D,
+      &glsl_type_builtin_iimage3D,
+      &glsl_type_builtin_iimage2DRect,
+      &glsl_type_builtin_iimageCube,
+      &glsl_type_builtin_iimageBuffer,
+      &glsl_type_builtin_iimage1DArray,
+      &glsl_type_builtin_iimage2DArray,
+      &glsl_type_builtin_iimageCubeArray,
+      &glsl_type_builtin_iimage2DMS,
+      &glsl_type_builtin_iimage2DMSArray,
+      &glsl_type_builtin_uimage1D,
+      &glsl_type_builtin_uimage2D,
+      &glsl_type_builtin_uimage3D,
+      &glsl_type_builtin_uimage2DRect,
+      &glsl_type_builtin_uimageCube,
+      &glsl_type_builtin_uimageBuffer,
+      &glsl_type_builtin_uimage1DArray,
+      &glsl_type_builtin_uimage2DArray,
+      &glsl_type_builtin_uimageCubeArray,
+      &glsl_type_builtin_uimage2DMS,
+      &glsl_type_builtin_uimage2DMSArray
    };
 
    ir_function *f = new(mem_ctx) ir_function(name);
@@ -5706,6 +6039,12 @@ builtin_builder::as_highp(ir_factory &body, ir_variable *var)
 }
 
 ir_constant *
+builtin_builder::imm(float16_t f16, unsigned vector_elements)
+{
+   return new(mem_ctx) ir_constant(f16, vector_elements);
+}
+
+ir_constant *
 builtin_builder::imm(bool b, unsigned vector_elements)
 {
    return new(mem_ctx) ir_constant(b, vector_elements);
@@ -5741,7 +6080,8 @@ builtin_builder::imm(const glsl_type *type, const ir_constant_data &data)
    return new(mem_ctx) ir_constant(type, &data);
 }
 
-#define IMM_FP(type, val) (type->is_double()) ? imm(val) : imm((float)val)
+#define IMM_FP(type, val) (glsl_type_is_double(type)) ? imm(val) : \
+   (glsl_type_is_float_16(type)  ? imm((float16_t)val) : imm((float)val))
 
 ir_dereference_variable *
 builtin_builder::var_ref(ir_variable *var)
@@ -5865,31 +6205,34 @@ builtin_builder::_##NAME(const glsl_type *return_type,                  \
  */
 
 ir_function_signature *
-builtin_builder::_radians(const glsl_type *type)
+builtin_builder::_radians(builtin_available_predicate avail,
+                          const glsl_type *type)
 {
    ir_variable *degrees = in_var(type, "degrees");
-   MAKE_SIG(type, always_available, 1, degrees);
-   body.emit(ret(mul(degrees, imm(0.0174532925f))));
+   MAKE_SIG(type, avail, 1, degrees);
+   body.emit(ret(mul(degrees, IMM_FP(type, 0.0174532925f))));
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_degrees(const glsl_type *type)
+builtin_builder::_degrees(builtin_available_predicate avail,
+                          const glsl_type *type)
 {
    ir_variable *radians = in_var(type, "radians");
-   MAKE_SIG(type, always_available, 1, radians);
-   body.emit(ret(mul(radians, imm(57.29578f))));
+   MAKE_SIG(type, avail, 1, radians);
+   body.emit(ret(mul(radians, IMM_FP(type, 57.29578f))));
    return sig;
 }
 
-UNOP(sin, ir_unop_sin, always_available)
-UNOP(cos, ir_unop_cos, always_available)
+UNOPA(sin, ir_unop_sin)
+UNOPA(cos, ir_unop_cos)
 
 ir_function_signature *
-builtin_builder::_tan(const glsl_type *type)
+builtin_builder::_tan(builtin_available_predicate avail,
+                      const glsl_type *type)
 {
    ir_variable *theta = in_var(type, "theta");
-   MAKE_SIG(type, always_available, 1, theta);
+   MAKE_SIG(type, avail, 1, theta);
    body.emit(ret(div(sin(theta), cos(theta))));
    return sig;
 }
@@ -5898,14 +6241,14 @@ ir_expression *
 builtin_builder::asin_expr(ir_variable *x, float p0, float p1)
 {
    return mul(sign(x),
-              sub(imm(M_PI_2f),
-                  mul(sqrt(sub(imm(1.0f), abs(x))),
-                      add(imm(M_PI_2f),
+              sub(IMM_FP(x->type, M_PI_2f),
+                  mul(sqrt(sub(IMM_FP(x->type, 1.0f), abs(x))),
+                      add(IMM_FP(x->type, M_PI_2f),
                           mul(abs(x),
-                              add(imm(M_PI_4f - 1.0f),
+                              add(IMM_FP(x->type, (M_PI_4f - 1.0f)),
                                   mul(abs(x),
-                                      add(imm(p0),
-                                          mul(abs(x), imm(p1))))))))));
+                                      add(IMM_FP(x->type, p0),
+                                          mul(abs(x), IMM_FP(x->type, p1))))))))));
 }
 
 /**
@@ -5939,16 +6282,17 @@ builtin_builder::call(ir_function *f, ir_variable *ret, exec_list params)
       return NULL;
 
    ir_dereference_variable *deref =
-      (sig->return_type->is_void() ? NULL : var_ref(ret));
+      (glsl_type_is_void(sig->return_type) ? NULL : var_ref(ret));
 
    return new(mem_ctx) ir_call(sig, deref, &actual_params);
 }
 
 ir_function_signature *
-builtin_builder::_asin(const glsl_type *type)
+builtin_builder::_asin(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, always_available, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    body.emit(ret(asin_expr(x, 0.086566724f, -0.03102955f)));
 
@@ -5956,45 +6300,49 @@ builtin_builder::_asin(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_acos(const glsl_type *type)
+builtin_builder::_acos(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, always_available, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
-   body.emit(ret(sub(imm(M_PI_2f), asin_expr(x, 0.08132463f, -0.02363318f))));
+   body.emit(ret(sub(IMM_FP(type, M_PI_2f), asin_expr(x, 0.08132463f, -0.02363318f))));
 
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_sinh(const glsl_type *type)
+builtin_builder::_sinh(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    /* 0.5 * (e^x - e^(-x)) */
-   body.emit(ret(mul(imm(0.5f), sub(exp(x), exp(neg(x))))));
+   body.emit(ret(mul(IMM_FP(type, 0.5f), sub(exp(x), exp(neg(x))))));
 
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_cosh(const glsl_type *type)
+builtin_builder::_cosh(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    /* 0.5 * (e^x + e^(-x)) */
-   body.emit(ret(mul(imm(0.5f), add(exp(x), exp(neg(x))))));
+   body.emit(ret(mul(IMM_FP(type, 0.5f), add(exp(x), exp(neg(x))))));
 
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_tanh(const glsl_type *type)
+builtin_builder::_tanh(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    /* Clamp x to [-10, +10] to avoid precision problems.
     * When x > 10, e^(-x) is so small relative to e^x that it gets flushed to
@@ -6002,7 +6350,7 @@ builtin_builder::_tanh(const glsl_type *type)
     * direction when x < -10.
     */
    ir_variable *t = body.make_temp(type, "tmp");
-   body.emit(assign(t, min2(max2(x, imm(-10.0f)), imm(10.0f))));
+   body.emit(assign(t, min2(max2(x, IMM_FP(type, -10.0f)), IMM_FP(type, 10.0f))));
 
    /* (e^x - e^(-x)) / (e^x + e^(-x)) */
    body.emit(ret(div(sub(exp(t), exp(neg(t))),
@@ -6012,34 +6360,37 @@ builtin_builder::_tanh(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_asinh(const glsl_type *type)
+builtin_builder::_asinh(builtin_available_predicate avail,
+                        const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
    body.emit(ret(mul(sign(x), log(add(abs(x), sqrt(add(mul(x, x),
-                                                       imm(1.0f))))))));
+                                                       IMM_FP(type, 1.0f))))))));
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_acosh(const glsl_type *type)
+builtin_builder::_acosh(builtin_available_predicate avail,
+                        const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
-   body.emit(ret(log(add(x, sqrt(sub(mul(x, x), imm(1.0f)))))));
+   body.emit(ret(log(add(x, sqrt(sub(mul(x, x), IMM_FP(type, 1.0f)))))));
    return sig;
 }
 
 ir_function_signature *
-builtin_builder::_atanh(const glsl_type *type)
+builtin_builder::_atanh(builtin_available_predicate avail,
+                        const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type, v130, 1, x);
+   MAKE_SIG(type, avail, 1, x);
 
-   body.emit(ret(mul(imm(0.5f), log(div(add(imm(1.0f), x),
-                                        sub(imm(1.0f), x))))));
+   body.emit(ret(mul(IMM_FP(type, 0.5f), log(div(add(IMM_FP(type, 1.0f), x),
+                                                 sub(IMM_FP(type, 1.0f), x))))));
    return sig;
 }
 /** @} */
@@ -6049,16 +6400,17 @@ builtin_builder::_atanh(const glsl_type *type)
  */
 
 ir_function_signature *
-builtin_builder::_pow(const glsl_type *type)
+builtin_builder::_pow(builtin_available_predicate avail,
+                      const glsl_type *type)
 {
-   return binop(always_available, ir_binop_pow, type, type, type);
+   return binop(avail, ir_binop_pow, type, type, type);
 }
 
-UNOP(exp,         ir_unop_exp,  always_available)
-UNOP(log,         ir_unop_log,  always_available)
-UNOP(exp2,        ir_unop_exp2, always_available)
-UNOP(log2,        ir_unop_log2, always_available)
-UNOP(atan,        ir_unop_atan, always_available)
+UNOPA(exp,         ir_unop_exp)
+UNOPA(log,         ir_unop_log)
+UNOPA(exp2,        ir_unop_exp2)
+UNOPA(log2,        ir_unop_log2)
+UNOPA(atan,        ir_unop_atan)
 UNOPA(sqrt,        ir_unop_sqrt)
 UNOPA(inversesqrt, ir_unop_rsq)
 
@@ -6169,23 +6521,30 @@ builtin_builder::_step(builtin_available_predicate avail, const glsl_type *edge_
    ir_variable *t = body.make_temp(x_type, "t");
    if (x_type->vector_elements == 1) {
       /* Both are floats */
-      if (edge_type->is_double())
+      if (glsl_type_is_double(edge_type))
          body.emit(assign(t, f2d(b2f(gequal(x, edge)))));
+      else if (glsl_type_is_float_16(edge_type))
+         body.emit(assign(t, f2f16(b2f(gequal(x, edge)))));
       else
          body.emit(assign(t, b2f(gequal(x, edge))));
    } else if (edge_type->vector_elements == 1) {
       /* x is a vector but edge is a float */
       for (int i = 0; i < x_type->vector_elements; i++) {
-         if (edge_type->is_double())
+         if (glsl_type_is_double(edge_type))
             body.emit(assign(t, f2d(b2f(gequal(swizzle(x, i, 1), edge))), 1 << i));
+         else if (glsl_type_is_float_16(edge_type))
+            body.emit(assign(t, f2f16(b2f(gequal(swizzle(x, i, 1), edge))), 1 << i));
          else
             body.emit(assign(t, b2f(gequal(swizzle(x, i, 1), edge)), 1 << i));
       }
    } else {
       /* Both are vectors */
       for (int i = 0; i < x_type->vector_elements; i++) {
-         if (edge_type->is_double())
+         if (glsl_type_is_double(edge_type))
             body.emit(assign(t, f2d(b2f(gequal(swizzle(x, i, 1), swizzle(edge, i, 1)))),
+                             1 << i));
+         else if (glsl_type_is_float_16(edge_type))
+            body.emit(assign(t, f2f16(b2f(gequal(swizzle(x, i, 1), swizzle(edge, i, 1)))),
                              1 << i));
          else
             body.emit(assign(t, b2f(gequal(swizzle(x, i, 1), swizzle(edge, i, 1))),
@@ -6226,7 +6585,7 @@ ir_function_signature *
 builtin_builder::_isnan(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::bvec(type->vector_elements), avail, 1, x);
+   MAKE_SIG(glsl_bvec_type(type->vector_elements), avail, 1, x);
 
    body.emit(ret(nequal(x, x)));
 
@@ -6237,11 +6596,14 @@ ir_function_signature *
 builtin_builder::_isinf(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::bvec(type->vector_elements), avail, 1, x);
+   MAKE_SIG(glsl_bvec_type(type->vector_elements), avail, 1, x);
 
    ir_constant_data infinities;
    for (int i = 0; i < type->vector_elements; i++) {
       switch (type->base_type) {
+      case GLSL_TYPE_FLOAT16:
+         infinities.f16[i] = _mesa_float_to_half(INFINITY);
+         break;
       case GLSL_TYPE_FLOAT:
          infinities.f[i] = INFINITY;
          break;
@@ -6259,16 +6621,17 @@ builtin_builder::_isinf(builtin_available_predicate avail, const glsl_type *type
 }
 
 ir_function_signature *
-builtin_builder::_atan2(const glsl_type *x_type)
+builtin_builder::_atan2(builtin_available_predicate avail,
+                        const glsl_type *x_type)
 {
-   return binop(always_available, ir_binop_atan2, x_type, x_type, x_type);
+   return binop(avail, ir_binop_atan2, x_type, x_type, x_type);
 }
 
 ir_function_signature *
 builtin_builder::_floatBitsToInt(const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::ivec(type->vector_elements), shader_bit_encoding, 1, x);
+   MAKE_SIG(glsl_ivec_type(type->vector_elements), shader_bit_encoding, 1, x);
    body.emit(ret(bitcast_f2i(as_highp(body, x))));
    return sig;
 }
@@ -6277,7 +6640,7 @@ ir_function_signature *
 builtin_builder::_floatBitsToUint(const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::uvec(type->vector_elements), shader_bit_encoding, 1, x);
+   MAKE_SIG(glsl_uvec_type(type->vector_elements), shader_bit_encoding, 1, x);
    body.emit(ret(bitcast_f2u(as_highp(body, x))));
    return sig;
 }
@@ -6286,7 +6649,7 @@ ir_function_signature *
 builtin_builder::_intBitsToFloat(const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::vec(type->vector_elements), shader_bit_encoding, 1, x);
+   MAKE_SIG(glsl_vec_type(type->vector_elements), shader_bit_encoding, 1, x);
    body.emit(ret(bitcast_i2f(as_highp(body, x))));
    return sig;
 }
@@ -6295,7 +6658,7 @@ ir_function_signature *
 builtin_builder::_uintBitsToFloat(const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::vec(type->vector_elements), shader_bit_encoding, 1, x);
+   MAKE_SIG(glsl_vec_type(type->vector_elements), shader_bit_encoding, 1, x);
    body.emit(ret(bitcast_u2f(as_highp(body, x))));
    return sig;
 }
@@ -6304,7 +6667,7 @@ ir_function_signature *
 builtin_builder::_doubleBitsToInt64(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::i64vec(type->vector_elements), avail, 1, x);
+   MAKE_SIG(glsl_i64vec_type(type->vector_elements), avail, 1, x);
    body.emit(ret(bitcast_d2i64(x)));
    return sig;
 }
@@ -6313,7 +6676,7 @@ ir_function_signature *
 builtin_builder::_doubleBitsToUint64(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::u64vec(type->vector_elements), avail, 1, x);
+   MAKE_SIG(glsl_u64vec_type(type->vector_elements), avail, 1, x);
    body.emit(ret(bitcast_d2u64(x)));
    return sig;
 }
@@ -6322,7 +6685,7 @@ ir_function_signature *
 builtin_builder::_int64BitsToDouble(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::dvec(type->vector_elements), avail, 1, x);
+   MAKE_SIG(glsl_dvec_type(type->vector_elements), avail, 1, x);
    body.emit(ret(bitcast_i642d(x)));
    return sig;
 }
@@ -6331,7 +6694,7 @@ ir_function_signature *
 builtin_builder::_uint64BitsToDouble(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::dvec(type->vector_elements), avail, 1, x);
+   MAKE_SIG(glsl_dvec_type(type->vector_elements), avail, 1, x);
    body.emit(ret(bitcast_u642d(x)));
    return sig;
 }
@@ -6339,8 +6702,8 @@ builtin_builder::_uint64BitsToDouble(builtin_available_predicate avail, const gl
 ir_function_signature *
 builtin_builder::_packUnorm2x16(builtin_available_predicate avail)
 {
-   ir_variable *v = in_highp_var(glsl_type::vec2_type, "v");
-   MAKE_SIG(glsl_type::uint_type, avail, 1, v);
+   ir_variable *v = in_highp_var(&glsl_type_builtin_vec2, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_pack_unorm_2x16, v)));
    return sig;
@@ -6349,8 +6712,8 @@ builtin_builder::_packUnorm2x16(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_packSnorm2x16(builtin_available_predicate avail)
 {
-   ir_variable *v = in_var(glsl_type::vec2_type, "v");
-   MAKE_SIG(glsl_type::uint_type, avail, 1, v);
+   ir_variable *v = in_var(&glsl_type_builtin_vec2, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_pack_snorm_2x16, v)));
    return sig;
@@ -6359,8 +6722,8 @@ builtin_builder::_packSnorm2x16(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_packUnorm4x8(builtin_available_predicate avail)
 {
-   ir_variable *v = in_mediump_var(glsl_type::vec4_type, "v");
-   MAKE_SIG(glsl_type::uint_type, avail, 1, v);
+   ir_variable *v = in_mediump_var(&glsl_type_builtin_vec4, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_pack_unorm_4x8, v)));
    return sig;
@@ -6369,8 +6732,8 @@ builtin_builder::_packUnorm4x8(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_packSnorm4x8(builtin_available_predicate avail)
 {
-   ir_variable *v = in_mediump_var(glsl_type::vec4_type, "v");
-   MAKE_SIG(glsl_type::uint_type, avail, 1, v);
+   ir_variable *v = in_mediump_var(&glsl_type_builtin_vec4, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_pack_snorm_4x8, v)));
    return sig;
@@ -6379,8 +6742,8 @@ builtin_builder::_packSnorm4x8(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackUnorm2x16(builtin_available_predicate avail)
 {
-   ir_variable *p = in_highp_var(glsl_type::uint_type, "p");
-   MAKE_SIG(glsl_type::vec2_type, avail, 1, p);
+   ir_variable *p = in_highp_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_vec2, avail, 1, p);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_unpack_unorm_2x16, p)));
    return sig;
@@ -6389,8 +6752,8 @@ builtin_builder::_unpackUnorm2x16(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackSnorm2x16(builtin_available_predicate avail)
 {
-   ir_variable *p = in_highp_var(glsl_type::uint_type, "p");
-   MAKE_SIG(glsl_type::vec2_type, avail, 1, p);
+   ir_variable *p = in_highp_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_vec2, avail, 1, p);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_unpack_snorm_2x16, p)));
    return sig;
@@ -6400,8 +6763,8 @@ builtin_builder::_unpackSnorm2x16(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackUnorm4x8(builtin_available_predicate avail)
 {
-   ir_variable *p = in_highp_var(glsl_type::uint_type, "p");
-   MAKE_SIG(glsl_type::vec4_type, avail, 1, p);
+   ir_variable *p = in_highp_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_vec4, avail, 1, p);
    sig->return_precision = GLSL_PRECISION_MEDIUM;
    body.emit(ret(expr(ir_unop_unpack_unorm_4x8, p)));
    return sig;
@@ -6410,8 +6773,8 @@ builtin_builder::_unpackUnorm4x8(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackSnorm4x8(builtin_available_predicate avail)
 {
-   ir_variable *p = in_highp_var(glsl_type::uint_type, "p");
-   MAKE_SIG(glsl_type::vec4_type, avail, 1, p);
+   ir_variable *p = in_highp_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_vec4, avail, 1, p);
    sig->return_precision = GLSL_PRECISION_MEDIUM;
    body.emit(ret(expr(ir_unop_unpack_snorm_4x8, p)));
    return sig;
@@ -6420,8 +6783,8 @@ builtin_builder::_unpackSnorm4x8(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_packHalf2x16(builtin_available_predicate avail)
 {
-   ir_variable *v = in_mediump_var(glsl_type::vec2_type, "v");
-   MAKE_SIG(glsl_type::uint_type, avail, 1, v);
+   ir_variable *v = in_mediump_var(&glsl_type_builtin_vec2, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_unop_pack_half_2x16, v)));
    return sig;
@@ -6430,18 +6793,38 @@ builtin_builder::_packHalf2x16(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackHalf2x16(builtin_available_predicate avail)
 {
-   ir_variable *p = in_highp_var(glsl_type::uint_type, "p");
-   MAKE_SIG(glsl_type::vec2_type, avail, 1, p);
+   ir_variable *p = in_highp_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_vec2, avail, 1, p);
    sig->return_precision = GLSL_PRECISION_MEDIUM;
    body.emit(ret(expr(ir_unop_unpack_half_2x16, p)));
    return sig;
 }
 
 ir_function_signature *
+builtin_builder::_packFloat2x16(builtin_available_predicate avail)
+{
+   ir_variable *v = in_var(&glsl_type_builtin_f16vec2, "v");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, v);
+
+   ir_rvalue *value = new(mem_ctx)ir_dereference_variable(v);
+   body.emit(ret(expr(ir_unop_pack_half_2x16, new(mem_ctx) ir_expression(ir_unop_f162f, &glsl_type_builtin_vec2, value, NULL))));
+   return sig;
+}
+
+ir_function_signature *
+builtin_builder::_unpackFloat2x16(builtin_available_predicate avail)
+{
+   ir_variable *p = in_var(&glsl_type_builtin_uint, "p");
+   MAKE_SIG(&glsl_type_builtin_f16vec2, avail, 1, p);
+   body.emit(ret(f2f16(expr(ir_unop_unpack_half_2x16, p))));
+   return sig;
+}
+
+ir_function_signature *
 builtin_builder::_packDouble2x32(builtin_available_predicate avail)
 {
-   ir_variable *v = in_var(glsl_type::uvec2_type, "v");
-   MAKE_SIG(glsl_type::double_type, avail, 1, v);
+   ir_variable *v = in_var(&glsl_type_builtin_uvec2, "v");
+   MAKE_SIG(&glsl_type_builtin_double, avail, 1, v);
    body.emit(ret(expr(ir_unop_pack_double_2x32, v)));
    return sig;
 }
@@ -6449,8 +6832,8 @@ builtin_builder::_packDouble2x32(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackDouble2x32(builtin_available_predicate avail)
 {
-   ir_variable *p = in_var(glsl_type::double_type, "p");
-   MAKE_SIG(glsl_type::uvec2_type, avail, 1, p);
+   ir_variable *p = in_var(&glsl_type_builtin_double, "p");
+   MAKE_SIG(&glsl_type_builtin_uvec2, avail, 1, p);
    body.emit(ret(expr(ir_unop_unpack_double_2x32, p)));
    return sig;
 }
@@ -6458,8 +6841,8 @@ builtin_builder::_unpackDouble2x32(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_packInt2x32(builtin_available_predicate avail)
 {
-   ir_variable *v = in_var(glsl_type::ivec2_type, "v");
-   MAKE_SIG(glsl_type::int64_t_type, avail, 1, v);
+   ir_variable *v = in_var(&glsl_type_builtin_ivec2, "v");
+   MAKE_SIG(&glsl_type_builtin_int64_t, avail, 1, v);
    body.emit(ret(expr(ir_unop_pack_int_2x32, v)));
    return sig;
 }
@@ -6467,8 +6850,8 @@ builtin_builder::_packInt2x32(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackInt2x32(builtin_available_predicate avail)
 {
-   ir_variable *p = in_var(glsl_type::int64_t_type, "p");
-   MAKE_SIG(glsl_type::ivec2_type, avail, 1, p);
+   ir_variable *p = in_var(&glsl_type_builtin_int64_t, "p");
+   MAKE_SIG(&glsl_type_builtin_ivec2, avail, 1, p);
    body.emit(ret(expr(ir_unop_unpack_int_2x32, p)));
    return sig;
 }
@@ -6476,8 +6859,8 @@ builtin_builder::_unpackInt2x32(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_packUint2x32(builtin_available_predicate avail)
 {
-   ir_variable *v = in_var(glsl_type::uvec2_type, "v");
-   MAKE_SIG(glsl_type::uint64_t_type, avail, 1, v);
+   ir_variable *v = in_var(&glsl_type_builtin_uvec2, "v");
+   MAKE_SIG(&glsl_type_builtin_uint64_t, avail, 1, v);
    body.emit(ret(expr(ir_unop_pack_uint_2x32, v)));
    return sig;
 }
@@ -6485,8 +6868,8 @@ builtin_builder::_packUint2x32(builtin_available_predicate avail)
 ir_function_signature *
 builtin_builder::_unpackUint2x32(builtin_available_predicate avail)
 {
-   ir_variable *p = in_var(glsl_type::uint64_t_type, "p");
-   MAKE_SIG(glsl_type::uvec2_type, avail, 1, p);
+   ir_variable *p = in_var(&glsl_type_builtin_uint64_t, "p");
+   MAKE_SIG(&glsl_type_builtin_uvec2, avail, 1, p);
    body.emit(ret(expr(ir_unop_unpack_uint_2x32, p)));
    return sig;
 }
@@ -6495,7 +6878,7 @@ ir_function_signature *
 builtin_builder::_length(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(type->get_base_type(), avail, 1, x);
+   MAKE_SIG(glsl_get_base_glsl_type(type), avail, 1, x);
 
    body.emit(ret(sqrt(dot(x, x))));
 
@@ -6507,7 +6890,7 @@ builtin_builder::_distance(builtin_available_predicate avail, const glsl_type *t
 {
    ir_variable *p0 = in_var(type, "p0");
    ir_variable *p1 = in_var(type, "p1");
-   MAKE_SIG(type->get_base_type(), avail, 2, p0, p1);
+   MAKE_SIG(glsl_get_base_glsl_type(type), avail, 2, p0, p1);
 
    if (type->vector_elements == 1) {
       body.emit(ret(abs(sub(p0, p1))));
@@ -6527,7 +6910,7 @@ builtin_builder::_dot(builtin_available_predicate avail, const glsl_type *type)
       return binop(avail, ir_binop_mul, type, type, type);
 
    return binop(avail, ir_binop_dot,
-                type->get_base_type(), type, type);
+                glsl_get_base_glsl_type(type), type, type);
 }
 
 ir_function_signature *
@@ -6564,7 +6947,7 @@ builtin_builder::_normalize(builtin_available_predicate avail, const glsl_type *
 ir_function_signature *
 builtin_builder::_ftransform()
 {
-   MAKE_SIG(glsl_type::vec4_type, compatibility_vs_only, 0);
+   MAKE_SIG(&glsl_type_builtin_vec4, compatibility_vs_only, 0);
 
    /* ftransform() refers to global variables, and is always emitted
     * directly by ast_function.cpp.  Just emit a prototype here so we
@@ -6605,10 +6988,10 @@ builtin_builder::_refract(builtin_available_predicate avail, const glsl_type *ty
 {
    ir_variable *I = in_var(type, "I");
    ir_variable *N = in_var(type, "N");
-   ir_variable *eta = in_var(type->get_base_type(), "eta");
+   ir_variable *eta = in_var(glsl_get_base_glsl_type(type), "eta");
    MAKE_SIG(type, avail, 3, I, N, eta);
 
-   ir_variable *n_dot_i = body.make_temp(type->get_base_type(), "n_dot_i");
+   ir_variable *n_dot_i = body.make_temp(glsl_get_base_glsl_type(type), "n_dot_i");
    body.emit(assign(n_dot_i, dot(N, I)));
 
    /* From the GLSL 1.10 specification:
@@ -6618,7 +7001,7 @@ builtin_builder::_refract(builtin_available_predicate avail, const glsl_type *ty
     * else
     *    return eta * I - (eta * dot(N, I) + sqrt(k)) * N
     */
-   ir_variable *k = body.make_temp(type->get_base_type(), "k");
+   ir_variable *k = body.make_temp(glsl_get_base_glsl_type(type), "k");
    body.emit(assign(k, sub(IMM_FP(type, 1.0),
                            mul(eta, mul(eta, sub(IMM_FP(type, 1.0),
                                                  mul(n_dot_i, n_dot_i)))))));
@@ -6652,12 +7035,15 @@ builtin_builder::_outerProduct(builtin_available_predicate avail, const glsl_typ
    ir_variable *c;
    ir_variable *r;
 
-   if (type->is_double()) {
-      r = in_var(glsl_type::dvec(type->matrix_columns), "r");
-      c = in_var(glsl_type::dvec(type->vector_elements), "c");
+   if (glsl_type_is_double(type)) {
+      r = in_var(glsl_dvec_type(type->matrix_columns), "r");
+      c = in_var(glsl_dvec_type(type->vector_elements), "c");
+   } else if (glsl_type_is_float_16(type)) {
+      r = in_var(glsl_f16vec_type(type->matrix_columns), "r");
+      c = in_var(glsl_f16vec_type(type->vector_elements), "c");
    } else {
-      r = in_var(glsl_type::vec(type->matrix_columns), "r");
-      c = in_var(glsl_type::vec(type->vector_elements), "c");
+      r = in_var(glsl_vec_type(type->matrix_columns), "r");
+      c = in_var(glsl_vec_type(type->vector_elements), "c");
    }
    MAKE_SIG(type, avail, 2, c, r);
 
@@ -6674,9 +7060,9 @@ ir_function_signature *
 builtin_builder::_transpose(builtin_available_predicate avail, const glsl_type *orig_type)
 {
    const glsl_type *transpose_type =
-      glsl_type::get_instance(orig_type->base_type,
-                              orig_type->matrix_columns,
-                              orig_type->vector_elements);
+      glsl_simple_type(orig_type->base_type,
+                       orig_type->matrix_columns,
+                       orig_type->vector_elements);
 
    ir_variable *m = in_var(orig_type, "m");
    MAKE_SIG(transpose_type, avail, 1, m);
@@ -6698,7 +7084,7 @@ ir_function_signature *
 builtin_builder::_determinant_mat2(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *m = in_var(type, "m");
-   MAKE_SIG(type->get_base_type(), avail, 1, m);
+   MAKE_SIG(glsl_get_base_glsl_type(type), avail, 1, m);
 
    body.emit(ret(sub(mul(matrix_elt(m, 0, 0), matrix_elt(m, 1, 1)),
                      mul(matrix_elt(m, 1, 0), matrix_elt(m, 0, 1)))));
@@ -6710,7 +7096,7 @@ ir_function_signature *
 builtin_builder::_determinant_mat3(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *m = in_var(type, "m");
-   MAKE_SIG(type->get_base_type(), avail, 1, m);
+   MAKE_SIG(glsl_get_base_glsl_type(type), avail, 1, m);
 
    ir_expression *f1 =
       sub(mul(matrix_elt(m, 1, 1), matrix_elt(m, 2, 2)),
@@ -6735,7 +7121,7 @@ ir_function_signature *
 builtin_builder::_determinant_mat4(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *m = in_var(type, "m");
-   const glsl_type *btype = type->get_base_type();
+   const glsl_type *btype = glsl_get_base_glsl_type(type);
    MAKE_SIG(btype, avail, 1, m);
 
    ir_variable *SubFactor00 = body.make_temp(btype, "SubFactor00");
@@ -6778,7 +7164,7 @@ builtin_builder::_determinant_mat4(builtin_available_predicate avail, const glsl
    body.emit(assign(SubFactor17, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 2)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 2)))));
    body.emit(assign(SubFactor18, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 1)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 1)))));
 
-   ir_variable *adj_0 = body.make_temp(btype == glsl_type::float_type ? glsl_type::vec4_type : glsl_type::dvec4_type, "adj_0");
+   ir_variable *adj_0 = body.make_temp(btype == &glsl_type_builtin_float ? &glsl_type_builtin_vec4 : btype == &glsl_type_builtin_float16_t ? &glsl_type_builtin_f16vec4 : &glsl_type_builtin_dvec4, "adj_0");
 
    body.emit(assign(adj_0,
                     add(sub(mul(matrix_elt(m, 1, 1), SubFactor00),
@@ -6830,7 +7216,7 @@ ir_function_signature *
 builtin_builder::_inverse_mat3(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *m = in_var(type, "m");
-   const glsl_type *btype = type->get_base_type();
+   const glsl_type *btype = glsl_get_base_glsl_type(type);
    MAKE_SIG(type, avail, 1, m);
 
    ir_variable *f11_22_21_12 = body.make_temp(btype, "f11_22_21_12");
@@ -6892,7 +7278,7 @@ ir_function_signature *
 builtin_builder::_inverse_mat4(builtin_available_predicate avail, const glsl_type *type)
 {
    ir_variable *m = in_var(type, "m");
-   const glsl_type *btype = type->get_base_type();
+   const glsl_type *btype = glsl_get_base_glsl_type(type);
    MAKE_SIG(type, avail, 1, m);
 
    ir_variable *SubFactor00 = body.make_temp(btype, "SubFactor00");
@@ -6935,7 +7321,7 @@ builtin_builder::_inverse_mat4(builtin_available_predicate avail, const glsl_typ
    body.emit(assign(SubFactor17, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 2)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 2)))));
    body.emit(assign(SubFactor18, sub(mul(matrix_elt(m, 1, 0), matrix_elt(m, 2, 1)), mul(matrix_elt(m, 2, 0), matrix_elt(m, 1, 1)))));
 
-   ir_variable *adj = body.make_temp(btype == glsl_type::float_type ? glsl_type::mat4_type : glsl_type::dmat4_type, "adj");
+   ir_variable *adj = body.make_temp(btype == &glsl_type_builtin_float ? &glsl_type_builtin_mat4 : (btype == &glsl_type_builtin_double ? &glsl_type_builtin_dmat4 : &glsl_type_builtin_f16mat4), "adj");
    body.emit(assign(array_ref(adj, 0),
                     add(sub(mul(matrix_elt(m, 1, 1), SubFactor00),
                             mul(matrix_elt(m, 1, 2), SubFactor01)),
@@ -7037,7 +7423,7 @@ builtin_builder::_lessThan(builtin_available_predicate avail,
                            const glsl_type *type)
 {
    return binop(avail, ir_binop_less,
-                glsl_type::bvec(type->vector_elements), type, type);
+                glsl_bvec_type(type->vector_elements), type, type);
 }
 
 ir_function_signature *
@@ -7045,7 +7431,7 @@ builtin_builder::_lessThanEqual(builtin_available_predicate avail,
                                 const glsl_type *type)
 {
    return binop(avail, ir_binop_gequal,
-                glsl_type::bvec(type->vector_elements), type, type,
+                glsl_bvec_type(type->vector_elements), type, type,
                 true);
 }
 
@@ -7054,7 +7440,7 @@ builtin_builder::_greaterThan(builtin_available_predicate avail,
                               const glsl_type *type)
 {
    return binop(avail, ir_binop_less,
-                glsl_type::bvec(type->vector_elements), type, type,
+                glsl_bvec_type(type->vector_elements), type, type,
                 true);
 }
 
@@ -7063,7 +7449,7 @@ builtin_builder::_greaterThanEqual(builtin_available_predicate avail,
                                    const glsl_type *type)
 {
    return binop(avail, ir_binop_gequal,
-                glsl_type::bvec(type->vector_elements), type, type);
+                glsl_bvec_type(type->vector_elements), type, type);
 }
 
 ir_function_signature *
@@ -7071,7 +7457,7 @@ builtin_builder::_equal(builtin_available_predicate avail,
                         const glsl_type *type)
 {
    return binop(avail, ir_binop_equal,
-                glsl_type::bvec(type->vector_elements), type, type);
+                glsl_bvec_type(type->vector_elements), type, type);
 }
 
 ir_function_signature *
@@ -7079,14 +7465,14 @@ builtin_builder::_notEqual(builtin_available_predicate avail,
                            const glsl_type *type)
 {
    return binop(avail, ir_binop_nequal,
-                glsl_type::bvec(type->vector_elements), type, type);
+                glsl_bvec_type(type->vector_elements), type, type);
 }
 
 ir_function_signature *
 builtin_builder::_any(const glsl_type *type)
 {
    ir_variable *v = in_var(type, "v");
-   MAKE_SIG(glsl_type::bool_type, always_available, 1, v);
+   MAKE_SIG(&glsl_type_builtin_bool, always_available, 1, v);
 
    const unsigned vec_elem = v->type->vector_elements;
    body.emit(ret(expr(ir_binop_any_nequal, v, imm(false, vec_elem))));
@@ -7098,7 +7484,7 @@ ir_function_signature *
 builtin_builder::_all(const glsl_type *type)
 {
    ir_variable *v = in_var(type, "v");
-   MAKE_SIG(glsl_type::bool_type, always_available, 1, v);
+   MAKE_SIG(&glsl_type_builtin_bool, always_available, 1, v);
 
    const unsigned vec_elem = v->type->vector_elements;
    body.emit(ret(expr(ir_binop_all_equal, v, imm(true, vec_elem))));
@@ -7111,7 +7497,7 @@ UNOP(not, ir_unop_logic_not, always_available)
 static bool
 has_lod(const glsl_type *sampler_type)
 {
-   assert(sampler_type->is_sampler());
+   assert(glsl_type_is_sampler(sampler_type));
 
    switch (sampler_type->sampler_dimensionality) {
    case GLSL_SAMPLER_DIM_RECT:
@@ -7137,7 +7523,7 @@ builtin_builder::_textureSize(builtin_available_predicate avail,
    tex->set_sampler(new(mem_ctx) ir_dereference_variable(s), return_type);
 
    if (has_lod(sampler_type)) {
-      ir_variable *lod = in_var(glsl_type::int_type, "lod");
+      ir_variable *lod = in_var(&glsl_type_builtin_int, "lod");
       sig->parameters.push_tail(lod);
       tex->lod_info.lod = var_ref(lod);
    } else {
@@ -7154,10 +7540,10 @@ builtin_builder::_textureSamples(builtin_available_predicate avail,
                                  const glsl_type *sampler_type)
 {
    ir_variable *s = in_var(sampler_type, "sampler");
-   MAKE_SIG(glsl_type::int_type, avail, 1, s);
+   MAKE_SIG(&glsl_type_builtin_int, avail, 1, s);
 
    ir_texture *tex = new(mem_ctx) ir_texture(ir_texture_samples);
-   tex->set_sampler(new(mem_ctx) ir_dereference_variable(s), glsl_type::int_type);
+   tex->set_sampler(new(mem_ctx) ir_dereference_variable(s), &glsl_type_builtin_int);
    body.emit(ret(tex));
 
    return sig;
@@ -7166,10 +7552,10 @@ builtin_builder::_textureSamples(builtin_available_predicate avail,
 ir_function_signature *
 builtin_builder::_is_sparse_texels_resident(void)
 {
-   ir_variable *code = in_var(glsl_type::int_type, "code");
-   MAKE_SIG(glsl_type::bool_type, sparse_enabled, 1, code);
+   ir_variable *code = in_var(&glsl_type_builtin_int, "code");
+   MAKE_SIG(&glsl_type_builtin_bool, sparse_enabled, 1, code);
 
-   ir_variable *retval = body.make_temp(glsl_type::bool_type, "retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_bool, "retval");
    ir_function *f =
       shader->symbols->get_function("__intrinsic_is_sparse_texels_resident");
 
@@ -7181,8 +7567,8 @@ builtin_builder::_is_sparse_texels_resident(void)
 ir_function_signature *
 builtin_builder::_is_sparse_texels_resident_intrinsic(void)
 {
-   ir_variable *code = in_var(glsl_type::int_type, "code");
-   MAKE_INTRINSIC(glsl_type::bool_type, ir_intrinsic_is_sparse_texels_resident,
+   ir_variable *code = in_var(&glsl_type_builtin_int, "code");
+   MAKE_INTRINSIC(&glsl_type_builtin_bool, ir_intrinsic_is_sparse_texels_resident,
                   sparse_enabled, 1, code);
    return sig;
 }
@@ -7198,14 +7584,14 @@ builtin_builder::_texture(ir_texture_opcode opcode,
    ir_variable *s = in_var(sampler_type, "sampler");
    ir_variable *P = in_var(coord_type, "P");
    /* Sparse texture return residency info. */
-   const glsl_type *type = flags & TEX_SPARSE ? glsl_type::int_type : return_type;
+   const glsl_type *type = flags & TEX_SPARSE ? &glsl_type_builtin_int : return_type;
    /* The sampler and coordinate always exist; add optional parameters later. */
    MAKE_SIG(type, avail, 2, s, P);
 
    ir_texture *tex = new(mem_ctx) ir_texture(opcode, flags & TEX_SPARSE);
    tex->set_sampler(var_ref(s), return_type);
 
-   const int coord_size = sampler_type->coordinate_components();
+   const int coord_size = glsl_get_sampler_coordinate_components(sampler_type);
 
    if (coord_size == coord_type->vector_elements) {
       tex->coordinate = var_ref(P);
@@ -7225,7 +7611,7 @@ builtin_builder::_texture(ir_texture_opcode opcode,
          /* gather has refz as a separate parameter, immediately after the
           * coordinate
           */
-         ir_variable *refz = in_var(glsl_type::float_type, "refz");
+         ir_variable *refz = in_var(&glsl_type_builtin_float, "refz");
          sig->parameters.push_tail(refz);
          tex->shadow_comparator = var_ref(refz);
       } else {
@@ -7237,13 +7623,13 @@ builtin_builder::_texture(ir_texture_opcode opcode,
    }
 
    if (opcode == ir_txl) {
-      ir_variable *lod = in_var(glsl_type::float_type, "lod");
+      ir_variable *lod = in_var(&glsl_type_builtin_float, "lod");
       sig->parameters.push_tail(lod);
       tex->lod_info.lod = var_ref(lod);
    } else if (opcode == ir_txd) {
       int grad_size = coord_size - (sampler_type->sampler_array ? 1 : 0);
-      ir_variable *dPdx = in_var(glsl_type::vec(grad_size), "dPdx");
-      ir_variable *dPdy = in_var(glsl_type::vec(grad_size), "dPdy");
+      ir_variable *dPdx = in_var(glsl_vec_type(grad_size), "dPdx");
+      ir_variable *dPdy = in_var(glsl_vec_type(grad_size), "dPdy");
       sig->parameters.push_tail(dPdx);
       sig->parameters.push_tail(dPdy);
       tex->lod_info.grad.dPdx = var_ref(dPdx);
@@ -7253,7 +7639,7 @@ builtin_builder::_texture(ir_texture_opcode opcode,
    if (flags & (TEX_OFFSET | TEX_OFFSET_NONCONST)) {
       int offset_size = coord_size - (sampler_type->sampler_array ? 1 : 0);
       ir_variable *offset =
-         new(mem_ctx) ir_variable(glsl_type::ivec(offset_size), "offset",
+         new(mem_ctx) ir_variable(glsl_ivec_type(offset_size), "offset",
                                   (flags & TEX_OFFSET) ? ir_var_const_in : ir_var_function_in);
       sig->parameters.push_tail(offset);
       tex->offset = var_ref(offset);
@@ -7261,14 +7647,14 @@ builtin_builder::_texture(ir_texture_opcode opcode,
 
    if (flags & TEX_OFFSET_ARRAY) {
       ir_variable *offsets =
-         new(mem_ctx) ir_variable(glsl_type::get_array_instance(glsl_type::ivec2_type, 4),
+         new(mem_ctx) ir_variable(glsl_array_type(&glsl_type_builtin_ivec2, 4, 0),
                                   "offsets", ir_var_const_in);
       sig->parameters.push_tail(offsets);
       tex->offset = var_ref(offsets);
    }
 
    if (flags & TEX_CLAMP) {
-      ir_variable *clamp = in_var(glsl_type::float_type, "lodClamp");
+      ir_variable *clamp = in_var(&glsl_type_builtin_float, "lodClamp");
       sig->parameters.push_tail(clamp);
       tex->clamp = var_ref(clamp);
    }
@@ -7282,7 +7668,7 @@ builtin_builder::_texture(ir_texture_opcode opcode,
    if (opcode == ir_tg4) {
       if (flags & TEX_COMPONENT) {
          ir_variable *component =
-            new(mem_ctx) ir_variable(glsl_type::int_type, "comp", ir_var_const_in);
+            new(mem_ctx) ir_variable(&glsl_type_builtin_int, "comp", ir_var_const_in);
          sig->parameters.push_tail(component);
          tex->lod_info.component = var_ref(component);
       }
@@ -7295,7 +7681,7 @@ builtin_builder::_texture(ir_texture_opcode opcode,
     * inconsistent with both textureLodOffset and textureGradOffset.
     */
    if (opcode == ir_txb) {
-      ir_variable *bias = in_var(glsl_type::float_type, "bias");
+      ir_variable *bias = in_var(&glsl_type_builtin_float, "bias");
       sig->parameters.push_tail(bias);
       tex->lod_info.bias = var_ref(bias);
    }
@@ -7318,13 +7704,13 @@ builtin_builder::_textureCubeArrayShadow(ir_texture_opcode opcode,
                                          int flags)
 {
    ir_variable *s = in_var(sampler_type, "sampler");
-   ir_variable *P = in_var(glsl_type::vec4_type, "P");
-   ir_variable *compare = in_var(glsl_type::float_type, "compare");
-   const glsl_type *return_type = glsl_type::float_type;
+   ir_variable *P = in_var(&glsl_type_builtin_vec4, "P");
+   ir_variable *compare = in_var(&glsl_type_builtin_float, "compare");
+   const glsl_type *return_type = &glsl_type_builtin_float;
    bool sparse = flags & TEX_SPARSE;
    bool clamp = flags & TEX_CLAMP;
    /* Sparse texture return residency info. */
-   const glsl_type *type = sparse ? glsl_type::int_type : return_type;
+   const glsl_type *type = sparse ? &glsl_type_builtin_int : return_type;
    MAKE_SIG(type, avail, 3, s, P, compare);
 
    ir_texture *tex = new(mem_ctx) ir_texture(opcode, sparse);
@@ -7334,13 +7720,13 @@ builtin_builder::_textureCubeArrayShadow(ir_texture_opcode opcode,
    tex->shadow_comparator = var_ref(compare);
 
    if (opcode == ir_txl) {
-      ir_variable *lod = in_var(glsl_type::float_type, "lod");
+      ir_variable *lod = in_var(&glsl_type_builtin_float, "lod");
       sig->parameters.push_tail(lod);
       tex->lod_info.lod = var_ref(lod);
    }
 
    if (clamp) {
-      ir_variable *lod_clamp = in_var(glsl_type::float_type, "lodClamp");
+      ir_variable *lod_clamp = in_var(&glsl_type_builtin_float, "lodClamp");
       sig->parameters.push_tail(lod_clamp);
       tex->clamp = var_ref(lod_clamp);
    }
@@ -7352,7 +7738,7 @@ builtin_builder::_textureCubeArrayShadow(ir_texture_opcode opcode,
    }
 
    if (opcode == ir_txb) {
-      ir_variable *bias = in_var(glsl_type::float_type, "bias");
+      ir_variable *bias = in_var(&glsl_type_builtin_float, "bias");
       sig->parameters.push_tail(bias);
       tex->lod_info.bias = var_ref(bias);
    }
@@ -7379,7 +7765,7 @@ builtin_builder::_texelFetch(builtin_available_predicate avail,
    ir_variable *s = in_var(sampler_type, "sampler");
    ir_variable *P = in_var(coord_type, "P");
    /* Sparse texture return residency info. */
-   const glsl_type *type = sparse ? glsl_type::int_type : return_type;
+   const glsl_type *type = sparse ? &glsl_type_builtin_int : return_type;
    /* The sampler and coordinate always exist; add optional parameters later. */
    MAKE_SIG(type, avail, 2, s, P);
 
@@ -7388,12 +7774,12 @@ builtin_builder::_texelFetch(builtin_available_predicate avail,
    tex->set_sampler(var_ref(s), return_type);
 
    if (sampler_type->sampler_dimensionality == GLSL_SAMPLER_DIM_MS) {
-      ir_variable *sample = in_var(glsl_type::int_type, "sample");
+      ir_variable *sample = in_var(&glsl_type_builtin_int, "sample");
       sig->parameters.push_tail(sample);
       tex->lod_info.sample_index = var_ref(sample);
       tex->op = ir_txf_ms;
    } else if (has_lod(sampler_type)) {
-      ir_variable *lod = in_var(glsl_type::int_type, "lod");
+      ir_variable *lod = in_var(&glsl_type_builtin_int, "lod");
       sig->parameters.push_tail(lod);
       tex->lod_info.lod = var_ref(lod);
    } else {
@@ -7424,7 +7810,7 @@ builtin_builder::_texelFetch(builtin_available_predicate avail,
 ir_function_signature *
 builtin_builder::_EmitVertex()
 {
-   MAKE_SIG(glsl_type::void_type, gs_only, 0);
+   MAKE_SIG(&glsl_type_builtin_void, gs_only, 0);
 
    ir_rvalue *stream = new(mem_ctx) ir_constant(0, 1);
    body.emit(new(mem_ctx) ir_emit_vertex(stream));
@@ -7445,7 +7831,7 @@ builtin_builder::_EmitStreamVertex(builtin_available_predicate avail,
    ir_variable *stream =
       new(mem_ctx) ir_variable(stream_type, "stream", ir_var_const_in);
 
-   MAKE_SIG(glsl_type::void_type, avail, 1, stream);
+   MAKE_SIG(&glsl_type_builtin_void, avail, 1, stream);
 
    body.emit(new(mem_ctx) ir_emit_vertex(var_ref(stream)));
 
@@ -7455,7 +7841,7 @@ builtin_builder::_EmitStreamVertex(builtin_available_predicate avail,
 ir_function_signature *
 builtin_builder::_EndPrimitive()
 {
-   MAKE_SIG(glsl_type::void_type, gs_only, 0);
+   MAKE_SIG(&glsl_type_builtin_void, gs_only, 0);
 
    ir_rvalue *stream = new(mem_ctx) ir_constant(0, 1);
    body.emit(new(mem_ctx) ir_end_primitive(stream));
@@ -7476,7 +7862,7 @@ builtin_builder::_EndStreamPrimitive(builtin_available_predicate avail,
    ir_variable *stream =
       new(mem_ctx) ir_variable(stream_type, "stream", ir_var_const_in);
 
-   MAKE_SIG(glsl_type::void_type, avail, 1, stream);
+   MAKE_SIG(&glsl_type_builtin_void, avail, 1, stream);
 
    body.emit(new(mem_ctx) ir_end_primitive(var_ref(stream)));
 
@@ -7486,7 +7872,7 @@ builtin_builder::_EndStreamPrimitive(builtin_available_predicate avail,
 ir_function_signature *
 builtin_builder::_barrier()
 {
-   MAKE_SIG(glsl_type::void_type, barrier_supported, 0);
+   MAKE_SIG(&glsl_type_builtin_void, barrier_supported, 0);
 
    body.emit(new(mem_ctx) ir_barrier());
    return sig;
@@ -7500,11 +7886,11 @@ builtin_builder::_textureQueryLod(builtin_available_predicate avail,
    ir_variable *s = in_var(sampler_type, "sampler");
    ir_variable *coord = in_var(coord_type, "coord");
    /* The sampler and coordinate always exist; add optional parameters later. */
-   MAKE_SIG(glsl_type::vec2_type, avail, 2, s, coord);
+   MAKE_SIG(&glsl_type_builtin_vec2, avail, 2, s, coord);
 
    ir_texture *tex = new(mem_ctx) ir_texture(ir_lod);
    tex->coordinate = var_ref(coord);
-   tex->set_sampler(var_ref(s), glsl_type::vec2_type);
+   tex->set_sampler(var_ref(s), &glsl_type_builtin_vec2);
 
    body.emit(ret(tex));
 
@@ -7516,7 +7902,7 @@ builtin_builder::_textureQueryLevels(builtin_available_predicate avail,
                                      const glsl_type *sampler_type)
 {
    ir_variable *s = in_var(sampler_type, "sampler");
-   const glsl_type *return_type = glsl_type::int_type;
+   const glsl_type *return_type = &glsl_type_builtin_int;
    MAKE_SIG(return_type, avail, 1, s);
 
    ir_texture *tex = new(mem_ctx) ir_texture(ir_query_levels);
@@ -7534,7 +7920,7 @@ builtin_builder::_textureSamplesIdentical(builtin_available_predicate avail,
 {
    ir_variable *s = in_var(sampler_type, "sampler");
    ir_variable *P = in_var(coord_type, "P");
-   const glsl_type *return_type = glsl_type::bool_type;
+   const glsl_type *return_type = &glsl_type_builtin_bool;
    MAKE_SIG(return_type, avail, 2, s, P);
 
    ir_texture *tex = new(mem_ctx) ir_texture(ir_samples_identical);
@@ -7546,18 +7932,19 @@ builtin_builder::_textureSamplesIdentical(builtin_available_predicate avail,
    return sig;
 }
 
-UNOP(dFdx, ir_unop_dFdx, derivatives)
-UNOP(dFdxCoarse, ir_unop_dFdx_coarse, derivative_control)
-UNOP(dFdxFine, ir_unop_dFdx_fine, derivative_control)
-UNOP(dFdy, ir_unop_dFdy, derivatives)
-UNOP(dFdyCoarse, ir_unop_dFdy_coarse, derivative_control)
-UNOP(dFdyFine, ir_unop_dFdy_fine, derivative_control)
+UNOPA(dFdx, ir_unop_dFdx)
+UNOPA(dFdxCoarse, ir_unop_dFdx_coarse)
+UNOPA(dFdxFine, ir_unop_dFdx_fine)
+UNOPA(dFdy, ir_unop_dFdy)
+UNOPA(dFdyCoarse, ir_unop_dFdy_coarse)
+UNOPA(dFdyFine, ir_unop_dFdy_fine)
 
 ir_function_signature *
-builtin_builder::_fwidth(const glsl_type *type)
+builtin_builder::_fwidth(builtin_available_predicate avail,
+                         const glsl_type *type)
 {
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(type, derivatives, 1, p);
+   MAKE_SIG(type, avail, 1, p);
 
    body.emit(ret(add(abs(expr(ir_unop_dFdx, p)), abs(expr(ir_unop_dFdy, p)))));
 
@@ -7565,10 +7952,11 @@ builtin_builder::_fwidth(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_fwidthCoarse(const glsl_type *type)
+builtin_builder::_fwidthCoarse(builtin_available_predicate avail,
+                               const glsl_type *type)
 {
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(type, derivative_control, 1, p);
+   MAKE_SIG(type, avail, 1, p);
 
    body.emit(ret(add(abs(expr(ir_unop_dFdx_coarse, p)),
                      abs(expr(ir_unop_dFdy_coarse, p)))));
@@ -7577,10 +7965,11 @@ builtin_builder::_fwidthCoarse(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_fwidthFine(const glsl_type *type)
+builtin_builder::_fwidthFine(builtin_available_predicate avail,
+                             const glsl_type *type)
 {
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(type, derivative_control, 1, p);
+   MAKE_SIG(type, avail, 1, p);
 
    body.emit(ret(add(abs(expr(ir_unop_dFdx_fine, p)),
                      abs(expr(ir_unop_dFdy_fine, p)))));
@@ -7605,8 +7994,8 @@ builtin_builder::_noise1(const glsl_type *type)
     * valid and Mesa has always returned 0 for noise on most drivers.
     */
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(glsl_type::float_type, v110, 1, p);
-   body.emit(ret(imm(glsl_type::float_type, ir_constant_data())));
+   MAKE_SIG(&glsl_type_builtin_float, v110, 1, p);
+   body.emit(ret(imm(&glsl_type_builtin_float, ir_constant_data())));
    return sig;
 }
 
@@ -7615,8 +8004,8 @@ builtin_builder::_noise2(const glsl_type *type)
 {
    /* See builtin_builder::_noise1 */
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(glsl_type::vec2_type, v110, 1, p);
-   body.emit(ret(imm(glsl_type::vec2_type, ir_constant_data())));
+   MAKE_SIG(&glsl_type_builtin_vec2, v110, 1, p);
+   body.emit(ret(imm(&glsl_type_builtin_vec2, ir_constant_data())));
    return sig;
 }
 
@@ -7625,8 +8014,8 @@ builtin_builder::_noise3(const glsl_type *type)
 {
    /* See builtin_builder::_noise1 */
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(glsl_type::vec3_type, v110, 1, p);
-   body.emit(ret(imm(glsl_type::vec3_type, ir_constant_data())));
+   MAKE_SIG(&glsl_type_builtin_vec3, v110, 1, p);
+   body.emit(ret(imm(&glsl_type_builtin_vec3, ir_constant_data())));
    return sig;
 }
 
@@ -7635,8 +8024,8 @@ builtin_builder::_noise4(const glsl_type *type)
 {
    /* See builtin_builder::_noise1 */
    ir_variable *p = in_var(type, "p");
-   MAKE_SIG(glsl_type::vec4_type, v110, 1, p);
-   body.emit(ret(imm(glsl_type::vec4_type, ir_constant_data())));
+   MAKE_SIG(&glsl_type_builtin_vec4, v110, 1, p);
+   body.emit(ret(imm(&glsl_type_builtin_vec4, ir_constant_data())));
    return sig;
 }
 
@@ -7645,8 +8034,8 @@ builtin_builder::_bitfieldExtract(const glsl_type *type)
 {
    bool is_uint = type->base_type == GLSL_TYPE_UINT;
    ir_variable *value  = in_var(type, "value");
-   ir_variable *offset = in_var(glsl_type::int_type, "offset");
-   ir_variable *bits   = in_var(glsl_type::int_type, "bits");
+   ir_variable *offset = in_var(&glsl_type_builtin_int, "offset");
+   ir_variable *bits   = in_var(&glsl_type_builtin_int, "bits");
    MAKE_SIG(type, gpu_shader5_or_es31_or_integer_functions, 3, value, offset,
             bits);
 
@@ -7666,8 +8055,8 @@ builtin_builder::_bitfieldInsert(const glsl_type *type)
    bool is_uint = type->base_type == GLSL_TYPE_UINT;
    ir_variable *base   = in_var(type, "base");
    ir_variable *insert = in_var(type, "insert");
-   ir_variable *offset = in_var(glsl_type::int_type, "offset");
-   ir_variable *bits   = in_var(glsl_type::int_type, "bits");
+   ir_variable *offset = in_var(&glsl_type_builtin_int, "offset");
+   ir_variable *bits   = in_var(&glsl_type_builtin_int, "bits");
    MAKE_SIG(type, gpu_shader5_or_es31_or_integer_functions, 4, base, insert,
             offset, bits);
 
@@ -7695,7 +8084,7 @@ ir_function_signature *
 builtin_builder::_bitCount(const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
-   MAKE_SIG(glsl_type::ivec(type->vector_elements), gpu_shader5_or_es31_or_integer_functions, 1, x);
+   MAKE_SIG(glsl_ivec_type(type->vector_elements), gpu_shader5_or_es31_or_integer_functions, 1, x);
    sig->return_precision = GLSL_PRECISION_LOW;
    body.emit(ret(expr(ir_unop_bit_count, x)));
    return sig;
@@ -7705,7 +8094,7 @@ ir_function_signature *
 builtin_builder::_findLSB(const glsl_type *type)
 {
    ir_variable *x = in_highp_var(type, "x");
-   MAKE_SIG(glsl_type::ivec(type->vector_elements), gpu_shader5_or_es31_or_integer_functions, 1, x);
+   MAKE_SIG(glsl_ivec_type(type->vector_elements), gpu_shader5_or_es31_or_integer_functions, 1, x);
    sig->return_precision = GLSL_PRECISION_LOW;
    body.emit(ret(expr(ir_unop_find_lsb, x)));
    return sig;
@@ -7715,7 +8104,7 @@ ir_function_signature *
 builtin_builder::_findMSB(const glsl_type *type)
 {
    ir_variable *x = in_highp_var(type, "x");
-   MAKE_SIG(glsl_type::ivec(type->vector_elements), gpu_shader5_or_es31_or_integer_functions, 1, x);
+   MAKE_SIG(glsl_ivec_type(type->vector_elements), gpu_shader5_or_es31_or_integer_functions, 1, x);
    sig->return_precision = GLSL_PRECISION_LOW;
    body.emit(ret(expr(ir_unop_find_msb, x)));
    return sig;
@@ -7726,7 +8115,7 @@ builtin_builder::_countLeadingZeros(builtin_available_predicate avail,
                                     const glsl_type *type)
 {
    return unop(avail, ir_unop_clz,
-               glsl_type::uvec(type->vector_elements), type);
+               glsl_uvec_type(type->vector_elements), type);
 }
 
 ir_function_signature *
@@ -7734,7 +8123,7 @@ builtin_builder::_countTrailingZeros(builtin_available_predicate avail,
                                      const glsl_type *type)
 {
    ir_variable *a = in_var(type, "a");
-   MAKE_SIG(glsl_type::uvec(type->vector_elements), avail, 1, a);
+   MAKE_SIG(glsl_uvec_type(type->vector_elements), avail, 1, a);
 
    body.emit(ret(ir_builder::min2(
                     ir_builder::i2u(ir_builder::expr(ir_unop_find_lsb, a)),
@@ -7761,7 +8150,11 @@ builtin_builder::_ldexp(const glsl_type *x_type, const glsl_type *exp_type)
 {
    ir_variable *x = in_highp_var(x_type, "x");
    ir_variable *y = in_highp_var(exp_type, "y");
-   MAKE_SIG(x_type, x_type->is_double() ? fp64 : gpu_shader5_or_es31_or_integer_functions, 2, x, y);
+   builtin_available_predicate avail = glsl_type_is_double(x_type) ? fp64 :
+      (glsl_type_is_float_16(x_type) ?
+          gpu_shader_half_float : gpu_shader5_or_es31_or_integer_functions);
+
+   MAKE_SIG(x_type, avail, 2, x, y);
    sig->return_precision = GLSL_PRECISION_HIGH;
    body.emit(ret(expr(ir_binop_ldexp, x, y)));
    return sig;
@@ -7772,8 +8165,10 @@ builtin_builder::_frexp(const glsl_type *x_type, const glsl_type *exp_type)
 {
    ir_variable *x = in_highp_var(x_type, "x");
    ir_variable *exponent = out_var(exp_type, "exp");
-   MAKE_SIG(x_type, x_type->is_double() ? fp64 : gpu_shader5_or_es31_or_integer_functions,
-            2, x, exponent);
+   builtin_available_predicate avail = glsl_type_is_double(x_type) ? fp64 :
+      (glsl_type_is_float_16(x_type) ?
+          gpu_shader_half_float : gpu_shader5_or_es31_or_integer_functions);
+   MAKE_SIG(x_type, avail, 2, x, exponent);
    sig->return_precision = GLSL_PRECISION_HIGH;
 
    body.emit(assign(exponent, expr(ir_unop_frexp_exp, x)));
@@ -7834,8 +8229,8 @@ builtin_builder::_absoluteDifference(builtin_available_predicate avail,
     * bits and number of vector elements as the type of the operands.
     */
    return binop(avail, ir_binop_abs_sub,
-                glsl_type::get_instance(glsl_unsigned_base_type_of(type->base_type),
-                                        type->vector_elements, 1),
+                glsl_simple_type(glsl_unsigned_base_type_of(type->base_type),
+                                 type->vector_elements, 1),
                 type, type);
 }
 
@@ -7864,19 +8259,19 @@ builtin_builder::_mulExtended(const glsl_type *type)
 
    if (type->base_type == GLSL_TYPE_INT) {
       unpack_op = ir_unop_unpack_int_2x32;
-      mul_type = glsl_type::get_instance(GLSL_TYPE_INT64, type->vector_elements, 1);
-      unpack_type = glsl_type::ivec2_type;
+      mul_type = glsl_simple_type(GLSL_TYPE_INT64, type->vector_elements, 1);
+      unpack_type = &glsl_type_builtin_ivec2;
    } else {
       unpack_op = ir_unop_unpack_uint_2x32;
-      mul_type = glsl_type::get_instance(GLSL_TYPE_UINT64, type->vector_elements, 1);
-      unpack_type = glsl_type::uvec2_type;
+      mul_type = glsl_simple_type(GLSL_TYPE_UINT64, type->vector_elements, 1);
+      unpack_type = &glsl_type_builtin_uvec2;
    }
 
    ir_variable *x = in_highp_var(type, "x");
    ir_variable *y = in_highp_var(type, "y");
    ir_variable *msb = out_highp_var(type, "msb");
    ir_variable *lsb = out_highp_var(type, "lsb");
-   MAKE_SIG(glsl_type::void_type, gpu_shader5_or_es31_or_integer_functions, 4, x, y, msb, lsb);
+   MAKE_SIG(&glsl_type_builtin_void, gpu_shader5_or_es31_or_integer_functions, 4, x, y, msb, lsb);
 
    ir_variable *unpack_val = body.make_temp(unpack_type, "_unpack_val");
 
@@ -7907,7 +8302,8 @@ builtin_builder::_multiply32x16(builtin_available_predicate avail,
 }
 
 ir_function_signature *
-builtin_builder::_interpolateAtCentroid(const glsl_type *type)
+builtin_builder::_interpolateAtCentroid(builtin_available_predicate avail,
+                                        const glsl_type *type)
 {
    ir_variable *interpolant = in_var(type, "interpolant");
    interpolant->data.must_be_shader_input = 1;
@@ -7919,11 +8315,12 @@ builtin_builder::_interpolateAtCentroid(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_interpolateAtOffset(const glsl_type *type)
+builtin_builder::_interpolateAtOffset(builtin_available_predicate avail,
+                                      const glsl_type *type)
 {
    ir_variable *interpolant = in_var(type, "interpolant");
    interpolant->data.must_be_shader_input = 1;
-   ir_variable *offset = in_var(glsl_type::vec2_type, "offset");
+   ir_variable *offset = in_var(glsl_type_is_float_16(type) ? &glsl_type_builtin_f16vec2 : &glsl_type_builtin_vec2, "offset");
    MAKE_SIG(type, fs_interpolate_at, 2, interpolant, offset);
 
    body.emit(ret(interpolate_at_offset(interpolant, offset)));
@@ -7932,11 +8329,12 @@ builtin_builder::_interpolateAtOffset(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_interpolateAtSample(const glsl_type *type)
+builtin_builder::_interpolateAtSample(builtin_available_predicate avail,
+                                      const glsl_type *type)
 {
    ir_variable *interpolant = in_var(type, "interpolant");
    interpolant->data.must_be_shader_input = 1;
-   ir_variable *sample_num = in_var(glsl_type::int_type, "sample_num");
+   ir_variable *sample_num = in_var(&glsl_type_builtin_int, "sample_num");
    MAKE_SIG(type, fs_interpolate_at, 2, interpolant, sample_num);
 
    body.emit(ret(interpolate_at_sample(interpolant, sample_num)));
@@ -7953,8 +8351,8 @@ ir_function_signature *
 builtin_builder::_atomic_counter_intrinsic(builtin_available_predicate avail,
                                            enum ir_intrinsic_id id)
 {
-   ir_variable *counter = in_highp_var(glsl_type::atomic_uint_type, "counter");
-   MAKE_INTRINSIC(glsl_type::uint_type, id, avail, 1, counter);
+   ir_variable *counter = in_highp_var(&glsl_type_builtin_atomic_uint, "counter");
+   MAKE_INTRINSIC(&glsl_type_builtin_uint, id, avail, 1, counter);
    return sig;
 }
 
@@ -7962,9 +8360,9 @@ ir_function_signature *
 builtin_builder::_atomic_counter_intrinsic1(builtin_available_predicate avail,
                                             enum ir_intrinsic_id id)
 {
-   ir_variable *counter = in_highp_var(glsl_type::atomic_uint_type, "counter");
-   ir_variable *data = in_var(glsl_type::uint_type, "data");
-   MAKE_INTRINSIC(glsl_type::uint_type, id, avail, 2, counter, data);
+   ir_variable *counter = in_highp_var(&glsl_type_builtin_atomic_uint, "counter");
+   ir_variable *data = in_var(&glsl_type_builtin_uint, "data");
+   MAKE_INTRINSIC(&glsl_type_builtin_uint, id, avail, 2, counter, data);
    return sig;
 }
 
@@ -7972,10 +8370,10 @@ ir_function_signature *
 builtin_builder::_atomic_counter_intrinsic2(builtin_available_predicate avail,
                                             enum ir_intrinsic_id id)
 {
-   ir_variable *counter = in_highp_var(glsl_type::atomic_uint_type, "counter");
-   ir_variable *compare = in_var(glsl_type::uint_type, "compare");
-   ir_variable *data = in_var(glsl_type::uint_type, "data");
-   MAKE_INTRINSIC(glsl_type::uint_type, id, avail, 3, counter, compare, data);
+   ir_variable *counter = in_highp_var(&glsl_type_builtin_atomic_uint, "counter");
+   ir_variable *compare = in_var(&glsl_type_builtin_uint, "compare");
+   ir_variable *data = in_var(&glsl_type_builtin_uint, "data");
+   MAKE_INTRINSIC(&glsl_type_builtin_uint, id, avail, 3, counter, compare, data);
    return sig;
 }
 
@@ -8006,10 +8404,10 @@ ir_function_signature *
 builtin_builder::_atomic_counter_op(const char *intrinsic,
                                     builtin_available_predicate avail)
 {
-   ir_variable *counter = in_highp_var(glsl_type::atomic_uint_type, "atomic_counter");
-   MAKE_SIG(glsl_type::uint_type, avail, 1, counter);
+   ir_variable *counter = in_highp_var(&glsl_type_builtin_atomic_uint, "atomic_counter");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 1, counter);
 
-   ir_variable *retval = body.make_temp(glsl_type::uint_type, "atomic_retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_uint, "atomic_retval");
    body.emit(call(shader->symbols->get_function(intrinsic), retval,
                   sig->parameters));
    body.emit(ret(retval));
@@ -8020,18 +8418,18 @@ ir_function_signature *
 builtin_builder::_atomic_counter_op1(const char *intrinsic,
                                      builtin_available_predicate avail)
 {
-   ir_variable *counter = in_highp_var(glsl_type::atomic_uint_type, "atomic_counter");
-   ir_variable *data = in_var(glsl_type::uint_type, "data");
-   MAKE_SIG(glsl_type::uint_type, avail, 2, counter, data);
+   ir_variable *counter = in_highp_var(&glsl_type_builtin_atomic_uint, "atomic_counter");
+   ir_variable *data = in_var(&glsl_type_builtin_uint, "data");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 2, counter, data);
 
-   ir_variable *retval = body.make_temp(glsl_type::uint_type, "atomic_retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_uint, "atomic_retval");
 
    /* Instead of generating an __intrinsic_atomic_sub, generate an
     * __intrinsic_atomic_add with the data parameter negated.
     */
    if (strcmp("__intrinsic_atomic_sub", intrinsic) == 0) {
       ir_variable *const neg_data =
-         body.make_temp(glsl_type::uint_type, "neg_data");
+         body.make_temp(&glsl_type_builtin_uint, "neg_data");
 
       body.emit(assign(neg_data, neg(data)));
 
@@ -8061,12 +8459,12 @@ ir_function_signature *
 builtin_builder::_atomic_counter_op2(const char *intrinsic,
                                     builtin_available_predicate avail)
 {
-   ir_variable *counter = in_highp_var(glsl_type::atomic_uint_type, "atomic_counter");
-   ir_variable *compare = in_var(glsl_type::uint_type, "compare");
-   ir_variable *data = in_var(glsl_type::uint_type, "data");
-   MAKE_SIG(glsl_type::uint_type, avail, 3, counter, compare, data);
+   ir_variable *counter = in_highp_var(&glsl_type_builtin_atomic_uint, "atomic_counter");
+   ir_variable *compare = in_var(&glsl_type_builtin_uint, "compare");
+   ir_variable *data = in_var(&glsl_type_builtin_uint, "data");
+   MAKE_SIG(&glsl_type_builtin_uint, avail, 3, counter, compare, data);
 
-   ir_variable *retval = body.make_temp(glsl_type::uint_type, "atomic_retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_uint, "atomic_retval");
    body.emit(call(shader->symbols->get_function(intrinsic), retval,
                   sig->parameters));
    body.emit(ret(retval));
@@ -8111,12 +8509,13 @@ builtin_builder::_atomic_op3(const char *intrinsic,
 }
 
 ir_function_signature *
-builtin_builder::_min3(const glsl_type *type)
+builtin_builder::_min3(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
    ir_variable *y = in_var(type, "y");
    ir_variable *z = in_var(type, "z");
-   MAKE_SIG(type, shader_trinary_minmax, 3, x, y, z);
+   MAKE_SIG(type, avail, 3, x, y, z);
 
    ir_expression *min3 = min2(x, min2(y,z));
    body.emit(ret(min3));
@@ -8125,12 +8524,13 @@ builtin_builder::_min3(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_max3(const glsl_type *type)
+builtin_builder::_max3(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
    ir_variable *y = in_var(type, "y");
    ir_variable *z = in_var(type, "z");
-   MAKE_SIG(type, shader_trinary_minmax, 3, x, y, z);
+   MAKE_SIG(type, avail, 3, x, y, z);
 
    ir_expression *max3 = max2(x, max2(y,z));
    body.emit(ret(max3));
@@ -8139,12 +8539,13 @@ builtin_builder::_max3(const glsl_type *type)
 }
 
 ir_function_signature *
-builtin_builder::_mid3(const glsl_type *type)
+builtin_builder::_mid3(builtin_available_predicate avail,
+                       const glsl_type *type)
 {
    ir_variable *x = in_var(type, "x");
    ir_variable *y = in_var(type, "y");
    ir_variable *z = in_var(type, "z");
-   MAKE_SIG(type, shader_trinary_minmax, 3, x, y, z);
+   MAKE_SIG(type, avail, 3, x, y, z);
 
    ir_expression *mid3 = max2(min2(x, y), max2(min2(x, z), min2(y, z)));
    body.emit(ret(mid3));
@@ -8183,24 +8584,24 @@ builtin_builder::_image_prototype(const glsl_type *image_type,
                                   unsigned num_arguments,
                                   unsigned flags)
 {
-   const glsl_type *data_type = glsl_type::get_instance(
+   const glsl_type *data_type = glsl_simple_type(
       image_type->sampled_type,
       (flags & IMAGE_FUNCTION_HAS_VECTOR_DATA_TYPE ? 4 : 1),
       1);
 
    const glsl_type *ret_type;
    if (flags & IMAGE_FUNCTION_RETURNS_VOID)
-      ret_type = glsl_type::void_type;
+      ret_type = &glsl_type_builtin_void;
    else if (flags & IMAGE_FUNCTION_SPARSE) {
       if (flags & IMAGE_FUNCTION_EMIT_STUB)
-         ret_type = glsl_type::int_type;
+         ret_type = &glsl_type_builtin_int;
       else {
          /* code holds residency info */
          glsl_struct_field fields[2] = {
-            glsl_struct_field(glsl_type::int_type, "code"),
+            glsl_struct_field(&glsl_type_builtin_int, "code"),
             glsl_struct_field(data_type, "texel"),
          };
-         ret_type = glsl_type::get_struct_instance(fields, 2, "struct");
+         ret_type = glsl_struct_type(fields, 2, "struct", false /* packed */);
       }
    } else
       ret_type = data_type;
@@ -8208,7 +8609,7 @@ builtin_builder::_image_prototype(const glsl_type *image_type,
    /* Addressing arguments that are always present. */
    ir_variable *image = in_var(image_type, "image");
    ir_variable *coord = in_var(
-      glsl_type::ivec(image_type->coordinate_components()), "coord");
+      glsl_ivec_type(glsl_get_sampler_coordinate_components(image_type)), "coord");
 
    ir_function_signature *sig = new_sig(
       ret_type, get_image_available_predicate(image_type, flags),
@@ -8216,7 +8617,7 @@ builtin_builder::_image_prototype(const glsl_type *image_type,
 
    /* Sample index for multisample images. */
    if (image_type->sampler_dimensionality == GLSL_SAMPLER_DIM_MS)
-      sig->parameters.push_tail(in_var(glsl_type::int_type, "sample"));
+      sig->parameters.push_tail(in_var(&glsl_type_builtin_int, "sample"));
 
    /* Data arguments. */
    for (unsigned i = 0; i < num_arguments; ++i) {
@@ -8247,7 +8648,7 @@ builtin_builder::_image_size_prototype(const glsl_type *image_type,
                                        unsigned /* flags */)
 {
    const glsl_type *ret_type;
-   unsigned num_components = image_type->coordinate_components();
+   unsigned num_components = glsl_get_sampler_coordinate_components(image_type);
 
    /* From the ARB_shader_image_size extension:
     * "Cube images return the dimensions of one face."
@@ -8260,7 +8661,7 @@ builtin_builder::_image_size_prototype(const glsl_type *image_type,
    /* FIXME: Add the highp precision qualifier for GLES 3.10 when it is
     * supported by mesa.
     */
-   ret_type = glsl_type::get_instance(GLSL_TYPE_INT, num_components, 1);
+   ret_type = glsl_simple_type(GLSL_TYPE_INT, num_components, 1);
 
    ir_variable *image = in_var(image_type, "image");
    ir_function_signature *sig = new_sig(ret_type, shader_image_size, 1, image);
@@ -8288,7 +8689,7 @@ builtin_builder::_image_samples_prototype(const glsl_type *image_type,
 {
    ir_variable *image = in_var(image_type, "image");
    ir_function_signature *sig =
-      new_sig(glsl_type::int_type, shader_samples, 1, image);
+      new_sig(&glsl_type_builtin_int, shader_samples, 1, image);
 
    /* Set the maximal set of qualifiers allowed for this image
     * built-in.  Function calls with arguments having fewer
@@ -8367,7 +8768,7 @@ ir_function_signature *
 builtin_builder::_memory_barrier_intrinsic(builtin_available_predicate avail,
                                            enum ir_intrinsic_id id)
 {
-   MAKE_INTRINSIC(glsl_type::void_type, id, avail, 0);
+   MAKE_INTRINSIC(&glsl_type_builtin_void, id, avail, 0);
    return sig;
 }
 
@@ -8375,7 +8776,7 @@ ir_function_signature *
 builtin_builder::_memory_barrier(const char *intrinsic_name,
                                  builtin_available_predicate avail)
 {
-   MAKE_SIG(glsl_type::void_type, avail, 0);
+   MAKE_SIG(&glsl_type_builtin_void, avail, 0);
    body.emit(call(shader->symbols->get_function(intrinsic_name),
                   NULL, sig->parameters));
    return sig;
@@ -8384,8 +8785,8 @@ builtin_builder::_memory_barrier(const char *intrinsic_name,
 ir_function_signature *
 builtin_builder::_ballot_intrinsic()
 {
-   ir_variable *value = in_var(glsl_type::bool_type, "value");
-   MAKE_INTRINSIC(glsl_type::uint64_t_type, ir_intrinsic_ballot, shader_ballot,
+   ir_variable *value = in_var(&glsl_type_builtin_bool, "value");
+   MAKE_INTRINSIC(&glsl_type_builtin_uint64_t, ir_intrinsic_ballot, shader_ballot,
                   1, value);
    return sig;
 }
@@ -8393,10 +8794,10 @@ builtin_builder::_ballot_intrinsic()
 ir_function_signature *
 builtin_builder::_ballot()
 {
-   ir_variable *value = in_var(glsl_type::bool_type, "value");
+   ir_variable *value = in_var(&glsl_type_builtin_bool, "value");
 
-   MAKE_SIG(glsl_type::uint64_t_type, shader_ballot, 1, value);
-   ir_variable *retval = body.make_temp(glsl_type::uint64_t_type, "retval");
+   MAKE_SIG(&glsl_type_builtin_uint64_t, shader_ballot, 1, value);
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_uint64_t, "retval");
 
    body.emit(call(shader->symbols->get_function("__intrinsic_ballot"),
                   retval, sig->parameters));
@@ -8431,7 +8832,7 @@ ir_function_signature *
 builtin_builder::_read_invocation_intrinsic(const glsl_type *type)
 {
    ir_variable *value = in_var(type, "value");
-   ir_variable *invocation = in_var(glsl_type::uint_type, "invocation");
+   ir_variable *invocation = in_var(&glsl_type_builtin_uint, "invocation");
    MAKE_INTRINSIC(type, ir_intrinsic_read_invocation, shader_ballot,
                   2, value, invocation);
    return sig;
@@ -8441,7 +8842,7 @@ ir_function_signature *
 builtin_builder::_read_invocation(const glsl_type *type)
 {
    ir_variable *value = in_var(type, "value");
-   ir_variable *invocation = in_var(glsl_type::uint_type, "invocation");
+   ir_variable *invocation = in_var(&glsl_type_builtin_uint, "invocation");
 
    MAKE_SIG(type, shader_ballot, 2, value, invocation);
    ir_variable *retval = body.make_temp(type, "retval");
@@ -8456,7 +8857,7 @@ ir_function_signature *
 builtin_builder::_invocation_interlock_intrinsic(builtin_available_predicate avail,
                                                  enum ir_intrinsic_id id)
 {
-   MAKE_INTRINSIC(glsl_type::void_type, id, avail, 0);
+   MAKE_INTRINSIC(&glsl_type_builtin_void, id, avail, 0);
    return sig;
 }
 
@@ -8464,7 +8865,7 @@ ir_function_signature *
 builtin_builder::_invocation_interlock(const char *intrinsic_name,
                                        builtin_available_predicate avail)
 {
-   MAKE_SIG(glsl_type::void_type, avail, 0);
+   MAKE_SIG(&glsl_type_builtin_void, avail, 0);
    body.emit(call(shader->symbols->get_function(intrinsic_name),
                   NULL, sig->parameters));
    return sig;
@@ -8484,12 +8885,12 @@ builtin_builder::_shader_clock(builtin_available_predicate avail,
 {
    MAKE_SIG(type, avail, 0);
 
-   ir_variable *retval = body.make_temp(glsl_type::uvec2_type, "clock_retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_uvec2, "clock_retval");
 
    body.emit(call(shader->symbols->get_function("__intrinsic_shader_clock"),
                   retval, sig->parameters));
 
-   if (type == glsl_type::uint64_t_type) {
+   if (type == &glsl_type_builtin_uint64_t) {
       body.emit(ret(expr(ir_unop_pack_uint_2x32, retval)));
    } else {
       body.emit(ret(retval));
@@ -8502,8 +8903,8 @@ ir_function_signature *
 builtin_builder::_vote_intrinsic(builtin_available_predicate avail,
                                  enum ir_intrinsic_id id)
 {
-   ir_variable *value = in_var(glsl_type::bool_type, "value");
-   MAKE_INTRINSIC(glsl_type::bool_type, id, avail, 1, value);
+   ir_variable *value = in_var(&glsl_type_builtin_bool, "value");
+   MAKE_INTRINSIC(&glsl_type_builtin_bool, id, avail, 1, value);
    return sig;
 }
 
@@ -8511,11 +8912,11 @@ ir_function_signature *
 builtin_builder::_vote(const char *intrinsic_name,
                        builtin_available_predicate avail)
 {
-   ir_variable *value = in_var(glsl_type::bool_type, "value");
+   ir_variable *value = in_var(&glsl_type_builtin_bool, "value");
 
-   MAKE_SIG(glsl_type::bool_type, avail, 1, value);
+   MAKE_SIG(&glsl_type_builtin_bool, avail, 1, value);
 
-   ir_variable *retval = body.make_temp(glsl_type::bool_type, "retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_bool, "retval");
 
    body.emit(call(shader->symbols->get_function(intrinsic_name),
                   retval, sig->parameters));
@@ -8526,7 +8927,7 @@ builtin_builder::_vote(const char *intrinsic_name,
 ir_function_signature *
 builtin_builder::_helper_invocation_intrinsic()
 {
-   MAKE_INTRINSIC(glsl_type::bool_type, ir_intrinsic_helper_invocation,
+   MAKE_INTRINSIC(&glsl_type_builtin_bool, ir_intrinsic_helper_invocation,
                   demote_to_helper_invocation, 0);
    return sig;
 }
@@ -8534,9 +8935,9 @@ builtin_builder::_helper_invocation_intrinsic()
 ir_function_signature *
 builtin_builder::_helper_invocation()
 {
-   MAKE_SIG(glsl_type::bool_type, demote_to_helper_invocation, 0);
+   MAKE_SIG(&glsl_type_builtin_bool, demote_to_helper_invocation, 0);
 
-   ir_variable *retval = body.make_temp(glsl_type::bool_type, "retval");
+   ir_variable *retval = body.make_temp(&glsl_type_builtin_bool, "retval");
 
    body.emit(call(shader->symbols->get_function("__intrinsic_helper_invocation"),
                   retval, sig->parameters));

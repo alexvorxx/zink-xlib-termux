@@ -59,7 +59,6 @@ void ir3_assert_handler(const char *expr, const char *file, int line,
 typedef enum {
    /* category 0: */
    OPC_NOP             = _OPC(0, 0),
-   OPC_B               = _OPC(0, 1),
    OPC_JUMP            = _OPC(0, 2),
    OPC_CALL            = _OPC(0, 3),
    OPC_RET             = _OPC(0, 4),
@@ -130,6 +129,12 @@ typedef enum {
 
    /* Macros that expand to a loop */
    OPC_SCAN_MACRO      = _OPC(1, 58),
+   OPC_SCAN_CLUSTERS_MACRO = _OPC(1, 60),
+
+   /* Macros that expand to an stsc at the start of the preamble.
+    * It loads into const file and should not be optimized in any way.
+    */
+   OPC_PUSH_CONSTS_LOAD_MACRO = _OPC(1, 59),
 
    /* category 2: */
    OPC_ADD_F           = _OPC(2, 0),
@@ -358,6 +363,7 @@ typedef enum {
 
    OPC_LDC_K           = _OPC(6, 81),
    OPC_STSC            = _OPC(6, 82),
+   OPC_LDG_K           = _OPC(6, 83),
 
    /* category 7: */
    OPC_BAR             = _OPC(7, 0),
@@ -372,6 +378,8 @@ typedef enum {
    OPC_UNLOCK          = _OPC(7, 8),
 
    OPC_ALIAS           = _OPC(7, 9),
+
+   OPC_CCINV           = _OPC(7, 10),
 
    /* meta instructions (category 8): */
 #define OPC_META 8
@@ -404,7 +412,7 @@ typedef enum {
    /*
     * A manually encoded opcode
     */
-   OPC_META_RAW = _OPC(OPC_META, 7)
+   OPC_META_RAW = _OPC(OPC_META, 7),
 } opc_t;
 /* clang-format on */
 
@@ -515,16 +523,6 @@ regid(int num, int comp)
 /* special registers: */
 #define REG_A0 61 /* address register */
 #define REG_P0 62 /* predicate register */
-
-typedef enum {
-   BRANCH_PLAIN = 0, /* br */
-   BRANCH_OR = 1,    /* brao */
-   BRANCH_AND = 2,   /* braa */
-   BRANCH_CONST = 3, /* brac */
-   BRANCH_ANY = 4,   /* bany */
-   BRANCH_ALL = 5,   /* ball */
-   BRANCH_X = 6,     /* brax ??? */
-} brtype_t;
 
 /* With is_bindless_s2en = 1, this determines whether bindless is enabled and
  * if so, how to get the (base, index) pair for both sampler and texture.

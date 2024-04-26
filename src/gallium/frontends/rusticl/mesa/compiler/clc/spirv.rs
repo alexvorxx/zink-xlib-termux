@@ -2,11 +2,13 @@ use crate::compiler::nir::*;
 use crate::pipe::screen::*;
 use crate::util::disk_cache::*;
 
+use libc_rust_gen::malloc;
 use mesa_rust_gen::*;
 use mesa_rust_util::serialize::*;
 use mesa_rust_util::string::*;
 
 use std::ffi::CString;
+use std::fmt::Debug;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
@@ -23,6 +25,10 @@ pub struct SPIRVBin {
     info: Option<clc_parsed_spirv>,
 }
 
+// Safety: SPIRVBin is not mutable and is therefore Send and Sync, needed due to `clc_binary::data`
+unsafe impl Send for SPIRVBin {}
+unsafe impl Sync for SPIRVBin {}
+
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct SPIRVKernelArg {
     pub name: String,
@@ -37,22 +43,38 @@ pub struct CLCHeader<'a> {
     pub source: &'a CString,
 }
 
+impl<'a> Debug for CLCHeader<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.name.to_string_lossy();
+        let source = self.source.to_string_lossy();
+
+        f.write_fmt(format_args!("[{name}]:\n{source}"))
+    }
+}
+
 unsafe fn callback_impl(data: *mut c_void, msg: *const c_char) {
-    let msgs = (data as *mut Vec<String>).as_mut().expect("");
+    let data = data as *mut Vec<String>;
+    let msgs = unsafe { data.as_mut() }.unwrap();
     msgs.push(c_string_to_string(msg));
 }
 
 unsafe extern "C" fn spirv_msg_callback(data: *mut c_void, msg: *const c_char) {
-    callback_impl(data, msg);
+    unsafe {
+        callback_impl(data, msg);
+    }
 }
 
 unsafe extern "C" fn spirv_to_nir_msg_callback(
     data: *mut c_void,
-    _dbg_level: mesa_rust_gen::nir_spirv_debug_level,
+    dbg_level: nir_spirv_debug_level,
     _offset: usize,
     msg: *const c_char,
 ) {
-    callback_impl(data, msg);
+    if dbg_level >= nir_spirv_debug_level::NIR_SPIRV_DEBUG_LEVEL_WARNING {
+        unsafe {
+            callback_impl(data, msg);
+        }
+    }
 }
 
 fn create_clc_logger(msgs: &mut Vec<String>) -> clc_logger {
@@ -91,6 +113,10 @@ impl SPIRVBin {
                     key.extend_from_slice(h.source.as_bytes());
                 });
 
+                // Safety: clc_optional_features is a struct of bools and contains no padding.
+                // Sadly we can't guarentee this.
+                key.extend(unsafe { as_byte_slice(slice::from_ref(&features)) });
+
                 let mut key = cache.gen_key(&key);
                 if let Some(data) = cache.get(&mut key) {
                     return (Some(Self::from_bin(&data)), String::from(""));
@@ -121,6 +147,7 @@ impl SPIRVBin {
             num_args: c_args.len() as u32,
             spirv_version: clc_spirv_version::CLC_SPIRV_VERSION_MAX,
             features: features,
+            use_llvm_spirv_target: false,
             allowed_spirv_extensions: spirv_extensions.as_ptr(),
             address_bits: address_bits,
         };
@@ -167,37 +194,32 @@ impl SPIRVBin {
         let mut out = clc_binary::default();
         let res = unsafe { clc_link_spirv(&linker_args, &logger, &mut out) };
 
-        let info;
-        if !library {
+        let info = if !library && res {
             let mut pspirv = clc_parsed_spirv::default();
             let res = unsafe { clc_parse_spirv(&out, &logger, &mut pspirv) };
-
-            if res {
-                info = Some(pspirv);
-            } else {
-                info = None;
-            }
-        } else {
-            info = None;
-        }
-
-        let res = if res {
-            Some(SPIRVBin {
-                spirv: out,
-                info: info,
-            })
+            res.then_some(pspirv)
         } else {
             None
         };
+
+        let res = res.then_some(SPIRVBin {
+            spirv: out,
+            info: info,
+        });
         (res, msgs.join("\n"))
     }
 
-    pub fn clone_on_validate(&self) -> (Option<Self>, String) {
+    pub fn validate(&self, options: &clc_validator_options) -> (bool, String) {
         let mut msgs: Vec<String> = Vec::new();
         let logger = create_clc_logger(&mut msgs);
-        let res = unsafe { clc_validate_spirv(&self.spirv, &logger) };
+        let res = unsafe { clc_validate_spirv(&self.spirv, &logger, options) };
 
-        (res.then(|| self.clone()), msgs.join("\n"))
+        (res, msgs.join("\n"))
+    }
+
+    pub fn clone_on_validate(&self, options: &clc_validator_options) -> (Option<Self>, String) {
+        let (res, msgs) = self.validate(options);
+        (res.then(|| self.clone()), msgs)
     }
 
     fn kernel_infos(&self) -> &[clc_kernel_info] {
@@ -304,12 +326,15 @@ impl SPIRVBin {
             environment: nir_spirv_execution_environment::NIR_SPIRV_OPENCL,
             clc_shader: clc_shader,
             float_controls_execution_mode: float_controls::FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32
-                as u16,
+                as u32,
 
             caps: spirv_supported_capabilities {
                 address: true,
+                float16: true,
                 float64: true,
                 generic_pointers: true,
+                groups: true,
+                subgroup_shuffle: true,
                 int8: true,
                 int16: true,
                 int64: true,
@@ -367,7 +392,13 @@ impl SPIRVBin {
         let shader_cache = DiskCacheBorrowed::as_ptr(&screen.shader_cache());
 
         NirShader::new(unsafe {
-            nir_load_libclc_shader(address_bits, shader_cache, &spirv_options, nir_options)
+            nir_load_libclc_shader(
+                address_bits,
+                shader_cache,
+                &spirv_options,
+                nir_options,
+                true,
+            )
         })
     }
 

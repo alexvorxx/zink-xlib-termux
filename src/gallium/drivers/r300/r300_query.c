@@ -73,9 +73,10 @@ static struct pipe_query *r300_create_query(struct pipe_context *pipe,
 static void r300_destroy_query(struct pipe_context* pipe,
                                struct pipe_query* query)
 {
+    struct r300_context *r300 = r300_context(pipe);
     struct r300_query* q = r300_query(query);
 
-    pb_reference(&q->buf, NULL);
+    radeon_bo_reference(r300->rws, &q->buf, NULL);
     FREE(query);
 }
 
@@ -120,7 +121,7 @@ static bool r300_end_query(struct pipe_context* pipe,
     struct r300_query *q = r300_query(query);
 
     if (q->type == PIPE_QUERY_GPU_FINISHED) {
-        pb_reference(&q->buf, NULL);
+        radeon_bo_reference(r300->rws, &q->buf, NULL);
         r300_flush(pipe, PIPE_FLUSH_ASYNC,
                    (struct pipe_fence_handle**)&q->buf);
         return true;
@@ -149,9 +150,9 @@ static bool r300_get_query_result(struct pipe_context* pipe,
 
     if (q->type == PIPE_QUERY_GPU_FINISHED) {
         if (wait) {
-            r300->rws->buffer_wait(r300->rws, q->buf, PIPE_TIMEOUT_INFINITE,
+            r300->rws->buffer_wait(r300->rws, q->buf, OS_TIMEOUT_INFINITE,
                                    RADEON_USAGE_READWRITE);
-            vresult->b = TRUE;
+            vresult->b = true;
         } else {
             vresult->b = r300->rws->buffer_wait(r300->rws, q->buf, 0, RADEON_USAGE_READWRITE);
         }
@@ -162,7 +163,7 @@ static bool r300_get_query_result(struct pipe_context* pipe,
                                 PIPE_MAP_READ |
                                 (!wait ? PIPE_MAP_DONTBLOCK : 0));
     if (!map)
-        return FALSE;
+        return false;
 
     /* Sum up the results. */
     temp = 0;
@@ -178,7 +179,7 @@ static bool r300_get_query_result(struct pipe_context* pipe,
     } else {
         vresult->u64 = temp;
     }
-    return TRUE;
+    return true;
 }
 
 static void r300_render_condition(struct pipe_context *pipe,
@@ -190,7 +191,7 @@ static void r300_render_condition(struct pipe_context *pipe,
     union pipe_query_result result;
     bool wait;
 
-    r300->skip_rendering = FALSE;
+    r300->skip_rendering = false;
 
     if (query) {
         wait = mode == PIPE_RENDER_COND_WAIT ||

@@ -156,27 +156,6 @@ const driOptionDescription v3d_driconf[] = {
 };
 #endif
 
-#ifdef GALLIUM_KMSRO
-#include "kmsro/drm/kmsro_drm_public.h"
-
-static struct pipe_screen *
-pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config)
-{
-   struct pipe_screen *screen;
-
-   screen = kmsro_drm_screen_create(fd, config);
-   return screen ? debug_screen_wrap(screen) : NULL;
-}
-#if defined(GALLIUM_VC4) || defined(GALLIUM_V3D)
-DRM_DRIVER_DESCRIPTOR(kmsro, v3d_driconf, ARRAY_SIZE(v3d_driconf))
-#else
-DRM_DRIVER_DESCRIPTOR(kmsro, NULL, 0)
-#endif
-
-#else
-DRM_DRIVER_DESCRIPTOR_STUB(kmsro)
-#endif
-
 #ifdef GALLIUM_R300
 #include "winsys/radeon_winsys.h"
 #include "r300/r300_public.h"
@@ -352,13 +331,19 @@ pipe_panfrost_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = panfrost_drm_screen_create(fd);
+   screen = panfrost_drm_screen_create(fd, config);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
-DRM_DRIVER_DESCRIPTOR(panfrost, NULL, 0)
+
+const driOptionDescription pan_driconf[] = {
+      #include "panfrost/driinfo_panfrost.h"
+};
+DRM_DRIVER_DESCRIPTOR(panfrost, pan_driconf, ARRAY_SIZE(pan_driconf))
+DRM_DRIVER_DESCRIPTOR_ALIAS(panfrost, panthor, pan_driconf, ARRAY_SIZE(pan_driconf))
 
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(panfrost)
+DRM_DRIVER_DESCRIPTOR_STUB(panthor)
 #endif
 
 #ifdef GALLIUM_ASAHI
@@ -369,10 +354,14 @@ pipe_asahi_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = asahi_drm_screen_create(fd);
+   screen = asahi_drm_screen_create(fd, config);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
-DRM_DRIVER_DESCRIPTOR(asahi, NULL, 0)
+
+const driOptionDescription asahi_driconf[] = {
+      #include "asahi/driinfo_asahi.h"
+};
+DRM_DRIVER_DESCRIPTOR(asahi, asahi_driconf, ARRAY_SIZE(asahi_driconf))
 
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(asahi)
@@ -449,5 +438,38 @@ DRM_DRIVER_DESCRIPTOR(zink, zink_driconf, ARRAY_SIZE(zink_driconf))
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(zink)
 #endif
+
+#ifdef GALLIUM_KMSRO
+#include "kmsro/drm/kmsro_drm_public.h"
+
+static struct pipe_screen *
+pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config)
+{
+   struct pipe_screen *screen;
+
+   screen = kmsro_drm_screen_create(fd, config);
+   return screen ? debug_screen_wrap(screen) : NULL;
+}
+const driOptionDescription kmsro_driconf[] = {
+#if defined(GALLIUM_VC4) || defined(GALLIUM_V3D)
+      #include "v3d/driinfo_v3d.h"
+#endif
+#ifdef GALLIUM_ASAHI
+      #include "asahi/driinfo_asahi.h"
+#endif
+#ifdef GALLIUM_FREEDRENO
+      #include "freedreno/driinfo_freedreno.h"
+#endif
+#ifdef GALLIUM_PANFROST
+      #include "panfrost/driinfo_panfrost.h"
+#endif
+};
+DRM_DRIVER_DESCRIPTOR(kmsro, kmsro_driconf, ARRAY_SIZE(kmsro_driconf))
+
+#else
+DRM_DRIVER_DESCRIPTOR_STUB(kmsro)
+#endif
+
+/* kmsro should be the last entry in the file. */
 
 #endif /* DRM_HELPER_H */

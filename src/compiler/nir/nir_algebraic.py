@@ -1168,8 +1168,12 @@ static const nir_algebraic_table ${pass_name}_table = {
 };
 
 bool
-${pass_name}(nir_shader *shader)
-{
+${pass_name}(
+   nir_shader *shader
+% for type, name in params:
+   , ${type} ${name}
+% endfor
+) {
    bool progress = false;
    bool condition_flags[${len(condition_list)}];
    const nir_shader_compiler_options *options = shader->options;
@@ -1177,28 +1181,13 @@ ${pass_name}(nir_shader *shader)
    (void) options;
    (void) info;
 
-   /* This is not a great place for this, but it seems to be the best place
-    * for it. Check that at most one kind of lowering is requested for
-    * bitfield extract and bitfield insert. Otherwise the lowering can fight
-    * with each other and optimizations.
-    */
-   assert((int)options->lower_bitfield_extract +
-          (int)options->lower_bitfield_extract_to_shifts <= 1);
-   assert((int)options->lower_bitfield_insert +
-          (int)options->lower_bitfield_insert_to_shifts +
-          (int)options->lower_bitfield_insert_to_bitfield_select <= 1);
-
-
    STATIC_ASSERT(${str(cache["next_index"])} == ARRAY_SIZE(${pass_name}_values));
    % for index, condition in enumerate(condition_list):
    condition_flags[${index}] = ${condition};
    % endfor
 
-   nir_foreach_function(function, shader) {
-      if (function->impl) {
-         progress |= nir_algebraic_impl(function->impl, condition_flags,
-                                        &${pass_name}_table);
-      }
+   nir_foreach_function_impl(impl, shader) {
+     progress |= nir_algebraic_impl(impl, condition_flags, &${pass_name}_table);
    }
 
    return progress;
@@ -1207,12 +1196,14 @@ ${pass_name}(nir_shader *shader)
 
 
 class AlgebraicPass(object):
-   def __init__(self, pass_name, transforms):
+   # params is a list of `("type", "name")` tuples
+   def __init__(self, pass_name, transforms, params=[]):
       self.xforms = []
       self.opcode_xforms = defaultdict(lambda : [])
       self.pass_name = pass_name
       self.expression_cond = {}
       self.variable_cond = {}
+      self.params = params
 
       error = False
 
@@ -1278,7 +1269,8 @@ class AlgebraicPass(object):
                                              expression_cond = sorted(self.expression_cond.items(), key=lambda kv: kv[1]),
                                              variable_cond = sorted(self.variable_cond.items(), key=lambda kv: kv[1]),
                                              get_c_opcode=get_c_opcode,
-                                             itertools=itertools)
+                                             itertools=itertools,
+                                             params=self.params)
 
 # The replacement expression isn't necessarily exact if the search expression is exact.
 def ignore_exact(*expr):

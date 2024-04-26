@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-
 #include "nir.h"
 #include "nir_builder.h"
 
@@ -46,5 +45,7 @@ nir_lower_flatshade(nir_shader *shader)
       progress |= lower_input(shader, var);
    }
 
+   /* Interpolation doesn't affect any metadata */
+   nir_shader_preserve_all_metadata(shader);
    return progress;
 }

@@ -133,6 +133,7 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
       }
       pc->tmp_in_scc = block.scc_live_out;
       pc->scratch_sgpr = scratch_sgpr;
+      pc->needs_scratch_reg = true;
       block.instructions.insert(it, std::move(pc));
    }
 }
@@ -397,6 +398,10 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
                                    regs_intersect(Definition(exec, ctx.program->lane_mask), def);
                          }))
             break;
+
+         if (instr->isPseudo() && instr->pseudo().needs_scratch_reg &&
+             regs_intersect(exec_copy_def, Definition(instr->pseudo().scratch_sgpr, s1)))
+            break;
       }
    }
 
@@ -436,6 +441,9 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
          for (const Definition& def : instr->definitions)
             if (regs_intersect(exec_copy_def, def))
                return;
+         if (instr->isPseudo() && instr->pseudo().needs_scratch_reg &&
+             regs_intersect(exec_copy_def, Definition(instr->pseudo().scratch_sgpr, s1)))
+            return;
       }
 
       /* Check if the instruction may implicitly read VCC, eg. v_cndmask or add with carry.
@@ -548,8 +556,8 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
    /* Check if any successor needs the outgoing exec mask from the current block. */
 
    bool exec_write_used;
-
-   if (!ctx.logical_phi_info[block.index].empty()) {
+   if (block.kind & block_kind_end_with_regs) {
+      /* Last block of a program with succeed shader part should respect final exec write. */
       exec_write_used = true;
    } else {
       bool copy_to_exec = false;
@@ -573,7 +581,6 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
 
    /* Collect information about the branching sequence. */
 
-   bool logical_end_found = false;
    bool branch_exec_val_found = false;
    int branch_exec_val_idx = -1;
    int branch_exec_copy_idx = -1;
@@ -590,10 +597,10 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
          break;
 
       /* See if the current instruction needs or writes exec. */
-      bool needs_exec = needs_exec_mask(instr.get());
+      bool needs_exec =
+         needs_exec_mask(instr.get()) ||
+         (instr->opcode == aco_opcode::p_logical_end && !ctx.logical_phi_info[block.index].empty());
       bool writes_exec = instr_writes_exec(instr.get());
-
-      logical_end_found |= instr->opcode == aco_opcode::p_logical_end;
 
       /* See if we found an unused exec write. */
       if (writes_exec && !exec_write_used) {
@@ -604,14 +611,15 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
          bool writes_other = std::any_of(instr->definitions.begin(), instr->definitions.end(),
                                          [](const Definition& def) -> bool
                                          { return def.physReg() != exec && def.physReg() != scc; });
-         if (!writes_other)
+         if (!writes_other) {
             instr.reset();
-         continue;
+            continue;
+         }
       }
 
       /* For a newly encountered exec write, clear the used flag. */
       if (writes_exec) {
-         if (!logical_end_found && instr->operands.size() && !branch_exec_val_found) {
+         if (instr->operands.size() && !branch_exec_val_found) {
             /* We are in a branch that jumps according to exec.
              * We just found the instruction that copies to exec before the branch.
              */
@@ -649,7 +657,7 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
 
    /* See if we can optimize the instruction that produces the exec mask. */
    if (branch_exec_val_idx != -1) {
-      assert(logical_end_found && branch_exec_tempid && branch_exec_copy_idx != -1);
+      assert(branch_exec_tempid && branch_exec_copy_idx != -1);
       try_optimize_branching_sequence(ctx, block, branch_exec_val_idx, branch_exec_copy_idx);
    }
 

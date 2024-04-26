@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 files_vulkan_wsi = files('wsi_common.c')
+links_vulkan_wsi = []
 platform_deps = []
 
 if dep_libdrm.found()
@@ -33,6 +34,8 @@ if with_platform_wayland
   files_vulkan_wsi += files('wsi_common_wayland.c')
   files_vulkan_wsi += wp_files['linux-dmabuf-unstable-v1']
   files_vulkan_wsi += wp_files['presentation-time']
+  files_vulkan_wsi += wp_files['tearing-control-v1']
+  links_vulkan_wsi += libloader_wayland_helper
 endif
 
 if with_platform_windows
@@ -61,22 +64,21 @@ wsi_entrypoints = custom_target(
 libvulkan_wsi = static_library(
   'vulkan_wsi',
   [files_vulkan_wsi, wsi_entrypoints],
-  include_directories : [inc_include, inc_src, inc_gallium],
+  include_directories : [inc_include, inc_src],
   dependencies : [
     vulkan_wsi_deps, dep_libdrm, dep_libudev, idep_vulkan_util_headers,
-    idep_vulkan_runtime_headers, idep_xmlconfig, idep_mesautil, platform_deps
+    idep_vulkan_runtime_headers, idep_xmlconfig, idep_mesautil, platform_deps,
+    idep_blake3
   ],
+  link_with: links_vulkan_wsi,
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,
 )
 
 idep_vulkan_wsi_headers = declare_dependency(
+  sources : wsi_entrypoints[0],
   dependencies : idep_vulkan_wsi_defines,
   include_directories : include_directories('.')
-)
-
-idep_vulkan_wsi_entrypoints_h = declare_dependency(
-  sources : [wsi_entrypoints[0]]
 )
 
 # This is likely a bug in the Meson VS backend, as MSVC with ninja works fine.

@@ -28,7 +28,7 @@
 #ifndef PIPE_CONTEXT_H
 #define PIPE_CONTEXT_H
 
-#include "p_compiler.h"
+#include "util/compiler.h"
 #include "util/format/u_formats.h"
 #include "p_video_enums.h"
 #include "p_defines.h"
@@ -79,12 +79,22 @@ struct pipe_video_buffer;
 struct pipe_video_codec;
 struct pipe_viewport_state;
 struct pipe_compute_state;
+struct pipe_ml_operation;
+struct pipe_tensor;
 union pipe_color_union;
 union pipe_query_result;
 struct u_log_context;
 struct u_upload_mgr;
 struct util_debug_callback;
 struct u_vbuf;
+struct pipe_context;
+
+typedef void (*pipe_draw_func)(struct pipe_context *pipe,
+                               const struct pipe_draw_info *info,
+                               unsigned drawid_offset,
+                               const struct pipe_draw_indirect_info *indirect,
+                               const struct pipe_draw_start_count_bias *draws,
+                               unsigned num_draws);
 
 /**
  * Gallium rendering context.  Basically:
@@ -149,12 +159,7 @@ struct pipe_context {
     * \param draws         array of (start, count) pairs for direct draws
     * \param num_draws     number of direct draws; 1 for indirect multi draws
     */
-   void (*draw_vbo)(struct pipe_context *pipe,
-                    const struct pipe_draw_info *info,
-                    unsigned drawid_offset,
-                    const struct pipe_draw_indirect_info *indirect,
-                    const struct pipe_draw_start_count_bias *draws,
-                    unsigned num_draws);
+   pipe_draw_func draw_vbo;
 
    /**
     * Multi draw for display lists.
@@ -405,9 +410,27 @@ struct pipe_context {
    void * (*create_vertex_elements_state)(struct pipe_context *,
                                           unsigned num_elements,
                                           const struct pipe_vertex_element *);
+   /**
+    * Bind vertex elements state.
+    *
+    * Frontends MUST call set_vertex_buffers after bind_vertex_elements_state
+    * and before the next draw. This ensures the driver can apply the state
+    * change before the next draw. Drivers MAY use this constraint to merge
+    * vertex elements and vertex buffers in set_vertex_buffers instead of
+    * in draw_vbo.
+    */
    void   (*bind_vertex_elements_state)(struct pipe_context *, void *);
    void   (*delete_vertex_elements_state)(struct pipe_context *, void *);
 
+   void * (*create_ts_state)(struct pipe_context *,
+                             const struct pipe_shader_state *);
+   void   (*bind_ts_state)(struct pipe_context *, void *);
+   void   (*delete_ts_state)(struct pipe_context *, void *);
+
+   void * (*create_ms_state)(struct pipe_context *,
+                             const struct pipe_shader_state *);
+   void   (*bind_ms_state)(struct pipe_context *, void *);
+   void   (*delete_ms_state)(struct pipe_context *, void *);
    /*@}*/
 
    /**
@@ -595,19 +618,19 @@ struct pipe_context {
    /**
     * Bind an array of vertex buffers to the specified slots.
     *
-    * \param start_slot      first vertex buffer slot
+    * Unlike other set functions, the caller should always increment
+    * the buffer reference counts because the driver should only copy
+    * the pipe_resource pointers. This is the same behavior as setting
+    * take_ownership = true in other functions.
+    *
+    * count must be equal to the maximum used vertex buffer index + 1
+    * in vertex elements or 0.
+    *
     * \param count           number of consecutive vertex buffers to bind.
-    * \param unbind_num_trailing_slots  unbind slots after the bound slots
-    * \param take_ownership the caller holds buffer references and they
-    *                        should be taken over by the callee. This means
-    *                        that drivers shouldn't increment reference counts.
     * \param buffers         array of the buffers to bind
     */
    void (*set_vertex_buffers)(struct pipe_context *,
-                              unsigned start_slot,
-                              unsigned num_buffers,
-                              unsigned unbind_num_trailing_slots,
-                              bool take_ownership,
+                              unsigned count,
                               const struct pipe_vertex_buffer *);
 
    /*@}*/
@@ -884,7 +907,7 @@ struct pipe_context {
                            const struct pipe_box *,
                            const void *data,
                            unsigned stride,
-                           unsigned layer_stride);
+                           uintptr_t layer_stride);
 
    /**
     * Flush any pending framebuffer writes and invalidate texture caches.
@@ -936,6 +959,9 @@ struct pipe_context {
 
    void (*get_compute_state_info)(struct pipe_context *, void *,
                                   struct pipe_compute_state_object_info *);
+
+   uint32_t (*get_compute_state_subgroup_size)(struct pipe_context *, void *,
+                                               const uint32_t block[3]);
 
    /**
     * Bind an array of shader resources that will be used by the
@@ -995,6 +1021,9 @@ struct pipe_context {
     */
    void (*launch_grid)(struct pipe_context *context,
                        const struct pipe_grid_info *info);
+
+   void (*draw_mesh_tasks)(struct pipe_context *context,
+                           const struct pipe_grid_info *info);
    /*@}*/
 
    /**
@@ -1209,6 +1238,53 @@ struct pipe_context {
                                                      struct winsys_handle *handle,
                                                      unsigned usage );
 
+   /**
+    * Compiles a ML subgraph, to be executed later. The returned pipe_ml_subgraph
+    * should contain all information needed to execute the subgraph with as
+    * little effort as strictly needed.
+    *
+    * \param ctx         pipe context
+    * \param operations  array containing the definitions of the operations in the graph
+    * \param count       number of operations
+    * \return            a newly allocated pipe_ml_subgraph
+    */
+   struct pipe_ml_subgraph *(*ml_subgraph_create)(struct pipe_context *context,
+                                                  const struct pipe_ml_operation *operations,
+                                                  unsigned count);
+
+   /**
+    * Invokes a ML subgraph for a given input tensor.
+    *
+    * \param ctx         pipe context
+    * \param subgraph    previously-compiled subgraph
+    * \param input       tensor to use as the input
+    */
+   void (*ml_subgraph_invoke)(struct pipe_context *context,
+                              struct pipe_ml_subgraph *subgraph,
+                              struct pipe_tensor *input);
+
+   /**
+    * After a ML subgraph has been invoked, copy the contents of the output
+    * tensors to the provided buffers.
+    * 
+    * \param ctx           pipe context
+    * \param subgraph      previously-executed subgraph
+    * \param outputs_count number of output tensors to copy out
+    * \param output_idxs   array with the indices of output tensors
+    * \param outputs       array of buffers to copy the tensor data to
+    */
+   void (*ml_subgraph_read_output)(struct pipe_context *context,
+                                   struct pipe_ml_subgraph *subgraph,
+                                   unsigned outputs_count, unsigned output_idxs[], void *outputs[]);
+
+   /**
+    * Release all resources allocated by the implementation of ml_subgraph_create
+    * 
+    * \param ctx           pipe context
+    * \param subgraph      subgraph to release
+    */
+   void (*ml_subgraph_destroy)(struct pipe_context *context,
+                               struct pipe_ml_subgraph *subgraph);
 };
 
 

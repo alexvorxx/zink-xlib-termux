@@ -28,7 +28,7 @@
 
 #include "shader_enums.h"
 #include "util/macros.h"
-#include "mesa/main/config.h"
+#include "util/u_debug.h"
 
 #define ENUM(x) [x] = #x
 #define NAME(val) ((((val) < ARRAY_SIZE(names)) && names[(val)]) ? names[(val)] : "UNKNOWN")
@@ -333,6 +333,7 @@ gl_system_value_name(gl_system_value sysval)
      ENUM(SYSTEM_VALUE_SAMPLE_ID),
      ENUM(SYSTEM_VALUE_SAMPLE_POS),
      ENUM(SYSTEM_VALUE_SAMPLE_MASK_IN),
+     ENUM(SYSTEM_VALUE_LAYER_ID),
      ENUM(SYSTEM_VALUE_HELPER_INVOCATION),
      ENUM(SYSTEM_VALUE_COLOR0),
      ENUM(SYSTEM_VALUE_COLOR1),
@@ -367,7 +368,6 @@ gl_system_value_name(gl_system_value sysval)
      ENUM(SYSTEM_VALUE_BARYCENTRIC_PULL_MODEL),
      ENUM(SYSTEM_VALUE_RAY_LAUNCH_ID),
      ENUM(SYSTEM_VALUE_RAY_LAUNCH_SIZE),
-     ENUM(SYSTEM_VALUE_RAY_LAUNCH_SIZE_ADDR_AMD),
      ENUM(SYSTEM_VALUE_RAY_WORLD_ORIGIN),
      ENUM(SYSTEM_VALUE_RAY_WORLD_DIRECTION),
      ENUM(SYSTEM_VALUE_RAY_OBJECT_ORIGIN),
@@ -390,6 +390,12 @@ gl_system_value_name(gl_system_value sysval)
      ENUM(SYSTEM_VALUE_FULLY_COVERED),
      ENUM(SYSTEM_VALUE_FRAG_SIZE),
      ENUM(SYSTEM_VALUE_FRAG_INVOCATION_COUNT),
+     ENUM(SYSTEM_VALUE_SHADER_INDEX),
+     ENUM(SYSTEM_VALUE_COALESCED_INPUT_COUNT),
+     ENUM(SYSTEM_VALUE_WARPS_PER_SM_NV),
+     ENUM(SYSTEM_VALUE_SM_COUNT_NV),
+     ENUM(SYSTEM_VALUE_WARP_ID_NV),
+     ENUM(SYSTEM_VALUE_SM_ID_NV),
    };
    STATIC_ASSERT(ARRAY_SIZE(names) == SYSTEM_VALUE_MAX);
    return NAME(sysval);
@@ -404,7 +410,6 @@ glsl_interp_mode_name(enum glsl_interp_mode qual)
       ENUM(INTERP_MODE_FLAT),
       ENUM(INTERP_MODE_NOPERSPECTIVE),
       ENUM(INTERP_MODE_EXPLICIT),
-      ENUM(INTERP_MODE_COLOR),
    };
    STATIC_ASSERT(ARRAY_SIZE(names) == INTERP_MODE_COUNT);
    return NAME(qual);
@@ -431,17 +436,17 @@ gl_frag_result_name(gl_frag_result result)
    return NAME(result);
 }
 
-unsigned
-num_mesh_vertices_per_primitive(unsigned prim)
+const char *
+mesa_scope_name(mesa_scope scope)
 {
-   switch (prim) {
-      case SHADER_PRIM_POINTS:
-         return 1;
-      case SHADER_PRIM_LINES:
-         return 2;
-      case SHADER_PRIM_TRIANGLES:
-         return 3;
-      default:
-         unreachable("invalid mesh shader primitive type");
-   }
+   static const char *names[] = {
+      ENUM(SCOPE_NONE),
+      ENUM(SCOPE_INVOCATION),
+      ENUM(SCOPE_SUBGROUP),
+      ENUM(SCOPE_SHADER_CALL),
+      ENUM(SCOPE_WORKGROUP),
+      ENUM(SCOPE_QUEUE_FAMILY),
+      ENUM(SCOPE_DEVICE),
+   };
+   return NAME(scope);
 }

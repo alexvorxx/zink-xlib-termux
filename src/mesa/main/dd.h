@@ -62,6 +62,7 @@ struct gl_vertex_array_object;
 struct ati_fragment_shader;
 struct util_queue_monitoring;
 struct pipe_draw_info;
+struct pipe_draw_indirect_info;
 struct pipe_draw_start_count_bias;
 struct pipe_vertex_state;
 struct pipe_draw_vertex_state_info;
@@ -142,22 +143,15 @@ struct dd_function_table {
     */
 
    /**
-    * Optimal Gallium version of Draw() that doesn't require translation
-    * of draw info in the state tracker.
+    * The basic draw function used to implement glDrawArrays, glDrawElements,
+    * multidraws, and instancing.
     *
-    * The interface is identical to pipe_context::draw_vbo
-    * with indirect == NULL.
-    *
-    * "info" is not const and the following fields can be changed by
-    * the callee, so callers should be aware:
-    * - info->index_bounds_valid (if false)
-    * - info->min_index (if index_bounds_valid is false)
-    * - info->max_index (if index_bounds_valid is false)
-    * - info->drawid (if increment_draw_id is true)
+    * The interface is identical to pipe_context::draw_vbo.
     */
    void (*DrawGallium)(struct gl_context *ctx,
-                       struct pipe_draw_info *info,
+                       const struct pipe_draw_info *info,
                        unsigned drawid_offset,
+                       const struct pipe_draw_indirect_info *indirect,
                        const struct pipe_draw_start_count_bias *draws,
                        unsigned num_draws);
 
@@ -175,20 +169,7 @@ struct dd_function_table {
                                 const struct pipe_draw_start_count_bias *draws,
                                 const unsigned char *mode,
                                 unsigned num_draws);
-
-   void (*DrawGalliumVertexState)(struct gl_context *ctx,
-                                  struct pipe_vertex_state *state,
-                                  struct pipe_draw_vertex_state_info info,
-                                  const struct pipe_draw_start_count_bias *draws,
-                                  const uint8_t *mode,
-                                  unsigned num_draws);
    /*@}*/
-
-   struct pipe_vertex_state *
-      (*CreateGalliumVertexState)(struct gl_context *ctx,
-                                  const struct gl_vertex_array_object *vao,
-                                  struct gl_buffer_object *indexbuf,
-                                  uint32_t enabled_attribs);
 
    /**
     * \name Support for multiple T&L engines

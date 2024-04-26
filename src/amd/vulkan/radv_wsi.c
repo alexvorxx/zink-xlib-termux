@@ -23,9 +23,9 @@
  * IN THE SOFTWARE.
  */
 
+#include "meta/radv_meta.h"
 #include "util/macros.h"
 #include "radv_debug.h"
-#include "meta/radv_meta.h"
 #include "radv_private.h"
 #include "vk_fence.h"
 #include "vk_semaphore.h"
@@ -68,15 +68,11 @@ radv_wsi_get_prime_blit_queue(VkDevice _device)
          .queueCount = 1,
       };
 
-      device->private_sdma_queue = vk_zalloc(&device->vk.alloc, sizeof(struct radv_queue), 8,
-                                             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      device->private_sdma_queue =
+         vk_zalloc(&device->vk.alloc, sizeof(struct radv_queue), 8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
 
       VkResult result = radv_queue_init(device, device->private_sdma_queue, 0, &queue_create, NULL);
       if (result == VK_SUCCESS) {
-         /* Remove the queue from our queue list because it'll be cleared manually
-          * in radv_DestroyDevice.
-          */
-         list_delinit(&device->private_sdma_queue->vk.link);
          return vk_queue_to_handle(&device->private_sdma_queue->vk);
       } else {
          vk_free(&device->vk.alloc, device->private_sdma_queue);
@@ -90,9 +86,9 @@ VkResult
 radv_init_wsi(struct radv_physical_device *physical_device)
 {
    VkResult result =
-      wsi_device_init(&physical_device->wsi_device, radv_physical_device_to_handle(physical_device),
-                      radv_wsi_proc_addr, &physical_device->instance->vk.alloc,
-                      physical_device->master_fd, &physical_device->instance->dri_options, &(struct wsi_device_options){.sw_device = false});
+      wsi_device_init(&physical_device->wsi_device, radv_physical_device_to_handle(physical_device), radv_wsi_proc_addr,
+                      &physical_device->instance->vk.alloc, physical_device->master_fd,
+                      &physical_device->instance->drirc.options, &(struct wsi_device_options){.sw_device = false});
    if (result != VK_SUCCESS)
       return result;
 

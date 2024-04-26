@@ -34,17 +34,16 @@ radv_spm_init_bo(struct radv_device *device)
 {
    struct radeon_winsys *ws = device->ws;
    uint64_t size = 32 * 1024 * 1024; /* Default to 1MB. */
-   uint16_t sample_interval = 4096; /* Default to 4096 clk. */
+   uint16_t sample_interval = 4096;  /* Default to 4096 clk. */
    VkResult result;
 
    device->spm.buffer_size = size;
    device->spm.sample_interval = sample_interval;
 
    struct radeon_winsys_bo *bo = NULL;
-   result = ws->buffer_create(
-      ws, size, 4096, RADEON_DOMAIN_VRAM,
-      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
-      RADV_BO_PRIORITY_SCRATCH, 0, &bo);
+   result = ws->buffer_create(ws, size, 4096, RADEON_DOMAIN_VRAM,
+                              RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
+                              RADV_BO_PRIORITY_SCRATCH, 0, &bo);
    device->spm.bo = bo;
    if (result != VK_SUCCESS)
       return false;
@@ -53,7 +52,7 @@ radv_spm_init_bo(struct radv_device *device)
    if (result != VK_SUCCESS)
       return false;
 
-   device->spm.ptr = ws->buffer_map(device->spm.bo);
+   device->spm.ptr = radv_buffer_map(ws, device->spm.bo);
    if (!device->spm.ptr)
       return false;
 
@@ -61,48 +60,89 @@ radv_spm_init_bo(struct radv_device *device)
 }
 
 static void
-radv_emit_spm_counters(struct radv_device *device, struct radeon_cmdbuf *cs)
+radv_emit_spm_counters(struct radv_device *device, struct radeon_cmdbuf *cs, enum radv_queue_family qf)
 {
+   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
    struct ac_spm *spm = &device->spm;
 
-   for (uint32_t b = 0; b < spm->num_used_sq_block_sel; b++) {
-      struct ac_spm_block_select *sq_block_sel = &spm->sq_block_sel[b];
-      const struct ac_spm_counter_select *cntr_sel = &sq_block_sel->counters[0];
-      uint32_t reg_base = R_036700_SQ_PERFCOUNTER0_SELECT;
+   if (gfx_level >= GFX11) {
+      for (uint32_t instance = 0; instance < ARRAY_SIZE(spm->sq_wgp); instance++) {
+         uint32_t num_counters = spm->sq_wgp[instance].num_counters;
 
-      radeon_set_uconfig_reg_seq(cs, reg_base + b * 4, 1);
-      radeon_emit(cs, cntr_sel->sel0 | S_036700_SQC_BANK_MASK(0xf)); /* SQC_BANK_MASK only gfx10 */
+         if (!num_counters)
+            continue;
+
+         radeon_check_space(device->ws, cs, 3 + num_counters * 3);
+
+         radeon_set_uconfig_reg(cs, R_030800_GRBM_GFX_INDEX, spm->sq_wgp[instance].grbm_gfx_index);
+
+         for (uint32_t b = 0; b < num_counters; b++) {
+            const struct ac_spm_counter_select *cntr_sel = &spm->sq_wgp[instance].counters[b];
+            uint32_t reg_base = R_036700_SQ_PERFCOUNTER0_SELECT;
+
+            radeon_set_uconfig_reg_seq_perfctr(gfx_level, qf, cs, reg_base + b * 4, 1);
+            radeon_emit(cs, cntr_sel->sel0);
+         }
+      }
+   }
+
+   for (uint32_t instance = 0; instance < ARRAY_SIZE(spm->sqg); instance++) {
+      uint32_t num_counters = spm->sqg[instance].num_counters;
+
+      if (!num_counters)
+         continue;
+
+      radeon_check_space(device->ws, cs, 3 + num_counters * 3);
+
+      radeon_set_uconfig_reg(
+         cs, R_030800_GRBM_GFX_INDEX,
+         S_030800_SH_BROADCAST_WRITES(1) | S_030800_INSTANCE_BROADCAST_WRITES(1) | S_030800_SE_INDEX(instance));
+
+      for (uint32_t b = 0; b < num_counters; b++) {
+         const struct ac_spm_counter_select *cntr_sel = &spm->sqg[instance].counters[b];
+         uint32_t reg_base = R_036700_SQ_PERFCOUNTER0_SELECT;
+
+         radeon_set_uconfig_reg_seq_perfctr(gfx_level, qf, cs, reg_base + b * 4, 1);
+         radeon_emit(cs, cntr_sel->sel0 | S_036700_SQC_BANK_MASK(0xf)); /* SQC_BANK_MASK only gfx10 */
+      }
    }
 
    for (uint32_t b = 0; b < spm->num_block_sel; b++) {
       struct ac_spm_block_select *block_sel = &spm->block_sel[b];
       struct ac_pc_block_base *regs = block_sel->b->b->b;
 
-      radeon_set_uconfig_reg(cs, R_030800_GRBM_GFX_INDEX, block_sel->grbm_gfx_index);
+      for (unsigned i = 0; i < block_sel->num_instances; i++) {
+         struct ac_spm_block_instance *block_instance = &block_sel->instances[i];
 
-      for (unsigned c = 0; c < block_sel->num_counters; c++) {
-         const struct ac_spm_counter_select *cntr_sel = &block_sel->counters[c];
+         radeon_check_space(device->ws, cs, 3 + (AC_SPM_MAX_COUNTER_PER_BLOCK * 6));
 
-         if (!cntr_sel->active)
-            continue;
+         radeon_set_uconfig_reg(cs, R_030800_GRBM_GFX_INDEX, block_instance->grbm_gfx_index);
 
-         radeon_set_uconfig_reg_seq(cs, regs->select0[c], 1);
-         radeon_emit(cs, cntr_sel->sel0);
+         for (unsigned c = 0; c < block_instance->num_counters; c++) {
+            const struct ac_spm_counter_select *cntr_sel = &block_instance->counters[c];
 
-         radeon_set_uconfig_reg_seq(cs, regs->select1[c], 1);
-         radeon_emit(cs, cntr_sel->sel1);
+            if (!cntr_sel->active)
+               continue;
+
+            radeon_set_uconfig_reg_seq_perfctr(gfx_level, qf, cs, regs->select0[c], 1);
+            radeon_emit(cs, cntr_sel->sel0);
+
+            radeon_set_uconfig_reg_seq_perfctr(gfx_level, qf, cs, regs->select1[c], 1);
+            radeon_emit(cs, cntr_sel->sel1);
+         }
       }
    }
 
    /* Restore global broadcasting. */
-   radeon_set_uconfig_reg(cs, R_030800_GRBM_GFX_INDEX,
-                              S_030800_SE_BROADCAST_WRITES(1) | S_030800_SH_BROADCAST_WRITES(1) |
-                              S_030800_INSTANCE_BROADCAST_WRITES(1));
+   radeon_set_uconfig_reg(
+      cs, R_030800_GRBM_GFX_INDEX,
+      S_030800_SE_BROADCAST_WRITES(1) | S_030800_SH_BROADCAST_WRITES(1) | S_030800_INSTANCE_BROADCAST_WRITES(1));
 }
 
 void
-radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs)
+radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, enum radv_queue_family qf)
 {
+   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
    struct ac_spm *spm = &device->spm;
    uint64_t va = radv_buffer_get_va(spm->bo);
    uint64_t ring_size = spm->buffer_size;
@@ -112,13 +152,14 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs)
    assert(!(ring_size & (SPM_RING_BASE_ALIGN - 1)));
    assert(spm->sample_interval >= 32);
 
+   radeon_check_space(device->ws, cs, 27);
+
    /* Configure the SPM ring buffer. */
    radeon_set_uconfig_reg(cs, R_037200_RLC_SPM_PERFMON_CNTL,
-                              S_037200_PERFMON_RING_MODE(0) | /* no stall and no interrupt on overflow */
-                              S_037200_PERFMON_SAMPLE_INTERVAL(spm->sample_interval)); /* in sclk */
+                          S_037200_PERFMON_RING_MODE(0) | /* no stall and no interrupt on overflow */
+                             S_037200_PERFMON_SAMPLE_INTERVAL(spm->sample_interval)); /* in sclk */
    radeon_set_uconfig_reg(cs, R_037204_RLC_SPM_PERFMON_RING_BASE_LO, va);
-   radeon_set_uconfig_reg(cs, R_037208_RLC_SPM_PERFMON_RING_BASE_HI,
-                              S_037208_RING_BASE_HI(va >> 32));
+   radeon_set_uconfig_reg(cs, R_037208_RLC_SPM_PERFMON_RING_BASE_HI, S_037208_RING_BASE_HI(va >> 32));
    radeon_set_uconfig_reg(cs, R_03720C_RLC_SPM_PERFMON_RING_SIZE, ring_size);
 
    /* Configure the muxsel. */
@@ -128,21 +169,30 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs)
    }
 
    radeon_set_uconfig_reg(cs, R_03726C_RLC_SPM_ACCUM_MODE, 0);
-   radeon_set_uconfig_reg(cs, R_037210_RLC_SPM_PERFMON_SEGMENT_SIZE, 0);
-   radeon_set_uconfig_reg(cs, R_03727C_RLC_SPM_PERFMON_SE3TO0_SEGMENT_SIZE,
-                              S_03727C_SE0_NUM_LINE(spm->num_muxsel_lines[0]) |
-                              S_03727C_SE1_NUM_LINE(spm->num_muxsel_lines[1]) |
-                              S_03727C_SE2_NUM_LINE(spm->num_muxsel_lines[2]) |
-                              S_03727C_SE3_NUM_LINE(spm->num_muxsel_lines[3]));
-   radeon_set_uconfig_reg(cs, R_037280_RLC_SPM_PERFMON_GLB_SEGMENT_SIZE,
-                              S_037280_PERFMON_SEGMENT_SIZE(total_muxsel_lines) |
-                              S_037280_GLOBAL_NUM_LINE(spm->num_muxsel_lines[4]));
+
+   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+      radeon_set_uconfig_reg(cs, R_03721C_RLC_SPM_PERFMON_SEGMENT_SIZE,
+                             S_03721C_TOTAL_NUM_SEGMENT(total_muxsel_lines) |
+                                S_03721C_GLOBAL_NUM_SEGMENT(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_GLOBAL]) |
+                                S_03721C_SE_NUM_SEGMENT(spm->max_se_muxsel_lines));
+
+      radeon_set_uconfig_reg(cs, R_037210_RLC_SPM_RING_WRPTR, 0);
+   } else {
+      radeon_set_uconfig_reg(cs, R_037210_RLC_SPM_PERFMON_SEGMENT_SIZE, 0);
+      radeon_set_uconfig_reg(cs, R_03727C_RLC_SPM_PERFMON_SE3TO0_SEGMENT_SIZE,
+                             S_03727C_SE0_NUM_LINE(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_SE0]) |
+                                S_03727C_SE1_NUM_LINE(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_SE1]) |
+                                S_03727C_SE2_NUM_LINE(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_SE2]) |
+                                S_03727C_SE3_NUM_LINE(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_SE3]));
+      radeon_set_uconfig_reg(cs, R_037280_RLC_SPM_PERFMON_GLB_SEGMENT_SIZE,
+                             S_037280_PERFMON_SEGMENT_SIZE(total_muxsel_lines) |
+                                S_037280_GLOBAL_NUM_LINE(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_GLOBAL]));
+   }
 
    /* Upload each muxsel ram to the RLC. */
    for (unsigned s = 0; s < AC_SPM_SEGMENT_TYPE_COUNT; s++) {
       unsigned rlc_muxsel_addr, rlc_muxsel_data;
-      unsigned grbm_gfx_index = S_030800_SH_BROADCAST_WRITES(1) |
-                                S_030800_INSTANCE_BROADCAST_WRITES(1);
+      unsigned grbm_gfx_index = S_030800_SH_BROADCAST_WRITES(1) | S_030800_INSTANCE_BROADCAST_WRITES(1);
 
       if (!spm->num_muxsel_lines[s])
          continue;
@@ -150,14 +200,18 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs)
       if (s == AC_SPM_SEGMENT_TYPE_GLOBAL) {
          grbm_gfx_index |= S_030800_SE_BROADCAST_WRITES(1);
 
-         rlc_muxsel_addr = R_037224_RLC_SPM_GLOBAL_MUXSEL_ADDR;
-         rlc_muxsel_data = R_037228_RLC_SPM_GLOBAL_MUXSEL_DATA;
+         rlc_muxsel_addr =
+            gfx_level >= GFX11 ? R_037220_RLC_SPM_GLOBAL_MUXSEL_ADDR : R_037224_RLC_SPM_GLOBAL_MUXSEL_ADDR;
+         rlc_muxsel_data =
+            gfx_level >= GFX11 ? R_037224_RLC_SPM_GLOBAL_MUXSEL_DATA : R_037228_RLC_SPM_GLOBAL_MUXSEL_DATA;
       } else {
          grbm_gfx_index |= S_030800_SE_INDEX(s);
 
-         rlc_muxsel_addr = R_03721C_RLC_SPM_SE_MUXSEL_ADDR;
-         rlc_muxsel_data = R_037220_RLC_SPM_SE_MUXSEL_DATA;
+         rlc_muxsel_addr = gfx_level >= GFX11 ? R_037228_RLC_SPM_SE_MUXSEL_ADDR : R_03721C_RLC_SPM_SE_MUXSEL_ADDR;
+         rlc_muxsel_data = gfx_level >= GFX11 ? R_03722C_RLC_SPM_SE_MUXSEL_DATA : R_037220_RLC_SPM_SE_MUXSEL_DATA;
       }
+
+      radeon_check_space(device->ws, cs, 3 + spm->num_muxsel_lines[s] * (7 + AC_SPM_MUXSEL_LINE_SIZE));
 
       radeon_set_uconfig_reg(cs, R_030800_GRBM_GFX_INDEX, grbm_gfx_index);
 
@@ -165,14 +219,12 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs)
          uint32_t *data = (uint32_t *)spm->muxsel_lines[s][l].muxsel;
 
          /* Select MUXSEL_ADDR to point to the next muxsel. */
-         radeon_set_uconfig_reg(cs, rlc_muxsel_addr, l * AC_SPM_MUXSEL_LINE_SIZE);
+         radeon_set_uconfig_reg_perfctr(gfx_level, qf, cs, rlc_muxsel_addr, l * AC_SPM_MUXSEL_LINE_SIZE);
 
          /* Write the muxsel line configuration with MUXSEL_DATA. */
          radeon_emit(cs, PKT3(PKT3_WRITE_DATA, 2 + AC_SPM_MUXSEL_LINE_SIZE, 0));
-         radeon_emit(cs, S_370_DST_SEL(V_370_MEM_MAPPED_REGISTER) |
-                         S_370_WR_CONFIRM(1) |
-                         S_370_ENGINE_SEL(V_370_ME) |
-                         S_370_WR_ONE_ADDR(1));
+         radeon_emit(cs, S_370_DST_SEL(V_370_MEM_MAPPED_REGISTER) | S_370_WR_CONFIRM(1) | S_370_ENGINE_SEL(V_370_ME) |
+                            S_370_WR_ONE_ADDR(1));
          radeon_emit(cs, rlc_muxsel_data >> 2);
          radeon_emit(cs, 0);
          radeon_emit_array(cs, data, AC_SPM_MUXSEL_LINE_SIZE);
@@ -180,7 +232,7 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs)
    }
 
    /* Select SPM counters. */
-   radv_emit_spm_counters(device, cs);
+   radv_emit_spm_counters(device, cs, qf);
 }
 
 bool
@@ -188,26 +240,12 @@ radv_spm_init(struct radv_device *device)
 {
    const struct radeon_info *info = &device->physical_device->rad_info;
    struct ac_perfcounters *pc = &device->physical_device->ac_perfcounters;
-   struct ac_spm_counter_create_info spm_counters[] = {
-      {TCP, 0, 0x9},    /* Number of L2 requests. */
-      {TCP, 0, 0x12},   /* Number of L2 misses. */
-      {SQ, 0, 0x14f},   /* Number of SCACHE hits. */
-      {SQ, 0, 0x150},   /* Number of SCACHE misses. */
-      {SQ, 0, 0x151},   /* Number of SCACHE misses duplicate. */
-      {SQ, 0, 0x12c},   /* Number of ICACHE hits. */
-      {SQ, 0, 0x12d},   /* Number of ICACHE misses. */
-      {SQ, 0, 0x12e},   /* Number of ICACHE misses duplicate. */
-      {GL1C, 0, 0xe},   /* Number of GL1C requests. */
-      {GL1C, 0, 0x12},  /* Number of GL1C misses. */
-      {GL2C, 0, 0x3},   /* Number of GL2C requests. */
-      {GL2C, 0, info->gfx_level >= GFX10_3 ? 0x2b : 0x23},  /* Number of GL2C misses. */
-   };
 
    /* We failed to initialize the performance counters. */
    if (!pc->blocks)
       return false;
 
-   if (!ac_init_spm(info, pc, ARRAY_SIZE(spm_counters), spm_counters, &device->spm))
+   if (!ac_init_spm(info, pc, &device->spm))
       return false;
 
    if (!radv_spm_init_bo(device))

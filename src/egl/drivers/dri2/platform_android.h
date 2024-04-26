@@ -63,24 +63,21 @@ ANativeWindow_getFormat(struct ANativeWindow *window)
 
 static inline int
 ANativeWindow_dequeueBuffer(struct ANativeWindow *window,
-                            struct ANativeWindowBuffer **buffer,
-                            int *fenceFd)
+                            struct ANativeWindowBuffer **buffer, int *fenceFd)
 {
    return window->dequeueBuffer(window, buffer, fenceFd);
 }
 
 static inline int
 ANativeWindow_queueBuffer(struct ANativeWindow *window,
-                          struct ANativeWindowBuffer *buffer,
-                          int fenceFd)
+                          struct ANativeWindowBuffer *buffer, int fenceFd)
 {
    return window->queueBuffer(window, buffer, fenceFd);
 }
 
 static inline int
 ANativeWindow_cancelBuffer(struct ANativeWindow *window,
-                           struct ANativeWindowBuffer *buffer,
-                           int fenceFd)
+                           struct ANativeWindowBuffer *buffer, int fenceFd)
 {
    return window->cancelBuffer(window, buffer, fenceFd);
 }
@@ -106,8 +103,7 @@ ANativeWindow_setSwapInterval(struct ANativeWindow *window, int interval)
 
 static inline int
 ANativeWindow_query(const struct ANativeWindow *window,
-                    enum ANativeWindowQuery what,
-                    int *value)
+                    enum ANativeWindowQuery what, int *value)
 {
    switch (what) {
    case ANATIVEWINDOW_QUERY_MIN_UNDEQUEUED_BUFFERS:
@@ -120,38 +116,5 @@ ANativeWindow_query(const struct ANativeWindow *window,
    return window->query(window, (int)what, value);
 }
 #endif // ANDROID_API_LEVEL < 26
-
-struct buffer_info {
-   int width;
-   int height;
-   uint32_t drm_fourcc;
-   int num_planes;
-   int fds[4];
-   uint64_t modifier;
-   int offsets[4];
-   int pitches[4];
-   enum __DRIYUVColorSpace yuv_color_space;
-   enum __DRISampleRange sample_range;
-   enum __DRIChromaSiting horizontal_siting;
-   enum __DRIChromaSiting vertical_siting;
-};
-
-#ifdef USE_IMAPPER4_METADATA_API
-#ifdef __cplusplus
-extern "C" {
-#endif
-extern int
-mapper_metadata_get_buffer_info(struct ANativeWindowBuffer *buf,
-                                struct buffer_info *out_buf_info);
-#ifdef __cplusplus
-}
-#endif
-#else
-static inline int
-mapper_metadata_get_buffer_info(struct ANativeWindowBuffer *buf,
-                                struct buffer_info *out_buf_info) {
-   return -ENOTSUP;
-}
-#endif /* USE_IMAPPER4_METADATA_API */
 
 #endif /* EGL_ANDROID_INCLUDED */

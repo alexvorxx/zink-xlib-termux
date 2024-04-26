@@ -17,43 +17,6 @@
 
 #include "vn_wsi.h"
 
-struct vn_physical_device_features {
-   VkPhysicalDeviceFeatures vulkan_1_0;
-   VkPhysicalDeviceVulkan11Features vulkan_1_1;
-   VkPhysicalDeviceVulkan12Features vulkan_1_2;
-   VkPhysicalDeviceVulkan13Features vulkan_1_3;
-
-   /* Vulkan 1.3: The extensions for the below structs were promoted, but some
-    * struct members were omitted from VkPhysicalDeviceVulkan13Features.
-    */
-   VkPhysicalDevice4444FormatsFeaturesEXT _4444_formats;
-   VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extended_dynamic_state;
-   VkPhysicalDeviceExtendedDynamicState2FeaturesEXT extended_dynamic_state_2;
-   VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT texel_buffer_alignment;
-   VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT ycbcr_2plane_444_formats;
-
-   /* EXT */
-   VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering;
-   VkPhysicalDeviceCustomBorderColorFeaturesEXT custom_border_color;
-   VkPhysicalDeviceDepthClipControlFeaturesEXT depth_clip_control;
-   VkPhysicalDeviceDepthClipEnableFeaturesEXT depth_clip_enable;
-   VkPhysicalDeviceImageViewMinLodFeaturesEXT image_view_min_lod;
-   VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8;
-   VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization;
-   VkPhysicalDeviceMultiDrawFeaturesEXT multi_draw;
-   VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mutable_descriptor_type;
-   VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
-      primitive_topology_list_restart;
-   VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT
-      primitives_generated_query;
-   VkPhysicalDeviceProvokingVertexFeaturesEXT provoking_vertex;
-   VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT
-      rasterization_order_attachment_access;
-   VkPhysicalDeviceRobustness2FeaturesEXT robustness_2;
-   VkPhysicalDeviceTransformFeedbackFeaturesEXT transform_feedback;
-   VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT vertex_attribute_divisor;
-};
-
 struct vn_physical_device_properties {
    VkPhysicalDeviceProperties vulkan_1_0;
    VkPhysicalDeviceVulkan11Properties vulkan_1_1;
@@ -61,12 +24,16 @@ struct vn_physical_device_properties {
    VkPhysicalDeviceVulkan13Properties vulkan_1_3;
 
    /* KHR */
+   VkPhysicalDeviceFragmentShadingRatePropertiesKHR fragment_shading_rate;
    VkPhysicalDevicePushDescriptorPropertiesKHR push_descriptor;
 
    /* EXT */
    VkPhysicalDeviceConservativeRasterizationPropertiesEXT
       conservative_rasterization;
    VkPhysicalDeviceCustomBorderColorPropertiesEXT custom_border_color;
+   VkPhysicalDeviceExtendedDynamicState3PropertiesEXT extended_dynamic_state_3;
+   VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT
+      graphics_pipeline_library;
    VkPhysicalDeviceLineRasterizationPropertiesEXT line_rasterization;
    VkPhysicalDeviceMultiDrawPropertiesEXT multi_draw;
    VkPhysicalDevicePCIBusInfoPropertiesEXT pci_bus_info;
@@ -80,6 +47,33 @@ struct vn_physical_device_properties {
 struct vn_format_properties_entry {
    atomic_bool valid;
    VkFormatProperties properties;
+};
+
+struct vn_image_format_properties {
+   struct VkImageFormatProperties2 format;
+   VkResult cached_result;
+
+   VkExternalImageFormatProperties ext_image;
+   VkImageCompressionPropertiesEXT compression;
+   VkSamplerYcbcrConversionImageFormatProperties ycbcr_conversion;
+};
+
+struct vn_image_format_cache_entry {
+   struct vn_image_format_properties properties;
+   uint8_t key[SHA1_DIGEST_LENGTH];
+   struct list_head head;
+};
+
+struct vn_image_format_properties_cache {
+   struct hash_table *ht;
+   struct list_head lru;
+   simple_mtx_t mutex;
+
+   struct {
+      uint32_t cache_hit_count;
+      uint32_t cache_miss_count;
+      uint32_t cache_skip_count;
+   } debug;
 };
 
 struct vn_physical_device {
@@ -104,14 +98,16 @@ struct vn_physical_device {
    struct vk_device_extension_table renderer_extensions;
    uint32_t *extension_spec_versions;
 
-   struct vn_physical_device_features features;
    struct vn_physical_device_properties properties;
+   enum VkDriverId renderer_driver_id;
 
    VkQueueFamilyProperties2 *queue_family_properties;
    uint32_t queue_family_count;
    bool sparse_binding_disabled;
 
-   VkPhysicalDeviceMemoryProperties2 memory_properties;
+   VkPhysicalDeviceMemoryProperties memory_properties;
+   uint32_t coherent_uncached;
+   uint32_t incoherent_cached;
 
    struct {
       VkExternalMemoryHandleTypeFlagBits renderer_handle_type;
@@ -132,6 +128,8 @@ struct vn_physical_device {
 
    simple_mtx_t format_update_mutex;
    struct util_sparse_array format_properties;
+
+   struct vn_image_format_properties_cache image_format_cache;
 };
 VK_DEFINE_HANDLE_CASTS(vn_physical_device,
                        base.base.base,

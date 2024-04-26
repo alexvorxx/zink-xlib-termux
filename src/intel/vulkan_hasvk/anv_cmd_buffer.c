@@ -298,6 +298,11 @@ void anv_CmdBindPipeline(
    case VK_PIPELINE_BIND_POINT_GRAPHICS: {
       struct anv_graphics_pipeline *gfx_pipeline =
          anv_pipeline_to_graphics(pipeline);
+
+      /* Apply the non dynamic state from the pipeline */
+      vk_cmd_set_dynamic_graphics_state(&cmd_buffer->vk,
+                                        &gfx_pipeline->dynamic_state);
+
       if (cmd_buffer->state.gfx.pipeline == gfx_pipeline)
          return;
 
@@ -309,10 +314,6 @@ void anv_CmdBindPipeline(
          set_dirty_for_bind_map(cmd_buffer, stage,
                                 &gfx_pipeline->shaders[stage]->bind_map);
       }
-
-      /* Apply the non dynamic state from the pipeline */
-      vk_cmd_set_dynamic_graphics_state(&cmd_buffer->vk,
-                                        &gfx_pipeline->dynamic_state);
       break;
    }
 
@@ -338,7 +339,7 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
     *
     *    "Each element of pDescriptorSets must not have been allocated from a
     *     VkDescriptorPool with the
-    *     VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_VALVE flag set"
+    *     VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT flag set"
     */
    assert(!set->pool || !set->pool->host_only);
 
@@ -350,10 +351,7 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
 
    switch (bind_point) {
    case VK_PIPELINE_BIND_POINT_GRAPHICS:
-      stages &= VK_SHADER_STAGE_ALL_GRAPHICS |
-                (cmd_buffer->device->vk.enabled_extensions.NV_mesh_shader ?
-                      (VK_SHADER_STAGE_TASK_BIT_NV |
-                       VK_SHADER_STAGE_MESH_BIT_NV) : 0);
+      stages &= VK_SHADER_STAGE_ALL_GRAPHICS;
       pipe_state = &cmd_buffer->state.gfx.base;
       break;
 
@@ -577,13 +575,13 @@ anv_cmd_buffer_cs_push_constants(struct anv_cmd_buffer *cmd_buffer)
    struct anv_push_constants *data =
       &cmd_buffer->state.compute.base.push_constants;
    struct anv_compute_pipeline *pipeline = cmd_buffer->state.compute.pipeline;
-   const struct brw_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
+   const struct elk_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
    const struct anv_push_range *range = &pipeline->cs->bind_map.push_ranges[0];
 
-   const struct brw_cs_dispatch_info dispatch =
-      brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
+   const struct intel_cs_dispatch_info dispatch =
+      elk_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const unsigned total_push_constants_size =
-      brw_cs_push_const_total_size(cs_prog_data, dispatch.threads);
+      elk_cs_push_const_total_size(cs_prog_data, dispatch.threads);
    if (total_push_constants_size == 0)
       return (struct anv_state) { .offset = 0 };
 

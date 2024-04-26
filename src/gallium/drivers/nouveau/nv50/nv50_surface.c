@@ -25,6 +25,7 @@
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 
+#include "nir/pipe_nir.h"
 #include "pipe/p_defines.h"
 
 #include "util/u_inlines.h"
@@ -452,80 +453,6 @@ nv50_clear_depth_stencil(struct pipe_context *pipe,
 }
 
 void
-nv50_clear_texture(struct pipe_context *pipe,
-                   struct pipe_resource *res,
-                   unsigned level,
-                   const struct pipe_box *box,
-                   const void *data)
-{
-   struct pipe_surface tmpl = {{0}}, *sf;
-
-   tmpl.format = res->format;
-   tmpl.u.tex.first_layer = box->z;
-   tmpl.u.tex.last_layer = box->z + box->depth - 1;
-   tmpl.u.tex.level = level;
-   sf = pipe->create_surface(pipe, res, &tmpl);
-   if (!sf)
-      return;
-
-   if (util_format_is_depth_or_stencil(res->format)) {
-      float depth = 0;
-      uint8_t stencil = 0;
-      unsigned clear = 0;
-      const struct util_format_description *desc =
-         util_format_description(res->format);
-
-      if (util_format_has_depth(desc)) {
-         clear |= PIPE_CLEAR_DEPTH;
-         util_format_unpack_z_float(res->format, &depth, data, 1);
-      }
-      if (util_format_has_stencil(desc)) {
-         clear |= PIPE_CLEAR_STENCIL;
-         util_format_unpack_s_8uint(res->format, &stencil, data, 1);
-      }
-      pipe->clear_depth_stencil(pipe, sf, clear, depth, stencil,
-                                box->x, box->y, box->width, box->height, false);
-   } else {
-      union pipe_color_union color;
-
-      switch (util_format_get_blocksizebits(res->format)) {
-      case 128:
-         sf->format = PIPE_FORMAT_R32G32B32A32_UINT;
-         memcpy(&color.ui, data, 128 / 8);
-         break;
-      case 64:
-         sf->format = PIPE_FORMAT_R32G32_UINT;
-         memcpy(&color.ui, data, 64 / 8);
-         memset(&color.ui[2], 0, 64 / 8);
-         break;
-      case 32:
-         sf->format = PIPE_FORMAT_R32_UINT;
-         memcpy(&color.ui, data, 32 / 8);
-         memset(&color.ui[1], 0, 96 / 8);
-         break;
-      case 16:
-         sf->format = PIPE_FORMAT_R16_UINT;
-         color.ui[0] = util_cpu_to_le32(
-            util_le16_to_cpu(*(unsigned short *)data));
-         memset(&color.ui[1], 0, 96 / 8);
-         break;
-      case 8:
-         sf->format = PIPE_FORMAT_R8_UINT;
-         color.ui[0] = util_cpu_to_le32(*(unsigned char *)data);
-         memset(&color.ui[1], 0, 96 / 8);
-         break;
-      default:
-         assert(!"Unknown texel element size");
-         return;
-      }
-
-      pipe->clear_render_target(pipe, sf, &color,
-                                box->x, box->y, box->width, box->height, false);
-   }
-   pipe->surface_destroy(pipe, sf);
-}
-
-void
 nv50_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scissor_state *scissor_state,
            const union pipe_color_union *color,
            double depth, unsigned stencil)
@@ -938,8 +865,7 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
 
    const int chipset = nouveau_screen(pipe->screen)->device->chipset;
    const nir_shader_compiler_options *options =
-      nv50_ir_nir_shader_compiler_options(chipset, PIPE_SHADER_FRAGMENT,
-                                          true);
+      nv50_ir_nir_shader_compiler_options(chipset, PIPE_SHADER_FRAGMENT);
 
    struct nir_builder b =
       nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, options,
@@ -952,7 +878,7 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
    coord_var->data.location = VARYING_SLOT_VAR0;
    coord_var->data.interpolation = INTERP_MODE_NOPERSPECTIVE;
 
-   nir_ssa_def *coord = nir_load_var(&b, coord_var);
+   nir_def *coord = nir_load_var(&b, coord_var);
    if (ptarg == PIPE_TEXTURE_1D_ARRAY) {
       /* Adjust coordinates. Depth is in z, but TEX expects it to be in y. */
       coord = nir_channels(&b, coord, TGSI_WRITEMASK_XZ);
@@ -966,7 +892,7 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
    const struct glsl_type *sampler_type =
       glsl_sampler_type(sampler_dim, false, is_array, GLSL_TYPE_FLOAT);
 
-   nir_ssa_def *s = NULL;
+   nir_def *s = NULL;
    if (tex_s) {
       nir_variable *sampler =
          nir_variable_create(b.shader, nir_var_uniform,
@@ -979,7 +905,7 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
       s = nir_channel(&b, s, 0);
    }
 
-   nir_ssa_def *rgba = NULL, *z = NULL;
+   nir_def *rgba = NULL, *z = NULL;
    if (tex_rgbaz) {
       nir_variable *sampler =
          nir_variable_create(b.shader, nir_var_uniform,
@@ -998,14 +924,14 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
    }
 
    /* handle conversions */
-   nir_ssa_def *out_ssa;
+   nir_def *out_ssa;
    nir_component_mask_t out_mask = 0;
    if (cvt_un8) {
       if (tex_s) {
          s = nir_i2f32(&b, s);
          s = nir_fmul_imm(&b, s, 1.0f / 0xff);
       } else {
-         s = nir_ssa_undef(&b, 1, 32);
+         s = nir_undef(&b, 1, 32);
       }
 
       if (tex_rgbaz) {
@@ -1019,7 +945,7 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
                                               1.0f / 0x00ff00,
                                               1.0f / 0xff0000));
       } else {
-         z = nir_ssa_undef(&b, 3, 32);
+         z = nir_undef(&b, 3, 32);
       }
 
       if (mode == NV50_BLIT_MODE_Z24S8 ||
@@ -1048,8 +974,8 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
          out_ssa = rgba;
          out_mask |= TGSI_WRITEMASK_XYZW;
       } else {
-         out_ssa = nir_vec2(&b, z ? z : nir_ssa_undef(&b, 1, 32),
-                                s ? s : nir_ssa_undef(&b, 1, 32));
+         out_ssa = nir_vec2(&b, z ? z : nir_undef(&b, 1, 32),
+                                s ? s : nir_undef(&b, 1, 32));
          if (tex_rgbaz) out_mask |= TGSI_WRITEMASK_X;
          if (tex_s)     out_mask |= TGSI_WRITEMASK_Y;
       }
@@ -1067,9 +993,7 @@ nv50_blitter_make_fp(struct pipe_context *pipe,
    /* return shader */
    NIR_PASS_V(b.shader, nir_lower_samplers);
 
-   struct pipe_shader_state state;
-   pipe_shader_state_from_nir(&state, b.shader);
-   return pipe->create_fs_state(pipe, &state);
+   return pipe_shader_from_nir(pipe, b.shader);
 }
 
 static void
@@ -1749,7 +1673,7 @@ nv50_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 {
    struct nv50_context *nv50 = nv50_context(pipe);
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
-   bool eng3d = FALSE;
+   bool eng3d = false;
 
    if (info->src.box.width == 0 || info->src.box.height == 0 ||
        info->dst.box.width == 0 || info->dst.box.height == 0) {
@@ -1873,7 +1797,7 @@ nv50_blitter_destroy(struct nv50_screen *screen)
          struct nv50_program *prog = blitter->fp[i][m];
          if (prog) {
             nv50_program_destroy(NULL, prog);
-            ralloc_free((void *)prog->pipe.ir.nir);
+            ralloc_free((void *)prog->nir);
             FREE(prog);
          }
       }
@@ -1907,7 +1831,7 @@ nv50_init_surface_functions(struct nv50_context *nv50)
    pipe->resource_copy_region = nv50_resource_copy_region;
    pipe->blit = nv50_blit;
    pipe->flush_resource = nv50_flush_resource;
-   pipe->clear_texture = nv50_clear_texture;
+   pipe->clear_texture = u_default_clear_texture;
    pipe->clear_render_target = nv50_clear_render_target;
    pipe->clear_depth_stencil = nv50_clear_depth_stencil;
    pipe->clear_buffer = nv50_clear_buffer;

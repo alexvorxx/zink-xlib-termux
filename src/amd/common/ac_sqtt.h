@@ -1,26 +1,8 @@
 /*
  * Copyright 2020 Advanced Micro Devices, Inc.
  * Copyright 2020 Valve Corporation
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef AC_SQTT_H
@@ -279,6 +261,8 @@ enum rgp_sqtt_marker_general_api_type
    ApiCmdDrawMeshTasksEXT = 47,
    ApiCmdDrawMeshTasksIndirectCountEXT = 48,
    ApiCmdDrawMeshTasksIndirectEXT = 49,
+
+   ApiRayTracingSeparateCompiled = 0x800000,
    ApiInvalid = 0xffffffff
 };
 
@@ -552,7 +536,7 @@ struct rgp_sqtt_marker_pipeline_bind {
 static_assert(sizeof(struct rgp_sqtt_marker_pipeline_bind) == 12,
               "rgp_sqtt_marker_pipeline_bind doesn't match RGP spec");
 
-bool ac_sqtt_add_pso_correlation(struct ac_sqtt *sqtt, uint64_t pipeline_hash);
+bool ac_sqtt_add_pso_correlation(struct ac_sqtt *sqtt, uint64_t pipeline_hash, uint64_t api_hash);
 
 bool ac_sqtt_add_code_object_loader_event(struct ac_sqtt *sqtt, uint64_t pipeline_hash,
                                           uint64_t base_address);
@@ -569,5 +553,9 @@ bool ac_sqtt_se_is_disabled(const struct radeon_info *info, unsigned se);
 
 bool ac_sqtt_get_trace(struct ac_sqtt *sqtt, const struct radeon_info *info,
                        struct ac_sqtt_trace *sqtt_trace);
+
+uint32_t ac_sqtt_get_shader_mask(const struct radeon_info *info);
+
+uint32_t ac_sqtt_get_active_cu(const struct radeon_info *info, unsigned se);
 
 #endif

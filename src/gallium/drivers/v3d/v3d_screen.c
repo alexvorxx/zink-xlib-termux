@@ -54,9 +54,10 @@ v3d_screen_get_name(struct pipe_screen *pscreen)
 
         if (!screen->name) {
                 screen->name = ralloc_asprintf(screen,
-                                               "V3D %d.%d",
+                                               "V3D %d.%d.%d",
                                                screen->devinfo.ver / 10,
-                                               screen->devinfo.ver % 10);
+                                               screen->devinfo.ver % 10,
+                                               screen->devinfo.rev);
         }
 
         return screen->name;
@@ -149,10 +150,12 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_CONDITIONAL_RENDER:
         case PIPE_CAP_CONDITIONAL_RENDER_INVERTED:
         case PIPE_CAP_CUBE_MAP_ARRAY:
+        case PIPE_CAP_NIR_COMPACT_ARRAYS:
+        case PIPE_CAP_TEXTURE_BARRIER:
                 return 1;
 
         case PIPE_CAP_POLYGON_OFFSET_CLAMP:
-                return screen->devinfo.ver >= 41;
+                return screen->devinfo.ver >= 42;
 
 
         case PIPE_CAP_TEXTURE_QUERY_LOD:
@@ -181,20 +184,18 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
                 return PIPE_TEXTURE_TRANSFER_BLIT;
 
         case PIPE_CAP_COMPUTE:
-                return screen->has_csd && screen->devinfo.ver >= 41;
+                return screen->has_csd && screen->devinfo.ver >= 42;
 
         case PIPE_CAP_GENERATE_MIPMAP:
                 return v3d_has_feature(screen, DRM_V3D_PARAM_SUPPORTS_TFU);
 
         case PIPE_CAP_INDEP_BLEND_ENABLE:
-                return screen->devinfo.ver >= 40;
+                return 1;
 
         case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
                 return V3D_NON_COHERENT_ATOM_SIZE;
 
         case PIPE_CAP_MAX_TEXTURE_GATHER_COMPONENTS:
-                if (screen->devinfo.ver < 40)
-                        return 0;
                 return 4;
 
         case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
@@ -217,15 +218,9 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_FS_COORD_ORIGIN_LOWER_LEFT:
                 return 0;
         case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
-                if (screen->devinfo.ver >= 40)
-                        return 0;
-                else
-                        return 1;
+                return 0;
         case PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
-                if (screen->devinfo.ver >= 40)
-                        return 1;
-                else
-                        return 0;
+                return 1;
 
         case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
         case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
@@ -239,24 +234,18 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
                 /* Texturing. */
         case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
-                if (screen->devinfo.ver < 40)
-                        return 2048;
-                else if (screen->nonmsaa_texture_size_limit)
+                if (screen->nonmsaa_texture_size_limit)
                         return 7680;
                 else
                         return V3D_MAX_IMAGE_DIMENSION;
         case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
         case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
-                if (screen->devinfo.ver < 40)
-                        return 12;
-                else
-                        return V3D_MAX_MIP_LEVELS;
+                return V3D_MAX_MIP_LEVELS;
         case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
                 return V3D_MAX_ARRAY_LAYERS;
 
-                /* Render targets. */
         case PIPE_CAP_MAX_RENDER_TARGETS:
-                return 4;
+                return V3D_MAX_RENDER_TARGETS(screen->devinfo.ver);
 
         case PIPE_CAP_VENDOR_ID:
                 return 0x14E4;
@@ -303,6 +292,9 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
         case PIPE_CAP_IMAGE_STORE_FORMATTED:
                 return false;
+
+        case PIPE_CAP_NATIVE_FENCE_FD:
+                return true;
 
         default:
                 return u_pipe_screen_get_param_defaults(pscreen, param);
@@ -361,7 +353,7 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type s
                         return 0;
                 break;
         case PIPE_SHADER_GEOMETRY:
-                if (screen->devinfo.ver < 41)
+                if (screen->devinfo.ver < 42)
                         return 0;
                 break;
         default:
@@ -432,7 +424,6 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type s
         case PIPE_SHADER_CAP_FP16_CONST_BUFFERS:
         case PIPE_SHADER_CAP_INT16:
         case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
-        case PIPE_SHADER_CAP_DROUND_SUPPORTED:
         case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
         case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
         case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
@@ -455,7 +446,7 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type s
 
         case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
                 if (screen->has_cache_flush) {
-                        if (screen->devinfo.ver < 41)
+                        if (screen->devinfo.ver < 42)
                                 return 0;
                         else
                                 return PIPE_MAX_SHADER_IMAGES;
@@ -463,8 +454,6 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type s
                         return 0;
                 }
 
-        case PIPE_SHADER_CAP_PREFERRED_IR:
-                return PIPE_SHADER_IR_NIR;
         case PIPE_SHADER_CAP_SUPPORTED_IRS:
                 return 1 << PIPE_SHADER_IR_NIR;
         default:
@@ -546,8 +535,11 @@ v3d_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
         case PIPE_COMPUTE_CAP_IMAGES_SUPPORTED:
                 RET((uint32_t []) { 1 });
 
-        case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
+        case PIPE_COMPUTE_CAP_SUBGROUP_SIZES:
                 RET((uint32_t []) { 16 });
+
+        case PIPE_COMPUTE_CAP_MAX_SUBGROUPS:
+                RET((uint32_t []) { 0 });
 
         }
 
@@ -697,8 +689,8 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_extract_word = true,
         .lower_insert_byte = true,
         .lower_insert_word = true,
-        .lower_bitfield_insert_to_shifts = true,
-        .lower_bitfield_extract_to_shifts = true,
+        .lower_bitfield_insert = true,
+        .lower_bitfield_extract = true,
         .lower_bitfield_reverse = true,
         .lower_bit_count = true,
         .lower_cs_local_id_to_index = true,
@@ -729,9 +721,9 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_ldexp = true,
         .lower_mul_high = true,
         .lower_wpos_pntc = true,
-        .lower_rotate = true,
         .lower_to_scalar = true,
         .lower_int64_options = nir_lower_imul_2x32_64,
+        .lower_fquantize2f16 = true,
         .has_fsub = true,
         .has_isub = true,
         .divergence_analysis_options =
@@ -938,7 +930,7 @@ v3d_screen_create(int fd, const struct pipe_screen_config *config,
                 v3d_has_feature(screen, DRM_V3D_PARAM_SUPPORTS_CACHE_FLUSH);
         screen->has_perfmon = v3d_has_feature(screen, DRM_V3D_PARAM_SUPPORTS_PERFMON);
 
-        v3d_fence_init(screen);
+        v3d_fence_screen_init(screen);
 
         v3d_process_debug_variable();
 
@@ -965,17 +957,17 @@ v3d_screen_create(int fd, const struct pipe_screen_config *config,
         }
 
         /* Generate the bitmask of supported draw primitives. */
-        screen->prim_types = BITFIELD_BIT(PIPE_PRIM_POINTS) |
-                             BITFIELD_BIT(PIPE_PRIM_LINES) |
-                             BITFIELD_BIT(PIPE_PRIM_LINE_LOOP) |
-                             BITFIELD_BIT(PIPE_PRIM_LINE_STRIP) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLES) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLE_STRIP) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLE_FAN) |
-                             BITFIELD_BIT(PIPE_PRIM_LINES_ADJACENCY) |
-                             BITFIELD_BIT(PIPE_PRIM_LINE_STRIP_ADJACENCY) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLES_ADJACENCY) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY);
+        screen->prim_types = BITFIELD_BIT(MESA_PRIM_POINTS) |
+                             BITFIELD_BIT(MESA_PRIM_LINES) |
+                             BITFIELD_BIT(MESA_PRIM_LINE_LOOP) |
+                             BITFIELD_BIT(MESA_PRIM_LINE_STRIP) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLES) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLE_FAN) |
+                             BITFIELD_BIT(MESA_PRIM_LINES_ADJACENCY) |
+                             BITFIELD_BIT(MESA_PRIM_LINE_STRIP_ADJACENCY) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLES_ADJACENCY) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP_ADJACENCY);
 
         return pscreen;
 

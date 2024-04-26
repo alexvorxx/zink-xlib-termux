@@ -53,14 +53,6 @@
 /* XXX this should go away, needed for 'struct winsys_handle' */
 #include "frontend/drm_driver.h"
 
-/* A private modifier for now, so we have a way to request tiled but not
- * compressed.  It would perhaps be good to get real modifiers for the
- * tiled formats, but would probably need to do some work to figure out
- * the layout(s) of the tiled modes, and whether they are the same
- * across generations.
- */
-#define FD_FORMAT_MOD_QCOM_TILED fourcc_mod_code(QCOM, 0xffffffff)
-
 /**
  * Go through the entire state and see if the resource is bound
  * anywhere. If it is, mark the relevant state as dirty. This is
@@ -574,7 +566,7 @@ fd_resource_uncompress(struct fd_context *ctx, struct fd_resource *rsc, bool lin
 {
    tc_assert_driver_thread(ctx->tc);
 
-   uint64_t modifier = linear ? DRM_FORMAT_MOD_LINEAR : FD_FORMAT_MOD_QCOM_TILED;
+   uint64_t modifier = linear ? DRM_FORMAT_MOD_LINEAR : DRM_FORMAT_MOD_QCOM_TILED3;
 
    ASSERTED bool success = fd_try_shadow_resource(ctx, rsc, 0, NULL, modifier);
 
@@ -1090,20 +1082,22 @@ fd_resource_destroy(struct pipe_screen *pscreen, struct pipe_resource *prsc)
 static uint64_t
 fd_resource_modifier(struct fd_resource *rsc)
 {
-   if (!rsc->layout.tile_mode)
-      return DRM_FORMAT_MOD_LINEAR;
-
    if (rsc->layout.ubwc_layer_size)
       return DRM_FORMAT_MOD_QCOM_COMPRESSED;
 
-   /* TODO invent a modifier for tiled but not UBWC buffers: */
-   return DRM_FORMAT_MOD_INVALID;
+   switch (rsc->layout.tile_mode) {
+   case 3: return DRM_FORMAT_MOD_QCOM_TILED3;
+   case 2: return DRM_FORMAT_MOD_QCOM_TILED2;
+   case 0: return DRM_FORMAT_MOD_LINEAR;
+   default: return DRM_FORMAT_MOD_INVALID;
+   }
 }
 
 static bool
 fd_resource_get_handle(struct pipe_screen *pscreen, struct pipe_context *pctx,
                        struct pipe_resource *prsc, struct winsys_handle *handle,
                        unsigned usage)
+   assert_dt
 {
    struct fd_resource *rsc = fd_resource(prsc);
 
@@ -1114,10 +1108,47 @@ fd_resource_get_handle(struct pipe_screen *pscreen, struct pipe_context *pctx,
 
    handle->modifier = fd_resource_modifier(rsc);
 
+   if (prsc->target != PIPE_BUFFER) {
+      struct fdl_metadata metadata = {
+         .modifier = handle->modifier,
+      };
+      fd_bo_set_metadata(rsc->bo, &metadata, sizeof(metadata));
+   }
+
    DBG("%" PRSC_FMT ", modifier=%" PRIx64, PRSC_ARGS(prsc), handle->modifier);
 
-   return fd_screen_bo_get_handle(pscreen, rsc->bo, rsc->scanout,
-                                  fd_resource_pitch(rsc, 0), handle);
+   bool ret = fd_screen_bo_get_handle(pscreen, rsc->bo, rsc->scanout,
+                                      fd_resource_pitch(rsc, 0), handle);
+
+   if (!ret && !(prsc->bind & PIPE_BIND_SHARED)) {
+
+      pctx = threaded_context_unwrap_sync(pctx);
+
+      struct fd_context *ctx = pctx ?
+            fd_context(pctx) : fd_screen_aux_context_get(pscreen);
+
+      /* Since gl is horrible, we can end up getting asked to export a handle
+       * for a rsc which was not originally allocated in a way that can be
+       * exported (for ex, sub-allocation or in the case of virtgpu we need
+       * to tell the kernel at allocation time that the buffer can be shared)
+       *
+       * If we get into this scenario we can try to reallocate.
+       */
+
+      prsc->bind |= PIPE_BIND_SHARED;
+
+      ret = fd_try_shadow_resource(ctx, rsc, 0, NULL, handle->modifier);
+
+      if (!pctx)
+         fd_screen_aux_context_put(pscreen);
+
+      if (!ret)
+         return false;
+
+      return fd_resource_get_handle(pscreen, pctx, prsc, handle, usage);
+   }
+
+   return ret;
 }
 
 /* special case to resize query buf after allocated.. */
@@ -1260,6 +1291,11 @@ get_best_layout(struct fd_screen *screen,
    if (tmpl->bind & PIPE_BIND_USE_FRONT_RENDERING)
       ubwc_ok = false;
 
+   /* Disallow UBWC when asked not to use data dependent bandwidth compression:
+    */
+   if (tmpl->bind & PIPE_BIND_CONST_BW)
+      ubwc_ok = false;
+
    if (ubwc_ok && !can_implicit &&
        !drm_find_modifier(DRM_FORMAT_MOD_QCOM_COMPRESSED, modifiers, count)) {
       perf_debug("%" PRSC_FMT
@@ -1271,15 +1307,8 @@ get_best_layout(struct fd_screen *screen,
    if (ubwc_ok)
       return UBWC;
 
-   /* We can't use tiled with explicit modifiers, as there is no modifier token
-    * defined for it. But we might internally force tiled allocation using a
-    * private modifier token.
-    *
-    * TODO we should probably also limit TILED in a similar way to UBWC above,
-    * once we have a public modifier token defined.
-    */
    if (can_implicit ||
-       drm_find_modifier(FD_FORMAT_MOD_QCOM_TILED, modifiers, count))
+       drm_find_modifier(DRM_FORMAT_MOD_QCOM_TILED3, modifiers, count))
       return TILED;
 
    if (!drm_find_modifier(DRM_FORMAT_MOD_LINEAR, modifiers, count)) {
@@ -1613,10 +1642,6 @@ static const struct u_transfer_vtbl transfer_vtbl = {
    .get_stencil = fd_resource_get_stencil,
 };
 
-static const uint64_t supported_modifiers[] = {
-   DRM_FORMAT_MOD_LINEAR,
-};
-
 static int
 fd_layout_resource_for_modifier(struct fd_resource *rsc, uint64_t modifier)
 {
@@ -1643,14 +1668,20 @@ fd_resource_from_memobj(struct pipe_screen *pscreen,
    struct fd_memory_object *memobj = fd_memory_object(pmemobj);
    struct pipe_resource *prsc;
    struct fd_resource *rsc;
+   struct fdl_metadata metadata;
    uint32_t size;
+
    assert(memobj->bo);
+   assert(offset == 0);
 
    /* We shouldn't get a scanout buffer here. */
    assert(!(tmpl->bind & PIPE_BIND_SCANOUT));
 
    uint64_t modifiers = DRM_FORMAT_MOD_INVALID;
-   if (tmpl->bind & PIPE_BIND_LINEAR) {
+   if (pmemobj->dedicated &&
+       !fd_bo_get_metadata(memobj->bo, &metadata, sizeof(metadata))) {
+      modifiers = metadata.modifier;
+   } else if (tmpl->bind & PIPE_BIND_LINEAR) {
       modifiers = DRM_FORMAT_MOD_LINEAR;
    } else if (is_a6xx(screen) && tmpl->width0 >= FDL_MIN_UBWC_WIDTH) {
       modifiers = DRM_FORMAT_MOD_QCOM_COMPRESSED;
@@ -1730,10 +1761,6 @@ fd_resource_screen_init(struct pipe_screen *pscreen)
 
    if (!screen->layout_resource_for_modifier)
       screen->layout_resource_for_modifier = fd_layout_resource_for_modifier;
-   if (!screen->supported_modifiers) {
-      screen->supported_modifiers = supported_modifiers;
-      screen->num_supported_modifiers = ARRAY_SIZE(supported_modifiers);
-   }
 
    /* GL_EXT_memory_object */
    pscreen->memobj_create_from_handle = fd_memobj_create_from_handle;

@@ -33,7 +33,7 @@
 struct drisw_display
 {
    __GLXDRIdisplay base;
-   bool zink;
+   enum try_zink zink;
 };
 
 struct drisw_screen
@@ -56,6 +56,8 @@ struct drisw_screen
 
    void *driver;
    const char *name;
+
+   bool has_multibuffer;
 };
 
 struct drisw_drawable

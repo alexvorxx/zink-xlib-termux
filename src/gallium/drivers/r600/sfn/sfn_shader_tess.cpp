@@ -97,13 +97,13 @@ TCSShader::process_stage_intrinsic(nir_intrinsic_instr *instr)
 {
    switch (instr->intrinsic) {
    case nir_intrinsic_load_tcs_rel_patch_id_r600:
-      return emit_simple_mov(instr->dest, 0, m_rel_patch_id);
+      return emit_simple_mov(instr->def, 0, m_rel_patch_id);
    case nir_intrinsic_load_invocation_id:
-      return emit_simple_mov(instr->dest, 0, m_invocation_id);
+      return emit_simple_mov(instr->def, 0, m_invocation_id);
    case nir_intrinsic_load_primitive_id:
-      return emit_simple_mov(instr->dest, 0, m_primitive_id);
+      return emit_simple_mov(instr->def, 0, m_primitive_id);
    case nir_intrinsic_load_tcs_tess_factor_base_r600:
-      return emit_simple_mov(instr->dest, 0, m_tess_factor_base);
+      return emit_simple_mov(instr->def, 0, m_tess_factor_base);
    case nir_intrinsic_store_tf_r600:
       return store_tess_factor(instr);
    default:
@@ -176,7 +176,7 @@ TESShader::do_scan_instruction(nir_instr *instr)
    auto intr = nir_instr_as_intrinsic(instr);
 
    switch (intr->intrinsic) {
-   case nir_intrinsic_load_tess_coord_r600:
+   case nir_intrinsic_load_tess_coord_xy:
       m_sv_values.set(es_tess_coord);
       break;
    case nir_intrinsic_load_primitive_id:
@@ -187,33 +187,14 @@ TESShader::do_scan_instruction(nir_instr *instr)
       break;
    case nir_intrinsic_store_output: {
       int driver_location = nir_intrinsic_base(intr);
-      int location = nir_intrinsic_io_semantics(intr).location;
-      auto semantic = r600_get_varying_semantic(location);
-      tgsi_semantic name = (tgsi_semantic)semantic.first;
-      unsigned sid = semantic.second;
+      auto location = static_cast<gl_varying_slot>(nir_intrinsic_io_semantics(intr).location);
       auto write_mask = nir_intrinsic_write_mask(intr);
 
       if (location == VARYING_SLOT_LAYER)
          write_mask = 4;
 
-      ShaderOutput output(driver_location, name, write_mask);
-      output.set_sid(sid);
+      ShaderOutput output(driver_location, write_mask, location);
 
-      switch (location) {
-      case VARYING_SLOT_PSIZ:
-      case VARYING_SLOT_POS:
-      case VARYING_SLOT_CLIP_VERTEX:
-      case VARYING_SLOT_EDGE: {
-         break;
-      }
-      case VARYING_SLOT_CLIP_DIST0:
-      case VARYING_SLOT_CLIP_DIST1:
-      case VARYING_SLOT_VIEWPORT:
-      case VARYING_SLOT_LAYER:
-      case VARYING_SLOT_VIEW_INDEX:
-      default:
-         output.set_is_param(true);
-      }
       add_output(output);
       break;
    }
@@ -245,13 +226,13 @@ bool
 TESShader::process_stage_intrinsic(nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
-   case nir_intrinsic_load_tess_coord_r600:
-      return emit_simple_mov(intr->dest, 0, m_tess_coord[0], pin_none) &&
-             emit_simple_mov(intr->dest, 1, m_tess_coord[1], pin_none);
+   case nir_intrinsic_load_tess_coord_xy:
+      return emit_simple_mov(intr->def, 0, m_tess_coord[0], pin_none) &&
+             emit_simple_mov(intr->def, 1, m_tess_coord[1], pin_none);
    case nir_intrinsic_load_primitive_id:
-      return emit_simple_mov(intr->dest, 0, m_primitive_id);
+      return emit_simple_mov(intr->def, 0, m_primitive_id);
    case nir_intrinsic_load_tcs_rel_patch_id_r600:
-      return emit_simple_mov(intr->dest, 0, m_rel_patch_id);
+      return emit_simple_mov(intr->def, 0, m_rel_patch_id);
    case nir_intrinsic_store_output:
       return m_export_processor->store_output(*intr);
    default:

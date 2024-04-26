@@ -39,14 +39,18 @@
 static void
 radv_suspend_queries(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_buffer)
 {
-   /* Pipeline statistics queries. */
-   if (cmd_buffer->state.active_pipeline_queries > 0) {
+   const uint32_t num_pipeline_stat_queries = radv_get_num_pipeline_stat_queries(cmd_buffer);
+
+   if (num_pipeline_stat_queries > 0) {
       cmd_buffer->state.flush_bits &= ~RADV_CMD_FLAG_START_PIPELINE_STATS;
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_STOP_PIPELINE_STATS;
+   }
 
+   /* Pipeline statistics queries. */
+   if (cmd_buffer->state.active_pipeline_queries > 0) {
       state->active_pipeline_gds_queries = cmd_buffer->state.active_pipeline_gds_queries;
       cmd_buffer->state.active_pipeline_gds_queries = 0;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
 
    /* Occlusion queries. */
@@ -59,34 +63,38 @@ radv_suspend_queries(struct radv_meta_saved_state *state, struct radv_cmd_buffer
    /* Primitives generated queries (legacy). */
    if (cmd_buffer->state.active_prims_gen_queries) {
       cmd_buffer->state.suspend_streamout = true;
-      radv_emit_streamout_enable(cmd_buffer);
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_STREAMOUT_ENABLE;
    }
 
    /* Primitives generated queries (NGG). */
    if (cmd_buffer->state.active_prims_gen_gds_queries) {
       state->active_prims_gen_gds_queries = cmd_buffer->state.active_prims_gen_gds_queries;
       cmd_buffer->state.active_prims_gen_gds_queries = 0;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
 
    /* Transform feedback queries (NGG). */
    if (cmd_buffer->state.active_prims_xfb_gds_queries) {
       state->active_prims_xfb_gds_queries = cmd_buffer->state.active_prims_xfb_gds_queries;
       cmd_buffer->state.active_prims_xfb_gds_queries = 0;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
 }
 
 static void
 radv_resume_queries(const struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_buffer)
 {
-   /* Pipeline statistics queries. */
-   if (cmd_buffer->state.active_pipeline_queries > 0) {
+   const uint32_t num_pipeline_stat_queries = radv_get_num_pipeline_stat_queries(cmd_buffer);
+
+   if (num_pipeline_stat_queries > 0) {
       cmd_buffer->state.flush_bits &= ~RADV_CMD_FLAG_STOP_PIPELINE_STATS;
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_START_PIPELINE_STATS;
+   }
 
+   /* Pipeline statistics queries. */
+   if (cmd_buffer->state.active_pipeline_queries > 0) {
       cmd_buffer->state.active_pipeline_gds_queries = state->active_pipeline_gds_queries;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
 
    /* Occlusion queries. */
@@ -98,35 +106,33 @@ radv_resume_queries(const struct radv_meta_saved_state *state, struct radv_cmd_b
    /* Primitives generated queries (legacy). */
    if (cmd_buffer->state.active_prims_gen_queries) {
       cmd_buffer->state.suspend_streamout = false;
-      radv_emit_streamout_enable(cmd_buffer);
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_STREAMOUT_ENABLE;
    }
 
    /* Primitives generated queries (NGG). */
    if (state->active_prims_gen_gds_queries) {
       cmd_buffer->state.active_prims_gen_gds_queries = state->active_prims_gen_gds_queries;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
 
    /* Transform feedback queries (NGG). */
    if (state->active_prims_xfb_gds_queries) {
       cmd_buffer->state.active_prims_xfb_gds_queries = state->active_prims_xfb_gds_queries;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
 }
 
 void
-radv_meta_save(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_buffer,
-               uint32_t flags)
+radv_meta_save(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_buffer, uint32_t flags)
 {
-   VkPipelineBindPoint bind_point = flags & RADV_META_SAVE_GRAPHICS_PIPELINE
-                                       ? VK_PIPELINE_BIND_POINT_GRAPHICS
-                                       : VK_PIPELINE_BIND_POINT_COMPUTE;
-   struct radv_descriptor_state *descriptors_state =
-      radv_get_descriptors_state(cmd_buffer, bind_point);
+   VkPipelineBindPoint bind_point =
+      flags & RADV_META_SAVE_GRAPHICS_PIPELINE ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE;
+   struct radv_descriptor_state *descriptors_state = radv_get_descriptors_state(cmd_buffer, bind_point);
 
    assert(flags & (RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_COMPUTE_PIPELINE));
 
    state->flags = flags;
+   state->active_occlusion_queries = 0;
    state->active_prims_gen_gds_queries = 0;
    state->active_prims_xfb_gds_queries = 0;
 
@@ -134,6 +140,13 @@ radv_meta_save(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_
       assert(!(state->flags & RADV_META_SAVE_COMPUTE_PIPELINE));
 
       state->old_graphics_pipeline = cmd_buffer->state.graphics_pipeline;
+
+      for (unsigned i = 0; i <= MESA_SHADER_MESH; i++) {
+         if (i == MESA_SHADER_COMPUTE)
+            continue;
+
+         state->old_shader_objs[i] = cmd_buffer->state.shader_objs[i];
+      }
 
       /* Save all dynamic states. */
       state->dynamic = cmd_buffer->state.dynamic;
@@ -143,6 +156,8 @@ radv_meta_save(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_
       assert(!(state->flags & RADV_META_SAVE_GRAPHICS_PIPELINE));
 
       state->old_compute_pipeline = cmd_buffer->state.compute_pipeline;
+
+      state->old_shader_objs[MESA_SHADER_COMPUTE] = cmd_buffer->state.shader_objs[MESA_SHADER_COMPUTE];
    }
 
    if (state->flags & RADV_META_SAVE_DESCRIPTORS) {
@@ -171,9 +186,8 @@ radv_meta_save(struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_
 void
 radv_meta_restore(const struct radv_meta_saved_state *state, struct radv_cmd_buffer *cmd_buffer)
 {
-   VkPipelineBindPoint bind_point = state->flags & RADV_META_SAVE_GRAPHICS_PIPELINE
-                                       ? VK_PIPELINE_BIND_POINT_GRAPHICS
-                                       : VK_PIPELINE_BIND_POINT_COMPUTE;
+   VkPipelineBindPoint bind_point = state->flags & RADV_META_SAVE_GRAPHICS_PIPELINE ? VK_PIPELINE_BIND_POINT_GRAPHICS
+                                                                                    : VK_PIPELINE_BIND_POINT_COMPUTE;
 
    if (state->flags & RADV_META_SAVE_GRAPHICS_PIPELINE) {
       if (state->old_graphics_pipeline) {
@@ -181,6 +195,19 @@ radv_meta_restore(const struct radv_meta_saved_state *state, struct radv_cmd_buf
                               radv_pipeline_to_handle(&state->old_graphics_pipeline->base));
       } else {
          cmd_buffer->state.graphics_pipeline = NULL;
+
+         for (unsigned i = 0; i <= MESA_SHADER_MESH; i++) {
+            if (i == MESA_SHADER_COMPUTE)
+               continue;
+
+            if (!state->old_shader_objs[i])
+               continue;
+
+            VkShaderEXT old_shader_obj = radv_shader_object_to_handle(state->old_shader_objs[i]);
+            VkShaderStageFlagBits s = mesa_to_vk_shader_stage(i);
+
+            radv_CmdBindShadersEXT(radv_cmd_buffer_to_handle(cmd_buffer), 1, &s, &old_shader_obj);
+         }
       }
 
       /* Restore all dynamic states. */
@@ -197,6 +224,13 @@ radv_meta_restore(const struct radv_meta_saved_state *state, struct radv_cmd_buf
                               radv_pipeline_to_handle(&state->old_compute_pipeline->base));
       } else {
          cmd_buffer->state.compute_pipeline = NULL;
+
+         if (state->old_shader_objs[MESA_SHADER_COMPUTE]) {
+            VkShaderEXT old_shader_obj = radv_shader_object_to_handle(state->old_shader_objs[MESA_SHADER_COMPUTE]);
+            VkShaderStageFlagBits s = VK_SHADER_STAGE_COMPUTE_BIT;
+
+            radv_CmdBindShadersEXT(radv_cmd_buffer_to_handle(cmd_buffer), 1, &s, &old_shader_obj);
+         }
       }
    }
 
@@ -210,8 +244,8 @@ radv_meta_restore(const struct radv_meta_saved_state *state, struct radv_cmd_buf
       if (state->flags & RADV_META_SAVE_GRAPHICS_PIPELINE)
          stages |= VK_SHADER_STAGE_ALL_GRAPHICS;
 
-      radv_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), VK_NULL_HANDLE, stages, 0,
-                            MAX_PUSH_CONSTANTS_SIZE, state->push_constants);
+      vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), VK_NULL_HANDLE, stages, 0,
+                                 MAX_PUSH_CONSTANTS_SIZE, state->push_constants);
    }
 
    if (state->flags & RADV_META_SAVE_RENDER) {
@@ -245,8 +279,7 @@ radv_meta_get_view_type(const struct radv_image *image)
  * VkImageViewCreateInfo::subresourceRange::baseArrayLayer.
  */
 uint32_t
-radv_meta_get_iview_layer(const struct radv_image *dst_image,
-                          const VkImageSubresourceLayers *dst_subresource,
+radv_meta_get_iview_layer(const struct radv_image *dst_image, const VkImageSubresourceLayers *dst_subresource,
                           const VkOffset3D *dst_offset)
 {
    switch (dst_image->vk.image_type) {
@@ -265,7 +298,7 @@ radv_meta_get_iview_layer(const struct radv_image *dst_image,
    }
 }
 
-static VKAPI_ATTR void * VKAPI_CALL
+static VKAPI_ATTR void *VKAPI_CALL
 meta_alloc(void *_device, size_t size, size_t alignment, VkSystemAllocationScope allocationScope)
 {
    struct radv_device *device = _device;
@@ -273,9 +306,8 @@ meta_alloc(void *_device, size_t size, size_t alignment, VkSystemAllocationScope
                                          VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
 }
 
-static VKAPI_ATTR void * VKAPI_CALL
-meta_realloc(void *_device, void *original, size_t size, size_t alignment,
-             VkSystemAllocationScope allocationScope)
+static VKAPI_ATTR void *VKAPI_CALL
+meta_realloc(void *_device, void *original, size_t size, size_t alignment, VkSystemAllocationScope allocationScope)
 {
    struct radv_device *device = _device;
    return device->vk.alloc.pfnReallocation(device->vk.alloc.pUserData, original, size, alignment,
@@ -293,7 +325,7 @@ meta_free(void *_device, void *data)
 static bool
 radv_builtin_cache_path(char *path)
 {
-   char *xdg_cache_home = getenv("XDG_CACHE_HOME");
+   char *xdg_cache_home = secure_getenv("XDG_CACHE_HOME");
    const char *suffix = "/radv_builtin_shaders";
    const char *suffix2 = "/.cache/radv_builtin_shaders";
    struct passwd pwd, *result;
@@ -339,13 +371,15 @@ radv_load_meta_pipeline(struct radv_device *device)
    void *data = NULL;
    bool ret = false;
    int fd = -1;
+   struct vk_pipeline_cache *cache = NULL;
 
    VkPipelineCacheCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
    };
+
    struct vk_pipeline_cache_create_info info = {
       .pCreateInfo = &create_info,
-      .internal = true,
+      .skip_disk_cache = true,
    };
 
    if (!radv_builtin_cache_path(path))
@@ -366,10 +400,10 @@ radv_load_meta_pipeline(struct radv_device *device)
    create_info.pInitialData = data;
 
 fail:
-   device->meta_state.cache =
-      vk_pipeline_cache_to_handle(vk_pipeline_cache_create(&device->vk, &info, NULL));
+   cache = vk_pipeline_cache_create(&device->vk, &info, NULL);
 
-   if (device->meta_state.cache) {
+   if (cache) {
+      device->meta_state.cache = vk_pipeline_cache_to_handle(cache);
       device->meta_state.initial_cache_entries = num_cache_entries(device->meta_state.cache);
       ret = device->meta_state.initial_cache_entries > 0;
    }
@@ -396,8 +430,7 @@ radv_store_meta_pipeline(struct radv_device *device)
    if (num_cache_entries(device->meta_state.cache) <= device->meta_state.initial_cache_entries)
       return;
 
-   if (vk_common_GetPipelineCacheData(radv_device_to_handle(device), device->meta_state.cache,
-                                      &size, NULL))
+   if (vk_common_GetPipelineCacheData(radv_device_to_handle(device), device->meta_state.cache, &size, NULL))
       return;
 
    if (!radv_builtin_cache_path(path))
@@ -412,8 +445,7 @@ radv_store_meta_pipeline(struct radv_device *device)
    if (!data)
       goto fail;
 
-   if (vk_common_GetPipelineCacheData(radv_device_to_handle(device), device->meta_state.cache,
-                                      &size, data))
+   if (vk_common_GetPipelineCacheData(radv_device_to_handle(device), device->meta_state.cache, &size, data))
       goto fail;
    if (write(fd, data, size) == -1)
       goto fail;
@@ -503,7 +535,11 @@ radv_device_init_meta(struct radv_device *device)
    if (result != VK_SUCCESS)
       goto fail_etc_decode;
 
-   if (device->uses_device_generated_commands) {
+   result = radv_device_init_meta_astc_decode_state(device, on_demand);
+   if (result != VK_SUCCESS)
+      goto fail_astc_decode;
+
+   if (radv_uses_device_generated_commands(device)) {
       result = radv_device_init_dgc_prepare_state(device);
       if (result != VK_SUCCESS)
          goto fail_dgc;
@@ -536,6 +572,8 @@ fail_accel_struct:
    radv_device_finish_accel_struct_build_state(device);
 fail_dgc:
    radv_device_finish_dgc_prepare_state(device);
+fail_astc_decode:
+   radv_device_finish_meta_astc_decode_state(device);
 fail_etc_decode:
    radv_device_finish_meta_etc_decode_state(device);
 fail_fmask_copy:
@@ -575,6 +613,7 @@ radv_device_finish_meta(struct radv_device *device)
 {
    radv_device_finish_dgc_prepare_state(device);
    radv_device_finish_meta_etc_decode_state(device);
+   radv_device_finish_meta_astc_decode_state(device);
    radv_device_finish_accel_struct_build_state(device);
    radv_device_finish_meta_clear_state(device);
    radv_device_finish_meta_resolve_state(device);
@@ -609,9 +648,8 @@ nir_builder PRINTFLIKE(3, 4)
    }
 
    b.shader->options = &dev->physical_device->nir_options[stage];
-   b.shader->info.workgroup_size[0] = 1;
-   b.shader->info.workgroup_size[1] = 1;
-   b.shader->info.workgroup_size[2] = 1;
+
+   radv_device_associate_nir(dev, b.shader);
 
    return b;
 }
@@ -626,7 +664,7 @@ radv_meta_build_nir_vs_generate_vertices(struct radv_device *dev)
 
    nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_VERTEX, "meta_vs_gen_verts");
 
-   nir_ssa_def *outvec = nir_gen_rect_vertices(&b, NULL, NULL);
+   nir_def *outvec = nir_gen_rect_vertices(&b, NULL, NULL);
 
    v_position = nir_variable_create(b.shader, nir_var_shader_out, vec4, "gl_Position");
    v_position->data.location = VARYING_SLOT_POS;
@@ -643,12 +681,11 @@ radv_meta_build_nir_fs_noop(struct radv_device *dev)
 }
 
 void
-radv_meta_build_resolve_shader_core(struct radv_device *device, nir_builder *b, bool is_integer,
-                                    int samples, nir_variable *input_img, nir_variable *color,
-                                    nir_ssa_def *img_coord)
+radv_meta_build_resolve_shader_core(struct radv_device *device, nir_builder *b, bool is_integer, int samples,
+                                    nir_variable *input_img, nir_variable *color, nir_def *img_coord)
 {
    nir_deref_instr *input_img_deref = nir_build_deref_var(b, input_img);
-   nir_ssa_def *sample0 = nir_txf_ms_deref(b, input_img_deref, img_coord, nir_imm_int(b, 0));
+   nir_def *sample0 = nir_txf_ms_deref(b, input_img_deref, img_coord, nir_imm_int(b, 0));
 
    if (is_integer || samples <= 1) {
       nir_store_var(b, color, sample0, 0xf);
@@ -656,17 +693,17 @@ radv_meta_build_resolve_shader_core(struct radv_device *device, nir_builder *b, 
    }
 
    if (device->physical_device->use_fmask) {
-      nir_ssa_def *all_same = nir_samples_identical_deref(b, input_img_deref, img_coord);
+      nir_def *all_same = nir_samples_identical_deref(b, input_img_deref, img_coord);
       nir_push_if(b, nir_inot(b, all_same));
    }
 
-   nir_ssa_def *accum = sample0;
+   nir_def *accum = sample0;
    for (int i = 1; i < samples; i++) {
-      nir_ssa_def *sample = nir_txf_ms_deref(b, input_img_deref, img_coord, nir_imm_int(b, i));
+      nir_def *sample = nir_txf_ms_deref(b, input_img_deref, img_coord, nir_imm_int(b, i));
       accum = nir_fadd(b, accum, sample);
    }
 
-   accum = nir_fdiv(b, accum, nir_imm_float(b, samples));
+   accum = nir_fdiv_imm(b, accum, samples);
    nir_store_var(b, color, accum, 0xf);
 
    if (device->physical_device->use_fmask) {
@@ -676,34 +713,33 @@ radv_meta_build_resolve_shader_core(struct radv_device *device, nir_builder *b, 
    }
 }
 
-nir_ssa_def *
+nir_def *
 radv_meta_load_descriptor(nir_builder *b, unsigned desc_set, unsigned binding)
 {
-   nir_ssa_def *rsrc = nir_vulkan_resource_index(b, 3, 32, nir_imm_int(b, 0), .desc_set = desc_set,
-                                                 .binding = binding);
-   return nir_channels(b, rsrc, 0x3);
+   nir_def *rsrc = nir_vulkan_resource_index(b, 3, 32, nir_imm_int(b, 0), .desc_set = desc_set, .binding = binding);
+   return nir_trim_vector(b, rsrc, 2);
 }
 
-nir_ssa_def *
+nir_def *
 get_global_ids(nir_builder *b, unsigned num_components)
 {
    unsigned mask = BITFIELD_MASK(num_components);
 
-   nir_ssa_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
-   nir_ssa_def *block_ids = nir_channels(b, nir_load_workgroup_id(b, 32), mask);
-   nir_ssa_def *block_size = nir_channels(
-      b,
-      nir_imm_ivec4(b, b->shader->info.workgroup_size[0], b->shader->info.workgroup_size[1],
-                    b->shader->info.workgroup_size[2], 0),
-      mask);
+   nir_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
+   nir_def *block_ids = nir_channels(b, nir_load_workgroup_id(b), mask);
+   nir_def *block_size =
+      nir_channels(b,
+                   nir_imm_ivec4(b, b->shader->info.workgroup_size[0], b->shader->info.workgroup_size[1],
+                                 b->shader->info.workgroup_size[2], 0),
+                   mask);
 
    return nir_iadd(b, nir_imul(b, block_ids, block_size), local_ids);
 }
 
 void
-radv_break_on_count(nir_builder *b, nir_variable *var, nir_ssa_def *count)
+radv_break_on_count(nir_builder *b, nir_variable *var, nir_def *count)
 {
-   nir_ssa_def *counter = nir_load_var(b, var);
+   nir_def *counter = nir_load_var(b, var);
 
    nir_push_if(b, nir_uge(b, counter, count));
    nir_jump(b, nir_jump_break);

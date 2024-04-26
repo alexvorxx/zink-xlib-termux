@@ -78,6 +78,8 @@ typedef struct __GLXDRIdisplayRec __GLXDRIdisplay;
 typedef struct __GLXDRIscreenRec __GLXDRIscreen;
 typedef struct __GLXDRIdrawableRec __GLXDRIdrawable;
 
+#define GLX_LOADER_USE_ZINK ((struct glx_screen *)(uintptr_t)-1)
+
 struct __GLXDRIdisplayRec
 {
     /**
@@ -127,14 +129,21 @@ struct __GLXDRIdrawableRec
    struct glx_screen *psc;
    GLenum textureTarget;
    GLenum textureFormat;        /* EXT_texture_from_pixmap support */
+   unsigned long eventMask;
    int refcount;
+};
+
+enum try_zink {
+   TRY_ZINK_NO,
+   TRY_ZINK_INFER,
+   TRY_ZINK_YES,
 };
 
 /*
 ** Function to create and DRI display data and initialize the display
 ** dependent methods.
 */
-extern __GLXDRIdisplay *driswCreateDisplay(Display * dpy, bool zink);
+extern __GLXDRIdisplay *driswCreateDisplay(Display * dpy, enum try_zink zink);
 extern __GLXDRIdisplay *dri2CreateDisplay(Display * dpy);
 extern __GLXDRIdisplay *dri3_create_display(Display * dpy);
 extern __GLXDRIdisplay *driwindowsCreateDisplay(Display * dpy);
@@ -207,6 +216,7 @@ typedef struct __GLXattributeMachineRec
 struct mesa_glinterop_device_info;
 struct mesa_glinterop_export_in;
 struct mesa_glinterop_export_out;
+struct mesa_glinterop_flush_out;
 
 struct glx_context_vtable {
    void (*destroy)(struct glx_context *ctx);
@@ -221,7 +231,7 @@ struct glx_context_vtable {
                                 struct mesa_glinterop_export_out *out);
    int (*interop_flush_objects)(struct glx_context *ctx,
                                 unsigned count, struct mesa_glinterop_export_in *objects,
-                                GLsync *sync);
+                                struct mesa_glinterop_flush_out *out);
 };
 
 /**
@@ -456,7 +466,7 @@ struct glx_screen_vtable {
    /* The error outparameter abuses the fact that the only possible errors are
     * GLXBadContext (0), GLXBadFBConfig (9), GLXBadProfileARB (13), BadValue
     * (2), BadMatch (8), and BadAlloc (11). Since those don't collide we just
-    * use them directly rather than try to offset or use a sign convention. 
+    * use them directly rather than try to offset or use a sign convention.
     */
    struct glx_context *(*create_context_attribs)(struct glx_screen *psc,
 						 struct glx_config *config,

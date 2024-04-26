@@ -123,7 +123,7 @@ vl_dri2_flush_frontbuffer(struct pipe_screen *screen,
                           struct pipe_context *pipe,
                           struct pipe_resource *resource,
                           unsigned level, unsigned layer,
-                          void *context_private, struct pipe_box *sub_box)
+                          void *context_private, unsigned nboxes, struct pipe_box *sub_box)
 {
    struct vl_dri_screen *scrn = (struct vl_dri_screen *)context_private;
    uint32_t msc_hi, msc_lo;
@@ -458,7 +458,7 @@ vl_dri2_screen_create(Display *display, int screen)
    if (authenticate == NULL || !authenticate->authenticated)
       goto free_authenticate;
 
-   if (pipe_loader_drm_probe_fd(&scrn->base.dev, fd))
+   if (pipe_loader_drm_probe_fd(&scrn->base.dev, fd, false))
       scrn->base.pscreen = pipe_loader_create_screen(scrn->base.dev);
 
    if (!scrn->base.pscreen)

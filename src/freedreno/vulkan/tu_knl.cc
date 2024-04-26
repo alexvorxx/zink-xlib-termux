@@ -65,6 +65,24 @@ void tu_bo_allow_dump(struct tu_device *dev, struct tu_bo *bo)
    dev->instance->knl->bo_allow_dump(dev, bo);
 }
 
+void
+tu_bo_set_metadata(struct tu_device *dev, struct tu_bo *bo,
+                   void *metadata, uint32_t metadata_size)
+{
+   if (!dev->instance->knl->bo_set_metadata)
+      return;
+   dev->instance->knl->bo_set_metadata(dev, bo, metadata, metadata_size);
+}
+
+int
+tu_bo_get_metadata(struct tu_device *dev, struct tu_bo *bo,
+                   void *metadata, uint32_t metadata_size)
+{
+   if (!dev->instance->knl->bo_get_metadata)
+      return -ENOSYS;
+   return dev->instance->knl->bo_get_metadata(dev, bo, metadata, metadata_size);
+}
+
 VkResult
 tu_drm_device_init(struct tu_device *dev)
 {
@@ -105,7 +123,7 @@ tu_device_check_status(struct vk_device *vk_device)
 }
 
 int
-tu_drm_submitqueue_new(const struct tu_device *dev,
+tu_drm_submitqueue_new(struct tu_device *dev,
                        int priority,
                        uint32_t *queue_id)
 {
@@ -113,7 +131,7 @@ tu_drm_submitqueue_new(const struct tu_device *dev,
 }
 
 void
-tu_drm_submitqueue_close(const struct tu_device *dev, uint32_t queue_id)
+tu_drm_submitqueue_close(struct tu_device *dev, uint32_t queue_id)
 {
    dev->instance->knl->submitqueue_close(dev, queue_id);
 }
@@ -162,6 +180,25 @@ tu_enumerate_devices(struct vk_instance *vk_instance)
 #endif
 }
 
+static long
+l1_dcache_size()
+{
+   if (!(DETECT_ARCH_AARCH64 || DETECT_ARCH_X86 || DETECT_ARCH_X86_64))
+      return 0;
+
+#if DETECT_ARCH_AARCH64 &&                                                   \
+   (!defined(_SC_LEVEL1_DCACHE_LINESIZE) || DETECT_OS_ANDROID)
+   /* Bionic does not implement _SC_LEVEL1_DCACHE_LINESIZE properly: */
+   uint64_t ctr_el0;
+   asm("mrs\t%x0, ctr_el0" : "=r"(ctr_el0));
+   return 4 << ((ctr_el0 >> 16) & 0xf);
+#elif defined(_SC_LEVEL1_DCACHE_LINESIZE)
+   return sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+#else
+   return 0;
+#endif
+}
+
 /**
  * Enumeration entrypoint for drm devices
  */
@@ -173,8 +210,10 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
    struct tu_instance *instance =
       container_of(vk_instance, struct tu_instance, vk);
 
-   if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER)) ||
-       drm_device->bustype != DRM_BUS_PLATFORM)
+   /* Note that "msm" is a platform device, but "virtio_gpu" is a pci
+    * device.  In general we shouldn't care about the bus type.
+    */
+   if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER)))
       return VK_ERROR_INCOMPATIBLE_DRIVER;
 
    const char *primary_path = drm_device->nodes[DRM_NODE_PRIMARY];
@@ -204,7 +243,11 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
 #ifdef TU_HAS_MSM
       result = tu_knl_drm_msm_load(instance, fd, version, &device);
 #endif
-   } else {
+   } else if (strcmp(version->name, "virtio_gpu") == 0) {
+#ifdef TU_HAS_VIRTIO
+      result = tu_knl_drm_virtio_load(instance, fd, version, &device);
+#endif
+   } else if (TU_DEBUG(STARTUP)) {
       result = vk_startup_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
                                  "device %s (%s) is not compatible with turnip",
                                  path, version->name);
@@ -214,6 +257,9 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
       goto out;
 
    assert(device);
+
+   device->level1_dcache_size = l1_dcache_size();
+   device->has_cached_non_coherent_memory = device->level1_dcache_size > 0;
 
    if (instance->vk.enabled_extensions.KHR_display) {
       master_fd = open(primary_path, O_RDWR | O_CLOEXEC);

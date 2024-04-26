@@ -10,10 +10,11 @@
 
 #include "vk_descriptor_set_layout.h"
 
-/* The hardware supports 5 descriptor sets, but we reserve 1 for dynamic
- * descriptors and input attachments.
+/* The hardware supports up to 8 descriptor sets since A7XX.
+ * Note: This is the maximum across generations, not the maximum for a
+ * particular generation so it should only be used for allocation.
  */
-#define MAX_SETS 4
+#define MAX_SETS 8
 
 /* I have no idea what the maximum size is, but the hardware supports very
  * large numbers of descriptors (at least 2^16). This limit is based on
@@ -92,14 +93,10 @@ struct tu_pipeline_layout
    {
       struct tu_descriptor_set_layout *layout;
       uint32_t size;
-      uint32_t dynamic_offset_start;
    } set[MAX_SETS];
-
-   bool independent_sets;
 
    uint32_t num_sets;
    uint32_t push_constant_size;
-   uint32_t dynamic_offset_size;
 
    unsigned char sha1[20];
 };

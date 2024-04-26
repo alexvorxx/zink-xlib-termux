@@ -27,15 +27,15 @@
  */
 
 #include <xf86drm.h>
+#include <libsync.h>
 #include "v3d_context.h"
 /* The OQ/semaphore packets are the same across V3D versions. */
-#define V3D_VERSION 33
+#define V3D_VERSION 42
 #include "broadcom/cle/v3dx_pack.h"
 #include "broadcom/common/v3d_macros.h"
 #include "util/hash_table.h"
 #include "util/ralloc.h"
 #include "util/set.h"
-#include "util/u_prim.h"
 #include "broadcom/clif/clif_dump.h"
 
 void
@@ -192,20 +192,23 @@ v3d_flush_jobs_writing_resource(struct v3d_context *v3d,
 {
         struct hash_entry *entry = _mesa_hash_table_search(v3d->write_jobs,
                                                            prsc);
+        if (!entry)
+                return;
+
         struct v3d_resource *rsc = v3d_resource(prsc);
 
         /* We need to sync if graphics pipeline reads a resource written
-         * by the compute pipeline. The same would be needed for the case of
-         * graphics-compute dependency but nowadays all compute jobs
-         * are serialized with the previous submitted job.
+         * by the compute pipeline. The same is needed for the case of
+         * graphics-compute dependency but flushing the job.
          */
         if (!is_compute_pipeline && rsc->bo != NULL && rsc->compute_written) {
-           v3d->sync_on_last_compute_job = true;
-           rsc->compute_written = false;
+                v3d->sync_on_last_compute_job = true;
+                rsc->compute_written = false;
         }
-
-        if (!entry)
-                return;
+        if (is_compute_pipeline && rsc->bo != NULL && rsc->graphics_written) {
+                flush_cond = V3D_FLUSH_ALWAYS;
+                rsc->graphics_written = false;
+        }
 
         struct v3d_job *job = entry->data;
 
@@ -383,9 +386,11 @@ v3d_get_job_for_fbo(struct v3d_context *v3d)
                 job->double_buffer = false;
         }
 
-        v3d_get_tile_buffer_size(job->msaa, job->double_buffer,
+        v3d_get_tile_buffer_size(&v3d->screen->devinfo,
+                                 job->msaa, job->double_buffer,
                                  job->nr_cbufs, job->cbufs, job->bbuf,
-                                 &job->tile_width, &job->tile_height,
+                                 &job->tile_width,
+                                 &job->tile_height,
                                  &job->internal_bpp);
 
         /* The dirty flags are tracking what's been updated while v3d->job has
@@ -464,7 +469,7 @@ v3d_read_and_accumulate_primitive_counters(struct v3d_context *v3d)
 
         perf_debug("stalling on TF counts readback\n");
         struct v3d_resource *rsc = v3d_resource(v3d->prim_counts);
-        if (v3d_bo_wait(rsc->bo, PIPE_TIMEOUT_INFINITE, "prim-counts")) {
+        if (v3d_bo_wait(rsc->bo, OS_TIMEOUT_INFINITE, "prim-counts")) {
                 uint32_t *map = v3d_bo_map(rsc->bo) + v3d->prim_counts_offset;
                 v3d->tf_prims_generated += map[V3D_PRIM_COUNTS_TF_WRITTEN];
                 /* When we only have a vertex shader with no primitive
@@ -477,7 +482,7 @@ v3d_read_and_accumulate_primitive_counters(struct v3d_context *v3d)
                                 v3d->prog.gs ? v3d->prog.gs->prog_data.gs->out_prim_type
                                              : v3d->prim_mode;
                         uint32_t vertices_written =
-                                map[V3D_PRIM_COUNTS_TF_WRITTEN] * u_vertices_per_prim(prim_mode);
+                                map[V3D_PRIM_COUNTS_TF_WRITTEN] * mesa_vertices_per_prim(prim_mode);
                         for (int i = 0; i < v3d->streamout.num_targets; i++) {
                                 v3d_stream_output_target(v3d->streamout.targets[i])->offset +=
                                         vertices_written;
@@ -493,6 +498,7 @@ void
 v3d_job_submit(struct v3d_context *v3d, struct v3d_job *job)
 {
         struct v3d_screen *screen = v3d->screen;
+        struct v3d_device_info *devinfo = &screen->devinfo;
 
         if (!job->needs_flush)
                 goto done;
@@ -507,16 +513,28 @@ v3d_job_submit(struct v3d_context *v3d, struct v3d_job *job)
         if (job->needs_primitives_generated)
                 v3d_ensure_prim_counts_allocated(v3d);
 
-        v3d_X(&screen->devinfo, emit_rcl)(job);
+        v3d_X(devinfo, emit_rcl)(job);
 
         if (cl_offset(&job->bcl) > 0)
-                v3d_X(&screen->devinfo, bcl_epilogue)(v3d, job);
+                v3d_X(devinfo, bcl_epilogue)(v3d, job);
 
-        /* While the RCL will implicitly depend on the last RCL to have
-         * finished, we also need to block on any previous TFU job we may have
-         * dispatched.
-         */
-        job->submit.in_sync_rcl = v3d->out_sync;
+        if (v3d->in_fence_fd >= 0) {
+                /* PIPE_CAP_NATIVE_FENCE */
+                if (drmSyncobjImportSyncFile(v3d->fd, v3d->in_syncobj,
+                                             v3d->in_fence_fd)) {
+                   fprintf(stderr, "Failed to import native fence.\n");
+                } else {
+                   job->submit.in_sync_bcl = v3d->in_syncobj;
+                }
+                close(v3d->in_fence_fd);
+                v3d->in_fence_fd = -1;
+        } else {
+                /* While the RCL will implicitly depend on the last RCL to have
+                 * finished, we also need to block on any previous TFU job we
+                 * may have dispatched.
+                 */
+                job->submit.in_sync_rcl = v3d->out_sync;
+        }
 
         /* Update the sync object for the last rendering by our context. */
         job->submit.out_sync = v3d->out_sync;
@@ -545,7 +563,7 @@ v3d_job_submit(struct v3d_context *v3d, struct v3d_job *job)
         /* On V3D 4.1, the tile alloc/state setup moved to register writes
          * instead of binner packets.
          */
-        if (screen->devinfo.ver >= 41) {
+        if (devinfo->ver >= 42) {
                 v3d_job_add_bo(job, job->tile_alloc);
                 job->submit.qma = job->tile_alloc->offset;
                 job->submit.qms = job->tile_alloc->size;
@@ -595,24 +613,12 @@ done:
         v3d_job_free(v3d, job);
 }
 
-static bool
-v3d_job_compare(const void *a, const void *b)
-{
-        return memcmp(a, b, sizeof(struct v3d_job_key)) == 0;
-}
-
-static uint32_t
-v3d_job_hash(const void *key)
-{
-        return _mesa_hash_data(key, sizeof(struct v3d_job_key));
-}
+DERIVE_HASH_TABLE(v3d_job_key);
 
 void
 v3d_job_init(struct v3d_context *v3d)
 {
-        v3d->jobs = _mesa_hash_table_create(v3d,
-                                            v3d_job_hash,
-                                            v3d_job_compare);
+        v3d->jobs = v3d_job_key_table_create(v3d);
         v3d->write_jobs = _mesa_hash_table_create(v3d,
                                                   _mesa_hash_pointer,
                                                   _mesa_key_pointer_equal);

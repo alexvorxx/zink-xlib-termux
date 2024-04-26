@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #include <stdio.h>
 #include "guid.h"
@@ -48,22 +31,22 @@ const GUID IID_IDirect3DVertexShader9 = { 0xEFC5557E, 0x6265, 0x4613, { 0x8A, 0x
 const GUID IID_IDirect3DVolume9 = { 0x24F416E6, 0x1F67, 0x4AA7, { 0xB8, 0x8E, 0xD3, 0x3F, 0x6F, 0x31, 0x28, 0xA1 } };
 const GUID IID_IDirect3DVolumeTexture9 = { 0x2518526C, 0xE789, 0x4111, { 0xA7, 0xB9, 0x47, 0xEF, 0x32, 0x8D, 0x13, 0xE6 } };
 
-boolean
+bool
 GUID_equal( const GUID *a,
             const GUID *b )
 {
     unsigned i;
 
     if (!a || !b)
-        return FALSE;
+        return false;
 
     if (a->Data1 != b->Data1 ||
         a->Data2 != b->Data2 ||
-        a->Data3 != b->Data3) { return FALSE; }
+        a->Data3 != b->Data3) { return false; }
     for (i = 0; i < 8; i++) {
-        if (a->Data4[i] != b->Data4[i]) { return FALSE; }
+        if (a->Data4[i] != b->Data4[i]) { return false; }
     }
-    return TRUE;
+    return true;
 }
 
 char* GUID_sprintf(char *guid_str, REFGUID id) {

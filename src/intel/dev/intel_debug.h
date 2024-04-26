@@ -92,6 +92,10 @@ extern uint64_t intel_debug;
 #define DEBUG_PERF_SYMBOL_NAMES   (1ull << 44)
 #define DEBUG_SWSB_STALL          (1ull << 45)
 #define DEBUG_HEAPS               (1ull << 46)
+#define DEBUG_ISL                 (1ull << 47)
+#define DEBUG_SPARSE              (1ull << 48)
+#define DEBUG_DRAW_BKP            (1ull << 49)
+#define DEBUG_BATCH_STATS         (1ull << 50)
 
 #define DEBUG_ANY                 (~0ull)
 
@@ -104,6 +108,8 @@ extern uint64_t intel_debug;
    DEBUG_SPILL_VEC4 | DEBUG_NO_COMPACTION | DEBUG_DO32 | DEBUG_SOFT64)
 
 extern uint64_t intel_simd;
+extern uint32_t intel_debug_bkp_before_draw_count;
+extern uint32_t intel_debug_bkp_after_draw_count;
 
 #define INTEL_SIMD(type, size)        (!!(intel_simd & (DEBUG_ ## type ## _SIMD ## size)))
 
@@ -111,24 +117,27 @@ extern uint64_t intel_simd;
 #define DEBUG_FS_SIMD8    (1ull << 0)
 #define DEBUG_FS_SIMD16   (1ull << 1)
 #define DEBUG_FS_SIMD32   (1ull << 2)
+#define DEBUG_FS_SIMD2X8  (1ull << 3)
+#define DEBUG_FS_SIMD4X8  (1ull << 4)
+#define DEBUG_FS_SIMD2X16 (1ull << 5)
 
-#define DEBUG_CS_SIMD8    (1ull << 3)
-#define DEBUG_CS_SIMD16   (1ull << 4)
-#define DEBUG_CS_SIMD32   (1ull << 5)
+#define DEBUG_CS_SIMD8    (1ull << 6)
+#define DEBUG_CS_SIMD16   (1ull << 7)
+#define DEBUG_CS_SIMD32   (1ull << 8)
 
-#define DEBUG_TS_SIMD8    (1ull << 6)
-#define DEBUG_TS_SIMD16   (1ull << 7)
-#define DEBUG_TS_SIMD32   (1ull << 8)
+#define DEBUG_TS_SIMD8    (1ull << 9)
+#define DEBUG_TS_SIMD16   (1ull << 10)
+#define DEBUG_TS_SIMD32   (1ull << 11)
 
-#define DEBUG_MS_SIMD8    (1ull << 9)
-#define DEBUG_MS_SIMD16   (1ull << 10)
-#define DEBUG_MS_SIMD32   (1ull << 11)
+#define DEBUG_MS_SIMD8    (1ull << 12)
+#define DEBUG_MS_SIMD16   (1ull << 13)
+#define DEBUG_MS_SIMD32   (1ull << 14)
 
-#define DEBUG_RT_SIMD8    (1ull << 12)
-#define DEBUG_RT_SIMD16   (1ull << 13)
-#define DEBUG_RT_SIMD32   (1ull << 14)
+#define DEBUG_RT_SIMD8    (1ull << 15)
+#define DEBUG_RT_SIMD16   (1ull << 16)
+#define DEBUG_RT_SIMD32   (1ull << 17)
 
-#define SIMD_DISK_CACHE_MASK ((1ull << 15) - 1)
+#define SIMD_DISK_CACHE_MASK ((1ull << 18) - 1)
 
 #ifdef HAVE_ANDROID_PLATFORM
 #define LOG_TAG "INTEL-MESA"
@@ -152,7 +161,7 @@ extern uint64_t intel_simd;
 
 extern uint64_t intel_debug_flag_for_shader_stage(gl_shader_stage stage);
 
-extern void brw_process_intel_debug_variable(void);
+extern void process_intel_debug_variable(void);
 
 /* Below is a list of structure located in the identifier buffer. The driver
  * can fill those in for debug purposes.

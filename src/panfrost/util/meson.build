@@ -22,24 +22,23 @@
 libpanfrost_util_files = files(
   'lcra.c',
   'lcra.h',
-  'nir_mod_helpers.c',
   'pan_collect_varyings.c',
   'pan_ir.c',
   'pan_ir.h',
   'pan_liveness.c',
   'pan_lower_framebuffer.c',
   'pan_lower_helper_invocation.c',
+  'pan_lower_image_ms.c',
   'pan_lower_sample_position.c',
   'pan_lower_store_component.c',
   'pan_lower_writeout.c',
   'pan_lower_xfb.c',
-  'pan_lower_64bit_intrin.c',
 )
 
 libpanfrost_util = static_library(
   'panfrost_util',
   [libpanfrost_util_files],
-  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_panfrost_hw],
+  include_directories : [inc_include, inc_src, inc_panfrost_hw],
   dependencies: [idep_nir],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

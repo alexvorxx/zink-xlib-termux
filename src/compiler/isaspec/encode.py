@@ -134,7 +134,7 @@ class Case(object):
         self.expr = None
         if case.expr is not None:
             self.expr = bitset.isa.expressions[case.expr]
-        self.fieldnames = re.findall(r"{([a-zA-Z0-9_:]+)}", case.display)
+        self.fieldnames = re.findall(r"{([a-zA-Z0-9_:=]+)}", case.display)
         self.append_forced(bitset)
 
         # remove special fieldname properties e.g. :align=
@@ -186,7 +186,7 @@ class State(object):
 
     def bitset_cases(self, bitset, leaf_bitset=None):
         if leaf_bitset is None:
-            leaf_bitset = bitset;
+            leaf_bitset = bitset
         for case in bitset.cases:
             if case.display is None:
                 # if this is the last case (ie. case.expr is None)
@@ -194,7 +194,7 @@ class State(object):
                 if case.expr is None and bitset.extends is not None:
                     parent_bitset = bitset.isa.bitsets[bitset.extends]
                     yield from self.bitset_cases(parent_bitset, leaf_bitset)
-                continue;
+                continue
             yield Case(leaf_bitset, case)
 
     # Find unique bitset remap/parameter names, to generate a struct
@@ -340,9 +340,11 @@ template = """\
  * IN THE SOFTWARE.
  */
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <util/bitset.h>
+#include <util/log.h>
 
 <%
 isa = s.isa
@@ -391,6 +393,11 @@ store_instruction(BITSET_WORD *dst, bitmask_t instr)
  */
 struct encode_state;
 
+/**
+ * Allows to use gpu_id in expr functions
+ */
+#define ISA_GPU_ID() s->gen
+
 struct bitset_params;
 
 static bitmask_t
@@ -430,7 +437,7 @@ pack_field(unsigned low, unsigned high, int64_t val, bool is_signed)
  */
 
 %for root in s.encode_roots():
-static bitmask_t encode${root.get_c_name()}(struct encode_state *s, struct bitset_params *p, ${root.encode.type} src);
+static bitmask_t encode${root.get_c_name()}(struct encode_state *s, const struct bitset_params *p, const ${root.encode.type} src);
 %endfor
 
 ## TODO before the expr evaluators, we should generate extract_FOO() for
@@ -458,7 +465,7 @@ struct bitset_params {
 
 <%def name="render_expr(leaf, expr)">
 static inline int64_t
-${s.expr_name(leaf.get_root(), expr)}(struct encode_state *s, struct bitset_params *p, ${leaf.get_root().encode.type} src)
+${s.expr_name(leaf.get_root(), expr)}(struct encode_state *s, const struct bitset_params *p, const ${leaf.get_root().encode.type} src)
 {
 %   for fieldname in expr.fieldnames:
     int64_t ${fieldname};
@@ -484,7 +491,7 @@ ${s.expr_name(leaf.get_root(), expr)}(struct encode_state *s, struct bitset_para
 %for root in s.encode_roots():
 %   for leaf in s.encode_leafs(root):
 %      for expr in s.bitset_used_exprs(leaf):
-static inline int64_t ${s.expr_name(leaf.get_root(), expr)}(struct encode_state *s, struct bitset_params *p, ${leaf.get_root().encode.type} src);
+static inline int64_t ${s.expr_name(leaf.get_root(), expr)}(struct encode_state *s, const struct bitset_params *p, const ${leaf.get_root().encode.type} src);
 %      endfor
 %   endfor
 %endfor
@@ -516,7 +523,7 @@ static inline int64_t ${s.expr_name(leaf.get_root(), expr)}(struct encode_state 
 %      if snippet not in root.snippets.keys():
 <% snippet_name = "snippet" + root.get_c_name() + "_" + str(len(root.snippets)) %>
 static bitmask_t
-${snippet_name}(struct encode_state *s, struct bitset_params *p, ${root.encode.type} src)
+${snippet_name}(struct encode_state *s, const struct bitset_params *p, const ${root.encode.type} src)
 {
    bitmask_t val = uint64_t_to_bitmask(0);
 ${snippet}
@@ -527,7 +534,7 @@ ${snippet}
 %   endfor
 
 static bitmask_t
-encode${root.get_c_name()}(struct encode_state *s, struct bitset_params *p, ${root.encode.type} src)
+encode${root.get_c_name()}(struct encode_state *s, const struct bitset_params *p, const ${root.encode.type} src)
 {
 %   if root.encode.case_prefix is not None:
    switch (${root.get_c_name()}_case(s, src)) {
@@ -699,7 +706,7 @@ def main():
     s = State(isa)
 
     try:
-        with open(args.out_h, 'w') as f:
+        with open(args.out_h, 'w', encoding='utf-8') as f:
             encode_bitset = Template(encode_bitset_template)
             f.write(Template(template).render(s=s, encode_bitset=encode_bitset))
 

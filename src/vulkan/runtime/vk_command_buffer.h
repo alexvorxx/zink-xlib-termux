@@ -27,6 +27,7 @@
 #include "vk_cmd_queue.h"
 #include "vk_graphics_state.h"
 #include "vk_log.h"
+#include "vk_meta.h"
 #include "vk_object.h"
 #include "util/list.h"
 #include "util/u_dynarray.h"
@@ -59,6 +60,7 @@ struct vk_attachment_state {
    VkClearValue clear_value;
 };
 
+/** Command buffer ops */
 struct vk_command_buffer_ops {
    /** Creates a command buffer
     *
@@ -96,6 +98,10 @@ enum mesa_vk_command_buffer_state {
    MESA_VK_COMMAND_BUFFER_STATE_PENDING,
 };
 
+/* this needs spec fixes */
+#define MESA_VK_SHADER_STAGE_WORKGRAPH_HACK_BIT_FIXME (1<<30)
+VkShaderStageFlags vk_shader_stages_from_bind_point(VkPipelineBindPoint pipelineBindPoint);
+
 struct vk_command_buffer {
    struct vk_object_base base;
 
@@ -120,6 +126,9 @@ struct vk_command_buffer {
    /** Command list for emulated secondary command buffers */
    struct vk_cmd_queue cmd_queue;
 
+   /** Object list for meta objects */
+   struct vk_meta_object_list meta_objects;
+
    /**
     * VK_EXT_debug_utils
     *
@@ -143,11 +152,11 @@ struct vk_command_buffer {
     * call. This means that there can be no more than one such label at a
     * time.
     *
-    * \c labels contains all active labels at this point in order of submission
-    * \c region_begin denotes whether the most recent label opens a new region
-    * If \t labels is empty \t region_begin must be true.
+    * ``labels`` contains all active labels at this point in order of
+    * submission ``region_begin`` denotes whether the most recent label opens
+    * a new region If ``labels`` is empty ``region_begin`` must be true.
     *
-    * Anytime we modify labels, we first check for \c region_begin. If it's
+    * Anytime we modify labels, we first check for ``region_begin``. If it's
     * false, it means that the most recent label was submitted by
     * `*InsertDebugUtilsLabel` and we need to remove it before doing anything
     * else.
@@ -165,11 +174,25 @@ struct vk_command_buffer {
    struct vk_framebuffer *framebuffer;
    VkRect2D render_area;
 
+   /**
+    * True if we are currently inside a CmdPipelineBarrier() is inserted by
+    * the runtime's vk_render_pass.c
+    */
+   bool runtime_rp_barrier;
+
    /* This uses the same trick as STACK_ARRAY */
    struct vk_attachment_state *attachments;
    struct vk_attachment_state _attachments[8];
 
    VkRenderPassSampleLocationsBeginInfoEXT *pass_sample_locations;
+
+   /**
+    * Bitmask of shader stages bound via a vk_pipeline since the last call to
+    * vkBindShadersEXT().
+    *
+    * Used by the common vk_pipeline implementation
+    */
+   VkShaderStageFlags pipeline_shader_stages;
 };
 
 VK_DEFINE_HANDLE_CASTS(vk_command_buffer, base, VkCommandBuffer,

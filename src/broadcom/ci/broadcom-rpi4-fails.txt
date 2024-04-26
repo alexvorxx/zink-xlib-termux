@@ -5,15 +5,6 @@ glx@glx-visuals-depth -pixmap,Fail
 glx@glx-visuals-stencil -pixmap,Fail
 glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
 glx@glx_arb_create_context_no_error@no error,Fail
-glx@glx_ext_import_context@free context,Fail
-glx@glx_ext_import_context@get context id,Fail
-glx@glx_ext_import_context@get current display,Fail
-glx@glx_ext_import_context@import context- multi process,Fail
-glx@glx_ext_import_context@import context- single process,Fail
-glx@glx_ext_import_context@imported context has same context id,Fail
-glx@glx_ext_import_context@make current- multi process,Fail
-glx@glx_ext_import_context@make current- single process,Fail
-glx@glx_ext_import_context@query context info,Fail
 shaders@glsl-bug-110796,Fail
 shaders@point-vertex-id divisor,Fail
 shaders@point-vertex-id gl_instanceid divisor,Fail
@@ -22,16 +13,13 @@ shaders@point-vertex-id gl_vertexid divisor,Fail
 shaders@point-vertex-id gl_vertexid gl_instanceid divisor,Fail
 shaders@point-vertex-id gl_vertexid gl_instanceid,Fail
 shaders@point-vertex-id gl_vertexid,Fail
+spec@!opengl 1.0@depth-clear-precision-check,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-const,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-quads,Fail
 spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
 spec@!opengl 1.0@gl-1.0-user-clip-all-planes,Fail
 spec@!opengl 1.0@rasterpos,Crash
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-24_8 samples=2,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-24_8 samples=4,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-32f_24_8_rev samples=2,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-float-and-ushort samples=2,Fail
 spec@!opengl 1.1@getteximage-formats,Fail
 spec@!opengl 1.1@linestipple,Fail
 spec@!opengl 1.1@linestipple@Factor 2x,Fail
@@ -149,8 +137,6 @@ spec@arb_direct_state_access@gettextureimage-formats,Fail
 spec@arb_framebuffer_object@fbo-blit-scaled-linear,Fail
 spec@arb_point_sprite@arb_point_sprite-checkerboard,Fail
 spec@arb_point_sprite@arb_point_sprite-mipmap,Fail
-spec@arb_separate_shader_objects@atomic counter,Fail
-spec@arb_shader_atomic_counters@fragment-discard,Fail
 spec@arb_shader_storage_buffer_object@compiler@atomicmin-swizzle.vert,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
@@ -217,7 +203,6 @@ spec@arb_texture_float@fbo-blending-formats@GL_ALPHA32F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_INTENSITY32F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_LUMINANCE32F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_LUMINANCE_ALPHA32F_ARB,Fail
-spec@arb_texture_float@fbo-blending-formats@GL_RGB16F,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_RGB32F,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_RGBA32F,Fail
 spec@arb_texture_float@texwrap formats bordercolor,Fail
@@ -292,7 +277,6 @@ spec@arb_texture_rg@texwrap formats-float@GL_RG32F- NPOT,Fail
 spec@arb_texture_storage@texture-storage@cube array texture,Fail
 spec@arb_texture_view@rendering-formats,Crash
 spec@egl 1.4@eglterminate then unbind context,Fail
-spec@egl_ext_protected_content@conformance,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_depth_component24,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_rgba,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
@@ -303,29 +287,18 @@ spec@ext_framebuffer_multisample@interpolation 2 centroid-edges,Fail
 spec@ext_framebuffer_multisample@interpolation 4 centroid-edges,Fail
 spec@ext_framebuffer_object@getteximage-formats init-by-clear-and-render,Fail
 spec@ext_framebuffer_object@getteximage-formats init-by-rendering,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texture() 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texture() 1darrayshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texture() cubeshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texture(bias) 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texture(bias) 1darrayshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturegrad 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturegrad 1darrayshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturegradoffset 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturegradoffset 1darrayshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturelod 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturelod 1darrayshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturelodoffset 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4texturelodoffset 1darrayshadow,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4textureoffset 1darray,Fail
-spec@ext_gpu_shader4@tex-miplevel-selection gpu4textureoffset 1darrayshadow,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-export,Fail
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-modifiers,Fail
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-modifiers@autogen-R16-DRM_FORMAT_MOD_LINEAR-clear_reimport,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_argb8888,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_nv12,Fail
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_nv21,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_p010,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_p012,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_p016,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_uyvy,Fail
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_vyuy,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_xrgb8888,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y210,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y212,Fail
@@ -335,6 +308,7 @@ spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y416,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuv420,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuyv,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvu420,Fail
+spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvyu,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-transcode-nv12-as-r8-gr88,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor-swizzled,Fail
@@ -348,9 +322,8 @@ spec@ext_packed_float@query-rgba-signed-components,Fail
 spec@ext_texture_integer@fbo-blending,Fail
 spec@ext_texture_integer@getteximage-clamping gl_arb_texture_rg,Fail
 spec@ext_texture_integer@getteximage-clamping,Fail
-spec@ext_texture_integer@multisample-fast-clear gl_ext_texture_integer,Crash
-spec@ext_texture_integer@multisample-formats 2 gl_ext_texture_integer,Crash
-spec@ext_texture_integer@multisample-formats 4 gl_ext_texture_integer,Crash
+spec@ext_texture_integer@multisample-formats 2 gl_ext_texture_integer,Fail
+spec@ext_texture_integer@multisample-formats 4 gl_ext_texture_integer,Fail
 spec@ext_texture_integer@texwrap formats bordercolor,Fail
 spec@ext_texture_integer@texwrap formats bordercolor-swizzled,Fail
 spec@ext_texture_integer@texwrap formats bordercolor-swizzled@GL_ALPHA16I_EXT- swizzled- border color only,Fail
@@ -403,8 +376,6 @@ spec@glsl-1.10@execution@glsl-vs-inline-explosion,Crash
 spec@glsl-1.20@compiler@invalid-vec4-array-to-vec3-array-conversion.vert,Fail
 spec@glsl-1.20@execution@clipping@vs-clip-vertex-primitives,Fail
 spec@glsl-1.20@execution@fs-underflow-mul-compare-zero,Fail
-spec@glsl-1.30@execution@clipping@fs-clip-distance-interpolated,Crash
-spec@intel_performance_query@intel_performance_query-issue_2235,Fail
 spec@khr_texture_compression_astc@miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@miptree-gles srgb-fp@sRGB decode full precision,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp,Fail
@@ -460,7 +431,6 @@ spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-3d.vert,Fail
 spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-cube.frag,Fail
 spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-cube.vert,Fail
 spec@nv_read_depth@read_depth_gles3,Fail
-spec@oes_egl_image_external_essl3@oes_egl_image_external_essl3,Crash
 spec@oes_point_sprite@arb_point_sprite-checkerboard_gles1,Fail
 spec@oes_shader_io_blocks@compiler@layout-location-aliasing.vert,Fail
 
@@ -506,9 +476,12 @@ spec@oes_texture_view@rendering-formats@clear GL_RGB10_A2 as GL_RG16F,Fail
 spec@oes_texture_view@rendering-formats@clear GL_RGB10_A2 as GL_RG16I,Fail
 spec@oes_texture_view@rendering-formats@clear GL_RGB10_A2 as GL_RGBA8I,Fail
 
-spec@!opengl 1.0@depth-clear-precision-check,Fail
 spec@!opengl 1.0@depth-clear-precision-check@depth16,Fail
 spec@!opengl 1.0@depth-clear-precision-check@depth24,Fail
+
+# This fails the subtest for GL_ALPHA16 because we don't support a 16-bit unorm format for rendering
+# so gallium falls back to using an 8-bit unorm format and we lose some precision in the result.
+spec@arb_clear_texture@arb_clear_texture-sized-formats,Fail
 
 # These fail because the shaders use indirect indexing on samplers which we
 # don't support (the GLSL linker fails to link the shaders because of this).
@@ -518,10 +491,104 @@ spec@!opengl 1.0@depth-clear-precision-check@depth24,Fail
 spec@!opengl 2.0@max-samplers,Fail
 spec@!opengl 2.0@max-samplers border,Fail
 
-wayland-dEQP-EGL.functional.wide_color.window_888_colorspace_default,Fail
-wayland-dEQP-EGL.functional.wide_color.window_fp16_default_colorspace,Fail
-
 spec@!opengl 1.1@line-smooth-stipple,Fail
 
 # Works when run individually, but fail consistently on the CI
 dEQP-GLES3.functional.texture.specification.teximage2d_pbo.rgba32i_cube,Fail
+
+# These tests should be skipped as we don't support the extension. CTS tests needs to be fixed
+dEQP-VK.pipeline.shader_object_linked_binary.framebuffer_attachment.unused_attachment,Crash
+dEQP-VK.pipeline.shader_object_linked_spirv.framebuffer_attachment.unused_attachment,Crash
+dEQP-VK.pipeline.shader_object_unlinked_binary.framebuffer_attachment.unused_attachment,Crash
+dEQP-VK.pipeline.shader_object_unlinked_spirv.framebuffer_attachment.unused_attachment,Crash
+
+# https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/4422
+KHR-GL31.texture_size_promotion.functional,Fail
+
+# uprev Piglit in Mesa
+spec@glsl-1.40@uniform_buffer@two-stages,Fail
+
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.clipped,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.composite_alpha,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.exclusive_nonzero_queues,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_array_layers,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_extent,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_format,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_usage,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.min_image_count,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.pre_transform,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.present_mode,Crash
+
+# RPI4 only supports 4RT, so this tests with 8RT will fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 128 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 128 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 128 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 128 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 128 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 128 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 64 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 64 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 64 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 64 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 64 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 64 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 8 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 8 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 8 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 8 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 8 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 1 8 8 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 128 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 128 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 128 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 128 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 128 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 128 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 64 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 64 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 64 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 64 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 64 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 64 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 8 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 8 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 8 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 8 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 8 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 32 42 8 8 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 128 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 128 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 128 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 128 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 128 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 128 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 64 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 64 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 64 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 64 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 64 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 64 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 8 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 8 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 8 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 8 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 8 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 1 8 8 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 128 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 128 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 128 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 128 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 128 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 128 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 64 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 64 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 64 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 64 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 64 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 64 8,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 1,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 2,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 3,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 4,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 7,Fail
+spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 8,Fail

@@ -23,10 +23,10 @@ Building OSMesa
 
 Configure and build Mesa with something like:
 
-.. code-block:: console
+.. code-block:: sh
 
    meson setup builddir -Dosmesa=true -Dgallium-drivers=swrast -Dvulkan-drivers=[] -Dprefix=$PWD/builddir/install
-   ninja -C builddir install
+   meson install -C builddir
 
 Make sure you have LLVM installed first if you want to use the LLVMpipe
 driver.

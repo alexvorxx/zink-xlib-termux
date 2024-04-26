@@ -280,7 +280,7 @@ TEST(Layout, ImplicitLayoutInterleavedETC2)
    unsigned offsets[9] = {0,     8192,  10240, 10752, 10880,
                           11008, 11136, 11264, 11392};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    for (unsigned i = 0; i < 8; ++i) {
       unsigned size = (offsets[i + 1] - offsets[i]);
@@ -305,7 +305,7 @@ TEST(Layout, ImplicitLayoutInterleavedASTC5x5)
       .dim = MALI_TEXTURE_DIMENSION_2D,
       .nr_slices = 1};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    /* The image is 50x50 pixels, with 5x5 blocks. So it is a 10x10 grid of ASTC
     * blocks. 4x4 tiles of ASTC blocks are u-interleaved, so we have to round up
@@ -330,7 +330,7 @@ TEST(Layout, ImplicitLayoutLinearASTC5x5)
                                 .dim = MALI_TEXTURE_DIMENSION_2D,
                                 .nr_slices = 1};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    /* The image is 50x50 pixels, with 5x5 blocks. So it is a 10x10 grid of ASTC
     * blocks. Each ASTC block is 16 bytes, so the row stride is 160 bytes,
@@ -358,7 +358,7 @@ TEST(AFBCLayout, Linear3D)
                                 .dim = MALI_TEXTURE_DIMENSION_3D,
                                 .nr_slices = 1};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    /* AFBC Surface stride is bytes between consecutive surface headers, which is
     * the header size since this is a 3D texture. At superblock size 16x16, the
@@ -397,7 +397,7 @@ TEST(AFBCLayout, Tiled16x16)
                                 .dim = MALI_TEXTURE_DIMENSION_2D,
                                 .nr_slices = 1};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    /* The image is 917x417. Superblocks are 16x16, so there are 58x27
     * superblocks. Superblocks are grouped into 8x8 tiles, so there are 8x4
@@ -433,7 +433,7 @@ TEST(AFBCLayout, Linear16x16Minimal)
                                 .dim = MALI_TEXTURE_DIMENSION_2D,
                                 .nr_slices = 1};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    /* Image is 1x1 to test for correct alignment everywhere. */
    EXPECT_EQ(l.slices[0].offset, 0);
@@ -459,7 +459,7 @@ TEST(AFBCLayout, Tiled16x16Minimal)
                                 .dim = MALI_TEXTURE_DIMENSION_2D,
                                 .nr_slices = 1};
 
-   ASSERT_TRUE(pan_image_layout_init(&l, NULL));
+   ASSERT_TRUE(pan_image_layout_init(0, &l, NULL));
 
    /* Image is 1x1 to test for correct alignment everywhere. */
    EXPECT_EQ(l.slices[0].offset, 0);

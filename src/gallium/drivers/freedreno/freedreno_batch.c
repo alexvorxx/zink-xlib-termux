@@ -119,6 +119,10 @@ fd_batch_create(struct fd_context *ctx, bool nondraw)
       }
    }
 
+   /* Pre-attach private BOs: */
+   for (unsigned i = 0; i < ctx->num_private_bos; i++)
+      fd_ringbuffer_attach_bo(batch->gmem, ctx->private_bos[i]);
+
    batch->subpass = subpass_create(batch);
 
    batch->in_fence_fd = -1;
@@ -357,6 +361,8 @@ batch_flush(struct fd_batch *batch) assert_dt
    if (batch->flushed)
       return;
 
+   tc_assert_driver_thread(batch->ctx->tc);
+
    batch->needs_flush = false;
 
    /* close out the draw cmds by making sure any active queries are
@@ -498,6 +504,12 @@ fd_batch_add_resource(struct fd_batch *batch, struct fd_resource *rsc)
 
    _mesa_set_add_pre_hashed(batch->resources, rsc->hash, rsc);
    rsc->track->batch_mask |= (1 << batch->idx);
+
+   fd_ringbuffer_attach_bo(batch->draw, rsc->bo);
+   if (unlikely(rsc->b.b.next)) {
+      struct fd_resource *n = fd_resource(rsc->b.b.next);
+      fd_ringbuffer_attach_bo(batch->draw, n->bo);
+   }
 }
 
 void
@@ -516,8 +528,6 @@ fd_batch_resource_write(struct fd_batch *batch, struct fd_resource *rsc)
 
    if (track->write_batch == batch)
       return;
-
-   fd_batch_write_prep(batch, rsc);
 
    if (rsc->stencil)
       fd_batch_resource_write(batch, rsc->stencil);
@@ -539,8 +549,10 @@ fd_batch_resource_write(struct fd_batch *batch, struct fd_resource *rsc)
           * ctx dependencies and let the app have the undefined behavior
           * it asked for:
           */
-         if (track->write_batch->ctx != batch->ctx)
+         if (track->write_batch->ctx != batch->ctx) {
+            fd_ringbuffer_attach_bo(batch->draw, rsc->bo);
             return;
+         }
 
          flush_write_batch(rsc);
       }
@@ -562,6 +574,8 @@ fd_batch_resource_write(struct fd_batch *batch, struct fd_resource *rsc)
    fd_batch_reference_locked(&track->write_batch, batch);
 
    fd_batch_add_resource(batch, rsc);
+
+   fd_batch_write_prep(batch, rsc);
 }
 
 void
@@ -587,6 +601,7 @@ fd_batch_resource_read_slowpath(struct fd_batch *batch, struct fd_resource *rsc)
           * by avoiding cross-ctx dependencies and let the app have the
           * undefined behavior it asked for:
           */
+         fd_ringbuffer_attach_bo(batch->draw, rsc->bo);
          return;
       }
 

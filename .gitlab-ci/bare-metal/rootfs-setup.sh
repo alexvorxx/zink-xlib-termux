@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck disable=SC2086 # we want word splitting
 
 rootfs_dst=$1
 
@@ -18,6 +19,7 @@ date +'%F %T'
 
 cp $CI_COMMON/capture-devcoredump.sh $rootfs_dst/
 cp $CI_COMMON/intel-gpu-freq.sh $rootfs_dst/
+cp $CI_COMMON/kdl.sh $rootfs_dst/
 cp "$SCRIPTS_DIR/setup-test-env.sh" "$rootfs_dst/"
 
 set +x

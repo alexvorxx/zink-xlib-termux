@@ -53,11 +53,13 @@ struct spirv_builder {
    struct spirv_buffer decorations;
 
    struct spirv_buffer types_const_defs;
+   struct spirv_buffer local_vars;
    struct hash_table *types;
    struct hash_table *consts;
 
    struct spirv_buffer instructions;
    SpvId prev_id;
+   unsigned local_vars_begin;
 };
 
 static inline SpvId
@@ -157,6 +159,9 @@ void
 spirv_builder_emit_exec_mode_literal3(struct spirv_builder *b, SpvId entry_point,
                                      SpvExecutionMode exec_mode, uint32_t param[3]);
 void
+spirv_builder_emit_exec_mode_id3(struct spirv_builder *b, SpvId entry_point,
+                                 SpvExecutionMode exec_mode, SpvId param[3]);
+void
 spirv_builder_emit_exec_mode(struct spirv_builder *b, SpvId entry_point,
                              SpvExecutionMode exec_mode);
 
@@ -182,12 +187,16 @@ SpvId
 spirv_builder_emit_load(struct spirv_builder *b, SpvId result_type,
                         SpvId pointer);
 
+SpvId
+spirv_builder_emit_load_aligned(struct spirv_builder *b, SpvId result_type, SpvId pointer, unsigned alignment, bool coherent);
 void
 spirv_builder_emit_atomic_store(struct spirv_builder *b, SpvId pointer, SpvScope scope,
                                 SpvMemorySemanticsMask semantics, SpvId object);
 
 void
 spirv_builder_emit_store(struct spirv_builder *b, SpvId pointer, SpvId object);
+void
+spirv_builder_emit_store_aligned(struct spirv_builder *b, SpvId pointer, SpvId object, unsigned alignment, bool coherent);
 
 SpvId
 spirv_builder_emit_access_chain(struct spirv_builder *b, SpvId result_type,
@@ -485,4 +494,6 @@ void
 spirv_builder_emit_vertex(struct spirv_builder *b, uint32_t stream, bool multistream);
 void
 spirv_builder_end_primitive(struct spirv_builder *b, uint32_t stream, bool multistream);
+void
+spirv_builder_begin_local_vars(struct spirv_builder *b);
 #endif

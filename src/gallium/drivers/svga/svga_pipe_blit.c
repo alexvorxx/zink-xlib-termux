@@ -322,7 +322,7 @@ can_blit_via_svga_copy_region(struct svga_context *svga,
    local_blit.dst.format = local_blit.src.format;
    if (local_blit.filter == PIPE_TEX_FILTER_LINEAR)
       local_blit.filter = PIPE_TEX_FILTER_NEAREST;
-   if (!util_can_blit_via_copy_region(&local_blit, TRUE, svga->render_condition))
+   if (!util_can_blit_via_copy_region(&local_blit, true, svga->render_condition))
       return false;
 
    /* For depth+stencil formats, copy with mask != PIPE_MASK_ZS is not
@@ -470,7 +470,7 @@ try_copy_region(struct svga_context *svga,
                   &dst_layer_face, &dst_z);
 
    if (can_blit_via_copy_region_vgpu10(svga, blit)) {
-      svga_toggle_render_condition(svga, blit->render_condition_enable, FALSE);
+      svga_toggle_render_condition(svga, blit->render_condition_enable, false);
 
       copy_region_vgpu10(svga,
                          blit->src.resource,
@@ -482,7 +482,7 @@ try_copy_region(struct svga_context *svga,
                          blit->src.box.width, blit->src.box.height,
                          blit->src.box.depth);
 
-      svga_toggle_render_condition(svga, blit->render_condition_enable, TRUE);
+      svga_toggle_render_condition(svga, blit->render_condition_enable, true);
 
       return true;
    }
@@ -619,7 +619,8 @@ try_blit(struct svga_context *svga, const struct pipe_blit_info *blit_info)
 
    /* XXX turn off occlusion and streamout queries */
 
-   util_blitter_save_vertex_buffer_slot(svga->blitter, svga->curr.vb);
+   util_blitter_save_vertex_buffers(svga->blitter, svga->curr.vb,
+                                    svga->curr.num_vertex_buffers);
    util_blitter_save_vertex_elements(svga->blitter, (void*)svga->curr.velems);
    util_blitter_save_vertex_shader(svga->blitter, svga->curr.vs);
    util_blitter_save_geometry_shader(svga->blitter, svga->curr.user_gs);
@@ -705,11 +706,11 @@ try_blit(struct svga_context *svga, const struct pipe_blit_info *blit_info)
       blit.dst.resource = newDst;
    }
 
-   svga_toggle_render_condition(svga, blit.render_condition_enable, FALSE);
+   svga_toggle_render_condition(svga, blit.render_condition_enable, false);
 
    util_blitter_blit(svga->blitter, &blit);
 
-   svga_toggle_render_condition(svga, blit.render_condition_enable, TRUE);
+   svga_toggle_render_condition(svga, blit.render_condition_enable, true);
 
    if (blit.dst.resource != dst) {
       struct pipe_blit_info copy_region_blit;
@@ -753,8 +754,8 @@ static bool
 try_cpu_copy_region(struct svga_context *svga,
                     const struct pipe_blit_info *blit)
 {
-   if (util_can_blit_via_copy_region(blit, TRUE, svga->render_condition) ||
-       util_can_blit_via_copy_region(blit, FALSE, svga->render_condition)) {
+   if (util_can_blit_via_copy_region(blit, true, svga->render_condition) ||
+       util_can_blit_via_copy_region(blit, false, svga->render_condition)) {
 
       if (svga->render_condition && blit->render_condition_enable) {
          debug_warning("CPU copy_region doesn't support "
@@ -777,7 +778,7 @@ try_cpu_copy_region(struct svga_context *svga,
  * A helper function to resolve a multisampled surface to a single-sampled
  * surface using SVGA command ResolveCopy.
  */
-static boolean
+static bool
 try_resolve_copy(struct svga_context *svga,
                  const struct pipe_blit_info *blit)
 {
@@ -788,7 +789,7 @@ try_resolve_copy(struct svga_context *svga,
    /* check if formats are compatible for resolve copy */
    if (!formats_compatible(svga_screen(svga->pipe.screen),
                            src_tex->key.format, dst_tex->key.format))
-      return FALSE;
+      return false;
 
    /* check if the copy dimensions are the same */
    if ((blit->src.box.x || blit->src.box.y || blit->src.box.z) ||
@@ -796,7 +797,7 @@ try_resolve_copy(struct svga_context *svga,
        (blit->src.box.width != blit->dst.box.width) ||
        (blit->src.box.height != blit->dst.box.height) ||
        (blit->src.box.depth != blit->dst.box.depth))
-      return FALSE;
+      return false;
 
    ret = SVGA3D_vgpu10_ResolveCopy(svga->swc, 0, dst_tex->handle,
                                    0, src_tex->handle, dst_tex->key.format);
@@ -816,7 +817,7 @@ try_resolve_copy(struct svga_context *svga,
 /**
  * Returns FALSE if the resource does not have data to copy.
  */
-static boolean
+static bool
 is_texture_valid_to_copy(struct svga_context *svga,
                          struct pipe_resource *resource)
 {
@@ -921,7 +922,7 @@ svga_resource_copy_region(struct pipe_context *pipe,
          SVGA_RETRY(svga, SVGA3D_vgpu10_BufferCopy(svga->swc, src_surf,
                                                    dst_surf, src_box->x, dstx,
                                                    src_box->width));
-         dbuffer->dirty = TRUE;
+         dbuffer->dirty = true;
 
          /* Mark the buffer surface as RENDERED */
          assert(dbuffer->bufsurf);

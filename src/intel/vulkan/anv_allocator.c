@@ -351,21 +351,23 @@ anv_block_pool_init(struct anv_block_pool *pool,
                     struct anv_device *device,
                     const char *name,
                     uint64_t start_address,
-                    uint32_t initial_size)
+                    uint32_t initial_size,
+                    uint32_t max_size)
 {
    VkResult result;
 
-   if (device->info->verx10 >= 125) {
-      /* Make sure VMA addresses are 2MiB aligned for the block pool */
-      assert(anv_is_aligned(start_address, 2 * 1024 * 1024));
-      assert(anv_is_aligned(initial_size, 2 * 1024 * 1024));
-   }
+   /* Make sure VMA addresses are aligned for the block pool */
+   assert(anv_is_aligned(start_address, device->info->mem_alignment));
+   assert(anv_is_aligned(initial_size, device->info->mem_alignment));
+   assert(max_size > 0);
+   assert(max_size > initial_size);
 
    pool->name = name;
    pool->device = device;
    pool->nbos = 0;
    pool->size = 0;
    pool->start_address = intel_canonical_address(start_address);
+   pool->max_size = max_size;
 
    pool->bo = NULL;
 
@@ -375,9 +377,9 @@ anv_block_pool_init(struct anv_block_pool *pool,
    pool->bo_alloc_flags =
       ANV_BO_ALLOC_FIXED_ADDRESS |
       ANV_BO_ALLOC_MAPPED |
-      ANV_BO_ALLOC_SNOOPED |
+      ANV_BO_ALLOC_HOST_CACHED_COHERENT |
       ANV_BO_ALLOC_CAPTURE |
-      (device->info->has_local_mem ? ANV_BO_ALLOC_WRITE_COMBINE : 0);
+      ANV_BO_ALLOC_INTERNAL;
 
    result = anv_block_pool_expand_range(pool, initial_size);
    if (result != VK_SUCCESS)
@@ -439,7 +441,7 @@ anv_block_pool_expand_range(struct anv_block_pool *pool, uint32_t size)
                                          pool->name,
                                          new_bo_size,
                                          pool->bo_alloc_flags,
-                                         pool->start_address + pool->size,
+                                         intel_48b_address(pool->start_address + pool->size),
                                          &new_bo);
    if (result != VK_SUCCESS)
       return result;
@@ -541,11 +543,14 @@ anv_block_pool_grow(struct anv_block_pool *pool, struct anv_block_state *state,
     */
    required = MAX2(required, old_size + contiguous_size);
 
-   if (total_used * 2 > required) {
+   if (required > pool->max_size) {
+      result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+   } else if (total_used * 2 > required) {
       uint32_t size = old_size * 2;
       while (size < required)
          size *= 2;
 
+      size = MIN2(size, pool->max_size);
       assert(size > pool->size);
 
       result = anv_block_pool_expand_range(pool, size);
@@ -563,10 +568,12 @@ anv_block_pool_grow(struct anv_block_pool *pool, struct anv_block_state *state,
    return pool->size;
 }
 
-static uint32_t
+static VkResult
 anv_block_pool_alloc_new(struct anv_block_pool *pool,
                          struct anv_block_state *pool_state,
-                         uint32_t block_size, uint32_t *padding)
+                         uint32_t block_size,
+                         int64_t *offset,
+                         uint32_t *padding)
 {
    struct anv_block_state state, old, new;
 
@@ -576,8 +583,11 @@ anv_block_pool_alloc_new(struct anv_block_pool *pool,
 
    while (1) {
       state.u64 = __sync_fetch_and_add(&pool_state->u64, block_size);
-      if (state.next + block_size <= state.end) {
-         return state.next;
+      if (state.next + block_size > pool->max_size) {
+         return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      } else if (state.next + block_size <= state.end) {
+         *offset =  state.next;
+         return VK_SUCCESS;
       } else if (state.next <= state.end) {
          if (state.next < state.end) {
             /* We need to grow the block pool, but still have some leftover
@@ -603,12 +613,17 @@ anv_block_pool_alloc_new(struct anv_block_pool *pool,
          new.next = state.next + block_size;
          do {
             new.end = anv_block_pool_grow(pool, pool_state, block_size);
+            if (pool->size > 0 && new.end == 0) {
+               futex_wake(&pool_state->end, INT_MAX);
+               return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
          } while (new.end < new.next);
 
          old.u64 = __sync_lock_test_and_set(&pool_state->u64, new.u64);
          if (old.next != state.next)
             futex_wake(&pool_state->end, INT_MAX);
-         return state.next;
+         *offset = state.next;
+         return VK_SUCCESS;
       } else {
          futex_wait(&pool_state->end, state.end, NULL);
          continue;
@@ -616,39 +631,31 @@ anv_block_pool_alloc_new(struct anv_block_pool *pool,
    }
 }
 
-int32_t
+VkResult
 anv_block_pool_alloc(struct anv_block_pool *pool,
-                     uint32_t block_size, uint32_t *padding)
+                     uint32_t block_size,
+                     int64_t *offset, uint32_t *padding)
 {
-   uint32_t offset;
-
-   offset = anv_block_pool_alloc_new(pool, &pool->state, block_size, padding);
-
-   return offset;
+   return anv_block_pool_alloc_new(pool, &pool->state, block_size, offset, padding);
 }
 
 VkResult
 anv_state_pool_init(struct anv_state_pool *pool,
                     struct anv_device *device,
-                    const char *name,
-                    uint64_t base_address,
-                    int32_t start_offset,
-                    uint32_t block_size)
+                    const struct anv_state_pool_params *params)
 {
-   /* We don't want to ever see signed overflow */
-   assert(start_offset < INT32_MAX - (int32_t)BLOCK_POOL_MEMFD_SIZE);
+   uint32_t initial_size = MAX2(params->block_size * 16,
+                                device->info->mem_alignment);
 
-   uint32_t initial_size = block_size * 16;
-   if (device->info->verx10 >= 125)
-      initial_size = MAX2(initial_size, 2 * 1024 * 1024);
-
-   VkResult result = anv_block_pool_init(&pool->block_pool, device, name,
-                                         base_address + start_offset,
-                                         initial_size);
+   VkResult result = anv_block_pool_init(&pool->block_pool, device,
+                                         params->name,
+                                         params->base_address + params->start_offset,
+                                         initial_size,
+                                         params->max_size);
    if (result != VK_SUCCESS)
       return result;
 
-   pool->start_offset = start_offset;
+   pool->start_offset = params->start_offset;
 
    result = anv_state_table_init(&pool->table, device, 64);
    if (result != VK_SUCCESS) {
@@ -656,8 +663,8 @@ anv_state_pool_init(struct anv_state_pool *pool,
       return result;
    }
 
-   assert(util_is_power_of_two_or_zero(block_size));
-   pool->block_size = block_size;
+   assert(util_is_power_of_two_or_zero(params->block_size));
+   pool->block_size = params->block_size;
    for (unsigned i = 0; i < ANV_STATE_BUCKETS; i++) {
       pool->buckets[i].free_list = ANV_FREE_LIST_EMPTY;
       pool->buckets[i].block.next = 0;
@@ -676,15 +683,15 @@ anv_state_pool_finish(struct anv_state_pool *pool)
    anv_block_pool_finish(&pool->block_pool);
 }
 
-static uint32_t
+static VkResult
 anv_fixed_size_state_pool_alloc_new(struct anv_fixed_size_state_pool *pool,
                                     struct anv_block_pool *block_pool,
                                     uint32_t state_size,
                                     uint32_t block_size,
+                                    int64_t *offset,
                                     uint32_t *padding)
 {
    struct anv_block_state block, old, new;
-   uint32_t offset;
 
    /* We don't always use anv_block_pool_alloc(), which would set *padding to
     * zero for us. So if we have a pointer to padding, we must zero it out
@@ -697,21 +704,25 @@ anv_fixed_size_state_pool_alloc_new(struct anv_fixed_size_state_pool *pool,
     * Instead, we just grab whole (potentially large) blocks.
     */
    if (state_size >= block_size)
-      return anv_block_pool_alloc(block_pool, state_size, padding);
+      return anv_block_pool_alloc(block_pool, state_size, offset, padding);
 
  restart:
    block.u64 = __sync_fetch_and_add(&pool->block.u64, state_size);
 
    if (block.next < block.end) {
-      return block.next;
+      *offset = block.next;
+      return VK_SUCCESS;
    } else if (block.next == block.end) {
-      offset = anv_block_pool_alloc(block_pool, block_size, padding);
-      new.next = offset + state_size;
-      new.end = offset + block_size;
+      VkResult result = anv_block_pool_alloc(block_pool, block_size,
+                                             offset, padding);
+      if (result != VK_SUCCESS)
+         return result;
+      new.next = *offset + state_size;
+      new.end = *offset + block_size;
       old.u64 = __sync_lock_test_and_set(&pool->block.u64, new.u64);
       if (old.next != block.next)
          futex_wake(&pool->block.end, INT_MAX);
-      return offset;
+      return result;
    } else {
       futex_wait(&pool->block.end, block.end, NULL);
       goto restart;
@@ -830,7 +841,7 @@ anv_state_pool_alloc_no_vg(struct anv_state_pool *pool,
 
    struct anv_state *state;
    uint32_t alloc_size = anv_state_pool_get_bucket_size(bucket);
-   int32_t offset;
+   int64_t offset;
 
    /* Try free list first. */
    state = anv_free_list_pop(&pool->buckets[bucket].free_list,
@@ -890,14 +901,19 @@ anv_state_pool_alloc_no_vg(struct anv_state_pool *pool,
    }
 
    uint32_t padding;
-   offset = anv_fixed_size_state_pool_alloc_new(&pool->buckets[bucket],
-                                                &pool->block_pool,
-                                                alloc_size,
-                                                pool->block_size,
-                                                &padding);
+   VkResult result =
+      anv_fixed_size_state_pool_alloc_new(&pool->buckets[bucket],
+                                          &pool->block_pool,
+                                          alloc_size,
+                                          pool->block_size,
+                                          &offset,
+                                          &padding);
+   if (result != VK_SUCCESS)
+      return ANV_STATE_NULL;
+
    /* Every time we allocate a new state, add it to the state pool */
    uint32_t idx = 0;
-   UNUSED VkResult result = anv_state_table_add(&pool->table, &idx, 1);
+   result = anv_state_table_add(&pool->table, &idx, 1);
    assert(result == VK_SUCCESS);
 
    state = anv_state_table_get(&pool->table, idx);
@@ -979,6 +995,7 @@ anv_state_stream_init(struct anv_state_stream *stream,
     */
    stream->next = block_size;
 
+   stream->total_size = 0;
    util_dynarray_init(&stream->all_blocks, NULL);
 
    VG(VALGRIND_CREATE_MEMPOOL(stream, 0, false));
@@ -1021,6 +1038,7 @@ anv_state_stream_alloc(struct anv_state_stream *stream,
       /* Reset back to the start */
       stream->next = offset = 0;
       assert(offset + size <= stream->block.alloc_size);
+      stream->total_size += block_size;
    }
    const bool new_block = stream->next == 0;
 
@@ -1088,15 +1106,11 @@ anv_state_reserved_pool_free(struct anv_state_reserved_pool *pool,
 
 void
 anv_bo_pool_init(struct anv_bo_pool *pool, struct anv_device *device,
-                 const char *name)
+                 const char *name, enum anv_bo_alloc_flags alloc_flags)
 {
    pool->name = name;
    pool->device = device;
-   pool->bo_alloc_flags =
-      ANV_BO_ALLOC_MAPPED |
-      ANV_BO_ALLOC_SNOOPED |
-      ANV_BO_ALLOC_CAPTURE |
-      (device->info->has_local_mem ? ANV_BO_ALLOC_WRITE_COMBINE : 0);
+   pool->bo_alloc_flags = alloc_flags;
 
    for (unsigned i = 0; i < ARRAY_SIZE(pool->free_list); i++) {
       util_sparse_array_free_list_init(&pool->free_list[i],
@@ -1251,7 +1265,8 @@ anv_scratch_pool_alloc(struct anv_device *device, struct anv_scratch_pool *pool,
     * so nothing will ever touch the top page.
     */
    const enum anv_bo_alloc_flags alloc_flags =
-      devinfo->verx10 < 125 ? ANV_BO_ALLOC_32BIT_ADDRESS : 0;
+      ANV_BO_ALLOC_INTERNAL |
+      (devinfo->verx10 < 125 ? ANV_BO_ALLOC_32BIT_ADDRESS : 0);
    VkResult result = anv_device_alloc_bo(device, "scratch", size,
                                          alloc_flags,
                                          0 /* explicit_address */,
@@ -1336,56 +1351,22 @@ anv_bo_cache_finish(struct anv_bo_cache *cache)
    pthread_mutex_destroy(&cache->mutex);
 }
 
-#define ANV_BO_CACHE_SUPPORTED_FLAGS \
-   (EXEC_OBJECT_WRITE | \
-    EXEC_OBJECT_ASYNC | \
-    EXEC_OBJECT_SUPPORTS_48B_ADDRESS | \
-    EXEC_OBJECT_PINNED | \
-    EXEC_OBJECT_CAPTURE)
-
-static uint32_t
-anv_bo_alloc_flags_to_bo_flags(struct anv_device *device,
-                               enum anv_bo_alloc_flags alloc_flags)
-{
-   struct anv_physical_device *pdevice = device->physical;
-
-   uint64_t bo_flags = EXEC_OBJECT_PINNED;
-
-   if (!(alloc_flags & ANV_BO_ALLOC_32BIT_ADDRESS))
-      bo_flags |= EXEC_OBJECT_SUPPORTS_48B_ADDRESS;
-
-   if (((alloc_flags & ANV_BO_ALLOC_CAPTURE) ||
-        INTEL_DEBUG(DEBUG_CAPTURE_ALL)) &&
-       pdevice->has_exec_capture)
-      bo_flags |= EXEC_OBJECT_CAPTURE;
-
-   if (alloc_flags & ANV_BO_ALLOC_IMPLICIT_WRITE) {
-      assert(alloc_flags & ANV_BO_ALLOC_IMPLICIT_SYNC);
-      bo_flags |= EXEC_OBJECT_WRITE;
-   }
-
-   if (!(alloc_flags & ANV_BO_ALLOC_IMPLICIT_SYNC) && pdevice->has_exec_async)
-      bo_flags |= EXEC_OBJECT_ASYNC;
-
-   return bo_flags;
-}
-
 static void
 anv_bo_unmap_close(struct anv_device *device, struct anv_bo *bo)
 {
    if (bo->map && !bo->from_host_ptr)
-      anv_device_unmap_bo(device, bo, bo->map, bo->size);
+      anv_device_unmap_bo(device, bo, bo->map, bo->size, false /* replace */);
 
    assert(bo->gem_handle != 0);
-   device->kmd_backend->gem_close(device, bo->gem_handle);
+   device->kmd_backend->gem_close(device, bo);
 }
 
 static void
 anv_bo_vma_free(struct anv_device *device, struct anv_bo *bo)
 {
-   if (bo->offset != 0 && !bo->has_fixed_address) {
+   if (bo->offset != 0 && !(bo->alloc_flags & ANV_BO_ALLOC_FIXED_ADDRESS)) {
       assert(bo->vma_heap != NULL);
-      anv_vma_free(device, bo->vma_heap, bo->offset, bo->size + bo->_ccs_size);
+      anv_vma_free(device, bo->vma_heap, bo->offset, bo->size);
    }
    bo->vma_heap = NULL;
 }
@@ -1394,7 +1375,7 @@ static void
 anv_bo_finish(struct anv_device *device, struct anv_bo *bo)
 {
    /* Not releasing vma in case unbind fails */
-   if (device->kmd_backend->gem_vm_unbind(device, bo) == 0)
+   if (device->kmd_backend->vm_unbind_bo(device, bo) == VK_SUCCESS)
       anv_bo_vma_free(device, bo);
 
    anv_bo_unmap_close(device, bo);
@@ -1411,17 +1392,30 @@ anv_bo_vma_alloc_or_close(struct anv_device *device,
 
    uint32_t align = device->physical->info.mem_alignment;
 
-   /* Gen12 CCS surface addresses need to be 64K aligned. */
-   if (device->info->ver >= 12 && (alloc_flags & ANV_BO_ALLOC_IMPLICIT_CCS))
+   /* If it's big enough to store a tiled resource, we need 64K alignment */
+   if (bo->size >= 64 * 1024)
       align = MAX2(64 * 1024, align);
 
+   /* If we're using the AUX map, make sure we follow the required
+    * alignment.
+    */
+   if (alloc_flags & ANV_BO_ALLOC_AUX_TT_ALIGNED)
+      align = MAX2(intel_aux_map_get_alignment(device->aux_map_ctx), align);
+
+   /* Opportunistically align addresses to 2Mb when above 1Mb. We do this
+    * because this gives an opportunity for the kernel to use Transparent Huge
+    * Pages (the 2MB page table layout) for faster memory access.
+    *
+    * Only available on ICL+.
+    */
+   if (device->info->ver >= 11 && bo->size >= 1 * 1024 * 1024)
+      align = MAX2(2 * 1024 * 1024, align);
+
    if (alloc_flags & ANV_BO_ALLOC_FIXED_ADDRESS) {
-      bo->has_fixed_address = true;
-      bo->offset = explicit_address;
+      bo->offset = intel_canonical_address(explicit_address);
    } else {
-      bo->offset = anv_vma_alloc(device, bo->size + bo->_ccs_size,
-                                 align, alloc_flags, explicit_address,
-                                 &bo->vma_heap);
+      bo->offset = anv_vma_alloc(device, bo->size, align, alloc_flags,
+                                 explicit_address, &bo->vma_heap);
       if (bo->offset == 0) {
          anv_bo_unmap_close(device, bo);
          return vk_errorf(device, VK_ERROR_OUT_OF_DEVICE_MEMORY,
@@ -1432,6 +1426,40 @@ anv_bo_vma_alloc_or_close(struct anv_device *device,
    return VK_SUCCESS;
 }
 
+enum intel_device_info_mmap_mode
+anv_bo_get_mmap_mode(struct anv_device *device, struct anv_bo *bo)
+{
+   enum anv_bo_alloc_flags alloc_flags = bo->alloc_flags;
+
+   if (device->info->has_set_pat_uapi)
+      return anv_device_get_pat_entry(device, alloc_flags)->mmap;
+
+   if (anv_physical_device_has_vram(device->physical)) {
+      if ((alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM) ||
+          (alloc_flags & ANV_BO_ALLOC_IMPORTED))
+         return INTEL_DEVICE_INFO_MMAP_MODE_WB;
+
+      return INTEL_DEVICE_INFO_MMAP_MODE_WC;
+   }
+
+   /* gfx9 atom */
+   if (!device->info->has_llc) {
+      /* user wants a cached and coherent memory but to achieve it without
+       * LLC in older platforms DRM_IOCTL_I915_GEM_SET_CACHING needs to be
+       * supported and set.
+       */
+      if (alloc_flags & ANV_BO_ALLOC_HOST_CACHED)
+         return INTEL_DEVICE_INFO_MMAP_MODE_WB;
+
+      return INTEL_DEVICE_INFO_MMAP_MODE_WC;
+   }
+
+   if (alloc_flags & (ANV_BO_ALLOC_SCANOUT | ANV_BO_ALLOC_EXTERNAL))
+      return INTEL_DEVICE_INFO_MMAP_MODE_WC;
+
+   return INTEL_DEVICE_INFO_MMAP_MODE_WB;
+}
+
 VkResult
 anv_device_alloc_bo(struct anv_device *device,
                     const char *name,
@@ -1440,27 +1468,34 @@ anv_device_alloc_bo(struct anv_device *device,
                     uint64_t explicit_address,
                     struct anv_bo **bo_out)
 {
-   if (!device->physical->has_implicit_ccs)
-      assert(!(alloc_flags & ANV_BO_ALLOC_IMPLICIT_CCS));
+   /* bo that needs CPU access needs to be HOST_CACHED, HOST_COHERENT or both */
+   assert((alloc_flags & ANV_BO_ALLOC_MAPPED) == 0 ||
+          (alloc_flags & (ANV_BO_ALLOC_HOST_CACHED | ANV_BO_ALLOC_HOST_COHERENT)));
+
+   /* KMD requires a valid PAT index, so setting HOST_COHERENT/WC to bos that
+    * don't need CPU access
+    */
+   if ((alloc_flags & ANV_BO_ALLOC_MAPPED) == 0)
+      alloc_flags |= ANV_BO_ALLOC_HOST_COHERENT;
+
+   /* In platforms with LLC we can promote all bos to cached+coherent for free */
+   const enum anv_bo_alloc_flags not_allowed_promotion = ANV_BO_ALLOC_SCANOUT |
+                                                         ANV_BO_ALLOC_EXTERNAL |
+                                                         ANV_BO_ALLOC_PROTECTED;
+   if (device->info->has_llc && ((alloc_flags & not_allowed_promotion) == 0))
+      alloc_flags |= ANV_BO_ALLOC_HOST_COHERENT;
 
    const uint32_t bo_flags =
-      anv_bo_alloc_flags_to_bo_flags(device, alloc_flags);
-   assert(bo_flags == (bo_flags & ANV_BO_CACHE_SUPPORTED_FLAGS));
+         device->kmd_backend->bo_alloc_flags_to_bo_flags(device, alloc_flags);
 
-   /* The kernel is going to give us whole pages anyway */
+   /* The kernel is going to give us whole pages anyway. */
    size = align64(size, 4096);
 
-   uint64_t ccs_size = 0;
-   if (device->info->has_aux_map && (alloc_flags & ANV_BO_ALLOC_IMPLICIT_CCS)) {
-      /* Align the size up to the next multiple of 64K so we don't have any
-       * AUX-TT entries pointing from a 64K page to itself.
-       */
-      size = align64(size, 64 * 1024);
-
-      /* See anv_bo::_ccs_size */
-      uint64_t aux_ratio =
-         intel_aux_get_main_to_aux_ratio(device->aux_map_ctx);
-      ccs_size = align64(DIV_ROUND_UP(size, aux_ratio), 4096);
+   const uint64_t ccs_offset = size;
+   if (alloc_flags & ANV_BO_ALLOC_AUX_CCS) {
+      assert(device->info->has_aux_map);
+      size += DIV_ROUND_UP(size, intel_aux_get_main_to_aux_ratio(device->aux_map_ctx));
+      size = align64(size, 4096);
    }
 
    const struct intel_memory_class_instance *regions[2];
@@ -1492,8 +1527,7 @@ anv_device_alloc_bo(struct anv_device *device,
 
    uint64_t actual_size;
    uint32_t gem_handle = device->kmd_backend->gem_create(device, regions,
-                                                         nregions,
-                                                         size + ccs_size,
+                                                         nregions, size,
                                                          alloc_flags,
                                                          &actual_size);
    if (gem_handle == 0)
@@ -1505,45 +1539,18 @@ anv_device_alloc_bo(struct anv_device *device,
       .refcount = 1,
       .offset = -1,
       .size = size,
-      ._ccs_size = ccs_size,
+      .ccs_offset = ccs_offset,
       .actual_size = actual_size,
       .flags = bo_flags,
-      .is_external = (alloc_flags & ANV_BO_ALLOC_EXTERNAL),
-      .has_client_visible_address =
-         (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) != 0,
-      .has_implicit_ccs = ccs_size > 0 ||
-                          (device->info->verx10 >= 125 && !(alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM)),
-      .map_wc = alloc_flags & ANV_BO_ALLOC_WRITE_COMBINE,
-      .vram_only = nregions == 1 &&
-                   regions[0] == device->physical->vram_non_mappable.region,
+      .alloc_flags = alloc_flags,
    };
 
    if (alloc_flags & ANV_BO_ALLOC_MAPPED) {
       VkResult result = anv_device_map_bo(device, &new_bo, 0, size,
-                                          0 /* propertyFlags */, &new_bo.map);
+                                          NULL, &new_bo.map);
       if (unlikely(result != VK_SUCCESS)) {
-         device->kmd_backend->gem_close(device, new_bo.gem_handle);
+         device->kmd_backend->gem_close(device, &new_bo);
          return result;
-      }
-   }
-
-   if (alloc_flags & ANV_BO_ALLOC_SNOOPED) {
-      assert(alloc_flags & ANV_BO_ALLOC_MAPPED);
-      /* We don't want to change these defaults if it's going to be shared
-       * with another process.
-       */
-      assert(!(alloc_flags & ANV_BO_ALLOC_EXTERNAL));
-
-      /* Regular objects are created I915_CACHING_CACHED on LLC platforms and
-       * I915_CACHING_NONE on non-LLC platforms.  For many internal state
-       * objects, we'd rather take the snooping overhead than risk forgetting
-       * a CLFLUSH somewhere.  Userptr objects are always created as
-       * I915_CACHING_CACHED, which on non-LLC means snooped so there's no
-       * need to do this there.
-       */
-      if (device->info->has_caching_uapi && !device->info->has_llc) {
-         anv_gem_set_caching(device, new_bo.gem_handle,
-                             I915_CACHING_CACHED);
       }
    }
 
@@ -1553,18 +1560,11 @@ anv_device_alloc_bo(struct anv_device *device,
    if (result != VK_SUCCESS)
       return result;
 
-   if (device->kmd_backend->gem_vm_bind(device, &new_bo)) {
+   result = device->kmd_backend->vm_bind_bo(device, &new_bo);
+   if (result != VK_SUCCESS) {
       anv_bo_vma_free(device, &new_bo);
       anv_bo_unmap_close(device, &new_bo);
-      return vk_errorf(device, VK_ERROR_UNKNOWN, "vm bind failed");
-   }
-
-   if (new_bo._ccs_size > 0) {
-      assert(device->info->has_aux_map);
-      intel_aux_map_add_mapping(device->aux_map_ctx,
-                                intel_canonical_address(new_bo.offset),
-                                intel_canonical_address(new_bo.offset + new_bo.size),
-                                new_bo.size, 0 /* format_bits */);
+      return result;
    }
 
    assert(new_bo.gem_handle);
@@ -1577,6 +1577,8 @@ anv_device_alloc_bo(struct anv_device *device,
 
    *bo_out = bo;
 
+   ANV_RMV(bo_allocate, device, bo);
+
    return VK_SUCCESS;
 }
 
@@ -1585,17 +1587,20 @@ anv_device_map_bo(struct anv_device *device,
                   struct anv_bo *bo,
                   uint64_t offset,
                   size_t size,
-                  VkMemoryPropertyFlags property_flags,
+                  void *placed_addr,
                   void **map_out)
 {
    assert(!bo->from_host_ptr);
    assert(size > 0);
 
-   void *map = anv_gem_mmap(device, bo, offset, size, property_flags);
+   void *map = device->kmd_backend->gem_mmap(device, bo, offset, size, placed_addr);
    if (unlikely(map == MAP_FAILED))
       return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED, "mmap failed: %m");
 
+   assert(placed_addr == NULL || map == placed_addr);
+
    assert(map != NULL);
+   VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
 
    if (map_out)
       *map_out = map;
@@ -1603,14 +1608,26 @@ anv_device_map_bo(struct anv_device *device,
    return VK_SUCCESS;
 }
 
-void
+VkResult
 anv_device_unmap_bo(struct anv_device *device,
                     struct anv_bo *bo,
-                    void *map, size_t map_size)
+                    void *map, size_t map_size,
+                    bool replace)
 {
    assert(!bo->from_host_ptr);
 
-   anv_gem_munmap(device, map, map_size);
+   if (replace) {
+      map = mmap(map, map_size, PROT_NONE,
+                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+      if (map == MAP_FAILED) {
+         return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+                          "Failed to map over original mapping");
+      }
+   } else {
+      VG(VALGRIND_FREELIKE_BLOCK(map, 0));
+      munmap(map, map_size);
+   }
+   return VK_SUCCESS;
 }
 
 VkResult
@@ -1621,24 +1638,35 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
                                    struct anv_bo **bo_out)
 {
    assert(!(alloc_flags & (ANV_BO_ALLOC_MAPPED |
-                           ANV_BO_ALLOC_SNOOPED |
+                           ANV_BO_ALLOC_HOST_CACHED |
+                           ANV_BO_ALLOC_HOST_COHERENT |
+                           ANV_BO_ALLOC_AUX_CCS |
+                           ANV_BO_ALLOC_PROTECTED |
                            ANV_BO_ALLOC_FIXED_ADDRESS)));
-
-   assert(!(alloc_flags & ANV_BO_ALLOC_IMPLICIT_CCS) ||
-          (device->physical->has_implicit_ccs && device->info->has_aux_map));
+   assert(alloc_flags & ANV_BO_ALLOC_EXTERNAL);
 
    struct anv_bo_cache *cache = &device->bo_cache;
    const uint32_t bo_flags =
-      anv_bo_alloc_flags_to_bo_flags(device, alloc_flags);
-   assert(bo_flags == (bo_flags & ANV_BO_CACHE_SUPPORTED_FLAGS));
+         device->kmd_backend->bo_alloc_flags_to_bo_flags(device, alloc_flags);
 
-   uint32_t gem_handle = anv_gem_userptr(device, host_ptr, size);
+   uint32_t gem_handle = device->kmd_backend->gem_create_userptr(device, host_ptr, size);
    if (!gem_handle)
       return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
 
    pthread_mutex_lock(&cache->mutex);
 
-   struct anv_bo *bo = anv_device_lookup_bo(device, gem_handle);
+   struct anv_bo *bo = NULL;
+   if (device->info->kmd_type == INTEL_KMD_TYPE_XE) {
+      bo = vk_zalloc(&device->vk.alloc, sizeof(*bo), 8,
+                     VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      if (!bo) {
+         pthread_mutex_unlock(&cache->mutex);
+         return VK_ERROR_OUT_OF_HOST_MEMORY;
+      }
+   } else {
+      bo = anv_device_lookup_bo(device, gem_handle);
+   }
+
    if (bo->refcount > 0) {
       /* VK_EXT_external_memory_host doesn't require handling importing the
        * same pointer twice at the same time, but we don't get in the way.  If
@@ -1651,8 +1679,8 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
                           "same host pointer imported two different ways");
       }
 
-      if (bo->has_client_visible_address !=
-          ((alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) != 0)) {
+      if ((bo->alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) !=
+          (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS)) {
          pthread_mutex_unlock(&cache->mutex);
          return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
                           "The same BO was imported with and without buffer "
@@ -1668,6 +1696,7 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
 
       __sync_fetch_and_add(&bo->refcount, 1);
    } else {
+      alloc_flags |= ANV_BO_ALLOC_IMPORTED;
       struct anv_bo new_bo = {
          .name = "host-ptr",
          .gem_handle = gem_handle,
@@ -1677,10 +1706,8 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
          .actual_size = size,
          .map = host_ptr,
          .flags = bo_flags,
-         .is_external = true,
+         .alloc_flags = alloc_flags,
          .from_host_ptr = true,
-         .has_client_visible_address =
-            (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) != 0,
       };
 
       VkResult result = anv_bo_vma_alloc_or_close(device, &new_bo,
@@ -1691,7 +1718,16 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
          return result;
       }
 
+      result = device->kmd_backend->vm_bind_bo(device, &new_bo);
+      if (result != VK_SUCCESS) {
+         anv_bo_vma_free(device, &new_bo);
+         pthread_mutex_unlock(&cache->mutex);
+         return result;
+      }
+
       *bo = new_bo;
+
+      ANV_RMV(bo_allocate, device, bo);
    }
 
    pthread_mutex_unlock(&cache->mutex);
@@ -1708,16 +1744,12 @@ anv_device_import_bo(struct anv_device *device,
                      struct anv_bo **bo_out)
 {
    assert(!(alloc_flags & (ANV_BO_ALLOC_MAPPED |
-                           ANV_BO_ALLOC_SNOOPED |
+                           ANV_BO_ALLOC_HOST_CACHED |
+                           ANV_BO_ALLOC_HOST_COHERENT |
                            ANV_BO_ALLOC_FIXED_ADDRESS)));
-
-   assert(!(alloc_flags & ANV_BO_ALLOC_IMPLICIT_CCS) ||
-          (device->physical->has_implicit_ccs && device->info->has_aux_map));
+   assert(alloc_flags & ANV_BO_ALLOC_EXTERNAL);
 
    struct anv_bo_cache *cache = &device->bo_cache;
-   const uint32_t bo_flags =
-      anv_bo_alloc_flags_to_bo_flags(device, alloc_flags);
-   assert(bo_flags == (bo_flags & ANV_BO_CACHE_SUPPORTED_FLAGS));
 
    pthread_mutex_lock(&cache->mutex);
 
@@ -1728,48 +1760,19 @@ anv_device_import_bo(struct anv_device *device,
    }
 
    struct anv_bo *bo = anv_device_lookup_bo(device, gem_handle);
+
+   uint32_t bo_flags;
+   VkResult result = anv_gem_import_bo_alloc_flags_to_bo_flags(device, bo,
+                                                               alloc_flags,
+                                                               &bo_flags);
+   if (result != VK_SUCCESS) {
+      pthread_mutex_unlock(&cache->mutex);
+      return result;
+   }
+
    if (bo->refcount > 0) {
-      /* We have to be careful how we combine flags so that it makes sense.
-       * Really, though, if we get to this case and it actually matters, the
-       * client has imported a BO twice in different ways and they get what
-       * they have coming.
-       */
-      uint64_t new_flags = 0;
-      new_flags |= (bo->flags | bo_flags) & EXEC_OBJECT_WRITE;
-      new_flags |= (bo->flags & bo_flags) & EXEC_OBJECT_ASYNC;
-      new_flags |= (bo->flags & bo_flags) & EXEC_OBJECT_SUPPORTS_48B_ADDRESS;
-      new_flags |= (bo->flags | bo_flags) & EXEC_OBJECT_PINNED;
-      new_flags |= (bo->flags | bo_flags) & EXEC_OBJECT_CAPTURE;
-
-      /* It's theoretically possible for a BO to get imported such that it's
-       * both pinned and not pinned.  The only way this can happen is if it
-       * gets imported as both a semaphore and a memory object and that would
-       * be an application error.  Just fail out in that case.
-       */
-      if ((bo->flags & EXEC_OBJECT_PINNED) !=
-          (bo_flags & EXEC_OBJECT_PINNED)) {
-         pthread_mutex_unlock(&cache->mutex);
-         return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
-                          "The same BO was imported two different ways");
-      }
-
-      /* It's also theoretically possible that someone could export a BO from
-       * one heap and import it into another or to import the same BO into two
-       * different heaps.  If this happens, we could potentially end up both
-       * allowing and disallowing 48-bit addresses.  There's not much we can
-       * do about it if we're pinning so we just throw an error and hope no
-       * app is actually that stupid.
-       */
-      if ((new_flags & EXEC_OBJECT_PINNED) &&
-          (bo->flags & EXEC_OBJECT_SUPPORTS_48B_ADDRESS) !=
-          (bo_flags & EXEC_OBJECT_SUPPORTS_48B_ADDRESS)) {
-         pthread_mutex_unlock(&cache->mutex);
-         return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
-                          "The same BO was imported on two different heaps");
-      }
-
-      if (bo->has_client_visible_address !=
-          ((alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) != 0)) {
+      if ((bo->alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) !=
+          (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS)) {
          pthread_mutex_unlock(&cache->mutex);
          return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
                           "The same BO was imported with and without buffer "
@@ -1783,31 +1786,26 @@ anv_device_import_bo(struct anv_device *device,
                           "addresses");
       }
 
-      bo->flags = new_flags;
-
       __sync_fetch_and_add(&bo->refcount, 1);
    } else {
-      off_t size = lseek(fd, 0, SEEK_END);
-      if (size == (off_t)-1) {
-         device->kmd_backend->gem_close(device, gem_handle);
-         pthread_mutex_unlock(&cache->mutex);
-         return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
-      }
-
+      alloc_flags |= ANV_BO_ALLOC_IMPORTED;
       struct anv_bo new_bo = {
          .name = "imported",
          .gem_handle = gem_handle,
          .refcount = 1,
          .offset = -1,
-         .size = size,
-         .actual_size = size,
-         .flags = bo_flags,
-         .is_external = true,
-         .has_client_visible_address =
-            (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) != 0,
+         .alloc_flags = alloc_flags,
       };
 
-      assert(new_bo._ccs_size == 0);
+      off_t size = lseek(fd, 0, SEEK_END);
+      if (size == (off_t)-1) {
+         device->kmd_backend->gem_close(device, &new_bo);
+         pthread_mutex_unlock(&cache->mutex);
+         return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
+      }
+      new_bo.size = size;
+      new_bo.actual_size = size;
+
       VkResult result = anv_bo_vma_alloc_or_close(device, &new_bo,
                                                   alloc_flags,
                                                   client_address);
@@ -1816,14 +1814,19 @@ anv_device_import_bo(struct anv_device *device,
          return result;
       }
 
-      if (device->kmd_backend->gem_vm_bind(device, &new_bo)) {
+      result = device->kmd_backend->vm_bind_bo(device, &new_bo);
+      if (result != VK_SUCCESS) {
          anv_bo_vma_free(device, &new_bo);
          pthread_mutex_unlock(&cache->mutex);
-         return vk_errorf(device, VK_ERROR_UNKNOWN, "vm bind failed");
+         return result;
       }
 
       *bo = new_bo;
+
+      ANV_RMV(bo_allocate, device, bo);
    }
+
+   bo->flags = bo_flags;
 
    pthread_mutex_unlock(&cache->mutex);
    *bo_out = bo;
@@ -1841,7 +1844,7 @@ anv_device_export_bo(struct anv_device *device,
     * to export it.  This is done based on external options passed into
     * anv_AllocateMemory.
     */
-   assert(bo->is_external);
+   assert(anv_bo_is_external(bo));
 
    int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
    if (fd < 0)
@@ -1907,7 +1910,10 @@ anv_device_release_bo(struct anv_device *device,
                       struct anv_bo *bo)
 {
    struct anv_bo_cache *cache = &device->bo_cache;
-   assert(anv_device_lookup_bo(device, bo->gem_handle) == bo);
+   const bool bo_is_xe_userptr = device->info->kmd_type == INTEL_KMD_TYPE_XE &&
+                                 bo->from_host_ptr;
+   assert(bo_is_xe_userptr ||
+          anv_device_lookup_bo(device, bo->gem_handle) == bo);
 
    /* Try to decrement the counter but don't go below one.  If this succeeds
     * then the refcount has been decremented and we are not the last
@@ -1915,6 +1921,8 @@ anv_device_release_bo(struct anv_device *device,
     */
    if (atomic_dec_not_one(&bo->refcount))
       return;
+
+   ANV_RMV(bo_destroy, device, bo);
 
    pthread_mutex_lock(&cache->mutex);
 
@@ -1930,15 +1938,6 @@ anv_device_release_bo(struct anv_device *device,
    }
    assert(bo->refcount == 0);
 
-   if (bo->_ccs_size > 0) {
-      assert(device->physical->has_implicit_ccs);
-      assert(device->info->has_aux_map);
-      assert(bo->has_implicit_ccs);
-      intel_aux_map_unmap_range(device->aux_map_ctx,
-                                intel_canonical_address(bo->offset),
-                                bo->size);
-   }
-
    /* Memset the BO just in case.  The refcount being zero should be enough to
     * prevent someone from assuming the data is valid but it's safer to just
     * stomp to zero just in case.  We explicitly do this *before* we actually
@@ -1948,7 +1947,10 @@ anv_device_release_bo(struct anv_device *device,
     */
    struct anv_bo old_bo = *bo;
 
-   memset(bo, 0, sizeof(*bo));
+   if (bo_is_xe_userptr)
+      vk_free(&device->vk.alloc, bo);
+   else
+      memset(bo, 0, sizeof(*bo));
 
    anv_bo_finish(device, &old_bo);
 

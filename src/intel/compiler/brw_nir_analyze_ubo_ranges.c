@@ -141,9 +141,9 @@ analyze_ubos_block(struct ubo_analysis_state *state, nir_block *block)
          continue; /* Not a uniform or UBO intrinsic */
       }
 
-      if (nir_src_is_const(intrin->src[0]) &&
+      if (brw_nir_ubo_surface_index_is_pushable(intrin->src[0]) &&
           nir_src_is_const(intrin->src[1])) {
-         const int block = nir_src_as_uint(intrin->src[0]);
+         const int block = brw_nir_ubo_surface_index_get_push_block(intrin->src[0]);
          const unsigned byte_offset = nir_src_as_uint(intrin->src[1]);
          const int offset = byte_offset / 32;
 
@@ -158,7 +158,7 @@ analyze_ubos_block(struct ubo_analysis_state *state, nir_block *block)
 
          /* The value might span multiple 32-byte chunks. */
          const int bytes = nir_intrinsic_dest_components(intrin) *
-                           (nir_dest_bit_size(intrin->dest) / 8);
+                           (intrin->def.bit_size / 8);
          const int start = ROUND_DOWN_TO(byte_offset, 32);
          const int end = ALIGN(byte_offset + bytes, 32);
          const int chunks = (end - start) / 32;
@@ -189,7 +189,6 @@ print_ubo_entry(FILE *file,
 void
 brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
                            nir_shader *nir,
-                           const struct brw_vs_prog_key *vs_key,
                            struct brw_ubo_range out_ranges[4])
 {
    void *mem_ctx = ralloc_context(NULL);
@@ -200,29 +199,16 @@ brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
          _mesa_hash_table_create(mem_ctx, NULL, _mesa_key_pointer_equal),
    };
 
-   switch (nir->info.stage) {
-   case MESA_SHADER_VERTEX:
-      if (vs_key && vs_key->nr_userclip_plane_consts > 0)
-         state.uses_regular_uniforms = true;
-      break;
-
-   case MESA_SHADER_COMPUTE:
-      /* Compute shaders use push constants to get the subgroup ID so it's
-       * best to just assume some system values are pushed.
-       */
+   /* Compute shaders use push constants to get the subgroup ID so it's
+    * best to just assume some system values are pushed.
+    */
+   if (nir->info.stage == MESA_SHADER_COMPUTE)
       state.uses_regular_uniforms = true;
-      break;
-
-   default:
-      break;
-   }
 
    /* Walk the IR, recording how many times each UBO block/offset is used. */
-   nir_foreach_function(function, nir) {
-      if (function->impl) {
-         nir_foreach_block(block, function->impl) {
-            analyze_ubos_block(&state, block);
-         }
+   nir_foreach_function_impl(impl, nir) {
+      nir_foreach_block(block, impl) {
+         analyze_ubos_block(&state, block);
       }
    }
 
@@ -314,8 +300,7 @@ brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
     * unfortunately can't truncate it here, because we don't know what
     * the backend is planning to do with regular uniforms.
     */
-   const int max_ubos = (compiler->constant_buffer_0_is_relative ? 3 : 4) -
-                        state.uses_regular_uniforms;
+   const int max_ubos = 4 - state.uses_regular_uniforms;
    nr_entries = MIN2(nr_entries, max_ubos);
 
    for (int i = 0; i < nr_entries; i++) {

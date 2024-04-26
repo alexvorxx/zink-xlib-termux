@@ -1,26 +1,7 @@
 /*
  * Copyright 2018 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 /* This file implements tests on the si_clearbuffer function. */
@@ -45,7 +26,8 @@ void si_test_dma_perf(struct si_screen *sscreen)
    struct si_context *sctx = (struct si_context *)ctx;
    const uint32_t clear_value = 0x12345678;
    static const unsigned cs_dwords_per_thread_list[] = {64, 32, 16, 8, 4, 2, 1};
-   static const unsigned cs_waves_per_sh_list[] = {0, 4, 8, 16};
+   /* The list of per-SA wave limits to test. */
+   static const unsigned cs_waves_per_sh_list[] = {0, 8};
 
 #define NUM_SHADERS ARRAY_SIZE(cs_dwords_per_thread_list)
 #define NUM_METHODS (3 + 3 * NUM_SHADERS * ARRAY_SIZE(cs_waves_per_sh_list))
@@ -138,7 +120,7 @@ void si_test_dma_perf(struct si_screen *sscreen)
 
          void *compute_shader = NULL;
          if (test_cs) {
-            compute_shader = si_create_dma_compute_shader(ctx, cs_dwords_per_thread,
+            compute_shader = si_create_dma_compute_shader(sctx, cs_dwords_per_thread,
                                               cache_policy == L2_STREAM, is_copy);
          }
 
@@ -172,7 +154,7 @@ void si_test_dma_perf(struct si_screen *sscreen)
             sctx->flags |= SI_CONTEXT_CS_PARTIAL_FLUSH |
                            SI_CONTEXT_FLUSH_AND_INV_CB |
                            SI_CONTEXT_FLUSH_AND_INV_DB;
-            sctx->emit_cache_flush(sctx, &sctx->gfx_cs);
+            si_emit_cache_flush_direct(sctx);
 
             struct pipe_query *q = ctx->create_query(ctx, query_type, 0);
             ctx->begin_query(ctx, q);
@@ -236,7 +218,7 @@ void si_test_dma_perf(struct si_screen *sscreen)
                sctx->flags |= SI_CONTEXT_INV_VCACHE |
                               (cache_policy == L2_LRU ? 0 : SI_CONTEXT_INV_L2) |
                               SI_CONTEXT_CS_PARTIAL_FLUSH;
-               sctx->emit_cache_flush(sctx, &sctx->gfx_cs);
+               si_emit_cache_flush_direct(sctx);
             }
 
             ctx->end_query(ctx, q);

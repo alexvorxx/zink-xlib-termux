@@ -44,12 +44,11 @@ libpanvk_files = files(
   'panvk_mempool.c',
   'panvk_pass.c',
   'panvk_pipeline.c',
-  'panvk_pipeline_cache.c',
   'panvk_private.h',
   'panvk_query.c',
   'panvk_shader.c',
   'panvk_wsi.c',
-) + [vk_cmd_enqueue_entrypoints[0], vk_common_entrypoints[0]]
+)
 
 panvk_deps = []
 panvk_flags = []
@@ -76,9 +75,6 @@ foreach arch : ['6', '7']
     include_directories : [
       inc_include,
       inc_src,
-      inc_compiler,
-      inc_gallium, # XXX: util/format/u_formats.h
-      inc_gallium_aux, # XXX: renderonly
       inc_panfrost,
     ],
     dependencies : [
@@ -99,15 +95,18 @@ if with_platform_wayland
   libpanvk_files += [wayland_drm_client_protocol_h, wayland_drm_protocol_c]
 endif
 
+if with_platform_android
+  panvk_deps += [dep_android]
+  panvk_flags += '-DVK_USE_PLATFORM_ANDROID_KHR'
+  libpanvk_files += files('panvk_android.c')
+endif
+
 libvulkan_panfrost = shared_library(
   'vulkan_panfrost',
   [libpanvk_files, panvk_entrypoints],
   include_directories : [
     inc_include,
     inc_src,
-    inc_compiler,
-    inc_gallium, # XXX: util/format/u_formats.h
-    inc_gallium_aux, # XXX: renderonly
     inc_panfrost,
   ],
   link_whole : [panvk_per_arch_libs],
@@ -145,13 +144,14 @@ panfrost_icd = custom_target(
   output : 'panfrost_icd.@0@.json'.format(host_machine.cpu()),
   command : [
     prog_python, '@INPUT0@',
-    '--api-version', '1.1', '--xml', '@INPUT1@',
+    '--api-version', '1.0', '--xml', '@INPUT1@',
     '--lib-path', join_paths(get_option('prefix'), get_option('libdir'),
                              'libvulkan_panfrost.so'),
     '--out', '@OUTPUT@',
   ],
   build_by_default : true,
   install_dir : with_vulkan_icd_dir,
+  install_tag : 'runtime',
   install : true,
 )
 
@@ -162,7 +162,7 @@ _dev_icd = custom_target(
   output : _dev_icdname,
   command : [
     prog_python, '@INPUT0@',
-    '--api-version', '1.1', '--xml', '@INPUT1@',
+    '--api-version', '1.0', '--xml', '@INPUT1@',
     '--lib-path', meson.current_build_dir() / 'libvulkan_panfrost.so',
     '--out', '@OUTPUT@',
   ],

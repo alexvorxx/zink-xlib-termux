@@ -36,6 +36,7 @@
 #include <drm-uapi/i915_drm.h>
 
 #include "common/intel_gem.h"
+#include "common/i915/intel_gem.h"
 
 #include "dev/intel_debug.h"
 #include "dev/intel_device_info.h"
@@ -279,18 +280,19 @@ i915_query_perf_config_data(struct intel_perf_config *perf,
 {
    char data[sizeof(struct drm_i915_query_perf_config) +
              sizeof(struct drm_i915_perf_oa_config)] = {};
-   struct drm_i915_query_perf_config *query = (void *)data;
+   struct drm_i915_query_perf_config *i915_query = (void *)data;
+   struct drm_i915_perf_oa_config *i915_config = (void *)data + sizeof(*i915_query);
 
-   memcpy(query->uuid, guid, sizeof(query->uuid));
-   memcpy(query->data, config, sizeof(*config));
+   memcpy(i915_query->uuid, guid, sizeof(i915_query->uuid));
+   memcpy(i915_config, config, sizeof(*config));
 
    int32_t item_length = sizeof(data);
    if (intel_i915_query_flags(fd, DRM_I915_QUERY_PERF_CONFIG,
                               DRM_I915_QUERY_PERF_CONFIG_DATA_FOR_UUID,
-                              query, &item_length))
+                              i915_query, &item_length))
       return false;
 
-   memcpy(config, query->data, sizeof(*config));
+   memcpy(config, i915_config, sizeof(*config));
 
    return true;
 }
@@ -480,6 +482,7 @@ get_register_queries_function(const struct intel_device_info *devinfo)
    case INTEL_PLATFORM_DG1:
       return intel_oa_register_queries_dg1;
    case INTEL_PLATFORM_ADL:
+   case INTEL_PLATFORM_RPL:
       return intel_oa_register_queries_adl;
    case INTEL_PLATFORM_DG2_G10:
       return intel_oa_register_queries_acmgt3;
@@ -487,8 +490,8 @@ get_register_queries_function(const struct intel_device_info *devinfo)
       return intel_oa_register_queries_acmgt1;
    case INTEL_PLATFORM_DG2_G12:
       return intel_oa_register_queries_acmgt2;
-   case INTEL_PLATFORM_MTL_M:
-   case INTEL_PLATFORM_MTL_P:
+   case INTEL_PLATFORM_MTL_U:
+   case INTEL_PLATFORM_MTL_H:
       if (intel_device_info_eu_total(devinfo) <= 64)
          return intel_oa_register_queries_mtlgt2;
       if (intel_device_info_eu_total(devinfo) <= 128)

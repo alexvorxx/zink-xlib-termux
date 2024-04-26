@@ -44,7 +44,7 @@
 #define PB_BUFFER_H_
 
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "util/u_debug.h"
 #include "util/u_inlines.h"
 #include "pipe/p_defines.h"
@@ -106,9 +106,9 @@ typedef uint64_t pb_size;
 
 
 /**
- * Base class for all pb_* buffers.
+ * Base class for all pb_* buffers without the vtbl pointer.
  */
-struct pb_buffer
+struct pb_buffer_lean
 {
    struct pipe_reference  reference;
 
@@ -129,6 +129,15 @@ struct pb_buffer
    uint16_t               usage;
 
    pb_size                size;
+};
+
+
+/**
+ * Base class for all pb_* buffers with the vtbl pointer.
+ */
+struct pb_buffer
+{
+   struct pb_buffer_lean base;
 
    /**
     * Pointer to the virtual function table.
@@ -191,7 +200,7 @@ pb_map(struct pb_buffer *buf, enum pb_usage_flags flags, void *flush_ctx)
    assert(buf);
    if (!buf)
       return NULL;
-   assert(pipe_is_referenced(&buf->reference));
+   assert(pipe_is_referenced(&buf->base.reference));
    return buf->vtbl->map(buf, flags, flush_ctx);
 }
 
@@ -202,7 +211,7 @@ pb_unmap(struct pb_buffer *buf)
    assert(buf);
    if (!buf)
       return;
-   assert(pipe_is_referenced(&buf->reference));
+   assert(pipe_is_referenced(&buf->base.reference));
    buf->vtbl->unmap(buf);
 }
 
@@ -218,11 +227,11 @@ pb_get_base_buffer(struct pb_buffer *buf,
       offset = NULL;
       return;
    }
-   assert(pipe_is_referenced(&buf->reference));
+   assert(pipe_is_referenced(&buf->base.reference));
    assert(buf->vtbl->get_base_buffer);
    buf->vtbl->get_base_buffer(buf, base_buf, offset);
    assert(*base_buf);
-   assert(*offset < (*base_buf)->size);
+   assert(*offset < (*base_buf)->base.size);
 }
 
 
@@ -255,7 +264,11 @@ pb_destroy(void *winsys, struct pb_buffer *buf)
    assert(buf);
    if (!buf)
       return;
-   assert(!pipe_is_referenced(&buf->reference));
+
+   /* we can't assert(!pipe_is_referenced(&buf->reference)) because the winsys
+    * might have means to revive a buf whose refcount reaches 0, such as when
+    * destroy and import race against each other
+    */
    buf->vtbl->destroy(winsys, buf);
 }
 
@@ -266,7 +279,7 @@ pb_reference(struct pb_buffer **dst,
 {
    struct pb_buffer *old = *dst;
 
-   if (pipe_reference(&(*dst)->reference, &src->reference))
+   if (pipe_reference(&(*dst)->base.reference, &src->base.reference))
       pb_destroy(NULL, old);
    *dst = src;
 }
@@ -278,7 +291,7 @@ pb_reference_with_winsys(void *winsys,
 {
    struct pb_buffer *old = *dst;
 
-   if (pipe_reference(&(*dst)->reference, &src->reference))
+   if (pipe_reference(&(*dst)->base.reference, &src->base.reference))
       pb_destroy(winsys, old);
    *dst = src;
 }
@@ -287,16 +300,16 @@ pb_reference_with_winsys(void *winsys,
  * Utility function to check whether the provided alignment is consistent with
  * the requested or not.
  */
-static inline boolean
+static inline bool
 pb_check_alignment(uint32_t requested, uint32_t provided)
 {
    if (!requested)
-      return TRUE;
+      return true;
    if (requested > provided)
-      return FALSE;
+      return false;
    if (provided % requested != 0)
-      return FALSE;
-   return TRUE;
+      return false;
+   return true;
 }
 
 
@@ -304,10 +317,10 @@ pb_check_alignment(uint32_t requested, uint32_t provided)
  * Utility function to check whether the provided alignment is consistent with
  * the requested or not.
  */
-static inline boolean
+static inline bool
 pb_check_usage(unsigned requested, unsigned provided)
 {
-   return (requested & provided) == requested ? TRUE : FALSE;
+   return (requested & provided) == requested ? true : false;
 }
 
 #ifdef __cplusplus

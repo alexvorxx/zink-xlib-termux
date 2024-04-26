@@ -29,9 +29,9 @@
 
 #include "pipe/p_defines.h"
 #include "tgsi/tgsi_dump.h"
-#include "tgsi/tgsi_parse.h"
 #include "util/u_memory.h"
 #include "draw/draw_context.h"
+#include "draw/draw_vs.h"
 
 #include "lp_context.h"
 #include "lp_debug.h"
@@ -42,6 +42,8 @@ static void *
 llvmpipe_create_vs_state(struct pipe_context *pipe,
                          const struct pipe_shader_state *templ)
 {
+   llvmpipe_register_shader(pipe, templ);
+
    struct llvmpipe_context *llvmpipe = llvmpipe_context(pipe);
    struct draw_vertex_shader *vs;
 

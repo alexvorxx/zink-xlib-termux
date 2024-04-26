@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "device9.h"
 #include "nine_state.h"
@@ -206,7 +189,7 @@ NineQuery9_GetData( struct NineQuery9 *This,
                     DWORD dwGetDataFlags )
 {
     struct NineDevice9 *device = This->base.device;
-    boolean ok, wait_query_result = FALSE;
+    bool ok, wait_query_result = false;
     union pipe_query_result presult;
     union nine_query_result nresult;
 
@@ -226,7 +209,7 @@ NineQuery9_GetData( struct NineQuery9 *This,
          * However Wine states that return value should
          * be S_OK, so wait for the result to return S_OK. */
         NineQuery9_Issue(This, D3DISSUE_END);
-        wait_query_result = TRUE;
+        wait_query_result = true;
     }
 
     /* The documention mentions no special case for D3DQUERYTYPE_TIMESTAMP.
@@ -234,7 +217,7 @@ NineQuery9_GetData( struct NineQuery9 *This,
      * D3DGETDATA_FLUSH is specified. */
     if (This->type == D3DQUERYTYPE_TIMESTAMP &&
         (dwGetDataFlags & D3DGETDATA_FLUSH))
-        wait_query_result = TRUE;
+        wait_query_result = true;
 
 
     /* Note: We ignore dwGetDataFlags, because get_query_result will

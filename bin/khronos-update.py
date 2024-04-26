@@ -143,11 +143,11 @@ SOURCES = [
     {
         'api': 'spirv',
         'sources': [
-            Source('src/compiler/spirv/spirv.h',                    'https://github.com/KhronosGroup/SPIRV-Headers/raw/master/include/spirv/unified1/spirv.h'),
-            Source('src/compiler/spirv/spirv.core.grammar.json',    'https://github.com/KhronosGroup/SPIRV-Headers/raw/master/include/spirv/unified1/spirv.core.grammar.json'),
-            Source('src/compiler/spirv/OpenCL.std.h',               'https://github.com/KhronosGroup/SPIRV-Headers/raw/master/include/spirv/unified1/OpenCL.std.h'),
-            Source('src/compiler/spirv/GLSL.std.450.h',             'https://github.com/KhronosGroup/SPIRV-Headers/raw/master/include/spirv/unified1/GLSL.std.450.h'),
-            Source('src/compiler/spirv/GLSL.ext.AMD.h',             'https://github.com/KhronosGroup/glslang/raw/master/SPIRV/GLSL.ext.AMD.h'),  # FIXME: is this the canonical source?
+            Source('src/compiler/spirv/spirv.h',                    'https://github.com/KhronosGroup/SPIRV-Headers/raw/main/include/spirv/unified1/spirv.h'),
+            Source('src/compiler/spirv/spirv.core.grammar.json',    'https://github.com/KhronosGroup/SPIRV-Headers/raw/main/include/spirv/unified1/spirv.core.grammar.json'),
+            Source('src/compiler/spirv/OpenCL.std.h',               'https://github.com/KhronosGroup/SPIRV-Headers/raw/main/include/spirv/unified1/OpenCL.std.h'),
+            Source('src/compiler/spirv/GLSL.std.450.h',             'https://github.com/KhronosGroup/SPIRV-Headers/raw/main/include/spirv/unified1/GLSL.std.450.h'),
+            Source('src/compiler/spirv/GLSL.ext.AMD.h',             'https://github.com/KhronosGroup/glslang/raw/main/SPIRV/GLSL.ext.AMD.h'),  # FIXME: is this the canonical source?
         ],
     },
 
@@ -177,6 +177,8 @@ SOURCES = [
             Source('include/vulkan/vulkan_xlib.h',              'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vulkan/vulkan_xlib.h'),
             Source('include/vulkan/vulkan_xlib_xrandr.h',       'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vulkan/vulkan_xlib_xrandr.h'),
             Source('include/vulkan/vk_android_native_buffer.h', 'https://android.googlesource.com/platform/frameworks/native/+/master/vulkan/include/vulkan/vk_android_native_buffer.h?format=TEXT'),
+            Source('include/vk_video/vulkan_video_codec_av1std.h', 'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vk_video/vulkan_video_codec_av1std.h'),
+            Source('include/vk_video/vulkan_video_codec_av1std_decode.h', 'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vk_video/vulkan_video_codec_av1std_decode.h'),
             Source('include/vk_video/vulkan_video_codec_h264std.h', 'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vk_video/vulkan_video_codec_h264std.h'),
             Source('include/vk_video/vulkan_video_codec_h264std_decode.h', 'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vk_video/vulkan_video_codec_h264std_decode.h'),
             Source('include/vk_video/vulkan_video_codec_h264std_encode.h', 'https://github.com/KhronosGroup/Vulkan-Headers/raw/main/include/vk_video/vulkan_video_codec_h264std_encode.h'),

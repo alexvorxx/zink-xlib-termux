@@ -119,17 +119,9 @@ dri_loader_get_cap(struct dri_screen *screen, enum dri_loader_cap cap)
  *                      value will be unmodified, but some elements in the
  *                      linked list may be modified.
  * \param format        Mesa mesa_format enum describing the pixel format
- * \param depth_bits    Array of depth buffer sizes to be exposed.
- * \param stencil_bits  Array of stencil buffer sizes to be exposed.
- * \param num_depth_stencil_bits  Number of entries in both \c depth_bits and
- *                      \c stencil_bits.
- * \param db_modes      Array of buffer swap modes.  If an element has a
- *                      value of \c __DRI_ATTRIB_SWAP_NONE, then it
- *                      represents a single-buffered mode.  Other valid
- *                      values are \c __DRI_ATTRIB_SWAP_EXCHANGE,
- *                      \c __DRI_ATTRIB_SWAP_COPY, and \c __DRI_ATTRIB_SWAP_UNDEFINED.
- *                      They represent the respective GLX values as in
- *                      the GLX_OML_swap_method extension spec.
+ * \param zs_formats    Array of depth/stencil formats to expose
+ * \param num_zs_formats Number of entries in \c depth_stencil_formats.
+ * \param db_modes      Array of buffer swap modes.
  * \param num_db_modes  Number of entries in \c db_modes.
  * \param msaa_samples  Array of msaa sample count. 0 represents a visual
  *                      without a multisample buffer.
@@ -146,149 +138,78 @@ dri_loader_get_cap(struct dri_screen *screen, enum dri_loader_cap cap)
  * \c format).
  */
 static __DRIconfig **
-driCreateConfigs(mesa_format format,
-                 const uint8_t * depth_bits, const uint8_t * stencil_bits,
-                 unsigned num_depth_stencil_bits,
-                 const GLenum * db_modes, unsigned num_db_modes,
+driCreateConfigs(enum pipe_format format,
+                 enum pipe_format *zs_formats, unsigned num_zs_formats,
+                 const bool *db_modes, unsigned num_db_modes,
                  const uint8_t * msaa_samples, unsigned num_msaa_modes,
                  GLboolean enable_accum, GLboolean color_depth_match)
 {
-   static const struct {
-      uint32_t masks[4];
-      int shifts[4];
-   } format_table[] = {
-      /* MESA_FORMAT_B5G6R5_UNORM */
-      {{ 0x0000F800, 0x000007E0, 0x0000001F, 0x00000000 },
-       { 11, 5, 0, -1 }},
-      /* MESA_FORMAT_B8G8R8X8_UNORM */
-      {{ 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00000000 },
-       { 16, 8, 0, -1 }},
-      /* MESA_FORMAT_B8G8R8A8_UNORM */
-      {{ 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000 },
-       { 16, 8, 0, 24 }},
-      /* MESA_FORMAT_B10G10R10X2_UNORM */
-      {{ 0x3FF00000, 0x000FFC00, 0x000003FF, 0x00000000 },
-       { 20, 10, 0, -1 }},
-      /* MESA_FORMAT_B10G10R10A2_UNORM */
-      {{ 0x3FF00000, 0x000FFC00, 0x000003FF, 0xC0000000 },
-       { 20, 10, 0, 30 }},
-      /* MESA_FORMAT_R8G8B8A8_UNORM */
-      {{ 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000 },
-       { 0, 8, 16, 24 }},
-      /* MESA_FORMAT_R8G8B8X8_UNORM */
-      {{ 0x000000FF, 0x0000FF00, 0x00FF0000, 0x00000000 },
-       { 0, 8, 16, -1 }},
-      /* MESA_FORMAT_R10G10B10X2_UNORM */
-      {{ 0x000003FF, 0x000FFC00, 0x3FF00000, 0x00000000 },
-       { 0, 10, 20, -1 }},
-      /* MESA_FORMAT_R10G10B10A2_UNORM */
-      {{ 0x000003FF, 0x000FFC00, 0x3FF00000, 0xC0000000 },
-       { 0, 10, 20, 30 }},
-      /* MESA_FORMAT_RGBX_FLOAT16 */
-      {{ 0, 0, 0, 0},
-       { 0, 16, 32, -1 }},
-      /* MESA_FORMAT_RGBA_FLOAT16 */
-      {{ 0, 0, 0, 0},
-       { 0, 16, 32, 48 }},
-   };
-
-   const uint32_t * masks;
-   const int * shifts;
+   uint32_t masks[4];
+   int shifts[4];
+   int color_bits[4];
    __DRIconfig **configs, **c;
    struct gl_config *modes;
    unsigned i, j, k, h;
    unsigned num_modes;
    unsigned num_accum_bits = (enable_accum) ? 2 : 1;
-   int red_bits;
-   int green_bits;
-   int blue_bits;
-   int alpha_bits;
    bool is_srgb;
    bool is_float;
 
-   switch (format) {
-   case MESA_FORMAT_B5G6R5_UNORM:
-      masks = format_table[0].masks;
-      shifts = format_table[0].shifts;
-      break;
-   case MESA_FORMAT_B8G8R8X8_UNORM:
-   case MESA_FORMAT_B8G8R8X8_SRGB:
-      masks = format_table[1].masks;
-      shifts = format_table[1].shifts;
-      break;
-   case MESA_FORMAT_B8G8R8A8_UNORM:
-   case MESA_FORMAT_B8G8R8A8_SRGB:
-      masks = format_table[2].masks;
-      shifts = format_table[2].shifts;
-      break;
-   case MESA_FORMAT_R8G8B8A8_UNORM:
-   case MESA_FORMAT_R8G8B8A8_SRGB:
-      masks = format_table[5].masks;
-      shifts = format_table[5].shifts;
-      break;
-   case MESA_FORMAT_R8G8B8X8_UNORM:
-   case MESA_FORMAT_R8G8B8X8_SRGB:
-      masks = format_table[6].masks;
-      shifts = format_table[6].shifts;
-      break;
-   case MESA_FORMAT_B10G10R10X2_UNORM:
-      masks = format_table[3].masks;
-      shifts = format_table[3].shifts;
-      break;
-   case MESA_FORMAT_B10G10R10A2_UNORM:
-      masks = format_table[4].masks;
-      shifts = format_table[4].shifts;
-      break;
-   case MESA_FORMAT_RGBX_FLOAT16:
-      masks = format_table[9].masks;
-      shifts = format_table[9].shifts;
-      break;
-   case MESA_FORMAT_RGBA_FLOAT16:
-      masks = format_table[10].masks;
-      shifts = format_table[10].shifts;
-      break;
-   case MESA_FORMAT_R10G10B10X2_UNORM:
-      masks = format_table[7].masks;
-      shifts = format_table[7].shifts;
-      break;
-   case MESA_FORMAT_R10G10B10A2_UNORM:
-      masks = format_table[8].masks;
-      shifts = format_table[8].shifts;
-      break;
-   default:
-      fprintf(stderr, "[%s:%u] Unknown framebuffer type %s (%d).\n",
-              __func__, __LINE__,
-              _mesa_get_format_name(format), format);
-      return NULL;
+   is_srgb = util_format_is_srgb(format);
+   is_float = util_format_is_float(format);
+
+   for (i = 0; i < 4; i++) {
+      color_bits[i] =
+         util_format_get_component_bits(format, UTIL_FORMAT_COLORSPACE_RGB, i);
+
+      if (color_bits[i] > 0) {
+         shifts[i] =
+            util_format_get_component_shift(format, UTIL_FORMAT_COLORSPACE_RGB, i);
+      } else {
+         shifts[i] = -1;
+      }
+
+      if (is_float || color_bits[i] == 0)
+         masks[i] = 0;
+      else
+         masks[i] = ((1 << color_bits[i]) - 1) << shifts[i];
    }
 
-   red_bits = _mesa_get_format_bits(format, GL_RED_BITS);
-   green_bits = _mesa_get_format_bits(format, GL_GREEN_BITS);
-   blue_bits = _mesa_get_format_bits(format, GL_BLUE_BITS);
-   alpha_bits = _mesa_get_format_bits(format, GL_ALPHA_BITS);
-   is_srgb = _mesa_is_format_srgb(format);
-   is_float = _mesa_get_format_datatype(format) == GL_FLOAT;
-
-   num_modes = num_depth_stencil_bits * num_db_modes * num_accum_bits * num_msaa_modes;
+   num_modes = num_zs_formats * num_db_modes * num_accum_bits * num_msaa_modes;
    configs = calloc(num_modes + 1, sizeof *configs);
    if (configs == NULL)
        return NULL;
 
     c = configs;
-    for ( k = 0 ; k < num_depth_stencil_bits ; k++ ) {
+    for ( k = 0 ; k < num_zs_formats ; k++ ) {
+        unsigned depth_bits, stencil_bits;
+
+        if (zs_formats[k] != PIPE_FORMAT_NONE) {
+           depth_bits =
+              util_format_get_component_bits(zs_formats[k],
+                                          UTIL_FORMAT_COLORSPACE_ZS, 0);
+           stencil_bits =
+              util_format_get_component_bits(zs_formats[k],
+                                          UTIL_FORMAT_COLORSPACE_ZS, 1);
+        } else {
+           depth_bits = 0;
+           stencil_bits = 0;
+        }
+
         for ( i = 0 ; i < num_db_modes ; i++ ) {
             for ( h = 0 ; h < num_msaa_modes; h++ ) {
                 for ( j = 0 ; j < num_accum_bits ; j++ ) {
                     if (color_depth_match &&
-                        (depth_bits[k] || stencil_bits[k])) {
+                        (depth_bits || stencil_bits)) {
                         /* Depth can really only be 0, 16, 24, or 32. A 32-bit
                          * color format still matches 24-bit depth, as there
                          * is an implicit 8-bit stencil. So really we just
                          * need to make sure that color/depth are both 16 or
                          * both non-16.
                          */
-                        if ((depth_bits[k] + stencil_bits[k] == 16) !=
-                            (red_bits + green_bits + blue_bits + alpha_bits == 16))
+                        if ((depth_bits + stencil_bits == 16) !=
+                            (color_bits[0] + color_bits[1] +
+                             color_bits[2] + color_bits[3] == 16))
                             continue;
                     }
 
@@ -297,18 +218,25 @@ driCreateConfigs(mesa_format format,
                     c++;
 
                     memset(modes, 0, sizeof *modes);
-                    modes->floatMode = is_float;
-                    modes->redBits   = red_bits;
-                    modes->greenBits = green_bits;
-                    modes->blueBits  = blue_bits;
-                    modes->alphaBits = alpha_bits;
-                    modes->redMask   = masks[0];
-                    modes->greenMask = masks[1];
-                    modes->blueMask  = masks[2];
-                    modes->alphaMask = masks[3];
+                    modes->color_format = format;
+                    modes->zs_format = zs_formats[k];
+                    if (j > 0)
+                       modes->accum_format = PIPE_FORMAT_R16G16B16A16_SNORM;
+                    else
+                       modes->accum_format = PIPE_FORMAT_NONE;
+
+                    modes->floatMode  = is_float;
+                    modes->redBits    = color_bits[0];
                     modes->redShift   = shifts[0];
+                    modes->redMask    = masks[0];
+                    modes->greenBits  = color_bits[1];
                     modes->greenShift = shifts[1];
+                    modes->greenMask  = masks[1];
+                    modes->blueBits   = color_bits[2];
                     modes->blueShift  = shifts[2];
+                    modes->blueMask   = masks[2];
+                    modes->alphaBits  = color_bits[3];
+                    modes->alphaMask  = masks[3];
                     modes->alphaShift = shifts[3];
                     modes->rgbBits   = modes->redBits + modes->greenBits
                             + modes->blueBits + modes->alphaBits;
@@ -318,17 +246,10 @@ driCreateConfigs(mesa_format format,
                     modes->accumBlueBits  = 16 * j;
                     modes->accumAlphaBits = 16 * j;
 
-                    modes->stencilBits = stencil_bits[k];
-                    modes->depthBits = depth_bits[k];
+                    modes->stencilBits = stencil_bits;
+                    modes->depthBits = depth_bits;
 
-                    if (db_modes[i] == __DRI_ATTRIB_SWAP_NONE) {
-                            modes->doubleBufferMode = GL_FALSE;
-                        modes->swapMethod = __DRI_ATTRIB_SWAP_UNDEFINED;
-                    }
-                    else {
-                            modes->doubleBufferMode = GL_TRUE;
-                            modes->swapMethod = db_modes[i];
-                    }
+                    modes->doubleBufferMode = db_modes[i];
 
                     modes->samples = msaa_samples[h];
 
@@ -378,46 +299,20 @@ driConcatConfigs(__DRIconfig **a, __DRIconfig **b)
 static const __DRIconfig **
 dri_fill_in_modes(struct dri_screen *screen)
 {
-   static const mesa_format mesa_formats[] = {
-      MESA_FORMAT_B10G10R10A2_UNORM,
-      MESA_FORMAT_B10G10R10X2_UNORM,
-      MESA_FORMAT_R10G10B10A2_UNORM,
-      MESA_FORMAT_R10G10B10X2_UNORM,
-      MESA_FORMAT_B8G8R8A8_UNORM,
-      MESA_FORMAT_B8G8R8X8_UNORM,
-      MESA_FORMAT_B8G8R8A8_SRGB,
-      MESA_FORMAT_B8G8R8X8_SRGB,
-      MESA_FORMAT_B5G6R5_UNORM,
-      MESA_FORMAT_RGBA_FLOAT16,
-      MESA_FORMAT_RGBX_FLOAT16,
-
-      /* The 32-bit RGBA format must not precede the 32-bit BGRA format.
-       * Likewise for RGBX and BGRX.  Otherwise, the GLX client and the GLX
-       * server may disagree on which format the GLXFBConfig represents,
-       * resulting in swapped color channels.
-       *
-       * The problem, as of 2017-05-30:
-       * When matching a GLXFBConfig to a __DRIconfig, GLX ignores the channel
-       * order and chooses the first __DRIconfig with the expected channel
-       * sizes. Specifically, GLX compares the GLXFBConfig's and __DRIconfig's
-       * __DRI_ATTRIB_{CHANNEL}_SIZE but ignores __DRI_ATTRIB_{CHANNEL}_MASK.
-       *
-       * EGL does not suffer from this problem. It correctly compares the
-       * channel masks when matching EGLConfig to __DRIconfig.
-       */
-
-      /* Required by Android, for HAL_PIXEL_FORMAT_RGBA_8888. */
-      MESA_FORMAT_R8G8B8A8_UNORM,
-
-      /* Required by Android, for HAL_PIXEL_FORMAT_RGBX_8888. */
-      MESA_FORMAT_R8G8B8X8_UNORM,
-
-      /* Required by Android, for HAL_PIXEL_FORMAT_RGBA_8888. */
-      MESA_FORMAT_R8G8B8A8_SRGB,
-
-      /* Required by Android, for HAL_PIXEL_FORMAT_RGBX_8888. */
-      MESA_FORMAT_R8G8B8X8_SRGB,
-   };
+   /* The 32-bit RGBA format must not precede the 32-bit BGRA format.
+    * Likewise for RGBX and BGRX.  Otherwise, the GLX client and the GLX
+    * server may disagree on which format the GLXFBConfig represents,
+    * resulting in swapped color channels.
+    *
+    * The problem, as of 2017-05-30:
+    * When matching a GLXFBConfig to a __DRIconfig, GLX ignores the channel
+    * order and chooses the first __DRIconfig with the expected channel
+    * sizes. Specifically, GLX compares the GLXFBConfig's and __DRIconfig's
+    * __DRI_ATTRIB_{CHANNEL}_SIZE but ignores __DRI_ATTRIB_{CHANNEL}_MASK.
+    *
+    * EGL does not suffer from this problem. It correctly compares the
+    * channel masks when matching EGLConfig to __DRIconfig.
+    */
    static const enum pipe_format pipe_formats[] = {
       PIPE_FORMAT_B10G10R10A2_UNORM,
       PIPE_FORMAT_B10G10R10X2_UNORM,
@@ -434,108 +329,88 @@ dri_fill_in_modes(struct dri_screen *screen)
       PIPE_FORMAT_RGBX8888_UNORM,
       PIPE_FORMAT_RGBA8888_SRGB,
       PIPE_FORMAT_RGBX8888_SRGB,
+      PIPE_FORMAT_B5G5R5A1_UNORM,
+      PIPE_FORMAT_R5G5B5A1_UNORM,
+      PIPE_FORMAT_B4G4R4A4_UNORM,
+      PIPE_FORMAT_R4G4B4A4_UNORM,
    };
    __DRIconfig **configs = NULL;
-   uint8_t depth_bits_array[5];
-   uint8_t stencil_bits_array[5];
-   unsigned depth_buffer_factor;
+   enum pipe_format zs_formats[5];
+   unsigned num_zs_formats = 0;
    unsigned i;
    struct pipe_screen *p_screen = screen->base.screen;
-   bool pf_z16, pf_x8z24, pf_z24x8, pf_s8z24, pf_z24s8, pf_z32;
    bool mixed_color_depth;
    bool allow_rgba_ordering;
    bool allow_rgb10;
    bool allow_fp16;
 
-   static const GLenum back_buffer_modes[] = {
-      __DRI_ATTRIB_SWAP_NONE, __DRI_ATTRIB_SWAP_UNDEFINED,
-      __DRI_ATTRIB_SWAP_COPY
-   };
+   static const bool db_modes[] = { false, true };
 
-   if (driQueryOptionb(&screen->dev->option_cache, "always_have_depth_buffer")) {
-      /* all visuals will have a depth buffer */
-      depth_buffer_factor = 0;
-   }
-   else {
-      depth_bits_array[0] = 0;
-      stencil_bits_array[0] = 0;
-      depth_buffer_factor = 1;
-   }
+   if (!driQueryOptionb(&screen->dev->option_cache, "always_have_depth_buffer"))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_NONE;
 
    allow_rgba_ordering = dri_loader_get_cap(screen, DRI_LOADER_CAP_RGBA_ORDERING);
    allow_rgb10 = driQueryOptionb(&screen->dev->option_cache, "allow_rgb10_configs");
    allow_fp16 = dri_loader_get_cap(screen, DRI_LOADER_CAP_FP16);
 
-   pf_x8z24 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z24X8_UNORM,
-                                            PIPE_TEXTURE_2D, 0, 0,
-                                            PIPE_BIND_DEPTH_STENCIL);
-   pf_z24x8 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_X8Z24_UNORM,
-                                            PIPE_TEXTURE_2D, 0, 0,
-                                            PIPE_BIND_DEPTH_STENCIL);
-   pf_s8z24 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z24_UNORM_S8_UINT,
-                                            PIPE_TEXTURE_2D, 0, 0,
-                                            PIPE_BIND_DEPTH_STENCIL);
-   pf_z24s8 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_S8_UINT_Z24_UNORM,
-                                            PIPE_TEXTURE_2D, 0, 0,
-                                            PIPE_BIND_DEPTH_STENCIL);
-   pf_z16 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z16_UNORM,
-                                          PIPE_TEXTURE_2D, 0, 0,
-                                          PIPE_BIND_DEPTH_STENCIL);
-   pf_z32 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z32_UNORM,
-                                          PIPE_TEXTURE_2D, 0, 0,
-                                          PIPE_BIND_DEPTH_STENCIL);
+#define HAS_ZS(fmt) \
+   p_screen->is_format_supported(p_screen, PIPE_FORMAT_##fmt, \
+                                 PIPE_TEXTURE_2D, 0, 0, \
+                                 PIPE_BIND_DEPTH_STENCIL)
 
-   if (pf_z16) {
-      depth_bits_array[depth_buffer_factor] = 16;
-      stencil_bits_array[depth_buffer_factor++] = 0;
-   }
-   if (pf_x8z24 || pf_z24x8) {
-      depth_bits_array[depth_buffer_factor] = 24;
-      stencil_bits_array[depth_buffer_factor++] = 0;
-      screen->d_depth_bits_last = pf_x8z24;
-   }
-   if (pf_s8z24 || pf_z24s8) {
-      depth_bits_array[depth_buffer_factor] = 24;
-      stencil_bits_array[depth_buffer_factor++] = 8;
-      screen->sd_depth_bits_last = pf_s8z24;
-   }
-   if (pf_z32) {
-      depth_bits_array[depth_buffer_factor] = 32;
-      stencil_bits_array[depth_buffer_factor++] = 0;
-   }
+   if (HAS_ZS(Z16_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z16_UNORM;
+
+   if (HAS_ZS(Z24X8_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z24X8_UNORM;
+   else if (HAS_ZS(X8Z24_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_X8Z24_UNORM;
+
+   if (HAS_ZS(Z24_UNORM_S8_UINT))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z24_UNORM_S8_UINT;
+   else if (HAS_ZS(S8_UINT_Z24_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_S8_UINT_Z24_UNORM;
+
+   if (HAS_ZS(Z32_UNORM))
+      zs_formats[num_zs_formats++] = PIPE_FORMAT_Z32_UNORM;
+
+#undef HAS_ZS
 
    mixed_color_depth =
       p_screen->get_param(p_screen, PIPE_CAP_MIXED_COLOR_DEPTH_BITS);
 
-   assert(ARRAY_SIZE(mesa_formats) == ARRAY_SIZE(pipe_formats));
-
    /* Add configs. */
-   for (unsigned format = 0; format < ARRAY_SIZE(mesa_formats); format++) {
+   for (unsigned f = 0; f < ARRAY_SIZE(pipe_formats); f++) {
       __DRIconfig **new_configs = NULL;
       unsigned num_msaa_modes = 0; /* includes a single-sample mode */
       uint8_t msaa_modes[MSAA_VISUAL_MAX_SAMPLES];
 
       /* Expose only BGRA ordering if the loader doesn't support RGBA ordering. */
       if (!allow_rgba_ordering &&
-          (mesa_formats[format] == MESA_FORMAT_R8G8B8A8_UNORM ||
-           mesa_formats[format] == MESA_FORMAT_R8G8B8X8_UNORM ||
-           mesa_formats[format] == MESA_FORMAT_R8G8B8A8_SRGB  ||
-           mesa_formats[format] == MESA_FORMAT_R8G8B8X8_SRGB))
+          util_format_get_component_shift(pipe_formats[f],
+                                          UTIL_FORMAT_COLORSPACE_RGB, 0)
+#if UTIL_ARCH_BIG_ENDIAN
+         >
+#else
+         <
+#endif
+          util_format_get_component_shift(pipe_formats[f],
+                                          UTIL_FORMAT_COLORSPACE_RGB, 2))
          continue;
 
       if (!allow_rgb10 &&
-          (mesa_formats[format] == MESA_FORMAT_B10G10R10A2_UNORM ||
-           mesa_formats[format] == MESA_FORMAT_B10G10R10X2_UNORM ||
-           mesa_formats[format] == MESA_FORMAT_R10G10B10A2_UNORM ||
-           mesa_formats[format] == MESA_FORMAT_R10G10B10X2_UNORM))
+          util_format_get_component_bits(pipe_formats[f],
+                                         UTIL_FORMAT_COLORSPACE_RGB, 0) == 10 &&
+          util_format_get_component_bits(pipe_formats[f],
+                                         UTIL_FORMAT_COLORSPACE_RGB, 1) == 10 &&
+          util_format_get_component_bits(pipe_formats[f],
+                                         UTIL_FORMAT_COLORSPACE_RGB, 2) == 10)
          continue;
 
-      if (!allow_fp16 &&
-          (mesa_formats[format] == MESA_FORMAT_RGBA_FLOAT16 ||
-           mesa_formats[format] == MESA_FORMAT_RGBX_FLOAT16))
+      if (!allow_fp16 && util_format_is_float(pipe_formats[f]))
          continue;
 
-      if (!p_screen->is_format_supported(p_screen, pipe_formats[format],
+      if (!p_screen->is_format_supported(p_screen, pipe_formats[f],
                                          PIPE_TEXTURE_2D, 0, 0,
                                          PIPE_BIND_RENDER_TARGET |
                                          PIPE_BIND_DISPLAY_TARGET))
@@ -544,7 +419,7 @@ dri_fill_in_modes(struct dri_screen *screen)
       for (i = 1; i <= MSAA_VISUAL_MAX_SAMPLES; i++) {
          int samples = i > 1 ? i : 0;
 
-         if (p_screen->is_format_supported(p_screen, pipe_formats[format],
+         if (p_screen->is_format_supported(p_screen, pipe_formats[f],
                                            PIPE_TEXTURE_2D, samples, samples,
                                            PIPE_BIND_RENDER_TARGET)) {
             msaa_modes[num_msaa_modes++] = samples;
@@ -553,20 +428,18 @@ dri_fill_in_modes(struct dri_screen *screen)
 
       if (num_msaa_modes) {
          /* Single-sample configs with an accumulation buffer. */
-         new_configs = driCreateConfigs(mesa_formats[format],
-                                        depth_bits_array, stencil_bits_array,
-                                        depth_buffer_factor, back_buffer_modes,
-                                        ARRAY_SIZE(back_buffer_modes),
+         new_configs = driCreateConfigs(pipe_formats[f],
+                                        zs_formats, num_zs_formats,
+                                        db_modes, ARRAY_SIZE(db_modes),
                                         msaa_modes, 1,
                                         GL_TRUE, !mixed_color_depth);
          configs = driConcatConfigs(configs, new_configs);
 
          /* Multi-sample configs without an accumulation buffer. */
          if (num_msaa_modes > 1) {
-            new_configs = driCreateConfigs(mesa_formats[format],
-                                           depth_bits_array, stencil_bits_array,
-                                           depth_buffer_factor, back_buffer_modes,
-                                           ARRAY_SIZE(back_buffer_modes),
+            new_configs = driCreateConfigs(pipe_formats[f],
+                                           zs_formats, num_zs_formats,
+                                           db_modes, ARRAY_SIZE(db_modes),
                                            msaa_modes+1, num_msaa_modes-1,
                                            GL_FALSE, !mixed_color_depth);
             configs = driConcatConfigs(configs, new_configs);
@@ -595,71 +468,10 @@ dri_fill_st_visual(struct st_visual *stvis,
    if (!mode)
       return;
 
-   /* Deduce the color format. */
-   switch (mode->redMask) {
-   case 0:
-      /* Formats > 32 bpp */
-      assert(mode->floatMode);
-      if (mode->alphaShift > -1) {
-         assert(mode->alphaShift == 48);
-         stvis->color_format = PIPE_FORMAT_R16G16B16A16_FLOAT;
-      } else {
-         stvis->color_format = PIPE_FORMAT_R16G16B16X16_FLOAT;
-      }
-      break;
-
-   case 0x3FF00000:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xC0000000);
-         stvis->color_format = PIPE_FORMAT_B10G10R10A2_UNORM;
-      } else {
-         stvis->color_format = PIPE_FORMAT_B10G10R10X2_UNORM;
-      }
-      break;
-
-   case 0x000003FF:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xC0000000);
-         stvis->color_format = PIPE_FORMAT_R10G10B10A2_UNORM;
-      } else {
-         stvis->color_format = PIPE_FORMAT_R10G10B10X2_UNORM;
-      }
-      break;
-
-   case 0x00FF0000:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xFF000000);
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_BGRA8888_SRGB :
-                                  PIPE_FORMAT_BGRA8888_UNORM;
-      } else {
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_BGRX8888_SRGB :
-                                  PIPE_FORMAT_BGRX8888_UNORM;
-      }
-      break;
-
-   case 0x000000FF:
-      if (mode->alphaMask) {
-         assert(mode->alphaMask == 0xFF000000);
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_RGBA8888_SRGB :
-                                  PIPE_FORMAT_RGBA8888_UNORM;
-      } else {
-         stvis->color_format = mode->sRGBCapable ?
-                                  PIPE_FORMAT_RGBX8888_SRGB :
-                                  PIPE_FORMAT_RGBX8888_UNORM;
-      }
-      break;
-
-   case 0x0000F800:
-      stvis->color_format = PIPE_FORMAT_B5G6R5_UNORM;
-      break;
-
-   default:
-      assert(!"unsupported visual: invalid red mask");
-      return;
-   }
+   assert(mode->color_format != PIPE_FORMAT_NONE);
+   stvis->color_format = mode->color_format;
+   stvis->accum_format = mode->accum_format;
+   stvis->depth_stencil_format = mode->zs_format;
 
    if (mode->samples > 0) {
       if (debug_get_bool_option("DRI_NO_MSAA", false))
@@ -667,33 +479,6 @@ dri_fill_st_visual(struct st_visual *stvis,
       else
          stvis->samples = mode->samples;
    }
-
-   switch (mode->depthBits) {
-   default:
-   case 0:
-      stvis->depth_stencil_format = PIPE_FORMAT_NONE;
-      break;
-   case 16:
-      stvis->depth_stencil_format = PIPE_FORMAT_Z16_UNORM;
-      break;
-   case 24:
-      if (mode->stencilBits == 0) {
-         stvis->depth_stencil_format = (screen->d_depth_bits_last) ?
-                                          PIPE_FORMAT_Z24X8_UNORM:
-                                          PIPE_FORMAT_X8Z24_UNORM;
-      } else {
-         stvis->depth_stencil_format = (screen->sd_depth_bits_last) ?
-                                          PIPE_FORMAT_Z24_UNORM_S8_UINT:
-                                          PIPE_FORMAT_S8_UINT_Z24_UNORM;
-      }
-      break;
-   case 32:
-      stvis->depth_stencil_format = PIPE_FORMAT_Z32_UNORM;
-      break;
-   }
-
-   stvis->accum_format = (mode->accumRedBits > 0) ?
-      PIPE_FORMAT_R16G16B16A16_SNORM : PIPE_FORMAT_NONE;
 
    stvis->buffer_mask |= ST_ATTACHMENT_FRONT_LEFT_MASK;
    if (mode->doubleBufferMode) {
@@ -726,7 +511,7 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
    }
 
    if (!img)
-      return FALSE;
+      return false;
 
    stimg->texture = NULL;
    pipe_resource_reference(&stimg->texture, img->texture);
@@ -749,7 +534,7 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
    stimg->yuv_color_space = img->yuv_color_space;
    stimg->yuv_range = img->sample_range;
 
-   return TRUE;
+   return true;
 }
 
 static bool
@@ -769,12 +554,19 @@ dri_get_param(struct pipe_frontend_screen *fscreen,
 }
 
 void
-dri_destroy_screen_helper(struct dri_screen * screen)
+dri_release_screen(struct dri_screen * screen)
 {
    st_screen_destroy(&screen->base);
 
-   if (screen->base.screen)
+   if (screen->base.screen) {
       screen->base.screen->destroy(screen->base.screen);
+      screen->base.screen = NULL;
+   }
+
+   if (screen->dev) {
+      pipe_loader_release(&screen->dev, 1);
+      screen->dev = NULL;
+   }
 
    mtx_destroy(&screen->opencl_func_mutex);
 }
@@ -782,9 +574,7 @@ dri_destroy_screen_helper(struct dri_screen * screen)
 void
 dri_destroy_screen(struct dri_screen *screen)
 {
-   dri_destroy_screen_helper(screen);
-
-   pipe_loader_release(&screen->dev, 1);
+   dri_release_screen(screen);
 
    free(screen->options.force_gl_vendor);
    free(screen->options.force_gl_renderer);
@@ -824,8 +614,8 @@ dri_set_background_context(struct st_context *st,
 }
 
 const __DRIconfig **
-dri_init_screen_helper(struct dri_screen *screen,
-                       struct pipe_screen *pscreen)
+dri_init_screen(struct dri_screen *screen,
+                struct pipe_screen *pscreen)
 {
    screen->base.screen = pscreen;
    screen->base.get_egl_image = dri_get_egl_image;

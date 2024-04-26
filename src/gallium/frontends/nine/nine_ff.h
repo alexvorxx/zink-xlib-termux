@@ -1,3 +1,8 @@
+/*
+ * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
+ * Copyright Axel Davy <davyaxel0@gmail.com>
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef _NINE_FF_H_
 #define _NINE_FF_H_
@@ -5,8 +10,8 @@
 #include "device9.h"
 #include "vertexdeclaration9.h"
 
-boolean nine_ff_init(struct NineDevice9 *);
-void    nine_ff_fini(struct NineDevice9 *);
+bool nine_ff_init(struct NineDevice9 *);
+void nine_ff_fini(struct NineDevice9 *);
 
 void nine_ff_update(struct NineDevice9 *);
 

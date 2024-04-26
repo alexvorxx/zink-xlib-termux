@@ -31,6 +31,8 @@
 #include "pan_shader.h"
 #include "nir/tgsi_to_nir.h"
 #include "util/u_memory.h"
+#include "util/u_prim.h"
+#include "nir_builder.h"
 #include "nir_serialize.h"
 #include "pan_bo.h"
 #include "pan_context.h"
@@ -67,6 +69,31 @@ panfrost_alloc_variant(struct panfrost_uncompiled_shader *so)
 }
 
 static void
+lower_load_poly_line_smooth_enabled(nir_shader *nir,
+                                    const struct panfrost_shader_key *key)
+{
+   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+   nir_builder b = nir_builder_create(impl);
+
+   nir_foreach_block_safe(block, impl) {
+      nir_foreach_instr_safe(instr, block) {
+         if (instr->type != nir_instr_type_intrinsic)
+            continue;
+
+         nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+         if (intrin->intrinsic != nir_intrinsic_load_poly_line_smooth_enabled)
+            continue;
+
+         b.cursor = nir_before_instr(instr);
+         nir_def_rewrite_uses(&intrin->def, nir_imm_true(&b));
+
+         nir_instr_remove(instr);
+         nir_instr_free(instr);
+      }
+   }
+}
+
+static void
 panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
                         struct util_debug_callback *dbg,
                         struct panfrost_shader_key *key, unsigned req_local_mem,
@@ -84,11 +111,11 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
     * happens at CSO create time regardless.
     */
    if (gl_shader_stage_is_compute(s->info.stage))
-      pan_shader_preprocess(s, dev->gpu_id);
+      pan_shader_preprocess(s, panfrost_device_gpu_id(dev));
 
    struct panfrost_compile_inputs inputs = {
       .debug = dbg,
-      .gpu_id = dev->gpu_id,
+      .gpu_id = panfrost_device_gpu_id(dev),
    };
 
    /* Lower this early so the backends don't have to worry about it */
@@ -125,15 +152,24 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
       if (key->fs.clip_plane_enable) {
          NIR_PASS_V(s, nir_lower_clip_fs, key->fs.clip_plane_enable, false);
       }
+
+      if (key->fs.line_smooth) {
+         NIR_PASS_V(s, nir_lower_poly_line_smooth, 16);
+         NIR_PASS_V(s, lower_load_poly_line_smooth_enabled, key);
+         NIR_PASS_V(s, nir_lower_alu);
+      }
    }
 
    if (dev->arch <= 5 && s->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS_V(s, pan_lower_framebuffer, key->fs.rt_formats,
                  pan_raw_format_mask_midgard(key->fs.rt_formats), 0,
-                 dev->gpu_id < 0x700);
+                 panfrost_device_gpu_id(dev) < 0x700);
    }
 
    NIR_PASS_V(s, panfrost_nir_lower_sysvals, &out->sysvals);
+
+   /* Lower resource indices */
+   NIR_PASS_V(s, panfrost_nir_lower_res_indices, &inputs);
 
    screen->vtbl.compile_shader(s, &inputs, &out->binary, &out->info);
 
@@ -218,13 +254,16 @@ panfrost_build_key(struct panfrost_context *ctx,
    }
 
    /* Point sprite lowering needed on Bifrost and newer */
-   if (dev->arch >= 6 && rast && ctx->active_prim == PIPE_PRIM_POINTS) {
+   if (dev->arch >= 6 && rast && ctx->active_prim == MESA_PRIM_POINTS) {
       key->fs.sprite_coord_enable = rast->sprite_coord_enable;
    }
 
    /* User clip plane lowering needed everywhere */
    if (rast) {
       key->fs.clip_plane_enable = rast->clip_plane_enable;
+
+      if (u_reduced_prim(ctx->active_prim) == MESA_PRIM_LINES)
+         key->fs.line_smooth = rast->line_smooth;
    }
 
    if (dev->arch <= 5) {
@@ -369,13 +408,13 @@ panfrost_create_shader_state(struct pipe_context *pctx,
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
        nir->info.outputs_written & BITFIELD_BIT(FRAG_RESULT_COLOR)) {
 
-      NIR_PASS_V(nir, nir_lower_fragcolor, 8);
+      NIR_PASS_V(nir, nir_lower_fragcolor, nir->info.fs.color_is_dual_source ? 1 : 8);
       so->fragcolor_lowered = true;
    }
 
    /* Then run the suite of lowering and optimization, including I/O lowering */
    struct panfrost_device *dev = pan_device(pctx->screen);
-   pan_shader_preprocess(nir, dev->gpu_id);
+   pan_shader_preprocess(nir, panfrost_device_gpu_id(dev));
 
    /* If this shader uses transform feedback, compile the transform
     * feedback program. This is a special shader variant.
@@ -470,6 +509,7 @@ panfrost_create_compute_state(struct pipe_context *pctx,
    /* The NIR becomes invalid after this. For compute kernels, we never
     * need to access it again. Don't keep a dangling pointer around.
     */
+   ralloc_free((void *)so->nir);
    so->nir = NULL;
 
    return so;
@@ -496,10 +536,11 @@ panfrost_get_compute_state_info(struct pipe_context *pipe, void *cso,
    struct panfrost_compiled_shader *cs =
       util_dynarray_begin(&uncompiled->variants);
 
-   info->max_threads =
-      panfrost_max_thread_count(dev->arch, cs->info.work_reg_count);
+   info->max_threads = panfrost_compute_max_thread_count(
+      &dev->kmod.props, cs->info.work_reg_count);
    info->private_memory = cs->info.tls_size;
-   info->preferred_simd_size = pan_subgroup_size(dev->arch);
+   info->simd_sizes = pan_subgroup_size(dev->arch);
+   info->preferred_simd_size = info->simd_sizes;
 }
 
 void

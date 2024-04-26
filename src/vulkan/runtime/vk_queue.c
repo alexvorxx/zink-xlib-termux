@@ -23,6 +23,7 @@
 
 #include "vk_queue.h"
 
+#include "util/perf/cpu_trace.h"
 #include "util/u_debug.h"
 #include <inttypes.h>
 
@@ -1123,6 +1124,14 @@ vk_queue_finish(struct vk_queue *queue)
       vk_queue_submit_destroy(queue, submit);
    }
 
+#if DETECT_OS_ANDROID
+   if (queue->anb_semaphore != VK_NULL_HANDLE) {
+      struct vk_device *device = queue->base.device;
+      device->dispatch_table.DestroySemaphore(vk_device_to_handle(device),
+                                              queue->anb_semaphore, NULL);
+   }
+#endif
+
    cnd_destroy(&queue->submit.pop);
    cnd_destroy(&queue->submit.push);
    mtx_destroy(&queue->submit.mutex);
@@ -1133,7 +1142,7 @@ vk_queue_finish(struct vk_queue *queue)
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-vk_common_QueueSubmit2KHR(VkQueue _queue,
+vk_common_QueueSubmit2(VkQueue _queue,
                           uint32_t submitCount,
                           const VkSubmitInfo2 *pSubmits,
                           VkFence _fence)
@@ -1293,6 +1302,8 @@ get_cpu_wait_type(struct vk_physical_device *pdevice)
 VKAPI_ATTR VkResult VKAPI_CALL
 vk_common_QueueWaitIdle(VkQueue _queue)
 {
+   MESA_TRACE_FUNC();
+
    VK_FROM_HANDLE(vk_queue, queue, _queue);
    VkResult result;
 

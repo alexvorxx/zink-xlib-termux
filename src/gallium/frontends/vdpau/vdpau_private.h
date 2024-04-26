@@ -33,7 +33,7 @@
 #include <vdpau/vdpau.h>
 #include <vdpau/vdpau_x11.h>
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "pipe/p_video_codec.h"
 
 #include "frontend/vdpau_interop.h"
@@ -276,6 +276,8 @@ ProfileToPipe(VdpDecoderProfile vdpau_profile)
          return PIPE_VIDEO_PROFILE_HEVC_MAIN_12;
       case VDP_DECODER_PROFILE_HEVC_MAIN_444:
          return PIPE_VIDEO_PROFILE_HEVC_MAIN_444;
+      case VDP_DECODER_PROFILE_AV1_MAIN:
+         return PIPE_VIDEO_PROFILE_AV1_MAIN;
       default:
          return PIPE_VIDEO_PROFILE_UNKNOWN;
    }
@@ -319,6 +321,8 @@ PipeToProfile(enum pipe_video_profile p_profile)
          return VDP_DECODER_PROFILE_HEVC_MAIN_12;
       case PIPE_VIDEO_PROFILE_HEVC_MAIN_444:
          return VDP_DECODER_PROFILE_HEVC_MAIN_444;
+      case PIPE_VIDEO_PROFILE_AV1_MAIN:
+         return VDP_DECODER_PROFILE_AV1_MAIN;
       default:
          assert(0);
          return -1;
@@ -473,13 +477,13 @@ typedef struct
 
 typedef uint32_t vlHandle;
 
-boolean vlCreateHTAB(void);
+bool vlCreateHTAB(void);
 void vlDestroyHTAB(void);
 vlHandle vlAddDataHTAB(void *data);
 void* vlGetDataHTAB(vlHandle handle);
 void vlRemoveDataHTAB(vlHandle handle);
 
-boolean vlGetFuncFTAB(VdpFuncId function_id, void **func);
+bool vlGetFuncFTAB(VdpFuncId function_id, void **func);
 
 /* Public functions */
 VdpDeviceCreateX11 vdp_imp_device_create_x11;

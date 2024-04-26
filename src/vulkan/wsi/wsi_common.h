@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "util/log.h"
 #include "vk_alloc.h"
 #include "vk_dispatch_table.h"
 #include <vulkan/vulkan.h>
@@ -105,6 +106,7 @@ struct wsi_device {
    VkPhysicalDevice pdevice;
    VkPhysicalDeviceMemoryProperties memory_props;
    uint32_t queue_family_count;
+   uint64_t queue_supports_blit;
 
    VkPhysicalDeviceDrmPropertiesEXT drm_info;
    VkPhysicalDevicePCIBusInfoPropertiesEXT pci_bus_info;
@@ -134,6 +136,8 @@ struct wsi_device {
    /* Create headless swapchains. */
    bool force_headless_swapchain;
 
+   bool force_swapchain_to_currentExtent;
+
    struct {
       /* Override the minimum number of images on the swapchain.
        * 0 = no override */
@@ -156,6 +160,10 @@ struct wsi_device {
 
       /* adds an extra minImageCount when running under xwayland */
       bool extra_xwayland_image;
+
+      /* Never report VK_SUBOPTIMAL_KHR. Used to workaround
+       * games that cannot handle SUBOPTIMAL correctly. */
+      bool ignore_suboptimal;
    } x11;
 
    struct {
@@ -250,7 +258,7 @@ struct wsi_device {
    WSI_CB(GetImageSubresourceLayout);
    WSI_CB(GetMemoryFdKHR);
    WSI_CB(GetPhysicalDeviceFormatProperties);
-   WSI_CB(GetPhysicalDeviceFormatProperties2KHR);
+   WSI_CB(GetPhysicalDeviceFormatProperties2);
    WSI_CB(GetPhysicalDeviceImageFormatProperties2);
    WSI_CB(GetSemaphoreFdKHR);
    WSI_CB(ResetFences);
@@ -258,7 +266,7 @@ struct wsi_device {
    WSI_CB(WaitForFences);
    WSI_CB(MapMemory);
    WSI_CB(UnmapMemory);
-   WSI_CB(WaitSemaphoresKHR);
+   WSI_CB(WaitSemaphores);
 #undef WSI_CB
 
     struct wsi_interface *                  wsi[VK_ICD_WSI_PLATFORM_MAX];
@@ -342,6 +350,18 @@ wsi_common_bind_swapchain_image(const struct wsi_device *wsi,
 
 bool
 wsi_common_vk_instance_supports_present_wait(const struct vk_instance *instance);
+
+VkImageUsageFlags
+wsi_caps_get_image_usage(void);
+
+#define wsi_common_vk_warn_once(warning) \
+   do { \
+      static int warned = false; \
+      if (!warned) { \
+         mesa_loge(warning); \
+         warned = true; \
+      } \
+   } while (0)
 
 #ifdef __cplusplus
 }

@@ -53,6 +53,7 @@
 #include "main/errors.h"
 #include "loader/loader.h"
 #include "GL/internal/mesa_interface.h"
+#include "loader_dri_helper.h"
 
 driOptionDescription __dri2ConfigOptions[] = {
       DRI_CONF_SECTION_DEBUG
@@ -138,9 +139,7 @@ driCreateNewScreen2(int scrn, int fd,
 
     *driver_configs = mesa->initScreen(screen);
     if (*driver_configs == NULL) {
-        driDestroyOptionCache(&screen->optionCache);
-        driDestroyOptionInfo(&screen->optionInfo);
-        free(screen);
+        dri_destroy_screen(screen);
         return NULL;
     }
 
@@ -323,7 +322,13 @@ driGetConfigAttribIndex(const __DRIconfig *config,
     case __DRI_ATTRIB_VISUAL_SELECT_GROUP:
         *value = 0;
         break;
-    SIMPLE_CASE(__DRI_ATTRIB_SWAP_METHOD, swapMethod);
+    case __DRI_ATTRIB_SWAP_METHOD:
+        /* Not supported any more, but we have the __DRI_ATTRIB still defined
+         * for the X server's sake, and EGL will expect us to handle it because
+         * it iterates all __DRI_ATTRIBs.
+         */
+        *value = __DRI_ATTRIB_SWAP_UNDEFINED;
+        break;
     case __DRI_ATTRIB_MAX_SWAP_INTERVAL:
         *value = INT_MAX;
         break;
@@ -747,6 +752,7 @@ driCreateNewDrawable(__DRIscreen *psp,
     struct dri_screen *screen = dri_screen(psp);
     struct dri_drawable *drawable =
        screen->create_drawable(screen, &config->modes, GL_FALSE, data);
+   drawable->buffer_age = 0;
 
     return opaque_dri_drawable(drawable);
 }
@@ -842,6 +848,16 @@ driGetAPIMask(__DRIscreen *screen)
  * driver.
  */
 static void
+driSwapBuffersWithDamage(__DRIdrawable *pdp, int nrects, const int *rects)
+{
+   struct dri_drawable *drawable = dri_drawable(pdp);
+
+   assert(drawable->screen->swrast_loader);
+
+   drawable->swap_buffers_with_damage(drawable, nrects, rects);
+}
+
+static void
 driSwapBuffers(__DRIdrawable *pdp)
 {
    struct dri_drawable *drawable = dri_drawable(pdp);
@@ -849,6 +865,13 @@ driSwapBuffers(__DRIdrawable *pdp)
    assert(drawable->screen->swrast_loader);
 
    drawable->swap_buffers(drawable);
+}
+
+static int
+driSWRastQueryBufferAge(__DRIdrawable *pdp)
+{
+   struct dri_drawable *drawable = dri_drawable(pdp);
+   return drawable->buffer_age;
 }
 
 /** Core interface */
@@ -863,6 +886,7 @@ const __DRIcoreExtension driCoreExtension = {
     .createNewDrawable          = NULL,
     .destroyDrawable            = driDestroyDrawable,
     .swapBuffers                = driSwapBuffers, /* swrast */
+    .swapBuffersWithDamage      = driSwapBuffersWithDamage, /* swrast */
     .createNewContext           = driCreateNewContext, /* swrast */
     .copyContext                = driCopyContext,
     .destroyContext             = driDestroyContext,
@@ -911,6 +935,7 @@ const __DRIswrastExtension driSWRastExtension = {
     .createNewContextForAPI     = driCreateNewContextForAPI,
     .createContextAttribs       = driCreateContextAttribs,
     .createNewScreen2           = driSWRastCreateNewScreen2,
+    .queryBufferAge             = driSWRastQueryBufferAge,
 };
 
 const __DRI2configQueryExtension dri2ConfigQueryExtension = {
@@ -946,6 +971,11 @@ static const struct {
       .internal_format =        GL_RGB5_A1,
    },
    {
+      .image_format    = __DRI_IMAGE_FORMAT_ABGR1555,
+      .mesa_format     =        MESA_FORMAT_R5G5B5A1_UNORM,
+      .internal_format =        GL_RGB5_A1,
+   },
+   {
       .image_format    = __DRI_IMAGE_FORMAT_XRGB8888,
       .mesa_format     =        MESA_FORMAT_B8G8R8X8_UNORM,
       .internal_format =        GL_RGB8,
@@ -958,7 +988,7 @@ static const struct {
    {
       .image_format    = __DRI_IMAGE_FORMAT_XBGR16161616F,
       .mesa_format     =        MESA_FORMAT_RGBX_FLOAT16,
-      .internal_format =        GL_RGBA16F,
+      .internal_format =        GL_RGB16F,
    },
    {
       .image_format    = __DRI_IMAGE_FORMAT_ABGR16161616,
@@ -968,7 +998,7 @@ static const struct {
    {
       .image_format    = __DRI_IMAGE_FORMAT_XBGR16161616,
       .mesa_format     =        MESA_FORMAT_RGBX_UNORM16,
-      .internal_format =        GL_RGBA16,
+      .internal_format =        GL_RGB16,
    },
    {
       .image_format    = __DRI_IMAGE_FORMAT_ARGB2101010,
@@ -978,7 +1008,7 @@ static const struct {
    {
       .image_format    = __DRI_IMAGE_FORMAT_XRGB2101010,
       .mesa_format     =        MESA_FORMAT_B10G10R10X2_UNORM,
-      .internal_format =        GL_RGB10_A2,
+      .internal_format =        GL_RGB10,
    },
    {
       .image_format    = __DRI_IMAGE_FORMAT_ABGR2101010,
@@ -988,7 +1018,7 @@ static const struct {
    {
       .image_format    = __DRI_IMAGE_FORMAT_XBGR2101010,
       .mesa_format     =        MESA_FORMAT_R10G10B10X2_UNORM,
-      .internal_format =        GL_RGB10_A2,
+      .internal_format =        GL_RGB10,
    },
    {
       .image_format    = __DRI_IMAGE_FORMAT_ARGB8888,
@@ -1040,7 +1070,7 @@ static const struct {
    {
       .image_format = __DRI_IMAGE_FORMAT_SXRGB8,
       .mesa_format  =           MESA_FORMAT_B8G8R8X8_SRGB,
-      .internal_format =        GL_SRGB8_ALPHA8,
+      .internal_format =        GL_SRGB8,
    },
    {
       .image_format    = __DRI_IMAGE_FORMAT_R16,
@@ -1064,6 +1094,16 @@ static const struct {
       .internal_format =        GL_RG16,
    },
 #endif
+   {
+      .image_format    = __DRI_IMAGE_FORMAT_ARGB4444,
+      .mesa_format     =        MESA_FORMAT_B4G4R4A4_UNORM,
+      .internal_format =        GL_RGBA4,
+   },
+   {
+      .image_format    = __DRI_IMAGE_FORMAT_ABGR4444,
+      .mesa_format     =        MESA_FORMAT_R4G4B4A4_UNORM,
+      .internal_format =        GL_RGBA4,
+   },
 };
 
 uint32_t

@@ -193,6 +193,8 @@ void
 ir3_reg_interval_remove(struct ir3_reg_ctx *ctx,
                         struct ir3_reg_interval *interval)
 {
+   assert(interval->inserted);
+
    if (interval->parent) {
       rb_tree_remove(&interval->parent->children, &interval->node);
    } else {
@@ -684,6 +686,8 @@ ra_pop_interval(struct ra_ctx *ctx, struct ra_file *file,
                 struct ra_interval *interval)
 {
    assert(!interval->interval.parent);
+   /* shared live splitting is not allowed! */
+   assert(!(interval->interval.reg->flags & IR3_REG_SHARED));
 
    /* Check if we've already moved this reg before */
    unsigned pcopy_index;
@@ -879,9 +883,13 @@ try_evict_regs(struct ra_ctx *ctx, struct ra_file *file,
       if (evicted)
          continue;
 
-      /* If we couldn't evict this range, we may be able to swap it with a
-       * killed range to acheive the same effect.
+      /* If we couldn't evict this range, but the register we're allocating is
+       * allowed to overlap with a killed range, then we may be able to swap it
+       * with a killed range to acheive the same effect.
        */
+      if (is_early_clobber(reg) || is_source)
+         return false;
+
       foreach_interval (killed, file) {
          if (!killed->is_killed)
             continue;
@@ -1043,7 +1051,7 @@ static physreg_t
 compress_regs_left(struct ra_ctx *ctx, struct ra_file *file,
                    struct ir3_register *reg)
 {
-   unsigned align = reg_elem_size(reg);
+   unsigned reg_align = reg_elem_size(reg);
    DECLARE_ARRAY(struct ra_removed_interval, intervals);
    intervals_count = intervals_sz = 0;
    intervals = NULL;
@@ -1057,7 +1065,7 @@ compress_regs_left(struct ra_ctx *ctx, struct ra_file *file,
    unsigned dst_size = reg->tied ? 0 : reg_size(reg);
    unsigned ec_dst_size = is_early_clobber(reg) ? reg_size(reg) : 0;
    unsigned half_dst_size = 0, ec_half_dst_size = 0;
-   if (align == 1) {
+   if (reg_align == 1) {
       half_dst_size = dst_size;
       ec_half_dst_size = ec_dst_size;
    }
@@ -1065,7 +1073,7 @@ compress_regs_left(struct ra_ctx *ctx, struct ra_file *file,
    unsigned removed_size = 0, removed_half_size = 0;
    unsigned removed_killed_size = 0, removed_killed_half_size = 0;
    unsigned file_size =
-      align == 1 ? MIN2(file->size, RA_HALF_SIZE) : file->size;
+      reg_align == 1 ? MIN2(file->size, RA_HALF_SIZE) : file->size;
    physreg_t start_reg = 0;
 
    foreach_interval_rev_safe (interval, file) {
@@ -1130,7 +1138,7 @@ compress_regs_left(struct ra_ctx *ctx, struct ra_file *file,
        */
       if (candidate_start + removed_size + ec_dst_size +
           MAX2(removed_killed_size, dst_size) <= file->size &&
-          (align != 1 ||
+          (reg_align != 1 ||
            candidate_start + removed_half_size + ec_half_dst_size +
            MAX2(removed_killed_half_size, half_dst_size) <= file_size)) {
          start_reg = candidate_start;
@@ -1318,7 +1326,7 @@ update_affinity(struct ra_file *file, struct ir3_register *reg,
 static physreg_t
 find_best_gap(struct ra_ctx *ctx, struct ra_file *file,
               struct ir3_register *dst, unsigned file_size, unsigned size,
-              unsigned align)
+              unsigned alignment)
 {
    /* This can happen if we create a very large merge set. Just bail out in that
     * case.
@@ -1329,7 +1337,7 @@ find_best_gap(struct ra_ctx *ctx, struct ra_file *file,
    BITSET_WORD *available =
       is_early_clobber(dst) ? file->available_to_evict : file->available;
 
-   unsigned start = ALIGN(file->start, align) % (file_size - size + align);
+   unsigned start = ALIGN(file->start, alignment) % (file_size - size + alignment);
    unsigned candidate = start;
    do {
       bool is_available = true;
@@ -1350,7 +1358,7 @@ find_best_gap(struct ra_ctx *ctx, struct ra_file *file,
          return candidate;
       }
 
-      candidate += align;
+      candidate += alignment;
       if (candidate + size > file_size)
          candidate = 0;
    } while (candidate != start);
@@ -1599,7 +1607,7 @@ insert_parallel_copy_instr(struct ra_ctx *ctx, struct ir3_instruction *instr)
       struct ir3_register *reg =
          ir3_dst_create(pcopy, INVALID_REG,
                         entry->interval->interval.reg->flags &
-                        (IR3_REG_HALF | IR3_REG_ARRAY));
+                        (IR3_REG_HALF | IR3_REG_ARRAY | IR3_REG_SHARED));
       reg->size = entry->interval->interval.reg->size;
       reg->wrmask = entry->interval->interval.reg->wrmask;
       assign_reg(pcopy, reg, ra_interval_get_num(entry->interval));
@@ -1610,7 +1618,7 @@ insert_parallel_copy_instr(struct ra_ctx *ctx, struct ir3_instruction *instr)
       struct ir3_register *reg =
          ir3_src_create(pcopy, INVALID_REG,
                         entry->interval->interval.reg->flags &
-                        (IR3_REG_HALF | IR3_REG_ARRAY));
+                        (IR3_REG_HALF | IR3_REG_ARRAY | IR3_REG_SHARED));
       reg->size = entry->interval->interval.reg->size;
       reg->wrmask = entry->interval->interval.reg->wrmask;
       assign_reg(pcopy, reg, ra_physreg_to_num(entry->src, reg->flags));
@@ -1661,6 +1669,9 @@ handle_split(struct ra_ctx *ctx, struct ir3_instruction *instr)
    struct ir3_register *dst = instr->dsts[0];
    struct ir3_register *src = instr->srcs[0];
 
+   if (!(dst->flags & IR3_REG_SSA))
+      return;
+
    if (dst->merge_set == NULL || src->def->merge_set != dst->merge_set) {
       handle_normal_instr(ctx, instr);
       return;
@@ -1679,6 +1690,9 @@ handle_split(struct ra_ctx *ctx, struct ir3_instruction *instr)
 static void
 handle_collect(struct ra_ctx *ctx, struct ir3_instruction *instr)
 {
+   if (!(instr->dsts[0]->flags & IR3_REG_SSA))
+      return;
+
    struct ir3_merge_set *dst_set = instr->dsts[0]->merge_set;
    unsigned dst_offset = instr->dsts[0]->merge_set_offset;
 
@@ -1711,8 +1725,14 @@ handle_collect(struct ra_ctx *ctx, struct ir3_instruction *instr)
 
       struct ra_interval *interval = &ctx->intervals[src->def->name];
 
-      if (src->def->merge_set != dst_set || interval->is_killed)
+      /* We only need special handling if the source's interval overlaps with
+       * the destination's interval.
+       */
+      if (src->def->interval_start >= instr->dsts[0]->interval_end ||
+          instr->dsts[0]->interval_start >= src->def->interval_end ||
+          interval->is_killed)
          continue;
+
       while (interval->interval.parent != NULL) {
          interval = ir3_reg_interval_to_ra_interval(interval->interval.parent);
       }
@@ -1794,7 +1814,8 @@ handle_pcopy(struct ra_ctx *ctx, struct ir3_instruction *instr)
 static void
 handle_precolored_input(struct ra_ctx *ctx, struct ir3_instruction *instr)
 {
-   if (instr->dsts[0]->num == INVALID_REG)
+   if (instr->dsts[0]->num == INVALID_REG ||
+       !(instr->dsts[0]->flags & IR3_REG_SSA))
       return;
 
    struct ra_file *file = ra_get_file(ctx, instr->dsts[0]);
@@ -1825,6 +1846,9 @@ handle_input(struct ra_ctx *ctx, struct ir3_instruction *instr)
 static void
 assign_input(struct ra_ctx *ctx, struct ir3_instruction *instr)
 {
+   if (!(instr->dsts[0]->flags & IR3_REG_SSA))
+      return;
+
    struct ra_interval *interval = &ctx->intervals[instr->dsts[0]->name];
    struct ra_file *file = ra_get_file(ctx, instr->dsts[0]);
 
@@ -1969,6 +1993,9 @@ handle_live_out(struct ra_ctx *ctx, struct ir3_register *def)
 static void
 handle_phi(struct ra_ctx *ctx, struct ir3_register *def)
 {
+   if (!(def->flags & IR3_REG_SSA))
+      return;
+
    struct ra_file *file = ra_get_file(ctx, def);
    struct ra_interval *interval = &ctx->intervals[def->name];
 
@@ -1995,6 +2022,9 @@ handle_phi(struct ra_ctx *ctx, struct ir3_register *def)
 static void
 assign_phi(struct ra_ctx *ctx, struct ir3_instruction *phi)
 {
+   if (!(phi->dsts[0]->flags & IR3_REG_SSA))
+      return;
+
    struct ra_file *file = ra_get_file(ctx, phi->dsts[0]);
    struct ra_interval *interval = &ctx->intervals[phi->dsts[0]->name];
    assert(!interval->interval.parent);
@@ -2040,12 +2070,10 @@ insert_liveout_copy(struct ir3_block *block, physreg_t dst, physreg_t src,
                     struct ir3_register *reg)
 {
    struct ir3_instruction *old_pcopy = NULL;
-   if (!list_is_empty(&block->instr_list)) {
-      struct ir3_instruction *last =
-         list_entry(block->instr_list.prev, struct ir3_instruction, node);
-      if (last->opc == OPC_META_PARALLEL_COPY)
-         old_pcopy = last;
-   }
+   struct ir3_instruction *last = ir3_block_get_last_non_terminator(block);
+
+   if (last && last->opc == OPC_META_PARALLEL_COPY)
+      old_pcopy = last;
 
    unsigned old_pcopy_srcs = old_pcopy ? old_pcopy->srcs_count : 0;
    struct ir3_instruction *pcopy = ir3_instr_create(
@@ -2081,15 +2109,8 @@ insert_live_in_move(struct ra_ctx *ctx, struct ra_interval *interval)
 {
    physreg_t physreg = ra_interval_get_physreg(interval);
 
-   bool shared = interval->interval.reg->flags & IR3_REG_SHARED;
-   struct ir3_block **predecessors =
-      shared ? ctx->block->physical_predecessors : ctx->block->predecessors;
-   unsigned predecessors_count = shared
-                                    ? ctx->block->physical_predecessors_count
-                                    : ctx->block->predecessors_count;
-
-   for (unsigned i = 0; i < predecessors_count; i++) {
-      struct ir3_block *pred = predecessors[i];
+   for (unsigned i = 0; i < ctx->block->predecessors_count; i++) {
+      struct ir3_block *pred = ctx->block->predecessors[i];
       struct ra_block_state *pred_state = &ctx->blocks[pred->index];
 
       if (!pred_state->visited)
@@ -2097,28 +2118,8 @@ insert_live_in_move(struct ra_ctx *ctx, struct ra_interval *interval)
 
       physreg_t pred_reg = read_register(ctx, pred, interval->interval.reg);
       if (pred_reg != physreg) {
+         assert(!(interval->interval.reg->flags & IR3_REG_SHARED));
          insert_liveout_copy(pred, physreg, pred_reg, interval->interval.reg);
-
-         /* This is a bit tricky, but when visiting the destination of a
-          * physical-only edge, we have two predecessors (the if and the
-          * header block) and both have multiple successors. We pick the
-          * register for all live-ins from the normal edge, which should
-          * guarantee that there's no need for shuffling things around in
-          * the normal predecessor as long as there are no phi nodes, but
-          * we still may need to insert fixup code in the physical
-          * predecessor (i.e. the last block of the if) and that has
-          * another successor (the block after the if) so we need to update
-          * the renames state for when we process the other successor. This
-          * crucially depends on the other successor getting processed
-          * after this.
-          *
-          * For normal (non-physical) edges we disallow critical edges so
-          * that hacks like this aren't necessary.
-          */
-         if (!pred_state->renames)
-            pred_state->renames = _mesa_pointer_hash_table_create(ctx);
-         _mesa_hash_table_insert(pred_state->renames, interval->interval.reg,
-                                 (void *)(uintptr_t)physreg);
       }
    }
 }
@@ -2543,6 +2544,9 @@ ir3_ra(struct ir3_shader_variant *v)
 {
    ir3_calc_dominance(v->ir);
 
+   /* Predicate RA needs dominance. */
+   ir3_ra_predicates(v);
+
    ir3_create_parallel_copies(v->ir);
 
    struct ra_ctx *ctx = rzalloc(NULL, struct ra_ctx);
@@ -2556,6 +2560,18 @@ ir3_ra(struct ir3_shader_variant *v)
    ir3_debug_print(v->ir, "AFTER: create_parallel_copies");
 
    ir3_merge_regs(live, v->ir);
+
+   bool has_shared_vectors = false;
+   foreach_block (block, &v->ir->block_list) {
+      foreach_instr (instr, &block->instr_list) {
+         ra_foreach_dst (dst, instr) {
+            if ((dst->flags & IR3_REG_SHARED) && reg_elems(dst) > 1) {
+               has_shared_vectors = true;
+               break;
+            }
+         }
+      }
+   }
 
    struct ir3_pressure max_pressure;
    ir3_calc_pressure(v, live, &max_pressure);
@@ -2577,7 +2593,7 @@ ir3_ra(struct ir3_shader_variant *v)
     * because on some gens the register file is not big enough to hold a
     * double-size wave with all 48 registers in use.
     */
-   if (v->real_wavesize == IR3_DOUBLE_ONLY) {
+   if (v->shader_options.real_wavesize == IR3_DOUBLE_ONLY) {
       limit_pressure.full =
          MAX2(limit_pressure.full, ctx->compiler->reg_size_vec4 / 2 * 16);
    }
@@ -2586,10 +2602,17 @@ ir3_ra(struct ir3_shader_variant *v)
    if (ir3_shader_debug & IR3_DBG_SPILLALL)
       calc_min_limit_pressure(v, live, &limit_pressure);
 
-   if (max_pressure.shared > limit_pressure.shared) {
-      /* TODO shared reg -> normal reg spilling */
-      d("shared max pressure exceeded!");
-      goto fail;
+   if (max_pressure.shared > limit_pressure.shared || has_shared_vectors) {
+      ir3_ra_shared(v, live);
+
+      /* Recalculate liveness and register pressure now that additional values
+       * have been added.
+       */
+      ralloc_free(live);
+      live = ir3_calc_liveness(ctx, v->ir);
+      ir3_calc_pressure(v, live, &max_pressure);
+
+      ir3_debug_print(v->ir, "AFTER: shared register allocation");
    }
 
    bool spilled = false;
@@ -2625,7 +2648,7 @@ ir3_ra(struct ir3_shader_variant *v)
    foreach_block (block, &v->ir->block_list)
       handle_block(ctx, block);
 
-   ir3_ra_validate(v, ctx->full.size, ctx->half.size, live->block_count);
+   ir3_ra_validate(v, ctx->full.size, ctx->half.size, live->block_count, false);
 
    /* Strip array-ness and SSA-ness at the end, because various helpers still
     * need to work even on definitions that have already been assigned. For

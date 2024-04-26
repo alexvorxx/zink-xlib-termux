@@ -10,11 +10,9 @@
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
 
-#if DETECT_ARCH_X86_64 || DETECT_ARCH_PPC_64 || DETECT_ARCH_AARCH64 || DETECT_ARCH_MIPS64
-#define NUM_QUERIES 5000
-#else
 #define NUM_QUERIES 500
-#endif
+
+#define ZINK_QUERY_RENDER_PASSES (PIPE_QUERY_DRIVER_SPECIFIC + 0)
 
 struct zink_query_pool {
    struct list_head list;
@@ -90,6 +88,10 @@ struct zink_query {
    bool predicate_dirty;
 };
 
+static const struct pipe_driver_query_info zink_specific_queries[] = {
+   {"render-passes", ZINK_QUERY_RENDER_PASSES, { 0 }},
+};
+
 static inline int
 get_num_starts(struct zink_query *q)
 {
@@ -152,7 +154,7 @@ reset_vk_query_pool(struct zink_context *ctx, struct zink_vk_query *vkq)
 {
    struct zink_batch *batch = &ctx->batch;
    if (vkq->needs_reset) {
-      VKCTX(CmdResetQueryPool)(batch->state->barrier_cmdbuf, vkq->pool->query_pool, vkq->query_id, 1);
+      VKCTX(CmdResetQueryPool)(batch->state->reordered_cmdbuf, vkq->pool->query_pool, vkq->query_id, 1);
       batch->state->has_barriers = true;
    }
    vkq->needs_reset = false;
@@ -255,7 +257,8 @@ get_num_queries(struct zink_query *q)
 static inline unsigned
 get_num_results(struct zink_query *q)
 {
-   if (q->vkqtype == VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT)
+   if (q->type < PIPE_QUERY_DRIVER_SPECIFIC &&
+       q->vkqtype == VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT)
       return 1;
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
@@ -368,7 +371,7 @@ qbo_append(struct pipe_screen *screen, struct zink_query *query)
       qbo->buffers[i] = pipe_buffer_create(screen, PIPE_BIND_QUERY_BUFFER,
                                            PIPE_USAGE_STAGING,
                                            /* this is the maximum possible size of the results in a given buffer */
-                                           NUM_QUERIES * get_num_results(query) * sizeof(uint64_t));
+                                           (query->type == PIPE_QUERY_TIMESTAMP ? 1 : NUM_QUERIES) * get_num_results(query) * sizeof(uint64_t));
       if (!qbo->buffers[i])
          goto fail;
    }
@@ -407,7 +410,7 @@ unref_vk_query(struct zink_context *ctx, struct zink_vk_query *vkq)
 static void
 destroy_query(struct zink_context *ctx, struct zink_query *query)
 {
-   struct zink_screen *screen = zink_screen(ctx->base.screen);
+   ASSERTED struct zink_screen *screen = zink_screen(ctx->base.screen);
    assert(zink_screen_usage_check_completion(screen, query->batch_uses));
    struct zink_query_buffer *qbo, *next;
 
@@ -503,6 +506,10 @@ zink_create_query(struct pipe_context *pctx,
 
    query->index = index;
    query->type = query_type;
+
+   if (query->type >= PIPE_QUERY_DRIVER_SPECIFIC)
+      return (struct pipe_query *)query;
+
    if (query->type == PIPE_QUERY_GPU_FINISHED || query->type == PIPE_QUERY_TIMESTAMP_DISJOINT)
       return (struct pipe_query *)query;
    query->vkqtype = convert_query_type(screen, query_type, &query->precise);
@@ -717,7 +724,7 @@ force_cpu_read(struct zink_context *ctx, struct pipe_query *pquery, enum pipe_qu
    struct pipe_context *pctx = &ctx->base;
    unsigned result_size = result_type <= PIPE_QUERY_TYPE_U32 ? sizeof(uint32_t) : sizeof(uint64_t);
    struct zink_query *query = (struct zink_query*)pquery;
-   union pipe_query_result result;
+   union pipe_query_result result = {0};
 
    if (query->needs_update)
       update_qbo(ctx, query);
@@ -876,7 +883,7 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
 {
    VkQueryControlFlags flags = 0;
 
-   if (q->type == PIPE_QUERY_TIMESTAMP_DISJOINT)
+   if (q->type == PIPE_QUERY_TIMESTAMP_DISJOINT || q->type >= PIPE_QUERY_DRIVER_SPECIFIC)
       return;
 
    if (q->type == PIPE_QUERY_PIPELINE_STATISTICS_SINGLE && q->index == PIPE_STAT_QUERY_CS_INVOCATIONS && ctx->batch.in_rp) {
@@ -886,6 +893,8 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
       q->suspended = true;
       return;
    }
+
+   zink_flush_dgc_if_enabled(ctx);
 
    update_query_id(ctx, q);
    q->predicate_dirty = true;
@@ -948,7 +957,7 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
    if (q->needs_rast_discard_workaround) {
       ctx->primitives_generated_active = true;
       if (zink_set_rasterizer_discard(ctx, true))
-         zink_set_color_write_enables(ctx);
+         zink_set_null_fs(ctx);
    }
 }
 
@@ -962,6 +971,11 @@ zink_begin_query(struct pipe_context *pctx,
 
    /* drop all past results */
    reset_qbo(query);
+
+   if (query->type < PIPE_QUERY_DRIVER_SPECIFIC && query->vkqtype == VK_QUERY_TYPE_OCCLUSION)
+      ctx->occlusion_query_active = true;
+   if (query->type == PIPE_QUERY_PIPELINE_STATISTICS_SINGLE && query->index == PIPE_STAT_QUERY_PS_INVOCATIONS)
+      ctx->fs_query_active = true;
 
    query->predicate_dirty = true;
 
@@ -992,8 +1006,10 @@ update_query_id(struct zink_context *ctx, struct zink_query *q)
 static void
 end_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_query *q)
 {
-   if (q->type == PIPE_QUERY_TIMESTAMP_DISJOINT)
+   if (q->type == PIPE_QUERY_TIMESTAMP_DISJOINT || q->type >= PIPE_QUERY_DRIVER_SPECIFIC)
       return;
+
+   zink_flush_dgc_if_enabled(ctx);
 
    ASSERTED struct zink_query_buffer *qbo = q->curr_qbo;
    assert(qbo);
@@ -1033,7 +1049,7 @@ end_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_query 
    if (q->needs_rast_discard_workaround) {
       ctx->primitives_generated_active = false;
       if (zink_set_rasterizer_discard(ctx, false))
-         zink_set_color_write_enables(ctx);
+         zink_set_null_fs(ctx);
    }
 }
 
@@ -1045,7 +1061,7 @@ zink_end_query(struct pipe_context *pctx,
    struct zink_query *query = (struct zink_query *)q;
    struct zink_batch *batch = &ctx->batch;
 
-   if (query->type == PIPE_QUERY_TIMESTAMP_DISJOINT)
+   if (query->type == PIPE_QUERY_TIMESTAMP_DISJOINT || query->type >= PIPE_QUERY_DRIVER_SPECIFIC)
       return true;
 
    if (query->type == PIPE_QUERY_GPU_FINISHED) {
@@ -1055,6 +1071,15 @@ zink_end_query(struct pipe_context *pctx,
 
    /* FIXME: this can be called from a thread, but it needs to write to the cmdbuf */
    threaded_context_unwrap_sync(pctx);
+
+   if (query->vkqtype == VK_QUERY_TYPE_OCCLUSION)
+      ctx->occlusion_query_active = true;
+   if (query->type == PIPE_QUERY_PIPELINE_STATISTICS_SINGLE && query->index == PIPE_STAT_QUERY_PS_INVOCATIONS)
+      ctx->fs_query_active = true;
+
+   bool unset_null_fs = query->type == PIPE_QUERY_PRIMITIVES_GENERATED && (ctx->primitives_generated_suspended || ctx->primitives_generated_active);
+   if (query->type == PIPE_QUERY_PRIMITIVES_GENERATED)
+      ctx->primitives_generated_suspended = false;
 
    if (list_is_linked(&query->stats_list))
       list_delinit(&query->stats_list);
@@ -1080,6 +1105,9 @@ zink_end_query(struct pipe_context *pctx,
       end_query(ctx, batch, query);
    }
 
+   if (unset_null_fs)
+      zink_set_null_fs(ctx);
+
    return true;
 }
 
@@ -1102,8 +1130,14 @@ zink_get_query_result(struct pipe_context *pctx,
       struct pipe_screen *screen = pctx->screen;
 
       result->b = screen->fence_finish(screen, query->base.flushed ? NULL : pctx,
-                                        query->fence, wait ? PIPE_TIMEOUT_INFINITE : 0);
+                                        query->fence, wait ? OS_TIMEOUT_INFINITE : 0);
       return result->b;
+   }
+
+   if (query->type == ZINK_QUERY_RENDER_PASSES) {
+      result->u64 = ctx->hud.render_passes;
+      ctx->hud.render_passes = 0;
+      return true;
    }
 
    if (query->needs_update) {
@@ -1285,6 +1319,7 @@ zink_start_conditional_render(struct zink_context *ctx)
 void
 zink_stop_conditional_render(struct zink_context *ctx)
 {
+   zink_flush_dgc_if_enabled(ctx);
    struct zink_batch *batch = &ctx->batch;
    zink_clear_apply_conditionals(ctx);
    if (unlikely(!zink_screen(ctx->base.screen)->info.have_EXT_conditional_rendering) || !ctx->render_condition.active)
@@ -1304,6 +1339,7 @@ zink_render_condition(struct pipe_context *pctx,
    zink_batch_no_rp(ctx);
    VkQueryResultFlagBits flags = 0;
 
+   zink_flush_dgc_if_enabled(ctx);
    if (query == NULL) {
       /* force conditional clears if they exist */
       if (ctx->clears_enabled && !ctx->batch.in_rp)
@@ -1491,4 +1527,32 @@ zink_context_query_init(struct pipe_context *pctx)
    pctx->get_query_result_resource = zink_get_query_result_resource;
    pctx->set_active_query_state = zink_set_active_query_state;
    pctx->render_condition = zink_render_condition;
+}
+
+int
+zink_get_driver_query_group_info(struct pipe_screen *pscreen, unsigned index,
+                                 struct pipe_driver_query_group_info *info)
+{
+   if (!info)
+      return 1;
+
+   assert(index == 0);
+   info->name = "Zink counters";
+   info->max_active_queries = ARRAY_SIZE(zink_specific_queries);
+   info->num_queries = ARRAY_SIZE(zink_specific_queries);
+
+   return 1;
+}
+
+int
+zink_get_driver_query_info(struct pipe_screen *pscreen, unsigned index,
+                           struct pipe_driver_query_info *info)
+{
+   if (!info)
+      return ARRAY_SIZE(zink_specific_queries);
+
+   assert(index < ARRAY_SIZE(zink_specific_queries));
+   *info = zink_specific_queries[index];
+
+   return 1;
 }

@@ -24,21 +24,31 @@
 #include "gen_macros.h"
 
 #include "pan_blitter.h"
+#include "pan_props.h"
 
 #include "panvk_private.h"
 
 static void
 panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
-                const struct pan_blit_info *blitinfo)
+                const struct pan_blit_info *blitinfo,
+                const struct panvk_image *src_img,
+                const struct panvk_image *dst_img)
 {
-   struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct pan_blit_context ctx;
    struct pan_image_view views[2] = {
       {
          .format = blitinfo->dst.planes[0].format,
          .dim = MALI_TEXTURE_DIMENSION_2D,
-         .image = blitinfo->dst.planes[0].image,
+         .planes =
+            {
+               blitinfo->dst.planes[0].image,
+               blitinfo->dst.planes[1].image,
+               blitinfo->dst.planes[2].image,
+            },
          .nr_samples = blitinfo->dst.planes[0].image->layout.nr_samples,
          .first_level = blitinfo->dst.level,
          .last_level = blitinfo->dst.level,
@@ -48,6 +58,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    };
 
    *fbinfo = (struct pan_fb_info){
+      .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .width = u_minify(blitinfo->dst.planes[0].image->layout.width,
                         blitinfo->dst.level),
       .height = u_minify(blitinfo->dst.planes[0].image->layout.height,
@@ -93,7 +104,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
       /* TODO: don't force preloads of dst resources if unneeded */
       views[1].format = blitinfo->dst.planes[1].format;
       views[1].dim = MALI_TEXTURE_DIMENSION_2D;
-      views[1].image = blitinfo->dst.planes[1].image;
+      views[1].planes[0] = blitinfo->dst.planes[1].image;
       views[1].nr_samples = blitinfo->dst.planes[1].image->layout.nr_samples;
       views[1].first_level = blitinfo->dst.level;
       views[1].last_level = blitinfo->dst.level;
@@ -106,7 +117,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
 
-   GENX(pan_blit_ctx_init)(pdev, blitinfo, &cmdbuf->desc_pool.base, &ctx);
+   GENX(pan_blit_ctx_init)
+   (&dev->meta.blitter.cache, blitinfo, &cmdbuf->desc_pool.base, &ctx);
    do {
       if (ctx.dst.cur_layer < 0)
          continue;
@@ -116,8 +128,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
 
       views[0].first_layer = views[0].last_layer = ctx.dst.cur_layer;
       views[1].first_layer = views[1].last_layer = views[0].first_layer;
-      batch->blit.src = blitinfo->src.planes[0].image->data.bo;
-      batch->blit.dst = blitinfo->dst.planes[0].image->data.bo;
+      batch->blit.src = src_img->bo;
+      batch->blit.dst = dst_img->bo;
       panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
       panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
@@ -125,14 +137,14 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
       tsd = batch->tls.gpu;
       tiler = batch->tiler.descs.gpu;
 
-      struct panfrost_ptr job = GENX(pan_blit)(&ctx, &cmdbuf->desc_pool.base,
-                                               &batch->scoreboard, tsd, tiler);
+      struct panfrost_ptr job =
+         GENX(pan_blit)(&ctx, &cmdbuf->desc_pool.base, &batch->jc, tsd, tiler);
       util_dynarray_append(&batch->jobs, void *, job.cpu);
       panvk_per_arch(cmd_close_batch)(cmdbuf);
    } while (pan_blit_next_surface(&ctx));
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdBlitImage2)(VkCommandBuffer commandBuffer,
                               const VkBlitImageInfo2 *pBlitImageInfo)
 {
@@ -202,11 +214,11 @@ panvk_per_arch(CmdBlitImage2)(VkCommandBuffer commandBuffer,
          info.dst.planes[0].format =
             util_format_get_depth_only(info.dst.planes[0].format);
 
-      panvk_meta_blit(cmdbuf, &info);
+      panvk_meta_blit(cmdbuf, &info, src, dst);
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdResolveImage2)(VkCommandBuffer commandBuffer,
                                  const VkResolveImageInfo2 *pResolveImageInfo)
 {
@@ -214,24 +226,29 @@ panvk_per_arch(CmdResolveImage2)(VkCommandBuffer commandBuffer,
 }
 
 void
-panvk_per_arch(meta_blit_init)(struct panvk_physical_device *dev)
+panvk_per_arch(meta_blit_init)(struct panvk_device *dev)
 {
-   panvk_pool_init(&dev->meta.blitter.bin_pool, &dev->pdev, NULL,
-                   PAN_BO_EXECUTE, 16 * 1024, "panvk_meta blitter binary pool",
-                   false);
-   panvk_pool_init(&dev->meta.blitter.desc_pool, &dev->pdev, NULL, 0, 16 * 1024,
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+
+   panvk_pool_init(&dev->meta.blitter.bin_pool, dev, NULL,
+                   PAN_KMOD_BO_FLAG_EXECUTABLE, 16 * 1024,
+                   "panvk_meta blitter binary pool", false);
+   panvk_pool_init(&dev->meta.blitter.desc_pool, dev, NULL, 0, 16 * 1024,
                    "panvk_meta blitter descriptor pool", false);
-   pan_blend_shaders_init(&dev->pdev);
-   GENX(pan_blitter_init)
-   (&dev->pdev, &dev->meta.blitter.bin_pool.base,
+   pan_blend_shader_cache_init(&dev->meta.blend_shader_cache,
+                               phys_dev->kmod.props.gpu_prod_id);
+   GENX(pan_blitter_cache_init)
+   (&dev->meta.blitter.cache, phys_dev->kmod.props.gpu_prod_id,
+    &dev->meta.blend_shader_cache, &dev->meta.blitter.bin_pool.base,
     &dev->meta.blitter.desc_pool.base);
 }
 
 void
-panvk_per_arch(meta_blit_cleanup)(struct panvk_physical_device *dev)
+panvk_per_arch(meta_blit_cleanup)(struct panvk_device *dev)
 {
-   GENX(pan_blitter_cleanup)(&dev->pdev);
-   pan_blend_shaders_cleanup(&dev->pdev);
+   GENX(pan_blitter_cache_cleanup)(&dev->meta.blitter.cache);
+   pan_blend_shader_cache_cleanup(&dev->meta.blend_shader_cache);
    panvk_pool_cleanup(&dev->meta.blitter.desc_pool);
    panvk_pool_cleanup(&dev->meta.blitter.bin_pool);
 }

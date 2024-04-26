@@ -28,6 +28,7 @@
 #include "tu_device.h"
 #include "tu_image.h"
 #include "tu_formats.h"
+#include "tu_rmv.h"
 
 static inline uint8_t *
 pool_base(struct tu_descriptor_pool *pool)
@@ -277,7 +278,9 @@ tu_CreateDescriptorSetLayout(
    if (pCreateInfo->flags &
        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT) {
       result = tu_bo_init_new(device, &set_layout->embedded_samplers,
-                              set_layout->size, TU_BO_ALLOC_ALLOW_DUMP,
+                              set_layout->size,
+                              (enum tu_bo_alloc_flags) (TU_BO_ALLOC_ALLOW_DUMP |
+                                                        TU_BO_ALLOC_INTERNAL_RESOURCE),
                               "embedded samplers");
       if (result != VK_SUCCESS) {
          vk_object_free(&device->vk, pAllocator, set_layout);
@@ -333,7 +336,7 @@ tu_GetDescriptorSetLayoutSupport(
          DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
    VkDescriptorSetVariableDescriptorCountLayoutSupport *variable_count =
       vk_find_struct(
-         (void *) pCreateInfo->pNext,
+         pSupport->pNext,
          DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT);
    const VkMutableDescriptorTypeCreateInfoEXT *mutable_info =
       vk_find_struct_const(
@@ -488,40 +491,15 @@ sha1_update_descriptor_set_layout(struct mesa_sha1 *ctx,
 void
 tu_pipeline_layout_init(struct tu_pipeline_layout *layout)
 {
-   unsigned dynamic_offset_size = 0;
-
-   for (uint32_t set = 0; set < layout->num_sets; set++) {
-      assert(set < MAX_SETS);
-      layout->set[set].dynamic_offset_start = dynamic_offset_size;
-
-      if (layout->set[set].layout)
-         dynamic_offset_size += layout->set[set].layout->dynamic_offset_size;
-   }
-
-   layout->dynamic_offset_size = dynamic_offset_size;
-
-   /* We only care about INDEPENDENT_SETS for dynamic-offset descriptors,
-    * where all the descriptors from all the sets are combined into one set
-    * and we have to provide the dynamic_offset_start dynamically with fast
-    * linking.
-    */
-   if (dynamic_offset_size == 0) {
-      layout->independent_sets = false;
-   }
-
    struct mesa_sha1 ctx;
    _mesa_sha1_init(&ctx);
    for (unsigned s = 0; s < layout->num_sets; s++) {
       if (layout->set[s].layout)
          sha1_update_descriptor_set_layout(&ctx, layout->set[s].layout);
-      _mesa_sha1_update(&ctx, &layout->set[s].dynamic_offset_start,
-                        sizeof(layout->set[s].dynamic_offset_start));
    }
    _mesa_sha1_update(&ctx, &layout->num_sets, sizeof(layout->num_sets));
    _mesa_sha1_update(&ctx, &layout->push_constant_size,
                      sizeof(layout->push_constant_size));
-   _mesa_sha1_update(&ctx, &layout->independent_sets,
-                     sizeof(layout->independent_sets));
    _mesa_sha1_final(&ctx, layout->sha1);
 }
 
@@ -548,7 +526,7 @@ tu_CreatePipelineLayout(VkDevice _device,
       TU_FROM_HANDLE(tu_descriptor_set_layout, set_layout,
                      pCreateInfo->pSetLayouts[set]);
 
-      assert(set < MAX_SETS);
+      assert(set < device->physical_device->usable_sets);
       layout->set[set].layout = set_layout;
       if (set_layout)
          vk_descriptor_set_layout_ref(&set_layout->vk);
@@ -563,8 +541,6 @@ tu_CreatePipelineLayout(VkDevice _device,
    }
 
    layout->push_constant_size = align(layout->push_constant_size, 16);
-   layout->independent_sets =
-      pCreateInfo->flags & VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT;
 
    tu_pipeline_layout_init(layout);
 
@@ -847,6 +823,8 @@ tu_CreateDescriptorPool(VkDevice _device,
 
    list_inithead(&pool->desc_sets);
 
+   TU_RMV(descriptor_pool_create, device, pCreateInfo, pool);
+
    *pDescriptorPool = tu_descriptor_pool_to_handle(pool);
    return VK_SUCCESS;
 
@@ -867,6 +845,8 @@ tu_DestroyDescriptorPool(VkDevice _device,
 
    if (!pool)
       return;
+
+   TU_RMV(resource_destroy, device, pool);
 
    list_for_each_entry_safe(struct tu_descriptor_set, set,
                             &pool->desc_sets, pool_link) {
@@ -1431,7 +1411,7 @@ tu_CreateDescriptorUpdateTemplate(
       /* descriptorSetLayout should be ignored for push descriptors
        * and instead it refers to pipelineLayout and set.
        */
-      assert(pCreateInfo->set < MAX_SETS);
+      assert(pCreateInfo->set < device->physical_device->usable_sets);
       set_layout = pipeline_layout->set[pCreateInfo->set].layout;
    } else {
       TU_FROM_HANDLE(tu_descriptor_set_layout, _set_layout,

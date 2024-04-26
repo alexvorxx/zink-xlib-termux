@@ -33,8 +33,9 @@
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
-#if GFX_VERx10 >= 125
+#include "ds/intel_tracepoints.h"
 
+#if GFX_VERx10 == 125
 #include "grl/grl_structs.h"
 
 /* Wait for the previous dispatches to finish and flush their data port
@@ -54,12 +55,12 @@ get_geometry(const VkAccelerationStructureBuildGeometryInfoKHR *pInfo,
 
 static size_t align_transient_size(size_t bytes)
 {
-   return ALIGN(bytes, 64);
+   return align_uintptr(bytes, 64);
 }
 
 static size_t align_private_size(size_t bytes)
 {
-   return ALIGN(bytes, 64);
+   return align_uintptr(bytes, 64);
 }
 
 static size_t get_scheduler_size(size_t num_builds)
@@ -315,7 +316,7 @@ get_gpu_scratch_layout(struct anv_address base,
    };
    gpuva_t current = anv_address_physical(base);
 
-   scratch.globals = intel_canonical_address(current);
+   scratch.globals = current;
    current += sizeof(struct Globals);
 
    scratch.primrefs = intel_canonical_address(current);
@@ -436,7 +437,7 @@ vk_to_grl_IndexFormat(VkIndexType type)
 {
    switch (type) {
    case VK_INDEX_TYPE_NONE_KHR:  return INDEX_FORMAT_NONE;
-   case VK_INDEX_TYPE_UINT8_EXT: unreachable("No UINT8 support yet");
+   case VK_INDEX_TYPE_UINT8_KHR: unreachable("No UINT8 support yet");
    case VK_INDEX_TYPE_UINT16:    return INDEX_FORMAT_R16_UINT;
    case VK_INDEX_TYPE_UINT32:    return INDEX_FORMAT_R32_UINT;
    default:
@@ -622,6 +623,8 @@ cmd_build_acceleration_structures(
       return;
    }
 
+   trace_intel_begin_as_build(&cmd_buffer->trace);
+
    /* TODO: Indirect */
    assert(ppBuildRangeInfos != NULL);
 
@@ -693,7 +696,7 @@ cmd_build_acceleration_structures(
       }
 
       size_t geom_struct_size = bs->num_geometries * sizeof(struct Geo);
-      size_t geom_prefix_sum_size = ALIGN(sizeof(uint32_t) * (bs->num_geometries + 1), 64);
+      size_t geom_prefix_sum_size = align_uintptr(sizeof(uint32_t) * (bs->num_geometries + 1), 64);
 
       bs->transient_size = geom_prefix_sum_size + geom_struct_size;
 
@@ -742,15 +745,30 @@ cmd_build_acceleration_structures(
    private_mem_binnedsah_offset = private_mem_total;
    private_mem_total += align_private_size(private_mem_binnedsah_size);
 
-   /* Allocate required memory */
-   struct anv_cmd_alloc private_mem_alloc =
-      anv_cmd_buffer_alloc_space(cmd_buffer, private_mem_total, 64);
-   if (private_mem_total > 0 && anv_cmd_alloc_is_empty(private_mem_alloc)) {
-      anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-      goto error;
+   /* Allocate required memory, unless we already have a suiteable buffer */
+   struct anv_cmd_alloc private_mem_alloc;
+   if (private_mem_total > cmd_buffer->state.rt.build_priv_mem_size) {
+      private_mem_alloc =
+         anv_cmd_buffer_alloc_space(cmd_buffer, private_mem_total, 64,
+                                    false /* mapped */);
+      if (anv_cmd_alloc_is_empty(private_mem_alloc)) {
+         anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         goto error;
+      }
+
+      cmd_buffer->state.rt.build_priv_mem_addr = private_mem_alloc.address;
+      cmd_buffer->state.rt.build_priv_mem_size = private_mem_alloc.size;
+   } else {
+      private_mem_alloc = (struct anv_cmd_alloc) {
+         .address = cmd_buffer->state.rt.build_priv_mem_addr,
+         .map     = anv_address_map(cmd_buffer->state.rt.build_priv_mem_addr),
+         .size    = cmd_buffer->state.rt.build_priv_mem_size,
+      };
    }
+
    struct anv_cmd_alloc transient_mem_alloc =
-      anv_cmd_buffer_alloc_space(cmd_buffer, transient_total, 64);
+      anv_cmd_buffer_alloc_space(cmd_buffer, transient_total, 64,
+                                 true /* mapped */);
    if (transient_total > 0 && anv_cmd_alloc_is_empty(transient_mem_alloc)) {
       anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       goto error;
@@ -817,8 +835,7 @@ cmd_build_acceleration_structures(
                    &data, sizeof(data));
    }
 
-   if (anv_cmd_buffer_is_render_queue(cmd_buffer))
-      genX(flush_pipeline_select_gpgpu)(cmd_buffer);
+   genX(flush_pipeline_select_gpgpu)(cmd_buffer);
 
    /* Due to the nature of GRL and its heavy use of jumps/predication, we
     * cannot tell exactly in what order the CFE_STATE we insert are going to
@@ -1087,6 +1104,8 @@ cmd_build_acceleration_structures(
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_GRL_FLUSH_FLAGS,
                              "building accel struct");
+
+   trace_intel_end_as_build(&cmd_buffer->trace);
 
  error:
    vk_free(&cmd_buffer->device->vk.alloc, builds);

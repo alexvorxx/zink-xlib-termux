@@ -1,25 +1,7 @@
 /*
  * Copyright 2020 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "si_build_pm4.h"
@@ -39,8 +21,7 @@ static void si_set_context_reg_array(struct radeon_cmdbuf *cs, unsigned reg, uns
 void si_init_cp_reg_shadowing(struct si_context *sctx)
 {
    if (sctx->has_graphics &&
-       (sctx->screen->info.mid_command_buffer_preemption_enabled ||
-        sctx->screen->debug_flags & DBG(SHADOW_REGS))) {
+       sctx->screen->info.register_shadowing_required) {
       if (sctx->screen->info.has_fw_based_shadowing) {
          sctx->shadowing.registers =
                si_aligned_buffer_create(sctx->b.screen,
@@ -72,7 +53,7 @@ void si_init_cp_reg_shadowing(struct si_context *sctx)
       }
    }
 
-   si_init_cs_preamble_state(sctx, sctx->shadowing.registers != NULL);
+   si_init_gfx_preamble_state(sctx);
 
    if (sctx->shadowing.registers) {
       /* We need to clear the shadowed reg buffer. */
@@ -80,16 +61,8 @@ void si_init_cp_reg_shadowing(struct si_context *sctx)
                              0, sctx->shadowing.registers->bo_size, 0, SI_OP_SYNC_AFTER,
                              SI_COHERENCY_CP, L2_BYPASS);
 
-      /* Create the shadowing preamble. */
-      struct si_shadow_preamble {
-         struct si_pm4_state pm4;
-         uint32_t more_pm4[150]; /* Add more space because the command buffer is large. */
-      };
-      struct si_pm4_state *shadowing_preamble = (struct si_pm4_state *)CALLOC_STRUCT(si_shadow_preamble);
-
-      /* Add all the space that we allocated. */
-      shadowing_preamble->max_dw = (sizeof(struct si_shadow_preamble) -
-                                    offsetof(struct si_shadow_preamble, pm4.pm4)) / 4;
+      /* Create the shadowing preamble. (allocate enough dwords because the preamble is large) */
+      struct si_pm4_state *shadowing_preamble = si_pm4_create_sized(sctx->screen, 256, false);
 
       ac_create_shadowing_ib_preamble(&sctx->screen->info,
                                       (pm4_cmd_add_fn)si_pm4_cmd_add, shadowing_preamble,
@@ -101,13 +74,18 @@ void si_init_cp_reg_shadowing(struct si_context *sctx)
       if (sctx->shadowing.csa)
          radeon_add_to_buffer_list(sctx, &sctx->gfx_cs, sctx->shadowing.csa,
                                    RADEON_USAGE_READWRITE | RADEON_PRIO_DESCRIPTORS);
-      si_pm4_emit(sctx, shadowing_preamble);
+      si_pm4_emit_commands(sctx, shadowing_preamble);
       ac_emulate_clear_state(&sctx->screen->info, &sctx->gfx_cs, si_set_context_reg_array);
-      si_pm4_emit(sctx, sctx->cs_preamble_state);
 
-      /* The register values are shadowed, so we won't need to set them again. */
-      si_pm4_free_state(sctx, sctx->cs_preamble_state, ~0);
-      sctx->cs_preamble_state = NULL;
+      /* TODO: Gfx11 fails GLCTS if we don't re-emit the preamble at the beginning of every IB. */
+      /* TODO: Skipping this may have made register shadowing slower on Gfx11. */
+      if (sctx->gfx_level < GFX11) {
+         si_pm4_emit_commands(sctx, sctx->cs_preamble_state);
+
+         /* The register values are shadowed, so we won't need to set them again. */
+         si_pm4_free_state(sctx, sctx->cs_preamble_state, ~0);
+         sctx->cs_preamble_state = NULL;
+      }
 
       si_set_tracked_regs_to_clear_state(sctx);
 

@@ -23,6 +23,7 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <mutex>
@@ -30,8 +31,11 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/DiagnosticPrinter.h>
 #include <llvm/IR/DiagnosticInfo.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Target/TargetMachine.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/Bitcode/BitcodeReader.h>
@@ -39,6 +43,7 @@
 #include <llvm-c/Target.h>
 #include <LLVMSPIRVLib/LLVMSPIRVLib.h>
 
+#include <clang/Config/config.h>
 #include <clang/Driver/Driver.h>
 #include <clang/CodeGen/CodeGenAction.h>
 #include <clang/Lex/PreprocessorOptions.h>
@@ -56,11 +61,13 @@
 
 #include "spirv.h"
 
-#ifdef USE_STATIC_OPENCL_C_H
-#if LLVM_VERSION_MAJOR < 15
-#include "opencl-c.h.h"
+#if DETECT_OS_UNIX
+#include <dlfcn.h>
 #endif
+
+#ifdef USE_STATIC_OPENCL_C_H
 #include "opencl-c-base.h.h"
+#include "opencl-c.h.h"
 #endif
 
 #include "clc_helpers.h"
@@ -73,9 +80,15 @@ constexpr spv_target_env spirv_target = SPV_ENV_UNIVERSAL_1_5;
 constexpr SPIRV::VersionNumber invalid_spirv_trans_version = static_cast<SPIRV::VersionNumber>(0);
 
 using ::llvm::Function;
+using ::llvm::legacy::PassManager;
 using ::llvm::LLVMContext;
 using ::llvm::Module;
 using ::llvm::raw_string_ostream;
+using ::llvm::TargetRegistry;
+using ::clang::driver::Driver;
+
+static void
+clc_dump_llvm(const llvm::Module *mod, FILE *f);
 
 static void
 llvm_log_handler(const ::llvm::DiagnosticInfo &di, void *data) {
@@ -338,7 +351,6 @@ public:
          uint32_t spec_id = ins->words[ins->operands[2].offset];
          for (auto &c : specConstants) {
             if (c.second.id == spec_id) {
-               assert(c.first == id);
                return;
             }
          }
@@ -673,7 +685,7 @@ clc_spirv_get_kernels_info(const struct clc_binary *spvbin,
                            unsigned *num_spec_constants,
                            const struct clc_logger *logger)
 {
-   struct clc_kernel_info *kernels;
+   struct clc_kernel_info *kernels = NULL;
    struct clc_parsed_spec_constant *spec_constants = NULL;
 
    SPIRVKernelParser parser;
@@ -683,35 +695,34 @@ clc_spirv_get_kernels_info(const struct clc_binary *spvbin,
 
    *num_kernels = parser.kernels.size();
    *num_spec_constants = parser.specConstants.size();
-   if (!*num_kernels)
-      return false;
+   if (*num_kernels) {
+      kernels = reinterpret_cast<struct clc_kernel_info *>(calloc(*num_kernels,
+                                                                  sizeof(*kernels)));
+      assert(kernels);
+      for (unsigned i = 0; i < parser.kernels.size(); i++) {
+         kernels[i].name = strdup(parser.kernels[i].name.c_str());
+         kernels[i].num_args = parser.kernels[i].args.size();
+         kernels[i].vec_hint_size = parser.kernels[i].vecHint >> 16;
+         kernels[i].vec_hint_type = (enum clc_vec_hint_type)(parser.kernels[i].vecHint & 0xFFFF);
+         memcpy(kernels[i].local_size, parser.kernels[i].localSize, sizeof(kernels[i].local_size));
+         memcpy(kernels[i].local_size_hint, parser.kernels[i].localSizeHint, sizeof(kernels[i].local_size_hint));
+         if (!kernels[i].num_args)
+            continue;
 
-   kernels = reinterpret_cast<struct clc_kernel_info *>(calloc(*num_kernels,
-                                                               sizeof(*kernels)));
-   assert(kernels);
-   for (unsigned i = 0; i < parser.kernels.size(); i++) {
-      kernels[i].name = strdup(parser.kernels[i].name.c_str());
-      kernels[i].num_args = parser.kernels[i].args.size();
-      kernels[i].vec_hint_size = parser.kernels[i].vecHint >> 16;
-      kernels[i].vec_hint_type = (enum clc_vec_hint_type)(parser.kernels[i].vecHint & 0xFFFF);
-      memcpy(kernels[i].local_size, parser.kernels[i].localSize, sizeof(kernels[i].local_size));
-      memcpy(kernels[i].local_size_hint, parser.kernels[i].localSizeHint, sizeof(kernels[i].local_size_hint));
-      if (!kernels[i].num_args)
-         continue;
+         struct clc_kernel_arg *args;
 
-      struct clc_kernel_arg *args;
-
-      args = reinterpret_cast<struct clc_kernel_arg *>(calloc(kernels[i].num_args,
-                                                       sizeof(*kernels->args)));
-      kernels[i].args = args;
-      assert(args);
-      for (unsigned j = 0; j < kernels[i].num_args; j++) {
-         if (!parser.kernels[i].args[j].name.empty())
-            args[j].name = strdup(parser.kernels[i].args[j].name.c_str());
-         args[j].type_name = strdup(parser.kernels[i].args[j].typeName.c_str());
-         args[j].address_qualifier = parser.kernels[i].args[j].addrQualifier;
-         args[j].type_qualifier = parser.kernels[i].args[j].typeQualifier;
-         args[j].access_qualifier = parser.kernels[i].args[j].accessQualifier;
+         args = reinterpret_cast<struct clc_kernel_arg *>(calloc(kernels[i].num_args,
+                                                                 sizeof(*kernels->args)));
+         kernels[i].args = args;
+         assert(args);
+         for (unsigned j = 0; j < kernels[i].num_args; j++) {
+            if (!parser.kernels[i].args[j].name.empty())
+               args[j].name = strdup(parser.kernels[i].args[j].name.c_str());
+            args[j].type_name = strdup(parser.kernels[i].args[j].typeName.c_str());
+            args[j].address_qualifier = parser.kernels[i].args[j].addrQualifier;
+            args[j].type_qualifier = parser.kernels[i].args[j].typeQualifier;
+            args[j].access_qualifier = parser.kernels[i].args[j].accessQualifier;
+         }
       }
    }
 
@@ -757,6 +768,9 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
                            const struct clc_compile_args *args,
                            const struct clc_logger *logger)
 {
+   static_assert(std::has_unique_object_representations<clc_optional_features>(),
+                 "no padding allowed inside clc_optional_features");
+
    std::string diag_log_str;
    raw_string_ostream diag_log_stream { diag_log_str };
 
@@ -769,19 +783,19 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
                                        &c->getDiagnosticOpts())
    };
 
+#if LLVM_VERSION_MAJOR >= 17
+   const char *triple = args->address_bits == 32 ? "spirv-unknown-unknown" : "spirv64-unknown-unknown";
+#else
    const char *triple = args->address_bits == 32 ? "spir-unknown-unknown" : "spir64-unknown-unknown";
+#endif
 
    std::vector<const char *> clang_opts = {
       args->source.name,
       "-triple", triple,
       // By default, clang prefers to use modules to pull in the default headers,
       // which doesn't work with our technique of embedding the headers in our binary
-#if LLVM_VERSION_MAJOR >= 15
       "-fdeclare-opencl-builtins",
-#else
-      "-finclude-default-header",
-#endif
-#if LLVM_VERSION_MAJOR >= 15
+#if LLVM_VERSION_MAJOR < 17
       "-no-opaque-pointers",
 #endif
       // Add a default CL compiler version. Clang will pick the last one specified
@@ -793,21 +807,14 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
       "-O0",
       // Ensure inline functions are actually emitted
       "-fgnu89-inline",
-      // Undefine clang added SPIR(V) defines so we don't magically enable extensions
-      "-U__SPIR__",
-      "-U__SPIRV__",
    };
+
    // We assume there's appropriate defines for __OPENCL_VERSION__ and __IMAGE_SUPPORT__
    // being provided by the caller here.
    clang_opts.insert(clang_opts.end(), args->args, args->args + args->num_args);
 
    if (!clang::CompilerInvocation::CreateFromArgs(c->getInvocation(),
-#if LLVM_VERSION_MAJOR >= 10
                                                   clang_opts,
-#else
-                                                  clang_opts.data(),
-                                                  clang_opts.data() + clang_opts.size(),
-#endif
                                                   diag)) {
       clc_error(logger, "Couldn't create Clang invocation.\n");
       return {};
@@ -846,28 +853,34 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
                                        clang::frontend::Angled,
                                        false, false);
 
-#if LLVM_VERSION_MAJOR < 15
-      ::llvm::sys::path::append(system_header_path, "opencl-c.h");
-      c->getPreprocessorOpts().addRemappedFile(system_header_path.str(),
-         ::llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(opencl_c_source, ARRAY_SIZE(opencl_c_source) - 1)).release());
-      ::llvm::sys::path::remove_filename(system_header_path);
-#endif
-
       ::llvm::sys::path::append(system_header_path, "opencl-c-base.h");
       c->getPreprocessorOpts().addRemappedFile(system_header_path.str(),
          ::llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(opencl_c_base_source, ARRAY_SIZE(opencl_c_base_source) - 1)).release());
-
-#if LLVM_VERSION_MAJOR >= 15
-      c->getPreprocessorOpts().Includes.push_back("opencl-c-base.h");
-#endif
+      // this line is actually important to make it include `opencl-c.h`
+      ::llvm::sys::path::remove_filename(system_header_path);
+      ::llvm::sys::path::append(system_header_path, "opencl-c.h");
+      c->getPreprocessorOpts().addRemappedFile(system_header_path.str(),
+         ::llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(opencl_c_source, ARRAY_SIZE(opencl_c_source) - 1)).release());
    }
 #else
+
+   Dl_info info;
+   if (dladdr((void *)clang::CompilerInvocation::CreateFromArgs, &info) == 0) {
+      clc_error(logger, "Couldn't find libclang path.\n");
+      return {};
+   }
+
+   char *clang_path = realpath(info.dli_fname, NULL);
+   if (clang_path == nullptr) {
+      clc_error(logger, "Couldn't find libclang path.\n");
+      return {};
+   }
+
    // GetResourcePath is a way to retrive the actual libclang resource dir based on a given binary
-   // or library. The path doesn't even need to exist, we just have to put something in there,
-   // because we might have linked clang statically.
-   auto libclang_path = fs::path(LLVM_LIB_DIR) / "libclang.so";
+   // or library.
    auto clang_res_path =
-      fs::path(clang::driver::Driver::GetResourcesPath(libclang_path.string())) / "include";
+      fs::path(Driver::GetResourcesPath(std::string(clang_path), CLANG_RESOURCE_DIR)) / "include";
+   free(clang_path);
 
    c->getHeaderSearchOpts().UseBuiltinIncludes = true;
    c->getHeaderSearchOpts().UseStandardSystemIncludes = true;
@@ -877,21 +890,24 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
    c->getHeaderSearchOpts().AddPath(clang_res_path.string(),
                                     clang::frontend::Angled,
                                     false, false);
-   // Add opencl include
-#if LLVM_VERSION_MAJOR >= 15
-   c->getPreprocessorOpts().Includes.push_back("opencl-c-base.h");
-#else
-   c->getPreprocessorOpts().Includes.push_back("opencl-c.h");
-#endif
 #endif
 
-#if LLVM_VERSION_MAJOR >= 14
+   // Enable/Disable optional OpenCL C features. Some can be toggled via `OpenCLExtensionsAsWritten`
+   // others we have to (un)define via macros ourselves.
+
+   // Undefine clang added SPIR(V) defines so we don't magically enable extensions
+   c->getPreprocessorOpts().addMacroUndef("__SPIR__");
+   c->getPreprocessorOpts().addMacroUndef("__SPIRV__");
+
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("-all");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_byte_addressable_store");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_global_int32_base_atomics");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_global_int32_extended_atomics");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_local_int32_base_atomics");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_local_int32_extended_atomics");
+   c->getPreprocessorOpts().addMacroDef("cl_khr_expect_assume=1");
+
+   bool needs_opencl_c_h = false;
    if (args->features.fp16) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_fp16");
    }
@@ -902,9 +918,15 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
    if (args->features.int64) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cles_khr_int64");
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+__opencl_c_int64");
+   } else {
+      // clang defines this unconditionally, we need to fix that.
+      c->getPreprocessorOpts().addMacroUndef("__opencl_c_int64");
    }
    if (args->features.images) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+__opencl_c_images");
+   } else {
+      // clang defines this unconditionally, we need to fix that.
+      c->getPreprocessorOpts().addMacroUndef("__IMAGE_SUPPORT__");
    }
    if (args->features.images_read_write) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+__opencl_c_read_write_images");
@@ -915,11 +937,32 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
    }
    if (args->features.intel_subgroups) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_intel_subgroups");
+      needs_opencl_c_h = true;
    }
    if (args->features.subgroups) {
+      c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+__opencl_c_subgroups");
+      if (args->features.subgroups_shuffle) {
+         c->getPreprocessorOpts().addMacroDef("cl_khr_subgroup_shuffle=1");
+      }
+      if (args->features.subgroups_shuffle_relative) {
+         c->getPreprocessorOpts().addMacroDef("cl_khr_subgroup_shuffle_relative=1");
+      }
+   }
+   if (args->features.subgroups_ifp) {
+      assert(args->features.subgroups);
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_subgroups");
    }
-#endif
+   if (args->features.integer_dot_product) {
+      c->getPreprocessorOpts().addMacroDef("cl_khr_integer_dot_product=1");
+      c->getPreprocessorOpts().addMacroDef("__opencl_c_integer_dot_product_input_4x8bit_packed=1");
+      c->getPreprocessorOpts().addMacroDef("__opencl_c_integer_dot_product_input_4x8bit=1");
+   }
+
+   // Add opencl include
+   c->getPreprocessorOpts().Includes.push_back("opencl-c-base.h");
+   if (needs_opencl_c_h) {
+      c->getPreprocessorOpts().Includes.push_back("opencl-c.h");
+   }
 
    if (args->num_headers) {
       ::llvm::SmallString<128> tmp_header_path;
@@ -950,7 +993,12 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
       return {};
    }
 
-   return act.takeModule();
+   auto mod = act.takeModule();
+
+   if (clc_debug_flags() & CLC_DEBUG_DUMP_LLVM)
+      clc_dump_llvm(mod.get(), stdout);
+
+   return mod;
 }
 
 static SPIRV::VersionNumber
@@ -962,9 +1010,7 @@ spirv_version_to_llvm_spirv_translator_version(enum clc_spirv_version version)
    case CLC_SPIRV_VERSION_1_1: return SPIRV::VersionNumber::SPIRV_1_1;
    case CLC_SPIRV_VERSION_1_2: return SPIRV::VersionNumber::SPIRV_1_2;
    case CLC_SPIRV_VERSION_1_3: return SPIRV::VersionNumber::SPIRV_1_3;
-#ifdef HAS_SPIRV_1_4
    case CLC_SPIRV_VERSION_1_4: return SPIRV::VersionNumber::SPIRV_1_4;
-#endif
    default:      return invalid_spirv_trans_version;
    }
 }
@@ -1009,9 +1055,47 @@ llvm_mod_to_spirv(std::unique_ptr<::llvm::Module> mod,
    }
    SPIRV::TranslatorOpts spirv_opts = SPIRV::TranslatorOpts(version, ext_map);
 
-#if LLVM_VERSION_MAJOR >= 13
    /* This was the default in 12.0 and older, but currently we'll fail to parse without this */
    spirv_opts.setPreserveOCLKernelArgTypeMetadataThroughString(true);
+
+#if LLVM_VERSION_MAJOR >= 17
+   if (args->use_llvm_spirv_target) {
+      const char *triple = args->address_bits == 32 ? "spirv-unknown-unknown" : "spirv64-unknown-unknown";
+      std::string error_msg("");
+      auto target = TargetRegistry::lookupTarget(triple, error_msg);
+      if (target) {
+         auto TM = target->createTargetMachine(
+            triple, "", "", {}, std::nullopt, std::nullopt,
+#if LLVM_VERSION_MAJOR >= 18
+            ::llvm::CodeGenOptLevel::None
+#else
+            ::llvm::CodeGenOpt::None
+#endif
+         );
+
+         auto PM = PassManager();
+         ::llvm::SmallVector<char> buf;
+         auto OS = ::llvm::raw_svector_ostream(buf);
+         TM->addPassesToEmitFile(
+            PM, OS, nullptr,
+#if LLVM_VERSION_MAJOR >= 18
+            ::llvm::CodeGenFileType::ObjectFile
+#else
+            ::llvm::CGFT_ObjectFile
+#endif
+         );
+
+         PM.run(*mod);
+
+         out_spirv->size = buf.size_in_bytes();
+         out_spirv->data = malloc(out_spirv->size);
+         memcpy(out_spirv->data, buf.data(), out_spirv->size);
+         return 0;
+      } else {
+         clc_error(logger, "LLVM SPIR-V target not found.\n");
+         return -1;
+      }
+   }
 #endif
 
    std::ostringstream spv_stream;
@@ -1102,7 +1186,7 @@ public:
          return;
 
       std::ostringstream message;
-      message << "(file=" << src
+      message << "(file=" << (src ? src : "input")
               << ",line=" << pos.line
               << ",column=" << pos.column
               << ",index=" << pos.index
@@ -1152,13 +1236,22 @@ clc_link_spirv_binaries(const struct clc_linker_args *args,
 
 bool
 clc_validate_spirv(const struct clc_binary *spirv,
-                   const struct clc_logger *logger)
+                   const struct clc_logger *logger,
+                   const struct clc_validator_options *options)
 {
    SPIRVMessageConsumer msgconsumer(logger);
    spvtools::SpirvTools tools(spirv_target);
    tools.SetMessageConsumer(msgconsumer);
+   spvtools::ValidatorOptions spirv_options;
    const uint32_t *data = static_cast<const uint32_t *>(spirv->data);
-   return tools.Validate(data, spirv->size / 4);
+
+   if (options) {
+      spirv_options.SetUniversalLimit(
+         spv_validator_limit_max_function_args,
+         options->limit_max_function_arg);
+   }
+
+   return tools.Validate(data, spirv->size / 4, spirv_options);
 }
 
 int
@@ -1223,6 +1316,18 @@ clc_spirv_specialize(const struct clc_binary *in_spirv,
    out_spirv->data = malloc(out_spirv->size);
    memcpy(out_spirv->data, result.data(), out_spirv->size);
    return true;
+}
+
+static void
+clc_dump_llvm(const llvm::Module *mod, FILE *f)
+{
+   std::string out;
+   raw_string_ostream os(out);
+
+   mod->print(os, nullptr);
+   os.flush();
+
+   fwrite(out.c_str(), out.size(), 1, f);
 }
 
 void

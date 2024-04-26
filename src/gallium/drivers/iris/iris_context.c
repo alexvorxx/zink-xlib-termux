@@ -29,7 +29,6 @@
 #include "util/u_inlines.h"
 #include "util/format/u_format.h"
 #include "util/u_upload_mgr.h"
-#include "drm-uapi/i915_drm.h"
 #include "iris_context.h"
 #include "iris_resource.h"
 #include "iris_screen.h"
@@ -99,9 +98,6 @@ iris_get_device_reset_status(struct pipe_context *ctx)
     * worst status (if one was guilty, proclaim guilt).
     */
    iris_foreach_batch(ice, batch) {
-      /* This will also recreate the hardware contexts as necessary, so any
-       * future queries will show no resets.  We only want to report once.
-       */
       enum pipe_reset_status batch_reset =
          iris_batch_check_for_reset(batch);
 
@@ -220,6 +216,8 @@ iris_destroy_context(struct pipe_context *ctx)
    struct iris_context *ice = (struct iris_context *)ctx;
    struct iris_screen *screen = (struct iris_screen *)ctx->screen;
 
+   blorp_finish(&ice->blorp);
+
    if (ctx->stream_uploader)
       u_upload_destroy(ctx->stream_uploader);
    if (ctx->const_uploader)
@@ -259,6 +257,9 @@ iris_destroy_context(struct pipe_context *ctx)
 
 #define genX_call(devinfo, func, ...)             \
    switch ((devinfo)->verx10) {                   \
+   case 200:                                      \
+      gfx20_##func(__VA_ARGS__);                  \
+      break;                                      \
    case 125:                                      \
       gfx125_##func(__VA_ARGS__);                 \
       break;                                      \
@@ -376,6 +377,7 @@ iris_create_context(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    screen->vtbl.init_render_context(&ice->batches[IRIS_BATCH_RENDER]);
    screen->vtbl.init_compute_context(&ice->batches[IRIS_BATCH_COMPUTE]);
+   screen->vtbl.init_copy_context(&ice->batches[IRIS_BATCH_BLITTER]);
 
    if (!(flags & PIPE_CONTEXT_PREFER_THREADED))
       return ctx;
@@ -386,6 +388,8 @@ iris_create_context(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    return threaded_context_create(ctx, &screen->transfer_pool,
                                   iris_replace_buffer_storage,
-                                  NULL, /* TODO: asynchronous flushes? */
+                                  &(struct threaded_context_options){
+                                    .unsynchronized_get_device_reset_status = true,
+                                  },
                                   &ice->thrctx);
 }

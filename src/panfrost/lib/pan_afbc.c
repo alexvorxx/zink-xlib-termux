@@ -163,15 +163,6 @@ panfrost_afbc_format(unsigned arch, enum pipe_format format)
    /* clang-format on */
 }
 
-/* A format may be compressed as AFBC if it has an AFBC internal format */
-
-bool
-panfrost_format_supports_afbc(const struct panfrost_device *dev,
-                              enum pipe_format format)
-{
-   return panfrost_afbc_format(dev->arch, format) != PAN_AFBC_MODE_INVALID;
-}
-
 /* The lossless colour transform (AFBC_FORMAT_MOD_YTR) requires RGB. */
 
 bool
@@ -187,12 +178,12 @@ panfrost_afbc_can_ytr(enum pipe_format format)
    return desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB;
 }
 
-/*
- * Check if the device supports AFBC with tiled headers (and hence also solid
- * colour blocks).
- */
+/* Only support packing for RGB formats for now. */
+
 bool
-panfrost_afbc_can_tile(const struct panfrost_device *dev)
+panfrost_afbc_can_pack(enum pipe_format format)
 {
-   return (dev->arch >= 7);
+   const struct util_format_description *desc = util_format_description(format);
+
+   return desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB;
 }

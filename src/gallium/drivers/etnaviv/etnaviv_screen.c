@@ -59,6 +59,7 @@ static const struct debug_named_value etna_debug_options[] = {
    {"resource_msgs",  ETNA_DBG_RESOURCE_MSGS, "Print resource messages"},
    {"compiler_msgs",  ETNA_DBG_COMPILER_MSGS, "Print compiler messages"},
    {"linker_msgs",    ETNA_DBG_LINKER_MSGS, "Print linker messages"},
+   {"ml_msgs",        ETNA_DBG_ML_MSGS, "Print ML messages"},
    {"dump_shaders",   ETNA_DBG_DUMP_SHADERS, "Dump shaders"},
    {"no_ts",          ETNA_DBG_NO_TS, "Disable TS"},
    {"no_autodisable", ETNA_DBG_NO_AUTODISABLE, "Disable autodisable"},
@@ -75,6 +76,9 @@ static const struct debug_named_value etna_debug_options[] = {
    {"linear_pe",      ETNA_DBG_LINEAR_PE, "Enable linear PE"},
    {"msaa",           ETNA_DBG_MSAA, "Enable MSAA support"},
    {"shared_ts",      ETNA_DBG_SHARED_TS, "Enable TS sharing"},
+   {"perf",           ETNA_DBG_PERF, "Enable performance warnings"},
+   {"npu_no_parallel",ETNA_DBG_NPU_NO_PARALLEL, "Disable parallelism inside NPU batches"},
+   {"npu_no_batching",ETNA_DBG_NPU_NO_BATCHING, "Disable batching NPU jobs"},
    DEBUG_NAMED_VALUE_END
 };
 
@@ -213,6 +217,8 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
 
    /* Texturing. */
+   case PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR:
+      return VIV_FEATURE(screen, chipMinorFeatures1, HALF_FLOAT);
    case PIPE_CAP_TEXTURE_SHADOW_MAP:
       return 1;
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
@@ -241,6 +247,8 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    /* Queries. */
    case PIPE_CAP_OCCLUSION_QUERY:
+   case PIPE_CAP_CONDITIONAL_RENDER:
+   case PIPE_CAP_CONDITIONAL_RENDER_INVERTED:
       return VIV_FEATURE(screen, chipMinorFeatures1, HALTI0);
 
    /* Preferences */
@@ -269,21 +277,21 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SUPPORTED_PRIM_MODES:
    case PIPE_CAP_SUPPORTED_PRIM_MODES_WITH_RESTART: {
       /* Generate the bitmask of supported draw primitives. */
-      uint32_t modes = 1 << PIPE_PRIM_POINTS |
-                       1 << PIPE_PRIM_LINES |
-                       1 << PIPE_PRIM_LINE_STRIP |
-                       1 << PIPE_PRIM_TRIANGLES |
-                       1 << PIPE_PRIM_TRIANGLE_FAN;
+      uint32_t modes = 1 << MESA_PRIM_POINTS |
+                       1 << MESA_PRIM_LINES |
+                       1 << MESA_PRIM_LINE_STRIP |
+                       1 << MESA_PRIM_TRIANGLES |
+                       1 << MESA_PRIM_TRIANGLE_FAN;
 
       /* TODO: The bug relates only to indexed draws, but here we signal
        * that there is no support for triangle strips at all. This should
        * be refined.
        */
       if (VIV_FEATURE(screen, chipMinorFeatures2, BUG_FIXES8))
-         modes |= 1 << PIPE_PRIM_TRIANGLE_STRIP;
+         modes |= 1 << MESA_PRIM_TRIANGLE_STRIP;
 
       if (VIV_FEATURE(screen, chipMinorFeatures2, LINE_LOOP))
-         modes |= 1 << PIPE_PRIM_LINE_LOOP;
+         modes |= 1 << MESA_PRIM_LINE_LOOP;
 
       return modes;
    }
@@ -408,15 +416,12 @@ etna_screen_get_shader_param(struct pipe_screen *pscreen,
       return shader == PIPE_SHADER_FRAGMENT
                 ? screen->specs.fragment_sampler_count
                 : screen->specs.vertex_sampler_count;
-   case PIPE_SHADER_CAP_PREFERRED_IR:
-      return PIPE_SHADER_IR_NIR;
    case PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE:
       if (ubo_enable)
          return 16384; /* 16384 so state tracker enables UBOs */
       return shader == PIPE_SHADER_FRAGMENT
                 ? screen->specs.max_ps_uniforms * sizeof(float[4])
                 : screen->specs.max_vs_uniforms * sizeof(float[4]);
-   case PIPE_SHADER_CAP_DROUND_SUPPORTED:
    case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
       return false;
    case PIPE_SHADER_CAP_SUPPORTED_IRS:
@@ -455,6 +460,11 @@ gpu_supports_texture_format(struct etna_screen *screen, uint32_t fmt,
                             enum pipe_format format)
 {
    bool supported = true;
+
+   /* Requires split sampler support, which the driver doesn't support, yet. */
+   if (!util_format_is_compressed(format) &&
+       util_format_get_blocksizebits(format) > 32)
+      return false;
 
    if (fmt == TEXTURE_FORMAT_ETC1)
       supported = VIV_FEATURE(screen, chipFeatures, ETC1_TEXTURE_COMPRESSION);
@@ -496,6 +506,10 @@ gpu_supports_render_format(struct etna_screen *screen, enum pipe_format format,
    const uint32_t fmt = translate_pe_format(format);
 
    if (fmt == ETNA_NO_MATCH)
+      return false;
+
+   /* Requires split target support, which the driver doesn't support, yet. */
+   if (util_format_get_blocksizebits(format) > 32)
       return false;
 
    if (sample_count > 1) {
@@ -885,7 +899,37 @@ etna_get_specs(struct etna_screen *screen)
       DBG("could not get ETNA_GPU_NUM_VARYINGS");
       goto fail;
    }
-   screen->specs.max_varyings = MAX2(val, ETNA_NUM_VARYINGS);
+   screen->specs.max_varyings = MIN2(val, ETNA_NUM_VARYINGS);
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NN_CORE_COUNT, &val)) {
+      DBG("could not get ETNA_GPU_NN_CORE_COUNT");
+      goto fail;
+   }
+   screen->specs.nn_core_count = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NN_MAD_PER_CORE, &val)) {
+      DBG("could not get ETNA_GPU_NN_MAD_PER_CORE");
+      goto fail;
+   }
+   screen->specs.nn_mad_per_core = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_TP_CORE_COUNT, &val)) {
+      DBG("could not get ETNA_GPU_TP_CORE_COUNT");
+      goto fail;
+   }
+   screen->specs.tp_core_count = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_ON_CHIP_SRAM_SIZE, &val)) {
+      DBG("could not get ETNA_GPU_ON_CHIP_SRAM_SIZE");
+      goto fail;
+   }
+   screen->specs.on_chip_sram_size = val;
+
+   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_AXI_SRAM_SIZE, &val)) {
+      DBG("could not get ETNA_GPU_AXI_SRAM_SIZE");
+      goto fail;
+   }
+   screen->specs.axi_sram_size = val;
 
    /* Figure out gross GPU architecture. See rnndb/common.xml for a specific
     * description of the differences. */

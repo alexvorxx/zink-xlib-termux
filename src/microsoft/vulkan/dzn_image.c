@@ -157,8 +157,8 @@ dzn_image_create(struct dzn_device *device,
       D3D12_RESOURCE_DESC tmp_desc = {
          .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
          .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
-         .Width = ALIGN(image->vk.extent.width, util_format_get_blockwidth(pfmt)),
-         .Height = (UINT)ALIGN(image->vk.extent.height, util_format_get_blockheight(pfmt)),
+         .Width = ALIGN_POT(image->vk.extent.width, util_format_get_blockwidth(pfmt)),
+         .Height = (UINT)ALIGN_POT(image->vk.extent.height, util_format_get_blockheight(pfmt)),
          .DepthOrArraySize = 1,
          .MipLevels = 1,
          .Format =
@@ -261,7 +261,8 @@ dzn_image_create(struct dzn_device *device,
    }
 
    if (pCreateInfo->sharingMode == VK_SHARING_MODE_CONCURRENT &&
-       !(image->desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
+       !(image->desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) &&
+       image->desc.SampleDesc.Count == 1)
       image->desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
    *out = dzn_image_to_handle(image);
@@ -276,8 +277,12 @@ dzn_image_get_dxgi_format(const struct dzn_physical_device *pdev,
 {
    enum pipe_format pfmt = vk_format_to_pipe_format(format);
 
-   if (pfmt == PIPE_FORMAT_A4R4G4B4_UNORM && !pdev->support_a4b4g4r4)
-      return DXGI_FORMAT_B4G4R4A4_UNORM;
+   if (pdev && !pdev->support_a4b4g4r4) {
+      if (pfmt == PIPE_FORMAT_A4R4G4B4_UNORM)
+         return DXGI_FORMAT_B4G4R4A4_UNORM;
+      if (pfmt == PIPE_FORMAT_A4B4G4R4_UNORM)
+         return DXGI_FORMAT_UNKNOWN;
+   }
 
    if (!vk_format_is_depth_or_stencil(format))
       return dzn_pipe_to_dxgi_format(pfmt);
@@ -425,13 +430,17 @@ dzn_image_get_copy_loc(const struct dzn_image *image,
    if (image->desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
       assert((subres->baseArrayLayer + layer) == 0);
       assert(subres->mipLevel == 0);
+      enum pipe_format pfmt = vk_format_to_pipe_format(image->vk.format);
+      uint32_t blkw = util_format_get_blockwidth(pfmt);
+      uint32_t blkh = util_format_get_blockheight(pfmt);
+      uint32_t blkd = util_format_get_blockdepth(pfmt);
       loc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
       loc.PlacedFootprint.Offset = 0;
       loc.PlacedFootprint.Footprint.Format =
          dzn_image_get_placed_footprint_format(pdev, image->vk.format, aspect);
-      loc.PlacedFootprint.Footprint.Width = image->vk.extent.width;
-      loc.PlacedFootprint.Footprint.Height = image->vk.extent.height;
-      loc.PlacedFootprint.Footprint.Depth = image->vk.extent.depth;
+      loc.PlacedFootprint.Footprint.Width = ALIGN_POT(image->vk.extent.width, blkw);
+      loc.PlacedFootprint.Footprint.Height = ALIGN_POT(image->vk.extent.height, blkh);
+      loc.PlacedFootprint.Footprint.Depth = ALIGN_POT(image->vk.extent.depth, blkd);
       loc.PlacedFootprint.Footprint.RowPitch = image->linear.row_stride;
    } else {
       loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -812,9 +821,17 @@ dzn_BindImageMemory2(VkDevice dev,
       VK_FROM_HANDLE(dzn_device_memory, mem, bind_info->memory);
       VK_FROM_HANDLE(dzn_image, image, bind_info->image);
 
-      vk_foreach_struct_const(s, bind_info->pNext) {
-         dzn_debug_ignored_stype(s->sType);
+#ifdef DZN_USE_WSI_PLATFORM
+      const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
+
+      if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+         struct dzn_image *swapchain_img =
+            dzn_image_from_handle(wsi_common_get_image(swapchain_info->swapchain, swapchain_info->imageIndex));
+
+         mem = swapchain_img->mem;
       }
+#endif
 
       image->mem = mem;
 
@@ -835,7 +852,7 @@ dzn_BindImageMemory2(VkDevice dev,
             .Format = image->desc.Format,
             .SampleDesc = image->desc.SampleDesc,
             .Layout = image->desc.Layout,
-            .Flags = image->desc.Flags,
+            .Flags = image->desc.Flags | mem->res_flags,
          };
 
          hres = ID3D12Device10_CreatePlacedResource2(device->dev10, mem->heap,
@@ -848,9 +865,11 @@ dzn_BindImageMemory2(VkDevice dev,
                                                      &IID_ID3D12Resource,
                                                      (void **)&image->res);
       } else {
+         D3D12_RESOURCE_DESC desc = image->desc;
+         desc.Flags |= mem->res_flags;
          hres = ID3D12Device1_CreatePlacedResource(device->dev, mem->heap,
                                                    bind_info->memoryOffset,
-                                                   &image->desc,
+                                                   &desc,
                                                    D3D12_RESOURCE_STATE_COMMON,
                                                    NULL,
                                                    &IID_ID3D12Resource,

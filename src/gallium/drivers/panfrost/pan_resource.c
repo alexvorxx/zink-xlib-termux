@@ -4,6 +4,7 @@
  * Copyright (C) 2014-2017 Broadcom
  * Copyright (C) 2018-2019 Alyssa Rosenzweig
  * Copyright (C) 2019 Collabora, Ltd.
+ * Copyright (C) 2023 Amazon.com, Inc. or its affiliates
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -36,9 +37,11 @@
 
 #include "frontend/winsys_handle.h"
 #include "util/format/u_format.h"
+#include "util/u_debug_image.h"
 #include "util/u_drm.h"
 #include "util/u_gen_mipmap.h"
 #include "util/u_memory.h"
+#include "util/u_resource.h"
 #include "util/u_surface.h"
 #include "util/u_transfer.h"
 #include "util/u_transfer_helper.h"
@@ -63,7 +66,8 @@ panfrost_clear_depth_stencil(struct pipe_context *pipe,
    if (render_condition_enabled && !panfrost_render_condition_check(ctx))
       return;
 
-   panfrost_blitter_save(ctx, render_condition_enabled);
+   panfrost_blitter_save(
+      ctx, render_condition_enabled ? PAN_RENDER_COND : PAN_RENDER_BASE);
    util_blitter_clear_depth_stencil(ctx->blitter, dst, clear_flags, depth,
                                     stencil, dstx, dsty, width, height);
 }
@@ -80,7 +84,8 @@ panfrost_clear_render_target(struct pipe_context *pipe,
    if (render_condition_enabled && !panfrost_render_condition_check(ctx))
       return;
 
-   panfrost_blitter_save(ctx, render_condition_enabled);
+   panfrost_blitter_save(
+      ctx, render_condition_enabled ? PAN_RENDER_COND : PAN_RENDER_BASE);
    util_blitter_clear_render_target(ctx->blitter, dst, color, dstx, dsty, width,
                                     height);
 }
@@ -130,22 +135,24 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
       .nr_slices = 1,
    };
 
-   bool valid = pan_image_layout_init(&rsc->image.layout, &explicit_layout);
+   bool valid =
+      pan_image_layout_init(dev->arch, &rsc->image.layout, &explicit_layout);
 
    if (!valid) {
       FREE(rsc);
       return NULL;
    }
 
-   rsc->image.data.bo = panfrost_bo_import(dev, whandle->handle);
+   rsc->bo = panfrost_bo_import(dev, whandle->handle);
    /* Sometimes an import can fail e.g. on an invalid buffer fd, out of
     * memory space to mmap it etc.
     */
-   if (!rsc->image.data.bo) {
+   if (!rsc->bo) {
       FREE(rsc);
       return NULL;
    }
 
+   rsc->image.data.base = rsc->bo->ptr.gpu;
    rsc->modifier_constant = true;
 
    BITSET_SET(rsc->valid.data, 0);
@@ -188,9 +195,9 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
    if (handle->type == WINSYS_HANDLE_TYPE_KMS && dev->ro) {
       return renderonly_get_handle(scanout, handle);
    } else if (handle->type == WINSYS_HANDLE_TYPE_KMS) {
-      handle->handle = rsrc->image.data.bo->gem_handle;
+      handle->handle = panfrost_bo_handle(rsrc->bo);
    } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
-      int fd = panfrost_bo_export(rsrc->image.data.bo);
+      int fd = panfrost_bo_export(rsrc->bo);
 
       if (fd < 0)
          return false;
@@ -214,9 +221,8 @@ panfrost_resource_get_param(struct pipe_screen *pscreen,
                             enum pipe_resource_param param, unsigned usage,
                             uint64_t *value)
 {
-   struct panfrost_resource *rsrc = (struct panfrost_resource *)prsc;
-   struct pipe_resource *cur;
-   unsigned count;
+   struct panfrost_resource *rsrc =
+      (struct panfrost_resource *)util_resource_at_index(prsc, plane);
 
    switch (param) {
    case PIPE_RESOURCE_PARAM_STRIDE:
@@ -229,14 +235,7 @@ panfrost_resource_get_param(struct pipe_screen *pscreen,
       *value = rsrc->image.layout.modifier;
       return true;
    case PIPE_RESOURCE_PARAM_NPLANES:
-      /* Panfrost doesn't directly support multi-planar formats,
-       * but we should still handle this case for gbm users
-       * that might want to use resources shared with panfrost
-       * on video processing hardware that does.
-       */
-      for (count = 0, cur = prsc; cur; cur = cur->next)
-         count++;
-      *value = count;
+      *value = util_resource_num(prsc);
       return true;
    default:
       return false;
@@ -253,10 +252,7 @@ static struct pipe_surface *
 panfrost_create_surface(struct pipe_context *pipe, struct pipe_resource *pt,
                         const struct pipe_surface *surf_tmpl)
 {
-   struct panfrost_context *ctx = pan_context(pipe);
    struct pipe_surface *ps = NULL;
-
-   pan_legalize_afbc_format(ctx, pan_resource(pt), surf_tmpl->format);
 
    ps = CALLOC_STRUCT(pipe_surface);
 
@@ -334,8 +330,12 @@ panfrost_should_afbc(struct panfrost_device *dev,
    if (pres->base.usage == PIPE_USAGE_STREAM)
       return false;
 
+   /* If constant (non-data-dependent) format is requested, don't AFBC: */
+   if (pres->base.bind & PIPE_BIND_CONST_BW)
+      return false;
+
    /* Only a small selection of formats are AFBC'able */
-   if (!panfrost_format_supports_afbc(dev, fmt))
+   if (!panfrost_format_supports_afbc(dev->arch, fmt))
       return false;
 
    /* AFBC does not support layered (GLES3 style) multisampling. Use
@@ -381,8 +381,24 @@ static bool
 panfrost_should_tile_afbc(const struct panfrost_device *dev,
                           const struct panfrost_resource *pres)
 {
-   return panfrost_afbc_can_tile(dev) && pres->base.width0 >= 128 &&
-          pres->base.height0 >= 128;
+   return panfrost_afbc_can_tile(dev->arch) && pres->base.width0 >= 128 &&
+          pres->base.height0 >= 128 && !(dev->debug & PAN_DBG_FORCE_PACK);
+}
+
+bool
+panfrost_should_pack_afbc(struct panfrost_device *dev,
+                          const struct panfrost_resource *prsrc)
+{
+   const unsigned valid_binding = PIPE_BIND_DEPTH_STENCIL |
+                                  PIPE_BIND_RENDER_TARGET |
+                                  PIPE_BIND_SAMPLER_VIEW;
+
+   return panfrost_afbc_can_pack(prsrc->base.format) && panfrost_is_2d(prsrc) &&
+          drm_is_afbc(prsrc->image.layout.modifier) &&
+          (prsrc->image.layout.modifier & AFBC_FORMAT_MOD_SPARSE) &&
+          (prsrc->base.bind & ~valid_binding) == 0 &&
+          !prsrc->modifier_constant && prsrc->base.width0 >= 32 &&
+          prsrc->base.height0 >= 32;
 }
 
 static bool
@@ -489,14 +505,15 @@ panfrost_resource_setup(struct panfrost_device *dev,
       .crc = panfrost_should_checksum(dev, pres),
    };
 
-   ASSERTED bool valid = pan_image_layout_init(&pres->image.layout, NULL);
+   ASSERTED bool valid =
+      pan_image_layout_init(dev->arch, &pres->image.layout, NULL);
    assert(valid);
 }
 
 static void
 panfrost_resource_init_afbc_headers(struct panfrost_resource *pres)
 {
-   panfrost_bo_mmap(pres->image.data.bo);
+   panfrost_bo_mmap(pres->bo);
 
    unsigned nr_samples = MAX2(pres->base.nr_samples, 1);
 
@@ -505,7 +522,7 @@ panfrost_resource_init_afbc_headers(struct panfrost_resource *pres)
          struct pan_image_slice_layout *slice = &pres->image.layout.slices[l];
 
          for (unsigned s = 0; s < nr_samples; ++s) {
-            void *ptr = pres->image.data.bo->ptr.cpu +
+            void *ptr = pres->bo->ptr.cpu +
                         (i * pres->image.layout.array_stride) + slice->offset +
                         (s * slice->afbc.surface_stride);
 
@@ -612,7 +629,7 @@ panfrost_resource_set_damage_region(struct pipe_screen *screen,
    }
 }
 
-static struct pipe_resource *
+struct pipe_resource *
 panfrost_resource_create_with_modifier(struct pipe_screen *screen,
                                        const struct pipe_resource *template,
                                        uint64_t modifier)
@@ -712,19 +729,26 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
          return NULL;
       }
       assert(handle.type == WINSYS_HANDLE_TYPE_FD);
-      so->image.data.bo = panfrost_bo_import(dev, handle.handle);
+      so->bo = panfrost_bo_import(dev, handle.handle);
+      so->image.data.base = so->bo->ptr.gpu;
       close(handle.handle);
 
-      if (!so->image.data.bo) {
+      if (!so->bo) {
          free(so);
          return NULL;
       }
    } else {
       /* We create a BO immediately but don't bother mapping, since we don't
        * care to map e.g. FBOs which the CPU probably won't touch */
+      uint32_t flags = PAN_BO_DELAY_MMAP;
 
-      so->image.data.bo = panfrost_bo_create(dev, so->image.layout.data_size,
-                                             PAN_BO_DELAY_MMAP, label);
+      /* If the resource is never exported, we can make the BO private. */
+      if (template->bind & PIPE_BIND_SHARED)
+         flags |= PAN_BO_SHAREABLE;
+
+      so->bo =
+         panfrost_bo_create(dev, so->image.layout.data_size, flags, label);
+      so->image.data.base = so->bo->ptr.gpu;
 
       so->constant_stencil = true;
    }
@@ -779,8 +803,8 @@ panfrost_resource_destroy(struct pipe_screen *screen, struct pipe_resource *pt)
    if (rsrc->scanout)
       renderonly_scanout_destroy(rsrc->scanout, dev->ro);
 
-   if (rsrc->image.data.bo)
-      panfrost_bo_unreference(rsrc->image.data.bo);
+   if (rsrc->bo)
+      panfrost_bo_unreference(rsrc->bo);
 
    free(rsrc->index_cache);
    free(rsrc->damage.tile_map.data);
@@ -844,7 +868,7 @@ pan_blit_from_staging(struct pipe_context *pctx,
    blit.mask = util_format_get_mask(blit.src.format);
    blit.filter = PIPE_TEX_FILTER_NEAREST;
 
-   panfrost_blit(pctx, &blit);
+   panfrost_blit_no_afbc_legalization(pctx, &blit);
 }
 
 static void
@@ -864,7 +888,7 @@ pan_blit_to_staging(struct pipe_context *pctx, struct panfrost_transfer *trans)
    blit.mask = util_format_get_mask(blit.dst.format);
    blit.filter = PIPE_TEX_FILTER_NEAREST;
 
-   panfrost_blit(pctx, &blit);
+   panfrost_blit_no_afbc_legalization(pctx, &blit);
 }
 
 static void
@@ -880,7 +904,7 @@ panfrost_load_tiled_images(struct panfrost_transfer *transfer,
    if (!BITSET_TEST(rsrc->valid.data, level))
       return;
 
-   struct panfrost_bo *bo = rsrc->image.data.bo;
+   struct panfrost_bo *bo = rsrc->bo;
    unsigned stride = panfrost_get_layer_stride(&rsrc->image.layout, level);
 
    /* Otherwise, load each layer separately, required to load from 3D and
@@ -899,11 +923,136 @@ panfrost_load_tiled_images(struct panfrost_transfer *transfer,
    }
 }
 
+#ifdef DEBUG
+
+static unsigned
+get_superblock_size(uint32_t *hdr, unsigned uncompressed_size)
+{
+   /* AFBC superblock layout 0 */
+   unsigned body_base_ptr_len = 32;
+   unsigned nr_subblocks = 16;
+   unsigned sz_len = 6; /* bits */
+   unsigned mask = (1 << sz_len) - 1;
+   unsigned size = 0;
+
+   /* Sum up all of the subblock sizes */
+   for (int i = 0; i < nr_subblocks; i++) {
+      unsigned bitoffset = body_base_ptr_len + (i * sz_len);
+      unsigned start = bitoffset / 32;
+      unsigned end = (bitoffset + (sz_len - 1)) / 32;
+      unsigned offset = bitoffset % 32;
+      unsigned subblock_size;
+
+      if (start != end)
+         subblock_size = (hdr[start] >> offset) | (hdr[end] << (32 - offset));
+      else
+         subblock_size = hdr[start] >> offset;
+      subblock_size = (subblock_size == 1) ? uncompressed_size : subblock_size;
+      size += subblock_size & mask;
+
+      if (i == 0 && size == 0)
+         return 0;
+   }
+
+   return size;
+}
+
+static void
+dump_block(struct panfrost_resource *rsrc, uint32_t idx)
+{
+   panfrost_bo_wait(rsrc->bo, INT64_MAX, false);
+
+   uint8_t *ptr = rsrc->bo->ptr.cpu;
+   uint32_t *header = (uint32_t *)(ptr + (idx * AFBC_HEADER_BYTES_PER_TILE));
+   uint32_t body_base_ptr = header[0];
+   uint32_t *body = (uint32_t *)(ptr + body_base_ptr);
+   struct pan_block_size block_sz =
+      panfrost_afbc_subblock_size(rsrc->image.layout.modifier);
+   unsigned pixel_sz = util_format_get_blocksize(rsrc->base.format);
+   unsigned uncompressed_size = pixel_sz * block_sz.width * block_sz.height;
+   unsigned size = get_superblock_size(header, uncompressed_size);
+
+   fprintf(stderr, "  Header: %08x %08x %08x %08x (size: %u bytes)\n",
+           header[0], header[1], header[2], header[3], size);
+   if (size > 0) {
+      fprintf(stderr, "  Body:   %08x %08x %08x %08x\n", body[0], body[1],
+              body[2], body[3]);
+   } else {
+      uint8_t *comp = (uint8_t *)(header + 2);
+      fprintf(stderr, "  Color:  0x%02x%02x%02x%02x\n", comp[0], comp[1],
+              comp[2], comp[3]);
+   }
+   fprintf(stderr, "\n");
+}
+
+void
+pan_dump_resource(struct panfrost_context *ctx, struct panfrost_resource *rsc)
+{
+   struct pipe_context *pctx = &ctx->base;
+   struct pipe_resource tmpl = rsc->base;
+   struct pipe_resource *plinear = NULL;
+   struct panfrost_resource *linear = rsc;
+   struct pipe_blit_info blit = {0};
+   struct pipe_box box;
+   char buffer[1024];
+
+   if (rsc->image.layout.modifier != DRM_FORMAT_MOD_LINEAR) {
+      tmpl.bind |= PIPE_BIND_LINEAR;
+      tmpl.bind &= ~PAN_BIND_SHARED_MASK;
+
+      plinear = pctx->screen->resource_create(pctx->screen, &tmpl);
+      u_box_2d(0, 0, rsc->base.width0, rsc->base.height0, &box);
+
+      blit.src.resource = &rsc->base;
+      blit.src.format = rsc->base.format;
+      blit.src.level = 0;
+      blit.src.box = box;
+      blit.dst.resource = plinear;
+      blit.dst.format = rsc->base.format;
+      blit.dst.level = 0;
+      blit.dst.box = box;
+      blit.mask = util_format_get_mask(blit.dst.format);
+      blit.filter = PIPE_TEX_FILTER_NEAREST;
+
+      panfrost_blit(pctx, &blit);
+
+      linear = pan_resource(plinear);
+   }
+
+   panfrost_flush_writer(ctx, linear, "dump image");
+   panfrost_bo_wait(linear->bo, INT64_MAX, false);
+   panfrost_bo_mmap(linear->bo);
+
+   static unsigned frame_count = 0;
+   frame_count++;
+   snprintf(buffer, sizeof(buffer), "dump_image.%04d", frame_count);
+
+   debug_dump_image(buffer, rsc->base.format, 0 /* UNUSED */, rsc->base.width0,
+                    rsc->base.height0,
+                    linear->image.layout.slices[0].row_stride,
+                    linear->bo->ptr.cpu);
+
+   if (plinear)
+      pipe_resource_reference(&plinear, NULL);
+}
+
+#endif
+
+/* Get scan-order index from (x, y) position when blocks are
+ * arranged in z-order in 8x8 tiles */
+static unsigned
+get_morton_index(unsigned x, unsigned y, unsigned stride)
+{
+   unsigned i = ((x << 0) & 1) | ((y << 1) & 2) | ((x << 1) & 4) |
+                ((y << 2) & 8) | ((x << 2) & 16) | ((y << 3) & 32);
+   return (((y & ~7) * stride) + ((x & ~7) << 3)) + i;
+}
+
 static void
 panfrost_store_tiled_images(struct panfrost_transfer *transfer,
                             struct panfrost_resource *rsrc)
 {
-   struct panfrost_bo *bo = rsrc->image.data.bo;
+   struct panfrost_bo *bo = rsrc->bo;
    struct pipe_transfer *ptrans = &transfer->base;
    unsigned level = ptrans->level;
    unsigned stride = panfrost_get_layer_stride(&rsrc->image.layout, level);
@@ -932,6 +1081,19 @@ panfrost_box_covers_resource(const struct pipe_resource *resource,
                                            box->width, box->height, box->depth);
 }
 
+static bool
+panfrost_can_discard(struct pipe_resource *resource, const struct pipe_box *box,
+                     unsigned usage)
+{
+   struct panfrost_resource *rsrc = pan_resource(resource);
+
+   return ((usage & PIPE_MAP_DISCARD_RANGE) &&
+           !(usage & PIPE_MAP_UNSYNCHRONIZED) &&
+           !(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
+           panfrost_box_covers_resource(resource, box) &&
+           !(rsrc->bo->flags & PAN_BO_SHARED));
+}
+
 static void *
 panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
                  unsigned level,
@@ -944,7 +1106,7 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
    struct panfrost_resource *rsrc = pan_resource(resource);
    enum pipe_format format = rsrc->image.layout.format;
    int bytes_per_block = util_format_get_blocksize(format);
-   struct panfrost_bo *bo = rsrc->image.data.bo;
+   struct panfrost_bo *bo = rsrc->bo;
 
    /* Can't map tiled/compressed directly */
    if ((usage & PIPE_MAP_DIRECTLY) &&
@@ -990,18 +1152,20 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
           (valid || panfrost_any_batch_writes_rsrc(ctx, rsrc))) {
          pan_blit_to_staging(pctx, transfer);
          panfrost_flush_writer(ctx, staging, "AFBC read staging blit");
-         panfrost_bo_wait(staging->image.data.bo, INT64_MAX, false);
+         panfrost_bo_wait(staging->bo, INT64_MAX, false);
       }
 
-      panfrost_bo_mmap(staging->image.data.bo);
-      return staging->image.data.bo->ptr.cpu;
+      panfrost_bo_mmap(staging->bo);
+      return staging->bo->ptr.cpu;
    }
 
    /* If we haven't already mmaped, now's the time */
    panfrost_bo_mmap(bo);
 
-   if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
-      pandecode_inject_mmap(bo->ptr.gpu, bo->ptr.cpu, bo->size, NULL);
+   if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) {
+      pandecode_inject_mmap(dev->decode_ctx, bo->ptr.gpu, bo->ptr.cpu,
+                            panfrost_bo_size(bo), NULL);
+   }
 
    /* Upgrade writes to uninitialized ranges to UNSYNCHRONIZED */
    if ((usage & PIPE_MAP_WRITE) && resource->target == PIPE_BUFFER &&
@@ -1014,11 +1178,7 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
    /* Upgrade DISCARD_RANGE to WHOLE_RESOURCE if the whole resource is
     * being mapped.
     */
-   if ((usage & PIPE_MAP_DISCARD_RANGE) && !(usage & PIPE_MAP_UNSYNCHRONIZED) &&
-       !(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
-       panfrost_box_covers_resource(resource, box) &&
-       !(rsrc->image.data.bo->flags & PAN_BO_SHARED)) {
-
+   if (panfrost_can_discard(resource, box, usage)) {
       usage |= PIPE_MAP_DISCARD_WHOLE_RESOURCE;
    }
 
@@ -1067,19 +1227,23 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
           * importer/exporter wouldn't see the change we're
           * doing to it.
           */
-         if (!(bo->flags & PAN_BO_SHARED))
-            newbo = panfrost_bo_create(dev, bo->size, flags, bo->label);
+         if (!(bo->flags & PAN_BO_SHARED)) {
+            newbo =
+               panfrost_bo_create(dev, panfrost_bo_size(bo), flags, bo->label);
+         }
 
          if (newbo) {
-            if (copy_resource)
-               memcpy(newbo->ptr.cpu, rsrc->image.data.bo->ptr.cpu, bo->size);
+            if (copy_resource) {
+               memcpy(newbo->ptr.cpu, rsrc->bo->ptr.cpu, panfrost_bo_size(bo));
+            }
 
             /* Swap the pointers, dropping a reference to
              * the old BO which is no long referenced from
              * the resource.
              */
-            panfrost_bo_unreference(rsrc->image.data.bo);
-            rsrc->image.data.bo = newbo;
+            panfrost_bo_unreference(rsrc->bo);
+            rsrc->bo = newbo;
+            rsrc->image.data.base = newbo->ptr.gpu;
 
             if (!copy_resource && drm_is_afbc(rsrc->image.layout.modifier))
                panfrost_resource_init_afbc_headers(rsrc);
@@ -1144,7 +1308,8 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
 
       if (usage & PIPE_MAP_WRITE) {
          BITSET_SET(rsrc->valid.data, level);
-         panfrost_minmax_cache_invalidate(rsrc->index_cache, &transfer->base);
+         panfrost_minmax_cache_invalidate(
+            rsrc->index_cache, transfer->base.box.x, transfer->base.box.width);
       }
 
       return bo->ptr.cpu + rsrc->image.layout.slices[level].offset +
@@ -1157,48 +1322,58 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
 void
 pan_resource_modifier_convert(struct panfrost_context *ctx,
                               struct panfrost_resource *rsrc, uint64_t modifier,
-                              const char *reason)
+                              bool copy_resource, const char *reason)
 {
    assert(!rsrc->modifier_constant);
-
-   perf_debug_ctx(ctx, "Disabling AFBC with a blit. Reason: %s", reason);
 
    struct pipe_resource *tmp_prsrc = panfrost_resource_create_with_modifier(
       ctx->base.screen, &rsrc->base, modifier);
    struct panfrost_resource *tmp_rsrc = pan_resource(tmp_prsrc);
 
-   unsigned depth = rsrc->base.target == PIPE_TEXTURE_3D
-                       ? rsrc->base.depth0
-                       : rsrc->base.array_size;
+   if (copy_resource) {
+      struct pipe_blit_info blit = {
+         .dst.resource = &tmp_rsrc->base,
+         .dst.format = tmp_rsrc->base.format,
+         .src.resource = &rsrc->base,
+         .src.format = rsrc->base.format,
+         .mask = util_format_get_mask(tmp_rsrc->base.format),
+         .filter = PIPE_TEX_FILTER_NEAREST,
+      };
 
-   struct pipe_box box = {0,    0, 0, rsrc->base.width0, rsrc->base.height0,
-                          depth};
+      /* data_valid is not valid until flushed */
+      panfrost_flush_writer(ctx, rsrc, "AFBC decompressing blit");
 
-   struct pipe_blit_info blit = {
-      .dst.resource = &tmp_rsrc->base,
-      .dst.format = tmp_rsrc->base.format,
-      .dst.box = box,
-      .src.resource = &rsrc->base,
-      .src.format = rsrc->base.format,
-      .src.box = box,
-      .mask = util_format_get_mask(tmp_rsrc->base.format),
-      .filter = PIPE_TEX_FILTER_NEAREST,
-   };
+      for (int i = 0; i <= rsrc->base.last_level; i++) {
+         if (BITSET_TEST(rsrc->valid.data, i)) {
+            blit.dst.level = blit.src.level = i;
 
-   for (int i = 0; i <= rsrc->base.last_level; i++) {
-      if (BITSET_TEST(rsrc->valid.data, i)) {
-         blit.dst.level = blit.src.level = i;
-         panfrost_blit(&ctx->base, &blit);
+            u_box_3d(0, 0, 0, u_minify(rsrc->base.width0, i),
+                     u_minify(rsrc->base.height0, i),
+                     util_num_layers(&rsrc->base, i), &blit.dst.box);
+            blit.src.box = blit.dst.box;
+
+            panfrost_blit_no_afbc_legalization(&ctx->base, &blit);
+         }
       }
+
+      /* we lose track of tmp_rsrc after this point, and the BO migration
+       * (from tmp_rsrc to rsrc) doesn't transfer the last_writer to rsrc
+       */
+      panfrost_flush_writer(ctx, tmp_rsrc, "AFBC decompressing blit");
    }
 
-   panfrost_bo_unreference(rsrc->image.data.bo);
+   panfrost_bo_unreference(rsrc->bo);
 
-   rsrc->image.data.bo = tmp_rsrc->image.data.bo;
-   panfrost_bo_reference(rsrc->image.data.bo);
+   rsrc->bo = tmp_rsrc->bo;
+   rsrc->image.data.base = rsrc->bo->ptr.gpu;
+   panfrost_bo_reference(rsrc->bo);
 
    panfrost_resource_setup(pan_device(ctx->base.screen), rsrc, modifier,
-                           blit.dst.format);
+                           tmp_rsrc->base.format);
+   /* panfrost_resource_setup will force the modifier to stay constant when
+    * called with a specific modifier. We don't want that here, we want to
+    * be able to convert back to another modifier if needed */
+   rsrc->modifier_constant = false;
    pipe_resource_reference(&tmp_prsrc, NULL);
 }
 
@@ -1209,20 +1384,25 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
 void
 pan_legalize_afbc_format(struct panfrost_context *ctx,
                          struct panfrost_resource *rsrc,
-                         enum pipe_format format)
+                         enum pipe_format format, bool write, bool discard)
 {
    struct panfrost_device *dev = pan_device(ctx->base.screen);
 
    if (!drm_is_afbc(rsrc->image.layout.modifier))
       return;
 
-   if (panfrost_afbc_format(dev->arch, rsrc->base.format) ==
-       panfrost_afbc_format(dev->arch, format))
+   if (panfrost_afbc_format(dev->arch, rsrc->base.format) !=
+       panfrost_afbc_format(dev->arch, format)) {
+      pan_resource_modifier_convert(
+         ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED, !discard,
+         "Reinterpreting AFBC surface as incompatible format");
       return;
+   }
 
-   pan_resource_modifier_convert(
-      ctx, rsrc, DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED,
-      "Reinterpreting AFBC surface as incompatible format");
+   if (write && (rsrc->image.layout.modifier & AFBC_FORMAT_MOD_SPARSE) == 0)
+      pan_resource_modifier_convert(
+         ctx, rsrc, rsrc->image.layout.modifier | AFBC_FORMAT_MOD_SPARSE,
+         !discard, "Legalizing resource to allow writing");
 }
 
 static bool
@@ -1261,11 +1441,149 @@ panfrost_should_linear_convert(struct panfrost_device *dev,
    }
 }
 
+struct panfrost_bo *
+panfrost_get_afbc_superblock_sizes(struct panfrost_context *ctx,
+                                   struct panfrost_resource *rsrc,
+                                   unsigned first_level, unsigned last_level,
+                                   unsigned *out_offsets)
+{
+   struct panfrost_screen *screen = pan_screen(ctx->base.screen);
+   struct panfrost_device *dev = pan_device(ctx->base.screen);
+   struct panfrost_batch *batch;
+   struct panfrost_bo *bo;
+   unsigned metadata_size = 0;
+
+   for (int level = first_level; level <= last_level; ++level) {
+      struct pan_image_slice_layout *slice = &rsrc->image.layout.slices[level];
+      unsigned sz = slice->afbc.nr_blocks * sizeof(struct pan_afbc_block_info);
+      out_offsets[level - first_level] = metadata_size;
+      metadata_size += sz;
+   }
+
+   panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "AFBC before size flush");
+   batch = panfrost_get_fresh_batch_for_fbo(ctx, "AFBC superblock sizes");
+   bo = panfrost_bo_create(dev, metadata_size, 0, "AFBC superblock sizes");
+
+   for (int level = first_level; level <= last_level; ++level) {
+      unsigned offset = out_offsets[level - first_level];
+      screen->vtbl.afbc_size(batch, rsrc, bo, offset, level);
+   }
+
+   panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "AFBC after size flush");
+
+   return bo;
+}
+
+void
+panfrost_pack_afbc(struct panfrost_context *ctx,
+                   struct panfrost_resource *prsrc)
+{
+   struct panfrost_screen *screen = pan_screen(ctx->base.screen);
+   struct panfrost_device *dev = pan_device(ctx->base.screen);
+   struct panfrost_bo *metadata_bo;
+   unsigned metadata_offsets[PIPE_MAX_TEXTURE_LEVELS];
+
+   uint64_t src_modifier = prsrc->image.layout.modifier;
+   uint64_t dst_modifier =
+      src_modifier & ~(AFBC_FORMAT_MOD_TILED | AFBC_FORMAT_MOD_SPARSE);
+   bool is_tiled = src_modifier & AFBC_FORMAT_MOD_TILED;
+   unsigned last_level = prsrc->base.last_level;
+   struct pan_image_slice_layout slice_infos[PIPE_MAX_TEXTURE_LEVELS] = {0};
+   unsigned total_size = 0;
+
+   /* It doesn't make sense to pack everything if we need to unpack right
+    * away to upload data to another level */
+   for (int i = 0; i <= last_level; i++) {
+      if (!BITSET_TEST(prsrc->valid.data, i))
+         return;
+   }
+
+   metadata_bo = panfrost_get_afbc_superblock_sizes(ctx, prsrc, 0, last_level,
+                                                    metadata_offsets);
+   panfrost_bo_wait(metadata_bo, INT64_MAX, false);
+
+   for (unsigned level = 0; level <= last_level; ++level) {
+      struct pan_image_slice_layout *src_slice =
+         &prsrc->image.layout.slices[level];
+      struct pan_image_slice_layout *dst_slice = &slice_infos[level];
+
+      unsigned width = u_minify(prsrc->base.width0, level);
+      unsigned height = u_minify(prsrc->base.height0, level);
+      unsigned src_stride =
+         pan_afbc_stride_blocks(src_modifier, src_slice->row_stride);
+      unsigned dst_stride =
+         DIV_ROUND_UP(width, panfrost_afbc_superblock_width(dst_modifier));
+      unsigned dst_height =
+         DIV_ROUND_UP(height, panfrost_afbc_superblock_height(dst_modifier));
+
+      uint32_t offset = 0;
+      struct pan_afbc_block_info *meta =
+         metadata_bo->ptr.cpu + metadata_offsets[level];
+
+      for (unsigned y = 0, i = 0; y < dst_height; ++y) {
+         for (unsigned x = 0; x < dst_stride; ++x, ++i) {
+            unsigned idx = is_tiled ? get_morton_index(x, y, src_stride) : i;
+            uint32_t size = meta[idx].size;
+            meta[idx].offset = offset; /* write the start offset */
+            offset += size;
+         }
+      }
+
+      total_size = ALIGN_POT(total_size, pan_slice_align(dst_modifier));
+      {
+         dst_slice->afbc.stride = dst_stride;
+         dst_slice->afbc.nr_blocks = dst_stride * dst_height;
+         dst_slice->afbc.header_size =
+            ALIGN_POT(dst_stride * dst_height * AFBC_HEADER_BYTES_PER_TILE,
+                      pan_afbc_body_align(dst_modifier));
+         dst_slice->afbc.body_size = offset;
+         dst_slice->afbc.surface_stride = dst_slice->afbc.header_size + offset;
+
+         dst_slice->offset = total_size;
+         dst_slice->row_stride = dst_stride * AFBC_HEADER_BYTES_PER_TILE;
+         dst_slice->surface_stride = dst_slice->afbc.surface_stride;
+         dst_slice->size = dst_slice->afbc.surface_stride;
+      }
+      total_size += dst_slice->afbc.surface_stride;
+   }
+
+   unsigned new_size = ALIGN_POT(total_size, 4096); // FIXME
+   unsigned old_size = panfrost_bo_size(prsrc->bo);
+   unsigned ratio = 100 * new_size / old_size;
+
+   if (ratio > screen->max_afbc_packing_ratio)
+      return;
+
+   perf_debug(dev, "%i%%: %i KB -> %i KB\n", ratio, old_size / 1024,
+              new_size / 1024);
+
+   struct panfrost_bo *dst =
+      panfrost_bo_create(dev, new_size, 0, "AFBC compact texture");
+   struct panfrost_batch *batch =
+      panfrost_get_fresh_batch_for_fbo(ctx, "AFBC compaction");
+
+   for (unsigned level = 0; level <= last_level; ++level) {
+      struct pan_image_slice_layout *slice = &slice_infos[level];
+      screen->vtbl.afbc_pack(batch, prsrc, dst, slice, metadata_bo,
+                             metadata_offsets[level], level);
+      prsrc->image.layout.slices[level] = *slice;
+   }
+
+   panfrost_flush_batches_accessing_rsrc(ctx, prsrc, "AFBC compaction flush");
+
+   prsrc->image.layout.modifier = dst_modifier;
+   panfrost_bo_unreference(prsrc->bo);
+   prsrc->bo = dst;
+   prsrc->image.data.base = dst->ptr.gpu;
+   panfrost_bo_unreference(metadata_bo);
+}
+
 static void
 panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
 {
    /* Gallium expects writeback here, so we tile */
 
+   struct panfrost_context *ctx = pan_context(pctx);
    struct panfrost_transfer *trans = pan_transfer(transfer);
    struct panfrost_resource *prsrc =
       (struct panfrost_resource *)transfer->resource;
@@ -1283,19 +1601,28 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
       if (transfer->usage & PIPE_MAP_WRITE) {
          if (panfrost_should_linear_convert(dev, prsrc, transfer)) {
 
-            panfrost_bo_unreference(prsrc->image.data.bo);
+            panfrost_bo_unreference(prsrc->bo);
 
             panfrost_resource_setup(dev, prsrc, DRM_FORMAT_MOD_LINEAR,
                                     prsrc->image.layout.format);
 
-            prsrc->image.data.bo =
-               pan_resource(trans->staging.rsrc)->image.data.bo;
-            panfrost_bo_reference(prsrc->image.data.bo);
+            prsrc->bo = pan_resource(trans->staging.rsrc)->bo;
+            prsrc->image.data.base = prsrc->bo->ptr.gpu;
+            panfrost_bo_reference(prsrc->bo);
          } else {
+            bool discard = panfrost_can_discard(&prsrc->base, &transfer->box,
+                                                transfer->usage);
+            pan_legalize_afbc_format(ctx, prsrc, prsrc->image.layout.format,
+                                     true, discard);
             pan_blit_from_staging(pctx, trans);
             panfrost_flush_batches_accessing_rsrc(
-               pan_context(pctx), pan_resource(trans->staging.rsrc),
+               ctx, pan_resource(trans->staging.rsrc),
                "AFBC write staging blit");
+
+            if (pan_screen(pctx->screen)->force_afbc_packing) {
+               if (panfrost_should_pack_afbc(dev, prsrc))
+                  panfrost_pack_afbc(ctx, prsrc);
+            }
          }
       }
 
@@ -1304,7 +1631,7 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
 
    /* Tiling will occur in software from a staging cpu buffer */
    if (trans->map) {
-      struct panfrost_bo *bo = prsrc->image.data.bo;
+      struct panfrost_bo *bo = prsrc->bo;
 
       if (transfer->usage & PIPE_MAP_WRITE) {
          BITSET_SET(prsrc->valid.data, transfer->level);
@@ -1314,11 +1641,12 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
             if (panfrost_should_linear_convert(dev, prsrc, transfer)) {
                panfrost_resource_setup(dev, prsrc, DRM_FORMAT_MOD_LINEAR,
                                        prsrc->image.layout.format);
-               if (prsrc->image.layout.data_size > bo->size) {
+               if (prsrc->image.layout.data_size > panfrost_bo_size(bo)) {
                   const char *label = bo->label;
                   panfrost_bo_unreference(bo);
-                  bo = prsrc->image.data.bo = panfrost_bo_create(
+                  bo = prsrc->bo = panfrost_bo_create(
                      dev, prsrc->image.layout.data_size, 0, label);
+                  prsrc->image.data.base = prsrc->bo->ptr.gpu;
                   assert(bo);
                }
 
@@ -1337,7 +1665,10 @@ panfrost_ptr_unmap(struct pipe_context *pctx, struct pipe_transfer *transfer)
    util_range_add(&prsrc->base, &prsrc->valid_buffer_range, transfer->box.x,
                   transfer->box.x + transfer->box.width);
 
-   panfrost_minmax_cache_invalidate(prsrc->index_cache, transfer);
+   if (transfer->usage & PIPE_MAP_WRITE) {
+      panfrost_minmax_cache_invalidate(prsrc->index_cache, transfer->box.x,
+                                       transfer->box.width);
+   }
 
    /* Derefence the resource */
    pipe_resource_reference(&transfer->resource, NULL);
@@ -1391,6 +1722,18 @@ panfrost_resource_get_internal_format(struct pipe_resource *rsrc)
    return prsrc->image.layout.format;
 }
 
+void
+panfrost_set_image_view_planes(struct pan_image_view *iview,
+                               struct pipe_resource *texture)
+{
+   struct panfrost_resource *prsrc_plane = (struct panfrost_resource *)texture;
+
+   for (int i = 0; i < MAX_IMAGE_PLANES && prsrc_plane; i++) {
+      iview->planes[i] = &prsrc_plane->image;
+      prsrc_plane = (struct panfrost_resource *)prsrc_plane->base.next;
+   }
+}
+
 static bool
 panfrost_generate_mipmap(struct pipe_context *pctx, struct pipe_resource *prsrc,
                          enum pipe_format format, unsigned base_level,
@@ -1405,7 +1748,7 @@ panfrost_generate_mipmap(struct pipe_context *pctx, struct pipe_resource *prsrc,
     * explicit so we don't try to wallpaper them back and end up with
     * u_blitter recursion */
 
-   assert(rsrc->image.data.bo);
+   assert(rsrc->bo);
    for (unsigned l = base_level + 1; l <= last_level; ++l)
       BITSET_CLEAR(rsrc->valid.data, l);
 

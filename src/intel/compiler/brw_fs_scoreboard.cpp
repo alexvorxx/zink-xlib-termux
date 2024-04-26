@@ -55,6 +55,7 @@
  */
 
 #include "brw_fs.h"
+#include "brw_fs_builder.h"
 #include "brw_cfg.h"
 
 using namespace brw;
@@ -127,16 +128,21 @@ namespace {
          return TGL_PIPE_NONE;
       else if (devinfo->verx10 < 125)
          return TGL_PIPE_FLOAT;
+      else if (inst->is_math() && devinfo->ver >= 20)
+         return TGL_PIPE_MATH;
       else if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT ||
                inst->opcode == SHADER_OPCODE_BROADCAST ||
-               inst->opcode == SHADER_OPCODE_SHUFFLE ||
-               (inst->opcode == SHADER_OPCODE_SEL_EXEC &&
-                type_sz(inst->dst.type) > 4))
+               inst->opcode == SHADER_OPCODE_SHUFFLE)
          return TGL_PIPE_INT;
       else if (inst->opcode == FS_OPCODE_PACK_HALF_2x16_SPLIT)
          return TGL_PIPE_FLOAT;
-      else if (type_sz(inst->dst.type) >= 8 || type_sz(t) >= 8 ||
-               is_dword_multiply) {
+      else if (devinfo->ver >= 20 && type_sz(inst->dst.type) >= 8 &&
+               brw_reg_type_is_floating_point(inst->dst.type)) {
+         assert(devinfo->has_64bit_float);
+         return TGL_PIPE_LONG;
+      } else if (devinfo->ver < 20 &&
+                 (type_sz(inst->dst.type) >= 8 || type_sz(t) >= 8 ||
+                  is_dword_multiply)) {
          assert(devinfo->has_64bit_float || devinfo->has_64bit_int ||
                 devinfo->has_integer_dword_mul);
          return TGL_PIPE_LONG;
@@ -244,7 +250,7 @@ namespace {
     * Return the number of instructions in the program.
     */
    unsigned
-   num_instructions(const backend_shader *shader)
+   num_instructions(const fs_visitor *shader)
    {
       return shader->cfg->blocks[shader->cfg->num_blocks - 1]->end_ip + 1;
    }
@@ -747,7 +753,7 @@ namespace {
       }
 
    private:
-      dependency grf_deps[BRW_MAX_GRF];
+      dependency grf_deps[XE2_MAX_GRF];
       dependency addr_dep;
       dependency accum_dep;
 
@@ -758,7 +764,6 @@ namespace {
                                reg_offset(r) / REG_SIZE);
 
          return (r.file == VGRF || r.file == FIXED_GRF ? &grf_deps[reg] :
-                 r.file == MRF ? &grf_deps[GFX7_MRF_HACK_START + reg] :
                  r.file == ARF && reg >= BRW_ARF_ADDRESS &&
                                   reg < BRW_ARF_ACCUMULATOR ? &addr_dep :
                  r.file == ARF && reg >= BRW_ARF_ACCUMULATOR &&
@@ -1011,8 +1016,8 @@ namespace {
       const ordered_address jp = p ? ordered_address(p, jps[ip].jp[IDX(p)]) :
                                      ordered_address();
       const bool is_ordered = ordered_unit(devinfo, inst, IDX(TGL_PIPE_ALL));
-      const bool uses_math_pipe =
-         inst->is_math() ||
+      const bool is_unordered_math =
+         (inst->is_math() && devinfo->ver < 20) ||
          (devinfo->has_64bit_float_via_math_pipe &&
           (get_exec_type(inst) == BRW_REGISTER_TYPE_DF ||
            inst->dst.type == BRW_REGISTER_TYPE_DF));
@@ -1024,7 +1029,8 @@ namespace {
       for (unsigned i = 0; i < inst->sources; i++) {
          const dependency rd_dep =
             (inst->is_payload(i) ||
-             uses_math_pipe) ? dependency(TGL_SBID_SRC, ip, exec_all) :
+             inst->opcode == BRW_OPCODE_DPAS ||
+             is_unordered_math) ? dependency(TGL_SBID_SRC, ip, exec_all) :
             is_ordered ? dependency(TGL_REGDIST_SRC, jp, exec_all) :
             dependency::done;
 
@@ -1036,13 +1042,6 @@ namespace {
 
       if (inst->reads_accumulator_implicitly())
          sb.set(brw_acc_reg(8), dependency(TGL_REGDIST_SRC, jp, exec_all));
-
-      if (is_send(inst) && inst->base_mrf != -1) {
-         const dependency rd_dep = dependency(TGL_SBID_SRC, ip, exec_all);
-
-         for (unsigned j = 0; j < inst->mlen; j++)
-            sb.set(brw_uvec_mrf(8, inst->base_mrf + j, 0), rd_dep);
-      }
 
       /* Track any destination registers of this instruction. */
       const dependency wr_dep =
@@ -1166,12 +1165,6 @@ namespace {
                add_dependency(ids, deps[ip], dep);
          }
 
-         if (is_send(inst) && inst->base_mrf != -1) {
-            for (unsigned j = 0; j < inst->mlen; j++)
-               add_dependency(ids, deps[ip], dependency_for_read(
-                  sb.get(brw_uvec_mrf(8, inst->base_mrf + j, 0))));
-         }
-
          if (is_unordered(devinfo, inst) && !inst->eot)
             add_dependency(ids, deps[ip],
                            dependency(TGL_SBID_SET, ip, exec_all));
@@ -1197,12 +1190,6 @@ namespace {
                if (dep.ordered && !is_single_pipe(dep.jp, p))
                   add_dependency(ids, deps[ip], dep);
             }
-
-            if (is_send(inst) && inst->base_mrf != -1) {
-               for (unsigned j = 0; j < inst->implied_mrf_writes(); j++)
-                  add_dependency(ids, deps[ip], dependency_for_write(devinfo, inst,
-                     sb.get(brw_uvec_mrf(8, inst->base_mrf + j, 0))));
-            }
          }
 
          update_inst_scoreboard(shader, jps, inst, ip, sb);
@@ -1227,7 +1214,10 @@ namespace {
    {
       /* XXX - Use bin-packing algorithm to assign hardware SBIDs optimally in
        *       shaders with a large number of SEND messages.
+       *
+       * XXX - Use 32 SBIDs on Xe2+ while in large GRF mode.
        */
+      const unsigned num_sbids = 16;
 
       /* Allocate an unordered dependency ID to hardware SBID translation
        * table with as many entries as instructions there are in the shader,
@@ -1246,7 +1236,7 @@ namespace {
             const dependency &dep = deps0[ip][i];
 
             if (dep.unordered && ids[dep.id] == ~0u)
-               ids[dep.id] = (next_id++) & 0xf;
+               ids[dep.id] = (next_id++) & (num_sbids - 1);
 
             add_dependency(ids, deps1[ip], dep);
          }
@@ -1339,13 +1329,13 @@ namespace {
 }
 
 bool
-fs_visitor::lower_scoreboard()
+brw_fs_lower_scoreboard(fs_visitor &s)
 {
-   if (devinfo->ver >= 12) {
-      const ordered_address *jps = ordered_inst_addresses(this);
-      const dependency_list *deps0 = gather_inst_dependencies(this, jps);
-      const dependency_list *deps1 = allocate_inst_dependencies(this, deps0);
-      emit_inst_dependencies(this, jps, deps1);
+   if (s.devinfo->ver >= 12) {
+      const ordered_address *jps = ordered_inst_addresses(&s);
+      const dependency_list *deps0 = gather_inst_dependencies(&s, jps);
+      const dependency_list *deps1 = allocate_inst_dependencies(&s, deps0);
+      emit_inst_dependencies(&s, jps, deps1);
       delete[] deps1;
       delete[] deps0;
       delete[] jps;

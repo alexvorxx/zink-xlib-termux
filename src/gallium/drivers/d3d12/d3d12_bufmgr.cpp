@@ -64,7 +64,7 @@ describe_suballoc_bo(char *buf, struct d3d12_bo *ptr)
    d3d12_bo *base = d3d12_bo_get_base(ptr, &offset);
    describe_direct_bo(res, base);
    sprintf(buf, "d3d12_bo<suballoc<%s>,0x%x,0x%x>", res,
-           (unsigned)ptr->buffer->size, (unsigned)offset);
+           (unsigned)ptr->buffer->base.size, (unsigned)offset);
 }
 
 void
@@ -100,6 +100,7 @@ d3d12_bo_wrap_res(struct d3d12_screen *screen, ID3D12Resource *res, enum d3d12_r
 
    bo->residency_status = residency;
    bo->last_used_timestamp = 0;
+   desc.Flags &= ~D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
    screen->dev->GetCopyableFootprints(&desc, 0, total_subresources, 0, nullptr, nullptr, nullptr, &bo->estimated_size);
    if (residency == d3d12_resident) {
       mtx_lock(&screen->submit_mutex);
@@ -126,7 +127,7 @@ d3d12_bo_new(struct d3d12_screen *screen, uint64_t size, const pb_desc *pb_desc)
    res_desc.MipLevels = 1;
    res_desc.SampleDesc.Count = 1;
    res_desc.SampleDesc.Quality = 0;
-   res_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+   res_desc.Flags = (screen->max_feature_level >= D3D_FEATURE_LEVEL_11_0) ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
    res_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
    D3D12_HEAP_TYPE heap_type = D3D12_HEAP_TYPE_DEFAULT;
@@ -331,11 +332,11 @@ d3d12_bufmgr_create_buffer(struct pb_manager *pmgr,
    if (!buf)
       return NULL;
 
-   pipe_reference_init(&buf->base.reference, 1);
-   buf->base.alignment_log2 = util_logbase2(pb_desc->alignment);
-   buf->base.usage = pb_desc->usage;
+   pipe_reference_init(&buf->base.base.reference, 1);
+   buf->base.base.alignment_log2 = util_logbase2(pb_desc->alignment);
+   buf->base.base.usage = pb_desc->usage;
    buf->base.vtbl = &d3d12_buffer_vtbl;
-   buf->base.size = size;
+   buf->base.base.size = size;
    buf->range.Begin = 0;
    buf->range.End = size;
 
@@ -370,7 +371,7 @@ d3d12_bufmgr_destroy(struct pb_manager *_mgr)
    FREE(mgr);
 }
 
-static boolean
+static bool
 d3d12_bufmgr_is_buffer_busy(struct pb_manager *_mgr, struct pb_buffer *_buf)
 {
    /* We're only asked this on buffers that are known not busy */

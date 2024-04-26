@@ -6,7 +6,7 @@ This page documents known issues with some OpenGL applications.
 Topogun
 -------
 
-`Topogun <http://www.topogun.com/>`__ for Linux (version 2, at least)
+`Topogun <https://www.topogun.com/>`__ for Linux (version 2, at least)
 creates a GLX visual without requesting a depth buffer. This causes bad
 rendering if the OpenGL driver happens to choose a visual without a
 depth buffer.
@@ -35,7 +35,7 @@ than the given year.
 
 For example, if the game was released in 2001, do
 
-.. code-block:: console
+.. code-block:: sh
 
    export MESA_EXTENSION_MAX_YEAR=2001
 

@@ -51,7 +51,7 @@
 #include <time.h>
 
 #include "errno.h"
-#include "common/intel_clflush.h"
+#include "common/intel_mem.h"
 #include "dev/intel_debug.h"
 #include "common/intel_gem.h"
 #include "dev/intel_device_info.h"
@@ -404,7 +404,7 @@ bo_alloc_internal(struct crocus_bufmgr *bufmgr,
     * at this size, a multiple of the page size.
     */
    uint64_t bo_size =
-      bucket ? bucket->size : MAX2(ALIGN(size, page_size), page_size);
+      bucket ? bucket->size : MAX2(align64(size, page_size), page_size);
 
    simple_mtx_lock(&bufmgr->lock);
 
@@ -895,7 +895,9 @@ crocus_bo_map_cpu(struct util_debug_callback *dbg,
        * LLC entirely requiring us to keep dirty pixels for the scanout
        * out of any cache.)
        */
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
       intel_invalidate_range(bo->map_cpu, bo->size);
+#endif
    }
 
    return bo->map_cpu;

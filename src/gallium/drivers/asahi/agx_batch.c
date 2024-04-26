@@ -6,6 +6,9 @@
 
 #include <xf86drm.h>
 #include "asahi/lib/decode.h"
+#include "util/bitset.h"
+#include "util/u_dynarray.h"
+#include "util/u_range.h"
 #include "agx_state.h"
 
 #define foreach_active(ctx, idx)                                               \
@@ -20,12 +23,6 @@
                    AGX_DBG_BATCH))                                             \
          agx_msg("[Batch %u] " fmt "\n", agx_batch_idx(batch), ##__VA_ARGS__); \
    } while (0)
-
-static unsigned
-agx_batch_idx(struct agx_batch *batch)
-{
-   return batch - batch->ctx->batches.slots;
-}
 
 bool
 agx_batch_is_active(struct agx_batch *batch)
@@ -76,6 +73,18 @@ agx_batch_mark_complete(struct agx_batch *batch)
    BITSET_CLEAR(batch->ctx->batches.submitted, batch_idx);
 }
 
+struct agx_encoder
+agx_encoder_allocate(struct agx_batch *batch, struct agx_device *dev)
+{
+   struct agx_bo *bo = agx_bo_create(dev, 0x80000, 0, "Encoder");
+
+   return (struct agx_encoder){
+      .bo = bo,
+      .current = bo->ptr.cpu,
+      .end = (uint8_t *)bo->ptr.cpu + bo->size,
+   };
+}
+
 static void
 agx_batch_init(struct agx_context *ctx,
                const struct pipe_framebuffer_state *key,
@@ -95,32 +104,47 @@ agx_batch_init(struct agx_context *ctx,
     */
    if (!batch->bo_list.set) {
       batch->bo_list.set = rzalloc_array(ctx, BITSET_WORD, 128);
-      batch->bo_list.word_count = 128;
+      batch->bo_list.bit_count = 128 * sizeof(BITSET_WORD) * 8;
    } else {
-      memset(batch->bo_list.set, 0,
-             batch->bo_list.word_count * sizeof(BITSET_WORD));
+      memset(batch->bo_list.set, 0, batch->bo_list.bit_count / 8);
    }
 
-   batch->encoder = agx_bo_create(dev, 0x80000, 0, "Encoder");
-   batch->encoder_current = batch->encoder->ptr.cpu;
-   batch->encoder_end = batch->encoder_current + batch->encoder->size;
+   if (agx_batch_is_compute(batch)) {
+      batch->cdm = agx_encoder_allocate(batch, dev);
+      memset(&batch->vdm, 0, sizeof(batch->vdm));
+   } else {
+      batch->vdm = agx_encoder_allocate(batch, dev);
+      memset(&batch->cdm, 0, sizeof(batch->cdm));
+   }
 
    util_dynarray_init(&batch->scissor, ctx);
    util_dynarray_init(&batch->depth_bias, ctx);
-   util_dynarray_init(&batch->occlusion_queries, ctx);
+   util_dynarray_init(&batch->timestamps, ctx);
 
    batch->clear = 0;
    batch->draw = 0;
    batch->load = 0;
    batch->resolve = 0;
+   memset(batch->uploaded_clear_color, 0, sizeof(batch->uploaded_clear_color));
    batch->clear_depth = 0;
    batch->clear_stencil = 0;
    batch->varyings = 0;
-   batch->any_draws = false;
+   batch->geometry_state = 0;
    batch->initialized = false;
+   batch->draws = 0;
+   batch->incoherent_writes = false;
+   agx_bo_unreference(batch->sampler_heap.bo);
+   batch->sampler_heap.bo = NULL;
+   batch->sampler_heap.count = 0;
+   batch->vs_scratch = false;
+   batch->fs_scratch = false;
+   batch->cs_scratch = false;
+   batch->vs_preamble_scratch = 0;
+   batch->fs_preamble_scratch = 0;
+   batch->cs_preamble_scratch = 0;
 
    /* We need to emit prim state at the start. Max collides with all. */
-   batch->reduced_prim = PIPE_PRIM_MAX;
+   batch->reduced_prim = MESA_PRIM_COUNT;
 
    if (!batch->syncobj) {
       int ret = drmSyncobjCreate(dev->fd, 0, &batch->syncobj);
@@ -145,9 +169,9 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch, bool reset)
 
    assert(ctx->batch != batch);
 
-   agx_finish_batch_occlusion_queries(batch);
-   batch->occlusion_buffer.cpu = NULL;
-   batch->occlusion_buffer.gpu = 0;
+   uint64_t begin_ts = ~0, end_ts = 0;
+   /* TODO: UAPI pending */
+   agx_finish_batch_queries(batch, begin_ts, end_ts);
 
    if (reset) {
       int handle;
@@ -174,16 +198,14 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch, bool reset)
       }
    }
 
-   agx_bo_unreference(batch->encoder);
+   agx_bo_unreference(batch->vdm.bo);
+   agx_bo_unreference(batch->cdm.bo);
    agx_pool_cleanup(&batch->pool);
    agx_pool_cleanup(&batch->pipeline_pool);
 
    util_dynarray_fini(&batch->scissor);
    util_dynarray_fini(&batch->depth_bias);
-   util_dynarray_fini(&batch->occlusion_queries);
-   util_unreference_framebuffer_state(&batch->key);
-
-   agx_batch_mark_complete(batch);
+   util_dynarray_fini(&batch->timestamps);
 
    if (!(dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC))) {
       agx_batch_print_stats(dev, batch);
@@ -283,7 +305,7 @@ agx_get_batch_for_framebuffer(struct agx_context *ctx,
 struct agx_batch *
 agx_get_batch(struct agx_context *ctx)
 {
-   if (!ctx->batch) {
+   if (!ctx->batch || agx_batch_is_compute(ctx->batch)) {
       ctx->batch = agx_get_batch_for_framebuffer(ctx, &ctx->framebuffer);
       agx_dirty_all(ctx);
    }
@@ -434,18 +456,23 @@ agx_sync_writer(struct agx_context *ctx, struct agx_resource *rsrc,
 void
 agx_batch_reads(struct agx_batch *batch, struct agx_resource *rsrc)
 {
-   /* Hazard: read-after-write */
-   agx_flush_writer_except(batch->ctx, rsrc, batch, "Read from another batch",
-                           false);
-
    agx_batch_add_bo(batch, rsrc->bo);
 
    if (rsrc->separate_stencil)
       agx_batch_add_bo(batch, rsrc->separate_stencil->bo);
+
+   /* Don't hazard track fake resources internally created for meta */
+   if (!rsrc->base.screen)
+      return;
+
+   /* Hazard: read-after-write */
+   agx_flush_writer_except(batch->ctx, rsrc, batch, "Read from another batch",
+                           false);
 }
 
-void
-agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc)
+static void
+agx_batch_writes_internal(struct agx_batch *batch, struct agx_resource *rsrc,
+                          unsigned level)
 {
    struct agx_context *ctx = batch->ctx;
    struct agx_batch *writer = agx_writer_get(ctx, rsrc->bo->handle);
@@ -453,6 +480,8 @@ agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc)
    assert(batch->initialized);
 
    agx_flush_readers_except(ctx, rsrc, batch, "Write from other batch", false);
+
+   BITSET_SET(rsrc->data_valid, level);
 
    /* Nothing to do if we're already writing */
    if (writer == batch)
@@ -473,6 +502,14 @@ agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc)
     */
    agx_writer_remove(ctx, rsrc->bo->handle);
    agx_writer_add(ctx, agx_batch_idx(batch), rsrc->bo->handle);
+   assert(agx_batch_is_active(batch));
+}
+
+void
+agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc,
+                 unsigned level)
+{
+   agx_batch_writes_internal(batch, rsrc, level);
 
    if (rsrc->base.target == PIPE_BUFFER) {
       /* Assume BOs written by the GPU are fully valid */
@@ -481,33 +518,14 @@ agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc)
    }
 }
 
-/*
- * The OpenGL specification says that
- *
- *    It must always be true that if any query object returns a result
- *    available of TRUE, all queries of the same type issued prior to that
- *    query must also return TRUE.
- *
- * To implement this, we need to be able to flush all batches writing occlusion
- * queries so we ensure ordering.
- */
 void
-agx_flush_occlusion_queries(struct agx_context *ctx)
+agx_batch_writes_range(struct agx_batch *batch, struct agx_resource *rsrc,
+                       unsigned offset, unsigned size)
 {
-   unsigned i;
-   foreach_active(ctx, i) {
-      struct agx_batch *other = &ctx->batches.slots[i];
-
-      if (other->occlusion_queries.size != 0)
-         agx_flush_batch_for_reason(ctx, other, "Occlusion query ordering");
-   }
-
-   foreach_submitted(ctx, i) {
-      struct agx_batch *other = &ctx->batches.slots[i];
-
-      if (other->occlusion_queries.size != 0)
-         agx_sync_batch_for_reason(ctx, other, "Occlusion query ordering");
-   }
+   assert(rsrc->base.target == PIPE_BUFFER);
+   agx_batch_writes_internal(batch, rsrc, 0);
+   util_range_add(&rsrc->base, &rsrc->valid_buffer_range, offset,
+                  offset + size);
 }
 
 static int
@@ -547,6 +565,7 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
                  void *cmdbuf)
 {
    struct agx_device *dev = agx_device(ctx->base.screen);
+   struct agx_screen *screen = agx_screen(ctx->base.screen);
 
    bool feedback = dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC | AGX_DBG_STATS);
 
@@ -561,7 +580,7 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
    /* We allocate the worst-case sync array size since this won't be excessive
     * for most workloads
     */
-   unsigned max_syncs = agx_batch_bo_list_bits(batch) + 1;
+   unsigned max_syncs = batch->bo_list.bit_count + 1;
    unsigned in_sync_count = 0;
    unsigned shared_bo_count = 0;
    struct drm_asahi_sync *in_syncs =
@@ -607,10 +626,9 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
    agx_add_sync(in_syncs, &in_sync_count, agx_get_in_sync(ctx));
 
    /* Submit! */
-   agx_submit_single(
-      dev, cmd_type, barriers, in_syncs, in_sync_count, &out_sync, 1, cmdbuf,
-      feedback ? ctx->result_buf->handle : 0, feedback ? batch->result_off : 0,
-      feedback ? sizeof(union agx_batch_result) : 0);
+   /* TODO: UAPI */
+   (void)screen;
+   (void)out_sync;
 
    /* Now stash our batch fence into any shared BOs. */
    if (shared_bo_count) {
@@ -657,11 +675,7 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
    free(in_syncs);
    free(shared_bos);
 
-   if (dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC)) {
-      /* Wait so we can get errors reported back */
-      int ret = drmSyncobjWait(dev->fd, &batch->syncobj, 1, INT64_MAX, 0, NULL);
-      assert(!ret);
-
+   if (dev->debug & (AGX_DBG_TRACE | AGX_DBG_SYNC | AGX_DBG_SCRATCH)) {
       if (dev->debug & AGX_DBG_TRACE) {
          /* agxdecode DRM commands */
          switch (cmd_type) {
@@ -670,6 +684,10 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
          }
          agxdecode_next_frame();
       }
+
+      /* Wait so we can get errors reported back */
+      int ret = drmSyncobjWait(dev->fd, &batch->syncobj, 1, INT64_MAX, 0, NULL);
+      assert(!ret);
 
       agx_batch_print_stats(dev, batch);
    }
@@ -745,4 +763,38 @@ agx_batch_reset(struct agx_context *ctx, struct agx_batch *batch)
       ctx->batch = NULL;
 
    agx_batch_cleanup(ctx, batch, true);
+}
+
+/*
+ * Timestamp queries record the time after all current work is finished,
+ * which we handle as the time after all current batches finish (since we're a
+ * tiler and would rather not split the batch). So add a query to all active
+ * batches.
+ */
+void
+agx_add_timestamp_end_query(struct agx_context *ctx, struct agx_query *q)
+{
+   unsigned idx;
+   foreach_active(ctx, idx) {
+      agx_batch_add_timestamp_query(&ctx->batches.slots[idx], q);
+   }
+}
+
+/*
+ * To implement a memory barrier conservatively, flush any batch that contains
+ * an incoherent memory write (requiring a memory barrier to synchronize). This
+ * could be further optimized.
+ */
+void
+agx_memory_barrier(struct pipe_context *pctx, unsigned flags)
+{
+   struct agx_context *ctx = agx_context(pctx);
+
+   unsigned i;
+   foreach_active(ctx, i) {
+      struct agx_batch *batch = &ctx->batches.slots[i];
+
+      if (batch->incoherent_writes)
+         agx_flush_batch_for_reason(ctx, batch, "Memory barrier");
+   }
 }

@@ -25,8 +25,8 @@
 
 #include "wsi_common.h"
 #include "util/perf/cpu_trace.h"
-#include "vulkan/runtime/vk_object.h"
-#include "vulkan/runtime/vk_sync.h"
+#include "vk_object.h"
+#include "vk_sync.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -96,7 +96,7 @@ struct wsi_image_info {
    uint32_t linear_stride;
 
    /* For buffer blit images, the size of the buffer in bytes */
-   uint32_t linear_size;
+   uint64_t linear_size;
 
    wsi_memory_type_select_cb select_image_memory_type;
    wsi_memory_type_select_cb select_blit_dst_memory_type;
@@ -170,6 +170,8 @@ struct wsi_swapchain {
        */
       VkQueue queue;
    } blit;
+
+   bool capture_key_pressed;
 
    /* Command pools, one per queue family */
    VkCommandPool *cmd_pools;

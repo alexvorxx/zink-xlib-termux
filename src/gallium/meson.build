@@ -19,6 +19,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+sym_config = configuration_data()
+
+foreach d : [[with_gallium_r300 or with_gallium_radeonsi or with_gallium_r600, 'radeon_drm_winsys_create'],
+             [with_gallium_radeonsi, 'amdgpu_winsys_create'],
+             [with_gallium_nouveau, 'nouveau_drm_screen_create'],
+             [with_gallium_freedreno, 'fd_drm_screen_create_renderonly'],
+             [with_llvm and with_gallium_radeonsi, 'ac_init_shared_llvm_once']]
+  if d[0]
+    sym_config.set(d[1], d[1] + ';')
+  else
+    sym_config.set(d[1], '')
+  endif
+endforeach
+
 inc_gallium_drivers = include_directories('drivers')
 inc_gallium_winsys = include_directories('winsys')
 inc_gallium_winsys_sw = include_directories('winsys/sw')
@@ -153,8 +167,10 @@ else
 endif
 if with_gallium_virgl
   subdir('winsys/virgl/common')
-  subdir('winsys/virgl/drm')
-  subdir('winsys/virgl/vtest')
+  if not with_platform_windows
+    subdir('winsys/virgl/drm')
+    subdir('winsys/virgl/vtest')
+  endif
   subdir('drivers/virgl')
 else
   driver_virgl = declare_dependency()
@@ -225,17 +241,17 @@ if with_gallium_st_nine
 endif
 if with_gallium_st_d3d10umd
   subdir('frontends/d3d10umd')
-  subdir('targets/d3d10sw')
+  subdir('targets/d3d10umd')
 endif
 if with_platform_windows
-  subdir('frontends/wgl')
-  if with_gallium_d3d12
-    subdir('winsys/d3d12/wgl')
-  else
-    winsys_d3d12_wgl = declare_dependency()
-  endif
-  subdir('targets/wgl')
   if with_opengl
+    subdir('frontends/wgl')
+    if with_gallium_d3d12
+      subdir('winsys/d3d12/wgl')
+    else
+      winsys_d3d12_wgl = declare_dependency()
+    endif
+    subdir('targets/wgl')
     subdir('targets/libgl-gdi')
   endif
 endif
@@ -245,4 +261,9 @@ endif
 if with_swrast_vk
   subdir('frontends/lavapipe')
   subdir('targets/lavapipe')
+endif
+
+if with_teflon
+  subdir('frontends/teflon')
+  subdir('targets/teflon')
 endif

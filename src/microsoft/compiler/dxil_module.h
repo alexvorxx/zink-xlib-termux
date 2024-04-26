@@ -39,7 +39,7 @@ extern "C" {
 #include "util/list.h"
 
 
-#define DXIL_SHADER_MAX_IO_ROWS 80
+#define DXIL_SHADER_MAX_IO_ROWS 128
 
 enum dxil_shader_kind {
    DXIL_PIXEL_SHADER = 0,
@@ -132,7 +132,7 @@ enum dxil_opt_flags {
 };
 
 struct dxil_features {
-   unsigned doubles : 1,
+   uint64_t doubles : 1,
             cs_4x_raw_sb : 1,
             uavs_at_every_stage : 1,
             use_64uavs : 1,
@@ -162,7 +162,9 @@ struct dxil_features {
             unnamed : 1,
             atomic_int64_heap_resource : 1,
             advanced_texture_ops : 1,
-            writable_msaa : 1;
+            writable_msaa : 1,
+            sample_cmp_bias_gradient : 1,
+            extended_command_info : 1;
 };
 
 struct dxil_shader_info {
@@ -324,7 +326,8 @@ dxil_module_get_split_double_ret_type(struct dxil_module *mod);
 
 const struct dxil_type *
 dxil_module_get_res_type(struct dxil_module *m, enum dxil_resource_kind kind,
-                         enum dxil_component_type comp_type, bool readwrite);
+                         enum dxil_component_type comp_type, unsigned num_comps,
+                         bool readwrite);
 
 const struct dxil_type *
 dxil_module_get_resret_type(struct dxil_module *m, enum overload_type overload);
@@ -410,6 +413,14 @@ dxil_module_get_double_const(struct dxil_module *m, double value);
 const struct dxil_value *
 dxil_module_get_array_const(struct dxil_module *m, const struct dxil_type *type,
                             const struct dxil_value **values);
+
+const struct dxil_value *
+dxil_module_get_vector_const(struct dxil_module *m, const struct dxil_type *type,
+                             const struct dxil_value **values);
+
+const struct dxil_value *
+dxil_module_get_struct_const(struct dxil_module *m, const struct dxil_type *type,
+                             const struct dxil_value **values);
 
 const struct dxil_value *
 dxil_module_get_undef(struct dxil_module *m, const struct dxil_type *type);
@@ -533,7 +544,6 @@ dxil_emit_ret_void(struct dxil_module *m);
 
 const struct dxil_value *
 dxil_emit_alloca(struct dxil_module *m, const struct dxil_type *alloc_type,
-                 const struct dxil_type *size_type,
                  const struct dxil_value *size,
                  unsigned int align);
 

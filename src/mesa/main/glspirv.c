@@ -74,6 +74,25 @@ _mesa_spirv_shader_binary(struct gl_context *ctx,
    struct gl_spirv_module *module;
    struct gl_shader_spirv_data *spirv_data;
 
+   /* From OpenGL 4.6 Core spec, "7.2 Shader Binaries" :
+    *
+    * "An INVALID_VALUE error is generated if the data pointed to by binary
+    *  does not match the specified binaryformat."
+    *
+    * However, the ARB_gl_spirv spec, under issue #16 says:
+    *
+    * "ShaderBinary is expected to form an association between the SPIR-V
+    *  module and likely would not parse the module as would be required to
+    *  detect unsupported capabilities or other validation failures."
+    *
+    * Which specifies little to no validation requirements. Nevertheless, the
+    * two small checks below seem reasonable.
+    */
+   if (!binary || (length % 4) != 0) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glShaderBinary");
+      return;
+   }
+
    module = malloc(sizeof(*module) + length);
    if (!module) {
       _mesa_error(ctx, GL_OUT_OF_MEMORY, "glShaderBinary");
@@ -284,17 +303,17 @@ _mesa_spirv_to_nir(struct gl_context *ctx,
       .point_coord = !ctx->Const.GLSLPointCoordIsSysVal,
       .front_face = !ctx->Const.GLSLFrontFacingIsSysVal,
    };
-   NIR_PASS_V(nir, nir_lower_sysvals_to_varyings, &sysvals_to_varyings);
+   NIR_PASS(_, nir, nir_lower_sysvals_to_varyings, &sysvals_to_varyings);
 
    /* We have to lower away local constant initializers right before we
     * inline functions.  That way they get properly initialized at the top
     * of the function and not at the top of its caller.
     */
-   NIR_PASS_V(nir, nir_lower_variable_initializers, nir_var_function_temp);
-   NIR_PASS_V(nir, nir_lower_returns);
-   NIR_PASS_V(nir, nir_inline_functions);
-   NIR_PASS_V(nir, nir_copy_prop);
-   NIR_PASS_V(nir, nir_opt_deref);
+   NIR_PASS(_, nir, nir_lower_variable_initializers, nir_var_function_temp);
+   NIR_PASS(_, nir, nir_lower_returns);
+   NIR_PASS(_, nir, nir_inline_functions);
+   NIR_PASS(_, nir, nir_copy_prop);
+   NIR_PASS(_, nir, nir_opt_deref);
 
    /* Pick off the single entrypoint that we want */
    nir_remove_non_entrypoints(nir);
@@ -304,18 +323,18 @@ _mesa_spirv_to_nir(struct gl_context *ctx,
     * nir_remove_dead_variables and split_per_member_structs below see the
     * corresponding stores.
     */
-   NIR_PASS_V(nir, nir_lower_variable_initializers, ~0);
+   NIR_PASS(_, nir, nir_lower_variable_initializers, ~0);
 
    /* Split member structs.  We do this before lower_io_to_temporaries so that
     * it doesn't lower system values to temporaries by accident.
     */
-   NIR_PASS_V(nir, nir_split_var_copies);
-   NIR_PASS_V(nir, nir_split_per_member_structs);
+   NIR_PASS(_, nir, nir_split_var_copies);
+   NIR_PASS(_, nir, nir_split_per_member_structs);
 
    if (nir->info.stage == MESA_SHADER_VERTEX)
       nir_remap_dual_slot_attributes(nir, &linked_shader->Program->DualSlotInputs);
 
-   NIR_PASS_V(nir, nir_lower_frexp);
+   NIR_PASS(_, nir, nir_lower_frexp);
 
    return nir;
 }
@@ -329,7 +348,6 @@ _mesa_SpecializeShaderARB(GLuint shader,
 {
    GET_CURRENT_CONTEXT(ctx);
    struct gl_shader *sh;
-   bool has_entry_point;
    struct nir_spirv_specialization *spec_entries = NULL;
 
    if (!ctx->Extensions.ARB_gl_spirv) {
@@ -384,27 +402,35 @@ _mesa_SpecializeShaderARB(GLuint shader,
       spec_entries[i].defined_on_module = false;
    }
 
-   has_entry_point =
-      gl_spirv_validation((uint32_t *)&spirv_data->SpirVModule->Binary[0],
-                          spirv_data->SpirVModule->Length / 4,
-                          spec_entries, numSpecializationConstants,
-                          sh->Stage, pEntryPoint);
+   enum spirv_verify_result r = spirv_verify_gl_specialization_constants(
+      (uint32_t *)&spirv_data->SpirVModule->Binary[0],
+      spirv_data->SpirVModule->Length / 4,
+      spec_entries, numSpecializationConstants,
+      sh->Stage, pEntryPoint);
 
-   /* See previous spec comment */
-   if (!has_entry_point) {
+   switch (r) {
+   case SPIRV_VERIFY_OK:
+      break;
+   case SPIRV_VERIFY_PARSER_ERROR:
       _mesa_error(ctx, GL_INVALID_VALUE,
-                  "glSpecializeShaderARB(\"%s\" is not a valid entry point"
+                  "glSpecializeShaderARB(failed to parse entry point \"%s\""
                   " for shader)", pEntryPoint);
       goto end;
-   }
-
-   for (unsigned i = 0; i < numSpecializationConstants; ++i) {
-      if (spec_entries[i].defined_on_module == false) {
-         _mesa_error(ctx, GL_INVALID_VALUE,
-                     "glSpecializeShaderARB(constant \"%i\" does not exist "
-                     "in shader)", spec_entries[i].id);
-         goto end;
+   case SPIRV_VERIFY_ENTRY_POINT_NOT_FOUND:
+      _mesa_error(ctx, GL_INVALID_VALUE,
+                  "glSpecializeShaderARB(could not find entry point \"%s\""
+                  " for shader)", pEntryPoint);
+      goto end;
+   case SPIRV_VERIFY_UNKNOWN_SPEC_INDEX:
+      for (unsigned i = 0; i < numSpecializationConstants; ++i) {
+         if (spec_entries[i].defined_on_module == false) {
+            _mesa_error(ctx, GL_INVALID_VALUE,
+                        "glSpecializeShaderARB(constant \"%i\" does not exist "
+                        "in shader)", spec_entries[i].id);
+            break;
+         }
       }
+      goto end;
    }
 
    spirv_data->SpirVEntryPoint = ralloc_strdup(spirv_data, pEntryPoint);

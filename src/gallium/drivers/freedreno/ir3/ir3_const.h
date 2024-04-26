@@ -111,8 +111,7 @@ ir3_user_consts_size(struct ir3_ubo_analysis_state *state, unsigned *packets,
  * constant buffer.
  */
 static inline void
-ir3_emit_constant_data(struct fd_screen *screen,
-                       const struct ir3_shader_variant *v,
+ir3_emit_constant_data(const struct ir3_shader_variant *v,
                        struct fd_ringbuffer *ring)
 {
    const struct ir3_const_state *const_state = ir3_const_state(v);
@@ -120,7 +119,7 @@ ir3_emit_constant_data(struct fd_screen *screen,
 
    for (unsigned i = 0; i < state->num_enabled; i++) {
       unsigned ubo = state->range[i].ubo.block;
-      if (ubo != const_state->constant_data_ubo)
+      if (ubo != const_state->consts_ubo.idx)
          continue;
 
       uint32_t size = state->range[i].end - state->range[i].start;
@@ -162,7 +161,7 @@ ir3_emit_user_consts(const struct ir3_shader_variant *v,
       assert(!state->range[i].ubo.bindless);
       unsigned ubo = state->range[i].ubo.block;
       if (!(constbuf->enabled_mask & (1 << ubo)) ||
-          ubo == const_state->constant_data_ubo) {
+          ubo == const_state->consts_ubo.idx) {
          continue;
       }
       struct pipe_constant_buffer *cb = &constbuf->cb[ubo];
@@ -219,7 +218,7 @@ ir3_emit_ubos(struct fd_context *ctx, const struct ir3_shader_variant *v,
       struct fd_bo *bos[params];
 
       for (uint32_t i = 0; i < params; i++) {
-         if (i == const_state->constant_data_ubo) {
+         if (i == const_state->consts_ubo.idx) {
             bos[i] = v->bo;
             offsets[i] = v->info.constant_data_offset;
             continue;
@@ -308,8 +307,7 @@ ir3_emit_image_dims(struct fd_screen *screen,
 }
 
 static inline void
-ir3_emit_immediates(struct fd_screen *screen,
-                    const struct ir3_shader_variant *v,
+ir3_emit_immediates(const struct ir3_shader_variant *v,
                     struct fd_ringbuffer *ring)
 {
    const struct ir3_const_state *const_state = ir3_const_state(v);
@@ -331,30 +329,29 @@ ir3_emit_immediates(struct fd_screen *screen,
    /* NIR constant data has the same lifetime as immediates, so upload it
     * now, too.
     */
-   ir3_emit_constant_data(screen, v, ring);
+   ir3_emit_constant_data(v, ring);
 }
 
 static inline void
-ir3_emit_link_map(struct fd_screen *screen,
-                  const struct ir3_shader_variant *producer,
-                  const struct ir3_shader_variant *v,
+ir3_emit_link_map(const struct ir3_shader_variant *producer,
+                  const struct ir3_shader_variant *consumer,
                   struct fd_ringbuffer *ring)
 {
-   const struct ir3_const_state *const_state = ir3_const_state(v);
+   const struct ir3_const_state *const_state = ir3_const_state(consumer);
    uint32_t base = const_state->offsets.primitive_map;
-   int size = DIV_ROUND_UP(v->input_size, 4);
+   int size = DIV_ROUND_UP(consumer->input_size, 4);
 
    /* truncate size to avoid writing constants that shader
     * does not use:
     */
-   size = MIN2(size + base, v->constlen) - base;
+   size = MIN2(size + base, consumer->constlen) - base;
 
    /* convert out of vec4: */
    base *= 4;
    size *= 4;
 
    if (size > 0)
-      emit_const_user(ring, v, base, size, producer->output_loc);
+      emit_const_user(ring, consumer, base, size, producer->output_loc);
 }
 
 /* emit stream-out buffers: */
@@ -423,7 +420,7 @@ emit_common_consts(const struct ir3_shader_variant *v,
       ir3_emit_user_consts(v, ring, constbuf);
       ir3_emit_ubos(ctx, v, ring, constbuf);
       if (shader_dirty)
-         ir3_emit_immediates(ctx->screen, v, ring);
+         ir3_emit_immediates(v, ring);
    }
 
    if (dirty & (FD_DIRTY_SHADER_PROG | FD_DIRTY_SHADER_IMAGE)) {

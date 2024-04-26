@@ -29,13 +29,11 @@
 #include "radv_private.h"
 
 bool
-radv_nir_lower_intrinsics_early(nir_shader *nir, const struct radv_pipeline_key *key)
+radv_nir_lower_intrinsics_early(nir_shader *nir, bool lower_view_index_to_zero)
 {
    nir_function_impl *entry = nir_shader_get_entrypoint(nir);
    bool progress = false;
-   nir_builder b;
-
-   nir_builder_init(&b, entry);
+   nir_builder b = nir_builder_create(entry);
 
    nir_foreach_block (block, entry) {
       nir_foreach_instr_safe (instr, block) {
@@ -45,7 +43,7 @@ radv_nir_lower_intrinsics_early(nir_shader *nir, const struct radv_pipeline_key 
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
          b.cursor = nir_before_instr(&intrin->instr);
 
-         nir_ssa_def *def = NULL;
+         nir_def *def = NULL;
          switch (intrin->intrinsic) {
          case nir_intrinsic_is_sparse_texels_resident:
             def = nir_ieq_imm(&b, intrin->src[0].ssa, 0);
@@ -54,7 +52,7 @@ radv_nir_lower_intrinsics_early(nir_shader *nir, const struct radv_pipeline_key 
             def = nir_ior(&b, intrin->src[0].ssa, intrin->src[1].ssa);
             break;
          case nir_intrinsic_load_view_index:
-            if (key->has_multiview_view_index)
+            if (!lower_view_index_to_zero)
                continue;
             def = nir_imm_zero(&b, 1, 32);
             break;
@@ -62,7 +60,7 @@ radv_nir_lower_intrinsics_early(nir_shader *nir, const struct radv_pipeline_key 
             continue;
          }
 
-         nir_ssa_def_rewrite_uses(&intrin->dest.ssa, def);
+         nir_def_rewrite_uses(&intrin->def, def);
 
          nir_instr_remove(instr);
          progress = true;

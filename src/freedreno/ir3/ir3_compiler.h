@@ -70,6 +70,11 @@ struct ir3_compiler_options {
 
   /* If base_vertex should be lowered in nir */
   bool lower_base_vertex;
+
+  bool shared_push_consts;
+
+   /* "dual_color_blend_by_location" workaround is enabled: */
+   bool dual_color_blend_by_location;
 };
 
 struct ir3_compiler {
@@ -92,6 +97,8 @@ struct ir3_compiler {
     * Configuration options for things that are handled differently on
     * different generations:
     */
+
+   bool is_64bit;
 
    /* a4xx (and later) drops SP_FS_FLAT_SHAD_MODE_REG_* for flat-interpolate
     * so we need to use ldlv.u32 to load the varying directly:
@@ -189,11 +196,17 @@ struct ir3_compiler {
    /* The number of total branch stack entries, divided by wave_granularity. */
    uint32_t branchstack_size;
 
+   /* The byte increment of MEMSIZEPERITEM, the private memory per-fiber allocation. */
+   uint32_t pvtmem_per_fiber_align;
+
    /* Whether clip+cull distances are supported */
    bool has_clip_cull;
 
    /* Whether private memory is supported */
    bool has_pvtmem;
+
+   /* Whether SSBOs have descriptors for sampling with ISAM */
+   bool has_isam_ssbo;
 
    /* True if 16-bit descriptors are used for both 16-bit and 32-bit access. */
    bool storage_16bit;
@@ -203,6 +216,15 @@ struct ir3_compiler {
     * subgroup quad and arithmetic operations.
     */
    bool has_getfiberid;
+
+   /* Number of available predicate registers (p0.c) */
+   uint32_t num_predicates;
+
+   /* True if bitops (and.b, or.b, xor.b, not.b) can write to p0.c */
+   bool bitops_can_write_predicates;
+
+   /* True if braa/brao are available. */
+   bool has_branch_and_or;
 
    /* MAX_COMPUTE_VARIABLE_GROUP_INVOCATIONS_ARB */
    uint32_t max_variable_workgroup_size;
@@ -235,11 +257,19 @@ struct ir3_compiler {
     * TODO: Keep an eye on this for next gens.
     */
    uint64_t geom_shared_consts_size_quirk;
+
+   bool has_fs_tex_prefetch;
+
+   bool stsc_duplication_quirk;
+
+   bool load_shader_consts_via_preamble;
+   bool load_inline_uniforms_via_preamble_ldgk;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);
 struct ir3_compiler *ir3_compiler_create(struct fd_device *dev,
                                          const struct fd_dev_id *dev_id,
+                                         const struct fd_dev_info *dev_info,
                                          const struct ir3_compiler_options *options);
 
 void ir3_disk_cache_init(struct ir3_compiler *compiler);
@@ -248,7 +278,7 @@ void ir3_disk_cache_init_shader_key(struct ir3_compiler *compiler,
 struct ir3_shader_variant *ir3_retrieve_variant(struct blob_reader *blob,
                                                 struct ir3_compiler *compiler,
                                                 void *mem_ctx);
-void ir3_store_variant(struct blob *blob, struct ir3_shader_variant *v);
+void ir3_store_variant(struct blob *blob, const struct ir3_shader_variant *v);
 bool ir3_disk_cache_retrieve(struct ir3_shader *shader,
                              struct ir3_shader_variant *v);
 void ir3_disk_cache_store(struct ir3_shader *shader,
@@ -265,7 +295,7 @@ int ir3_compile_shader_nir(struct ir3_compiler *compiler,
 static inline unsigned
 ir3_pointer_size(struct ir3_compiler *compiler)
 {
-   return fd_dev_64b(compiler->dev_id) ? 2 : 1;
+   return compiler->is_64bit ? 2 : 1;
 }
 
 enum ir3_shader_debug {
@@ -284,6 +314,8 @@ enum ir3_shader_debug {
    IR3_DBG_SPILLALL = BITFIELD_BIT(12),
    IR3_DBG_NOPREAMBLE = BITFIELD_BIT(13),
    IR3_DBG_SHADER_INTERNAL = BITFIELD_BIT(14),
+   IR3_DBG_FULLSYNC = BITFIELD_BIT(15),
+   IR3_DBG_FULLNOP = BITFIELD_BIT(16),
 
    /* DEBUG-only options: */
    IR3_DBG_SCHEDMSGS = BITFIELD_BIT(20),

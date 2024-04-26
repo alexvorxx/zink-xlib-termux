@@ -1,28 +1,8 @@
 /*
  * Copyright © 2008 Jérôme Glisse
  * Copyright © 2010 Marek Olšák <maraeo@gmail.com>
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDERS, AUTHORS
- * AND/OR ITS SUPPLIERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
+ * SPDX-License-Identifier: MIT
  */
 
 /*
@@ -67,11 +47,13 @@
 #define RELOC_DWORDS (sizeof(struct drm_radeon_cs_reloc) / sizeof(uint32_t))
 
 static struct pipe_fence_handle *radeon_cs_create_fence(struct radeon_cmdbuf *rcs);
-static void radeon_fence_reference(struct pipe_fence_handle **dst,
+static void radeon_fence_reference(struct radeon_winsys *ws,
+                                   struct pipe_fence_handle **dst,
                                    struct pipe_fence_handle *src);
 
 static struct radeon_winsys_ctx *radeon_drm_ctx_create(struct radeon_winsys *ws,
-                                                       enum radeon_ctx_priority priority)
+                                                       enum radeon_ctx_priority priority,
+                                                       bool allow_context_lost)
 {
    struct radeon_ctx *ctx = CALLOC_STRUCT(radeon_ctx);
    if (!ctx)
@@ -85,6 +67,18 @@ static struct radeon_winsys_ctx *radeon_drm_ctx_create(struct radeon_winsys *ws,
 static void radeon_drm_ctx_destroy(struct radeon_winsys_ctx *ctx)
 {
    FREE(ctx);
+}
+
+static void
+radeon_drm_ctx_set_sw_reset_status(struct radeon_winsys_ctx *rwctx, enum pipe_reset_status status,
+                                   const char *format, ...)
+{
+   /* TODO: we should do something better here */
+   va_list args;
+
+   va_start(args, format);
+   vfprintf(stderr, format, args);
+   va_end(args);
 }
 
 static enum pipe_reset_status
@@ -141,17 +135,18 @@ static bool radeon_init_cs_context(struct radeon_cs_context *csc,
    return true;
 }
 
-static void radeon_cs_context_cleanup(struct radeon_cs_context *csc)
+static void radeon_cs_context_cleanup(struct radeon_winsys *rws,
+                                      struct radeon_cs_context *csc)
 {
    unsigned i;
 
    for (i = 0; i < csc->num_relocs; i++) {
       p_atomic_dec(&csc->relocs_bo[i].bo->num_cs_references);
-      radeon_ws_bo_reference(&csc->relocs_bo[i].bo, NULL);
+      radeon_ws_bo_reference(rws, &csc->relocs_bo[i].bo, NULL);
    }
    for (i = 0; i < csc->num_slab_buffers; ++i) {
       p_atomic_dec(&csc->slab_buffers[i].bo->num_cs_references);
-      radeon_ws_bo_reference(&csc->slab_buffers[i].bo, NULL);
+      radeon_ws_bo_reference(rws, &csc->slab_buffers[i].bo, NULL);
    }
 
    csc->num_relocs = 0;
@@ -165,12 +160,19 @@ static void radeon_cs_context_cleanup(struct radeon_cs_context *csc)
    }
 }
 
-static void radeon_destroy_cs_context(struct radeon_cs_context *csc)
+static void radeon_destroy_cs_context(struct radeon_winsys *rws, struct radeon_cs_context *csc)
 {
-   radeon_cs_context_cleanup(csc);
+   radeon_cs_context_cleanup(rws, csc);
    FREE(csc->slab_buffers);
    FREE(csc->relocs_bo);
    FREE(csc->relocs);
+}
+
+
+static enum amd_ip_type radeon_drm_cs_get_ip_type(struct radeon_cmdbuf *rcs)
+{
+   struct radeon_drm_cs *cs = radeon_drm_cs(rcs);
+   return cs->ip_type;
 }
 
 
@@ -180,8 +182,7 @@ radeon_drm_cs_create(struct radeon_cmdbuf *rcs,
                      enum amd_ip_type ip_type,
                      void (*flush)(void *ctx, unsigned flags,
                                    struct pipe_fence_handle **fence),
-                     void *flush_ctx,
-                     bool allow_context_lost)
+                     void *flush_ctx)
 {
    struct radeon_drm_winsys *ws = ((struct radeon_ctx*)ctx)->ws;
    struct radeon_drm_cs *cs;
@@ -201,7 +202,7 @@ radeon_drm_cs_create(struct radeon_cmdbuf *rcs,
       return false;
    }
    if (!radeon_init_cs_context(&cs->csc2, cs->ws)) {
-      radeon_destroy_cs_context(&cs->csc1);
+      radeon_destroy_cs_context(&ws->base, &cs->csc1);
       FREE(cs);
       return false;
    }
@@ -227,7 +228,8 @@ static void radeon_drm_cs_set_preamble(struct radeon_cmdbuf *cs, const uint32_t 
    radeon_emit_array(cs, preamble_ib, preamble_num_dw);
 }
 
-int radeon_lookup_buffer(struct radeon_cs_context *csc, struct radeon_bo *bo)
+int radeon_lookup_buffer(struct radeon_winsys *rws, struct radeon_cs_context *csc,
+                         struct radeon_bo *bo)
 {
    unsigned hash = bo->hash & (ARRAY_SIZE(csc->reloc_indices_hashlist)-1);
    struct radeon_bo_item *buffers;
@@ -273,7 +275,7 @@ static unsigned radeon_lookup_or_add_real_buffer(struct radeon_drm_cs *cs,
    unsigned hash = bo->hash & (ARRAY_SIZE(csc->reloc_indices_hashlist)-1);
    int i = -1;
 
-   i = radeon_lookup_buffer(csc, bo);
+   i = radeon_lookup_buffer(&cs->ws->base, csc, bo);
 
    if (i >= 0) {
       /* For async DMA, every add_buffer call must add a buffer to the list
@@ -308,7 +310,7 @@ static unsigned radeon_lookup_or_add_real_buffer(struct radeon_drm_cs *cs,
    /* Initialize the new relocation. */
    csc->relocs_bo[csc->num_relocs].bo = NULL;
    csc->relocs_bo[csc->num_relocs].u.real.priority_usage = 0;
-   radeon_ws_bo_reference(&csc->relocs_bo[csc->num_relocs].bo, bo);
+   radeon_ws_bo_reference(&cs->ws->base, &csc->relocs_bo[csc->num_relocs].bo, bo);
    p_atomic_inc(&bo->num_cs_references);
    reloc = &csc->relocs[csc->num_relocs];
    reloc->handle = bo->handle;
@@ -332,7 +334,7 @@ static int radeon_lookup_or_add_slab_buffer(struct radeon_drm_cs *cs,
    int idx;
    int real_idx;
 
-   idx = radeon_lookup_buffer(csc, bo);
+   idx = radeon_lookup_buffer(&cs->ws->base, csc, bo);
    if (idx >= 0)
       return idx;
 
@@ -361,7 +363,7 @@ static int radeon_lookup_or_add_slab_buffer(struct radeon_drm_cs *cs,
 
    item->bo = NULL;
    item->u.slab.real_idx = real_idx;
-   radeon_ws_bo_reference(&item->bo, bo);
+   radeon_ws_bo_reference(&cs->ws->base, &item->bo, bo);
    p_atomic_inc(&bo->num_cs_references);
 
    hash = bo->hash & (ARRAY_SIZE(csc->reloc_indices_hashlist)-1);
@@ -371,7 +373,7 @@ static int radeon_lookup_or_add_slab_buffer(struct radeon_drm_cs *cs,
 }
 
 static unsigned radeon_drm_cs_add_buffer(struct radeon_cmdbuf *rcs,
-                                         struct pb_buffer *buf,
+                                         struct pb_buffer_lean *buf,
                                          unsigned usage,
                                          enum radeon_bo_domain domains)
 {
@@ -421,11 +423,11 @@ static unsigned radeon_drm_cs_add_buffer(struct radeon_cmdbuf *rcs,
 }
 
 static int radeon_drm_cs_lookup_buffer(struct radeon_cmdbuf *rcs,
-                                       struct pb_buffer *buf)
+                                       struct pb_buffer_lean *buf)
 {
    struct radeon_drm_cs *cs = radeon_drm_cs(rcs);
 
-   return radeon_lookup_buffer(cs->csc, (struct radeon_bo*)buf);
+   return radeon_lookup_buffer(&cs->ws->base, cs->csc, (struct radeon_bo*)buf);
 }
 
 static bool radeon_drm_cs_validate(struct radeon_cmdbuf *rcs)
@@ -445,7 +447,7 @@ static bool radeon_drm_cs_validate(struct radeon_cmdbuf *rcs)
 
       for (i = cs->csc->num_validated_relocs; i < cs->csc->num_relocs; i++) {
          p_atomic_dec(&cs->csc->relocs_bo[i].bo->num_cs_references);
-         radeon_ws_bo_reference(&cs->csc->relocs_bo[i].bo, NULL);
+         radeon_ws_bo_reference(&cs->ws->base, &cs->csc->relocs_bo[i].bo, NULL);
       }
       cs->csc->num_relocs = cs->csc->num_validated_relocs;
 
@@ -454,7 +456,7 @@ static bool radeon_drm_cs_validate(struct radeon_cmdbuf *rcs)
          cs->flush_cs(cs->flush_data,
                       RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
       } else {
-         radeon_cs_context_cleanup(cs->csc);
+         radeon_cs_context_cleanup(&cs->ws->base, cs->csc);
          rcs->used_vram_kb = 0;
          rcs->used_gart_kb = 0;
 
@@ -491,7 +493,8 @@ static unsigned radeon_drm_cs_get_buffer_list(struct radeon_cmdbuf *rcs,
 
 void radeon_drm_cs_emit_ioctl_oneshot(void *job, void *gdata, int thread_index)
 {
-   struct radeon_cs_context *csc = ((struct radeon_drm_cs*)job)->cst;
+   struct radeon_drm_cs *cs = (struct radeon_drm_cs*)job;
+   struct radeon_cs_context *csc = cs->cst;
    unsigned i;
    int r;
 
@@ -518,7 +521,7 @@ void radeon_drm_cs_emit_ioctl_oneshot(void *job, void *gdata, int thread_index)
    for (i = 0; i < csc->num_slab_buffers; i++)
       p_atomic_dec(&csc->slab_buffers[i].bo->num_active_ioctls);
 
-   radeon_cs_context_cleanup(csc);
+   radeon_cs_context_cleanup(&cs->ws->base, csc);
 }
 
 /*
@@ -544,7 +547,8 @@ void radeon_drm_cs_sync_flush(struct radeon_cmdbuf *rcs)
  * their respective ioctl do not have to be kept, because we know that they
  * will signal earlier.
  */
-static void radeon_bo_slab_fence(struct radeon_bo *bo, struct radeon_bo *fence)
+static void radeon_bo_slab_fence(struct radeon_winsys *rws, struct radeon_bo *bo,
+                                 struct radeon_bo *fence)
 {
    unsigned dst;
 
@@ -557,7 +561,7 @@ static void radeon_bo_slab_fence(struct radeon_bo *bo, struct radeon_bo *fence)
          bo->u.slab.fences[dst] = bo->u.slab.fences[src];
          dst++;
       } else {
-         radeon_ws_bo_reference(&bo->u.slab.fences[src], NULL);
+         radeon_ws_bo_reference(rws, &bo->u.slab.fences[src], NULL);
       }
    }
    bo->u.slab.num_fences = dst;
@@ -579,7 +583,7 @@ static void radeon_bo_slab_fence(struct radeon_bo *bo, struct radeon_bo *fence)
 
    /* Add the new fence */
    bo->u.slab.fences[bo->u.slab.num_fences] = NULL;
-   radeon_ws_bo_reference(&bo->u.slab.fences[bo->u.slab.num_fences], fence);
+   radeon_ws_bo_reference(rws, &bo->u.slab.fences[bo->u.slab.num_fences], fence);
    bo->u.slab.num_fences++;
 }
 
@@ -637,20 +641,20 @@ static int radeon_drm_cs_flush(struct radeon_cmdbuf *rcs,
 
       if (fence) {
          if (pfence)
-            radeon_fence_reference(pfence, fence);
+            radeon_fence_reference(&cs->ws->base, pfence, fence);
 
          mtx_lock(&cs->ws->bo_fence_lock);
          for (unsigned i = 0; i < cs->csc->num_slab_buffers; ++i) {
             struct radeon_bo *bo = cs->csc->slab_buffers[i].bo;
             p_atomic_inc(&bo->num_active_ioctls);
-            radeon_bo_slab_fence(bo, (struct radeon_bo *)fence);
+            radeon_bo_slab_fence(&cs->ws->base, bo, (struct radeon_bo *)fence);
          }
          mtx_unlock(&cs->ws->bo_fence_lock);
 
-         radeon_fence_reference(&fence, NULL);
+         radeon_fence_reference(&cs->ws->base, &fence, NULL);
       }
    } else {
-      radeon_fence_reference(&cs->next_fence, NULL);
+      radeon_fence_reference(&cs->ws->base, &cs->next_fence, NULL);
    }
 
    radeon_drm_cs_sync_flush(rcs);
@@ -727,7 +731,7 @@ static int radeon_drm_cs_flush(struct radeon_cmdbuf *rcs,
          radeon_drm_cs_emit_ioctl_oneshot(cs, NULL, 0);
       }
    } else {
-      radeon_cs_context_cleanup(cs->cst);
+      radeon_cs_context_cleanup(&cs->ws->base, cs->cst);
    }
 
    /* Prepare a new CS. */
@@ -752,17 +756,17 @@ static void radeon_drm_cs_destroy(struct radeon_cmdbuf *rcs)
 
    radeon_drm_cs_sync_flush(rcs);
    util_queue_fence_destroy(&cs->flush_completed);
-   radeon_cs_context_cleanup(&cs->csc1);
-   radeon_cs_context_cleanup(&cs->csc2);
+   radeon_cs_context_cleanup(&cs->ws->base, &cs->csc1);
+   radeon_cs_context_cleanup(&cs->ws->base, &cs->csc2);
    p_atomic_dec(&cs->ws->num_cs);
-   radeon_destroy_cs_context(&cs->csc1);
-   radeon_destroy_cs_context(&cs->csc2);
-   radeon_fence_reference(&cs->next_fence, NULL);
+   radeon_destroy_cs_context(&cs->ws->base, &cs->csc1);
+   radeon_destroy_cs_context(&cs->ws->base, &cs->csc2);
+   radeon_fence_reference(&cs->ws->base, &cs->next_fence, NULL);
    FREE(cs);
 }
 
 static bool radeon_bo_is_referenced(struct radeon_cmdbuf *rcs,
-                                    struct pb_buffer *_buf,
+                                    struct pb_buffer_lean *_buf,
                                     unsigned usage)
 {
    struct radeon_drm_cs *cs = radeon_drm_cs(rcs);
@@ -772,7 +776,7 @@ static bool radeon_bo_is_referenced(struct radeon_cmdbuf *rcs,
    if (!bo->num_cs_references)
       return false;
 
-   index = radeon_lookup_buffer(cs->csc, bo);
+   index = radeon_lookup_buffer(&cs->ws->base, cs->csc, bo);
    if (index == -1)
       return false;
 
@@ -792,7 +796,7 @@ static bool radeon_bo_is_referenced(struct radeon_cmdbuf *rcs,
 static struct pipe_fence_handle *radeon_cs_create_fence(struct radeon_cmdbuf *rcs)
 {
    struct radeon_drm_cs *cs = radeon_drm_cs(rcs);
-   struct pb_buffer *fence;
+   struct pb_buffer_lean *fence;
 
    /* Create a fence, which is a dummy BO. */
    fence = cs->ws->base.buffer_create(&cs->ws->base, 1, 1,
@@ -812,14 +816,15 @@ static bool radeon_fence_wait(struct radeon_winsys *ws,
                               struct pipe_fence_handle *fence,
                               uint64_t timeout)
 {
-   return ws->buffer_wait(ws, (struct pb_buffer*)fence, timeout,
+   return ws->buffer_wait(ws, (struct pb_buffer_lean*)fence, timeout,
                           RADEON_USAGE_READWRITE);
 }
 
-static void radeon_fence_reference(struct pipe_fence_handle **dst,
+static void radeon_fence_reference(struct radeon_winsys *ws,
+                                   struct pipe_fence_handle **dst,
                                    struct pipe_fence_handle *src)
 {
-   pb_reference((struct pb_buffer**)dst, (struct pb_buffer*)src);
+   radeon_bo_reference(ws, (struct pb_buffer_lean**)dst, (struct pb_buffer_lean*)src);
 }
 
 static struct pipe_fence_handle *radeon_drm_cs_get_next_fence(struct radeon_cmdbuf *rcs)
@@ -828,7 +833,7 @@ static struct pipe_fence_handle *radeon_drm_cs_get_next_fence(struct radeon_cmdb
    struct pipe_fence_handle *fence = NULL;
 
    if (cs->next_fence) {
-      radeon_fence_reference(&fence, cs->next_fence);
+      radeon_fence_reference(&cs->ws->base, &fence, cs->next_fence);
       return fence;
    }
 
@@ -836,14 +841,13 @@ static struct pipe_fence_handle *radeon_drm_cs_get_next_fence(struct radeon_cmdb
    if (!fence)
       return NULL;
 
-   radeon_fence_reference(&cs->next_fence, fence);
+   radeon_fence_reference(&cs->ws->base, &cs->next_fence, fence);
    return fence;
 }
 
 static void
 radeon_drm_cs_add_fence_dependency(struct radeon_cmdbuf *cs,
-                                   struct pipe_fence_handle *fence,
-                                   unsigned dependency_flags)
+                                   struct pipe_fence_handle *fence)
 {
    /* TODO: Handle the following unlikely multi-threaded scenario:
     *
@@ -863,9 +867,9 @@ void radeon_drm_cs_init_functions(struct radeon_drm_winsys *ws)
 {
    ws->base.ctx_create = radeon_drm_ctx_create;
    ws->base.ctx_destroy = radeon_drm_ctx_destroy;
+   ws->base.ctx_set_sw_reset_status = radeon_drm_ctx_set_sw_reset_status;
    ws->base.ctx_query_reset_status = radeon_drm_ctx_query_reset_status;
    ws->base.cs_create = radeon_drm_cs_create;
-   ws->base.cs_set_preamble = radeon_drm_cs_set_preamble;
    ws->base.cs_destroy = radeon_drm_cs_destroy;
    ws->base.cs_add_buffer = radeon_drm_cs_add_buffer;
    ws->base.cs_lookup_buffer = radeon_drm_cs_lookup_buffer;

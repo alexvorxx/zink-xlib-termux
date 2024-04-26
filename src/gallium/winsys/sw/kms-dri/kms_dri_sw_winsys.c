@@ -42,7 +42,7 @@
 #include <fcntl.h>
 #include <xf86drm.h>
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "util/format/u_formats.h"
 #include "pipe/p_state.h"
 #include "util/u_inlines.h"
@@ -483,6 +483,7 @@ static void
 kms_sw_displaytarget_display(struct sw_winsys *ws,
                              struct sw_displaytarget *dt,
                              void *context_private,
+                             unsigned nboxes,
                              struct pipe_box *box)
 {
    /* This function should not be called, instead the dri2 loader should

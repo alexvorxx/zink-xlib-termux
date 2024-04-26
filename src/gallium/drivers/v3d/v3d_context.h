@@ -215,6 +215,9 @@ struct v3d_uncompiled_shader {
         uint16_t tf_specs[16];
         uint16_t tf_specs_psiz[16];
         uint32_t num_tf_specs;
+
+        /* For caching */
+        unsigned char sha1[20];
 };
 
 struct v3d_compiled_shader {
@@ -265,6 +268,7 @@ struct v3d_vertex_stateobj {
         unsigned num_elements;
 
         uint8_t attrs[16 * (V3D_MAX_VS_INPUTS / 4)];
+        /* defaults can be NULL for some hw generation */
         struct pipe_resource *defaults;
         uint32_t defaults_offset;
 };
@@ -479,6 +483,13 @@ struct v3d_job {
         bool decided_global_ez_enable;
 
         /**
+         * When we decide if we nee to disable early Z/S gobally, track the
+         * Z-state we used to make that decision so we can change the decision
+         * if the state changes.
+         */
+        struct v3d_depth_stencil_alpha_state *global_ez_zsa_decision_state;
+
+        /**
          * If this job has been configured to use early Z/S clear.
          */
         bool early_zs_clear;
@@ -622,6 +633,10 @@ struct v3d_context {
         struct pipe_query *cond_query;
         bool cond_cond;
         enum pipe_render_cond_flag cond_mode;
+
+        int in_fence_fd;
+        /** Handle of the syncobj that holds in_fence_fd for submission. */
+        uint32_t in_syncobj;
         /** @} */
 };
 
@@ -760,13 +775,6 @@ uint8_t v3d_get_tex_return_channels(const struct v3d_device_info *devinfo,
                                     enum pipe_format f);
 const uint8_t *v3d_get_format_swizzle(const struct v3d_device_info *devinfo,
                                       enum pipe_format f);
-void v3d_get_internal_type_bpp_for_output_format(const struct v3d_device_info *devinfo,
-                                                 uint32_t format,
-                                                 uint32_t *type,
-                                                 uint32_t *bpp);
-bool v3d_tfu_supports_tex_format(const struct v3d_device_info *devinfo,
-                                 uint32_t tex_format,
-                                 bool for_mipmap);
 bool v3d_format_supports_tlb_msaa_resolve(const struct v3d_device_info *devinfo,
                                           enum pipe_format f);
 
@@ -784,11 +792,14 @@ bool v3d_generate_mipmap(struct pipe_context *pctx,
 void
 v3d_fence_unreference(struct v3d_fence **fence);
 
-struct v3d_fence *v3d_fence_create(struct v3d_context *v3d);
+struct v3d_fence *v3d_fence_create(struct v3d_context *v3d, int fd);
 
 bool v3d_fence_wait(struct v3d_screen *screen,
                     struct v3d_fence *fence,
                     uint64_t timeout_ns);
+
+int v3d_fence_context_init(struct v3d_context *v3d);
+void v3d_fence_context_finish(struct v3d_context *v3d);
 
 void v3d_update_primitive_counters(struct v3d_context *v3d);
 
@@ -801,10 +812,8 @@ void v3d_ensure_prim_counts_allocated(struct v3d_context *ctx);
 void v3d_flag_dirty_sampler_state(struct v3d_context *v3d,
                                   enum pipe_shader_type shader);
 
-void v3d_create_texture_shader_state_bo(struct v3d_context *v3d,
-                                        struct v3d_sampler_view *so);
-
-void v3d_get_tile_buffer_size(bool is_msaa,
+void v3d_get_tile_buffer_size(const struct v3d_device_info *devinfo,
+                              bool is_msaa,
                               bool double_buffer,
                               uint32_t nr_cbufs,
                               struct pipe_surface **cbufs,
@@ -817,10 +826,12 @@ bool v3d_render_condition_check(struct v3d_context *v3d);
 
 #ifdef ENABLE_SHADER_CACHE
 struct v3d_compiled_shader *v3d_disk_cache_retrieve(struct v3d_context *v3d,
-                                                    const struct v3d_key *key);
+                                                    const struct v3d_key *key,
+                                                    const struct v3d_uncompiled_shader *uncompiled);
 
 void v3d_disk_cache_store(struct v3d_context *v3d,
                           const struct v3d_key *key,
+                          const struct v3d_uncompiled_shader *uncompiled,
                           const struct v3d_compiled_shader *shader,
                           uint64_t *qpu_insts,
                           uint32_t qpu_size);
@@ -829,23 +840,49 @@ void v3d_disk_cache_store(struct v3d_context *v3d,
 /* Helper to call hw ver specific functions */
 #define v3d_X(devinfo, thing) ({                                \
         __typeof(&v3d42_##thing) v3d_X_thing;                   \
-        if ((devinfo)->ver >= 42)                               \
+        switch (devinfo->ver) {                                 \
+        case 42:                                                \
                 v3d_X_thing = &v3d42_##thing;                   \
-        else if ((devinfo)->ver >= 33)                          \
-                v3d_X_thing = &v3d33_##thing;                   \
-        else                                                    \
+                break;                                          \
+        case 71:                                                \
+                v3d_X_thing = &v3d71_##thing;                   \
+                break;                                          \
+        default:                                                \
                 unreachable("Unsupported hardware generation"); \
+        }                                                       \
         v3d_X_thing;                                            \
+})
+
+/* FIXME: The same for vulkan/opengl. Common place? define it at the
+ * v3d_packet files?
+ */
+#define V3D42_CLIPPER_XY_GRANULARITY 256.0f
+#define V3D71_CLIPPER_XY_GRANULARITY 64.0f
+
+/* Helper to get hw-specific macro values */
+#define V3DV_X(devinfo, thing) ({                               \
+   __typeof(V3D42_##thing) V3D_X_THING;                         \
+   switch (devinfo->ver) {                                      \
+   case 42:                                                     \
+      V3D_X_THING = V3D42_##thing;                              \
+      break;                                                    \
+   case 71:                                                     \
+      V3D_X_THING = V3D71_##thing;                              \
+      break;                                                    \
+   default:                                                     \
+      unreachable("Unsupported hardware generation");           \
+   }                                                            \
+   V3D_X_THING;                                                 \
 })
 
 #ifdef v3dX
 #  include "v3dx_context.h"
 #else
-#  define v3dX(x) v3d33_##x
+#  define v3dX(x) v3d42_##x
 #  include "v3dx_context.h"
 #  undef v3dX
 
-#  define v3dX(x) v3d42_##x
+#  define v3dX(x) v3d71_##x
 #  include "v3dx_context.h"
 #  undef v3dX
 #endif

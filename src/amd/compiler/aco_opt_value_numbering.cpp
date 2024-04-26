@@ -166,28 +166,31 @@ struct InstrPred {
          }
       }
 
-      if (a->opcode == aco_opcode::v_readfirstlane_b32)
-         return a->pass_flags == b->pass_flags;
-
       if (a->isVALU()) {
          VALU_instruction& aV = a->valu();
          VALU_instruction& bV = b->valu();
          if (aV.abs != bV.abs || aV.neg != bV.neg || aV.clamp != bV.clamp || aV.omod != bV.omod ||
              aV.opsel != bV.opsel || aV.opsel_lo != bV.opsel_lo || aV.opsel_hi != bV.opsel_hi)
             return false;
+
+         if (a->opcode == aco_opcode::v_permlane16_b32 ||
+             a->opcode == aco_opcode::v_permlanex16_b32 ||
+             a->opcode == aco_opcode::v_permlane64_b32 ||
+             a->opcode == aco_opcode::v_readfirstlane_b32)
+            return aV.pass_flags == bV.pass_flags;
       }
       if (a->isDPP16()) {
          DPP16_instruction& aDPP = a->dpp16();
          DPP16_instruction& bDPP = b->dpp16();
          return aDPP.pass_flags == bDPP.pass_flags && aDPP.dpp_ctrl == bDPP.dpp_ctrl &&
                 aDPP.bank_mask == bDPP.bank_mask && aDPP.row_mask == bDPP.row_mask &&
-                aDPP.bound_ctrl == bDPP.bound_ctrl;
+                aDPP.bound_ctrl == bDPP.bound_ctrl && aDPP.fetch_inactive == bDPP.fetch_inactive;
       }
       if (a->isDPP8()) {
          DPP8_instruction& aDPP = a->dpp8();
          DPP8_instruction& bDPP = b->dpp8();
-         return aDPP.pass_flags == bDPP.pass_flags &&
-                !memcmp(aDPP.lane_sel, bDPP.lane_sel, sizeof(aDPP.lane_sel));
+         return aDPP.pass_flags == bDPP.pass_flags && aDPP.lane_sel == bDPP.lane_sel &&
+                aDPP.fetch_inactive == bDPP.fetch_inactive;
       }
       if (a->isSDWA()) {
          SDWA_instruction& aSDWA = a->sdwa();
@@ -357,7 +360,9 @@ can_eliminate(aco_ptr<Instruction>& instr)
    }
 
    if (instr->definitions.empty() || instr->opcode == aco_opcode::p_phi ||
-       instr->opcode == aco_opcode::p_linear_phi || instr->definitions[0].isNoCSE())
+       instr->opcode == aco_opcode::p_linear_phi ||
+       instr->opcode == aco_opcode::p_pops_gfx9_add_exiting_wave_id ||
+       instr->definitions[0].isNoCSE())
       return false;
 
    return true;
@@ -380,7 +385,7 @@ process_block(vn_ctx& ctx, Block& block)
       }
 
       if (instr->opcode == aco_opcode::p_discard_if ||
-          instr->opcode == aco_opcode::p_demote_to_helper)
+          instr->opcode == aco_opcode::p_demote_to_helper || instr->opcode == aco_opcode::p_end_wqm)
          ctx.exec_id++;
 
       if (!can_eliminate(instr)) {

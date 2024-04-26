@@ -229,9 +229,6 @@ get_vertex_shader_param(struct lima_screen *screen,
    case PIPE_SHADER_CAP_MAX_CONST_BUFFERS:
       return 1;
 
-   case PIPE_SHADER_CAP_PREFERRED_IR:
-      return PIPE_SHADER_IR_NIR;
-
    case PIPE_SHADER_CAP_MAX_TEMPS:
       return 256; /* need investigate */
 
@@ -270,9 +267,6 @@ get_fragment_shader_param(struct lima_screen *screen,
    case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
    case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
       return 16; /* need investigate */
-
-   case PIPE_SHADER_CAP_PREFERRED_IR:
-      return PIPE_SHADER_IR_NIR;
 
    case PIPE_SHADER_CAP_MAX_TEMPS:
       return 256; /* need investigate */
@@ -698,11 +692,9 @@ lima_screen_create(int fd, const struct pipe_screen_config *config,
    screen->pp_buffer->cacheable = false;
 
    /* fs program for clear buffer?
-    * const0 1 0 0 -1.67773, mov.v0 $0 ^const0.xxxx, stop
     */
    static const uint32_t pp_clear_program[] = {
-      0x00020425, 0x0000000c, 0x01e007cf, 0xb0000000,
-      0x000005f5, 0x00000000, 0x00000000, 0x00000000,
+      PP_CLEAR_PROGRAM
    };
    memcpy(lima_bo_map(screen->pp_buffer) + pp_clear_program_offset,
           pp_clear_program, sizeof(pp_clear_program));

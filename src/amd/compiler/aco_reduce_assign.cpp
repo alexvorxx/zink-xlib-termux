@@ -46,7 +46,7 @@ setup_reduce_temp(Program* program)
    for (Block& block : program->blocks) {
       for (aco_ptr<Instruction>& instr : block.instructions) {
          if (instr->opcode == aco_opcode::p_interp_gfx11 ||
-             instr->opcode == aco_opcode::p_bpermute_gfx11w64) {
+             instr->opcode == aco_opcode::p_bpermute_permlane) {
             maxSize = MAX2(maxSize, 1);
             hasReductions[block.index] = true;
          } else if (instr->format == Format::PSEUDO_REDUCTION) {
@@ -79,11 +79,14 @@ setup_reduce_temp(Program* program)
           * Here, the linear vgpr is used before any phi copies, so this isn't necessary.
           */
          if (inserted_at >= 0) {
-            aco_ptr<Instruction> end{create_instruction<Instruction>(
+            aco_ptr<Instruction> end{create_instruction<Pseudo_instruction>(
                aco_opcode::p_end_linear_vgpr, Format::PSEUDO, vtmp_inserted_at >= 0 ? 2 : 1, 0)};
             end->operands[0] = Operand(reduceTmp);
-            if (vtmp_inserted_at >= 0)
+            end->operands[0].setLateKill(true);
+            if (vtmp_inserted_at >= 0) {
                end->operands[1] = Operand(vtmp);
+               end->operands[1].setLateKill(true);
+            }
             /* insert after the phis of the block */
             std::vector<aco_ptr<Instruction>>::iterator it = block.instructions.begin();
             while ((*it)->opcode == aco_opcode::p_linear_phi || (*it)->opcode == aco_opcode::p_phi)
@@ -101,7 +104,7 @@ setup_reduce_temp(Program* program)
          Instruction* instr = (*it).get();
          if (instr->format != Format::PSEUDO_REDUCTION &&
              instr->opcode != aco_opcode::p_interp_gfx11 &&
-             instr->opcode != aco_opcode::p_bpermute_gfx11w64)
+             instr->opcode != aco_opcode::p_bpermute_permlane)
             continue;
 
          if ((int)last_top_level_block_idx != inserted_at) {
@@ -169,11 +172,14 @@ setup_reduce_temp(Program* program)
 
          if (instr->isReduction()) {
             instr->operands[1] = Operand(reduceTmp);
-            if (need_vtmp)
+            instr->operands[1].setLateKill(true);
+            if (need_vtmp) {
                instr->operands[2] = Operand(vtmp);
+               instr->operands[2].setLateKill(true);
+            }
          } else {
             assert(instr->opcode == aco_opcode::p_interp_gfx11 ||
-                   instr->opcode == aco_opcode::p_bpermute_gfx11w64);
+                   instr->opcode == aco_opcode::p_bpermute_permlane);
             instr->operands[0] = Operand(reduceTmp);
             instr->operands[0].setLateKill(true);
          }

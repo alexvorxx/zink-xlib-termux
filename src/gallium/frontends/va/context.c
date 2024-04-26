@@ -31,6 +31,7 @@
 #include "util/u_memory.h"
 #include "util/u_handle_table.h"
 #include "util/u_video.h"
+#include "util/set.h"
 #include "vl/vl_deint_filter.h"
 #include "vl/vl_winsys.h"
 
@@ -102,8 +103,12 @@ static struct VADriverVTable vtable =
    &vlVaExportSurfaceHandle,
 #endif
 #if VA_CHECK_VERSION(1, 15, 0)
-   NULL, /* vaSyncSurface2 */
+   &vlVaSyncSurface2,
    &vlVaSyncBuffer,
+#endif
+#if VA_CHECK_VERSION(1, 21, 0)
+   NULL, /* vaCopy */
+   &vlVaMapBuffer2,
 #endif
 };
 
@@ -183,14 +188,20 @@ VA_DRIVER_INIT_FUNC(VADriverContextP ctx)
    if (!drv->htab)
       goto error_htab;
 
-   if (!vl_compositor_init(&drv->compositor, drv->pipe))
-      goto error_compositor;
-   if (!vl_compositor_init_state(&drv->cstate, drv->pipe))
-      goto error_compositor_state;
+   bool can_init_compositor = (drv->vscreen->pscreen->get_param(drv->vscreen->pscreen, PIPE_CAP_GRAPHICS) ||
+                              drv->vscreen->pscreen->get_param(drv->vscreen->pscreen, PIPE_CAP_COMPUTE));
 
-   vl_csc_get_matrix(VL_CSC_COLOR_STANDARD_BT_601, NULL, true, &drv->csc);
-   if (!vl_compositor_set_csc_matrix(&drv->cstate, (const vl_csc_matrix *)&drv->csc, 1.0f, 0.0f))
-      goto error_csc_matrix;
+   if (can_init_compositor) {
+      if (!vl_compositor_init(&drv->compositor, drv->pipe))
+         goto error_compositor;
+      if (!vl_compositor_init_state(&drv->cstate, drv->pipe))
+         goto error_compositor_state;
+
+      vl_csc_get_matrix(VL_CSC_COLOR_STANDARD_BT_601, NULL, true, &drv->csc);
+      if (!vl_compositor_set_csc_matrix(&drv->cstate, (const vl_csc_matrix *)&drv->csc, 1.0f, 0.0f))
+         goto error_csc_matrix;
+   }
+
    (void) mtx_init(&drv->mutex, mtx_plain);
 
    ctx->pDriverData = (void *)drv;
@@ -213,10 +224,12 @@ VA_DRIVER_INIT_FUNC(VADriverContextP ctx)
    return VA_STATUS_SUCCESS;
 
 error_csc_matrix:
-   vl_compositor_cleanup_state(&drv->cstate);
+   if (can_init_compositor)
+      vl_compositor_cleanup_state(&drv->cstate);
 
 error_compositor_state:
-   vl_compositor_cleanup(&drv->compositor);
+   if (can_init_compositor)
+      vl_compositor_cleanup(&drv->compositor);
 
 error_compositor:
    handle_table_destroy(drv->htab);
@@ -366,6 +379,8 @@ vlVaCreateContext(VADriverContextP ctx, VAConfigID config_id, int picture_width,
       }
    }
 
+   context->surfaces = _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
+
    mtx_lock(&drv->mutex);
    *context_id = handle_table_add(drv->htab, context);
    mtx_unlock(&drv->mutex);
@@ -392,6 +407,17 @@ vlVaDestroyContext(VADriverContextP ctx, VAContextID context_id)
       mtx_unlock(&drv->mutex);
       return VA_STATUS_ERROR_INVALID_CONTEXT;
    }
+
+   set_foreach(context->surfaces, entry) {
+      vlVaSurface *surf = (vlVaSurface *)entry->key;
+      assert(surf->ctx == context);
+      surf->ctx = NULL;
+      if (surf->fence && context->decoder && context->decoder->destroy_fence) {
+         context->decoder->destroy_fence(context->decoder, surf->fence);
+         surf->fence = NULL;
+      }
+   }
+   _mesa_set_destroy(context->surfaces, NULL);
 
    if (context->decoder) {
       if (context->desc.base.entry_point == PIPE_VIDEO_ENTRYPOINT_ENCODE) {
@@ -425,6 +451,7 @@ vlVaDestroyContext(VADriverContextP ctx, VAContextID context_id)
       vl_deint_filter_cleanup(context->deint);
       FREE(context->deint);
    }
+   FREE(context->desc.base.decrypt_key);
    FREE(context);
    handle_table_remove(drv->htab, context_id);
    mtx_unlock(&drv->mutex);

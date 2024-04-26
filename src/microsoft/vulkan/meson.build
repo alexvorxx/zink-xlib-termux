@@ -81,10 +81,7 @@ libvulkan_dzn = shared_library(
   'vulkan_dzn',
   [libdzn_files, dzn_entrypoints, sha1_h],
   vs_module_defs : vulkan_api_def,
-  include_directories : [
-    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux,
-    inc_compiler, inc_util
-  ],
+  include_directories : [inc_include, inc_src, inc_util],
   dependencies : [dzn_deps, idep_vulkan_wsi, idep_xmlconfig],
   c_args : dzn_flags,
   cpp_args : dzn_cpp_flags,
@@ -97,7 +94,7 @@ libvulkan_dzn = shared_library(
 icd_file_name = 'libvulkan_dzn.so'
 icd_lib_path = join_paths(get_option('prefix'), get_option('libdir'))
 if with_platform_windows
-  icd_lib_path = join_paths(get_option('prefix'), get_option('bindir'))
+  icd_lib_path = import('fs').relative_to(get_option('bindir'), with_vulkan_icd_dir)
   icd_file_name = 'vulkan_dzn.dll'
 endif
 
@@ -128,6 +125,7 @@ dzn_icd = custom_target(
   command : icd_command,
   build_by_default : true,
   install_dir : with_vulkan_icd_dir,
+  install_tag : 'runtime',
   install : true,
 )
 

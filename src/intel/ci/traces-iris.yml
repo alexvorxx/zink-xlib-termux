@@ -133,16 +133,28 @@ traces:
       checksum: 0a1524303e0772f6d869e4875fe1f401
   godot/Material Testers.x86_64_2020.04.08_13.38_frame799.rdc:
     gl-intel-apl:
+      label: [skip]
+      text: Nothing wrong with it, proxy issues. Revert ASAP.
       checksum: dbe1de4e2e812413f173ea6c423117ff
     gl-intel-glk:
+      label: [skip]
+      text: Nothing wrong with it, proxy issues. Revert ASAP.
       checksum: dbe1de4e2e812413f173ea6c423117ff
     gl-intel-amly:
+      label: [skip]
+      text: Nothing wrong with it, proxy issues. Revert ASAP.
       checksum: dbe1de4e2e812413f173ea6c423117ff
     gl-intel-kbl:
+      label: [skip]
+      text: Nothing wrong with it, proxy issues. Revert ASAP.
       checksum: dbe1de4e2e812413f173ea6c423117ff
     gl-intel-whl:
+      label: [skip]
+      text: Nothing wrong with it, proxy issues. Revert ASAP.
       checksum: dbe1de4e2e812413f173ea6c423117ff
     gl-intel-cml:
+      label: [skip]
+      text: Nothing wrong with it, proxy issues. Revert ASAP.
       checksum: dbe1de4e2e812413f173ea6c423117ff
   gputest/pixmark-julia-fp32-v2.trace:
     gl-intel-apl:
@@ -502,19 +514,6 @@ traces:
       checksum: f11aa01f5ef3a563567e2a85998c418e
     gl-intel-cml:
       checksum: f11aa01f5ef3a563567e2a85998c418e
-  freedoom/freedoom-phase2-gl-high.trace:
-    gl-intel-apl:
-      checksum: b9951727c5c869d5ca510d83a557711b
-    gl-intel-glx:
-      checksum: b9951727c5c869d5ca510d83a557711b
-    gl-intel-amly:
-      checksum: b9951727c5c869d5ca510d83a557711b
-    gl-intel-kbl:
-      checksum: b9951727c5c869d5ca510d83a557711b
-    gl-intel-whl:
-      checksum: b9951727c5c869d5ca510d83a557711b
-    gl-intel-cml:
-      checksum: b9951727c5c869d5ca510d83a557711b
   unvanquished/unvanquished-lowest.trace:
     gl-intel-apl:
       checksum: 884096b6dd40e2f500d0837501287fac

@@ -72,13 +72,13 @@ has_ply = run_command(
   prog_python, '-c',
   '''
 import ply
-  ''')
+  ''', check : false)
 if has_ply.returncode() != 0
   error('Python (3.x) ply module required to build GRL kernels.')
 endif
 
 r = run_command(prog_python, 'grl_cl_kernel_gen.py',
-                grl_lib_args, '--ls-kernels', grl_grl_files)
+                grl_lib_args, '--ls-kernels', grl_grl_files, check : false)
 assert(r.returncode() == 0, 'Failed to fetch GRL CL kernels')
 grl_kernels = r.stdout().strip().split()
 
@@ -138,12 +138,10 @@ foreach t : [['125', 'gfx125', 'dg2']]
         '-DMAX_HW_SIMD_WIDTH=16', '-DMAX_WORKGROUP_SIZE=16',
         '-I' + join_paths(meson.current_source_dir(), 'gpu'),
         '-I' + join_paths(meson.current_source_dir(), 'include'),
-        '-include', 'opencl-c.h', # added to bypass build failure from clang15
-                                   # without modifying grl source code, remove
-                                   # if fixed there
       ],
-      env: ['MESA_SHADER_CACHE_DISABLE=true'],
-      depends : [prog_intel_clc]
+      env: ['MESA_SHADER_CACHE_DISABLE=true',
+            'MESA_SPIRV_LOG_LEVEL=error'],
+      depends : dep_prog_intel_clc
     )
   endforeach
 
@@ -162,7 +160,7 @@ foreach t : [['125', 'gfx125', 'dg2']]
     [grl_cl_kernel_h, grl_compiled_cl_kernels, grl_cl_kernel_c,
      grl_genX_files, grl_metakernel_c, grl_metakernel_h],
     include_directories : [
-      inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_compiler,
+      inc_include, inc_src,
       inc_intel,
     ],
     c_args : [
@@ -175,7 +173,7 @@ foreach t : [['125', 'gfx125', 'dg2']]
     ],
     dependencies : [
       dep_valgrind, idep_nir_headers, idep_vulkan_util_headers, idep_vulkan_wsi_headers,
-      idep_vulkan_runtime_headers, idep_anv_headers,
+      idep_vulkan_runtime_headers, idep_anv_headers, idep_genxml,
     ],
     gnu_symbol_visibility : 'hidden',
   )
@@ -192,8 +190,7 @@ libgrl = static_library(
   'grl',
   [grl_cl_kernel_h],
   include_directories : [
-    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel,
-    inc_compiler,
+    inc_include, inc_src, inc_intel,
   ],
   link_whole : [grl_genX_libs],
   dependencies : [libgrl_deps, idep_anv_headers],
@@ -201,6 +198,6 @@ libgrl = static_library(
 idep_grl = declare_dependency(
   link_with : libgrl,
   dependencies : libgrl_deps,
-  sources : grl_metakernel_h,
+  sources : [grl_metakernel_h, grl_cl_kernel_h],
   include_directories : include_directories('include', 'gpu'),
 )

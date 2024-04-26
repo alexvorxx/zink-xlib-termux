@@ -56,7 +56,6 @@ struct radeon_compiler {
 	unsigned has_presub:1;
 	unsigned has_omod:1;
 	unsigned disable_optimizations:1;
-	unsigned needs_trig_input_transform:1;
 	unsigned max_temp_regs;
 	unsigned max_constants;
 	int max_alu_insts;
@@ -99,8 +98,8 @@ int rc_if_fail_helper(struct radeon_compiler * c, const char * file, int line, c
 #define rc_assert(c, cond) \
 	(!(cond) && rc_if_fail_helper(c, __FILE__, __LINE__, #cond))
 
+void rc_mark_unused_channels(struct radeon_compiler * c, void *user);
 void rc_calculate_inputs_outputs(struct radeon_compiler * c);
-
 void rc_copy_output(struct radeon_compiler * c, unsigned output, unsigned dup_output);
 void rc_transform_fragment_wpos(struct radeon_compiler * c, unsigned wpos, unsigned new_input,
                                 int full_vtransform);
@@ -148,6 +147,7 @@ struct radeon_compiler_pass {
 };
 
 struct rc_program_stats {
+	unsigned num_cycles;
 	unsigned num_consts;
 	unsigned num_insts;
 	unsigned num_fc_insts;

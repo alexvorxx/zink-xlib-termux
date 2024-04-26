@@ -375,7 +375,6 @@ compute_version(const struct gl_extensions *extensions,
                          consts->GLSLVersion >= 440 &&
                          consts->MaxVertexAttribStride >= 2048 &&
                          extensions->ARB_buffer_storage &&
-                         extensions->ARB_clear_texture &&
                          extensions->ARB_enhanced_layouts &&
                          extensions->ARB_query_buffer_object &&
                          extensions->ARB_texture_mirror_clamp_to_edge &&
@@ -536,7 +535,7 @@ compute_version_es2(const struct gl_extensions *extensions,
                          extensions->ARB_shader_image_load_store &&
                          extensions->ARB_shader_image_size &&
                          extensions->ARB_shader_storage_buffer_object &&
-
+                         extensions->EXT_color_buffer_float &&
                          extensions->EXT_draw_buffers2 &&
                          extensions->KHR_blend_equation_advanced &&
                          extensions->KHR_robustness &&

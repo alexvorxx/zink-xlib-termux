@@ -40,8 +40,12 @@ bool ir3_nir_lower_imul(nir_shader *shader);
 bool ir3_nir_lower_io_offsets(nir_shader *shader);
 bool ir3_nir_lower_load_barycentric_at_sample(nir_shader *shader);
 bool ir3_nir_lower_load_barycentric_at_offset(nir_shader *shader);
+bool ir3_nir_lower_push_consts_to_preamble(nir_shader *nir,
+                                           struct ir3_shader_variant *v);
+bool ir3_nir_lower_driver_params_to_ubo(nir_shader *nir,
+                                        struct ir3_shader_variant *v);
 bool ir3_nir_move_varying_inputs(nir_shader *shader);
-int ir3_nir_coord_offset(nir_ssa_def *ssa);
+int ir3_nir_coord_offset(nir_def *ssa);
 bool ir3_nir_lower_tex_prefetch(nir_shader *shader);
 bool ir3_nir_lower_wide_load_store(nir_shader *shader);
 bool ir3_nir_lower_layer_id(nir_shader *shader);
@@ -63,7 +67,9 @@ void ir3_nir_lower_gs(nir_shader *shader);
 bool ir3_nir_lower_64b_intrinsics(nir_shader *shader);
 bool ir3_nir_lower_64b_undef(nir_shader *shader);
 bool ir3_nir_lower_64b_global(nir_shader *shader);
+bool ir3_nir_lower_64b_regs(nir_shader *shader);
 
+bool ir3_nir_opt_branch_and_or_not(nir_shader *nir);
 void ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s);
 void ir3_nir_lower_io_to_temporaries(nir_shader *s);
 void ir3_finalize_nir(struct ir3_compiler *compiler, nir_shader *s);
@@ -75,20 +81,37 @@ void ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
 bool ir3_nir_lower_load_constant(nir_shader *nir, struct ir3_shader_variant *v);
 void ir3_nir_analyze_ubo_ranges(nir_shader *nir, struct ir3_shader_variant *v);
 bool ir3_nir_lower_ubo_loads(nir_shader *nir, struct ir3_shader_variant *v);
+bool ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v);
 bool ir3_nir_fixup_load_uniform(nir_shader *nir);
 bool ir3_nir_opt_preamble(nir_shader *nir, struct ir3_shader_variant *v);
 bool ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v);
 
-nir_ssa_def *ir3_nir_try_propagate_bit_shift(nir_builder *b,
-                                             nir_ssa_def *offset,
+nir_def *ir3_nir_try_propagate_bit_shift(nir_builder *b,
+                                             nir_def *offset,
                                              int32_t shift);
+
+bool ir3_nir_opt_subgroups(nir_shader *nir, struct ir3_shader_variant *v);
+
+nir_def *ir3_get_driver_ubo(nir_builder *b, struct ir3_driver_ubo *ubo);
+nir_def *ir3_load_driver_ubo(nir_builder *b, unsigned components,
+                             struct ir3_driver_ubo *ubo,
+                             unsigned offset);
+nir_def *ir3_load_driver_ubo_indirect(nir_builder *b, unsigned components,
+                                      struct ir3_driver_ubo *ubo,
+                                      unsigned base, nir_def *offset,
+                                      unsigned range);
+
+struct driver_param_info {
+   uint32_t offset;
+};
+
+bool ir3_get_driver_param_info(const nir_shader *shader,
+                               nir_intrinsic_instr *intr,
+                               struct driver_param_info *param_info);
 
 static inline nir_intrinsic_instr *
 ir3_bindless_resource(nir_src src)
 {
-   if (!src.is_ssa)
-      return NULL;
-
    if (src.ssa->parent_instr->type != nir_instr_type_intrinsic)
       return NULL;
 

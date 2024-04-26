@@ -185,7 +185,6 @@ iris_emit_buffer_barrier_for(struct iris_batch *batch,
                              enum iris_domain access)
 {
    const struct intel_device_info *devinfo = batch->screen->devinfo;
-   const struct brw_compiler *compiler = batch->screen->compiler;
 
    const bool access_via_l3 = iris_domain_is_l3_coherent(devinfo, access);
 
@@ -213,7 +212,7 @@ iris_emit_buffer_barrier_for(struct iris_batch *batch,
       [IRIS_DOMAIN_VF_READ] = PIPE_CONTROL_VF_CACHE_INVALIDATE,
       [IRIS_DOMAIN_SAMPLER_READ] = PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE,
       [IRIS_DOMAIN_PULL_CONSTANT_READ] = PIPE_CONTROL_CONST_CACHE_INVALIDATE |
-         (compiler->indirect_ubos_use_sampler ?
+         (iris_indirect_ubos_use_sampler(batch->screen) ?
           PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE :
           PIPE_CONTROL_DATA_CACHE_FLUSH),
    };
@@ -409,10 +408,18 @@ iris_memory_barrier(struct pipe_context *ctx, unsigned flags)
               PIPE_CONTROL_CONST_CACHE_INVALIDATE;
    }
 
-   if (flags & (PIPE_BARRIER_TEXTURE | PIPE_BARRIER_FRAMEBUFFER)) {
+   if (flags & PIPE_BARRIER_TEXTURE)
+      bits |= PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE;
+
+   if (flags & PIPE_BARRIER_FRAMEBUFFER) {
+      /* The caller may have issued a render target read and a data cache data
+       * port write in the same draw call. Depending on the hardware, iris
+       * performs render target reads with either the sampler or the render
+       * cache data port. If the next framebuffer access is a render target
+       * read, the previously affected caches must be invalidated.
+       */
       bits |= PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE |
-              PIPE_CONTROL_RENDER_TARGET_FLUSH |
-              PIPE_CONTROL_TILE_CACHE_FLUSH;
+              PIPE_CONTROL_RENDER_TARGET_FLUSH;
    }
 
    iris_foreach_batch(ice, batch) {

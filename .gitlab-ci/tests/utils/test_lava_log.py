@@ -16,8 +16,15 @@ from lava.utils import (
     fix_lava_gitlab_section_log,
     hide_sensitive_data,
 )
+from lava.utils.constants import KNOWN_ISSUE_R8152_MAX_CONSECUTIVE_COUNTER
 
-from ..lava.helpers import create_lava_yaml_msg, does_not_raise, lava_yaml, yaml_dump
+from ..lava.helpers import (
+    create_lava_yaml_msg,
+    does_not_raise,
+    lava_yaml,
+    mock_lava_signal,
+    yaml_dump,
+)
 
 GITLAB_SECTION_SCENARIOS = {
     "start collapsed": (
@@ -65,6 +72,11 @@ def test_gl_sections():
         {
             "dt": datetime.now(),
             "lvl": "debug",
+            "msg": "Received signal: <STARTRUN> 0_setup-ssh-server 10145749_1.3.2.3.1",
+        },
+        {
+            "dt": datetime.now(),
+            "lvl": "debug",
             "msg": "Received signal: <STARTRUN> 0_mesa 5971831_1.3.2.3.1",
         },
         # Redundant log message which triggers the same Gitlab Section, it
@@ -92,10 +104,13 @@ def test_gl_sections():
         },
     ]
     lf = LogFollower()
-    for line in lines:
-        lf.manage_gl_sections(line)
+    with lf:
+        for line in lines:
+            lf.manage_gl_sections(line)
+        parsed_lines = lf.flush()
 
-    parsed_lines = lf.flush()
+    section_types = [s.type for s in lf.section_history]
+
     assert "section_start" in parsed_lines[0]
     assert "collapsed=true" not in parsed_lines[0]
     assert "section_end" in parsed_lines[1]
@@ -103,7 +118,17 @@ def test_gl_sections():
     assert "collapsed=true" not in parsed_lines[2]
     assert "section_end" in parsed_lines[3]
     assert "section_start" in parsed_lines[4]
-    assert "collapsed=true" in parsed_lines[4]
+    assert "collapsed=true" not in parsed_lines[4]
+    assert "section_end" in parsed_lines[5]
+    assert "section_start" in parsed_lines[6]
+    assert "collapsed=true" in parsed_lines[6]
+    assert section_types == [
+        # LogSectionType.LAVA_BOOT,  True, if LogFollower started with Boot section
+        LogSectionType.TEST_DUT_SUITE,
+        LogSectionType.TEST_SUITE,
+        LogSectionType.TEST_CASE,
+        LogSectionType.LAVA_POST_PROCESSING,
+    ]
 
 
 def test_log_follower_flush():
@@ -135,29 +160,29 @@ SENSITIVE_DATA_SCENARIOS = {
     "no sensitive data tagged": (
         ["bla  bla", "mytoken: asdkfjsde1341=="],
         ["bla  bla", "mytoken: asdkfjsde1341=="],
-        "HIDEME",
+        ["HIDEME"],
     ),
     "sensitive data tagged": (
         ["bla  bla", "mytoken: asdkfjsde1341== # HIDEME"],
         ["bla  bla"],
-        "HIDEME",
+        ["HIDEME"],
     ),
     "sensitive data tagged with custom word": (
-        ["bla  bla", "mytoken: asdkfjsde1341== # DELETETHISLINE", "third line"],
-        ["bla  bla", "third line"],
-        "DELETETHISLINE",
+        ["bla  bla", "mytoken: asdkfjsde1341== # DELETETHISLINE", "third line # NOTANYMORE"],
+        ["bla  bla", "third line # NOTANYMORE"],
+        ["DELETETHISLINE", "NOTANYMORE"],
     ),
 }
 
 
 @pytest.mark.parametrize(
-    "input, expectation, tag",
+    "input, expectation, tags",
     SENSITIVE_DATA_SCENARIOS.values(),
     ids=SENSITIVE_DATA_SCENARIOS.keys(),
 )
-def test_hide_sensitive_data(input, expectation, tag):
+def test_hide_sensitive_data(input, expectation, tags):
     yaml_data = yaml_dump(input)
-    yaml_result = hide_sensitive_data(yaml_data, tag)
+    yaml_result = hide_sensitive_data(yaml_data, *tags)
     result = lava_yaml.load(yaml_result)
 
     assert result == expectation
@@ -293,47 +318,56 @@ def test_gitlab_section_id(case_name, expected_id):
     assert gl.id == expected_id
 
 
-A618_NETWORK_ISSUE_LOGS = [
-    create_lava_yaml_msg(
-        msg="[ 1733.599402] r8152 2-1.3:1.0 eth0: Tx status -71", lvl="target"
-    ),
-    create_lava_yaml_msg(
-        msg="[ 1733.604506] nfs: server 192.168.201.1 not responding, still trying",
-        lvl="target",
-    ),
-]
-TEST_PHASE_LAVA_SIGNAL = create_lava_yaml_msg(
-    msg="Received signal: <STARTTC> mesa-ci_a618_vk", lvl="debug"
-)
+def a618_network_issue_logs(level: str = "target") -> list:
+    net_error = create_lava_yaml_msg(
+            msg="[ 1733.599402] r8152 2-1.3:1.0 eth0: Tx status -71", lvl=level)
+
+    nfs_error = create_lava_yaml_msg(
+            msg="[ 1733.604506] nfs: server 192.168.201.1 not responding, still trying",
+            lvl=level,
+        )
+
+    return [
+        *(KNOWN_ISSUE_R8152_MAX_CONSECUTIVE_COUNTER*[net_error]),
+        nfs_error
+    ]
+
+
+TEST_PHASE_LAVA_SIGNAL = mock_lava_signal(LogSectionType.TEST_CASE)
+A618_NET_ISSUE_BOOT = a618_network_issue_logs(level="feedback")
+A618_NET_ISSUE_TEST = [TEST_PHASE_LAVA_SIGNAL, *a618_network_issue_logs(level="target")]
 
 
 A618_NETWORK_ISSUE_SCENARIOS = {
-    "Pass - R8152 kmsg during boot": (A618_NETWORK_ISSUE_LOGS, does_not_raise()),
+    "Fail - R8152 kmsg during boot phase": (
+        A618_NET_ISSUE_BOOT,
+        pytest.raises(MesaCIKnownIssueException),
+    ),
     "Fail - R8152 kmsg during test phase": (
-        [TEST_PHASE_LAVA_SIGNAL, *A618_NETWORK_ISSUE_LOGS],
+        A618_NET_ISSUE_TEST,
         pytest.raises(MesaCIKnownIssueException),
     ),
     "Pass - Partial (1) R8152 kmsg during test phase": (
-        [TEST_PHASE_LAVA_SIGNAL, A618_NETWORK_ISSUE_LOGS[0]],
+        A618_NET_ISSUE_TEST[:1],
         does_not_raise(),
     ),
     "Pass - Partial (2) R8152 kmsg during test phase": (
-        [TEST_PHASE_LAVA_SIGNAL, A618_NETWORK_ISSUE_LOGS[1]],
+        A618_NET_ISSUE_TEST[:2],
         does_not_raise(),
     ),
-    "Pass - Partial subsequent (3) R8152 kmsg during test phase": (
+    "Pass - Partial (3) subsequent R8152 kmsg during test phase": (
         [
             TEST_PHASE_LAVA_SIGNAL,
-            A618_NETWORK_ISSUE_LOGS[0],
-            A618_NETWORK_ISSUE_LOGS[0],
+            A618_NET_ISSUE_TEST[1],
+            A618_NET_ISSUE_TEST[1],
         ],
         does_not_raise(),
     ),
-    "Pass - Partial subsequent (4) R8152 kmsg during test phase": (
+    "Pass - Partial (4) subsequent nfs kmsg during test phase": (
         [
             TEST_PHASE_LAVA_SIGNAL,
-            A618_NETWORK_ISSUE_LOGS[1],
-            A618_NETWORK_ISSUE_LOGS[1],
+            A618_NET_ISSUE_TEST[-1],
+            A618_NET_ISSUE_TEST[-1],
         ],
         does_not_raise(),
     ),
@@ -346,6 +380,13 @@ A618_NETWORK_ISSUE_SCENARIOS = {
     ids=A618_NETWORK_ISSUE_SCENARIOS.keys(),
 )
 def test_detect_failure(messages, expectation):
-    lf = LogFollower()
+    boot_section = GitlabSection(
+        id="lava_boot",
+        header="LAVA boot",
+        type=LogSectionType.LAVA_BOOT,
+        start_collapsed=True,
+    )
+    boot_section.start()
+    lf = LogFollower(starting_section=boot_section)
     with expectation:
         lf.feed(messages)

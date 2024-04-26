@@ -155,6 +155,15 @@ _legal_parameters(struct gl_context *ctx, GLenum target, GLenum internalformat,
       }
       break;
 
+   case GL_CLEAR_TEXTURE:
+      if (!_mesa_has_ARB_clear_texture(ctx)) {
+         _mesa_error(ctx, GL_INVALID_ENUM,
+                     "glGetInternalformativ(pname=%s)",
+                     _mesa_enum_to_string(pname));
+         return false;
+      }
+      break;
+
    case GL_SRGB_DECODE_ARB:
       /* The ARB_internalformat_query2 spec says:
        *
@@ -389,6 +398,7 @@ _set_default_response(GLenum pname, GLint buffer[16])
    case GL_SIMULTANEOUS_TEXTURE_AND_DEPTH_WRITE:
    case GL_SIMULTANEOUS_TEXTURE_AND_STENCIL_WRITE:
    case GL_CLEAR_BUFFER:
+   case GL_CLEAR_TEXTURE:
    case GL_TEXTURE_VIEW:
    case GL_VIEW_COMPATIBILITY_CLASS:
       buffer[0] = GL_NONE;
@@ -525,7 +535,8 @@ _is_resource_supported(struct gl_context *ctx, GLenum target,
          return false;
 
       /* additional checks for depth textures */
-      if (!_mesa_legal_texture_base_format_for_target(ctx, target, internalformat))
+      if (!_mesa_legal_texture_base_format_for_target(ctx, target, internalformat) &&
+          !(pname == GL_CLEAR_TEXTURE && _mesa_is_depth_or_stencil_format(internalformat)))
          return false;
 
       /* additional checks for compressed textures */
@@ -734,6 +745,7 @@ _mesa_query_internal_format_default(struct gl_context *ctx, GLenum target,
    case GL_SIMULTANEOUS_TEXTURE_AND_DEPTH_WRITE:
    case GL_SIMULTANEOUS_TEXTURE_AND_STENCIL_WRITE:
    case GL_CLEAR_BUFFER:
+   case GL_CLEAR_TEXTURE:
    case GL_TEXTURE_VIEW:
    case GL_TEXTURE_SHADOW:
    case GL_TEXTURE_GATHER:
@@ -752,10 +764,14 @@ _mesa_query_internal_format_default(struct gl_context *ctx, GLenum target,
       break;
    case GL_NUM_TILING_TYPES_EXT:
       params[0] = 2;
+      if (_mesa_has_MESA_texture_const_bandwidth(ctx))
+         params[0]++;
       break;
    case GL_TILING_TYPES_EXT:
       params[0] = GL_OPTIMAL_TILING_EXT;
       params[1] = GL_LINEAR_TILING_EXT;
+      if (_mesa_has_MESA_texture_const_bandwidth(ctx))
+         params[2] = GL_CONST_BW_TILING_MESA;
       break;
 
    default:
@@ -856,6 +872,29 @@ _get_min_dimensions(GLenum pname)
       return 3;
    default:
       return 0;
+   }
+}
+
+static bool
+_is_generic_compressed_format(const struct gl_context *ctx,
+                              GLenum intFormat)
+{
+   switch (intFormat) {
+   case GL_COMPRESSED_SRGB:
+   case GL_COMPRESSED_SRGB_ALPHA:
+   case GL_COMPRESSED_SLUMINANCE:
+   case GL_COMPRESSED_SLUMINANCE_ALPHA:
+      return _mesa_has_EXT_texture_sRGB(ctx);
+   case GL_COMPRESSED_RG:
+   case GL_COMPRESSED_RED:
+      return _mesa_is_gles(ctx) ?
+             _mesa_has_EXT_texture_rg(ctx) :
+             _mesa_has_ARB_texture_rg(ctx);
+   case GL_COMPRESSED_RGB:
+   case GL_COMPRESSED_RGBA:
+      return true;
+   default:
+      return false;
    }
 }
 
@@ -991,6 +1030,14 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
          baseformat = _mesa_base_fbo_format(ctx, internalformat);
       }
 
+      /* If the internal format is unsupported, or if a particular component
+       * is not present in the format, 0 is written to params.
+       */
+      if (!st_QueryTextureFormatSupport(ctx, target, internalformat)) {
+         buffer[0] = GL_NONE;
+         break;
+      }
+
       /* Let the driver choose the texture format.
        *
        * Disclaimer: I am considering that drivers use for renderbuffers the
@@ -1073,6 +1120,12 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
       if (get_pname == 0)
          goto end;
 
+      /* if the resource is unsupported, zero is returned */
+      if (!st_QueryTextureFormatSupport(ctx, target, internalformat)) {
+         buffer[0] = 0;
+         break;
+      }
+
       _mesa_GetIntegerv(get_pname, buffer);
       break;
    }
@@ -1083,6 +1136,12 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
 
       if (!_mesa_is_array_texture(target))
          goto end;
+
+      /* if the resource is unsupported, zero is returned */
+      if (!st_QueryTextureFormatSupport(ctx, target, internalformat)) {
+         buffer[0] = 0;
+         break;
+      }
 
       _mesa_GetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, buffer);
       break;
@@ -1097,6 +1156,12 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
       };
       unsigned i;
       GLint current_value;
+
+      /* if the resource is unsupported, zero is returned */
+      if (!st_QueryTextureFormatSupport(ctx, target, internalformat)) {
+         buffer[0] = 0;
+         break;
+      }
 
       /* Combining the dimensions. Note that for array targets, this would
        * automatically include the value of MAX_LAYERS, as that value is
@@ -1476,6 +1541,14 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
       if (targetIndex < 0 || targetIndex == TEXTURE_BUFFER_INDEX)
          goto end;
 
+      /* If the resource is not supported for image textures,
+       * or if image textures are not supported, NONE is returned.
+       */
+      if (!st_QueryTextureFormatSupport(ctx, target, internalformat)) {
+         buffer[0] = GL_NONE;
+         break;
+      }
+
       /* From spec: "Equivalent to calling GetTexParameter with <value> set
        * to IMAGE_FORMAT_COMPATIBILITY_TYPE."
        *
@@ -1552,6 +1625,19 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
       st_QueryInternalFormat(ctx, target, internalformat, pname,
                                       buffer);
       break;
+   case GL_CLEAR_TEXTURE: {
+      if (target == GL_TEXTURE_BUFFER ||
+          target == GL_RENDERBUFFER)
+         goto end;
+
+      if (_mesa_is_compressed_format(ctx, internalformat) ||
+          _is_generic_compressed_format(ctx, internalformat))
+         goto end;
+
+      st_QueryInternalFormat(ctx, target, internalformat, pname,
+                             buffer);
+      break;
+   }
 
    case GL_TEXTURE_VIEW:
    case GL_VIEW_COMPATIBILITY_CLASS:

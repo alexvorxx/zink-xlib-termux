@@ -23,6 +23,7 @@
 
 #include "zink_context.h"
 #include "zink_framebuffer.h"
+#include "zink_format.h"
 #include "zink_resource.h"
 #include "zink_screen.h"
 #include "zink_surface.h"
@@ -78,7 +79,7 @@ create_ivci(struct zink_screen *screen,
       unreachable("unsupported target");
    }
 
-   ivci.format = zink_get_format(screen, templ->format);
+   ivci.format = res->base.b.format == PIPE_FORMAT_A8_UNORM ? res->format : zink_get_format(screen, templ->format);
    assert(ivci.format != VK_FORMAT_UNDEFINED);
 
    /* TODO: it's currently illegal to use non-identity swizzles for framebuffer attachments,
@@ -109,7 +110,7 @@ create_ivci(struct zink_screen *screen,
 
 /* this is used for framebuffer attachments to set up imageless framebuffers */
 static void
-init_surface_info(struct zink_surface *surface, struct zink_resource *res, VkImageViewCreateInfo *ivci)
+init_surface_info(struct zink_screen *screen, struct zink_surface *surface, struct zink_resource *res, VkImageViewCreateInfo *ivci)
 {
    VkImageViewUsageCreateInfo *usage_info = (VkImageViewUsageCreateInfo *)ivci->pNext;
    surface->info.flags = res->obj->vkflags;
@@ -122,6 +123,15 @@ init_surface_info(struct zink_surface *surface, struct zink_resource *res, VkIma
       struct kopper_displaytarget *cdt = res->obj->dt;
       if (zink_kopper_has_srgb(cdt))
          surface->info.format[1] = ivci->format == cdt->formats[0] ? cdt->formats[1] : cdt->formats[0];
+   } else {
+      enum pipe_format srgb = util_format_is_srgb(surface->base.format) ? util_format_linear(surface->base.format) : util_format_srgb(surface->base.format);
+      if (srgb == surface->base.format)
+         srgb = PIPE_FORMAT_NONE;
+      if (srgb) {
+         VkFormat format = zink_get_format(screen, srgb);
+         if (format)
+            surface->info.format[1] = format;
+      }
    }
 }
 
@@ -189,7 +199,7 @@ create_surface(struct pipe_context *pctx,
 
    util_dynarray_init(&surface->framebuffer_refs, NULL);
 
-   init_surface_info(surface, res, ivci);
+   init_surface_info(screen, surface, res, ivci);
 
    if (!actually)
       return surface;
@@ -224,7 +234,7 @@ do_create_surface(struct pipe_context *pctx, struct pipe_resource *pres, const s
 }
 
 /* get a cached surface for a shader descriptor */
-struct pipe_surface *
+struct zink_surface *
 zink_get_surface(struct zink_context *ctx,
             struct pipe_resource *pres,
             const struct pipe_surface *templ,
@@ -241,7 +251,7 @@ zink_get_surface(struct zink_context *ctx,
       /* create a new surface, but don't actually create the imageview if mutable isn't set and the format is different;
        * mutable will be set later and the imageview will be filled in
        */
-      bool actually = pres->format == templ->format || (res->obj->vkflags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT);
+      bool actually = !zink_format_needs_mutable(pres->format, templ->format) || (pres->bind & ZINK_BIND_MUTABLE);
       surface = do_create_surface(&ctx->base, pres, templ, ivci, hash, actually);
       entry = _mesa_hash_table_insert_pre_hashed(&res->surface_cache, hash, &surface->ivci, surface);
       if (!entry) {
@@ -256,25 +266,42 @@ zink_get_surface(struct zink_context *ctx,
    }
    simple_mtx_unlock(&res->surface_mtx);
 
-   return &surface->base;
+   return surface;
 }
 
-/* wrap a surface for use as a framebuffer attachment */
-static struct pipe_surface *
-wrap_surface(struct pipe_context *pctx, const struct pipe_surface *psurf)
+/* wrap a surface for use as a framebuffer attachment
+ * Takes ownership of surface */
+static struct zink_ctx_surface *
+wrap_surface(struct pipe_context *pctx,
+             struct zink_surface *surface,
+             const struct pipe_surface *templ)
 {
    struct zink_ctx_surface *csurf = CALLOC_STRUCT(zink_ctx_surface);
    if (!csurf) {
-      mesa_loge("ZINK: failed to allocate csurf!");
+      zink_surface_reference (zink_screen(pctx->screen), &surface, NULL);
       return NULL;
    }
-      
-   csurf->base = *psurf;
+
+   csurf->base = *templ;
    pipe_reference_init(&csurf->base.reference, 1);
-   csurf->surf = (struct zink_surface*)psurf;
+   csurf->surf = surface;
    csurf->base.context = pctx;
 
-   return &csurf->base;
+   return csurf;
+}
+
+/* this is the context hook, so only zink_ctx_surfaces will reach it */
+static void
+zink_surface_destroy(struct pipe_context *pctx,
+                     struct pipe_surface *psurface)
+{
+   struct zink_ctx_surface *csurf = (struct zink_ctx_surface *)psurface;
+   if (csurf->needs_mutable)
+      /* this has an extra resource ref */
+      pipe_resource_reference(&csurf->base.texture, NULL);
+   zink_surface_reference(zink_screen(pctx->screen), &csurf->surf, NULL);
+   pipe_surface_release(pctx, (struct pipe_surface**)&csurf->transient);
+   FREE(csurf);
 }
 
 /* this the context hook that returns a zink_ctx_surface */
@@ -284,10 +311,11 @@ zink_create_surface(struct pipe_context *pctx,
                     const struct pipe_surface *templ)
 {
    struct zink_resource *res = zink_resource(pres);
+   struct zink_screen *screen = zink_screen(pctx->screen);
    bool is_array = templ->u.tex.last_layer != templ->u.tex.first_layer;
    bool needs_mutable = false;
    enum pipe_texture_target target_2d[] = {PIPE_TEXTURE_2D, PIPE_TEXTURE_2D_ARRAY};
-   if (!res->obj->dt && pres->format != templ->format) {
+   if (!res->obj->dt && zink_format_needs_mutable(pres->format, templ->format)) {
       /* mutable not set by default */
       needs_mutable = !(res->base.b.bind & ZINK_BIND_MUTABLE);
       /*
@@ -295,64 +323,86 @@ zink_create_surface(struct pipe_context *pctx,
          If image was created with the VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT flag and
          format is a non-compressed format, the levelCount and layerCount members of
          subresourceRange must both be 1
+
+         ...but this is allowed with a maintenance6 property
        */
-      if (util_format_is_compressed(pres->format) && templ->u.tex.first_layer != templ->u.tex.last_layer)
+      if (util_format_is_compressed(pres->format) && templ->u.tex.first_layer != templ->u.tex.last_layer &&
+          (!screen->info.have_KHR_maintenance6 || !screen->info.maint6_props.blockTexelViewCompatibleMultipleLayers))
          return NULL;
    }
 
-   if (!zink_screen(pctx->screen)->threaded && needs_mutable) {
+   if (!screen->threaded && needs_mutable) {
       /* this is fine without tc */
       needs_mutable = false;
       zink_resource_object_init_mutable(zink_context(pctx), res);
    }
 
-   if (!zink_get_format(zink_screen(pctx->screen), templ->format))
+   if (!zink_get_format(screen, templ->format))
       return NULL;
 
-   VkImageViewCreateInfo ivci = create_ivci(zink_screen(pctx->screen), res, templ,
+   VkImageViewCreateInfo ivci = create_ivci(screen, res, templ,
                                             pres->target == PIPE_TEXTURE_3D ? target_2d[is_array] : pres->target);
 
-   struct pipe_surface *psurf = NULL;
+   struct zink_surface *surface = NULL;
    if (res->obj->dt) {
       /* don't cache swapchain surfaces. that's weird. */
-      struct zink_surface *surface = do_create_surface(pctx, pres, templ, &ivci, 0, false);
-      if (surface) {
-         surface->is_swapchain = true;
-         psurf = &surface->base;
+      surface = do_create_surface(pctx, pres, templ, &ivci, 0, false);
+      if (unlikely(!surface)) {
+         mesa_loge("ZINK: failed do_create_surface!");
+         return NULL;
       }
-   } else if (!needs_mutable) {
-      psurf = zink_get_surface(zink_context(pctx), pres, templ, &ivci);
-   }
-   if (!psurf && !needs_mutable)
-      return NULL;
 
-   struct zink_ctx_surface *csurf = (struct zink_ctx_surface*)wrap_surface(pctx, needs_mutable ? templ : psurf);
+      surface->is_swapchain = true;
+   } else if (!needs_mutable) {
+      surface = zink_get_surface(zink_context(pctx), pres, templ, &ivci);
+      if (unlikely(!surface)) {
+         mesa_loge("ZINK: failed to get non-mutable surface!");
+         return NULL;
+      }
+   }
+
+   struct zink_ctx_surface *csurf = wrap_surface(pctx, surface, needs_mutable ? templ : &surface->base); /* move ownership of surface */
+   if (!unlikely (csurf)) {
+      mesa_loge("ZINK: failed to allocate csurf!");
+      return NULL;
+   }
+
    csurf->needs_mutable = needs_mutable;
    if (needs_mutable) {
-      csurf->surf = NULL;
       pipe_resource_reference(&csurf->base.texture, pres);
       init_pipe_surface_info(pctx, &csurf->base, templ, pres);
    }
 
-   if (templ->nr_samples && !zink_screen(pctx->screen)->info.have_EXT_multisampled_render_to_single_sampled) {
+   if (templ->nr_samples && !screen->info.have_EXT_multisampled_render_to_single_sampled) {
       /* transient fb attachment: not cached */
       struct pipe_resource rtempl = *pres;
       rtempl.nr_samples = templ->nr_samples;
       rtempl.bind |= ZINK_BIND_TRANSIENT;
       struct zink_resource *transient = zink_resource(pctx->screen->resource_create(pctx->screen, &rtempl));
-      if (!transient)
-         return NULL;
-      ivci.image = transient->obj->image;
-      csurf->transient = (struct zink_ctx_surface*)wrap_surface(pctx, (struct pipe_surface*)create_surface(pctx, &transient->base.b, templ, &ivci, true));
-      if (!csurf->transient) {
-         pipe_resource_reference((struct pipe_resource**)&transient, NULL);
-         pipe_surface_release(pctx, &psurf);
-         return NULL;
+      if (unlikely(!transient)) {
+         mesa_loge("ZINK: failed to create transient resource!");
+         goto fail;
       }
+
+      ivci.image = transient->obj->image;
+      struct zink_surface *tsurf = create_surface(pctx, &transient->base.b, templ, &ivci, true);
       pipe_resource_reference((struct pipe_resource**)&transient, NULL);
+      if (unlikely(!tsurf)) {
+         mesa_loge("ZINK: failed to create transient surface!");
+         goto fail;
+      }
+
+      csurf->transient = wrap_surface(pctx, tsurf, &tsurf->base); /* move ownership of tsurf */
+      if (unlikely(!csurf->transient)) {
+         mesa_loge("ZINK: failed to wrap transient surface!");
+         goto fail;
+      }
    }
 
    return &csurf->base;
+fail:
+   zink_surface_destroy(pctx, &csurf->base);
+   return NULL;
 }
 
 static void
@@ -411,20 +461,6 @@ zink_destroy_surface(struct zink_screen *screen, struct pipe_surface *psurface)
    simple_mtx_unlock(&res->obj->view_lock);
    pipe_resource_reference(&psurface->texture, NULL);
    FREE(surface);
-}
-
-/* this is the context hook, so only zink_ctx_surfaces will reach it */
-static void
-zink_surface_destroy(struct pipe_context *pctx,
-                     struct pipe_surface *psurface)
-{
-   struct zink_ctx_surface *csurf = (struct zink_ctx_surface *)psurface;
-   if (csurf->needs_mutable)
-      /* this has an extra resource ref */
-      pipe_resource_reference(&csurf->base.texture, NULL);
-   zink_surface_reference(zink_screen(pctx->screen), &csurf->surf, NULL);
-   pipe_surface_release(pctx, (struct pipe_surface**)&csurf->transient);
-   FREE(csurf);
 }
 
 /* this is called when a surface is rebound for mutable/storage use */
@@ -542,7 +578,7 @@ zink_surface_swapchain_update(struct zink_context *ctx, struct zink_surface *sur
       }
       surface->base.width = res->base.b.width0;
       surface->base.height = res->base.b.height0;
-      init_surface_info(surface, res, &surface->ivci);
+      init_surface_info(screen, surface, res, &surface->ivci);
       surface->dt_swapchain = cdt->swapchain;
    }
    if (!surface->swapchain[res->obj->dt_idx]) {

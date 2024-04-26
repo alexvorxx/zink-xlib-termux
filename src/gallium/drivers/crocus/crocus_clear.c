@@ -34,7 +34,7 @@
 #include "crocus_context.h"
 #include "crocus_resource.h"
 #include "crocus_screen.h"
-#include "intel/compiler/brw_compiler.h"
+#include "intel/compiler/elk/elk_compiler.h"
 #include "util/format_srgb.h"
 
 static bool
@@ -101,8 +101,8 @@ can_fast_clear_color(struct crocus_context *ice,
     * during resolves because the resolve operations only know about the
     * resource and not the renderbuffer.
     */
-   if (isl_format_srgb_to_linear(render_format) !=
-       isl_format_srgb_to_linear(format)) {
+   if (!crocus_render_formats_color_compatible(render_format, res->surf.format,
+                                             color)) {
       return false;
    }
 
@@ -702,16 +702,11 @@ crocus_clear_texture(struct pipe_context *ctx,
    struct crocus_context *ice = (void *) ctx;
    struct crocus_screen *screen = (void *) ctx->screen;
    const struct intel_device_info *devinfo = &screen->devinfo;
-   struct crocus_resource *res = (void *) p_res;
 
    if (devinfo->ver < 6) {
-      util_clear_texture(ctx, p_res,
-                         level, box, data);
+      u_default_clear_texture(ctx, p_res, level, box, data);
       return;
    }
-
-   if (crocus_resource_unfinished_aux_import(res))
-      crocus_resource_finish_aux_import(ctx->screen, res);
 
    if (util_format_is_depth_or_stencil(p_res->format)) {
       const struct util_format_unpack_description *fmt_unpack =

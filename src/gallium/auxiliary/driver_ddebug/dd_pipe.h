@@ -170,7 +170,7 @@ struct call_texture_subdata {
    struct pipe_box box;
    const void *data;
    unsigned stride;
-   unsigned layer_stride;
+   uintptr_t layer_stride;
 };
 
 struct dd_call
@@ -302,6 +302,7 @@ struct dd_context
 
    struct dd_draw_state draw_state;
    unsigned num_draw_calls;
+   unsigned num_vertex_buffers;
 
    struct u_log_context log;
 

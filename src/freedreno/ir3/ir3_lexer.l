@@ -122,6 +122,7 @@ static int parse_reg(const char *str)
 "(neg_infinity)"                  return TOKEN(T_NEG_INFINITY);
 "(ei)"                            return TOKEN(T_EI);
 "(jp)"                            return TOKEN(T_JP);
+"(eq)"                            return TOKEN(T_EQ_FLAG);
 "(sat)"                           return TOKEN(T_SAT);
 "(rpt"[0-7]")"                    ir3_yylval.num = strtol(yytext+4, NULL, 10); return T_RPT;
 "(nop"[0-7]")"                    ir3_yylval.num = strtol(yytext+4, NULL, 10); return T_NOP;
@@ -308,6 +309,7 @@ static int parse_reg(const char *str)
                                   /* category 6: */
 "ldg"                             return TOKEN(T_OP_LDG);
 "ldg.a"                           return TOKEN(T_OP_LDG_A);
+"ldg.k"                           return TOKEN(T_OP_LDG_K);
 "ldl"                             return TOKEN(T_OP_LDL);
 "ldp"                             return TOKEN(T_OP_LDP);
 "stg"                             return TOKEN(T_OP_STG);
@@ -391,9 +393,12 @@ static int parse_reg(const char *str)
 "dccln.all"                       return TOKEN(T_OP_DCCLN);
 "dcinv.all"                       return TOKEN(T_OP_DCINV);
 "dcflu.all"                       return TOKEN(T_OP_DCFLU);
+"ccinv"                           return TOKEN(T_OP_CCINV);
 "lock"                            return TOKEN(T_OP_LOCK);
 "unlock"                          return TOKEN(T_OP_UNLOCK);
 "alias"                           return TOKEN(T_OP_ALIAS);
+
+"print"                           return TOKEN(T_OP_PRINT);
 
 "f16"                             return TOKEN(T_TYPE_F16);
 "f32"                             return TOKEN(T_TYPE_F32);

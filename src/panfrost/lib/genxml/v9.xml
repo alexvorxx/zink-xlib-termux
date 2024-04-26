@@ -787,12 +787,17 @@
     <field name="3D" size="32" start="0" type="Plane ASTC 3D Overlay"/>
   </struct>
 
+  <struct name="Two-Plane YUV Chroma Overlay" size="8">
+    <field name="Secondary Pointer" size="64" start="6:0" type="address"/>
+  </struct>
+
   <struct name="Plane" size="8" align="32">
     <field name="Type" size="4" start="0:0" type="Descriptor Type" default="Plane"/>
     <field name="Plane type" size="4" start="0:4" type="Plane Type"/>
 
     <field name="AFBC" size="32" start="0:0" type="Plane AFBC Overlay"/>
     <field name="ASTC" size="32" start="0:0" type="Plane ASTC Overlay"/>
+    <field name="Two-Plane YUV Chroma" size="256" start="0:0" type="Two-Plane YUV Chroma Overlay"/>
 
     <!-- Not AFBC -->
     <field name="Clump ordering" size="4" start="0:8" type="Clump Ordering"/>
@@ -851,10 +856,23 @@
     <field name="R63" size="1" start="0:15" type="bool"/>
   </struct>
 
+  <enum name="Coverage bitmask type">
+    <value name="DX" value="0"/>
+    <value name="GL" value="1"/>
+  </enum>
+
+  <enum name="Warp limit">
+    <value name="Full" value="0"/>
+    <value name="Half" value="1"/>
+    <value name="One-quarter" value="2"/>
+    <value name="One-height" value="3"/>
+  </enum>
+
   <struct name="Shader Program" size="8" align="32">
     <field name="Type" size="4" start="0:0" type="Descriptor Type" default="Shader"/>
     <field name="Stage" size="4" start="0:4" type="Shader stage"/>
-    <field name="Primary shader" size="1" start="0:8" type="bool"/>
+    <field name="Fragment coverage bitmask type" size="1" start="0:8" type="Coverage bitmask type"/>
+    <field name="Vertex warp limit" size="2" start="0:8" type="Warp limit"/>
     <field name="Suppress NaN" size="1" start="0:16" type="bool"/>
     <field name="Flush to zero mode" size="2" start="0:17" type="Flush to zero mode"/>
     <field name="Suppress Inf" size="1" start="0:19" type="bool"/>

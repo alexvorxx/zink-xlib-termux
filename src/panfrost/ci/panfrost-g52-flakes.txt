@@ -18,3 +18,12 @@ spec@egl_nok_texture_from_pixmap@basic
 spec@!opengl 1.1@depthstencil-default_fb-blit
 spec@glsl-1.30@execution@texturesize@vs-texturesize-isamplercube
 namespace pollution@renderbuffer with glgetteximage-compressed
+
+# first seen 2023-05-13
+spec@egl 1.4@largest possible eglcreatepbuffersurface and then glclear
+
+dEQP-VK.api.command_buffers.render_pass_continue
+
+dEQP-VK.api.copy_and_blit.core.image_to_image.simple_tests.partial_image_.*
+
+dEQP-VK.api.buffer_view.access.suballocation.buffer_view_memory_test_partial_offset1

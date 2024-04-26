@@ -81,7 +81,8 @@ KHR-.*.core.geometry_shader.layered_framebuffer.depth_support
 KHR-.*.core.tessellation_shader.tessellation_shader_tc_barriers.barrier_guarded_read_calls
 
 # Typically fails, but occasionally passes.
-KHR-GL45.shader_image_load_store.basic-allTargets-store
+KHR-GL46.shader_image_load_store.basic-allTargets-loadStoreVS
+KHR-GL46.shader_image_load_store.basic-allTargets-store
 
 # edfff331b3241d1c18d5c589fcdf75728089c886 mostly fixed this, but apparently it still flakes.
 dEQP-GLES3.functional.fbo.blit.depth_stencil.depth32f_stencil8_basic
@@ -193,14 +194,15 @@ spec@ext_timer_query@time-elapsed
 spec@ext_texture_lod_bias@lodbias
 
 # recent flakes, first occurence 03-02-2023
-KHR-GL45.buffer_storage.map_persistent_dispatch
+KHR-GL46.buffer_storage.map_persistent_dispatch
 # recent flakes, first occurence 09-02-2023
-KHR-GL45.buffer_storage.map_persistent_flush
+KHR-GL46.buffer_storage.map_persistent_flush
 
-# very rare flake (once two weeks), first occurence 21-02-2023 (8i.samples_4.mask_3)
-KHR-GL45.sample_variables.mask.rgba8ui.samples_0.mask_2
-KHR-GL45.sample_variables.mask.rgba8i.samples_4.mask_3
-KHR-GL45.sample_variables.mask.rgba32f.samples_4.mask_3
+# very rare flake (once two weeks), first occurence 21-02-2023
+KHR-GL46.sample_variables.mask.rgba8ui.samples_0.mask_2
+KHR-GL46.sample_variables.mask.rgba8i.samples_4.mask_3
+KHR-GL46.sample_variables.mask.rgba32f.samples_0.mask_2
+KHR-GL46.sample_variables.mask.rgba32f.samples_4.mask_3
 
 # these flake basically everywhere
 glx@glx-make-current
@@ -213,3 +215,16 @@ spec@!opengl 3.2@gl-3.2-adj-prims cull-front pv-last
 spec@!opengl 3.2@gl-3.2-adj-prims line cull-back pv-last
 spec@!opengl 3.2@gl-3.2-adj-prims line cull-front pv-last
 spec@!opengl 3.2@gl-3.2-adj-prims pv-last
+
+# uprev Piglit in Mesa
+KHR-GLES3.copy_tex_image_conversions.required.cubemap_posx_texture2d
+KHR-GLES31.core.shader_bitfield_operation.findMSB.ivec3_1
+KHR-GLES31.core.shader_multisample_interpolation.render.interpolate_at_offset.rgba8i.samples_1
+KHR-GLES31.core.shader_multisample_interpolation.render.interpolate_at_offset_check.rgba8i.samples_1
+KHR-GLES31.core.tessellation_shader.tessellation_shader_tc_barriers.barrier_guarded_read_calls
+glx@glx-visuals-depth -pixmap
+glx@glx-visuals-stencil -pixmap
+
+
+# Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56260499
+dEQP-VK.binding_model.shader_access.primary_cmd_buf.storage_image.tess_eval.multiple_descriptor_sets.multiple_discontiguous_descriptors.2d

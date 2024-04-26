@@ -37,13 +37,14 @@
 #include "loader_dri_helper.h"
 #include "loader_dri3_helper.h"
 #include "util/macros.h"
+#include "util/simple_mtx.h"
 #include "drm-uapi/drm_fourcc.h"
 
 /**
  * A cached blit context.
  */
 struct loader_dri3_blit_context {
-   mtx_t mtx;
+   simple_mtx_t mtx;
    __DRIcontext *ctx;
    __DRIscreen *cur_screen;
    const __DRIcoreExtension *core;
@@ -51,7 +52,7 @@ struct loader_dri3_blit_context {
 
 /* For simplicity we maintain the cache only for a single screen at a time */
 static struct loader_dri3_blit_context blit_context = {
-   _MTX_INITIALIZER_NP, NULL
+   SIMPLE_MTX_INITIALIZER, NULL
 };
 
 static void
@@ -162,7 +163,7 @@ static bool loader_dri3_have_image_blit(const struct loader_dri3_drawable *draw)
 static __DRIcontext *
 loader_dri3_blit_context_get(struct loader_dri3_drawable *draw)
 {
-   mtx_lock(&blit_context.mtx);
+   simple_mtx_lock(&blit_context.mtx);
 
    if (blit_context.ctx && blit_context.cur_screen != draw->dri_screen_render_gpu) {
       blit_context.core->destroyContext(blit_context.ctx);
@@ -186,7 +187,7 @@ loader_dri3_blit_context_get(struct loader_dri3_drawable *draw)
 static void
 loader_dri3_blit_context_put(void)
 {
-   mtx_unlock(&blit_context.mtx);
+   simple_mtx_unlock(&blit_context.mtx);
 }
 
 /**
@@ -461,13 +462,6 @@ loader_dri3_drawable_init(xcb_connection_t *conn,
    draw->depth = reply->depth;
    draw->vtable->set_drawable_size(draw, draw->width, draw->height);
    free(reply);
-
-   draw->swap_method = __DRI_ATTRIB_SWAP_UNDEFINED;
-   if (draw->ext->core->base.version >= 2) {
-      (void )draw->ext->core->getConfigAttrib(dri_config,
-                                              __DRI_ATTRIB_SWAP_METHOD,
-                                              &draw->swap_method);
-   }
 
    /*
     * Make sure server has the same swap interval we do for the new
@@ -955,6 +949,11 @@ loader_dri3_wait_gl(struct loader_dri3_drawable *draw)
       return;
 
    front = dri3_front_buffer(draw);
+   /* TODO: `front` is not supposed to be NULL here, fix the actual bug
+    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/8982
+    */
+   if (!front)
+      return;
 
    /* In the psc->is_different_gpu case, we update the linear_buffer
     * before updating the real front.
@@ -1064,7 +1063,7 @@ loader_dri3_swap_buffers_msc(struct loader_dri3_drawable *draw,
     * The force_copy parameter is used by EGL to attempt to preserve
     * the back buffer across a call to this function.
     */
-   if (draw->swap_method != __DRI_ATTRIB_SWAP_UNDEFINED || force_copy)
+   if (force_copy)
       draw->cur_blit_source = LOADER_DRI3_BACK_ID(draw->cur_back);
 
    /* Exchange the back and fake front. Even though the server knows about these
@@ -1077,7 +1076,7 @@ loader_dri3_swap_buffers_msc(struct loader_dri3_drawable *draw,
       draw->buffers[LOADER_DRI3_FRONT_ID] = back;
       draw->buffers[LOADER_DRI3_BACK_ID(draw->cur_back)] = tmp;
 
-      if (draw->swap_method == __DRI_ATTRIB_SWAP_COPY  || force_copy)
+      if (force_copy)
          draw->cur_blit_source = LOADER_DRI3_FRONT_ID;
    }
 
@@ -2238,10 +2237,8 @@ loader_dri3_get_buffers(__DRIdrawable *driDrawable,
    }
 
    /* pixmaps always have front buffers.
-    * Exchange swaps also mandate fake front buffers.
     */
-   if (draw->type != LOADER_DRI3_DRAWABLE_WINDOW ||
-       draw->swap_method == __DRI_ATTRIB_SWAP_EXCHANGE)
+   if (draw->type != LOADER_DRI3_DRAWABLE_WINDOW)
       buffer_mask |= __DRI_IMAGE_BUFFER_FRONT;
 
    if (buffer_mask & __DRI_IMAGE_BUFFER_FRONT) {
@@ -2320,10 +2317,13 @@ loader_dri3_update_drawable_geometry(struct loader_dri3_drawable *draw)
    geom_reply = xcb_get_geometry_reply(draw->conn, geom_cookie, NULL);
 
    if (geom_reply) {
+      bool changed = draw->width != geom_reply->width || draw->height != geom_reply->height;
       draw->width = geom_reply->width;
       draw->height = geom_reply->height;
-      draw->vtable->set_drawable_size(draw, draw->width, draw->height);
-      draw->ext->flush->invalidate(draw->dri_drawable);
+      if (changed) {
+         draw->vtable->set_drawable_size(draw, draw->width, draw->height);
+         draw->ext->flush->invalidate(draw->dri_drawable);
+      }
 
       free(geom_reply);
    }
@@ -2352,12 +2352,12 @@ loader_dri3_swapbuffer_barrier(struct loader_dri3_drawable *draw)
 void
 loader_dri3_close_screen(__DRIscreen *dri_screen)
 {
-   mtx_lock(&blit_context.mtx);
+   simple_mtx_lock(&blit_context.mtx);
    if (blit_context.ctx && blit_context.cur_screen == dri_screen) {
       blit_context.core->destroyContext(blit_context.ctx);
       blit_context.ctx = NULL;
    }
-   mtx_unlock(&blit_context.mtx);
+   simple_mtx_unlock(&blit_context.mtx);
 }
 
 /**
@@ -2370,7 +2370,6 @@ loader_dri3_close_screen(__DRIscreen *dri_screen)
  * Find a potentially new back buffer, and if it's not been allocated yet and
  * in addition needs initializing, then try to allocate and initialize it.
  */
-#include <stdio.h>
 static struct loader_dri3_buffer *
 dri3_find_back_alloc(struct loader_dri3_drawable *draw)
 {
@@ -2393,7 +2392,7 @@ dri3_find_back_alloc(struct loader_dri3_drawable *draw)
 
    dri3_set_render_buffer(draw, id, back);
 
-   /* If necessary, prefill the back with data according to swap_method mode. */
+   /* If necessary, prefill the back with data. */
    if (draw->cur_blit_source != -1 &&
        draw->buffers[draw->cur_blit_source] &&
        back != draw->buffers[draw->cur_blit_source]) {

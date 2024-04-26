@@ -28,12 +28,12 @@
 #define radv_bvh_node_box16    4
 #define radv_bvh_node_box32    5
 #define radv_bvh_node_instance 6
-#define radv_bvh_node_aabb 7
+#define radv_bvh_node_aabb     7
 
 #define radv_ir_node_triangle 0
 #define radv_ir_node_internal 1
 #define radv_ir_node_instance 2
-#define radv_ir_node_aabb 3
+#define radv_ir_node_aabb     3
 
 #define RADV_GEOMETRY_OPAQUE (1u << 31)
 
@@ -48,6 +48,7 @@
 #include <vulkan/vulkan.h>
 typedef struct radv_ir_node radv_ir_node;
 typedef struct radv_global_sync_data radv_global_sync_data;
+typedef struct radv_bvh_geometry_data radv_bvh_geometry_data;
 
 typedef uint16_t float16_t;
 
@@ -107,8 +108,6 @@ struct radv_accel_struct_header {
 
 struct radv_ir_node {
    radv_aabb aabb;
-   /* Generic normalized cost of not merging this node. */
-   float cost;
 };
 
 #define RADV_UNKNOWN_BVH_OFFSET 0xFFFFFFFF
@@ -118,30 +117,6 @@ struct radv_ir_box_node {
    radv_ir_node base;
    uint32_t children[2];
    uint32_t bvh_offset;
-};
-
-struct radv_ir_aabb_node {
-   radv_ir_node base;
-   uint32_t primitive_id;
-   uint32_t geometry_id_and_flags;
-};
-
-struct radv_ir_triangle_node {
-   radv_ir_node base;
-   float coords[3][3];
-   uint32_t triangle_id;
-   uint32_t id;
-   uint32_t geometry_id_and_flags;
-};
-
-struct radv_ir_instance_node {
-   radv_ir_node base;
-   /* See radv_bvh_instance_node */
-   uint64_t base_ptr;
-   uint32_t custom_instance_and_mask;
-   uint32_t sbt_offset_and_flags;
-   mat3x4 otw_matrix;
-   uint32_t instance_id;
 };
 
 struct radv_global_sync_data {
@@ -216,11 +191,24 @@ struct radv_bvh_box32_node {
    uint32_t reserved[4];
 };
 
-#define RADV_BVH_ROOT_NODE radv_bvh_node_box32
+#define RADV_BVH_ROOT_NODE    radv_bvh_node_box32
 #define RADV_BVH_INVALID_NODE 0xffffffffu
 
 /* If the task index is set to this value, there is no
  * more work to do. */
 #define TASK_INDEX_INVALID 0xFFFFFFFF
+
+struct radv_bvh_geometry_data {
+   uint64_t data;
+   uint64_t indices;
+   uint64_t transform;
+
+   uint32_t geometry_id;
+   uint32_t geometry_type;
+   uint32_t first_id;
+   uint32_t stride;
+   uint32_t vertex_format;
+   uint32_t index_format;
+};
 
 #endif

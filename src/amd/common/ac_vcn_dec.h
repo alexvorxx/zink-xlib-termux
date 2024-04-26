@@ -1,27 +1,8 @@
 /**************************************************************************
  *
  * Copyright 2017 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR
- * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *
  **************************************************************************/
 
@@ -106,6 +87,7 @@
 #define RDECODE_CODEC_H265                                  0x00000010
 #define RDECODE_CODEC_VP9                                   0x00000011
 #define RDECODE_CODEC_AV1                                   0x00000013
+#define RDECODE_MESSAGE_HEVC_DIRECT_REF_LIST                0x00000015
 
 #define RDECODE_ARRAY_MODE_LINEAR                           0x00000000
 #define RDECODE_ARRAY_MODE_MACRO_LINEAR_MICRO_TILED         0x00000001
@@ -600,6 +582,11 @@ typedef struct rvcn_dec_message_dynamic_dpb_t2_s {
     unsigned int dpbAddrLo[16];
     unsigned int dpbAddrHi[16];
 } rvcn_dec_message_dynamic_dpb_t2_t;
+
+typedef struct rvcn_dec_message_hevc_direct_ref_list_s {
+   unsigned int num_direct_reflist;
+   unsigned char multi_direct_reflist[128][2][15];
+} rvcn_dec_message_hevc_direct_ref_list_t;
 
 typedef struct {
    unsigned short viewOrderIndex;

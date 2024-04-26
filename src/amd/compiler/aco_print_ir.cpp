@@ -103,16 +103,20 @@ print_reg_class(const RegClass rc, FILE* output)
 void
 print_physReg(PhysReg reg, unsigned bytes, FILE* output, unsigned flags)
 {
-   if (reg == 124) {
+   if (reg == 106) {
+      fprintf(output, bytes > 4 ? "vcc" : "vcc_lo");
+   } else if (reg == 107) {
+      fprintf(output, "vcc_hi");
+   } else if (reg == 124) {
       fprintf(output, "m0");
-   } else if (reg == 106) {
-      fprintf(output, "vcc");
-   } else if (reg == 253) {
-      fprintf(output, "scc");
-   } else if (reg == 126) {
-      fprintf(output, "exec");
    } else if (reg == 125) {
       fprintf(output, "null");
+   } else if (reg == 126) {
+      fprintf(output, bytes > 4 ? "exec" : "exec_lo");
+   } else if (reg == 127) {
+      fprintf(output, "exec_hi");
+   } else if (reg == 253) {
+      fprintf(output, "scc");
    } else {
       bool is_vgpr = reg / 256;
       unsigned r = reg % 256;
@@ -322,6 +326,31 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
             fprintf(output, " sa_sdst(%d)", sa_sdst);
          break;
       }
+      case aco_opcode::s_delay_alu: {
+         unsigned delay[2] = {imm & 0xfu, (imm >> 7) & 0xfu};
+         unsigned skip = (imm >> 4) & 0x3;
+         for (unsigned i = 0; i < 2; i++) {
+            if (i == 1 && skip) {
+               if (skip == 1)
+                  fprintf(output, " next");
+               else
+                  fprintf(output, " skip_%u", skip - 1);
+            }
+
+            alu_delay_wait wait = (alu_delay_wait)delay[i];
+            if (wait >= alu_delay_wait::VALU_DEP_1 && wait <= alu_delay_wait::VALU_DEP_4)
+               fprintf(output, " valu_dep_%u", delay[i]);
+            else if (wait >= alu_delay_wait::TRANS32_DEP_1 && wait <= alu_delay_wait::TRANS32_DEP_3)
+               fprintf(output, " trans32_dep_%u",
+                       delay[i] - (unsigned)alu_delay_wait::TRANS32_DEP_1 + 1);
+            else if (wait == alu_delay_wait::FMA_ACCUM_CYCLE_1)
+               fprintf(output, " fma_accum_cycle_1");
+            else if (wait >= alu_delay_wait::SALU_CYCLE_1 && wait <= alu_delay_wait::SALU_CYCLE_3)
+               fprintf(output, " salu_cycle_%u",
+                       delay[i] - (unsigned)alu_delay_wait::SALU_CYCLE_1 + 1);
+         }
+         break;
+      }
       case aco_opcode::s_endpgm:
       case aco_opcode::s_endpgm_saved:
       case aco_opcode::s_endpgm_ordered_ps_done:
@@ -362,6 +391,11 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          case sendmsg_get_ddid: fprintf(output, " sendmsg(get_ddid)"); break;
          default: fprintf(output, " imm:%u", imm);
          }
+         break;
+      }
+      case aco_opcode::s_wait_event: {
+         if (!(imm & wait_event_imm_dont_wait_export_ready))
+            fprintf(output, " export_ready");
          break;
       }
       default: {
@@ -491,7 +525,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
       if (mimg.lwe)
          fprintf(output, " lwe");
       if (mimg.r128)
-        fprintf(output, " r128");
+         fprintf(output, " r128");
       if (mimg.a16)
          fprintf(output, " a16");
       if (mimg.d16)
@@ -637,7 +671,13 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          fprintf(output, " opsel_hi");
    }
 
-   if (instr->isDPP16()) {
+   bool bound_ctrl = false, fetch_inactive = false;
+
+   if (instr->opcode == aco_opcode::v_permlane16_b32 ||
+       instr->opcode == aco_opcode::v_permlanex16_b32) {
+      fetch_inactive = instr->valu().opsel[0];
+      bound_ctrl = instr->valu().opsel[1];
+   } else if (instr->isDPP16()) {
       const DPP16_instruction& dpp = instr->dpp16();
       if (dpp.dpp_ctrl <= 0xff) {
          fprintf(output, " quad_perm:[%d,%d,%d,%d]", dpp.dpp_ctrl & 0x3, (dpp.dpp_ctrl >> 2) & 0x3,
@@ -675,13 +715,15 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          fprintf(output, " row_mask:0x%.1x", dpp.row_mask);
       if (dpp.bank_mask != 0xf)
          fprintf(output, " bank_mask:0x%.1x", dpp.bank_mask);
-      if (dpp.bound_ctrl)
-         fprintf(output, " bound_ctrl:1");
+      bound_ctrl = dpp.bound_ctrl;
+      fetch_inactive = dpp.fetch_inactive;
    } else if (instr->isDPP8()) {
       const DPP8_instruction& dpp = instr->dpp8();
-      fprintf(output, " dpp8:[%d,%d,%d,%d,%d,%d,%d,%d]", dpp.lane_sel[0], dpp.lane_sel[1],
-              dpp.lane_sel[2], dpp.lane_sel[3], dpp.lane_sel[4], dpp.lane_sel[5], dpp.lane_sel[6],
-              dpp.lane_sel[7]);
+      fprintf(output, " dpp8:[");
+      for (unsigned i = 0; i < 8; i++)
+         fprintf(output, "%s%u", i ? "," : "", (dpp.lane_sel >> (i * 3)) & 0x7);
+      fprintf(output, "]");
+      fetch_inactive = dpp.fetch_inactive;
    } else if (instr->isSDWA()) {
       const SDWA_instruction& sdwa = instr->sdwa();
       if (!instr->isVOPC()) {
@@ -711,12 +753,51 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          }
       }
    }
+
+   if (bound_ctrl)
+      fprintf(output, " bound_ctrl:1");
+   if (fetch_inactive)
+      fprintf(output, " fi");
+}
+
+void
+print_vopd_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
+                 unsigned flags)
+{
+   unsigned opy_start = get_vopd_opy_start(instr);
+
+   if (!instr->definitions.empty()) {
+      print_definition(&instr->definitions[0], output, flags);
+      fprintf(output, " = ");
+   }
+   fprintf(output, "%s", instr_info.name[(int)instr->opcode]);
+   for (unsigned i = 0; i < MIN2(instr->operands.size(), opy_start); ++i) {
+      fprintf(output, i ? ", " : " ");
+      aco_print_operand(&instr->operands[i], output, flags);
+   }
+
+   fprintf(output, " ::");
+
+   if (instr->definitions.size() > 1) {
+      print_definition(&instr->definitions[1], output, flags);
+      fprintf(output, " = ");
+   }
+   fprintf(output, "%s", instr_info.name[(int)instr->vopd().opy]);
+   for (unsigned i = opy_start; i < instr->operands.size(); ++i) {
+      fprintf(output, i > opy_start ? ", " : " ");
+      aco_print_operand(&instr->operands[i], output, flags);
+   }
 }
 
 void
 aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
                 unsigned flags)
 {
+   if (instr->isVOPD()) {
+      print_vopd_instr(gfx_level, instr, output, flags);
+      return;
+   }
+
    if (!instr->definitions.empty()) {
       for (unsigned i = 0; i < instr->definitions.size(); ++i) {
          print_definition(&instr->definitions[i], output, flags);
@@ -728,34 +809,36 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
    fprintf(output, "%s", instr_info.name[(int)instr->opcode]);
    if (instr->operands.size()) {
       const unsigned num_operands = instr->operands.size();
-      bool* const abs = (bool*)alloca(num_operands * sizeof(bool));
-      bool* const neg = (bool*)alloca(num_operands * sizeof(bool));
-      bool* const opsel = (bool*)alloca(num_operands * sizeof(bool));
-      bool* const f2f32 = (bool*)alloca(num_operands * sizeof(bool));
-      for (unsigned i = 0; i < num_operands; ++i) {
-         abs[i] = false;
-         neg[i] = false;
-         opsel[i] = false;
-         f2f32[i] = false;
-      }
-      bool is_mad_mix = instr->opcode == aco_opcode::v_fma_mix_f32 ||
-                        instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
-                        instr->opcode == aco_opcode::v_fma_mixhi_f16;
-      if (instr->isVALU() && !instr->isVOP3P()) {
-         const VALU_instruction& valu = instr->valu();
-         for (unsigned i = 0; i < MIN2(num_operands, 3); ++i) {
-            abs[i] = valu.abs[i];
-            neg[i] = valu.neg[i];
-            opsel[i] = valu.opsel[i];
-         }
-      } else if (instr->isVOP3P() && is_mad_mix) {
+      bitarray8 abs = 0;
+      bitarray8 neg = 0;
+      bitarray8 neg_lo = 0;
+      bitarray8 neg_hi = 0;
+      bitarray8 opsel = 0;
+      bitarray8 f2f32 = 0;
+      bitarray8 opsel_lo = 0;
+      bitarray8 opsel_hi = -1;
+
+      if (instr->opcode == aco_opcode::v_fma_mix_f32 ||
+          instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
+          instr->opcode == aco_opcode::v_fma_mixhi_f16) {
          const VALU_instruction& vop3p = instr->valu();
-         for (unsigned i = 0; i < MIN2(num_operands, 3); ++i) {
-            abs[i] = vop3p.neg_hi[i];
-            neg[i] = vop3p.neg_lo[i];
-            f2f32[i] = vop3p.opsel_hi[i];
-            opsel[i] = f2f32[i] && vop3p.opsel_lo[i];
-         }
+         abs = vop3p.abs;
+         neg = vop3p.neg;
+         f2f32 = vop3p.opsel_hi;
+         opsel = f2f32 & vop3p.opsel_lo;
+      } else if (instr->isVOP3P()) {
+         const VALU_instruction& vop3p = instr->valu();
+         neg = vop3p.neg_lo & vop3p.neg_hi;
+         neg_lo = vop3p.neg_lo & ~neg;
+         neg_hi = vop3p.neg_hi & ~neg;
+         opsel_lo = vop3p.opsel_lo;
+         opsel_hi = vop3p.opsel_hi;
+      } else if (instr->isVALU() && instr->opcode != aco_opcode::v_permlane16_b32 &&
+                 instr->opcode != aco_opcode::v_permlanex16_b32) {
+         const VALU_instruction& valu = instr->valu();
+         abs = valu.abs;
+         neg = valu.neg;
+         opsel = valu.opsel;
       }
       for (unsigned i = 0; i < num_operands; ++i) {
          if (i)
@@ -763,30 +846,31 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
          else
             fprintf(output, " ");
 
-         if (neg[i])
-            fprintf(output, "-");
-         if (abs[i])
-            fprintf(output, "|");
-         if (opsel[i])
-            fprintf(output, "hi(");
-         else if (f2f32[i])
-            fprintf(output, "lo(");
-         aco_print_operand(&instr->operands[i], output, flags);
-         if (f2f32[i] || opsel[i])
-            fprintf(output, ")");
-         if (abs[i])
-            fprintf(output, "|");
+         if (i < 3) {
+            if (neg[i])
+               fprintf(output, "-");
+            if (abs[i])
+               fprintf(output, "|");
+            if (opsel[i])
+               fprintf(output, "hi(");
+            else if (f2f32[i])
+               fprintf(output, "lo(");
+         }
 
-         if (instr->isVOP3P() && !is_mad_mix) {
-            const VALU_instruction& vop3 = instr->valu();
-            if (vop3.opsel_lo[i] || !vop3.opsel_hi[i]) {
-               fprintf(output, ".%c%c", vop3.opsel_lo[i] ? 'y' : 'x', vop3.opsel_hi[i] ? 'y' : 'x');
-            }
-            if (vop3.neg_lo[i] && vop3.neg_hi[i])
-               fprintf(output, "*[-1,-1]");
-            else if (vop3.neg_lo[i])
+         aco_print_operand(&instr->operands[i], output, flags);
+
+         if (i < 3) {
+            if (f2f32[i] || opsel[i])
+               fprintf(output, ")");
+            if (abs[i])
+               fprintf(output, "|");
+
+            if (opsel_lo[i] || !opsel_hi[i])
+               fprintf(output, ".%c%c", opsel_lo[i] ? 'y' : 'x', opsel_hi[i] ? 'y' : 'x');
+
+            if (neg_lo[i])
                fprintf(output, "*[-1,1]");
-            else if (vop3.neg_hi[i])
+            if (neg_hi[i])
                fprintf(output, "*[1,-1]");
          }
       }
@@ -821,59 +905,51 @@ print_block_kind(uint16_t kind, FILE* output)
       fprintf(output, "invert, ");
    if (kind & block_kind_uses_discard)
       fprintf(output, "discard, ");
-   if (kind & block_kind_needs_lowering)
-      fprintf(output, "needs_lowering, ");
+   if (kind & block_kind_resume)
+      fprintf(output, "resume, ");
    if (kind & block_kind_export_end)
       fprintf(output, "export_end, ");
+   if (kind & block_kind_end_with_regs)
+      fprintf(output, "end_with_regs, ");
 }
 
 static void
 print_stage(Stage stage, FILE* output)
 {
-   fprintf(output, "ACO shader stage: ");
+   fprintf(output, "ACO shader stage: SW (");
 
-   if (stage == compute_cs)
-      fprintf(output, "compute_cs");
-   else if (stage == fragment_fs)
-      fprintf(output, "fragment_fs");
-   else if (stage == vertex_ls)
-      fprintf(output, "vertex_ls");
-   else if (stage == vertex_es)
-      fprintf(output, "vertex_es");
-   else if (stage == vertex_vs)
-      fprintf(output, "vertex_vs");
-   else if (stage == tess_control_hs)
-      fprintf(output, "tess_control_hs");
-   else if (stage == vertex_tess_control_hs)
-      fprintf(output, "vertex_tess_control_hs");
-   else if (stage == tess_eval_es)
-      fprintf(output, "tess_eval_es");
-   else if (stage == tess_eval_vs)
-      fprintf(output, "tess_eval_vs");
-   else if (stage == geometry_gs)
-      fprintf(output, "geometry_gs");
-   else if (stage == vertex_geometry_gs)
-      fprintf(output, "vertex_geometry_gs");
-   else if (stage == tess_eval_geometry_gs)
-      fprintf(output, "tess_eval_geometry_gs");
-   else if (stage == vertex_ngg)
-      fprintf(output, "vertex_ngg");
-   else if (stage == tess_eval_ngg)
-      fprintf(output, "tess_eval_ngg");
-   else if (stage == vertex_geometry_ngg)
-      fprintf(output, "vertex_geometry_ngg");
-   else if (stage == tess_eval_geometry_ngg)
-      fprintf(output, "tess_eval_geometry_ngg");
-   else if (stage == mesh_ngg)
-      fprintf(output, "mesh_ngg");
-   else if (stage == task_cs)
-      fprintf(output, "task_cs");
-   else if (stage == raytracing_cs)
-      fprintf(output, "raytracing_cs");
-   else
-      fprintf(output, "unknown");
+   u_foreach_bit (s, (uint32_t)stage.sw) {
+      switch ((SWStage)(1 << s)) {
+      case SWStage::VS: fprintf(output, "VS"); break;
+      case SWStage::GS: fprintf(output, "GS"); break;
+      case SWStage::TCS: fprintf(output, "TCS"); break;
+      case SWStage::TES: fprintf(output, "TES"); break;
+      case SWStage::FS: fprintf(output, "FS"); break;
+      case SWStage::CS: fprintf(output, "CS"); break;
+      case SWStage::TS: fprintf(output, "TS"); break;
+      case SWStage::MS: fprintf(output, "MS"); break;
+      case SWStage::RT: fprintf(output, "RT"); break;
+      default: unreachable("invalid SW stage");
+      }
+      if (stage.num_sw_stages() > 1)
+         fprintf(output, "+");
+   }
 
-   fprintf(output, "\n");
+   fprintf(output, "), HW (");
+
+   switch (stage.hw) {
+   case AC_HW_LOCAL_SHADER: fprintf(output, "LOCAL_SHADER"); break;
+   case AC_HW_HULL_SHADER: fprintf(output, "HULL_SHADER"); break;
+   case AC_HW_EXPORT_SHADER: fprintf(output, "EXPORT_SHADER"); break;
+   case AC_HW_LEGACY_GEOMETRY_SHADER: fprintf(output, "LEGACY_GEOMETRY_SHADER"); break;
+   case AC_HW_VERTEX_SHADER: fprintf(output, "VERTEX_SHADER"); break;
+   case AC_HW_NEXT_GEN_GEOMETRY_SHADER: fprintf(output, "NEXT_GEN_GEOMETRY_SHADER"); break;
+   case AC_HW_PIXEL_SHADER: fprintf(output, "PIXEL_SHADER"); break;
+   case AC_HW_COMPUTE_SHADER: fprintf(output, "COMPUTE_SHADER"); break;
+   default: unreachable("invalid HW stage");
+   }
+
+   fprintf(output, ")\n");
 }
 
 void

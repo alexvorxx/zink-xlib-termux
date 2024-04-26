@@ -66,6 +66,8 @@ llvmpipe_flush(struct pipe_context *pipe,
    if (fence && (!*fence))
       *fence = (struct pipe_fence_handle *)lp_fence_create(0);
 
+   llvmpipe_clear_sample_functions_cache(llvmpipe, fence);
+
    /* Enable to dump BMPs of the color/depth buffers each frame */
    if (0) {
       static unsigned frame_no = 1;
@@ -95,7 +97,7 @@ llvmpipe_finish(struct pipe_context *pipe,
    llvmpipe_flush(pipe, &fence, reason);
    if (fence) {
       pipe->screen->fence_finish(pipe->screen, NULL, fence,
-                                 PIPE_TIMEOUT_INFINITE);
+                                 OS_TIMEOUT_INFINITE);
       pipe->screen->fence_reference(pipe->screen, &fence, NULL);
    }
 }
@@ -109,13 +111,13 @@ llvmpipe_finish(struct pipe_context *pipe,
  *
  * TODO: move this logic to an auxiliary library?
  */
-boolean
+bool
 llvmpipe_flush_resource(struct pipe_context *pipe,
                         struct pipe_resource *resource,
                         unsigned level,
-                        boolean read_only,
-                        boolean cpu_access,
-                        boolean do_not_block,
+                        bool read_only,
+                        bool cpu_access,
+                        bool do_not_block,
                         const char *reason)
 {
    unsigned referenced = 0;
@@ -134,7 +136,7 @@ llvmpipe_flush_resource(struct pipe_context *pipe,
 
       if (cpu_access)
          if (do_not_block)
-            return FALSE;
+            return false;
 
       /*
        * Flush and wait.
@@ -143,5 +145,5 @@ llvmpipe_flush_resource(struct pipe_context *pipe,
       llvmpipe_finish(pipe, reason);
    }
 
-   return TRUE;
+   return true;
 }

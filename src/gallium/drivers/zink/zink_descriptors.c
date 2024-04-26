@@ -313,7 +313,7 @@ init_db_template_entry(struct zink_screen *screen, struct zink_shader *shader, e
                        unsigned idx, struct zink_descriptor_template *entry, unsigned *entry_idx)
 {
     int index = shader->bindings[type][idx].index;
-    gl_shader_stage stage = shader->info.stage;
+    gl_shader_stage stage = clamp_stage(&shader->info);
     entry->count = shader->bindings[type][idx].size;
 
     switch (shader->bindings[type][idx].type) {
@@ -676,9 +676,15 @@ void
 zink_descriptor_shader_get_binding_offsets(const struct zink_shader *shader, unsigned *offsets)
 {
    offsets[ZINK_DESCRIPTOR_TYPE_UBO] = 0;
-   offsets[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] = shader->bindings[ZINK_DESCRIPTOR_TYPE_UBO][shader->num_bindings[ZINK_DESCRIPTOR_TYPE_UBO] - 1].binding + 1;
-   offsets[ZINK_DESCRIPTOR_TYPE_SSBO] = offsets[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] + shader->bindings[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW][shader->num_bindings[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] - 1].binding + 1;
-   offsets[ZINK_DESCRIPTOR_TYPE_IMAGE] = offsets[ZINK_DESCRIPTOR_TYPE_SSBO] + shader->bindings[ZINK_DESCRIPTOR_TYPE_SSBO][shader->num_bindings[ZINK_DESCRIPTOR_TYPE_SSBO] - 1].binding + 1;
+   offsets[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] = (shader->num_bindings[ZINK_DESCRIPTOR_TYPE_UBO] ?
+                                                shader->bindings[ZINK_DESCRIPTOR_TYPE_UBO][shader->num_bindings[ZINK_DESCRIPTOR_TYPE_UBO] - 1].binding + 1 :
+                                                1);
+   offsets[ZINK_DESCRIPTOR_TYPE_SSBO] = offsets[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] + (shader->num_bindings[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] ?
+                                                                                     shader->bindings[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW][shader->num_bindings[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] - 1].binding + 1 :
+                                                                                     1);
+   offsets[ZINK_DESCRIPTOR_TYPE_IMAGE] = offsets[ZINK_DESCRIPTOR_TYPE_SSBO] + (shader->num_bindings[ZINK_DESCRIPTOR_TYPE_SSBO] ?
+                                                                              shader->bindings[ZINK_DESCRIPTOR_TYPE_SSBO][shader->num_bindings[ZINK_DESCRIPTOR_TYPE_SSBO] - 1].binding + 1 :
+                                                                              1);
 }
 
 void
@@ -686,7 +692,7 @@ zink_descriptor_shader_init(struct zink_screen *screen, struct zink_shader *shad
 {
    VkDescriptorSetLayoutBinding bindings[ZINK_DESCRIPTOR_BASE_TYPES * ZINK_MAX_DESCRIPTORS_PER_TYPE];
    unsigned num_bindings = 0;
-   VkShaderStageFlagBits stage_flags = mesa_to_vk_shader_stage(shader->info.stage);
+   VkShaderStageFlagBits stage_flags = mesa_to_vk_shader_stage(clamp_stage(&shader->info));
 
    unsigned desc_set_size = shader->has_uniforms;
    for (unsigned i = 0; i < ZINK_DESCRIPTOR_BASE_TYPES; i++)
@@ -703,7 +709,7 @@ zink_descriptor_shader_init(struct zink_screen *screen, struct zink_shader *shad
       binding->pImmutableSamplers = NULL;
       struct zink_descriptor_template *entry = &shader->precompile.db_template[num_bindings];
       entry->count = 1;
-      entry->offset = offsetof(struct zink_context, di.db.ubos[shader->info.stage][0]);
+      entry->offset = offsetof(struct zink_context, di.db.ubos[clamp_stage(&shader->info)][0]);
       entry->stride = sizeof(VkDescriptorAddressInfoEXT);
       entry->db_size = screen->info.db_props.robustUniformBufferDescriptorSize;
       num_bindings++;
@@ -1054,8 +1060,11 @@ enlarge_db(struct zink_context *ctx)
    struct zink_batch_state *bs = ctx->batch.state;
    /* ensure current db surives */
    zink_batch_reference_resource(&ctx->batch, bs->dd.db);
-   /* rebinding a db mid-batch is extremely costly: scaling by 10x should ensure it never happens more than twice */
-   ctx->dd.db.max_db_size *= 10;
+   /* rebinding a db mid-batch is extremely costly: if we start with a factor
+    * 16 and then half the factor with each new allocation. It shouldn't need to
+    * do this more than twice. */
+   ctx->dd.db.max_db_size *= ctx->dd.db.size_enlarge_scale;
+   ctx->dd.db.size_enlarge_scale = MAX2(ctx->dd.db.size_enlarge_scale >> 1, 4);
    reinit_db(screen, bs);
 }
 
@@ -1193,6 +1202,7 @@ zink_descriptors_update_masked_buffer(struct zink_context *ctx, bool is_compute,
          bs->dd.cur_db_offset[type] = bs->dd.db_offset;
          bs->dd.db_offset += pg->dd.db_size[type];
       }
+      zink_flush_dgc_if_enabled(ctx);
       /* templates are indexed by the set id, so increment type by 1
          * (this is effectively an optimization of indirecting through screen->desc_set_id)
          */
@@ -1229,6 +1239,7 @@ zink_descriptors_update_masked(struct zink_context *ctx, bool is_compute, uint8_
    u_foreach_bit(type, changed_sets) {
       assert(type + 1 < pg->num_dsl);
       if (pg->dd.pool_key[type]) {
+         zink_flush_dgc_if_enabled(ctx);
          /* templates are indexed by the set id, so increment type by 1
           * (this is effectively an optimization of indirecting through screen->desc_set_id)
           */
@@ -1249,6 +1260,7 @@ zink_descriptors_update_masked(struct zink_context *ctx, bool is_compute, uint8_
          continue;
       /* same set indexing as above */
       assert(bs->dd.sets[is_compute][type + 1]);
+      zink_flush_dgc_if_enabled(ctx);
       VKSCR(CmdBindDescriptorSets)(bs->cmdbuf,
                               is_compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                               /* same set indexing as above */
@@ -1343,6 +1355,7 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
          enlarge_db(ctx);
          changed_sets = pg->dd.binding_usage;
          ctx->dd.push_state_changed[is_compute] = true;
+         zink_flush_dgc_if_enabled(ctx);
       }
 
       if (!bs->dd.db_bound)
@@ -1386,6 +1399,7 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
             bs->dd.cur_db_offset[ZINK_DESCRIPTOR_TYPE_UNIFORMS] = bs->dd.db_offset;
             bs->dd.db_offset += ctx->dd.db_size[is_compute];
          }
+         zink_flush_dgc_if_enabled(ctx);
          VKCTX(CmdSetDescriptorBufferOffsetsEXT)(bs->cmdbuf,
                                                  is_compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                                                  pg->layout,
@@ -1393,6 +1407,9 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
                                                  &index,
                                                  &offset);
       } else {
+         if (ctx->dd.push_state_changed[0]) {
+            zink_flush_dgc_if_enabled(ctx);
+         }
          if (have_KHR_push_descriptor) {
             if (ctx->dd.push_state_changed[is_compute])
                VKCTX(CmdPushDescriptorSetWithTemplateKHR)(bs->cmdbuf, pg->dd.templates[0],
@@ -1442,8 +1459,16 @@ zink_context_invalidate_descriptor_state(struct zink_context *ctx, gl_shader_sta
 {
    if (type == ZINK_DESCRIPTOR_TYPE_UBO && !start)
       ctx->dd.push_state_changed[shader == MESA_SHADER_COMPUTE] = true;
+   else
+      ctx->dd.state_changed[shader == MESA_SHADER_COMPUTE] |= BITFIELD_BIT(type);
+}
+void
+zink_context_invalidate_descriptor_state_compact(struct zink_context *ctx, gl_shader_stage shader, enum zink_descriptor_type type, unsigned start, unsigned count)
+{
+   if (type == ZINK_DESCRIPTOR_TYPE_UBO && !start)
+      ctx->dd.push_state_changed[shader == MESA_SHADER_COMPUTE] = true;
    else {
-      if (zink_screen(ctx->base.screen)->compact_descriptors && type > ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW)
+      if (type > ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW)
          type -= ZINK_DESCRIPTOR_COMPACT;
       ctx->dd.state_changed[shader == MESA_SHADER_COMPUTE] |= BITFIELD_BIT(type);
    }
@@ -1479,7 +1504,7 @@ zink_batch_descriptor_deinit(struct zink_screen *screen, struct zink_batch_state
    }
 
    if (bs->dd.db_xfer)
-      pipe_buffer_unmap(&bs->ctx->base, bs->dd.db_xfer);
+      zink_screen_buffer_unmap(&screen->base, bs->dd.db_xfer);
    bs->dd.db_xfer = NULL;
    if (bs->dd.db)
       screen->base.resource_destroy(&screen->base, &bs->dd.db->base.b);
@@ -1566,12 +1591,12 @@ zink_batch_descriptor_init(struct zink_screen *screen, struct zink_batch_state *
    }
 
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB && !(bs->ctx->flags & ZINK_CONTEXT_COPY_ONLY)) {
-      unsigned bind = ZINK_BIND_RESOURCE_DESCRIPTOR | ZINK_BIND_SAMPLER_DESCRIPTOR;
+      unsigned bind = ZINK_BIND_DESCRIPTOR;
       struct pipe_resource *pres = pipe_buffer_create(&screen->base, bind, 0, bs->ctx->dd.db.max_db_size * screen->base_descriptor_size);
       if (!pres)
          return false;
       bs->dd.db = zink_resource(pres);
-      bs->dd.db_map = pipe_buffer_map(&bs->ctx->base, pres, PIPE_MAP_READ | PIPE_MAP_WRITE | PIPE_MAP_PERSISTENT, &bs->dd.db_xfer);
+      bs->dd.db_map = pipe_buffer_map(&bs->ctx->base, pres, PIPE_MAP_READ | PIPE_MAP_WRITE | PIPE_MAP_PERSISTENT | PIPE_MAP_COHERENT | PIPE_MAP_THREAD_SAFE, &bs->dd.db_xfer);
    }
    return true;
 }
@@ -1622,6 +1647,7 @@ zink_descriptors_init(struct zink_context *ctx)
       }
       /* start small */
       ctx->dd.db.max_db_size = 250;
+      ctx->dd.db.size_enlarge_scale = 16;
    }
 
    return true;
@@ -1708,7 +1734,7 @@ zink_descriptors_init_bindless(struct zink_context *ctx)
    ctx->dd.bindless_init = true;
 
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
-      unsigned bind = ZINK_BIND_RESOURCE_DESCRIPTOR | ZINK_BIND_SAMPLER_DESCRIPTOR;
+      unsigned bind = ZINK_BIND_DESCRIPTOR;
       VkDeviceSize size;
       VKSCR(GetDescriptorSetLayoutSizeEXT)(screen->dev, screen->bindless_layout, &size);
       struct pipe_resource *pres = pipe_buffer_create(&screen->base, bind, 0, size);

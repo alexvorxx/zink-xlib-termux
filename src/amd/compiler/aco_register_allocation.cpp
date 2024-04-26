@@ -24,6 +24,7 @@
 
 #include "aco_ir.h"
 
+#include "util/bitset.h"
 #include "util/enum_operators.h"
 
 #include <algorithm>
@@ -61,7 +62,7 @@ struct assignment {
    };
    uint32_t affinity = 0;
    assignment() = default;
-   assignment(PhysReg reg_, RegClass rc_) : reg(reg_), rc(rc_), assigned(-1) {}
+   assignment(PhysReg reg_, RegClass rc_) : reg(reg_), rc(rc_) { assigned = true; }
    void set(const Definition& def)
    {
       assigned = true;
@@ -88,6 +89,10 @@ struct ra_ctx {
    uint16_t vgpr_limit;
    std::bitset<512> war_hint;
 
+   uint16_t sgpr_bounds;
+   uint16_t vgpr_bounds;
+   uint16_t num_linear_vgprs;
+
    ra_test_policy policy;
 
    ra_ctx(Program* program_, ra_test_policy policy_)
@@ -95,11 +100,15 @@ struct ra_ctx {
          renames(program->blocks.size()), policy(policy_)
    {
       pseudo_dummy.reset(
-         create_instruction<Instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
+         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
       phi_dummy.reset(
-         create_instruction<Instruction>(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
+         create_instruction<Pseudo_instruction>(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
       sgpr_limit = get_addr_sgpr_from_waves(program, program->min_waves);
       vgpr_limit = get_addr_vgpr_from_waves(program, program->min_waves);
+
+      sgpr_bounds = program->max_reg_demand.sgpr;
+      vgpr_bounds = program->max_reg_demand.vgpr;
+      num_linear_vgprs = 0;
    }
 };
 
@@ -193,13 +202,22 @@ get_stride(RegClass rc)
 }
 
 PhysRegInterval
-get_reg_bounds(Program* program, RegType type)
+get_reg_bounds(ra_ctx& ctx, RegType type, bool linear_vgpr)
 {
-   if (type == RegType::vgpr) {
-      return {PhysReg{256}, (unsigned)program->max_reg_demand.vgpr};
+   uint16_t linear_vgpr_start = ctx.vgpr_bounds - ctx.num_linear_vgprs;
+   if (type == RegType::vgpr && linear_vgpr) {
+      return PhysRegInterval{PhysReg(256 + linear_vgpr_start), ctx.num_linear_vgprs};
+   } else if (type == RegType::vgpr) {
+      return PhysRegInterval{PhysReg(256), linear_vgpr_start};
    } else {
-      return {PhysReg{0}, (unsigned)program->max_reg_demand.sgpr};
+      return PhysRegInterval{PhysReg(0), ctx.sgpr_bounds};
    }
+}
+
+PhysRegInterval
+get_reg_bounds(ra_ctx& ctx, RegClass rc)
+{
+   return get_reg_bounds(ctx, rc.type(), rc.is_linear_vgpr());
 }
 
 struct DefInfo {
@@ -213,7 +231,7 @@ struct DefInfo {
       size = rc.size();
       stride = get_stride(rc);
 
-      bounds = get_reg_bounds(ctx.program, rc.type());
+      bounds = get_reg_bounds(ctx, rc);
 
       if (rc.is_subdword() && operand >= 0) {
          /* stride in bytes */
@@ -245,7 +263,7 @@ struct DefInfo {
          assert(ctx.program->gfx_level == GFX9 && "Image D16 on GFX8 not supported.");
 
          if (imageGather4D16Bug)
-            bounds.size -= rc.bytes() / 4;
+            bounds.size -= MAX2(rc.bytes() / 4 - ctx.num_linear_vgprs, 0);
       }
    }
 };
@@ -261,7 +279,7 @@ public:
 
    uint32_t& operator[](PhysReg index) { return regs[index]; }
 
-   unsigned count_zero(PhysRegInterval reg_interval)
+   unsigned count_zero(PhysRegInterval reg_interval) const
    {
       unsigned res = 0;
       for (PhysReg reg : reg_interval)
@@ -270,16 +288,17 @@ public:
    }
 
    /* Returns true if any of the bytes in the given range are allocated or blocked */
-   bool test(PhysReg start, unsigned num_bytes)
+   bool test(PhysReg start, unsigned num_bytes) const
    {
       for (PhysReg i = start; i.reg_b < start.reg_b + num_bytes; i = PhysReg(i + 1)) {
          assert(i <= 511);
          if (regs[i] & 0x0FFFFFFF)
             return true;
          if (regs[i] == 0xF0000000) {
-            assert(subdword_regs.find(i) != subdword_regs.end());
+            auto it = subdword_regs.find(i);
+            assert(it != subdword_regs.end());
             for (unsigned j = i.byte(); i * 4 + j < start.reg_b + num_bytes && j < 4; j++) {
-               if (subdword_regs[i][j])
+               if (it->second[j])
                   return true;
             }
          }
@@ -295,24 +314,28 @@ public:
          fill(start, rc.size(), 0xFFFFFFFF);
    }
 
-   bool is_blocked(PhysReg start)
+   bool is_blocked(PhysReg start) const
    {
       if (regs[start] == 0xFFFFFFFF)
          return true;
       if (regs[start] == 0xF0000000) {
+         auto it = subdword_regs.find(start);
+         assert(it != subdword_regs.end());
          for (unsigned i = start.byte(); i < 4; i++)
-            if (subdword_regs[start][i] == 0xFFFFFFFF)
+            if (it->second[i] == 0xFFFFFFFF)
                return true;
       }
       return false;
    }
 
-   bool is_empty_or_blocked(PhysReg start)
+   bool is_empty_or_blocked(PhysReg start) const
    {
       /* Empty is 0, blocked is 0xFFFFFFFF, so to check both we compare the
        * incremented value to 1 */
       if (regs[start] == 0xF0000000) {
-         return subdword_regs[start][start.byte()] + 1 <= 1;
+         auto it = subdword_regs.find(start);
+         assert(it != subdword_regs.end());
+         return it->second[start.byte()] + 1 <= 1;
       }
       return regs[start] + 1 <= 1;
    }
@@ -345,9 +368,9 @@ public:
 
    void clear(Definition def) { clear(def.physReg(), def.regClass()); }
 
-   unsigned get_id(PhysReg reg)
+   unsigned get_id(PhysReg reg) const
    {
-      return regs[reg] == 0xF0000000 ? subdword_regs[reg][reg.byte()] : regs[reg];
+      return regs[reg] == 0xF0000000 ? subdword_regs.at(reg)[reg.byte()] : regs[reg];
    }
 
 private:
@@ -375,7 +398,7 @@ private:
    }
 };
 
-std::vector<unsigned> find_vars(ra_ctx& ctx, RegisterFile& reg_file,
+std::vector<unsigned> find_vars(ra_ctx& ctx, const RegisterFile& reg_file,
                                 const PhysRegInterval reg_interval);
 
 /* helper function for debugging */
@@ -418,10 +441,9 @@ print_reg(const RegisterFile& reg_file, PhysReg reg, bool has_adjacent_variable)
 
 /* helper function for debugging */
 UNUSED void
-print_regs(ra_ctx& ctx, bool vgprs, RegisterFile& reg_file)
+print_regs(ra_ctx& ctx, PhysRegInterval regs, const RegisterFile& reg_file)
 {
-   PhysRegInterval regs = get_reg_bounds(ctx.program, vgprs ? RegType::vgpr : RegType::sgpr);
-   char reg_char = vgprs ? 'v' : 's';
+   char reg_char = regs.lo().reg() >= 256 ? 'v' : 's';
    const int max_regs_per_line = 64;
 
    /* print markers */
@@ -460,8 +482,7 @@ print_regs(ra_ctx& ctx, bool vgprs, RegisterFile& reg_file)
    printf("%u/%u used, %u/%u free\n", regs.size - free_regs, regs.size, free_regs, regs.size);
 
    /* print assignments ordered by registers */
-   std::map<PhysReg, std::pair<unsigned, unsigned>>
-      regs_to_vars; /* maps to byte size and temp id */
+   std::map<PhysReg, std::pair<unsigned, unsigned>> regs_to_vars; /* maps to byte size and temp id */
    for (unsigned id : find_vars(ctx, reg_file, regs)) {
       const assignment& var = ctx.assignments[id];
       PhysReg reg = var.reg;
@@ -478,11 +499,11 @@ print_regs(ra_ctx& ctx, bool vgprs, RegisterFile& reg_file)
           ctx.orig_names[size_id.second].id() != size_id.second) {
          printf("(was %%%d) ", ctx.orig_names[size_id.second].id());
       }
-      printf("= %c[%d", reg_char, first_reg.reg() - regs.lo());
+      printf("= %c[%d", reg_char, first_reg.reg() % 256);
       PhysReg last_reg = first_reg.advance(size_id.first - 1);
       if (first_reg.reg() != last_reg.reg()) {
          assert(first_reg.byte() == 0 && last_reg.byte() == 3);
-         printf("-%d", last_reg.reg() - regs.lo());
+         printf("-%d", last_reg.reg() % 256);
       }
       printf("]");
       if (first_reg.byte() != 0 || last_reg.byte() != 3) {
@@ -512,7 +533,7 @@ get_subdword_operand_stride(amd_gfx_level gfx_level, const aco_ptr<Instruction>&
          return rc.bytes();
       if (can_use_opsel(gfx_level, instr->opcode, idx))
          return 2;
-      if (instr->format == Format::VOP3P)
+      if (instr->isVOP3P())
          return 2;
    }
 
@@ -880,7 +901,7 @@ update_renames(ra_ctx& ctx, RegisterFile& reg_file,
 }
 
 std::optional<PhysReg>
-get_reg_simple(ra_ctx& ctx, RegisterFile& reg_file, DefInfo info)
+get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
 {
    const PhysRegInterval& bounds = info.bounds;
    uint32_t size = info.size;
@@ -973,7 +994,8 @@ get_reg_simple(ra_ctx& ctx, RegisterFile& reg_file, DefInfo info)
     * larger instruction encodings or copies
     * TODO: don't do this in situations where it doesn't benefit */
    if (rc.is_subdword()) {
-      for (std::pair<const uint32_t, std::array<uint32_t, 4>>& entry : reg_file.subdword_regs) {
+      for (const std::pair<const uint32_t, std::array<uint32_t, 4>>& entry :
+           reg_file.subdword_regs) {
          assert(reg_file[PhysReg{entry.first}] == 0xF0000000);
          if (!bounds.contains({PhysReg{entry.first}, rc.size()}))
             continue;
@@ -1003,7 +1025,7 @@ get_reg_simple(ra_ctx& ctx, RegisterFile& reg_file, DefInfo info)
 
 /* collect variables from a register area */
 std::vector<unsigned>
-find_vars(ra_ctx& ctx, RegisterFile& reg_file, const PhysRegInterval reg_interval)
+find_vars(ra_ctx& ctx, const RegisterFile& reg_file, const PhysRegInterval reg_interval)
 {
    std::vector<unsigned> vars;
    for (PhysReg j : reg_interval) {
@@ -1011,7 +1033,7 @@ find_vars(ra_ctx& ctx, RegisterFile& reg_file, const PhysRegInterval reg_interva
          continue;
       if (reg_file[j] == 0xF0000000) {
          for (unsigned k = 0; k < 4; k++) {
-            unsigned id = reg_file.subdword_regs[j][k];
+            unsigned id = reg_file.subdword_regs.at(j)[k];
             if (id && (vars.empty() || id != vars.back()))
                vars.emplace_back(id);
          }
@@ -1088,8 +1110,8 @@ get_reg_for_create_vector_copy(ra_ctx& ctx, RegisterFile& reg_file,
              instr->operands[i].regClass() == info.rc) {
             assignment& op = ctx.assignments[instr->operands[i].tempId()];
             /* if everything matches, create parallelcopy for the killed operand */
-            if (!intersects(def_reg, PhysRegInterval{op.reg, op.rc.size()}) &&
-                op.reg != scc && reg_file.get_id(op.reg) == instr->operands[i].tempId()) {
+            if (!intersects(def_reg, PhysRegInterval{op.reg, op.rc.size()}) && op.reg != scc &&
+                reg_file.get_id(op.reg) == instr->operands[i].tempId()) {
                Definition pc_def = Definition(reg, info.rc);
                parallelcopies.emplace_back(instr->operands[i], pc_def);
                return op.reg;
@@ -1110,7 +1132,7 @@ get_regs_for_copies(ra_ctx& ctx, RegisterFile& reg_file,
    /* Variables are sorted from large to small and with increasing assigned register */
    for (unsigned id : vars) {
       assignment& var = ctx.assignments[id];
-      PhysRegInterval bounds = get_reg_bounds(ctx.program, var.rc.type());
+      PhysRegInterval bounds = get_reg_bounds(ctx, var.rc);
       DefInfo info = DefInfo(ctx, ctx.pseudo_dummy, var.rc, -1);
       uint32_t size = info.size;
 
@@ -1192,9 +1214,8 @@ get_regs_for_copies(ra_ctx& ctx, RegisterFile& reg_file,
                n++;
                continue;
             }
-            /* we cannot split live ranges of linear vgprs inside control flow */
-            if (!(ctx.block->kind & block_kind_top_level) &&
-                ctx.assignments[reg_file[j]].rc.is_linear_vgpr()) {
+            /* we cannot split live ranges of linear vgprs */
+            if (ctx.assignments[reg_file[j]].rc.is_linear_vgpr()) {
                found = false;
                break;
             }
@@ -1254,7 +1275,7 @@ get_regs_for_copies(ra_ctx& ctx, RegisterFile& reg_file,
 }
 
 std::optional<PhysReg>
-get_reg_impl(ra_ctx& ctx, RegisterFile& reg_file,
+get_reg_impl(ra_ctx& ctx, const RegisterFile& reg_file,
              std::vector<std::pair<Operand, Definition>>& parallelcopies, const DefInfo& info,
              aco_ptr<Instruction>& instr)
 {
@@ -1283,7 +1304,8 @@ get_reg_impl(ra_ctx& ctx, RegisterFile& reg_file,
       }
    }
 
-   assert(regs_free >= size);
+   assert((regs_free + ctx.num_linear_vgprs) >= size);
+
    /* we might have to move dead operands to dst in order to make space */
    unsigned op_moves = 0;
 
@@ -1340,10 +1362,8 @@ get_reg_impl(ra_ctx& ctx, RegisterFile& reg_file,
             break;
          }
 
-         /* we cannot split live ranges of linear vgprs inside control flow */
-         // TODO: ensure that live range splits inside control flow are never necessary
-         if (!(ctx.block->kind & block_kind_top_level) &&
-             ctx.assignments[reg_file[j]].rc.is_linear_vgpr()) {
+         /* we cannot split live ranges of linear vgprs */
+         if (ctx.assignments[reg_file[j]].rc.is_linear_vgpr()) {
             found = false;
             break;
          }
@@ -1402,8 +1422,8 @@ get_reg_impl(ra_ctx& ctx, RegisterFile& reg_file,
 }
 
 bool
-get_reg_specified(ra_ctx& ctx, RegisterFile& reg_file, RegClass rc, aco_ptr<Instruction>& instr,
-                  PhysReg reg)
+get_reg_specified(ra_ctx& ctx, const RegisterFile& reg_file, RegClass rc,
+                  aco_ptr<Instruction>& instr, PhysReg reg)
 {
    /* catch out-of-range registers */
    if (reg >= PhysReg{512})
@@ -1422,7 +1442,7 @@ get_reg_specified(ra_ctx& ctx, RegisterFile& reg_file, RegClass rc, aco_ptr<Inst
       return false;
 
    PhysRegInterval reg_win = {reg, rc.size()};
-   PhysRegInterval bounds = get_reg_bounds(ctx.program, rc.type());
+   PhysRegInterval bounds = get_reg_bounds(ctx, rc);
    PhysRegInterval vcc_win = {vcc, 2};
    /* VCC is outside the bounds */
    bool is_vcc = rc.type() == RegType::sgpr && vcc_win.contains(reg_win) && ctx.program->needs_vcc;
@@ -1445,17 +1465,24 @@ get_reg_specified(ra_ctx& ctx, RegisterFile& reg_file, RegClass rc, aco_ptr<Inst
 }
 
 bool
-increase_register_file(ra_ctx& ctx, RegType type)
+increase_register_file(ra_ctx& ctx, RegClass rc)
 {
-   if (type == RegType::vgpr && ctx.program->max_reg_demand.vgpr < ctx.vgpr_limit) {
-      update_vgpr_sgpr_demand(ctx.program, RegisterDemand(ctx.program->max_reg_demand.vgpr + 1,
-                                                          ctx.program->max_reg_demand.sgpr));
-   } else if (type == RegType::sgpr && ctx.program->max_reg_demand.sgpr < ctx.sgpr_limit) {
-      update_vgpr_sgpr_demand(ctx.program, RegisterDemand(ctx.program->max_reg_demand.vgpr,
-                                                          ctx.program->max_reg_demand.sgpr + 1));
+   if (rc.type() == RegType::vgpr && ctx.num_linear_vgprs == 0 &&
+       ctx.vgpr_bounds < ctx.vgpr_limit) {
+      /* If vgpr_bounds is less than max_reg_demand.vgpr, this should be a no-op. */
+      update_vgpr_sgpr_demand(
+         ctx.program, RegisterDemand(ctx.vgpr_bounds + 1, ctx.program->max_reg_demand.sgpr));
+
+      ctx.vgpr_bounds = ctx.program->max_reg_demand.vgpr;
+   } else if (rc.type() == RegType::sgpr && ctx.program->max_reg_demand.sgpr < ctx.sgpr_limit) {
+      update_vgpr_sgpr_demand(
+         ctx.program, RegisterDemand(ctx.program->max_reg_demand.vgpr, ctx.sgpr_bounds + 1));
+
+      ctx.sgpr_bounds = ctx.program->max_reg_demand.sgpr;
    } else {
       return false;
    }
+
    return true;
 }
 
@@ -1538,7 +1565,7 @@ compact_relocate_vars(ra_ctx& ctx, const std::vector<IDAndRegClass>& vars,
 }
 
 bool
-is_mimg_vaddr_intact(ra_ctx& ctx, RegisterFile& reg_file, Instruction* instr)
+is_mimg_vaddr_intact(ra_ctx& ctx, const RegisterFile& reg_file, Instruction* instr)
 {
    PhysReg first{512};
    for (unsigned i = 0; i < instr->operands.size() - 3u; i++) {
@@ -1548,7 +1575,7 @@ is_mimg_vaddr_intact(ra_ctx& ctx, RegisterFile& reg_file, Instruction* instr)
          PhysReg reg = ctx.assignments[op.tempId()].reg;
 
          if (first.reg() == 512) {
-            PhysRegInterval bounds = get_reg_bounds(ctx.program, RegType::vgpr);
+            PhysRegInterval bounds = get_reg_bounds(ctx, RegType::vgpr, false);
             first = reg.advance(i * -4);
             PhysRegInterval vec = PhysRegInterval{first, instr->operands.size() - 3u};
             if (!bounds.contains(vec)) /* not enough space for other operands */
@@ -1570,7 +1597,7 @@ is_mimg_vaddr_intact(ra_ctx& ctx, RegisterFile& reg_file, Instruction* instr)
 }
 
 std::optional<PhysReg>
-get_reg_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp, aco_ptr<Instruction>& instr)
+get_reg_vector(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp, aco_ptr<Instruction>& instr)
 {
    Instruction* vec = ctx.vectors[temp.id()];
    unsigned first_operand = vec->format == Format::MIMG ? 3 : 0;
@@ -1621,8 +1648,126 @@ get_reg_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp, aco_ptr<Instructi
    return {};
 }
 
+bool
+compact_linear_vgprs(ra_ctx& ctx, const RegisterFile& reg_file,
+                     std::vector<std::pair<Operand, Definition>>& parallelcopies)
+{
+   PhysRegInterval linear_vgpr_bounds = get_reg_bounds(ctx, RegType::vgpr, true);
+   int zeros = reg_file.count_zero(linear_vgpr_bounds);
+   if (zeros == 0)
+      return false;
+
+   std::vector<IDAndRegClass> vars;
+   for (unsigned id : find_vars(ctx, reg_file, linear_vgpr_bounds))
+      vars.emplace_back(id, ctx.assignments[id].rc);
+
+   ctx.num_linear_vgprs -= zeros;
+   compact_relocate_vars(ctx, vars, parallelcopies, get_reg_bounds(ctx, RegType::vgpr, true).lo());
+
+   return true;
+}
+
+/* Allocates a linear VGPR. We allocate them at the end of the register file and keep them separate
+ * from normal VGPRs. This is for two reasons:
+ * - Because we only ever move linear VGPRs into an empty space or a space previously occupied by a
+ *   linear one, we never have to swap a normal VGPR and a linear one.
+ * - As linear VGPR's live ranges only start and end on top-level blocks, we never have to move a
+ *   linear VGPR in control flow.
+ */
 PhysReg
-get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
+alloc_linear_vgpr(ra_ctx& ctx, const RegisterFile& reg_file, aco_ptr<Instruction>& instr,
+                  std::vector<std::pair<Operand, Definition>>& parallelcopies)
+{
+   assert(instr->opcode == aco_opcode::p_start_linear_vgpr);
+   assert(instr->definitions.size() == 1 && instr->definitions[0].bytes() % 4 == 0);
+
+   RegClass rc = instr->definitions[0].regClass();
+
+   /* Try to choose an unused space in the linear VGPR bounds. */
+   for (unsigned i = rc.size(); i <= ctx.num_linear_vgprs; i++) {
+      PhysReg reg(256 + ctx.vgpr_bounds - i);
+      if (!reg_file.test(reg, rc.bytes())) {
+         adjust_max_used_regs(ctx, rc, reg);
+         return reg;
+      }
+   }
+
+   PhysRegInterval old_normal_bounds = get_reg_bounds(ctx, RegType::vgpr, false);
+
+   /* Compact linear VGPRs, grow the bounds if necessary, and choose a space at the beginning: */
+   compact_linear_vgprs(ctx, reg_file, parallelcopies);
+
+   PhysReg reg(256 + ctx.vgpr_bounds - (ctx.num_linear_vgprs + rc.size()));
+   /* Space that was for normal VGPRs, but is now for linear VGPRs. */
+   PhysRegInterval new_win = PhysRegInterval::from_until(reg, MAX2(old_normal_bounds.hi(), reg));
+
+   RegisterFile tmp_file(reg_file);
+   PhysRegInterval reg_win{reg, rc.size()};
+   std::vector<unsigned> blocking_vars = collect_vars(ctx, tmp_file, new_win);
+
+   /* Re-enable killed operands */
+   for (Operand& op : instr->operands) {
+      if (op.isTemp() && op.isFirstKillBeforeDef())
+         tmp_file.fill(op);
+   }
+
+   /* Find new assignments for blocking vars. */
+   std::vector<std::pair<Operand, Definition>> pc;
+   if (!ctx.policy.skip_optimistic_path &&
+       get_regs_for_copies(ctx, tmp_file, pc, blocking_vars, instr, reg_win)) {
+      parallelcopies.insert(parallelcopies.end(), pc.begin(), pc.end());
+   } else {
+      /* Fallback algorithm: reallocate all variables at once. */
+      std::vector<IDAndRegClass> vars;
+      for (unsigned id : find_vars(ctx, reg_file, old_normal_bounds))
+         vars.emplace_back(id, ctx.assignments[id].rc);
+      compact_relocate_vars(ctx, vars, parallelcopies, PhysReg(256));
+
+      std::vector<IDAndRegClass> killed_op_vars;
+      for (Operand& op : instr->operands) {
+         if (op.isTemp() && op.isFirstKillBeforeDef() && op.regClass().type() == RegType::vgpr)
+            killed_op_vars.emplace_back(op.tempId(), op.regClass());
+      }
+      compact_relocate_vars(ctx, killed_op_vars, parallelcopies, reg_win.lo());
+   }
+
+   /* If this is updated earlier, a killed operand can't be placed inside the definition. */
+   ctx.num_linear_vgprs += rc.size();
+
+   adjust_max_used_regs(ctx, rc, reg);
+   return reg;
+}
+
+bool
+should_compact_linear_vgprs(ra_ctx& ctx, live& live_vars, const RegisterFile& reg_file)
+{
+   if (!(ctx.block->kind & block_kind_top_level) || ctx.block->linear_succs.empty())
+      return false;
+
+   /* Since we won't be able to copy linear VGPRs to make space when in control flow, we have to
+    * ensure in advance that there is enough space for normal VGPRs. */
+   unsigned max_vgpr_usage = 0;
+   unsigned next_toplevel = ctx.block->index + 1;
+   for (; !(ctx.program->blocks[next_toplevel].kind & block_kind_top_level); next_toplevel++) {
+      max_vgpr_usage =
+         MAX2(max_vgpr_usage, (unsigned)ctx.program->blocks[next_toplevel].register_demand.vgpr);
+   }
+
+   std::vector<aco_ptr<Instruction>>& instructions =
+      ctx.program->blocks[next_toplevel].instructions;
+   if (!instructions.empty() && is_phi(instructions[0])) {
+      max_vgpr_usage =
+         MAX2(max_vgpr_usage, (unsigned)live_vars.register_demand[next_toplevel][0].vgpr);
+   }
+
+   for (unsigned tmp : find_vars(ctx, reg_file, get_reg_bounds(ctx, RegType::vgpr, true)))
+      max_vgpr_usage -= ctx.assignments[tmp].rc.size();
+
+   return max_vgpr_usage > get_reg_bounds(ctx, RegType::vgpr, false).size;
+}
+
+PhysReg
+get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
         std::vector<std::pair<Operand, Definition>>& parallelcopies, aco_ptr<Instruction>& instr,
         int operand_index = -1)
 {
@@ -1655,8 +1800,7 @@ get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
          return vcc;
    }
    if (ctx.assignments[temp.id()].m0) {
-      if (get_reg_specified(ctx, reg_file, temp.regClass(), instr, m0) &&
-          can_write_m0(instr))
+      if (get_reg_specified(ctx, reg_file, temp.regClass(), instr, m0) && can_write_m0(instr))
          return m0;
    }
 
@@ -1684,14 +1828,29 @@ get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
    if (res)
       return *res;
 
-   /* try using more registers */
+   /* try compacting the linear vgprs to make more space */
+   std::vector<std::pair<Operand, Definition>> pc;
+   if (info.rc.type() == RegType::vgpr && (ctx.block->kind & block_kind_top_level) &&
+       compact_linear_vgprs(ctx, reg_file, pc)) {
+      parallelcopies.insert(parallelcopies.end(), pc.begin(), pc.end());
+
+      /* We don't need to fill the copy definitions in because we don't care about the linear VGPR
+       * space here. */
+      RegisterFile tmp_file(reg_file);
+      for (std::pair<Operand, Definition>& copy : pc)
+         tmp_file.clear(copy.first);
+
+      return get_reg(ctx, tmp_file, temp, parallelcopies, instr, operand_index);
+   }
 
    /* We should only fail here because keeping under the limit would require
     * too many moves. */
    assert(reg_file.count_zero(info.bounds) >= info.size);
 
-   if (!increase_register_file(ctx, info.rc.type())) {
-      /* fallback algorithm: reallocate all variables at once */
+   /* try using more registers */
+   if (!increase_register_file(ctx, info.rc)) {
+      /* fallback algorithm: reallocate all variables at once (linear VGPRs should already be
+       * compact at the end) */
       unsigned def_size = info.rc.size();
       for (Definition def : instr->definitions) {
          if (ctx.assignments[def.tempId()].assigned && def.regClass().type() == info.rc.type())
@@ -1704,7 +1863,7 @@ get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
             killed_op_size += op.regClass().size();
       }
 
-      const PhysRegInterval regs = get_reg_bounds(ctx.program, info.rc.type());
+      const PhysRegInterval regs = get_reg_bounds(ctx, info.rc);
 
       /* reallocate passthrough variables and non-killed operands */
       std::vector<IDAndRegClass> vars;
@@ -1736,7 +1895,7 @@ get_reg(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
 }
 
 PhysReg
-get_reg_create_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
+get_reg_create_vector(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
                       std::vector<std::pair<Operand, Definition>>& parallelcopies,
                       aco_ptr<Instruction>& instr)
 {
@@ -1745,7 +1904,7 @@ get_reg_create_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
    uint32_t size = rc.size();
    uint32_t bytes = rc.bytes();
    uint32_t stride = get_stride(rc);
-   PhysRegInterval bounds = get_reg_bounds(ctx.program, rc.type());
+   PhysRegInterval bounds = get_reg_bounds(ctx, rc);
 
    // TODO: improve p_create_vector for sub-dword vectors
 
@@ -1805,13 +1964,9 @@ get_reg_create_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
          avoid |= ctx.war_hint[j];
       }
 
-      if (linear_vgpr) {
-         /* we cannot split live ranges of linear vgprs inside control flow */
-         if (ctx.block->kind & block_kind_top_level)
-            avoid = true;
-         else
-            continue;
-      }
+      /* we cannot split live ranges of linear vgprs */
+      if (linear_vgpr)
+         continue;
 
       if (avoid && !best_avoid)
          continue;
@@ -1865,7 +2020,7 @@ get_reg_create_vector(ra_ctx& ctx, RegisterFile& reg_file, Temp temp,
    success = get_regs_for_copies(ctx, tmp_file, pc, vars, instr, PhysRegInterval{best_pos, size});
 
    if (!success) {
-      if (!increase_register_file(ctx, temp.type())) {
+      if (!increase_register_file(ctx, temp.regClass())) {
          /* use the fallback algorithm in get_reg() */
          return get_reg(ctx, reg_file, temp, parallelcopies, instr);
       }
@@ -1890,7 +2045,7 @@ handle_pseudo(ra_ctx& ctx, const RegisterFile& reg_file, Instruction* instr)
    case aco_opcode::p_create_vector:
    case aco_opcode::p_split_vector:
    case aco_opcode::p_parallelcopy:
-   case aco_opcode::p_wqm: break;
+   case aco_opcode::p_start_linear_vgpr: break;
    default: return;
    }
 
@@ -1914,6 +2069,7 @@ handle_pseudo(ra_ctx& ctx, const RegisterFile& reg_file, Instruction* instr)
    if (!needs_scratch_reg)
       return;
 
+   instr->pseudo().needs_scratch_reg = true;
    instr->pseudo().tmp_in_scc = reg_file[scc];
 
    int reg = ctx.max_used_sgpr;
@@ -1937,19 +2093,6 @@ bool
 operand_can_use_reg(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr, unsigned idx, PhysReg reg,
                     RegClass rc)
 {
-   bool is_writelane = instr->opcode == aco_opcode::v_writelane_b32 ||
-                       instr->opcode == aco_opcode::v_writelane_b32_e64;
-   if (gfx_level <= GFX9 && is_writelane && idx <= 1) {
-      /* v_writelane_b32 can take two sgprs but only if one is m0. */
-      bool is_other_sgpr =
-         instr->operands[!idx].isTemp() &&
-         (!instr->operands[!idx].isFixed() || instr->operands[!idx].physReg() != m0);
-      if (is_other_sgpr && instr->operands[!idx].tempId() != instr->operands[idx].tempId()) {
-         instr->operands[idx].setFixed(m0);
-         return reg == m0;
-      }
-   }
-
    if (reg.byte()) {
       unsigned stride = get_subdword_operand_stride(gfx_level, instr, idx, rc);
       if (reg.byte() % stride)
@@ -1973,11 +2116,12 @@ handle_fixed_operands(ra_ctx& ctx, RegisterFile& register_file,
                       std::vector<std::pair<Operand, Definition>>& parallelcopy,
                       aco_ptr<Instruction>& instr)
 {
-   assert(instr->operands.size() <= 64);
+   assert(instr->operands.size() <= 128);
 
    RegisterFile tmp_file(register_file);
 
-   uint64_t mask = 0;
+   BITSET_DECLARE(mask, 128) = {0};
+
    for (unsigned i = 0; i < instr->operands.size(); i++) {
       Operand& op = instr->operands[i];
 
@@ -1992,8 +2136,9 @@ handle_fixed_operands(ra_ctx& ctx, RegisterFile& register_file,
          continue;
       }
 
+      unsigned j;
       bool found = false;
-      u_foreach_bit64 (j, mask) {
+      BITSET_FOREACH_SET (j, mask, i) {
          if (instr->operands[j].tempId() == op.tempId() &&
              instr->operands[j].physReg() == op.physReg()) {
             found = true;
@@ -2006,18 +2151,19 @@ handle_fixed_operands(ra_ctx& ctx, RegisterFile& register_file,
       /* clear from register_file so fixed operands are not collected be collect_vars() */
       tmp_file.clear(src, op.regClass()); // TODO: try to avoid moving block vars to src
 
-      mask |= (uint64_t)1 << i;
+      BITSET_SET(mask, i);
 
       Operand pc_op(instr->operands[i].getTemp(), src);
       Definition pc_def = Definition(op.physReg(), pc_op.regClass());
       parallelcopy.emplace_back(pc_op, pc_def);
    }
 
-   if (!mask)
+   if (BITSET_IS_EMPTY(mask))
       return;
 
+   unsigned i;
    std::vector<unsigned> blocking_vars;
-   u_foreach_bit64 (i, mask) {
+   BITSET_FOREACH_SET (i, mask, instr->operands.size()) {
       Operand& op = instr->operands[i];
       PhysRegInterval target{op.physReg(), op.size()};
       std::vector<unsigned> blocking_vars2 = collect_vars(ctx, tmp_file, target);
@@ -2444,7 +2590,8 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                    op.getTemp().type() == instr->definitions[0].getTemp().type())
                   ctx.vectors[op.tempId()] = instr.get();
             }
-         } else if (instr->format == Format::MIMG && instr->operands.size() > 4) {
+         } else if (instr->format == Format::MIMG && instr->operands.size() > 4 &&
+                    !instr->mimg().strict_wqm) {
             for (unsigned i = 3; i < instr->operands.size(); i++)
                ctx.vectors[instr->operands[i].tempId()] = instr.get();
          } else if (instr->opcode == aco_opcode::p_split_vector &&
@@ -2616,14 +2763,29 @@ optimize_encoding_vop2(Program* program, ra_ctx& ctx, RegisterFile& register_fil
         (instr->opcode != aco_opcode::v_dot4_i32_i8 || program->family == CHIP_VEGA20)) ||
        !instr->operands[2].isTemp() || !instr->operands[2].isKillBeforeDef() ||
        instr->operands[2].getTemp().type() != RegType::vgpr ||
-       ((!instr->operands[0].isTemp() || instr->operands[0].getTemp().type() != RegType::vgpr) &&
-        (!instr->operands[1].isTemp() || instr->operands[1].getTemp().type() != RegType::vgpr)) ||
-       instr->usesModifiers() || instr->operands[0].physReg().byte() != 0 ||
-       instr->operands[1].physReg().byte() != 0 || instr->operands[2].physReg().byte() != 0)
+       (!instr->operands[0].isOfType(RegType::vgpr) &&
+        !instr->operands[1].isOfType(RegType::vgpr)) ||
+       instr->operands[2].physReg().byte() != 0 || instr->valu().opsel[2])
       return;
 
-   if (!instr->operands[1].isTemp() || instr->operands[1].getTemp().type() != RegType::vgpr)
-      std::swap(instr->operands[0], instr->operands[1]);
+   if (instr->isVOP3P() && (instr->valu().opsel_lo != 0 || instr->valu().opsel_hi != 0x7))
+      return;
+
+   if ((instr->operands[0].physReg().byte() != 0 || instr->operands[1].physReg().byte() != 0 ||
+        instr->valu().opsel) &&
+       program->gfx_level < GFX11)
+      return;
+
+   unsigned im_mask = instr->isDPP16() ? 0x3 : 0;
+   if (instr->valu().omod || instr->valu().clamp || (instr->valu().abs & ~im_mask) ||
+       (instr->valu().neg & ~im_mask))
+      return;
+
+   if (!instr->operands[1].isOfType(RegType::vgpr))
+      instr->valu().swapOperands(0, 1);
+
+   if (!instr->operands[0].isOfType(RegType::vgpr) && instr->valu().opsel[0])
+      return;
 
    unsigned def_id = instr->definitions[0].tempId();
    if (ctx.assignments[def_id].affinity) {
@@ -2633,7 +2795,8 @@ optimize_encoding_vop2(Program* program, ra_ctx& ctx, RegisterFile& register_fil
          return;
    }
 
-   instr->format = Format::VOP2;
+   instr->format = (Format)(((unsigned)withoutVOP3(instr->format) & ~(unsigned)Format::VOP3P) |
+                            (unsigned)Format::VOP2);
    instr->valu().opsel_hi = 0;
    switch (instr->opcode) {
    case aco_opcode::v_mad_f32: instr->opcode = aco_opcode::v_mac_f32; break;
@@ -2715,11 +2878,112 @@ optimize_encoding(Program* program, ra_ctx& ctx, RegisterFile& register_file,
       optimize_encoding_sopk(program, ctx, register_file, instr);
 }
 
+void
+emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& parallelcopy,
+                            aco_ptr<Instruction>& instr,
+                            std::vector<aco_ptr<Instruction>>& instructions, bool temp_in_scc,
+                            RegisterFile& register_file)
+{
+   if (parallelcopy.empty())
+      return;
+
+   aco_ptr<Pseudo_instruction> pc;
+   pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
+                                                   parallelcopy.size(), parallelcopy.size()));
+   bool linear_vgpr = false;
+   bool sgpr_operands_alias_defs = false;
+   uint64_t sgpr_operands[4] = {0, 0, 0, 0};
+   for (unsigned i = 0; i < parallelcopy.size(); i++) {
+      linear_vgpr |= parallelcopy[i].first.regClass().is_linear_vgpr();
+
+      if (temp_in_scc && parallelcopy[i].first.isTemp() &&
+          parallelcopy[i].first.getTemp().type() == RegType::sgpr) {
+         if (!sgpr_operands_alias_defs) {
+            unsigned reg = parallelcopy[i].first.physReg().reg();
+            unsigned size = parallelcopy[i].first.getTemp().size();
+            sgpr_operands[reg / 64u] |= u_bit_consecutive64(reg % 64u, size);
+
+            reg = parallelcopy[i].second.physReg().reg();
+            size = parallelcopy[i].second.getTemp().size();
+            if (sgpr_operands[reg / 64u] & u_bit_consecutive64(reg % 64u, size))
+               sgpr_operands_alias_defs = true;
+         }
+      }
+
+      pc->operands[i] = parallelcopy[i].first;
+      pc->definitions[i] = parallelcopy[i].second;
+      assert(pc->operands[i].size() == pc->definitions[i].size());
+
+      /* it might happen that the operand is already renamed. we have to restore the
+       * original name. */
+      std::unordered_map<unsigned, Temp>::iterator it =
+         ctx.orig_names.find(pc->operands[i].tempId());
+      Temp orig = it != ctx.orig_names.end() ? it->second : pc->operands[i].getTemp();
+      ctx.orig_names[pc->definitions[i].tempId()] = orig;
+      ctx.renames[ctx.block->index][orig.id()] = pc->definitions[i].getTemp();
+   }
+
+   if (temp_in_scc && (sgpr_operands_alias_defs || linear_vgpr)) {
+      /* disable definitions and re-enable operands */
+      RegisterFile tmp_file(register_file);
+      for (const Definition& def : instr->definitions) {
+         if (def.isTemp() && !def.isKill())
+            tmp_file.clear(def);
+      }
+      for (const Operand& op : instr->operands) {
+         if (op.isTemp() && op.isFirstKill())
+            tmp_file.block(op.physReg(), op.regClass());
+      }
+
+      handle_pseudo(ctx, tmp_file, pc.get());
+   } else {
+      pc->needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
+      pc->tmp_in_scc = false;
+   }
+
+   instructions.emplace_back(std::move(pc));
+
+   parallelcopy.clear();
+}
+
+void
+emit_parallel_copy(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& parallelcopy,
+                   aco_ptr<Instruction>& instr, std::vector<aco_ptr<Instruction>>& instructions,
+                   bool temp_in_scc, RegisterFile& register_file)
+{
+   if (parallelcopy.empty())
+      return;
+
+   std::vector<std::pair<Operand, Definition>> linear_vgpr;
+   if (ctx.num_linear_vgprs) {
+      unsigned next = 0;
+      for (unsigned i = 0; i < parallelcopy.size(); i++) {
+         if (parallelcopy[i].first.regClass().is_linear_vgpr()) {
+            linear_vgpr.push_back(parallelcopy[i]);
+            continue;
+         }
+
+         if (next != i)
+            parallelcopy[next] = parallelcopy[i];
+         next++;
+      }
+      parallelcopy.resize(next);
+   }
+
+   /* Because of how linear VGPRs are allocated, we should never have to move a linear VGPR into the
+    * space of a normal one. This means the copy can be done entirely before normal VGPR copies. */
+   emit_parallel_copy_internal(ctx, linear_vgpr, instr, instructions, temp_in_scc,
+                               register_file);
+   emit_parallel_copy_internal(ctx, parallelcopy, instr, instructions, temp_in_scc,
+                               register_file);
+}
+
 } /* end namespace */
 
 void
-register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra_test_policy policy)
+register_allocation(Program* program, live& live_vars, ra_test_policy policy)
 {
+   std::vector<IDSet>& live_out_per_block = live_vars.live_out;
    ra_ctx ctx(program, policy);
    get_affinities(ctx, live_out_per_block);
 
@@ -2797,18 +3061,16 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
             continue;
          }
 
-         /* unconditional branches are handled after phis of the target */
+         std::vector<std::pair<Operand, Definition>> parallelcopy;
+         bool temp_in_scc = register_file[scc];
+
          if (instr->opcode == aco_opcode::p_branch) {
-            /* last instruction of the block */
+            /* unconditional branches are handled after phis of the target */
             instructions.emplace_back(std::move(instr));
             break;
          }
 
-         std::vector<std::pair<Operand, Definition>> parallelcopy;
-
          assert(!is_phi(instr));
-
-         bool temp_in_scc = register_file[scc];
 
          /* handle operands */
          bool fixed = false;
@@ -2823,6 +3085,18 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
 
             fixed |=
                operand.isFixed() && ctx.assignments[operand.tempId()].reg != operand.physReg();
+         }
+
+         bool is_writelane = instr->opcode == aco_opcode::v_writelane_b32 ||
+                             instr->opcode == aco_opcode::v_writelane_b32_e64;
+         if (program->gfx_level <= GFX9 && is_writelane && instr->operands[0].isTemp() &&
+             instr->operands[1].isTemp()) {
+            /* v_writelane_b32 can take two sgprs but only if one is m0. */
+            if (ctx.assignments[instr->operands[0].tempId()].reg != m0 &&
+                ctx.assignments[instr->operands[1].tempId()].reg != m0) {
+               instr->operands[0].setFixed(m0);
+               fixed = true;
+            }
          }
 
          if (fixed)
@@ -2860,32 +3134,9 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
           * We can't read from the old location because it's corrupted, and we can't write the new
           * location because that's used by a live-through operand.
           */
-         if (instr->opcode == aco_opcode::v_interp_p2_f32 ||
-             instr->opcode == aco_opcode::v_mac_f32 || instr->opcode == aco_opcode::v_fmac_f32 ||
-             instr->opcode == aco_opcode::v_mac_f16 || instr->opcode == aco_opcode::v_fmac_f16 ||
-             instr->opcode == aco_opcode::v_mac_legacy_f32 ||
-             instr->opcode == aco_opcode::v_fmac_legacy_f32 ||
-             instr->opcode == aco_opcode::v_pk_fmac_f16 ||
-             instr->opcode == aco_opcode::v_writelane_b32 ||
-             instr->opcode == aco_opcode::v_writelane_b32_e64 ||
-             instr->opcode == aco_opcode::v_dot4c_i32_i8) {
-            assert(instr->definitions[0].bytes() == instr->operands[2].bytes() ||
-                   instr->operands[2].regClass() == v1);
-            instr->definitions[0].setFixed(instr->operands[2].physReg());
-         } else if (instr->opcode == aco_opcode::s_addk_i32 ||
-                    instr->opcode == aco_opcode::s_mulk_i32 ||
-                    instr->opcode == aco_opcode::s_cmovk_i32) {
-            assert(instr->definitions[0].bytes() == instr->operands[0].bytes());
-            instr->definitions[0].setFixed(instr->operands[0].physReg());
-         } else if (instr->isMUBUF() && instr->definitions.size() == 1 &&
-                    instr->operands.size() == 4) {
-            assert(instr->definitions[0].bytes() == instr->operands[3].bytes());
-            instr->definitions[0].setFixed(instr->operands[3].physReg());
-         } else if (instr->isMIMG() && instr->definitions.size() == 1 &&
-                    !instr->operands[2].isUndefined()) {
-            assert(instr->definitions[0].bytes() == instr->operands[2].bytes());
-            instr->definitions[0].setFixed(instr->operands[2].physReg());
-         }
+         int op_fixed_to_def = get_op_fixed_to_def(instr.get());
+         if (op_fixed_to_def != -1)
+            instr->definitions[0].setFixed(instr->operands[op_fixed_to_def].physReg());
 
          /* handle fixed definitions first */
          for (unsigned i = 0; i < instr->definitions.size(); ++i) {
@@ -2930,7 +3181,11 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
                continue;
 
             /* find free reg */
-            if (instr->opcode == aco_opcode::p_split_vector) {
+            if (instr->opcode == aco_opcode::p_start_linear_vgpr) {
+               /* Allocation of linear VGPRs is special. */
+               definition->setFixed(alloc_linear_vgpr(ctx, register_file, instr, parallelcopy));
+               update_renames(ctx, register_file, parallelcopy, instr, rename_not_killed_ops);
+            } else if (instr->opcode == aco_opcode::p_split_vector) {
                PhysReg reg = instr->operands[0].physReg();
                RegClass rc = definition->regClass();
                for (unsigned j = 0; j < i; j++)
@@ -2949,8 +3204,7 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
                   if (get_reg_specified(ctx, register_file, rc, instr, reg))
                      definition->setFixed(reg);
                }
-            } else if (instr->opcode == aco_opcode::p_wqm ||
-                       instr->opcode == aco_opcode::p_parallelcopy) {
+            } else if (instr->opcode == aco_opcode::p_parallelcopy) {
                PhysReg reg = instr->operands[i].physReg();
                if (instr->operands[i].isTemp() &&
                    instr->operands[i].getTemp().type() == definition->getTemp().type() &&
@@ -2966,6 +3220,14 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
                                                    parallelcopy, instr);
                update_renames(ctx, register_file, parallelcopy, instr, (UpdateRenames)0);
                definition->setFixed(reg);
+            } else if (instr_info.classes[(int)instr->opcode] == instr_class::wmma &&
+                       instr->operands[2].isTemp() && instr->operands[2].isKill() &&
+                       instr->operands[2].regClass() == definition->regClass()) {
+               /* For WMMA, the dest needs to either be equal to operands[2], or not overlap it.
+                * Here we set a policy of forcing them the same if operands[2] gets killed (and
+                * otherwise they don't overlap). This may not be optimal if RA would select a
+                * different location due to affinity, but that gets complicated very quickly. */
+               definition->setFixed(instr->operands[2].physReg());
             }
 
             if (!definition->isFixed()) {
@@ -3010,64 +3272,7 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
                add_subdword_operand(ctx, instr, i, op.physReg().byte(), op.regClass());
          }
 
-         /* emit parallelcopy */
-         if (!parallelcopy.empty()) {
-            aco_ptr<Pseudo_instruction> pc;
-            pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy,
-                                                            Format::PSEUDO, parallelcopy.size(),
-                                                            parallelcopy.size()));
-            bool linear_vgpr = false;
-            bool sgpr_operands_alias_defs = false;
-            uint64_t sgpr_operands[4] = {0, 0, 0, 0};
-            for (unsigned i = 0; i < parallelcopy.size(); i++) {
-               linear_vgpr |= parallelcopy[i].first.regClass().is_linear_vgpr();
-
-               if (temp_in_scc && parallelcopy[i].first.isTemp() &&
-                   parallelcopy[i].first.getTemp().type() == RegType::sgpr) {
-                  if (!sgpr_operands_alias_defs) {
-                     unsigned reg = parallelcopy[i].first.physReg().reg();
-                     unsigned size = parallelcopy[i].first.getTemp().size();
-                     sgpr_operands[reg / 64u] |= u_bit_consecutive64(reg % 64u, size);
-
-                     reg = parallelcopy[i].second.physReg().reg();
-                     size = parallelcopy[i].second.getTemp().size();
-                     if (sgpr_operands[reg / 64u] & u_bit_consecutive64(reg % 64u, size))
-                        sgpr_operands_alias_defs = true;
-                  }
-               }
-
-               pc->operands[i] = parallelcopy[i].first;
-               pc->definitions[i] = parallelcopy[i].second;
-               assert(pc->operands[i].size() == pc->definitions[i].size());
-
-               /* it might happen that the operand is already renamed. we have to restore the
-                * original name. */
-               std::unordered_map<unsigned, Temp>::iterator it =
-                  ctx.orig_names.find(pc->operands[i].tempId());
-               Temp orig = it != ctx.orig_names.end() ? it->second : pc->operands[i].getTemp();
-               ctx.orig_names[pc->definitions[i].tempId()] = orig;
-               ctx.renames[block.index][orig.id()] = pc->definitions[i].getTemp();
-            }
-
-            if (temp_in_scc && (sgpr_operands_alias_defs || linear_vgpr)) {
-               /* disable definitions and re-enable operands */
-               RegisterFile tmp_file(register_file);
-               for (const Definition& def : instr->definitions) {
-                  if (def.isTemp() && !def.isKill())
-                     tmp_file.clear(def);
-               }
-               for (const Operand& op : instr->operands) {
-                  if (op.isTemp() && op.isFirstKill())
-                     tmp_file.block(op.physReg(), op.regClass());
-               }
-
-               handle_pseudo(ctx, tmp_file, pc.get());
-            } else {
-               pc->tmp_in_scc = false;
-            }
-
-            instructions.emplace_back(std::move(pc));
-         }
+         emit_parallel_copy(ctx, parallelcopy, instr, instructions, temp_in_scc, register_file);
 
          /* some instructions need VOP3 encoding if operand/definition is not assigned to VCC */
          bool instr_needs_vop3 =
@@ -3137,6 +3342,26 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
          instructions.emplace_back(std::move(*instr_it));
 
       } /* end for Instr */
+
+      if ((block.kind & block_kind_top_level) && block.linear_succs.empty()) {
+         /* Reset this for block_kind_resume. */
+         ASSERTED PhysRegInterval linear_vgpr_bounds = get_reg_bounds(ctx, RegType::vgpr, true);
+         assert(register_file.count_zero(linear_vgpr_bounds) == linear_vgpr_bounds.size);
+         ctx.num_linear_vgprs = 0;
+      } else if (should_compact_linear_vgprs(ctx, live_vars, register_file)) {
+         aco_ptr<Instruction> br = std::move(instructions.back());
+         instructions.pop_back();
+
+         bool temp_in_scc =
+            register_file[scc] || (!br->operands.empty() && br->operands[0].physReg() == scc);
+
+         std::vector<std::pair<Operand, Definition>> parallelcopy;
+         compact_linear_vgprs(ctx, register_file, parallelcopy);
+         update_renames(ctx, register_file, parallelcopy, br, rename_not_killed_ops);
+         emit_parallel_copy_internal(ctx, parallelcopy, br, instructions, temp_in_scc, register_file);
+
+         instructions.push_back(std::move(br));
+      }
 
       block.instructions = std::move(instructions);
    } /* end for BB */

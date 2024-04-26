@@ -31,9 +31,9 @@
                            _exp_instr_count, _exp_loop_count)           \
    TEST_F(nir_loop_unroll_test, _label)                                 \
    {                                                                    \
-      nir_ssa_def *init = nir_imm_##_type(&bld, _init);                 \
-      nir_ssa_def *limit = nir_imm_##_type(&bld, _limit);               \
-      nir_ssa_def *step = nir_imm_##_type(&bld, _step);                 \
+      nir_def *init = nir_imm_##_type(&bld, _init);                 \
+      nir_def *limit = nir_imm_##_type(&bld, _limit);               \
+      nir_def *step = nir_imm_##_type(&bld, _step);                 \
       loop_unroll_test_helper(&bld, init, limit, step,                  \
                               &nir_##_cond, &nir_##_incr, _rev);        \
       EXPECT_##_exp_res(nir_opt_loop_unroll(bld.shader));               \
@@ -99,14 +99,14 @@ nir_loop_unroll_test::count_loops(void)
 }
 
 void
-loop_unroll_test_helper(nir_builder *bld, nir_ssa_def *init,
-                        nir_ssa_def *limit, nir_ssa_def *step,
-                        nir_ssa_def* (*cond_instr)(nir_builder*,
-                                                   nir_ssa_def*,
-                                                   nir_ssa_def*),
-                        nir_ssa_def* (*incr_instr)(nir_builder*,
-                                                   nir_ssa_def*,
-                                                   nir_ssa_def*),
+loop_unroll_test_helper(nir_builder *bld, nir_def *init,
+                        nir_def *limit, nir_def *step,
+                        nir_def* (*cond_instr)(nir_builder*,
+                                                   nir_def*,
+                                                   nir_def*),
+                        nir_def* (*incr_instr)(nir_builder*,
+                                                   nir_def*,
+                                                   nir_def*),
                         bool reverse)
 {
    nir_loop *loop = nir_push_loop(bld);
@@ -116,22 +116,21 @@ loop_unroll_test_helper(nir_builder *bld, nir_ssa_def *init,
    nir_block *head_block = nir_loop_first_block(loop);
 
    nir_phi_instr *phi = nir_phi_instr_create(bld->shader);
-   nir_ssa_dest_init(&phi->instr, &phi->dest, 1, 32, NULL);
+   nir_def_init(&phi->instr, &phi->def, 1, 32);
 
-   nir_phi_instr_add_src(phi, top_block, nir_src_for_ssa(init));
+   nir_phi_instr_add_src(phi, top_block, init);
 
-   nir_ssa_def *cond = cond_instr(bld,
-                                  (reverse ? limit : &phi->dest.ssa),
-                                  (reverse ? &phi->dest.ssa : limit));
+   nir_def *cond = cond_instr(bld,
+                                  (reverse ? limit : &phi->def),
+                                  (reverse ? &phi->def : limit));
 
    nir_if *nif = nir_push_if(bld, cond);
    nir_jump(bld, nir_jump_break);
    nir_pop_if(bld, nif);
 
-   nir_ssa_def *var = incr_instr(bld, &phi->dest.ssa, step);
+   nir_def *var = incr_instr(bld, &phi->def, step);
 
-   nir_phi_instr_add_src(phi, nir_cursor_current_block(bld->cursor),
-                         nir_src_for_ssa(var));
+   nir_phi_instr_add_src(phi, nir_cursor_current_block(bld->cursor), var);
 
    nir_pop_loop(bld, loop);
 
@@ -145,12 +144,10 @@ UNROLL_TEST_INSERT(iadd,     int,   0,     24,   4,
                    ige,      iadd,  false, TRUE, 6, 0)
 UNROLL_TEST_INSERT(iadd_rev, int,   0,     24,   4,
                    ilt,      iadd,  true,  TRUE, 7, 0)
-#ifndef __s390x__
 UNROLL_TEST_INSERT(fadd,     float, 0.0,   24.0, 4.0,
                    fge,      fadd,  false, TRUE, 6, 0)
 UNROLL_TEST_INSERT(fadd_rev, float, 0.0,   24.0, 4.0,
                    flt,      fadd,  true,  TRUE, 7, 0)
-#endif
 UNROLL_TEST_INSERT(imul,     int,   1,     81,   3,
                    ige,      imul,  false, TRUE, 4, 0)
 UNROLL_TEST_INSERT(imul_rev, int,   1,     81,   3,

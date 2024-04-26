@@ -4,8 +4,140 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdint.h>
+#include "pipe/p_defines.h"
+#include "util/bitset.h"
+#include "util/macros.h"
+#include "util/ralloc.h"
+#include "util/u_inlines.h"
 #include "util/u_prim.h"
+#include "agx_bo.h"
+#include "agx_device.h"
 #include "agx_state.h"
+#include "pool.h"
+
+static bool
+is_occlusion(struct agx_query *query)
+{
+   switch (query->type) {
+   case PIPE_QUERY_OCCLUSION_COUNTER:
+   case PIPE_QUERY_OCCLUSION_PREDICATE:
+   case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
+      return true;
+   default:
+      return false;
+   }
+}
+
+static bool
+is_timer(struct agx_query *query)
+{
+   switch (query->type) {
+   case PIPE_QUERY_TIMESTAMP:
+   case PIPE_QUERY_TIME_ELAPSED:
+      return true;
+   default:
+      return false;
+   }
+}
+
+#define AGX_MAX_OCCLUSION_QUERIES (65536)
+
+struct agx_oq_heap {
+   /* The GPU allocation itself */
+   struct agx_bo *bo;
+
+   /* Bitset of query indices that are in use */
+   BITSET_DECLARE(available, AGX_MAX_OCCLUSION_QUERIES);
+};
+
+static void
+agx_destroy_oq_heap(void *heap_)
+{
+   struct agx_oq_heap *heap = heap_;
+   agx_bo_unreference(heap->bo);
+}
+
+static struct agx_oq_heap *
+agx_alloc_oq_heap(struct agx_context *ctx)
+{
+   struct agx_oq_heap *heap = rzalloc(ctx, struct agx_oq_heap);
+   ralloc_set_destructor(heap, agx_destroy_oq_heap);
+
+   heap->bo = agx_bo_create(agx_device(ctx->base.screen),
+                            AGX_MAX_OCCLUSION_QUERIES * sizeof(uint64_t),
+                            AGX_BO_WRITEBACK, "Occlusion query heap");
+
+   /* At the start, everything is available */
+   BITSET_ONES(heap->available);
+
+   return heap;
+}
+
+static struct agx_oq_heap *
+agx_get_oq_heap(struct agx_context *ctx)
+{
+   if (!ctx->oq)
+      ctx->oq = agx_alloc_oq_heap(ctx);
+
+   return ctx->oq;
+}
+
+static struct agx_ptr
+agx_alloc_oq(struct agx_context *ctx)
+{
+   struct agx_oq_heap *heap = agx_get_oq_heap(ctx);
+
+   /* Find first available */
+   int ffs = BITSET_FFS(heap->available);
+   if (!ffs)
+      return (struct agx_ptr){NULL, 0};
+
+   /* Allocate it */
+   unsigned index = ffs - 1;
+   BITSET_CLEAR(heap->available, index);
+
+   unsigned offset = index * sizeof(uint64_t);
+
+   return (struct agx_ptr){
+      (uint8_t *)heap->bo->ptr.cpu + offset,
+      heap->bo->ptr.gpu + offset,
+   };
+}
+
+static unsigned
+agx_oq_index(struct agx_context *ctx, struct agx_query *q)
+{
+   assert(is_occlusion(q));
+
+   return (q->ptr.gpu - ctx->oq->bo->ptr.gpu) / sizeof(uint64_t);
+}
+
+static void
+agx_free_oq(struct agx_context *ctx, struct agx_query *q)
+{
+   struct agx_oq_heap *heap = agx_get_oq_heap(ctx);
+   unsigned index = agx_oq_index(ctx, q);
+
+   assert(index < AGX_MAX_OCCLUSION_QUERIES);
+   assert(!BITSET_TEST(heap->available, index));
+
+   BITSET_SET(heap->available, index);
+}
+
+uint64_t
+agx_get_occlusion_heap(struct agx_batch *batch)
+{
+   if (!batch->ctx->oq)
+      return 0;
+
+   struct agx_bo *bo = batch->ctx->oq->bo;
+
+   if (agx_batch_uses_bo(batch, bo))
+      return bo->ptr.gpu;
+   else
+      return 0;
+}
 
 static struct pipe_query *
 agx_create_query(struct pipe_context *ctx, unsigned query_type, unsigned index)
@@ -15,24 +147,78 @@ agx_create_query(struct pipe_context *ctx, unsigned query_type, unsigned index)
    query->type = query_type;
    query->index = index;
 
+   /* Set all writer generations to a sentinel that will always compare as
+    * false, since nothing writes to no queries.
+    */
+   for (unsigned i = 0; i < ARRAY_SIZE(query->writer_generation); ++i) {
+      query->writer_generation[i] = UINT64_MAX;
+   }
+
+   if (is_occlusion(query)) {
+      query->ptr = agx_alloc_oq(agx_context(ctx));
+   } else {
+      /* TODO: a BO for the query is wasteful, but we benefit from BO list
+       * tracking / reference counting to deal with lifetimes.
+       */
+      query->bo = agx_bo_create(agx_device(ctx->screen), sizeof(uint64_t) * 2,
+                                AGX_BO_WRITEBACK, "Query");
+      query->ptr = query->bo->ptr;
+   }
+
+   if (!query->ptr.gpu) {
+      free(query);
+      return NULL;
+   }
+
    return (struct pipe_query *)query;
 }
 
 static void
-agx_destroy_query(struct pipe_context *ctx, struct pipe_query *pquery)
+sync_query_writers(struct agx_context *ctx, struct agx_query *query,
+                   const char *reason)
 {
-   struct agx_query *query = (struct agx_query *)pquery;
+   STATIC_ASSERT(ARRAY_SIZE(ctx->batches.generation) == AGX_MAX_BATCHES);
+   STATIC_ASSERT(ARRAY_SIZE(ctx->batches.slots) == AGX_MAX_BATCHES);
+   STATIC_ASSERT(ARRAY_SIZE(query->writer_generation) == AGX_MAX_BATCHES);
 
-   /* It is legal for the query to be destroyed before its value is read,
-    * particularly during application teardown. In this case, don't leave a
-    * dangling reference to the query.
-    */
-   if (query->writer) {
-      *util_dynarray_element(&query->writer->occlusion_queries,
-                             struct agx_query *, query->writer_index) = NULL;
+   for (unsigned i = 0; i < AGX_MAX_BATCHES; ++i) {
+      if (query->writer_generation[i] == ctx->batches.generation[i])
+         agx_sync_batch_for_reason(ctx, &ctx->batches.slots[i], reason);
+   }
+}
+
+static bool
+is_query_busy(struct agx_context *ctx, struct agx_query *query)
+{
+   for (unsigned i = 0; i < AGX_MAX_BATCHES; ++i) {
+      if (query->writer_generation[i] == ctx->batches.generation[i])
+         return true;
    }
 
-   free(query);
+   return false;
+}
+
+static void
+agx_destroy_query(struct pipe_context *pctx, struct pipe_query *pquery)
+{
+   struct agx_context *ctx = agx_context(pctx);
+   struct agx_query *query = (struct agx_query *)pquery;
+
+   /* We don't reference count the occlusion query allocations, so we need to
+    * sync writers when destroying so we can freely write from the CPU after
+    * it's destroyed, since the driver will assume an available query is idle.
+    *
+    * For other queries, the BO itself is reference counted after the pipe_query
+    * is destroyed so we don't need to flush.
+    */
+   if (is_occlusion(query)) {
+      sync_query_writers(ctx, query, "Occlusion query destroy");
+      agx_free_oq(ctx, query);
+   } else {
+      agx_bo_unreference(query->bo);
+   }
+
+   free(pquery);
 }
 
 static bool
@@ -48,40 +234,60 @@ agx_begin_query(struct pipe_context *pctx, struct pipe_query *pquery)
    case PIPE_QUERY_OCCLUSION_PREDICATE:
    case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
       ctx->occlusion_query = query;
-
-      /* begin_query zeroes, flush so we can do that write. If anything (i.e.
-       * other than piglit) actually hits this, we could shadow the query to
-       * avoid the flush.
-       */
-      if (query->writer) {
-         agx_flush_batch_for_reason(ctx, query->writer,
-                                    "Occlusion overwritten");
-      }
-
-      assert(query->writer == NULL);
-
-      query->value = 0;
-      return true;
+      break;
 
    case PIPE_QUERY_PRIMITIVES_GENERATED:
-      ctx->prims_generated = query;
-      query->value = 0;
-      return true;
+      ctx->prims_generated[query->index] = query;
+      break;
 
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-      ctx->tf_prims_generated = query;
-      query->value = 0;
-      return true;
+      ctx->tf_prims_generated[query->index] = query;
+      break;
+
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+      ctx->tf_overflow[query->index] = query;
+      break;
+
+   case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+      ctx->tf_any_overflow = query;
+      break;
+
+   case PIPE_QUERY_TIME_ELAPSED:
+      ctx->time_elapsed = query;
+      break;
+
+   case PIPE_QUERY_TIMESTAMP:
+      /* No-op */
+      break;
+
+   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
+      assert(query->index < ARRAY_SIZE(ctx->pipeline_statistics));
+      ctx->pipeline_statistics[query->index] = query;
+      break;
 
    default:
       return false;
    }
+
+   /* begin_query zeroes, sync so we can do that write from the CPU */
+   sync_query_writers(ctx, query, "Query overwritten");
+
+   uint64_t *ptr = query->ptr.cpu;
+   ptr[0] = 0;
+
+   if (query->type == PIPE_QUERY_TIME_ELAPSED) {
+      /* Timestamp begin in second record, the timestamp end in the first */
+      ptr[1] = UINT64_MAX;
+   }
+
+   return true;
 }
 
 static bool
 agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
 {
    struct agx_context *ctx = agx_context(pctx);
+   struct agx_device *dev = agx_device(pctx->screen);
    struct agx_query *query = (struct agx_query *)pquery;
 
    ctx->dirty |= AGX_DIRTY_QUERY;
@@ -93,11 +299,35 @@ agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
       ctx->occlusion_query = NULL;
       return true;
    case PIPE_QUERY_PRIMITIVES_GENERATED:
-      ctx->prims_generated = NULL;
+      ctx->prims_generated[query->index] = NULL;
       return true;
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-      ctx->tf_prims_generated = NULL;
+      ctx->tf_prims_generated[query->index] = NULL;
       return true;
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+      ctx->tf_overflow[query->index] = NULL;
+      return true;
+   case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+      ctx->tf_any_overflow = NULL;
+      return true;
+   case PIPE_QUERY_TIME_ELAPSED:
+      ctx->time_elapsed = NULL;
+      return true;
+   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
+      assert(query->index < ARRAY_SIZE(ctx->pipeline_statistics));
+      ctx->pipeline_statistics[query->index] = NULL;
+      return true;
+   case PIPE_QUERY_TIMESTAMP: {
+      /* Timestamp logically written now, set up batches to MAX their finish
+       * time in. If there are no batches, it's just the current time stamp.
+       */
+      agx_add_timestamp_end_query(ctx, query);
+
+      uint64_t *value = query->ptr.cpu;
+      *value = agx_get_gpu_timestamp(dev);
+
+      return true;
+   }
    default:
       return false;
    }
@@ -109,41 +339,90 @@ agx_get_query_result(struct pipe_context *pctx, struct pipe_query *pquery,
 {
    struct agx_query *query = (struct agx_query *)pquery;
    struct agx_context *ctx = agx_context(pctx);
+   struct agx_device *dev = agx_device(pctx->screen);
+
+   /* TODO: Honour `wait` */
+   sync_query_writers(ctx, query, "Reading query results");
+
+   uint64_t *ptr = query->ptr.cpu;
+   uint64_t value = *ptr;
 
    switch (query->type) {
-   case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
    case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
-      if (query->writer != NULL) {
-         assert(query->writer->occlusion_queries.size != 0);
-
-         /* Querying the result forces a query to finish in finite time, so we
-          * need to flush regardless. Furthermore, we need all earlier queries
-          * to finish before this query, so we flush all batches writing queries
-          * now. Yes, this sucks for tilers.
-          */
-         agx_flush_occlusion_queries(ctx);
-
-         /* TODO: Respect wait when we have real sync */
-      }
-
-      assert(query->writer == NULL && "cleared when cleaning up batch");
-
-      if (query->type == PIPE_QUERY_OCCLUSION_COUNTER)
-         vresult->u64 = query->value;
-      else
-         vresult->b = query->value;
-
+      vresult->b = value;
       return true;
 
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+   case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+      vresult->b = value > 0;
+      return true;
+
+   case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_PRIMITIVES_GENERATED:
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-      vresult->u64 = query->value;
+   case PIPE_QUERY_PIPELINE_STATISTICS_SINGLE:
+      vresult->u64 = value;
+      return true;
+
+   case PIPE_QUERY_TIMESTAMP:
+      vresult->u64 = agx_gpu_time_to_ns(dev, value);
+      return true;
+
+   case PIPE_QUERY_TIME_ELAPSED:
+      /* end - begin */
+      vresult->u64 = agx_gpu_time_to_ns(dev, ptr[0] - ptr[1]);
       return true;
 
    default:
       unreachable("Other queries not yet supported");
    }
+}
+
+static void
+agx_get_query_result_resource(struct pipe_context *pipe, struct pipe_query *q,
+                              enum pipe_query_flags flags,
+                              enum pipe_query_value_type result_type, int index,
+                              struct pipe_resource *resource, unsigned offset)
+{
+   struct agx_query *query = (struct agx_query *)q;
+
+   /* TODO: Don't cheat XXX */
+   struct agx_context *ctx = agx_context(pipe);
+
+   union pipe_query_result result;
+   if (index < 0) {
+      /* availability */
+      result.u64 = !is_query_busy(ctx, query);
+   } else {
+      bool ready = agx_get_query_result(pipe, q, true, &result);
+      assert(ready);
+
+      switch (query->type) {
+      case PIPE_QUERY_OCCLUSION_PREDICATE:
+      case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
+      case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+      case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
+         result.u64 = result.b;
+         break;
+      default:
+         break;
+      }
+   }
+
+   /* Clamp to type, arb_query_buffer_object-qbo tests */
+   if (result_type == PIPE_QUERY_TYPE_U32) {
+      result.u32 = MIN2(result.u64, u_uintN_max(32));
+   } else if (result_type == PIPE_QUERY_TYPE_I32) {
+      int64_t x = result.u64;
+      x = MAX2(MIN2(x, u_intN_max(32)), u_intN_min(32));
+      result.u32 = x;
+   }
+
+   if (result_type <= PIPE_QUERY_TYPE_U32)
+      pipe_buffer_write(pipe, resource, offset, 4, &result.u32);
+   else
+      pipe_buffer_write(pipe, resource, offset, 8, &result.u64);
 }
 
 static void
@@ -155,66 +434,68 @@ agx_set_active_query_state(struct pipe_context *pipe, bool enable)
    ctx->dirty |= AGX_DIRTY_QUERY;
 }
 
-uint16_t
-agx_get_oq_index(struct agx_batch *batch, struct agx_query *query)
+static void
+agx_add_query_to_batch(struct agx_batch *batch, struct agx_query *query)
 {
-   /* If written by another batch, flush it now. If this affects real apps, we
-    * could avoid this flush by merging query results.
-    */
-   if (query->writer && query->writer != batch) {
-      agx_flush_batch_for_reason(batch->ctx, query->writer,
-                                 "Multiple occlusion query writers");
-   }
+   unsigned idx = agx_batch_idx(batch);
+   struct agx_bo *bo = is_occlusion(query) ? batch->ctx->oq->bo : query->bo;
 
-   /* Allocate if needed */
-   if (query->writer == NULL) {
-      query->writer = batch;
-      query->writer_index = util_dynarray_num_elements(
-         &batch->occlusion_queries, struct agx_query *);
-
-      util_dynarray_append(&batch->occlusion_queries, struct agx_query *,
-                           query);
-   }
-
-   assert(query->writer == batch);
-   assert(*util_dynarray_element(&batch->occlusion_queries, struct agx_query *,
-                                 query->writer_index) == query);
-
-   return query->writer_index;
+   agx_batch_add_bo(batch, bo);
+   query->writer_generation[idx] = batch->ctx->batches.generation[idx];
 }
 
 void
-agx_finish_batch_occlusion_queries(struct agx_batch *batch)
+agx_batch_add_timestamp_query(struct agx_batch *batch, struct agx_query *q)
 {
-   uint64_t *results = (uint64_t *)batch->occlusion_buffer.cpu;
-
-   util_dynarray_foreach(&batch->occlusion_queries, struct agx_query *, it) {
-      struct agx_query *query = *it;
-
-      /* Skip queries that have since been destroyed */
-      if (query == NULL)
-         continue;
-
-      assert(query->writer == batch);
-
-      /* Get the result for this batch. If results is NULL, it means that no
-       * draws actually enabled any occlusion queries, so there's no change.
-       */
-      if (results != NULL) {
-         uint64_t result = *(results++);
-
-         /* Accumulate with the previous result (e.g. in case we split a frame
-          * into multiple batches so an API-level query spans multiple batches).
-          */
-         if (query->type == PIPE_QUERY_OCCLUSION_COUNTER)
-            query->value += result;
-         else
-            query->value |= (!!result);
-      }
-
-      query->writer = NULL;
-      query->writer_index = 0;
+   if (q) {
+      agx_add_query_to_batch(batch, q);
+      util_dynarray_append(&batch->timestamps, struct agx_ptr, q->ptr);
    }
+}
+
+uint16_t
+agx_get_oq_index(struct agx_batch *batch, struct agx_query *query)
+{
+   agx_add_query_to_batch(batch, query);
+   return agx_oq_index(batch->ctx, query);
+}
+
+uint64_t
+agx_get_query_address(struct agx_batch *batch, struct agx_query *query)
+{
+   agx_add_query_to_batch(batch, query);
+   return query->ptr.gpu;
+}
+
+void
+agx_finish_batch_queries(struct agx_batch *batch, uint64_t begin_ts,
+                         uint64_t end_ts)
+{
+   /* Remove the batch as write from all queries by incrementing the generation
+    * of the batch.
+    */
+   batch->ctx->batches.generation[agx_batch_idx(batch)]++;
+
+   /* Write out timestamps */
+   util_dynarray_foreach(&batch->timestamps, struct agx_ptr, it) {
+      uint64_t *ptr = it->cpu;
+
+      ptr[0] = MAX2(ptr[0], end_ts);
+      ptr[1] = MIN2(ptr[1], begin_ts);
+   }
+}
+
+void
+agx_query_increment_cpu(struct agx_context *ctx, struct agx_query *query,
+                        uint64_t increment)
+{
+   if (!query)
+      return;
+
+   sync_query_writers(ctx, query, "CPU query increment");
+
+   uint64_t *value = query->ptr.cpu;
+   *value += increment;
 }
 
 static void
@@ -255,6 +536,7 @@ agx_init_query_functions(struct pipe_context *pctx)
    pctx->begin_query = agx_begin_query;
    pctx->end_query = agx_end_query;
    pctx->get_query_result = agx_get_query_result;
+   pctx->get_query_result_resource = agx_get_query_result_resource;
    pctx->set_active_query_state = agx_set_active_query_state;
    pctx->render_condition = agx_render_condition;
 

@@ -31,6 +31,15 @@
 
 #include "radv_amdgpu_winsys.h"
 
+struct radv_amdgpu_winsys_bo_log {
+   struct list_head list;
+   uint64_t va;
+   uint64_t size;
+   uint64_t timestamp; /* CPU timestamp */
+   uint8_t is_virtual : 1;
+   uint8_t destroyed : 1;
+};
+
 struct radv_amdgpu_map_range {
    uint64_t offset;
    uint64_t size;
@@ -50,9 +59,13 @@ struct radv_amdgpu_winsys_bo {
       struct {
          amdgpu_bo_handle bo;
          uint32_t bo_handle;
+
+         void *cpu_map;
       };
       /* virtual bo */
       struct {
+         struct u_rwlock lock;
+
          struct radv_amdgpu_map_range *ranges;
          uint32_t range_count;
          uint32_t range_capacity;

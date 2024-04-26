@@ -43,7 +43,7 @@
 #include "dri_helpers.h"
 #include "dri_query_renderer.h"
 
-DEBUG_GET_ONCE_BOOL_OPTION(swrast_no_present, "SWRAST_NO_PRESENT", FALSE);
+DEBUG_GET_ONCE_BOOL_OPTION(swrast_no_present, "SWRAST_NO_PRESENT", false);
 
 static inline void
 get_drawable_info(struct dri_drawable *drawable, int *x, int *y, int *w, int *h)
@@ -128,16 +128,16 @@ get_image_shm(struct dri_drawable *drawable, int x, int y, int width, int height
    whandle.type = WINSYS_HANDLE_TYPE_SHMID;
 
    if (loader->base.version < 4 || !loader->getImageShm)
-      return FALSE;
+      return false;
 
    if (!res->screen->resource_get_handle(res->screen, NULL, res, &whandle, PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE))
-      return FALSE;
+      return false;
 
    if (loader->base.version > 5 && loader->getImageShm2)
       return loader->getImageShm2(opaque_dri_drawable(drawable), x, y, width, height, whandle.handle, drawable->loaderPrivate);
 
    loader->getImageShm(opaque_dri_drawable(drawable), x, y, width, height, whandle.handle, drawable->loaderPrivate);
-   return TRUE;
+   return true;
 }
 
 static void
@@ -186,14 +186,14 @@ drisw_put_image_shm(struct dri_drawable *drawable,
 
 static inline void
 drisw_present_texture(struct pipe_context *pipe, struct dri_drawable *drawable,
-                      struct pipe_resource *ptex, struct pipe_box *sub_box)
+                      struct pipe_resource *ptex, unsigned nrects, struct pipe_box *sub_box)
 {
    struct dri_screen *screen = drawable->screen;
 
    if (screen->swrast_no_present)
       return;
 
-   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, sub_box);
+   screen->base.screen->flush_frontbuffer(screen->base.screen, pipe, ptex, 0, 0, drawable, nrects, sub_box);
 }
 
 static inline void
@@ -207,9 +207,10 @@ drisw_invalidate_drawable(struct dri_drawable *drawable)
 static inline void
 drisw_copy_to_front(struct pipe_context *pipe,
                     struct dri_drawable *drawable,
-                    struct pipe_resource *ptex)
+                    struct pipe_resource *ptex,
+                    int nboxes, struct pipe_box *boxes)
 {
-   drisw_present_texture(pipe, drawable, ptex, NULL);
+   drisw_present_texture(pipe, drawable, ptex, nboxes, boxes);
 
    drisw_invalidate_drawable(drawable);
 }
@@ -219,7 +220,7 @@ drisw_copy_to_front(struct pipe_context *pipe,
  */
 
 static void
-drisw_swap_buffers(struct dri_drawable *drawable)
+drisw_swap_buffers_with_damage(struct dri_drawable *drawable, int nrects, const int *rects)
 {
    struct dri_context *ctx = dri_get_current();
    struct dri_screen *screen = drawable->screen;
@@ -237,6 +238,18 @@ drisw_swap_buffers(struct dri_drawable *drawable)
 
    if (ptex) {
       struct pipe_fence_handle *fence = NULL;
+
+      struct pipe_box stack_boxes[64];
+      if (nrects > ARRAY_SIZE(stack_boxes))
+         nrects = 0;
+      if (nrects) {
+         for (unsigned int i = 0; i < nrects; i++) {
+            const int *rect = &rects[i * 4];
+
+            u_box_2d(rect[0], rect[1], rect[2], rect[3], &stack_boxes[i]);
+         }
+      }
+
       if (ctx->pp)
          pp_run(ctx->pp, ptex, ptex, drawable->textures[ST_ATTACHMENT_DEPTH_STENCIL]);
 
@@ -253,13 +266,20 @@ drisw_swap_buffers(struct dri_drawable *drawable)
       }
 
       screen->base.screen->fence_finish(screen->base.screen, ctx->st->pipe,
-                                        fence, PIPE_TIMEOUT_INFINITE);
+                                        fence, OS_TIMEOUT_INFINITE);
       screen->base.screen->fence_reference(screen->base.screen, &fence, NULL);
-      drisw_copy_to_front(ctx->st->pipe, drawable, ptex);
+      drisw_copy_to_front(ctx->st->pipe, drawable, ptex, nrects, nrects ? stack_boxes : NULL);
+      drawable->buffer_age = 1;
 
       /* TODO: remove this if the framebuffer state doesn't change. */
       st_context_invalidate_state(ctx->st, ST_INVALIDATE_FB_STATE);
    }
+}
+
+static void
+drisw_swap_buffers(struct dri_drawable *drawable)
+{
+   drisw_swap_buffers_with_damage(drawable, 0, NULL);
 }
 
 static void
@@ -288,7 +308,7 @@ drisw_copy_sub_buffer(struct dri_drawable *drawable, int x, int y,
       st_context_flush(ctx->st, ST_FLUSH_FRONT, &fence, NULL, NULL);
 
       screen->base.screen->fence_finish(screen->base.screen, ctx->st->pipe,
-                                        fence, PIPE_TIMEOUT_INFINITE);
+                                        fence, OS_TIMEOUT_INFINITE);
       screen->base.screen->fence_reference(screen->base.screen, &fence, NULL);
 
       if (drawable->stvis.samples > 1) {
@@ -299,7 +319,7 @@ drisw_copy_sub_buffer(struct dri_drawable *drawable, int x, int y,
       }
 
       u_box_2d(x, drawable->h - y - h, w, h, &box);
-      drisw_present_texture(ctx->st->pipe, drawable, ptex, &box);
+      drisw_present_texture(ctx->st->pipe, drawable, ptex, 1, &box);
    }
 }
 
@@ -327,7 +347,7 @@ drisw_flush_frontbuffer(struct dri_context *ctx,
    ptex = drawable->textures[statt];
 
    if (ptex) {
-      drisw_copy_to_front(ctx->st->pipe, ctx->draw, ptex);
+      drisw_copy_to_front(ctx->st->pipe, ctx->draw, ptex, 0, NULL);
    }
 
    return true;
@@ -350,7 +370,7 @@ drisw_allocate_textures(struct dri_context *stctx,
    const __DRIswrastLoaderExtension *loader = drawable->screen->swrast_loader;
    struct pipe_resource templ;
    unsigned width, height;
-   boolean resized;
+   bool resized;
    unsigned i;
 
    /* Wait for glthread to finish because we can't use pipe_context from
@@ -370,6 +390,7 @@ drisw_allocate_textures(struct dri_context *stctx,
          pipe_resource_reference(&drawable->textures[i], NULL);
          pipe_resource_reference(&drawable->msaa_textures[i], NULL);
       }
+      drawable->buffer_age = 0;
    }
 
    memset(&templ, 0, sizeof(templ));
@@ -522,7 +543,7 @@ static const struct drisw_loader_funcs drisw_shm_lf = {
 
 static struct dri_drawable *
 drisw_create_drawable(struct dri_screen *screen, const struct gl_config * visual,
-                      boolean isPixmap, void *loaderPrivate)
+                      bool isPixmap, void *loaderPrivate)
 {
    struct dri_drawable *drawable = dri_create_drawable(screen, visual, isPixmap,
                                                        loaderPrivate);
@@ -534,6 +555,7 @@ drisw_create_drawable(struct dri_screen *screen, const struct gl_config * visual
    drawable->flush_frontbuffer = drisw_flush_frontbuffer;
    drawable->update_tex_buffer = drisw_update_tex_buffer;
    drawable->swap_buffers = drisw_swap_buffers;
+   drawable->swap_buffers_with_damage = drisw_swap_buffers_with_damage;
 
    return drawable;
 }
@@ -560,15 +582,15 @@ drisw_init_screen(struct dri_screen *screen)
 #endif
    if (!success)
       success = pipe_loader_sw_probe_dri(&screen->dev, lf);
-   if (success) {
+
+   if (success)
       pscreen = pipe_loader_create_screen(screen->dev);
-      dri_init_options(screen);
-   }
 
    if (!pscreen)
       goto fail;
 
-   configs = dri_init_screen_helper(screen, pscreen);
+   dri_init_options(screen);
+   configs = dri_init_screen(screen, pscreen);
    if (!configs)
       goto fail;
 
@@ -593,9 +615,7 @@ drisw_init_screen(struct dri_screen *screen)
 
    return configs;
 fail:
-   dri_destroy_screen_helper(screen);
-   if (screen->dev)
-      pipe_loader_release(&screen->dev, 1);
+   dri_release_screen(screen);
    return NULL;
 }
 

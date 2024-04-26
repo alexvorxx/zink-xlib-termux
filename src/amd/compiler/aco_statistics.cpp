@@ -105,12 +105,12 @@ struct perf_info {
 };
 
 static bool
-is_dual_issue_capable(const Program& program, const Instruction& instruction)
+is_dual_issue_capable(const Program& program, const Instruction& instr)
 {
-   if (program.gfx_level < GFX11 || !instruction.isVALU() || instruction.isDPP())
+   if (program.gfx_level < GFX11 || !instr.isVALU() || instr.isDPP())
       return false;
 
-   switch (instruction.opcode) {
+   switch (instr.opcode) {
    case aco_opcode::v_fma_f32:
    case aco_opcode::v_fmac_f32:
    case aco_opcode::v_fmaak_f32:
@@ -122,9 +122,6 @@ is_dual_issue_capable(const Program& program, const Instruction& instruction)
    case aco_opcode::v_mul_legacy_f32:
    case aco_opcode::v_fma_legacy_f32:
    case aco_opcode::v_fmac_legacy_f32:
-   case aco_opcode::v_fma_mix_f32:
-   case aco_opcode::v_fma_mixlo_f16:
-   case aco_opcode::v_fma_mixhi_f16:
    case aco_opcode::v_fma_f16:
    case aco_opcode::v_fmac_f16:
    case aco_opcode::v_fmaak_f16:
@@ -169,6 +166,24 @@ is_dual_issue_capable(const Program& program, const Instruction& instruction)
    case aco_opcode::v_dot2_f16_f16:
    case aco_opcode::v_dot2_f32_f16:
    case aco_opcode::v_dot2c_f32_f16: return true;
+   case aco_opcode::v_fma_mix_f32:
+   case aco_opcode::v_fma_mixlo_f16:
+   case aco_opcode::v_fma_mixhi_f16: {
+      /* dst and acc type must match */
+      if (instr.valu().opsel_hi[2] == (instr.opcode == aco_opcode::v_fma_mix_f32))
+         return false;
+
+      /* If all operands are vgprs, two must be the same. */
+      for (unsigned i = 0; i < 3; i++) {
+         if (instr.operands[i].isConstant() || instr.operands[i].isOfType(RegType::sgpr))
+            return true;
+         for (unsigned j = 0; j < i; j++) {
+            if (instr.operands[i].physReg() == instr.operands[j].physReg())
+               return true;
+         }
+      }
+      return false;
+   }
    default: return false;
    }
 }
@@ -208,6 +223,11 @@ get_perf_info(const Program& program, const Instruction& instr)
                                                : perf_info{0, WAIT_USE(lds, 1)};
       case instr_class::exp: return {0, WAIT_USE(export_gds, 1)};
       case instr_class::vmem: return {0, WAIT_USE(vmem, 1)};
+      case instr_class::wmma: {
+         /* int8 and (b)f16 have the same performance. */
+         uint8_t cost = instr.opcode == aco_opcode::v_wmma_i32_16x16x16_iu4 ? 16 : 32;
+         return {cost, WAIT_USE(valu, cost)};
+      }
       case instr_class::barrier:
       case instr_class::waitcnt:
       case instr_class::other:
@@ -511,11 +531,17 @@ collect_preasm_stats(Program* program)
       program->statistics[aco_statistic_instructions] += block.instructions.size();
 
       for (aco_ptr<Instruction>& instr : block.instructions) {
-         if (instr->isSOPP() && instr->sopp().block != -1)
+         bool is_branch = instr->isSOPP() && instr->sopp().block != -1;
+         if (is_branch)
             program->statistics[aco_statistic_branches]++;
 
-         if (instr->opcode == aco_opcode::p_constaddr)
-            program->statistics[aco_statistic_instructions] += 2;
+         if (instr->isVALU() || instr->isVINTRP())
+            program->statistics[aco_statistic_valu]++;
+         if (instr->isSALU() && !instr->isSOPP() &&
+             instr_info.classes[(int)instr->opcode] != instr_class::waitcnt)
+            program->statistics[aco_statistic_salu]++;
+         if (instr->isVOPD())
+            program->statistics[aco_statistic_vopd]++;
 
          if ((instr->isVMEM() || instr->isScratch() || instr->isGlobal()) &&
              !instr->operands.empty()) {
@@ -524,6 +550,8 @@ collect_preasm_stats(Program* program)
                              { return should_form_clause(instr.get(), other); }))
                program->statistics[aco_statistic_vmem_clauses]++;
             vmem_clause.insert(instr.get());
+
+            program->statistics[aco_statistic_vmem]++;
          } else {
             vmem_clause.clear();
          }
@@ -534,6 +562,8 @@ collect_preasm_stats(Program* program)
                              { return should_form_clause(instr.get(), other); }))
                program->statistics[aco_statistic_smem_clauses]++;
             smem_clause.insert(instr.get());
+
+            program->statistics[aco_statistic_smem]++;
          } else {
             smem_clause.clear();
          }

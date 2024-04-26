@@ -43,7 +43,14 @@
 #define MALI_BLEND_AU_R5G5B5A1    (MALI_RGB5_A1_AU << 12)
 #define MALI_BLEND_PU_R5G5B5A1    (MALI_RGB5_A1_PU << 12)
 
-#if PAN_ARCH <= 6
+#if PAN_ARCH <= 5
+#define BFMT2(pipe, internal, writeback, srgb)                                 \
+   [PIPE_FORMAT_##pipe] = {                                                    \
+      MALI_COLOR_BUFFER_INTERNAL_FORMAT_##internal,                            \
+      MALI_COLOR_FORMAT_##writeback,                                           \
+      { 0, 0 },                                                                \
+   }
+#elif PAN_ARCH == 6
 #define BFMT2(pipe, internal, writeback, srgb)                                 \
    [PIPE_FORMAT_##pipe] = {                                                    \
       MALI_COLOR_BUFFER_INTERNAL_FORMAT_##internal,                            \
@@ -112,10 +119,10 @@ const struct pan_blendable_format
 
 /* Convenience */
 
-#define _V PIPE_BIND_VERTEX_BUFFER
-#define _T PIPE_BIND_SAMPLER_VIEW
-#define _R PIPE_BIND_RENDER_TARGET
-#define _Z PIPE_BIND_DEPTH_STENCIL
+#define _V PAN_BIND_VERTEX_BUFFER
+#define _T PAN_BIND_SAMPLER_VIEW
+#define _R PAN_BIND_RENDER_TARGET
+#define _Z PAN_BIND_DEPTH_STENCIL
 
 #define FLAGS_V___ (_V)
 #define FLAGS__T__ (_T)
@@ -123,49 +130,20 @@ const struct pan_blendable_format
 #define FLAGS_VT__ (_V | _T)
 #define FLAGS__T_Z (_T | _Z)
 
-#define SRGB_L (0)
-#define SRGB_S (1)
-
-#if PAN_ARCH <= 6
-#define V6_0000 PAN_V6_SWIZZLE(0, 0, 0, 0)
-#define V6_000R PAN_V6_SWIZZLE(0, 0, 0, R)
-#define V6_0R00 PAN_V6_SWIZZLE(0, R, 0, 0)
-#define V6_0A00 PAN_V6_SWIZZLE(0, A, 0, 0)
-#define V6_AAAA PAN_V6_SWIZZLE(A, A, A, A)
-#define V6_A001 PAN_V6_SWIZZLE(A, 0, 0, 1)
-#define V6_ABG1 PAN_V6_SWIZZLE(A, B, G, 1)
-#define V6_ABGR PAN_V6_SWIZZLE(A, B, G, R)
-#define V6_BGR1 PAN_V6_SWIZZLE(B, G, R, 1)
-#define V6_BGRA PAN_V6_SWIZZLE(B, G, R, A)
-#define V6_GBA1 PAN_V6_SWIZZLE(G, B, A, 1)
-#define V6_GBAR PAN_V6_SWIZZLE(G, B, A, R)
-#define V6_R000 PAN_V6_SWIZZLE(R, 0, 0, 0)
-#define V6_R001 PAN_V6_SWIZZLE(R, 0, 0, 1)
-#define V6_RG01 PAN_V6_SWIZZLE(R, G, 0, 1)
-#define V6_RGB1 PAN_V6_SWIZZLE(R, G, B, 1)
-#define V6_RGBA PAN_V6_SWIZZLE(R, G, B, A)
-#define V6_RRR1 PAN_V6_SWIZZLE(R, R, R, 1)
-#define V6_RRRG PAN_V6_SWIZZLE(R, R, R, G)
-#define V6_RRRR PAN_V6_SWIZZLE(R, R, R, R)
-#define V6_GGGG PAN_V6_SWIZZLE(G, G, G, G)
-
 #define FMT(pipe, mali, swizzle, srgb, flags)                                  \
    [PIPE_FORMAT_##pipe] = {                                                    \
-      .hw = (V6_##swizzle) | ((MALI_##mali) << 12) | (((SRGB_##srgb)) << 20),  \
+      .hw = MALI_PACK_FMT(mali, swizzle, srgb),                                \
       .bind = FLAGS_##flags,                                                   \
    }
-#else
 
-#define MALI_RGB_COMPONENT_ORDER_R001 MALI_RGB_COMPONENT_ORDER_RGB1
-#define MALI_RGB_COMPONENT_ORDER_RG01 MALI_RGB_COMPONENT_ORDER_RGB1
-#define MALI_RGB_COMPONENT_ORDER_GBAR MALI_RGB_COMPONENT_ORDER_ARGB
-#define MALI_RGB_COMPONENT_ORDER_GBA1 MALI_RGB_COMPONENT_ORDER_1RGB
-#define MALI_RGB_COMPONENT_ORDER_ABG1 MALI_RGB_COMPONENT_ORDER_1BGR
+#if PAN_ARCH >= 7
+#define YUV_NO_SWAP (0)
+#define YUV_SWAP    (1)
 
-#define FMT(pipe, mali, swizzle, srgb, flags)                                  \
+#define FMT_YUV(pipe, mali, swizzle, swap, siting, flags)                      \
    [PIPE_FORMAT_##pipe] = {                                                    \
-      .hw = (MALI_RGB_COMPONENT_ORDER_##swizzle) | ((MALI_##mali) << 12) |     \
-            (((SRGB_##srgb)) << 20),                                           \
+      .hw = (MALI_YUV_SWIZZLE_##swizzle) | ((YUV_##swap) << 3) |               \
+            ((MALI_YUV_CR_SITING_##siting) << 9) | ((MALI_##mali) << 12),      \
       .bind = FLAGS_##flags,                                                   \
    }
 #endif
@@ -173,6 +151,18 @@ const struct pan_blendable_format
 /* clang-format off */
 const struct panfrost_format GENX(panfrost_pipe_format)[PIPE_FORMAT_COUNT] = {
    FMT(NONE,                    CONSTANT,        0000, L, VTR_),
+
+#if PAN_ARCH >= 7
+   /* Multiplane formats */
+   FMT_YUV(R8G8_R8B8_UNORM, YUYV8, UVYA, NO_SWAP, CENTER_Y, _T__),
+   FMT_YUV(G8R8_B8R8_UNORM, VYUY8, UYVA, SWAP,    CENTER_Y, _T__),
+   FMT_YUV(R8B8_R8G8_UNORM, YUYV8, VYUA, NO_SWAP, CENTER_Y, _T__),
+   FMT_YUV(B8R8_G8R8_UNORM, VYUY8, VUYA, SWAP,    CENTER_Y, _T__),
+   FMT_YUV(R8_G8B8_420_UNORM, Y8_UV8_420, YUVA, NO_SWAP, CENTER, _T__),
+   FMT_YUV(R8_B8G8_420_UNORM, Y8_UV8_420, YVUA, NO_SWAP, CENTER, _T__),
+   FMT_YUV(R8_G8_B8_420_UNORM, Y8_U8_V8_420, YUVA, NO_SWAP, CENTER, _T__),
+   FMT_YUV(R8_B8_G8_420_UNORM, Y8_U8_V8_420, YVUA, NO_SWAP, CENTER, _T__),
+#endif
 
 #if PAN_ARCH <= 7
    FMT(ETC1_RGB8,               ETC2_RGB8,       RGB1, L, _T__),

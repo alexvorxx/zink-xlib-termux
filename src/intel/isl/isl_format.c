@@ -28,28 +28,31 @@
 #include "dev/intel_device_info.h"
 
 #include "util/macros.h" /* Needed for MAX3 and MAX2 for format_rgb9e5 */
-#include "util/format_srgb.h"
-#include "util/format_rgb9e5.h"
-#include "util/format_r11g11b10f.h"
 
-/* Header-only format conversion include */
-#include "main/format_utils.h"
+#include "util/format/format_utils.h"
+#include "util/format_r11g11b10f.h"
+#include "util/format_rgb9e5.h"
+#include "util/format_srgb.h"
+#include "util/half_float.h"
+#include "util/rounding.h"
+#include "util/u_math.h"
 
 struct surface_format_info {
    bool exists;
-   uint8_t sampling;
-   uint8_t filtering;
-   uint8_t shadow_compare;
-   uint8_t chroma_key;
-   uint8_t render_target;
-   uint8_t alpha_blend;
-   uint8_t input_vb;
-   uint8_t streamed_output_vb;
-   uint8_t color_processing;
-   uint8_t typed_write;
-   uint8_t typed_read;
-   uint8_t typed_atomics;
-   uint8_t ccs_e;
+   /* These fields must fit the largest verx10 value. */
+   uint16_t sampling;
+   uint16_t filtering;
+   uint16_t shadow_compare;
+   uint16_t chroma_key;
+   uint16_t render_target;
+   uint16_t alpha_blend;
+   uint16_t input_vb;
+   uint16_t streamed_output_vb;
+   uint16_t color_processing;
+   uint16_t typed_write;
+   uint16_t typed_read;
+   uint16_t typed_atomics;
+   uint16_t ccs_e;
 };
 
 /* This macro allows us to write the table almost as it appears in the PRM,
@@ -59,7 +62,7 @@ struct surface_format_info {
    [ISL_FORMAT_##sf] = { true, sampl, filt, shad, ck, rt, ab, vb, so, color, tw, tr, ta, ccs_e},
 
 #define Y 0
-#define x 255
+#define x 0xFFFF
 /**
  * This is the table of support for surface (texture, renderbuffer, and vertex
  * buffer, but not depthbuffer) formats across the various hardware generations.
@@ -703,6 +706,9 @@ isl_format_supports_rendering(const struct intel_device_info *devinfo,
    if (!format_info_exists(format))
       return false;
 
+   /* If this fails, then we need to update struct surface_format_info */
+   assert(devinfo->verx10 <
+          (1ul << (8 * sizeof(format_info[format].render_target))));
    return devinfo->verx10 >= format_info[format].render_target;
 }
 
@@ -876,14 +882,6 @@ bool
 isl_format_supports_ccs_e(const struct intel_device_info *devinfo,
                           enum isl_format format)
 {
-   /* Wa_14017353530: Disable compression on MTL until B0 */
-   if (intel_device_info_is_mtl(devinfo) && devinfo->revision < 4)
-      return false;
-
-   /* Wa_22011186057: Disable compression on ADL-P A0 */
-   if (devinfo->platform == INTEL_PLATFORM_ADL && devinfo->gt == 2 && devinfo->revision == 0)
-      return false;
-
    if (!format_info_exists(format))
       return false;
 
@@ -1203,6 +1201,51 @@ isl_format_rgbx_to_rgba(enum isl_format rgbx)
    default:
       assert(!"Invalid RGBX format");
       return rgbx;
+   }
+}
+
+/*
+ * Xe2 allows route of LD messages from Sampler to LSC to improve performance
+ * when some restrictions are met, here checking the format restrictions.
+ *
+ * RENDER_SURFACE_STATE::Enable Sampler Route to LSC:
+ *   "The Surface Format is one of the following:
+ *
+ *     R8_UNORM, R8G8_UNORM, R16_UNORM, R16G16_UNORM, R16G16B16A16_UNORM
+ *     R16_FLOAT, R16G16_FLOAT, R16G16B16A16_FLOAT
+ *     R32_FLOAT, R32G32_FLOAT, R32G32B32A32_FLOAT, R32_UINT, R32G32_UINT, R32G32B32A32_UINT
+ *     R10G10B10A2_UNORM, R11G11B10_FLOAT
+ *   "
+ */
+bool
+isl_format_support_sampler_route_to_lsc(enum isl_format fmt)
+{
+   /* TODO/FIXME: even only enabling the optimization with formats below this
+    * is causing some tests to fail so completely disabling this optimization
+    * for now.
+    */
+   return false;
+
+   switch (fmt) {
+   case ISL_FORMAT_R8_UNORM:
+   case ISL_FORMAT_R8G8_UNORM:
+   case ISL_FORMAT_R16_UNORM:
+   case ISL_FORMAT_R16G16_UNORM:
+   case ISL_FORMAT_R16G16B16A16_UNORM:
+   case ISL_FORMAT_R16_FLOAT:
+   case ISL_FORMAT_R16G16_FLOAT:
+   case ISL_FORMAT_R16G16B16A16_FLOAT:
+   case ISL_FORMAT_R32_FLOAT:
+   case ISL_FORMAT_R32G32_FLOAT:
+   case ISL_FORMAT_R32G32B32A32_FLOAT:
+   case ISL_FORMAT_R32_UINT:
+   case ISL_FORMAT_R32G32_UINT:
+   case ISL_FORMAT_R32G32B32A32_UINT:
+   case ISL_FORMAT_R10G10B10A2_UNORM:
+   case ISL_FORMAT_R11G11B10_FLOAT:
+      return true;
+   default:
+      return false;
    }
 }
 

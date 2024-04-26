@@ -269,7 +269,7 @@ static void noop_texture_subdata(struct pipe_context *pipe,
                                  const struct pipe_box *box,
                                  const void *data,
                                  unsigned stride,
-                                 unsigned layer_stride)
+                                 uintptr_t layer_stride)
 {
 }
 
@@ -477,7 +477,7 @@ static void noop_flush_frontbuffer(struct pipe_screen *_screen,
                                    struct pipe_context *ctx,
                                    struct pipe_resource *resource,
                                    unsigned level, unsigned layer,
-                                   void *context_private, struct pipe_box *box)
+                                   void *context_private, unsigned nboxes, struct pipe_box *box)
 {
 }
 

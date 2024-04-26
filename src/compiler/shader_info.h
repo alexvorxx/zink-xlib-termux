@@ -47,6 +47,7 @@ struct spirv_supported_capabilities {
    bool amd_shader_explicit_vertex_parameter;
    bool amd_trinary_minmax;
    bool atomic_storage;
+   bool cooperative_matrix;
    bool demote_to_helper_invocation;
    bool derivative_group;
    bool descriptor_array_dynamic_indexing;
@@ -63,6 +64,7 @@ struct spirv_supported_capabilities {
    bool float64_atomic_add;
    bool float64_atomic_min_max;
    bool float64;
+   bool fragment_barycentric;
    bool fragment_density;
    bool fragment_fully_covered;
    bool fragment_shader_pixel_interlock;
@@ -93,6 +95,7 @@ struct spirv_supported_capabilities {
    bool physical_storage_buffer_address;
    bool post_depth_coverage;
    bool printf;
+   bool quad_control;
    bool ray_cull_mask;
    bool ray_query;
    bool ray_tracing;
@@ -100,6 +103,8 @@ struct spirv_supported_capabilities {
    //bool ray_tracing_position_fetch;
    bool runtime_descriptor_array;
    bool shader_clock;
+   bool shader_enqueue;
+   bool shader_sm_builtins_nv;
    bool shader_viewport_index_layer;
    bool shader_viewport_mask_nv;
    bool sparse_residency;
@@ -164,6 +169,8 @@ typedef struct shader_info {
 
    /* Which inputs are actually read */
    uint64_t inputs_read;
+   /* Which inputs occupy 2 slots. */
+   uint64_t dual_slot_inputs;
    /* Which outputs are actually written */
    uint64_t outputs_written;
    /* Which outputs are actually read */
@@ -222,7 +229,7 @@ typedef struct shader_info {
    BITSET_DECLARE(msaa_images, 64);
 
    /* SPV_KHR_float_controls: execution mode for floating point ops */
-   uint16_t float_controls_execution_mode;
+   uint32_t float_controls_execution_mode;
 
    /**
     * Size of shared variables accessed by compute/task/mesh shaders.
@@ -246,6 +253,7 @@ typedef struct shader_info {
    uint16_t workgroup_size[3];
 
    enum gl_subgroup_size subgroup_size;
+   uint8_t num_subgroups;
 
    /**
     * Uses subgroup intrinsics which can communicate across a quad.
@@ -336,6 +344,16 @@ typedef struct shader_info {
    bool workgroup_size_variable:1;
 
    /**
+    * Whether the shader uses printf instructions.
+    */
+   bool uses_printf:1;
+
+   /**
+    * VK_KHR_shader_maximal_reconvergence
+    */
+   bool maximally_reconverges:1;
+
+   /**
      * Set if this shader uses legacy (DX9 or ARB assembly) math rules.
      *
      * From the ARB_fragment_program specification:
@@ -371,6 +389,9 @@ typedef struct shader_info {
           */
          uint8_t blit_sgprs_amd:4;
 
+         /* Software TES executing as HW VS */
+         bool tes_agx:1;
+
          /* True if the shader writes position in window space coordinates pre-transform */
          bool window_space_position:1;
 
@@ -380,10 +401,10 @@ typedef struct shader_info {
 
       struct {
          /** The output primitive type */
-         uint16_t output_primitive;
+         enum mesa_prim output_primitive;
 
          /** The input primitive type */
-         uint16_t input_primitive;
+         enum mesa_prim input_primitive;
 
          /** The maximum number of vertices the geometry shader might write. */
          uint16_t vertices_out;
@@ -409,18 +430,22 @@ typedef struct shader_info {
          bool color_is_dual_source:1;
 
          /**
-          * True if this fragment shader requires helper invocations.  This
-          * can be caused by the use of ALU derivative ops, texture
-          * instructions which do implicit derivatives, and the use of quad
-          * subgroup operations.
+          * True if this fragment shader requires full quad invocations.
           */
-         bool needs_quad_helper_invocations:1;
+         bool require_full_quads:1;
 
          /**
-          * True if this fragment shader requires helper invocations for
-          * all subgroup operations, not just quad ops and derivatives.
+          * Whether the derivative group must be equivalent to the quad group.
           */
-         bool needs_all_helper_invocations:1;
+         bool quad_derivatives:1;
+
+         /**
+          * True if this fragment shader requires helper invocations.  This
+          * can be caused by the use of ALU derivative ops, texture
+          * instructions which do implicit derivatives, the use of quad
+          * subgroup operations or if the shader requires full quads.
+          */
+         bool needs_quad_helper_invocations:1;
 
          /**
           * Whether any inputs are declared with the "sample" qualifier.
@@ -521,12 +546,27 @@ typedef struct shader_info {
          bool has_variable_shared_mem:1;
 
          /**
+          * If the shader has any use of a cooperative matrix. From
+          * SPV_KHR_cooperative_matrix.
+          */
+         bool has_cooperative_matrix:1;
+
+         /**
           * pointer size is:
           *   AddressingModelLogical:    0    (default)
           *   AddressingModelPhysical32: 32
           *   AddressingModelPhysical64: 64
           */
          unsigned ptr_size;
+
+         /** Index provided by VkPipelineShaderStageNodeCreateInfoAMDX or ShaderIndexAMDX */
+         uint32_t shader_index;
+
+         /** Maximum size required by any output node payload array */
+         uint32_t node_payloads_size;
+
+         /** Static workgroup count for overwriting the enqueued workgroup count. (0 if dynamic) */
+         uint32_t workgroup_count[3];
       } cs;
 
       /* Applies to both TCS and TES. */
@@ -567,7 +607,7 @@ typedef struct shader_info {
 
          uint16_t max_vertices_out;
          uint16_t max_primitives_out;
-         uint16_t primitive_type;  /* GL_POINTS, GL_LINES or GL_TRIANGLES. */
+         enum mesa_prim primitive_type; /* POINTS, LINES or TRIANGLES. */
 
          /* TODO: remove this when we stop supporting NV_mesh_shader. */
          bool nv;

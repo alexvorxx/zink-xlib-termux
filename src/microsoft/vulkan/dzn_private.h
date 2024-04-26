@@ -75,6 +75,13 @@
 
 #define dzn_stub() unreachable("Unsupported feature")
 
+#if defined(VK_USE_PLATFORM_WIN32_KHR) || \
+    defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
+    defined(VK_USE_PLATFORM_XCB_KHR) || \
+    defined(VK_USE_PLATFORM_XLIB_KHR)
+#define DZN_USE_WSI_PLATFORM
+#endif
+
 struct dxil_validator;
 struct util_dl_library;
 
@@ -152,7 +159,8 @@ struct dzn_meta_blit_key {
          uint32_t src_is_array : 1;
          uint32_t resolve_mode : 3;
          uint32_t linear_filter : 1;
-         uint32_t padding : 9;
+         uint32_t stencil_bit : 4;
+         uint32_t padding : 5;
       };
       const uint64_t u64;
    };
@@ -176,7 +184,7 @@ dzn_meta_blits_get_context(struct dzn_device *device,
                            const struct dzn_meta_blit_key *key);
 
 #define MAX_SYNC_TYPES 3
-#define MAX_QUEUE_FAMILIES 3
+#define MAX_QUEUE_FAMILIES 2
 
 struct dzn_physical_device {
    struct vk_physical_device vk;
@@ -198,11 +206,11 @@ struct dzn_physical_device {
 
    struct wsi_device wsi_device;
 
-   mtx_t dev_lock;
    ID3D12Device4 *dev;
    ID3D12Device10 *dev10;
    ID3D12Device11 *dev11;
    ID3D12Device12 *dev12;
+   ID3D12Device13 *dev13;
    D3D_FEATURE_LEVEL feature_level;
    D3D_SHADER_MODEL shader_model;
    D3D_ROOT_SIGNATURE_VERSION root_sig_version;
@@ -288,6 +296,7 @@ struct dzn_device {
    ID3D12Device10 *dev10;
    ID3D12Device11 *dev11;
    ID3D12Device12 *dev12;
+   ID3D12Device13 *dev13;
    ID3D12DeviceConfiguration *dev_config;
 
    struct dzn_meta_indirect_draw indirect_draws[DZN_NUM_INDIRECT_DRAW_TYPES];
@@ -346,6 +355,9 @@ struct dzn_device_memory {
 
    /* If the resource is exportable, this is the pre-created handle for that */
    HANDLE export_handle;
+
+   /* These flags need to be added into all resources created on this heap */
+   D3D12_RESOURCE_FLAGS res_flags;
 };
 
 enum dzn_cmd_bindpoint_dirty {
@@ -769,6 +781,7 @@ struct dzn_descriptor_set_layout {
    struct {
       uint32_t bindings[MAX_DYNAMIC_BUFFERS];
       uint32_t count;
+      uint32_t desc_count;
       uint32_t range_offset;
    } dynamic_buffers;
    uint32_t buffer_count;
@@ -1240,6 +1253,9 @@ enum dzn_debug_flags {
    DZN_DEBUG_DEBUGGER = 1 << 8,
    DZN_DEBUG_REDIRECTS = 1 << 9,
    DZN_DEBUG_BINDLESS = 1 << 10,
+   DZN_DEBUG_NO_BINDLESS = 1 << 11,
+   DZN_DEBUG_EXPERIMENTAL = 1 << 12,
+   DZN_DEBUG_MULTIVIEW = 1 << 13,
 };
 
 struct dzn_instance {

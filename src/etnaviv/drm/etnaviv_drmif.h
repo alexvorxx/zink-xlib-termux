@@ -74,7 +74,16 @@ enum etna_param_id {
 	ETNA_GPU_BUFFER_SIZE               = 0x17,
 	ETNA_GPU_INSTRUCTION_COUNT         = 0x18,
 	ETNA_GPU_NUM_CONSTANTS             = 0x19,
-	ETNA_GPU_NUM_VARYINGS              = 0x1a
+	ETNA_GPU_NUM_VARYINGS              = 0x1a,
+	ETNA_SOFTPIN_START_ADDR            = 0x1b,
+	ETNA_GPU_PRODUCT_ID                = 0x1c,
+	ETNA_GPU_CUSTOMER_ID               = 0x1d,
+	ETNA_GPU_ECO_ID                    = 0x1e,
+	ETNA_GPU_NN_CORE_COUNT             = 0x1f,
+	ETNA_GPU_NN_MAD_PER_CORE           = 0x20,
+	ETNA_GPU_TP_CORE_COUNT             = 0x21,
+	ETNA_GPU_ON_CHIP_SRAM_SIZE         = 0x22,
+	ETNA_GPU_AXI_SRAM_SIZE             = 0x23,
 };
 
 /* bo flags: */
@@ -205,6 +214,8 @@ struct etna_reloc {
 void etna_cmd_stream_reloc(struct etna_cmd_stream *stream, const struct etna_reloc *r);
 void etna_cmd_stream_ref_bo(struct etna_cmd_stream *stream,
 		struct etna_bo *bo, uint32_t flags);
+
+void etna_cmd_stream_mark_end_of_context_init(struct etna_cmd_stream *stream);
 
 /* performance monitoring functions:
  */

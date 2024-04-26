@@ -28,7 +28,7 @@
 #ifndef DRI_DRAWABLE_H
 #define DRI_DRAWABLE_H
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "util/format/u_formats.h"
 #include "frontend/api.h"
 #include "dri_util.h"
@@ -84,10 +84,14 @@ struct dri_drawable
    unsigned int lastStamp;
    int w, h;
 
+   /* generic for swrast */
+   unsigned buffer_age;
+
    /* kopper */
    struct kopper_loader_info info;
    __DRIimage   *image; //texture_from_pixmap
    bool is_window;
+   bool has_modifiers;
 
    /* hooks filled in by dri2 & drisw */
    void (*allocate_textures)(struct dri_context *ctx,
@@ -108,6 +112,7 @@ struct dri_drawable
                              struct dri_drawable *drawable);
 
    void (*swap_buffers)(struct dri_drawable *drawable);
+   void (*swap_buffers_with_damage)(struct dri_drawable *drawable, int nrects, const int *rects);
 };
 
 /* Typecast the opaque pointer to our own type. */

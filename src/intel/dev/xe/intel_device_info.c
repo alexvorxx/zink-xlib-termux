@@ -65,12 +65,12 @@ xe_query_config(int fd, struct intel_device_info *devinfo)
    if (!config)
       return false;
 
-   if (config->info[XE_QUERY_CONFIG_FLAGS] & XE_QUERY_CONFIG_FLAGS_HAS_VRAM)
+   if (config->info[DRM_XE_QUERY_CONFIG_FLAGS] & DRM_XE_QUERY_CONFIG_FLAG_HAS_VRAM)
       devinfo->has_local_mem = true;
 
-   devinfo->revision = (config->info[XE_QUERY_CONFIG_REV_AND_DEVICE_ID] >> 16) & 0xFFFF;
-   devinfo->gtt_size = 1ull << config->info[XE_QUERY_CONFIG_VA_BITS];
-   devinfo->mem_alignment = config->info[XE_QUERY_CONFIG_MIN_ALIGNEMENT];
+   devinfo->revision = (config->info[DRM_XE_QUERY_CONFIG_REV_AND_DEVICE_ID] >> 16) & 0xFFFF;
+   devinfo->gtt_size = 1ull << config->info[DRM_XE_QUERY_CONFIG_VA_BITS];
+   devinfo->mem_alignment = config->info[DRM_XE_QUERY_CONFIG_MIN_ALIGNMENT];
 
    free(config);
    return true;
@@ -80,16 +80,16 @@ bool
 intel_device_info_xe_query_regions(int fd, struct intel_device_info *devinfo,
                                    bool update)
 {
-   struct drm_xe_query_mem_usage *regions;
-   regions = xe_query_alloc_fetch(fd, DRM_XE_DEVICE_QUERY_MEM_USAGE, NULL);
+   struct drm_xe_query_mem_regions *regions;
+   regions = xe_query_alloc_fetch(fd, DRM_XE_DEVICE_QUERY_MEM_REGIONS, NULL);
    if (!regions)
       return false;
 
-   for (int i = 0; i < regions->num_regions; i++) {
-      struct drm_xe_query_mem_region *region = &regions->regions[i];
+   for (int i = 0; i < regions->num_mem_regions; i++) {
+      struct drm_xe_mem_region *region = &regions->mem_regions[i];
 
       switch (region->mem_class) {
-      case XE_MEM_REGION_CLASS_SYSMEM: {
+      case DRM_XE_MEM_REGION_CLASS_SYSMEM: {
          if (!update) {
             devinfo->mem.sram.mem.klass = region->mem_class;
             devinfo->mem.sram.mem.instance = region->instance;
@@ -99,20 +99,24 @@ intel_device_info_xe_query_regions(int fd, struct intel_device_info *devinfo,
             assert(devinfo->mem.sram.mem.instance == region->instance);
             assert(devinfo->mem.sram.mappable.size == region->total_size);
          }
+         /* if running without elevated privileges Xe reports used == 0 */
          devinfo->mem.sram.mappable.free = region->total_size - region->used;
          break;
       }
-      case XE_MEM_REGION_CLASS_VRAM: {
+      case DRM_XE_MEM_REGION_CLASS_VRAM: {
          if (!update) {
             devinfo->mem.vram.mem.klass = region->mem_class;
             devinfo->mem.vram.mem.instance = region->instance;
-            devinfo->mem.vram.mappable.size = region->total_size;
+            devinfo->mem.vram.mappable.size = region->cpu_visible_size;
+            devinfo->mem.vram.unmappable.size = region->total_size - region->cpu_visible_size;
          } else {
             assert(devinfo->mem.vram.mem.klass == region->mem_class);
             assert(devinfo->mem.vram.mem.instance == region->instance);
-            assert(devinfo->mem.vram.mappable.size == region->total_size);
+            assert(devinfo->mem.vram.mappable.size == region->cpu_visible_size);
+            assert(devinfo->mem.vram.unmappable.size == (region->total_size - region->cpu_visible_size));
          }
-         devinfo->mem.vram.mappable.free = region->total_size - region->used;
+         devinfo->mem.vram.mappable.free = devinfo->mem.vram.mappable.size - region->cpu_visible_used;
+         devinfo->mem.vram.unmappable.free = devinfo->mem.vram.unmappable.size - (region->used - region->cpu_visible_used);
          break;
       }
       default:
@@ -129,25 +133,32 @@ intel_device_info_xe_query_regions(int fd, struct intel_device_info *devinfo,
 static bool
 xe_query_gts(int fd, struct intel_device_info *devinfo)
 {
-   struct drm_xe_query_gts *gts;
-   gts = xe_query_alloc_fetch(fd, DRM_XE_DEVICE_QUERY_GTS, NULL);
-   if (!gts)
+   struct drm_xe_query_gt_list *gt_list;
+   gt_list = xe_query_alloc_fetch(fd, DRM_XE_DEVICE_QUERY_GT_LIST, NULL);
+   if (!gt_list)
       return false;
 
-   for (uint32_t i = 0; i < gts->num_gt; i++) {
-      if (gts->gts[i].type == XE_QUERY_GT_TYPE_MAIN)
-         devinfo->timestamp_frequency = gts->gts[i].clock_freq;
+   for (uint32_t i = 0; i < gt_list->num_gt; i++) {
+      if (gt_list->gt_list[i].type == DRM_XE_QUERY_GT_TYPE_MAIN)
+         devinfo->timestamp_frequency = gt_list->gt_list[i].reference_clock;
    }
 
-   free(gts);
+   free(gt_list);
    return true;
 }
 
+void *
+intel_device_info_xe_query_hwconfig(int fd, int32_t *len)
+{
+   return xe_query_alloc_fetch(fd, DRM_XE_DEVICE_QUERY_HWCONFIG, len);
+}
+
 static bool
-xe_query_hwconfig(int fd, struct intel_device_info *devinfo)
+xe_query_process_hwconfig(int fd, struct intel_device_info *devinfo)
 {
    int32_t len;
-   void *data = xe_query_alloc_fetch(fd, DRM_XE_DEVICE_QUERY_HWCONFIG, &len);
+   void *data = intel_device_info_xe_query_hwconfig(fd, &len);
+
    if (!data)
       return false;
 
@@ -265,11 +276,11 @@ xe_query_topology(int fd, struct intel_device_info *devinfo)
    while (topology < end) {
       if (topology->gt_id == 0) {
          switch (topology->type) {
-         case XE_TOPO_DSS_GEOMETRY:
+         case DRM_XE_TOPO_DSS_GEOMETRY:
             geo_dss_mask = topology->mask;
             geo_dss_num_bytes = topology->num_bytes;
             break;
-         case XE_TOPO_EU_PER_DSS:
+         case DRM_XE_TOPO_EU_PER_DSS:
             eu_per_dss_mask = (uint32_t *)topology->mask;
             break;
          }
@@ -303,7 +314,7 @@ intel_device_info_xe_get_info_from_fd(int fd, struct intel_device_info *devinfo)
    if (!xe_query_gts(fd, devinfo))
       return false;
 
-   if (xe_query_hwconfig(fd, devinfo))
+   if (xe_query_process_hwconfig(fd, devinfo))
       intel_device_info_update_after_hwconfig(devinfo);
 
    if (!xe_query_topology(fd, devinfo))
@@ -312,6 +323,7 @@ intel_device_info_xe_get_info_from_fd(int fd, struct intel_device_info *devinfo)
    devinfo->has_context_isolation = true;
    devinfo->has_mmap_offset = true;
    devinfo->has_caching_uapi = false;
+   devinfo->has_set_pat_uapi = true;
 
    return true;
 }

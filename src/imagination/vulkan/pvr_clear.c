@@ -216,6 +216,8 @@ VkResult pvr_emit_ppp_from_template(
 
    stream = NULL;
 
+   pvr_csb_set_relocation_mark(csb);
+
    pvr_csb_emit (csb, VDMCTRL_PPP_STATE0, state) {
       state.word_count = dword_count;
       state.addrmsb = pvr_bo->dev_addr;
@@ -224,6 +226,8 @@ VkResult pvr_emit_ppp_from_template(
    pvr_csb_emit (csb, VDMCTRL_PPP_STATE1, state) {
       state.addrlsb = pvr_bo->dev_addr;
    }
+
+   pvr_csb_clear_relocation_mark(csb);
 
    *pvr_bo_out = pvr_bo;
 
@@ -750,9 +754,8 @@ VkResult pvr_pds_clear_vertex_shader_program_create_and_upload_data(
    if (!staging_buffer) {
       *pds_upload_out = (struct pvr_pds_upload){ 0 };
 
-      result = vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
-      cmd_buffer->state.status = result;
-      return result;
+      return vk_command_buffer_set_error(&cmd_buffer->vk,
+                                         VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
    pvr_pds_vertex_shader(program,
@@ -774,8 +777,7 @@ VkResult pvr_pds_clear_vertex_shader_program_create_and_upload_data(
 
       *pds_upload_out = (struct pvr_pds_upload){ 0 };
 
-      cmd_buffer->state.status = result;
-      return result;
+      return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
    }
 
    vk_free(&cmd_buffer->device->vk.alloc, staging_buffer);
@@ -826,9 +828,8 @@ VkResult pvr_pds_clear_rta_vertex_shader_program_create_and_upload_code(
    if (!staging_buffer) {
       *pds_upload_out = (struct pvr_pds_upload){ 0 };
 
-      result = vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
-      cmd_buffer->state.status = result;
-      return result;
+      return vk_command_buffer_set_error(&cmd_buffer->vk,
+                                         VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
    pvr_pds_vertex_shader(program,
@@ -850,8 +851,7 @@ VkResult pvr_pds_clear_rta_vertex_shader_program_create_and_upload_code(
 
       *pds_upload_out = (struct pvr_pds_upload){ 0 };
 
-      cmd_buffer->state.status = result;
-      return result;
+      return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
    }
 
    vk_free(&cmd_buffer->device->vk.alloc, staging_buffer);
@@ -934,6 +934,12 @@ void pvr_pack_clear_vdm_state(const struct pvr_device_info *const dev_info,
                       PVRX(VDMCTRL_VDM_STATE5_VS_PDS_DATA_SIZE_UNIT_SIZE));
    }
    stream += pvr_cmd_length(VDMCTRL_VDM_STATE5);
+
+   /* TODO: Here we're doing another state update. If emitting directly to the
+    * control stream, we don't mark them as separate state updates by setting
+    * the relocation mark so we might be wasting a little bit of memory. See if
+    * it's worth changing the code to use the relocation mark.
+    */
 
    pvr_csb_pack (stream, VDMCTRL_INDEX_LIST0, index_list0) {
       index_list0.index_count_present = true;

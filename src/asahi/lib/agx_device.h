@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_DEVICE_H
-#define __AGX_DEVICE_H
+#pragma once
 
 #include "util/simple_mtx.h"
 #include "util/sparse_array.h"
+#include "util/timespec.h"
 #include "util/vma.h"
 #include "agx_bo.h"
 #include "agx_formats.h"
 
 enum agx_dbg {
    AGX_DBG_TRACE = BITFIELD_BIT(0),
-   AGX_DBG_DEQP = BITFIELD_BIT(1),
+   /* bit 1 unused */
    AGX_DBG_NO16 = BITFIELD_BIT(2),
    AGX_DBG_DIRTY = BITFIELD_BIT(3),
    AGX_DBG_PRECOMPILE = BITFIELD_BIT(4),
@@ -25,6 +25,15 @@ enum agx_dbg {
    AGX_DBG_STATS = BITFIELD_BIT(9),
    AGX_DBG_RESOURCE = BITFIELD_BIT(10),
    AGX_DBG_BATCH = BITFIELD_BIT(11),
+   AGX_DBG_NOWC = BITFIELD_BIT(12),
+   AGX_DBG_SYNCTVB = BITFIELD_BIT(13),
+   AGX_DBG_SMALLTILE = BITFIELD_BIT(14),
+   AGX_DBG_NOMSAA = BITFIELD_BIT(15),
+   AGX_DBG_NOSHADOW = BITFIELD_BIT(16),
+   AGX_DBG_VARYINGS = BITFIELD_BIT(17),
+   AGX_DBG_SCRATCH = BITFIELD_BIT(18),
+   AGX_DBG_COMPBLIT = BITFIELD_BIT(19),
+   AGX_DBG_FEEDBACK = BITFIELD_BIT(20),
 };
 
 /* Dummy partial declarations, pending real UAPI */
@@ -40,6 +49,14 @@ struct drm_asahi_params_global {
    uint64_t vm_user_end;
    uint64_t vm_shader_start;
    uint64_t vm_shader_end;
+   uint32_t chip_id;
+   uint32_t num_clusters_total;
+   uint32_t gpu_generation;
+   uint32_t gpu_variant;
+   uint32_t num_dies;
+   uint32_t timer_frequency_hz;
+   uint32_t num_cores_per_cluster;
+   uint64_t core_masks[32];
 };
 
 /* How many power-of-two levels in the BO cache do we want? 2^14 minimum chosen
@@ -51,8 +68,14 @@ struct drm_asahi_params_global {
 /* Fencepost problem, hence the off-by-one */
 #define NR_BO_CACHE_BUCKETS (MAX_BO_CACHE_BUCKET - MIN_BO_CACHE_BUCKET + 1)
 
+/* Forward decl only, do not pull in all of NIR */
+struct nir_shader;
+
 struct agx_device {
    uint32_t debug;
+
+   /* NIR library of AGX helpers/shaders. Immutable once created. */
+   const struct nir_shader *libagx;
 
    char name[64];
    struct drm_asahi_params_global params;
@@ -63,9 +86,6 @@ struct agx_device {
 
    /* VM handle */
    uint32_t vm_id;
-
-   /* Queue handle */
-   uint32_t queue_id;
 
    /* VMA heaps */
    simple_mtx_t vma_lock;
@@ -99,6 +119,8 @@ struct agx_device {
       /* Number of hits/misses for the BO cache */
       uint64_t hits, misses;
    } bo_cache;
+
+   struct agx_bo *helper;
 };
 
 bool agx_open_device(void *memctx, struct agx_device *dev);
@@ -117,16 +139,15 @@ uint64_t agx_get_global_id(struct agx_device *dev);
 
 uint32_t agx_create_command_queue(struct agx_device *dev, uint32_t caps);
 
-int agx_submit_single(struct agx_device *dev, enum drm_asahi_cmd_type cmd_type,
-                      uint32_t barriers, struct drm_asahi_sync *in_syncs,
-                      unsigned in_sync_count, struct drm_asahi_sync *out_syncs,
-                      unsigned out_sync_count, void *cmdbuf,
-                      uint32_t result_handle, uint32_t result_off,
-                      uint32_t result_size);
-
 int agx_import_sync_file(struct agx_device *dev, struct agx_bo *bo, int fd);
 int agx_export_sync_file(struct agx_device *dev, struct agx_bo *bo);
 
 void agx_debug_fault(struct agx_device *dev, uint64_t addr);
 
-#endif
+uint64_t agx_get_gpu_timestamp(struct agx_device *dev);
+
+static inline uint64_t
+agx_gpu_time_to_ns(struct agx_device *dev, uint64_t gpu_time)
+{
+   return (gpu_time * NSEC_PER_SEC) / dev->params.timer_frequency_hz;
+}

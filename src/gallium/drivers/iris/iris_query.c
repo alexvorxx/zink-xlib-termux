@@ -282,7 +282,7 @@ static uint64_t
 iris_raw_timestamp_delta(uint64_t time0, uint64_t time1)
 {
    if (time0 > time1) {
-      return (1ULL << TIMESTAMP_BITS) + time1 - time0;
+      return (1ull << 36) + time1 - time0;
    } else {
       return time1 - time0;
    }
@@ -309,12 +309,10 @@ calculate_result_on_cpu(const struct intel_device_info *devinfo,
    case PIPE_QUERY_TIMESTAMP_DISJOINT:
       /* The timestamp is the single starting snapshot. */
       q->result = intel_device_info_timebase_scale(devinfo, q->map->start);
-      q->result &= (1ull << TIMESTAMP_BITS) - 1;
       break;
    case PIPE_QUERY_TIME_ELAPSED:
       q->result = iris_raw_timestamp_delta(q->map->start, q->map->end);
       q->result = intel_device_info_timebase_scale(devinfo, q->result);
-      q->result &= (1ull << TIMESTAMP_BITS) - 1;
       break;
    case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
       q->result = stream_overflowed((void *) q->map, q->index);
@@ -521,7 +519,8 @@ iris_begin_query(struct pipe_context *ctx, struct pipe_query *query)
       size = sizeof(struct iris_query_snapshots);
 
    u_upload_alloc(ice->query_buffer_uploader, 0,
-                  size, size, &q->query_state_ref.offset,
+                  size, util_next_power_of_two(size),
+                  &q->query_state_ref.offset,
                   &q->query_state_ref.res, &ptr);
 
    if (!iris_resource_bo(q->query_state_ref.res))
@@ -538,6 +537,11 @@ iris_begin_query(struct pipe_context *ctx, struct pipe_query *query)
    if (q->type == PIPE_QUERY_PRIMITIVES_GENERATED && q->index == 0) {
       ice->state.prims_generated_query_active = true;
       ice->state.dirty |= IRIS_DIRTY_STREAMOUT | IRIS_DIRTY_CLIP;
+   }
+
+   if (q->type == PIPE_QUERY_OCCLUSION_COUNTER && q->index == 0) {
+      ice->state.occlusion_query_active = true;
+      ice->state.dirty |= IRIS_DIRTY_STREAMOUT;
    }
 
    if (q->type == PIPE_QUERY_SO_OVERFLOW_PREDICATE ||
@@ -577,6 +581,11 @@ iris_end_query(struct pipe_context *ctx, struct pipe_query *query)
    if (q->type == PIPE_QUERY_PRIMITIVES_GENERATED && q->index == 0) {
       ice->state.prims_generated_query_active = false;
       ice->state.dirty |= IRIS_DIRTY_STREAMOUT | IRIS_DIRTY_CLIP;
+   }
+
+   if (q->type == PIPE_QUERY_OCCLUSION_COUNTER && q->index == 0) {
+      ice->state.occlusion_query_active = false;
+      ice->state.dirty |= IRIS_DIRTY_STREAMOUT;
    }
 
    if (q->type == PIPE_QUERY_SO_OVERFLOW_PREDICATE ||
@@ -632,7 +641,7 @@ iris_get_query_result(struct pipe_context *ctx,
       struct pipe_screen *screen = ctx->screen;
 
       result->b = screen->fence_finish(screen, ctx, q->fence,
-                                       wait ? PIPE_TIMEOUT_INFINITE : 0);
+                                       wait ? OS_TIMEOUT_INFINITE : 0);
       return result->b;
    }
 
@@ -719,6 +728,8 @@ iris_get_query_result_resource(struct pipe_context *ctx,
 
    struct mi_builder b;
    mi_builder_init(&b, batch->screen->devinfo, batch);
+   const uint32_t mocs = iris_mocs(query_bo, &batch->screen->isl_dev, 0);
+   mi_builder_set_mocs(&b, mocs);
 
    iris_batch_sync_region_start(batch);
 
@@ -790,6 +801,8 @@ set_predicate_for_result(struct iris_context *ice,
 
    struct mi_builder b;
    mi_builder_init(&b, batch->screen->devinfo, batch);
+   const uint32_t mocs = iris_mocs(bo, &batch->screen->isl_dev, 0);
+   mi_builder_set_mocs(&b, mocs);
 
    struct mi_value result;
 

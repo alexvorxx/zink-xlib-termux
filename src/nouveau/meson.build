@@ -18,8 +18,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+subdir('drm')
+subdir('headers')
+if with_nouveau_vk
+  subdir('compiler')
+endif
+subdir('winsys')
 if with_tools.contains('drm-shim')
   subdir('drm-shim')
 endif
 
 subdir('codegen')
+if with_nouveau_vk
+  subdir('nil')
+  subdir('mme')
+  subdir('vulkan')
+endif

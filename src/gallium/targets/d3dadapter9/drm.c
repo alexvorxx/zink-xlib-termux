@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 /* XXX: header order is slightly screwy here */
 #include "loader.h"
@@ -167,7 +150,7 @@ read_descriptor( struct d3dadapter9_context *ctx,
                  "%s", ctx->hal->get_name(ctx->hal));
 
     if (override_vendorid > 0) {
-        found = FALSE;
+        found = false;
         /* fill in device_id and card name for fake vendor */
         for (i = 0; i < sizeof(fallback_cards)/sizeof(fallback_cards[0]); i++) {
             if (fallback_cards[i].vendor_id == override_vendorid) {
@@ -179,7 +162,7 @@ read_descriptor( struct d3dadapter9_context *ctx,
                 drvid->DeviceId = fallback_cards[i].device_id;
                 snprintf(drvid->Description, sizeof(drvid->Description),
                              "%s", fallback_cards[i].name);
-                found = TRUE;
+                found = true;
                 break;
             }
         }
@@ -235,7 +218,7 @@ drm_create_adapter( int fd,
     ctx->fd = fd;
     ctx->base.linear_framebuffer = different_device;
 
-    if (!pipe_loader_drm_probe_fd(&ctx->dev, fd)) {
+    if (!pipe_loader_drm_probe_fd(&ctx->dev, fd, false)) {
         ERR("Failed to probe drm fd %d.\n", fd);
         FREE(ctx);
         close(fd);
@@ -269,9 +252,9 @@ drm_create_adapter( int fd,
     if (driCheckOption(&userInitOptions, "throttle_value", DRI_INT)) {
         throttling_value_user = driQueryOptioni(&userInitOptions, "throttle_value");
         if (throttling_value_user == -1)
-            ctx->base.throttling = FALSE;
+            ctx->base.throttling = false;
         else if (throttling_value_user >= 0) {
-            ctx->base.throttling = TRUE;
+            ctx->base.throttling = true;
             ctx->base.throttling_value = throttling_value_user;
         }
     }
@@ -285,7 +268,7 @@ drm_create_adapter( int fd,
 
     if (ctx->base.tearfree_discard && !ctx->base.discard_delayed_release) {
         ERR("tearfree_discard requires discard_delayed_release\n");
-        ctx->base.tearfree_discard = FALSE;
+        ctx->base.tearfree_discard = false;
     }
 
     ctx->base.csmt_force = driQueryOptioni(&userInitOptions, "csmt_force");

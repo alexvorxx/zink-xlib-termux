@@ -61,7 +61,7 @@
  * Does the given texture wrap mode allow sampling the texture border color?
  * XXX maybe move this into gallium util code.
  */
-boolean
+bool
 lp_sampler_wrap_mode_uses_border_color(enum pipe_tex_wrap mode,
                                        enum pipe_tex_filter min_img_filter,
                                        enum pipe_tex_filter mag_img_filter)
@@ -71,21 +71,21 @@ lp_sampler_wrap_mode_uses_border_color(enum pipe_tex_wrap mode,
    case PIPE_TEX_WRAP_CLAMP_TO_EDGE:
    case PIPE_TEX_WRAP_MIRROR_REPEAT:
    case PIPE_TEX_WRAP_MIRROR_CLAMP_TO_EDGE:
-      return FALSE;
+      return false;
    case PIPE_TEX_WRAP_CLAMP:
    case PIPE_TEX_WRAP_MIRROR_CLAMP:
       if (min_img_filter == PIPE_TEX_FILTER_NEAREST &&
           mag_img_filter == PIPE_TEX_FILTER_NEAREST) {
-         return FALSE;
+         return false;
       } else {
-         return TRUE;
+         return true;
       }
    case PIPE_TEX_WRAP_CLAMP_TO_BORDER:
    case PIPE_TEX_WRAP_MIRROR_CLAMP_TO_BORDER:
-      return TRUE;
+      return true;
    default:
       assert(0 && "unexpected wrap mode");
-      return FALSE;
+      return false;
    }
 }
 
@@ -166,7 +166,7 @@ lp_sampler_static_texture_state_image(struct lp_static_texture_state *state,
    state->pot_width = util_is_power_of_two_or_zero(resource->width0);
    state->pot_height = util_is_power_of_two_or_zero(resource->height0);
    state->pot_depth = util_is_power_of_two_or_zero(resource->depth0);
-   state->level_zero_only = 0;
+   state->level_zero_only = view->u.tex.level == 0;
 
    /*
     * the layer / element / level parameters are all either dynamic
@@ -271,9 +271,9 @@ lp_build_pmin(struct lp_build_sample_context *bld,
    LLVMValueRef int_size, float_size;
    const unsigned length = coord_bld->type.length;
    const unsigned num_quads = length / 4;
-   const boolean pmin_per_quad = pmin_bld->type.length != length;
+   const bool pmin_per_quad = pmin_bld->type.length != length;
 
-   int_size = lp_build_minify(int_size_bld, bld->int_size, first_level, TRUE);
+   int_size = lp_build_minify(int_size_bld, bld->int_size, first_level, true);
    float_size = lp_build_int_to_float(float_size_bld, int_size);
    max_aniso = lp_build_broadcast_scalar(coord_bld, max_aniso);
    max_aniso = lp_build_mul(coord_bld, max_aniso, max_aniso);
@@ -366,8 +366,8 @@ lp_build_rho(struct lp_build_sample_context *bld,
    LLVMValueRef rho;
    unsigned length = coord_bld->type.length;
    unsigned num_quads = length / 4;
-   boolean rho_per_quad = rho_bld->type.length != length;
-   boolean no_rho_opt = bld->no_rho_approx && (dims > 1);
+   bool rho_per_quad = rho_bld->type.length != length;
+   bool no_rho_opt = bld->no_rho_approx && (dims > 1);
    LLVMValueRef i32undef = LLVMGetUndef(LLVMInt32TypeInContext(gallivm->context));
    LLVMValueRef rho_xvec, rho_yvec;
 
@@ -381,7 +381,7 @@ lp_build_rho(struct lp_build_sample_context *bld,
     */
 
    LLVMValueRef int_size =
-      lp_build_minify(int_size_bld, bld->int_size, first_level, TRUE);
+      lp_build_minify(int_size_bld, bld->int_size, first_level, true);
    LLVMValueRef float_size = lp_build_int_to_float(float_size_bld, int_size);
 
    if (derivs) {
@@ -793,7 +793,7 @@ lp_build_ilog2_sqrt(struct lp_build_context *bld,
  */
 void
 lp_build_lod_selector(struct lp_build_sample_context *bld,
-                      boolean is_lodq,
+                      bool is_lodq,
                       unsigned sampler_unit,
                       LLVMValueRef first_level,
                       LLVMValueRef s,
@@ -855,7 +855,7 @@ lp_build_lod_selector(struct lp_build_sample_context *bld,
             lod = explicit_lod;
       } else {
          LLVMValueRef rho;
-         boolean rho_squared = bld->no_rho_approx && (bld->dims > 1);
+         bool rho_squared = bld->no_rho_approx && (bld->dims > 1);
 
          if (bld->static_sampler_state->aniso &&
              !explicit_lod) {
@@ -1116,11 +1116,11 @@ lp_build_linear_mip_levels(struct lp_build_sample_context *bld,
 /**
  * A helper function that factorizes this common pattern.
  */
-static LLVMValueRef
-load_mip(struct gallivm_state *gallivm,
-         LLVMTypeRef ptr_type,
-         LLVMValueRef offsets,
-         LLVMValueRef index1)
+LLVMValueRef
+lp_sample_load_mip_value(struct gallivm_state *gallivm,
+                         LLVMTypeRef ptr_type,
+                         LLVMValueRef offsets,
+                         LLVMValueRef index1)
 {
    LLVMValueRef zero = lp_build_const_int32(gallivm, 0);
    LLVMValueRef indexes[2] = {zero, index1};
@@ -1139,8 +1139,8 @@ LLVMValueRef
 lp_build_get_mipmap_level(struct lp_build_sample_context *bld,
                           LLVMValueRef level)
 {
-   LLVMValueRef mip_offset = load_mip(bld->gallivm, bld->mip_offsets_type,
-                                      bld->mip_offsets, level);
+   LLVMValueRef mip_offset = lp_sample_load_mip_value(bld->gallivm, bld->mip_offsets_type,
+                                                      bld->mip_offsets, level);
    LLVMBuilderRef builder = bld->gallivm->builder;
    LLVMValueRef data_ptr =
       LLVMBuildGEP2(builder,
@@ -1162,16 +1162,16 @@ lp_build_get_mip_offsets(struct lp_build_sample_context *bld,
    LLVMValueRef offsets, offset1;
 
    if (bld->num_mips == 1) {
-      offset1 = load_mip(bld->gallivm, bld->mip_offsets_type, bld->mip_offsets, level);
+      offset1 = lp_sample_load_mip_value(bld->gallivm, bld->mip_offsets_type, bld->mip_offsets, level);
       offsets = lp_build_broadcast_scalar(&bld->int_coord_bld, offset1);
    } else if (bld->num_mips == bld->coord_bld.type.length / 4) {
       offsets = bld->int_coord_bld.undef;
       for (unsigned i = 0; i < bld->num_mips; i++) {
          LLVMValueRef indexi = lp_build_const_int32(bld->gallivm, i);
-         offset1 = load_mip(bld->gallivm, bld->mip_offsets_type,
-                            bld->mip_offsets,
-                            LLVMBuildExtractElement(builder, level,
-                                                    indexi, ""));
+         offset1 = lp_sample_load_mip_value(bld->gallivm, bld->mip_offsets_type,
+                                            bld->mip_offsets,
+                                            LLVMBuildExtractElement(builder, level,
+                                                                    indexi, ""));
          LLVMValueRef indexo = lp_build_const_int32(bld->gallivm, 4 * i);
          offsets = LLVMBuildInsertElement(builder, offsets, offset1,
                                           indexo, "");
@@ -1184,10 +1184,10 @@ lp_build_get_mip_offsets(struct lp_build_sample_context *bld,
       offsets = bld->int_coord_bld.undef;
       for (unsigned i = 0; i < bld->num_mips; i++) {
          LLVMValueRef indexi = lp_build_const_int32(bld->gallivm, i);
-         offset1 = load_mip(bld->gallivm, bld->mip_offsets_type,
-                            bld->mip_offsets,
-                            LLVMBuildExtractElement(builder, level,
-                                                    indexi, ""));
+         offset1 = lp_sample_load_mip_value(bld->gallivm, bld->mip_offsets_type,
+                                            bld->mip_offsets,
+                                            LLVMBuildExtractElement(builder, level,
+                                                                    indexi, ""));
          offsets = LLVMBuildInsertElement(builder, offsets, offset1,
                                           indexi, "");
       }
@@ -1205,7 +1205,7 @@ LLVMValueRef
 lp_build_minify(struct lp_build_context *bld,
                 LLVMValueRef base_size,
                 LLVMValueRef level,
-                boolean lod_scalar)
+                bool lod_scalar)
 {
    LLVMBuilderRef builder = bld->gallivm->builder;
    assert(lp_check_value(bld->type, base_size));
@@ -1332,7 +1332,7 @@ lp_build_get_level_stride_vec(struct lp_build_sample_context *bld,
    LLVMValueRef stride, stride1;
 
    if (bld->num_mips == 1) {
-      stride1 = load_mip(bld->gallivm, stride_type, stride_array, level);
+      stride1 = lp_sample_load_mip_value(bld->gallivm, stride_type, stride_array, level);
       stride = lp_build_broadcast_scalar(&bld->int_coord_bld, stride1);
    } else if (bld->num_mips == bld->coord_bld.type.length / 4) {
       LLVMValueRef stride1;
@@ -1340,9 +1340,9 @@ lp_build_get_level_stride_vec(struct lp_build_sample_context *bld,
       stride = bld->int_coord_bld.undef;
       for (unsigned i = 0; i < bld->num_mips; i++) {
          LLVMValueRef indexi = lp_build_const_int32(bld->gallivm, i);
-         stride1 = load_mip(bld->gallivm, stride_type, stride_array,
-                            LLVMBuildExtractElement(builder, level,
-                                                    indexi, ""));
+         stride1 = lp_sample_load_mip_value(bld->gallivm, stride_type, stride_array,
+                                            LLVMBuildExtractElement(builder, level,
+                                                                    indexi, ""));
          LLVMValueRef indexo = lp_build_const_int32(bld->gallivm, 4 * i);
          stride = LLVMBuildInsertElement(builder, stride, stride1, indexo, "");
       }
@@ -1355,9 +1355,9 @@ lp_build_get_level_stride_vec(struct lp_build_sample_context *bld,
       stride = bld->int_coord_bld.undef;
       for (unsigned i = 0; i < bld->coord_bld.type.length; i++) {
          LLVMValueRef indexi = lp_build_const_int32(bld->gallivm, i);
-         stride1 = load_mip(bld->gallivm, stride_type, stride_array,
-                            LLVMBuildExtractElement(builder, level,
-                                                    indexi, ""));
+         stride1 = lp_sample_load_mip_value(bld->gallivm, stride_type, stride_array,
+                                            LLVMBuildExtractElement(builder, level,
+                                                                    indexi, ""));
          stride = LLVMBuildInsertElement(builder, stride, stride1, indexi, "");
       }
    }
@@ -1386,7 +1386,7 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
    if (bld->num_mips == 1) {
       ilevel_vec = lp_build_broadcast_scalar(&bld->int_size_bld, ilevel);
       *out_size = lp_build_minify(&bld->int_size_bld, bld->int_size,
-                                  ilevel_vec, TRUE);
+                                  ilevel_vec, true);
       *out_size = lp_build_scale_view_dims(&bld->int_size_bld, *out_size,
                                            bld->int_tex_blocksize,
                                            bld->int_tex_blocksize_log2,
@@ -1442,7 +1442,7 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
                                                  bld4.type,
                                                  ilevel,
                                                  indexi);
-            tmp[i] = lp_build_minify(&bld4, int_size_vec, ileveli, TRUE);
+            tmp[i] = lp_build_minify(&bld4, int_size_vec, ileveli, true);
             tmp[i] = lp_build_scale_view_dims(&bld4, tmp[i],
                                               int_tex_blocksize_vec,
                                               int_tex_blocksize_log2_vec,
@@ -1483,7 +1483,7 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
                lp_build_broadcast_scalar(&bld->int_coord_bld,
                                          bld->int_view_blocksize);
             *out_size = lp_build_minify(&bld->int_coord_bld, int_size_vec,
-                                        ilevel, FALSE);
+                                        ilevel, false);
             *out_size = lp_build_scale_view_dims(&bld->int_coord_bld,
                                                  *out_size,
                                                  int_tex_blocksize_vec,
@@ -1499,7 +1499,7 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
                                                     ilevel, indexi);
                tmp[i] = bld->int_size;
                tmp[i] = lp_build_minify(&bld->int_size_in_bld, tmp[i],
-                                        ilevel1, TRUE);
+                                        ilevel1, true);
                tmp[i] = lp_build_scale_view_dims(&bld->int_size_in_bld,
                                                  tmp[i],
                                                  bld->int_tex_blocksize,
@@ -1814,7 +1814,7 @@ lp_build_cube_lookup(struct lp_build_sample_context *bld,
                      LLVMValueRef *coords,
                      const struct lp_derivatives *derivs_in, /* optional */
                      struct lp_derivatives *derivs_out, /* optional */
-                     boolean need_derivs)
+                     bool need_derivs)
 {
    struct lp_build_context *coord_bld = &bld->coord_bld;
    LLVMBuilderRef builder = bld->gallivm->builder;

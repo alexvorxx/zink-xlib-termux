@@ -35,9 +35,11 @@ libpanfrost_midgard_files = files(
   'mir_promote_uniforms.c',
   'mir_squeeze.c',
   'midgard_nir_lower_image_bitsize.c',
+  'midgard_nir_type_csel.c',
   'midgard_opt_copy_prop.c',
   'midgard_opt_dce.c',
   'midgard_opt_perspective.c',
+  'midgard_opt_prop.c',
   'midgard_errata_lod.c',
   'nir_fuse_io_16.c',
 )
@@ -57,10 +59,6 @@ libpanfrost_midgard_disasm = static_library(
   'panfrost_midgard_disasm',
   ['disassemble.c', 'midgard_ops.c', 'midgard_print_constant.c'],
   include_directories : [
-   inc_mapi,
-   inc_mesa,
-   inc_gallium,
-   inc_gallium_aux,
    inc_include,
    inc_src,
    inc_panfrost_hw,
@@ -74,10 +72,6 @@ libpanfrost_midgard = static_library(
   'panfrost_midgard',
   [libpanfrost_midgard_files, midgard_nir_algebraic_c],
   include_directories : [
-   inc_mapi,
-   inc_mesa,
-   inc_gallium,
-   inc_gallium_aux,
    inc_include,
    inc_src,
    inc_panfrost_hw,

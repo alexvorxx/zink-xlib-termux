@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1003 # works for us now...
+# shellcheck disable=SC2086 # we want word splitting
 
-section_switch meson-configure "meson: configure"
+section_switch meson-cross-file "meson: cross file generate"
 
 set -e
 set -o xtrace
@@ -19,9 +21,9 @@ printf > native.file "%s\n" \
 # tweak the cross file or generate a native file to do so.
 if test -n "$LLVM_VERSION"; then
     LLVM_CONFIG="llvm-config-${LLVM_VERSION}"
-    echo "llvm-config = '`which $LLVM_CONFIG`'" >> native.file
+    echo "llvm-config = '$(which "$LLVM_CONFIG")'" >> native.file
     if [ -n "$CROSS" ]; then
-        sed -i -e '/\[binaries\]/a\' -e "llvm-config = '`which $LLVM_CONFIG`'" $CROSS_FILE
+      sed -i -e '/\[binaries\]/a\' -e "llvm-config = '$(which "$LLVM_CONFIG")'" $CROSS_FILE
     fi
     $LLVM_CONFIG --version
 fi
@@ -47,11 +49,42 @@ if [ -n "$CROSS" ]; then
     fi
 fi
 
+if [ -n "$HOST_BUILD_OPTIONS" ]; then
+    section_switch meson-host-configure "meson: host configure"
+
+    # Stash the PKG_CONFIG_LIBDIR so that we can use the base x86_64 image
+    # libraries.
+    tmp_pkg_config_libdir=$PKG_CONFIG_LIBDIR
+    unset PKG_CONFIG_LIBDIR
+
+    # Compile a host version for the few tools we need for a cross build (for
+    # now just intel-clc)
+    rm -rf _host_build
+    meson setup _host_build \
+          --native-file=native.file \
+          -D prefix=/usr \
+          -D libdir=lib \
+          ${HOST_BUILD_OPTIONS}
+
+    pushd _host_build
+
+    section_switch meson-host-build "meson: host build"
+
+    meson configure
+    ninja
+    ninja install
+    popd
+
+    # Restore PKG_CONFIG_LIBDIR
+    if [ -n "$tmp_pkg_config_libdir" ]; then
+        export PKG_CONFIG_LIBDIR=$tmp_pkg_config_libdir
+    fi
+fi
+
 # Only use GNU time if available, not any shell built-in command
 case $CI_JOB_NAME in
-    # strace and wine don't seem to mix well
     # ASAN leak detection is incompatible with strace
-    debian-mingw32-x86_64|*-asan*)
+    *-asan*)
         if test -f /usr/bin/time; then
             MESON_TEST_ARGS+=--wrapper=$PWD/.gitlab-ci/meson/time.sh
         fi
@@ -65,15 +98,17 @@ case $CI_JOB_NAME in
         ;;
 esac
 
+section_switch meson-configure "meson: configure"
+
 rm -rf _build
 meson setup _build \
       --native-file=native.file \
       --wrap-mode=nofallback \
-      --force-fallback-for perfetto \
+      --force-fallback-for perfetto,syn \
       ${CROSS+--cross "$CROSS_FILE"} \
-      -D prefix=`pwd`/install \
+      -D prefix=$PWD/install \
       -D libdir=lib \
-      -D buildtype=${BUILDTYPE:-debug} \
+      -D buildtype=${BUILDTYPE:?} \
       -D build-tests=true \
       -D c_args="$(echo -n $C_ARGS)" \
       -D c_link_args="$(echo -n $C_LINK_ARGS)" \
@@ -83,9 +118,10 @@ meson setup _build \
       -D libunwind=${UNWIND} \
       ${DRI_LOADERS} \
       ${GALLIUM_ST} \
+      -D gallium-opencl=disabled \
       -D gallium-drivers=${GALLIUM_DRIVERS:-[]} \
       -D vulkan-drivers=${VULKAN_DRIVERS:-[]} \
-      -D video-codecs=h264dec,h264enc,h265dec,h265enc,vc1dec \
+      -D video-codecs=all \
       -D werror=true \
       ${EXTRA_OPTION}
 cd _build
@@ -101,11 +137,12 @@ fi
 
 
 uncollapsed_section_switch meson-test "meson: test"
-LC_ALL=C.UTF-8 meson test --num-processes ${FDO_CI_CONCURRENT:-4} --print-errorlogs ${MESON_TEST_ARGS}
+LC_ALL=C.UTF-8 meson test --num-processes "${FDO_CI_CONCURRENT:-4}" --print-errorlogs ${MESON_TEST_ARGS}
+section_switch meson-install "meson: install"
 if command -V mold &> /dev/null ; then
     mold --run ninja install
 else
     ninja install
 fi
 cd ..
-section_end meson-test
+section_end meson-install

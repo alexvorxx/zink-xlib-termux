@@ -2,24 +2,7 @@
 ************************************************************************************************************************
 *
 *  Copyright (C) 2007-2022 Advanced Micro Devices, Inc.  All rights reserved.
-*
-* Permission is hereby granted, free of charge, to any person obtaining a
-* copy of this software and associated documentation files (the "Software"),
-* to deal in the Software without restriction, including without limitation
-* the rights to use, copy, modify, merge, publish, distribute, sublicense,
-* and/or sell copies of the Software, and to permit persons to whom the
-* Software is furnished to do so, subject to the following conditions:
-*
-* The above copyright notice and this permission notice shall be included in
-* all copies or substantial portions of the Software.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-* THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
-* OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-* ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-* OTHER DEALINGS IN THE SOFTWARE
+*  SPDX-License-Identifier: MIT
 *
 ***********************************************************************************************************************/
 
@@ -132,13 +115,15 @@ Lib* Lib::GetLib(
     ADDR_HANDLE hLib)   ///< [in] handle of ADDR_HANDLE
 {
     Addr::Lib* pAddrLib = Addr::Lib::GetLib(hLib);
+
     if ((pAddrLib != NULL) &&
         (pAddrLib->GetChipFamily() <= ADDR_CHIP_FAMILY_VI))
     {
-        // only valid and GFX9+ ASIC can use AddrLib2 function.
+        // only GFX9+ ASIC can use AddrLib2 function.
         ADDR_ASSERT_ALWAYS();
         hLib = NULL;
     }
+
     return static_cast<Lib*>(hLib);
 }
 
@@ -1187,6 +1172,7 @@ ADDR_E_RETURNCODE Lib::ComputeSurfaceAddrFromCoordLinear(
         ADDR_ASSERT(pIn->numMipLevels <= MaxMipLevels);
 
         localIn.bpp          = pIn->bpp;
+        localIn.swizzleMode  = pIn->swizzleMode;
         localIn.flags        = pIn->flags;
         localIn.width        = Max(pIn->unalignedWidth, 1u);
         localIn.height       = Max(pIn->unalignedHeight, 1u);
@@ -1276,6 +1262,7 @@ ADDR_E_RETURNCODE Lib::ComputeSurfaceCoordFromAddrLinear(
         ADDR2_COMPUTE_SURFACE_INFO_INPUT  localIn  = {0};
         ADDR2_COMPUTE_SURFACE_INFO_OUTPUT localOut = {0};
         localIn.bpp          = pIn->bpp;
+        localIn.swizzleMode  = pIn->swizzleMode;
         localIn.flags        = pIn->flags;
         localIn.width        = Max(pIn->unalignedWidth, 1u);
         localIn.height       = Max(pIn->unalignedHeight, 1u);

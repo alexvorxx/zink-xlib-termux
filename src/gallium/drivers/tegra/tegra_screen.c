@@ -369,15 +369,17 @@ tegra_screen_flush_frontbuffer(struct pipe_screen *pscreen,
                                unsigned int level,
                                unsigned int layer,
                                void *winsys_drawable_handle,
+                               unsigned nboxes,
                                struct pipe_box *box)
 {
    struct tegra_screen *screen = to_tegra_screen(pscreen);
    struct tegra_context *context = to_tegra_context(pcontext);
 
+   /* TODO: maybe rejigger for damage regions */
    screen->gpu->flush_frontbuffer(screen->gpu,
                                   context ? context->gpu : NULL,
                                   resource, level, layer,
-                                  winsys_drawable_handle, box);
+                                  winsys_drawable_handle, nboxes, box);
 }
 
 static void
@@ -572,6 +574,7 @@ struct pipe_screen *
 tegra_screen_create(int fd)
 {
    struct tegra_screen *screen;
+   const char * const drivers[] = {"nouveau"};
 
    screen = calloc(1, sizeof(*screen));
    if (!screen)
@@ -579,7 +582,8 @@ tegra_screen_create(int fd)
 
    screen->fd = fd;
 
-   screen->gpu_fd = loader_open_render_node("nouveau");
+   screen->gpu_fd =
+      loader_open_render_node_platform_device(drivers, ARRAY_SIZE(drivers));
    if (screen->gpu_fd < 0) {
       if (errno != ENOENT)
          fprintf(stderr, "failed to open GPU device: %s\n", strerror(errno));

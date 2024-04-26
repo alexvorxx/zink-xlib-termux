@@ -54,7 +54,7 @@
 #include "vk_util.h"
 #include "vk_deferred_operation.h"
 #include "vk_drm_syncobj.h"
-#include "common/intel_defines.h"
+#include "common/i915/intel_defines.h"
 #include "common/intel_uuid.h"
 #include "perf/intel_perf.h"
 
@@ -67,14 +67,17 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
-      DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(false)
+      DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(0)
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
       DRI_CONF_NO_16BIT(false)
+      DRI_CONF_ANV_HASVK_OVERRIDE_API_VERSION(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
       DRI_CONF_ALWAYS_FLUSH_CACHE(false)
       DRI_CONF_VK_WSI_FORCE_BGRA8_UNORM_FIRST(false)
+      DRI_CONF_VK_WSI_FORCE_SWAPCHAIN_TO_CURRENT_EXTENT(false)
+      DRI_CONF_VK_X11_IGNORE_SUBOPTIMAL(false)
       DRI_CONF_LIMIT_TRIG_INPUT_RANGE(false)
    DRI_CONF_SECTION_END
 
@@ -130,7 +133,7 @@ compiler_perf_log(UNUSED void *data, UNUSED unsigned *id, const char *fmt, ...)
 #define ANV_USE_WSI_PLATFORM
 #endif
 
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
 #define ANV_API_VERSION VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION)
 #else
 #define ANV_API_VERSION_1_3 VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION)
@@ -140,7 +143,7 @@ compiler_perf_log(UNUSED void *data, UNUSED unsigned *id, const char *fmt, ...)
 VkResult anv_EnumerateInstanceVersion(
     uint32_t*                                   pApiVersion)
 {
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
    *pApiVersion = ANV_API_VERSION;
 #else
    *pApiVersion = ANV_API_VERSION_1_3;
@@ -180,6 +183,9 @@ static const struct vk_instance_extension_table instance_extensions = {
    .EXT_direct_mode_display                  = true,
    .EXT_display_surface_counter              = true,
    .EXT_acquire_drm_display                  = true,
+#endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface                     = true,
 #endif
 };
 
@@ -236,6 +242,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_separate_depth_stencil_layouts    = true,
       .KHR_shader_clock                      = true,
       .KHR_shader_draw_parameters            = true,
+      .KHR_shader_expect_assume              = true,
       .KHR_shader_float16_int8               = device->info.ver >= 8 && !device->instance->no_16bit,
       .KHR_shader_float_controls             = true,
       .KHR_shader_integer_dot_product        = true,
@@ -315,7 +322,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_transform_feedback                = true,
       .EXT_vertex_attribute_divisor          = true,
       .EXT_ycbcr_image_arrays                = true,
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       .ANDROID_external_memory_android_hardware_buffer = true,
       .ANDROID_native_buffer                 = true,
 #endif
@@ -331,20 +338,326 @@ get_device_extensions(const struct anv_physical_device *device,
    };
 }
 
+static void
+get_features(const struct anv_physical_device *pdevice,
+             struct vk_features *features)
+{
+   /* Just pick one; they're all the same */
+   const bool has_astc_ldr =
+      isl_format_supports_sampling(&pdevice->info,
+                                   ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
+
+   *features = (struct vk_features) {
+      /* Vulkan 1.0 */
+      .robustBufferAccess                       = true,
+      .fullDrawIndexUint32                      = true,
+      .imageCubeArray                           = true,
+      .independentBlend                         = true,
+      .geometryShader                           = true,
+      .tessellationShader                       = true,
+      .sampleRateShading                        = true,
+      .dualSrcBlend                             = true,
+      .logicOp                                  = true,
+      .multiDrawIndirect                        = true,
+      .drawIndirectFirstInstance                = true,
+      .depthClamp                               = true,
+      .depthBiasClamp                           = true,
+      .fillModeNonSolid                         = true,
+      .depthBounds                              = pdevice->info.ver >= 12,
+      .wideLines                                = true,
+      .largePoints                              = true,
+      .alphaToOne                               = true,
+      .multiViewport                            = true,
+      .samplerAnisotropy                        = true,
+      .textureCompressionETC2                   = pdevice->info.ver >= 8 ||
+                                                  pdevice->info.platform == INTEL_PLATFORM_BYT,
+      .textureCompressionASTC_LDR               = has_astc_ldr,
+      .textureCompressionBC                     = true,
+      .occlusionQueryPrecise                    = true,
+      .pipelineStatisticsQuery                  = true,
+      .fragmentStoresAndAtomics                 = true,
+      .shaderTessellationAndGeometryPointSize   = true,
+      .shaderImageGatherExtended                = true,
+      .shaderStorageImageExtendedFormats        = true,
+      .shaderStorageImageMultisample            = false,
+      .shaderStorageImageReadWithoutFormat      = false,
+      .shaderStorageImageWriteWithoutFormat     = true,
+      .shaderUniformBufferArrayDynamicIndexing  = true,
+      .shaderSampledImageArrayDynamicIndexing   = true,
+      .shaderStorageBufferArrayDynamicIndexing  = true,
+      .shaderStorageImageArrayDynamicIndexing   = true,
+      .shaderClipDistance                       = true,
+      .shaderCullDistance                       = true,
+      .shaderFloat64                            = pdevice->info.ver >= 8 &&
+                                                  pdevice->info.has_64bit_float,
+      .shaderInt64                              = pdevice->info.ver >= 8,
+      .shaderInt16                              = pdevice->info.ver >= 8,
+      .shaderResourceMinLod                     = false,
+      .variableMultisampleRate                  = true,
+      .inheritedQueries                         = true,
+
+      /* Vulkan 1.1 */
+      .storageBuffer16BitAccess            = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit,
+      .uniformAndStorageBuffer16BitAccess  = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit,
+      .storagePushConstant16               = pdevice->info.ver >= 8,
+      .storageInputOutput16                = false,
+      .multiview                           = true,
+      .multiviewGeometryShader             = true,
+      .multiviewTessellationShader         = true,
+      .variablePointersStorageBuffer       = true,
+      .variablePointers                    = true,
+      .protectedMemory                     = false,
+      .samplerYcbcrConversion              = true,
+      .shaderDrawParameters                = true,
+
+      /* Vulkan 1.2 */
+      .samplerMirrorClampToEdge            = true,
+      .drawIndirectCount                   = true,
+      .storageBuffer8BitAccess             = pdevice->info.ver >= 8,
+      .uniformAndStorageBuffer8BitAccess   = pdevice->info.ver >= 8,
+      .storagePushConstant8                = pdevice->info.ver >= 8,
+      .shaderBufferInt64Atomics            = false,
+      .shaderSharedInt64Atomics            = false,
+      .shaderFloat16                       = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit,
+      .shaderInt8                          = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit,
+
+      .descriptorIndexing                                 = false,
+      .shaderInputAttachmentArrayDynamicIndexing          = false,
+      .shaderUniformTexelBufferArrayDynamicIndexing       = false,
+      .shaderStorageTexelBufferArrayDynamicIndexing       = false,
+      .shaderUniformBufferArrayNonUniformIndexing         = false,
+      .shaderSampledImageArrayNonUniformIndexing          = false,
+      .shaderStorageBufferArrayNonUniformIndexing         = false,
+      .shaderStorageImageArrayNonUniformIndexing          = false,
+      .shaderInputAttachmentArrayNonUniformIndexing       = false,
+      .shaderUniformTexelBufferArrayNonUniformIndexing    = false,
+      .shaderStorageTexelBufferArrayNonUniformIndexing    = false,
+      .descriptorBindingUniformBufferUpdateAfterBind      = false,
+      .descriptorBindingSampledImageUpdateAfterBind       = false,
+      .descriptorBindingStorageImageUpdateAfterBind       = false,
+      .descriptorBindingStorageBufferUpdateAfterBind      = false,
+      .descriptorBindingUniformTexelBufferUpdateAfterBind = false,
+      .descriptorBindingStorageTexelBufferUpdateAfterBind = false,
+      .descriptorBindingUpdateUnusedWhilePending          = false,
+      .descriptorBindingPartiallyBound                    = false,
+      .descriptorBindingVariableDescriptorCount           = false,
+      .runtimeDescriptorArray                             = false,
+
+      .samplerFilterMinmax                 = false,
+      .scalarBlockLayout                   = true,
+      .imagelessFramebuffer                = true,
+      .uniformBufferStandardLayout         = true,
+      .shaderSubgroupExtendedTypes         = true,
+      .separateDepthStencilLayouts         = true,
+      .hostQueryReset                      = true,
+      .timelineSemaphore                   = true,
+      .bufferDeviceAddress                 = pdevice->has_a64_buffer_access,
+      .bufferDeviceAddressCaptureReplay    = pdevice->has_a64_buffer_access,
+      .bufferDeviceAddressMultiDevice      = false,
+      .vulkanMemoryModel                   = true,
+      .vulkanMemoryModelDeviceScope        = true,
+      .vulkanMemoryModelAvailabilityVisibilityChains = true,
+      .shaderOutputViewportIndex           = true,
+      .shaderOutputLayer                   = true,
+      .subgroupBroadcastDynamicId          = true,
+
+      /* Vulkan 1.3 */
+      .robustImageAccess = true,
+      .inlineUniformBlock = true,
+      .descriptorBindingInlineUniformBlockUpdateAfterBind = true,
+      .pipelineCreationCacheControl = true,
+      .privateData = true,
+      .shaderDemoteToHelperInvocation = true,
+      .shaderTerminateInvocation = true,
+      .subgroupSizeControl = true,
+      .computeFullSubgroups = true,
+      .synchronization2 = true,
+      .textureCompressionASTC_HDR = false,
+      .shaderZeroInitializeWorkgroupMemory = true,
+      .dynamicRendering = true,
+      .shaderIntegerDotProduct = true,
+      .maintenance4 = true,
+
+      /* VK_EXT_4444_formats */
+      .formatA4R4G4B4 = true,
+      .formatA4B4G4R4 = false,
+
+      /* VK_EXT_border_color_swizzle */
+      .borderColorSwizzle = true,
+      .borderColorSwizzleFromImage = true,
+
+      /* VK_EXT_color_write_enable */
+      .colorWriteEnable = true,
+
+      /* VK_EXT_image_2d_view_of_3d */
+      .image2DViewOf3D = true,
+      .sampler2DViewOf3D = false,
+
+      /* VK_NV_compute_shader_derivatives */
+      .computeDerivativeGroupQuads = true,
+      .computeDerivativeGroupLinear = true,
+
+      /* VK_EXT_conditional_rendering */
+      .conditionalRendering = pdevice->info.verx10 >= 75,
+      .inheritedConditionalRendering = pdevice->info.verx10 >= 75,
+
+      /* VK_EXT_custom_border_color */
+      .customBorderColors = pdevice->info.ver >= 8,
+      .customBorderColorWithoutFormat = pdevice->info.ver >= 8,
+
+      /* VK_EXT_depth_clamp_zero_one */
+      .depthClampZeroOne = true,
+
+      /* VK_EXT_depth_clip_enable */
+      .depthClipEnable = true,
+
+      /* VK_KHR_global_priority */
+      .globalPriorityQuery = true,
+
+      /* VK_EXT_image_view_min_lod */
+      .minLod = true,
+
+      /* VK_EXT_index_type_uint8 */
+      .indexTypeUint8 = true,
+
+      /* VK_EXT_line_rasterization */
+      /* Rectangular lines must use the strict algorithm, which is not
+       * supported for wide lines prior to ICL.  See rasterization_mode for
+       * details and how the HW states are programmed.
+       */
+      .rectangularLines = false,
+      .bresenhamLines = true,
+      /* Support for Smooth lines with MSAA was removed on gfx11.  From the
+       * BSpec section "Multisample ModesState" table for "AA Line Support
+       * Requirements":
+       *
+       *    GFX10:BUG:######## 	NUM_MULTISAMPLES == 1
+       *
+       * Fortunately, this isn't a case most people care about.
+       */
+      .smoothLines = pdevice->info.ver < 10,
+      .stippledRectangularLines = false,
+      .stippledBresenhamLines = true,
+      .stippledSmoothLines = false,
+
+      /* VK_EXT_mutable_descriptor_type */
+      .mutableDescriptorType = true,
+
+      /* VK_KHR_performance_query */
+      .performanceCounterQueryPools = true,
+      /* HW only supports a single configuration at a time. */
+      .performanceCounterMultipleQueryPools = false,
+
+      /* VK_KHR_pipeline_executable_properties */
+      .pipelineExecutableInfo = true,
+
+      /* VK_EXT_primitives_generated_query */
+      .primitivesGeneratedQuery = true,
+      .primitivesGeneratedQueryWithRasterizerDiscard = false,
+      .primitivesGeneratedQueryWithNonZeroStreams = false,
+
+      /* VK_EXT_provoking_vertex */
+      .provokingVertexLast = true,
+      .transformFeedbackPreservesProvokingVertex = true,
+
+      /* VK_EXT_robustness2 */
+      .robustBufferAccess2 = true,
+      .robustImageAccess2 = true,
+      .nullDescriptor = true,
+
+      /* VK_EXT_shader_atomic_float */
+      .shaderBufferFloat32Atomics =    true,
+      .shaderBufferFloat32AtomicAdd =  pdevice->info.has_lsc,
+      .shaderBufferFloat64Atomics =
+         pdevice->info.has_64bit_float && pdevice->info.has_lsc,
+      .shaderBufferFloat64AtomicAdd =  false,
+      .shaderSharedFloat32Atomics =    true,
+      .shaderSharedFloat32AtomicAdd =  false,
+      .shaderSharedFloat64Atomics =    false,
+      .shaderSharedFloat64AtomicAdd =  false,
+      .shaderImageFloat32Atomics =     true,
+      .shaderImageFloat32AtomicAdd =   false,
+      .sparseImageFloat32Atomics =     false,
+      .sparseImageFloat32AtomicAdd =   false,
+
+      /* VK_KHR_shader_clock */
+      .shaderSubgroupClock = true,
+      .shaderDeviceClock = false,
+
+      /* VK_INTEL_shader_integer_functions2 */
+      .shaderIntegerFunctions2 = true,
+
+      /* VK_EXT_shader_module_identifier */
+      .shaderModuleIdentifier = true,
+
+      /* VK_KHR_shader_subgroup_uniform_control_flow */
+      .shaderSubgroupUniformControlFlow = true,
+
+      /* VK_EXT_texel_buffer_alignment */
+      .texelBufferAlignment = true,
+
+      /* VK_EXT_transform_feedback */
+      .transformFeedback = true,
+      .geometryStreams = true,
+
+      /* VK_EXT_vertex_attribute_divisor */
+      .vertexAttributeInstanceRateDivisor = true,
+      .vertexAttributeInstanceRateZeroDivisor = true,
+
+      /* VK_KHR_workgroup_memory_explicit_layout */
+      .workgroupMemoryExplicitLayout = true,
+      .workgroupMemoryExplicitLayoutScalarBlockLayout = true,
+      .workgroupMemoryExplicitLayout8BitAccess = true,
+      .workgroupMemoryExplicitLayout16BitAccess = true,
+
+      /* VK_EXT_ycbcr_image_arrays */
+      .ycbcrImageArrays = true,
+
+      /* VK_EXT_extended_dynamic_state */
+      .extendedDynamicState = true,
+
+      /* VK_EXT_extended_dynamic_state2 */
+      .extendedDynamicState2 = true,
+      .extendedDynamicState2LogicOp = true,
+      .extendedDynamicState2PatchControlPoints = false,
+
+      /* VK_EXT_multi_draw */
+      .multiDraw = true,
+
+      /* VK_EXT_non_seamless_cube_map */
+      .nonSeamlessCubeMap = true,
+
+      /* VK_EXT_primitive_topology_list_restart */
+      .primitiveTopologyListRestart = true,
+      .primitiveTopologyPatchListRestart = true,
+
+      /* VK_EXT_depth_clip_control */
+      .depthClipControl = true,
+
+      /* VK_KHR_shader_expect_assume */
+      .shaderExpectAssume = true,
+   };
+
+   /* We can't do image stores in vec4 shaders */
+   features->vertexPipelineStoresAndAtomics =
+      pdevice->compiler->scalar_stage[MESA_SHADER_VERTEX] &&
+      pdevice->compiler->scalar_stage[MESA_SHADER_GEOMETRY];
+
+   struct vk_app_info *app_info = &pdevice->instance->vk.app_info;
+
+   /* The new DOOM and Wolfenstein games require depthBounds without
+    * checking for it.  They seem to run fine without it so just claim it's
+    * there and accept the consequences.
+    */
+   if (app_info->engine_name && strcmp(app_info->engine_name, "idTech") == 0)
+      features->depthBounds = true;
+}
+
 static uint64_t
 anv_compute_sys_heap_size(struct anv_physical_device *device,
-                          uint64_t total_ram)
+                          uint64_t available_ram)
 {
-   /* We don't want to burn too much ram with the GPU.  If the user has 4GiB
-    * or less, we use at most half.  If they have more than 4GiB, we use 3/4.
-    */
-   uint64_t available_ram;
-   if (total_ram <= 4ull * 1024ull * 1024ull * 1024ull)
-      available_ram = total_ram / 2;
-   else
-      available_ram = total_ram * 3 / 4;
-
-   /* We also want to leave some padding for things we allocate in the driver,
+   /* We want to leave some padding for things we allocate in the driver,
     * so don't go over 3/4 of the GTT either.
     */
    available_ram = MIN2(available_ram, device->gtt_size * 3 / 4);
@@ -449,12 +762,12 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
       };
    }
 
-   device->memory.need_clflush = false;
+   device->memory.need_flush = false;
    for (unsigned i = 0; i < device->memory.type_count; i++) {
       VkMemoryPropertyFlags props = device->memory.types[i].propertyFlags;
       if ((props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
           !(props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-         device->memory.need_clflush = true;
+         device->memory.need_flush = true;
    }
 
    return VK_SUCCESS;
@@ -517,7 +830,7 @@ anv_physical_device_init_disk_cache(struct anv_physical_device *device)
    _mesa_sha1_format(timestamp, device->driver_build_sha1);
 
    const uint64_t driver_flags =
-      brw_get_compiler_config_value(device->compiler);
+      elk_get_compiler_config_value(device->compiler);
    device->vk.disk_cache = disk_cache_create(renderer, timestamp, driver_flags);
 #endif
 }
@@ -670,7 +983,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    int fd;
    int master_fd = -1;
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    fd = open(path, O_RDWR | O_CLOEXEC);
    if (fd < 0) {
@@ -683,8 +996,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    }
 
    struct intel_device_info devinfo;
-   if (!intel_get_device_info_from_fd(fd, &devinfo)) {
-      result = vk_error(instance, VK_ERROR_INCOMPATIBLE_DRIVER);
+   if (!intel_get_device_info_from_fd(fd, &devinfo, 7, 8)) {
+      result = VK_ERROR_INCOMPATIBLE_DRIVER;
       goto fail_fd;
    }
 
@@ -725,7 +1038,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       &dispatch_table, &wsi_physical_device_entrypoints, false);
 
    result = vk_physical_device_init(&device->vk, &instance->vk,
-                                    NULL, NULL, /* We set up extensions later */
+                                    NULL, NULL, NULL, /* We set up extensions later */
                                     &dispatch_table);
    if (result != VK_SUCCESS) {
       vk_error(instance, result);
@@ -874,7 +1187,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
       driQueryOptionb(&instance->dri_options, "always_flush_cache");
 
-   device->compiler = brw_compiler_create(NULL, &device->info);
+   device->compiler = elk_compiler_create(NULL, &device->info);
    if (device->compiler == NULL) {
       result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail_base;
@@ -914,6 +1227,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    anv_physical_device_init_perf(device, fd);
 
    get_device_extensions(device, &device->vk.supported_extensions);
+   get_features(device, &device->vk.supported_features);
 
    result = anv_init_wsi(device);
    if (result != VK_SUCCESS)
@@ -1010,7 +1324,7 @@ anv_init_dri_options(struct anv_instance *instance)
                        instance->vk.app_info.engine_version);
 
     instance->assume_full_subgroups =
-            driQueryOptionb(&instance->dri_options, "anv_assume_full_subgroups");
+            driQueryOptioni(&instance->dri_options, "anv_assume_full_subgroups");
     instance->limit_trig_input_range =
             driQueryOptionb(&instance->dri_options, "limit_trig_input_range");
     instance->sample_mask_out_opengl_behaviour =
@@ -1019,6 +1333,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
     instance->no_16bit =
             driQueryOptionb(&instance->dri_options, "no_16bit");
+    instance->report_vk_1_3 =
+            driQueryOptionb(&instance->dri_options, "hasvk_report_vk_1_3_version");
 }
 
 VkResult anv_CreateInstance(
@@ -1082,521 +1398,6 @@ void anv_DestroyInstance(
 
    vk_instance_finish(&instance->vk);
    vk_free(&instance->vk.alloc, instance);
-}
-
-void anv_GetPhysicalDeviceFeatures(
-    VkPhysicalDevice                            physicalDevice,
-    VkPhysicalDeviceFeatures*                   pFeatures)
-{
-   ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
-
-   /* Just pick one; they're all the same */
-   const bool has_astc_ldr =
-      isl_format_supports_sampling(&pdevice->info,
-                                   ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
-
-   *pFeatures = (VkPhysicalDeviceFeatures) {
-      .robustBufferAccess                       = true,
-      .fullDrawIndexUint32                      = true,
-      .imageCubeArray                           = true,
-      .independentBlend                         = true,
-      .geometryShader                           = true,
-      .tessellationShader                       = true,
-      .sampleRateShading                        = true,
-      .dualSrcBlend                             = true,
-      .logicOp                                  = true,
-      .multiDrawIndirect                        = true,
-      .drawIndirectFirstInstance                = true,
-      .depthClamp                               = true,
-      .depthBiasClamp                           = true,
-      .fillModeNonSolid                         = true,
-      .depthBounds                              = pdevice->info.ver >= 12,
-      .wideLines                                = true,
-      .largePoints                              = true,
-      .alphaToOne                               = true,
-      .multiViewport                            = true,
-      .samplerAnisotropy                        = true,
-      .textureCompressionETC2                   = pdevice->info.ver >= 8 ||
-                                                  pdevice->info.platform == INTEL_PLATFORM_BYT,
-      .textureCompressionASTC_LDR               = has_astc_ldr,
-      .textureCompressionBC                     = true,
-      .occlusionQueryPrecise                    = true,
-      .pipelineStatisticsQuery                  = true,
-      .fragmentStoresAndAtomics                 = true,
-      .shaderTessellationAndGeometryPointSize   = true,
-      .shaderImageGatherExtended                = true,
-      .shaderStorageImageExtendedFormats        = true,
-      .shaderStorageImageMultisample            = false,
-      .shaderStorageImageReadWithoutFormat      = false,
-      .shaderStorageImageWriteWithoutFormat     = true,
-      .shaderUniformBufferArrayDynamicIndexing  = true,
-      .shaderSampledImageArrayDynamicIndexing   = true,
-      .shaderStorageBufferArrayDynamicIndexing  = true,
-      .shaderStorageImageArrayDynamicIndexing   = true,
-      .shaderClipDistance                       = true,
-      .shaderCullDistance                       = true,
-      .shaderFloat64                            = pdevice->info.ver >= 8 &&
-                                                  pdevice->info.has_64bit_float,
-      .shaderInt64                              = pdevice->info.ver >= 8,
-      .shaderInt16                              = pdevice->info.ver >= 8,
-      .shaderResourceMinLod                     = false,
-      .variableMultisampleRate                  = true,
-      .inheritedQueries                         = true,
-   };
-
-   /* We can't do image stores in vec4 shaders */
-   pFeatures->vertexPipelineStoresAndAtomics =
-      pdevice->compiler->scalar_stage[MESA_SHADER_VERTEX] &&
-      pdevice->compiler->scalar_stage[MESA_SHADER_GEOMETRY];
-
-   struct vk_app_info *app_info = &pdevice->instance->vk.app_info;
-
-   /* The new DOOM and Wolfenstein games require depthBounds without
-    * checking for it.  They seem to run fine without it so just claim it's
-    * there and accept the consequences.
-    */
-   if (app_info->engine_name && strcmp(app_info->engine_name, "idTech") == 0)
-      pFeatures->depthBounds = true;
-}
-
-static void
-anv_get_physical_device_features_1_1(struct anv_physical_device *pdevice,
-                                     VkPhysicalDeviceVulkan11Features *f)
-{
-   assert(f->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES);
-
-   f->storageBuffer16BitAccess            = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit;
-   f->uniformAndStorageBuffer16BitAccess  = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit;
-   f->storagePushConstant16               = pdevice->info.ver >= 8;
-   f->storageInputOutput16                = false;
-   f->multiview                           = true;
-   f->multiviewGeometryShader             = true;
-   f->multiviewTessellationShader         = true;
-   f->variablePointersStorageBuffer       = true;
-   f->variablePointers                    = true;
-   f->protectedMemory                     = false;
-   f->samplerYcbcrConversion              = true;
-   f->shaderDrawParameters                = true;
-}
-
-static void
-anv_get_physical_device_features_1_2(struct anv_physical_device *pdevice,
-                                     VkPhysicalDeviceVulkan12Features *f)
-{
-   assert(f->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES);
-
-   f->samplerMirrorClampToEdge            = true;
-   f->drawIndirectCount                   = true;
-   f->storageBuffer8BitAccess             = pdevice->info.ver >= 8;
-   f->uniformAndStorageBuffer8BitAccess   = pdevice->info.ver >= 8;
-   f->storagePushConstant8                = pdevice->info.ver >= 8;
-   f->shaderBufferInt64Atomics            = false;
-   f->shaderSharedInt64Atomics            = false;
-   f->shaderFloat16                       = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit;
-   f->shaderInt8                          = pdevice->info.ver >= 8 && !pdevice->instance->no_16bit;
-
-   f->descriptorIndexing                                 = false;
-   f->shaderInputAttachmentArrayDynamicIndexing          = false;
-   f->shaderUniformTexelBufferArrayDynamicIndexing       = false;
-   f->shaderStorageTexelBufferArrayDynamicIndexing       = false;
-   f->shaderUniformBufferArrayNonUniformIndexing         = false;
-   f->shaderSampledImageArrayNonUniformIndexing          = false;
-   f->shaderStorageBufferArrayNonUniformIndexing         = false;
-   f->shaderStorageImageArrayNonUniformIndexing          = false;
-   f->shaderInputAttachmentArrayNonUniformIndexing       = false;
-   f->shaderUniformTexelBufferArrayNonUniformIndexing    = false;
-   f->shaderStorageTexelBufferArrayNonUniformIndexing    = false;
-   f->descriptorBindingUniformBufferUpdateAfterBind      = false;
-   f->descriptorBindingSampledImageUpdateAfterBind       = false;
-   f->descriptorBindingStorageImageUpdateAfterBind       = false;
-   f->descriptorBindingStorageBufferUpdateAfterBind      = false;
-   f->descriptorBindingUniformTexelBufferUpdateAfterBind = false;
-   f->descriptorBindingStorageTexelBufferUpdateAfterBind = false;
-   f->descriptorBindingUpdateUnusedWhilePending          = false;
-   f->descriptorBindingPartiallyBound                    = false;
-   f->descriptorBindingVariableDescriptorCount           = false;
-   f->runtimeDescriptorArray                             = false;
-
-   f->samplerFilterMinmax                 = false;
-   f->scalarBlockLayout                   = true;
-   f->imagelessFramebuffer                = true;
-   f->uniformBufferStandardLayout         = true;
-   f->shaderSubgroupExtendedTypes         = true;
-   f->separateDepthStencilLayouts         = true;
-   f->hostQueryReset                      = true;
-   f->timelineSemaphore                   = true;
-   f->bufferDeviceAddress                 = pdevice->has_a64_buffer_access;
-   f->bufferDeviceAddressCaptureReplay    = pdevice->has_a64_buffer_access;
-   f->bufferDeviceAddressMultiDevice      = false;
-   f->vulkanMemoryModel                   = true;
-   f->vulkanMemoryModelDeviceScope        = true;
-   f->vulkanMemoryModelAvailabilityVisibilityChains = true;
-   f->shaderOutputViewportIndex           = true;
-   f->shaderOutputLayer                   = true;
-   f->subgroupBroadcastDynamicId          = true;
-}
-
-static void
-anv_get_physical_device_features_1_3(struct anv_physical_device *pdevice,
-                                     VkPhysicalDeviceVulkan13Features *f)
-{
-   assert(f->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
-
-   f->robustImageAccess = true;
-   f->inlineUniformBlock = true;
-   f->descriptorBindingInlineUniformBlockUpdateAfterBind = true;
-   f->pipelineCreationCacheControl = true;
-   f->privateData = true;
-   f->shaderDemoteToHelperInvocation = true;
-   f->shaderTerminateInvocation = true;
-   f->subgroupSizeControl = true;
-   f->computeFullSubgroups = true;
-   f->synchronization2 = true;
-   f->textureCompressionASTC_HDR = false;
-   f->shaderZeroInitializeWorkgroupMemory = true;
-   f->dynamicRendering = true;
-   f->shaderIntegerDotProduct = true;
-   f->maintenance4 = true;
-}
-
-void anv_GetPhysicalDeviceFeatures2(
-    VkPhysicalDevice                            physicalDevice,
-    VkPhysicalDeviceFeatures2*                  pFeatures)
-{
-   ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
-   anv_GetPhysicalDeviceFeatures(physicalDevice, &pFeatures->features);
-
-   VkPhysicalDeviceVulkan11Features core_1_1 = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-   };
-   anv_get_physical_device_features_1_1(pdevice, &core_1_1);
-
-   VkPhysicalDeviceVulkan12Features core_1_2 = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-   };
-   anv_get_physical_device_features_1_2(pdevice, &core_1_2);
-
-   VkPhysicalDeviceVulkan13Features core_1_3 = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-   };
-   anv_get_physical_device_features_1_3(pdevice, &core_1_3);
-
-   vk_foreach_struct(ext, pFeatures->pNext) {
-      if (vk_get_physical_device_core_1_1_feature_ext(ext, &core_1_1))
-         continue;
-      if (vk_get_physical_device_core_1_2_feature_ext(ext, &core_1_2))
-         continue;
-      if (vk_get_physical_device_core_1_3_feature_ext(ext, &core_1_3))
-         continue;
-
-      switch (ext->sType) {
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_4444_FORMATS_FEATURES_EXT: {
-         VkPhysicalDevice4444FormatsFeaturesEXT *features =
-            (VkPhysicalDevice4444FormatsFeaturesEXT *)ext;
-         features->formatA4R4G4B4 = true;
-         features->formatA4B4G4R4 = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT: {
-         VkPhysicalDeviceBufferDeviceAddressFeaturesEXT *features = (void *)ext;
-         features->bufferDeviceAddress = pdevice->has_a64_buffer_access;
-         features->bufferDeviceAddressCaptureReplay = false;
-         features->bufferDeviceAddressMultiDevice = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BORDER_COLOR_SWIZZLE_FEATURES_EXT: {
-         VkPhysicalDeviceBorderColorSwizzleFeaturesEXT *features =
-            (VkPhysicalDeviceBorderColorSwizzleFeaturesEXT *)ext;
-         features->borderColorSwizzle = true;
-         features->borderColorSwizzleFromImage = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COLOR_WRITE_ENABLE_FEATURES_EXT: {
-         VkPhysicalDeviceColorWriteEnableFeaturesEXT *features =
-            (VkPhysicalDeviceColorWriteEnableFeaturesEXT *)ext;
-         features->colorWriteEnable = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_2D_VIEW_OF_3D_FEATURES_EXT: {
-         VkPhysicalDeviceImage2DViewOf3DFeaturesEXT *features =
-            (VkPhysicalDeviceImage2DViewOf3DFeaturesEXT *)ext;
-         features->image2DViewOf3D = true;
-         features->sampler2DViewOf3D = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV: {
-         VkPhysicalDeviceComputeShaderDerivativesFeaturesNV *features =
-            (VkPhysicalDeviceComputeShaderDerivativesFeaturesNV *)ext;
-         features->computeDerivativeGroupQuads = true;
-         features->computeDerivativeGroupLinear = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT: {
-         VkPhysicalDeviceConditionalRenderingFeaturesEXT *features =
-            (VkPhysicalDeviceConditionalRenderingFeaturesEXT*)ext;
-         features->conditionalRendering = pdevice->info.verx10 >= 75;
-         features->inheritedConditionalRendering = pdevice->info.verx10 >= 75;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT: {
-         VkPhysicalDeviceCustomBorderColorFeaturesEXT *features =
-            (VkPhysicalDeviceCustomBorderColorFeaturesEXT *)ext;
-         features->customBorderColors = pdevice->info.ver >= 8;
-         features->customBorderColorWithoutFormat = pdevice->info.ver >= 8;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLAMP_ZERO_ONE_FEATURES_EXT: {
-         VkPhysicalDeviceDepthClampZeroOneFeaturesEXT *features =
-            (VkPhysicalDeviceDepthClampZeroOneFeaturesEXT *)ext;
-         features->depthClampZeroOne = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT: {
-         VkPhysicalDeviceDepthClipEnableFeaturesEXT *features =
-            (VkPhysicalDeviceDepthClipEnableFeaturesEXT *)ext;
-         features->depthClipEnable = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_KHR: {
-         VkPhysicalDeviceGlobalPriorityQueryFeaturesKHR *features =
-            (VkPhysicalDeviceGlobalPriorityQueryFeaturesKHR *)ext;
-         features->globalPriorityQuery = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_VIEW_MIN_LOD_FEATURES_EXT: {
-         VkPhysicalDeviceImageViewMinLodFeaturesEXT *features =
-            (VkPhysicalDeviceImageViewMinLodFeaturesEXT *)ext;
-         features->minLod = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT: {
-         VkPhysicalDeviceIndexTypeUint8FeaturesEXT *features =
-            (VkPhysicalDeviceIndexTypeUint8FeaturesEXT *)ext;
-         features->indexTypeUint8 = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT: {
-         VkPhysicalDeviceLineRasterizationFeaturesEXT *features =
-            (VkPhysicalDeviceLineRasterizationFeaturesEXT *)ext;
-         /* Rectangular lines must use the strict algorithm, which is not
-          * supported for wide lines prior to ICL.  See rasterization_mode for
-          * details and how the HW states are programmed.
-          */
-         features->rectangularLines = false;
-         features->bresenhamLines = true;
-         /* Support for Smooth lines with MSAA was removed on gfx11.  From the
-          * BSpec section "Multisample ModesState" table for "AA Line Support
-          * Requirements":
-          *
-          *    GFX10:BUG:######## 	NUM_MULTISAMPLES == 1
-          *
-          * Fortunately, this isn't a case most people care about.
-          */
-         features->smoothLines = pdevice->info.ver < 10;
-         features->stippledRectangularLines = false;
-         features->stippledBresenhamLines = true;
-         features->stippledSmoothLines = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_VALVE: {
-         VkPhysicalDeviceMutableDescriptorTypeFeaturesVALVE *features =
-            (VkPhysicalDeviceMutableDescriptorTypeFeaturesVALVE *)ext;
-         features->mutableDescriptorType = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR: {
-         VkPhysicalDevicePerformanceQueryFeaturesKHR *feature =
-            (VkPhysicalDevicePerformanceQueryFeaturesKHR *)ext;
-         feature->performanceCounterQueryPools = true;
-         /* HW only supports a single configuration at a time. */
-         feature->performanceCounterMultipleQueryPools = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR: {
-         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR *features =
-            (VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR *)ext;
-         features->pipelineExecutableInfo = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVES_GENERATED_QUERY_FEATURES_EXT: {
-         VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT *features =
-            (VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT *)ext;
-         features->primitivesGeneratedQuery = true;
-         features->primitivesGeneratedQueryWithRasterizerDiscard = false;
-         features->primitivesGeneratedQueryWithNonZeroStreams = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT: {
-         VkPhysicalDeviceProvokingVertexFeaturesEXT *features =
-            (VkPhysicalDeviceProvokingVertexFeaturesEXT *)ext;
-         features->provokingVertexLast = true;
-         features->transformFeedbackPreservesProvokingVertex = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT: {
-         VkPhysicalDeviceRobustness2FeaturesEXT *features = (void *)ext;
-         features->robustBufferAccess2 = true;
-         features->robustImageAccess2 = true;
-         features->nullDescriptor = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT: {
-         VkPhysicalDeviceShaderAtomicFloatFeaturesEXT *features = (void *)ext;
-         features->shaderBufferFloat32Atomics =    true;
-         features->shaderBufferFloat32AtomicAdd =  pdevice->info.has_lsc;
-         features->shaderBufferFloat64Atomics =
-            pdevice->info.has_64bit_float && pdevice->info.has_lsc;
-         features->shaderBufferFloat64AtomicAdd =  false;
-         features->shaderSharedFloat32Atomics =    true;
-         features->shaderSharedFloat32AtomicAdd =  false;
-         features->shaderSharedFloat64Atomics =    false;
-         features->shaderSharedFloat64AtomicAdd =  false;
-         features->shaderImageFloat32Atomics =     true;
-         features->shaderImageFloat32AtomicAdd =   false;
-         features->sparseImageFloat32Atomics =     false;
-         features->sparseImageFloat32AtomicAdd =   false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR: {
-         VkPhysicalDeviceShaderClockFeaturesKHR *features =
-            (VkPhysicalDeviceShaderClockFeaturesKHR *)ext;
-         features->shaderSubgroupClock = true;
-         features->shaderDeviceClock = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_FUNCTIONS_2_FEATURES_INTEL: {
-         VkPhysicalDeviceShaderIntegerFunctions2FeaturesINTEL *features =
-            (VkPhysicalDeviceShaderIntegerFunctions2FeaturesINTEL *)ext;
-         features->shaderIntegerFunctions2 = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MODULE_IDENTIFIER_FEATURES_EXT: {
-         VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT *features =
-            (VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT *)ext;
-         features->shaderModuleIdentifier = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_FEATURES_KHR: {
-         VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR *features =
-            (VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR *)ext;
-         features->shaderSubgroupUniformControlFlow = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_FEATURES_EXT: {
-         VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *features =
-            (VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *)ext;
-         features->texelBufferAlignment = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TRANSFORM_FEEDBACK_FEATURES_EXT: {
-         VkPhysicalDeviceTransformFeedbackFeaturesEXT *features =
-            (VkPhysicalDeviceTransformFeedbackFeaturesEXT *)ext;
-         features->transformFeedback = true;
-         features->geometryStreams = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT: {
-         VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT *features =
-            (VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT *)ext;
-         features->vertexAttributeInstanceRateDivisor = true;
-         features->vertexAttributeInstanceRateZeroDivisor = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_WORKGROUP_MEMORY_EXPLICIT_LAYOUT_FEATURES_KHR: {
-         VkPhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR *features =
-            (VkPhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR *)ext;
-         features->workgroupMemoryExplicitLayout = true;
-         features->workgroupMemoryExplicitLayoutScalarBlockLayout = true;
-         features->workgroupMemoryExplicitLayout8BitAccess = true;
-         features->workgroupMemoryExplicitLayout16BitAccess = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_IMAGE_ARRAYS_FEATURES_EXT: {
-         VkPhysicalDeviceYcbcrImageArraysFeaturesEXT *features =
-            (VkPhysicalDeviceYcbcrImageArraysFeaturesEXT *)ext;
-         features->ycbcrImageArrays = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT: {
-         VkPhysicalDeviceExtendedDynamicStateFeaturesEXT *features =
-            (VkPhysicalDeviceExtendedDynamicStateFeaturesEXT *)ext;
-         features->extendedDynamicState = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT: {
-         VkPhysicalDeviceExtendedDynamicState2FeaturesEXT *features =
-            (VkPhysicalDeviceExtendedDynamicState2FeaturesEXT *)ext;
-         features->extendedDynamicState2 = true;
-         features->extendedDynamicState2LogicOp = true;
-         features->extendedDynamicState2PatchControlPoints = false;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTI_DRAW_FEATURES_EXT: {
-         VkPhysicalDeviceMultiDrawFeaturesEXT *features = (VkPhysicalDeviceMultiDrawFeaturesEXT *)ext;
-         features->multiDraw = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_NON_SEAMLESS_CUBE_MAP_FEATURES_EXT : {
-         VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT *features =
-            (VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT *)ext;
-         features->nonSeamlessCubeMap = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT: {
-         VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT *features =
-            (VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT *)ext;
-         features->primitiveTopologyListRestart = true;
-         features->primitiveTopologyPatchListRestart = true;
-         break;
-      }
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_CONTROL_FEATURES_EXT: {
-         VkPhysicalDeviceDepthClipControlFeaturesEXT *features =
-            (VkPhysicalDeviceDepthClipControlFeaturesEXT *)ext;
-         features->depthClipControl = true;
-         break;
-      }
-
-      default:
-         anv_debug_ignored_stype(ext->sType);
-         break;
-      }
-   }
-
 }
 
 #define MAX_PER_STAGE_DESCRIPTOR_UNIFORM_BUFFERS   64
@@ -1769,10 +1570,11 @@ void anv_GetPhysicalDeviceProperties(
    };
 
    *pProperties = (VkPhysicalDeviceProperties) {
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
       .apiVersion = ANV_API_VERSION,
 #else
-      .apiVersion = pdevice->use_softpin ? ANV_API_VERSION_1_3 : ANV_API_VERSION_1_2,
+      .apiVersion =  (pdevice->use_softpin || pdevice->instance->report_vk_1_3) ?
+                     ANV_API_VERSION_1_3 : ANV_API_VERSION_1_2,
 #endif
       .driverVersion = vk_get_driver_version(),
       .vendorID = 0x8086,
@@ -1800,7 +1602,7 @@ anv_get_physical_device_properties_1_1(struct anv_physical_device *pdevice,
    p->deviceNodeMask = 0;
    p->deviceLUIDValid = false;
 
-   p->subgroupSize = BRW_SUBGROUP_SIZE;
+   p->subgroupSize = ELK_SUBGROUP_SIZE;
    VkShaderStageFlags scalar_stages = 0;
    for (unsigned stage = 0; stage < MESA_SHADER_STAGES; stage++) {
       if (pdevice->compiler->scalar_stage[stage])
@@ -2040,7 +1842,7 @@ anv_get_physical_device_properties_1_3(struct anv_physical_device *pdevice,
     * experience demonstrate that this is true.
     */
    p->uniformTexelBufferOffsetAlignmentBytes = 1;
-   p->uniformTexelBufferOffsetSingleTexelAlignment = false;
+   p->uniformTexelBufferOffsetSingleTexelAlignment = true;
 
    p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
 }
@@ -2446,32 +2248,10 @@ PFN_vkVoidFunction anv_GetInstanceProcAddr(
 PUBLIC
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(
     VkInstance                                  instance,
-    const char*                                 pName);
-
-PUBLIC
-VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(
-    VkInstance                                  instance,
     const char*                                 pName)
 {
    return anv_GetInstanceProcAddr(instance, pName);
 }
-
-/* With version 4+ of the loader interface the ICD should expose
- * vk_icdGetPhysicalDeviceProcAddr()
- */
-PUBLIC
-VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetPhysicalDeviceProcAddr(
-    VkInstance  _instance,
-    const char* pName);
-
-PFN_vkVoidFunction vk_icdGetPhysicalDeviceProcAddr(
-    VkInstance  _instance,
-    const char* pName)
-{
-   ANV_FROM_HANDLE(anv_instance, instance, _instance);
-   return vk_instance_get_physical_device_proc_addr(&instance->vk, pName);
-}
-
 static struct anv_state
 anv_state_pool_emit_data(struct anv_state_pool *pool, size_t size, size_t align, const void *p)
 {
@@ -2534,8 +2314,10 @@ anv_device_init_trivial_batch(struct anv_device *device)
    anv_batch_emit(&batch, GFX7_MI_BATCH_BUFFER_END, bbe);
    anv_batch_emit(&batch, GFX7_MI_NOOP, noop);
 
-   if (device->physical->memory.need_clflush)
-      intel_clflush_range(batch.start, batch.next - batch.start);
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
+   if (device->physical->memory.need_flush)
+      intel_flush_range(batch.start, batch.next - batch.start);
+#endif
 
    return VK_SUCCESS;
 }
@@ -2628,6 +2410,7 @@ anv_device_setup_context(struct anv_device *device,
       if (!intel_gem_create_context_engines(device->fd, 0 /* flags */,
                                             physical_device->engine_info,
                                             engine_count, engine_classes,
+                                            0 /* vm_id */,
                                             (uint32_t *)&device->context_id))
          result = vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
                             "kernel context creation failed");
@@ -2729,17 +2512,13 @@ VkResult anv_CreateDevice(
       goto fail_alloc;
 
    if (INTEL_DEBUG(DEBUG_BATCH)) {
-      const unsigned decode_flags =
-         INTEL_BATCH_DECODE_FULL |
-         (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
-         INTEL_BATCH_DECODE_OFFSETS |
-         INTEL_BATCH_DECODE_FLOATS;
+      const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS;
 
-      intel_batch_decode_ctx_init(&device->decoder_ctx,
-                                  &physical_device->compiler->isa,
-                                  &physical_device->info,
-                                  stderr, decode_flags, NULL,
-                                  decode_get_bo, NULL, device);
+      intel_batch_decode_ctx_init_elk(&device->decoder_ctx,
+                                      &physical_device->compiler->isa,
+                                      &physical_device->info,
+                                      stderr, decode_flags, NULL,
+                                      decode_get_bo, NULL, device);
 
       device->decoder_ctx.dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
       device->decoder_ctx.surface_base = SURFACE_STATE_POOL_MIN_ADDRESS;
@@ -2956,9 +2735,7 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_trivial_batch_bo_and_scratch_pool;
 
-   struct vk_pipeline_cache_create_info pcc_info = {
-      .internal = true,
-   };
+   struct vk_pipeline_cache_create_info pcc_info = { };
    device->default_pipeline_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
    if (!device->default_pipeline_cache) {
@@ -2978,6 +2755,10 @@ VkResult anv_CreateDevice(
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail_default_pipeline_cache;
    }
+
+   device->robust_buffer_access =
+      device->vk.enabled_features.robustBufferAccess ||
+      device->vk.enabled_features.nullDescriptor;
 
    anv_device_init_blorp(device);
 
@@ -3556,7 +3337,7 @@ void anv_FreeMemory(
 
    anv_device_release_bo(device, mem->bo);
 
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
    if (mem->ahw)
       AHardwareBuffer_release(mem->ahw);
 #endif
@@ -3679,11 +3460,13 @@ VkResult anv_FlushMappedMemoryRanges(
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
 
-   if (!device->physical->memory.need_clflush)
+   if (!device->physical->memory.need_flush)
       return VK_SUCCESS;
 
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    /* Make sure the writes we're flushing have landed. */
    __builtin_ia32_mfence();
+#endif
 
    for (uint32_t i = 0; i < memoryRangeCount; i++) {
       ANV_FROM_HANDLE(anv_device_memory, mem, pMemoryRanges[i].memory);
@@ -3694,9 +3477,11 @@ VkResult anv_FlushMappedMemoryRanges(
       if (map_offset >= mem->map_size)
          continue;
 
-      intel_clflush_range(mem->map + map_offset,
-                          MIN2(pMemoryRanges[i].size,
-                               mem->map_size - map_offset));
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
+      intel_flush_range(mem->map + map_offset,
+                        MIN2(pMemoryRanges[i].size,
+                             mem->map_size - map_offset));
+#endif
    }
 
    return VK_SUCCESS;
@@ -3709,7 +3494,7 @@ VkResult anv_InvalidateMappedMemoryRanges(
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
 
-   if (!device->physical->memory.need_clflush)
+   if (!device->physical->memory.need_flush)
       return VK_SUCCESS;
 
    for (uint32_t i = 0; i < memoryRangeCount; i++) {
@@ -3721,13 +3506,17 @@ VkResult anv_InvalidateMappedMemoryRanges(
       if (map_offset >= mem->map_size)
          continue;
 
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
       intel_invalidate_range(mem->map + map_offset,
                              MIN2(pMemoryRanges[i].size,
                                   mem->map_size - map_offset));
+#endif
    }
 
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    /* Make sure no reads get moved up above the invalidate. */
    __builtin_ia32_mfence();
+#endif
 
    return VK_SUCCESS;
 }
@@ -3930,7 +3719,7 @@ void anv_GetBufferMemoryRequirements2(
                                       pMemoryRequirements);
 }
 
-void anv_GetDeviceBufferMemoryRequirementsKHR(
+void anv_GetDeviceBufferMemoryRequirements(
     VkDevice                                    _device,
     const VkDeviceBufferMemoryRequirements*     pInfo,
     VkMemoryRequirements2*                      pMemoryRequirements)
@@ -4218,57 +4007,4 @@ void anv_GetPhysicalDeviceMultisamplePropertiesEXT(
 
    vk_foreach_struct(ext, pMultisampleProperties->pNext)
       anv_debug_ignored_stype(ext->sType);
-}
-
-/* vk_icd.h does not declare this function, so we declare it here to
- * suppress Wmissing-prototypes.
- */
-PUBLIC VKAPI_ATTR VkResult VKAPI_CALL
-vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t* pSupportedVersion);
-
-PUBLIC VKAPI_ATTR VkResult VKAPI_CALL
-vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t* pSupportedVersion)
-{
-   /* For the full details on loader interface versioning, see
-    * <https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/loader/LoaderAndLayerInterface.md>.
-    * What follows is a condensed summary, to help you navigate the large and
-    * confusing official doc.
-    *
-    *   - Loader interface v0 is incompatible with later versions. We don't
-    *     support it.
-    *
-    *   - In loader interface v1:
-    *       - The first ICD entrypoint called by the loader is
-    *         vk_icdGetInstanceProcAddr(). The ICD must statically expose this
-    *         entrypoint.
-    *       - The ICD must statically expose no other Vulkan symbol unless it is
-    *         linked with -Bsymbolic.
-    *       - Each dispatchable Vulkan handle created by the ICD must be
-    *         a pointer to a struct whose first member is VK_LOADER_DATA. The
-    *         ICD must initialize VK_LOADER_DATA.loadMagic to ICD_LOADER_MAGIC.
-    *       - The loader implements vkCreate{PLATFORM}SurfaceKHR() and
-    *         vkDestroySurfaceKHR(). The ICD must be capable of working with
-    *         such loader-managed surfaces.
-    *
-    *    - Loader interface v2 differs from v1 in:
-    *       - The first ICD entrypoint called by the loader is
-    *         vk_icdNegotiateLoaderICDInterfaceVersion(). The ICD must
-    *         statically expose this entrypoint.
-    *
-    *    - Loader interface v3 differs from v2 in:
-    *        - The ICD must implement vkCreate{PLATFORM}SurfaceKHR(),
-    *          vkDestroySurfaceKHR(), and other API which uses VKSurfaceKHR,
-    *          because the loader no longer does so.
-    *
-    *    - Loader interface v4 differs from v3 in:
-    *        - The ICD must implement vk_icdGetPhysicalDeviceProcAddr().
-    *
-    *    - Loader interface v5 differs from v4 in:
-    *        - The ICD must support Vulkan API version 1.1 and must not return
-    *          VK_ERROR_INCOMPATIBLE_DRIVER from vkCreateInstance() unless a
-    *          Vulkan Loader with interface v4 or smaller is being used and the
-    *          application provides an API version that is greater than 1.0.
-    */
-   *pSupportedVersion = MIN2(*pSupportedVersion, 5u);
-   return VK_SUCCESS;
 }

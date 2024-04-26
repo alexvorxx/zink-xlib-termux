@@ -596,7 +596,7 @@ glXCopyContext(Display * dpy, GLXContext source_user,
                              mask, &errorcode, &x11error)) {
       __glXSendError(dpy, errorcode, 0, X_GLXCopyContext, x11error);
    }
-   
+
 #else
    xGLXCopyContextReq *req;
    struct glx_context *gc = __glXGetCurrentContext();
@@ -773,7 +773,6 @@ init_fbconfig_for_chooser(struct glx_config * config,
    config->xRenderable = GLX_DONT_CARE;
    config->fbconfigID = (GLXFBConfigID) (GLX_DONT_CARE);
 
-   config->swapMethod = GLX_DONT_CARE;
    config->sRGBCapable = GLX_DONT_CARE;
 }
 
@@ -824,7 +823,6 @@ fbconfigs_compatible(const struct glx_config * const a,
    MATCH_DONT_CARE(visualRating);
    MATCH_DONT_CARE(xRenderable);
    MATCH_DONT_CARE(fbconfigID);
-   MATCH_DONT_CARE(swapMethod);
 
    MATCH_MINIMUM(rgbBits);
    MATCH_MINIMUM(numAuxBuffers);
@@ -1116,7 +1114,7 @@ glXChooseVisual(Display * dpy, int screen, int *attribList)
                                   &visualTemplate, &i);
 
          if (newList) {
-            free(visualList);
+            XFree(visualList);
             visualList = newList;
             best_config = config;
          }
@@ -1758,7 +1756,7 @@ glXWaitVideoSyncSGI(int divisor, int remainder, unsigned int *count)
 
 /*
 ** GLX_SGIX_fbconfig
-** Many of these functions are aliased to GLX 1.3 entry points in the 
+** Many of these functions are aliased to GLX 1.3 entry points in the
 ** GLX_functions table.
 */
 
@@ -2339,6 +2337,13 @@ static const struct name_address_pair GLX_functions[] = {
    GLX_FUNCTION(glXQueryCurrentRendererIntegerMESA),
    GLX_FUNCTION(glXQueryCurrentRendererStringMESA),
 
+   /*** GLX_MESA_gl_interop ***/
+#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+   GLX_FUNCTION2(glXGLInteropQueryDeviceInfoMESA, MesaGLInteropGLXQueryDeviceInfo),
+   GLX_FUNCTION2(glXGLInteropExportObjectMESA, MesaGLInteropGLXExportObject),
+   GLX_FUNCTION2(glXGLInteropFlushObjectsMESA, MesaGLInteropGLXFlushObjects),
+#endif
+
    {NULL, NULL}                 /* end of list */
 };
 
@@ -2445,6 +2450,32 @@ MesaGLInteropGLXExportObject(Display *dpy, GLXContext context,
    }
 
    ret = gc->vtable->interop_export_object(gc, in, out);
+   __glXUnlock();
+   return ret;
+}
+
+PUBLIC int
+MesaGLInteropGLXFlushObjects(Display *dpy, GLXContext context,
+                             unsigned count,
+                             struct mesa_glinterop_export_in *resources,
+                             struct mesa_glinterop_flush_out *out)
+{
+   struct glx_context *gc = (struct glx_context*)context;
+   int ret;
+
+   __glXLock();
+
+   if (!gc || gc->xid == None || !gc->isDirect) {
+      __glXUnlock();
+      return MESA_GLINTEROP_INVALID_CONTEXT;
+   }
+
+   if (!gc->vtable->interop_flush_objects) {
+      __glXUnlock();
+      return MESA_GLINTEROP_UNSUPPORTED;
+   }
+
+   ret = gc->vtable->interop_flush_objects(gc, count, resources, out);
    __glXUnlock();
    return ret;
 }

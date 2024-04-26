@@ -27,7 +27,7 @@
 
 #include <stdio.h>
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "pipe/p_defines.h"
 #include "util/format/u_formats.h"
 #include "util/u_inlines.h"
@@ -211,7 +211,8 @@ hgl_winsys_displaytarget_unmap(struct sw_winsys* winsys,
 static void
 hgl_winsys_displaytarget_display(struct sw_winsys* winsys,
 	struct sw_displaytarget* displayTarget, void* contextPrivate,
-	struct pipe_box *box)
+   unsigned nboxes,
+   struct pipe_box *box)
 {
 	assert(contextPrivate);
 

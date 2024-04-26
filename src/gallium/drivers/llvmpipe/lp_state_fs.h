@@ -31,9 +31,8 @@
 
 
 #include "util/list.h"
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "pipe/p_state.h"
-#include "tgsi/tgsi_scan.h" /* for tgsi_shader_info */
 #include "gallivm/lp_bld_sample.h" /* for struct lp_sampler_static_state */
 #include "gallivm/lp_bld_jit_sample.h"
 #include "gallivm/lp_bld_tgsi.h" /* for lp_tgsi_info */
@@ -41,7 +40,6 @@
 #include "util/u_inlines.h"
 #include "lp_jit.h"
 
-struct tgsi_token;
 struct lp_fragment_shader;
 
 
@@ -226,10 +224,6 @@ struct lp_fragment_shader
 
 void
 llvmpipe_fs_analyse_nir(struct lp_fragment_shader *shader);
-
-void
-llvmpipe_fs_analyse(struct lp_fragment_shader *shader,
-                    const struct tgsi_token *tokens);
 
 void
 llvmpipe_fs_variant_fastpath(struct lp_fragment_shader_variant *variant);

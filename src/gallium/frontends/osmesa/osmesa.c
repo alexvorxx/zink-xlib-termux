@@ -48,13 +48,20 @@
  * much nicer, new off-screen Gallium interface...
  */
 
+/**
+ * The following block is for avoid windows.h to be included
+ * and osmesa require APIENTRY to be defined
+ */
+#include "util/glheader.h"
+#ifndef APIENTRY
+#define APIENTRY GLAPIENTRY
+#endif
+#include "GL/osmesa.h"
 
 #include <stdio.h>
 #include <c11/threads.h>
 
 #include "state_tracker/st_context.h"
-
-#include "GL/osmesa.h"
 
 #include "glapi/glapi.h"  /* for OSMesaGetProcAddress below */
 
@@ -99,7 +106,7 @@ struct osmesa_context
 {
    struct st_context *st;
 
-   boolean ever_used;     /*< Has this context ever been current? */
+   bool ever_used;     /*< Has this context ever been current? */
 
    struct osmesa_buffer *current_buffer;
 
@@ -185,7 +192,7 @@ osmesa_read_buffer(OSMesaContext osmesa, struct pipe_resource *res, void *dst,
    u_box_2d(0, 0, res->width0, res->height0, &box);
 
    struct pipe_transfer *transfer = NULL;
-   ubyte *src = pipe->texture_map(pipe, res, 0, PIPE_MAP_READ, &box,
+   uint8_t *src = pipe->texture_map(pipe, res, 0, PIPE_MAP_READ, &box,
                                    &transfer);
 
    /*
@@ -194,7 +201,7 @@ osmesa_read_buffer(OSMesaContext osmesa, struct pipe_resource *res, void *dst,
 
    if (y_up) {
       /* need to flip image upside down */
-      dst = (ubyte *)dst + (res->height0 - 1) * dst_stride;
+      dst = (uint8_t *)dst + (res->height0 - 1) * dst_stride;
       dst_stride = -dst_stride;
    }
 
@@ -202,7 +209,7 @@ osmesa_read_buffer(OSMesaContext osmesa, struct pipe_resource *res, void *dst,
    for (unsigned y = 0; y < res->height0; y++)
    {
       memcpy(dst, src, bpp * res->width0);
-      dst = (ubyte *)dst + dst_stride;
+      dst = (uint8_t *)dst + dst_stride;
       src += transfer->stride;
    }
 
@@ -660,9 +667,9 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
    attribs.major = version_major;
    attribs.minor = version_minor;
    attribs.flags = 0;  /* ST_CONTEXT_FLAG_x */
-   attribs.options.force_glsl_extensions_warn = FALSE;
-   attribs.options.disable_blend_func_extended = FALSE;
-   attribs.options.disable_glsl_line_continuations = FALSE;
+   attribs.options.force_glsl_extensions_warn = false;
+   attribs.options.disable_blend_func_extended = false;
+   attribs.options.disable_glsl_line_continuations = false;
    attribs.options.force_glsl_version = 0;
 
    osmesa_init_st_visual(&attribs.visual,
@@ -782,12 +789,12 @@ OSMesaMakeCurrent(OSMesaContext osmesa, void *buffer, GLenum type,
 
    if (!osmesa->ever_used) {
       /* one-time init, just postprocessing for now */
-      boolean any_pp_enabled = FALSE;
+      bool any_pp_enabled = false;
       unsigned i;
 
       for (i = 0; i < ARRAY_SIZE(osmesa->pp_enabled); i++) {
          if (osmesa->pp_enabled[i]) {
-            any_pp_enabled = TRUE;
+            any_pp_enabled = true;
             break;
          }
       }
@@ -802,7 +809,7 @@ OSMesaMakeCurrent(OSMesaContext osmesa, void *buffer, GLenum type,
          pp_init_fbos(osmesa->pp, width, height);
       }
 
-      osmesa->ever_used = TRUE;
+      osmesa->ever_used = true;
    }
 
    return GL_TRUE;

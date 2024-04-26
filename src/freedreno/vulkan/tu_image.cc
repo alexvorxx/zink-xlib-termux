@@ -21,6 +21,7 @@
 #include "tu_descriptor_set.h"
 #include "tu_device.h"
 #include "tu_formats.h"
+#include "tu_rmv.h"
 
 uint32_t
 tu6_plane_count(VkFormat format)
@@ -139,16 +140,18 @@ tu_cs_image_depth_ref(struct tu_cs *cs, const struct tu_image_view *iview, uint3
    tu_cs_emit_qw(cs, iview->depth_base_addr + iview->depth_layer_size * layer);
 }
 
+template <chip CHIP>
 void
 tu_cs_image_ref_2d(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer, bool src)
 {
    tu_cs_emit_qw(cs, iview->base_addr + iview->layer_size * layer);
    /* SP_PS_2D_SRC_PITCH has shifted pitch field */
    if (src)
-      tu_cs_emit(cs, A6XX_SP_PS_2D_SRC_PITCH(.pitch = iview->pitch).value);
+      tu_cs_emit(cs, SP_PS_2D_SRC_PITCH(CHIP, .pitch = iview->pitch).value);
    else
       tu_cs_emit(cs, A6XX_RB_2D_DST_PITCH(iview->pitch).value);
 }
+TU_GENX(tu_cs_image_ref_2d);
 
 void
 tu_cs_image_flag_ref(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer)
@@ -211,6 +214,7 @@ tu_image_view_init(struct tu_device *device,
                                         iview->swizzle);
 
    struct fdl_view_args args = {};
+   args.chip = device->physical_device->info->chip;
    args.iova = image->iova;
    args.base_array_layer = range->baseArrayLayer;
    args.base_miplevel = range->baseMipLevel;
@@ -307,17 +311,15 @@ ubwc_possible(struct tu_device *device,
 
    /* In copy_format, we treat snorm as unorm to avoid clamping.  But snorm
     * and unorm are UBWC incompatible for special values such as all 0's or
-    * all 1's.  Disable UBWC for snorm.
+    * all 1's prior to a740.  Disable UBWC for snorm.
     */
-   if (vk_format_is_snorm(format))
+   if (vk_format_is_snorm(format) &&
+       !info->a7xx.ubwc_unorm_snorm_int_compatible)
       return false;
 
    if (!info->a6xx.has_8bpp_ubwc &&
-       (format == VK_FORMAT_R8_UNORM ||
-        format == VK_FORMAT_R8_SNORM ||
-        format == VK_FORMAT_R8_UINT ||
-        format == VK_FORMAT_R8_SINT ||
-        format == VK_FORMAT_R8_SRGB))
+       vk_format_get_blocksizebits(format) == 8 &&
+       tu6_plane_count(format) == 1)
       return false;
 
    if (type == VK_IMAGE_TYPE_3D) {
@@ -330,24 +332,26 @@ ubwc_possible(struct tu_device *device,
       return false;
    }
 
-   /* Disable UBWC for storage images.
+   /* Disable UBWC for storage images when not supported.
     *
-    * The closed GL driver skips UBWC for storage images (and additionally
-    * uses linear for writeonly images).  We seem to have image tiling working
-    * in freedreno in general, so turnip matches that.  freedreno also enables
-    * UBWC on images, but it's not really tested due to the lack of
-    * UBWC-enabled mipmaps in freedreno currently.  Just match the closed GL
-    * behavior of no UBWC.
-   */
-   if ((usage | stencil_usage) & VK_IMAGE_USAGE_STORAGE_BIT) {
-      if (device) {
-         perf_debug(device,
-                    "Disabling UBWC for %s storage image, but should be "
-                    "possible to support",
-                    util_format_name(vk_format_to_pipe_format(format)));
-      }
+    * Prior to a7xx, storage images must be readonly or writeonly to use UBWC.
+    * Freedreno can determine when this isn't the case and decompress the
+    * image on-the-fly, but we don't know which image a binding corresponds to
+    * and we can't change the descriptor so we can't do this.
+    */
+   if (((usage | stencil_usage) & VK_IMAGE_USAGE_STORAGE_BIT) &&
+       !info->a6xx.supports_ibo_ubwc) {
       return false;
    }
+
+   /* A690 seem to have broken UBWC for depth/stencil, it requires
+    * depth flushing where we cannot realistically place it, like between
+    * ordinary draw calls writing read/depth. WSL blob seem to use ubwc
+    * sometimes for depth/stencil.
+    */
+   if (info->a6xx.broken_ds_ubwc_quirk &&
+       vk_format_is_depth_or_stencil(format))
+      return false;
 
    /* Disable UBWC for D24S8 on A630 in some cases
     *
@@ -365,17 +369,10 @@ ubwc_possible(struct tu_device *device,
        (stencil_usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)))
       return false;
 
-   /* This meant to disable UBWC for MSAA z24s8, but accidentally disables it
-    * for all MSAA.  https://gitlab.freedesktop.org/mesa/mesa/-/issues/7438
-    */
-   if (!info->a6xx.has_z24uint_s8uint && samples > VK_SAMPLE_COUNT_1_BIT) {
-      if (device) {
-         perf_debug(device,
-                    "Disabling UBWC for %d-sample %s image, but it should be "
-                    "possible to support",
-                    samples,
-                    util_format_name(vk_format_to_pipe_format(format)));
-      }
+   if (!info->a6xx.has_z24uint_s8uint &&
+       (format == VK_FORMAT_D24_UNORM_S8_UINT ||
+        format == VK_FORMAT_X8_D24_UNORM_PACK32) &&
+       samples > VK_SAMPLE_COUNT_1_BIT) {
       return false;
    }
 
@@ -496,7 +493,8 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
        !vk_format_is_depth_or_stencil(image->vk.format)) {
       const VkImageFormatListCreateInfo *fmt_list =
          vk_find_struct_const(pCreateInfo->pNext, IMAGE_FORMAT_LIST_CREATE_INFO);
-      if (!tu6_mutable_format_list_ubwc_compatible(fmt_list)) {
+      if (!tu6_mutable_format_list_ubwc_compatible(device->physical_device->info,
+                                                   fmt_list)) {
          if (ubwc_enabled) {
             if (fmt_list && fmt_list->viewFormatCount == 2) {
                perf_debug(
@@ -612,8 +610,7 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
    }
 
    const struct util_format_description *desc = util_format_description(image->layout[0].format);
-   if (util_format_has_depth(desc) && !TU_DEBUG(NOLRZ))
-   {
+   if (util_format_has_depth(desc) && device->use_lrz) {
       /* Depth plane is the first one */
       struct fdl_layout *layout = &image->layout[0];
       unsigned width = layout->width0;
@@ -718,7 +715,7 @@ tu_CreateImage(VkDevice _device,
          modifier = DRM_FORMAT_MOD_LINEAR;
    }
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    const VkNativeBufferANDROID *gralloc_info =
       vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
    int dma_buf;
@@ -736,9 +733,11 @@ tu_CreateImage(VkDevice _device,
       return result;
    }
 
+   TU_RMV(image_create, device, image);
+
    *pImage = tu_image_to_handle(image);
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    if (gralloc_info)
       return tu_import_memory_from_gralloc_handle(_device, dma_buf, alloc,
                                                   *pImage);
@@ -757,7 +756,9 @@ tu_DestroyImage(VkDevice _device,
    if (!image)
       return;
 
-#ifdef ANDROID
+   TU_RMV(image_destroy, device, image);
+
+#if DETECT_OS_ANDROID
    if (image->owned_memory != VK_NULL_HANDLE)
       tu_FreeMemory(_device, image->owned_memory, pAllocator);
 #endif
@@ -838,31 +839,59 @@ tu_GetDeviceImageSparseMemoryRequirements(
    tu_stub();
 }
 
-VKAPI_ATTR void VKAPI_CALL
-tu_GetImageSubresourceLayout(VkDevice _device,
-                             VkImage _image,
-                             const VkImageSubresource *pSubresource,
-                             VkSubresourceLayout *pLayout)
+static void
+tu_get_image_subresource_layout(struct tu_image *image,
+                                const VkImageSubresource2KHR *pSubresource,
+                                VkSubresourceLayout2KHR *pLayout)
 {
-   TU_FROM_HANDLE(tu_image, image, _image);
-
    struct fdl_layout *layout =
-      &image->layout[tu6_plane_index(image->vk.format, pSubresource->aspectMask)];
-   const struct fdl_slice *slice = layout->slices + pSubresource->mipLevel;
+      &image->layout[tu6_plane_index(image->vk.format,
+                                     pSubresource->imageSubresource.aspectMask)];
+   const struct fdl_slice *slice = layout->slices +
+      pSubresource->imageSubresource.mipLevel;
 
-   pLayout->offset =
-      fdl_surface_offset(layout, pSubresource->mipLevel, pSubresource->arrayLayer);
-   pLayout->rowPitch = fdl_pitch(layout, pSubresource->mipLevel);
-   pLayout->arrayPitch = fdl_layer_stride(layout, pSubresource->mipLevel);
-   pLayout->depthPitch = slice->size0;
-   pLayout->size = pLayout->depthPitch * layout->depth0;
+   pLayout->subresourceLayout.offset =
+      fdl_surface_offset(layout, pSubresource->imageSubresource.mipLevel,
+                         pSubresource->imageSubresource.arrayLayer);
+   pLayout->subresourceLayout.rowPitch =
+      fdl_pitch(layout, pSubresource->imageSubresource.mipLevel);
+   pLayout->subresourceLayout.arrayPitch =
+      fdl_layer_stride(layout, pSubresource->imageSubresource.mipLevel);
+   pLayout->subresourceLayout.depthPitch = slice->size0;
+   pLayout->subresourceLayout.size = slice->size0 * layout->depth0;
 
-   if (fdl_ubwc_enabled(layout, pSubresource->mipLevel)) {
+   if (fdl_ubwc_enabled(layout, pSubresource->imageSubresource.mipLevel)) {
       /* UBWC starts at offset 0 */
-      pLayout->offset = 0;
+      pLayout->subresourceLayout.offset = 0;
       /* UBWC scanout won't match what the kernel wants if we have levels/layers */
       assert(image->vk.mip_levels == 1 && image->vk.array_layers == 1);
    }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+tu_GetImageSubresourceLayout2KHR(VkDevice _device,
+                                 VkImage _image,
+                                 const VkImageSubresource2KHR *pSubresource,
+                                 VkSubresourceLayout2KHR *pLayout)
+{
+   TU_FROM_HANDLE(tu_image, image, _image);
+
+   tu_get_image_subresource_layout(image, pSubresource, pLayout);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+tu_GetDeviceImageSubresourceLayoutKHR(VkDevice _device,
+                                      const VkDeviceImageSubresourceInfoKHR *pInfo,
+                                      VkSubresourceLayout2KHR *pLayout)
+{
+   TU_FROM_HANDLE(tu_device, device, _device);
+
+   struct tu_image image = {0};
+
+   tu_image_init(device, &image, pInfo->pCreateInfo, DRM_FORMAT_MOD_INVALID,
+                 NULL);
+
+   tu_get_image_subresource_layout(&image, pInfo->pSubresource, pLayout);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

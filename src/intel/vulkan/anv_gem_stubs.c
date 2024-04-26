@@ -28,9 +28,9 @@
 #include "anv_private.h"
 
 static void
-stub_gem_close(struct anv_device *device, uint32_t gem_handle)
+stub_gem_close(struct anv_device *device, struct anv_bo *bo)
 {
-   close(gem_handle);
+   close(bo->gem_handle);
 }
 
 static uint32_t
@@ -52,16 +52,22 @@ stub_gem_create(struct anv_device *device,
 
 static void *
 stub_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-              uint64_t size, VkMemoryPropertyFlags property_flags)
+              uint64_t size, void *placed_addr)
 {
    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, bo->gem_handle,
                offset);
 }
 
 static VkResult
-stub_execute_simple_batch(struct anv_queue *queue,
-                          struct anv_bo *batch_bo,
-                          uint32_t batch_bo_size)
+stub_execute_simple_batch(struct anv_queue *queue, struct anv_bo *batch_bo,
+                          uint32_t batch_bo_size, bool is_companion_rcs_batch)
+{
+   return VK_ERROR_UNKNOWN;
+}
+
+static VkResult
+stub_execute_trtt_batch(struct anv_sparse_submission *submit,
+                        struct anv_trtt_batch_bo *trtt_bbo)
 {
    return VK_ERROR_UNKNOWN;
 }
@@ -75,35 +81,27 @@ stub_queue_exec_locked(struct anv_queue *queue,
                        uint32_t signal_count,
                        const struct vk_sync_signal *signals,
                        struct anv_query_pool *perf_query_pool,
-                       uint32_t perf_query_pass)
+                       uint32_t perf_query_pass,
+                       struct anv_utrace_submit *utrace_submit)
 {
    return VK_ERROR_UNKNOWN;
 }
 
-void *
-anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-             uint64_t size, VkMemoryPropertyFlags property_flags)
+static VkResult
+stub_queue_exec_trace(struct anv_queue *queue, struct anv_utrace_submit *submit)
 {
-   void *map = device->kmd_backend->gem_mmap(device, bo, offset, size,
-                                             property_flags);
-
-   if (map != MAP_FAILED)
-      VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
-
-   return map;
+   return VK_ERROR_UNKNOWN;
 }
 
-/* This is just a wrapper around munmap, but it also notifies valgrind that
- * this map is no longer valid.  Pair this with gem_mmap().
- */
-void
-anv_gem_munmap(struct anv_device *device, void *p, uint64_t size)
+static uint32_t
+stub_bo_alloc_flags_to_bo_flags(struct anv_device *device,
+                                enum anv_bo_alloc_flags alloc_flags)
 {
-   munmap(p, size);
+   return 0;
 }
 
-uint32_t
-anv_gem_userptr(struct anv_device *device, void *mem, size_t size)
+static uint32_t
+stub_gem_create_userptr(struct anv_device *device, void *mem, uint64_t size)
 {
    int fd = os_create_anonymous_file(size, "fake bo");
    if (fd == -1)
@@ -134,13 +132,6 @@ anv_gem_get_tiling(struct anv_device *device, uint32_t gem_handle)
 }
 
 int
-anv_gem_set_caching(struct anv_device *device, uint32_t gem_handle,
-                    uint32_t caching)
-{
-   return 0;
-}
-
-int
 anv_gem_handle_to_fd(struct anv_device *device, uint32_t gem_handle)
 {
    unreachable("Unused");
@@ -152,28 +143,42 @@ anv_gem_fd_to_handle(struct anv_device *device, int fd)
    unreachable("Unused");
 }
 
-static int
-stub_gem_vm_bind(struct anv_device *device, struct anv_bo *bo)
+VkResult
+anv_gem_import_bo_alloc_flags_to_bo_flags(struct anv_device *device,
+                                          struct anv_bo *bo,
+                                          enum anv_bo_alloc_flags alloc_flags,
+                                          uint32_t *bo_flags)
 {
-   return 0;
+   return VK_SUCCESS;
 }
 
-static int
-stub_gem_vm_unbind(struct anv_device *device, struct anv_bo *bo)
+static VkResult
+stub_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
 {
-   return 0;
+   return VK_SUCCESS;
+}
+
+static VkResult
+stub_vm_bind_bo(struct anv_device *device, struct anv_bo *bo)
+{
+   return VK_SUCCESS;
 }
 
 const struct anv_kmd_backend *anv_stub_kmd_backend_get(void)
 {
    static const struct anv_kmd_backend stub_backend = {
       .gem_create = stub_gem_create,
+      .gem_create_userptr = stub_gem_create_userptr,
       .gem_close = stub_gem_close,
       .gem_mmap = stub_gem_mmap,
-      .gem_vm_bind = stub_gem_vm_bind,
-      .gem_vm_unbind = stub_gem_vm_unbind,
+      .vm_bind = stub_vm_bind,
+      .vm_bind_bo = stub_vm_bind_bo,
+      .vm_unbind_bo = stub_vm_bind_bo,
       .execute_simple_batch = stub_execute_simple_batch,
+      .execute_trtt_batch = stub_execute_trtt_batch,
       .queue_exec_locked = stub_queue_exec_locked,
+      .queue_exec_trace = stub_queue_exec_trace,
+      .bo_alloc_flags_to_bo_flags = stub_bo_alloc_flags_to_bo_flags,
    };
    return &stub_backend;
 }

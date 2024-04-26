@@ -13,9 +13,11 @@ $ make headers_install INSTALL_HDR_PATH=/path/to/install
 
 The last update was done at the following kernel commit :
 
-commit 7f7a942c0a338c4a2a7b359bdb2b68e9896122ec
-Merge: 0a20a3ea4259 ddcb8fa6514f
-Author: Dave Airlie <airlied@redhat.com>
-Date:   Thu Oct 27 14:44:02 2022 +1000
+commit ea97a66a221893fb9b4d96688e759d1db2d6e683
+Author:     Lucas De Marchi <lucas.demarchi@intel.com>
+AuthorDate: Thu Dec 21 14:28:04 2023 -0800
+Commit:     Dave Airlie <airlied@redhat.com>
+CommitDate: Fri Dec 22 11:17:15 2023 +1000
 
-    Merge tag 'drm-next-20221025' of git://linuxtv.org/pinchartl/media into drm-next
+    drm/xe: Disable 32bits build
+

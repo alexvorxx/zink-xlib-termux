@@ -5,9 +5,9 @@
  *
  */
 
-#ifndef __AGX_DECODE_H__
-#define __AGX_DECODE_H__
+#pragma once
 
+#include <sys/types.h>
 #include "agx_bo.h"
 
 void agxdecode_next_frame(void);
@@ -25,4 +25,14 @@ void agxdecode_dump_mappings(unsigned map_index);
 
 void agxdecode_track_free(struct agx_bo *bo);
 
-#endif /* __AGX_DECODE_H__ */
+struct libagxdecode_config {
+   uint32_t chip_id;
+   size_t (*read_gpu_mem)(uint64_t addr, size_t size, void *data);
+   ssize_t (*stream_write)(const char *buffer, size_t size);
+};
+
+void libagxdecode_init(struct libagxdecode_config *config);
+void libagxdecode_vdm(uint64_t addr, const char *label, bool verbose);
+void libagxdecode_cdm(uint64_t addr, const char *label, bool verbose);
+void libagxdecode_usc(uint64_t addr, const char *label, bool verbose);
+void libagxdecode_shutdown(void);

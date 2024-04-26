@@ -48,10 +48,16 @@ MANUAL_COMMANDS = [
     # The VkPipelineLayout object could be released before the command is
     # executed
     'CmdBindDescriptorSets',
+
+    # Incomplete struct copies which lead to an use after free.
+    'CmdBuildAccelerationStructuresKHR',
 ]
 
 NO_ENQUEUE_COMMANDS = [
     # pData's size cannot be calculated from the xml
+    'CmdPushConstants2KHR',
+    'CmdPushDescriptorSet2KHR',
+    'CmdPushDescriptorSetWithTemplate2KHR',
     'CmdPushDescriptorSetWithTemplateKHR',
 
     # These don't return void
@@ -97,6 +103,7 @@ enum vk_cmd_type {
 };
 
 extern const char *vk_cmd_queue_type_names[];
+extern size_t vk_cmd_queue_type_sizes[];
 
 % for c in commands:
 % if len(c.params) <= 1:             # Avoid "error C2016: C requires that a struct or union have at least one member"
@@ -115,9 +122,24 @@ struct ${to_struct_name(c.name)} {
 % endif
 % endfor
 
+struct vk_cmd_queue_entry;
+
+/* this ordering must match vk_cmd_queue_entry */
+struct vk_cmd_queue_entry_base {
+   struct list_head cmd_link;
+   enum vk_cmd_type type;
+   void *driver_data;
+   void (*driver_free_cb)(struct vk_cmd_queue *queue,
+                          struct vk_cmd_queue_entry *cmd);
+};
+
+/* this ordering must match vk_cmd_queue_entry_base */
 struct vk_cmd_queue_entry {
    struct list_head cmd_link;
    enum vk_cmd_type type;
+   void *driver_data;
+   void (*driver_free_cb)(struct vk_cmd_queue *queue,
+                          struct vk_cmd_queue_entry *cmd);
    union {
 % for c in commands:
 % if len(c.params) <= 1:
@@ -132,9 +154,6 @@ struct vk_cmd_queue_entry {
 % endif
 % endfor
    } u;
-   void *driver_data;
-   void (*driver_free_cb)(struct vk_cmd_queue *queue,
-                          struct vk_cmd_queue_entry *cmd);
 };
 
 % for c in commands:
@@ -185,7 +204,7 @@ void vk_cmd_queue_execute(struct vk_cmd_queue *queue,
 #ifdef __cplusplus
 }
 #endif
-""", output_encoding='utf-8')
+""")
 
 TEMPLATE_C = Template(COPYRIGHT + """
 /* This file generated from ${filename}, don't edit directly. */
@@ -210,6 +229,21 @@ const char *vk_cmd_queue_type_names[] = {
 #ifdef ${c.guard}
 % endif
    "${to_enum_name(c.name)}",
+% if c.guard is not None:
+#endif // ${c.guard}
+% endif
+% endfor
+};
+
+size_t vk_cmd_queue_type_sizes[] = {
+% for c in commands:
+% if c.guard is not None:
+#ifdef ${c.guard}
+% endif
+% if len(c.params) > 1:
+   sizeof(struct ${to_struct_name(c.name)}) +
+% endif
+   sizeof(struct vk_cmd_queue_entry_base),
 % if c.guard is not None:
 #endif // ${c.guard}
 % endif
@@ -246,8 +280,7 @@ VkResult vk_enqueue_${to_underscore(c.name)}(struct vk_cmd_queue *queue
 % endfor
 )
 {
-   struct vk_cmd_queue_entry *cmd = vk_zalloc(queue->alloc,
-                                              sizeof(*cmd), 8,
+   struct vk_cmd_queue_entry *cmd = vk_zalloc(queue->alloc, vk_cmd_queue_type_sizes[${to_enum_name(c.name)}], 8,
                                               VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!cmd) return VK_ERROR_OUT_OF_HOST_MEMORY;
 
@@ -388,7 +421,7 @@ vk_cmd_enqueue_unless_primary_${c.name}(${c.decl_params()})
 #endif // ${c.guard}
 % endif
 % endfor
-""", output_encoding='utf-8')
+""")
 
 def remove_prefix(text, prefix):
     if text.startswith(prefix):
@@ -433,8 +466,7 @@ def get_array_copy(command, param):
     else:
         field_size = "sizeof(*%s)" % field_name
     allocation = "%s = vk_zalloc(queue->alloc, %s * (%s), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);\n   if (%s == NULL) goto err;\n" % (field_name, field_size, param.len, field_name)
-    const_cast = remove_suffix(param.decl.replace("const", ""), param.name)
-    copy = "memcpy((%s)%s, %s, %s * (%s));" % (const_cast, field_name, param.name, field_size, param.len)
+    copy = "memcpy((void*)%s, %s, %s * (%s));" % (field_name, param.name, field_size, param.len)
     return "%s\n   %s" % (allocation, copy)
 
 def get_array_member_copy(struct, src_name, member):
@@ -444,8 +476,7 @@ def get_array_member_copy(struct, src_name, member):
     else:
         field_size = "sizeof(*%s) * %s->%s" % (field_name, struct, member.len)
     allocation = "%s = vk_zalloc(queue->alloc, %s, 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);\n   if (%s == NULL) goto err;\n" % (field_name, field_size, field_name)
-    const_cast = remove_suffix(member.decl.replace("const", ""), member.name)
-    copy = "memcpy((%s)%s, %s->%s, %s);" % (const_cast, field_name, src_name, member.name, field_size)
+    copy = "memcpy((void*)%s, %s->%s, %s);" % (field_name, src_name, member.name, field_size)
     return "if (%s->%s) {\n   %s\n   %s\n}\n" % (src_name, member.name, allocation, copy)
 
 def get_pnext_member_copy(struct, src_type, member, types, level):
@@ -462,8 +493,8 @@ def get_pnext_member_copy(struct, src_type, member, types, level):
             guard_post_stmt = "#endif"
         case_stmts += """
 %s
-      case %s:
-         %s
+         case %s:
+            %s
          break;
 %s
       """ % (guard_pre_stmt, type.enum, get_struct_copy(field_name, "pnext", type.name, "sizeof(%s)" % type.name, types, level), guard_post_stmt)
@@ -497,7 +528,8 @@ def get_struct_copy(dst, src_name, src_type, size, types, level=0):
 
     null_assignment = "%s = NULL;" % dst
     if_stmt = "if (%s) {" % src_name
-    return "%s\n      %s\n      %s\n   %s\n   %s   \n   %s   } else {\n      %s\n   }" % (if_stmt, allocation, copy, tmp_dst, tmp_src, member_copies, null_assignment)
+    indent = "   " * level
+    return "%s\n      %s\n      %s\n      %s\n      %s\n      %s\n%s} else {\n      %s\n%s}" % (if_stmt, allocation, copy, tmp_dst, tmp_src, member_copies, indent, null_assignment, indent)
 
 def get_struct_free(command, param, types):
     field_name = "cmd->u.%s.%s" % (to_struct_field_name(command.name), to_field_name(param.name))
@@ -581,6 +613,8 @@ def get_types(doc, beta, api, types_to_defines):
         if _type.attrib.get('structextends') is None:
             continue
         for extended in _type.attrib.get('structextends').split(','):
+            if extended not in required:
+                continue
             types[extended].extended_by.append(types[_type.attrib['name']])
 
     return types
@@ -635,10 +669,10 @@ def main():
     }
 
     try:
-        with open(args.out_h, 'wb') as f:
+        with open(args.out_h, 'w', encoding='utf-8') as f:
             guard = os.path.basename(args.out_h).replace('.', '_').upper()
             f.write(TEMPLATE_H.render(guard=guard, **environment))
-        with open(args.out_c, 'wb') as f:
+        with open(args.out_c, 'w', encoding='utf-8') as f:
             f.write(TEMPLATE_C.render(**environment))
     except Exception:
         # In the event there's an error, this imports some helpers from mako

@@ -51,7 +51,7 @@
 #include "crocus_pipe.h"
 #include "crocus_resource.h"
 #include "crocus_screen.h"
-#include "intel/compiler/brw_compiler.h"
+#include "intel/compiler/elk/elk_compiler.h"
 #include "intel/common/intel_gem.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_uuid.h"
@@ -150,7 +150,6 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_PRIMITIVE_RESTART:
    case PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX:
    case PIPE_CAP_INDEP_BLEND_ENABLE:
-   case PIPE_CAP_RGB_OVERRIDE_DST_ALPHA_BLEND:
    case PIPE_CAP_FS_COORD_ORIGIN_UPPER_LEFT:
    case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
    case PIPE_CAP_DEPTH_CLIP_DISABLE:
@@ -178,7 +177,6 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_POLYGON_OFFSET_CLAMP:
    case PIPE_CAP_TGSI_TEX_TXF_LZ:
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
-   case PIPE_CAP_CLEAR_TEXTURE:
    case PIPE_CAP_SHADER_GROUP_VOTE:
    case PIPE_CAP_VS_WINDOW_SPACE_POSITION:
    case PIPE_CAP_TEXTURE_GATHER_SM5:
@@ -196,7 +194,6 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_NATIVE_FENCE_FD:
       return true;
    case PIPE_CAP_INT64:
-   case PIPE_CAP_INT64_DIVMOD:
    case PIPE_CAP_SHADER_BALLOT:
    case PIPE_CAP_PACKED_UNIFORMS:
       return devinfo->ver == 8;
@@ -245,12 +242,12 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_CLEAR_SCISSORED:
       return devinfo->ver >= 6;
    case PIPE_CAP_FBFETCH:
-      return devinfo->verx10 >= 45 ? BRW_MAX_DRAW_BUFFERS : 0;
+      return devinfo->verx10 >= 45 ? ELK_MAX_DRAW_BUFFERS : 0;
    case PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS:
       /* in theory CL (965gm) can do this */
       return devinfo->verx10 >= 45 ? 1 : 0;
    case PIPE_CAP_MAX_RENDER_TARGETS:
-      return BRW_MAX_DRAW_BUFFERS;
+      return ELK_MAX_DRAW_BUFFERS;
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
       if (devinfo->ver >= 7)
          return 16384;
@@ -268,9 +265,9 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
       return devinfo->ver >= 7 ? 2048 : 512;
    case PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS:
-      return BRW_MAX_SOL_BINDINGS / CROCUS_MAX_SOL_BUFFERS;
+      return ELK_MAX_SOL_BINDINGS / CROCUS_MAX_SOL_BUFFERS;
    case PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS:
-      return BRW_MAX_SOL_BINDINGS;
+      return ELK_MAX_SOL_BINDINGS;
    case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
    case PIPE_CAP_GLSL_FEATURE_LEVEL: {
       if (devinfo->verx10 >= 75)
@@ -393,6 +390,9 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_HARDWARE_GL_SELECT:
       return 0;
 
+   case PIPE_CAP_TIMER_RESOLUTION:
+      return DIV_ROUND_UP(1000000000ull, devinfo->timestamp_frequency);
+
    default:
       return u_pipe_screen_get_param_defaults(pscreen, param);
    }
@@ -449,6 +449,10 @@ crocus_get_shader_param(struct pipe_screen *pscreen,
    struct crocus_screen *screen = (struct crocus_screen *)pscreen;
    const struct intel_device_info *devinfo = &screen->devinfo;
 
+   if (p_stage == PIPE_SHADER_MESH ||
+       p_stage == PIPE_SHADER_TASK)
+      return 0;
+
    if (devinfo->ver < 6 &&
        p_stage != PIPE_SHADER_VERTEX &&
        p_stage != PIPE_SHADER_FRAGMENT)
@@ -492,7 +496,7 @@ crocus_get_shader_param(struct pipe_screen *pscreen,
    case PIPE_SHADER_CAP_INDIRECT_TEMP_ADDR:
    case PIPE_SHADER_CAP_INDIRECT_CONST_ADDR:
       /* Lie about these to avoid st/mesa's GLSL IR lowering of indirects,
-       * which we don't want.  Our compiler backend will check brw_compiler's
+       * which we don't want.  Our compiler backend will check elk_compiler's
        * options and call nir_lower_indirect_derefs appropriately anyway.
        */
       return true;
@@ -517,12 +521,8 @@ crocus_get_shader_param(struct pipe_screen *pscreen,
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTER_BUFFERS:
       return 0;
-   case PIPE_SHADER_CAP_PREFERRED_IR:
-      return PIPE_SHADER_IR_NIR;
    case PIPE_SHADER_CAP_SUPPORTED_IRS:
       return 1 << PIPE_SHADER_IR_NIR;
-   case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-      return 1;
    case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
    case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
    case PIPE_SHADER_CAP_FP16_DERIVATIVES:
@@ -584,8 +584,8 @@ crocus_get_compute_param(struct pipe_screen *pscreen,
    case PIPE_COMPUTE_CAP_IMAGES_SUPPORTED:
       RET((uint32_t []) { 1 });
 
-   case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
-      RET((uint32_t []) { BRW_SUBGROUP_SIZE });
+   case PIPE_COMPUTE_CAP_SUBGROUP_SIZES:
+      RET((uint32_t []) { ELK_SUBGROUP_SIZE });
 
    case PIPE_COMPUTE_CAP_MAX_VARIABLE_THREADS_PER_BLOCK:
       RET((uint64_t []) { max_invocations });
@@ -596,6 +596,7 @@ crocus_get_compute_param(struct pipe_screen *pscreen,
    case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE:
    case PIPE_COMPUTE_CAP_MAX_PRIVATE_SIZE:
    case PIPE_COMPUTE_CAP_MAX_INPUT_SIZE:
+   case PIPE_COMPUTE_CAP_MAX_SUBGROUPS:
 
       // XXX: I think these are for Clover...
       return 0;
@@ -723,7 +724,7 @@ crocus_screen_create(int fd, const struct pipe_screen_config *config)
    if (!screen)
       return NULL;
 
-   if (!intel_get_device_info_from_fd(fd, &screen->devinfo))
+   if (!intel_get_device_info_from_fd(fd, &screen->devinfo, 4, 8))
       return NULL;
    screen->pci_id = screen->devinfo.pci_device_id;
 
@@ -761,7 +762,7 @@ crocus_screen_create(int fd, const struct pipe_screen_config *config)
    screen->fd = crocus_bufmgr_get_fd(screen->bufmgr);
    screen->winsys_fd = fd;
 
-   brw_process_intel_debug_variable();
+   process_intel_debug_variable();
 
    screen->driconf.dual_color_blend_by_location =
       driQueryOptionb(config->options, "dual_color_blend_by_location");
@@ -778,7 +779,7 @@ crocus_screen_create(int fd, const struct pipe_screen_config *config)
 
    isl_device_init(&screen->isl_dev, &screen->devinfo);
 
-   screen->compiler = brw_compiler_create(screen, &screen->devinfo);
+   screen->compiler = elk_compiler_create(screen, &screen->devinfo);
    screen->compiler->shader_debug_log = crocus_shader_debug_log;
    screen->compiler->shader_perf_log = crocus_shader_perf_log;
    screen->compiler->supports_shader_constants = false;

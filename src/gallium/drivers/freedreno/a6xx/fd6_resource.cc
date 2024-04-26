@@ -29,6 +29,7 @@
 
 #include "drm-uapi/drm_fourcc.h"
 
+#include "a6xx/fd6_blitter.h"
 #include "fd6_resource.h"
 #include "fdl/fd6_format_table.h"
 
@@ -54,11 +55,27 @@ ok_ubwc_format(struct pipe_screen *pscreen, enum pipe_format pfmt)
       return info->a6xx.has_z24uint_s8uint;
 
    case PIPE_FORMAT_R8_G8B8_420_UNORM:
+      /* The difference between NV12 and R8_G8B8_420_UNORM is only where the
+       * conversion to RGB happens, with the latter it happens _after_ the
+       * texture samp instruction.  But dri2_get_mapping_by_fourcc() doesn't
+       * know this, so it asks for NV12 when it really meant to ask for
+       * R8_G8B8_420_UNORM.  Just treat them the same here to work around it:
+       */
+   case PIPE_FORMAT_NV12:
       return true;
 
    default:
       break;
    }
+
+   /* A690 seem to have broken UBWC for depth/stencil, it requires
+    * depth flushing where we cannot realistically place it, like between
+    * ordinary draw calls writing read/depth. WSL blob seem to use ubwc
+    * sometimes for depth/stencil.
+    */
+   if (info->a6xx.broken_ds_ubwc_quirk &&
+       util_format_is_depth_or_stencil(pfmt))
+      return false;
 
    switch (fd6_color_format(pfmt, TILE6_LINEAR)) {
    case FMT6_10_10_10_2_UINT:
@@ -321,7 +338,13 @@ fd6_layout_resource_for_modifier(struct fd_resource *rsc, uint64_t modifier)
                     PRSC_ARGS(&rsc->b.b));
       }
       return 0;
+   case DRM_FORMAT_MOD_QCOM_TILED3:
+      rsc->layout.tile_mode = fd6_tile_mode(&rsc->b.b);
+      FALLTHROUGH;
    case DRM_FORMAT_MOD_INVALID:
+      /* For now, without buffer metadata, we must assume that buffers
+       * imported with INVALID modifier are linear
+       */
       if (can_do_ubwc(&rsc->b.b)) {
          perf_debug("%" PRSC_FMT
                     ": not UBWC: imported with DRM_FORMAT_MOD_INVALID!",
@@ -333,10 +356,22 @@ fd6_layout_resource_for_modifier(struct fd_resource *rsc, uint64_t modifier)
    }
 }
 
-static const uint64_t supported_modifiers[] = {
-   DRM_FORMAT_MOD_LINEAR,
-   DRM_FORMAT_MOD_QCOM_COMPRESSED,
-};
+static bool
+fd6_is_format_supported(struct pipe_screen *pscreen,
+                        enum pipe_format fmt,
+                        uint64_t modifier)
+{
+   switch (modifier) {
+   case DRM_FORMAT_MOD_LINEAR:
+      return true;
+   case DRM_FORMAT_MOD_QCOM_COMPRESSED:
+      return ok_ubwc_format(pscreen, fmt);
+   case DRM_FORMAT_MOD_QCOM_TILED3:
+      return fd6_tile_mode_for_format(fmt) == TILE6_3;
+   default:
+      return false;
+   }
+}
 
 void
 fd6_resource_screen_init(struct pipe_screen *pscreen)
@@ -345,6 +380,5 @@ fd6_resource_screen_init(struct pipe_screen *pscreen)
 
    screen->setup_slices = fd6_setup_slices;
    screen->layout_resource_for_modifier = fd6_layout_resource_for_modifier;
-   screen->supported_modifiers = supported_modifiers;
-   screen->num_supported_modifiers = ARRAY_SIZE(supported_modifiers);
+   screen->is_format_supported = fd6_is_format_supported;
 }

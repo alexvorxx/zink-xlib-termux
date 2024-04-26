@@ -1,24 +1,7 @@
 /*
  * Copyright 2016 Patrick Rudolph <siro@das-labor.org>
- *
- * Permission is hereby granted, free of charge, f, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, f, copy, modify, merge, f, publish, distribute, f, sub
- * license, f, and/or sell copies of the Software, f, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISe, f, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 /* get number of arguments with __NARG__ */
 #define __NARG__(...)  __NARG_I_(__VA_ARGS__,__RSEQ_N())
@@ -30,9 +13,9 @@
      _31,_32,_33,_34,_35,_36,_37,_38,_39,_40, \
      _41,_42,_43,_44,_45,_46,_47,_48,_49,_50, \
      _51,_52,_53,_54,_55,_56,_57,_58,_59,_60, \
-     _61,_62,_63,N,...) N
+     _61,_62,_63,_64,_65,_66,_67,_68,_69,_70,N,...) N
 #define __RSEQ_N() \
-     63,62,61,60,                   \
+     70,69,68,67,66,65,64,63,62,61,60, \
      59,58,57,56,55,54,53,52,51,50, \
      49,48,47,46,45,44,43,42,41,40, \
      39,38,37,36,35,34,33,32,31,30, \
@@ -52,6 +35,7 @@
 #define _args_for_bypass_56(a, b, c, d, e, f, g, ...) ,g _args_for_bypass_49(__VA_ARGS__)
 #define _args_for_bypass_63(a, b, c, d, e, f, g, ...) ,g _args_for_bypass_56(__VA_ARGS__)
 #define _args_for_bypass_70(a, b, c, d, e, f, g, ...) ,g _args_for_bypass_63(__VA_ARGS__)
+#define _args_for_bypass_77(a, b, c, d, e, f, g, ...) ,g _args_for_bypass_70(__VA_ARGS__)
 
 #define _GFUNC_(n) _args_for_bypass_##n
 #define _GFUNC(n) _GFUNC_(n)
@@ -69,6 +53,7 @@
 #define _args_for_mem_56(a, b, c, d, e, f, g, ...) f; _args_for_mem_49(__VA_ARGS__)
 #define _args_for_mem_63(a, b, c, d, e, f, g, ...) f; _args_for_mem_56(__VA_ARGS__)
 #define _args_for_mem_70(a, b, c, d, e, f, g, ...) f; _args_for_mem_63(__VA_ARGS__)
+#define _args_for_mem_77(a, b, c, d, e, f, g, ...) f; _args_for_mem_70(__VA_ARGS__)
 
 #define _FFUNC_(n) _args_for_mem_##n
 #define _FFUNC(n) _FFUNC_(n)
@@ -86,6 +71,7 @@
 #define _args_for_unbind_56(a, b, c, d, e, f, g, ...) e; _args_for_unbind_49(__VA_ARGS__)
 #define _args_for_unbind_63(a, b, c, d, e, f, g, ...) e; _args_for_unbind_56(__VA_ARGS__)
 #define _args_for_unbind_70(a, b, c, d, e, f, g, ...) e; _args_for_unbind_63(__VA_ARGS__)
+#define _args_for_unbind_77(a, b, c, d, e, f, g, ...) e; _args_for_unbind_70(__VA_ARGS__)
 
 #define _EFUNC_(n) _args_for_unbind_##n
 #define _EFUNC(n) _EFUNC_(n)
@@ -103,6 +89,7 @@
 #define _args_for_call_56(a, b, c, d, e, f, g, ...) ,d _args_for_call_49(__VA_ARGS__)
 #define _args_for_call_63(a, b, c, d, e, f, g, ...) ,d _args_for_call_56(__VA_ARGS__)
 #define _args_for_call_70(a, b, c, d, e, f, g, ...) ,d _args_for_call_63(__VA_ARGS__)
+#define _args_for_call_77(a, b, c, d, e, f, g, ...) ,d _args_for_call_70(__VA_ARGS__)
 
 #define _DFUNC_(n) _args_for_call_##n
 #define _DFUNC(n) _DFUNC_(n)
@@ -120,6 +107,7 @@
 #define _args_for_decl_56(a, b, c, d, e, f, g, ...) ,c _args_for_decl_49(__VA_ARGS__)
 #define _args_for_decl_63(a, b, c, d, e, f, g, ...) ,c _args_for_decl_56(__VA_ARGS__)
 #define _args_for_decl_70(a, b, c, d, e, f, g, ...) ,c _args_for_decl_63(__VA_ARGS__)
+#define _args_for_decl_77(a, b, c, d, e, f, g, ...) ,c _args_for_decl_70(__VA_ARGS__)
 
 #define _CFUNC_(n) _args_for_decl_##n
 #define _CFUNC(n) _CFUNC_(n)
@@ -137,6 +125,7 @@
 #define _args_for_assign_56(a, b, c, d, e, f, g, ...) b; _args_for_assign_49(__VA_ARGS__)
 #define _args_for_assign_63(a, b, c, d, e, f, g, ...) b; _args_for_assign_56(__VA_ARGS__)
 #define _args_for_assign_70(a, b, c, d, e, f, g, ...) b; _args_for_assign_63(__VA_ARGS__)
+#define _args_for_assign_77(a, b, c, d, e, f, g, ...) b; _args_for_assign_70(__VA_ARGS__)
 
 #define _BFUNC_(n) _args_for_assign_##n
 #define _BFUNC(n) _BFUNC_(n)
@@ -154,6 +143,7 @@
 #define _args_for_struct_56(a, b, c, d, e, f, g, ...) a; _args_for_struct_49(__VA_ARGS__)
 #define _args_for_struct_63(a, b, c, d, e, f, g, ...) a; _args_for_struct_56(__VA_ARGS__)
 #define _args_for_struct_70(a, b, c, d, e, f, g, ...) a; _args_for_struct_63(__VA_ARGS__)
+#define _args_for_struct_77(a, b, c, d, e, f, g, ...) a; _args_for_struct_70(__VA_ARGS__)
 
 #define _AFUNC_(n) _args_for_struct_##n
 #define _AFUNC(n) _AFUNC_(n)
@@ -308,7 +298,7 @@ name( struct NineDevice9 *device ARGS_FOR_DECLARATION( __VA_ARGS__ ) ) \
     assert(args); \
     args->instr.func = &name##_rx; \
     ARGS_FOR_ASSIGN( __VA_ARGS__ ) \
-    ctx->processed = FALSE; \
+    ctx->processed = false; \
     nine_queue_flush(ctx->pool); \
     nine_csmt_wait_processed(ctx); \
 } \

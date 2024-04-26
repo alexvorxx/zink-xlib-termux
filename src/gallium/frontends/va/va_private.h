@@ -77,6 +77,7 @@
 #define PRESET_MODE_SPEED   (0)
 #define PRESET_MODE_BALANCE (1)
 #define PRESET_MODE_QUALITY (2)
+#define PRESET_MODE_HIGH_QUALITY (3)
 
 #define PREENCODING_MODE_DISABLE (0)
 #define PREENCODING_MODE_DEFAULT (1)
@@ -315,10 +316,12 @@ typedef struct {
    struct {
       struct pipe_resource *resource;
       struct pipe_transfer *transfer;
+      enum pipe_video_entrypoint entrypoint;
    } derived_surface;
    unsigned int export_refcount;
    VABufferInfo export_state;
    unsigned int coded_size;
+   struct pipe_enc_feedback_metadata extended_metadata;
    struct pipe_video_buffer *derived_image_buffer;
    void *feedback;
    VASurfaceID associated_encode_input_surf;
@@ -364,7 +367,6 @@ typedef struct {
       unsigned int slice_header_size;
    } mjpeg;
 
-   struct h264_private h264;
    struct vl_deint_filter *deint;
    vlVaBuffer *coded_buf;
    int target_id;
@@ -373,6 +375,8 @@ typedef struct {
    bool needs_begin_frame;
    void *blit_cs;
    int packed_header_type;
+   bool packed_header_emulation_bytes;
+   struct set *surfaces;
 } vlVaContext;
 
 typedef struct {
@@ -385,13 +389,14 @@ typedef struct {
 typedef struct {
    struct pipe_video_buffer templat, *buffer;
    struct util_dynarray subpics; /* vlVaSubpicture */
-   VAContextID ctx;
+   vlVaContext *ctx;
    vlVaBuffer *coded_buf;
    void *feedback;
    unsigned int frame_num_cnt;
    bool force_flushed;
    struct pipe_video_buffer *obsolete_buf;
    enum pipe_format encoder_format;
+   bool full_range;
    struct pipe_fence_handle *fence;
 } vlVaSurface;
 
@@ -439,6 +444,9 @@ VAStatus vlVaBeginPicture(VADriverContextP ctx, VAContextID context, VASurfaceID
 VAStatus vlVaRenderPicture(VADriverContextP ctx, VAContextID context, VABufferID *buffers, int num_buffers);
 VAStatus vlVaEndPicture(VADriverContextP ctx, VAContextID context);
 VAStatus vlVaSyncSurface(VADriverContextP ctx, VASurfaceID render_target);
+#if VA_CHECK_VERSION(1, 15, 0)
+VAStatus vlVaSyncSurface2(VADriverContextP ctx, VASurfaceID surface, uint64_t timeout_ns);
+#endif
 VAStatus vlVaQuerySurfaceStatus(VADriverContextP ctx, VASurfaceID render_target, VASurfaceStatus *status);
 VAStatus vlVaQuerySurfaceError(VADriverContextP ctx, VASurfaceID render_target,
                                VAStatus error_status, void **error_info);
@@ -501,6 +509,7 @@ VAStatus vlVaQueryVideoProcFilterCaps(VADriverContextP ctx, VAContextID context,
 VAStatus vlVaQueryVideoProcPipelineCaps(VADriverContextP ctx, VAContextID context, VABufferID *filters,
                                         unsigned int num_filters, VAProcPipelineCaps *pipeline_cap);
 VAStatus vlVaSyncBuffer(VADriverContextP ctx, VABufferID buf_id, uint64_t timeout_ns);
+VAStatus vlVaMapBuffer2(VADriverContextP ctx, VABufferID buf_id, void **pbuf, uint32_t flags);
 
 // internal functions
 VAStatus vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *context, vlVaBuffer *buf);
@@ -541,6 +550,7 @@ VAStatus vlVaHandleVAEncSliceParameterBufferTypeH264(vlVaDriver *drv, vlVaContex
 VAStatus vlVaHandleVAEncSequenceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *context, vlVaBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeRateControlH264(vlVaContext *context, VAEncMiscParameterBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeFrameRateH264(vlVaContext *context, VAEncMiscParameterBuffer *buf);
+VAStatus vlVaHandleVAEncPackedHeaderDataBufferTypeH264(vlVaContext *context, vlVaBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeTemporalLayerH264(vlVaContext *context, VAEncMiscParameterBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeQualityLevelH264(vlVaContext *context, VAEncMiscParameterBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeMaxFrameSizeH264(vlVaContext *context, VAEncMiscParameterBuffer *buf);
@@ -564,5 +574,6 @@ VAStatus vlVaHandleVAEncMiscParameterTypeFrameRateAV1(vlVaContext *context, VAEn
 VAStatus vlVaHandleVAEncMiscParameterTypeQualityLevelAV1(vlVaContext *context, VAEncMiscParameterBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeMaxFrameSizeAV1(vlVaContext *context, VAEncMiscParameterBuffer *buf);
 VAStatus vlVaHandleVAEncMiscParameterTypeHRDAV1(vlVaContext *context, VAEncMiscParameterBuffer *buf);
+VAStatus vlVaHandleVAEncSliceParameterBufferTypeAV1(vlVaDriver *drv, vlVaContext *context, vlVaBuffer *buf);
 #endif
 #endif //VA_PRIVATE_H

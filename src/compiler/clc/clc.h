@@ -56,8 +56,16 @@ struct clc_optional_features {
    bool images;
    bool images_read_write;
    bool images_write_3d;
+   bool integer_dot_product;
    bool intel_subgroups;
+   /* OpenCL core subgroups */
    bool subgroups;
+   /* OpenCL extension cl_khr_subgroups, which requires independent forward
+    * progress
+    */
+   bool subgroups_ifp;
+   bool subgroups_shuffle;
+   bool subgroups_shuffle_relative;
 };
 
 struct clc_compile_args {
@@ -70,6 +78,7 @@ struct clc_compile_args {
    /* SPIRV version to target. */
    enum clc_spirv_version spirv_version;
    struct clc_optional_features features;
+   bool use_llvm_spirv_target;
 
    /* Allowed extensions SPIRV extensions the OpenCL->SPIRV translation can
     * enable. A pointer to a NULL terminated array of strings, allow any
@@ -78,6 +87,10 @@ struct clc_compile_args {
    const char * const *allowed_spirv_extensions;
 
    unsigned address_bits;
+};
+
+struct clc_validator_options {
+   uint32_t limit_max_function_arg;
 };
 
 struct clc_binary {
@@ -256,6 +269,13 @@ clc_specialize_spirv(const struct clc_binary *in_spirv,
                      const struct clc_parsed_spirv *parsed_data,
                      const struct clc_spirv_specialization_consts *consts,
                      struct clc_binary *out_spirv);
+
+enum clc_debug_flags {
+   CLC_DEBUG_DUMP_SPIRV = 1 << 0,
+   CLC_DEBUG_DUMP_LLVM = 1 << 1,
+   CLC_DEBUG_VERBOSE = 1 << 2,
+};
+uint64_t clc_debug_flags(void);
 
 #ifdef __cplusplus
 }

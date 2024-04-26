@@ -31,7 +31,7 @@
 
 
 void r600_need_cs_space(struct r600_context *ctx, unsigned num_dw,
-			boolean count_draw_in, unsigned num_atomics)
+			bool count_draw_in, unsigned num_atomics)
 {
 	/* Flush the DMA IB if it's not empty. */
 	if (radeon_emitted(&ctx->b.dma.cs, 0))
@@ -299,7 +299,7 @@ void r600_context_gfx_flush(void *context, unsigned flags,
 	/* Flush the CS. */
 	ws->cs_flush(cs, flags, &ctx->b.last_gfx_fence);
 	if (fence)
-		ws->fence_reference(fence, ctx->b.last_gfx_fence);
+		ws->fence_reference(ws, fence, ctx->b.last_gfx_fence);
 	ctx->b.num_gfx_cs_flushes++;
 
 	if (ctx->is_debug) {
@@ -528,7 +528,7 @@ void r600_cp_dma_copy_buffer(struct r600_context *rctx,
 
 		r600_need_cs_space(rctx,
 				   10 + (rctx->b.flags ? R600_MAX_FLUSH_CS_DWORDS : 0) +
-				   3 + R600_MAX_PFP_SYNC_ME_DWORDS, FALSE, 0);
+				   3 + R600_MAX_PFP_SYNC_ME_DWORDS, false, 0);
 
 		/* Flush the caches for the first copy only. */
 		if (rctx->b.flags) {

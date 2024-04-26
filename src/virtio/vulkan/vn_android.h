@@ -20,7 +20,7 @@
 /* venus implements VK_ANDROID_native_buffer up to spec version 7 */
 #define VN_ANDROID_NATIVE_BUFFER_SPEC_VERSION 7
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 
 VkResult
 vn_android_image_from_anb(struct vn_device *dev,
@@ -42,30 +42,18 @@ vn_android_get_ahb_usage(const VkImageUsageFlags usage,
                          const VkImageCreateFlags flags);
 
 VkResult
-vn_android_device_import_ahb(struct vn_device *dev,
-                             struct vn_device_memory *mem,
-                             const VkMemoryAllocateInfo *alloc_info,
-                             const VkAllocationCallbacks *alloc,
-                             struct AHardwareBuffer *ahb,
-                             bool internal_ahb);
-
-VkResult
-vn_android_device_allocate_ahb(struct vn_device *dev,
-                               struct vn_device_memory *mem,
-                               const VkMemoryAllocateInfo *alloc_info,
-                               const VkAllocationCallbacks *alloc);
-
-void
-vn_android_release_ahb(struct AHardwareBuffer *ahb);
+vn_android_device_import_ahb(
+   struct vn_device *dev,
+   struct vn_device_memory *mem,
+   const struct VkMemoryDedicatedAllocateInfo *dedicated_info);
 
 VkFormat
 vn_android_drm_format_to_vk_format(uint32_t format);
 
-VkResult
-vn_android_get_ahb_buffer_memory_type_bits(struct vn_device *dev,
-                                           uint32_t *out_mem_type_bits);
-
 uint32_t
+vn_android_get_ahb_buffer_memory_type_bits(struct vn_device *dev);
+
+uint64_t
 vn_android_gralloc_get_shared_present_usage(void);
 
 #else
@@ -103,29 +91,12 @@ vn_android_get_ahb_usage(UNUSED const VkImageUsageFlags usage,
 }
 
 static inline VkResult
-vn_android_device_import_ahb(UNUSED struct vn_device *dev,
-                             UNUSED struct vn_device_memory *mem,
-                             UNUSED const VkMemoryAllocateInfo *alloc_info,
-                             UNUSED const VkAllocationCallbacks *alloc,
-                             UNUSED struct AHardwareBuffer *ahb,
-                             UNUSED bool internal_ahb)
+vn_android_device_import_ahb(
+   UNUSED struct vn_device *dev,
+   UNUSED struct vn_device_memory *mem,
+   UNUSED const struct VkMemoryDedicatedAllocateInfo *dedicated_info)
 {
    return VK_ERROR_OUT_OF_HOST_MEMORY;
-}
-
-static inline VkResult
-vn_android_device_allocate_ahb(UNUSED struct vn_device *dev,
-                               UNUSED struct vn_device_memory *mem,
-                               UNUSED const VkMemoryAllocateInfo *alloc_info,
-                               UNUSED const VkAllocationCallbacks *alloc)
-{
-   return VK_ERROR_OUT_OF_HOST_MEMORY;
-}
-
-static inline void
-vn_android_release_ahb(UNUSED struct AHardwareBuffer *ahb)
-{
-   return;
 }
 
 static inline VkFormat
@@ -134,19 +105,18 @@ vn_android_drm_format_to_vk_format(UNUSED uint32_t format)
    return VK_FORMAT_UNDEFINED;
 }
 
-static inline VkResult
-vn_android_get_ahb_buffer_memory_type_bits(UNUSED struct vn_device *dev,
-                                           UNUSED uint32_t *out_mem_type_bits)
+static inline uint32_t
+vn_android_get_ahb_buffer_memory_type_bits(UNUSED struct vn_device *dev)
 {
-   return VK_ERROR_FEATURE_NOT_PRESENT;
+   return 0;
 }
 
-static inline uint32_t
+static inline uint64_t
 vn_android_gralloc_get_shared_present_usage(void)
 {
    return 0;
 }
 
-#endif /* ANDROID */
+#endif /* DETECT_OS_ANDROID */
 
 #endif /* VN_ANDROID_H */

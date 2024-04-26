@@ -69,6 +69,7 @@
 #include "api_exec_decl.h"
 
 #include "state_tracker/st_context.h"
+#include "state_tracker/st_glsl_to_nir.h"
 #include "state_tracker/st_program.h"
 
 #ifdef ENABLE_SHADER_CACHE
@@ -176,7 +177,7 @@ _mesa_get_shader_capture_path(void)
    static const char *path = NULL;
 
    if (!read_env_var) {
-      path = getenv("MESA_SHADER_CAPTURE_PATH");
+      path = secure_getenv("MESA_SHADER_CAPTURE_PATH");
       read_env_var = true;
 
 #if ANDROID_SHADER_CAPTURE
@@ -411,12 +412,12 @@ create_shader(struct gl_context *ctx, GLenum type)
    struct gl_shader *sh;
    GLuint name;
 
-   _mesa_HashLockMutex(ctx->Shared->ShaderObjects);
-   name = _mesa_HashFindFreeKeyBlock(ctx->Shared->ShaderObjects, 1);
+   _mesa_HashLockMutex(&ctx->Shared->ShaderObjects);
+   name = _mesa_HashFindFreeKeyBlock(&ctx->Shared->ShaderObjects, 1);
    sh = _mesa_new_shader(name, _mesa_shader_enum_to_shader_stage(type));
    sh->Type = type;
-   _mesa_HashInsertLocked(ctx->Shared->ShaderObjects, name, sh, true);
-   _mesa_HashUnlockMutex(ctx->Shared->ShaderObjects);
+   _mesa_HashInsertLocked(&ctx->Shared->ShaderObjects, name, sh);
+   _mesa_HashUnlockMutex(&ctx->Shared->ShaderObjects);
 
    return name;
 }
@@ -441,17 +442,17 @@ create_shader_program(struct gl_context *ctx)
    GLuint name;
    struct gl_shader_program *shProg;
 
-   _mesa_HashLockMutex(ctx->Shared->ShaderObjects);
+   _mesa_HashLockMutex(&ctx->Shared->ShaderObjects);
 
-   name = _mesa_HashFindFreeKeyBlock(ctx->Shared->ShaderObjects, 1);
+   name = _mesa_HashFindFreeKeyBlock(&ctx->Shared->ShaderObjects, 1);
 
    shProg = _mesa_new_shader_program(name);
 
-   _mesa_HashInsertLocked(ctx->Shared->ShaderObjects, name, shProg, true);
+   _mesa_HashInsertLocked(&ctx->Shared->ShaderObjects, name, shProg);
 
    assert(shProg->RefCount == 1);
 
-   _mesa_HashUnlockMutex(ctx->Shared->ShaderObjects);
+   _mesa_HashUnlockMutex(&ctx->Shared->ShaderObjects);
 
    return name;
 }
@@ -1332,7 +1333,7 @@ link_program(struct gl_context *ctx, struct gl_shader_program *shProg,
    ensure_builtin_types(ctx);
 
    FLUSH_VERTICES(ctx, 0, 0);
-   _mesa_glsl_link_shader(ctx, shProg);
+   st_link_shader(ctx, shProg);
 
    /* From section 7.3 (Program Objects) of the OpenGL 4.5 spec:
     *
@@ -1355,14 +1356,12 @@ link_program(struct gl_context *ctx, struct gl_shader_program *shProg,
          _mesa_use_program(ctx, stage, shProg, prog, ctx->_Shader);
       }
 
-      if (ctx->Pipeline.Objects) {
-         struct update_programs_in_pipeline_params params = {
-            .ctx = ctx,
-            .shProg = shProg
-         };
-         _mesa_HashWalk(ctx->Pipeline.Objects, update_programs_in_pipeline,
-                        &params);
-      }
+      struct update_programs_in_pipeline_params params = {
+         .ctx = ctx,
+         .shProg = shProg
+      };
+      _mesa_HashWalk(&ctx->Pipeline.Objects, update_programs_in_pipeline,
+                     &params);
    }
 
 #ifndef CUSTOM_SHADER_REPLACEMENT
@@ -1970,7 +1969,7 @@ _mesa_dump_shader_source(const gl_shader_stage stage, const char *source,
    if (!path_exists)
       return;
 
-   dump_path = getenv("MESA_SHADER_DUMP_PATH");
+   dump_path = secure_getenv("MESA_SHADER_DUMP_PATH");
    if (!dump_path) {
       path_exists = false;
       return;

@@ -36,7 +36,6 @@
 
 #include "nir/tgsi_to_nir.h"
 #include "tgsi/tgsi_dump.h"
-#include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_text.h"
 
 #include "ir3/instr-a3xx.h"
@@ -47,10 +46,10 @@
 
 #include "main/mtypes.h"
 
+#include "compiler/glsl_types.h"
 #include "compiler/glsl/gl_nir.h"
 #include "compiler/glsl/glsl_to_nir.h"
 #include "compiler/glsl/standalone.h"
-#include "compiler/nir_types.h"
 #include "compiler/spirv/nir_spirv.h"
 
 #include "pipe/p_context.h"
@@ -122,6 +121,8 @@ load_glsl(unsigned num_files, char *const *files, gl_shader_stage stage)
       errx(1, "couldn't parse `%s'", files[0]);
 
    nir_shader *nir = glsl_to_nir(&local_ctx.Const, prog, stage, nir_options);
+
+   gl_nir_inline_functions(nir);
 
    /* required NIR passes: */
    if (nir_options->lower_all_io_to_temps ||
@@ -371,7 +372,7 @@ main(int argc, char **argv)
    struct fd_dev_id dev_id = {
          .gpu_id = gpu_id,
    };
-   compiler = ir3_compiler_create(NULL, &dev_id,
+   compiler = ir3_compiler_create(NULL, &dev_id, fd_dev_info_raw(&dev_id),
                                   &(struct ir3_compiler_options) {});
 
    if (from_tgsi) {

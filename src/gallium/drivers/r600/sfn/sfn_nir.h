@@ -27,6 +27,9 @@
 #ifndef SFN_NIR_H
 #define SFN_NIR_H
 
+#include "gallium/include/pipe/p_state.h"
+
+#include "amd_family.h"
 #include "nir.h"
 #include "nir_builder.h"
 
@@ -45,12 +48,12 @@ public:
 
 private:
    static bool filter_instr(const nir_instr *instr, const void *data);
-   static nir_ssa_def *lower_instr(nir_builder *b, nir_instr *instr, void *data);
+   static nir_def *lower_instr(nir_builder *b, nir_instr *instr, void *data);
 
    void set_builder(nir_builder *_b) { b = _b; }
 
    virtual bool filter(const nir_instr *instr) const = 0;
-   virtual nir_ssa_def *lower(nir_instr *instr) = 0;
+   virtual nir_def *lower(nir_instr *instr) = 0;
 
 protected:
    nir_builder *b;
@@ -91,7 +94,7 @@ private:
 
 } // namespace r600
 
-static inline nir_ssa_def *
+static inline nir_def *
 r600_imm_ivec3(nir_builder *build, int x, int y, int z)
 {
    nir_const_value v[3] = {
@@ -104,14 +107,17 @@ r600_imm_ivec3(nir_builder *build, int x, int y, int z)
 }
 
 bool
-r600_lower_tess_io(nir_shader *shader, enum pipe_prim_type prim_type);
+r600_lower_tess_io(nir_shader *shader, enum mesa_prim prim_type);
 bool
-r600_append_tcs_TF_emission(nir_shader *shader, enum pipe_prim_type prim_type);
-bool
-r600_lower_tess_coord(nir_shader *sh, enum pipe_prim_type prim_type);
+r600_append_tcs_TF_emission(nir_shader *shader, enum mesa_prim prim_type);
 
 bool
 r600_legalize_image_load_store(nir_shader *shader);
+
+void
+r600_finalize_and_optimize_shader(r600::Shader *shader);
+r600::Shader *
+r600_schedule_shader(r600::Shader *shader);
 
 #else
 #include "gallium/drivers/r600/r600_shader.h"
@@ -127,13 +133,14 @@ r600_vectorize_vs_inputs(nir_shader *shader);
 bool
 r600_lower_to_scalar_instr_filter(const nir_instr *instr, const void *);
 
-int
-r600_shader_from_nir(struct r600_context *rctx,
-                     struct r600_pipe_shader *pipeshader,
-                     union r600_shader_key *key);
+void
+r600_lower_and_optimize_nir(nir_shader *sh,
+                            const union r600_shader_key *key,
+                            enum amd_gfx_level gfx_level,
+                            struct pipe_stream_output_info *so_info);
 
-char *
-r600_finalize_nir(struct pipe_screen *screen, void *shader);
+void
+r600_finalize_nir_common(nir_shader *nir, enum amd_gfx_level gfx_level);
 
 #ifdef __cplusplus
 }

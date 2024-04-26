@@ -26,6 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "pan_props.h"
+
 #include "panvk_private.h"
 
 #include "drm-uapi/drm_fourcc.h"
@@ -34,13 +36,6 @@
 #include "vk_format.h"
 #include "vk_object.h"
 #include "vk_util.h"
-
-unsigned
-panvk_image_get_plane_size(const struct panvk_image *image, unsigned plane)
-{
-   assert(!plane);
-   return image->pimage.layout.data_size;
-}
 
 unsigned
 panvk_image_get_total_size(const struct panvk_image *image)
@@ -70,6 +65,8 @@ panvk_image_create(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
                    uint64_t modifier, const VkSubresourceLayout *plane_layouts)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(device->vk.physical);
    struct panvk_image *image = NULL;
 
    image = vk_image_create(&device->vk, pCreateInfo, alloc, sizeof(*image));
@@ -88,7 +85,8 @@ panvk_image_create(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
       .nr_slices = image->vk.mip_levels,
    };
 
-   pan_image_layout_init(&image->pimage.layout, NULL);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
+   pan_image_layout_init(arch, &image->pimage.layout, NULL);
 
    *pImage = panvk_image_to_handle(image);
    return VK_SUCCESS;
@@ -99,12 +97,13 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
                        const VkSubresourceLayout **plane_layouts)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
-   const struct panfrost_device *pdev = &device->physical_device->pdev;
+   struct panvk_instance *instance =
+      to_panvk_instance(device->vk.physical->instance);
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(device->vk.physical);
    enum pipe_format fmt = vk_format_to_pipe_format(pCreateInfo->format);
-   bool noafbc =
-      !(device->physical_device->instance->debug_flags & PANVK_DEBUG_AFBC);
-   bool linear =
-      device->physical_device->instance->debug_flags & PANVK_DEBUG_LINEAR;
+   bool noafbc = !(instance->debug_flags & PANVK_DEBUG_AFBC);
+   bool linear = instance->debug_flags & PANVK_DEBUG_LINEAR;
 
    *plane_layouts = NULL;
 
@@ -161,17 +160,18 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
    if (pCreateInfo->samples > 1)
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
-   if (!pdev->has_afbc)
+   if (!panfrost_query_afbc(&phys_dev->kmod.props))
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
    /* Only a small selection of formats are AFBC'able */
-   if (!panfrost_format_supports_afbc(pdev, fmt))
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
+   if (!panfrost_format_supports_afbc(arch, fmt))
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
    /* 3D AFBC is only supported on Bifrost v7+. It's supposed to
     * be supported on Midgard but it doesn't seem to work.
     */
-   if (pCreateInfo->imageType == VK_IMAGE_TYPE_3D && pdev->arch < 7)
+   if (pCreateInfo->imageType == VK_IMAGE_TYPE_3D && arch < 7)
       return DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
 
    /* For one tile, AFBC is a loss compared to u-interleaved */
@@ -190,7 +190,7 @@ panvk_image_select_mod(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
    return DRM_FORMAT_MOD_ARM_AFBC(afbc_type);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkImage *pImage)
 {
@@ -202,7 +202,7 @@ panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
                              plane_layouts);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyImage(VkDevice _device, VkImage _image,
                    const VkAllocationCallbacks *pAllocator)
 {
@@ -211,6 +211,9 @@ panvk_DestroyImage(VkDevice _device, VkImage _image,
 
    if (!image)
       return;
+
+   if (image->bo)
+      pan_kmod_bo_put(image->bo);
 
    vk_image_destroy(&device->vk, pAllocator, &image->vk);
 }
@@ -230,7 +233,7 @@ panvk_plane_index(VkFormat format, VkImageAspectFlags aspect_mask)
    }
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_GetImageSubresourceLayout(VkDevice _device, VkImage _image,
                                 const VkImageSubresource *pSubresource,
                                 VkSubresourceLayout *pLayout)
@@ -252,7 +255,7 @@ panvk_GetImageSubresourceLayout(VkDevice _device, VkImage _image,
    pLayout->depthPitch = slice_layout->surface_stride;
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyImageView(VkDevice _device, VkImageView _view,
                        const VkAllocationCallbacks *pAllocator)
 {
@@ -262,11 +265,11 @@ panvk_DestroyImageView(VkDevice _device, VkImageView _view,
    if (!view)
       return;
 
-   panfrost_bo_unreference(view->bo);
+   panvk_priv_bo_destroy(view->bo, NULL);
    vk_image_view_destroy(&device->vk, pAllocator, &view->vk);
 }
 
-void
+VKAPI_ATTR void VKAPI_CALL
 panvk_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
                         const VkAllocationCallbacks *pAllocator)
 {
@@ -276,11 +279,11 @@ panvk_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
    if (!view)
       return;
 
-   panfrost_bo_unreference(view->bo);
-   vk_object_free(&device->vk, pAllocator, view);
+   panvk_priv_bo_destroy(view->bo, pAllocator);
+   vk_buffer_view_destroy(&device->vk, pAllocator, &view->vk);
 }
 
-VkResult
+VKAPI_ATTR VkResult VKAPI_CALL
 panvk_GetImageDrmFormatModifierPropertiesEXT(
    VkDevice device, VkImage _image,
    VkImageDrmFormatModifierPropertiesEXT *pProperties)

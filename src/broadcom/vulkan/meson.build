@@ -27,6 +27,7 @@ v3dv_entrypoints = custom_target(
     '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@', '--prefix', 'v3dv',
     '--beta', with_vulkan_beta.to_string(),
     '--device-prefix', 'ver42',
+    '--device-prefix', 'ver71',
   ],
   depend_files : vk_entrypoints_gen_depend_files,
 )
@@ -53,7 +54,7 @@ libv3dv_files = files(
   'v3dv_queue.c',
   'v3dv_uniforms.c',
   'v3dv_wsi.c',
-) + [v3d_xml_pack, vk_common_entrypoints[0], wsi_entrypoints[0]]
+) + [v3d_xml_pack]
 
 files_per_version = files(
   'v3dvx_cmd_buffer.c',
@@ -64,18 +65,16 @@ files_per_version = files(
   'v3dvx_pipeline.c',
   'v3dvx_meta_common.c',
   'v3dvx_pipeline.c',
+  'v3dvx_query.c',
   'v3dvx_queue.c',
 )
 
-# The vulkan driver only supports version >= 42, which is the version present in
-# Rpi4. We need to explicitly set it as we are reusing pieces from the GL v3d
-# driver.
-v3d_versions = ['42']
+v3d_versions = ['42', '71']
 
 v3dv_flags = []
 
-dep_v3dv3 = dependency('v3dv3', required : false)
-if dep_v3dv3.found()
+dep_v3d_hw = dependency('v3d_hw', required : false)
+if dep_v3d_hw.found()
   v3dv_flags += '-DUSE_V3D_SIMULATOR'
 endif
 
@@ -83,7 +82,7 @@ v3dv_deps = [
   dep_dl,
   dep_libdrm,
   dep_valgrind,
-  dep_v3dv3,
+  dep_v3d_hw,
   idep_nir,
   idep_nir_headers,
   idep_vulkan_util,
@@ -101,7 +100,7 @@ if with_platform_wayland
 endif
 
 if with_platform_android
-  v3dv_deps += dep_android
+  v3dv_deps += [dep_android, idep_u_gralloc]
   v3dv_flags += '-DVK_USE_PLATFORM_ANDROID_KHR'
   libv3dv_files += files('v3dv_android.c')
 endif
@@ -112,8 +111,8 @@ foreach ver : v3d_versions
     'v3dv-v' + ver,
     [files_per_version, v3d_xml_pack, v3dv_entrypoints[0]],
     include_directories : [
-      inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_broadcom,
-      inc_compiler, inc_util,
+      inc_src, inc_include, inc_broadcom,
+      inc_util,
     ],
     c_args : [v3dv_flags, '-DV3D_VERSION=' + ver],
     gnu_symbol_visibility : 'hidden',
@@ -125,7 +124,7 @@ libvulkan_broadcom = shared_library(
   'vulkan_broadcom',
   [libv3dv_files, v3dv_entrypoints, sha1_h],
   include_directories : [
-    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_broadcom, inc_compiler, inc_util,
+    inc_include, inc_src, inc_broadcom, inc_util,
   ],
   link_with : [
     libbroadcom_cle,
@@ -166,6 +165,7 @@ broadcom_icd = custom_target(
   ],
   build_by_default : true,
   install_dir : with_vulkan_icd_dir,
+  install_tag : 'runtime',
   install : true,
 )
 

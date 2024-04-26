@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef _NINE_VERTEXSHADER9_H_
 #define _NINE_VERTEXSHADER9_H_
@@ -51,14 +34,14 @@ struct NineVertexShader9
 
     uint8_t sampler_mask;
 
-    boolean position_t; /* if true, disable vport transform */
-    boolean point_size; /* if true, set rasterizer.point_size_per_vertex to 1 */
-    boolean swvp_only;
+    bool position_t; /* if true, disable vport transform */
+    bool point_size; /* if true, set rasterizer.point_size_per_vertex to 1 */
+    bool swvp_only;
 
     struct nine_lconstf lconstf;
 
-    boolean int_slots_used[NINE_MAX_CONST_I];
-    boolean bool_slots_used[NINE_MAX_CONST_B];
+    bool int_slots_used[NINE_MAX_CONST_I];
+    bool bool_slots_used[NINE_MAX_CONST_B];
 
     unsigned const_int_slots;
     unsigned const_bool_slots;

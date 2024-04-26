@@ -102,6 +102,9 @@ struct lp_rasterizer_task
 
    util_semaphore work_ready;
    util_semaphore work_done;
+#ifdef _WIN32
+   util_semaphore exited;
+#endif
 };
 
 
@@ -112,8 +115,8 @@ struct lp_rasterizer_task
  */
 struct lp_rasterizer
 {
-   boolean exit_flag;
-   boolean no_rast;  /**< For debugging/profiling */
+   bool exit_flag;
+   bool no_rast;  /**< For debugging/profiling */
 
    /** The incoming queue of scenes ready to rasterize */
    struct lp_scene_queue *full_scenes;

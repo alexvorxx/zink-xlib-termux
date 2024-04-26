@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef AGX_USC_H
-#define AGX_USC_H
+#pragma once
 
-#include "asahi/lib/agx_pack.h"
+#include "asahi/genxml/agx_pack.h"
 #include "asahi/lib/pool.h"
 
 /* Opaque structure representing a USC program being constructed */
@@ -67,7 +66,7 @@ static void
 agx_usc_uniform(struct agx_usc_builder *b, unsigned start_halfs,
                 unsigned size_halfs, uint64_t buffer)
 {
-   assert((start_halfs + size_halfs) < (1 << 9) && "uniform file overflow");
+   assert((start_halfs + size_halfs) <= (1 << 9) && "uniform file overflow");
    assert(size_halfs <= 64 && "caller's responsibility to split");
 
    if (start_halfs & BITFIELD_BIT(8)) {
@@ -100,5 +99,3 @@ agx_usc_shared_none(struct agx_usc_builder *b)
       cfg.bytes_per_threadgroup = 65536;
    }
 }
-
-#endif

@@ -1,28 +1,8 @@
 /*
  * Copyright © 2008 Jérôme Glisse
  * Copyright © 2011 Marek Olšák <maraeo@gmail.com>
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDERS, AUTHORS
- * AND/OR ITS SUPPLIERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef RADEON_DRM_BO_H
@@ -33,7 +13,7 @@
 #include "pipebuffer/pb_slab.h"
 
 struct radeon_bo {
-   struct pb_buffer base;
+   struct pb_buffer_lean base;
    union {
       struct {
          struct pb_cache_entry cache_entry;
@@ -76,8 +56,8 @@ struct radeon_slab {
    struct radeon_bo *entries;
 };
 
-void radeon_bo_destroy(void *winsys, struct pb_buffer *_buf);
-bool radeon_bo_can_reclaim(void *winsys, struct pb_buffer *_buf);
+void radeon_bo_destroy(void *winsys, struct pb_buffer_lean *_buf);
+bool radeon_bo_can_reclaim(void *winsys, struct pb_buffer_lean *_buf);
 void radeon_drm_bo_init_functions(struct radeon_drm_winsys *ws);
 
 bool radeon_bo_can_reclaim_slab(void *priv, struct pb_slab_entry *entry);
@@ -86,10 +66,11 @@ struct pb_slab *radeon_bo_slab_alloc(void *priv, unsigned heap,
                                      unsigned group_index);
 void radeon_bo_slab_free(void *priv, struct pb_slab *slab);
 
-static inline
-void radeon_ws_bo_reference(struct radeon_bo **dst, struct radeon_bo *src)
+static inline void
+radeon_ws_bo_reference(struct radeon_winsys *rws, struct radeon_bo **dst,
+                       struct radeon_bo *src)
 {
-   pb_reference((struct pb_buffer**)dst, (struct pb_buffer*)src);
+   radeon_bo_reference(rws, (struct pb_buffer_lean**)dst, (struct pb_buffer_lean*)src);
 }
 
 void *radeon_bo_do_map(struct radeon_bo *bo);

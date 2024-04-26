@@ -66,27 +66,11 @@
 #include "util/u_vbuf.h"
 #include "util/u_memory.h"
 #include "util/hash_table.h"
+#include "util/thread_sched.h"
 #include "cso_cache/cso_context.h"
 #include "compiler/glsl/glsl_parser_extras.h"
-#include "nir/nir_to_tgsi.h"
 
-DEBUG_GET_ONCE_BOOL_OPTION(mesa_mvp_dp4, "MESA_MVP_DP4", FALSE)
-
-/* The list of state update functions. */
-st_update_func_t st_update_functions[ST_NUM_ATOMS];
-
-static void
-init_atoms_once(void)
-{
-   STATIC_ASSERT(ARRAY_SIZE(st_update_functions) <= 64);
-
-#define ST_STATE(FLAG, st_update) st_update_functions[FLAG##_INDEX] = st_update;
-#include "st_atom_list.h"
-#undef ST_STATE
-
-   if (util_get_cpu_caps()->has_popcnt)
-      st_update_functions[ST_NEW_VERTEX_ARRAYS_INDEX] = st_update_array_with_popcnt;
-}
+DEBUG_GET_ONCE_BOOL_OPTION(mesa_mvp_dp4, "MESA_MVP_DP4", false)
 
 void
 st_invalidate_buffers(struct st_context *st)
@@ -372,6 +356,7 @@ st_destroy_context_priv(struct st_context *st, bool destroy_pipe)
    if (st->pipe && destroy_pipe)
       st->pipe->destroy(st->pipe);
 
+   st->ctx->st = NULL;
    FREE(st);
 }
 
@@ -432,17 +417,6 @@ st_init_driver_flags(struct st_context *st)
 }
 
 static bool
-st_have_perfmon(struct st_context *st)
-{
-   struct pipe_screen *screen = st->screen;
-
-   if (!screen->get_driver_query_info || !screen->get_driver_query_group_info)
-      return false;
-
-   return screen->get_driver_query_group_info(screen, 0, NULL) != 0;
-}
-
-static bool
 st_have_perfquery(struct st_context *ctx)
 {
    struct pipe_context *pipe = ctx->pipe;
@@ -497,8 +471,11 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st->cso_context = cso_create_context(pipe, cso_flags);
    ctx->cso_context = st->cso_context;
 
-   static once_flag flag = ONCE_FLAG_INIT;
-   call_once(&flag, init_atoms_once);
+   STATIC_ASSERT(ARRAY_SIZE(st->update_functions) <= 64);
+
+#define ST_STATE(FLAG, st_update) st->update_functions[FLAG##_INDEX] = st_update;
+#include "st_atom_list.h"
+#undef ST_STATE
 
    st_init_clear(st);
    {
@@ -523,12 +500,15 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       st->util_velems.velems[0].src_offset = 0;
       st->util_velems.velems[0].vertex_buffer_index = 0;
       st->util_velems.velems[0].src_format = PIPE_FORMAT_R32G32B32_FLOAT;
+      st->util_velems.velems[0].src_stride = sizeof(struct st_util_vertex);
       st->util_velems.velems[1].src_offset = 3 * sizeof(float);
       st->util_velems.velems[1].vertex_buffer_index = 0;
       st->util_velems.velems[1].src_format = PIPE_FORMAT_R32G32B32A32_FLOAT;
+      st->util_velems.velems[1].src_stride = sizeof(struct st_util_vertex);
       st->util_velems.velems[2].src_offset = 7 * sizeof(float);
       st->util_velems.velems[2].vertex_buffer_index = 0;
       st->util_velems.velems[2].src_format = PIPE_FORMAT_R32G32_FLOAT;
+      st->util_velems.velems[2].src_stride = sizeof(struct st_util_vertex);
    }
 
    ctx->Const.PackedDriverUniformStorage =
@@ -603,7 +583,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       !screen->get_param(screen, PIPE_CAP_GL_CLAMP);
    st->has_time_elapsed =
       screen->get_param(screen, PIPE_CAP_QUERY_TIME_ELAPSED);
-   st->has_half_float_packing =
+   ctx->Const.GLSLHasHalfFloatPacking =
       screen->get_param(screen, PIPE_CAP_SHADER_PACK_HALF_FLOAT);
    st->has_multi_draw_indirect =
       screen->get_param(screen, PIPE_CAP_MULTI_DRAW_INDIRECT);
@@ -619,8 +599,6 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       screen->get_param(screen, PIPE_CAP_INDEP_BLEND_ENABLE);
    st->has_indep_blend_func =
       screen->get_param(screen, PIPE_CAP_INDEP_BLEND_FUNC);
-   st->needs_rgb_dst_alpha_override =
-      screen->get_param(screen, PIPE_CAP_RGB_OVERRIDE_DST_ALPHA_BLEND);
    st->can_dither =
       screen->get_param(screen, PIPE_CAP_DITHERING);
    st->lower_flatshade =
@@ -661,10 +639,6 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st_init_limits(screen, &ctx->Const, &ctx->Extensions, ctx->API);
    st_init_extensions(screen, &ctx->Const,
                       &ctx->Extensions, &st->options, ctx->API);
-
-   if (st_have_perfmon(st)) {
-      ctx->Extensions.AMD_performance_monitor = GL_TRUE;
-   }
 
    if (st_have_perfquery(st)) {
       ctx->Extensions.INTEL_performance_query = GL_TRUE;
@@ -744,21 +718,20 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
          !st->lower_ucp;
    st->shader_has_one_variant[MESA_SHADER_COMPUTE] = st->has_shareable_shaders;
 
-   if (util_get_cpu_caps()->num_L3_caches == 1 ||
-       !st->pipe->set_context_param)
-      st->pin_thread_counter = ST_L3_PINNING_DISABLED;
+   if (!st->pipe->set_context_param || !util_thread_scheduler_enabled())
+      st->pin_thread_counter = ST_THREAD_SCHEDULER_DISABLED;
 
    st->bitmap.cache.empty = true;
 
    if (ctx->Const.ForceGLNamesReuse && ctx->Shared->RefCount == 1) {
-      _mesa_HashEnableNameReuse(ctx->Shared->TexObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->ShaderObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->BufferObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->SamplerObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->FrameBuffers);
-      _mesa_HashEnableNameReuse(ctx->Shared->RenderBuffers);
-      _mesa_HashEnableNameReuse(ctx->Shared->MemoryObjects);
-      _mesa_HashEnableNameReuse(ctx->Shared->SemaphoreObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->TexObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->ShaderObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->BufferObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->SamplerObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->FrameBuffers);
+      _mesa_HashEnableNameReuse(&ctx->Shared->RenderBuffers);
+      _mesa_HashEnableNameReuse(&ctx->Shared->MemoryObjects);
+      _mesa_HashEnableNameReuse(&ctx->Shared->SemaphoreObjects);
    }
    /* SPECviewperf13/sw-04 crashes since a56849ddda6 if Mesa is build with
     * -O3 on gcc 7.5, which doesn't happen with ForceGLNamesReuse, which is
@@ -766,7 +739,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
     * of closed source drivers.
     */
    if (ctx->Const.ForceGLNamesReuse)
-      _mesa_HashEnableNameReuse(ctx->Query.QueryObjects);
+      _mesa_HashEnableNameReuse(&ctx->Query.QueryObjects);
 
    _mesa_override_extensions(ctx);
    _mesa_compute_version(ctx);
@@ -797,6 +770,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    _vbo_CreateContext(ctx);
 
    st_init_driver_flags(st);
+   st_init_update_array(st);
 
    /* Initialize context's winsys buffers list */
    list_inithead(&st->winsys_buffers);
@@ -808,7 +782,7 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
 
    ctx->Const.DriverSupportedPrimMask = screen->get_param(screen, PIPE_CAP_SUPPORTED_PRIM_MODES) |
                                         /* patches is always supported */
-                                        BITFIELD_BIT(PIPE_PRIM_PATCHES);
+                                        BITFIELD_BIT(MESA_PRIM_PATCHES);
    st->active_states = _mesa_get_active_states(ctx);
 
    return st;
@@ -959,7 +933,7 @@ st_destroy_context(struct st_context *st)
    /* This must be called first so that glthread has a chance to finish */
    _mesa_glthread_destroy(ctx);
 
-   _mesa_HashWalk(ctx->Shared->TexObjects, destroy_tex_sampler_cb, st);
+   _mesa_HashWalk(&ctx->Shared->TexObjects, destroy_tex_sampler_cb, st);
 
    /* For the fallback textures, free any sampler views belonging to this
     * context.
@@ -992,7 +966,7 @@ st_destroy_context(struct st_context *st)
       _mesa_reference_framebuffer(&stfb, NULL);
    }
 
-   _mesa_HashWalk(ctx->Shared->FrameBuffers, destroy_framebuffer_attachment_sampler_cb, st);
+   _mesa_HashWalk(&ctx->Shared->FrameBuffers, destroy_framebuffer_attachment_sampler_cb, st);
 
    pipe_sampler_view_reference(&st->pixel_xfer.pixelmap_sampler_view, NULL);
    pipe_resource_reference(&st->pixel_xfer.pixelmap_texture, NULL);
@@ -1033,14 +1007,5 @@ st_destroy_context(struct st_context *st)
 const struct nir_shader_compiler_options *
 st_get_nir_compiler_options(struct st_context *st, gl_shader_stage stage)
 {
-   const struct nir_shader_compiler_options *options =
-      st->ctx->Const.ShaderCompilerOptions[stage].NirOptions;
-
-   if (options) {
-      return options;
-   } else {
-      return nir_to_tgsi_get_compiler_options(st->screen,
-                                              PIPE_SHADER_IR_NIR,
-                                              pipe_shader_type_from_mesa(stage));
-   }
+   return st->ctx->Const.ShaderCompilerOptions[stage].NirOptions;
 }

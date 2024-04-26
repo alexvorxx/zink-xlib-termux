@@ -111,13 +111,13 @@ tc_fence_finish(struct zink_context *ctx, struct zink_tc_fence *mfence, uint64_t
       /* this is a tc mfence, so we're just waiting on the queue mfence to complete
        * after being signaled by the real mfence
        */
-      if (*timeout_ns == PIPE_TIMEOUT_INFINITE) {
+      if (*timeout_ns == OS_TIMEOUT_INFINITE) {
          util_queue_fence_wait(&mfence->ready);
       } else {
          if (!util_queue_fence_wait_timeout(&mfence->ready, abs_timeout))
             return false;
       }
-      if (*timeout_ns && *timeout_ns != PIPE_TIMEOUT_INFINITE) {
+      if (*timeout_ns && *timeout_ns != OS_TIMEOUT_INFINITE) {
          int64_t time_ns = os_time_get_nano();
          *timeout_ns = abs_timeout > time_ns ? abs_timeout - time_ns : 0;
       }
@@ -207,14 +207,19 @@ zink_fence_finish(struct zink_screen *screen, struct pipe_context *pctx, struct 
 
    struct zink_fence *fence = mfence->fence;
 
-   unsigned submit_diff = zink_batch_state(mfence->fence)->submit_count - mfence->submit_count;
+   unsigned submit_diff = zink_batch_state(mfence->fence)->usage.submit_count - mfence->submit_count;
    /* this batch is known to have finished because it has been submitted more than 1 time
     * since the tc fence last saw it
     */
    if (submit_diff > 1)
       return true;
 
-   if (fence->submitted && zink_screen_check_last_finished(screen, fence->batch_id))
+   /* - if fence is submitted, batch_id is nonzero and can be checked
+    * - if fence is not submitted here, it must be reset; batch_id will be 0 and submitted is false
+    * in either case, the fence has finished
+    */
+   if ((fence->submitted && zink_screen_check_last_finished(screen, fence->batch_id)) ||
+       (!fence->submitted && submit_diff))
       return true;
 
    //return fence_wait(screen, fence, timeout_ns);
@@ -288,6 +293,8 @@ zink_fence_server_sync(struct pipe_context *pctx, struct pipe_fence_handle *pfen
    VkPipelineStageFlags flag = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
    util_dynarray_append(&ctx->batch.state->wait_semaphores, VkSemaphore, mfence->sem);
    util_dynarray_append(&ctx->batch.state->wait_semaphore_stages, VkPipelineStageFlags, flag);
+   pipe_reference(NULL, &mfence->reference);
+   util_dynarray_append(&ctx->batch.state->fences, struct zink_tc_fence*, mfence);
 
    /* transfer the external wait sempahore ownership to the next submit */
    mfence->sem = VK_NULL_HANDLE;

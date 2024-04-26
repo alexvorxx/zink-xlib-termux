@@ -1,0 +1,17 @@
+# These tests should be skipped as we don't support the extension. CTS
+# tests needs to be fixed
+dEQP-VK.pipeline.shader_object_linked_binary.framebuffer_attachment.unused_attachment,Crash
+dEQP-VK.pipeline.shader_object_linked_spirv.framebuffer_attachment.unused_attachment,Crash
+dEQP-VK.pipeline.shader_object_unlinked_binary.framebuffer_attachment.unused_attachment,Crash
+dEQP-VK.pipeline.shader_object_unlinked_spirv.framebuffer_attachment.unused_attachment,Crash
+
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.clipped,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.composite_alpha,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.exclusive_nonzero_queues,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_array_layers,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_extent,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_format,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_usage,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.min_image_count,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.pre_transform,Crash
+dEQP-VK.wsi.wayland.swapchain.simulate_oom.present_mode,Crash

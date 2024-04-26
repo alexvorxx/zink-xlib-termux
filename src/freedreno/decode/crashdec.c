@@ -46,6 +46,9 @@ struct rnn *rnn_gmu;
 struct rnn *rnn_control;
 struct rnn *rnn_pipe;
 
+static uint64_t fault_iova;
+static bool has_fault_iova;
+
 struct cffdec_options options = {
    .draw_filter = -1,
 };
@@ -325,7 +328,7 @@ decode_gmu_hfi(void)
 static bool
 valid_header(uint32_t pkt)
 {
-   if (options.gpu_id >= 500) {
+   if (options.info->chip >= 5) {
       return pkt_is_type4(pkt) || pkt_is_type7(pkt);
    } else {
       /* TODO maybe we can check validish looking pkt3 opc or pkt0
@@ -345,9 +348,11 @@ dump_cmdstream(void)
    printf("got rb_base=%" PRIx64 "\n", rb_base);
 
    options.ibs[1].base = regval64("CP_IB1_BASE");
-   options.ibs[1].rem = regval("CP_IB1_REM_SIZE");
+   if (is_a6xx())
+      options.ibs[1].rem = regval("CP_IB1_REM_SIZE");
    options.ibs[2].base = regval64("CP_IB2_BASE");
-   options.ibs[2].rem = regval("CP_IB2_REM_SIZE");
+   if (is_a6xx())
+      options.ibs[2].rem = regval("CP_IB2_REM_SIZE");
 
    /* Adjust remaining size to account for cmdstream slurped into ROQ
     * but not yet consumed by SQE
@@ -428,6 +433,24 @@ dump_cmdstream(void)
 }
 
 /*
+ * Decode optional 'fault-info' section.  We only get this section if
+ * the devcoredump was triggered by an iova fault:
+ */
+
+static void
+decode_fault_info(void)
+{
+   foreach_line_in_section (line) {
+      if (startswith(line, "  - far:")) {
+         parseline(line, "  - far: %" PRIx64, &fault_iova);
+         has_fault_iova = true;
+      }
+
+      printf("%s", line);
+   }
+}
+
+/*
  * Decode 'bos' (buffers) section:
  */
 
@@ -440,8 +463,32 @@ decode_bos(void)
    foreach_line_in_section (line) {
       if (startswith(line, "  - iova:")) {
          parseline(line, "  - iova: %" PRIx64, &iova);
+         continue;
       } else if (startswith(line, "    size:")) {
          parseline(line, "    size: %u", &size);
+
+         /*
+          * This is a bit convoluted, vs just printing the lines as
+          * they come.  But we want to have both the iova and size
+          * so we can print the end address of the buffer
+          */
+
+         uint64_t end = iova + size;
+
+         printf("  - iova: 0x%016" PRIx64 "-0x%016" PRIx64, iova, end);
+
+         if (has_fault_iova) {
+            if ((iova <= fault_iova) && (fault_iova < end)) {
+               /* Fault address was within what should be a mapped buffer!! */
+               printf("\t==");
+            } else if ((iova <= fault_iova) && (fault_iova < (end + size))) {
+               /* Fault address was near this mapped buffer */
+               printf("\t>=");
+            }
+         }
+         printf("\n");
+         printf("    size: %u (0x%x)\n", size, size);
+         continue;
       } else if (startswith(line, "    data: !!ascii85 |")) {
          uint32_t *buf = popline_ascii85(size / 4);
 
@@ -698,7 +745,7 @@ decode_shader_blocks(void)
              * (or parts of shaders?), so perhaps we should search
              * for ends of shaders and decode each?
              */
-            try_disasm_a3xx(buf, sizedwords, 1, stdout, options.gpu_id);
+            try_disasm_a3xx(buf, sizedwords, 1, stdout, options.info->chip * 100);
          }
 
          if (dump)
@@ -765,14 +812,17 @@ decode(void)
       if (startswith(line, "revision:")) {
          unsigned core, major, minor, patchid;
 
-         parseline(line, "revision: %u (%u.%u.%u.%u)", &options.gpu_id,
+         parseline(line, "revision: %u (%u.%u.%u.%u)", &options.dev_id.gpu_id,
                    &core, &major, &minor, &patchid);
 
-         if (options.gpu_id == 0) {
-            options.gpu_id = (core * 100) + (major * 10) + minor;
+         options.dev_id.chip_id = (core << 24) | (major << 16) | (minor << 8) | patchid;
+         options.info = fd_dev_info_raw(&options.dev_id);
+         if (!options.info) {
+            printf("Unsupported device\n");
+            break;
          }
 
-         printf("Got gpu_id=%u\n", options.gpu_id);
+         printf("Got chip_id=0x%"PRIx64"\n", options.dev_id.chip_id);
 
          cffdec_init(&options);
 
@@ -792,6 +842,8 @@ decode(void)
          } else {
             rnn_control = NULL;
          }
+      } else if (startswith(line, "fault-info:")) {
+         decode_fault_info();
       } else if (startswith(line, "bos:")) {
          decode_bos();
       } else if (startswith(line, "ringbuffer:")) {

@@ -36,6 +36,20 @@
 #include "util/format/u_format.h"
 #include "util/u_sampler.h"
 
+static void
+nouveau_vp3_video_buffer_resources(struct pipe_video_buffer *buffer,
+                                   struct pipe_resource **resources)
+{
+   struct nouveau_vp3_video_buffer *buf = (struct nouveau_vp3_video_buffer *)buffer;
+   unsigned i;
+
+   assert(buf);
+
+   for (i = 0; i < buf->num_planes; ++i) {
+      resources[i] = buf->resources[i];
+   }
+}
+
 static struct pipe_sampler_view **
 nouveau_vp3_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
 {
@@ -101,6 +115,7 @@ nouveau_vp3_video_buffer_create(struct pipe_context *pipe,
    buffer->base.destroy = nouveau_vp3_video_buffer_destroy;
    buffer->base.width = templat->width;
    buffer->base.height = templat->height;
+   buffer->base.get_resources = nouveau_vp3_video_buffer_resources;
    buffer->base.get_sampler_view_planes = nouveau_vp3_video_buffer_sampler_view_planes;
    buffer->base.get_sampler_view_components = nouveau_vp3_video_buffer_sampler_view_components;
    buffer->base.get_surfaces = nouveau_vp3_video_buffer_surfaces;
@@ -379,7 +394,7 @@ firmware_present(struct pipe_screen *pscreen, enum pipe_video_profile profile)
       struct nouveau_object *channel = NULL, *bsp = NULL;
       struct nv04_fifo nv04_data = {.vram = 0xbeef0201, .gart = 0xbeef0202};
       struct nvc0_fifo nvc0_args = {};
-      struct nve0_fifo nve0_args = {.engine = NVE0_FIFO_ENGINE_BSP};
+      struct nve0_fifo nve0_args = {.engine = NOUVEAU_FIFO_ENGINE_BSP};
       void *data = NULL;
       int size;
 

@@ -143,6 +143,16 @@ struct etna_specs {
    unsigned pixel_pipes;
    /* number of constants */
    unsigned num_constants;
+   /* number of NN cores */
+   unsigned nn_core_count;
+   /* number of MAD units per NN core */
+   unsigned nn_mad_per_core;
+   /* number of TP cores */
+   unsigned tp_core_count;
+   /* Size of on-chip SRAM */
+   unsigned on_chip_sram_size;
+   /* Size of SRAM behind AXI */
+   unsigned axi_sram_size;
 };
 
 /* Compiled Gallium state. All the different compiled state atoms are woven
@@ -219,11 +229,11 @@ struct compiled_vertex_elements_state {
    uint32_t NFE_GENERIC_ATTRIB_CONFIG1[VIVS_NFE_GENERIC_ATTRIB__LEN];
    unsigned num_buffers;
    uint32_t NFE_VERTEX_STREAMS_VERTEX_DIVISOR[VIVS_NFE_VERTEX_STREAMS__LEN];
+   uint32_t FE_VERTEX_STREAM_CONTROL[VIVS_NFE_VERTEX_STREAMS__LEN];
 };
 
 /* Compiled context->set_vertex_buffer result */
 struct compiled_set_vertex_buffer {
-   uint32_t FE_VERTEX_STREAM_CONTROL;
    struct etna_reloc FE_VERTEX_STREAM_BASE_ADDR;
 };
 

@@ -45,36 +45,28 @@ nir_lod_errata_instr(nir_builder *b, nir_instr *instr, void *data)
    if (tex->op != nir_texop_txl)
       return false;
 
-   /* Let's grab the sampler parameters */
-   nir_intrinsic_instr *l = nir_intrinsic_instr_create(
-      b->shader, nir_intrinsic_load_sampler_lod_parameters_pan);
-   l->num_components = 3;
-   nir_ssa_dest_init(&l->instr, &l->dest, 3, 32, NULL);
-
    /* TODO: Indirect samplers, separate sampler objects XXX */
-   nir_src idx = nir_src_for_ssa(nir_imm_int(b, tex->texture_index));
-   nir_src_copy(&l->src[0], &idx, &l->instr);
+   nir_def *sampler = nir_imm_int(b, tex->texture_index);
 
-   nir_builder_instr_insert(b, &l->instr);
-   nir_ssa_def *params = &l->dest.ssa;
+   /* Let's grab the sampler parameters */
+   nir_def *params = nir_load_sampler_lod_parameters_pan(b, 3, 32, sampler);
 
    /* Extract the individual components */
-   nir_ssa_def *min_lod = nir_channel(b, params, 0);
-   nir_ssa_def *max_lod = nir_channel(b, params, 1);
-   nir_ssa_def *lod_bias = nir_channel(b, params, 2);
+   nir_def *min_lod = nir_channel(b, params, 0);
+   nir_def *max_lod = nir_channel(b, params, 1);
+   nir_def *lod_bias = nir_channel(b, params, 2);
 
    /* Rewrite the LOD with bias/clamps. Order sensitive. */
    for (unsigned i = 0; i < tex->num_srcs; i++) {
       if (tex->src[i].src_type != nir_tex_src_lod)
          continue;
 
-      nir_ssa_def *lod = nir_ssa_for_src(b, tex->src[i].src, 1);
+      nir_def *lod = tex->src[i].src.ssa;
 
-      nir_ssa_def *biased = nir_fadd(b, lod, lod_bias);
-      nir_ssa_def *clamped = nir_fmin(b, nir_fmax(b, biased, min_lod), max_lod);
+      nir_def *biased = nir_fadd(b, lod, lod_bias);
+      nir_def *clamped = nir_fmin(b, nir_fmax(b, biased, min_lod), max_lod);
 
-      nir_instr_rewrite_src(&tex->instr, &tex->src[i].src,
-                            nir_src_for_ssa(clamped));
+      nir_src_rewrite(&tex->src[i].src, clamped);
    }
 
    return true;

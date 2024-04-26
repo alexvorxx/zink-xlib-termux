@@ -1,24 +1,7 @@
 /*
  * Copyright 2012 Advanced Micro Devices, Inc.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef AC_SHADER_UTIL_H
@@ -158,6 +141,9 @@ enum ac_descriptor_type
    AC_DESC_PLANE_2,
 };
 
+void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
+                        nir_shader_compiler_options *options);
+
 unsigned ac_get_spi_shader_z_format(bool writes_z, bool writes_stencil, bool writes_samplemask,
                                     bool writes_mrt0_alpha);
 
@@ -187,8 +173,9 @@ enum ac_image_dim ac_get_image_dim(enum amd_gfx_level gfx_level, enum glsl_sampl
                                    bool is_array);
 
 unsigned ac_get_fs_input_vgpr_cnt(const struct ac_shader_config *config,
-                                  signed char *face_vgpr_index, signed char *ancillary_vgpr_index,
-                                  signed char *sample_coverage_vgpr_index_ptr);
+                                  uint8_t *num_fragcoord_components);
+
+uint16_t ac_get_ps_iter_mask(unsigned ps_iter_samples);
 
 void ac_choose_spi_color_formats(unsigned format, unsigned swap, unsigned ntype,
                                  bool is_depth, bool use_rbplus,
@@ -236,8 +223,12 @@ ac_ngg_get_scratch_lds_size(gl_shader_stage stage,
 
 enum gl_access_qualifier ac_get_mem_access_flags(const nir_intrinsic_instr *instr);
 
-union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
+union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
                                               enum gl_access_qualifier access);
+
+unsigned ac_get_all_edge_flag_bits(void);
+
+unsigned ac_shader_io_get_unique_index_patch(unsigned semantic);
 
 #ifdef __cplusplus
 }

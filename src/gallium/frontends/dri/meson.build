@@ -52,7 +52,7 @@ if with_gallium_zink and not with_platform_android
     libdri_c_args += '-DKOPPER_LIB_NAMES="libEGL and libGLX"'
   endif
   files_libdri += files('kopper.c')
-  deps_for_libdri += idep_vulkan_wsi_defines
+  deps_for_libdri += vulkan_wsi_deps
 endif
 
 if with_gallium_softpipe
@@ -64,7 +64,7 @@ libdri = static_library(
   [ files_libdri, sha1_h ],
   include_directories : [
     inc_include, inc_util, inc_mesa, inc_mapi, inc_src, inc_gallium,
-    inc_gallium_aux, inc_util,  inc_gallium_drivers,
+    inc_gallium_aux, inc_util, inc_gallium_drivers, inc_loader,
   ],
   c_args : [libdri_c_args],
   gnu_symbol_visibility : 'hidden',

@@ -80,6 +80,12 @@ __gen_get_batch_address(struct iris_batch *batch, void *location)
 #include "genxml/gen_macros.h"
 #include "genxml/genX_bits.h"
 
+#if GFX_VER >= 11 && GFX_VERx10 < 125
+#define IRIS_BT_OFFSET_SHIFT 3
+#else
+#define IRIS_BT_OFFSET_SHIFT 0
+#endif
+
 /* CS_GPR(15) is reserved for combining conditional rendering predicates
  * with GL_ARB_indirect_parameters draw number predicates.
  */
@@ -107,6 +113,9 @@ __gen_get_batch_address(struct iris_batch *batch, void *location)
 
 #define iris_emit_cmd(batch, cmd, name) \
    _iris_pack_command(batch, cmd, __gen_get_batch_dwords(batch, __genxml_cmd_length(cmd)), name)
+
+#define iris_emit_dwords(batch, n) \
+   __gen_get_batch_dwords(batch, n)
 
 #define iris_emit_merge(batch, dwords0, dwords1, num_dwords)    \
    do {                                                         \
@@ -152,4 +161,11 @@ rw_bo(struct iris_bo *bo, uint64_t offset, enum iris_domain access)
 {
    return (struct iris_address) { .bo = bo, .offset = offset,
                                   .access = access };
+}
+
+UNUSED static struct iris_address
+iris_address_add(struct iris_address addr, uint64_t offset)
+{
+   addr.offset += offset;
+   return addr;
 }

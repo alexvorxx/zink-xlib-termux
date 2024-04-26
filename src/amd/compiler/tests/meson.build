@@ -24,6 +24,7 @@ aco_tests_files = files(
   'main.cpp',
   'test_assembler.cpp',
   'test_builder.cpp',
+  'test_d3d11_derivs.cpp',
   'test_hard_clause.cpp',
   'test_insert_nops.cpp',
   'test_insert_waitcnt.cpp',
@@ -32,6 +33,7 @@ aco_tests_files = files(
   'test_reduce_assign.cpp',
   'test_regalloc.cpp',
   'test_optimizer_postRA.cpp',
+  'test_scheduler.cpp',
   'test_sdwa.cpp',
   'test_to_hw_instr.cpp',
   'test_tests.cpp',
@@ -39,6 +41,7 @@ aco_tests_files = files(
 
 spirv_files = files(
   'test_isel.cpp',
+  'test_d3d11_derivs.cpp',
 )
 
 gen_spirv = generator(prog_python,
@@ -57,7 +60,7 @@ test(
                 '-DACO_TEST_PYTHON_BIN="@0@"'.format(prog_python.full_path())] +
                cpp_args_aco,
     include_directories : [
-      inc_include, inc_src, inc_compiler, inc_mesa, inc_mapi, inc_amd, inc_amd_common, inc_amd_common_llvm,
+      inc_include, inc_src, inc_amd, inc_amd_common, inc_amd_common_llvm,
     ],
     link_with : [
       libamd_common, libamd_common_llvm, libvulkan_radeon,

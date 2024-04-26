@@ -3,12 +3,16 @@
 # SPDX-License-Identifier: MIT
 
 inc_asahi = include_directories([
-   '.', 'layout', 'lib', 'compiler'
+   '.', 'layout', 'lib', 'genxml', 'compiler'
 ])
 
-subdir('layout')
-subdir('lib')
-subdir('compiler')
+if with_gallium_asahi
+   subdir('layout')
+   subdir('compiler')
+   subdir('clc')
+   subdir('genxml')
+   subdir('lib')
+endif
 
 if with_tools.contains('drm-shim')
   subdir('drm-shim')

@@ -43,6 +43,7 @@
 #include "intel_aub.h"
 #include "aub_write.h"
 
+#include "c11/threads.h"
 #include "dev/intel_debug.h"
 #include "dev/intel_device_info.h"
 #include "common/intel_gem.h"
@@ -117,7 +118,7 @@ ensure_device_info(int fd)
 {
    /* We can't do this at open time as we're not yet authenticated. */
    if (device == 0) {
-      fail_if(!intel_get_device_info_from_fd(fd, &devinfo),
+      fail_if(!intel_get_device_info_from_fd(fd, &devinfo, -1, -1),
               "failed to identify chipset.\n");
       device = devinfo.pci_device_id;
    } else if (devinfo.ver == 0) {
@@ -488,8 +489,8 @@ maybe_init(int fd)
              output_filename, device, devinfo.ver);
 }
 
-__attribute__ ((visibility ("default"))) int
-ioctl(int fd, unsigned long request, ...)
+static int
+intercept_ioctl(int fd, unsigned long request, ...)
 {
    va_list args;
    void *argp;
@@ -731,6 +732,31 @@ ioctl(int fd, unsigned long request, ...)
       }
    } else {
       return libc_ioctl(fd, request, argp);
+   }
+}
+
+__attribute__ ((visibility ("default"))) int
+ioctl(int fd, unsigned long request, ...)
+{
+   static thread_local bool entered = false;
+   va_list args;
+   void *argp;
+   int ret;
+
+   va_start(args, request);
+   argp = va_arg(args, void *);
+   va_end(args);
+
+   /* Some of the functions called by intercept_ioctl call ioctls of their
+    * own. These need to go to the libc ioctl instead of being passed back to
+    * intercept_ioctl to avoid a stack overflow. */
+   if (entered) {
+      return libc_ioctl(fd, request, argp);
+   } else {
+      entered = true;
+      ret = intercept_ioctl(fd, request, argp);
+      entered = false;
+      return ret;
    }
 }
 

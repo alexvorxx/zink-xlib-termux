@@ -26,6 +26,7 @@
 #include "nir_deref.h"
 
 #include "dxil_spirv_nir.h"
+#include "dxil_nir.h"
 #include "vulkan/vulkan_core.h"
 
 const uint32_t descriptor_size = sizeof(struct dxil_spirv_bindless_entry);
@@ -40,17 +41,17 @@ type_size_align_1(const struct glsl_type *type, unsigned *size, unsigned *align)
    *align = *size;
 }
 
-static nir_ssa_def *
+static nir_def *
 load_vulkan_ssbo(nir_builder *b, unsigned buf_idx,
-                 nir_ssa_def *offset, unsigned num_comps)
+                 nir_def *offset, unsigned num_comps)
 {
-   nir_ssa_def *res_index =
+   nir_def *res_index =
       nir_vulkan_resource_index(b, 2, 32,
                                 nir_imm_int(b, 0),
                                 .desc_set = 0,
                                 .binding = buf_idx,
                                 .desc_type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-   nir_ssa_def *descriptor =
+   nir_def *descriptor =
       nir_load_vulkan_descriptor(b, 2, 32, res_index,
                                  .desc_type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
    return nir_load_ssbo(b, num_comps, 32,
@@ -61,7 +62,7 @@ load_vulkan_ssbo(nir_builder *b, unsigned buf_idx,
                         .access = ACCESS_NON_WRITEABLE | ACCESS_CAN_REORDER);
 }
 
-static nir_ssa_def *
+static nir_def *
 lower_deref_to_index(nir_builder *b, nir_deref_instr *deref, bool is_sampler_handle,
                      struct dxil_spirv_nir_lower_bindless_options *options)
 {
@@ -78,11 +79,11 @@ lower_deref_to_index(nir_builder *b, nir_deref_instr *deref, bool is_sampler_han
    if (remap.descriptor_set == ~0)
       return NULL;
 
-   nir_ssa_def *index_in_ubo =
+   nir_def *index_in_ubo =
       nir_iadd_imm(b,
                    nir_build_deref_offset(b, deref, type_size_align_1),
                    remap.binding);
-   nir_ssa_def *offset = nir_imul_imm(b, index_in_ubo, descriptor_size);
+   nir_def *offset = nir_imul_imm(b, index_in_ubo, descriptor_size);
    if (is_sampler_handle)
       offset = nir_iadd_imm(b, offset, 4);
    return load_vulkan_ssbo(b,
@@ -104,12 +105,12 @@ lower_vulkan_resource_index(nir_builder *b, nir_intrinsic_instr *intr,
 
    options->remap_binding(&remap, options->callback_context);
    b->cursor = nir_before_instr(&intr->instr);
-   nir_ssa_def *index = intr->src[0].ssa;
-   nir_ssa_def *index_in_ubo = nir_iadd_imm(b, index, remap.binding);
-   nir_ssa_def *res_idx =
+   nir_def *index = intr->src[0].ssa;
+   nir_def *index_in_ubo = nir_iadd_imm(b, index, remap.binding);
+   nir_def *res_idx =
       load_vulkan_ssbo(b, remap.descriptor_set, nir_imul_imm(b, index_in_ubo, descriptor_size), 2);
 
-   nir_ssa_def_rewrite_uses(&intr->dest.ssa, res_idx);
+   nir_def_rewrite_uses(&intr->def, res_idx);
    return true;
 }
 
@@ -125,11 +126,11 @@ lower_bindless_tex_src(nir_builder *b, nir_tex_instr *tex,
 
    b->cursor = nir_before_instr(&tex->instr);
    nir_deref_instr *deref = nir_src_as_deref(tex->src[index].src);
-   nir_ssa_def *handle = lower_deref_to_index(b, deref, is_sampler_handle, options);
+   nir_def *handle = lower_deref_to_index(b, deref, is_sampler_handle, options);
    if (!handle)
       return false;
 
-   nir_instr_rewrite_src_ssa(&tex->instr, &tex->src[index].src, handle);
+   nir_src_rewrite(&tex->src[index].src, handle);
    tex->src[index].src_type = new;
    return true;
 }
@@ -147,7 +148,7 @@ lower_bindless_image_intr(nir_builder *b, nir_intrinsic_instr *intr, struct dxil
 {
    b->cursor = nir_before_instr(&intr->instr);
    nir_deref_instr *deref = nir_src_as_deref(intr->src[0]);
-   nir_ssa_def *handle = lower_deref_to_index(b, deref, false, options);
+   nir_def *handle = lower_deref_to_index(b, deref, false, options);
    if (!handle)
       return false;
 
@@ -217,11 +218,15 @@ can_remove_var(nir_variable *var, void *data)
 bool
 dxil_spirv_nir_lower_bindless(nir_shader *nir, struct dxil_spirv_nir_lower_bindless_options *options)
 {
-   bool ret = nir_shader_instructions_pass(nir, lower_bindless_instr,
-                                           nir_metadata_dominance |
-                                             nir_metadata_block_index |
-                                             nir_metadata_loop_analysis,
-                                           options);
+   /* While we still have derefs for images, use that to propagate type info back to image vars,
+    * and then forward to the intrinsics that reference them. */
+   bool ret = dxil_nir_guess_image_formats(nir);
+
+   ret |= nir_shader_instructions_pass(nir, lower_bindless_instr,
+                                       nir_metadata_dominance |
+                                          nir_metadata_block_index |
+                                          nir_metadata_loop_analysis,
+                                       options);
    ret |= nir_remove_dead_derefs(nir);
 
    unsigned descriptor_sets = 0;
@@ -248,4 +253,65 @@ dxil_spirv_nir_lower_bindless(nir_shader *nir, struct dxil_spirv_nir_lower_bindl
       add_bindless_data_var(nir, index);
    }
    return true;
+}
+
+/* Given a global deref chain that starts as a pointer value and ends with a load/store/atomic,
+ * create a new SSBO deref chain. The new chain starts with a load_vulkan_descriptor, then casts
+ * the resulting vec2 to an SSBO deref. */
+static bool
+lower_buffer_device_address(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   switch (intr->intrinsic) {
+   case nir_intrinsic_load_deref:
+   case nir_intrinsic_store_deref:
+   case nir_intrinsic_deref_atomic:
+   case nir_intrinsic_deref_atomic_swap:
+      break;
+   default:
+      assert(intr->intrinsic != nir_intrinsic_copy_deref);
+      return false;
+   }
+   nir_deref_instr *deref = nir_src_as_deref(intr->src[0]);
+   if (!nir_deref_mode_is(deref, nir_var_mem_global))
+      return false;
+
+   nir_deref_path path;
+   nir_deref_path_init(&path, deref, NULL);
+
+   nir_deref_instr *old_head = path.path[0];
+   assert(old_head->deref_type == nir_deref_type_cast &&
+          old_head->parent.ssa->bit_size == 64 &&
+          old_head->parent.ssa->num_components == 1);
+   b->cursor = nir_after_instr(&old_head->instr);
+   nir_def *pointer = old_head->parent.ssa;
+   nir_def *offset = nir_unpack_64_2x32_split_x(b, pointer);
+   nir_def *index = nir_iand_imm(b, nir_unpack_64_2x32_split_y(b, pointer), 0xffffff);
+
+   nir_def *descriptor = nir_load_vulkan_descriptor(b, 2, 32, nir_vec2(b, index, offset),
+                                                    .desc_type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+   nir_deref_instr *head = nir_build_deref_cast_with_alignment(b, descriptor, nir_var_mem_ssbo, old_head->type,
+                                                               old_head->cast.ptr_stride,
+                                                               old_head->cast.align_mul,
+                                                               old_head->cast.align_offset);
+
+   for (int i = 1; path.path[i]; ++i) {
+      nir_deref_instr *old = path.path[i];
+      b->cursor = nir_after_instr(&old->instr);
+      head = nir_build_deref_follower(b, head, old);
+   }
+
+   nir_src_rewrite(&intr->src[0], &head->def);
+
+   nir_deref_path_finish(&path);
+   return true;
+}
+
+bool
+dxil_spirv_nir_lower_buffer_device_address(nir_shader *nir)
+{
+   return nir_shader_intrinsics_pass(nir, lower_buffer_device_address,
+                                     nir_metadata_block_index |
+                                     nir_metadata_dominance |
+                                     nir_metadata_loop_analysis,
+                                     NULL);
 }

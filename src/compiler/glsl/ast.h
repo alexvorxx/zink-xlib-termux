@@ -197,6 +197,7 @@ enum ast_operators {
    ast_identifier,
    ast_int_constant,
    ast_uint_constant,
+   ast_float16_constant,
    ast_float_constant,
    ast_bool_constant,
    ast_double_constant,
@@ -258,6 +259,7 @@ public:
    union {
       const char *identifier;
       int int_constant;
+      float float16_constant;
       float float_constant;
       unsigned uint_constant;
       int bool_constant;
@@ -913,7 +915,7 @@ public:
    }
 
    ast_type_specifier(const glsl_type *t)
-      : type(t), type_name(t->name), structure(NULL), array_specifier(NULL),
+      : type(t), type_name(glsl_get_type_name(t)), structure(NULL), array_specifier(NULL),
         default_precision(ast_precision_none)
    {
       /* empty */

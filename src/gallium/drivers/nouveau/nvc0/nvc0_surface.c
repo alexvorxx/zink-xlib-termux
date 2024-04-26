@@ -25,6 +25,7 @@
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 
+#include "nir/pipe_nir.h"
 #include "pipe/p_defines.h"
 
 #include "util/u_inlines.h"
@@ -854,7 +855,7 @@ nvc0_blitter_make_vp(struct pipe_context *pipe)
 {
    const nir_shader_compiler_options *options =
       nv50_ir_nir_shader_compiler_options(nouveau_screen(pipe->screen)->device->chipset,
-                                          PIPE_SHADER_VERTEX, true);
+                                          PIPE_SHADER_VERTEX);
 
    struct nir_builder b =
       nir_builder_init_simple_shader(MESA_SHADER_VERTEX, options,
@@ -888,9 +889,7 @@ nvc0_blitter_make_vp(struct pipe_context *pipe)
 
    NIR_PASS_V(b.shader, nir_lower_var_copies);
 
-   struct pipe_shader_state state;
-   pipe_shader_state_from_nir(&state, b.shader);
-   return pipe->create_vs_state(pipe, &state);
+   return pipe_shader_from_nir(pipe, b.shader);
 }
 
 static void
@@ -1767,7 +1766,7 @@ nvc0_blitter_destroy(struct nvc0_screen *screen)
          struct nvc0_program *prog = blitter->fp[i][m];
          if (prog) {
             nvc0_program_destroy(NULL, prog);
-            ralloc_free((void *)prog->pipe.ir.nir);
+            ralloc_free((void *)prog->nir);
             FREE(prog);
          }
       }
@@ -1775,7 +1774,7 @@ nvc0_blitter_destroy(struct nvc0_screen *screen)
    if (blitter->vp) {
       struct nvc0_program *prog = blitter->vp;
       nvc0_program_destroy(NULL, prog);
-      ralloc_free((void *)prog->pipe.ir.nir);
+      ralloc_free((void *)prog->nir);
       FREE(prog);
    }
 
@@ -1815,7 +1814,7 @@ nvc0_init_surface_functions(struct nvc0_context *nvc0)
    pipe->flush_resource = nvc0_flush_resource;
    pipe->clear_render_target = nvc0_clear_render_target;
    pipe->clear_depth_stencil = nvc0_clear_depth_stencil;
-   pipe->clear_texture = nv50_clear_texture;
+   pipe->clear_texture = u_default_clear_texture;
    pipe->clear_buffer = nvc0_clear_buffer;
    if (nvc0->screen->base.class_3d >= GM200_3D_CLASS)
       pipe->evaluate_depth_buffer = gm200_evaluate_depth_buffer;

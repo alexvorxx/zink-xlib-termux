@@ -28,9 +28,13 @@
 #ifndef PIPE_DEFINES_H
 #define PIPE_DEFINES_H
 
-#include "p_compiler.h"
+/* For pipe_blend* and pipe_logicop enums */
+#include "util/blend.h"
+
+#include "util/compiler.h"
 
 #include "compiler/shader_enums.h"
+#include "util/os_time.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,68 +56,6 @@ enum pipe_error
    PIPE_ERROR_RETRY = -4
    /* TODO */
 };
-
-enum pipe_blendfactor {
-   PIPE_BLENDFACTOR_ONE = 1,
-   PIPE_BLENDFACTOR_SRC_COLOR,
-   PIPE_BLENDFACTOR_SRC_ALPHA,
-   PIPE_BLENDFACTOR_DST_ALPHA,
-   PIPE_BLENDFACTOR_DST_COLOR,
-   PIPE_BLENDFACTOR_SRC_ALPHA_SATURATE,
-   PIPE_BLENDFACTOR_CONST_COLOR,
-   PIPE_BLENDFACTOR_CONST_ALPHA,
-   PIPE_BLENDFACTOR_SRC1_COLOR,
-   PIPE_BLENDFACTOR_SRC1_ALPHA,
-
-   PIPE_BLENDFACTOR_ZERO = 0x11,
-   PIPE_BLENDFACTOR_INV_SRC_COLOR,
-   PIPE_BLENDFACTOR_INV_SRC_ALPHA,
-   PIPE_BLENDFACTOR_INV_DST_ALPHA,
-   PIPE_BLENDFACTOR_INV_DST_COLOR,
-
-   PIPE_BLENDFACTOR_INV_CONST_COLOR = 0x17,
-   PIPE_BLENDFACTOR_INV_CONST_ALPHA,
-   PIPE_BLENDFACTOR_INV_SRC1_COLOR,
-   PIPE_BLENDFACTOR_INV_SRC1_ALPHA,
-};
-
-enum pipe_blend_func {
-   PIPE_BLEND_ADD,
-   PIPE_BLEND_SUBTRACT,
-   PIPE_BLEND_REVERSE_SUBTRACT,
-   PIPE_BLEND_MIN,
-   PIPE_BLEND_MAX,
-};
-
-enum pipe_logicop {
-   PIPE_LOGICOP_CLEAR,
-   PIPE_LOGICOP_NOR,
-   PIPE_LOGICOP_AND_INVERTED,
-   PIPE_LOGICOP_COPY_INVERTED,
-   PIPE_LOGICOP_AND_REVERSE,
-   PIPE_LOGICOP_INVERT,
-   PIPE_LOGICOP_XOR,
-   PIPE_LOGICOP_NAND,
-   PIPE_LOGICOP_AND,
-   PIPE_LOGICOP_EQUIV,
-   PIPE_LOGICOP_NOOP,
-   PIPE_LOGICOP_OR_INVERTED,
-   PIPE_LOGICOP_COPY,
-   PIPE_LOGICOP_OR_REVERSE,
-   PIPE_LOGICOP_OR,
-   PIPE_LOGICOP_SET,
-};
-
-#define PIPE_MASK_R  0x1
-#define PIPE_MASK_G  0x2
-#define PIPE_MASK_B  0x4
-#define PIPE_MASK_A  0x8
-#define PIPE_MASK_RGBA 0xf
-#define PIPE_MASK_Z  0x10
-#define PIPE_MASK_S  0x20
-#define PIPE_MASK_ZS 0x30
-#define PIPE_MASK_RGBAZS (PIPE_MASK_RGBA|PIPE_MASK_ZS)
-
 
 /**
  * Inequality functions.  Used for depth test, stencil compare, alpha
@@ -244,6 +186,7 @@ enum pipe_tex_reduction_mode {
  */
 enum pipe_map_flags
 {
+   PIPE_MAP_NONE = 0,
    /**
     * Resource contents read back (or accessed directly) at transfer
     * create time.
@@ -452,6 +395,25 @@ enum pipe_flush_flags
 #define PIPE_CONTEXT_PROTECTED         (1 << 7)
 
 /**
+ * Create a context that does not use sampler LOD bias. If this is set, the
+ * frontend MUST set pipe_sampler_state::lod_bias to 0.0f for all samplers used
+ * with the context. Drivers MAY ignore lod_bias for such contexts.
+ *
+ * This may allow driver fast paths for GLES, which lacks sampler LOD bias.
+ */
+#define PIPE_CONTEXT_NO_LOD_BIAS (1 << 8)
+
+/**
+ * Create a media-only context. Use in pipe_screen::context_create.
+ * This disables draw, blit, and clear*, render_condition, and other graphics.
+ * This also disabled all compute related functions
+ * functions. Interop with other media contexts is still allowed.
+ * This allows scheduling jobs on a media-only hardware command queue that
+ * can run in parallel with media without stalling it.
+ */
+#define PIPE_CONTEXT_MEDIA_ONLY      (1 << 9)
+
+/**
  * Flags for pipe_context::memory_barrier.
  */
 #define PIPE_BARRIER_MAPPED_BUFFER     (1 << 0)
@@ -529,7 +491,7 @@ enum pipe_flush_flags
 /* Resource is the DRI_PRIME blit destination. Only set on on the render GPU. */
 #define PIPE_BIND_PRIME_BLIT_DST (1 << 24)
 #define PIPE_BIND_USE_FRONT_RENDERING (1 << 25) /* Resource may be used for frontbuffer rendering */
-
+#define PIPE_BIND_CONST_BW    (1 << 26) /* Avoid using a data dependent layout (AFBC, UBWC, etc) */
 
 /**
  * Flags for the driver about resource behaviour:
@@ -556,28 +518,6 @@ enum pipe_resource_usage {
    PIPE_USAGE_DYNAMIC,        /* uploaded data is used multiple times */
    PIPE_USAGE_STREAM,         /* uploaded data is used once */
    PIPE_USAGE_STAGING,        /* fast CPU access */
-};
-
-/**
- * Primitive types:
- */
-enum PACKED pipe_prim_type {
-   PIPE_PRIM_POINTS,
-   PIPE_PRIM_LINES,
-   PIPE_PRIM_LINE_LOOP,
-   PIPE_PRIM_LINE_STRIP,
-   PIPE_PRIM_TRIANGLES,
-   PIPE_PRIM_TRIANGLE_STRIP,
-   PIPE_PRIM_TRIANGLE_FAN,
-   PIPE_PRIM_QUADS,
-   PIPE_PRIM_QUAD_STRIP,
-   PIPE_PRIM_POLYGON,
-   PIPE_PRIM_LINES_ADJACENCY,
-   PIPE_PRIM_LINE_STRIP_ADJACENCY,
-   PIPE_PRIM_TRIANGLES_ADJACENCY,
-   PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY,
-   PIPE_PRIM_PATCHES,
-   PIPE_PRIM_MAX,
 };
 
 /**
@@ -627,6 +567,8 @@ enum pipe_statistics_query_index {
    PIPE_STAT_QUERY_HS_INVOCATIONS,
    PIPE_STAT_QUERY_DS_INVOCATIONS,
    PIPE_STAT_QUERY_CS_INVOCATIONS,
+   PIPE_STAT_QUERY_TS_INVOCATIONS,
+   PIPE_STAT_QUERY_MS_INVOCATIONS,
 };
 
 /**
@@ -648,20 +590,6 @@ enum pipe_sprite_coord_mode {
 };
 
 /**
- * Texture & format swizzles
- */
-enum pipe_swizzle {
-   PIPE_SWIZZLE_X,
-   PIPE_SWIZZLE_Y,
-   PIPE_SWIZZLE_Z,
-   PIPE_SWIZZLE_W,
-   PIPE_SWIZZLE_0,
-   PIPE_SWIZZLE_1,
-   PIPE_SWIZZLE_NONE,
-   PIPE_SWIZZLE_MAX, /**< Number of enums counter (must be last) */
-};
-
-/**
  * Viewport swizzles
  */
 enum pipe_viewport_swizzle {
@@ -674,9 +602,6 @@ enum pipe_viewport_swizzle {
    PIPE_VIEWPORT_SWIZZLE_POSITIVE_W,
    PIPE_VIEWPORT_SWIZZLE_NEGATIVE_W,
 };
-
-#define PIPE_TIMEOUT_INFINITE 0xffffffffffffffffull
-
 
 /**
  * Device reset status.
@@ -731,6 +656,7 @@ enum pipe_conservative_raster_mode
 #define PIPE_IMAGE_ACCESS_COHERENT           (1 << 2)
 #define PIPE_IMAGE_ACCESS_VOLATILE           (1 << 3)
 #define PIPE_IMAGE_ACCESS_TEX2D_FROM_BUFFER  (1 << 4)
+#define PIPE_IMAGE_ACCESS_DRIVER_INTERNAL    (1 << 5)
 
 /**
  * Implementation capabilities/limits which are queried through
@@ -800,6 +726,7 @@ enum pipe_cap
    PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT,
    PIPE_CAP_START_INSTANCE,
    PIPE_CAP_QUERY_TIMESTAMP,
+   PIPE_CAP_TIMER_RESOLUTION,
    PIPE_CAP_TEXTURE_MULTISAMPLE,
    PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT,
    PIPE_CAP_CUBE_MAP_ARRAY,
@@ -854,7 +781,6 @@ enum pipe_cap
    PIPE_CAP_FORCE_PERSAMPLE_INTERP,
    PIPE_CAP_SHAREABLE_SHADERS,
    PIPE_CAP_COPY_BETWEEN_COMPRESSED_AND_PLAIN_FORMATS,
-   PIPE_CAP_CLEAR_TEXTURE,
    PIPE_CAP_CLEAR_SCISSORED,
    PIPE_CAP_DRAW_PARAMETERS,
    PIPE_CAP_SHADER_PACK_HALF_FLOAT,
@@ -892,9 +818,9 @@ enum pipe_cap
    PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS,
    PIPE_CAP_FBFETCH,
    PIPE_CAP_LEGACY_MATH_RULES,
+   PIPE_CAP_FP16,
    PIPE_CAP_DOUBLES,
    PIPE_CAP_INT64,
-   PIPE_CAP_INT64_DIVMOD,
    PIPE_CAP_TGSI_TEX_TXF_LZ,
    PIPE_CAP_SHADER_CLOCK,
    PIPE_CAP_POLYGON_MODE_FILL_RECTANGLE,
@@ -936,7 +862,6 @@ enum pipe_cap
    PIPE_CAP_SURFACE_SAMPLE_COUNT,
    PIPE_CAP_IMAGE_ATOMIC_FLOAT_ADD,
    PIPE_CAP_QUERY_PIPELINE_STATISTICS_SINGLE,
-   PIPE_CAP_RGB_OVERRIDE_DST_ALPHA_BLEND,
    PIPE_CAP_DEST_SURFACE_SRGB_CONTROL,
    PIPE_CAP_NIR_COMPACT_ARRAYS,
    PIPE_CAP_MAX_VARYINGS,
@@ -946,6 +871,7 @@ enum pipe_cap
    PIPE_CAP_IMAGE_STORE_FORMATTED,
    PIPE_CAP_THROTTLE,
    PIPE_CAP_DMABUF,
+   PIPE_CAP_CL_GL_SHARING,
    PIPE_CAP_PREFER_COMPUTE_FOR_MULTIMEDIA,
    PIPE_CAP_FRAGMENT_SHADER_INTERLOCK,
    PIPE_CAP_FBFETCH_COHERENT,
@@ -1019,8 +945,9 @@ enum pipe_cap
    PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT,
    PIPE_CAP_NULL_TEXTURES,
    PIPE_CAP_ASTC_VOID_EXTENTS_NEED_DENORM_FLUSH,
-
    PIPE_CAP_VALIDATE_ALL_DIRTY_STATES,
+   PIPE_CAP_HAS_CONST_BW,
+   PIPE_CAP_PERFORMANCE_MONITOR,
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */
 };
@@ -1111,10 +1038,8 @@ enum pipe_shader_cap
    PIPE_SHADER_CAP_INT16,
    PIPE_SHADER_CAP_GLSL_16BIT_CONSTS,
    PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS,
-   PIPE_SHADER_CAP_PREFERRED_IR,
    PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED,
    PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS,
-   PIPE_SHADER_CAP_DROUND_SUPPORTED, /* all rounding modes */
    PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE,
    PIPE_SHADER_CAP_MAX_SHADER_BUFFERS,
    PIPE_SHADER_CAP_SUPPORTED_IRS,
@@ -1161,8 +1086,9 @@ enum pipe_compute_cap
    PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE,
    PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY,
    PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS,
+   PIPE_COMPUTE_CAP_MAX_SUBGROUPS,
    PIPE_COMPUTE_CAP_IMAGES_SUPPORTED,
-   PIPE_COMPUTE_CAP_SUBGROUP_SIZE,
+   PIPE_COMPUTE_CAP_SUBGROUP_SIZES,
    PIPE_COMPUTE_CAP_MAX_VARIABLE_THREADS_PER_BLOCK,
 };
 
@@ -1187,13 +1113,10 @@ enum pipe_resource_param
  */
 enum pipe_context_param
 {
-   /* A hint for the driver that it should pin its execution threads to
-    * a group of cores sharing a specific L3 cache if the CPU has multiple
-    * L3 caches. This is needed for good multithreading performance on
-    * AMD Zen CPUs. "value" is the L3 cache index. Drivers that don't have
-    * any internal threads or don't run on affected CPUs can ignore this.
+   /* Call util_thread_sched_apply_policy() for each driver thread that
+    * benefits from it.
     */
-   PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE,
+   PIPE_CONTEXT_PARAM_UPDATE_THREAD_SCHEDULING,
 };
 
 /**
@@ -1236,8 +1159,10 @@ struct pipe_query_data_pipeline_statistics
          uint64_t hs_invocations; /**< Num hull shader invocations. */
          uint64_t ds_invocations; /**< Num domain shader invocations. */
          uint64_t cs_invocations; /**< Num compute shader invocations. */
+         uint64_t ts_invocations; /**< Num task shader invocations. */
+         uint64_t ms_invocations; /**< Num mesh shader invocations. */
       };
-      uint64_t counters[11];
+      uint64_t counters[13];
    };
 };
 
@@ -1306,13 +1231,6 @@ enum pipe_query_flags
 {
    PIPE_QUERY_WAIT = (1 << 0),
    PIPE_QUERY_PARTIAL = (1 << 1),
-};
-
-union pipe_color_union
-{
-   float f[4];
-   int i[4];
-   unsigned int ui[4];
 };
 
 enum pipe_driver_query_type

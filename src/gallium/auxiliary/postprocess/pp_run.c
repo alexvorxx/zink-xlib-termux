@@ -34,6 +34,7 @@
 #include "util/u_sampler.h"
 
 #include "tgsi/tgsi_parse.h"
+#include "tgsi/tgsi_text.h"
 
 
 void
@@ -142,7 +143,7 @@ pp_run(struct pp_queue_t *ppq, struct pipe_resource *in,
    cso_set_tessctrl_shader_handle(cso, NULL);
    cso_set_tesseval_shader_handle(cso, NULL);
    cso_set_geometry_shader_handle(cso, NULL);
-   cso_set_render_condition(cso, NULL, FALSE, 0);
+   cso_set_render_condition(cso, NULL, false, 0);
 
    // Kept only for this frame.
    pipe_resource_reference(&ppq->depth, indepth);
@@ -187,8 +188,7 @@ pp_run(struct pp_queue_t *ppq, struct pipe_resource *in,
    cso_restore_state(cso, CSO_UNBIND_FS_SAMPLERVIEWS |
                           CSO_UNBIND_FS_IMAGE0 |
                           CSO_UNBIND_VS_CONSTANTS |
-                          CSO_UNBIND_FS_CONSTANTS |
-                          CSO_UNBIND_VERTEX_BUFFER0);
+                          CSO_UNBIND_FS_CONSTANTS);
 
    /* restore states not restored by cso */
    if (ppq->p->st) {
@@ -258,7 +258,7 @@ pp_tgsi_to_state(struct pipe_context *pipe, const char *text, bool isvs,
       return NULL;
    }
 
-   if (tgsi_text_translate(text, tokens, PP_MAX_TOKENS) == FALSE) {
+   if (tgsi_text_translate(text, tokens, PP_MAX_TOKENS) == false) {
       _debug_printf("pp: Failed to translate a shader for %s\n", name);
       return NULL;
    }
@@ -292,8 +292,8 @@ pp_filter_misc_state(struct pp_program *p)
 void
 pp_filter_draw(struct pp_program *p)
 {
-   util_draw_vertex_buffer(p->pipe, p->cso, p->vbuf, 0, 0,
-                           PIPE_PRIM_QUADS, 4, 2);
+   util_draw_vertex_buffer(p->pipe, p->cso, p->vbuf, 0, false,
+                           MESA_PRIM_QUADS, 4, 2);
 }
 
 /** Set the framebuffer as active. */

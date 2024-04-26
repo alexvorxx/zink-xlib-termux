@@ -20,14 +20,34 @@
 
 /* buffer commands */
 
-static inline bool
-vn_buffer_create_info_can_be_cached(const VkBufferCreateInfo *create_info,
-                                    struct vn_buffer_cache *cache)
+static inline uint64_t
+vn_buffer_get_cache_index(const VkBufferCreateInfo *create_info,
+                          struct vn_buffer_reqs_cache *cache)
 {
-   /* cache only VK_SHARING_MODE_EXCLUSIVE and without pNext for simplicity */
-   return (create_info->size <= cache->max_buffer_size) &&
-          (create_info->pNext == NULL) &&
-          (create_info->sharingMode == VK_SHARING_MODE_EXCLUSIVE);
+   /* For simplicity, cache only when below conditions are met:
+    * - pNext is NULL
+    * - VK_SHARING_MODE_EXCLUSIVE or VK_SHARING_MODE_CONCURRENT across all
+    *
+    * Combine sharing mode, flags and usage bits to form a unique index.
+    *
+    * Btw, we assume VkBufferCreateFlagBits won't exhaust all 32bits, at least
+    * no earlier than VkBufferUsageFlagBits.
+    */
+   assert(!(create_info->flags & 0x80000000));
+
+   const bool is_exclusive =
+      create_info->sharingMode == VK_SHARING_MODE_EXCLUSIVE;
+   const bool is_concurrent =
+      create_info->sharingMode == VK_SHARING_MODE_CONCURRENT &&
+      create_info->queueFamilyIndexCount == cache->queue_family_count;
+   if (create_info->size <= cache->max_buffer_size &&
+       create_info->pNext == NULL && (is_exclusive || is_concurrent)) {
+      return (uint64_t)is_concurrent << 63 |
+             (uint64_t)create_info->flags << 32 | create_info->usage;
+   }
+
+   /* index being zero suggests uncachable since usage must not be zero */
+   return 0;
 }
 
 static inline uint64_t
@@ -41,39 +61,28 @@ vn_buffer_get_max_buffer_size(struct vn_physical_device *physical_dev)
     * - mali: UINT32_MAX
     */
    static const uint64_t safe_max_buffer_size = 1ULL << 30;
-   return physical_dev->features.vulkan_1_3.maintenance4
+   return physical_dev->base.base.supported_features.maintenance4
              ? physical_dev->properties.vulkan_1_3.maxBufferSize
              : safe_max_buffer_size;
 }
 
-VkResult
-vn_buffer_cache_init(struct vn_device *dev)
+void
+vn_buffer_reqs_cache_init(struct vn_device *dev)
 {
-   uint32_t ahb_mem_type_bits = 0;
-   VkResult result;
+   assert(dev->physical_device->queue_family_count);
 
-   /* TODO lazily initialize ahb buffer cache */
-   if (dev->base.base.enabled_extensions
-          .ANDROID_external_memory_android_hardware_buffer) {
-      result =
-         vn_android_get_ahb_buffer_memory_type_bits(dev, &ahb_mem_type_bits);
-      if (result != VK_SUCCESS)
-         return result;
-   }
-
-   dev->buffer_cache.ahb_mem_type_bits = ahb_mem_type_bits;
-   dev->buffer_cache.max_buffer_size =
+   dev->buffer_reqs_cache.max_buffer_size =
       vn_buffer_get_max_buffer_size(dev->physical_device);
+   dev->buffer_reqs_cache.queue_family_count =
+      dev->physical_device->queue_family_count;
 
-   simple_mtx_init(&dev->buffer_cache.mutex, mtx_plain);
-   util_sparse_array_init(&dev->buffer_cache.entries,
-                          sizeof(struct vn_buffer_cache_entry), 64);
-
-   return VK_SUCCESS;
+   simple_mtx_init(&dev->buffer_reqs_cache.mutex, mtx_plain);
+   util_sparse_array_init(&dev->buffer_reqs_cache.entries,
+                          sizeof(struct vn_buffer_reqs_cache_entry), 64);
 }
 
 static void
-vn_buffer_cache_debug_dump(struct vn_buffer_cache *cache)
+vn_buffer_reqs_cache_debug_dump(struct vn_buffer_reqs_cache *cache)
 {
    vn_log(NULL, "dumping buffer cache statistics");
    vn_log(NULL, "  cache hit: %d", cache->debug.cache_hit_count);
@@ -82,13 +91,30 @@ vn_buffer_cache_debug_dump(struct vn_buffer_cache *cache)
 }
 
 void
-vn_buffer_cache_fini(struct vn_device *dev)
+vn_buffer_reqs_cache_fini(struct vn_device *dev)
 {
-   util_sparse_array_finish(&dev->buffer_cache.entries);
-   simple_mtx_destroy(&dev->buffer_cache.mutex);
+   util_sparse_array_finish(&dev->buffer_reqs_cache.entries);
+   simple_mtx_destroy(&dev->buffer_reqs_cache.mutex);
 
    if (VN_DEBUG(CACHE))
-      vn_buffer_cache_debug_dump(&dev->buffer_cache);
+      vn_buffer_reqs_cache_debug_dump(&dev->buffer_reqs_cache);
+}
+
+static inline uint32_t
+vn_buffer_get_ahb_memory_type_bits(struct vn_device *dev)
+{
+   struct vn_buffer_reqs_cache *cache = &dev->buffer_reqs_cache;
+   if (unlikely(!cache->ahb_mem_type_bits_valid)) {
+      simple_mtx_lock(&cache->mutex);
+      if (!cache->ahb_mem_type_bits_valid) {
+         cache->ahb_mem_type_bits =
+            vn_android_get_ahb_buffer_memory_type_bits(dev);
+         cache->ahb_mem_type_bits_valid = true;
+      }
+      simple_mtx_unlock(&cache->mutex);
+   }
+
+   return cache->ahb_mem_type_bits;
 }
 
 static inline VkDeviceSize
@@ -103,9 +129,9 @@ vn_buffer_get_aligned_memory_requirement_size(VkDeviceSize size,
    return align64(size, req->alignment);
 }
 
-static struct vn_buffer_cache_entry *
+static struct vn_buffer_reqs_cache_entry *
 vn_buffer_get_cached_memory_requirements(
-   struct vn_buffer_cache *cache,
+   struct vn_buffer_reqs_cache *cache,
    const VkBufferCreateInfo *create_info,
    struct vn_buffer_memory_requirements *out)
 {
@@ -119,12 +145,9 @@ vn_buffer_get_cached_memory_requirements(
     * VkBufferCreateInfo structure and the handleTypes member of the
     * VkExternalMemoryBufferCreateInfo structure passed to vkCreateBuffer.
     */
-   if (vn_buffer_create_info_can_be_cached(create_info, cache)) {
-      /* Combine flags and usage bits to form a unique index. */
-      const uint64_t idx =
-         (uint64_t)create_info->flags << 32 | create_info->usage;
-
-      struct vn_buffer_cache_entry *entry =
+   const uint64_t idx = vn_buffer_get_cache_index(create_info, cache);
+   if (idx) {
+      struct vn_buffer_reqs_cache_entry *entry =
          util_sparse_array_get(&cache->entries, idx);
 
       if (entry->valid) {
@@ -148,9 +171,9 @@ vn_buffer_get_cached_memory_requirements(
 }
 
 static void
-vn_buffer_cache_entry_init(struct vn_buffer_cache *cache,
-                           struct vn_buffer_cache_entry *entry,
-                           VkMemoryRequirements2 *req)
+vn_buffer_reqs_cache_entry_init(struct vn_buffer_reqs_cache *cache,
+                                struct vn_buffer_reqs_cache_entry *entry,
+                                VkMemoryRequirements2 *req)
 {
    simple_mtx_lock(&cache->mutex);
 
@@ -215,23 +238,23 @@ vn_buffer_init(struct vn_device *dev,
 {
    VkDevice dev_handle = vn_device_to_handle(dev);
    VkBuffer buf_handle = vn_buffer_to_handle(buf);
-   struct vn_buffer_cache *cache = &dev->buffer_cache;
+   struct vn_buffer_reqs_cache *cache = &dev->buffer_reqs_cache;
    VkResult result;
 
    /* If cacheable and mem requirements found in cache, make async call */
-   struct vn_buffer_cache_entry *entry =
+   struct vn_buffer_reqs_cache_entry *entry =
       vn_buffer_get_cached_memory_requirements(cache, create_info,
                                                &buf->requirements);
 
    /* Check size instead of entry->valid to be lock free */
    if (buf->requirements.memory.memoryRequirements.size) {
-      vn_async_vkCreateBuffer(dev->instance, dev_handle, create_info, NULL,
-                              &buf_handle);
+      vn_async_vkCreateBuffer(dev->primary_ring, dev_handle, create_info,
+                              NULL, &buf_handle);
       return VK_SUCCESS;
    }
 
    /* If cache miss or not cacheable, make synchronous call */
-   result = vn_call_vkCreateBuffer(dev->instance, dev_handle, create_info,
+   result = vn_call_vkCreateBuffer(dev->primary_ring, dev_handle, create_info,
                                    NULL, &buf_handle);
    if (result != VK_SUCCESS)
       return result;
@@ -243,7 +266,7 @@ vn_buffer_init(struct vn_device *dev,
    buf->requirements.dedicated.pNext = NULL;
 
    vn_call_vkGetBufferMemoryRequirements2(
-      dev->instance, dev_handle,
+      dev->primary_ring, dev_handle,
       &(VkBufferMemoryRequirementsInfo2){
          .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2,
          .buffer = buf_handle,
@@ -251,8 +274,10 @@ vn_buffer_init(struct vn_device *dev,
       &buf->requirements.memory);
 
    /* If cacheable, store mem requirements from the synchronous call */
-   if (entry)
-      vn_buffer_cache_entry_init(cache, entry, &buf->requirements.memory);
+   if (entry) {
+      vn_buffer_reqs_cache_entry_init(cache, entry,
+                                      &buf->requirements.memory);
+   }
 
    return VK_SUCCESS;
 }
@@ -333,7 +358,6 @@ vn_CreateBuffer(VkDevice device,
                 const VkAllocationCallbacks *pAllocator,
                 VkBuffer *pBuffer)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -363,7 +387,7 @@ vn_CreateBuffer(VkDevice device,
        * and renderer external memory properties.
        */
       buf->requirements.memory.memoryRequirements.memoryTypeBits &=
-         dev->buffer_cache.ahb_mem_type_bits;
+         vn_buffer_get_ahb_memory_type_bits(dev);
 
       assert(buf->requirements.memory.memoryRequirements.memoryTypeBits);
    }
@@ -378,7 +402,6 @@ vn_DestroyBuffer(VkDevice device,
                  VkBuffer buffer,
                  const VkAllocationCallbacks *pAllocator)
 {
-   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_buffer *buf = vn_buffer_from_handle(buffer);
    const VkAllocationCallbacks *alloc =
@@ -387,7 +410,7 @@ vn_DestroyBuffer(VkDevice device,
    if (!buf)
       return;
 
-   vn_async_vkDestroyBuffer(dev->instance, device, buffer, NULL);
+   vn_async_vkDestroyBuffer(dev->primary_ring, device, buffer, NULL);
 
    vn_object_base_fini(&buf->base);
    vk_free(alloc, buf);
@@ -399,7 +422,7 @@ vn_GetBufferDeviceAddress(VkDevice device,
 {
    struct vn_device *dev = vn_device_from_handle(device);
 
-   return vn_call_vkGetBufferDeviceAddress(dev->instance, device, pInfo);
+   return vn_call_vkGetBufferDeviceAddress(dev->primary_ring, device, pInfo);
 }
 
 uint64_t
@@ -408,7 +431,7 @@ vn_GetBufferOpaqueCaptureAddress(VkDevice device,
 {
    struct vn_device *dev = vn_device_from_handle(device);
 
-   return vn_call_vkGetBufferOpaqueCaptureAddress(dev->instance, device,
+   return vn_call_vkGetBufferOpaqueCaptureAddress(dev->primary_ring, device,
                                                   pInfo);
 }
 
@@ -455,7 +478,7 @@ vn_BindBufferMemory2(VkDevice device,
    if (local_infos)
       pBindInfos = local_infos;
 
-   vn_async_vkBindBufferMemory2(dev->instance, device, bindInfoCount,
+   vn_async_vkBindBufferMemory2(dev->primary_ring, device, bindInfoCount,
                                 pBindInfos);
 
    vk_free(alloc, local_infos);
@@ -484,7 +507,7 @@ vn_CreateBufferView(VkDevice device,
    vn_object_base_init(&view->base, VK_OBJECT_TYPE_BUFFER_VIEW, &dev->base);
 
    VkBufferView view_handle = vn_buffer_view_to_handle(view);
-   vn_async_vkCreateBufferView(dev->instance, device, pCreateInfo, NULL,
+   vn_async_vkCreateBufferView(dev->primary_ring, device, pCreateInfo, NULL,
                                &view_handle);
 
    *pView = view_handle;
@@ -505,7 +528,7 @@ vn_DestroyBufferView(VkDevice device,
    if (!view)
       return;
 
-   vn_async_vkDestroyBufferView(dev->instance, device, bufferView, NULL);
+   vn_async_vkDestroyBufferView(dev->primary_ring, device, bufferView, NULL);
 
    vn_object_base_fini(&view->base);
    vk_free(alloc, view);
@@ -518,11 +541,11 @@ vn_GetDeviceBufferMemoryRequirements(
    VkMemoryRequirements2 *pMemoryRequirements)
 {
    struct vn_device *dev = vn_device_from_handle(device);
-   struct vn_buffer_cache *cache = &dev->buffer_cache;
+   struct vn_buffer_reqs_cache *cache = &dev->buffer_reqs_cache;
    struct vn_buffer_memory_requirements reqs = { 0 };
 
    /* If cacheable and mem requirements found in cache, skip host call */
-   struct vn_buffer_cache_entry *entry =
+   struct vn_buffer_reqs_cache_entry *entry =
       vn_buffer_get_cached_memory_requirements(cache, pInfo->pCreateInfo,
                                                &reqs);
 
@@ -533,10 +556,10 @@ vn_GetDeviceBufferMemoryRequirements(
    }
 
    /* Make the host call if not found in cache or not cacheable */
-   vn_call_vkGetDeviceBufferMemoryRequirements(dev->instance, device, pInfo,
-                                               pMemoryRequirements);
+   vn_call_vkGetDeviceBufferMemoryRequirements(dev->primary_ring, device,
+                                               pInfo, pMemoryRequirements);
 
    /* If cacheable, store mem requirements from the host call */
    if (entry)
-      vn_buffer_cache_entry_init(cache, entry, pMemoryRequirements);
+      vn_buffer_reqs_cache_entry_init(cache, entry, pMemoryRequirements);
 }

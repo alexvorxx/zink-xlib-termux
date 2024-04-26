@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "stateblock9.h"
 #include "device9.h"
@@ -109,7 +92,7 @@ NineStateBlock9_dtor( struct NineStateBlock9 *This )
 
 static void
 NineStateBlock9_BindBuffer( struct NineDevice9 *device,
-                            boolean applyToDevice,
+                            bool applyToDevice,
                             struct NineBuffer9 **slot,
                             struct NineBuffer9 *buf )
 {
@@ -121,7 +104,7 @@ NineStateBlock9_BindBuffer( struct NineDevice9 *device,
 
 static void
 NineStateBlock9_BindTexture( struct NineDevice9 *device,
-                             boolean applyToDevice,
+                             bool applyToDevice,
                              struct NineBaseTexture9 **slot,
                              struct NineBaseTexture9 *tex )
 {
@@ -140,7 +123,7 @@ nine_state_copy_common(struct NineDevice9 *device,
                        struct nine_state *dst,
                        struct nine_state *src,
                        struct nine_state *mask, /* aliases either src or dst */
-                       const boolean apply,
+                       const bool apply,
                        struct nine_range_pool *pool)
 {
     unsigned i, s;
@@ -283,7 +266,7 @@ nine_state_copy_common(struct NineDevice9 *device,
                                            (struct NineBuffer9 *)src->stream[i]);
                 if (src->stream[i]) {
                     dst->vtxbuf[i].buffer_offset = src->vtxbuf[i].buffer_offset;
-                    dst->vtxbuf[i].stride = src->vtxbuf[i].stride;
+                    dst->vtxstride[i] = src->vtxstride[i];
                 }
             }
             if (mask->changed.stream_freq & (1 << i))
@@ -377,8 +360,8 @@ nine_state_copy_common(struct NineDevice9 *device,
             for (s = i * 32; s < (i * 32 + 32); ++s) {
                 if (!(mask->ff.changed.transform[i] & (1 << (s % 32))))
                     continue;
-                *nine_state_access_transform(&dst->ff, s, TRUE) =
-                    *nine_state_access_transform(&src->ff, s, FALSE);
+                *nine_state_access_transform(&dst->ff, s, true) =
+                    *nine_state_access_transform(&src->ff, s, false);
             }
             /* if (apply)
              *     dst->ff.changed.transform[i] |= mask->ff.changed.transform[i];*/
@@ -391,7 +374,7 @@ nine_state_copy_common_all(struct NineDevice9 *device,
                            struct nine_state *dst,
                            struct nine_state *src,
                            struct nine_state *help,
-                           const boolean apply,
+                           const bool apply,
                            struct nine_range_pool *pool,
                            const int MaxStreams)
 {
@@ -463,7 +446,7 @@ nine_state_copy_common_all(struct NineDevice9 *device,
                                        (struct NineBuffer9 *)src->stream[i]);
             if (src->stream[i]) {
                 dst->vtxbuf[i].buffer_offset = src->vtxbuf[i].buffer_offset;
-                dst->vtxbuf[i].stride = src->vtxbuf[i].stride;
+                dst->vtxstride[i] = src->vtxstride[i];
             }
             dst->stream_freq[i] = src->stream_freq[i];
         }
@@ -543,9 +526,9 @@ NineStateBlock9_Capture( struct NineStateBlock9 *This )
     DBG("This=%p\n", This);
 
     if (This->type == NINESBT_ALL)
-        nine_state_copy_common_all(device, dst, src, dst, FALSE, NULL, MaxStreams);
+        nine_state_copy_common_all(device, dst, src, dst, false, NULL, MaxStreams);
     else
-        nine_state_copy_common(device, dst, src, dst, FALSE, NULL);
+        nine_state_copy_common(device, dst, src, dst, false, NULL);
 
     if (dst->changed.group & NINE_STATE_VDECL)
         nine_bind(&dst->vdecl, src->vdecl);
@@ -566,9 +549,9 @@ NineStateBlock9_Apply( struct NineStateBlock9 *This )
     DBG("This=%p\n", This);
 
     if (This->type == NINESBT_ALL)
-        nine_state_copy_common_all(device, dst, src, src, TRUE, pool, MaxStreams);
+        nine_state_copy_common_all(device, dst, src, src, true, pool, MaxStreams);
     else
-        nine_state_copy_common(device, dst, src, src, TRUE, pool);
+        nine_state_copy_common(device, dst, src, src, true, pool);
 
     nine_context_apply_stateblock(device, src);
 

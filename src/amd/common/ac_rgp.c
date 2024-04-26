@@ -2,24 +2,7 @@
  * Copyright 2020 Advanced Micro Devices, Inc.
  * Copyright © 2020 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 #include "ac_rgp.h"
 
@@ -96,9 +79,9 @@ struct sqtt_file_chunk_header {
 struct sqtt_file_header_flags {
    union {
       struct {
-         int32_t is_semaphore_queue_timing_etw : 1;
-         int32_t no_queue_semaphore_timestamps : 1;
-         int32_t reserved : 30;
+         uint32_t is_semaphore_queue_timing_etw : 1;
+         uint32_t no_queue_semaphore_timestamps : 1;
+         uint32_t reserved : 30;
       };
 
       uint32_t value;
@@ -408,7 +391,7 @@ static enum sqtt_memory_type ac_vram_type_to_sqtt_memory_type(uint32_t vram_type
    }
 }
 
-static void ac_sqtt_fill_asic_info(struct radeon_info *rad_info,
+static void ac_sqtt_fill_asic_info(const struct radeon_info *rad_info,
                                    struct sqtt_file_chunk_asic_info *chunk)
 {
    bool has_wave32 = rad_info->gfx_level >= GFX10;
@@ -448,7 +431,7 @@ static void ac_sqtt_fill_asic_info(struct radeon_info *rad_info,
    chunk->shader_engines = rad_info->max_se;
    chunk->compute_unit_per_shader_engine = rad_info->min_good_cu_per_sa * rad_info->max_sa_per_se;
    chunk->simd_per_compute_unit = rad_info->num_simd_per_compute_unit;
-   chunk->wavefronts_per_simd = rad_info->max_wave64_per_simd;
+   chunk->wavefronts_per_simd = rad_info->max_waves_per_simd;
 
    chunk->minimum_vgpr_alloc = rad_info->min_wave64_vgpr_alloc;
    chunk->vgpr_alloc_granularity = rad_info->wave64_vgpr_alloc_granularity * (has_wave32 ? 2 : 1);
@@ -723,7 +706,7 @@ static enum sqtt_version ac_gfx_level_to_sqtt_version(enum amd_gfx_level gfx_lev
    }
 }
 
-static void ac_sqtt_fill_sqtt_desc(struct radeon_info *info,
+static void ac_sqtt_fill_sqtt_desc(const struct radeon_info *info,
                                    struct sqtt_file_chunk_sqtt_desc *chunk, int32_t chunk_index,
                                    int32_t shader_engine_index, int32_t compute_unit_index)
 {
@@ -998,7 +981,7 @@ static void ac_sqtt_dump_spm(const struct ac_spm_trace *spm_trace,
 
 #if defined(USE_LIBELF)
 static void
-ac_sqtt_dump_data(struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace,
+ac_sqtt_dump_data(const struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace,
                   const struct ac_spm_trace *spm_trace, FILE *output)
 {
    struct sqtt_file_chunk_asic_info asic_info = {0};
@@ -1122,7 +1105,30 @@ ac_sqtt_dump_data(struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace
       /* Queue event. */
       list_for_each_entry_safe(struct rgp_queue_event_record, record,
                                &rgp_queue_event->record, list) {
-         fwrite(record, sizeof(struct sqtt_queue_event_record), 1, output);
+         struct sqtt_queue_event_record queue_event = {
+            .event_type = record->event_type,
+            .sqtt_cb_id = record->sqtt_cb_id,
+            .frame_index = record->frame_index,
+            .queue_info_index = record->queue_info_index,
+            .submit_sub_index = record->submit_sub_index,
+            .api_id = record->api_id,
+            .cpu_timestamp = record->cpu_timestamp,
+         };
+
+         switch (queue_event.event_type)
+         case SQTT_QUEUE_TIMING_EVENT_CMDBUF_SUBMIT: {
+            queue_event.gpu_timestamps[0] = *record->gpu_timestamps[0];
+            queue_event.gpu_timestamps[1] = *record->gpu_timestamps[1];
+            break;
+         case SQTT_QUEUE_TIMING_EVENT_PRESENT:
+            queue_event.gpu_timestamps[0] = *record->gpu_timestamps[0];
+            break;
+         default:
+            /* GPU timestamps are ignored for other queue events. */
+            break;
+         }
+
+         fwrite(&queue_event, sizeof(struct sqtt_queue_event_record), 1, output);
       }
       file_offset += (rgp_queue_event->record_count *
                       sizeof(struct sqtt_queue_event_record));
@@ -1181,7 +1187,7 @@ ac_sqtt_dump_data(struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace
 #endif
 
 int
-ac_dump_rgp_capture(struct radeon_info *info, struct ac_sqtt_trace *sqtt_trace,
+ac_dump_rgp_capture(const struct radeon_info *info, struct ac_sqtt_trace *sqtt_trace,
                     const struct ac_spm_trace *spm_trace)
 {
 #if !defined(USE_LIBELF)

@@ -74,7 +74,7 @@ static int
 get_refresh_rate(void)
 {
 #ifndef _GAMING_XBOX
-   DEVMODE devModes;
+   DEVMODE devModes = { .dmSize = sizeof(DEVMODE) };
 
    if (EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &devModes)) {
       /* clamp the value, just in case we get garbage */
@@ -129,7 +129,7 @@ stw_get_config_xml(void)
    return driGetOptionsXml(gallium_driconf, ARRAY_SIZE(gallium_driconf));
 }
 
-boolean
+bool
 stw_init(const struct stw_winsys *stw_winsys)
 {
    static struct stw_device stw_dev_storage;
@@ -170,16 +170,16 @@ stw_init(const struct stw_winsys *stw_winsys)
 
    stw_dev->initialized = true;
 
-   return TRUE;
+   return true;
 
 error1:
    FREE(stw_dev->fscreen);
 
    stw_dev = NULL;
-   return FALSE;
+   return false;
 }
 
-boolean
+bool
 stw_init_screen(HDC hdc)
 {
    EnterCriticalSection(&stw_dev->screen_mutex);
@@ -204,7 +204,7 @@ stw_get_device(void)
    return stw_dev;
 }
 
-boolean
+bool
 stw_init_thread(void)
 {
    return stw_tls_init_thread();
@@ -258,7 +258,8 @@ stw_cleanup(void)
    st_screen_destroy(stw_dev->fscreen);
    FREE(stw_dev->fscreen);
 
-   stw_dev->screen->destroy(stw_dev->screen);
+   if (stw_dev->screen)
+      stw_dev->screen->destroy(stw_dev->screen);
 
    stw_tls_cleanup();
 
@@ -295,5 +296,5 @@ DrvValidateVersion(ULONG ulVersion)
     * ignore it.
     */
    (void)ulVersion;
-   return TRUE;
+   return true;
 }

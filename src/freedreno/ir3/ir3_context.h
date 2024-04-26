@@ -107,11 +107,6 @@ struct ir3_context {
 
    unsigned num_arrays;
 
-   /* Tracking for max level of flowcontrol (branchstack) needed
-    * by a5xx+:
-    */
-   unsigned stack, max_stack;
-
    unsigned loop_id;
    unsigned loop_depth;
 
@@ -133,6 +128,7 @@ struct ir3_context {
    struct hash_table_u64 *addr1_ht;
 
    struct hash_table *sel_cond_conversions;
+   struct hash_table *predicate_conversions;
 
    /* last dst array, for indirect we need to insert a var-store.
     */
@@ -203,12 +199,12 @@ struct ir3_context *ir3_context_init(struct ir3_compiler *compiler,
 void ir3_context_free(struct ir3_context *ctx);
 
 struct ir3_instruction **ir3_get_dst_ssa(struct ir3_context *ctx,
-                                         nir_ssa_def *dst, unsigned n);
-struct ir3_instruction **ir3_get_dst(struct ir3_context *ctx, nir_dest *dst,
+                                         nir_def *dst, unsigned n);
+struct ir3_instruction **ir3_get_def(struct ir3_context *ctx, nir_def *def,
                                      unsigned n);
 struct ir3_instruction *const *ir3_get_src(struct ir3_context *ctx,
                                            nir_src *src);
-void ir3_put_dst(struct ir3_context *ctx, nir_dest *dst);
+void ir3_put_def(struct ir3_context *ctx, nir_def *def);
 struct ir3_instruction *ir3_create_collect(struct ir3_block *block,
                                            struct ir3_instruction *const *arr,
                                            unsigned arrsz);
@@ -243,8 +239,8 @@ struct ir3_instruction *ir3_get_addr1(struct ir3_context *ctx,
 struct ir3_instruction *ir3_get_predicate(struct ir3_context *ctx,
                                           struct ir3_instruction *src);
 
-void ir3_declare_array(struct ir3_context *ctx, nir_register *reg);
-struct ir3_array *ir3_get_array(struct ir3_context *ctx, nir_register *reg);
+void ir3_declare_array(struct ir3_context *ctx, nir_intrinsic_instr *decl);
+struct ir3_array *ir3_get_array(struct ir3_context *ctx, nir_def *reg);
 struct ir3_instruction *ir3_create_array_load(struct ir3_context *ctx,
                                               struct ir3_array *arr, int n,
                                               struct ir3_instruction *address);
@@ -275,9 +271,9 @@ utype_src(nir_src src)
 }
 
 static inline type_t
-utype_dst(nir_dest dst)
+utype_def(nir_def *def)
 {
-   return utype_for_size(nir_dest_bit_size(dst));
+   return utype_for_size(def->bit_size);
 }
 
 /**

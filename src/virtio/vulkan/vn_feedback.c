@@ -8,16 +8,8 @@
 #include "vn_command_buffer.h"
 #include "vn_device.h"
 #include "vn_physical_device.h"
+#include "vn_query_pool.h"
 #include "vn_queue.h"
-
-/* coherent buffer with bound and mapped memory */
-struct vn_feedback_buffer {
-   VkBuffer buffer;
-   VkDeviceMemory memory;
-   void *data;
-
-   struct list_head head;
-};
 
 static uint32_t
 vn_get_memory_type_index(const VkPhysicalDeviceMemoryProperties *mem_props,
@@ -35,22 +27,22 @@ vn_get_memory_type_index(const VkPhysicalDeviceMemoryProperties *mem_props,
    return UINT32_MAX;
 }
 
-static VkResult
+VkResult
 vn_feedback_buffer_create(struct vn_device *dev,
                           uint32_t size,
                           const VkAllocationCallbacks *alloc,
-                          struct vn_feedback_buffer **out_feedback_buf)
+                          struct vn_feedback_buffer **out_fb_buf)
 {
    const bool exclusive = dev->queue_family_count == 1;
    const VkPhysicalDeviceMemoryProperties *mem_props =
-      &dev->physical_device->memory_properties.memoryProperties;
+      &dev->physical_device->memory_properties;
    VkDevice dev_handle = vn_device_to_handle(dev);
-   struct vn_feedback_buffer *feedback_buf;
    VkResult result;
 
-   feedback_buf = vk_zalloc(alloc, sizeof(*feedback_buf), VN_DEFAULT_ALIGN,
-                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (!feedback_buf)
+   struct vn_feedback_buffer *fb_buf =
+      vk_zalloc(alloc, sizeof(*fb_buf), VN_DEFAULT_ALIGN,
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!fb_buf)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    /* use concurrent to avoid explicit queue family ownership transfer for
@@ -72,11 +64,11 @@ vn_feedback_buffer_create(struct vn_device *dev,
       .pQueueFamilyIndices = exclusive ? NULL : dev->queue_families,
    };
    result = vn_CreateBuffer(dev_handle, &buf_create_info, alloc,
-                            &feedback_buf->buffer);
+                            &fb_buf->buf_handle);
    if (result != VK_SUCCESS)
-      goto out_free_feedback_buf;
+      goto out_free_feedback_buffer;
 
-   struct vn_buffer *buf = vn_buffer_from_handle(feedback_buf->buffer);
+   struct vn_buffer *buf = vn_buffer_from_handle(fb_buf->buf_handle);
    const VkMemoryRequirements *mem_req =
       &buf->requirements.memory.memoryRequirements;
    const uint32_t mem_type_index =
@@ -93,69 +85,77 @@ vn_feedback_buffer_create(struct vn_device *dev,
       .memoryTypeIndex = mem_type_index,
    };
    result = vn_AllocateMemory(dev_handle, &mem_alloc_info, alloc,
-                              &feedback_buf->memory);
+                              &fb_buf->mem_handle);
    if (result != VK_SUCCESS)
       goto out_destroy_buffer;
 
    const VkBindBufferMemoryInfo bind_info = {
       .sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,
-      .buffer = feedback_buf->buffer,
-      .memory = feedback_buf->memory,
+      .buffer = fb_buf->buf_handle,
+      .memory = fb_buf->mem_handle,
       .memoryOffset = 0,
    };
    result = vn_BindBufferMemory2(dev_handle, 1, &bind_info);
    if (result != VK_SUCCESS)
       goto out_free_memory;
 
-   result = vn_MapMemory(dev_handle, feedback_buf->memory, 0, VK_WHOLE_SIZE,
-                         0, &feedback_buf->data);
+   result = vn_MapMemory(dev_handle, fb_buf->mem_handle, 0, VK_WHOLE_SIZE, 0,
+                         &fb_buf->data);
    if (result != VK_SUCCESS)
       goto out_free_memory;
 
-   *out_feedback_buf = feedback_buf;
+   *out_fb_buf = fb_buf;
 
    return VK_SUCCESS;
 
 out_free_memory:
-   vn_FreeMemory(dev_handle, feedback_buf->memory, alloc);
+   vn_FreeMemory(dev_handle, fb_buf->mem_handle, alloc);
 
 out_destroy_buffer:
-   vn_DestroyBuffer(dev_handle, feedback_buf->buffer, alloc);
+   vn_DestroyBuffer(dev_handle, fb_buf->buf_handle, alloc);
 
-out_free_feedback_buf:
-   vk_free(alloc, feedback_buf);
+out_free_feedback_buffer:
+   vk_free(alloc, fb_buf);
 
    return result;
 }
 
-static void
+void
 vn_feedback_buffer_destroy(struct vn_device *dev,
-                           struct vn_feedback_buffer *feedback_buf,
+                           struct vn_feedback_buffer *fb_buf,
                            const VkAllocationCallbacks *alloc)
 {
    VkDevice dev_handle = vn_device_to_handle(dev);
 
-   vn_UnmapMemory(dev_handle, feedback_buf->memory);
-   vn_FreeMemory(dev_handle, feedback_buf->memory, alloc);
-   vn_DestroyBuffer(dev_handle, feedback_buf->buffer, alloc);
-   vk_free(alloc, feedback_buf);
+   vn_UnmapMemory(dev_handle, fb_buf->mem_handle);
+   vn_FreeMemory(dev_handle, fb_buf->mem_handle, alloc);
+   vn_DestroyBuffer(dev_handle, fb_buf->buf_handle, alloc);
+   vk_free(alloc, fb_buf);
+}
+
+static inline uint32_t
+vn_get_feedback_buffer_alignment(struct vn_feedback_buffer *fb_buf)
+{
+   struct vn_buffer *buf = vn_buffer_from_handle(fb_buf->buf_handle);
+   return buf->requirements.memory.memoryRequirements.alignment;
 }
 
 static VkResult
 vn_feedback_pool_grow_locked(struct vn_feedback_pool *pool)
 {
    VN_TRACE_FUNC();
-   struct vn_feedback_buffer *feedback_buf = NULL;
+   struct vn_feedback_buffer *fb_buf = NULL;
    VkResult result;
 
-   result = vn_feedback_buffer_create(pool->device, pool->size, pool->alloc,
-                                      &feedback_buf);
+   result =
+      vn_feedback_buffer_create(pool->dev, pool->size, pool->alloc, &fb_buf);
    if (result != VK_SUCCESS)
       return result;
 
    pool->used = 0;
+   pool->alignment = vn_get_feedback_buffer_alignment(fb_buf);
 
-   list_add(&feedback_buf->head, &pool->feedback_buffers);
+   list_add(&fb_buf->head, &pool->fb_bufs);
 
    return VK_SUCCESS;
 }
@@ -168,11 +168,12 @@ vn_feedback_pool_init(struct vn_device *dev,
 {
    simple_mtx_init(&pool->mutex, mtx_plain);
 
-   pool->device = dev;
+   pool->dev = dev;
    pool->alloc = alloc;
    pool->size = size;
    pool->used = size;
-   list_inithead(&pool->feedback_buffers);
+   pool->alignment = 1;
+   list_inithead(&pool->fb_bufs);
    list_inithead(&pool->free_slots);
 
    return VK_SUCCESS;
@@ -185,9 +186,9 @@ vn_feedback_pool_fini(struct vn_feedback_pool *pool)
                             head)
       vk_free(pool->alloc, slot);
 
-   list_for_each_entry_safe(struct vn_feedback_buffer, feedback_buf,
-                            &pool->feedback_buffers, head)
-      vn_feedback_buffer_destroy(pool->device, feedback_buf, pool->alloc);
+   list_for_each_entry_safe(struct vn_feedback_buffer, fb_buf, &pool->fb_bufs,
+                            head)
+      vn_feedback_buffer_destroy(pool->dev, fb_buf, pool->alloc);
 
    simple_mtx_destroy(&pool->mutex);
 }
@@ -197,33 +198,29 @@ vn_feedback_pool_alloc_locked(struct vn_feedback_pool *pool,
                               uint32_t size,
                               uint32_t *out_offset)
 {
-   VN_TRACE_FUNC();
-   const uint32_t aligned_size = align(size, 4);
-
-   if (unlikely(aligned_size > pool->size - pool->used)) {
+   /* Default values of pool->used and pool->alignment are used to trigger the
+    * initial pool grow, and will be properly initialized after that.
+    */
+   if (unlikely(align(size, pool->alignment) > pool->size - pool->used)) {
       VkResult result = vn_feedback_pool_grow_locked(pool);
       if (result != VK_SUCCESS)
          return NULL;
 
-      assert(aligned_size <= pool->size - pool->used);
+      assert(align(size, pool->alignment) <= pool->size - pool->used);
    }
 
    *out_offset = pool->used;
-   pool->used += aligned_size;
+   pool->used += align(size, pool->alignment);
 
-   return list_first_entry(&pool->feedback_buffers, struct vn_feedback_buffer,
-                           head);
+   return list_first_entry(&pool->fb_bufs, struct vn_feedback_buffer, head);
 }
 
 struct vn_feedback_slot *
 vn_feedback_pool_alloc(struct vn_feedback_pool *pool,
                        enum vn_feedback_type type)
 {
-   /* TODO Make slot size variable for VkQueryPool feedback. Currently it's
-    * MAX2(sizeof(VkResult), sizeof(uint64_t)).
-    */
    static const uint32_t slot_size = 8;
-   struct vn_feedback_buffer *feedback_buf;
+   struct vn_feedback_buffer *fb_buf;
    uint32_t offset;
    struct vn_feedback_slot *slot;
 
@@ -245,18 +242,18 @@ vn_feedback_pool_alloc(struct vn_feedback_pool *pool,
       return NULL;
    }
 
-   feedback_buf = vn_feedback_pool_alloc_locked(pool, slot_size, &offset);
+   fb_buf = vn_feedback_pool_alloc_locked(pool, slot_size, &offset);
    simple_mtx_unlock(&pool->mutex);
 
-   if (!feedback_buf) {
+   if (!fb_buf) {
       vk_free(pool->alloc, slot);
       return NULL;
    }
 
    slot->type = type;
    slot->offset = offset;
-   slot->buffer = feedback_buf->buffer;
-   slot->data = feedback_buf->data + offset;
+   slot->buf_handle = fb_buf->buf_handle;
+   slot->data = fb_buf->data + offset;
 
    return slot;
 }
@@ -333,7 +330,7 @@ vn_cmd_buffer_memory_barrier(VkCommandBuffer cmd_handle,
 }
 
 void
-vn_feedback_event_cmd_record(VkCommandBuffer cmd_handle,
+vn_event_feedback_cmd_record(VkCommandBuffer cmd_handle,
                              VkEvent ev_handle,
                              VkPipelineStageFlags2 src_stage_mask,
                              VkResult status,
@@ -372,7 +369,7 @@ vn_feedback_event_cmd_record(VkCommandBuffer cmd_handle,
                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-               .buffer = slot->buffer,
+               .buffer = slot->buf_handle,
                .offset = slot->offset,
                .size = 4,
             },
@@ -380,7 +377,7 @@ vn_feedback_event_cmd_record(VkCommandBuffer cmd_handle,
    };
    vn_cmd_buffer_memory_barrier(cmd_handle, &dep_before, sync2);
 
-   vn_CmdFillBuffer(cmd_handle, slot->buffer, slot->offset, 4, status);
+   vn_CmdFillBuffer(cmd_handle, slot->buf_handle, slot->offset, 4, status);
 
    const VkDependencyInfo dep_after = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
@@ -397,13 +394,35 @@ vn_feedback_event_cmd_record(VkCommandBuffer cmd_handle,
                   VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT,
                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-               .buffer = slot->buffer,
+               .buffer = slot->buf_handle,
                .offset = slot->offset,
                .size = 4,
             },
          },
    };
    vn_cmd_buffer_memory_barrier(cmd_handle, &dep_after, sync2);
+}
+
+static inline void
+vn_feedback_cmd_record_flush_barrier(VkCommandBuffer cmd_handle,
+                                     VkBuffer buffer,
+                                     VkDeviceSize offset,
+                                     VkDeviceSize size)
+{
+   const VkBufferMemoryBarrier buf_flush_barrier = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+      .pNext = NULL,
+      .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+      .dstAccessMask = VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .buffer = buffer,
+      .offset = offset,
+      .size = size,
+   };
+   vn_CmdPipelineBarrier(cmd_handle, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1,
+                         &buf_flush_barrier, 0, NULL);
 }
 
 static VkResult
@@ -447,7 +466,7 @@ vn_feedback_cmd_record(VkCommandBuffer cmd_handle,
       .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .buffer = dst_slot->buffer,
+      .buffer = dst_slot->buf_handle,
       .offset = dst_slot->offset,
       .size = buf_size,
    };
@@ -465,85 +484,317 @@ vn_feedback_cmd_record(VkCommandBuffer cmd_handle,
     * the dst slot with VK_SUCCESS.
     */
    if (src_slot) {
-      assert(src_slot->type == VN_FEEDBACK_TYPE_TIMELINE_SEMAPHORE);
-      assert(dst_slot->type == VN_FEEDBACK_TYPE_TIMELINE_SEMAPHORE);
+      assert(src_slot->type == VN_FEEDBACK_TYPE_SEMAPHORE);
+      assert(dst_slot->type == VN_FEEDBACK_TYPE_SEMAPHORE);
 
       const VkBufferCopy buffer_copy = {
          .srcOffset = src_slot->offset,
          .dstOffset = dst_slot->offset,
          .size = buf_size,
       };
-      vn_CmdCopyBuffer(cmd_handle, src_slot->buffer, dst_slot->buffer, 1,
-                       &buffer_copy);
+      vn_CmdCopyBuffer(cmd_handle, src_slot->buf_handle, dst_slot->buf_handle,
+                       1, &buffer_copy);
    } else {
       assert(dst_slot->type == VN_FEEDBACK_TYPE_FENCE);
 
-      vn_CmdFillBuffer(cmd_handle, dst_slot->buffer, dst_slot->offset,
+      vn_CmdFillBuffer(cmd_handle, dst_slot->buf_handle, dst_slot->offset,
                        buf_size, VK_SUCCESS);
    }
 
-   const VkBufferMemoryBarrier buf_barrier_after = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-      .pNext = NULL,
-      .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-      .dstAccessMask = VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT,
-      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .buffer = dst_slot->buffer,
-      .offset = dst_slot->offset,
-      .size = buf_size,
-   };
-   vn_CmdPipelineBarrier(cmd_handle, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1,
-                         &buf_barrier_after, 0, NULL);
+   vn_feedback_cmd_record_flush_barrier(cmd_handle, dst_slot->buf_handle,
+                                        dst_slot->offset, buf_size);
 
    return vn_EndCommandBuffer(cmd_handle);
 }
 
+struct vn_semaphore_feedback_cmd *
+vn_semaphore_feedback_cmd_alloc(struct vn_device *dev,
+                                struct vn_feedback_slot *dst_slot)
+{
+   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+   struct vn_semaphore_feedback_cmd *sfb_cmd;
+   VkCommandBuffer *cmd_handles;
+
+   VK_MULTIALLOC(ma);
+   vk_multialloc_add(&ma, &sfb_cmd, __typeof__(*sfb_cmd), 1);
+   vk_multialloc_add(&ma, &cmd_handles, __typeof__(*cmd_handles),
+                     dev->queue_family_count);
+   if (!vk_multialloc_zalloc(&ma, alloc, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))
+      return NULL;
+
+   struct vn_feedback_slot *src_slot =
+      vn_feedback_pool_alloc(&dev->feedback_pool, VN_FEEDBACK_TYPE_SEMAPHORE);
+   if (!src_slot) {
+      vk_free(alloc, sfb_cmd);
+      return NULL;
+   }
+
+   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
+      VkDevice dev_handle = vn_device_to_handle(dev);
+      VkResult result =
+         vn_feedback_cmd_alloc(dev_handle, &dev->fb_cmd_pools[i], dst_slot,
+                               src_slot, &cmd_handles[i]);
+      if (result != VK_SUCCESS) {
+         for (uint32_t j = 0; j < i; j++) {
+            vn_feedback_cmd_free(dev_handle, &dev->fb_cmd_pools[j],
+                                 cmd_handles[j]);
+         }
+
+         vn_feedback_pool_free(&dev->feedback_pool, src_slot);
+         vk_free(alloc, sfb_cmd);
+         return NULL;
+      }
+   }
+
+   sfb_cmd->cmd_handles = cmd_handles;
+   sfb_cmd->src_slot = src_slot;
+   return sfb_cmd;
+}
+
+void
+vn_semaphore_feedback_cmd_free(struct vn_device *dev,
+                               struct vn_semaphore_feedback_cmd *sfb_cmd)
+{
+   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+
+   for (uint32_t i = 0; i < dev->queue_family_count; i++) {
+      vn_feedback_cmd_free(vn_device_to_handle(dev), &dev->fb_cmd_pools[i],
+                           sfb_cmd->cmd_handles[i]);
+   }
+
+   vn_feedback_pool_free(&dev->feedback_pool, sfb_cmd->src_slot);
+   vk_free(alloc, sfb_cmd);
+}
+
+static void
+vn_feedback_query_cmd_record(VkCommandBuffer cmd_handle,
+                             VkQueryPool pool_handle,
+                             uint32_t query,
+                             uint32_t count,
+                             bool copy)
+{
+   struct vn_query_pool *pool = vn_query_pool_from_handle(pool_handle);
+   if (!pool->fb_buf)
+      return;
+
+   /* Results are always 64 bit and include availability bit (also 64 bit) */
+   const VkDeviceSize slot_size = (pool->result_array_size * 8) + 8;
+   const VkDeviceSize offset = slot_size * query;
+   const VkDeviceSize buf_size = slot_size * count;
+
+   /* The first synchronization scope of vkCmdCopyQueryPoolResults does not
+    * include the query feedback buffer. Insert a barrier to ensure ordering
+    * against feedback buffer fill cmd injected in vkCmdResetQueryPool.
+    *
+    * The second synchronization scope of vkCmdResetQueryPool does not include
+    * the query feedback buffer. Insert a barrer to ensure ordering against
+    * prior cmds referencing the queries.
+    *
+    * For srcAccessMask, VK_ACCESS_TRANSFER_WRITE_BIT is sufficient since the
+    * gpu cache invalidation for feedback buffer fill in vkResetQueryPool is
+    * done implicitly via queue submission.
+    */
+   const VkPipelineStageFlags src_stage_mask =
+      copy ? VK_PIPELINE_STAGE_TRANSFER_BIT
+           : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+
+   const VkBufferMemoryBarrier buf_barrier_before = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+      .pNext = NULL,
+      .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+      .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .buffer = pool->fb_buf->buf_handle,
+      .offset = offset,
+      .size = buf_size,
+   };
+   vn_CmdPipelineBarrier(cmd_handle, src_stage_mask,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                         &buf_barrier_before, 0, NULL);
+
+   if (copy) {
+      /* Per spec: "The first synchronization scope includes all commands
+       * which reference the queries in queryPool indicated by query that
+       * occur earlier in submission order. If flags does not include
+       * VK_QUERY_RESULT_WAIT_BIT, vkCmdEndQueryIndexedEXT,
+       * vkCmdWriteTimestamp2, vkCmdEndQuery, and vkCmdWriteTimestamp are
+       * excluded from this scope."
+       *
+       * Set VK_QUERY_RESULT_WAIT_BIT to ensure ordering after
+       * vkCmdEndQuery or vkCmdWriteTimestamp makes the query available.
+       *
+       * Set VK_QUERY_RESULT_64_BIT as we can convert it to 32 bit if app
+       * requested that.
+       *
+       * Per spec: "vkCmdCopyQueryPoolResults is considered to be a transfer
+       * operation, and its writes to buffer memory must be synchronized using
+       * VK_PIPELINE_STAGE_TRANSFER_BIT and VK_ACCESS_TRANSFER_WRITE_BIT
+       * before using the results."
+       *
+       * So we can reuse the flush barrier after this copy cmd.
+       */
+      vn_CmdCopyQueryPoolResults(cmd_handle, pool_handle, query, count,
+                                 pool->fb_buf->buf_handle, offset, slot_size,
+                                 VK_QUERY_RESULT_WITH_AVAILABILITY_BIT |
+                                    VK_QUERY_RESULT_64_BIT |
+                                    VK_QUERY_RESULT_WAIT_BIT);
+   } else {
+      vn_CmdFillBuffer(cmd_handle, pool->fb_buf->buf_handle, offset, buf_size,
+                       0);
+   }
+
+   vn_feedback_cmd_record_flush_barrier(cmd_handle, pool->fb_buf->buf_handle,
+                                        offset, buf_size);
+}
+
+VkResult
+vn_feedback_query_cmd_alloc(VkDevice dev_handle,
+                            struct vn_feedback_cmd_pool *fb_cmd_pool,
+                            struct vn_query_feedback_cmd **out_qfb_cmd)
+{
+   VkCommandPool cmd_pool_handle = fb_cmd_pool->pool_handle;
+   const VkCommandBufferAllocateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .pNext = NULL,
+      .commandPool = cmd_pool_handle,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+   };
+   struct vn_command_pool *cmd_pool =
+      vn_command_pool_from_handle(cmd_pool_handle);
+   struct vn_query_feedback_cmd *qfb_cmd = NULL;
+
+   simple_mtx_lock(&fb_cmd_pool->mutex);
+   if (!list_is_empty(&fb_cmd_pool->free_qfb_cmds)) {
+      qfb_cmd = list_first_entry(&fb_cmd_pool->free_qfb_cmds,
+                                 struct vn_query_feedback_cmd, head);
+      list_del(&qfb_cmd->head);
+   }
+   simple_mtx_unlock(&fb_cmd_pool->mutex);
+
+   if (!qfb_cmd) {
+      VkCommandBuffer qfb_cmd_handle;
+      VkResult result;
+
+      qfb_cmd = vk_alloc(&cmd_pool->allocator, sizeof(*qfb_cmd),
+                         VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (!qfb_cmd)
+         return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+      simple_mtx_lock(&fb_cmd_pool->mutex);
+      result = vn_AllocateCommandBuffers(dev_handle, &info, &qfb_cmd_handle);
+      simple_mtx_unlock(&fb_cmd_pool->mutex);
+
+      if (result != VK_SUCCESS) {
+         vk_free(&cmd_pool->allocator, qfb_cmd);
+         return result;
+      }
+
+      qfb_cmd->fb_cmd_pool = fb_cmd_pool;
+      qfb_cmd->cmd = vn_command_buffer_from_handle(qfb_cmd_handle);
+   }
+
+   *out_qfb_cmd = qfb_cmd;
+
+   return VK_SUCCESS;
+}
+
+void
+vn_feedback_query_cmd_free(struct vn_query_feedback_cmd *qfb_cmd)
+{
+   simple_mtx_lock(&qfb_cmd->fb_cmd_pool->mutex);
+   vn_ResetCommandBuffer(vn_command_buffer_to_handle(qfb_cmd->cmd), 0);
+   list_add(&qfb_cmd->head, &qfb_cmd->fb_cmd_pool->free_qfb_cmds);
+   simple_mtx_unlock(&qfb_cmd->fb_cmd_pool->mutex);
+}
+
+VkResult
+vn_feedback_query_batch_record(VkDevice dev_handle,
+                               struct vn_query_feedback_cmd *qfb_cmd,
+                               struct list_head *combined_query_batches)
+{
+   static const VkCommandBufferBeginInfo begin_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+   };
+   VkCommandBuffer qfb_cmd_handle = vn_command_buffer_to_handle(qfb_cmd->cmd);
+   VkResult result;
+
+   simple_mtx_lock(&qfb_cmd->fb_cmd_pool->mutex);
+
+   result = vn_BeginCommandBuffer(qfb_cmd_handle, &begin_info);
+   if (result != VK_SUCCESS) {
+      vn_FreeCommandBuffers(dev_handle, qfb_cmd->fb_cmd_pool->pool_handle, 1,
+                            &qfb_cmd_handle);
+      goto out_unlock;
+   }
+
+   list_for_each_entry_safe(struct vn_feedback_query_batch, batch,
+                            combined_query_batches, head) {
+      vn_feedback_query_cmd_record(
+         qfb_cmd_handle, vn_query_pool_to_handle(batch->query_pool),
+         batch->query, batch->query_count, batch->copy);
+   }
+
+   result = vn_EndCommandBuffer(qfb_cmd_handle);
+   if (result != VK_SUCCESS) {
+      vn_FreeCommandBuffers(dev_handle, qfb_cmd->fb_cmd_pool->pool_handle, 1,
+                            &qfb_cmd_handle);
+      goto out_unlock;
+   }
+
+out_unlock:
+   simple_mtx_unlock(&qfb_cmd->fb_cmd_pool->mutex);
+
+   return result;
+}
+
 VkResult
 vn_feedback_cmd_alloc(VkDevice dev_handle,
-                      struct vn_feedback_cmd_pool *pool,
+                      struct vn_feedback_cmd_pool *fb_cmd_pool,
                       struct vn_feedback_slot *dst_slot,
                       struct vn_feedback_slot *src_slot,
                       VkCommandBuffer *out_cmd_handle)
 {
+   VkCommandPool cmd_pool_handle = fb_cmd_pool->pool_handle;
    const VkCommandBufferAllocateInfo info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .pNext = NULL,
-      .commandPool = pool->pool,
+      .commandPool = cmd_pool_handle,
       .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
       .commandBufferCount = 1,
    };
    VkCommandBuffer cmd_handle;
    VkResult result;
 
-   simple_mtx_lock(&pool->mutex);
+   simple_mtx_lock(&fb_cmd_pool->mutex);
    result = vn_AllocateCommandBuffers(dev_handle, &info, &cmd_handle);
    if (result != VK_SUCCESS)
       goto out_unlock;
 
    result = vn_feedback_cmd_record(cmd_handle, dst_slot, src_slot);
    if (result != VK_SUCCESS) {
-      vn_FreeCommandBuffers(dev_handle, pool->pool, 1, &cmd_handle);
+      vn_FreeCommandBuffers(dev_handle, cmd_pool_handle, 1, &cmd_handle);
       goto out_unlock;
    }
 
    *out_cmd_handle = cmd_handle;
 
 out_unlock:
-   simple_mtx_unlock(&pool->mutex);
+   simple_mtx_unlock(&fb_cmd_pool->mutex);
 
    return result;
 }
 
 void
 vn_feedback_cmd_free(VkDevice dev_handle,
-                     struct vn_feedback_cmd_pool *pool,
+                     struct vn_feedback_cmd_pool *fb_cmd_pool,
                      VkCommandBuffer cmd_handle)
 {
-   simple_mtx_lock(&pool->mutex);
-   vn_FreeCommandBuffers(dev_handle, pool->pool, 1, &cmd_handle);
-   simple_mtx_unlock(&pool->mutex);
+   simple_mtx_lock(&fb_cmd_pool->mutex);
+   vn_FreeCommandBuffers(dev_handle, fb_cmd_pool->pool_handle, 1,
+                         &cmd_handle);
+   simple_mtx_unlock(&fb_cmd_pool->mutex);
 }
 
 VkResult
@@ -551,42 +802,47 @@ vn_feedback_cmd_pools_init(struct vn_device *dev)
 {
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
    VkDevice dev_handle = vn_device_to_handle(dev);
-   struct vn_feedback_cmd_pool *pools;
+   struct vn_feedback_cmd_pool *fb_cmd_pools;
    VkCommandPoolCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .pNext = NULL,
       .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
    };
 
-   if (VN_PERF(NO_FENCE_FEEDBACK) && VN_PERF(NO_TIMELINE_SEM_FEEDBACK))
+   if (VN_PERF(NO_FENCE_FEEDBACK) && VN_PERF(NO_SEMAPHORE_FEEDBACK) &&
+       VN_PERF(NO_QUERY_FEEDBACK))
       return VK_SUCCESS;
 
    assert(dev->queue_family_count);
 
-   pools = vk_zalloc(alloc, sizeof(*pools) * dev->queue_family_count,
-                     VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (!pools)
+   fb_cmd_pools =
+      vk_zalloc(alloc, sizeof(*fb_cmd_pools) * dev->queue_family_count,
+                VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   if (!fb_cmd_pools)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    for (uint32_t i = 0; i < dev->queue_family_count; i++) {
       VkResult result;
 
       info.queueFamilyIndex = dev->queue_families[i];
-      result = vn_CreateCommandPool(dev_handle, &info, alloc, &pools[i].pool);
+      result = vn_CreateCommandPool(dev_handle, &info, alloc,
+                                    &fb_cmd_pools[i].pool_handle);
       if (result != VK_SUCCESS) {
          for (uint32_t j = 0; j < i; j++) {
-            vn_DestroyCommandPool(dev_handle, pools[j].pool, alloc);
-            simple_mtx_destroy(&pools[j].mutex);
+            vn_DestroyCommandPool(dev_handle, fb_cmd_pools[j].pool_handle,
+                                  alloc);
+            simple_mtx_destroy(&fb_cmd_pools[j].mutex);
          }
 
-         vk_free(alloc, pools);
+         vk_free(alloc, fb_cmd_pools);
          return result;
       }
 
-      simple_mtx_init(&pools[i].mutex, mtx_plain);
+      simple_mtx_init(&fb_cmd_pools[i].mutex, mtx_plain);
+      list_inithead(&fb_cmd_pools[i].free_qfb_cmds);
    }
 
-   dev->cmd_pools = pools;
+   dev->fb_cmd_pools = fb_cmd_pools;
 
    return VK_SUCCESS;
 }
@@ -597,13 +853,18 @@ vn_feedback_cmd_pools_fini(struct vn_device *dev)
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
    VkDevice dev_handle = vn_device_to_handle(dev);
 
-   if (!dev->cmd_pools)
+   if (!dev->fb_cmd_pools)
       return;
 
    for (uint32_t i = 0; i < dev->queue_family_count; i++) {
-      vn_DestroyCommandPool(dev_handle, dev->cmd_pools[i].pool, alloc);
-      simple_mtx_destroy(&dev->cmd_pools[i].mutex);
+      list_for_each_entry_safe(struct vn_query_feedback_cmd, feedback_cmd,
+                               &dev->fb_cmd_pools[i].free_qfb_cmds, head)
+         vk_free(alloc, feedback_cmd);
+
+      vn_DestroyCommandPool(dev_handle, dev->fb_cmd_pools[i].pool_handle,
+                            alloc);
+      simple_mtx_destroy(&dev->fb_cmd_pools[i].mutex);
    }
 
-   vk_free(alloc, dev->cmd_pools);
+   vk_free(alloc, dev->fb_cmd_pools);
 }

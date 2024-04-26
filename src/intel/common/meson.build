@@ -18,30 +18,34 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+fs = import('fs')
+
 files_libintel_common = files(
   'i915/intel_engine.c',
   'i915/intel_engine.h',
   'i915/intel_gem.c',
   'i915/intel_gem.h',
+  'xe/intel_device_query.c',
+  'xe/intel_device_query.h',
   'xe/intel_engine.c',
   'xe/intel_engine.h',
   'xe/intel_gem.c',
   'xe/intel_gem.h',
   'intel_aux_map.c',
   'intel_aux_map.h',
+  'intel_bind_timeline.c',
+  'intel_bind_timeline.h',
   'intel_buffer_alloc.h',
-  'intel_clflush.h',
-  'intel_decoder.h',
-  'intel_disasm.c',
-  'intel_disasm.h',
   'intel_engine.c',
   'intel_engine.h',
   'intel_gem.c',
   'intel_gem.h',
-  'intel_genX_state.h',
+  'intel_genX_state_brw.h',
+  'intel_genX_state_elk.h',
   'intel_guardband.h',
   'intel_l3_config.c',
   'intel_l3_config.h',
+  'intel_tiled_render.h',
   'intel_urb_config.c',
   'intel_sample_positions.c',
   'intel_sample_positions.h',
@@ -49,30 +53,32 @@ files_libintel_common = files(
   'intel_uuid.h',
   'intel_measure.c',
   'intel_measure.h',
+  'intel_mem.c',
+  'intel_mem.h',
   'intel_pixel_hash.h'
 )
 
-files_batch_decoder = files(
-  'intel_batch_decoder.c',
-  'intel_decoder.c',
-)
+libintel_common_links = [libisl]
 
-batch_decoder_dependencies = []
-if with_platform_android
-  files_libintel_common += 'intel_batch_decoder_stub.c'
-else
-  batch_decoder_dependencies += dep_expat
-  files_libintel_common += files_batch_decoder
+if with_clflushopt
+  libintel_clflushopt = static_library(
+    'intel_clflushopt',
+    ['intel_clflushopt.c'],
+    include_directories : [inc_include, inc_src],
+    c_args : [no_override_init_args] + clflushopt_args,
+    gnu_symbol_visibility : 'hidden',
+  )
+  libintel_common_links += libintel_clflushopt
 endif
 
 libintel_common = static_library(
   'intel_common',
   [files_libintel_common, genX_xml_h, sha1_h],
-  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel],
-  c_args : [no_override_init_args],
+  include_directories : [inc_include, inc_src, inc_intel],
+  c_args : [no_override_init_args, sse2_args],
   gnu_symbol_visibility : 'hidden',
-  link_with : [libisl],
-  dependencies : [batch_decoder_dependencies, dep_libdrm, dep_thread, idep_genxml, idep_mesautil, idep_intel_dev],
+  link_with : libintel_common_links,
+  dependencies : [dep_libdrm, dep_thread, idep_genxml, idep_mesautil, idep_intel_dev],
 )
 
 libintel_extra_dependencies = []
@@ -91,36 +97,6 @@ if install_intel_gpu_tests and not with_tests
 endif
 
 if with_tests and not with_platform_android
-  gentest_xml = files('tests/gentest.xml')
-  _name = 'gentest_pack.h'
-  gentest_pack = custom_target(
-    _name,
-    input : [gen_pack_header_py, gentest_xml],
-    output : _name,
-    command : [prog_python, '@INPUT@'],
-    capture : true,
-    depend_files: gen_pack_header_deps
-  )
-
-  genxml_path = join_paths(dir_source_root,
-                           '@0@'.format(gentest_xml[0]))
-
-  test(
-    'genxml_test',
-    executable(
-      'genxml_test',
-      ['tests/genxml_test.c', gentest_pack],
-      include_directories : [inc_include, inc_src, inc_intel],
-      dependencies : [idep_mesautil, idep_intel_dev],
-      link_with : libintel_common,
-      c_args : [
-        '-DGENXML_PATH="@0@"'.format(genxml_path)
-      ],
-    ),
-    args : ['-quiet'],
-    suite : ['intel'],
-  )
-
   foreach g : [['70', 'gfx7'], ['75', 'hsw'], ['80', 'gfx8'],
                ['90', 'gfx9'], ['110', 'gfx11'], ['120', 'gfx12'],
                ['125', 'gfx125']]

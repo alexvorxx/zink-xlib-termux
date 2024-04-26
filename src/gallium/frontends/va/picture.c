@@ -31,11 +31,44 @@
 #include "util/u_handle_table.h"
 #include "util/u_video.h"
 #include "util/u_memory.h"
+#include "util/set.h"
 
 #include "util/vl_vlc.h"
 #include "vl/vl_winsys.h"
 
 #include "va_private.h"
+
+static void
+vlVaSetSurfaceContext(vlVaDriver *drv, vlVaSurface *surf, vlVaContext *context)
+{
+   if (surf->ctx == context)
+      return;
+
+   if (surf->ctx) {
+      assert(_mesa_set_search(surf->ctx->surfaces, surf));
+      _mesa_set_remove_key(surf->ctx->surfaces, surf);
+
+      /* Only drivers supporting PIPE_VIDEO_ENTRYPOINT_PROCESSING will create
+       * decoder for postproc context and thus be able to wait on and destroy
+       * the surface fence. On other drivers we need to destroy the fence here
+       * otherwise vaQuerySurfaceStatus/vaSyncSurface will fail and we'll also
+       * potentially leak the fence.
+       */
+      if (surf->fence && !context->decoder &&
+          context->templat.entrypoint == PIPE_VIDEO_ENTRYPOINT_PROCESSING &&
+          surf->ctx->decoder && surf->ctx->decoder->destroy_fence &&
+          !drv->pipe->screen->get_video_param(drv->pipe->screen,
+                                              PIPE_VIDEO_PROFILE_UNKNOWN,
+                                              PIPE_VIDEO_ENTRYPOINT_PROCESSING,
+                                              PIPE_VIDEO_CAP_SUPPORTED)) {
+         surf->ctx->decoder->destroy_fence(surf->ctx->decoder, surf->fence);
+         surf->fence = NULL;
+      }
+   }
+
+   surf->ctx = context;
+   _mesa_set_add(surf->ctx->surfaces, surf);
+}
 
 VAStatus
 vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID render_target)
@@ -64,12 +97,13 @@ vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID rende
    }
 
    surf = handle_table_get(drv->htab, render_target);
-   mtx_unlock(&drv->mutex);
-   if (!surf || !surf->buffer)
+   if (!surf || !surf->buffer) {
+      mtx_unlock(&drv->mutex);
       return VA_STATUS_ERROR_INVALID_SURFACE;
+   }
 
    context->target_id = render_target;
-   surf->ctx = context_id;
+   vlVaSetSurfaceContext(drv, surf, context);
    context->target = surf->buffer;
    context->mjpeg.sampling_factor = 0;
 
@@ -83,8 +117,10 @@ vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID rende
           context->target->buffer_format != PIPE_FORMAT_R8G8B8X8_UNORM &&
           context->target->buffer_format != PIPE_FORMAT_NV12 &&
           context->target->buffer_format != PIPE_FORMAT_P010 &&
-          context->target->buffer_format != PIPE_FORMAT_P016)
+          context->target->buffer_format != PIPE_FORMAT_P016) {
+         mtx_unlock(&drv->mutex);
          return VA_STATUS_ERROR_UNIMPLEMENTED;
+      }
 
       if (drv->pipe->screen->get_video_param(drv->pipe->screen,
                               PIPE_VIDEO_PROFILE_UNKNOWN,
@@ -93,12 +129,14 @@ vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID rende
          context->needs_begin_frame = true;
       }
 
+      mtx_unlock(&drv->mutex);
       return VA_STATUS_SUCCESS;
    }
 
    if (context->decoder->entrypoint != PIPE_VIDEO_ENTRYPOINT_ENCODE)
       context->needs_begin_frame = true;
 
+   mtx_unlock(&drv->mutex);
    return VA_STATUS_SUCCESS;
 }
 
@@ -150,8 +188,8 @@ vlVaHandleVAEncMiscParameterTypeQualityLevel(struct pipe_enc_quality_modes *p, v
          p->pre_encode_mode = PREENCODING_MODE_DEFAULT;
          p->vbaq_mode = VBAQ_AUTO;
       } else {
-         p->preset_mode = in->preset_mode > PRESET_MODE_QUALITY
-            ? PRESET_MODE_QUALITY : in->preset_mode;
+         p->preset_mode = in->preset_mode > PRESET_MODE_HIGH_QUALITY
+            ? PRESET_MODE_HIGH_QUALITY : in->preset_mode;
          p->pre_encode_mode = in->pre_encode_mode;
          p->vbaq_mode = in->vbaq_mode;
       }
@@ -323,10 +361,15 @@ static void
 handleVAProtectedSliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
 {
 	uint8_t* encrypted_data = (uint8_t*) buf->data;
+        uint8_t* drm_key;
 
 	unsigned int drm_key_size = buf->size;
 
-	context->desc.base.decrypt_key = CALLOC(1, drm_key_size);
+        drm_key = REALLOC(context->desc.base.decrypt_key,
+                          context->desc.base.key_size, drm_key_size);
+        if (!drm_key)
+            return;
+        context->desc.base.decrypt_key = drm_key;
 	memcpy(context->desc.base.decrypt_key, encrypted_data, drm_key_size);
 	context->desc.base.key_size = drm_key_size;
 	context->desc.base.protected_playback = true;
@@ -384,6 +427,9 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
          sizes[num_buffers++] = context->mpeg4.start_code_size;
          break;
       case PIPE_VIDEO_FORMAT_JPEG:
+         if (bufHasStartcode(buf, 0xffd8ffdb, 32))
+            break;
+
          vlVaGetJpegSliceHeader(context);
          buffers[num_buffers] = (void *)context->mjpeg.slice_header;
          sizes[num_buffers++] = context->mjpeg.slice_header_size;
@@ -598,6 +644,131 @@ handleVAEncMiscParameterTypeHRD(vlVaContext *context, VAEncMiscParameterBuffer *
 }
 
 static VAStatus
+handleVAEncMiscParameterTypeMaxSliceSize(vlVaContext *context, VAEncMiscParameterBuffer *misc)
+{
+   VAStatus status = VA_STATUS_SUCCESS;
+   VAEncMiscParameterMaxSliceSize *max_slice_size_buffer = (VAEncMiscParameterMaxSliceSize *)misc->data;
+   switch (u_reduce_video_profile(context->templat.profile)) {
+      case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      {
+         context->desc.h264enc.slice_mode = PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SIZE;
+         context->desc.h264enc.max_slice_bytes = max_slice_size_buffer->max_slice_size;
+      } break;
+      case PIPE_VIDEO_FORMAT_HEVC:
+      {
+         context->desc.h265enc.slice_mode = PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SIZE;
+         context->desc.h265enc.max_slice_bytes = max_slice_size_buffer->max_slice_size;
+      } break;
+      default:
+         break;
+   }
+   return status;
+}
+
+static VAStatus
+handleVAEncMiscParameterTypeRIR(vlVaContext *context, VAEncMiscParameterBuffer *misc)
+{
+   VAStatus status = VA_STATUS_SUCCESS;
+   struct pipe_enc_intra_refresh *p_intra_refresh = NULL;
+
+   switch (u_reduce_video_profile(context->templat.profile)) {
+      case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+         p_intra_refresh = &context->desc.h264enc.intra_refresh;
+         break;
+      case PIPE_VIDEO_FORMAT_HEVC:
+         p_intra_refresh = &context->desc.h265enc.intra_refresh;
+         break;
+#if VA_CHECK_VERSION(1, 16, 0)
+      case PIPE_VIDEO_FORMAT_AV1:
+         p_intra_refresh = &context->desc.av1enc.intra_refresh;
+         break;
+#endif
+      default:
+         p_intra_refresh = NULL;
+         break;
+   };
+
+   if (p_intra_refresh) {
+      VAEncMiscParameterRIR *ir = (VAEncMiscParameterRIR *)misc->data;
+
+      if (ir->rir_flags.value == VA_ENC_INTRA_REFRESH_ROLLING_ROW)
+         p_intra_refresh->mode = INTRA_REFRESH_MODE_UNIT_ROWS;
+      else if (ir->rir_flags.value == VA_ENC_INTRA_REFRESH_ROLLING_COLUMN)
+         p_intra_refresh->mode = INTRA_REFRESH_MODE_UNIT_COLUMNS;
+      else if (ir->rir_flags.value) /* if any other values to use the default one*/
+         p_intra_refresh->mode = INTRA_REFRESH_MODE_UNIT_COLUMNS;
+      else /* if no mode specified then no intra-refresh */
+         p_intra_refresh->mode = INTRA_REFRESH_MODE_NONE;
+
+      /* intra refresh should be started with sequence level headers */
+      p_intra_refresh->need_sequence_header = 0;
+      if (p_intra_refresh->mode) {
+         p_intra_refresh->region_size = ir->intra_insert_size;
+         p_intra_refresh->offset = ir->intra_insertion_location;
+         if (p_intra_refresh->offset == 0)
+            p_intra_refresh->need_sequence_header = 1;
+      }
+   } else {
+      p_intra_refresh->mode = INTRA_REFRESH_MODE_NONE;
+      p_intra_refresh->region_size = 0;
+      p_intra_refresh->offset = 0;
+      p_intra_refresh->need_sequence_header = 0;
+   }
+
+   return status;
+}
+
+static VAStatus
+handleVAEncMiscParameterTypeROI(vlVaContext *context, VAEncMiscParameterBuffer *misc)
+{
+   VAStatus status = VA_STATUS_SUCCESS;
+   struct pipe_enc_roi *proi= NULL;
+   switch (u_reduce_video_profile(context->templat.profile)) {
+      case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+         proi = &context->desc.h264enc.roi;
+         break;
+      case PIPE_VIDEO_FORMAT_HEVC:
+         proi = &context->desc.h265enc.roi;
+         break;
+#if VA_CHECK_VERSION(1, 16, 0)
+      case PIPE_VIDEO_FORMAT_AV1:
+         proi = &context->desc.av1enc.roi;
+         break;
+#endif
+      default:
+         break;
+   };
+
+   if (proi) {
+      VAEncMiscParameterBufferROI *roi = (VAEncMiscParameterBufferROI *)misc->data;
+      /* do not support priority type, and the maximum region is 32  */
+      if ((roi->num_roi > 0 && roi->roi_flags.bits.roi_value_is_qp_delta == 0)
+           || roi->num_roi > PIPE_ENC_ROI_REGION_NUM_MAX)
+         status = VA_STATUS_ERROR_FLAG_NOT_SUPPORTED;
+      else {
+         uint32_t i;
+         VAEncROI *src = roi->roi;
+
+         proi->num = roi->num_roi;
+         for (i = 0; i < roi->num_roi; i++) {
+            proi->region[i].valid = true;
+            proi->region[i].x = src->roi_rectangle.x;
+            proi->region[i].y = src->roi_rectangle.y;
+            proi->region[i].width = src->roi_rectangle.width;
+            proi->region[i].height = src->roi_rectangle.height;
+            proi->region[i].qp_value = (int32_t)CLAMP(src->roi_value, roi->min_delta_qp, roi->max_delta_qp);
+            src++;
+         }
+
+         for (; i < PIPE_ENC_ROI_REGION_NUM_MAX; i++)
+            proi->region[i].valid = false;
+      }
+   }
+
+   return status;
+}
+
+static VAStatus
 handleVAEncMiscParameterBufferType(vlVaContext *context, vlVaBuffer *buf)
 {
    VAStatus vaStatus = VA_STATUS_SUCCESS;
@@ -627,6 +798,18 @@ handleVAEncMiscParameterBufferType(vlVaContext *context, vlVaBuffer *buf)
 
    case VAEncMiscParameterTypeHRD:
       vaStatus = handleVAEncMiscParameterTypeHRD(context, misc);
+      break;
+
+   case VAEncMiscParameterTypeRIR:
+      vaStatus = handleVAEncMiscParameterTypeRIR(context, misc);
+      break;
+
+   case VAEncMiscParameterTypeMaxSliceSize:
+      vaStatus = handleVAEncMiscParameterTypeMaxSliceSize(context, misc);
+      break;
+
+   case VAEncMiscParameterTypeROI:
+      vaStatus = handleVAEncMiscParameterTypeROI(context, misc);
       break;
 
    default:
@@ -677,6 +860,12 @@ handleVAEncSliceParameterBufferType(vlVaDriver *drv, vlVaContext *context, vlVaB
       status = vlVaHandleVAEncSliceParameterBufferTypeHEVC(drv, context, buf);
       break;
 
+#if VA_CHECK_VERSION(1, 16, 0)
+   case PIPE_VIDEO_FORMAT_AV1:
+      status = vlVaHandleVAEncSliceParameterBufferTypeAV1(drv, context, buf);
+      break;
+#endif
+
    default:
       break;
    }
@@ -690,7 +879,15 @@ handleVAEncPackedHeaderParameterBufferType(vlVaContext *context, vlVaBuffer *buf
    VAStatus status = VA_STATUS_SUCCESS;
    VAEncPackedHeaderParameterBuffer *param = buf->data;
 
+   context->packed_header_emulation_bytes = param->has_emulation_bytes;
+
    switch (u_reduce_video_profile(context->templat.profile)) {
+   case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      if (param->type == VAEncPackedHeaderSequence)
+         context->packed_header_type = param->type;
+      else
+         status = VA_STATUS_ERROR_UNIMPLEMENTED;
+      break;
    case PIPE_VIDEO_FORMAT_HEVC:
       if (param->type == VAEncPackedHeaderSequence)
          context->packed_header_type = param->type;
@@ -714,6 +911,13 @@ handleVAEncPackedHeaderDataBufferType(vlVaContext *context, vlVaBuffer *buf)
    VAStatus status = VA_STATUS_SUCCESS;
 
    switch (u_reduce_video_profile(context->templat.profile)) {
+   case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      if (context->packed_header_type != VAEncPackedHeaderSequence)
+         return VA_STATUS_ERROR_UNIMPLEMENTED;
+
+      status = vlVaHandleVAEncPackedHeaderDataBufferTypeH264(context, buf);
+      break;
+
    case PIPE_VIDEO_FORMAT_HEVC:
       if (context->packed_header_type != VAEncPackedHeaderSequence)
          return VA_STATUS_ERROR_UNIMPLEMENTED;
@@ -764,6 +968,7 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
 
    unsigned i;
    unsigned slice_idx = 0;
+   vlVaBuffer *seq_param_buf = NULL;
 
    if (!ctx)
       return VA_STATUS_ERROR_INVALID_CONTEXT;
@@ -789,7 +994,15 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
 
       if (buf->type == VAProtectedSliceDataBufferType)
          handleVAProtectedSliceDataBufferType(context, buf);
+      else if (buf->type == VAEncSequenceParameterBufferType)
+         seq_param_buf = buf;
    }
+
+   /* Now process VAEncSequenceParameterBufferType where the encoder is created
+    * and some default parameters are set to make sure it won't overwrite
+    * parameters already set by application from earlier buffers. */
+   if (seq_param_buf)
+      vaStatus = handleVAEncSequenceParameterBufferType(drv, context, seq_param_buf);
 
    for (i = 0; i < num_buffers && vaStatus == VA_STATUS_SUCCESS; ++i) {
       vlVaBuffer *buf = handle_table_get(drv->htab, buffers[i]);
@@ -821,10 +1034,6 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
 
       case VAProcPipelineParameterBufferType:
          vaStatus = vlVaHandleVAProcPipelineParameterBufferType(drv, context, buf);
-         break;
-
-      case VAEncSequenceParameterBufferType:
-         vaStatus = handleVAEncSequenceParameterBufferType(drv, context, buf);
          break;
 
       case VAEncMiscParameterBufferType:
@@ -925,11 +1134,13 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
 
    mtx_lock(&drv->mutex);
    surf = handle_table_get(drv->htab, output_id);
-   if (!surf || !surf->buffer)
+   if (!surf || !surf->buffer) {
+      mtx_unlock(&drv->mutex);
       return VA_STATUS_ERROR_INVALID_SURFACE;
+   }
 
    if (apply_av1_fg) {
-      surf->ctx = context_id;
+      vlVaSetSurfaceContext(drv, surf, context);
       *out_target = surf->buffer;
    }
 
@@ -1045,13 +1256,14 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
    }
 
    if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_ENCODE) {
+      context->desc.base.fence = &surf->fence;
       struct pipe_screen *screen = context->decoder->context->screen;
       coded_buf = context->coded_buf;
       if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_MPEG4_AVC)
          context->desc.h264enc.frame_num_cnt++;
 
       /* keep other path the same way */
-      if (!screen->get_video_param(screen, PIPE_VIDEO_PROFILE_UNKNOWN,
+      if (!screen->get_video_param(screen, context->templat.profile,
                                   context->decoder->entrypoint,
                                   PIPE_VIDEO_CAP_ENC_QUALITY_LEVEL)) {
 
@@ -1062,7 +1274,19 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
       }
 
       context->desc.base.input_format = surf->buffer->buffer_format;
+      context->desc.base.input_full_range = surf->full_range;
       context->desc.base.output_format = surf->encoder_format;
+
+      int driver_metadata_support = drv->pipe->screen->get_video_param(drv->pipe->screen,
+                                                                       context->decoder->profile,
+                                                                       context->decoder->entrypoint,
+                                                                       PIPE_VIDEO_CAP_ENC_SUPPORTS_FEEDBACK_METADATA);
+      if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_MPEG4_AVC)
+         context->desc.h264enc.requested_metadata = driver_metadata_support;
+      else if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_HEVC)
+         context->desc.h265enc.requested_metadata = driver_metadata_support;
+      else if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_AV1)
+         context->desc.av1enc.requested_metadata = driver_metadata_support;
 
       context->decoder->begin_frame(context->decoder, context->target, &context->desc.base);
       context->decoder->encode_bitstream(context->decoder, context->target,
@@ -1073,6 +1297,8 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
       surf->coded_buf = coded_buf;
       coded_buf->associated_encode_input_surf = context->target_id;
    } else if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_BITSTREAM) {
+      context->desc.base.fence = &surf->fence;
+   } else if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_PROCESSING) {
       context->desc.base.fence = &surf->fence;
    }
 
@@ -1105,6 +1331,12 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
             surf->force_flushed = true;
          }
       }
+   }
+
+   if (context->decoder->get_feedback_fence &&
+       !context->decoder->get_feedback_fence(context->decoder, feedback)) {
+         mtx_unlock(&drv->mutex);
+         return VA_STATUS_ERROR_OPERATION_FAILED;
    }
 
    /* Update frame_num disregarding PIPE_VIDEO_CAP_REQUIRES_FLUSH_ON_END_FRAME check above */

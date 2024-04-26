@@ -25,32 +25,27 @@
  *
  **************************************************************************/
 
-
 #ifndef EGLCURRENT_INCLUDED
 #define EGLCURRENT_INCLUDED
 
 #include <stdbool.h>
 
-#include "egltypedefs.h"
+#include "util/detect_os.h"
 
+#include "egltypedefs.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define _EGL_API_ALL_BITS \
-   (EGL_OPENGL_ES_BIT   | \
-    EGL_OPENVG_BIT      | \
-    EGL_OPENGL_ES2_BIT  | \
-    EGL_OPENGL_ES3_BIT_KHR | \
-    EGL_OPENGL_BIT)
-
+#define _EGL_API_ALL_BITS                                                      \
+   (EGL_OPENGL_ES_BIT | EGL_OPENVG_BIT | EGL_OPENGL_ES2_BIT |                  \
+    EGL_OPENGL_ES3_BIT_KHR | EGL_OPENGL_BIT)
 
 /**
  * Per-thread info
  */
-struct _egl_thread_info
-{
+struct _egl_thread_info {
    bool inited;
    EGLint LastError;
    _EGLContext *CurrentContext;
@@ -65,40 +60,39 @@ struct _egl_thread_info
    EGLLabelKHR CurrentObjectLabel;
 };
 
-
 /**
  * Return true if a client API enum is recognized.
  */
 static inline EGLBoolean
 _eglIsApiValid(EGLenum api)
 {
-#ifdef ANDROID
+#if HAVE_OPENGL && !DETECT_OS_ANDROID
    /* OpenGL is not a valid/supported API on Android */
-   return api == EGL_OPENGL_ES_API;
-#else
-   return (api == EGL_OPENGL_ES_API || api == EGL_OPENGL_API);
+   if (api == EGL_OPENGL_API)
+      return true;
 #endif
+#if HAVE_OPENGL_ES_1 || HAVE_OPENGL_ES_2
+   if (api == EGL_OPENGL_ES_API)
+      return true;
+#endif
+   return false;
 }
-
 
 extern _EGLThreadInfo *
 _eglGetCurrentThread(void);
 
-
 extern void
 _eglDestroyCurrentThread(void);
 
-
 extern _EGLContext *
 _eglGetCurrentContext(void);
-
 
 extern EGLBoolean
 _eglError(EGLint errCode, const char *msg);
 
 extern void
-_eglDebugReport(EGLenum error, const char *funcName,
-      EGLint type, const char *message, ...);
+_eglDebugReport(EGLenum error, const char *funcName, EGLint type,
+                const char *message, ...);
 
 #ifdef __cplusplus
 }

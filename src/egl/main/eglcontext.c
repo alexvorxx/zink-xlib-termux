@@ -27,18 +27,16 @@
  *
  **************************************************************************/
 
-
+#include "eglcontext.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include "eglconfig.h"
-#include "eglcontext.h"
-#include "egldisplay.h"
-#include "eglcurrent.h"
-#include "eglsurface.h"
-#include "egllog.h"
 #include "util/macros.h"
-
+#include "eglconfig.h"
+#include "eglcurrent.h"
+#include "egldisplay.h"
+#include "egllog.h"
+#include "eglsurface.h"
 
 /**
  * Return the API bit (one of EGL_xxx_BIT) of the context.
@@ -76,7 +74,6 @@ _eglGetContextAPIBit(_EGLContext *ctx)
 
    return bit;
 }
-
 
 /**
  * Parse the list of context attributes and return the proper error code.
@@ -119,9 +116,10 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
           *      generate an error."
           */
          if ((api != EGL_OPENGL_ES_API &&
-             (!disp->Extensions.KHR_create_context || api != EGL_OPENGL_API))) {
-               err = EGL_BAD_ATTRIBUTE;
-               break;
+              (!disp->Extensions.KHR_create_context ||
+               api != EGL_OPENGL_API))) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
          }
 
          ctx->ClientMajorVersion = val;
@@ -179,11 +177,11 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
           *     forward-compatible context for OpenGL versions less than 3.0
           *     will generate an error."
           *
-          * Note: since the forward-compatible flag can be set more than one way,
-          *       the OpenGL version check is performed once, below.
+          * Note: since the forward-compatible flag can be set more than one
+          * way, the OpenGL version check is performed once, below.
           */
          if ((val & EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR) &&
-              api != EGL_OPENGL_API) {
+             api != EGL_OPENGL_API) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -258,9 +256,9 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
           *    "This attribute is supported only for OpenGL and OpenGL ES
           *     contexts."
           */
-           if (!(disp->Extensions.KHR_create_context && api == EGL_OPENGL_API)
-               && !(disp->Version >= 15 && (api == EGL_OPENGL_API ||
-                                            api == EGL_OPENGL_ES_API))) {
+         if (!(disp->Extensions.KHR_create_context && api == EGL_OPENGL_API) &&
+             !(disp->Version >= 15 &&
+               (api == EGL_OPENGL_API || api == EGL_OPENGL_ES_API))) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -275,8 +273,8 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
           *     meaningful for OpenGL ES contexts, and specifying it for other
           *     types of contexts will generate an EGL_BAD_ATTRIBUTE error."
           */
-         if (!disp->Extensions.EXT_create_context_robustness
-             || api != EGL_OPENGL_ES_API) {
+         if (!disp->Extensions.EXT_create_context_robustness ||
+             api != EGL_OPENGL_ES_API) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -287,6 +285,18 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
       case EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT:
          if (!disp->Extensions.EXT_create_context_robustness) {
             err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+
+         /* The EGL_EXT_create_context_robustness spec says:
+          *
+          *     "EGL_BAD_CONFIG is generated if
+          *     [EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT] is set to EGL_TRUE and
+          *     no GL context supporting the GL_EXT_robustness extension and
+          *     robust access as described therein can be created."
+          */
+         if (val == EGL_TRUE && !disp->RobustBufferAccess) {
+            err = EGL_BAD_CONFIG;
             break;
          }
 
@@ -335,7 +345,8 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
           * OpenGL ES 2.0+
           */
          if (((api != EGL_OPENGL_API && api != EGL_OPENGL_ES_API) ||
-             ctx->ClientMajorVersion < 2) && val == EGL_TRUE) {
+              ctx->ClientMajorVersion < 2) &&
+             val == EGL_TRUE) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -437,8 +448,8 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
        * Since the value is ignored, only validate the setting if the version
        * is >= 3.2.
        */
-      if (ctx->ClientMajorVersion >= 4
-          || (ctx->ClientMajorVersion == 3 && ctx->ClientMinorVersion >= 2)) {
+      if (ctx->ClientMajorVersion >= 4 ||
+          (ctx->ClientMajorVersion == 3 && ctx->ClientMinorVersion >= 2)) {
          switch (ctx->Profile) {
          case EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR:
          case EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT_KHR:
@@ -450,11 +461,11 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
              *     "* If an OpenGL context is requested, the requested version
              *        is greater than 3.2, and the value for attribute
              *        EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR has no bits set; has
-             *        any bits set other than EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR
-             *        and EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT_KHR; has
-             *        more than one of these bits set; or if the implementation does
-             *        not support the requested profile, then an EGL_BAD_MATCH error
-             *        is generated."
+             *        any bits set other than
+             * EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR and
+             * EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT_KHR; has more than
+             * one of these bits set; or if the implementation does not support
+             * the requested profile, then an EGL_BAD_MATCH error is generated."
              */
             err = EGL_BAD_MATCH;
             break;
@@ -486,14 +497,14 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
 
       switch (ctx->ClientMajorVersion) {
       case 1:
-         if (ctx->ClientMinorVersion > 5
-             || (ctx->Flags & EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR) != 0)
+         if (ctx->ClientMinorVersion > 5 ||
+             (ctx->Flags & EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR) != 0)
             err = EGL_BAD_MATCH;
          break;
 
       case 2:
-         if (ctx->ClientMinorVersion > 1
-             || (ctx->Flags & EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR) != 0)
+         if (ctx->ClientMinorVersion > 1 ||
+             (ctx->Flags & EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR) != 0)
             err = EGL_BAD_MATCH;
          break;
 
@@ -563,23 +574,23 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *disp,
 
    /* The EGL_KHR_create_context_no_error spec says:
     *
-    *    "BAD_MATCH is generated if the EGL_CONTEXT_OPENGL_NO_ERROR_KHR is TRUE at
-    *    the same time as a debug or robustness context is specified."
+    *    "BAD_MATCH is generated if the EGL_CONTEXT_OPENGL_NO_ERROR_KHR is TRUE
+    * at the same time as a debug or robustness context is specified."
     */
-   if (ctx->NoError && (ctx->Flags & EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR ||
-                        ctx->Flags & EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR)) {
+   if (ctx->NoError &&
+       (ctx->Flags & EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR ||
+        ctx->Flags & EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR)) {
       err = EGL_BAD_MATCH;
    }
 
-   if ((ctx->Flags & ~(EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR
-                      | EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR
-                      | EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR)) != 0) {
+   if ((ctx->Flags & ~(EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR |
+                       EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR |
+                       EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR)) != 0) {
       err = EGL_BAD_ATTRIBUTE;
    }
 
    return err;
 }
-
 
 /**
  * Initialize the given _EGLContext object to defaults and/or the values
@@ -624,7 +635,7 @@ _eglInitContext(_EGLContext *ctx, _EGLDisplay *disp, _EGLConfig *conf,
       api_bit = _eglGetContextAPIBit(ctx);
       if (!(ctx->Config->RenderableType & api_bit)) {
          _eglLog(_EGL_DEBUG, "context api is 0x%x while config supports 0x%x",
-               api_bit, ctx->Config->RenderableType);
+                 api_bit, ctx->Config->RenderableType);
          err = EGL_BAD_CONFIG;
       }
    }
@@ -640,9 +651,10 @@ _eglInitContext(_EGLContext *ctx, _EGLDisplay *disp, _EGLConfig *conf,
     *       generated."
     */
    if (share_list && share_list->ResetNotificationStrategy !=
-                     ctx->ResetNotificationStrategy) {
-      return _eglError(EGL_BAD_MATCH,
-                       "eglCreateContext() share list notification strategy mismatch");
+                        ctx->ResetNotificationStrategy) {
+      return _eglError(
+         EGL_BAD_MATCH,
+         "eglCreateContext() share list notification strategy mismatch");
    }
 
    /* The EGL_KHR_create_context_no_error spec says:
@@ -658,7 +670,6 @@ _eglInitContext(_EGLContext *ctx, _EGLDisplay *disp, _EGLConfig *conf,
 
    return EGL_TRUE;
 }
-
 
 static EGLint
 _eglQueryContextRenderBuffer(_EGLContext *ctx)
@@ -702,7 +713,6 @@ _eglQueryContextRenderBuffer(_EGLContext *ctx)
    }
 }
 
-
 EGLBoolean
 _eglQueryContext(_EGLContext *c, EGLint attribute, EGLint *value)
 {
@@ -739,13 +749,17 @@ _eglQueryContext(_EGLContext *c, EGLint attribute, EGLint *value)
          return _eglError(EGL_BAD_ATTRIBUTE, "eglQueryContext");
       *value = c->Protected;
       break;
+   case EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT:
+      if (!disp->Extensions.EXT_query_reset_notification_strategy)
+         return _eglError(EGL_BAD_ATTRIBUTE, "eglQueryContext");
+      *value = c->ResetNotificationStrategy;
+      break;
    default:
       return _eglError(EGL_BAD_ATTRIBUTE, "eglQueryContext");
    }
 
    return EGL_TRUE;
 }
-
 
 /**
  * Bind the context to the thread and return the previous context.
@@ -770,7 +784,6 @@ _eglBindContextToThread(_EGLContext *ctx, _EGLThreadInfo *t)
    return oldCtx;
 }
 
-
 /**
  * Return true if the given context and surfaces can be made current.
  */
@@ -788,8 +801,8 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
    }
 
    disp = ctx->Resource.Display;
-   if (!disp->Extensions.KHR_surfaceless_context
-       && (draw == NULL || read == NULL))
+   if (!disp->Extensions.KHR_surfaceless_context &&
+       (draw == NULL || read == NULL))
       return _eglError(EGL_BAD_MATCH, "eglMakeCurrent");
 
    /*
@@ -830,7 +843,6 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
    return EGL_TRUE;
 }
 
-
 /**
  * Bind the context to the current thread and given surfaces.  Return the
  * previous bound context and surfaces.  The caller should unreference the
@@ -842,8 +854,8 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
  */
 EGLBoolean
 _eglBindContext(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read,
-                _EGLContext **old_ctx,
-                _EGLSurface **old_draw, _EGLSurface **old_read)
+                _EGLContext **old_ctx, _EGLSurface **old_draw,
+                _EGLSurface **old_read)
 {
    _EGLThreadInfo *t = _eglGetCurrentThread();
    _EGLContext *prev_ctx;
@@ -872,8 +884,7 @@ _eglBindContext(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read,
 
       prev_ctx->DrawSurface = NULL;
       prev_ctx->ReadSurface = NULL;
-   }
-   else {
+   } else {
       prev_draw = prev_read = NULL;
    }
 

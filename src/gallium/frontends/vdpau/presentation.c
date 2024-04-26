@@ -269,7 +269,7 @@ vlVdpPresentationQueueDisplay(VdpPresentationQueue presentation_queue,
    pipe->screen->fence_reference(pipe->screen, &surf->fence, NULL);
    pipe->flush(pipe, &surf->fence, 0);
    pipe->screen->flush_frontbuffer(pipe->screen, pipe, tex, 0, 0,
-                                   vscreen->get_private(vscreen), NULL);
+                                   vscreen->get_private(vscreen), 0, NULL);
 
    pq->last_surf = surf;
 
@@ -324,7 +324,7 @@ vlVdpPresentationQueueBlockUntilSurfaceIdle(VdpPresentationQueue presentation_qu
    mtx_lock(&pq->device->mutex);
    if (surf->fence) {
       screen = pq->device->vscreen->pscreen;
-      screen->fence_finish(screen, NULL, surf->fence, PIPE_TIMEOUT_INFINITE);
+      screen->fence_finish(screen, NULL, surf->fence, OS_TIMEOUT_INFINITE);
       screen->fence_reference(screen, &surf->fence, NULL);
    }
    mtx_unlock(&pq->device->mutex);

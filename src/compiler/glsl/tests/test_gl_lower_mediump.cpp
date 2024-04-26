@@ -31,6 +31,7 @@
 #include "nir.h"
 #include "builtin_functions.h"
 #include "nir.h"
+#include "gl_nir.h"
 #include "glsl_to_nir.h"
 #include "nir_builder.h"
 #include "program.h"
@@ -60,9 +61,9 @@ namespace
          if (!nir)
             return NULL;
 
-         nir_foreach_function(func, nir)
+         nir_foreach_function_impl(impl, nir)
          {
-            nir_foreach_block(block, func->impl)
+            nir_foreach_block(block, impl)
             {
                nir_foreach_instr(instr, block)
                {
@@ -82,7 +83,7 @@ namespace
       {
          nir_alu_instr *alu = find_op(op);
          EXPECT_TRUE(alu != NULL);
-         return alu->dest.dest.ssa.bit_size;
+         return alu->def.bit_size;
       }
 
       char *get_fs_ir(void) {
@@ -192,14 +193,6 @@ namespace
          fprintf(stderr, "Linker error: %s", whole_program->data->InfoLog);
       EXPECT_EQ(whole_program->data->LinkStatus, LINKING_SUCCESS);
 
-      for (unsigned i = 0; i < ARRAY_SIZE(whole_program->_LinkedShaders); i++) {
-         struct gl_linked_shader *sh = whole_program->_LinkedShaders[i];
-         if (!sh)
-            continue;
-
-         do_mat_op_to_vec(sh->ir);
-      }
-
       /* Save off the GLSL IR now, since glsl_to_nir() frees it. */
       fs_ir = get_fs_ir();
 
@@ -209,21 +202,23 @@ namespace
 
       nir = glsl_to_nir(&ctx->Const, whole_program, MESA_SHADER_FRAGMENT, &compiler_options);
 
+      gl_nir_inline_functions(nir);
+
       standalone_destroy_shader_program(whole_program);
 
       /* nir_lower_mediump_vars happens after copy deref lowering. */
-      NIR_PASS_V(nir, nir_split_var_copies);
-      NIR_PASS_V(nir, nir_lower_var_copies);
+      NIR_PASS(_, nir, nir_split_var_copies);
+      NIR_PASS(_, nir, nir_lower_var_copies);
 
       /* Make the vars and i/o mediump like we'd expect, so people debugging aren't confused. */
-      NIR_PASS_V(nir, nir_lower_mediump_vars, nir_var_uniform | nir_var_function_temp | nir_var_shader_temp);
-      NIR_PASS_V(nir, nir_lower_mediump_io, nir_var_shader_out, ~0, false);
+      NIR_PASS(_, nir, nir_lower_mediump_vars, nir_var_uniform | nir_var_function_temp | nir_var_shader_temp);
+      NIR_PASS(_, nir, nir_lower_mediump_io, nir_var_shader_out, ~0, false);
 
       /* Clean up f2fmp(f2f32(x)) noise. */
-      NIR_PASS_V(nir, nir_opt_algebraic);
-      NIR_PASS_V(nir, nir_opt_algebraic_late);
-      NIR_PASS_V(nir, nir_copy_prop);
-      NIR_PASS_V(nir, nir_opt_dce);
+      NIR_PASS(_, nir, nir_opt_algebraic);
+      NIR_PASS(_, nir, nir_opt_algebraic_late);
+      NIR_PASS(_, nir, nir_copy_prop);
+      NIR_PASS(_, nir, nir_opt_dce);
 
       /* Store the source for printing from later assertions. */
       this->source = source;
@@ -444,12 +439,9 @@ TEST_F(gl_nir_lower_mediump_test, func_args_in_mediump)
          }
     )"));
 
-   EXPECT_PRED_FORMAT2(glsl_ir_contains, fs_ir, "expression float16_t * (expression float16_t f2fmp (var_ref a) ) (expression float16_t f2fmp (var_ref b) ) )");
+   EXPECT_PRED_FORMAT2(glsl_ir_contains, fs_ir, "expression float f162f (expression float16_t * (expression float16_t f2fmp (var_ref x) ) (expression float16_t f2fmp (var_ref y) ) )");
 
-   /* NIR optimization will notice that we downconvert the highp to mediump just
-    * to multiply and cast back up, and just multiply in highp instead.
-    */
-   EXPECT_EQ(op_dest_bits(nir_op_fmul), 32);
+   EXPECT_EQ(op_dest_bits(nir_op_fmul), 16);
 }
 
 TEST_F(gl_nir_lower_mediump_test, func_args_inout_mediump)
@@ -473,6 +465,36 @@ TEST_F(gl_nir_lower_mediump_test, func_args_inout_mediump)
              */
             highp float x = a;
             func(x, b);
+            result = x;
+         }
+    )"));
+
+   EXPECT_PRED_FORMAT2(glsl_ir_contains, fs_ir, "expression float16_t * ");
+
+   EXPECT_EQ(op_dest_bits(nir_op_fmul), 16);
+}
+
+TEST_F(gl_nir_lower_mediump_test, func_args_in_out_mediump)
+{
+   ASSERT_NO_FATAL_FAILURE(compile(
+       R"(#version 310 es
+         precision highp float; /* Make sure that default highp temps in function handling don't break our mediump inout. */
+         uniform highp float a, b;
+         out float result;
+
+         void func(mediump float x, mediump float y, out mediump float w)
+         {
+            w = x * y; /* should be mediump due to x and y, but propagating qualifiers from a,b by inlining could trick it. */
+         }
+
+         void main()
+         {
+            /* The spec says "function input and output is done through copies,
+             * and therefore qualifiers do not have to match."  So we use a
+             * highp here for our mediump out.
+             */
+            highp float x;
+            func(a, b, x);
             result = x;
          }
     )"));

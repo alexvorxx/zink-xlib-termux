@@ -31,7 +31,6 @@
 #include "sfn_instr_export.h"
 #include "sfn_instr_fetch.h"
 #include "sfn_instr_tex.h"
-#include "tgsi/tgsi_from_mesa.h"
 
 #include <sstream>
 
@@ -43,10 +42,6 @@ FragmentShader::FragmentShader(const r600_shader_key& key):
     Shader("FS", key.ps.first_atomic_counter),
     m_dual_source_blend(key.ps.dual_source_blend),
     m_max_color_exports(MAX2(key.ps.nr_cbufs, 1)),
-    m_export_highest(0),
-    m_num_color_exports(0),
-    m_color_export_mask(0),
-    m_last_pixel_export(nullptr),
     m_pos_input(127, false),
     m_fs_write_all(false),
     m_apply_sample_mask(key.ps.apply_sample_id_mask),
@@ -69,8 +64,6 @@ FragmentShader::do_get_shader_info(r600_shader *sh_info)
    sh_info->rat_base = m_rat_base;
    sh_info->uses_kill = m_uses_discard;
    sh_info->gs_prim_id_input = m_gs_prim_id_input;
-   if (chip_class() >= ISA_CC_EVERGREEN)
-      sh_info->ps_prim_id_input = m_ps_prim_id_input;
    sh_info->nsys_inputs = m_nsys_inputs;
    sh_info->uses_helper_invocation = m_helper_invocation != nullptr;
 }
@@ -83,9 +76,9 @@ FragmentShader::load_input(nir_intrinsic_instr *intr)
    auto location = nir_intrinsic_io_semantics(intr).location;
    if (location == VARYING_SLOT_POS) {
       AluInstr *ir = nullptr;
-      for (unsigned i = 0; i < nir_dest_num_components(intr->dest); ++i) {
+      for (unsigned i = 0; i < intr->def.num_components; ++i) {
          ir = new AluInstr(op1_mov,
-                           vf.dest(intr->dest, i, pin_none),
+                           vf.dest(intr->def, i, pin_none),
                            m_pos_input[i],
                            AluInstr::write);
          emit_instruction(ir);
@@ -96,7 +89,7 @@ FragmentShader::load_input(nir_intrinsic_instr *intr)
 
    if (location == VARYING_SLOT_FACE) {
       auto ir = new AluInstr(op2_setgt_dx10,
-                             vf.dest(intr->dest, 0, pin_none),
+                             vf.dest(intr->def, 0, pin_none),
                              m_face_input,
                              vf.inline_const(ALU_SRC_0, 0),
                              AluInstr::last_write);
@@ -142,7 +135,6 @@ barycentric_ij_index(nir_intrinsic_instr *intr)
    switch (nir_intrinsic_interp_mode(intr)) {
    case INTERP_MODE_NONE:
    case INTERP_MODE_SMOOTH:
-   case INTERP_MODE_COLOR:
       return index;
    case INTERP_MODE_NOPERSPECTIVE:
       return index + 3;
@@ -172,7 +164,7 @@ FragmentShader::process_stage_intrinsic(nir_intrinsic_instr *intr)
                                     value_factory().src(intr->src[0], 0),
                                     value_factory().zero(),
                                     {AluInstr::last}));
-      start_new_block(0);
+
       return true;
    case nir_intrinsic_discard:
       m_uses_discard = true;
@@ -181,15 +173,14 @@ FragmentShader::process_stage_intrinsic(nir_intrinsic_instr *intr)
                                     value_factory().zero(),
                                     value_factory().zero(),
                                     {AluInstr::last}));
-      start_new_block(0);
       return true;
    case nir_intrinsic_load_sample_mask_in:
       if (m_apply_sample_mask) {
          return emit_load_sample_mask_in(intr);
       } else
-         return emit_simple_mov(intr->dest, 0, m_sample_mask_reg);
+         return emit_simple_mov(intr->def, 0, m_sample_mask_reg);
    case nir_intrinsic_load_sample_id:
-      return emit_simple_mov(intr->dest, 0, m_sample_id_reg);
+      return emit_simple_mov(intr->def, 0, m_sample_id_reg);
    case nir_intrinsic_load_helper_invocation:
       return emit_load_helper_invocation(intr);
    case nir_intrinsic_load_sample_pos:
@@ -206,8 +197,8 @@ FragmentShader::load_interpolated_input(nir_intrinsic_instr *intr)
    unsigned loc = nir_intrinsic_io_semantics(intr).location;
    switch (loc) {
    case VARYING_SLOT_POS:
-      for (unsigned i = 0; i < nir_dest_num_components(intr->dest); ++i)
-         vf.inject_value(intr->dest, i, m_pos_input[i]);
+      for (unsigned i = 0; i < intr->def.num_components; ++i)
+         vf.inject_value(intr->def, i, m_pos_input[i]);
       return true;
    case VARYING_SLOT_FACE:
       return false;
@@ -241,7 +232,8 @@ FragmentShader::do_allocate_reserved_registers()
       sfn_log << SfnLog::io << "Set sample mask in register to " << *m_sample_mask_reg
               << "\n";
       m_nsys_inputs = 1;
-      ShaderInput input(ninputs(), TGSI_SEMANTIC_SAMPLEMASK);
+      ShaderInput input(ninputs());
+      input.set_system_value(SYSTEM_VALUE_SAMPLE_MASK_IN);
       input.set_gpr(face_reg_index);
       add_input(input);
    }
@@ -251,7 +243,8 @@ FragmentShader::do_allocate_reserved_registers()
       m_sample_id_reg = value_factory().allocate_pinned_register(sample_id_reg, 3);
       sfn_log << SfnLog::io << "Set sample id register to " << *m_sample_id_reg << "\n";
       m_nsys_inputs++;
-      ShaderInput input(ninputs(), TGSI_SEMANTIC_SAMPLEID);
+      ShaderInput input(ninputs());
+      input.set_system_value(SYSTEM_VALUE_SAMPLE_ID);
       input.set_gpr(sample_id_reg);
       add_input(input);
    }
@@ -307,7 +300,7 @@ bool
 FragmentShader::emit_load_sample_mask_in(nir_intrinsic_instr *instr)
 {
    auto& vf = value_factory();
-   auto dest = vf.dest(instr->dest, 0, pin_free);
+   auto dest = vf.dest(instr->def, 0, pin_free);
    auto tmp = vf.temp_register();
    assert(m_sample_id_reg);
    assert(m_sample_mask_reg);
@@ -338,7 +331,7 @@ FragmentShader::emit_load_helper_invocation(nir_intrinsic_instr *instr)
    vtx->set_fetch_flag(FetchInstr::vpm);
    vtx->set_fetch_flag(FetchInstr::use_tc);
    vtx->set_always_keep();
-   auto dst = value_factory().dest(instr->dest, 0, pin_free);
+   auto dst = value_factory().dest(instr->def, 0, pin_free);
    auto ir = new AluInstr(op1_mov, dst, m_helper_invocation, AluInstr::last_write);
    ir->add_required_instr(vtx);
    emit_instruction(vtx);
@@ -356,17 +349,14 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
    const unsigned location_offset = chip_class() < ISA_CC_EVERGREEN ? 32 : 0;
    bool uses_interpol_at_centroid = false;
 
-   unsigned location = nir_intrinsic_io_semantics(intr).location + index->u32;
+   auto location =
+      static_cast<gl_varying_slot>(nir_intrinsic_io_semantics(intr).location + index->u32);
    unsigned driver_location = nir_intrinsic_base(intr) + index->u32;
-   auto semantic = r600_get_varying_semantic(location);
-   tgsi_semantic name = (tgsi_semantic)semantic.first;
-   unsigned sid = semantic.second;
 
    if (location == VARYING_SLOT_POS) {
       m_sv_values.set(es_pos);
       m_pos_driver_loc = driver_location + location_offset;
-      ShaderInput pos_input(m_pos_driver_loc, name);
-      pos_input.set_sid(sid);
+      ShaderInput pos_input(m_pos_driver_loc, location);
       pos_input.set_interpolator(TGSI_INTERPOLATE_LINEAR,
                                  TGSI_INTERPOLATE_LOC_CENTER,
                                  false);
@@ -377,14 +367,17 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
    if (location == VARYING_SLOT_FACE) {
       m_sv_values.set(es_face);
       m_face_driver_loc = driver_location + location_offset;
-      ShaderInput face_input(m_face_driver_loc, name);
-      face_input.set_sid(sid);
+      ShaderInput face_input(m_face_driver_loc, location);
       add_input(face_input);
       return true;
    }
 
    tgsi_interpolate_mode tgsi_interpolate = TGSI_INTERPOLATE_CONSTANT;
    tgsi_interpolate_loc tgsi_loc = TGSI_INTERPOLATE_LOC_CENTER;
+
+   const bool is_color =
+      (location >= VARYING_SLOT_COL0 && location <= VARYING_SLOT_COL1) ||
+      (location >= VARYING_SLOT_BFC0 && location <= VARYING_SLOT_BFC1);
 
    if (index_src_id > 0) {
       glsl_interp_mode mode = INTERP_MODE_NONE;
@@ -412,7 +405,7 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
 
       switch (mode) {
       case INTERP_MODE_NONE:
-         if (name == TGSI_SEMANTIC_COLOR || name == TGSI_SEMANTIC_BCOLOR) {
+         if (is_color) {
             tgsi_interpolate = TGSI_INTERPOLATE_COLOR;
             break;
          }
@@ -425,49 +418,37 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
          break;
       case INTERP_MODE_FLAT:
          break;
-      case INTERP_MODE_COLOR:
-         tgsi_interpolate = TGSI_INTERPOLATE_COLOR;
-         break;
       case INTERP_MODE_EXPLICIT:
       default:
          assert(0);
       }
    }
 
-   switch (name) {
-   case TGSI_SEMANTIC_PRIMID:
+   if (location == VARYING_SLOT_PRIMITIVE_ID) {
       m_gs_prim_id_input = true;
-      m_ps_prim_id_input = ninputs();
-      FALLTHROUGH;
-   case TGSI_SEMANTIC_COLOR:
-   case TGSI_SEMANTIC_BCOLOR:
-   case TGSI_SEMANTIC_FOG:
-   case TGSI_SEMANTIC_GENERIC:
-   case TGSI_SEMANTIC_TEXCOORD:
-   case TGSI_SEMANTIC_LAYER:
-   case TGSI_SEMANTIC_PCOORD:
-   case TGSI_SEMANTIC_VIEWPORT_INDEX:
-   case TGSI_SEMANTIC_CLIPDIST: {
-      sfn_log << SfnLog::io << " have IO at " << driver_location << "\n";
-      auto iinput = find_input(driver_location);
-      if (iinput == input_not_found()) {
-         ShaderInput input(driver_location, name);
-         input.set_sid(sid);
-         input.set_need_lds_pos();
-         input.set_interpolator(tgsi_interpolate, tgsi_loc, uses_interpol_at_centroid);
-         sfn_log << SfnLog::io << "add IO with LDS ID at " << input.location() << "\n";
-         add_input(input);
-         assert(find_input(input.location()) != input_not_found());
-      } else {
-         if (uses_interpol_at_centroid) {
-            iinput->second.set_uses_interpolate_at_centroid();
-         }
-      }
-      return true;
-   }
-   default:
+   } else if (!(is_color || (location >= VARYING_SLOT_VAR0 && location < VARYING_SLOT_MAX) ||
+                (location >= VARYING_SLOT_TEX0 && location <= VARYING_SLOT_TEX7) ||
+                (location >= VARYING_SLOT_CLIP_DIST0 && location <= VARYING_SLOT_CLIP_DIST1) ||
+                location == VARYING_SLOT_FOGC || location == VARYING_SLOT_LAYER ||
+                location == VARYING_SLOT_PNTC || location == VARYING_SLOT_VIEWPORT)) {
       return false;
    }
+
+   sfn_log << SfnLog::io << " have IO at " << driver_location << "\n";
+   auto iinput = find_input(driver_location);
+   if (iinput == input_not_found()) {
+      ShaderInput input(driver_location, location);
+      input.set_need_lds_pos();
+      input.set_interpolator(tgsi_interpolate, tgsi_loc, uses_interpol_at_centroid);
+      sfn_log << SfnLog::io << "add IO with LDS ID at " << input.location() << "\n";
+      add_input(input);
+      assert(find_input(input.location()) != input_not_found());
+   } else {
+      if (uses_interpol_at_centroid) {
+         iinput->second.set_uses_interpolate_at_centroid();
+      }
+   }
+   return true;
 }
 
 bool
@@ -500,7 +481,8 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
        (semantics.location >= FRAG_RESULT_DATA0 &&
         semantics.location <= FRAG_RESULT_DATA7)) {
 
-      ShaderOutput output(driver_location, TGSI_SEMANTIC_COLOR, write_mask);
+      ShaderOutput output(driver_location, write_mask);
+      output.set_frag_result(static_cast<gl_frag_result>(semantics.location));
       add_output(output);
 
       unsigned color_outputs =
@@ -508,19 +490,22 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
 
       for (unsigned k = 0; k < color_outputs; ++k) {
 
-         unsigned location =
-            (m_dual_source_blend && (semantics.location == FRAG_RESULT_COLOR)
-                ? semantics.dual_source_blend_index
-                : driver_location) + k;
+         unsigned location = semantics.location - FRAG_RESULT_DATA0;
 
-         sfn_log << SfnLog::io << "Pixel output at loc:" << location << "\n";
+         if (semantics.location == FRAG_RESULT_COLOR)
+            location = driver_location + k;
+
+         if (semantics.dual_source_blend_index)
+            location = semantics.dual_source_blend_index;
+
+         sfn_log << SfnLog::io << "Pixel output at loc:" << location
+                 << "("<< semantics.location << ") of "<< m_max_color_exports<<"\n";
 
          if (location >= m_max_color_exports) {
             sfn_log << SfnLog::io << "Pixel output loc:" << location
                     << " dl:" << driver_location << " skipped  because  we have only "
                     << m_max_color_exports << " CBs\n";
             return true;
-            ;
          }
 
          m_last_pixel_export = new ExportInstr(ExportInstr::pixel, location, value);
@@ -532,13 +517,21 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
 
          /* Hack: force dual source output handling if one color output has a
           * dual_source_blend_index > 0 */
-         if (semantics.location == FRAG_RESULT_COLOR &&
-             semantics.dual_source_blend_index > 0)
+         if (semantics.dual_source_blend_index > 0)
             m_dual_source_blend = true;
 
          if (m_num_color_exports > 1)
             m_fs_write_all = false;
          unsigned mask = (0xfu << (location * 4));
+
+         m_color_export_written_mask |= (1 << location);
+
+         /* If the i-th target format is set, all previous target formats must
+          * be non-zero to avoid hangs. - from radeonsi, seems to apply to eg as well.
+          /*/
+         for (unsigned i = 0; i < location; ++i)
+            mask |= (0x1u << (i * 4));
+
          m_color_export_mask |= mask;
 
          emit_instruction(m_last_pixel_export);
@@ -547,13 +540,9 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
               semantics.location == FRAG_RESULT_STENCIL ||
               semantics.location == FRAG_RESULT_SAMPLE_MASK) {
       emit_instruction(new ExportInstr(ExportInstr::pixel, 61, value));
-      int semantic = TGSI_SEMANTIC_POSITION;
-      if (semantics.location == FRAG_RESULT_STENCIL)
-         semantic = TGSI_SEMANTIC_STENCIL;
-      else if (semantics.location == FRAG_RESULT_SAMPLE_MASK)
-         semantic = TGSI_SEMANTIC_SAMPLEMASK;
 
-      ShaderOutput output(driver_location, semantic, write_mask);
+      ShaderOutput output(driver_location, write_mask);
+      output.set_frag_result(static_cast<gl_frag_result>(semantics.location));
       add_output(output);
 
    } else {
@@ -565,7 +554,7 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
 bool
 FragmentShader::emit_load_sample_pos(nir_intrinsic_instr *instr)
 {
-   auto dest = value_factory().dest_vec4(instr->dest, pin_group);
+   auto dest = value_factory().dest_vec4(instr->def, pin_group);
 
    auto fetch = new LoadFromBuffer(dest,
                                    {0, 1, 2, 3},
@@ -582,6 +571,27 @@ FragmentShader::emit_load_sample_pos(nir_intrinsic_instr *instr)
 void
 FragmentShader::do_finalize()
 {
+   /* On pre-evergreen not emtting something to all color exports that
+    * are enabled might lead to a hang.
+    * see: https://gitlab.freedesktop.org/mesa/mesa/-/issues/9223
+    */
+   if (chip_class() < ISA_CC_EVERGREEN) {
+      unsigned i = 0;
+      unsigned mask = m_color_export_mask;
+
+      while (i < m_max_color_exports && (mask & (1u << (4 * i)))) {
+         if (!(m_color_export_written_mask & (1u << i))) {
+            RegisterVec4 value(0, false, {7, 7, 7, 7});
+            m_last_pixel_export = new ExportInstr(ExportInstr::pixel, i, value);
+            emit_instruction(m_last_pixel_export);
+            m_num_color_exports++;
+            if (m_export_highest < i)
+               m_export_highest = i;
+         }
+         ++i;
+      }
+   }
+
    if (!m_last_pixel_export) {
       RegisterVec4 value(0, false, {7, 7, 7, 7});
       m_last_pixel_export = new ExportInstr(ExportInstr::pixel, 0, value);
@@ -658,22 +668,14 @@ FragmentShaderR600::load_input_hw(nir_intrinsic_instr *intr)
 {
    auto& vf = value_factory();
    AluInstr *ir = nullptr;
-   for (unsigned i = 0; i < nir_dest_num_components(intr->dest); ++i) {
+   for (unsigned i = 0; i < intr->def.num_components; ++i) {
       sfn_log << SfnLog::io << "Inject register "
               << *m_interpolated_inputs[nir_intrinsic_base(intr)][i] << "\n";
       unsigned index = nir_intrinsic_component(intr) + i;
       assert(index < 4);
-      if (intr->dest.is_ssa) {
-         vf.inject_value(intr->dest,
-                         i,
-                         m_interpolated_inputs[nir_intrinsic_base(intr)][index]);
-      } else {
-         ir = new AluInstr(op1_mov,
-                           vf.dest(intr->dest, i, pin_none),
-                           m_interpolated_inputs[nir_intrinsic_base(intr)][index],
-                           AluInstr::write);
-         emit_instruction(ir);
-      }
+      vf.inject_value(intr->def,
+                      i,
+                      m_interpolated_inputs[nir_intrinsic_base(intr)][index]);
    }
    if (ir)
       ir->set_alu_flag(alu_last_instr);
@@ -706,9 +708,9 @@ FragmentShaderEG::load_input_hw(nir_intrinsic_instr *intr)
    auto io = input(nir_intrinsic_base(intr));
    auto comp = nir_intrinsic_component(intr);
 
-   bool need_temp = comp > 0 || !intr->dest.is_ssa;
+   bool need_temp = comp > 0;
    AluInstr *ir = nullptr;
-   for (unsigned i = 0; i < nir_dest_num_components(intr->dest); ++i) {
+   for (unsigned i = 0; i < intr->def.num_components; ++i) {
       if (need_temp) {
          auto tmp = vf.temp_register(comp + i);
          ir =
@@ -718,11 +720,11 @@ FragmentShaderEG::load_input_hw(nir_intrinsic_instr *intr)
                          AluInstr::last_write);
          emit_instruction(ir);
          emit_instruction(new AluInstr(
-            op1_mov, vf.dest(intr->dest, i, pin_chan), tmp, AluInstr::last_write));
+            op1_mov, vf.dest(intr->def, i, pin_chan), tmp, AluInstr::last_write));
       } else {
 
          ir = new AluInstr(op1_interp_load_p0,
-                           vf.dest(intr->dest, i, pin_chan),
+                           vf.dest(intr->def, i, pin_chan),
                            new InlineConstant(ALU_SRC_PARAM_BASE + io.lds_pos(), i),
                            AluInstr::write);
          emit_instruction(ir);
@@ -768,8 +770,8 @@ FragmentShaderEG::process_stage_intrinsic_hw(nir_intrinsic_instr *intr)
    case nir_intrinsic_load_barycentric_pixel:
    case nir_intrinsic_load_barycentric_sample: {
       unsigned ij = barycentric_ij_index(intr);
-      vf.inject_value(intr->dest, 0, m_interpolator[ij].i);
-      vf.inject_value(intr->dest, 1, m_interpolator[ij].j);
+      vf.inject_value(intr->def, 0, m_interpolator[ij].i);
+      vf.inject_value(intr->def, 1, m_interpolator[ij].j);
       return true;
    }
    case nir_intrinsic_load_barycentric_at_offset:
@@ -788,11 +790,11 @@ FragmentShaderEG::load_interpolated_input_hw(nir_intrinsic_instr *intr)
    ASSERTED auto param = nir_src_as_const_value(intr->src[1]);
    assert(param && "Indirect PS inputs not (yet) supported");
 
-   int dest_num_comp = nir_dest_num_components(intr->dest);
+   int dest_num_comp = intr->def.num_components;
    int start_comp = nir_intrinsic_component(intr);
-   bool need_temp = start_comp > 0 || !intr->dest.is_ssa;
+   bool need_temp = start_comp > 0;
 
-   auto dst = need_temp ? vf.temp_vec4(pin_chan) : vf.dest_vec4(intr->dest, pin_chan);
+   auto dst = need_temp ? vf.temp_vec4(pin_chan) : vf.dest_vec4(intr->def, pin_chan);
 
    InterpolateParams params;
 
@@ -805,8 +807,8 @@ FragmentShaderEG::load_interpolated_input_hw(nir_intrinsic_instr *intr)
 
    if (need_temp) {
       AluInstr *ir = nullptr;
-      for (unsigned i = 0; i < nir_dest_num_components(intr->dest); ++i) {
-         auto real_dst = vf.dest(intr->dest, i, pin_chan);
+      for (unsigned i = 0; i < intr->def.num_components; ++i) {
+         auto real_dst = vf.dest(intr->def, i, pin_chan);
          ir = new AluInstr(op1_mov, real_dst, dst[i + start_comp], AluInstr::write);
          emit_instruction(ir);
       }
@@ -918,13 +920,13 @@ FragmentShaderEG::load_barycentric_at_sample(nir_intrinsic_instr *instr)
       op3_muladd, tmp1, grad[1], slope[2], interpolator.i, {alu_write, alu_last_instr}));
 
    emit_instruction(new AluInstr(op3_muladd,
-                                 vf.dest(instr->dest, 0, pin_none),
+                                 vf.dest(instr->def, 0, pin_none),
                                  grad[3],
                                  slope[3],
                                  tmp1,
                                  {alu_write}));
    emit_instruction(new AluInstr(op3_muladd,
-                                 vf.dest(instr->dest, 1, pin_none),
+                                 vf.dest(instr->def, 1, pin_none),
                                  grad[2],
                                  slope[3],
                                  tmp0,
@@ -969,9 +971,9 @@ FragmentShaderEG::load_barycentric_at_offset(nir_intrinsic_instr *instr)
    emit_instruction(new AluInstr(
       op3_muladd, tmp1, help[1], ofs_x, interpolator.i, {alu_write, alu_last_instr}));
    emit_instruction(new AluInstr(
-      op3_muladd, vf.dest(instr->dest, 0, pin_none), help[3], ofs_y, tmp1, {alu_write}));
+      op3_muladd, vf.dest(instr->def, 0, pin_none), help[3], ofs_y, tmp1, {alu_write}));
    emit_instruction(new AluInstr(op3_muladd,
-                                 vf.dest(instr->dest, 1, pin_none),
+                                 vf.dest(instr->def, 1, pin_none),
                                  help[2],
                                  ofs_y,
                                  tmp0,

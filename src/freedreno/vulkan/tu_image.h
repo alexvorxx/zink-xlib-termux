@@ -25,7 +25,7 @@ struct tu_image
    struct fdl_layout layout[3];
    uint32_t total_size;
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
    /* For VK_ANDROID_native_buffer, the WSI image owns the memory, */
    VkDeviceMemory owned_memory;
 #endif
@@ -90,6 +90,7 @@ enum pipe_format tu_format_for_aspect(enum pipe_format format,
 void
 tu_cs_image_ref(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer);
 
+template <chip CHIP>
 void
 tu_cs_image_ref_2d(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer, bool src);
 

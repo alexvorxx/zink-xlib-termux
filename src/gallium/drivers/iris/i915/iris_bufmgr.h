@@ -25,10 +25,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "isl/isl.h"
+
 struct iris_bo;
 struct iris_bufmgr;
 
 bool iris_i915_bo_busy_gem(struct iris_bo *bo);
 int iris_i915_bo_wait_gem(struct iris_bo *bo, int64_t timeout_ns);
+int iris_i915_bo_get_tiling(struct iris_bo *bo, uint32_t *tiling);
+int iris_i915_bo_set_tiling(struct iris_bo *bo, const struct isl_surf *surf);
 
 bool iris_i915_init_global_vm(struct iris_bufmgr *bufmgr, uint32_t *vm_id);

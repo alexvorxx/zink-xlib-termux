@@ -28,10 +28,10 @@
 
 #include "main/mtypes.h"
 
+#include "compiler/glsl_types.h"
 #include "compiler/glsl/standalone.h"
 #include "compiler/glsl/glsl_to_nir.h"
 #include "compiler/glsl/gl_nir.h"
-#include "compiler/nir_types.h"
 
 #include "lima_context.h"
 #include "lima_program.h"
@@ -113,6 +113,8 @@ load_glsl(unsigned num_files, char* const* files, gl_shader_stage stage)
    lima_do_glsl_optimizations(prog->_LinkedShaders[stage]->ir);
 
    nir_shader *nir = glsl_to_nir(&local_ctx.Const, prog, stage, nir_options);
+
+   gl_nir_inline_functions(nir);
 
    /* required NIR passes: */
    if (nir_options->lower_all_io_to_temps ||

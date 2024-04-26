@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __AGX_NIR_LOWER_VBO_H
-#define __AGX_NIR_LOWER_VBO_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -23,6 +22,7 @@ extern "C" {
  */
 struct agx_attribute {
    uint32_t divisor;
+   uint32_t stride;
    uint16_t src_offset;
    uint8_t buf;
 
@@ -30,17 +30,9 @@ struct agx_attribute {
    uint8_t format;
 };
 
-struct agx_vbufs {
-   unsigned count;
-   uint32_t strides[AGX_MAX_VBUFS];
-   struct agx_attribute attributes[AGX_MAX_ATTRIBS];
-};
-
-bool agx_nir_lower_vbo(nir_shader *shader, struct agx_vbufs *vbufs);
+bool agx_nir_lower_vbo(nir_shader *shader, struct agx_attribute *attribs);
 bool agx_vbo_supports_format(enum pipe_format format);
 
 #ifdef __cplusplus
 } /* extern C */
-#endif
-
 #endif

@@ -1,7 +1,7 @@
 
 [[deqp]]
 deqp = "/deqp/modules/gles31/deqp-gles31"
-caselists = ["/deqp/mustpass/gles31-master.txt"]
+caselists = ["/deqp/mustpass/gles31-main.txt"]
 skips = ["install/llvmpipe-skips.txt"]
 deqp_args = [
     "--deqp-surface-width=256", "--deqp-surface-height=256",
@@ -11,4 +11,4 @@ fraction = 10
 version_check = "GL ES 3.2.*git"
 renderer_check = "llvmpipe"
   [deqp.env]
-  LD_PRELOAD = "libasan.so.6"
+  LD_PRELOAD = "libasan.so.8"

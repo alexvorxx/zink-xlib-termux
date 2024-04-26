@@ -51,17 +51,19 @@ vtest
 The simplest way to test Venus is to use virglrenderer's vtest server.  To
 build virglrenderer with Venus support and to start the vtest server,
 
-.. code-block:: console
+.. code-block:: sh
 
     $ git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git
     $ cd virglrenderer
     $ meson out -Dvenus=true
-    $ ninja -C out
-    $ ./out/vtest/virgl_test_server --venus
+    $ meson compile -C out
+    $ meson devenv -C out
+    $ ./vtest/virgl_test_server --venus
+    $ exit
 
 In another shell,
 
-.. code-block:: console
+.. code-block:: sh
 
     $ export VK_ICD_FILENAMES=<path-to-virtio_icd.x86_64.json>
     $ export VN_DEBUG=vtest
@@ -82,7 +84,7 @@ driver, which was upstreamed in kernel 5.16.
 crosvm is written in Rust.  To build crosvm, make sure Rust has been installed
 and
 
-.. code-block:: console
+.. code-block:: sh
 
  $ git clone --recurse-submodules \
        https://chromium.googlesource.com/chromiumos/platform/crosvm
@@ -95,16 +97,14 @@ Note that crosvm must be built with ``default-no-sandbox`` or started with
 
 This is how one might want to start crosvm
 
-.. code-block:: console
+.. code-block:: sh
 
  $ sudo LD_LIBRARY_PATH=<...> VK_ICD_FILENAMES=<...> ./target/debug/crosvm run \
        --gpu vulkan=true \
        --gpu-render-server path=<path-to-virglrenderer>/out/server/virgl_render_server \
        --display-window-keyboard \
        --display-window-mouse \
-       --host_ip 192.168.0.1 \
-       --netmask 255.255.255.0 \
-       --mac 12:34:56:78:9a:bc \
+       --net "host-ip 192.168.0.1,netmask=255.255.255.0,mac=12:34:56:78:9a:bc" \
        --rwdisk disk.img \
        -p root=/dev/vda1 \
        <path-to-bzImage>
@@ -126,14 +126,14 @@ the `Chrome OS kernel
 
 To build minigbm and to enable minigbm support in virglrenderer,
 
-.. code-block:: console
+.. code-block:: sh
 
  $ git clone https://chromium.googlesource.com/chromiumos/platform/minigbm
  $ cd minigbm
  $ CFLAGS=-DDRV_<I915-or-your-driver> OUT=out DESTDIR=out/install make install
  $ cd ../virglrenderer
  $ meson configure out -Dminigbm_allocation=true
- $ ninja -C out
+ $ meson compile -C out
 
 Make sure a host Wayland compositor is running.  Replace
 ``--display-window-keyboard --display-window-mouse`` by
@@ -141,12 +141,12 @@ Make sure a host Wayland compositor is running.  Replace
 
 In the guest, build and start sommelier, the special Wayland compositor,
 
-.. code-block:: console
+.. code-block:: sh
 
  $ git clone https://chromium.googlesource.com/chromiumos/platform2
  $ cd platform2/vm_tools/sommelier
  $ meson out -Dxwayland_path=/usr/bin/Xwayland -Dxwayland_gl_driver_path=/usr/lib/dri
- $ ninja -C out
+ $ meson compile -C out
  $ sudo chmod 777 /dev/wl0
  $ ./out/sommelier -X --glamor
        --xwayland-gl-driver-path=<path-to-locally-built-gl-driver> \

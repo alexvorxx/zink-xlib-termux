@@ -25,7 +25,6 @@
 #include "rmv/vk_rmv_tokens.h"
 #include "radv_private.h"
 #include "vk_common_entrypoints.h"
-#include "wsi_common_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 rmv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
@@ -34,27 +33,20 @@ rmv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
    struct radv_device *device = queue->device;
 
    VkResult res = queue->device->layer_dispatch.rmv.QueuePresentKHR(_queue, pPresentInfo);
-   if (res != VK_SUCCESS || !device->vk.memory_trace_data.is_enabled)
+   if ((res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) || !device->vk.memory_trace_data.is_enabled)
       return res;
 
    vk_rmv_log_misc_token(&device->vk, VK_RMV_MISC_EVENT_TYPE_PRESENT);
-
-   simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
-   radv_rmv_collect_trace_events(device);
-   vk_rmv_handle_present_locked(&device->vk);
-   simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
 
    return VK_SUCCESS;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-rmv_FlushMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
-                            const VkMappedMemoryRange *pMemoryRanges)
+rmv_FlushMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, const VkMappedMemoryRange *pMemoryRanges)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
 
-   VkResult res =
-      device->layer_dispatch.rmv.FlushMappedMemoryRanges(_device, memoryRangeCount, pMemoryRanges);
+   VkResult res = device->layer_dispatch.rmv.FlushMappedMemoryRanges(_device, memoryRangeCount, pMemoryRanges);
    if (res != VK_SUCCESS || !device->vk.memory_trace_data.is_enabled)
       return res;
 
@@ -64,31 +56,17 @@ rmv_FlushMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-rmv_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
-                                 const VkMappedMemoryRange *pMemoryRanges)
+rmv_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, const VkMappedMemoryRange *pMemoryRanges)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
 
-   VkResult res = device->layer_dispatch.rmv.InvalidateMappedMemoryRanges(_device, memoryRangeCount,
-                                                                          pMemoryRanges);
+   VkResult res = device->layer_dispatch.rmv.InvalidateMappedMemoryRanges(_device, memoryRangeCount, pMemoryRanges);
    if (res != VK_SUCCESS || !device->vk.memory_trace_data.is_enabled)
       return res;
 
    vk_rmv_log_misc_token(&device->vk, VK_RMV_MISC_EVENT_TYPE_INVALIDATE_RANGES);
 
    return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-rmv_DebugMarkerSetObjectNameEXT(VkDevice device, const VkDebugMarkerObjectNameInfoEXT *pNameInfo)
-{
-   assert(pNameInfo->sType == VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT);
-   VkDebugUtilsObjectNameInfoEXT name_info;
-   name_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-   name_info.objectType = pNameInfo->objectType;
-   name_info.objectHandle = pNameInfo->object;
-   name_info.pObjectName = pNameInfo->pObjectName;
-   return rmv_SetDebugUtilsObjectNameEXT(device, &name_info);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

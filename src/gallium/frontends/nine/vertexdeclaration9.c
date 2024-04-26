@@ -1,24 +1,7 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "vertexdeclaration9.h"
 #include "vertexbuffer9.h"
@@ -90,7 +73,7 @@ static inline unsigned decltype_size(BYTE type)
  * simple lookup table won't work in that case. Let's just wait
  * with making this more generic until we need it.
  */
-static inline boolean
+static inline bool
 nine_d3ddeclusage_check(unsigned usage, unsigned usage_idx)
 {
     switch (usage) {
@@ -104,7 +87,7 @@ nine_d3ddeclusage_check(unsigned usage, unsigned usage_idx)
     case D3DDECLUSAGE_BLENDWEIGHT:
     case D3DDECLUSAGE_BLENDINDICES:
     case D3DDECLUSAGE_COLOR:
-        return TRUE;
+        return true;
     case D3DDECLUSAGE_PSIZE:
     case D3DDECLUSAGE_FOG:
     case D3DDECLUSAGE_SAMPLE:
@@ -112,7 +95,7 @@ nine_d3ddeclusage_check(unsigned usage, unsigned usage_idx)
     case D3DDECLUSAGE_TEXCOORD:
         return usage_idx <= 15;
     default:
-        return FALSE;
+        return false;
     }
 }
 
@@ -204,7 +187,7 @@ NineVertexDeclaration9_ctor( struct NineVertexDeclaration9 *This,
         This->usage_map[i] = usage;
 
         if (This->decls[i].Usage == D3DDECLUSAGE_POSITIONT)
-            This->position_t = TRUE;
+            This->position_t = true;
 
         This->elems[i].src_offset = This->decls[i].Offset;
         This->elems[i].instance_divisor = 0;

@@ -22,6 +22,7 @@
  */
 
 #undef _FILE_OFFSET_BITS /* prevent #define open open64 */
+#undef _TIME_BITS
 
 #include <string.h>
 #include <stdlib.h>
@@ -43,7 +44,7 @@
 
 #define MESA_LOG_TAG "INTEL-SANITIZE-GPU"
 #include "util/log.h"
-#include "common/intel_clflush.h"
+#include "common/intel_mem.h"
 
 static int (*libc_open)(const char *pathname, int flags, mode_t mode);
 static int (*libc_close)(int fd);

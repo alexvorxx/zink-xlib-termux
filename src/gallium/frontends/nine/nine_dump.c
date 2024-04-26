@@ -1,3 +1,7 @@
+/*
+ * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
+ * SPDX-License-Identifier: MIT
+ */
 
 #include "nine_debug.h"
 #include "nine_pipe.h"

@@ -27,7 +27,7 @@
 #include "vk_common_entrypoints.h"
 #include "vk_util.h"
 
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
 #include <vndk/hardware_buffer.h>
 #endif
 
@@ -43,7 +43,6 @@ vk_device_memory_create(struct vk_device *device,
       return NULL;
 
    assert(pAllocateInfo->sType == VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO);
-   assert(pAllocateInfo->allocationSize > 0);
 
    mem->size = pAllocateInfo->allocationSize;
    mem->memory_type_index = pAllocateInfo->memoryTypeIndex;
@@ -57,7 +56,7 @@ vk_device_memory_create(struct vk_device *device,
       }
 
       case VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID: {
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
          const VkImportAndroidHardwareBufferInfoANDROID *ahb_info = (void *)ext;
 
          assert(mem->import_handle_type == 0);
@@ -81,7 +80,7 @@ vk_device_memory_create(struct vk_device *device,
          break;
 #else
          unreachable("AHardwareBuffer import requires Android >= 26");
-#endif /* ANDROID_API_LEVEL >= 26 */
+#endif /* DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26 */
       }
 
       case VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR: {
@@ -138,6 +137,29 @@ vk_device_memory_create(struct vk_device *device,
       }
    }
 
+   /* From the Vulkan Specification 1.3.261:
+    *
+    *    VUID-VkMemoryAllocateInfo-allocationSize-07897
+    *
+    *   "If the parameters do not define an import or export operation,
+    *   allocationSize must be greater than 0."
+    */
+   if (!mem->import_handle_type && !mem->export_handle_types)
+      assert(pAllocateInfo->allocationSize > 0);
+
+   /* From the Vulkan Specification 1.3.261:
+    *
+    *    VUID-VkMemoryAllocateInfo-allocationSize-07899
+    *
+    *    "If the parameters define an export operation and the handle type is
+    *    not VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+    *    allocationSize must be greater than 0."
+    */
+    if (mem->export_handle_types &&
+        mem->export_handle_types !=
+          VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID)
+      assert(pAllocateInfo->allocationSize > 0);
+
    if ((mem->export_handle_types &
         VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) &&
        mem->ahardware_buffer == NULL) {
@@ -159,15 +181,16 @@ vk_device_memory_destroy(struct vk_device *device,
                          const VkAllocationCallbacks *alloc,
                          struct vk_device_memory *mem)
 {
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
    if (mem->ahardware_buffer)
       AHardwareBuffer_release(mem->ahardware_buffer);
-#endif /* ANDROID_API_LEVEL >= 26 */
+#endif /* DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26 */
 
    vk_object_free(device, alloc, mem);
 }
 
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
 VkResult
 vk_common_GetMemoryAndroidHardwareBufferANDROID(
    VkDevice _device,
@@ -193,6 +216,6 @@ vk_common_GetMemoryAndroidHardwareBufferANDROID(
       return VK_SUCCESS;
    }
 
-   return VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR;
+   return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 }
 #endif

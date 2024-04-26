@@ -1,25 +1,8 @@
 /*
  * Copyright 2011 Joakim Sindholt <opensource@zhasha.com>
  * Copyright 2015 Patrick Rudolph <siro@das-labor.org>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef _NINE_BUFFER9_H_
 #define _NINE_BUFFER9_H_
@@ -58,14 +41,14 @@ struct NineBuffer9
     int16_t bind_count; /* to Device9->state.stream */
     /* Whether only discard and nooverwrite were used so far
      * for this buffer. Allows some optimization. */
-    boolean discard_nooverwrite_only;
-    boolean need_sync_if_nooverwrite;
+    bool discard_nooverwrite_only;
+    bool need_sync_if_nooverwrite;
     struct nine_subbuffer *buf;
 
     /* Specific to managed buffers */
     struct {
         void *data;
-        boolean dirty;
+        bool dirty;
         struct pipe_box dirty_box; /* region in the resource to update */
         struct pipe_box upload_pending_regions; /* region with uploads pending */
         struct list_head list; /* for update_buffers */

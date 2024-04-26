@@ -30,13 +30,18 @@ gen_xml_files = [
   'gen11.xml',
   'gen12.xml',
   'gen125.xml',
+  'gen20.xml',
 ]
 
 gen_xml_rt_files = [
   'gen125_rt.xml',
+  'gen20_rt.xml',
 ]
 
-gen_pack_header_deps = files('util.py')
+gen_pack_header_deps = files('intel_genxml.py', 'util.py')
+foreach f : gen_xml_files + gen_xml_rt_files
+  gen_pack_header_deps += files(f)
+endforeach
 
 genX_xml_h = custom_target(
   'genX_xml.h',
@@ -74,6 +79,11 @@ genX_bits_included_symbols = [
   'RENDER_SURFACE_STATE::Green Clear Color',
   'RENDER_SURFACE_STATE::Blue Clear Color',
   'RENDER_SURFACE_STATE::Alpha Clear Color',
+  'RENDER_SURFACE_STATE::Width',
+  'RENDER_SURFACE_STATE::Height',
+  'RENDER_SURFACE_STATE::Depth',
+  'RENDER_SURFACE_STATE::Surface Type',
+  'RENDER_SURFACE_STATE::Render Target View Extent',
   'CLEAR_COLOR',
   'VERTEX_BUFFER_STATE::Buffer Starting Address',
   'CPS_STATE',
@@ -107,9 +117,40 @@ foreach f : gen_xml_files + gen_xml_rt_files
   )
 endforeach
 
+genX_cl_included_symbols = [
+  # instructions
+  '3DSTATE_INDEX_BUFFER',
+  '3DSTATE_VERTEX_BUFFERS',
+  '3DPRIMITIVE',
+  '3DPRIMITIVE_EXTENDED',
+  'MI_ARB_CHECK',
+  'MI_BATCH_BUFFER_START',
+  # structures
+  'VERTEX_BUFFER_STATE',
+]
+
+gen_cl_xml_pack = []
+foreach f : gen_xml_files + gen_xml_rt_files
+  _name = '@0@_cl_pack.h'.format(f.split('.')[0])
+  gen_cl_xml_pack += custom_target(
+    _name,
+    input : ['gen_pack_header.py', f],
+    output : _name,
+    command : [prog_python, '@INPUT@', '--engines=render,blitter,video',
+               '--opencl', '--repack',
+               '--include-symbols', ','.join(genX_cl_included_symbols)],
+    capture : true,
+    depend_files: gen_pack_header_deps
+  )
+endforeach
+
 gen_pack_header_py = files('gen_pack_header.py')
 
-idep_genxml = declare_dependency(sources : [gen_xml_pack, genX_bits_h, genX_xml_h])
+idep_genxml = declare_dependency(
+  include_directories : include_directories('.'),
+  dependencies : idep_mesautil,
+  sources : [gen_xml_pack, gen_cl_xml_pack, genX_bits_h, genX_xml_h]
+)
 
 foreach f : gen_xml_files + gen_xml_rt_files
   test(

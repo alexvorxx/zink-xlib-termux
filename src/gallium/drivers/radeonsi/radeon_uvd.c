@@ -1,27 +1,8 @@
 /**************************************************************************
  *
  * Copyright 2011 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR
- * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *
  **************************************************************************/
 
@@ -106,6 +87,14 @@ static int ruvd_dec_get_decoder_fence(struct pipe_video_codec *decoder,
    return dec->ws->fence_wait(dec->ws, fence, timeout);
 }
 
+static void ruvd_dec_destroy_fence(struct pipe_video_codec *decoder,
+                                   struct pipe_fence_handle *fence)
+{
+   struct ruvd_decoder *dec = (struct ruvd_decoder *)decoder;
+
+   dec->ws->fence_reference(dec->ws, &fence, NULL);
+}
+
 /* add a new set register command to the IB */
 static void set_reg(struct ruvd_decoder *dec, unsigned reg, uint32_t val)
 {
@@ -114,7 +103,7 @@ static void set_reg(struct ruvd_decoder *dec, unsigned reg, uint32_t val)
 }
 
 /* send a command to the VCPU through the GPCOM registers */
-static void send_cmd(struct ruvd_decoder *dec, unsigned cmd, struct pb_buffer *buf, uint32_t off,
+static void send_cmd(struct ruvd_decoder *dec, unsigned cmd, struct pb_buffer_lean *buf, uint32_t off,
                      unsigned usage, enum radeon_bo_domain domain)
 {
    int reloc_idx;
@@ -237,35 +226,35 @@ static unsigned calc_ctx_size_h264_perf(struct ruvd_decoder *dec)
 
    if (!dec->use_legacy) {
       unsigned fs_in_mb = width_in_mb * height_in_mb;
-      unsigned num_dpb_buffer;
+      unsigned num_dpb_buffer_lean;
       switch (dec->base.level) {
       case 30:
-         num_dpb_buffer = 8100 / fs_in_mb;
+         num_dpb_buffer_lean = 8100 / fs_in_mb;
          break;
       case 31:
-         num_dpb_buffer = 18000 / fs_in_mb;
+         num_dpb_buffer_lean = 18000 / fs_in_mb;
          break;
       case 32:
-         num_dpb_buffer = 20480 / fs_in_mb;
+         num_dpb_buffer_lean = 20480 / fs_in_mb;
          break;
       case 41:
-         num_dpb_buffer = 32768 / fs_in_mb;
+         num_dpb_buffer_lean = 32768 / fs_in_mb;
          break;
       case 42:
-         num_dpb_buffer = 34816 / fs_in_mb;
+         num_dpb_buffer_lean = 34816 / fs_in_mb;
          break;
       case 50:
-         num_dpb_buffer = 110400 / fs_in_mb;
+         num_dpb_buffer_lean = 110400 / fs_in_mb;
          break;
       case 51:
-         num_dpb_buffer = 184320 / fs_in_mb;
+         num_dpb_buffer_lean = 184320 / fs_in_mb;
          break;
       default:
-         num_dpb_buffer = 184320 / fs_in_mb;
+         num_dpb_buffer_lean = 184320 / fs_in_mb;
          break;
       }
-      num_dpb_buffer++;
-      max_references = MAX2(MIN2(NUM_H264_REFS, num_dpb_buffer), max_references);
+      num_dpb_buffer_lean++;
+      max_references = MAX2(MIN2(NUM_H264_REFS, num_dpb_buffer_lean), max_references);
       ctx_size = max_references * align(width_in_mb * height_in_mb * 192, 256);
    } else {
       // the firmware seems to always assume a minimum of ref frames
@@ -362,38 +351,38 @@ static unsigned calc_dpb_size(struct ruvd_decoder *dec)
    case PIPE_VIDEO_FORMAT_MPEG4_AVC: {
       if (!dec->use_legacy) {
          unsigned fs_in_mb = width_in_mb * height_in_mb;
-         unsigned alignment = 64, num_dpb_buffer;
+         unsigned alignment = 64, num_dpb_buffer_lean;
 
          if (dec->stream_type == RUVD_CODEC_H264_PERF)
             alignment = 256;
          switch (dec->base.level) {
          case 30:
-            num_dpb_buffer = 8100 / fs_in_mb;
+            num_dpb_buffer_lean = 8100 / fs_in_mb;
             break;
          case 31:
-            num_dpb_buffer = 18000 / fs_in_mb;
+            num_dpb_buffer_lean = 18000 / fs_in_mb;
             break;
          case 32:
-            num_dpb_buffer = 20480 / fs_in_mb;
+            num_dpb_buffer_lean = 20480 / fs_in_mb;
             break;
          case 41:
-            num_dpb_buffer = 32768 / fs_in_mb;
+            num_dpb_buffer_lean = 32768 / fs_in_mb;
             break;
          case 42:
-            num_dpb_buffer = 34816 / fs_in_mb;
+            num_dpb_buffer_lean = 34816 / fs_in_mb;
             break;
          case 50:
-            num_dpb_buffer = 110400 / fs_in_mb;
+            num_dpb_buffer_lean = 110400 / fs_in_mb;
             break;
          case 51:
-            num_dpb_buffer = 184320 / fs_in_mb;
+            num_dpb_buffer_lean = 184320 / fs_in_mb;
             break;
          default:
-            num_dpb_buffer = 184320 / fs_in_mb;
+            num_dpb_buffer_lean = 184320 / fs_in_mb;
             break;
          }
-         num_dpb_buffer++;
-         max_references = MAX2(MIN2(NUM_H264_REFS, num_dpb_buffer), max_references);
+         num_dpb_buffer_lean++;
+         max_references = MAX2(MIN2(NUM_H264_REFS, num_dpb_buffer_lean), max_references);
          dpb_size = image_size * max_references;
          if ((dec->stream_type != RUVD_CODEC_H264_PERF) ||
              (((struct si_screen *)dec->screen)->info.family < CHIP_POLARIS10)) {
@@ -744,7 +733,7 @@ static struct ruvd_h265 get_h265_msg(struct ruvd_decoder *dec, struct pipe_video
 
    for (i = 0; i < 2; i++) {
       for (j = 0; j < 15; j++)
-         result.direct_reflist[i][j] = pic->RefPicList[i][j];
+         result.direct_reflist[i][j] = pic->RefPicList[0][i][j];
    }
 
    if (pic->base.profile == PIPE_VIDEO_PROFILE_HEVC_MAIN_10) {
@@ -1085,7 +1074,7 @@ static void ruvd_end_frame(struct pipe_video_codec *decoder, struct pipe_video_b
                            struct pipe_picture_desc *picture)
 {
    struct ruvd_decoder *dec = (struct ruvd_decoder *)decoder;
-   struct pb_buffer *dt;
+   struct pb_buffer_lean *dt;
    struct rvid_buffer *msg_fb_it_buf, *bs_buf;
    unsigned bs_size;
 
@@ -1270,6 +1259,7 @@ struct pipe_video_codec *si_common_uvd_create_decoder(struct pipe_context *conte
    dec->base.end_frame = ruvd_end_frame;
    dec->base.flush = ruvd_flush;
    dec->base.get_decoder_fence = ruvd_dec_get_decoder_fence;
+   dec->base.destroy_fence = ruvd_dec_destroy_fence;
 
    dec->stream_type = profile2stream_type(dec, sctx->family);
    dec->set_dtb = set_dtb;
@@ -1277,7 +1267,7 @@ struct pipe_video_codec *si_common_uvd_create_decoder(struct pipe_context *conte
    dec->screen = context->screen;
    dec->ws = ws;
 
-   if (!ws->cs_create(&dec->cs, sctx->ctx, AMD_IP_UVD, NULL, NULL, false)) {
+   if (!ws->cs_create(&dec->cs, sctx->ctx, AMD_IP_UVD, NULL, NULL)) {
       RVID_ERR("Can't get command submission context.\n");
       goto error;
    }

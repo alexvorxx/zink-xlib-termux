@@ -102,6 +102,10 @@ static const struct debug_control debug_control[] = {
    { "perf-symbol-names", DEBUG_PERF_SYMBOL_NAMES },
    { "swsb-stall",  DEBUG_SWSB_STALL },
    { "heaps",       DEBUG_HEAPS },
+   { "isl",         DEBUG_ISL },
+   { "sparse",      DEBUG_SPARSE },
+   { "draw_bkp",    DEBUG_DRAW_BKP },
+   { "bat-stats",   DEBUG_BATCH_STATS },
    { NULL,    0 }
 };
 
@@ -111,6 +115,9 @@ static const struct debug_control simd_control[] = {
    { "fs8",    DEBUG_FS_SIMD8 },
    { "fs16",   DEBUG_FS_SIMD16 },
    { "fs32",   DEBUG_FS_SIMD32 },
+   { "fs2x8",  DEBUG_FS_SIMD2X8 },
+   { "fs4x8",  DEBUG_FS_SIMD4X8 },
+   { "fs2x16", DEBUG_FS_SIMD2X16 },
    { "cs8",    DEBUG_CS_SIMD8 },
    { "cs16",   DEBUG_CS_SIMD16 },
    { "cs32",   DEBUG_CS_SIMD32 },
@@ -151,7 +158,8 @@ intel_debug_flag_for_shader_stage(gl_shader_stage stage)
    return flags[stage];
 }
 
-#define DEBUG_FS_SIMD  (DEBUG_FS_SIMD8  | DEBUG_FS_SIMD16  | DEBUG_FS_SIMD32)
+#define DEBUG_FS_SIMD  (DEBUG_FS_SIMD8  | DEBUG_FS_SIMD16  | \
+                        DEBUG_FS_SIMD32)
 #define DEBUG_CS_SIMD  (DEBUG_CS_SIMD8  | DEBUG_CS_SIMD16  | DEBUG_CS_SIMD32)
 #define DEBUG_TS_SIMD  (DEBUG_TS_SIMD8  | DEBUG_TS_SIMD16  | DEBUG_TS_SIMD32)
 #define DEBUG_MS_SIMD  (DEBUG_MS_SIMD8  | DEBUG_MS_SIMD16  | DEBUG_MS_SIMD32)
@@ -181,8 +189,11 @@ intel_debug_flag_for_shader_stage(gl_shader_stage stage)
 static uint64_t intel_debug_batch_frame_start = 0;
 static uint64_t intel_debug_batch_frame_stop = -1;
 
+uint32_t intel_debug_bkp_before_draw_count = 0;
+uint32_t intel_debug_bkp_after_draw_count = 0;
+
 static void
-brw_process_intel_debug_variable_once(void)
+process_intel_debug_variable_once(void)
 {
    intel_debug = parse_debug_string(getenv("INTEL_DEBUG"), debug_control);
    intel_simd = parse_debug_string(getenv("INTEL_SIMD_DEBUG"), simd_control);
@@ -191,6 +202,10 @@ brw_process_intel_debug_variable_once(void)
    intel_debug_batch_frame_stop =
       debug_get_num_option("INTEL_DEBUG_BATCH_FRAME_STOP", -1);
 
+   intel_debug_bkp_before_draw_count =
+      debug_get_num_option("INTEL_DEBUG_BKP_BEFORE_DRAW_COUNT", 0);
+   intel_debug_bkp_after_draw_count =
+      debug_get_num_option("INTEL_DEBUG_BKP_AFTER_DRAW_COUNT", 0);
 
    if (!(intel_simd & DEBUG_FS_SIMD))
       intel_simd |=   DEBUG_FS_SIMD;
@@ -213,12 +228,12 @@ brw_process_intel_debug_variable_once(void)
 }
 
 void
-brw_process_intel_debug_variable(void)
+process_intel_debug_variable(void)
 {
    static once_flag process_intel_debug_variable_flag = ONCE_FLAG_INIT;
 
    call_once(&process_intel_debug_variable_flag,
-             brw_process_intel_debug_variable_once);
+             process_intel_debug_variable_once);
 }
 
 static uint64_t debug_identifier[4] = {

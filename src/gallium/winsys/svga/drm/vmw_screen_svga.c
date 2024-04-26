@@ -1,5 +1,5 @@
 /**********************************************************
- * Copyright 2009-2015 VMware, Inc.  All rights reserved.
+ * Copyright 2009-2023 VMware, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -107,8 +107,8 @@ typedef struct MKSGuestStatCounterTime {
 #define MKS_GUEST_STAT_FLAG_NONE    0
 #define MKS_GUEST_STAT_FLAG_TIME    (1U << 0)
 
-typedef __attribute__((aligned(32))) struct MKSGuestStatInfoEntry {
-   union {
+typedef struct MKSGuestStatInfoEntry {
+   alignas(32) union {
       const char *s;
       uint64_t u;
    } name;
@@ -123,10 +123,9 @@ typedef __attribute__((aligned(32))) struct MKSGuestStatInfoEntry {
       uint64_t u;
    } stat;
 } MKSGuestStatInfoEntry;
+static_assert(alignof(struct MKSGuestStatInfoEntry) == 32, "");
 
 static thread_local struct svga_winsys_stats_timeframe *mksstat_tls_global = NULL;
-
-#define ALIGN(x, power_of_two) (((x) + (power_of_two) - 1) & ~((power_of_two) - 1))
 
 static const size_t mksstat_area_size_info = sizeof(MKSGuestStatInfoEntry) * (SVGA_STATS_COUNT_MAX + SVGA_STATS_TIME_MAX);
 static const size_t mksstat_area_size_stat = sizeof(MKSGuestStatCounter) * SVGA_STATS_COUNT_MAX +
@@ -136,8 +135,8 @@ size_t
 vmw_svga_winsys_stats_len(void)
 {
    const size_t pg_size = getpagesize();
-   const size_t area_size_stat_pg = ALIGN(mksstat_area_size_stat, pg_size);
-   const size_t area_size_info_pg = ALIGN(mksstat_area_size_info, pg_size);
+   const size_t area_size_stat_pg = align_uintptr(mksstat_area_size_stat, pg_size);
+   const size_t area_size_info_pg = align_uintptr(mksstat_area_size_info, pg_size);
    const size_t area_size_strs = vmw_svga_winsys_stats_names_len();
    const size_t area_size = area_size_stat_pg + area_size_info_pg + area_size_strs;
 
@@ -186,7 +185,7 @@ vmw_mksstat_get_pstat_time(uint8_t *page_addr, size_t page_size)
 static inline MKSGuestStatInfoEntry *
 vmw_mksstat_get_pinfo(uint8_t *page_addr, size_t page_size)
 {
-   const size_t area_size_stat_pg = ALIGN(mksstat_area_size_stat, page_size);
+   const size_t area_size_stat_pg = align_uintptr(mksstat_area_size_stat, page_size);
    return (MKSGuestStatInfoEntry *)(page_addr + area_size_stat_pg);
 }
 
@@ -202,8 +201,8 @@ vmw_mksstat_get_pinfo(uint8_t *page_addr, size_t page_size)
 static inline char *
 vmw_mksstat_get_pstrs(uint8_t *page_addr, const size_t page_size)
 {
-   const size_t area_size_info_pg = ALIGN(mksstat_area_size_info, page_size);
-   const size_t area_size_stat_pg = ALIGN(mksstat_area_size_stat, page_size);
+   const size_t area_size_info_pg = align_uintptr(mksstat_area_size_info, page_size);
+   const size_t area_size_stat_pg = align_uintptr(mksstat_area_size_stat, page_size);
    return (char *)(page_addr + area_size_info_pg + area_size_stat_pg);
 }
 
@@ -384,20 +383,20 @@ vmw_svga_winsys_buffer_create(struct svga_winsys_screen *sws,
 	 return NULL;
       provider = vws->pools.query_fenced;
    } else if (usage == SVGA_BUFFER_USAGE_SHADER) {
-      provider = vws->pools.mob_shader_slab_fenced;
+      provider = vws->pools.dma_slab_fenced;
    } else {
       if (size > VMW_GMR_POOL_SIZE)
          return NULL;
-      provider = vws->pools.gmr_fenced;
+      provider = vws->pools.dma_fenced;
    }
 
    assert(provider);
    buffer = provider->create_buffer(provider, size, &desc.pb_desc);
 
-   if(!buffer && provider == vws->pools.gmr_fenced) {
+   if(!buffer && provider == vws->pools.dma_fenced) {
 
       assert(provider);
-      provider = vws->pools.gmr_slab_fenced;
+      provider = vws->pools.dma_slab_fenced;
       buffer = provider->create_buffer(provider, size, &desc.pb_desc);
    }
 
@@ -445,7 +444,7 @@ vmw_svga_winsys_fence_finish(struct svga_winsys_screen *sws,
 static int
 vmw_svga_winsys_fence_get_fd(struct svga_winsys_screen *sws,
                              struct pipe_fence_handle *fence,
-                             boolean duplicate)
+                             bool duplicate)
 {
    if (duplicate)
       return os_dupfd_cloexec(vmw_fence_get_fd(fence));
@@ -467,7 +466,7 @@ vmw_svga_winsys_fence_server_sync(struct svga_winsys_screen *sws,
                                   int32_t *context_fd,
                                   struct pipe_fence_handle *fence)
 {
-   int32_t fd = sws->fence_get_fd(sws, fence, FALSE);
+   int32_t fd = sws->fence_get_fd(sws, fence, false);
 
    /* If we don't have fd, we don't need to merge fd into the context's fd. */
    if (fd == -1)
@@ -506,7 +505,7 @@ vmw_svga_winsys_surface_create(struct svga_winsys_screen *sws,
    surface->screen = vws;
    (void) mtx_init(&surface->mutex, mtx_plain);
    surface->shared = !!(usage & SVGA_SURFACE_USAGE_SHARED);
-   provider = (surface->shared) ? vws->pools.gmr : vws->pools.mob_fenced;
+   provider = (surface->shared) ? vws->pools.dma_base : vws->pools.dma_fenced;
 
    /*
     * When multisampling is not supported sample count received is 0,
@@ -551,7 +550,7 @@ vmw_svga_winsys_surface_create(struct svga_winsys_screen *sws,
          desc.pb_desc.usage = 0;
          pb_buf = provider->create_buffer(provider, buffer_size, &desc.pb_desc);
          surface->buf = vmw_svga_winsys_buffer_wrap(pb_buf);
-         if (surface->buf && !vmw_gmr_bufmgr_region_ptr(pb_buf, &ptr))
+         if (surface->buf && !vmw_dma_bufmgr_region_ptr(pb_buf, &ptr))
             assert(0);
       }
 
@@ -616,8 +615,8 @@ vmw_svga_winsys_surface_create(struct svga_winsys_screen *sws,
 
       /* Best estimate for surface size, used for early flushing. */
       surface->size = buffer_size;
-      surface->buf = NULL; 
-   }      
+      surface->buf = NULL;
+   }
 
    return svga_winsys_surface(surface);
 
@@ -630,7 +629,7 @@ no_surface:
    return NULL;
 }
 
-static boolean
+static bool
 vmw_svga_winsys_surface_can_create(struct svga_winsys_screen *sws,
                                SVGA3dSurfaceFormat format,
                                SVGA3dSize size,
@@ -641,20 +640,20 @@ vmw_svga_winsys_surface_can_create(struct svga_winsys_screen *sws,
    struct vmw_winsys_screen *vws = vmw_winsys_screen(sws);
    uint32_t buffer_size;
 
-   buffer_size = svga3dsurface_get_serialized_size(format, size, 
-                                                   numMipLevels, 
+   buffer_size = svga3dsurface_get_serialized_size(format, size,
+                                                   numMipLevels,
                                                    numLayers);
    if (numSamples > 1)
       buffer_size *= numSamples;
 
    if (buffer_size > vws->ioctl.max_texture_size) {
-	return FALSE;
+	return false;
    }
-   return TRUE;
+   return true;
 }
 
 
-static boolean
+static bool
 vmw_svga_winsys_surface_is_flushed(struct svga_winsys_screen *sws,
                                    struct svga_winsys_surface *surface)
 {
@@ -697,20 +696,20 @@ vmw_svga_winsys_get_hw_version(struct svga_winsys_screen *sws)
 }
 
 
-static boolean
+static bool
 vmw_svga_winsys_get_cap(struct svga_winsys_screen *sws,
                         SVGA3dDevCapIndex index,
                         SVGA3dDevCapResult *result)
-{   
+{
    struct vmw_winsys_screen *vws = vmw_winsys_screen(sws);
 
    if (index > vws->ioctl.num_cap_3d ||
        index >= SVGA3D_DEVCAP_MAX ||
        !vws->ioctl.cap_3d[index].has_cap)
-      return FALSE;
+      return false;
 
    *result = vws->ioctl.cap_3d[index].result;
-   return TRUE;
+   return true;
 }
 
 struct svga_winsys_gb_shader *
@@ -883,7 +882,7 @@ vmw_svga_winsys_get_fd(struct svga_winsys_screen *sws)
    return vws->ioctl.drm_fd;
 }
 
-boolean
+bool
 vmw_winsys_screen_init_svga(struct vmw_winsys_screen *vws)
 {
    vws->base.destroy = vmw_svga_winsys_destroy;
@@ -933,7 +932,7 @@ vmw_winsys_screen_init_svga(struct vmw_winsys_screen *vws)
 #endif
    vws->base.host_log = vmw_svga_winsys_host_log;
 
-   return TRUE;
+   return true;
 }
 
 

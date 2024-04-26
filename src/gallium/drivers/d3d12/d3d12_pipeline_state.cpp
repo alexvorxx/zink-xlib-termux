@@ -21,12 +21,21 @@
  * IN THE SOFTWARE.
  */
 
+#ifdef _GAMING_XBOX
+#ifdef _GAMING_XBOX_SCARLETT
+#include <d3dx12_xs.h>
+#else
+#include <d3dx12_x.h>
+#endif
+#endif
 
 #include "d3d12_pipeline_state.h"
 #include "d3d12_compiler.h"
 #include "d3d12_context.h"
 #include "d3d12_screen.h"
+#ifndef _GAMING_XBOX
 #include <directx/d3dx12_pipeline_state_stream.h>
+#endif
 
 #include "util/hash_table.h"
 #include "util/set.h"
@@ -63,6 +72,12 @@ get_semantic_name(int location, int driver_location, unsigned *index)
       FALLTHROUGH;
    case VARYING_SLOT_CLIP_DIST0:
       return "SV_ClipDistance";
+
+   case VARYING_SLOT_CULL_DIST1:
+      *index = 1;
+      FALLTHROUGH;
+   case VARYING_SLOT_CULL_DIST0:
+      return "SV_CullDistance";
 
    case VARYING_SLOT_PRIMITIVE_ID:
       return "SV_PrimitiveID";
@@ -101,7 +116,7 @@ fill_so_declaration(const struct pipe_stream_output_info *info,
                     D3D12_SO_DECLARATION_ENTRY *entries, UINT *num_entries,
                     UINT *strides, UINT *num_strides)
 {
-   int next_offset[MAX_VERTEX_STREAMS] = { 0 };
+   int next_offset[PIPE_MAX_VERTEX_STREAMS] = { 0 };
 
    *num_entries = 0;
 
@@ -121,6 +136,8 @@ fill_so_declaration(const struct pipe_stream_output_info *info,
       if (skip_components > 0) {
          entries[*num_entries].Stream = output->stream;
          entries[*num_entries].SemanticName = NULL;
+         entries[*num_entries].SemanticIndex = 0;
+         entries[*num_entries].StartComponent = 0;
          entries[*num_entries].ComponentCount = skip_components;
          entries[*num_entries].OutputSlot = buffer;
          (*num_entries)++;
@@ -132,8 +149,13 @@ fill_so_declaration(const struct pipe_stream_output_info *info,
       nir_variable *var = find_so_variable(last_vertex_stage,
          output->register_index, output->start_component, output->num_components);
       assert((var->data.stream & ~NIR_STREAM_PACKED) == output->stream);
-      entries[*num_entries].SemanticName = get_semantic_name(var->data.location,
-         var->data.driver_location, &index);
+      unsigned location = var->data.location;
+      if (location == VARYING_SLOT_CLIP_DIST0 || location == VARYING_SLOT_CLIP_DIST1) {
+         unsigned component = (location - VARYING_SLOT_CLIP_DIST0) * 4 + var->data.location_frac;
+         if (component >= last_vertex_stage->info.clip_distance_array_size)
+            location = VARYING_SLOT_CULL_DIST0 + (component - last_vertex_stage->info.clip_distance_array_size) / 4;
+      }
+      entries[*num_entries].SemanticName = get_semantic_name(location, var->data.driver_location, &index);
       entries[*num_entries].SemanticIndex = index;
       entries[*num_entries].StartComponent = output->start_component - var->data.location_frac;
       entries[*num_entries].ComponentCount = output->num_components;
@@ -141,17 +163,17 @@ fill_so_declaration(const struct pipe_stream_output_info *info,
       (*num_entries)++;
    }
 
-   for (unsigned i = 0; i < MAX_VERTEX_STREAMS; i++)
+   for (unsigned i = 0; i < PIPE_MAX_VERTEX_STREAMS; i++)
       strides[i] = info->stride[i] * 4;
-   *num_strides = MAX_VERTEX_STREAMS;
+   *num_strides = PIPE_MAX_VERTEX_STREAMS;
 }
 
 static bool
-depth_bias(struct d3d12_rasterizer_state *state, enum pipe_prim_type reduced_prim)
+depth_bias(struct d3d12_rasterizer_state *state, enum mesa_prim reduced_prim)
 {
    /* glPolygonOffset is supposed to be only enabled when rendering polygons.
     * In d3d12 case, all polygons (and quads) are lowered to triangles */
-   if (reduced_prim != PIPE_PRIM_TRIANGLES)
+   if (reduced_prim != MESA_PRIM_TRIANGLES)
       return false;
 
    unsigned fill_mode = state->base.cull_face == PIPE_FACE_FRONT ? state->base.fill_back
@@ -173,24 +195,24 @@ depth_bias(struct d3d12_rasterizer_state *state, enum pipe_prim_type reduced_pri
 }
 
 static D3D12_PRIMITIVE_TOPOLOGY_TYPE
-topology_type(enum pipe_prim_type reduced_prim)
+topology_type(enum mesa_prim reduced_prim)
 {
    switch (reduced_prim) {
-   case PIPE_PRIM_POINTS:
+   case MESA_PRIM_POINTS:
       return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
 
-   case PIPE_PRIM_LINES:
+   case MESA_PRIM_LINES:
       return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
 
-   case PIPE_PRIM_TRIANGLES:
+   case MESA_PRIM_TRIANGLES:
       return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
-   case PIPE_PRIM_PATCHES:
+   case MESA_PRIM_PATCHES:
       return D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 
    default:
-      debug_printf("pipe_prim_type: %s\n", u_prim_name(reduced_prim));
-      unreachable("unexpected enum pipe_prim_type");
+      debug_printf("mesa_prim: %s\n", u_prim_name(reduced_prim));
+      unreachable("unexpected enum mesa_prim");
    }
 }
 
@@ -215,15 +237,44 @@ d3d12_rtv_format(struct d3d12_context *ctx, unsigned index)
    return fmt;
 }
 
+static void
+copy_input_attribs(const D3D12_INPUT_ELEMENT_DESC *ves_elements, D3D12_INPUT_ELEMENT_DESC *ia_elements,
+                   D3D12_INPUT_LAYOUT_DESC *ia_desc, nir_shader *vs)
+{
+   uint32_t vert_input_count = 0;
+   int32_t ves_element_count = -1;
+   int var_loc = -1;
+   nir_foreach_shader_in_variable(var, vs) {
+      assert(vert_input_count < D3D12_VS_INPUT_REGISTER_COUNT);
+
+      if (var->data.location != var_loc)
+         ves_element_count++;
+      var_loc = var->data.location;
+
+      for (uint32_t i = 0; i < glsl_count_attribute_slots(var->type, false); ++i) {
+         ia_elements[vert_input_count] = ves_elements[ves_element_count++];
+         ia_elements[vert_input_count].SemanticIndex = vert_input_count;
+         var->data.driver_location = vert_input_count++;
+      }
+      --ves_element_count;
+   }
+
+   if (vert_input_count > 0) {
+      ia_desc->pInputElementDescs = ia_elements;
+      ia_desc->NumElements = vert_input_count;
+   }
+}
+
 static ID3D12PipelineState *
 create_gfx_pipeline_state(struct d3d12_context *ctx)
 {
    struct d3d12_screen *screen = d3d12_screen(ctx->base.screen);
    struct d3d12_gfx_pipeline_state *state = &ctx->gfx_pipeline_state;
-   enum pipe_prim_type reduced_prim = state->prim_type == PIPE_PRIM_PATCHES ?
-      PIPE_PRIM_PATCHES : u_reduced_prim(state->prim_type);
-   D3D12_SO_DECLARATION_ENTRY entries[PIPE_MAX_SO_OUTPUTS] = {};
-   UINT strides[PIPE_MAX_SO_OUTPUTS] = { 0 };
+   enum mesa_prim reduced_prim = state->prim_type == MESA_PRIM_PATCHES ?
+      MESA_PRIM_PATCHES : u_reduced_prim(state->prim_type);
+   D3D12_SO_DECLARATION_ENTRY entries[PIPE_MAX_SO_OUTPUTS];
+   UINT strides[PIPE_MAX_VERTEX_STREAMS] = { 0 };
+   D3D12_INPUT_ELEMENT_DESC input_attribs[PIPE_MAX_ATTRIBS * 4];
    UINT num_entries = 0, num_strides = 0;
 
    CD3DX12_PIPELINE_STATE_STREAM3 pso_desc;
@@ -276,15 +327,15 @@ create_gfx_pipeline_state(struct d3d12_context *ctx)
    D3D12_BLEND_DESC& blend_state = (D3D12_BLEND_DESC&)pso_desc.BlendState;
    blend_state = state->blend->desc;
    if (state->has_float_rtv)
-      blend_state.RenderTarget[0].LogicOpEnable = FALSE;
+      blend_state.RenderTarget[0].LogicOpEnable = false;
 
-   (D3D12_DEPTH_STENCIL_DESC2&)pso_desc.DepthStencilState = state->zsa->desc;
+   (d3d12_depth_stencil_desc_type&)pso_desc.DepthStencilState = state->zsa->desc;
    pso_desc.SampleMask = state->sample_mask;
 
    D3D12_RASTERIZER_DESC& rast = (D3D12_RASTERIZER_DESC&)pso_desc.RasterizerState;
    rast = state->rast->desc;
 
-   if (reduced_prim != PIPE_PRIM_TRIANGLES)
+   if (reduced_prim != MESA_PRIM_TRIANGLES)
       rast.CullMode = D3D12_CULL_MODE_NONE;
 
    if (depth_bias(state->rast, reduced_prim)) {
@@ -295,6 +346,7 @@ create_gfx_pipeline_state(struct d3d12_context *ctx)
    D3D12_INPUT_LAYOUT_DESC& input_layout = (D3D12_INPUT_LAYOUT_DESC&)pso_desc.InputLayout;
    input_layout.pInputElementDescs = state->ves->elements;
    input_layout.NumElements = state->ves->num_elements;
+   copy_input_attribs(state->ves->elements, input_attribs, &input_layout, state->stages[PIPE_SHADER_VERTEX]->nir);
 
    pso_desc.IBStripCutValue = state->ib_strip_cut_value;
 
@@ -316,11 +368,14 @@ create_gfx_pipeline_state(struct d3d12_context *ctx)
          rast.ForcedSampleCount = 1;
          pso_desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
       }
-   } else if (state->samples > 1 &&
+   }
+#ifndef _GAMING_XBOX
+   else if (state->samples > 1 &&
               !(screen->opts19.SupportedSampleCountsWithNoOutputs & (1 << state->samples))) {
       samples.Count = 1;
       rast.ForcedSampleCount = state->samples;
    }
+#endif
    samples.Quality = 0;
 
    pso_desc.NodeMask = 0;

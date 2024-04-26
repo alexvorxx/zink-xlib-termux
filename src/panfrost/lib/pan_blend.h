@@ -28,28 +28,30 @@
 #include "genxml/gen_macros.h"
 
 #include "compiler/nir/nir.h"
-#include "compiler/shader_enums.h"
+#include "util/blend.h"
 #include "util/format/u_format.h"
 #include "util/u_dynarray.h"
 
 #include "panfrost/util/pan_ir.h"
 
 struct MALI_BLEND_EQUATION;
-struct panfrost_device;
+
+struct pan_blend_shader_cache {
+   unsigned gpu_id;
+   struct hash_table *shaders;
+   pthread_mutex_t lock;
+};
 
 struct pan_blend_equation {
-   unsigned blend_enable              : 1;
-   enum blend_func rgb_func           : 3;
-   unsigned rgb_invert_src_factor     : 1;
-   enum blend_factor rgb_src_factor   : 4;
-   unsigned rgb_invert_dst_factor     : 1;
-   enum blend_factor rgb_dst_factor   : 4;
-   enum blend_func alpha_func         : 3;
-   unsigned alpha_invert_src_factor   : 1;
-   enum blend_factor alpha_src_factor : 4;
-   unsigned alpha_invert_dst_factor   : 1;
-   enum blend_factor alpha_dst_factor : 4;
-   unsigned color_mask                : 4;
+   unsigned blend_enable                  : 1;
+   enum pipe_blend_func rgb_func          : 3;
+   enum pipe_blendfactor rgb_src_factor   : 5;
+   enum pipe_blendfactor rgb_dst_factor   : 5;
+   enum pipe_blend_func alpha_func        : 3;
+   enum pipe_blendfactor alpha_src_factor : 5;
+   enum pipe_blendfactor alpha_dst_factor : 5;
+   unsigned color_mask                    : 4;
+   unsigned padding                       : 1;
 };
 
 struct pan_blend_rt_state {
@@ -146,32 +148,25 @@ void pan_blend_to_fixed_function_equation(const struct pan_blend_equation eq,
 
 uint32_t pan_pack_blend(const struct pan_blend_equation equation);
 
-void pan_blend_shaders_init(struct panfrost_device *dev);
+void pan_blend_shader_cache_init(struct pan_blend_shader_cache *cache,
+                                 unsigned gpu_id);
 
-void pan_blend_shaders_cleanup(struct panfrost_device *dev);
+void pan_blend_shader_cache_cleanup(struct pan_blend_shader_cache *cache);
 
 #ifdef PAN_ARCH
 
-nir_shader *GENX(pan_blend_create_shader)(const struct panfrost_device *dev,
-                                          const struct pan_blend_state *state,
-                                          nir_alu_type src0_type,
-                                          nir_alu_type src1_type, unsigned rt);
-
 #if PAN_ARCH >= 6
-uint64_t GENX(pan_blend_get_internal_desc)(const struct panfrost_device *dev,
-                                           enum pipe_format fmt, unsigned rt,
+uint64_t GENX(pan_blend_get_internal_desc)(enum pipe_format fmt, unsigned rt,
                                            unsigned force_size, bool dithered);
 
-bool GENX(pan_inline_rt_conversion)(nir_shader *s,
-                                    const struct panfrost_device *dev,
-                                    enum pipe_format *formats);
+bool GENX(pan_inline_rt_conversion)(nir_shader *s, enum pipe_format *formats);
 #endif
 
 /* Take blend_shaders.lock before calling this function and release it when
  * you're done with the shader variant object.
  */
 struct pan_blend_shader_variant *GENX(pan_blend_get_shader_locked)(
-   const struct panfrost_device *dev, const struct pan_blend_state *state,
+   struct pan_blend_shader_cache *cache, const struct pan_blend_state *state,
    nir_alu_type src0_type, nir_alu_type src1_type, unsigned rt);
 #endif
 

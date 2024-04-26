@@ -1,28 +1,8 @@
 /*
  * Copyright © 2009 Corbin Simpson
  * Copyright © 2015 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDERS, AUTHORS
- * AND/OR ITS SUPPLIERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef AMDGPU_WINSYS_H
@@ -36,8 +16,6 @@
 #include <amdgpu.h>
 
 struct amdgpu_cs;
-
-#define NUM_SLAB_ALLOCATORS 3
 
 /* DRM file descriptors, file descriptions and buffer sharing.
  *
@@ -84,24 +62,99 @@ struct amdgpu_screen_winsys {
    struct hash_table *kms_handles;
 };
 
+/* Maximum this number of IBs can be busy per queue. When submitting a new IB and the oldest IB
+ * ("AMDGPU_FENCE_RING_SIZE" IBs ago) is still busy, the CS thread will wait for it and will
+ * also block all queues from submitting new IBs.
+ */
+#define AMDGPU_FENCE_RING_SIZE 32
+
+/* The maximum number of queues that can be present. */
+#define AMDGPU_MAX_QUEUES 6
+
+/* This can use any integer type because the logic handles integer wraparounds robustly, but
+ * uint8_t wraps around so quickly that some BOs might never become idle because we don't
+ * remove idle fences from BOs, so they become "busy" again after a queue sequence number wraps
+ * around and they may stay "busy" in pb_cache long enough that we run out of memory.
+ */
+typedef uint16_t uint_seq_no;
+
+struct amdgpu_queue {
+   /* Ring buffer of fences.
+    *
+    * We only remember a certain number of the most recent fences per queue. When we add a new
+    * fence, we wait for the oldest one, which implies that all older fences not present
+    * in the ring are idle. This way we don't have to keep track of a million fence references
+    * for a million BOs.
+    *
+    * We only support 1 queue per IP. If an IP has multiple queues, we always add a fence
+    * dependency on the previous fence to make it behave like there is only 1 queue.
+    *
+    * amdgpu_winsys_bo doesn't have a list of fences. It only remembers the last sequence number
+    * for every queue where it was used. We then use the BO's sequence number to look up a fence
+    * in this ring.
+    */
+   struct pipe_fence_handle *fences[AMDGPU_FENCE_RING_SIZE];
+
+   /* The sequence number of the latest fence.
+    *
+    * This sequence number is global per queue per device, shared by all contexts, and generated
+    * by the winsys, not the kernel.
+    *
+    * The latest fence is: fences[latest_seq_no % AMDGPU_FENCE_RING_SIZE]
+    * The oldest fence is: fences([latest_seq_no + 1) % AMDGPU_FENCE_RING_SIZE]
+    * The oldest sequence number in the ring: latest_seq_no - AMDGPU_FENCE_RING_SIZE + 1
+    *
+    * The sequence number is in the ring if:
+    *    latest_seq_no - buffer_seq_no < AMDGPU_FENCE_RING_SIZE
+    * If the sequence number is not in the ring, it's idle.
+    *
+    * Integer wraparounds of the sequence number behave as follows:
+    *
+    * The comparison above gives the correct answer if buffer_seq_no isn't older than UINT*_MAX.
+    * If it's older than UINT*_MAX but not older than UINT*_MAX + AMDGPU_FENCE_RING_SIZE, we
+    * incorrectly pick and wait for one of the fences in the ring. That's only a problem when
+    * the type is so small (uint8_t) that seq_no wraps around very frequently, causing BOs to
+    * never become idle in certain very unlucky scenarios and running out of memory.
+    */
+   uint_seq_no latest_seq_no;
+
+   /* The last context using this queue. */
+   struct amdgpu_ctx *last_ctx;
+};
+
+/* This is part of every BO. */
+struct amdgpu_seq_no_fences {
+   /* A fence sequence number per queue. This number is used to look up the fence from
+    * struct amdgpu_queue.
+    *
+    * This sequence number is global per queue per device, shared by all contexts, and generated
+    * by the winsys, not the kernel.
+    */
+   uint_seq_no seq_no[AMDGPU_MAX_QUEUES];
+
+   /* The mask of queues where seq_no[i] is valid. */
+   uint8_t valid_fence_mask;
+};
+
+/* valid_fence_mask should have 1 bit for each queue. */
+static_assert(sizeof(((struct amdgpu_seq_no_fences*)NULL)->valid_fence_mask) * 8 >= AMDGPU_MAX_QUEUES, "");
+
 struct amdgpu_winsys {
    struct pipe_reference reference;
    /* See comment above */
    int fd;
 
-   struct pb_cache bo_cache;
+   /* Protected by bo_fence_lock. */
+   struct amdgpu_queue queues[AMDGPU_MAX_QUEUES];
 
-   /* Each slab buffer can only contain suballocations of equal sizes, so we
-    * need to layer the allocators, so that we don't waste too much memory.
-    */
-   struct pb_slabs bo_slabs[NUM_SLAB_ALLOCATORS];
+   struct pb_cache bo_cache;
+   struct pb_slabs bo_slabs;  /* Slab allocator. */
 
    amdgpu_device_handle dev;
 
    simple_mtx_t bo_fence_lock;
 
    int num_cs; /* The number of command streams created. */
-   unsigned num_total_rejected_cs;
    uint32_t surf_index_color;
    uint32_t surf_index_fmask;
    uint32_t next_bo_unique_id;

@@ -22,6 +22,7 @@
  */
 
 #include "brw_fs.h"
+#include "brw_fs_builder.h"
 #include "brw_cfg.h"
 
 /** @file brw_fs_sel_peephole.cpp
@@ -125,11 +126,11 @@ count_movs_from_if(const intel_device_info *devinfo,
  * If src0 is an immediate value, we promote it to a temporary GRF.
  */
 bool
-fs_visitor::opt_peephole_sel()
+brw_fs_opt_peephole_sel(fs_visitor &s)
 {
    bool progress = false;
 
-   foreach_block (block, cfg) {
+   foreach_block (block, s.cfg) {
       /* IF instructions, by definition, can only be found at the ends of
        * basic blocks.
        */
@@ -153,7 +154,7 @@ fs_visitor::opt_peephole_sel()
       if (else_block == NULL)
          continue;
 
-      int movs = count_movs_from_if(devinfo, then_mov, else_mov, then_block, else_block);
+      int movs = count_movs_from_if(s.devinfo, then_mov, else_mov, then_block, else_block);
 
       if (movs == 0)
          continue;
@@ -187,7 +188,7 @@ fs_visitor::opt_peephole_sel()
          continue;
 
       for (int i = 0; i < movs; i++) {
-         const fs_builder ibld = fs_builder(this, then_block, then_mov[i])
+         const fs_builder ibld = fs_builder(&s, then_block, then_mov[i])
                                  .at(block, if_inst);
 
          if (then_mov[i]->src[0].equals(else_mov[i]->src[0])) {
@@ -222,7 +223,7 @@ fs_visitor::opt_peephole_sel()
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

@@ -6,26 +6,22 @@ GPUs based on the Midgard and Bifrost microarchitectures. It is **conformant**
 on Mali-G52 and Mali-G57 but **non-conformant** on other GPUs. The following
 hardware is currently supported:
 
-=========  ============= ============ =======
-Product    Architecture  OpenGL ES    OpenGL
-=========  ============= ============ =======
-Mali T600  Midgard (v4)  2.0          2.1
-Mali T620  Midgard (v4)  2.0          2.1
-Mali T720  Midgard (v4)  2.0          2.1
-Mali T760  Midgard (v5)  3.1          3.1
-Mali T820  Midgard (v5)  3.1          3.1
-Mali T830  Midgard (v5)  3.1          3.1
-Mali T860  Midgard (v5)  3.1          3.1
-Mali T880  Midgard (v5)  3.1          3.1
-Mali G72   Bifrost (v6)  3.1          3.1
-Mali G31   Bifrost (v7)  3.1          3.1
-Mali G51   Bifrost (v7)  3.1          3.1
-Mali G52   Bifrost (v7)  3.1          3.1
-Mali G76   Bifrost (v7)  3.1          3.1
-Mali G57   Valhall (v9)  3.1          3.1
-Mali G310  Valhall (v10) 3.1          3.1
-Mali G610  Valhall (v10) 3.1          3.1
-=========  ============= ============ =======
++--------------------+---------------+-----------+--------+
+| Models             | Architecture  | OpenGL ES | OpenGL |
++====================+===============+===========+========+
+| T600, T620, T720   | Midgard (v4)  | 2.0       | 2.1    |
++--------------------+---------------+-----------+--------+
+| T760, T820, T830   | Midgard (v5)  | 3.1       | 3.1    |
+| T860, T880         |               |           |        |
++--------------------+---------------+-----------+--------+
+| G72                | Bifrost (v6)  | 3.1       | 3.1    |
++--------------------+---------------+-----------+--------+
+| G31, G51, G52, G76 | Bifrost (v7)  | 3.1       | 3.1    |
++--------------------+---------------+-----------+--------+
+| G57                | Valhall (v9)  | 3.1       | 3.1    |
++--------------------+---------------+-----------+--------+
+| G310, G610         | Valhall (v10) | 3.1       | 3.1    |
++--------------------+---------------+-----------+--------+
 
 Other Midgard and Bifrost chips (e.g. G71) are not yet supported.
 

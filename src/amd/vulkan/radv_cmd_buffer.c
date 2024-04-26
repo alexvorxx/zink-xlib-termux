@@ -3084,11 +3084,13 @@ radv_emit_null_ds_state(struct radv_cmd_buffer *cmd_buffer)
    unsigned db_render_control = 0;
    unsigned num_samples = 0;
 
-   /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match MSAA_EXPOSED_SAMPLES. It affects VRS,
-    * occlusion queries and Primitive Ordered Pixel Shading if depth and stencil are not bound.
+   /* On GFX11, the hw intentionally looks at DB_Z_INFO.NUM_SAMPLES when there is no bound
+    * depth/stencil buffer and it clamps the number of samples like MIN2(DB_Z_INFO.NUM_SAMPLES,
+    * PA_SC_AA_CONFIG.MSAA_EXPOSED_SAMPLES). Use 8x for DB_Z_INFO.NUM_SAMPLES to make sure it's not
+    * the constraining factor. This affects VRS, occlusion queries and POPS.
     */
    if (gfx_level == GFX11) {
-      num_samples = util_logbase2(radv_get_rasterization_samples(cmd_buffer));
+      num_samples = 3;
       radv_gfx11_set_db_render_control(device, 1, &db_render_control);
    }
 

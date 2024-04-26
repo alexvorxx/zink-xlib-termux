@@ -192,7 +192,7 @@ void si_launch_grid_internal_ssbos(struct si_context *sctx, struct pipe_grid_inf
                                    unsigned writeable_bitmask)
 {
    if (!(flags & SI_OP_SKIP_CACHE_INV_BEFORE)) {
-      sctx->flags |= si_get_flush_flags(sctx, coher, SI_COMPUTE_DST_CACHE_POLICY);
+      sctx->flags |= si_get_flush_flags(sctx, coher, L2_LRU);
       si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
    }
 
@@ -351,16 +351,14 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
    sb[0].buffer_offset = dst_offset;
    sb[0].buffer_size = size;
 
-   bool shader_dst_stream_policy = SI_COMPUTE_DST_CACHE_POLICY != L2_LRU;
-
    if (src) {
       sb[1].buffer = src;
       sb[1].buffer_offset = src_offset;
       sb[1].buffer_size = size;
 
       if (!sctx->cs_copy_buffer) {
-         sctx->cs_copy_buffer = si_create_dma_compute_shader(
-            sctx, SI_COMPUTE_COPY_DW_PER_THREAD, shader_dst_stream_policy, true);
+         sctx->cs_copy_buffer = si_create_dma_compute_shader(sctx, SI_COMPUTE_COPY_DW_PER_THREAD,
+                                                             true);
       }
 
       si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_copy_buffer, flags, coher,
@@ -373,8 +371,8 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
          sctx->cs_user_data[i] = clear_value[i % (clear_value_size / 4)];
 
       if (!sctx->cs_clear_buffer) {
-         sctx->cs_clear_buffer = si_create_dma_compute_shader(
-            sctx, SI_COMPUTE_CLEAR_DW_PER_THREAD, shader_dst_stream_policy, false);
+         sctx->cs_clear_buffer = si_create_dma_compute_shader(sctx, SI_COMPUTE_CLEAR_DW_PER_THREAD,
+                                                              false);
       }
 
       si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_clear_buffer, flags, coher,

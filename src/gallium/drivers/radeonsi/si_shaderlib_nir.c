@@ -231,9 +231,7 @@ void *si_create_clear_buffer_rmw_cs(struct si_context *sctx)
    /* data |= clear_value_masked; */
    data = nir_ior(&b, data, nir_channel(&b, user_sgprs, 0));
 
-   nir_store_ssbo(&b, data, zero, address,
-      .access = SI_COMPUTE_DST_CACHE_POLICY != L2_LRU ? ACCESS_NON_TEMPORAL : 0,
-      .align_mul = 4);
+   nir_store_ssbo(&b, data, zero, address, .align_mul = 4);
 
    return create_shader_state(sctx, b.shader);
 }
@@ -645,25 +643,16 @@ void *si_clear_12bytes_buffer_shader(struct si_context *sctx)
    nir_def *offset = nir_imul_imm(&b, get_global_ids(&b, 1), 12);
    nir_def *value = nir_trim_vector(&b, nir_load_user_data_amd(&b), 3);
 
-   nir_store_ssbo(&b, value, nir_imm_int(&b, 0), offset,
-      .access = SI_COMPUTE_DST_CACHE_POLICY != L2_LRU ? ACCESS_NON_TEMPORAL : 0);
+   nir_store_ssbo(&b, value, nir_imm_int(&b, 0), offset);
 
    return create_shader_state(sctx, b.shader);
 }
 
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
 {
-   unsigned store_qualifier = ACCESS_COHERENT | ACCESS_RESTRICT;
-
-   /* Don't cache loads, because there is no reuse. */
-   unsigned load_qualifier = store_qualifier | ACCESS_NON_TEMPORAL;
-
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
                                                   "ubyte_to_ushort");
-
-   unsigned default_wave_size = si_determine_wave_size(sctx->screen, NULL);
-
-   b.shader->info.workgroup_size[0] = default_wave_size;
+   b.shader->info.workgroup_size[0] = 64;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
    b.shader->info.num_ssbos = 2;
@@ -672,32 +661,24 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
    nir_def *store_address = nir_imul_imm(&b, load_address, 2);
 
    nir_def *ubyte_value = nir_load_ssbo(&b, 1, 8, nir_imm_int(&b, 1),
-                                        load_address, .access = load_qualifier);
-   nir_store_ssbo(&b, nir_u2uN(&b, ubyte_value, 16), nir_imm_int(&b, 0),
-                  store_address, .access = store_qualifier);
+                                        load_address, .access = ACCESS_RESTRICT);
+   nir_store_ssbo(&b, nir_u2u16(&b, ubyte_value), nir_imm_int(&b, 0),
+                  store_address, .access = ACCESS_RESTRICT);
 
    return create_shader_state(sctx, b.shader);
 }
 
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
-                                   bool dst_stream_cache_policy, bool is_copy)
+                                   bool is_copy)
 {
    assert(util_is_power_of_two_nonzero(num_dwords_per_thread));
 
-   unsigned store_qualifier = ACCESS_COHERENT | ACCESS_RESTRICT;
-   if (dst_stream_cache_policy)
-      store_qualifier |= ACCESS_NON_TEMPORAL;
-
-   /* Don't cache loads, because there is no reuse. */
-   unsigned load_qualifier = store_qualifier | ACCESS_NON_TEMPORAL;
-
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
                                                   "create_dma_compute");
+   unsigned wg_size = 64;
 
-   unsigned default_wave_size = si_determine_wave_size(sctx->screen, NULL);
-
-   b.shader->info.workgroup_size[0] = default_wave_size;
+   b.shader->info.workgroup_size[0] = wg_size;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
    b.shader->info.num_ssbos = 1;
@@ -717,7 +698,7 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
     */
    nir_def *store_address =
       nir_iadd(&b, nir_imul_imm(&b, nir_channel(&b, nir_load_workgroup_id(&b), 0),
-                                default_wave_size * num_mem_ops),
+                                wg_size * num_mem_ops),
                nir_channel(&b, nir_load_local_invocation_id(&b), 0));
 
    /* Convert from a "store size unit" into bytes. */
@@ -741,19 +722,19 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
       if (is_copy && i < num_mem_ops) {
          if (i) {
             load_address = nir_iadd(&b, load_address,
-                                    nir_imm_int(&b, 4 * inst_dwords[i] * default_wave_size));
+                                    nir_imm_int(&b, 4 * inst_dwords[i] * wg_size));
          }
          values[i] = nir_load_ssbo(&b, inst_dwords[i], 32, nir_imm_int(&b, 1), load_address,
-                                   .access = load_qualifier);
+                                   .access = ACCESS_RESTRICT);
       }
 
       if (d >= 0) {
          if (d) {
             store_address = nir_iadd(&b, store_address,
-                                     nir_imm_int(&b, 4 * inst_dwords[d] * default_wave_size));
+                                     nir_imm_int(&b, 4 * inst_dwords[d] * wg_size));
          }
          nir_store_ssbo(&b, is_copy ? values[d] : value, nir_imm_int(&b, 0), store_address,
-                        .access = store_qualifier);
+                        .access = ACCESS_RESTRICT);
       }
    }
 

@@ -49,8 +49,6 @@ struct ac_llvm_compiler;
 /* Tunables for compute-based clear_buffer and copy_buffer: */
 #define SI_COMPUTE_CLEAR_DW_PER_THREAD 4
 #define SI_COMPUTE_COPY_DW_PER_THREAD  4
-/* L2 LRU is recommended because the compute shader can finish sooner due to fewer L2 evictions. */
-#define SI_COMPUTE_DST_CACHE_POLICY    L2_LRU
 
 /* Pipeline & streamout query controls. */
 #define SI_CONTEXT_START_PIPELINE_STATS  (1 << 0)
@@ -1729,7 +1727,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
-                                   bool dst_stream_cache_policy, bool is_copy);
+                                   bool is_copy);
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx);
 void *si_create_clear_buffer_rmw_cs(struct si_context *sctx);
 void *si_clear_render_target_shader(struct si_context *sctx, enum pipe_texture_target type);

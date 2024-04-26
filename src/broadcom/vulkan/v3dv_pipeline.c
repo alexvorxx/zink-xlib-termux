@@ -2189,6 +2189,11 @@ write_creation_feedback(struct v3dv_pipeline *pipeline,
    }
 }
 
+/* Note that although PrimitiveTopology is now dynamic, it is still safe to
+ * compute the gs_input/output_primitive from the topology saved at the
+ * pipeline, as the topology class will not change, because we don't support
+ * dynamicPrimitiveTopologyUnrestricted
+ */
 static enum mesa_prim
 multiview_gs_input_primitive_from_pipeline(struct v3dv_pipeline *pipeline)
 {

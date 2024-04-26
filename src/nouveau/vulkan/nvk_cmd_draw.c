@@ -39,19 +39,21 @@ nvk_cmd_buffer_3d_cls(struct nvk_cmd_buffer *cmd)
    return pdev->info.cls_eng3d;
 }
 
-void
-nvk_mme_set_priv_reg(struct mme_builder *b)
-{
+static void
+mme_set_priv_reg(struct mme_builder *b,
+                 struct mme_value value,
+                 struct mme_value mask,
+                 struct mme_value reg) {
    mme_mthd(b, NV9097_WAIT_FOR_IDLE);
    mme_emit(b, mme_zero());
 
    mme_mthd(b, NV9097_SET_MME_SHADOW_SCRATCH(0));
    mme_emit(b, mme_zero());
-   mme_emit(b, mme_load(b));
-   mme_emit(b, mme_load(b));
+   mme_emit(b, value);
+   mme_emit(b, mask);
 
    mme_mthd(b, NV9097_SET_FALCON04);
-   mme_emit(b, mme_load(b));
+   mme_emit(b, reg);
 
    struct mme_value loop_cond = mme_mov(b, mme_zero());
    mme_while(b, ine, loop_cond, mme_imm(1)) {
@@ -59,6 +61,27 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
       mme_mthd(b, NV9097_NO_OPERATION);
       mme_emit(b, mme_zero());
    };
+}
+
+void
+nvk_mme_set_priv_reg(struct mme_builder *b)
+{
+   struct mme_value value = mme_load(b);
+   struct mme_value mask = mme_load(b);
+   struct mme_value reg = mme_load(b);
+
+   mme_set_priv_reg(b, value, mask, reg);
+}
+
+void
+nvk_mme_set_conservative_raster_state(struct mme_builder *b) {
+   struct mme_value new_state = mme_load(b);
+   struct mme_value old_state = nvk_mme_load_scratch(b, CONSERVATIVE_RASTER_STATE);
+
+   mme_if(b, ine, new_state, old_state) {
+      nvk_mme_store_scratch(b, CONSERVATIVE_RASTER_STATE, new_state);
+      mme_set_priv_reg(b, new_state, mme_imm(BITFIELD_RANGE(23, 2)), mme_imm(0x418800));
+   }
 }
 
 VkResult
@@ -171,6 +194,12 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       P_INLINE_DATA(p, BITFIELD_BIT(14));
       P_INLINE_DATA(p, reg);
    }
+   
+   /* Set CONSERVATIVE_RASTER_STATE to an invalid value, to ensure the
+    * hardware reg is always set the first time conservative rasterization
+    * is enabled */
+   P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_CONSERVATIVE_RASTER_STATE),
+                     ~0);
 
    P_IMMD(p, NV9097, SET_RENDER_ENABLE_C, MODE_TRUE);
 
@@ -1497,7 +1526,7 @@ vk_to_nv9097_provoking_vertex(VkProvokingVertexModeEXT vk_mode)
 static void
 nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 {
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 40);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 44);
 
    const struct vk_dynamic_graphics_state *dyn =
       &cmd->vk.dynamic_graphics_state;
@@ -1650,6 +1679,31 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_RASTERIZATION_STREAM))
       P_IMMD(p, NV9097, SET_RASTER_INPUT, dyn->rs.rasterization_stream);
+
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_CONSERVATIVE_MODE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_EXTRA_PRIMITIVE_OVERESTIMATION_SIZE)) {
+      if (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
+         P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_FALSE);
+      } else {
+         uint32_t extra_overestimate =
+            MIN2(3, dyn->rs.extra_primitive_overestimation_size * 4);
+
+         if (nvk_cmd_buffer_3d_cls(cmd)  < VOLTA_A) {
+            P_1INC(p, NVB197, CALL_MME_MACRO(NVK_MME_SET_CONSERVATIVE_RASTER_STATE));
+            P_INLINE_DATA(p, extra_overestimate << 23);
+         } else {
+            P_IMMD(p, NVC397, SET_CONSERVATIVE_RASTER_CONTROL, {
+                      .extra_prim_bloat = extra_overestimate,
+                      .copy_inner_to_outer = 
+                        (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT),
+                      .triangle_snap_mode = TRIANGLE_SNAP_MODE_MODE_PRE_SNAP,
+                      .line_and_point_snap_mode = LINE_AND_POINT_SNAP_MODE_MODE_PRE_SNAP,
+                      .uncertainty_region_size = UNCERTAINTY_REGION_SIZE_SIZE_512,
+                     });
+         }
+         P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_TRUE);
+      }
+   }
 }
 
 static VkSampleLocationEXT

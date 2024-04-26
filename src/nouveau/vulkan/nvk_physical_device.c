@@ -174,6 +174,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_buffer_device_address = true,
       .EXT_calibrated_timestamps = true,
       .EXT_conditional_rendering = true,
+      .EXT_conservative_rasterization = info->cls_eng3d >= MAXWELL_B,
       .EXT_color_write_enable = true,
       .EXT_custom_border_color = true,
       .EXT_depth_bias_control = true,
@@ -867,6 +868,17 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* VK_KHR_push_descriptor */
       .maxPushDescriptors = NVK_MAX_PUSH_DESCRIPTORS,
+
+      /* VK_EXT_conservative_rasterization */
+      .primitiveOverestimationSize = info->cls_eng3d >= VOLTA_A ? 1.0f / 512.0f : 0.0,
+      .maxExtraPrimitiveOverestimationSize = 0.75,
+      .extraPrimitiveOverestimationSizeGranularity = 0.25,
+      .primitiveUnderestimation = false,
+      .conservativePointAndLineRasterization = true,
+      .degenerateLinesRasterized = info->cls_eng3d >= VOLTA_A,
+      .degenerateTrianglesRasterized = info->cls_eng3d >= PASCAL_A,
+      .fullyCoveredFragmentShaderInputVariable = false,
+      .conservativeRasterizationPostDepthCoverage = true,
 
       /* VK_EXT_custom_border_color */
       .maxCustomBorderColorSamplers = 4000,

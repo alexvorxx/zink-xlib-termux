@@ -2663,26 +2663,6 @@ stencil_op_is_no_op(struct vk_stencil_test_face_state *stencil)
           stencil->op.compare == VK_COMPARE_OP_ALWAYS;
 }
 
-static void
-enable_depth_bias(struct v3dv_pipeline *pipeline,
-                  const VkPipelineRasterizationStateCreateInfo *rs_info)
-{
-   pipeline->depth_bias.enabled = false;
-   pipeline->depth_bias.is_z16 = false;
-
-   if (!rs_info || !rs_info->depthBiasEnable)
-      return;
-
-   /* Check the depth/stencil attachment description for the subpass used with
-    * this pipeline.
-    */
-   VkFormat ds_format = pipeline->rendering_info.depth_attachment_format;
-   if (ds_format == VK_FORMAT_D16_UNORM)
-      pipeline->depth_bias.is_z16 = true;
-
-   pipeline->depth_bias.enabled = true;
-}
-
 /* Computes the ez_state based on a given vk_dynamic_graphics_state.  Note
  * that the parameter dyn doesn't need to be pipeline->dynamic_graphics_state,
  * as this method can be used by the cmd_buffer too.
@@ -2975,8 +2955,6 @@ pipeline_init(struct v3dv_pipeline *pipeline,
 
    if (depth_clip_control)
       pipeline->negative_one_to_one = depth_clip_control->negativeOneToOne;
-
-   enable_depth_bias(pipeline, rs_info);
 
    v3dv_X(device, pipeline_pack_state)(pipeline, cb_info, ds_info,
                                        rs_info, pv_info, ls_info,

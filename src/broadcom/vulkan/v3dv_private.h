@@ -2348,12 +2348,6 @@ struct v3dv_pipeline {
       uint32_t color_write_masks;
    } blend;
 
-   /* Depth bias */
-   struct {
-      bool enabled;
-      bool is_z16;
-   } depth_bias;
-
    struct {
       void *mem_ctx;
       struct util_dynarray data; /* Array of v3dv_pipeline_executable_data */

@@ -151,12 +151,6 @@ pack_cfg_bits(struct v3dv_pipeline *pipeline,
       ms_info && ms_info->rasterizationSamples > VK_SAMPLE_COUNT_1_BIT;
 
    v3dvx_pack(pipeline->cfg_bits, CFG_BITS, config) {
-      /* Even if rs_info->depthBiasEnabled is true, we can decide to not
-       * enable it, like if there isn't a depth/stencil attachment with the
-       * pipeline.
-       */
-      config.enable_depth_offset = pipeline->depth_bias.enabled;
-
       /* This is required to pass line rasterization tests in CTS while
        * exposing, at least, a minimum of 4-bits of subpixel precision
        * (the minimum requirement).

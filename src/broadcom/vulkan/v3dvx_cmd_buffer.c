@@ -1501,14 +1501,13 @@ v3dX(cmd_buffer_emit_depth_bias)(struct v3dv_cmd_buffer *cmd_buffer)
 {
    struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    assert(pipeline);
+   struct vk_dynamic_graphics_state *dyn = &cmd_buffer->vk.dynamic_graphics_state;
 
-   if (!pipeline->depth_bias.enabled)
+   if (!dyn->rs.depth_bias.enable)
       return;
 
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
-
-   struct vk_dynamic_graphics_state *dyn = &cmd_buffer->vk.dynamic_graphics_state;
 
    v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(DEPTH_OFFSET));
    v3dv_return_if_oom(cmd_buffer, NULL);
@@ -1517,7 +1516,7 @@ v3dX(cmd_buffer_emit_depth_bias)(struct v3dv_cmd_buffer *cmd_buffer)
       bias.depth_offset_factor = dyn->rs.depth_bias.slope;
       bias.depth_offset_units = dyn->rs.depth_bias.constant;
 #if V3D_VERSION <= 42
-      if (pipeline->depth_bias.is_z16)
+      if (pipeline->rendering_info.depth_attachment_format == VK_FORMAT_D16_UNORM)
          bias.depth_offset_units *= 256.0f;
 #endif
       bias.limit = dyn->rs.depth_bias.clamp;
@@ -2029,12 +2028,15 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
       config.depth_bounds_test_enable =
          dyn->ds.depth.bounds_test.enable && has_depth;
 #endif
+
+      config.enable_depth_offset = dyn->rs.depth_bias.enable;
    }
 
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_CULL_MODE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_FRONT_FACE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE);
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_ENABLE);
 }
 
 void

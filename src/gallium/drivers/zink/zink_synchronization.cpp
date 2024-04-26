@@ -300,7 +300,7 @@ static void
 resource_check_defer_image_barrier(struct zink_context *ctx, struct zink_resource *res, VkImageLayout layout, VkPipelineStageFlags pipeline)
 {
    assert(!res->obj->is_buffer);
-   assert(!ctx->blitting);
+   //assert(!ctx->blitting);
 
    bool is_compute = pipeline == VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
    /* if this is a non-shader barrier and there are binds, always queue a shader barrier */

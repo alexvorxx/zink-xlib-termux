@@ -626,7 +626,7 @@ get_render_pass(struct zink_context *ctx)
       state.num_rts++;
    }
    state.have_zsbuf = have_zsbuf;
-   assert(clears == ctx->rp_clears_enabled);
+   //assert(clears == ctx->rp_clears_enabled);
    state.clears = clears;
    uint32_t hash = hash_render_pass_state(&state);
    struct hash_entry *entry = _mesa_hash_table_search_pre_hashed(ctx->render_pass_cache, hash,

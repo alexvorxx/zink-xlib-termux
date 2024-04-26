@@ -3439,6 +3439,17 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       offset = LLVMBuildSelect(ctx->ac.builder, cond, offset, size, "");
 
       LLVMValueRef ptr = ac_build_gep0(&ctx->ac, ctx->constant_data, offset);
+
+      /* TODO: LLVM doesn't sign-extend the result of s_getpc_b64 correctly, causing hangs.
+       * Do it manually here.
+       */
+      if (ctx->ac.gfx_level == GFX12) {
+         LLVMValueRef addr = LLVMBuildPtrToInt(ctx->ac.builder, ptr, ctx->ac.i64, "");
+         addr = LLVMBuildOr(ctx->ac.builder, addr,
+                            LLVMConstInt(ctx->ac.i64, 0xffff000000000000ull, 0), "");
+         ptr = LLVMBuildIntToPtr(ctx->ac.builder, addr, LLVMTypeOf(ptr), "");
+      }
+
       LLVMTypeRef comp_type = LLVMIntTypeInContext(ctx->ac.context, instr->def.bit_size);
       LLVMTypeRef vec_type = instr->def.num_components == 1
                                 ? comp_type

@@ -71,7 +71,13 @@ struct panvk_draw_info {
       mali_ptr varyings;
       mali_ptr attributes;
       mali_ptr attribute_bufs;
-   } vs, fs;
+   } vs;
+   struct {
+      mali_ptr rsd;
+      mali_ptr varyings;
+      mali_ptr attributes;
+      mali_ptr attribute_bufs;
+   } fs;
    mali_ptr push_uniforms;
    mali_ptr varying_bufs;
    mali_ptr textures;
@@ -86,7 +92,6 @@ struct panvk_draw_info {
    mali_ptr tls;
    mali_ptr fb;
    const struct pan_tiler_context *tiler_ctx;
-   mali_ptr fs_rsd;
    mali_ptr viewport;
    struct {
       struct panfrost_ptr vertex;
@@ -535,7 +540,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
 
    if (!pipeline->state.fs.dynamic_rsd) {
-      draw->fs_rsd = pipeline->fs.rsd;
+      draw->fs.rsd = pipeline->fs.rsd;
       return;
    }
 
@@ -544,7 +549,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
                 is_dirty(cmdbuf, DS_STENCIL_COMPARE_MASK) ||
                 is_dirty(cmdbuf, DS_STENCIL_WRITE_MASK) ||
                 is_dirty(cmdbuf, DS_STENCIL_REFERENCE) ||
-                !cmdbuf->state.gfx.fs_rsd;
+                !cmdbuf->state.gfx.fs.rsd;
 
    if (dirty) {
       const struct vk_rasterization_state *rs =
@@ -599,10 +604,10 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
          bd += pan_size(BLEND);
       }
 
-      cmdbuf->state.gfx.fs_rsd = rsd.gpu;
+      cmdbuf->state.gfx.fs.rsd = rsd.gpu;
    }
 
-   draw->fs_rsd = cmdbuf->state.gfx.fs_rsd;
+   draw->fs.rsd = cmdbuf->state.gfx.fs.rsd;
 }
 
 void
@@ -1186,7 +1191,7 @@ panvk_emit_tiler_dcd(struct panvk_cmd_buffer *cmdbuf,
       cfg.cull_front_face = (rs->cull_mode & VK_CULL_MODE_FRONT_BIT) != 0;
       cfg.cull_back_face = (rs->cull_mode & VK_CULL_MODE_BACK_BIT) != 0;
       cfg.position = draw->position;
-      cfg.state = draw->fs_rsd;
+      cfg.state = draw->fs.rsd;
       cfg.attributes = draw->fs.attributes;
       cfg.attribute_buffers = draw->fs.attribute_bufs;
       cfg.viewport = draw->viewport;
@@ -2170,7 +2175,7 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       vk_cmd_set_dynamic_graphics_state(&cmdbuf->vk,
                                         &gfx_pipeline->state.dynamic);
 
-      cmdbuf->state.gfx.fs_rsd = 0;
+      cmdbuf->state.gfx.fs.rsd = 0;
       cmdbuf->state.gfx.pipeline = gfx_pipeline;
       break;
    }

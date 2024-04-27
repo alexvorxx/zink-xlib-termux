@@ -157,7 +157,7 @@ static bool color_update_regamma_tf(struct vpe_priv *vpe_priv,
     struct pwl_params *params = NULL;
     bool               ret    = true;
 
-    if (can_bypass) {
+    if (can_bypass || output_transfer_function == TRANSFER_FUNC_HLG) {
         output_tf->type = TF_TYPE_BYPASS;
         return true;
     }
@@ -194,7 +194,7 @@ static bool color_update_degamma_tf(struct vpe_priv *vpe_priv,
     bool               ret    = true;
     struct pwl_params *params = NULL;
 
-    if (can_bypass) {
+    if (can_bypass || color_input_tf == TRANSFER_FUNC_HLG) {
         input_tf->type = TF_TYPE_BYPASS;
         return true;
     }

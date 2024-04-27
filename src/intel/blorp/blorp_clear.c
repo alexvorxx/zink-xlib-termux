@@ -49,9 +49,11 @@ struct blorp_const_color_prog_key
 static bool
 blorp_params_get_clear_kernel_fs(struct blorp_batch *batch,
                                  struct blorp_params *params,
-                                 bool use_replicated_data,
+                                 bool want_replicated_data,
                                  bool clear_rgb_as_red)
 {
+   const bool use_replicated_data = want_replicated_data &&
+      batch->blorp->isl_dev->info->ver < 20;
    struct blorp_context *blorp = batch->blorp;
 
    const struct blorp_const_color_prog_key blorp_key = {
@@ -500,7 +502,7 @@ blorp_clear(struct blorp_batch *batch,
    if (surf->surf->tiling == ISL_TILING_LINEAR)
       use_simd16_replicated_data = false;
 
-   /* Replicated clears don't work yet before gfx6 */
+   /* Replicated clears don't work before gfx6 */
    if (batch->blorp->isl_dev->info->ver < 6)
       use_simd16_replicated_data = false;
 

@@ -157,8 +157,6 @@ radv_compute_pipeline_init(const struct radv_device *device, struct radv_compute
    pipeline->base.push_constant_size = layout->push_constant_size;
    pipeline->base.dynamic_offset_count = layout->dynamic_offset_count;
 
-   pipeline->base.shader_upload_seq = shader->upload_seq;
-
    radv_compute_generate_pm4(device, pipeline, shader);
 }
 

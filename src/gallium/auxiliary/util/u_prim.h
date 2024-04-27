@@ -45,27 +45,6 @@ struct u_prim_vertex_count {
 };
 
 /**
- * Reduce a primitive to one of MESA_PRIM_POINTS, MESA_PRIM_LINES, and
- * MESA_PRIM_TRIANGLES.
- */
-static inline enum mesa_prim
-u_reduced_prim(enum mesa_prim prim)
-{
-   switch (prim) {
-   case MESA_PRIM_POINTS:
-      return MESA_PRIM_POINTS;
-   case MESA_PRIM_LINES:
-   case MESA_PRIM_LINE_LOOP:
-   case MESA_PRIM_LINE_STRIP:
-   case MESA_PRIM_LINES_ADJACENCY:
-   case MESA_PRIM_LINE_STRIP_ADJACENCY:
-      return MESA_PRIM_LINES;
-   default:
-      return MESA_PRIM_TRIANGLES;
-   }
-}
-
-/**
  * Re-assemble a primitive to remove its adjacency.
  */
 static inline enum mesa_prim

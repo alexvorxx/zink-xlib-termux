@@ -419,6 +419,7 @@ struct radv_instance {
       bool force_rt_wave64;
       bool dual_color_blend_by_location;
       bool legacy_sparse_binding;
+      bool force_pstate_peak_gfx11_dgpu;
       bool clear_lds;
       bool enable_dgc;
       bool enable_khr_present_wait;
@@ -1025,6 +1026,7 @@ struct radv_rra_trace_data {
 
 enum radv_dispatch_table {
    RADV_DEVICE_DISPATCH_TABLE,
+   RADV_ANNOTATE_DISPATCH_TABLE,
    RADV_APP_DISPATCH_TABLE,
    RADV_RGP_DISPATCH_TABLE,
    RADV_RRA_DISPATCH_TABLE,
@@ -1034,6 +1036,7 @@ enum radv_dispatch_table {
 };
 
 struct radv_layer_dispatch_tables {
+   struct vk_device_dispatch_table annotate;
    struct vk_device_dispatch_table app;
    struct vk_device_dispatch_table rgp;
    struct vk_device_dispatch_table rra;
@@ -1091,7 +1094,7 @@ typedef struct nir_def nir_def;
 
 void radv_build_printf(nir_builder *b, nir_def *cond, const char *format, ...);
 
-void radv_dump_printf_data(struct radv_device *device);
+void radv_dump_printf_data(struct radv_device *device, FILE *out);
 
 void radv_device_associate_nir(struct radv_device *device, nir_shader *nir);
 
@@ -2127,6 +2130,9 @@ enum radv_cmd_flush_bits radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffe
 void radv_write_timestamp(struct radv_cmd_buffer *cmd_buffer, uint64_t va, VkPipelineStageFlags2 stage);
 
 void radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer);
+
+void radv_cmd_buffer_annotate(struct radv_cmd_buffer *cmd_buffer, const char *annotation);
+
 bool radv_get_memory_fd(struct radv_device *device, struct radv_device_memory *memory, int *pFD);
 void radv_free_memory(struct radv_device *device, const VkAllocationCallbacks *pAllocator,
                       struct radv_device_memory *mem);
@@ -2264,8 +2270,6 @@ struct radv_pipeline {
    bool need_indirect_descriptor_sets;
    struct radv_shader *shaders[MESA_VULKAN_SHADER_STAGES];
    struct radv_shader *gs_copy_shader;
-
-   uint64_t shader_upload_seq;
 
    struct radeon_cmdbuf cs;
    uint32_t ctx_cs_hash;
@@ -2548,8 +2552,8 @@ void radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf 
 struct radv_ia_multi_vgt_param_helpers radv_compute_ia_multi_vgt_param(const struct radv_device *device,
                                                                        struct radv_shader *const *shaders);
 
-void radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                                const struct radv_shader *tes);
+void radv_emit_vgt_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *tes,
+                         const struct radv_vgt_shader_key *key);
 
 void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                           uint32_t vgt_gs_out_prim_type);

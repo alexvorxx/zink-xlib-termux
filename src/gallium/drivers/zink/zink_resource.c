@@ -61,10 +61,11 @@
 #define DRM_FORMAT_MOD_LINEAR 0
 #endif
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
+#include "MoltenVK/mvk_vulkan.h"
 // Source of MVK_VERSION
-#include "MoltenVK/vk_mvk_moltenvk.h"
-#endif
+#include "MoltenVK/mvk_config.h"
+#endif /* __APPLE__ */
 
 #define ZINK_EXTERNAL_MEMORY_HANDLE 999
 
@@ -883,7 +884,11 @@ get_export_flags(struct zink_screen *screen, const struct pipe_resource *templ, 
          return false;
       }
    }
-
+   if (alloc_info->user_mem) {
+      assert(!alloc_info->whandle);
+      alloc_info->external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      alloc_info->export_types = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+   }
    /* we may export WINSYS_HANDLE_TYPE_FD handle which is dma-buf */
    if (templ->bind & PIPE_BIND_SHARED && screen->info.have_EXT_external_memory_dma_buf)
       alloc_info->export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
@@ -1443,8 +1448,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    struct mem_alloc_info alloc_info = {
       .whandle = whandle,
       .need_dedicated = false,
-      .external = 0,
-      .export_types = user_mem ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT : ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
+      .export_types = ZINK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_BIT,
       .shared = templ->bind & PIPE_BIND_SHARED,
       .user_mem = user_mem
    };
@@ -1725,9 +1729,10 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    res->obj = new_obj;
    res->queue = VK_QUEUE_FAMILY_IGNORED;
    for (unsigned i = 0; i <= res->base.b.last_level; i++) {
-      struct pipe_box box = {0, 0, 0,
-                             u_minify(res->base.b.width0, i),
-                             u_minify(res->base.b.height0, i), res->base.b.array_size};
+      struct pipe_box box;
+      u_box_3d(0, 0, 0,
+               u_minify(res->base.b.width0, i),
+               u_minify(res->base.b.height0, i), res->base.b.array_size, &box);
       box.depth = util_num_layers(&res->base.b, i);
       ctx->base.resource_copy_region(&ctx->base, &res->base.b, i, 0, 0, 0, &staging.base.b, i, &box);
    }
@@ -2088,7 +2093,8 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
    if (res->base.b.flags & PIPE_RESOURCE_FLAG_SPARSE)
       return false;
 
-   struct pipe_box box = {0, 0, 0, res->base.b.width0, 0, 0};
+   struct pipe_box box;
+   u_box_3d(0, 0, 0, res->base.b.width0, 0, 0, &box);
    if (res->valid_buffer_range.start > res->valid_buffer_range.end &&
        !zink_resource_copy_box_intersects(res, 0, &box))
       return false;

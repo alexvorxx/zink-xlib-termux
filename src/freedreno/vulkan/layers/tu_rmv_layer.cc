@@ -54,18 +54,6 @@ tu_rmv_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
    return VK_SUCCESS;
 }
 
-VkResult tu_rmv_DebugMarkerSetObjectNameEXT(VkDevice device,
-                                            const VkDebugMarkerObjectNameInfoEXT* pNameInfo)
-{
-   assert(pNameInfo->sType == VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT);
-   VkDebugUtilsObjectNameInfoEXT name_info;
-   name_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-   name_info.objectType = static_cast<VkObjectType>(pNameInfo->objectType);
-   name_info.objectHandle = pNameInfo->object;
-   name_info.pObjectName = pNameInfo->pObjectName;
-   return tu_rmv_SetDebugUtilsObjectNameEXT(device, &name_info);
-}
-
 VkResult tu_rmv_SetDebugUtilsObjectNameEXT(VkDevice _device,
                                            const VkDebugUtilsObjectNameInfoEXT* pNameInfo)
 {

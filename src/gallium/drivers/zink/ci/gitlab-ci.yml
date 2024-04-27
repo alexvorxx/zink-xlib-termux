@@ -110,6 +110,7 @@ zink-radv-polaris10-valve:
   variables:
     GPU_VERSION: zink-radv-polaris10
     ZINK_DEBUG: quiet
+    RADV_PERFTEST: shader_object
 
 zink-radv-navi10-valve:
   extends:

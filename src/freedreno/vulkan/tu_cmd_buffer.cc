@@ -5019,7 +5019,7 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
                    MESA_VK_DYNAMIC_VI_BINDINGS_VALID)) {
       cmd->state.vertex_buffers.size =
          util_last_bit(cmd->vk.dynamic_graphics_state.vi_bindings_valid) * 4;
-      cmd->state.dirty |= TU_CMD_DIRTY_VERTEX_BUFFERS;
+      dirty |= TU_CMD_DIRTY_VERTEX_BUFFERS;
    }
 
    if (dirty & TU_CMD_DIRTY_SHADER_CONSTS)

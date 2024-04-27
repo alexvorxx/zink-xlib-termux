@@ -21,7 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
 
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
@@ -995,6 +995,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
        goto handle_error;
    }
 
+#if defined(HAVE_DRI3)
    if (pdpyp->zink) {
       bool err;
       psc->has_multibuffer = dri3_check_multibuffer(priv->dpy, &err);
@@ -1007,6 +1008,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
          goto handle_error;
       }
    }
+#endif
 
    glx_config_destroy_list(psc->base.configs);
    psc->base.configs = configs;

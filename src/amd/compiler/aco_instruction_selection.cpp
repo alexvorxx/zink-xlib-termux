@@ -7763,14 +7763,20 @@ emit_addition_uniform_reduce(isel_context* ctx, nir_op op, Definition dst, nir_s
    assert(dst.getTemp().type() == count.type());
 
    if (nir_src_is_const(src)) {
-      if (nir_src_as_uint(src) == 1 && dst.bytes() <= 2)
+      uint32_t imm = nir_src_as_uint(src);
+      if (imm == 1 && dst.bytes() <= 2)
          bld.pseudo(aco_opcode::p_extract_vector, dst, count, Operand::zero());
-      else if (nir_src_as_uint(src) == 1)
+      else if (imm == 1)
          bld.copy(dst, count);
-      else if (nir_src_as_uint(src) == 0)
+      else if (imm == 0)
          bld.copy(dst, Operand::zero(dst.bytes()));
       else if (count.type() == RegType::vgpr)
-         bld.v_mul_imm(dst, count, nir_src_as_uint(src));
+         bld.v_mul_imm(dst, count, imm, true, true);
+      else if (imm == 0xffffffff)
+         bld.sop2(aco_opcode::s_sub_i32, dst, bld.def(s1, scc), Operand::zero(), count);
+      else if (util_is_power_of_two_or_zero(imm))
+         bld.sop2(aco_opcode::s_lshl_b32, dst, bld.def(s1, scc), count,
+                  Operand::c32(ffs(imm) - 1u));
       else
          bld.sop2(aco_opcode::s_mul_i32, dst, src_tmp, count);
    } else if (dst.bytes() <= 2 && ctx->program->gfx_level >= GFX10) {
@@ -10015,7 +10021,7 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
    nir_foreach_phi_src (src, instr)
       phi_src[src->pred->index] = src->src.ssa;
 
-   std::vector<unsigned>& preds = logical ? ctx->block->logical_preds : ctx->block->linear_preds;
+   Block::edge_vec& preds = logical ? ctx->block->logical_preds : ctx->block->linear_preds;
    unsigned num_operands = 0;
    Operand* const operands = (Operand*)alloca(
       (std::max(exec_list_length(&instr->srcs), (unsigned)preds.size()) + 1) * sizeof(Operand));

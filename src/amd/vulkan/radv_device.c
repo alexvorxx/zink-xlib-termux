@@ -594,11 +594,16 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *ph
 {
    struct dispatch_table_builder b = {0};
    b.tables[RADV_DEVICE_DISPATCH_TABLE] = &device->vk.dispatch_table;
+   b.tables[RADV_ANNOTATE_DISPATCH_TABLE] = &device->layer_dispatch.annotate;
    b.tables[RADV_APP_DISPATCH_TABLE] = &device->layer_dispatch.app;
    b.tables[RADV_RGP_DISPATCH_TABLE] = &device->layer_dispatch.rgp;
    b.tables[RADV_RRA_DISPATCH_TABLE] = &device->layer_dispatch.rra;
    b.tables[RADV_RMV_DISPATCH_TABLE] = &device->layer_dispatch.rmv;
    b.tables[RADV_CTX_ROLL_DISPATCH_TABLE] = &device->layer_dispatch.ctx_roll;
+
+   bool gather_ctx_rolls = physical_device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS;
+   if (radv_device_fault_detection_enabled(device) || gather_ctx_rolls)
+      add_entrypoints(&b, &annotate_device_entrypoints, RADV_ANNOTATE_DISPATCH_TABLE);
 
    if (!strcmp(physical_device->instance->drirc.app_layer, "metroexodus")) {
       add_entrypoints(&b, &metro_exodus_device_entrypoints, RADV_APP_DISPATCH_TABLE);
@@ -619,7 +624,7 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *ph
       add_entrypoints(&b, &rmv_device_entrypoints, RADV_RMV_DISPATCH_TABLE);
 #endif
 
-   if (physical_device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS)
+   if (gather_ctx_rolls)
       add_entrypoints(&b, &ctx_roll_device_entrypoints, RADV_CTX_ROLL_DISPATCH_TABLE);
 
    add_entrypoints(&b, &radv_device_entrypoints, RADV_DISPATCH_TABLE_COUNT);
@@ -728,14 +733,15 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       return result;
    }
 
-   init_dispatch_tables(device, physical_device);
-
    device->vk.capture_trace = capture_trace;
 
    device->vk.command_buffer_ops = &radv_cmd_buffer_ops;
 
    device->instance = physical_device->instance;
    device->physical_device = physical_device;
+
+   init_dispatch_tables(device, physical_device);
+
    simple_mtx_init(&device->ctx_roll_mtx, mtx_plain);
    simple_mtx_init(&device->trace_mtx, mtx_plain);
    simple_mtx_init(&device->pstate_mtx, mtx_plain);
@@ -1066,6 +1072,12 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    result = radv_printf_data_init(device);
    if (result != VK_SUCCESS)
       goto fail_cache;
+
+   if (device->physical_device->rad_info.gfx_level == GFX11 && device->physical_device->rad_info.has_dedicated_vram &&
+       device->instance->drirc.force_pstate_peak_gfx11_dgpu) {
+      if (!radv_device_acquire_performance_counters(device))
+         fprintf(stderr, "radv: failed to set pstate to profile_peak.\n");
+   }
 
    *pDevice = radv_device_to_handle(device);
    return VK_SUCCESS;

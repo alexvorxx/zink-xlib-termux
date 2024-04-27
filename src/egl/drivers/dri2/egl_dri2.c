@@ -1586,7 +1586,7 @@ dri2_create_drawable(struct dri2_egl_display *dri2_dpy,
       dri2_surf->dri_drawable = dri2_dpy->kopper->createNewDrawable(
          dri2_dpy->dri_screen_render_gpu, config, loaderPrivate,
          &(__DRIkopperDrawableInfo){
-#ifdef HAVE_X11_PLATFORM
+#if defined(HAVE_X11_PLATFORM) && defined(HAVE_DRI3)
             .multiplanes_available = dri2_dpy->multibuffers_available,
 #endif
             .is_pixmap = dri2_surf->base.Type == EGL_PBUFFER_BIT ||
@@ -3335,6 +3335,7 @@ dri2_create_sync(_EGLDisplay *disp, EGLenum type, const EGLAttrib *attrib_list)
          goto fail;
       }
 
+#if !defined(__APPLE__) && !defined(__MACOSX)
       /* change clock attribute to CLOCK_MONOTONIC */
       ret = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
 
@@ -3342,6 +3343,7 @@ dri2_create_sync(_EGLDisplay *disp, EGLenum type, const EGLAttrib *attrib_list)
          _eglError(EGL_BAD_ACCESS, "eglCreateSyncKHR");
          goto fail;
       }
+#endif
 
       ret = pthread_cond_init(&dri2_sync->cond, &attr);
 

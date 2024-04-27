@@ -1458,6 +1458,7 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x0b35" name="CP_LPAC_ROQ_DBG_DATA" variants="A7XX-"/>
 	<reg32 offset="0x0b36" name="CP_LPAC_FIFO_DBG_DATA" variants="A7XX-"/>
 	<reg32 offset="0x0b40" name="CP_LPAC_FIFO_DBG_ADDR" variants="A7XX-"/>
+	<reg32 offset="0x0b81" name="CP_LPAC_SQE_CNTL"/>
 	<reg64 offset="0x0b82" name="CP_LPAC_SQE_INSTR_BASE"/>
 	<reg32 offset="0x0C01" name="VSC_ADDR_MODE_CNTL" type="a5xx_address_mode"/>
 	<reg32 offset="0x0018" name="RBBM_GPR0_CNTL"/>

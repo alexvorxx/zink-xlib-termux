@@ -47,6 +47,8 @@ struct vn_physical_device_properties {
 struct vn_format_properties_entry {
    atomic_bool valid;
    VkFormatProperties properties;
+   atomic_bool props3_valid;
+   VkFormatProperties3 properties3;
 };
 
 struct vn_image_format_properties {

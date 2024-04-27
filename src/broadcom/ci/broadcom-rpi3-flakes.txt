@@ -41,3 +41,6 @@ spec@!opengl 1.1@depthstencil-default_fb-drawpixels-24_8 samples=4
 
 # Updated by ci-collate, found in this job run: https://gitlab.freedesktop.org/mesa/mesa/-/jobs/56164970
 glx@glx-multithread-clearbuffer
+
+spec@arb_vertex_buffer_object@vbo-subdata-many drawarrays
+spec@arb_vertex_buffer_object@vbo-subdata-many drawelements

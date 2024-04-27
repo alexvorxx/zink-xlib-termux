@@ -550,6 +550,9 @@ namespace brw {
       fs_inst *                                     \
       op(const fs_reg &dst, const fs_reg &src0) const \
       {                                                 \
+         assert(_dispatch_width == 1 ||                         \
+                (dst.file >= VGRF && dst.stride != 0) ||        \
+                (dst.file < VGRF && dst.hstride != 0));         \
          return emit(BRW_OPCODE_##op, dst, src0);       \
       }
 

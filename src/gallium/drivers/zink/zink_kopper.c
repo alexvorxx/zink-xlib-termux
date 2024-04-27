@@ -87,8 +87,12 @@ kopper_CreateSurface(struct zink_screen *screen, struct kopper_displaytarget *cd
    switch (type) {
 #ifdef VK_USE_PLATFORM_XCB_KHR
    case VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR: {
+#ifdef GLX_USE_APPLE
+      error = VK_INCOMPLETE;
+#else
       VkXcbSurfaceCreateInfoKHR *xcb = (VkXcbSurfaceCreateInfoKHR *)&cdt->info.bos;
       error = VKSCR(CreateXcbSurfaceKHR)(screen->instance, xcb, NULL, &surface);
+#endif
       break;
    }
 #endif
@@ -537,6 +541,25 @@ kopper_acquire(struct zink_screen *screen, struct zink_resource *res, uint64_t t
       if (timeout == UINT64_MAX && util_queue_is_initialized(&screen->flush_queue) &&
           p_atomic_read_relaxed(&cdt->swapchain->num_acquires) >= cdt->swapchain->max_acquires) {
          util_queue_fence_wait(&cdt->swapchain->present_fence);
+         /* With a sequence of
+              glDrawBuffer(GL_FRONT_AND_BACK);
+              glClearBufferfv(GL_COLOR, 0, purple);
+              glReadBuffer(GL_FRONT);
+              glReadPIxels(...);
+            kopper_present is never called, but with glReadPIxels the pipeline
+            is flushed, and since we draw to the front- and the backbuffer, two
+            swapchain images are acquired one after the other. Because with
+            that we possibly acquire too many images at once and when using
+            "timeout == UINT64_MAX" forwad progress of vkAcquireNextImageKHR
+            can no longer be guaranteed, i.e. the call may block indefinitely;
+            VUID-vkAcquireNextImageKHR-surface-07783 is raised to warn
+            about exceeding the limit for acquires.
+
+            So let's check whether the number of acquired images is still too
+            large after the fence was signalled, and if so then clear the timeout.
+         */
+         if (p_atomic_read_relaxed(&cdt->swapchain->num_acquires) >= cdt->swapchain->max_acquires)
+            timeout = 0;
       }
       VkResult ret;
       if (!acquire) {
@@ -812,6 +835,8 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res,
          cpi->regions[i].offset.y = cdt->swapchain->scci.imageExtent.height - boxes[i].y - boxes[i].height;
          cpi->regions[i].extent.width = boxes[i].width;
          cpi->regions[i].extent.height = boxes[i].height;
+         cpi->regions[i].extent.width = MIN2(cpi->regions[i].extent.width, cpi->swapchain->scci.imageExtent.width - cpi->regions[i].offset.x);
+         cpi->regions[i].extent.height = MIN2(cpi->regions[i].extent.height, cpi->swapchain->scci.imageExtent.height - cpi->regions[i].offset.y);
          cpi->regions[i].layer = boxes[i].z;
       }
       cpi->info.pNext = &cpi->rinfo;
@@ -993,7 +1018,8 @@ zink_kopper_readback_update(struct zink_context *ctx, struct zink_resource *res)
    struct kopper_swapchain *cswap = cdt->swapchain;
    assert(res->obj->dt_idx != UINT32_MAX);
    struct pipe_resource *readback = cswap->images[res->obj->dt_idx].readback;
-   struct pipe_box box = {0, 0, 0, res->base.b.width0, res->base.b.height0, res->base.b.depth0};
+   struct pipe_box box;
+   u_box_3d(0, 0, 0, res->base.b.width0, res->base.b.height0, res->base.b.depth0, &box);
 
    if (cswap->images[res->obj->dt_idx].readback_needs_update && readback)
       ctx->base.resource_copy_region(&ctx->base, readback, 0, 0, 0, 0, &res->base.b, 0, &box);

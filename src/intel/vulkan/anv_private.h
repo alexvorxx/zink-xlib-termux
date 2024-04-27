@@ -2562,6 +2562,9 @@ struct anv_descriptor_set_layout {
     */
    uint32_t descriptor_buffer_sampler_size;
 
+   /* Number of embedded sampler count */
+   uint32_t embedded_sampler_count;
+
    /* Bindings in this descriptor set */
    struct anv_descriptor_set_binding_layout binding[0];
 };
@@ -2959,6 +2962,9 @@ void anv_pipeline_sets_layout_fini(struct anv_pipeline_sets_layout *layout);
 void anv_pipeline_sets_layout_add(struct anv_pipeline_sets_layout *layout,
                                   uint32_t set_idx,
                                   struct anv_descriptor_set_layout *set_layout);
+
+uint32_t
+anv_pipeline_sets_layout_embedded_sampler_count(const struct anv_pipeline_sets_layout *layout);
 
 void anv_pipeline_sets_layout_hash(struct anv_pipeline_sets_layout *layout);
 

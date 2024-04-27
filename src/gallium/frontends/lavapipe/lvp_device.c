@@ -75,6 +75,8 @@ static const struct vk_instance_extension_table lvp_instance_extensions_supporte
    .KHR_get_surface_capabilities2            = true,
    .KHR_surface                              = true,
    .KHR_surface_protected_capabilities       = true,
+   .EXT_swapchain_colorspace                 = true,
+   .EXT_surface_maintenance1                 = true,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface                      = true,
@@ -224,6 +226,9 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_shader_subgroup_vote              = true,
    .EXT_shader_viewport_index_layer       = true,
    .EXT_subgroup_size_control             = true,
+#ifdef LVP_USE_WSI_PLATFORM
+   .EXT_swapchain_maintenance1            = true,
+#endif
    .EXT_texel_buffer_alignment            = true,
    .EXT_transform_feedback                = true,
    .EXT_vertex_attribute_divisor          = true,
@@ -642,6 +647,11 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       /* VK_AMDX_shader_enqueue */
 #ifdef VK_ENABLE_BETA_EXTENSIONS
       .shaderEnqueue = true,
+#endif
+
+#ifdef LVP_USE_WSI_PLATFORM
+      /* VK_EXT_swapchain_maintenance1 */
+      .swapchainMaintenance1 = true,
 #endif
    };
 }
@@ -1230,7 +1240,6 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateInstance(
    instance->vk.physical_devices.enumerate = lvp_enumerate_physical_devices;
    instance->vk.physical_devices.destroy = lvp_destroy_physical_device;
 
-   //   _mesa_locale_init();
    //   VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
 
    *pInstance = lvp_instance_to_handle(instance);
@@ -1246,7 +1255,6 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyInstance(
 
    if (!instance)
       return;
-   //   _mesa_locale_fini();
 
    pipe_loader_release(&instance->devs, instance->num_devices);
 

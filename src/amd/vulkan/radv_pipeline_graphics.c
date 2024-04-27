@@ -3375,6 +3375,7 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
                       const struct radv_shader *ms)
 {
    const struct radv_physical_device *pdevice = device->physical_device;
+   const uint32_t gs_out = radv_conv_gl_prim_to_gs_out(ms->info.ms.output_prim);
 
    radv_emit_hw_ngg(device, ctx_cs, cs, NULL, ms);
    radeon_set_context_reg(
@@ -3391,6 +3392,8 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
       radeon_emit(cs, S_00B2B4_MAX_EXP_VERTS(ms->info.ngg_info.max_out_verts) |
                          S_00B2B4_MAX_EXP_PRIMS(ms->info.ngg_info.prim_amp_factor));
    }
+
+   radv_emit_vgt_gs_out(device, ctx_cs, gs_out);
 }
 
 static uint32_t
@@ -3552,19 +3555,25 @@ radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf
 }
 
 void
-radv_emit_vgt_vertex_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                           const struct radv_shader *tes)
+radv_emit_vgt_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *tes,
+                    const struct radv_vgt_shader_key *key)
 {
    const struct radv_physical_device *pdevice = device->physical_device;
 
-   if (pdevice->rad_info.family < CHIP_POLARIS10 || pdevice->rad_info.gfx_level >= GFX10)
-      return;
+   if (pdevice->rad_info.gfx_level == GFX10_3) {
+      /* Legacy Tess+GS should disable reuse to prevent hangs on GFX10.3. */
+      const bool has_legacy_tess_gs = key->tess && key->gs && !key->ngg;
 
-   unsigned vtx_reuse_depth = 30;
-   if (tes && tes->info.tes.spacing == TESS_SPACING_FRACTIONAL_ODD) {
-      vtx_reuse_depth = 14;
+      radeon_set_context_reg(ctx_cs, R_028AB4_VGT_REUSE_OFF, S_028AB4_REUSE_OFF(has_legacy_tess_gs));
    }
-   radeon_set_context_reg(ctx_cs, R_028C58_VGT_VERTEX_REUSE_BLOCK_CNTL, S_028C58_VTX_REUSE_DEPTH(vtx_reuse_depth));
+
+   if (pdevice->rad_info.family >= CHIP_POLARIS10 && pdevice->rad_info.gfx_level < GFX10) {
+      unsigned vtx_reuse_depth = 30;
+      if (tes && tes->info.tes.spacing == TESS_SPACING_FRACTIONAL_ODD) {
+         vtx_reuse_depth = 14;
+      }
+      radeon_set_context_reg(ctx_cs, R_028C58_VGT_VERTEX_REUSE_BLOCK_CNTL, S_028C58_VTX_REUSE_DEPTH(vtx_reuse_depth));
+   }
 }
 
 struct radv_vgt_shader_key
@@ -3797,9 +3806,8 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
       radv_emit_ps_inputs(device, ctx_cs, last_vgt_shader, ps);
    }
 
-   radv_emit_vgt_vertex_reuse(device, ctx_cs, radv_get_shader(pipeline->base.shaders, MESA_SHADER_TESS_EVAL));
+   radv_emit_vgt_reuse(device, ctx_cs, radv_get_shader(pipeline->base.shaders, MESA_SHADER_TESS_EVAL), &vgt_shader_key);
    radv_emit_vgt_shader_config(device, ctx_cs, &vgt_shader_key);
-   radv_emit_vgt_gs_out(device, ctx_cs, vgt_gs_out_prim_type);
 
    if (pdevice->rad_info.gfx_level >= GFX10_3) {
       const bool enable_vrs = radv_is_vrs_enabled(pipeline, state);
@@ -4146,18 +4154,6 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
 
    pipeline->base.push_constant_size = pipeline_layout.push_constant_size;
    pipeline->base.dynamic_offset_count = pipeline_layout.dynamic_offset_count;
-
-   for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
-      if (pipeline->base.shaders[i]) {
-         pipeline->base.shader_upload_seq =
-            MAX2(pipeline->base.shader_upload_seq, pipeline->base.shaders[i]->upload_seq);
-      }
-   }
-
-   if (pipeline->base.gs_copy_shader) {
-      pipeline->base.shader_upload_seq =
-         MAX2(pipeline->base.shader_upload_seq, pipeline->base.gs_copy_shader->upload_seq);
-   }
 
    if (extra) {
       radv_pipeline_init_extra(pipeline, extra, &blend, &state, &vgt_gs_out_prim_type);

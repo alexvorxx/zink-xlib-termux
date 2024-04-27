@@ -130,7 +130,7 @@ static void init_native_targets()
    llvm::InitializeNativeTargetAsmPrinter();
 
    llvm::InitializeNativeTargetDisassembler();
-#if DEBUG
+#ifdef DEBUG
    {
       char *env_llc_options = getenv("GALLIVM_LLC_OPTIONS");
       if (env_llc_options) {

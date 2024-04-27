@@ -414,9 +414,16 @@ public:
          return op.op.getTemp();
    }
 
-   Result v_mul_imm(Definition dst, Temp tmp, uint32_t imm, bool bits24=false)
+   Result v_mul_imm(Definition dst, Temp tmp, uint32_t imm, bool tmpu24=false, bool tmpi24=false)
    {
       assert(tmp.type() == RegType::vgpr);
+      /* Assume 24bit if high 8 bits of tmp don't impact the result. */
+      if ((imm & 0xff) == 0) {
+         tmpu24 = true;
+         tmpi24 = true;
+      }
+      tmpu24 &= imm <= 0xffffffu;
+      tmpi24 &= imm <= 0x7fffffu || imm >= 0xff800000u;
       bool has_lshl_add = program->gfx_level >= GFX9;
       /* v_mul_lo_u32 has 1.6x the latency of most VALU on GFX10 (8 vs 5 cycles),
        * compared to 4x the latency on <GFX10. */
@@ -425,10 +432,14 @@ public:
          return copy(dst, Operand::zero());
       } else if (imm == 1) {
          return copy(dst, Operand(tmp));
+      } else if (imm == 0xffffffff) {
+         return vsub32(dst, Operand::zero(), tmp);
       } else if (util_is_power_of_two_or_zero(imm)) {
          return vop2(aco_opcode::v_lshlrev_b32, dst, Operand::c32(ffs(imm) - 1u), tmp);
-      } else if (bits24) {
+      } else if (tmpu24) {
         return vop2(aco_opcode::v_mul_u32_u24, dst, Operand::c32(imm), tmp);
+      } else if (tmpi24) {
+        return vop2(aco_opcode::v_mul_i32_i24, dst, Operand::c32(imm), tmp);
       } else if (util_is_power_of_two_nonzero(imm - 1u)) {
          return vadd32(dst, vop2(aco_opcode::v_lshlrev_b32, def(v1), Operand::c32(ffs(imm - 1u) - 1u), tmp), tmp);
       } else if (mul_cost > 2 && util_is_power_of_two_nonzero(imm + 1u)) {
@@ -467,7 +478,7 @@ public:
 
    Result v_mul24_imm(Definition dst, Temp tmp, uint32_t imm)
    {
-      return v_mul_imm(dst, tmp, imm, true);
+      return v_mul_imm(dst, tmp, imm & 0xffffffu, true);
    }
 
    Result copy(Definition dst, Op op) {

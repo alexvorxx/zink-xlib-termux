@@ -311,6 +311,8 @@ struct radeon_winsys {
    void (*cs_dump)(struct radeon_cmdbuf *cs, FILE *file, const int *trace_ids, int trace_id_count,
                    enum radv_cs_dump_type type);
 
+   void (*cs_annotate)(struct radeon_cmdbuf *cs, const char *marker);
+
    void (*dump_bo_ranges)(struct radeon_winsys *ws, FILE *file);
 
    void (*dump_bo_log)(struct radeon_winsys *ws, FILE *file);

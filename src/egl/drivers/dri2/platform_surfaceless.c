@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <xf86drm.h>
+#include "util/libdrm.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 

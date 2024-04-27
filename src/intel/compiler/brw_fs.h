@@ -151,8 +151,12 @@ struct fs_thread_payload : public thread_payload {
    uint8_t dest_depth_reg[2];
    uint8_t sample_pos_reg[2];
    uint8_t sample_mask_in_reg[2];
-   uint8_t depth_w_coef_reg;
    uint8_t barycentric_coord_reg[BRW_BARYCENTRIC_MODE_COUNT][2];
+
+   uint8_t depth_w_coef_reg;
+   uint8_t pc_bary_coef_reg;
+   uint8_t npc_bary_coef_reg;
+   uint8_t sample_offsets_reg;
 };
 
 struct cs_thread_payload : public thread_payload {
@@ -593,6 +597,7 @@ void nir_to_brw(fs_visitor *s);
 void brw_fs_optimize(fs_visitor &s);
 
 bool brw_fs_lower_3src_null_dest(fs_visitor &s);
+bool brw_fs_lower_alu_restrictions(fs_visitor &s);
 bool brw_fs_lower_barycentrics(fs_visitor &s);
 bool brw_fs_lower_constant_loads(fs_visitor &s);
 bool brw_fs_lower_derivatives(fs_visitor &s);

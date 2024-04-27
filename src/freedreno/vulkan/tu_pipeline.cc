@@ -2990,6 +2990,7 @@ static const enum mesa_vk_dynamic_graphics_state tu_rast_state[] = {
    MESA_VK_DYNAMIC_RS_RASTERIZER_DISCARD_ENABLE,
    MESA_VK_DYNAMIC_RS_RASTERIZATION_STREAM,
    MESA_VK_DYNAMIC_VP_DEPTH_CLIP_NEGATIVE_ONE_TO_ONE,
+   MESA_VK_DYNAMIC_RS_LINE_WIDTH,
 };
 
 template <chip CHIP>

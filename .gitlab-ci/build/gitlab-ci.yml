@@ -17,7 +17,6 @@
     paths:
       - _build/meson-logs/*.txt
       - _build/meson-logs/strace
-      - shader-db
       - artifacts
 
 # Just Linux
@@ -181,6 +180,7 @@ debian-build-testing:
       -D tools=drm-shim,etnaviv,freedreno,glsl,intel,intel-ui,nir,nouveau,lima,panfrost,asahi
       -D b_lto=true
     LLVM_VERSION: 15
+    S3_ARTIFACT_NAME: debian-build-testing
   script: |
     section_start lava-pytest "lava-pytest"
     .gitlab-ci/lava/lava-pytest.sh
@@ -190,9 +190,26 @@ debian-build-testing:
     .gitlab-ci/run-yamllint.sh
     section_switch meson "meson"
     .gitlab-ci/meson/build.sh
+    .gitlab-ci/prepare-artifacts.sh
+  timeout: 15m
+
+shader-db:
+  stage: code-validation
+  extends:
+    - .use-debian/x86_64_build
+  needs:
+    - debian-build-testing
+  variables:
+    S3_ARTIFACT_NAME: debian-build-testing
+  before_script:
+    - !reference [.download_s3, before_script]
+  script: |
     section_switch shader-db "shader-db"
     .gitlab-ci/run-shader-db.sh
-  timeout: 30m
+  artifacts:
+    paths:
+      - shader-db
+  timeout: 15m
 
 # Test a release build with -Werror so new warnings don't sneak in.
 debian-release:

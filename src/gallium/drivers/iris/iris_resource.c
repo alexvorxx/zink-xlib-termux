@@ -1692,8 +1692,32 @@ iris_resource_get_param(struct pipe_screen *pscreen,
                wants_aux ? res->aux.offset : res->offset;
       return true;
    case PIPE_RESOURCE_PARAM_MODIFIER:
-      *value = res->mod_info ? res->mod_info->modifier :
-               tiling_to_modifier(isl_tiling_to_i915_tiling(res->surf.tiling));
+      if (res->mod_info) {
+         *value = res->mod_info->modifier;
+      } else {
+         /* We restrict ourselves to modifiers without CCS for several
+          * reasons:
+          *
+          *    - Mesa's implementation of EGL_MESA_image_dma_buf_export
+          *      currently only exports a single plane (see
+          *      dri2_export_dma_buf_image_mesa), but for some modifiers,
+          *      CCS exists in a second plane.
+          *
+          *    - Even if we returned CCS modifiers, iris currently
+          *      resolves away compression during the export/flushing process
+          *      (see iris_flush_resource). So, only uncompressed data is
+          *      exposed anyways.
+          */
+         switch (res->surf.tiling) {
+         case ISL_TILING_4:      *value = I915_FORMAT_MOD_4_TILED; break;
+         case ISL_TILING_Y0:     *value = I915_FORMAT_MOD_Y_TILED; break;
+         case ISL_TILING_X:      *value = I915_FORMAT_MOD_X_TILED; break;
+         case ISL_TILING_LINEAR: *value =  DRM_FORMAT_MOD_LINEAR;  break;
+         default:
+            assert("no modifier mapped for resource's tiling");
+            return false;
+         }
+      }
       return true;
    case PIPE_RESOURCE_PARAM_HANDLE_TYPE_SHARED:
       if (!wants_aux)
@@ -1753,21 +1777,28 @@ iris_resource_get_handle(struct pipe_screen *pscreen,
        isl_drm_modifier_plane_is_clear_color(res->mod_info->modifier,
                                              whandle->plane)) {
       bo = res->aux.clear_color_bo;
-      whandle->offset = res->aux.clear_color_offset;
    } else if (mod_with_aux && whandle->plane > 0) {
       bo = res->aux.bo;
-      whandle->stride = res->aux.surf.row_pitch_B;
-      whandle->offset = res->aux.offset;
    } else {
-      /* If this is a buffer, stride should be 0 - no need to special case */
-      whandle->stride = res->surf.row_pitch_B;
       bo = res->bo;
    }
 
+   uint64_t stride;
+   iris_resource_get_param(pscreen, ctx, resource, whandle->plane, 0, 0,
+                           PIPE_RESOURCE_PARAM_STRIDE, usage, &stride);
+
+   uint64_t offset;
+   iris_resource_get_param(pscreen, ctx, resource, whandle->plane, 0, 0,
+                           PIPE_RESOURCE_PARAM_OFFSET, usage, &offset);
+
+   uint64_t modifier;
+   iris_resource_get_param(pscreen, ctx, resource, whandle->plane, 0, 0,
+                           PIPE_RESOURCE_PARAM_MODIFIER, usage, &modifier);
+
+   whandle->stride = stride;
+   whandle->offset = offset;
+   whandle->modifier = modifier;
    whandle->format = res->external_format;
-   whandle->modifier =
-      res->mod_info ? res->mod_info->modifier
-                    : tiling_to_modifier(isl_tiling_to_i915_tiling(res->surf.tiling));
 
 #ifndef NDEBUG
    enum isl_aux_usage allowed_usage =

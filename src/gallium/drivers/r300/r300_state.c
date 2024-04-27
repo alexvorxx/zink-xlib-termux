@@ -1045,8 +1045,6 @@ static void* r300_create_fs_state(struct pipe_context* pipe,
     fs->state = *shader;
 
     if (fs->state.type == PIPE_SHADER_IR_NIR) {
-       if (r300->screen->caps.is_r500)
-           NIR_PASS_V(shader->ir.nir, r300_transform_fs_trig_input);
        fs->state.tokens = nir_to_rc(shader->ir.nir, pipe->screen);
     } else {
        assert(fs->state.type == PIPE_SHADER_IR_TGSI);
@@ -1955,22 +1953,8 @@ static void* r300_create_vs_state(struct pipe_context* pipe,
        if (r300->screen->caps.has_tcl) {
            if (r300->screen->caps.is_r500) {
                ntr_options = &hwtcl_r500_options;
-
-               /* Only nine should set both NTT shader name and
-                * use_legacy_math_rules and D3D9 already mandates
-                * the proper range for the trigonometric inputs.
-                */
-               struct shader_info *info = &(((struct nir_shader *)(shader->ir.nir))->info);
-               if (!info->use_legacy_math_rules ||
-                   !(info->name && !strcmp("TTN", info->name))) {
-                   NIR_PASS_V(shader->ir.nir, r300_transform_vs_trig_input);
-               }
            } else {
                ntr_options = &hwtcl_r300_options;
-
-               if (r300->screen->caps.is_r400) {
-                   NIR_PASS_V(shader->ir.nir, r300_transform_vs_trig_input);
-               }
            }
        } else {
            ntr_options = &swtcl_options;

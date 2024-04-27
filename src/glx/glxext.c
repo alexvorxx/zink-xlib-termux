@@ -798,9 +798,15 @@ AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv, Bool zink)
 	 psc = priv->driswDisplay->createScreen(i, priv);
 #endif /* GLX_DIRECT_RENDERING && !GLX_USE_APPLEGL */
 
+#if defined(GLX_USE_APPLE)
+      if (psc == NULL && priv->driswDisplay) {
+         psc = priv->driswDisplay->createScreen(i, priv);
+      }
+#endif
+
       bool indirect = false;
 
-#if defined(GLX_USE_APPLEGL)
+#if defined(GLX_USE_APPLEGL) && !defined(GLX_USE_APPLE)
       if (psc == NULL)
          psc = applegl_create_screen(i, priv);
 #else
@@ -880,7 +886,7 @@ __glXInitialize(Display * dpy)
    Bool zink = False;
    Bool try_zink = False;
 
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
    Bool glx_direct = !debug_get_bool_option("LIBGL_ALWAYS_INDIRECT", false);
    Bool glx_accel = !debug_get_bool_option("LIBGL_ALWAYS_SOFTWARE", false);
    const char *env = getenv("MESA_LOADER_DRIVER_OVERRIDE");
@@ -927,7 +933,7 @@ __glXInitialize(Display * dpy)
 #endif
 #endif /* GLX_DIRECT_RENDERING && !GLX_USE_APPLEGL */
 
-#ifdef GLX_USE_APPLEGL
+#if defined(GLX_USE_APPLEGL) && !defined(GLX_USE_APPLE)
    if (!applegl_create_display(dpyPriv)) {
       free(dpyPriv);
       return NULL;
@@ -936,7 +942,7 @@ __glXInitialize(Display * dpy)
 
    if (!AllocAndFetchScreenConfigs(dpy, dpyPriv, zink | try_zink)) {
       Bool fail = True;
-#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
       if (try_zink) {
          free(dpyPriv->screens);
          dpyPriv->driswDisplay->destroyDisplay(dpyPriv->driswDisplay);

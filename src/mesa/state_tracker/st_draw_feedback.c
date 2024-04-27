@@ -116,11 +116,11 @@ st_feedback_draw_vbo(struct gl_context *ctx,
       return;
 
    /* must get these after state validation! */
-   struct st_common_variant_key key;
-   /* We have to use memcpy to make sure that all bits are copied. */
-   memcpy(&key, &st->vp_variant->key, sizeof(key));
-   key.is_draw_shader = true;
-
+   struct st_common_variant_key key = {
+      .st = st,
+      .passthrough_edgeflags = st->ctx->Array._PerVertexEdgeFlagsEnabled,
+      .is_draw_shader = true
+   };
    vp = (struct gl_vertex_program *)ctx->VertexProgram._Current;
    vp_variant = st_get_common_variant(st, &vp->Base, &key);
 

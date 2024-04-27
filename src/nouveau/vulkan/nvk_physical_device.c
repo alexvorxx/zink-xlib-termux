@@ -119,7 +119,6 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_multiview = true,
       .KHR_pipeline_executable_properties = true,
       .KHR_pipeline_library = true,
-
 #ifdef NVK_USE_WSI_PLATFORM
       /* Hide these behind dri configs for now since we cannot implement it
        * reliably on all surfaces yet. There is no surface capability query
@@ -148,7 +147,6 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_shader_integer_dot_product = true,
       .KHR_shader_non_semantic_info = true,
       .KHR_shader_subgroup_extended_types = true,
-      .KHR_shader_subgroup_uniform_control_flow = nvk_use_nak(info),
       .KHR_shader_terminate_invocation =
          (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
       .KHR_spirv_1_4 = true,
@@ -176,6 +174,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_depth_clip_control = true,
       .EXT_depth_clip_enable = true,
       .EXT_descriptor_indexing = true,
+#ifdef VK_USE_PLATFORM_DISPLAY_KHR
+      .EXT_display_control = true,
+#endif
       .EXT_dynamic_rendering_unused_attachments = true,
       .EXT_extended_dynamic_state = true,
       .EXT_extended_dynamic_state2 = true,
@@ -218,6 +219,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_shader_subgroup_vote = true,
       .EXT_shader_viewport_index_layer = info->cls_eng3d >= MAXWELL_B,
       .EXT_subgroup_size_control = true,
+#ifdef NVK_USE_WSI_PLATFORM
+      .EXT_swapchain_maintenance1 = true,
+#endif
       .EXT_texel_buffer_alignment = true,
       .EXT_tooling_info = true,
       .EXT_transform_feedback = true,
@@ -503,6 +507,11 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_image_sliced_view_of_3d */
       .imageSlicedViewOf3D = true,
 
+#ifdef NVK_USE_WSI_PLATFORM
+      /* VK_EXT_swapchain_maintenance1 */
+      .swapchainMaintenance1 = true,
+#endif
+
       /* VK_EXT_image_view_min_lod */
       .minLod = true,
 
@@ -546,9 +555,6 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
-
-      /* VK_KHR_shader_subgroup_uniform_control_flow */
-      .shaderSubgroupUniformControlFlow = nvk_use_nak(info),
 
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,
@@ -899,8 +905,14 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .shaderWarpsPerSM = info->max_warps_per_mp,
    };
 
-   snprintf(properties->deviceName, sizeof(properties->deviceName),
-            "%s", info->device_name);
+   /* Add the driver to the device name (like other Mesa drivers do) */
+   if (!strcmp(info->device_name, info->chipset_name)) {
+      snprintf(properties->deviceName, sizeof(properties->deviceName),
+               "NVK %s", info->device_name);
+   } else {
+      snprintf(properties->deviceName, sizeof(properties->deviceName),
+               "%s (NVK %s)", info->device_name, info->chipset_name);
+   }
 
    /* VK_EXT_shader_module_identifier */
    STATIC_ASSERT(sizeof(vk_shaderModuleIdentifierAlgorithmUUID) ==

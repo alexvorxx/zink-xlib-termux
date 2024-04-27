@@ -73,19 +73,9 @@ struct vn_semaphore_feedback_cmd {
    struct list_head head;
 };
 
-/* query feedback batch for deferred recording */
-struct vn_feedback_query_batch {
-   struct vn_query_pool *query_pool;
-   uint32_t query;
-   uint32_t query_count;
-   bool copy;
-
-   struct list_head head;
-};
-
 struct vn_query_feedback_cmd {
    struct vn_feedback_cmd_pool *fb_cmd_pool;
-   struct vn_command_buffer *cmd;
+   VkCommandBuffer cmd_handle;
 
    struct list_head head;
 };
@@ -171,17 +161,13 @@ vn_semaphore_feedback_cmd_free(struct vn_device *dev,
                                struct vn_semaphore_feedback_cmd *sfb_cmd);
 
 VkResult
-vn_feedback_query_cmd_alloc(VkDevice dev_handle,
+vn_query_feedback_cmd_alloc(VkDevice dev_handle,
                             struct vn_feedback_cmd_pool *fb_cmd_pool,
+                            struct list_head *resolved_query_records,
                             struct vn_query_feedback_cmd **out_qfb_cmd);
 
 void
-vn_feedback_query_cmd_free(struct vn_query_feedback_cmd *qfb_cmd);
-
-VkResult
-vn_feedback_query_batch_record(VkDevice dev_handle,
-                               struct vn_query_feedback_cmd *qfb_cmd,
-                               struct list_head *combined_query_batches);
+vn_query_feedback_cmd_free(struct vn_query_feedback_cmd *qfb_cmd);
 
 VkResult
 vn_feedback_cmd_alloc(VkDevice dev_handle,

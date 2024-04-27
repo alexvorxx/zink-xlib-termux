@@ -202,8 +202,6 @@ one_time_init(const char *extensions_override)
    STATIC_ASSERT(sizeof(GLint) == 4);
    STATIC_ASSERT(sizeof(GLuint) == 4);
 
-   _mesa_locale_init();
-
    const char *env_const = os_get_option("MESA_EXTENSION_OVERRIDE");
    if (env_const) {
       if (extensions_override &&

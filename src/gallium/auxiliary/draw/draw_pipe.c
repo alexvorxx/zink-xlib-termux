@@ -245,7 +245,7 @@ draw_pipeline_run(struct draw_context *draw,
         start += prim_info->primitive_lengths[i], i++) {
       const unsigned count = prim_info->primitive_lengths[i];
 
-#if DEBUG
+#ifdef DEBUG
       /* Warn if one of the element indexes go outside the vertex buffer */
       {
          unsigned max_index = 0x0;

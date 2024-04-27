@@ -249,7 +249,8 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
    if (devinfo->ver >= 12) {
       unsigned group_size = 1 << brw_inst_exec_size(devinfo, inst);
       unsigned qtr_ctrl = brw_inst_qtr_control(devinfo, inst);
-      unsigned nib_ctrl = brw_inst_nib_control(devinfo, inst);
+      unsigned nib_ctrl =
+         devinfo->ver == 12 ? brw_inst_nib_control(devinfo, inst) : 0;
 
       unsigned chan_off = (qtr_ctrl * 2 + nib_ctrl) << 2;
       ERROR_IF(chan_off % group_size != 0,

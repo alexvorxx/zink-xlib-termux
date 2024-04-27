@@ -40,8 +40,7 @@
 #include "radv_cs.h"
 #include "radv_debug.h"
 
-#define NUM_H264_REFS                17
-#define NUM_H265_REFS                8
+#define NUM_H2645_REFS               16
 #define FB_BUFFER_OFFSET             0x1000
 #define FB_BUFFER_SIZE               2048
 #define FB_BUFFER_SIZE_TONGA         (2048 * 64)
@@ -499,8 +498,8 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
       if (pVideoProfile->lumaBitDepth != VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR)
          return VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR;
 
-      pCapabilities->maxDpbSlots = NUM_H264_REFS;
-      pCapabilities->maxActiveReferencePictures = NUM_H264_REFS;
+      pCapabilities->maxDpbSlots = NUM_H2645_REFS + 1;
+      pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
 
       /* for h264 on navi21+ separate dpb images should work */
       if (radv_enable_tier2(pdevice))
@@ -532,8 +531,8 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
           pVideoProfile->lumaBitDepth != VK_VIDEO_COMPONENT_BIT_DEPTH_10_BIT_KHR)
          return VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR;
 
-      pCapabilities->maxDpbSlots = NUM_H264_REFS;
-      pCapabilities->maxActiveReferencePictures = NUM_H265_REFS;
+      pCapabilities->maxDpbSlots = NUM_H2645_REFS + 1;
+      pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
       /* for h265 on navi21+ separate dpb images should work */
       if (radv_enable_tier2(pdevice))
          pCapabilities->flags |= VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR;

@@ -174,6 +174,7 @@ anv_shader_stage_to_nir(struct anv_device *device,
          .multiview = true,
          .physical_storage_buffer_address = true,
          .post_depth_coverage = true,
+         .quad_control = true,
          .runtime_descriptor_array = true,
          .float_controls = true,
          .ray_cull_mask = rt_enabled,
@@ -410,9 +411,6 @@ struct anv_pipeline_stage {
 
    enum brw_robustness_flags robust_flags;
 
-   struct anv_pipeline_binding surface_to_descriptor[256];
-   struct anv_pipeline_binding sampler_to_descriptor[256];
-   struct anv_pipeline_embedded_sampler_binding embedded_sampler_to_binding[2048];
    struct anv_pipeline_bind_map bind_map;
 
    bool uses_bt_for_push_descs;
@@ -432,6 +430,29 @@ struct anv_pipeline_stage {
 
    struct anv_shader_bin *bin;
 };
+
+static void
+anv_stage_allocate_bind_map_tables(struct anv_pipeline *pipeline,
+                                   struct anv_pipeline_stage *stage,
+                                   void *mem_ctx)
+{
+   struct anv_pipeline_binding *surface_bindings =
+      brw_shader_stage_requires_bindless_resources(stage->stage) ? NULL :
+      rzalloc_array(mem_ctx, struct anv_pipeline_binding, 256);
+   struct anv_pipeline_binding *sampler_bindings =
+      brw_shader_stage_requires_bindless_resources(stage->stage) ? NULL :
+      rzalloc_array(mem_ctx, struct anv_pipeline_binding, 256);
+   struct anv_pipeline_embedded_sampler_binding *embedded_sampler_bindings =
+      rzalloc_array(mem_ctx, struct anv_pipeline_embedded_sampler_binding,
+                    anv_pipeline_sets_layout_embedded_sampler_count(
+                       &pipeline->layout));
+
+   stage->bind_map = (struct anv_pipeline_bind_map) {
+      .surface_to_descriptor = surface_bindings,
+      .sampler_to_descriptor = sampler_bindings,
+      .embedded_sampler_to_binding = embedded_sampler_bindings,
+   };
+}
 
 static enum brw_robustness_flags
 anv_get_robust_flags(const struct vk_pipeline_robustness_state *rstate)
@@ -1951,11 +1972,16 @@ anv_graphics_pipeline_load_cached_shaders(struct anv_graphics_base_pipeline *pip
        */
       assert(found < __builtin_popcount(pipeline->base.active_stages));
 
-      vk_perf(VK_LOG_OBJS(cache ? &cache->base :
-                                  &pipeline->base.device->vk.base),
-              "Found a partial pipeline in the cache.  This is "
-              "most likely caused by an incomplete pipeline cache "
-              "import or export");
+      /* With GPL, this might well happen if the app does an optimized
+       * link.
+       */
+      if (!pipeline->base.device->vk.enabled_extensions.EXT_graphics_pipeline_library) {
+         vk_perf(VK_LOG_OBJS(cache ? &cache->base :
+                             &pipeline->base.device->vk.base),
+                 "Found a partial pipeline in the cache.  This is "
+                 "most likely caused by an incomplete pipeline cache "
+                 "import or export");
+      }
 
       /* We're going to have to recompile anyway, so just throw away our
        * references to the shaders in the cache.  We'll get them out of the
@@ -2002,12 +2028,6 @@ anv_graphics_pipeline_load_nir(struct anv_graphics_base_pipeline *pipeline,
       int64_t stage_start = os_time_get_nano();
 
       assert(stages[s].stage == s);
-
-      stages[s].bind_map = (struct anv_pipeline_bind_map) {
-         .surface_to_descriptor = stages[s].surface_to_descriptor,
-         .sampler_to_descriptor = stages[s].sampler_to_descriptor,
-         .embedded_sampler_to_binding = stages[s].embedded_sampler_to_binding,
-      };
 
       /* Only use the create NIR from the pStages[] element if we don't have
        * an imported library for the same stage.
@@ -2271,6 +2291,8 @@ anv_graphics_pipeline_compile(struct anv_graphics_base_pipeline *pipeline,
       if (anv_graphics_pipeline_skip_shader_compile(pipeline, stages,
                                                     link_optimize, s))
          continue;
+
+      anv_stage_allocate_bind_map_tables(&pipeline->base, &stages[s], tmp_ctx);
 
       anv_pipeline_nir_preprocess(&pipeline->base, &stages[s]);
    }
@@ -2613,11 +2635,7 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
    if (stage.bin == NULL) {
       int64_t stage_start = os_time_get_nano();
 
-      stage.bind_map = (struct anv_pipeline_bind_map) {
-         .surface_to_descriptor = stage.surface_to_descriptor,
-         .sampler_to_descriptor = stage.sampler_to_descriptor,
-         .embedded_sampler_to_binding = stage.embedded_sampler_to_binding,
-      };
+      anv_stage_allocate_bind_map_tables(&pipeline->base, &stage, mem_ctx);
 
       /* Set up a binding for the gl_NumWorkGroups */
       stage.bind_map.surface_count = 1;
@@ -3017,12 +3035,6 @@ anv_graphics_pipeline_import_lib(struct anv_graphics_base_pipeline *pipeline,
       stages[s].subgroup_size_type = lib->retained_shaders[s].subgroup_size_type;
       stages[s].imported.nir = lib->retained_shaders[s].nir;
       stages[s].imported.bin = lib->base.shaders[s];
-
-      stages[s].bind_map = (struct anv_pipeline_bind_map) {
-         .surface_to_descriptor = stages[s].surface_to_descriptor,
-         .sampler_to_descriptor = stages[s].sampler_to_descriptor,
-         .embedded_sampler_to_binding = stages[s].embedded_sampler_to_binding,
-      };
    }
 
    /* When not link optimizing, import the executables (shader descriptions
@@ -3550,8 +3562,8 @@ anv_pipeline_init_ray_tracing_stages(struct anv_ray_tracing_pipeline *pipeline,
          },
       };
 
-      stages[i].bind_map.embedded_sampler_to_binding =
-         stages[i].embedded_sampler_to_binding;
+      anv_stage_allocate_bind_map_tables(&pipeline->base, &stages[i],
+                                         tmp_pipeline_ctx);
 
       pipeline->base.active_stages |= sinfo->stage;
 

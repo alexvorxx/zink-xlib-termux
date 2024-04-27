@@ -207,8 +207,22 @@ radv_sqtt_reloc_graphics_shaders(struct radv_device *device, struct radv_graphic
    }
 
    if (device->shader_use_invisible_vram) {
-      if (!radv_shader_dma_submit(device, submission, &pipeline->base.shader_upload_seq))
+      uint64_t upload_seq = 0;
+
+      if (!radv_shader_dma_submit(device, submission, &upload_seq))
          return VK_ERROR_UNKNOWN;
+
+      for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
+         struct radv_shader *shader = pipeline->base.shaders[i];
+
+         if (!shader)
+            continue;
+
+         shader->upload_seq = upload_seq;
+      }
+
+      if (pipeline->base.gs_copy_shader)
+         pipeline->base.gs_copy_shader->upload_seq = upload_seq;
    }
 
    pipeline->sqtt_shaders_reloc = reloc;

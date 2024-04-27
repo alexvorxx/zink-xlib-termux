@@ -2235,7 +2235,7 @@ get_reg_phi(ra_ctx& ctx, IDSet& live_in, RegisterFile& register_file,
        * to move it in this block's predecessors */
       aco_opcode opcode =
          pc.first.getTemp().is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
-      std::vector<unsigned>& preds =
+      Block::edge_vec& preds =
          pc.first.getTemp().is_linear() ? block.linear_preds : block.logical_preds;
       aco_ptr<Instruction> new_phi{
          create_instruction<Pseudo_instruction>(opcode, Format::PSEUDO, preds.size(), 1)};
@@ -2354,7 +2354,7 @@ read_variable(ra_ctx& ctx, Temp val, unsigned block_idx)
 Temp
 handle_live_in(ra_ctx& ctx, Temp val, Block* block)
 {
-   std::vector<unsigned>& preds = val.is_linear() ? block->linear_preds : block->logical_preds;
+   Block::edge_vec& preds = val.is_linear() ? block->linear_preds : block->logical_preds;
    if (preds.size() == 0)
       return val;
 
@@ -2444,7 +2444,7 @@ handle_loop_phis(ra_ctx& ctx, const IDSet& live_in, uint32_t loop_header_idx,
       aco_ptr<Instruction>& phi = loop_header.instructions[i];
       if (!is_phi(phi))
          break;
-      const std::vector<unsigned>& preds =
+      const Block::edge_vec& preds =
          phi->opcode == aco_opcode::p_phi ? loop_header.logical_preds : loop_header.linear_preds;
       for (unsigned j = 1; j < phi->operands.size(); j++) {
          Operand& op = phi->operands[j];
@@ -2535,7 +2535,7 @@ init_reg_file(ra_ctx& ctx, const std::vector<IDSet>& live_out_per_block, Block& 
       for (aco_ptr<Instruction>& instr : block.instructions) {
          if (!is_phi(instr))
             break;
-         const std::vector<unsigned>& preds =
+         const Block::edge_vec& preds =
             instr->opcode == aco_opcode::p_phi ? block.logical_preds : block.linear_preds;
 
          for (unsigned i = 0; i < instr->operands.size(); i++) {

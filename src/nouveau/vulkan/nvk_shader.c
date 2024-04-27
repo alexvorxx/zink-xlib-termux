@@ -156,7 +156,6 @@ nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
          .subgroup_basic = true,
          .subgroup_quad = true,
          .subgroup_shuffle = true,
-         .subgroup_uniform_control_flow = true,
          .subgroup_vote = true,
          .tessellation = true,
          .transform_feedback = true,
@@ -205,12 +204,32 @@ nvk_populate_fs_key(struct nak_fs_key *key,
        VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
       key->zs_self_dep = true;
 
+   /* We force per-sample interpolation whenever sampleShadingEnable is set
+    * regardless of minSampleShading or rasterizationSamples.
+    *
+    * When sampleShadingEnable is set, few guarantees are made about the
+    * location of interpolation of the inputs.  The only real guarantees are
+    * that the inputs are interpolated within the pixel and that you get at
+    * least `rasterizationSamples * minSampleShading` unique positions.
+    * Importantly, it does not require that when `rasterizationSamples *
+    * minSampleShading <= 1.0` that those positions are at the fragment
+    * center.  Therefore, it's valid to just always do per-sample (which maps
+    * to CENTROID on NVIDIA hardware) all the time and let the hardware sort
+    * it out based on what we set in HYBRID_ANTI_ALIAS_CONTROL::passes.
+    *
+    * Also, we set HYBRID_ANTI_ALIAS_CONTROL::centroid at draw time based on
+    * `rasterizationSamples * minSampleShading` so it should be per-pixel
+    * whenever we're running only a single pass.  However, this would still be
+    * correct even if it got interpolated at some other sample.
+    *
+    * The one caveat here is that we have to be careful about gl_SampleMaskIn.
+    * When `nak_fs_key::force_sample_shading = true` we also turn any reads of
+    * gl_SampleMaskIn into `1 << gl_SampleID` because the hardware sample mask
+    * is actually per-fragment, not per-pass.  We handle this by smashing
+    * minSampleShading to 1.0 whenever gl_SampleMaskIn is read.
+    */
    const struct vk_multisample_state *ms = state->ms;
-   if (ms == NULL || ms->rasterization_samples <= 1)
-      return;
-
-   if (ms->sample_shading_enable &&
-       (ms->rasterization_samples * ms->min_sample_shading) > 1.0)
+   if (ms != NULL && ms->sample_shading_enable)
       key->force_sample_shading = true;
 }
 

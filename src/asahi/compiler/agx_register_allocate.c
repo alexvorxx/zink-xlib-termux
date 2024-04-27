@@ -180,6 +180,9 @@ agx_calc_register_demand(agx_context *ctx)
       if (ctx->any_quad_divergent_shuffle)
          demand++;
 
+      if (ctx->has_spill_pcopy_reserved)
+         demand = 8;
+
       /* Everything live-in */
       {
          int i;
@@ -302,8 +305,11 @@ find_best_region_to_evict(struct ra_ctx *rctx, enum ra_class cls, unsigned size,
    unsigned best_base = ~0;
    unsigned best_moves = ~0;
 
-   /* r0h unevictable only when r0l unevictable */
-   assert(!rctx->shader->any_quad_divergent_shuffle || rctx->shader->any_cf);
+   /* Beginning region evictability condition */
+   bool r0_evictable =
+      !rctx->shader->any_cf && !rctx->shader->has_spill_pcopy_reserved;
+
+   assert(!(r0_evictable && rctx->shader->any_quad_divergent_shuffle));
 
    for (unsigned base = 0; base + size <= rctx->bound[cls]; base += size) {
       /* The first k registers are preallocated and unevictable, so must be
@@ -320,7 +326,7 @@ find_best_region_to_evict(struct ra_ctx *rctx, enum ra_class cls, unsigned size,
        * descending. So, we do not need extra registers to handle "single
        * region" unevictability.
        */
-      if (base == 0 && rctx->shader->any_cf)
+      if (base == 0 && !r0_evictable)
          continue;
 
       /* Do not evict the same register multiple times. It's not necessary since
@@ -1085,6 +1091,11 @@ agx_ra_assign_local(struct ra_ctx *rctx)
    if (rctx->shader->any_quad_divergent_shuffle) {
       assert(rctx->shader->any_cf);
       BITSET_SET(used_regs_gpr, 1);
+   }
+
+   /* Reserve bottom registers as temporaries for parallel copy lowering */
+   if (rctx->shader->has_spill_pcopy_reserved) {
+      BITSET_SET_RANGE(used_regs_gpr, 0, 7);
    }
 
    agx_foreach_instr_in_block(block, I) {

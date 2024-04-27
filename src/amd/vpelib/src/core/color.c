@@ -172,8 +172,7 @@ static bool color_update_regamma_tf(struct vpe_priv *vpe_priv,
     case TRANSFER_FUNC_BT709:
     case TRANSFER_FUNC_BT1886:
     case TRANSFER_FUNC_PQ2084:
-    case TRANSFER_FUNC_LINEAR_0_125:
-    case TRANSFER_FUNC_LINEAR_0_1:
+    case TRANSFER_FUNC_LINEAR:
         output_tf->tf = output_transfer_function;
         break;
     default:
@@ -225,8 +224,7 @@ static bool color_update_degamma_tf(struct vpe_priv *vpe_priv,
     case TRANSFER_FUNC_BT1886:
     case TRANSFER_FUNC_PQ2084:
     case TRANSFER_FUNC_NORMALIZED_PQ:
-    case TRANSFER_FUNC_LINEAR_0_1:
-    case TRANSFER_FUNC_LINEAR_0_125:
+    case TRANSFER_FUNC_LINEAR:
         input_tf->tf = color_input_tf;
         break;
     default:
@@ -421,7 +419,7 @@ static enum vpe_status vpe_update_blnd_gamma(
     bool                     can_bypass    = false;
     bool                     lut3d_enabled = false;
     enum color_space         cs            = COLOR_SPACE_2020_RGB_FULLRANGE;
-    enum color_transfer_func tf            = TRANSFER_FUNC_LINEAR_0_1;
+    enum color_transfer_func tf            = TRANSFER_FUNC_LINEAR;
     enum vpe_status          status        = VPE_STATUS_OK;
 
     is_studio = (param->dst_surface.cs.range == VPE_COLOR_RANGE_STUDIO);
@@ -445,7 +443,7 @@ static enum vpe_status vpe_update_blnd_gamma(
     //If studio out -> No choice but to blend in NL
     if (!vpe_is_HDR(output_ctx->tf) || is_studio) {
         if (lut3d_enabled) {
-            tf = TRANSFER_FUNC_LINEAR_0_1;
+            tf = TRANSFER_FUNC_LINEAR;
         }
         else {
             tf = output_ctx->tf;
@@ -784,7 +782,7 @@ enum vpe_status vpe_color_update_shaper(
     shaper_in.use_const_hdr_mult = false; // can't be true. Fix is required.
 
     shaper_func->type = TF_TYPE_HWPWL;
-    shaper_func->tf   = TRANSFER_FUNC_LINEAR_0_1;
+    shaper_func->tf   = TRANSFER_FUNC_LINEAR;
     return vpe_build_shaper(&shaper_in, &shaper_func->pwl);
 }
 
@@ -895,7 +893,7 @@ void vpe_color_get_color_space_and_tf(
         *tf = TRANSFER_FUNC_NORMALIZED_PQ;
         break;
     case VPE_TF_G10:
-        *tf = TRANSFER_FUNC_LINEAR_0_1;
+        *tf = TRANSFER_FUNC_LINEAR;
         break;
     case VPE_TF_SRGB:
         *tf = TRANSFER_FUNC_SRGB;
@@ -1003,8 +1001,7 @@ void vpe_convert_full_range_color_enum(enum color_space *cs)
 bool vpe_is_HDR(enum color_transfer_func tf)
 {
 
-    return (tf == TRANSFER_FUNC_PQ2084 || tf == TRANSFER_FUNC_LINEAR_0_125 ||
-            tf == TRANSFER_FUNC_HLG || tf == TRANSFER_FUNC_LINEAR_0_1);
+    return (tf == TRANSFER_FUNC_PQ2084 || tf == TRANSFER_FUNC_HLG || tf == TRANSFER_FUNC_LINEAR);
 }
 
 /*

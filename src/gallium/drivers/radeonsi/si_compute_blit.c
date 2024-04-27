@@ -323,61 +323,42 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
    assert(dst->target != PIPE_BUFFER || dst_offset + size <= dst->width0);
    assert(!src || src_offset + size <= src->width0);
 
-   /* The memory accesses are coalesced, meaning that the 1st instruction writes
-    * the 1st contiguous block of data for the whole wave, the 2nd instruction
-    * writes the 2nd contiguous block of data, etc.
-    */
-   unsigned dwords_per_thread =
-      src ? SI_COMPUTE_COPY_DW_PER_THREAD : SI_COMPUTE_CLEAR_DW_PER_THREAD;
-   unsigned instructions_per_thread = MAX2(1, dwords_per_thread / 4);
-   unsigned dwords_per_instruction = dwords_per_thread / instructions_per_thread;
-   /* The shader declares the block size like this: */
-   unsigned block_size = si_determine_wave_size(sctx->screen, NULL);
-   unsigned dwords_per_wave = dwords_per_thread * block_size;
-
-   unsigned num_dwords = size / 4;
-   unsigned num_instructions = DIV_ROUND_UP(num_dwords, dwords_per_instruction);
+   bool is_copy = src != NULL;
+   unsigned dwords_per_thread = 4;
+   unsigned num_threads = DIV_ROUND_UP(size, dwords_per_thread * 4);
 
    struct pipe_grid_info info = {};
-   info.block[0] = MIN2(block_size, num_instructions);
+   info.block[0] = 64;
    info.block[1] = 1;
    info.block[2] = 1;
-   info.grid[0] = DIV_ROUND_UP(num_dwords, dwords_per_wave);
+   info.grid[0] = DIV_ROUND_UP(num_threads, 64);
    info.grid[1] = 1;
    info.grid[2] = 1;
+   info.last_block[0] = num_threads % 64;
 
    struct pipe_shader_buffer sb[2] = {};
-   sb[0].buffer = dst;
-   sb[0].buffer_offset = dst_offset;
-   sb[0].buffer_size = size;
+   sb[is_copy].buffer = dst;
+   sb[is_copy].buffer_offset = dst_offset;
+   sb[is_copy].buffer_size = size;
 
-   if (src) {
-      sb[1].buffer = src;
-      sb[1].buffer_offset = src_offset;
-      sb[1].buffer_size = size;
-
-      if (!sctx->cs_copy_buffer) {
-         sctx->cs_copy_buffer = si_create_dma_compute_shader(sctx, SI_COMPUTE_COPY_DW_PER_THREAD,
-                                                             true);
-      }
-
-      si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_copy_buffer, flags, coher,
-                                    2, sb, 0x1);
+   if (is_copy) {
+      sb[0].buffer = src;
+      sb[0].buffer_offset = src_offset;
+      sb[0].buffer_size = size;
    } else {
       assert(clear_value_size >= 4 && clear_value_size <= 16 &&
              util_is_power_of_two_or_zero(clear_value_size));
 
       for (unsigned i = 0; i < 4; i++)
          sctx->cs_user_data[i] = clear_value[i % (clear_value_size / 4)];
-
-      if (!sctx->cs_clear_buffer) {
-         sctx->cs_clear_buffer = si_create_dma_compute_shader(sctx, SI_COMPUTE_CLEAR_DW_PER_THREAD,
-                                                              false);
-      }
-
-      si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_clear_buffer, flags, coher,
-                                    1, sb, 0x1);
    }
+
+   void **shader = is_copy ? &sctx->cs_copy_buffer : &sctx->cs_clear_buffer;
+   if (!*shader)
+      *shader = si_create_dma_compute_shader(sctx, dwords_per_thread, !is_copy);
+
+   si_launch_grid_internal_ssbos(sctx, &info, *shader, flags, coher, is_copy ? 2 : 1, sb,
+                                 is_copy ? 0x2 : 0x1);
 }
 
 void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,

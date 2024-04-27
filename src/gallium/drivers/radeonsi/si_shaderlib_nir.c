@@ -670,73 +670,31 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
 
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
-                                   bool is_copy)
+                                   bool is_clear)
 {
-   assert(util_is_power_of_two_nonzero(num_dwords_per_thread));
+   assert(util_is_power_of_two_nonzero(num_dwords_per_thread) && num_dwords_per_thread <= 4);
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
                                                   "create_dma_compute");
-   unsigned wg_size = 64;
-
-   b.shader->info.workgroup_size[0] = wg_size;
+   b.shader->info.workgroup_size[0] = 64;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
-   b.shader->info.num_ssbos = 1;
+   b.shader->info.num_ssbos = is_clear ? 1 : 2;
+   b.shader->info.cs.user_data_components_amd = is_clear ? num_dwords_per_thread : 0;
 
-   unsigned num_mem_ops = MAX2(1, num_dwords_per_thread / 4);
-   unsigned *inst_dwords = alloca(num_mem_ops * sizeof(unsigned));
+   nir_def *thread_id = get_global_ids(&b, 1);
+   /* Convert the global thread ID into bytes. */
+   nir_def *offset = nir_imul_imm(&b, thread_id, 4 * num_dwords_per_thread);
+   nir_def *value;
 
-   for (unsigned i = 0; i < num_mem_ops; i++) {
-      if (i * 4 < num_dwords_per_thread)
-         inst_dwords[i] = MIN2(4, num_dwords_per_thread - i * 4);
-   }
-
-   /* If there are multiple stores,
-    * the first store writes into 0 * wavesize + tid,
-    * the 2nd store writes into 1 * wavesize + tid,
-    * the 3rd store writes into 2 * wavesize + tid, etc.
-    */
-   nir_def *store_address =
-      nir_iadd(&b, nir_imul_imm(&b, nir_channel(&b, nir_load_workgroup_id(&b), 0),
-                                wg_size * num_mem_ops),
-               nir_channel(&b, nir_load_local_invocation_id(&b), 0));
-
-   /* Convert from a "store size unit" into bytes. */
-   store_address = nir_imul_imm(&b, store_address, 4 * inst_dwords[0]);
-
-   nir_def *load_address = store_address, *value = NULL, *values[num_mem_ops];
-
-   if (is_copy) {
-      b.shader->info.num_ssbos++;
+   if (is_clear) {
+      value = nir_trim_vector(&b, nir_load_user_data_amd(&b), num_dwords_per_thread);
    } else {
-      b.shader->info.cs.user_data_components_amd = inst_dwords[0];
-      value = nir_trim_vector(&b, nir_load_user_data_amd(&b), inst_dwords[0]);
+      value = nir_load_ssbo(&b, num_dwords_per_thread, 32, nir_imm_int(&b, 0), offset,
+                            .access = ACCESS_RESTRICT);
    }
 
-   /* Distance between a load and a store for latency hiding. */
-   unsigned load_store_distance = is_copy ? 8 : 0;
-
-   for (unsigned i = 0; i < num_mem_ops + load_store_distance; i++) {
-      int d = i - load_store_distance;
-
-      if (is_copy && i < num_mem_ops) {
-         if (i) {
-            load_address = nir_iadd(&b, load_address,
-                                    nir_imm_int(&b, 4 * inst_dwords[i] * wg_size));
-         }
-         values[i] = nir_load_ssbo(&b, inst_dwords[i], 32, nir_imm_int(&b, 1), load_address,
-                                   .access = ACCESS_RESTRICT);
-      }
-
-      if (d >= 0) {
-         if (d) {
-            store_address = nir_iadd(&b, store_address,
-                                     nir_imm_int(&b, 4 * inst_dwords[d] * wg_size));
-         }
-         nir_store_ssbo(&b, is_copy ? values[d] : value, nir_imm_int(&b, 0), store_address,
-                        .access = ACCESS_RESTRICT);
-      }
-   }
+   nir_store_ssbo(&b, value, nir_imm_int(&b, !is_clear), offset, .access = ACCESS_RESTRICT);
 
    return create_shader_state(sctx, b.shader);
 }

@@ -150,7 +150,7 @@ agx_nir_lower_uvs(nir_shader *s, struct agx_unlinked_uvs_layout *layout)
 
    for (unsigned i = 0; i < ARRAY_SIZE(layout->components); ++i) {
       if (i != VARYING_SLOT_POS && i != VARYING_SLOT_PSIZ &&
-          layout->components[i]) {
+          i != VARYING_SLOT_LAYER && layout->components[i]) {
 
          layout->written |= BITFIELD64_BIT(i);
          sizes[UVS_VARYINGS] += layout->components[i];

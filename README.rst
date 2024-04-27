@@ -40,10 +40,6 @@ To use Zink with Turnip Freedreno driver:
 
 You also may compile it yourself.
 
-Before starting Zink, it is recommended to run the command:
-
-  $ export MESA_GL_VERSION_OVERRIDE=2.1
-
 ======================================================
 
 Source

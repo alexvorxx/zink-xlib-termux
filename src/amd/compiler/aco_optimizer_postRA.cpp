@@ -74,9 +74,8 @@ struct pr_opt_ctx {
          instr_idx_by_regs(std::unique_ptr<Idx_array[]>{new Idx_array[p->blocks.size()]})
    {}
 
-   ALWAYS_INLINE void reset_block_regs(const std::vector<uint32_t>& preds,
-                                       const unsigned block_index, const unsigned min_reg,
-                                       const unsigned num_regs)
+   ALWAYS_INLINE void reset_block_regs(const Block::edge_vec& preds, const unsigned block_index,
+                                       const unsigned min_reg, const unsigned num_regs)
    {
       const unsigned num_preds = preds.size();
       const unsigned first_pred = preds[0];
@@ -231,11 +230,19 @@ is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since
    return false;
 }
 
-template <typename T>
 bool
-is_overwritten_since(pr_opt_ctx& ctx, const T& t, const Idx& idx, bool inclusive = false)
+is_overwritten_since(pr_opt_ctx& ctx, const Definition& def, const Idx& idx, bool inclusive = false)
 {
-   return is_overwritten_since(ctx, t.physReg(), t.regClass(), idx, inclusive);
+   return is_overwritten_since(ctx, def.physReg(), def.regClass(), idx, inclusive);
+}
+
+bool
+is_overwritten_since(pr_opt_ctx& ctx, const Operand& op, const Idx& idx, bool inclusive = false)
+{
+   if (op.isConstant())
+      return false;
+
+   return is_overwritten_since(ctx, op.physReg(), op.regClass(), idx, inclusive);
 }
 
 void
@@ -383,7 +390,7 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
          /* Check whether the operands of the writer are overwritten. */
          for (const Operand& op : wr_instr->operands) {
-            if (!op.isConstant() && is_overwritten_since(ctx, op, wr_idx))
+            if (is_overwritten_since(ctx, op, wr_idx))
                return;
          }
 
@@ -524,7 +531,7 @@ try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    /* Verify that the operands of the producer instruction haven't been overwritten. */
    for (const Operand& op : producer_instr->operands) {
-      if (!op.isConstant() && is_overwritten_since(ctx, op, producer_idx, true))
+      if (is_overwritten_since(ctx, op, producer_idx, true))
          return;
    }
 

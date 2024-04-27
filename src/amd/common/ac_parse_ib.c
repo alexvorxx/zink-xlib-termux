@@ -9,6 +9,7 @@
 #include "sid_tables.h"
 
 #include "util/compiler.h"
+#include "util/hash_table.h"
 #include "util/u_debug.h"
 #include "util/u_math.h"
 #include "util/memstream.h"
@@ -41,20 +42,6 @@ DEBUG_GET_ONCE_BOOL_OPTION(color, "AMD_COLOR", true);
 #define O_COLOR_PURPLE (debug_get_option_color() ? COLOR_PURPLE : "")
 
 #define INDENT_PKT 8
-
-struct ac_ib_parser {
-   FILE *f;
-   uint32_t *ib;
-   unsigned num_dw;
-   const int *trace_ids;
-   unsigned trace_id_count;
-   enum amd_gfx_level gfx_level;
-   enum radeon_family family;
-   ac_debug_addr_callback addr_callback;
-   void *addr_callback_data;
-
-   unsigned cur_dw;
-};
 
 static void parse_gfx_compute_ib(FILE *f, struct ac_ib_parser *ib);
 
@@ -709,6 +696,12 @@ static void parse_gfx_compute_ib(FILE *f, struct ac_ib_parser *ib)
    int current_trace_id = -1;
 
    while (ib->cur_dw < ib->num_dw) {
+      if (ib->annotations) {
+         struct hash_entry *marker = _mesa_hash_table_search(ib->annotations, ib->ib + ib->cur_dw);
+         if (marker)
+            fprintf(f, "\n%s:", (char *)marker->data);
+      }
+
       uint32_t header = ac_ib_get(ib);
       unsigned type = PKT_TYPE_G(header);
 
@@ -949,43 +942,32 @@ static void parse_sdma_ib(FILE *f, struct ac_ib_parser *ib)
  *                      be NULL.
  * \param addr_callback_data user data for addr_callback
  */
-void ac_parse_ib_chunk(FILE *f, uint32_t *ib_ptr, int num_dw, const int *trace_ids,
-                       unsigned trace_id_count, enum amd_gfx_level gfx_level,
-                       enum radeon_family family, enum amd_ip_type ip_type,
-                       ac_debug_addr_callback addr_callback, void *addr_callback_data)
+void ac_parse_ib_chunk(struct ac_ib_parser *ib)
 {
-   struct ac_ib_parser ib = {0};
-   ib.ib = ib_ptr;
-   ib.num_dw = num_dw;
-   ib.trace_ids = trace_ids;
-   ib.trace_id_count = trace_id_count;
-   ib.gfx_level = gfx_level;
-   ib.family = family;
-   ib.addr_callback = addr_callback;
-   ib.addr_callback_data = addr_callback_data;
+   struct ac_ib_parser tmp_ib = *ib;
 
    char *out;
    size_t outsize;
    struct u_memstream mem;
    u_memstream_open(&mem, &out, &outsize);
    FILE *const memf = u_memstream_get(&mem);
-   ib.f = memf;
+   tmp_ib.f = memf;
 
-   if (ip_type == AMD_IP_GFX || ip_type == AMD_IP_COMPUTE)
-      parse_gfx_compute_ib(memf, &ib);
-   else if (ip_type == AMD_IP_SDMA)
-      parse_sdma_ib(memf, &ib);
+   if (ib->ip_type == AMD_IP_GFX || ib->ip_type == AMD_IP_COMPUTE)
+      parse_gfx_compute_ib(memf, &tmp_ib);
+   else if (ib->ip_type == AMD_IP_SDMA)
+      parse_sdma_ib(memf, &tmp_ib);
    else
       unreachable("unsupported IP type");
 
    u_memstream_close(&mem);
 
    if (out) {
-      format_ib_output(f, out);
+      format_ib_output(ib->f, out);
       free(out);
    }
 
-   if (ib.cur_dw > ib.num_dw) {
+   if (tmp_ib.cur_dw > tmp_ib.num_dw) {
       printf("\nPacket ends after the end of IB.\n");
       exit(1);
    }
@@ -1021,14 +1003,11 @@ static const char *ip_name(const enum amd_ip_type ip)
  *                      be NULL.
  * \param addr_callback_data user data for addr_callback
  */
-void ac_parse_ib(FILE *f, uint32_t *ib, int num_dw, const int *trace_ids, unsigned trace_id_count,
-                 const char *name, enum amd_gfx_level gfx_level, enum radeon_family family,
-                 enum amd_ip_type ip_type, ac_debug_addr_callback addr_callback, void *addr_callback_data)
+void ac_parse_ib(struct ac_ib_parser *ib, const char *name)
 {
-   fprintf(f, "------------------ %s begin - %s ------------------\n", name, ip_name(ip_type));
+   fprintf(ib->f, "------------------ %s begin - %s ------------------\n", name, ip_name(ib->ip_type));
 
-   ac_parse_ib_chunk(f, ib, num_dw, trace_ids, trace_id_count, gfx_level, family, ip_type,
-                     addr_callback, addr_callback_data);
+   ac_parse_ib_chunk(ib);
 
-   fprintf(f, "------------------- %s end - %s -------------------\n\n", name, ip_name(ip_type));
+   fprintf(ib->f, "------------------- %s end - %s -------------------\n\n", name, ip_name(ib->ip_type));
 }

@@ -216,12 +216,27 @@ setup_fs_payload_gfx20(fs_thread_payload &payload,
             payload.num_regs++;
          }
       }
+
+      /* R22: Sample offsets. */
+      if (prog_data->uses_sample_offsets && j == 0) {
+         payload.sample_offsets_reg = payload.num_regs;
+         payload.num_regs += 2;
+      }
    }
 
-   if (prog_data->uses_depth_w_coefficients) {
-      assert(v.max_polygons == 1);
-      payload.depth_w_coef_reg = payload.num_regs;
-      payload.num_regs += 2;
+   /* RP0: Source Depth and/or W Attribute Vertex Deltas and/or
+    * Perspective Bary Planes.
+    */
+   if (prog_data->uses_depth_w_coefficients ||
+       prog_data->uses_pc_bary_coefficients) {
+      payload.depth_w_coef_reg = payload.pc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += 2 * v.max_polygons;
+   }
+
+   /* RP4: Non-Perspective Bary planes. */
+   if (prog_data->uses_npc_bary_coefficients) {
+      payload.npc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += 2 * v.max_polygons;
    }
 
    if (v.nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {
@@ -290,10 +305,27 @@ setup_fs_payload_gfx9(fs_thread_payload &payload,
       }
    }
 
-   /* R66: Source Depth and/or W Attribute Vertex Deltas */
+   /* R66: Source Depth and/or W Attribute Vertex Deltas. */
    if (prog_data->uses_depth_w_coefficients) {
-      assert(v.max_polygons == 1);
       payload.depth_w_coef_reg = payload.num_regs;
+      payload.num_regs += v.max_polygons;
+   }
+
+   /* R68: Perspective bary planes. */
+   if (prog_data->uses_pc_bary_coefficients) {
+      payload.pc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += v.max_polygons;
+   }
+
+   /* R70: Non-perspective bary planes. */
+   if (prog_data->uses_npc_bary_coefficients) {
+      payload.npc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += v.max_polygons;
+   }
+
+   /* R72: Sample offsets. */
+   if (prog_data->uses_sample_offsets) {
+      payload.sample_offsets_reg = payload.num_regs;
       payload.num_regs++;
    }
 
@@ -311,8 +343,11 @@ fs_thread_payload::fs_thread_payload(const fs_visitor &v,
     dest_depth_reg(),
     sample_pos_reg(),
     sample_mask_in_reg(),
+    barycentric_coord_reg(),
     depth_w_coef_reg(),
-    barycentric_coord_reg()
+    pc_bary_coef_reg(),
+    npc_bary_coef_reg(),
+    sample_offsets_reg()
 {
    if (v.devinfo->ver >= 20)
       setup_fs_payload_gfx20(*this, v, source_depth_to_render_target);

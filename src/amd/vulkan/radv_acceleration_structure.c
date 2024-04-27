@@ -1447,33 +1447,36 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
 
    cmd_buffer->state.current_event_type = EventInternalUnknown;
 
-   if (batch_state.any_non_updateable)
-      build_leaves(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states, false);
-   if (batch_state.any_updateable)
-      build_leaves(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states, true);
+   if (batch_state.any_lbvh || batch_state.any_ploc) {
+      if (batch_state.any_non_updateable)
+         build_leaves(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states, false);
+      if (batch_state.any_updateable)
+         build_leaves(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states, true);
 
-   cmd_buffer->state.flush_bits |= flush_bits;
+      cmd_buffer->state.flush_bits |= flush_bits;
 
-   morton_generate(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
+      morton_generate(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
 
-   morton_sort(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
+      morton_sort(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
 
-   cmd_buffer->state.flush_bits |= flush_bits;
+      cmd_buffer->state.flush_bits |= flush_bits;
 
-   lbvh_build_internal(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
+      if (batch_state.any_lbvh)
+         lbvh_build_internal(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
 
-   if (batch_state.any_ploc)
-      ploc_build_internal(commandBuffer, infoCount, pInfos, bvh_states);
+      if (batch_state.any_ploc)
+         ploc_build_internal(commandBuffer, infoCount, pInfos, bvh_states);
 
-   cmd_buffer->state.flush_bits |= flush_bits;
+      cmd_buffer->state.flush_bits |= flush_bits;
 
-   if (batch_state.any_non_compact)
-      encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, false);
+      if (batch_state.any_non_compact)
+         encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, false);
 
-   if (batch_state.any_compact)
-      encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, true);
+      if (batch_state.any_compact)
+         encode_nodes(commandBuffer, infoCount, pInfos, bvh_states, true);
 
-   cmd_buffer->state.flush_bits |= flush_bits;
+      cmd_buffer->state.flush_bits |= flush_bits;
+   }
 
    init_header(commandBuffer, infoCount, pInfos, bvh_states, &batch_state);
 

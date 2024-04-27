@@ -131,6 +131,10 @@ bool lower_packed_varying_needs_lowering(nir_shader *shader, nir_variable *var,
                                          bool disable_xfb_packing,
                                          bool disable_varying_packing);
 
+void
+gl_nir_lower_optimize_varyings(const struct gl_constants *consts,
+                               struct gl_shader_program *prog, bool spirv);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

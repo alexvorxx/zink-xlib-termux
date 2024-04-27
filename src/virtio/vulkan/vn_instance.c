@@ -115,8 +115,6 @@ vn_instance_init_renderer_versions(struct vn_instance *instance)
 static inline void
 vn_instance_fini_ring(struct vn_instance *instance)
 {
-   mtx_destroy(&instance->ring.roundtrip_mutex);
-
    vn_watchdog_fini(&instance->ring.watchdog);
 
    list_for_each_entry_safe(struct vn_tls_ring, tls_ring,
@@ -148,9 +146,6 @@ vn_instance_init_ring(struct vn_instance *instance)
    list_inithead(&instance->ring.tls_rings);
 
    vn_watchdog_init(&instance->ring.watchdog);
-
-   mtx_init(&instance->ring.roundtrip_mutex, mtx_plain);
-   instance->ring.roundtrip_next = 1;
 
    return VK_SUCCESS;
 }
@@ -216,33 +211,6 @@ vn_instance_init_renderer(struct vn_instance *instance)
    }
 
    return VK_SUCCESS;
-}
-
-VkResult
-vn_instance_submit_roundtrip(struct vn_instance *instance,
-                             uint64_t *roundtrip_seqno)
-{
-   const uint64_t ring_id = vn_ring_get_id(instance->ring.ring);
-   uint32_t local_data[8];
-   struct vn_cs_encoder local_enc =
-      VN_CS_ENCODER_INITIALIZER_LOCAL(local_data, sizeof(local_data));
-
-   mtx_lock(&instance->ring.roundtrip_mutex);
-   const uint64_t seqno = instance->ring.roundtrip_next++;
-   vn_encode_vkSubmitVirtqueueSeqnoMESA(&local_enc, 0, ring_id, seqno);
-   VkResult result = vn_renderer_submit_simple(
-      instance->renderer, local_data, vn_cs_encoder_get_len(&local_enc));
-   mtx_unlock(&instance->ring.roundtrip_mutex);
-
-   *roundtrip_seqno = seqno;
-   return result;
-}
-
-void
-vn_instance_wait_roundtrip(struct vn_instance *instance,
-                           uint64_t roundtrip_seqno)
-{
-   vn_async_vkWaitVirtqueueSeqnoMESA(instance->ring.ring, roundtrip_seqno);
 }
 
 /* instance commands */

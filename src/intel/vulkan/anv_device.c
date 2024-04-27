@@ -188,6 +188,7 @@ static const struct vk_instance_extension_table instance_extensions = {
    .KHR_get_surface_capabilities2            = true,
    .KHR_surface                              = true,
    .KHR_surface_protected_capabilities       = true,
+   .EXT_surface_maintenance1                 = true,
    .EXT_swapchain_colorspace                 = true,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
@@ -302,7 +303,9 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_shader_float16_int8               = !device->instance->no_16bit,
       .KHR_shader_float_controls             = true,
       .KHR_shader_integer_dot_product        = true,
+      .KHR_shader_maximal_reconvergence      = true,
       .KHR_shader_non_semantic_info          = true,
+      .KHR_shader_quad_control               = true,
       .KHR_shader_subgroup_extended_types    = true,
       .KHR_shader_subgroup_rotate            = true,
       .KHR_shader_subgroup_uniform_control_flow = true,
@@ -404,6 +407,9 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_shader_subgroup_vote              = true,
       .EXT_shader_viewport_index_layer       = true,
       .EXT_subgroup_size_control             = true,
+#ifdef ANV_USE_WSI_PLATFORM
+      .EXT_swapchain_maintenance1            = true,
+#endif
       .EXT_texel_buffer_alignment            = true,
       .EXT_tooling_info                      = true,
       .EXT_transform_feedback                = true,
@@ -882,6 +888,8 @@ get_features(const struct anv_physical_device *pdevice,
       /* VK_KHR_cooperative_matrix */
       .cooperativeMatrix = anv_has_cooperative_matrix(pdevice),
 
+      /* VK_KHR_shader_maximal_reconvergence */
+      .shaderMaximalReconvergence = true,
 
       /* VK_KHR_shader_subgroup_rotate */
       .shaderSubgroupRotate = true,
@@ -906,6 +914,14 @@ get_features(const struct anv_physical_device *pdevice,
       .memoryMapPlaced = true,
       .memoryMapRangePlaced = false,
       .memoryUnmapReserve = true,
+
+      /* VK_KHR_shader_quad_control */
+      .shaderQuadControl = true,
+
+#ifdef ANV_USE_WSI_PLATFORM
+      /* VK_EXT_swapchain_maintenance1 */
+      .swapchainMaintenance1 = true,
+#endif
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -3938,8 +3954,7 @@ VkResult anv_CreateDevice(
    pthread_mutex_destroy(&device->mutex);
  fail_vmas:
    util_vma_heap_finish(&device->vma_trtt);
-   if (!device->physical->indirect_descriptors)
-      util_vma_heap_finish(&device->vma_samplers);
+   util_vma_heap_finish(&device->vma_samplers);
    util_vma_heap_finish(&device->vma_desc_buf);
    util_vma_heap_finish(&device->vma_desc);
    util_vma_heap_finish(&device->vma_hi);
@@ -4069,8 +4084,7 @@ void anv_DestroyDevice(
    anv_bo_cache_finish(&device->bo_cache);
 
    util_vma_heap_finish(&device->vma_trtt);
-   if (!device->physical->indirect_descriptors)
-      util_vma_heap_finish(&device->vma_samplers);
+   util_vma_heap_finish(&device->vma_samplers);
    util_vma_heap_finish(&device->vma_desc_buf);
    util_vma_heap_finish(&device->vma_desc);
    util_vma_heap_finish(&device->vma_hi);

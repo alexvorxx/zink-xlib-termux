@@ -40,7 +40,7 @@
 #include "ir3_assembler.h"
 #include "ir3_shader.h"
 
-#include "isa/isa.h"
+#include "freedreno/isa/ir3-isa.h"
 
 /* clang-format off */
 /* Note: @anholt's 4xx disasm was done on an a418 Nexus 5x */
@@ -513,12 +513,12 @@ main(int argc, char **argv)
          strtoll(&test->instr[9], NULL, 16),
          strtoll(&test->instr[0], NULL, 16),
       };
-      isa_disasm(code, 8, fdisasm,
-                 &(struct isa_decode_options){
-                    .gpu_id = dev_info->chip * 100,
-                    .show_errors = true,
-                    .no_match_cb = print_raw,
-                 });
+      ir3_isa_disasm(code, 8, fdisasm,
+                     &(struct isa_decode_options){
+                        .gpu_id = dev_info->chip * 100,
+                        .show_errors = true,
+                        .no_match_cb = print_raw,
+                     });
       fflush(fdisasm);
 
       trim(disasm_output);

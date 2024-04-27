@@ -126,10 +126,14 @@ kopper_init_screen(struct dri_screen *screen)
    screen->can_share_buffer = true;
 
    bool success;
+#ifdef HAVE_LIBDRM
    if (screen->fd != -1)
       success = pipe_loader_drm_probe_fd(&screen->dev, screen->fd, false);
    else
       success = pipe_loader_vk_probe_dri(&screen->dev, NULL);
+#else
+   success = pipe_loader_vk_probe_dri(&screen->dev, NULL);
+#endif
 
    if (success)
       pscreen = pipe_loader_create_screen(screen->dev);
@@ -370,6 +374,7 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
    } else
 #endif
    {
+#ifdef HAVE_DRI3
       xcb_dri3_buffer_from_pixmap_cookie_t bp_cookie;
       xcb_dri3_buffer_from_pixmap_reply_t *bp_reply;
       xcb_generic_error_t *error;
@@ -389,6 +394,9 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
       width = bp_reply->width;
       height = bp_reply->height;
       free(bp_reply);
+#else
+      return NULL;
+#endif
    }
 
    drawable->w = width;

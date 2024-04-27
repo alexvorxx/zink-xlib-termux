@@ -326,6 +326,7 @@ unsigned si_get_num_shader_profiles(void);
 #define SI_PROFILE_VS_NO_BINNING             (1 << 3)
 #define SI_PROFILE_GFX9_GFX10_PS_NO_BINNING  (1 << 4)
 #define SI_PROFILE_CLAMP_DIV_BY_ZERO         (1 << 5)
+#define SI_PROFILE_NO_OPT_UNIFORM_VARYINGS   (1 << 6)
 
 enum si_shader_dump_type {
    SI_DUMP_SHADER_KEY,
@@ -1027,6 +1028,7 @@ void si_nir_scan_shader(struct si_screen *sscreen,  const struct nir_shader *nir
 
 /* si_shader_nir.c */
 extern const struct nir_lower_subgroups_options si_nir_subgroups_options;
+void si_lower_mediump_io(struct nir_shader *nir);
 
 bool si_alu_to_scalar_packed_math_filter(const struct nir_instr *instr, const void *data);
 void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first);

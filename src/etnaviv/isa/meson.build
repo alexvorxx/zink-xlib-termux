@@ -24,10 +24,11 @@ decode_files = [
   'isa.h',
 ]
 
-libetnaviv_decode = static_library(
+_libetnaviv_decode = static_library(
   'etnaviv_decode',
   decode_files,
   dependencies: [idep_mesautil, idep_isaspec_decode],
+  link_with: [libisaspec],
   include_directories: [
     inc_include,
     inc_src,
@@ -35,10 +36,21 @@ libetnaviv_decode = static_library(
   gnu_symbol_visibility: 'hidden',
 )
 
+idep_libetnaviv_decode = declare_dependency(
+  include_directories : [
+    include_directories('.'),
+    inc_include,
+    inc_src
+  ],
+  link_with : _libetnaviv_decode,
+  dependencies: [idep_isaspec_decode],
+  sources : [etnaviv_isa],
+)
+
 disasm = executable(
   'etnaviv-disasm',
   ['disasm.c'],
-  link_with: libetnaviv_decode,
+  dependencies: idep_libetnaviv_decode,
   build_by_default: with_tools.contains('etnaviv'),
   include_directories: [
     inc_src,

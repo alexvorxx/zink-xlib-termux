@@ -81,6 +81,11 @@ void
 v3dX(job_emit_enable_double_buffer)(struct v3dv_job *job);
 
 void
+v3dX(job_patch_resume_address)(struct v3dv_job *first_suspend,
+                               struct v3dv_job *suspend,
+                               struct v3dv_job *resume);
+
+void
 v3dX(cmd_buffer_execute_inside_pass)(struct v3dv_cmd_buffer *primary,
                                      uint32_t cmd_buffer_count,
                                      const VkCommandBuffer *cmd_buffers);
@@ -121,6 +126,9 @@ v3dX(cmd_buffer_emit_indexed_indirect)(struct v3dv_cmd_buffer *cmd_buffer,
                                        VkDeviceSize offset,
                                        uint32_t drawCount,
                                        uint32_t stride);
+
+void
+v3dX(cmd_buffer_suspend)(struct v3dv_cmd_buffer *cmd_buffer);
 
 void
 v3dX(get_hw_clear_color)(const VkClearColorValue *color,

@@ -180,11 +180,7 @@ python-test:
     paths:
       - results/
 
-.baremetal-test:
-  extends:
-    - .test
-  # Cancel job if a newer commit is pushed to the same branch
-  interruptible: true
+.download_s3:
   before_script:
     - !reference [default, before_script]
     # Use this instead of gitlab's artifacts download because it hits packet.net
@@ -196,6 +192,14 @@ python-test:
     - rm -rf install
     - (set -x; curl -L --retry 4 -f --retry-all-errors --retry-delay 60 ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${S3_ARTIFACT_NAME}.tar.zst | tar --zstd -x)
     - section_end artifacts_download
+
+.baremetal-test:
+  extends:
+    - .test
+  # Cancel job if a newer commit is pushed to the same branch
+  interruptible: true
+  before_script:
+    - !reference [.download_s3, before_script]
   variables:
     BM_ROOTFS: /rootfs-${DEBIAN_ARCH}
   artifacts:

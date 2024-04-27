@@ -4523,6 +4523,8 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       } else if (combine_add_bcnt(ctx, instr)) {
       } else if (combine_three_valu_op(ctx, instr, aco_opcode::v_mul_u32_u24,
                                        aco_opcode::v_mad_u32_u24, "120", 1 | 2)) {
+      } else if (combine_three_valu_op(ctx, instr, aco_opcode::v_mul_i32_i24,
+                                       aco_opcode::v_mad_i32_i24, "120", 1 | 2)) {
       } else if (ctx.program->gfx_level >= GFX9 && !instr->usesModifiers()) {
          if (combine_three_valu_op(ctx, instr, aco_opcode::s_xor_b32, aco_opcode::v_xad_u32, "120",
                                    1 | 2)) {
@@ -4544,6 +4546,8 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       } else if (!carry_out && combine_add_bcnt(ctx, instr)) {
       } else if (!carry_out && combine_three_valu_op(ctx, instr, aco_opcode::v_mul_u32_u24,
                                                      aco_opcode::v_mad_u32_u24, "120", 1 | 2)) {
+      } else if (!carry_out && combine_three_valu_op(ctx, instr, aco_opcode::v_mul_i32_i24,
+                                                     aco_opcode::v_mad_i32_i24, "120", 1 | 2)) {
       } else if (!carry_out && combine_add_lshl(ctx, instr, false)) {
       }
    } else if (instr->opcode == aco_opcode::v_sub_u32 || instr->opcode == aco_opcode::v_sub_co_u32 ||

@@ -315,9 +315,15 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       return devinfo->ver >= 20 ? 16 : 8;
 
    case FS_OPCODE_FB_WRITE_LOGICAL:
-      /* Dual-source FB writes are unsupported in SIMD16 mode. */
-      return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
-              8 : MIN2(16, inst->exec_size));
+      if (devinfo->ver >= 20) {
+         /* Dual-source FB writes are unsupported in SIMD32 mode. */
+         return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
+                 16 : MIN2(32, inst->exec_size));
+      } else {
+         /* Dual-source FB writes are unsupported in SIMD16 mode. */
+         return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
+                 8 : MIN2(16, inst->exec_size));
+      }
 
    case FS_OPCODE_FB_READ_LOGICAL:
       return MIN2(16, inst->exec_size);
@@ -368,16 +374,21 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-      return MIN2(16, inst->exec_size);
+      return devinfo->ver < 20 ?
+             MIN2(16, inst->exec_size) :
+             inst->exec_size;
 
    case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-      assert(inst->exec_size <= 16);
-      return inst->exec_size;
+      return devinfo->ver < 20 ?
+             MIN2(16, inst->exec_size) :
+             inst->exec_size;
 
    case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-      return devinfo->has_lsc ? MIN2(16, inst->exec_size) : 8;
+      return devinfo->ver < 20 ?
+             devinfo->has_lsc ? MIN2(16, inst->exec_size) : 8 :
+             inst->exec_size;
 
    case SHADER_OPCODE_URB_READ_LOGICAL:
    case SHADER_OPCODE_URB_WRITE_LOGICAL:

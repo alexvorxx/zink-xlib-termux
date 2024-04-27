@@ -28,7 +28,7 @@
  *    <wallbraker@gmail.com> Chia-I Wu <olv@lunarg.com>
  */
 
-#include <xf86drm.h>
+#include "util/libdrm.h"
 #include "git_sha1.h"
 #include "GL/mesa_glinterop.h"
 #include "GL/internal/mesa_interface.h"
@@ -2339,8 +2339,10 @@ dri2_init_screen(struct dri_screen *screen)
 
    (void) mtx_init(&screen->opencl_func_mutex, mtx_plain);
 
+#ifdef HAVE_LIBDRM
    if (pipe_loader_drm_probe_fd(&screen->dev, screen->fd, false))
       pscreen = pipe_loader_create_screen(screen->dev);
+#endif
 
    if (!pscreen)
        goto fail;
@@ -2438,7 +2440,11 @@ fail:
 static int
 dri_query_compatible_render_only_device_fd(int kms_only_fd)
 {
+#ifdef HAVE_LIBDRM
    return pipe_loader_get_compatible_render_capable_device_fd(kms_only_fd);
+#else
+   return -1;
+#endif
 }
 
 static const struct __DRImesaCoreExtensionRec mesaCoreExtension = {

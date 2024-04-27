@@ -141,7 +141,7 @@ DEFINE_LOADER_DRM_ENTRYPOINT(zynqmp_dpsub)
 DEFINE_LOADER_DRM_ENTRYPOINT(lima)
 #endif
 
-#if defined(GALLIUM_ZINK) && !defined(__APPLE__)
+#if defined(GALLIUM_ZINK)
 #if DETECT_OS_ANDROID
 DEFINE_LOADER_DRM_ENTRYPOINT(zink);
 #else

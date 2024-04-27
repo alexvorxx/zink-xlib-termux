@@ -109,6 +109,28 @@ r300_optimize_nir(struct nir_shader *s, struct pipe_screen *screen)
    bool is_r500 = r300_screen(screen)->caps.is_r500;
 
    bool progress;
+   if (s->info.stage == MESA_SHADER_FRAGMENT) {
+      if (is_r500) {
+         NIR_PASS_V(s, r300_transform_fs_trig_input);
+      }
+   } else {
+      if (r300_screen(screen)->caps.has_tcl) {
+         if (r300_screen(screen)->caps.is_r500) {
+            /* Only nine should set both NTT shader name and
+             * use_legacy_math_rules and D3D9 already mandates
+             * the proper range for the trigonometric inputs.
+             */
+            if (!s->info.use_legacy_math_rules || !(s->info.name && !strcmp("TTN", s->info.name))) {
+               NIR_PASS_V(s, r300_transform_vs_trig_input);
+            }
+         } else {
+            if (r300_screen(screen)->caps.is_r400) {
+               NIR_PASS_V(s, r300_transform_vs_trig_input);
+            }
+         }
+      }
+   }
+
    do {
       progress = false;
 

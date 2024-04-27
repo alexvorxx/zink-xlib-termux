@@ -100,6 +100,8 @@ struct radv_amdgpu_cs {
    unsigned max_num_virtual_buffers;
    struct radeon_winsys_bo **virtual_buffers;
    int *virtual_buffer_hash_table;
+
+   struct hash_table *annotations;
 };
 
 struct radv_winsys_sem_counts {
@@ -196,9 +198,17 @@ radv_amdgpu_cs_ib_to_info(struct radv_amdgpu_cs *cs, struct radv_amdgpu_ib ib)
 }
 
 static void
+radv_amdgpu_cs_free_annotation(struct hash_entry *entry)
+{
+   free(entry->data);
+}
+
+static void
 radv_amdgpu_cs_destroy(struct radeon_cmdbuf *rcs)
 {
    struct radv_amdgpu_cs *cs = radv_amdgpu_cs(rcs);
+
+   _mesa_hash_table_destroy(cs->annotations, radv_amdgpu_cs_free_annotation);
 
    if (cs->ib_buffer)
       cs->ws->base.buffer_destroy(&cs->ws->base, cs->ib_buffer);
@@ -529,6 +539,9 @@ radv_amdgpu_cs_reset(struct radeon_cmdbuf *_cs)
 
    if (cs->use_ib)
       cs->ib_size_ptr = &cs->ib.size;
+
+   _mesa_hash_table_destroy(cs->annotations, radv_amdgpu_cs_free_annotation);
+   cs->annotations = NULL;
 }
 
 static void
@@ -1343,7 +1356,6 @@ static void
 radv_amdgpu_winsys_get_cpu_addr(void *_cs, uint64_t addr, struct ac_addr_info *info)
 {
    struct radv_amdgpu_cs *cs = (struct radv_amdgpu_cs *)_cs;
-   void *ret = NULL;
 
    memset(info, 0, sizeof(struct ac_addr_info));
 
@@ -1368,8 +1380,9 @@ radv_amdgpu_winsys_get_cpu_addr(void *_cs, uint64_t addr, struct ac_addr_info *i
       struct radv_amdgpu_winsys_bo *bo = (struct radv_amdgpu_winsys_bo *)ib->bo;
 
       if (addr >= bo->base.va && addr - bo->base.va < bo->size) {
-         if (amdgpu_bo_cpu_map(bo->bo, &ret) == 0) {
-            info->cpu_addr = (char *)ret + (addr - bo->base.va);
+         void *map = radv_buffer_map(&cs->ws->base, &bo->base);
+         if (map) {
+            info->cpu_addr = (char *)map + (addr - bo->base.va);
             info->valid = true;
             return;
          }
@@ -1379,10 +1392,11 @@ radv_amdgpu_winsys_get_cpu_addr(void *_cs, uint64_t addr, struct ac_addr_info *i
    for (uint32_t i = 0; i < cs->ws->global_bo_list.count; i++) {
       struct radv_amdgpu_winsys_bo *bo = cs->ws->global_bo_list.bos[i];
       if (addr >= bo->base.va && addr - bo->base.va < bo->size) {
-         if (amdgpu_bo_cpu_map(bo->bo, &ret) == 0) {
+         void *map = radv_buffer_map(&cs->ws->base, &bo->base);
+         if (map) {
             u_rwlock_rdunlock(&cs->ws->global_bo_list.lock);
             info->valid = true;
-            info->cpu_addr = (char *)ret + (addr - bo->base.va);
+            info->cpu_addr = (char *)map + (addr - bo->base.va);
             return;
          }
       }
@@ -1407,11 +1421,24 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
       assert(addr_info.cpu_addr);
 
       if (type == RADV_CS_DUMP_TYPE_IBS) {
-         ac_parse_ib(file, addr_info.cpu_addr, cs->ib_buffers[0].cdw, trace_ids, trace_id_count, "main IB",
-                     ws->info.gfx_level, ws->info.family, cs->hw_ip, radv_amdgpu_winsys_get_cpu_addr, cs);
+         struct ac_ib_parser ib_parser = {
+            .f = file,
+            .ib = addr_info.cpu_addr,
+            .num_dw = cs->ib_buffers[0].cdw,
+            .trace_ids = trace_ids,
+            .trace_id_count = trace_id_count,
+            .gfx_level = ws->info.gfx_level,
+            .family = ws->info.family,
+            .ip_type = cs->hw_ip,
+            .addr_callback = radv_amdgpu_winsys_get_cpu_addr,
+            .addr_callback_data = cs,
+            .annotations = cs->annotations,
+         };
+
+         ac_parse_ib(&ib_parser, "main IB");
       } else {
          uint32_t *ib_dw = addr_info.cpu_addr;
-         ac_gather_context_rolls(file, &ib_dw, &cs->ib_buffers[0].cdw, 1, &ws->info);
+         ac_gather_context_rolls(file, &ib_dw, &cs->ib_buffers[0].cdw, 1, cs->annotations, &ws->info);
       }
    } else {
       uint32_t **ibs = type == RADV_CS_DUMP_TYPE_CTX_ROLLS ? malloc(cs->num_ib_buffers * sizeof(uint32_t *)) : NULL;
@@ -1434,8 +1461,21 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
          }
 
          if (type == RADV_CS_DUMP_TYPE_IBS) {
-            ac_parse_ib(file, mapped, ib->cdw, trace_ids, trace_id_count, name, ws->info.gfx_level, ws->info.family,
-                        cs->hw_ip, NULL, NULL);
+            struct ac_ib_parser ib_parser = {
+               .f = file,
+               .ib = mapped,
+               .num_dw = ib->cdw,
+               .trace_ids = trace_ids,
+               .trace_id_count = trace_id_count,
+               .gfx_level = ws->info.gfx_level,
+               .family = ws->info.family,
+               .ip_type = cs->hw_ip,
+               .addr_callback = radv_amdgpu_winsys_get_cpu_addr,
+               .addr_callback_data = cs,
+               .annotations = cs->annotations,
+            };
+
+            ac_parse_ib(&ib_parser, name);
          } else {
             ibs[i] = mapped;
             ib_dw_sizes[i] = ib->cdw;
@@ -1443,11 +1483,34 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
       }
 
       if (type == RADV_CS_DUMP_TYPE_CTX_ROLLS) {
-         ac_gather_context_rolls(file, ibs, ib_dw_sizes, cs->num_ib_buffers, &ws->info);
+         ac_gather_context_rolls(file, ibs, ib_dw_sizes, cs->num_ib_buffers, cs->annotations, &ws->info);
 
          free(ibs);
          free(ib_dw_sizes);
       }
+   }
+}
+
+static void
+radv_amdgpu_winsys_cs_annotate(struct radeon_cmdbuf *_cs, const char *annotation)
+{
+   struct radv_amdgpu_cs *cs = (struct radv_amdgpu_cs *)_cs;
+
+   if (!cs->annotations) {
+      cs->annotations = _mesa_pointer_hash_table_create(NULL);
+      if (!cs->annotations)
+         return;
+   }
+
+   struct hash_entry *entry = _mesa_hash_table_search(cs->annotations, _cs->buf + _cs->cdw);
+   if (entry) {
+      char *old_annotation = entry->data;
+      char *new_annotation = calloc(strlen(old_annotation) + strlen(annotation) + 5, 1);
+      sprintf(new_annotation, "%s -> %s", old_annotation, annotation);
+      free(old_annotation);
+      _mesa_hash_table_insert(cs->annotations, _cs->buf + _cs->cdw, new_annotation);
+   } else {
+      _mesa_hash_table_insert(cs->annotations, _cs->buf + _cs->cdw, strdup(annotation));
    }
 }
 
@@ -1855,4 +1918,5 @@ radv_amdgpu_cs_init_functions(struct radv_amdgpu_winsys *ws)
    ws->base.cs_execute_ib = radv_amdgpu_cs_execute_ib;
    ws->base.cs_submit = radv_amdgpu_winsys_cs_submit;
    ws->base.cs_dump = radv_amdgpu_winsys_cs_dump;
+   ws->base.cs_annotate = radv_amdgpu_winsys_cs_annotate;
 }

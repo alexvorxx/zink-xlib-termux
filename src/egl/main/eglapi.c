@@ -415,7 +415,7 @@ eglGetDisplay(EGLNativeDisplayType nativeDisplay)
    util_cpu_trace_init();
    _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL);
 
-   STATIC_ASSERT(sizeof(void *) == sizeof(nativeDisplay));
+   STATIC_ASSERT(sizeof(void *) >= sizeof(nativeDisplay));
    native_display_ptr = (void *)nativeDisplay;
 
    plat = _eglGetNativePlatform(native_display_ptr);

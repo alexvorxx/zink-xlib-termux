@@ -567,11 +567,11 @@ vn_semaphore_feedback_cmd_free(struct vn_device *dev,
 }
 
 static void
-vn_feedback_query_cmd_record(VkCommandBuffer cmd_handle,
-                             VkQueryPool pool_handle,
-                             uint32_t query,
-                             uint32_t count,
-                             bool copy)
+vn_query_feedback_cmd_record_internal(VkCommandBuffer cmd_handle,
+                                      VkQueryPool pool_handle,
+                                      uint32_t query,
+                                      uint32_t count,
+                                      bool copy)
 {
    struct vn_query_pool *pool = vn_query_pool_from_handle(pool_handle);
    if (!pool->fb_buf)
@@ -648,105 +648,94 @@ vn_feedback_query_cmd_record(VkCommandBuffer cmd_handle,
                                         offset, buf_size);
 }
 
+static VkResult
+vn_query_feedback_cmd_record(VkDevice dev_handle,
+                             struct list_head *query_records,
+                             struct vn_query_feedback_cmd *qfb_cmd)
+{
+   assert(!list_is_empty(query_records));
+
+   static const VkCommandBufferBeginInfo begin_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+   };
+   VkResult result = vn_BeginCommandBuffer(qfb_cmd->cmd_handle, &begin_info);
+   if (result != VK_SUCCESS)
+      return result;
+
+   list_for_each_entry_safe(struct vn_cmd_query_record, record, query_records,
+                            head) {
+      vn_query_feedback_cmd_record_internal(
+         qfb_cmd->cmd_handle, vn_query_pool_to_handle(record->query_pool),
+         record->query, record->query_count, record->copy);
+   }
+
+   return vn_EndCommandBuffer(qfb_cmd->cmd_handle);
+}
+
 VkResult
-vn_feedback_query_cmd_alloc(VkDevice dev_handle,
+vn_query_feedback_cmd_alloc(VkDevice dev_handle,
                             struct vn_feedback_cmd_pool *fb_cmd_pool,
+                            struct list_head *query_records,
                             struct vn_query_feedback_cmd **out_qfb_cmd)
 {
-   VkCommandPool cmd_pool_handle = fb_cmd_pool->pool_handle;
-   const VkCommandBufferAllocateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .pNext = NULL,
-      .commandPool = cmd_pool_handle,
-      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-      .commandBufferCount = 1,
-   };
-   struct vn_command_pool *cmd_pool =
-      vn_command_pool_from_handle(cmd_pool_handle);
-   struct vn_query_feedback_cmd *qfb_cmd = NULL;
+   struct vn_query_feedback_cmd *qfb_cmd;
+   VkResult result;
 
    simple_mtx_lock(&fb_cmd_pool->mutex);
-   if (!list_is_empty(&fb_cmd_pool->free_qfb_cmds)) {
-      qfb_cmd = list_first_entry(&fb_cmd_pool->free_qfb_cmds,
-                                 struct vn_query_feedback_cmd, head);
-      list_del(&qfb_cmd->head);
-   }
-   simple_mtx_unlock(&fb_cmd_pool->mutex);
 
-   if (!qfb_cmd) {
-      VkCommandBuffer qfb_cmd_handle;
-      VkResult result;
+   if (list_is_empty(&fb_cmd_pool->free_qfb_cmds)) {
+      struct vn_command_pool *cmd_pool =
+         vn_command_pool_from_handle(fb_cmd_pool->pool_handle);
 
       qfb_cmd = vk_alloc(&cmd_pool->allocator, sizeof(*qfb_cmd),
                          VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-      if (!qfb_cmd)
-         return VK_ERROR_OUT_OF_HOST_MEMORY;
+      if (!qfb_cmd) {
+         result = VK_ERROR_OUT_OF_HOST_MEMORY;
+         goto out_unlock;
+      }
 
-      simple_mtx_lock(&fb_cmd_pool->mutex);
+      const VkCommandBufferAllocateInfo info = {
+         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+         .commandPool = fb_cmd_pool->pool_handle,
+         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+         .commandBufferCount = 1,
+      };
+      VkCommandBuffer qfb_cmd_handle;
       result = vn_AllocateCommandBuffers(dev_handle, &info, &qfb_cmd_handle);
-      simple_mtx_unlock(&fb_cmd_pool->mutex);
-
       if (result != VK_SUCCESS) {
          vk_free(&cmd_pool->allocator, qfb_cmd);
-         return result;
+         goto out_unlock;
       }
 
       qfb_cmd->fb_cmd_pool = fb_cmd_pool;
-      qfb_cmd->cmd = vn_command_buffer_from_handle(qfb_cmd_handle);
+      qfb_cmd->cmd_handle = qfb_cmd_handle;
+   } else {
+      qfb_cmd = list_first_entry(&fb_cmd_pool->free_qfb_cmds,
+                                 struct vn_query_feedback_cmd, head);
+      list_del(&qfb_cmd->head);
+      vn_ResetCommandBuffer(qfb_cmd->cmd_handle, 0);
+   }
+
+   result = vn_query_feedback_cmd_record(dev_handle, query_records, qfb_cmd);
+   if (result != VK_SUCCESS) {
+      list_add(&qfb_cmd->head, &fb_cmd_pool->free_qfb_cmds);
+      goto out_unlock;
    }
 
    *out_qfb_cmd = qfb_cmd;
 
-   return VK_SUCCESS;
+out_unlock:
+   simple_mtx_unlock(&fb_cmd_pool->mutex);
+
+   return result;
 }
 
 void
-vn_feedback_query_cmd_free(struct vn_query_feedback_cmd *qfb_cmd)
+vn_query_feedback_cmd_free(struct vn_query_feedback_cmd *qfb_cmd)
 {
    simple_mtx_lock(&qfb_cmd->fb_cmd_pool->mutex);
-   vn_ResetCommandBuffer(vn_command_buffer_to_handle(qfb_cmd->cmd), 0);
    list_add(&qfb_cmd->head, &qfb_cmd->fb_cmd_pool->free_qfb_cmds);
    simple_mtx_unlock(&qfb_cmd->fb_cmd_pool->mutex);
-}
-
-VkResult
-vn_feedback_query_batch_record(VkDevice dev_handle,
-                               struct vn_query_feedback_cmd *qfb_cmd,
-                               struct list_head *combined_query_batches)
-{
-   static const VkCommandBufferBeginInfo begin_info = {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-   };
-   VkCommandBuffer qfb_cmd_handle = vn_command_buffer_to_handle(qfb_cmd->cmd);
-   VkResult result;
-
-   simple_mtx_lock(&qfb_cmd->fb_cmd_pool->mutex);
-
-   result = vn_BeginCommandBuffer(qfb_cmd_handle, &begin_info);
-   if (result != VK_SUCCESS) {
-      vn_FreeCommandBuffers(dev_handle, qfb_cmd->fb_cmd_pool->pool_handle, 1,
-                            &qfb_cmd_handle);
-      goto out_unlock;
-   }
-
-   list_for_each_entry_safe(struct vn_feedback_query_batch, batch,
-                            combined_query_batches, head) {
-      vn_feedback_query_cmd_record(
-         qfb_cmd_handle, vn_query_pool_to_handle(batch->query_pool),
-         batch->query, batch->query_count, batch->copy);
-   }
-
-   result = vn_EndCommandBuffer(qfb_cmd_handle);
-   if (result != VK_SUCCESS) {
-      vn_FreeCommandBuffers(dev_handle, qfb_cmd->fb_cmd_pool->pool_handle, 1,
-                            &qfb_cmd_handle);
-      goto out_unlock;
-   }
-
-out_unlock:
-   simple_mtx_unlock(&qfb_cmd->fb_cmd_pool->mutex);
-
-   return result;
 }
 
 VkResult

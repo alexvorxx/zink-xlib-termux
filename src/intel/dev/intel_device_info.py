@@ -238,7 +238,7 @@ Struct("intel_device_info",
 
         Member("int", "verx10", compiler_field=True),
 
-        Member("int", "revision", compiler_field=True,
+        Member("int", "revision",
                comment=dedent("""\
                This revision is from ioctl (I915_PARAM_REVISION) unlike
                pci_revision_id from drm device. Its value is not always

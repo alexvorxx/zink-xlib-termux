@@ -39,6 +39,9 @@ vk_cts_commits_to_backport=(
 
     # Fix several issues in dynamic rendering basic tests
     c5453824b498c981c6ba42017d119f5de02a3e34
+
+    # Add setVisible for VulkanWindowDirectDrm
+    a8466bf6ea98f6cd6733849ad8081775318a3e3e
 )
 
 # shellcheck disable=SC2034

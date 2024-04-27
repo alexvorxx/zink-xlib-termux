@@ -68,7 +68,7 @@ collect_phi_info(ssa_elimination_ctx& ctx)
 
             assert(phi->definitions[0].size() == phi->operands[i].size());
 
-            std::vector<unsigned>& preds =
+            Block::edge_vec& preds =
                phi->opcode == aco_opcode::p_phi ? block.logical_preds : block.linear_preds;
             uint32_t pred_idx = preds[i];
             auto& info_vec = phi->opcode == aco_opcode::p_phi ? ctx.logical_phi_info[pred_idx]

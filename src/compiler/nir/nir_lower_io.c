@@ -3227,8 +3227,14 @@ nir_lower_io_passes(nir_shader *nir, bool renumber_vs_inputs)
       NIR_PASS_V(nir, nir_lower_global_vars_to_local);
    }
 
+   /* The correct lower_64bit_to_32 flag is required by st/mesa depending
+    * on whether the GLSL linker lowers IO or not. Setting the wrong flag
+    * would break 64-bit vertex attribs for GLSL.
+    */
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out | nir_var_shader_in,
-              type_size_vec4, nir_lower_io_lower_64bit_to_32);
+              type_size_vec4,
+              renumber_vs_inputs ? nir_lower_io_lower_64bit_to_32_new :
+                                   nir_lower_io_lower_64bit_to_32);
 
    /* nir_io_add_const_offset_to_base needs actual constants. */
    NIR_PASS_V(nir, nir_opt_constant_folding);

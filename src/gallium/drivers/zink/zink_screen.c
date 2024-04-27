@@ -87,10 +87,14 @@ bool zink_tracing = false;
 #endif
 #endif
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
+#include "MoltenVK/mvk_vulkan.h"
 // Source of MVK_VERSION
-#include "MoltenVK/vk_mvk_moltenvk.h"
-#endif
+#include "MoltenVK/mvk_config.h"
+#define VK_NO_PROTOTYPES
+#include "MoltenVK/mvk_deprecated_api.h"
+#include "MoltenVK/mvk_private_api.h"
+#endif /* __APPLE__ */
 
 #ifdef HAVE_LIBDRM
 #include "drm-uapi/dma-buf.h"
@@ -583,7 +587,9 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    }
    case PIPE_CAP_SUPPORTED_PRIM_MODES: {
       uint32_t modes = BITFIELD_MASK(MESA_PRIM_COUNT);
-      modes &= ~BITFIELD_BIT(MESA_PRIM_QUADS);
+      //if (!screen->have_triangle_fans)
+        modes &= ~BITFIELD_BIT(MESA_PRIM_QUADS);
+
       modes &= ~BITFIELD_BIT(MESA_PRIM_QUAD_STRIP);
       modes &= ~BITFIELD_BIT(MESA_PRIM_POLYGON);
       modes &= ~BITFIELD_BIT(MESA_PRIM_LINE_LOOP);
@@ -2286,13 +2292,31 @@ retry:
             props.pNext = &mod_props;
          }
          VkFormatProperties3 props3 = {0};
-         props3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
-         props3.pNext = props.pNext;
-         props.pNext = &props3;
+         //if (screen->info.have_KHR_format_feature_flags2 || screen->info.have_vulkan13) {
+           props3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
+           props3.pNext = props.pNext;
+           props.pNext = &props3;
+         //}
+
          VKSCR(GetPhysicalDeviceFormatProperties2)(screen->pdev, format, &props);
          screen->format_props[i] = props.formatProperties;
          if (props3.linearTilingFeatures & VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV)
             screen->format_props[i].linearTilingFeatures |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+
+         /*if (screen->info.have_KHR_format_feature_flags2 || screen->info.have_vulkan13) {
+            screen->format_props[i].linearTilingFeatures = props3.linearTilingFeatures;
+            screen->format_props[i].optimalTilingFeatures = props3.optimalTilingFeatures;
+            screen->format_props[i].bufferFeatures = props3.bufferFeatures;
+
+            if (props3.linearTilingFeatures & VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV)
+               screen->format_props[i].linearTilingFeatures |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+         } else {
+           // MoltenVk is 1.2 API
+           screen->format_props[i].linearTilingFeatures = props.formatProperties.linearTilingFeatures;
+           screen->format_props[i].optimalTilingFeatures = props.formatProperties.optimalTilingFeatures;
+           screen->format_props[i].bufferFeatures = props.formatProperties.bufferFeatures;
+         }*/
+
          if (screen->info.have_EXT_image_drm_format_modifier && mod_props.drmFormatModifierCount) {
             screen->modifier_props[i].drmFormatModifierCount = mod_props.drmFormatModifierCount;
             screen->modifier_props[i].pDrmFormatModifierProperties = ralloc_array(screen, VkDrmFormatModifierPropertiesEXT, mod_props.drmFormatModifierCount);

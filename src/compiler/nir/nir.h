@@ -3577,6 +3577,16 @@ typedef enum {
     */
    nir_io_has_flexible_input_interpolation_except_flat = BITFIELD_BIT(0),
 
+   /**
+    * nir_opt_varyings compacts (relocates) components of varyings by
+    * rewriting their locations completely, effectively moving components of
+    * varyings between slots. This option forces nir_opt_varyings to make
+    * VARYING_SLOT_POS unused by moving its contents to VARn if the consumer
+    * is not FS. If this option is not set and POS is unused, it moves
+    * components of VARn to POS until it's fully used.
+    */
+   nir_io_dont_use_pos_for_non_fs_varyings = BITFIELD_BIT(1),
+
    /* Options affecting the GLSL compiler are below. */
 
    /**
@@ -3584,6 +3594,17 @@ typedef enum {
     * This is only affects GLSL compilation.
     */
    nir_io_glsl_lower_derefs = BITFIELD_BIT(16),
+
+   /**
+    * Run nir_opt_varyings in the GLSL linker. If false, optimize varyings
+    * the old way and lower IO later.
+    *
+    * nir_io_lower_to_intrinsics must be set for this to take effect.
+    *
+    * TODO: remove this and default to enabled once we are sure that this
+    * codepath is solid.
+    */
+   nir_io_glsl_opt_varyings = BITFIELD_BIT(17),
 } nir_io_options;
 
 /** An instruction filtering callback
@@ -4083,6 +4104,31 @@ typedef struct nir_shader_compiler_options {
     *  Used by nir_lower_io_passes.
     */
    void (*lower_mediump_io)(struct nir_shader *nir);
+
+   /**
+    * Return the maximum cost of an expression that's written to a shader
+    * output that can be moved into the next shader to remove that output.
+    *
+    * Currently only uniform expressions are moved. A uniform expression is
+    * any ALU expression sourcing only constants, uniforms, and UBO loads.
+    *
+    * Set to NULL or return 0 if you only want to propagate constants from
+    * outputs to inputs.
+    *
+    * Drivers can set the maximum cost based on the types of consecutive
+    * shaders or shader SHA1s.
+    *
+    * Drivers should also set "varying_estimate_instr_cost".
+    */
+   unsigned (*varying_expression_max_cost)(struct nir_shader *consumer,
+                                           struct nir_shader *producer);
+
+   /**
+    * Return the cost of an instruction that could be moved into the next
+    * shader. If the cost of all instructions in an expression is <=
+    * varying_expression_max_cost(), the instruction is moved.
+    */
+   unsigned (*varying_estimate_instr_cost)(struct nir_instr *instr);
 } nir_shader_compiler_options;
 
 typedef struct nir_shader {
@@ -5203,6 +5249,22 @@ nir_variable *nir_clone_uniform_variable(nir_shader *nir,
 nir_deref_instr *nir_clone_deref_instr(struct nir_builder *b,
                                        nir_variable *var,
                                        nir_deref_instr *deref);
+
+
+/* Return status from nir_opt_varyings. */
+typedef enum {
+   /* Whether the IR changed such that NIR optimizations should be run, such
+    * as due to removal of loads and stores. IO semantic changes such as
+    * compaction don't count as IR changes because they don't affect NIR
+    * optimizations.
+    */
+   nir_progress_producer = BITFIELD_BIT(0),
+   nir_progress_consumer = BITFIELD_BIT(1),
+} nir_opt_varyings_progress;
+
+nir_opt_varyings_progress
+nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
+                 unsigned max_uniform_components, unsigned max_ubos_per_stage);
 
 bool nir_slot_is_sysval_output(gl_varying_slot slot,
                                gl_shader_stage next_shader);
@@ -6697,6 +6759,22 @@ nir_store_reg_for_def(const nir_def *def)
 
    return intr;
 }
+
+struct nir_use_dominance_state;
+
+struct nir_use_dominance_state *
+nir_calc_use_dominance_impl(nir_function_impl *impl, bool post_dominance);
+
+nir_instr *
+nir_get_immediate_use_dominator(struct nir_use_dominance_state *state,
+                                nir_instr *instr);
+nir_instr *nir_use_dominance_lca(struct nir_use_dominance_state *state,
+                                 nir_instr *i1, nir_instr *i2);
+bool nir_instr_dominates_use(struct nir_use_dominance_state *state,
+                             nir_instr *parent, nir_instr *child);
+void nir_print_use_dominators(struct nir_use_dominance_state *state,
+                              nir_instr **instructions,
+                              unsigned num_instructions);
 
 #include "nir_inline_helpers.h"
 

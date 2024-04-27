@@ -144,7 +144,6 @@ spec@arb_texture_stencil8@texwrap formats@GL_STENCIL_INDEX8- NPOT,Fail
 spec@arb_texture_stencil8@texwrap formats@GL_STENCIL_INDEX8- swizzled,Fail
 spec@arb_transform_feedback_instanced@draw-auto instanced,Fail
 spec@arb_vertex_program@arb_vertex_program-matrix-property-bindings,Fail
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
 spec@ext_framebuffer_multisample@accuracy 16 srgb depthstencil,Fail
 spec@ext_framebuffer_multisample@accuracy 16 srgb depthstencil linear,Fail
 spec@ext_framebuffer_multisample@accuracy 16 srgb small depthstencil,Fail

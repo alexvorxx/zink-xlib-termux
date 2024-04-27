@@ -273,7 +273,7 @@ fdl6_layout(struct fdl_layout *layout, enum pipe_format format,
 
       if (layout->ubwc) {
          /* with UBWC every level is aligned to 4K */
-         layout->size = align(layout->size, 4096);
+         layout->size = align64(layout->size, 4096);
 
          uint32_t meta_pitch = fdl_ubwc_pitch(layout, level);
          uint32_t meta_height =
@@ -287,7 +287,7 @@ fdl6_layout(struct fdl_layout *layout, enum pipe_format format,
    }
 
    if (layout->layer_first) {
-      layout->layer_size = align(layout->size, 4096);
+      layout->layer_size = align64(layout->size, 4096);
       layout->size = layout->layer_size * array_size;
    }
 

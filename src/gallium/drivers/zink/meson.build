@@ -81,7 +81,15 @@ if host_machine.system() == 'darwin'
 
   # MoltenVK options
   if with_moltenvk_dir != ''
-    inc_zink_vk += include_directories(join_paths(with_moltenvk_dir, 'include'))
+    fs = import('fs')
+    moltenvk_includes = join_paths(with_moltenvk_dir, 'MoltenVK', 'include')
+    if not fs.is_dir(moltenvk_includes)
+      moltenvk_includes = join_paths(with_moltenvk_dir, 'macos', 'include')
+      if not fs.is_dir(moltenvk_includes)
+        error(f'moltenvk includes cannot be found in moltenvk-dir="@with_moltenvk_dir@"')
+      endif
+    endif
+    inc_zink_vk += include_directories(moltenvk_includes)
   else
     error('moltenvk-dir is required but not set.')
   endif

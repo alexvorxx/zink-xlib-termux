@@ -211,8 +211,6 @@ fs_inst::is_send_from_grf() const
    case SHADER_OPCODE_MEMORY_FENCE:
    case SHADER_OPCODE_BARRIER:
       return true;
-   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
-      return src[1].file == VGRF;
    case FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:
@@ -2040,6 +2038,7 @@ fs_visitor::emit_repclear_shader()
    brw_wm_prog_key *key = (brw_wm_prog_key*) this->key;
    fs_inst *write = NULL;
 
+   assert(devinfo->ver < 20);
    assert(uniforms == 0);
    assume(key->nr_color_regions > 0);
 
@@ -2122,7 +2121,7 @@ brw_fb_write_msg_control(const fs_inst *inst,
    uint32_t mctl;
 
    if (prog_data->dual_src_blend) {
-      assert(inst->exec_size == 8);
+      assert(inst->exec_size < 32);
 
       if (inst->group % 16 == 0)
          mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN01;
@@ -2137,6 +2136,8 @@ brw_fb_write_msg_control(const fs_inst *inst,
          mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE;
       else if (inst->exec_size == 8)
          mctl = BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_SINGLE_SOURCE_SUBSPAN01;
+      else if (inst->exec_size == 32)
+         mctl = XE2_DATAPORT_RENDER_TARGET_WRITE_SIMD32_SINGLE_SOURCE;
       else
          unreachable("Invalid FB write execution size");
    }
@@ -3232,6 +3233,9 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
 
    payload_ = new fs_thread_payload(*this, source_depth_to_render_target);
 
+   if (nir->info.ray_queries > 0)
+      limit_dispatch_width(16, "SIMD32 not supported with ray queries.\n");
+
    if (do_rep_send) {
       assert(dispatch_width == 16);
       emit_repclear_shader();
@@ -3846,9 +3850,6 @@ brw_compile_fs(const struct brw_compiler *compiler,
       v8->limit_dispatch_width(16, "SIMD32 not supported with coarse"
                                " pixel shading.\n");
    }
-
-   if (nir->info.ray_queries > 0 && v8)
-      v8->limit_dispatch_width(16, "SIMD32 with ray queries.\n");
 
    if (!has_spilled &&
        (!v8 || v8->max_dispatch_width >= 16) &&

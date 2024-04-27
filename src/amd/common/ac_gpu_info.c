@@ -1224,6 +1224,11 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
     */
    info->has_pops_missed_overlap_bug = info->family == CHIP_VEGA10 || info->family == CHIP_RAVEN;
 
+   /* GFX6 hw bug when the IBO addr is 0 which causes invalid clamping (underflow).
+    * Setting the IB addr to 2 or higher solves this issue.
+    */
+   info->has_null_index_buffer_clamping_bug = info->gfx_level == GFX6;
+
    /* Drawing from 0-sized index buffers causes hangs on gfx10. */
    info->has_zero_index_buffer_bug = info->gfx_level == GFX10;
 
@@ -1636,8 +1641,16 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
             exit(1);
          }
 
-         ac_parse_ib(stdout, ib, size / 4, NULL, 0, "IB", info->gfx_level, info->family,
-                     AMD_IP_GFX, NULL, NULL);
+         struct ac_ib_parser ib_parser = {
+            .f = stdout,
+            .ib = ib,
+            .num_dw = size / 4,
+            .gfx_level = info->gfx_level,
+            .family = info->family,
+            .ip_type = AMD_IP_GFX,
+         };
+
+         ac_parse_ib(&ib_parser, "IB");
          free(ib);
          exit(0);
       }

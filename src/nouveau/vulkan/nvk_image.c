@@ -698,14 +698,30 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-nvk_CreateImage(VkDevice device,
+nvk_CreateImage(VkDevice _device,
                 const VkImageCreateInfo *pCreateInfo,
                 const VkAllocationCallbacks *pAllocator,
                 VkImage *pImage)
 {
-   VK_FROM_HANDLE(nvk_device, dev, device);
+   VK_FROM_HANDLE(nvk_device, dev, _device);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_image *image;
    VkResult result;
+
+#ifdef NVK_USE_WSI_PLATFORM
+   /* Ignore swapchain creation info on Android. Since we don't have an
+    * implementation in Mesa, we're guaranteed to access an Android object
+    * incorrectly.
+    */
+   const VkImageSwapchainCreateInfoKHR *swapchain_info =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+      return wsi_common_create_swapchain_image(&pdev->wsi_device,
+                                               pCreateInfo,
+                                               swapchain_info->swapchain,
+                                               pImage);
+   }
+#endif
 
    image = vk_zalloc2(&dev->vk.alloc, pAllocator, sizeof(*image), 8,
                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
@@ -1053,6 +1069,28 @@ nvk_BindImageMemory2(VkDevice device,
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(nvk_device_memory, mem, pBindInfos[i].memory);
       VK_FROM_HANDLE(nvk_image, image, pBindInfos[i].image);
+
+      /* Ignore this struct on Android, we cannot access swapchain structures there. */
+#ifdef NVK_USE_WSI_PLATFORM
+      const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
+
+      if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+         VkImage _wsi_image = wsi_common_get_image(swapchain_info->swapchain,
+                                                   swapchain_info->imageIndex);
+         VK_FROM_HANDLE(nvk_image, wsi_img, _wsi_image);
+
+         assert(image->plane_count == 1);
+         assert(wsi_img->plane_count == 1);
+
+         struct nvk_image_plane *plane = &image->planes[0];
+         struct nvk_image_plane *swapchain_plane = &wsi_img->planes[0];
+
+         /* Copy memory binding information from swapchain image to the current image's plane. */
+         plane->addr = swapchain_plane->addr;
+         continue;
+      }
+#endif
 
       uint64_t offset_B = pBindInfos[i].memoryOffset;
       if (image->disjoint) {

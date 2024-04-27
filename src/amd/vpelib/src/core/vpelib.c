@@ -120,8 +120,7 @@ static void override_debug_option(
         debug->skip_optimal_tap_check = user_debug->skip_optimal_tap_check;
 
     if (user_debug->flags.bypass_blndgam)
-        debug->bypass_blndgam = user_debug->flags.bypass_blndgam;
-
+        debug->bypass_blndgam = user_debug->bypass_blndgam;
 }
 
 #ifdef VPE_BUILD_1_1

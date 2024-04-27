@@ -93,7 +93,7 @@ agx_build_tilebuffer_layout(const enum pipe_format *formats, uint8_t nr_cbufs,
 bool agx_nir_lower_tilebuffer(struct nir_shader *shader,
                               struct agx_tilebuffer_layout *tib,
                               uint8_t *colormasks, unsigned *bindless_base,
-                              bool *translucent);
+                              struct nir_def *write_samples, bool *translucent);
 
 bool agx_nir_lower_to_per_sample(struct nir_shader *shader);
 

@@ -35,7 +35,7 @@ agx_compile_bg_eot_shader(struct agx_bg_eot_cache *cache, nir_shader *shader,
    agx_preprocess_nir(shader, cache->dev->libagx);
    if (tib) {
       unsigned bindless_base = 0;
-      agx_nir_lower_tilebuffer(shader, tib, NULL, &bindless_base, NULL);
+      agx_nir_lower_tilebuffer(shader, tib, NULL, &bindless_base, NULL, NULL);
       agx_nir_lower_monolithic_msaa(shader, tib->nr_samples);
       agx_nir_lower_multisampled_image_store(shader);
       agx_nir_lower_texture(shader);

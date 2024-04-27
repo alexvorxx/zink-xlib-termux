@@ -71,6 +71,8 @@ the fragment epilog):
   depth and/or stencil are written by the fragment shader. Depth/stencil writes
   must be deferred to the epilog for correctness when the epilog can discard
   (i.e. when alpha-to-coverage is enabled).
+* `r3h` contains the logically emitted sample mask, if the fragment shader uses
+  forced early tests. This predicates the epilog's stores.
 * The vec4 of 32-bit registers beginning at `r(4 * (i + 1))` contains the colour
   output for render target `i`. When dual source blending is enabled, there is
   only a single render target and the dual source colour is treated as the

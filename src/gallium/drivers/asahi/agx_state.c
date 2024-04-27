@@ -1674,7 +1674,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
          unsigned rt_spill_base = BITSET_LAST_BIT(nir->info.textures_used) +
                                   (2 * BITSET_LAST_BIT(nir->info.images_used));
          unsigned rt_spill = rt_spill_base;
-         NIR_PASS(_, nir, agx_nir_lower_tilebuffer, &tib, NULL, &rt_spill,
+         NIR_PASS(_, nir, agx_nir_lower_tilebuffer, &tib, NULL, &rt_spill, NULL,
                   NULL);
       }
 

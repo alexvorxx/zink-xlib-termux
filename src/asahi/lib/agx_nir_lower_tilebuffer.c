@@ -25,6 +25,7 @@ struct ctx {
    unsigned bindless_base;
    bool any_memory_stores;
    uint8_t outputs_written;
+   nir_def *write_samples;
 };
 
 static bool
@@ -46,7 +47,8 @@ tib_filter(const nir_instr *instr, UNUSED const void *_)
 static void
 store_tilebuffer(nir_builder *b, struct agx_tilebuffer_layout *tib,
                  enum pipe_format format, enum pipe_format logical_format,
-                 unsigned rt, nir_def *value, unsigned write_mask)
+                 unsigned rt, nir_def *value, nir_def *samples,
+                 unsigned write_mask)
 {
    /* The hardware cannot extend for a 32-bit format. Extend ourselves. */
    if (format == PIPE_FORMAT_R32_UINT && value->bit_size == 16) {
@@ -84,10 +86,12 @@ store_tilebuffer(nir_builder *b, struct agx_tilebuffer_layout *tib,
       value = nir_u2u16(b, value);
    }
 
+   if (!samples)
+      samples = nir_imm_intN_t(b, ALL_SAMPLES, 16);
+
    uint8_t offset_B = agx_tilebuffer_offset_B(tib, rt);
-   nir_store_local_pixel_agx(b, value, nir_imm_intN_t(b, ALL_SAMPLES, 16),
-                             .base = offset_B, .write_mask = write_mask,
-                             .format = format);
+   nir_store_local_pixel_agx(b, value, samples, .base = offset_B,
+                             .write_mask = write_mask, .format = format);
 }
 
 static nir_def *
@@ -181,7 +185,8 @@ image_coords(nir_builder *b)
 
 static void
 store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
-             enum pipe_format format, unsigned rt, nir_def *value)
+             enum pipe_format format, unsigned rt, nir_def *value,
+             nir_def *samples)
 {
    nir_def *image = handle_for_rt(b, bindless_base, rt, true);
    nir_def *tex_image = handle_for_rt(b, bindless_base, rt, false);
@@ -216,10 +221,16 @@ store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
 
    if (nr_samples > 1) {
       nir_def *coverage = nir_load_sample_mask(b);
+
+      if (samples != NULL)
+         coverage = nir_iand(b, coverage, samples);
+
       nir_def *covered = nir_ubitfield_extract(
          b, coverage, nir_u2u32(b, sample), nir_imm_int(b, 1));
 
       cond = nir_iand(b, cond, nir_ine_imm(b, covered, 0));
+   } else if (samples != NULL) {
+      cond = nir_iand(b, cond, nir_ine_imm(b, samples, 0));
    }
 
    nir_push_if(b, cond);
@@ -290,6 +301,13 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
          *(ctx->translucent) = true;
       }
 
+      if (ctx->write_samples) {
+         assert(ctx->translucent != NULL &&
+                "sample masking requires translucency");
+
+         *(ctx->translucent) = true;
+      }
+
       /* But we ignore the NIR write mask for that, since it's basically an
        * optimization hint.
        */
@@ -307,11 +325,11 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
 
       if (tib->spilled[rt]) {
          store_memory(b, ctx->bindless_base, tib->nr_samples, logical_format,
-                      rt, value);
+                      rt, value, ctx->write_samples);
          ctx->any_memory_stores = true;
       } else {
          store_tilebuffer(b, tib, format, logical_format, rt, value,
-                          write_mask);
+                          ctx->write_samples, write_mask);
       }
 
       return NIR_LOWER_INSTR_PROGRESS_REPLACE;
@@ -338,7 +356,7 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
 bool
 agx_nir_lower_tilebuffer(nir_shader *shader, struct agx_tilebuffer_layout *tib,
                          uint8_t *colormasks, unsigned *bindless_base,
-                         bool *translucent)
+                         nir_def *write_samples, bool *translucent)
 {
    assert(shader->info.stage == MESA_SHADER_FRAGMENT);
 
@@ -346,6 +364,7 @@ agx_nir_lower_tilebuffer(nir_shader *shader, struct agx_tilebuffer_layout *tib,
       .tib = tib,
       .colormasks = colormasks,
       .translucent = translucent,
+      .write_samples = write_samples,
    };
 
    /* Allocate 1 texture + 1 PBE descriptor for each spilled descriptor */

@@ -285,32 +285,6 @@ void si_compute_clear_buffer_rmw(struct si_context *sctx, struct pipe_resource *
                                  1, &sb, 0x1);
 }
 
-static void si_compute_clear_12bytes_buffer(struct si_context *sctx, struct pipe_resource *dst,
-                                            unsigned dst_offset, unsigned size,
-                                            const uint32_t *clear_value, unsigned flags,
-                                            enum si_coherency coher)
-{
-   assert(dst_offset % 4 == 0);
-   assert(size % 4 == 0);
-   unsigned size_12 = DIV_ROUND_UP(size, 12);
-
-   struct pipe_shader_buffer sb = {0};
-   sb.buffer = dst;
-   sb.buffer_offset = dst_offset;
-   sb.buffer_size = size;
-
-   memcpy(sctx->cs_user_data, clear_value, 12);
-
-   struct pipe_grid_info info = {0};
-   set_work_size(&info, 64, 1, 1, size_12, 1, 1);
-
-   if (!sctx->cs_clear_12bytes_buffer)
-      sctx->cs_clear_12bytes_buffer = si_clear_12bytes_buffer_shader(sctx);
-
-   si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_clear_12bytes_buffer, flags, coher,
-                                 1, &sb, 0x1);
-}
-
 static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_resource *dst,
                                         unsigned dst_offset, struct pipe_resource *src,
                                         unsigned src_offset, unsigned size,
@@ -325,7 +299,7 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
    assert(!src || src_offset + size <= src->width0);
 
    bool is_copy = src != NULL;
-   unsigned dwords_per_thread = 4;
+   unsigned dwords_per_thread = clear_value_size == 12 ? 3 : 4;
    unsigned num_threads = DIV_ROUND_UP(size, dwords_per_thread * 4);
 
    struct pipe_grid_info info = {};
@@ -342,13 +316,14 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
       sb[0].buffer_size = size;
    } else {
       assert(clear_value_size >= 4 && clear_value_size <= 16 &&
-             util_is_power_of_two_or_zero(clear_value_size));
+             (clear_value_size == 12 || util_is_power_of_two_or_zero(clear_value_size)));
 
       for (unsigned i = 0; i < 4; i++)
          sctx->cs_user_data[i] = clear_value[i % (clear_value_size / 4)];
    }
 
-   void **shader = is_copy ? &sctx->cs_copy_buffer : &sctx->cs_clear_buffer;
+   void **shader = is_copy ? &sctx->cs_copy_buffer :
+                   clear_value_size == 12 ? &sctx->cs_clear_12bytes_buffer : &sctx->cs_clear_buffer;
    if (!*shader)
       *shader = si_create_dma_compute_shader(sctx, dwords_per_thread, !is_copy);
 
@@ -376,11 +351,6 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
    uint32_t clamped;
    if (util_lower_clearsize_to_dword(clear_value, (int*)&clear_value_size, &clamped))
       clear_value = &clamped;
-
-   if (clear_value_size == 12) {
-      si_compute_clear_12bytes_buffer(sctx, dst, offset, size, clear_value, flags, coher);
-      return;
-   }
 
    uint64_t aligned_size = size & ~3ull;
    if (aligned_size >= 4) {

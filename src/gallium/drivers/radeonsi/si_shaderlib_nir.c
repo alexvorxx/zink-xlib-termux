@@ -631,23 +631,6 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
    return create_shader_state(sctx, b.shader);
 }
 
-void *si_clear_12bytes_buffer_shader(struct si_context *sctx)
-{
-   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
-                                                  "clear_12bytes_buffer");
-   b.shader->info.workgroup_size[0] = 64;
-   b.shader->info.workgroup_size[1] = 1;
-   b.shader->info.workgroup_size[2] = 1;
-   b.shader->info.cs.user_data_components_amd = 3;
-
-   nir_def *offset = nir_imul_imm(&b, get_global_ids(&b, 1), 12);
-   nir_def *value = nir_trim_vector(&b, nir_load_user_data_amd(&b), 3);
-
-   nir_store_ssbo(&b, value, nir_imm_int(&b, 0), offset);
-
-   return create_shader_state(sctx, b.shader);
-}
-
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
 {
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
@@ -672,7 +655,7 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
                                    bool is_clear)
 {
-   assert(util_is_power_of_two_nonzero(num_dwords_per_thread) && num_dwords_per_thread <= 4);
+   assert(num_dwords_per_thread && num_dwords_per_thread <= 4);
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
                                                   "create_dma_compute");

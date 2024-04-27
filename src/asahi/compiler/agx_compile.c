@@ -3199,8 +3199,8 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    return offset;
 }
 
-static void
-link_libagx(nir_shader *nir, const nir_shader *libagx)
+void
+agx_link_libagx(nir_shader *nir, const nir_shader *libagx)
 {
    nir_link_shader_functions(nir, libagx);
    NIR_PASS(_, nir, nir_inline_functions);
@@ -3242,7 +3242,7 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
    /* Clean up deref gunk after lowering I/O */
    NIR_PASS(_, nir, nir_opt_dce);
 
-   link_libagx(nir, libagx);
+   agx_link_libagx(nir, libagx);
 
    /* Runs before we lower away idiv, to work at all. But runs after lowering
     * textures, since the cube map array lowering generates division by 6.
@@ -3322,7 +3322,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
    if (needs_libagx) {
-      link_libagx(nir, key->libagx);
+      agx_link_libagx(nir, key->libagx);
 
       NIR_PASS(_, nir, nir_opt_deref);
       NIR_PASS(_, nir, nir_lower_vars_to_ssa);

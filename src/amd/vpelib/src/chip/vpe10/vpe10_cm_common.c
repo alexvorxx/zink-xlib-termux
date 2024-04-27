@@ -251,7 +251,8 @@ bool vpe10_cm_helper_translate_curve_to_hw_format(
         seg_distr[i] = 1;
         region_start = -MAX_LOW_POINT;
         region_end   = 1;
-    } else if (output_tf->tf == TRANSFER_FUNC_LINEAR_0_125) {
+    } else if (output_tf->tf == TRANSFER_FUNC_LINEAR_0_125 ||
+               output_tf->tf == TRANSFER_FUNC_LINEAR_0_1) {
 
         int num_regions_linear = MAX_LOW_POINT + 3;
 

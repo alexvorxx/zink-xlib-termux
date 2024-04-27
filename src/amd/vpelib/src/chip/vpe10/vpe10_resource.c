@@ -959,12 +959,12 @@ void vpe10_create_stream_ops_config(struct vpe_priv *vpe_priv, uint32_t pipe_idx
     if (ops == VPE_CMD_OPS_BG_VSCF_INPUT) {
         blndcfg.bg_color = vpe_get_visual_confirm_color(stream_ctx->stream.surface_info.format,
             stream_ctx->stream.surface_info.cs, vpe_priv->output_ctx.cs,
-            vpe_priv->output_ctx.output_tf,
+            vpe_priv->output_ctx.output_tf, vpe_priv->output_ctx.surface.format,
             (stream_ctx->stream.tm_params.UID != 0 || stream_ctx->stream.tm_params.enable_3dlut));
     } else if (ops == VPE_CMD_OPS_BG_VSCF_OUTPUT) {
         blndcfg.bg_color = vpe_get_visual_confirm_color(vpe_priv->output_ctx.surface.format,
             vpe_priv->output_ctx.surface.cs, vpe_priv->output_ctx.cs,
-            vpe_priv->output_ctx.output_tf,
+            vpe_priv->output_ctx.output_tf, vpe_priv->output_ctx.surface.format,
             false); // 3DLUT should only affect input visual confirm
     } else {
         blndcfg.bg_color = vpe_priv->output_ctx.bg_color;

@@ -451,6 +451,9 @@ static enum vpe_status vpe_update_blnd_gamma(
             tf = output_ctx->tf;
         }
 
+        if (vpe_is_fp16(param->dst_surface.format)) {
+            y_scale = vpe_fixpt_mul_int(y_scale, CCCS_NORM);
+        }
         color_update_regamma_tf(vpe_priv,
             tf,
             x_scale,
@@ -511,19 +514,19 @@ static enum vpe_status vpe_update_output_gamma(
     struct output_ctx *output_ctx = &vpe_priv->output_ctx;
     bool               is_studio  = (param->dst_surface.cs.range == VPE_COLOR_RANGE_STUDIO);
     enum vpe_status    status     = VPE_STATUS_OK;
+    struct fixed31_32  y_scale    = vpe_fixpt_one;
+
+    if (vpe_is_fp16(param->dst_surface.format)) {
+        y_scale = vpe_fixpt_mul_int(y_scale, CCCS_NORM);
+    }
 
     if (vpe_is_HDR(output_ctx->tf) && !is_studio)
         can_bypass = false; //Blending is done in linear light so ogam needs to handle the regam
     else
         can_bypass = true;
 
-    color_update_regamma_tf(vpe_priv,
-        output_ctx->tf,
-        vpe_fixpt_one,
-        vpe_fixpt_one,
-        vpe_fixpt_zero,
-        can_bypass,
-        output_tf);
+    color_update_regamma_tf(
+        vpe_priv, output_ctx->tf, vpe_fixpt_one, y_scale, vpe_fixpt_zero, can_bypass, output_tf);
 
     return status;
 }
@@ -673,6 +676,7 @@ enum vpe_status vpe_color_update_color_space_and_tf(
     struct fixed31_32  new_matrix_scaling_factor;
     struct output_ctx *output_ctx                = &vpe_priv->output_ctx;
     enum vpe_status    status                    = VPE_STATUS_OK;
+    struct fixed31_32 y_scale                    = vpe_fixpt_one;
 
     status = vpe_allocate_cm_memory(vpe_priv, param);
     if (status == VPE_STATUS_OK) {
@@ -710,9 +714,13 @@ enum vpe_status vpe_color_update_color_space_and_tf(
             }
 
             if (stream_ctx->dirty_bits.transfer_function) {
+                if (vpe_is_fp16(stream_ctx->stream.surface_info.format)) {
+                    y_scale = vpe_fixpt_div_int(y_scale, CCCS_NORM);
+                }
+
                 color_update_degamma_tf(vpe_priv, stream_ctx->tf,
                     vpe_priv->stream_ctx->tf_scaling_factor,
-                    vpe_fixpt_one,
+                    y_scale,
                     vpe_fixpt_zero,
                     stream_ctx->stream.tm_params.UID != 0 || stream_ctx->stream.tm_params.enable_3dlut, // By Pass degamma if 3DLUT is enabled
                     stream_ctx->input_tf);
@@ -887,7 +895,7 @@ void vpe_color_get_color_space_and_tf(
         *tf = TRANSFER_FUNC_NORMALIZED_PQ;
         break;
     case VPE_TF_G10:
-        *tf = TRANSFER_FUNC_LINEAR_0_125;
+        *tf = TRANSFER_FUNC_LINEAR_0_1;
         break;
     case VPE_TF_SRGB:
         *tf = TRANSFER_FUNC_SRGB;
@@ -932,6 +940,10 @@ void vpe_color_get_color_space_and_tf(
         }
     } else {
         switch (vcs->primaries) {
+        case VPE_PRIMARIES_BT601:
+            *cs = colorRange == VPE_COLOR_RANGE_FULL ? COLOR_SPACE_YCBCR601
+                                                     : COLOR_SPACE_YCBCR601_LIMITED;
+            break;
         case VPE_PRIMARIES_BT709:
             if (vcs->tf == VPE_TF_G10) {
                 *cs = COLOR_SPACE_MSREF_SCRGB;
@@ -991,7 +1003,8 @@ void vpe_convert_full_range_color_enum(enum color_space *cs)
 bool vpe_is_HDR(enum color_transfer_func tf)
 {
 
-    return (tf == TRANSFER_FUNC_PQ2084 || tf == TRANSFER_FUNC_LINEAR_0_125 || tf == TRANSFER_FUNC_HLG);
+    return (tf == TRANSFER_FUNC_PQ2084 || tf == TRANSFER_FUNC_LINEAR_0_125 ||
+            tf == TRANSFER_FUNC_HLG || tf == TRANSFER_FUNC_LINEAR_0_1);
 }
 
 /*

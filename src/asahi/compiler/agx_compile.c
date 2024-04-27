@@ -3431,6 +3431,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
          info->depth_layout = layout;
 
       info->reads_tib = nir->info.fs.uses_fbfetch_output;
+      info->early_fragment_tests = nir->info.fs.early_fragment_tests;
    }
 
    out->binary = binary.data;

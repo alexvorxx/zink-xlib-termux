@@ -85,6 +85,9 @@ struct agx_shader_info {
    /* Does the shader read the tilebuffer? */
    bool reads_tib;
 
+   /* Does the shader require early fragment tests? */
+   bool early_fragment_tests;
+
    /* Does the shader potentially draw to a nonzero viewport? */
    bool nonzero_viewport;
 

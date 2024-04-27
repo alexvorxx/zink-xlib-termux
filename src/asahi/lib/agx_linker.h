@@ -102,30 +102,44 @@ struct agx_fs_epilog_link_info {
     */
    uint8_t size_32;
 
+   /* Mask of render targets written by the main shader */
+   uint8_t rt_written;
+
    /* If set, the API fragment shader uses sample shading. This means the epilog
     * will be invoked per-sample as well.
     */
-   bool sample_shading;
+   unsigned sample_shading : 1;
 
    /* If set, broadcast the render target #0 value to all render targets. This
     * implements gl_FragColor semantics.
     */
-   bool broadcast_rt0;
+   unsigned broadcast_rt0 : 1;
 
    /* If set, force render target 0's W channel to 1.0. This optimizes blending
     * calculations in some applications.
     */
-   bool rt0_w_1;
+   unsigned rt0_w_1 : 1;
 
    /* If set, the API fragment shader wants to write depth/stencil respectively.
     * This happens in the epilog for correctness when the epilog discards.
     */
-   bool write_z, write_s;
+   unsigned write_z : 1;
+   unsigned write_s : 1;
 
-   /* Mask of render targets written by the main shader */
-   uint8_t rt_written;
+   /* Whether the fragment prolog or main fragment shader already ran tests due
+    * to early_fragment_tests. In this case, the epilog must not run tests.
+    */
+   unsigned already_ran_zs : 1;
+
+   /* Whether the main fragment shader ran tests before discards due to
+    * early_fragment_tests. In this case, the epilog must mask the stores in
+    * software instead.
+    */
+   bool sample_mask_after_force_early : 1;
+
+   unsigned padding : 1;
 };
-static_assert(sizeof(struct agx_fs_epilog_link_info) == 8, "packed");
+static_assert(sizeof(struct agx_fs_epilog_link_info) == 4, "packed");
 
 struct agx_fs_epilog_key {
    struct agx_fs_epilog_link_info link;

@@ -432,9 +432,9 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
                               NULL);
 
    /* There is no shader part after the epilog, so we're always responsible for
-    * running our own tests.
+    * running our own tests, unless the fragment shader forced early tests.
     */
-   NIR_PASS(_, b->shader, lower_tests_zs, true);
+   NIR_PASS(_, b->shader, lower_tests_zs, !key->link.already_ran_zs);
 
    b->shader->info.io_lowered = true;
    b->shader->info.fs.uses_fbfetch_output |= force_translucent;
@@ -450,8 +450,8 @@ lower_output_to_epilog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       b->cursor = nir_instr_remove(&intr->instr);
 
       unsigned base = nir_intrinsic_base(intr);
-      info->write_z = base & 1;
-      info->write_s = base & 2;
+      info->write_z = !!(base & 1);
+      info->write_s = !!(base & 2);
 
       /* ABI: r2 contains the written depth */
       if (info->write_z)

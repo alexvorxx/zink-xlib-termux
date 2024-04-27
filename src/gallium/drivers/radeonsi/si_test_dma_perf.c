@@ -119,7 +119,13 @@ void si_test_dma_perf(struct si_screen *sscreen)
 
          void *compute_shader = NULL;
          if (test_cs) {
-            compute_shader = si_create_dma_compute_shader(sctx, cs_dwords_per_thread, is_copy);
+            union si_cs_clear_copy_buffer_key key;
+            key.key = 0;
+
+            key.is_clear = !is_copy;
+            key.dwords_per_thread = cs_dwords_per_thread;
+
+            compute_shader = si_create_dma_compute_shader(sctx, &key);
          }
 
          double score = 0;

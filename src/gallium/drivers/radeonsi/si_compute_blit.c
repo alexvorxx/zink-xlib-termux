@@ -318,12 +318,20 @@ static bool si_compute_clear_or_copy_buffer(struct si_context *sctx, struct pipe
          sctx->cs_user_data[i] = clear_value[i % (clear_value_size / 4)];
    }
 
-   void **shader = is_copy ? &sctx->cs_copy_buffer :
-                   clear_value_size == 12 ? &sctx->cs_clear_12bytes_buffer : &sctx->cs_clear_buffer;
-   if (!*shader)
-      *shader = si_create_dma_compute_shader(sctx, dwords_per_thread, !is_copy);
+   union si_cs_clear_copy_buffer_key key;
+   key.key = 0;
 
-   si_launch_grid_internal_ssbos(sctx, &info, *shader, flags, coher, is_copy ? 2 : 1, sb,
+   key.is_clear = !is_copy;
+   assert(dwords_per_thread && dwords_per_thread <= 4);
+   key.dwords_per_thread = dwords_per_thread;
+
+   void *shader = _mesa_hash_table_u64_search(sctx->cs_dma_shaders, key.key);
+   if (!shader) {
+      shader = si_create_dma_compute_shader(sctx, &key);
+      _mesa_hash_table_u64_insert(sctx->cs_dma_shaders, key.key, shader);
+   }
+
+   si_launch_grid_internal_ssbos(sctx, &info, shader, flags, coher, is_copy ? 2 : 1, sb,
                                  is_copy ? 0x2 : 0x1);
    return true;
 }

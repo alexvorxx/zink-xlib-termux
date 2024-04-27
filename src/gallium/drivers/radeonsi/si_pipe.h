@@ -988,13 +988,11 @@ struct si_context {
    void *vs_blit_color;
    void *vs_blit_color_layered;
    void *vs_blit_texcoord;
-   void *cs_clear_buffer;
    void *cs_clear_buffer_rmw;
-   void *cs_copy_buffer;
    void *cs_ubyte_to_ushort;
-   void *cs_clear_12bytes_buffer;
    void *cs_dcc_retile[32];
    void *cs_fmask_expand[3][2]; /* [log2(samples)-1][is_array] */
+   struct hash_table_u64 *cs_dma_shaders; /* clear_buffer and copy_buffer shaders */
    struct hash_table_u64 *cs_blit_shaders;
    struct hash_table_u64 *ps_resolve_shaders;
    struct si_screen *screen;
@@ -1637,6 +1635,14 @@ void si_suspend_queries(struct si_context *sctx);
 void si_resume_queries(struct si_context *sctx);
 
 /* si_shaderlib_nir.c */
+union si_cs_clear_copy_buffer_key {
+   struct {
+      bool is_clear:1;
+      unsigned dwords_per_thread:3; /* 1..4 allowed */
+   };
+   uint64_t key;
+};
+
 void *si_create_shader_state(struct si_context *sctx, struct nir_shader *nir);
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf);
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex);
@@ -1644,8 +1650,7 @@ void *si_create_passthrough_tcs(struct si_context *sctx);
 void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim);
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
-void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
-                                   bool is_clear);
+void *si_create_dma_compute_shader(struct si_context *sctx, union si_cs_clear_copy_buffer_key *key);
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx);
 void *si_create_clear_buffer_rmw_cs(struct si_context *sctx);
 void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, bool is_array);

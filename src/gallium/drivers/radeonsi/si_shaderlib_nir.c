@@ -228,32 +228,38 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
 }
 
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
-void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
-                                   bool is_clear)
+void *si_create_dma_compute_shader(struct si_context *sctx, union si_cs_clear_copy_buffer_key *key)
 {
-   assert(num_dwords_per_thread && num_dwords_per_thread <= 4);
+   if (si_can_dump_shader(sctx->screen, MESA_SHADER_COMPUTE, SI_DUMP_SHADER_KEY)) {
+      fprintf(stderr, "Internal shader: dma\n");
+      fprintf(stderr, "   key.is_clear = %u\n", key->is_clear);
+      fprintf(stderr, "   key.dwords_per_thread = %u\n", key->dwords_per_thread);
+      fprintf(stderr, "\n");
+   }
+
+   assert(key->dwords_per_thread && key->dwords_per_thread <= 4);
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
                                                   "create_dma_compute");
    b.shader->info.workgroup_size[0] = 64;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
-   b.shader->info.num_ssbos = is_clear ? 1 : 2;
-   b.shader->info.cs.user_data_components_amd = is_clear ? num_dwords_per_thread : 0;
+   b.shader->info.num_ssbos = key->is_clear ? 1 : 2;
+   b.shader->info.cs.user_data_components_amd = key->is_clear ? key->dwords_per_thread : 0;
 
    nir_def *thread_id = ac_get_global_ids(&b, 1, 32);
    /* Convert the global thread ID into bytes. */
-   nir_def *offset = nir_imul_imm(&b, thread_id, 4 * num_dwords_per_thread);
+   nir_def *offset = nir_imul_imm(&b, thread_id, 4 * key->dwords_per_thread);
    nir_def *value;
 
-   if (is_clear) {
-      value = nir_trim_vector(&b, nir_load_user_data_amd(&b), num_dwords_per_thread);
+   if (key->is_clear) {
+      value = nir_trim_vector(&b, nir_load_user_data_amd(&b), key->dwords_per_thread);
    } else {
-      value = nir_load_ssbo(&b, num_dwords_per_thread, 32, nir_imm_int(&b, 0), offset,
+      value = nir_load_ssbo(&b, key->dwords_per_thread, 32, nir_imm_int(&b, 0), offset,
                             .access = ACCESS_RESTRICT);
    }
 
-   nir_store_ssbo(&b, value, nir_imm_int(&b, !is_clear), offset, .access = ACCESS_RESTRICT);
+   nir_store_ssbo(&b, value, nir_imm_int(&b, !key->is_clear), offset, .access = ACCESS_RESTRICT);
 
    return si_create_shader_state(sctx, b.shader);
 }

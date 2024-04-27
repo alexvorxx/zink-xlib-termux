@@ -266,16 +266,10 @@ static void si_destroy_context(struct pipe_context *context)
       sctx->b.delete_vs_state(&sctx->b, sctx->vs_blit_color_layered);
    if (sctx->vs_blit_texcoord)
       sctx->b.delete_vs_state(&sctx->b, sctx->vs_blit_texcoord);
-   if (sctx->cs_clear_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer);
    if (sctx->cs_clear_buffer_rmw)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer_rmw);
-   if (sctx->cs_copy_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_buffer);
    if (sctx->cs_ubyte_to_ushort)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_ubyte_to_ushort);
-   if (sctx->cs_clear_12bytes_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_12bytes_buffer);
    for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_dcc_retile); i++) {
       if (sctx->cs_dcc_retile[i])
          sctx->b.delete_compute_state(&sctx->b, sctx->cs_dcc_retile[i]);
@@ -366,6 +360,13 @@ static void si_destroy_context(struct pipe_context *context)
 
    if (!(sctx->context_flags & SI_CONTEXT_FLAG_AUX))
       p_atomic_dec(&context->screen->num_contexts);
+
+   if (sctx->cs_dma_shaders) {
+      hash_table_u64_foreach(sctx->cs_dma_shaders, entry) {
+         context->delete_compute_state(context, entry.data);
+      }
+      _mesa_hash_table_u64_destroy(sctx->cs_dma_shaders);
+   }
 
    if (sctx->cs_blit_shaders) {
       hash_table_u64_foreach(sctx->cs_blit_shaders, entry) {
@@ -872,6 +873,10 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
 
    sctx->initial_gfx_cs_size = sctx->gfx_cs.current.cdw;
    sctx->last_timestamp_cmd = NULL;
+
+   sctx->cs_dma_shaders = _mesa_hash_table_u64_create(NULL);
+   if (!sctx->cs_dma_shaders)
+      goto fail;
 
    sctx->cs_blit_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->cs_blit_shaders)

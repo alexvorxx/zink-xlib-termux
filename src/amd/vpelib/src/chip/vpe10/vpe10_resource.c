@@ -408,6 +408,9 @@ bool vpe10_check_output_color_space(struct vpe_priv *vpe_priv, enum vpe_surface_
     if (cs == COLOR_SPACE_UNKNOWN || tf == TRANSFER_FUNC_UNKNOWN)
         return false;
 
+    if (vpe_is_fp16(format) && tf != TRANSFER_FUNC_LINEAR)
+        return false;
+
     return true;
 }
 

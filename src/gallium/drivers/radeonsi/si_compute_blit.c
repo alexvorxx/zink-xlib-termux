@@ -232,6 +232,23 @@ void si_launch_grid_internal_ssbos(struct si_context *sctx, struct pipe_grid_inf
       pipe_resource_reference(&saved_sb[i].buffer, NULL);
 }
 
+static unsigned
+set_work_size(struct pipe_grid_info *info, unsigned block_x, unsigned block_y, unsigned block_z,
+              unsigned work_x, unsigned work_y, unsigned work_z)
+{
+   info->block[0] = block_x;
+   info->block[1] = block_y;
+   info->block[2] = block_z;
+
+   unsigned work[3] = {work_x, work_y, work_z};
+   for (int i = 0; i < 3; ++i) {
+      info->last_block[i] = work[i] % info->block[i];
+      info->grid[i] = DIV_ROUND_UP(work[i], info->block[i]);
+   }
+
+   return work_z > 1 ? 3 : (work_y > 1 ? 2 : 1);
+}
+
 /**
  * Clear a buffer using read-modify-write with a 32-bit write bitmask.
  * The clear value has 32 bits.
@@ -247,20 +264,11 @@ void si_compute_clear_buffer_rmw(struct si_context *sctx, struct pipe_resource *
    assert(dst->target != PIPE_BUFFER || dst_offset + size <= dst->width0);
 
    /* Use buffer_load_dwordx4 and buffer_store_dwordx4 per thread. */
-   unsigned dwords_per_instruction = 4;
-   unsigned block_size = 64; /* it's always 64x1x1 */
-   unsigned dwords_per_wave = dwords_per_instruction * block_size;
-
-   unsigned num_dwords = size / 4;
-   unsigned num_instructions = DIV_ROUND_UP(num_dwords, dwords_per_instruction);
+   unsigned dwords_per_thread = 4;
+   unsigned num_threads = DIV_ROUND_UP(size, dwords_per_thread * 4);
 
    struct pipe_grid_info info = {};
-   info.block[0] = MIN2(block_size, num_instructions);
-   info.block[1] = 1;
-   info.block[2] = 1;
-   info.grid[0] = DIV_ROUND_UP(num_dwords, dwords_per_wave);
-   info.grid[1] = 1;
-   info.grid[2] = 1;
+   set_work_size(&info, 64, 1, 1, num_threads, 1, 1);
 
    struct pipe_shader_buffer sb = {};
    sb.buffer = dst;
@@ -294,17 +302,10 @@ static void si_compute_clear_12bytes_buffer(struct si_context *sctx, struct pipe
    memcpy(sctx->cs_user_data, clear_value, 12);
 
    struct pipe_grid_info info = {0};
+   set_work_size(&info, 64, 1, 1, size_12, 1, 1);
 
    if (!sctx->cs_clear_12bytes_buffer)
       sctx->cs_clear_12bytes_buffer = si_clear_12bytes_buffer_shader(sctx);
-
-   info.block[0] = 64;
-   info.last_block[0] = size_12 % 64;
-   info.block[1] = 1;
-   info.block[2] = 1;
-   info.grid[0] = DIV_ROUND_UP(size_12, 64);
-   info.grid[1] = 1;
-   info.grid[2] = 1;
 
    si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_clear_12bytes_buffer, flags, coher,
                                  1, &sb, 0x1);
@@ -328,13 +329,7 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
    unsigned num_threads = DIV_ROUND_UP(size, dwords_per_thread * 4);
 
    struct pipe_grid_info info = {};
-   info.block[0] = 64;
-   info.block[1] = 1;
-   info.block[2] = 1;
-   info.grid[0] = DIV_ROUND_UP(num_threads, 64);
-   info.grid[1] = 1;
-   info.grid[2] = 1;
-   info.last_block[0] = num_threads % 64;
+   set_work_size(&info, 64, 1, 1, num_threads, 1, 1);
 
    struct pipe_shader_buffer sb[2] = {};
    sb[is_copy].buffer = dst;
@@ -497,13 +492,7 @@ void si_compute_shorten_ubyte_buffer(struct si_context *sctx, struct pipe_resour
    si_improve_sync_flags(sctx, dst, src, &flags);
 
    struct pipe_grid_info info = {};
-   info.block[0] = si_determine_wave_size(sctx->screen, NULL);
-   info.block[1] = 1;
-   info.block[2] = 1;
-   info.grid[0] = DIV_ROUND_UP(size, info.block[0]);
-   info.grid[1] = 1;
-   info.grid[2] = 1;
-   info.last_block[0] = size % info.block[0];
+   set_work_size(&info, 64, 1, 1, size, 1, 1);
 
    struct pipe_shader_buffer sb[2] = {};
    sb[0].buffer = dst;
@@ -516,23 +505,6 @@ void si_compute_shorten_ubyte_buffer(struct si_context *sctx, struct pipe_resour
 
    si_launch_grid_internal_ssbos(sctx, &info, sctx->cs_ubyte_to_ushort, flags, coher,
                                  2, sb, 0x1);
-}
-
-static unsigned
-set_work_size(struct pipe_grid_info *info, unsigned block_x, unsigned block_y, unsigned block_z,
-              unsigned work_x, unsigned work_y, unsigned work_z)
-{
-   info->block[0] = block_x;
-   info->block[1] = block_y;
-   info->block[2] = block_z;
-
-   unsigned work[3] = {work_x, work_y, work_z};
-   for (int i = 0; i < 3; ++i) {
-      info->last_block[i] = work[i] % info->block[i];
-      info->grid[i] = DIV_ROUND_UP(work[i], info->block[i]);
-   }
-
-   return work_z > 1 ? 3 : (work_y > 1 ? 2 : 1);
 }
 
 static void si_launch_grid_internal_images(struct si_context *sctx,
@@ -827,14 +799,7 @@ void si_retile_dcc(struct si_context *sctx, struct si_texture *tex)
    unsigned height = DIV_ROUND_UP(tex->buffer.b.b.height0, tex->surface.u.gfx9.color.dcc_block_height);
 
    struct pipe_grid_info info = {};
-   info.block[0] = 8;
-   info.block[1] = 8;
-   info.block[2] = 1;
-   info.last_block[0] = width % info.block[0];
-   info.last_block[1] = height % info.block[1];
-   info.grid[0] = DIV_ROUND_UP(width, info.block[0]);
-   info.grid[1] = DIV_ROUND_UP(height, info.block[1]);
-   info.grid[2] = 1;
+   set_work_size(&info, 8, 8, 1, width, height, 1);
 
    si_launch_grid_internal_ssbos(sctx, &info, *shader, SI_OP_SYNC_BEFORE,
                                  SI_COHERENCY_CB_META, 1, &sb, 0x1);
@@ -880,14 +845,7 @@ void gfx9_clear_dcc_msaa(struct si_context *sctx, struct pipe_resource *res, uin
    unsigned depth = DIV_ROUND_UP(tex->buffer.b.b.array_size, tex->surface.u.gfx9.color.dcc_block_depth);
 
    struct pipe_grid_info info = {};
-   info.block[0] = 8;
-   info.block[1] = 8;
-   info.block[2] = 1;
-   info.last_block[0] = width % info.block[0];
-   info.last_block[1] = height % info.block[1];
-   info.grid[0] = DIV_ROUND_UP(width, info.block[0]);
-   info.grid[1] = DIV_ROUND_UP(height, info.block[1]);
-   info.grid[2] = depth;
+   set_work_size(&info, 8, 8, 1, width, height, depth);
 
    si_launch_grid_internal_ssbos(sctx, &info, *shader, flags, coher, 1, &sb, 0x1);
 }
@@ -933,14 +891,7 @@ void si_compute_expand_fmask(struct pipe_context *ctx, struct pipe_resource *tex
 
    /* Dispatch compute. */
    struct pipe_grid_info info = {0};
-   info.block[0] = 8;
-   info.last_block[0] = tex->width0 % 8;
-   info.block[1] = 8;
-   info.last_block[1] = tex->height0 % 8;
-   info.block[2] = 1;
-   info.grid[0] = DIV_ROUND_UP(tex->width0, 8);
-   info.grid[1] = DIV_ROUND_UP(tex->height0, 8);
-   info.grid[2] = is_array ? tex->array_size : 1;
+   set_work_size(&info, 8, 8, 1, tex->width0, tex->height0, is_array ? tex->array_size : 1);
 
    si_launch_grid_internal(sctx, &info, *shader, SI_OP_SYNC_BEFORE_AFTER);
 

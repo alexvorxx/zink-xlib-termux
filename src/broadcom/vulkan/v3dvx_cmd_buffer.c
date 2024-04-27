@@ -2010,7 +2010,7 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
          cmd_buffer->state.z_updates_enable;
 #endif
 
-      if (pipeline->rasterization_enabled) {
+      if (!dyn->rs.rasterizer_discard_enable) {
          assert(BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_RS_CULL_MODE));
          assert(BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_RS_FRONT_FACE));
          config.enable_forward_facing_primitive = !(dyn->rs.cull_mode & VK_CULL_MODE_FRONT_BIT);
@@ -2037,6 +2037,7 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_ENABLE);
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_RASTERIZER_DISCARD_ENABLE);
 }
 
 void

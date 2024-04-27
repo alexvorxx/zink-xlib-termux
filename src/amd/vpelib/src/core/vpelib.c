@@ -41,6 +41,10 @@
 static void override_debug_option(
     struct vpe_debug_options *debug, const struct vpe_debug_options *user_debug)
 {
+    if ((debug == NULL) || (user_debug == NULL)) {
+        return;
+    }
+
     if (user_debug->flags.bg_bit_depth)
         debug->bg_bit_depth = user_debug->bg_bit_depth;
 
@@ -114,6 +118,10 @@ static void override_debug_option(
 
     if (user_debug->flags.skip_optimal_tap_check)
         debug->skip_optimal_tap_check = user_debug->skip_optimal_tap_check;
+
+    if (user_debug->flags.bypass_blndgam)
+        debug->bypass_blndgam = user_debug->flags.bypass_blndgam;
+
 }
 
 #ifdef VPE_BUILD_1_1

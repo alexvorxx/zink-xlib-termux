@@ -89,9 +89,6 @@ static void override_debug_option(
     if (user_debug->flags.bypass_post_csc)
         debug->bypass_post_csc = user_debug->bypass_post_csc;
 
-    if (user_debug->flags.force_tf_calculation)
-        debug->force_tf_calculation = user_debug->force_tf_calculation;
-
     if (user_debug->flags.clamping_setting) {
         debug->clamping_setting = user_debug->clamping_setting;
         debug->clamping_params  = user_debug->clamping_params;

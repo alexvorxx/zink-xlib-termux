@@ -59,7 +59,6 @@ static const struct vpe_debug_options debug_defaults = {
                     .mpc  = false,
                 },
         },
-    .force_tf_calculation                    = 1,
     .expansion_mode                          = 1,
     .clamping_setting                        = 1,
     .clamping_params =

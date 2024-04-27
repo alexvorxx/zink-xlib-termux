@@ -32,7 +32,6 @@
 #include "common.h"
 #include "custom_float.h"
 #include "color_test_values.h"
-#include "color_pwl.h"
 #include "3dlut_builder.h"
 #include "shaper_builder.h"
 
@@ -155,8 +154,9 @@ static bool color_update_regamma_tf(struct vpe_priv *vpe_priv,
     struct fixed31_32 y_scale, struct fixed31_32 y_bias, bool can_bypass,
     struct transfer_func* output_tf)
 {
-    struct pwl_params *params      = NULL;
-   
+    struct pwl_params *params = NULL;
+    bool               ret    = true;
+
     if (can_bypass) {
         output_tf->type = TF_TYPE_BYPASS;
         return true;
@@ -180,25 +180,10 @@ static bool color_update_regamma_tf(struct vpe_priv *vpe_priv,
         break;
     }
 
-    if (!vpe_priv->init.debug.force_tf_calculation &&
-        x_scale.value == vpe_fixpt_one.value &&
-        y_scale.value == vpe_fixpt_one.value &&
-        y_bias.value == vpe_fixpt_zero.value)
-        vpe_priv->resource.get_tf_pwl_params(output_tf, &params, CM_REGAM);
+    ret = vpe_color_calculate_regamma_params(
+        vpe_priv, x_scale, y_scale, &vpe_priv->cal_buffer, output_tf);
 
-    if (params)
-        output_tf->use_pre_calculated_table = true;
-    else
-        output_tf->use_pre_calculated_table = false;
-
-    if (!output_tf->use_pre_calculated_table)
-        vpe_color_calculate_regamma_params(vpe_priv,
-            x_scale,
-            y_scale,
-            &vpe_priv->cal_buffer,
-            output_tf);
-
-    return true;
+    return ret;
 }
 
 static bool color_update_degamma_tf(struct vpe_priv *vpe_priv,
@@ -232,23 +217,7 @@ static bool color_update_degamma_tf(struct vpe_priv *vpe_priv,
         break;
     }
 
-    if (!vpe_priv->init.debug.force_tf_calculation &&
-        x_scale.value == vpe_fixpt_one.value       &&
-        y_scale.value == vpe_fixpt_one.value       &&
-        y_bias.value  == vpe_fixpt_zero.value)
-        vpe_priv->resource.get_tf_pwl_params(input_tf, &params, CM_DEGAM);
-
-    if (params)
-        input_tf->use_pre_calculated_table = true;
-    else
-        input_tf->use_pre_calculated_table = false;
-
-    if (!input_tf->use_pre_calculated_table) {
-        vpe_color_calculate_degamma_params(vpe_priv,
-            x_scale,
-            y_scale,
-            input_tf);
-    }
+    ret = vpe_color_calculate_degamma_params(vpe_priv, x_scale, y_scale, input_tf);
 
     return ret;
 }

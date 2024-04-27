@@ -155,7 +155,6 @@ struct transfer_func {
         struct pwl_params                       pwl;
         struct transfer_func_distributed_points tf_pts;
     };
-    bool use_pre_calculated_table;
 };
 
 enum color_white_point_type {

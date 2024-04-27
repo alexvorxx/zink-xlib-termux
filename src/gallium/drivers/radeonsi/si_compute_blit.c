@@ -257,20 +257,44 @@ void si_compute_clear_buffer_rmw(struct si_context *sctx, struct pipe_resource *
                                  1, &sb, 0x1);
 }
 
-static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_resource *dst,
-                                        unsigned dst_offset, struct pipe_resource *src,
-                                        unsigned src_offset, unsigned size,
-                                        const uint32_t *clear_value, unsigned clear_value_size,
-                                        unsigned flags, enum si_coherency coher)
+static bool si_compute_clear_or_copy_buffer(struct si_context *sctx, struct pipe_resource *dst,
+                                            unsigned dst_offset, struct pipe_resource *src,
+                                            unsigned src_offset, unsigned size,
+                                            const uint32_t *clear_value, unsigned clear_value_size,
+                                            unsigned flags, enum si_coherency coher,
+                                            bool fail_if_slow)
 {
-   assert(src_offset % 4 == 0);
-   assert(dst_offset % 4 == 0);
-   assert(size % 4 == 0);
+   bool is_copy = src != NULL;
+
+   if (src_offset % 4 || dst_offset % 4 || size % 4 || clear_value_size % 4)
+      return false;
+
+   /* This doesn't fail very often because the only possible fallback is CP DMA, which doesn't
+    * support the render condition.
+    */
+   if (fail_if_slow && !(flags & SI_OP_CS_RENDER_COND_ENABLE) && sctx->screen->info.has_cp_dma &&
+       !sctx->screen->info.cp_sdma_ge_use_system_memory_scope) {
+      if (is_copy) {
+         /* Only use compute for large VRAM copies on dGPUs. */
+         if (size <= 8192 || !sctx->screen->info.has_dedicated_vram ||
+             !(si_resource(dst)->domains & RADEON_DOMAIN_VRAM) ||
+             !(si_resource(src)->domains & RADEON_DOMAIN_VRAM))
+            return false;
+      } else {
+         /* Buffer clear.
+          *
+          * CP DMA clears are terribly slow with GTT on GFX6-8, which can be encountered with any
+          * buffer due to BO evictions, so never use CP DMA clears on GFX6-8. On GFX9+, use CP DMA
+          * clears if the size is small.
+          */
+         if (sctx->gfx_level >= GFX9 && clear_value_size <= 4 && size <= 4096)
+            return false;
+      }
+   }
 
    assert(dst->target != PIPE_BUFFER || dst_offset + size <= dst->width0);
    assert(!src || src_offset + size <= src->width0);
 
-   bool is_copy = src != NULL;
    unsigned dwords_per_thread = clear_value_size == 12 ? 3 : 4;
    unsigned num_threads = DIV_ROUND_UP(size, dwords_per_thread * 4);
 
@@ -301,6 +325,7 @@ static void si_compute_do_clear_or_copy(struct si_context *sctx, struct pipe_res
 
    si_launch_grid_internal_ssbos(sctx, &info, *shader, flags, coher, is_copy ? 2 : 1, sb,
                                  is_copy ? 0x2 : 0x1);
+   return true;
 }
 
 void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
@@ -318,51 +343,27 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
    assert(clear_value_size != 3 && clear_value_size != 6); /* 12 is allowed. */
    assert(offset % clear_alignment == 0);
    assert(size % clear_alignment == 0);
-   assert(size < (UINT_MAX & ~0xf)); /* TODO: test 64-bit sizes in all codepaths */
+   assert(offset < (UINT32_MAX & ~0x3)); /* the limit of pipe_shader_buffer::buffer_size */
+   assert(align(size, 16) < UINT32_MAX); /* we round up the size to 16 for compute */
 
    uint32_t clamped;
    if (util_lower_clearsize_to_dword(clear_value, (int*)&clear_value_size, &clamped))
       clear_value = &clamped;
 
    uint64_t aligned_size = size & ~3ull;
-   if (aligned_size >= 4) {
-      uint64_t compute_min_size;
-
-      if (sctx->gfx_level <= GFX8) {
-         /* CP DMA clears are terribly slow with GTT on GFX6-8, which can always
-          * happen due to BO evictions.
-          */
-         compute_min_size = 0;
-      } else {
-         /* Use a small enough size because CP DMA is slower than compute with bigger sizes. */
-         compute_min_size = 4 * 1024;
-      }
-
-      /* TODO: use compute for 8-bit and 16-bit clear values */
-      if (method == SI_AUTO_SELECT_CLEAR_METHOD &&
-          /* CP DMA doesn't support the render condition. */
-          (flags & SI_OP_CS_RENDER_COND_ENABLE ||
-           /* CP DMA doesn't support large clear value sizes. */
-           clear_value_size > 4 ||
-           /* Use compute if the size is large enough. Always prefer compute on GFX12. */
-           (clear_value_size == 4 && offset % 4 == 0 &&
-            (!sctx->screen->info.has_cp_dma ||
-             sctx->screen->info.cp_sdma_ge_use_system_memory_scope || size > compute_min_size))))
-         method = SI_COMPUTE_CLEAR_METHOD;
-
-      if (method == SI_COMPUTE_CLEAR_METHOD) {
-         si_compute_do_clear_or_copy(sctx, dst, offset, NULL, 0, aligned_size, clear_value,
-                                     clear_value_size, flags, coher);
-      } else {
-         assert(clear_value_size == 4);
-         assert(!(flags & SI_OP_CS_RENDER_COND_ENABLE));
-         si_cp_dma_clear_buffer(sctx, &sctx->gfx_cs, dst, offset, aligned_size, *clear_value,
-                                flags, coher, get_cache_policy(sctx, coher, size));
-      }
-
-      offset += aligned_size;
-      size -= aligned_size;
+   if (aligned_size &&
+       (method == SI_CP_DMA_CLEAR_METHOD ||
+        !si_compute_clear_or_copy_buffer(sctx, dst, offset, NULL, 0, aligned_size, clear_value,
+                                         clear_value_size, flags, coher,
+                                         method == SI_AUTO_SELECT_CLEAR_METHOD))) {
+      assert(clear_value_size == 4);
+      assert(!(flags & SI_OP_CS_RENDER_COND_ENABLE));
+      si_cp_dma_clear_buffer(sctx, &sctx->gfx_cs, dst, offset, aligned_size, *clear_value,
+                             flags, coher, get_cache_policy(sctx, coher, size));
    }
+
+   offset += aligned_size;
+   size -= aligned_size;
 
    /* Handle non-dword alignment. */
    if (size) {
@@ -398,22 +399,15 @@ void si_copy_buffer(struct si_context *sctx, struct pipe_resource *dst, struct p
 
    enum si_coherency coher = SI_COHERENCY_SHADER;
    enum si_cache_policy cache_policy = get_cache_policy(sctx, coher, size);
-   uint64_t compute_min_size = 8 * 1024;
 
    si_improve_sync_flags(sctx, dst, src, &flags);
 
-   /* Only use compute for VRAM copies on dGPUs. */
-   /* TODO: use compute for unaligned big sizes */
-   if (dst_offset % 4 == 0 && src_offset % 4 == 0 && size % 4 == 0 &&
-       (!sctx->screen->info.has_cp_dma || sctx->screen->info.cp_sdma_ge_use_system_memory_scope ||
-        (sctx->screen->info.has_dedicated_vram && si_resource(dst)->domains & RADEON_DOMAIN_VRAM &&
-         si_resource(src)->domains & RADEON_DOMAIN_VRAM && size > compute_min_size))) {
-      si_compute_do_clear_or_copy(sctx, dst, dst_offset, src, src_offset, size, NULL, 0,
-                                  flags, coher);
-   } else {
-      si_cp_dma_copy_buffer(sctx, dst, src, dst_offset, src_offset, size,
-                            flags, coher, cache_policy);
-   }
+   if (si_compute_clear_or_copy_buffer(sctx, dst, dst_offset, src, src_offset, size, NULL, 0,
+                                       flags, coher, true))
+      return;
+
+   si_cp_dma_copy_buffer(sctx, dst, src, dst_offset, src_offset, size, flags, coher,
+                         cache_policy);
 }
 
 void si_compute_shorten_ubyte_buffer(struct si_context *sctx, struct pipe_resource *dst, struct pipe_resource *src,

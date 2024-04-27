@@ -115,10 +115,8 @@ void *si_create_copy_image_cs(struct si_context *sctx, unsigned wg_dim,
 
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "dcc_retile");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "dcc_retile");
    b.shader->info.workgroup_size[0] = 8;
    b.shader->info.workgroup_size[1] = 8;
    b.shader->info.workgroup_size[2] = 1;
@@ -163,10 +161,8 @@ void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
 
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "clear_dcc_msaa");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "clear_dcc_msaa");
    b.shader->info.workgroup_size[0] = 8;
    b.shader->info.workgroup_size[1] = 8;
    b.shader->info.workgroup_size[2] = 1;
@@ -210,11 +206,8 @@ void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
 void *si_create_clear_buffer_rmw_cs(struct si_context *sctx)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "clear_buffer_rmw_cs");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "clear_buffer_rmw_cs");
    b.shader->info.workgroup_size[0] = 64;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
@@ -251,10 +244,6 @@ void *si_create_clear_buffer_rmw_cs(struct si_context *sctx)
  */
 void *si_create_passthrough_tcs(struct si_context *sctx)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR,
-                                           PIPE_SHADER_TESS_CTRL);
-
    unsigned locations[PIPE_MAX_SHADER_OUTPUTS];
 
    struct si_shader_info *info = &sctx->shader.vs.cso->info;
@@ -262,9 +251,8 @@ void *si_create_passthrough_tcs(struct si_context *sctx)
       locations[i] = info->output_semantic[i];
    }
 
-   nir_shader *tcs =
-         nir_create_passthrough_tcs_impl(options, locations, info->num_outputs,
-                                         sctx->patch_vertices);
+   nir_shader *tcs = nir_create_passthrough_tcs_impl(sctx->screen->nir_options, locations,
+                                                     info->num_outputs, sctx->patch_vertices);
 
    return create_shader_state(sctx, tcs);
 }
@@ -611,10 +599,7 @@ void *si_clear_render_target_shader(struct si_context *sctx, enum pipe_texture_t
  */
 void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim)
 {
-   const nir_shader_compiler_options *nir_options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, nir_options,
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
                                                   "write_clear_color_dcc_single");
    b.shader->info.num_images = 1;
    if (is_msaa)
@@ -650,11 +635,8 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
 
 void *si_clear_12bytes_buffer_shader(struct si_context *sctx)
 {
-   const nir_shader_compiler_options *options =
-   sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b =
-   nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "clear_12bytes_buffer");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "clear_12bytes_buffer");
    b.shader->info.workgroup_size[0] = 64;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
@@ -671,16 +653,13 @@ void *si_clear_12bytes_buffer_shader(struct si_context *sctx)
 
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
    unsigned store_qualifier = ACCESS_COHERENT | ACCESS_RESTRICT;
 
    /* Don't cache loads, because there is no reuse. */
    unsigned load_qualifier = store_qualifier | ACCESS_NON_TEMPORAL;
 
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "ubyte_to_ushort");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "ubyte_to_ushort");
 
    unsigned default_wave_size = si_determine_wave_size(sctx->screen, NULL);
 
@@ -706,9 +685,6 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
 {
    assert(util_is_power_of_two_nonzero(num_dwords_per_thread));
 
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
    unsigned store_qualifier = ACCESS_COHERENT | ACCESS_RESTRICT;
    if (dst_stream_cache_policy)
       store_qualifier |= ACCESS_NON_TEMPORAL;
@@ -716,8 +692,8 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
    /* Don't cache loads, because there is no reuse. */
    unsigned load_qualifier = store_qualifier | ACCESS_NON_TEMPORAL;
 
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "create_dma_compute");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "create_dma_compute");
 
    unsigned default_wave_size = si_determine_wave_size(sctx->screen, NULL);
 
@@ -792,11 +768,8 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
  */
 void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, bool is_array)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "create_fmask_expand_cs");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "create_fmask_expand_cs");
    b.shader->info.workgroup_size[0] = 8;
    b.shader->info.workgroup_size[1] = 8;
    b.shader->info.workgroup_size[2] = 1;
@@ -878,11 +851,8 @@ void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type, 
    if (sctx->gfx_level >= GFX11 && type != UTIL_BLITTER_ATTRIB_NONE)
       vs_blit_property++;
 
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_VERTEX);
-
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_VERTEX, options, "get_blitter_vs");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_VERTEX, sctx->screen->nir_options,
+                                                  "get_blitter_vs");
 
    /* Tell the shader to load VS inputs from SGPRs: */
    b.shader->info.vs.blit_sgprs_amd = vs_blit_property;
@@ -950,11 +920,8 @@ void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type, 
  */
 void *si_create_query_result_cs(struct si_context *sctx)
 {
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "create_query_result_cs");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "create_query_result_cs");
    b.shader->info.workgroup_size[0] = 1;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
@@ -1327,11 +1294,8 @@ void *si_create_query_result_cs(struct si_context *sctx)
  */
 void *gfx11_create_sh_query_result_cs(struct si_context *sctx)
 {
-   const nir_shader_compiler_options *options =
-   sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "gfx11_create_sh_query_result_cs");
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
+                                                  "gfx11_create_sh_query_result_cs");
    b.shader->info.workgroup_size[0] = 1;
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;

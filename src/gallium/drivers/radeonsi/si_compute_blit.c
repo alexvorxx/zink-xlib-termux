@@ -280,12 +280,13 @@ bool si_compute_clear_copy_buffer(struct si_context *sctx, struct pipe_resource 
          assert(!"clear_value_size must be <= dwords_per_thread");
          return false; /* invalid value */
       }
-
-      if (clear_value_size == 12 && dwords_per_thread != 3)
-         return false; /* unimplemented (yet) */
    } else {
       /* Set default optimal settings. */
-      dwords_per_thread = clear_value_size == 12 ? 3 : 4;
+      /* Clearing 4 dwords per thread with a 3-dword clear value is slightly faster with big sizes. */
+      if (!is_copy && clear_value_size == 12)
+         dwords_per_thread = size <= 4096 ? 3 : 4;
+      else
+         dwords_per_thread = 4;
    }
 
    /* This doesn't fail very often because the only possible fallback is CP DMA, which doesn't
@@ -342,6 +343,7 @@ bool si_compute_clear_copy_buffer(struct si_context *sctx, struct pipe_resource 
    key.is_clear = !is_copy;
    assert(dwords_per_thread && dwords_per_thread <= 4);
    key.dwords_per_thread = dwords_per_thread;
+   key.clear_value_size_is_12 = !is_copy && clear_value_size == 12;
 
    void *shader = _mesa_hash_table_u64_search(sctx->cs_dma_shaders, key.key);
    if (!shader) {

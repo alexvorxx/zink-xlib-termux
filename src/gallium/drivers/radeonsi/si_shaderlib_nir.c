@@ -234,6 +234,7 @@ void *si_create_dma_compute_shader(struct si_context *sctx, union si_cs_clear_co
       fprintf(stderr, "Internal shader: dma\n");
       fprintf(stderr, "   key.is_clear = %u\n", key->is_clear);
       fprintf(stderr, "   key.dwords_per_thread = %u\n", key->dwords_per_thread);
+      fprintf(stderr, "   key.clear_value_size_is_12 = %u\n", key->clear_value_size_is_12);
       fprintf(stderr, "\n");
    }
 
@@ -245,7 +246,8 @@ void *si_create_dma_compute_shader(struct si_context *sctx, union si_cs_clear_co
    b.shader->info.workgroup_size[1] = 1;
    b.shader->info.workgroup_size[2] = 1;
    b.shader->info.num_ssbos = key->is_clear ? 1 : 2;
-   b.shader->info.cs.user_data_components_amd = key->is_clear ? key->dwords_per_thread : 0;
+   b.shader->info.cs.user_data_components_amd =
+      key->is_clear ? (key->clear_value_size_is_12 ? 3 : key->dwords_per_thread) : 0;
 
    nir_def *thread_id = ac_get_global_ids(&b, 1, 32);
    /* Convert the global thread ID into bytes. */
@@ -254,6 +256,26 @@ void *si_create_dma_compute_shader(struct si_context *sctx, union si_cs_clear_co
 
    if (key->is_clear) {
       value = nir_trim_vector(&b, nir_load_user_data_amd(&b), key->dwords_per_thread);
+
+      /* We store 4 dwords per thread, but the clear value has 3 dwords. Swizzle it to 4 dwords.
+       * Storing 4 dwords per thread is faster even when the ALU cost is worse.
+       */
+      if (key->clear_value_size_is_12 && key->dwords_per_thread == 4) {
+         nir_def *dw_offset = nir_imul_imm(&b, thread_id, key->dwords_per_thread);
+         nir_def *vec[3];
+
+         /* Swizzle a 3-component clear value to get a 4-component clear value. Example:
+          * 0 1 2 3 | 4 5 6 7 | 8 9 10 11  // dw_offset
+          *              |
+          *              V
+          * 0 1 2 0 | 1 2 0 1 | 2 0 1 2    // clear value component indices
+          */
+         for (unsigned i = 0; i < 3; i++) {
+            vec[i] = nir_vector_extract(&b, value,
+                                        nir_umod_imm(&b, nir_iadd_imm(&b, dw_offset, i), 3));
+         }
+         value = nir_vec4(&b, vec[0], vec[1], vec[2], vec[0]);
+      }
    } else {
       value = nir_load_ssbo(&b, key->dwords_per_thread, 32, nir_imm_int(&b, 0), offset,
                             .access = ACCESS_RESTRICT);

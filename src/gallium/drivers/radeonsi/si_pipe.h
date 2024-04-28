@@ -1645,6 +1645,7 @@ union si_cs_clear_copy_buffer_key {
    struct {
       bool is_clear:1;
       unsigned dwords_per_thread:3; /* 1..4 allowed */
+      unsigned clear_value_size_is_12:1;
    };
    uint64_t key;
 };

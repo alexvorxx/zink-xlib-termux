@@ -1492,6 +1492,12 @@ void si_launch_grid_internal_ssbos(struct si_context *sctx, struct pipe_grid_inf
                                    void *shader, unsigned flags, enum si_coherency coher,
                                    unsigned num_buffers, const struct pipe_shader_buffer *buffers,
                                    unsigned writeable_bitmask);
+bool si_compute_clear_copy_buffer(struct si_context *sctx, struct pipe_resource *dst,
+                                  unsigned dst_offset, struct pipe_resource *src,
+                                  unsigned src_offset, unsigned size,
+                                  const uint32_t *clear_value, unsigned clear_value_size,
+                                  unsigned flags, enum si_coherency coher,
+                                  unsigned dwords_per_thread, bool fail_if_slow);
 enum si_clear_method {
   SI_CP_DMA_CLEAR_METHOD,
   SI_COMPUTE_CLEAR_METHOD,

@@ -257,17 +257,36 @@ void si_compute_clear_buffer_rmw(struct si_context *sctx, struct pipe_resource *
                                  1, &sb, 0x1);
 }
 
-static bool si_compute_clear_or_copy_buffer(struct si_context *sctx, struct pipe_resource *dst,
-                                            unsigned dst_offset, struct pipe_resource *src,
-                                            unsigned src_offset, unsigned size,
-                                            const uint32_t *clear_value, unsigned clear_value_size,
-                                            unsigned flags, enum si_coherency coher,
-                                            bool fail_if_slow)
+bool si_compute_clear_copy_buffer(struct si_context *sctx, struct pipe_resource *dst,
+                                  unsigned dst_offset, struct pipe_resource *src,
+                                  unsigned src_offset, unsigned size,
+                                  const uint32_t *clear_value, unsigned clear_value_size,
+                                  unsigned flags, enum si_coherency coher,
+                                  unsigned dwords_per_thread, bool fail_if_slow)
 {
    bool is_copy = src != NULL;
 
    if (src_offset % 4 || dst_offset % 4 || size % 4 || clear_value_size % 4)
       return false;
+
+   if (dwords_per_thread) {
+      /* Validate dwords_per_thread. Only set by the microbenchmark. */
+      if (dwords_per_thread > 4) {
+         assert(!"dwords_per_thread must be <= 4");
+         return false; /* invalid value */
+      }
+
+      if (clear_value_size > dwords_per_thread * 4) {
+         assert(!"clear_value_size must be <= dwords_per_thread");
+         return false; /* invalid value */
+      }
+
+      if (clear_value_size == 12 && dwords_per_thread != 3)
+         return false; /* unimplemented (yet) */
+   } else {
+      /* Set default optimal settings. */
+      dwords_per_thread = clear_value_size == 12 ? 3 : 4;
+   }
 
    /* This doesn't fail very often because the only possible fallback is CP DMA, which doesn't
     * support the render condition.
@@ -295,7 +314,6 @@ static bool si_compute_clear_or_copy_buffer(struct si_context *sctx, struct pipe
    assert(dst->target != PIPE_BUFFER || dst_offset + size <= dst->width0);
    assert(!src || src_offset + size <= src->width0);
 
-   unsigned dwords_per_thread = clear_value_size == 12 ? 3 : 4;
    unsigned num_threads = DIV_ROUND_UP(size, dwords_per_thread * 4);
 
    struct pipe_grid_info info = {};
@@ -361,9 +379,9 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
    uint64_t aligned_size = size & ~3ull;
    if (aligned_size &&
        (method == SI_CP_DMA_CLEAR_METHOD ||
-        !si_compute_clear_or_copy_buffer(sctx, dst, offset, NULL, 0, aligned_size, clear_value,
-                                         clear_value_size, flags, coher,
-                                         method == SI_AUTO_SELECT_CLEAR_METHOD))) {
+        !si_compute_clear_copy_buffer(sctx, dst, offset, NULL, 0, aligned_size, clear_value,
+                                      clear_value_size, flags, coher, 0,
+                                      method == SI_AUTO_SELECT_CLEAR_METHOD))) {
       assert(clear_value_size == 4);
       assert(!(flags & SI_OP_CS_RENDER_COND_ENABLE));
       si_cp_dma_clear_buffer(sctx, &sctx->gfx_cs, dst, offset, aligned_size, *clear_value,
@@ -410,8 +428,8 @@ void si_copy_buffer(struct si_context *sctx, struct pipe_resource *dst, struct p
 
    si_improve_sync_flags(sctx, dst, src, &flags);
 
-   if (si_compute_clear_or_copy_buffer(sctx, dst, dst_offset, src, src_offset, size, NULL, 0,
-                                       flags, coher, true))
+   if (si_compute_clear_copy_buffer(sctx, dst, dst_offset, src, src_offset, size, NULL, 0, flags,
+                                    coher, 0, true))
       return;
 
    si_cp_dma_copy_buffer(sctx, dst, src, dst_offset, src_offset, size, flags, coher,

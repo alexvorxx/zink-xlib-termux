@@ -348,7 +348,7 @@ anv_xe_kmd_backend_get(void)
       .execute_simple_batch = xe_execute_simple_batch,
       .execute_trtt_batch = xe_execute_trtt_batch,
       .queue_exec_locked = xe_queue_exec_locked,
-      .queue_exec_trace = xe_queue_exec_utrace_locked,
+      .queue_exec_async = xe_queue_exec_async,
       .bo_alloc_flags_to_bo_flags = xe_bo_alloc_flags_to_bo_flags,
    };
    return &xe_backend;

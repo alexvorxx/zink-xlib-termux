@@ -569,9 +569,14 @@ setup_execbuf_fence_params(struct anv_execbuf *execbuf)
 }
 
 static VkResult
-setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
-                     struct anv_utrace_submit *submit)
+setup_async_execbuf(struct anv_execbuf *execbuf,
+                    struct anv_async_submit *submit,
+                    uint32_t wait_count,
+                    const struct vk_sync_wait *waits,
+                    uint32_t signal_count,
+                    const struct vk_sync_signal *signals)
 {
+   struct anv_queue *queue = submit->queue;
    struct anv_device *device = queue->device;
 
    /* Always add the workaround BO as it includes a driver identifier for the
@@ -598,10 +603,38 @@ setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
 #endif
    }
 
-   result = anv_execbuf_add_sync(device, execbuf, submit->sync,
-                                 true /* is_signal */, 0 /* value */);
-   if (result != VK_SUCCESS)
-      return result;
+   for (uint32_t i = 0; i < wait_count; i++) {
+      result = anv_execbuf_add_sync(device, execbuf,
+                                    waits[i].sync,
+                                    false /* is_signal */,
+                                    waits[i].wait_value);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+   for (uint32_t i = 0; i < signal_count; i++) {
+      result = anv_execbuf_add_sync(device, execbuf,
+                                    signals[i].sync,
+                                    true /* is_signal */,
+                                    signals[i].signal_value);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+   if (submit->signal.sync) {
+      result = anv_execbuf_add_sync(device, execbuf,
+                                    submit->signal.sync,
+                                    true /* is_signal */,
+                                    submit->signal.signal_value);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+   if (queue->sync) {
+      result = anv_execbuf_add_sync(device, execbuf,
+                                    queue->sync,
+                                    true /* is_signal */,
+                                    0 /* signal_value */);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
    struct anv_bo *batch_bo =
       *util_dynarray_element(&submit->batch_bos, struct anv_bo *, 0);
@@ -623,13 +656,13 @@ setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
 
    uint64_t exec_flags = 0;
    uint32_t context_id;
-   get_context_and_exec_flags(queue, false, &exec_flags, &context_id);
+   get_context_and_exec_flags(queue, submit->use_companion_rcs,
+                              &exec_flags, &context_id);
 
    execbuf->execbuf = (struct drm_i915_gem_execbuffer2) {
       .buffers_ptr = (uintptr_t) execbuf->objects,
       .buffer_count = execbuf->bo_count,
       .batch_start_offset = 0,
-      .batch_len = submit->batch.next - submit->batch.start,
       .flags = I915_EXEC_NO_RELOC |
                I915_EXEC_HANDLE_LUT |
                exec_flags,
@@ -658,36 +691,6 @@ anv_gem_execbuffer(struct anv_device *device,
    return ret;
 }
 
-static VkResult
-anv_queue_exec_utrace_locked(struct anv_queue *queue,
-                             struct anv_utrace_submit *submit)
-{
-   assert(util_dynarray_num_elements(&submit->batch_bos,
-                                     struct anv_bo *) > 0);
-
-   struct anv_device *device = queue->device;
-   struct anv_execbuf execbuf = {
-      .alloc = &device->vk.alloc,
-      .alloc_scope = VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
-   };
-
-   VkResult result = setup_utrace_execbuf(&execbuf, queue, submit);
-   if (result != VK_SUCCESS)
-      goto error;
-
-   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
-
-   int ret = queue->device->info->no_hw ? 0 :
-      anv_gem_execbuffer(queue->device, &execbuf.execbuf);
-   if (ret)
-      result = vk_queue_set_lost(&queue->vk, "execbuf2 failed: %m");
-
- error:
-   anv_execbuf_finish(&execbuf);
-
-   return result;
-}
-
 static void
 anv_i915_debug_submit(const struct anv_execbuf *execbuf)
 {
@@ -712,6 +715,47 @@ anv_i915_debug_submit(const struct anv_execbuf *execbuf)
               bo->gem_handle, (bo->flags & EXEC_OBJECT_CAPTURE) != 0,
               anv_bo_is_vram_only(bo), bo->name);
    }
+}
+
+VkResult
+i915_queue_exec_async(struct anv_async_submit *submit,
+                      uint32_t wait_count,
+                      const struct vk_sync_wait *waits,
+                      uint32_t signal_count,
+                      const struct vk_sync_signal *signals)
+{
+   assert(util_dynarray_num_elements(&submit->batch_bos,
+                                     struct anv_bo *) > 0);
+
+   struct anv_queue *queue = submit->queue;
+   struct anv_device *device = queue->device;
+   struct anv_execbuf execbuf = {
+      .alloc = &device->vk.alloc,
+      .alloc_scope = VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
+   };
+
+   VkResult result = setup_async_execbuf(&execbuf, submit,
+                                         wait_count, waits,
+                                         signal_count, signals);
+   if (result != VK_SUCCESS)
+      goto error;
+
+   if (INTEL_DEBUG(DEBUG_SUBMIT))
+      anv_i915_debug_submit(&execbuf);
+
+   ANV_RMV(bos_gtt_map, device, execbuf.bos, execbuf.bo_count);
+
+   int ret = queue->device->info->no_hw ? 0 :
+      anv_gem_execbuffer(queue->device, &execbuf.execbuf);
+   if (ret)
+      result = vk_queue_set_lost(&queue->vk, "execbuf2 failed: %m");
+
+   result = anv_queue_post_submit(queue, result);
+
+ error:
+   anv_execbuf_finish(&execbuf);
+
+   return result;
 }
 
 static VkResult
@@ -796,17 +840,23 @@ i915_queue_exec_locked(struct anv_queue *queue,
    };
    VkResult result;
 
+   /* If there is a utrace submission but no batch, it means there are no
+    * commands to run for utrace. But we still have to signal the associated
+    * syncs, so add them to the submission.
+    */
    if (utrace_submit &&
-       util_dynarray_num_elements(&utrace_submit->batch_bos,
+       util_dynarray_num_elements(&utrace_submit->base.batch_bos,
                                   struct anv_bo *) == 0) {
       result = anv_execbuf_add_sync(device, &execbuf,
-                                    utrace_submit->sync,
+                                    utrace_submit->base.signal.sync,
                                     true /* is_signal */,
-                                    0);
+                                    utrace_submit->base.signal.signal_value);
       if (result != VK_SUCCESS)
          goto error;
 
-      /* When The utrace submission doesn't have its own batch buffer*/
+      /* Avoid doing a submission after the application's batch since there
+       * are no commands.
+       */
       utrace_submit = NULL;
    }
 
@@ -944,8 +994,13 @@ i915_queue_exec_locked(struct anv_queue *queue,
  error:
    anv_execbuf_finish(&execbuf);
 
-   if (result == VK_SUCCESS && utrace_submit)
-      result = anv_queue_exec_utrace_locked(queue, utrace_submit);
+   if (result == VK_SUCCESS && utrace_submit) {
+      struct vk_sync_signal signal = {
+         .sync = utrace_submit->base.signal.sync,
+         .signal_value = utrace_submit->base.signal.signal_value,
+      };
+      result = i915_queue_exec_async(&utrace_submit->base, 0, NULL, 1, &signal);
+   }
 
    return result;
 }
@@ -1097,14 +1152,4 @@ i915_execute_trtt_batch(struct anv_sparse_submission *submit,
 out:
    anv_execbuf_finish(&execbuf);
    return result;
-}
-
-VkResult
-i915_queue_exec_trace(struct anv_queue *queue,
-                      struct anv_utrace_submit *submit)
-{
-   assert(util_dynarray_num_elements(&submit->batch_bos,
-                                     struct anv_bo *) > 0);
-
-   return anv_queue_exec_utrace_locked(queue, submit);
 }

@@ -117,8 +117,9 @@ xe_exec_process_syncs(struct anv_queue *queue,
    /* Signal the utrace sync only if it doesn't have a batch. Otherwise the
     * it's the utrace batch that should signal its own sync.
     */
-   const bool has_utrace_sync = utrace_submit &&
-                                util_dynarray_num_elements(&utrace_submit->batch_bos, struct anv_bo *) == 0;
+   const bool has_utrace_sync =
+      utrace_submit &&
+      util_dynarray_num_elements(&utrace_submit->base.batch_bos, struct anv_bo *) == 0;
    const uint32_t num_syncs = wait_count + signal_count + extra_sync_count +
                               (has_utrace_sync ? 1 : 0) +
                               ((queue->sync && !is_companion_rcs_queue) ? 1 : 0) +
@@ -132,7 +133,8 @@ xe_exec_process_syncs(struct anv_queue *queue,
    uint32_t count = 0;
 
    if (has_utrace_sync) {
-      xe_syncs[count++] = vk_sync_to_drm_xe_sync(utrace_submit->sync, 0,
+      xe_syncs[count++] = vk_sync_to_drm_xe_sync(utrace_submit->base.signal.sync,
+                                                 utrace_submit->base.signal.signal_value,
                                                  TYPE_SIGNAL);
    }
 
@@ -234,41 +236,73 @@ out:
 }
 
 VkResult
-xe_queue_exec_utrace_locked(struct anv_queue *queue,
-                            struct anv_utrace_submit *utrace_submit)
+xe_queue_exec_async(struct anv_async_submit *submit,
+                    uint32_t wait_count,
+                    const struct vk_sync_wait *waits,
+                    uint32_t signal_count,
+                    const struct vk_sync_signal *signals)
 {
+   struct anv_queue *queue = submit->queue;
    struct anv_device *device = queue->device;
-   struct drm_xe_sync xe_syncs[2] = {};
+   STACK_ARRAY(struct drm_xe_sync, xe_syncs,
+               wait_count + signal_count +
+               ((submit->signal.sync != NULL) ? 1 : 0) +
+               (queue->sync != NULL ? 1 : 0) +
+               + 1);
+   uint32_t n_syncs = 0;
 
-   xe_syncs[0] = vk_sync_to_drm_xe_sync(utrace_submit->sync, 0, TYPE_SIGNAL);
+   for (uint32_t i = 0; i < wait_count; i++) {
+      xe_syncs[n_syncs++] = vk_sync_to_drm_xe_sync(waits[i].sync,
+                                                   waits[i].wait_value,
+                                                   TYPE_WAIT);
+   }
+   for (uint32_t i = 0; i < signal_count; i++) {
+      xe_syncs[n_syncs++] = vk_sync_to_drm_xe_sync(signals[i].sync,
+                                                   signals[i].signal_value,
+                                                   TYPE_SIGNAL);
+   }
+   if (submit->signal.sync) {
+      xe_syncs[n_syncs++] = vk_sync_to_drm_xe_sync(submit->signal.sync,
+                                                   submit->signal.signal_value,
+                                                   TYPE_SIGNAL);
+   }
+   if (queue->sync)
+      xe_syncs[n_syncs++] = vk_sync_to_drm_xe_sync(queue->sync, 0, TYPE_SIGNAL);
 
-   xe_syncs[1].type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ;
-   xe_syncs[1].handle = intel_bind_timeline_get_syncobj(&device->bind_timeline);
-   xe_syncs[1].timeline_value = intel_bind_timeline_get_last_point(&device->bind_timeline);
+   xe_syncs[n_syncs++] = (struct drm_xe_sync) {
+      .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
+      .flags = 0 /* TYPE_WAIT */,
+      .handle = intel_bind_timeline_get_syncobj(&device->bind_timeline),
+      .timeline_value = intel_bind_timeline_get_last_point(&device->bind_timeline),
+   };
 
 #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    if (device->physical->memory.need_flush &&
        anv_bo_needs_host_cache_flush(device->utrace_bo_pool.bo_alloc_flags)) {
-      util_dynarray_foreach(&utrace_submit->batch_bos, struct anv_bo *, bo)
+      util_dynarray_foreach(&submit->batch_bos, struct anv_bo *, bo)
          intel_flush_range((*bo)->map, (*bo)->size);
    }
 #endif
 
    struct anv_bo *batch_bo =
-      *util_dynarray_element(&utrace_submit->batch_bos, struct anv_bo *, 0);
+      *util_dynarray_element(&submit->batch_bos, struct anv_bo *, 0);
    struct drm_xe_exec exec = {
-      .exec_queue_id = queue->exec_queue_id,
+      .exec_queue_id = submit->use_companion_rcs ?
+                       queue->companion_rcs_id : queue->exec_queue_id,
       .num_batch_buffer = 1,
       .syncs = (uintptr_t)xe_syncs,
-      .num_syncs = ARRAY_SIZE(xe_syncs),
+      .num_syncs = n_syncs,
       .address = batch_bo->offset,
    };
+
+   xe_exec_print_debug(queue, 0, NULL, NULL, 0, &exec);
+
    if (likely(!device->info->no_hw)) {
       if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec))
          return vk_device_set_lost(&device->vk, "anv_xe_queue_exec_locked failed: %m");
    }
 
-   return VK_SUCCESS;
+   return anv_queue_post_submit(queue, VK_SUCCESS);
 }
 
 static VkResult
@@ -346,9 +380,11 @@ xe_queue_exec_locked(struct anv_queue *queue,
    if (result != VK_SUCCESS)
       return result;
 
-   /* If we have no batch for utrace, just forget about it now. */
+   /* If there is a utrace submission but no batch, it means there is no
+    * commands to run for utrace so ignore the submission.
+    */
    if (utrace_submit &&
-       util_dynarray_num_elements(&utrace_submit->batch_bos,
+       util_dynarray_num_elements(&utrace_submit->base.batch_bos,
                                   struct anv_bo *) == 0)
       utrace_submit = NULL;
 
@@ -402,8 +438,14 @@ xe_queue_exec_locked(struct anv_queue *queue,
 
    result = anv_queue_post_submit(queue, result);
 
-   if (result == VK_SUCCESS && utrace_submit)
-      result = xe_queue_exec_utrace_locked(queue, utrace_submit);
+   if (result == VK_SUCCESS && utrace_submit) {
+      struct vk_sync_signal signal = {
+         .sync = utrace_submit->base.signal.sync,
+         .signal_value = utrace_submit->base.signal.signal_value,
+      };
+      result = xe_queue_exec_async(&utrace_submit->base,
+                                   0, NULL, 1, &signal);
+   }
 
    return result;
 }

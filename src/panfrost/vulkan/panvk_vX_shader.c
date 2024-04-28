@@ -48,6 +48,7 @@
 #include "util/pan_lower_framebuffer.h"
 #include "pan_shader.h"
 
+#include "vk_pipeline.h"
 #include "vk_util.h"
 
 static nir_def *
@@ -198,7 +199,6 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
                               const struct panvk_pipeline_layout *layout,
                               const VkAllocationCallbacks *alloc)
 {
-   VK_FROM_HANDLE(vk_shader_module, module, stage_info->module);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
    struct panvk_instance *instance =
@@ -223,9 +223,8 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    };
 
    nir_shader *nir;
-   VkResult result = vk_shader_module_to_nir(
-      &dev->vk, module, stage, stage_info->pName,
-      stage_info->pSpecializationInfo, &spirv_options,
+   VkResult result = vk_pipeline_shader_stage_to_nir(
+      &dev->vk, stage_info, &spirv_options,
       GENX(pan_shader_get_compiler_options)(), NULL, &nir);
    if (result != VK_SUCCESS) {
       vk_free2(&dev->vk.alloc, alloc, shader);

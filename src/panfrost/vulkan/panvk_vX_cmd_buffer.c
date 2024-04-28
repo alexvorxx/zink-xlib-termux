@@ -181,13 +181,12 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    list_addtail(&batch->node, &cmdbuf->batches);
 
    if (batch->jc.first_tiler) {
-      struct panfrost_ptr preload_jobs[2];
-      unsigned num_preload_jobs = GENX(pan_preload_fb)(
-         &dev->meta.blitter.cache, &cmdbuf->desc_pool.base, &batch->jc,
-         &cmdbuf->state.gfx.fb.info, batch->tls.gpu, batch->tiler.ctx_desc.gpu,
-         preload_jobs);
-      for (unsigned i = 0; i < num_preload_jobs; i++)
-         util_dynarray_append(&batch->jobs, void *, preload_jobs[i].cpu);
+      ASSERTED unsigned num_preload_jobs =
+         GENX(pan_preload_fb)(&dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
+                              &batch->jc, &cmdbuf->state.gfx.fb.info,
+                              batch->tls.gpu, batch->tiler.ctx_desc.gpu, NULL);
+
+      assert(num_preload_jobs == 0);
    }
 
    if (batch->tlsinfo.tls.size) {

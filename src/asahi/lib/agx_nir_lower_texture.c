@@ -490,19 +490,13 @@ image_texel_address(nir_builder *b, nir_intrinsic_instr *intr,
                   (dim == GLSL_SAMPLER_DIM_CUBE) ||
                   (dim == GLSL_SAMPLER_DIM_3D);
 
-   /* The last 8 bytes of the 24-byte PBE descriptor points to the
-    * software-defined atomic descriptor.  Grab the address.
-    */
-   nir_def *meta_meta_ptr = nir_iadd_imm(b, desc_address, 16);
-   nir_def *meta_ptr = nir_load_global_constant(b, meta_meta_ptr, 8, 1, 64);
-
    if (dim == GLSL_SAMPLER_DIM_BUF && return_index) {
       return nir_channel(b, coord, 0);
    } else if (dim == GLSL_SAMPLER_DIM_BUF) {
-      return libagx_buffer_texel_address(b, meta_ptr, coord, blocksize_B);
+      return libagx_buffer_texel_address(b, desc_address, coord, blocksize_B);
    } else {
       return libagx_image_texel_address(
-         b, meta_ptr, coord, nir_u2u32(b, intr->src[2].ssa), blocksize_B,
+         b, desc_address, coord, nir_u2u32(b, intr->src[2].ssa), blocksize_B,
          nir_imm_bool(b, dim == GLSL_SAMPLER_DIM_1D),
          nir_imm_bool(b, dim == GLSL_SAMPLER_DIM_MS), nir_imm_bool(b, layered),
          nir_imm_bool(b, return_index));

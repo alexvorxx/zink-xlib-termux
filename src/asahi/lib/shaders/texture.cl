@@ -113,7 +113,7 @@ libagx_lower_txf_robustness(constant struct agx_texture_packed *ptr,
 
 static uint32_t
 calculate_twiddled_coordinates(ushort2 coord, uint16_t tile_w_px,
-                               uint16_t tile_h_px, uint32_t width_tl)
+                               uint16_t tile_h_px, uint32_t aligned_width_px)
 {
    /* Modulo by the tile width/height to get the offsets within the tile */
    ushort2 tile_mask_vec = (ushort2)(tile_w_px - 1, tile_h_px - 1);
@@ -131,7 +131,7 @@ calculate_twiddled_coordinates(ushort2 coord, uint16_t tile_w_px,
     *        tile height =
     *   align_down(y, tile height) * width_tl * tile width
     */
-   uint32_t tile_row_start_px = tile_px.y * width_tl * tile_w_px;
+   uint32_t tile_row_start_px = tile_px.y * aligned_width_px;
 
    /* tile column start (px) =
     *   (x // tile width) * (# of pix/tile) =
@@ -145,12 +145,12 @@ calculate_twiddled_coordinates(ushort2 coord, uint16_t tile_w_px,
 }
 
 uint64_t
-libagx_image_texel_address(constant const struct agx_atomic_software_packed *ptr,
+libagx_image_texel_address(constant const struct agx_pbe_packed *ptr,
                            uint4 coord, uint sample_idx,
                            uint bytes_per_sample_B, bool is_1d, bool is_msaa,
                            bool is_layered, bool return_index)
 {
-   agx_unpack(NULL, ptr, ATOMIC_SOFTWARE, d);
+   agx_unpack(NULL, ptr, PBE, d);
 
    /* We do not allow atomics on linear 2D or linear 2D arrays, as there are no
     * known use cases. So we're twiddled in this path, unless we're handling a
@@ -162,30 +162,41 @@ libagx_image_texel_address(constant const struct agx_atomic_software_packed *ptr
    if (is_1d) {
       total_px = coord.x;
    } else {
-      total_px =
-         calculate_twiddled_coordinates(convert_ushort2(coord.xy), d.tile_width,
-                                        d.tile_height, d.tiles_per_row);
+      uint aligned_width_px;
+      if (is_msaa) {
+         aligned_width_px = d.aligned_width_msaa_sw;
+      } else {
+         uint width_px = max(d.width >> d.level, 1u);
+         aligned_width_px = align(width_px, d.tile_width_sw);
+      }
+
+      total_px = calculate_twiddled_coordinates(
+         convert_ushort2(coord.xy), d.tile_width_sw, d.tile_height_sw,
+         aligned_width_px);
    }
 
-   if (is_layered)
-      total_px += coord[is_1d ? 1 : 2] * d.layer_stride_pixels;
+   uint samples_log2 = is_msaa ? d.sample_count_log2_sw : 0;
 
-   uint sample_count = is_msaa ? d.sample_count : 1;
-   uint total_sa = (total_px * d.sample_count) + sample_idx;
+   if (is_layered) {
+      total_px += coord[is_1d ? 1 : 2] *
+                  ((d.layer_stride_sw / bytes_per_sample_B) >> samples_log2);
+   }
+
+   uint total_sa = (total_px << samples_log2) + sample_idx;
 
    if (return_index)
       return total_sa;
    else
-      return d.base + (uint64_t)(total_sa * bytes_per_sample_B);
+      return (d.buffer + (is_msaa ? 0 : d.level_offset_sw)) +
+             (uint64_t)(total_sa * bytes_per_sample_B);
 }
 
 uint64_t
-libagx_buffer_texel_address(
-   constant const struct agx_pbe_buffer_software_packed *ptr, uint4 coord,
-   uint bytes_per_pixel_B)
+libagx_buffer_texel_address(constant const struct agx_pbe_packed *ptr,
+                            uint4 coord, uint bytes_per_pixel_B)
 {
-   agx_unpack(NULL, ptr, PBE_BUFFER_SOFTWARE, d);
-   return d.base + (uint64_t)(coord.x * bytes_per_pixel_B);
+   agx_unpack(NULL, ptr, PBE, d);
+   return d.buffer + (uint64_t)(coord.x * bytes_per_pixel_B);
 }
 
 /* Buffer texture lowerings */

@@ -1174,41 +1174,6 @@ sampler_view_for_surface(struct pipe_surface *surf)
    };
 }
 
-static void
-agx_pack_image_atomic_data(void *packed, struct pipe_image_view *view)
-{
-   struct agx_resource *tex = agx_resource(view->resource);
-
-   if (tex->base.target == PIPE_BUFFER) {
-      agx_pack(packed, PBE_BUFFER_SOFTWARE, cfg) {
-         cfg.base = tex->bo->ptr.gpu + view->u.buf.offset;
-      }
-   } else if (tex->layout.writeable_image) {
-      unsigned level = view->u.tex.level;
-      unsigned blocksize_B = util_format_get_blocksize(tex->layout.format);
-
-      agx_pack(packed, ATOMIC_SOFTWARE, cfg) {
-         cfg.base =
-            tex->bo->ptr.gpu +
-            ail_get_layer_level_B(&tex->layout, view->u.tex.first_layer, level);
-
-         cfg.sample_count = MAX2(util_res_sample_count(view->resource), 1);
-
-         if (tex->layout.tiling == AIL_TILING_TWIDDLED) {
-            struct ail_tile tile_size = tex->layout.tilesize_el[level];
-            cfg.tile_width = tile_size.width_el;
-            cfg.tile_height = tile_size.height_el;
-
-            unsigned width_el = u_minify(tex->base.width0, level);
-            cfg.tiles_per_row = DIV_ROUND_UP(width_el, tile_size.width_el);
-
-            cfg.layer_stride_pixels = DIV_ROUND_UP(
-               tex->layout.layer_stride_B, blocksize_B * cfg.sample_count);
-         }
-      }
-   }
-}
-
 static bool
 target_is_array(enum pipe_texture_target target)
 {
@@ -1355,12 +1320,27 @@ agx_batch_upload_pbe(struct agx_batch *batch, struct agx_pbe_packed *out,
       /* When the descriptor isn't extended architecturally, we can use the last
        * 8 bytes as a sideband. We use it to provide metadata for image atomics.
        */
-      if (!cfg.extended) {
-         struct agx_ptr desc =
-            agx_pool_alloc_aligned(&batch->pool, AGX_ATOMIC_SOFTWARE_LENGTH, 8);
+      if (!cfg.extended && tex->layout.writeable_image &&
+          tex->base.target != PIPE_BUFFER) {
 
-         agx_pack_image_atomic_data(desc.cpu, view);
-         cfg.software_defined = desc.gpu;
+         if (util_res_sample_count(&tex->base) > 1) {
+            cfg.aligned_width_msaa_sw =
+               align(u_minify(view->resource->width0, level),
+                     tex->layout.tilesize_el[level].width_el);
+         } else {
+            cfg.level_offset_sw =
+               ail_get_level_offset_B(&tex->layout, cfg.level);
+         }
+
+         cfg.sample_count_log2_sw = util_logbase2(tex->base.nr_samples);
+
+         if (tex->layout.tiling == AIL_TILING_TWIDDLED) {
+            struct ail_tile tile_size = tex->layout.tilesize_el[level];
+            cfg.tile_width_sw = tile_size.width_el;
+            cfg.tile_height_sw = tile_size.height_el;
+
+            cfg.layer_stride_sw = tex->layout.layer_stride_B;
+         }
       }
    };
 }

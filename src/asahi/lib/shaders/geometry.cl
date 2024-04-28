@@ -6,12 +6,6 @@
 
 #include "geometry.h"
 
-static uint
-align(uint x, uint y)
-{
-   return (x + y - 1) & ~(y - 1);
-}
-
 /* Compatible with util/u_math.h */
 static inline uint
 util_logbase2_ceil(uint n)

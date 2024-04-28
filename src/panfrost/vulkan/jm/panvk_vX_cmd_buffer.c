@@ -120,10 +120,9 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    list_addtail(&batch->node, &cmdbuf->batches);
 
    if (batch->jc.first_tiler) {
-      ASSERTED unsigned num_preload_jobs =
-         GENX(pan_preload_fb)(&dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
-                              &batch->jc, &cmdbuf->state.gfx.render.fb.info,
-                              batch->tls.gpu, batch->tiler.ctx_desc.gpu, NULL);
+      ASSERTED unsigned num_preload_jobs = GENX(pan_preload_fb)(
+         &dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
+         &cmdbuf->state.gfx.render.fb.info, 0, batch->tls.gpu, NULL);
 
       assert(num_preload_jobs == 0);
    }

@@ -236,10 +236,17 @@ void
 GENX(jm_preload_fb)(struct panfrost_batch *batch, struct pan_fb_info *fb)
 {
    struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
+   struct panfrost_ptr preload_jobs[2];
 
-   GENX(pan_preload_fb)
-   (&dev->blitter, &batch->pool.base, &batch->jm.jobs.vtc_jc, fb,
-    batch->tls.gpu, PAN_ARCH >= 6 ? batch->tiler_ctx.bifrost : 0, NULL);
+   unsigned preload_job_count = GENX(pan_preload_fb)(
+      &dev->blitter, &batch->pool.base, fb, 0, batch->tls.gpu, preload_jobs);
+
+   assert(PAN_ARCH < 6 || !preload_job_count);
+
+   for (unsigned j = 0; j < preload_job_count; j++) {
+      pan_jc_add_job(&batch->jm.jobs.vtc_jc, MALI_JOB_TYPE_TILER, false, false,
+                     0, 0, &preload_jobs[j], true);
+   }
 }
 
 void

@@ -2,20 +2,19 @@
 ----
 
 ### Usage Zink in Termux
-----
 
 To use Zink with proprietary Vulkan driver:
 
-   pkg install vulkan-loader-android
+   _pkg install vulkan-loader-android_
 
 To use Zink with Turnip Freedreno driver:
 
-   pkg install mesa-vulkan-icd-freedreno
+   _pkg install mesa-vulkan-icd-freedreno_
 
 You also may compile it yourself.
 
 ### Zink 3D Tests
-----
+
 Tests were run in the [Wine Hangover 9.3](https://github.com/alexvorxx/hangover-termux) in Termux.
 Device - Poco F1 (Adreno 630). A proprietary Vulkan driver was used with Zink.
 * glxgears and WineD3D tests
@@ -24,33 +23,30 @@ Device - Poco F1 (Adreno 630). A proprietary Vulkan driver was used with Zink.
 ![](https://github.com/alexvorxx/zink-xlib-termux/blob/main/docs/GPUCapsViewer1.jpg?raw=true)
 ![](https://github.com/alexvorxx/zink-xlib-termux/blob/main/docs/GPUCapsViewer2.jpg?raw=true)
 
-### Build deps
-----
+### Build dependencies
 
-Taken from [here] (https://github.com/termux/termux-packages/issues/10103#issuecomment-1333002785).
+Taken from [here](https://github.com/termux/termux-packages/issues/10103#issuecomment-1333002785).
 
-   pkg update && pkg upgrade
+   _pkg update && pkg upgrade_
 
-   pkg install -y x11-repo
+   _pkg install -y x11-repo_
 
-   pkg install -y clang lld binutils cmake autoconf automake libtool '*ndk*' make python git libandroid-shmem-static ninja llvm bison flex libx11 xorgproto libdrm libpixman libxfixes libjpeg-turbo xtrans libxxf86vm xorg-xrandr xorg-font-util xorg-util-macros libxfont2 libxkbfile libpciaccess xcb-util-renderutil xcb-util-image xcb-util-keysyms xcb-util-wm xorg-xkbcomp xkeyboard-config libxdamage libxinerama libxshmfence
+   _pkg install -y clang lld binutils cmake autoconf automake libtool '*ndk*' make python git libandroid-shmem-static ninja llvm bison flex libx11 xorgproto libdrm libpixman libxfixes libjpeg-turbo xtrans libxxf86vm xorg-xrandr xorg-font-util xorg-util-macros libxfont2 libxkbfile libpciaccess xcb-util-renderutil xcb-util-image xcb-util-keysyms xcb-util-wm xorg-xkbcomp xkeyboard-config libxdamage libxinerama libxshmfence_
 
-   pip install meson mako
+   _pip install meson mako_
 
 ### Build Mesa Zink
-----
 
-Build Mesa Zink using [this repository] (https://github.com/alexvorxx/zink-xlib-termux).
+Build Mesa Zink using [this repository](https://github.com/alexvorxx/zink-xlib-termux).
 
 Go to the folder with Mesa code and run the commands:
 
-   LDFLAGS='-l:libandroid-shmem.a -llog' meson . build -Dgallium-va=disabled -Dgallium-drivers=virgl,zink,swrast -Ddri3=disabled -Dvulkan-drivers= -Dglx=xlib -Dplatforms=x11 -Dllvm=disabled -Dbuildtype=release
+   _LDFLAGS='-l:libandroid-shmem.a -llog' meson . build -Dgallium-va=disabled -Dgallium-drivers=virgl,zink,swrast -Ddri3=disabled -Dvulkan-drivers= -Dglx=xlib -Dplatforms=x11 -Dllvm=disabled -Dbuildtype=release_
 
-   ninja -C build install
+   _ninja -C build install_
 
 
 ### Source
-----
 
 This repository lives at https://gitlab.freedesktop.org/mesa/mesa.
 

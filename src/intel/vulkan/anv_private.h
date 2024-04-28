@@ -6046,15 +6046,15 @@ void anv_astc_emu_process(struct anv_cmd_buffer *cmd_buffer,
  *      (vkQueueBeginDebugUtilsLabelEXT/vkQueueEndDebugUtilsLabelEXT)
  */
 struct anv_utrace_submit {
-   /* Needs to be the first field */
-   struct intel_ds_flush_data ds;
-
    /* Batch stuff to implement of copy of timestamps recorded in another
     * buffer.
     */
    struct anv_reloc_list relocs;
    struct anv_batch batch;
    struct util_dynarray batch_bos;
+
+   /* structure used by the perfetto glue */
+   struct intel_ds_flush_data ds;
 
    /* Stream for temporary allocations */
    struct anv_state_stream dynamic_state_stream;

@@ -1173,18 +1173,6 @@ radv_free_shader_memory(struct radv_device *device, union radv_shader_arena_bloc
    mtx_unlock(&device->shader_arena_mutex);
 }
 
-struct radv_serialized_shader_arena_block
-radv_serialize_shader_arena_block(union radv_shader_arena_block *block)
-{
-   struct radv_serialized_shader_arena_block serialized_block = {
-      .offset = block->offset,
-      .size = block->size,
-      .arena_va = block->arena->bo->va,
-      .arena_size = block->arena->size,
-   };
-   return serialized_block;
-}
-
 union radv_shader_arena_block *
 radv_replay_shader_arena_block(struct radv_device *device, const struct radv_serialized_shader_arena_block *src,
                                void *ptr)

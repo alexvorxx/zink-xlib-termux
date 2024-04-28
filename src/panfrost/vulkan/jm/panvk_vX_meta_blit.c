@@ -120,6 +120,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    }
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
+   cmdbuf->state.gfx.render.layer_count = 1;
 
    GENX(pan_blit_ctx_init)
    (&dev->meta.blitter.cache, blitinfo, &cmdbuf->desc_pool.base, &ctx);
@@ -136,13 +137,13 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
       batch->blit.dst = dst_img->bo;
       panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
-      panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
+      panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf, 0);
 
       tsd = batch->tls.gpu;
-      tiler = batch->tiler.ctx_desc.gpu;
+      tiler = batch->tiler.ctx_descs.gpu;
 
-      struct panfrost_ptr job =
-         GENX(pan_blit)(&ctx, &cmdbuf->desc_pool.base, &batch->jc, tsd, tiler);
+      struct panfrost_ptr job = GENX(pan_blit)(&ctx, &cmdbuf->desc_pool.base,
+                                               &batch->vtc_jc, tsd, tiler);
       util_dynarray_append(&batch->jobs, void *, job.cpu);
       panvk_per_arch(cmd_close_batch)(cmdbuf);
    } while (pan_blit_next_surface(&ctx));

@@ -274,7 +274,8 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
 
    panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
-   panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
+   cmdbuf->state.gfx.render.layer_count = 1;
+   panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf, 0);
 
    mali_ptr vpd = panvk_per_arch(meta_emit_viewport)(&cmdbuf->desc_pool.base,
                                                      minx, miny, maxx, maxy);
@@ -288,7 +289,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
 
    enum glsl_base_type base_type = panvk_meta_get_format_type(pfmt);
 
-   mali_ptr tiler = batch->tiler.ctx_desc.gpu;
+   mali_ptr tiler = batch->tiler.ctx_descs.gpu;
    mali_ptr tsd = batch->tls.gpu;
 
    mali_ptr pushconsts = 0, rsd = 0;
@@ -311,8 +312,8 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
    struct panfrost_ptr job;
 
    job = panvk_meta_clear_attachment_emit_tiler_job(
-      &cmdbuf->desc_pool.base, &batch->jc, coordinates, pushconsts, vpd, rsd,
-      tsd, tiler);
+      &cmdbuf->desc_pool.base, &batch->vtc_jc, coordinates, pushconsts, vpd,
+      rsd, tsd, tiler);
 
    util_dynarray_append(&batch->jobs, void *, job.cpu);
 }
@@ -336,6 +337,7 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
                   PIPE_SWIZZLE_W},
    };
 
+   cmdbuf->state.gfx.render.layer_count = 1;
    cmdbuf->state.gfx.render.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),

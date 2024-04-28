@@ -62,22 +62,22 @@ panvk_debug_adjust_bo_flags(const struct panvk_device *device,
 }
 
 static void
-panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf)
+panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf, mali_ptr fbd)
 {
    const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr job_ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, FRAGMENT_JOB);
 
-   GENX(pan_emit_fragment_job_payload)
-   (fbinfo, batch->fb.desc.gpu, job_ptr.cpu);
+   GENX(pan_emit_fragment_job_payload)(fbinfo, fbd, job_ptr.cpu);
 
    pan_section_pack(job_ptr.cpu, FRAGMENT_JOB, HEADER, header) {
       header.type = MALI_JOB_TYPE_FRAGMENT;
       header.index = 1;
    }
 
-   batch->fragment_job = job_ptr.gpu;
+   pan_jc_add_job(&batch->frag_jc, MALI_JOB_TYPE_FRAGMENT, false, false, 0, 0,
+                  &job_ptr, false);
    util_dynarray_append(&batch->jobs, void *, job_ptr.cpu);
 }
 
@@ -93,7 +93,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 
    assert(batch);
 
-   if (!batch->fb.desc.gpu && !batch->jc.first_job) {
+   if (!batch->fb.desc.gpu && !batch->vtc_jc.first_job) {
       if (util_dynarray_num_elements(&batch->event_ops,
                                      struct panvk_cmd_event_op) == 0) {
          /* Content-less batch, let's drop it */
@@ -105,7 +105,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
          struct panfrost_ptr ptr =
             pan_pool_alloc_desc(&cmdbuf->desc_pool.base, JOB_HEADER);
          util_dynarray_append(&batch->jobs, void *, ptr.cpu);
-         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_NULL, false, false, 0, 0,
+         pan_jc_add_job(&batch->vtc_jc, MALI_JOB_TYPE_NULL, false, false, 0, 0,
                         &ptr, false);
          list_addtail(&batch->node, &cmdbuf->batches);
       }
@@ -118,14 +118,6 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
       to_panvk_physical_device(dev->vk.physical);
 
    list_addtail(&batch->node, &cmdbuf->batches);
-
-   if (batch->jc.first_tiler) {
-      ASSERTED unsigned num_preload_jobs = GENX(pan_preload_fb)(
-         &dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
-         &cmdbuf->state.gfx.render.fb.info, 0, batch->tls.gpu, NULL);
-
-      assert(num_preload_jobs == 0);
-   }
 
    if (batch->tlsinfo.tls.size) {
       unsigned thread_tls_alloc =
@@ -156,11 +148,29 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
                                  panfrost_sample_positions_offset(
                                     pan_sample_pattern(fbinfo->nr_samples));
 
-      batch->fb.desc.gpu |= GENX(pan_emit_fbd)(
-         &cmdbuf->state.gfx.render.fb.info, 0, &batch->tlsinfo,
-         &batch->tiler.ctx, batch->fb.desc.cpu);
+      for (uint32_t i = 0; i < batch->fb.layer_count; i++) {
+         mali_ptr fbd = batch->fb.desc.gpu + (batch->fb.desc_stride * i);
+         if (batch->vtc_jc.first_tiler) {
+            cmdbuf->state.gfx.render.fb.info.bifrost.pre_post.dcds.gpu = 0;
 
-      panvk_cmd_prepare_fragment_job(cmdbuf);
+            ASSERTED unsigned num_preload_jobs = GENX(pan_preload_fb)(
+               &dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
+               &cmdbuf->state.gfx.render.fb.info, i, batch->tls.gpu, NULL);
+
+            /* Bifrost GPUs use pre frame DCDs to preload the FB content. We
+             * thus expect num_preload_jobs to be zero.
+             */
+            assert(!num_preload_jobs);
+         }
+
+         panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf, i);
+         fbd |= GENX(pan_emit_fbd)(
+            &cmdbuf->state.gfx.render.fb.info, i, &batch->tlsinfo,
+            &batch->tiler.ctx,
+            batch->fb.desc.cpu + (batch->fb.desc_stride * i));
+
+         panvk_cmd_prepare_fragment_job(cmdbuf, fbd);
+      }
    }
 
    cmdbuf->cur_batch = NULL;
@@ -176,14 +186,24 @@ panvk_per_arch(cmd_alloc_fb_desc)(struct panvk_cmd_buffer *cmdbuf)
 
    const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    bool has_zs_ext = fbinfo->zs.view.zs || fbinfo->zs.view.s;
+   batch->fb.layer_count = cmdbuf->state.gfx.render.layer_count;
+   unsigned fbd_size = pan_size(FRAMEBUFFER);
+
+   if (has_zs_ext)
+      fbd_size = ALIGN_POT(fbd_size, pan_alignment(ZS_CRC_EXTENSION)) +
+                 pan_size(ZS_CRC_EXTENSION);
+
+   fbd_size = ALIGN_POT(fbd_size, pan_alignment(RENDER_TARGET)) +
+              (MAX2(fbinfo->rt_count, 1) * pan_size(RENDER_TARGET));
 
    batch->fb.bo_count = cmdbuf->state.gfx.render.fb.bo_count;
    memcpy(batch->fb.bos, cmdbuf->state.gfx.render.fb.bos,
           batch->fb.bo_count * sizeof(batch->fb.bos[0]));
-   batch->fb.desc = pan_pool_alloc_desc_aggregate(
-      &cmdbuf->desc_pool.base, PAN_DESC(FRAMEBUFFER),
-      PAN_DESC_ARRAY(has_zs_ext ? 1 : 0, ZS_CRC_EXTENSION),
-      PAN_DESC_ARRAY(MAX2(fbinfo->rt_count, 1), RENDER_TARGET));
+
+   batch->fb.desc = pan_pool_alloc_aligned(&cmdbuf->desc_pool.base,
+                                           fbd_size * batch->fb.layer_count,
+                                           pan_alignment(FRAMEBUFFER));
+   batch->fb.desc_stride = fbd_size;
 
    memset(&cmdbuf->state.gfx.render.fb.info.bifrost.pre_post.dcds, 0,
           sizeof(cmdbuf->state.gfx.render.fb.info.bifrost.pre_post.dcds));
@@ -201,19 +221,22 @@ panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
 }
 
 void
-panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
+panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
+                                          uint32_t layer_idx)
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct panvk_batch *batch = cmdbuf->cur_batch;
 
-   if (batch->tiler.ctx_desc.cpu)
-      return;
+   if (batch->tiler.ctx_descs.cpu)
+      goto out_set_layer_ctx;
 
+   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
+   uint32_t layer_count = cmdbuf->state.gfx.render.layer_count;
    batch->tiler.heap_desc =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, TILER_HEAP);
-   batch->tiler.ctx_desc =
-      pan_pool_alloc_desc(&cmdbuf->desc_pool.base, TILER_CONTEXT);
+
+   batch->tiler.ctx_descs = pan_pool_alloc_desc_array(
+      &cmdbuf->desc_pool.base, layer_count, TILER_CONTEXT);
 
    pan_pack(&batch->tiler.heap_templ, TILER_HEAP, cfg) {
       cfg.size = pan_kmod_bo_size(dev->tiler_heap->bo);
@@ -232,9 +255,20 @@ panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
 
    memcpy(batch->tiler.heap_desc.cpu, &batch->tiler.heap_templ,
           sizeof(batch->tiler.heap_templ));
-   memcpy(batch->tiler.ctx_desc.cpu, &batch->tiler.ctx_templ,
-          sizeof(batch->tiler.ctx_templ));
-   batch->tiler.ctx.bifrost = batch->tiler.ctx_desc.gpu;
+
+   struct mali_tiler_context_packed *ctxs = batch->tiler.ctx_descs.cpu;
+
+   assert(layer_count > 0);
+   for (uint32_t i = 0; i < layer_count; i++) {
+      STATIC_ASSERT(
+         !(pan_size(TILER_CONTEXT) & (pan_alignment(TILER_CONTEXT) - 1)));
+
+      memcpy(&ctxs[i], &batch->tiler.ctx_templ, sizeof(*ctxs));
+   }
+
+out_set_layer_ctx:
+   batch->tiler.ctx.bifrost =
+      batch->tiler.ctx_descs.gpu + (pan_size(TILER_CONTEXT) * layer_idx);
 }
 
 struct panvk_batch *

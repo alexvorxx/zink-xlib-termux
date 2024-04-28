@@ -48,22 +48,25 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
          memset((*job), 0, 4 * 4);
 
       /* Reset the tiler before re-issuing the batch */
-      if (batch->tiler.ctx_desc.cpu) {
+      if (batch->tiler.ctx_descs.cpu) {
          memcpy(batch->tiler.heap_desc.cpu, &batch->tiler.heap_templ,
                 sizeof(batch->tiler.heap_templ));
-         memcpy(batch->tiler.ctx_desc.cpu, &batch->tiler.ctx_templ,
-                sizeof(batch->tiler.ctx_templ));
+
+         struct mali_tiler_context_packed *ctxs = batch->tiler.ctx_descs.cpu;
+
+         for (uint32_t i = 0; i < batch->fb.layer_count; i++)
+            memcpy(&ctxs[i], &batch->tiler.ctx_templ, sizeof(*ctxs));
       }
    }
 
-   if (batch->jc.first_job) {
+   if (batch->vtc_jc.first_job) {
       struct drm_panfrost_submit submit = {
          .bo_handles = (uintptr_t)bos,
          .bo_handle_count = nr_bos,
          .in_syncs = (uintptr_t)in_fences,
          .in_sync_count = nr_in_fences,
          .out_sync = queue->sync,
-         .jc = batch->jc.first_job,
+         .jc = batch->vtc_jc.first_job,
       };
 
       ret = drmIoctl(dev->vk.drm_fd, DRM_IOCTL_PANFROST_SUBMIT, &submit);
@@ -76,7 +79,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
       }
 
       if (debug & PANVK_DEBUG_TRACE) {
-         pandecode_jc(dev->debug.decode_ctx, batch->jc.first_job,
+         pandecode_jc(dev->debug.decode_ctx, batch->vtc_jc.first_job,
                       phys_dev->kmod.props.gpu_prod_id);
       }
 
@@ -88,16 +91,16 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
                                   phys_dev->kmod.props.gpu_prod_id);
    }
 
-   if (batch->fragment_job) {
+   if (batch->frag_jc.first_job) {
       struct drm_panfrost_submit submit = {
          .bo_handles = (uintptr_t)bos,
          .bo_handle_count = nr_bos,
          .out_sync = queue->sync,
-         .jc = batch->fragment_job,
+         .jc = batch->frag_jc.first_job,
          .requirements = PANFROST_JD_REQ_FS,
       };
 
-      if (batch->jc.first_job) {
+      if (batch->vtc_jc.first_job) {
          submit.in_syncs = (uintptr_t)(&queue->sync);
          submit.in_sync_count = 1;
       } else {
@@ -114,7 +117,7 @@ panvk_queue_submit_batch(struct panvk_queue *queue, struct panvk_batch *batch,
       }
 
       if (debug & PANVK_DEBUG_TRACE)
-         pandecode_jc(dev->debug.decode_ctx, batch->fragment_job,
+         pandecode_jc(dev->debug.decode_ctx, batch->frag_jc.first_job,
                       phys_dev->kmod.props.gpu_prod_id);
 
       if (debug & PANVK_DEBUG_DUMP)
@@ -236,7 +239,7 @@ panvk_queue_submit(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
                            panvk_pool_num_bos(&cmdbuf->tls_pool) +
                            batch->fb.bo_count + (batch->blit.src ? 1 : 0) +
                            (batch->blit.dst ? 1 : 0) +
-                           (batch->jc.first_tiler ? 1 : 0) + 1;
+                           (batch->vtc_jc.first_tiler ? 1 : 0) + 1;
          unsigned bo_idx = 0;
          uint32_t bos[nr_bos];
 
@@ -258,7 +261,7 @@ panvk_queue_submit(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
          if (batch->blit.dst)
             bos[bo_idx++] = pan_kmod_bo_handle(batch->blit.dst);
 
-         if (batch->jc.first_tiler)
+         if (batch->vtc_jc.first_tiler)
             bos[bo_idx++] = pan_kmod_bo_handle(dev->tiler_heap->bo);
 
          bos[bo_idx++] = pan_kmod_bo_handle(dev->sample_positions->bo);

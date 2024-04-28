@@ -37,23 +37,25 @@ struct panvk_batch {
    struct list_head node;
    struct util_dynarray jobs;
    struct util_dynarray event_ops;
-   struct pan_jc jc;
+   struct pan_jc vtc_jc;
+   struct pan_jc frag_jc;
    struct {
       struct panfrost_ptr desc;
+      uint32_t desc_stride;
       uint32_t bo_count;
 
       /* One slot per color, two more slots for the depth/stencil buffers. */
       struct pan_kmod_bo *bos[MAX_RTS + 2];
+      uint32_t layer_count;
    } fb;
    struct {
       struct pan_kmod_bo *src, *dst;
    } blit;
    struct panfrost_ptr tls;
-   mali_ptr fragment_job;
    struct {
       struct pan_tiler_context ctx;
       struct panfrost_ptr heap_desc;
-      struct panfrost_ptr ctx_desc;
+      struct panfrost_ptr ctx_descs;
       struct mali_tiler_heap_packed heap_templ;
       struct mali_tiler_context_packed ctx_templ;
    } tiler;
@@ -125,6 +127,7 @@ struct panvk_cmd_graphics_state {
 
    struct {
       VkRenderingFlags flags;
+      uint32_t layer_count;
 
       enum vk_rp_attachment_flags bound_attachments;
       struct {
@@ -206,7 +209,8 @@ void panvk_per_arch(cmd_alloc_fb_desc)(struct panvk_cmd_buffer *cmdbuf);
 void panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf,
                                         bool gfx);
 
-void panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf);
+void panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
+                                               uint32_t layer_idx);
 
 void panvk_per_arch(cmd_preload_fb_after_batch_split)(
    struct panvk_cmd_buffer *cmdbuf);

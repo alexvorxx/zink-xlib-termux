@@ -70,9 +70,14 @@ struct panvk_draw_info {
    mali_ptr viewport;
    struct {
       struct panfrost_ptr vertex_copy_desc;
-      struct panfrost_ptr vertex;
       struct panfrost_ptr frag_copy_desc;
-      struct panfrost_ptr tiler;
+      union {
+         struct {
+            struct panfrost_ptr vertex;
+            struct panfrost_ptr tiler;
+         };
+         struct panfrost_ptr idvs;
+      };
    } jobs;
 };
 
@@ -782,39 +787,14 @@ panvk_draw_prepare_viewport(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
-                              struct panvk_draw_info *draw)
+panvk_emit_vertex_dcd(struct panvk_cmd_buffer *cmdbuf,
+                      const struct panvk_draw_info *draw, void *dcd)
 {
-   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
-   struct panvk_shader_desc_state *vs_desc_state = &cmdbuf->state.gfx.vs.desc;
-   struct panvk_batch *batch = cmdbuf->cur_batch;
+   const struct panvk_shader_desc_state *vs_desc_state =
+      &cmdbuf->state.gfx.vs.desc;
 
-   panvk_per_arch(cmd_prepare_shader_desc_tables)(&cmdbuf->desc_pool.base,
-                                                  &cmdbuf->state.gfx.desc_state,
-                                                  vs, vs_desc_state);
-
-   struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
-      dev, &cmdbuf->desc_pool.base, vs, &cmdbuf->state.gfx.desc_state,
-      vs_desc_state);
-
-   if (ptr.cpu)
-      util_dynarray_append(&batch->jobs, void *, ptr.cpu);
-
-   draw->jobs.vertex_copy_desc = ptr;
-
-   ptr = pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
-   util_dynarray_append(&batch->jobs, void *, ptr.cpu);
-   draw->jobs.vertex = ptr;
-
-   memcpy(pan_section_ptr(ptr.cpu, COMPUTE_JOB, INVOCATION), &draw->invocation,
-          pan_size(INVOCATION));
-
-   pan_section_pack(ptr.cpu, COMPUTE_JOB, PARAMETERS, cfg) {
-      cfg.job_task_split = 5;
-   }
-
-   pan_section_pack(ptr.cpu, COMPUTE_JOB, DRAW, cfg) {
+   pan_pack(dcd, DRAW, cfg) {
       cfg.state = panvk_priv_mem_dev_addr(vs->rsd);
       cfg.attributes = draw->vs.attributes;
       cfg.attribute_buffers = draw->vs.attribute_bufs;
@@ -829,6 +809,28 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
       cfg.textures = vs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_TEXTURE];
       cfg.samplers = vs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_SAMPLER];
    }
+}
+
+static void
+panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
+                              struct panvk_draw_info *draw)
+{
+   struct panvk_batch *batch = cmdbuf->cur_batch;
+   struct panfrost_ptr ptr =
+      pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
+
+   util_dynarray_append(&batch->jobs, void *, ptr.cpu);
+   draw->jobs.vertex = ptr;
+
+   memcpy(pan_section_ptr(ptr.cpu, COMPUTE_JOB, INVOCATION), &draw->invocation,
+          pan_size(INVOCATION));
+
+   pan_section_pack(ptr.cpu, COMPUTE_JOB, PARAMETERS, cfg) {
+      cfg.job_task_split = 5;
+   }
+
+   panvk_emit_vertex_dcd(cmdbuf, draw,
+                         pan_section_ptr(ptr.cpu, COMPUTE_JOB, DRAW));
 }
 
 static enum mali_draw_mode
@@ -867,6 +869,7 @@ panvk_emit_tiler_primitive(struct panvk_cmd_buffer *cmdbuf,
    bool writes_point_size =
       vs->info.vs.writes_point_size &&
       ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+   bool secondary_shader = vs->info.vs.secondary_enable && fs_required(cmdbuf);
 
    pan_pack(prim, PRIMITIVE, cfg) {
       cfg.draw_mode = translate_prim_topology(ia->primitive_topology);
@@ -900,6 +903,8 @@ panvk_emit_tiler_primitive(struct panvk_cmd_buffer *cmdbuf,
          cfg.index_count = draw->vertex_count;
          cfg.index_type = MALI_INDEX_TYPE_NONE;
       }
+
+      cfg.secondary_shader = secondary_shader;
    }
 }
 
@@ -974,18 +979,8 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_batch *batch = cmdbuf->cur_batch;
-
-   /* If the vertex job doesn't write the position, we don't need a tiler job. */
-   if (!draw->position)
-      return;
-
    const struct panvk_shader *fs = cmdbuf->state.gfx.fs.shader;
    struct panvk_shader_desc_state *fs_desc_state = &cmdbuf->state.gfx.fs.desc;
-
-   panvk_per_arch(cmd_prepare_shader_desc_tables)(&cmdbuf->desc_pool.base,
-                                                  &cmdbuf->state.gfx.desc_state,
-                                                  fs, fs_desc_state);
-
    struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
       dev, &cmdbuf->desc_pool.base, fs, &cmdbuf->state.gfx.desc_state,
       fs_desc_state);
@@ -1017,6 +1012,79 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
 
    pan_section_pack(ptr.cpu, TILER_JOB, PADDING, padding)
       ;
+}
+
+static void
+panvk_draw_prepare_idvs_job(struct panvk_cmd_buffer *cmdbuf,
+                            struct panvk_draw_info *draw)
+{
+   struct panvk_batch *batch = cmdbuf->cur_batch;
+   struct panfrost_ptr ptr =
+      pan_pool_alloc_desc(&cmdbuf->desc_pool.base, INDEXED_VERTEX_JOB);
+
+   util_dynarray_append(&batch->jobs, void *, ptr.cpu);
+   draw->jobs.idvs = ptr;
+
+   memcpy(pan_section_ptr(ptr.cpu, INDEXED_VERTEX_JOB, INVOCATION),
+          &draw->invocation, pan_size(INVOCATION));
+
+   panvk_emit_tiler_primitive(
+      cmdbuf, draw, pan_section_ptr(ptr.cpu, INDEXED_VERTEX_JOB, PRIMITIVE));
+
+   panvk_emit_tiler_primitive_size(
+      cmdbuf, draw,
+      pan_section_ptr(ptr.cpu, INDEXED_VERTEX_JOB, PRIMITIVE_SIZE));
+
+   pan_section_pack(ptr.cpu, INDEXED_VERTEX_JOB, TILER, cfg) {
+      cfg.address = draw->tiler_ctx->bifrost;
+   }
+
+   pan_section_pack(ptr.cpu, INDEXED_VERTEX_JOB, PADDING, _) {
+   }
+
+   panvk_emit_tiler_dcd(
+      cmdbuf, draw,
+      pan_section_ptr(ptr.cpu, INDEXED_VERTEX_JOB, FRAGMENT_DRAW));
+
+   panvk_emit_vertex_dcd(
+      cmdbuf, draw, pan_section_ptr(ptr.cpu, INDEXED_VERTEX_JOB, VERTEX_DRAW));
+}
+
+static void
+panvk_draw_prepare_vs_copy_desc_job(struct panvk_cmd_buffer *cmdbuf,
+                                    struct panvk_draw_info *draw)
+{
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct panvk_batch *batch = cmdbuf->cur_batch;
+   const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
+   const struct panvk_shader_desc_state *vs_desc_state =
+      &cmdbuf->state.gfx.vs.desc;
+   struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
+      dev, &cmdbuf->desc_pool.base, vs, &cmdbuf->state.gfx.desc_state,
+      vs_desc_state);
+
+   if (ptr.cpu)
+      util_dynarray_append(&batch->jobs, void *, ptr.cpu);
+
+   draw->jobs.vertex_copy_desc = ptr;
+}
+
+static void
+panvk_draw_prepare_fs_copy_desc_job(struct panvk_cmd_buffer *cmdbuf,
+                                    struct panvk_draw_info *draw)
+{
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   const struct panvk_shader *fs = cmdbuf->state.gfx.fs.shader;
+   struct panvk_shader_desc_state *fs_desc_state = &cmdbuf->state.gfx.fs.desc;
+   struct panvk_batch *batch = cmdbuf->cur_batch;
+   struct panfrost_ptr ptr = panvk_per_arch(meta_get_copy_desc_job)(
+      dev, &cmdbuf->desc_pool.base, fs, &cmdbuf->state.gfx.desc_state,
+      fs_desc_state);
+
+   if (ptr.cpu)
+      util_dynarray_append(&batch->jobs, void *, ptr.cpu);
+
+   draw->jobs.frag_copy_desc = ptr;
 }
 
 void
@@ -1063,9 +1131,12 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    struct panvk_batch *batch = cmdbuf->cur_batch;
    const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
    const struct panvk_shader *fs = cmdbuf->state.gfx.fs.shader;
+   struct panvk_shader_desc_state *vs_desc_state = &cmdbuf->state.gfx.vs.desc;
+   struct panvk_shader_desc_state *fs_desc_state = &cmdbuf->state.gfx.fs.desc;
    struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
    const struct vk_rasterization_state *rs =
       &cmdbuf->vk.dynamic_graphics_state.rs;
+   bool idvs = vs->info.vs.idvs;
 
    /* If there's no vertex shader, we can skip the draw. */
    if (!panvk_priv_mem_dev_addr(vs->rsd))
@@ -1101,6 +1172,38 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
          &cmdbuf->state.gfx.sysvals, sizeof(cmdbuf->state.gfx.sysvals));
    }
 
+   panvk_per_arch(cmd_prepare_shader_desc_tables)(&cmdbuf->desc_pool.base,
+                                                  &cmdbuf->state.gfx.desc_state,
+                                                  vs, vs_desc_state);
+   panvk_draw_prepare_vs_copy_desc_job(cmdbuf, draw);
+
+   unsigned copy_desc_job_id =
+      draw->jobs.vertex_copy_desc.gpu
+         ? pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0,
+                          &draw->jobs.vertex_copy_desc, false)
+         : 0;
+
+   bool vs_writes_pos =
+      cmdbuf->state.gfx.link.buf_strides[PANVK_VARY_BUF_POSITION] > 0;
+   bool needs_tiling = !rs->rasterizer_discard_enable && vs_writes_pos;
+
+   /* No need to setup the FS desc tables if the FS is not executed. */
+   if (needs_tiling && fs_required(cmdbuf)) {
+      panvk_per_arch(cmd_prepare_shader_desc_tables)(
+         &cmdbuf->desc_pool.base, &cmdbuf->state.gfx.desc_state, fs,
+         fs_desc_state);
+      panvk_draw_prepare_fs_copy_desc_job(cmdbuf, draw);
+
+      if (draw->jobs.frag_copy_desc.gpu) {
+         /* We don't need to add frag_copy_desc as a dependency because the
+          * tiler job doesn't execute the fragment shader, the fragment job
+          * will, and the tiler/fragment synchronization happens at the batch
+          * level. */
+         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0,
+                        &draw->jobs.frag_copy_desc, false);
+      }
+   }
+
    /* TODO: indexed draws */
    draw->tls = batch->tls.gpu;
    draw->fb = batch->fb.desc.gpu;
@@ -1115,36 +1218,49 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    panvk_draw_prepare_attributes(cmdbuf, draw);
    panvk_draw_prepare_viewport(cmdbuf, draw);
    panvk_draw_prepare_tiler_context(cmdbuf, draw);
-   panvk_draw_prepare_vertex_job(cmdbuf, draw);
-   panvk_draw_prepare_tiler_job(cmdbuf, draw);
    batch->tlsinfo.tls.size = MAX3(vs->info.tls_size, fs ? fs->info.tls_size : 0,
                                   batch->tlsinfo.tls.size);
 
-   unsigned copy_desc_job_id =
-      draw->jobs.vertex_copy_desc.gpu
-         ? pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0,
-                          &draw->jobs.vertex_copy_desc, false)
-         : 0;
+   if (idvs) {
+      panvk_draw_prepare_idvs_job(cmdbuf, draw);
+      pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_INDEXED_VERTEX, false, false, 0,
+                     copy_desc_job_id, &draw->jobs.idvs, false);
+   } else {
+      panvk_draw_prepare_vertex_job(cmdbuf, draw);
 
-   unsigned vjob_id =
-      pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_VERTEX, false, false, 0,
-                     copy_desc_job_id, &draw->jobs.vertex, false);
+      unsigned vjob_id =
+         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_VERTEX, false, false, 0,
+                        copy_desc_job_id, &draw->jobs.vertex, false);
 
-   if (!rs->rasterizer_discard_enable && draw->position) {
-      /* We don't need to add frag_copy_desc as a dependency, because the
-       * tiler job doesn't execute the fragment shader. The fragment job
-       * will, and the tiler/fragment synchronization happens at the batch
-       * level. */
-      if (draw->jobs.frag_copy_desc.gpu)
-         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0,
-                        &draw->jobs.frag_copy_desc, false);
-
-      pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_TILER, false, false, vjob_id, 0,
-                     &draw->jobs.tiler, false);
+      if (needs_tiling) {
+         panvk_draw_prepare_tiler_job(cmdbuf, draw);
+         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_TILER, false, false, vjob_id,
+                        0, &draw->jobs.tiler, false);
+      }
    }
 
    /* Clear the dirty flags all at once */
    cmdbuf->state.gfx.dirty = 0;
+}
+
+static unsigned
+padded_vertex_count(struct panvk_cmd_buffer *cmdbuf, uint32_t vertex_count,
+                    uint32_t instance_count)
+{
+   if (instance_count == 1)
+      return vertex_count;
+
+   bool idvs = cmdbuf->state.gfx.vs.shader->info.vs.idvs;
+
+   /* Index-Driven Vertex Shading requires different instances to
+    * have different cache lines for position results. Each vertex
+    * position is 16 bytes and the Mali cache line is 64 bytes, so
+    * the instance count must be aligned to 4 vertices.
+    */
+   if (idvs)
+      vertex_count = ALIGN_POT(vertex_count, 4);
+
+   return panfrost_padded_vertex_count(vertex_count);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -1163,9 +1279,8 @@ panvk_per_arch(CmdDraw)(VkCommandBuffer commandBuffer, uint32_t vertexCount,
       .vertex_range = vertexCount,
       .first_instance = firstInstance,
       .instance_count = instanceCount,
-      .padded_vertex_count = instanceCount > 1
-                                ? panfrost_padded_vertex_count(vertexCount)
-                                : vertexCount,
+      .padded_vertex_count =
+         padded_vertex_count(cmdbuf, vertexCount, instanceCount),
       .offset_start = firstVertex,
    };
 
@@ -1250,9 +1365,8 @@ panvk_per_arch(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
       .instance_count = instanceCount,
       .vertex_range = vertex_range,
       .vertex_count = indexCount + abs(vertexOffset),
-      .padded_vertex_count = instanceCount > 1
-                                ? panfrost_padded_vertex_count(vertex_range)
-                                : vertex_range,
+      .padded_vertex_count =
+         padded_vertex_count(cmdbuf, vertex_range, instanceCount),
       .offset_start = min_vertex + vertexOffset,
       .indices = panvk_buffer_gpu_ptr(cmdbuf->state.gfx.ib.buffer,
                                       cmdbuf->state.gfx.ib.offset) +

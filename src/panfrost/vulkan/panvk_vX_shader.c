@@ -427,6 +427,10 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
          VERT_ATTRIB_GENERIC0;
 
       shader->info.attribute_count = util_last_bit(gen_attribs);
+
+      /* NULL IDVS shaders are not allowed. */
+      if (!bin_size)
+         shader->info.vs.idvs = false;
    }
 
    /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
@@ -515,7 +519,6 @@ panvk_compile_shader(struct panvk_device *dev,
    struct panfrost_compile_inputs inputs = {
       .gpu_id = phys_dev->kmod.props.gpu_prod_id,
       .no_ubo_to_push = true,
-      .no_idvs = true, /* TODO */
    };
 
    panvk_lower_nir(dev, nir, info->set_layout_count, info->set_layouts,

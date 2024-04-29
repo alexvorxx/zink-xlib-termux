@@ -1459,13 +1459,13 @@ v3dv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT: {
          VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *props =
             (VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *)ext;
-         props->maxVertexAttribDivisor = 0xffff;
+         props->maxVertexAttribDivisor = V3D_MAX_VERTEX_ATTRIB_DIVISOR;
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_KHR: {
          VkPhysicalDeviceVertexAttributeDivisorPropertiesKHR *props =
             (VkPhysicalDeviceVertexAttributeDivisorPropertiesKHR *)ext;
-         props->maxVertexAttribDivisor = 0xffff;
+         props->maxVertexAttribDivisor = V3D_MAX_VERTEX_ATTRIB_DIVISOR;
          props->supportsNonZeroFirstInstance = true;
          break;
       }

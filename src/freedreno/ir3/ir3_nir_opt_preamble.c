@@ -335,6 +335,86 @@ ir3_nir_opt_preamble(nir_shader *nir, struct ir3_shader_variant *v)
    return progress;
 }
 
+/* This isn't nearly as comprehensive as what's done in nir_opt_preamble, but in
+ * various use-cases we need to hoist definitions into preambles outside of
+ * opt_preamble. Currently we only handle a few uncomplicated intrinsics.
+ */
+bool
+ir3_def_is_rematerializable_for_preamble(nir_def *def)
+{
+   switch (def->parent_instr->type) {
+   case nir_instr_type_load_const:
+      return true;
+   case nir_instr_type_intrinsic: {
+      nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(def->parent_instr);
+      switch (intrin->intrinsic) {
+      case nir_intrinsic_load_ubo:
+         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa) &&
+            ir3_def_is_rematerializable_for_preamble(intrin->src[1].ssa);
+      case nir_intrinsic_bindless_resource_ir3:
+         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa);
+      default:
+         return false;
+      }
+   }
+   case nir_instr_type_alu: {
+      nir_alu_instr *alu = nir_instr_as_alu(def->parent_instr);
+      for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; i++) {
+         if (!ir3_def_is_rematerializable_for_preamble(alu->src[i].src.ssa))
+            return false;
+      }
+      return true;
+   }
+   default:
+      return false;
+   }
+}
+
+static nir_def *
+_rematerialize_def(nir_builder *b, struct hash_table *remap_ht,
+                   nir_def *def)
+{
+   if (_mesa_hash_table_search(remap_ht, def->parent_instr))
+      return NULL;
+
+   switch (def->parent_instr->type) {
+   case nir_instr_type_load_const:
+      break;
+   case nir_instr_type_intrinsic: {
+      nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(def->parent_instr);
+      for (unsigned i = 0; i < nir_intrinsic_infos[intrin->intrinsic].num_srcs;
+           i++)
+         _rematerialize_def(b, remap_ht, intrin->src[i].ssa);
+      break;
+   }
+   case nir_instr_type_alu: {
+      nir_alu_instr *alu = nir_instr_as_alu(def->parent_instr);
+      for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; i++)
+         _rematerialize_def(b, remap_ht, alu->src[i].src.ssa);
+      break;
+   }
+   default:
+      unreachable("should not get here");
+   }
+
+   nir_instr *instr = nir_instr_clone_deep(b->shader, def->parent_instr,
+                                           remap_ht);
+   nir_builder_instr_insert(b, instr);
+   return nir_instr_def(instr);
+}
+
+nir_def *
+ir3_rematerialize_def_for_preamble(nir_builder *b, nir_def *def)
+{
+   struct hash_table *remap_ht = _mesa_pointer_hash_table_create(NULL);
+
+   nir_def *new_def = _rematerialize_def(b, remap_ht, def);
+
+   _mesa_hash_table_destroy(remap_ht, NULL);
+
+   return new_def;
+}
+
 bool
 ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v)
 {

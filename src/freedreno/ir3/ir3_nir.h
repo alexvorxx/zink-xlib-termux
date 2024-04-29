@@ -101,6 +101,10 @@ nir_def *ir3_load_driver_ubo_indirect(nir_builder *b, unsigned components,
                                       unsigned base, nir_def *offset,
                                       unsigned range);
 
+bool ir3_def_is_rematerializable_for_preamble(nir_def *def);
+
+nir_def *ir3_rematerialize_def_for_preamble(nir_builder *b, nir_def *def);
+
 struct driver_param_info {
    uint32_t offset;
 };

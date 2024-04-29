@@ -2754,6 +2754,7 @@ emit_interpolate(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    SpvId ptr = get_src(ctx, &intr->src[0], &ptype);
    SpvId result;
    const struct glsl_type *gtype = nir_src_as_deref(intr->src[0])->type;
+   assert(glsl_get_vector_elements(gtype) == intr->num_components);
    assert(ptype == get_nir_alu_type(gtype));
    if (intr->intrinsic == nir_intrinsic_interp_deref_at_centroid)
       result = emit_builtin_unop(ctx, op, get_glsl_type(ctx, gtype), ptr);

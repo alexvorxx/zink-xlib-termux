@@ -3724,6 +3724,8 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       } else if (glsl_type_is_struct(type)) {
          deref = nir_build_deref_struct(b, deref, slot_offset);
       }
+      assert(!glsl_type_is_array(type));
+      unsigned num_components = glsl_get_vector_elements(type);
       if (is_load) {
          nir_def *load;
          if (is_interp) {
@@ -3733,7 +3735,7 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
             var->data.interpolation = nir_intrinsic_interp_mode(interp_intr);
             switch (interp_intr->intrinsic) {
             case nir_intrinsic_load_barycentric_centroid:
-               load = nir_interp_deref_at_centroid(b, intr->num_components, bit_size, &deref->def);
+               load = nir_interp_deref_at_centroid(b, num_components, bit_size, &deref->def);
                break;
             case nir_intrinsic_load_barycentric_sample:
                var->data.sample = 1;
@@ -3743,10 +3745,10 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
                load = nir_load_deref(b, deref);
                break;
             case nir_intrinsic_load_barycentric_at_sample:
-               load = nir_interp_deref_at_sample(b, intr->num_components, bit_size, &deref->def, interp_intr->src[0].ssa);
+               load = nir_interp_deref_at_sample(b, num_components, bit_size, &deref->def, interp_intr->src[0].ssa);
                break;
             case nir_intrinsic_load_barycentric_at_offset:
-               load = nir_interp_deref_at_offset(b, intr->num_components, bit_size, &deref->def, interp_intr->src[0].ssa);
+               load = nir_interp_deref_at_offset(b, num_components, bit_size, &deref->def, interp_intr->src[0].ssa);
                break;
             default:
                unreachable("unhandled interp!");
@@ -3760,8 +3762,6 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
          nir_def_rewrite_uses(&intr->def, load);
       } else {
          nir_def *store = intr->src[0].ssa;
-         assert(!glsl_type_is_array(type));
-         unsigned num_components = glsl_get_vector_elements(type);
          /* pad/filter components to match deref type */
          if (intr->num_components < num_components) {
             nir_def *zero = nir_imm_zero(b, 1, bit_size);

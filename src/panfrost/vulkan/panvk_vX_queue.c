@@ -326,7 +326,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(QueueWaitIdle)(VkQueue _queue)
 {
    VK_FROM_HANDLE(panvk_queue, queue, _queue);
-   struct panvk_device *dev = panvk_queue_get_device(queue);
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
    if (vk_device_is_lost(&dev->vk))
       return VK_ERROR_DEVICE_LOST;

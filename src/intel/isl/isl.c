@@ -3128,10 +3128,6 @@ isl_surf_supports_ccs(const struct isl_device *dev,
           surf->tiling != ISL_TILING_4 &&
           !isl_tiling_is_64(surf->tiling))
          return false;
-
-      /* TODO: Handle single-sampled Tile64. */
-      if (surf->samples == 1 && isl_tiling_is_64(surf->tiling))
-         return false;
    } else {
       /* ISL_GFX_VER(dev) < 12 */
       if (surf->samples > 1)

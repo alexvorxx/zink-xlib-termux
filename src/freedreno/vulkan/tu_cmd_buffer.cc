@@ -203,6 +203,10 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
        * via UCHE. This isn't necessary on A6XX, all writes should be visible implictly.
        */
       tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_FLUSH_BLIT_CACHE);
+   if (CHIP >= A7XX && (flushes & TU_CMD_FLAG_CCHE_INVALIDATE) &&
+       /* Invalidating UCHE seems to also invalidate CCHE */
+       !(flushes & TU_CMD_FLAG_CACHE_INVALIDATE))
+      tu_cs_emit_pkt7(cs, CP_CCHE_INVALIDATE, 0);
    if (flushes & TU_CMD_FLAG_WAIT_MEM_WRITES)
       tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
    if (flushes & TU_CMD_FLAG_WAIT_FOR_IDLE)
@@ -3365,6 +3369,13 @@ tu_flush_for_access(struct tu_cache_state *cache,
       flush_bits |= TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE;
    }
 
+   /* There are multiple incoherent copies of CCHE, so any read through it may
+    * require invalidating it and we cannot optimize away invalidates.
+    */
+   if (dst_mask & TU_ACCESS_CCHE_READ) {
+      flush_bits |= TU_CMD_FLAG_CCHE_INVALIDATE;
+   }
+
    /* The blit cache is a special case dependency between CP_EVENT_WRITE::BLIT
     * (from GMEM loads/clears) to any GMEM attachment reads done via the UCHE
     * (Eg: Input attachments/CP_BLIT) which needs an explicit BLIT_CACHE_FLUSH
@@ -3484,7 +3495,7 @@ vk2tu_access(VkAccessFlags2 flags, VkPipelineStageFlags2 stages, bool image_only
                        VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
                        VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
                        SHADER_STAGES))
-       mask |= TU_ACCESS_UCHE_READ;
+       mask |= TU_ACCESS_UCHE_READ | TU_ACCESS_CCHE_READ;
 
    if (gfx_read_access(flags, stages,
                        VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT,
@@ -3494,7 +3505,8 @@ vk2tu_access(VkAccessFlags2 flags, VkPipelineStageFlags2 stages, bool image_only
    if (gfx_read_access(flags, stages,
                        VK_ACCESS_2_DESCRIPTOR_BUFFER_READ_BIT_EXT,
                        SHADER_STAGES)) {
-      mask |= TU_ACCESS_UCHE_READ | TU_ACCESS_BINDLESS_DESCRIPTOR_READ;
+      mask |= TU_ACCESS_UCHE_READ | TU_ACCESS_BINDLESS_DESCRIPTOR_READ |
+              TU_ACCESS_CCHE_READ;
    }
 
    if (gfx_write_access(flags, stages,

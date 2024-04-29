@@ -591,7 +591,9 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
 #endif
 
 #if GFX_VERx10 >= 125
-   anv_batch_emit(&batch, GENX(STATE_COMPUTE_MODE), zero);
+   anv_batch_emit(&batch, GENX(STATE_COMPUTE_MODE), cm) {
+      cm.Mask1 = 0xffff;
+   }
    anv_batch_emit(&batch, GENX(3DSTATE_MESH_CONTROL), zero);
    anv_batch_emit(&batch, GENX(3DSTATE_TASK_CONTROL), zero);
 

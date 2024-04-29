@@ -34,21 +34,58 @@ mark_sampler_desc(const nir_variable *var, struct radv_shader_info *info)
    info->desc_set_used_mask |= (1u << var->data.descriptor_set);
 }
 
+static bool
+radv_use_vs_prolog(const nir_shader *nir,
+                   const struct radv_graphics_state_key *gfx_state)
+{
+   return gfx_state->vs.has_prolog && nir->info.inputs_read;
+}
+
+static bool
+radv_use_per_attribute_vb_descs(const nir_shader *nir,
+                                const struct radv_graphics_state_key *gfx_state,
+                                const struct radv_shader_stage_key *stage_key)
+{
+   return stage_key->vertex_robustness1 || radv_use_vs_prolog(nir, gfx_state);
+}
+
 static void
-gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info)
+gather_load_vs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intrin, struct radv_shader_info *info,
+                          const struct radv_graphics_state_key *gfx_state,
+                          const struct radv_shader_stage_key *stage_key)
+{
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   const unsigned location = io_sem.location;
+   const unsigned component = nir_intrinsic_component(intrin);
+   unsigned mask = nir_def_components_read(&intrin->def);
+   mask = (intrin->def.bit_size == 64 ? util_widen_mask(mask, 2) : mask) << component;
+
+   if (location >= VERT_ATTRIB_GENERIC0) {
+      const unsigned generic_loc = location - VERT_ATTRIB_GENERIC0;
+
+      if (gfx_state->vi.instance_rate_inputs & BITFIELD_BIT(generic_loc)) {
+         info->vs.needs_instance_id = true;
+         info->vs.needs_base_instance = true;
+      }
+
+      if (radv_use_per_attribute_vb_descs(nir, gfx_state, stage_key))
+         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(generic_loc);
+      else
+         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(gfx_state->vi.vertex_attribute_bindings[generic_loc]);
+
+      info->vs.input_slot_usage_mask |= BITFIELD_RANGE(generic_loc, io_sem.num_slots);
+   }
+}
+
+static void
+gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info,
+                                 const struct radv_graphics_state_key *gfx_state,
+                                 const struct radv_shader_stage_key *stage_key)
 {
    switch (nir->info.stage) {
-   case MESA_SHADER_VERTEX: {
-      unsigned idx = nir_intrinsic_io_semantics(instr).location;
-      unsigned component = nir_intrinsic_component(instr);
-      unsigned mask = nir_def_components_read(&instr->def);
-      mask = (instr->def.bit_size == 64 ? util_widen_mask(mask, 2) : mask) << component;
-
-      info->vs.input_usage_mask[idx] |= mask & 0xf;
-      if (mask >> 4)
-         info->vs.input_usage_mask[idx + 1] |= mask >> 4;
+   case MESA_SHADER_VERTEX:
+      gather_load_vs_input_info(nir, instr, info, gfx_state, stage_key);
       break;
-   }
    default:
       break;
    }
@@ -58,10 +95,11 @@ static void
 gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_instr *instr,
                                    struct radv_shader_info *info, bool consider_force_vrs)
 {
-   unsigned idx = nir_intrinsic_base(instr);
-   unsigned num_slots = nir_intrinsic_io_semantics(instr).num_slots;
-   unsigned component = nir_intrinsic_component(instr);
-   unsigned write_mask = nir_intrinsic_write_mask(instr);
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(instr);
+   const unsigned location = io_sem.location;
+   const unsigned num_slots = io_sem.num_slots;
+   const unsigned component = nir_intrinsic_component(instr);
+   const unsigned write_mask = nir_intrinsic_write_mask(instr);
    uint8_t *output_usage_mask = NULL;
 
    switch (nir->info.stage) {
@@ -75,10 +113,11 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
       output_usage_mask = info->gs.output_usage_mask;
       break;
    case MESA_SHADER_FRAGMENT:
-      if (idx >= FRAG_RESULT_DATA0) {
-         info->ps.colors_written |= 0xfu << (4 * (idx - FRAG_RESULT_DATA0));
+      if (location >= FRAG_RESULT_DATA0) {
+         const unsigned fs_semantic = location + io_sem.dual_source_blend_index;
+         info->ps.colors_written |= 0xfu << (4 * (fs_semantic - FRAG_RESULT_DATA0));
 
-         if (idx == FRAG_RESULT_DATA0)
+         if (fs_semantic == FRAG_RESULT_DATA0)
             info->ps.color0_written = write_mask;
       }
       break;
@@ -88,11 +127,11 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
 
    if (output_usage_mask) {
       for (unsigned i = 0; i < num_slots; i++) {
-         output_usage_mask[idx + i] |= ((write_mask >> (i * 4)) & 0xf) << component;
+         output_usage_mask[location + i] |= ((write_mask >> (i * 4)) & 0xf) << component;
       }
    }
 
-   if (consider_force_vrs && idx == VARYING_SLOT_POS) {
+   if (consider_force_vrs && location == VARYING_SLOT_POS) {
       unsigned pos_w_chan = 3 - component;
 
       if (write_mask & BITFIELD_BIT(pos_w_chan)) {
@@ -106,8 +145,8 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
    }
 
    if (nir->info.stage == MESA_SHADER_GEOMETRY) {
-      uint8_t gs_streams = nir_intrinsic_io_semantics(instr).gs_streams;
-      info->gs.output_streams[idx] |= gs_streams << (component * 2);
+      const uint8_t gs_streams = nir_intrinsic_io_semantics(instr).gs_streams;
+      info->gs.output_streams[location] |= gs_streams << (component * 2);
    }
 }
 
@@ -131,6 +170,7 @@ gather_push_constant_info(const nir_shader *nir, const nir_intrinsic_instr *inst
 
 static void
 gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info,
+                      const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
                       bool consider_force_vrs)
 {
    switch (instr->intrinsic) {
@@ -215,7 +255,7 @@ gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr, s
       break;
    }
    case nir_intrinsic_load_input:
-      gather_intrinsic_load_input_info(nir, instr, info);
+      gather_intrinsic_load_input_info(nir, instr, info, gfx_state, stage_key);
       break;
    case nir_intrinsic_store_output:
       gather_intrinsic_store_output_info(nir, instr, info, consider_force_vrs);
@@ -258,12 +298,14 @@ gather_tex_info(const nir_shader *nir, const nir_tex_instr *instr, struct radv_s
 }
 
 static void
-gather_info_block(const nir_shader *nir, const nir_block *block, struct radv_shader_info *info, bool consider_force_vrs)
+gather_info_block(const nir_shader *nir, const nir_block *block, struct radv_shader_info *info,
+                  const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
+                  bool consider_force_vrs)
 {
    nir_foreach_instr (instr, block) {
       switch (instr->type) {
       case nir_instr_type_intrinsic:
-         gather_intrinsic_info(nir, nir_instr_as_intrinsic(instr), info, consider_force_vrs);
+         gather_intrinsic_info(nir, nir_instr_as_intrinsic(instr), info, gfx_state, stage_key, consider_force_vrs);
          break;
       case nir_instr_type_tex:
          gather_tex_info(nir, nir_instr_as_tex(instr), info);
@@ -387,39 +429,6 @@ radv_compute_esgs_itemsize(const struct radv_device *device, uint32_t num_varyin
 }
 
 static void
-gather_info_input_decl_vs(const nir_shader *nir, unsigned location, const struct glsl_type *type,
-                          const struct radv_graphics_state_key *gfx_state, struct radv_shader_info *info)
-{
-   if (glsl_type_is_scalar(type) || glsl_type_is_vector(type)) {
-      if (gfx_state->vi.instance_rate_inputs & BITFIELD_BIT(location)) {
-         info->vs.needs_instance_id = true;
-         info->vs.needs_base_instance = true;
-      }
-
-      if (info->vs.use_per_attribute_vb_descs)
-         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(location);
-      else
-         info->vs.vb_desc_usage_mask |= BITFIELD_BIT(gfx_state->vi.vertex_attribute_bindings[location]);
-
-      info->vs.input_slot_usage_mask |= BITFIELD_RANGE(location, glsl_count_attribute_slots(type, false));
-   } else if (glsl_type_is_matrix(type) || glsl_type_is_array(type)) {
-      const struct glsl_type *elem = glsl_get_array_element(type);
-      unsigned stride = glsl_count_attribute_slots(elem, false);
-
-      for (unsigned i = 0; i < glsl_get_length(type); ++i)
-         gather_info_input_decl_vs(nir, location + i * stride, elem, gfx_state, info);
-   } else {
-      assert(glsl_type_is_struct_or_ifc(type));
-
-      for (unsigned i = 0; i < glsl_get_length(type); i++) {
-         const struct glsl_type *field = glsl_get_struct_field(type, i);
-         gather_info_input_decl_vs(nir, location, field, gfx_state, info);
-         location += glsl_count_attribute_slots(field, false);
-      }
-   }
-}
-
-static void
 gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info *info)
 {
    info->has_xfb_query = info->so.num_outputs > 0;
@@ -516,13 +525,13 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
                       const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
                       struct radv_shader_info *info)
 {
-   if (gfx_state->vs.has_prolog && nir->info.inputs_read) {
+   if (radv_use_vs_prolog(nir, gfx_state)) {
       info->vs.has_prolog = true;
       info->vs.dynamic_inputs = true;
    }
 
    /* Use per-attribute vertex descriptors to prevent faults and for correct bounds checking. */
-   info->vs.use_per_attribute_vb_descs = stage_key->vertex_robustness1 || info->vs.dynamic_inputs;
+   info->vs.use_per_attribute_vb_descs = radv_use_per_attribute_vb_descs(nir, gfx_state, stage_key);
 
    /* We have to ensure consistent input register assignments between the main shader and the
     * prolog.
@@ -530,9 +539,6 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
    info->vs.needs_instance_id |= info->vs.has_prolog;
    info->vs.needs_base_instance |= info->vs.has_prolog;
    info->vs.needs_draw_id |= info->vs.has_prolog;
-
-   nir_foreach_shader_in_variable (var, nir)
-      gather_info_input_decl_vs(nir, var->data.location - VERT_ATTRIB_GENERIC0, var->type, gfx_state, info);
 
    if (info->vs.dynamic_inputs)
       info->vs.vb_desc_usage_mask = BITFIELD_MASK(util_last_bit(info->vs.vb_desc_usage_mask));
@@ -766,17 +772,20 @@ gather_shader_info_gs(struct radv_device *device, const nir_shader *nir, struct 
    info->gs.output_prim = nir->info.gs.output_primitive;
    info->gs.invocations = nir->info.gs.invocations;
    info->gs.max_stream = nir->info.gs.active_stream_mask ? util_last_bit(nir->info.gs.active_stream_mask) - 1 : 0;
-
-   nir_foreach_shader_out_variable (var, nir) {
-      unsigned num_components = glsl_get_component_slots(var->type);
-      unsigned stream = var->data.stream;
-
-      assert(stream < 4);
-
-      info->gs.num_stream_output_components[stream] += num_components;
-   }
-
    info->gs.has_pipeline_stat_query = pdev->emulate_ngg_gs_query_pipeline_stat;
+
+   for (unsigned slot = 0; slot < VARYING_SLOT_MAX; ++slot) {
+      const uint8_t usage_mask = info->gs.output_usage_mask[slot];
+      const uint8_t gs_streams = info->gs.output_streams[slot];
+
+      for (unsigned component = 0; component < 4; ++component) {
+         if (!(usage_mask & BITFIELD_BIT(component)))
+            continue;
+
+         const uint8_t stream = (gs_streams >> (component * 2)) & 0x3;
+         info->gs.num_stream_output_components[stream]++;
+      }
+   }
 
    gather_info_unlinked_input(info, nir);
 
@@ -938,8 +947,14 @@ gather_shader_info_fs(const struct radv_device *device, const nir_shader *nir,
 
       switch (idx) {
       case VARYING_SLOT_CLIP_DIST0:
+         if (nir->info.inputs_read & VARYING_BIT_CLIP_DIST0)
+            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(0, attrib_count);
+         if (attrib_count > 4 && (nir->info.inputs_read & VARYING_BIT_CLIP_DIST1))
+            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(4, attrib_count);
+         break;
       case VARYING_SLOT_CLIP_DIST1:
-         info->ps.num_input_clips_culls += attrib_count;
+         if (nir->info.inputs_read & VARYING_BIT_CLIP_DIST1)
+            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(4, attrib_count);
          break;
       default:
          break;
@@ -1199,7 +1214,7 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
    }
 
    nir_foreach_block (block, func->impl) {
-      gather_info_block(nir, block, info, consider_force_vrs);
+      gather_info_block(nir, block, info, gfx_state, stage_key, consider_force_vrs);
    }
 
    if (nir->info.stage == MESA_SHADER_VERTEX || nir->info.stage == MESA_SHADER_TESS_EVAL ||
@@ -1755,7 +1770,7 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
        !(gfx_state->lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT)) {
       struct radv_vs_output_info *outinfo = &producer->info.outinfo;
       const bool ps_prim_id_in = !consumer || consumer->info.ps.prim_id_input;
-      const bool ps_clip_dists_in = !consumer || !!consumer->info.ps.num_input_clips_culls;
+      const bool ps_clip_dists_in = !consumer || !!consumer->info.ps.input_clips_culls_mask;
 
       if (ps_prim_id_in && (producer->stage == MESA_SHADER_VERTEX || producer->stage == MESA_SHADER_TESS_EVAL)) {
          /* Mark the primitive ID as output when it's implicitly exported by VS or TES. */

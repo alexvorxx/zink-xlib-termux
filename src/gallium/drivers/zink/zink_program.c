@@ -34,6 +34,7 @@
 #include "zink_state.h"
 #include "zink_inlines.h"
 
+#include "util/memstream.h"
 #include "util/u_debug.h"
 #include "util/u_memory.h"
 #include "util/u_prim.h"
@@ -2026,7 +2027,7 @@ print_exe_stages(VkShaderStageFlags stages)
 }
 
 static void
-print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline)
+print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct util_debug_callback *debug)
 {
    VkPipelineInfoKHR pinfo = {
      VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR,
@@ -2041,7 +2042,6 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline)
    }
    VKSCR(GetPipelineExecutablePropertiesKHR)(screen->dev, &pinfo, &exe_count, NULL);
    VKSCR(GetPipelineExecutablePropertiesKHR)(screen->dev, &pinfo, &exe_count, props);
-   printf("PIPELINE STATISTICS:");
    for (unsigned e = 0; e < exe_count; e++) {
       VkPipelineExecutableInfoKHR info = {
          VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR,
@@ -2050,7 +2050,18 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline)
          e
       };
       unsigned count = 0;
-      printf("\n\t%s (%s): ", print_exe_stages(props[e].stages), props[e].name);
+
+      struct u_memstream stream;
+      char *print_buf;
+      size_t print_buf_sz;
+
+      if (!u_memstream_open(&stream, &print_buf, &print_buf_sz)) {
+         mesa_loge("ZINK: failed to open memstream!");
+         return;
+      }
+
+      FILE *f = u_memstream_get(&stream);
+      fprintf(f, "type: %s", props[e].name);
       VkPipelineExecutableStatisticKHR *stats = NULL;
       VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, NULL);
       stats = calloc(count, sizeof(VkPipelineExecutableStatisticKHR));
@@ -2064,27 +2075,32 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline)
       VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, stats);
 
       for (unsigned i = 0; i < count; i++) {
-         if (i)
-            printf(", ");
+         fprintf(f, ", ");
          switch (stats[i].format) {
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
-            printf("%s: %u", stats[i].name, stats[i].value.b32);
+            fprintf(f, "%s: %u", stats[i].name, stats[i].value.b32);
             break;
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
-            printf("%s: %" PRIi64, stats[i].name, stats[i].value.i64);
+            fprintf(f, "%s: %" PRIi64, stats[i].name, stats[i].value.i64);
             break;
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
-            printf("%s: %" PRIu64, stats[i].name, stats[i].value.u64);
+            fprintf(f, "%s: %" PRIu64, stats[i].name, stats[i].value.u64);
             break;
          case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR:
-            printf("%s: %g", stats[i].name, stats[i].value.f64);
+            fprintf(f, "%s: %g", stats[i].name, stats[i].value.f64);
             break;
          default:
             unreachable("unknown statistic");
          }
       }
+
+      /* print_buf is only valid after flushing. */
+      fflush(f);
+      util_debug_message(debug, SHADER_INFO, "%s\n", print_buf);
+
+      u_memstream_close(&stream);
+      free(print_buf);
    }
-   printf("\n");
 }
 
 static void
@@ -2171,7 +2187,7 @@ zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
       VkPipeline pipeline = zink_create_gfx_pipeline(screen, prog, prog->objs, &ctx->gfx_pipeline_state,
                                                      ctx->gfx_pipeline_state.element_state->binding_map,
                                                      shaders[MESA_SHADER_TESS_EVAL] ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, NULL);
-      print_pipeline_stats(screen, pipeline);
+      print_pipeline_stats(screen, pipeline, &ctx->dbg);
    } else {
       if (zink_screen(pctx->screen)->info.have_EXT_shader_object)
          prog->base.uses_shobj = !BITSET_TEST(zshaders[MESA_SHADER_FRAGMENT]->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);

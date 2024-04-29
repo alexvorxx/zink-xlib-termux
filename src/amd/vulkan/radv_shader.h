@@ -324,7 +324,6 @@ struct radv_shader_info {
    bool merged_shader_compiled_separately; /* GFX9+ */
 
    struct {
-      uint8_t input_usage_mask[RADV_VERT_ATTRIB_MAX];
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
       bool needs_draw_id;
       bool needs_instance_id;
@@ -385,7 +384,7 @@ struct radv_shader_info {
       bool prim_id_input;
       bool layer_input;
       bool viewport_index_input;
-      uint8_t num_input_clips_culls;
+      uint8_t input_clips_culls_mask;
       uint32_t input_mask;
       uint32_t input_per_primitive_mask;
       uint32_t flat_shaded_mask;

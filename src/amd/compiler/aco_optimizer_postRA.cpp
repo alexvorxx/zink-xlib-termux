@@ -332,9 +332,6 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
       if (instr->operands[0].isConstant())
          std::swap(instr->operands[0], instr->operands[1]);
 
-      if (ctx.uses[instr->operands[0].tempId()] > 1)
-         return;
-
       /* Find the writer instruction of Operand 0. */
       Idx wr_idx = last_writer_idx(ctx, instr->operands[0]);
       if (!wr_idx.found())

@@ -1073,7 +1073,6 @@ zink_create_gfx_program(struct zink_context *ctx,
    if (!prog)
       goto fail;
 
-   prog->ctx = ctx;
    prog->gfx_hash = gfx_hash;
    prog->base.removed = true;
    prog->optimal_keys = screen->optimal_keys;
@@ -1168,9 +1167,9 @@ static void
 create_linked_separable_job(void *data, void *gdata, int thread_index)
 {
    struct zink_gfx_program *prog = data;
-   prog->full_prog = zink_create_gfx_program(prog->ctx, prog->shaders, 0, prog->gfx_hash);
+   prog->full_prog = zink_create_gfx_program(prog->base.ctx, prog->shaders, 0, prog->gfx_hash);
    /* add an ownership ref */
-   zink_gfx_program_reference(zink_screen(prog->ctx->base.screen), NULL, prog->full_prog);
+   zink_gfx_program_reference(zink_screen(prog->base.ctx->base.screen), NULL, prog->full_prog);
    precompile_job(prog->full_prog, gdata, thread_index);
 }
 
@@ -1200,7 +1199,6 @@ create_gfx_program_separable(struct zink_context *ctx, struct zink_shader **stag
    if (!prog)
       goto fail;
 
-   prog->ctx = ctx;
    prog->is_separable = true;
    prog->gfx_hash = ctx->gfx_hash;
    prog->base.uses_shobj = screen->info.have_EXT_shader_object;

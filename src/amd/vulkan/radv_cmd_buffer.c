@@ -1972,10 +1972,6 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
       radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
    }
 
-   if (cmd_buffer->state.gs_copy_shader) {
-      radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.gs_copy_shader->bo);
-   }
-
    struct radv_shader *task_shader = cmd_buffer->state.shaders[MESA_SHADER_TASK];
    if (task_shader) {
       radv_emit_compute_shader(pdev, cmd_buffer->gang.cs, task_shader);
@@ -6818,10 +6814,15 @@ radv_bind_geometry_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
 static void
 radv_bind_gs_copy_shader(struct radv_cmd_buffer *cmd_buffer, struct radv_shader *gs_copy_shader)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+
    cmd_buffer->state.gs_copy_shader = gs_copy_shader;
 
-   if (gs_copy_shader)
+   if (gs_copy_shader) {
       cmd_buffer->shader_upload_seq = MAX2(cmd_buffer->shader_upload_seq, gs_copy_shader->upload_seq);
+
+      radv_cs_add_buffer(device->ws, cmd_buffer->cs, gs_copy_shader->bo);
+   }
 }
 
 static void
@@ -9692,10 +9693,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
                                            : NULL;
 
    radv_bind_gs_copy_shader(cmd_buffer, gs_copy_shader);
-
-   if (cmd_buffer->state.gs_copy_shader) {
-      radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.gs_copy_shader->bo);
-   }
 
    /* Determine NGG GS info. */
    if (cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY] &&

@@ -768,35 +768,6 @@ struct anv_state_stream {
    struct util_dynarray all_blocks;
 };
 
-struct anv_sparse_submission {
-   struct anv_queue *queue;
-
-   struct anv_vm_bind *binds;
-   int binds_len;
-   int binds_capacity;
-
-   uint32_t wait_count;
-   uint32_t signal_count;
-
-   struct vk_sync_wait *waits;
-   struct vk_sync_signal *signals;
-};
-
-struct anv_trtt_bind {
-   uint64_t pte_addr;
-   uint64_t entry_addr;
-};
-
-struct anv_trtt_submission {
-   struct anv_sparse_submission *sparse;
-
-   struct anv_trtt_bind *l3l2_binds;
-   struct anv_trtt_bind *l1_binds;
-
-   int l3l2_binds_len;
-   int l1_binds_len;
-};
-
 /* The block_pool functions exported for testing only.  The block pool should
  * only be used via a state pool (see below).
  */
@@ -1788,19 +1759,6 @@ struct anv_device_astc_emu {
     VkPipeline pipeline;
 };
 
-struct anv_trtt_batch_bo {
-   struct anv_bo *bo;
-   uint32_t size;
-
-   /* Once device->trtt.timeline_handle signals timeline_val as complete we
-    * can free this struct and its members.
-    */
-   uint64_t timeline_val;
-
-   /* Part of device->trtt.in_flight_batches. */
-   struct list_head link;
-};
-
 struct anv_device {
     struct vk_device                            vk;
 
@@ -2028,12 +1986,11 @@ struct anv_device {
        struct anv_bo *cur_page_table_bo;
        uint64_t next_page_table_bo_offset;
 
-       /* Timeline syncobj used to track completion of the TR-TT batch BOs. */
-       uint32_t timeline_handle;
+       struct vk_sync *timeline;
        uint64_t timeline_val;
 
-       /* List of struct anv_trtt_batch_bo batches that are in flight and can
-        * be freed once their timeline gets signaled.
+       /* List of struct anv_trtt_submission that are in flight and can be
+        * freed once their vk_sync gets signaled.
         */
        struct list_head in_flight_batches;
     } trtt;
@@ -2203,17 +2160,6 @@ VkResult anv_queue_submit(struct vk_queue *queue,
 VkResult anv_queue_submit_simple_batch(struct anv_queue *queue,
                                        struct anv_batch *batch,
                                        bool is_companion_rcs_batch);
-VkResult anv_queue_submit_trtt_batch(struct anv_sparse_submission *submit,
-                                     struct anv_batch *batch);
-
-static inline void
-anv_trtt_batch_bo_free(struct anv_device *device,
-                       struct anv_trtt_batch_bo *trtt_bbo)
-{
-   anv_bo_pool_free(&device->batch_bo_pool, trtt_bbo->bo);
-   list_del(&trtt_bbo->link);
-   vk_free(&device->vk.alloc, trtt_bbo);
-}
 
 void anv_queue_trace(struct anv_queue *queue, const char *label,
                      bool frame, bool begin);
@@ -2521,6 +2467,32 @@ anv_async_submit_done(struct anv_async_submit *submit);
 bool
 anv_async_submit_wait(struct anv_async_submit *submit);
 
+struct anv_sparse_submission {
+   struct anv_queue *queue;
+
+   struct anv_vm_bind *binds;
+   int binds_len;
+   int binds_capacity;
+
+   uint32_t wait_count;
+   uint32_t signal_count;
+
+   struct vk_sync_wait *waits;
+   struct vk_sync_signal *signals;
+};
+
+struct anv_trtt_bind {
+   uint64_t pte_addr;
+   uint64_t entry_addr;
+};
+
+struct anv_trtt_submission {
+   struct anv_async_submit base;
+
+   struct anv_sparse_submission *sparse;
+
+   struct list_head link;
+};
 
 struct anv_device_memory {
    struct vk_device_memory                      vk;
@@ -3217,6 +3189,9 @@ VkResult anv_sparse_bind_image_memory(struct anv_queue *queue,
 VkResult anv_sparse_bind(struct anv_device *device,
                          struct anv_sparse_submission *sparse_submit);
 
+VkResult anv_sparse_trtt_garbage_collect_batches(struct anv_device *device,
+                                                 bool wait_completion);
+
 VkSparseImageFormatProperties
 anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
                                         VkImageAspectFlags aspect,
@@ -3236,8 +3211,6 @@ VkResult anv_sparse_image_check_support(struct anv_physical_device *pdevice,
                                         VkSampleCountFlagBits samples,
                                         VkImageType type,
                                         VkFormat format);
-VkResult anv_trtt_batch_bo_new(struct anv_device *device, uint32_t batch_size,
-                               struct anv_trtt_batch_bo **out_trtt_bbo);
 
 struct anv_buffer {
    struct vk_buffer vk;

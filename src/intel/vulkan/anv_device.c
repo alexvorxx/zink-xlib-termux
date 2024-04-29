@@ -3246,14 +3246,25 @@ anv_device_destroy_context_or_vm(struct anv_device *device)
    }
 }
 
-static void
+static VkResult
 anv_device_init_trtt(struct anv_device *device)
 {
    struct anv_trtt *trtt = &device->trtt;
 
+   VkResult result =
+      vk_sync_create(&device->vk,
+                     &device->physical->sync_syncobj_type,
+                     VK_SYNC_IS_TIMELINE,
+                     0 /* initial_value */,
+                     &trtt->timeline);
+   if (result != VK_SUCCESS)
+      return result;
+
    simple_mtx_init(&trtt->mutex, mtx_plain);
 
    list_inithead(&trtt->in_flight_batches);
+
+   return VK_SUCCESS;
 }
 
 static void
@@ -3261,31 +3272,9 @@ anv_device_finish_trtt(struct anv_device *device)
 {
    struct anv_trtt *trtt = &device->trtt;
 
-   if (trtt->timeline_val > 0) {
-      struct drm_syncobj_timeline_wait wait = {
-         .handles = (uintptr_t)&trtt->timeline_handle,
-         .points = (uintptr_t)&trtt->timeline_val,
-         .timeout_nsec = INT64_MAX,
-         .count_handles = 1,
-         .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL,
-         .first_signaled = false,
-      };
-      if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &wait))
-         fprintf(stderr, "TR-TT syncobj wait failed!\n");
+   anv_sparse_trtt_garbage_collect_batches(device, true);
 
-      list_for_each_entry_safe(struct anv_trtt_batch_bo, trtt_bbo,
-                               &trtt->in_flight_batches, link)
-         anv_trtt_batch_bo_free(device, trtt_bbo);
-
-   }
-
-   if (trtt->timeline_handle > 0) {
-      struct drm_syncobj_destroy destroy = {
-         .handle = trtt->timeline_handle,
-      };
-      if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_DESTROY, &destroy))
-         fprintf(stderr, "TR-TT syncobj destroy failed!\n");
-   }
+   vk_sync_destroy(&device->vk, trtt->timeline);
 
    simple_mtx_destroy(&trtt->mutex);
 
@@ -3915,6 +3904,10 @@ VkResult anv_CreateDevice(
       }
    }
 
+   result = anv_device_init_trtt(device);
+   if (result != VK_SUCCESS)
+      goto fail_companion_cmd_pool;
+
    anv_device_init_blorp(device);
 
    anv_device_init_border_colors(device);
@@ -3928,8 +3921,6 @@ VkResult anv_CreateDevice(
    anv_device_utrace_init(device);
 
    anv_device_init_embedded_samplers(device);
-
-   anv_device_init_trtt(device);
 
    BITSET_ONES(device->gfx_dirty_state);
    BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_INDEX_BUFFER);
@@ -3963,13 +3954,13 @@ VkResult anv_CreateDevice(
 
    result = anv_genX(device->info, init_device_state)(device);
    if (result != VK_SUCCESS)
-      goto fail_companion_cmd_pool;
+      goto fail_inits;
 
    *pDevice = anv_device_to_handle(device);
 
    return VK_SUCCESS;
 
- fail_companion_cmd_pool:
+ fail_inits:
    anv_device_finish_trtt(device);
    anv_device_finish_embedded_samplers(device);
    anv_device_utrace_finish(device);
@@ -3977,7 +3968,7 @@ VkResult anv_CreateDevice(
    anv_device_finish_rt_shaders(device);
    anv_device_finish_astc_emu(device);
    anv_device_finish_internal_kernels(device);
-
+ fail_companion_cmd_pool:
    if (device->info->verx10 >= 125) {
       vk_common_DestroyCommandPool(anv_device_to_handle(device),
                                    device->companion_rcs_cmd_pool, NULL);
@@ -4089,6 +4080,7 @@ void anv_DestroyDevice(
 
    struct anv_physical_device *pdevice = device->physical;
 
+   /* Do TRTT batch garbage collection before destroying queues. */
    anv_device_finish_trtt(device);
 
    for (uint32_t i = 0; i < device->queue_count; i++)

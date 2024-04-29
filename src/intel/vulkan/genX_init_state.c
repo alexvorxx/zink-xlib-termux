@@ -1396,31 +1396,25 @@ genX(apply_task_urb_workaround)(struct anv_cmd_buffer *cmd_buffer)
 }
 
 VkResult
-genX(init_trtt_context_state)(struct anv_queue *queue)
+genX(init_trtt_context_state)(struct anv_device *device,
+                              struct anv_async_submit *submit)
 {
 #if GFX_VER >= 12
-   struct anv_device *device = queue->device;
    struct anv_trtt *trtt = &device->trtt;
+   struct anv_batch *batch = &submit->batch;
 
-   uint32_t cmds[128];
-   struct anv_batch batch = {
-      .start = cmds,
-      .next = cmds,
-      .end = (void *)cmds + sizeof(cmds),
-   };
-
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_INVAL), trtt_inval) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_INVAL), trtt_inval) {
       trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
    }
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_NULL), trtt_null) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_NULL), trtt_null) {
       trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
    }
 #if GFX_VER >= 20
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
       trtt_va_range.TRVABase = device->physical->va.trtt.addr >> 44;
    }
 #else
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
       trtt_va_range.TRVAMaskValue = 0xF;
       trtt_va_range.TRVADataValue = 0xF;
    }
@@ -1428,28 +1422,24 @@ genX(init_trtt_context_state)(struct anv_queue *queue)
 
    uint64_t l3_addr = trtt->l3_addr;
    assert((l3_addr & 0xFFF) == 0);
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_L3_BASE_LOW), trtt_base_low) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_LOW), trtt_base_low) {
       trtt_base_low.TRVAL3PointerLowerAddress =
          (l3_addr & 0xFFFFF000) >> 12;
    }
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_L3_BASE_HIGH),
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_HIGH),
          trtt_base_high) {
       trtt_base_high.TRVAL3PointerUpperAddress =
          (l3_addr >> 32) & 0xFFFF;
    }
    /* Enabling TR-TT needs to be done after setting up the other registers.
    */
-   anv_batch_write_reg(&batch, GENX(GFX_TRTT_CR), trtt_cr) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_CR), trtt_cr) {
       trtt_cr.TRTTEnable = true;
    }
 
-   anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
-   assert(batch.next <= batch.end);
-
-   VkResult res = anv_queue_submit_simple_batch(queue, &batch, false);
-   if (res != VK_SUCCESS)
-      return res;
-
+   genx_batch_emit_pipe_control(batch, device->info, _3D,
+                                ANV_PIPE_CS_STALL_BIT |
+                                ANV_PIPE_TLB_INVALIDATE_BIT);
 #endif
    return VK_SUCCESS;
 }

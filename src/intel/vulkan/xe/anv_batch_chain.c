@@ -184,58 +184,6 @@ xe_exec_print_debug(struct anv_queue *queue, uint32_t cmd_buffer_count,
 }
 
 VkResult
-xe_execute_trtt_batch(struct anv_sparse_submission *submit,
-                      struct anv_trtt_batch_bo *trtt_bbo)
-{
-   struct anv_queue *queue = submit->queue;
-   struct anv_device *device = queue->device;
-   struct anv_trtt *trtt = &device->trtt;
-   VkResult result = VK_SUCCESS;
-
-   struct drm_xe_sync extra_sync = {
-      .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
-      .flags = DRM_XE_SYNC_FLAG_SIGNAL,
-      .handle = trtt->timeline_handle,
-      .timeline_value = trtt_bbo->timeline_val,
-   };
-
-   struct drm_xe_sync *xe_syncs = NULL;
-   uint32_t xe_syncs_count = 0;
-   result = xe_exec_process_syncs(queue, submit->wait_count, submit->waits,
-                                  submit->signal_count, submit->signals,
-                                  1, &extra_sync,
-                                  NULL, /* utrace_submit */
-                                  false, /* is_companion_rcs_queue */
-                                  &xe_syncs, &xe_syncs_count);
-   if (result != VK_SUCCESS)
-      return result;
-
-   struct drm_xe_exec exec = {
-      .exec_queue_id = queue->exec_queue_id,
-      .num_syncs = xe_syncs_count,
-      .syncs = (uintptr_t)xe_syncs,
-      .address = trtt_bbo->bo->offset,
-      .num_batch_buffer = 1,
-   };
-
-   if (!device->info->no_hw) {
-      if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec)) {
-         result = vk_device_set_lost(&device->vk, "XE_EXEC failed: %m");
-         goto out;
-      }
-   }
-
-   if (queue->sync) {
-      result = vk_sync_wait(&device->vk, queue->sync, 0,
-                            VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
-   }
-
-out:
-   vk_free(&device->vk.alloc, xe_syncs);
-   return result;
-}
-
-VkResult
 xe_queue_exec_async(struct anv_async_submit *submit,
                     uint32_t wait_count,
                     const struct vk_sync_wait *waits,

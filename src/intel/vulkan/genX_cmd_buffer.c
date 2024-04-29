@@ -6094,22 +6094,17 @@ genX(cmd_buffer_end_companion_rcs_syncpoint)(struct anv_cmd_buffer *cmd_buffer,
 #endif
 }
 
-VkResult
-genX(write_trtt_entries)(struct anv_trtt_submission *submit)
+void
+genX(write_trtt_entries)(struct anv_async_submit *submit,
+                         struct anv_trtt_bind *l3l2_binds,
+                         uint32_t n_l3l2_binds,
+                         struct anv_trtt_bind *l1_binds,
+                         uint32_t n_l1_binds)
 {
 #if GFX_VER >= 12
    const struct intel_device_info *devinfo =
-      submit->sparse->queue->device->info;
-
-   size_t batch_size = submit->l3l2_binds_len * 20 +
-                       submit->l1_binds_len * 16 +
-                       GENX(PIPE_CONTROL_length) * sizeof(uint32_t) + 8;
-   STACK_ARRAY(uint32_t, cmds, batch_size);
-   struct anv_batch batch = {
-      .start = cmds,
-      .next = cmds,
-      .end = (void *)cmds + batch_size,
-   };
+      submit->queue->device->info;
+   struct anv_batch *batch = &submit->batch;
 
    /* BSpec says:
     *   "DWord Length programmed must not exceed 0x3FE."
@@ -6127,90 +6122,86 @@ genX(write_trtt_entries)(struct anv_trtt_submission *submit)
     * contiguous addresses.
     */
 
-   for (int i = 0; i < submit->l3l2_binds_len; i++) {
+   for (uint32_t i = 0; i < n_l3l2_binds; i++) {
       int extra_writes = 0;
-      for (int j = i + 1;
-           j < submit->l3l2_binds_len &&
-            extra_writes <= max_qword_extra_writes;
+      for (uint32_t j = i + 1;
+           j < n_l3l2_binds && extra_writes <= max_qword_extra_writes;
            j++) {
-         if (submit->l3l2_binds[i].pte_addr + (j - i) * 8 ==
-             submit->l3l2_binds[j].pte_addr) {
+         if (l3l2_binds[i].pte_addr + (j - i) * 8 == l3l2_binds[j].pte_addr) {
             extra_writes++;
          } else {
             break;
          }
       }
-      bool is_last_write = submit->l1_binds_len == 0 &&
-                           i + extra_writes + 1 == submit->l3l2_binds_len;
+      bool is_last_write = n_l1_binds == 0 &&
+                           i + extra_writes + 1 == n_l3l2_binds;
 
       uint32_t total_len = GENX(MI_STORE_DATA_IMM_length_bias) +
                            qword_write_len + (extra_writes * 2);
       uint32_t *dw;
-      dw = anv_batch_emitn(&batch, total_len, GENX(MI_STORE_DATA_IMM),
+      dw = anv_batch_emitn(batch, total_len, GENX(MI_STORE_DATA_IMM),
          .ForceWriteCompletionCheck = is_last_write,
          .StoreQword = true,
-         .Address = anv_address_from_u64(submit->l3l2_binds[i].pte_addr),
+         .Address = anv_address_from_u64(l3l2_binds[i].pte_addr),
       );
       dw += 3;
-      for (int j = 0; j < extra_writes + 1; j++) {
-         uint64_t entry_addr_64b = submit->l3l2_binds[i + j].entry_addr;
+      for (uint32_t j = 0; j < extra_writes + 1; j++) {
+         uint64_t entry_addr_64b = l3l2_binds[i + j].entry_addr;
          *dw = entry_addr_64b & 0xFFFFFFFF;
          dw++;
          *dw = (entry_addr_64b >> 32) & 0xFFFFFFFF;
          dw++;
       }
-      assert(dw == batch.next);
+      assert(dw == batch->next);
 
       i += extra_writes;
    }
 
-   for (int i = 0; i < submit->l1_binds_len; i++) {
+   for (uint32_t i = 0; i < n_l1_binds; i++) {
       int extra_writes = 0;
-      for (int j = i + 1;
-           j < submit->l1_binds_len && extra_writes <= max_dword_extra_writes;
+      for (uint32_t j = i + 1;
+           j < n_l1_binds && extra_writes <= max_dword_extra_writes;
            j++) {
-         if (submit->l1_binds[i].pte_addr + (j - i) * 4 ==
-             submit->l1_binds[j].pte_addr) {
+         if (l1_binds[i].pte_addr + (j - i) * 4 ==
+             l1_binds[j].pte_addr) {
             extra_writes++;
          } else {
             break;
          }
       }
 
-      bool is_last_write = i + extra_writes + 1 == submit->l1_binds_len;
+      bool is_last_write = i + extra_writes + 1 == n_l1_binds;
 
       uint32_t total_len = GENX(MI_STORE_DATA_IMM_length_bias) +
                            dword_write_len + extra_writes;
       uint32_t *dw;
-      dw = anv_batch_emitn(&batch, total_len, GENX(MI_STORE_DATA_IMM),
+      dw = anv_batch_emitn(batch, total_len, GENX(MI_STORE_DATA_IMM),
          .ForceWriteCompletionCheck = is_last_write,
-         .Address = anv_address_from_u64(submit->l1_binds[i].pte_addr),
+         .Address = anv_address_from_u64(l1_binds[i].pte_addr),
       );
       dw += 3;
-      for (int j = 0; j < extra_writes + 1; j++) {
-         *dw = (submit->l1_binds[i + j].entry_addr >> 16) & 0xFFFFFFFF;
+      for (uint32_t j = 0; j < extra_writes + 1; j++) {
+         *dw = (l1_binds[i + j].entry_addr >> 16) & 0xFFFFFFFF;
          dw++;
       }
-      assert(dw == batch.next);
+      assert(dw == batch->next);
 
       i += extra_writes;
    }
 
-   genx_batch_emit_pipe_control(&batch, devinfo, _3D,
+   genx_batch_emit_pipe_control(batch, devinfo, _3D,
                                 ANV_PIPE_CS_STALL_BIT |
                                 ANV_PIPE_TLB_INVALIDATE_BIT);
-
-   anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
-
-   assert(batch.next <= batch.end);
-
-   VkResult result = anv_queue_submit_trtt_batch(submit->sparse, &batch);
-   STACK_ARRAY_FINISH(cmds);
-
-   return result;
-
+#else
+   unreachable("Not implemented");
 #endif
-   return VK_SUCCESS;
+}
+
+void
+genX(async_submit_end)(struct anv_async_submit *submit)
+{
+   struct anv_batch *batch = &submit->batch;
+   anv_batch_emit(batch, GENX(MI_BATCH_BUFFER_END), bbe);
 }
 
 void

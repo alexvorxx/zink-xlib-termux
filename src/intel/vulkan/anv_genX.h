@@ -38,8 +38,10 @@
 
 struct intel_sample_positions;
 struct intel_urb_config;
+struct anv_async_submit;
 struct anv_embedded_sampler;
 struct anv_pipeline_embedded_sampler_binding;
+struct anv_trtt_bind;
 
 typedef struct nir_builder nir_builder;
 typedef struct nir_shader nir_shader;
@@ -351,9 +353,16 @@ genX(simple_shader_push_state_address)(struct anv_simple_shader *state,
 void
 genX(emit_simple_shader_end)(struct anv_simple_shader *state);
 
-VkResult genX(init_trtt_context_state)(struct anv_queue *queue);
+VkResult genX(init_trtt_context_state)(struct anv_device *device,
+                                       struct anv_async_submit *submit);
 
-VkResult genX(write_trtt_entries)(struct anv_trtt_submission *submit);
+void genX(write_trtt_entries)(struct anv_async_submit *submit,
+                              struct anv_trtt_bind *l3l2_binds,
+                              uint32_t n_l3l2_binds,
+                              struct anv_trtt_bind *l1_binds,
+                              uint32_t n_l1_binds);
+
+void genX(async_submit_end)(struct anv_async_submit *submit);
 
 void
 genX(cmd_buffer_emit_push_descriptor_buffer_surface)(struct anv_cmd_buffer *cmd_buffer,

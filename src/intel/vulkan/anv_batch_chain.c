@@ -1668,37 +1668,6 @@ anv_queue_submit_simple_batch(struct anv_queue *queue,
    return result;
 }
 
-VkResult
-anv_queue_submit_trtt_batch(struct anv_sparse_submission *submit,
-                            struct anv_batch *batch)
-{
-   struct anv_queue *queue = submit->queue;
-   struct anv_device *device = queue->device;
-   VkResult result = VK_SUCCESS;
-
-   uint32_t batch_size = align(batch->next - batch->start, 8);
-   struct anv_trtt_batch_bo *trtt_bbo;
-   result = anv_trtt_batch_bo_new(device, batch_size, &trtt_bbo);
-   if (result != VK_SUCCESS)
-      return result;
-
-   memcpy(trtt_bbo->bo->map, batch->start, trtt_bbo->size);
-#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
-   if (device->physical->memory.need_flush &&
-       anv_bo_needs_host_cache_flush(trtt_bbo->bo->alloc_flags))
-      intel_flush_range(trtt_bbo->bo->map, trtt_bbo->size);
-#endif
-
-   if (INTEL_DEBUG(DEBUG_BATCH)) {
-      intel_print_batch(queue->decoder, trtt_bbo->bo->map, trtt_bbo->bo->size,
-                        trtt_bbo->bo->offset, false);
-   }
-
-   result = device->kmd_backend->execute_trtt_batch(submit, trtt_bbo);
-
-   return result;
-}
-
 void
 anv_cmd_buffer_clflush(struct anv_cmd_buffer **cmd_buffers,
                        uint32_t num_cmd_buffers)

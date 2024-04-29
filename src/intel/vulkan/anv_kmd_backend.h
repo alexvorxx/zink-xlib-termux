@@ -40,7 +40,6 @@ struct anv_query_pool;
 struct anv_async_submit;
 struct anv_utrace_submit;
 struct anv_sparse_submission;
-struct anv_trtt_batch_bo;
 
 enum anv_vm_bind_op {
    /* bind vma specified in anv_vm_bind */
@@ -113,8 +112,6 @@ struct anv_kmd_backend {
                                     bool is_companion_rcs_batch);
    /* The caller is expected to hold device->mutex when calling this vfunc.
     */
-   VkResult (*execute_trtt_batch)(struct anv_sparse_submission *submit,
-                                  struct anv_trtt_batch_bo *trtt_bbo);
    VkResult (*queue_exec_locked)(struct anv_queue *queue,
                                  uint32_t wait_count,
                                  const struct vk_sync_wait *waits,

@@ -1960,7 +1960,7 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
 }
 
 static enum agx_lod_mode
-agx_lod_mode_for_nir(nir_texop op, bool biased)
+agx_lod_mode_for_nir(nir_texop op, bool biased, bool lod_is_zero)
 {
    switch (op) {
    case nir_texop_tex:
@@ -1975,9 +1975,10 @@ agx_lod_mode_for_nir(nir_texop op, bool biased)
    case nir_texop_txl:
       return AGX_LOD_MODE_LOD_MIN;
    case nir_texop_txf:
-      return AGX_LOD_MODE_LOD_MIN;
+      return lod_is_zero ? AGX_LOD_MODE_AUTO_LOD : AGX_LOD_MODE_LOD_MIN;
    case nir_texop_txf_ms:
-      return AGX_LOD_MODE_AUTO_LOD; /* no mipmapping */
+      assert(lod_is_zero && "no mipmapping");
+      return AGX_LOD_MODE_AUTO_LOD;
    default:
       unreachable("Unhandled texture op");
    }
@@ -2009,6 +2010,8 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
              sampler = agx_immediate(0), lod = agx_immediate(0),
              compare = agx_null(), packed_offset = agx_null();
 
+   bool lod_is_zero = true;
+
    for (unsigned i = 0; i < instr->num_srcs; ++i) {
       agx_index index = agx_src_index(&instr->src[i].src);
 
@@ -2024,6 +2027,8 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
       case nir_tex_src_lod:
       case nir_tex_src_bias:
          lod = index;
+         lod_is_zero = nir_src_is_const(instr->src[i].src) &&
+                       nir_src_as_uint(instr->src[i].src) == 0;
          break;
 
       case nir_tex_src_comparator:
@@ -2074,7 +2079,8 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
    }
 
    enum agx_lod_mode lod_mode = agx_lod_mode_for_nir(
-      instr->op, nir_tex_instr_src_index(instr, nir_tex_src_bias) >= 0);
+      instr->op, nir_tex_instr_src_index(instr, nir_tex_src_bias) >= 0,
+      lod_is_zero);
 
    if (lod_mode == AGX_LOD_MODE_AUTO_LOD) {
       /* Ignored logically but asserted 0 */

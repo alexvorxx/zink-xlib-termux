@@ -9441,8 +9441,6 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
 
    radv_foreach_stage(s, cmd_buffer->state.active_stages & RADV_GRAPHICS_STAGE_BITS)
    {
-      struct radv_shader_object *shader_obj = cmd_buffer->state.shader_objs[s];
-
       switch (s) {
       case MESA_SHADER_VERTEX: {
          const struct radv_shader *vs = cmd_buffer->state.shaders[MESA_SHADER_VERTEX];
@@ -9477,7 +9475,7 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
                                      : cmd_buffer->state.shaders[MESA_SHADER_VERTEX];
 
          radv_emit_geometry_shader(device, cs, cs, cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY], es,
-                                   shader_obj->gs.copy_shader);
+                                   cmd_buffer->state.gs_copy_shader);
          break;
       }
       case MESA_SHADER_FRAGMENT:

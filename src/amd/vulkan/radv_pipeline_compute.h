@@ -42,14 +42,13 @@ struct radv_compute_pipeline_metadata {
    uint64_t inline_push_const_mask;
 };
 
+uint32_t radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const struct radv_shader *cs);
+
 void radv_get_compute_pipeline_metadata(const struct radv_device *device, const struct radv_compute_pipeline *pipeline,
                                         struct radv_compute_pipeline_metadata *metadata);
 
-void radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_cmdbuf *cs,
-                              const struct radv_shader *shader);
-
-void radv_compute_pipeline_init(const struct radv_device *device, struct radv_compute_pipeline *pipeline,
-                                const struct radv_pipeline_layout *layout, struct radv_shader *shader);
+void radv_compute_pipeline_init(struct radv_compute_pipeline *pipeline, const struct radv_pipeline_layout *layout,
+                                struct radv_shader *shader);
 
 struct radv_shader *radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache,
                                     struct radv_shader_stage *cs_stage, bool keep_executable_info,

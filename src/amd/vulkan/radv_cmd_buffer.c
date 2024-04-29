@@ -1902,6 +1902,29 @@ radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader
 }
 
 static void
+radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_cmdbuf *cs,
+                         const struct radv_shader *shader)
+{
+   uint64_t va = radv_shader_get_va(shader);
+
+   radeon_set_sh_reg(cs, R_00B830_COMPUTE_PGM_LO, va >> 8);
+
+   radeon_set_sh_reg_seq(cs, R_00B848_COMPUTE_PGM_RSRC1, 2);
+   radeon_emit(cs, shader->config.rsrc1);
+   radeon_emit(cs, shader->config.rsrc2);
+   if (pdev->info.gfx_level >= GFX10) {
+      radeon_set_sh_reg(cs, R_00B8A0_COMPUTE_PGM_RSRC3, shader->config.rsrc3);
+   }
+
+   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, radv_get_compute_resource_limits(pdev, shader));
+
+   radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
+   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[0]));
+   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[1]));
+   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[2]));
+}
+
+static void
 radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
 {
    struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
@@ -6585,16 +6608,20 @@ static void
 radv_emit_compute_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_compute_pipeline *pipeline)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (pipeline == cmd_buffer->state.emitted_compute_pipeline)
       return;
 
-   assert(!pipeline->base.ctx_cs.cdw);
+   radeon_check_space(device->ws, cmd_buffer->cs, pdev->info.gfx_level >= GFX10 ? 19 : 16);
+
+   if (pipeline->base.type == RADV_PIPELINE_COMPUTE) {
+      radv_emit_compute_shader(pdev, cmd_buffer->cs, cmd_buffer->state.shaders[MESA_SHADER_COMPUTE]);
+   } else {
+      radv_emit_compute_shader(pdev, cmd_buffer->cs, cmd_buffer->state.rt_prolog);
+   }
 
    cmd_buffer->state.emitted_compute_pipeline = pipeline;
-
-   radeon_check_space(device->ws, cmd_buffer->cs, pipeline->base.cs.cdw);
-   radeon_emit_array(cmd_buffer->cs, pipeline->base.cs.buf, pipeline->base.cs.cdw);
 
    if (radv_device_fault_detection_enabled(device))
       radv_save_pipeline(cmd_buffer, &pipeline->base);

@@ -130,7 +130,7 @@ files_libradeonsi += ['si_perfetto.cpp', 'si_perfetto.h']
 
 amd_common_libs = [libamd_common]
 
-if with_llvm
+if amd_with_llvm
   files_libradeonsi += files(
     'si_shader_llvm.c',
     'si_shader_llvm.h',

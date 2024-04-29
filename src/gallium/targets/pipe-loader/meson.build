@@ -65,7 +65,7 @@ foreach x : pipe_loaders
 
   foreach d : [[x[1] in ['r300', 'r600', 'radeonsi'], 'radeon_drm_winsys_create'],
                [x[1] == 'radeonsi', 'amdgpu_winsys_create'],
-               [x[1] == 'radeonsi' and with_llvm, 'ac_init_shared_llvm_once'],
+               [x[1] == 'radeonsi' and amd_with_llvm, 'ac_init_shared_llvm_once'],
                [x[1] != 'swrast', 'driver_descriptor'],
                [x[1] == 'swrast', 'swrast_driver_descriptor']]
     if d[0]

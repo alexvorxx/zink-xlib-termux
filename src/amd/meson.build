@@ -23,7 +23,7 @@ inc_amd = include_directories('.')
 if with_amd_vk or with_gallium_radeonsi
   subdir('addrlib')
   subdir('common')
-  if with_llvm
+  if amd_with_llvm
     subdir('llvm')
   else
     libamd_common_llvm = []

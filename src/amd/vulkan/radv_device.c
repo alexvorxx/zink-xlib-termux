@@ -70,7 +70,7 @@ typedef void *drmDevicePtr;
 
 #include "aco_interface.h"
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
 #include "ac_llvm_util.h"
 #endif
 

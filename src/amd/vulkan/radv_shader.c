@@ -43,7 +43,7 @@
 
 #include "aco_shader_info.h"
 #include "radv_aco_shader_info.h"
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
 #include "ac_llvm_util.h"
 #endif
 
@@ -531,7 +531,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
 
    bool gfx7minus = pdev->info.gfx_level <= GFX7;
    bool has_inverse_ballot = true;
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    has_inverse_ballot = !radv_use_llvm_for_stage(pdev, nir->info.stage) || LLVM_VERSION_MAJOR >= 17;
 #endif
 
@@ -2786,7 +2786,7 @@ shader_compile(struct radv_device *device, struct nir_shader *const *shaders, in
 
    struct radv_shader_binary *binary = NULL;
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (radv_use_llvm_for_stage(pdev, stage) || options->dump_shader || options->record_ir)
@@ -2934,7 +2934,7 @@ radv_create_rt_prolog(struct radv_device *device)
    radv_declare_rt_shader_args(options.info->gfx_level, &out_args);
    info.user_sgprs_locs = in_args.user_sgprs_locs;
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif
@@ -2999,7 +2999,7 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
    info.user_sgprs_locs = args.user_sgprs_locs;
    info.inline_push_constant_mask = args.ac.inline_push_const_mask;
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif
@@ -3054,7 +3054,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
 
    radv_declare_ps_epilog_args(device, key, &args);
 
-#if LLVM_AVAILABLE
+#if AMD_LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif

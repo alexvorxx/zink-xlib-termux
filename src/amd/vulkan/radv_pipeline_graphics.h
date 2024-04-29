@@ -89,7 +89,7 @@ struct radv_graphics_pipeline {
    VkShaderStageFlags active_stages;
 
    /* Used for rbplus */
-   uint32_t col_format_non_compacted;
+   uint32_t spi_shader_col_format;
 
    struct radv_dynamic_state dynamic_state;
 

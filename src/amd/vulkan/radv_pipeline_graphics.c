@@ -4113,14 +4113,14 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    struct radv_blend_state blend = radv_pipeline_init_blend_state(pipeline);
 
    /* Copy the non-compacted SPI_SHADER_COL_FORMAT which is used to emit RBPLUS state. */
-   pipeline->col_format_non_compacted = blend.spi_shader_col_format;
+   pipeline->spi_shader_col_format = blend.spi_shader_col_format;
 
    struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
 
    unsigned custom_blend_mode = extra ? extra->custom_blend_mode : 0;
    if (radv_needs_null_export_workaround(device, ps, custom_blend_mode) && !blend.spi_shader_col_format) {
       blend.spi_shader_col_format = V_028714_SPI_SHADER_32_R;
-      pipeline->col_format_non_compacted = V_028714_SPI_SHADER_32_R;
+      pipeline->spi_shader_col_format = V_028714_SPI_SHADER_32_R;
    }
 
    if (!radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH))

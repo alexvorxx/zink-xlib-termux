@@ -413,7 +413,7 @@ struct radv_cmd_state {
    unsigned tess_num_patches;
    unsigned tess_lds_size;
 
-   unsigned col_format_non_compacted;
+   unsigned spi_shader_col_format;
 
    /* Binning state */
    unsigned last_pa_sc_binner_cntl_0;

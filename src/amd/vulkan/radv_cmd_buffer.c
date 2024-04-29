@@ -1725,7 +1725,7 @@ radv_emit_rbplus_state(struct radv_cmd_buffer *cmd_buffer)
       has_alpha = pdev->info.gfx_level >= GFX11 ? !G_028C74_FORCE_DST_ALPHA_1_GFX11(cb->cb_color_attrib)
                                                 : !G_028C74_FORCE_DST_ALPHA_1_GFX6(cb->cb_color_attrib);
 
-      uint32_t spi_format = (cmd_buffer->state.col_format_non_compacted >> (i * 4)) & 0xf;
+      uint32_t spi_format = (cmd_buffer->state.spi_shader_col_format >> (i * 4)) & 0xf;
       uint32_t colormask = d->vk.cb.attachments[i].write_mask;
 
       if (format == V_028C70_COLOR_8 || format == V_028C70_COLOR_16 || format == V_028C70_COLOR_32)
@@ -7131,8 +7131,8 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
 
       if (pdev->info.rbplus_allowed &&
           (!cmd_buffer->state.emitted_graphics_pipeline ||
-           cmd_buffer->state.col_format_non_compacted != graphics_pipeline->col_format_non_compacted)) {
-         cmd_buffer->state.col_format_non_compacted = graphics_pipeline->col_format_non_compacted;
+           cmd_buffer->state.spi_shader_col_format != graphics_pipeline->spi_shader_col_format)) {
+         cmd_buffer->state.spi_shader_col_format = graphics_pipeline->spi_shader_col_format;
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
       }
 
@@ -9550,16 +9550,16 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
             return;
          }
 
-         uint32_t col_format_non_compacted = ps_epilog->spi_shader_col_format;
+         uint32_t col_format = ps_epilog->spi_shader_col_format;
 
          assert(cmd_buffer->state.custom_blend_mode == 0);
 
          if (radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0) &&
-             !col_format_non_compacted)
-            col_format_non_compacted = V_028714_SPI_SHADER_32_R;
+             !col_format)
+            col_format = V_028714_SPI_SHADER_32_R;
 
-         if (pdev->info.rbplus_allowed && cmd_buffer->state.col_format_non_compacted != col_format_non_compacted) {
-            cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
+         if (pdev->info.rbplus_allowed && cmd_buffer->state.spi_shader_col_format != col_format) {
+            cmd_buffer->state.spi_shader_col_format = col_format;
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
          }
       }
@@ -9740,12 +9740,12 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
 
    const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
    if (ps && !ps->info.has_epilog) {
-      uint32_t col_format_non_compacted = 0;
+      uint32_t col_format = 0;
       if (radv_needs_null_export_workaround(device, ps, 0))
-         col_format_non_compacted = V_028714_SPI_SHADER_32_R;
+         col_format = V_028714_SPI_SHADER_32_R;
 
-      if (pdev->info.rbplus_allowed && cmd_buffer->state.col_format_non_compacted != col_format_non_compacted) {
-         cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
+      if (pdev->info.rbplus_allowed && cmd_buffer->state.spi_shader_col_format != col_format) {
+         cmd_buffer->state.spi_shader_col_format = col_format;
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
       }
    }
@@ -12378,7 +12378,7 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
          cmd_buffer->state.last_vgt_shader = NULL;
          cmd_buffer->state.has_nggc = false;
          cmd_buffer->state.emitted_vs_prolog = NULL;
-         cmd_buffer->state.col_format_non_compacted = 0;
+         cmd_buffer->state.spi_shader_col_format = 0;
          cmd_buffer->state.ms.sample_shading_enable = false;
          cmd_buffer->state.ms.min_sample_shading = 1.0f;
          cmd_buffer->state.rast_prim = 0;

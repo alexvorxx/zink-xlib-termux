@@ -819,8 +819,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
 }
 
 void
-panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
-                                      unsigned width, unsigned height)
+panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
@@ -843,8 +842,8 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
 
    pan_pack(&batch->tiler.ctx_templ, TILER_CONTEXT, cfg) {
       cfg.hierarchy_mask = 0x28;
-      cfg.fb_width = width;
-      cfg.fb_height = height;
+      cfg.fb_width = fbinfo->width;
+      cfg.fb_height = fbinfo->height;
       cfg.heap = batch->tiler.heap_desc.gpu;
       cfg.sample_pattern = pan_sample_pattern(fbinfo->nr_samples);
    }
@@ -854,14 +853,6 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
    memcpy(batch->tiler.ctx_desc.cpu, &batch->tiler.ctx_templ,
           sizeof(batch->tiler.ctx_templ));
    batch->tiler.ctx.bifrost = batch->tiler.ctx_desc.gpu;
-}
-
-void
-panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
-{
-   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
-
-   panvk_per_arch(cmd_get_tiler_context)(cmdbuf, fbinfo->width, fbinfo->height);
 }
 
 static void

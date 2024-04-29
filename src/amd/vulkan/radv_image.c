@@ -5,24 +5,7 @@
  * based in part on anv driver which is:
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "radv_image.h"
@@ -61,6 +44,9 @@ radv_choose_tiling(struct radv_device *device, const VkImageCreateInfo *pCreateI
    }
 
    if (pCreateInfo->usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR))
+      return RADEON_SURF_MODE_LINEAR_ALIGNED;
+
+   if (pCreateInfo->usage & (VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR | VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR))
       return RADEON_SURF_MODE_LINEAR_ALIGNED;
 
    /* MSAA resources must be 2D tiled. */
@@ -1124,7 +1110,9 @@ radv_image_create_layout(struct radv_device *device, struct radv_image_create_in
     * to sample it later with a linear filter, it will get garbage after the height it wants,
     * so we let the user specify the width/height unaligned, and align them preallocation.
     */
-   if (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR)) {
+   if (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR)) {
       assert(profile_list);
       uint32_t width_align, height_align;
       radv_video_get_profile_alignments(pdev, profile_list, &width_align, &height_align);
@@ -1218,12 +1206,23 @@ radv_image_create_layout(struct radv_device *device, struct radv_image_create_in
 static void
 radv_destroy_image(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_image *image)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    if ((image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) && image->bindings[0].bo)
       radv_bo_destroy(device, &image->vk.base, image->bindings[0].bo);
 
    if (image->owned_memory != VK_NULL_HANDLE) {
       VK_FROM_HANDLE(radv_device_memory, mem, image->owned_memory);
       radv_free_memory(device, pAllocator, mem);
+   }
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(image->bindings); i++) {
+      if (!image->bindings[i].bo_va)
+         continue;
+
+      vk_address_binding_report(&instance->vk, &image->vk.base, image->bindings[i].bo_va + image->bindings[i].offset,
+                                image->bindings[i].bo_size, VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
    }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_image_to_handle(image));
@@ -1389,7 +1388,7 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
 
    radv_rmv_log_image_create(device, pCreateInfo, is_internal, *pImage);
    if (image->bindings[0].bo)
-      radv_rmv_log_image_bind(device, *pImage);
+      radv_rmv_log_image_bind(device, 0, *pImage);
    return VK_SUCCESS;
 }
 
@@ -1672,12 +1671,31 @@ radv_DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks 
    radv_destroy_image(device, pAllocator, image);
 }
 
+static void
+radv_bind_image_memory(struct radv_device *device, struct radv_image *image, uint32_t bind_idx,
+                       struct radeon_winsys_bo *bo, uint64_t offset)
+{
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   assert(bind_idx < 3);
+
+   image->bindings[bind_idx].bo = bo;
+   image->bindings[bind_idx].offset = offset;
+   image->bindings[bind_idx].bo_va = radv_buffer_get_va(bo);
+   image->bindings[bind_idx].bo_size = bo->size;
+
+   radv_rmv_log_image_bind(device, bind_idx, radv_image_to_handle(image));
+
+   vk_address_binding_report(&instance->vk, &image->vk.base,
+                             radv_buffer_get_va(image->bindings[bind_idx].bo) + image->bindings[bind_idx].offset,
+                             image->bindings[bind_idx].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImageMemoryInfo *pBindInfos)
 {
    VK_FROM_HANDLE(radv_device, device, _device);
-   struct radv_physical_device *pdev = radv_device_physical(device);
-   struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
@@ -1696,8 +1714,7 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          struct radv_image *swapchain_img =
             radv_image_from_handle(wsi_common_get_image(swapchain_info->swapchain, swapchain_info->imageIndex));
 
-         image->bindings[0].bo = swapchain_img->bindings[0].bo;
-         image->bindings[0].offset = swapchain_img->bindings[0].offset;
+         radv_bind_image_memory(device, image, 0, swapchain_img->bindings[0].bo, swapchain_img->bindings[0].offset);
          continue;
       }
 #endif
@@ -1720,35 +1737,16 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          }
       }
 
+      uint32_t bind_idx = 0;
+
       if (image->disjoint) {
          const VkBindImagePlaneMemoryInfo *plane_info =
             vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
 
-         switch (plane_info->planeAspect) {
-         case VK_IMAGE_ASPECT_PLANE_0_BIT:
-            image->bindings[0].bo = mem->bo;
-            image->bindings[0].offset = pBindInfos[i].memoryOffset;
-            break;
-         case VK_IMAGE_ASPECT_PLANE_1_BIT:
-            image->bindings[1].bo = mem->bo;
-            image->bindings[1].offset = pBindInfos[i].memoryOffset;
-            break;
-         case VK_IMAGE_ASPECT_PLANE_2_BIT:
-            image->bindings[2].bo = mem->bo;
-            image->bindings[2].offset = pBindInfos[i].memoryOffset;
-            break;
-         default:
-            break;
-         }
-      } else {
-         image->bindings[0].bo = mem->bo;
-         image->bindings[0].offset = pBindInfos[i].memoryOffset;
+         bind_idx = radv_plane_from_aspect(plane_info->planeAspect);
       }
-      radv_rmv_log_image_bind(device, pBindInfos[i].image);
 
-      vk_address_binding_report(&instance->vk, &image->vk.base,
-                                radv_buffer_get_va(image->bindings[0].bo) + image->bindings[0].offset,
-                                image->bindings[0].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+      radv_bind_image_memory(device, image, bind_idx, mem->bo, pBindInfos[i].memoryOffset);
    }
    return VK_SUCCESS;
 }

@@ -138,7 +138,8 @@ iris-amly-deqp:
     DEQP_SUITE: iris-amly
   parallel: 3
 
-iris-kbl-deqp:
+# sona is down
+.iris-kbl-deqp:
   extends:
     - .iris-kbl-test
   variables:
@@ -170,7 +171,8 @@ iris-amly-egl:
     HWCI_START_WESTON: 1
     DEQP_SUITE: iris-amly-egl
 
-iris-kbl-piglit:
+# sona is down
+.iris-kbl-piglit:
   extends:
     - .iris-kbl-test
     - .lava-piglit
@@ -202,7 +204,8 @@ iris-amly-traces:
     - .iris-amly-test
     - .iris-traces
 
-iris-kbl-traces:
+# sona is down
+.iris-kbl-traces:
   variables:
     GPU_VERSION: intel-kbl
   extends:
@@ -237,7 +240,8 @@ iris-amly-traces-performance:
   variables:
     GPU_VERSION: intel-amly
 
-iris-kbl-traces-performance:
+# sona is down
+.iris-kbl-traces-performance:
   extends:
     - .iris-kbl-test
     - .profile-traces

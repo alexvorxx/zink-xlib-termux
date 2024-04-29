@@ -51,6 +51,10 @@ _libbitview_rs = static_library(
   rust_args : nak_rust_args,
 )
 
+idep_bitview_rs = declare_dependency(
+  link_with : _libbitview_rs,
+)
+
 libnak_deps = [
   idep_mesautil,
   idep_nir_headers,

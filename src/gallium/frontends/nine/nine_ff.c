@@ -819,7 +819,7 @@ nine_ff_build_vs(struct NineDevice9 *device, struct vs_build_ctx *vs)
 
         const unsigned loop_label = l++;
 
-        /* Declare all light constants to allow indirect adressing */
+        /* Declare all light constants to allow indirect addressing */
         for (i = 32; i < 96; i++)
             ureg_DECL_constant(ureg, i);
 
@@ -1951,7 +1951,7 @@ nine_ff_load_lights(struct NineDevice9 *device)
         dst[19].z = dst[25].z * mtl->Ambient.b + mtl->Emissive.b;
     }
 
-    if (!(context->changed.group & NINE_STATE_FF_LIGHTING))
+    if (!(context->changed.group & NINE_STATE_FF_LIGHTING) && !IS_D3DTS_DIRTY(context, VIEW))
         return;
 
     for (l = 0; l < context->ff.num_lights_active; ++l) {

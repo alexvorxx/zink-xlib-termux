@@ -13,7 +13,6 @@
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
 
-#include "nil_format.h"
 #include "util/bitpack_helpers.h"
 #include "vk_format.h"
 #include "vk_render_pass.h"
@@ -674,7 +673,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          const struct nil_image *nil_image = &image->planes[ip].nil;
          const struct nil_image_level *level =
             &nil_image->levels[iview->vk.base_mip_level];
-         struct nil_extent4d level_extent_sa =
+         struct nil_Extent4D_Samples level_extent_sa =
             nil_image_level_extent_sa(nil_image, iview->vk.base_mip_level);
 
          assert(sample_layout == NIL_SAMPLE_LAYOUT_INVALID ||
@@ -708,7 +707,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             const uint32_t row_stride_el =
                level->row_stride_B / util_format_get_blocksize(p_format);
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, row_stride_el);
-            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
+            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.height);
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
 
@@ -741,7 +740,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
              * takes row pitch
              */
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, pitch);
-            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
+            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.height);
 
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
@@ -801,8 +800,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
       if (nil_image.dim == NIL_IMAGE_DIM_3D) {
          uint64_t level_offset_B;
-         nil_image_3d_level_as_2d_array(&nil_image, mip_level,
-                                        &nil_image, &level_offset_B);
+         nil_image = nil_image_3d_level_as_2d_array(&nil_image, mip_level,
+                                                    &level_offset_B);
          addr += level_offset_B;
          mip_level = 0;
          base_array_layer = 0;
@@ -834,7 +833,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
       P_IMMD(p, NV9097, SET_ZT_SELECT, 1 /* target_count */);
 
-      struct nil_extent4d level_extent_sa =
+      struct nil_Extent4D_Samples level_extent_sa =
          nil_image_level_extent_sa(&nil_image, mip_level);
 
       /* We use the stride for depth/stencil targets because the Z/S hardware
@@ -846,7 +845,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
       P_MTHD(p, NV9097, SET_ZT_SIZE_A);
       P_NV9097_SET_ZT_SIZE_A(p, row_stride_el);
-      P_NV9097_SET_ZT_SIZE_B(p, level_extent_sa.h);
+      P_NV9097_SET_ZT_SIZE_B(p, level_extent_sa.height);
       P_NV9097_SET_ZT_SIZE_C(p, {
          .third_dimension  = base_array_layer + layer_count,
          .control          = CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,

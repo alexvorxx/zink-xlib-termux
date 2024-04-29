@@ -3569,6 +3569,16 @@ emit_phi(struct ir3_context *ctx, nir_phi_instr *nphi)
 
    dst = ir3_get_def(ctx, &nphi->def, 1);
 
+   if (exec_list_is_singular(&nphi->srcs)) {
+      nir_phi_src *src = list_entry(exec_list_get_head(&nphi->srcs),
+                                    nir_phi_src, node);
+      if (nphi->def.divergent == src->src.ssa->divergent) {
+         dst[0] = ir3_get_src(ctx, &src->src)[0];
+         ir3_put_def(ctx, &nphi->def);
+         return;
+      }
+   }
+
    phi = ir3_instr_create(ctx->block, OPC_META_PHI, 1,
                           exec_list_length(&nphi->srcs));
    __ssa_dst(phi);
@@ -3759,7 +3769,6 @@ emit_block(struct ir3_context *ctx, nir_block *nblock)
 
    list_addtail(&ctx->block->node, &ctx->ir->block_list);
 
-   ctx->block->loop_id = ctx->loop_id;
    ctx->block->loop_depth = ctx->loop_depth;
 
    /* re-emit addr register in each block if needed: */
@@ -3908,6 +3917,8 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
       emit_conditional_branch(ctx, &nif->condition);
    }
 
+   ctx->block->divergent_condition = nif->condition.ssa->divergent;
+
    emit_cf_list(ctx, &nif->then_list);
    emit_cf_list(ctx, &nif->else_list);
 }
@@ -3916,8 +3927,6 @@ static void
 emit_loop(struct ir3_context *ctx, nir_loop *nloop)
 {
    assert(!nir_loop_has_continue_construct(nloop));
-   unsigned old_loop_id = ctx->loop_id;
-   ctx->loop_id = ctx->so->loops + 1;
    ctx->loop_depth++;
 
    struct nir_block *nstart = nir_loop_first_block(nloop);
@@ -3938,14 +3947,12 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
       struct ir3_block *start = get_block(ctx, nstart);
       ir3_JUMP(continue_blk);
       continue_blk->successors[0] = start;
-      continue_blk->loop_id = ctx->loop_id;
       continue_blk->loop_depth = ctx->loop_depth;
       list_addtail(&continue_blk->node, &ctx->ir->block_list);
    }
 
    ctx->so->loops++;
    ctx->loop_depth--;
-   ctx->loop_id = old_loop_id;
 }
 
 static void

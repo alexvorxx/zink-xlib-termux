@@ -57,7 +57,7 @@
 
 #if defined(_WIN32) && defined(_WIN64) && !defined(_GAMING_XBOX)
 #include <filesystem>
-#include <ShlObj.h>
+#include <shlobj.h>
 #endif
 
 #include <dxguids/dxguids.h>

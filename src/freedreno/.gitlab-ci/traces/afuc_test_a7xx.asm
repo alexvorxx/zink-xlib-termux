@@ -23,7 +23,7 @@
 ; This file is the source for a simple mock firmware used to regression test
 ; the afuc assembler/disassembler. This is the a7xx variant, for testing new
 ; features introduced in a7xx.
-[01000001]
+[01730001]
 [#jumptbl]
 loc02:
 ; packet table loading:
@@ -236,11 +236,11 @@ waitin
 mov $01, $data
 
 IN_PREEMPT:
-; test preemptleave + iret + conditional branch w/ immed
+; test bl + iret + conditional branch w/ immed
 cread $02, [$00 + 0x101]
 brne $02, 0x0001, #exit_iret
 nop
-preemptleave #err
+bl #err
 nop
 nop
 nop

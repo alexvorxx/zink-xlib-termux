@@ -85,6 +85,7 @@ struct wsi_image_info {
    VkImageFormatListCreateInfo format_list;
    VkImageDrmFormatModifierListCreateInfoEXT drm_mod_list;
 
+   enum wsi_image_type image_type;
    bool explicit_sync;
    bool prime_use_linear_modifier;
 

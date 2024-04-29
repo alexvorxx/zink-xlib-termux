@@ -640,6 +640,8 @@ struct ir3_block {
     */
    struct ir3_block *successors[2];
 
+   bool divergent_condition;
+
    DECLARE_ARRAY(struct ir3_block *, predecessors);
    DECLARE_ARRAY(struct ir3_block *, physical_predecessors);
    DECLARE_ARRAY(struct ir3_block *, physical_successors);
@@ -666,7 +668,6 @@ struct ir3_block {
    uint32_t dom_pre_index;
    uint32_t dom_post_index;
 
-   uint32_t loop_id;
    uint32_t loop_depth;
 
 #if MESA_DEBUG
@@ -953,8 +954,6 @@ is_same_type_mov(struct ir3_instruction *instr)
       if (!is_same_type_reg(instr->dsts[0], instr->srcs[0]))
          return false;
       break;
-   case OPC_META_PHI:
-      return instr->srcs_count == 1;
    default:
       return false;
    }

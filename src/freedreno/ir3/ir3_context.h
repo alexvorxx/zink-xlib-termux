@@ -107,7 +107,6 @@ struct ir3_context {
 
    unsigned num_arrays;
 
-   unsigned loop_id;
    unsigned loop_depth;
 
    /* a common pattern for indirect addressing is to request the

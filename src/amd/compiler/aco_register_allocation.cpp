@@ -1,25 +1,7 @@
 /*
  * Copyright © 2018 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_ir.h"
@@ -635,7 +617,7 @@ get_subdword_definition_info(Program* program, const aco_ptr<Instruction>& instr
          return std::make_pair(4, rc.size() * 4u);
    }
 
-   if (instr->isVALU() || instr->isVINTRP()) {
+   if (instr->isVALU()) {
       assert(rc.bytes() <= 2);
 
       if (can_use_SDWA(gfx_level, instr, false))
@@ -654,6 +636,7 @@ get_subdword_definition_info(Program* program, const aco_ptr<Instruction>& instr
    }
 
    switch (instr->opcode) {
+   case aco_opcode::v_interp_p2_f16: return std::make_pair(2u, 2u);
    /* D16 loads with _hi version */
    case aco_opcode::ds_read_u8_d16:
    case aco_opcode::ds_read_i8_d16:
@@ -733,6 +716,8 @@ add_subdword_definition(Program* program, aco_ptr<Instruction>& instr, PhysReg r
 
    if (reg.byte() == 0)
       return;
+   else if (instr->opcode == aco_opcode::v_interp_p2_f16)
+      instr->opcode = aco_opcode::v_interp_p2_hi_f16;
    else if (instr->opcode == aco_opcode::buffer_load_ubyte_d16)
       instr->opcode = aco_opcode::buffer_load_ubyte_d16_hi;
    else if (instr->opcode == aco_opcode::buffer_load_sbyte_d16)

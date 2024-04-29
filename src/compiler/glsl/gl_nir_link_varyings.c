@@ -50,6 +50,7 @@
 /* Temporary storage for the set of attributes that need locations assigned. */
 struct temp_attr {
    unsigned slots;
+   unsigned original_idx;
    nir_variable *var;
 };
 
@@ -61,7 +62,10 @@ compare_attr(const void *a, const void *b)
    const struct temp_attr *const r = (const struct temp_attr *) b;
 
    /* Reversed because we want a descending order sort below. */
-   return r->slots - l->slots;
+   if (r->slots != l->slots)
+      return r->slots - l->slots;
+
+   return l->original_idx - r->original_idx;
 }
 
 /**
@@ -559,6 +563,94 @@ check_location_aliasing(struct explicit_location_info explicit_locations[][4],
    }
 
    return true;
+}
+
+static void
+resize_input_array(nir_shader *shader, struct gl_shader_program *prog,
+                   unsigned stage, unsigned num_vertices)
+{
+   nir_foreach_shader_in_variable(var, shader) {
+      if (!glsl_type_is_array(var->type) || var->data.patch)
+         continue;
+
+      unsigned size = glsl_array_size(var->type);
+
+      if (stage == MESA_SHADER_GEOMETRY) {
+         /* Generate a link error if the shader has declared this array with
+          * an incorrect size.
+          */
+         if (!var->data.implicit_sized_array &&
+             size != -1 && size != num_vertices) {
+            linker_error(prog, "size of array %s declared as %u, "
+                         "but number of input vertices is %u\n",
+                         var->name, size, num_vertices);
+            break;
+         }
+
+         /* Generate a link error if the shader attempts to access an input
+          * array using an index too large for its actual size assigned at
+          * link time.
+          */
+         if (var->data.max_array_access >= (int)num_vertices) {
+            linker_error(prog, "%s shader accesses element %i of "
+                         "%s, but only %i input vertices\n",
+                         _mesa_shader_stage_to_string(stage),
+                         var->data.max_array_access, var->name, num_vertices);
+            break;
+         }
+      }
+
+      var->type = glsl_array_type(var->type->fields.array, num_vertices, 0);
+      var->data.max_array_access = num_vertices - 1;
+   }
+
+   nir_fixup_deref_types(shader);
+}
+
+/**
+ * Resize tessellation evaluation per-vertex inputs to the size of
+ * tessellation control per-vertex outputs.
+ */
+void
+resize_tes_inputs(const struct gl_constants *consts,
+                  struct gl_shader_program *prog)
+{
+   if (prog->_LinkedShaders[MESA_SHADER_TESS_EVAL] == NULL)
+      return;
+
+   struct gl_linked_shader *tcs = prog->_LinkedShaders[MESA_SHADER_TESS_CTRL];
+   struct gl_linked_shader *tes = prog->_LinkedShaders[MESA_SHADER_TESS_EVAL];
+
+   /* If no control shader is present, then the TES inputs are statically
+    * sized to MaxPatchVertices; the actual size of the arrays won't be
+    * known until draw time.
+    */
+   const int num_vertices = tcs
+      ? tcs->Program->info.tess.tcs_vertices_out
+      : consts->MaxPatchVertices;
+
+   resize_input_array(tes->Program->nir, prog, MESA_SHADER_TESS_EVAL,
+                      num_vertices);
+   if (tcs) {
+      /* Convert the gl_PatchVerticesIn system value into a constant, since
+       * the value is known at this point.
+       */
+      nir_variable *var =
+         nir_find_variable_with_location(tes->Program->nir,
+                                         nir_var_system_value,
+                                         SYSTEM_VALUE_VERTICES_IN);
+      if (var) {
+         var->data.location = 0;
+         var->data.explicit_location = false;
+         var->data.mode = nir_var_mem_constant;
+
+         nir_constant *val = rzalloc(var, nir_constant);
+         val->values[0].i32 = num_vertices;
+         var->constant_initializer = val;
+
+         nir_fixup_deref_modes(tes->Program->nir);
+      }
+   }
 }
 
 static bool
@@ -1238,6 +1330,7 @@ assign_attribute_or_color_locations(void *mem_ctx,
       }
       to_assign[num_attr].slots = slots;
       to_assign[num_attr].var = var;
+      to_assign[num_attr].original_idx = num_attr;
       num_attr++;
    }
 

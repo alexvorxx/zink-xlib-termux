@@ -361,8 +361,8 @@ option(
 
 option(
   'glvnd',
-  type : 'boolean',
-  value : false,
+  type : 'feature',
+  deprecated: {'true': 'enabled', 'false': 'disabled'},
   description : 'Enable GLVND support.'
 )
 

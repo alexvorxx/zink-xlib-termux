@@ -5,24 +5,7 @@
  * based in part on anv driver which is:
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "meta/radv_meta.h"
@@ -179,10 +162,6 @@ radv_pipeline_get_shader_key(const struct radv_device *device, const VkPipelineS
 
    const VkPipelineRobustnessCreateInfoEXT *stage_robust_info =
       vk_find_struct_const(stage->pNext, PIPELINE_ROBUSTNESS_CREATE_INFO_EXT);
-
-   /* map any hit to intersection as these shaders get merged */
-   if (s == MESA_SHADER_ANY_HIT)
-      s = MESA_SHADER_INTERSECTION;
 
    enum radv_buffer_robustness storage_robustness = device->buffer_robustness;
    enum radv_buffer_robustness uniform_robustness = device->buffer_robustness;
@@ -701,7 +680,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    }
    if (((stage->nir->info.bit_sizes_int | stage->nir->info.bit_sizes_float) & 16) && gfx_level >= GFX9) {
       bool separate_g16 = gfx_level >= GFX10;
-      struct nir_fold_tex_srcs_options fold_srcs_options[] = {
+      struct nir_opt_tex_srcs_options opt_srcs_options[] = {
          {
             .sampler_dims = ~(BITFIELD_BIT(GLSL_SAMPLER_DIM_CUBE) | BITFIELD_BIT(GLSL_SAMPLER_DIM_BUF)),
             .src_types = (1 << nir_tex_src_coord) | (1 << nir_tex_src_lod) | (1 << nir_tex_src_bias) |
@@ -713,16 +692,16 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
             .src_types = (1 << nir_tex_src_ddx) | (1 << nir_tex_src_ddy),
          },
       };
-      struct nir_fold_16bit_tex_image_options fold_16bit_options = {
+      struct nir_opt_16bit_tex_image_options opt_16bit_options = {
          .rounding_mode = nir_rounding_mode_rtz,
-         .fold_tex_dest_types = nir_type_float,
-         .fold_image_dest_types = nir_type_float,
-         .fold_image_store_data = true,
-         .fold_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
-         .fold_srcs_options_count = separate_g16 ? 2 : 1,
-         .fold_srcs_options = fold_srcs_options,
+         .opt_tex_dest_types = nir_type_float,
+         .opt_image_dest_types = nir_type_float,
+         .opt_image_store_data = true,
+         .opt_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
+         .opt_srcs_options_count = separate_g16 ? 2 : 1,
+         .opt_srcs_options = opt_srcs_options,
       };
-      NIR_PASS(_, stage->nir, nir_fold_16bit_tex_image, &fold_16bit_options);
+      NIR_PASS(_, stage->nir, nir_opt_16bit_tex_image, &opt_16bit_options);
 
       if (!stage->key.optimisations_disabled) {
          NIR_PASS(_, stage->nir, nir_opt_vectorize, opt_vectorize_callback, device);
@@ -736,12 +715,17 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    NIR_PASS(_, stage->nir, nir_opt_dce);
 
    if (!stage->key.optimisations_disabled) {
-      sink_opts |= nir_move_comparisons | nir_move_load_ubo | nir_move_load_ssbo;
+      sink_opts |= nir_move_comparisons | nir_move_load_ubo | nir_move_load_ssbo | nir_move_alu;
       NIR_PASS(_, stage->nir, nir_opt_sink, sink_opts);
 
-      nir_move_options move_opts =
-         nir_move_const_undef | nir_move_load_ubo | nir_move_load_input | nir_move_comparisons | nir_move_copies;
+      nir_move_options move_opts = nir_move_const_undef | nir_move_load_ubo | nir_move_load_input |
+                                   nir_move_comparisons | nir_move_copies | nir_move_alu;
       NIR_PASS(_, stage->nir, nir_opt_move, move_opts);
+
+      /* Run nir_opt_move again to make sure that comparision are as close as possible to the first use to prevent SCC
+       * spilling.
+       */
+      NIR_PASS(_, stage->nir, nir_opt_move, nir_move_comparisons);
    }
 }
 
@@ -1210,4 +1194,25 @@ radv_copy_shader_stage_create_info(struct radv_device *device, uint32_t stageCou
    }
 
    return new_stages;
+}
+
+void
+radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_layout *pipeline_layout,
+                   struct mesa_sha1 *ctx)
+{
+   _mesa_sha1_update(ctx, device->cache_hash, sizeof(device->cache_hash));
+   if (pipeline_layout)
+      _mesa_sha1_update(ctx, pipeline_layout->sha1, sizeof(pipeline_layout->sha1));
+}
+
+void
+radv_pipeline_hash_shader_stage(const VkPipelineShaderStageCreateInfo *sinfo,
+                                const struct radv_shader_stage_key *stage_key, struct mesa_sha1 *ctx)
+{
+   unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
+
+   vk_pipeline_hash_shader_stage(sinfo, NULL, shader_sha1);
+
+   _mesa_sha1_update(ctx, shader_sha1, sizeof(shader_sha1));
+   _mesa_sha1_update(ctx, stage_key, sizeof(*stage_key));
 }

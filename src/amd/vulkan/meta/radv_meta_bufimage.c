@@ -2,24 +2,7 @@
  * Copyright © 2016 Red Hat.
  * Copyright © 2016 Bas Nieuwenhuizen
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 #include "nir/nir_builder.h"
 #include "radv_entrypoints.h"
@@ -454,16 +437,19 @@ radv_device_finish_meta_btoi_r32g32b32_state(struct radv_device *device)
 }
 
 static nir_shader *
-build_nir_itoi_compute_shader(struct radv_device *dev, bool is_3d, int samples)
+build_nir_itoi_compute_shader(struct radv_device *dev, bool src_3d, bool dst_3d, int samples)
 {
    bool is_multisampled = samples > 1;
-   enum glsl_sampler_dim dim = is_3d             ? GLSL_SAMPLER_DIM_3D
-                               : is_multisampled ? GLSL_SAMPLER_DIM_MS
-                                                 : GLSL_SAMPLER_DIM_2D;
-   const struct glsl_type *buf_type = glsl_sampler_type(dim, false, false, GLSL_TYPE_FLOAT);
-   const struct glsl_type *img_type = glsl_image_type(dim, false, GLSL_TYPE_FLOAT);
-   nir_builder b =
-      radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, is_3d ? "meta_itoi_cs_3d-%d" : "meta_itoi_cs-%d", samples);
+   enum glsl_sampler_dim src_dim = src_3d            ? GLSL_SAMPLER_DIM_3D
+                                   : is_multisampled ? GLSL_SAMPLER_DIM_MS
+                                                     : GLSL_SAMPLER_DIM_2D;
+   enum glsl_sampler_dim dst_dim = dst_3d            ? GLSL_SAMPLER_DIM_3D
+                                   : is_multisampled ? GLSL_SAMPLER_DIM_MS
+                                                     : GLSL_SAMPLER_DIM_2D;
+   const struct glsl_type *buf_type = glsl_sampler_type(src_dim, false, false, GLSL_TYPE_FLOAT);
+   const struct glsl_type *img_type = glsl_image_type(dst_dim, false, GLSL_TYPE_FLOAT);
+   nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "meta_itoi_cs-%dd-%dd-%d", src_3d ? 3 : 2,
+                                         dst_3d ? 3 : 2, samples);
    b.shader->info.workgroup_size[0] = 8;
    b.shader->info.workgroup_size[1] = 8;
    nir_variable *input_img = nir_variable_create(b.shader, nir_var_uniform, buf_type, "s_tex");
@@ -474,10 +460,10 @@ build_nir_itoi_compute_shader(struct radv_device *dev, bool is_3d, int samples)
    output_img->data.descriptor_set = 0;
    output_img->data.binding = 1;
 
-   nir_def *global_id = get_global_ids(&b, is_3d ? 3 : 2);
+   nir_def *global_id = get_global_ids(&b, (src_3d || dst_3d) ? 3 : 2);
 
-   nir_def *src_offset = nir_load_push_constant(&b, is_3d ? 3 : 2, 32, nir_imm_int(&b, 0), .range = is_3d ? 12 : 8);
-   nir_def *dst_offset = nir_load_push_constant(&b, is_3d ? 3 : 2, 32, nir_imm_int(&b, 12), .range = is_3d ? 24 : 20);
+   nir_def *src_offset = nir_load_push_constant(&b, src_3d ? 3 : 2, 32, nir_imm_int(&b, 0), .range = src_3d ? 12 : 8);
+   nir_def *dst_offset = nir_load_push_constant(&b, dst_3d ? 3 : 2, 32, nir_imm_int(&b, 12), .range = dst_3d ? 24 : 20);
 
    nir_def *src_coord = nir_iadd(&b, global_id, src_offset);
    nir_deref_instr *input_img_deref = nir_build_deref_var(&b, input_img);
@@ -490,15 +476,15 @@ build_nir_itoi_compute_shader(struct radv_device *dev, bool is_3d, int samples)
          tex_vals[i] = nir_txf_ms_deref(&b, input_img_deref, nir_trim_vector(&b, src_coord, 2), nir_imm_int(&b, i));
       }
    } else {
-      tex_vals[0] = nir_txf_deref(&b, input_img_deref, nir_trim_vector(&b, src_coord, 2 + is_3d), nir_imm_int(&b, 0));
+      tex_vals[0] = nir_txf_deref(&b, input_img_deref, nir_trim_vector(&b, src_coord, 2 + src_3d), nir_imm_int(&b, 0));
    }
 
    nir_def *img_coord = nir_vec4(&b, nir_channel(&b, dst_coord, 0), nir_channel(&b, dst_coord, 1),
-                                 is_3d ? nir_channel(&b, dst_coord, 2) : nir_undef(&b, 1, 32), nir_undef(&b, 1, 32));
+                                 dst_3d ? nir_channel(&b, dst_coord, 2) : nir_undef(&b, 1, 32), nir_undef(&b, 1, 32));
 
    for (uint32_t i = 0; i < samples; i++) {
       nir_image_deref_store(&b, &nir_build_deref_var(&b, output_img)->def, img_coord, nir_imm_int(&b, i), tex_vals[i],
-                            nir_imm_int(&b, 0), .image_dim = dim);
+                            nir_imm_int(&b, 0), .image_dim = dst_dim);
    }
 
    return b.shader;
@@ -508,7 +494,7 @@ static VkResult
 create_itoi_pipeline(struct radv_device *device, int samples, VkPipeline *pipeline)
 {
    struct radv_meta_state *state = &device->meta_state;
-   nir_shader *cs = build_nir_itoi_compute_shader(device, false, samples);
+   nir_shader *cs = build_nir_itoi_compute_shader(device, false, false, samples);
    VkResult result;
 
    VkPipelineShaderStageCreateInfo pipeline_shader_stage = {
@@ -583,26 +569,44 @@ radv_device_init_meta_itoi_state(struct radv_device *device)
          goto fail;
    }
 
-   nir_shader *cs_3d = build_nir_itoi_compute_shader(device, true, 1);
+   for (uint32_t src_3d = 0; src_3d < 2; src_3d++) {
+      for (uint32_t dst_3d = 0; dst_3d < 2; dst_3d++) {
+         VkPipeline *pipeline;
+         if (src_3d && dst_3d)
+            pipeline = &device->meta_state.itoi.pipeline_3d_3d;
+         else if (src_3d)
+            pipeline = &device->meta_state.itoi.pipeline_3d_2d;
+         else if (dst_3d)
+            pipeline = &device->meta_state.itoi.pipeline_2d_3d;
+         else
+            continue;
 
-   VkPipelineShaderStageCreateInfo pipeline_shader_stage_3d = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_handle_from_nir(cs_3d),
-      .pName = "main",
-      .pSpecializationInfo = NULL,
-   };
+         nir_shader *cs_3d = build_nir_itoi_compute_shader(device, src_3d, dst_3d, 1);
 
-   VkComputePipelineCreateInfo vk_pipeline_info_3d = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = pipeline_shader_stage_3d,
-      .flags = 0,
-      .layout = device->meta_state.itoi.img_p_layout,
-   };
+         VkPipelineShaderStageCreateInfo pipeline_shader_stage_3d = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+            .module = vk_shader_module_handle_from_nir(cs_3d),
+            .pName = "main",
+            .pSpecializationInfo = NULL,
+         };
 
-   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info_3d,
-                                         NULL, &device->meta_state.itoi.pipeline_3d);
-   ralloc_free(cs_3d);
+         VkComputePipelineCreateInfo vk_pipeline_info_3d = {
+            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+            .stage = pipeline_shader_stage_3d,
+            .flags = 0,
+            .layout = device->meta_state.itoi.img_p_layout,
+         };
+
+         result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
+                                               &vk_pipeline_info_3d, NULL, pipeline);
+
+         ralloc_free(cs_3d);
+
+         if (result != VK_SUCCESS)
+            goto fail;
+      }
+   }
 
    return VK_SUCCESS;
 fail:
@@ -622,7 +626,9 @@ radv_device_finish_meta_itoi_state(struct radv_device *device)
       radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline[i], &state->alloc);
    }
 
-   radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline_3d, &state->alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline_2d_3d, &state->alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline_3d_2d, &state->alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline_3d_3d, &state->alloc);
 }
 
 static nir_shader *
@@ -1607,8 +1613,13 @@ radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
       itoi_bind_descriptors(cmd_buffer, &src_view, &dst_view);
 
       VkPipeline pipeline = device->meta_state.itoi.pipeline[samples_log2];
-      if (src->image->vk.image_type == VK_IMAGE_TYPE_3D || dst->image->vk.image_type == VK_IMAGE_TYPE_3D)
-         pipeline = device->meta_state.itoi.pipeline_3d;
+      if (src->image->vk.image_type == VK_IMAGE_TYPE_3D && dst->image->vk.image_type == VK_IMAGE_TYPE_3D)
+         pipeline = device->meta_state.itoi.pipeline_3d_3d;
+      else if (src->image->vk.image_type == VK_IMAGE_TYPE_3D)
+         pipeline = device->meta_state.itoi.pipeline_3d_2d;
+      else if (dst->image->vk.image_type == VK_IMAGE_TYPE_3D)
+         pipeline = device->meta_state.itoi.pipeline_2d_3d;
+
       radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
       for (unsigned r = 0; r < num_rects; ++r) {

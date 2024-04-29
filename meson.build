@@ -543,20 +543,21 @@ if with_glx != 'disabled'
   endif
 endif
 
-with_glvnd = get_option('glvnd')
-glvnd_vendor_name = get_option('glvnd-vendor-name')
+_glvnd = get_option('glvnd') \
+  .require(not with_platform_windows,
+           error_message: 'glvnd cannot be used on Windows') \
+  .require(with_glx != 'xlib',
+           error_message: 'Cannot build glvnd support for GLX that is not DRI based.') \
+  .require(with_glx != 'disabled' or with_egl,
+           error_message: 'glvnd requires DRI based GLX and/or EGL') \
+  .require(get_option('egl-lib-suffix') == '',
+           error_message: '''EGL lib suffix can't be used with libglvnd''')
+dep_glvnd = dependency('libglvnd', version : '>= 1.3.2', required : _glvnd)
+with_glvnd = dep_glvnd.found()
 if with_glvnd
-  if with_platform_windows
-    error('glvnd cannot be used on Windows')
-  elif with_glx == 'xlib'
-    error('Cannot build glvnd support for GLX that is not DRI based.')
-  elif with_glx == 'disabled' and not with_egl
-    error('glvnd requires DRI based GLX and/or EGL')
-  endif
-  if get_option('egl-lib-suffix') != ''
-    error('''EGL lib suffix can't be used with libglvnd''')
-  endif
+  pre_args += '-DUSE_LIBGLVND=1'
 endif
+glvnd_vendor_name = get_option('glvnd-vendor-name')
 
 if with_vulkan_icd_dir == ''
   with_vulkan_icd_dir = join_paths(get_option('datadir'), 'vulkan/icd.d')
@@ -1894,12 +1895,6 @@ elif with_gallium_radeonsi
   error('Gallium driver radeonsi requires libelf')
 endif
 
-dep_glvnd = null_dep
-if with_glvnd
-  dep_glvnd = dependency('libglvnd', version : '>= 1.3.2')
-  pre_args += '-DUSE_LIBGLVND=1'
-endif
-
 dep_valgrind = dependency('valgrind', required : get_option('valgrind'))
 if dep_valgrind.found()
   pre_args += '-DHAVE_VALGRIND'
@@ -1912,6 +1907,23 @@ if ['address', 'address,undefined'].contains(get_option('b_sanitize'))
   asan_c_args = ['-DBUILT_WITH_ASAN=1']
 else
   asan_c_args = ['-DBUILT_WITH_ASAN=0']
+endif
+
+# ThreadSanitizer can't deal with futexes, and reports races for cases we don't care about
+# so add a define to work silence these issues.
+if get_option('b_sanitize') == 'thread'
+  pre_args += '-DTHREAD_SANITIZER=1'
+  # meson versions prior to 1.4 will warn "Consider using the built-in option for sanitizers ..." 
+  # later on because it only checks whether the option starts with "-fsanitize",
+  # but there is no built-in option for adding a blacklist
+  tsan_blacklist = '-fsanitize-blacklist=@0@'.format(join_paths(meson.project_source_root(), 'tsan-blacklist.txt'))
+  if cc.has_argument(tsan_blacklist)
+    pre_args += tsan_blacklist
+  else
+    warning('Compiler does not support "-fsanitize-blacklist", expected race conditions will not be surpressed')
+  endif
+else
+  pre_args += '-DTHREAD_SANITIZER=0'
 endif
 
 yacc_is_bison = true

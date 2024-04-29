@@ -542,12 +542,6 @@ st_link_glsl_to_nir(struct gl_context *ctx,
          }
 
          prog->nir = glsl_to_nir(&st->ctx->Const, shader_program, shader->Stage, options);
-
-         gl_nir_detect_recursion_linked(shader_program, prog->nir);
-         if (!shader_program->data->LinkStatus)
-            return GL_FALSE;
-
-         gl_nir_inline_functions(prog->nir);
       }
 
       memcpy(prog->nir->info.source_sha1, shader->linked_source_sha1,

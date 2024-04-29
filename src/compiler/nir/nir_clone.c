@@ -667,6 +667,16 @@ nir_function_clone(nir_shader *ns, const nir_function *fxn)
    nfxn->is_preamble = fxn->is_preamble;
    nfxn->should_inline = fxn->should_inline;
    nfxn->dont_inline = fxn->dont_inline;
+   nfxn->is_subroutine = fxn->is_subroutine;
+   nfxn->num_subroutine_types = fxn->num_subroutine_types;
+   nfxn->subroutine_index = fxn->subroutine_index;
+   if (fxn->num_subroutine_types) {
+      nfxn->subroutine_types = ralloc_array(ns, const struct glsl_type *,
+                                            fxn->num_subroutine_types);
+      for (unsigned i = 0; i < fxn->num_subroutine_types; i++) {
+         nfxn->subroutine_types[i] = fxn->subroutine_types[i];
+      }
+   }
 
    /* At first glance, it looks like we should clone the function_impl here.
     * However, call instructions need to be able to reference at least the

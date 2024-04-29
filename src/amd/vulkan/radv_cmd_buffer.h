@@ -5,24 +5,7 @@
  * based in part on anv driver which is:
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef RADV_CMD_BUFFER_H
@@ -454,6 +437,21 @@ struct radv_cmd_state {
    bool uses_dynamic_vertex_binding_stride;
 };
 
+struct radv_enc_state {
+   uint32_t task_size_offset;
+   uint32_t total_task_size;
+   unsigned shifter;
+   unsigned bits_in_shifter;
+   uint32_t num_zeros;
+   uint32_t byte_index;
+   unsigned bits_output;
+   unsigned bits_size;
+   bool emulation_prevention;
+   bool is_even_frame;
+   unsigned task_id;
+   uint32_t copy_start_offset;
+};
+
 struct radv_cmd_buffer_upload {
    uint8_t *map;
    unsigned offset;
@@ -554,6 +552,8 @@ struct radv_cmd_buffer {
       struct radv_video_session_params *params;
       struct rvcn_sq_var sq;
       struct rvcn_decode_buffer_s *decode_buffer;
+      struct radv_enc_state enc;
+      uint64_t feedback_query_va;
    } video;
 
    struct {

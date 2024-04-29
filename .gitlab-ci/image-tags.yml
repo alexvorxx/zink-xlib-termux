@@ -16,7 +16,7 @@ variables:
    DEBIAN_BASE_TAG: "20240401-wlproto"
 
    DEBIAN_X86_64_BUILD_IMAGE_PATH: "debian/x86_64_build"
-   DEBIAN_BUILD_TAG: "20240401-wlproto"
+   DEBIAN_BUILD_TAG: "20240408-cbindgen"
 
    DEBIAN_X86_64_TEST_BASE_IMAGE: "debian/x86_64_test-base"
 
@@ -25,13 +25,13 @@ variables:
    DEBIAN_X86_64_TEST_ANDROID_IMAGE_PATH: "debian/x86_64_test-android"
 
    DEBIAN_X86_64_TEST_ANDROID_TAG: "20240401-wlproto"
-   DEBIAN_X86_64_TEST_GL_TAG: "20240403-ninetests"
-   DEBIAN_X86_64_TEST_VK_TAG: "20240403-runner"
-   KERNEL_ROOTFS_TAG: "20240403-runner"
+   DEBIAN_X86_64_TEST_GL_TAG: "20240409-angle"
+   DEBIAN_X86_64_TEST_VK_TAG: "20240409-angle"
+   KERNEL_ROOTFS_TAG: "20240409-angle"
 
    ALPINE_X86_64_BUILD_TAG: "20240401-wlproto"
    ALPINE_X86_64_LAVA_SSH_TAG: "20240401-wlproto"
-   FEDORA_X86_64_BUILD_TAG: "20240401-wlproto"
+   FEDORA_X86_64_BUILD_TAG: "20240408-cbindgen"
    KERNEL_TAG: "v6.6.21-mesa-19fc"
    KERNEL_REPO: "gfx-ci/linux"
    PKG_REPO_REV: "3cc12a2a"
@@ -40,7 +40,7 @@ variables:
    WINDOWS_X64_MSVC_TAG: "20231222-msvc"
 
    WINDOWS_X64_BUILD_PATH: "windows/x86_64_build"
-   WINDOWS_X64_BUILD_TAG: "20240322-agility-sdk"
+   WINDOWS_X64_BUILD_TAG: "20240405-vainfo-ci-1"
 
    WINDOWS_X64_TEST_PATH: "windows/x86_64_test"
-   WINDOWS_X64_TEST_TAG: "20240402-agility-sdk"
+   WINDOWS_X64_TEST_TAG: "20240405-vainfo-ci-1"

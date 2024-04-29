@@ -181,7 +181,8 @@ ir3_calc_reconvergence(struct ir3_shader_variant *so)
     * reconvergence point.
     */
    foreach_block (block, &so->ir->block_list) {
-      if (block->successors[0] && block->successors[1]) {
+      if (block->successors[0] && block->successors[1] &&
+          block->divergent_condition) {
          unsigned idx = block->successors[0]->index >
             block->successors[1]->index ? 0 : 1;
          block->successors[idx]->reconvergence_point = true;

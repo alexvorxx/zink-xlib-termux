@@ -140,6 +140,9 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_push_descriptor                   = true,
    .KHR_pipeline_library                  = true,
    .KHR_ray_query                         = true,
+   .KHR_ray_tracing_maintenance1          = true,
+   .KHR_ray_tracing_pipeline              = true,
+   .KHR_ray_tracing_position_fetch        = true,
    .KHR_relaxed_block_layout              = true,
    .KHR_sampler_mirror_clamp_to_edge      = true,
    .KHR_sampler_ycbcr_conversion          = true,
@@ -209,6 +212,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
 #endif
    .EXT_pipeline_creation_feedback        = true,
    .EXT_pipeline_creation_cache_control   = true,
+   .EXT_pipeline_library_group_handles    = true,
    .EXT_post_depth_coverage               = true,
    .EXT_private_data                      = true,
    .EXT_primitives_generated_query        = true,
@@ -488,6 +492,23 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* VK_KHR_ray_query */
       .rayQuery = true,
+
+      /* VK_KHR_ray_tracing_maintenance1 */
+      .rayTracingMaintenance1 = true,
+      .rayTracingPipelineTraceRaysIndirect2 = true,
+
+      /* VK_KHR_ray_tracing_pipeline */
+      .rayTracingPipeline = true,
+      .rayTracingPipelineShaderGroupHandleCaptureReplay = false,
+      .rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false,
+      .rayTracingPipelineTraceRaysIndirect = true,
+      .rayTraversalPrimitiveCulling = true,
+
+      /* VK_EXT_pipeline_library_group_handles */
+      .pipelineLibraryGroupHandles = true,
+
+      /* VK_KHR_ray_tracing_position_fetch */
+      .rayTracingPositionFetch = true,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
@@ -1103,6 +1124,18 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .maxDescriptorSetAccelerationStructures = MAX_DESCRIPTORS,
       .maxDescriptorSetUpdateAfterBindAccelerationStructures = MAX_DESCRIPTORS,
       .minAccelerationStructureScratchOffsetAlignment = 128,
+
+      /* VK_KHR_ray_tracing_pipeline */
+      .shaderGroupHandleSize = LVP_RAY_TRACING_GROUP_HANDLE_SIZE,
+      .maxRayRecursionDepth = 31,    /* Minimum allowed for DXR. */
+      .maxShaderGroupStride = 16384, /* dummy */
+      /* This isn't strictly necessary, but Doom Eternal breaks if the
+       * alignment is any lower. */
+      .shaderGroupBaseAlignment = 32,
+      .shaderGroupHandleCaptureReplaySize = 0,
+      .maxRayDispatchInvocationCount = 1024 * 1024 * 64,
+      .shaderGroupHandleAlignment = 16,
+      .maxRayHitAttributeSize = LVP_RAY_HIT_ATTRIBS_SIZE,
    };
 
    /* Vulkan 1.0 */
@@ -1628,6 +1661,8 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
 
    util_dynarray_init(&device->bda_texture_handles, NULL);
    util_dynarray_init(&device->bda_image_handles, NULL);
+
+   device->group_handle_alloc = 1;
 
    *pDevice = lvp_device_to_handle(device);
 

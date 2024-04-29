@@ -2246,7 +2246,7 @@ brw_emit_predicate_on_sample_mask(const fs_builder &bld, fs_inst *inst)
 void
 fs_visitor::dump_instructions_to_file(FILE *file) const
 {
-   if (cfg) {
+   if (cfg && grf_used == 0) {
       const register_pressure &rp = regpressure_analysis.require();
       unsigned ip = 0, max_pressure = 0;
       unsigned cf_count = 0;
@@ -2265,6 +2265,13 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
             cf_count += 1;
       }
       fprintf(file, "Maximum %3d registers live at once.\n", max_pressure);
+   } else if (cfg && exec_list_is_empty(&instructions)) {
+      unsigned ip = 0;
+      foreach_block_and_inst(block, fs_inst, inst, cfg) {
+         fprintf(file, "%4d: ", ip);
+         dump_instruction(inst, file);
+         ip++;
+      }
    } else {
       int ip = 0;
       foreach_in_list(fs_inst, inst, &instructions) {
@@ -2996,9 +3003,15 @@ fs_visitor::allocate_registers(bool allow_spilling)
    if (failed)
       return;
 
+   debug_optimizer(nir, "post_ra_alloc", 96, 0);
+
    brw_fs_opt_bank_conflicts(*this);
 
+   debug_optimizer(nir, "bank_conflict", 96, 1);
+
    schedule_instructions_post_ra();
+
+   debug_optimizer(nir, "post_ra_alloc_scheduling", 96, 2);
 
    if (last_scratch > 0) {
       ASSERTED unsigned max_scratch_size = 2 * 1024 * 1024;

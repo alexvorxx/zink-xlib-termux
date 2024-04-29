@@ -1062,7 +1062,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       SET(PS_BLEND, ps_blend.ColorBufferBlendEnable, GET(blend.rts[0].ColorBufferBlendEnable));
       SET(PS_BLEND, ps_blend.SourceAlphaBlendFactor, GET(blend.rts[0].SourceAlphaBlendFactor));
       SET(PS_BLEND, ps_blend.DestinationAlphaBlendFactor, gfx->alpha_blend_zero ?
-                                                          BLENDFACTOR_CONST_COLOR :
+                                                          BLENDFACTOR_CONST_ALPHA :
                                                           GET(blend.rts[0].DestinationAlphaBlendFactor));
       SET(PS_BLEND, ps_blend.SourceBlendFactor, GET(blend.rts[0].SourceBlendFactor));
       SET(PS_BLEND, ps_blend.DestinationBlendFactor, gfx->color_blend_zero ?
@@ -1330,6 +1330,20 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       }
    }
 #endif
+
+   struct anv_push_constants *push = &cmd_buffer->state.gfx.base.push_constants;
+
+   /* If the pipeline uses a dynamic value of patch_control_points and either
+    * the pipeline change or the dynamic value change, check the value and
+    * reemit if needed.
+    */
+   if (pipeline->dynamic_patch_control_points &&
+       ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
+        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_TS_PATCH_CONTROL_POINTS)) &&
+       push->gfx.tcs_input_vertices != dyn->ts.patch_control_points) {
+      push->gfx.tcs_input_vertices = dyn->ts.patch_control_points;
+      cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+   }
 
 #undef GET
 #undef SET

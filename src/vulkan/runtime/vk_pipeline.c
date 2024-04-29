@@ -511,6 +511,8 @@ vk_shader_unref(struct vk_device *device, struct vk_shader *shader)
    vk_pipeline_cache_object_unref(device, &shader->pipeline.cache_obj);
 }
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct vk_pipeline_tess_info {
    unsigned tcs_vertices_out : 8;
    unsigned primitive_mode : 2; /* tess_primitive_mode */
@@ -519,6 +521,7 @@ struct vk_pipeline_tess_info {
    unsigned point_mode : 1;
    unsigned _pad : 18;
 };
+PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct vk_pipeline_tess_info) == 4,
               "This struct has no holes");
 

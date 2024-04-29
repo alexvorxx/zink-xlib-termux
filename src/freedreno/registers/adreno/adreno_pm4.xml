@@ -1659,8 +1659,8 @@ opcode: CP_LOAD_STATE4 (30) (4 dwords)
 		<bitfield name="WRITE_SAMPLE_COUNT" pos="12" type="boolean"/>
 		<!-- Write sample count at (iova + 16) -->
 		<bitfield name="SAMPLE_COUNT_END_OFFSET" pos="13" type="boolean"/>
-		<!-- *(iova + 8) = *(iova + 16) - *iova -->
-		<bitfield name="WRITE_SAMPLE_COUNT_DIFF" pos="14" type="boolean"/>
+		<!-- *(iova + 8) += *(iova + 16) - *iova -->
+		<bitfield name="WRITE_ACCUM_SAMPLE_COUNT_DIFF" pos="14" type="boolean"/>
 
 		<!-- Next 4 flags are valid to set only when concurrent binning is enabled -->
 		<!-- Increment 16b BV counter. Valid only in BV pipe -->

@@ -1,24 +1,7 @@
 /*
  * Copyright © 2021 Google
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "nir/nir.h"
@@ -288,7 +271,7 @@ radv_rt_fill_stage_info(const VkRayTracingPipelineCreateInfoKHR *pCreateInfo, st
 }
 
 static void
-radv_init_rt_stage_hashes(struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+radv_init_rt_stage_hashes(const struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                           struct radv_ray_tracing_stage *stages, const struct radv_shader_stage_key *stage_keys)
 {
    VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
@@ -859,11 +842,13 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   VkPipelineCreationFeedback pipeline_feedback = {
+      .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
+   };
+   bool skip_shaders_cache = false;
    VkResult result;
    const VkPipelineCreationFeedbackCreateInfo *creation_feedback =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
-   if (creation_feedback)
-      creation_feedback->pPipelineCreationFeedback->flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
 
    int64_t pipeline_start = os_time_get_nano();
 
@@ -909,9 +894,22 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    radv_hash_rt_shaders(device, pipeline->sha1, stages, pCreateInfo, pipeline->groups);
    pipeline->base.base.pipeline_hash = *(uint64_t *)pipeline->sha1;
 
+   /* Skip the shaders cache when any of the below are true:
+    * - shaders are captured because it's for debugging purposes
+    * - ray history is enabled
+    */
+   if (keep_executable_info || emit_ray_history) {
+      skip_shaders_cache = true;
+   }
+
    bool cache_hit = false;
-   if (!keep_executable_info && !emit_ray_history)
-      cache_hit = radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, pCreateInfo);
+   if (!skip_shaders_cache) {
+      bool found_in_application_cache = true;
+
+      cache_hit = radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, &found_in_application_cache);
+      if (cache_hit && found_in_application_cache)
+         pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
+   }
 
    if (!cache_hit) {
       result = radv_rt_compile_shaders(device, cache, pCreateInfo, creation_feedback, stage_keys, pipeline,
@@ -930,7 +928,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
 
    radv_rmv_log_rt_pipeline_create(device, pipeline);
 
-   if (!cache_hit && !emit_ray_history)
+   if (!cache_hit && !skip_shaders_cache)
       radv_ray_tracing_pipeline_cache_insert(device, cache, pipeline, pCreateInfo->stageCount, pipeline->sha1);
 
    /* write shader VAs into group handles */
@@ -943,8 +941,10 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    }
 
 fail:
+   pipeline_feedback.duration = os_time_get_nano() - pipeline_start;
+
    if (creation_feedback)
-      creation_feedback->pPipelineCreationFeedback->duration = os_time_get_nano() - pipeline_start;
+      *creation_feedback->pPipelineCreationFeedback = pipeline_feedback;
 
    if (result == VK_SUCCESS)
       *pPipeline = radv_pipeline_to_handle(&pipeline->base.base);

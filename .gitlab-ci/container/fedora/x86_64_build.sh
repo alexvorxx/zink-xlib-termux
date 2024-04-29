@@ -27,6 +27,7 @@ EPHEMERAL=(
 DEPS=(
     bindgen
     bison
+    cbindgen
     ccache
     clang-devel
     flex

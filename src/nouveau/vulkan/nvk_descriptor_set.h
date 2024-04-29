@@ -20,26 +20,35 @@ struct nvk_descriptor_set_layout;
 #define NVK_IMAGE_DESCRIPTOR_IMAGE_INDEX_MASK   0x000fffff
 #define NVK_IMAGE_DESCRIPTOR_SAMPLER_INDEX_MASK 0xfff00000
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_sampled_image_descriptor {
    unsigned image_index:20;
    unsigned sampler_index:12;
 };
+PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct nvk_sampled_image_descriptor) == 4,
               "nvk_sampled_image_descriptor has no holes");
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_storage_image_descriptor {
    unsigned image_index:20;
    unsigned sw_log2:2;
    unsigned sh_log2:2;
    unsigned pad:8;
 };
+PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct nvk_storage_image_descriptor) == 4,
               "nvk_storage_image_descriptor has no holes");
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_buffer_view_descriptor {
    unsigned image_index:20;
    unsigned pad:12;
 };
+PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct nvk_buffer_view_descriptor) == 4,
               "nvk_buffer_view_descriptor has no holes");
 

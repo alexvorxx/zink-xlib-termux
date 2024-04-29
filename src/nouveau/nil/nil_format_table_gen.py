@@ -17,7 +17,7 @@ TEMPLATE_H = template.Template(text="""\
 #ifndef ${guard}
 #define ${guard}
 
-#include "nil_format.h"
+#include "util/format/u_format.h"
 
 enum nil_format_support_flags {
    NIL_FORMAT_SUPPORTS_TEXTURE_BIT        = BITFIELD_BIT(0),
@@ -27,6 +27,18 @@ enum nil_format_support_flags {
    NIL_FORMAT_SUPPORTS_ALPHA_BLEND_BIT    = BITFIELD_BIT(4),
    NIL_FORMAT_SUPPORTS_DEPTH_STENCIL_BIT  = BITFIELD_BIT(5),
    NIL_FORMAT_SUPPORTS_SCANOUT_BIT        = BITFIELD_BIT(6),
+};
+
+struct nil_tic_format {
+   unsigned comp_sizes:8;
+   unsigned type_r:3;
+   unsigned type_g:3;
+   unsigned type_b:3;
+   unsigned type_a:3;
+   unsigned src_x:3;
+   unsigned src_y:3;
+   unsigned src_z:3;
+   unsigned src_w:3;
 };
 
 struct nil_format_info {

@@ -24,6 +24,9 @@
 #ifndef UTIL_FUTEX_H
 #define UTIL_FUTEX_H
 
+#if THREAD_SANITIZER
+#define UTIL_FUTEX_SUPPORTED 0
+#else
 #if defined(HAVE_LINUX_FUTEX_H) && defined(__linux__)
 #define UTIL_FUTEX_SUPPORTED 1
 #elif defined(__FreeBSD__)
@@ -34,6 +37,7 @@
 #define UTIL_FUTEX_SUPPORTED 1
 #else
 #define UTIL_FUTEX_SUPPORTED 0
+#endif
 #endif
 
 #if UTIL_FUTEX_SUPPORTED

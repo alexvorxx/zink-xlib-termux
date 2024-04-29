@@ -5,24 +5,7 @@
  * based in part on anv driver which is:
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef RADV_SHADER_INFO_H
@@ -167,7 +150,7 @@ struct radv_shader_info {
       bool point_mode;
       bool reads_tess_factors;
       unsigned tcs_vertices_out;
-      uint8_t num_linked_inputs;
+      uint8_t num_linked_inputs; /* Number of reserved per-vertex input slots in VRAM. */
       uint8_t num_linked_outputs;
       uint32_t num_outputs; /* For NGG streamout only */
    } tes;
@@ -246,9 +229,10 @@ struct radv_shader_info {
       uint64_t tes_patch_inputs_read;
       unsigned tcs_vertices_out;
       uint32_t num_lds_blocks;
-      uint8_t num_linked_inputs;
-      uint8_t num_linked_outputs;
-      uint8_t num_linked_patch_outputs;
+      uint8_t num_linked_inputs;          /* Number of reserved per-vertex input slots in LDS. */
+      uint8_t num_linked_outputs;         /* Number of reserved per-vertex output slots in VRAM. */
+      uint8_t num_lds_per_vertex_outputs; /* Number of reserved per-vertex output slots in LDS. */
+      uint8_t num_lds_per_patch_outputs;  /* Number of reserved per-patch output slots in LDS. */
       bool tes_reads_tess_factors : 1;
    } tcs;
    struct {
@@ -279,5 +263,7 @@ void radv_nir_shader_info_link(struct radv_device *device, const struct radv_gra
                                struct radv_shader_stage *stages);
 
 enum ac_hw_stage radv_select_hw_stage(const struct radv_shader_info *const info, const enum amd_gfx_level gfx_level);
+
+uint64_t radv_gather_unlinked_io_mask(const uint64_t nir_mask);
 
 #endif /* RADV_SHADER_INFO_H */

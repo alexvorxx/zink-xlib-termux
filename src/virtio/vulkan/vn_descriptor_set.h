@@ -32,13 +32,8 @@ enum vn_descriptor_type {
    VN_NUM_DESCRIPTOR_TYPES,
 };
 
-/* TODO refactor struct to track enum vn_descriptor_type type.
- * On VkDescriptorSetLayout creation. When we check against
- * VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK, it will be against
- * VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK instead
- */
 struct vn_descriptor_set_layout_binding {
-   VkDescriptorType type;
+   enum vn_descriptor_type type;
    uint32_t count;
    bool has_immutable_samplers;
    BITSET_DECLARE(mutable_descriptor_types, VN_NUM_DESCRIPTOR_TYPES);
@@ -135,18 +130,20 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_update_template,
                                VkDescriptorUpdateTemplate,
                                VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE)
 
-bool
-vn_should_sanitize_descriptor_set_writes(
-   uint32_t write_count,
-   const VkWriteDescriptorSet *writes,
-   VkPipelineLayout pipeline_layout_handle);
+struct vn_descriptor_set_writes {
+   VkWriteDescriptorSet *writes;
+   VkDescriptorImageInfo *img_infos;
+};
 
-struct vn_update_descriptor_sets *
-vn_update_descriptor_sets_parse_writes(
-   uint32_t write_count,
-   const VkWriteDescriptorSet *writes,
-   const VkAllocationCallbacks *alloc,
-   VkPipelineLayout pipeline_layout_handle);
+uint32_t
+vn_descriptor_set_count_write_images(uint32_t write_count,
+                                     const VkWriteDescriptorSet *writes);
+
+const VkWriteDescriptorSet *
+vn_descriptor_set_get_writes(uint32_t write_count,
+                             const VkWriteDescriptorSet *writes,
+                             VkPipelineLayout pipeline_layout_handle,
+                             struct vn_descriptor_set_writes *local);
 
 struct vn_update_descriptor_sets *
 vn_update_descriptor_set_with_template_locked(

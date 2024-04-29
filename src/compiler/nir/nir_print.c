@@ -261,8 +261,10 @@ print_const_from_load(nir_load_const_instr *instr, print_state *state, nir_alu_t
    const unsigned bit_size = instr->def.bit_size;
    const unsigned num_components = instr->def.num_components;
 
+   type = nir_alu_type_get_base_type(type);
+
    /* There's only one way to print booleans. */
-   if (bit_size == 1) {
+   if (bit_size == 1 || type == nir_type_bool) {
       fprintf(fp, "(");
       for (unsigned i = 0; i < num_components; i++) {
          if (i != 0)
@@ -274,8 +276,6 @@ print_const_from_load(nir_load_const_instr *instr, print_state *state, nir_alu_t
    }
 
    fprintf(fp, "(");
-
-   type = nir_alu_type_get_base_type(type);
 
    if (type != nir_type_invalid) {
       for (unsigned i = 0; i < num_components; i++) {

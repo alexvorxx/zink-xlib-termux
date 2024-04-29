@@ -28,6 +28,7 @@
 #include "gl_nir_linker.h"
 #include "gl_nir_link_varyings.h"
 #include "linker_util.h"
+#include "string_to_uint_map.h"
 #include "main/shader_types.h"
 #include "main/consts_exts.h"
 #include "main/shaderobj.h"
@@ -1467,6 +1468,301 @@ gl_nir_link_spirv(const struct gl_constants *consts,
 }
 
 /**
+ * Initializes explicit location slots to INACTIVE_UNIFORM_EXPLICIT_LOCATION
+ * for a variable, checks for overlaps between other uniforms using explicit
+ * locations.
+ */
+static int
+reserve_explicit_locations(struct gl_shader_program *prog,
+                           struct string_to_uint_map *map, nir_variable *var)
+{
+   unsigned slots = glsl_type_uniform_locations(var->type);
+   unsigned max_loc = var->data.location + slots - 1;
+   unsigned return_value = slots;
+
+   /* Resize remap table if locations do not fit in the current one. */
+   if (max_loc + 1 > prog->NumUniformRemapTable) {
+      prog->UniformRemapTable =
+         reralloc(prog, prog->UniformRemapTable,
+                  struct gl_uniform_storage *,
+                  max_loc + 1);
+
+      if (!prog->UniformRemapTable) {
+         linker_error(prog, "Out of memory during linking.\n");
+         return -1;
+      }
+
+      /* Initialize allocated space. */
+      for (unsigned i = prog->NumUniformRemapTable; i < max_loc + 1; i++)
+         prog->UniformRemapTable[i] = NULL;
+
+      prog->NumUniformRemapTable = max_loc + 1;
+   }
+
+   for (unsigned i = 0; i < slots; i++) {
+      unsigned loc = var->data.location + i;
+
+      /* Check if location is already used. */
+      if (prog->UniformRemapTable[loc] == INACTIVE_UNIFORM_EXPLICIT_LOCATION) {
+
+         /* Possibly same uniform from a different stage, this is ok. */
+         unsigned hash_loc;
+         if (string_to_uint_map_get(map, &hash_loc, var->name) &&
+             hash_loc == loc - i) {
+            return_value = 0;
+            continue;
+         }
+
+         /* ARB_explicit_uniform_location specification states:
+          *
+          *     "No two default-block uniform variables in the program can have
+          *     the same location, even if they are unused, otherwise a compiler
+          *     or linker error will be generated."
+          */
+         linker_error(prog,
+                      "location qualifier for uniform %s overlaps "
+                      "previously used location\n",
+                      var->name);
+         return -1;
+      }
+
+      /* Initialize location as inactive before optimization
+       * rounds and location assignment.
+       */
+      prog->UniformRemapTable[loc] = INACTIVE_UNIFORM_EXPLICIT_LOCATION;
+   }
+
+   /* Note, base location used for arrays. */
+   string_to_uint_map_put(map, var->data.location, var->name);
+
+   return return_value;
+}
+
+static bool
+reserve_subroutine_explicit_locations(struct gl_shader_program *prog,
+                                      struct gl_program *p,
+                                      nir_variable *var)
+{
+   unsigned slots = glsl_type_uniform_locations(var->type);
+   unsigned max_loc = var->data.location + slots - 1;
+
+   /* Resize remap table if locations do not fit in the current one. */
+   if (max_loc + 1 > p->sh.NumSubroutineUniformRemapTable) {
+      p->sh.SubroutineUniformRemapTable =
+         reralloc(p, p->sh.SubroutineUniformRemapTable,
+                  struct gl_uniform_storage *,
+                  max_loc + 1);
+
+      if (!p->sh.SubroutineUniformRemapTable) {
+         linker_error(prog, "Out of memory during linking.\n");
+         return false;
+      }
+
+      /* Initialize allocated space. */
+      for (unsigned i = p->sh.NumSubroutineUniformRemapTable; i < max_loc + 1; i++)
+         p->sh.SubroutineUniformRemapTable[i] = NULL;
+
+      p->sh.NumSubroutineUniformRemapTable = max_loc + 1;
+   }
+
+   for (unsigned i = 0; i < slots; i++) {
+      unsigned loc = var->data.location + i;
+
+      /* Check if location is already used. */
+      if (p->sh.SubroutineUniformRemapTable[loc] == INACTIVE_UNIFORM_EXPLICIT_LOCATION) {
+
+         /* ARB_explicit_uniform_location specification states:
+          *     "No two subroutine uniform variables can have the same location
+          *     in the same shader stage, otherwise a compiler or linker error
+          *     will be generated."
+          */
+         linker_error(prog,
+                      "location qualifier for uniform %s overlaps "
+                      "previously used location\n",
+                      var->name);
+         return false;
+      }
+
+      /* Initialize location as inactive before optimization
+       * rounds and location assignment.
+       */
+      p->sh.SubroutineUniformRemapTable[loc] = INACTIVE_UNIFORM_EXPLICIT_LOCATION;
+   }
+
+   return true;
+}
+/**
+ * Check and reserve all explicit uniform locations, called before
+ * any optimizations happen to handle also inactive uniforms and
+ * inactive array elements that may get trimmed away.
+ */
+static void
+check_explicit_uniform_locations(const struct gl_extensions *exts,
+                                 struct gl_shader_program *prog)
+{
+   prog->NumExplicitUniformLocations = 0;
+
+   if (!exts->ARB_explicit_uniform_location)
+      return;
+
+   /* This map is used to detect if overlapping explicit locations
+    * occur with the same uniform (from different stage) or a different one.
+    */
+   struct string_to_uint_map *uniform_map = string_to_uint_map_ctor();
+
+   if (!uniform_map) {
+      linker_error(prog, "Out of memory during linking.\n");
+      return;
+   }
+
+   unsigned entries_total = 0;
+   unsigned mask = prog->data->linked_stages;
+   while (mask) {
+      const int i = u_bit_scan(&mask);
+      struct gl_program *p = prog->_LinkedShaders[i]->Program;
+
+      unsigned modes = nir_var_uniform | nir_var_mem_ubo | nir_var_image;
+      nir_foreach_variable_with_modes(var, p->nir, modes) {
+         if (var->data.explicit_location) {
+            bool ret = false;
+            if (glsl_type_is_subroutine(glsl_without_array(var->type)))
+               ret = reserve_subroutine_explicit_locations(prog, p, var);
+            else {
+               int slots = reserve_explicit_locations(prog, uniform_map,
+                                                      var);
+               if (slots != -1) {
+                  ret = true;
+                  entries_total += slots;
+               }
+            }
+            if (!ret) {
+               string_to_uint_map_dtor(uniform_map);
+               return;
+            }
+         }
+      }
+   }
+
+   link_util_update_empty_uniform_locations(prog);
+
+   string_to_uint_map_dtor(uniform_map);
+   prog->NumExplicitUniformLocations = entries_total;
+}
+
+static void
+link_assign_subroutine_types(struct gl_shader_program *prog)
+{
+   unsigned mask = prog->data->linked_stages;
+   while (mask) {
+      const int i = u_bit_scan(&mask);
+      struct gl_program *p = prog->_LinkedShaders[i]->Program;
+
+      struct set *fn_decl_set =
+         _mesa_set_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
+
+      p->sh.MaxSubroutineFunctionIndex = 0;
+      nir_foreach_function(fn, p->nir) {
+         /* A function might be decalred multiple times but we should only
+          * process it once
+          */
+         struct set_entry *entry = _mesa_set_search(fn_decl_set, fn->name);
+         if (entry)
+            continue;
+
+         _mesa_set_add(fn_decl_set, fn->name);
+
+         if (fn->is_subroutine)
+            p->sh.NumSubroutineUniformTypes++;
+
+         if (!fn->num_subroutine_types)
+            continue;
+
+         /* these should have been calculated earlier. */
+         assert(fn->subroutine_index != -1);
+         if (p->sh.NumSubroutineFunctions + 1 > MAX_SUBROUTINES) {
+            linker_error(prog, "Too many subroutine functions declared.\n");
+            return;
+         }
+         p->sh.SubroutineFunctions = reralloc(p, p->sh.SubroutineFunctions,
+                                            struct gl_subroutine_function,
+                                            p->sh.NumSubroutineFunctions + 1);
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].name.string = ralloc_strdup(p, fn->name);
+         resource_name_updated(&p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].name);
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].num_compat_types = fn->num_subroutine_types;
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].types =
+            ralloc_array(p, const struct glsl_type *,
+                         fn->num_subroutine_types);
+
+         /* From Section 4.4.4(Subroutine Function Layout Qualifiers) of the
+          * GLSL 4.5 spec:
+          *
+          *    "Each subroutine with an index qualifier in the shader must be
+          *    given a unique index, otherwise a compile or link error will be
+          *    generated."
+          */
+         for (unsigned j = 0; j < p->sh.NumSubroutineFunctions; j++) {
+            if (p->sh.SubroutineFunctions[j].index != -1 &&
+                p->sh.SubroutineFunctions[j].index == fn->subroutine_index) {
+               linker_error(prog, "each subroutine index qualifier in the "
+                            "shader must be unique\n");
+               return;
+            }
+         }
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].index =
+            fn->subroutine_index;
+
+         if (fn->subroutine_index > (int)p->sh.MaxSubroutineFunctionIndex)
+            p->sh.MaxSubroutineFunctionIndex = fn->subroutine_index;
+
+         for (int j = 0; j < fn->num_subroutine_types; j++)
+            p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].types[j] = fn->subroutine_types[j];
+         p->sh.NumSubroutineFunctions++;
+      }
+
+      _mesa_set_destroy(fn_decl_set, NULL);
+   }
+}
+
+static void
+verify_subroutine_associated_funcs(struct gl_shader_program *prog)
+{
+   unsigned mask = prog->data->linked_stages;
+   while (mask) {
+      const int i = u_bit_scan(&mask);
+      struct gl_program *p = prog->_LinkedShaders[i]->Program;
+
+      /* Section 6.1.2 (Subroutines) of the GLSL 4.00 spec says:
+       *
+       *   "A program will fail to compile or link if any shader
+       *    or stage contains two or more functions with the same
+       *    name if the name is associated with a subroutine type."
+       */
+      for (unsigned j = 0; j < p->sh.NumSubroutineFunctions; j++) {
+         unsigned definitions = 0;
+         char *name = p->sh.SubroutineFunctions[j].name.string;
+
+         /* Calculate number of function definitions with the same name */
+         nir_foreach_function(fn, p->nir) {
+            /* If the function is only declared not implemented continue */
+            if (fn->impl != NULL)
+               continue;
+
+            if (strcmp(fn->name, name) == 0) {
+               if (++definitions > 1) {
+                  linker_error(prog, "%s shader contains two or more function "
+                               "definitions with name `%s', which is "
+                               "associated with a subroutine type.\n",
+                               _mesa_shader_stage_to_string(i),
+                               fn->name);
+                  return;
+               }
+            }
+         }
+      }
+   }
+}
+
+/**
  * Validate shader image resources.
  */
 static void
@@ -1677,6 +1973,53 @@ gl_nir_link_glsl(const struct gl_constants *consts,
 
    MESA_TRACE_FUNC();
 
+   check_explicit_uniform_locations(exts, prog);
+
+   link_assign_subroutine_types(prog);
+   verify_subroutine_associated_funcs(prog);
+   if (!prog->data->LinkStatus)
+      return false;
+
+   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+      if (prog->_LinkedShaders[i] == NULL)
+         continue;
+
+      gl_nir_detect_recursion_linked(prog,
+                                     prog->_LinkedShaders[i]->Program->nir);
+      if (!prog->data->LinkStatus)
+         return false;
+
+      gl_nir_inline_functions(prog->_LinkedShaders[i]->Program->nir);
+   }
+
+   resize_tes_inputs(consts, prog);
+
+   /* Validate the inputs of each stage with the output of the preceding
+    * stage.
+    */
+   unsigned prev = MESA_SHADER_STAGES;
+   for (unsigned i = 0; i <= MESA_SHADER_FRAGMENT; i++) {
+      if (prog->_LinkedShaders[i] == NULL)
+         continue;
+
+      if (prev == MESA_SHADER_STAGES) {
+         prev = i;
+         continue;
+      }
+
+      gl_nir_validate_interstage_inout_blocks(prog, prog->_LinkedShaders[prev],
+                                              prog->_LinkedShaders[i]);
+      if (!prog->data->LinkStatus)
+         return false;
+
+      prev = i;
+   }
+
+   /* Cross-validate uniform blocks between shader stages */
+   gl_nir_validate_interstage_uniform_blocks(prog, prog->_LinkedShaders);
+   if (!prog->data->LinkStatus)
+      return false;
+
    if (prog->IsES && prog->GLSL_Version == 100)
       if (!validate_invariant_builtins(consts, prog,
             prog->_LinkedShaders[MESA_SHADER_VERTEX],
@@ -1721,7 +2064,7 @@ gl_nir_link_glsl(const struct gl_constants *consts,
    /* Validate the inputs of each stage with the output of the preceding
     * stage.
     */
-   unsigned prev = first;
+   prev = first;
    for (unsigned i = prev + 1; i <= MESA_SHADER_FRAGMENT; i++) {
       if (prog->_LinkedShaders[i] == NULL)
          continue;

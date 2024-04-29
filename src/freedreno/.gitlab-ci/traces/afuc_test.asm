@@ -26,7 +26,7 @@
 ; binary, then disassambled and compared to the reference disassembly. We do
 ; this to avoid having to host the actual firmware, especially the disassembled
 ; version, in Mesa.
-[01000001]
+[016ee001]
 [#jumptbl]
 loc02:
 ; packet table loading:
@@ -200,11 +200,11 @@ waitin
 mov $01, $data
 
 UNKN15:
-; test preemptleave + iret + conditional branch w/ immed
+; test bl + iret + conditional branch w/ immed
 cread $02, [$00 + 0x101]
 brne $02, 0x0001, #exit_iret
 nop
-preemptleave #err
+bl #err
 nop
 nop
 nop

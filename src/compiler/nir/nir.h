@@ -606,6 +606,16 @@ typedef struct nir_variable {
        */
       unsigned explicit_location : 1;
 
+      /* Was the array implicitly sized during linking */
+      unsigned implicit_sized_array : 1;
+
+      /**
+       * Highest element accessed with a constant array index
+       *
+       * Not used for non-array variables. -1 is never accessed.
+       */
+      int max_array_access;
+
       /**
        * Is this varying used by transform feedback?
        *
@@ -645,6 +655,11 @@ typedef struct nir_variable {
        * block.
        */
       unsigned from_named_ifc_block : 1;
+
+      /**
+       * Unsized array buffer variable.
+       */
+      unsigned from_ssbo_unsized_array : 1;
 
       /**
        * Non-zero if the variable must be a shader input. This is useful for
@@ -3510,6 +3525,23 @@ typedef struct nir_function {
    /* from SPIR-V function control */
    bool should_inline;
    bool dont_inline; /* from SPIR-V */
+
+   /**
+    * Is this function a subroutine type declaration
+    * e.g. subroutine void type1(float arg1);
+    */
+   bool is_subroutine;
+
+   /**
+    * Is this function associated to a subroutine type
+    * e.g. subroutine (type1, type2) function_name { function_body };
+    * would have num_subroutine_types 2,
+    * and pointers to the type1 and type2 types.
+    */
+   int num_subroutine_types;
+   const struct glsl_type **subroutine_types;
+
+   int subroutine_index;
 } nir_function;
 
 typedef enum {
@@ -3567,6 +3599,7 @@ typedef enum {
    nir_divergence_single_frag_shading_rate_per_subgroup = (1 << 4),
    nir_divergence_multiple_workgroup_per_compute_subgroup = (1 << 5),
    nir_divergence_shader_record_ptr_uniform = (1 << 6),
+   nir_divergence_uniform_load_tears = (1 << 7),
 } nir_divergence_options;
 
 typedef enum {
@@ -6247,23 +6280,23 @@ bool nir_force_mediump_io(nir_shader *nir, nir_variable_mode modes,
                           nir_alu_type types);
 bool nir_unpack_16bit_varying_slots(nir_shader *nir, nir_variable_mode modes);
 
-struct nir_fold_tex_srcs_options {
+struct nir_opt_tex_srcs_options {
    unsigned sampler_dims;
    unsigned src_types;
 };
 
-struct nir_fold_16bit_tex_image_options {
+struct nir_opt_16bit_tex_image_options {
    nir_rounding_mode rounding_mode;
-   nir_alu_type fold_tex_dest_types;
-   nir_alu_type fold_image_dest_types;
-   bool fold_image_store_data;
-   bool fold_image_srcs;
-   unsigned fold_srcs_options_count;
-   struct nir_fold_tex_srcs_options *fold_srcs_options;
+   nir_alu_type opt_tex_dest_types;
+   nir_alu_type opt_image_dest_types;
+   bool opt_image_store_data;
+   bool opt_image_srcs;
+   unsigned opt_srcs_options_count;
+   struct nir_opt_tex_srcs_options *opt_srcs_options;
 };
 
-bool nir_fold_16bit_tex_image(nir_shader *nir,
-                              struct nir_fold_16bit_tex_image_options *options);
+bool nir_opt_16bit_tex_image(nir_shader *nir,
+                             struct nir_opt_16bit_tex_image_options *options);
 
 typedef struct {
    bool legalize_type;         /* whether this src should be legalized */

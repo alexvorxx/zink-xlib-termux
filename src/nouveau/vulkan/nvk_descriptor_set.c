@@ -115,10 +115,10 @@ write_storage_image_view_desc(struct nvk_descriptor_set *set,
 
       desc.image_index = view->planes[plane].storage_desc_index;
 
-      const struct nil_extent4d px_extent_sa =
+      const struct nil_Extent4D_Samples px_extent_sa =
          nil_px_extent_sa(view->planes[plane].sample_layout);
-      desc.sw_log2 = util_logbase2(px_extent_sa.w);
-      desc.sh_log2 = util_logbase2(px_extent_sa.h);
+      desc.sw_log2 = util_logbase2(px_extent_sa.width);
+      desc.sh_log2 = util_logbase2(px_extent_sa.height);
    }
 
    write_desc(set, binding, elem, &desc, sizeof(desc));
@@ -487,9 +487,14 @@ nvk_descriptor_pool_alloc(struct nvk_descriptor_pool *pool,
                           uint64_t *addr_out, void **map_out)
 {
    assert(size > 0);
+   assert(size % alignment == 0);
+
+   if (size > pool->heap.free_size)
+      return VK_ERROR_OUT_OF_POOL_MEMORY;
+
    uint64_t addr = util_vma_heap_alloc(&pool->heap, size, alignment);
    if (addr == 0)
-      return VK_ERROR_OUT_OF_POOL_MEMORY;
+      return VK_ERROR_FRAGMENTED_POOL;
 
    assert(addr >= pool->bo->offset);
    assert(addr + size <= pool->bo->offset + pool->bo->size);

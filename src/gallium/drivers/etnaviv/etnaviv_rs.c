@@ -398,13 +398,8 @@ etna_blit_clear_zs_rs(struct pipe_context *pctx, struct pipe_surface *dst,
       new_clear_bits |= clear_bits_depth;
    if (buffers & PIPE_CLEAR_STENCIL)
       new_clear_bits |= clear_bits_stencil;
-   /* FIXME: when tile status is enabled, this becomes more complex as
-    * we may separately clear the depth from the stencil.  In this case,
-    * we want to resolve the surface, and avoid using the tile status.
-    * We may be better off recording the pending clear operation,
-    * delaying the actual clear to the first use.  This way, we can merge
-    * consecutive clears together. */
-   if (surf->level->ts_size) { /* TS: use precompiled clear command */
+
+   if (surf->level->ts_size && new_clear_bits == 0xffff) {
       /* Set new clear depth value */
       ctx->framebuffer.TS_DEPTH_CLEAR_VALUE = new_clear_value;
       if (VIV_FEATURE(ctx->screen, chipMinorFeatures1, AUTO_DISABLE)) {
@@ -417,12 +412,19 @@ etna_blit_clear_zs_rs(struct pipe_context *pctx, struct pipe_surface *dst,
       etna_resource_level_ts_mark_valid(surf->level);
       ctx->dirty |= ETNA_DIRTY_TS | ETNA_DIRTY_DERIVE_TS;
    } else {
+      /* If the level has valid TS state we need to flush it, as the regular
+       * clear will not update the state and we must therefore invalidate it. */
+      etna_copy_resource(pctx, surf->base.texture, surf->base.texture,
+                         surf->base.u.tex.level, surf->base.u.tex.level);
+
       if (unlikely(new_clear_value != surf->level->clear_value)) { /* Queue normal RS clear for non-TS surfaces */
          /* If clear depth value changed, re-generate stored command */
          etna_rs_gen_clear_surface(ctx, surf, new_clear_value);
       }
       /* Update the channels to be cleared */
       etna_modify_rs_clearbits(&surf->clear_command, new_clear_bits);
+
+      etna_resource_level_ts_mark_invalid(surf->level);
    }
 
    etna_submit_rs_state(ctx, &surf->clear_command);
@@ -711,12 +713,17 @@ etna_try_rs_blit(struct pipe_context *pctx,
       width = align(width, w_align);
 
    if (height & (h_align - 1) && height >= src_lev->height * src_yscale && height >= dst_lev->height) {
-      if (!ctx->screen->specs.single_buffer &&
-          align(height, h_align * ctx->screen->specs.pixel_pipes) <=
-          dst_lev->padded_height * src_yscale)
-         height = align(height, h_align * ctx->screen->specs.pixel_pipes);
-      else
-         height = align(height, h_align);
+      height = align(height, h_align);
+
+      /* Try to increase alignment to multi-pipe requirements to unlock
+       * multi-pipe resolve for increased performance. */
+      if (!ctx->screen->specs.single_buffer) {
+          unsigned int pipe_align = align(height, h_align * ctx->screen->specs.pixel_pipes);
+
+          if (pipe_align <= src_lev->padded_height &&
+              pipe_align <= dst_lev->padded_height * src_yscale)
+             height = pipe_align;
+      }
    }
 
    /* The padded dimensions are in samples */

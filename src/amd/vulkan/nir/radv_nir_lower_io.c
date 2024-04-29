@@ -3,24 +3,7 @@
  * Copyright © 2016 Bas Nieuwenhuizen
  * Copyright © 2023 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "ac_nir.h"
@@ -158,12 +141,12 @@ radv_nir_lower_io_to_mem(struct radv_device *device, struct radv_shader_stage *s
       }
    } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
       NIR_PASS_V(nir, ac_nir_lower_hs_inputs_to_mem, map_input, info->vs.tcs_in_out_eq);
-      NIR_PASS_V(nir, ac_nir_lower_hs_outputs_to_mem, map_output, pdev->info.gfx_level, info->tcs.tes_inputs_read,
-                 info->tcs.tes_patch_inputs_read, info->wave_size, false, false);
+      NIR_PASS_V(nir, ac_nir_lower_hs_outputs_to_mem, radv_map_io_driver_location, pdev->info.gfx_level,
+                 info->tcs.tes_inputs_read, info->tcs.tes_patch_inputs_read, info->wave_size, false, false);
 
       return true;
    } else if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
-      NIR_PASS_V(nir, ac_nir_lower_tes_inputs_to_mem, map_input);
+      NIR_PASS_V(nir, ac_nir_lower_tes_inputs_to_mem, radv_map_io_driver_location);
 
       if (info->tes.as_es) {
          NIR_PASS_V(nir, ac_nir_lower_es_outputs_to_mem, map_output, pdev->info.gfx_level, info->esgs_itemsize);

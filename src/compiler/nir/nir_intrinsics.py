@@ -1457,6 +1457,11 @@ store("tf_r600", [])
 intrinsic("optimization_barrier_vgpr_amd", dest_comp=0, src_comp=[0],
           flags=[CAN_ELIMINATE])
 
+# These are no-op intrinsics used as a simple source and user of SSA defs for testing.
+intrinsic("unit_test_amd", src_comp=[0], indices=[BASE])
+intrinsic("unit_test_uniform_amd", dest_comp=0, indices=[BASE])
+intrinsic("unit_test_divergent_amd", dest_comp=0, indices=[BASE])
+
 # Untyped buffer load/store instructions of arbitrary length.
 # src[] = { descriptor, vector byte offset, scalar byte offset, index offset }
 # The index offset is multiplied by the stride in the descriptor.
@@ -1744,6 +1749,10 @@ intrinsic("cmat_muladd_amd", src_comp=[16, 16, 0], dest_comp=0, bit_sizes=src2,
 
 # Get the debug log buffer descriptor.
 intrinsic("load_debug_log_desc_amd", bit_sizes=[32], dest_comp=4, flags=[CAN_ELIMINATE, CAN_REORDER])
+
+system_value("ray_tracing_stack_base_lvp", 1)
+
+system_value("shader_call_data_offset_lvp", 1)
 
 # V3D-specific instrinc for tile buffer color reads.
 #

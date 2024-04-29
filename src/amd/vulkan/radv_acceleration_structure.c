@@ -1,24 +1,7 @@
 /*
  * Copyright © 2021 Bas Nieuwenhuizen
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "radv_sqtt.h"
@@ -340,6 +323,7 @@ radv_device_finish_accel_struct_build_state(struct radv_device *device)
    dispatch->DestroyPipeline(_device, state->accel_struct_build.lbvh_generate_ir_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.lbvh_main_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.leaf_pipeline, &state->alloc);
+   dispatch->DestroyPipeline(_device, state->accel_struct_build.leaf_updateable_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.encode_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.encode_compact_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.header_pipeline, &state->alloc);

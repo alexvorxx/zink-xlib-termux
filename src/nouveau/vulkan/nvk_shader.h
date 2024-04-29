@@ -46,6 +46,8 @@ enum ENUM_PACKED nvk_cbuf_type {
    NVK_CBUF_TYPE_UBO_DESC,
 };
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_cbuf {
    enum nvk_cbuf_type type;
    uint8_t desc_set;
@@ -53,6 +55,7 @@ struct nvk_cbuf {
    uint8_t _pad;
    uint32_t desc_offset;
 };
+PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct nvk_cbuf) == 8, "This struct has no holes");
 
 struct nvk_cbuf_map {

@@ -520,6 +520,7 @@ vk_video_session_parameters_init(struct vk_device *device,
          return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
 
+      params->h264_enc.profile_idc = vid->h264.profile_idc;
       init_add_h264_enc_session_parameters(params, h264_create->pParametersAddInfo, templ);
       break;
    }

@@ -145,6 +145,7 @@ struct vk_video_session_parameters {
          struct vk_video_h264_sps *h264_sps;
          uint32_t h264_pps_count;
          struct vk_video_h264_pps *h264_pps;
+         StdVideoH264ProfileIdc profile_idc;
       } h264_enc;
 
       struct {

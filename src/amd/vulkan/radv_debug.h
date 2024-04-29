@@ -1,24 +1,7 @@
 /*
  * Copyright © 2017 Google.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef RADV_DEBUG_H
@@ -75,6 +58,7 @@ enum {
    RADV_DEBUG_NO_MESH_SHADER = 1ull << 42,
    RADV_DEBUG_NO_NGG_GS = 1ull << 43,
    RADV_DEBUG_NO_GS_FAST_LAUNCH_2 = 1ull << 44,
+   RADV_DEBUG_NO_ESO = 1ull << 45,
 };
 
 enum {
@@ -92,9 +76,9 @@ enum {
    RADV_PERFTEST_VIDEO_DECODE = 1u << 11,
    RADV_PERFTEST_DMA_SHADERS = 1u << 12,
    RADV_PERFTEST_TRANSFER_QUEUE = 1u << 13,
-   RADV_PERFTEST_SHADER_OBJECT = 1u << 14,
-   RADV_PERFTEST_NIR_CACHE = 1u << 15,
-   RADV_PERFTEST_RT_WAVE_32 = 1u << 16,
+   RADV_PERFTEST_NIR_CACHE = 1u << 14,
+   RADV_PERFTEST_RT_WAVE_32 = 1u << 15,
+   RADV_PERFTEST_VIDEO_ENCODE = 1u << 16,
 };
 
 bool radv_init_trace(struct radv_device *device);

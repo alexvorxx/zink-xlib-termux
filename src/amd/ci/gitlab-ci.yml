@@ -46,7 +46,6 @@ radeonsi-stoney-traces:x86_64:
   variables:
     EGL_PLATFORM: surfaceless
     PIGLIT_TRACES_FILE: traces-amd.yml
-    PIGLIT_REPLAY_DESCRIPTION_FILE: "/install/traces-amd.yml"
     PIGLIT_REPLAY_EXTRA_ARGS: --keep-image
 
 radv-raven-vkcts:x86_64:
@@ -70,12 +69,14 @@ amd-raven-skqp:x86_64:
 
 radv-raven-traces:x86_64:
   extends:
-    - .radv-traces
+    - .lava-piglit-traces:x86_64
     - .radv-raven-test:x86_64
     - .lava-lenovo-TPad-C13-Yoga-zork:x86_64
   variables:
     HWCI_START_XORG: 1
+    PIGLIT_PLATFORM: mixed_glx_egl  # TODO, take wine/VK in account
     PIGLIT_REPLAY_DEVICE_NAME: "vk-${GPU_VERSION}"
+    PIGLIT_TRACES_FILE: traces-amd.yml
 
 radeonsi-raven-piglit-quick_gl:x86_64:
   extends:

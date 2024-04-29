@@ -89,6 +89,7 @@ static const struct dxil_logger default_logger = { .priv = NULL, .log = default_
 
 static const nir_shader_compiler_options
 nir_options = {
+   .compact_arrays = true,
    .lower_ineg = true,
    .lower_fneg = true,
    .lower_ffma16 = true,

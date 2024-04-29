@@ -27,7 +27,12 @@
 
 #include "genxml/gen_macros.h"
 
-#include "panvk_private.h"
+#include "panvk_buffer_view.h"
+#include "panvk_device.h"
+#include "panvk_entrypoints.h"
+#include "panvk_image.h"
+#include "panvk_image_view.h"
+#include "panvk_priv_bo.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -36,18 +41,128 @@
 #include <unistd.h>
 
 #include "util/mesa-sha1.h"
+#include "vk_alloc.h"
 #include "vk_descriptor_update_template.h"
 #include "vk_descriptors.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
-#include "panvk_cs.h"
+#include "panvk_buffer.h"
+#include "panvk_descriptor_set.h"
+#include "panvk_descriptor_set_layout.h"
+#include "panvk_sampler.h"
 
-#define PANVK_DESCRIPTOR_ALIGN 8
+VKAPI_ATTR VkResult VKAPI_CALL
+panvk_per_arch(CreateDescriptorPool)(
+   VkDevice _device, const VkDescriptorPoolCreateInfo *pCreateInfo,
+   const VkAllocationCallbacks *pAllocator, VkDescriptorPool *pDescriptorPool)
+{
+   VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_descriptor_pool *pool;
 
-struct panvk_bview_desc {
-   uint32_t elems;
-};
+   pool = vk_object_zalloc(&device->vk, pAllocator,
+                           sizeof(struct panvk_descriptor_pool),
+                           VK_OBJECT_TYPE_DESCRIPTOR_POOL);
+   if (!pool)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   pool->max.sets = pCreateInfo->maxSets;
+
+   for (unsigned i = 0; i < pCreateInfo->poolSizeCount; ++i) {
+      unsigned desc_count = pCreateInfo->pPoolSizes[i].descriptorCount;
+
+      switch (pCreateInfo->pPoolSizes[i].type) {
+      case VK_DESCRIPTOR_TYPE_SAMPLER:
+         pool->max.samplers += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+         pool->max.combined_image_samplers += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+         pool->max.sampled_images += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+         pool->max.storage_images += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+         pool->max.uniform_texel_bufs += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+         pool->max.storage_texel_bufs += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+         pool->max.input_attachments += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+         pool->max.uniform_bufs += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+         pool->max.storage_bufs += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+         pool->max.uniform_dyn_bufs += desc_count;
+         break;
+      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+         pool->max.storage_dyn_bufs += desc_count;
+         break;
+      default:
+         unreachable("Invalid descriptor type");
+      }
+   }
+
+   *pDescriptorPool = panvk_descriptor_pool_to_handle(pool);
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(DestroyDescriptorPool)(VkDevice _device, VkDescriptorPool _pool,
+                                      const VkAllocationCallbacks *pAllocator)
+{
+   VK_FROM_HANDLE(panvk_device, device, _device);
+   VK_FROM_HANDLE(panvk_descriptor_pool, pool, _pool);
+
+   if (pool)
+      vk_object_free(&device->vk, pAllocator, pool);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+panvk_per_arch(ResetDescriptorPool)(VkDevice _device, VkDescriptorPool _pool,
+                                    VkDescriptorPoolResetFlags flags)
+{
+   VK_FROM_HANDLE(panvk_descriptor_pool, pool, _pool);
+   memset(&pool->cur, 0, sizeof(pool->cur));
+   return VK_SUCCESS;
+}
+
+static void
+panvk_descriptor_set_destroy(struct panvk_device *device,
+                             struct panvk_descriptor_pool *pool,
+                             struct panvk_descriptor_set *set)
+{
+   if (set->desc_bo)
+      panvk_priv_bo_destroy(set->desc_bo, NULL);
+
+   vk_object_free(&device->vk, NULL, set);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+panvk_per_arch(FreeDescriptorSets)(VkDevice _device,
+                                   VkDescriptorPool descriptorPool,
+                                   uint32_t count,
+                                   const VkDescriptorSet *pDescriptorSets)
+{
+   VK_FROM_HANDLE(panvk_device, device, _device);
+   VK_FROM_HANDLE(panvk_descriptor_pool, pool, descriptorPool);
+
+   for (unsigned i = 0; i < count; i++) {
+      VK_FROM_HANDLE(panvk_descriptor_set, set, pDescriptorSets[i]);
+
+      if (set)
+         panvk_descriptor_set_destroy(device, pool, set);
+   }
+   return VK_SUCCESS;
+}
 
 static void
 panvk_fill_bview_desc(struct panvk_bview_desc *desc,
@@ -55,14 +170,6 @@ panvk_fill_bview_desc(struct panvk_bview_desc *desc,
 {
    desc->elems = view->vk.elements;
 }
-
-struct panvk_image_desc {
-   uint16_t width;
-   uint16_t height;
-   uint16_t depth;
-   uint8_t levels;
-   uint8_t samples;
-};
 
 static void
 panvk_fill_image_desc(struct panvk_image_desc *desc,
@@ -79,151 +186,6 @@ panvk_fill_image_desc(struct panvk_image_desc *desc,
       desc->height = view->vk.layer_count - 1;
    else if (view->vk.image->image_type == VK_IMAGE_TYPE_2D)
       desc->depth = view->vk.layer_count - 1;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_per_arch(CreateDescriptorSetLayout)(
-   VkDevice _device, const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
-   const VkAllocationCallbacks *pAllocator, VkDescriptorSetLayout *pSetLayout)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   struct panvk_descriptor_set_layout *set_layout;
-   VkDescriptorSetLayoutBinding *bindings = NULL;
-   unsigned num_bindings = 0;
-   VkResult result;
-
-   if (pCreateInfo->bindingCount) {
-      result = vk_create_sorted_bindings(pCreateInfo->pBindings,
-                                         pCreateInfo->bindingCount, &bindings);
-      if (result != VK_SUCCESS)
-         return vk_error(device, result);
-
-      num_bindings = bindings[pCreateInfo->bindingCount - 1].binding + 1;
-   }
-
-   unsigned num_immutable_samplers = 0;
-   for (unsigned i = 0; i < pCreateInfo->bindingCount; i++) {
-      if (bindings[i].pImmutableSamplers)
-         num_immutable_samplers += bindings[i].descriptorCount;
-   }
-
-   size_t size =
-      sizeof(*set_layout) +
-      (sizeof(struct panvk_descriptor_set_binding_layout) * num_bindings) +
-      (sizeof(struct panvk_sampler *) * num_immutable_samplers);
-   set_layout = vk_descriptor_set_layout_zalloc(&device->vk, size);
-   if (!set_layout) {
-      result = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto err_free_bindings;
-   }
-
-   struct panvk_sampler **immutable_samplers =
-      (struct panvk_sampler **)((uint8_t *)set_layout + sizeof(*set_layout) +
-                                (sizeof(
-                                    struct panvk_descriptor_set_binding_layout) *
-                                 num_bindings));
-
-   set_layout->binding_count = num_bindings;
-
-   unsigned sampler_idx = 0, tex_idx = 0, ubo_idx = 0;
-   unsigned dyn_ubo_idx = 0, dyn_ssbo_idx = 0, img_idx = 0;
-   uint32_t desc_ubo_size = 0;
-
-   for (unsigned i = 0; i < pCreateInfo->bindingCount; i++) {
-      const VkDescriptorSetLayoutBinding *binding = &bindings[i];
-      struct panvk_descriptor_set_binding_layout *binding_layout =
-         &set_layout->bindings[binding->binding];
-
-      binding_layout->type = binding->descriptorType;
-      binding_layout->array_size = binding->descriptorCount;
-      binding_layout->shader_stages = binding->stageFlags;
-      binding_layout->desc_ubo_stride = 0;
-      if (binding->pImmutableSamplers) {
-         binding_layout->immutable_samplers = immutable_samplers;
-         immutable_samplers += binding_layout->array_size;
-         for (unsigned j = 0; j < binding_layout->array_size; j++) {
-            VK_FROM_HANDLE(panvk_sampler, sampler,
-                           binding->pImmutableSamplers[j]);
-            binding_layout->immutable_samplers[j] = sampler;
-         }
-      }
-
-      switch (binding_layout->type) {
-      case VK_DESCRIPTOR_TYPE_SAMPLER:
-         binding_layout->sampler_idx = sampler_idx;
-         sampler_idx += binding_layout->array_size;
-         break;
-      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-         binding_layout->sampler_idx = sampler_idx;
-         binding_layout->tex_idx = tex_idx;
-         sampler_idx += binding_layout->array_size;
-         tex_idx += binding_layout->array_size;
-         binding_layout->desc_ubo_stride = sizeof(struct panvk_image_desc);
-         break;
-      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-         binding_layout->tex_idx = tex_idx;
-         tex_idx += binding_layout->array_size;
-         binding_layout->desc_ubo_stride = sizeof(struct panvk_image_desc);
-         break;
-      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-         binding_layout->tex_idx = tex_idx;
-         tex_idx += binding_layout->array_size;
-         binding_layout->desc_ubo_stride = sizeof(struct panvk_bview_desc);
-         break;
-      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-         binding_layout->dyn_ubo_idx = dyn_ubo_idx;
-         dyn_ubo_idx += binding_layout->array_size;
-         break;
-      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-         binding_layout->ubo_idx = ubo_idx;
-         ubo_idx += binding_layout->array_size;
-         break;
-      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-         binding_layout->dyn_ssbo_idx = dyn_ssbo_idx;
-         dyn_ssbo_idx += binding_layout->array_size;
-         break;
-      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-         binding_layout->desc_ubo_stride = sizeof(struct panvk_ssbo_addr);
-         break;
-      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-         binding_layout->img_idx = img_idx;
-         img_idx += binding_layout->array_size;
-         binding_layout->desc_ubo_stride = sizeof(struct panvk_image_desc);
-         break;
-      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-         binding_layout->img_idx = img_idx;
-         img_idx += binding_layout->array_size;
-         binding_layout->desc_ubo_stride = sizeof(struct panvk_bview_desc);
-         break;
-      default:
-         unreachable("Invalid descriptor type");
-      }
-
-      desc_ubo_size = ALIGN_POT(desc_ubo_size, PANVK_DESCRIPTOR_ALIGN);
-      binding_layout->desc_ubo_offset = desc_ubo_size;
-      desc_ubo_size +=
-         binding_layout->desc_ubo_stride * binding_layout->array_size;
-   }
-
-   set_layout->desc_ubo_size = desc_ubo_size;
-   if (desc_ubo_size > 0)
-      set_layout->desc_ubo_index = ubo_idx++;
-
-   set_layout->num_samplers = sampler_idx;
-   set_layout->num_textures = tex_idx;
-   set_layout->num_ubos = ubo_idx;
-   set_layout->num_dyn_ubos = dyn_ubo_idx;
-   set_layout->num_dyn_ssbos = dyn_ssbo_idx;
-   set_layout->num_imgs = img_idx;
-
-   free(bindings);
-   *pSetLayout = panvk_descriptor_set_layout_to_handle(set_layout);
-   return VK_SUCCESS;
-
-err_free_bindings:
-   free(bindings);
-   return vk_error(device, result);
 }
 
 static void panvk_write_sampler_desc_raw(struct panvk_descriptor_set *set,
@@ -302,8 +264,10 @@ panvk_per_arch(descriptor_set_create)(
 
       struct mali_uniform_buffer_packed *ubos = set->ubos;
 
-      panvk_per_arch(emit_ubo)(set->desc_bo->addr.dev, layout->desc_ubo_size,
-                               &ubos[layout->desc_ubo_index]);
+      pan_pack(&ubos[layout->desc_ubo_index], UNIFORM_BUFFER, cfg) {
+         cfg.pointer = set->desc_bo->addr.dev;
+         cfg.entries = DIV_ROUND_UP(layout->desc_ubo_size, 16);
+      }
    }
 
    for (unsigned i = 0; i < layout->binding_count; i++) {
@@ -443,7 +407,7 @@ panvk_write_tex_desc(struct panvk_descriptor_set *set, uint32_t binding,
 {
    VK_FROM_HANDLE(panvk_image_view, view, pImageInfo->imageView);
 
-   memcpy(panvk_tex_desc(set, binding, elem), view->descs.tex,
+   memcpy(panvk_tex_desc(set, binding, elem), view->descs.tex.opaque,
           pan_size(TEXTURE));
 
    panvk_fill_image_desc(panvk_desc_ubo_data(set, binding, elem), view);
@@ -466,7 +430,7 @@ panvk_write_tex_buf_desc(struct panvk_descriptor_set *set, uint32_t binding,
 {
    VK_FROM_HANDLE(panvk_buffer_view, view, bufferView);
 
-   memcpy(panvk_tex_desc(set, binding, elem), view->descs.tex,
+   memcpy(panvk_tex_desc(set, binding, elem), view->descs.tex.opaque,
           pan_size(TEXTURE));
 
    panvk_fill_bview_desc(panvk_desc_ubo_data(set, binding, elem), view);
@@ -558,7 +522,10 @@ panvk_write_ubo_desc(struct panvk_descriptor_set *set, uint32_t binding,
    size_t size =
       panvk_buffer_range(buffer, pBufferInfo->offset, pBufferInfo->range);
 
-   panvk_per_arch(emit_ubo)(ptr, size, panvk_ubo_desc(set, binding, elem));
+   pan_pack(panvk_ubo_desc(set, binding, elem), UNIFORM_BUFFER, cfg) {
+      cfg.pointer = ptr;
+      cfg.entries = DIV_ROUND_UP(size, 16);
+   }
 }
 
 static void

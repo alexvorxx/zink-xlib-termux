@@ -204,6 +204,8 @@ void genX(cmd_buffer_dispatch_kernel)(struct anv_cmd_buffer *cmd_buffer,
                                       uint32_t arg_count,
                                       const struct anv_kernel_arg *args);
 
+void genX(blorp_init_dynamic_states)(struct blorp_context *context);
+
 void genX(blorp_exec)(struct blorp_batch *batch,
                       const struct blorp_params *params);
 

@@ -35,17 +35,16 @@ panvk_entrypoints = custom_target(
 )
 
 libpanvk_files = files(
-  'panvk_cmd_buffer.c',
-  'panvk_cs.c',
-  'panvk_device.c',
-  'panvk_descriptor_set.c',
-  'panvk_formats.c',
+  'panvk_buffer.c',
+  'panvk_cmd_pool.c',
+  'panvk_device_memory.c',
+  'panvk_event.c',
   'panvk_image.c',
+  'panvk_instance.c',
   'panvk_mempool.c',
-  'panvk_pipeline.c',
-  'panvk_private.h',
+  'panvk_physical_device.c',
+  'panvk_priv_bo.c',
   'panvk_query.c',
-  'panvk_shader.c',
   'panvk_wsi.c',
 )
 
@@ -58,17 +57,21 @@ foreach arch : ['6', '7']
     'panvk_v@0@'.format(arch),
     [
       panvk_entrypoints[0],
+      'panvk_vX_buffer_view.c',
       'panvk_vX_cmd_buffer.c',
-      'panvk_vX_cs.c',
       'panvk_vX_descriptor_set.c',
+      'panvk_vX_descriptor_set_layout.c',
       'panvk_vX_device.c',
-      'panvk_vX_image.c',
+      'panvk_vX_image_view.c',
       'panvk_vX_meta.c',
       'panvk_vX_meta_blit.c',
       'panvk_vX_meta_copy.c',
       'panvk_vX_meta_clear.c',
       'panvk_vX_nir_lower_descriptors.c',
       'panvk_vX_pipeline.c',
+      'panvk_vX_pipeline_layout.c',
+      'panvk_vX_queue.c',
+      'panvk_vX_sampler.c',
       'panvk_vX_shader.c',
     ],
     include_directories : [

@@ -37,6 +37,7 @@
 #include "util/u_atomic.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_formats.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
@@ -51,7 +52,6 @@
 #include "ac_shader_util.h"
 #include "aco_interface.h"
 #include "sid.h"
-#include "vk_format.h"
 
 struct radv_blend_state {
    uint32_t spi_shader_col_format;

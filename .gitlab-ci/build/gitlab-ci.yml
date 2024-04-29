@@ -76,7 +76,7 @@ debian-testing:
       -D gallium-nine=true
       -D gallium-va=enabled
       -D gallium-rusticl=true
-    GALLIUM_DRIVERS: "swrast,virgl,radeonsi,zink,crocus,iris,i915,r300"
+    GALLIUM_DRIVERS: "swrast,virgl,radeonsi,zink,crocus,iris,i915,r300,svga"
     VULKAN_DRIVERS: "swrast,amd,intel,intel_hasvk,virtio,nouveau"
     BUILDTYPE: "debugoptimized"
     EXTRA_OPTION: >

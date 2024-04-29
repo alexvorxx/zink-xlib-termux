@@ -448,10 +448,10 @@ bool
 parse_wait_instr(wait_ctx& ctx, wait_imm& imm, Instruction* instr)
 {
    if (instr->opcode == aco_opcode::s_waitcnt_vscnt && instr->operands[0].physReg() == sgpr_null) {
-      imm.vs = std::min<uint8_t>(imm.vs, instr->sopk().imm);
+      imm.vs = std::min<uint8_t>(imm.vs, instr->salu().imm);
       return true;
    } else if (instr->opcode == aco_opcode::s_waitcnt) {
-      imm.combine(wait_imm(ctx.gfx_level, instr->sopp().imm));
+      imm.combine(wait_imm(ctx.gfx_level, instr->salu().imm));
       return true;
    }
    return false;
@@ -463,7 +463,7 @@ parse_delay_alu(wait_ctx& ctx, alu_delay_info& delay, Instruction* instr)
    if (instr->opcode != aco_opcode::s_delay_alu)
       return false;
 
-   unsigned imm[2] = {instr->sopp().imm & 0xf, (instr->sopp().imm >> 7) & 0xf};
+   unsigned imm[2] = {instr->salu().imm & 0xf, (instr->salu().imm >> 7) & 0xf};
    for (unsigned i = 0; i < 2; ++i) {
       alu_delay_wait wait = (alu_delay_wait)imm[i];
       if (wait >= alu_delay_wait::VALU_DEP_1 && wait <= alu_delay_wait::VALU_DEP_4)
@@ -570,7 +570,7 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
    if (ctx.program->has_pops_overlapped_waves_wait &&
        (ctx.gfx_level >= GFX11 ? instr->isEXP() && instr->exp().done
                                : (instr->opcode == aco_opcode::s_sendmsg &&
-                                  instr->sopp().imm == sendmsg_ordered_ps_done))) {
+                                  instr->salu().imm == sendmsg_ordered_ps_done))) {
       if (ctx.vm_nonzero)
          imm.vm = 0;
       if (ctx.gfx_level >= GFX10 && ctx.vs_nonzero)
@@ -993,18 +993,15 @@ emit_waitcnt(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions, wai
 {
    if (imm.vs != wait_imm::unset_counter) {
       assert(ctx.gfx_level >= GFX10);
-      SOPK_instruction* waitcnt_vs =
-         create_instruction<SOPK_instruction>(aco_opcode::s_waitcnt_vscnt, Format::SOPK, 1, 0);
+      Instruction* waitcnt_vs = create_instruction(aco_opcode::s_waitcnt_vscnt, Format::SOPK, 1, 0);
       waitcnt_vs->operands[0] = Operand(sgpr_null, s1);
-      waitcnt_vs->imm = imm.vs;
+      waitcnt_vs->salu().imm = imm.vs;
       instructions.emplace_back(waitcnt_vs);
       imm.vs = wait_imm::unset_counter;
    }
    if (!imm.empty()) {
-      SOPP_instruction* waitcnt =
-         create_instruction<SOPP_instruction>(aco_opcode::s_waitcnt, Format::SOPP, 0, 0);
-      waitcnt->imm = imm.pack(ctx.gfx_level);
-      waitcnt->block = -1;
+      Instruction* waitcnt = create_instruction(aco_opcode::s_waitcnt, Format::SOPP, 0, 0);
+      waitcnt->salu().imm = imm.pack(ctx.gfx_level);
       instructions.emplace_back(waitcnt);
    }
    imm = wait_imm();
@@ -1031,10 +1028,8 @@ emit_delay_alu(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions,
       imm |= ((uint32_t)alu_delay_wait::SALU_CYCLE_1 + cycles - 1) << (imm ? 7 : 0);
    }
 
-   SOPP_instruction* inst =
-      create_instruction<SOPP_instruction>(aco_opcode::s_delay_alu, Format::SOPP, 0, 0);
-   inst->imm = imm;
-   inst->block = -1;
+   Instruction* inst = create_instruction(aco_opcode::s_delay_alu, Format::SOPP, 0, 0);
+   inst->salu().imm = imm;
    inst->pass_flags = (delay.valu_cycles | (delay.trans_cycles << 16));
    instructions.emplace_back(inst);
    delay = alu_delay_info();
@@ -1178,7 +1173,7 @@ insert_wait_states(Program* program)
                continue;
             }
 
-            uint16_t imm = instr->sopp().imm;
+            uint16_t imm = instr->salu().imm;
             int skip = i - prev_delay_alu - 1;
             if (imm >> 7 || prev_delay_alu < 0 || skip >= 6) {
                if (imm >> 7 == 0)
@@ -1187,7 +1182,7 @@ insert_wait_states(Program* program)
                continue;
             }
 
-            block.instructions[prev_delay_alu]->sopp().imm |= (skip << 4) | (imm << 7);
+            block.instructions[prev_delay_alu]->salu().imm |= (skip << 4) | (imm << 7);
             prev_delay_alu = -1;
          }
          block.instructions.resize(i);

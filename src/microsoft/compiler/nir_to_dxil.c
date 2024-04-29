@@ -1316,44 +1316,6 @@ emit_srv(struct ntd_context *ctx, nir_variable *var, unsigned count)
 }
 
 static bool
-emit_globals(struct ntd_context *ctx, unsigned size)
-{
-   nir_foreach_variable_with_modes(var, ctx->shader, nir_var_mem_ssbo)
-      size++;
-
-   if (!size)
-      return true;
-
-   const struct dxil_type *struct_type = dxil_module_get_res_type(&ctx->mod,
-      DXIL_RESOURCE_KIND_RAW_BUFFER, DXIL_COMP_TYPE_INVALID, 1, true /* readwrite */);
-   if (!struct_type)
-      return false;
-
-   const struct dxil_type *array_type =
-      dxil_module_get_array_type(&ctx->mod, struct_type, size);
-   if (!array_type)
-      return false;
-
-   resource_array_layout layout = {0, 0, size, 0};
-   const struct dxil_mdnode *uav_meta =
-      emit_uav_metadata(&ctx->mod, array_type,
-                                   "globals", &layout,
-                                   DXIL_COMP_TYPE_INVALID,
-                                   DXIL_RESOURCE_KIND_RAW_BUFFER, 0);
-   if (!uav_meta)
-      return false;
-
-   util_dynarray_append(&ctx->uav_metadata_nodes, const struct dxil_mdnode *, uav_meta);
-   if (ctx->mod.minor_validator < 6 &&
-       util_dynarray_num_elements(&ctx->uav_metadata_nodes, const struct dxil_mdnode *) > 8)
-      ctx->mod.feats.use_64uavs = 1;
-   /* Handles to UAVs used for kernel globals are created on-demand */
-   add_resource(ctx, DXIL_RES_UAV_RAW, DXIL_RESOURCE_KIND_RAW_BUFFER, &layout);
-   ctx->mod.raw_and_structured_buffers = true;
-   return true;
-}
-
-static bool
 emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned count,
          enum dxil_component_type comp_type, unsigned num_comps, enum dxil_resource_kind res_kind,
          enum gl_access_qualifier access, const char *name)
@@ -1380,6 +1342,21 @@ emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned cou
    if (ctx->mod.shader_kind != DXIL_PIXEL_SHADER &&
        ctx->mod.shader_kind != DXIL_COMPUTE_SHADER)
       ctx->mod.feats.uavs_at_every_stage = true;
+
+   return true;
+}
+
+static bool
+emit_globals(struct ntd_context *ctx, unsigned size)
+{
+   nir_foreach_variable_with_modes(var, ctx->shader, nir_var_mem_ssbo)
+      size++;
+
+   if (!size)
+      return true;
+
+   if (!emit_uav(ctx, 0, 0, size, DXIL_COMP_TYPE_INVALID, 1, DXIL_RESOURCE_KIND_RAW_BUFFER, 0, "globals"))
+      return false;
 
    return true;
 }
@@ -3328,39 +3305,39 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
 {
    /* This source might be one of:
     * 1. Constant resource index - just look it up in precomputed handle arrays
-    *    If it's null in that array, create a handle, and store the result
+    *    If it's null in that array, create a handle
     * 2. A handle from load_vulkan_descriptor - just get the stored SSA value
     * 3. Dynamic resource index - create a handle for it here
     */
    assert(src->ssa->num_components == 1 && src->ssa->bit_size == 32);
    nir_const_value *const_block_index = nir_src_as_const_value(*src);
-   const struct dxil_value **handle_entry = NULL;
+   const struct dxil_value *handle_entry = NULL;
    if (const_block_index) {
       assert(ctx->opts->environment != DXIL_ENVIRONMENT_VULKAN);
       switch (kind) {
       case DXIL_RESOURCE_KIND_CBUFFER:
-         handle_entry = &ctx->cbv_handles[const_block_index->u32];
+         handle_entry = ctx->cbv_handles[const_block_index->u32];
          break;
       case DXIL_RESOURCE_KIND_RAW_BUFFER:
          if (class == DXIL_RESOURCE_CLASS_UAV)
-            handle_entry = &ctx->ssbo_handles[const_block_index->u32];
+            handle_entry = ctx->ssbo_handles[const_block_index->u32];
          else
-            handle_entry = &ctx->srv_handles[const_block_index->u32];
+            handle_entry = ctx->srv_handles[const_block_index->u32];
          break;
       case DXIL_RESOURCE_KIND_SAMPLER:
-         handle_entry = &ctx->sampler_handles[const_block_index->u32];
+         handle_entry = ctx->sampler_handles[const_block_index->u32];
          break;
       default:
          if (class == DXIL_RESOURCE_CLASS_UAV)
-            handle_entry = &ctx->image_handles[const_block_index->u32];
+            handle_entry = ctx->image_handles[const_block_index->u32];
          else
-            handle_entry = &ctx->srv_handles[const_block_index->u32];
+            handle_entry = ctx->srv_handles[const_block_index->u32];
          break;
       }
    }
 
-   if (handle_entry && *handle_entry)
-      return *handle_entry;
+   if (handle_entry)
+      return handle_entry;
 
    if (nir_src_as_deref(*src) ||
        ctx->opts->environment == DXIL_ENVIRONMENT_VULKAN) {
@@ -3380,7 +3357,7 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
     * up in this type of dynamic indexing are:
     * 1. GL UBOs
     * 2. GL SSBOs
-    * 2. CL SSBOs
+    * 3. CL SSBOs
     * In all cases except GL UBOs, the resources are a single zero-based array.
     * In that case, the base is 1, because uniforms use 0 and cannot by dynamically
     * indexed. All other cases should either fall into static indexing (first early return),
@@ -3395,8 +3372,6 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
    const struct dxil_value *value = get_src(ctx, src, 0, nir_type_uint);
    const struct dxil_value *handle = emit_createhandle_call_dynamic(ctx, class,
       space, base_binding, value, !const_block_index);
-   if (handle_entry)
-      *handle_entry = handle;
 
    return handle;
 }

@@ -131,44 +131,6 @@ brw_fs_lower_load_payload(fs_visitor &s)
 }
 
 bool
-brw_fs_lower_minmax(fs_visitor &s)
-{
-   assert(s.devinfo->ver < 6);
-
-   bool progress = false;
-
-   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
-      const fs_builder ibld(&s, block, inst);
-
-      if (inst->opcode == BRW_OPCODE_SEL &&
-          inst->predicate == BRW_PREDICATE_NONE) {
-         /* If src1 is an immediate value that is not NaN, then it can't be
-          * NaN.  In that case, emit CMP because it is much better for cmod
-          * propagation.  Likewise if src1 is not float.  Gfx4 and Gfx5 don't
-          * support HF or DF, so it is not necessary to check for those.
-          */
-         if (inst->src[1].type != BRW_REGISTER_TYPE_F ||
-             (inst->src[1].file == IMM && !isnan(inst->src[1].f))) {
-            ibld.CMP(ibld.null_reg_d(), inst->src[0], inst->src[1],
-                     inst->conditional_mod);
-         } else {
-            ibld.CMPN(ibld.null_reg_d(), inst->src[0], inst->src[1],
-                      inst->conditional_mod);
-         }
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         inst->conditional_mod = BRW_CONDITIONAL_NONE;
-
-         progress = true;
-      }
-   }
-
-   if (progress)
-      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
-
-   return progress;
-}
-
-bool
 brw_fs_lower_sub_sat(fs_visitor &s)
 {
    bool progress = false;

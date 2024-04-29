@@ -6,35 +6,19 @@
  * Copyright © 2016 Bas Nieuwenhuizen
  * Copyright © 2015 Intel Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
-#include "genxml/gen_macros.h"
-#include "panvk_private.h"
-
-#include "drm-uapi/drm_fourcc.h"
-#include "util/u_atomic.h"
-#include "util/u_debug.h"
 #include "vk_format.h"
-#include "vk_object.h"
-#include "vk_util.h"
+#include "vk_log.h"
+
+#include "panvk_device.h"
+#include "panvk_entrypoints.h"
+#include "panvk_image.h"
+#include "panvk_image_view.h"
+#include "panvk_priv_bo.h"
+
+#include "genxml/gen_macros.h"
 
 static enum mali_texture_dimension
 panvk_view_type_to_mali_tex_dim(VkImageViewType type)
@@ -121,18 +105,15 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
       view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 
-      STATIC_ASSERT(sizeof(view->descs.tex) >= pan_size(TEXTURE));
-
       struct panfrost_ptr ptr = {
          .gpu = view->bo->addr.dev,
          .cpu = view->bo->addr.host,
       };
 
-      GENX(panfrost_new_texture)(&view->pview, &view->descs.tex, &ptr);
+      GENX(panfrost_new_texture)(&view->pview, view->descs.tex.opaque, &ptr);
    }
 
    if (view->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-      uint8_t *attrib_buf = (uint8_t *)view->descs.img_attrib_buf;
       bool is_3d = image->pimage.layout.dim == MALI_TEXTURE_DIMENSION_3D;
       unsigned offset = image->pimage.data.offset;
       offset +=
@@ -140,7 +121,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
                                  is_3d ? 0 : view->pview.first_layer,
                                  is_3d ? view->pview.first_layer : 0);
 
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER, cfg) {
+      pan_pack(view->descs.img_attrib_buf[0].opaque, ATTRIBUTE_BUFFER, cfg) {
          cfg.type = image->pimage.layout.modifier == DRM_FORMAT_MOD_LINEAR
                        ? MALI_ATTRIBUTE_TYPE_3D_LINEAR
                        : MALI_ATTRIBUTE_TYPE_3D_INTERLEAVED;
@@ -149,8 +130,8 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
          cfg.size = pan_kmod_bo_size(image->bo) - offset;
       }
 
-      attrib_buf += pan_size(ATTRIBUTE_BUFFER);
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
+      pan_pack(view->descs.img_attrib_buf[1].opaque,
+               ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
          unsigned level = view->pview.first_level;
 
          cfg.s_dimension = u_minify(image->pimage.layout.width, level);
@@ -171,72 +152,16 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
    return VK_SUCCESS;
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_per_arch(CreateBufferView)(VkDevice _device,
-                                 const VkBufferViewCreateInfo *pCreateInfo,
-                                 const VkAllocationCallbacks *pAllocator,
-                                 VkBufferView *pView)
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(DestroyImageView)(VkDevice _device, VkImageView _view,
+                                 const VkAllocationCallbacks *pAllocator)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_buffer, buffer, pCreateInfo->buffer);
-
-   struct panvk_buffer_view *view = vk_object_zalloc(
-      &device->vk, pAllocator, sizeof(*view), VK_OBJECT_TYPE_BUFFER_VIEW);
+   VK_FROM_HANDLE(panvk_image_view, view, _view);
 
    if (!view)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return;
 
-   vk_buffer_view_init(&device->vk, &view->vk, pCreateInfo);
-
-   enum pipe_format pfmt = vk_format_to_pipe_format(view->vk.format);
-
-   mali_ptr address = panvk_buffer_gpu_ptr(buffer, pCreateInfo->offset);
-   unsigned blksz = vk_format_get_blocksize(pCreateInfo->format);
-
-   assert(!(address & 63));
-
-   if (buffer->vk.usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) {
-      unsigned bo_size = pan_size(SURFACE_WITH_STRIDE);
-      view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
-                                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-
-      pan_pack(view->bo->addr.host, SURFACE_WITH_STRIDE, cfg) {
-         cfg.pointer = address;
-      }
-
-      pan_pack(view->descs.tex, TEXTURE, cfg) {
-         cfg.dimension = MALI_TEXTURE_DIMENSION_1D;
-         cfg.format = GENX(panfrost_format_from_pipe_format)(pfmt)->hw;
-         cfg.width = view->vk.elements;
-         cfg.depth = cfg.height = 1;
-         cfg.swizzle = PAN_V6_SWIZZLE(R, G, B, A);
-         cfg.texel_ordering = MALI_TEXTURE_LAYOUT_LINEAR;
-         cfg.levels = 1;
-         cfg.array_size = 1;
-         cfg.surfaces = view->bo->addr.dev;
-         cfg.maximum_lod = cfg.minimum_lod = 0;
-      }
-   }
-
-   if (buffer->vk.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
-      uint8_t *attrib_buf = (uint8_t *)view->descs.img_attrib_buf;
-
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER, cfg) {
-         cfg.type = MALI_ATTRIBUTE_TYPE_3D_LINEAR;
-         cfg.pointer = address;
-         cfg.stride = blksz;
-         cfg.size = view->vk.elements * blksz;
-      }
-
-      attrib_buf += pan_size(ATTRIBUTE_BUFFER);
-      pan_pack(attrib_buf, ATTRIBUTE_BUFFER_CONTINUATION_3D, cfg) {
-         cfg.s_dimension = view->vk.elements;
-         cfg.t_dimension = 1;
-         cfg.r_dimension = 1;
-         cfg.row_stride = view->vk.elements * blksz;
-      }
-   }
-
-   *pView = panvk_buffer_view_to_handle(view);
-   return VK_SUCCESS;
+   panvk_priv_bo_destroy(view->bo, NULL);
+   vk_image_view_destroy(&device->vk, pAllocator, &view->vk);
 }

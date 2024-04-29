@@ -1,3 +1,4 @@
+dEQP-VK.draw.dynamic_rendering.primary_cmd_buff.multiple_interpolation.structured.no_sample_decoration.4_samples
 dEQP-VK.image.swapchain_mutable.wayland.2d.r8g8b8a8_srgb_r8g8b8a8_unorm_draw_copy_format_list
 dEQP-VK.image.swapchain_mutable.wayland.2d_array.b8g8r8a8_unorm_r8g8b8a8_srgb_draw_copy_format_list
 dEQP-VK.memory.pipeline_barrier.transfer_dst_uniform_texel_buffer.1024
@@ -13,8 +14,11 @@ dEQP-VK.wsi.xcb.maintenance1.present_fence.mailbox.mult_swapchain_ordering
 dEQP-VK.wsi.xcb.maintenance1.present_fence.mailbox.multi_swapchain
 dEQP-VK.wsi.xcb.maintenance1.scaling.continuous.one_to_one.min_min.swapchain_bigger_wider_aspect
 dEQP-VK.wsi.xcb.maintenance1.scaling.demand.aspect_stretch.min_max.swapchain_bigger_taller_aspect
+dEQP-VK.wsi.xcb.maintenance1.scaling.immediate.one_to_one.max_max.swapchain_smaller_taller_aspect
 dEQP-VK.wsi.xcb.maintenance1.scaling.resize_window.continuous.one_to_one.min_max.swapchain_smaller_same_aspect
+dEQP-VK.wsi.xcb.maintenance1.scaling.resize_window.demand.one_to_one.min_min.swapchain_bigger_wider_aspect
 dEQP-VK.wsi.xcb.maintenance1.scaling.resize_window.fifo_relaxed.aspect_stretch.center_max.swapchain_smaller_taller_aspect
+dEQP-VK.wsi.xcb.swapchain.simulate_oom.image_extent
 
 dEQP-VK.wsi.(xcb|xlib).maintenance1.present_modes.fifo_relaxed.change_modes_with_deferred_alloc
 dEQP-VK.wsi.(xcb|xlib).maintenance1.present_modes.fifo_relaxed.query

@@ -270,10 +270,9 @@ brw_fs_opt_split_sends(fs_visitor &s)
 
    foreach_block_and_inst(block, fs_inst, send, s.cfg) {
       if (send->opcode != SHADER_OPCODE_SEND ||
-          send->mlen <= reg_unit(s.devinfo) || send->ex_mlen > 0)
+          send->mlen <= reg_unit(s.devinfo) || send->ex_mlen > 0 ||
+          send->src[2].file != VGRF)
          continue;
-
-      assert(send->src[2].file == VGRF);
 
       /* Currently don't split sends that reuse a previously used payload. */
       fs_inst *lp = (fs_inst *) send->prev;

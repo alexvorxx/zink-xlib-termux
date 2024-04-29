@@ -312,6 +312,10 @@ typedef struct rvcn_enc_rate_ctl_layer_init_s {
 } rvcn_enc_rate_ctl_layer_init_t;
 
 typedef struct rvcn_enc_rate_ctl_per_picture_s {
+   uint32_t qp_obs;
+   uint32_t min_qp_app_obs;
+   uint32_t max_qp_app_obs;
+   uint32_t max_au_size_obs;
    uint32_t qp_i;
    uint32_t qp_p;
    uint32_t qp_b;

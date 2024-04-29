@@ -939,11 +939,7 @@ private:
 struct Block;
 struct Instruction;
 struct Pseudo_instruction;
-struct SOP1_instruction;
-struct SOP2_instruction;
-struct SOPK_instruction;
-struct SOPP_instruction;
-struct SOPC_instruction;
+struct SALU_instruction;
 struct SMEM_instruction;
 struct DS_instruction;
 struct LDSDIR_instruction;
@@ -1002,61 +998,13 @@ struct Instruction {
       return *(Pseudo_instruction*)this;
    }
    constexpr bool isPseudo() const noexcept { return format == Format::PSEUDO; }
-   SOP1_instruction& sop1() noexcept
-   {
-      assert(isSOP1());
-      return *(SOP1_instruction*)this;
-   }
-   const SOP1_instruction& sop1() const noexcept
-   {
-      assert(isSOP1());
-      return *(SOP1_instruction*)this;
-   }
+
    constexpr bool isSOP1() const noexcept { return format == Format::SOP1; }
-   SOP2_instruction& sop2() noexcept
-   {
-      assert(isSOP2());
-      return *(SOP2_instruction*)this;
-   }
-   const SOP2_instruction& sop2() const noexcept
-   {
-      assert(isSOP2());
-      return *(SOP2_instruction*)this;
-   }
    constexpr bool isSOP2() const noexcept { return format == Format::SOP2; }
-   SOPK_instruction& sopk() noexcept
-   {
-      assert(isSOPK());
-      return *(SOPK_instruction*)this;
-   }
-   const SOPK_instruction& sopk() const noexcept
-   {
-      assert(isSOPK());
-      return *(SOPK_instruction*)this;
-   }
    constexpr bool isSOPK() const noexcept { return format == Format::SOPK; }
-   SOPP_instruction& sopp() noexcept
-   {
-      assert(isSOPP());
-      return *(SOPP_instruction*)this;
-   }
-   const SOPP_instruction& sopp() const noexcept
-   {
-      assert(isSOPP());
-      return *(SOPP_instruction*)this;
-   }
    constexpr bool isSOPP() const noexcept { return format == Format::SOPP; }
-   SOPC_instruction& sopc() noexcept
-   {
-      assert(isSOPC());
-      return *(SOPC_instruction*)this;
-   }
-   const SOPC_instruction& sopc() const noexcept
-   {
-      assert(isSOPC());
-      return *(SOPC_instruction*)this;
-   }
    constexpr bool isSOPC() const noexcept { return format == Format::SOPC; }
+
    SMEM_instruction& smem() noexcept
    {
       assert(isSMEM());
@@ -1295,6 +1243,16 @@ struct Instruction {
              isVOPD();
    }
 
+   SALU_instruction& salu() noexcept
+   {
+      assert(isSALU());
+      return *(SALU_instruction*)this;
+   }
+   const SALU_instruction& salu() const noexcept
+   {
+      assert(isSALU());
+      return *(SALU_instruction*)this;
+   }
    constexpr bool isSALU() const noexcept
    {
       return isSOP1() || isSOP2() || isSOPC() || isSOPK() || isSOPP();
@@ -1307,30 +1265,13 @@ struct Instruction {
 };
 static_assert(sizeof(Instruction) == 16, "Unexpected padding");
 
-struct SOPK_instruction : public Instruction {
-   uint16_t imm;
-   uint16_t padding;
-};
-static_assert(sizeof(SOPK_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
-
-struct SOPP_instruction : public Instruction {
+struct SALU_instruction : public Instruction {
+   /* In case of SOPP branch instructions, contains the Block index,
+    * and otherwise, for SOPP and SOPK the 16-bit signed immediate.
+    */
    uint32_t imm;
-   int block;
 };
-static_assert(sizeof(SOPP_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
-
-struct SOPC_instruction : public Instruction {
-   uint32_t padding;
-};
-static_assert(sizeof(SOPC_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
-
-struct SOP1_instruction : public Instruction {};
-static_assert(sizeof(SOP1_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
-
-struct SOP2_instruction : public Instruction {
-   uint32_t padding;
-};
-static_assert(sizeof(SOP2_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
+static_assert(sizeof(SALU_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
 /**
  * Scalar Memory Format:
@@ -1718,8 +1659,6 @@ VALU_instruction::swapOperands(unsigned idx0, unsigned idx1)
    this->opsel_hi[idx0].swap(this->opsel_hi[idx1]);
 }
 
-extern thread_local aco::monotonic_buffer_resource* instruction_buffer;
-
 struct instr_deleter_functor {
    /* Don't yet free any instructions. They will be de-allocated
     * all at once after compilation finished.
@@ -1729,27 +1668,8 @@ struct instr_deleter_functor {
 
 template <typename T> using aco_ptr = std::unique_ptr<T, instr_deleter_functor>;
 
-template <typename T>
-T*
-create_instruction(aco_opcode opcode, Format format, uint32_t num_operands,
-                   uint32_t num_definitions)
-{
-   std::size_t size =
-      sizeof(T) + num_operands * sizeof(Operand) + num_definitions * sizeof(Definition);
-   void* data = instruction_buffer->allocate(size, alignof(uint32_t));
-   memset(data, 0, size);
-   T* inst = (T*)data;
-
-   inst->opcode = opcode;
-   inst->format = format;
-
-   uint16_t operands_offset = sizeof(T) - offsetof(Instruction, operands);
-   inst->operands = aco::span<Operand>(operands_offset, num_operands);
-   uint16_t definitions_offset = (char*)inst->operands.end() - (char*)&inst->definitions;
-   inst->definitions = aco::span<Definition>(definitions_offset, num_definitions);
-
-   return inst;
-}
+Instruction* create_instruction(aco_opcode opcode, Format format, uint32_t num_operands,
+                                uint32_t num_definitions);
 
 constexpr bool
 Instruction::usesModifiers() const noexcept

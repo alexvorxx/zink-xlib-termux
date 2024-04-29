@@ -99,10 +99,8 @@ struct ra_ctx {
        : program(program_), assignments(program->peekAllocationId()),
          renames(program->blocks.size()), policy(policy_)
    {
-      pseudo_dummy.reset(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
-      phi_dummy.reset(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
+      pseudo_dummy.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
+      phi_dummy.reset(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
       sgpr_limit = get_addr_sgpr_from_waves(program, program->min_waves);
       vgpr_limit = get_addr_vgpr_from_waves(program, program->min_waves);
 
@@ -2237,8 +2235,7 @@ get_reg_phi(ra_ctx& ctx, IDSet& live_in, RegisterFile& register_file,
          pc.first.getTemp().is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
       Block::edge_vec& preds =
          pc.first.getTemp().is_linear() ? block.linear_preds : block.logical_preds;
-      aco_ptr<Instruction> new_phi{
-         create_instruction<Pseudo_instruction>(opcode, Format::PSEUDO, preds.size(), 1)};
+      aco_ptr<Instruction> new_phi{create_instruction(opcode, Format::PSEUDO, preds.size(), 1)};
       new_phi->definitions[0] = pc.second;
       for (unsigned i = 0; i < preds.size(); i++)
          new_phi->operands[i] = Operand(pc.first);
@@ -2382,8 +2379,7 @@ handle_live_in(ra_ctx& ctx, Temp val, Block* block)
 
       /* the variable has been renamed differently in the predecessors: we need to insert a phi */
       aco_opcode opcode = val.is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
-      aco_ptr<Instruction> phi{
-         create_instruction<Pseudo_instruction>(opcode, Format::PSEUDO, preds.size(), 1)};
+      aco_ptr<Instruction> phi{create_instruction(opcode, Format::PSEUDO, preds.size(), 1)};
       new_val = ctx.program->allocateTmp(val.regClass());
       phi->definitions[0] = Definition(new_val);
       ctx.assignments.emplace_back();
@@ -2848,10 +2844,8 @@ optimize_encoding_sopk(Program* program, ra_ctx& ctx, RegisterFile& register_fil
          return;
    }
 
-   static_assert(sizeof(SOPK_instruction) <= sizeof(SOP2_instruction),
-                 "Invalid direct instruction cast.");
    instr->format = Format::SOPK;
-   SOPK_instruction* instr_sopk = &instr->sopk();
+   SALU_instruction* instr_sopk = &instr->salu();
 
    instr_sopk->imm = instr_sopk->operands[literal_idx].constantValue() & 0xffff;
    if (literal_idx == 0)
@@ -2887,9 +2881,9 @@ emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definiti
    if (parallelcopy.empty())
       return;
 
-   aco_ptr<Pseudo_instruction> pc;
-   pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
-                                                   parallelcopy.size(), parallelcopy.size()));
+   aco_ptr<Instruction> pc;
+   pc.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, parallelcopy.size(),
+                               parallelcopy.size()));
    bool linear_vgpr = false;
    bool sgpr_operands_alias_defs = false;
    uint64_t sgpr_operands[4] = {0, 0, 0, 0};
@@ -2937,8 +2931,8 @@ emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definiti
 
       handle_pseudo(ctx, tmp_file, pc.get());
    } else {
-      pc->needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
-      pc->tmp_in_scc = false;
+      pc->pseudo().needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
+      pc->pseudo().tmp_in_scc = false;
    }
 
    instructions.emplace_back(std::move(pc));
@@ -3319,11 +3313,9 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
 
                aco_ptr<Instruction> mov;
                if (can_sgpr)
-                  mov.reset(create_instruction<SOP1_instruction>(aco_opcode::s_mov_b32,
-                                                                 Format::SOP1, 1, 1));
+                  mov.reset(create_instruction(aco_opcode::s_mov_b32, Format::SOP1, 1, 1));
                else
-                  mov.reset(create_instruction<VALU_instruction>(aco_opcode::v_mov_b32,
-                                                                 Format::VOP1, 1, 1));
+                  mov.reset(create_instruction(aco_opcode::v_mov_b32, Format::VOP1, 1, 1));
                mov->operands[0] = instr->operands[0];
                mov->definitions[0] = Definition(tmp);
                mov->definitions[0].setFixed(reg);

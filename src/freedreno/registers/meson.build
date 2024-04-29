@@ -22,9 +22,14 @@ xml_files = [
   'adreno.xml',
 ]
 
+rules_file = 'rules-fd.xsd'
+copyright_file = 'freedreno_copyright.xml'
+
+install_files = xml_files + [rules_file, copyright_file]
+
 gen_header_py = files('gen_header.py')
-freedreno_schema = files('rules-fd.xsd')
-freedreno_copyright = files('freedreno_copyright.xml')
+freedreno_schema = files(rules_file)
+freedreno_copyright = files(copyright_file)
 
 freedreno_xml_header_files = []
 
@@ -37,7 +42,9 @@ foreach f : xml_files
     command: [prog_python, '@INPUT0@', '--rnn', rnn_src_path, '--xml', '@INPUT1@', 'c-defines'],
     capture: true,
   )
+endforeach
 
+foreach f : install_files
   _gzname = f + '.gz'
   custom_target(
     _gzname,

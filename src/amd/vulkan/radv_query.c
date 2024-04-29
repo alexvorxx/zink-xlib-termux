@@ -1199,19 +1199,17 @@ radv_destroy_query_pool(struct radv_device *device, const VkAllocationCallbacks 
    if (pool->vk.query_type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR)
       radv_pc_deinit_query_pool((struct radv_pc_query_pool *)pool);
 
-   if (pool->bo) {
-      radv_rmv_log_bo_destroy(device, pool->bo);
-      device->ws->buffer_destroy(device->ws, pool->bo);
-   }
+   if (pool->bo)
+      radv_bo_destroy(device, pool->bo);
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_query_pool_to_handle(pool));
    vk_query_pool_finish(&pool->vk);
    vk_free2(&device->vk.alloc, pAllocator, pool);
 }
 
-VkResult
+static VkResult
 radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *pCreateInfo,
-                       const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool, bool is_internal)
+                       const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool)
 {
    VkResult result;
    size_t pool_struct_size = pCreateInfo->queryType == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR
@@ -1302,8 +1300,8 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
         device->physical_device->rad_info.gfx_level >= GFX11))
       pool->size += 4 * pCreateInfo->queryCount;
 
-   result = device->ws->buffer_create(device->ws, pool->size, 64, RADEON_DOMAIN_GTT,
-                                      RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_QUERY_POOL, 0, &pool->bo);
+   result = radv_bo_create(device, pool->size, 64, RADEON_DOMAIN_GTT, RADEON_FLAG_NO_INTERPROCESS_SHARING,
+                               RADV_BO_PRIORITY_QUERY_POOL, 0, false, &pool->bo);
    if (result != VK_SUCCESS) {
       radv_destroy_query_pool(device, pAllocator, pool);
       return vk_error(device, result);
@@ -1316,7 +1314,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
    }
 
    *pQueryPool = radv_query_pool_to_handle(pool);
-   radv_rmv_log_query_pool_create(device, *pQueryPool, is_internal);
+   radv_rmv_log_query_pool_create(device, *pQueryPool);
    return VK_SUCCESS;
 }
 
@@ -1325,7 +1323,7 @@ radv_CreateQueryPool(VkDevice _device, const VkQueryPoolCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   return radv_create_query_pool(device, pCreateInfo, pAllocator, pQueryPool, false);
+   return radv_create_query_pool(device, pCreateInfo, pAllocator, pQueryPool);
 }
 
 VKAPI_ATTR void VKAPI_CALL

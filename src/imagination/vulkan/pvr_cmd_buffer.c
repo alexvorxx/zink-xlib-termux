@@ -963,7 +963,7 @@ static void pvr_setup_pbe_state(
                                     &surface_params.source_format,
                                     &surface_params.gamma);
 
-   surface_params.is_normalized = vk_format_is_normalized(iview->vk.format);
+   surface_params.is_normalized = pvr_vk_format_is_fully_normalized(iview->vk.format);
    surface_params.pbe_packmode = pvr_get_pbe_packmode(iview->vk.format);
    surface_params.nr_components = vk_format_get_nr_components(iview->vk.format);
 
@@ -2689,7 +2689,8 @@ void pvr_CmdBindIndexBuffer(VkCommandBuffer commandBuffer,
 
    assert(offset < index_buffer->vk.size);
    assert(indexType == VK_INDEX_TYPE_UINT32 ||
-          indexType == VK_INDEX_TYPE_UINT16);
+          indexType == VK_INDEX_TYPE_UINT16 ||
+          indexType == VK_INDEX_TYPE_UINT8_KHR);
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
@@ -6184,22 +6185,8 @@ static void pvr_emit_dirty_vdm_state(struct pvr_cmd_buffer *const cmd_buffer,
 
    if (header.cut_index_present) {
       pvr_csb_emit (csb, VDMCTRL_VDM_STATE1, state1) {
-         switch (state->index_buffer_binding.type) {
-         case VK_INDEX_TYPE_UINT32:
-            /* FIXME: Defines for these? These seem to come from the Vulkan
-             * spec. for VkPipelineInputAssemblyStateCreateInfo
-             * primitiveRestartEnable.
-             */
-            state1.cut_index = 0xFFFFFFFF;
-            break;
-
-         case VK_INDEX_TYPE_UINT16:
-            state1.cut_index = 0xFFFF;
-            break;
-
-         default:
-            unreachable("Invalid index type");
-         }
+         state1.cut_index =
+            vk_index_to_restart(state->index_buffer_binding.type);
       }
    }
 
@@ -6683,20 +6670,9 @@ static void pvr_emit_vdm_index_list(struct pvr_cmd_buffer *cmd_buffer,
       list_hdr.index_offset_present = true;
 
    if (state->draw_state.draw_indexed) {
-      switch (state->index_buffer_binding.type) {
-      case VK_INDEX_TYPE_UINT32:
-         list_hdr.index_size = PVRX(VDMCTRL_INDEX_SIZE_B32);
-         index_stride = 4;
-         break;
-
-      case VK_INDEX_TYPE_UINT16:
-         list_hdr.index_size = PVRX(VDMCTRL_INDEX_SIZE_B16);
-         index_stride = 2;
-         break;
-
-      default:
-         unreachable("Invalid index type");
-      }
+      list_hdr.index_size =
+         pvr_vdmctrl_index_size_from_type(state->index_buffer_binding.type);
+      index_stride = vk_index_type_to_bytes(state->index_buffer_binding.type);
 
       index_buffer_addr = PVR_DEV_ADDR_OFFSET(
          state->index_buffer_binding.buffer->dev_addr,

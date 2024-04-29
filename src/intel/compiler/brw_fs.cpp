@@ -211,6 +211,8 @@ fs_inst::is_send_from_grf() const
    case SHADER_OPCODE_MEMORY_FENCE:
    case SHADER_OPCODE_BARRIER:
       return true;
+   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
+      return src[1].file == VGRF;
    case FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:
@@ -493,6 +495,7 @@ fs_inst::can_change_types() const
    return dst.type == src[0].type &&
           !src[0].abs && !src[0].negate && !saturate && src[0].file != ATTR &&
           (opcode == BRW_OPCODE_MOV ||
+           (opcode == SHADER_OPCODE_LOAD_PAYLOAD && sources == 1) ||
            (opcode == BRW_OPCODE_SEL &&
             dst.type == src[1].type &&
             predicate != BRW_PREDICATE_NONE &&

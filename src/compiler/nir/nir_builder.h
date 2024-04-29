@@ -1600,6 +1600,16 @@ nir_build_deref_follower(nir_builder *b, nir_deref_instr *parent,
                                                  leader->cast.ptr_stride,
                                                  leader->cast.align_mul,
                                                  leader->cast.align_offset);
+
+   case nir_deref_type_ptr_as_array: {
+      assert(parent->deref_type == nir_deref_type_array ||
+             parent->deref_type == nir_deref_type_ptr_as_array ||
+             parent->deref_type == nir_deref_type_cast);
+      nir_def *index = nir_i2iN(b, leader->arr.index.ssa,
+                                parent->def.bit_size);
+      return nir_build_deref_ptr_as_array(b, parent, index);
+   }
+
    default:
       unreachable("Invalid deref instruction type");
    }

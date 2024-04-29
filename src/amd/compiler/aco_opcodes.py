@@ -102,12 +102,23 @@ class Format(IntEnum):
    DPP16 = 1 << 13
    DPP8 = 1 << 14
 
+   def get_accessor(self):
+      if self in [Format.VOP3, Format.VOP3P]:
+         return "valu"
+      elif self in [Format.SOPP, Format.SOPK]:
+         return "salu"
+      elif self in [Format.FLAT, Format.GLOBAL, Format.SCRATCH]:
+         return "flatlike"
+      elif self in [Format.PSEUDO_BRANCH, Format.PSEUDO_REDUCTION, Format.PSEUDO_BARRIER]:
+         return self.name.split("_")[-1].lower()
+      else:
+         return self.name.lower()
+
    def get_builder_fields(self):
       if self == Format.SOPK:
-         return [('uint16_t', 'imm', None)]
+         return [('uint32_t', 'imm', '0')]
       elif self == Format.SOPP:
-         return [('uint32_t', 'block', '-1'),
-                 ('uint32_t', 'imm', '0')]
+         return [('uint32_t', 'imm', '0')]
       elif self == Format.SMEM:
          return [('memory_sync_info', 'sync', 'memory_sync_info()'),
                  ('bool', 'glc', 'false'),
@@ -218,10 +229,12 @@ class Format(IntEnum):
       res = ''
       if self == Format.SDWA:
          for i in range(min(num_operands, 2)):
-            res += 'instr->sel[{0}] = SubdwordSel(op{0}.op.bytes(), 0, false);'.format(i)
-         res += 'instr->dst_sel = SubdwordSel(def0.bytes(), 0, false);\n'
-      elif self in [Format.DPP16, Format.DPP8]:
-         res += 'instr->fetch_inactive &= program->gfx_level >= GFX10;\n'
+            res += 'instr->sdwa().sel[{0}] = SubdwordSel(op{0}.op.bytes(), 0, false);'.format(i)
+         res += 'instr->sdwa().dst_sel = SubdwordSel(def0.bytes(), 0, false);\n'
+      elif self == Format.DPP16:
+         res += 'instr->dpp16().fetch_inactive &= program->gfx_level >= GFX10;\n'
+      elif self == Format.DPP8:
+         res += 'instr->dpp8().fetch_inactive &= program->gfx_level >= GFX10;\n'
       return res
 
 
@@ -670,7 +683,7 @@ SOPP = {
    ("s_setprio",                  dst(), src(), op(0x0f, gfx11=0x35)),
    ("s_sendmsg",                  dst(), src(), op(0x10, gfx11=0x36), InstrClass.Sendmsg),
    ("s_sendmsghalt",              dst(), src(), op(0x11, gfx11=0x37), InstrClass.Sendmsg),
-   ("s_trap",                     dst(), src(), op(0x12, gfx11=0x10), InstrClass.Branch),
+   ("s_trap",                     dst(), src(), op(0x12, gfx11=0x10), InstrClass.Other),
    ("s_icache_inv",               dst(), src(), op(0x13, gfx11=0x3c)),
    ("s_incperflevel",             dst(), src(), op(0x14, gfx11=0x38)),
    ("s_decperflevel",             dst(), src(), op(0x15, gfx11=0x39)),

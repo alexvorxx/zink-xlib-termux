@@ -27,8 +27,12 @@
 #include "pan_props.h"
 #include "pan_shader.h"
 
-#include "panvk_private.h"
-#include "panvk_vX_meta.h"
+#include "panvk_cmd_buffer.h"
+#include "panvk_device.h"
+#include "panvk_entrypoints.h"
+#include "panvk_image.h"
+#include "panvk_meta.h"
+#include "panvk_physical_device.h"
 
 #include "vk_format.h"
 #include "vk_render_pass.h"
@@ -284,7 +288,7 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
 
    enum glsl_base_type base_type = panvk_meta_get_format_type(pfmt);
 
-   mali_ptr tiler = batch->tiler.descs.gpu;
+   mali_ptr tiler = batch->tiler.ctx_desc.gpu;
    mali_ptr tsd = batch->tls.gpu;
 
    mali_ptr pushconsts = 0, rsd = 0;
@@ -363,7 +367,7 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
       for (unsigned layer = range->baseArrayLayer;
            layer < range->baseArrayLayer + layer_count; layer++) {
          view.first_layer = view.last_layer = layer;
-         panvk_cmd_open_batch(cmdbuf);
+         panvk_per_arch(cmd_open_batch)(cmdbuf);
          panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
          panvk_per_arch(cmd_close_batch)(cmdbuf);
       }
@@ -442,7 +446,7 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
       for (unsigned layer = range->baseArrayLayer;
            layer < range->baseArrayLayer + layer_count; layer++) {
          view.first_layer = view.last_layer = layer;
-         panvk_cmd_open_batch(cmdbuf);
+         panvk_per_arch(cmd_open_batch)(cmdbuf);
          panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
          panvk_per_arch(cmd_close_batch)(cmdbuf);
       }

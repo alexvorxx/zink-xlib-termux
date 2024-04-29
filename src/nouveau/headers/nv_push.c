@@ -116,6 +116,7 @@ vk_push_print(FILE *fp, const struct nv_push *push,
          switch (tert_op) {
          case 0:
             fprintf(fp, " NINC\n");
+            inc = count;
             break;
          case 1:
             fprintf(fp, " SUB_DEVICE_OP\n");

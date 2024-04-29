@@ -1313,6 +1313,13 @@ void radv_buffer_init(struct radv_buffer *buffer, struct radv_device *device, st
                       uint64_t size, uint64_t offset);
 void radv_buffer_finish(struct radv_buffer *buffer);
 
+VkResult radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, enum radeon_bo_domain domain,
+                        enum radeon_bo_flag flags, unsigned priority, uint64_t address, bool is_internal,
+                        struct radeon_winsys_bo **out_bo);
+VkResult radv_bo_virtual_bind(struct radv_device *device, struct radeon_winsys_bo *parent, uint64_t offset,
+                              uint64_t size, struct radeon_winsys_bo *bo, uint64_t bo_offset);
+void radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
+
 enum radv_dynamic_state_bits {
    RADV_DYNAMIC_VIEWPORT = 1ull << 0,
    RADV_DYNAMIC_SCISSOR = 1ull << 1,
@@ -1998,8 +2005,9 @@ void radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *sc
 void radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports, unsigned rast_prim,
                           unsigned polygon_mode, float line_width);
 
-VkResult radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_queue_state *queue_state);
-void radv_destroy_shadow_regs_preamble(struct radv_queue_state *queue_state, struct radeon_winsys *ws);
+VkResult radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state);
+void radv_destroy_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state,
+                                       struct radeon_winsys *ws);
 void radv_emit_shadow_regs_preamble(struct radeon_cmdbuf *cs, const struct radv_device *device,
                                     struct radv_queue_state *queue_state);
 VkResult radv_init_shadowed_regs_buffer_state(const struct radv_device *device, struct radv_queue *queue);
@@ -3201,7 +3209,7 @@ void radv_rra_trace_clear_ray_history(VkDevice _device, struct radv_rra_trace_da
 void radv_rra_trace_finish(VkDevice vk_device, struct radv_rra_trace_data *data);
 
 void radv_memory_trace_init(struct radv_device *device);
-void radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo, uint32_t size, bool is_internal);
+void radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo, bool is_internal);
 void radv_rmv_log_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
 void radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool is_internal,
                               VkMemoryAllocateFlags alloc_flags);
@@ -3209,7 +3217,7 @@ void radv_rmv_log_buffer_bind(struct radv_device *device, VkBuffer _buffer);
 void radv_rmv_log_image_create(struct radv_device *device, const VkImageCreateInfo *create_info, bool is_internal,
                                VkImage _image);
 void radv_rmv_log_image_bind(struct radv_device *device, VkImage _image);
-void radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool pool, bool is_internal);
+void radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool pool);
 void radv_rmv_log_command_buffer_bo_create(struct radv_device *device, struct radeon_winsys_bo *bo,
                                            uint32_t executable_size, uint32_t data_size, uint32_t scratch_size);
 void radv_rmv_log_command_buffer_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
@@ -3218,7 +3226,7 @@ void radv_rmv_log_border_color_palette_destroy(struct radv_device *device, struc
 void radv_rmv_log_sparse_add_residency(struct radv_device *device, struct radeon_winsys_bo *src_bo, uint64_t offset);
 void radv_rmv_log_sparse_remove_residency(struct radv_device *device, struct radeon_winsys_bo *src_bo, uint64_t offset);
 void radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDescriptorPoolCreateInfo *create_info,
-                                         VkDescriptorPool pool, bool is_internal);
+                                         VkDescriptorPool pool);
 void radv_rmv_log_graphics_pipeline_create(struct radv_device *device, struct radv_pipeline *pipeline,
                                            bool is_internal);
 void radv_rmv_log_compute_pipeline_create(struct radv_device *device, struct radv_pipeline *pipeline, bool is_internal);
@@ -3234,8 +3242,6 @@ VkResult radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo
                             const VkAllocationCallbacks *pAllocator, VkBuffer *pBuffer, bool is_internal);
 VkResult radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAllocateInfo,
                            const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem, bool is_internal);
-VkResult radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *pCreateInfo,
-                                const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool, bool is_internal);
 VkResult radv_create_event(struct radv_device *device, const VkEventCreateInfo *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator, VkEvent *pEvent, bool is_internal);
 
@@ -3817,8 +3823,6 @@ radv_uses_image_float32_atomics(const struct radv_device *device)
           device->vk.enabled_features.shaderImageFloat32AtomicMinMax ||
           device->vk.enabled_features.sparseImageFloat32AtomicMinMax;
 }
-
-bool radv_device_fault_detection_enabled(const struct radv_device *device);
 
 struct radv_compute_pipeline_metadata {
    uint32_t shader_va;

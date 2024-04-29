@@ -330,14 +330,14 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 
       list_for_each_entry_safe (struct radv_cmd_buffer_upload, up, &cmd_buffer->upload.list, list) {
          radv_rmv_log_command_buffer_bo_destroy(cmd_buffer->device, up->upload_bo);
-         cmd_buffer->device->ws->buffer_destroy(cmd_buffer->device->ws, up->upload_bo);
+         radv_bo_destroy(cmd_buffer->device, up->upload_bo);
          list_del(&up->list);
          free(up);
       }
 
       if (cmd_buffer->upload.upload_bo) {
          radv_rmv_log_command_buffer_bo_destroy(cmd_buffer->device, cmd_buffer->upload.upload_bo);
-         cmd_buffer->device->ws->buffer_destroy(cmd_buffer->device->ws, cmd_buffer->upload.upload_bo);
+         radv_bo_destroy(cmd_buffer->device, cmd_buffer->upload.upload_bo);
       }
 
       if (cmd_buffer->cs)
@@ -345,7 +345,7 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
       if (cmd_buffer->gang.cs)
          cmd_buffer->device->ws->cs_destroy(cmd_buffer->gang.cs);
       if (cmd_buffer->transfer.copy_temp)
-         cmd_buffer->device->ws->buffer_destroy(cmd_buffer->device->ws, cmd_buffer->transfer.copy_temp);
+         radv_bo_destroy(cmd_buffer->device, cmd_buffer->transfer.copy_temp);
 
       radv_cmd_buffer_finish_shader_part_cache(cmd_buffer);
 
@@ -437,7 +437,7 @@ radv_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer, UNUSED VkCommandB
 
    list_for_each_entry_safe (struct radv_cmd_buffer_upload, up, &cmd_buffer->upload.list, list) {
       radv_rmv_log_command_buffer_bo_destroy(cmd_buffer->device, up->upload_bo);
-      cmd_buffer->device->ws->buffer_destroy(cmd_buffer->device->ws, up->upload_bo);
+      radv_bo_destroy(cmd_buffer->device, up->upload_bo);
       list_del(&up->list);
       free(up);
    }
@@ -495,10 +495,10 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
    new_size = MAX2(min_needed, 16 * 1024);
    new_size = MAX2(new_size, 2 * cmd_buffer->upload.size);
 
-   VkResult result = device->ws->buffer_create(
-      device->ws, new_size, 4096, device->ws->cs_domain(device->ws),
+   VkResult result = radv_bo_create(
+      device, new_size, 4096, device->ws->cs_domain(device->ws),
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_32BIT | RADEON_FLAG_GTT_WC,
-      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &bo);
+      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &bo);
 
    if (result != VK_SUCCESS) {
       vk_command_buffer_set_error(&cmd_buffer->vk, result);
@@ -511,7 +511,7 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
 
       if (!upload) {
          vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
-         device->ws->buffer_destroy(device->ws, bo);
+         radv_bo_destroy(device, bo);
          return false;
       }
 
@@ -8083,16 +8083,6 @@ radv_emit_view_index(const struct radv_cmd_state *cmd_state, struct radeon_cmdbu
    }
 }
 
-static void
-radv_emit_view_index_with_task(const struct radv_cmd_state *cmd_state, struct radeon_cmdbuf *cs,
-                               struct radeon_cmdbuf *ace_cs, unsigned index)
-{
-   radv_emit_view_index(cmd_state, cs, index);
-
-   radv_emit_view_index_per_stage(ace_cs, cmd_state->shaders[MESA_SHADER_TASK],
-                                  cmd_state->shaders[MESA_SHADER_TASK]->info.user_data_0, index);
-}
-
 /**
  * Emulates predication for MEC using COND_EXEC.
  * When the current command buffer is predicating, emit a COND_EXEC packet
@@ -8717,10 +8707,7 @@ radv_emit_direct_taskmesh_draw_packets(const struct radv_device *device, struct 
 {
    const uint32_t view_mask = cmd_state->render.view_mask;
    const unsigned num_views = MAX2(1, util_bitcount(view_mask));
-   unsigned ace_predication_size = num_views * 6; /* DISPATCH_TASKMESH_DIRECT_ACE size */
-
-   if (num_views > 1)
-      ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
+   const unsigned ace_predication_size = num_views * 6; /* DISPATCH_TASKMESH_DIRECT_ACE size */
 
    radv_emit_userdata_task(cmd_state, ace_cs, x, y, z, 0);
    radv_cs_emit_compute_predication(device, cmd_state, ace_cs, cmd_state->mec_inv_pred_va,
@@ -8731,7 +8718,7 @@ radv_emit_direct_taskmesh_draw_packets(const struct radv_device *device, struct 
       radv_cs_emit_dispatch_taskmesh_gfx_packet(device, cmd_state, cs);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index_with_task(cmd_state, cs, ace_cs, view);
+         radv_emit_view_index(cmd_state, cs, view);
 
          radv_cs_emit_dispatch_taskmesh_direct_ace_packet(device, cmd_state, ace_cs, x, y, z);
          radv_cs_emit_dispatch_taskmesh_gfx_packet(device, cmd_state, cs);
@@ -8753,9 +8740,6 @@ radv_emit_indirect_taskmesh_draw_packets(const struct radv_device *device, struc
    const uint64_t count_va = !info->count_buffer ? 0
                                                  : radv_buffer_get_va(info->count_buffer->bo) +
                                                       info->count_buffer->offset + info->count_buffer_offset;
-
-   if (num_views > 1)
-      ace_predication_size += num_views * 3; /* SET_SH_REG size (view index SGPR) */
 
    if (count_va)
       radv_cs_add_buffer(ws, ace_cs, info->count_buffer->bo);
@@ -8808,7 +8792,7 @@ radv_emit_indirect_taskmesh_draw_packets(const struct radv_device *device, struc
       radv_cs_emit_dispatch_taskmesh_gfx_packet(device, cmd_state, cs);
    } else {
       u_foreach_bit (view, view_mask) {
-         radv_emit_view_index_with_task(cmd_state, cs, ace_cs, view);
+         radv_emit_view_index(cmd_state, cs, view);
 
          radv_cs_emit_dispatch_taskmesh_indirect_multi_ace_packet(device, cmd_state, ace_cs, va, info->count, count_va,
                                                                   info->stride);

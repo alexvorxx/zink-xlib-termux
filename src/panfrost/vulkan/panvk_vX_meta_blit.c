@@ -26,7 +26,11 @@
 #include "pan_blitter.h"
 #include "pan_props.h"
 
-#include "panvk_private.h"
+#include "panvk_cmd_buffer.h"
+#include "panvk_device.h"
+#include "panvk_entrypoints.h"
+#include "panvk_image.h"
+#include "panvk_physical_device.h"
 
 static void
 panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
@@ -123,7 +127,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
       if (ctx.dst.cur_layer < 0)
          continue;
 
-      struct panvk_batch *batch = panvk_cmd_open_batch(cmdbuf);
+      struct panvk_batch *batch = panvk_per_arch(cmd_open_batch)(cmdbuf);
       mali_ptr tsd, tiler;
 
       views[0].first_layer = views[0].last_layer = ctx.dst.cur_layer;
@@ -135,7 +139,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
       panvk_per_arch(cmd_prepare_tiler_context)(cmdbuf);
 
       tsd = batch->tls.gpu;
-      tiler = batch->tiler.descs.gpu;
+      tiler = batch->tiler.ctx_desc.gpu;
 
       struct panfrost_ptr job =
          GENX(pan_blit)(&ctx, &cmdbuf->desc_pool.base, &batch->jc, tsd, tiler);

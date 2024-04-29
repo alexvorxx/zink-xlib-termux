@@ -29,7 +29,12 @@
 
 #include "genxml/gen_macros.h"
 
-#include "panvk_private.h"
+#include "panvk_device.h"
+#include "panvk_instance.h"
+#include "panvk_physical_device.h"
+#include "panvk_pipeline.h"
+#include "panvk_pipeline_layout.h"
+#include "panvk_shader.h"
 
 #include "spirv/nir_spirv.h"
 #include "util/mesa-sha1.h"
@@ -392,4 +397,45 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    ralloc_free(nir);
 
    return shader;
+}
+
+void
+panvk_per_arch(shader_destroy)(struct panvk_device *dev,
+                               struct panvk_shader *shader,
+                               const VkAllocationCallbacks *alloc)
+{
+   util_dynarray_fini(&shader->binary);
+   vk_free2(&dev->vk.alloc, alloc, shader);
+}
+
+bool
+panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
+                                     const struct pan_blend_state *state,
+                                     unsigned rt)
+{
+   /* LogicOp requires a blend shader */
+   if (state->logicop_enable)
+      return true;
+
+   /* Not all formats can be blended by fixed-function hardware */
+   if (!panfrost_blendable_formats_v7[state->rts[rt].format].internal)
+      return true;
+
+   unsigned constant_mask = pan_blend_constant_mask(state->rts[rt].equation);
+
+   /* v6 doesn't support blend constants in FF blend equations.
+    * v7 only uses the constant from RT 0 (TODO: what if it's the same
+    * constant? or a constant is shared?)
+    */
+   if (constant_mask && (PAN_ARCH == 6 || (PAN_ARCH == 7 && rt > 0)))
+      return true;
+
+   if (!pan_blend_is_homogenous_constant(constant_mask, state->constants))
+      return true;
+
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
+   bool supports_2src = pan_blend_supports_2src(arch);
+   return !pan_blend_can_fixed_function(state->rts[rt].equation, supports_2src);
 }

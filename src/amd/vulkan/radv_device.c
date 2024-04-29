@@ -48,6 +48,7 @@
 #include "util/u_debug.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_formats.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 #include "vk_common_entrypoints.h"
@@ -90,12 +91,6 @@ radv_spm_trace_enabled(struct radv_instance *instance)
           debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", true);
 }
 
-bool
-radv_device_fault_detection_enabled(const struct radv_device *device)
-{
-   return device->instance->debug_flags & RADV_DEBUG_HANG;
-}
-
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryHostPointerPropertiesEXT(VkDevice _device, VkExternalMemoryHandleTypeFlagBits handleType,
                                        const void *pHostPointer,
@@ -127,10 +122,9 @@ radv_device_init_border_color(struct radv_device *device)
 {
    VkResult result;
 
-   result =
-      device->ws->buffer_create(device->ws, RADV_BORDER_COLOR_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
-                                RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_READ_ONLY | RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                                RADV_BO_PRIORITY_SHADER, 0, &device->border_color_data.bo);
+   result = radv_bo_create(device, RADV_BORDER_COLOR_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
+                           RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_READ_ONLY | RADEON_FLAG_NO_INTERPROCESS_SHARING,
+                           RADV_BO_PRIORITY_SHADER, 0, true, &device->border_color_data.bo);
 
    if (result != VK_SUCCESS)
       return vk_error(device, result);
@@ -155,7 +149,7 @@ radv_device_finish_border_color(struct radv_device *device)
    if (device->border_color_data.bo) {
       radv_rmv_log_border_color_palette_destroy(device, device->border_color_data.bo);
       device->ws->buffer_make_resident(device->ws, device->border_color_data.bo, false);
-      device->ws->buffer_destroy(device->ws, device->border_color_data.bo);
+      radv_bo_destroy(device, device->border_color_data.bo);
 
       mtx_destroy(&device->border_color_data.mutex);
    }
@@ -1041,9 +1035,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    if (device->vk.enabled_features.performanceCounterQueryPools) {
       size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
-      result = device->ws->buffer_create(device->ws, bo_size, 4096, RADEON_DOMAIN_GTT,
-                                         RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                                         RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &device->perf_counter_bo);
+      result = radv_bo_create(device, bo_size, 4096, RADEON_DOMAIN_GTT,
+                                  RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
+                                  RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->perf_counter_bo);
       if (result != VK_SUCCESS)
          goto fail_cache;
 
@@ -1100,9 +1094,9 @@ fail:
 
    radv_device_finish_perf_counter_lock_cs(device);
    if (device->perf_counter_bo)
-      device->ws->buffer_destroy(device->ws, device->perf_counter_bo);
+      radv_bo_destroy(device, device->perf_counter_bo);
    if (device->gfx_init)
-      device->ws->buffer_destroy(device->ws, device->gfx_init);
+      radv_bo_destroy(device, device->gfx_init);
 
    radv_device_finish_notifier(device);
    radv_device_finish_vs_prologs(device);
@@ -1156,10 +1150,10 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_device_finish_perf_counter_lock_cs(device);
    if (device->perf_counter_bo)
-      device->ws->buffer_destroy(device->ws, device->perf_counter_bo);
+      radv_bo_destroy(device, device->perf_counter_bo);
 
    if (device->gfx_init)
-      device->ws->buffer_destroy(device->ws, device->gfx_init);
+      radv_bo_destroy(device, device->gfx_init);
 
    radv_device_finish_notifier(device);
    radv_device_finish_vs_prologs(device);

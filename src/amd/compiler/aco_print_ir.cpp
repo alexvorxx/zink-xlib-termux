@@ -285,12 +285,12 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
 {
    switch (instr->format) {
    case Format::SOPK: {
-      const SOPK_instruction& sopk = instr->sopk();
+      const SALU_instruction& sopk = instr->salu();
       fprintf(output, " imm:%d", sopk.imm & 0x8000 ? (sopk.imm - 65536) : sopk.imm);
       break;
    }
    case Format::SOPP: {
-      uint16_t imm = instr->sopp().imm;
+      uint16_t imm = instr->salu().imm;
       switch (instr->opcode) {
       case aco_opcode::s_waitcnt: {
          wait_imm unpacked(gfx_level, imm);
@@ -399,13 +399,13 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          break;
       }
       default: {
-         if (imm)
+         if (instr_info.classes[(int)instr->opcode] == instr_class::branch)
+            fprintf(output, " block:BB%d", imm);
+         else if (imm)
             fprintf(output, " imm:%u", imm);
          break;
       }
       }
-      if (instr->sopp().block != -1)
-         fprintf(output, " block:BB%d", instr->sopp().block);
       break;
    }
    case Format::SOP1: {

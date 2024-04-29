@@ -23,10 +23,10 @@
  */
 
 #include "radv_debug.h"
+#include "radv_formats.h"
 #include "radv_private.h"
 
 #include "sid.h"
-#include "vk_format.h"
 
 #include "vk_android.h"
 #include "vk_enum_defines.h"

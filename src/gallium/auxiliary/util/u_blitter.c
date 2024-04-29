@@ -1831,8 +1831,7 @@ blitter_draw_tex(struct blitter_context_priv *ctx,
       util_map_texcoords2d_onto_cubemap((unsigned)layer % 6,
                                         /* pointer, stride in floats */
                                         &face_coord[0][0], 2,
-                                        &ctx->vertices[0][1][0], 8,
-                                        false);
+                                        &ctx->vertices[0][1][0], 8);
       for (unsigned i = 0; i < 4; i++)
          ctx->vertices[i][1][3] = coord.texcoord.w;
 

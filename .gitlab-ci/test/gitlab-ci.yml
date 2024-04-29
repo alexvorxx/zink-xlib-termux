@@ -211,12 +211,12 @@ python-test:
 .baremetal-test-arm32:
   extends:
     - .baremetal-test
-    - .use-debian/arm32_test
+    - .use-debian/baremetal_arm32_test
   variables:
     DEBIAN_ARCH: armhf
     S3_ARTIFACT_NAME: mesa-arm32-default-debugoptimized
   needs:
-    - debian/arm32_test
+    - debian/baremetal_arm32_test
     - job: debian-arm32
       artifacts: false
     - !reference [.required-for-hardware-jobs, needs]
@@ -225,12 +225,12 @@ python-test:
 .baremetal-test-arm64:
   extends:
     - .baremetal-test
-    - .use-debian/arm64_test
+    - .use-debian/baremetal_arm64_test
   variables:
     DEBIAN_ARCH: arm64
     S3_ARTIFACT_NAME: mesa-arm64-default-debugoptimized
   needs:
-    - debian/arm64_test
+    - debian/baremetal_arm64_test
     - job: debian-arm64
       artifacts: false
     - !reference [.required-for-hardware-jobs, needs]
@@ -239,12 +239,12 @@ python-test:
 .baremetal-arm32-asan-test:
   extends:
     - .baremetal-test
-    - .use-debian/arm32_test
+    - .use-debian/baremetal_arm32_test
   variables:
     DEQP_RUNNER_OPTIONS: "--env LD_PRELOAD=libasan.so.8:/install/lib/libdlclose-skip.so"
     S3_ARTIFACT_NAME: mesa-arm32-asan-debugoptimized
   needs:
-    - debian/arm32_test
+    - debian/baremetal_arm32_test
     - job: debian-arm32-asan
       artifacts: false
     - !reference [.required-for-hardware-jobs, needs]
@@ -252,12 +252,12 @@ python-test:
 .baremetal-arm64-asan-test:
   extends:
     - .baremetal-test
-    - .use-debian/arm64_test
+    - .use-debian/baremetal_arm64_test
   variables:
     DEQP_RUNNER_OPTIONS: "--env LD_PRELOAD=libasan.so.8:/install/lib/libdlclose-skip.so"
     S3_ARTIFACT_NAME: mesa-arm64-asan-debugoptimized
   needs:
-    - debian/arm64_test
+    - debian/baremetal_arm64_test
     - job: debian-arm64-asan
       artifacts: false
     - !reference [.required-for-hardware-jobs, needs]

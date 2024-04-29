@@ -179,7 +179,7 @@
     # Ensure that we are using the release build artifact
     S3_ARTIFACT_NAME: mesa-arm64-default-release
   needs:
-    - debian/arm64_test
+    - debian/baremetal_arm64_test
     - debian-arm64-release
   dependencies: null
 

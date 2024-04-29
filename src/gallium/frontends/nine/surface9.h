@@ -123,7 +123,7 @@ NineSurface9_IsOffscreenPlain (struct NineSurface9 *This )
     return This->base.usage == 0 && !This->texture;
 }
 
-#if defined(DEBUG) || !defined(NDEBUG)
+#if MESA_DEBUG || !defined(NDEBUG)
 void
 NineSurface9_Dump( struct NineSurface9 *This );
 #else

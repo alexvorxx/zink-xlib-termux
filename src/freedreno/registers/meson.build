@@ -20,11 +20,11 @@
 
 xml_files = [
   'adreno.xml',
-  'freedreno_copyright.xml',
-  'rules-ng.xsd',
 ]
 
 gen_header_py = files('gen_header.py')
+freedreno_schema = files('rules-fd.xsd')
+freedreno_copyright = files('freedreno_copyright.xml')
 
 freedreno_xml_header_files = []
 
@@ -32,7 +32,7 @@ foreach f : xml_files
   _name = f + '.h'
   freedreno_xml_header_files += custom_target(
     _name,
-    input: [gen_header_py, f],
+    input: [gen_header_py, f, freedreno_schema, freedreno_copyright],
     output: _name,
     command: [prog_python, '@INPUT0@', '--rnn', rnn_src_path, '--xml', '@INPUT1@', 'c-defines'],
     capture: true,

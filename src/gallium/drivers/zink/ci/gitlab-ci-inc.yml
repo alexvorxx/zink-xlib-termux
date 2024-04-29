@@ -94,6 +94,7 @@
   variables:
     MESA_LOADER_DRIVER_OVERRIDE: "zink"
     FLAKES_CHANNEL: "#zink-ci"
+    MESA_VK_ABORT_ON_DEVICE_LOSS: 0
 
 .zink-trace-test:
   extends:

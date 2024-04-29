@@ -1137,7 +1137,8 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
     *    "No SIMD16 in mixed mode when destination is f32. Instruction
     *     execution size must be no more than 8."
     */
-   ERROR_IF(exec_size > 8 && dst_type == BRW_REGISTER_TYPE_F,
+   ERROR_IF(exec_size > 8 && dst_type == BRW_REGISTER_TYPE_F &&
+            opcode != BRW_OPCODE_MOV,
             "Mixed float mode with 32-bit float destination is limited "
             "to SIMD8");
 
@@ -1212,7 +1213,8 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
        *     Align1 and Align16."
        */
       ERROR_IF(exec_size > 8 && dst_is_packed &&
-               dst_type == BRW_REGISTER_TYPE_HF,
+               dst_type == BRW_REGISTER_TYPE_HF &&
+               opcode != BRW_OPCODE_MOV,
                "Align1 mixed float mode is limited to SIMD8 when destination "
                "is packed half-float");
 
@@ -1732,7 +1734,7 @@ special_requirements_for_handling_double_precision_data_types(
          ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == BRW_ARCHITECTURE_REGISTER_FILE &&
                    reg != BRW_ARF_NULL && !(reg >= BRW_ARF_ACCUMULATOR && reg < BRW_ARF_FLAG)) ||
                   (dst_file == BRW_ARCHITECTURE_REGISTER_FILE &&
-                   dst_reg != BRW_ARF_NULL && dst_reg != BRW_ARF_ACCUMULATOR),
+                   dst_reg != BRW_ARF_NULL && (dst_reg & 0xF0) != BRW_ARF_ACCUMULATOR),
                   "Explicit ARF registers except null and accumulator must not "
                   "be used.");
       }

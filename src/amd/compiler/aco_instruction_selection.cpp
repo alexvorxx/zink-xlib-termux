@@ -9132,7 +9132,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       emit_split_vector(ctx, dst, dst.size());
       break;
    }
-   case nir_intrinsic_ordered_xfb_counter_add_amd: {
+   case nir_intrinsic_ordered_xfb_counter_add_gfx11_amd: {
       Temp dst = get_ssa_temp(ctx, &instr->def);
       Temp ordered_id = get_ssa_temp(ctx, instr->src[0].ssa);
       Temp counter = get_ssa_temp(ctx, instr->src[1].ssa);
@@ -9180,7 +9180,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       emit_split_vector(ctx, dst, instr->num_components);
       break;
    }
-   case nir_intrinsic_xfb_counter_sub_amd: {
+   case nir_intrinsic_xfb_counter_sub_gfx11_amd: {
       unsigned write_mask = nir_intrinsic_write_mask(instr);
       Temp counter = get_ssa_temp(ctx, instr->src[0].ssa);
 

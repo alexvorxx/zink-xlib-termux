@@ -92,7 +92,7 @@ struct amdgpu_bo_real {
    void *cpu_ptr; /* for user_ptr and permanent maps */
    int map_count;
    uint32_t kms_handle;
-#ifdef DEBUG
+#if MESA_DEBUG
    struct list_head global_list_item;
 #endif
    simple_mtx_t map_lock;

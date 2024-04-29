@@ -1373,6 +1373,16 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
       tu_cs_emit_ib(cs, dev->cmdbuf_start_a725_quirk_entry);
    }
 
+   if (CHIP >= A7XX) {
+      /* Blob sets these two per draw. */
+      tu_cs_emit_regs(cs, A7XX_PC_TESS_PARAM_SIZE(TU_TESS_PARAM_SIZE));
+      /* Blob adds a bit more space ({0x10, 0x20, 0x30, 0x40} bytes)
+       * but the meaning of this additional space is not known,
+       * so we play safe and don't add it.
+       */
+      tu_cs_emit_regs(cs, A7XX_PC_TESS_FACTOR_SIZE(TU_TESS_FACTOR_SIZE));
+   }
+
    tu_cs_sanity_check(cs);
 }
 

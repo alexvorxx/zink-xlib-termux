@@ -205,6 +205,7 @@ enum nak_fs_out {
 #define NAK_FS_OUT_COLOR(n) (NAK_FS_OUT_COLOR0 + (n) * 16)
 
 bool nak_nir_add_barriers(nir_shader *nir, const struct nak_compiler *nak);
+bool nak_nir_lower_cf(nir_shader *nir);
 
 static inline bool
 nak_is_only_used_by_iadd(const nir_alu_instr *instr)

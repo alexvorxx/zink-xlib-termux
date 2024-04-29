@@ -739,7 +739,7 @@ make_null_texture(GLint width, GLint height, GLint depth, GLenum format)
    const GLint numPixels = width * height * depth;
    GLubyte *data = (GLubyte *) malloc(numPixels * components * sizeof(GLubyte));
 
-#ifdef DEBUG
+#if MESA_DEBUG
    /*
     * Let's see if anyone finds this.  If glTexImage2D() is called with
     * a NULL image pointer then load the texture image with something
@@ -2476,6 +2476,15 @@ copytexture_error_check( struct gl_context *ctx, GLuint dimensions,
       case GL_RGB10_A2:
          break;
 
+      case GL_RED:
+      case GL_RG:
+         /* GL_EXT_texture_rg adds support for GL_RED and GL_RG as an internal
+          * format
+          */
+         if (_mesa_has_EXT_texture_rg(ctx))
+            break;
+
+      FALLTHROUGH;
       default:
          _mesa_error(ctx, GL_INVALID_ENUM,
                      "glCopyTexImage%dD(internalFormat=%s)", dimensions,

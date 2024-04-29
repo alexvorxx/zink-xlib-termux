@@ -11,6 +11,8 @@
 #include "vn_instance.h"
 #include "vn_renderer.h"
 
+#define VN_RING_IDLE_TIMEOUT_NS (1ull * 1000 * 1000)
+
 static_assert(ATOMIC_INT_LOCK_FREE == 2 && sizeof(atomic_uint) == 4,
               "vn_ring_shared requires lock-free 32-bit atomic_uint");
 
@@ -54,6 +56,9 @@ struct vn_ring {
    /* to synchronize renderer/ring */
    mtx_t roundtrip_mutex;
    uint64_t roundtrip_next;
+
+   int64_t last_notify;
+   int64_t next_notify;
 };
 
 struct vn_ring_submit {
@@ -171,7 +176,7 @@ vn_ring_wait_seqno(struct vn_ring *ring, uint32_t seqno)
     * repeatedly anyway.  Let's just poll here.
     */
    struct vn_relax_state relax_state =
-      vn_relax_init(ring->instance, "ring seqno");
+      vn_relax_init(ring->instance, VN_RELAX_REASON_RING_SEQNO);
    do {
       if (vn_ring_get_seqno_status(ring, seqno)) {
          vn_relax_fini(&relax_state);
@@ -218,7 +223,7 @@ vn_ring_wait_space(struct vn_ring *ring, uint32_t size)
 
       /* see the reasoning in vn_ring_wait_seqno */
       struct vn_relax_state relax_state =
-         vn_relax_init(ring->instance, "ring space");
+         vn_relax_init(ring->instance, VN_RELAX_REASON_RING_SPACE);
       do {
          vn_relax(&relax_state);
          if (vn_ring_has_space(ring, size, &head)) {
@@ -320,7 +325,7 @@ vn_ring_create(struct vn_instance *instance,
       .pNext = &monitor_info,
       .resourceId = ring->shmem->res_id,
       .size = layout->shmem_size,
-      .idleTimeout = 5ull * 1000 * 1000,
+      .idleTimeout = VN_RING_IDLE_TIMEOUT_NS,
       .headOffset = layout->head_offset,
       .tailOffset = layout->tail_offset,
       .statusOffset = layout->status_offset,
@@ -432,8 +437,19 @@ vn_ring_submit_internal(struct vn_ring *ring,
 
    *seqno = submit->seqno;
 
-   /* notify renderer to wake up ring if idle */
-   return status & VK_RING_STATUS_IDLE_BIT_MESA;
+   /* Notify renderer to wake up idle ring if at least VN_RING_IDLE_TIMEOUT_NS
+    * has passed since the last sent notification to avoid excessive wake up
+    * calls (non-trivial since submitted via virtio-gpu kernel).
+    */
+   if (status & VK_RING_STATUS_IDLE_BIT_MESA) {
+      const int64_t now = os_time_get_nano();
+      if (os_time_timeout(ring->last_notify, ring->next_notify, now)) {
+         ring->last_notify = now;
+         ring->next_notify = now + VN_RING_IDLE_TIMEOUT_NS;
+         return true;
+      }
+   }
+   return false;
 }
 
 static const struct vn_cs_encoder *

@@ -2528,7 +2528,7 @@ nine_d3d_matrix_inverse(D3DMATRIX *D, const D3DMATRIX *M)
     for (k = 0; k < 4; k++)
         D->m[i][k] *= det;
 
-#if defined(DEBUG) || !defined(NDEBUG)
+#if MESA_DEBUG || !defined(NDEBUG)
     {
         D3DMATRIX I;
 

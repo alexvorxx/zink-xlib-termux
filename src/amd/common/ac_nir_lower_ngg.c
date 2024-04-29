@@ -1885,9 +1885,10 @@ ngg_build_streamout_buffer_info(nir_builder *b,
        * ordered_id; Each buffer info is in a channel of a vec4.
        */
       nir_def *buffer_offsets =
-         nir_ordered_xfb_counter_add_amd(b, ordered_id, nir_vec(b, workgroup_buffer_sizes, 4),
-                                         /* mask of buffers to update */
-                                         .write_mask = info->buffers_written);
+         nir_ordered_xfb_counter_add_gfx11_amd(b, ordered_id,
+                                               nir_vec(b, workgroup_buffer_sizes, 4),
+                                               /* mask of buffers to update */
+                                               .write_mask = info->buffers_written);
 
       nir_def *emit_prim[4];
       memcpy(emit_prim, gen_prim, 4 * sizeof(nir_def *));
@@ -1933,9 +1934,9 @@ ngg_build_streamout_buffer_info(nir_builder *b,
        */
       nir_if *if_any_overflow = nir_push_if(b, any_overflow);
       {
-         nir_xfb_counter_sub_amd(b, nir_vec(b, overflow_amount, 4),
-                                 /* mask of buffers to update */
-                                 .write_mask = info->buffers_written);
+         nir_xfb_counter_sub_gfx11_amd(b, nir_vec(b, overflow_amount, 4),
+                                       /* mask of buffers to update */
+                                       .write_mask = info->buffers_written);
       }
       nir_pop_if(b, if_any_overflow);
 

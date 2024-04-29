@@ -57,8 +57,6 @@ There should be at most one <doc> and at most one <brief> tag for any parent.
 Tags that define top-level entities include:
 
  <domain>: Declares an addressing space containing registers
- <group>: Declares a block of registers, expected to be included by one or
-          more <domain>s
  <bitset>: Declares a list of applicable bitfields for some register
  <enum>: Declares a list of related symbolic values. Can describe params to
          a register/bitfield, or discriminate between card variants.
@@ -89,23 +87,14 @@ access something useful. <domain> can have the following attributes:
  - width [optional]: the size, in bits, of a single addressable unit. This is
    8 by default for usual byte-addressable memory, but 32 can be useful
    occasionally for indexed spaces of 32-bit cells. Values sane enough to
-   support for now include 8, 16, 32, 64.
- - size [optional]: total number of addressable units it spans. Can be
-   undefined if you don't know it or it doesn't make sense. As a special
-   exception to the merging rules, size attribute need not be specified on all
-   tags that will result in a merged domain: tags with size can be merged with
-   tags without size, resulting in merged domain that has size. Error only
-   happens when the merged domains both have sizes, and the sizes differ.
- - bare [optional]: if set to "no", all children items will have the domain
-   name prepended to their names. If set to "yes", such prefixing doesn't
-   happen. Default is "no".
+   support for now include only 32.
  - prefix [optional]: selects the string that should be prepended to name
    of every child item. The special value "none" means no prefix, and is the
    default. All other values are looked up as <enum> names and, for each child
    item, its name is prefixed with name of the earliest variant in the given
    enum that supports given item.
 
-<domain name="NV_MMIO" size="0x1000000" prefix="chipset" bare="yes">
+<domain name="NV_MMIO" prefix="chipset">
 	<reg32 offset="0" name="PMC_BOOT_0" />
 	<reg32 offset="4" name="PMC_BOOT_1" varset="chipset" variants="NV10-" />
 	<reg32 offset="0x100" name="PMC_INTR" />
@@ -116,12 +105,11 @@ to NV04_PMC_BOOT_0 register, 4-7 belong to NV10_PMC_BOOT_1 register,
 0x100-0x103 belong to NV04_PMC_INTR register, and remaining cells are either
 unused or unknown. The generated .h definitions are:
 
-#define NV_MMIO__SIZE		0x1000000
 #define NV04_PMC_BOOT_0		0
 #define NV10_PMC_BOOT_1		4
 #define NV04_PMC_INTR		0x100
 
-<domain name="NV50_PFB_VM_TRAP" width="32" size="6">
+<domain name="NV50_PFB_VM_TRAP" width="32">
 	<reg32 offset="0" name="STATUS" />
 	<reg32 offset="1" name="CHANNEL" />
 	<reg32 offset="2" name="UNK2" />
@@ -133,7 +121,6 @@ unused or unknown. The generated .h definitions are:
 Defines a 6-cell address space with each cell 32 bits in size and
 corresponding to a single register. Definitions are:
 
-#define NV50_PFB_VM_TRAP__SIZE		6
 #define NV50_PFB_VM_TRAP_STATUS		0
 #define NV50_PFB_VM_TRAP_CHANNEL	1
 #define NV50_PFB_VM_TRAP_UNK2		2
@@ -144,16 +131,13 @@ corresponding to a single register. Definitions are:
 2.3. Registers
 
 What we really want all the time is defining registers. This is done with
-<reg8>, <reg16>, <reg32> or <reg64> tags. The register of course takes
+<reg32> or <reg64> tags. The register of course takes
 reg_width / domain_width cells in the domain. It's an error to define a
 register with smaller width than the domain it's in. The <reg*> attributes
 are:
 
  - name [required]: the name of the register
  - offset [required]: the offset of the register
- - access [optional]: "rw" [default], "r", or "w" to mark the register as
-   read-write, read-only, or write-only. Only makes sense for real MMIO
-   domains.
  - varset [optional]: the <enum> to choose from by the variant attribute.
    Defaults to first <enum> used in currently active prefix.
  - variants [optional]: space-separated list of and variant ranges that this
@@ -223,9 +207,6 @@ Enum is, basically, a set of values. They're defined by <enum> tag with the
 following attributes:
 
  - name [required]: an identifying name.
- - inline [optional]: "yes" or "no", with "no" being the default. Selects if
-   this enum should emit its own definitions in .h file, or be inlined into
-   any <reg*> / <bitfield> definitions that reference it.
  - bare [optional]: only for no-inline enums, behaves like bare attribute
    to <domain>
  - prefix [optional]: only for no-inline enums, behaves like prefix attribute
@@ -247,7 +228,7 @@ tags can also be written directly inside <reg*> tag.
 	<value value="0x12" name="A8R8G8B8_RECT" variants="NV10-" />
 </enum>
 
-<enum name="gl_shade_model" inline="yes">
+<enum name="gl_shade_model">
 	<value value="0x1d00" name="FLAT" />
 	<value value="0x1d01" name="SMOOTH" />
 </enum>
@@ -614,38 +595,6 @@ Results in:
 #define NV50_COMPUTE_USER_PARAM(i)			(0x600 + (i)*4)
 #define NV50_COMPUTE_USER_PARAM__LEN			64
 #define NV50_COMPUTE_USER_PARAM__ESIZE			4
-
-2.7. Groups
-
-Groups are just sets of registers and/or arrays that can be copied-and-pasted
-together, when they're duplicated in several places in the same <domain>,
-two different <domain>s, or have different offsets for different variants.
-<group> and <use-group> only have the name attribute. <use-group> can appear
-wherever <reg*> can, including inside a <group>.
-
-<group name="nv50_mp">
-	<!-- ... -->
-	<reg64 offset="0x70" name="TRAPPED_OPCODE" />
-	<!-- ... -->
-</group>
-
-<array offset="0x408000" name="PGRAPH_TP" stride="0x1000" length="8" variants="NV50:NVA0">
-	<array offset="0x200" name="MP" stride="0x80" length="2">
-		<use-group name="nv50_mp" />
-	</array>
-	<!-- ... -->
-</array>
-<array offset="0x408000" name="PGRAPH_TP" stride="0x800" length="10" variants="NVA0-">
-	<array offset="0x100" name="MP" stride="0x80" length="4">
-		<use-group name="nv50_mp" />
-	</array>
-	<!-- ... -->
-</array>
-
-Will get you:
-
-#define NV50_PGRAPH_TP_MP_TRAPPED_OPCODE(i, j) 	(0x408270 + (i)*0x1000 + (j)*0x80)
-#define NVA0_PGRAPH_TP_MP_TRAPPED_OPCODE(i, j) 	(0x408170 + (i)*0x800 + (j)*0x80)
 
 3. The utilities.
 

@@ -181,7 +181,7 @@ static GLenum
 valid_prim_mode_custom(struct gl_context *ctx, GLenum mode,
                        GLbitfield valid_prim_mask)
 {
-#ifdef DEBUG
+#if MESA_DEBUG
    ASSERTED unsigned mask = ctx->ValidPrimMask;
    ASSERTED unsigned mask_indexed = ctx->ValidPrimMaskIndexed;
    ASSERTED bool drawpix_valid = ctx->DrawPixValid;

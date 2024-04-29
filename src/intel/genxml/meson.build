@@ -45,7 +45,7 @@ endforeach
 
 genX_xml_h = custom_target(
   'genX_xml.h',
-  input : ['gen_zipped_file.py', gen_xml_files],
+  input : ['../../util/gen_zipped_xml_file.py', gen_xml_files],
   output : 'genX_xml.h',
   command : [prog_python, '@INPUT@'],
   capture : true,

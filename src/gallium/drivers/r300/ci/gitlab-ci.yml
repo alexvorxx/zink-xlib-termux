@@ -40,6 +40,7 @@ r300-rv530-deqp-gles2:
 r300-rv530-nine:
   extends:
     - .ondracka-rv530
+    - .r300-nine-manual-rules
   variables:
     GTEST: "/NineTests/NineTests"
     HWCI_TEST_SCRIPT: "/install/gtest-runner.sh"

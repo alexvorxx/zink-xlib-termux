@@ -41,6 +41,7 @@ c_args_vpe += [
   '-DLITTLEENDIAN_CPU',
   '-DVPE_BUILD_1_0',
   '-DVPE_BUILD_1_X',
+  '-DVPE_BUILD_1_1',
 ]
 
 vpe_files = files(
@@ -127,6 +128,10 @@ vpe_files = files(
   'src/chip/vpe10/vpe10_background.c',
   'src/chip/vpe10/vpe10_cdc.c',
   'src/chip/vpe10/vpe10_vpec.c',
+  'src/chip/vpe11/inc/vpe11_cmd_builder.h',
+  'src/chip/vpe11/inc/vpe11_resource.h',
+  'src/chip/vpe11/vpe11_cmd_builder.c',
+  'src/chip/vpe11/vpe11_resource.c',
 )
 
 inc_amd_vpe = include_directories(
@@ -136,6 +141,7 @@ inc_amd_vpe = include_directories(
   'src/chip',
   'src/utils/inc',
   'src/chip/vpe10/inc',
+  'src/chip/vpe11/inc',
 )
 
 libvpe = static_library(

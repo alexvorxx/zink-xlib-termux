@@ -65,16 +65,16 @@ SPDX-License-Identifier: MIT
 </enum>
 
 <enum name="#reg_group">
-	<value val="0" display="t"/>
-	<value val="1" display="i"/>
-	<value val="2" display="u"/>
-	<value val="3" display="u"/>
+	<value val="0" name="temp" display="t"/>
+	<value val="1" name="internal" display="i"/>
+	<value val="2" name="uniform_0" display="u"/>
+	<value val="3" name="uniform_1" display="u"/>
 	<value val="4" display="th"/>
 	<value val="7" name="immed" display=""/>
 </enum>
 
 <enum name="#reg_addressing_mode">
-	<value val="0" display=""/>
+	<value val="0" name="direct" display=""/>
 	<value val="1" display="[a.x]"/>
 	<value val="2" display="[a.y]"/>
 	<value val="3" display="[a.z]"/>
@@ -125,6 +125,13 @@ SPDX-License-Identifier: MIT
 	<field name="AMODE" low="0" high="2" type="#reg_addressing_mode"/>
 	<field name="REG" low="3" high="9" type="uint"/>
 	<field name="COMPS" low="10" high="13" type="#wrmask"/>
+
+	<encode type="struct etna_inst_dst *">
+		<map name="DST_USE">p->DST_USE</map>
+		<map name="AMODE">src->amode</map>
+		<map name="REG">src->reg</map>
+		<map name="COMPS">p->COMPS</map>
+	</encode>
 </bitset>
 
 <bitset name="#instruction" size="128">
@@ -137,6 +144,46 @@ SPDX-License-Identifier: MIT
 	<derived name="TYPE" type="#type">
 		<expr>{TYPE_BIT2} &lt;&lt; 2 | {TYPE_BIT01}</expr>
 	</derived>
+
+	<encode type="struct etna_inst *" case-prefix="ISA_OPC_">
+		<map name="TYPE_BIT01">src->type &amp; 0x3</map>
+		<map name="TYPE_BIT2">(src->type &amp; 0x4) &gt; 2</map>
+		<map name="LOW_HALF">src->sel_bit0</map>
+		<map name="HIGH_HALF">src->sel_bit1</map>
+		<map name="COND">src->cond</map>
+		<map name="RMODE">src->rounding</map>
+		<map name="SAT">src->sat</map>
+		<map name="DST_USE">src->dst.use</map>
+		<map name="DST">&amp;src->dst</map>
+		<map name="DST_FULL">src->dst_full</map>
+		<map name="COMPS">src->dst.write_mask</map>
+		<map name="SRC0">&amp;src->src[0]</map>
+		<map name="SRC0_USE">src->src[0].use</map>
+		<map name="SRC0_REG">src->src[0].reg</map>
+		<map name="SRC0_RGROUP">src->src[0].rgroup</map>
+		<map name="SRC0_AMODE">src->src[0].amode</map>
+		<map name="SRC1">&amp;src->src[1]</map>
+		<map name="SRC1_USE">src->src[1].use</map>
+		<map name="SRC1_REG">src->src[1].reg</map>
+		<map name="SRC1_RGROUP">src->src[1].rgroup</map>
+		<map name="SRC1_AMODE">src->src[1].amode</map>
+		<map name="SRC2">&amp;src->src[2]</map>
+		<map name="SRC2_USE">rc->src[2].use</map>
+		<map name="SRC2_REG">src->src[2].reg</map>
+		<map name="SRC2_RGROUP">src->src[2].rgroup</map>
+		<map name="SRC2_AMODE">src->src[2].amode</map>
+
+		<map name="TEX_ID">src->tex.id</map>
+		<map name="TEX_SWIZ">src->tex.swiz</map>
+		<map name="TARGET">src->imm</map>
+
+		<!-- sane defaults -->
+		<map name="PMODE">1</map>
+		<map name="SKPHP">0</map>
+		<map name="LOCAL">0</map>
+		<map name="DENORM">0</map>
+		<map name="LEFT_SHIFT">0</map>
+	</encode>
 </bitset>
 
 <bitset name="#src-swizzle" size="8">
@@ -148,6 +195,13 @@ SPDX-License-Identifier: MIT
 	<field name="SWIZ_Y" low="2" high="3" type="#swiz"/>
 	<field name="SWIZ_Z" low="4" high="5" type="#swiz"/>
 	<field name="SWIZ_W" low="6" high="7" type="#swiz"/>
+
+	<encode type="uint8_t">
+		<map name="SWIZ_X">(src &amp; 0x03) &gt;&gt; 0</map>
+		<map name="SWIZ_Y">(src &amp; 0x0c) &gt;&gt; 2</map>
+		<map name="SWIZ_Z">(src &amp; 0x30) &gt;&gt; 4</map>
+		<map name="SWIZ_W">(src &amp; 0xc0) &gt;&gt; 6</map>
+	</encode>
 </bitset>
 
 <enum name="#thread">
@@ -272,6 +326,13 @@ SPDX-License-Identifier: MIT
 			</expr>
 		</derived>
 	</override>
+
+	<encode type="struct etna_inst_src *">
+		<map name="SRC_SWIZ">src->swiz</map>
+		<map name="SRC_NEG">src->neg</map>
+		<map name="SRC_ABS">src->abs</map>
+		<map name="SRC_RGROUP">p->SRC_RGROUP</map>
+	</encode>
 </bitset>
 
 <bitset name="#instruction-alu-no-src" extends="#instruction-alu">

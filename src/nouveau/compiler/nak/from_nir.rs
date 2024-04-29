@@ -1513,10 +1513,6 @@ impl<'a> ShaderFromNir<'a> {
         self.set_dst(&alu.def, dst);
     }
 
-    fn parse_jump(&mut self, _b: &mut impl SSABuilder, _jump: &nir_jump_instr) {
-        // Nothing to do
-    }
-
     fn parse_tex(&mut self, b: &mut impl SSABuilder, tex: &nir_tex_instr) {
         let dim = match tex.sampler_dim {
             GLSL_SAMPLER_DIM_1D => {
@@ -1919,12 +1915,13 @@ impl<'a> ShaderFromNir<'a> {
             nir_intrinsic_bar_break_nv => {
                 let src = self.get_src(&srcs[0]);
                 let bar_in = b.bmov_to_bar(src);
+                let cond = self.get_src(&srcs[1]);
 
                 let bar_out = b.alloc_ssa(RegFile::Bar, 1);
                 b.push_op(OpBreak {
                     bar_out: bar_out.into(),
                     bar_in: bar_in.into(),
-                    cond: SrcRef::True.into(),
+                    cond: cond.into(),
                 });
 
                 self.set_dst(&intrin.def, b.bmov_to_gpr(bar_out.into()));
@@ -2097,23 +2094,71 @@ impl<'a> ShaderFromNir<'a> {
                     data: data,
                 });
             }
-            nir_intrinsic_demote
-            | nir_intrinsic_discard
-            | nir_intrinsic_terminate => {
+            nir_intrinsic_copy_fs_outputs_nv => {
+                let ShaderIoInfo::Fragment(info) = &mut self.info.io else {
+                    panic!(
+                        "copy_fs_outputs_nv is only allowed in fragment shaders"
+                    );
+                };
+
+                for i in 0..32 {
+                    // Assume that colors have to come a vec4 at a time
+                    if !self.fs_out_regs[i].is_none() {
+                        info.writes_color |= 0xf << (i & !3)
+                    }
+                }
+                let mask_idx = (NAK_FS_OUT_SAMPLE_MASK / 4) as usize;
+                info.writes_sample_mask = !self.fs_out_regs[mask_idx].is_none();
+                let depth_idx = (NAK_FS_OUT_DEPTH / 4) as usize;
+                info.writes_depth = !self.fs_out_regs[depth_idx].is_none();
+
+                let mut srcs = Vec::new();
+                for i in 0..32 {
+                    if info.writes_color & (1 << i) != 0 {
+                        if self.fs_out_regs[i].is_none() {
+                            srcs.push(0.into());
+                        } else {
+                            srcs.push(self.fs_out_regs[i].into());
+                        }
+                    }
+                }
+
+                // These always come together for some reason
+                if info.writes_sample_mask || info.writes_depth {
+                    if info.writes_sample_mask {
+                        srcs.push(self.fs_out_regs[mask_idx].into());
+                    } else {
+                        srcs.push(0.into());
+                    }
+                    if info.writes_depth {
+                        // Saturate depth writes.
+                        //
+                        // TODO: This seems wrong in light of unrestricted depth
+                        // but it's needed to pass CTS tests for now.
+                        let depth = self.fs_out_regs[depth_idx];
+                        let sat_depth = b.alloc_ssa(RegFile::GPR, 1);
+                        b.push_op(OpFAdd {
+                            dst: sat_depth.into(),
+                            srcs: [depth.into(), 0.into()],
+                            saturate: true,
+                            rnd_mode: FRndMode::NearestEven,
+                            ftz: false,
+                        });
+                        srcs.push(sat_depth.into());
+                    }
+                }
+
+                b.push_op(OpFSOut { srcs: srcs });
+            }
+            nir_intrinsic_demote | nir_intrinsic_discard => {
                 if let ShaderIoInfo::Fragment(info) = &mut self.info.io {
                     info.uses_kill = true;
                 } else {
                     panic!("OpKill is only available in fragment shaders");
                 }
                 b.push_op(OpKill {});
-
-                if intrin.intrinsic == nir_intrinsic_terminate {
-                    b.push_op(OpExit {});
-                }
             }
-            nir_intrinsic_demote_if
-            | nir_intrinsic_discard_if
-            | nir_intrinsic_terminate_if => {
+            nir_intrinsic_demote_if | nir_intrinsic_discard_if => {
                 if let ShaderIoInfo::Fragment(info) = &mut self.info.io {
                     info.uses_kill = true;
                 } else {
@@ -2121,10 +2166,6 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 let cond = self.get_ssa(srcs[0].as_def())[0];
                 b.predicate(cond.into()).push_op(OpKill {});
-
-                if intrin.intrinsic == nir_intrinsic_terminate_if {
-                    b.predicate(cond.into()).push_op(OpExit {});
-                }
             }
             nir_intrinsic_global_atomic => {
                 let bit_size = intrin.def.bit_size();
@@ -2842,59 +2883,41 @@ impl<'a> ShaderFromNir<'a> {
         self.set_ssa(&undef.def, dst);
     }
 
-    fn store_fs_outputs(&mut self, b: &mut impl SSABuilder) {
-        let ShaderIoInfo::Fragment(info) = &mut self.info.io else {
-            return;
+    fn emit_jump(
+        &mut self,
+        b: &mut impl SSABuilder,
+        nb: &nir_block,
+        target: &nir_block,
+    ) {
+        if target.index == self.end_block_id {
+            b.push_op(OpExit {});
+        } else {
+            self.cfg.add_edge(nb.index, target.index);
+            b.push_op(OpBra {
+                target: self.get_block_label(target),
+            });
+        }
+    }
+
+    fn emit_pred_jump(
+        &mut self,
+        b: &mut impl SSABuilder,
+        nb: &nir_block,
+        pred: Pred,
+        target: &nir_block,
+        fallthrough: &nir_block,
+    ) {
+        // The fall-through edge has to come first
+        self.cfg.add_edge(nb.index, fallthrough.index);
+        let op = if target.index == self.end_block_id {
+            Op::Exit(OpExit {})
+        } else {
+            self.cfg.add_edge(nb.index, target.index);
+            Op::Bra(OpBra {
+                target: self.get_block_label(target),
+            })
         };
-
-        for i in 0..32 {
-            // Assume that colors have to come a vec4 at a time
-            if !self.fs_out_regs[i].is_none() {
-                info.writes_color |= 0xf << (i & !3)
-            }
-        }
-        let mask_idx = (NAK_FS_OUT_SAMPLE_MASK / 4) as usize;
-        info.writes_sample_mask = !self.fs_out_regs[mask_idx].is_none();
-        let depth_idx = (NAK_FS_OUT_DEPTH / 4) as usize;
-        info.writes_depth = !self.fs_out_regs[depth_idx].is_none();
-
-        let mut srcs = Vec::new();
-        for i in 0..32 {
-            if info.writes_color & (1 << i) != 0 {
-                if self.fs_out_regs[i].is_none() {
-                    srcs.push(0.into());
-                } else {
-                    srcs.push(self.fs_out_regs[i].into());
-                }
-            }
-        }
-
-        // These always come together for some reason
-        if info.writes_sample_mask || info.writes_depth {
-            if info.writes_sample_mask {
-                srcs.push(self.fs_out_regs[mask_idx].into());
-            } else {
-                srcs.push(0.into());
-            }
-            if info.writes_depth {
-                // Saturate depth writes.
-                //
-                // TODO: This seems wrong in light of unrestricted depth but
-                // it's needed to pass CTS tests for now.
-                let depth = self.fs_out_regs[depth_idx];
-                let sat_depth = b.alloc_ssa(RegFile::GPR, 1);
-                b.push_op(OpFAdd {
-                    dst: sat_depth.into(),
-                    srcs: [depth.into(), 0.into()],
-                    saturate: true,
-                    rnd_mode: FRndMode::NearestEven,
-                    ftz: false,
-                });
-                srcs.push(sat_depth.into());
-            }
-        }
-
-        b.push_op(OpFSOut { srcs: srcs });
+        b.predicate(pred).push_op(op);
     }
 
     fn parse_block(
@@ -2951,6 +2974,7 @@ impl<'a> ShaderFromNir<'a> {
             b.push_op(phi);
         }
 
+        let mut goto = None;
         for ni in nb.iter_instr_list() {
             if DEBUG.annotate() {
                 let annotation = self
@@ -2969,7 +2993,12 @@ impl<'a> ShaderFromNir<'a> {
                     self.parse_alu(&mut b, ni.as_alu().unwrap())
                 }
                 nir_instr_type_jump => {
-                    self.parse_jump(&mut b, ni.as_jump().unwrap())
+                    let jump = ni.as_jump().unwrap();
+                    if jump.type_ == nir_jump_goto
+                        || jump.type_ == nir_jump_goto_if
+                    {
+                        goto = Some(jump);
+                    }
                 }
                 nir_instr_type_tex => {
                     self.parse_tex(&mut b, ni.as_tex().unwrap())
@@ -3021,32 +3050,56 @@ impl<'a> ShaderFromNir<'a> {
             }
         }
 
-        if let Some(ni) = nb.following_if() {
-            // The fall-through edge has to come first
-            self.cfg.add_edge(nb.index, ni.first_then_block().index);
-            self.cfg.add_edge(nb.index, ni.first_else_block().index);
-
-            let mut bra = Instr::new_boxed(OpBra {
-                target: self.get_block_label(ni.first_else_block()),
-            });
-
-            let cond = self.get_ssa(ni.condition.as_def())[0];
-            bra.pred = cond.into();
-            // This is the branch to jump to the else
-            bra.pred.pred_inv = true;
-
-            b.push_instr(bra);
-        } else {
-            assert!(succ[1].is_none());
-            let s0 = succ[0].unwrap();
-            if s0.index == self.end_block_id {
-                self.store_fs_outputs(&mut b);
-                b.push_op(OpExit {});
+        if let Some(goto) = goto {
+            let target = goto.target().unwrap();
+            if goto.type_ == nir_jump_goto {
+                self.emit_jump(&mut b, nb, target);
             } else {
-                self.cfg.add_edge(nb.index, s0.index);
-                b.push_op(OpBra {
-                    target: self.get_block_label(s0),
-                });
+                let cond = self.get_ssa(goto.condition.as_def())[0];
+                let else_target = goto.else_target().unwrap();
+
+                /* Next block in the NIR CF list */
+                let next_block = nb.cf_node.next().unwrap().as_block().unwrap();
+
+                if else_target as *const _ == next_block as *const _ {
+                    self.emit_pred_jump(
+                        &mut b,
+                        nb,
+                        // This is the branch to jump to the else
+                        cond.into(),
+                        target,
+                        else_target,
+                    );
+                } else if target as *const _ == next_block as *const _ {
+                    self.emit_pred_jump(
+                        &mut b,
+                        nb,
+                        Pred::from(cond).bnot(),
+                        else_target,
+                        target,
+                    );
+                } else {
+                    panic!(
+                        "One of the two goto targets must be the next block in \
+                            the NIR CF list"
+                    );
+                }
+            }
+        } else {
+            if let Some(ni) = nb.following_if() {
+                let cond = self.get_ssa(ni.condition.as_def())[0];
+                self.emit_pred_jump(
+                    &mut b,
+                    nb,
+                    // This is the branch to jump to the else
+                    Pred::from(cond).bnot(),
+                    ni.first_else_block(),
+                    ni.first_then_block(),
+                );
+            } else {
+                assert!(succ[1].is_none());
+                let s0 = succ[0].unwrap();
+                self.emit_jump(&mut b, nb, s0);
             }
         }
 
@@ -3101,7 +3154,8 @@ impl<'a> ShaderFromNir<'a> {
 
     pub fn parse_function_impl(&mut self, nfi: &nir_function_impl) -> Function {
         let mut ssa_alloc = SSAValueAllocator::new();
-        self.end_block_id = nfi.end_block().index;
+        let end_nb = nfi.end_block();
+        self.end_block_id = end_nb.index;
 
         let mut phi_alloc = PhiAllocator::new();
         let mut phi_map = PhiAllocMap::new(&mut phi_alloc);

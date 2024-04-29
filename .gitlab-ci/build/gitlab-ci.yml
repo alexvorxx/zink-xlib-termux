@@ -197,6 +197,7 @@ shader-db:
   stage: code-validation
   extends:
     - .use-debian/x86_64_build
+    - .container+build-rules
   needs:
     - debian-build-testing
   variables:

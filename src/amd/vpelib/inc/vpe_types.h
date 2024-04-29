@@ -80,6 +80,7 @@ enum vpe_status {
 enum vpe_ip_level {
     VPE_IP_LEVEL_UNKNOWN = (-1),
     VPE_IP_LEVEL_1_0,
+    VPE_IP_LEVEL_1_1
 };
 
 /****************************************
@@ -604,6 +605,8 @@ struct vpe_build_param {
         uint32_t reserved     : 31;
     } flags;
 
+    uint16_t num_instances;
+    bool     collaboration_mode;
 };
 
 /** reported through vpe_check_support()

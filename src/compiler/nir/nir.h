@@ -1950,7 +1950,8 @@ typedef struct nir_io_semantics {
    unsigned no_varying : 1;       /* whether this output isn't consumed by the next stage */
    unsigned no_sysval_output : 1; /* whether this system value output has no
                                      effect due to current pipeline states */
-   unsigned _pad : 2;
+   unsigned interp_explicit_strict : 1; /* preserve original vertex order */
+   unsigned _pad : 1;
 } nir_io_semantics;
 
 /* Transform feedback info for 2 outputs. nir_intrinsic_store_output contains
@@ -2920,7 +2921,7 @@ typedef struct nir_block {
 
    /*
     * this node's immediate dominator in the dominance tree - set to NULL for
-    * the start block.
+    * the start block and any unreachable blocks.
     */
    struct nir_block *imm_dom;
 
@@ -4770,10 +4771,23 @@ nir_def_is_unused(nir_def *ssa)
    return list_is_empty(&ssa->uses);
 }
 
-/** Returns the next block, disregarding structure
+/** Sorts unstructured blocks
  *
- * The ordering is deterministic but has no guarantees beyond that.  In
- * particular, it is not guaranteed to be dominance-preserving.
+ * NIR requires that unstructured blocks be sorted in reverse post
+ * depth-first-search order.  This is the standard ordering used in the
+ * compiler literature which guarantees dominance.  In particular, reverse
+ * post-DFS order guarantees that dominators occur in the list before the
+ * blocks they dominate.
+ *
+ * NOTE: This function also implicitly deletes any unreachable blocks.
+ */
+void nir_sort_unstructured_blocks(nir_function_impl *impl);
+
+/** Returns the next block
+ *
+ * For structured control-flow, this follows the same order as
+ * nir_block_cf_tree_next().  For unstructured control-flow the blocks are in
+ * reverse post-DFS order.  (See nir_sort_unstructured_blocks() above.)
  */
 nir_block *nir_block_unstructured_next(nir_block *block);
 nir_block *nir_unstructured_start_block(nir_function_impl *impl);
@@ -6278,6 +6292,8 @@ bool nir_lower_discard_if(nir_shader *shader, nir_lower_discard_if_options optio
 
 bool nir_lower_discard_or_demote(nir_shader *shader,
                                  bool force_correct_quad_ops_after_discard);
+
+bool nir_lower_terminate_to_demote(nir_shader *nir);
 
 bool nir_lower_memory_model(nir_shader *shader);
 

@@ -46,6 +46,7 @@
 #include "util/u_transfer_helper.h"
 #include "util/u_upload_mgr.h"
 #include "util/ralloc.h"
+#include "i915/iris_bufmgr.h"
 #include "iris_batch.h"
 #include "iris_context.h"
 #include "iris_resource.h"
@@ -54,7 +55,6 @@
 #include "intel/dev/intel_debug.h"
 #include "isl/isl.h"
 #include "drm-uapi/drm_fourcc.h"
-#include "drm-uapi/i915_drm.h"
 
 enum modifier_priority {
    MODIFIER_PRIORITY_INVALID = 0,
@@ -1161,17 +1161,14 @@ iris_resource_create(struct pipe_screen *pscreen,
 }
 
 static uint64_t
-tiling_to_modifier(uint32_t tiling)
+tiling_to_modifier(struct iris_bufmgr *bufmgr, uint32_t tiling)
 {
-   static const uint64_t map[] = {
-      [I915_TILING_NONE]   = DRM_FORMAT_MOD_LINEAR,
-      [I915_TILING_X]      = I915_FORMAT_MOD_X_TILED,
-      [I915_TILING_Y]      = I915_FORMAT_MOD_Y_TILED,
-   };
+   if (iris_bufmgr_get_device_info(bufmgr)->kmd_type != INTEL_KMD_TYPE_I915) {
+      assert(tiling == 0);
+      return DRM_FORMAT_MOD_LINEAR;
+   }
 
-   assert(tiling < ARRAY_SIZE(map));
-
-   return map[tiling];
+   return iris_i915_tiling_to_modifier(tiling);
 }
 
 static struct pipe_resource *
@@ -1351,7 +1348,7 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
                /* We have no modifier; match whatever GEM_GET_TILING says */
                uint32_t tiling;
                iris_gem_get_tiling(main_res->bo, &tiling);
-               modifier = tiling_to_modifier(tiling);
+               modifier = tiling_to_modifier(bufmgr, tiling);
             } else {
                modifier = whandle->modifier;
             }

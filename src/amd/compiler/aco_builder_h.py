@@ -675,7 +675,7 @@ void hw_init_scratch(Builder& bld, Definition def, Operand scratch_addr, Operand
 
 #endif /* _ACO_BUILDER_ */"""
 
-from aco_opcodes import opcodes, Format
+from aco_opcodes import Format
 from mako.template import Template
 
-print(Template(template).render(opcodes=opcodes, Format=Format))
+print(Template(template).render(Format=Format))

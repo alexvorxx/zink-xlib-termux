@@ -24,14 +24,8 @@
 /** @file brw_fs_combine_constants.cpp
  *
  * This file contains the opt_combine_constants() pass that runs after the
- * regular optimization loop. It passes over the instruction list and
- * selectively promotes immediate values to registers by emitting a mov(1)
- * instruction.
- *
- * This is useful on Gen 7 particularly, because a few instructions can be
- * coissued (i.e., issued in the same cycle as another thread on the same EU
- * issues an instruction) under some circumstances, one of which is that they
- * cannot use immediate values.
+ * regular optimization loop. It passes over the instruction list and promotes
+ * immediate values to registers by emitting a mov(1) instruction.
  */
 
 #include "brw_fs.h"
@@ -773,7 +767,6 @@ struct fs_inst_box {
    fs_inst *inst;
    unsigned ip;
    bblock_t *block;
-   bool must_promote;
 };
 
 /** A box for putting fs_regs in a linked list. */
@@ -838,15 +831,6 @@ struct imm {
    uint8_t subreg_offset;
    uint16_t nr;
 
-   /** The number of coissuable instructions using this immediate. */
-   uint16_t uses_by_coissue;
-
-   /**
-    * Whether this constant is used by an instruction that can't handle an
-    * immediate source (and already has to be promoted to a GRF).
-    */
-   bool must_promote;
-
    /** Is the value used only in a single basic block? */
    bool used_in_single_block;
 
@@ -885,7 +869,7 @@ new_value(struct table *table, void *mem_ctx)
  */
 static unsigned
 box_instruction(struct table *table, void *mem_ctx, fs_inst *inst,
-                unsigned ip, bblock_t *block, bool must_promote)
+                unsigned ip, bblock_t *block)
 {
    /* It is common for box_instruction to be called consecutively for each
     * source of an instruction.  As a result, the most common case for finding
@@ -913,7 +897,6 @@ box_instruction(struct table *table, void *mem_ctx, fs_inst *inst,
    ib->inst = inst;
    ib->block = block;
    ib->ip = ip;
-   ib->must_promote = must_promote;
 
    return idx;
 }
@@ -1088,7 +1071,6 @@ can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
 static void
 add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
                         unsigned i,
-                        bool must_promote,
                         bool allow_one_constant,
                         bblock_t *block,
                         const struct intel_device_info *devinfo,
@@ -1096,8 +1078,7 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
 {
    struct value *v = new_value(table, const_ctx);
 
-   unsigned box_idx = box_instruction(table, const_ctx, inst, ip, block,
-                                      must_promote);
+   unsigned box_idx = box_instruction(table, const_ctx, inst, ip, block);
 
    v->value.u64 = inst->src[i].d64;
    v->bit_size = 8 * type_sz(inst->src[i].type);
@@ -1305,9 +1286,8 @@ brw_fs_opt_combine_constants(fs_visitor &s)
    const brw::idom_tree &idom = s.idom_analysis.require();
    unsigned ip = -1;
 
-   /* Make a pass through all instructions and count the number of times each
-    * constant is used by coissueable instructions or instructions that cannot
-    * take immediate arguments.
+   /* Make a pass through all instructions and mark each constant is used in
+    * instruction sources that cannot legally be immediate values.
     */
    foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       ip++;
@@ -1317,7 +1297,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       case SHADER_OPCODE_INT_REMAINDER:
       case SHADER_OPCODE_POW:
          if (inst->src[0].file == IMM) {
-            add_candidate_immediate(&table, inst, ip, 0, true, false, block,
+            add_candidate_immediate(&table, inst, ip, 0, false, block,
                                     devinfo, const_ctx);
          }
          break;
@@ -1331,7 +1311,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             if (can_promote_src_as_imm(devinfo, inst, i))
                continue;
 
-            add_candidate_immediate(&table, inst, ip, i, true, false, block,
+            add_candidate_immediate(&table, inst, ip, i, false, block,
                                     devinfo, const_ctx);
          }
 
@@ -1345,7 +1325,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             if (inst->src[i].file != IMM)
                continue;
 
-            add_candidate_immediate(&table, inst, ip, i, true, false, block,
+            add_candidate_immediate(&table, inst, ip, i, false, block,
                                     devinfo, const_ctx);
          }
 
@@ -1363,12 +1343,12 @@ brw_fs_opt_combine_constants(fs_visitor &s)
                 inst->conditional_mod == BRW_CONDITIONAL_L) {
                assert(inst->src[1].file == IMM);
 
-               add_candidate_immediate(&table, inst, ip, 0, true, true, block,
+               add_candidate_immediate(&table, inst, ip, 0, true, block,
                                        devinfo, const_ctx);
-               add_candidate_immediate(&table, inst, ip, 1, true, true, block,
+               add_candidate_immediate(&table, inst, ip, 1, true, block,
                                        devinfo, const_ctx);
             } else {
-               add_candidate_immediate(&table, inst, ip, 0, true, false, block,
+               add_candidate_immediate(&table, inst, ip, 0, false, block,
                                        devinfo, const_ctx);
             }
          }
@@ -1382,7 +1362,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       case BRW_OPCODE_SHL:
       case BRW_OPCODE_SHR:
          if (inst->src[0].file == IMM) {
-            add_candidate_immediate(&table, inst, ip, 0, true, false, block,
+            add_candidate_immediate(&table, inst, ip, 0, false, block,
                                     devinfo, const_ctx);
          }
          break;
@@ -1411,8 +1391,6 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       imm->d64 = result->values_to_emit[i].value.u64;
       imm->size = result->values_to_emit[i].bit_size / 8;
 
-      imm->uses_by_coissue = 0;
-      imm->must_promote = false;
       imm->is_half_float = false;
 
       imm->first_use_ip = UINT16_MAX;
@@ -1433,11 +1411,6 @@ brw_fs_opt_combine_constants(fs_visitor &s)
          imm->uses->push_tail(link(const_ctx, ib->inst, src,
                                    result->user_map[j].negate,
                                    result->user_map[j].type));
-
-         if (ib->must_promote)
-            imm->must_promote = true;
-         else
-            imm->uses_by_coissue++;
 
          if (imm->block == NULL) {
             /* Block should only be NULL on the first pass.  On the first
@@ -1487,11 +1460,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             imm->is_half_float = true;
       }
 
-      /* Remove constants from the table that don't have enough uses to make
-       * them profitable to store in a register.
-       */
-      if (imm->must_promote || imm->uses_by_coissue >= 4)
-         table.len++;
+      table.len++;
    }
 
    delete result;
@@ -1641,7 +1610,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             reg->type = brw_int_type(type_sz(reg->type), true);
          }
 
-#ifdef DEBUG
+#if MESA_DEBUG
          switch (reg->type) {
          case BRW_REGISTER_TYPE_DF:
             assert((isnan(reg->df) && isnan(table.imm[i].df)) ||
@@ -1746,13 +1715,11 @@ brw_fs_opt_combine_constants(fs_visitor &s)
 
          fprintf(stderr,
                  "0x%016" PRIx64 " - block %3d, reg %3d sub %2d, "
-                 "Uses: (%2d, %2d), IP: %4d to %4d, length %4d\n",
+                 "IP: %4d to %4d, length %4d\n",
                  (uint64_t)(imm->d & BITFIELD64_MASK(imm->size * 8)),
                  imm->block->num,
                  imm->nr,
                  imm->subreg_offset,
-                 imm->must_promote,
-                 imm->uses_by_coissue,
                  imm->first_use_ip,
                  imm->last_use_ip,
                  imm->last_use_ip - imm->first_use_ip);

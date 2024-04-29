@@ -119,6 +119,22 @@ static void override_debug_option(
         debug->skip_optimal_tap_check = user_debug->skip_optimal_tap_check;
 }
 
+#ifdef VPE_BUILD_1_1
+static void verify_collaboration_mode(struct vpe_priv *vpe_priv)
+{
+    if (vpe_priv->pub.level == VPE_IP_LEVEL_1_1) {
+        if (vpe_priv->collaboration_mode == true) {
+            vpe_priv->collaborate_sync_index = 1;
+        } else {
+            // after the f_model support collaborate sync command
+            // return VPE_STATUS_ERROR
+        }
+    } else if (vpe_priv->pub.level == VPE_IP_LEVEL_1_0) {
+        vpe_priv->collaboration_mode = false;
+    }
+}
+#endif
+
 struct vpe *vpe_create(const struct vpe_init_data *params)
 {
     struct vpe_priv *vpe_priv;
@@ -356,6 +372,12 @@ enum vpe_status vpe_check_support(
     if (status != VPE_STATUS_OK)
         status = VPE_STATUS_NUM_STREAM_NOT_SUPPORTED;
 
+#ifdef VPE_BUILD_1_1
+    vpe_priv->collaboration_mode = param->collaboration_mode;
+    vpe_priv->vpe_num_instance   = param->num_instances;
+    verify_collaboration_mode(vpe_priv);
+#endif
+
     if (!vpe_priv->stream_ctx || vpe_priv->num_streams != param->num_streams) {
         if (vpe_priv->stream_ctx)
             vpe_free_stream_ctx(vpe_priv);
@@ -513,6 +535,14 @@ static bool validate_cached_param(struct vpe_priv *vpe_priv, const struct vpe_bu
     if (vpe_priv->num_streams != param->num_streams)
         return false;
 
+#ifdef VPE_BUILD_1_1
+    if (vpe_priv->collaboration_mode != param->collaboration_mode)
+        return false;
+
+    if (param->num_instances > 0 && vpe_priv->vpe_num_instance != param->num_instances)
+        return false;
+#endif
+
     for (i = 0; i < param->num_streams; i++) {
         struct vpe_stream stream = param->streams[i];
 
@@ -551,6 +581,9 @@ enum vpe_status vpe_build_commands(
     int64_t               emb_buf_size;
     uint64_t              cmd_buf_gpu_a, cmd_buf_cpu_a;
     uint64_t              emb_buf_gpu_a, emb_buf_cpu_a;
+#ifdef VPE_BUILD_1_1
+    bool is_collaborate_sync_end = false;
+#endif
 
     if (!vpe || !param || !bufs)
         return VPE_STATUS_ERROR;
@@ -648,12 +681,36 @@ enum vpe_status vpe_build_commands(
             &vpe_priv->output_ctx.bg_color, vpe_priv->stream_ctx[0].enable_3dlut);
 
         for (cmd_idx = 0; cmd_idx < vpe_priv->num_vpe_cmds; cmd_idx++) {
+#ifdef VPE_BUILD_1_1
+            if ((vpe_priv->collaboration_mode == true) &&
+                (vpe_priv->vpe_cmd_info[cmd_idx].is_begin == true)) {
+                status = builder->build_collaborate_sync_cmd(
+                    vpe_priv, &curr_bufs, is_collaborate_sync_end);
+                if (status != VPE_STATUS_OK) {
+                    vpe_log("failed in building collaborate sync cmd %d\n", (int)status);
+                } else {
+                    is_collaborate_sync_end = true;
+                }
+            }
+#endif
 
             status = builder->build_vpe_cmd(vpe_priv, &curr_bufs, cmd_idx);
             if (status != VPE_STATUS_OK) {
                 vpe_log("failed in building vpe cmd %d\n", (int)status);
             }
 
+#ifdef VPE_BUILD_1_1
+            if ((vpe_priv->collaboration_mode == true) &&
+                (vpe_priv->vpe_cmd_info[cmd_idx].is_end == true)) {
+                status = builder->build_collaborate_sync_cmd(
+                    vpe_priv, &curr_bufs, is_collaborate_sync_end);
+                if (status != VPE_STATUS_OK) {
+                    vpe_log("failed in building collaborate sync cmd %d\n", (int)status);
+                } else {
+                    is_collaborate_sync_end = false;
+                }
+            }
+#endif
         }
     }
 

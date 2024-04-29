@@ -28,7 +28,7 @@
 #include "ir3.h"
 #include "ir3_compiler.h"
 
-#ifdef DEBUG
+#if MESA_DEBUG
 #define RA_DEBUG (ir3_shader_debug & IR3_DBG_RAMSGS)
 #else
 #define RA_DEBUG 0

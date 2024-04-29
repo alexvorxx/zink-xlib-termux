@@ -1722,7 +1722,7 @@ vn_WaitForFences(VkDevice device,
       memcpy(fences, pFences, sizeof(*fences) * fenceCount);
 
       struct vn_relax_state relax_state =
-         vn_relax_init(dev->instance, "client");
+         vn_relax_init(dev->instance, VN_RELAX_REASON_FENCE);
       while (result == VK_NOT_READY) {
          result = vn_remove_signaled_fences(device, fences, &fenceCount);
          result =
@@ -1734,7 +1734,7 @@ vn_WaitForFences(VkDevice device,
          vk_free(alloc, fences);
    } else {
       struct vn_relax_state relax_state =
-         vn_relax_init(dev->instance, "client");
+         vn_relax_init(dev->instance, VN_RELAX_REASON_FENCE);
       while (result == VK_NOT_READY) {
          result = vn_find_first_signaled_fence(device, pFences, fenceCount);
          result =
@@ -2247,7 +2247,7 @@ vn_WaitSemaphores(VkDevice device,
       memcpy(values, pWaitInfo->pValues, sizeof(*values) * semaphore_count);
 
       struct vn_relax_state relax_state =
-         vn_relax_init(dev->instance, "client");
+         vn_relax_init(dev->instance, VN_RELAX_REASON_SEMAPHORE);
       while (result == VK_NOT_READY) {
          result = vn_remove_signaled_semaphores(device, semaphores, values,
                                                 &semaphore_count);
@@ -2260,7 +2260,7 @@ vn_WaitSemaphores(VkDevice device,
          vk_free(alloc, semaphores);
    } else {
       struct vn_relax_state relax_state =
-         vn_relax_init(dev->instance, "client");
+         vn_relax_init(dev->instance, VN_RELAX_REASON_SEMAPHORE);
       while (result == VK_NOT_READY) {
          result = vn_find_first_signaled_semaphore(
             device, pWaitInfo->pSemaphores, pWaitInfo->pValues,

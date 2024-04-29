@@ -1679,15 +1679,17 @@ intrinsic("load_streamout_buffer_amd", dest_comp=4, indices=[BASE], bit_sizes=[3
 # An ID for each workgroup ordered by primitve sequence
 system_value("ordered_id_amd", 1)
 
-# Add src1 to global streamout buffer offsets in the specified order
+# Add src1 to global streamout buffer offsets in the specified order.
+# Only 1 lane must be active.
 # src[] = { ordered_id, counter }
 # WRITE_MASK = mask for counter channel to update
-intrinsic("ordered_xfb_counter_add_amd", dest_comp=0, src_comp=[1, 0], indices=[WRITE_MASK], bit_sizes=[32])
+intrinsic("ordered_xfb_counter_add_gfx11_amd", dest_comp=0, src_comp=[1, 0], indices=[WRITE_MASK], bit_sizes=[32])
+
 # Subtract from global streamout buffer offsets. Used to fix up the offsets
 # when we overflow streamout buffers.
 # src[] = { offsets }
 # WRITE_MASK = mask of offsets to subtract
-intrinsic("xfb_counter_sub_amd", src_comp=[0], indices=[WRITE_MASK], bit_sizes=[32])
+intrinsic("xfb_counter_sub_gfx11_amd", src_comp=[0], indices=[WRITE_MASK], bit_sizes=[32])
 
 # Provoking vertex index in a primitive
 system_value("provoking_vtx_in_prim_amd", 1)
@@ -1735,6 +1737,9 @@ intrinsic("strict_wqm_coord_amd", src_comp=[0], dest_comp=0, bit_sizes=[32], ind
 
 intrinsic("cmat_muladd_amd", src_comp=[16, 16, 0], dest_comp=0, bit_sizes=src2,
           indices=[SATURATE, CMAT_SIGNED_MASK], flags=[CAN_ELIMINATE])
+
+# Get the debug log buffer descriptor.
+intrinsic("load_debug_log_desc_amd", bit_sizes=[32], dest_comp=4, flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # V3D-specific instrinc for tile buffer color reads.
 #
@@ -2149,8 +2154,10 @@ intrinsic("end_primitive_nv", dest_comp=1, src_comp=[1], indices=[STREAM_ID])
 # Contains the final primitive handle and indicate the end of emission.
 intrinsic("final_primitive_nv", src_comp=[1])
 
+barrier("copy_fs_outputs_nv")
+
 intrinsic("bar_set_nv", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE])
-intrinsic("bar_break_nv", dest_comp=1, bit_sizes=[32], src_comp=[1])
+intrinsic("bar_break_nv", dest_comp=1, bit_sizes=[32], src_comp=[1, 1])
 # src[] = { bar, bar_set }
 intrinsic("bar_sync_nv", src_comp=[1, 1])
 

@@ -2262,6 +2262,8 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    if (chain == NULL)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
+   wl_list_init(&chain->present_ids.outstanding_list);
+
    /* We are taking ownership of the wsi_wl_surface, so remove ownership from
     * oldSwapchain. If the surface is currently owned by a swapchain that is
     * not oldSwapchain we return an error.
@@ -2396,8 +2398,6 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
       goto fail_free_wl_chain;
    }
    pthread_mutex_init(&chain->present_ids.lock, NULL);
-
-   wl_list_init(&chain->present_ids.outstanding_list);
 
    char *queue_name = vk_asprintf(pAllocator,
                                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,

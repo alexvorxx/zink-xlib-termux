@@ -1247,7 +1247,7 @@ validate_ir_tree(exec_list *instructions)
     * and it's half composed of assert()s anyway which wouldn't do
     * anything.
     */
-#ifndef DEBUG
+#if !MESA_DEBUG
    if (!debug_get_bool_option("GLSL_VALIDATE", false))
       return;
 #endif

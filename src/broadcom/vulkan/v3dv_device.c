@@ -1808,7 +1808,7 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
       perf_debug("Device created with Robust Image Access enabled.\n");
 
 
-#ifdef DEBUG
+#if MESA_DEBUG
    v3dv_X(device, device_check_prepacked_sizes)();
 #endif
    init_device_meta(device);

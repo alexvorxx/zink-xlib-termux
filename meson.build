@@ -45,6 +45,11 @@ if get_option('layout') != 'mirror'
   error('`mirror` is the only build directory layout supported')
 endif
 
+with_mesa_debug = get_option('buildtype') == 'debug'
+
+# This means the final value of b_ndebug==true
+with_mesa_ndebug = get_option('b_ndebug') == 'true' or (get_option('buildtype') == 'release' and get_option('b_ndebug') == 'if-release')
+
 # Arguments for the preprocessor, put these in a separate array from the C and
 # C++ (cpp in meson terminology) arguments since they need to be added to the
 # default arguments for both C and C++.
@@ -951,10 +956,9 @@ if cc.get_define('ETIME', prefix : '#include <errno.h>') == ''
   pre_args += '-DETIME=ETIMEDOUT'
 endif
 
-# Define DEBUG for debug builds only (debugoptimized is not included on this one)
-if get_option('buildtype') == 'debug'
-  pre_args += '-DDEBUG'
-endif
+# Define MESA_DEBUG to 1 for debug builds only (debugoptimized is not included on this one);
+# otherwise define MESA_DEBUG to 0
+pre_args += '-DMESA_DEBUG=' + (with_mesa_debug ? '1' : '0')
 
 with_shader_cache = get_option('shader-cache') \
   .require(host_machine.system() != 'windows', error_message : 'Shader Cache does not currently work on Windows') \
@@ -1140,7 +1144,7 @@ else
   # Variables that are only used for assertions are considered unused when assertions
   # are disabled. Don't treat this as an error, since we build with -Werror even if
   # assertions are disabled.
-  if get_option('b_ndebug') == 'true' or (get_option('buildtype') == 'release' and get_option('b_ndebug') == 'if-release')
+  if with_mesa_ndebug
     _trial_c += ['-Wno-unused-variable', '-Wno-unused-but-set-variable', '/wd4189']
     _trial_cpp += ['-Wno-unused-variable', '-Wno-unused-but-set-variable', '/wd4189']
   endif

@@ -113,34 +113,27 @@ get_fpu_lowered_simd_width(const fs_visitor *shader,
    if (inst->is_3src(compiler) && !devinfo->supports_simd16_3src)
       max_width = MIN2(max_width, inst->exec_size / reg_count);
 
-   /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
-    * Float Operations:
-    *
-    *    "No SIMD16 in mixed mode when destination is f32. Instruction
-    *     execution size must be no more than 8."
-    *
-    * FIXME: the simulator doesn't seem to complain if we don't do this and
-    * empirical testing with existing CTS tests show that they pass just fine
-    * without implementing this, however, since our interpretation of the PRM
-    * is that conversion MOVs between HF and F are still mixed-float
-    * instructions (and therefore subject to this restriction) we decided to
-    * split them to be safe. Might be useful to do additional investigation to
-    * lift the restriction if we can ensure that it is safe though, since these
-    * conversions are common when half-float types are involved since many
-    * instructions do not support HF types and conversions from/to F are
-    * required.
-    */
-   if (is_mixed_float_with_fp32_dst(inst) && devinfo->ver < 20)
-      max_width = MIN2(max_width, 8);
+   if (inst->opcode != BRW_OPCODE_MOV) {
+      /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
+       * Float Operations:
+       *
+       *    "No SIMD16 in mixed mode when destination is f32. Instruction
+       *     execution size must be no more than 8."
+       *
+       * Testing indicates that this restriction does not apply to MOVs.
+       */
+      if (is_mixed_float_with_fp32_dst(inst) && devinfo->ver < 20)
+         max_width = MIN2(max_width, 8);
 
-   /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
-    * Float Operations:
-    *
-    *    "No SIMD16 in mixed mode when destination is packed f16 for both
-    *     Align1 and Align16."
-    */
-   if (is_mixed_float_with_packed_fp16_dst(inst) && devinfo->ver < 20)
-      max_width = MIN2(max_width, 8);
+      /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
+       * Float Operations:
+       *
+       *    "No SIMD16 in mixed mode when destination is packed f16 for both
+       *     Align1 and Align16."
+       */
+      if (is_mixed_float_with_packed_fp16_dst(inst) && devinfo->ver < 20)
+         max_width = MIN2(max_width, 8);
+   }
 
    /* Only power-of-two execution sizes are representable in the instruction
     * control fields.

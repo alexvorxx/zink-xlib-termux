@@ -83,6 +83,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_16bit_storage = true,
       .KHR_bind_memory2 = true,
       .KHR_buffer_device_address = true,
+      .KHR_calibrated_timestamps = true,
       .KHR_copy_commands2 = true,
       .KHR_create_renderpass2 = true,
       .KHR_dedicated_allocation = true,
@@ -145,8 +146,10 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_shader_float_controls = true,
       .KHR_shader_float16_int8 = true,
       .KHR_shader_integer_dot_product = true,
+      .KHR_shader_maximal_reconvergence = true,
       .KHR_shader_non_semantic_info = true,
       .KHR_shader_subgroup_extended_types = true,
+      .KHR_shader_subgroup_uniform_control_flow = nvk_use_nak(info),
       .KHR_shader_terminate_invocation =
          (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
       .KHR_spirv_1_4 = true,
@@ -167,6 +170,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_border_color_swizzle = true,
       .EXT_buffer_device_address = true,
+      .EXT_calibrated_timestamps = true,
       .EXT_conditional_rendering = true,
       .EXT_color_write_enable = true,
       .EXT_custom_border_color = true,
@@ -229,7 +233,11 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_vertex_input_dynamic_state = true,
       .EXT_ycbcr_2plane_444_formats = true,
       .EXT_ycbcr_image_arrays = true,
+      .GOOGLE_decorate_string = true,
+      .GOOGLE_hlsl_functionality1 = true,
+      .GOOGLE_user_type = true,
       .NV_shader_sm_builtins = true,
+      .VALVE_mutable_descriptor_type = true,
    };
 }
 
@@ -406,6 +414,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
 
+      /* VK_KHR_shader_maximal_reconvergence */
+      .shaderMaximalReconvergence = true,
+
       /* VK_KHR_vertex_attribute_divisor */
       .vertexAttributeInstanceRateDivisor = true,
       .vertexAttributeInstanceRateZeroDivisor = true,
@@ -523,6 +534,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_multi_draw */
       .multiDraw = true,
 
+      /* VK_EXT_mutable_descriptor_type */
+      .mutableDescriptorType = true,
+
       /* VK_EXT_non_seamless_cube_map */
       .nonSeamlessCubeMap = true,
 
@@ -556,6 +570,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_shader_object */
       .shaderObject = true,
 
+      /* VK_KHR_shader_subgroup_uniform_control_flow */
+      .shaderSubgroupUniformControlFlow = nvk_use_nak(info),
+
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,
 
@@ -574,9 +591,6 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_NV_shader_sm_builtins */
       .shaderSMBuiltins = true,
-
-      /* VK_VALVE_mutable_descriptor_type */
-      .mutableDescriptorType = true,
    };
 }
 
@@ -603,7 +617,8 @@ nvk_get_device_properties(const struct nvk_instance *instance,
    *properties = (struct vk_properties) {
       .apiVersion = nvk_get_vk_version(info),
       .driverVersion = vk_get_driver_version(),
-      .vendorID = NVIDIA_VENDOR_ID,
+      .vendorID = instance->force_vk_vendor != 0 ?
+                  instance->force_vk_vendor : NVIDIA_VENDOR_ID,
       .deviceID = info->device_id,
       .deviceType = info->type == NV_DEVICE_TYPE_DIS ?
                     VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU :
@@ -1407,6 +1422,32 @@ nvk_GetPhysicalDeviceQueueFamilyProperties2(
       }
    }
 }
+
+static const VkTimeDomainKHR nvk_time_domains[] = {
+   VK_TIME_DOMAIN_DEVICE_KHR,
+   VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR,
+#ifdef CLOCK_MONOTONIC_RAW
+   VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR,
+#endif
+};
+
+VKAPI_ATTR VkResult VKAPI_CALL
+nvk_GetPhysicalDeviceCalibrateableTimeDomainsKHR(
+   VkPhysicalDevice physicalDevice,
+   uint32_t *pTimeDomainCount,
+   VkTimeDomainKHR *pTimeDomains)
+{
+   VK_OUTARRAY_MAKE_TYPED(VkTimeDomainKHR, out, pTimeDomains, pTimeDomainCount);
+
+   for (int d = 0; d < ARRAY_SIZE(nvk_time_domains); d++) {
+      vk_outarray_append_typed(VkTimeDomainKHR, &out, i) {
+         *i = nvk_time_domains[d];
+      }
+   }
+
+   return vk_outarray_status(&out);
+}
+
 
 VKAPI_ATTR void VKAPI_CALL
 nvk_GetPhysicalDeviceMultisamplePropertiesEXT(

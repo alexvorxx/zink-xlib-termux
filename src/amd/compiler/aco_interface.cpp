@@ -433,8 +433,21 @@ aco_get_codegen_flags()
 bool
 aco_is_gpu_supported(const struct radeon_info* info)
 {
-   /* Does not support compute only cards yet. */
-   return info->gfx_level >= GFX6 && info->has_graphics;
+   switch (info->gfx_level) {
+   case GFX6:
+   case GFX7:
+   case GFX8:
+      return true;
+   case GFX9:
+      return info->has_graphics; /* no CDNA support */
+   case GFX10:
+   case GFX10_3:
+   case GFX11:
+   case GFX11_5:
+      return true;
+   default:
+      return false;
+   }
 }
 
 bool
@@ -486,3 +499,18 @@ aco_nir_op_supports_packed_math_16bit(const nir_alu_instr* alu)
 }
 
 const aco_compiler_statistic_info* aco_statistic_infos = statistic_infos.data();
+
+void
+aco_print_asm(const struct radeon_info *info, unsigned wave_size,
+              uint32_t *binary, unsigned num_dw)
+{
+   std::vector<uint32_t> binarray(binary, binary + num_dw);
+   aco::Program prog;
+
+   prog.gfx_level = info->gfx_level;
+   prog.family = info->family;
+   prog.wave_size = wave_size;
+   prog.blocks.push_back(aco::Block());
+
+   aco::print_asm(&prog, binarray, num_dw, stderr);
+}

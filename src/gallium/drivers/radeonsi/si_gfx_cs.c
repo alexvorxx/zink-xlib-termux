@@ -14,6 +14,65 @@
 #include "ac_debug.h"
 #include "si_utrace.h"
 
+void si_reset_debug_log_buffer(struct si_context *sctx)
+{
+#if SHADER_DEBUG_LOG
+   /* Create and bind the debug log buffer. */
+   unsigned size = 256 * 16 + 4;
+   struct pipe_resource *buf = &si_aligned_buffer_create(sctx->b.screen, SI_RESOURCE_FLAG_CLEAR,
+                                                         PIPE_USAGE_STAGING, size, 256)->b.b;
+   si_set_internal_shader_buffer(sctx, SI_RING_SHADER_LOG,
+                                 &(struct pipe_shader_buffer){
+                                    .buffer = buf,
+                                    .buffer_size = size});
+   pipe_resource_reference(&buf, NULL);
+#endif
+}
+
+static void si_dump_debug_log(struct si_context *sctx, bool sync)
+{
+   struct pipe_resource *buf = sctx->internal_bindings.buffers[SI_RING_SHADER_LOG];
+   if (!buf)
+      return;
+
+   struct pipe_transfer *transfer = NULL;
+   unsigned size = sctx->descriptors[SI_DESCS_INTERNAL].list[SI_RING_SHADER_LOG * 4 + 2];
+   unsigned max_entries = (size - 4) / 16;
+
+   /* If not syncing (e.g. expecting a GPU hang), wait some time and then just print
+    * the log buffer.
+    */
+   if (!sync)
+      usleep(1000000);
+
+   fprintf(stderr, "Reading shader log...\n");
+
+   uint32_t *map = pipe_buffer_map(&sctx->b, buf,
+                                   PIPE_MAP_READ | (sync ? 0 : PIPE_MAP_UNSYNCHRONIZED),
+                                   &transfer);
+   unsigned num = map[0];
+   fprintf(stderr, "Shader log items: %u\n", num);
+
+   if (!num) {
+      pipe_buffer_unmap(&sctx->b, transfer);
+      return;
+   }
+
+
+   unsigned first = num > max_entries ? num - max_entries : 0;
+   map++;
+
+   for (unsigned i = first; i < num; i++) {
+      unsigned idx = i % max_entries;
+
+      fprintf(stderr, "   [%u(%u)] = {%u, %u, %u, %u}\n", i, idx,
+              map[idx * 4], map[idx * 4 + 1], map[idx * 4 + 2], map[idx * 4 + 3]);
+   }
+   pipe_buffer_unmap(&sctx->b, transfer);
+
+   si_reset_debug_log_buffer(sctx);
+}
+
 void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_handle **fence)
 {
    struct radeon_cmdbuf *cs = &ctx->gfx_cs;
@@ -167,6 +226,11 @@ void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_h
 
    si_begin_new_gfx_cs(ctx, false);
    ctx->gfx_flush_in_progress = false;
+
+#if SHADER_DEBUG_LOG
+   if (debug_get_bool_option("shaderlog", false))
+      si_dump_debug_log(ctx, false);
+#endif
 }
 
 static void si_begin_gfx_cs_debug(struct si_context *ctx)

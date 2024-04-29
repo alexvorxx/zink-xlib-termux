@@ -47,6 +47,40 @@ idep_libetnaviv_decode = declare_dependency(
   sources : [etnaviv_isa],
 )
 
+enums_h = custom_target(
+  'enums.h',
+  input: ['enums.h.py', 'etnaviv.xml'],
+  output: 'enums.h',
+  command: [prog_python, '@INPUT@'],
+  capture: true,
+  depend_files: isa_depend_files,
+)
+
+encode_h = custom_target(
+  'encode.h',
+  input: ['etnaviv.xml'],
+  output: 'encode.h',
+  command: [
+    prog_isaspec_encode, '--xml', '@INPUT@', '--out-h', '@OUTPUT@'
+  ],
+  depend_files: isa_depend_files,
+)
+
+encode_files = [
+  enums_h,
+  encode_h,
+  'encode.c',
+]
+
+libetnaviv_encode = static_library(
+  'etnaviv_encode',
+  encode_files,
+  gnu_symbol_visibility: 'hidden',
+  include_directories: [
+    inc_src,
+  ],
+)
+
 disasm = executable(
   'etnaviv-disasm',
   ['disasm.c'],

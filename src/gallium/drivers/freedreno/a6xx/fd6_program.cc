@@ -111,7 +111,7 @@ fd6_emit_shader(struct fd_context *ctx, struct fd_ringbuffer *ring,
       return;
    }
 
-#ifdef DEBUG
+#if MESA_DEBUG
    /* Name should generally match what you get with MESA_SHADER_CAPTURE_PATH: */
    const char *name = so->name;
    if (name)
@@ -1306,7 +1306,7 @@ fd6_program_create(void *data, const struct ir3_shader_variant *bs,
    state->binning_stateobj = fd_ringbuffer_new_object(ctx->pipe, 0x1000);
    state->stateobj = fd_ringbuffer_new_object(ctx->pipe, 0x1000);
 
-#ifdef DEBUG
+#if MESA_DEBUG
    if (!ds) {
       for (unsigned i = 0; i < bs->inputs_count; i++) {
          if (vs->inputs[i].sysval)

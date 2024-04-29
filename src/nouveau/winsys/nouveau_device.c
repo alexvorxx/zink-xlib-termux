@@ -445,3 +445,13 @@ nouveau_ws_device_vram_used(struct nouveau_ws_device *device)
 
    return used;
 }
+
+uint64_t
+nouveau_ws_device_timestamp(struct nouveau_ws_device *device)
+{
+   uint64_t timestamp = 0;
+   if (nouveau_ws_param(device->fd, NOUVEAU_GETPARAM_PTIMER_TIME, &timestamp))
+      return 0;
+
+   return timestamp;
+}

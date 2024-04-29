@@ -354,7 +354,7 @@ struct ir3_instruction {
    BITMASK_ENUM(ir3_instruction_flags) flags;
    uint8_t repeat;
    uint8_t nop;
-#ifdef DEBUG
+#if MESA_DEBUG
    unsigned srcs_max, dsts_max;
 #endif
    unsigned srcs_count, dsts_count;
@@ -582,7 +582,7 @@ struct ir3 {
    /* List of ir3_array's: */
    struct list_head array_list;
 
-#ifdef DEBUG
+#if MESA_DEBUG
    unsigned block_count;
 #endif
    unsigned instr_count;
@@ -669,7 +669,7 @@ struct ir3_block {
    uint32_t loop_id;
    uint32_t loop_depth;
 
-#ifdef DEBUG
+#if MESA_DEBUG
    uint32_t serialno;
 #endif
 };
@@ -677,7 +677,7 @@ struct ir3_block {
 static inline uint32_t
 block_id(struct ir3_block *block)
 {
-#ifdef DEBUG
+#if MESA_DEBUG
    return block->serialno;
 #else
    return (uint32_t)(unsigned long)block;

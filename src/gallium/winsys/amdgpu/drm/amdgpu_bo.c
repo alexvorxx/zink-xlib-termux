@@ -21,7 +21,7 @@
 #include <inttypes.h>
 
 #ifndef AMDGPU_VA_RANGE_HIGH
-#define AMDGPU_VA_RANGE_HIGH 0x2
+#define AMDGPU_VA_RANGE_HIGH	0x2
 #endif
 
 /* Set to 1 for verbose output showing committed sparse buffer ranges. */
@@ -195,7 +195,7 @@ void amdgpu_bo_destroy(struct amdgpu_winsys *aws, struct pb_buffer_lean *_buf)
 
    amdgpu_bo_free(bo->bo_handle);
 
-#ifdef DEBUG
+#if MESA_DEBUG
    if (aws->debug_all_bos) {
       simple_mtx_lock(&aws->global_bo_list_lock);
       list_del(&bo->global_list_item);
@@ -305,7 +305,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
             if (cs && amdgpu_bo_is_referenced_by_cs_with_usage(cs, bo,
                                                                RADEON_USAGE_WRITE)) {
                cs->flush_cs(cs->flush_data,
-                            RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
+			    RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
                return NULL;
             }
 
@@ -316,7 +316,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
          } else {
             if (cs && amdgpu_bo_is_referenced_by_cs(cs, bo)) {
                cs->flush_cs(cs->flush_data,
-                            RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
+			    RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
                return NULL;
             }
 
@@ -340,7 +340,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
                if (amdgpu_bo_is_referenced_by_cs_with_usage(cs, bo,
                                                             RADEON_USAGE_WRITE)) {
                   cs->flush_cs(cs->flush_data,
-                               RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
+			       RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
                } else {
                   /* Try to avoid busy-waiting in amdgpu_bo_wait. */
                   if (p_atomic_read(&bo->num_active_ioctls))
@@ -355,7 +355,7 @@ void *amdgpu_bo_map(struct radeon_winsys *rws,
             if (cs) {
                if (amdgpu_bo_is_referenced_by_cs(cs, bo)) {
                   cs->flush_cs(cs->flush_data,
-                               RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
+			       RADEON_FLUSH_START_NEXT_GFX_IB_NOW, NULL);
                } else {
                   /* Try to avoid busy-waiting in amdgpu_bo_wait. */
                   if (p_atomic_read(&bo->num_active_ioctls))
@@ -440,7 +440,7 @@ void amdgpu_bo_unmap(struct radeon_winsys *rws, struct pb_buffer_lean *buf)
 
 static void amdgpu_add_buffer_to_global_list(struct amdgpu_winsys *aws, struct amdgpu_bo_real *bo)
 {
-#ifdef DEBUG
+#if MESA_DEBUG
    if (aws->debug_all_bos) {
       simple_mtx_lock(&aws->global_bo_list_lock);
       list_addtail(&bo->global_list_item, &aws->global_bo_list);
@@ -1690,8 +1690,8 @@ static bool amdgpu_bo_get_handle(struct radeon_winsys *rws,
 }
 
 static struct pb_buffer_lean *amdgpu_bo_from_ptr(struct radeon_winsys *rws,
-                                                 void *pointer, uint64_t size,
-                                                 enum radeon_bo_flag flags)
+					    void *pointer, uint64_t size,
+					    enum radeon_bo_flag flags)
 {
     struct amdgpu_winsys *aws = amdgpu_winsys(rws);
     amdgpu_bo_handle buf_handle;

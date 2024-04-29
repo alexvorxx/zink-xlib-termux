@@ -87,6 +87,8 @@ variables:
   ARTIFACTS_BASE_URL: https://${CI_PROJECT_ROOT_NAMESPACE}.${CI_PAGES_DOMAIN}/-/${CI_PROJECT_NAME}/-/jobs/${CI_JOB_ID}/artifacts
   # Python scripts for structured logger
   PYTHONPATH: "$PYTHONPATH:$CI_PROJECT_DIR/install"
+  # Drop once deqp-runner is upgraded to > 0.18.0
+  MESA_VK_ABORT_ON_DEVICE_LOSS: 1
 
 default:
   before_script:
@@ -309,6 +311,22 @@ sanity:
   tags:
     - placeholder-job
 
+
+mr-label-maker-test:
+  extends:
+    - .fdo.ci-fairy
+  stage: sanity
+  rules:
+    - !reference [.mr-label-maker-rules, rules]
+  variables:
+    GIT_STRATEGY: fetch
+  timeout: 10m
+  script:
+    - set -eu
+    - python3 -m venv .venv
+    - source .venv/bin/activate
+    - pip install git+https://gitlab.freedesktop.org/freedesktop/mr-label-maker
+    - mr-label-maker --dry-run --mr $CI_MERGE_REQUEST_IID
 
 # Jobs that need to pass before spending hardware resources on further testing
 .required-for-hardware-jobs:

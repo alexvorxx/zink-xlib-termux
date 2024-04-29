@@ -282,7 +282,7 @@ fs_reg::is_null() const
 bool
 fs_reg::is_accumulator() const
 {
-   return file == ARF && nr == BRW_ARF_ACCUMULATOR;
+   return file == ARF && (nr & 0xF0) == BRW_ARF_ACCUMULATOR;
 }
 
 bool

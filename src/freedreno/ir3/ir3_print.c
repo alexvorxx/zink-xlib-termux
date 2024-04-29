@@ -72,7 +72,7 @@ print_instr_name(struct log_stream *stream, struct ir3_instruction *instr,
 {
    if (!instr)
       return;
-#ifdef DEBUG
+#if MESA_DEBUG
    mesa_log_stream_printf(stream, "%04u:", instr->serialno);
 #endif
    mesa_log_stream_printf(stream, "%04u:", instr->ip);

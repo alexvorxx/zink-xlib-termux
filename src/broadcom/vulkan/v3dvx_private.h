@@ -152,7 +152,7 @@ v3dX(framebuffer_compute_internal_bpp_msaa)(const struct v3dv_framebuffer *frame
                                             uint8_t *total_color_bpp,
                                             bool *msaa);
 
-#ifdef DEBUG
+#if MESA_DEBUG
 void
 v3dX(device_check_prepacked_sizes)(void);
 #endif

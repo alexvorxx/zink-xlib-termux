@@ -352,6 +352,9 @@ typedef struct {
 bool
 ac_nir_lower_tex(nir_shader *nir, const ac_nir_lower_tex_options *options);
 
+void
+ac_nir_store_debug_log_amd(nir_builder *b, nir_def *uvec4);
+
 #ifdef __cplusplus
 }
 #endif

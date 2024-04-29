@@ -486,6 +486,9 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
                       .atomic_op = nir_atomic_op_iadd);
       break;
    }
+   case nir_intrinsic_load_debug_log_desc_amd:
+      replacement = si_nir_load_internal_binding(b, args, SI_RING_SHADER_LOG, 4);
+      break;
    case nir_intrinsic_load_ring_attr_amd:
       replacement = build_attr_ring_desc(b, shader, args);
       break;

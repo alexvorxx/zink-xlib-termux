@@ -104,6 +104,13 @@ ac_nir_calc_io_offset(nir_builder *b,
                       unsigned component_stride,
                       ac_nir_map_io_driver_location map_io);
 
+nir_def *
+ac_nir_calc_io_offset_mapped(nir_builder *b,
+                             nir_intrinsic_instr *intrin,
+                             nir_def *base_stride,
+                             unsigned component_stride,
+                             unsigned mapped_location);
+
 bool ac_nir_optimize_outputs(nir_shader *nir, bool sprite_tex_disallowed,
                              int8_t slot_remap[NUM_TOTAL_VARYING_SLOTS],
                              uint8_t param_export_index[NUM_TOTAL_VARYING_SLOTS]);
@@ -124,9 +131,7 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                ac_nir_map_io_driver_location map,
                                enum amd_gfx_level gfx_level,
                                uint64_t tes_inputs_read,
-                               uint64_t tes_patch_inputs_read,
-                               unsigned num_reserved_tcs_outputs,
-                               unsigned num_reserved_tcs_patch_outputs,
+                               uint32_t tes_patch_inputs_read,
                                unsigned wave_size,
                                bool no_inputs_in_lds,
                                bool pass_tessfactors_by_reg);

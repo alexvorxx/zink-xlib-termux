@@ -491,16 +491,12 @@ ac_nir_export_parameters(nir_builder *b,
  * including a stride to the base and component offsets.
  */
 nir_def *
-ac_nir_calc_io_offset(nir_builder *b,
-                      nir_intrinsic_instr *intrin,
-                      nir_def *base_stride,
-                      unsigned component_stride,
-                      ac_nir_map_io_driver_location map_io)
+ac_nir_calc_io_offset_mapped(nir_builder *b,
+                             nir_intrinsic_instr *intrin,
+                             nir_def *base_stride,
+                             unsigned component_stride,
+                             unsigned mapped_driver_location)
 {
-   unsigned base = nir_intrinsic_base(intrin);
-   unsigned semantic = nir_intrinsic_io_semantics(intrin).location;
-   unsigned mapped_driver_location = map_io ? map_io(semantic) : base;
-
    /* base is the driver_location, which is in slots (1 slot = 4x4 bytes) */
    nir_def *base_op = nir_imul_imm(b, base_stride, mapped_driver_location);
 
@@ -515,6 +511,21 @@ ac_nir_calc_io_offset(nir_builder *b,
    unsigned const_op = nir_intrinsic_component(intrin) * component_stride;
 
    return nir_iadd_imm_nuw(b, nir_iadd_nuw(b, base_op, offset_op), const_op);
+}
+
+nir_def *
+ac_nir_calc_io_offset(nir_builder *b,
+                      nir_intrinsic_instr *intrin,
+                      nir_def *base_stride,
+                      unsigned component_stride,
+                      ac_nir_map_io_driver_location map_io)
+{
+   unsigned base = nir_intrinsic_base(intrin);
+   unsigned semantic = nir_intrinsic_io_semantics(intrin).location;
+   unsigned mapped_driver_location = map_io ? map_io(semantic) : base;
+
+   return ac_nir_calc_io_offset_mapped(b, intrin, base_stride, component_stride,
+                                       mapped_driver_location);
 }
 
 bool

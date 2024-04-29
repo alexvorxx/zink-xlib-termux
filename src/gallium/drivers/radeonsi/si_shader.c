@@ -1794,9 +1794,7 @@ static bool si_lower_io_to_mem(struct si_shader *shader, nir_shader *nir,
 
       NIR_PASS_V(nir, ac_nir_lower_hs_outputs_to_mem, si_map_io_driver_location,
                  sel->screen->info.gfx_level,
-                 ~0ULL, ~0ULL, /* no TES inputs filter */
-                 util_last_bit64(sel->info.outputs_written_before_tes_gs),
-                 util_last_bit64(sel->info.patch_outputs_written),
+                 ~0ULL, ~0U, /* no TES inputs filter */
                  shader->wave_size,
                  /* ALL TCS inputs are passed by register. */
                  key->ge.opt.same_patch_vertices &&

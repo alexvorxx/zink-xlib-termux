@@ -953,7 +953,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
       return NULL;
    }
 
-   extensions = driOpenDriver(driver, &psc->driver);
+   extensions = driOpenDriver(driver, &psc->driver, driver_name_is_inferred);
    if (extensions == NULL)
       goto handle_error;
    psc->name = driver;

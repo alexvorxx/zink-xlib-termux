@@ -262,7 +262,7 @@ static struct dri_extension_match gbm_swrast_device_extensions[] = {
 };
 
 static const __DRIextension **
-dri_open_driver(struct gbm_dri_device *dri)
+dri_open_driver(struct gbm_dri_device *dri, bool driver_name_is_inferred)
 {
    /* Temporarily work around dri driver libs that need symbols in libglapi
     * but don't automatically link it in.
@@ -283,7 +283,8 @@ dri_open_driver(struct gbm_dri_device *dri)
       "LIBGL_DRIVERS_PATH",
       NULL
    };
-   return loader_open_driver(dri->driver_name, &dri->driver, search_path_vars);
+   return loader_open_driver(dri->driver_name, &dri->driver, search_path_vars,
+                             driver_name_is_inferred);
 }
 
 static int
@@ -293,7 +294,7 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
 
    dri->driver_name = swrast ? strdup("swrast") : driver_name;
 
-   const __DRIextension **extensions = dri_open_driver(dri);
+   const __DRIextension **extensions = dri_open_driver(dri, driver_name_is_inferred);
    if (!extensions)
       goto fail;
 

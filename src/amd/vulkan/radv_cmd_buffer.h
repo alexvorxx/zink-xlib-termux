@@ -652,8 +652,6 @@ radv_emit_shader_pointer(const struct radv_device *device, struct radeon_cmdbuf 
 
 bool radv_cmd_buffer_uses_mec(struct radv_cmd_buffer *cmd_buffer);
 
-enum amd_ip_type radv_queue_family_to_ring(const struct radv_physical_device *dev, enum radv_queue_family f);
-
 void radv_cmd_buffer_reset_rendering(struct radv_cmd_buffer *cmd_buffer);
 
 bool radv_cmd_buffer_upload_alloc_aligned(struct radv_cmd_buffer *cmd_buffer, unsigned size, unsigned alignment,
@@ -674,8 +672,6 @@ bool radv_gang_init(struct radv_cmd_buffer *cmd_buffer);
 
 void radv_set_descriptor_set(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bind_point,
                              struct radv_descriptor_set *set, unsigned idx);
-
-const struct radv_userdata_info *radv_get_user_sgpr(const struct radv_shader *shader, int idx);
 
 void radv_update_ds_clear_metadata(struct radv_cmd_buffer *cmd_buffer, const struct radv_image_view *iview,
                                    VkClearDepthStencilValue ds_clear_value, VkImageAspectFlags aspects);
@@ -709,8 +705,6 @@ struct radv_resolve_barrier {
 };
 
 void radv_emit_resolve_barrier(struct radv_cmd_buffer *cmd_buffer, const struct radv_resolve_barrier *barrier);
-
-uint32_t radv_get_vgt_index_size(uint32_t type);
 
 void radv_meta_push_descriptor_set(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint pipelineBindPoint,
                                    VkPipelineLayout _layout, uint32_t set, uint32_t descriptorWriteCount,

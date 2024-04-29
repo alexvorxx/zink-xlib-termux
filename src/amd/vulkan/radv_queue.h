@@ -32,6 +32,7 @@
 
 #include "radv_radeon_winsys.h"
 
+struct radv_physical_device;
 struct radv_device;
 
 struct radv_queue_ring_info {
@@ -129,5 +130,7 @@ void radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs);
 bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
 
 enum amd_ip_type radv_queue_ring(const struct radv_queue *queue);
+
+enum amd_ip_type radv_queue_family_to_ring(const struct radv_physical_device *dev, enum radv_queue_family f);
 
 #endif /* RADV_QUEUE_H */

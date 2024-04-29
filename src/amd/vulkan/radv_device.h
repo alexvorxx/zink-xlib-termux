@@ -33,6 +33,7 @@
 
 #include "util/mesa-blake3.h"
 
+#include "radv_printf.h"
 #include "radv_queue.h"
 #include "radv_radeon_winsys.h"
 #include "radv_rra.h"
@@ -77,15 +78,6 @@ struct radv_device_cache_key {
    uint32_t image_2d_view_of_3d : 1;
    uint32_t mesh_shader_queries : 1;
    uint32_t primitives_generated_query : 1;
-};
-
-struct radv_printf_data {
-   uint32_t buffer_size;
-   VkBuffer buffer;
-   VkDeviceMemory memory;
-   VkDeviceAddress buffer_addr;
-   void *data;
-   struct util_dynarray formats;
 };
 
 enum radv_force_vrs {

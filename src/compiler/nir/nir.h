@@ -3908,6 +3908,9 @@ typedef struct nir_shader_compiler_options {
    bool has_rotate16;
    bool has_rotate32;
 
+   /** Backend supports shfr */
+   bool has_shfr32;
+
    /** Backend supports ternary addition */
    bool has_iadd3;
 
@@ -6424,6 +6427,8 @@ bool nir_opt_fragdepth(nir_shader *shader);
 bool nir_opt_gcm(nir_shader *shader, bool value_number);
 
 bool nir_opt_idiv_const(nir_shader *shader, unsigned min_bit_size);
+
+bool nir_opt_mqsad(nir_shader *shader);
 
 typedef enum {
    nir_opt_if_optimize_phi_true_false = (1 << 0),

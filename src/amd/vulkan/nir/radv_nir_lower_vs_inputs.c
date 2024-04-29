@@ -43,9 +43,9 @@ lower_load_vs_input_from_prolog(nir_builder *b, nir_intrinsic_instr *intrin, low
    nir_src *offset_src = nir_get_io_offset_src(intrin);
    assert(nir_src_is_const(*offset_src));
 
-   const unsigned base = nir_intrinsic_base(intrin);
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
    const unsigned base_offset = nir_src_as_uint(*offset_src);
-   const unsigned driver_location = base + base_offset - VERT_ATTRIB_GENERIC0;
+   const unsigned location = io_sem.location + base_offset - VERT_ATTRIB_GENERIC0;
    const unsigned component = nir_intrinsic_component(intrin);
    const unsigned bit_size = intrin->def.bit_size;
    const unsigned num_components = intrin->def.num_components;
@@ -56,12 +56,12 @@ lower_load_vs_input_from_prolog(nir_builder *b, nir_intrinsic_instr *intrin, low
    const unsigned arg_bit_size = MAX2(bit_size, 32);
 
    unsigned num_input_args = 1;
-   nir_def *input_args[2] = {ac_nir_load_arg(b, &s->args->ac, s->args->vs_inputs[driver_location]), NULL};
+   nir_def *input_args[2] = {ac_nir_load_arg(b, &s->args->ac, s->args->vs_inputs[location]), NULL};
    if (component * 32 + arg_bit_size * num_components > 128) {
       assert(bit_size == 64);
 
       num_input_args++;
-      input_args[1] = ac_nir_load_arg(b, &s->args->ac, s->args->vs_inputs[driver_location + 1]);
+      input_args[1] = ac_nir_load_arg(b, &s->args->ac, s->args->vs_inputs[location + 1]);
    }
 
    nir_def *extracted = nir_extract_bits(b, input_args, num_input_args, component * 32, num_components, arg_bit_size);
@@ -206,9 +206,9 @@ lower_load_vs_input(nir_builder *b, nir_intrinsic_instr *intrin, lower_vs_inputs
    nir_src *offset_src = nir_get_io_offset_src(intrin);
    assert(nir_src_is_const(*offset_src));
 
-   const unsigned base = nir_intrinsic_base(intrin);
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
    const unsigned base_offset = nir_src_as_uint(*offset_src);
-   const unsigned location = base + base_offset - VERT_ATTRIB_GENERIC0;
+   const unsigned location = io_sem.location + base_offset - VERT_ATTRIB_GENERIC0;
    const unsigned bit_size = intrin->def.bit_size;
    const unsigned dest_num_components = intrin->def.num_components;
 

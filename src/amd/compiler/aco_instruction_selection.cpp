@@ -3424,6 +3424,41 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       emit_vop3a_instruction(ctx, instr, aco_opcode::v_msad_u8, dst, false, 3u, true);
       break;
    }
+   case nir_op_mqsad_4x8: {
+      assert(dst.regClass() == v4);
+      Temp ref = get_alu_src(ctx, instr->src[0]);
+      Temp src = get_alu_src(ctx, instr->src[1], 2);
+      Temp accum = get_alu_src(ctx, instr->src[2], 4);
+      Builder::Result res = bld.vop3(aco_opcode::v_mqsad_u32_u8, Definition(dst), as_vgpr(ctx, src),
+                                     as_vgpr(ctx, ref), as_vgpr(ctx, accum));
+      res.instr->operands[0].setLateKill(true);
+      res.instr->operands[1].setLateKill(true);
+      res.instr->operands[2].setLateKill(true);
+      emit_split_vector(ctx, dst, 4);
+      break;
+   }
+   case nir_op_shfr: {
+      if (dst.regClass() == s1) {
+         Temp src = bld.pseudo(aco_opcode::p_create_vector, bld.def(s2),
+                               get_alu_src(ctx, instr->src[1]), get_alu_src(ctx, instr->src[0]));
+
+         Temp amount;
+         if (nir_src_is_const(instr->src[2].src)) {
+            amount = bld.copy(bld.def(s1), Operand::c32(nir_src_as_uint(instr->src[2].src) & 0x1f));
+         } else {
+            amount = bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc),
+                              get_alu_src(ctx, instr->src[2]), Operand::c32(0x1f));
+         }
+
+         Temp res = bld.sop2(aco_opcode::s_lshr_b64, bld.def(s2), bld.def(s1, scc), src, amount);
+         bld.pseudo(aco_opcode::p_extract_vector, Definition(dst), res, Operand::zero());
+      } else if (dst.regClass() == v1) {
+         emit_vop3a_instruction(ctx, instr, aco_opcode::v_alignbit_b32, dst, false, 3u);
+      } else {
+         isel_err(&instr->instr, "Unimplemented NIR instr bit size");
+      }
+      break;
+   }
    case nir_op_fquantize2f16: {
       Temp src = get_alu_src(ctx, instr->src[0]);
       Temp f16;

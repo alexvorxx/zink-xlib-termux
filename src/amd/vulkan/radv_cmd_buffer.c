@@ -272,25 +272,6 @@ radv_cmd_buffer_uses_mec(struct radv_cmd_buffer *cmd_buffer)
    return cmd_buffer->qf == RADV_QUEUE_COMPUTE && pdev->info.gfx_level >= GFX7;
 }
 
-enum amd_ip_type
-radv_queue_family_to_ring(const struct radv_physical_device *pdev, enum radv_queue_family f)
-{
-   switch (f) {
-   case RADV_QUEUE_GENERAL:
-      return AMD_IP_GFX;
-   case RADV_QUEUE_COMPUTE:
-      return AMD_IP_COMPUTE;
-   case RADV_QUEUE_TRANSFER:
-      return AMD_IP_SDMA;
-   case RADV_QUEUE_VIDEO_DEC:
-      return pdev->vid_decode_ip;
-   case RADV_QUEUE_VIDEO_ENC:
-      return AMD_IP_VCN_ENC;
-   default:
-      unreachable("Unknown queue family");
-   }
-}
-
 static void
 radv_write_data(struct radv_cmd_buffer *cmd_buffer, const unsigned engine_sel, const uint64_t va, const unsigned count,
                 const uint32_t *data, const bool predicating)
@@ -942,12 +923,6 @@ radv_save_descriptors(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bi
    }
 
    radv_write_data(cmd_buffer, V_370_ME, va, MAX_SETS * 2, data, false);
-}
-
-const struct radv_userdata_info *
-radv_get_user_sgpr(const struct radv_shader *shader, int idx)
-{
-   return &shader->info.user_sgprs_locs.shader_data[idx];
 }
 
 static void
@@ -6300,7 +6275,7 @@ vk_to_index_type(VkIndexType type)
    }
 }
 
-uint32_t
+static uint32_t
 radv_get_vgt_index_size(uint32_t type)
 {
    uint32_t index_type = G_028A7C_INDEX_TYPE(type);

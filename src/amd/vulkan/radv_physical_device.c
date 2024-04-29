@@ -2518,6 +2518,11 @@ radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
       assert(heap == memory_properties->memoryHeapCount);
    }
 
+   /* The heapBudget value must be less than or equal to VkMemoryHeap::size for each heap. */
+   for (uint32_t i = 0; i < memory_properties->memoryHeapCount; i++) {
+      memoryBudget->heapBudget[i] = MIN2(memory_properties->memoryHeaps[i].size, memoryBudget->heapBudget[i]);
+   }
+
    /* The heapBudget and heapUsage values must be zero for array elements
     * greater than or equal to
     * VkPhysicalDeviceMemoryProperties::memoryHeapCount.

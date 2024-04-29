@@ -1668,6 +1668,8 @@ struct instr_deleter_functor {
 
 template <typename T> using aco_ptr = std::unique_ptr<T, instr_deleter_functor>;
 
+size_t get_instr_data_size(Format format);
+
 Instruction* create_instruction(aco_opcode opcode, Format format, uint32_t num_operands,
                                 uint32_t num_definitions);
 

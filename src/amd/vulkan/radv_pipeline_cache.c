@@ -265,6 +265,7 @@ radv_pipeline_cache_object_create(struct vk_device *device, unsigned num_shaders
    object->data_size = data_size;
    memcpy(object->sha1, hash, SHA1_DIGEST_LENGTH);
    memset(object->shaders, 0, sizeof(object->shaders[0]) * num_shaders);
+   memset(object->data, 0, data_size);
 
    return object;
 }

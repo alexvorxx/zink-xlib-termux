@@ -1392,7 +1392,7 @@ Instruction::isTrans() const noexcept
           instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental;
 }
 
-static size_t
+size_t
 get_instr_data_size(Format format)
 {
    switch (format) {

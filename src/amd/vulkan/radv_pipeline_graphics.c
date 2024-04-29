@@ -1457,10 +1457,6 @@ radv_link_vs(const struct radv_device *device, struct radv_shader_stage *vs_stag
       radv_link_shaders(device, vs_stage, next_stage, gfx_state);
    }
 
-   nir_foreach_shader_in_variable (var, vs_stage->nir) {
-      var->data.driver_location = var->data.location;
-   }
-
    if (next_stage && next_stage->nir->info.stage == MESA_SHADER_TESS_CTRL) {
       nir_linked_io_var_info vs2tcs = nir_assign_linked_io_var_locations(vs_stage->nir, next_stage->nir);
 
@@ -1477,10 +1473,6 @@ radv_link_vs(const struct radv_device *device, struct radv_shader_stage *vs_stag
 
       next_stage->info.gs.num_linked_inputs = vs2gs.num_linked_io_vars;
       next_stage->info.inputs_linked = true;
-   } else {
-      nir_foreach_shader_out_variable (var, vs_stage->nir) {
-         var->data.driver_location = var->data.location;
-      }
    }
 }
 
@@ -1534,10 +1526,6 @@ radv_link_tes(const struct radv_device *device, struct radv_shader_stage *tes_st
 
       next_stage->info.gs.num_linked_inputs = tes2gs.num_linked_io_vars;
       next_stage->info.inputs_linked = true;
-   } else {
-      nir_foreach_shader_out_variable (var, tes_stage->nir) {
-         var->data.driver_location = var->data.location;
-      }
    }
 }
 
@@ -1555,10 +1543,6 @@ radv_link_gs(const struct radv_device *device, struct radv_shader_stage *gs_stag
       assert(fs_stage->nir->info.stage == MESA_SHADER_FRAGMENT);
 
       radv_link_shaders(device, gs_stage, fs_stage, gfx_state);
-   }
-
-   nir_foreach_shader_out_variable (var, gs_stage->nir) {
-      var->data.driver_location = var->data.location;
    }
 }
 
@@ -1596,13 +1580,6 @@ radv_link_mesh(const struct radv_device *device, struct radv_shader_stage *mesh_
       radv_link_shaders(device, mesh_stage, fs_stage, gfx_state);
    }
 
-   /* ac_nir_lower_ngg ignores driver locations for mesh shaders, but set them to all zero just to
-    * be on the safe side.
-    */
-   nir_foreach_shader_out_variable (var, mesh_stage->nir) {
-      var->data.driver_location = 0;
-   }
-
    /* Lower mesh shader draw ID to zero prevent app bugs from triggering undefined behaviour. */
    if (mesh_stage->info.ms.has_task && BITSET_TEST(mesh_stage->nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID))
       radv_nir_lower_draw_id_to_zero(mesh_stage->nir);
@@ -1614,10 +1591,6 @@ radv_link_fs(struct radv_shader_stage *fs_stage, const struct radv_graphics_stat
    assert(fs_stage->nir->info.stage == MESA_SHADER_FRAGMENT);
 
    radv_remove_color_exports(gfx_state, fs_stage->nir);
-
-   nir_foreach_shader_out_variable (var, fs_stage->nir) {
-      var->data.driver_location = var->data.location + var->data.index;
-   }
 }
 
 static bool

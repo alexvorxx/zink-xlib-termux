@@ -29,61 +29,6 @@
 
 #include "drm-uapi/xe_drm.h"
 
-VkResult
-xe_execute_simple_batch(struct anv_queue *queue,
-                        struct anv_bo *batch_bo,
-                        uint32_t batch_bo_size,
-                        bool is_companion_rcs_batch)
-{
-   struct anv_device *device = queue->device;
-   uint32_t exec_queue_id = is_companion_rcs_batch ?
-                            queue->companion_rcs_id :
-                            queue->exec_queue_id;
-   struct drm_syncobj_create syncobj_create = {};
-   struct drm_syncobj_destroy syncobj_destroy = {};
-   struct drm_xe_sync syncs[2] = {};
-   VkResult result = VK_SUCCESS;
-
-   if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_CREATE, &syncobj_create))
-      return vk_errorf(device, VK_ERROR_UNKNOWN, "Unable to create sync obj");
-
-   syncs[0].type = DRM_XE_SYNC_TYPE_SYNCOBJ;
-   syncs[0].flags = DRM_XE_SYNC_FLAG_SIGNAL;
-   syncs[0].handle = syncobj_create.handle;
-
-   /* vm bind sync */
-   syncs[1].type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ;
-   syncs[1].handle = intel_bind_timeline_get_syncobj(&device->bind_timeline);
-   syncs[1].timeline_value = intel_bind_timeline_get_last_point(&device->bind_timeline);
-
-   struct drm_xe_exec exec = {
-      .exec_queue_id = exec_queue_id,
-      .num_batch_buffer = 1,
-      .address = batch_bo->offset,
-      .num_syncs = ARRAY_SIZE(syncs),
-      .syncs = (uintptr_t)syncs,
-   };
-
-   if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec)) {
-      result = vk_device_set_lost(&device->vk, "XE_EXEC failed: %m");
-      goto exec_error;
-   }
-
-   struct drm_syncobj_wait wait = {
-      .handles = (uintptr_t)&syncobj_create.handle,
-      .timeout_nsec = INT64_MAX,
-      .count_handles = 1,
-   };
-   if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_WAIT, &wait))
-      result = vk_device_set_lost(&device->vk, "DRM_IOCTL_SYNCOBJ_WAIT failed: %m");
-
-exec_error:
-   syncobj_destroy.handle = syncobj_create.handle;
-   intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_DESTROY, &syncobj_destroy);
-
-   return result;
-}
-
 #define TYPE_SIGNAL true
 #define TYPE_WAIT false
 

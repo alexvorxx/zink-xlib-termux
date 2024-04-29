@@ -1561,6 +1561,21 @@ anv_queue_submit_cmd_buffers_locked(struct anv_queue *queue,
    return VK_SUCCESS;
 }
 
+static inline void
+anv_queue_free_initial_submission(struct anv_queue *queue)
+{
+   if (queue->init_submit &&
+       anv_async_submit_done(queue->init_submit)) {
+      anv_async_submit_destroy(queue->init_submit);
+      queue->init_submit = NULL;
+   }
+   if (queue->init_companion_submit &&
+       anv_async_submit_done(queue->init_companion_submit)) {
+      anv_async_submit_destroy(queue->init_companion_submit);
+      queue->init_companion_submit = NULL;
+   }
+}
+
 VkResult
 anv_queue_submit(struct vk_queue *vk_queue,
                  struct vk_queue_submit *submit)
@@ -1568,6 +1583,8 @@ anv_queue_submit(struct vk_queue *vk_queue,
    struct anv_queue *queue = container_of(vk_queue, struct anv_queue, vk);
    struct anv_device *device = queue->device;
    VkResult result;
+
+   anv_queue_free_initial_submission(queue);
 
    if (queue->device->info->no_hw) {
       for (uint32_t i = 0; i < submit->signal_count; i++) {
@@ -1611,59 +1628,6 @@ anv_queue_submit(struct vk_queue *vk_queue,
    pthread_mutex_unlock(&device->mutex);
 
    intel_ds_device_process(&device->ds, true);
-
-   return result;
-}
-
-VkResult
-anv_queue_submit_simple_batch(struct anv_queue *queue,
-                              struct anv_batch *batch,
-                              bool is_companion_rcs_batch)
-{
-   struct anv_device *device = queue->device;
-   VkResult result = VK_SUCCESS;
-
-   if (anv_batch_has_error(batch))
-      return batch->status;
-
-   if (queue->device->info->no_hw)
-      return VK_SUCCESS;
-
-   /* This is only used by device init so we can assume the queue is empty and
-    * we aren't fighting with a submit thread.
-    */
-   assert(vk_queue_is_empty(&queue->vk));
-
-   uint32_t batch_size = align(batch->next - batch->start, 8);
-
-   struct anv_bo *batch_bo = NULL;
-   result = anv_bo_pool_alloc(&device->batch_bo_pool, batch_size, &batch_bo);
-   if (result != VK_SUCCESS)
-      return result;
-
-   memcpy(batch_bo->map, batch->start, batch_size);
-#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
-   if (device->physical->memory.need_flush &&
-       anv_bo_needs_host_cache_flush(batch_bo->alloc_flags))
-      intel_flush_range(batch_bo->map, batch_size);
-#endif
-
-   if (INTEL_DEBUG(DEBUG_BATCH) &&
-       intel_debug_batch_in_range(device->debug_frame_desc->frame_id)) {
-      int render_queue_idx =
-         anv_get_first_render_queue_index(device->physical);
-      struct intel_batch_decode_ctx *ctx = is_companion_rcs_batch ?
-                                           &device->decoder[render_queue_idx] :
-                                           queue->decoder;
-      intel_print_batch(ctx, batch_bo->map, batch_bo->size, batch_bo->offset,
-                        false);
-   }
-
-   result = device->kmd_backend->execute_simple_batch(queue, batch_bo,
-                                                      batch_size,
-                                                      is_companion_rcs_batch);
-
-   anv_bo_pool_free(&device->batch_bo_pool, batch_bo);
 
    return result;
 }

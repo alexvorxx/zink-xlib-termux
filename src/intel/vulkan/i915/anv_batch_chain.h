@@ -30,7 +30,6 @@
 #include "vk_sync.h"
 
 struct anv_queue;
-struct anv_bo;
 struct anv_cmd_buffer;
 struct anv_query_pool;
 struct anv_async_submit;
@@ -42,10 +41,6 @@ i915_queue_exec_async(struct anv_async_submit *submit,
                       const struct vk_sync_wait *waits,
                       uint32_t signal_count,
                       const struct vk_sync_signal *signals);
-
-VkResult
-i915_execute_simple_batch(struct anv_queue *queue, struct anv_bo *batch_bo,
-                          uint32_t batch_bo_size, bool is_companion_rcs_batch);
 
 VkResult
 i915_queue_exec_locked(struct anv_queue *queue,

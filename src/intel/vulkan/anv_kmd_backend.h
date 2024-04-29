@@ -106,10 +106,6 @@ struct anv_kmd_backend {
    VkResult (*vm_bind_bo)(struct anv_device *device, struct anv_bo *bo);
    VkResult (*vm_unbind_bo)(struct anv_device *device, struct anv_bo *bo);
 
-   VkResult (*execute_simple_batch)(struct anv_queue *queue,
-                                    struct anv_bo *batch_bo,
-                                    uint32_t batch_bo_size,
-                                    bool is_companion_rcs_batch);
    /* The caller is expected to hold device->mutex when calling this vfunc.
     */
    VkResult (*queue_exec_locked)(struct anv_queue *queue,

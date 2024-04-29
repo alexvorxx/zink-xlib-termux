@@ -3421,24 +3421,9 @@ VkResult anv_CreateDevice(
       goto fail_context_id;
    }
 
-   device->queue_count = 0;
-   for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
-      const VkDeviceQueueCreateInfo *queueCreateInfo =
-         &pCreateInfo->pQueueCreateInfos[i];
-
-      for (uint32_t j = 0; j < queueCreateInfo->queueCount; j++) {
-         result = anv_queue_init(device, &device->queues[device->queue_count],
-                                 queueCreateInfo, j);
-         if (result != VK_SUCCESS)
-            goto fail_queues;
-
-         device->queue_count++;
-      }
-   }
-
    if (pthread_mutex_init(&device->vma_mutex, NULL) != 0) {
       result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
-      goto fail_queues;
+      goto fail_queues_alloc;
    }
 
    /* keep the page with address zero out of the allocator */
@@ -3873,12 +3858,6 @@ VkResult anv_CreateDevice(
          goto fail_internal_cache;
    }
 
-   result = anv_device_init_rt_shaders(device);
-   if (result != VK_SUCCESS) {
-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_print;
-   }
-
 #if DETECT_OS_ANDROID
    device->u_gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
 #endif
@@ -3903,13 +3882,19 @@ VkResult anv_CreateDevice(
                                            &pool_info, NULL,
                                            &device->companion_rcs_cmd_pool);
       if (result != VK_SUCCESS) {
-         goto fail_internal_cache;
+         goto fail_print;
       }
    }
 
    result = anv_device_init_trtt(device);
    if (result != VK_SUCCESS)
       goto fail_companion_cmd_pool;
+
+   result = anv_device_init_rt_shaders(device);
+   if (result != VK_SUCCESS) {
+      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_trtt;
+   }
 
    anv_device_init_blorp(device);
 
@@ -3920,8 +3905,6 @@ VkResult anv_CreateDevice(
    anv_device_init_astc_emu(device);
 
    anv_device_perf_init(device);
-
-   anv_device_utrace_init(device);
 
    anv_device_init_embedded_samplers(device);
 
@@ -3955,22 +3938,43 @@ VkResult anv_CreateDevice(
    if (device->info->ver > 9)
       BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_PMA_FIX);
 
+   device->queue_count = 0;
+   for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
+      const VkDeviceQueueCreateInfo *queueCreateInfo =
+         &pCreateInfo->pQueueCreateInfos[i];
+
+      for (uint32_t j = 0; j < queueCreateInfo->queueCount; j++) {
+         result = anv_queue_init(device, &device->queues[device->queue_count],
+                                 queueCreateInfo, j);
+         if (result != VK_SUCCESS)
+            goto fail_queues;
+
+         device->queue_count++;
+      }
+   }
+
+   anv_device_utrace_init(device);
+
    result = anv_genX(device->info, init_device_state)(device);
    if (result != VK_SUCCESS)
-      goto fail_inits;
+      goto fail_utrace;
 
    *pDevice = anv_device_to_handle(device);
 
    return VK_SUCCESS;
 
- fail_inits:
-   anv_device_finish_trtt(device);
-   anv_device_finish_embedded_samplers(device);
+ fail_utrace:
    anv_device_utrace_finish(device);
+ fail_queues:
+   for (uint32_t i = 0; i < device->queue_count; i++)
+      anv_queue_finish(&device->queues[i]);
+   anv_device_finish_embedded_samplers(device);
    anv_device_finish_blorp(device);
-   anv_device_finish_rt_shaders(device);
    anv_device_finish_astc_emu(device);
    anv_device_finish_internal_kernels(device);
+   anv_device_finish_rt_shaders(device);
+ fail_trtt:
+   anv_device_finish_trtt(device);
  fail_companion_cmd_pool:
    if (device->info->verx10 >= 125) {
       vk_common_DestroyCommandPool(anv_device_to_handle(device),
@@ -4051,9 +4055,7 @@ VkResult anv_CreateDevice(
    util_vma_heap_finish(&device->vma_hi);
    util_vma_heap_finish(&device->vma_lo);
    pthread_mutex_destroy(&device->vma_mutex);
- fail_queues:
-   for (uint32_t i = 0; i < device->queue_count; i++)
-      anv_queue_finish(&device->queues[i]);
+ fail_queues_alloc:
    vk_free(&device->vk.alloc, device->queues);
  fail_context_id:
    anv_device_destroy_context_or_vm(device);
@@ -4087,11 +4089,11 @@ void anv_DestroyDevice(
    /* Do TRTT batch garbage collection before destroying queues. */
    anv_device_finish_trtt(device);
 
+   anv_device_utrace_finish(device);
+
    for (uint32_t i = 0; i < device->queue_count; i++)
       anv_queue_finish(&device->queues[i]);
    vk_free(&device->vk.alloc, device->queues);
-
-   anv_device_utrace_finish(device);
 
    anv_device_finish_blorp(device);
 

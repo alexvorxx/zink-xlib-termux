@@ -59,13 +59,6 @@ stub_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
 }
 
 static VkResult
-stub_execute_simple_batch(struct anv_queue *queue, struct anv_bo *batch_bo,
-                          uint32_t batch_bo_size, bool is_companion_rcs_batch)
-{
-   return VK_ERROR_UNKNOWN;
-}
-
-static VkResult
 stub_queue_exec_locked(struct anv_queue *queue,
                        uint32_t wait_count,
                        const struct vk_sync_wait *waits,
@@ -172,7 +165,6 @@ const struct anv_kmd_backend *anv_stub_kmd_backend_get(void)
       .vm_bind = stub_vm_bind,
       .vm_bind_bo = stub_vm_bind_bo,
       .vm_unbind_bo = stub_vm_bind_bo,
-      .execute_simple_batch = stub_execute_simple_batch,
       .queue_exec_locked = stub_queue_exec_locked,
       .queue_exec_async = stub_queue_exec_async,
       .bo_alloc_flags_to_bo_flags = stub_bo_alloc_flags_to_bo_flags,

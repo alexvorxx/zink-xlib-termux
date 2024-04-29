@@ -102,6 +102,7 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
    .KHR_get_physical_device_properties2 = true,
    .KHR_get_surface_capabilities2       = TU_HAS_SURFACE,
    .KHR_surface                         = TU_HAS_SURFACE,
+   .KHR_surface_protected_capabilities  = TU_HAS_SURFACE,
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface                 = true,
 #endif
@@ -286,6 +287,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .ANDROID_native_buffer = true,
 #endif
       .ARM_rasterization_order_attachment_access = true,
+      .GOOGLE_decorate_string = true,
+      .GOOGLE_hlsl_functionality1 = true,
+      .GOOGLE_user_type = true,
       .IMG_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
       .VALVE_mutable_descriptor_type = true,
    } };

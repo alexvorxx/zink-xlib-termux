@@ -312,8 +312,11 @@ struct panvk_batch {
    struct util_dynarray event_ops;
    struct pan_jc jc;
    struct {
-      const struct vk_framebuffer *info;
       struct panfrost_ptr desc;
+      uint32_t bo_count;
+
+      /* One slot per color, two more slots for the depth/stencil buffers. */
+      struct pan_kmod_bo *bos[MAX_RTS + 2];
    } fb;
    struct {
       struct pan_kmod_bo *src, *dst;
@@ -757,14 +760,9 @@ struct panvk_cmd_state {
    struct {
       struct pan_fb_info info;
       bool crc_valid[MAX_RTS];
+      uint32_t bo_count;
+      struct pan_kmod_bo *bos[MAX_RTS + 2];
    } fb;
-
-   const struct panvk_render_pass *pass;
-   const struct panvk_subpass *subpass;
-   const struct vk_framebuffer *framebuffer;
-   VkRect2D render_area;
-
-   struct panvk_clear_value *clear;
 
    mali_ptr vpd;
    VkViewport viewport;
@@ -810,10 +808,6 @@ struct panvk_cmd_buffer {
    &(cmdbuf)->bind_points[VK_PIPELINE_BIND_POINT_##bindpoint].desc_state
 
 struct panvk_batch *panvk_cmd_open_batch(struct panvk_cmd_buffer *cmdbuf);
-
-void panvk_cmd_fb_info_set_subpass(struct panvk_cmd_buffer *cmdbuf);
-
-void panvk_cmd_fb_info_init(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf);
 
@@ -992,63 +986,6 @@ struct panvk_buffer_view {
    } descs;
 };
 
-struct panvk_attachment_info {
-   struct panvk_image_view *iview;
-};
-
-struct panvk_clear_value {
-   union {
-      uint32_t color[4];
-      struct {
-         float depth;
-         uint8_t stencil;
-      };
-   };
-};
-
-struct panvk_subpass_attachment {
-   uint32_t idx;
-   VkImageLayout layout;
-   bool clear;
-   bool preload;
-};
-
-struct panvk_subpass {
-   uint32_t input_count;
-   uint32_t color_count;
-   struct panvk_subpass_attachment *input_attachments;
-   uint8_t active_color_attachments;
-   struct panvk_subpass_attachment *color_attachments;
-   struct panvk_subpass_attachment *resolve_attachments;
-   struct panvk_subpass_attachment zs_attachment;
-
-   uint32_t view_mask;
-};
-
-struct panvk_render_pass_attachment {
-   VkAttachmentDescriptionFlags flags;
-   enum pipe_format format;
-   unsigned samples;
-   VkAttachmentLoadOp load_op;
-   VkAttachmentStoreOp store_op;
-   VkAttachmentLoadOp stencil_load_op;
-   VkAttachmentStoreOp stencil_store_op;
-   VkImageLayout initial_layout;
-   VkImageLayout final_layout;
-   unsigned view_mask;
-   unsigned first_used_in_subpass;
-};
-
-struct panvk_render_pass {
-   struct vk_object_base base;
-
-   uint32_t attachment_count;
-   uint32_t subpass_count;
-   struct panvk_subpass_attachment *subpass_attachments;
-   struct panvk_render_pass_attachment *attachments;
-   struct panvk_subpass subpasses[0];
-};
-
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(panvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
@@ -1082,8 +1019,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
                                VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout,
                                VK_OBJECT_TYPE_PIPELINE_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_render_pass, base, VkRenderPass,
-                               VK_OBJECT_TYPE_RENDER_PASS)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, vk.base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
 

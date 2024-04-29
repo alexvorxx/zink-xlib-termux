@@ -2689,21 +2689,15 @@ impl<'a> ShaderFromNir<'a> {
                     access: access,
                 });
             }
-            nir_intrinsic_store_output => {
-                let ShaderIoInfo::Fragment(_) = &mut self.info.io else {
-                    panic!("load_input is only used for fragment shaders");
-                };
-                let data = self.get_src(&srcs[0]);
+            nir_intrinsic_fs_out_nv => {
+                let data = self.get_ssa(srcs[0].as_def());
+                assert!(data.len() == 1);
+                let data = data[0];
 
-                let addr = u16::try_from(intrin.base()).unwrap()
-                    + u16::try_from(srcs[1].as_uint().unwrap()).unwrap()
-                    + 4 * u16::try_from(intrin.component()).unwrap();
+                let addr = u16::try_from(intrin.base()).unwrap();
                 assert!(addr % 4 == 0);
 
-                for c in 0..usize::from(intrin.num_components) {
-                    let idx = usize::from(addr / 4) + c;
-                    self.fs_out_regs[idx] = data.as_ssa().unwrap()[c];
-                }
+                self.fs_out_regs[usize::from(addr / 4)] = data;
             }
             nir_intrinsic_store_scratch => {
                 let data = self.get_src(&srcs[0]);

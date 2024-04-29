@@ -1231,6 +1231,9 @@ anv_cmd_buffer_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer)
       anv_cmd_buffer_alloc_temporary_state(cmd_buffer,
                                            sizeof(struct anv_push_constants),
                                            32 /* bottom 5 bits MBZ */);
+   if (state.alloc_size == 0)
+      return state;
+
    memcpy(state.map, data, sizeof(struct anv_push_constants));
 
    return state;

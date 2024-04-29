@@ -2403,6 +2403,8 @@ const void *nir_to_rc_options(struct nir_shader *s,
 
    bool progress;
 
+   NIR_PASS_V(s, nir_opt_constant_folding);
+
    do {
       progress = false;
       NIR_PASS(progress, s, nir_opt_algebraic_late);

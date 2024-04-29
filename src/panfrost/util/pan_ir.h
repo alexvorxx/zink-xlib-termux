@@ -387,6 +387,8 @@ bool pan_lower_helper_invocation(nir_shader *shader);
 bool pan_lower_sample_pos(nir_shader *shader);
 bool pan_lower_xfb(nir_shader *nir);
 
+bool pan_lower_image_index(nir_shader *shader, unsigned vs_img_attrib_offset);
+
 void pan_nir_collect_varyings(nir_shader *s, struct pan_shader_info *info);
 
 /*

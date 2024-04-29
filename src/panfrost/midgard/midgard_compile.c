@@ -1288,9 +1288,6 @@ static midgard_instruction
 emit_image_op(compiler_context *ctx, nir_intrinsic_instr *instr)
 {
    enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
-   unsigned nr_attr = ctx->stage == MESA_SHADER_VERTEX
-                         ? util_bitcount64(ctx->nir->info.inputs_read)
-                         : 0;
    unsigned nr_dim = glsl_get_sampler_dim_coordinate_components(dim);
    bool is_array = nir_intrinsic_image_array(instr);
    bool is_store = instr->intrinsic == nir_intrinsic_image_store;
@@ -1305,9 +1302,7 @@ emit_image_op(compiler_context *ctx, nir_intrinsic_instr *instr)
 
    /* For image opcodes, address is used as an index into the attribute
     * descriptor */
-   unsigned address = nr_attr;
-   if (is_direct)
-      address += nir_src_as_uint(*index);
+   unsigned address = is_direct ? nir_src_as_uint(*index) : 0;
 
    midgard_instruction ins;
    if (is_store) { /* emit st_image_* */

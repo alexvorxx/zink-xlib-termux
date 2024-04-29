@@ -3549,6 +3549,9 @@ tex_instr_is_lod_allowed(nir_tex_instr *tex)
            tex->sampler_dim == GLSL_SAMPLER_DIM_2D ||
            tex->sampler_dim == GLSL_SAMPLER_DIM_3D ||
            tex->sampler_dim == GLSL_SAMPLER_DIM_CUBE ||
+           /* External images are interpreted as 2D in type_to_dim,
+            * so LOD is allowed */
+           tex->sampler_dim == GLSL_SAMPLER_DIM_EXTERNAL ||
            /* RECT will always become 2D, so this is fine */
            tex->sampler_dim == GLSL_SAMPLER_DIM_RECT);
 }

@@ -1162,6 +1162,12 @@ bi_emit_load_push_constant(bi_builder *b, nir_intrinsic_instr *instr)
    }
 
    bi_emit_collect_to(b, bi_def_index(&instr->def), channels, n);
+
+   /* Update push->count to report the highest push constant word being accessed
+    * by this shader.
+    */
+   b->shader->info.push->count =
+      MAX2((base / 4) + n, b->shader->info.push->count);
 }
 
 static bi_index
@@ -1386,26 +1392,6 @@ bi_emit_image_coord(bi_builder *b, bi_index coord, unsigned src_idx,
    }
 }
 
-static bi_index
-bi_emit_image_index(bi_builder *b, nir_intrinsic_instr *instr)
-{
-   nir_src src = instr->src[0];
-   bi_index index = bi_src_index(&src);
-   bi_context *ctx = b->shader;
-
-   /* Images come after vertex attributes, so handle an explicit offset */
-   unsigned offset = (ctx->stage == MESA_SHADER_VERTEX)
-                        ? util_bitcount64(ctx->nir->info.inputs_read)
-                        : 0;
-
-   if (offset == 0)
-      return index;
-   else if (nir_src_is_const(src))
-      return bi_imm_u32(nir_src_as_uint(src) + offset);
-   else
-      return bi_iadd_u32(b, index, bi_imm_u32(offset), false);
-}
-
 static void
 bi_emit_image_load(bi_builder *b, nir_intrinsic_instr *instr)
 {
@@ -1440,7 +1426,7 @@ bi_emit_image_load(bi_builder *b, nir_intrinsic_instr *instr)
       bi_ld_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), regfmt,
                    vecsize);
    } else {
-      bi_ld_attr_tex_to(b, dest, xy, zw, bi_emit_image_index(b, instr), regfmt,
+      bi_ld_attr_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), regfmt,
                         vecsize);
    }
 
@@ -1480,7 +1466,7 @@ bi_emit_lea_image_to(bi_builder *b, bi_index dest, nir_intrinsic_instr *instr)
       bi_lea_tex_to(b, dest, xy, zw, bi_src_index(&instr->src[0]), false);
    } else {
       bi_instr *I = bi_lea_attr_tex_to(b, dest, xy, zw,
-                                       bi_emit_image_index(b, instr), type);
+                                       bi_src_index(&instr->src[0]), type);
 
       /* LEA_ATTR_TEX defaults to the secondary attribute table, but
        * our ABI has all images in the primary attribute table
@@ -4429,11 +4415,11 @@ bifrost_nir_lower_blend_components(struct nir_builder *b,
 
 static nir_mem_access_size_align
 mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
-                         uint8_t input_bit_size, uint32_t align,
+                         uint8_t input_bit_size, uint32_t align_mul,
                          uint32_t align_offset, bool offset_is_const,
                          const void *cb_data)
 {
-   align = nir_combined_align(align, align_offset);
+   uint32_t align = nir_combined_align(align_mul, align_offset);
    assert(util_is_power_of_two_nonzero(align));
 
    /* If the number of bytes is a multiple of 4, use 32-bit loads. Else if it's
@@ -4450,8 +4436,29 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
    else if (align == 2)
       bit_size = MIN2(bit_size, 16);
 
+   unsigned num_comps = bytes / (bit_size / 8);
+
+   /* Push constants require 32-bit loads. */
+  if (intrin == nir_intrinsic_load_push_constant) {
+      if (align_mul >= 4) {
+         /* If align_mul is bigger than 4 we can use align_offset to find
+          * the exact number of words we need to read.
+          */
+         num_comps = DIV_ROUND_UP((align_offset % 4) + bytes, 4);
+      } else {
+         /* If bytes is aligned on 32-bit, the access might still cross one
+          * word at the beginning, and one word at the end. If bytes is not
+          * aligned on 32-bit, the extra two words should cover for both the
+          * size and offset mis-alignment.
+          */
+         num_comps = (bytes / 4) + 2;
+      }
+
+      bit_size = MIN2(bit_size, 32);
+   }
+
    return (nir_mem_access_size_align){
-      .num_components = MIN2(bytes / (bit_size / 8), 4),
+      .num_components = num_comps,
       .bit_size = bit_size,
       .align = bit_size / 8,
    };
@@ -4750,6 +4757,93 @@ bifrost_nir_lower_load_output(nir_shader *nir)
       nir_metadata_block_index | nir_metadata_dominance, NULL);
 }
 
+static bool
+bi_lower_load_push_const_with_dyn_offset(nir_builder *b,
+                                         nir_intrinsic_instr *intr,
+                                         UNUSED void *data)
+{
+   if (intr->intrinsic != nir_intrinsic_load_push_constant)
+      return false;
+
+   /* Offset is constant, nothing to do. */
+   if (nir_src_is_const(intr->src[0]))
+      return false;
+
+   /* nir_lower_mem_access_bit_sizes() should have lowered load_push_constant
+    * to 32-bit and a maximum of 4 components.
+    */
+   assert(intr->def.num_components <= 4);
+   assert(intr->def.bit_size == 32);
+
+   uint32_t base = nir_intrinsic_base(intr);
+   uint32_t range = nir_intrinsic_range(intr);
+   uint32_t nwords = intr->def.num_components;
+   uint32_t first_word = base / 4;
+   uint32_t last_word = (base + range) / 4;
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   /* Dynamic indexing is only allowed for vulkan push constants, which is
+    * currently limited to 256 bytes. That gives us a maximum of 64 32-bit
+    * words to read from.
+    */
+   nir_def *lut[64] = {0};
+
+   assert(last_word <= ARRAY_SIZE(lut));
+
+   /* Load all words in the range. */
+   for (uint32_t w = first_word; w < last_word; w++) {
+      lut[w] = nir_load_push_constant(b, 1, 32, nir_imm_int(b, 0),
+                                      .base = w * 4, .range = 4);
+   }
+
+   nir_def *index = intr->src[0].ssa;
+
+   /* Index is dynamic, we need to do iteratively CSEL the values based on
+    * the index. We start with the highest bit in the index, and for each
+    * iteration we divide the scope by two.
+    */
+   for (uint32_t lut_sz = ARRAY_SIZE(lut); lut_sz > 0; lut_sz /= 2) {
+      uint32_t stride = lut_sz / 2;
+      nir_def *bit_test = NULL;
+
+      /* Stop when the first and last component don't fit in the new LUT
+       * window.
+       */
+      if (((first_word + nwords - 1) & stride) != (first_word & stride))
+         break;
+
+      for (uint32_t i = 0; i < stride; i++) {
+         /* We only need a CSEL if we have two values, otherwise we pick the
+          * non-NULL value.
+          */
+         if (lut[i] && lut[i + stride]) {
+            /* Create the test src on-demand. The stride is in 32-bit words,
+             * multiply by four to convert it into a byte stride we can use
+             * to test if the corresponding bit is set in the index src.
+             */
+            if (!bit_test)
+               bit_test = nir_i2b(b, nir_iand_imm(b, index, stride * 4));
+
+            lut[i] = nir_bcsel(b, bit_test, lut[i + stride], lut[i]);
+         } else if (lut[i + stride]) {
+            lut[i] = lut[i + stride];
+         }
+      }
+
+      /* Adjust first_word so it always points to the bottom half of our LUT,
+       * which contains the result of the CSELs we've just done.
+       */
+      first_word &= stride - 1;
+   }
+
+   nir_def *res = nir_vec(b, &lut[first_word], nwords);
+
+   nir_def_rewrite_uses(&intr->def, res);
+   nir_instr_remove(&intr->instr);
+   return true;
+}
+
 void
 bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
 {
@@ -4820,12 +4914,17 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
    }
 
    nir_lower_mem_access_bit_sizes_options mem_size_options = {
-      .modes = nir_var_mem_ubo | nir_var_mem_ssbo | nir_var_mem_constant |
-               nir_var_mem_task_payload | nir_var_shader_temp |
-               nir_var_function_temp | nir_var_mem_global | nir_var_mem_shared,
+      .modes = nir_var_mem_ubo | nir_var_mem_push_const | nir_var_mem_ssbo |
+               nir_var_mem_constant | nir_var_mem_task_payload |
+               nir_var_shader_temp | nir_var_function_temp |
+               nir_var_mem_global | nir_var_mem_shared,
       .callback = mem_access_size_align_cb,
    };
    NIR_PASS_V(nir, nir_lower_mem_access_bit_sizes, &mem_size_options);
+
+   NIR_PASS_V(nir, nir_shader_intrinsics_pass,
+              bi_lower_load_push_const_with_dyn_offset,
+              nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    NIR_PASS_V(nir, nir_lower_ssbo);
    NIR_PASS_V(nir, pan_lower_sample_pos);

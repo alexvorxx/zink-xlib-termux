@@ -4113,15 +4113,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       /* Make sure to clear color attachments without exports because MRT holes are removed during
        * compilation for optimal performance.
        */
-      blend.spi_shader_col_format =
-         radv_compact_spi_shader_col_format(blend.spi_shader_col_format & ps->info.ps.colors_written);
-
-      /* In presence of MRT holes (ie. the FS exports MRT1 but not MRT0), the compiler will remap
-       * them, so that only MRT0 is exported and the driver will compact SPI_SHADER_COL_FORMAT to
-       * match what the FS actually exports. Though, to make sure the hw remapping works as
-       * expected, we should also clear color attachments without exports in CB_SHADER_MASK.
-       */
-      blend.cb_shader_mask &= ps->info.ps.colors_written;
+      blend.spi_shader_col_format = radv_compact_spi_shader_col_format(blend.spi_shader_col_format);
    }
 
    unsigned custom_blend_mode = extra ? extra->custom_blend_mode : 0;

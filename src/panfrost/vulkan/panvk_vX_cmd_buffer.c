@@ -2147,26 +2147,108 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
       }
    }
 
-   fbinfo->width = pRenderingInfo->renderArea.offset.x +
-                   pRenderingInfo->renderArea.extent.width;
-   fbinfo->height = pRenderingInfo->renderArea.offset.y +
-                    pRenderingInfo->renderArea.extent.height;
+   fbinfo->extent.minx = pRenderingInfo->renderArea.offset.x;
+   fbinfo->extent.maxx = pRenderingInfo->renderArea.offset.x +
+                         pRenderingInfo->renderArea.extent.width - 1;
+   fbinfo->extent.miny = pRenderingInfo->renderArea.offset.y;
+   fbinfo->extent.maxy = pRenderingInfo->renderArea.offset.y +
+                         pRenderingInfo->renderArea.extent.height - 1;
 
    if (cmdbuf->state.gfx.render.bound_attachments) {
-      /* We need the rendering area to be aligned on a 32x32 section for tile
-       * buffer preloading to work correctly.
-       */
-      fbinfo->width = MIN2(att_width, ALIGN_POT(fbinfo->width, 32));
-      fbinfo->height = MIN2(att_height, ALIGN_POT(fbinfo->height, 32));
+      fbinfo->width = att_width;
+      fbinfo->height = att_height;
+   } else {
+      fbinfo->width = fbinfo->extent.maxx + 1;
+      fbinfo->height = fbinfo->extent.maxy + 1;
    }
 
    assert(fbinfo->width && fbinfo->height);
 
-   fbinfo->extent.maxx = fbinfo->width - 1;
-   fbinfo->extent.maxy = fbinfo->height - 1;
-
    /* We need to re-emit the FS RSD when the color attachments change. */
    cmdbuf->state.gfx.fs.rsd = 0;
+}
+
+static void
+preload_render_area_border(struct panvk_cmd_buffer *cmdbuf,
+                           const VkRenderingInfo *render_info)
+{
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
+   bool render_area_is_32x32_aligned =
+      ((fbinfo->extent.minx | fbinfo->extent.miny) % 32) == 0 &&
+      (fbinfo->extent.maxx + 1 == fbinfo->width ||
+       (fbinfo->extent.maxx % 32) == 31) &&
+      (fbinfo->extent.maxy + 1 == fbinfo->height ||
+       (fbinfo->extent.maxy % 32) == 31);
+
+   /* If the render area is aligned on a 32x32 section, we're good. */
+   if (render_area_is_32x32_aligned)
+      return;
+
+   /* We force preloading for all active attachments to preverse content falling
+    * outside the render area, but we need to compensate with attachment clears
+    * for attachments that were initially cleared.
+    */
+   uint32_t bound_atts = cmdbuf->state.gfx.render.bound_attachments;
+   VkClearAttachment clear_atts[MAX_RTS + 2];
+   uint32_t clear_att_count = 0;
+
+   for (uint32_t i = 0; i < render_info->colorAttachmentCount; i++) {
+      if (bound_atts & MESA_VK_RP_ATTACHMENT_COLOR_BIT(i)) {
+         if (fbinfo->rts[i].clear) {
+            const VkRenderingAttachmentInfo *att =
+               &render_info->pColorAttachments[i];
+
+            clear_atts[clear_att_count++] = (VkClearAttachment){
+               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+               .colorAttachment = i,
+               .clearValue = att->clearValue,
+            };
+         }
+
+         fbinfo->rts[i].preload = true;
+         fbinfo->rts[i].clear = false;
+      }
+   }
+
+   if (bound_atts & MESA_VK_RP_ATTACHMENT_DEPTH_BIT) {
+      if (fbinfo->zs.clear.z) {
+         const VkRenderingAttachmentInfo *att = render_info->pDepthAttachment;
+
+         clear_atts[clear_att_count++] = (VkClearAttachment){
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .clearValue = att->clearValue,
+         };
+      }
+
+      fbinfo->zs.preload.z = true;
+      fbinfo->zs.clear.z = false;
+   }
+
+   if (bound_atts & MESA_VK_RP_ATTACHMENT_STENCIL_BIT) {
+      if (fbinfo->zs.clear.s) {
+         const VkRenderingAttachmentInfo *att = render_info->pStencilAttachment;
+
+         clear_atts[clear_att_count++] = (VkClearAttachment){
+            .aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT,
+            .clearValue = att->clearValue,
+         };
+      }
+
+      fbinfo->zs.preload.s = true;
+      fbinfo->zs.clear.s = false;
+   }
+
+   if (clear_att_count) {
+      VkClearRect clear_rect = {
+         .rect = render_info->renderArea,
+         .baseArrayLayer = 0,
+         .layerCount = render_info->layerCount,
+      };
+
+      panvk_per_arch(CmdClearAttachments)(panvk_cmd_buffer_to_handle(cmdbuf),
+                                          clear_att_count, clear_atts, 1,
+                                          &clear_rect);
+   }
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2189,6 +2271,9 @@ panvk_per_arch(CmdBeginRendering)(VkCommandBuffer commandBuffer,
 
    if (!cmdbuf->cur_batch)
       panvk_per_arch(cmd_open_batch)(cmdbuf);
+
+   if (!resuming)
+      preload_render_area_border(cmdbuf, pRenderingInfo);
 }
 
 VKAPI_ATTR void VKAPI_CALL

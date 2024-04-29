@@ -1963,15 +1963,6 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
       radv_sqtt_emit_relocated_shaders(cmd_buffer, pipeline);
    }
 
-   for (unsigned s = 0; s < MESA_VULKAN_SHADER_STAGES; s++) {
-      struct radv_shader *shader = cmd_buffer->state.shaders[s];
-
-      if (!shader)
-         continue;
-
-      radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
-   }
-
    struct radv_shader *task_shader = cmd_buffer->state.shaders[MESA_SHADER_TASK];
    if (task_shader) {
       radv_emit_compute_shader(pdev, cmd_buffer->gang.cs, task_shader);
@@ -6605,20 +6596,6 @@ radv_emit_compute_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_compu
    radeon_check_space(device->ws, cmd_buffer->cs, pipeline->base.cs.cdw);
    radeon_emit_array(cmd_buffer->cs, pipeline->base.cs.buf, pipeline->base.cs.cdw);
 
-   if (pipeline->base.type == RADV_PIPELINE_COMPUTE) {
-      radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.shaders[MESA_SHADER_COMPUTE]->bo);
-   } else {
-      if (cmd_buffer->state.shaders[MESA_SHADER_INTERSECTION])
-         radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.shaders[MESA_SHADER_INTERSECTION]->bo);
-
-      struct radv_ray_tracing_pipeline *rt_pipeline = radv_pipeline_to_ray_tracing(&pipeline->base);
-      for (unsigned i = 0; i < rt_pipeline->stage_count; ++i) {
-         struct radv_shader *shader = rt_pipeline->stages[i].shader;
-         if (shader)
-            radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
-      }
-   }
-
    if (radv_device_fault_detection_enabled(device))
       radv_save_pipeline(cmd_buffer, &pipeline->base);
 }
@@ -6976,6 +6953,8 @@ radv_bind_shader(struct radv_cmd_buffer *cmd_buffer, struct radv_shader *shader,
    }
 
    cmd_buffer->shader_upload_seq = MAX2(cmd_buffer->shader_upload_seq, shader->upload_seq);
+
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
 }
 
 static void
@@ -7037,6 +7016,12 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
 
       radv_bind_shader(cmd_buffer, rt_pipeline->base.base.shaders[MESA_SHADER_INTERSECTION], MESA_SHADER_INTERSECTION);
       radv_bind_rt_prolog(cmd_buffer, rt_pipeline->prolog);
+
+      for (unsigned i = 0; i < rt_pipeline->stage_count; ++i) {
+         struct radv_shader *shader = rt_pipeline->stages[i].shader;
+         if (shader)
+            radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
+      }
 
       cmd_buffer->state.rt_pipeline = rt_pipeline;
       cmd_buffer->push_constant_stages |= RADV_RT_STAGE_BITS;
@@ -9664,8 +9649,6 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       radv_bind_shader(cmd_buffer, shader, s);
       if (!shader)
          continue;
-
-      radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
 
       /* Compute push constants/indirect descriptors state. */
       need_indirect_descriptor_sets |= radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
@@ -12407,8 +12390,6 @@ radv_bind_compute_shader(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_
       return;
 
    ASSERTED const unsigned cdw_max = radeon_check_space(device->ws, cmd_buffer->cs, 128);
-
-   radv_cs_add_buffer(device->ws, cmd_buffer->cs, shader->bo);
 
    radv_emit_compute_shader(pdev, cs, shader);
 

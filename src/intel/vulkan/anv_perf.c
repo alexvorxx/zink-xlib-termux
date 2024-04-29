@@ -206,7 +206,7 @@ VkResult anv_ReleasePerformanceConfigurationINTEL(
    ANV_FROM_HANDLE(anv_performance_configuration_intel, config, _configuration);
 
    if (!INTEL_DEBUG(DEBUG_NO_OACONFIG))
-      intel_ioctl(device->fd, DRM_IOCTL_I915_PERF_REMOVE_CONFIG, &config->config_id);
+      intel_perf_remove_configuration(device->physical->perf, device->fd, config->config_id);
 
    ralloc_free(config->register_config);
 

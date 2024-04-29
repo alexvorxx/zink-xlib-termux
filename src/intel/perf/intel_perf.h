@@ -475,6 +475,8 @@ struct intel_perf_registers *intel_perf_load_configuration(struct intel_perf_con
 uint64_t intel_perf_store_configuration(struct intel_perf_config *perf_cfg, int fd,
                                         const struct intel_perf_registers *config,
                                         const char *guid);
+void intel_perf_remove_configuration(struct intel_perf_config *perf_cfg, int fd,
+                                     uint64_t config_id);
 
 static inline unsigned
 intel_perf_query_counter_info_first_query(const struct intel_perf_query_counter_info *counter_info)

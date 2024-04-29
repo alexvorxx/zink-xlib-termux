@@ -575,8 +575,8 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_resource_intel:
    case nir_intrinsic_load_reg:
    case nir_intrinsic_load_reg_indirect:
-   case nir_intrinsic_load_frag_size_ir3:
-   case nir_intrinsic_load_frag_offset_ir3:
+   //case nir_intrinsic_load_frag_size_ir3:
+   //case nir_intrinsic_load_frag_offset_ir3:
    case nir_intrinsic_bindless_resource_ir3: {
       unsigned num_srcs = nir_intrinsic_infos[instr->intrinsic].num_srcs;
       for (unsigned i = 0; i < num_srcs; i++) {
@@ -626,7 +626,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_line_coord:
    case nir_intrinsic_load_frag_coord:
    case nir_intrinsic_load_frag_coord_zw:
-   case nir_intrinsic_load_frag_coord_unscaled_ir3:
+   //case nir_intrinsic_load_frag_coord_unscaled_ir3:
    case nir_intrinsic_load_pixel_coord:
    case nir_intrinsic_load_fully_covered:
    case nir_intrinsic_load_sample_pos:

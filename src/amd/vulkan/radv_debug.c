@@ -37,6 +37,7 @@
 #include "ac_debug.h"
 #include "radv_buffer.h"
 #include "radv_debug.h"
+#include "radv_pipeline_rt.h"
 #include "radv_shader.h"
 #include "sid.h"
 
@@ -71,7 +72,7 @@ radv_init_trace(struct radv_device *device)
    VkResult result;
 
    result = radv_bo_create(
-      device, TRACE_BO_SIZE, 8, RADEON_DOMAIN_VRAM,
+      device, NULL, TRACE_BO_SIZE, 8, RADEON_DOMAIN_VRAM,
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_VA_UNCACHED,
       RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->trace_bo);
    if (result != VK_SUCCESS)
@@ -95,7 +96,7 @@ radv_finish_trace(struct radv_device *device)
 
    if (unlikely(device->trace_bo)) {
       ws->buffer_make_resident(ws, device->trace_bo, false);
-      radv_bo_destroy(device, device->trace_bo);
+      radv_bo_destroy(device, NULL, device->trace_bo);
    }
 }
 
@@ -925,7 +926,7 @@ radv_trap_handler_init(struct radv_device *device)
       return false;
 
    result = radv_bo_create(
-      device, TMA_BO_SIZE, 256, RADEON_DOMAIN_VRAM,
+      device, NULL, TMA_BO_SIZE, 256, RADEON_DOMAIN_VRAM,
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_32BIT,
       RADV_BO_PRIORITY_SCRATCH, 0, true, &device->tma_bo);
    if (result != VK_SUCCESS)
@@ -967,7 +968,7 @@ radv_trap_handler_finish(struct radv_device *device)
 
    if (unlikely(device->tma_bo)) {
       ws->buffer_make_resident(ws, device->tma_bo, false);
-      radv_bo_destroy(device, device->tma_bo);
+      radv_bo_destroy(device, NULL, device->tma_bo);
    }
 }
 

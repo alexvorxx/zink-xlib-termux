@@ -42,9 +42,9 @@ radv_spm_init_bo(struct radv_device *device)
    device->spm.sample_interval = sample_interval;
 
    struct radeon_winsys_bo *bo = NULL;
-   result = radv_bo_create(device, size, 4096, RADEON_DOMAIN_VRAM,
-                               RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
-                               RADV_BO_PRIORITY_SCRATCH, 0, true, &bo);
+   result = radv_bo_create(device, NULL, size, 4096, RADEON_DOMAIN_VRAM,
+                           RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
+                           RADV_BO_PRIORITY_SCRATCH, 0, true, &bo);
    device->spm.bo = bo;
    if (result != VK_SUCCESS)
       return false;
@@ -265,7 +265,7 @@ radv_spm_finish(struct radv_device *device)
 
    if (device->spm.bo) {
       ws->buffer_make_resident(ws, device->spm.bo, false);
-      radv_bo_destroy(device, device->spm.bo);
+      radv_bo_destroy(device, NULL, device->spm.bo);
    }
 
    ac_destroy_spm(&device->spm);

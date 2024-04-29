@@ -27,6 +27,7 @@
 #include "nir.h"
 #include "nir_builder.h"
 #include "radv_nir.h"
+#include "radv_physical_device.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 

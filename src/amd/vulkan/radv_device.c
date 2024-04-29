@@ -121,7 +121,7 @@ radv_device_init_border_color(struct radv_device *device)
 {
    VkResult result;
 
-   result = radv_bo_create(device, RADV_BORDER_COLOR_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
+   result = radv_bo_create(device, NULL, RADV_BORDER_COLOR_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
                            RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_READ_ONLY | RADEON_FLAG_NO_INTERPROCESS_SHARING,
                            RADV_BO_PRIORITY_SHADER, 0, true, &device->border_color_data.bo);
 
@@ -148,7 +148,7 @@ radv_device_finish_border_color(struct radv_device *device)
    if (device->border_color_data.bo) {
       radv_rmv_log_border_color_palette_destroy(device, device->border_color_data.bo);
       device->ws->buffer_make_resident(device->ws, device->border_color_data.bo, false);
-      radv_bo_destroy(device, device->border_color_data.bo);
+      radv_bo_destroy(device, NULL, device->border_color_data.bo);
 
       mtx_destroy(&device->border_color_data.mutex);
    }
@@ -1001,9 +1001,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    if (device->vk.enabled_features.performanceCounterQueryPools) {
       size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
-      result = radv_bo_create(device, bo_size, 4096, RADEON_DOMAIN_GTT,
-                                  RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                                  RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->perf_counter_bo);
+      result = radv_bo_create(device, NULL, bo_size, 4096, RADEON_DOMAIN_GTT,
+                              RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING,
+                              RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->perf_counter_bo);
       if (result != VK_SUCCESS)
          goto fail_cache;
 
@@ -1059,9 +1059,9 @@ fail:
 
    radv_device_finish_perf_counter_lock_cs(device);
    if (device->perf_counter_bo)
-      radv_bo_destroy(device, device->perf_counter_bo);
+      radv_bo_destroy(device, NULL, device->perf_counter_bo);
    if (device->gfx_init)
-      radv_bo_destroy(device, device->gfx_init);
+      radv_bo_destroy(device, NULL, device->gfx_init);
 
    radv_device_finish_notifier(device);
    radv_device_finish_vs_prologs(device);
@@ -1113,10 +1113,10 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_device_finish_perf_counter_lock_cs(device);
    if (device->perf_counter_bo)
-      radv_bo_destroy(device, device->perf_counter_bo);
+      radv_bo_destroy(device, NULL, device->perf_counter_bo);
 
    if (device->gfx_init)
-      radv_bo_destroy(device, device->gfx_init);
+      radv_bo_destroy(device, NULL, device->gfx_init);
 
    radv_device_finish_notifier(device);
    radv_device_finish_vs_prologs(device);

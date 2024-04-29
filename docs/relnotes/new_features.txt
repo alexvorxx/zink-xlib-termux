@@ -12,3 +12,4 @@ Mali G610 and G310 on Panfrost
 Mali T600 on Panfrost
 VK_KHR_shader_subgroup_uniform_control_flow on NVK
 alphaToOne/extendedDynamicState3AlphaToOneEnable on RADV
+VK_EXT_device_address_binding_report on RADV

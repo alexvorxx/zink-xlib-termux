@@ -1235,6 +1235,12 @@ struct v3dv_job {
     */
    bool is_clone;
 
+   /* If this is a cloned job, if it has its own BCL resource. This happens
+    * when we suspend jobs with in command buffers with the
+    * VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag.
+    */
+   bool clone_owns_bcl;
+
    /* VK_KHR_dynamic_rendering */
    bool suspending;
    bool resuming;
@@ -1396,6 +1402,9 @@ void v3dv_job_start_frame(struct v3dv_job *job,
                           bool msaa);
 
 bool v3dv_job_type_is_gpu(struct v3dv_job *job);
+
+struct v3dv_job *
+v3dv_job_clone(struct v3dv_job *job, bool skip_bcl);
 
 struct v3dv_job *
 v3dv_job_clone_in_cmd_buffer(struct v3dv_job *job,

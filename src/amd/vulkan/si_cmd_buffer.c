@@ -640,7 +640,7 @@ radv_create_gfx_config(struct radv_device *device)
    }
 
    VkResult result = radv_bo_create(
-      device, cs->cdw * 4, 4096, device->ws->cs_domain(device->ws),
+      device, NULL, cs->cdw * 4, 4096, device->ws->cs_domain(device->ws),
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_GTT_WC,
       RADV_BO_PRIORITY_CS, 0, true, &device->gfx_init);
    if (result != VK_SUCCESS)
@@ -648,7 +648,7 @@ radv_create_gfx_config(struct radv_device *device)
 
    void *map = radv_buffer_map(device->ws, device->gfx_init);
    if (!map) {
-      radv_bo_destroy(device, device->gfx_init);
+      radv_bo_destroy(device, NULL, device->gfx_init);
       device->gfx_init = NULL;
       goto fail;
    }
@@ -779,6 +779,11 @@ radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *view
    radeon_emit(cs, fui(guardband_x));
    radeon_emit(cs, fui(discard_x));
 }
+
+struct radv_prim_vertex_count {
+   uint8_t min;
+   uint8_t incr;
+};
 
 static inline unsigned
 radv_prims_for_vertices(struct radv_prim_vertex_count *info, unsigned num)

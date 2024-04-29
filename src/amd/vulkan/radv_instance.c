@@ -25,6 +25,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_instance.h"
 #include "radv_debug.h"
 #include "radv_private.h"
 

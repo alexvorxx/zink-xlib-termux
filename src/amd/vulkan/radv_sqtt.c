@@ -513,7 +513,7 @@ radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys
 
       new_size = MAX2(4096, 2 * device->sqtt_timestamp.size);
 
-      result = radv_bo_create(device, new_size, 8, RADEON_DOMAIN_GTT,
+      result = radv_bo_create(device, NULL, new_size, 8, RADEON_DOMAIN_GTT,
                               RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0,
                               true, &bo);
       if (result != VK_SUCCESS) {
@@ -523,7 +523,7 @@ radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys
 
       map = radv_buffer_map(device->ws, bo);
       if (!map) {
-         radv_bo_destroy(device, bo);
+         radv_bo_destroy(device, NULL, bo);
          simple_mtx_unlock(&device->sqtt_timestamp_mtx);
          return VK_ERROR_OUT_OF_DEVICE_MEMORY;
       }
@@ -533,7 +533,7 @@ radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys
 
          new_timestamp = malloc(sizeof(*new_timestamp));
          if (!new_timestamp) {
-            radv_bo_destroy(device, bo);
+            radv_bo_destroy(device, NULL, bo);
             simple_mtx_unlock(&device->sqtt_timestamp_mtx);
             return VK_ERROR_OUT_OF_HOST_MEMORY;
          }
@@ -565,7 +565,7 @@ radv_sqtt_reset_timestamp(struct radv_device *device)
    simple_mtx_lock(&device->sqtt_timestamp_mtx);
 
    list_for_each_entry_safe (struct radv_sqtt_timestamp, ts, &device->sqtt_timestamp.list, list) {
-      radv_bo_destroy(device, ts->bo);
+      radv_bo_destroy(device, NULL, ts->bo);
       list_del(&ts->list);
       free(ts);
    }
@@ -619,7 +619,7 @@ static void
 radv_sqtt_finish_queue_event(struct radv_device *device)
 {
    if (device->sqtt_timestamp.bo)
-      radv_bo_destroy(device, device->sqtt_timestamp.bo);
+      radv_bo_destroy(device, NULL, device->sqtt_timestamp.bo);
 
    simple_mtx_destroy(&device->sqtt_timestamp_mtx);
 
@@ -649,9 +649,9 @@ radv_sqtt_init_bo(struct radv_device *device)
    size += device->sqtt.buffer_size * (uint64_t)max_se;
 
    struct radeon_winsys_bo *bo = NULL;
-   result = radv_bo_create(device, size, 4096, RADEON_DOMAIN_VRAM,
-                               RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
-                               RADV_BO_PRIORITY_SCRATCH, 0, true, &bo);
+   result = radv_bo_create(device, NULL, size, 4096, RADEON_DOMAIN_VRAM,
+                           RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
+                           RADV_BO_PRIORITY_SCRATCH, 0, true, &bo);
    device->sqtt.bo = bo;
    if (result != VK_SUCCESS)
       return false;
@@ -674,7 +674,7 @@ radv_sqtt_finish_bo(struct radv_device *device)
 
    if (unlikely(device->sqtt.bo)) {
       ws->buffer_make_resident(ws, device->sqtt.bo, false);
-      radv_bo_destroy(device, device->sqtt.bo);
+      radv_bo_destroy(device, NULL, device->sqtt.bo);
    }
 }
 

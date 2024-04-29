@@ -35,8 +35,10 @@
 #include "util/hex.h"
 #include "util/u_debug.h"
 #include "radv_debug.h"
+#include "radv_pipeline_rt.h"
 #include "radv_private.h"
 #include "radv_video.h"
+#include "radv_wsi.h"
 
 #ifdef _WIN32
 typedef void *drmDevicePtr;
@@ -599,6 +601,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_depth_range_unrestricted = true,
       .EXT_descriptor_buffer = true,
       .EXT_descriptor_indexing = true,
+      .EXT_device_address_binding_report = true,
       .EXT_device_fault = pdev->info.has_gpuvm_fault_query,
       .EXT_discard_rectangles = true,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
@@ -1201,6 +1204,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_KHR_shader_quad_control */
       .shaderQuadControl = true,
+
+      /* VK_EXT_address_binding_report */
+      .reportAddressBinding = true,
    };
 }
 

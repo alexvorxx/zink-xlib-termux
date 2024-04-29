@@ -26,9 +26,11 @@
  */
 
 #include "radv_buffer.h"
+#include "radv_device_memory.h"
 #include "radv_private.h"
 
 #include "vk_common_entrypoints.h"
+#include "vk_debug_utils.h"
 
 void
 radv_buffer_init(struct radv_buffer *buffer, struct radv_device *device, struct radeon_winsys_bo *bo, uint64_t size,
@@ -55,7 +57,7 @@ static void
 radv_destroy_buffer(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_buffer *buffer)
 {
    if ((buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) && buffer->bo)
-      radv_bo_destroy(device, buffer->bo);
+      radv_bo_destroy(device, &buffer->vk.base, buffer->bo);
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_buffer_to_handle(buffer));
    radv_buffer_finish(buffer);
@@ -99,8 +101,8 @@ radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreate
       if (replay_info && replay_info->opaqueCaptureAddress)
          replay_address = replay_info->opaqueCaptureAddress;
 
-      VkResult result = radv_bo_create(device, align64(buffer->vk.size, 4096), 4096, 0, flags, RADV_BO_PRIORITY_VIRTUAL,
-                                       replay_address, is_internal, &buffer->bo);
+      VkResult result = radv_bo_create(device, &buffer->vk.base, align64(buffer->vk.size, 4096), 4096, 0, flags,
+                                       RADV_BO_PRIORITY_VIRTUAL, replay_address, is_internal, &buffer->bo);
       if (result != VK_SUCCESS) {
          radv_destroy_buffer(device, pAllocator, buffer);
          return vk_error(device, result);
@@ -138,6 +140,8 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindBufferMemoryInfo *pBindInfos)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       RADV_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
@@ -168,6 +172,9 @@ radv_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindBuf
       buffer->bo = mem->bo;
       buffer->offset = pBindInfos[i].memoryOffset;
       radv_rmv_log_buffer_bind(device, pBindInfos[i].buffer);
+
+      vk_address_binding_report(&instance->vk, &buffer->vk.base, radv_buffer_get_va(buffer->bo) + buffer->offset,
+                                buffer->bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    }
    return VK_SUCCESS;
 }
@@ -262,10 +269,12 @@ radv_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressI
 }
 
 VkResult
-radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, enum radeon_bo_domain domain,
-               enum radeon_bo_flag flags, unsigned priority, uint64_t address, bool is_internal,
-               struct radeon_winsys_bo **out_bo)
+radv_bo_create(struct radv_device *device, struct vk_object_base *object, uint64_t size, unsigned alignment,
+               enum radeon_bo_domain domain, enum radeon_bo_flag flags, unsigned priority, uint64_t address,
+               bool is_internal, struct radeon_winsys_bo **out_bo)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radeon_winsys *ws = device->ws;
    VkResult result;
 
@@ -275,23 +284,32 @@ radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, en
 
    radv_rmv_log_bo_allocate(device, *out_bo, is_internal);
 
+   vk_address_binding_report(&instance->vk, object ? object : &device->vk.base, radv_buffer_get_va(*out_bo),
+                             (*out_bo)->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    return VK_SUCCESS;
 }
 
 void
-radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo)
+radv_bo_destroy(struct radv_device *device, struct vk_object_base *object, struct radeon_winsys_bo *bo)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radeon_winsys *ws = device->ws;
 
    radv_rmv_log_bo_destroy(device, bo);
+
+   vk_address_binding_report(&instance->vk, object ? object : &device->vk.base, radv_buffer_get_va(bo), bo->size,
+                             VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
 
    ws->buffer_destroy(ws, bo);
 }
 
 VkResult
-radv_bo_virtual_bind(struct radv_device *device, struct radeon_winsys_bo *parent, uint64_t offset, uint64_t size,
-                     struct radeon_winsys_bo *bo, uint64_t bo_offset)
+radv_bo_virtual_bind(struct radv_device *device, struct vk_object_base *object, struct radeon_winsys_bo *parent,
+                     uint64_t offset, uint64_t size, struct radeon_winsys_bo *bo, uint64_t bo_offset)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radeon_winsys *ws = device->ws;
    VkResult result;
 
@@ -303,6 +321,9 @@ radv_bo_virtual_bind(struct radv_device *device, struct radeon_winsys_bo *parent
       radv_rmv_log_sparse_add_residency(device, parent, offset);
    else
       radv_rmv_log_sparse_remove_residency(device, parent, offset);
+
+   vk_address_binding_report(&instance->vk, object, radv_buffer_get_va(parent) + offset, size,
+                             bo ? VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT : VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
 
    return VK_SUCCESS;
 }

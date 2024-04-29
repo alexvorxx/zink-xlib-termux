@@ -23,6 +23,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_wsi.h"
 #include "meta/radv_meta.h"
 #include "util/macros.h"
 #include "radv_debug.h"

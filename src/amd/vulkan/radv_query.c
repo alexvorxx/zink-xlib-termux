@@ -1206,7 +1206,7 @@ radv_destroy_query_pool(struct radv_device *device, const VkAllocationCallbacks 
       radv_pc_deinit_query_pool((struct radv_pc_query_pool *)pool);
 
    if (pool->bo)
-      radv_bo_destroy(device, pool->bo);
+      radv_bo_destroy(device, &pool->vk.base, pool->bo);
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_query_pool_to_handle(pool));
    vk_query_pool_finish(&pool->vk);
@@ -1305,8 +1305,8 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
        (pCreateInfo->queryType == VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT && pdev->info.gfx_level >= GFX11))
       pool->size += 4 * pCreateInfo->queryCount;
 
-   result = radv_bo_create(device, pool->size, 64, RADEON_DOMAIN_GTT, RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                               RADV_BO_PRIORITY_QUERY_POOL, 0, false, &pool->bo);
+   result = radv_bo_create(device, &pool->vk.base, pool->size, 64, RADEON_DOMAIN_GTT,
+                           RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_QUERY_POOL, 0, false, &pool->bo);
    if (result != VK_SUCCESS) {
       radv_destroy_query_pool(device, pAllocator, pool);
       return vk_error(device, result);

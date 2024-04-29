@@ -32,12 +32,14 @@
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
 #include "radv_debug.h"
+#include "radv_device_memory.h"
 #include "radv_formats.h"
 #include "radv_image_view.h"
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
 #include "radv_video.h"
 #include "sid.h"
+#include "vk_debug_utils.h"
 #include "vk_format.h"
 #include "vk_render_pass.h"
 #include "vk_util.h"
@@ -1213,7 +1215,7 @@ static void
 radv_destroy_image(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_image *image)
 {
    if ((image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) && image->bindings[0].bo)
-      radv_bo_destroy(device, image->bindings[0].bo);
+      radv_bo_destroy(device, &image->vk.base, image->bindings[0].bo);
 
    if (image->owned_memory != VK_NULL_HANDLE) {
       RADV_FROM_HANDLE(radv_device_memory, mem, image->owned_memory);
@@ -1367,8 +1369,8 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
       image->size = align64(image->size, image->alignment);
       image->bindings[0].offset = 0;
 
-      result = radv_bo_create(device, image->size, image->alignment, 0, RADEON_FLAG_VIRTUAL, RADV_BO_PRIORITY_VIRTUAL,
-                              0, true, &image->bindings[0].bo);
+      result = radv_bo_create(device, &image->vk.base, image->size, image->alignment, 0, RADEON_FLAG_VIRTUAL,
+                              RADV_BO_PRIORITY_VIRTUAL, 0, true, &image->bindings[0].bo);
       if (result != VK_SUCCESS) {
          radv_destroy_image(device, alloc, image);
          return vk_error(device, result);
@@ -1670,6 +1672,8 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImageMemoryInfo *pBindInfos)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       RADV_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
@@ -1737,6 +1741,10 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          image->bindings[0].offset = pBindInfos[i].memoryOffset;
       }
       radv_rmv_log_image_bind(device, pBindInfos[i].image);
+
+      vk_address_binding_report(&instance->vk, &image->vk.base,
+                                radv_buffer_get_va(image->bindings[0].bo) + image->bindings[0].offset,
+                                image->bindings[0].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    }
    return VK_SUCCESS;
 }

@@ -25,6 +25,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_device_memory.h"
 #include "radv_buffer.h"
 #include "radv_image.h"
 #include "radv_private.h"
@@ -64,7 +65,7 @@ radv_free_memory(struct radv_device *device, const VkAllocationCallbacks *pAlloc
 
       if (device->use_global_bo_list)
          device->ws->buffer_make_resident(device->ws, mem->bo, false);
-      radv_bo_destroy(device, mem->bo);
+      radv_bo_destroy(device, &mem->base, mem->bo);
       mem->bo = NULL;
    }
 
@@ -183,7 +184,7 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
           * spec and can be removed after we support modifiers. */
          result = radv_image_create_layout(device, create_info, NULL, NULL, mem->image);
          if (result != VK_SUCCESS) {
-            radv_bo_destroy(device, mem->bo);
+            radv_bo_destroy(device, &mem->base, mem->bo);
             goto fail;
          }
       }
@@ -242,8 +243,8 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
          mtx_unlock(&device->overallocation_mutex);
       }
 
-      result = radv_bo_create(device, alloc_size, pdev->info.max_alignment, domain, flags, priority, replay_address,
-                              is_internal, &mem->bo);
+      result = radv_bo_create(device, &mem->base, alloc_size, pdev->info.max_alignment, domain, flags, priority,
+                              replay_address, is_internal, &mem->bo);
 
       if (result != VK_SUCCESS) {
          if (device->overallocation_disallowed) {
@@ -268,6 +269,7 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
 
    *pMem = radv_device_memory_to_handle(mem);
    radv_rmv_log_heap_create(device, *pMem, is_internal, flags_info ? flags_info->flags : 0);
+
    return VK_SUCCESS;
 
 fail:

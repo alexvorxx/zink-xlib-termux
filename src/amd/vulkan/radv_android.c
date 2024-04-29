@@ -22,7 +22,10 @@
  */
 
 #include "radv_buffer.h"
+#include "radv_device.h"
+#include "radv_device_memory.h"
 #include "radv_image.h"
+#include "radv_physical_device.h"
 #include "radv_private.h"
 
 #if DETECT_OS_ANDROID
@@ -661,19 +664,19 @@ radv_import_ahb_memory(struct radv_device *device, struct radv_device_memory *me
 
       result = radv_image_create_layout(device, create_info, NULL, NULL, mem->image);
       if (result != VK_SUCCESS) {
-         radv_bo_destroy(device, mem->bo);
+         radv_bo_destroy(device, NULL, mem->bo);
          mem->bo = NULL;
          return result;
       }
 
       if (alloc_size < mem->image->size) {
-         radv_bo_destroy(device, mem->bo);
+         radv_bo_destroy(device, NULL, mem->bo);
          mem->bo = NULL;
          return VK_ERROR_INVALID_EXTERNAL_HANDLE;
       }
    } else if (mem->buffer) {
       if (alloc_size < mem->buffer->vk.size) {
-         radv_bo_destroy(device, mem->bo);
+         radv_bo_destroy(device, NULL, mem->bo);
          mem->bo = NULL;
          return VK_ERROR_INVALID_EXTERNAL_HANDLE;
       }

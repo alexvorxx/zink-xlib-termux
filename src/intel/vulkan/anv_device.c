@@ -1078,7 +1078,7 @@ get_properties_1_2(const struct anv_physical_device *pdevice,
     * advertise a larger limit here.
     */
    const unsigned max_bindless_views =
-      anv_physical_device_bindless_heap_size(pdevice) / ANV_SURFACE_STATE_SIZE;
+      anv_physical_device_bindless_heap_size(pdevice, false) / ANV_SURFACE_STATE_SIZE;
    p->maxUpdateAfterBindDescriptorsInAllPools            = max_bindless_views;
    p->shaderUniformBufferArrayNonUniformIndexingNative   = false;
    p->shaderSampledImageArrayNonUniformIndexingNative    = false;
@@ -1567,7 +1567,8 @@ get_properties(const struct anv_physical_device *pdevice,
       props->inputAttachmentDescriptorSize = ANV_SURFACE_STATE_SIZE;
       props->accelerationStructureDescriptorSize = sizeof(struct anv_address_range_descriptor);
       props->maxSamplerDescriptorBufferRange = pdevice->va.descriptor_buffer_pool.size;
-      props->maxResourceDescriptorBufferRange = anv_physical_device_bindless_heap_size(pdevice);
+      props->maxResourceDescriptorBufferRange = anv_physical_device_bindless_heap_size(pdevice,
+                                                                                       true);
       props->resourceDescriptorBufferAddressSpaceSize = pdevice->va.descriptor_buffer_pool.size;
       props->descriptorBufferAddressSpaceSize = pdevice->va.descriptor_buffer_pool.size;
       props->samplerDescriptorBufferAddressSpaceSize = pdevice->va.descriptor_buffer_pool.size;

@@ -430,8 +430,6 @@ struct gl_shader_program
     * _mesa_copy_linked_program_data().
     */
    struct {
-      GLint VerticesIn;
-
       bool UsesEndPrimitive;
       unsigned ActiveStreamMask;
    } Geom;

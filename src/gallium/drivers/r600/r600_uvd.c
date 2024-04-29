@@ -52,6 +52,7 @@ struct pipe_video_buffer *r600_video_buffer_create(struct pipe_context *pipe,
 	template = *tmpl;
 	template.width = align(tmpl->width, VL_MACROBLOCK_WIDTH);
 	template.height = align(tmpl->height / array_size, VL_MACROBLOCK_HEIGHT);
+	template.contiguous_planes = true;
 
 	vl_video_buffer_template(&templ, &template, resource_formats[0], 1, array_size,
 									 PIPE_USAGE_DEFAULT, 0, chroma_format);

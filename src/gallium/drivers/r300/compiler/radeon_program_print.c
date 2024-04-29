@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "util/u_math.h"
 #include "radeon_program.h"
+#include "radeon_compiler_util.h"
 
 #include <stdio.h>
 
@@ -95,17 +95,7 @@ static void rc_print_comparefunc(FILE * f, const char * lhs, rc_compare_func fun
 
 static void rc_print_inline_float(FILE * f, int index)
 {
-	int r300_exponent = (index >> 3) & 0xf;
-	unsigned r300_mantissa = index & 0x7;
-	unsigned float_exponent;
-	unsigned real_float;
-
-	r300_exponent -= 7;
-	float_exponent = r300_exponent + 127;
-	real_float = (r300_mantissa << 20) | (float_exponent << 23);
-
-	fprintf(f, "%f (0x%x)", uif(real_float), index);
-
+	fprintf(f, "%f (0x%x)", rc_inline_to_float(index), index);
 }
 
 static void rc_print_register(FILE * f, rc_register_file file, int index, unsigned int reladdr)

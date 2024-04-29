@@ -217,7 +217,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
             MIN2(device->physical->va.descriptor_buffer_pool.size -
                  (cmd_buffer->state.descriptor_buffers.surfaces_address -
                   device->physical->va.descriptor_buffer_pool.addr),
-                 anv_physical_device_bindless_heap_size(device->physical)) :
+                 anv_physical_device_bindless_heap_size(device->physical, true)) :
             (device->workaround_bo->size - device->workaround_address.offset);
          sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
             .offset = surfaces_addr,
@@ -265,7 +265,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
             device->physical->va.bindless_surface_state_pool.addr,
          };
          sba.BindlessSurfaceStateSize =
-            anv_physical_device_bindless_heap_size(device->physical) /
+            anv_physical_device_bindless_heap_size(device->physical, false) /
             ANV_SURFACE_STATE_SIZE - 1;
          sba.BindlessSurfaceStateMOCS = mocs;
          sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
@@ -2647,7 +2647,7 @@ update_descriptor_set_surface_state(struct anv_cmd_buffer *cmd_buffer,
       pipe_state->descriptor_buffers[set_idx].buffer_offset;
    const uint64_t set_size =
       MIN2(va_range->size - (descriptor_set_addr - va_range->addr),
-           anv_physical_device_bindless_heap_size(device));
+           anv_physical_device_bindless_heap_size(device, true));
 
    if (descriptor_set_addr != pipe_state->descriptor_buffers[set_idx].address) {
       pipe_state->descriptor_buffers[set_idx].address = descriptor_set_addr;

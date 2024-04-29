@@ -586,6 +586,8 @@ nir_visitor::visit(ir_variable *ir)
    var->data.bindless = ir->data.bindless;
    var->data.offset = ir->data.offset;
    var->data.access = (gl_access_qualifier)mem_access;
+   var->data.has_initializer = ir->data.has_initializer;
+   var->data.is_implicit_initializer = ir->data.is_implicit_initializer;
 
    if (glsl_type_is_image(glsl_without_array(var->type))) {
       var->data.image.format = ir->data.image_format;

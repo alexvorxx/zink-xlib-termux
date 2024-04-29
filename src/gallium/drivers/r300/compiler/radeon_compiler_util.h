@@ -107,4 +107,6 @@ float rc_get_constant_value(
 unsigned int rc_get_scalar_src_swz(unsigned int swizzle);
 
 bool rc_inst_has_three_diff_temp_srcs(struct rc_instruction *inst);
+
+float rc_inline_to_float(int index);
 #endif /* RADEON_PROGRAM_UTIL_H */

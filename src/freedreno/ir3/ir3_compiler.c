@@ -74,6 +74,7 @@ ir3_compiler_destroy(struct ir3_compiler *compiler)
 }
 
 static const nir_shader_compiler_options ir3_base_options = {
+   .compact_arrays = true,
    .lower_fpow = true,
    .lower_scmp = true,
    .lower_flrp16 = true,

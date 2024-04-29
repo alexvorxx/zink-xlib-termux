@@ -308,9 +308,6 @@ d3d12_get_param_default(struct pipe_screen *pscreen, enum pipe_cap param)
       /* Subtract one so that implicit position can be added */
       return D3D12_PS_INPUT_REGISTER_COUNT - 1;
 
-   case PIPE_CAP_NIR_COMPACT_ARRAYS:
-      return 1;
-
    case PIPE_CAP_MAX_COMBINED_SHADER_OUTPUT_RESOURCES:
       if (screen->max_feature_level <= D3D_FEATURE_LEVEL_11_0)
          return D3D12_PS_CS_UAV_REGISTER_COUNT;

@@ -122,9 +122,18 @@ void rc_inline_literals(struct radeon_compiler *c, void *user)
 					use_literal = 1;
 				}
 
-				/* Use RC_SWIZZLE_W for the inline constant, so
-				 * it will become one of the alpha sources. */
-				SET_SWZ(src_reg.Swizzle, chan, RC_SWIZZLE_W);
+				/* We can use any swizzle, so if this is ADD it might
+				 * be smart to us the same swizzle as the other src uses
+				 * so that we potentially enable presubtract later.
+				 * Use RC_SWIZZLE_W otherwise, so it will become one of
+				 * the alpha sources.
+				 */
+				if (info->Opcode == RC_OPCODE_ADD &&
+					GET_SWZ(inst->U.I.SrcReg[1 - src_idx].Swizzle, chan) == chan) {
+					SET_SWZ(src_reg.Swizzle, chan, chan);
+				} else {
+					SET_SWZ(src_reg.Swizzle, chan, RC_SWIZZLE_W);
+				}
 				if (ret == -1) {
 					src_reg.Negate ^= (1 << chan);
 				}

@@ -100,103 +100,10 @@ interstage_member_mismatch(struct gl_shader_program *prog,
    return false;
 }
 
-/**
- * Generate a string describing the mode of a variable
- */
-static const char *
-mode_string(const nir_variable *var)
-{
-   switch (var->data.mode) {
-   case nir_var_shader_temp:
-      return (var->data.read_only) ? "global constant" : "global variable";
-
-   case nir_var_uniform:
-   case nir_var_image:
-   case nir_var_mem_ubo:
-      return "uniform";
-
-   case nir_var_mem_ssbo:
-      return "buffer";
-
-   case nir_var_shader_in:
-      return "shader input";
-
-   case nir_var_shader_out:
-      return "shader output";
-
-   case nir_var_system_value:
-      return "shader input";
-
-   case nir_var_function_temp:
-      return "local variable";
-
-   case nir_var_mem_shared:
-      return "shader shared";
-
-   case nir_num_variable_modes:
-      break;
-   }
-
-   assert(!"Should not get here.");
-   return "invalid variable";
-}
-
 static bool
 is_interface_instance(nir_variable *var)
 {
  return glsl_without_array(var->type) == var->interface_type;
-}
-
-static bool
-validate_intrastage_arrays(struct gl_shader_program *prog,
-                           nir_variable *var, nir_variable *existing,
-                           unsigned existing_stage, bool match_precision)
-{
-   /* Consider the types to be "the same" if both types are arrays
-    * of the same type and one of the arrays is implicitly sized.
-    * In addition, set the type of the linked variable to the
-    * explicitly sized array.
-    */
-   if (glsl_type_is_array(var->type) && glsl_type_is_array(existing->type)) {
-      const glsl_type *no_array_var = glsl_get_array_element(var->type);
-      const glsl_type *no_array_existing = glsl_get_array_element(existing->type);
-      bool type_matches;
-
-      type_matches = (match_precision ?
-                      no_array_var == no_array_existing :
-                      glsl_type_compare_no_precision(no_array_var, no_array_existing));
-
-      if (type_matches &&
-          ((glsl_get_length(var->type) == 0)|| (glsl_get_length(existing->type) == 0))) {
-         if (var->type->length != 0) {
-            if ((int)glsl_get_length(var->type) <= existing->data.max_array_access) {
-               linker_error(prog, "%s `%s' declared as type "
-                           "`%s' but outermost dimension has an index"
-                           " of `%i'\n",
-                           mode_string(var),
-                           var->name, glsl_get_type_name(var->type),
-                           existing->data.max_array_access);
-            }
-            existing->type = var->type;
-
-            nir_shader *s = prog->_LinkedShaders[existing_stage]->Program->nir;
-            nir_fixup_deref_types(s);
-            return true;
-         } else if (glsl_get_length(existing->type) != 0) {
-            if((int)glsl_get_length(existing->type) <= var->data.max_array_access &&
-               !existing->data.from_ssbo_unsized_array) {
-               linker_error(prog, "%s `%s' declared as type "
-                           "`%s' but outermost dimension has an index"
-                           " of `%i'\n",
-                           mode_string(var),
-                           var->name, glsl_get_type_name(existing->type),
-                           var->data.max_array_access);
-            }
-            return true;
-         }
-      }
-   }
-   return false;
 }
 
 /**
@@ -258,7 +165,7 @@ intrastage_match(nir_variable *a,
     */
    if (!type_match && (glsl_type_is_array(b->type) || glsl_type_is_array(a->type)) &&
        (is_interface_instance(b) || is_interface_instance(a)) &&
-       !validate_intrastage_arrays(prog, b, a, a_stage, match_precision))
+       !gl_nir_validate_intrastage_arrays(prog, b, a, a_stage, match_precision))
       return false;
 
    return true;

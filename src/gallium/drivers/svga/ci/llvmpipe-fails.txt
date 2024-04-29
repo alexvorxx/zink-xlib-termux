@@ -77,9 +77,6 @@ spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_depth_component24,Fail
 
-# No such file or directory (os error 2)
-spec@egl_ext_protected_content@conformance,Fail
-
 # "error: main:90: eglChooseConfig() returned no configs"
 spec@egl 1.4@eglterminate then unbind context,Fail
 
@@ -87,7 +84,6 @@ spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
 spec@egl_mesa_configless_context@basic,Fail
 
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 msaa,Fail
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 upsample,Fail
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 4 msaa,Fail

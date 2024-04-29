@@ -229,7 +229,6 @@ spec@ext_transform_feedback@tessellation quads wireframe,Fail
 spec@ext_packed_float@multisample-formats 4 gl_ext_packed_float,Crash
 spec@ext_transform_feedback@tessellation quad_strip wireframe,Crash
 spec@!opengl 1.0@gl-1.0-dlist-beginend,Crash
-spec@arb_clip_control@arb_clip_control-depth-precision,Crash
 spec@nv_texture_barrier@blending-in-shader,Crash
 
 spec@arb_viewport_array@display-list,Fail

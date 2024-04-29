@@ -1603,7 +1603,8 @@ emit_indirect_draws(struct anv_cmd_buffer *cmd_buffer,
    UNUSED const struct intel_device_info *devinfo = cmd_buffer->device->info;
    UNUSED const bool aligned_stride =
       (indirect_data_stride == 0 ||
-       indirect_data_stride == sizeof(VkDrawIndirectCommand));
+       (!indexed && indirect_data_stride == sizeof(VkDrawIndirectCommand)) ||
+       (indexed && indirect_data_stride == sizeof(VkDrawIndexedIndirectCommand)));
    UNUSED const bool execute_indirect_supported =
       execute_indirect_draw_supported(cmd_buffer);
 
@@ -1652,7 +1653,7 @@ emit_indirect_draws(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 >= 125
          genX(emit_breakpoint)(&cmd_buffer->batch, cmd_buffer->device, true);
          anv_batch_emit(&cmd_buffer->batch, GENX(EXECUTE_INDIRECT_DRAW), ind) {
-            ind.ArgumentFormat             = DRAW;
+            ind.ArgumentFormat             = indexed ? DRAWINDEXED : DRAW;
             ind.TBIMREnabled               = cmd_buffer->state.gfx.dyn_state.use_tbimr;
             ind.PredicateEnable            =
                cmd_buffer->state.conditional_render_enabled;

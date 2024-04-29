@@ -96,7 +96,6 @@ struct ttn_compile {
    bool cap_point_is_sysval;
    bool cap_samplers_as_deref;
    bool cap_integers;
-   bool cap_compact_arrays;
    bool cap_tg4_component_in_swizzle;
 };
 
@@ -414,7 +413,7 @@ ttn_emit_declaration(struct ttn_compile *c)
                   var->type = glsl_float_type();
                } else if (var->data.location == VARYING_SLOT_LAYER) {
                   var->type = glsl_int_type();
-               } else if (c->cap_compact_arrays &&
+               } else if (b->shader->options->compact_arrays &&
                           var->data.location == VARYING_SLOT_CLIP_DIST0) {
                   var->type = glsl_array_type(glsl_float_type(),
                                               b->shader->info.clip_distance_array_size,
@@ -436,7 +435,7 @@ ttn_emit_declaration(struct ttn_compile *c)
 
             c->outputs[idx] = var;
 
-            if (c->cap_compact_arrays && var->data.location == VARYING_SLOT_CLIP_DIST1) {
+            if (b->shader->options->compact_arrays && var->data.location == VARYING_SLOT_CLIP_DIST1) {
                /* ignore this entirely */
                continue;
             }
@@ -2137,7 +2136,7 @@ ttn_add_output_stores(struct ttn_compile *c)
          }
       }
 
-      if (c->cap_compact_arrays &&
+      if (b->shader->options->compact_arrays &&
           (var->data.location == VARYING_SLOT_CLIP_DIST0 ||
            var->data.location == VARYING_SLOT_CLIP_DIST1)) {
          if (!store_mask)
@@ -2206,7 +2205,6 @@ ttn_read_pipe_caps(struct ttn_compile *c,
    c->cap_position_is_sysval = screen->get_param(screen, PIPE_CAP_FS_POSITION_IS_SYSVAL);
    c->cap_point_is_sysval = screen->get_param(screen, PIPE_CAP_FS_POINT_IS_SYSVAL);
    c->cap_integers = screen->get_shader_param(screen, c->scan->processor, PIPE_SHADER_CAP_INTEGERS);
-   c->cap_compact_arrays = screen->get_param(screen, PIPE_CAP_NIR_COMPACT_ARRAYS);
    c->cap_tg4_component_in_swizzle =
        screen->get_param(screen, PIPE_CAP_TGSI_TG4_COMPONENT_IN_SWIZZLE);
 }
@@ -2531,7 +2529,7 @@ ttn_finalize_nir(struct ttn_compile *c, struct pipe_screen *screen)
    /* driver needs clipdistance as array<float> */
    if ((nir->info.outputs_written &
         (BITFIELD64_BIT(VARYING_SLOT_CLIP_DIST0) | BITFIELD64_BIT(VARYING_SLOT_CLIP_DIST1))) &&
-       screen->get_param(screen, PIPE_CAP_NIR_COMPACT_ARRAYS)) {
+        nir->options->compact_arrays) {
       NIR_PASS_V(nir, lower_clipdistance_to_array);
    }
 
@@ -2679,4 +2677,3 @@ tgsi_to_nir_noscreen(const void *tgsi_tokens,
 
    return s;
 }
-

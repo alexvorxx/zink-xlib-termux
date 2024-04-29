@@ -665,9 +665,7 @@ lower_ucp(struct st_context *st,
    if (nir->info.outputs_written & VARYING_BIT_CLIP_DIST0)
       NIR_PASS(_, nir, nir_lower_clip_disable, ucp_enables);
    else {
-      struct pipe_screen *screen = st->screen;
-      bool can_compact = screen->get_param(screen,
-                                           PIPE_CAP_NIR_COMPACT_ARRAYS);
+      bool can_compact = nir->options->compact_arrays;
       bool use_eye = st->ctx->_Shader->CurrentProgram[MESA_SHADER_VERTEX] != NULL;
 
       gl_state_index16 clipplane_state[MAX_CLIP_PLANES][STATE_LENGTH] = {{0}};

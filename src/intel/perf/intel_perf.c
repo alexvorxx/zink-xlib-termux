@@ -667,10 +667,6 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
    perf_register_oa_queries_t oa_register = get_register_queries_function(devinfo);
    bool oa_metrics_available = false;
 
-   /* TODO: Xe still don't have support for performance metrics */
-   if (devinfo->kmd_type != INTEL_KMD_TYPE_I915)
-      return false;
-
    perf->devinfo = devinfo;
 
    /* Consider an invalid as supported. */

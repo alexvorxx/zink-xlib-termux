@@ -4496,19 +4496,6 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
 
    pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps && ps->info.ps.reads_fully_covered);
 
-   /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match MSAA_EXPOSED_SAMPLES. It affects VRS,
-    * occlusion queries and Primitive Ordered Pixel Shading if depth and stencil are not bound.
-    * This is normally emitted as framebuffer state, but if no attachments are bound the sample
-    * count is independent of the framebuffer state and hence may need to be updated with MSAA
-    * state.
-    * Checking the format, not the image view, because the latter may not exist in a secondary
-    * command buffer.
-    */
-   if (pdev->info.gfx_level == GFX11 && render->ds_att.format == VK_FORMAT_UNDEFINED) {
-      assert(!render->ds_att.iview);
-      radeon_set_context_reg(cmd_buffer->cs, R_028040_DB_Z_INFO,
-                             S_028040_FORMAT(V_028040_Z_INVALID) | S_028040_NUM_SAMPLES(log_samples));
-   }
    radeon_set_context_reg(cmd_buffer->cs, R_028804_DB_EQAA, db_eqaa);
    radeon_set_context_reg(cmd_buffer->cs, R_028BE0_PA_SC_AA_CONFIG, pa_sc_aa_config);
    radeon_set_context_reg(

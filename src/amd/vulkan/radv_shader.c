@@ -201,6 +201,7 @@ radv_optimize_nir_algebraic(nir_shader *nir, bool opt_offsets)
       NIR_PASS(_, nir, nir_opt_constant_folding);
       NIR_PASS(_, nir, nir_opt_cse);
       NIR_PASS(more_algebraic, nir, nir_opt_algebraic);
+      NIR_PASS(_, nir, nir_opt_dead_cf);
    }
 
    if (opt_offsets) {
@@ -2787,57 +2788,6 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
       free(binary);
    }
 
-   return epilog;
-
-fail:
-   free(binary);
-   return NULL;
-}
-
-struct radv_shader_part *
-radv_create_tcs_epilog(struct radv_device *device, const struct radv_tcs_epilog_key *key)
-{
-   struct radv_shader_part *epilog;
-   struct radv_shader_args args = {0};
-   struct radv_nir_compiler_options options = {0};
-   radv_fill_nir_compiler_options(&options, device, NULL, false,
-                                  device->instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS, false,
-                                  radv_device_fault_detection_enabled(device), false);
-
-   struct radv_shader_info info = {0};
-   info.stage = MESA_SHADER_TESS_CTRL;
-   info.wave_size = device->physical_device->ge_wave_size;
-   info.workgroup_size = 256;
-
-   radv_declare_tcs_epilog_args(device, key, &args);
-
-#if LLVM_AVAILABLE
-   if (options.dump_shader || options.record_ir)
-      ac_init_llvm_once();
-#endif
-
-   struct radv_shader_part_binary *binary = NULL;
-   struct radv_shader_stage_key stage_key = {0};
-   struct aco_shader_info ac_info;
-   struct aco_tcs_epilog_info ac_epilog_info;
-   struct aco_compiler_options ac_opts;
-   radv_aco_convert_shader_info(&ac_info, &info, &args, &device->cache_key, options.info->gfx_level);
-   radv_aco_convert_opts(&ac_opts, &options, &args, &stage_key);
-   radv_aco_convert_tcs_epilog_key(&ac_epilog_info, key, &args);
-   aco_compile_tcs_epilog(&ac_opts, &ac_info, &ac_epilog_info, &args.ac, &radv_aco_build_shader_part, (void **)&binary);
-
-   epilog = radv_shader_part_create(device, binary, info.wave_size);
-   if (!epilog)
-      goto fail;
-
-   epilog->key.tcs = *key;
-
-   if (options.dump_shader) {
-      fprintf(stderr, "TCS epilog");
-      fprintf(stderr, "\ndisasm:\n%s\n", epilog->disasm_string);
-   }
-
-   free(binary);
    return epilog;
 
 fail:

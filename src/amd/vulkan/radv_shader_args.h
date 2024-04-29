@@ -70,15 +70,11 @@ struct radv_shader_args {
    /* # [0:5] = the number of patch control points
     * # [6:11] = the number of tessellation patches
     * # [12:19] = the LS-HS vertex stride in DWORDS
+    * # [20:28] = reserved for future use
+    * # [29:30] = tess_primitive_mode
+    * # [31] = whether TES reads tess factors
     */
    struct ac_arg tcs_offchip_layout;
-
-   /* TCS epilogs */
-   struct ac_arg patch_base;
-   struct ac_arg invocation_id;
-   struct ac_arg rel_patch_id;
-   struct ac_arg tess_lvl_out[4];
-   struct ac_arg tess_lvl_in[2];
 
    /* TES */
    /* # [0:7] = the number of tessellation patches
@@ -121,9 +117,6 @@ void radv_declare_shader_args(const struct radv_device *device, const struct rad
 
 void radv_declare_ps_epilog_args(const struct radv_device *device, const struct radv_ps_epilog_key *key,
                                  struct radv_shader_args *args);
-
-void radv_declare_tcs_epilog_args(const struct radv_device *device, const struct radv_tcs_epilog_key *key,
-                                  struct radv_shader_args *args);
 
 void radv_declare_rt_shader_args(enum amd_gfx_level gfx_level, struct radv_shader_args *args);
 #endif

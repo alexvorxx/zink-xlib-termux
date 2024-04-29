@@ -701,6 +701,20 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       assert(s->tess_offchip_ring);
       replacement = s->tess_offchip_ring;
       break;
+   case nir_intrinsic_load_tcs_tess_levels_to_tes_amd:
+      if (shader->is_monolithic) {
+         replacement = nir_imm_bool(b, key->ge.part.tcs.epilog.tes_reads_tess_factors);
+      } else {
+         unreachable("TODO");
+      }
+      break;
+   case nir_intrinsic_load_tcs_primitive_mode_amd:
+      if (shader->is_monolithic) {
+         replacement = nir_imm_int(b, key->ge.part.tcs.epilog.prim_mode);
+      } else {
+         unreachable("TODO");
+      }
+      break;
    case nir_intrinsic_load_ring_gsvs_amd: {
       unsigned stream_id = nir_intrinsic_stream_id(intrin);
       /* Unused nir_load_ring_gsvs_amd may not be eliminated yet. */

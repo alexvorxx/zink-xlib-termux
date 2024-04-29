@@ -148,9 +148,6 @@ struct aco_shader_info {
 
       /* Vulkan only */
       uint32_t num_lds_blocks;
-      uint32_t num_linked_outputs;
-      uint32_t num_linked_patch_outputs;
-      uint32_t tcs_vertices_out;
 
       /* OpenGL only */
       bool pass_tessfactors_by_reg;

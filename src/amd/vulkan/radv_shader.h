@@ -253,6 +253,10 @@ enum radv_ud_index {
 #define TCS_OFFCHIP_LAYOUT_NUM_PATCHES__MASK           0x3f
 #define TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE__SHIFT   12
 #define TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE__MASK    0xff /* max 32 * 4 + 1 (to reduce LDS bank conflicts) */
+#define TCS_OFFCHIP_LAYOUT_PRIMITIVE_MODE__SHIFT       29
+#define TCS_OFFCHIP_LAYOUT_PRIMITIVE_MODE__MASK        0x03
+#define TCS_OFFCHIP_LAYOUT_TES_READS_TF__SHIFT         31
+#define TCS_OFFCHIP_LAYOUT_TES_READS_TF__MASK          0x01
 
 #define TES_STATE_NUM_PATCHES__SHIFT      0
 #define TES_STATE_NUM_PATCHES__MASK       0xff
@@ -556,12 +560,6 @@ struct radv_vs_prolog_key {
    gl_shader_stage next_stage;
 };
 
-struct radv_tcs_epilog_key {
-   enum tess_primitive_mode primitive_mode;
-   bool tes_reads_tessfactors;
-   bool tcs_out_patch_fits_subgroup;
-};
-
 enum radv_shader_binary_type { RADV_BINARY_TYPE_LEGACY, RADV_BINARY_TYPE_RTLD };
 
 struct radv_shader_binary {
@@ -688,7 +686,6 @@ struct radv_shader_part {
    union {
       struct radv_vs_prolog_key vs;
       struct radv_ps_epilog_key ps;
-      struct radv_tcs_epilog_key tcs;
    } key;
 
    uint64_t va;
@@ -851,8 +848,6 @@ struct radv_shader_part *radv_create_vs_prolog(struct radv_device *device, const
 
 struct radv_shader_part *radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_key *key,
                                                struct radv_shader_part_binary **binary_out);
-
-struct radv_shader_part *radv_create_tcs_epilog(struct radv_device *device, const struct radv_tcs_epilog_key *key);
 
 void radv_shader_part_destroy(struct radv_device *device, struct radv_shader_part *shader_part);
 

@@ -123,7 +123,6 @@ void
 ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                ac_nir_map_io_driver_location map,
                                enum amd_gfx_level gfx_level,
-                               bool tes_reads_tessfactors,
                                uint64_t tes_inputs_read,
                                uint64_t tes_patch_inputs_read,
                                unsigned num_reserved_tcs_outputs,

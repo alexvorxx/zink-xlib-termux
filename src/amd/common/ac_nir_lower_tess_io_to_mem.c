@@ -122,9 +122,6 @@ typedef struct {
    uint64_t tes_inputs_read;
    uint64_t tes_patch_inputs_read;
 
-   /* Whether TES reads the tess factors. */
-   bool tes_reads_tessfactors;
-
    unsigned tcs_num_reserved_outputs;
    unsigned tcs_num_reserved_patch_outputs;
 
@@ -599,6 +596,21 @@ hs_store_dynamic_control_word_gfx6(nir_builder *b)
    nir_pop_if(b, rel_patch_id_zero);
 }
 
+static nir_def *
+hs_resize_tess_factor(nir_builder *b, nir_def *tf, unsigned comps)
+{
+   if (!comps)
+      return NULL;
+   else if (!tf)
+      return nir_imm_zero(b, comps, 32);
+   else if (comps > tf->num_components)
+      return nir_pad_vector_imm_int(b, tf, 0, comps);
+   else if (comps < tf->num_components)
+      return nir_trim_vector(b, tf, comps);
+   else
+      return tf;
+}
+
 static void
 hs_store_tess_factors_for_tessellator(nir_builder *b, enum amd_gfx_level gfx_level,
                                       enum tess_primitive_mode prim_mode,
@@ -617,21 +629,24 @@ hs_store_tess_factors_for_tessellator(nir_builder *b, enum amd_gfx_level gfx_lev
    nir_def *tess_factors_offset =
       nir_imul_imm(b, rel_patch_id, (inner_comps + outer_comps) * 4u);
 
+   nir_def *tf_outer = hs_resize_tess_factor(b, tessfactors.outer, outer_comps);
+   nir_def *tf_inner = hs_resize_tess_factor(b, tessfactors.inner, inner_comps);
+
    /* Store tess factors for the tessellator */
    if (prim_mode == TESS_PRIMITIVE_ISOLINES) {
       /* LINES reversal */
-      nir_def *t = nir_vec2(b, nir_channel(b, tessfactors.outer, 1), nir_channel(b, tessfactors.outer, 0));
+      nir_def *t = nir_vec2(b, nir_channel(b, tf_outer, 1), nir_channel(b, tf_outer, 0));
       nir_store_buffer_amd(b, t, tessfactor_ring, tess_factors_offset, tess_factors_base, zero,
                            .base = tess_factors_const_offset, .access = ACCESS_COHERENT);
    } else if (prim_mode == TESS_PRIMITIVE_TRIANGLES) {
-      nir_def *t = nir_vec4(b, nir_channel(b, tessfactors.outer, 0), nir_channel(b, tessfactors.outer, 1),
-                               nir_channel(b, tessfactors.outer, 2), nir_channel(b, tessfactors.inner, 0));
+      nir_def *t = nir_vec4(b, nir_channel(b, tf_outer, 0), nir_channel(b, tf_outer, 1),
+                               nir_channel(b, tf_outer, 2), nir_channel(b, tf_inner, 0));
       nir_store_buffer_amd(b, t, tessfactor_ring, tess_factors_offset, tess_factors_base, zero,
                            .base = tess_factors_const_offset, .access = ACCESS_COHERENT);
    } else {
-      nir_store_buffer_amd(b, tessfactors.outer, tessfactor_ring, tess_factors_offset, tess_factors_base, zero,
+      nir_store_buffer_amd(b, tf_outer, tessfactor_ring, tess_factors_offset, tess_factors_base, zero,
                            .base = tess_factors_const_offset, .access = ACCESS_COHERENT);
-      nir_store_buffer_amd(b, tessfactors.inner, tessfactor_ring, tess_factors_offset, tess_factors_base, zero,
+      nir_store_buffer_amd(b, tf_inner, tessfactor_ring, tess_factors_offset, tess_factors_base, zero,
                            .base = tess_factors_const_offset + 4u * outer_comps, .access = ACCESS_COHERENT);
    }
 }
@@ -719,10 +734,30 @@ hs_finale(nir_shader *shader,
       if (st->gfx_level <= GFX8)
          hs_store_dynamic_control_word_gfx6(b);
 
-      hs_store_tess_factors_for_tessellator(b, st->gfx_level, b->shader->info.tess._primitive_mode, tessfactors);
+      nir_def *prim_mode = nir_load_tcs_primitive_mode_amd(b);
+      nir_if *if_triangles = nir_push_if(b, nir_ieq_imm(b, prim_mode, TESS_PRIMITIVE_TRIANGLES));
+      {
+         hs_store_tess_factors_for_tessellator(b, st->gfx_level, TESS_PRIMITIVE_TRIANGLES, tessfactors);
+      }
+      nir_push_else(b, if_triangles);
+      {
+         nir_if *if_isolines = nir_push_if(b, nir_ieq_imm(b, prim_mode, TESS_PRIMITIVE_ISOLINES));
+         {
+            hs_store_tess_factors_for_tessellator(b, st->gfx_level, TESS_PRIMITIVE_ISOLINES, tessfactors);
+         }
+         nir_push_else(b, if_isolines);
+         {
+            hs_store_tess_factors_for_tessellator(b, st->gfx_level, TESS_PRIMITIVE_QUADS, tessfactors);
+         }
+         nir_pop_if(b, if_isolines);
+      }
+      nir_pop_if(b, if_triangles);
 
-      if (st->tes_reads_tessfactors)
+      nir_if *if_tes_reads_tf = nir_push_if(b, nir_load_tcs_tess_levels_to_tes_amd(b));
+      {
          hs_store_tess_factors_for_tes(b, tessfactors, st);
+      }
+      nir_pop_if(b, if_tes_reads_tf);
    }
 
    if (if_invocation_id_zero) {
@@ -851,7 +886,6 @@ void
 ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                ac_nir_map_io_driver_location map,
                                enum amd_gfx_level gfx_level,
-                               bool tes_reads_tessfactors,
                                uint64_t tes_inputs_read,
                                uint64_t tes_patch_inputs_read,
                                unsigned num_reserved_tcs_outputs,
@@ -866,7 +900,6 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
 
    lower_tess_io_state state = {
       .gfx_level = gfx_level,
-      .tes_reads_tessfactors = tes_reads_tessfactors,
       .tes_inputs_read = tes_inputs_read,
       .tes_patch_inputs_read = tes_patch_inputs_read,
       .tcs_num_reserved_outputs = num_reserved_tcs_outputs,

@@ -1858,7 +1858,8 @@ swsb(FILE *file, const struct brw_isa_info *isa, const brw_inst *inst)
              (swsb.pipe == TGL_PIPE_FLOAT ? "F" :
               swsb.pipe == TGL_PIPE_INT ? "I" :
               swsb.pipe == TGL_PIPE_LONG ? "L" :
-              swsb.pipe == TGL_PIPE_ALL ? "A"  : "" ),
+              swsb.pipe == TGL_PIPE_ALL ? "A"  :
+              swsb.pipe == TGL_PIPE_MATH ? "M" : "" ),
              swsb.regdist);
    if (swsb.mode)
       format(file, " $%d%s", swsb.sbid,

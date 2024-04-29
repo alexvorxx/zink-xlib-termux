@@ -583,9 +583,6 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
                                  nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs, info->num_tess_patches,
                                  info->tcs.num_linked_outputs, info->tcs.num_linked_patch_outputs);
    }
-
-   /* By default, assume a TCS needs an epilog unless it's linked with a TES. */
-   info->has_epilog = true;
 }
 
 static void
@@ -1821,10 +1818,10 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
       struct radv_shader_stage *tcs_stage = producer;
       struct radv_shader_stage *tes_stage = consumer;
 
-      tcs_stage->info.has_epilog = false;
       tcs_stage->info.tcs.tes_reads_tess_factors = tes_stage->info.tes.reads_tess_factors;
       tcs_stage->info.tcs.tes_inputs_read = tes_stage->nir->info.inputs_read;
       tcs_stage->info.tcs.tes_patch_inputs_read = tes_stage->nir->info.patch_inputs_read;
+      tcs_stage->info.tes._primitive_mode = tes_stage->nir->info.tess._primitive_mode;
 
       if (gfx_state->ts.patch_control_points)
          tes_stage->info.num_tess_patches = tcs_stage->info.num_tess_patches;

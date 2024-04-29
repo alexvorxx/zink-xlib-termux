@@ -9,6 +9,7 @@ KHR-GL46.geometry_shader.primitive_counter.lines_to_line_strip_rp
 KHR-GL46.geometry_shader.primitive_counter.points_to_line_strip
 KHR-GL46.geometry_shader.primitive_counter.points_to_line_strip_rp
 KHR-GL46.geometry_shader.primitive_counter.triangles_to_line_strip_rp
+spec@arb_depth_texture@fbo-depth-gl_depth_component16-blit
 spec@arb_fragment_shader_interlock@arb_fragment_shader_interlock-image-load-store
 spec@arb_sample_shading@arb_sample_shading-builtin-gl-sample-mask-mrt-alpha-to-coverage
 spec@arb_shader_image_load_store@coherency

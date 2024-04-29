@@ -298,7 +298,6 @@ radv_cmd_buffer_finish_shader_part_cache(struct radv_cmd_buffer *cmd_buffer)
 {
    ralloc_free(cmd_buffer->vs_prologs.table);
    ralloc_free(cmd_buffer->ps_epilogs.table);
-   ralloc_free(cmd_buffer->tcs_epilogs.table);
 }
 
 static bool
@@ -306,11 +305,6 @@ radv_cmd_buffer_init_shader_part_cache(struct radv_device *device, struct radv_c
 {
    if (device->vs_prologs.ops) {
       if (!_mesa_set_init(&cmd_buffer->vs_prologs, NULL, device->vs_prologs.ops->hash, device->vs_prologs.ops->equals))
-         return false;
-   }
-   if (device->tcs_epilogs.ops) {
-      if (!_mesa_set_init(&cmd_buffer->tcs_epilogs, NULL, device->tcs_epilogs.ops->hash,
-                          device->tcs_epilogs.ops->equals))
          return false;
    }
    if (device->ps_epilogs.ops) {
@@ -1910,35 +1904,6 @@ radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader
 }
 
 static void
-radv_emit_tcs_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_part *tcs_epilog)
-{
-   const enum amd_gfx_level gfx_level = cmd_buffer->device->physical_device->rad_info.gfx_level;
-   struct radv_shader *tcs = cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL];
-   uint32_t rsrc1;
-
-   if (cmd_buffer->state.emitted_tcs_epilog == tcs_epilog)
-      return;
-
-   if (tcs->info.merged_shader_compiled_separately) {
-      radv_shader_combine_cfg_vs_tcs(cmd_buffer->state.shaders[MESA_SHADER_VERTEX], tcs, &rsrc1, NULL);
-   } else {
-      rsrc1 = tcs->config.rsrc1;
-   }
-
-   assert(tcs->config.num_shared_vgprs == 0);
-   if (G_00B848_VGPRS(tcs_epilog->rsrc1) > G_00B848_VGPRS(rsrc1))
-      rsrc1 = (rsrc1 & C_00B848_VGPRS) | (tcs_epilog->rsrc1 & ~C_00B848_VGPRS);
-   if (gfx_level < GFX10 && G_00B228_SGPRS(tcs_epilog->rsrc1) > G_00B228_SGPRS(rsrc1))
-      rsrc1 = (rsrc1 & C_00B228_SGPRS) | (tcs_epilog->rsrc1 & ~C_00B228_SGPRS);
-
-   radeon_set_sh_reg(cmd_buffer->cs, R_00B428_SPI_SHADER_PGM_RSRC1_HS, rsrc1);
-
-   radv_emit_epilog(cmd_buffer, tcs, tcs_epilog);
-
-   cmd_buffer->state.emitted_tcs_epilog = tcs_epilog;
-}
-
-static void
 radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
 {
    struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
@@ -2683,7 +2648,9 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS, d->vk.ts.patch_control_points) |
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_NUM_PATCHES, cmd_buffer->state.tess_num_patches) |
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE,
-                     get_tcs_input_vertex_stride(vs->info.vs.num_linked_outputs) / 4);
+                     get_tcs_input_vertex_stride(vs->info.vs.num_linked_outputs) / 4) |
+      SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_TES_READS_TF, tes->info.tes.reads_tess_factors) |
+      SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_PRIMITIVE_MODE, tes->info.tes._primitive_mode);
 
    base_reg = tcs->info.user_data_0;
    radeon_set_sh_reg(cmd_buffer->cs, base_reg + offchip->sgpr_idx * 4, tcs_offchip_layout);
@@ -4333,22 +4300,6 @@ lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
    key.spi_shader_col_format &= ps->info.ps.colors_written;
 
    return radv_shader_part_cache_get(device, &device->ps_epilogs, &cmd_buffer->ps_epilogs, &key);
-}
-
-static struct radv_shader_part *
-lookup_tcs_epilog(struct radv_cmd_buffer *cmd_buffer)
-{
-   const struct radv_shader *tcs = cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL];
-   const struct radv_shader *tes = radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL);
-   struct radv_device *device = cmd_buffer->device;
-
-   struct radv_tcs_epilog_key key = {
-      .primitive_mode = tes->info.tes._primitive_mode,
-      .tes_reads_tessfactors = tes->info.tes.reads_tess_factors,
-      .tcs_out_patch_fits_subgroup = tcs->info.wave_size % tcs->info.tcs.tcs_vertices_out == 0,
-   };
-
-   return radv_shader_part_cache_get(device, &device->tcs_epilogs, &cmd_buffer->tcs_epilogs, &key);
 }
 
 static void
@@ -6506,7 +6457,6 @@ radv_bind_vertex_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_sh
     * because shader configs are combined.
     */
    if (vs->info.merged_shader_compiled_separately && vs->info.next_stage == MESA_SHADER_TESS_CTRL) {
-      cmd_buffer->state.emitted_tcs_epilog = NULL;
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_PATCH_CONTROL_POINTS;
    }
 
@@ -6524,10 +6474,6 @@ radv_bind_tess_ctrl_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv
     * bound because a bunch of parameters (user SGPRs, TCS vertices out, ccw, etc) can be different.
     */
    cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_PATCH_CONTROL_POINTS | RADV_CMD_DIRTY_DYNAMIC_TESS_DOMAIN_ORIGIN;
-
-   /* Re-emit the TCS epilog when a new tessellation control shader is bound. */
-   if (tcs->info.has_epilog)
-      cmd_buffer->state.emitted_tcs_epilog = NULL;
 
    /* Re-emit the VS prolog when the tessellation control shader is compiled separately because
     * shader configs are combined and need to be updated.
@@ -9222,7 +9168,7 @@ static void
 radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info)
 {
    const struct radv_device *device = cmd_buffer->device;
-   struct radv_shader_part *tcs_epilog = NULL, *ps_epilog = NULL;
+   struct radv_shader_part *ps_epilog = NULL;
 
    if (cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT] &&
        cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]->info.has_epilog) {
@@ -9250,15 +9196,6 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
             cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
          }
-      }
-   }
-
-   if (cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL] &&
-       cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL]->info.has_epilog) {
-      tcs_epilog = lookup_tcs_epilog(cmd_buffer);
-      if (!tcs_epilog) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
-         return;
       }
    }
 
@@ -9301,9 +9238,6 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
 
    if (ps_epilog)
       radv_emit_ps_epilog_state(cmd_buffer, ps_epilog);
-
-   if (tcs_epilog)
-      radv_emit_tcs_epilog_state(cmd_buffer, tcs_epilog);
 
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_FRAMEBUFFER)
       radv_emit_framebuffer_state(cmd_buffer);

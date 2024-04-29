@@ -11144,23 +11144,6 @@ get_arg_for_end(isel_context* ctx, struct ac_arg arg)
    return Operand(get_arg(ctx, arg), get_arg_reg(ctx->args, arg));
 }
 
-static Temp
-get_patch_base(isel_context* ctx)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   const unsigned output_vertex_size = ctx->program->info.tcs.num_linked_outputs * 16u;
-   const unsigned pervertex_output_patch_size =
-      ctx->program->info.tcs.tcs_vertices_out * output_vertex_size;
-
-   Temp num_patches =
-      bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc),
-               get_arg(ctx, ctx->program->info.tcs.tcs_offchip_layout), Operand::c32(0x60006));
-
-   return bld.sop2(aco_opcode::s_mul_i32, bld.def(s1), num_patches,
-                   Operand::c32(pervertex_output_patch_size));
-}
-
 static void
 passthrough_all_args(isel_context* ctx, std::vector<Operand>& regs)
 {
@@ -11183,66 +11166,6 @@ build_end_with_regs(isel_context* ctx, std::vector<Operand>& regs)
    ctx->block->instructions.emplace_back(std::move(end));
 
    ctx->block->kind |= block_kind_end_with_regs;
-}
-
-static void
-create_tcs_jump_to_epilog(isel_context* ctx)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   PhysReg vgpr_start(256); /* VGPR 0 */
-   PhysReg sgpr_start(0);   /* SGPR 0 */
-
-   /* SGPRs */
-   Operand ring_offsets = Operand(get_arg(ctx, ctx->args->ring_offsets));
-   ring_offsets.setFixed(sgpr_start);
-
-   Operand tess_offchip_offset = Operand(get_arg(ctx, ctx->args->tess_offchip_offset));
-   tess_offchip_offset.setFixed(sgpr_start.advance(8u));
-
-   Operand tcs_factor_offset = Operand(get_arg(ctx, ctx->args->tcs_factor_offset));
-   tcs_factor_offset.setFixed(sgpr_start.advance(12u));
-
-   Operand tcs_offchip_layout = Operand(get_arg(ctx, ctx->program->info.tcs.tcs_offchip_layout));
-   tcs_offchip_layout.setFixed(sgpr_start.advance(16u));
-
-   Operand patch_base = Operand(get_patch_base(ctx));
-   patch_base.setFixed(sgpr_start.advance(20u));
-
-   /* VGPRs */
-   Operand invocation_id =
-      bld.vop3(aco_opcode::v_bfe_u32, bld.def(v1), get_arg(ctx, ctx->args->tcs_rel_ids),
-               Operand::c32(8u), Operand::c32(5u));
-   invocation_id.setFixed(vgpr_start);
-
-   Operand rel_patch_id =
-      bld.pseudo(aco_opcode::p_extract, bld.def(v1), get_arg(ctx, ctx->args->tcs_rel_ids),
-                 Operand::c32(0u), Operand::c32(8u), Operand::c32(0u));
-   rel_patch_id.setFixed(vgpr_start.advance(4u));
-
-   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
-
-   aco_ptr<Instruction> jump{
-      create_instruction(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 14, 0)};
-   jump->operands[0] = Operand(continue_pc);
-   jump->operands[1] = ring_offsets;
-   jump->operands[2] = tess_offchip_offset;
-   jump->operands[3] = tcs_factor_offset;
-   jump->operands[4] = tcs_offchip_layout;
-   jump->operands[5] = patch_base;
-   jump->operands[6] = invocation_id;
-   jump->operands[7] = rel_patch_id;
-
-   for (unsigned i = 0; i < 4; ++i) {
-      Temp t = ctx->outputs.temps[VARYING_SLOT_TESS_LEVEL_OUTER * 4 + i];
-      jump->operands[8 + i] = t.id() ? Operand(t, vgpr_start.advance(8 + (i * 4))) : Operand();
-   }
-   for (unsigned i = 0; i < 2; ++i) {
-      Temp t = ctx->outputs.temps[VARYING_SLOT_TESS_LEVEL_INNER * 4 + i];
-      jump->operands[12 + i] = t.id() ? Operand(t, vgpr_start.advance(24 + (i * 4))) : Operand();
-   }
-
-   ctx->block->instructions.emplace_back(std::move(jump));
 }
 
 static void
@@ -11919,10 +11842,8 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
          ctx.program->has_color_exports = true;
       } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
          assert(ctx.stage == tess_control_hs || ctx.stage == vertex_tess_control_hs);
-         if (ctx.options->is_opengl)
-            create_tcs_end_for_epilog(&ctx);
-         else
-            create_tcs_jump_to_epilog(&ctx);
+         assert(ctx.options->is_opengl);
+         create_tcs_end_for_epilog(&ctx);
       }
    }
 

@@ -200,6 +200,20 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
    return MIN2(inst->exec_size, simd_limit);
 }
 
+static bool
+is_half_float_src_dst(const fs_inst *inst)
+{
+   if (inst->dst.type == BRW_REGISTER_TYPE_HF)
+      return true;
+
+   for (int i = 0; i < inst->sources; i++) {
+      if (inst->src[i].type == BRW_REGISTER_TYPE_HF)
+         return true;
+   }
+
+   return false;
+}
+
 /**
  * Get the closest native SIMD width supported by the hardware for instruction
  * \p inst.  The instruction will be left untouched by
@@ -265,8 +279,16 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_LOG2:
    case SHADER_OPCODE_SIN:
    case SHADER_OPCODE_COS: {
-      if (inst->dst.type == BRW_REGISTER_TYPE_HF)
-         return MIN2(8, inst->exec_size);
+      /* Xe2+: BSpec 56797
+       *
+       * Math operation rules when half-floats are used on both source and
+       * destination operands and both source and destinations are packed.
+       *
+       * The execution size must be 16.
+       */
+      if (is_half_float_src_dst(inst))
+         return devinfo->ver < 20 ? MIN2(8,  inst->exec_size) :
+                                    MIN2(16, inst->exec_size);
       return MIN2(16, inst->exec_size);
    }
 
@@ -274,8 +296,8 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       /* SIMD16 is only allowed on Gfx7+. Extended Math Function is limited
        * to SIMD8 with half-float
        */
-      if (inst->dst.type == BRW_REGISTER_TYPE_HF)
-         return MIN2(8, inst->exec_size);
+      if (is_half_float_src_dst(inst))
+        return MIN2(8,  inst->exec_size);
       return MIN2(16, inst->exec_size);
    }
 

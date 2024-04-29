@@ -6608,8 +6608,6 @@ radv_emit_compute_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_compu
    if (pipeline->base.type == RADV_PIPELINE_COMPUTE) {
       radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.shaders[MESA_SHADER_COMPUTE]->bo);
    } else {
-      radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.rt_prolog->bo);
-
       if (cmd_buffer->state.shaders[MESA_SHADER_INTERSECTION])
          radv_cs_add_buffer(device->ws, cmd_buffer->cs, cmd_buffer->state.shaders[MESA_SHADER_INTERSECTION]->bo);
 
@@ -6902,6 +6900,8 @@ radv_bind_rt_prolog(struct radv_cmd_buffer *cmd_buffer, struct radv_shader *rt_p
    cmd_buffer->compute_scratch_waves_wanted = MAX2(cmd_buffer->compute_scratch_waves_wanted, max_scratch_waves);
 
    cmd_buffer->shader_upload_seq = MAX2(cmd_buffer->shader_upload_seq, rt_prolog->upload_seq);
+
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, rt_prolog->bo);
 }
 
 /* This function binds/unbinds a shader to the cmdbuffer state. */

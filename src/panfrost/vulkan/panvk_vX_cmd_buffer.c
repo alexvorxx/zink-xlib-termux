@@ -321,8 +321,8 @@ panvk_cmd_prepare_push_uniforms(
    if (desc_state->push_uniforms)
       return;
 
-   struct panfrost_ptr push_uniforms = pan_pool_alloc_aligned(
-      &cmdbuf->desc_pool.base, 512, 16);
+   struct panfrost_ptr push_uniforms =
+      pan_pool_alloc_aligned(&cmdbuf->desc_pool.base, 512, 16);
 
    /* The first half is used for push constants. */
    memcpy(push_uniforms.cpu, cmdbuf->push_constants,
@@ -355,8 +355,8 @@ panvk_cmd_prepare_push_sets(struct panvk_cmd_buffer *cmdbuf,
 
       struct panvk_descriptor_set *set = &desc_state->push_sets[i]->set;
 
-      panvk_per_arch(push_descriptor_set_assign_layout)(desc_state->push_sets[i],
-                                                        slayout);
+      panvk_per_arch(push_descriptor_set_assign_layout)(
+         desc_state->push_sets[i], slayout);
       if (slayout->desc_ubo_size) {
          struct panfrost_ptr desc_ubo = pan_pool_alloc_aligned(
             &cmdbuf->desc_pool.base, slayout->desc_ubo_size, 16);
@@ -377,13 +377,15 @@ panvk_cmd_prepare_push_sets(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_cmd_unprepare_push_sets(struct panvk_cmd_buffer *cmdbuf,
-                              struct panvk_cmd_bind_point_state *bind_point_state)
+panvk_cmd_unprepare_push_sets(
+   struct panvk_cmd_buffer *cmdbuf,
+   struct panvk_cmd_bind_point_state *bind_point_state)
 {
    struct panvk_descriptor_state *desc_state = &bind_point_state->desc_state;
 
    for (unsigned i = 0; i < ARRAY_SIZE(desc_state->sets); i++) {
-      if (desc_state->push_sets[i] && &desc_state->push_sets[i]->set == desc_state->sets[i])
+      if (desc_state->push_sets[i] &&
+          &desc_state->push_sets[i]->set == desc_state->sets[i])
          desc_state->sets[i] = NULL;
    }
 }
@@ -1783,8 +1785,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       panfrost_query_core_count(&phys_dev->kmod.props, &core_id_range);
       batch->tlsinfo.wls.instances = pan_wls_instances(&dispatch.wg_count);
       batch->wls_total_size = pan_wls_adjust_size(batch->tlsinfo.wls.size) *
-                              batch->tlsinfo.wls.instances *
-                              core_id_range;
+                              batch->tlsinfo.wls.instances * core_id_range;
    }
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
@@ -2017,8 +2018,8 @@ panvk_emit_dyn_ubo(struct panvk_descriptor_state *desc_state,
       &desc_set->dyn_ubos[dyn_ubo_idx + array_idx];
    mali_ptr address =
       panvk_buffer_gpu_ptr(bdesc->buffer, bdesc->offset + dyn_offset);
-   size_t size = panvk_buffer_range(bdesc->buffer,
-                                    bdesc->offset + dyn_offset, bdesc->size);
+   size_t size = panvk_buffer_range(bdesc->buffer, bdesc->offset + dyn_offset,
+                                    bdesc->size);
 
    if (size) {
       pan_pack(ubo, UNIFORM_BUFFER, cfg) {
@@ -2047,7 +2048,7 @@ panvk_emit_dyn_ssbo(struct panvk_descriptor_state *desc_state,
    const struct panvk_buffer_desc *bdesc =
       &desc_set->dyn_ssbos[dyn_ssbo_idx + array_idx];
 
-   *ssbo = (struct panvk_ssbo_addr) {
+   *ssbo = (struct panvk_ssbo_addr){
       .base_addr =
          panvk_buffer_gpu_ptr(bdesc->buffer, bdesc->offset + dyn_offset),
       .size = panvk_buffer_range(bdesc->buffer, bdesc->offset + dyn_offset,
@@ -2326,8 +2327,7 @@ panvk_per_arch(CmdDispatchIndirect)(VkCommandBuffer commandBuffer,
 
 static struct panvk_push_descriptor_set *
 panvk_cmd_push_descriptors(struct panvk_cmd_buffer *cmdbuf,
-                           VkPipelineBindPoint bind_point,
-                           uint32_t set)
+                           VkPipelineBindPoint bind_point, uint32_t set)
 {
    struct panvk_cmd_bind_point_state *bind_point_state =
       &cmdbuf->bind_points[bind_point];
@@ -2383,7 +2383,8 @@ panvk_per_arch(CmdPushDescriptorSetWithTemplateKHR)(
    VkDescriptorUpdateTemplate descriptorUpdateTemplate, VkPipelineLayout layout,
    uint32_t set, const void *pData)
 {
-   VK_FROM_HANDLE(vk_descriptor_update_template, template, descriptorUpdateTemplate);
+   VK_FROM_HANDLE(vk_descriptor_update_template, template,
+                  descriptorUpdateTemplate);
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(panvk_pipeline_layout, playout, layout);
    const struct panvk_descriptor_set_layout *set_layout =

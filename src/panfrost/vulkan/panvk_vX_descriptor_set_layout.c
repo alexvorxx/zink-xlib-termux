@@ -213,7 +213,6 @@ panvk_per_arch(CreateDescriptorSetLayout)(
          unreachable("Invalid descriptor type");
       }
 
-
       if (binding_layout->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
          binding_layout->desc_ubo_offset = dyn_desc_ubo_size;
          dyn_desc_ubo_size +=

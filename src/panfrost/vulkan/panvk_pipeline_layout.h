@@ -60,16 +60,13 @@ unsigned panvk_per_arch(pipeline_layout_ubo_index)(
    const struct panvk_pipeline_layout *layout, unsigned set, unsigned binding,
    unsigned array_index);
 
-unsigned
-panvk_per_arch(pipeline_layout_dyn_desc_ubo_index)(
+unsigned panvk_per_arch(pipeline_layout_dyn_desc_ubo_index)(
    const struct panvk_pipeline_layout *layout);
 
-unsigned
-panvk_per_arch(pipeline_layout_dyn_ubos_offset)(
+unsigned panvk_per_arch(pipeline_layout_dyn_ubos_offset)(
    const struct panvk_pipeline_layout *layout);
 
-unsigned
-panvk_per_arch(pipeline_layout_total_ubo_count)(
+unsigned panvk_per_arch(pipeline_layout_total_ubo_count)(
    const struct panvk_pipeline_layout *layout);
 
 #endif

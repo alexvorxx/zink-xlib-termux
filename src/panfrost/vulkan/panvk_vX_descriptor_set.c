@@ -925,7 +925,8 @@ panvk_per_arch(UpdateDescriptorSetWithTemplate)(
 {
    VK_FROM_HANDLE(panvk_descriptor_set, set, descriptorSet);
 
-   panvk_descriptor_set_update_with_template(set, descriptorUpdateTemplate, data);
+   panvk_descriptor_set_update_with_template(set, descriptorUpdateTemplate,
+                                             data);
 }
 
 void
@@ -972,8 +973,8 @@ panvk_per_arch(push_descriptor_set_assign_layout)(
 void
 panvk_per_arch(push_descriptor_set)(
    struct panvk_push_descriptor_set *push_set,
-   const struct panvk_descriptor_set_layout *layout,
-   uint32_t write_count, const VkWriteDescriptorSet *writes)
+   const struct panvk_descriptor_set_layout *layout, uint32_t write_count,
+   const VkWriteDescriptorSet *writes)
 {
    panvk_per_arch(push_descriptor_set_assign_layout)(push_set, layout);
    for (unsigned i = 0; i < write_count; i++) {

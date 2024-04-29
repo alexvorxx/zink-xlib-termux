@@ -79,7 +79,7 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
    nir_def *val = NULL;
    b->cursor = nir_before_instr(instr);
 
-#define SYSVAL(ptype, name) offsetof(struct panvk_ ## ptype ## _sysvals, name)
+#define SYSVAL(ptype, name) offsetof(struct panvk_##ptype##_sysvals, name)
    switch (intr->intrinsic) {
    case nir_intrinsic_load_num_workgroups:
       val =

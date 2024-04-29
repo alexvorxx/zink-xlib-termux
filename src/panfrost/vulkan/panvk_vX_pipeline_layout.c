@@ -8,8 +8,8 @@
 
 #include "vk_log.h"
 
-#include "panvk_device.h"
 #include "panvk_descriptor_set.h"
+#include "panvk_device.h"
 #include "panvk_entrypoints.h"
 #include "panvk_macros.h"
 #include "panvk_pipeline_layout.h"

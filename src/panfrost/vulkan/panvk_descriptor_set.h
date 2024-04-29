@@ -91,19 +91,16 @@ struct panvk_push_descriptor_set {
 };
 
 #ifdef PAN_ARCH
-void
-panvk_per_arch(push_descriptor_set_assign_layout)(
+void panvk_per_arch(push_descriptor_set_assign_layout)(
    struct panvk_push_descriptor_set *push_set,
    const struct panvk_descriptor_set_layout *layout);
 
-void
-panvk_per_arch(push_descriptor_set)(
+void panvk_per_arch(push_descriptor_set)(
    struct panvk_push_descriptor_set *push_set,
-   const struct panvk_descriptor_set_layout *layout,
-   uint32_t write_count, const VkWriteDescriptorSet *writes);
+   const struct panvk_descriptor_set_layout *layout, uint32_t write_count,
+   const VkWriteDescriptorSet *writes);
 
-void
-panvk_per_arch(push_descriptor_set_with_template)(
+void panvk_per_arch(push_descriptor_set_with_template)(
    struct panvk_push_descriptor_set *push_set,
    const struct panvk_descriptor_set_layout *layout,
    VkDescriptorUpdateTemplate templ, const void *data);

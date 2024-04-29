@@ -335,9 +335,11 @@ get_wait_imm(Program* program, aco_ptr<Instruction>& instr)
    if (instr->opcode == aco_opcode::s_endpgm) {
       return wait_imm(0, 0, 0, 0);
    } else if (instr->opcode == aco_opcode::s_waitcnt) {
-      return wait_imm(GFX10_3, instr->salu().imm);
+      return wait_imm(program->gfx_level, instr->salu().imm);
    } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt) {
-      return wait_imm(0, 0, 0, instr->salu().imm);
+      wait_imm imm;
+      imm.vs = instr->salu().imm;
+      return imm;
    } else if (instr->isVINTERP_INREG()) {
       wait_imm imm;
       imm.exp = instr->vinterp_inreg().wait_exp;

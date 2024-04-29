@@ -4170,7 +4170,7 @@ radv_emit_tess_domain_origin(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *tes = radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
-   unsigned type = 0, partitioning = 0, distribution_mode = 0;
+   unsigned type = 0, partitioning = 0;
    unsigned topology;
 
    switch (tes->info.tes._primitive_mode) {
@@ -4201,15 +4201,6 @@ radv_emit_tess_domain_origin(struct radv_cmd_buffer *cmd_buffer)
       unreachable("Invalid tess spacing type");
    }
 
-   if (pdev->info.has_distributed_tess) {
-      if (pdev->info.family == CHIP_FIJI || pdev->info.family >= CHIP_POLARIS10)
-         distribution_mode = V_028B6C_TRAPEZOIDS;
-      else
-         distribution_mode = V_028B6C_DONUTS;
-   } else {
-      distribution_mode = V_028B6C_NO_DIST;
-   }
-
    if (tes->info.tes.point_mode) {
       topology = V_028B6C_OUTPUT_POINT;
    } else if (tes->info.tes._primitive_mode == TESS_PRIMITIVE_ISOLINES) {
@@ -4226,7 +4217,7 @@ radv_emit_tess_domain_origin(struct radv_cmd_buffer *cmd_buffer)
 
    radeon_set_context_reg(cmd_buffer->cs, R_028B6C_VGT_TF_PARAM,
                           S_028B6C_TYPE(type) | S_028B6C_PARTITIONING(partitioning) | S_028B6C_TOPOLOGY(topology) |
-                             S_028B6C_DISTRIBUTION_MODE(distribution_mode));
+                             S_028B6C_DISTRIBUTION_MODE(pdev->tess_distribution_mode));
 }
 
 static void

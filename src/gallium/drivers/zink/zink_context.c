@@ -4027,7 +4027,7 @@ zink_flush(struct pipe_context *pctx,
          * unknown at this time why this is the case
          */
          if (screen->info.have_KHR_timeline_semaphore)
-            zink_screen_timeline_wait(screen, bs->fence->batch_id, OS_TIMEOUT_INFINITE);
+            zink_screen_timeline_wait(screen, bs->fence.batch_id, OS_TIMEOUT_INFINITE);
          else
             zink_vkfence_wait(screen, &bs->fence, OS_TIMEOUT_INFINITE);
 		

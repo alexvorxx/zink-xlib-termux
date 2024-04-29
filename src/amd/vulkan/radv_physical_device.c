@@ -31,12 +31,18 @@
 #include <sys/sysmacros.h>
 #endif
 
+#include "vk_log.h"
+#include "vk_shader_module.h"
+
 #include "util/disk_cache.h"
 #include "util/hex.h"
 #include "util/u_debug.h"
+#include "radv_android.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
+#include "radv_instance.h"
+#include "radv_physical_device.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_video.h"
 #include "radv_wsi.h"
 
@@ -54,6 +60,12 @@ typedef void *drmDevicePtr;
 
 #if LLVM_AVAILABLE
 #include "ac_llvm_util.h"
+#endif
+
+#ifdef _WIN32
+#define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 0
+#else
+#define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 1
 #endif
 
 static bool
@@ -2337,7 +2349,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, uint32_t *pCount,
                                              VkQueueFamilyProperties2 *pQueueFamilyProperties)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    if (!pQueueFamilyProperties) {
       radv_get_physical_device_queue_family_properties(pdev, pCount, NULL);
       return;
@@ -2390,7 +2402,7 @@ static void
 radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
                                   VkPhysicalDeviceMemoryBudgetPropertiesEXT *memoryBudget)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkPhysicalDeviceMemoryProperties *memory_properties = &pdev->memory_properties;
 
@@ -2520,7 +2532,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice physicalDevice,
                                         VkPhysicalDeviceMemoryProperties2 *pMemoryProperties)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
 
    pMemoryProperties->memoryProperties = pdev->memory_properties;
 

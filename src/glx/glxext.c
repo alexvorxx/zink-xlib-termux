@@ -907,7 +907,8 @@ __glXInitialize(Display * dpy)
     ** (e.g., those called in AllocAndFetchScreenConfigs).
     */
 #if defined(GLX_USE_DRM)
-   if (glx_direct && glx_accel && !zink) {
+   if (glx_direct && glx_accel &&
+       (!zink || debug_get_bool_option("LIBGL_KOPPER_DISABLE", false))) {
 #if defined(HAVE_DRI3)
       if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false)) {
          dpyPriv->dri3Display = dri3_create_display(dpy);

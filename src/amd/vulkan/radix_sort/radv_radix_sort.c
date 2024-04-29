@@ -23,7 +23,7 @@
 
 #include "radv_radix_sort.h"
 #include "targets/u64/config.h"
-#include "radv_private.h"
+#include "radv_cmd_buffer.h"
 #include "target.h"
 
 static const uint32_t init_spv[] = {
@@ -100,14 +100,14 @@ VKAPI_ATTR VkResult VKAPI_CALL
 vkCreateShaderModule(VkDevice _device, const VkShaderModuleCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator, VkShaderModule *pShaderModule)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return device->vk.dispatch_table.CreateShaderModule(_device, pCreateInfo, pAllocator, pShaderModule);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 vkDestroyShaderModule(VkDevice _device, VkShaderModule shaderModule, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    device->vk.dispatch_table.DestroyShaderModule(_device, shaderModule, pAllocator);
 }
 
@@ -115,14 +115,14 @@ VKAPI_ATTR VkResult VKAPI_CALL
 vkCreatePipelineLayout(VkDevice _device, const VkPipelineLayoutCreateInfo *pCreateInfo,
                        const VkAllocationCallbacks *pAllocator, VkPipelineLayout *pPipelineLayout)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return device->vk.dispatch_table.CreatePipelineLayout(_device, pCreateInfo, pAllocator, pPipelineLayout);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 vkDestroyPipelineLayout(VkDevice _device, VkPipelineLayout pipelineLayout, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    device->vk.dispatch_table.DestroyPipelineLayout(_device, pipelineLayout, pAllocator);
 }
 
@@ -131,7 +131,7 @@ vkCreateComputePipelines(VkDevice _device, VkPipelineCache pipelineCache, uint32
                          const VkComputePipelineCreateInfo *pCreateInfos, const VkAllocationCallbacks *pAllocator,
                          VkPipeline *pPipelines)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return device->vk.dispatch_table.CreateComputePipelines(_device, pipelineCache, createInfoCount, pCreateInfos,
                                                            pAllocator, pPipelines);
 }
@@ -139,7 +139,7 @@ vkCreateComputePipelines(VkDevice _device, VkPipelineCache pipelineCache, uint32
 VKAPI_ATTR void VKAPI_CALL
 vkDestroyPipeline(VkDevice _device, VkPipeline pipeline, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    device->vk.dispatch_table.DestroyPipeline(_device, pipeline, pAllocator);
 }
 
@@ -150,7 +150,7 @@ vkCmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags srcStag
                      const VkBufferMemoryBarrier *pBufferMemoryBarriers, uint32_t imageMemoryBarrierCount,
                      const VkImageMemoryBarrier *pImageMemoryBarriers)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->vk.dispatch_table.CmdPipelineBarrier(commandBuffer, srcStageMask, dstStageMask, dependencyFlags,
@@ -162,7 +162,7 @@ VKAPI_ATTR void VKAPI_CALL
 vkCmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout, VkShaderStageFlags stageFlags,
                    uint32_t offset, uint32_t size, const void *pValues)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->vk.dispatch_table.CmdPushConstants(commandBuffer, layout, stageFlags, offset, size, pValues);
@@ -171,7 +171,7 @@ vkCmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout, VkSha
 VKAPI_ATTR void VKAPI_CALL
 vkCmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->vk.dispatch_table.CmdBindPipeline(commandBuffer, pipelineBindPoint, pipeline);
@@ -180,7 +180,7 @@ vkCmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBin
 VKAPI_ATTR void VKAPI_CALL
 vkCmdDispatch(VkCommandBuffer commandBuffer, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->vk.dispatch_table.CmdDispatch(commandBuffer, groupCountX, groupCountY, groupCountZ);
@@ -189,7 +189,7 @@ vkCmdDispatch(VkCommandBuffer commandBuffer, uint32_t groupCountX, uint32_t grou
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL
 vkGetBufferDeviceAddress(VkDevice _device, const VkBufferDeviceAddressInfo *pInfo)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return device->vk.dispatch_table.GetBufferDeviceAddress(_device, pInfo);
 }
 
@@ -197,7 +197,7 @@ VKAPI_ATTR void VKAPI_CALL
 vkCmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset, VkDeviceSize size,
                 uint32_t data)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->vk.dispatch_table.CmdFillBuffer(commandBuffer, dstBuffer, dstOffset, size, data);
@@ -206,7 +206,7 @@ vkCmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize 
 VKAPI_ATTR void VKAPI_CALL
 vkCmdDispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->vk.dispatch_table.CmdDispatchIndirect(commandBuffer, buffer, offset);

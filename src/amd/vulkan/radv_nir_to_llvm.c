@@ -25,10 +25,10 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_nir_to_llvm.h"
 #include "nir/nir.h"
 #include "radv_debug.h"
 #include "radv_llvm_helper.h"
-#include "radv_private.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
 

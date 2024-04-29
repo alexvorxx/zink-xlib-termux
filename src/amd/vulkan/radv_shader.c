@@ -38,7 +38,9 @@
 #include "util/u_atomic.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
-#include "radv_private.h"
+#include "radv_entrypoints.h"
+#include "radv_nir_to_llvm.h"
+#include "radv_printf.h"
 #include "radv_sdma.h"
 #include "radv_shader_args.h"
 
@@ -50,6 +52,7 @@
 #endif
 #include "aco_interface.h"
 #include "sid.h"
+#include "vk_debug_report.h"
 #include "vk_format.h"
 #include "vk_nir.h"
 #include "vk_semaphore.h"
@@ -740,14 +743,10 @@ radv_consider_culling(const struct radv_physical_device *pdev, struct nir_shader
    /* Shader based culling efficiency can depend on PS throughput.
     * Estimate an upper limit for PS input param count based on GPU info.
     */
-   unsigned max_ps_params;
-   unsigned max_render_backends = pdev->info.max_render_backends;
-   unsigned max_se = pdev->info.max_se;
+   unsigned max_ps_params = 8;
 
-   if (max_render_backends / max_se == 4)
-      max_ps_params = 6; /* Navi21 and other GFX10.3 dGPUs. */
-   else
-      max_ps_params = 4; /* Navi 1x. */
+   if (pdev->info.gfx_level >= GFX10_3 && pdev->info.has_dedicated_vram)
+      max_ps_params = 12; /* GFX10.3 and newer discrete GPUs. */
 
    /* TODO: consider other heuristics here, such as PS execution time */
    if (util_bitcount64(ps_inputs_read & ~VARYING_BIT_POS) > max_ps_params)

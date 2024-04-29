@@ -613,15 +613,29 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
          return stride == 1 || stride == 0;
    }
 
-   /* From the Broadwell PRM, Volume 2a "Command Reference - Instructions",
-    * page 391 ("Extended Math Function"):
-    *
-    *     The following restrictions apply for align1 mode: Scalar source is
-    *     supported. Source and destination horizontal stride must be the
-    *     same.
-    */
-   if (inst->is_math())
+   if (inst->is_math()) {
+      /* Wa_22016140776:
+       *
+       *    Scalar broadcast on HF math (packed or unpacked) must not be used.
+       *    Compiler must use a mov instruction to expand the scalar value to
+       *    a vector before using in a HF (packed or unpacked) math operation.
+       *
+       * Prevent copy propagating a scalar value into a math instruction.
+       */
+      if (intel_needs_workaround(devinfo, 22016140776) &&
+          stride == 0 && inst->src[arg].type == BRW_REGISTER_TYPE_HF) {
+         return false;
+      }
+
+      /* From the Broadwell PRM, Volume 2a "Command Reference - Instructions",
+       * page 391 ("Extended Math Function"):
+       *
+       *     The following restrictions apply for align1 mode: Scalar source
+       *     is supported. Source and destination horizontal stride must be
+       *     the same.
+       */
       return stride == inst->dst.stride || stride == 0;
+   }
 
    return true;
 }

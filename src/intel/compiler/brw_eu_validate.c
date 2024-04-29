@@ -769,6 +769,28 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
    if (desc->ndst == 0)
       return error_msg;
 
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MATH &&
+       intel_needs_workaround(devinfo, 22016140776)) {
+      /* Wa_22016140776:
+       *
+       *    Scalar broadcast on HF math (packed or unpacked) must not be
+       *    used.  Compiler must use a mov instruction to expand the scalar
+       *    value to a vector before using in a HF (packed or unpacked)
+       *    math operation.
+       */
+      ERROR_IF(brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_HF &&
+               src0_has_scalar_region(devinfo, inst),
+               "Scalar broadcast on HF math (packed or unpacked) must not "
+               "be used.");
+
+      if (num_sources > 1) {
+         ERROR_IF(brw_inst_src1_type(devinfo, inst) == BRW_REGISTER_TYPE_HF &&
+                  src1_has_scalar_region(devinfo, inst),
+                  "Scalar broadcast on HF math (packed or unpacked) must not "
+                  "be used.");
+      }
+   }
+
    /* The PRMs say:
     *
     *    Where n is the largest element size in bytes for any source or

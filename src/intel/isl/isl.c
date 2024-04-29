@@ -1110,11 +1110,27 @@ isl_surf_choose_tiling(const struct isl_device *dev,
       CHOOSE(ISL_TILING_LINEAR);
    }
 
+   if (intel_needs_workaround(dev->info, 22015614752) &&
+       isl_format_supports_ccs_e(dev->info, info->format) &&
+       !INTEL_DEBUG(DEBUG_NO_CCS) &&
+       !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT) &&
+       (info->levels > 1 || info->depth > 1 || info->array_len > 1)) {
+      /* There are issues with multiple engines accessing the same CCS
+       * cacheline in parallel. This can happen if this image has multiple
+       * subresources. If possible, avoid such conflicts by picking a tiling
+       * that will increase the subresource alignment to 64k. If we can't use
+       * such a tiling, we'll prevent CCS from being enabled later on via
+       * isl_surf_supports_ccs.
+       */
+      CHOOSE(ISL_TILING_64);
+   }
+
    /* For sparse images, prefer the formats that use the standard block
     * shapes.
     */
    if (info->usage & ISL_SURF_USAGE_SPARSE_BIT) {
-      CHOOSE(ISL_GFX_VER(dev) >= 20 ? ISL_TILING_64_XE2 : ISL_TILING_64);
+      CHOOSE(ISL_TILING_64_XE2);
+      CHOOSE(ISL_TILING_64);
       CHOOSE(ISL_TILING_ICL_Ys);
       CHOOSE(ISL_TILING_SKL_Ys);
    }
@@ -1141,7 +1157,8 @@ isl_surf_choose_tiling(const struct isl_device *dev,
    CHOOSE(ISL_TILING_ICL_Yf);
    CHOOSE(ISL_TILING_SKL_Ys);
    CHOOSE(ISL_TILING_ICL_Ys);
-   CHOOSE(ISL_GFX_VER(dev) >= 20 ? ISL_TILING_64_XE2 : ISL_TILING_64);
+   CHOOSE(ISL_TILING_64);
+   CHOOSE(ISL_TILING_64_XE2);
 
    CHOOSE(ISL_TILING_X);
    CHOOSE(ISL_TILING_W);
@@ -2660,9 +2677,7 @@ isl_calc_base_alignment(const struct isl_device *dev,
       if (tile_info->tiling == ISL_TILING_GFX12_CCS)
          base_alignment_B = MAX(base_alignment_B, 4096);
 
-      if (dev->info->has_aux_map &&
-          (isl_format_supports_ccs_d(dev->info, info->format) ||
-           isl_format_supports_ccs_e(dev->info, info->format)) &&
+      if (isl_format_supports_ccs_e(dev->info, info->format) &&
           !INTEL_DEBUG(DEBUG_NO_CCS) &&
           !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT)) {
          /* Wa_22015614752:
@@ -2697,7 +2712,8 @@ isl_calc_base_alignment(const struct isl_device *dev,
           * is that we haven't enable CCS on linear images yet so we can avoid
           * the extra alignment there.
           */
-         if (!(info->usage & ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT)) {
+         if (dev->info->has_aux_map &&
+             !(info->usage & ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT)) {
             base_alignment_B = MAX(base_alignment_B, dev->info->verx10 >= 125 ?
                                    1024 * 1024 : 64 * 1024);
          }
@@ -3105,6 +3121,20 @@ isl_surf_supports_ccs(const struct isl_device *dev,
        */
       if (surf->row_pitch_B % 512 != 0)
          return false;
+
+      if (intel_needs_workaround(dev->info, 22015614752) &&
+          (surf->levels > 1 ||
+           surf->logical_level0_px.depth > 1 ||
+           surf->logical_level0_px.array_len > 1)) {
+         /* There are issues with multiple engines accessing the same CCS
+          * cacheline in parallel. This can happen if this image has multiple
+          * subresources. Such conflicts can be avoided with tilings that set
+          * the subresource alignment to 64K. If we aren't using such a
+          * tiling, disable CCS.
+          */
+         if (surf->tiling != ISL_TILING_64)
+            return false;
+      }
 
       /* BSpec 44930: (Gfx12, Gfx12.5)
        *

@@ -48,9 +48,14 @@
 #include "util/u_debug.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
-#include "radv_private.h"
+#include "radv_physical_device.h"
+#include "radv_printf.h"
+#include "radv_rmv.h"
 #include "radv_shader.h"
+#include "radv_spm.h"
+#include "radv_sqtt.h"
 #include "vk_common_entrypoints.h"
 #include "vk_pipeline_cache.h"
 #include "vk_semaphore.h"
@@ -96,7 +101,7 @@ radv_GetMemoryHostPointerPropertiesEXT(VkDevice _device, VkExternalMemoryHandleT
                                        const void *pHostPointer,
                                        VkMemoryHostPointerPropertiesEXT *pMemoryHostPointerProperties)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    switch (handleType) {
@@ -603,7 +608,7 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pd
 static VkResult
 capture_trace(VkQueue _queue)
 {
-   RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   VK_FROM_HANDLE(radv_queue, queue, _queue);
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
@@ -669,11 +674,187 @@ radv_device_init_cache_key(struct radv_device *device)
    _mesa_blake3_compute(key, sizeof(*key), device->cache_hash);
 }
 
+static void
+radv_create_gfx_preamble(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radeon_cmdbuf *cs = device->ws->cs_create(device->ws, AMD_IP_GFX, false);
+   if (!cs)
+      return;
+
+   radeon_check_space(device->ws, cs, 512);
+
+   radv_emit_graphics(device, cs);
+
+   while (cs->cdw & 7) {
+      if (pdev->info.gfx_ib_pad_with_type2)
+         radeon_emit(cs, PKT2_NOP_PAD);
+      else
+         radeon_emit(cs, PKT3_NOP_PAD);
+   }
+
+   VkResult result = radv_bo_create(
+      device, NULL, cs->cdw * 4, 4096, device->ws->cs_domain(device->ws),
+      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_GTT_WC,
+      RADV_BO_PRIORITY_CS, 0, true, &device->gfx_init);
+   if (result != VK_SUCCESS)
+      goto fail;
+
+   void *map = radv_buffer_map(device->ws, device->gfx_init);
+   if (!map) {
+      radv_bo_destroy(device, NULL, device->gfx_init);
+      device->gfx_init = NULL;
+      goto fail;
+   }
+   memcpy(map, cs->buf, cs->cdw * 4);
+
+   device->ws->buffer_unmap(device->ws, device->gfx_init, false);
+   device->gfx_init_size_dw = cs->cdw;
+fail:
+   device->ws->cs_destroy(cs);
+}
+
+/* For MSAA sample positions. */
+#define FILL_SREG(s0x, s0y, s1x, s1y, s2x, s2y, s3x, s3y)                                                              \
+   ((((unsigned)(s0x)&0xf) << 0) | (((unsigned)(s0y)&0xf) << 4) | (((unsigned)(s1x)&0xf) << 8) |                       \
+    (((unsigned)(s1y)&0xf) << 12) | (((unsigned)(s2x)&0xf) << 16) | (((unsigned)(s2y)&0xf) << 20) |                    \
+    (((unsigned)(s3x)&0xf) << 24) | (((unsigned)(s3y)&0xf) << 28))
+
+/* For obtaining location coordinates from registers */
+#define SEXT4(x)               ((int)((x) | ((x)&0x8 ? 0xfffffff0 : 0)))
+#define GET_SFIELD(reg, index) SEXT4(((reg) >> ((index)*4)) & 0xf)
+#define GET_SX(reg, index)     GET_SFIELD((reg)[(index) / 4], ((index) % 4) * 2)
+#define GET_SY(reg, index)     GET_SFIELD((reg)[(index) / 4], ((index) % 4) * 2 + 1)
+
+/* 1x MSAA */
+static const uint32_t sample_locs_1x = FILL_SREG(0, 0, 0, 0, 0, 0, 0, 0);
+static const unsigned max_dist_1x = 0;
+static const uint64_t centroid_priority_1x = 0x0000000000000000ull;
+
+/* 2xMSAA */
+static const uint32_t sample_locs_2x = FILL_SREG(4, 4, -4, -4, 0, 0, 0, 0);
+static const unsigned max_dist_2x = 4;
+static const uint64_t centroid_priority_2x = 0x1010101010101010ull;
+
+/* 4xMSAA */
+static const uint32_t sample_locs_4x = FILL_SREG(-2, -6, 6, -2, -6, 2, 2, 6);
+static const unsigned max_dist_4x = 6;
+static const uint64_t centroid_priority_4x = 0x3210321032103210ull;
+
+/* 8xMSAA */
+static const uint32_t sample_locs_8x[] = {
+   FILL_SREG(1, -3, -1, 3, 5, 1, -3, -5),
+   FILL_SREG(-5, 5, -7, -1, 3, 7, 7, -7),
+   /* The following are unused by hardware, but we emit them to IBs
+    * instead of multiple SET_CONTEXT_REG packets. */
+   0,
+   0,
+};
+static const unsigned max_dist_8x = 7;
+static const uint64_t centroid_priority_8x = 0x7654321076543210ull;
+
+unsigned
+radv_get_default_max_sample_dist(int log_samples)
+{
+   unsigned max_dist[] = {
+      max_dist_1x,
+      max_dist_2x,
+      max_dist_4x,
+      max_dist_8x,
+   };
+   return max_dist[log_samples];
+}
+
+void
+radv_emit_default_sample_locations(struct radeon_cmdbuf *cs, int nr_samples)
+{
+   switch (nr_samples) {
+   default:
+   case 1:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_1x);
+      radeon_emit(cs, centroid_priority_1x >> 32);
+      radeon_set_context_reg(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, sample_locs_1x);
+      radeon_set_context_reg(cs, R_028C08_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y0_0, sample_locs_1x);
+      radeon_set_context_reg(cs, R_028C18_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y1_0, sample_locs_1x);
+      radeon_set_context_reg(cs, R_028C28_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y1_0, sample_locs_1x);
+      break;
+   case 2:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_2x);
+      radeon_emit(cs, centroid_priority_2x >> 32);
+      radeon_set_context_reg(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, sample_locs_2x);
+      radeon_set_context_reg(cs, R_028C08_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y0_0, sample_locs_2x);
+      radeon_set_context_reg(cs, R_028C18_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y1_0, sample_locs_2x);
+      radeon_set_context_reg(cs, R_028C28_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y1_0, sample_locs_2x);
+      break;
+   case 4:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_4x);
+      radeon_emit(cs, centroid_priority_4x >> 32);
+      radeon_set_context_reg(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, sample_locs_4x);
+      radeon_set_context_reg(cs, R_028C08_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y0_0, sample_locs_4x);
+      radeon_set_context_reg(cs, R_028C18_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y1_0, sample_locs_4x);
+      radeon_set_context_reg(cs, R_028C28_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y1_0, sample_locs_4x);
+      break;
+   case 8:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_8x);
+      radeon_emit(cs, centroid_priority_8x >> 32);
+      radeon_set_context_reg_seq(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, 14);
+      radeon_emit_array(cs, sample_locs_8x, 4);
+      radeon_emit_array(cs, sample_locs_8x, 4);
+      radeon_emit_array(cs, sample_locs_8x, 4);
+      radeon_emit_array(cs, sample_locs_8x, 2);
+      break;
+   }
+}
+
+static void
+radv_get_sample_position(struct radv_device *device, unsigned sample_count, unsigned sample_index, float *out_value)
+{
+   const uint32_t *sample_locs;
+
+   switch (sample_count) {
+   case 1:
+   default:
+      sample_locs = &sample_locs_1x;
+      break;
+   case 2:
+      sample_locs = &sample_locs_2x;
+      break;
+   case 4:
+      sample_locs = &sample_locs_4x;
+      break;
+   case 8:
+      sample_locs = sample_locs_8x;
+      break;
+   }
+
+   out_value[0] = (GET_SX(sample_locs, sample_index) + 8) / 16.0f;
+   out_value[1] = (GET_SY(sample_locs, sample_index) + 8) / 16.0f;
+}
+
+static void
+radv_device_init_msaa(struct radv_device *device)
+{
+   int i;
+
+   radv_get_sample_position(device, 1, 0, device->sample_locations_1x[0]);
+
+   for (i = 0; i < 2; i++)
+      radv_get_sample_position(device, 2, i, device->sample_locations_2x[i]);
+   for (i = 0; i < 4; i++)
+      radv_get_sample_position(device, 4, i, device->sample_locations_4x[i]);
+   for (i = 0; i < 8; i++)
+      radv_get_sample_position(device, 8, i, device->sample_locations_8x[i]);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkResult result;
    struct radv_device *device;
@@ -985,7 +1166,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
    if (!(instance->debug_flags & RADV_DEBUG_NO_IBS))
-      radv_create_gfx_config(device);
+      radv_create_gfx_preamble(device);
 
    struct vk_pipeline_cache_create_info info = {.weak_ref = true};
    device->mem_cache = vk_pipeline_cache_create(&device->vk, &info, NULL);
@@ -1103,7 +1284,7 @@ fail_queue:
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
 
    if (!device)
       return;
@@ -1198,8 +1379,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetImageMemoryRequirements2(VkDevice _device, const VkImageMemoryRequirementsInfo2 *pInfo,
                                  VkMemoryRequirements2 *pMemoryRequirements)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_image, image, pInfo->image);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, pInfo->image);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits =
@@ -1855,8 +2036,8 @@ radv_gfx11_set_db_render_control(const struct radv_device *device, unsigned num_
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryFdKHR(VkDevice _device, const VkMemoryGetFdInfoKHR *pGetFdInfo, int *pFD)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_device_memory, memory, pGetFdInfo->memory);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device_memory, memory, pGetFdInfo->memory);
 
    assert(pGetFdInfo->sType == VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR);
 
@@ -1920,7 +2101,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryFdPropertiesKHR(VkDevice _device, VkExternalMemoryHandleTypeFlagBits handleType, int fd,
                               VkMemoryFdPropertiesKHR *pMemoryFdProperties)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
 
    switch (handleType) {
@@ -1951,7 +2132,7 @@ radv_GetCalibratedTimestampsKHR(VkDevice _device, uint32_t timestampCount,
                                 uint64_t *pMaxDeviation)
 {
 #ifndef _WIN32
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    uint32_t clock_crystal_freq = pdev->info.clock_crystal_freq;
    int d;
@@ -2049,7 +2230,7 @@ radv_device_release_performance_counters(struct radv_device *device)
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_AcquireProfilingLockKHR(VkDevice _device, const VkAcquireProfilingLockInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    bool result = radv_device_acquire_performance_counters(device);
    return result ? VK_SUCCESS : VK_ERROR_UNKNOWN;
 }
@@ -2057,7 +2238,7 @@ radv_AcquireProfilingLockKHR(VkDevice _device, const VkAcquireProfilingLockInfoK
 VKAPI_ATTR void VKAPI_CALL
 radv_ReleaseProfilingLockKHR(VkDevice _device)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    radv_device_release_performance_counters(device);
 }
 

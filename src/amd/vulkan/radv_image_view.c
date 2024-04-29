@@ -25,11 +25,13 @@
  * IN THE SOFTWARE.
  */
 
+#include "vk_log.h"
+
 #include "radv_image_view.h"
 #include "radv_buffer_view.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_image.h"
-#include "radv_private.h"
 
 #include "gfx10_format_table.h"
 
@@ -335,7 +337,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    if (nbc_view && nbc_view->valid)
       max_mip = nbc_view->num_levels - 1;
 
-   unsigned min_lod_clamped = radv_float_to_ufixed(CLAMP(min_lod, 0, 15), 8);
+   unsigned min_lod_clamped = util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8);
    if (pdev->info.gfx_level >= GFX11) {
       state[1] |= S_00A004_MAX_MIP(max_mip);
       state[5] |= S_00A014_MIN_LOD_LO(min_lod_clamped);
@@ -475,7 +477,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
       depth = image->vk.array_layers / 6;
 
    state[0] = 0;
-   state[1] = (S_008F14_MIN_LOD(radv_float_to_ufixed(CLAMP(min_lod, 0, 15), 8)) | S_008F14_DATA_FORMAT(data_format) |
+   state[1] = (S_008F14_MIN_LOD(util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8)) | S_008F14_DATA_FORMAT(data_format) |
                S_008F14_NUM_FORMAT(num_format));
    state[2] = (S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1) | S_008F18_PERF_MOD(4));
    state[3] = (S_008F1C_DST_SEL_X(radv_map_swizzle(swizzle[0])) | S_008F1C_DST_SEL_Y(radv_map_swizzle(swizzle[1])) |
@@ -745,7 +747,7 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
                      const VkImageViewCreateInfo *pCreateInfo, VkImageCreateFlags img_create_flags,
                      const struct radv_image_view_extra_create_info *extra_create_info)
 {
-   RADV_FROM_HANDLE(radv_image, image, pCreateInfo->image);
+   VK_FROM_HANDLE(radv_image, image, pCreateInfo->image);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const VkImageSubresourceRange *range = &pCreateInfo->subresourceRange;
    uint32_t plane_count = 1;
@@ -776,7 +778,7 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
       break;
    case VK_IMAGE_TYPE_3D:
       assert(range->baseArrayLayer + vk_image_subresource_layer_count(&image->vk, range) - 1 <=
-             radv_minify(image->vk.extent.depth, range->baseMipLevel));
+             u_minify(image->vk.extent.depth, range->baseMipLevel));
       break;
    default:
       unreachable("bad VkImageType");
@@ -872,8 +874,8 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
             iview->extent.width = plane->surface.u.gfx9.base_mip_width;
             iview->extent.height = plane->surface.u.gfx9.base_mip_height;
          } else {
-            unsigned lvl_width = radv_minify(image->vk.extent.width, range->baseMipLevel);
-            unsigned lvl_height = radv_minify(image->vk.extent.height, range->baseMipLevel);
+            unsigned lvl_width = u_minify(image->vk.extent.width, range->baseMipLevel);
+            unsigned lvl_height = u_minify(image->vk.extent.height, range->baseMipLevel);
 
             lvl_width = DIV_ROUND_UP(lvl_width * view_bw, plane_bw);
             lvl_height = DIV_ROUND_UP(lvl_height * view_bh, plane_bh);
@@ -889,8 +891,8 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
              * extents accordingly.
              */
             if (pdev->info.gfx_level >= GFX10 &&
-                (radv_minify(iview->extent.width, range->baseMipLevel) < lvl_width ||
-                 radv_minify(iview->extent.height, range->baseMipLevel) < lvl_height) &&
+                (u_minify(iview->extent.width, range->baseMipLevel) < lvl_width ||
+                 u_minify(iview->extent.height, range->baseMipLevel) < lvl_height) &&
                 iview->vk.layer_count == 1) {
                compute_non_block_compressed_view(device, iview, &iview->nbc_view);
             }
@@ -924,8 +926,8 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator, VkImageView *pView)
 {
-   RADV_FROM_HANDLE(radv_image, image, pCreateInfo->image);
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, pCreateInfo->image);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_image_view *view;
 
    view = vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*view), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
@@ -943,8 +945,8 @@ radv_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyImageView(VkDevice _device, VkImageView _iview, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_image_view, iview, _iview);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image_view, iview, _iview);
 
    if (!iview)
       return;

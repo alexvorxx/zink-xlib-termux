@@ -23,13 +23,15 @@
 
 #include "rmv/vk_rmv_common.h"
 #include "rmv/vk_rmv_tokens.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
+#include "radv_queue.h"
 #include "vk_common_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 rmv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 {
-   RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   VK_FROM_HANDLE(radv_queue, queue, _queue);
    struct radv_device *device = radv_queue_device(queue);
 
    VkResult res = device->layer_dispatch.rmv.QueuePresentKHR(_queue, pPresentInfo);
@@ -44,7 +46,7 @@ rmv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 VKAPI_ATTR VkResult VKAPI_CALL
 rmv_FlushMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, const VkMappedMemoryRange *pMemoryRanges)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
 
    VkResult res = device->layer_dispatch.rmv.FlushMappedMemoryRanges(_device, memoryRangeCount, pMemoryRanges);
    if (res != VK_SUCCESS || !device->vk.memory_trace_data.is_enabled)
@@ -58,7 +60,7 @@ rmv_FlushMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, const V
 VKAPI_ATTR VkResult VKAPI_CALL
 rmv_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, const VkMappedMemoryRange *pMemoryRanges)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
 
    VkResult res = device->layer_dispatch.rmv.InvalidateMappedMemoryRanges(_device, memoryRangeCount, pMemoryRanges);
    if (res != VK_SUCCESS || !device->vk.memory_trace_data.is_enabled)
@@ -73,7 +75,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 rmv_SetDebugUtilsObjectNameEXT(VkDevice _device, const VkDebugUtilsObjectNameInfoEXT *pNameInfo)
 {
    assert(pNameInfo->sType == VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT);
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
 
    VkResult result = device->layer_dispatch.rmv.SetDebugUtilsObjectNameEXT(_device, pNameInfo);
    if (result != VK_SUCCESS || !device->vk.memory_trace_data.is_enabled)

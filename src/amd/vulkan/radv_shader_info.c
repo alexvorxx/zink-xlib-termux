@@ -20,10 +20,13 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+#include "radv_shader_info.h"
 #include "nir/nir.h"
 #include "nir/nir_xfb_info.h"
 #include "nir/radv_nir.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_physical_device.h"
+#include "radv_pipeline_graphics.h"
 #include "radv_shader.h"
 
 #include "ac_nir.h"
@@ -78,6 +81,55 @@ gather_load_vs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
 }
 
 static void
+gather_load_fs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intrin, struct radv_shader_info *info,
+                          const struct radv_graphics_state_key *gfx_state)
+{
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   const unsigned location = io_sem.location;
+   const unsigned mapped_location = nir_intrinsic_base(intrin);
+   const unsigned attrib_count = io_sem.num_slots;
+   const unsigned component = nir_intrinsic_component(intrin);
+
+   switch (location) {
+   case VARYING_SLOT_CLIP_DIST0:
+      info->ps.input_clips_culls_mask |= BITFIELD_RANGE(component, intrin->num_components);
+      break;
+   case VARYING_SLOT_CLIP_DIST1:
+      info->ps.input_clips_culls_mask |= BITFIELD_RANGE(component, intrin->num_components) << 4;
+      break;
+   default:
+      break;
+   }
+
+   const uint32_t mapped_mask = BITFIELD_RANGE(mapped_location, attrib_count);
+   const bool per_primitive = nir->info.per_primitive_inputs & BITFIELD64_BIT(location);
+
+   if (intrin->def.bit_size == 16) {
+      info->ps.float16_shaded_mask |= mapped_mask;
+   }
+
+   if (!per_primitive) {
+      if (intrin->intrinsic == nir_intrinsic_load_input) {
+         info->ps.flat_shaded_mask |= mapped_mask;
+      } else if (intrin->intrinsic == nir_intrinsic_load_input_vertex) {
+         if (io_sem.interp_explicit_strict)
+            info->ps.per_vertex_shaded_mask |= mapped_mask;
+         else
+            info->ps.explicit_shaded_mask |= mapped_mask;
+      }
+   }
+
+   if (location >= VARYING_SLOT_VAR0) {
+      const uint32_t var_mask = BITFIELD_RANGE(location - VARYING_SLOT_VAR0, attrib_count);
+
+      if (per_primitive)
+         info->ps.input_per_primitive_mask |= var_mask;
+      else
+         info->ps.input_mask |= var_mask;
+   }
+}
+
+static void
 gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_instr *instr, struct radv_shader_info *info,
                                  const struct radv_graphics_state_key *gfx_state,
                                  const struct radv_shader_stage_key *stage_key)
@@ -85,6 +137,9 @@ gather_intrinsic_load_input_info(const nir_shader *nir, const nir_intrinsic_inst
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX:
       gather_load_vs_input_info(nir, instr, info, gfx_state, stage_key);
+      break;
+   case MESA_SHADER_FRAGMENT:
+      gather_load_fs_input_info(nir, instr, info, gfx_state);
       break;
    default:
       break;
@@ -255,6 +310,8 @@ gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr, s
       break;
    }
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_interpolated_input:
+   case nir_intrinsic_load_input_vertex:
       gather_intrinsic_load_input_info(nir, instr, info, gfx_state, stage_key);
       break;
    case nir_intrinsic_store_output:
@@ -312,28 +369,6 @@ gather_info_block(const nir_shader *nir, const nir_block *block, struct radv_sha
          break;
       default:
          break;
-      }
-   }
-}
-
-static void
-mark_16bit_ps_input(struct radv_shader_info *info, const struct glsl_type *type, int location)
-{
-   if (glsl_type_is_scalar(type) || glsl_type_is_vector(type) || glsl_type_is_matrix(type)) {
-      unsigned attrib_count = glsl_count_attribute_slots(type, false);
-      if (glsl_type_is_16bit(type)) {
-         info->ps.float16_shaded_mask |= ((1ull << attrib_count) - 1) << location;
-      }
-   } else if (glsl_type_is_array(type)) {
-      unsigned stride = glsl_count_attribute_slots(glsl_get_array_element(type), false);
-      for (unsigned i = 0; i < glsl_get_length(type); ++i) {
-         mark_16bit_ps_input(info, glsl_get_array_element(type), location + i * stride);
-      }
-   } else {
-      assert(glsl_type_is_struct_or_ifc(type));
-      for (unsigned i = 0; i < glsl_get_length(type); i++) {
-         mark_16bit_ps_input(info, glsl_get_struct_field(type, i), location);
-         location += glsl_count_attribute_slots(glsl_get_struct_field(type, i), false);
       }
    }
 }
@@ -865,18 +900,19 @@ gather_shader_info_fs(const struct radv_device *device, const nir_shader *nir,
                       const struct radv_graphics_state_key *gfx_state, struct radv_shader_info *info)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   uint64_t per_primitive_input_mask = nir->info.inputs_read & nir->info.per_primitive_inputs;
-   unsigned num_per_primitive_inputs = util_bitcount64(per_primitive_input_mask);
-   assert(num_per_primitive_inputs <= nir->num_inputs);
+   const uint64_t per_primitive_input_mask = nir->info.inputs_read & nir->info.per_primitive_inputs;
+   const unsigned num_per_primitive_inputs = util_bitcount64(per_primitive_input_mask);
+   const unsigned num_inputs = util_bitcount64(nir->info.inputs_read);
+   assert(num_per_primitive_inputs <= num_inputs);
 
-   info->ps.num_interp = nir->num_inputs;
+   info->ps.num_interp = num_inputs;
    info->ps.num_prim_interp = 0;
 
    if (pdev->info.gfx_level == GFX10_3) {
       /* GFX10.3 distinguishes NUM_INTERP and NUM_PRIM_INTERP, but
        * these are counted together in NUM_INTERP on GFX11.
        */
-      info->ps.num_interp = nir->num_inputs - num_per_primitive_inputs;
+      info->ps.num_interp = num_inputs - num_per_primitive_inputs;
       info->ps.num_prim_interp = num_per_primitive_inputs;
    }
 
@@ -938,52 +974,6 @@ gather_shader_info_fs(const struct radv_device *device, const nir_shader *nir,
 
    if (!info->ps.exports_mrtz_via_epilog) {
       info->ps.writes_mrt0_alpha = gfx_state->ms.alpha_to_coverage_via_mrtz && export_alpha_and_mrtz;
-   }
-
-   nir_foreach_shader_in_variable (var, nir) {
-      const struct glsl_type *type = var->data.per_vertex ? glsl_get_array_element(var->type) : var->type;
-      unsigned attrib_count = glsl_count_attribute_slots(type, false);
-      int idx = var->data.location;
-
-      switch (idx) {
-      case VARYING_SLOT_CLIP_DIST0:
-         if (nir->info.inputs_read & VARYING_BIT_CLIP_DIST0)
-            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(0, attrib_count);
-         if (attrib_count > 4 && (nir->info.inputs_read & VARYING_BIT_CLIP_DIST1))
-            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(4, attrib_count);
-         break;
-      case VARYING_SLOT_CLIP_DIST1:
-         if (nir->info.inputs_read & VARYING_BIT_CLIP_DIST1)
-            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(4, attrib_count);
-         break;
-      default:
-         break;
-      }
-
-      if (var->data.compact) {
-         unsigned component_count = var->data.location_frac + glsl_get_length(var->type);
-         attrib_count = (component_count + 3) / 4;
-      } else {
-         mark_16bit_ps_input(info, type, var->data.driver_location);
-      }
-
-      uint64_t mask = ((1ull << attrib_count) - 1);
-
-      if (!var->data.per_primitive) {
-         if (var->data.interpolation == INTERP_MODE_FLAT)
-            info->ps.flat_shaded_mask |= mask << var->data.driver_location;
-         else if (var->data.interpolation == INTERP_MODE_EXPLICIT)
-            info->ps.explicit_shaded_mask |= mask << var->data.driver_location;
-         else if (var->data.per_vertex)
-            info->ps.per_vertex_shaded_mask |= mask << var->data.driver_location;
-      }
-
-      if (var->data.location >= VARYING_SLOT_VAR0) {
-         if (var->data.per_primitive)
-            info->ps.input_per_primitive_mask |= mask << (var->data.location - VARYING_SLOT_VAR0);
-         else
-            info->ps.input_mask |= mask << (var->data.location - VARYING_SLOT_VAR0);
-      }
    }
 
    /* Disable VRS and use the rates from PS_ITER_SAMPLES if:

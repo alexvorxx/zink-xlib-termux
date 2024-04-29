@@ -238,6 +238,17 @@ namespace {
    has_invalid_src_region(const intel_device_info *devinfo, const fs_inst *inst,
                           unsigned i)
    {
+      /* Wa_22016140776:
+       *
+       *    Scalar broadcast on HF math (packed or unpacked) must not be used.
+       *    Compiler must use a mov instruction to expand the scalar value to
+       *    a vector before using in a HF (packed or unpacked) math operation.
+       */
+      if (intel_needs_workaround(devinfo, 22016140776) &&
+          is_uniform(inst->src[i]) && inst->src[i].type == BRW_REGISTER_TYPE_HF) {
+         return true;
+      }
+
       if (is_send(inst) || inst->is_math() || inst->is_control_source(i) ||
           inst->opcode == BRW_OPCODE_DPAS) {
          return false;

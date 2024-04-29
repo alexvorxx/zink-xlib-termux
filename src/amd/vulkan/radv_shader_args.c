@@ -27,7 +27,8 @@
  */
 
 #include "radv_shader_args.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_physical_device.h"
 #include "radv_shader.h"
 
 struct user_sgpr_info {

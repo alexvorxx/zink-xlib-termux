@@ -25,9 +25,11 @@
  */
 
 #include "nir/nir_builder.h"
+#include "radv_entrypoints.h"
 #include "radv_meta.h"
 #include "vk_common_entrypoints.h"
 #include "vk_format.h"
+#include "vk_shader_module.h"
 
 enum blit2d_src_type {
    BLIT2D_SRC_TYPE_IMAGE,

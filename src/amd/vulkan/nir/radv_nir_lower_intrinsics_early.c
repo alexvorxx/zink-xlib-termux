@@ -26,7 +26,6 @@
 #include "nir.h"
 #include "nir_builder.h"
 #include "radv_nir.h"
-#include "radv_private.h"
 
 bool
 radv_nir_lower_intrinsics_early(nir_shader *nir, bool lower_view_index_to_zero)

@@ -28,8 +28,8 @@
 
 #include "radv_amdgpu_surface.h"
 #include "util/bitset.h"
+#include "util/compiler.h"
 #include "radv_amdgpu_winsys.h"
-#include "radv_private.h"
 #include "sid.h"
 
 #include "ac_surface.h"

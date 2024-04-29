@@ -1055,6 +1055,8 @@ gl_nir_add_point_size(nir_shader *nir)
       nir_store_deref(&b, deref, nir_imm_float(&b, 1.0), BITFIELD_BIT(0));
    }
 
+   nir->info.outputs_written |= VARYING_BIT_PSIZ;
+
    /* We always modify the entrypoint */
    nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
    return true;

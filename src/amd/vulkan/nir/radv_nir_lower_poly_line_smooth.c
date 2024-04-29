@@ -24,7 +24,7 @@
 #include "nir.h"
 #include "nir_builder.h"
 #include "radv_nir.h"
-#include "radv_private.h"
+#include "radv_pipeline_graphics.h"
 
 static bool
 radv_should_lower_poly_line_smooth(nir_shader *nir, const struct radv_graphics_state_key *gfx_state)

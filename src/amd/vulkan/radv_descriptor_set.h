@@ -24,6 +24,8 @@
 #ifndef RADV_DESCRIPTOR_SET_H
 #define RADV_DESCRIPTOR_SET_H
 
+#include "util/mesa-sha1.h"
+
 #include "radv_constants.h"
 
 #include "vk_descriptor_set_layout.h"

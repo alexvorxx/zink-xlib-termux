@@ -26,10 +26,13 @@
 #include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_perfcounter.h"
-#include "radv_private.h"
+#include "radv_spm.h"
+#include "radv_sqtt.h"
 #include "sid.h"
 
+#include "vk_command_pool.h"
 #include "vk_common_entrypoints.h"
 
 #define SQTT_BUFFER_ALIGN_SHIFT 12

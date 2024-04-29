@@ -37,6 +37,9 @@
 #include "ac_debug.h"
 #include "radv_buffer.h"
 #include "radv_debug.h"
+#include "radv_descriptor_set.h"
+#include "radv_entrypoints.h"
+#include "radv_pipeline_graphics.h"
 #include "radv_pipeline_rt.h"
 #include "radv_shader.h"
 #include "sid.h"
@@ -1101,7 +1104,7 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
    VK_OUTARRAY_MAKE_TYPED(VkDeviceFaultAddressInfoEXT, out, pFaultInfo ? pFaultInfo->pAddressInfos : NULL,
                           &pFaultCounts->addressInfoCount);
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    bool vm_fault_occurred = false;

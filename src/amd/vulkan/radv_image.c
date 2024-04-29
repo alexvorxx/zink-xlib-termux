@@ -29,18 +29,22 @@
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 #include "ac_drm_fourcc.h"
+#include "radv_android.h"
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
 #include "radv_debug.h"
 #include "radv_device_memory.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_image_view.h"
-#include "radv_private.h"
 #include "radv_radeon_winsys.h"
+#include "radv_rmv.h"
 #include "radv_video.h"
+#include "radv_wsi.h"
 #include "sid.h"
 #include "vk_debug_utils.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_render_pass.h"
 #include "vk_util.h"
 
@@ -1218,7 +1222,7 @@ radv_destroy_image(struct radv_device *device, const VkAllocationCallbacks *pAll
       radv_bo_destroy(device, &image->vk.base, image->bindings[0].bo);
 
    if (image->owned_memory != VK_NULL_HANDLE) {
-      RADV_FROM_HANDLE(radv_device_memory, mem, image->owned_memory);
+      VK_FROM_HANDLE(radv_device_memory, mem, image->owned_memory);
       radv_free_memory(device, pAllocator, mem);
    }
 
@@ -1292,7 +1296,7 @@ VkResult
 radv_image_create(VkDevice _device, const struct radv_image_create_info *create_info,
                   const VkAllocationCallbacks *alloc, VkImage *pImage, bool is_internal)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const VkImageCreateInfo *pCreateInfo = create_info->vk_info;
@@ -1634,7 +1638,7 @@ radv_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo, const V
    /* Ignore swapchain creation info on Android. Since we don't have an implementation in Mesa,
     * we're guaranteed to access an Android object incorrectly.
     */
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const VkImageSwapchainCreateInfoKHR *swapchain_info =
       vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
@@ -1659,8 +1663,8 @@ radv_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo, const V
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_image, image, _image);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, _image);
 
    if (!image)
       return;
@@ -1671,13 +1675,13 @@ radv_DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks 
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImageMemoryInfo *pBindInfos)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      RADV_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
-      RADV_FROM_HANDLE(radv_image, image, pBindInfos[i].image);
+      VK_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
+      VK_FROM_HANDLE(radv_image, image, pBindInfos[i].image);
       VkBindMemoryStatusKHR *status = (void *)vk_find_struct_const(&pBindInfos[i], BIND_MEMORY_STATUS_KHR);
 
       if (status)
@@ -1753,8 +1757,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetImageSubresourceLayout2KHR(VkDevice _device, VkImage _image, const VkImageSubresource2KHR *pSubresource,
                                    VkSubresourceLayout2KHR *pLayout)
 {
-   RADV_FROM_HANDLE(radv_image, image, _image);
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, _image);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    int level = pSubresource->imageSubresource.mipLevel;
    int layer = pSubresource->imageSubresource.arrayLayer;
@@ -1833,7 +1837,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetImageDrmFormatModifierPropertiesEXT(VkDevice _device, VkImage _image,
                                             VkImageDrmFormatModifierPropertiesEXT *pProperties)
 {
-   RADV_FROM_HANDLE(radv_image, image, _image);
+   VK_FROM_HANDLE(radv_image, image, _image);
 
    pProperties->drmFormatModifier = image->planes[0].surface.modifier;
    return VK_SUCCESS;

@@ -38,7 +38,7 @@
 #include "radv_cs.h"
 #include "radv_debug.h"
 #include "radv_pipeline_cache.h"
-#include "radv_private.h"
+#include "radv_rmv.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
 #include "vk_nir_convert_ycbcr.h"
@@ -286,9 +286,9 @@ VkResult
 radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkComputePipelineCreateInfo *pCreateInfo,
                              const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
-   RADV_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
    struct radv_compute_pipeline *pipeline;
    VkResult result;
 

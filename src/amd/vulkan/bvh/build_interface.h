@@ -128,4 +128,4 @@ struct update_args {
    radv_bvh_geometry_data geom_data;
 };
 
-#endif
+#endif /* BUILD_INTERFACE_H */

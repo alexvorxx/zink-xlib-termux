@@ -30,7 +30,7 @@
 
 #include "compiler/spirv/spirv.h"
 
-#include "radv_private.h"
+struct radv_device;
 
 nir_def *build_addr_to_node(nir_builder *b, nir_def *addr);
 
@@ -164,4 +164,4 @@ struct radv_ray_traversal_args {
 nir_def *radv_build_ray_traversal(struct radv_device *device, nir_builder *b,
                                   const struct radv_ray_traversal_args *args);
 
-#endif
+#endif /* RADV_NIR_RT_COMMON_H */

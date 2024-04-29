@@ -21,7 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
 #include "vk_common_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -33,6 +34,6 @@ metro_exodus_GetSemaphoreCounterValue(VkDevice _device, VkSemaphore _semaphore, 
       return VK_SUCCESS;
    }
 
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return device->layer_dispatch.app.GetSemaphoreCounterValue(_device, _semaphore, pValue);
 }

@@ -37,9 +37,10 @@
 #include "util/u_atomic.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_pipeline_cache.h"
-#include "radv_private.h"
+#include "radv_rmv.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
 #include "vk_nir_convert_ycbcr.h"
@@ -675,7 +676,7 @@ radv_pipeline_import_graphics_info(struct radv_device *device, struct radv_graph
                                    const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                    VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
 {
-   RADV_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
    VkResult result;
 
    /* Mark all states declared dynamic at pipeline creation. */
@@ -818,6 +819,25 @@ radv_pipeline_uses_ds_feedback_loop(const struct radv_graphics_pipeline *pipelin
       create_flags |= state->pipeline_flags;
 
    return (create_flags & VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT) != 0;
+}
+
+void
+radv_get_viewport_xform(const VkViewport *viewport, float scale[3], float translate[3])
+{
+   float x = viewport->x;
+   float y = viewport->y;
+   float half_width = 0.5f * viewport->width;
+   float half_height = 0.5f * viewport->height;
+   double n = viewport->minDepth;
+   double f = viewport->maxDepth;
+
+   scale[0] = half_width;
+   translate[0] = half_width + x;
+   scale[1] = half_height;
+   translate[1] = half_height + y;
+
+   scale[2] = (f - n);
+   translate[2] = n;
 }
 
 static void
@@ -1127,7 +1147,7 @@ radv_pipeline_init_dynamic_state(const struct radv_device *device, struct radv_g
 }
 
 static void
-gfx10_emit_ge_pc_alloc(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, uint32_t oversub_pc_lines)
+gfx10_emit_ge_pc_alloc(struct radeon_cmdbuf *cs, uint32_t oversub_pc_lines)
 {
    radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC,
                           S_030980_OVERSUB_EN(oversub_pc_lines > 0) | S_030980_NUM_PC_LINES(oversub_pc_lines - 1));
@@ -2417,7 +2437,7 @@ radv_pipeline_load_retained_shaders(const struct radv_device *device, struct rad
       return;
 
    for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
-      RADV_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
+      VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
       struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
       radv_pipeline_import_retained_shaders(device, pipeline, gfx_pipeline_lib, stages);
@@ -2829,7 +2849,7 @@ done:
             vk_find_struct_const(pCreateInfo->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
          if (libs_info) {
             for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
-               RADV_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
+               VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
                struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
                if (!gfx_pipeline_lib->base.active_stages)
@@ -2951,7 +2971,7 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    }
    if (pdev->info.gfx_level >= GFX10) {
       uint32_t oversub_pc_lines = late_alloc_wave64 ? pdev->info.pc_lines / 4 : 0;
-      gfx10_emit_ge_pc_alloc(cs, pdev->info.gfx_level, oversub_pc_lines);
+      gfx10_emit_ge_pc_alloc(cs, oversub_pc_lines);
 
       /* Required programming for tessellation (legacy pipeline only). */
       if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
@@ -3139,7 +3159,7 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
       oversub_pc_lines *= oversub_factor;
    }
 
-   gfx10_emit_ge_pc_alloc(cs, pdev->info.gfx_level, oversub_pc_lines);
+   gfx10_emit_ge_pc_alloc(cs, oversub_pc_lines);
 }
 
 static void
@@ -3515,7 +3535,7 @@ radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *ctx_
    if (ps->info.ps.has_pcoord)
       ps_input_cntl[ps_offset++] = S_028644_PT_SPRITE_TEX(1) | S_028644_OFFSET(0x20);
 
-   if (ps->info.ps.input_clips_culls_mask)
+   if (ps->info.ps.input_clips_culls_mask & 0x0f)
       single_slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST0, ps_input_cntl, &ps_offset, true, false, false, false);
 
    if (ps->info.ps.input_clips_culls_mask & 0xf0)
@@ -4097,7 +4117,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
          (pipeline->base.create_flags & VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT) != 0;
 
       for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
-         RADV_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
+         VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
          assert(pipeline_lib->type == RADV_PIPELINE_GRAPHICS_LIB);
@@ -4199,7 +4219,7 @@ radv_graphics_pipeline_create(VkDevice _device, VkPipelineCache _cache, const Vk
                               const struct radv_graphics_pipeline_create_info *extra,
                               const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    struct radv_graphics_pipeline *pipeline;
    VkResult result;
@@ -4266,7 +4286,7 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
          (pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT) != 0;
 
       for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
-         RADV_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
+         VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
          radv_graphics_pipeline_import_lib(device, &pipeline->base, state, pipeline_layout, gfx_pipeline_lib,
@@ -4299,7 +4319,7 @@ radv_graphics_lib_pipeline_create(VkDevice _device, VkPipelineCache _cache,
                                   const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline)
 {
    VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_graphics_lib_pipeline *pipeline;
    VkResult result;
 

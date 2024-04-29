@@ -23,7 +23,6 @@
 
 #include "radv_formats.h"
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "radv_sdma.h"
 #include "vk_format.h"
 
@@ -238,9 +237,9 @@ copy_buffer_to_image(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2 *pCopyBufferToImageInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_buffer, src_buffer, pCopyBufferToImageInfo->srcBuffer);
-   RADV_FROM_HANDLE(radv_image, dst_image, pCopyBufferToImageInfo->dstImage);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_buffer, src_buffer, pCopyBufferToImageInfo->srcBuffer);
+   VK_FROM_HANDLE(radv_image, dst_image, pCopyBufferToImageInfo->dstImage);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
@@ -378,9 +377,9 @@ copy_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2 *pCopyImageToBufferInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_image, src_image, pCopyImageToBufferInfo->srcImage);
-   RADV_FROM_HANDLE(radv_buffer, dst_buffer, pCopyImageToBufferInfo->dstBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_image, src_image, pCopyImageToBufferInfo->srcImage);
+   VK_FROM_HANDLE(radv_buffer, dst_buffer, pCopyImageToBufferInfo->dstBuffer);
 
    for (unsigned r = 0; r < pCopyImageToBufferInfo->regionCount; r++) {
       copy_image_to_buffer(cmd_buffer, dst_buffer, src_image, pCopyImageToBufferInfo->srcImageLayout,
@@ -617,9 +616,9 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyImage2(VkCommandBuffer commandBuffer, const VkCopyImageInfo2 *pCopyImageInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_image, src_image, pCopyImageInfo->srcImage);
-   RADV_FROM_HANDLE(radv_image, dst_image, pCopyImageInfo->dstImage);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_image, src_image, pCopyImageInfo->srcImage);
+   VK_FROM_HANDLE(radv_image, dst_image, pCopyImageInfo->dstImage);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 

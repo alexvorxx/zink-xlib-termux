@@ -24,7 +24,9 @@
 #ifndef RADV_DEBUG_H
 #define RADV_DEBUG_H
 
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_instance.h"
+#include "radv_physical_device.h"
 
 /* Please keep docs/envvars.rst up-to-date when you add/remove options. */
 enum {
@@ -120,4 +122,4 @@ radv_device_fault_detection_enabled(const struct radv_device *device)
    return instance->debug_flags & RADV_DEBUG_HANG;
 }
 
-#endif
+#endif /* RADV_DEBUG_H */

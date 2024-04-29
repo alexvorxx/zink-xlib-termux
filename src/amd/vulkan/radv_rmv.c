@@ -31,12 +31,14 @@
 #include <stdlib.h>
 #include "ac_gpu_info.h"
 #include "radv_buffer.h"
+#include "radv_descriptor_set.h"
 #include "radv_device_memory.h"
 #include "radv_event.h"
 #include "radv_image.h"
+#include "radv_pipeline_graphics.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_query.h"
+#include "radv_rmv.h"
 
 #define RADV_FTRACE_INSTANCE_PATH "/sys/kernel/tracing/instances/amd_rmv"
 
@@ -493,7 +495,7 @@ radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool i
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_device_memory, memory, heap);
+   VK_FROM_HANDLE(radv_device_memory, memory, heap);
 
    /* Do not log zero-sized device memory objects. */
    if (!memory->alloc_size)
@@ -566,7 +568,7 @@ radv_rmv_log_buffer_bind(struct radv_device *device, VkBuffer _buffer)
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_buffer, buffer, _buffer);
+   VK_FROM_HANDLE(radv_buffer, buffer, _buffer);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    log_resource_bind_locked(device, (uint64_t)_buffer, buffer->bo, buffer->offset, buffer->vk.size);
    simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
@@ -579,7 +581,7 @@ radv_rmv_log_image_create(struct radv_device *device, const VkImageCreateInfo *c
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_image, image, _image);
+   VK_FROM_HANDLE(radv_image, image, _image);
 
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    struct vk_rmv_resource_create_token token = {0};
@@ -616,7 +618,7 @@ radv_rmv_log_image_bind(struct radv_device *device, VkImage _image)
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_image, image, _image);
+   VK_FROM_HANDLE(radv_image, image, _image);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    log_resource_bind_locked(device, (uint64_t)_image, image->bindings[0].bo, image->bindings[0].offset, image->size);
    simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
@@ -628,7 +630,7 @@ radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool _pool)
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_query_pool, pool, _pool);
+   VK_FROM_HANDLE(radv_query_pool, pool, _pool);
 
    if (pool->vk.query_type != VK_QUERY_TYPE_OCCLUSION && pool->vk.query_type != VK_QUERY_TYPE_PIPELINE_STATISTICS &&
        pool->vk.query_type != VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT)
@@ -775,7 +777,7 @@ radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDescript
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_descriptor_pool, pool, _pool);
+   VK_FROM_HANDLE(radv_descriptor_pool, pool, _pool);
 
    if (pool->bo)
       vk_rmv_log_cpu_map(&device->vk, pool->bo->va, false);
@@ -917,7 +919,7 @@ radv_rmv_log_event_create(struct radv_device *device, VkEvent _event, VkEventCre
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   RADV_FROM_HANDLE(radv_event, event, _event);
+   VK_FROM_HANDLE(radv_event, event, _event);
 
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    struct vk_rmv_resource_create_token create_token = {0};

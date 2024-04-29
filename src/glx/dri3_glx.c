@@ -78,6 +78,7 @@
 #include "loader.h"
 #include "loader_dri_helper.h"
 #include "dri2.h"
+#include "util/u_debug.h"
 
 static struct dri3_drawable *
 loader_drawable_to_dri3_drawable(struct loader_dri3_drawable *draw) {
@@ -836,7 +837,7 @@ dri3_create_screen(int screen, struct glx_display * priv)
       goto handle_error;
    }
 
-   if (!strcmp(driverName, "zink")) {
+   if (!strcmp(driverName, "zink") && !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false)) {
       return_zink = true;
       goto handle_error;
    }

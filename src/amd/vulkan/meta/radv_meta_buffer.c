@@ -1,4 +1,5 @@
 #include "nir/nir_builder.h"
+#include "radv_cp_dma.h"
 #include "radv_debug.h"
 #include "radv_meta.h"
 #include "radv_sdma.h"
@@ -282,8 +283,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset, VkDeviceSize fillSize,
                    uint32_t data)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_buffer, dst_buffer, dstBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_buffer, dst_buffer, dstBuffer);
 
    fillSize = vk_buffer_range(&dst_buffer->vk, dstOffset, fillSize) & ~3ull;
 
@@ -313,9 +314,9 @@ copy_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *src_buffer, 
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyBuffer2(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2 *pCopyBufferInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_buffer, src_buffer, pCopyBufferInfo->srcBuffer);
-   RADV_FROM_HANDLE(radv_buffer, dst_buffer, pCopyBufferInfo->dstBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_buffer, src_buffer, pCopyBufferInfo->srcBuffer);
+   VK_FROM_HANDLE(radv_buffer, dst_buffer, pCopyBufferInfo->dstBuffer);
 
    for (unsigned r = 0; r < pCopyBufferInfo->regionCount; r++) {
       copy_buffer(cmd_buffer, src_buffer, dst_buffer, &pCopyBufferInfo->pRegions[r]);
@@ -349,8 +350,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset, VkDeviceSize dataSize,
                      const void *pData)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_buffer, dst_buffer, dstBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_buffer, dst_buffer, dstBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    uint64_t va = radv_buffer_get_va(dst_buffer->bo);
    va += dstOffset + dst_buffer->offset;

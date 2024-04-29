@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_private.h"
+#include "radv_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 quantic_dream_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInfo)

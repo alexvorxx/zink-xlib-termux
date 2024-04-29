@@ -25,13 +25,23 @@
  * IN THE SOFTWARE.
  */
 
+#ifdef HAVE_VALGRIND
+#include <memcheck.h>
+#include <valgrind.h>
+#define VG(x) x
+#else
+#define VG(x) ((void)0)
+#endif
+
 #include "radv_instance.h"
 #include "radv_debug.h"
-#include "radv_private.h"
+#include "radv_entrypoints.h"
+#include "radv_wsi.h"
 
 #include "util/driconf.h"
 
 #include "vk_instance.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_DEBUG_NO_FAST_CLEARS},
@@ -375,7 +385,7 @@ radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationC
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyInstance(VkInstance _instance, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_instance, instance, _instance);
+   VK_FROM_HANDLE(radv_instance, instance, _instance);
 
    if (!instance)
       return;
@@ -421,7 +431,7 @@ radv_EnumerateInstanceLayerProperties(uint32_t *pPropertyCount, VkLayerPropertie
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 radv_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 {
-   RADV_FROM_HANDLE(vk_instance, instance, _instance);
+   VK_FROM_HANDLE(vk_instance, instance, _instance);
    return vk_instance_get_proc_addr(instance, &radv_instance_entrypoints, pName);
 }
 

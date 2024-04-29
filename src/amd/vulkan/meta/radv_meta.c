@@ -24,6 +24,7 @@
  */
 
 #include "radv_meta.h"
+#include "radv_printf.h"
 
 #include "vk_common_entrypoints.h"
 #include "vk_pipeline_cache.h"

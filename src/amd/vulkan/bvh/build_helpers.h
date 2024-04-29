@@ -727,4 +727,4 @@ should_execute_phase()
    for (; task_index != TASK_INDEX_INVALID && should_execute_phase(); task_index = fetch_task(header, true))
 #endif
 
-#endif
+#endif /* BUILD_HELPERS_H */

@@ -29,9 +29,11 @@
 
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_image.h"
-#include "radv_private.h"
+
+#include "vk_log.h"
 
 void
 radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFormat vk_format, unsigned offset,
@@ -105,7 +107,7 @@ void
 radv_buffer_view_init(struct radv_buffer_view *view, struct radv_device *device,
                       const VkBufferViewCreateInfo *pCreateInfo)
 {
-   RADV_FROM_HANDLE(radv_buffer, buffer, pCreateInfo->buffer);
+   VK_FROM_HANDLE(radv_buffer, buffer, pCreateInfo->buffer);
    uint64_t va = radv_buffer_get_va(buffer->bo) + buffer->offset;
 
    vk_buffer_view_init(&device->vk, &view->vk, pCreateInfo);
@@ -125,7 +127,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateBufferView(VkDevice _device, const VkBufferViewCreateInfo *pCreateInfo,
                       const VkAllocationCallbacks *pAllocator, VkBufferView *pView)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_buffer_view *view;
 
    view = vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*view), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
@@ -142,8 +144,8 @@ radv_CreateBufferView(VkDevice _device, const VkBufferViewCreateInfo *pCreateInf
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyBufferView(VkDevice _device, VkBufferView bufferView, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_buffer_view, view, bufferView);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_buffer_view, view, bufferView);
 
    if (!view)
       return;

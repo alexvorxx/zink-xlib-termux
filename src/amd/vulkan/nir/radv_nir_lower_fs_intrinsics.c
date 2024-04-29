@@ -26,8 +26,9 @@
 #include "nir.h"
 #include "nir_builder.h"
 #include "radv_nir.h"
-#include "radv_private.h"
-
+#include "radv_shader.h"
+#include "radv_shader_args.h"
+#include "radv_shader_info.h"
 bool
 radv_nir_lower_fs_intrinsics(nir_shader *nir, const struct radv_shader_stage *fs_stage,
                              const struct radv_graphics_state_key *gfx_state)

@@ -510,7 +510,7 @@ d3d12_lower_state_vars(nir_shader *nir, struct d3d12_shader *shader)
     * exists it will be replaced by using the same binding.
     * In the event there are no other UBO's, use binding slot 1 to
     * be consistent with other non-default UBO's */
-   unsigned binding = MAX2(nir->info.num_ubos, 1);
+   unsigned binding = MAX2(nir->info.num_ubos, nir->info.first_ubo_is_default_ubo ? 1 : 0);
 
    nir_foreach_variable_with_modes_safe(var, nir, nir_var_uniform) {
       if (var->num_state_slots == 1 &&
@@ -891,10 +891,10 @@ split_varying_accesses(nir_builder *b, nir_intrinsic_instr *intr,
          unsigned orig_write_mask = nir_intrinsic_write_mask(intr);
          nir_def *sub_value = nir_channels(b, intr->src[1].ssa, mask_num_channels << first_channel);
 
-         first_channel += var_state->subvars[subvar].num_components;
-
          unsigned new_write_mask = (orig_write_mask >> first_channel) & mask_num_channels;
          nir_build_store_deref(b, &new_path->def, sub_value, new_write_mask, nir_intrinsic_access(intr));
+
+         first_channel += var_state->subvars[subvar].num_components;
       } else {
          /* The load path only handles splitting dvec3/dvec4 */
          assert(subvar == 0 || subvar == 1);

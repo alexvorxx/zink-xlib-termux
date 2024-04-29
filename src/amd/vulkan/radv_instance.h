@@ -32,6 +32,12 @@
 
 #include "vk_instance.h"
 
+#ifdef ANDROID_STRICT
+#define RADV_API_VERSION VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION)
+#else
+#define RADV_API_VERSION VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION)
+#endif
+
 enum radv_trace_mode {
    /** Radeon GPU Profiler */
    RADV_TRACE_MODE_RGP = 1 << VK_TRACE_MODE_COUNT,

@@ -1812,7 +1812,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
     */
    NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
    NIR_PASS_V(nir, nir_divergence_analysis);
-   OPT(nir_opt_remove_phis);
 
    OPT(nir_convert_from_ssa, true);
 
@@ -1820,8 +1819,6 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    if (OPT(nir_opt_rematerialize_compares))
       OPT(nir_opt_dce);
-
-   OPT(nir_opt_dce);
 
    /* The mesh stages require this pass to be called at the last minute,
     * but if anything is done by it, it will also constant fold, and that

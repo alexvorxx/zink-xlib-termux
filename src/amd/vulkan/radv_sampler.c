@@ -25,9 +25,12 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_private.h"
+#include "vk_log.h"
 
 #include "radv_sampler.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
+#include "radv_physical_device.h"
 
 static unsigned
 radv_tex_wrap(VkSamplerAddressMode address_mode)
@@ -239,8 +242,8 @@ radv_init_sampler(struct radv_device *device, struct radv_sampler *sampler, cons
                         S_008F30_ANISO_THRESHOLD(max_aniso_ratio >> 1) | S_008F30_ANISO_BIAS(max_aniso_ratio) |
                         S_008F30_DISABLE_CUBE_WRAP(disable_cube_wrap) | S_008F30_COMPAT_MODE(compat_mode) |
                         S_008F30_FILTER_MODE(filter_mode) | S_008F30_TRUNC_COORD(trunc_coord));
-   sampler->state[1] = (S_008F34_MIN_LOD(radv_float_to_ufixed(CLAMP(pCreateInfo->minLod, 0, 15), 8)) |
-                        S_008F34_MAX_LOD(radv_float_to_ufixed(CLAMP(pCreateInfo->maxLod, 0, 15), 8)) |
+   sampler->state[1] = (S_008F34_MIN_LOD(util_unsigned_fixed(CLAMP(pCreateInfo->minLod, 0, 15), 8)) |
+                        S_008F34_MAX_LOD(util_unsigned_fixed(CLAMP(pCreateInfo->maxLod, 0, 15), 8)) |
                         S_008F34_PERF_MIP(max_aniso_ratio ? max_aniso_ratio + 6 : 0));
    sampler->state[2] = (S_008F38_XY_MAG_FILTER(radv_tex_filter(pCreateInfo->magFilter, max_aniso)) |
                         S_008F38_XY_MIN_FILTER(radv_tex_filter(pCreateInfo->minFilter, max_aniso)) |
@@ -248,11 +251,11 @@ radv_init_sampler(struct radv_device *device, struct radv_sampler *sampler, cons
    sampler->state[3] = S_008F3C_BORDER_COLOR_TYPE(radv_tex_bordercolor(border_color));
 
    if (pdev->info.gfx_level >= GFX10) {
-      sampler->state[2] |= S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -32, 31), 8)) |
+      sampler->state[2] |= S_008F38_LOD_BIAS(util_signed_fixed(CLAMP(pCreateInfo->mipLodBias, -32, 31), 8)) |
                            S_008F38_ANISO_OVERRIDE_GFX10(instance->drirc.disable_aniso_single_level);
    } else {
       sampler->state[2] |=
-         S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -16, 16), 8)) |
+         S_008F38_LOD_BIAS(util_signed_fixed(CLAMP(pCreateInfo->mipLodBias, -16, 16), 8)) |
          S_008F38_DISABLE_LSB_CEIL(pdev->info.gfx_level <= GFX8) | S_008F38_FILTER_PREC_FIX(1) |
          S_008F38_ANISO_OVERRIDE_GFX8(instance->drirc.disable_aniso_single_level && pdev->info.gfx_level >= GFX8);
    }
@@ -268,7 +271,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateSampler(VkDevice _device, const VkSamplerCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                    VkSampler *pSampler)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_sampler *sampler;
 
    sampler = vk_sampler_create(&device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
@@ -285,8 +288,8 @@ radv_CreateSampler(VkDevice _device, const VkSamplerCreateInfo *pCreateInfo, con
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroySampler(VkDevice _device, VkSampler _sampler, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_sampler, sampler, _sampler);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_sampler, sampler, _sampler);
 
    if (!sampler)
       return;

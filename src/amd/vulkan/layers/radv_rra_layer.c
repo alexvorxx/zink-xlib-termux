@@ -24,7 +24,6 @@
 #include "meta/radv_meta.h"
 #include "util/u_process.h"
 #include "radv_event.h"
-#include "radv_private.h"
 #include "radv_rra.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"
@@ -32,7 +31,7 @@
 VKAPI_ATTR VkResult VKAPI_CALL
 rra_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 {
-   RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   VK_FROM_HANDLE(radv_queue, queue, _queue);
    struct radv_device *device = radv_queue_device(queue);
 
    if (device->rra_trace.triggered) {
@@ -91,7 +90,7 @@ rra_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 static VkResult
 rra_init_accel_struct_data_buffer(VkDevice vk_device, struct radv_rra_accel_struct_data *data)
 {
-   RADV_FROM_HANDLE(radv_device, device, vk_device);
+   VK_FROM_HANDLE(radv_device, device, vk_device);
    VkBufferCreateInfo buffer_create_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = data->size,
@@ -136,8 +135,8 @@ rra_CreateAccelerationStructureKHR(VkDevice _device, const VkAccelerationStructu
                                    const VkAllocationCallbacks *pAllocator,
                                    VkAccelerationStructureKHR *pAccelerationStructure)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_buffer, buffer, pCreateInfo->buffer);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_buffer, buffer, pCreateInfo->buffer);
 
    VkResult result = device->layer_dispatch.rra.CreateAccelerationStructureKHR(_device, pCreateInfo, pAllocator,
                                                                                pAccelerationStructure);
@@ -145,7 +144,7 @@ rra_CreateAccelerationStructureKHR(VkDevice _device, const VkAccelerationStructu
    if (result != VK_SUCCESS)
       return result;
 
-   RADV_FROM_HANDLE(vk_acceleration_structure, structure, *pAccelerationStructure);
+   VK_FROM_HANDLE(vk_acceleration_structure, structure, *pAccelerationStructure);
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
    struct radv_rra_accel_struct_data *data = calloc(1, sizeof(struct radv_rra_accel_struct_data));
@@ -195,7 +194,7 @@ static void
 handle_accel_struct_write(VkCommandBuffer commandBuffer, struct vk_acceleration_structure *accel_struct,
                           struct radv_rra_accel_struct_data *data)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    VkMemoryBarrier2 barrier = {
@@ -246,14 +245,14 @@ rra_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t in
                                       const VkAccelerationStructureBuildGeometryInfoKHR *pInfos,
                                       const VkAccelerationStructureBuildRangeInfoKHR *const *ppBuildRangeInfos)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->layer_dispatch.rra.CmdBuildAccelerationStructuresKHR(commandBuffer, infoCount, pInfos, ppBuildRangeInfos);
 
    simple_mtx_lock(&device->rra_trace.data_mtx);
    for (uint32_t i = 0; i < infoCount; ++i) {
-      RADV_FROM_HANDLE(vk_acceleration_structure, structure, pInfos[i].dstAccelerationStructure);
+      VK_FROM_HANDLE(vk_acceleration_structure, structure, pInfos[i].dstAccelerationStructure);
       struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
 
       assert(entry);
@@ -267,14 +266,14 @@ rra_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t in
 VKAPI_ATTR void VKAPI_CALL
 rra_CmdCopyAccelerationStructureKHR(VkCommandBuffer commandBuffer, const VkCopyAccelerationStructureInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->layer_dispatch.rra.CmdCopyAccelerationStructureKHR(commandBuffer, pInfo);
 
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
-   RADV_FROM_HANDLE(vk_acceleration_structure, structure, pInfo->dst);
+   VK_FROM_HANDLE(vk_acceleration_structure, structure, pInfo->dst);
    struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
 
    assert(entry);
@@ -289,14 +288,14 @@ VKAPI_ATTR void VKAPI_CALL
 rra_CmdCopyMemoryToAccelerationStructureKHR(VkCommandBuffer commandBuffer,
                                             const VkCopyMemoryToAccelerationStructureInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    device->layer_dispatch.rra.CmdCopyMemoryToAccelerationStructureKHR(commandBuffer, pInfo);
 
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
-   RADV_FROM_HANDLE(vk_acceleration_structure, structure, pInfo->dst);
+   VK_FROM_HANDLE(vk_acceleration_structure, structure, pInfo->dst);
    struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
 
    assert(entry);
@@ -314,10 +313,10 @@ rra_DestroyAccelerationStructureKHR(VkDevice _device, VkAccelerationStructureKHR
    if (!_structure)
       return;
 
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
-   RADV_FROM_HANDLE(vk_acceleration_structure, structure, _structure);
+   VK_FROM_HANDLE(vk_acceleration_structure, structure, _structure);
 
    struct hash_entry *entry = _mesa_hash_table_search(device->rra_trace.accel_structs, structure);
 
@@ -337,7 +336,7 @@ rra_DestroyAccelerationStructureKHR(VkDevice _device, VkAccelerationStructureKHR
 VKAPI_ATTR VkResult VKAPI_CALL
 rra_QueueSubmit2KHR(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSubmits, VkFence _fence)
 {
-   RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   VK_FROM_HANDLE(radv_queue, queue, _queue);
    struct radv_device *device = radv_queue_device(queue);
 
    VkResult result = device->layer_dispatch.rra.QueueSubmit2KHR(_queue, submitCount, pSubmits, _fence);
@@ -350,7 +349,7 @@ rra_QueueSubmit2KHR(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *p
 
    for (uint32_t submit_index = 0; submit_index < submitCount; submit_index++) {
       for (uint32_t i = 0; i < pSubmits[submit_index].commandBufferInfoCount; i++) {
-         RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, pSubmits[submit_index].pCommandBufferInfos[i].commandBuffer);
+         VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, pSubmits[submit_index].pCommandBufferInfos[i].commandBuffer);
          uint32_t trace_count =
             util_dynarray_num_elements(&cmd_buffer->ray_history, struct radv_rra_ray_history_data *);
          if (!trace_count)

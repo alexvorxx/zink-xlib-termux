@@ -44,7 +44,8 @@ EXCLUDED_COMMANDS = [
 TEMPLATE = Template(COPYRIGHT + """
 /* This file generated from ${filename}, don't edit directly. */
 
-#include "radv_private.h"
+#include "radv_cmd_buffer.h"
+#include "radv_entrypoints.h"
 
 #define ANNOTATE(command, ...) \
    struct radv_cmd_buffer *cmd_buffer = radv_cmd_buffer_from_handle(commandBuffer); \

@@ -23,15 +23,17 @@
  */
 
 #include "radv_formats.h"
+#include "radv_android.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_image.h"
-#include "radv_private.h"
 
 #include "sid.h"
 
 #include "vk_android.h"
 #include "vk_enum_defines.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 #include "util/format_r11g11b10f.h"
@@ -1352,7 +1354,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice, VkFormat format,
                                         VkFormatProperties2 *pFormatProperties)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    VkFormatProperties3 format_props;
 
    radv_physical_device_get_format_properties(pdev, format, &format_props);
@@ -1667,7 +1669,7 @@ radv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
                                              const VkPhysicalDeviceImageFormatInfo2 *base_info,
                                              VkImageFormatProperties2 *base_props)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const VkPhysicalDeviceExternalImageFormatInfo *external_info = NULL;
    VkExternalImageFormatProperties *external_props = NULL;
@@ -1840,7 +1842,7 @@ radv_GetPhysicalDeviceSparseImageFormatProperties2(VkPhysicalDevice physicalDevi
                                                    uint32_t *pPropertyCount,
                                                    VkSparseImageFormatProperties2 *pProperties)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    VkResult result;
 
    if (pFormatInfo->samples > VK_SAMPLE_COUNT_1_BIT) {
@@ -1876,8 +1878,8 @@ radv_GetImageSparseMemoryRequirements2(VkDevice _device, const VkImageSparseMemo
                                        uint32_t *pSparseMemoryRequirementCount,
                                        VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_image, image, pInfo->image);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, pInfo->image);
    struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (!(image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)) {

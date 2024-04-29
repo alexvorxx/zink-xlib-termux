@@ -46,6 +46,11 @@
 #include <xf86drm.h>
 #endif
 
+/* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
+#if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
+#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
+#endif
+
 struct radv_binning_settings {
    unsigned context_states_per_bin;    /* allowed range: [1, 6] */
    unsigned persistent_states_per_bin; /* allowed range: [1, 32] */
@@ -219,17 +224,17 @@ radv_has_pops(const struct radv_physical_device *pdev)
 }
 
 static inline bool
-radv_has_uvd(struct radv_physical_device *phys_dev)
+radv_has_uvd(struct radv_physical_device *pdev)
 {
-   enum radeon_family family = phys_dev->info.family;
+   enum radeon_family family = pdev->info.family;
    /* Only support UVD on TONGA+ */
    if (family < CHIP_TONGA)
       return false;
-   return phys_dev->info.ip[AMD_IP_UVD].num_queues > 0;
+   return pdev->info.ip[AMD_IP_UVD].num_queues > 0;
 }
 
 static inline enum radv_queue_family
-vk_queue_to_radv(const struct radv_physical_device *phys_dev, int queue_family_index)
+vk_queue_to_radv(const struct radv_physical_device *pdev, int queue_family_index)
 {
    if (queue_family_index == VK_QUEUE_FAMILY_EXTERNAL || queue_family_index == VK_QUEUE_FAMILY_FOREIGN_EXT)
       return RADV_QUEUE_FOREIGN;
@@ -237,7 +242,7 @@ vk_queue_to_radv(const struct radv_physical_device *phys_dev, int queue_family_i
       return RADV_QUEUE_IGNORED;
 
    assert(queue_family_index < RADV_MAX_QUEUE_FAMILIES);
-   return phys_dev->vk_queue_to_radv[queue_family_index];
+   return pdev->vk_queue_to_radv[queue_family_index];
 }
 
 /**

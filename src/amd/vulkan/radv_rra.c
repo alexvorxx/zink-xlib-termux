@@ -25,7 +25,9 @@
 #include "bvh/bvh.h"
 #include "util/half_float.h"
 #include "amd_family.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
+#include "radv_physical_device.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"
 
@@ -1044,7 +1046,7 @@ struct rra_copy_context {
 static VkResult
 rra_copy_context_init(struct rra_copy_context *ctx)
 {
-   RADV_FROM_HANDLE(radv_device, device, ctx->device);
+   VK_FROM_HANDLE(radv_device, device, ctx->device);
    if (device->rra_trace.copy_after_build)
       return VK_SUCCESS;
 
@@ -1122,7 +1124,7 @@ fail_pool:
 static void
 rra_copy_context_finish(struct rra_copy_context *ctx)
 {
-   RADV_FROM_HANDLE(radv_device, device, ctx->device);
+   VK_FROM_HANDLE(radv_device, device, ctx->device);
    if (device->rra_trace.copy_after_build)
       return;
 
@@ -1317,7 +1319,7 @@ static_assert(sizeof(struct rra_ray_history_timestamp_token) == 8,
 VkResult
 radv_rra_dump_trace(VkQueue vk_queue, char *filename)
 {
-   RADV_FROM_HANDLE(radv_queue, queue, vk_queue);
+   VK_FROM_HANDLE(radv_queue, queue, vk_queue);
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    VkDevice vk_device = radv_device_to_handle(device);

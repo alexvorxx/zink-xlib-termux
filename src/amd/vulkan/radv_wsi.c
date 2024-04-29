@@ -27,7 +27,6 @@
 #include "meta/radv_meta.h"
 #include "util/macros.h"
 #include "radv_debug.h"
-#include "radv_private.h"
 #include "vk_fence.h"
 #include "vk_semaphore.h"
 #include "vk_util.h"
@@ -36,7 +35,7 @@
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 radv_wsi_proc_addr(VkPhysicalDevice physicalDevice, const char *pName)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    return vk_instance_get_proc_addr_unchecked(&instance->vk, pName);
 }
@@ -44,8 +43,8 @@ radv_wsi_proc_addr(VkPhysicalDevice physicalDevice, const char *pName)
 static void
 radv_wsi_set_memory_ownership(VkDevice _device, VkDeviceMemory _mem, VkBool32 ownership)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_device_memory, mem, _mem);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device_memory, mem, _mem);
 
    if (device->use_global_bo_list) {
       device->ws->buffer_make_resident(device->ws, mem->bo, ownership);
@@ -55,7 +54,7 @@ radv_wsi_set_memory_ownership(VkDevice _device, VkDeviceMemory _mem, VkBool32 ow
 static VkQueue
 radv_wsi_get_prime_blit_queue(VkDevice _device)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
 

@@ -2787,6 +2787,33 @@ genX(cmd_buffer_begin_companion)(struct anv_cmd_buffer *cmd_buffer,
    }
 }
 
+static void
+genX(cmd_buffer_set_protected_memory)(struct anv_cmd_buffer *cmd_buffer,
+                                      bool enabled)
+{
+#if GFX_VER >= 12
+   if (enabled) {
+      anv_batch_emit(&cmd_buffer->batch, GENX(MI_SET_APPID), appid) {
+         /* Default value for single session. */
+         appid.ProtectedMemoryApplicationID = cmd_buffer->device->protected_session_id;
+         appid.ProtectedMemoryApplicationIDType = DISPLAY_APP;
+      }
+   }
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.PipeControlFlushEnable = true;
+      pc.DCFlushEnable = true;
+      pc.RenderTargetCacheFlushEnable = true;
+      pc.CommandStreamerStallEnable = true;
+      if (enabled)
+         pc.ProtectedMemoryEnable = true;
+      else
+         pc.ProtectedMemoryDisable = true;
+   }
+#else
+   unreachable("Protected content not supported");
+#endif
+}
+
 VkResult
 genX(BeginCommandBuffer)(
     VkCommandBuffer                             commandBuffer,
@@ -2861,19 +2888,8 @@ genX(BeginCommandBuffer)(
 
 #if GFX_VER >= 12
    if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
-       cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT) {
-      anv_batch_emit(&cmd_buffer->batch, GENX(MI_SET_APPID), appid) {
-         /* Default value for single session. */
-         appid.ProtectedMemoryApplicationID = cmd_buffer->device->protected_session_id;
-         appid.ProtectedMemoryApplicationIDType = DISPLAY_APP;
-      }
-      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-         pc.CommandStreamerStallEnable = true;
-         pc.DCFlushEnable = true;
-         pc.RenderTargetCacheFlushEnable = true;
-         pc.ProtectedMemoryEnable = true;
-      }
-   }
+       cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
+      genX(cmd_buffer_set_protected_memory)(cmd_buffer, true);
 #endif
 
    if (cmd_buffer->device->vk.enabled_extensions.EXT_descriptor_buffer) {
@@ -3092,14 +3108,8 @@ end_command_buffer(struct anv_cmd_buffer *cmd_buffer)
 
 #if GFX_VER >= 12
    if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
-       cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT) {
-      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-         pc.CommandStreamerStallEnable = true;
-         pc.DCFlushEnable = true;
-         pc.RenderTargetCacheFlushEnable = true;
-         pc.ProtectedMemoryDisable = true;
-      }
-   }
+       cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
+      genX(cmd_buffer_set_protected_memory)(cmd_buffer, false);
 #endif
 
    trace_intel_end_cmd_buffer(&cmd_buffer->trace, cmd_buffer->vk.level);
@@ -3196,6 +3206,63 @@ genX(CmdExecuteCommands)(
 
    UNUSED enum anv_cmd_descriptor_buffer_mode db_mode =
       container->state.current_db_mode;
+
+   /* Do a first pass to copy the surface state content of the render targets
+    * if needed.
+    */
+   bool need_surface_state_copy = false;
+   for (uint32_t i = 0; i < commandBufferCount; i++) {
+      ANV_FROM_HANDLE(anv_cmd_buffer, secondary, pCmdBuffers[i]);
+
+      if (secondary->usage_flags &
+          VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
+         need_surface_state_copy = true;
+         break;
+      }
+   }
+
+   if (need_surface_state_copy) {
+      if (container->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
+         genX(cmd_buffer_set_protected_memory)(container, false);
+
+      /* The memcpy will take care of the 3D preemption requirements. */
+      struct anv_memcpy_state memcpy_state;
+      genX(emit_so_memcpy_init)(&memcpy_state, device, &container->batch);
+
+      for (uint32_t i = 0; i < commandBufferCount; i++) {
+         ANV_FROM_HANDLE(anv_cmd_buffer, secondary, pCmdBuffers[i]);
+
+         assert(secondary->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+         assert(!anv_batch_has_error(&secondary->batch));
+
+         if (secondary->usage_flags &
+             VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
+            /* If we're continuing a render pass from the container, we need
+             * to copy the surface states for the current subpass into the
+             * storage we allocated for them in BeginCommandBuffer.
+             */
+            struct anv_state src_state = container->state.gfx.att_states;
+            struct anv_state dst_state = secondary->state.gfx.att_states;
+            assert(src_state.alloc_size == dst_state.alloc_size);
+
+            genX(emit_so_memcpy)(
+               &memcpy_state,
+               anv_state_pool_state_address(&device->internal_surface_state_pool,
+                                            dst_state),
+               anv_state_pool_state_address(&device->internal_surface_state_pool,
+                                            src_state),
+               src_state.alloc_size);
+         }
+      }
+      genX(emit_so_memcpy_fini)(&memcpy_state);
+
+      if (container->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
+         genX(cmd_buffer_set_protected_memory)(container, true);
+   }
+
+   /* Ensure preemption is enabled (assumption for all secondary) */
+   genX(cmd_buffer_set_preemption)(container, true);
+
    for (uint32_t i = 0; i < commandBufferCount; i++) {
       ANV_FROM_HANDLE(anv_cmd_buffer, secondary, pCmdBuffers[i]);
 
@@ -3213,25 +3280,6 @@ genX(CmdExecuteCommands)(
             mi_store(&b, mi_reg64(ANV_PREDICATE_RESULT_REG),
                          mi_imm(UINT64_MAX));
          }
-      }
-
-      if (secondary->usage_flags &
-          VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
-         /* If we're continuing a render pass from the container, we need to
-          * copy the surface states for the current subpass into the storage
-          * we allocated for them in BeginCommandBuffer.
-          */
-         struct anv_state src_state = container->state.gfx.att_states;
-         struct anv_state dst_state = secondary->state.gfx.att_states;
-         assert(src_state.alloc_size == dst_state.alloc_size);
-
-         genX(cmd_buffer_so_memcpy)(
-            container,
-            anv_state_pool_state_address(&device->internal_surface_state_pool,
-                                         dst_state),
-            anv_state_pool_state_address(&device->internal_surface_state_pool,
-                                         src_state),
-            src_state.alloc_size);
       }
 
       anv_cmd_buffer_add_secondary(container, secondary);

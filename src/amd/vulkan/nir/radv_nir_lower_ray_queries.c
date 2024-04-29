@@ -648,6 +648,8 @@ lower_rq_terminate(nir_builder *b, nir_def *index, nir_intrinsic_instr *instr, s
 bool
 radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
    bool progress = false;
    struct hash_table *query_ht = _mesa_pointer_hash_table_create(NULL);
 
@@ -655,7 +657,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
       if (!var->data.ray_query)
          continue;
 
-      lower_ray_query(shader, var, query_ht, device->physical_device->max_shared_size);
+      lower_ray_query(shader, var, query_ht, pdev->max_shared_size);
 
       progress = true;
    }
@@ -670,7 +672,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
          if (!var->data.ray_query)
             continue;
 
-         lower_ray_query(shader, var, query_ht, device->physical_device->max_shared_size);
+         lower_ray_query(shader, var, query_ht, pdev->max_shared_size);
 
          progress = true;
       }
@@ -710,7 +712,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
                lower_rq_generate_intersection(&builder, index, intrinsic, vars);
                break;
             case nir_intrinsic_rq_initialize:
-               lower_rq_initialize(&builder, index, intrinsic, vars, device->instance);
+               lower_rq_initialize(&builder, index, intrinsic, vars, instance);
                break;
             case nir_intrinsic_rq_load:
                new_dest = lower_rq_load(device, &builder, index, intrinsic, vars);

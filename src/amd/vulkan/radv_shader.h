@@ -118,6 +118,7 @@ struct radv_ps_epilog_key {
    bool export_stencil;
    bool export_sample_mask;
    bool alpha_to_coverage_via_mrtz;
+   bool alpha_to_one;
 };
 
 struct radv_spirv_to_nir_options {
@@ -240,19 +241,22 @@ enum radv_ud_index {
    /* We might not know the previous stage when compiling a geometry shader, so we just
     * declare both TES and VS user SGPRs.
     */
-   AC_UD_TES_STATE = AC_UD_VS_MAX_UD,
-   AC_UD_TES_MAX_UD,
+   AC_UD_TES_MAX_UD = AC_UD_TCS_MAX_UD,
    AC_UD_MAX_UD = AC_UD_CS_MAX_UD,
 };
 
 #define SET_SGPR_FIELD(field, value) (((unsigned)(value)&field##__MASK) << field##__SHIFT)
 
-#define TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS__SHIFT 0
-#define TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS__MASK  0x3f
-#define TCS_OFFCHIP_LAYOUT_NUM_PATCHES__SHIFT          6
-#define TCS_OFFCHIP_LAYOUT_NUM_PATCHES__MASK           0x3f
-#define TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE__SHIFT   12
-#define TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE__MASK    0xff /* max 32 * 4 + 1 (to reduce LDS bank conflicts) */
+#define TCS_OFFCHIP_LAYOUT_NUM_PATCHES__SHIFT          0
+#define TCS_OFFCHIP_LAYOUT_NUM_PATCHES__MASK           0x7f
+#define TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS__SHIFT 12
+#define TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS__MASK  0x1f
+#define TCS_OFFCHIP_LAYOUT_OUT_PATCH_CP__SHIFT         7
+#define TCS_OFFCHIP_LAYOUT_OUT_PATCH_CP__MASK          0x1f
+#define TCS_OFFCHIP_LAYOUT_NUM_LS_OUTPUTS__SHIFT       17
+#define TCS_OFFCHIP_LAYOUT_NUM_LS_OUTPUTS__MASK        0x3f
+#define TCS_OFFCHIP_LAYOUT_NUM_HS_OUTPUTS__SHIFT       23
+#define TCS_OFFCHIP_LAYOUT_NUM_HS_OUTPUTS__MASK        0x3f
 #define TCS_OFFCHIP_LAYOUT_PRIMITIVE_MODE__SHIFT       29
 #define TCS_OFFCHIP_LAYOUT_PRIMITIVE_MODE__MASK        0x03
 #define TCS_OFFCHIP_LAYOUT_TES_READS_TF__SHIFT         31
@@ -1008,10 +1012,10 @@ get_tcs_num_patches(unsigned tcs_num_input_vertices, unsigned tcs_num_output_ver
 void radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
                     const struct radv_graphics_state_key *gfx_state);
 
-bool radv_consider_culling(const struct radv_physical_device *pdevice, struct nir_shader *nir, uint64_t ps_inputs_read,
+bool radv_consider_culling(const struct radv_physical_device *pdev, struct nir_shader *nir, uint64_t ps_inputs_read,
                            unsigned num_vertices_per_primitive, const struct radv_shader_info *info);
 
-void radv_get_nir_options(struct radv_physical_device *device);
+void radv_get_nir_options(struct radv_physical_device *pdev);
 
 struct radv_ray_tracing_stage_info;
 

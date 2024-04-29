@@ -3132,9 +3132,9 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
 
    if (dec->stream_type == RDECODE_CODEC_JPEG) {
 
-      if (((struct si_screen*)dec->screen)->info.ip[AMD_IP_VCN_JPEG].num_queues > 1 &&
-          ((struct si_screen*)dec->screen)->info.ip[AMD_IP_VCN_JPEG].num_queues <= MAX_JPEG_INST)
-         dec->njctx = ((struct si_screen*)dec->screen)->info.ip[AMD_IP_VCN_JPEG].num_queues;
+      if (((struct si_screen*)dec->screen)->info.ip[AMD_IP_VCN_JPEG].num_instances > 1 &&
+          ((struct si_screen*)dec->screen)->info.ip[AMD_IP_VCN_JPEG].num_instances <= MAX_JPEG_INST)
+         dec->njctx = ((struct si_screen*)dec->screen)->info.ip[AMD_IP_VCN_JPEG].num_instances;
       else
          dec->njctx = 1;
 

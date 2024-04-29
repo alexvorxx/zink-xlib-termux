@@ -23,6 +23,7 @@
  */
 
 #include "ac_shadowed_regs.h"
+#include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
 #include "radv_private.h"
@@ -38,8 +39,9 @@ radv_set_context_reg_array(struct radeon_cmdbuf *cs, unsigned reg, unsigned num,
 VkResult
 radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_winsys *ws = device->ws;
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &pdev->info;
    VkResult result;
 
    struct radeon_cmdbuf *cs = ws->cs_create(ws, AMD_IP_GFX, false);
@@ -56,11 +58,11 @@ radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_s
       goto fail;
 
    /* fill the cs for shadow regs preamble ib that starts the register shadowing */
-   ac_create_shadowing_ib_preamble(info, (pm4_cmd_add_fn)&radeon_emit, cs, queue_state->shadowed_regs->va,
+   ac_create_shadowing_ib_preamble(gpu_info, (pm4_cmd_add_fn)&radeon_emit, cs, queue_state->shadowed_regs->va,
                                    device->pbb_allowed);
 
    while (cs->cdw & 7) {
-      if (info->gfx_ib_pad_with_type2)
+      if (gpu_info->gfx_ib_pad_with_type2)
          radeon_emit(cs, PKT2_NOP_PAD);
       else
          radeon_emit(cs, PKT3_NOP_PAD);
@@ -125,7 +127,8 @@ radv_emit_shadow_regs_preamble(struct radeon_cmdbuf *cs, const struct radv_devic
 VkResult
 radv_init_shadowed_regs_buffer_state(const struct radv_device *device, struct radv_queue *queue)
 {
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radeon_info *gpu_info = &pdev->info;
    struct radeon_winsys *ws = device->ws;
    struct radeon_cmdbuf *cs;
    VkResult result;
@@ -137,7 +140,7 @@ radv_init_shadowed_regs_buffer_state(const struct radv_device *device, struct ra
    radeon_check_space(ws, cs, 768);
 
    radv_emit_shadow_regs_preamble(cs, device, &queue->state);
-   ac_emulate_clear_state(info, cs, radv_set_context_reg_array);
+   ac_emulate_clear_state(gpu_info, cs, radv_set_context_reg_array);
 
    result = ws->cs_finalize(cs);
    if (result == VK_SUCCESS) {

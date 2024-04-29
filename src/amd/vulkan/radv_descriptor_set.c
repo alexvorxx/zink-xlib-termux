@@ -27,7 +27,12 @@
 #include <string.h>
 
 #include "util/mesa-sha1.h"
+#include "radv_buffer.h"
+#include "radv_buffer_view.h"
+#include "radv_image.h"
+#include "radv_image_view.h"
 #include "radv_private.h"
+#include "radv_sampler.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"
 #include "vk_descriptors.h"
@@ -907,10 +912,13 @@ radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCr
    }
 
    if (bo_size) {
+      const struct radv_physical_device *pdev = radv_device_physical(device);
+      const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
       if (!(pCreateInfo->flags & VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT)) {
          enum radeon_bo_flag flags = RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_32BIT;
 
-         if (device->instance->drirc.zero_vram)
+         if (instance->drirc.zero_vram)
             flags |= RADEON_FLAG_ZERO_VRAM;
 
          VkResult result = radv_bo_create(device, bo_size, 32, RADEON_DOMAIN_VRAM, flags, RADV_BO_PRIORITY_DESCRIPTOR,
@@ -1074,6 +1082,8 @@ write_texel_buffer_descriptor(struct radv_device *device, struct radv_cmd_buffer
 static ALWAYS_INLINE void
 write_buffer_descriptor(struct radv_device *device, unsigned *dst, uint64_t va, uint64_t range)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    if (!va) {
       memset(dst, 0, 4 * 4);
       return;
@@ -1082,9 +1092,9 @@ write_buffer_descriptor(struct radv_device *device, unsigned *dst, uint64_t va, 
    uint32_t rsrc_word3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
                          S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level >= GFX11) {
       rsrc_word3 |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   } else if (device->physical_device->rad_info.gfx_level >= GFX10) {
+   } else if (pdev->info.gfx_level >= GFX10) {
       rsrc_word3 |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) |
                     S_008F0C_RESOURCE_LEVEL(1);
    } else {

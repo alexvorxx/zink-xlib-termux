@@ -836,7 +836,7 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
          continue;
       for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
          const struct gl_config *gl_config =
-            (struct gl_config *) dri2_dpy->driver_configs;
+            (struct gl_config *) dri2_dpy->driver_configs[j];
 
          if (gl_config->color_format != visuals[i].pipe_format)
             continue;

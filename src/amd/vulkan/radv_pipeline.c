@@ -63,15 +63,21 @@ radv_shader_need_indirect_descriptor_sets(const struct radv_shader *shader)
 bool
 radv_pipeline_capture_shaders(const struct radv_device *device, VkPipelineCreateFlags2KHR flags)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    return (flags & VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR) ||
-          (device->instance->debug_flags & RADV_DEBUG_DUMP_SHADERS) || device->keep_shader_info;
+          (instance->debug_flags & RADV_DEBUG_DUMP_SHADERS) || device->keep_shader_info;
 }
 
 bool
 radv_pipeline_capture_shader_stats(const struct radv_device *device, VkPipelineCreateFlags2KHR flags)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    return (flags & VK_PIPELINE_CREATE_2_CAPTURE_STATISTICS_BIT_KHR) ||
-          (device->instance->debug_flags & RADV_DEBUG_DUMP_SHADER_STATS) || device->keep_shader_info;
+          (instance->debug_flags & RADV_DEBUG_DUMP_SHADER_STATS) || device->keep_shader_info;
 }
 
 void
@@ -147,6 +153,8 @@ struct radv_shader_stage_key
 radv_pipeline_get_shader_key(const struct radv_device *device, const VkPipelineShaderStageCreateInfo *stage,
                              VkPipelineCreateFlags2KHR flags, const void *pNext)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    gl_shader_stage s = vk_to_mesa_shader_stage(stage->stage);
    struct radv_shader_stage_key key = {0};
 
@@ -156,12 +164,12 @@ radv_pipeline_get_shader_key(const struct radv_device *device, const VkPipelineS
       key.optimisations_disabled = 1;
 
    if (stage->stage & RADV_GRAPHICS_STAGE_BITS) {
-      key.version = device->instance->drirc.override_graphics_shader_version;
+      key.version = instance->drirc.override_graphics_shader_version;
    } else if (stage->stage & RADV_RT_STAGE_BITS) {
-      key.version = device->instance->drirc.override_ray_tracing_shader_version;
+      key.version = instance->drirc.override_ray_tracing_shader_version;
    } else {
       assert(stage->stage == VK_SHADER_STAGE_COMPUTE_BIT);
-      key.version = device->instance->drirc.override_compute_shader_version;
+      key.version = instance->drirc.override_compute_shader_version;
    }
 
    const VkPipelineRobustnessCreateInfoEXT *pipeline_robust_info =
@@ -365,7 +373,8 @@ static unsigned
 lower_bit_size_callback(const nir_instr *instr, void *_)
 {
    struct radv_device *device = _;
-   enum amd_gfx_level chip = device->physical_device->rad_info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   enum amd_gfx_level chip = pdev->info.gfx_level;
 
    if (instr->type != nir_instr_type_alu)
       return 0;
@@ -437,7 +446,8 @@ opt_vectorize_callback(const nir_instr *instr, const void *_)
       return 0;
 
    const struct radv_device *device = _;
-   enum amd_gfx_level chip = device->physical_device->rad_info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   enum amd_gfx_level chip = pdev->info.gfx_level;
    if (chip < GFX9)
       return 1;
 
@@ -461,7 +471,9 @@ void
 radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_state_key *gfx_state,
                      struct radv_shader_stage *stage)
 {
-   enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    bool progress;
 
    /* Wave and workgroup size should already be filled. */
@@ -488,7 +500,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
          NIR_PASS(_, stage->nir, nir_opt_non_uniform_access);
       }
 
-      if (!radv_use_llvm_for_stage(device, stage->stage)) {
+      if (!radv_use_llvm_for_stage(pdev, stage->stage)) {
          nir_lower_non_uniform_access_options options = {
             .types = lower_non_uniform_access_types,
             .callback = &non_uniform_access_callback,
@@ -522,7 +534,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       NIR_PASS(progress, stage->nir, nir_opt_load_store_vectorize, &vectorize_opts);
       if (progress) {
          NIR_PASS(_, stage->nir, nir_copy_prop);
-         NIR_PASS(_, stage->nir, nir_opt_shrink_stores, !device->instance->drirc.disable_shrink_image_store);
+         NIR_PASS(_, stage->nir, nir_opt_shrink_stores, !instance->drirc.disable_shrink_image_store);
 
          /* Gather info again, to update whether 8/16-bit are used. */
          nir_shader_gather_info(stage->nir, nir_shader_get_entrypoint(stage->nir));
@@ -540,7 +552,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       nir_shader_gather_info(stage->nir, nir_shader_get_entrypoint(stage->nir));
 
    bool fix_derivs_in_divergent_cf =
-      stage->stage == MESA_SHADER_FRAGMENT && !radv_use_llvm_for_stage(device, stage->stage);
+      stage->stage == MESA_SHADER_FRAGMENT && !radv_use_llvm_for_stage(pdev, stage->stage);
    if (fix_derivs_in_divergent_cf) {
       NIR_PASS(_, stage->nir, nir_convert_to_lcssa, true, true);
       nir_divergence_analysis(stage->nir);
@@ -548,8 +560,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    NIR_PASS(_, stage->nir, ac_nir_lower_tex,
             &(ac_nir_lower_tex_options){
                .gfx_level = gfx_level,
-               .lower_array_layer_round_even =
-                  !device->physical_device->rad_info.conformant_trunc_coord || device->disable_trunc_coord,
+               .lower_array_layer_round_even = !pdev->info.conformant_trunc_coord || device->disable_trunc_coord,
                .fix_derivs_in_divergent_cf = fix_derivs_in_divergent_cf,
                .max_wqm_vgprs = 64, // TODO: improve spiller and RA support for linear VGPRs
             });
@@ -570,7 +581,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    nir_move_options sink_opts = nir_move_const_undef | nir_move_copies;
 
    if (!stage->key.optimisations_disabled) {
-      if (stage->stage != MESA_SHADER_FRAGMENT || !device->physical_device->cache_key.disable_sinking_load_input_fs)
+      if (stage->stage != MESA_SHADER_FRAGMENT || !pdev->cache_key.disable_sinking_load_input_fs)
          sink_opts |= nir_move_load_input;
 
       NIR_PASS(_, stage->nir, nir_opt_sink, sink_opts);
@@ -581,7 +592,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
     * load_input can be reordered, but buffer loads can't.
     */
    if (stage->stage == MESA_SHADER_VERTEX) {
-      NIR_PASS(_, stage->nir, radv_nir_lower_vs_inputs, stage, gfx_state, &device->physical_device->rad_info);
+      NIR_PASS(_, stage->nir, radv_nir_lower_vs_inputs, stage, gfx_state, &pdev->info);
    }
 
    /* Lower I/O intrinsics to memory instructions. */
@@ -598,7 +609,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
                     stage->info.outinfo.export_prim_id, false, false, false, stage->info.force_vrs_per_vertex);
 
       } else {
-         bool emulate_ngg_gs_query_pipeline_stat = device->physical_device->emulate_ngg_gs_query_pipeline_stat;
+         bool emulate_ngg_gs_query_pipeline_stat = pdev->emulate_ngg_gs_query_pipeline_stat;
 
          ac_nir_gs_output_info gs_out_info = {
             .streams = stage->info.gs.output_streams,
@@ -609,8 +620,8 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    } else if (stage->stage == MESA_SHADER_FRAGMENT) {
       ac_nir_lower_ps_options options = {
          .gfx_level = gfx_level,
-         .family = device->physical_device->rad_info.family,
-         .use_aco = !radv_use_llvm_for_stage(device, stage->stage),
+         .family = pdev->info.family,
+         .use_aco = !radv_use_llvm_for_stage(pdev, stage->stage),
          .uses_discard = true,
          .alpha_func = COMPARE_FUNC_ALWAYS,
          .no_color_export = stage->info.has_epilog,
@@ -630,6 +641,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
             gfx_state->ps.epilog.enable_mrt_output_nan_fixup && !stage->nir->info.internal;
          /* Need to filter out unwritten color slots. */
          options.spi_shader_col_format = gfx_state->ps.epilog.spi_shader_col_format & stage->info.ps.colors_written;
+         options.alpha_to_one = gfx_state->ps.epilog.alpha_to_one;
       }
 
       if (!options.no_depth_export) {
@@ -659,14 +671,13 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
                .allow_fp16 = gfx_level >= GFX9,
             });
 
-   if (radv_use_llvm_for_stage(device, stage->stage))
+   if (radv_use_llvm_for_stage(pdev, stage->stage))
       NIR_PASS_V(stage->nir, nir_lower_io_to_scalar, nir_var_mem_global, NULL, NULL);
 
    NIR_PASS(_, stage->nir, ac_nir_lower_global_access);
    NIR_PASS_V(stage->nir, ac_nir_lower_intrinsics_to_args, gfx_level, radv_select_hw_stage(&stage->info, gfx_level),
               &stage->args.ac);
-   NIR_PASS_V(stage->nir, radv_nir_lower_abi, gfx_level, stage, gfx_state,
-              device->physical_device->rad_info.address32_hi);
+   NIR_PASS_V(stage->nir, radv_nir_lower_abi, gfx_level, stage, gfx_state, pdev->info.address32_hi);
    radv_optimize_nir_algebraic(
       stage->nir, io_to_mem || lowered_ngg || stage->stage == MESA_SHADER_COMPUTE || stage->stage == MESA_SHADER_TASK);
 
@@ -704,7 +715,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
          .fold_tex_dest_types = nir_type_float,
          .fold_image_dest_types = nir_type_float,
          .fold_image_store_data = true,
-         .fold_image_srcs = !radv_use_llvm_for_stage(device, stage->stage),
+         .fold_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
          .fold_srcs_options_count = separate_g16 ? 2 : 1,
          .fold_srcs_options = fold_srcs_options,
       };
@@ -734,9 +745,12 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
 bool
 radv_shader_should_clear_lds(const struct radv_device *device, const nir_shader *shader)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    return (shader->info.stage == MESA_SHADER_COMPUTE || shader->info.stage == MESA_SHADER_MESH ||
            shader->info.stage == MESA_SHADER_TASK) &&
-          shader->info.shared_size > 0 && device->instance->drirc.clear_lds;
+          shader->info.shared_size > 0 && instance->drirc.clear_lds;
 }
 
 static uint32_t
@@ -926,11 +940,10 @@ radv_GetPipelineExecutableStatisticsKHR(VkDevice _device, const VkPipelineExecut
    struct radv_shader *shader =
       radv_get_shader_from_executable_index(pipeline, pExecutableInfo->executableIndex, &stage);
 
-   const struct radv_physical_device *pdevice = device->physical_device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   unsigned lds_increment = pdevice->rad_info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT
-                               ? 1024
-                               : pdevice->rad_info.lds_encode_granularity;
+   unsigned lds_increment =
+      pdev->info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT ? 1024 : pdev->info.lds_encode_granularity;
 
    VkPipelineExecutableStatisticKHR *s = pStatistics;
    VkPipelineExecutableStatisticKHR *end = s + (pStatistics ? *pStatisticCount : 0);
@@ -1058,6 +1071,7 @@ radv_GetPipelineExecutableInternalRepresentationsKHR(
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
    RADV_FROM_HANDLE(radv_pipeline, pipeline, pExecutableInfo->pipeline);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    gl_shader_stage stage;
    struct radv_shader *shader =
       radv_get_shader_from_executable_index(pipeline, pExecutableInfo->executableIndex, &stage);
@@ -1079,7 +1093,7 @@ radv_GetPipelineExecutableInternalRepresentationsKHR(
    /* backend IR */
    if (p < end) {
       p->isText = true;
-      if (radv_use_llvm_for_stage(device, stage)) {
+      if (radv_use_llvm_for_stage(pdev, stage)) {
          desc_copy(p->name, "LLVM IR");
          desc_copy(p->description, "The LLVM IR after some optimizations");
       } else {

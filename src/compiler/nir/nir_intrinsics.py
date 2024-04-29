@@ -1804,16 +1804,22 @@ intrinsic("load_from_texture_handle_agx", [2], 1, [],
 # Load the coefficient register corresponding to a given fragment shader input.
 # Coefficient registers are vec3s that are dotted with <x, y, 1> to interpolate
 # the input, where x and y are relative to the 32x32 supertile.
-intrinsic("load_coefficients_agx",
+intrinsic("load_coefficients_agx", [1],
           bit_sizes = [32],
           dest_comp = 3,
           indices=[COMPONENT, IO_SEMANTICS, INTERP_MODE],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
-# In a fragment shader, boolean system value that is true if the last vertex
-# stage writes the layer ID. If false, layer IDs are defined to read back zero.
-# This system value facilitates that. 16-bit 0/~0 bool allows easy masking.
-system_value("layer_id_written_agx", 1, bit_sizes=[16])
+# src[] = { value, index }
+# Store a vertex shader output to the Unified Vertex Store (UVS). Indexed by UVS
+# index, which must be assigned by the driver based on the linked fragment
+# shader's interpolation qualifiers. This corresponds to the native instruction.
+store("uvs_agx", [1], [], [CAN_REORDER])
+
+# Driver intrinsic to map a location to a UVS index. This is generated when
+# lowering store_output to store_uvs_agx, and must be lowered by the driver.
+intrinsic("load_uvs_index_agx", dest_comp = 1, bit_sizes=[16],
+          indices=[IO_SEMANTICS], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Load/store a pixel in local memory. This operation is formatted, with
 # conversion between the specified format and the implied register format of the
@@ -1925,10 +1931,29 @@ intrinsic("load_polygon_stipple_agx", src_comp=[1], dest_comp=1, bit_sizes=[32],
 # The fixed-function sample mask specified in the API (e.g. glSampleMask)
 system_value("api_sample_mask_agx", 1, bit_sizes=[16])
 
+# Bit mask of samples currently being shaded. For API-level sample shading, this
+# will usually equal (1 << sample_id). Multiple bits can be set when sample
+# shading is only enabled due to framebuffer fetch, and the framebuffer has
+# multiple samples with the same value.
+#
+# Used as a loop variable with dynamic sample shading.
+system_value("active_samples_agx", 1, bit_sizes=[16])
+
 # Loads the sample position array as fixed point packed into a 32-bit word
 system_value("sample_positions_agx", 1, bit_sizes=[32])
 
-# Loads the fixed-function glPointSize() value
+# In a non-monolithic fragment shader part, returns whether this shader part is
+# responsible for Z/S testing after its final discard. ~0/0 boolean.
+system_value("shader_part_tests_zs_agx", 1, bit_sizes=[16])
+
+# In a fragment shader, returns the log2 of the number of samples in the
+# tilebuffer. This is the unprocessed value written in the corresponding USC
+# word. Used to determine whether sample mask writes have any effect when sample
+# count is dynamic.
+system_value("samples_log2_agx", 1, bit_sizes=[16])
+
+# Loads the fixed-function glPointSize() value, or zero if the
+# shader-supplied value should be used.
 system_value("fixed_point_size_agx", 1, bit_sizes=[32])
 
 # Bit mask of TEX locations that are replaced with point sprites
@@ -1949,6 +1974,17 @@ barrier("fence_pbe_to_tex_pixel_agx")
 
 # Unknown fence used in the helper program on exit.
 barrier("fence_helper_exit_agx")
+
+# Pointer to the buffer passing outputs VS->TCS, VS->GS, or TES->GS linkage.
+system_value("vs_output_buffer_agx", 1, bit_sizes=[64])
+
+# Indirect for the above, used for indirect draws.
+system_value("vs_output_buffer_ptr_agx", 1, bit_sizes=[64])
+
+# Mask of VS->TCS, VS->GS, or TES->GS outputs. This is modelled as a sysval
+# directly so it can be dynamic with shader objects or constant folded with
+# pipelines (including GPL)
+system_value("vs_outputs_agx", 1, bit_sizes=[64])
 
 # Address of state for AGX input assembly lowering for geometry/tessellation
 system_value("input_assembly_buffer_agx", 1, bit_sizes=[64])
@@ -1984,6 +2020,15 @@ load("helper_arg_lo_agx", [], [], [CAN_ELIMINATE])
 
 # dst[] = { Helper argument high 32 bits }.
 load("helper_arg_hi_agx", [], [], [CAN_ELIMINATE])
+
+# Export a vector. At the end of the shader part, the source is copied to the
+# indexed GPRs starting at BASE. Exports must not overlap within a shader part.
+# Must only appear in the last block of the shader part.
+intrinsic("export_agx", [0], indices=[BASE])
+
+# Load an exported vector at the beginning of the shader part from GPRs starting
+# at BASE. Must only appear in the first block of the shader part.
+load("exported_agx", [], [BASE], [CAN_ELIMINATE])
 
 # Intel-specific query for loading from the isl_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image
@@ -2119,11 +2164,15 @@ system_value("leaf_procedural_intel", 1, bit_sizes=[1])
 system_value("btd_shader_type_intel", 1)
 system_value("ray_query_global_intel", 1, bit_sizes=[64])
 
-# Source 0: A matrix (type specified by SRC_TYPE)
-# Source 1: B matrix (type specified by SRC_TYPE)
-# Source 2: Accumulator matrix (type specified by DEST_TYPE)
+# Source 0: Accumulator matrix (type specified by DEST_TYPE)
+# Source 1: A matrix (type specified by SRC_TYPE)
+# Source 2: B matrix (type specified by SRC_TYPE)
 #
 # The matrix parameters are the slices owned by the invocation.
+#
+# The accumulator is source 0 because that is the source the intrinsic
+# infrastructure in NIR uses to determine the number of components in the
+# result.
 intrinsic("dpas_intel", dest_comp=0, src_comp=[0, 0, 0],
           indices=[DEST_TYPE, SRC_TYPE, SATURATE, CMAT_SIGNED_MASK, SYSTOLIC_DEPTH, REPEAT_COUNT],
           flags=[CAN_ELIMINATE])

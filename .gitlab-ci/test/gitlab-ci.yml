@@ -43,7 +43,7 @@ rustfmt:
     - rustfmt --verbose src/**/lib.rs
     - rustfmt --verbose src/**/main.rs
 
-.test-check:
+python-test:
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
   stage: code-validation
@@ -52,10 +52,6 @@ rustfmt:
   variables:
     GIT_STRATEGY: fetch
   timeout: 10m
-
-python-test:
-  extends:
-    - .test-check
   script:
     - cd bin/ci
     - pip install --break-system-packages -r test/requirements.txt
@@ -63,8 +59,14 @@ python-test:
   rules:
     - !reference [.disable-farm-mr-rules, rules]
     - !reference [.never-post-merge-rules, rules]
-    - changes:
+    - if: '$GITLAB_USER_LOGIN == "marge-bot" || $CI_PIPELINE_SOURCE == "schedule"'
+      changes: &bin_ci_files
+        - .gitlab-ci.yml
+        - .gitlab-ci/**/*
         - bin/ci/**/*
+      when: on_success
+    - changes: *bin_ci_files
+      when: manual
 
 .test-gl:
   extends:

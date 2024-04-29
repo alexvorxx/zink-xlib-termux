@@ -35,6 +35,7 @@
 #include "util/mesa-sha1.h"
 #include "util/os_time.h"
 #include "ac_debug.h"
+#include "radv_buffer.h"
 #include "radv_debug.h"
 #include "radv_shader.h"
 #include "sid.h"
@@ -108,18 +109,19 @@ radv_dump_trace(const struct radv_device *device, struct radeon_cmdbuf *cs, FILE
 static void
 radv_dump_mmapped_reg(const struct radv_device *device, FILE *f, unsigned offset)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_winsys *ws = device->ws;
    uint32_t value;
 
    if (ws->read_registers(ws, offset, 1, &value))
-      ac_dump_reg(f, device->physical_device->rad_info.gfx_level, device->physical_device->rad_info.family, offset,
-                  value, ~0);
+      ac_dump_reg(f, pdev->info.gfx_level, pdev->info.family, offset, value, ~0);
 }
 
 static void
 radv_dump_debug_registers(const struct radv_device *device, FILE *f)
 {
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radeon_info *gpu_info = &pdev->info;
 
    fprintf(f, "Memory-mapped registers:\n");
    radv_dump_mmapped_reg(device, f, R_008010_GRBM_STATUS);
@@ -131,7 +133,7 @@ radv_dump_debug_registers(const struct radv_device *device, FILE *f)
    radv_dump_mmapped_reg(device, f, R_00803C_GRBM_STATUS_SE3);
    radv_dump_mmapped_reg(device, f, R_00D034_SDMA0_STATUS_REG);
    radv_dump_mmapped_reg(device, f, R_00D834_SDMA1_STATUS_REG);
-   if (info->gfx_level <= GFX8) {
+   if (gpu_info->gfx_level <= GFX8) {
       radv_dump_mmapped_reg(device, f, R_000E50_SRBM_STATUS);
       radv_dump_mmapped_reg(device, f, R_000E4C_SRBM_STATUS2);
       radv_dump_mmapped_reg(device, f, R_000E54_SRBM_STATUS3);
@@ -191,8 +193,9 @@ radv_dump_combined_image_sampler_descriptor(enum amd_gfx_level gfx_level, enum r
 static void
 radv_dump_descriptor_set(const struct radv_device *device, const struct radv_descriptor_set *set, unsigned id, FILE *f)
 {
-   enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
-   enum radeon_family family = device->physical_device->rad_info.family;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   enum amd_gfx_level gfx_level = pdev->info.gfx_level;
+   enum radeon_family family = pdev->info.family;
    const struct radv_descriptor_set_layout *layout;
    int i;
 
@@ -377,6 +380,8 @@ static void
 radv_dump_shader(struct radv_device *device, struct radv_pipeline *pipeline, struct radv_shader *shader,
                  gl_shader_stage stage, const char *dump_dir, FILE *f)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    if (!shader)
       return;
 
@@ -401,7 +406,7 @@ radv_dump_shader(struct radv_device *device, struct radv_pipeline *pipeline, str
       fprintf(f, "NIR:\n%s\n", shader->nir_string);
    }
 
-   fprintf(f, "%s IR:\n%s\n", device->physical_device->use_llvm ? "LLVM" : "ACO", shader->ir_string);
+   fprintf(f, "%s IR:\n%s\n", pdev->use_llvm ? "LLVM" : "ACO", shader->ir_string);
    fprintf(f, "DISASM:\n%s\n", shader->disasm_string);
 
    radv_dump_shader_stats(device, pipeline, shader, stage, f);
@@ -465,13 +470,15 @@ radv_get_saved_pipeline(struct radv_device *device, enum amd_ip_type ring)
 static void
 radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_pipeline *pipeline;
 
    fprintf(f, "AMD_IP_%s:\n", ring == AMD_IP_GFX ? "GFX" : "COMPUTE");
 
-   pipeline = radv_get_saved_pipeline(queue->device, ring);
+   pipeline = radv_get_saved_pipeline(device, ring);
    if (pipeline) {
       fprintf(f, "Pipeline hash: %" PRIx64 "\n", pipeline->pipeline_hash);
 
@@ -504,10 +511,10 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
                           MESA_SHADER_COMPUTE, dump_dir, f);
       }
 
-      if (!(queue->device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
+      if (!(instance->debug_flags & RADV_DEBUG_NO_UMR)) {
          struct ac_wave_info waves[AC_MAX_WAVES_PER_CHIP];
-         enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
-         unsigned num_waves = ac_get_wave_info(gfx_level, &device->physical_device->rad_info, waves);
+         enum amd_gfx_level gfx_level = pdev->info.gfx_level;
+         unsigned num_waves = ac_get_wave_info(gfx_level, &pdev->info, waves);
 
          fprintf(f, COLOR_CYAN "The number of active waves = %u" COLOR_RESET "\n\n", num_waves);
 
@@ -560,7 +567,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
          struct radv_graphics_pipeline *graphics_pipeline = radv_pipeline_to_graphics(pipeline);
          radv_dump_vertex_descriptors(device, graphics_pipeline, f);
       }
-      radv_dump_descriptors(queue->device, f);
+      radv_dump_descriptors(device, f);
    }
 }
 
@@ -591,12 +598,14 @@ radv_dump_dmesg(FILE *f)
 void
 radv_dump_enabled_options(const struct radv_device *device, FILE *f)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    uint64_t mask;
 
-   if (device->instance->debug_flags) {
+   if (instance->debug_flags) {
       fprintf(f, "Enabled debug options: ");
 
-      mask = device->instance->debug_flags;
+      mask = instance->debug_flags;
       while (mask) {
          int i = u_bit_scan64(&mask);
          fprintf(f, "%s, ", radv_get_debug_option_name(i));
@@ -604,10 +613,10 @@ radv_dump_enabled_options(const struct radv_device *device, FILE *f)
       fprintf(f, "\n");
    }
 
-   if (device->instance->perftest_flags) {
+   if (instance->perftest_flags) {
       fprintf(f, "Enabled perftest options: ");
 
-      mask = device->instance->perftest_flags;
+      mask = instance->perftest_flags;
       while (mask) {
          int i = u_bit_scan64(&mask);
          fprintf(f, "%s, ", radv_get_perftest_option_name(i));
@@ -619,7 +628,8 @@ radv_dump_enabled_options(const struct radv_device *device, FILE *f)
 static void
 radv_dump_app_info(const struct radv_device *device, FILE *f)
 {
-   const struct radv_instance *instance = device->instance;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    fprintf(f, "Application name: %s\n", instance->vk.app_info.app_name);
    fprintf(f, "Application version: %d\n", instance->vk.app_info.app_version);
@@ -634,21 +644,22 @@ radv_dump_app_info(const struct radv_device *device, FILE *f)
 static void
 radv_dump_device_name(const struct radv_device *device, FILE *f)
 {
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radeon_info *gpu_info = &pdev->info;
 #ifndef _WIN32
    char kernel_version[128] = {0};
    struct utsname uname_data;
 #endif
 
 #ifdef _WIN32
-   fprintf(f, "Device name: %s (DRM %i.%i.%i)\n\n", device->physical_device->marketing_name, info->drm_major,
-           info->drm_minor, info->drm_patchlevel);
+   fprintf(f, "Device name: %s (DRM %i.%i.%i)\n\n", pdev->marketing_name, gpu_info->drm_major, gpu_info->drm_minor,
+           gpu_info->drm_patchlevel);
 #else
    if (uname(&uname_data) == 0)
       snprintf(kernel_version, sizeof(kernel_version), " / %s", uname_data.release);
 
-   fprintf(f, "Device name: %s (DRM %i.%i.%i%s)\n\n", device->physical_device->marketing_name, info->drm_major,
-           info->drm_minor, info->drm_patchlevel, kernel_version);
+   fprintf(f, "Device name: %s (DRM %i.%i.%i%s)\n\n", pdev->marketing_name, gpu_info->drm_major, gpu_info->drm_minor,
+           gpu_info->drm_patchlevel, kernel_version);
 #endif
 }
 
@@ -656,18 +667,17 @@ static void
 radv_dump_umr_ring(const struct radv_queue *queue, FILE *f)
 {
 #ifndef _WIN32
+   const struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const enum amd_ip_type ring = radv_queue_ring(queue);
-   const struct radv_device *device = queue->device;
    char cmd[256];
 
    /* TODO: Dump compute ring. */
    if (ring != AMD_IP_GFX)
       return;
 
-   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -RS %s 2>&1", device->physical_device->bus_info.domain,
-           device->physical_device->bus_info.bus, device->physical_device->bus_info.dev,
-           device->physical_device->bus_info.func,
-           device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
+   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -RS %s 2>&1", pdev->bus_info.domain, pdev->bus_info.bus,
+           pdev->bus_info.dev, pdev->bus_info.func, pdev->info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
    fprintf(f, "\nUMR GFX ring:\n\n");
    radv_dump_cmd(cmd, f);
 #endif
@@ -677,18 +687,18 @@ static void
 radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
 {
 #ifndef _WIN32
+   const struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    enum amd_ip_type ring = radv_queue_ring(queue);
-   struct radv_device *device = queue->device;
    char cmd[256];
 
    /* TODO: Dump compute ring. */
    if (ring != AMD_IP_GFX)
       return;
 
-   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -O bits,halt_waves -go 0 -wa %s -go 1 2>&1",
-           device->physical_device->bus_info.domain, device->physical_device->bus_info.bus,
-           device->physical_device->bus_info.dev, device->physical_device->bus_info.func,
-           device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
+   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -O bits,halt_waves -go 0 -wa %s -go 1 2>&1", pdev->bus_info.domain,
+           pdev->bus_info.bus, pdev->bus_info.dev, pdev->bus_info.func,
+           pdev->info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
    fprintf(f, "\nUMR GFX waves:\n\n");
    radv_dump_cmd(cmd, f);
 #endif
@@ -697,7 +707,8 @@ radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
 static bool
 radv_gpu_hang_occurred(struct radv_queue *queue, enum amd_ip_type ring)
 {
-   struct radeon_winsys *ws = queue->device->ws;
+   const struct radv_device *device = radv_queue_device(queue);
+   struct radeon_winsys *ws = device->ws;
 
    if (!ws->ctx_wait_idle(queue->hw_ctx, ring, queue->vk.index_in_family))
       return true;
@@ -708,7 +719,9 @@ radv_gpu_hang_occurred(struct radv_queue *queue, enum amd_ip_type ring)
 bool
 radv_vm_fault_occurred(struct radv_device *device, struct radv_winsys_gpuvm_fault_info *fault_info)
 {
-   if (!device->physical_device->rad_info.has_gpuvm_fault_query)
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (!pdev->info.has_gpuvm_fault_query)
       return false;
 
    return device->ws->query_gpuvm_fault(device->ws, fault_info);
@@ -743,12 +756,14 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
    fprintf(stderr, "radv: GPU hang detected...\n");
 
 #ifndef _WIN32
-   const bool save_hang_report = !queue->device->vk.enabled_features.deviceFaultVendorBinary;
+   struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   const bool save_hang_report = !device->vk.enabled_features.deviceFaultVendorBinary;
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
-   struct radv_device *device = queue->device;
 
    /* Query if a VM fault happened for this GPU hang. */
-   bool vm_fault_occurred = radv_vm_fault_occurred(queue->device, &fault_info);
+   bool vm_fault_occurred = radv_vm_fault_occurred(device, &fault_info);
 
    /* Create a directory into $HOME/radv_dumps_<pid>_<time> to save
     * various debugging info about that GPU hang.
@@ -797,17 +812,17 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
       switch (i) {
       case RADV_DEVICE_FAULT_CHUNK_TRACE:
-         radv_dump_trace(queue->device, submit_info->cs_array[0], f);
+         radv_dump_trace(device, submit_info->cs_array[0], f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_QUEUE_STATE:
          radv_dump_queue_state(queue, dump_dir, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_WAVES:
-         if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR))
+         if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
             radv_dump_umr_waves(queue, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_RING:
-         if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR))
+         if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
             radv_dump_umr_ring(queue, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_REGISTERS:
@@ -823,7 +838,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
          if (vm_fault_occurred) {
             fprintf(f, "VM fault report.\n\n");
             fprintf(f, "Failing VM page: 0x%08" PRIx64 "\n", fault_info.addr);
-            ac_print_gpuvm_fault_status(f, device->physical_device->rad_info.gfx_level, fault_info.status);
+            ac_print_gpuvm_fault_status(f, pdev->info.gfx_level, fault_info.status);
          }
          break;
       case RADV_DEVICE_FAULT_CHUNK_APP_INFO:
@@ -831,7 +846,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
          break;
       case RADV_DEVICE_FAULT_CHUNK_GPU_INFO:
          radv_dump_device_name(device, f);
-         ac_print_gpu_info(&device->physical_device->rad_info, f);
+         ac_print_gpu_info(&pdev->info, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_DMESG:
          radv_dump_dmesg(f);
@@ -1011,12 +1026,13 @@ struct radv_sq_hw_reg {
 static void
 radv_dump_sq_hw_regs(struct radv_device *device)
 {
-   enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
-   enum radeon_family family = device->physical_device->rad_info.family;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   enum amd_gfx_level gfx_level = pdev->info.gfx_level;
+   enum radeon_family family = pdev->info.family;
    struct radv_sq_hw_reg *regs = (struct radv_sq_hw_reg *)&device->tma_ptr[6];
 
    fprintf(stderr, "\nHardware registers:\n");
-   if (device->physical_device->rad_info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX10) {
       ac_dump_reg(stderr, gfx_level, family, R_000408_SQ_WAVE_STATUS, regs->status, ~0);
       ac_dump_reg(stderr, gfx_level, family, R_00040C_SQ_WAVE_TRAPSTS, regs->trap_sts, ~0);
       ac_dump_reg(stderr, gfx_level, family, R_00045C_SQ_WAVE_HW_ID1, regs->hw_id, ~0);
@@ -1034,7 +1050,7 @@ void
 radv_check_trap_handler(struct radv_queue *queue)
 {
    enum amd_ip_type ring = radv_queue_ring(queue);
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    struct radeon_winsys *ws = device->ws;
 
    /* Wait for the context to be idle in a finite time. */
@@ -1085,6 +1101,8 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
                           &pFaultCounts->addressInfoCount);
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
    RADV_FROM_HANDLE(radv_device, device, _device);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    bool vm_fault_occurred = false;
 
    /* Query if a GPUVM fault happened. */
@@ -1095,21 +1113,19 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
    pFaultCounts->vendorBinarySize = 0;
 
    if (device->gpu_hang_report) {
-      const struct radv_physical_device *pdevice = device->physical_device;
-
       VkDeviceFaultVendorBinaryHeaderVersionOneEXT hdr;
 
       hdr.headerSize = sizeof(VkDeviceFaultVendorBinaryHeaderVersionOneEXT);
       hdr.headerVersion = VK_DEVICE_FAULT_VENDOR_BINARY_HEADER_VERSION_ONE_EXT;
-      hdr.vendorID = pdevice->vk.properties.vendorID;
-      hdr.deviceID = pdevice->vk.properties.deviceID;
-      hdr.driverVersion = pdevice->vk.properties.driverVersion;
-      memcpy(hdr.pipelineCacheUUID, pdevice->cache_uuid, VK_UUID_SIZE);
+      hdr.vendorID = pdev->vk.properties.vendorID;
+      hdr.deviceID = pdev->vk.properties.deviceID;
+      hdr.driverVersion = pdev->vk.properties.driverVersion;
+      memcpy(hdr.pipelineCacheUUID, pdev->cache_uuid, VK_UUID_SIZE);
       hdr.applicationNameOffset = 0;
-      hdr.applicationVersion = pdevice->instance->vk.app_info.app_version;
+      hdr.applicationVersion = instance->vk.app_info.app_version;
       hdr.engineNameOffset = 0;
-      hdr.engineVersion = pdevice->instance->vk.app_info.engine_version;
-      hdr.apiVersion = pdevice->instance->vk.app_info.api_version;
+      hdr.engineVersion = instance->vk.app_info.engine_version;
+      hdr.apiVersion = instance->vk.app_info.api_version;
 
       pFaultCounts->vendorBinarySize = sizeof(hdr) + strlen(device->gpu_hang_report);
       if (pFaultInfo) {
@@ -1128,7 +1144,7 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
       if (pFaultInfo)
          strncpy(pFaultInfo->description, "A GPUVM fault has been detected", sizeof(pFaultInfo->description));
 
-      if (device->physical_device->rad_info.gfx_level >= GFX10) {
+      if (pdev->info.gfx_level >= GFX10) {
          addr_fault_info.addressType = G_00A130_RW(fault_info.status) ? VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT
                                                                       : VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT;
       } else {

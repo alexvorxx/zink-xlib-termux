@@ -258,7 +258,9 @@ declare_ms_input_sgprs(const struct radv_shader_info *info, struct radv_shader_a
 static void
 declare_ms_input_vgprs(const struct radv_device *device, struct radv_shader_args *args)
 {
-   if (device->physical_device->mesh_fast_launch_2) {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->mesh_fast_launch_2) {
       ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.local_invocation_ids);
    } else {
       ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.vertex_id);
@@ -310,10 +312,11 @@ declare_ngg_sgprs(const struct radv_shader_info *info, struct radv_shader_args *
 static void
 radv_init_shader_args(const struct radv_device *device, gl_shader_stage stage, struct radv_shader_args *args)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    memset(args, 0, sizeof(*args));
 
-   args->explicit_scratch_args = !radv_use_llvm_for_stage(device, stage);
-   args->remap_spi_ps_input = !radv_use_llvm_for_stage(device, stage);
+   args->explicit_scratch_args = !radv_use_llvm_for_stage(pdev, stage);
+   args->remap_spi_ps_input = !radv_use_llvm_for_stage(pdev, stage);
    args->load_grid_size_from_user_sgpr = device->load_grid_size_from_user_sgpr;
 
    for (int i = 0; i < MAX_SETS; i++)
@@ -453,7 +456,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    declare_global_input_sgprs(info, user_sgpr_info, args);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
-   add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
+   add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->shader_query_state, AC_UD_SHADER_QUERY_STATE);
    if (info->is_ngg) {
@@ -490,7 +493,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    ac_add_preserved(&args->ac, &args->ac.push_constants);
    ac_add_preserved(&args->ac, &args->streamout_buffers);
    ac_add_preserved(&args->ac, &args->ac.view_index);
-   ac_add_preserved(&args->ac, &args->tes_state);
+   ac_add_preserved(&args->ac, &args->tcs_offchip_layout);
    ac_add_preserved(&args->ac, &args->shader_query_state);
    if (info->is_ngg)
       ac_add_preserved(&args->ac, &args->ngg_provoking_vtx);
@@ -510,7 +513,8 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
                     const struct radv_shader_info *info, gl_shader_stage stage, gl_shader_stage previous_stage,
                     struct radv_shader_args *args, struct user_sgpr_info *user_sgpr_info)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    bool has_shader_query = info->has_prim_query || info->has_xfb_query ||
                            (stage == MESA_SHADER_GEOMETRY && info->gs.has_pipeline_stat_query) ||
                            (stage == MESA_SHADER_MESH && info->ms.has_query) ||
@@ -715,7 +719,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
          add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
 
       if (radv_tes_needs_state_sgpr(info))
-         add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
+         add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
 
       if (info->tes.as_es) {
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.tess_offchip_offset);
@@ -767,7 +771,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             }
 
             if (previous_stage == MESA_SHADER_TESS_EVAL && radv_tes_needs_state_sgpr(info))
-               add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
+               add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
 
             if (previous_stage == MESA_SHADER_VERTEX && info->vs.dynamic_num_verts_per_prim)
                add_ud_arg(args, 1, AC_ARG_INT, &args->num_verts_per_prim, AC_UD_NUM_VERTS_PER_PRIM);
@@ -784,7 +788,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
                declare_ngg_sgprs(info, args, has_ngg_provoking_vtx);
             }
 
-            if (previous_stage != MESA_SHADER_MESH || !device->physical_device->mesh_fast_launch_2) {
+            if (previous_stage != MESA_SHADER_MESH || !pdev->mesh_fast_launch_2) {
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
@@ -871,7 +875,8 @@ radv_declare_shader_args(const struct radv_device *device, const struct radv_gra
    if (info->loads_push_constants)
       num_user_sgprs++;
 
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    uint32_t available_sgprs = gfx_level >= GFX9 && stage != MESA_SHADER_COMPUTE && stage != MESA_SHADER_TASK ? 32 : 16;
    uint32_t remaining_sgprs = available_sgprs - num_user_sgprs;
 

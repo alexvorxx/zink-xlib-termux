@@ -194,7 +194,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                struct radv_image *dst_image, struct radv_image_view *dst_iview, VkImageLayout dst_image_layout,
                VkRect2D dst_box, VkSampler sampler)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    uint32_t src_width = radv_minify(src_iview->image->vk.extent.width, src_iview->vk.base_mip_level);
    uint32_t src_height = radv_minify(src_iview->image->vk.extent.height, src_iview->vk.base_mip_level);
    uint32_t src_depth = radv_minify(src_iview->image->vk.extent.depth, src_iview->vk.base_mip_level);
@@ -389,9 +389,9 @@ static void
 blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkImageLayout src_image_layout,
            struct radv_image *dst_image, VkImageLayout dst_image_layout, const VkImageBlit2 *region, VkFilter filter)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const VkImageSubresourceLayers *src_res = &region->srcSubresource;
    const VkImageSubresourceLayers *dst_res = &region->dstSubresource;
-   struct radv_device *device = cmd_buffer->device;
    struct radv_meta_saved_state saved_state;
    VkSampler sampler;
 
@@ -515,7 +515,7 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
       /* 3D images have just 1 layer */
       const uint32_t src_array_slice = src_image->vk.image_type == VK_IMAGE_TYPE_3D ? 0 : src_start + i;
 
-      radv_image_view_init(&dst_iview, cmd_buffer->device,
+      radv_image_view_init(&dst_iview, device,
                            &(VkImageViewCreateInfo){
                               .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                               .image = radv_image_to_handle(dst_image),
@@ -528,7 +528,7 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
                                                    .layerCount = 1},
                            },
                            0, NULL);
-      radv_image_view_init(&src_iview, cmd_buffer->device,
+      radv_image_view_init(&src_iview, device,
                            &(VkImageViewCreateInfo){
                               .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                               .image = radv_image_to_handle(src_image),

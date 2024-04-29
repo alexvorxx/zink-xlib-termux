@@ -370,6 +370,7 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
                    const struct radv_ray_tracing_stage_info *traversal_stage_info,
                    struct radv_serialized_shader_arena_block *replay_block, struct radv_shader **out_shader)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader_binary *binary;
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.base.create_flags);
@@ -405,7 +406,7 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
          .stack_alignment = 16,
          .localized_loads = true,
          .vectorizer_callback = radv_mem_vectorize_callback,
-         .vectorizer_data = &device->physical_device->rad_info.gfx_level,
+         .vectorizer_data = &pdev->info.gfx_level,
       };
       nir_lower_shader_calls(stage->nir, &opts, &resume_shaders, &num_resume_shaders, stage->nir);
    }
@@ -828,6 +829,8 @@ postprocess_rt_config(struct ac_shader_config *config, enum amd_gfx_level gfx_le
 static void
 compile_rt_prolog(struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    pipeline->prolog = radv_create_rt_prolog(device);
 
    /* create combined config */
@@ -839,7 +842,7 @@ compile_rt_prolog(struct radv_device *device, struct radv_ray_tracing_pipeline *
    if (pipeline->base.base.shaders[MESA_SHADER_INTERSECTION])
       combine_config(config, &pipeline->base.base.shaders[MESA_SHADER_INTERSECTION]->config);
 
-   postprocess_rt_config(config, device->physical_device->rad_info.gfx_level, device->physical_device->rt_wave_size);
+   postprocess_rt_config(config, pdev->info.gfx_level, pdev->rt_wave_size);
 
    pipeline->prolog->max_waves = radv_get_max_waves(device, config, &pipeline->prolog->info);
 }

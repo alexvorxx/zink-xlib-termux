@@ -805,7 +805,7 @@ pipe_screen::get_compute_param.
   non-zero means yes, zero means no. Value type: ``uint32_t``
 * ``PIPE_COMPUTE_CAP_SUBGROUP_SIZES``: Ored power of two sizes of a basic execution
   unit in threads. Also known as wavefront size, warp size or SIMD width.
-  E.g. `64 | 32`.
+  E.g. ``64 | 32``.
 * ``PIPE_COMPUTE_CAP_ADDRESS_BITS``: The default compute device address space
   size specified as an unsigned integer value in bits.
 * ``PIPE_COMPUTE_CAP_MAX_VARIABLE_THREADS_PER_BLOCK``: Maximum variable number

@@ -27,7 +27,7 @@
 
 #include "radv_private.h"
 
-#include "vk_sampler.h"
+#include "radv_sampler.h"
 
 static unsigned
 radv_tex_wrap(VkSamplerAddressMode address_mode)
@@ -196,14 +196,15 @@ radv_unregister_border_color(struct radv_device *device, uint32_t slot)
 static void
 radv_init_sampler(struct radv_device *device, struct radv_sampler *sampler, const VkSamplerCreateInfo *pCreateInfo)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    uint32_t max_aniso = radv_get_max_anisotropy(device, pCreateInfo);
    uint32_t max_aniso_ratio = radv_tex_aniso_filter(max_aniso);
-   bool compat_mode =
-      device->physical_device->rad_info.gfx_level == GFX8 || device->physical_device->rad_info.gfx_level == GFX9;
+   bool compat_mode = pdev->info.gfx_level == GFX8 || pdev->info.gfx_level == GFX9;
    unsigned filter_mode = radv_tex_filter_mode(sampler->vk.reduction_mode);
    unsigned depth_compare_func = V_008F30_SQ_TEX_DEPTH_COMPARE_NEVER;
    bool trunc_coord = ((pCreateInfo->minFilter == VK_FILTER_NEAREST && pCreateInfo->magFilter == VK_FILTER_NEAREST) ||
-                       device->physical_device->rad_info.conformant_trunc_coord) &&
+                       pdev->info.conformant_trunc_coord) &&
                       !device->disable_trunc_coord;
    bool uses_border_color = pCreateInfo->addressModeU == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER ||
                             pCreateInfo->addressModeV == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER ||
@@ -246,18 +247,17 @@ radv_init_sampler(struct radv_device *device, struct radv_sampler *sampler, cons
                         S_008F38_MIP_FILTER(radv_tex_mipfilter(pCreateInfo->mipmapMode)));
    sampler->state[3] = S_008F3C_BORDER_COLOR_TYPE(radv_tex_bordercolor(border_color));
 
-   if (device->physical_device->rad_info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX10) {
       sampler->state[2] |= S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -32, 31), 8)) |
-                           S_008F38_ANISO_OVERRIDE_GFX10(device->instance->drirc.disable_aniso_single_level);
+                           S_008F38_ANISO_OVERRIDE_GFX10(instance->drirc.disable_aniso_single_level);
    } else {
-      sampler->state[2] |= S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -16, 16), 8)) |
-                           S_008F38_DISABLE_LSB_CEIL(device->physical_device->rad_info.gfx_level <= GFX8) |
-                           S_008F38_FILTER_PREC_FIX(1) |
-                           S_008F38_ANISO_OVERRIDE_GFX8(device->instance->drirc.disable_aniso_single_level &&
-                                                        device->physical_device->rad_info.gfx_level >= GFX8);
+      sampler->state[2] |=
+         S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -16, 16), 8)) |
+         S_008F38_DISABLE_LSB_CEIL(pdev->info.gfx_level <= GFX8) | S_008F38_FILTER_PREC_FIX(1) |
+         S_008F38_ANISO_OVERRIDE_GFX8(instance->drirc.disable_aniso_single_level && pdev->info.gfx_level >= GFX8);
    }
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level >= GFX11) {
       sampler->state[3] |= S_008F3C_BORDER_COLOR_PTR_GFX11(border_color_ptr);
    } else {
       sampler->state[3] |= S_008F3C_BORDER_COLOR_PTR_GFX6(border_color_ptr);

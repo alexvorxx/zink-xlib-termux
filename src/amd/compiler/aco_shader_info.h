@@ -74,11 +74,11 @@ struct aco_ps_epilog_info {
    bool mrt0_is_dual_src;
 
    bool alpha_to_coverage_via_mrtz;
+   bool alpha_to_one;
 
    /* OpenGL only */
    uint16_t color_types;
    bool clamp_color;
-   bool alpha_to_one;
    bool skip_null_export;
    unsigned broadcast_last_cbuf;
    enum compare_func alpha_func;
@@ -86,23 +86,6 @@ struct aco_ps_epilog_info {
    struct ac_arg depth;
    struct ac_arg stencil;
    struct ac_arg samplemask;
-};
-
-struct aco_tcs_epilog_info {
-   bool pass_tessfactors_by_reg;
-   bool tcs_out_patch_fits_subgroup;
-   enum tess_primitive_mode primitive_mode;
-   unsigned tess_offchip_ring_size;
-   bool tes_reads_tessfactors;
-
-   struct ac_arg invocation_id;
-   struct ac_arg rel_patch_id;
-   struct ac_arg tcs_out_current_patch_data_offset;
-   struct ac_arg patch_base;
-   struct ac_arg tess_lvl_in[2];
-   struct ac_arg tess_lvl_out[4];
-   struct ac_arg tcs_out_lds_layout;
-   struct ac_arg tcs_offchip_layout;
 };
 
 struct aco_ps_prolog_info {

@@ -304,7 +304,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
 
       reg.nr = imm_byte_offset / REG_SIZE;
       reg.subnr = imm_byte_offset % REG_SIZE;
-      if (type_sz(reg.type) > 4 && !devinfo->has_64bit_float) {
+      if (type_sz(reg.type) > 4 && !devinfo->has_64bit_int) {
          brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
                     subscript(reg, BRW_REGISTER_TYPE_D, 0));
          brw_set_default_swsb(p, tgl_swsb_null());
@@ -379,22 +379,19 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
          brw_inst_set_no_dd_check(devinfo, insn, use_dep_ctrl);
 
       if (type_sz(reg.type) > 4 &&
-          (intel_device_info_is_9lp(devinfo) ||
-           !devinfo->has_64bit_float || devinfo->verx10 >= 125)) {
-         /* IVB has an issue (which we found empirically) where it reads two
-          * address register components per channel for indirectly addressed
-          * 64-bit sources.
+          (intel_device_info_is_9lp(devinfo) || !devinfo->has_64bit_int)) {
+         /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
           *
-          * From the Cherryview PRM Vol 7. "Register Region Restrictions":
-          *
-          *    "When source or destination datatype is 64b or operation is
+          *   "When source or destination datatype is 64b or operation is
           *    integer DWord multiply, indirect addressing must not be used."
           *
-          * To work around both of these, we do two integer MOVs insead of one
-          * 64-bit MOV.  Because no double value should ever cross a register
-          * boundary, it's safe to use the immediate offset in the indirect
-          * here to handle adding 4 bytes to the offset and avoid the extra
-          * ADD to the register file.
+          * We may also not support Q/UQ types.
+          *
+          * To work around both of these, we do two integer MOVs instead
+          * of one 64-bit MOV.  Because no double value should ever cross
+          * a register boundary, it's safe to use the immediate offset in
+          * the indirect here to handle adding 4 bytes to the offset and
+          * avoid the extra ADD to the register file.
           */
          brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
                     retype(brw_VxH_indirect(0, 0), BRW_REGISTER_TYPE_D));
@@ -435,12 +432,11 @@ fs_generator::generate_shuffle(fs_inst *inst,
    src.type = dst.type = brw_reg_type_from_bit_size(type_sz(src.type) * 8,
                                                     BRW_REGISTER_TYPE_UD);
 
-   /* Because we're using the address register, we're limited to 8-wide
-    * execution on gfx7.  On gfx8, we're limited to 16-wide by the address
-    * register file and 8-wide for 64-bit types.  We could try and make this
-    * instruction splittable higher up in the compiler but that gets weird
-    * because it reads all of the channels regardless of execution size.  It's
-    * easier just to split it here.
+   /* Because we're using the address register, we're limited to 16-wide
+    * by the address register file and 8-wide for 64-bit types.  We could try
+    * and make this instruction splittable higher up in the compiler but that
+    * gets weird because it reads all of the channels regardless of execution
+    * size.  It's easier just to split it here.
     */
    const unsigned lower_width =
       element_sz(src) > 4 || element_sz(dst) > 4 ? 8 :
@@ -1187,8 +1183,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          break;
 
       case BRW_OPCODE_IF:
-         /* Can't have embedded compare (was only allowed on Gfx6). */
-         assert(inst->src[0].file == BAD_FILE);
          brw_IF(p, brw_get_default_exec_size(p));
 	 break;
 
@@ -1389,8 +1383,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          break;
 
       case SHADER_OPCODE_CLUSTER_BROADCAST: {
-         assert((devinfo->platform != INTEL_PLATFORM_CHV &&
-                 !intel_device_info_is_9lp(devinfo) &&
+         assert((!intel_device_info_is_9lp(devinfo) &&
                  devinfo->has_64bit_float) || type_sz(src[0].type) <= 4);
          assert(!src[0].negate && !src[0].abs);
          assert(src[1].file == BRW_IMMEDIATE_VALUE);

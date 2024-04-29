@@ -49,6 +49,7 @@ static void
 create_iview(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *surf, struct radv_image_view *iview,
              VkFormat depth_format, VkImageAspectFlagBits aspects)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkFormat format;
 
    if (depth_format)
@@ -56,7 +57,7 @@ create_iview(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *s
    else
       format = surf->format;
 
-   radv_image_view_init(iview, cmd_buffer->device,
+   radv_image_view_init(iview, device,
                         &(VkImageViewCreateInfo){
                            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                            .image = radv_image_to_handle(surf->image),
@@ -75,13 +76,14 @@ static void
 create_bview(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_buffer *src, struct radv_buffer_view *bview,
              VkFormat depth_format)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkFormat format;
 
    if (depth_format)
       format = depth_format;
    else
       format = src->format;
-   radv_buffer_view_init(bview, cmd_buffer->device,
+   radv_buffer_view_init(bview, device,
                          &(VkBufferViewCreateInfo){
                             .sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
                             .flags = 0,
@@ -102,7 +104,7 @@ blit2d_bind_src(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
                 struct radv_meta_blit2d_buffer *src_buf, struct blit2d_src_temps *tmp, enum blit2d_src_type src_type,
                 VkFormat depth_format, VkImageAspectFlagBits aspects, uint32_t log2_samples)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    if (src_type == BLIT2D_SRC_TYPE_BUFFER) {
       create_bview(cmd_buffer, src_buf, &tmp->bview, depth_format);
@@ -156,7 +158,8 @@ struct blit2d_dst_temps {
 static void
 bind_pipeline(struct radv_cmd_buffer *cmd_buffer, enum blit2d_src_type src_type, unsigned fs_key, uint32_t log2_samples)
 {
-   VkPipeline pipeline = cmd_buffer->device->meta_state.blit2d[log2_samples].pipelines[src_type][fs_key];
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   VkPipeline pipeline = device->meta_state.blit2d[log2_samples].pipelines[src_type][fs_key];
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 }
@@ -164,7 +167,8 @@ bind_pipeline(struct radv_cmd_buffer *cmd_buffer, enum blit2d_src_type src_type,
 static void
 bind_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, enum blit2d_src_type src_type, uint32_t log2_samples)
 {
-   VkPipeline pipeline = cmd_buffer->device->meta_state.blit2d[log2_samples].depth_only_pipeline[src_type];
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   VkPipeline pipeline = device->meta_state.blit2d[log2_samples].depth_only_pipeline[src_type];
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 }
@@ -172,7 +176,8 @@ bind_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, enum blit2d_src_type src
 static void
 bind_stencil_pipeline(struct radv_cmd_buffer *cmd_buffer, enum blit2d_src_type src_type, uint32_t log2_samples)
 {
-   VkPipeline pipeline = cmd_buffer->device->meta_state.blit2d[log2_samples].stencil_only_pipeline[src_type];
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   VkPipeline pipeline = device->meta_state.blit2d[log2_samples].stencil_only_pipeline[src_type];
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 }
@@ -183,7 +188,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
                             unsigned num_rects, struct radv_meta_blit2d_rect *rects, enum blit2d_src_type src_type,
                             uint32_t log2_samples)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    for (unsigned r = 0; r < num_rects; ++r) {
       radv_CmdSetViewport(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1,

@@ -2474,7 +2474,7 @@ impl<'a> ShaderFromNir<'a> {
             nir_intrinsic_load_ubo => {
                 let size_B =
                     (intrin.def.bit_size() / 8) * intrin.def.num_components();
-                let idx = srcs[0];
+                let idx = &srcs[0];
 
                 let (off, off_imm) = self.get_io_addr_offset(&srcs[1], 16);
                 let (off, off_imm) =
@@ -2502,11 +2502,32 @@ impl<'a> ShaderFromNir<'a> {
                             dst: dst.into(),
                             cb: cb.into(),
                             offset: off,
+                            mode: LdcMode::Indexed,
                             mem_type: MemType::from_size(size_B, false),
                         });
                     }
                 } else {
-                    panic!("Indirect UBO indices not yet supported");
+                    // In the IndexedSegmented mode, the hardware computes the
+                    // actual index and offset as follows:
+                    //
+                    //    idx = imm_idx + reg[31:16]
+                    //    offset = imm_offset + reg[15:0]
+                    //    ldc c[idx][offset]
+                    //
+                    // So pack the index and offset accordingly
+                    let idx = self.get_src(idx);
+                    let off_idx = b.prmt(off, idx, [0, 1, 4, 5]);
+                    let cb = CBufRef {
+                        buf: CBuf::Binding(0),
+                        offset: off_imm,
+                    };
+                    b.push_op(OpLdc {
+                        dst: dst.into(),
+                        cb: cb.into(),
+                        offset: off_idx.into(),
+                        mode: LdcMode::IndexedSegmented,
+                        mem_type: MemType::from_size(size_B, false),
+                    });
                 }
                 self.set_dst(&intrin.def, dst);
             }

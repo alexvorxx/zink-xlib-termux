@@ -744,7 +744,7 @@ get_features(const struct anv_physical_device *pdevice,
       .shaderSharedFloat64Atomics =    false,
       .shaderSharedFloat64AtomicAdd =  false,
       .shaderImageFloat32Atomics =     true,
-      .shaderImageFloat32AtomicAdd =   false,
+      .shaderImageFloat32AtomicAdd =   pdevice->info.ver >= 20,
       .sparseImageFloat32Atomics =     false,
       .sparseImageFloat32AtomicAdd =   false,
 
@@ -2360,7 +2360,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->flush_astc_ldr_void_extent_denorms =
          device->has_astc_ldr && !device->emu_astc_ldr;
    }
-   device->disable_fcv = intel_device_info_is_mtl_or_arl(&device->info) ||
+   device->disable_fcv = device->info.verx10 >= 125 ||
                          instance->disable_fcv;
 
    result = anv_physical_device_init_heaps(device, fd);

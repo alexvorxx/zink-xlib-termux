@@ -165,7 +165,7 @@ fi
 if [ -n "$HWCI_START_XORG" ]; then
   echo "touch /xorg-started; sleep 100000" > /xorg-script
   env \
-    VK_ICD_FILENAMES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
+    VK_DRIVER_FILES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
     xinit /bin/sh /xorg-script -- /usr/bin/Xorg -noreset -s 0 -dpms -logfile /Xorg.0.log &
   BACKGROUND_PIDS="$! $BACKGROUND_PIDS"
 
@@ -192,7 +192,7 @@ if [ -n "$HWCI_START_WESTON" ]; then
   mkdir -p /tmp/.X11-unix
 
   env \
-    VK_ICD_FILENAMES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
+    VK_DRIVER_FILES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
     weston -Bheadless-backend.so --use-gl -Swayland-0 --xwayland --idle-time=0 &
   BACKGROUND_PIDS="$! $BACKGROUND_PIDS"
 

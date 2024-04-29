@@ -28,7 +28,7 @@ MESA_VERSION=$(sed 's/\./\\./g' "$INSTALL/VERSION")
 export PYTHONUNBUFFERED=1
 
 # Set the Vulkan driver to use.
-export VK_ICD_FILENAMES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.x86_64.json"
+export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.x86_64.json"
 if [ "${VK_DRIVER}" = "radeon" ]; then
     # Disable vsync
     export MESA_VK_WSI_PRESENT_MODE=mailbox

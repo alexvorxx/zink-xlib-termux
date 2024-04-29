@@ -25,6 +25,8 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_buffer.h"
+#include "radv_event.h"
 #include "radv_private.h"
 
 static void

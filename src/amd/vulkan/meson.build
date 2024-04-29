@@ -106,7 +106,9 @@ libradv_files = files(
   'radv_acceleration_structure.c',
   'radv_android.c',
   'radv_buffer.c',
+  'radv_buffer.h',
   'radv_buffer_view.c',
+  'radv_buffer_view.h',
   'radv_cmd_buffer.c',
   'radv_cp_reg_shadowing.c',
   'radv_cs.h',
@@ -117,11 +119,15 @@ libradv_files = files(
   'radv_descriptor_set.c',
   'radv_descriptor_set.h',
   'radv_device_generated_commands.c',
+  'radv_device_generated_commands.h',
   'radv_event.c',
+  'radv_event.h',
   'radv_formats.c',
   'radv_formats.h',
   'radv_image.c',
+  'radv_image.h',
   'radv_image_view.c',
+  'radv_image_view.h',
   'radv_instance.c',
   'radv_perfcounter.c',
   'radv_physical_device.c',
@@ -137,6 +143,7 @@ libradv_files = files(
   'radv_rmv.c',
   'radv_rra.c',
   'radv_sampler.c',
+  'radv_sampler.h',
   'radv_sdma.c',
   'radv_sdma.h',
   'radv_shader.c',
@@ -148,7 +155,9 @@ libradv_files = files(
   'radv_spm.c',
   'radv_sqtt.c',
   'radv_query.c',
+  'radv_query.h',
   'radv_video.c',
+  'radv_video.h',
   'radv_wsi.c',
   'si_cmd_buffer.c',
 )
@@ -289,6 +298,8 @@ _dev_icd = custom_target(
   build_by_default : true,
 )
 
+devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
+# Deprecated: replaced by VK_DRIVER_FILES above
 devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())
 
 if with_tests

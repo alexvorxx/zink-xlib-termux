@@ -38,6 +38,9 @@
 static bool
 radv_is_cache_disabled(struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    /* The buffer address used for debug printf is hardcoded. */
    if (device->printf.buffer_addr)
       return true;
@@ -45,8 +48,7 @@ radv_is_cache_disabled(struct radv_device *device)
    /* Pipeline caches can be disabled with RADV_DEBUG=nocache, with MESA_GLSL_CACHE_DISABLE=1 and
     * when ACO_DEBUG is used. MESA_GLSL_CACHE_DISABLE is done elsewhere.
     */
-   return (device->instance->debug_flags & RADV_DEBUG_NO_CACHE) ||
-          (device->physical_device->use_llvm ? 0 : aco_get_codegen_flags());
+   return (instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags());
 }
 
 void
@@ -532,14 +534,15 @@ nir_shader *
 radv_pipeline_cache_lookup_nir(struct radv_device *device, struct vk_pipeline_cache *cache, gl_shader_stage stage,
                                const blake3_hash key)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    if (radv_is_cache_disabled(device))
       return NULL;
 
    if (!cache)
       cache = device->mem_cache;
 
-   return vk_pipeline_cache_lookup_nir(cache, key, sizeof(blake3_hash), &device->physical_device->nir_options[stage],
-                                       NULL, NULL);
+   return vk_pipeline_cache_lookup_nir(cache, key, sizeof(blake3_hash), &pdev->nir_options[stage], NULL, NULL);
 }
 
 void
@@ -570,6 +573,7 @@ radv_pipeline_cache_lookup_nir_handle(struct radv_device *device, struct vk_pipe
 struct nir_shader *
 radv_pipeline_cache_handle_to_nir(struct radv_device *device, struct vk_pipeline_cache_object *object)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct blob_reader blob;
    struct vk_raw_data_cache_object *nir_object = container_of(object, struct vk_raw_data_cache_object, base);
    blob_reader_init(&blob, nir_object->data, nir_object->data_size);
@@ -579,7 +583,7 @@ radv_pipeline_cache_handle_to_nir(struct radv_device *device, struct vk_pipeline
       ralloc_free(nir);
       return NULL;
    }
-   nir->options = &device->physical_device->nir_options[nir->info.stage];
+   nir->options = &pdev->nir_options[nir->info.stage];
 
    return nir;
 }

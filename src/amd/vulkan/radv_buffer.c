@@ -25,9 +25,9 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_buffer.h"
 #include "radv_private.h"
 
-#include "vk_buffer.h"
 #include "vk_common_entrypoints.h"
 
 void
@@ -176,9 +176,10 @@ static void
 radv_get_buffer_memory_requirements(struct radv_device *device, VkDeviceSize size, VkBufferCreateFlags flags,
                                     VkBufferUsageFlags2KHR usage, VkMemoryRequirements2 *pMemoryRequirements)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    pMemoryRequirements->memoryRequirements.memoryTypeBits =
-      ((1u << device->physical_device->memory_properties.memoryTypeCount) - 1u) &
-      ~device->physical_device->memory_types_32bit;
+      ((1u << pdev->memory_properties.memoryTypeCount) - 1u) & ~pdev->memory_types_32bit;
 
    /* Allow 32-bit address-space for DGC usage, as this buffer will contain
     * cmd buffer upload buffers, and those get passed to shaders through 32-bit
@@ -190,14 +191,14 @@ radv_get_buffer_memory_requirements(struct radv_device *device, VkDeviceSize siz
     * intersection is non-zero at least)
     */
    if ((usage & VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR) && radv_uses_device_generated_commands(device))
-      pMemoryRequirements->memoryRequirements.memoryTypeBits |= device->physical_device->memory_types_32bit;
+      pMemoryRequirements->memoryRequirements.memoryTypeBits |= pdev->memory_types_32bit;
 
    /* Force 32-bit address-space for descriptor buffers usage because they are passed to shaders
     * through 32-bit pointers.
     */
    if (usage &
        (VK_BUFFER_USAGE_2_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | VK_BUFFER_USAGE_2_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT))
-      pMemoryRequirements->memoryRequirements.memoryTypeBits = device->physical_device->memory_types_32bit;
+      pMemoryRequirements->memoryRequirements.memoryTypeBits = pdev->memory_types_32bit;
 
    if (flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT)
       pMemoryRequirements->memoryRequirements.alignment = 4096;

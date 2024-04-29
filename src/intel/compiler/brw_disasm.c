@@ -1469,7 +1469,10 @@ src0_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
 
    if (subreg_nr)
       format(file, ".%d", subreg_nr);
-   src_align1_region(file, 1, 1, 0);
+   src_align1_region(file,
+                     BRW_VERTICAL_STRIDE_1,
+                     BRW_WIDTH_1,
+                     BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_0);
 
    string(file, brw_reg_type_to_letters(type));
 
@@ -1490,7 +1493,10 @@ src1_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
 
    if (subreg_nr)
       format(file, ".%d", subreg_nr);
-   src_align1_region(file, 1, 1, 0);
+   src_align1_region(file,
+                     BRW_VERTICAL_STRIDE_1,
+                     BRW_WIDTH_1,
+                     BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_0);
 
    string(file, brw_reg_type_to_letters(type));
 
@@ -1511,7 +1517,10 @@ src2_dpas_3src(FILE *file, const struct intel_device_info *devinfo,
 
    if (subreg_nr)
       format(file, ".%d", subreg_nr);
-   src_align1_region(file, 1, 1, 0);
+   src_align1_region(file,
+                     BRW_VERTICAL_STRIDE_1,
+                     BRW_WIDTH_1,
+                     BRW_ALIGN1_3SRC_SRC_HORIZONTAL_STRIDE_0);
 
    string(file, brw_reg_type_to_letters(type));
 
@@ -2261,8 +2270,8 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                   break;
                }
 
-               format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
-               format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
+               format(file, " dst_len = %u,", brw_message_desc_rlen(devinfo, imm_desc));
+               format(file, " src0_len = %u,", brw_message_desc_mlen(devinfo, imm_desc));
                format(file, " src1_len = %d", brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
                err |= control(file, "address_type", lsc_addr_surface_type,
                               lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
@@ -2369,8 +2378,8 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                   break;
                }
             }
-            format(file, " dst_len = %u,", lsc_msg_desc_dest_len(devinfo, imm_desc));
-            format(file, " src0_len = %u,", lsc_msg_desc_src0_len(devinfo, imm_desc));
+            format(file, " dst_len = %u,", brw_message_desc_rlen(devinfo, imm_desc));
+            format(file, " src0_len = %u,", brw_message_desc_mlen(devinfo, imm_desc));
 
             if (!brw_inst_send_sel_reg32_ex_desc(devinfo, inst))
                format(file, " src1_len = %d",

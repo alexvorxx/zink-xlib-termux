@@ -26,6 +26,10 @@
 #ifndef RADV_META_H
 #define RADV_META_H
 
+#include "radv_buffer.h"
+#include "radv_buffer_view.h"
+#include "radv_image.h"
+#include "radv_image_view.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 

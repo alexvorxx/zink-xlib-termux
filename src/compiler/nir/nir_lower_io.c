@@ -340,6 +340,7 @@ emit_load(struct lower_io_state *state,
          var->data.precision == GLSL_PRECISION_MEDIUM ||
          var->data.precision == GLSL_PRECISION_LOW;
       semantics.high_dvec2 = high_dvec2;
+      semantics.per_primitive = var->data.per_primitive;
       /* "per_vertex" is misnamed. It means "explicit interpolation with
        * the original vertex order", which is a stricter version of
        * INTERP_MODE_EXPLICIT.
@@ -2737,6 +2738,7 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
    case nir_intrinsic_task_payload_atomic_swap:
    case nir_intrinsic_global_atomic:
    case nir_intrinsic_global_atomic_swap:
+   case nir_intrinsic_load_coefficients_agx:
       return 0;
    case nir_intrinsic_load_ubo:
    case nir_intrinsic_load_ssbo:

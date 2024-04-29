@@ -674,21 +674,18 @@ fs_reg_alloc::emit_unspill(const fs_builder &bld,
                                   srcs, ARRAY_SIZE(srcs));
          unspill_inst->sfid = GFX12_SFID_UGM;
          unspill_inst->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                           unspill_inst->exec_size,
                                            LSC_ADDR_SURFTYPE_SS,
                                            LSC_ADDR_SIZE_A32,
-                                           1 /* num_coordinates */,
                                            LSC_DATA_SIZE_D32,
                                            use_transpose ? reg_size * 8 : 1 /* num_channels */,
                                            use_transpose,
-                                           LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                           true /* has_dest */);
+                                           LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
          unspill_inst->header_size = 0;
-         unspill_inst->mlen =
-            lsc_msg_desc_src0_len(devinfo, unspill_inst->desc);
+         unspill_inst->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32,
+                                               unspill_inst->exec_size);
          unspill_inst->ex_mlen = 0;
          unspill_inst->size_written =
-            lsc_msg_desc_dest_len(devinfo, unspill_inst->desc) * REG_SIZE;
+            lsc_msg_dest_len(devinfo, LSC_DATA_SIZE_D32, bld.dispatch_width()) * REG_SIZE;
          unspill_inst->send_has_side_effects = false;
          unspill_inst->send_is_volatile = true;
          unspill_inst->send_ex_desc_scratch = true;
@@ -756,17 +753,15 @@ fs_reg_alloc::emit_spill(const fs_builder &bld,
                                srcs, ARRAY_SIZE(srcs));
          spill_inst->sfid = GFX12_SFID_UGM;
          spill_inst->desc = lsc_msg_desc(devinfo, LSC_OP_STORE,
-                                         bld.dispatch_width(),
                                          LSC_ADDR_SURFTYPE_SS,
                                          LSC_ADDR_SIZE_A32,
-                                         1 /* num_coordinates */,
                                          LSC_DATA_SIZE_D32,
                                          1 /* num_channels */,
                                          false /* transpose */,
-                                         LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                         false /* has_dest */);
+                                         LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
          spill_inst->header_size = 0;
-         spill_inst->mlen = lsc_msg_desc_src0_len(devinfo, spill_inst->desc);
+         spill_inst->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32,
+                                             bld.dispatch_width());
          spill_inst->ex_mlen = reg_size;
          spill_inst->size_written = 0;
          spill_inst->send_has_side_effects = true;

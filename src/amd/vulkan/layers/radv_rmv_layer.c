@@ -30,9 +30,9 @@ VKAPI_ATTR VkResult VKAPI_CALL
 rmv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
 
-   VkResult res = queue->device->layer_dispatch.rmv.QueuePresentKHR(_queue, pPresentInfo);
+   VkResult res = device->layer_dispatch.rmv.QueuePresentKHR(_queue, pPresentInfo);
    if ((res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) || !device->vk.memory_trace_data.is_enabled)
       return res;
 

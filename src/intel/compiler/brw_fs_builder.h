@@ -771,7 +771,7 @@ namespace brw {
       DPAS(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1, const fs_reg &src2,
            unsigned sdepth, unsigned rcount) const
       {
-         assert(_dispatch_width == 8);
+         assert(_dispatch_width == 8 * reg_unit(shader->devinfo));
          assert(sdepth == 8);
          assert(rcount == 1 || rcount == 2 || rcount == 4 || rcount == 8);
 

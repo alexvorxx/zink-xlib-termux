@@ -25,6 +25,8 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_buffer.h"
+#include "radv_image.h"
 #include "radv_private.h"
 
 void
@@ -195,12 +197,14 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
          mem->user_ptr = host_ptr_info->pHostPointer;
       }
    } else {
+      const struct radv_physical_device *pdev = radv_device_physical(device);
+      const struct radv_instance *instance = radv_physical_device_instance(pdev);
       uint64_t alloc_size = align_u64(pAllocateInfo->allocationSize, 4096);
       uint32_t heap_index;
 
-      heap_index = device->physical_device->memory_properties.memoryTypes[pAllocateInfo->memoryTypeIndex].heapIndex;
-      domain = device->physical_device->memory_domains[pAllocateInfo->memoryTypeIndex];
-      flags |= device->physical_device->memory_flags[pAllocateInfo->memoryTypeIndex];
+      heap_index = pdev->memory_properties.memoryTypes[pAllocateInfo->memoryTypeIndex].heapIndex;
+      domain = pdev->memory_domains[pAllocateInfo->memoryTypeIndex];
+      flags |= pdev->memory_flags[pAllocateInfo->memoryTypeIndex];
 
       if (export_info && export_info->handleTypes) {
          /* Setting RADEON_FLAG_GTT_WC in case the bo is spilled to GTT.  This is important when the
@@ -222,11 +226,11 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
       if (flags_info && flags_info->flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT)
          flags |= RADEON_FLAG_REPLAYABLE;
 
-      if (device->instance->drirc.zero_vram)
+      if (instance->drirc.zero_vram)
          flags |= RADEON_FLAG_ZERO_VRAM;
 
       if (device->overallocation_disallowed) {
-         uint64_t total_size = device->physical_device->memory_properties.memoryHeaps[heap_index].size;
+         uint64_t total_size = pdev->memory_properties.memoryHeaps[heap_index].size;
 
          mtx_lock(&device->overallocation_mutex);
          if (device->allocated_memory_size[heap_index] + alloc_size > total_size) {
@@ -238,8 +242,8 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
          mtx_unlock(&device->overallocation_mutex);
       }
 
-      result = radv_bo_create(device, alloc_size, device->physical_device->rad_info.max_alignment, domain, flags,
-                                  priority, replay_address, is_internal, &mem->bo);
+      result = radv_bo_create(device, alloc_size, pdev->info.max_alignment, domain, flags, priority, replay_address,
+                              is_internal, &mem->bo);
 
       if (result != VK_SUCCESS) {
          if (device->overallocation_disallowed) {

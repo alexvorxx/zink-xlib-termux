@@ -34,13 +34,14 @@
 VkResult
 radv_device_init_meta_etc_decode_state(struct radv_device *device, bool on_demand)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_meta_state *state = &device->meta_state;
 
-   if (!device->physical_device->emulate_etc2)
+   if (!pdev->emulate_etc2)
       return VK_SUCCESS;
 
    state->etc_decode.allocator = &state->alloc;
-   state->etc_decode.nir_options = &device->physical_device->nir_options[MESA_SHADER_COMPUTE];
+   state->etc_decode.nir_options = &pdev->nir_options[MESA_SHADER_COMPUTE];
    state->etc_decode.pipeline_cache = state->cache;
    vk_texcompress_etc2_init(&device->vk, &state->etc_decode);
 
@@ -60,7 +61,7 @@ radv_device_finish_meta_etc_decode_state(struct radv_device *device)
 static VkPipeline
 radv_get_etc_decode_pipeline(struct radv_cmd_buffer *cmd_buffer)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
    VkResult ret;
 
@@ -77,7 +78,7 @@ static void
 decode_etc(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview, struct radv_image_view *dst_iview,
            const VkOffset3D *offset, const VkExtent3D *extent)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkPipeline pipeline = radv_get_etc_decode_pipeline(cmd_buffer);
 
    radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -122,6 +123,7 @@ void
 radv_meta_decode_etc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, VkImageLayout layout,
                      const VkImageSubresourceLayers *subresource, VkOffset3D offset, VkExtent3D extent)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS |
@@ -138,7 +140,7 @@ radv_meta_decode_etc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
    VkFormat load_format = vk_texcompress_etc2_load_format(image->vk.format);
    struct radv_image_view src_iview;
    radv_image_view_init(
-      &src_iview, cmd_buffer->device,
+      &src_iview, device,
       &(VkImageViewCreateInfo){
          .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
          .image = radv_image_to_handle(image),
@@ -158,7 +160,7 @@ radv_meta_decode_etc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
    VkFormat store_format = vk_texcompress_etc2_store_format(image->vk.format);
    struct radv_image_view dst_iview;
    radv_image_view_init(
-      &dst_iview, cmd_buffer->device,
+      &dst_iview, device,
       &(VkImageViewCreateInfo){
          .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
          .image = radv_image_to_handle(image),

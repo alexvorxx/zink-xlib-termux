@@ -56,7 +56,7 @@ bool radv_nir_lower_ray_payload_derefs(nir_shader *shader, uint32_t offset);
 bool radv_nir_lower_ray_queries(nir_shader *shader, struct radv_device *device);
 
 bool radv_nir_lower_vs_inputs(nir_shader *shader, const struct radv_shader_stage *vs_stage,
-                              const struct radv_graphics_state_key *gfx_state, const struct radeon_info *rad_info);
+                              const struct radv_graphics_state_key *gfx_state, const struct radeon_info *gpu_info);
 
 bool radv_nir_lower_primitive_shading_rate(nir_shader *nir, enum amd_gfx_level gfx_level);
 

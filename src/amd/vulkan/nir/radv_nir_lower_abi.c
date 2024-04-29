@@ -95,11 +95,8 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
       if (s->info->num_tess_patches) {
          replacement = nir_imm_int(b, s->info->num_tess_patches);
       } else {
-         if (stage == MESA_SHADER_TESS_CTRL) {
-            replacement = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_PATCHES);
-         } else {
-            replacement = GET_SGPR_FIELD_NIR(s->args->tes_state, TES_STATE_NUM_PATCHES);
-         }
+         nir_def *n = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_PATCHES);
+         replacement = nir_iadd_imm_nuw(b, n, 1);
       }
       break;
    case nir_intrinsic_load_tcs_tess_levels_to_tes_amd:
@@ -175,13 +172,15 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          if (s->gfx_state->ts.patch_control_points) {
             replacement = nir_imm_int(b, s->gfx_state->ts.patch_control_points);
          } else {
-            replacement = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS);
+            nir_def *n = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS);
+            replacement = nir_iadd_imm_nuw(b, n, 1);
          }
       } else if (stage == MESA_SHADER_TESS_EVAL) {
          if (s->info->tes.tcs_vertices_out) {
             replacement = nir_imm_int(b, s->info->tes.tcs_vertices_out);
          } else {
-            replacement = GET_SGPR_FIELD_NIR(s->args->tes_state, TES_STATE_TCS_VERTICES_OUT);
+            nir_def *n = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_OUT_PATCH_CP);
+            replacement = nir_iadd_imm_nuw(b, n, 1);
          }
       } else
          unreachable("invalid tessellation shader stage");
@@ -290,9 +289,8 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          if (s->info->inputs_linked) {
             replacement = nir_imm_int(b, get_tcs_input_vertex_stride(s->info->tcs.num_linked_inputs));
          } else {
-            nir_def *lshs_vertex_stride =
-               GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE);
-            replacement = nir_ishl_imm(b, lshs_vertex_stride, 2);
+            nir_def *num_ls_out = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_LS_OUTPUTS);
+            replacement = nir_iadd_imm_nuw(b, nir_ishl_imm(b, num_ls_out, 4), 4);
          }
       }
       break;
@@ -317,15 +315,12 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          out_vertices_per_patch = nir_imm_int(b, s->info->tcs.tcs_vertices_out);
       } else {
          if (s->info->inputs_linked) {
+            out_vertices_per_patch = nir_imm_int(b, s->info->tes.tcs_vertices_out);
             num_tcs_outputs = nir_imm_int(b, s->info->tes.num_linked_inputs);
          } else {
-            num_tcs_outputs = GET_SGPR_FIELD_NIR(s->args->tes_state, TES_STATE_NUM_TCS_OUTPUTS);
-         }
-
-         if (s->info->tes.tcs_vertices_out) {
-            out_vertices_per_patch = nir_imm_int(b, s->info->tes.tcs_vertices_out);
-         } else {
-            out_vertices_per_patch = GET_SGPR_FIELD_NIR(s->args->tes_state, TES_STATE_TCS_VERTICES_OUT);
+            nir_def *n = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_OUT_PATCH_CP);
+            out_vertices_per_patch = nir_iadd_imm_nuw(b, n, 1);
+            num_tcs_outputs = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_HS_OUTPUTS);
          }
       }
 
@@ -336,13 +331,8 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          unsigned num_patches = s->info->num_tess_patches;
          replacement = nir_imul_imm(b, per_vertex_output_patch_size, num_patches);
       } else {
-         nir_def *num_patches;
-
-         if (stage == MESA_SHADER_TESS_CTRL) {
-            num_patches = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_PATCHES);
-         } else {
-            num_patches = GET_SGPR_FIELD_NIR(s->args->tes_state, TES_STATE_NUM_PATCHES);
-         }
+         nir_def *n = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_PATCHES);
+         nir_def *num_patches = nir_iadd_imm_nuw(b, n, 1);
          replacement = nir_imul(b, per_vertex_output_patch_size, num_patches);
       }
       break;

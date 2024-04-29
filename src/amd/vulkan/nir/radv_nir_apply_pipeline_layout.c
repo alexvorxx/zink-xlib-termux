@@ -501,13 +501,15 @@ apply_layout_to_tex(nir_builder *b, apply_layout_state *state, nir_tex_instr *te
 void
 radv_nir_apply_pipeline_layout(nir_shader *shader, struct radv_device *device, const struct radv_shader_stage *stage)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    apply_layout_state state = {
-      .gfx_level = device->physical_device->rad_info.gfx_level,
-      .address32_hi = device->physical_device->rad_info.address32_hi,
-      .disable_aniso_single_level = device->instance->drirc.disable_aniso_single_level,
-      .has_image_load_dcc_bug = device->physical_device->rad_info.has_image_load_dcc_bug,
-      .disable_tg4_trunc_coord =
-         !device->physical_device->rad_info.conformant_trunc_coord && !device->disable_trunc_coord,
+      .gfx_level = pdev->info.gfx_level,
+      .address32_hi = pdev->info.address32_hi,
+      .disable_aniso_single_level = instance->drirc.disable_aniso_single_level,
+      .has_image_load_dcc_bug = pdev->info.has_image_load_dcc_bug,
+      .disable_tg4_trunc_coord = !pdev->info.conformant_trunc_coord && !device->disable_trunc_coord,
       .args = &stage->args,
       .info = &stage->info,
       .layout = &stage->layout,

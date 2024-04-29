@@ -47,8 +47,10 @@ TEMPLATE = Template(COPYRIGHT + """
 #include "radv_private.h"
 
 #define ANNOTATE(command, ...) \
-   radv_cmd_buffer_annotate(radv_cmd_buffer_from_handle(commandBuffer), #command); \
-   radv_cmd_buffer_from_handle(commandBuffer)->device->layer_dispatch.annotate.command(__VA_ARGS__)
+   struct radv_cmd_buffer *cmd_buffer = radv_cmd_buffer_from_handle(commandBuffer); \
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer); \
+   radv_cmd_buffer_annotate(cmd_buffer, #command); \
+   device->layer_dispatch.annotate.command(__VA_ARGS__)
 
 % for c in commands:
 % if c.guard is not None:

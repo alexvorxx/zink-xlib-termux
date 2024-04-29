@@ -27,6 +27,7 @@
 #include "radv_sdma.h"
 #include "util/macros.h"
 #include "util/u_memory.h"
+#include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_formats.h"
 #include "radv_private.h"
@@ -57,7 +58,9 @@ static const VkExtent3D radv_sdma_t2t_alignment_3d[] = {
 ALWAYS_INLINE static unsigned
 radv_sdma_pitch_alignment(const struct radv_device *device, const unsigned bpp)
 {
-   if (device->physical_device->rad_info.sdma_ip_version >= SDMA_5_0)
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->info.sdma_ip_version >= SDMA_5_0)
       return MAX2(1, 4 / bpp);
 
    return 4;
@@ -82,7 +85,9 @@ radv_sdma_check_pitches(const unsigned pitch, const unsigned slice_pitch, const 
 ALWAYS_INLINE static enum gfx9_resource_type
 radv_sdma_surface_resource_type(const struct radv_device *const device, const struct radeon_surf *const surf)
 {
-   if (device->physical_device->rad_info.sdma_ip_version >= SDMA_5_0) {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->info.sdma_ip_version >= SDMA_5_0) {
       /* Use the 2D resource type for rotated or Z swizzles. */
       if ((surf->u.gfx9.resource_type == RADEON_RESOURCE_1D || surf->u.gfx9.resource_type == RADEON_RESOURCE_3D) &&
           (surf->micro_tile_mode == RADEON_MICRO_MODE_RENDER || surf->micro_tile_mode == RADEON_MICRO_MODE_DEPTH))
@@ -195,7 +200,9 @@ radv_sdma_get_metadata_config(const struct radv_device *const device, const stru
                               const struct radeon_surf *const surf, const VkImageSubresourceLayers subresource,
                               const VkImageAspectFlags aspect_mask)
 {
-   if (!device->physical_device->rad_info.sdma_supports_compression ||
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (!pdev->info.sdma_supports_compression ||
        !(radv_dcc_enabled(image, subresource.mipLevel) || radv_image_has_htile(image))) {
       return 0;
    }
@@ -203,8 +210,7 @@ radv_sdma_get_metadata_config(const struct radv_device *const device, const stru
    const VkFormat format = vk_format_get_aspect_format(image->vk.format, aspect_mask);
    const struct util_format_description *desc = vk_format_description(format);
 
-   const uint32_t data_format =
-      ac_get_cb_format(device->physical_device->rad_info.gfx_level, vk_format_to_pipe_format(format));
+   const uint32_t data_format = ac_get_cb_format(pdev->info.gfx_level, vk_format_to_pipe_format(format));
    const uint32_t alpha_is_on_msb = vi_alpha_is_on_msb(device, format);
    const uint32_t number_type = radv_translate_buffer_numformat(desc, vk_format_get_first_non_void_channel(format));
    const uint32_t surface_type = radv_sdma_surface_type_from_aspect_mask(aspect_mask);
@@ -220,11 +226,12 @@ static uint32_t
 radv_sdma_get_tiled_info_dword(const struct radv_device *const device, const struct radv_image *const image,
                                const struct radeon_surf *const surf, const VkImageSubresourceLayers subresource)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const uint32_t element_size = util_logbase2(surf->bpe);
    const uint32_t swizzle_mode = surf->has_stencil ? surf->u.gfx9.zs.stencil_swizzle_mode : surf->u.gfx9.swizzle_mode;
    const enum gfx9_resource_type dimension = radv_sdma_surface_resource_type(device, surf);
    const uint32_t info = element_size | swizzle_mode << 3 | dimension << 9;
-   const enum sdma_version ver = device->physical_device->rad_info.sdma_ip_version;
+   const enum sdma_version ver = pdev->info.sdma_ip_version;
 
    if (ver >= SDMA_5_0) {
       const uint32_t mip_max = MAX2(image->vk.mip_levels, 1);
@@ -242,7 +249,8 @@ static uint32_t
 radv_sdma_get_tiled_header_dword(const struct radv_device *const device, const struct radv_image *const image,
                                  const VkImageSubresourceLayers subresource)
 {
-   const enum sdma_version ver = device->physical_device->rad_info.sdma_ip_version;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum sdma_version ver = pdev->info.sdma_ip_version;
 
    if (ver >= SDMA_5_0) {
       return 0;
@@ -262,6 +270,7 @@ radv_sdma_get_surf(const struct radv_device *const device, const struct radv_ima
 {
    assert(util_bitcount(aspect_mask) == 1);
 
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const unsigned plane_idx = radv_plane_from_aspect(aspect_mask);
    const unsigned binding_idx = image->disjoint ? plane_idx : 0;
    const struct radv_image_binding *binding = &image->bindings[binding_idx];
@@ -301,7 +310,7 @@ radv_sdma_get_surf(const struct radv_device *const device, const struct radv_ima
       info.info_dword = radv_sdma_get_tiled_info_dword(device, image, surf, subresource);
       info.header_dword = radv_sdma_get_tiled_header_dword(device, image, subresource);
 
-      if (device->physical_device->rad_info.sdma_supports_compression &&
+      if (pdev->info.sdma_supports_compression &&
           (radv_dcc_enabled(image, subresource.mipLevel) || radv_image_has_htile(image))) {
          info.meta_va = binding->bo->va + binding->offset + surf->meta_offset;
          info.meta_config = radv_sdma_get_metadata_config(device, image, surf, subresource, aspect_mask);
@@ -326,7 +335,8 @@ radv_sdma_copy_buffer(const struct radv_device *device, struct radeon_cmdbuf *cs
    if (size == 0)
       return;
 
-   const enum sdma_version ver = device->physical_device->rad_info.sdma_ip_version;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum sdma_version ver = pdev->info.sdma_ip_version;
    const unsigned max_size_per_packet = ver >= SDMA_5_2 ? SDMA_V5_2_COPY_MAX_BYTES : SDMA_V2_0_COPY_MAX_BYTES;
 
    unsigned align = ~0u;
@@ -367,11 +377,13 @@ void
 radv_sdma_fill_buffer(const struct radv_device *device, struct radeon_cmdbuf *cs, const uint64_t va,
                       const uint64_t size, const uint32_t value)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    const uint32_t fill_size = 2; /* This means that the count is in dwords. */
    const uint32_t constant_fill_header = SDMA_PACKET(SDMA_OPCODE_CONSTANT_FILL, 0, 0) | (fill_size & 0x3) << 30;
 
    /* This packet is the same since SDMA v2.4, haven't bothered to check older versions. */
-   const enum sdma_version ver = device->physical_device->rad_info.sdma_ip_version;
+   const enum sdma_version ver = pdev->info.sdma_ip_version;
    assert(ver >= SDMA_2_4);
 
    /* Maximum allowed fill size depends on the GPU.
@@ -450,7 +462,9 @@ radv_sdma_emit_copy_tiled_sub_window(const struct radv_device *device, struct ra
                                      const struct radv_sdma_surf *const linear, const VkExtent3D pix_extent,
                                      const bool detile)
 {
-   if (!device->physical_device->rad_info.sdma_supports_compression) {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (!pdev->info.sdma_supports_compression) {
       assert(!tiled->meta_va);
    }
 
@@ -499,14 +513,15 @@ radv_sdma_emit_copy_t2t_sub_window(const struct radv_device *device, struct rade
                                    const struct radv_sdma_surf *const src, const struct radv_sdma_surf *const dst,
                                    const VkExtent3D px_extent)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    /* We currently only support the SDMA v4+ versions of this packet. */
-   assert(device->physical_device->rad_info.sdma_ip_version >= SDMA_4_0);
+   assert(pdev->info.sdma_ip_version >= SDMA_4_0);
 
    /* On GFX10+ this supports DCC, but cannot copy a compressed surface to another compressed surface. */
    assert(!src->meta_va || !dst->meta_va);
 
-   if (device->physical_device->rad_info.sdma_ip_version >= SDMA_4_0 &&
-       device->physical_device->rad_info.sdma_ip_version < SDMA_5_0) {
+   if (pdev->info.sdma_ip_version >= SDMA_4_0 && pdev->info.sdma_ip_version < SDMA_5_0) {
       /* SDMA v4 doesn't support mip_id selection in the T2T copy packet. */
       assert(src->header_dword >> 24 == 0);
       assert(dst->header_dword >> 24 == 0);
@@ -696,7 +711,8 @@ radv_sdma_use_t2t_scanline_copy(const struct radv_device *device, const struct r
    /* SDMA can't do format conversion. */
    assert(src->bpp == dst->bpp);
 
-   const enum sdma_version ver = device->physical_device->rad_info.sdma_ip_version;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum sdma_version ver = pdev->info.sdma_ip_version;
    if (ver < SDMA_5_0) {
       /* SDMA v4.x and older doesn't support proper mip level selection. */
       if (src->mip_levels > 1 || dst->mip_levels > 1)

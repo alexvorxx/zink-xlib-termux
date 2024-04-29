@@ -28,6 +28,7 @@
 #ifndef NIR_H
 #define NIR_H
 
+#include <stdint.h>
 #include "compiler/glsl_types.h"
 #include "compiler/glsl/list.h"
 #include "compiler/shader_enums.h"
@@ -1951,7 +1952,9 @@ typedef struct nir_io_semantics {
    unsigned no_sysval_output : 1; /* whether this system value output has no
                                      effect due to current pipeline states */
    unsigned interp_explicit_strict : 1; /* preserve original vertex order */
-   unsigned _pad : 1;
+   unsigned per_primitive : 1; /* Per-primitive FS input (when FS is used with a mesh shader).
+                                  Note that per-primitive MS outputs are implied by
+                                  using a dedicated intrinsic, store_per_primitive_output. */
 } nir_io_semantics;
 
 /* Transform feedback info for 2 outputs. nir_intrinsic_store_output contains
@@ -3587,6 +3590,8 @@ typedef enum {
     * components of VARn to POS until it's fully used.
     */
    nir_io_dont_use_pos_for_non_fs_varyings = BITFIELD_BIT(1),
+
+   nir_io_16bit_input_output_support = BITFIELD_BIT(2),
 
    /* Options affecting the GLSL compiler are below. */
 

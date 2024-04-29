@@ -128,6 +128,7 @@ static VkResult
 radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct radv_device *device,
                                  const VkShaderCreateInfoEXT *pCreateInfo)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    gl_shader_stage stage = vk_to_mesa_shader_stage(pCreateInfo->stage);
    struct radv_shader_stage stages[MESA_VULKAN_SHADER_STAGES];
 
@@ -149,7 +150,7 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11)
+   if (pdev->info.gfx_level >= GFX11)
       gfx_state.ps.exports_mrtz_via_epilog = true;
 
    struct radv_shader *shader = NULL;
@@ -297,6 +298,7 @@ static VkResult
 radv_shader_object_init(struct radv_shader_object *shader_obj, struct radv_device *device,
                         const VkShaderCreateInfoEXT *pCreateInfo)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader_layout layout;
    VkResult result;
 
@@ -317,7 +319,7 @@ radv_shader_object_init(struct radv_shader_object *shader_obj, struct radv_devic
 
       const uint8_t *cache_uuid = blob_read_bytes(&blob, VK_UUID_SIZE);
 
-      if (memcmp(cache_uuid, device->physical_device->cache_uuid, VK_UUID_SIZE))
+      if (memcmp(cache_uuid, pdev->cache_uuid, VK_UUID_SIZE))
          return VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT;
 
       const bool has_main_binary = blob_read_uint32(&blob);
@@ -407,6 +409,7 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
                                  const VkAllocationCallbacks *pAllocator, VkShaderEXT *pShaders)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader_stage stages[MESA_VULKAN_SHADER_STAGES];
 
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
@@ -425,7 +428,7 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11)
+   if (pdev->info.gfx_level >= GFX11)
       gfx_state.ps.exports_mrtz_via_epilog = true;
 
    for (unsigned i = 0; i < createInfoCount; i++) {
@@ -621,6 +624,7 @@ radv_GetShaderBinaryDataEXT(VkDevice _device, VkShaderEXT shader, size_t *pDataS
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
    RADV_FROM_HANDLE(radv_shader_object, shader_obj, shader);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const size_t size = radv_get_shader_object_size(shader_obj);
 
    if (!pData) {
@@ -635,7 +639,7 @@ radv_GetShaderBinaryDataEXT(VkDevice _device, VkShaderEXT shader, size_t *pDataS
 
    struct blob blob;
    blob_init_fixed(&blob, pData, *pDataSize);
-   blob_write_bytes(&blob, device->physical_device->cache_uuid, VK_UUID_SIZE);
+   blob_write_bytes(&blob, pdev->cache_uuid, VK_UUID_SIZE);
 
    radv_write_shader_binary(&blob, shader_obj->binary);
 

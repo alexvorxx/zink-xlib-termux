@@ -47,19 +47,22 @@
 
 using namespace brw;
 
+static void
+initialize_sources(fs_inst *inst, const fs_reg src[], uint8_t num_sources);
+
 void
 fs_inst::init(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
               const fs_reg *src, unsigned sources)
 {
    memset((void*)this, 0, sizeof(*this));
 
-   this->src = new fs_reg[MAX2(sources, 3)];
+   initialize_sources(this, src, sources);
+
    for (unsigned i = 0; i < sources; i++)
       this->src[i] = src[i];
 
    this->opcode = opcode;
    this->dst = dst;
-   this->sources = sources;
    this->exec_size = exec_size;
 
    assert(dst.file != IMM && dst.file != UNIFORM);
@@ -132,31 +135,71 @@ fs_inst::fs_inst(enum opcode opcode, uint8_t exec_width, const fs_reg &dst,
 fs_inst::fs_inst(const fs_inst &that)
 {
    memcpy((void*)this, &that, sizeof(that));
-
-   this->src = new fs_reg[MAX2(that.sources, 3)];
-
-   for (unsigned i = 0; i < that.sources; i++)
-      this->src[i] = that.src[i];
+   initialize_sources(this, that.src, that.sources);
 }
 
 fs_inst::~fs_inst()
 {
-   delete[] this->src;
+   if (this->src != this->builtin_src)
+      delete[] this->src;
+}
+
+static void
+initialize_sources(fs_inst *inst, const fs_reg src[], uint8_t num_sources)
+{
+   if (num_sources > ARRAY_SIZE(inst->builtin_src))
+      inst->src = new fs_reg[num_sources];
+   else
+      inst->src = inst->builtin_src;
+
+   for (unsigned i = 0; i < num_sources; i++)
+      inst->src[i] = src[i];
+
+   inst->sources = num_sources;
 }
 
 void
 fs_inst::resize_sources(uint8_t num_sources)
 {
-   if (this->sources != num_sources) {
-      fs_reg *src = new fs_reg[MAX2(num_sources, 3)];
+   if (this->sources == num_sources)
+      return;
 
-      for (unsigned i = 0; i < MIN2(this->sources, num_sources); ++i)
-         src[i] = this->src[i];
+   fs_reg *old_src = this->src;
+   fs_reg *new_src;
 
-      delete[] this->src;
-      this->src = src;
-      this->sources = num_sources;
+   const unsigned builtin_size = ARRAY_SIZE(this->builtin_src);
+
+   if (old_src == this->builtin_src) {
+      if (num_sources > builtin_size) {
+         new_src = new fs_reg[num_sources];
+         for (unsigned i = 0; i < this->sources; i++)
+            new_src[i] = old_src[i];
+
+      } else {
+         new_src = old_src;
+      }
+   } else {
+      if (num_sources <= builtin_size) {
+         new_src = this->builtin_src;
+         assert(this->sources > num_sources);
+         for (unsigned i = 0; i < num_sources; i++)
+            new_src[i] = old_src[i];
+
+      } else if (num_sources < this->sources) {
+         new_src = old_src;
+
+      } else {
+         new_src = new fs_reg[num_sources];
+         for (unsigned i = 0; i < num_sources; i++)
+            new_src[i] = old_src[i];
+      }
+
+      if (old_src != new_src)
+         delete[] old_src;
    }
+
+   this->sources = num_sources;
+   this->src = new_src;
 }
 
 void
@@ -1224,16 +1267,27 @@ fs_visitor::emit_gs_thread_end()
    inst->offset = 0;
 }
 
+static unsigned
+round_components_to_whole_registers(const intel_device_info *devinfo,
+                                    unsigned c)
+{
+   return DIV_ROUND_UP(c, 8 * reg_unit(devinfo)) * reg_unit(devinfo);
+}
+
 void
 fs_visitor::assign_curb_setup()
 {
-   unsigned uniform_push_length = DIV_ROUND_UP(prog_data->nr_params, 8);
+   unsigned uniform_push_length =
+      round_components_to_whole_registers(devinfo, prog_data->nr_params);
 
    unsigned ubo_push_length = 0;
    unsigned ubo_push_start[4];
    for (int i = 0; i < 4; i++) {
       ubo_push_start[i] = 8 * (ubo_push_length + uniform_push_length);
       ubo_push_length += prog_data->ubo_ranges[i].length;
+
+      assert(ubo_push_start[i] % (8 * reg_unit(devinfo)) == 0);
+      assert(ubo_push_length % (1 * reg_unit(devinfo)) == 0);
    }
 
    prog_data->curb_read_length = uniform_push_length + ubo_push_length;
@@ -1296,19 +1350,16 @@ fs_visitor::assign_curb_setup()
 
          send->sfid = GFX12_SFID_UGM;
          send->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                                   1 /* exec_size */,
                                    LSC_ADDR_SURFTYPE_FLAT,
                                    LSC_ADDR_SIZE_A32,
-                                   1 /* num_coordinates */,
                                    LSC_DATA_SIZE_D32,
                                    num_regs * 8 /* num_channels */,
                                    true /* transpose */,
-                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS),
-                                   true /* has_dest */);
+                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
          send->header_size = 0;
-         send->mlen = lsc_msg_desc_src0_len(devinfo, send->desc);
+         send->mlen = lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, 1);
          send->size_written =
-            lsc_msg_desc_dest_len(devinfo, send->desc) * REG_SIZE;
+            lsc_msg_dest_len(devinfo, LSC_DATA_SIZE_D32, num_regs * 8) * REG_SIZE;
          send->send_is_volatile = true;
 
          i += num_regs;
@@ -1994,7 +2045,8 @@ fs_visitor::assign_constant_locations()
     * brw_curbe.c/crocus_state.c
     */
    const unsigned max_push_length = 64;
-   unsigned push_length = DIV_ROUND_UP(prog_data->nr_params, 8);
+   unsigned push_length =
+      round_components_to_whole_registers(devinfo, prog_data->nr_params);
    for (int i = 0; i < 4; i++) {
       struct brw_ubo_range *range = &prog_data->ubo_ranges[i];
 
@@ -2002,6 +2054,9 @@ fs_visitor::assign_constant_locations()
          range->length = max_push_length - push_length;
 
       push_length += range->length;
+
+      assert(push_length % (1 * reg_unit(devinfo)) == 0);
+
    }
    assert(push_length <= max_push_length);
 }

@@ -96,6 +96,7 @@ radv_aco_convert_ps_epilog_key(struct aco_ps_epilog_info *aco_info, const struct
    ASSIGN_FIELD(color_is_int10);
    ASSIGN_FIELD(mrt0_is_dual_src);
    ASSIGN_FIELD(alpha_to_coverage_via_mrtz);
+   ASSIGN_FIELD(alpha_to_one);
 
    memcpy(aco_info->colors, radv_args->colors, sizeof(aco_info->colors));
    aco_info->depth = radv_args->depth;

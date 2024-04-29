@@ -35,8 +35,9 @@
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 radv_wsi_proc_addr(VkPhysicalDevice physicalDevice, const char *pName)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdevice, physicalDevice);
-   return vk_instance_get_proc_addr_unchecked(&pdevice->instance->vk, pName);
+   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   return vk_instance_get_proc_addr_unchecked(&instance->vk, pName);
 }
 
 static void
@@ -54,17 +55,18 @@ static VkQueue
 radv_wsi_get_prime_blit_queue(VkDevice _device)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    if (device->private_sdma_queue != VK_NULL_HANDLE)
       return vk_queue_to_handle(&device->private_sdma_queue->vk);
 
-   if (device->physical_device->rad_info.gfx_level >= GFX9 &&
-       !(device->physical_device->instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
+   if (pdev->info.gfx_level >= GFX9 && !(instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
 
-      device->physical_device->vk_queue_to_radv[device->physical_device->num_queues++] = RADV_QUEUE_TRANSFER;
+      pdev->vk_queue_to_radv[pdev->num_queues++] = RADV_QUEUE_TRANSFER;
       const VkDeviceQueueCreateInfo queue_create = {
          .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-         .queueFamilyIndex = device->physical_device->num_queues - 1,
+         .queueFamilyIndex = pdev->num_queues - 1,
          .queueCount = 1,
       };
 
@@ -83,29 +85,32 @@ radv_wsi_get_prime_blit_queue(VkDevice _device)
 }
 
 VkResult
-radv_init_wsi(struct radv_physical_device *physical_device)
+radv_init_wsi(struct radv_physical_device *pdev)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    VkResult result =
-      wsi_device_init(&physical_device->wsi_device, radv_physical_device_to_handle(physical_device), radv_wsi_proc_addr,
-                      &physical_device->instance->vk.alloc, physical_device->master_fd,
-                      &physical_device->instance->drirc.options, &(struct wsi_device_options){.sw_device = false});
+      wsi_device_init(&pdev->wsi_device, radv_physical_device_to_handle(pdev), radv_wsi_proc_addr, &instance->vk.alloc,
+                      pdev->master_fd, &instance->drirc.options, &(struct wsi_device_options){.sw_device = false});
    if (result != VK_SUCCESS)
       return result;
 
-   physical_device->wsi_device.supports_modifiers = physical_device->rad_info.gfx_level >= GFX9;
-   physical_device->wsi_device.set_memory_ownership = radv_wsi_set_memory_ownership;
-   physical_device->wsi_device.get_blit_queue = radv_wsi_get_prime_blit_queue;
+   pdev->wsi_device.supports_modifiers = pdev->info.gfx_level >= GFX9;
+   pdev->wsi_device.set_memory_ownership = radv_wsi_set_memory_ownership;
+   pdev->wsi_device.get_blit_queue = radv_wsi_get_prime_blit_queue;
 
-   wsi_device_setup_syncobj_fd(&physical_device->wsi_device, physical_device->local_fd);
+   wsi_device_setup_syncobj_fd(&pdev->wsi_device, pdev->local_fd);
 
-   physical_device->vk.wsi_device = &physical_device->wsi_device;
+   pdev->vk.wsi_device = &pdev->wsi_device;
 
    return VK_SUCCESS;
 }
 
 void
-radv_finish_wsi(struct radv_physical_device *physical_device)
+radv_finish_wsi(struct radv_physical_device *pdev)
 {
-   physical_device->vk.wsi_device = NULL;
-   wsi_device_finish(&physical_device->wsi_device, &physical_device->instance->vk.alloc);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   pdev->vk.wsi_device = NULL;
+   wsi_device_finish(&pdev->wsi_device, &instance->vk.alloc);
 }

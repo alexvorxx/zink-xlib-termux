@@ -24,6 +24,7 @@
 #ifndef RADV_SDMA_H
 #define RADV_SDMA_H
 
+#include "radv_image.h"
 #include "radv_private.h"
 
 #ifdef __cplusplus

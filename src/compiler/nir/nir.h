@@ -4106,6 +4106,9 @@ typedef struct nir_shader_compiler_options {
    /** Lower VARYING_SLOT_LAYER in FS to SYSTEM_VALUE_LAYER_ID. */
    bool lower_layer_fs_input_to_sysval;
 
+   /** clip/cull distance and tess level arrays use compact semantics */
+   bool compact_arrays;
+
    /** Options determining lowering and behavior of inputs and outputs. */
    nir_io_options io_options;
 

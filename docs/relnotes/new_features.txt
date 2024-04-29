@@ -13,3 +13,5 @@ Mali T600 on Panfrost
 VK_KHR_shader_subgroup_uniform_control_flow on NVK
 alphaToOne/extendedDynamicState3AlphaToOneEnable on RADV
 VK_EXT_device_address_binding_report on RADV
+VK_EXT_external_memory_dma_buf for lavapipe
+VK_EXT_queue_family_foreign for lavapipe

@@ -44,6 +44,11 @@
 #include "cso_cache/cso_context.h"
 #include "nir.h"
 
+#ifdef HAVE_LIBDRM
+#include <drm-uapi/drm.h>
+#include "drm-uapi/drm_fourcc.h"
+#endif
+
 /* Pre-declarations needed for WSI entrypoints */
 struct wl_surface;
 struct wl_display;
@@ -216,6 +221,7 @@ enum lvp_device_memory_type {
    LVP_DEVICE_MEMORY_TYPE_DEFAULT,
    LVP_DEVICE_MEMORY_TYPE_USER_PTR,
    LVP_DEVICE_MEMORY_TYPE_OPAQUE_FD,
+   LVP_DEVICE_MEMORY_TYPE_DMA_BUF,
 };
 
 struct lvp_device_memory {
@@ -227,6 +233,9 @@ struct lvp_device_memory {
    void *                                       map;
    enum lvp_device_memory_type memory_type;
    int                                          backed_fd;
+#ifdef PIPE_MEMORY_FD
+   struct llvmpipe_memory_fd_alloc              *alloc;
+#endif
 };
 
 struct lvp_pipe_sync {
@@ -262,6 +271,7 @@ struct lvp_image_plane {
 
 struct lvp_image {
    struct vk_image vk;
+   VkDeviceSize offset;
    VkDeviceSize size;
    uint32_t alignment;
    bool disjoint;
@@ -706,6 +716,10 @@ static inline uint8_t
 lvp_image_aspects_to_plane(ASSERTED const struct lvp_image *image,
                            VkImageAspectFlags aspectMask)
 {
+   /* If we are requesting the first plane of image with only one plane, return that */
+   if (image->vk.aspects == VK_IMAGE_ASPECT_COLOR_BIT && aspectMask == VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT)
+      return 0;
+
    /* Verify that the aspects are actually in the image */
    assert(!(aspectMask & ~image->vk.aspects));
 

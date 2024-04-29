@@ -2782,6 +2782,14 @@ radv_emit_blend_state(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps
    if (ps && ps->info.has_epilog)
       return;
 
+   const bool enable_mrt_compaction = ps && !ps->info.ps.mrt0_is_dual_src;
+   if (enable_mrt_compaction) {
+      /* Make sure to clear color attachments without exports because MRT holes are removed during
+       * compilation for optimal performance.
+       */
+      spi_shader_col_format = radv_compact_spi_shader_col_format(spi_shader_col_format);
+   }
+
    radeon_set_context_reg(ctx_cs, R_028714_SPI_SHADER_COL_FORMAT, spi_shader_col_format);
 
    radeon_set_context_reg(ctx_cs, R_02823C_CB_SHADER_MASK, cb_shader_mask);
@@ -4108,13 +4116,6 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    pipeline->col_format_non_compacted = blend.spi_shader_col_format;
 
    struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
-   bool enable_mrt_compaction = ps && !ps->info.has_epilog && !ps->info.ps.mrt0_is_dual_src;
-   if (enable_mrt_compaction) {
-      /* Make sure to clear color attachments without exports because MRT holes are removed during
-       * compilation for optimal performance.
-       */
-      blend.spi_shader_col_format = radv_compact_spi_shader_col_format(blend.spi_shader_col_format);
-   }
 
    unsigned custom_blend_mode = extra ? extra->custom_blend_mode : 0;
    if (radv_needs_null_export_workaround(device, ps, custom_blend_mode) && !blend.spi_shader_col_format) {

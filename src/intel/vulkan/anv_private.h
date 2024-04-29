@@ -1250,6 +1250,12 @@ struct anv_physical_device {
 
     /* Value of PIPELINE_SELECT::PipelineSelection == GPGPU */
     uint32_t                                    gpgpu_pipeline_value;
+
+    /** A pre packed VERTEX_ELEMENT_STATE feeding 0s to the VS stage
+     *
+     * For use when a pipeline has no VS input
+     */
+    uint32_t                                    empty_vs_input[2];
 };
 
 static inline uint32_t
@@ -1909,12 +1915,6 @@ struct anv_device {
     struct anv_bo                              *rt_scratch_bos[16];
     struct anv_bo                              *btd_fifo_bo;
     struct anv_address                          rt_uuid_addr;
-
-    /** A pre packed VERTEX_ELEMENT_STATE feeding 0s to the VS stage
-     *
-     * For use when a pipeline has no VS input
-     */
-    uint32_t                                    empty_vs_input[2];
 
     bool                                        robust_buffer_access;
 

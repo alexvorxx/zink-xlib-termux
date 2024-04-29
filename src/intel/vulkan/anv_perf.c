@@ -224,10 +224,10 @@ VkResult anv_AcquirePerformanceConfigurationINTEL(
          return VK_INCOMPLETE;
       }
 
-      int ret =
+      uint64_t ret =
          intel_perf_store_configuration(device->physical->perf, device->fd,
                                       config->register_config, NULL /* guid */);
-      if (ret < 0) {
+      if (ret == 0) {
          ralloc_free(config->register_config);
          vk_object_free(&device->vk, NULL, config);
          return VK_INCOMPLETE;

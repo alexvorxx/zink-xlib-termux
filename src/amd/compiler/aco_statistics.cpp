@@ -281,7 +281,7 @@ BlockCycleEstimator::cycles_until_res_available(aco_ptr<Instruction>& instr)
 }
 
 static wait_counter_info
-get_wait_counter_info(aco_ptr<Instruction>& instr)
+get_wait_counter_info(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr)
 {
    /* These numbers are all a bit nonsense. LDS/VMEM/SMEM/EXP performance
     * depends a lot on the situation. */
@@ -291,7 +291,7 @@ get_wait_counter_info(aco_ptr<Instruction>& instr)
 
    if (instr->isFlatLike()) {
       unsigned lgkm = instr->isFlat() ? 20 : 0;
-      if (!instr->definitions.empty())
+      if (!instr->definitions.empty() || gfx_level < GFX10)
          return wait_counter_info(320, 0, lgkm, 0);
       else
          return wait_counter_info(0, 0, lgkm, 320);
@@ -320,10 +320,10 @@ get_wait_counter_info(aco_ptr<Instruction>& instr)
    if (instr->isLDSDIR())
       return wait_counter_info(0, 13, 0, 0);
 
-   if (instr->isVMEM() && !instr->definitions.empty())
+   if (instr->isVMEM() && (!instr->definitions.empty() || gfx_level < GFX10))
       return wait_counter_info(320, 0, 0, 0);
 
-   if (instr->isVMEM() && instr->definitions.empty())
+   if (instr->isVMEM() && instr->definitions.empty() && gfx_level >= GFX10)
       return wait_counter_info(0, 0, 0, 320);
 
    return wait_counter_info(0, 0, 0, 0);
@@ -352,7 +352,7 @@ get_wait_imm(Program* program, aco_ptr<Instruction>& instr)
       unsigned max_vm_cnt = program->gfx_level >= GFX9 ? 62 : 14;
       unsigned max_vs_cnt = 62;
 
-      wait_counter_info wait_info = get_wait_counter_info(instr);
+      wait_counter_info wait_info = get_wait_counter_info(program->gfx_level, instr);
       wait_imm imm;
       imm.lgkm = wait_info.lgkm ? max_lgkm_cnt : wait_imm::unset_counter;
       imm.exp = wait_info.exp ? max_exp_cnt : wait_imm::unset_counter;
@@ -462,7 +462,7 @@ BlockCycleEstimator::add(aco_ptr<Instruction>& instr)
    while (vs.size() > imm.vs)
       vs.pop_front();
 
-   wait_counter_info wait_info = get_wait_counter_info(instr);
+   wait_counter_info wait_info = get_wait_counter_info(program->gfx_level, instr);
    if (wait_info.exp)
       exp.push_back(cur_cycle + wait_info.exp);
    if (wait_info.lgkm)

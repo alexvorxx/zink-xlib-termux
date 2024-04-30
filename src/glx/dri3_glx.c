@@ -790,7 +790,7 @@ static const struct glx_screen_vtable dri3_screen_vtable = {
  */
 
 static struct glx_screen *
-dri3_create_screen(int screen, struct glx_display * priv)
+dri3_create_screen(int screen, struct glx_display * priv, bool implicit)
 {
    xcb_connection_t *c = XGetXCBConnection(priv->dpy);
    const __DRIconfig **driver_configs;
@@ -848,8 +848,8 @@ dri3_create_screen(int screen, struct glx_display * priv)
 
    static const struct dri_extension_match exts[] = {
        { __DRI_CORE, 1, offsetof(struct dri3_screen, core), false },
-       { __DRI_IMAGE_DRIVER, 1, offsetof(struct dri3_screen, image_driver), false },
-       { __DRI_MESA, 1, offsetof(struct dri3_screen, mesa), false },
+       { __DRI_IMAGE_DRIVER, 2, offsetof(struct dri3_screen, image_driver), false },
+       { __DRI_MESA, 2, offsetof(struct dri3_screen, mesa), false },
    };
    if (!loader_bind_extensions(psc, exts, ARRAY_SIZE(exts), extensions))
       goto handle_error;
@@ -865,10 +865,10 @@ dri3_create_screen(int screen, struct glx_display * priv)
           */
          if (strcmp(driverName, driverNameDisplayGPU) == 0) {
             psc->driScreenDisplayGPU =
-               psc->image_driver->createNewScreen2(screen, psc->fd_display_gpu,
+               psc->image_driver->createNewScreen3(screen, psc->fd_display_gpu,
                                                    pdp->loader_extensions,
                                                    extensions,
-                                                   &driver_configs, psc);
+                                                   &driver_configs, implicit, psc);
          }
 
          free(driverNameDisplayGPU);
@@ -876,10 +876,10 @@ dri3_create_screen(int screen, struct glx_display * priv)
    }
 
    psc->driScreenRenderGPU =
-      psc->image_driver->createNewScreen2(screen, psc->fd_render_gpu,
+      psc->image_driver->createNewScreen3(screen, psc->fd_render_gpu,
                                           pdp->loader_extensions,
                                           extensions,
-                                          &driver_configs, psc);
+                                          &driver_configs, implicit, psc);
 
    if (psc->driScreenRenderGPU == NULL) {
       ErrorMessageF("glx: failed to create dri3 screen\n");

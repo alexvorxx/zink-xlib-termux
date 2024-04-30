@@ -575,7 +575,7 @@ drisw_create_drawable(struct dri_screen *screen, const struct gl_config * visual
 }
 
 static const __DRIconfig **
-drisw_init_screen(struct dri_screen *screen)
+drisw_init_screen(struct dri_screen *screen, bool implicit)
 {
    const __DRIswrastLoaderExtension *loader = screen->swrast_loader;
    const __DRIconfig **configs;
@@ -598,7 +598,7 @@ drisw_init_screen(struct dri_screen *screen)
       success = pipe_loader_sw_probe_dri(&screen->dev, lf);
 
    if (success)
-      pscreen = pipe_loader_create_screen(screen->dev);
+      pscreen = pipe_loader_create_screen(screen->dev, implicit);
 
    if (!pscreen)
       goto fail;
@@ -656,11 +656,12 @@ const __DRIcopySubBufferExtension driSWCopySubBufferExtension = {
 };
 
 static const struct __DRImesaCoreExtensionRec mesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = drisw_init_screen,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 /* This is the table of extensions that the loader will dlsym() for. */

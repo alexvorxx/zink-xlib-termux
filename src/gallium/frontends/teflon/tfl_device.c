@@ -468,7 +468,7 @@ __attribute__((visibility("default"))) TfLiteDelegate *tflite_plugin_create_dele
 
    teflon_debug("Teflon delegate: loaded %s driver\n", delegate->dev->driver_name);
 
-   screen = pipe_loader_create_screen(delegate->dev);
+   screen = pipe_loader_create_screen(delegate->dev, false);
    delegate->context = screen->context_create(screen, NULL, PIPE_CONTEXT_COMPUTE_ONLY);
 
    return &delegate->base;

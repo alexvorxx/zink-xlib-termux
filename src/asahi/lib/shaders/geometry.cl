@@ -515,7 +515,7 @@ libagx_work_group_scan_inclusive_add(uint x, local uint *scratch)
    uint sg_id = get_sub_group_id();
 
    /* Partial prefix sum of the subgroup */
-   uint sg = sub_group_scan_exclusive_add(x) + x;
+   uint sg = sub_group_scan_inclusive_add(x);
 
    /* Reduction (sum) for the subgroup */
    uint sg_sum = sub_group_broadcast(sg, 31);

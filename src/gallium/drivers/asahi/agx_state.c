@@ -1564,6 +1564,10 @@ agx_compile_nir(struct agx_device *dev, nir_shader *nir,
       .secondary = secondary,
    };
 
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      NIR_PASS(_, nir, agx_nir_lower_interpolation);
+   }
+
    /* We always use dynamic sample shading in the GL driver. Indicate that. */
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
        nir->info.fs.uses_sample_shading)
@@ -4190,21 +4194,12 @@ agx_needs_passthrough_gs(struct agx_context *ctx,
       return true;
    }
 
-   /* Experimentally, G13 does not seem to pick the right provoking vertex for
-    * triangle fans with first provoking. Inserting a GS for this case lets us
-    * use our (correct) shader-based input assembly, translating to
-    * appropriately oriented triangles and working around the hardware issue.
-    * This warrants more investigation in case we're just misconfiguring the
-    * hardware, but as tri fans are absent in Metal and GL defaults to last
-    * vertex, this is a plausible part of the hardware to be broken (or absent).
-    *
-    * Affects piglit clipflat.
-    */
+   /* TODO: Handle fans properly, we need to plumb a sysval. */
    if (info->mode == MESA_PRIM_TRIANGLE_FAN &&
        ctx->rast->base.flatshade_first &&
        ctx->stage[MESA_SHADER_FRAGMENT].shader->info.inputs_flat_shaded) {
 
-      perf_debug_ctx(ctx, "Using passthrough GS due to tri fan bug");
+      perf_debug_ctx(ctx, "Using passthrough GS due to first tri fans");
       return true;
    }
 

@@ -198,6 +198,9 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
    case nir_intrinsic_load_uvs_index_agx:
       return load_sysval_root(
          b, 1, 16, &u->uvs_index[nir_intrinsic_io_semantics(intr).location]);
+   case nir_intrinsic_load_is_first_fan_agx:
+      /* TODO: Plumb this so we can stop using geometry shaders for this case */
+      return nir_imm_false(b);
    default:
       break;
    }

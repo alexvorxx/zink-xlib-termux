@@ -3335,9 +3335,6 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    bool needs_libagx = true /* TODO: Optimize */;
 
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS(_, nir, agx_nir_lower_interpolation);
-
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
    if (needs_libagx) {

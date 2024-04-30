@@ -1809,6 +1809,10 @@ system_value("active_subgroup_invocation_agx", 1)
 # for [-1, 1].
 system_value("clip_z_coeff_agx", 1)
 
+# True if drawing triangle fans with first vertex provoking, false otherwise.
+# This affects flatshading, which is defined weirdly for fans with first.
+system_value("is_first_fan_agx", 1, bit_sizes=[1])
+
 # mesa_prim for the input topology (in a geometry shader)
 system_value("input_topology_agx", 1)
 

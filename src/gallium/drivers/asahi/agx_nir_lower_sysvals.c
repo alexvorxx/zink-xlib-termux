@@ -375,19 +375,22 @@ lay_out_uniforms(struct agx_compiled_shader *shader, struct state *state)
          DIV_ROUND_UP(BITSET_LAST_BIT(shader->attrib_components_read), 4);
 
       struct agx_draw_uniforms *u = NULL;
-      shader->push[shader->push_range_count++] = (struct agx_push_range){
-         .uniform = 0,
-         .table = AGX_SYSVAL_TABLE_ROOT,
-         .offset = (uintptr_t)&u->attrib_base,
-         .length = 4 * count,
-      };
 
-      shader->push[shader->push_range_count++] = (struct agx_push_range){
-         .uniform = 4 * count,
-         .table = AGX_SYSVAL_TABLE_ROOT,
-         .offset = (uintptr_t)&u->attrib_clamp,
-         .length = 2 * count,
-      };
+      if (count) {
+         shader->push[shader->push_range_count++] = (struct agx_push_range){
+            .uniform = 0,
+            .table = AGX_SYSVAL_TABLE_ROOT,
+            .offset = (uintptr_t)&u->attrib_base,
+            .length = 4 * count,
+         };
+
+         shader->push[shader->push_range_count++] = (struct agx_push_range){
+            .uniform = 4 * count,
+            .table = AGX_SYSVAL_TABLE_ROOT,
+            .offset = (uintptr_t)&u->attrib_clamp,
+            .length = 2 * count,
+         };
+      }
 
       shader->push[shader->push_range_count++] = (struct agx_push_range){
          .uniform = 6 * count,

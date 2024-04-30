@@ -1885,8 +1885,7 @@ radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader
 
    radeon_set_context_reg(cmd_buffer->cs, R_028714_SPI_SHADER_COL_FORMAT,
                           radv_compact_spi_shader_col_format(col_format));
-   radeon_set_context_reg(cmd_buffer->cs, R_02823C_CB_SHADER_MASK,
-                          ac_get_cb_shader_mask(ps_epilog->spi_shader_col_format));
+   radeon_set_context_reg(cmd_buffer->cs, R_02823C_CB_SHADER_MASK, ps_epilog->cb_shader_mask);
 
    if (ps_epilog->spi_shader_z_format)
       radeon_set_context_reg(cmd_buffer->cs, R_028710_SPI_SHADER_Z_FORMAT, ps_epilog->spi_shader_z_format);

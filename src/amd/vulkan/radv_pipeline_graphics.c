@@ -258,7 +258,7 @@ radv_pipeline_init_blend_state(struct radv_graphics_pipeline *pipeline)
    if (!ps || ps->info.has_epilog)
       return blend;
 
-   blend.cb_shader_mask = ac_get_cb_shader_mask(ps->info.ps.spi_shader_col_format);
+   blend.cb_shader_mask = ps->info.ps.cb_shader_mask;
    blend.spi_shader_col_format = ps->info.ps.spi_shader_col_format;
 
    return blend;

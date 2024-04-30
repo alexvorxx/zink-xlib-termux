@@ -203,6 +203,7 @@ struct radv_shader_info {
       unsigned spi_ps_input;
       unsigned colors_written;
       unsigned spi_shader_col_format;
+      unsigned cb_shader_mask;
       uint8_t color0_written;
       bool load_provoking_vtx;
       bool load_rasterization_prim;

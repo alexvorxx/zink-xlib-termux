@@ -16,6 +16,7 @@
 
 #include "util/mesa-blake3.h"
 
+#include "radv_pipeline.h"
 #include "radv_printf.h"
 #include "radv_queue.h"
 #include "radv_radeon_winsys.h"
@@ -376,6 +377,11 @@ struct radv_device_border_color_data {
    mtx_t mutex;
 };
 
+struct radv_pso_cache_stats {
+   uint32_t hits;
+   uint32_t misses;
+};
+
 struct radv_device {
    struct vk_device vk;
 
@@ -551,6 +557,10 @@ struct radv_device {
    uint32_t compute_scratch_waves;
 
    bool cache_disabled;
+
+   /* PSO cache stats */
+   simple_mtx_t pso_cache_stats_mtx;
+   struct radv_pso_cache_stats pso_cache_stats[RADV_PIPELINE_TYPE_COUNT];
 };
 
 VK_DEFINE_HANDLE_CASTS(radv_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)

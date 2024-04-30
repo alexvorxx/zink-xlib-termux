@@ -690,9 +690,11 @@ etna_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    etna_texture_init(pctx);
    etna_transfer_init(pctx);
 
-   ctx->blitter = util_blitter_create(pctx);
-   if (!ctx->blitter)
-      goto fail;
+   if (!ctx->compute_only) {
+      ctx->blitter = util_blitter_create(pctx);
+      if (!ctx->blitter)
+         goto fail;
+   }
 
    slab_create_child(&ctx->transfer_pool, &screen->transfer_pool);
    list_inithead(&ctx->active_acc_queries);

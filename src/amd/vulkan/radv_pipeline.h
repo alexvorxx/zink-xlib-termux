@@ -11,6 +11,8 @@
 #ifndef RADV_PIPELINE_H
 #define RADV_PIPELINE_H
 
+#include "util/mesa-sha1.h"
+
 #include "nir.h"
 
 #include "vk_pipeline.h"
@@ -24,7 +26,6 @@ struct radv_shader_stage;
 struct radv_pipeline_layout;
 struct radv_graphics_state_key;
 struct radv_shader_layout;
-struct mesa_sha1;
 
 enum radv_pipeline_type {
    RADV_PIPELINE_GRAPHICS,
@@ -33,10 +34,12 @@ enum radv_pipeline_type {
    RADV_PIPELINE_COMPUTE,
    /* Raytracing pipeline */
    RADV_PIPELINE_RAY_TRACING,
+   RADV_PIPELINE_TYPE_COUNT,
 };
 
 struct radv_pipeline {
    struct vk_object_base base;
+   uint8_t sha1[SHA1_DIGEST_LENGTH];
    enum radv_pipeline_type type;
 
    VkPipelineCreateFlags2KHR create_flags;

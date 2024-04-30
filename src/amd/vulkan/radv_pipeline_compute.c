@@ -220,7 +220,6 @@ radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, st
                               const VkPipelineCreationFeedbackCreateInfo *creation_feedback)
 {
    struct radv_shader_binary *cs_binary = NULL;
-   unsigned char hash[20];
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.create_flags);
    struct radv_shader_stage cs_stage = {0};
@@ -232,9 +231,9 @@ radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, st
 
    int64_t pipeline_start = os_time_get_nano();
 
-   radv_compute_pipeline_hash(device, pCreateInfo, hash);
+   radv_compute_pipeline_hash(device, pCreateInfo, pipeline->base.sha1);
 
-   pipeline->base.pipeline_hash = *(uint64_t *)hash;
+   pipeline->base.pipeline_hash = *(uint64_t *)pipeline->base.sha1;
 
    /* Skip the shaders cache when any of the below are true:
     * - shaders are captured because it's for debugging purposes
@@ -245,7 +244,7 @@ radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, st
 
    bool found_in_application_cache = true;
    if (!skip_shaders_cache &&
-       radv_pipeline_cache_search(device, cache, &pipeline->base, hash, &found_in_application_cache)) {
+       radv_compute_pipeline_cache_search(device, cache, pipeline, &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
       result = VK_SUCCESS;
@@ -268,7 +267,7 @@ radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, st
    cs_stage.feedback.duration += os_time_get_nano() - stage_start;
 
    if (!skip_shaders_cache) {
-      radv_pipeline_cache_insert(device, cache, &pipeline->base, hash);
+      radv_pipeline_cache_insert(device, cache, &pipeline->base);
    }
 
    free(cs_binary);

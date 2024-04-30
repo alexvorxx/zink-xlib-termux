@@ -59,6 +59,7 @@ enum {
    RADV_DEBUG_NO_NGG_GS = 1ull << 43,
    RADV_DEBUG_NO_GS_FAST_LAUNCH_2 = 1ull << 44,
    RADV_DEBUG_NO_ESO = 1ull << 45,
+   RADV_DEBUG_PSO_CACHE_STATS = 1ull << 46,
 };
 
 enum {

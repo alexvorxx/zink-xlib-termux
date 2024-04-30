@@ -2616,7 +2616,6 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
 {
    struct radv_shader_binary *binaries[MESA_VULKAN_SHADER_STAGES] = {NULL};
    struct radv_shader_binary *gs_copy_binary = NULL;
-   unsigned char hash[20];
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.create_flags);
    struct radv_shader_stage stages[MESA_VULKAN_SHADER_STAGES];
@@ -2650,9 +2649,10 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
    radv_pipeline_load_retained_shaders(device, pipeline, pCreateInfo, stages);
 
    if (radv_should_compute_pipeline_hash(device, pipeline, fast_linking_enabled)) {
-      radv_hash_shaders(device, hash, stages, MESA_VULKAN_SHADER_STAGES, pipeline_layout, &pipeline_key->gfx_state);
+      radv_hash_shaders(device, pipeline->base.sha1, stages, MESA_VULKAN_SHADER_STAGES, pipeline_layout,
+                        &pipeline_key->gfx_state);
 
-      pipeline->base.pipeline_hash = *(uint64_t *)hash;
+      pipeline->base.pipeline_hash = *(uint64_t *)pipeline->base.sha1;
    }
 
    /* Skip the shaders cache when any of the below are true:
@@ -2675,7 +2675,7 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
 
    bool found_in_application_cache = true;
    if (!skip_shaders_cache &&
-       radv_pipeline_cache_search(device, cache, &pipeline->base, hash, &found_in_application_cache)) {
+       radv_graphics_pipeline_cache_search(device, cache, pipeline, &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
 
@@ -2718,7 +2718,7 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
                                  pipeline->base.shaders, binaries, &pipeline->base.gs_copy_shader, &gs_copy_binary);
 
    if (!skip_shaders_cache) {
-      radv_pipeline_cache_insert(device, cache, &pipeline->base, hash);
+      radv_pipeline_cache_insert(device, cache, &pipeline->base);
    }
 
    free(gs_copy_binary);

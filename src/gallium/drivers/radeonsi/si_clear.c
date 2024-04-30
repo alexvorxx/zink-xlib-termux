@@ -1237,7 +1237,7 @@ static void gfx6_clear(struct pipe_context *ctx, unsigned buffers,
        * The root cause is unknown.
        */
       if (sctx->gfx_level == GFX11 || sctx->gfx_level == GFX11_5) {
-         sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_DB;
+         sctx->flags |= SI_CONTEXT_VS_PARTIAL_FLUSH;
          si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
       }
    }

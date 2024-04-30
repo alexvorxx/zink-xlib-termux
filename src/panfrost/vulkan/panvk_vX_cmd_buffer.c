@@ -2099,22 +2099,24 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      cmdbuf->state.gfx.render.bound_attachments |=
-         MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
-      att_width = MAX2(iview_size.width, att_width);
-      att_height = MAX2(iview_size.height, att_height);
+      if (iview->vk.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+         cmdbuf->state.gfx.render.bound_attachments |=
+            MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
+         att_width = MAX2(iview_size.width, att_width);
+         att_height = MAX2(iview_size.height, att_height);
 
-      assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
+         assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
 
-      cmdbuf->state.gfx.render.fb.bos[cmdbuf->state.gfx.render.fb.bo_count++] =
-         img->bo;
-      fbinfo->zs.view.zs = &iview->pview;
+         cmdbuf->state.gfx.render.fb
+            .bos[cmdbuf->state.gfx.render.fb.bo_count++] = img->bo;
+         fbinfo->zs.view.zs = &iview->pview;
 
-      if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
-         fbinfo->zs.clear.z = true;
-         fbinfo->zs.clear_value.depth = att->clearValue.depthStencil.depth;
-      } else if (att->loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) {
-         fbinfo->zs.preload.z = true;
+         if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
+            fbinfo->zs.clear.z = true;
+            fbinfo->zs.clear_value.depth = att->clearValue.depthStencil.depth;
+         } else if (att->loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) {
+            fbinfo->zs.preload.z = true;
+         }
       }
    }
 
@@ -2127,23 +2129,26 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      cmdbuf->state.gfx.render.bound_attachments |=
-         MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
-      att_width = MAX2(iview_size.width, att_width);
-      att_height = MAX2(iview_size.height, att_height);
+      if (iview->vk.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+         cmdbuf->state.gfx.render.bound_attachments |=
+            MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
+         att_width = MAX2(iview_size.width, att_width);
+         att_height = MAX2(iview_size.height, att_height);
 
-      assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
+         assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
 
-      cmdbuf->state.gfx.render.fb.bos[cmdbuf->state.gfx.render.fb.bo_count++] =
-         img->bo;
-      fbinfo->zs.view.s =
-         &iview->pview != fbinfo->zs.view.zs ? &iview->pview : NULL;
+         cmdbuf->state.gfx.render.fb
+            .bos[cmdbuf->state.gfx.render.fb.bo_count++] = img->bo;
+         fbinfo->zs.view.s =
+            &iview->pview != fbinfo->zs.view.zs ? &iview->pview : NULL;
 
-      if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
-         fbinfo->zs.clear.s = true;
-         fbinfo->zs.clear_value.stencil = att->clearValue.depthStencil.stencil;
-      } else if (att->loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) {
-         fbinfo->zs.preload.s = true;
+         if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
+            fbinfo->zs.clear.s = true;
+            fbinfo->zs.clear_value.stencil =
+               att->clearValue.depthStencil.stencil;
+         } else if (att->loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) {
+            fbinfo->zs.preload.s = true;
+         }
       }
    }
 

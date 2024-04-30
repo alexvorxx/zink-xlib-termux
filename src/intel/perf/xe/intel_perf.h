@@ -22,3 +22,4 @@ int xe_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
                         uint32_t exec_id, uint64_t metrics_set_id,
                         uint64_t report_format, uint64_t period_exponent,
                         bool hold_preemption, bool enable);
+int xe_perf_stream_set_state(int perf_stream_fd, bool enable);

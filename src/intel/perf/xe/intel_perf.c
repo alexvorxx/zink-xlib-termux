@@ -158,3 +158,11 @@ xe_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
 
    return fd;
 }
+
+int
+xe_perf_stream_set_state(int perf_stream_fd, bool enable)
+{
+   unsigned long uapi = enable ? DRM_XE_PERF_IOCTL_ENABLE : DRM_XE_PERF_IOCTL_DISABLE;
+
+   return intel_ioctl(perf_stream_fd, uapi, 0);
+}

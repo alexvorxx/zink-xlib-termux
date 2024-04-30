@@ -1577,3 +1577,18 @@ intel_perf_stream_read_samples(struct intel_perf_config *perf_config,
          return -1;
    }
 }
+
+int
+intel_perf_stream_set_state(struct intel_perf_config *perf_config,
+                            int perf_stream_fd, bool enable)
+{
+   switch (perf_config->devinfo->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return i915_perf_stream_set_state(perf_stream_fd, enable);
+   case INTEL_KMD_TYPE_XE:
+      return xe_perf_stream_set_state(perf_stream_fd, enable);
+   default:
+         unreachable("missing");
+         return -1;
+   }
+}

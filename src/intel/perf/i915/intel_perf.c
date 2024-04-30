@@ -275,3 +275,11 @@ i915_has_dynamic_config_support(struct intel_perf_config *perf, int fd)
 {
    return i915_remove_config(perf, fd, UINT64_MAX) < 0 && errno == ENOENT;
 }
+
+int
+i915_perf_stream_set_state(int perf_stream_fd, bool enable)
+{
+   unsigned long uapi = enable ? I915_PERF_IOCTL_ENABLE : I915_PERF_IOCTL_DISABLE;
+
+   return intel_ioctl(perf_stream_fd, uapi, 0);
+}

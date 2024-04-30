@@ -20,6 +20,7 @@ int i915_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
                           uint64_t report_format, uint64_t period_exponent,
                           bool hold_preemption, bool enable);
 int i915_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer, size_t buffer_len);
+int i915_perf_stream_set_state(int perf_stream_fd, bool enable);
 
 struct intel_perf_registers *i915_perf_load_configurations(struct intel_perf_config *perf_cfg, int fd, const char *guid);
 

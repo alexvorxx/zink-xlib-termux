@@ -543,6 +543,38 @@ get_required_image_tmu_writes(struct v3d_compile *c,
         return tmu_writes;
 }
 
+static uint32_t
+return_channels_required(nir_intrinsic_instr *instr, bool is_32bit)
+{
+        if (nir_intrinsic_dest_components(instr) == 0)
+                return 0;
+
+        /* V3D requires that atomic operations always return data even if the
+         * shader doesn't use it.
+         */
+        if (instr->intrinsic == nir_intrinsic_image_atomic ||
+            instr->intrinsic == nir_intrinsic_image_atomic_swap) {
+                return 1;
+        }
+
+        /* Otherwise limit the number of words to read based on the components
+         * actually used by the shader, limited to the maximum allowed based
+         * on the output size.
+         */
+        nir_component_mask_t read_mask = nir_def_components_read(&instr->def);
+        read_mask &= is_32bit ? 0xf : 0x3;
+        assert(read_mask);
+
+        if (read_mask & 0x8)
+                return 4;
+        if (read_mask & 0x4)
+                return 3;
+        if (read_mask & 0x2)
+                return 2;
+        else
+                return 1;
+}
+
 void
 v3d_vir_emit_image_load_store(struct v3d_compile *c,
                               nir_intrinsic_instr *instr)
@@ -560,15 +592,12 @@ v3d_vir_emit_image_load_store(struct v3d_compile *c,
 
         struct V3D42_TMU_CONFIG_PARAMETER_2 p2_unpacked = { 0 };
 
-        /* Limit the number of channels returned to both how many the NIR
-         * instruction writes and how many the instruction could produce.
-         */
-        uint32_t instr_return_channels = nir_intrinsic_dest_components(instr);
-        if (!p1_unpacked.output_type_32_bit)
-                instr_return_channels = (instr_return_channels + 1) / 2;
-
+        /* Limit the number of channels to those that are actually used */
+        uint32_t return_channels =
+                return_channels_required(instr, p1_unpacked.output_type_32_bit);
+        assert(return_channels <= nir_intrinsic_dest_components(instr));
         p0_unpacked.return_words_of_texture_data =
-                (1 << instr_return_channels) - 1;
+                (1 << return_channels) - 1;
 
         p2_unpacked.op = v3d_image_load_store_tmu_op(instr);
 
@@ -619,7 +648,7 @@ v3d_vir_emit_image_load_store(struct v3d_compile *c,
        /* If pipelining this TMU operation would overflow TMU fifos, we need
         * to flush any outstanding TMU operations.
         */
-        if (ntq_tmu_fifo_overflow(c, instr_return_channels))
+        if (ntq_tmu_fifo_overflow(c, return_channels))
                 ntq_flush_tmu(c);
 
         vir_WRTMUC(c, QUNIFORM_IMAGE_TMU_CONFIG_P0, p0_packed);

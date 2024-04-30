@@ -3424,7 +3424,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       return NULL;
    }
 
-   screen->implicitly_loaded = config->implicit_driver_load;
+   //screen->implicitly_loaded = config->implicit_driver_load;
    screen->drm_fd = -1;
 
    glsl_type_singleton_init_or_ref();
@@ -3741,6 +3741,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       /* determine if vis vram is roughly equal to total vram */
       if (biggest_vis_vram > biggest_vram * 0.9)
          screen->resizable_bar = true;
+   }         
 ////
    /*if (!zink_screen_init_semaphore(screen)) {
       if (!screen->implicitly_loaded)

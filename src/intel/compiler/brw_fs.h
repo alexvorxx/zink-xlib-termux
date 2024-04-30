@@ -275,12 +275,6 @@ public:
                       unsigned *out_pull_index);
    void invalidate_analysis(brw::analysis_dependency_class c);
 
-#ifndef NDEBUG
-   void validate();
-#else
-   void validate() {}
-#endif
-
    instruction_scheduler *prepare_scheduler(void *mem_ctx);
    void schedule_instructions_pre_ra(instruction_scheduler *sched,
                                      instruction_scheduler_mode mode);
@@ -588,6 +582,12 @@ int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,
                                     const brw_stage_prog_data *prog_data);
 
 void nir_to_brw(fs_visitor *s);
+
+#ifndef NDEBUG
+void brw_fs_validate(const fs_visitor &s);
+#else
+static inline void brw_fs_validate(const fs_visitor &s) {}
+#endif
 
 void brw_fs_optimize(fs_visitor &s);
 

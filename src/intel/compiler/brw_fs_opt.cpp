@@ -17,7 +17,7 @@ brw_fs_optimize(fs_visitor &s)
    s.debug_optimizer(nir, "start", 0, 0);
 
    /* Start by validating the shader we currently have. */
-   s.validate();
+   brw_fs_validate(s);
 
    bool progress = false;
    int iteration = 0;
@@ -30,7 +30,7 @@ brw_fs_optimize(fs_visitor &s)
       if (this_progress)                                                \
          s.debug_optimizer(nir, #pass, iteration, pass_num);            \
                                                                         \
-      s.validate();                                                     \
+      brw_fs_validate(s);                                               \
                                                                         \
       progress = progress || this_progress;                             \
       this_progress;                                                    \
@@ -38,8 +38,6 @@ brw_fs_optimize(fs_visitor &s)
 
    s.assign_constant_locations();
    OPT(brw_fs_lower_constant_loads);
-
-   s.validate();
 
    if (s.compiler->lower_dpas)
       OPT(brw_fs_lower_dpas);
@@ -157,8 +155,6 @@ brw_fs_optimize(fs_visitor &s)
    OPT(brw_fs_lower_uniform_pull_constant_loads);
 
    OPT(brw_fs_lower_find_live_channel);
-
-   s.validate();
 }
 
 static unsigned

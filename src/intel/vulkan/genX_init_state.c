@@ -1142,7 +1142,7 @@ VkResult genX(CreateSampler)(
    } else {
       assert(vk_border_color_is_custom(sampler->vk.border_color));
       sampler->custom_border_color =
-         anv_state_reserved_pool_alloc(&device->custom_border_colors);
+         anv_state_reserved_array_pool_alloc(&device->custom_border_colors, false);
       border_color_offset = sampler->custom_border_color.offset;
       border_color_ptr = sampler->custom_border_color.map;
 

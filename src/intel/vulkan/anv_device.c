@@ -3558,17 +3558,20 @@ VkResult anv_CreateDevice(
     * We achieve that by reserving all the custom border colors we support
     * right off the bat, so they are close to the base address.
     */
-   anv_state_reserved_pool_init(&device->custom_border_colors,
-                                &device->dynamic_state_pool,
-                                MAX_CUSTOM_BORDER_COLORS,
-                                sizeof(struct gfx8_border_color), 64);
+   result = anv_state_reserved_array_pool_init(&device->custom_border_colors,
+                                               &device->dynamic_state_pool,
+                                               MAX_CUSTOM_BORDER_COLORS,
+                                               sizeof(struct gfx8_border_color), 64);
+   if (result != VK_SUCCESS)
+      goto fail_dynamic_state_db_pool;
+
    if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
       result = anv_state_reserved_array_pool_init(&device->custom_border_colors_db,
                                                   &device->dynamic_state_db_pool,
                                                   MAX_CUSTOM_BORDER_COLORS,
                                                   sizeof(struct gfx8_border_color), 64);
       if (result != VK_SUCCESS)
-         goto fail_dynamic_state_db_pool;
+         goto fail_custom_border_color_pool;
    }
 
    result = anv_state_pool_init(&device->instruction_state_pool, device,
@@ -4022,8 +4025,9 @@ VkResult anv_CreateDevice(
  fail_reserved_array_pool:
    if (device->vk.enabled_extensions.EXT_descriptor_buffer)
       anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
+ fail_custom_border_color_pool:
+   anv_state_reserved_array_pool_finish(&device->custom_border_colors);
  fail_dynamic_state_db_pool:
-   anv_state_reserved_pool_finish(&device->custom_border_colors);
    if (device->vk.enabled_extensions.EXT_descriptor_buffer)
       anv_state_pool_finish(&device->dynamic_state_db_pool);
  fail_dynamic_state_pool:
@@ -4113,6 +4117,7 @@ void anv_DestroyDevice(
                                    device->companion_rcs_cmd_pool, NULL);
    }
 
+   anv_state_reserved_array_pool_finish(&device->custom_border_colors);
    if (device->vk.enabled_extensions.EXT_descriptor_buffer)
       anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
 
@@ -4120,7 +4125,6 @@ void anv_DestroyDevice(
    /* We only need to free these to prevent valgrind errors.  The backing
     * BO will go away in a couple of lines so we don't actually leak.
     */
-   anv_state_reserved_pool_finish(&device->custom_border_colors);
    anv_state_pool_free(&device->dynamic_state_pool, device->border_colors);
    anv_state_pool_free(&device->dynamic_state_pool, device->slice_hash);
    anv_state_pool_free(&device->dynamic_state_pool, device->cps_states);
@@ -5321,8 +5325,8 @@ void anv_DestroySampler(
    }
 
    if (sampler->custom_border_color.map) {
-      anv_state_reserved_pool_free(&device->custom_border_colors,
-                                   sampler->custom_border_color);
+      anv_state_reserved_array_pool_free(&device->custom_border_colors,
+                                         sampler->custom_border_color);
    }
    if (sampler->custom_border_color_db.map) {
       anv_state_reserved_array_pool_free(&device->custom_border_colors_db,

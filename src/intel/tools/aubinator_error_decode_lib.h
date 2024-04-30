@@ -7,6 +7,12 @@
 
 #include "intel/common/intel_engine.h"
 
+enum decode_color {
+   DECODE_COLOR_AUTO,
+   DECODE_COLOR_ALWAYS,
+   DECODE_COLOR_NEVER
+};
+
 int ring_name_to_class(const char *ring_name, enum intel_engine_class *class);
 
 void

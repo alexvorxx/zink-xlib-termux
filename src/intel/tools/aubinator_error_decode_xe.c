@@ -64,12 +64,30 @@ print_batch(struct intel_batch_decode_ctx *batch_ctx, const uint32_t *bb_data,
    }
 }
 
+static void
+print_register(struct intel_spec *spec, enum decode_color option_color,
+               const char *name, uint32_t reg)
+{
+   struct intel_group *reg_spec =
+      name ? intel_spec_find_register_by_name(spec, name) : NULL;
+
+   if (reg_spec) {
+      const char *spacing_reg = "\t\t";
+      const char *spacing_dword = "\t";
+
+      intel_print_group_custom_spacing(stdout, reg_spec, 0, &reg, 0,
+                                       option_color == DECODE_COLOR_ALWAYS,
+                                       spacing_reg, spacing_dword);
+   }
+}
+
 void
 read_xe_data_file(FILE *file,
                   enum intel_batch_decode_flags batch_flags,
                   const char *spec_xml_path,
                   bool option_dump_kernels,
-                  bool option_print_all_bb)
+                  bool option_print_all_bb,
+                  enum decode_color option_color)
 {
    struct intel_batch_decode_ctx batch_ctx;
    struct intel_device_info devinfo;
@@ -105,10 +123,10 @@ read_xe_data_file(FILE *file,
 
       switch (xe_topic) {
       case XE_TOPIC_DEVICE: {
-         int int_value;
+         uint32_t value;
 
-         if (error_decode_xe_read_hexacimal_parameter(line, "PCI ID", &int_value)) {
-            if (intel_get_device_info_from_pci_id(int_value, &devinfo)) {
+         if (error_decode_xe_read_hexacimal_parameter(line, "PCI ID", &value)) {
+            if (intel_get_device_info_from_pci_id(value, &devinfo)) {
                printf("Detected GFX ver %i\n", devinfo.verx10);
                brw_init_isa_info(&isa, &devinfo);
 
@@ -117,7 +135,7 @@ read_xe_data_file(FILE *file,
                else
                   spec = intel_spec_load_from_path(&devinfo, spec_xml_path);
             } else {
-               printf("Unable to identify devid: 0x%x\n", int_value);
+               printf("Unable to identify devid: 0x%x\n", value);
             }
          }
 
@@ -126,12 +144,66 @@ read_xe_data_file(FILE *file,
       case XE_TOPIC_HW_ENGINES: {
          char engine_name[64];
          uint64_t u64_reg;
+         uint32_t reg;
 
-         if (error_decode_xe_read_engine_name(line, engine_name))
+         if (error_decode_xe_read_engine_name(line, engine_name)) {
             ring_name_to_class(engine_name, &engine_class);
+            break;
+         }
 
-         if (error_decode_xe_read_u64_hexacimal_parameter(line, "ACTHD", &u64_reg))
+         if (error_decode_xe_read_u64_hexacimal_parameter(line, "ACTHD", &u64_reg)) {
             acthd = u64_reg;
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "RING_INSTDONE", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "INSTDONE_1", reg);
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "SC_INSTDONE", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "SC_INSTDONE", reg);
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "SC_INSTDONE_EXTRA", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "SC_INSTDONE_EXTRA", reg);
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "SC_INSTDONE_EXTRA2", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "SC_INSTDONE_EXTRA2", reg);
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "SAMPLER_INSTDONE", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "SAMPLER_INSTDONE", reg);
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "ROW_INSTDONE", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "ROW_INSTDONE", reg);
+            break;
+         }
+
+         if (error_decode_xe_read_hexacimal_parameter(line, "INSTDONE_GEOM_SVGUNIT", &reg)) {
+            print_line = false;
+            fputs(line, stdout);
+            print_register(spec, option_color, "INSTDONE_GEOM", reg);
+            break;
+         }
 
          /* TODO: parse other engine registers */
          break;

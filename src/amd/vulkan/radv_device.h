@@ -413,7 +413,7 @@ struct radv_device {
    struct radeon_winsys_bo *gfx_init;
 
    struct radeon_winsys_bo *trace_bo;
-   uint32_t *trace_id_ptr;
+   struct radv_trace_data *trace_data;
 
    /* Whether to keep shader debug info, for debugging. */
    bool keep_shader_info;

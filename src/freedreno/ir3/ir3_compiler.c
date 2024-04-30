@@ -222,6 +222,8 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->num_predicates = 4;
       compiler->bitops_can_write_predicates = true;
       compiler->has_branch_and_or = true;
+      compiler->has_predication = true;
+      compiler->has_scalar_alu = dev_info->a6xx.has_scalar_alu;
    } else {
       compiler->max_const_pipeline = 512;
       compiler->max_const_geom = 512;
@@ -232,6 +234,8 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
        * earlier gen's.
        */
       compiler->max_const_safe = 256;
+
+      compiler->has_scalar_alu = false;
    }
 
    /* This is just a guess for a4xx. */

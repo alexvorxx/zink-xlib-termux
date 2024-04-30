@@ -591,8 +591,8 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
     * would break this restriction.
     */
    if (has_dst_aligned_region_restriction(devinfo, inst, dst_type) &&
-       !(type_sz(inst->src[arg].type) * stride ==
-           type_sz(dst_type) * inst->dst.stride ||
+       !(brw_type_size_bytes(inst->src[arg].type) * stride ==
+           brw_type_size_bytes(dst_type) * inst->dst.stride ||
          stride == 0))
       return false;
 
@@ -607,7 +607,7 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
     *    cannot use the replicate control.
     */
    if (inst->is_3src(compiler)) {
-      if (type_sz(inst->src[arg].type) > 4)
+      if (brw_type_size_bytes(inst->src[arg].type) > 4)
          return stride == 1;
       else
          return stride == 1 || stride == 0;
@@ -623,7 +623,7 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
        * Prevent copy propagating a scalar value into a math instruction.
        */
       if (intel_needs_workaround(devinfo, 22016140776) &&
-          stride == 0 && inst->src[arg].type == BRW_REGISTER_TYPE_HF) {
+          stride == 0 && inst->src[arg].type == BRW_TYPE_HF) {
          return false;
       }
 
@@ -729,7 +729,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * instead. See also resolve_ud_negate() and comment in
     * fs_generator::generate_code.
     */
-   if (entry->src.type == BRW_REGISTER_TYPE_UD &&
+   if (entry->src.type == BRW_TYPE_UD &&
        entry->src.negate)
       return false;
 
@@ -788,6 +788,15 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
        (reg_offset(inst->dst) % (REG_SIZE * reg_unit(devinfo))) != (reg_offset(entry->src) % (REG_SIZE * reg_unit(devinfo))))
       return false;
 
+   /*
+    * Bail if the composition of both regions would be affected by the Xe2+
+    * regioning restrictions that apply to integer types smaller than a dword.
+    * See BSpec #56640 for details.
+    */
+   const fs_reg tmp = horiz_stride(entry->src, inst->src[arg].stride);
+   if (has_subdword_integer_region_restriction(devinfo, inst, &tmp, 1))
+      return false;
+
    /* The <8;8,0> regions used for FS attributes in multipolygon
     * dispatch mode could violate regioning restrictions, don't copy
     * propagate them in such cases.
@@ -816,7 +825,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * destination of the copy, and simply replacing the sources would give a
     * program with different semantics.
     */
-   if ((type_sz(entry->dst.type) < type_sz(inst->src[arg].type) ||
+   if ((brw_type_size_bits(entry->dst.type) < brw_type_size_bits(inst->src[arg].type) ||
         entry->is_partial_write) &&
        inst->opcode != BRW_OPCODE_MOV) {
       return false;
@@ -837,7 +846,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     */
    if (entry_stride != 1 &&
        (inst->src[arg].stride *
-        type_sz(inst->src[arg].type)) % type_sz(entry->src.type) != 0)
+        brw_type_size_bytes(inst->src[arg].type)) % brw_type_size_bytes(entry->src.type) != 0)
       return false;
 
    /* Since semantics of source modifiers are type-dependent we need to
@@ -849,7 +858,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    if (has_source_modifiers &&
        entry->dst.type != inst->src[arg].type &&
        (!inst->can_change_types() ||
-        type_sz(entry->dst.type) != type_sz(inst->src[arg].type)))
+        brw_type_size_bits(entry->dst.type) != brw_type_size_bits(inst->src[arg].type)))
       return false;
 
    if ((entry->src.negate || entry->src.abs) &&
@@ -872,8 +881,9 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    if (entry->src.file == FIXED_GRF) {
       if (inst->src[arg].stride) {
          const unsigned orig_width = 1 << entry->src.width;
-         const unsigned reg_width = REG_SIZE / (type_sz(inst->src[arg].type) *
-                                                inst->src[arg].stride);
+         const unsigned reg_width =
+            REG_SIZE / (brw_type_size_bytes(inst->src[arg].type) *
+                        inst->src[arg].stride);
          inst->src[arg].width = cvt(MIN2(orig_width, reg_width)) - 1;
          inst->src[arg].hstride = cvt(inst->src[arg].stride);
          inst->src[arg].vstride = inst->src[arg].hstride + inst->src[arg].width;
@@ -895,14 +905,14 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * reading, and the base byte offset within that component.
     */
    assert(entry->dst.stride == 1);
-   const unsigned component = rel_offset / type_sz(entry->dst.type);
-   const unsigned suboffset = rel_offset % type_sz(entry->dst.type);
+   const unsigned component = rel_offset / brw_type_size_bytes(entry->dst.type);
+   const unsigned suboffset = rel_offset % brw_type_size_bytes(entry->dst.type);
 
    /* Calculate the byte offset at the origin of the copy of the given
     * component and suboffset.
     */
    inst->src[arg] = byte_offset(inst->src[arg],
-      component * entry_stride * type_sz(entry->src.type) + suboffset);
+      component * entry_stride * brw_type_size_bytes(entry->src.type) + suboffset);
 
    if (has_source_modifiers) {
       if (entry->dst.type != inst->src[arg].type) {
@@ -932,7 +942,7 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
 {
    bool progress = false;
 
-   if (type_sz(entry->src.type) > 4)
+   if (brw_type_size_bytes(entry->src.type) > 4)
       return false;
 
    if (inst->src[arg].file != VGRF)
@@ -953,7 +963,8 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
     * type, the entry doesn't contain all of the data that the user is
     * trying to use.
     */
-   if (type_sz(inst->src[arg].type) > type_sz(entry->dst.type))
+   if (brw_type_size_bits(inst->src[arg].type) >
+       brw_type_size_bits(entry->dst.type))
       return false;
 
    fs_reg val = entry->src;
@@ -967,8 +978,10 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
     *    ...
     *    mul(8)          g47<1>D         g86<8,8,1>D     g12<16,8,2>W
     */
-   if (type_sz(inst->src[arg].type) < type_sz(entry->dst.type)) {
-      if (type_sz(inst->src[arg].type) != 2 || type_sz(entry->dst.type) != 4)
+   if (brw_type_size_bits(inst->src[arg].type) <
+       brw_type_size_bits(entry->dst.type)) {
+      if (brw_type_size_bytes(inst->src[arg].type) != 2 ||
+          brw_type_size_bytes(entry->dst.type) != 4)
          return false;
 
       assert(inst->src[arg].subnr == 0 || inst->src[arg].subnr == 2);
@@ -1050,11 +1063,11 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
           * will now "fix" the constant.
           */
          if (inst->opcode == BRW_OPCODE_MUL &&
-             type_sz(inst->src[1].type) < 4 &&
-             (inst->src[0].type == BRW_REGISTER_TYPE_D ||
-              inst->src[0].type == BRW_REGISTER_TYPE_UD)) {
+             brw_type_size_bytes(inst->src[1].type) < 4 &&
+             (inst->src[0].type == BRW_TYPE_D ||
+              inst->src[0].type == BRW_TYPE_UD)) {
             inst->src[0] = val;
-            inst->src[0].type = BRW_REGISTER_TYPE_D;
+            inst->src[0].type = BRW_TYPE_D;
             progress = true;
             break;
          }
@@ -1073,8 +1086,8 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
          if (((inst->opcode == BRW_OPCODE_MUL &&
                inst->dst.is_accumulator()) ||
               inst->opcode == BRW_OPCODE_MACH) &&
-             (inst->src[1].type == BRW_REGISTER_TYPE_D ||
-              inst->src[1].type == BRW_REGISTER_TYPE_UD))
+             (inst->src[1].type == BRW_TYPE_D ||
+              inst->src[1].type == BRW_TYPE_UD))
             break;
          inst->src[0] = inst->src[1];
          inst->src[1] = val;
@@ -1086,7 +1099,7 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       /* add3 can have a single imm16 source. Proceed if the source type is
        * already W or UW or the value can be coerced to one of those types.
        */
-      if (val.type == BRW_REGISTER_TYPE_W || val.type == BRW_REGISTER_TYPE_UW)
+      if (val.type == BRW_TYPE_W || val.type == BRW_TYPE_UW)
          ; /* Nothing to do. */
       else if (val.ud <= 0xffff)
          val = brw_imm_uw(val.ud);
@@ -1343,13 +1356,13 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
          int offset = 0;
          for (int i = 0; i < inst->sources; i++) {
             int effective_width = i < inst->header_size ? 8 : inst->exec_size;
-            const unsigned size_written = effective_width *
-                                          type_sz(inst->src[i].type);
+            const unsigned size_written =
+               effective_width * brw_type_size_bytes(inst->src[i].type);
             if (inst->src[i].file == VGRF ||
                 (inst->src[i].file == FIXED_GRF &&
                  inst->src[i].is_contiguous())) {
                const brw_reg_type t = i < inst->header_size ?
-                  BRW_REGISTER_TYPE_UD : inst->src[i].type;
+                  BRW_TYPE_UD : inst->src[i].type;
                fs_reg dst = byte_offset(retype(inst->dst, t), offset);
                if (!dst.equals(inst->src[i])) {
                   acp_entry *entry = linear_zalloc(lin_ctx, acp_entry);

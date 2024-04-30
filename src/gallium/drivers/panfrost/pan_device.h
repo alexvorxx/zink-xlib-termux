@@ -62,6 +62,8 @@ extern "C" {
  */
 #define PAN_MAX_MIP_LEVELS 14
 
+#define PAN_MAX_TEXEL_BUFFER_ELEMENTS 65536
+
 /* How many power-of-two levels in the BO cache do we want? 2^12
  * minimum chosen as it is the page size that all allocations are
  * rounded to */

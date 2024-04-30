@@ -953,6 +953,7 @@ emit_vop3p_instruction(isel_context* ctx, nir_alu_instr* instr, aco_opcode op, T
    Builder bld(ctx->program, ctx->block);
    bld.is_precise = instr->exact;
    Builder::Result res = bld.vop3p(op, Definition(dst), src0, src1, opsel_lo, opsel_hi);
+   emit_split_vector(ctx, dst, 2);
    return res;
 }
 
@@ -1515,6 +1516,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          Temp sub = bld.vop3p(aco_opcode::v_pk_sub_u16, Definition(bld.tmp(v1)), Operand::zero(),
                               src, opsel_lo, opsel_hi);
          bld.vop3p(aco_opcode::v_pk_max_i16, Definition(dst), sub, src, opsel_lo, opsel_hi);
+         emit_split_vector(ctx, dst, 2);
          break;
       }
       Temp src = get_alu_src(ctx, instr->src[0]);
@@ -2411,6 +2413,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          }
 
          bld.vop3p(aco_opcode::v_pk_fma_f16, Definition(dst), src0, src1, src2, opsel_lo, opsel_hi);
+         emit_split_vector(ctx, dst, 2);
       } else if (dst.regClass() == v1) {
          emit_vop3a_instruction(ctx, instr, aco_opcode::v_fma_f32, dst,
                                 ctx->block->fp_mode.must_flush_denorms32, 3);
@@ -2547,6 +2550,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                       instr->src[0].swizzle[0] & 1, instr->src[0].swizzle[1] & 1);
          vop3p->valu().neg_lo[0] = true;
          vop3p->valu().neg_hi[0] = true;
+         emit_split_vector(ctx, dst, 2);
          break;
       }
       Temp src = get_alu_src(ctx, instr->src[0]);
@@ -2577,6 +2581,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                .instr;
          vop3p->valu().neg_lo[1] = true;
          vop3p->valu().neg_hi[1] = true;
+         emit_split_vector(ctx, dst, 2);
          break;
       }
       Temp src = get_alu_src(ctx, instr->src[0]);
@@ -2610,6 +2615,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
             bld.vop3p(aco_opcode::v_pk_mul_f16, Definition(dst), src, Operand::c16(0x3C00),
                       instr->src[0].swizzle[0] & 1, instr->src[0].swizzle[1] & 1);
          vop3p->valu().clamp = true;
+         emit_split_vector(ctx, dst, 2);
          break;
       }
       Temp src = get_alu_src(ctx, instr->src[0]);
@@ -3922,6 +3928,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                .instr->valu();
          sub.neg_lo[1] = true;
          sub.neg_hi[1] = true;
+         emit_split_vector(ctx, dst, 2);
       } else {
          Temp src = as_vgpr(ctx, get_alu_src(ctx, instr->src[0]));
 
@@ -10006,13 +10013,12 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
 }
 
 Operand
-get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc, bool logical)
+get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc)
 {
    Temp tmp = get_ssa_temp(ctx, ssa);
    if (ssa->parent_instr->type == nir_instr_type_undef) {
       return Operand(rc);
-   } else if (logical && ssa->bit_size == 1 &&
-              ssa->parent_instr->type == nir_instr_type_load_const) {
+   } else if (ssa->bit_size == 1 && ssa->parent_instr->type == nir_instr_type_load_const) {
       bool val = nir_instr_as_load_const(ssa->parent_instr)->value[0].b;
       return Operand::c32_or_c64(val ? -1 : 0, ctx->program->lane_mask == s2);
    } else {
@@ -10023,94 +10029,19 @@ get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc, bool logical)
 void
 visit_phi(isel_context* ctx, nir_phi_instr* instr)
 {
-   aco_ptr<Instruction> phi;
    Temp dst = get_ssa_temp(ctx, &instr->def);
    assert(instr->def.bit_size != 1 || dst.regClass() == ctx->program->lane_mask);
-
-   bool logical = !dst.is_linear() || instr->def.divergent;
-   logical |= (ctx->block->kind & block_kind_merge) != 0;
-   aco_opcode opcode = logical ? aco_opcode::p_phi : aco_opcode::p_linear_phi;
+   aco_opcode opcode = instr->def.bit_size == 1 ? aco_opcode::p_boolean_phi : aco_opcode::p_phi;
 
    /* we want a sorted list of sources, since the predecessor list is also sorted */
    std::map<unsigned, nir_def*> phi_src;
    nir_foreach_phi_src (src, instr)
       phi_src[src->pred->index] = src->src.ssa;
 
-   Block::edge_vec& preds = logical ? ctx->block->logical_preds : ctx->block->linear_preds;
-   unsigned num_operands = 0;
-   Operand* const operands = (Operand*)alloca(
-      (std::max(exec_list_length(&instr->srcs), (unsigned)preds.size()) + 1) * sizeof(Operand));
-   unsigned num_defined = 0;
-   unsigned cur_pred_idx = 0;
-   for (std::pair<unsigned, nir_def*> src : phi_src) {
-      if (cur_pred_idx < preds.size()) {
-         /* handle missing preds (IF merges with discard/break) and extra preds
-          * (loop exit with discard) */
-         unsigned block = ctx->cf_info.nir_to_aco[src.first];
-         unsigned skipped = 0;
-         while (cur_pred_idx + skipped < preds.size() && preds[cur_pred_idx + skipped] != block)
-            skipped++;
-         if (cur_pred_idx + skipped < preds.size()) {
-            for (unsigned i = 0; i < skipped; i++)
-               operands[num_operands++] = Operand(dst.regClass());
-            cur_pred_idx += skipped;
-         } else {
-            continue;
-         }
-      }
-      /* Handle missing predecessors at the end. This shouldn't happen with loop
-       * headers and we can't ignore these sources for loop header phis. */
-      if (!(ctx->block->kind & block_kind_loop_header) && cur_pred_idx >= preds.size())
-         continue;
-      cur_pred_idx++;
-      Operand op = get_phi_operand(ctx, src.second, dst.regClass(), logical);
-      operands[num_operands++] = op;
-      num_defined += !op.isUndefined();
-   }
-   /* handle block_kind_continue_or_break at loop exit blocks */
-   while (cur_pred_idx++ < preds.size())
-      operands[num_operands++] = Operand(dst.regClass());
-
-   /* If the loop ends with a break, still add a linear continue edge in case
-    * that break is divergent or continue_or_break is used. We'll either remove
-    * this operand later in visit_loop() if it's not necessary or replace the
-    * undef with something correct. */
-   if (!logical && ctx->block->kind & block_kind_loop_header) {
-      nir_loop* loop = nir_cf_node_as_loop(instr->instr.block->cf_node.parent);
-      nir_block* last = nir_loop_last_block(loop);
-      if (last->successors[0] != instr->instr.block)
-         operands[num_operands++] = Operand(RegClass());
-   }
-
-   /* we can use a linear phi in some cases if one src is undef */
-   if (dst.is_linear() && ctx->block->kind & block_kind_merge && num_defined == 1) {
-      phi.reset(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO, num_operands, 1));
-
-      Block* linear_else = &ctx->program->blocks[ctx->block->linear_preds[1]];
-      Block* invert = &ctx->program->blocks[linear_else->linear_preds[0]];
-      assert(invert->kind & block_kind_invert);
-
-      unsigned then_block = invert->linear_preds[0];
-
-      Block* insert_block = NULL;
-      for (unsigned i = 0; i < num_operands; i++) {
-         Operand op = operands[i];
-         if (op.isUndefined())
-            continue;
-         insert_block = ctx->block->logical_preds[i] == then_block ? invert : ctx->block;
-         phi->operands[0] = op;
-         break;
-      }
-      assert(insert_block); /* should be handled by the "num_defined == 0" case above */
-      phi->operands[1] = Operand(dst.regClass());
-      phi->definitions[0] = Definition(dst);
-      insert_block->instructions.emplace(insert_block->instructions.begin(), std::move(phi));
-      return;
-   }
-
-   phi.reset(create_instruction(opcode, Format::PSEUDO, num_operands, 1));
-   for (unsigned i = 0; i < num_operands; i++)
-      phi->operands[i] = operands[i];
+   Instruction* phi = create_instruction(opcode, Format::PSEUDO, phi_src.size(), 1);
+   unsigned i = 0;
+   for (std::pair<unsigned, nir_def*> src : phi_src)
+      phi->operands[i++] = get_phi_operand(ctx, src.second, dst.regClass());
    phi->definitions[0] = Definition(dst);
    ctx->block->instructions.emplace(ctx->block->instructions.begin(), std::move(phi));
 }
@@ -10351,52 +10282,6 @@ visit_block(isel_context* ctx, nir_block* block)
       ctx->cf_info.nir_to_aco[block->index] = ctx->block->index;
 }
 
-static Operand
-create_continue_phis(isel_context* ctx, unsigned first, unsigned last,
-                     aco_ptr<Instruction>& header_phi, Operand* vals)
-{
-   vals[0] = Operand(header_phi->definitions[0].getTemp());
-   RegClass rc = vals[0].regClass();
-
-   unsigned loop_nest_depth = ctx->program->blocks[first].loop_nest_depth;
-
-   unsigned next_pred = 1;
-
-   for (unsigned idx = first + 1; idx <= last; idx++) {
-      Block& block = ctx->program->blocks[idx];
-      if (block.loop_nest_depth != loop_nest_depth) {
-         vals[idx - first] = vals[idx - 1 - first];
-         continue;
-      }
-
-      if ((block.kind & block_kind_continue) && block.index != last) {
-         vals[idx - first] = header_phi->operands[next_pred];
-         next_pred++;
-         continue;
-      }
-
-      bool all_same = true;
-      for (unsigned i = 1; all_same && (i < block.linear_preds.size()); i++)
-         all_same = vals[block.linear_preds[i] - first] == vals[block.linear_preds[0] - first];
-
-      Operand val;
-      if (all_same) {
-         val = vals[block.linear_preds[0] - first];
-      } else {
-         aco_ptr<Instruction> phi(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO,
-                                                     block.linear_preds.size(), 1));
-         for (unsigned i = 0; i < block.linear_preds.size(); i++)
-            phi->operands[i] = vals[block.linear_preds[i] - first];
-         val = Operand(ctx->program->allocateTmp(rc));
-         phi->definitions[0] = Definition(val.getTemp());
-         block.instructions.emplace(block.instructions.begin(), std::move(phi));
-      }
-      vals[idx - first] = val;
-   }
-
-   return vals[last - first];
-}
-
 static void begin_uniform_if_then(isel_context* ctx, if_context* ic, Temp cond);
 static void begin_uniform_if_else(isel_context* ctx, if_context* ic);
 static void end_uniform_if(isel_context* ctx, if_context* ic);
@@ -10409,27 +10294,6 @@ visit_loop(isel_context* ctx, nir_loop* loop)
    begin_loop(ctx, &lc);
 
    visit_cf_list(ctx, &loop->body);
-
-   unsigned loop_header_idx = ctx->cf_info.parent_loop.header_idx;
-
-   /* We add an operand when creating ACO phis for NIR ones in case if it might end with a divergent
-    * break, in which case we need to insert a linear continue edge. Fixup linear phis by either
-    * removing that operand if it's not actually necessary, or give it the correct value. */
-   if (nir_loop_last_block(loop)->successors[0] != nir_loop_first_block(loop)) {
-      unsigned num_vals = ctx->cf_info.has_branch ? 1 : (ctx->block->index - loop_header_idx + 1);
-      Operand* const vals = (Operand*)alloca(num_vals * sizeof(Operand));
-      for (aco_ptr<Instruction>& instr : ctx->program->blocks[loop_header_idx].instructions) {
-         if (instr->opcode == aco_opcode::p_linear_phi) {
-            if (ctx->cf_info.has_branch)
-               instr->operands.pop_back();
-            else
-               instr->operands.back() =
-                  create_continue_phis(ctx, loop_header_idx, ctx->block->index, instr, vals);
-         } else if (!is_phi(instr)) {
-            break;
-         }
-      }
-   }
 
    end_loop(ctx, &lc);
 }

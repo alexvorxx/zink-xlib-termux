@@ -110,13 +110,13 @@ brw_fs_validate(const fs_visitor &s)
 
       if (inst->is_3src(s.compiler)) {
          const unsigned integer_sources =
-            brw_reg_type_is_integer(inst->src[0].type) +
-            brw_reg_type_is_integer(inst->src[1].type) +
-            brw_reg_type_is_integer(inst->src[2].type);
+            brw_type_is_int(inst->src[0].type) +
+            brw_type_is_int(inst->src[1].type) +
+            brw_type_is_int(inst->src[2].type);
          const unsigned float_sources =
-            brw_reg_type_is_floating_point(inst->src[0].type) +
-            brw_reg_type_is_floating_point(inst->src[1].type) +
-            brw_reg_type_is_floating_point(inst->src[2].type);
+            brw_type_is_float(inst->src[0].type) +
+            brw_type_is_float(inst->src[1].type) +
+            brw_type_is_float(inst->src[2].type);
 
          fsv_assert((integer_sources == 3 && float_sources == 0) ||
                     (integer_sources == 0 && float_sources == 3));
@@ -168,7 +168,7 @@ brw_fs_validate(const fs_visitor &s)
                 */
                fsv_assert_lte(inst->src[i].vstride, 1);
 
-               if (type_sz(inst->src[i].type) > 4)
+               if (brw_type_size_bytes(inst->src[i].type) > 4)
                   fsv_assert_eq(inst->src[i].vstride, 1);
             }
          }
@@ -211,7 +211,7 @@ brw_fs_validate(const fs_visitor &s)
           */
          for (unsigned i = 0; i < inst->sources; i++) {
             fsv_assert(!is_uniform(inst->src[i]) ||
-                       inst->src[i].type != BRW_REGISTER_TYPE_HF);
+                       inst->src[i].type != BRW_TYPE_HF);
          }
       }
    }

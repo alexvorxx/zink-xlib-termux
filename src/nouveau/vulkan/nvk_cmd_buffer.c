@@ -59,6 +59,7 @@ nvk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 
 static VkResult
 nvk_create_cmd_buffer(struct vk_command_pool *vk_pool,
+                      VkCommandBufferLevel level,
                       struct vk_command_buffer **cmd_buffer_out)
 {
    struct nvk_cmd_pool *pool = container_of(vk_pool, struct nvk_cmd_pool, vk);
@@ -72,7 +73,7 @@ nvk_create_cmd_buffer(struct vk_command_pool *vk_pool,
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    result = vk_command_buffer_init(&pool->vk, &cmd->vk,
-                                   &nvk_cmd_buffer_ops, 0);
+                                   &nvk_cmd_buffer_ops, level);
    if (result != VK_SUCCESS) {
       vk_free(&pool->vk.alloc, cmd);
       return result;

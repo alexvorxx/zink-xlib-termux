@@ -785,7 +785,8 @@ add_aux_surface_if_supported(struct anv_device *device,
          return VK_SUCCESS;
       }
 
-      if (image->vk.mip_levels > 1) {
+      /* TODO: Adjust blorp for multi-LOD HiZ surface on Gen8 - Gen9*/
+      if (image->vk.mip_levels > 1 && device->info->ver <= 9) {
          anv_perf_warn(VK_LOG_OBJS(&image->vk.base), "Enable multi-LOD HiZ");
          return VK_SUCCESS;
       }

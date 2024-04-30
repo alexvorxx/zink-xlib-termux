@@ -3856,7 +3856,6 @@ static void visit_tex(struct ac_nir_context *ctx, nir_tex_instr *instr)
          break;
       case nir_tex_src_bias:
          args.bias = get_src(ctx, instr->src[i].src);
-         assert(ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.bias)) == 32);
          break;
       case nir_tex_src_lod:
          if (nir_src_is_const(instr->src[i].src) && nir_src_as_uint(instr->src[i].src) == 0)
@@ -3960,6 +3959,10 @@ static void visit_tex(struct ac_nir_context *ctx, nir_tex_instr *instr)
    if (sample_index && (instr->op == nir_texop_txf_ms || instr->op == nir_texop_fragment_fetch_amd))
       args.coords[instr->coord_components] = sample_index;
 
+   bool is_new_style_shadow = instr->is_shadow && instr->is_new_style_shadow &&
+                              instr->op != nir_texop_lod && instr->op != nir_texop_tg4;
+   unsigned num_components = util_last_bit(nir_def_components_read(&instr->def));
+
    /* DMASK was repurposed for GATHER4. 4 components are always
     * returned and DMASK works like a swizzle - it selects
     * the component to fetch. The only valid DMASK values are
@@ -3967,12 +3970,15 @@ static void visit_tex(struct ac_nir_context *ctx, nir_tex_instr *instr)
     * (red,red,red,red) etc.) The ISA document doesn't mention
     * this.
     */
-   args.dmask = 0xf;
    if (instr->op == nir_texop_tg4) {
       if (instr->is_shadow)
          args.dmask = 1;
       else
          args.dmask = 1 << instr->component;
+   } else if (is_new_style_shadow || instr->op == nir_texop_fragment_mask_fetch_amd) {
+      args.dmask = 1;
+   } else {
+      args.dmask = BITFIELD_MASK(num_components);
    }
 
    if (instr->sampler_dim != GLSL_SAMPLER_DIM_BUF) {
@@ -4011,8 +4017,7 @@ static void visit_tex(struct ac_nir_context *ctx, nir_tex_instr *instr)
       result = ac_trim_vector(&ctx->ac, result, 4);
    }
 
-   if (instr->is_shadow && instr->is_new_style_shadow &&
-       instr->op != nir_texop_lod && instr->op != nir_texop_tg4)
+   if (is_new_style_shadow)
       result = LLVMBuildExtractElement(ctx->ac.builder, result, ctx->ac.i32_0, "");
    else if (instr->op == nir_texop_fragment_mask_fetch_amd) {
       /* Use 0x76543210 if the image doesn't have FMASK. */
@@ -4022,8 +4027,8 @@ static void visit_tex(struct ac_nir_context *ctx, nir_tex_instr *instr)
       result = LLVMBuildSelect(ctx->ac.builder, tmp,
                                LLVMBuildExtractElement(ctx->ac.builder, result, ctx->ac.i32_0, ""),
                                LLVMConstInt(ctx->ac.i32, 0x76543210, false), "");
-   } else if (nir_tex_instr_result_size(instr) != 4)
-      result = ac_trim_vector(&ctx->ac, result, instr->def.num_components);
+   } else
+      result = ac_trim_vector(&ctx->ac, result, num_components);
 
    if (instr->is_sparse)
       result = ac_build_concat(&ctx->ac, result, code);

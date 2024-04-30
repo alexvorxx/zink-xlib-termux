@@ -1312,6 +1312,9 @@ vlVaCreateSurfaces2(VADriverContextP ctx, unsigned int format,
          goto destroy_surf;
       }
    }
+
+   if (memory_type != VA_SURFACE_ATTRIB_MEM_TYPE_VA)
+      drv->has_external_handles = true;
    mtx_unlock(&drv->mutex);
 
    return VA_STATUS_SUCCESS;
@@ -1726,6 +1729,7 @@ vlVaExportSurfaceHandle(VADriverContextP ctx,
    }
 #endif
 
+   drv->has_external_handles = true;
    mtx_unlock(&drv->mutex);
 
    return VA_STATUS_SUCCESS;

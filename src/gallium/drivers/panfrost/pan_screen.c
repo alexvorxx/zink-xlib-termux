@@ -214,7 +214,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
          return 0;
 
    case PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT:
-      return 65536;
+      return PAN_MAX_TEXEL_BUFFER_ELEMENTS;
 
    /* Must be at least 64 for correct behaviour */
    case PIPE_CAP_TEXTURE_BUFFER_OFFSET_ALIGNMENT:
@@ -550,12 +550,6 @@ panfrost_is_format_supported(struct pipe_screen *screen,
                              unsigned storage_sample_count, unsigned bind)
 {
    struct panfrost_device *dev = pan_device(screen);
-
-   assert(target == PIPE_BUFFER || target == PIPE_TEXTURE_1D ||
-          target == PIPE_TEXTURE_1D_ARRAY || target == PIPE_TEXTURE_2D ||
-          target == PIPE_TEXTURE_2D_ARRAY || target == PIPE_TEXTURE_RECT ||
-          target == PIPE_TEXTURE_3D || target == PIPE_TEXTURE_CUBE ||
-          target == PIPE_TEXTURE_CUBE_ARRAY);
 
    /* MSAA 2x gets rounded up to 4x. MSAA 8x/16x only supported on v5+.
     * TODO: debug MSAA 8x/16x */

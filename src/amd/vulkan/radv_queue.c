@@ -2197,7 +2197,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
       unsigned num_submitted_cs = 0;
 
       if (radv_device_fault_detection_enabled(device))
-         *device->trace_id_ptr = 0;
+         device->trace_data->primary_id = 0;
 
       struct radeon_cmdbuf *chainable = NULL;
       struct radeon_cmdbuf *chainable_ace = NULL;

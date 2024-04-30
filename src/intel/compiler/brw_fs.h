@@ -538,7 +538,7 @@ private:
 namespace brw {
    fs_reg
    fetch_payload_reg(const brw::fs_builder &bld, uint8_t regs[2],
-                     brw_reg_type type = BRW_REGISTER_TYPE_F,
+                     brw_reg_type type = BRW_TYPE_F,
                      unsigned n = 1);
 
    fs_reg
@@ -547,8 +547,7 @@ namespace brw {
    inline fs_reg
    dynamic_msaa_flags(const struct brw_wm_prog_data *wm_prog_data)
    {
-      return fs_reg(UNIFORM, wm_prog_data->msaa_flags_param,
-                    BRW_REGISTER_TYPE_UD);
+      return fs_reg(UNIFORM, wm_prog_data->msaa_flags_param, BRW_TYPE_UD);
    }
 
    void
@@ -566,7 +565,8 @@ void shuffle_from_32bit_read(const brw::fs_builder &bld,
                              uint32_t first_component,
                              uint32_t components);
 
-enum brw_barycentric_mode brw_barycentric_mode(nir_intrinsic_instr *intr);
+enum brw_barycentric_mode brw_barycentric_mode(const struct brw_wm_prog_key *key,
+                                               nir_intrinsic_instr *intr);
 
 uint32_t brw_fb_write_msg_control(const fs_inst *inst,
                                   const struct brw_wm_prog_data *prog_data);
@@ -608,6 +608,7 @@ bool brw_fs_lower_sends_overlapping_payload(fs_visitor &s);
 bool brw_fs_lower_simd_width(fs_visitor &s);
 bool brw_fs_lower_sub_sat(fs_visitor &s);
 bool brw_fs_lower_uniform_pull_constant_loads(fs_visitor &s);
+void brw_fs_lower_vgrfs_to_fixed_grfs(fs_visitor &s);
 
 bool brw_fs_opt_algebraic(fs_visitor &s);
 bool brw_fs_opt_bank_conflicts(fs_visitor &s);

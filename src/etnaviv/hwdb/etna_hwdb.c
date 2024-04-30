@@ -30,6 +30,7 @@ etna_query_feature_db(struct etna_core_info *info)
 
    /* Features: */
    ETNA_FEATURE(REG_FastClear, FAST_CLEAR);
+   ETNA_FEATURE(REG_Pipe3D, PIPE_3D);
    ETNA_FEATURE(REG_FE20BitIndex, 32_BIT_INDICES);
    ETNA_FEATURE(REG_MSAA, MSAA);
    ETNA_FEATURE(REG_DXTTextureCompression, DXT_TEXTURE_COMPRESSION);
@@ -90,6 +91,9 @@ etna_query_feature_db(struct etna_core_info *info)
 
    ETNA_FEATURE(DEC400, DEC400);
 
+   ETNA_FEATURE(VIP_V7, VIP_V7);
+   ETNA_FEATURE(NN_XYDP0, NN_XYDP0);
+
    /* Limits: */
    if (info->type == ETNA_CORE_GPU) {
       info->gpu.max_instructions = db->InstructionCount;
@@ -107,6 +111,7 @@ etna_query_feature_db(struct etna_core_info *info)
       info->npu.tp_core_count = db->TPEngine_CoreCount;
       info->npu.on_chip_sram_size = db->VIP_SRAM_SIZE;
       info->npu.axi_sram_size = db->AXI_SRAM_SIZE;
+      info->npu.nn_zrl_bits = db->NN_ZRL_BITS;
    }
 
    return true;

@@ -538,11 +538,8 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    case nir_intrinsic_load_helper_invocation:
    case nir_intrinsic_load_invocation_id:
    case nir_intrinsic_load_local_invocation_id:
-   case nir_intrinsic_load_workgroup_id:
-   case nir_intrinsic_load_workgroup_id_zero_base: {
+   case nir_intrinsic_load_workgroup_id: {
       const gl_system_value sysval =
-         intrin->intrinsic == nir_intrinsic_load_workgroup_id_zero_base ?
-         SYSTEM_VALUE_WORKGROUP_ID :
          nir_system_value_from_intrinsic(intrin->intrinsic);
       const uint32_t idx = nak_sysval_sysval_idx(sysval);
       nir_def *comps[3];

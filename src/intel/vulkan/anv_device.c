@@ -303,6 +303,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_shader_expect_assume              = true,
       .KHR_shader_float16_int8               = !device->instance->no_16bit,
       .KHR_shader_float_controls             = true,
+      .KHR_shader_float_controls2            = true,
       .KHR_shader_integer_dot_product        = true,
       .KHR_shader_maximal_reconvergence      = true,
       .KHR_shader_non_semantic_info          = true,
@@ -824,9 +825,9 @@ get_features(const struct anv_physical_device *pdevice,
       .extendedDynamicState3SampleLocationsEnable = true,
       .extendedDynamicState3SampleMask = true,
       .extendedDynamicState3ConservativeRasterizationMode = true,
+      .extendedDynamicState3AlphaToCoverageEnable = true,
+      .extendedDynamicState3RasterizationSamples = true,
 
-      .extendedDynamicState3RasterizationSamples = false,
-      .extendedDynamicState3AlphaToCoverageEnable = false,
       .extendedDynamicState3ExtraPrimitiveOverestimationSize = false,
       .extendedDynamicState3ViewportWScalingEnable = false,
       .extendedDynamicState3ViewportSwizzle = false,
@@ -928,6 +929,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_image_compression_control */
       .imageCompressionControl = true,
+
+      /* VK_KHR_shader_float_controls2 */
+      .shaderFloatControls2 = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -3867,6 +3871,8 @@ VkResult anv_CreateDevice(
 
    anv_device_utrace_init(device);
 
+   anv_device_init_embedded_samplers(device);
+
    BITSET_ONES(device->gfx_dirty_state);
    BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_INDEX_BUFFER);
    BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_SO_DECL_LIST);
@@ -4021,6 +4027,8 @@ void anv_DestroyDevice(
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+
+   anv_device_finish_embedded_samplers(device);
 
    anv_device_finish_trtt(device);
 

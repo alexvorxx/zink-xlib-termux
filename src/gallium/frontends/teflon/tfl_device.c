@@ -368,15 +368,7 @@ PrepareDelegate(TfLiteContext *context, TfLiteDelegate *delegate)
 
       switch(registration->builtin_code) {
          case kTfLiteBuiltinConv2d:
-         case kTfLiteBuiltinDepthwiseConv2d: {
-            TfLiteTensor bias_tensor = context->tensors[node->inputs->data[2]];
-            /* Skip out channel numbers that the HW doesn't support */
-            if (bias_tensor.dims->data[0] > 8 && bias_tensor.dims->data[0] % 8 != 0)
-               supported = false;
-            else
-               supported = true;
-            break;
-         }
+         case kTfLiteBuiltinDepthwiseConv2d:
          case kTfLiteBuiltinAdd:
             supported = true;
             break;

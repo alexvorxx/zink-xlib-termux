@@ -901,8 +901,8 @@ cat0_instr:        T_OP_NOP        { new_instr(OPC_NOP); }
 |                  T_OP_DBG        { new_instr(OPC_DBG); }
 |                  T_OP_SHPS       { new_instr(OPC_SHPS); }     cat0_immed
 |                  T_OP_SHPE       { new_instr(OPC_SHPE); }
-|                  T_OP_PREDT      { new_instr(OPC_PREDT); }    cat0_src1
-|                  T_OP_PREDF      { new_instr(OPC_PREDF); }    cat0_src1
+|                  T_OP_PREDT      { new_instr(OPC_PREDT); }
+|                  T_OP_PREDF      { new_instr(OPC_PREDF); }
 |                  T_OP_PREDE      { new_instr(OPC_PREDE); }
 |                  T_OP_GETLAST '.' T_W { new_instr(OPC_GETLAST); }   cat0_immed
 
@@ -1308,6 +1308,7 @@ cat6_bindless_ldc_opc: T_OP_LDC  { new_instr(OPC_LDC); }
 /* This is separated from the opcode to avoid lookahead/shift-reduce conflicts */
 cat6_bindless_ldc_middle:
                         T_OFFSET '.' cat6_immed '.' cat6_bindless_mode dst_reg { instr->cat6.d = $1; }
+|                       'u' '.' T_OFFSET '.' cat6_immed '.' cat6_bindless_mode dst_reg { instr->flags |= IR3_INSTR_U; instr->cat6.d = $3; }
 |                       cat6_immed '.' 'k' '.' cat6_bindless_mode 'c' '[' T_A1 ']' { instr->opc = OPC_LDC_K; }
 
 cat6_bindless_ldc: cat6_bindless_ldc_opc '.' cat6_bindless_ldc_middle ',' cat6_reg_or_immed ',' cat6_reg_or_immed {

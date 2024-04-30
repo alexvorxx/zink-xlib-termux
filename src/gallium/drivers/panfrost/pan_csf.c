@@ -1040,8 +1040,10 @@ GENX(csf_init_context)(struct panfrost_context *ctx)
    assert(!ret);
 
    /* Wait before freeing the buffer. */
-   drmSyncobjWait(panfrost_device_fd(dev), &ctx->syncobj, 1, INT64_MAX, 0,
-                  NULL);
+   ret = drmSyncobjWait(panfrost_device_fd(dev), &ctx->syncobj, 1, INT64_MAX,
+                        0, NULL);
+   assert(!ret);
+
    panfrost_bo_unreference(cs_bo);
 }
 

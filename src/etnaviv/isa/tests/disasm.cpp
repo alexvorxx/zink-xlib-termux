@@ -224,8 +224,8 @@ INSTANTIATE_TEST_SUITE_P(AddressRegister, DisasmTest,
 INSTANTIATE_TEST_SUITE_P(Threads, DisasmTest,
    testing::Values(
       // taken from deqp3 run on GC3000
-      disasm_state{ {0x01011001, 0x00001804, 0x00000020, 0xa0402008}, "add.t0            t1._y__, th1.xxxx, void, -u0.xxxx\n"},
-      disasm_state{ {0x01021001, 0x00002804, 0x00000020, 0xa1400008}, "add.t1            t2._y__, th2.xxxx, void, -u0.xxxx\n"},
+      disasm_state{ {0x01011001, 0x00001804, 0x00000020, 0xa0402008}, "add.hp.t0         t1._y__, th1.xxxx, void, -u0.xxxx\n"},
+      disasm_state{ {0x01021001, 0x00002804, 0x00000020, 0xa1400008}, "add.hp.t1         t2._y__, th2.xxxx, void, -u0.xxxx\n"},
 
       // full dual-16 shader from a deqp3 run on GC3000
       disasm_state{ {0x0101102e, 0x00201804, 0x80000020, 0x00002000}, "f2i.u32.t0        t1._y__, th1.xxxx, void, void\n"},

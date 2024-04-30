@@ -54,7 +54,7 @@ create_clipdist_var(nir_shader *shader,
       var->data.mode = nir_var_shader_in;
       shader->num_inputs += MAX2(1, DIV_ROUND_UP(array_size, 4));
    }
-   var->name = ralloc_asprintf(var, "clipdist_%d", var->data.driver_location);
+   var->name = ralloc_asprintf(var, "clipdist_%d", slot - VARYING_SLOT_CLIP_DIST0);
    var->data.index = 0;
    var->data.location = slot;
 
@@ -265,6 +265,19 @@ get_ucp(nir_builder *b, int plane,
       return nir_load_user_clip_plane(b, plane);
 }
 
+static uint64_t
+update_mask(uint32_t ucp_enables)
+{
+   uint64_t mask = 0;
+
+   if (ucp_enables & 0x0f)
+      mask |= VARYING_BIT_CLIP_DIST0;
+   if (ucp_enables & 0xf0)
+      mask |= VARYING_BIT_CLIP_DIST1;
+
+   return mask;
+}
+
 static void
 lower_clip_outputs(nir_builder *b, nir_variable *position,
                    nir_variable *clipvertex, nir_variable **out,
@@ -327,6 +340,7 @@ lower_clip_outputs(nir_builder *b, nir_variable *position,
          if (ucp_enables & 0xf0)
             store_clipdist_output(b, out[1], VARYING_SLOT_CLIP_DIST1, 0, &clipdist[4], use_clipdist_array);
       }
+      b->shader->info.outputs_written |= update_mask(ucp_enables);
    }
 }
 
@@ -475,6 +489,7 @@ lower_clip_fs(nir_function_impl *impl, unsigned ucp_enables,
       if (ucp_enables & 0xf0)
          load_clipdist_input(&b, in[0], 1, &clipdist[4]);
    }
+   b.shader->info.inputs_read |= update_mask(ucp_enables);
 
    nir_def *cond = NULL;
 

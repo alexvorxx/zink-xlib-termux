@@ -12,6 +12,7 @@
 
 enum etna_feature {
    ETNA_FEATURE_FAST_CLEAR,
+   ETNA_FEATURE_PIPE_3D,
    ETNA_FEATURE_32_BIT_INDICES,
    ETNA_FEATURE_MSAA,
    ETNA_FEATURE_DXT_TEXTURE_COMPRESSION,
@@ -61,6 +62,8 @@ enum etna_feature {
    ETNA_FEATURE_PE_NO_ALPHA_TEST,
    ETNA_FEATURE_SH_NO_ONECONST_LIMIT,
    ETNA_FEATURE_DEC400,
+   ETNA_FEATURE_VIP_V7,
+   ETNA_FEATURE_NN_XYDP0,
    ETNA_FEATURE_NUM,
 };
 
@@ -88,6 +91,7 @@ struct etna_core_npu_info {
    unsigned tp_core_count;             /* number of TP cores */
    unsigned on_chip_sram_size;         /* Size of on-chip SRAM */
    unsigned axi_sram_size;             /* Size of SRAM behind AXI */
+   unsigned nn_zrl_bits;               /* Number of bits for zero run-length compression */
 };
 
 struct etna_core_info {

@@ -1362,6 +1362,9 @@ struct anv_pipeline_sets_layout;
 struct anv_push_descriptor_info;
 enum anv_dynamic_push_bits;
 
+void anv_device_init_embedded_samplers(struct anv_device *device);
+void anv_device_finish_embedded_samplers(struct anv_device *device);
+
 extern const struct vk_pipeline_cache_object_ops *const anv_cache_import_ops[2];
 
 struct anv_shader_bin *
@@ -1413,7 +1416,6 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_VF_SGVS_VI, /* 3DSTATE_VERTEX_ELEMENTS for sgvs elements */
    ANV_GFX_STATE_VF_SGVS_INSTANCING, /* 3DSTATE_VF_INSTANCING for sgvs elements */
    ANV_GFX_STATE_PRIMITIVE_REPLICATION,
-   ANV_GFX_STATE_MULTISAMPLE,
    ANV_GFX_STATE_SBE,
    ANV_GFX_STATE_SBE_SWIZ,
    ANV_GFX_STATE_SO_DECL_LIST,
@@ -1440,6 +1442,7 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_DEPTH_BOUNDS,
    ANV_GFX_STATE_INDEX_BUFFER,
    ANV_GFX_STATE_LINE_STIPPLE,
+   ANV_GFX_STATE_MULTISAMPLE,
    ANV_GFX_STATE_PS_BLEND,
    ANV_GFX_STATE_RASTER,
    ANV_GFX_STATE_SAMPLE_MASK,
@@ -1550,9 +1553,42 @@ struct anv_gfx_dynamic_state {
       uint32_t LineStippleRepeatCount;
    } ls;
 
+   /* 3DSTATE_MULTISAMPLE */
+   struct {
+      uint32_t NumberofMultisamples;
+   } ms;
+
+   /* 3DSTATE_PS */
+   struct {
+      uint32_t PositionXYOffsetSelect;
+
+      uint32_t KernelStartPointer0;
+      uint32_t KernelStartPointer1;
+      uint32_t KernelStartPointer2;
+
+      uint32_t DispatchGRFStartRegisterForConstantSetupData0;
+      uint32_t DispatchGRFStartRegisterForConstantSetupData1;
+      uint32_t DispatchGRFStartRegisterForConstantSetupData2;
+
+      /* Pre-Gfx20 only */
+      bool     _8PixelDispatchEnable;
+      bool     _16PixelDispatchEnable;
+      bool     _32PixelDispatchEnable;
+
+      /* Gfx20+ only */
+      bool     Kernel0Enable;
+      bool     Kernel1Enable;
+      uint32_t Kernel0SIMDWidth;
+      uint32_t Kernel1SIMDWidth;
+      uint32_t Kernel0PolyPackingPolicy;
+   } ps;
+
    /* 3DSTATE_PS_EXTRA */
    struct {
+      bool PixelShaderIsPerSample;
       bool PixelShaderKillsPixel;
+      bool PixelShaderIsPerCoarsePixel;
+      bool EnablePSDependencyOnCPsizeChange;
    } ps_extra;
 
    /* 3DSTATE_PS_BLEND */
@@ -1679,6 +1715,7 @@ struct anv_gfx_dynamic_state {
    struct {
       uint32_t ForceThreadDispatchEnable;
       bool     LineStippleEnable;
+      uint32_t BarycentricInterpolationMode;
    } wm;
 
    /* 3DSTATE_WM_DEPTH_STENCIL */
@@ -2009,6 +2046,11 @@ struct anv_device {
     struct anv_device_astc_emu                   astc_emu;
 
     struct intel_bind_timeline bind_timeline; /* Xe only */
+
+    struct {
+       simple_mtx_t                              mutex;
+       struct hash_table                        *map;
+    }                                            embedded_samplers;
 };
 
 static inline uint32_t
@@ -2961,6 +3003,22 @@ struct anv_pipeline_binding {
    };
 };
 
+struct anv_embedded_sampler_key {
+   /** No need to track binding elements for embedded samplers as :
+    *
+    *    VUID-VkDescriptorSetLayoutBinding-flags-08006:
+    *
+    *       "If VkDescriptorSetLayoutCreateInfo:flags contains
+    *        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT,
+    *        descriptorCount must: less than or equal to 1"
+    *
+    * The following struct can be safely hash as it doesn't include in
+    * address/offset.
+    */
+   uint32_t sampler[4];
+   uint32_t color[4];
+};
+
 struct anv_pipeline_embedded_sampler_binding {
    /** The descriptor set this sampler belongs to */
    uint8_t set;
@@ -2968,18 +3026,8 @@ struct anv_pipeline_embedded_sampler_binding {
    /** The binding in the set this sampler belongs to */
    uint32_t binding;
 
-   /* No need to track binding elements for embedded samplers as :
-    *
-    *    VUID-VkDescriptorSetLayoutBinding-flags-08006:
-    *
-    *       "If VkDescriptorSetLayoutCreateInfo:flags contains
-    *        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT,
-    *        descriptorCount must: less than or equal to 1"
-    */
-
-   uint32_t sampler_state[4];
-
-   uint32_t border_color[4];
+   /** The data configuring the sampler */
+   struct anv_embedded_sampler_key key;
 };
 
 struct anv_push_range {
@@ -3143,6 +3191,7 @@ enum anv_cmd_dirty_bits {
    ANV_CMD_DIRTY_XFB_ENABLE                          = 1 << 4,
    ANV_CMD_DIRTY_RESTART_INDEX                       = 1 << 5,
    ANV_CMD_DIRTY_OCCLUSION_QUERY_ACTIVE              = 1 << 6,
+   ANV_CMD_DIRTY_FS_MSAA_FLAGS                       = 1 << 7,
 };
 typedef enum anv_cmd_dirty_bits anv_cmd_dirty_mask_t;
 
@@ -3657,6 +3706,12 @@ struct anv_cmd_graphics_state {
 
    struct vk_vertex_input_state vertex_input;
    struct vk_sample_locations_state sample_locations;
+
+   /* Dynamic msaa flags, this value can be different from
+    * anv_push_constants::gfx::fs_msaa_flags, as the push constant value only
+    * needs to be updated for fragment shaders dynamically checking the value.
+    */
+   enum intel_msaa_flags fs_msaa_flags;
 
    bool object_preemption;
    bool has_uint_rt;
@@ -4354,6 +4409,10 @@ struct anv_shader_upload_params {
 };
 
 struct anv_embedded_sampler {
+   uint32_t ref_cnt;
+
+   struct anv_embedded_sampler_key key;
+
    struct anv_state sampler_state;
    struct anv_state border_color_state;
 };
@@ -4382,9 +4441,9 @@ struct anv_shader_bin {
 
    /* Not saved in the pipeline cache.
     *
-    * Array of length bind_map.embedded_sampler_count
+    * Array of pointers of length bind_map.embedded_sampler_count
     */
-   struct anv_embedded_sampler *embedded_samplers;
+   struct anv_embedded_sampler **embedded_samplers;
 };
 
 static inline struct anv_shader_bin *
@@ -4542,11 +4601,6 @@ struct anv_graphics_pipeline {
     */
    bool                                         dynamic_patch_control_points;
 
-   /* This field is required with dynamic primitive topology,
-    * rasterization_samples used only with gen < 8.
-    */
-   uint32_t                                     rasterization_samples;
-
    uint32_t                                     view_mask;
    uint32_t                                     instance_multiplier;
 
@@ -4555,6 +4609,8 @@ struct anv_graphics_pipeline {
    bool                                         kill_pixel;
    bool                                         force_fragment_thread_dispatch;
    bool                                         uses_xfb;
+   bool                                         sample_shading_enable;
+   float                                        min_sample_shading;
 
    /* Number of VERTEX_ELEMENT_STATE input elements used by the shader */
    uint32_t                                     vs_input_elements;
@@ -4578,8 +4634,6 @@ struct anv_graphics_pipeline {
    uint32_t                                     vertex_input_elems;
    uint32_t                                     vertex_input_data[2 * 31 /* MAX_VES + 2 internal */];
 
-   enum intel_msaa_flags                        fs_msaa_flags;
-
    /* Pre computed CS instructions that can directly be copied into
     * anv_cmd_buffer.
     */
@@ -4600,11 +4654,9 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  sbe;
       struct anv_gfx_state_ptr                  sbe_swiz;
       struct anv_gfx_state_ptr                  so_decl_list;
-      struct anv_gfx_state_ptr                  ms;
       struct anv_gfx_state_ptr                  vs;
       struct anv_gfx_state_ptr                  hs;
       struct anv_gfx_state_ptr                  ds;
-      struct anv_gfx_state_ptr                  ps;
 
       struct anv_gfx_state_ptr                  task_control;
       struct anv_gfx_state_ptr                  task_shader;
@@ -4623,11 +4675,13 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  clip;
       struct anv_gfx_state_ptr                  sf;
       struct anv_gfx_state_ptr                  raster;
+      struct anv_gfx_state_ptr                  ms;
       struct anv_gfx_state_ptr                  ps_extra;
       struct anv_gfx_state_ptr                  wm;
       struct anv_gfx_state_ptr                  so;
       struct anv_gfx_state_ptr                  gs;
       struct anv_gfx_state_ptr                  te;
+      struct anv_gfx_state_ptr                  ps;
       struct anv_gfx_state_ptr                  vfg;
    } partial;
 };

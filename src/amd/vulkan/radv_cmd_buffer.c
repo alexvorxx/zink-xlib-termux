@@ -339,7 +339,8 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 }
 
 static VkResult
-radv_create_cmd_buffer(struct vk_command_pool *pool, struct vk_command_buffer **cmd_buffer_out)
+radv_create_cmd_buffer(struct vk_command_pool *pool, VkCommandBufferLevel level,
+                       struct vk_command_buffer **cmd_buffer_out)
 {
    struct radv_device *device = container_of(pool->base.device, struct radv_device, vk);
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -349,7 +350,7 @@ radv_create_cmd_buffer(struct vk_command_pool *pool, struct vk_command_buffer **
    if (cmd_buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   VkResult result = vk_command_buffer_init(pool, &cmd_buffer->vk, &radv_cmd_buffer_ops, 0);
+   VkResult result = vk_command_buffer_init(pool, &cmd_buffer->vk, &radv_cmd_buffer_ops, level);
    if (result != VK_SUCCESS) {
       vk_free(&cmd_buffer->vk.pool->alloc, cmd_buffer);
       return result;
@@ -571,8 +572,10 @@ radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer)
       return;
 
    va = radv_buffer_get_va(device->trace_bo);
-   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
-      va += 4;
+   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+      va += offsetof(struct radv_trace_data, primary_id);
+   else
+      va += offsetof(struct radv_trace_data, secondary_id);
 
    ++cmd_buffer->state.trace_id;
    radv_write_data(cmd_buffer, V_370_ME, va, 1, &cmd_buffer->state.trace_id, false);
@@ -829,10 +832,10 @@ radv_save_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_pipeline *pip
 
    switch (ring) {
    case AMD_IP_GFX:
-      va += 8;
+      va += offsetof(struct radv_trace_data, gfx_ring_pipeline);
       break;
    case AMD_IP_COMPUTE:
-      va += 16;
+      va += offsetof(struct radv_trace_data, comp_ring_pipeline);
       break;
    default:
       assert(!"invalid IP type");
@@ -852,8 +855,7 @@ radv_save_vertex_descriptors(struct radv_cmd_buffer *cmd_buffer, uint64_t vb_ptr
    uint32_t data[2];
    uint64_t va;
 
-   va = radv_buffer_get_va(device->trace_bo);
-   va += 24;
+   va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, vertex_descriptors);
 
    data[0] = vb_ptr;
    data[1] = vb_ptr >> 32;
@@ -868,8 +870,7 @@ radv_save_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader
    uint32_t data[2];
    uint64_t va;
 
-   va = radv_buffer_get_va(device->trace_bo);
-   va += 32;
+   va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, vertex_prolog);
 
    uint64_t prolog_address = (uintptr_t)prolog;
    data[0] = prolog_address;
@@ -897,7 +898,7 @@ radv_save_descriptors(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bi
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    uint32_t data[MAX_SETS * 2] = {0};
    uint64_t va;
-   va = radv_buffer_get_va(device->trace_bo) + 40;
+   va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, descriptor_sets);
 
    u_foreach_bit (i, descriptors_state->valid) {
       struct radv_descriptor_set *set = descriptors_state->sets[i];
@@ -2646,17 +2647,16 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
     */
    if (cmd_buffer->state.uses_dynamic_patch_control_points) {
       /* Compute the number of patches. */
-      cmd_buffer->state.tess_num_patches = get_tcs_num_patches(
-         d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out, vs->info.vs.num_linked_outputs,
+      cmd_buffer->state.tess_num_patches = radv_get_tcs_num_patches(
+         pdev, d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out, vs->info.vs.num_linked_outputs,
          tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs,
-         tcs->info.tcs.num_linked_outputs, tcs->info.tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
-         pdev->info.gfx_level, pdev->info.family);
+         tcs->info.tcs.num_linked_outputs, tcs->info.tcs.num_linked_patch_outputs);
 
       /* Compute the LDS size. */
       cmd_buffer->state.tess_lds_size =
-         calculate_tess_lds_size(pdev->info.gfx_level, d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out,
-                                 vs->info.vs.num_linked_outputs, cmd_buffer->state.tess_num_patches,
-                                 tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs);
+         radv_get_tess_lds_size(pdev, d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out,
+                                vs->info.vs.num_linked_outputs, cmd_buffer->state.tess_num_patches,
+                                tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs);
    }
 
    ls_hs_config = S_028B58_NUM_PATCHES(cmd_buffer->state.tess_num_patches) |
@@ -3084,11 +3084,13 @@ radv_emit_null_ds_state(struct radv_cmd_buffer *cmd_buffer)
    unsigned db_render_control = 0;
    unsigned num_samples = 0;
 
-   /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match MSAA_EXPOSED_SAMPLES. It affects VRS,
-    * occlusion queries and Primitive Ordered Pixel Shading if depth and stencil are not bound.
+   /* On GFX11, the hw intentionally looks at DB_Z_INFO.NUM_SAMPLES when there is no bound
+    * depth/stencil buffer and it clamps the number of samples like MIN2(DB_Z_INFO.NUM_SAMPLES,
+    * PA_SC_AA_CONFIG.MSAA_EXPOSED_SAMPLES). Use 8x for DB_Z_INFO.NUM_SAMPLES to make sure it's not
+    * the constraining factor. This affects VRS, occlusion queries and POPS.
     */
    if (gfx_level == GFX11) {
-      num_samples = util_logbase2(radv_get_rasterization_samples(cmd_buffer));
+      num_samples = 3;
       radv_gfx11_set_db_render_control(device, 1, &db_render_control);
    }
 
@@ -8077,6 +8079,8 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
       primary->state.last_db_shader_control = secondary->state.last_db_shader_control;
 
       primary->state.rb_noncoherent_dirty |= secondary->state.rb_noncoherent_dirty;
+
+      primary->state.uses_draw_indirect |= secondary->state.uses_draw_indirect;
    }
 
    /* After executing commands from secondary buffers we have to dirty
@@ -10406,6 +10410,30 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
 }
 
 static void
+radv_save_dispatch_size(struct radv_cmd_buffer *cmd_buffer, uint64_t indirect_va)
+{
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+
+   struct radeon_cmdbuf *cs = cmd_buffer->cs;
+   radeon_check_space(device->ws, cs, 18);
+
+   uint64_t va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, indirect_dispatch);
+
+   for (uint32_t i = 0; i < 3; i++) {
+      radeon_emit(cs, PKT3(PKT3_COPY_DATA, 4, 0));
+      radeon_emit(cs,
+                  COPY_DATA_SRC_SEL(COPY_DATA_SRC_MEM) | COPY_DATA_DST_SEL(COPY_DATA_DST_MEM) | COPY_DATA_WR_CONFIRM);
+      radeon_emit(cs, indirect_va);
+      radeon_emit(cs, indirect_va >> 32);
+      radeon_emit(cs, va);
+      radeon_emit(cs, va >> 32);
+
+      indirect_va += 4;
+      va += 4;
+   }
+}
+
+static void
 radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *compute_shader,
                            const struct radv_dispatch_info *info)
 {
@@ -10430,6 +10458,9 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
       dispatch_initiator &= ~S_00B800_ORDER_MODE(1);
 
    if (info->va) {
+      if (radv_device_fault_detection_enabled(device))
+         radv_save_dispatch_size(cmd_buffer, info->va);
+
       if (info->indirect)
          radv_cs_add_buffer(ws, cs, info->indirect);
 
@@ -11487,7 +11518,8 @@ radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
-radv_barrier(struct radv_cmd_buffer *cmd_buffer, const VkDependencyInfo *dep_info, enum rgp_barrier_reason reason)
+radv_barrier(struct radv_cmd_buffer *cmd_buffer, uint32_t dep_count, const VkDependencyInfo *dep_infos,
+             enum rgp_barrier_reason reason)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    enum radv_cmd_flush_bits src_flush_bits = 0;
@@ -11500,27 +11532,31 @@ radv_barrier(struct radv_cmd_buffer *cmd_buffer, const VkDependencyInfo *dep_inf
 
    radv_describe_barrier_start(cmd_buffer, reason);
 
-   for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
-      src_stage_mask |= dep_info->pMemoryBarriers[i].srcStageMask;
-      src_flush_bits |= radv_src_access_flush(cmd_buffer, dep_info->pMemoryBarriers[i].srcAccessMask, NULL);
-      dst_stage_mask |= dep_info->pMemoryBarriers[i].dstStageMask;
-      dst_flush_bits |= radv_dst_access_flush(cmd_buffer, dep_info->pMemoryBarriers[i].dstAccessMask, NULL);
-   }
+   for (uint32_t dep_idx = 0; dep_idx < dep_count; dep_idx++) {
+      const VkDependencyInfo *dep_info = &dep_infos[dep_idx];
 
-   for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
-      src_stage_mask |= dep_info->pBufferMemoryBarriers[i].srcStageMask;
-      src_flush_bits |= radv_src_access_flush(cmd_buffer, dep_info->pBufferMemoryBarriers[i].srcAccessMask, NULL);
-      dst_stage_mask |= dep_info->pBufferMemoryBarriers[i].dstStageMask;
-      dst_flush_bits |= radv_dst_access_flush(cmd_buffer, dep_info->pBufferMemoryBarriers[i].dstAccessMask, NULL);
-   }
+      for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
+         src_stage_mask |= dep_info->pMemoryBarriers[i].srcStageMask;
+         src_flush_bits |= radv_src_access_flush(cmd_buffer, dep_info->pMemoryBarriers[i].srcAccessMask, NULL);
+         dst_stage_mask |= dep_info->pMemoryBarriers[i].dstStageMask;
+         dst_flush_bits |= radv_dst_access_flush(cmd_buffer, dep_info->pMemoryBarriers[i].dstAccessMask, NULL);
+      }
 
-   for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
-      VK_FROM_HANDLE(radv_image, image, dep_info->pImageMemoryBarriers[i].image);
+      for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
+         src_stage_mask |= dep_info->pBufferMemoryBarriers[i].srcStageMask;
+         src_flush_bits |= radv_src_access_flush(cmd_buffer, dep_info->pBufferMemoryBarriers[i].srcAccessMask, NULL);
+         dst_stage_mask |= dep_info->pBufferMemoryBarriers[i].dstStageMask;
+         dst_flush_bits |= radv_dst_access_flush(cmd_buffer, dep_info->pBufferMemoryBarriers[i].dstAccessMask, NULL);
+      }
 
-      src_stage_mask |= dep_info->pImageMemoryBarriers[i].srcStageMask;
-      src_flush_bits |= radv_src_access_flush(cmd_buffer, dep_info->pImageMemoryBarriers[i].srcAccessMask, image);
-      dst_stage_mask |= dep_info->pImageMemoryBarriers[i].dstStageMask;
-      dst_flush_bits |= radv_dst_access_flush(cmd_buffer, dep_info->pImageMemoryBarriers[i].dstAccessMask, image);
+      for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+         VK_FROM_HANDLE(radv_image, image, dep_info->pImageMemoryBarriers[i].image);
+
+         src_stage_mask |= dep_info->pImageMemoryBarriers[i].srcStageMask;
+         src_flush_bits |= radv_src_access_flush(cmd_buffer, dep_info->pImageMemoryBarriers[i].srcAccessMask, image);
+         dst_stage_mask |= dep_info->pImageMemoryBarriers[i].dstStageMask;
+         dst_flush_bits |= radv_dst_access_flush(cmd_buffer, dep_info->pImageMemoryBarriers[i].dstAccessMask, image);
+      }
    }
 
    /* The Vulkan spec 1.1.98 says:
@@ -11540,26 +11576,31 @@ radv_barrier(struct radv_cmd_buffer *cmd_buffer, const VkDependencyInfo *dep_inf
 
    radv_gang_barrier(cmd_buffer, src_stage_mask, 0);
 
-   for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
-      VK_FROM_HANDLE(radv_image, image, dep_info->pImageMemoryBarriers[i].image);
+   for (uint32_t dep_idx = 0; dep_idx < dep_count; dep_idx++) {
+      const VkDependencyInfo *dep_info = &dep_infos[dep_idx];
 
-      const struct VkSampleLocationsInfoEXT *sample_locs_info =
-         vk_find_struct_const(dep_info->pImageMemoryBarriers[i].pNext, SAMPLE_LOCATIONS_INFO_EXT);
-      struct radv_sample_locations_state sample_locations;
+      for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+         VK_FROM_HANDLE(radv_image, image, dep_info->pImageMemoryBarriers[i].image);
 
-      if (sample_locs_info) {
-         assert(image->vk.create_flags & VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT);
-         sample_locations.per_pixel = sample_locs_info->sampleLocationsPerPixel;
-         sample_locations.grid_size = sample_locs_info->sampleLocationGridSize;
-         sample_locations.count = sample_locs_info->sampleLocationsCount;
-         typed_memcpy(&sample_locations.locations[0], sample_locs_info->pSampleLocations,
-                      sample_locs_info->sampleLocationsCount);
+         const struct VkSampleLocationsInfoEXT *sample_locs_info =
+            vk_find_struct_const(dep_info->pImageMemoryBarriers[i].pNext, SAMPLE_LOCATIONS_INFO_EXT);
+         struct radv_sample_locations_state sample_locations;
+
+         if (sample_locs_info) {
+            assert(image->vk.create_flags & VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT);
+            sample_locations.per_pixel = sample_locs_info->sampleLocationsPerPixel;
+            sample_locations.grid_size = sample_locs_info->sampleLocationGridSize;
+            sample_locations.count = sample_locs_info->sampleLocationsCount;
+            typed_memcpy(&sample_locations.locations[0], sample_locs_info->pSampleLocations,
+                         sample_locs_info->sampleLocationsCount);
+         }
+
+         radv_handle_image_transition(
+            cmd_buffer, image, dep_info->pImageMemoryBarriers[i].oldLayout, dep_info->pImageMemoryBarriers[i].newLayout,
+            dep_info->pImageMemoryBarriers[i].srcQueueFamilyIndex,
+            dep_info->pImageMemoryBarriers[i].dstQueueFamilyIndex, &dep_info->pImageMemoryBarriers[i].subresourceRange,
+            sample_locs_info ? &sample_locations : NULL);
       }
-
-      radv_handle_image_transition(
-         cmd_buffer, image, dep_info->pImageMemoryBarriers[i].oldLayout, dep_info->pImageMemoryBarriers[i].newLayout,
-         dep_info->pImageMemoryBarriers[i].srcQueueFamilyIndex, dep_info->pImageMemoryBarriers[i].dstQueueFamilyIndex,
-         &dep_info->pImageMemoryBarriers[i].subresourceRange, sample_locs_info ? &sample_locations : NULL);
    }
 
    radv_gang_barrier(cmd_buffer, 0, dst_stage_mask);
@@ -11594,7 +11635,7 @@ radv_CmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo *
       barrier_reason = RGP_BARRIER_EXTERNAL_CMD_PIPELINE_BARRIER;
    }
 
-   radv_barrier(cmd_buffer, pDependencyInfo, barrier_reason);
+   radv_barrier(cmd_buffer, 1, pDependencyInfo, barrier_reason);
 }
 
 static void
@@ -11718,7 +11759,7 @@ radv_CmdWaitEvents2(VkCommandBuffer commandBuffer, uint32_t eventCount, const Vk
       assert(cmd_buffer->cs->cdw <= cdw_max);
    }
 
-   radv_barrier(cmd_buffer, pDependencyInfos, RGP_BARRIER_EXTERNAL_CMD_WAIT_EVENTS);
+   radv_barrier(cmd_buffer, eventCount, pDependencyInfos, RGP_BARRIER_EXTERNAL_CMD_WAIT_EVENTS);
 }
 
 void

@@ -422,7 +422,9 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
    NIR_PASS_V(nir, nir_lower_system_values);
    NIR_PASS_V(nir, nir_lower_is_helper_invocation);
    NIR_PASS_V(nir, lower_demote);
-   NIR_PASS_V(nir, nir_lower_compute_system_values, NULL);
+
+   const struct nir_lower_compute_system_values_options compute_system_values = {0};
+   NIR_PASS_V(nir, nir_lower_compute_system_values, &compute_system_values);
 
    NIR_PASS_V(nir, nir_remove_dead_variables,
               nir_var_uniform | nir_var_image, NULL);

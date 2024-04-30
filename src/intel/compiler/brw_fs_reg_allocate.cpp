@@ -586,7 +586,7 @@ fs_reg_alloc::discard_interference_graph()
 fs_reg
 fs_reg_alloc::build_single_offset(const fs_builder &bld, uint32_t spill_offset, int ip)
 {
-   fs_reg offset = retype(alloc_spill_reg(1, ip), BRW_REGISTER_TYPE_UD);
+   fs_reg offset = retype(alloc_spill_reg(1, ip), BRW_TYPE_UD);
    fs_inst *inst = bld.MOV(offset, brw_imm_ud(spill_offset));
    _mesa_set_add(spill_insts, inst);
    return offset;
@@ -601,14 +601,14 @@ fs_reg_alloc::build_lane_offsets(const fs_builder &bld, uint32_t spill_offset, i
    const fs_builder ubld = bld.exec_all();
    const unsigned reg_count = ubld.dispatch_width() / 8;
 
-   fs_reg offset = retype(alloc_spill_reg(reg_count, ip), BRW_REGISTER_TYPE_UD);
+   fs_reg offset = retype(alloc_spill_reg(reg_count, ip), BRW_TYPE_UD);
    fs_inst *inst;
 
    /* Build an offset per lane in SIMD8 */
-   inst = ubld.group(8, 0).MOV(retype(offset, BRW_REGISTER_TYPE_UW),
+   inst = ubld.group(8, 0).MOV(retype(offset, BRW_TYPE_UW),
                                brw_imm_uv(0x76543210));
    _mesa_set_add(spill_insts, inst);
-   inst = ubld.group(8, 0).MOV(offset, retype(offset, BRW_REGISTER_TYPE_UW));
+   inst = ubld.group(8, 0).MOV(offset, retype(offset, BRW_TYPE_UW));
    _mesa_set_add(spill_insts, inst);
 
    /* Build offsets in the upper 8 lanes of SIMD16 */
@@ -910,7 +910,7 @@ fs_reg_alloc::alloc_scratch_header()
 
    setup_live_interference(scratch_header_node, 0, INT_MAX);
 
-   return fs_reg(VGRF, vgrf, BRW_REGISTER_TYPE_UD);
+   return fs_reg(VGRF, vgrf, BRW_TYPE_UD);
 }
 
 fs_reg
@@ -1061,7 +1061,8 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
           * instruction and set force_writemask_all on the spill.
           */
          const bool per_channel =
-            inst->dst.is_contiguous() && type_sz(inst->dst.type) == 4 &&
+            inst->dst.is_contiguous() &&
+            brw_type_size_bytes(inst->dst.type) == 4 &&
             inst->exec_size == width;
 
          /* Builder used to emit the scratch messages. */

@@ -39,13 +39,13 @@ error_decode_xe_read_u64_hexacimal_parameter(const char *line, const char *param
 
 /* parse lines like 'PCI ID: 0x9a49' */
 bool
-error_decode_xe_read_hexacimal_parameter(const char *line, const char *parameter, int *value)
+error_decode_xe_read_hexacimal_parameter(const char *line, const char *parameter, uint32_t *value)
 {
    line = read_parameter_helper(line, parameter);
    if (!line)
       return false;
 
-   *value = (int)strtol(line, NULL, 0);
+   *value = (int)strtoul(line, NULL, 0);
    return true;
 }
 

@@ -725,14 +725,14 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       break;
    case nir_intrinsic_load_tcs_tess_levels_to_tes_amd:
       if (shader->is_monolithic) {
-         replacement = nir_imm_bool(b, key->ge.part.tcs.epilog.tes_reads_tess_factors);
+         replacement = nir_imm_bool(b, key->ge.opt.tes_reads_tess_factors);
       } else {
          replacement = nir_ine_imm(b, ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 31, 1), 0);
       }
       break;
    case nir_intrinsic_load_tcs_primitive_mode_amd:
       if (shader->is_monolithic) {
-         replacement = nir_imm_int(b, key->ge.part.tcs.epilog.prim_mode);
+         replacement = nir_imm_int(b, key->ge.opt.tes_prim_mode);
       } else {
          replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 29, 2);
       }
@@ -744,10 +744,17 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
          s->gsvs_ring[stream_id] : nir_undef(b, 4, 32);
       break;
    }
-   case nir_intrinsic_load_user_data_amd:
-      replacement = ac_nir_load_arg(b, &args->ac, args->cs_user_data);
-      replacement = nir_pad_vector(b, replacement, 8);
+   case nir_intrinsic_load_user_data_amd: {
+      nir_def *low_vec4 = ac_nir_load_arg(b, &args->ac, args->cs_user_data[0]);
+      replacement = nir_pad_vector(b, low_vec4, 8);
+
+      if (args->cs_user_data[1].used && intrin->def.num_components > 4) {
+         nir_def *high_vec4 = ac_nir_load_arg(b, &args->ac, args->cs_user_data[1]);
+         for (unsigned i = 0; i < high_vec4->num_components; i++)
+            replacement = nir_vector_insert_imm(b, replacement, nir_channel(b, high_vec4, i), 4 + i);
+      }
       break;
+   }
    default:
       return false;
    }

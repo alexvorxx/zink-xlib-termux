@@ -61,7 +61,6 @@ static void
 query_features_from_kernel(struct etna_gpu *gpu)
 {
 	uint32_t features[VIV_FEATURES_WORD_COUNT];
-	uint64_t nn_core_count;
 
 	STATIC_ASSERT(ETNA_GPU_FEATURES_0  == 0x3);
 	STATIC_ASSERT(ETNA_GPU_FEATURES_1  == 0x4);
@@ -84,15 +83,10 @@ query_features_from_kernel(struct etna_gpu *gpu)
 		features[i - ETNA_GPU_FEATURES_0] = val;
 	}
 
-	etna_gpu_get_param(gpu, ETNA_GPU_NN_CORE_COUNT, &nn_core_count);
-
-	if (nn_core_count)
-		gpu->info.type = ETNA_CORE_NPU;
-	else
-		gpu->info.type = ETNA_CORE_GPU;
-
+	gpu->info.type = ETNA_CORE_GPU;
 
 	ETNA_FEATURE(chipFeatures, FAST_CLEAR);
+	ETNA_FEATURE(chipFeatures, PIPE_3D);
 	ETNA_FEATURE(chipFeatures, 32_BIT_INDICES);
 	ETNA_FEATURE(chipFeatures, MSAA);
 	ETNA_FEATURE(chipFeatures, DXT_TEXTURE_COMPRESSION);
@@ -160,49 +154,34 @@ query_limits_from_kernel(struct etna_gpu *gpu)
 	struct etna_core_info *info = &gpu->info;
 	uint64_t val;
 
-	if (info->type == ETNA_CORE_GPU) {
-		etna_gpu_get_param(gpu, ETNA_GPU_INSTRUCTION_COUNT, &val);
-		info->gpu.max_instructions = val;
+	assert(info->type == ETNA_CORE_GPU);
 
-		etna_gpu_get_param(gpu, ETNA_GPU_VERTEX_OUTPUT_BUFFER_SIZE, &val);
-		info->gpu.vertex_output_buffer_size = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_INSTRUCTION_COUNT, &val);
+	info->gpu.max_instructions = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_VERTEX_CACHE_SIZE, &val);
-		info->gpu.vertex_cache_size = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_VERTEX_OUTPUT_BUFFER_SIZE, &val);
+	info->gpu.vertex_output_buffer_size = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_SHADER_CORE_COUNT, &val);
-		info->gpu.shader_core_count = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_VERTEX_CACHE_SIZE, &val);
+	info->gpu.vertex_cache_size = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_STREAM_COUNT, &val);
-		info->gpu.stream_count = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_SHADER_CORE_COUNT, &val);
+	info->gpu.shader_core_count = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_REGISTER_MAX, &val);
-		info->gpu.max_registers = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_STREAM_COUNT, &val);
+	info->gpu.stream_count = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_PIXEL_PIPES, &val);
-		info->gpu.pixel_pipes = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_REGISTER_MAX, &val);
+	info->gpu.max_registers = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_NUM_CONSTANTS, &val);
-		info->gpu.num_constants = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_PIXEL_PIPES, &val);
+	info->gpu.pixel_pipes = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_NUM_VARYINGS, &val);
-		info->gpu.max_varyings = val;
-	} else {
-		etna_gpu_get_param(gpu, ETNA_GPU_NN_CORE_COUNT, &val);
-		info->npu.nn_core_count = val;
+	etna_gpu_get_param(gpu, ETNA_GPU_NUM_CONSTANTS, &val);
+	info->gpu.num_constants = val;
 
-		etna_gpu_get_param(gpu, ETNA_GPU_NN_MAD_PER_CORE, &val);
-		info->npu.nn_mad_per_core = val;
-
-		etna_gpu_get_param(gpu, ETNA_GPU_TP_CORE_COUNT, &val);
-		info->npu.tp_core_count = val;
-
-		etna_gpu_get_param(gpu, ETNA_GPU_ON_CHIP_SRAM_SIZE, &val);
-		info->npu.on_chip_sram_size = val;
-
-		etna_gpu_get_param(gpu, ETNA_GPU_AXI_SRAM_SIZE, &val);
-		info->npu.axi_sram_size = val;
-	}
+	etna_gpu_get_param(gpu, ETNA_GPU_NUM_VARYINGS, &val);
+	info->gpu.max_varyings = val;
 }
 
 static uint64_t get_param(struct etna_device *dev, uint32_t core, uint32_t param)
@@ -215,7 +194,9 @@ static uint64_t get_param(struct etna_device *dev, uint32_t core, uint32_t param
 
 	ret = drmCommandWriteRead(dev->fd, DRM_ETNAVIV_GET_PARAM, &req, sizeof(req));
 	if (ret) {
-		ERROR_MSG("get-param (%x) failed! %d (%s)", param, ret, strerror(errno));
+		if (ret != -ENXIO)
+			ERROR_MSG("get-param (%x) failed! %d (%s)", param, ret,
+				  strerror(errno));
 		return 0;
 	}
 
@@ -236,11 +217,11 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 	gpu->dev = dev;
 	gpu->core = core;
 
-	gpu->info.model    	= get_param(dev, core, ETNAVIV_PARAM_GPU_MODEL);
-	gpu->info.revision 	= get_param(dev, core, ETNAVIV_PARAM_GPU_REVISION);
-
+	gpu->info.model = get_param(dev, core, ETNAVIV_PARAM_GPU_MODEL);
 	if (!gpu->info.model)
 		goto fail;
+
+	gpu->info.revision = get_param(dev, core, ETNAVIV_PARAM_GPU_REVISION);
 
 	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->info.model, gpu->info.revision);
 
@@ -367,21 +348,6 @@ int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 		return 0;
 	case ETNA_GPU_ECO_ID:
 		*value = gpu->info.eco_id;
-		return 0;
-	case ETNA_GPU_NN_CORE_COUNT:
-		*value = get_param(dev, core, ETNA_GPU_NN_CORE_COUNT);
-		return 0;
-	case ETNA_GPU_NN_MAD_PER_CORE:
-		*value = get_param(dev, core, ETNA_GPU_NN_MAD_PER_CORE);
-		return 0;
-	case ETNA_GPU_TP_CORE_COUNT:
-		*value = get_param(dev, core, ETNA_GPU_TP_CORE_COUNT);
-		return 0;
-	case ETNA_GPU_ON_CHIP_SRAM_SIZE:
-		*value = get_param(dev, core, ETNA_GPU_ON_CHIP_SRAM_SIZE);
-		return 0;
-	case ETNA_GPU_AXI_SRAM_SIZE:
-		*value = get_param(dev, core, ETNA_GPU_AXI_SRAM_SIZE);
 		return 0;
 
 	default:

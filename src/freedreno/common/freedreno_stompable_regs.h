@@ -46,7 +46,7 @@ fd_reg_stomp_allowed(chip CHIP, uint16_t reg)
       case REG_A6XX_SP_FS_OBJ_START ... REG_A6XX_SP_FS_OBJ_START + 1:
          return false;
       /* Not used on A6XX but causes failures when set */
-      case REG_A6XX_TPL1_UNKNOWN_B602:
+      case REG_A6XX_TPL1_DBG_ECO_CNTL1:
          return false;
       }
       break;
@@ -67,7 +67,7 @@ fd_reg_stomp_allowed(chip CHIP, uint16_t reg)
       case REG_A7XX_SP_UNKNOWN_AE73:
       case REG_A7XX_RB_UNKNOWN_8E79:
       case REG_A7XX_SP_UNKNOWN_AE09:
-      case REG_A6XX_TPL1_UNKNOWN_B602:
+      case REG_A6XX_TPL1_DBG_ECO_CNTL:
          return false;
       case REG_A7XX_SP_GS_VGPR_CONFIG:
       case REG_A7XX_SP_FS_VGPR_CONFIG:

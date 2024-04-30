@@ -201,6 +201,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .EXT_depth_clip_enable                = device->devinfo.ver >= 71,
       .EXT_load_store_op_none               = true,
       .EXT_inline_uniform_block             = true,
+      .EXT_extended_dynamic_state           = true,
       .EXT_external_memory_dma_buf          = true,
       .EXT_host_query_reset                 = true,
       .EXT_image_drm_format_modifier        = true,
@@ -407,6 +408,9 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_EXT_color_write_enable */
       .colorWriteEnable = true,
+
+      /* VK_EXT_extended_dynamic_state */
+      .extendedDynamicState = true,
 
       /* VK_KHR_pipeline_executable_properties */
       .pipelineExecutableInfo = true,
@@ -1455,7 +1459,14 @@ v3dv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT: {
          VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *props =
             (VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *)ext;
-         props->maxVertexAttribDivisor = 0xffff;
+         props->maxVertexAttribDivisor = V3D_MAX_VERTEX_ATTRIB_DIVISOR;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_KHR: {
+         VkPhysicalDeviceVertexAttributeDivisorPropertiesKHR *props =
+            (VkPhysicalDeviceVertexAttributeDivisorPropertiesKHR *)ext;
+         props->maxVertexAttribDivisor = V3D_MAX_VERTEX_ATTRIB_DIVISOR;
+         props->supportsNonZeroFirstInstance = true;
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_PROPERTIES_KHR : {

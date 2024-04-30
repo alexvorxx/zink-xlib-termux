@@ -39,7 +39,21 @@ struct lower_io_state {
    int (*type_size)(const struct glsl_type *type, bool);
    nir_variable_mode modes;
    nir_lower_io_options options;
+   struct set variable_names;
 };
+
+static const char *
+add_variable_name(struct lower_io_state *state, const char *name)
+{
+   if (!name)
+      return NULL;
+
+   bool found = false;
+   struct set_entry *entry = _mesa_set_search_or_add(&state->variable_names, name, &found);
+   if (!found)
+      entry->key = (void*)ralloc_strdup(state->builder.shader, name);
+   return entry->key;
+}
 
 static nir_intrinsic_op
 ssbo_atomic_for_deref(nir_intrinsic_op deref_op)
@@ -313,6 +327,7 @@ emit_load(struct lower_io_state *state,
    nir_intrinsic_instr *load =
       nir_intrinsic_instr_create(state->builder.shader, op);
    load->num_components = num_components;
+   load->name = add_variable_name(state, var->name);
 
    nir_intrinsic_set_base(load, var->data.driver_location);
    if (nir_intrinsic_has_range(load)) {
@@ -448,6 +463,7 @@ emit_store(struct lower_io_state *state, nir_def *data,
    nir_intrinsic_instr *store =
       nir_intrinsic_instr_create(state->builder.shader, op);
    store->num_components = num_components;
+   store->name = add_variable_name(state, var->name);
 
    store->src[0] = nir_src_for_ssa(data);
 
@@ -769,6 +785,8 @@ nir_lower_io_impl(nir_function_impl *impl,
    state.modes = modes;
    state.type_size = type_size;
    state.options = options;
+   _mesa_set_init(&state.variable_names, state.dead_ctx,
+                  _mesa_hash_string, _mesa_key_string_equal);
 
    ASSERTED nir_variable_mode supported_modes =
       nir_var_shader_in | nir_var_shader_out | nir_var_uniform;

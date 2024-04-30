@@ -1814,7 +1814,6 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
       break;
 
    case nir_intrinsic_load_global_invocation_id:
-   case nir_intrinsic_load_global_invocation_id_zero_base:
       bi_collect_v3i32_to(b, dst, bi_preload(b, 60), bi_preload(b, 61),
                           bi_preload(b, 62));
       break;
@@ -3574,10 +3573,11 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
    for (unsigned i = 0; i < instr->num_srcs; ++i) {
       bi_index index = bi_src_index(&instr->src[i].src);
       unsigned sz = nir_src_bit_size(instr->src[i].src);
-      unsigned components = nir_src_num_components(instr->src[i].src);
 
       switch (instr->src[i].src_type) {
-      case nir_tex_src_coord:
+      case nir_tex_src_coord: {
+         unsigned components = nir_src_num_components(instr->src[i].src) - instr->is_array;
+
          if (instr->sampler_dim == GLSL_SAMPLER_DIM_CUBE) {
             sregs[VALHALL_TEX_SREG_X_COORD] = bi_emit_texc_cube_coord(
                b, index, &sregs[VALHALL_TEX_SREG_Y_COORD]);
@@ -3590,17 +3590,17 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
             if (components >= 2)
                sregs[VALHALL_TEX_SREG_Y_COORD] = bi_extract(b, index, 1);
 
-            if (components == 3 && !instr->is_array) {
+            if (components == 3)
                sregs[VALHALL_TEX_SREG_Z_COORD] = bi_extract(b, index, 2);
-            }
          }
 
          if (instr->is_array) {
             sregs[VALHALL_TEX_SREG_ARRAY] =
-               bi_extract(b, index, components - 1);
+               bi_extract(b, index, components);
          }
 
          break;
+      }
 
       case nir_tex_src_lod:
          if (nir_src_is_const(instr->src[i].src) &&

@@ -677,7 +677,12 @@ void si_init_shader_args(struct si_shader *shader, struct si_shader_args *args)
       unsigned cs_user_data_dwords =
          shader->selector->info.base.cs.user_data_components_amd;
       if (cs_user_data_dwords) {
-         ac_add_arg(&args->ac, AC_ARG_SGPR, cs_user_data_dwords, AC_ARG_INT, &args->cs_user_data);
+         ac_add_arg(&args->ac, AC_ARG_SGPR, MIN2(cs_user_data_dwords, 4), AC_ARG_INT,
+                    &args->cs_user_data[0]);
+         if (cs_user_data_dwords > 4) {
+            ac_add_arg(&args->ac, AC_ARG_SGPR, cs_user_data_dwords - 4, AC_ARG_INT,
+                       &args->cs_user_data[1]);
+         }
       }
 
       /* Some descriptors can be in user SGPRs. */
@@ -837,6 +842,23 @@ static unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_sh
       }
       return size;
    }
+}
+
+unsigned si_get_shader_prefetch_size(struct si_shader *shader)
+{
+   struct si_screen *sscreen = shader->selector->screen;
+   /* This excludes arrays of constants after instructions. */
+   unsigned exec_size =
+      ac_align_shader_binary_for_prefetch(&sscreen->info,
+                                          si_get_shader_binary_size(sscreen, shader));
+
+   /* INST_PREF_SIZE uses 128B granularity.
+    * - GFX11: max 128 * 63 = 8064
+    */
+   unsigned max_pref_size = 63;
+   unsigned exec_size_gran128 = DIV_ROUND_UP(exec_size, 128);
+
+   return MIN2(max_pref_size, exec_size_gran128);
 }
 
 bool si_get_external_symbol(enum amd_gfx_level gfx_level, void *data, const char *name,
@@ -1446,7 +1468,8 @@ static void si_dump_shader_key(const struct si_shader *shader, FILE *f)
       if (shader->selector->screen->info.gfx_level >= GFX9)
          si_dump_shader_key_vs(key, f);
 
-      fprintf(f, "  part.tcs.epilog.prim_mode = %u\n", key->ge.part.tcs.epilog.prim_mode);
+      fprintf(f, "  opt.tes_prim_mode = %u\n", key->ge.opt.tes_prim_mode);
+      fprintf(f, "  opt.tes_reads_tess_factors = %u\n", key->ge.opt.tes_reads_tess_factors);
       fprintf(f, "  opt.prefer_mono = %u\n", key->ge.opt.prefer_mono);
       fprintf(f, "  opt.same_patch_vertices = %u\n", key->ge.opt.same_patch_vertices);
       break;
@@ -1790,7 +1813,7 @@ static bool si_lower_io_to_mem(struct si_shader *shader, nir_shader *nir,
                  key->ge.opt.same_patch_vertices);
 
       /* Used by hs_emit_write_tess_factors() when monolithic shader. */
-      nir->info.tess._primitive_mode = key->ge.part.tcs.epilog.prim_mode;
+      nir->info.tess._primitive_mode = key->ge.opt.tes_prim_mode;
 
       NIR_PASS_V(nir, ac_nir_lower_hs_outputs_to_mem, si_map_io_driver_location,
                  sel->screen->info.gfx_level,
@@ -1894,7 +1917,7 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
    }
 
    /* may generate some subgroup op like ballot */
-   NIR_PASS_V(nir, nir_lower_subgroups, &si_nir_subgroups_options);
+   NIR_PASS_V(nir, nir_lower_subgroups, sel->screen->nir_lower_subgroups_options);
 
    /* may generate some vector output store */
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);

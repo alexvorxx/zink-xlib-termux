@@ -886,13 +886,12 @@ system_value("tess_level_inner_default", 2)
 system_value("patch_vertices_in", 1)
 system_value("local_invocation_id", 3)
 system_value("local_invocation_index", 1)
-# zero_base indicates it starts from 0 for the current dispatch
-# non-zero_base indicates the base is included
+# workgroup_id does not include the base_workgroup_id
 system_value("workgroup_id", 3)
-system_value("workgroup_id_zero_base", 3)
 # The workgroup_index is intended for situations when a 3 dimensional
 # workgroup_id is not available on the HW, but a 1 dimensional index is.
 system_value("workgroup_index", 1)
+# API specific base added to the workgroup_id, e.g. baseGroup* of vkCmdDispatchBase
 system_value("base_workgroup_id", 3, bit_sizes=[32, 64])
 system_value("user_clip_plane", 4, indices=[UCP_ID])
 system_value("num_workgroups", 3)
@@ -926,12 +925,11 @@ system_value("subgroup_lt_mask", 0, bit_sizes=[32, 64])
 system_value("num_subgroups", 1)
 system_value("subgroup_id", 1)
 system_value("workgroup_size", 3)
-# note: the definition of global_invocation_id_zero_base is based on
-# (workgroup_id * workgroup_size) + local_invocation_id.
-# it is *not* based on workgroup_id_zero_base, meaning the work group
-# base is already accounted for, and the global base is additive on top of that
+# note: the definition of global_invocation_id is based on
+# ((workgroup_id + base_workgroup_id) * workgroup_size) + local_invocation_id.
 system_value("global_invocation_id", 3, bit_sizes=[32, 64])
-system_value("global_invocation_id_zero_base", 3, bit_sizes=[32, 64])
+# API specific base added to the global_invocation_id
+# e.g. global_work_offset of clEnqueueNDRangeKernel
 system_value("base_global_invocation_id", 3, bit_sizes=[32, 64])
 system_value("global_invocation_index", 1, bit_sizes=[32, 64])
 system_value("work_dim", 1)
@@ -1311,14 +1309,6 @@ system_value("subgroup_id_shift_ir3", 1)
 # System values for freedreno fragment shaders.
 #intrinsic("load_frag_coord_unscaled_ir3", dest_comp=4,
 #          flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
-
-# IR3-specific intrinsics for tessellation control shaders.  cond_end_ir3 end
-# the shader when src0 is false and is used to narrow down the TCS shader to
-# just thread 0 before writing out tessellation levels.
-intrinsic("cond_end_ir3", src_comp=[1])
-# end_patch_ir3 is used just before thread 0 exist the TCS and presumably
-# signals the TE that the patch is complete and can be tessellated.
-intrinsic("end_patch_ir3")
 
 # Per-view gl_FragSizeEXT and gl_FragCoord offset.
 #intrinsic("load_frag_size_ir3", src_comp=[1], dest_comp=2, indices=[RANGE],

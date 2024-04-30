@@ -642,85 +642,14 @@ get_tcs_input_vertex_stride(unsigned tcs_num_inputs)
    return stride;
 }
 
-static inline unsigned
-calculate_tess_lds_size(enum amd_gfx_level gfx_level, unsigned tcs_num_input_vertices, unsigned tcs_num_output_vertices,
-                        unsigned tcs_num_inputs, unsigned tcs_num_patches, unsigned tcs_num_outputs,
-                        unsigned tcs_num_patch_outputs)
-{
-   unsigned input_vertex_size = get_tcs_input_vertex_stride(tcs_num_inputs);
-   unsigned output_vertex_size = tcs_num_outputs * 16;
+uint32_t radv_get_tcs_num_patches(const struct radv_physical_device *pdev, unsigned tcs_num_input_vertices,
+                                  unsigned tcs_num_output_vertices, unsigned tcs_num_inputs,
+                                  unsigned tcs_num_lds_outputs, unsigned tcs_num_lds_patch_outputs,
+                                  unsigned tcs_num_vram_outputs, unsigned tcs_num_vram_patch_outputs);
 
-   unsigned input_patch_size = tcs_num_input_vertices * input_vertex_size;
-
-   unsigned pervertex_output_patch_size = tcs_num_output_vertices * output_vertex_size;
-   unsigned output_patch_size = pervertex_output_patch_size + tcs_num_patch_outputs * 16;
-
-   unsigned output_patch0_offset = input_patch_size * tcs_num_patches;
-
-   unsigned lds_size = output_patch0_offset + output_patch_size * tcs_num_patches;
-
-   if (gfx_level >= GFX7) {
-      assert(lds_size <= 65536);
-      lds_size = align(lds_size, 512) / 512;
-   } else {
-      assert(lds_size <= 32768);
-      lds_size = align(lds_size, 256) / 256;
-   }
-
-   return lds_size;
-}
-
-static inline unsigned
-get_tcs_num_patches(unsigned tcs_num_input_vertices, unsigned tcs_num_output_vertices, unsigned tcs_num_inputs,
-                    unsigned tcs_num_lds_outputs, unsigned tcs_num_lds_patch_outputs, unsigned tcs_num_vram_outputs,
-                    unsigned tcs_num_vram_patch_outputs, unsigned tess_offchip_block_dw_size,
-                    enum amd_gfx_level gfx_level, enum radeon_family family)
-{
-   uint32_t input_vertex_size = get_tcs_input_vertex_stride(tcs_num_inputs);
-   uint32_t input_patch_size = tcs_num_input_vertices * input_vertex_size;
-   uint32_t lds_output_vertex_size = tcs_num_lds_outputs * 16;
-   uint32_t lds_pervertex_output_patch_size = tcs_num_output_vertices * lds_output_vertex_size;
-   uint32_t lds_output_patch_size = lds_pervertex_output_patch_size + tcs_num_lds_patch_outputs * 16;
-
-   uint32_t vram_output_vertex_size = tcs_num_vram_outputs * 16;
-   uint32_t vram_pervertex_output_patch_size = tcs_num_output_vertices * vram_output_vertex_size;
-   uint32_t vram_output_patch_size = vram_pervertex_output_patch_size + tcs_num_vram_patch_outputs * 16;
-
-   /* Ensure that we only need one wave per SIMD so we don't need to check
-    * resource usage. Also ensures that the number of tcs in and out
-    * vertices per threadgroup are at most 256.
-    */
-   unsigned num_patches = 64 / MAX2(tcs_num_input_vertices, tcs_num_output_vertices) * 4;
-   /* Make sure that the data fits in LDS. This assumes the shaders only
-    * use LDS for the inputs and outputs.
-    */
-   unsigned hardware_lds_size = 32768;
-
-   /* Looks like STONEY hangs if we use more than 32 KiB LDS in a single
-    * threadgroup, even though there is more than 32 KiB LDS.
-    *
-    * Test: dEQP-VK.tessellation.shader_input_output.barrier
-    */
-   if (gfx_level >= GFX7 && family != CHIP_STONEY)
-      hardware_lds_size = 65536;
-
-   if (input_patch_size + lds_output_patch_size)
-      num_patches = MIN2(num_patches, hardware_lds_size / (input_patch_size + lds_output_patch_size));
-   /* Make sure the output data fits in the offchip buffer */
-   if (vram_output_patch_size)
-      num_patches = MIN2(num_patches, (tess_offchip_block_dw_size * 4) / vram_output_patch_size);
-   /* Not necessary for correctness, but improves performance. The
-    * specific value is taken from the proprietary driver.
-    */
-   num_patches = MIN2(num_patches, 40);
-
-   /* GFX6 bug workaround - limit LS-HS threadgroups to only one wave. */
-   if (gfx_level == GFX6) {
-      unsigned one_wave = 64 / MAX2(tcs_num_input_vertices, tcs_num_output_vertices);
-      num_patches = MIN2(num_patches, one_wave);
-   }
-   return num_patches;
-}
+uint32_t radv_get_tess_lds_size(const struct radv_physical_device *pdev, uint32_t tcs_num_input_vertices,
+                                uint32_t tcs_num_output_vertices, uint32_t tcs_num_inputs, uint32_t tcs_num_patches,
+                                uint32_t tcs_num_lds_outputs, uint32_t tcs_num_lds_patch_outputs);
 
 void radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
                     const struct radv_graphics_state_key *gfx_state);

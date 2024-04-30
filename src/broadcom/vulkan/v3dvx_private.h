@@ -318,7 +318,8 @@ v3dX(pipeline_pack_state)(struct v3dv_pipeline *pipeline,
                           const VkPipelineRasterizationStateCreateInfo *rs_info,
                           const VkPipelineRasterizationProvokingVertexStateCreateInfoEXT *pv_info,
                           const VkPipelineRasterizationLineStateCreateInfoEXT *ls_info,
-                          const VkPipelineMultisampleStateCreateInfo *ms_info);
+                          const VkPipelineMultisampleStateCreateInfo *ms_info,
+                          const struct vk_graphics_pipeline_state *state);
 void
 v3dX(pipeline_pack_compile_state)(struct v3dv_pipeline *pipeline,
                                   const VkPipelineVertexInputStateCreateInfo *vi_info,
@@ -367,3 +368,6 @@ void
 v3dX(viewport_compute_xform)(const VkViewport *viewport,
                              float scale[3],
                              float translate[3]);
+
+uint32_t
+v3dX(translate_stencil_op)(VkStencilOp op);

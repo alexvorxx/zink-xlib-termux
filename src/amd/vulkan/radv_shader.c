@@ -2955,6 +2955,45 @@ radv_get_user_sgpr(const struct radv_shader *shader, int idx)
    return &shader->info.user_sgprs_locs.shader_data[idx];
 }
 
+static uint32_t
+radv_get_tess_patch_size(uint32_t tcs_num_input_vertices, uint32_t tcs_num_output_vertices, uint32_t tcs_num_inputs,
+                         uint32_t tcs_num_lds_outputs, uint32_t tcs_num_lds_patch_outputs)
+{
+   const uint32_t input_vertex_size = get_tcs_input_vertex_stride(tcs_num_inputs);
+   const uint32_t input_patch_size = tcs_num_input_vertices * input_vertex_size;
+   const uint32_t lds_output_vertex_size = tcs_num_lds_outputs * 16;
+   const uint32_t lds_pervertex_output_patch_size = tcs_num_output_vertices * lds_output_vertex_size;
+   const uint32_t lds_output_patch_size = lds_pervertex_output_patch_size + tcs_num_lds_patch_outputs * 16;
+
+   return input_patch_size + lds_output_patch_size;
+}
+
+uint32_t
+radv_get_tcs_num_patches(const struct radv_physical_device *pdev, unsigned tcs_num_input_vertices,
+                         unsigned tcs_num_output_vertices, unsigned tcs_num_inputs, unsigned tcs_num_lds_outputs,
+                         unsigned tcs_num_lds_patch_outputs, unsigned tcs_num_vram_outputs,
+                         unsigned tcs_num_vram_patch_outputs)
+{
+   const uint32_t lds_per_patch = radv_get_tess_patch_size(
+      tcs_num_input_vertices, tcs_num_output_vertices, tcs_num_inputs, tcs_num_lds_outputs, tcs_num_lds_patch_outputs);
+   const uint32_t vram_per_patch = radv_get_tess_patch_size(tcs_num_input_vertices, tcs_num_output_vertices, 0,
+                                                            tcs_num_vram_outputs, tcs_num_vram_patch_outputs);
+
+   return ac_compute_num_tess_patches(&pdev->info, tcs_num_input_vertices, tcs_num_output_vertices, vram_per_patch,
+                                      lds_per_patch, pdev->ge_wave_size, false);
+}
+
+uint32_t
+radv_get_tess_lds_size(const struct radv_physical_device *pdev, uint32_t tcs_num_input_vertices,
+                       uint32_t tcs_num_output_vertices, uint32_t tcs_num_inputs, uint32_t tcs_num_patches,
+                       uint32_t tcs_num_lds_outputs, uint32_t tcs_num_lds_patch_outputs)
+{
+   const uint32_t lds_per_patch = radv_get_tess_patch_size(
+      tcs_num_input_vertices, tcs_num_output_vertices, tcs_num_inputs, tcs_num_lds_outputs, tcs_num_lds_patch_outputs);
+
+   return ac_compute_tess_lds_size(&pdev->info, lds_per_patch, tcs_num_patches);
+}
+
 VkResult
 radv_dump_shader_stats(struct radv_device *device, struct radv_pipeline *pipeline, struct radv_shader *shader,
                        gl_shader_stage stage, FILE *output)

@@ -140,7 +140,7 @@ zink_context_destroy(struct pipe_context *pctx)
       simple_mtx_lock((&ctx->program_lock[i]));
       hash_table_foreach(&ctx->program_cache[i], entry) {
          struct zink_program *pg = entry->data;
-         util_queue_fence_wait(&pg->cache_fence);
+         zink_program_finish(ctx, pg);
          pg->removed = true;
       }
       simple_mtx_unlock((&ctx->program_lock[i]));
@@ -4664,7 +4664,7 @@ zink_copy_buffer(struct zink_context *ctx, struct zink_resource *dst, struct zin
    bool unordered_src = !valid_write && !zink_check_unordered_transfer_access(src, 0, &box);
    zink_screen(ctx->base.screen)->buffer_barrier(ctx, src, VK_ACCESS_TRANSFER_READ_BIT, 0);
    bool unordered_dst = zink_resource_buffer_transfer_dst_barrier(ctx, dst, dst_offset, size);
-   bool can_unorder = unordered_dst && unordered_src && !(zink_debug & ZINK_DEBUG_NOREORDER);
+   bool can_unorder = unordered_dst && unordered_src && !ctx->no_reorder;
    VkCommandBuffer cmdbuf = can_unorder ? ctx->batch.state->reordered_cmdbuf : zink_get_cmdbuf(ctx, src, dst);
    ctx->batch.state->has_barriers |= can_unorder;
    zink_batch_reference_resource_rw(batch, src, false);
@@ -5785,14 +5785,6 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       }
    }
 
-   if (!(flags & PIPE_CONTEXT_PREFER_THREADED) || flags & PIPE_CONTEXT_COMPUTE_ONLY) {
-      if (context_mode == ZINK_CONTEXT_BASE || context_mode == ZINK_CONTEXT_AUTO) {
-         zink_xlib_context = &ctx->base;
-         mesa_logi("base context %u created", (unsigned)zink_xlib_context);
-      }
-      return &ctx->base;
-   }
-
    if (!is_copy_only && zink_debug & ZINK_DEBUG_SHADERDB) {
       if (!screen->info.have_EXT_vertex_input_dynamic_state) {
          struct pipe_vertex_element velems[32] = {0};
@@ -5821,6 +5813,17 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       ctx->base.bind_blend_state(&ctx->base, blend_state);
 
       zink_batch_rp(ctx);
+   }
+
+   if (!is_compute_only && zink_debug & ZINK_DEBUG_NOREORDER)
+      ctx->no_reorder = true;
+
+   if (!(flags & PIPE_CONTEXT_PREFER_THREADED) || flags & PIPE_CONTEXT_COMPUTE_ONLY) {
+      if (context_mode == ZINK_CONTEXT_BASE || context_mode == ZINK_CONTEXT_AUTO) {
+         zink_xlib_context = &ctx->base;
+         mesa_logi("base context %u created", (unsigned)zink_xlib_context);
+      }
+      return &ctx->base;
    }
 
    struct threaded_context *tc = (struct threaded_context*)threaded_context_create(&ctx->base, &screen->transfer_pool,

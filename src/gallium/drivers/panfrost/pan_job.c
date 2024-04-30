@@ -180,7 +180,7 @@ panfrost_get_batch(struct panfrost_context *ctx,
 
    /* The selected slot is used, we need to flush the batch */
    if (batch->seqnum) {
-      perf_debug_ctx(ctx, "Flushing batch due to seqnum overflow");
+      perf_debug(ctx, "Flushing batch due to seqnum overflow");
       panfrost_batch_submit(ctx, batch);
    }
 
@@ -230,7 +230,7 @@ panfrost_get_fresh_batch_for_fbo(struct panfrost_context *ctx,
     * draw/clear queued. Otherwise we may reuse the batch. */
 
    if (batch->draw_count + batch->compute_count > 0) {
-      perf_debug_ctx(ctx, "Flushing the current FBO due to: %s", reason);
+      perf_debug(ctx, "Flushing the current FBO due to: %s", reason);
       panfrost_batch_submit(ctx, batch);
       batch = panfrost_get_batch(ctx, &ctx->pipe_framebuffer);
    }
@@ -696,7 +696,7 @@ void
 panfrost_flush_all_batches(struct panfrost_context *ctx, const char *reason)
 {
    if (reason)
-      perf_debug_ctx(ctx, "Flushing everything due to: %s", reason);
+      perf_debug(ctx, "Flushing everything due to: %s", reason);
 
    struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
    panfrost_batch_submit(ctx, batch);
@@ -714,7 +714,7 @@ panfrost_flush_writer(struct panfrost_context *ctx,
    struct hash_entry *entry = _mesa_hash_table_search(ctx->writers, rsrc);
 
    if (entry) {
-      perf_debug_ctx(ctx, "Flushing writer due to: %s", reason);
+      perf_debug(ctx, "Flushing writer due to: %s", reason);
       panfrost_batch_submit(ctx, entry->data);
    }
 }
@@ -731,7 +731,7 @@ panfrost_flush_batches_accessing_rsrc(struct panfrost_context *ctx,
       if (!panfrost_batch_uses_resource(batch, rsrc))
          continue;
 
-      perf_debug_ctx(ctx, "Flushing user due to: %s", reason);
+      perf_debug(ctx, "Flushing user due to: %s", reason);
       panfrost_batch_submit(ctx, batch);
    }
 }

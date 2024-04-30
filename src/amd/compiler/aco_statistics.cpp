@@ -317,6 +317,9 @@ get_wait_counter_info(aco_ptr<Instruction>& instr)
    if (instr->format == Format::DS)
       return wait_counter_info(0, 0, 20, 0);
 
+   if (instr->isLDSDIR())
+      return wait_counter_info(0, 13, 0, 0);
+
    if (instr->isVMEM() && !instr->definitions.empty())
       return wait_counter_info(320, 0, 0, 0);
 
@@ -335,6 +338,12 @@ get_wait_imm(Program* program, aco_ptr<Instruction>& instr)
       return wait_imm(GFX10_3, instr->salu().imm);
    } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt) {
       return wait_imm(0, 0, 0, instr->salu().imm);
+   } else if (instr->isVINTERP_INREG()) {
+      wait_imm imm;
+      imm.exp = instr->vinterp_inreg().wait_exp;
+      if (imm.exp == 0x7)
+         imm.exp = wait_imm::unset_counter;
+      return imm;
    } else {
       unsigned max_lgkm_cnt = program->gfx_level >= GFX10 ? 62 : 14;
       unsigned max_exp_cnt = 6;

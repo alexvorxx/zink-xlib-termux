@@ -41,7 +41,7 @@ struct xe_vm {
 };
 
 bool error_decode_xe_read_u64_hexacimal_parameter(const char *line, const char *parameter, uint64_t *value);
-bool error_decode_xe_read_hexacimal_parameter(const char *line, const char *parameter, int *value);
+bool error_decode_xe_read_hexacimal_parameter(const char *line, const char *parameter, uint32_t *value);
 bool error_decode_xe_read_engine_name(const char *line, char *ring_name);
 
 bool error_decode_xe_decode_topic(const char *line, enum xe_topic *new_topic);

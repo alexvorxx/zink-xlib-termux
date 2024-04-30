@@ -142,7 +142,7 @@ panvk_pipeline_builder_compile_shaders(struct panvk_pipeline_builder *builder,
 
       shader = panvk_per_arch(shader_create)(
          builder->device, stage, stage_info, builder->layout,
-         PANVK_SYSVAL_UBO_INDEX, &pipeline->blend.state,
+         &pipeline->blend.state,
          panvk_pipeline_static_state(pipeline,
                                      VK_DYNAMIC_STATE_BLEND_CONSTANTS),
          builder->alloc);
@@ -221,16 +221,6 @@ panvk_pipeline_builder_alloc_static_state_bo(
       pipeline->state_bo = panvk_priv_bo_create(
          builder->device, bo_size, 0, NULL, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    }
-}
-
-static void
-panvk_pipeline_builder_init_sysvals(struct panvk_pipeline_builder *builder,
-                                    struct panvk_pipeline *pipeline,
-                                    gl_shader_stage stage)
-{
-   const struct panvk_shader *shader = builder->shaders[stage];
-
-   pipeline->sysvals[stage].ubo_idx = shader->sysval_ubo;
 }
 
 static void
@@ -467,8 +457,6 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
          pipeline->rsds[i] = gpu_rsd;
       }
 
-      panvk_pipeline_builder_init_sysvals(builder, pipeline, i);
-
       if (i == MESA_SHADER_COMPUTE)
          pipeline->cs.local_size = shader->local_size;
    }
@@ -496,9 +484,6 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
                                            &pipeline->blend.bd_template[rt]);
       }
    }
-
-   pipeline->num_ubos = PANVK_NUM_BUILTIN_UBOS + builder->layout->num_ubos +
-                        builder->layout->num_dyn_ubos;
 }
 
 static void

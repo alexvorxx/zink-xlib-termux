@@ -1,9 +1,0 @@
-# Test bugs https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/5074
-dEQP-VK.pipeline.fast_linked_library.misc.unused_shader_stages,Crash
-dEQP-VK.pipeline.fast_linked_library.misc.unused_shader_stages_include_geom,Crash
-dEQP-VK.pipeline.fast_linked_library.misc.unused_shader_stages_include_tess,Crash
-dEQP-VK.pipeline.fast_linked_library.misc.unused_shader_stages_include_tess_include_geom,Crash
-dEQP-VK.pipeline.pipeline_library.misc.unused_shader_stages,Crash
-dEQP-VK.pipeline.pipeline_library.misc.unused_shader_stages_include_geom,Crash
-dEQP-VK.pipeline.pipeline_library.misc.unused_shader_stages_include_tess,Crash
-dEQP-VK.pipeline.pipeline_library.misc.unused_shader_stages_include_tess_include_geom,Crash

@@ -610,13 +610,6 @@ struct si_shader_selector {
  */
 #pragma pack(push, 1)
 
-/* Common TCS bits between the shader key and the epilog key. */
-struct si_tcs_epilog_bits {
-   unsigned prim_mode : 3;
-   unsigned invoc0_tess_factors_are_def : 1;
-   unsigned tes_reads_tess_factors : 1;
-};
-
 /* Common PS bits between the shader key and the prolog key. */
 struct si_ps_prolog_bits {
    unsigned color_two_side : 1;
@@ -648,9 +641,6 @@ struct si_ps_epilog_bits {
 
 union si_shader_part_key {
    struct {
-      struct si_tcs_epilog_bits states;
-   } tcs_epilog;
-   struct {
       struct si_ps_prolog_bits states;
       unsigned wave32 : 1;
       unsigned num_input_sgprs : 6;
@@ -680,7 +670,6 @@ struct si_shader_key_ge {
    union {
       struct {
          struct si_shader_selector *ls;      /* for merged LS-HS */
-         struct si_tcs_epilog_bits epilog;
       } tcs; /* tessellation control shader */
       struct {
          struct si_shader_selector *es;      /* for merged ES-GS */
@@ -731,6 +720,7 @@ struct si_shader_key_ge {
       /* For NGG VS and TES. */
       unsigned ngg_culling : 13; /* SI_NGG_CULL_* */
 
+
       /* For shaders where monolithic variants have better code.
        *
        * This is a flag that has no effect on code generation,
@@ -741,6 +731,10 @@ struct si_shader_key_ge {
 
       /* VS and TCS have the same number of patch vertices. */
       unsigned same_patch_vertices:1;
+
+      /* For TCS. */
+      unsigned tes_prim_mode : 3;
+      unsigned tes_reads_tess_factors : 1;
 
       unsigned inline_uniforms:1;
 
@@ -1004,13 +998,13 @@ bool si_shader_binary_open(struct si_screen *screen, struct si_shader *shader,
                            struct ac_rtld_binary *rtld);
 bool si_get_external_symbol(enum amd_gfx_level gfx_level, void *data, const char *name,
                             uint64_t *value);
+unsigned si_get_shader_prefetch_size(struct si_shader *shader);
 
 /* si_shader_info.c */
 void si_nir_scan_shader(struct si_screen *sscreen,  const struct nir_shader *nir,
                         struct si_shader_info *info);
 
 /* si_shader_nir.c */
-extern const struct nir_lower_subgroups_options si_nir_subgroups_options;
 void si_lower_mediump_io(struct nir_shader *nir);
 
 bool si_alu_to_scalar_packed_math_filter(const struct nir_instr *instr, const void *data);

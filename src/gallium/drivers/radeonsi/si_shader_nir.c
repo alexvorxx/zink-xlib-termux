@@ -255,22 +255,6 @@ static bool si_lower_intrinsics(nir_shader *nir)
                                         NULL);
 }
 
-const nir_lower_subgroups_options si_nir_subgroups_options = {
-   .subgroup_size = 64,
-   .ballot_bit_size = 64,
-   .ballot_components = 1,
-   .lower_to_scalar = true,
-   .lower_subgroup_masks = true,
-   .lower_relative_shuffle = true,
-   .lower_shuffle_to_32bit = true,
-   .lower_vote_trivial = false,
-   .lower_vote_eq = true,
-   .lower_vote_bool_eq = true,
-   .lower_inverse_ballot = true,
-   .lower_boolean_reduce = true,
-   .lower_boolean_shuffle = true,
-};
-
 void si_lower_mediump_io(nir_shader *nir)
 {
    NIR_PASS_V(nir, nir_lower_mediump_io,
@@ -310,7 +294,8 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
 
    const struct nir_lower_image_options lower_image_options = {
       .lower_cube_size = true,
-      .lower_to_fragment_mask_load_amd = sscreen->info.gfx_level < GFX11,
+      .lower_to_fragment_mask_load_amd = sscreen->info.gfx_level < GFX11 &&
+                                         !(sscreen->debug_flags & DBG(NO_FMASK)),
    };
    NIR_PASS_V(nir, nir_lower_image, &lower_image_options);
 
@@ -318,7 +303,7 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
 
    NIR_PASS_V(nir, ac_nir_lower_sin_cos);
 
-   NIR_PASS_V(nir, nir_lower_subgroups, &si_nir_subgroups_options);
+   NIR_PASS_V(nir, nir_lower_subgroups, sscreen->nir_lower_subgroups_options);
 
    NIR_PASS_V(nir, nir_lower_discard_or_demote, true);
 
@@ -368,7 +353,7 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
    /* Run late optimizations to fuse ffma and eliminate 16-bit conversions. */
    si_nir_late_opts(nir);
 
-   if (sscreen->b.get_shader_param(&sscreen->b, PIPE_SHADER_FRAGMENT, PIPE_SHADER_CAP_FP16))
+   if (sscreen->info.gfx_level >= GFX9)
       si_late_optimize_16bit_samplers(sscreen, nir);
 
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);

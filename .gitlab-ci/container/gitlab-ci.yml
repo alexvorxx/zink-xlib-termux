@@ -182,7 +182,8 @@ debian/android_build:
 
 # Debian based x86_64 test image base
 debian/x86_64_test-base:
-  extends: debian/x86_64_build-base
+  extends:
+    - .debian-container
   variables:
     MESA_IMAGE_TAG: &debian-x86_64_test-base "${DEBIAN_BASE_TAG}--${PKG_REPO_REV}--${KERNEL_TAG}"
 

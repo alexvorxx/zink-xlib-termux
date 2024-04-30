@@ -2754,7 +2754,7 @@ get_indirect_offset(nir_to_brw_state &ntb, nir_intrinsic_instr *instr)
       return offset;
 
    /* Convert Owords (16-bytes) to bytes */
-   return ntb.bld.SHL(offset, brw_imm_ud(4u));
+   return ntb.bld.SHL(retype(offset, BRW_TYPE_UD), brw_imm_ud(4u));
 }
 
 static void
@@ -5545,7 +5545,8 @@ emit_urb_indirect_writes_xe2(const fs_builder &bld, nir_intrinsic_instr *instr,
          payload_srcs[c] = horiz_offset(offset(src, bld, c), write_size * q);
 
       fs_reg addr =
-         wbld.ADD(wbld.SHL(horiz_offset(offset_src, write_size * q),
+         wbld.ADD(wbld.SHL(retype(horiz_offset(offset_src, write_size * q),
+                                  BRW_TYPE_UD),
                            brw_imm_ud(2)), urb_handle);
 
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
@@ -5789,7 +5790,9 @@ emit_urb_indirect_reads_xe2(const fs_builder &bld, nir_intrinsic_instr *instr,
    for (unsigned q = 0; q < bld.dispatch_width() / 16; q++) {
       fs_builder wbld = bld.group(16, q);
 
-      fs_reg addr = wbld.SHL(horiz_offset(offset_src, 16 * q), brw_imm_ud(2));
+      fs_reg addr = wbld.SHL(retype(horiz_offset(offset_src, 16 * q),
+                                    BRW_TYPE_UD),
+                             brw_imm_ud(2));
 
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = wbld.ADD(addr, urb_handle);

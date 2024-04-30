@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use nil_rs_bindings::*;
-use nvidia_headers::{cla297, clb097};
+use nvidia_headers::classes::{cla297, clb097, clb197};
 
 use crate::extent::{units, Extent4D};
 
@@ -104,7 +104,10 @@ impl Format {
         self.info().support() & NIL_FORMAT_SUPPORTS_ALPHA_BLEND_BIT != 0
     }
 
-    pub fn supports_depth_stencil(&self, _dev: &nv_device_info) -> bool {
+    pub fn supports_depth_stencil(&self, dev: &nv_device_info) -> bool {
+        if self.p_format == PIPE_FORMAT_S8_UINT {
+            return dev.cls_eng3d >= clb197::MAXWELL_B;
+        }
         self.info().support() & NIL_FORMAT_SUPPORTS_DEPTH_STENCIL_BIT != 0
     }
 }

@@ -1366,7 +1366,7 @@ VKAPI_ATTR void VKAPI_CALL
 tu_DestroyInstance(VkInstance _instance,
                    const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_instance, instance, _instance);
+   VK_FROM_HANDLE(tu_instance, instance, _instance);
 
    if (!instance)
       return;
@@ -1453,7 +1453,7 @@ tu_GetPhysicalDeviceQueueFamilyProperties2(
    uint32_t *pQueueFamilyPropertyCount,
    VkQueueFamilyProperties2 *pQueueFamilyProperties)
 {
-   TU_FROM_HANDLE(tu_physical_device, pdevice, physicalDevice);
+   VK_FROM_HANDLE(tu_physical_device, pdevice, physicalDevice);
 
    VK_OUTARRAY_MAKE_TYPED(VkQueueFamilyProperties2, out,
                           pQueueFamilyProperties, pQueueFamilyPropertyCount);
@@ -1525,7 +1525,7 @@ VKAPI_ATTR void VKAPI_CALL
 tu_GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice pdev,
                                       VkPhysicalDeviceMemoryProperties2 *props2)
 {
-   TU_FROM_HANDLE(tu_physical_device, physical_device, pdev);
+   VK_FROM_HANDLE(tu_physical_device, physical_device, pdev);
 
    VkPhysicalDeviceMemoryProperties *props = &props2->memoryProperties;
    props->memoryHeapCount = 1;
@@ -2100,7 +2100,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
                 const VkAllocationCallbacks *pAllocator,
                 VkDevice *pDevice)
 {
-   TU_FROM_HANDLE(tu_physical_device, physical_device, physicalDevice);
+   VK_FROM_HANDLE(tu_physical_device, physical_device, physicalDevice);
    VkResult result;
    struct tu_device *device;
    bool custom_border_colors = false;
@@ -2547,7 +2547,7 @@ fail_queues:
 VKAPI_ATTR void VKAPI_CALL
 tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    if (!device)
       return;
@@ -2705,7 +2705,7 @@ tu_EnumerateInstanceExtensionProperties(const char *pLayerName,
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 tu_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 {
-   TU_FROM_HANDLE(tu_instance, instance, _instance);
+   VK_FROM_HANDLE(tu_instance, instance, _instance);
    return vk_instance_get_proc_addr(instance != NULL ? &instance->vk : NULL,
                                     &tu_instance_entrypoints,
                                     pName);
@@ -2727,7 +2727,7 @@ tu_AllocateMemory(VkDevice _device,
                   const VkAllocationCallbacks *pAllocator,
                   VkDeviceMemory *pMem)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    struct tu_device_memory *mem;
    VkResult result;
 
@@ -2851,8 +2851,8 @@ tu_FreeMemory(VkDevice _device,
               VkDeviceMemory _mem,
               const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_device_memory, mem, _mem);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device_memory, mem, _mem);
 
    if (mem == NULL)
       return;
@@ -2867,8 +2867,8 @@ tu_FreeMemory(VkDevice _device,
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, void **ppData)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_device_memory, mem, pMemoryMapInfo->memory);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device_memory, mem, pMemoryMapInfo->memory);
    VkResult result;
 
    if (mem == NULL) {
@@ -2924,8 +2924,8 @@ tu_GetBufferMemoryRequirements2(
    const VkBufferMemoryRequirementsInfo2 *pInfo,
    VkMemoryRequirements2 *pMemoryRequirements)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_buffer, buffer, pInfo->buffer);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_buffer, buffer, pInfo->buffer);
 
    tu_get_buffer_memory_requirements(device, buffer->vk.size, pMemoryRequirements);
 }
@@ -2936,7 +2936,7 @@ tu_GetDeviceBufferMemoryRequirements(
    const VkDeviceBufferMemoryRequirements *pInfo,
    VkMemoryRequirements2 *pMemoryRequirements)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    tu_get_buffer_memory_requirements(device, pInfo->pCreateInfo->size, pMemoryRequirements);
 }
 
@@ -2953,11 +2953,11 @@ tu_BindBufferMemory2(VkDevice device,
                      uint32_t bindInfoCount,
                      const VkBindBufferMemoryInfo *pBindInfos)
 {
-   TU_FROM_HANDLE(tu_device, dev, device);
+   VK_FROM_HANDLE(tu_device, dev, device);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
-      TU_FROM_HANDLE(tu_buffer, buffer, pBindInfos[i].buffer);
+      VK_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
+      VK_FROM_HANDLE(tu_buffer, buffer, pBindInfos[i].buffer);
 
       if (mem) {
          buffer->bo = mem->bo;
@@ -2993,7 +2993,7 @@ tu_CreateEvent(VkDevice _device,
                const VkAllocationCallbacks *pAllocator,
                VkEvent *pEvent)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    struct tu_event *event = (struct tu_event *)
          vk_object_alloc(&device->vk, pAllocator, sizeof(*event),
@@ -3028,8 +3028,8 @@ tu_DestroyEvent(VkDevice _device,
                 VkEvent _event,
                 const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_event, event, _event);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_event, event, _event);
 
    if (!event)
       return;
@@ -3043,8 +3043,8 @@ tu_DestroyEvent(VkDevice _device,
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_GetEventStatus(VkDevice _device, VkEvent _event)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_event, event, _event);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_event, event, _event);
 
    if (vk_device_is_lost(&device->vk))
       return VK_ERROR_DEVICE_LOST;
@@ -3057,7 +3057,7 @@ tu_GetEventStatus(VkDevice _device, VkEvent _event)
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_SetEvent(VkDevice _device, VkEvent _event)
 {
-   TU_FROM_HANDLE(tu_event, event, _event);
+   VK_FROM_HANDLE(tu_event, event, _event);
    *(uint64_t*) event->bo->map = 1;
 
    return VK_SUCCESS;
@@ -3066,7 +3066,7 @@ tu_SetEvent(VkDevice _device, VkEvent _event)
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_ResetEvent(VkDevice _device, VkEvent _event)
 {
-   TU_FROM_HANDLE(tu_event, event, _event);
+   VK_FROM_HANDLE(tu_event, event, _event);
    *(uint64_t*) event->bo->map = 0;
 
    return VK_SUCCESS;
@@ -3078,7 +3078,7 @@ tu_CreateBuffer(VkDevice _device,
                 const VkAllocationCallbacks *pAllocator,
                 VkBuffer *pBuffer)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    struct tu_buffer *buffer;
 
    buffer = (struct tu_buffer *) vk_buffer_create(
@@ -3102,8 +3102,8 @@ tu_DestroyBuffer(VkDevice _device,
                  VkBuffer _buffer,
                  const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_buffer, buffer, _buffer);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_buffer, buffer, _buffer);
 
    if (!buffer)
       return;
@@ -3123,13 +3123,13 @@ tu_CreateFramebuffer(VkDevice _device,
                      const VkAllocationCallbacks *pAllocator,
                      VkFramebuffer *pFramebuffer)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    if (TU_DEBUG(DYNAMIC))
       return vk_common_CreateFramebuffer(_device, pCreateInfo, pAllocator,
                                          pFramebuffer);
 
-   TU_FROM_HANDLE(tu_render_pass, pass, pCreateInfo->renderPass);
+   VK_FROM_HANDLE(tu_render_pass, pass, pCreateInfo->renderPass);
    struct tu_framebuffer *framebuffer;
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
@@ -3185,14 +3185,14 @@ tu_DestroyFramebuffer(VkDevice _device,
                       VkFramebuffer _fb,
                       const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    if (TU_DEBUG(DYNAMIC)) {
       vk_common_DestroyFramebuffer(_device, _fb, pAllocator);
       return;
    }
 
-   TU_FROM_HANDLE(tu_framebuffer, fb, _fb);
+   VK_FROM_HANDLE(tu_framebuffer, fb, _fb);
 
    if (!fb)
       return;
@@ -3293,7 +3293,7 @@ tu_CreateSampler(VkDevice _device,
                  const VkAllocationCallbacks *pAllocator,
                  VkSampler *pSampler)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    struct tu_sampler *sampler;
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
@@ -3314,8 +3314,8 @@ tu_DestroySampler(VkDevice _device,
                   VkSampler _sampler,
                   const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_sampler, sampler, _sampler);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_sampler, sampler, _sampler);
    uint32_t border_color;
 
    if (!sampler)
@@ -3339,8 +3339,8 @@ tu_GetMemoryFdKHR(VkDevice _device,
                   const VkMemoryGetFdInfoKHR *pGetFdInfo,
                   int *pFd)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_device_memory, memory, pGetFdInfo->memory);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device_memory, memory, pGetFdInfo->memory);
 
    assert(pGetFdInfo->sType == VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR);
 
@@ -3384,7 +3384,7 @@ tu_GetMemoryFdPropertiesKHR(VkDevice _device,
                             int fd,
                             VkMemoryFdPropertiesKHR *pMemoryFdProperties)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    assert(handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT);
    pMemoryFdProperties->memoryTypeBits =
       (1 << device->physical_device->memory.type_count) - 1;
@@ -3397,7 +3397,7 @@ tu_GetPhysicalDeviceMultisamplePropertiesEXT(
    VkSampleCountFlagBits                       samples,
    VkMultisamplePropertiesEXT*                 pMultisampleProperties)
 {
-   TU_FROM_HANDLE(tu_physical_device, pdevice, physicalDevice);
+   VK_FROM_HANDLE(tu_physical_device, pdevice, physicalDevice);
 
    if (samples <= VK_SAMPLE_COUNT_4_BIT && pdevice->vk.supported_extensions.EXT_sample_locations)
       pMultisampleProperties->maxSampleLocationGridSize = (VkExtent2D){ 1, 1 };
@@ -3409,7 +3409,7 @@ VkDeviceAddress
 tu_GetBufferDeviceAddress(VkDevice _device,
                           const VkBufferDeviceAddressInfo* pInfo)
 {
-   TU_FROM_HANDLE(tu_buffer, buffer, pInfo->buffer);
+   VK_FROM_HANDLE(tu_buffer, buffer, pInfo->buffer);
 
    return buffer->iova;
 }
@@ -3426,7 +3426,7 @@ uint64_t tu_GetDeviceMemoryOpaqueCaptureAddress(
     VkDevice                                    device,
     const VkDeviceMemoryOpaqueCaptureAddressInfo* pInfo)
 {
-   TU_FROM_HANDLE(tu_device_memory, mem, pInfo->memory);
+   VK_FROM_HANDLE(tu_device_memory, mem, pInfo->memory);
    return mem->bo->iova;
 }
 

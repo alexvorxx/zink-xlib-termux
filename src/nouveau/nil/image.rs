@@ -7,7 +7,7 @@ use crate::tiling::Tiling;
 use crate::Minify;
 
 use nil_rs_bindings::*;
-use nvidia_headers::{cl9097, clc597};
+use nvidia_headers::classes::{cl9097, clc597};
 
 pub const MAX_LEVELS: usize = 16;
 
@@ -497,42 +497,52 @@ impl Image {
     }
 
     fn tu102_choose_pte_kind(format: Format, compressed: bool) -> u8 {
+        use nvidia_headers::hwref::tu102::mmu::*;
         match pipe_format::from(format) {
             PIPE_FORMAT_Z16_UNORM => {
                 if compressed {
-                    0x0b // NV_MMU_PTE_KIND_Z16_COMPRESSIBLE_DISABLE_PLC
+                    NV_MMU_PTE_KIND_Z16_COMPRESSIBLE_DISABLE_PLC
                 } else {
-                    0x01 // NV_MMU_PTE_KIND_Z16
+                    NV_MMU_PTE_KIND_Z16
                 }
             }
             PIPE_FORMAT_X8Z24_UNORM
             | PIPE_FORMAT_S8X24_UINT
             | PIPE_FORMAT_S8_UINT_Z24_UNORM => {
                 if compressed {
-                    0x0e // NV_MMU_PTE_KIND_Z24S8_COMPRESSIBLE_DISABLE_PLC
+                    NV_MMU_PTE_KIND_Z24S8_COMPRESSIBLE_DISABLE_PLC
                 } else {
-                    0x05 // NV_MMU_PTE_KIND_Z24S8
+                    NV_MMU_PTE_KIND_Z24S8
                 }
             }
             PIPE_FORMAT_X24S8_UINT
             | PIPE_FORMAT_Z24X8_UNORM
             | PIPE_FORMAT_Z24_UNORM_S8_UINT => {
                 if compressed {
-                    0x0c // NV_MMU_PTE_KIND_S8Z24_COMPRESSIBLE_DISABLE_PLC
+                    NV_MMU_PTE_KIND_S8Z24_COMPRESSIBLE_DISABLE_PLC
                 } else {
-                    0x03 // NV_MMU_PTE_KIND_S8Z24
+                    NV_MMU_PTE_KIND_S8Z24
                 }
             }
             PIPE_FORMAT_X32_S8X24_UINT | PIPE_FORMAT_Z32_FLOAT_S8X24_UINT => {
                 if compressed {
-                    0x0d // NV_MMU_PTE_KIND_ZF32_X24S8_COMPRESSIBLE_DISABLE_PLC
+                    NV_MMU_PTE_KIND_ZF32_X24S8_COMPRESSIBLE_DISABLE_PLC
                 } else {
-                    0x04 // NV_MMU_PTE_KIND_ZF32_X24S8
+                    NV_MMU_PTE_KIND_ZF32_X24S8
                 }
             }
-            PIPE_FORMAT_Z32_FLOAT => 0x06,
-            _ => 0,
+            PIPE_FORMAT_Z32_FLOAT => NV_MMU_PTE_KIND_GENERIC_MEMORY,
+            PIPE_FORMAT_S8_UINT => {
+                if compressed {
+                    NV_MMU_PTE_KIND_S8_COMPRESSIBLE_DISABLE_PLC
+                } else {
+                    NV_MMU_PTE_KIND_S8
+                }
+            }
+            _ => NV_MMU_PTE_KIND_PITCH,
         }
+        .try_into()
+        .unwrap()
     }
 
     fn nvc0_choose_pte_kind(
@@ -540,82 +550,91 @@ impl Image {
         samples: u32,
         compressed: bool,
     ) -> u8 {
-        let ms = samples.ilog2() as u8;
+        use nvidia_headers::hwref::gp100::mmu::*;
+        let ms = samples.ilog2();
         match pipe_format::from(format) {
             PIPE_FORMAT_Z16_UNORM => {
                 if compressed {
-                    0x02 + ms
+                    NV_MMU_PTE_KIND_Z16_2C + ms
                 } else {
-                    0x01
+                    NV_MMU_PTE_KIND_Z16
                 }
             }
             PIPE_FORMAT_X8Z24_UNORM
             | PIPE_FORMAT_S8X24_UINT
             | PIPE_FORMAT_S8_UINT_Z24_UNORM => {
                 if compressed {
-                    0x51 + ms
+                    NV_MMU_PTE_KIND_Z24S8_2CZ + ms
                 } else {
-                    0x46
+                    NV_MMU_PTE_KIND_Z24S8
                 }
             }
             PIPE_FORMAT_X24S8_UINT
             | PIPE_FORMAT_Z24X8_UNORM
             | PIPE_FORMAT_Z24_UNORM_S8_UINT => {
                 if compressed {
-                    0x17 + ms
+                    NV_MMU_PTE_KIND_S8Z24_2CZ + ms
                 } else {
-                    0x11
+                    NV_MMU_PTE_KIND_S8Z24
                 }
             }
             PIPE_FORMAT_X32_S8X24_UINT | PIPE_FORMAT_Z32_FLOAT_S8X24_UINT => {
                 if compressed {
-                    0xce + ms
+                    NV_MMU_PTE_KIND_ZF32_X24S8_2CSZV + ms
                 } else {
-                    0xc3
+                    NV_MMU_PTE_KIND_ZF32_X24S8
                 }
             }
+            PIPE_FORMAT_S8_UINT => NV_MMU_PTE_KIND_S8,
             _ => {
                 let blocksize_bits = format.el_size_B() * 8;
                 match blocksize_bits {
                     128 => {
                         if compressed {
-                            0xf4 + ms * 2
+                            match samples {
+                                1 => NV_MMU_PTE_KIND_C128_2C,
+                                2 => NV_MMU_PTE_KIND_C128_MS2_2C,
+                                4 => NV_MMU_PTE_KIND_C128_MS4_2C,
+                                8 | 16 => NV_MMU_PTE_KIND_C128_MS8_MS16_2C,
+                                _ => panic!("Unsupported sample count"),
+                            }
                         } else {
-                            0xfe
+                            NV_MMU_PTE_KIND_GENERIC_16BX2
                         }
                     }
                     64 => {
                         if compressed {
                             match samples {
-                                1 => 0xe6,
-                                2 => 0xeb,
-                                4 => 0xed,
-                                8 => 0xf2,
+                                1 => NV_MMU_PTE_KIND_C64_2C,
+                                2 => NV_MMU_PTE_KIND_C64_MS2_2C,
+                                4 => NV_MMU_PTE_KIND_C64_MS4_2C,
+                                8 | 16 => NV_MMU_PTE_KIND_C64_MS8_MS16_2C,
                                 _ => panic!("Unsupported sample count"),
                             }
                         } else {
-                            0xfe
+                            NV_MMU_PTE_KIND_GENERIC_16BX2
                         }
                     }
                     32 => {
-                        if compressed && ms != 0 {
+                        if compressed {
                             match samples {
-                                // This one makes things blurry:
-                                // 1 => 0xdb
-                                2 => 0xdd,
-                                4 => 0xdf,
-                                8 => 0xe4,
-                                _ => 0,
+                                1 => NV_MMU_PTE_KIND_C32_2C,
+                                2 => NV_MMU_PTE_KIND_C32_MS2_2C,
+                                4 => NV_MMU_PTE_KIND_C32_MS4_2C,
+                                8 | 16 => NV_MMU_PTE_KIND_C32_MS8_MS16_2C,
+                                _ => panic!("Unsupported sample count"),
                             }
                         } else {
-                            0xfe
+                            NV_MMU_PTE_KIND_GENERIC_16BX2
                         }
                     }
-                    16 | 8 => 0xfe,
-                    _ => 0,
+                    16 | 8 => NV_MMU_PTE_KIND_GENERIC_16BX2,
+                    _ => NV_MMU_PTE_KIND_PITCH,
                 }
             }
         }
+        .try_into()
+        .unwrap()
     }
 
     #[no_mangle]

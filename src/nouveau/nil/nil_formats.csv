@@ -138,7 +138,7 @@ R64_SINT                , NONE                  , R32_G32           , II   , RG0
 R64_UINT                , NONE                  , R32_G32           , UU   , RG01 , S
 
 # Depth/stencil formats
-Z16_UNORM               , Z16                   , Z16               , N    , R001 , TZ        , Maxwell
+Z16_UNORM               , Z16                   , Z16               , N    , R001 , TZ        , MaxwellA
 Z32_FLOAT               , ZF32                  , ZF32              , F    , R001 , TZ
 Z24X8_UNORM             , X8Z24                 , X8Z24             , NU   , R001 , TZ
 X8Z24_UNORM             , Z24S8                 , Z24S8             , UN   , G001 , TZ
@@ -147,7 +147,7 @@ S8_UINT_Z24_UNORM       , Z24S8                 , Z24S8             , UN   , G00
 Z32_FLOAT_S8X24_UINT    , ZF32_X24S8            , ZF32_X24S8        , FU   , R001 , TZ
 
 # Stencil-only formats
-S8_UINT                 , NONE                  , R8                , U    , R001 , T
+S8_UINT                 , S8                    , R8                , U    , R001 , TZ        , MaxwellB
 X24S8_UINT              , NONE                  , G8R24             , UU   , G001 , T
 S8X24_UINT              , NONE                  , G24R8             , UU   , R001 , T
 X32_S8X24_UINT          , NONE                  , R32_B24G8         , UU   , G001 , T
@@ -253,17 +253,17 @@ BPTC_SRGBA              , NONE                  , BC7U              , NNNN , RGB
 BPTC_RGB_FLOAT          , NONE                  , BC6H_SF16         , FFFF , RGB1 , T
 BPTC_RGB_UFLOAT         , NONE                  , BC6H_UF16         , FFFF , RGB1 , T
 
-ETC1_RGB8               , NONE                  , ETC2_RGB          , NNNN , RGB1 , T         , Maxwell
-ETC2_RGB8               , NONE                  , ETC2_RGB          , NNNN , RGB1 , T         , Maxwell
-ETC2_SRGB8              , NONE                  , ETC2_RGB          , NNNN , RGB1 , T         , Maxwell
-ETC2_RGB8A1             , NONE                  , ETC2_RGB_PTA      , NNNN , RGBA , T         , Maxwell
-ETC2_SRGB8A1            , NONE                  , ETC2_RGB_PTA      , NNNN , RGBA , T         , Maxwell
-ETC2_RGBA8              , NONE                  , ETC2_RGBA         , NNNN , RGBA , T         , Maxwell
-ETC2_SRGBA8             , NONE                  , ETC2_RGBA         , NNNN , RGBA , T         , Maxwell
-ETC2_R11_UNORM          , NONE                  , EAC               , NNNN , R001 , T         , Maxwell
-ETC2_R11_SNORM          , NONE                  , EAC               , SSSS , R001 , T         , Maxwell
-ETC2_RG11_UNORM         , NONE                  , EACX2             , NNNN , RG01 , T         , Maxwell
-ETC2_RG11_SNORM         , NONE                  , EACX2             , SSSS , RG01 , T         , Maxwell
+ETC1_RGB8               , NONE                  , ETC2_RGB          , NNNN , RGB1 , T         , MaxwellA
+ETC2_RGB8               , NONE                  , ETC2_RGB          , NNNN , RGB1 , T         , MaxwellA
+ETC2_SRGB8              , NONE                  , ETC2_RGB          , NNNN , RGB1 , T         , MaxwellA
+ETC2_RGB8A1             , NONE                  , ETC2_RGB_PTA      , NNNN , RGBA , T         , MaxwellA
+ETC2_SRGB8A1            , NONE                  , ETC2_RGB_PTA      , NNNN , RGBA , T         , MaxwellA
+ETC2_RGBA8              , NONE                  , ETC2_RGBA         , NNNN , RGBA , T         , MaxwellA
+ETC2_SRGBA8             , NONE                  , ETC2_RGBA         , NNNN , RGBA , T         , MaxwellA
+ETC2_R11_UNORM          , NONE                  , EAC               , NNNN , R001 , T         , MaxwellA
+ETC2_R11_SNORM          , NONE                  , EAC               , SSSS , R001 , T         , MaxwellA
+ETC2_RG11_UNORM         , NONE                  , EACX2             , NNNN , RG01 , T         , MaxwellA
+ETC2_RG11_SNORM         , NONE                  , EACX2             , SSSS , RG01 , T         , MaxwellA
 
 # ASTC compressed formats
 ASTC_4x4                , NONE                  , ASTC_2D_4X4       , NNNN , RGBA , T         , TK1

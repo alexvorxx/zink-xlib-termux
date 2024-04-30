@@ -237,8 +237,7 @@ get_pos0_output(nir_builder *b, nir_def **output)
    /* Some applications don't write position but expect (0, 0, 0, 1)
     * so use that value instead of undef when it isn't written.
     */
-
-   nir_def *vec[4];
+   nir_def *vec[4] = {0};
 
    for (int i = 0; i < 4; i++) {
       if (output[i])
@@ -824,12 +823,32 @@ gather_outputs(nir_builder *b, nir_function_impl *impl, struct shader_outputs *o
          nir_def **output_data =
             get_output_and_type(outputs, sem.location, sem.high_16bits, &output_type);
 
+         b->cursor = nir_after_instr(instr);
+         nir_def *store_val = intrin->src[0].ssa;
+         /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+         const bool non_dedicated_16bit = sem.location < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
+
          u_foreach_bit (i, nir_intrinsic_write_mask(intrin)) {
             unsigned comp = nir_intrinsic_component(intrin) + i;
-            output_data[comp] = nir_channel(b, intrin->src[0].ssa, i);
+            nir_def *store_component = nir_channel(b, store_val, i);
 
-            if (output_type)
-               output_type[comp] = type;
+            if (non_dedicated_16bit) {
+               if (sem.high_16bits) {
+                  nir_def *lo = output_data[comp] ? nir_unpack_32_2x16_split_x(b, output_data[comp]) : nir_imm_intN_t(b, 0, 16);
+                  output_data[comp] = nir_pack_32_2x16_split(b, lo, store_component);
+               } else {
+                  nir_def *hi = output_data[comp] ? nir_unpack_32_2x16_split_y(b, output_data[comp]) : nir_imm_intN_t(b, 0, 16);
+                  output_data[comp] = nir_pack_32_2x16_split(b, store_component, hi);
+               }
+
+               if (output_type)
+                  output_type[comp] = nir_type_uint32;
+            } else {
+               output_data[comp] = store_component;
+
+               if (output_type)
+                  output_type[comp] = type;
+            }
          }
 
          /* remove all store output instruction */
@@ -862,6 +881,7 @@ ac_nir_lower_legacy_vs(nir_shader *nir,
       .type_16bit_hi = output_types_16bit_hi,
    };
    gather_outputs(&b, impl, &outputs);
+   b.cursor = nir_after_impl(impl);
 
    if (export_primitive_id) {
       /* When the primitive ID is read by FS, we must ensure that it's exported by the previous
@@ -1056,9 +1076,24 @@ lower_legacy_gs_store_output(nir_builder *b, nir_intrinsic_instr *intrin,
    /* 64bit output has been lowered to 32bit */
    assert(store_val->bit_size <= 32);
 
+   /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+   const bool non_dedicated_16bit = sem.location < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
+
    u_foreach_bit (i, write_mask) {
       unsigned comp = component + i;
-      outputs[comp] = nir_channel(b, store_val, i);
+      nir_def *store_component = nir_channel(b, store_val, i);
+
+      if (non_dedicated_16bit) {
+         if (sem.high_16bits) {
+            nir_def *lo = outputs[comp] ? nir_unpack_32_2x16_split_x(b, outputs[comp]) : nir_imm_intN_t(b, 0, 16);
+            outputs[comp] = nir_pack_32_2x16_split(b, lo, store_component);
+         } else {
+            nir_def *hi = outputs[comp] ? nir_unpack_32_2x16_split_y(b, outputs[comp]) : nir_imm_intN_t(b, 0, 16);
+            outputs[comp] = nir_pack_32_2x16_split(b, store_component, hi);
+         }
+      } else {
+         outputs[comp] = store_component;
+      }
    }
 
    nir_instr_remove(&intrin->instr);

@@ -909,6 +909,7 @@ nak_postprocess_nir(nir_shader *nir,
       .lower_read_first_invocation = true,
       .lower_elect = true,
       .lower_inverse_ballot = true,
+      .lower_rotate_to_shuffle = true
    };
    OPT(nir, nir_lower_subgroups, &subgroups_options);
    OPT(nir, nak_nir_lower_scan_reduce);

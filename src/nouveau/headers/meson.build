@@ -25,6 +25,13 @@ nvk_classes = [
   'clc7c0',
 ]
 
+hwref_gens = [
+  'maxwell/gm107',
+  'pascal/gp100',
+  'hopper/gh100',
+  'turing/tu102',
+]
+
 nvk_cl_header_depend_files = [
   files('class_parser.py')
 ]
@@ -71,23 +78,45 @@ if with_nouveau_vk
   cl_rs_generated = []
   foreach cl : nvk_classes
     cl_rs_generated += custom_target(
-      'nvh_' + cl + '.rs',
+      'nvh_classes_' + cl + '.rs',
       input : ['class_parser.py', 'nvidia/classes/'+cl+'.h'],
-      output : ['nvh_'+cl+'.rs'],
+      output : ['nvh_classes_'+cl+'.rs'],
       command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                  '--out-rs', '@OUTPUT0@'],
       depend_files: nvk_cl_header_depend_files,
     )
 
-    if cl.endswith('97')
+    fs = import('fs')
+    if cl.endswith('c0') and fs.is_file('nvidia/classes/'+cl+'qmd.h')
       cl_rs_generated += custom_target(
-        'nvh_' + cl + 'tex.rs',
-        input : ['struct_parser.py', 'nvidia/classes/'+cl+'tex.h'],
-        output : ['nvh_'+cl+'_tex.rs'],
+        'nvh_classes_' + cl + '_qmd.rs',
+        input : ['struct_parser.py', 'nvidia/classes/'+cl+'qmd.h'],
+        output : ['nvh_classes_'+cl+'_qmd.rs'],
         command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                    '--out-rs', '@OUTPUT0@']
       )
     endif
+
+    if cl.endswith('97')
+      cl_rs_generated += custom_target(
+        'nvh_classes_' + cl + '_tex.rs',
+        input : ['struct_parser.py', 'nvidia/classes/'+cl+'tex.h'],
+        output : ['nvh_classes_'+cl+'_tex.rs'],
+        command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+                   '--out-rs', '@OUTPUT0@']
+      )
+    endif
+  endforeach
+
+  fs = import('fs')
+  foreach family_gen : hwref_gens
+    family = fs.parent(family_gen)
+    gen = fs.name(family_gen)
+    cl_rs_generated += rust.bindgen(
+      input : ['nvidia/hwref/'+family+'/'+gen+'/dev_mmu.h'],
+      output : 'nvh_hwref_'+gen+'_mmu.rs',
+      args : ['--allowlist-var', 'NV_MMU_.*'],
+    )
   endforeach
 
   _nvidia_headers_lib_rs = custom_target(

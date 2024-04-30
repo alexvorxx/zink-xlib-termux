@@ -33,10 +33,22 @@ struct ac_wave_info {
    unsigned simd;
    unsigned wave;
    uint32_t status;
-   uint64_t pc; /* program counter */
+   union {
+      uint64_t pc; /* program counter */
+      struct {
+         uint32_t pc_lo;
+         uint32_t pc_hi;
+      };
+   };
    uint32_t inst_dw0;
    uint32_t inst_dw1;
-   uint64_t exec;
+   union {
+      uint64_t exec;
+      struct {
+         uint32_t exec_lo;
+         uint32_t exec_hi;
+      };
+   };
    bool matched; /* whether the wave is used by a currently-bound shader */
 };
 

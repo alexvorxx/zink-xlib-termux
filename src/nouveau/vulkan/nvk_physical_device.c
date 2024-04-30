@@ -150,6 +150,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_shader_maximal_reconvergence = true,
       .KHR_shader_non_semantic_info = true,
       .KHR_shader_subgroup_extended_types = true,
+      .KHR_shader_subgroup_rotate = nvk_use_nak(info),
       .KHR_shader_subgroup_uniform_control_flow = nvk_use_nak(info),
       .KHR_shader_terminate_invocation =
          (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
@@ -326,7 +327,10 @@ nvk_get_device_features(const struct nv_device_info *info,
       .shaderBufferInt64Atomics = info->cls_eng3d >= MAXWELL_A &&
                                   nvk_use_nak(info),
       .shaderSharedInt64Atomics = false, /* TODO */
-      .shaderFloat16 = info->sm >= 70 && nvk_use_nak(info),
+      /* TODO: Fp16 is currently busted on Turing and Volta due to instruction
+       * scheduling issues.  Re-enable it once those are sorted.
+       */
+      .shaderFloat16 = info->sm >= 80 && nvk_use_nak(info),
       .shaderInt8 = true,
       .descriptorIndexing = true,
       .shaderInputAttachmentArrayDynamicIndexing = true,
@@ -422,6 +426,10 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_KHR_shader_maximal_reconvergence */
       .shaderMaximalReconvergence = true,
+
+      /* VK_KHR_shader_subgroup_rotate */
+      .shaderSubgroupRotate = nvk_use_nak(info),
+      .shaderSubgroupRotateClustered = nvk_use_nak(info),
 
       /* VK_KHR_vertex_attribute_divisor */
       .vertexAttributeInstanceRateDivisor = true,
@@ -758,6 +766,8 @@ nvk_get_device_properties(const struct nvk_instance *instance,
                                      VK_SUBGROUP_FEATURE_BASIC_BIT |
                                      VK_SUBGROUP_FEATURE_CLUSTERED_BIT |
                                      VK_SUBGROUP_FEATURE_QUAD_BIT |
+                                     VK_SUBGROUP_FEATURE_ROTATE_BIT_KHR |
+                                     VK_SUBGROUP_FEATURE_ROTATE_CLUSTERED_BIT_KHR |
                                      VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
                                      VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT |
                                      VK_SUBGROUP_FEATURE_VOTE_BIT,

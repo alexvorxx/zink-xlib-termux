@@ -214,7 +214,7 @@ tu_CreateQueryPool(VkDevice _device,
                    const VkAllocationCallbacks *pAllocator,
                    VkQueryPool *pQueryPool)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO);
    assert(pCreateInfo->queryCount > 0);
 
@@ -347,8 +347,8 @@ tu_DestroyQueryPool(VkDevice _device,
                     VkQueryPool _pool,
                     const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_query_pool, pool, _pool);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_query_pool, pool, _pool);
 
    if (!pool)
       return;
@@ -572,8 +572,8 @@ tu_GetQueryPoolResults(VkDevice _device,
                        VkDeviceSize stride,
                        VkQueryResultFlags flags)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(firstQuery + queryCount <= pool->size);
 
    if (vk_device_is_lost(&device->vk))
@@ -723,9 +723,9 @@ tu_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer,
                            VkDeviceSize stride,
                            VkQueryResultFlags flags)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
-   TU_FROM_HANDLE(tu_buffer, buffer, dstBuffer);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_buffer, buffer, dstBuffer);
    struct tu_cs *cs = &cmdbuf->cs;
    assert(firstQuery + queryCount <= pool->size);
 
@@ -792,8 +792,8 @@ tu_CmdResetQueryPool(VkCommandBuffer commandBuffer,
                      uint32_t firstQuery,
                      uint32_t queryCount)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
 
    switch (pool->type) {
    case VK_QUERY_TYPE_TIMESTAMP:
@@ -815,7 +815,7 @@ tu_ResetQueryPool(VkDevice device,
                   uint32_t firstQuery,
                   uint32_t queryCount)
 {
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
 
    for (uint32_t i = 0; i < queryCount; i++) {
       struct query_slot *slot = slot_address(pool, i + firstQuery);
@@ -1084,8 +1084,8 @@ tu_CmdBeginQuery(VkCommandBuffer commandBuffer,
                  uint32_t query,
                  VkQueryControlFlags flags)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(query < pool->size);
 
    switch (pool->type) {
@@ -1124,8 +1124,8 @@ tu_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer,
                            VkQueryControlFlags flags,
                            uint32_t index)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(query < pool->size);
 
    switch (pool->type) {
@@ -1574,8 +1574,8 @@ tu_CmdEndQuery(VkCommandBuffer commandBuffer,
                VkQueryPool queryPool,
                uint32_t query)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(query < pool->size);
 
    switch (pool->type) {
@@ -1611,8 +1611,8 @@ tu_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer,
                          uint32_t query,
                          uint32_t index)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(query < pool->size);
 
    switch (pool->type) {
@@ -1635,8 +1635,8 @@ tu_CmdWriteTimestamp2(VkCommandBuffer commandBuffer,
                       VkQueryPool queryPool,
                       uint32_t query)
 {
-   TU_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   TU_FROM_HANDLE(tu_query_pool, pool, queryPool);
+   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
 
    /* Inside a render pass, just write the timestamp multiple times so that
     * the user gets the last one if we use GMEM. There isn't really much
@@ -1715,7 +1715,7 @@ tu_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
     VkPerformanceCounterKHR*                    pCounters,
     VkPerformanceCounterDescriptionKHR*         pCounterDescriptions)
 {
-   TU_FROM_HANDLE(tu_physical_device, phydev, physicalDevice);
+   VK_FROM_HANDLE(tu_physical_device, phydev, physicalDevice);
 
    uint32_t desc_count = *pCounterCount;
    uint32_t group_count;
@@ -1765,7 +1765,7 @@ tu_GetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR(
       const VkQueryPoolPerformanceCreateInfoKHR*  pPerformanceQueryCreateInfo,
       uint32_t*                                   pNumPasses)
 {
-   TU_FROM_HANDLE(tu_physical_device, phydev, physicalDevice);
+   VK_FROM_HANDLE(tu_physical_device, phydev, physicalDevice);
    uint32_t group_count = 0;
    uint32_t gid = 0, cid = 0, n_passes;
    const struct fd_perfcntr_group *group =

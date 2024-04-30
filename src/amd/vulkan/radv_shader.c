@@ -2840,6 +2840,7 @@ radv_find_shader(struct radv_device *device, uint64_t pc)
 #pragma GCC diagnostic pop
 #endif
          uint64_t start = radv_buffer_get_va(block->arena->bo) + block->offset;
+         start &= ((1ull << 48) - 1);
          if (!block->freelist.prev && pc >= start && pc < start + block->size) {
             mtx_unlock(&device->shader_arena_mutex);
             return (struct radv_shader *)block->freelist.next;

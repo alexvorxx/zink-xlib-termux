@@ -2211,11 +2211,29 @@ ngg_nogs_gather_outputs(nir_builder *b, struct exec_list *cf_list, lower_ngg_nog
          unsigned component = nir_intrinsic_component(intrin);
          unsigned write_mask = nir_intrinsic_write_mask(intrin);
          nir_alu_type src_type = nir_intrinsic_src_type(intrin);
+         b->cursor = nir_after_instr(instr);
+
+         nir_def *store_val = intrin->src[0].ssa;
+
+         /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+         const bool non_dedicated_16bit = slot < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
 
          u_foreach_bit (i, write_mask) {
             unsigned c = component + i;
-            output[c] = nir_channel(b, intrin->src[0].ssa, i);
-            type[c] = src_type;
+            nir_def *store_component = nir_channel(b, intrin->src[0].ssa, i);
+            if (non_dedicated_16bit) {
+               if (sem.high_16bits) {
+                  nir_def *lo = output[c] ? nir_unpack_32_2x16_split_x(b, output[c]) : nir_imm_intN_t(b, 0, 16);
+                  output[c] = nir_pack_32_2x16_split(b, lo, store_component);
+               } else {
+                  nir_def *hi = output[c] ? nir_unpack_32_2x16_split_y(b, output[c]) : nir_imm_intN_t(b, 0, 16);
+                  output[c] = nir_pack_32_2x16_split(b, store_component, hi);
+               }
+               type[c] = nir_type_uint32;
+            } else {
+               output[c] = store_component;
+               type[c] = src_type;
+            }
          }
 
          /* remove all store output instructions */
@@ -2244,9 +2262,7 @@ gather_vs_outputs(nir_builder *b, vs_output *outputs,
 
       outputs[num_outputs].slot = slot;
       for (int i = 0; i < 4; i++) {
-         nir_def *chan = output[i];
-         /* RADV implements 16-bit outputs as 32-bit with VARYING_SLOT_VAR0-31. */
-         outputs[num_outputs].chan[i] = chan && chan->bit_size == 16 ? nir_u2u32(b, chan) : chan;
+         outputs[num_outputs].chan[i] = output[i];
       }
       num_outputs++;
    }
@@ -2595,8 +2611,8 @@ ac_nir_lower_ngg_nogs(nir_shader *shader, const ac_nir_lower_ngg_options *option
    }
 
    /* Gather outputs data and types */
-   b->cursor = nir_after_cf_list(&if_es_thread->then_list);
    ngg_nogs_gather_outputs(b, &if_es_thread->then_list, &state);
+   b->cursor = nir_after_cf_list(&if_es_thread->then_list);
 
    if (state.has_user_edgeflags)
       ngg_nogs_store_edgeflag_to_lds(b, &state);
@@ -2817,14 +2833,32 @@ lower_ngg_gs_store_output(nir_builder *b, nir_intrinsic_instr *intrin, lower_ngg
       info->stream |= stream << (component * 2);
       info->components_mask |= BITFIELD_BIT(component);
 
-      /* If type is set multiple times, the value must be same. */
-      assert(type[component] == nir_type_invalid || type[component] == src_type);
-      type[component] = src_type;
-
       /* Assume we have called nir_lower_io_to_temporaries which store output in the
        * same block as EmitVertex, so we don't need to use nir_variable for outputs.
        */
-      output[component] = nir_channel(b, store_val, comp);
+      nir_def *store_component = nir_channel(b, store_val, comp);
+
+      /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+      const bool non_dedicated_16bit = location < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
+
+      if (non_dedicated_16bit) {
+         if (io_sem.high_16bits) {
+            nir_def *lo = output[component] ? nir_unpack_32_2x16_split_x(b, output[component]) : nir_imm_intN_t(b, 0, 16);
+            output[component] = nir_pack_32_2x16_split(b, lo, store_component);
+         } else {
+            nir_def *hi = output[component] ? nir_unpack_32_2x16_split_y(b, output[component]) : nir_imm_intN_t(b, 0, 16);
+            output[component] = nir_pack_32_2x16_split(b, store_component, hi);
+         }
+
+         /* Don't care about what type was set first, we mark this as a 32-bit unsigned. */
+         type[component] = nir_type_uint32;
+      } else {
+         output[component] = store_component;
+
+         /* If type is set multiple times, the value must be same. */
+         assert(type[component] == nir_type_invalid || type[component] == src_type);
+         type[component] = src_type;
+      }
    }
 
    nir_instr_remove(&intrin->instr);
@@ -3874,15 +3908,14 @@ ms_store_arrayed_output(nir_builder *b,
       }
 
       u_foreach_bit(comp, write_mask_32) {
-         nir_def *val = nir_channel(b, store_val, comp);
          unsigned idx = io_sem.location * 4 + comp + component_offset;
+         nir_def *val = nir_channel(b, store_val, comp);
+         nir_def *v = nir_load_var(b, s->out_variables[idx]);
 
          if (lo_16b) {
-            nir_def *v = nir_channel(b, nir_load_var(b, s->out_variables[idx]), comp + component_offset);
             nir_def *var_hi = nir_unpack_32_2x16_split_y(b, v);
             val = nir_pack_32_2x16_split(b, val, var_hi);
          } else if (hi_16b) {
-            nir_def *v = nir_channel(b, nir_load_var(b, s->out_variables[idx]), comp + component_offset);
             nir_def *var_lo = nir_unpack_32_2x16_split_x(b, v);
             val = nir_pack_32_2x16_split(b, var_lo, val);
          }

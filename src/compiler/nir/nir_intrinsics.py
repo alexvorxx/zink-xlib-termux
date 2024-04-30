@@ -2186,7 +2186,7 @@ system_value("ray_query_global_intel", 1, bit_sizes=[64])
 # infrastructure in NIR uses to determine the number of components in the
 # result.
 intrinsic("dpas_intel", dest_comp=0, src_comp=[0, 0, 0],
-          indices=[DEST_TYPE, SRC_TYPE, SATURATE, CMAT_SIGNED_MASK, SYSTOLIC_DEPTH, REPEAT_COUNT],
+          indices=[DEST_TYPE, SRC_TYPE, SATURATE, SYSTOLIC_DEPTH, REPEAT_COUNT],
           flags=[CAN_ELIMINATE])
 
 # NVIDIA-specific intrinsics

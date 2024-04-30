@@ -42,16 +42,6 @@
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"
 
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
-     defined(VK_USE_PLATFORM_XCB_KHR) || \
-     defined(VK_USE_PLATFORM_XLIB_KHR) || \
-     defined(VK_USE_PLATFORM_DISPLAY_KHR)
-#define TU_HAS_SURFACE 1
-#else
-#define TU_HAS_SURFACE 0
-#endif
-
-
 static int
 tu_device_get_cache_uuid(struct tu_physical_device *device, void *uuid)
 {
@@ -100,9 +90,11 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
    .KHR_get_display_properties2         = true,
 #endif
    .KHR_get_physical_device_properties2 = true,
-   .KHR_get_surface_capabilities2       = TU_HAS_SURFACE,
-   .KHR_surface                         = TU_HAS_SURFACE,
-   .KHR_surface_protected_capabilities  = TU_HAS_SURFACE,
+#ifdef TU_USE_WSI_PLATFORM
+   .KHR_get_surface_capabilities2       = true,
+   .KHR_surface                         = true,
+   .KHR_surface_protected_capabilities  = true,
+#endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface                 = true,
 #endif
@@ -127,7 +119,10 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
 #ifndef VK_USE_PLATFORM_WIN32_KHR
    .EXT_headless_surface                = true,
 #endif
-   .EXT_swapchain_colorspace            = TU_HAS_SURFACE,
+#ifdef TU_USE_WSI_PLATFORM
+   .EXT_surface_maintenance1            = true,
+   .EXT_swapchain_colorspace            = true,
+#endif
 } };
 
 static bool
@@ -164,7 +159,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_global_priority = true,
       .KHR_image_format_list = true,
       .KHR_imageless_framebuffer = true,
-      .KHR_incremental_present = TU_HAS_SURFACE,
+#ifdef TU_USE_WSI_PLATFORM
+      .KHR_incremental_present = true,
+#endif
       .KHR_index_type_uint8 = true,
       .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,
@@ -178,23 +175,17 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_performance_query = TU_DEBUG(PERFC),
       .KHR_pipeline_executable_properties = true,
       .KHR_pipeline_library = true,
-
+#ifdef TU_USE_WSI_PLATFORM
       /* Hide these behind dri configs for now since we cannot implement it reliably on
        * all surfaces yet. There is no surface capability query for present wait/id,
        * but the feature is useful enough to hide behind an opt-in mechanism for now.
        * If the instance only enables surface extensions that unconditionally support present wait,
        * we can also expose the extension that way. */
-      .KHR_present_id =
-         TU_HAS_SURFACE && (driQueryOptionb(&device->instance->dri_options,
-                                            "vk_khr_present_wait") ||
-                            wsi_common_vk_instance_supports_present_wait(
-                               &device->instance->vk)),
-      .KHR_present_wait =
-         TU_HAS_SURFACE && (driQueryOptionb(&device->instance->dri_options,
-                                            "vk_khr_present_wait") ||
-                            wsi_common_vk_instance_supports_present_wait(
-                               &device->instance->vk)),
-
+      .KHR_present_id = (driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
+                         wsi_common_vk_instance_supports_present_wait(&device->instance->vk)),
+      .KHR_present_wait = (driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
+                           wsi_common_vk_instance_supports_present_wait(&device->instance->vk)),
+#endif
       .KHR_push_descriptor = true,
       .KHR_relaxed_block_layout = true,
       .KHR_sampler_mirror_clamp_to_edge = true,
@@ -210,8 +201,10 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_shader_terminate_invocation = true,
       .KHR_spirv_1_4 = true,
       .KHR_storage_buffer_storage_class = true,
-      .KHR_swapchain = TU_HAS_SURFACE,
-      .KHR_swapchain_mutable_format = TU_HAS_SURFACE,
+   #ifdef TU_USE_WSI_PLATFORM
+      .KHR_swapchain = true,
+      .KHR_swapchain_mutable_format = true,
+   #endif
       .KHR_synchronization2 = true,
       .KHR_timeline_semaphore = true,
       .KHR_uniform_buffer_standard_layout = true,
@@ -275,6 +268,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_shader_stencil_export = true,
       .EXT_shader_viewport_index_layer = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .EXT_subgroup_size_control = true,
+#ifdef TU_USE_WSI_PLATFORM
+      .EXT_swapchain_maintenance1 = true,
+#endif
       .EXT_texel_buffer_alignment = true,
       .EXT_tooling_info = true,
       .EXT_transform_feedback = true,
@@ -591,6 +587,11 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_EXT_shader_module_identifier */
    features->shaderModuleIdentifier = true;
+
+#ifdef TU_USE_WSI_PLATFORM
+   /* VK_EXT_swapchain_maintenance1 */
+   features->swapchainMaintenance1 = true;
+#endif
 
    /* VK_EXT_texel_buffer_alignment */
    features->texelBufferAlignment = true;
@@ -1211,7 +1212,7 @@ tu_physical_device_init(struct tu_physical_device *device,
 
    device->vk.supported_sync_types = device->sync_types;
 
-#if TU_HAS_SURFACE
+#ifdef TU_USE_WSI_PLATFORM
    result = tu_wsi_init(device);
    if (result != VK_SUCCESS) {
       vk_startup_errorf(instance, result, "WSI init failure");
@@ -1239,7 +1240,7 @@ fail_free_name:
 static void
 tu_physical_device_finish(struct tu_physical_device *device)
 {
-#if TU_HAS_SURFACE
+#ifdef TU_USE_WSI_PLATFORM
    tu_wsi_finish(device);
 #endif
 
@@ -2974,47 +2975,6 @@ tu_BindBufferMemory2(VkDevice device,
 
       TU_RMV(buffer_bind, dev, buffer);
    }
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_BindImageMemory2(VkDevice _device,
-                    uint32_t bindInfoCount,
-                    const VkBindImageMemoryInfo *pBindInfos)
-{
-   TU_FROM_HANDLE(tu_device, device, _device);
-
-   for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      TU_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
-      TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
-
-      if (mem) {
-         image->bo = mem->bo;
-         image->iova = mem->bo->iova + pBindInfos[i].memoryOffset;
-
-         if (image->vk.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT) {
-            if (!mem->bo->map) {
-               VkResult result = tu_bo_map(device, mem->bo);
-               if (result != VK_SUCCESS)
-                  return result;
-            }
-
-            image->map = (char *)mem->bo->map + pBindInfos[i].memoryOffset;
-         } else {
-            image->map = NULL;
-         }
-#ifdef HAVE_PERFETTO
-         tu_perfetto_log_bind_image(device, image);
-#endif
-      } else {
-         image->bo = NULL;
-         image->map = NULL;
-         image->iova = 0;
-      }
-
-      TU_RMV(image_bind, device, image);
-   }
-
    return VK_SUCCESS;
 }
 

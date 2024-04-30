@@ -439,7 +439,7 @@ namespace {
          return calculate_desc(info, EU_UNIT_NULL, 8, 0, 0, 0, 0,
                                0, 0, 0, 0, 0, 0);
 
-      case FS_OPCODE_LINTERP:
+      case BRW_OPCODE_PLN:
          return calculate_desc(info, EU_UNIT_FPU, 0, 4, 0, 0, 4,
                                0, 12, 8 /* XXX */, 16 /* XXX */, 0, 0);
 
@@ -574,10 +574,6 @@ namespace {
          default:
             abort();
          }
-
-      case FS_OPCODE_FB_READ:
-         return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0, 0, 450 /* XXX */,
-                               10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);
 
       case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
          return calculate_desc(info, EU_UNIT_DP_CC, 2, 0, 0, 0, 16 /* XXX */,

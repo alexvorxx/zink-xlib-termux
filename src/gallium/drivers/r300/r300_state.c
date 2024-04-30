@@ -1921,29 +1921,7 @@ static void* r300_create_vs_state(struct pipe_context* pipe,
     vs->state = *shader;
 
     if (vs->state.type == PIPE_SHADER_IR_NIR) {
-       static const struct nir_to_rc_options swtcl_options = {0};
-       static const struct nir_to_rc_options hwtcl_r300_options = {
-           .lower_cmp = true,
-           .lower_fabs = true,
-           .ubo_vec4_max = 0x00ff,
-           .unoptimized_ra = true,
-       };
-       static const struct nir_to_rc_options hwtcl_r500_options = {
-           .ubo_vec4_max = 0x00ff,
-           .unoptimized_ra = true,
-       };
-       const struct nir_to_rc_options *ntr_options;
-       if (r300->screen->caps.has_tcl) {
-           if (r300->screen->caps.is_r500) {
-               ntr_options = &hwtcl_r500_options;
-           } else {
-               ntr_options = &hwtcl_r300_options;
-           }
-       } else {
-           ntr_options = &swtcl_options;
-       }
-       vs->state.tokens = nir_to_rc_options(shader->ir.nir, pipe->screen,
-                                              ntr_options);
+       vs->state.tokens = nir_to_rc(shader->ir.nir, pipe->screen);
     } else {
        assert(vs->state.type == PIPE_SHADER_IR_TGSI);
        /* we need to keep a local copy of the tokens */

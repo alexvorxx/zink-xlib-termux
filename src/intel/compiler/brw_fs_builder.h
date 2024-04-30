@@ -756,6 +756,12 @@ namespace brw {
       }
 
       fs_inst *
+      SYNC(enum tgl_sync_function sync) const
+      {
+         return emit(BRW_OPCODE_SYNC, null_reg_ud(), brw_imm_ud(sync));
+      }
+
+      fs_inst *
       UNDEF(const fs_reg &dst) const
       {
          assert(dst.file == VGRF);

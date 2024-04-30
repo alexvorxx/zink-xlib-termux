@@ -227,8 +227,8 @@ validate_geometry_shader_emissions(const struct gl_constants *consts,
                          "EmitStreamVertex" : "EndStreamPrimitive",
                       state.invalid_stream_id, state.max_stream_allowed);
       }
-      prog->Geom.ActiveStreamMask = state.used_streams;
-      prog->Geom.UsesEndPrimitive = state.end_primitive_found;
+      sh->Program->nir->info.gs.active_stream_mask = state.used_streams;
+      sh->Program->nir->info.gs.uses_end_primitive = state.end_primitive_found;
 
       /* From the ARB_gpu_shader5 spec:
        *
@@ -250,11 +250,11 @@ validate_geometry_shader_emissions(const struct gl_constants *consts,
        * Since we can call EmitVertex() and EndPrimitive() when we output
        * primitives other than points, calling EmitStreamVertex(0) or
        * EmitEndPrimitive(0) should not produce errors. This it also what Nvidia
-       * does. We can use prog->Geom.ActiveStreamMask to check whether only the
+       * does. We can use info.gs.active_stream_mask to check whether only the
        * first (zero) stream is active.
        * stream.
        */
-      if (prog->Geom.ActiveStreamMask & ~(1 << 0) &&
+      if (sh->Program->nir->info.gs.active_stream_mask & ~(1 << 0) &&
           sh->Program->info.gs.output_primitive != MESA_PRIM_POINTS) {
          linker_error(prog, "EmitStreamVertex(n) and EndStreamPrimitive(n) "
                       "with n>0 requires point output\n");

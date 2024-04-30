@@ -10,14 +10,13 @@
 #include "sid.h"
 
 static LLVMValueRef si_nir_load_tcs_varyings(struct ac_shader_abi *abi, LLVMTypeRef type,
-                                             LLVMValueRef vertex_index, LLVMValueRef param_index,
                                              unsigned driver_location, unsigned component,
-                                             unsigned num_components, bool load_input)
+                                             unsigned num_components)
 {
    struct si_shader_context *ctx = si_shader_context_from_abi(abi);
    struct si_shader_info *info = &ctx->shader->selector->info;
 
-   assert(ctx->shader->key.ge.opt.same_patch_vertices && !param_index);
+   assert(ctx->shader->key.ge.opt.same_patch_vertices);
 
    uint8_t semantic = info->input[driver_location].semantic;
    /* Load the TCS input from a VGPR. */

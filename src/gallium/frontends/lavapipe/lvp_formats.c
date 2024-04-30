@@ -128,8 +128,10 @@ lvp_physical_device_get_format_properties(struct lvp_physical_device *physical_d
                          VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
    }
 
+   const struct vk_format_ycbcr_info *ycbcr_info =
+         vk_format_get_ycbcr_info(format);
    if (pscreen->is_format_supported(pscreen, pformat, PIPE_TEXTURE_2D, 0, 0,
-                                    PIPE_BIND_SAMPLER_VIEW)) {
+                                    PIPE_BIND_SAMPLER_VIEW) || ycbcr_info) {
       features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT;
       if (util_format_has_depth(util_format_description(pformat)))
          features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT;
@@ -137,8 +139,6 @@ lvp_physical_device_get_format_properties(struct lvp_physical_device *physical_d
          features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
       if (lvp_is_filter_minmax_format_supported(format))
          features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_MINMAX_BIT;
-      const struct vk_format_ycbcr_info *ycbcr_info =
-         vk_format_get_ycbcr_info(format);
       if (ycbcr_info) {
          if (ycbcr_info->n_planes > 1)
             features |= VK_FORMAT_FEATURE_DISJOINT_BIT;

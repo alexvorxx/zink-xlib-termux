@@ -532,7 +532,7 @@ typedef struct shader_info {
       struct {
          uint16_t workgroup_size_hint[3];
 
-         uint8_t user_data_components_amd:3;
+         uint8_t user_data_components_amd:4;
 
          /*
           * Arrangement of invocations used to calculate derivatives in a compute

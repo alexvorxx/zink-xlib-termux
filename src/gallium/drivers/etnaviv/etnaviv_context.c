@@ -61,8 +61,6 @@
 #include "util/u_surface.h"
 #include "util/u_transfer.h"
 
-#include "hw/common.xml.h"
-
 static inline void
 etna_emit_nop_with_data(struct etna_cmd_stream *stream, uint32_t value)
 {
@@ -384,7 +382,7 @@ etna_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    /* First, sync state, then emit DRAW_PRIMITIVES or DRAW_INDEXED_PRIMITIVES */
    etna_emit_state(ctx);
 
-   if (!VIV_FEATURE(screen, chipMinorFeatures6, NEW_GPIPE)) {
+   if (!VIV_FEATURE(screen, ETNA_FEATURE_NEW_GPIPE)) {
       switch (draw_mode) {
       case PRIMITIVE_TYPE_LINE_LOOP:
       case PRIMITIVE_TYPE_LINE_STRIP:
@@ -483,7 +481,7 @@ etna_reset_gpu_state(struct etna_context *ctx)
       etna_set_state(stream, VIVS_GL_UNK03854, 0x00000000);
    }
 
-   if (VIV_FEATURE(screen, chipMinorFeatures4, BUG_FIXES18))
+   if (VIV_FEATURE(screen, ETNA_FEATURE_BUG_FIXES18))
       etna_set_state(stream, VIVS_GL_BUG_FIXES, 0x6);
 
    if (!screen->specs.use_blt) {

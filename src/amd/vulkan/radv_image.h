@@ -34,7 +34,7 @@ struct radv_image_binding {
    struct radeon_winsys_bo *bo;
    VkDeviceSize offset;
    uint64_t bo_va;
-   uint64_t bo_size;
+   uint64_t range;
 };
 
 struct radv_image {

@@ -664,7 +664,8 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
          pCapabilities->pNext, VIDEO_ENCODE_H264_CAPABILITIES_KHR);
       pCapabilities->maxDpbSlots = NUM_H2645_REFS;
       pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
-      ext->flags = VK_VIDEO_ENCODE_H264_CAPABILITY_HRD_COMPLIANCE_BIT_KHR;
+      ext->flags = VK_VIDEO_ENCODE_H264_CAPABILITY_HRD_COMPLIANCE_BIT_KHR |
+                   VK_VIDEO_ENCODE_H264_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR;
       ext->maxLevelIdc = cap ? cap->max_level : 0;
       ext->maxSliceCount = 128;
       ext->maxPPictureL0ReferenceCount = 1;
@@ -689,7 +690,7 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR: {
       struct VkVideoEncodeH265CapabilitiesKHR *ext = (struct VkVideoEncodeH265CapabilitiesKHR *)vk_find_struct(
          pCapabilities->pNext, VIDEO_ENCODE_H265_CAPABILITIES_KHR);
-      ext->flags = 0;
+      ext->flags = VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR;
       pCapabilities->maxDpbSlots = NUM_H2645_REFS;
       pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
       ext->maxLevelIdc = cap ? cap->max_level : 0;
@@ -703,7 +704,7 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
       ext->maxPPictureL0ReferenceCount = 1;
       ext->maxBPictureL0ReferenceCount = 0;
       ext->maxL1ReferenceCount = 0;
-      ext->maxSubLayerCount = 1;
+      ext->maxSubLayerCount = 4;
       ext->expectDyadicTemporalSubLayerPattern = false;
       ext->minQp = 0;
       ext->maxQp = 51;

@@ -115,6 +115,14 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
          val = load_sysval_from_ubo(b, intr, SYSVAL(blend_constants));
       }
       break;
+
+   case nir_intrinsic_load_layer_id:
+      /* We don't support layered rendering yet, so force the layer_id to
+       * zero for now.
+       */
+      val = nir_imm_int(b, 0);
+      break;
+
    default:
       return false;
    }
@@ -181,25 +189,6 @@ panvk_lower_blend(struct panvk_device *dev, nir_shader *nir,
       NIR_PASS_V(nir, nir_lower_blend, &options);
       NIR_PASS_V(nir, bifrost_nir_lower_load_output);
    }
-}
-
-static bool
-panvk_lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *intr,
-                               void *data)
-{
-   if (intr->intrinsic != nir_intrinsic_load_push_constant)
-      return false;
-
-   b->cursor = nir_before_instr(&intr->instr);
-   nir_def *ubo_load =
-      nir_load_ubo(b, intr->def.num_components, intr->def.bit_size,
-                   nir_imm_int(b, PANVK_PUSH_CONST_UBO_INDEX), intr->src[0].ssa,
-                   .align_mul = intr->def.bit_size / 8, .align_offset = 0,
-                   .range_base = nir_intrinsic_base(intr),
-                   .range = nir_intrinsic_range(intr));
-   nir_def_rewrite_uses(&intr->def, ubo_load);
-   nir_instr_remove(&intr->instr);
-   return true;
 }
 
 static void
@@ -274,6 +263,15 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    NIR_PASS_V(nir, nir_opt_combine_stores, nir_var_all);
    NIR_PASS_V(nir, nir_opt_loop);
 
+   if (stage == MESA_SHADER_FRAGMENT) {
+      struct nir_input_attachment_options lower_input_attach_opts = {
+         .use_fragcoord_sysval = true,
+         .use_layer_id_sysval = true,
+      };
+
+      NIR_PASS_V(nir, nir_lower_input_attachments, &lower_input_attach_opts);
+   }
+
    /* Do texture lowering here.  Yes, it's a duplication of the texture
     * lowering in bifrost_compile.  However, we need to lower texture stuff
     * now, before we call panvk_per_arch(nir_lower_descriptors)() because some
@@ -325,10 +323,6 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_shared,
                  nir_address_format_32bit_offset);
    }
-
-   NIR_PASS_V(nir, nir_shader_intrinsics_pass, panvk_lower_load_push_constant,
-              nir_metadata_block_index | nir_metadata_dominance,
-              (void *)layout);
 
    NIR_PASS_V(nir, nir_lower_system_values);
    NIR_PASS_V(nir, nir_lower_compute_system_values, NULL);

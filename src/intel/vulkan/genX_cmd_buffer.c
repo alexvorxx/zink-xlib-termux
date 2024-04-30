@@ -394,6 +394,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
        * state heap. If we change it, we need to reemit the push constants.
        */
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_COMPUTE_BIT;
+      cmd_buffer->state.compute.base.push_constants_data_dirty = true;
 #endif
    }
 }
@@ -2751,6 +2752,7 @@ genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
       cmd_buffer->state.push_constants_dirty |=
          (cmd_buffer->state.descriptor_buffers.offsets_dirty &
           pipe_state->pipeline->active_stages);
+      pipe_state->push_constants_data_dirty = true;
       cmd_buffer->state.descriptor_buffers.offsets_dirty &=
          ~pipe_state->pipeline->active_stages;
    }
@@ -2943,6 +2945,7 @@ genX(BeginCommandBuffer)(
     * flag them dirty here to make sure they get emitted.
     */
    cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_ALL_GRAPHICS;
+   cmd_buffer->state.gfx.base.push_constants_data_dirty = true;
 
    if (cmd_buffer->usage_flags &
        VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
@@ -3939,7 +3942,8 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
       /* There's no way of knowing if this memory barrier is related to sparse
        * buffers! This is pretty horrible.
        */
-      if (device->using_sparse && mask_is_write(src_flags))
+      if (mask_is_write(src_flags) &&
+          p_atomic_read(&device->num_sparse_resources) > 0)
          apply_sparse_flushes = true;
    }
 

@@ -91,6 +91,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_FORCE_INDIRECT_DESCRIPTORS(false)
       DRI_CONF_SHADER_SPILLING_RATE(0)
       DRI_CONF_OPT_B(intel_tbimr, true, "Enable TBIMR tiled rendering")
+      DRI_CONF_ANV_COMPRESSION_CONTROL_ENABLED(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
@@ -362,6 +363,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_graphics_pipeline_library         = !debug_get_bool_option("ANV_NO_GPL", false),
       .EXT_host_query_reset                  = true,
       .EXT_image_2d_view_of_3d               = true,
+      .EXT_image_compression_control         = device->instance->compression_control_enabled,
       .EXT_image_robustness                  = true,
       .EXT_image_drm_format_modifier         = true,
       .EXT_image_sliced_view_of_3d           = true,
@@ -923,6 +925,9 @@ get_features(const struct anv_physical_device *pdevice,
       /* VK_EXT_swapchain_maintenance1 */
       .swapchainMaintenance1 = true,
 #endif
+
+      /* VK_EXT_image_compression_control */
+      .imageCompressionControl = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1545,11 +1550,19 @@ get_properties(const struct anv_physical_device *pdevice,
       }
       props->maxEmbeddedImmutableSamplers = MAX_EMBEDDED_SAMPLERS;
 
-      props->bufferCaptureReplayDescriptorDataSize = 1;
-      props->imageCaptureReplayDescriptorDataSize = 1;
-      props->imageViewCaptureReplayDescriptorDataSize = 1;
-      props->samplerCaptureReplayDescriptorDataSize = 1;
-      props->accelerationStructureCaptureReplayDescriptorDataSize = 1;
+      /* Storing a 64bit address */
+      props->bufferCaptureReplayDescriptorDataSize = 8;
+      props->imageCaptureReplayDescriptorDataSize = 8;
+      /* Offset inside the reserved border color pool */
+      props->samplerCaptureReplayDescriptorDataSize = 4;
+
+      /* Not affected by replay */
+      props->imageViewCaptureReplayDescriptorDataSize = 0;
+      /* The acceleration structure virtual address backing is coming from a
+       * buffer, so as long as that buffer is captured/replayed correctly we
+       * should always get the same address.
+       */
+      props->accelerationStructureCaptureReplayDescriptorDataSize = 0;
 
       props->samplerDescriptorSize = ANV_SAMPLER_STATE_SIZE;
       props->combinedImageSamplerDescriptorSize = align(ANV_SURFACE_STATE_SIZE + ANV_SAMPLER_STATE_SIZE,
@@ -1946,6 +1959,7 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
       if (device->memory.types[i].propertyFlags &
           VK_MEMORY_PROPERTY_PROTECTED_BIT) {
          device->memory.protected_mem_types |= BITFIELD_BIT(i);
+         device->memory.default_buffer_mem_types &= (~BITFIELD_BIT(i));
          continue;
       }
 
@@ -2392,6 +2406,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
          device->sync_types[st_idx++] = &device->sync_timeline_type.sync;
       }
    } else {
+      assert(vk_sync_type_is_drm_syncobj(&device->sync_syncobj_type));
       assert(device->sync_syncobj_type.features & VK_SYNC_FEATURE_TIMELINE);
       assert(device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT);
    }
@@ -2628,6 +2643,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "anv_disable_fcv");
     instance->external_memory_implicit_sync =
             driQueryOptionb(&instance->dri_options, "anv_external_memory_implicit_sync");
+    instance->compression_control_enabled =
+       driQueryOptionb(&instance->dri_options, "compression_control_enabled");
 }
 
 VkResult anv_CreateInstance(
@@ -3498,10 +3515,12 @@ VkResult anv_CreateDevice(
                                 MAX_CUSTOM_BORDER_COLORS,
                                 sizeof(struct gfx8_border_color), 64);
    if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      anv_state_reserved_pool_init(&device->custom_border_colors_db,
-                                   &device->dynamic_state_db_pool,
-                                   MAX_CUSTOM_BORDER_COLORS,
-                                   sizeof(struct gfx8_border_color), 64);
+      result = anv_state_reserved_array_pool_init(&device->custom_border_colors_db,
+                                                  &device->dynamic_state_db_pool,
+                                                  MAX_CUSTOM_BORDER_COLORS,
+                                                  sizeof(struct gfx8_border_color), 64);
+      if (result != VK_SUCCESS)
+         goto fail_dynamic_state_db_pool;
    }
 
    result = anv_state_pool_init(&device->instruction_state_pool, device,
@@ -3512,7 +3531,7 @@ VkResult anv_CreateDevice(
                                    .max_size     = device->physical->va.instruction_state_pool.size,
                                 });
    if (result != VK_SUCCESS)
-      goto fail_dynamic_state_db_pool;
+      goto fail_reserved_array_pool;
 
    if (device->info->verx10 >= 125) {
       /* Put the scratch surface states at the beginning of the internal
@@ -3925,12 +3944,13 @@ VkResult anv_CreateDevice(
       anv_state_pool_finish(&device->scratch_surface_state_pool);
  fail_instruction_state_pool:
    anv_state_pool_finish(&device->instruction_state_pool);
+ fail_reserved_array_pool:
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+      anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
  fail_dynamic_state_db_pool:
    anv_state_reserved_pool_finish(&device->custom_border_colors);
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      anv_state_reserved_pool_finish(&device->custom_border_colors_db);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
       anv_state_pool_finish(&device->dynamic_state_db_pool);
-   }
  fail_dynamic_state_pool:
    anv_state_pool_finish(&device->dynamic_state_pool);
  fail_general_state_pool:
@@ -4025,7 +4045,7 @@ void anv_DestroyDevice(
       anv_state_pool_free(&device->dynamic_state_db_pool, device->cps_states_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->slice_hash_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->border_colors_db);
-      anv_state_reserved_pool_finish(&device->custom_border_colors_db);
+      anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
    }
 #endif
 
@@ -5059,15 +5079,26 @@ VkResult anv_CreateBuffer(
 
    buffer->address = ANV_NULL_ADDRESS;
    if (anv_buffer_is_sparse(buffer)) {
-      const VkBufferOpaqueCaptureAddressCreateInfo *opaque_addr_info =
-         vk_find_struct_const(pCreateInfo->pNext,
-                              BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO);
       enum anv_bo_alloc_flags alloc_flags = 0;
       uint64_t client_address = 0;
 
-      if (opaque_addr_info) {
+      if (buffer->vk.create_flags & VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT) {
          alloc_flags = ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
-         client_address = opaque_addr_info->opaqueCaptureAddress;
+         const VkBufferOpaqueCaptureAddressCreateInfo *opaque_addr_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO);
+         if (opaque_addr_info)
+            client_address = opaque_addr_info->opaqueCaptureAddress;
+      }
+
+      if (buffer->vk.create_flags & VK_BUFFER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
+         alloc_flags = ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
+
+         const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
+         if (opaque_info)
+            client_address = *((const uint64_t *)opaque_info->opaqueCaptureDescriptorData);
       }
 
       VkResult result = anv_init_sparse_bindings(device, buffer->vk.size,
@@ -5128,6 +5159,18 @@ uint64_t anv_GetBufferOpaqueCaptureAddress(
    return anv_address_physical(buffer->address);
 }
 
+VkResult anv_GetBufferOpaqueCaptureDescriptorDataEXT(
+    VkDevice                                    device,
+    const VkBufferCaptureDescriptorDataInfoEXT* pInfo,
+    void*                                       pData)
+{
+   ANV_FROM_HANDLE(anv_buffer, buffer, pInfo->buffer);
+
+   *((uint64_t *)pData) = anv_address_physical(buffer->address);
+
+   return VK_SUCCESS;
+}
+
 uint64_t anv_GetDeviceMemoryOpaqueCaptureAddress(
     VkDevice                                    device,
     const VkDeviceMemoryOpaqueCaptureAddressInfo* pInfo)
@@ -5158,6 +5201,26 @@ anv_fill_buffer_surface_state(struct anv_device *device,
                          .stride_B = stride);
 }
 
+VkResult anv_GetSamplerOpaqueCaptureDescriptorDataEXT(
+    VkDevice                                    _device,
+    const VkSamplerCaptureDescriptorDataInfoEXT* pInfo,
+    void*                                       pData)
+{
+   ANV_FROM_HANDLE(anv_device, device, _device);
+   ANV_FROM_HANDLE(anv_sampler, sampler, pInfo->sampler);
+
+   if (sampler->custom_border_color_db.alloc_size != 0) {
+      *((uint32_t *)pData) =
+         anv_state_reserved_array_pool_state_index(
+            &device->custom_border_colors_db,
+            sampler->custom_border_color_db);
+   } else {
+      *((uint32_t *)pData) = 0;
+   }
+
+   return VK_SUCCESS;
+}
+
 void anv_DestroySampler(
     VkDevice                                    _device,
     VkSampler                                   _sampler,
@@ -5174,18 +5237,13 @@ void anv_DestroySampler(
                           sampler->bindless_state);
    }
 
-   if (sampler->bindless_state_db.map) {
-      anv_state_pool_free(&device->dynamic_state_db_pool,
-                          sampler->bindless_state_db);
-   }
-
    if (sampler->custom_border_color.map) {
       anv_state_reserved_pool_free(&device->custom_border_colors,
                                    sampler->custom_border_color);
    }
    if (sampler->custom_border_color_db.map) {
-      anv_state_reserved_pool_free(&device->custom_border_colors_db,
-                                   sampler->custom_border_color_db);
+      anv_state_reserved_array_pool_free(&device->custom_border_colors_db,
+                                         sampler->custom_border_color_db);
    }
 
    vk_sampler_destroy(&device->vk, pAllocator, &sampler->vk);

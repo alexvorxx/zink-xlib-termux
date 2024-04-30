@@ -39,6 +39,7 @@ struct etna_cmd_stream;
 struct etna_perfmon;
 struct etna_perfmon_domain;
 struct etna_perfmon_signal;
+struct etna_core_info;
 
 enum etna_pipe_id {
 	ETNA_PIPE_3D = 0,
@@ -119,6 +120,7 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core);
 void etna_gpu_del(struct etna_gpu *gpu);
 int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 		uint64_t *value);
+struct etna_core_info *etna_gpu_get_core_info(struct etna_gpu *gpu);
 
 
 /* pipe functions:

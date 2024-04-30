@@ -1754,22 +1754,10 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
    fprintf(f, "    pcie_bandwidth = %1.1f GB/s\n", info->pcie_bandwidth_mbps / 1024.0);
    fprintf(f, "    clock_crystal_freq = %i KHz\n", info->clock_crystal_freq);
 
-   const char *ip_string[AMD_NUM_IP_TYPES] = {
-      [AMD_IP_GFX] = "GFX",
-      [AMD_IP_COMPUTE] = "COMP",
-      [AMD_IP_SDMA] = "SDMA",
-      [AMD_IP_UVD] = "UVD",
-      [AMD_IP_VCE] = "VCE",
-      [AMD_IP_UVD_ENC] = "UVD_ENC",
-      [AMD_IP_VCN_DEC] = "VCN_DEC",
-      [AMD_IP_VCN_ENC] = (info->vcn_ip_version >= VCN_4_0_0) ? "VCN" : "VCN_ENC",
-      [AMD_IP_VCN_JPEG] = "VCN_JPG",
-      [AMD_IP_VPE] = "VPE",
-   };
-
    for (unsigned i = 0; i < AMD_NUM_IP_TYPES; i++) {
       if (info->ip[i].num_queues) {
-         fprintf(f, "    IP %-7s %2u.%u \tqueues:%u \talign:%u \tpad_dw:0x%x\n", ip_string[i],
+         fprintf(f, "    IP %-7s %2u.%u \tqueues:%u \talign:%u \tpad_dw:0x%x\n",
+                 ac_get_ip_type_string(info, i),
                  info->ip[i].ver_major, info->ip[i].ver_minor, info->ip[i].num_queues,
                  info->ip[i].ib_alignment, info->ip[i].ib_pad_dw_mask);
       }
@@ -1933,7 +1921,7 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
    fprintf(f, "    has_tmz_support = %u\n", info->has_tmz_support);
    for (unsigned i = 0; i < AMD_NUM_IP_TYPES; i++) {
       if (info->max_submitted_ibs[i]) {
-         fprintf(f, "    IP %-7s max_submitted_ibs = %u\n", ip_string[i],
+         fprintf(f, "    IP %-7s max_submitted_ibs = %u\n", ac_get_ip_type_string(info, i),
                  info->max_submitted_ibs[i]);
       }
    }

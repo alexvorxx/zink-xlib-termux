@@ -1159,8 +1159,24 @@ VkResult genX(CreateSampler)(
       memcpy(border_color_ptr, color.u32, sizeof(color));
 
       if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-         sampler->custom_border_color_db =
-            anv_state_reserved_pool_alloc(&device->custom_border_colors_db);
+         if (pCreateInfo->flags & VK_SAMPLER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
+            const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
+               vk_find_struct_const(pCreateInfo->pNext,
+                                    OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
+            if (opaque_info) {
+               uint32_t alloc_idx = *((const uint32_t *)opaque_info->opaqueCaptureDescriptorData);
+               sampler->custom_border_color_db =
+                  anv_state_reserved_array_pool_alloc_index(&device->custom_border_colors_db, alloc_idx);
+            } else {
+               sampler->custom_border_color_db =
+                  anv_state_reserved_array_pool_alloc(&device->custom_border_colors_db, true);
+            }
+         } else {
+            sampler->custom_border_color_db =
+               anv_state_reserved_array_pool_alloc(&device->custom_border_colors_db, false);
+         }
+         if (sampler->custom_border_color_db.alloc_size == 0)
+            return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
          border_color_db_offset = sampler->custom_border_color_db.offset;
          memcpy(sampler->custom_border_color_db.map, color.u32, sizeof(color));
       }
@@ -1279,15 +1295,6 @@ VkResult genX(CreateSampler)(
    if (sampler->bindless_state.map) {
       memcpy(sampler->bindless_state.map, sampler->state,
              sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
-   }
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      sampler->bindless_state_db =
-         anv_state_pool_alloc(&device->dynamic_state_db_pool,
-                              sampler->n_planes * 32, 32);
-      if (sampler->bindless_state_db.map) {
-         memcpy(sampler->bindless_state_db.map, sampler->db_state,
-                sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
-      }
    }
 
    /* Hash the border color */

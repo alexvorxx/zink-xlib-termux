@@ -731,12 +731,9 @@ static bool si_llvm_translate_nir(struct si_shader_context *ctx, struct si_shade
       ctx->stage == MESA_SHADER_VERTEX && shader->key.ge.as_ls &&
       shader->key.ge.opt.same_patch_vertices;
 
-   bool tcs_need_output =
-      ctx->stage == MESA_SHADER_TESS_CTRL && info->tessfactors_are_def_in_all_invocs;
-
    bool ps_need_output = ctx->stage == MESA_SHADER_FRAGMENT;
 
-   if (ls_need_output || tcs_need_output || ps_need_output) {
+   if (ls_need_output || ps_need_output) {
       for (unsigned i = 0; i < info->num_outputs; i++) {
          LLVMTypeRef type = ctx->ac.f32;
 

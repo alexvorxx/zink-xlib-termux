@@ -347,15 +347,11 @@ hs_per_vertex_input_lds_offset(nir_builder *b,
 
 static unsigned
 hs_output_lds_map_io_location(nir_shader *shader,
-                              nir_intrinsic_instr *intrin,
+                              const bool per_vertex,
+                              const unsigned loc,
                               lower_tess_io_state *st)
 {
-   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
-   const unsigned loc = io_sem.location;
-
-   switch (intrin->intrinsic) {
-   case nir_intrinsic_store_output:
-   case nir_intrinsic_load_output: {
+   if (!per_vertex) {
       const uint64_t tf_mask = tcs_lds_tf_out_mask(shader, st);
       if (BITFIELD64_BIT(loc) & TESS_LVL_MASK)
          return util_bitcount64(tf_mask & BITFIELD64_MASK(loc));
@@ -363,12 +359,29 @@ hs_output_lds_map_io_location(nir_shader *shader,
       const uint32_t patch_out_mask = tcs_lds_per_patch_out_mask(shader);
       return util_bitcount64(tf_mask) +
              util_bitcount(patch_out_mask & BITFIELD_MASK(loc - VARYING_SLOT_PATCH0));
-   }
-   case nir_intrinsic_store_per_vertex_output:
-   case nir_intrinsic_load_per_vertex_output: {
+   } else {
       const uint64_t per_vertex_mask = tcs_lds_per_vtx_out_mask(shader);
       return util_bitcount64(per_vertex_mask & BITFIELD64_MASK(loc));
    }
+}
+
+static unsigned
+hs_output_lds_map_intrin_location(nir_shader *shader,
+                                  nir_intrinsic_instr *intrin,
+                                  lower_tess_io_state *st)
+{
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   const unsigned loc = io_sem.location;
+
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_store_output:
+   case nir_intrinsic_load_output:
+      return hs_output_lds_map_io_location(shader, false, loc, st);
+
+   case nir_intrinsic_store_per_vertex_output:
+   case nir_intrinsic_load_per_vertex_output:
+      return hs_output_lds_map_io_location(shader, true, loc, st);
+
    default:
       unreachable("invalid TCS IO intrinsic");
    }
@@ -395,7 +408,7 @@ hs_output_lds_offset(nir_builder *b,
 
    nir_def *off = intrin
                     ? ac_nir_calc_io_offset_mapped(b, intrin, nir_imm_int(b, 16u), 4u,
-                                                   hs_output_lds_map_io_location(b->shader, intrin, st))
+                                                   hs_output_lds_map_intrin_location(b->shader, intrin, st))
                     : nir_imm_int(b, 0);
 
    nir_def *rel_patch_id = nir_load_tess_rel_patch_id_amd(b);
@@ -642,13 +655,13 @@ hs_load_tess_levels(nir_builder *b,
 
       /* Load all tessellation factors (aka. tess levels) from LDS. */
       if (st->tcs_tess_level_outer_mask) {
-         outer = nir_load_shared(b, outer_comps, 32, lds_base,
-                                 .base = map_tess_level(VARYING_SLOT_TESS_LEVEL_OUTER, st) * 16);
+         const unsigned mapped = hs_output_lds_map_io_location(b->shader, false, VARYING_SLOT_TESS_LEVEL_OUTER, st);
+         outer = nir_load_shared(b, outer_comps, 32, lds_base, .base = mapped * 16);
       }
 
       if (inner_comps && st->tcs_tess_level_inner_mask) {
-         inner = nir_load_shared(b, inner_comps, 32, lds_base,
-                                 .base = map_tess_level(VARYING_SLOT_TESS_LEVEL_INNER, st) * 16);
+         const unsigned mapped = hs_output_lds_map_io_location(b->shader, false, VARYING_SLOT_TESS_LEVEL_INNER, st);
+         inner = nir_load_shared(b, inner_comps, 32, lds_base, .base = mapped * 16);
       }
    }
 

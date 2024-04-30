@@ -177,7 +177,12 @@ calc_dominance(struct nir_use_dominance_state *state,
       nir_def *def = nir_instr_def(node->instr);
       bool has_use = false;
 
-      if (def) {
+      /* Intrinsics that can't be reordered will get the root node as
+       * the post-dominator.
+       */
+      if (def &&
+          (node->instr->type != nir_instr_type_intrinsic ||
+           nir_intrinsic_can_reorder(nir_instr_as_intrinsic(node->instr)))) {
          nir_foreach_use_including_if(src, def) {
             has_use = true;
 

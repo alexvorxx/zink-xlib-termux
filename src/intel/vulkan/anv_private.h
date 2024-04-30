@@ -752,6 +752,21 @@ struct anv_state_reserved_pool {
    uint32_t count;
 };
 
+struct anv_state_reserved_array_pool {
+   struct anv_state_pool *pool;
+   simple_mtx_t mutex;
+   /* Bitfield of usable elements */
+   BITSET_WORD *states;
+   /* Backing store */
+   struct anv_state state;
+   /* Number of elements */
+   uint32_t count;
+   /* Stride between each element */
+   uint32_t stride;
+   /* Size of each element */
+   uint32_t size;
+};
+
 struct anv_state_stream {
    struct anv_state_pool *state_pool;
 
@@ -870,6 +885,20 @@ void anv_state_reserved_pool_finish(struct anv_state_reserved_pool *pool);
 struct anv_state anv_state_reserved_pool_alloc(struct anv_state_reserved_pool *pool);
 void anv_state_reserved_pool_free(struct anv_state_reserved_pool *pool,
                                   struct anv_state state);
+
+VkResult anv_state_reserved_array_pool_init(struct anv_state_reserved_array_pool *pool,
+                                            struct anv_state_pool *parent,
+                                            uint32_t count, uint32_t size,
+                                            uint32_t alignment);
+void anv_state_reserved_array_pool_finish(struct anv_state_reserved_array_pool *pool);
+struct anv_state anv_state_reserved_array_pool_alloc(struct anv_state_reserved_array_pool *pool,
+                                                     bool alloc_back);
+struct anv_state anv_state_reserved_array_pool_alloc_index(struct anv_state_reserved_array_pool *pool,
+                                                           unsigned idx);
+uint32_t anv_state_reserved_array_pool_state_index(struct anv_state_reserved_array_pool *pool,
+                                                   struct anv_state state);
+void anv_state_reserved_array_pool_free(struct anv_state_reserved_array_pool *pool,
+                                        struct anv_state state);
 
 VkResult anv_state_table_init(struct anv_state_table *table,
                              struct anv_device *device,
@@ -1270,6 +1299,7 @@ struct anv_instance {
     unsigned                                    force_vk_vendor;
     bool                                        has_fake_sparse;
     bool                                        disable_fcv;
+    bool                                        compression_control_enabled;
 
     /* HW workarounds */
     bool                                        no_16bit;
@@ -1777,7 +1807,7 @@ struct anv_device {
     struct anv_state_pool                       push_descriptor_buffer_pool;
 
     struct anv_state_reserved_pool              custom_border_colors;
-    struct anv_state_reserved_pool              custom_border_colors_db;
+    struct anv_state_reserved_array_pool        custom_border_colors_db;
 
     /** BO used for various workarounds
      *
@@ -1968,13 +1998,13 @@ struct anv_device {
        struct list_head in_flight_batches;
     } trtt;
 
-    /* This is true if the user ever bound a sparse resource to memory. This
-     * is used for a workaround that makes every memoryBarrier flush more
-     * things than it should. Many applications request for the sparse
-     * featuers to be enabled but don't use them, and some create sparse
-     * resources but never use them.
+    /* Number of sparse resources that currently exist. This is used for a
+     * workaround that makes every memoryBarrier flush more things than it
+     * should. Some workloads create and then immediately destroy sparse
+     * resources when they start, so just counting if a sparse resource was
+     * ever created is not enough.
      */
-    bool                                         using_sparse;
+    uint32_t num_sparse_resources;
 
     struct anv_device_astc_emu                   astc_emu;
 
@@ -3052,8 +3082,8 @@ VkResult anv_init_sparse_bindings(struct anv_device *device,
                                   enum anv_bo_alloc_flags alloc_flags,
                                   uint64_t client_address,
                                   struct anv_address *out_address);
-VkResult anv_free_sparse_bindings(struct anv_device *device,
-                                  struct anv_sparse_binding_data *sparse);
+void anv_free_sparse_bindings(struct anv_device *device,
+                              struct anv_sparse_binding_data *sparse);
 VkResult anv_sparse_bind_buffer(struct anv_device *device,
                                 struct anv_buffer *buffer,
                                 const VkSparseMemoryBind *vk_bind,
@@ -3100,7 +3130,7 @@ struct anv_buffer {
 };
 
 static inline bool
-anv_buffer_is_sparse(struct anv_buffer *buffer)
+anv_buffer_is_sparse(const struct anv_buffer *buffer)
 {
    return buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT;
 }
@@ -3556,6 +3586,9 @@ struct anv_cmd_pipeline_state {
 
    struct anv_push_constants push_constants;
 
+   /** Tracks whether the push constant data has changed and need to be reemitted */
+   bool                                         push_constants_data_dirty;
+
    /* Push constant state allocated when flushing push constants. */
    struct anv_state          push_constants_state;
 
@@ -3743,6 +3776,7 @@ struct anv_cmd_state {
 
    VkShaderStageFlags                           descriptors_dirty;
    VkShaderStageFlags                           push_descriptors_dirty;
+   /** Tracks the 3DSTATE_CONSTANT_* instruction that needs to be reemitted */
    VkShaderStageFlags                           push_constants_dirty;
 
    struct {
@@ -4987,14 +5021,14 @@ struct anv_image_memory_range {
       ANV_IMAGE_MEMORY_BINDING_END,
    } binding;
 
+   uint32_t alignment;
+   uint64_t size;
+
    /**
     * Offset is relative to the start of the binding created by
     * vkBindImageMemory, not to the start of the bo.
     */
    uint64_t offset;
-
-   uint64_t size;
-   uint32_t alignment;
 };
 
 /**
@@ -5131,7 +5165,7 @@ struct anv_image {
 };
 
 static inline bool
-anv_image_is_sparse(struct anv_image *image)
+anv_image_is_sparse(const struct anv_image *image)
 {
    return image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT;
 }
@@ -5487,7 +5521,8 @@ anv_image_choose_isl_surf_usage(struct anv_physical_device *device,
                                 VkImageCreateFlags vk_create_flags,
                                 VkImageUsageFlags vk_usage,
                                 isl_surf_usage_flags_t isl_extra_usage,
-                                VkImageAspectFlagBits aspect);
+                                VkImageAspectFlagBits aspect,
+                                VkImageCompressionFlagsEXT comp_flags);
 
 void
 anv_cmd_buffer_fill_area(struct anv_cmd_buffer *cmd_buffer,
@@ -5785,7 +5820,6 @@ struct anv_sampler {
     * and with a 32-byte stride for use as bindless samplers.
     */
    struct anv_state             bindless_state;
-   struct anv_state             bindless_state_db;
 
    struct anv_state             custom_border_color;
    struct anv_state             custom_border_color_db;

@@ -1385,12 +1385,27 @@ radv_GetImageMemoryRequirements2(VkDevice _device, const VkImageMemoryRequiremen
    VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(radv_image, image, pInfo->image);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   uint32_t alignment;
+   uint64_t size;
+
+   const VkImagePlaneMemoryRequirementsInfo *plane_info =
+      vk_find_struct_const(pInfo->pNext, IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO);
+
+   if (plane_info) {
+      const uint32_t plane = radv_plane_from_aspect(plane_info->planeAspect);
+
+      size = image->planes[plane].surface.total_size;
+      alignment = 1 << image->planes[plane].surface.alignment_log2;
+   } else {
+      size = image->size;
+      alignment = image->alignment;
+   }
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits =
       ((1u << pdev->memory_properties.memoryTypeCount) - 1u) & ~pdev->memory_types_32bit;
 
-   pMemoryRequirements->memoryRequirements.size = image->size;
-   pMemoryRequirements->memoryRequirements.alignment = image->alignment;
+   pMemoryRequirements->memoryRequirements.size = size;
+   pMemoryRequirements->memoryRequirements.alignment = alignment;
 
    vk_foreach_struct (ext, pMemoryRequirements->pNext) {
       switch (ext->sType) {

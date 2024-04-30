@@ -1876,7 +1876,7 @@ radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader
    if (cmd_buffer->state.emitted_ps_epilog == ps_epilog)
       return;
 
-   uint32_t col_format = radv_compact_spi_shader_col_format(ps_shader, ps_epilog->spi_shader_col_format);
+   uint32_t col_format = radv_compact_spi_shader_col_format(ps_epilog->spi_shader_col_format);
 
    bool need_null_export_workaround = radv_needs_null_export_workaround(device, ps_shader, 0);
    if (need_null_export_workaround && !col_format)
@@ -2649,7 +2649,8 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.tess_num_patches = get_tcs_num_patches(
          d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out, vs->info.vs.num_linked_outputs,
          tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs,
-         pdev->hs.tess_offchip_block_dw_size, pdev->info.gfx_level, pdev->info.family);
+         tcs->info.tcs.num_linked_outputs, tcs->info.tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
+         pdev->info.gfx_level, pdev->info.family);
 
       /* Compute the LDS size. */
       cmd_buffer->state.tess_lds_size =

@@ -19,13 +19,6 @@
 # SOFTWARE.
 
 files_etnaviv = files(
-  'hw/cmdstream.xml.h',
-  'hw/common.xml.h',
-  'hw/common_3d.xml.h',
-  'hw/state_3d.xml.h',
-  'hw/state_blt.xml.h',
-  'hw/state.xml.h',
-  'hw/texdesc_3d.xml.h',
   'etnaviv_asm.c',
   'etnaviv_asm.h',
   'etnaviv_blend.c',
@@ -117,7 +110,7 @@ libetnaviv = static_library(
     inc_include, inc_src, inc_gallium, inc_gallium_aux, inc_etnaviv,
   ],
   link_with: [libetnaviv_drm, libetnaviv_encode],
-  dependencies : [dep_libdrm, idep_nir_headers, idep_mesautil, idep_libetnaviv_decode],
+  dependencies : [dep_libdrm, idep_nir_headers, idep_mesautil, idep_libetnaviv_decode, idep_etna_common],
 )
 
 driver_etnaviv = declare_dependency(

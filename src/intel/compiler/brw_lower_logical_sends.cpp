@@ -514,7 +514,8 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
 }
 
 static void
-lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst)
+lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst,
+                           const struct brw_wm_prog_data *wm_prog_data)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
    const fs_builder &ubld = bld.exec_all().group(8, 0);
@@ -562,11 +563,21 @@ lower_fb_read_logical_send(const fs_builder &bld, fs_inst *inst)
                         component(header, 0),
                         brw_imm_ud(~INTEL_MASK(14, 11)));
 
-   inst->resize_sources(1);
-   inst->src[0] = header;
-   inst->opcode = FS_OPCODE_FB_READ;
+   inst->resize_sources(4);
+   inst->opcode = SHADER_OPCODE_SEND;
+   inst->src[0] = brw_imm_ud(0);
+   inst->src[1] = brw_imm_ud(0);
+   inst->src[2] = header;
+   inst->src[3] = fs_reg();
    inst->mlen = length;
    inst->header_size = length;
+   inst->sfid = GFX6_SFID_DATAPORT_RENDER_CACHE;
+   inst->check_tdr = true;
+   inst->desc =
+      (inst->group / 16) << 11 | /* rt slot group */
+      brw_fb_read_desc(devinfo, inst->target,
+                       0 /* msg_control */, inst->exec_size,
+                       wm_prog_data->persample_dispatch);
 }
 
 static bool
@@ -2765,7 +2776,7 @@ brw_fs_lower_logical_sends(fs_visitor &s)
          break;
 
       case FS_OPCODE_FB_READ_LOGICAL:
-         lower_fb_read_logical_send(ibld, inst);
+         lower_fb_read_logical_send(ibld, inst, brw_wm_prog_data(s.prog_data));
          break;
 
       case SHADER_OPCODE_TEX_LOGICAL:

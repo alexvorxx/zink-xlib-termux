@@ -1107,6 +1107,100 @@ anv_state_reserved_pool_free(struct anv_state_reserved_pool *pool,
    anv_free_list_push(&pool->reserved_blocks, &pool->pool->table, state.idx, 1);
 }
 
+VkResult
+anv_state_reserved_array_pool_init(struct anv_state_reserved_array_pool *pool,
+                                   struct anv_state_pool *parent,
+                                   uint32_t count, uint32_t size, uint32_t alignment)
+{
+   pool->pool = parent;
+   pool->count = count;
+   pool->size = size;
+   pool->stride = align(size, alignment);
+   pool->states = vk_zalloc(&pool->pool->block_pool.device->vk.alloc,
+                            sizeof(BITSET_WORD) * BITSET_WORDS(pool->count), 8,
+                            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   if (pool->states == NULL)
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   BITSET_SET_RANGE(pool->states, 0, pool->count - 1);
+   simple_mtx_init(&pool->mutex, mtx_plain);
+
+   pool->state = anv_state_pool_alloc(pool->pool, pool->stride * count, alignment);
+
+   return VK_SUCCESS;
+}
+
+void
+anv_state_reserved_array_pool_finish(struct anv_state_reserved_array_pool *pool)
+{
+   anv_state_pool_free(pool->pool, pool->state);
+   vk_free(&pool->pool->block_pool.device->vk.alloc, pool->states);
+   simple_mtx_destroy(&pool->mutex);
+}
+
+struct anv_state
+anv_state_reserved_array_pool_alloc(struct anv_state_reserved_array_pool *pool,
+                                    bool alloc_back)
+{
+   simple_mtx_lock(&pool->mutex);
+   int idx = alloc_back ?
+      __bitset_last_bit(pool->states, BITSET_WORDS(pool->count)) :
+      __bitset_ffs(pool->states, BITSET_WORDS(pool->count));
+   if (idx != 0)
+      BITSET_CLEAR(pool->states, idx - 1);
+   simple_mtx_unlock(&pool->mutex);
+
+   if (idx == 0)
+      return ANV_STATE_NULL;
+
+   idx--;
+
+   struct anv_state state = pool->state;
+   state.offset += idx * pool->stride;
+   state.map += idx * pool->stride;
+   state.alloc_size = pool->size;
+
+   return state;
+}
+
+struct anv_state
+anv_state_reserved_array_pool_alloc_index(struct anv_state_reserved_array_pool *pool,
+                                          uint32_t idx)
+{
+   simple_mtx_lock(&pool->mutex);
+   bool already_allocated = !BITSET_TEST(pool->states, idx);
+   if (!already_allocated)
+      BITSET_CLEAR(pool->states, idx);
+   simple_mtx_unlock(&pool->mutex);
+
+   if (already_allocated)
+      return ANV_STATE_NULL;
+
+   struct anv_state state = pool->state;
+   state.offset += idx * pool->stride;
+   state.map += idx * pool->stride;
+   state.alloc_size = pool->size;
+
+   return state;
+}
+
+uint32_t
+anv_state_reserved_array_pool_state_index(struct anv_state_reserved_array_pool *pool,
+                                          struct anv_state state)
+{
+   return (state.offset - pool->state.offset) / pool->stride;
+}
+
+void
+anv_state_reserved_array_pool_free(struct anv_state_reserved_array_pool *pool,
+                                  struct anv_state state)
+{
+   unsigned idx = (state.offset - pool->state.offset) / pool->stride;
+   simple_mtx_lock(&pool->mutex);
+   BITSET_SET(pool->states, idx);
+   simple_mtx_unlock(&pool->mutex);
+ }
+
 void
 anv_bo_pool_init(struct anv_bo_pool *pool, struct anv_device *device,
                  const char *name, enum anv_bo_alloc_flags alloc_flags)

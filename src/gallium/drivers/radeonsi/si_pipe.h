@@ -1159,7 +1159,7 @@ struct si_context {
    unsigned border_color_count;
    unsigned num_vs_blit_sgprs;
    uint32_t vs_blit_sh_data[MAX_SI_VS_BLIT_SGPRS];
-   uint32_t cs_user_data[4];
+   uint32_t cs_user_data[8];
 
    /* Vertex buffers. */
    bool vertex_buffers_dirty;

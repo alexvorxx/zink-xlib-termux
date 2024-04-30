@@ -87,18 +87,19 @@ gather_load_fs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
    const uint32_t mapped_mask = BITFIELD_RANGE(mapped_location, attrib_count);
    const bool per_primitive = nir->info.per_primitive_inputs & BITFIELD64_BIT(location);
 
-   if (intrin->def.bit_size == 16) {
-      info->ps.float16_shaded_mask |= mapped_mask;
-   }
-
    if (!per_primitive) {
       if (intrin->intrinsic == nir_intrinsic_load_input) {
          info->ps.flat_shaded_mask |= mapped_mask;
       } else if (intrin->intrinsic == nir_intrinsic_load_input_vertex) {
          if (io_sem.interp_explicit_strict)
-            info->ps.per_vertex_shaded_mask |= mapped_mask;
+            info->ps.explicit_strict_shaded_mask |= mapped_mask;
          else
             info->ps.explicit_shaded_mask |= mapped_mask;
+      } else if (intrin->intrinsic == nir_intrinsic_load_interpolated_input && intrin->def.bit_size == 16) {
+         if (io_sem.high_16bits)
+            info->ps.float16_hi_shaded_mask |= mapped_mask;
+         else
+            info->ps.float16_shaded_mask |= mapped_mask;
       }
    }
 
@@ -470,6 +471,23 @@ radv_gather_unlinked_io_mask(const uint64_t nir_io_mask)
    return radv_io_mask;
 }
 
+uint64_t
+radv_gather_unlinked_patch_io_mask(const uint64_t nir_io_mask, const uint32_t nir_patch_io_mask)
+{
+   uint64_t radv_io_mask = 0;
+   u_foreach_bit64 (semantic, nir_patch_io_mask) {
+      radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(semantic + VARYING_SLOT_PATCH0));
+   }
+
+   /* Tess levels need to be handled separately because they are not part of patch_outputs_written. */
+   if (nir_io_mask & VARYING_BIT_TESS_LEVEL_OUTER)
+      radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(VARYING_SLOT_TESS_LEVEL_OUTER));
+   if (nir_io_mask & VARYING_BIT_TESS_LEVEL_INNER)
+      radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(VARYING_SLOT_TESS_LEVEL_INNER));
+
+   return radv_io_mask;
+}
+
 static void
 gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
                       const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
@@ -537,16 +555,20 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
 
    if (!info->inputs_linked)
       info->tcs.num_linked_inputs = util_last_bit64(radv_gather_unlinked_io_mask(nir->info.inputs_read));
-   if (!info->outputs_linked)
+   if (!info->outputs_linked) {
       info->tcs.num_linked_outputs = util_last_bit64(radv_gather_unlinked_io_mask(
          nir->info.outputs_written & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER)));
+      info->tcs.num_linked_patch_outputs = util_last_bit64(
+         radv_gather_unlinked_patch_io_mask(nir->info.outputs_written, nir->info.patch_outputs_written));
+   }
 
    if (gfx_state->ts.patch_control_points) {
       /* Number of tessellation patches per workgroup processed by the current pipeline. */
       info->num_tess_patches = get_tcs_num_patches(
          gfx_state->ts.patch_control_points, nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs,
-         info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
-         pdev->info.gfx_level, pdev->info.family);
+         info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs, info->tcs.num_linked_outputs,
+         info->tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size, pdev->info.gfx_level,
+         pdev->info.family);
 
       /* LDS size used by VS+TCS for storing TCS inputs and outputs. */
       info->tcs.num_lds_blocks =

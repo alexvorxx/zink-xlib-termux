@@ -27,3 +27,4 @@ mod repair_ssa;
 mod sph;
 mod spill_values;
 mod to_cssa;
+mod union_find;

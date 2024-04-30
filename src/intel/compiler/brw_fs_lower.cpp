@@ -254,18 +254,18 @@ brw_fs_lower_barycentrics(fs_visitor &s)
       const fs_builder ubld = ibld.exec_all().group(8, 0);
 
       switch (inst->opcode) {
-      case FS_OPCODE_LINTERP : {
+      case BRW_OPCODE_PLN: {
          assert(inst->exec_size == 16);
-         const fs_reg tmp = ibld.vgrf(inst->src[0].type, 2);
+         const fs_reg tmp = ibld.vgrf(inst->src[1].type, 2);
          fs_reg srcs[4];
 
          for (unsigned i = 0; i < ARRAY_SIZE(srcs); i++)
-            srcs[i] = horiz_offset(offset(inst->src[0], ibld, i % 2),
+            srcs[i] = horiz_offset(offset(inst->src[1], ibld, i % 2),
                                    8 * (i / 2));
 
          ubld.LOAD_PAYLOAD(tmp, srcs, ARRAY_SIZE(srcs), ARRAY_SIZE(srcs));
 
-         inst->src[0] = tmp;
+         inst->src[1] = tmp;
          progress = true;
          break;
       }
@@ -424,7 +424,7 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
          break;
 
       case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL: {
-         fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD);
          ubld.UNDEF(tmp);
          ubld.LZD(tmp, exec_mask);
          ubld.ADD(inst->dst, negate(tmp), brw_imm_uw(31));

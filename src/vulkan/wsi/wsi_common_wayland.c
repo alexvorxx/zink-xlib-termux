@@ -208,8 +208,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(wsi_wl_swapchain, base.base, VkSwapchainKHR,
 static bool
 wsi_wl_use_explicit_sync(struct wsi_wl_display *display, struct wsi_device *device)
 {
-   return !device->sw && device->has_timeline_semaphore &&
-          (device->timeline_semaphore_export_handle_types & VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT) &&
+   return wsi_device_supports_explicit_sync(device) &&
           display->wl_syncobj != NULL;
 }
 
@@ -1068,28 +1067,6 @@ wsi_wl_surface_get_min_image_count(const VkSurfacePresentModeEXT *present_mode)
    }
 }
 
-static uint32_t
-wsi_wl_surface_get_min_image_count_for_mode_group(const VkSwapchainPresentModesCreateInfoEXT *modes)
-{
-   /* If we don't provide the PresentModeCreateInfo struct, we must be backwards compatible,
-    * and assume that minImageCount is the default one, i.e. 4, which supports both FIFO and MAILBOX. */
-   if (!modes) {
-      return wsi_wl_surface_get_min_image_count(NULL);
-   }
-
-   uint32_t max_required = 0;
-   for (uint32_t i = 0; i < modes->presentModeCount; i++) {
-      const VkSurfacePresentModeEXT mode = {
-         VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT,
-         NULL,
-         modes->pPresentModes[i]
-      };
-      max_required = MAX2(max_required, wsi_wl_surface_get_min_image_count(&mode));
-   }
-
-   return max_required;
-}
-
 static VkResult
 wsi_wl_surface_get_capabilities(VkIcdSurfaceBase *surface,
                                 struct wsi_device *wsi_device,
@@ -1930,8 +1907,8 @@ wsi_wl_presentation_update_present_id(struct wsi_wl_present_id *id)
       id->chain->present_ids.max_completed = id->present_id;
 
    wl_list_remove(&id->link);
-   vk_free(id->alloc, id);
    pthread_mutex_unlock(&id->chain->present_ids.lock);
+   vk_free(id->alloc, id);
 }
 
 static void

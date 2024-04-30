@@ -21,8 +21,7 @@
 #include "panvk_pipeline_layout.h"
 
 #define PANVK_SYSVAL_UBO_INDEX     0
-#define PANVK_PUSH_CONST_UBO_INDEX 1
-#define PANVK_NUM_BUILTIN_UBOS     2
+#define PANVK_NUM_BUILTIN_UBOS     1
 
 struct nir_shader;
 struct pan_blend_state;

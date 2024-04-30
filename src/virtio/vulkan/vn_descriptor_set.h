@@ -86,15 +86,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_pool,
                                VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)
 
-struct vn_update_descriptor_sets {
-   uint32_t write_count;
-   VkWriteDescriptorSet *writes;
-   VkDescriptorImageInfo *images;
-   VkDescriptorBufferInfo *buffers;
-   VkBufferView *views;
-   VkWriteDescriptorSetInlineUniformBlock *iubs;
-};
-
 struct vn_descriptor_set {
    struct vn_object_base base;
 
@@ -108,22 +99,20 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_set,
                                VkDescriptorSet,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET)
 
-struct vn_descriptor_update_template_entry {
-   size_t offset;
-   size_t stride;
-};
-
 struct vn_descriptor_update_template {
    struct vn_object_base base;
 
-   bool is_push_descriptor;
-   VkPipelineBindPoint pipeline_bind_point;
-   struct vn_pipeline_layout *pipeline_layout;
+   struct {
+      VkPipelineBindPoint pipeline_bind_point;
+      struct vn_descriptor_set_layout *set_layout;
+   } push;
 
-   mtx_t mutex;
-   struct vn_update_descriptor_sets *update;
-
-   struct vn_descriptor_update_template_entry entries[];
+   uint32_t entry_count;
+   uint32_t img_info_count;
+   uint32_t buf_info_count;
+   uint32_t bview_count;
+   uint32_t iub_count;
+   VkDescriptorUpdateTemplateEntry entries[];
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_update_template,
                                base.base,
@@ -133,6 +122,15 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_update_template,
 struct vn_descriptor_set_writes {
    VkWriteDescriptorSet *writes;
    VkDescriptorImageInfo *img_infos;
+};
+
+struct vn_descriptor_set_update {
+   uint32_t write_count;
+   VkWriteDescriptorSet *writes;
+   VkDescriptorImageInfo *img_infos;
+   VkDescriptorBufferInfo *buf_infos;
+   VkBufferView *bview_handles;
+   VkWriteDescriptorSetInlineUniformBlock *iubs;
 };
 
 uint32_t
@@ -145,11 +143,12 @@ vn_descriptor_set_get_writes(uint32_t write_count,
                              VkPipelineLayout pipeline_layout_handle,
                              struct vn_descriptor_set_writes *local);
 
-struct vn_update_descriptor_sets *
-vn_update_descriptor_set_with_template_locked(
+void
+vn_descriptor_set_fill_update_with_template(
    struct vn_descriptor_update_template *templ,
-   struct vn_descriptor_set *set,
-   const void *data);
+   VkDescriptorSet set_handle,
+   const uint8_t *data,
+   struct vn_descriptor_set_update *update);
 
 void
 vn_descriptor_set_layout_destroy(struct vn_device *dev,

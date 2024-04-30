@@ -175,8 +175,10 @@ vn_ring_wait_seqno(struct vn_ring *ring, uint32_t seqno)
    /* A renderer wait incurs several hops and the renderer might poll
     * repeatedly anyway.  Let's just poll here.
     */
-   struct vn_relax_state relax_state =
-      vn_relax_init(ring->instance, VN_RELAX_REASON_RING_SEQNO);
+   const enum vn_relax_reason reason = ring == ring->instance->ring.ring
+                                          ? VN_RELAX_REASON_RING_SEQNO
+                                          : VN_RELAX_REASON_TLS_RING_SEQNO;
+   struct vn_relax_state relax_state = vn_relax_init(ring->instance, reason);
    do {
       if (vn_ring_get_seqno_status(ring, seqno)) {
          vn_relax_fini(&relax_state);

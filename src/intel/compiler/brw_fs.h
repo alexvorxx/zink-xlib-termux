@@ -237,7 +237,6 @@ public:
    void init();
    ~fs_visitor();
 
-   fs_reg vgrf(const glsl_type *const type);
    void import_uniforms(fs_visitor *v);
 
    void VARYING_PULL_CONSTANT_LOAD(const brw::fs_builder &bld,
@@ -500,11 +499,7 @@ private:
                       struct brw_reg ex_desc,
                       struct brw_reg payload,
                       struct brw_reg payload2);
-   void generate_fb_read(fs_inst *inst, struct brw_reg dst,
-                         struct brw_reg payload);
    void generate_barrier(fs_inst *inst, struct brw_reg src);
-   bool generate_linterp(fs_inst *inst, struct brw_reg dst,
-			 struct brw_reg *src);
    void generate_ddx(const fs_inst *inst,
                      struct brw_reg dst, struct brw_reg src);
    void generate_ddy(const fs_inst *inst,

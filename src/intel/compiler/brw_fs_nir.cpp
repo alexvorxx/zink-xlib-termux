@@ -314,7 +314,7 @@ emit_system_values_block(nir_to_brw_state &ntb, nir_block *block)
              * subspans 0 and 1) in SIMD8 and an additional byte (the pixel
              * masks for 2 and 3) in SIMD16.
              */
-            fs_reg shifted = abld.vgrf(BRW_REGISTER_TYPE_UW, 1);
+            fs_reg shifted = abld.vgrf(BRW_REGISTER_TYPE_UW);
 
             for (unsigned i = 0; i < DIV_ROUND_UP(s.dispatch_width, 16); i++) {
                const fs_builder hbld = abld.group(MIN2(16, s.dispatch_width), i);
@@ -343,10 +343,10 @@ emit_system_values_block(nir_to_brw_state &ntb, nir_block *block)
             /* We then resolve the 0/1 result to 0/~0 boolean values by ANDing
              * with 1 and negating.
              */
-            fs_reg anded = abld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+            fs_reg anded = abld.vgrf(BRW_REGISTER_TYPE_UD);
             abld.AND(anded, inverted, brw_imm_uw(1));
 
-            fs_reg dst = abld.vgrf(BRW_REGISTER_TYPE_D, 1);
+            fs_reg dst = abld.vgrf(BRW_REGISTER_TYPE_D);
             abld.MOV(dst, negate(retype(anded, BRW_REGISTER_TYPE_D)));
             *reg = dst;
          }
@@ -564,7 +564,7 @@ optimize_frontfacing_ternary(nir_to_brw_state &ntb,
    /* nir_opt_algebraic should have gotten rid of bcsel(b, a, a) */
    assert(value1 == -value2);
 
-   fs_reg tmp = s.vgrf(glsl_int_type());
+   fs_reg tmp = ntb.bld.vgrf(BRW_REGISTER_TYPE_D);
 
    if (devinfo->ver >= 20) {
       /* Gfx20+ has separate back-facing bits for each pair of
@@ -819,7 +819,6 @@ static void
 emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *instr,
            fs_reg result, fs_reg *op, unsigned fsign_src)
 {
-   fs_visitor &s = ntb.s;
    const intel_device_info *devinfo = ntb.devinfo;
 
    fs_inst *inst;
@@ -908,7 +907,7 @@ emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *in
        * - We need to produce a DF result.
        */
 
-      fs_reg zero = s.vgrf(glsl_double_type());
+      fs_reg zero = bld.vgrf(BRW_REGISTER_TYPE_DF);
       bld.MOV(zero, brw_imm_df(0.0));
       bld.CMP(bld.null_reg_df(), op[0], zero, BRW_CONDITIONAL_NZ);
 
@@ -990,7 +989,6 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
 {
    const intel_device_info *devinfo = ntb.devinfo;
    const fs_builder &bld = ntb.bld;
-   fs_visitor &s = ntb.s;
 
    fs_inst *inst;
    unsigned execution_mode =
@@ -1445,7 +1443,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
 
       const uint32_t bit_size =  nir_src_bit_size(instr->src[0].src);
       if (bit_size != 32) {
-         dest = bld.vgrf(op[0].type, 1);
+         dest = bld.vgrf(op[0].type);
          bld.UNDEF(dest);
       }
 
@@ -1475,7 +1473,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
 
       const uint32_t bit_size = type_sz(op[0].type) * 8;
       if (bit_size != 32) {
-         dest = bld.vgrf(op[0].type, 1);
+         dest = bld.vgrf(op[0].type);
          bld.UNDEF(dest);
       }
 
@@ -1603,7 +1601,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
 
    case nir_op_fceil: {
       op[0].negate = !op[0].negate;
-      fs_reg temp = s.vgrf(glsl_float_type());
+      fs_reg temp = bld.vgrf(BRW_REGISTER_TYPE_F);
       bld.RNDD(temp, op[0]);
       temp.negate = true;
       inst = bld.MOV(result, temp);
@@ -2147,8 +2145,8 @@ intexp2(const fs_builder &bld, const fs_reg &x)
 {
    assert(x.type == BRW_REGISTER_TYPE_UD || x.type == BRW_REGISTER_TYPE_D);
 
-   fs_reg result = bld.vgrf(x.type, 1);
-   fs_reg one = bld.vgrf(x.type, 1);
+   fs_reg result = bld.vgrf(x.type);
+   fs_reg one = bld.vgrf(x.type);
 
    bld.MOV(one, retype(brw_imm_d(1), one.type));
    bld.SHL(result, one, x);
@@ -2205,7 +2203,7 @@ emit_gs_end_primitive(nir_to_brw_state &ntb, const nir_src &vertex_count_nir_src
    const fs_builder abld = ntb.bld.annotate("end primitive");
 
    /* control_data_bits |= 1 << ((vertex_count - 1) % 32) */
-   fs_reg prev_count = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg prev_count = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD);
    abld.ADD(prev_count, vertex_count, brw_imm_ud(0xffffffffu));
    fs_reg mask = intexp2(abld, prev_count);
    /* Note: we're relying on the fact that the GEN SHL instruction only pays
@@ -2257,8 +2255,8 @@ fs_visitor::gs_urb_per_slot_dword_index(const fs_reg &vertex_count)
     *
     *    dword_index = (vertex_count - 1) >> (6 - log2(bits_per_vertex))
     */
-   fs_reg dword_index = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-   fs_reg prev_count = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg dword_index = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   fs_reg prev_count = bld.vgrf(BRW_REGISTER_TYPE_UD);
    abld.ADD(prev_count, vertex_count, brw_imm_ud(0xffffffffu));
    unsigned log2_bits_per_vertex =
       util_last_bit(gs_compile->control_data_bits_per_vertex);
@@ -2297,11 +2295,11 @@ fs_visitor::gs_urb_channel_mask(const fs_reg &dword_index)
    const fs_builder bld = fs_builder(this).at_end();
    const fs_builder fwa_bld = bld.exec_all();
 
-   channel_mask = vgrf(glsl_uint_type());
+   channel_mask = bld.vgrf(BRW_REGISTER_TYPE_UD);
    /* Set the channel masks to 1 << (dword_index % 4), so that we'll
     * write to the appropriate DWORD within the OWORD.
     */
-   fs_reg channel = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg channel = bld.vgrf(BRW_REGISTER_TYPE_UD);
    fwa_bld.AND(channel, dword_index, brw_imm_ud(3u));
    channel_mask = intexp2(fwa_bld, channel);
    /* Then the channel masks need to be in bits 23:16. */
@@ -2329,7 +2327,7 @@ fs_visitor::emit_gs_control_data_bits(const fs_reg &vertex_count)
       devinfo->ver >= 20 ? 32 : 128;
 
    if (gs_compile->control_data_header_size_bits > max_control_data_header_size_bits) {
-      per_slot_offset = vgrf(glsl_uint_type());
+      per_slot_offset = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
       /* Convert dword_index to bytes on Xe2+ since LSC can do operate on byte
        * offset granularity.
@@ -2398,11 +2396,11 @@ set_gs_stream_control_data_bits(nir_to_brw_state &ntb, const fs_reg &vertex_coun
    const fs_builder abld = ntb.bld.annotate("set stream control data bits", NULL);
 
    /* reg::sid = stream_id */
-   fs_reg sid = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg sid = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD);
    abld.MOV(sid, brw_imm_ud(stream_id));
 
    /* reg:shift_count = 2 * (vertex_count - 1) */
-   fs_reg shift_count = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg shift_count = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD);
    abld.SHL(shift_count, vertex_count, brw_imm_ud(1u));
 
    /* Note: we're relying on the fact that the GEN SHL instruction only pays
@@ -2410,7 +2408,7 @@ set_gs_stream_control_data_bits(nir_to_brw_state &ntb, const fs_reg &vertex_coun
     * architecture, stream_id << 2 * (vertex_count - 1) is equivalent to
     * stream_id << ((2 * (vertex_count - 1)) % 32).
     */
-   fs_reg mask = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg mask = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD);
    abld.SHL(mask, sid, shift_count);
    abld.OR(s.control_data_bits, s.control_data_bits, mask);
 }
@@ -2548,7 +2546,7 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
    assert(gs_prog_data->base.include_vue_handles);
 
    fs_reg start = s.gs_payload().icp_handle_start;
-   fs_reg icp_handle = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg icp_handle = ntb.bld.vgrf(BRW_REGISTER_TYPE_UD);
 
    if (gs_prog_data->invocations == 1) {
       if (nir_src_is_const(vertex_src)) {
@@ -2568,9 +2566,9 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
           */
          fs_reg sequence =
             ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
-         fs_reg channel_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-         fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-         fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg channel_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD);
+         fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD);
+         fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
          /* channel_offsets = 4 * sequence = <28, 24, 20, 16, 12, 8, 4, 0> */
          bld.SHL(channel_offsets, sequence, brw_imm_ud(2u));
@@ -2599,7 +2597,7 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
           * addressing to fetch the proper URB handle.
           *
           */
-         fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
          /* Convert vertex_index to bytes (multiply by 4) */
          bld.SHL(icp_offset_bytes,
@@ -2696,7 +2694,7 @@ get_indirect_offset(nir_to_brw_state &ntb, nir_intrinsic_instr *instr)
       return temp_offset;
 
    const fs_builder &bld = ntb.bld;
-   fs_reg indirect_offset = bld.vgrf(temp_offset.type, 1);
+   fs_reg indirect_offset = bld.vgrf(temp_offset.type);
 
    /* Convert Owords (16-bytes) to bytes */
    bld.SHL(indirect_offset, temp_offset, brw_imm_ud(4u));
@@ -2763,7 +2761,7 @@ get_tcs_single_patch_icp_handle(nir_to_brw_state &ntb, const fs_builder &bld,
 
    if (nir_src_is_const(vertex_src)) {
       /* Emit a MOV to resolve <0,1,0> regioning. */
-      icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+      icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD);
       unsigned vertex = nir_src_as_uint(vertex_src);
       bld.MOV(icp_handle, component(start, vertex));
    } else if (tcs_prog_data->instances == 1 && vertex_intrin &&
@@ -2777,10 +2775,10 @@ get_tcs_single_patch_icp_handle(nir_to_brw_state &ntb, const fs_builder &bld,
       /* The vertex index is non-constant.  We need to use indirect
        * addressing to fetch the proper URB handle.
        */
-      icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+      icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
       /* Each ICP handle is a single DWord (4 bytes) */
-      fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+      fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD);
       bld.SHL(vertex_offset_bytes,
               retype(get_nir_src(ntb, vertex_src), BRW_REGISTER_TYPE_UD),
               brw_imm_ud(2u));
@@ -2821,11 +2819,11 @@ get_tcs_multi_patch_icp_handle(nir_to_brw_state &ntb, const fs_builder &bld,
     * by the GRF size (by shifting), and add the two together.  This is
     * the final indirect byte offset.
     */
-   fs_reg icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD);
    fs_reg sequence = ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
-   fs_reg channel_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-   fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-   fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg channel_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
    /* Offsets will be 0, 4, 8, ... */
    bld.SHL(channel_offsets, sequence, brw_imm_ud(2u));
@@ -2918,7 +2916,7 @@ emit_tcs_barrier(nir_to_brw_state &ntb)
    assert(s.stage == MESA_SHADER_TESS_CTRL);
    struct brw_tcs_prog_data *tcs_prog_data = brw_tcs_prog_data(s.prog_data);
 
-   fs_reg m0 = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   fs_reg m0 = bld.vgrf(BRW_REGISTER_TYPE_UD);
    fs_reg m0_2 = component(m0, 2);
 
    const fs_builder chanbld = bld.exec_all().group(1, 0);
@@ -3074,7 +3072,7 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
          /* This MOV replicates the output handle to all enabled channels
           * is SINGLE_PATCH mode.
           */
-         fs_reg patch_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg patch_handle = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.MOV(patch_handle, s.tcs_payload().patch_urb_output);
 
          {
@@ -3417,7 +3415,7 @@ emit_mcs_fetch(nir_to_brw_state &ntb, const fs_reg &coordinate, unsigned compone
 {
    const fs_builder &bld = ntb.bld;
 
-   const fs_reg dest = ntb.s.vgrf(glsl_uvec4_type());
+   const fs_reg dest = bld.vgrf(BRW_REGISTER_TYPE_UD, 4);
 
    fs_reg srcs[TEX_LOGICAL_NUM_SRCS];
    srcs[TEX_LOGICAL_SRC_COORDINATE] = coordinate;
@@ -3870,8 +3868,8 @@ emit_samplemaskin_setup(nir_to_brw_state &ntb)
    if (ntb.system_values[SYSTEM_VALUE_SAMPLE_ID].file == BAD_FILE)
       ntb.system_values[SYSTEM_VALUE_SAMPLE_ID] = emit_sampleid_setup(ntb);
 
-   fs_reg one = s.vgrf(glsl_int_type());
-   fs_reg enabled_mask = s.vgrf(glsl_int_type());
+   fs_reg one = bld.vgrf(BRW_REGISTER_TYPE_D);
+   fs_reg enabled_mask = bld.vgrf(BRW_REGISTER_TYPE_D);
    abld.MOV(one, brw_imm_d(1));
    abld.SHL(enabled_mask, one, ntb.system_values[SYSTEM_VALUE_SAMPLE_ID]);
    fs_reg mask = bld.vgrf(BRW_REGISTER_TYPE_D);
@@ -4312,7 +4310,7 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
          interp.type = BRW_REGISTER_TYPE_F;
          dest.type = BRW_REGISTER_TYPE_F;
 
-         bld.emit(FS_OPCODE_LINTERP, offset(dest, bld, i), dst_xy, interp);
+         bld.PLN(offset(dest, bld, i), interp, dst_xy);
       }
       break;
    }
@@ -4414,7 +4412,7 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       fs_reg addr = get_nir_src(ntb, instr->src[0]);
       int base = nir_intrinsic_base(instr);
       if (base) {
-         fs_reg addr_off = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg addr_off = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.ADD(addr_off, addr, brw_imm_d(base));
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] = addr_off;
       } else {
@@ -4458,7 +4456,7 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       fs_reg addr = get_nir_src(ntb, instr->src[1]);
       int base = nir_intrinsic_base(instr);
       if (base) {
-         fs_reg addr_off = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg addr_off = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.ADD(addr_off, addr, brw_imm_d(base));
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] = addr_off;
       } else {
@@ -6145,8 +6143,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       if (devinfo->ver >= 12 &&
           (!nir_intrinsic_has_memory_scope(instr) ||
            (nir_intrinsic_memory_semantics(instr) & NIR_MEMORY_ACQUIRE))) {
-         ubld.exec_all().group(1, 0).emit(
-            BRW_OPCODE_SYNC, ubld.null_reg_ud(), brw_imm_ud(TGL_SYNC_ALLWR));
+         ubld.exec_all().group(1, 0).SYNC(TGL_SYNC_ALLWR);
       }
 
       if (devinfo->has_lsc) {
@@ -6175,9 +6172,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                 * Before SLM fence compiler needs to insert SYNC.ALLWR in order
                 * to avoid the SLM data race.
                 */
-               ubld.exec_all().group(1, 0).emit(
-                  BRW_OPCODE_SYNC, ubld.null_reg_ud(),
-                  brw_imm_ud(TGL_SYNC_ALLWR));
+               ubld.exec_all().group(1, 0).SYNC(TGL_SYNC_ALLWR);
             }
             fence_regs[fence_regs_count++] =
                emit_fence(ubld, opcode, GFX12_SFID_SLM, desc,
@@ -7491,7 +7486,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          allbld.ADD(idx, ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION],
                          brw_imm_w(-1));
          allbld.emit(SHADER_OPCODE_SHUFFLE, shifted, scan, idx);
-         allbld.group(1, 0).MOV(component(shifted, 0), identity);
+         allbld.group(1, 0).MOV(horiz_offset(shifted, 0), identity);
          scan = shifted;
       }
 
@@ -7858,7 +7853,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * need a barrier followed by an invalidate before accessing memory.
        */
       if (synchronous) {
-         bld.emit(BRW_OPCODE_SYNC, bld.null_reg_ud(), brw_imm_ud(TGL_SYNC_ALLWR));
+         bld.SYNC(TGL_SYNC_ALLWR);
          emit_rt_lsc_fence(bld, LSC_FENCE_LOCAL, LSC_FLUSH_TYPE_INVALIDATE);
       }
       break;
@@ -7892,7 +7887,6 @@ fs_nir_emit_surface_atomic(nir_to_brw_state &ntb, const fs_builder &bld,
                            bool bindless)
 {
    const intel_device_info *devinfo = ntb.devinfo;
-   fs_visitor &s = ntb.s;
 
    enum lsc_opcode op = lsc_aop_for_nir_intrinsic(instr);
    int num_data = lsc_op_num_data_values(op);
@@ -7928,7 +7922,7 @@ fs_nir_emit_surface_atomic(nir_to_brw_state &ntb, const fs_builder &bld,
             brw_imm_ud(nir_intrinsic_base(instr) +
                        nir_src_as_uint(instr->src[0]));
       } else {
-         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = s.vgrf(glsl_uint_type());
+         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.ADD(srcs[SURFACE_LOGICAL_SRC_ADDRESS],
                  retype(get_nir_src(ntb, instr->src[0]), BRW_REGISTER_TYPE_UD),
                  brw_imm_ud(nir_intrinsic_base(instr)));
@@ -8032,7 +8026,6 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
 {
    const intel_device_info *devinfo = ntb.devinfo;
    const fs_builder &bld = ntb.bld;
-   fs_visitor &s = ntb.s;
 
    fs_reg srcs[TEX_LOGICAL_NUM_SRCS];
 
@@ -8146,7 +8139,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          if (instr->texture_index == 0 && is_resource_src(nir_src))
             srcs[TEX_LOGICAL_SRC_SURFACE] = get_resource_nir_src(ntb, nir_src);
          if (srcs[TEX_LOGICAL_SRC_SURFACE].file == BAD_FILE) {
-            fs_reg tmp = s.vgrf(glsl_uint_type());
+            fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
             bld.ADD(tmp, src, brw_imm_ud(instr->texture_index));
             srcs[TEX_LOGICAL_SRC_SURFACE] = bld.emit_uniformize(tmp);
          }
@@ -8159,7 +8152,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          if (instr->sampler_index == 0 && is_resource_src(nir_src))
             srcs[TEX_LOGICAL_SRC_SAMPLER] = get_resource_nir_src(ntb, nir_src);
          if (srcs[TEX_LOGICAL_SRC_SAMPLER].file == BAD_FILE) {
-            fs_reg tmp = s.vgrf(glsl_uint_type());
+            fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
             bld.ADD(tmp, src, brw_imm_ud(instr->sampler_index));
             srcs[TEX_LOGICAL_SRC_SAMPLER] = bld.emit_uniformize(tmp);
          }
@@ -8321,7 +8314,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
       if (srcs[TEX_LOGICAL_SRC_MCS].file == BRW_IMMEDIATE_VALUE) {
          bld.MOV(dst, brw_imm_ud(0u));
       } else {
-         fs_reg tmp = s.vgrf(glsl_uint_type());
+         fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.OR(tmp, srcs[TEX_LOGICAL_SRC_MCS],
                 offset(srcs[TEX_LOGICAL_SRC_MCS], bld, 1));
          bld.CMP(dst, tmp, brw_imm_ud(0u), BRW_CONDITIONAL_EQ);

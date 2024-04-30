@@ -201,6 +201,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
+      .EXT_nested_command_buffer = true,
       .EXT_non_seamless_cube_map = true,
       .EXT_pci_bus_info = info->type == NV_DEVICE_TYPE_DIS,
       .EXT_pipeline_creation_cache_control = true,
@@ -542,6 +543,11 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_mutable_descriptor_type */
       .mutableDescriptorType = true,
 
+      /* VK_EXT_nested_command_buffer */
+      .nestedCommandBuffer = true,
+      .nestedCommandBufferRendering = true,
+      .nestedCommandBufferSimultaneousUse = true,
+
       /* VK_EXT_non_seamless_cube_map */
       .nonSeamlessCubeMap = true,
 
@@ -879,6 +885,9 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       /* VK_EXT_multi_draw */
       .maxMultiDrawCount = UINT32_MAX,
 
+      /* VK_EXT_nested_command_buffer */
+      .maxCommandBufferNestingLevel = UINT32_MAX,
+
       /* VK_EXT_pci_bus_info */
       .pciDomain   = info->pci.domain,
       .pciBus      = info->pci.bus,
@@ -1117,12 +1126,6 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    if (!ws_dev->has_vm_bind) {
       result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
                          "NVK Requires a Linux kernel version 6.6 or later");
-      goto fail_ws_dev;
-   }
-
-   if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER))) {
-      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                         "NVK requires a render node");
       goto fail_ws_dev;
    }
 

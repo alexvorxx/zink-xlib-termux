@@ -1556,12 +1556,9 @@ util_format_get_first_non_void_channel(enum pipe_format format)
 
    for (i = 0; i < 4; i++)
       if (desc->channel[i].type != UTIL_FORMAT_TYPE_VOID)
-         break;
+         return i;
 
-   if (i == 4)
-       return -1;
-
-   return i;
+   return -1;
 }
 
 /**

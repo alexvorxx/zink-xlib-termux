@@ -22,6 +22,7 @@
 #include "tu_device.h"
 #include "tu_formats.h"
 #include "tu_rmv.h"
+#include "tu_wsi.h"
 
 uint32_t
 tu6_plane_count(VkFormat format)
@@ -340,7 +341,7 @@ ubwc_possible(struct tu_device *device,
     * and we can't change the descriptor so we can't do this.
     */
    if (((usage | stencil_usage) & VK_IMAGE_USAGE_STORAGE_BIT) &&
-       !info->a6xx.supports_ibo_ubwc) {
+       !info->a7xx.supports_ibo_ubwc) {
       return false;
    }
 
@@ -680,6 +681,22 @@ tu_CreateImage(VkDevice _device,
    const VkSubresourceLayout *plane_layouts = NULL;
 
    TU_FROM_HANDLE(tu_device, device, _device);
+
+#ifdef TU_USE_WSI_PLATFORM
+   /* Ignore swapchain creation info on Android. Since we don't have an
+    * implementation in Mesa, we're guaranteed to access an Android object
+    * incorrectly.
+    */
+   const VkImageSwapchainCreateInfoKHR *swapchain_info =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+      return wsi_common_create_swapchain_image(device->physical_device->vk.wsi_device,
+                                               pCreateInfo,
+                                               swapchain_info->swapchain,
+                                               pImage);
+   }
+#endif
+
    struct tu_image *image = (struct tu_image *)
       vk_object_zalloc(&device->vk, alloc, sizeof(*image), VK_OBJECT_TYPE_IMAGE);
 
@@ -772,6 +789,64 @@ tu_DestroyImage(VkDevice _device,
 #endif
 
    vk_object_free(&device->vk, pAllocator, image);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+tu_BindImageMemory2(VkDevice _device,
+                    uint32_t bindInfoCount,
+                    const VkBindImageMemoryInfo *pBindInfos)
+{
+   TU_FROM_HANDLE(tu_device, device, _device);
+
+   for (uint32_t i = 0; i < bindInfoCount; ++i) {
+      TU_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
+      TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
+
+      /* Ignore this struct on Android, we cannot access swapchain structures there. */
+#ifdef TU_USE_WSI_PLATFORM
+      const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
+
+      if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+         VkImage _wsi_image = wsi_common_get_image(swapchain_info->swapchain,
+                                                   swapchain_info->imageIndex);
+         TU_FROM_HANDLE(tu_image, wsi_img, _wsi_image);
+
+         image->bo = wsi_img->bo;
+         image->map = NULL;
+         image->iova = wsi_img->iova;
+         continue;
+      }
+#endif
+
+      if (mem) {
+         image->bo = mem->bo;
+         image->iova = mem->bo->iova + pBindInfos[i].memoryOffset;
+
+         if (image->vk.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT) {
+            if (!mem->bo->map) {
+               VkResult result = tu_bo_map(device, mem->bo);
+               if (result != VK_SUCCESS)
+                  return result;
+            }
+
+            image->map = (char *)mem->bo->map + pBindInfos[i].memoryOffset;
+         } else {
+            image->map = NULL;
+         }
+#ifdef HAVE_PERFETTO
+         tu_perfetto_log_bind_image(device, image);
+#endif
+      } else {
+         image->bo = NULL;
+         image->map = NULL;
+         image->iova = 0;
+      }
+
+      TU_RMV(image_bind, device, image);
+   }
+
+   return VK_SUCCESS;
 }
 
 static void

@@ -87,6 +87,7 @@ struct rendering_state {
    bool blend_dirty;
    bool rs_dirty;
    bool dsa_dirty;
+   bool dsa_no_stencil;
    bool stencil_ref_dirty;
    bool clip_state_dirty;
    bool blend_color_dirty;
@@ -503,8 +504,16 @@ static void emit_state(struct rendering_state *state)
    }
 
    if (state->dsa_dirty) {
+      bool s0_enabled = state->dsa_state.stencil[0].enabled;
+      bool s1_enabled = state->dsa_state.stencil[1].enabled;
+      if (state->dsa_no_stencil) {
+         state->dsa_state.stencil[0].enabled = false;
+         state->dsa_state.stencil[1].enabled = false;
+      }
       cso_set_depth_stencil_alpha(state->cso, &state->dsa_state);
       state->dsa_dirty = false;
+      state->dsa_state.stencil[0].enabled = s0_enabled;
+      state->dsa_state.stencil[1].enabled = s1_enabled;
    }
 
    if (state->sample_mask_dirty) {
@@ -1853,6 +1862,8 @@ handle_begin_rendering(struct vk_cmd_queue_entry *cmd,
 
    render_att_init(&state->depth_att, info->pDepthAttachment, state->poison_mem, false);
    render_att_init(&state->stencil_att, info->pStencilAttachment, state->poison_mem, true);
+   state->dsa_no_stencil = !state->stencil_att.imgv;
+   state->dsa_dirty = true;
    if (state->depth_att.imgv || state->stencil_att.imgv) {
       assert(state->depth_att.imgv == NULL ||
              state->stencil_att.imgv == NULL ||
@@ -2980,6 +2991,27 @@ static void handle_copy_query_pool_results(struct vk_cmd_queue_entry *cmd,
    unsigned result_size = copycmd->flags & VK_QUERY_RESULT_64_BIT ? 8 : 4;
    for (unsigned i = copycmd->first_query; i < copycmd->first_query + copycmd->query_count; i++) {
       unsigned offset = copycmd->dst_offset + (copycmd->stride * (i - copycmd->first_query));
+
+      if (pool->base_type >= PIPE_QUERY_TYPES) {
+         struct pipe_transfer *transfer;
+         uint8_t *map = pipe_buffer_map(state->pctx, lvp_buffer_from_handle(copycmd->dst_buffer)->bo, PIPE_MAP_WRITE, &transfer);
+         map += offset;
+
+         if (flags & VK_QUERY_RESULT_64_BIT) {
+            uint64_t *dst = (uint64_t *)map;
+            uint64_t *src = (uint64_t *)pool->data;
+            *dst = src[i];
+         } else {
+            uint32_t *dst = (uint32_t *)map;
+            uint64_t *src = (uint64_t *)pool->data;
+            *dst = (uint32_t) (src[i] & UINT32_MAX);
+         }
+
+         state->pctx->buffer_unmap(state->pctx, transfer);
+
+         continue;
+      }
+
       if (pool->queries[i]) {
          unsigned num_results = 0;
          if (copycmd->flags & VK_QUERY_RESULT_WITH_AVAILABILITY_BIT) {
@@ -4454,15 +4486,26 @@ handle_write_acceleration_structures_properties(struct vk_cmd_queue_entry *cmd, 
    for (uint32_t i = 0; i < write->acceleration_structure_count; i++) {
       VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, write->acceleration_structures[i]);
 
-      if (write->query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR) {
+      switch ((uint32_t)pool->base_type) {
+      case LVP_QUERY_ACCELERATION_STRUCTURE_COMPACTED_SIZE:
          dst[i] = accel_struct->size;
-         continue;
+         break;
+      case LVP_QUERY_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE: {
+         struct lvp_bvh_header *header = (void *)(uintptr_t)vk_acceleration_structure_get_va(accel_struct);
+         dst[i] = header->serialization_size;
+         break;
       }
-
-      assert (write->query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR);
-
-      struct lvp_bvh_header *header = (void *)(uintptr_t)vk_acceleration_structure_get_va(accel_struct);
-      dst[i] = header->serialization_size;
+      case LVP_QUERY_ACCELERATION_STRUCTURE_SIZE:
+         dst[i] = accel_struct->size;
+         break;
+      case LVP_QUERY_ACCELERATION_STRUCTURE_INSTANCE_COUNT: {
+         struct lvp_bvh_header *header = (void *)(uintptr_t)vk_acceleration_structure_get_va(accel_struct);
+         dst[i] = header->instance_count;
+         break;
+      }
+      default:
+         unreachable("Unsupported query type");
+      }
    }
 }
 

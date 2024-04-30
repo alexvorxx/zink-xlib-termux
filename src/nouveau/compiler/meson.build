@@ -119,6 +119,10 @@ _libnak_rs = static_library(
   link_with: [_libbitview_rs, libnak_bindings_gen, _libnak_ir_proc_rs],
 )
 
+if with_tests
+  rust.test('nak', _libnak_rs, suite : ['nouveau'])
+endif
+
 nak_nir_algebraic_c = custom_target(
   'nak_nir_algebraic.c',
   input : 'nak_nir_algebraic.py',

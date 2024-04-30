@@ -244,7 +244,7 @@ namespace {
        *    Compiler must use a mov instruction to expand the scalar value to
        *    a vector before using in a HF (packed or unpacked) math operation.
        */
-      if (intel_needs_workaround(devinfo, 22016140776) &&
+      if (inst->is_math() && intel_needs_workaround(devinfo, 22016140776) &&
           is_uniform(inst->src[i]) && inst->src[i].type == BRW_REGISTER_TYPE_HF) {
          return true;
       }

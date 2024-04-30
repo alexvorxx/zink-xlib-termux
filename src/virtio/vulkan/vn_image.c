@@ -768,9 +768,10 @@ vn_BindImageMemory2(VkDevice device,
             vn_image_from_handle(wsi_common_get_image(
                swapchain_info->swapchain, swapchain_info->imageIndex));
          mem = swapchain_img->wsi.memory;
+         info->memory = vn_device_memory_to_handle(mem);
 #endif
       }
-      assert(mem);
+      assert(mem && info->memory != VK_NULL_HANDLE);
 
       if (img->wsi.is_wsi)
          vn_image_bind_wsi_memory(img, mem);

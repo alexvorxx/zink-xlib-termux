@@ -12,7 +12,12 @@ if rc.version().version_compare('< 1.73.0')
   error('nil_rs requires Rust 1.73.0')
 endif
 
-prog_cbindgen = find_program('cbindgen', required : false, native : true)
+prog_cbindgen = find_program(
+  'cbindgen',
+  required : true,
+  native : true,
+  version : '>= 0.25'
+)
 
 dep_paste = dependency('paste',
   version : '>= 1.0.14',
@@ -36,16 +41,6 @@ _libnil_format_table = static_library(
   include_directories : [inc_include, inc_src],
   dependencies : idep_nvidia_headers,
   gnu_symbol_visibility: 'hidden',
-)
-
-# Thanks to cbindgen, this does need to include everything
-_libnil_files = files(
-  'lib.rs', # lib.rs has to come first
-  'extent.rs',
-  'format.rs',
-  'image.rs',
-  'tic.rs',
-  'tiling.rs',
 )
 
 _libnil_deps = [
@@ -113,12 +108,14 @@ _libnil = static_library(
 
 _nil_h = custom_target(
   'nil_h',
-  input : [files('cbindgen.toml'), _libnil_files],
+  input : [files('cbindgen.toml'), 'lib.rs'],
   output : ['nil.h'],
   command : [
     prog_cbindgen, '-q', '--config', '@INPUT0@', '--lang', 'c',
-    '--output', '@OUTPUT0@', '--', '@INPUT1@'
+    '--output', '@OUTPUT0@', '--depfile', '@DEPFILE@',
+    '--', '@INPUT1@',
   ],
+  depfile : 'nil.h.d',
 )
 
 idep_nil = declare_dependency(

@@ -121,8 +121,8 @@ fs_visitor::emit_interpolation_setup()
    const fs_builder bld = fs_builder(this).at_end();
    fs_builder abld = bld.annotate("compute pixel centers");
 
-   this->pixel_x = vgrf(glsl_float_type());
-   this->pixel_y = vgrf(glsl_float_type());
+   this->pixel_x = bld.vgrf(BRW_REGISTER_TYPE_F);
+   this->pixel_y = bld.vgrf(BRW_REGISTER_TYPE_F);
 
    const struct brw_wm_prog_key *wm_key = (brw_wm_prog_key*) this->key;
    struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(prog_data);
@@ -429,7 +429,7 @@ fs_visitor::emit_interpolation_setup()
    if (wm_prog_data->uses_src_w) {
       abld = bld.annotate("compute pos.w");
       this->pixel_w = fetch_payload_reg(abld, fs_payload().source_w_reg);
-      this->wpos_w = vgrf(glsl_float_type());
+      this->wpos_w = bld.vgrf(BRW_REGISTER_TYPE_F);
       abld.emit(SHADER_OPCODE_RCP, this->wpos_w, this->pixel_w);
    }
 
@@ -725,7 +725,7 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
          per_slot_offsets = brw_imm_ud(output_vertex_size *
                                        gs_vertex_count.ud);
       } else {
-         per_slot_offsets = vgrf(glsl_uint_type());
+         per_slot_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.MUL(per_slot_offsets, gs_vertex_count,
                  brw_imm_ud(output_vertex_size));
       }

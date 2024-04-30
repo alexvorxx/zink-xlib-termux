@@ -212,6 +212,7 @@ static void si_late_optimize_16bit_samplers(struct si_screen *sscreen, nir_shade
       .opt_tex_dest_types = nir_type_float,
       .opt_image_dest_types = nir_type_float,
       .opt_image_store_data = true,
+      .opt_image_srcs = true,
       .opt_srcs_options_count = has_g16 ? 2 : 1,
       .opt_srcs_options = opt_srcs_options,
    };

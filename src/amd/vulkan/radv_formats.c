@@ -2008,7 +2008,7 @@ radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFo
 {
    const struct util_format_description *desc1, *desc2;
    enum dcc_channel_type type1, type2;
-   unsigned size1, size2;
+   unsigned size1 = 0, size2 = 0;
    int i;
 
    /* All formats are compatible on GFX11. */

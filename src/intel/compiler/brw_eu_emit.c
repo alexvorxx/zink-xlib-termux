@@ -358,35 +358,6 @@ brw_set_desc_ex(struct brw_codegen *p, brw_inst *inst,
 }
 
 static void
-gfx7_set_dp_scratch_message(struct brw_codegen *p,
-                            brw_inst *inst,
-                            bool write,
-                            bool dword,
-                            bool invalidate_after_read,
-                            unsigned num_regs,
-                            unsigned addr_offset,
-                            unsigned mlen,
-                            unsigned rlen,
-                            bool header_present)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   assert(num_regs == 1 || num_regs == 2 || num_regs == 4 ||
-          num_regs == 8);
-   const unsigned block_size = util_logbase2(num_regs);
-
-   brw_set_desc(p, inst, brw_message_desc(
-                   devinfo, mlen, rlen, header_present));
-
-   brw_inst_set_sfid(devinfo, inst, GFX7_SFID_DATAPORT_DATA_CACHE);
-   brw_inst_set_dp_category(devinfo, inst, 1); /* Scratch Block Read/Write msgs */
-   brw_inst_set_scratch_read_write(devinfo, inst, write);
-   brw_inst_set_scratch_type(devinfo, inst, dword);
-   brw_inst_set_scratch_invalidate_after_read(devinfo, inst, invalidate_after_read);
-   brw_inst_set_scratch_block_size(devinfo, inst, block_size);
-   brw_inst_set_scratch_addr_offset(devinfo, inst, addr_offset);
-}
-
-static void
 brw_inst_set_state(const struct brw_isa_info *isa,
                    brw_inst *insn,
                    const struct brw_insn_state *state)
@@ -1106,13 +1077,10 @@ push_loop_stack(struct brw_codegen *p, brw_inst *inst)
       p->loop_stack_array_size *= 2;
       p->loop_stack = reralloc(p->mem_ctx, p->loop_stack, int,
 			       p->loop_stack_array_size);
-      p->if_depth_in_loop = reralloc(p->mem_ctx, p->if_depth_in_loop, int,
-				     p->loop_stack_array_size);
    }
 
    p->loop_stack[p->loop_stack_depth] = inst - p->store;
    p->loop_stack_depth++;
-   p->if_depth_in_loop[p->loop_stack_depth] = 0;
 }
 
 static brw_inst *
@@ -1156,7 +1124,6 @@ brw_IF(struct brw_codegen *p, unsigned execute_size)
    brw_inst_set_mask_control(devinfo, insn, BRW_MASK_ENABLE);
 
    push_if_stack(p, insn);
-   p->if_depth_in_loop[p->loop_stack_depth]++;
    return insn;
 }
 
@@ -1268,7 +1235,6 @@ brw_ENDIF(struct brw_codegen *p)
    insn = next_insn(p, BRW_OPCODE_ENDIF);
 
    /* Pop the IF and (optional) ELSE instructions from the stack */
-   p->if_depth_in_loop[p->loop_stack_depth]--;
    tmp = pop_if_stack(p);
    if (brw_inst_opcode(p->isa, tmp) == BRW_OPCODE_ELSE) {
       else_inst = tmp;
@@ -1448,36 +1414,6 @@ void gfx6_math(struct brw_codegen *p,
    brw_set_dest(p, insn, dest);
    brw_set_src0(p, insn, src0);
    brw_set_src1(p, insn, src1);
-}
-
-/**
- * Return the right surface index to access the thread scratch space using
- * stateless dataport messages.
- */
-brw_inst *
-gfx9_fb_READ(struct brw_codegen *p,
-             struct brw_reg dst,
-             struct brw_reg payload,
-             unsigned binding_table_index,
-             unsigned msg_length,
-             unsigned response_length,
-             bool per_sample)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   assert(devinfo->ver >= 9);
-   brw_inst *insn = next_insn(p, BRW_OPCODE_SENDC);
-
-   brw_inst_set_sfid(devinfo, insn, GFX6_SFID_DATAPORT_RENDER_CACHE);
-   brw_set_dest(p, insn, dst);
-   brw_set_src0(p, insn, payload);
-   brw_set_desc(
-      p, insn,
-      brw_message_desc(devinfo, msg_length, response_length, true) |
-      brw_fb_read_desc(devinfo, binding_table_index, 0 /* msg_control */,
-                       1 << brw_get_default_exec_size(p), per_sample));
-   brw_inst_set_rt_slot_group(devinfo, insn, brw_get_default_group(p) / 16);
-
-   return insn;
 }
 
 void

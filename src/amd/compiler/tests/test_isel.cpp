@@ -21,14 +21,14 @@ BEGIN_TEST(isel.interp.simple)
       layout(location = 0) in vec4 in_color;
       layout(location = 0) out vec4 out_color;
       void main() {
-         //>> v1: %a_tmp = v_interp_p1_f32 %bx, %pm:m0 attr0.w
+         //>> v1: %b_tmp = v_interp_p1_f32 %bx, %pm:m0 attr0.z
+         //! v1: %b = v_interp_p2_f32 %by, %pm:m0, (kill)%b_tmp attr0.z
+         //! v1: %a_tmp = v_interp_p1_f32 %bx, %pm:m0 attr0.w
          //! v1: %a = v_interp_p2_f32 %by, %pm:m0, (kill)%a_tmp attr0.w
          //! v1: %r_tmp = v_interp_p1_f32 %bx, %pm:m0 attr0.x
          //! v1: %r = v_interp_p2_f32 %by, %pm:m0, (kill)%r_tmp attr0.x
-         //! v1: %g_tmp = v_interp_p1_f32 %bx, %pm:m0 attr0.y
-         //! v1: %g = v_interp_p2_f32 %by, %pm:m0, (kill)%g_tmp attr0.y
-         //! v1: %b_tmp = v_interp_p1_f32 (kill)%bx, %pm:m0 attr0.z
-         //! v1: %b = v_interp_p2_f32 (kill)%by, (kill)%pm:m0, (kill)%b_tmp attr0.z
+         //! v1: %g_tmp = v_interp_p1_f32 (kill)%bx, %pm:m0 attr0.y
+         //! v1: %g = v_interp_p2_f32 (kill)%by, (kill)%pm:m0, (kill)%g_tmp attr0.y
          //! exp (kill)%r, (kill)%g, (kill)%b, (kill)%a mrt0
          out_color = in_color;
       }
@@ -131,13 +131,6 @@ BEGIN_TEST(isel.sparse.clause)
             uint code[4];
          };
          void main() {
-            //! llvm_version: #llvm_ver
-            //; if llvm_ver >= 12:
-            //;    funcs['sample_res'] = lambda _: 'v[#_:#_]'
-            //;    funcs['sample_coords'] = lambda _: '[v#_, v#_, v#_]'
-            //; else:
-            //;    funcs['sample_res'] = lambda _: 'v#_'
-            //;    funcs['sample_coords'] = lambda _: '[v#_, v#_, v#_, v#_]'
             //>> v5: (noCSE)%zero0 = p_create_vector 0, 0, 0, 0, 0
             //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero0, (kill)%_, %_, %_ dmask:xyzw 2d tfe
             //>> v5: (noCSE)%zero1 = p_create_vector 0, 0, 0, 0, 0
@@ -147,18 +140,16 @@ BEGIN_TEST(isel.sparse.clause)
             //>> v5: (noCSE)%zero3 = p_create_vector 0, 0, 0, 0, 0
             //>> v5: %_ = image_sample_lz_o (kill)%_, (kill)%_, (kill)%zero3, (kill)%_, (kill)%_, (kill)%_ dmask:xyzw 2d tfe
             //>> s_clause 0x3
-            //! image_sample_lz_o @sample_res, @sample_coords, @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
-            //! image_sample_lz_o @sample_res, @sample_coords, @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
-            //! image_sample_lz_o @sample_res, @sample_coords, @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
-            //! image_sample_lz_o @sample_res, @sample_coords, @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
             code[0] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(1, 0), res[0]);
             code[1] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(2, 0), res[1]);
             code[2] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(3, 0), res[2]);
             code[3] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(4, 0), res[3]);
          }
       );
-
-      fprintf(output, "llvm_version: %u\n", LLVM_VERSION_MAJOR);
 
       PipelineBuilder pbld(get_vk_device((amd_gfx_level)i));
       pbld.add_cs(cs);

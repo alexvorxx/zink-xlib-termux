@@ -486,10 +486,12 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
-   /* Resets the push constant state so that we allocate a new one if
-    * needed.
+    /* Setting NULL resets the push constant state so that we allocate a new one
+    * if needed. If push constant data not dirty, get_push_range_address can
+    * re-use existing allocation.
     */
-   gfx_state->base.push_constants_state = ANV_STATE_NULL;
+   if (gfx_state->base.push_constants_data_dirty)
+      gfx_state->base.push_constants_state = ANV_STATE_NULL;
 
    anv_foreach_stage(stage, dirty_stages) {
       unsigned buffer_count = 0;
@@ -560,6 +562,7 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
 #endif
 
    cmd_buffer->state.push_constants_dirty &= ~flushed;
+   gfx_state->base.push_constants_data_dirty = false;
 }
 
 #if GFX_VERx10 >= 125

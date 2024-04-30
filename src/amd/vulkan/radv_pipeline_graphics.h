@@ -68,6 +68,8 @@ struct radv_sqtt_shaders_reloc {
 struct radv_graphics_pipeline {
    struct radv_pipeline base;
 
+   struct radv_pipeline_layout layout;
+
    bool uses_drawid;
    bool uses_baseinstance;
 
@@ -138,8 +140,6 @@ struct radv_retained_shaders {
 
 struct radv_graphics_lib_pipeline {
    struct radv_graphics_pipeline base;
-
-   struct radv_pipeline_layout layout;
 
    struct vk_graphics_pipeline_state graphics_state;
 
@@ -541,7 +541,7 @@ bool radv_pipeline_has_gs_copy_shader(const struct radv_pipeline *pipeline);
 void radv_blend_remove_dst(VkBlendOp *func, VkBlendFactor *src_factor, VkBlendFactor *dst_factor,
                            VkBlendFactor expected_dst, VkBlendFactor replacement_src);
 
-unsigned radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format);
+unsigned radv_compact_spi_shader_col_format(uint32_t spi_shader_col_format);
 
 unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 

@@ -423,7 +423,6 @@ fs_inst::can_do_saturate() const
    case BRW_OPCODE_SEL:
    case BRW_OPCODE_SHL:
    case BRW_OPCODE_SHR:
-   case FS_OPCODE_LINTERP:
    case SHADER_OPCODE_COS:
    case SHADER_OPCODE_EXP2:
    case SHADER_OPCODE_LOG2:
@@ -455,7 +454,6 @@ bool
 fs_inst::writes_accumulator_implicitly(const struct intel_device_info *devinfo) const
 {
    return writes_accumulator ||
-          (opcode == FS_OPCODE_LINTERP && !devinfo->has_pln) ||
           (eot && intel_needs_workaround(devinfo, 14010017096));
 }
 

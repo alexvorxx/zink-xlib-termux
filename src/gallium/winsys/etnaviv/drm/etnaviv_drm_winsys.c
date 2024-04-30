@@ -29,7 +29,7 @@
 #include "util/u_screen.h"
 
 #include "etnaviv/etnaviv_screen.h"
-#include "etnaviv/hw/common.xml.h"
+#include "hw/common.xml.h"
 #include "etnaviv_drm_public.h"
 
 #include <stdio.h>

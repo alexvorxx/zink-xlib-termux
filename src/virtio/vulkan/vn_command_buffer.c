@@ -2231,16 +2231,31 @@ vn_CmdPushDescriptorSetWithTemplateKHR(
    struct vn_descriptor_update_template *templ =
       vn_descriptor_update_template_from_handle(descriptorUpdateTemplate);
 
-   mtx_lock(&templ->mutex);
+   STACK_ARRAY(VkWriteDescriptorSet, writes, templ->entry_count);
+   STACK_ARRAY(VkDescriptorImageInfo, img_infos, templ->img_info_count);
+   STACK_ARRAY(VkDescriptorBufferInfo, buf_infos, templ->buf_info_count);
+   STACK_ARRAY(VkBufferView, bview_handles, templ->bview_count);
+   STACK_ARRAY(VkWriteDescriptorSetInlineUniformBlock, iubs,
+               templ->iub_count);
+   struct vn_descriptor_set_update update = {
+      .writes = writes,
+      .img_infos = img_infos,
+      .buf_infos = buf_infos,
+      .bview_handles = bview_handles,
+      .iubs = iubs,
+   };
+   vn_descriptor_set_fill_update_with_template(templ, VK_NULL_HANDLE, pData,
+                                               &update);
 
-   struct vn_update_descriptor_sets *update =
-      vn_update_descriptor_set_with_template_locked(templ, VK_NULL_HANDLE,
-                                                    pData);
    VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer,
-                  templ->pipeline_bind_point, layout, set,
-                  update->write_count, update->writes);
+                  templ->push.pipeline_bind_point, layout, set,
+                  update.write_count, update.writes);
 
-   mtx_unlock(&templ->mutex);
+   STACK_ARRAY_FINISH(writes);
+   STACK_ARRAY_FINISH(img_infos);
+   STACK_ARRAY_FINISH(buf_infos);
+   STACK_ARRAY_FINISH(bview_handles);
+   STACK_ARRAY_FINISH(iubs);
 }
 
 void

@@ -746,7 +746,7 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
    }
    case nir_intrinsic_load_user_data_amd:
       replacement = ac_nir_load_arg(b, &args->ac, args->cs_user_data);
-      replacement = nir_pad_vec4(b, replacement);
+      replacement = nir_pad_vector(b, replacement, 8);
       break;
    default:
       return false;

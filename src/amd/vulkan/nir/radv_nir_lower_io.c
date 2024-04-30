@@ -87,6 +87,7 @@ radv_nir_lower_io(struct radv_device *device, nir_shader *nir)
       nir_recompute_io_bases(nir, nir_var_shader_in);
    }
 
+   NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_in | nir_var_shader_out, NULL);
 }
 

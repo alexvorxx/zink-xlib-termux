@@ -449,7 +449,6 @@ spec@!opengl 2.1@pbo@test_draw_pixels,Fail
 spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
 
-spec@arb_clear_texture@arb_clear_texture-depth,Fail
 spec@arb_clear_texture@arb_clear_texture-float,Fail
 spec@arb_clear_texture@arb_clear_texture-supported-formats,Fail
 

@@ -16,7 +16,7 @@ set -ex -o pipefail
 # - the GL release produces `glcts`, and
 # - the GLES release produces `deqp-gles*` and `deqp-egl`
 
-DEQP_VK_VERSION=1.3.7.0
+DEQP_VK_VERSION=1.3.8.0
 DEQP_GL_VERSION=4.6.4.0
 DEQP_GLES_VERSION=3.2.10.0
 
@@ -28,35 +28,26 @@ DEQP_GLES_VERSION=3.2.10.0
 
 # shellcheck disable=SC2034
 vk_cts_commits_to_backport=(
-    # Take multiview into account for task shader inv. stats
-    22aa3f4c59f6e1d4daebd5a8c9c05bce6cd3b63b
+    # Add missing subgroup support checks for linear derivate tests
+    4bbc98181f01b60286f11f2cea5940332f883154
 
-    # Remove illegal mesh shader query tests
-    2a87f7b25dc27188be0f0a003b2d7aef69d9002e
+    # Use subgroups helper in derivate tests
+    0a4ddb79f3d65fb51e8efd42cbfc8d0c051af8b8
 
-    # Relax fragment shader invocations result verifications
-    0d8bf6a2715f95907e9cf86a86876ff1f26c66fe
+    # Add missing subgroup size in shader object compute tests
+    30176295a204697d3e94192ba19693efbc74a5bf
 
-    # Fix several issues in dynamic rendering basic tests
-    c5453824b498c981c6ba42017d119f5de02a3e34
+    # Add missing virtual destructor to TriangleGenerator
+    dc448441dbacea3fc8ff4764de5b4a7b0e9d9be4
 
-    # Add setVisible for VulkanWindowDirectDrm
-    a8466bf6ea98f6cd6733849ad8081775318a3e3e
+    # Add check for import & export bits for vk drm format modifier tests
+    a9482fd38763636ea09d02356924aeab53edebd0
 )
 
 # shellcheck disable=SC2034
 vk_cts_patch_files=(
-  # Derivate subgroup fix
-  # https://github.com/KhronosGroup/VK-GL-CTS/pull/442
-  build-deqp-vk_Use-subgroups-helper-in-derivate-tests.patch
-  build-deqp-vk_Add-missing-subgroup-support-checks-for-linear-derivate-tests.patch
-
-  # Fix for render_to_image exceeding maxResourceSize
-  # e7e7c4ff1b8a3c6f25527c82e92f67a9a7c49481
-  # patch because it doesn't backport cleanly
-  build-deqp-vk_Fix-for-render_to_image-exceeding-maxResourceSize.patch
-  # Fix for modifiers test
-  0001-Add-check-for-import-export-bits-for-vk-modifier-tes.patch
+    # Fix ASAN errors
+    build-deqp-vk_Fix-more-ASAN-errors-due-to-missing-virtual-destruct.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
@@ -225,7 +216,7 @@ if [ "${DEQP_TARGET}" != 'android' ]; then
     if [ "${DEQP_API}" = 'VK' ]; then
         for mustpass in $(< /VK-GL-CTS/external/vulkancts/mustpass/main/vk-default.txt) ; do
             cat /VK-GL-CTS/external/vulkancts/mustpass/main/$mustpass \
-                >> /deqp/mustpass/vk-master.txt
+                >> /deqp/mustpass/vk-main.txt
         done
     fi
 
@@ -260,7 +251,7 @@ fi
 
 # Remove other mustpass files, since we saved off the ones we wanted to conventient locations above.
 rm -rf /deqp/external/**/mustpass/
-rm -rf /deqp/external/vulkancts/modules/vulkan/vk-master*
+rm -rf /deqp/external/vulkancts/modules/vulkan/vk-main*
 rm -rf /deqp/external/vulkancts/modules/vulkan/vk-default
 
 rm -rf /deqp/external/openglcts/modules/cts-runner

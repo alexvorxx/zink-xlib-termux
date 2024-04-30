@@ -279,7 +279,6 @@ brw_init_codegen(const struct brw_isa_info *isa,
    p->loop_stack_depth = 0;
    p->loop_stack_array_size = 16;
    p->loop_stack = rzalloc_array(mem_ctx, int, p->loop_stack_array_size);
-   p->if_depth_in_loop = rzalloc_array(mem_ctx, int, p->loop_stack_array_size);
 }
 
 

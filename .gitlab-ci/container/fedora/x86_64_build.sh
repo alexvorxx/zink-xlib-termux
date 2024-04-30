@@ -77,6 +77,7 @@ DEPS=(
     python3-devel
     python3-mako
     python3-ply
+    python3-pycparser
     rust-packaging
     vulkan-headers
     spirv-tools-devel

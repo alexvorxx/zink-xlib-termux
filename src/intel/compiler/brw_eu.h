@@ -120,12 +120,6 @@ struct brw_codegen {
     * encountered.
     */
    int *loop_stack;
-   /**
-    * pre-gfx6, the BREAK and CONT instructions had to tell how many IF/ENDIF
-    * blocks they were popping out of, to fix up the mask stack.  This tracks
-    * the IF/ENDIF nesting in each current nested loop level.
-    */
-   int *if_depth_in_loop;
    int loop_stack_depth;
    int loop_stack_array_size;
 
@@ -1472,21 +1466,6 @@ brw_send_indirect_split_message(struct brw_codegen *p,
                                 bool ex_desc_scratch,
                                 bool ex_bso,
                                 bool eot);
-
-void brw_svb_write(struct brw_codegen *p,
-                   struct brw_reg dest,
-                   unsigned msg_reg_nr,
-                   struct brw_reg src0,
-                   unsigned binding_table_index,
-                   bool   send_commit_msg);
-
-brw_inst *gfx9_fb_READ(struct brw_codegen *p,
-                       struct brw_reg dst,
-                       struct brw_reg payload,
-                       unsigned binding_table_index,
-                       unsigned msg_length,
-                       unsigned response_length,
-                       bool per_sample);
 
 void gfx6_math(struct brw_codegen *p,
 	       struct brw_reg dest,

@@ -173,8 +173,9 @@ struct radv_shader_info {
       uint32_t input_per_primitive_mask;
       uint32_t flat_shaded_mask;
       uint32_t explicit_shaded_mask;
-      uint32_t per_vertex_shaded_mask;
+      uint32_t explicit_strict_shaded_mask;
       uint32_t float16_shaded_mask;
+      uint32_t float16_hi_shaded_mask;
       uint32_t num_interp;
       uint32_t num_prim_interp;
       bool can_discard;
@@ -231,6 +232,7 @@ struct radv_shader_info {
       uint32_t num_lds_blocks;
       uint8_t num_linked_inputs;          /* Number of reserved per-vertex input slots in LDS. */
       uint8_t num_linked_outputs;         /* Number of reserved per-vertex output slots in VRAM. */
+      uint8_t num_linked_patch_outputs;   /* Number of reserved per-patch output slots in VRAM. */
       uint8_t num_lds_per_vertex_outputs; /* Number of reserved per-vertex output slots in LDS. */
       uint8_t num_lds_per_patch_outputs;  /* Number of reserved per-patch output slots in LDS. */
       bool tes_reads_tess_factors : 1;
@@ -265,5 +267,7 @@ void radv_nir_shader_info_link(struct radv_device *device, const struct radv_gra
 enum ac_hw_stage radv_select_hw_stage(const struct radv_shader_info *const info, const enum amd_gfx_level gfx_level);
 
 uint64_t radv_gather_unlinked_io_mask(const uint64_t nir_mask);
+
+uint64_t radv_gather_unlinked_patch_io_mask(const uint64_t nir_io_mask, const uint32_t nir_patch_io_mask);
 
 #endif /* RADV_SHADER_INFO_H */

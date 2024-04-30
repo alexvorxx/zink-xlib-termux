@@ -50,7 +50,10 @@ struct radv_video_session {
    rvcn_enc_rate_ctl_per_picture_t rc_per_pic[RADV_ENC_MAX_RATE_LAYER];
    uint32_t enc_preset_mode;
    uint32_t enc_rate_control_method;
+   uint32_t enc_vbv_buffer_level;
    bool enc_rate_control_default;
+   bool enc_need_begin;
+   bool enc_need_rate_control;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session, vk.base, VkVideoSessionKHR, VK_OBJECT_TYPE_VIDEO_SESSION_KHR)

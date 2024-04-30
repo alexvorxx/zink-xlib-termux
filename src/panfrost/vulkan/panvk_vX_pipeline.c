@@ -520,11 +520,13 @@ panvk_pipeline_builder_parse_viewport(struct panvk_pipeline_builder *builder,
          builder->create_info.gfx->pViewportState->pScissors, vpd);
       pipeline->vpd = pipeline->state_bo->addr.dev + builder->vpd_offset;
    }
-   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_VIEWPORT))
+   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_VIEWPORT) &&
+       builder->create_info.gfx->pViewportState)
       pipeline->viewport =
          builder->create_info.gfx->pViewportState->pViewports[0];
 
-   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_SCISSOR))
+   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_SCISSOR) &&
+       builder->create_info.gfx->pViewportState)
       pipeline->scissor =
          builder->create_info.gfx->pViewportState->pScissors[0];
 }
@@ -591,6 +593,9 @@ static void
 panvk_pipeline_builder_parse_color_blend(struct panvk_pipeline_builder *builder,
                                          struct panvk_pipeline *pipeline)
 {
+   if (!builder->create_info.gfx->pColorBlendState)
+      return;
+
    pipeline->blend.state.logicop_enable =
       builder->create_info.gfx->pColorBlendState->logicOpEnable;
    pipeline->blend.state.logicop_func =
@@ -1063,8 +1068,8 @@ panvk_pipeline_builder_init_graphics(
          subpass->depth_stencil_attachment &&
          subpass->depth_stencil_attachment->attachment != VK_ATTACHMENT_UNUSED;
 
-      assert(subpass->color_count <=
-             create_info->pColorBlendState->attachmentCount);
+      assert(!subpass->color_count ||
+             subpass->color_count <= create_info->pColorBlendState->attachmentCount);
       builder->active_color_attachments = 0;
       for (uint32_t i = 0; i < subpass->color_count; i++) {
          uint32_t idx = subpass->color_attachments[i].attachment;

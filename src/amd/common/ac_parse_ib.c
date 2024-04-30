@@ -973,20 +973,6 @@ void ac_parse_ib_chunk(struct ac_ib_parser *ib)
    }
 }
 
-static const char *ip_name(const enum amd_ip_type ip)
-{
-   switch (ip) {
-   case AMD_IP_GFX:
-      return "GFX";
-   case AMD_IP_COMPUTE:
-      return "COMPUTE";
-   case AMD_IP_SDMA:
-      return "SDMA";
-   default:
-      return "Unknown";
-   }
-}
-
 /**
  * Parse and print an IB into a file.
  *
@@ -1005,9 +991,11 @@ static const char *ip_name(const enum amd_ip_type ip)
  */
 void ac_parse_ib(struct ac_ib_parser *ib, const char *name)
 {
-   fprintf(ib->f, "------------------ %s begin - %s ------------------\n", name, ip_name(ib->ip_type));
+   fprintf(ib->f, "------------------ %s begin - %s ------------------\n", name,
+           ac_get_ip_type_string(NULL, ib->ip_type));
 
    ac_parse_ib_chunk(ib);
 
-   fprintf(ib->f, "------------------- %s end - %s -------------------\n\n", name, ip_name(ib->ip_type));
+   fprintf(ib->f, "------------------- %s end - %s -------------------\n\n", name,
+           ac_get_ip_type_string(NULL, ib->ip_type));
 }

@@ -263,6 +263,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_tess_param_base_ir3:
    case nir_intrinsic_load_primitive_location_ir3:
    case nir_intrinsic_preamble_start_ir3:
+   case nir_intrinsic_optimization_barrier_sgpr_amd:
       is_divergent = false;
       break;
 

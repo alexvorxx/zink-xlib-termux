@@ -262,20 +262,6 @@ fs_generator::generate_send(fs_inst *inst,
 }
 
 void
-fs_generator::generate_fb_read(fs_inst *inst, struct brw_reg dst,
-                               struct brw_reg payload)
-{
-   assert(inst->size_written % REG_SIZE == 0);
-   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(this->prog_data);
-   /* We assume that render targets start at binding table index 0. */
-   const unsigned surf_index = inst->target;
-
-   gfx9_fb_READ(p, dst, payload, surf_index,
-                inst->header_size, inst->size_written / REG_SIZE,
-                prog_data->persample_dispatch);
-}
-
-void
 fs_generator::generate_mov_indirect(fs_inst *inst,
                                     struct brw_reg dst,
                                     struct brw_reg reg,
@@ -615,31 +601,6 @@ fs_generator::generate_barrier(fs_inst *, struct brw_reg src)
    } else {
       brw_WAIT(p);
    }
-}
-
-bool
-fs_generator::generate_linterp(fs_inst *inst,
-                               struct brw_reg dst, struct brw_reg *src)
-{
-   /* PLN reads:
-    *                      /   in SIMD16   \
-    *    -----------------------------------
-    *   | src1+0 | src1+1 | src1+2 | src1+3 |
-    *   |-----------------------------------|
-    *   |(x0, x1)|(y0, y1)|(x2, x3)|(y2, y3)|
-    *    -----------------------------------
-    */
-   struct brw_reg delta_x = src[0];
-   struct brw_reg interp = src[1];
-
-   /* nir_lower_interpolation() will do the lowering to MAD instructions for
-    * us on gfx11+
-    */
-   assert(devinfo->ver < 11);
-   assert(devinfo->has_pln);
-
-   brw_PLN(p, dst, interp, delta_x);
-   return false;
 }
 
 /* For OPCODE_DDX and OPCODE_DDY, per channel of output we've got input
@@ -1230,8 +1191,16 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(inst->opcode == SHADER_OPCODE_POW || inst->exec_size == 8);
          gfx6_math(p, dst, brw_math_function(inst->opcode), src[0], src[1]);
 	 break;
-      case FS_OPCODE_LINTERP:
-	 multiple_instructions_emitted = generate_linterp(inst, dst, src);
+      case BRW_OPCODE_PLN:
+         /* PLN reads:
+          *                      /   in SIMD16   \
+          *    -----------------------------------
+          *   | src1+0 | src1+1 | src1+2 | src1+3 |
+          *   |-----------------------------------|
+          *   |(x0, x1)|(y0, y1)|(x2, x3)|(y2, y3)|
+          *    -----------------------------------
+          */
+         brw_PLN(p, dst, src[0], src[1]);
 	 break;
       case FS_OPCODE_PIXEL_X:
          assert(src[0].type == BRW_REGISTER_TYPE_UW);
@@ -1284,11 +1253,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       case SHADER_OPCODE_MOV_RELOC_IMM:
          assert(src[0].file == BRW_IMMEDIATE_VALUE);
          brw_MOV_reloc_imm(p, dst, dst.type, src[0].ud);
-         break;
-
-      case FS_OPCODE_FB_READ:
-         generate_fb_read(inst, dst, src[0]);
-         send_count++;
          break;
 
       case BRW_OPCODE_HALT:

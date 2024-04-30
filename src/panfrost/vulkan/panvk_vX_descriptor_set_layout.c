@@ -126,6 +126,8 @@ panvk_per_arch(CreateDescriptorSetLayout)(
       goto err_free_bindings;
    }
 
+   set_layout->flags = pCreateInfo->flags;
+
    struct panvk_sampler **immutable_samplers =
       (struct panvk_sampler **)((uint8_t *)set_layout + sizeof(*set_layout) +
                                 (sizeof(

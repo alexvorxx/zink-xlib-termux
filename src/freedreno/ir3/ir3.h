@@ -1288,6 +1288,26 @@ reg_size(const struct ir3_register *reg)
    return reg_elems(reg) * reg_elem_size(reg);
 }
 
+/* Post-RA, we don't have arrays any more, so we have to be a bit careful here
+ * and have to handle relative accesses specially.
+ */
+
+static inline unsigned
+post_ra_reg_elems(struct ir3_register *reg)
+{
+   if (reg->flags & IR3_REG_RELATIV)
+      return reg->size;
+   return reg_elems(reg);
+}
+
+static inline unsigned
+post_ra_reg_num(struct ir3_register *reg)
+{
+   if (reg->flags & IR3_REG_RELATIV)
+      return reg->array.base;
+   return reg->num;
+}
+
 static inline unsigned
 dest_regs(struct ir3_instruction *instr)
 {
@@ -1871,8 +1891,6 @@ int ir3_delayslots(struct ir3_instruction *assigner,
 unsigned ir3_delayslots_with_repeat(struct ir3_instruction *assigner,
                                     struct ir3_instruction *consumer,
                                     unsigned assigner_n, unsigned consumer_n);
-unsigned ir3_delay_calc(struct ir3_block *block,
-                        struct ir3_instruction *instr, bool mergedregs);
 
 /* estimated (ss)/(sy) delay calculation */
 

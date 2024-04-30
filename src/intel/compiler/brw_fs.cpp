@@ -218,7 +218,7 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
     * be any component of a vector, and then we load 4 contiguous
     * components starting from that.  TODO: Support loading fewer than 4.
     */
-   fs_reg total_offset = vgrf(glsl_uint_type());
+   fs_reg total_offset = bld.vgrf(BRW_REGISTER_TYPE_UD);
    bld.ADD(total_offset, varying_offset, brw_imm_ud(const_offset));
 
    /* The pull load message will load a vec4 (16 bytes). If we are loading
@@ -256,8 +256,6 @@ fs_inst::is_send_from_grf() const
       return true;
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return src[1].file == VGRF;
-   case FS_OPCODE_FB_READ:
-      return src[0].file == VGRF;
    default:
       return false;
    }
@@ -294,7 +292,6 @@ bool
 fs_inst::is_payload(unsigned arg) const
 {
    switch (opcode) {
-   case FS_OPCODE_FB_READ:
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
@@ -513,7 +510,6 @@ fs_inst::can_do_cmod() const
    case BRW_OPCODE_SHR:
    case BRW_OPCODE_SUBB:
    case BRW_OPCODE_XOR:
-   case FS_OPCODE_LINTERP:
       break;
    default:
       return false;
@@ -724,11 +720,8 @@ fs_inst::components_read(unsigned i) const
       return 0;
 
    switch (opcode) {
-   case FS_OPCODE_LINTERP:
-      if (i == 0)
-         return 2;
-      else
-         return 1;
+   case BRW_OPCODE_PLN:
+      return i == 0 ? 1 : 2;
 
    case FS_OPCODE_PIXEL_X:
    case FS_OPCODE_PIXEL_Y:
@@ -917,15 +910,14 @@ fs_inst::size_read(int arg) const
       }
       break;
 
-   case FS_OPCODE_FB_READ:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       if (arg == 0)
          return mlen * REG_SIZE;
       break;
 
-   case FS_OPCODE_LINTERP:
-      if (arg == 1)
+   case BRW_OPCODE_PLN:
+      if (arg == 0)
          return 16;
       break;
 
@@ -1068,66 +1060,6 @@ fs_inst::has_sampler_residency() const
    default:
       return false;
    }
-}
-
-static enum brw_reg_type
-brw_type_for_base_type(const struct glsl_type *type)
-{
-   switch (type->base_type) {
-   case GLSL_TYPE_FLOAT16:
-      return BRW_REGISTER_TYPE_HF;
-   case GLSL_TYPE_FLOAT:
-      return BRW_REGISTER_TYPE_F;
-   case GLSL_TYPE_INT:
-   case GLSL_TYPE_BOOL:
-   case GLSL_TYPE_SUBROUTINE:
-      return BRW_REGISTER_TYPE_D;
-   case GLSL_TYPE_INT16:
-      return BRW_REGISTER_TYPE_W;
-   case GLSL_TYPE_INT8:
-      return BRW_REGISTER_TYPE_B;
-   case GLSL_TYPE_UINT:
-      return BRW_REGISTER_TYPE_UD;
-   case GLSL_TYPE_UINT16:
-      return BRW_REGISTER_TYPE_UW;
-   case GLSL_TYPE_UINT8:
-      return BRW_REGISTER_TYPE_UB;
-   case GLSL_TYPE_ARRAY:
-      return brw_type_for_base_type(type->fields.array);
-   case GLSL_TYPE_STRUCT:
-   case GLSL_TYPE_INTERFACE:
-   case GLSL_TYPE_SAMPLER:
-   case GLSL_TYPE_TEXTURE:
-   case GLSL_TYPE_ATOMIC_UINT:
-      /* These should be overridden with the type of the member when
-       * dereferenced into.  BRW_REGISTER_TYPE_UD seems like a likely
-       * way to trip up if we don't.
-       */
-      return BRW_REGISTER_TYPE_UD;
-   case GLSL_TYPE_IMAGE:
-      return BRW_REGISTER_TYPE_UD;
-   case GLSL_TYPE_DOUBLE:
-      return BRW_REGISTER_TYPE_DF;
-   case GLSL_TYPE_UINT64:
-      return BRW_REGISTER_TYPE_UQ;
-   case GLSL_TYPE_INT64:
-      return BRW_REGISTER_TYPE_Q;
-   case GLSL_TYPE_VOID:
-   case GLSL_TYPE_ERROR:
-   case GLSL_TYPE_COOPERATIVE_MATRIX:
-      unreachable("not reached");
-   }
-
-   return BRW_REGISTER_TYPE_F;
-}
-
-fs_reg
-fs_visitor::vgrf(const glsl_type *const type)
-{
-   int reg_width = dispatch_width / 8;
-   return fs_reg(VGRF,
-                 alloc.allocate(glsl_count_dword_slots(type, false) * reg_width),
-                 brw_type_for_base_type(type));
 }
 
 fs_reg::fs_reg(enum brw_reg_file file, unsigned nr)
@@ -2322,8 +2254,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return brw_opcode_desc(isa, op)->name;
    case FS_OPCODE_FB_WRITE_LOGICAL:
       return "fb_write_logical";
-   case FS_OPCODE_FB_READ:
-      return "fb_read";
    case FS_OPCODE_FB_READ_LOGICAL:
       return "fb_read_logical";
 
@@ -2487,9 +2417,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "ddy_coarse";
    case FS_OPCODE_DDY_FINE:
       return "ddy_fine";
-
-   case FS_OPCODE_LINTERP:
-      return "linterp";
 
    case FS_OPCODE_PIXEL_X:
       return "pixel_x";
@@ -3234,18 +3161,19 @@ fs_visitor::run_gs()
 
    payload_ = new gs_thread_payload(*this);
 
-   this->final_gs_vertex_count = vgrf(glsl_uint_type());
+   const fs_builder bld = fs_builder(this).at_end();
+
+   this->final_gs_vertex_count = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
    if (gs_compile->control_data_header_size_bits > 0) {
       /* Create a VGRF to store accumulated control data bits. */
-      this->control_data_bits = vgrf(glsl_uint_type());
+      this->control_data_bits = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
       /* If we're outputting more than 32 control data bits, then EmitVertex()
        * will set control_data_bits to 0 after emitting the first vertex.
        * Otherwise, we need to initialize it to 0 here.
        */
       if (gs_compile->control_data_header_size_bits <= 32) {
-         const fs_builder bld = fs_builder(this).at_end();
          const fs_builder abld = bld.annotate("initialize control data bits");
          abld.MOV(this->control_data_bits, brw_imm_ud(0u));
       }

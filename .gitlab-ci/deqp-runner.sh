@@ -59,7 +59,7 @@ if [ -z "$DEQP_SUITE" ]; then
 
     # Generate test case list file.
     if [ "$DEQP_VER" = "vk" ]; then
-       MUSTPASS=/deqp/mustpass/vk-master.txt
+       MUSTPASS=/deqp/mustpass/vk-main.txt
        DEQP=/deqp/external/vulkancts/modules/vulkan/deqp-vk
     elif [ "$DEQP_VER" = "gles2" ] || [ "$DEQP_VER" = "gles3" ] || [ "$DEQP_VER" = "gles31" ] || [ "$DEQP_VER" = "egl" ]; then
        MUSTPASS=/deqp/mustpass/$DEQP_VER-main.txt

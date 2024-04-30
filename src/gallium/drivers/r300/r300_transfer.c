@@ -10,7 +10,7 @@
 
 #include "util/u_memory.h"
 #include "util/format/u_format.h"
-#include "util/u_box.h"
+#include "util/box.h"
 
 struct r300_transfer {
     /* Parent class */

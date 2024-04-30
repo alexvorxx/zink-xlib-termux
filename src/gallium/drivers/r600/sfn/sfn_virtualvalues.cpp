@@ -1056,6 +1056,7 @@ LocalArrayValue::accept(ConstRegisterVisitor& vistor) const
 void
 LocalArrayValue::add_parent_to_array(Instr *instr)
 {
+   m_array.add_parent(instr);
    if (m_addr)
       m_array.add_parent_to_elements(chan(), instr);
 }

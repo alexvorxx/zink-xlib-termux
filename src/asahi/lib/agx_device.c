@@ -6,6 +6,7 @@
 
 #include "agx_device.h"
 #include <inttypes.h>
+#include "util/ralloc.h"
 #include "util/timespec.h"
 #include "agx_bo.h"
 #include "agx_compile.h"
@@ -386,6 +387,7 @@ agx_open_device(void *memctx, struct agx_device *dev)
 void
 agx_close_device(struct agx_device *dev)
 {
+   ralloc_free((void *)dev->libagx);
    agx_bo_unreference(dev->helper);
    agx_bo_cache_evict_all(dev);
    util_sparse_array_finish(&dev->bo_map);

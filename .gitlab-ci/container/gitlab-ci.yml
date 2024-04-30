@@ -44,6 +44,12 @@
   variables:
     FDO_DISTRIBUTION_VERSION: bookworm-slim
 
+.debian-container:
+  extends:
+    - .fdo.container-build@debian
+    - .container
+    - .debian-container-version
+
 .container:
   stage: container
   extends:
@@ -63,9 +69,7 @@
 # Debian based x86_64 build image base
 debian/x86_64_build-base:
   extends:
-    - .fdo.container-build@debian
-    - .container
-    - .debian-container-version
+    - .debian-container
   variables:
     MESA_IMAGE_TAG: &debian-x86_64_build-base "${DEBIAN_BASE_TAG}--${PKG_REPO_REV}"
   rules:

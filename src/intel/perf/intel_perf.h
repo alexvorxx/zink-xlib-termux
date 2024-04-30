@@ -565,6 +565,11 @@ void intel_perf_get_counters_passes(struct intel_perf_config *perf,
                                     uint32_t counter_indices_count,
                                     struct intel_perf_counter_pass *counter_pass);
 
+int intel_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
+                           uint32_t ctx_id, uint64_t metrics_set_id,
+                           uint64_t period_exponent, bool hold_preemption,
+                           bool enable);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

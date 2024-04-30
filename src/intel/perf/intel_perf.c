@@ -1580,3 +1580,22 @@ intel_perf_get_oa_format(struct intel_perf_config *perf_cfg)
       return 0;
    }
 }
+
+int
+intel_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
+                       uint32_t ctx_id, uint64_t metrics_set_id,
+                       uint64_t period_exponent, bool hold_preemption,
+                       bool enable)
+{
+   uint64_t report_format = intel_perf_get_oa_format(perf_config);
+
+   switch (perf_config->devinfo->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return i915_perf_stream_open(perf_config, drm_fd, ctx_id, metrics_set_id,
+                                   report_format, period_exponent,
+                                   hold_preemption, enable);
+   default:
+         unreachable("missing");
+         return 0;
+   }
+}

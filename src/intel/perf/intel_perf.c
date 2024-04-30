@@ -1546,6 +1546,10 @@ intel_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
       return i915_perf_stream_open(perf_config, drm_fd, ctx_id, metrics_set_id,
                                    report_format, period_exponent,
                                    hold_preemption, enable);
+   case INTEL_KMD_TYPE_XE:
+      return xe_perf_stream_open(perf_config, drm_fd, ctx_id, metrics_set_id,
+                                 report_format, period_exponent,
+                                 hold_preemption, enable);
    default:
          unreachable("missing");
          return 0;

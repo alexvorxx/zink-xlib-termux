@@ -17,3 +17,8 @@ bool xe_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_re
 
 uint64_t xe_add_config(struct intel_perf_config *perf, int fd, const struct intel_perf_registers *config, const char *guid);
 void xe_remove_config(struct intel_perf_config *perf, int fd, uint64_t config_id);
+
+int xe_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
+                        uint32_t exec_id, uint64_t metrics_set_id,
+                        uint64_t report_format, uint64_t period_exponent,
+                        bool hold_preemption, bool enable);

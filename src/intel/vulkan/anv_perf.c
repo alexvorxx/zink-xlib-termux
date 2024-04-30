@@ -229,8 +229,9 @@ VkResult anv_QueueSetPerformanceConfigurationINTEL(
          if (device->perf_fd < 0)
             return VK_ERROR_INITIALIZATION_FAILED;
       } else {
-         int ret = intel_ioctl(device->perf_fd, I915_PERF_IOCTL_CONFIG,
-                               (void *)(uintptr_t) config->config_id);
+         int ret = intel_perf_stream_set_metrics_id(device->physical->perf,
+                                                    device->perf_fd,
+                                                    config->config_id);
          if (ret < 0)
             return vk_device_set_lost(&device->vk, "i915-perf config failed: %m");
       }

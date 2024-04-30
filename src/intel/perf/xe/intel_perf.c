@@ -166,3 +166,15 @@ xe_perf_stream_set_state(int perf_stream_fd, bool enable)
 
    return intel_ioctl(perf_stream_fd, uapi, 0);
 }
+
+int
+xe_perf_stream_set_metrics_id(int perf_stream_fd, uint64_t metrics_set_id)
+{
+   struct drm_xe_ext_set_property prop = {};
+   uint32_t index = 0;
+
+   perf_prop_set(&prop, &index, DRM_XE_OA_PROPERTY_OA_METRIC_SET,
+                 metrics_set_id);
+   return intel_ioctl(perf_stream_fd, DRM_XE_PERF_IOCTL_CONFIG,
+                      (void *)(uintptr_t)&prop);
+}

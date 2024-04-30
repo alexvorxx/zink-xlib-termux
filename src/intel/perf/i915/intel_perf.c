@@ -283,3 +283,10 @@ i915_perf_stream_set_state(int perf_stream_fd, bool enable)
 
    return intel_ioctl(perf_stream_fd, uapi, 0);
 }
+
+int
+i915_perf_stream_set_metrics_id(int perf_stream_fd, uint64_t metrics_set_id)
+{
+   return intel_ioctl(perf_stream_fd, I915_PERF_IOCTL_CONFIG,
+                      (void *)(uintptr_t)metrics_set_id);
+}

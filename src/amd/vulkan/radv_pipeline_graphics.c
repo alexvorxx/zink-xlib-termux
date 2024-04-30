@@ -3554,13 +3554,13 @@ gfx103_pipeline_vrs_coarse_shading(const struct radv_device *device, const struc
 
 void
 gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps,
-                      bool enable_vrs, bool enable_vrs_coarse_shading, bool force_vrs_per_vertex)
+                      bool enable_vrs_coarse_shading, bool force_vrs_per_vertex)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    uint32_t mode = V_028064_SC_VRS_COMB_MODE_PASSTHRU;
    uint8_t rate_x = 0, rate_y = 0;
 
-   if (!enable_vrs && enable_vrs_coarse_shading) {
+   if (enable_vrs_coarse_shading) {
       /* When per-draw VRS is not enabled at all, try enabling VRS coarse shading 2x2 if the driver
        * determined that it's safe to enable.
        */
@@ -3589,9 +3589,7 @@ gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ct
 }
 
 static void
-radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                       const struct vk_graphics_pipeline_state *state)
-
+radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pipeline *pipeline)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *last_vgt_shader = radv_get_last_vgt_shader(pipeline);
@@ -3641,11 +3639,9 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
    radv_emit_vgt_shader_config(device, ctx_cs, &vgt_shader_key);
 
    if (pdev->info.gfx_level >= GFX10_3) {
-      const bool enable_vrs = radv_is_vrs_enabled(state);
-
-      gfx103_emit_vgt_draw_payload_cntl(ctx_cs, pipeline->base.shaders[MESA_SHADER_MESH], enable_vrs);
-      gfx103_emit_vrs_state(device, ctx_cs, pipeline->base.shaders[MESA_SHADER_FRAGMENT], enable_vrs,
-                            gfx103_pipeline_vrs_coarse_shading(device, pipeline), pipeline->force_vrs_per_vertex);
+      gfx103_emit_vgt_draw_payload_cntl(ctx_cs, pipeline->base.shaders[MESA_SHADER_MESH], pipeline->uses_vrs);
+      gfx103_emit_vrs_state(device, ctx_cs, pipeline->base.shaders[MESA_SHADER_FRAGMENT],
+                            pipeline->uses_vrs_coarse_shading, pipeline->force_vrs_per_vertex);
    }
 
    pipeline->base.ctx_cs_hash = _mesa_hash_data(ctx_cs->buf, ctx_cs->cdw * 4);
@@ -3965,7 +3961,9 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    pipeline->force_vrs_per_vertex = pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.force_vrs_per_vertex;
    pipeline->rast_prim = vgt_gs_out_prim_type;
    pipeline->uses_out_of_order_rast = state.rs->rasterization_order_amd == VK_RASTERIZATION_ORDER_RELAXED_AMD;
+   pipeline->uses_vrs = radv_is_vrs_enabled(&state);
    pipeline->uses_vrs_attachment = radv_pipeline_uses_vrs_attachment(pipeline, &state);
+   pipeline->uses_vrs_coarse_shading = !pipeline->uses_vrs && gfx103_pipeline_vrs_coarse_shading(device, pipeline);
 
    pipeline->base.push_constant_size = pipeline->layout.push_constant_size;
    pipeline->base.dynamic_offset_count = pipeline->layout.dynamic_offset_count;
@@ -3974,7 +3972,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       radv_pipeline_init_extra(pipeline, extra, &state);
    }
 
-   radv_pipeline_emit_pm4(device, pipeline, &state);
+   radv_pipeline_emit_pm4(device, pipeline);
 
    return result;
 }

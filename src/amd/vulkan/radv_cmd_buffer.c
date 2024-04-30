@@ -7157,7 +7157,9 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
       cmd_buffer->state.ia_multi_vgt_param = graphics_pipeline->ia_multi_vgt_param;
 
       cmd_buffer->state.uses_out_of_order_rast = graphics_pipeline->uses_out_of_order_rast;
+      cmd_buffer->state.uses_vrs = graphics_pipeline->uses_vrs;
       cmd_buffer->state.uses_vrs_attachment = graphics_pipeline->uses_vrs_attachment;
+      cmd_buffer->state.uses_vrs_coarse_shading = graphics_pipeline->uses_vrs_coarse_shading;
       cmd_buffer->state.uses_dynamic_vertex_binding_stride =
          !!(graphics_pipeline->dynamic_states & (RADV_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE | RADV_DYNAMIC_VERTEX_INPUT));
       break;
@@ -9544,8 +9546,9 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
 
    if (pdev->info.gfx_level >= GFX10_3) {
-      gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], false);
-      gfx103_emit_vrs_state(device, cs, NULL, false, false, false);
+      gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], cmd_buffer->state.uses_vrs);
+      gfx103_emit_vrs_state(device, cs, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT],
+                            cmd_buffer->state.uses_vrs_coarse_shading, last_vgt_shader->info.force_vrs_per_vertex);
    }
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GRAPHICS_SHADERS;
@@ -12450,6 +12453,9 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
             cmd_buffer->state.db_render_control = 0;
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_FRAMEBUFFER;
          }
+
+         cmd_buffer->state.uses_vrs = false;
+         cmd_buffer->state.uses_vrs_coarse_shading = false;
 
          cmd_buffer->state.emitted_graphics_pipeline = NULL;
       }

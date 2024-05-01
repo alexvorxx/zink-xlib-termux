@@ -1689,9 +1689,7 @@ wsi_wl_swapchain_set_present_mode(struct wsi_swapchain *wsi_chain,
 }
 
 static VkResult
-wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
-                                  uint64_t present_id,
-                                  uint64_t timeout)
+dispatch_present_id_queue(struct wsi_swapchain *wsi_chain, struct timespec *end_time)
 {
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
 
@@ -1699,6 +1697,79 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
     * read events from the present ID queue. This queue is private to a given VkSwapchainKHR,
     * so calling present wait on a retired swapchain cannot interfere with a non-retired swapchain. */
    struct wl_display *wl_display = chain->wsi_wl_surface->display->wl_display;
+
+   VkResult ret;
+   int err;
+
+   /* PresentWait can be called concurrently.
+    * If there is contention on this mutex, it means there is currently a dispatcher in flight holding the lock.
+    * The lock is only held while there is forward progress processing events from Wayland,
+    * so there should be no problem locking without timeout.
+    * We would like to be able to support timeout = 0 to query the current max_completed count.
+    * A timedlock with no timeout can be problematic in that scenario. */
+   err = pthread_mutex_lock(&chain->present_ids.lock);
+   if (err != 0)
+      return VK_ERROR_OUT_OF_DATE_KHR;
+
+   /* Someone else is dispatching events; wait for them to update the chain
+    * status and wake us up. */
+   if (chain->present_ids.dispatch_in_progress) {
+      err = pthread_cond_timedwait(&chain->present_ids.list_advanced,
+                                   &chain->present_ids.lock, end_time);
+      pthread_mutex_unlock(&chain->present_ids.lock);
+
+      if (err == ETIMEDOUT)
+         return VK_TIMEOUT;
+      else if (err != 0)
+         return VK_ERROR_OUT_OF_DATE_KHR;
+
+      return VK_SUCCESS;
+   }
+
+   /* Whether or not we were dispatching the events before, we are now. */
+   assert(!chain->present_ids.dispatch_in_progress);
+   chain->present_ids.dispatch_in_progress = true;
+
+   /* We drop the lock now - we're still protected by dispatch_in_progress,
+    * and holding the lock while dispatch_queue_timeout waits in poll()
+    * might delay other threads unnecessarily.
+    *
+    * We'll pick up the lock again in the dispatched functions.
+    */
+   pthread_mutex_unlock(&chain->present_ids.lock);
+
+   struct timespec current_time, remaining_timeout;
+   clock_gettime(CLOCK_MONOTONIC, &current_time);
+   timespec_sub_saturate(&remaining_timeout, end_time, &current_time);
+   ret = wl_display_dispatch_queue_timeout(wl_display,
+                                           chain->present_ids.queue,
+                                           &remaining_timeout);
+
+   pthread_mutex_lock(&chain->present_ids.lock);
+
+   /* Wake up other waiters who may have been unblocked by the events
+    * we just read. */
+   pthread_cond_broadcast(&chain->present_ids.list_advanced);
+
+   assert(chain->present_ids.dispatch_in_progress);
+   chain->present_ids.dispatch_in_progress = false;
+
+   pthread_cond_broadcast(&chain->present_ids.list_advanced);
+   pthread_mutex_unlock(&chain->present_ids.lock);
+
+   if (ret == -1)
+      return VK_ERROR_OUT_OF_DATE_KHR;
+   if (ret == 0)
+      return VK_TIMEOUT;
+   return VK_SUCCESS;
+}
+
+static VkResult
+wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
+                                  uint64_t present_id,
+                                  uint64_t timeout)
+{
+   struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
 
    struct timespec end_time;
    VkResult ret;
@@ -1735,89 +1806,23 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
    VkResult timeout_result = assumed_success_at < atimeout ? VK_SUCCESS : VK_TIMEOUT;
    timespec_from_nsec(&end_time, MIN2(atimeout, assumed_success_at));
 
-   /* PresentWait can be called concurrently.
-    * If there is contention on this mutex, it means there is currently a dispatcher in flight holding the lock.
-    * The lock is only held while there is forward progress processing events from Wayland,
-    * so there should be no problem locking without timeout.
-    * We would like to be able to support timeout = 0 to query the current max_completed count.
-    * A timedlock with no timeout can be problematic in that scenario. */
-   err = pthread_mutex_lock(&chain->present_ids.lock);
-   if (err != 0)
-      return VK_ERROR_OUT_OF_DATE_KHR;
-
-   if (chain->present_ids.max_completed >= present_id) {
-      pthread_mutex_unlock(&chain->present_ids.lock);
-      return VK_SUCCESS;
-   }
-
-   /* Someone else is dispatching events; wait for them to update the chain
-    * status and wake us up. */
-   while (chain->present_ids.dispatch_in_progress) {
-      err = pthread_cond_timedwait(&chain->present_ids.list_advanced,
-                                   &chain->present_ids.lock, &end_time);
-
-      if (err == ETIMEDOUT) {
-         pthread_mutex_unlock(&chain->present_ids.lock);
-         return timeout_result;
-      } else if (err != 0) {
-         pthread_mutex_unlock(&chain->present_ids.lock);
-         return VK_ERROR_OUT_OF_DATE_KHR;
-      }
-
-      if (chain->present_ids.max_completed >= present_id) {
-         pthread_mutex_unlock(&chain->present_ids.lock);
-         return VK_SUCCESS;
-      }
-
-      /* Whoever was previously dispatching the events isn't anymore, so we
-       * will take over and fall through below. */
-      if (!chain->present_ids.dispatch_in_progress)
-         break;
-   }
-
-   assert(!chain->present_ids.dispatch_in_progress);
-   chain->present_ids.dispatch_in_progress = true;
-
-   /* Whether or not we were dispatching the events before, we are now. */
    while (1) {
-      if (chain->present_ids.max_completed >= present_id) {
-         ret = VK_SUCCESS;
-         break;
-      }
-      /* We drop the lock now - we're still protected by dispatch_in_progress,
-       * and holding the lock while dispatch_queue_timeout waits in poll()
-       * might delay other threads unnecessarily.
-       *
-       * We'll pick up the lock again in the dispatched functions.
-       */
+      err = pthread_mutex_lock(&chain->present_ids.lock);
+      if (err != 0)
+         return VK_ERROR_OUT_OF_DATE_KHR;
+
+      bool completed = chain->present_ids.max_completed >= present_id;
       pthread_mutex_unlock(&chain->present_ids.lock);
 
-      struct timespec current_time, remaining_timeout;
-      clock_gettime(CLOCK_MONOTONIC, &current_time);
-      timespec_sub_saturate(&remaining_timeout, &end_time, &current_time);
-      ret = wl_display_dispatch_queue_timeout(wl_display,
-                                              chain->present_ids.queue,
-                                              &remaining_timeout);
-      pthread_mutex_lock(&chain->present_ids.lock);
-      if (ret == -1) {
-         ret = VK_ERROR_OUT_OF_DATE_KHR;
-         break;
-      }
-      if (ret == 0) {
-         ret = timeout_result;
-         break;
-      }
+      if (completed)
+         return VK_SUCCESS;
 
-      /* Wake up other waiters who may have been unblocked by the events
-       * we just read. */
-      pthread_cond_broadcast(&chain->present_ids.list_advanced);
+      ret = dispatch_present_id_queue(wsi_chain, &end_time);
+      if (ret == VK_TIMEOUT)
+         return timeout_result;
+      if (ret != VK_SUCCESS)
+         return ret;
    }
-
-   assert(chain->present_ids.dispatch_in_progress);
-   chain->present_ids.dispatch_in_progress = false;
-   pthread_cond_broadcast(&chain->present_ids.list_advanced);
-   pthread_mutex_unlock(&chain->present_ids.lock);
-   return ret;
 }
 
 static VkResult

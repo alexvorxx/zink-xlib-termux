@@ -623,6 +623,7 @@ get_vk_device(enum amd_gfx_level gfx_level)
    case GFX10: family = CHIP_NAVI10; break;
    case GFX10_3: family = CHIP_NAVI21; break;
    case GFX11: family = CHIP_NAVI31; break;
+   case GFX12: family = CHIP_GFX1200; break;
    default: family = CHIP_UNKNOWN; break;
    }
    return get_vk_device(family);

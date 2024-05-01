@@ -797,6 +797,7 @@ print_access(enum gl_access_qualifier access, print_state *state, const char *se
       { ACCESS_CAN_SPECULATE, "speculatable" },
       { ACCESS_NON_TEMPORAL, "non-temporal" },
       { ACCESS_INCLUDE_HELPERS, "include-helpers" },
+      { ACCESS_CP_GE_COHERENT_AMD, "cp-ge-coherent-amd" },
    };
 
    bool first = true;
@@ -1215,6 +1216,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
             break;
          case nir_atomic_op_dec_wrap:
             fprintf(fp, "dec_wrap");
+            break;
+         case nir_atomic_op_ordered_add_gfx12_amd:
+            fprintf(fp, "ordered_add");
             break;
          }
          break;

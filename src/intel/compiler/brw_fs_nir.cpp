@@ -1051,16 +1051,21 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       nir_component_mask_t write_mask = get_nir_write_mask(instr->def);
       unsigned last_bit = util_last_bit(write_mask);
 
-      for (unsigned i = 0; i < last_bit; i++) {
-         if (!(write_mask & (1 << i)))
-            continue;
+      fs_reg comps[last_bit];
 
-         if (instr->op == nir_op_mov) {
-            bld.MOV(offset(temp, bld, i),
-                           offset(op[0], bld, instr->src[0].swizzle[i]));
-         } else {
-            bld.MOV(offset(temp, bld, i),
-                           offset(op[i], bld, instr->src[i].swizzle[0]));
+      for (unsigned i = 0; i < last_bit; i++) {
+         if (instr->op == nir_op_mov)
+            comps[i] = offset(op[0], bld, instr->src[0].swizzle[i]);
+         else
+            comps[i] = offset(op[i], bld, instr->src[i].swizzle[0]);
+      }
+
+      if (write_mask == (1u << last_bit) - 1) {
+         bld.VEC(temp, comps, last_bit);
+      } else {
+         for (unsigned i = 0; i < last_bit; i++) {
+            if (write_mask & (1 << i))
+               bld.MOV(offset(temp, bld, i), comps[i]);
          }
       }
 
@@ -1934,37 +1939,40 @@ fs_nir_emit_load_const(nir_to_brw_state &ntb,
       brw_type_with_size(BRW_TYPE_D, instr->def.bit_size);
    fs_reg reg = bld.vgrf(reg_type, instr->def.num_components);
 
+   fs_reg comps[instr->def.num_components];
+
    switch (instr->def.bit_size) {
    case 8:
       for (unsigned i = 0; i < instr->def.num_components; i++)
-         bld.MOV(offset(reg, bld, i), setup_imm_b(bld, instr->value[i].i8));
+         comps[i] = setup_imm_b(bld, instr->value[i].i8);
       break;
 
    case 16:
       for (unsigned i = 0; i < instr->def.num_components; i++)
-         bld.MOV(offset(reg, bld, i), brw_imm_w(instr->value[i].i16));
+         comps[i] = brw_imm_w(instr->value[i].i16);
       break;
 
    case 32:
       for (unsigned i = 0; i < instr->def.num_components; i++)
-         bld.MOV(offset(reg, bld, i), brw_imm_d(instr->value[i].i32));
+         comps[i] = brw_imm_d(instr->value[i].i32);
       break;
 
    case 64:
       if (!devinfo->has_64bit_int) {
-         for (unsigned i = 0; i < instr->def.num_components; i++) {
-            bld.MOV(retype(offset(reg, bld, i), BRW_TYPE_DF),
-                    brw_imm_df(instr->value[i].f64));
-         }
+         reg.type = BRW_TYPE_DF;
+         for (unsigned i = 0; i < instr->def.num_components; i++)
+            comps[i] = brw_imm_df(instr->value[i].f64);
       } else {
          for (unsigned i = 0; i < instr->def.num_components; i++)
-            bld.MOV(offset(reg, bld, i), brw_imm_q(instr->value[i].i64));
+            comps[i] = brw_imm_q(instr->value[i].i64);
       }
       break;
 
    default:
       unreachable("Invalid bit size");
    }
+
+   bld.VEC(reg, comps, instr->def.num_components);
 
    ntb.ssa_values[instr->def.index] = reg;
 }
@@ -2486,11 +2494,13 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
        4 * (base_offset + nir_src_as_uint(offset_src)) < push_reg_count) {
       int imm_offset = (base_offset + nir_src_as_uint(offset_src)) * 4 +
                        nir_src_as_uint(vertex_src) * push_reg_count;
+
+      fs_reg comps[num_components];
       const fs_reg attr = fs_reg(ATTR, 0, dst.type);
       for (unsigned i = 0; i < num_components; i++) {
-         ntb.bld.MOV(offset(dst, bld, i),
-                     offset(attr, bld, imm_offset + i + first_component));
+         comps[i] = offset(attr, bld, imm_offset + i + first_component);
       }
+      bld.VEC(dst, comps, num_components);
       return;
    }
 
@@ -2578,10 +2588,11 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
                          ARRAY_SIZE(srcs));
          inst->size_written = read_components *
                               tmp.component_size(inst->exec_size);
+         fs_reg comps[num_components];
          for (unsigned i = 0; i < num_components; i++) {
-            bld.MOV(offset(dst, bld, i),
-                    offset(tmp, bld, i + first_component));
+            comps[i] = offset(tmp, bld, i + first_component);
          }
+         bld.VEC(dst, comps, num_components);
       } else {
          inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst, srcs,
                          ARRAY_SIZE(srcs));
@@ -2607,10 +2618,11 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
                          srcs, ARRAY_SIZE(srcs));
          inst->size_written = read_components *
                               tmp.component_size(inst->exec_size);
+         fs_reg comps[num_components];
          for (unsigned i = 0; i < num_components; i++) {
-            bld.MOV(offset(dst, bld, i),
-                    offset(tmp, bld, i + first_component));
+            comps[i] = offset(tmp, bld, i + first_component);
          }
+         bld.VEC(dst, comps, num_components);
       } else {
          inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                          srcs, ARRAY_SIZE(srcs));
@@ -2669,8 +2681,11 @@ fs_nir_emit_vs_intrinsic(nir_to_brw_state &ntb,
                                 nir_intrinsic_component(instr) +
                                 nir_src_as_uint(instr->src[0]));
 
-      for (unsigned i = 0; i < instr->num_components; i++)
-         bld.MOV(offset(dest, bld, i), offset(src, bld, i));
+      fs_reg comps[instr->num_components];
+      for (unsigned i = 0; i < instr->num_components; i++) {
+         comps[i] = offset(src, bld, i);
+      }
+      bld.VEC(dest, comps, instr->num_components);
       break;
    }
 
@@ -2955,10 +2970,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
             fs_reg tmp = bld.vgrf(dst.type, read_components);
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp, srcs,
                             ARRAY_SIZE(srcs));
+            fs_reg comps[num_components];
             for (unsigned i = 0; i < num_components; i++) {
-               bld.MOV(offset(dst, bld, i),
-                       offset(tmp, bld, i + first_component));
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dst, comps, num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst, srcs,
                             ARRAY_SIZE(srcs));
@@ -2973,10 +2989,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
             fs_reg tmp = bld.vgrf(dst.type, read_components);
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                             srcs, ARRAY_SIZE(srcs));
+            fs_reg comps[num_components];
             for (unsigned i = 0; i < num_components; i++) {
-               bld.MOV(offset(dst, bld, i),
-                       offset(tmp, bld, i + first_component));
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dst, comps, num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                             srcs, ARRAY_SIZE(srcs));
@@ -3024,10 +3041,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                                srcs, ARRAY_SIZE(srcs));
                inst->size_written = read_components * REG_SIZE * reg_unit(devinfo);
+               fs_reg comps[instr->num_components];
                for (unsigned i = 0; i < instr->num_components; i++) {
-                  bld.MOV(offset(dst, bld, i),
-                          offset(tmp, bld, i + first_component));
+                  comps[i] = offset(tmp, bld, i + first_component);
                }
+               bld.VEC(dst, comps, instr->num_components);
             } else {
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                                srcs, ARRAY_SIZE(srcs));
@@ -3048,10 +3066,11 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                             srcs, ARRAY_SIZE(srcs));
             inst->size_written = read_components * REG_SIZE * reg_unit(devinfo);
+            fs_reg comps[instr->num_components];
             for (unsigned i = 0; i < instr->num_components; i++) {
-               bld.MOV(offset(dst, bld, i),
-                       offset(tmp, bld, i + first_component));
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dst, comps, instr->num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dst,
                             srcs, ARRAY_SIZE(srcs));
@@ -3160,8 +3179,11 @@ fs_nir_emit_tes_intrinsic(nir_to_brw_state &ntb,
          if (imm_offset < max_push_slots) {
             const fs_reg src = horiz_offset(fs_reg(ATTR, 0, dest.type),
                                             4 * imm_offset + first_component);
-            for (int i = 0; i < instr->num_components; i++)
-               bld.MOV(offset(dest, bld, i), component(src, i));
+            fs_reg comps[instr->num_components];
+            for (unsigned i = 0; i < instr->num_components; i++) {
+               comps[i] = component(src, i);
+            }
+            bld.VEC(dest, comps, instr->num_components);
 
             tes_prog_data->base.urb_read_length =
                MAX2(tes_prog_data->base.urb_read_length,
@@ -3178,10 +3200,11 @@ fs_nir_emit_tes_intrinsic(nir_to_brw_state &ntb,
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                                srcs, ARRAY_SIZE(srcs));
                inst->size_written = read_components * REG_SIZE * reg_unit(devinfo);
+               fs_reg comps[instr->num_components];
                for (unsigned i = 0; i < instr->num_components; i++) {
-                  bld.MOV(offset(dest, bld, i),
-                          offset(tmp, bld, i + first_component));
+                  comps[i] = offset(tmp, bld, i + first_component);
                }
+               bld.VEC(dest, comps, instr->num_components);
             } else {
                inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dest,
                                srcs, ARRAY_SIZE(srcs));
@@ -3208,10 +3231,11 @@ fs_nir_emit_tes_intrinsic(nir_to_brw_state &ntb,
             fs_reg tmp = bld.vgrf(dest.type, read_components);
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, tmp,
                             srcs, ARRAY_SIZE(srcs));
-            for (unsigned i = 0; i < num_components; i++) {
-               bld.MOV(offset(dest, bld, i),
-                       offset(tmp, bld, i + first_component));
+            fs_reg comps[instr->num_components];
+            for (unsigned i = 0; i < instr->num_components; i++) {
+               comps[i] = offset(tmp, bld, i + first_component);
             }
+            bld.VEC(dest, comps, instr->num_components);
          } else {
             inst = bld.emit(SHADER_OPCODE_URB_READ_LOGICAL, dest,
                             srcs, ARRAY_SIZE(srcs));
@@ -3544,30 +3568,6 @@ emit_is_helper_invocation(nir_to_brw_state &ntb, fs_reg result)
       brw_emit_predicate_on_sample_mask(b.at(NULL, mov), mov);
       mov->predicate_inverse = true;
    }
-}
-
-static void
-emit_fragcoord_interpolation(nir_to_brw_state &ntb, fs_reg wpos)
-{
-   const fs_builder &bld = ntb.bld;
-   fs_visitor &s = ntb.s;
-
-   assert(s.stage == MESA_SHADER_FRAGMENT);
-
-   /* gl_FragCoord.x */
-   bld.MOV(wpos, s.pixel_x);
-   wpos = offset(wpos, bld, 1);
-
-   /* gl_FragCoord.y */
-   bld.MOV(wpos, s.pixel_y);
-   wpos = offset(wpos, bld, 1);
-
-   /* gl_FragCoord.z */
-   bld.MOV(wpos, s.pixel_z);
-   wpos = offset(wpos, bld, 1);
-
-   /* gl_FragCoord.w: Already set up in emit_interpolation */
-   bld.MOV(wpos, s.wpos_w);
 }
 
 static fs_reg
@@ -3922,10 +3922,12 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       const fs_reg new_dest = retype(alloc_frag_output(ntb, location),
                                      src.type);
 
-      for (unsigned j = 0; j < instr->num_components; j++)
-         bld.MOV(offset(new_dest, bld, nir_intrinsic_component(instr) + j),
-                 offset(src, bld, j));
-
+      fs_reg comps[instr->num_components];
+      for (unsigned i = 0; i < instr->num_components; i++) {
+         comps[i] = offset(src, bld, i);
+      }
+      bld.VEC(offset(new_dest, bld, nir_intrinsic_component(instr)),
+              comps, instr->num_components);
       break;
    }
 
@@ -3942,11 +3944,11 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       else
          emit_non_coherent_fb_read(ntb, bld, tmp, target);
 
-      for (unsigned j = 0; j < instr->num_components; j++) {
-         bld.MOV(offset(dest, bld, j),
-                 offset(tmp, bld, nir_intrinsic_component(instr) + j));
+      fs_reg comps[instr->num_components];
+      for (unsigned i = 0; i < instr->num_components; i++) {
+         comps[i] = offset(tmp, bld, i + nir_intrinsic_component(instr));
       }
-
+      bld.VEC(dest, comps, instr->num_components);
       break;
    }
 
@@ -4208,9 +4210,11 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       break;
    }
 
-   case nir_intrinsic_load_frag_coord:
-      emit_fragcoord_interpolation(ntb, dest);
+   case nir_intrinsic_load_frag_coord: {
+      fs_reg comps[4] = { s.pixel_x, s.pixel_y, s.pixel_z, s.wpos_w };
+      bld.VEC(dest, comps, 4);
       break;
+   }
 
    case nir_intrinsic_load_interpolated_input: {
       assert(instr->src[0].ssa &&
@@ -6717,10 +6721,11 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       fs_reg new_dest = retype(offset(s.outputs[instr->const_index[0]], bld,
                                       4 * store_offset), src.type);
-      for (unsigned j = 0; j < num_components; j++) {
-         bld.MOV(offset(new_dest, bld, j + first_component),
-                 offset(src, bld, j));
+      fs_reg comps[num_components];
+      for (unsigned i = 0; i < num_components; i++) {
+         comps[i] = offset(src, bld, i);
       }
+      bld.VEC(offset(new_dest, bld, first_component), comps, num_components);
       break;
    }
 
@@ -8205,16 +8210,19 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    inst->has_packed_lod_ai_src = pack_lod_and_array_index;
 
    const unsigned dest_size = nir_tex_instr_dest_size(instr);
+   unsigned read_size = dest_size;
    if (instr->op != nir_texop_tg4 && instr->op != nir_texop_query_levels) {
       unsigned write_mask = nir_def_components_read(&instr->def);
       assert(write_mask != 0); /* dead code should have been eliminated */
       if (instr->is_sparse) {
-         inst->size_written = (util_last_bit(write_mask) - 1) *
-                              inst->dst.component_size(inst->exec_size) +
-                              (reg_unit(devinfo) * REG_SIZE);
+         read_size = util_last_bit(write_mask) - 1;
+         inst->size_written =
+            read_size * inst->dst.component_size(inst->exec_size) +
+            (reg_unit(devinfo) * REG_SIZE);
       } else {
-         inst->size_written = util_last_bit(write_mask) *
-                              inst->dst.component_size(inst->exec_size);
+         read_size = util_last_bit(write_mask);
+         inst->size_written =
+            read_size * inst->dst.component_size(inst->exec_size);
       }
    } else {
       inst->size_written = 4 * inst->dst.component_size(inst->exec_size) +
@@ -8241,7 +8249,7 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    }
 
    fs_reg nir_dest[5];
-   for (unsigned i = 0; i < dest_size; i++)
+   for (unsigned i = 0; i < read_size; i++)
       nir_dest[i] = offset(dst, bld, i);
 
    if (instr->op == nir_texop_query_levels) {

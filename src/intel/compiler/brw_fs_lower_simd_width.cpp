@@ -482,10 +482,13 @@ emit_unzip(const fs_builder &lbld, fs_inst *inst, unsigned i)
    const fs_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
 
    if (needs_src_copy(lbld, inst, i)) {
-      const fs_reg tmp = lbld.vgrf(inst->src[i].type, inst->components_read(i));
+      const unsigned num_components = inst->components_read(i);
+      const fs_reg tmp = lbld.vgrf(inst->src[i].type, num_components);
 
-      for (unsigned k = 0; k < inst->components_read(i); ++k)
-         lbld.MOV(offset(tmp, lbld, k), offset(src, inst->exec_size, k));
+      fs_reg comps[num_components];
+      for (unsigned k = 0; k < num_components; ++k)
+         comps[k] = offset(src, inst->exec_size, k);
+      lbld.VEC(tmp, comps, num_components);
 
       return tmp;
 

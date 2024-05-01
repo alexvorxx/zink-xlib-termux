@@ -412,7 +412,7 @@ nvk_GetDescriptorSetLayoutSupport(VkDevice device,
       }
 
       default:
-         nvk_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }

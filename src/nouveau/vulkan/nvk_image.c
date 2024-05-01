@@ -439,7 +439,7 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
          break;
       }
       default:
-         nvk_debug_ignored_stype(s->sType);
+         vk_debug_ignored_stype(s->sType);
          break;
       }
    }
@@ -821,7 +821,7 @@ nvk_get_image_memory_requirements(struct nvk_device *dev,
          break;
       }
       default:
-         nvk_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }

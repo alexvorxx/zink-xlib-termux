@@ -471,7 +471,7 @@ nvk_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
       vk_foreach_struct_const(ext, region->pNext) {
          switch (ext->sType) {
          default:
-            nvk_debug_ignored_stype(ext->sType);
+            vk_debug_ignored_stype(ext->sType);
             break;
          }
       }
@@ -480,7 +480,7 @@ nvk_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
    vk_foreach_struct_const(ext, pCopyBufferToImageInfo->pNext) {
       switch (ext->sType) {
       default:
-         nvk_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -578,7 +578,7 @@ nvk_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
       vk_foreach_struct_const(ext, region->pNext) {
          switch (ext->sType) {
          default:
-            nvk_debug_ignored_stype(ext->sType);
+            vk_debug_ignored_stype(ext->sType);
             break;
          }
       }
@@ -587,7 +587,7 @@ nvk_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
    vk_foreach_struct_const(ext, pCopyImageToBufferInfo->pNext) {
       switch (ext->sType) {
       default:
-         nvk_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }

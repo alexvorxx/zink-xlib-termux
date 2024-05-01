@@ -6,8 +6,8 @@
       when: never
     - !reference [.gl-rules, rules]
     - changes: &llvmpipe_file_list
-      - src/gallium/drivers/llvmpipe/**/*
-      - src/gallium/winsys/sw/**/*
+        - src/gallium/drivers/llvmpipe/**/*
+        - src/gallium/winsys/sw/**/*
       when: on_success
 
 .llvmpipe-manual-rules:

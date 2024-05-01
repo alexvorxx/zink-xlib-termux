@@ -1362,7 +1362,7 @@ static unsigned si_varying_expression_max_cost(nir_shader *producer, nir_shader 
    unsigned num_profiles = si_get_num_shader_profiles();
 
    for (unsigned i = 0; i < num_profiles; i++) {
-      if (_mesa_printed_sha1_equal(consumer->info.source_sha1, si_shader_profiles[i].sha1)) {
+      if (_mesa_printed_blake3_equal(consumer->info.source_blake3, si_shader_profiles[i].blake3)) {
          if (si_shader_profiles[i].options & SI_PROFILE_NO_OPT_UNIFORM_VARYINGS)
             return 0; /* only propagate constants */
          break;

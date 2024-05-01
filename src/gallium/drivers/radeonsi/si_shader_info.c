@@ -622,7 +622,7 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
 
    /* Get options from shader profiles. */
    for (unsigned i = 0; i < ARRAY_SIZE(si_shader_profiles); i++) {
-      if (_mesa_printed_sha1_equal(info->base.source_sha1, si_shader_profiles[i].sha1)) {
+      if (_mesa_printed_blake3_equal(info->base.source_blake3, si_shader_profiles[i].blake3)) {
          info->options = si_shader_profiles[i].options;
          break;
       }

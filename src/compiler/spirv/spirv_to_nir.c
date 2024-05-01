@@ -37,6 +37,7 @@
 #include "util/u_math.h"
 #include "util/u_string.h"
 #include "util/u_debug.h"
+#include "util/mesa-blake3.h"
 
 #include <stdio.h>
 
@@ -6746,7 +6747,7 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
    b->shader->info.subgroup_size = options->subgroup_size;
    b->shader->info.float_controls_execution_mode = options->float_controls_execution_mode;
    b->shader->info.cs.shader_index = options->shader_index;
-   _mesa_sha1_compute(words, word_count * sizeof(uint32_t), b->shader->info.source_sha1);
+   _mesa_blake3_compute(words, word_count * sizeof(uint32_t), b->shader->info.source_blake3);
 
    /* Skip the SPIR-V header, handled at vtn_create_builder */
    words+= 5;

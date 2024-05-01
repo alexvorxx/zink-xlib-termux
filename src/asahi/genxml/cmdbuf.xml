@@ -530,6 +530,7 @@
     <field name="Flat shading vertex" size="2" start="7" type="PPP Vertex"/>
     <field name="Depth clip" size="1" start="10" type="bool"/>
     <field name="Depth clamp" size="1" start="11" type="bool"/>
+    <field name="Primitive MSAA" size="1" start="15" type="bool"/>
     <field name="Front face CCW" size="1" start="16" type="bool"/>
     <field name="Rasterizer discard" size="1" start="17" type="bool"/>
   </struct>
@@ -538,7 +539,6 @@
     <field name="Unknown 5" size="1" start="5" type="bool" default="true"/>
     <field name="Draw clipped edges" size="1" start="9" type="bool"/>
     <field name="Needs Primitive ID" size="1" start="12" type="bool"/>
-    <field name="Primitive MSAA" size="1" start="15" type="bool"/>
     <field name="Rasterizer discard" size="1" start="17" type="bool"/>
   </struct>
 

@@ -116,7 +116,8 @@ class Format(IntEnum):
          return [('uint8_t', 'attr', 0),
                  ('uint8_t', 'attr_chan', 0),
                  ('memory_sync_info', 'sync', 'memory_sync_info()'),
-                 ('uint8_t', 'wait_vdst', 15)]
+                 ('uint8_t', 'wait_vdst', 15),
+                 ('uint8_t', 'wait_vsrc', 1)]
       elif self == Format.MTBUF:
          return [('unsigned', 'dfmt', None),
                  ('unsigned', 'nfmt', None),

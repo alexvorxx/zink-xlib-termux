@@ -2,10 +2,34 @@
 dEQP-VK.draw.dynamic_rendering.multiple_interpolation.structured.no_sample_decoration.4_samples
 nir-stress=dEQP-VK.draw.dynamic_rendering.multiple_interpolation.structured.no_sample_decoration.4_samples
 
+dEQP-VK.dynamic_rendering.graphics_pipeline_library.dedicated_allocation.formats.r16g16_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.graphics_pipeline_library.dedicated_allocation.formats.r32_sint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.graphics_pipeline_library.dedicated_allocation.formats.r8_snorm.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.graphics_pipeline_library.dedicated_allocation.formats.r8g8_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.graphics_pipeline_library.suballocation.formats.a8b8g8r8_unorm_pack32.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.graphics_pipeline_library.suballocation.formats.r16_sfloat.input.load.dont_care.draw
 dEQP-VK.dynamic_rendering.graphics_pipeline_library.suballocation.formats.r8g8_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.a8b8g8r8_snorm_pack32.input.load.dont_care.draw
 dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.r16g16b16a16_snorm.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.r32g32_sint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.r32g32_sint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.r8_sint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.r8_snorm.input.load.dont_care.draw
 dEQP-VK.dynamic_rendering.primary_cmd_buff.dedicated_allocation.formats.r8_unorm.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.a2b10g10r10_uint_pack32.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.a2b10g10r10_uint_pack32.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.a2r10g10b10_unorm_pack32.input.load.dont_care.draw
 dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.b8g8r8a8_unorm.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r16_sint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r16_unorm.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r16_unorm.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r16g16b16a16_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r16g16b16a16_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r32_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r32_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r8_uint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r8g8_sint.input.load.dont_care.draw
+dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r8g8_sint.input.load.dont_care.draw
 
 dEQP-VK.tessellation.invariance.outer_edge_division.quads_fractional_odd_spacing
 dEQP-VK.rasterization.provoking_vertex.transform_feedback.first.line_strip_with_adjacency

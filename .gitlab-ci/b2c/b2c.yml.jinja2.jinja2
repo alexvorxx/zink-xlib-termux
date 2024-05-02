@@ -9,8 +9,8 @@ timeouts:
     minutes: {{ timeout_first_console_activity_minutes }}
     retries: {{ timeout_first_console_activity_retries }}
   console_activity:        # Reset every time we receive a message from the logs
-    minutes: {{ timeout_minutes }}
-    retries: {{ timeout_retries }}
+    minutes: {{ timeout_console_activity_minutes }}
+    retries: {{ timeout_console_activity_retries }}
   boot_cycle:
     minutes: {{ timeout_boot_minutes }}
     retries: {{ timeout_boot_retries }}

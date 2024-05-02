@@ -116,6 +116,8 @@ kopper_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
    const __DRIconfig **configs;
    struct pipe_screen *pscreen = NULL;
 
+   (void) mtx_init(&screen->opencl_func_mutex, mtx_plain);
+
    if (!screen->kopper_loader) {
       fprintf(stderr, "mesa: Kopper interface not found!\n"
                       "      Ensure the versions of %s built with this version of Zink are\n"

@@ -624,11 +624,9 @@ radv_init_legacy_gs_ring_info(const struct radv_device *device, struct radv_shad
    unsigned max_size = ((unsigned)(63.999 * 1024 * 1024) & ~255) * num_se;
 
    /* Calculate the minimum size. */
-   unsigned min_esgs_ring_size =
-      align(gs_ring_info->vgt_esgs_ring_itemsize * 4 * gs_vertex_reuse * wave_size, alignment);
+   unsigned min_esgs_ring_size = align(gs_ring_info->esgs_itemsize * 4 * gs_vertex_reuse * wave_size, alignment);
    /* These are recommended sizes, not minimum sizes. */
-   unsigned esgs_ring_size =
-      max_gs_waves * 2 * wave_size * gs_ring_info->vgt_esgs_ring_itemsize * 4 * gs_info->gs.vertices_in;
+   unsigned esgs_ring_size = max_gs_waves * 2 * wave_size * gs_ring_info->esgs_itemsize * 4 * gs_info->gs.vertices_in;
    unsigned gsvs_ring_size = max_gs_waves * 2 * wave_size * gs_info->gs.max_gsvs_emit_size;
 
    min_esgs_ring_size = align(min_esgs_ring_size, alignment);
@@ -731,12 +729,12 @@ radv_get_legacy_gs_info(const struct radv_device *device, struct radv_shader_inf
    const uint32_t max_prims_per_subgroup = gs_inst_prims_in_subgroup * gs_info->gs.vertices_out;
    const uint32_t lds_granularity = pdev->info.lds_encode_granularity;
    const uint32_t total_lds_bytes = align(esgs_lds_size * 4, lds_granularity);
+
+   out->gs_inst_prims_in_subgroup = gs_inst_prims_in_subgroup;
+   out->es_verts_per_subgroup = es_verts_per_subgroup;
+   out->gs_prims_per_subgroup = gs_prims_per_subgroup;
+   out->esgs_itemsize = esgs_itemsize;
    out->lds_size = total_lds_bytes / lds_granularity;
-   out->vgt_gs_onchip_cntl = S_028A44_ES_VERTS_PER_SUBGRP(es_verts_per_subgroup) |
-                             S_028A44_GS_PRIMS_PER_SUBGRP(gs_prims_per_subgroup) |
-                             S_028A44_GS_INST_PRIMS_IN_SUBGRP(gs_inst_prims_in_subgroup);
-   out->vgt_gs_max_prims_per_subgroup = S_028A94_MAX_PRIMS_PER_SUBGROUP(max_prims_per_subgroup);
-   out->vgt_esgs_ring_itemsize = esgs_itemsize;
    assert(max_prims_per_subgroup <= max_out_prims);
 
    radv_init_legacy_gs_ring_info(device, gs_info);
@@ -1339,8 +1337,8 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
       break;
    case MESA_SHADER_GEOMETRY:
       if (!info->is_ngg) {
-         unsigned es_verts_per_subgroup = G_028A44_ES_VERTS_PER_SUBGRP(info->gs_ring_info.vgt_gs_onchip_cntl);
-         unsigned gs_inst_prims_in_subgroup = G_028A44_GS_INST_PRIMS_IN_SUBGRP(info->gs_ring_info.vgt_gs_onchip_cntl);
+         unsigned es_verts_per_subgroup = info->gs_ring_info.es_verts_per_subgroup;
+         unsigned gs_inst_prims_in_subgroup = info->gs_ring_info.gs_inst_prims_in_subgroup;
 
          info->workgroup_size = ac_compute_esgs_workgroup_size(pdev->info.gfx_level, info->wave_size,
                                                                es_verts_per_subgroup, gs_inst_prims_in_subgroup);

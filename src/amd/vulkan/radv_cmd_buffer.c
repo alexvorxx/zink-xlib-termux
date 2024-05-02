@@ -5593,7 +5593,7 @@ gfx10_emit_ge_cntl(struct radv_cmd_buffer *cmd_buffer)
       }
    } else if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_GEOMETRY)) {
       const struct radv_legacy_gs_info *gs_state = &cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY]->info.gs_ring_info;
-      primgroup_size = G_028A44_GS_PRIMS_PER_SUBGRP(gs_state->vgt_gs_onchip_cntl);
+      primgroup_size = gs_state->gs_prims_per_subgroup;
    } else {
       primgroup_size = 128; /* recommended without a GS and tess */
    }

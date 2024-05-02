@@ -1462,6 +1462,21 @@ radv_open_rtld_binary(struct radv_device *device, const struct radv_shader_binar
 #endif
 
 static void
+radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_binary *binary)
+{
+   struct radv_shader_info *info = &binary->info;
+
+   info->regs.gs.vgt_esgs_ring_itemsize = info->gs_ring_info.esgs_itemsize;
+
+   info->regs.gs.vgt_gs_max_prims_per_subgroup =
+      S_028A94_MAX_PRIMS_PER_SUBGROUP(info->gs_ring_info.gs_inst_prims_in_subgroup);
+
+   info->regs.gs.vgt_gs_onchip_cntl = S_028A44_ES_VERTS_PER_SUBGRP(info->gs_ring_info.es_verts_per_subgroup) |
+                                      S_028A44_GS_PRIMS_PER_SUBGRP(info->gs_ring_info.gs_prims_per_subgroup) |
+                                      S_028A44_GS_INST_PRIMS_IN_SUBGRP(info->gs_ring_info.gs_inst_prims_in_subgroup);
+}
+
+static void
 radv_precompute_registers_hw_cs(struct radv_device *device, struct radv_shader_binary *binary)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -1479,6 +1494,10 @@ radv_precompute_registers(struct radv_device *device, struct radv_shader_binary 
    const struct radv_shader_info *info = &binary->info;
 
    switch (info->stage) {
+   case MESA_SHADER_GEOMETRY:
+      if (!info->is_ngg)
+         radv_precompute_registers_hw_gs(device, binary);
+      break;
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_TASK:
       radv_precompute_registers_hw_cs(device, binary);

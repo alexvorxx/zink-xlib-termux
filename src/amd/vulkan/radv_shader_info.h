@@ -54,9 +54,10 @@ struct radv_streamout_info {
 };
 
 struct radv_legacy_gs_info {
-   uint32_t vgt_gs_onchip_cntl;
-   uint32_t vgt_gs_max_prims_per_subgroup;
-   uint32_t vgt_esgs_ring_itemsize;
+   uint32_t gs_inst_prims_in_subgroup;
+   uint32_t es_verts_per_subgroup;
+   uint32_t gs_prims_per_subgroup;
+   uint32_t esgs_itemsize;
    uint32_t lds_size;
    uint32_t esgs_ring_size;
    uint32_t gsvs_ring_size;
@@ -252,6 +253,12 @@ struct radv_shader_info {
 
    /* Precomputed register values. */
    struct {
+      struct {
+         uint32_t vgt_esgs_ring_itemsize;
+         uint32_t vgt_gs_max_prims_per_subgroup;
+         uint32_t vgt_gs_onchip_cntl;
+      } gs;
+
       struct {
          uint32_t compute_num_thread_x;
          uint32_t compute_num_thread_y;

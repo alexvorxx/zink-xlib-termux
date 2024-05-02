@@ -3218,7 +3218,7 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
       /* GFX6-8: ESGS offchip ring buffer is allocated according to VGT_ESGS_RING_ITEMSIZE.
        * GFX9+: Only used to set the GS input VGPRs, emulated in shaders.
        */
-      radeon_set_context_reg(ctx_cs, R_028AAC_VGT_ESGS_RING_ITEMSIZE, gs_state->vgt_esgs_ring_itemsize);
+      radeon_set_context_reg(ctx_cs, R_028AAC_VGT_ESGS_RING_ITEMSIZE, gs->info.regs.gs.vgt_esgs_ring_itemsize);
    }
 
    va = radv_shader_get_va(gs);
@@ -3237,8 +3237,9 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
          radeon_emit(cs, gs->config.rsrc2 | S_00B22C_LDS_SIZE(gs_state->lds_size));
       }
 
-      radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, gs_state->vgt_gs_onchip_cntl);
-      radeon_set_context_reg(ctx_cs, R_028A94_VGT_GS_MAX_PRIMS_PER_SUBGROUP, gs_state->vgt_gs_max_prims_per_subgroup);
+      radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, gs->info.regs.gs.vgt_gs_onchip_cntl);
+      radeon_set_context_reg(ctx_cs, R_028A94_VGT_GS_MAX_PRIMS_PER_SUBGROUP,
+                             gs->info.regs.gs.vgt_gs_max_prims_per_subgroup);
    } else {
       radeon_set_sh_reg_seq(cs, R_00B220_SPI_SHADER_PGM_LO_GS, 4);
       radeon_emit(cs, va >> 8);

@@ -10317,8 +10317,6 @@ rename_temp(const std::map<unsigned, unsigned>& renames, Temp tmp)
 static void
 lcssa_workaround(isel_context* ctx, nir_loop* loop)
 {
-   assert(ctx->block->linear_preds.size() == ctx->block->logical_preds.size() + 1);
-
    nir_block* block_before_loop = nir_cf_node_as_block(nir_cf_node_prev(&loop->cf_node));
    nir_block* block_after_loop = nir_cf_node_as_block(nir_cf_node_next(&loop->cf_node));
 
@@ -10334,11 +10332,10 @@ lcssa_workaround(isel_context* ctx, nir_loop* loop)
             continue;
 
          Temp new_tmp = ctx->program->allocateTmp(tmp.regClass());
-         aco_ptr<Instruction> phi(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO,
-                                                     ctx->block->linear_preds.size(), 1));
+         aco_ptr<Instruction> phi(create_instruction(aco_opcode::p_phi, Format::PSEUDO,
+                                                     ctx->block->logical_preds.size(), 1));
          for (unsigned i = 0; i < ctx->block->logical_preds.size(); i++)
             phi->operands[i] = Operand(new_tmp);
-         phi->operands.back() = Operand(tmp.regClass());
          phi->definitions[0] = Definition(tmp);
          ctx->block->instructions.emplace(ctx->block->instructions.begin(), std::move(phi));
 

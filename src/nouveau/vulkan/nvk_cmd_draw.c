@@ -1510,7 +1510,10 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
       const bool z_clamp = dyn->rs.depth_clamp_enable;
       const bool z_clip = vk_rasterization_state_depth_clip_enable(&dyn->rs);
       P_IMMD(p, NVC397, SET_VIEWPORT_CLIP_CONTROL, {
-         /* TODO: Fix pre-Volta
+         /* We only set Z clip range if clamp is requested.  Otherwise, we
+          * leave it set to -/+INF and clamp using the guardband below.
+          *
+          * TODO: Fix pre-Volta
           *
           * This probably involves a few macros, one which stases viewport
           * min/maxDepth in scratch states and one which goes here and
@@ -1518,9 +1521,8 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
           */
          .min_z_zero_max_z_one = MIN_Z_ZERO_MAX_Z_ONE_FALSE,
          .z_clip_range = nvk_cmd_buffer_3d_cls(cmd) >= VOLTA_A
-                         ? ((z_clamp || z_clip)
-                            ? Z_CLIP_RANGE_MIN_Z_MAX_Z
-                            : Z_CLIP_RANGE_MINUS_INF_PLUS_INF)
+                         ? (z_clamp ? Z_CLIP_RANGE_MIN_Z_MAX_Z
+                                    : Z_CLIP_RANGE_MINUS_INF_PLUS_INF)
                          : Z_CLIP_RANGE_USE_FIELD_MIN_Z_ZERO_MAX_Z_ONE,
 
          .pixel_min_z = PIXEL_MIN_Z_CLAMP,
@@ -1533,10 +1535,19 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 
          /* We clip depth with the geometry clipper to ensure that it gets
           * clipped before depth bias is applied.  If we leave it up to the
-          * raserizer clipper (pixel_min/max_z = CLIP), it will clip according
-          * to the post-bias Z value which is wrong.  In order to always get
-          * the geometry clipper, we need to set a tignt guardband
-          * (geometry_guardband_z = SCALE_1).
+          * raserizer clipper (pixel_min/max_z = CLIP), it will clip too late
+          * in the pipeline.  This can be seen in two different ways:
+          *
+          *  - When depth bias is enabled, the bias is applied post-clipping.
+          *    If we clip in the rasterizer, it will clip according to the
+          *    post-bias depth which is wrong.
+          *
+          *  - If the fragment shader overrides the depth by writing to
+          *    gl_FragDepth, it should be clipped according to the original
+          *    geometry, not accoring to gl_FragDepth.
+          *
+          * In order to always get the geometry clipper, we need to set a
+          * tight guardband (geometry_guardband_z = SCALE_1).
           */
          .geometry_guardband_z = z_clip ? GEOMETRY_GUARDBAND_Z_SCALE_1
                                         : GEOMETRY_GUARDBAND_Z_SCALE_256,

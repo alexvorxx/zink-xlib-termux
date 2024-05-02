@@ -1461,6 +1461,33 @@ radv_open_rtld_binary(struct radv_device *device, const struct radv_shader_binar
 }
 #endif
 
+static void
+radv_precompute_registers_hw_cs(struct radv_device *device, struct radv_shader_binary *binary)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_shader_info *info = &binary->info;
+
+   info->regs.cs.compute_resource_limits = radv_get_compute_resource_limits(pdev, info);
+   info->regs.cs.compute_num_thread_x = S_00B81C_NUM_THREAD_FULL(info->cs.block_size[0]);
+   info->regs.cs.compute_num_thread_y = S_00B81C_NUM_THREAD_FULL(info->cs.block_size[1]);
+   info->regs.cs.compute_num_thread_z = S_00B81C_NUM_THREAD_FULL(info->cs.block_size[2]);
+}
+
+static void
+radv_precompute_registers(struct radv_device *device, struct radv_shader_binary *binary)
+{
+   const struct radv_shader_info *info = &binary->info;
+
+   switch (info->stage) {
+   case MESA_SHADER_COMPUTE:
+   case MESA_SHADER_TASK:
+      radv_precompute_registers_hw_cs(device, binary);
+      break;
+   default:
+      break;
+   }
+}
+
 static bool
 radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_binary *binary,
                                const struct radv_shader_args *args)
@@ -1766,6 +1793,9 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
    } else {
       config->rsrc1 |= S_00B128_VGPR_COMP_CNT(vgpr_comp_cnt);
    }
+
+   /* Precompute register values for faster emission. */
+   radv_precompute_registers(device, binary);
 
    return true;
 }

@@ -1916,12 +1916,11 @@ radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_
       radeon_set_sh_reg(cs, R_00B8A0_COMPUTE_PGM_RSRC3, shader->config.rsrc3);
    }
 
-   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, radv_get_compute_resource_limits(pdev, shader));
-
+   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, shader->info.regs.cs.compute_resource_limits);
    radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
-   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[0]));
-   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[1]));
-   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[2]));
+   radeon_emit(cs, shader->info.regs.cs.compute_num_thread_x);
+   radeon_emit(cs, shader->info.regs.cs.compute_num_thread_y);
+   radeon_emit(cs, shader->info.regs.cs.compute_num_thread_z);
 }
 
 static void

@@ -38,7 +38,7 @@
 #include "vk_format.h"
 
 uint32_t
-radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const struct radv_shader *cs)
+radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const struct radv_shader_info *info)
 {
    unsigned threads_per_threadgroup;
    unsigned threadgroups_per_cu = 1;
@@ -46,8 +46,8 @@ radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const 
    unsigned max_waves_per_sh = 0;
 
    /* Calculate best compute resource limits. */
-   threads_per_threadgroup = cs->info.cs.block_size[0] * cs->info.cs.block_size[1] * cs->info.cs.block_size[2];
-   waves_per_threadgroup = DIV_ROUND_UP(threads_per_threadgroup, cs->info.wave_size);
+   threads_per_threadgroup = info->cs.block_size[0] * info->cs.block_size[1] * info->cs.block_size[2];
+   waves_per_threadgroup = DIV_ROUND_UP(threads_per_threadgroup, info->wave_size);
 
    if (pdev->info.gfx_level >= GFX10 && waves_per_threadgroup == 1)
       threadgroups_per_cu = 2;
@@ -69,7 +69,7 @@ radv_get_compute_pipeline_metadata(const struct radv_device *device, const struc
    metadata->rsrc1 = cs->config.rsrc1;
    metadata->rsrc2 = cs->config.rsrc2;
    metadata->rsrc3 = cs->config.rsrc3;
-   metadata->compute_resource_limits = radv_get_compute_resource_limits(pdev, cs);
+   metadata->compute_resource_limits = radv_get_compute_resource_limits(pdev, &cs->info);
    metadata->block_size_x = cs->info.cs.block_size[0];
    metadata->block_size_y = cs->info.cs.block_size[1];
    metadata->block_size_z = cs->info.cs.block_size[2];

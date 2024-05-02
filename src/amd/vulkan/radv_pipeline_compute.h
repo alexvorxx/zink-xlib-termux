@@ -15,6 +15,7 @@
 
 struct radv_physical_device;
 struct radv_shader_binary;
+struct radv_shader_info;
 
 struct radv_compute_pipeline {
    struct radv_pipeline base;
@@ -42,7 +43,7 @@ struct radv_compute_pipeline_metadata {
    uint64_t inline_push_const_mask;
 };
 
-uint32_t radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const struct radv_shader *cs);
+uint32_t radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const struct radv_shader_info *info);
 
 void radv_get_compute_pipeline_metadata(const struct radv_device *device, const struct radv_compute_pipeline *pipeline,
                                         struct radv_compute_pipeline_metadata *metadata);

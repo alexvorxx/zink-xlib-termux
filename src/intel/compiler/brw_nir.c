@@ -1711,7 +1711,11 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    do {
       progress = false;
-      if (OPT(nir_opt_algebraic_late)) {
+
+      OPT(nir_opt_algebraic_late);
+      OPT(brw_nir_lower_fsign);
+
+      if (progress) {
          OPT(nir_opt_constant_folding);
          OPT(nir_copy_prop);
          OPT(nir_opt_dce);

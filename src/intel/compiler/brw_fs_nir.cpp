@@ -849,135 +849,6 @@ try_emit_b2fi_of_inot(nir_to_brw_state &ntb, const fs_builder &bld,
    return true;
 }
 
-/**
- * Emit code for nir_op_fsign possibly fused with a nir_op_fmul
- *
- * If \c instr is not the \c nir_op_fsign, then \c fsign_src is the index of
- * the source of \c instr that is a \c nir_op_fsign.
- */
-static void
-emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *instr,
-           fs_reg result, fs_reg *op, unsigned fsign_src)
-{
-   const intel_device_info *devinfo = ntb.devinfo;
-
-   fs_inst *inst;
-
-   assert(instr->op == nir_op_fsign || instr->op == nir_op_fmul);
-   assert(fsign_src < nir_op_infos[instr->op].num_inputs);
-
-   if (instr->op != nir_op_fsign) {
-      const nir_alu_instr *const fsign_instr =
-         nir_src_as_alu_instr(instr->src[fsign_src].src);
-
-      /* op[fsign_src] has the nominal result of the fsign, and op[1 -
-       * fsign_src] has the other multiply source.  This must be rearranged so
-       * that op[0] is the source of the fsign op[1] is the other multiply
-       * source.
-       */
-      if (fsign_src != 0)
-         op[1] = op[0];
-
-      op[0] = get_nir_src(ntb, fsign_instr->src[0].src);
-
-      const nir_alu_type t =
-         (nir_alu_type)(nir_op_infos[instr->op].input_types[0] |
-                        nir_src_bit_size(fsign_instr->src[0].src));
-
-      op[0].type = brw_type_for_nir_type(devinfo, t);
-
-      unsigned channel = 0;
-      if (nir_op_infos[instr->op].output_size == 0) {
-         /* Since NIR is doing the scalarizing for us, we should only ever see
-          * vectorized operations with a single channel.
-          */
-         nir_component_mask_t write_mask = get_nir_write_mask(instr->def);
-         assert(util_bitcount(write_mask) == 1);
-         channel = ffs(write_mask) - 1;
-      }
-
-      op[0] = offset(op[0], bld, fsign_instr->src[0].swizzle[channel]);
-   }
-
-   if (brw_type_size_bytes(op[0].type) == 2) {
-      /* AND(val, 0x8000) gives the sign bit.
-       *
-       * Predicated OR ORs 1.0 (0x3c00) with the sign bit if val is not zero.
-       */
-      fs_reg zero = retype(brw_imm_uw(0), BRW_TYPE_HF);
-      bld.CMP(bld.null_reg_f(), op[0], zero, BRW_CONDITIONAL_NZ);
-
-      op[0].type = BRW_TYPE_UW;
-      result.type = BRW_TYPE_UW;
-      bld.AND(result, op[0], brw_imm_uw(0x8000u));
-
-      if (instr->op == nir_op_fsign)
-         inst = bld.OR(result, result, brw_imm_uw(0x3c00u));
-      else {
-         /* Use XOR here to get the result sign correct. */
-         inst = bld.XOR(result, result, retype(op[1], BRW_TYPE_UW));
-      }
-
-      inst->predicate = BRW_PREDICATE_NORMAL;
-   } else if (brw_type_size_bytes(op[0].type) == 4) {
-      /* AND(val, 0x80000000) gives the sign bit.
-       *
-       * Predicated OR ORs 1.0 (0x3f800000) with the sign bit if val is not
-       * zero.
-       */
-      bld.CMP(bld.null_reg_f(), op[0], brw_imm_f(0.0f), BRW_CONDITIONAL_NZ);
-
-      op[0].type = BRW_TYPE_UD;
-      result.type = BRW_TYPE_UD;
-      bld.AND(result, op[0], brw_imm_ud(0x80000000u));
-
-      if (instr->op == nir_op_fsign)
-         inst = bld.OR(result, result, brw_imm_ud(0x3f800000u));
-      else {
-         /* Use XOR here to get the result sign correct. */
-         inst = bld.XOR(result, result, retype(op[1], BRW_TYPE_UD));
-      }
-
-      inst->predicate = BRW_PREDICATE_NORMAL;
-   } else {
-      unreachable("Should have been lowered by nir_opt_algebraic.");
-   }
-}
-
-/**
- * Determine whether sources of a nir_op_fmul can be fused with a nir_op_fsign
- *
- * Checks the operands of a \c nir_op_fmul to determine whether or not
- * \c emit_fsign could fuse the multiplication with the \c sign() calculation.
- *
- * \param instr  The multiplication instruction
- *
- * \param fsign_src The source of \c instr that may or may not be a
- *                  \c nir_op_fsign
- */
-static bool
-can_fuse_fmul_fsign(nir_alu_instr *instr, unsigned fsign_src)
-{
-   assert(instr->op == nir_op_fmul);
-
-   nir_alu_instr *const fsign_instr =
-      nir_src_as_alu_instr(instr->src[fsign_src].src);
-
-   /* Rules:
-    *
-    * 1. instr->src[fsign_src] must be a nir_op_fsign.
-    * 2. The nir_op_fsign can only be used by this multiplication.
-    * 3. The source that is the nir_op_fsign does not have source modifiers.
-    *    \c emit_fsign only examines the source modifiers of the source of the
-    *    \c nir_op_fsign.
-    *
-    * The nir_op_fsign must also not have the saturate modifier, but steps
-    * have already been taken (in nir_opt_algebraic) to ensure that.
-    */
-   return fsign_instr != NULL && fsign_instr->op == nir_op_fsign &&
-          is_used_once(fsign_instr);
-}
-
 static bool
 is_const_zero(const nir_src &src)
 {
@@ -1233,8 +1104,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       break;
 
    case nir_op_fsign:
-      emit_fsign(ntb, bld, instr, result, op, 0);
-      break;
+      unreachable("Should have been lowered by brw_nir_lower_fsign.");
 
    case nir_op_frcp:
       bld.RCP(result, op[0]);
@@ -1322,17 +1192,6 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    }
 
    case nir_op_fmul:
-      for (unsigned i = 0; i < 2; i++) {
-         if (can_fuse_fmul_fsign(instr, i)) {
-            emit_fsign(ntb, bld, instr, result, op, i);
-            return;
-         }
-      }
-
-      /* We emit the rounding mode after the previous fsign optimization since
-       * it won't result in a MUL, but will try to negate the value by other
-       * means.
-       */
       if (nir_has_any_rounding_mode_enabled(execution_mode)) {
          brw_rnd_mode rnd =
             brw_rnd_mode_from_execution_mode(execution_mode);

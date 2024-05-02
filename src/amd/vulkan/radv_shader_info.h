@@ -260,6 +260,12 @@ struct radv_shader_info {
       } gs;
 
       struct {
+         uint32_t pa_sc_shader_control;
+         uint32_t spi_ps_in_control;
+         uint32_t spi_shader_z_format;
+      } ps;
+
+      struct {
          uint32_t compute_num_thread_x;
          uint32_t compute_num_thread_y;
          uint32_t compute_num_thread_z;

@@ -1477,6 +1477,25 @@ radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_b
 }
 
 static void
+radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader_binary *binary)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_shader_info *info = &binary->info;
+
+   const bool param_gen = pdev->info.gfx_level >= GFX11 && !info->ps.num_interp && binary->config.lds_size;
+
+   info->regs.ps.spi_ps_in_control = S_0286D8_NUM_INTERP(info->ps.num_interp) |
+                                     S_0286D8_NUM_PRIM_INTERP(info->ps.num_prim_interp) |
+                                     S_0286D8_PS_W32_EN(info->wave_size == 32) | S_0286D8_PARAM_GEN(param_gen);
+
+   info->regs.ps.spi_shader_z_format = ac_get_spi_shader_z_format(
+      info->ps.writes_z, info->ps.writes_stencil, info->ps.writes_sample_mask, info->ps.writes_mrt0_alpha);
+
+   if (pdev->info.gfx_level >= GFX9 && pdev->info.gfx_level < GFX11)
+      info->regs.ps.pa_sc_shader_control = S_028C40_LOAD_COLLISION_WAVEID(info->ps.pops);
+}
+
+static void
 radv_precompute_registers_hw_cs(struct radv_device *device, struct radv_shader_binary *binary)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -1497,6 +1516,9 @@ radv_precompute_registers(struct radv_device *device, struct radv_shader_binary 
    case MESA_SHADER_GEOMETRY:
       if (!info->is_ngg)
          radv_precompute_registers_hw_gs(device, binary);
+      break;
+   case MESA_SHADER_FRAGMENT:
+      radv_precompute_registers_hw_fs(device, binary);
       break;
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_TASK:

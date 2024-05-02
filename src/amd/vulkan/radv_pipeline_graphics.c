@@ -3478,7 +3478,6 @@ radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf
                           const struct radv_shader *ps)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   bool param_gen;
    uint64_t va;
 
    va = radv_shader_get_va(ps);
@@ -3493,20 +3492,11 @@ radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf
    radeon_emit(ctx_cs, ps->config.spi_ps_input_ena);
    radeon_emit(ctx_cs, ps->config.spi_ps_input_addr);
 
-   /* Workaround when there are no PS inputs but LDS is used. */
-   param_gen = pdev->info.gfx_level >= GFX11 && !ps->info.ps.num_interp && ps->config.lds_size;
-
-   radeon_set_context_reg(ctx_cs, R_0286D8_SPI_PS_IN_CONTROL,
-                          S_0286D8_NUM_INTERP(ps->info.ps.num_interp) |
-                             S_0286D8_NUM_PRIM_INTERP(ps->info.ps.num_prim_interp) |
-                             S_0286D8_PS_W32_EN(ps->info.wave_size == 32) | S_0286D8_PARAM_GEN(param_gen));
-
-   radeon_set_context_reg(ctx_cs, R_028710_SPI_SHADER_Z_FORMAT,
-                          ac_get_spi_shader_z_format(ps->info.ps.writes_z, ps->info.ps.writes_stencil,
-                                                     ps->info.ps.writes_sample_mask, ps->info.ps.writes_mrt0_alpha));
+   radeon_set_context_reg(ctx_cs, R_0286D8_SPI_PS_IN_CONTROL, ps->info.regs.ps.spi_ps_in_control);
+   radeon_set_context_reg(ctx_cs, R_028710_SPI_SHADER_Z_FORMAT, ps->info.regs.ps.spi_shader_z_format);
 
    if (pdev->info.gfx_level >= GFX9 && pdev->info.gfx_level < GFX11)
-      radeon_set_context_reg(ctx_cs, R_028C40_PA_SC_SHADER_CONTROL, S_028C40_LOAD_COLLISION_WAVEID(ps->info.ps.pops));
+      radeon_set_context_reg(ctx_cs, R_028C40_PA_SC_SHADER_CONTROL, ps->info.regs.ps.pa_sc_shader_control);
 }
 
 void

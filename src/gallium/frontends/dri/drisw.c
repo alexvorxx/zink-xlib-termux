@@ -601,7 +601,7 @@ drisw_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
       pscreen = pipe_loader_create_screen(screen->dev, driver_name_is_inferred);
 
    if (!pscreen)
-      goto fail;
+      return NULL;
 
    dri_init_options(screen);
    configs = dri_init_screen(screen, pscreen);
@@ -633,7 +633,7 @@ drisw_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
 
    return configs;
 fail:
-   dri_release_screen(screen);
+   pipe_loader_release(&screen->dev, 1);
    return NULL;
 }
 

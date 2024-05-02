@@ -397,6 +397,7 @@ by a particular renderpass/blit.
 	<value value="1" name="A7XX_HLSQ_DP"/>
 	<value value="2" name="A7XX_SP_TOP"/>
 	<value value="3" name="A7XX_USPTP"/>
+	<value value="4" name="A7XX_HLSQ_DP_STR"/>
 </enum>
 
 <enum name="a7xx_pipe">

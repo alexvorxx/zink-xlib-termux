@@ -781,7 +781,6 @@ static void
 emit_fsign(nir_to_elk_state &ntb, const fs_builder &bld, const nir_alu_instr *instr,
            elk_fs_reg result, elk_fs_reg *op, unsigned fsign_src)
 {
-   elk_fs_visitor &s = ntb.s;
    const intel_device_info *devinfo = ntb.devinfo;
 
    elk_fs_inst *inst;
@@ -863,46 +862,7 @@ emit_fsign(nir_to_elk_state &ntb, const fs_builder &bld, const nir_alu_instr *in
 
       inst->predicate = ELK_PREDICATE_NORMAL;
    } else {
-      /* For doubles we do the same but we need to consider:
-       *
-       * - 2-src instructions can't operate with 64-bit immediates
-       * - The sign is encoded in the high 32-bit of each DF
-       * - We need to produce a DF result.
-       */
-
-      elk_fs_reg zero = s.vgrf(glsl_double_type());
-      bld.MOV(zero, elk_setup_imm_df(bld, 0.0));
-      bld.CMP(bld.null_reg_df(), op[0], zero, ELK_CONDITIONAL_NZ);
-
-      bld.MOV(result, zero);
-
-      elk_fs_reg r = subscript(result, ELK_REGISTER_TYPE_UD, 1);
-      bld.AND(r, subscript(op[0], ELK_REGISTER_TYPE_UD, 1),
-              elk_imm_ud(0x80000000u));
-
-      if (instr->op == nir_op_fsign) {
-         set_predicate(ELK_PREDICATE_NORMAL,
-                       bld.OR(r, r, elk_imm_ud(0x3ff00000u)));
-      } else {
-         if (devinfo->has_64bit_int) {
-            /* This could be done better in some cases.  If the scale is an
-             * immediate with the low 32-bits all 0, emitting a separate XOR and
-             * OR would allow an algebraic optimization to remove the OR.  There
-             * are currently zero instances of fsign(double(x))*IMM in shader-db
-             * or any test suite, so it is hard to care at this time.
-             */
-            elk_fs_reg result_int64 = retype(result, ELK_REGISTER_TYPE_UQ);
-            inst = bld.XOR(result_int64, result_int64,
-                           retype(op[1], ELK_REGISTER_TYPE_UQ));
-         } else {
-            elk_fs_reg result_int64 = retype(result, ELK_REGISTER_TYPE_UQ);
-            bld.MOV(subscript(result_int64, ELK_REGISTER_TYPE_UD, 0),
-                    subscript(op[1], ELK_REGISTER_TYPE_UD, 0));
-            bld.XOR(subscript(result_int64, ELK_REGISTER_TYPE_UD, 1),
-                    subscript(result_int64, ELK_REGISTER_TYPE_UD, 1),
-                    subscript(op[1], ELK_REGISTER_TYPE_UD, 1));
-         }
-      }
+      unreachable("Should have been lowered by nir_opt_algebraic.");
    }
 }
 

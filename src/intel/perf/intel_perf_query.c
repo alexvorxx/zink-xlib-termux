@@ -351,7 +351,7 @@ intel_perf_close(struct intel_perf_context *perfquery,
 bool
 intel_perf_open(struct intel_perf_context *perf_ctx,
                 int metrics_set_id,
-                int report_format,
+                uint64_t report_format,
                 int period_exponent,
                 int drm_fd,
                 uint32_t ctx_id,

@@ -248,7 +248,7 @@ struct intel_perf_query_info {
 
    /* OA specific */
    uint64_t oa_metrics_set_id;
-   int oa_format;
+   uint64_t oa_format;
 
    /* For indexing into the accumulator[] ... */
    int gpu_time_offset;
@@ -385,12 +385,6 @@ struct intel_perf_config {
     * query begins, this OA metric is used as a fallback.
     */
    uint64_t fallback_raw_oa_metric;
-
-   /* Whether we have support for this platform. If true && n_queries == 0,
-    * this means we will not be able to use i915-perf because of it is in
-    * paranoid mode.
-    */
-   bool platform_supported;
 
    /* Location of the device's sysfs entry. */
    char sysfs_dev_dir[256];

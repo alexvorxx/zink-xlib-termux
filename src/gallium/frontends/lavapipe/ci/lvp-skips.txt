@@ -33,6 +33,10 @@ dEQP-VK.ray_query.watertightness.singlehit.tesc.triangles
 dEQP-VK.ray_query.watertightness.singlehit.tese.triangles
 dEQP-VK.ray_query.watertightness.singlehit.vert.triangles
 
+dEQP-VK.ray_tracing_pipeline.misc.recursiveTraces_AABB_14
+dEQP-VK.ray_tracing_pipeline.misc.recursiveTraces_AABB_15
+dEQP-VK.ray_tracing_pipeline.misc.recursiveTraces_tri_14
+
 # These take just under 60sec to run, and sometimes go over and timeout
 dEQP-VK.binding_model.descriptor_buffer.multiple.graphics_frag_buffers2_sets4_imm_samplers
 dEQP-VK.binding_model.descriptor_buffer.multiple.graphics_vert_buffers8_sets1

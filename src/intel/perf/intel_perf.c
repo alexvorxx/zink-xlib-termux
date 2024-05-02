@@ -347,8 +347,8 @@ init_oa_configs(struct intel_perf_config *perf, int fd,
          continue;
       }
 
-      int ret = i915_add_config(perf, fd, &query->config, query->guid);
-      if (ret < 0) {
+      uint64_t ret = i915_add_config(perf, fd, &query->config, query->guid);
+      if (ret == 0) {
          DBG("Failed to load \"%s\" (%s) metrics set in kernel: %s\n",
              query->name, query->guid, strerror(errno));
          continue;
@@ -765,8 +765,6 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
          if (paranoid == 0 || geteuid() == 0)
             i915_perf_oa_available = true;
       }
-
-      perf->platform_supported = oa_register != NULL;
    }
 
    return i915_perf_oa_available &&

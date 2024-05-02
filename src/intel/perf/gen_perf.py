@@ -821,8 +821,6 @@ def main():
         #include <stdint.h>
         #include <stdbool.h>
 
-        #include <drm-uapi/i915_drm.h>
-
         #include "util/hash_table.h"
         #include "util/ralloc.h"
 

@@ -327,24 +327,14 @@ void anv_DestroyPipeline(
    ANV_RMV(resource_destroy, device, pipeline);
 
    switch (pipeline->type) {
+   case ANV_PIPELINE_GRAPHICS:
    case ANV_PIPELINE_GRAPHICS_LIB: {
-      struct anv_graphics_lib_pipeline *gfx_pipeline =
-         anv_pipeline_to_graphics_lib(pipeline);
+      struct anv_graphics_base_pipeline *gfx_pipeline =
+         anv_pipeline_to_graphics_base(pipeline);
 
-      for (unsigned s = 0; s < ARRAY_SIZE(gfx_pipeline->base.shaders); s++) {
-         if (gfx_pipeline->base.shaders[s])
-            anv_shader_bin_unref(device, gfx_pipeline->base.shaders[s]);
-      }
-      break;
-   }
-
-   case ANV_PIPELINE_GRAPHICS: {
-      struct anv_graphics_pipeline *gfx_pipeline =
-         anv_pipeline_to_graphics(pipeline);
-
-      for (unsigned s = 0; s < ARRAY_SIZE(gfx_pipeline->base.shaders); s++) {
-         if (gfx_pipeline->base.shaders[s])
-            anv_shader_bin_unref(device, gfx_pipeline->base.shaders[s]);
+      for (unsigned s = 0; s < ARRAY_SIZE(gfx_pipeline->shaders); s++) {
+         if (gfx_pipeline->shaders[s])
+            anv_shader_bin_unref(device, gfx_pipeline->shaders[s]);
       }
       break;
    }
@@ -4250,7 +4240,7 @@ VkResult anv_GetPipelineExecutableStatisticsKHR(
    switch (pipeline->type) {
    case ANV_PIPELINE_GRAPHICS:
    case ANV_PIPELINE_GRAPHICS_LIB: {
-      prog_data = anv_pipeline_to_graphics(pipeline)->base.shaders[exe->stage]->prog_data;
+      prog_data = anv_pipeline_to_graphics_base(pipeline)->shaders[exe->stage]->prog_data;
       break;
    }
    case ANV_PIPELINE_COMPUTE: {

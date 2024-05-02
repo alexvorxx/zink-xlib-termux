@@ -17,6 +17,8 @@
         - src/gallium/frontends/lavapipe/ci/$GPU_VERSION-skips.txt
         - src/gallium/frontends/lavapipe/ci/$PIGLIT_TRACES_FILE
         - src/gallium/winsys/sw/**/*
+        - src/gallium/auxiliary/draw/**/*
+        - src/gallium/auxiliary/gallivm/**/*
       when: on_success
 
 .lavapipe-manual-rules:

@@ -1477,6 +1477,23 @@ radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_b
 }
 
 static void
+radv_precompute_registers_hw_ms(struct radv_device *device, struct radv_shader_binary *binary)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_shader_info *info = &binary->info;
+
+   info->regs.ms.vgt_gs_max_vert_out = pdev->mesh_fast_launch_2 ? info->ngg_info.max_out_verts : info->workgroup_size;
+
+   info->regs.ms.spi_shader_gs_meshlet_dim = S_00B2B0_MESHLET_NUM_THREAD_X(info->cs.block_size[0] - 1) |
+                                             S_00B2B0_MESHLET_NUM_THREAD_Y(info->cs.block_size[1] - 1) |
+                                             S_00B2B0_MESHLET_NUM_THREAD_Z(info->cs.block_size[2] - 1) |
+                                             S_00B2B0_MESHLET_THREADGROUP_SIZE(info->workgroup_size - 1);
+
+   info->regs.ms.spi_shader_gs_meshlet_exp_alloc =
+      S_00B2B4_MAX_EXP_VERTS(info->ngg_info.max_out_verts) | S_00B2B4_MAX_EXP_PRIMS(info->ngg_info.prim_amp_factor);
+}
+
+static void
 radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader_binary *binary)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -1516,6 +1533,9 @@ radv_precompute_registers(struct radv_device *device, struct radv_shader_binary 
    case MESA_SHADER_GEOMETRY:
       if (!info->is_ngg)
          radv_precompute_registers_hw_gs(device, binary);
+      break;
+   case MESA_SHADER_MESH:
+      radv_precompute_registers_hw_ms(device, binary);
       break;
    case MESA_SHADER_FRAGMENT:
       radv_precompute_registers_hw_fs(device, binary);

@@ -3301,18 +3301,13 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
    const uint32_t gs_out = radv_conv_gl_prim_to_gs_out(ms->info.ms.output_prim);
 
    radv_emit_hw_ngg(device, ctx_cs, cs, NULL, ms);
-   radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT,
-                          pdev->mesh_fast_launch_2 ? ms->info.ngg_info.max_out_verts : ms->info.workgroup_size);
+   radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, ms->info.regs.ms.vgt_gs_max_vert_out);
    radeon_set_uconfig_reg_idx(pdev, ctx_cs, R_030908_VGT_PRIMITIVE_TYPE, 1, V_008958_DI_PT_POINTLIST);
 
    if (pdev->mesh_fast_launch_2) {
       radeon_set_sh_reg_seq(cs, R_00B2B0_SPI_SHADER_GS_MESHLET_DIM, 2);
-      radeon_emit(cs, S_00B2B0_MESHLET_NUM_THREAD_X(ms->info.cs.block_size[0] - 1) |
-                         S_00B2B0_MESHLET_NUM_THREAD_Y(ms->info.cs.block_size[1] - 1) |
-                         S_00B2B0_MESHLET_NUM_THREAD_Z(ms->info.cs.block_size[2] - 1) |
-                         S_00B2B0_MESHLET_THREADGROUP_SIZE(ms->info.workgroup_size - 1));
-      radeon_emit(cs, S_00B2B4_MAX_EXP_VERTS(ms->info.ngg_info.max_out_verts) |
-                         S_00B2B4_MAX_EXP_PRIMS(ms->info.ngg_info.prim_amp_factor));
+      radeon_emit(cs, ms->info.regs.ms.spi_shader_gs_meshlet_dim);
+      radeon_emit(cs, ms->info.regs.ms.spi_shader_gs_meshlet_exp_alloc);
    }
 
    radv_emit_vgt_gs_out(device, ctx_cs, gs_out);

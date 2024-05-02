@@ -260,6 +260,12 @@ struct radv_shader_info {
       } gs;
 
       struct {
+         uint32_t spi_shader_gs_meshlet_dim;
+         uint32_t spi_shader_gs_meshlet_exp_alloc;
+         uint32_t vgt_gs_max_vert_out;
+      } ms;
+
+      struct {
          uint32_t pa_sc_shader_control;
          uint32_t spi_ps_in_control;
          uint32_t spi_shader_z_format;

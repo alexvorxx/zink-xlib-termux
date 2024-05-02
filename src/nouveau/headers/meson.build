@@ -100,6 +100,15 @@ if with_nouveau_vk
                    '--out-rs', '@OUTPUT0@']
       )
     endif
+
+    if fs.is_file(f'nvidia/classes/@cl@sph.h')
+      cl_rs_generated += custom_target(
+        input : ['struct_parser.py', f'nvidia/classes/@cl@sph.h'],
+        output : [f'nvh_classes_@cl@_sph.rs'],
+        command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+                   '--out-rs', '@OUTPUT0@']
+      )
+    endif
   endforeach
 
   fs = import('fs')

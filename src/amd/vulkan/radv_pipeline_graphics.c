@@ -2791,67 +2791,24 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    radeon_emit(cs, shader->config.rsrc1);
    radeon_emit(cs, shader->config.rsrc2);
 
-   const struct radv_vs_output_info *outinfo = &shader->info.outinfo;
-   unsigned clip_dist_mask, cull_dist_mask, total_mask;
-   clip_dist_mask = outinfo->clip_dist_mask;
-   cull_dist_mask = outinfo->cull_dist_mask;
-   total_mask = clip_dist_mask | cull_dist_mask;
-
-   bool misc_vec_ena = outinfo->writes_pointsize || outinfo->writes_layer || outinfo->writes_viewport_index ||
-                       outinfo->writes_primitive_shading_rate;
-   unsigned spi_vs_out_config, nparams;
-
-   /* VS is required to export at least one param. */
-   nparams = MAX2(outinfo->param_exports, 1);
-   spi_vs_out_config = S_0286C4_VS_EXPORT_COUNT(nparams - 1);
-
-   if (pdev->info.gfx_level >= GFX10) {
-      spi_vs_out_config |= S_0286C4_NO_PC_EXPORT(outinfo->param_exports == 0);
-   }
-
-   radeon_set_context_reg(ctx_cs, R_0286C4_SPI_VS_OUT_CONFIG, spi_vs_out_config);
-
-   radeon_set_context_reg(
-      ctx_cs, R_02870C_SPI_SHADER_POS_FORMAT,
-      S_02870C_POS0_EXPORT_FORMAT(V_02870C_SPI_SHADER_4COMP) |
-         S_02870C_POS1_EXPORT_FORMAT(outinfo->pos_exports > 1 ? V_02870C_SPI_SHADER_4COMP : V_02870C_SPI_SHADER_NONE) |
-         S_02870C_POS2_EXPORT_FORMAT(outinfo->pos_exports > 2 ? V_02870C_SPI_SHADER_4COMP : V_02870C_SPI_SHADER_NONE) |
-         S_02870C_POS3_EXPORT_FORMAT(outinfo->pos_exports > 3 ? V_02870C_SPI_SHADER_4COMP : V_02870C_SPI_SHADER_NONE));
-
-   radeon_set_context_reg(
-      ctx_cs, R_02881C_PA_CL_VS_OUT_CNTL,
-      S_02881C_USE_VTX_POINT_SIZE(outinfo->writes_pointsize) |
-         S_02881C_USE_VTX_RENDER_TARGET_INDX(outinfo->writes_layer) |
-         S_02881C_USE_VTX_VIEWPORT_INDX(outinfo->writes_viewport_index) |
-         S_02881C_USE_VTX_VRS_RATE(outinfo->writes_primitive_shading_rate) |
-         S_02881C_VS_OUT_MISC_VEC_ENA(misc_vec_ena) |
-         S_02881C_VS_OUT_MISC_SIDE_BUS_ENA(misc_vec_ena ||
-                                           (pdev->info.gfx_level >= GFX10_3 && outinfo->pos_exports > 1)) |
-         S_02881C_VS_OUT_CCDIST0_VEC_ENA((total_mask & 0x0f) != 0) |
-         S_02881C_VS_OUT_CCDIST1_VEC_ENA((total_mask & 0xf0) != 0) | total_mask << 8 | clip_dist_mask);
+   radeon_set_context_reg(ctx_cs, R_0286C4_SPI_VS_OUT_CONFIG, shader->info.regs.vs.spi_vs_out_config);
+   radeon_set_context_reg(ctx_cs, R_02870C_SPI_SHADER_POS_FORMAT, shader->info.regs.vs.spi_shader_pos_format);
+   radeon_set_context_reg(ctx_cs, R_02881C_PA_CL_VS_OUT_CNTL, shader->info.regs.vs.pa_cl_vs_out_cntl);
 
    if (pdev->info.gfx_level <= GFX8)
-      radeon_set_context_reg(ctx_cs, R_028AB4_VGT_REUSE_OFF, outinfo->writes_viewport_index);
-
-   unsigned late_alloc_wave64, cu_mask;
-   ac_compute_late_alloc(&pdev->info, false, false, shader->config.scratch_bytes_per_wave > 0, &late_alloc_wave64,
-                         &cu_mask);
+      radeon_set_context_reg(ctx_cs, R_028AB4_VGT_REUSE_OFF, shader->info.regs.vs.vgt_reuse_off);
 
    if (pdev->info.gfx_level >= GFX7) {
-      radeon_set_sh_reg_idx(
-         pdev, cs, R_00B118_SPI_SHADER_PGM_RSRC3_VS, 3,
-         ac_apply_cu_en(S_00B118_CU_EN(cu_mask) | S_00B118_WAVE_LIMIT(0x3F), C_00B118_CU_EN, 0, &pdev->info));
-      radeon_set_sh_reg(cs, R_00B11C_SPI_SHADER_LATE_ALLOC_VS, S_00B11C_LIMIT(late_alloc_wave64));
+      radeon_set_sh_reg_idx(pdev, cs, R_00B118_SPI_SHADER_PGM_RSRC3_VS, 3,
+                            shader->info.regs.vs.spi_shader_pgm_rsrc3_vs);
+      radeon_set_sh_reg(cs, R_00B11C_SPI_SHADER_LATE_ALLOC_VS, shader->info.regs.vs.spi_shader_late_alloc_vs);
    }
-   if (pdev->info.gfx_level >= GFX10) {
-      uint32_t oversub_pc_lines = late_alloc_wave64 ? pdev->info.pc_lines / 4 : 0;
-      gfx10_emit_ge_pc_alloc(cs, oversub_pc_lines);
 
-      /* Required programming for tessellation (legacy pipeline only). */
+   if (pdev->info.gfx_level >= GFX10) {
+      radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC, shader->info.regs.vs.ge_pc_alloc);
+
       if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
-         radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL,
-                                S_028A44_ES_VERTS_PER_SUBGRP(250) | S_028A44_GS_PRIMS_PER_SUBGRP(126) |
-                                   S_028A44_GS_INST_PRIMS_IN_SUBGRP(126));
+         radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, shader->info.regs.vgt_gs_onchip_cntl);
       }
    }
 }
@@ -3219,7 +3176,7 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
          radeon_emit(cs, gs->config.rsrc2 | S_00B22C_LDS_SIZE(gs_state->lds_size));
       }
 
-      radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, gs->info.regs.gs.vgt_gs_onchip_cntl);
+      radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, gs->info.regs.vgt_gs_onchip_cntl);
       radeon_set_context_reg(ctx_cs, R_028A94_VGT_GS_MAX_PRIMS_PER_SUBGROUP,
                              gs->info.regs.gs.vgt_gs_max_prims_per_subgroup);
    } else {

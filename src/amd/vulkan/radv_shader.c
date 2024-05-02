@@ -1462,6 +1462,71 @@ radv_open_rtld_binary(struct radv_device *device, const struct radv_shader_binar
 #endif
 
 static void
+radv_precompute_registers_hw_vs(struct radv_device *device, struct radv_shader_binary *binary)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_shader_info *info = &binary->info;
+
+   /* VS is required to export at least one param. */
+   const uint32_t nparams = MAX2(info->outinfo.param_exports, 1);
+   info->regs.vs.spi_vs_out_config = S_0286C4_VS_EXPORT_COUNT(nparams - 1);
+   if (pdev->info.gfx_level >= GFX10) {
+      info->regs.vs.spi_vs_out_config |= S_0286C4_NO_PC_EXPORT(info->outinfo.param_exports == 0);
+   }
+
+   info->regs.vs.spi_shader_pos_format =
+      S_02870C_POS0_EXPORT_FORMAT(V_02870C_SPI_SHADER_4COMP) |
+      S_02870C_POS1_EXPORT_FORMAT(info->outinfo.pos_exports > 1 ? V_02870C_SPI_SHADER_4COMP
+                                                                : V_02870C_SPI_SHADER_NONE) |
+      S_02870C_POS2_EXPORT_FORMAT(info->outinfo.pos_exports > 2 ? V_02870C_SPI_SHADER_4COMP
+                                                                : V_02870C_SPI_SHADER_NONE) |
+      S_02870C_POS3_EXPORT_FORMAT(info->outinfo.pos_exports > 3 ? V_02870C_SPI_SHADER_4COMP : V_02870C_SPI_SHADER_NONE);
+
+   const bool misc_vec_ena = info->outinfo.writes_pointsize || info->outinfo.writes_layer ||
+                             info->outinfo.writes_viewport_index || info->outinfo.writes_primitive_shading_rate;
+   const unsigned clip_dist_mask = info->outinfo.clip_dist_mask;
+   const unsigned cull_dist_mask = info->outinfo.cull_dist_mask;
+   const unsigned total_mask = clip_dist_mask | cull_dist_mask;
+
+   info->regs.vs.pa_cl_vs_out_cntl =
+      S_02881C_USE_VTX_POINT_SIZE(info->outinfo.writes_pointsize) |
+      S_02881C_USE_VTX_RENDER_TARGET_INDX(info->outinfo.writes_layer) |
+      S_02881C_USE_VTX_VIEWPORT_INDX(info->outinfo.writes_viewport_index) |
+      S_02881C_USE_VTX_VRS_RATE(info->outinfo.writes_primitive_shading_rate) |
+      S_02881C_VS_OUT_MISC_VEC_ENA(misc_vec_ena) |
+      S_02881C_VS_OUT_MISC_SIDE_BUS_ENA(misc_vec_ena ||
+                                        (pdev->info.gfx_level >= GFX10_3 && info->outinfo.pos_exports > 1)) |
+      S_02881C_VS_OUT_CCDIST0_VEC_ENA((total_mask & 0x0f) != 0) |
+      S_02881C_VS_OUT_CCDIST1_VEC_ENA((total_mask & 0xf0) != 0) | total_mask << 8 | clip_dist_mask;
+
+   if (pdev->info.gfx_level <= GFX8)
+      info->regs.vs.vgt_reuse_off = info->outinfo.writes_viewport_index;
+
+   unsigned late_alloc_wave64, cu_mask;
+   ac_compute_late_alloc(&pdev->info, false, false, binary->config.scratch_bytes_per_wave > 0, &late_alloc_wave64,
+                         &cu_mask);
+
+   if (pdev->info.gfx_level >= GFX7) {
+      info->regs.vs.spi_shader_pgm_rsrc3_vs =
+         ac_apply_cu_en(S_00B118_CU_EN(cu_mask) | S_00B118_WAVE_LIMIT(0x3F), C_00B118_CU_EN, 0, &pdev->info);
+      info->regs.vs.spi_shader_late_alloc_vs = S_00B11C_LIMIT(late_alloc_wave64);
+
+      if (pdev->info.gfx_level >= GFX10) {
+         const uint32_t oversub_pc_lines = late_alloc_wave64 ? pdev->info.pc_lines / 4 : 0;
+
+         info->regs.vs.ge_pc_alloc =
+            S_030980_OVERSUB_EN(oversub_pc_lines > 0) | S_030980_NUM_PC_LINES(oversub_pc_lines - 1);
+
+         /* Required programming for tessellation (legacy pipeline only). */
+         if (binary->info.stage == MESA_SHADER_TESS_EVAL) {
+            info->regs.vgt_gs_onchip_cntl = S_028A44_ES_VERTS_PER_SUBGRP(250) | S_028A44_GS_PRIMS_PER_SUBGRP(126) |
+                                            S_028A44_GS_INST_PRIMS_IN_SUBGRP(126);
+         }
+      }
+   }
+}
+
+static void
 radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_binary *binary)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -1472,9 +1537,9 @@ radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_b
    info->regs.gs.vgt_gs_max_prims_per_subgroup =
       S_028A94_MAX_PRIMS_PER_SUBGROUP(info->gs_ring_info.gs_inst_prims_in_subgroup);
 
-   info->regs.gs.vgt_gs_onchip_cntl = S_028A44_ES_VERTS_PER_SUBGRP(info->gs_ring_info.es_verts_per_subgroup) |
-                                      S_028A44_GS_PRIMS_PER_SUBGRP(info->gs_ring_info.gs_prims_per_subgroup) |
-                                      S_028A44_GS_INST_PRIMS_IN_SUBGRP(info->gs_ring_info.gs_inst_prims_in_subgroup);
+   info->regs.vgt_gs_onchip_cntl = S_028A44_ES_VERTS_PER_SUBGRP(info->gs_ring_info.es_verts_per_subgroup) |
+                                   S_028A44_GS_PRIMS_PER_SUBGRP(info->gs_ring_info.gs_prims_per_subgroup) |
+                                   S_028A44_GS_INST_PRIMS_IN_SUBGRP(info->gs_ring_info.gs_inst_prims_in_subgroup);
 
    const uint32_t gs_max_out_vertices = info->gs.vertices_out;
    const uint8_t max_stream = info->gs.max_stream;
@@ -1566,6 +1631,14 @@ radv_precompute_registers(struct radv_device *device, struct radv_shader_binary 
    struct radv_shader_info *info = &binary->info;
 
    switch (info->stage) {
+   case MESA_SHADER_VERTEX:
+      if (!info->vs.as_ls && !info->vs.as_es && !info->is_ngg)
+         radv_precompute_registers_hw_vs(device, binary);
+      break;
+   case MESA_SHADER_TESS_EVAL:
+      if (!info->is_ngg && !info->tes.as_es)
+         radv_precompute_registers_hw_vs(device, binary);
+      break;
    case MESA_SHADER_GEOMETRY:
       if (!info->is_ngg)
          radv_precompute_registers_hw_gs(device, binary);

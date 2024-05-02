@@ -18,6 +18,6 @@ int i915_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
                           uint64_t report_format, uint64_t period_exponent,
                           bool hold_preemption, bool enable);
 
-bool i915_query_perf_config_data(struct intel_perf_config *perf, int fd, const char *guid, struct drm_i915_perf_oa_config *config);
+struct intel_perf_registers *i915_perf_load_configurations(struct intel_perf_config *perf_cfg, int fd, const char *guid);
 
 bool i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_register_snapshots);

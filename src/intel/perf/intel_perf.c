@@ -736,31 +736,13 @@ intel_perf_load_configuration(struct intel_perf_config *perf_cfg, int fd, const 
    if (!perf_cfg->i915_query_supported)
       return NULL;
 
-   struct drm_i915_perf_oa_config i915_config = { 0, };
-   if (!i915_query_perf_config_data(perf_cfg, fd, guid, &i915_config))
-      return NULL;
-
-   struct intel_perf_registers *config = rzalloc(NULL, struct intel_perf_registers);
-   config->n_flex_regs = i915_config.n_flex_regs;
-   config->flex_regs = rzalloc_array(config, struct intel_perf_query_register_prog, config->n_flex_regs);
-   config->n_mux_regs = i915_config.n_mux_regs;
-   config->mux_regs = rzalloc_array(config, struct intel_perf_query_register_prog, config->n_mux_regs);
-   config->n_b_counter_regs = i915_config.n_boolean_regs;
-   config->b_counter_regs = rzalloc_array(config, struct intel_perf_query_register_prog, config->n_b_counter_regs);
-
-   /*
-    * struct intel_perf_query_register_prog maps exactly to the tuple of
-    * (register offset, register value) returned by the i915.
-    */
-   i915_config.flex_regs_ptr = to_const_user_pointer(config->flex_regs);
-   i915_config.mux_regs_ptr = to_const_user_pointer(config->mux_regs);
-   i915_config.boolean_regs_ptr = to_const_user_pointer(config->b_counter_regs);
-   if (!i915_query_perf_config_data(perf_cfg, fd, guid, &i915_config)) {
-      ralloc_free(config);
+   switch (perf_cfg->devinfo->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return i915_perf_load_configurations(perf_cfg, fd, guid);
+   default:
+      unreachable("missing");
       return NULL;
    }
-
-   return config;
 }
 
 uint64_t

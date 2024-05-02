@@ -3180,39 +3180,21 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_legacy_gs_info *gs_state = &gs->info.gs_ring_info;
-   unsigned gs_max_out_vertices;
-   const uint8_t *num_components;
-   uint8_t max_stream;
-   unsigned offset;
    uint64_t va;
 
-   gs_max_out_vertices = gs->info.gs.vertices_out;
-   max_stream = gs->info.gs.max_stream;
-   num_components = gs->info.gs.num_stream_output_components;
-
-   offset = num_components[0] * gs_max_out_vertices;
-
    radeon_set_context_reg_seq(ctx_cs, R_028A60_VGT_GSVS_RING_OFFSET_1, 3);
-   radeon_emit(ctx_cs, offset);
-   if (max_stream >= 1)
-      offset += num_components[1] * gs_max_out_vertices;
-   radeon_emit(ctx_cs, offset);
-   if (max_stream >= 2)
-      offset += num_components[2] * gs_max_out_vertices;
-   radeon_emit(ctx_cs, offset);
-   if (max_stream >= 3)
-      offset += num_components[3] * gs_max_out_vertices;
-   radeon_set_context_reg(ctx_cs, R_028AB0_VGT_GSVS_RING_ITEMSIZE, offset);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gsvs_ring_offset[0]);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gsvs_ring_offset[1]);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gsvs_ring_offset[2]);
+   radeon_set_context_reg(ctx_cs, R_028AB0_VGT_GSVS_RING_ITEMSIZE, gs->info.regs.gs.vgt_gsvs_ring_itemsize);
 
    radeon_set_context_reg_seq(ctx_cs, R_028B5C_VGT_GS_VERT_ITEMSIZE, 4);
-   radeon_emit(ctx_cs, num_components[0]);
-   radeon_emit(ctx_cs, (max_stream >= 1) ? num_components[1] : 0);
-   radeon_emit(ctx_cs, (max_stream >= 2) ? num_components[2] : 0);
-   radeon_emit(ctx_cs, (max_stream >= 3) ? num_components[3] : 0);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gs_vert_itemsize[0]);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gs_vert_itemsize[1]);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gs_vert_itemsize[2]);
+   radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gs_vert_itemsize[3]);
 
-   uint32_t gs_num_invocations = gs->info.gs.invocations;
-   radeon_set_context_reg(ctx_cs, R_028B90_VGT_GS_INSTANCE_CNT,
-                          S_028B90_CNT(MIN2(gs_num_invocations, 127)) | S_028B90_ENABLE(gs_num_invocations > 0));
+   radeon_set_context_reg(ctx_cs, R_028B90_VGT_GS_INSTANCE_CNT, gs->info.regs.gs.vgt_gs_instance_cnt);
 
    if (pdev->info.gfx_level <= GFX8) {
       /* GFX6-8: ESGS offchip ring buffer is allocated according to VGT_ESGS_RING_ITEMSIZE.
@@ -3248,14 +3230,10 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
       radeon_emit(cs, gs->config.rsrc2);
    }
 
-   radeon_set_sh_reg_idx(
-      pdev, cs, R_00B21C_SPI_SHADER_PGM_RSRC3_GS, 3,
-      ac_apply_cu_en(S_00B21C_CU_EN(0xffff) | S_00B21C_WAVE_LIMIT(0x3F), C_00B21C_CU_EN, 0, &pdev->info));
+   radeon_set_sh_reg_idx(pdev, cs, R_00B21C_SPI_SHADER_PGM_RSRC3_GS, 3, gs->info.regs.gs.spi_shader_pgm_rsrc3_gs);
 
    if (pdev->info.gfx_level >= GFX10) {
-      radeon_set_sh_reg_idx(pdev, cs, R_00B204_SPI_SHADER_PGM_RSRC4_GS, 3,
-                            ac_apply_cu_en(S_00B204_CU_EN_GFX10(0xffff) | S_00B204_SPI_SHADER_LATE_ALLOC_GS_GFX10(0),
-                                           C_00B204_CU_EN_GFX10, 16, &pdev->info));
+      radeon_set_sh_reg_idx(pdev, cs, R_00B204_SPI_SHADER_PGM_RSRC4_GS, 3, gs->info.regs.gs.spi_shader_pgm_rsrc4_gs);
    }
 }
 
@@ -3271,7 +3249,7 @@ radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf
       radv_emit_hw_vs(device, ctx_cs, cs, gs_copy_shader);
    }
 
-   radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, gs->info.gs.vertices_out);
+   radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, gs->info.regs.vgt_gs_max_vert_out);
 
    if (gs->info.merged_shader_compiled_separately) {
       const struct radv_userdata_info *vgt_esgs_ring_itemsize = radv_get_user_sgpr(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
@@ -3301,7 +3279,7 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
    const uint32_t gs_out = radv_conv_gl_prim_to_gs_out(ms->info.ms.output_prim);
 
    radv_emit_hw_ngg(device, ctx_cs, cs, NULL, ms);
-   radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, ms->info.regs.ms.vgt_gs_max_vert_out);
+   radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, ms->info.regs.vgt_gs_max_vert_out);
    radeon_set_uconfig_reg_idx(pdev, ctx_cs, R_030908_VGT_PRIMITIVE_TYPE, 1, V_008958_DI_PT_POINTLIST);
 
    if (pdev->mesh_fast_launch_2) {

@@ -1464,6 +1464,7 @@ radv_open_rtld_binary(struct radv_device *device, const struct radv_shader_binar
 static void
 radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_binary *binary)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader_info *info = &binary->info;
 
    info->regs.gs.vgt_esgs_ring_itemsize = info->gs_ring_info.esgs_itemsize;
@@ -1474,6 +1475,41 @@ radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_b
    info->regs.gs.vgt_gs_onchip_cntl = S_028A44_ES_VERTS_PER_SUBGRP(info->gs_ring_info.es_verts_per_subgroup) |
                                       S_028A44_GS_PRIMS_PER_SUBGRP(info->gs_ring_info.gs_prims_per_subgroup) |
                                       S_028A44_GS_INST_PRIMS_IN_SUBGRP(info->gs_ring_info.gs_inst_prims_in_subgroup);
+
+   const uint32_t gs_max_out_vertices = info->gs.vertices_out;
+   const uint8_t max_stream = info->gs.max_stream;
+   const uint8_t *num_components = info->gs.num_stream_output_components;
+
+   uint32_t offset = num_components[0] * gs_max_out_vertices;
+   info->regs.gs.vgt_gsvs_ring_offset[0] = offset;
+
+   if (max_stream >= 1)
+      offset += num_components[1] * gs_max_out_vertices;
+   info->regs.gs.vgt_gsvs_ring_offset[1] = offset;
+
+   if (max_stream >= 2)
+      offset += num_components[2] * gs_max_out_vertices;
+   info->regs.gs.vgt_gsvs_ring_offset[2] = offset;
+
+   if (max_stream >= 3)
+      offset += num_components[3] * gs_max_out_vertices;
+   info->regs.gs.vgt_gsvs_ring_itemsize = offset;
+
+   for (uint32_t i = 0; i < 4; i++)
+      info->regs.gs.vgt_gs_vert_itemsize[i] = (max_stream >= i) ? num_components[i] : 0;
+
+   const uint32_t gs_num_invocations = info->gs.invocations;
+   info->regs.gs.vgt_gs_instance_cnt =
+      S_028B90_CNT(MIN2(gs_num_invocations, 127)) | S_028B90_ENABLE(gs_num_invocations > 0);
+
+   info->regs.gs.spi_shader_pgm_rsrc3_gs =
+      ac_apply_cu_en(S_00B21C_CU_EN(0xffff) | S_00B21C_WAVE_LIMIT(0x3F), C_00B21C_CU_EN, 0, &pdev->info);
+
+   if (pdev->info.gfx_level >= GFX10) {
+      info->regs.gs.spi_shader_pgm_rsrc4_gs =
+         ac_apply_cu_en(S_00B204_CU_EN_GFX10(0xffff) | S_00B204_SPI_SHADER_LATE_ALLOC_GS_GFX10(0), C_00B204_CU_EN_GFX10,
+                        16, &pdev->info);
+   }
 }
 
 static void
@@ -1482,7 +1518,7 @@ radv_precompute_registers_hw_ms(struct radv_device *device, struct radv_shader_b
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader_info *info = &binary->info;
 
-   info->regs.ms.vgt_gs_max_vert_out = pdev->mesh_fast_launch_2 ? info->ngg_info.max_out_verts : info->workgroup_size;
+   info->regs.vgt_gs_max_vert_out = pdev->mesh_fast_launch_2 ? info->ngg_info.max_out_verts : info->workgroup_size;
 
    info->regs.ms.spi_shader_gs_meshlet_dim = S_00B2B0_MESHLET_NUM_THREAD_X(info->cs.block_size[0] - 1) |
                                              S_00B2B0_MESHLET_NUM_THREAD_Y(info->cs.block_size[1] - 1) |
@@ -1527,12 +1563,14 @@ radv_precompute_registers_hw_cs(struct radv_device *device, struct radv_shader_b
 static void
 radv_precompute_registers(struct radv_device *device, struct radv_shader_binary *binary)
 {
-   const struct radv_shader_info *info = &binary->info;
+   struct radv_shader_info *info = &binary->info;
 
    switch (info->stage) {
    case MESA_SHADER_GEOMETRY:
       if (!info->is_ngg)
          radv_precompute_registers_hw_gs(device, binary);
+
+      info->regs.vgt_gs_max_vert_out = info->gs.vertices_out;
       break;
    case MESA_SHADER_MESH:
       radv_precompute_registers_hw_ms(device, binary);

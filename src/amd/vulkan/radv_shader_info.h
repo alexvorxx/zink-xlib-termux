@@ -254,15 +254,20 @@ struct radv_shader_info {
    /* Precomputed register values. */
    struct {
       struct {
+         uint32_t spi_shader_pgm_rsrc3_gs;
+         uint32_t spi_shader_pgm_rsrc4_gs;
          uint32_t vgt_esgs_ring_itemsize;
+         uint32_t vgt_gs_instance_cnt;
          uint32_t vgt_gs_max_prims_per_subgroup;
          uint32_t vgt_gs_onchip_cntl;
+         uint32_t vgt_gs_vert_itemsize[4];
+         uint32_t vgt_gsvs_ring_itemsize;
+         uint32_t vgt_gsvs_ring_offset[3];
       } gs;
 
       struct {
          uint32_t spi_shader_gs_meshlet_dim;
          uint32_t spi_shader_gs_meshlet_exp_alloc;
-         uint32_t vgt_gs_max_vert_out;
       } ms;
 
       struct {
@@ -277,6 +282,9 @@ struct radv_shader_info {
          uint32_t compute_num_thread_z;
          uint32_t compute_resource_limits;
       } cs;
+
+      /* Common registers between stages. */
+      uint32_t vgt_gs_max_vert_out;
    } regs;
 };
 

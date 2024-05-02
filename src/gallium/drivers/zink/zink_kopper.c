@@ -1061,6 +1061,18 @@ zink_kopper_update(struct pipe_screen *pscreen, struct pipe_resource *pres, int 
       cdt->is_kill = true;
       return false;
    }
+
+   if (cdt->caps.currentExtent.width == 0xFFFFFFFF && cdt->caps.currentExtent.height == 0xFFFFFFFF) {
+      /*
+         currentExtent is the current width and height of the surface, or the special value (0xFFFFFFFF,
+         0xFFFFFFFF) indicating that the surface size will be determined by the extent of a swapchain
+         targeting the surface.
+       */
+      *w = res->base.b.width0;
+      *h = res->base.b.height0;
+      return true;
+   }
+
    *w = cdt->caps.currentExtent.width;
    *h = cdt->caps.currentExtent.height;
    return true;

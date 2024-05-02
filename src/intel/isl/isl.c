@@ -2994,12 +2994,6 @@ isl_surf_supports_ccs(const struct isl_device *dev,
     *
     *     - Support is limited to tiled render targets.
     *
-    * From the Skylake documentation, it is made clear that X-tiling is no
-    * longer supported:
-    *
-    *     - MCS and Lossless compression is supported for
-    *       TiledY/TileYs/TileYf non-MSRTs only.
-    *
     * From the BSpec (44930) for Gfx12:
     *
     *    Linear CCS is only allowed for Untyped Buffers but only via HDC
@@ -3009,6 +3003,22 @@ isl_surf_supports_ccs(const struct isl_device *dev,
     * this means linear is out on Gfx12+ as well.
     */
    if (surf->tiling == ISL_TILING_LINEAR)
+      return false;
+
+   /* From the SKL PRMs, Volume 7: MCS Buffer for Render Target(s),
+    *
+    *    - Note: Lossless Color Compression can only be applied to Surfaces
+    *    which are TileY, TileYs, or TileYf.
+    *
+    * From the ACM PRMs, Volume 9: MCS/CCS Buffers for Render Target(s),
+    *
+    *    - Note: Lossless Color Compression can only be applied to Surfaces
+    *    which are Linear, Tile4, or Tile64. (TileY/TileYF/TileYS on older
+    *    devices)
+    *
+    * It is made clear that X-tiling is no longer supported on SKL+.
+    */
+   if (ISL_GFX_VER(dev) >= 9 && surf->tiling == ISL_TILING_X)
       return false;
 
    /* SKL PRMs, Volume 5: Memory Views, Tiling and Mip Tails for 2D Surfaces:
@@ -3159,12 +3169,6 @@ isl_surf_supports_ccs(const struct isl_device *dev,
            isl_tiling_is_64(surf->tiling)) &&
           (format_bpb == 64 || format_bpb == 128))
          return false;
-
-      /* TODO: Handle the other tiling formats */
-      if (surf->tiling != ISL_TILING_Y0 &&
-          surf->tiling != ISL_TILING_4 &&
-          !isl_tiling_is_64(surf->tiling))
-         return false;
    } else {
       /* ISL_GFX_VER(dev) < 12 */
       if (surf->samples > 1)
@@ -3199,15 +3203,6 @@ isl_surf_supports_ccs(const struct isl_device *dev,
        */
       if (ISL_GFX_VER(dev) <= 7 &&
           (surf->levels > 1 || surf->logical_level0_px.array_len > 1))
-         return false;
-
-      /* From the Skylake documentation, it is made clear that X-tiling is no
-       * longer supported:
-       *
-       *     - MCS and Lossless compression is supported for
-       *     TiledY/TileYs/TileYf non-MSRTs only.
-       */
-      if (ISL_GFX_VER(dev) >= 9 && !isl_tiling_is_any_y(surf->tiling))
          return false;
    }
 

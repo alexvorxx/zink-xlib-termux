@@ -1561,3 +1561,9 @@ intel_perf_init_metrics(struct intel_perf_config *perf_cfg,
    if (oa_metrics)
       intel_perf_register_mdapi_oa_query(perf_cfg, devinfo);
 }
+
+void
+intel_perf_free(struct intel_perf_config *perf_cfg)
+{
+   ralloc_free(perf_cfg);
+}

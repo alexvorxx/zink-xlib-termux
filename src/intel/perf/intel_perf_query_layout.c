@@ -100,6 +100,7 @@ main(int argc, char *argv[])
 
    if (!perf_cfg->i915_query_supported) {
       fprintf(stderr, "No supported queries for platform.\n");
+      intel_perf_free(perf_cfg);
       return EXIT_FAILURE;
    }
 
@@ -133,5 +134,6 @@ main(int argc, char *argv[])
       }
    }
 
+   intel_perf_free(perf_cfg);
    return EXIT_SUCCESS;
 }

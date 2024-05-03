@@ -66,6 +66,7 @@ enum counter_type : uint8_t {
    counter_vs = 1 << wait_type_vs,
    counter_alu = 1 << wait_type_num,
    num_counters = wait_type_num + 1,
+   wait_counters = BITFIELD_MASK(wait_type_num),
 };
 
 enum vmem_type : uint8_t {
@@ -267,10 +268,7 @@ struct wait_ctx {
    enum amd_gfx_level gfx_level;
    const target_info* info;
 
-   bool vm_nonzero = false;
-   bool exp_nonzero = false;
-   bool lgkm_nonzero = false;
-   bool vs_nonzero = false;
+   uint32_t nonzero = 0;
    bool pending_flat_lgkm = false;
    bool pending_flat_vm = false;
    bool pending_s_buffer_store = false; /* GFX10 workaround */
@@ -287,15 +285,10 @@ struct wait_ctx {
 
    bool join(const wait_ctx* other, bool logical)
    {
-      bool changed = other->exp_nonzero > exp_nonzero || other->vm_nonzero > vm_nonzero ||
-                     other->lgkm_nonzero > lgkm_nonzero || other->vs_nonzero > vs_nonzero ||
-                     (other->pending_flat_lgkm && !pending_flat_lgkm) ||
-                     (other->pending_flat_vm && !pending_flat_vm);
+      bool changed = (other->pending_flat_lgkm && !pending_flat_lgkm) ||
+                     (other->pending_flat_vm && !pending_flat_vm) || (~nonzero & other->nonzero);
 
-      exp_nonzero |= other->exp_nonzero;
-      vm_nonzero |= other->vm_nonzero;
-      lgkm_nonzero |= other->lgkm_nonzero;
-      vs_nonzero |= other->vs_nonzero;
+      nonzero |= other->nonzero;
       pending_flat_lgkm |= other->pending_flat_lgkm;
       pending_flat_vm |= other->pending_flat_vm;
       pending_s_buffer_store |= other->pending_s_buffer_store;
@@ -324,10 +317,8 @@ struct wait_ctx {
 
    UNUSED void print(FILE* output) const
    {
-      fprintf(output, "exp_nonzero: %u\n", exp_nonzero);
-      fprintf(output, "vm_nonzero: %u\n", vm_nonzero);
-      fprintf(output, "lgkm_nonzero: %u\n", lgkm_nonzero);
-      fprintf(output, "vs_nonzero: %u\n", vs_nonzero);
+      for (unsigned i = 0; i < wait_type_num; i++)
+         fprintf(output, "nonzero[%u]: %u\n", i, nonzero & (1 << i) ? 1 : 0);
       fprintf(output, "pending_flat_lgkm: %u\n", pending_flat_lgkm);
       fprintf(output, "pending_flat_vm: %u\n", pending_flat_vm);
       for (const auto& entry : gpr_map) {
@@ -478,17 +469,8 @@ perform_barrier(wait_ctx& ctx, wait_imm& imm, memory_sync_info sync, unsigned se
 void
 force_waitcnt(wait_ctx& ctx, wait_imm& imm)
 {
-   if (ctx.vm_nonzero)
-      imm.vm = 0;
-   if (ctx.exp_nonzero)
-      imm.exp = 0;
-   if (ctx.lgkm_nonzero)
-      imm.lgkm = 0;
-
-   if (ctx.gfx_level >= GFX10) {
-      if (ctx.vs_nonzero)
-         imm.vs = 0;
-   }
+   u_foreach_bit (i, ctx.nonzero)
+      imm[i] = 0;
 }
 
 void
@@ -538,16 +520,16 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
        (ctx.gfx_level >= GFX11 ? instr->isEXP() && instr->exp().done
                                : (instr->opcode == aco_opcode::s_sendmsg &&
                                   instr->salu().imm == sendmsg_ordered_ps_done))) {
-      if (ctx.vm_nonzero)
-         imm.vm = 0;
-      if (ctx.gfx_level >= GFX10 && ctx.vs_nonzero)
-         imm.vs = 0;
+      uint8_t c = counter_vm | counter_vs;
       /* Await SMEM loads too, as it's possible for an application to create them, like using a
        * scalarization loop - pointless and unoptimal for an inherently divergent address of
        * per-pixel data, but still can be done at least synthetically and must be handled correctly.
        */
-      if (ctx.program->has_smem_buffer_or_global_loads && ctx.lgkm_nonzero)
-         imm.lgkm = 0;
+      if (ctx.program->has_smem_buffer_or_global_loads)
+         c |= counter_lgkm;
+
+      u_foreach_bit (i, c & ctx.nonzero)
+         imm[i] = 0;
    }
 
    check_instr(ctx, imm, delay, instr);
@@ -555,7 +537,7 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
    /* It's required to wait for scalar stores before "writing back" data.
     * It shouldn't cost anything anyways since we're about to do s_endpgm.
     */
-   if (ctx.lgkm_nonzero && instr->opcode == aco_opcode::s_dcache_wb) {
+   if ((ctx.nonzero & BITFIELD_BIT(wait_type_lgkm)) && instr->opcode == aco_opcode::s_dcache_wb) {
       assert(ctx.gfx_level >= GFX8);
       imm.lgkm = 0;
    }
@@ -590,30 +572,18 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
          imm.lgkm = 0;
 
       /* reset counters */
-      ctx.exp_nonzero &= imm.exp != 0;
-      ctx.vm_nonzero &= imm.vm != 0;
-      ctx.lgkm_nonzero &= imm.lgkm != 0;
-      ctx.vs_nonzero &= imm.vs != 0;
+      for (unsigned i = 0; i < wait_type_num; i++)
+         ctx.nonzero &= imm[i] == 0 ? ~BITFIELD_BIT(i) : UINT32_MAX;
 
       /* update barrier wait imms */
       for (unsigned i = 0; i < storage_count; i++) {
          wait_imm& bar = ctx.barrier_imm[i];
          uint16_t& bar_ev = ctx.barrier_events[i];
-         if (bar.exp != wait_imm::unset_counter && imm.exp <= bar.exp) {
-            bar.exp = wait_imm::unset_counter;
-            bar_ev &= ~ctx.info->events[wait_type_exp];
-         }
-         if (bar.vm != wait_imm::unset_counter && imm.vm <= bar.vm) {
-            bar.vm = wait_imm::unset_counter;
-            bar_ev &= ~(ctx.info->events[wait_type_vm] & ~event_flat);
-         }
-         if (bar.lgkm != wait_imm::unset_counter && imm.lgkm <= bar.lgkm) {
-            bar.lgkm = wait_imm::unset_counter;
-            bar_ev &= ~(ctx.info->events[wait_type_lgkm] & ~event_flat);
-         }
-         if (bar.vs != wait_imm::unset_counter && imm.vs <= bar.vs) {
-            bar.vs = wait_imm::unset_counter;
-            bar_ev &= ~ctx.info->events[wait_type_vs];
+         for (unsigned j = 0; j < wait_type_num; j++) {
+            if (bar[j] != wait_imm::unset_counter && imm[j] <= bar[j]) {
+               bar[j] = wait_imm::unset_counter;
+               bar_ev &= ~ctx.info->events[j] | event_flat;
+            }
          }
          if (bar.vm == wait_imm::unset_counter && bar.lgkm == wait_imm::unset_counter)
             bar_ev &= ~event_flat;
@@ -627,14 +597,10 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
       /* remove all gprs with higher counter from map */
       std::map<PhysReg, wait_entry>::iterator it = ctx.gpr_map.begin();
       while (it != ctx.gpr_map.end()) {
-         if (imm.exp != wait_imm::unset_counter && imm.exp <= it->second.imm.exp)
-            it->second.remove_wait(wait_type_exp, ctx.info->events[wait_type_exp]);
-         if (imm.vm != wait_imm::unset_counter && imm.vm <= it->second.imm.vm)
-            it->second.remove_wait(wait_type_vm, ctx.info->events[wait_type_vm]);
-         if (imm.lgkm != wait_imm::unset_counter && imm.lgkm <= it->second.imm.lgkm)
-            it->second.remove_wait(wait_type_lgkm, ctx.info->events[wait_type_lgkm]);
-         if (imm.vs != wait_imm::unset_counter && imm.vs <= it->second.imm.vs)
-            it->second.remove_wait(wait_type_vs, ctx.info->events[wait_type_vs]);
+         for (unsigned i = 0; i < wait_type_num; i++) {
+            if (imm[i] != wait_imm::unset_counter && imm[i] <= it->second.imm[i])
+               it->second.remove_wait((wait_type)i, ctx.info->events[i]);
+         }
          if (delay.valu_instrs <= it->second.delay.valu_instrs)
             it->second.delay.valu_instrs = alu_delay_info::valu_nop;
          if (delay.trans_instrs <= it->second.delay.trans_instrs)
@@ -658,13 +624,6 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
 }
 
 void
-update_barrier_counter(uint8_t* ctr, unsigned max)
-{
-   if (*ctr != wait_imm::unset_counter && *ctr < max)
-      (*ctr)++;
-}
-
-void
 update_barrier_imm(wait_ctx& ctx, uint8_t counters, wait_event event, memory_sync_info sync)
 {
    for (unsigned i = 0; i < storage_count; i++) {
@@ -672,23 +631,13 @@ update_barrier_imm(wait_ctx& ctx, uint8_t counters, wait_event event, memory_syn
       uint16_t& bar_ev = ctx.barrier_events[i];
       if (sync.storage & (1 << i) && !(sync.semantics & semantic_private)) {
          bar_ev |= event;
-         if (counters & counter_lgkm)
-            bar.lgkm = 0;
-         if (counters & counter_vm)
-            bar.vm = 0;
-         if (counters & counter_exp)
-            bar.exp = 0;
-         if (counters & counter_vs)
-            bar.vs = 0;
+         u_foreach_bit (j, counters)
+            bar[j] = 0;
       } else if (!(bar_ev & ctx.info->unordered_events) && !(ctx.info->unordered_events & event)) {
-         if (counters & counter_lgkm && (bar_ev & ctx.info->events[wait_type_lgkm]) == event)
-            update_barrier_counter(&bar.lgkm, ctx.info->max_cnt[wait_type_lgkm]);
-         if (counters & counter_vm && (bar_ev & ctx.info->events[wait_type_vm]) == event)
-            update_barrier_counter(&bar.vm, ctx.info->max_cnt[wait_type_vm]);
-         if (counters & counter_exp && (bar_ev & ctx.info->events[wait_type_exp]) == event)
-            update_barrier_counter(&bar.exp, ctx.info->max_cnt[wait_type_exp]);
-         if (counters & counter_vs && (bar_ev & ctx.info->events[wait_type_vs]) == event)
-            update_barrier_counter(&bar.vs, ctx.info->max_cnt[wait_type_vs]);
+         u_foreach_bit (j, counters) {
+            if (bar[j] != wait_imm::unset_counter && (bar_ev & ctx.info->events[j]) == event)
+               bar[j] = std::min<uint16_t>(bar[j] + 1, ctx.info->max_cnt[j]);
+         }
       }
    }
 }
@@ -698,14 +647,7 @@ update_counters(wait_ctx& ctx, wait_event event, memory_sync_info sync = memory_
 {
    uint8_t counters = ctx.info->get_counters_for_event(event);
 
-   if (counters & counter_lgkm)
-      ctx.lgkm_nonzero = true;
-   if (counters & counter_vm)
-      ctx.vm_nonzero = true;
-   if (counters & counter_exp)
-      ctx.exp_nonzero = true;
-   if (counters & counter_vs)
-      ctx.vs_nonzero = true;
+   ctx.nonzero |= counters;
 
    update_barrier_imm(ctx, counters, event, sync);
 
@@ -725,18 +667,10 @@ update_counters(wait_ctx& ctx, wait_event event, memory_sync_info sync = memory_
 
       assert(entry.events);
 
-      if ((counters & counter_exp) && (entry.events & ctx.info->events[wait_type_exp]) == event &&
-          entry.imm.exp < ctx.info->max_cnt[wait_type_exp])
-         entry.imm.exp++;
-      if ((counters & counter_lgkm) && (entry.events & ctx.info->events[wait_type_lgkm]) == event &&
-          entry.imm.lgkm < ctx.info->max_cnt[wait_type_lgkm])
-         entry.imm.lgkm++;
-      if ((counters & counter_vm) && (entry.events & ctx.info->events[wait_type_vm]) == event &&
-          entry.imm.vm < ctx.info->max_cnt[wait_type_vm])
-         entry.imm.vm++;
-      if ((counters & counter_vs) && (entry.events & ctx.info->events[wait_type_vs]) == event &&
-          entry.imm.vs < ctx.info->max_cnt[wait_type_vs])
-         entry.imm.vs++;
+      u_foreach_bit (i, counters) {
+         if ((entry.events & ctx.info->events[i]) == event)
+            entry.imm[i] = std::min<uint16_t>(entry.imm[i] + 1, ctx.info->max_cnt[i]);
+      }
    }
 }
 
@@ -745,8 +679,7 @@ update_counters_for_flat_load(wait_ctx& ctx, memory_sync_info sync = memory_sync
 {
    assert(ctx.gfx_level < GFX10);
 
-   ctx.lgkm_nonzero = true;
-   ctx.vm_nonzero = true;
+   ctx.nonzero |= BITFIELD_BIT(wait_type_lgkm) | BITFIELD_BIT(wait_type_vm);
 
    update_barrier_imm(ctx, counter_vm | counter_lgkm, event_flat, sync);
 
@@ -766,14 +699,8 @@ insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, boo
 {
    uint16_t counters = ctx.info->get_counters_for_event(event);
    wait_imm imm;
-   if (counters & counter_lgkm)
-      imm.lgkm = 0;
-   if (counters & counter_vm)
-      imm.vm = 0;
-   if (counters & counter_exp)
-      imm.exp = 0;
-   if (counters & counter_vs)
-      imm.vs = 0;
+   u_foreach_bit (i, counters & wait_counters)
+      imm[i] = 0;
 
    alu_delay_info delay;
    if (event == event_valu) {

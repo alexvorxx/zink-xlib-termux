@@ -150,11 +150,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
 
    assert(batch);
 
-   bool clear = fbinfo->zs.clear.z | fbinfo->zs.clear.s;
-   for (unsigned i = 0; i < fbinfo->rt_count; i++)
-      clear |= fbinfo->rts[i].clear;
-
-   if (!clear && !batch->jc.first_job) {
+   if (!batch->fb.desc.gpu && !batch->jc.first_job) {
       if (util_dynarray_num_elements(&batch->event_ops,
                                      struct panvk_cmd_event_op) == 0) {
          /* Content-less batch, let's drop it */
@@ -2321,6 +2317,14 @@ panvk_per_arch(CmdEndRendering)(VkCommandBuffer commandBuffer)
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
    if (!(cmdbuf->state.gfx.render.flags & VK_RENDERING_SUSPENDING_BIT)) {
+      struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
+      bool clear = fbinfo->zs.clear.z | fbinfo->zs.clear.s;
+      for (unsigned i = 0; i < fbinfo->rt_count; i++)
+         clear |= fbinfo->rts[i].clear;
+
+      if (clear)
+         panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
+
       panvk_per_arch(cmd_close_batch)(cmdbuf);
       cmdbuf->cur_batch = NULL;
    }

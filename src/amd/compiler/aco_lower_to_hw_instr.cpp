@@ -1287,6 +1287,11 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
          } else {
             bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op32);
          }
+      } else if (dst.regClass() == v1b && ctx->program->gfx_level >= GFX10) {
+         Operand fop = Operand::c32(fui(float(op.constantValue())));
+         Operand offset = Operand::c32(dst.physReg().byte());
+         Operand def_op(PhysReg(dst.physReg().reg()), v1);
+         bld.vop3(aco_opcode::v_cvt_pk_u8_f32, dst, fop, offset, def_op);
       } else if (dst.regClass() == v2b && ctx->program->gfx_level >= GFX11) {
          emit_v_mov_b16(bld, dst, op);
       } else if (dst.regClass() == v2b && use_sdwa && !op.isLiteral()) {

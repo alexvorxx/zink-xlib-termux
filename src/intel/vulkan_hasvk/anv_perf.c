@@ -38,8 +38,6 @@ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
 {
    const struct intel_device_info *devinfo = &device->info;
 
-   device->perf = NULL;
-
    /* We need self modifying batches. The i915 parser prevents it on
     * Gfx7.5 :( maybe one day.
     */
@@ -93,8 +91,8 @@ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
 
    return;
 
- err:
-   ralloc_free(perf);
+err:
+   intel_perf_free(perf);
 }
 
 void

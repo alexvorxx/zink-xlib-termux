@@ -107,10 +107,7 @@ anv_device_perf_open(struct anv_device *device, uint64_t metric_id)
    properties[p++] = metric_id;
 
    properties[p++] = DRM_I915_PERF_PROP_OA_FORMAT;
-   properties[p++] =
-      device->info->verx10 >= 125 ?
-      I915_OA_FORMAT_A24u40_A14u32_B8_C8 :
-      I915_OA_FORMAT_A32u40_A4u32_B8_C8;
+   properties[p++] = intel_perf_get_oa_format(device->physical->perf);
 
    properties[p++] = DRM_I915_PERF_PROP_OA_EXPONENT;
    properties[p++] = 31; /* slowest sampling period */

@@ -243,7 +243,6 @@ intel_perf_register_mdapi_oa_query(struct intel_perf_config *perf,
    switch (devinfo->ver) {
    case 7: {
       query = intel_perf_append_query_info(perf, 1 + 45 + 16 + 7);
-      query->oa_format = I915_OA_FORMAT_A45_B8_C8;
 
       struct gfx7_mdapi_metrics metric_data;
       query->data_size = sizeof(metric_data);
@@ -268,7 +267,6 @@ intel_perf_register_mdapi_oa_query(struct intel_perf_config *perf,
    }
    case 8: {
       query = intel_perf_append_query_info(perf, 2 + 36 + 16 + 16);
-      query->oa_format = I915_OA_FORMAT_A32u40_A4u32_B8_C8;
 
       struct gfx8_mdapi_metrics metric_data;
       query->data_size = sizeof(metric_data);
@@ -305,7 +303,6 @@ intel_perf_register_mdapi_oa_query(struct intel_perf_config *perf,
    case 11:
    case 12: {
       query = intel_perf_append_query_info(perf, 2 + 36 + 16 + 16 + 16 + 2);
-      query->oa_format = I915_OA_FORMAT_A32u40_A4u32_B8_C8;
 
       struct gfx9_mdapi_metrics metric_data;
       query->data_size = sizeof(metric_data);
@@ -349,6 +346,7 @@ intel_perf_register_mdapi_oa_query(struct intel_perf_config *perf,
       break;
    }
 
+   query->oa_format = intel_perf_get_oa_format(perf);
    query->kind = INTEL_PERF_QUERY_TYPE_RAW;
    query->name = "Intel_Raw_Hardware_Counters_Set_0_Query";
    query->guid = INTEL_PERF_QUERY_GUID_MDAPI;

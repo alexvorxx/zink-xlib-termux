@@ -534,6 +534,8 @@ intel_perf_new(void *ctx)
 
 void intel_perf_free(struct intel_perf_config *perf_cfg);
 
+uint64_t intel_perf_get_oa_format(struct intel_perf_config *perf_cfg);
+
 /** Whether we have the ability to hold off preemption on a batch so we don't
  * have to look at the OA buffer to subtract unrelated workloads off the
  * values captured through MI_* commands.

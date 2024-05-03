@@ -1200,32 +1200,6 @@ wait_imm::wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_)
     : exp(exp_), lgkm(lgkm_), vm(vm_), vs(vs_)
 {}
 
-wait_imm::wait_imm(enum amd_gfx_level gfx_level, uint16_t packed) : vs(unset_counter)
-{
-   if (gfx_level >= GFX11) {
-      vm = (packed >> 10) & 0x3f;
-      lgkm = (packed >> 4) & 0x3f;
-      exp = packed & 0x7;
-   } else {
-      vm = packed & 0xf;
-      if (gfx_level >= GFX9)
-         vm |= (packed >> 10) & 0x30;
-
-      exp = (packed >> 4) & 0x7;
-
-      lgkm = (packed >> 8) & 0xf;
-      if (gfx_level >= GFX10)
-         lgkm |= (packed >> 8) & 0x30;
-   }
-
-   if (vm == (gfx_level >= GFX9 ? 0x3f : 0xf))
-      vm = wait_imm::unset_counter;
-   if (exp == 0x7)
-      exp = wait_imm::unset_counter;
-   if (lgkm == (gfx_level >= GFX10 ? 0x3f : 0xf))
-      lgkm = wait_imm::unset_counter;
-}
-
 uint16_t
 wait_imm::pack(enum amd_gfx_level gfx_level) const
 {
@@ -1255,6 +1229,68 @@ wait_imm::pack(enum amd_gfx_level gfx_level) const
       imm |= 0x3000; /* should have no effect on pre-GFX10 and now we won't have to worry about the
                         architecture when interpreting the immediate */
    return imm;
+}
+
+wait_imm
+wait_imm::max(enum amd_gfx_level gfx_level)
+{
+   wait_imm imm;
+   imm.vm = gfx_level >= GFX9 ? 63 : 15;
+   imm.exp = 7;
+   imm.lgkm = gfx_level >= GFX10 ? 63 : 15;
+   imm.vs = gfx_level >= GFX10 ? 63 : 0;
+   return imm;
+}
+
+bool
+wait_imm::unpack(enum amd_gfx_level gfx_level, const Instruction* instr)
+{
+   if (!instr->isSALU() || (!instr->operands.empty() && instr->operands[0].physReg() != sgpr_null))
+      return false;
+
+   aco_opcode op = instr->opcode;
+   uint16_t packed = instr->salu().imm;
+
+   if (op == aco_opcode::s_waitcnt_expcnt) {
+      exp = std::min<uint8_t>(exp, packed);
+   } else if (op == aco_opcode::s_waitcnt_lgkmcnt) {
+      lgkm = std::min<uint8_t>(lgkm, packed);
+   } else if (op == aco_opcode::s_waitcnt_vmcnt) {
+      vm = std::min<uint8_t>(vm, packed);
+   } else if (op == aco_opcode::s_waitcnt_vscnt) {
+      vs = std::min<uint8_t>(vs, packed);
+   } else if (op == aco_opcode::s_waitcnt) {
+      uint8_t vm2, lgkm2, exp2;
+      if (gfx_level >= GFX11) {
+         vm2 = (packed >> 10) & 0x3f;
+         lgkm2 = (packed >> 4) & 0x3f;
+         exp2 = packed & 0x7;
+      } else {
+         vm2 = packed & 0xf;
+         if (gfx_level >= GFX9)
+            vm2 |= (packed >> 10) & 0x30;
+
+         exp2 = (packed >> 4) & 0x7;
+
+         lgkm2 = (packed >> 8) & 0xf;
+         if (gfx_level >= GFX10)
+            lgkm2 |= (packed >> 8) & 0x30;
+      }
+
+      if (vm2 == (gfx_level >= GFX9 ? 0x3f : 0xf))
+         vm2 = wait_imm::unset_counter;
+      if (exp2 == 0x7)
+         exp2 = wait_imm::unset_counter;
+      if (lgkm2 == (gfx_level >= GFX10 ? 0x3f : 0xf))
+         lgkm2 = wait_imm::unset_counter;
+
+      vm = std::min(vm, vm2);
+      exp = std::min(exp, exp2);
+      lgkm = std::min(lgkm, lgkm2);
+   } else {
+      return false;
+   }
+   return true;
 }
 
 bool

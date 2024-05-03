@@ -182,6 +182,8 @@ enum wait_type {
    wait_type_num = 4,
 };
 
+struct Instruction;
+
 struct wait_imm {
    static const uint8_t unset_counter = 0xff;
 
@@ -192,9 +194,12 @@ struct wait_imm {
 
    wait_imm();
    wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_);
-   wait_imm(enum amd_gfx_level chip, uint16_t packed);
 
    uint16_t pack(enum amd_gfx_level chip) const;
+
+   static wait_imm max(enum amd_gfx_level gfx_level);
+
+   bool unpack(enum amd_gfx_level gfx_level, const Instruction* instr);
 
    bool combine(const wait_imm& other);
 

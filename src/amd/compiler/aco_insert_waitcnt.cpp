@@ -228,16 +228,15 @@ struct wait_entry {
 };
 
 struct target_info {
-   uint16_t max_cnt[wait_type_num] = {};
+   wait_imm max_cnt;
    uint32_t events[wait_type_num] = {};
    uint16_t unordered_events;
 
    target_info(enum amd_gfx_level gfx_level)
    {
-      max_cnt[wait_type_vm] = gfx_level >= GFX9 ? 62 : 14;
-      max_cnt[wait_type_exp] = 6;
-      max_cnt[wait_type_lgkm] = gfx_level >= GFX10 ? 62 : 14;
-      max_cnt[wait_type_vs] = gfx_level >= GFX10 ? 62 : 0;
+      max_cnt = wait_imm::max(gfx_level);
+      for (unsigned i = 0; i < wait_type_num; i++)
+         max_cnt[i] = max_cnt[i] ? max_cnt[i] - 1 : 0;
 
       events[wait_type_exp] = event_exp_pos | event_exp_param | event_exp_mrt_null |
                               event_gds_gpr_lock | event_vmem_gpr_lock | event_ldsdir;
@@ -400,19 +399,6 @@ check_instr(wait_ctx& ctx, wait_imm& wait, alu_delay_info& delay, Instruction* i
          wait.combine(reg_imm);
       }
    }
-}
-
-bool
-parse_wait_instr(wait_ctx& ctx, wait_imm& imm, Instruction* instr)
-{
-   if (instr->opcode == aco_opcode::s_waitcnt_vscnt && instr->operands[0].physReg() == sgpr_null) {
-      imm.vs = std::min<uint8_t>(imm.vs, instr->salu().imm);
-      return true;
-   } else if (instr->opcode == aco_opcode::s_waitcnt) {
-      imm.combine(wait_imm(ctx.gfx_level, instr->salu().imm));
-      return true;
-   }
-   return false;
 }
 
 bool
@@ -962,7 +948,7 @@ handle_block(Program* program, Block& block, wait_ctx& ctx)
    for (size_t i = 0; i < block.instructions.size(); i++) {
       aco_ptr<Instruction>& instr = block.instructions[i];
 
-      bool is_wait = parse_wait_instr(ctx, queued_imm, instr.get());
+      bool is_wait = queued_imm.unpack(ctx.gfx_level, instr.get());
       bool is_delay_alu = parse_delay_alu(ctx, queued_delay, instr.get());
 
       memory_sync_info sync_info = get_sync_info(instr.get());

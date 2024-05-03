@@ -318,28 +318,20 @@ get_wait_imm(Program* program, aco_ptr<Instruction>& instr)
    if (instr->opcode == aco_opcode::s_endpgm) {
       for (unsigned i = 0; i < wait_type_num; i++)
          imm[i] = 0;
-   } else if (instr->opcode == aco_opcode::s_waitcnt) {
-      return wait_imm(program->gfx_level, instr->salu().imm);
-   } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt) {
-      imm.vs = instr->salu().imm;
-      return imm;
+   } else if (imm.unpack(program->gfx_level, instr.get())) {
    } else if (instr->isVINTERP_INREG()) {
       imm.exp = instr->vinterp_inreg().wait_exp;
       if (imm.exp == 0x7)
          imm.exp = wait_imm::unset_counter;
-      return imm;
    } else {
-      unsigned max_lgkm_cnt = program->gfx_level >= GFX10 ? 62 : 14;
-      unsigned max_exp_cnt = 6;
-      unsigned max_vm_cnt = program->gfx_level >= GFX9 ? 62 : 14;
-      unsigned max_vs_cnt = 62;
-
+      /* If an instruction increases a counter, it waits for it to be below maximum first. */
       std::array<unsigned, wait_type_num> wait_info =
          get_wait_counter_info(program->gfx_level, instr);
-      imm.lgkm = wait_info[wait_type_lgkm] ? max_lgkm_cnt : wait_imm::unset_counter;
-      imm.exp = wait_info[wait_type_exp] ? max_exp_cnt : wait_imm::unset_counter;
-      imm.vm = wait_info[wait_type_vm] ? max_vm_cnt : wait_imm::unset_counter;
-      imm.vs = wait_info[wait_type_vs] ? max_vs_cnt : wait_imm::unset_counter;
+      wait_imm max = wait_imm::max(program->gfx_level);
+      for (unsigned i = 0; i < wait_type_num; i++) {
+         if (wait_info[i])
+            imm[i] = max[i] - 1;
+      }
    }
    return imm;
 }

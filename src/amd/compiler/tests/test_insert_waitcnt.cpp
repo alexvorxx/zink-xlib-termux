@@ -90,7 +90,7 @@ BEGIN_TEST(insert_waitcnt.clause)
             Operand::zero());
    //! v1: %0:v[4] = buffer_load_dword %0:s[0-3], %0:v[0], 0
    bld.mubuf(aco_opcode::buffer_load_dword, def_v4, desc0, op_v0, Operand::zero(), 0, false);
-   //! s_waitcnt vmcnt(0) lgkmcnt(0)
+   //! s_waitcnt lgkmcnt(0) vmcnt(0)
    //! v1: %0:v[5] = buffer_load_dword %0:s[4-7], %0:v[4], 0
    bld.mubuf(aco_opcode::buffer_load_dword, def_v5, Operand(PhysReg(4), s4), op_v4, Operand::zero(),
              0, false);

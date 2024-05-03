@@ -74,12 +74,6 @@ enum counter_type : uint8_t {
    wait_counters = BITFIELD_MASK(wait_type_num),
 };
 
-enum vmem_type : uint8_t {
-   vmem_nosampler = 1 << 0,
-   vmem_sampler = 1 << 1,
-   vmem_bvh = 1 << 2,
-};
-
 /* On GFX11+ the SIMD frontend doesn't switch to issuing instructions from a different
  * wave if there is an ALU stall. Hence we have an instruction (s_delay_alu) to signal
  * that we should switch to a different wave and contains info on dependencies as to
@@ -348,21 +342,6 @@ struct wait_ctx {
       }
    }
 };
-
-uint8_t
-get_vmem_type(enum amd_gfx_level gfx_level, Instruction* instr)
-{
-   if (instr->opcode == aco_opcode::image_bvh64_intersect_ray)
-      return vmem_bvh;
-   else if (gfx_level >= GFX12 && instr->opcode == aco_opcode::image_msaa_load)
-      return vmem_sampler;
-   else if (instr->isMIMG() && !instr->operands[1].isUndefined() &&
-            instr->operands[1].regClass() == s4)
-      return vmem_sampler;
-   else if (instr->isVMEM() || instr->isScratch() || instr->isGlobal())
-      return vmem_nosampler;
-   return 0;
-}
 
 wait_event
 get_vmem_event(wait_ctx& ctx, Instruction* instr, uint8_t type)

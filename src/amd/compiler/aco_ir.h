@@ -1781,6 +1781,17 @@ unsigned get_operand_size(aco_ptr<Instruction>& instr, unsigned index);
 
 bool should_form_clause(const Instruction* a, const Instruction* b);
 
+enum vmem_type : uint8_t {
+   vmem_nosampler = 1 << 0,
+   vmem_sampler = 1 << 1,
+   vmem_bvh = 1 << 2,
+};
+
+/* VMEM instructions of the same type return in-order. For GFX12+, this determines which counter
+ * is used.
+ */
+uint8_t get_vmem_type(enum amd_gfx_level gfx_level, Instruction* instr);
+
 enum block_kind {
    /* uniform indicates that leaving this block,
     * all actives lanes stay active */

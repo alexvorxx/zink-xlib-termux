@@ -820,9 +820,12 @@ static int peephole_mul_omod(
 	/* Rewrite the instructions */
 	for (var = writer_list->Item; var; var = var->Friend) {
 		struct rc_variable * writer = var;
-		unsigned conversion_swizzle = rc_make_conversion_swizzle(
-					writemask_sum,
-					inst_mul->U.I.DstReg.WriteMask);
+		unsigned conversion_swizzle = RC_SWIZZLE_UUUU;
+		for (chan = 0; chan < 4; chan++) {
+			unsigned swz = GET_SWZ(inst_mul->U.I.SrcReg[temp_index].Swizzle, chan);
+			if (swz <= RC_SWIZZLE_W)
+				SET_SWZ(conversion_swizzle, swz, chan);
+		}
 		writer->Inst->U.I.Omod = omod_op;
 		writer->Inst->U.I.DstReg.File = inst_mul->U.I.DstReg.File;
 		writer->Inst->U.I.DstReg.Index = inst_mul->U.I.DstReg.Index;

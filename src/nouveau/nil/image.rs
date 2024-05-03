@@ -578,6 +578,13 @@ impl Image {
                     NV_MMU_PTE_KIND_S8Z24
                 }
             }
+            PIPE_FORMAT_Z32_FLOAT => {
+                if compressed {
+                    NV_MMU_PTE_KIND_ZF32_2CZ + ms
+                } else {
+                    NV_MMU_PTE_KIND_ZF32
+                }
+            }
             PIPE_FORMAT_X32_S8X24_UINT | PIPE_FORMAT_Z32_FLOAT_S8X24_UINT => {
                 if compressed {
                     NV_MMU_PTE_KIND_ZF32_X24S8_2CSZV + ms

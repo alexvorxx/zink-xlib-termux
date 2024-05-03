@@ -179,7 +179,11 @@ enum wait_type {
    wait_type_vm = 2,
    /* GFX10+ */
    wait_type_vs = 3,
-   wait_type_num = 4,
+   /* GFX12+ */
+   wait_type_sample = 4,
+   wait_type_bvh = 5,
+   wait_type_km = 6,
+   wait_type_num = 7,
 };
 
 struct Instruction;
@@ -191,6 +195,9 @@ struct wait_imm {
    uint8_t lgkm;
    uint8_t vm;
    uint8_t vs;
+   uint8_t sample;
+   uint8_t bvh;
+   uint8_t km;
 
    wait_imm();
    wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_);
@@ -223,6 +230,9 @@ static_assert(offsetof(wait_imm, exp) == wait_type_exp);
 static_assert(offsetof(wait_imm, lgkm) == wait_type_lgkm);
 static_assert(offsetof(wait_imm, vm) == wait_type_vm);
 static_assert(offsetof(wait_imm, vs) == wait_type_vs);
+static_assert(offsetof(wait_imm, sample) == wait_type_sample);
+static_assert(offsetof(wait_imm, bvh) == wait_type_bvh);
+static_assert(offsetof(wait_imm, km) == wait_type_km);
 
 /* s_wait_event immediate bits. */
 enum wait_event_imm : uint16_t {

@@ -1196,10 +1196,13 @@ can_swap_operands(aco_ptr<Instruction>& instr, aco_opcode* new_op, unsigned idx0
    }
 }
 
-wait_imm::wait_imm() : exp(unset_counter), lgkm(unset_counter), vm(unset_counter), vs(unset_counter)
+wait_imm::wait_imm()
+    : exp(unset_counter), lgkm(unset_counter), vm(unset_counter), vs(unset_counter),
+      sample(unset_counter), bvh(unset_counter), km(unset_counter)
 {}
 wait_imm::wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_)
-    : exp(exp_), lgkm(lgkm_), vm(vm_), vs(vs_)
+    : exp(exp_), lgkm(lgkm_), vm(vm_), vs(vs_), sample(unset_counter), bvh(unset_counter),
+      km(unset_counter)
 {}
 
 uint16_t
@@ -1241,6 +1244,9 @@ wait_imm::max(enum amd_gfx_level gfx_level)
    imm.exp = 7;
    imm.lgkm = gfx_level >= GFX10 ? 63 : 15;
    imm.vs = gfx_level >= GFX10 ? 63 : 0;
+   imm.sample = gfx_level >= GFX12 ? 63 : 0;
+   imm.bvh = gfx_level >= GFX12 ? 7 : 0;
+   imm.km = gfx_level >= GFX12 ? 31 : 0;
    return imm;
 }
 
@@ -1253,7 +1259,31 @@ wait_imm::unpack(enum amd_gfx_level gfx_level, const Instruction* instr)
    aco_opcode op = instr->opcode;
    uint16_t packed = instr->salu().imm;
 
-   if (op == aco_opcode::s_waitcnt_expcnt) {
+   if (op == aco_opcode::s_wait_loadcnt) {
+      vm = std::min<uint8_t>(vm, packed);
+   } else if (op == aco_opcode::s_wait_storecnt) {
+      vs = std::min<uint8_t>(vs, packed);
+   } else if (op == aco_opcode::s_wait_samplecnt) {
+      sample = std::min<uint8_t>(sample, packed);
+   } else if (op == aco_opcode::s_wait_bvhcnt) {
+      bvh = std::min<uint8_t>(bvh, packed);
+   } else if (op == aco_opcode::s_wait_expcnt) {
+      exp = std::min<uint8_t>(exp, packed);
+   } else if (op == aco_opcode::s_wait_dscnt) {
+      lgkm = std::min<uint8_t>(lgkm, packed);
+   } else if (op == aco_opcode::s_wait_kmcnt) {
+      km = std::min<uint8_t>(km, packed);
+   } else if (op == aco_opcode::s_wait_loadcnt_dscnt) {
+      uint32_t vm2 = (packed >> 8) & 0x3f;
+      uint32_t ds = packed & 0x3f;
+      vm = std::min<uint8_t>(vm, vm2 == 0x3f ? wait_imm::unset_counter : vm2);
+      lgkm = std::min<uint8_t>(lgkm, ds == 0x3f ? wait_imm::unset_counter : ds);
+   } else if (op == aco_opcode::s_wait_storecnt_dscnt) {
+      uint32_t vs2 = (packed >> 8) & 0x3f;
+      uint32_t ds = packed & 0x3f;
+      vs = std::min<uint8_t>(vs, vs2 == 0x3f ? wait_imm::unset_counter : vs2);
+      lgkm = std::min<uint8_t>(lgkm, ds == 0x3f ? wait_imm::unset_counter : ds);
+   } else if (op == aco_opcode::s_waitcnt_expcnt) {
       exp = std::min<uint8_t>(exp, packed);
    } else if (op == aco_opcode::s_waitcnt_lgkmcnt) {
       lgkm = std::min<uint8_t>(lgkm, packed);
@@ -1325,6 +1355,9 @@ wait_imm::print(FILE* output) const
    names[wait_type_vm] = "vm";
    names[wait_type_lgkm] = "lgkm";
    names[wait_type_vs] = "vs";
+   names[wait_type_sample] = "sample";
+   names[wait_type_bvh] = "bvh";
+   names[wait_type_km] = "km";
    for (unsigned i = 0; i < wait_type_num; i++) {
       if ((*this)[i] != unset_counter)
          fprintf(output, "%s: %u\n", names[i], (*this)[i]);

@@ -793,6 +793,15 @@ static int peephole_mul_omod(
 		if (var->Inst->U.I.SaturateMode != RC_SATURATE_NONE) {
 			return 0;
 		}
+
+		/* Empirical testing shows that DDX/DDY directly into output
+		 * with non-identity omod is problematic.
+		 */
+		if ((info->Opcode == RC_OPCODE_DDX || info->Opcode == RC_OPCODE_DDY) &&
+			inst_mul->U.I.DstReg.File == RC_FILE_OUTPUT) {
+			return 0;
+		}
+
 		for (inst = inst_mul->Prev; inst != var->Inst;
 							inst = inst->Prev) {
 			rc_for_all_reads_mask(inst, omod_filter_reader_cb,

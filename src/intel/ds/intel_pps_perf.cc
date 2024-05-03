@@ -48,6 +48,8 @@ IntelPerf::~IntelPerf()
    if (ralloc_cfg) {
       ralloc_free(ralloc_cfg);
    }
+
+   intel_perf_free(cfg);
 }
 
 std::vector<struct intel_perf_query_info *> IntelPerf::get_queries() const
@@ -99,6 +101,7 @@ void IntelPerf::close()
 {
    if (ctx) {
       intel_perf_close(ctx, nullptr);
+      intel_perf_free_context(ctx);
       ctx = nullptr;
    }
 }

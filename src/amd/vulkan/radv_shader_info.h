@@ -209,7 +209,6 @@ struct radv_shader_info {
       bool load_provoking_vtx;
       bool load_rasterization_prim;
       bool force_sample_iter_shading_rate;
-      uint32_t db_shader_control; /* DB_SHADER_CONTROL without intrinsic rate overrides */
    } ps;
    struct {
       bool uses_grid_size;
@@ -281,6 +280,7 @@ struct radv_shader_info {
       } ms;
 
       struct {
+         uint32_t db_shader_control;
          uint32_t pa_sc_shader_control;
          uint32_t spi_ps_in_control;
          uint32_t spi_shader_z_format;

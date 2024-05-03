@@ -544,7 +544,7 @@ impl Image {
                     NV_MMU_PTE_KIND_S8
                 }
             }
-            _ => NV_MMU_PTE_KIND_PITCH,
+            _ => NV_MMU_PTE_KIND_GENERIC_MEMORY,
         }
         .try_into()
         .unwrap()

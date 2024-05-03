@@ -1001,9 +1001,9 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
    bool commits_pending = false;
    uint32_t va_page_offset = 0;
    for (unsigned l = 0; l < level; l++) {
-      unsigned mipwidth = DIV_ROUND_UP(MAX2(res->base.b.width0 >> l, 1), gwidth);
-      unsigned mipheight = DIV_ROUND_UP(MAX2(res->base.b.height0 >> l, 1), gheight);
-      unsigned mipdepth = DIV_ROUND_UP(res->base.b.array_size > 1 ? res->base.b.array_size : MAX2(res->base.b.depth0 >> l, 1), gdepth);
+      unsigned mipwidth = DIV_ROUND_UP(u_minify(res->base.b.width0, l), gwidth);
+      unsigned mipheight = DIV_ROUND_UP(u_minify(res->base.b.height0, l), gheight);
+      unsigned mipdepth = DIV_ROUND_UP(res->base.b.array_size > 1 ? res->base.b.array_size : u_minify(res->base.b.depth0, l), gdepth);
       va_page_offset += mipwidth * mipheight * mipdepth;
    }
    for (unsigned d = 0; d < ndepth; d++) {
@@ -1025,8 +1025,8 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
             ibind[i].extent.height = (h == nheight - 1) ? lastBlockExtent.height : gheight;
             ibind[i].extent.depth = (d == ndepth - 1 && res->base.b.target != PIPE_TEXTURE_CUBE) ? lastBlockExtent.depth : gdepth;
             uint32_t va_page = va_page_offset +
-                              (d + (box->z / gdepth)) * ((MAX2(res->base.b.width0 >> level, 1) / gwidth) * (MAX2(res->base.b.height0 >> level, 1) / gheight)) +
-                              (h + (box->y / gheight)) * (MAX2(res->base.b.width0 >> level, 1) / gwidth) +
+                              (d + (box->z / gdepth)) * (u_minify(res->base.b.width0, level) / gwidth) * (u_minify(res->base.b.height0, level) / gheight) +
+                              (h + (box->y / gheight)) * (u_minify(res->base.b.width0, level) / gwidth) +
                               (w + (box->x / gwidth));
 
             uint32_t end_va_page = va_page + 1;

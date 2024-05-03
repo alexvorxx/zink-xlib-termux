@@ -327,8 +327,8 @@ if [[ -e ".gitlab-ci/local/build-rootfs.sh" ]]; then
 fi
 
 
-############### Build kernel
-. .gitlab-ci/container/build-kernel.sh
+############### Download prebuilt kernel
+. .gitlab-ci/container/download-prebuilt-kernel.sh
 
 ############### Delete rust, since the tests won't be compiling anything.
 rm -rf /root/.cargo

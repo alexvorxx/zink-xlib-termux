@@ -113,7 +113,7 @@ apt-get install -y --no-install-recommends "${EPHEMERAL[@]}"
 
 . .gitlab-ci/container/container_pre_build.sh
 
-############### Build kernel
+############### Download prebuilt kernel
 
 export DEFCONFIG="arch/x86/configs/x86_64_defconfig"
 export KERNEL_IMAGE_NAME=bzImage
@@ -121,7 +121,7 @@ export KERNEL_ARCH=x86_64
 export DEBIAN_ARCH=amd64
 
 mkdir -p /lava-files/
-. .gitlab-ci/container/build-kernel.sh
+. .gitlab-ci/container/download-prebuilt-kernel.sh
 
 # Needed for ci-fairy, this revision is able to upload files to MinIO
 # and doesn't depend on git

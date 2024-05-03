@@ -103,6 +103,7 @@ foreach d : [[with_gallium_kmsro, [
                'stm_dri.so',
                'sun4i-drm_dri.so',
                'udl_dri.so',
+               'vkms_dri.so',
                'zynqmp-dpsub_dri.so',
              ]],
              [with_gallium_radeonsi, 'radeonsi_dri.so'],

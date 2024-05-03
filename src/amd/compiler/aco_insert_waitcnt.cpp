@@ -60,12 +60,12 @@ enum wait_event : uint16_t {
 };
 
 enum counter_type : uint8_t {
-   counter_exp = 1 << 0,
-   counter_lgkm = 1 << 1,
-   counter_vm = 1 << 2,
-   counter_vs = 1 << 3,
-   counter_alu = 1 << 4,
-   num_counters = 5,
+   counter_exp = 1 << wait_type_exp,
+   counter_lgkm = 1 << wait_type_lgkm,
+   counter_vm = 1 << wait_type_vm,
+   counter_vs = 1 << wait_type_vs,
+   counter_alu = 1 << wait_type_num,
+   num_counters = wait_type_num + 1,
 };
 
 enum vmem_type : uint8_t {
@@ -73,12 +73,6 @@ enum vmem_type : uint8_t {
    vmem_sampler = 1 << 1,
    vmem_bvh = 1 << 2,
 };
-
-static const uint16_t exp_events = event_exp_pos | event_exp_param | event_exp_mrt_null |
-                                   event_gds_gpr_lock | event_vmem_gpr_lock | event_ldsdir;
-static const uint16_t lgkm_events = event_smem | event_lds | event_gds | event_flat | event_sendmsg;
-static const uint16_t vm_events = event_vmem | event_flat;
-static const uint16_t vs_events = event_vmem_store;
 
 /* On GFX11+ the SIMD frontend doesn't switch to issuing instructions from a different
  * wave if there is an ALU stall. Hence we have an instruction (s_delay_alu) to signal
@@ -164,30 +158,6 @@ struct alu_delay_info {
    }
 };
 
-uint8_t
-get_counters_for_event(wait_event ev)
-{
-   switch (ev) {
-   case event_smem:
-   case event_lds:
-   case event_gds:
-   case event_sendmsg: return counter_lgkm;
-   case event_vmem: return counter_vm;
-   case event_vmem_store: return counter_vs;
-   case event_flat: return counter_vm | counter_lgkm;
-   case event_exp_pos:
-   case event_exp_param:
-   case event_exp_mrt_null:
-   case event_gds_gpr_lock:
-   case event_vmem_gpr_lock:
-   case event_ldsdir: return counter_exp;
-   case event_valu:
-   case event_trans:
-   case event_salu: return counter_alu;
-   default: return 0;
-   }
-}
-
 struct wait_entry {
    wait_imm imm;
    alu_delay_info delay;
@@ -197,10 +167,10 @@ struct wait_entry {
    bool logical : 1;
    uint8_t vmem_types : 4;
 
-   wait_entry(wait_event event_, wait_imm imm_, alu_delay_info delay_, bool logical_,
-              bool wait_on_read_)
-       : imm(imm_), delay(delay_), events(event_), counters(get_counters_for_event(event_)),
-         wait_on_read(wait_on_read_), logical(logical_), vmem_types(0)
+   wait_entry(wait_event event_, wait_imm imm_, alu_delay_info delay_, uint8_t counters_,
+              bool logical_, bool wait_on_read_)
+       : imm(imm_), delay(delay_), events(event_), counters(counters_), wait_on_read(wait_on_read_),
+         logical(logical_), vmem_types(0)
    {}
 
    bool join(const wait_entry& other)
@@ -218,38 +188,24 @@ struct wait_entry {
       return changed;
    }
 
-   void remove_counter(counter_type counter)
+   void remove_alu_counter()
    {
-      counters &= ~counter;
+      counters &= ~counter_alu;
+      delay = alu_delay_info();
+      events &= ~(event_valu | event_trans | event_salu);
+   }
 
-      if (counter == counter_lgkm) {
-         imm.lgkm = wait_imm::unset_counter;
-         events &= ~(event_smem | event_lds | event_gds | event_sendmsg);
-      }
+   void remove_wait(wait_type type, uint32_t type_events)
+   {
+      counters &= ~(1 << type);
+      imm[type] = wait_imm::unset_counter;
 
-      if (counter == counter_vm) {
-         imm.vm = wait_imm::unset_counter;
-         events &= ~event_vmem;
-         vmem_types = 0;
-      }
-
-      if (counter == counter_exp) {
-         imm.exp = wait_imm::unset_counter;
-         events &= ~exp_events;
-      }
-
-      if (counter == counter_vs) {
-         imm.vs = wait_imm::unset_counter;
-         events &= ~event_vmem_store;
-      }
-
+      events &= ~type_events | event_flat;
       if (!(counters & counter_lgkm) && !(counters & counter_vm))
-         events &= ~event_flat;
+         events &= ~(type_events & event_flat);
 
-      if (counter == counter_alu) {
-         delay = alu_delay_info();
-         events &= ~(event_valu | event_trans | event_salu);
-      }
+      if (type == wait_type_vm)
+         vmem_types = 0;
    }
 
    UNUSED void print(FILE* output) const
@@ -270,14 +226,46 @@ struct wait_entry {
    }
 };
 
+struct target_info {
+   uint16_t max_cnt[wait_type_num] = {};
+   uint32_t events[wait_type_num] = {};
+   uint16_t unordered_events;
+
+   target_info(enum amd_gfx_level gfx_level)
+   {
+      max_cnt[wait_type_vm] = gfx_level >= GFX9 ? 62 : 14;
+      max_cnt[wait_type_exp] = 6;
+      max_cnt[wait_type_lgkm] = gfx_level >= GFX10 ? 62 : 14;
+      max_cnt[wait_type_vs] = gfx_level >= GFX10 ? 62 : 0;
+
+      events[wait_type_exp] = event_exp_pos | event_exp_param | event_exp_mrt_null |
+                              event_gds_gpr_lock | event_vmem_gpr_lock | event_ldsdir;
+      events[wait_type_lgkm] = event_smem | event_lds | event_gds | event_flat | event_sendmsg;
+      events[wait_type_vm] = event_vmem | event_flat;
+      events[wait_type_vs] = event_vmem_store;
+
+      for (unsigned i = 0; i < wait_type_num; i++) {
+         u_foreach_bit (j, events[i])
+            counters[j] |= (1 << i);
+      }
+      counters[ffs(event_valu) - 1] |= counter_alu;
+      counters[ffs(event_trans) - 1] |= counter_alu;
+      counters[ffs(event_salu) - 1] |= counter_alu;
+
+      unordered_events = event_smem | (gfx_level < GFX10 ? event_flat : 0);
+   }
+
+   uint8_t get_counters_for_event(uint16_t event) const { return counters[ffs(event) - 1]; }
+
+private:
+   /* Bitfields of counters affected by each event */
+   uint8_t counters[num_events] = {};
+};
+
 struct wait_ctx {
    Program* program;
    enum amd_gfx_level gfx_level;
-   uint16_t max_vm_cnt;
-   uint16_t max_exp_cnt;
-   uint16_t max_lgkm_cnt;
-   uint16_t max_vs_cnt;
-   uint16_t unordered_events = event_smem | event_flat;
+   const target_info* info;
 
    bool vm_nonzero = false;
    bool exp_nonzero = false;
@@ -293,12 +281,8 @@ struct wait_ctx {
    std::map<PhysReg, wait_entry> gpr_map;
 
    wait_ctx() {}
-   wait_ctx(Program* program_)
-       : program(program_), gfx_level(program_->gfx_level),
-         max_vm_cnt(program_->gfx_level >= GFX9 ? 62 : 14), max_exp_cnt(6),
-         max_lgkm_cnt(program_->gfx_level >= GFX10 ? 62 : 14),
-         max_vs_cnt(program_->gfx_level >= GFX10 ? 62 : 0),
-         unordered_events(event_smem | (program_->gfx_level < GFX10 ? event_flat : 0))
+   wait_ctx(Program* program_, const target_info* info_)
+       : program(program_), gfx_level(program_->gfx_level), info(info_)
    {}
 
    bool join(const wait_ctx* other, bool logical)
@@ -336,11 +320,6 @@ struct wait_ctx {
       }
 
       return changed;
-   }
-
-   void wait_and_remove_from_entry(PhysReg reg, wait_entry& entry, counter_type counter)
-   {
-      entry.remove_counter(counter);
    }
 
    UNUSED void print(FILE* output) const
@@ -415,13 +394,16 @@ check_instr(wait_ctx& ctx, wait_imm& wait, alu_delay_info& delay, Instruction* i
 
          /* Vector Memory reads and writes return in the order they were issued */
          uint8_t vmem_type = get_vmem_type(instr);
-         if (vmem_type && ((it->second.events & vm_events) == event_vmem) &&
-             it->second.vmem_types == vmem_type)
-            reg_imm.vm = wait_imm::unset_counter;
+         if (vmem_type) {
+            wait_type type = (wait_type)(ffs(ctx.info->get_counters_for_event(event_vmem)) - 1);
+            if ((it->second.events & ctx.info->events[type]) == event_vmem &&
+                (type != wait_type_vm || it->second.vmem_types == vmem_type))
+               reg_imm[type] = wait_imm::unset_counter;
+         }
 
          /* LDS reads and writes return in the order they were issued. same for GDS */
-         if (instr->isDS() &&
-             (it->second.events & lgkm_events) == (instr->ds().gds ? event_gds : event_lds))
+         if (instr->isDS() && (it->second.events & ctx.info->events[wait_type_lgkm]) ==
+                                 (instr->ds().gds ? event_gds : event_lds))
             reg_imm.lgkm = wait_imm::unset_counter;
 
          wait.combine(reg_imm);
@@ -517,7 +499,7 @@ update_alu(wait_ctx& ctx, bool is_valu, bool is_trans, bool clear, int cycles)
       wait_entry& entry = it->second;
 
       if (clear) {
-         entry.remove_counter(counter_alu);
+         entry.remove_alu_counter();
       } else {
          entry.delay.valu_instrs += is_valu ? 1 : 0;
          entry.delay.trans_instrs += is_trans ? 1 : 0;
@@ -527,7 +509,7 @@ update_alu(wait_ctx& ctx, bool is_valu, bool is_trans, bool clear, int cycles)
 
          entry.delay.fixup();
          if (it->second.delay.empty())
-            entry.remove_counter(counter_alu);
+            entry.remove_alu_counter();
       }
 
       if (!entry.counters)
@@ -619,19 +601,19 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
          uint16_t& bar_ev = ctx.barrier_events[i];
          if (bar.exp != wait_imm::unset_counter && imm.exp <= bar.exp) {
             bar.exp = wait_imm::unset_counter;
-            bar_ev &= ~exp_events;
+            bar_ev &= ~ctx.info->events[wait_type_exp];
          }
          if (bar.vm != wait_imm::unset_counter && imm.vm <= bar.vm) {
             bar.vm = wait_imm::unset_counter;
-            bar_ev &= ~(vm_events & ~event_flat);
+            bar_ev &= ~(ctx.info->events[wait_type_vm] & ~event_flat);
          }
          if (bar.lgkm != wait_imm::unset_counter && imm.lgkm <= bar.lgkm) {
             bar.lgkm = wait_imm::unset_counter;
-            bar_ev &= ~(lgkm_events & ~event_flat);
+            bar_ev &= ~(ctx.info->events[wait_type_lgkm] & ~event_flat);
          }
          if (bar.vs != wait_imm::unset_counter && imm.vs <= bar.vs) {
             bar.vs = wait_imm::unset_counter;
-            bar_ev &= ~vs_events;
+            bar_ev &= ~ctx.info->events[wait_type_vs];
          }
          if (bar.vm == wait_imm::unset_counter && bar.lgkm == wait_imm::unset_counter)
             bar_ev &= ~event_flat;
@@ -646,20 +628,20 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
       std::map<PhysReg, wait_entry>::iterator it = ctx.gpr_map.begin();
       while (it != ctx.gpr_map.end()) {
          if (imm.exp != wait_imm::unset_counter && imm.exp <= it->second.imm.exp)
-            ctx.wait_and_remove_from_entry(it->first, it->second, counter_exp);
+            it->second.remove_wait(wait_type_exp, ctx.info->events[wait_type_exp]);
          if (imm.vm != wait_imm::unset_counter && imm.vm <= it->second.imm.vm)
-            ctx.wait_and_remove_from_entry(it->first, it->second, counter_vm);
+            it->second.remove_wait(wait_type_vm, ctx.info->events[wait_type_vm]);
          if (imm.lgkm != wait_imm::unset_counter && imm.lgkm <= it->second.imm.lgkm)
-            ctx.wait_and_remove_from_entry(it->first, it->second, counter_lgkm);
+            it->second.remove_wait(wait_type_lgkm, ctx.info->events[wait_type_lgkm]);
          if (imm.vs != wait_imm::unset_counter && imm.vs <= it->second.imm.vs)
-            ctx.wait_and_remove_from_entry(it->first, it->second, counter_vs);
+            it->second.remove_wait(wait_type_vs, ctx.info->events[wait_type_vs]);
          if (delay.valu_instrs <= it->second.delay.valu_instrs)
             it->second.delay.valu_instrs = alu_delay_info::valu_nop;
          if (delay.trans_instrs <= it->second.delay.trans_instrs)
             it->second.delay.trans_instrs = alu_delay_info::trans_nop;
          it->second.delay.fixup();
          if (it->second.delay.empty())
-            ctx.wait_and_remove_from_entry(it->first, it->second, counter_alu);
+            it->second.remove_alu_counter();
          if (!it->second.counters)
             it = ctx.gpr_map.erase(it);
          else
@@ -698,15 +680,15 @@ update_barrier_imm(wait_ctx& ctx, uint8_t counters, wait_event event, memory_syn
             bar.exp = 0;
          if (counters & counter_vs)
             bar.vs = 0;
-      } else if (!(bar_ev & ctx.unordered_events) && !(ctx.unordered_events & event)) {
-         if (counters & counter_lgkm && (bar_ev & lgkm_events) == event)
-            update_barrier_counter(&bar.lgkm, ctx.max_lgkm_cnt);
-         if (counters & counter_vm && (bar_ev & vm_events) == event)
-            update_barrier_counter(&bar.vm, ctx.max_vm_cnt);
-         if (counters & counter_exp && (bar_ev & exp_events) == event)
-            update_barrier_counter(&bar.exp, ctx.max_exp_cnt);
-         if (counters & counter_vs && (bar_ev & vs_events) == event)
-            update_barrier_counter(&bar.vs, ctx.max_vs_cnt);
+      } else if (!(bar_ev & ctx.info->unordered_events) && !(ctx.info->unordered_events & event)) {
+         if (counters & counter_lgkm && (bar_ev & ctx.info->events[wait_type_lgkm]) == event)
+            update_barrier_counter(&bar.lgkm, ctx.info->max_cnt[wait_type_lgkm]);
+         if (counters & counter_vm && (bar_ev & ctx.info->events[wait_type_vm]) == event)
+            update_barrier_counter(&bar.vm, ctx.info->max_cnt[wait_type_vm]);
+         if (counters & counter_exp && (bar_ev & ctx.info->events[wait_type_exp]) == event)
+            update_barrier_counter(&bar.exp, ctx.info->max_cnt[wait_type_exp]);
+         if (counters & counter_vs && (bar_ev & ctx.info->events[wait_type_vs]) == event)
+            update_barrier_counter(&bar.vs, ctx.info->max_cnt[wait_type_vs]);
       }
    }
 }
@@ -714,7 +696,7 @@ update_barrier_imm(wait_ctx& ctx, uint8_t counters, wait_event event, memory_syn
 void
 update_counters(wait_ctx& ctx, wait_event event, memory_sync_info sync = memory_sync_info())
 {
-   uint8_t counters = get_counters_for_event(event);
+   uint8_t counters = ctx.info->get_counters_for_event(event);
 
    if (counters & counter_lgkm)
       ctx.lgkm_nonzero = true;
@@ -727,7 +709,7 @@ update_counters(wait_ctx& ctx, wait_event event, memory_sync_info sync = memory_
 
    update_barrier_imm(ctx, counters, event, sync);
 
-   if (ctx.unordered_events & event)
+   if (ctx.info->unordered_events & event)
       return;
 
    if (ctx.pending_flat_lgkm)
@@ -738,22 +720,22 @@ update_counters(wait_ctx& ctx, wait_event event, memory_sync_info sync = memory_
    for (std::pair<const PhysReg, wait_entry>& e : ctx.gpr_map) {
       wait_entry& entry = e.second;
 
-      if (entry.events & ctx.unordered_events)
+      if (entry.events & ctx.info->unordered_events)
          continue;
 
       assert(entry.events);
 
-      if ((counters & counter_exp) && (entry.events & exp_events) == event &&
-          entry.imm.exp < ctx.max_exp_cnt)
+      if ((counters & counter_exp) && (entry.events & ctx.info->events[wait_type_exp]) == event &&
+          entry.imm.exp < ctx.info->max_cnt[wait_type_exp])
          entry.imm.exp++;
-      if ((counters & counter_lgkm) && (entry.events & lgkm_events) == event &&
-          entry.imm.lgkm < ctx.max_lgkm_cnt)
+      if ((counters & counter_lgkm) && (entry.events & ctx.info->events[wait_type_lgkm]) == event &&
+          entry.imm.lgkm < ctx.info->max_cnt[wait_type_lgkm])
          entry.imm.lgkm++;
-      if ((counters & counter_vm) && (entry.events & vm_events) == event &&
-          entry.imm.vm < ctx.max_vm_cnt)
+      if ((counters & counter_vm) && (entry.events & ctx.info->events[wait_type_vm]) == event &&
+          entry.imm.vm < ctx.info->max_cnt[wait_type_vm])
          entry.imm.vm++;
-      if ((counters & counter_vs) && (entry.events & vs_events) == event &&
-          entry.imm.vs < ctx.max_vs_cnt)
+      if ((counters & counter_vs) && (entry.events & ctx.info->events[wait_type_vs]) == event &&
+          entry.imm.vs < ctx.info->max_cnt[wait_type_vs])
          entry.imm.vs++;
    }
 }
@@ -782,7 +764,7 @@ void
 insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, bool wait_on_read,
                   uint8_t vmem_types = 0, unsigned cycles = 0, bool force_linear = false)
 {
-   uint16_t counters = get_counters_for_event(event);
+   uint16_t counters = ctx.info->get_counters_for_event(event);
    wait_imm imm;
    if (counters & counter_lgkm)
       imm.lgkm = 0;
@@ -804,7 +786,8 @@ insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, boo
       delay.salu_cycles = cycles;
    }
 
-   wait_entry new_entry(event, imm, delay, !rc.is_linear() && !force_linear, wait_on_read);
+   wait_entry new_entry(event, imm, delay, counters, !rc.is_linear() && !force_linear,
+                        wait_on_read);
    new_entry.vmem_types |= vmem_types;
 
    for (unsigned i = 0; i < rc.size(); i++) {
@@ -1126,16 +1109,18 @@ handle_block(Program* program, Block& block, wait_ctx& ctx)
 void
 insert_wait_states(Program* program)
 {
+   target_info info(program->gfx_level);
+
    /* per BB ctx */
    std::vector<bool> done(program->blocks.size());
-   std::vector<wait_ctx> in_ctx(program->blocks.size(), wait_ctx(program));
-   std::vector<wait_ctx> out_ctx(program->blocks.size(), wait_ctx(program));
+   std::vector<wait_ctx> in_ctx(program->blocks.size(), wait_ctx(program, &info));
+   std::vector<wait_ctx> out_ctx(program->blocks.size(), wait_ctx(program, &info));
 
    std::stack<unsigned, std::vector<unsigned>> loop_header_indices;
    unsigned loop_progress = 0;
 
    if (program->pending_lds_access) {
-      update_barrier_imm(in_ctx[0], get_counters_for_event(event_lds), event_lds,
+      update_barrier_imm(in_ctx[0], info.get_counters_for_event(event_lds), event_lds,
                          memory_sync_info(storage_shared));
    }
 

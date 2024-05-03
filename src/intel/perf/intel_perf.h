@@ -373,7 +373,7 @@ struct intel_perf_config {
       bool     query_mode;          /** $QueryMode */
    } sys_vars;
 
-   struct intel_device_info devinfo;
+   const struct intel_device_info *devinfo;
 
    /* OA metric sets, indexed by GUID, as know by Mesa at build time, to
     * cross-reference with the GUIDs of configs advertised by the kernel at

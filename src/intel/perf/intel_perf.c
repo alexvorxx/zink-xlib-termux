@@ -362,7 +362,7 @@ init_oa_configs(struct intel_perf_config *perf, int fd,
 static void
 compute_topology_builtins(struct intel_perf_config *perf)
 {
-   const struct intel_device_info *devinfo = &perf->devinfo;
+   const struct intel_device_info *devinfo = perf->devinfo;
 
    perf->sys_vars.slice_mask = devinfo->slice_masks;
    perf->sys_vars.n_eu_slices = devinfo->num_slices;
@@ -725,7 +725,7 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
    if (devinfo->kmd_type != INTEL_KMD_TYPE_I915)
       return false;
 
-   perf->devinfo = *devinfo;
+   perf->devinfo = devinfo;
 
    /* Consider an invalid as supported. */
    if (fd == -1) {
@@ -1180,7 +1180,7 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                            result->accumulator + query->a_offset + 32 + i);
       }
 
-      if (can_use_mi_rpc_bc_counters(&query->perf->devinfo) ||
+      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
           !query->perf->sys_vars.query_mode) {
          /* A36-37 counters are 32bits */
          accumulate_uint32(start + 40, end + 40,
@@ -1222,7 +1222,7 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                            result->accumulator + query->a_offset + 32 + i);
       }
 
-      if (can_use_mi_rpc_bc_counters(&query->perf->devinfo) ||
+      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
           !query->perf->sys_vars.query_mode) {
          /* 8x 32bit B counters */
          for (i = 0; i < 8; i++) {
@@ -1328,7 +1328,7 @@ intel_perf_query_result_accumulate_fields(struct intel_perf_query_result *result
                                           bool no_oa_accumulate)
 {
    const struct intel_perf_query_field_layout *layout = &query->perf->query_layout;
-   const struct intel_device_info *devinfo = &query->perf->devinfo;
+   const struct intel_device_info *devinfo = query->perf->devinfo;
 
    for (uint32_t r = 0; r < layout->n_fields; r++) {
       const struct intel_perf_query_field *field = &layout->fields[r];

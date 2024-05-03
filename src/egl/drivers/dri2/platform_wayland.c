@@ -1488,7 +1488,7 @@ dri2_wl_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
    dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
 
    while (dri2_surf->throttle_callback != NULL)
-      if (wl_display_dispatch_queue(dri2_dpy->wl_dpy, dri2_surf->wl_queue) ==
+      if (loader_wayland_dispatch(dri2_dpy->wl_dpy, dri2_surf->wl_queue, NULL) ==
           -1)
          return -1;
 
@@ -2273,7 +2273,7 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
 
       /* wait for the compositor to release a buffer */
       if (!dri2_surf->back) {
-         if (wl_display_dispatch_queue(dri2_dpy->wl_dpy, dri2_surf->wl_queue) ==
+         if (loader_wayland_dispatch(dri2_dpy->wl_dpy, dri2_surf->wl_queue, NULL) ==
              -1) {
             _eglError(EGL_BAD_ALLOC, "waiting for a free buffer failed");
             return -1;
@@ -2328,7 +2328,7 @@ dri2_wl_swrast_attach_backbuffer(struct dri2_egl_surface *dri2_surf)
       dri2_egl_display(dri2_surf->base.Resource.Display);
 
    while (dri2_surf->throttle_callback != NULL)
-      if (wl_display_dispatch_queue(dri2_dpy->wl_dpy, dri2_surf->wl_queue) ==
+      if (loader_wayland_dispatch(dri2_dpy->wl_dpy, dri2_surf->wl_queue, NULL) ==
           -1)
          return;
 

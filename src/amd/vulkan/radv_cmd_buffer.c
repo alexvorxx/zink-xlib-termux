@@ -1725,7 +1725,7 @@ radv_emit_rbplus_state(struct radv_cmd_buffer *cmd_buffer)
       has_alpha = pdev->info.gfx_level >= GFX11 ? !G_028C74_FORCE_DST_ALPHA_1_GFX11(cb->cb_color_attrib)
                                                 : !G_028C74_FORCE_DST_ALPHA_1_GFX6(cb->cb_color_attrib);
 
-      uint32_t spi_format = (cmd_buffer->state.col_format_non_compacted >> (i * 4)) & 0xf;
+      uint32_t spi_format = (cmd_buffer->state.spi_shader_col_format >> (i * 4)) & 0xf;
       uint32_t colormask = d->vk.cb.attachments[i].write_mask;
 
       if (format == V_028C70_COLOR_8 || format == V_028C70_COLOR_16 || format == V_028C70_COLOR_32)
@@ -1872,19 +1872,9 @@ static void
 radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_part *ps_epilog)
 {
    struct radv_shader *ps_shader = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
-   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    if (cmd_buffer->state.emitted_ps_epilog == ps_epilog)
       return;
-
-   uint32_t col_format = radv_compact_spi_shader_col_format(ps_epilog->spi_shader_col_format);
-
-   bool need_null_export_workaround = radv_needs_null_export_workaround(device, ps_shader, 0);
-   if (need_null_export_workaround && !col_format)
-      col_format = V_028714_SPI_SHADER_32_R;
-   radeon_set_context_reg(cmd_buffer->cs, R_028714_SPI_SHADER_COL_FORMAT, col_format);
-   radeon_set_context_reg(cmd_buffer->cs, R_02823C_CB_SHADER_MASK,
-                          ac_get_cb_shader_mask(ps_epilog->spi_shader_col_format));
 
    if (ps_epilog->spi_shader_z_format)
       radeon_set_context_reg(cmd_buffer->cs, R_028710_SPI_SHADER_Z_FORMAT, ps_epilog->spi_shader_z_format);
@@ -1916,12 +1906,11 @@ radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_
       radeon_set_sh_reg(cs, R_00B8A0_COMPUTE_PGM_RSRC3, shader->config.rsrc3);
    }
 
-   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, radv_get_compute_resource_limits(pdev, shader));
-
+   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, shader->info.regs.cs.compute_resource_limits);
    radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
-   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[0]));
-   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[1]));
-   radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[2]));
+   radeon_emit(cs, shader->info.regs.cs.compute_num_thread_x);
+   radeon_emit(cs, shader->info.regs.cs.compute_num_thread_y);
+   radeon_emit(cs, shader->info.regs.cs.compute_num_thread_z);
 }
 
 static void
@@ -7128,11 +7117,18 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
          }
       }
 
-      if (pdev->info.rbplus_allowed &&
-          (!cmd_buffer->state.emitted_graphics_pipeline ||
-           cmd_buffer->state.col_format_non_compacted != graphics_pipeline->col_format_non_compacted)) {
-         cmd_buffer->state.col_format_non_compacted = graphics_pipeline->col_format_non_compacted;
-         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+      if (!cmd_buffer->state.emitted_graphics_pipeline ||
+          cmd_buffer->state.spi_shader_col_format != graphics_pipeline->spi_shader_col_format) {
+         cmd_buffer->state.spi_shader_col_format = graphics_pipeline->spi_shader_col_format;
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_COLOR_OUTPUT;
+         if (pdev->info.rbplus_allowed)
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+      }
+
+      if (!cmd_buffer->state.emitted_graphics_pipeline ||
+          cmd_buffer->state.cb_shader_mask != graphics_pipeline->cb_shader_mask) {
+         cmd_buffer->state.cb_shader_mask = graphics_pipeline->cb_shader_mask;
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_COLOR_OUTPUT;
       }
 
       radv_bind_vs_input_state(cmd_buffer, graphics_pipeline);
@@ -8071,7 +8067,7 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
     */
    primary->state.dirty |= RADV_CMD_DIRTY_PIPELINE | RADV_CMD_DIRTY_INDEX_BUFFER | RADV_CMD_DIRTY_GUARDBAND |
                            RADV_CMD_DIRTY_DYNAMIC_ALL | RADV_CMD_DIRTY_SHADER_QUERY | RADV_CMD_DIRTY_OCCLUSION_QUERY |
-                           RADV_CMD_DIRTY_DB_SHADER_CONTROL;
+                           RADV_CMD_DIRTY_DB_SHADER_CONTROL | RADV_CMD_DIRTY_COLOR_OUTPUT;
    radv_mark_descriptor_sets_dirty(primary, VK_PIPELINE_BIND_POINT_GRAPHICS);
    radv_mark_descriptor_sets_dirty(primary, VK_PIPELINE_BIND_POINT_COMPUTE);
 
@@ -9520,12 +9516,18 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       gfx103_emit_vrs_state(device, cs, NULL, false, false, false);
    }
 
-   uint32_t spi_shader_col_format = 0;
-   if (radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0))
-      spi_shader_col_format = V_028714_SPI_SHADER_32_R;
-   radv_emit_blend_state(cs, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], spi_shader_col_format, 0);
-
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GRAPHICS_SHADERS;
+}
+
+static void
+radv_emit_color_output_state(struct radv_cmd_buffer *cmd_buffer)
+{
+   uint32_t col_format_compacted = radv_compact_spi_shader_col_format(cmd_buffer->state.spi_shader_col_format);
+
+   radeon_set_context_reg(cmd_buffer->cs, R_028714_SPI_SHADER_COL_FORMAT, col_format_compacted);
+   radeon_set_context_reg(cmd_buffer->cs, R_02823C_CB_SHADER_MASK, cmd_buffer->state.cb_shader_mask);
+
+   cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_COLOR_OUTPUT;
 }
 
 static void
@@ -9549,17 +9551,25 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
             return;
          }
 
-         uint32_t col_format_non_compacted = ps_epilog->spi_shader_col_format;
+         uint32_t col_format = ps_epilog->spi_shader_col_format;
+         uint32_t cb_shader_mask = ps_epilog->cb_shader_mask;
 
          assert(cmd_buffer->state.custom_blend_mode == 0);
 
          if (radv_needs_null_export_workaround(device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], 0) &&
-             !col_format_non_compacted)
-            col_format_non_compacted = V_028714_SPI_SHADER_32_R;
+             !col_format)
+            col_format = V_028714_SPI_SHADER_32_R;
 
-         if (pdev->info.rbplus_allowed && cmd_buffer->state.col_format_non_compacted != col_format_non_compacted) {
-            cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
-            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+         if (cmd_buffer->state.spi_shader_col_format != col_format) {
+            cmd_buffer->state.spi_shader_col_format = col_format;
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_COLOR_OUTPUT;
+            if (pdev->info.rbplus_allowed)
+               cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+         }
+
+         if (cmd_buffer->state.cb_shader_mask != cb_shader_mask) {
+            cmd_buffer->state.cb_shader_mask = cb_shader_mask;
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_COLOR_OUTPUT;
          }
       }
    }
@@ -9602,6 +9612,9 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
 
    if (ps_epilog)
       radv_emit_ps_epilog_state(cmd_buffer, ps_epilog);
+
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_COLOR_OUTPUT)
+      radv_emit_color_output_state(cmd_buffer);
 
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_FRAMEBUFFER)
       radv_emit_framebuffer_state(cmd_buffer);
@@ -9739,13 +9752,20 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
 
    const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
    if (ps && !ps->info.has_epilog) {
-      uint32_t col_format_non_compacted = 0;
+      uint32_t col_format = 0, cb_shader_mask = 0;
       if (radv_needs_null_export_workaround(device, ps, 0))
-         col_format_non_compacted = V_028714_SPI_SHADER_32_R;
+         col_format = V_028714_SPI_SHADER_32_R;
 
-      if (pdev->info.rbplus_allowed && cmd_buffer->state.col_format_non_compacted != col_format_non_compacted) {
-         cmd_buffer->state.col_format_non_compacted = col_format_non_compacted;
-         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+      if (cmd_buffer->state.spi_shader_col_format != col_format) {
+         cmd_buffer->state.spi_shader_col_format = col_format;
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_COLOR_OUTPUT;
+         if (pdev->info.rbplus_allowed)
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
+      }
+
+      if (cmd_buffer->state.cb_shader_mask != cb_shader_mask) {
+         cmd_buffer->state.cb_shader_mask = cb_shader_mask;
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_COLOR_OUTPUT;
       }
    }
 
@@ -12377,7 +12397,8 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
          cmd_buffer->state.last_vgt_shader = NULL;
          cmd_buffer->state.has_nggc = false;
          cmd_buffer->state.emitted_vs_prolog = NULL;
-         cmd_buffer->state.col_format_non_compacted = 0;
+         cmd_buffer->state.spi_shader_col_format = 0;
+         cmd_buffer->state.cb_shader_mask = 0;
          cmd_buffer->state.ms.sample_shading_enable = false;
          cmd_buffer->state.ms.min_sample_shading = 1.0f;
          cmd_buffer->state.rast_prim = 0;

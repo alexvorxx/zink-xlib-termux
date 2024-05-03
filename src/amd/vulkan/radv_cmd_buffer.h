@@ -144,6 +144,7 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_DB_SHADER_CONTROL = 1ull << 60,
    RADV_CMD_DIRTY_STREAMOUT_ENABLE = 1ull << 61,
    RADV_CMD_DIRTY_GRAPHICS_SHADERS = 1ull << 62,
+   RADV_CMD_DIRTY_COLOR_OUTPUT = 1ull << 63,
 };
 
 enum radv_cmd_flush_bits {
@@ -413,7 +414,8 @@ struct radv_cmd_state {
    unsigned tess_num_patches;
    unsigned tess_lds_size;
 
-   unsigned col_format_non_compacted;
+   unsigned spi_shader_col_format;
+   unsigned cb_shader_mask;
 
    /* Binning state */
    unsigned last_pa_sc_binner_cntl_0;

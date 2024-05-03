@@ -2265,20 +2265,7 @@ impl<'a> ShaderFromNir<'a> {
                         srcs.push(b.undef().into());
                     }
                     if info.writes_depth {
-                        // Saturate depth writes.
-                        //
-                        // TODO: This seems wrong in light of unrestricted depth
-                        // but it's needed to pass CTS tests for now.
-                        let depth = self.fs_out_regs[depth_idx];
-                        let sat_depth = b.alloc_ssa(RegFile::GPR, 1);
-                        b.push_op(OpFAdd {
-                            dst: sat_depth.into(),
-                            srcs: [depth.into(), 0.into()],
-                            saturate: true,
-                            rnd_mode: FRndMode::NearestEven,
-                            ftz: false,
-                        });
-                        srcs.push(sat_depth.into());
+                        srcs.push(self.fs_out_regs[depth_idx].into());
                     }
                 }
 

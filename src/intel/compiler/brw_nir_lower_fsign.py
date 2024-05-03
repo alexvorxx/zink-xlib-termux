@@ -9,22 +9,16 @@ a = 'a'
 b = 'b'
 
 lower_fsign = [
-    # This matches the behavior of the old optimization in brw_fs_nir.cpp, but
-    # it has some problems.
-    #
-    # The fmul version passes Vulkan float_controls2 CTS a little bit by
-    # luck. The use of fne means that the false path (i.e., fsign(X) == 0) is
-    # only taken when X is zero. For OpenCL, this path should also be taken
-    # when when X is NaN. This can be handled by using 'fabs(X) > 0', but this
-    # fails float_controls2 CTS when the other multiplication operand is NaN.
-    #
-    # This optimization is additionally problematic when fsign(X) is zero and
-    # the other multiplication operand is Inf. This will result in 0, but it
-    # should result in NaN. This does not seem to be tested by the CTS.
+    # The true branch of the fcsel elides ±1*X, so the pattern must be
+    # conditioned for that using is_only_used_as_float (see
+    # nir_opt_algebraic.py). The false branch elides 0*x, so the pattern must
+    # also be conditioned for that using either nsz,nnan or nsz with
+    # is_finite.
     #
     # NOTE: fcsel opcodes are currently limited to float32 in NIR.
-    (('fmul@32', ('fsign(is_used_once)', a), b), ('fcsel',          a    , ('ixor', ('iand', a, 0x80000000), b), ('iand', a, 0x80000000))),
-    (('fmul@16', ('fsign(is_used_once)', a), b), ('bcsel', ('fneu', a, 0), ('ixor', ('iand', a, 0x8000    ), b), ('iand', a, 0x8000    ))),
+    (('fmul@32(is_only_used_as_float,nsz)',      ('fsign(is_used_once)', a), 'b(is_finite)'), ('fcsel_gt', a, b, ('fcsel_gt', ('fneg', a), ('fneg', b), 0.0))),
+    (('fmul@32(is_only_used_as_float,nsz,nnan)', ('fsign(is_used_once)', a),  b            ), ('fcsel_gt', a, b, ('fcsel_gt', ('fneg', a), ('fneg', b), 0.0))),
+    (('~fmul@32',                                ('fsign(is_used_once)', a),  b            ), ('fcsel_gt', a, b, ('fcsel_gt', ('fneg', a), ('fneg', b), 0.0))),
 
     # This is 99.99% strictly correct for OpenCL. It will provide correctly
     # signed zero for ±0 inputs, and it will provide zero for NaN inputs. The

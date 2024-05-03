@@ -580,6 +580,11 @@ intel_perf_config(struct intel_perf_context *ctx)
    return ctx->perf;
 }
 
+void intel_perf_free_context(struct intel_perf_context *perf_ctx)
+{
+   ralloc_free(perf_ctx);
+}
+
 void
 intel_perf_init_context(struct intel_perf_context *perf_ctx,
                         struct intel_perf_config *perf_cfg,

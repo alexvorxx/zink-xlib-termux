@@ -58,6 +58,8 @@ intel_perf_read_oa_stream(struct intel_perf_context *perf_ctx,
 
 struct intel_perf_context *intel_perf_new_context(void *parent);
 
+void intel_perf_free_context(struct intel_perf_context *perf_ctx);
+
 void intel_perf_init_context(struct intel_perf_context *perf_ctx,
                              struct intel_perf_config *perf_cfg,
                              void * mem_ctx, /* ralloc context */

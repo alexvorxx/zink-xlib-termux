@@ -1184,10 +1184,18 @@ static void
 create_linked_separable_job(void *data, void *gdata, int thread_index)
 {
    struct zink_gfx_program *prog = data;
+   /* this is a dead program */
+   if (prog->base.removed)
+      return;
    prog->full_prog = zink_create_gfx_program(prog->base.ctx, prog->shaders, 0, prog->gfx_hash);
+   /* block gfx_shader_prune in the main thread */
+   util_queue_fence_reset(&prog->full_prog->base.cache_fence);
    /* add an ownership ref */
    zink_gfx_program_reference(zink_screen(prog->base.ctx->base.screen), NULL, prog->full_prog);
-   precompile_job(prog->full_prog, gdata, thread_index);
+   /* this is otherwise a dead program */
+   if (prog->full_prog->stages_present == prog->full_prog->stages_remaining)
+      precompile_job(prog->full_prog, gdata, thread_index);
+   util_queue_fence_signal(&prog->full_prog->base.cache_fence);
 }
 
 struct zink_gfx_program *

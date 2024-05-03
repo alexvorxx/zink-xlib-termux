@@ -974,8 +974,16 @@ spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
 
 # Remaining crashes are CMA allocation failures.
 spec@ext_framebuffer_multisample@blit-mismatched-formats,Fail
+spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 msaa,Fail
+spec@ext_framebuffer_multisample@clip-and-scissor-blit 4 msaa,Fail
 spec@ext_framebuffer_multisample@interpolation 2 centroid-edges,Fail
 spec@ext_framebuffer_multisample@interpolation 4 centroid-edges,Fail
+spec@ext_framebuffer_multisample@sample-alpha-to-coverage 2 color,Fail
+spec@ext_framebuffer_multisample@sample-alpha-to-coverage 4 color,Fail
+spec@ext_framebuffer_multisample@sample-coverage 2 inverted,Fail
+spec@ext_framebuffer_multisample@sample-coverage 2 non-inverted,Fail
+spec@ext_framebuffer_multisample@sample-coverage 4 inverted,Fail
+spec@ext_framebuffer_multisample@sample-coverage 4 non-inverted,Fail
 
 spec@ext_framebuffer_object@fbo-depth-sample-compare,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-export,Fail
@@ -1175,6 +1183,10 @@ spec@ext_framebuffer_multisample@no-color 2 depth combined,Fail
 spec@ext_framebuffer_multisample@no-color 2 depth-computed combined,Fail
 spec@ext_framebuffer_multisample@no-color 4 depth combined,Fail
 spec@ext_framebuffer_multisample@no-color 4 depth-computed combined,Fail
+spec@ext_framebuffer_multisample@unaligned-blit 2 depth msaa,Fail
+spec@ext_framebuffer_multisample@unaligned-blit 2 stencil msaa,Fail
+spec@ext_framebuffer_multisample@unaligned-blit 4 depth msaa,Fail
+spec@ext_framebuffer_multisample@unaligned-blit 4 stencil msaa,Fail
 
 # https://gitlab.freedesktop.org/mesa/piglit/-/merge_requests/817
 spec@intel_performance_query@intel_performance_query-issue_2235,Fail
@@ -1184,40 +1196,3 @@ spec@glsl-1.10@execution@glsl-1.10-built-in-uniform-state,Fail
 
 # Couldn't reproduce locally
 spec@oes_packed_depth_stencil@depth_stencil texture gles2,Fail
-
-# Bisected to 1632948a764 ("nir: validate src_type of store_output intrinsics, require bit_size >= 16")
-spec@arb_framebuffer_srgb@blit renderbuffer linear_to_srgb msaa disabled clear,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer linear_to_srgb msaa disabled render,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer linear_to_srgb msaa enabled clear,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer linear_to_srgb msaa enabled render,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer srgb_to_linear msaa disabled clear,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer srgb_to_linear msaa disabled render,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer srgb_to_linear msaa enabled clear,Crash
-spec@arb_framebuffer_srgb@blit renderbuffer srgb_to_linear msaa enabled render,Crash
-spec@arb_framebuffer_srgb@blit texture linear_to_srgb msaa disabled clear,Crash
-spec@arb_framebuffer_srgb@blit texture linear_to_srgb msaa disabled render,Crash
-spec@arb_framebuffer_srgb@blit texture linear_to_srgb msaa enabled clear,Crash
-spec@arb_framebuffer_srgb@blit texture linear_to_srgb msaa enabled render,Crash
-spec@arb_framebuffer_srgb@blit texture srgb_to_linear msaa disabled clear,Crash
-spec@arb_framebuffer_srgb@blit texture srgb_to_linear msaa disabled render,Crash
-spec@arb_framebuffer_srgb@blit texture srgb_to_linear msaa enabled clear,Crash
-spec@arb_framebuffer_srgb@blit texture srgb_to_linear msaa enabled render,Crash
-spec@ext_framebuffer_multisample@no-color 2 depth single,Crash
-spec@ext_framebuffer_multisample@no-color 2 depth-computed single,Crash
-spec@ext_framebuffer_multisample@no-color 4 depth single,Crash
-spec@ext_framebuffer_multisample@no-color 4 depth-computed single,Crash
-spec@ext_framebuffer_multisample@sample-alpha-to-coverage 2 depth,Crash
-spec@ext_framebuffer_multisample@sample-alpha-to-coverage 4 depth,Crash
-# Same as above, but were fails before
-spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 msaa,Crash
-spec@ext_framebuffer_multisample@clip-and-scissor-blit 4 msaa,Crash
-spec@ext_framebuffer_multisample@sample-alpha-to-coverage 2 color,Crash
-spec@ext_framebuffer_multisample@sample-alpha-to-coverage 4 color,Crash
-spec@ext_framebuffer_multisample@sample-coverage 2 inverted,Crash
-spec@ext_framebuffer_multisample@sample-coverage 2 non-inverted,Crash
-spec@ext_framebuffer_multisample@sample-coverage 4 inverted,Crash
-spec@ext_framebuffer_multisample@sample-coverage 4 non-inverted,Crash
-spec@ext_framebuffer_multisample@unaligned-blit 2 depth msaa,Crash
-spec@ext_framebuffer_multisample@unaligned-blit 2 stencil msaa,Crash
-spec@ext_framebuffer_multisample@unaligned-blit 4 depth msaa,Crash
-spec@ext_framebuffer_multisample@unaligned-blit 4 stencil msaa,Crash

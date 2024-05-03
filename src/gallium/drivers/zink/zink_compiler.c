@@ -6433,6 +6433,7 @@ gfx_shader_prune(struct zink_screen *screen, struct zink_shader *shader)
       return false;
    gl_shader_stage stage = shader->info.stage;
    assert(stage < ZINK_GFX_SHADER_COUNT);
+   util_queue_fence_wait(&prog->base.cache_fence);
    unsigned stages_present = prog->stages_present;
    if (prog->shaders[MESA_SHADER_TESS_CTRL] &&
          prog->shaders[MESA_SHADER_TESS_CTRL]->non_fs.is_generated)
@@ -6447,7 +6448,6 @@ gfx_shader_prune(struct zink_screen *screen, struct zink_shader *shader)
       _mesa_hash_table_remove(ht, he);
       prog->base.removed = true;
       simple_mtx_unlock(&prog->base.ctx->program_lock[idx]);
-      util_queue_fence_wait(&prog->base.cache_fence);
 
       for (unsigned r = 0; r < ARRAY_SIZE(prog->pipelines); r++) {
          for (int i = 0; i < ARRAY_SIZE(prog->pipelines[0]); ++i) {

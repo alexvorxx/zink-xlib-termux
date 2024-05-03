@@ -590,7 +590,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_EXT_headless_surface                               DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_EXT_image_2d_view_of_3d                            DONE (anv, hasvk, lvp, nvk, radv, tu, vn)
   VK_EXT_image_compression_control                      DONE (radv)
-  VK_EXT_image_drm_format_modifier                      DONE (anv, hasvk, radv/gfx9+, tu, v3dv, vn)
+  VK_EXT_image_drm_format_modifier                      DONE (anv, hasvk, nvk, radv/gfx9+, tu, v3dv, vn)
   VK_EXT_image_sliced_view_of_3d                        DONE (anv, nvk, radv/gfx10+)
   VK_EXT_image_view_min_lod                             DONE (anv, hasvk, nvk, radv, tu, vn)
   VK_EXT_index_type_uint8                               DONE (anv, hasvk, nvk, lvp, panvk, pvr, radv/gfx8+, tu, v3dv, vn)

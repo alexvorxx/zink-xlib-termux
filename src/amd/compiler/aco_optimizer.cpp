@@ -5382,7 +5382,7 @@ apply_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       }
    }
 
-   if (instr->isSOPC())
+   if (instr->isSOPC() && ctx.program->gfx_level < GFX12)
       try_convert_sopc_to_sopk(instr);
 
    /* allow more s_addk_i32 optimizations if carry isn't used */

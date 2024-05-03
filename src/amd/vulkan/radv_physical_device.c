@@ -702,6 +702,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .GOOGLE_hlsl_functionality1 = true,
       .GOOGLE_user_type = true,
       .INTEL_shader_integer_functions2 = true,
+      .MESA_image_alignment_control = true,
       .NV_compute_shader_derivatives = true,
       .NV_device_generated_commands = !pdev->use_llvm && instance->drirc.enable_dgc,
       .NV_device_generated_commands_compute = !pdev->use_llvm && instance->drirc.enable_dgc,
@@ -1219,6 +1220,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_EXT_legacy_vertex_attributes */
       .legacyVertexAttributes = true,
+
+      /* VK_MESA_image_alignment_control */
+      .imageAlignmentControl = true,
    };
 }
 
@@ -1918,6 +1922,11 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
 
    /* VK_EXT_legacy_vertex_attributes */
    p->nativeUnalignedPerformance = false;
+
+   /* VK_MESA_image_alignment_control */
+   p->supportedImageAlignmentMask = (4 * 1024) | (64 * 1024);
+   if (gfx11plus)
+      p->supportedImageAlignmentMask |= 256 * 1024;
 }
 
 static VkResult

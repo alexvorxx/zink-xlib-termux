@@ -36,8 +36,6 @@
 void
 anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
 {
-   device->perf = NULL;
-
    struct intel_perf_config *perf = intel_perf_new(NULL);
 
    intel_perf_init_metrics(perf, &device->info, fd,
@@ -85,8 +83,8 @@ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
 
    return;
 
- err:
-   ralloc_free(perf);
+err:
+   intel_perf_free(perf);
 }
 
 void

@@ -242,15 +242,13 @@ static rvcn_dec_message_avc_t get_h264_msg(struct radeon_decoder *dec,
       }
    }
 
-   /* if reference picture exists, however no reference picture found at the end
-      curr_pic_ref_frame_num == 0, which is not reasonable, should be corrected. */
-   if (result.used_for_reference_flags && (result.curr_pic_ref_frame_num == 0)) {
-      for (i = 0; i < ARRAY_SIZE(result.ref_frame_list); i++) {
-         result.ref_frame_list[i] = pic->ref[i] ?
-                (uintptr_t)vl_video_buffer_get_associated_data(pic->ref[i], &dec->base) : 0xff;
-         if (result.ref_frame_list[i] != 0xff) {
+   /* need at least one reference for P/B frames */
+   if (result.curr_pic_ref_frame_num == 0 && pic->slice_parameter.slice_info_present) {
+      for (i = 0; i < pic->slice_count; i++) {
+         if (pic->slice_parameter.slice_type[i] % 5 != 2) {
             result.curr_pic_ref_frame_num++;
-            result.non_existing_frame_flags &= ~(1 << i);
+            result.ref_frame_list[0] = 0;
+            result.non_existing_frame_flags &= ~1;
             break;
          }
       }

@@ -826,6 +826,21 @@ GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
    return tag.opaque[0];
 }
 #else /* PAN_ARCH == 4 */
+static enum mali_color_format
+pan_sfbd_raw_format(unsigned bits)
+{
+   /* clang-format off */
+   switch (bits) {
+   case   16: return MALI_COLOR_FORMAT_1_16B_CHANNEL;
+   case   32: return MALI_COLOR_FORMAT_1_32B_CHANNEL;
+   case   48: return MALI_COLOR_FORMAT_3_16B_CHANNELS;
+   case   64: return MALI_COLOR_FORMAT_2_32B_CHANNELS;
+   case   96: return MALI_COLOR_FORMAT_3_32B_CHANNELS;
+   case  128: return MALI_COLOR_FORMAT_4_32B_CHANNELS;
+   default: unreachable("invalid raw bpp");
+   }
+   /* clang-format on */
+}
 unsigned
 GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
                    const struct pan_tls_info *tls,
@@ -872,7 +887,11 @@ GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
             cfg.internal_format = fmt.internal;
             cfg.color_writeback_format = fmt.writeback;
          } else {
-            unreachable("raw formats not finished for SFBD");
+            /* Construct RAW internal/writeback */
+            unsigned bits = desc->block.bits;
+
+            cfg.internal_format = MALI_COLOR_BUFFER_INTERNAL_FORMAT_RAW_VALUE;
+            cfg.color_writeback_format = pan_sfbd_raw_format(bits);
          }
 
          unsigned level = rt->first_level;

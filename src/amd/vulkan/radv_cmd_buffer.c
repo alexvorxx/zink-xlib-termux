@@ -7026,56 +7026,54 @@ radv_src_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
          has_DB_meta = false;
    }
 
-   u_foreach_bit64 (b, src_flags) {
-      switch ((VkAccessFlags2)BITFIELD64_BIT(b)) {
-      case VK_ACCESS_2_COMMAND_PREPROCESS_WRITE_BIT_NV:
-         flush_bits |= RADV_CMD_FLAG_INV_L2;
-         break;
-      case VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT:
-      case VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR:
-         /* since the STORAGE bit isn't set we know that this is a meta operation.
-          * on the dst flush side we skip CB/DB flushes without the STORAGE bit, so
-          * set it here. */
-         if (image && !(image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT)) {
-            if (vk_format_is_depth_or_stencil(image->vk.format)) {
-               flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
-            } else {
-               flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
-            }
+   if (src_flags & VK_ACCESS_2_COMMAND_PREPROCESS_WRITE_BIT_NV)
+      flush_bits |= RADV_CMD_FLAG_INV_L2;
+
+   if (src_flags & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)) {
+      /* since the STORAGE bit isn't set we know that this is a meta operation.
+       * on the dst flush side we skip CB/DB flushes without the STORAGE bit, so
+       * set it here. */
+      if (image && !(image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT)) {
+         if (vk_format_is_depth_or_stencil(image->vk.format)) {
+            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
+         } else {
+            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
          }
-
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         break;
-      case VK_ACCESS_2_TRANSFORM_FEEDBACK_WRITE_BIT_EXT:
-      case VK_ACCESS_2_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT:
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_WB_L2;
-         break;
-      case VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT:
-         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
-         if (has_CB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
-         break;
-      case VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT:
-         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
-         if (has_DB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
-         break;
-      case VK_ACCESS_2_TRANSFER_WRITE_BIT:
-         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_DB;
-
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         if (has_CB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
-         if (has_DB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
-         break;
-      default:
-         break;
       }
+
+      if (!image_is_coherent)
+         flush_bits |= RADV_CMD_FLAG_INV_L2;
    }
+
+   if (src_flags &
+       (VK_ACCESS_2_TRANSFORM_FEEDBACK_WRITE_BIT_EXT | VK_ACCESS_2_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT)) {
+      if (!image_is_coherent)
+         flush_bits |= RADV_CMD_FLAG_WB_L2;
+   }
+
+   if (src_flags & VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT) {
+      flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
+      if (has_CB_meta)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
+   }
+
+   if (src_flags & VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT) {
+      flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
+      if (has_DB_meta)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
+   }
+
+   if (src_flags & VK_ACCESS_2_TRANSFER_WRITE_BIT) {
+      flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_DB;
+
+      if (!image_is_coherent)
+         flush_bits |= RADV_CMD_FLAG_INV_L2;
+      if (has_CB_meta)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
+      if (has_DB_meta)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
+   }
+
    return flush_bits;
 }
 
@@ -7111,74 +7109,73 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
     * in the L2 cache in CB/DB mode then they are already usable from all the other L2 clients. */
    image_is_coherent |= can_skip_buffer_l2_flushes(device) && !cmd_buffer->state.rb_noncoherent_dirty;
 
-   u_foreach_bit64 (b, dst_flags) {
-      switch ((VkAccessFlags2)BITFIELD64_BIT(b)) {
-      case VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT:
-         /* SMEM loads are used to read compute dispatch size in shaders */
-         if (!device->load_grid_size_from_user_sgpr)
-            flush_bits |= RADV_CMD_FLAG_INV_SCACHE;
-
-         /* Ensure the DGC meta shader can read the commands. */
-         if (radv_uses_device_generated_commands(device)) {
-            flush_bits |= RADV_CMD_FLAG_INV_SCACHE | RADV_CMD_FLAG_INV_VCACHE;
-
-            if (pdev->info.gfx_level < GFX9)
-               flush_bits |= RADV_CMD_FLAG_INV_L2;
-         }
-
-         break;
-      case VK_ACCESS_2_UNIFORM_READ_BIT:
-         flush_bits |= RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_SCACHE;
-         break;
-      case VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT:
-      case VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT:
-      case VK_ACCESS_2_TRANSFER_READ_BIT:
-         flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
-
-         if (flush_L2_metadata)
-            flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         break;
-      case VK_ACCESS_2_DESCRIPTOR_BUFFER_READ_BIT_EXT:
+   if (dst_flags & VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT) {
+      /* SMEM loads are used to read compute dispatch size in shaders */
+      if (!device->load_grid_size_from_user_sgpr)
          flush_bits |= RADV_CMD_FLAG_INV_SCACHE;
-         break;
-      case VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR:
-      case VK_ACCESS_2_SHADER_STORAGE_READ_BIT:
-      case VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR:
+
+      /* Ensure the DGC meta shader can read the commands. */
+      if (radv_uses_device_generated_commands(device)) {
+         flush_bits |= RADV_CMD_FLAG_INV_SCACHE | RADV_CMD_FLAG_INV_VCACHE;
+
+         if (pdev->info.gfx_level < GFX9)
+            flush_bits |= RADV_CMD_FLAG_INV_L2;
+      }
+   }
+
+   if (dst_flags & VK_ACCESS_2_UNIFORM_READ_BIT)
+      flush_bits |= RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_SCACHE;
+
+   if (dst_flags & (VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT |
+                    VK_ACCESS_2_TRANSFER_READ_BIT)) {
+      flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
+
+      if (flush_L2_metadata)
+         flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
+      if (!image_is_coherent)
+         flush_bits |= RADV_CMD_FLAG_INV_L2;
+   }
+
+   if (dst_flags & VK_ACCESS_2_DESCRIPTOR_BUFFER_READ_BIT_EXT)
+      flush_bits |= RADV_CMD_FLAG_INV_SCACHE;
+
+   if (dst_flags & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR |
+                    VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT)) {
+      if (dst_flags & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR |
+                       VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR)) {
          /* Unlike LLVM, ACO uses SMEM for SSBOs and we have to
           * invalidate the scalar cache. */
          if (!pdev->use_llvm && !image)
             flush_bits |= RADV_CMD_FLAG_INV_SCACHE;
-         FALLTHROUGH;
-      case VK_ACCESS_2_SHADER_SAMPLED_READ_BIT:
-         flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
-         if (flush_L2_metadata)
-            flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         break;
-      case VK_ACCESS_2_COMMAND_PREPROCESS_READ_BIT_NV:
-         flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
-         if (pdev->info.gfx_level < GFX9)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         break;
-      case VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT:
-         if (flush_CB)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
-         if (has_CB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
-         break;
-      case VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT:
-         if (flush_DB)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
-         if (has_DB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
-         break;
-      default:
-         break;
       }
+
+      flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
+      if (flush_L2_metadata)
+         flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
+      if (!image_is_coherent)
+         flush_bits |= RADV_CMD_FLAG_INV_L2;
    }
+
+   if (dst_flags & VK_ACCESS_2_COMMAND_PREPROCESS_READ_BIT_NV) {
+      flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
+      if (pdev->info.gfx_level < GFX9)
+         flush_bits |= RADV_CMD_FLAG_INV_L2;
+   }
+
+   if (dst_flags & VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT) {
+      if (flush_CB)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
+      if (has_CB_meta)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
+   }
+
+   if (dst_flags & VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT) {
+      if (flush_DB)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
+      if (has_DB_meta)
+         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
+   }
+
    return flush_bits;
 }
 

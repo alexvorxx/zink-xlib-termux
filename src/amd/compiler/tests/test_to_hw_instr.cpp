@@ -268,7 +268,7 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
       //! p_unit_test 7
       //~gfx9! v1: %_:v[0] = v_and_b32 0xffff0000, %_:v[0]
       //~gfx9! v1: %_:v[0] = v_or_b32 0x4205, %_:v[0]
-      //~gfx10! v2b: %_:v[0][0:16] = v_pack_b32_f16 0x4205, hi(%_:v[0][16:32])
+      //~gfx10! v2b: %_:v[0][0:16] = v_add_u16_e64 0x4205, 0
       //~gfx11! v2b: %0:v[0][0:16] = v_mov_b16 0x4205
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(7u));
       bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_lo, v2b), Operand::c16(0x4205));
@@ -276,7 +276,7 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
       //! p_unit_test 8
       //~gfx9! v1: %_:v[0] = v_and_b32 0xffff, %_:v[0]
       //~gfx9! v1: %_:v[0] = v_or_b32 0x42050000, %_:v[0]
-      //~gfx10! v2b: %_:v[0][16:32] = v_pack_b32_f16 %_:v[0][0:16], 0x4205
+      //~gfx10! v2b: %_:v[0][16:32] = v_add_u16_e64 0x4205, 0 opsel_hi
       //~gfx11! v2b: %0:v[0][16:32] = v_mov_b16 0x4205 opsel_hi
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(8u));
       bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_hi, v2b), Operand::c16(0x4205));
@@ -323,7 +323,7 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
       //>> p_unit_test 13
       //~gfx9! v1: %_:v[0] = v_and_b32 0xffff0000, %_:v[0]
       //~gfx9! v1: %_:v[0] = v_or_b32 0xff, %_:v[0]
-      //~gfx10! v1: %_:v[0] = v_perm_b32 %_:v[0], 0, 0x7060c0d
+      //~gfx10! v2b: %_:v[0][0:16] = v_add_u16_e64 0xff, 0
       //~gfx11! v2b: %0:v[0][0:16] = v_mov_b16 0xff
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(13u));
       bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_lo, v2b), Operand::c16(0x00ff));
@@ -331,7 +331,7 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
       //! p_unit_test 14
       //~gfx9! v1: %_:v[0] = v_and_b32 0xffff, %_:v[0]
       //~gfx9! v1: %_:v[0] = v_or_b32 0xff000000, %_:v[0]
-      //~gfx10! v1: %_:v[0] = v_perm_b32 %_:v[0], 0, 0xd0c0504
+      //~gfx10! v2b: %_:v[0][16:32] = v_add_u16_e64 0xff00, 0 opsel_hi
       //~gfx11! v2b: %0:v[0][16:32] = v_mov_b16 0xffffff00 opsel_hi
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(14u));
       bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_hi, v2b), Operand::c16(0xff00));

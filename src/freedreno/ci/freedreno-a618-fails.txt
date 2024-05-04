@@ -354,3 +354,8 @@ gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_s
 gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_1.pgq_32bit_xfb_64bit.triangle_fan.indirect,Fail
 gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.32bit.line_list.indirect,Fail
 gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.pgq_32bit_xfb_64bit.line_list_with_adjacency.indirect,Fail
+
+# uprev Piglit in Mesa
+spec@glsl-1.30@execution@fs-uint-to-float-of-extract-int16,Fail
+spec@glsl-1.30@execution@fs-uint-to-float-of-extract-int8,Fail
+

@@ -313,14 +313,7 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
       bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_lo, v1), Definition(v1_lo, v1b),
                  Operand::zero(), Operand::zero(1));
 
-      bld.reset(program->create_and_insert_block());
-      program->blocks[0].linear_succs.push_back(1);
-      program->blocks[1].linear_preds.push_back(0);
-
-      /* Prevent usage of v_pack_b32_f16, so we use v_perm_b32 instead. */
-      program->blocks[1].fp_mode.denorm16_64 = fp_denorm_flush;
-
-      //>> p_unit_test 13
+      //! p_unit_test 13
       //~gfx9! v1: %_:v[0] = v_and_b32 0xffff0000, %_:v[0]
       //~gfx9! v1: %_:v[0] = v_or_b32 0xff, %_:v[0]
       //~gfx10! v2b: %_:v[0][0:16] = v_add_u16_e64 0xff, 0

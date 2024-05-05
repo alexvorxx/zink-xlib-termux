@@ -336,6 +336,8 @@ lvp_descriptor_set_create(struct lvp_device *device,
    for (unsigned i = 0; i < layout->binding_count; i++)
       bo_size += layout->binding[i].uniform_block_size;
 
+   bo_size = MAX2(bo_size, 64);
+
    struct pipe_resource template = {
       .bind = PIPE_BIND_CONSTANT_BUFFER,
       .screen = device->pscreen,

@@ -8,6 +8,34 @@
 KHR-GLES31.core.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_MaxPatchVertices_Position_PointSize
 KHR-GL46.copy_image.functional
 
+# Slow tests
+spec@arb_compute_shader@local-id-explosion
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-inverse-dmat4
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-div-dmat4x3-dmat4x3
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-div-double-dmat3x4
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-div-double-dmat4x3
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-mult-dmat2x4-dmat4x2
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-mult-dmat4-dmat3x4
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-mult-dmat4x3-dmat4
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-smoothstep-double-double-dvec4
+spec@arb_gpu_shader_fp64@execution@vs-decrement-dvec
+spec@egl 1.4@eglquerysurface egl_bad_attribute
+spec@egl_chromium_sync_control@conformance
+spec@egl_khr_gl_colorspace@linear
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-dmat2x3-dmat2x3
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-dmat2x4-dmat2x4
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-dmat4x3-dmat4x3
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-dmat4-dmat4
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-double-dmat2x4
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-double-dmat4
+spec@glsl-4.00@execution@built-in-functions@fs-op-mult-dmat2x4-dmat3x2
+spec@glsl-4.00@execution@built-in-functions@fs-op-mult-dmat4-dmat4
+spec@glsl-4.10@execution@conversion@frag-conversion-implicit-mat4-dmat4-zero-sign
+spec@glsl-4.10@execution@conversion@frag-conversion-implicit-mat4x3-dmat4x3-zero-sign
+
+# Timeout
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-mult-dmat4-dmat4
+
 # These take most of a minute to run
 spec@!opengl 3.0@clearbuffer-depth-cs-probe
 spec@ext_texture_array@fbo-depth-array depth-clear

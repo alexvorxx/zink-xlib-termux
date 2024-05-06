@@ -1996,7 +1996,7 @@ struct anv_device {
     VkCommandPool                               companion_rcs_cmd_pool;
 
     struct anv_trtt {
-       pthread_mutex_t mutex;
+       simple_mtx_t mutex;
 
        /* Sometimes we need to run batches from places where we don't have a
         * queue coming from the API, so we use this.

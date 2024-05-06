@@ -571,7 +571,7 @@ anv_sparse_bind_trtt(struct anv_device *device,
       .l1_binds_len = 0,
    };
 
-   pthread_mutex_lock(&trtt->mutex);
+   simple_mtx_lock(&trtt->mutex);
 
    if (!trtt->l3_addr)
       anv_trtt_init_context_state(sparse_submit->queue);
@@ -608,7 +608,7 @@ anv_sparse_bind_trtt(struct anv_device *device,
       ANV_RMV(vm_binds, device, sparse_submit->binds, sparse_submit->binds_len);
 
 out:
-   pthread_mutex_unlock(&trtt->mutex);
+   simple_mtx_unlock(&trtt->mutex);
    STACK_ARRAY_FINISH(l1_binds);
    STACK_ARRAY_FINISH(l3l2_binds);
    return result;

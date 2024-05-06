@@ -347,7 +347,7 @@ anv_execbuf_add_trtt_bos(struct anv_device *device,
    if (!trtt->l3_addr)
       return VK_SUCCESS;
 
-   pthread_mutex_lock(&trtt->mutex);
+   simple_mtx_lock(&trtt->mutex);
 
    for (int i = 0; i < trtt->num_page_table_bos; i++) {
       result = anv_execbuf_add_bo(device, execbuf, trtt->page_table_bos[i],
@@ -357,7 +357,7 @@ anv_execbuf_add_trtt_bos(struct anv_device *device,
    }
 
 out:
-   pthread_mutex_unlock(&trtt->mutex);
+   simple_mtx_unlock(&trtt->mutex);
    return result;
 }
 

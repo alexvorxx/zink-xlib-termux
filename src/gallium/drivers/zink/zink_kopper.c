@@ -1150,8 +1150,6 @@ zink_kopper_set_swap_interval(struct pipe_screen *pscreen, struct pipe_resource 
 {
    struct zink_resource *res = zink_resource(pres);
    struct zink_screen *screen = zink_screen(pscreen);
-   if (!res->obj->dt)
-      fprintf(stderr, "NOT SWAPCHAIN %p\n", res);
    assert(res->obj->dt);
    struct kopper_displaytarget *cdt = res->obj->dt;
    VkPresentModeKHR old_present_mode = cdt->present_mode;

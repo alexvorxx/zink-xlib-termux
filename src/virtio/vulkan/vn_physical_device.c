@@ -162,6 +162,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
 
       /* KHR */
       VkPhysicalDeviceFragmentShadingRateFeaturesKHR fragment_shading_rate;
+      VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5;
       VkPhysicalDeviceShaderClockFeaturesKHR shader_clock;
       VkPhysicalDeviceShaderExpectAssumeFeaturesKHR expect_assume;
 
@@ -269,6 +270,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
    VN_ADD_PNEXT_EXT(feats2, FRAGMENT_SHADING_RATE_FEATURES_KHR, local_feats.fragment_shading_rate, exts->KHR_fragment_shading_rate);
    VN_ADD_PNEXT_EXT(feats2, SHADER_CLOCK_FEATURES_KHR, local_feats.shader_clock, exts->KHR_shader_clock);
    VN_ADD_PNEXT_EXT(feats2, SHADER_EXPECT_ASSUME_FEATURES_KHR, local_feats.expect_assume, exts->KHR_shader_expect_assume);
+   VN_ADD_PNEXT_EXT(feats2, MAINTENANCE_5_FEATURES_KHR, local_feats.maintenance5, exts->KHR_maintenance5);
 
    /* EXT */
    VN_ADD_PNEXT_EXT(feats2, ATTACHMENT_FEEDBACK_LOOP_LAYOUT_FEATURES_EXT, local_feats.attachment_feedback_loop_layout, exts->EXT_attachment_feedback_loop_layout);
@@ -1090,6 +1092,7 @@ vn_physical_device_get_passthrough_extensions(
 
       /* KHR */
       .KHR_fragment_shading_rate = true,
+      .KHR_maintenance5 = true,
       .KHR_pipeline_library = true,
       .KHR_push_descriptor = true,
       .KHR_shader_clock = true,

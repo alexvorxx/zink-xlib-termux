@@ -19,9 +19,7 @@ namespace pps
 {
 IntelPerf::IntelPerf(const int drm_fd)
    : drm_fd {drm_fd}
-   , ralloc_ctx {ralloc_context(nullptr)}
-   , ralloc_cfg {ralloc_context(nullptr)}
-   , cfg {intel_perf_new(ralloc_cfg)}
+   , cfg {intel_perf_new(NULL)}
 {
    assert(drm_fd >= 0 && "DRM fd is not valid");
 
@@ -40,14 +38,6 @@ IntelPerf::IntelPerf(const int drm_fd)
 IntelPerf::~IntelPerf()
 {
    close();
-
-   if (ralloc_ctx) {
-      ralloc_free(ralloc_ctx);
-   }
-
-   if (ralloc_cfg) {
-      ralloc_free(ralloc_cfg);
-   }
 
    intel_perf_free(cfg);
 }
@@ -83,7 +73,7 @@ bool IntelPerf::open(const uint64_t sampling_period_ns,
 {
    assert(!ctx && "Perf context should not be initialized at this point");
 
-   ctx = intel_perf_new_context(ralloc_ctx);
+   ctx = intel_perf_new_context(NULL);
    intel_perf_init_context(ctx, cfg, nullptr, nullptr, nullptr, &devinfo, 0, drm_fd);
 
    auto oa_exponent = get_oa_exponent(&devinfo, sampling_period_ns);

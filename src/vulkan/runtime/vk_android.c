@@ -477,6 +477,39 @@ vk_image_usage_to_ahb_usage(const VkImageCreateFlags vk_create,
    return ahb_usage;
 }
 
+/* Probe gralloc implementation to test whether it can allocate a buffer
+ * for the given format and usage.  Vk drivers must not advertise support
+ * for AHB backed VkImage's if the gralloc implementation is not able to
+ * perform the allocation.
+ */
+bool
+vk_ahb_probe_format(VkFormat vk_format,
+                    VkImageCreateFlags vk_create,
+                    VkImageUsageFlags vk_usage)
+{
+   AHardwareBuffer_Desc desc = {
+      .width = 16,
+      .height = 16,
+      .layers = 1,
+      .format = vk_image_format_to_ahb_format(vk_format),
+      .usage = vk_image_usage_to_ahb_usage(vk_create, vk_usage),
+   };
+#if ANDROID_API_LEVEL >= 29
+   return AHardwareBuffer_isSupported(&desc);
+#else
+   AHardwareBuffer *ahb = NULL;
+   int ret = 0;
+
+   ret = AHardwareBuffer_allocate(&desc, &ahb);
+   if (ret)
+      return false;
+
+   AHardwareBuffer_release(ahb);
+
+   return true;
+#endif
+}
+
 struct AHardwareBuffer *
 vk_alloc_ahardware_buffer(const VkMemoryAllocateInfo *pAllocateInfo)
 {

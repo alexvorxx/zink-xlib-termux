@@ -2554,6 +2554,7 @@ fail_queues:
    }
 
    u_rwlock_destroy(&device->dma_bo_lock);
+   tu_drm_device_finish(device);
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
    return result;

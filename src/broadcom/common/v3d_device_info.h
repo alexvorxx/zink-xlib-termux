@@ -37,6 +37,9 @@ struct v3d_device_info {
         /** V3D revision number */
         uint8_t rev;
 
+        /** Maximum number of performance counters for a given V3D version **/
+        uint8_t max_perfcnt;
+
         /** Size of the VPM, in bytes. */
         int vpm_size;
 

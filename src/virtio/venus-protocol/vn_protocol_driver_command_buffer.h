@@ -7220,6 +7220,62 @@ static inline void vn_decode_vkCmdSetScissorWithCount_reply(struct vn_cs_decoder
     /* skip pScissors */
 }
 
+static inline size_t vn_sizeof_vkCmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType)
+{
+    const VkCommandTypeEXT cmd_type = VK_COMMAND_TYPE_vkCmdBindIndexBuffer2KHR_EXT;
+    const VkFlags cmd_flags = 0;
+    size_t cmd_size = vn_sizeof_VkCommandTypeEXT(&cmd_type) + vn_sizeof_VkFlags(&cmd_flags);
+
+    cmd_size += vn_sizeof_VkCommandBuffer(&commandBuffer);
+    cmd_size += vn_sizeof_VkBuffer(&buffer);
+    cmd_size += vn_sizeof_VkDeviceSize(&offset);
+    cmd_size += vn_sizeof_VkDeviceSize(&size);
+    cmd_size += vn_sizeof_VkIndexType(&indexType);
+
+    return cmd_size;
+}
+
+static inline void vn_encode_vkCmdBindIndexBuffer2KHR(struct vn_cs_encoder *enc, VkCommandFlagsEXT cmd_flags, VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType)
+{
+    const VkCommandTypeEXT cmd_type = VK_COMMAND_TYPE_vkCmdBindIndexBuffer2KHR_EXT;
+
+    vn_encode_VkCommandTypeEXT(enc, &cmd_type);
+    vn_encode_VkFlags(enc, &cmd_flags);
+
+    vn_encode_VkCommandBuffer(enc, &commandBuffer);
+    vn_encode_VkBuffer(enc, &buffer);
+    vn_encode_VkDeviceSize(enc, &offset);
+    vn_encode_VkDeviceSize(enc, &size);
+    vn_encode_VkIndexType(enc, &indexType);
+}
+
+static inline size_t vn_sizeof_vkCmdBindIndexBuffer2KHR_reply(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType)
+{
+    const VkCommandTypeEXT cmd_type = VK_COMMAND_TYPE_vkCmdBindIndexBuffer2KHR_EXT;
+    size_t cmd_size = vn_sizeof_VkCommandTypeEXT(&cmd_type);
+
+    /* skip commandBuffer */
+    /* skip buffer */
+    /* skip offset */
+    /* skip size */
+    /* skip indexType */
+
+    return cmd_size;
+}
+
+static inline void vn_decode_vkCmdBindIndexBuffer2KHR_reply(struct vn_cs_decoder *dec, VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType)
+{
+    VkCommandTypeEXT command_type;
+    vn_decode_VkCommandTypeEXT(dec, &command_type);
+    assert(command_type == VK_COMMAND_TYPE_vkCmdBindIndexBuffer2KHR_EXT);
+
+    /* skip commandBuffer */
+    /* skip buffer */
+    /* skip offset */
+    /* skip size */
+    /* skip indexType */
+}
+
 static inline size_t vn_sizeof_vkCmdBindVertexBuffers2(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides)
 {
     const VkCommandTypeEXT cmd_type = VK_COMMAND_TYPE_vkCmdBindVertexBuffers2_EXT;
@@ -11209,6 +11265,27 @@ static inline void vn_submit_vkCmdSetScissorWithCount(struct vn_ring *vn_ring, V
     }
 }
 
+static inline void vn_submit_vkCmdBindIndexBuffer2KHR(struct vn_ring *vn_ring, VkCommandFlagsEXT cmd_flags, VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType, struct vn_ring_submit_command *submit)
+{
+    uint8_t local_cmd_data[VN_SUBMIT_LOCAL_CMD_SIZE];
+    void *cmd_data = local_cmd_data;
+    size_t cmd_size = vn_sizeof_vkCmdBindIndexBuffer2KHR(commandBuffer, buffer, offset, size, indexType);
+    if (cmd_size > sizeof(local_cmd_data)) {
+        cmd_data = malloc(cmd_size);
+        if (!cmd_data)
+            cmd_size = 0;
+    }
+    const size_t reply_size = cmd_flags & VK_COMMAND_GENERATE_REPLY_BIT_EXT ? vn_sizeof_vkCmdBindIndexBuffer2KHR_reply(commandBuffer, buffer, offset, size, indexType) : 0;
+
+    struct vn_cs_encoder *enc = vn_ring_submit_command_init(vn_ring, submit, cmd_data, cmd_size, reply_size);
+    if (cmd_size) {
+        vn_encode_vkCmdBindIndexBuffer2KHR(enc, cmd_flags, commandBuffer, buffer, offset, size, indexType);
+        vn_ring_submit_command(vn_ring, submit);
+        if (cmd_data != local_cmd_data)
+            free(cmd_data);
+    }
+}
+
 static inline void vn_submit_vkCmdBindVertexBuffers2(struct vn_ring *vn_ring, VkCommandFlagsEXT cmd_flags, VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides, struct vn_ring_submit_command *submit)
 {
     uint8_t local_cmd_data[VN_SUBMIT_LOCAL_CMD_SIZE];
@@ -13635,6 +13712,25 @@ static inline void vn_async_vkCmdSetScissorWithCount(struct vn_ring *vn_ring, Vk
 {
     struct vn_ring_submit_command submit;
     vn_submit_vkCmdSetScissorWithCount(vn_ring, 0, commandBuffer, scissorCount, pScissors, &submit);
+}
+
+static inline void vn_call_vkCmdBindIndexBuffer2KHR(struct vn_ring *vn_ring, VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType)
+{
+    VN_TRACE_FUNC();
+
+    struct vn_ring_submit_command submit;
+    vn_submit_vkCmdBindIndexBuffer2KHR(vn_ring, VK_COMMAND_GENERATE_REPLY_BIT_EXT, commandBuffer, buffer, offset, size, indexType, &submit);
+    struct vn_cs_decoder *dec = vn_ring_get_command_reply(vn_ring, &submit);
+    if (dec) {
+        vn_decode_vkCmdBindIndexBuffer2KHR_reply(dec, commandBuffer, buffer, offset, size, indexType);
+        vn_ring_free_command_reply(vn_ring, &submit);
+    }
+}
+
+static inline void vn_async_vkCmdBindIndexBuffer2KHR(struct vn_ring *vn_ring, VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size, VkIndexType indexType)
+{
+    struct vn_ring_submit_command submit;
+    vn_submit_vkCmdBindIndexBuffer2KHR(vn_ring, 0, commandBuffer, buffer, offset, size, indexType, &submit);
 }
 
 static inline void vn_call_vkCmdBindVertexBuffers2(struct vn_ring *vn_ring, VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides)

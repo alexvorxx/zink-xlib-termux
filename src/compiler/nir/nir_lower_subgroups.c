@@ -66,6 +66,11 @@ static nir_def *
 ballot_type_to_uint(nir_builder *b, nir_def *value,
                     const nir_lower_subgroups_options *options)
 {
+   /* Allow internal generated ballots to pass through */
+   if (value->num_components == options->ballot_components &&
+       value->bit_size == options->ballot_bit_size)
+      return value;
+
    /* Only the new-style SPIR-V subgroup instructions take a ballot result as
     * an argument, so we only use this on uvec4 types.
     */

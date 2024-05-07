@@ -50,6 +50,12 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       return true;
    }
 
+   case nir_intrinsic_elect: {
+      nir_def *active_id = nir_load_active_subgroup_invocation_agx(b, 16);
+      nir_def_rewrite_uses(&intr->def, nir_ieq_imm(b, active_id, 0));
+      return true;
+   }
+
    case nir_intrinsic_first_invocation: {
       nir_def *active_id = nir_load_active_subgroup_invocation_agx(b, 16);
       nir_def *is_first = nir_ieq_imm(b, active_id, 0);
@@ -202,7 +208,6 @@ agx_nir_lower_subgroups(nir_shader *s)
       .lower_relative_shuffle = true,
       .lower_rotate_to_shuffle = true,
       .lower_subgroup_masks = true,
-      .lower_elect = true,
       .lower_reduce = true,
       .ballot_components = 1,
       .ballot_bit_size = 32,

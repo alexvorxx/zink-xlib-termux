@@ -2036,12 +2036,13 @@ anv_image_get_memory_requirements(struct anv_device *device,
     */
    uint32_t memory_types;
 
-   if (image->vk.create_flags & VK_IMAGE_CREATE_PROTECTED_BIT)
+   if (image->vk.create_flags & VK_IMAGE_CREATE_PROTECTED_BIT) {
       memory_types = device->physical->memory.protected_mem_types;
-   else if (anv_image_is_pat_compressible(device, image))
-      memory_types = device->physical->memory.compressed_mem_types;
-   else
+   } else {
       memory_types = device->physical->memory.default_buffer_mem_types;
+      if (anv_image_is_pat_compressible(device, image))
+         memory_types |= device->physical->memory.compressed_mem_types;
+   }
 
    vk_foreach_struct(ext, pMemoryRequirements->pNext) {
       switch (ext->sType) {

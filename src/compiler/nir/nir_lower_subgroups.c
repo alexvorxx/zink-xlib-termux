@@ -1090,8 +1090,8 @@ bool
 nir_lower_subgroups(nir_shader *shader,
                     const nir_lower_subgroups_options *options)
 {
-   return nir_shader_lower_instructions(shader,
-                                        lower_subgroups_filter,
+   void *filter = options->filter ? options->filter : lower_subgroups_filter;
+   return nir_shader_lower_instructions(shader, filter,
                                         lower_subgroups_instr,
                                         (void *)options);
 }

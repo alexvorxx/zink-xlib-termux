@@ -1535,6 +1535,10 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       return agx_ballot_to(b, dst, agx_src_index(&instr->src[0]));
    }
 
+   case nir_intrinsic_quad_ballot_agx: {
+      return agx_quad_ballot_to(b, dst, agx_src_index(&instr->src[0]));
+   }
+
    case nir_intrinsic_doorbell_agx: {
       return agx_doorbell(b, nir_src_as_uint(instr->src[0]));
    }

@@ -196,7 +196,8 @@ precompile_all_outputs(nir_shader *s,
                        uint8_t *num_outputs)
 {
         nir_foreach_shader_out_variable(var, s) {
-                const int array_len = MAX2(glsl_get_length(var->type), 1);
+                const int array_len = glsl_type_is_vector_or_scalar(var->type) ?
+                        1 : MAX2(glsl_get_length(var->type), 1);
                 for (int j = 0; j < array_len; j++) {
                         const int slot = var->data.location + j;
                         const int num_components =

@@ -454,7 +454,7 @@ static void print_stats(struct radeon_compiler * c)
 	 * have the same set.
 	 */
 	util_debug_message(c->debug, SHADER_INFO,
-	                   "%s shader: %u inst, %u vinst, %u sinst, %u predicate, %u flowcontrol,"
+	                   "%s shader: %u inst, %u vinst, %u sinst, %u predicate, %u flowcontrol, "
 	                   "%u loops, %u tex, %u presub, %u omod, %u temps, %u consts, %u lits, %u cycles",
 	                   c->type == RC_VERTEX_PROGRAM ? "VS" : "FS",
 	                   s.num_insts, s.num_rgb_insts, s.num_alpha_insts, s.num_pred_insts,

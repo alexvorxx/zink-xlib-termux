@@ -127,7 +127,7 @@ nvk_AllocateMemory(VkDevice device,
       nvk_memory_type_flags(type, handle_types);
 
    uint32_t alignment = (1ULL << 12);
-   if (!(flags & NOUVEAU_WS_BO_GART))
+   if (flags & NOUVEAU_WS_BO_LOCAL)
       alignment = (1ULL << 16);
 
    const uint64_t aligned_size =

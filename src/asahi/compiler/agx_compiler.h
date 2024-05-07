@@ -801,6 +801,18 @@ typedef struct {
    };
 } agx_cursor;
 
+static inline bool
+agx_cursors_equal(agx_cursor a, agx_cursor b)
+{
+   if (a.option != b.option)
+      return false;
+
+   if (a.option == agx_cursor_after_block)
+      return a.block == b.block;
+   else
+      return a.instr == b.instr;
+}
+
 static inline agx_cursor
 agx_after_block(agx_block *block)
 {

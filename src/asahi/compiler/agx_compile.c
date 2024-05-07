@@ -1082,7 +1082,7 @@ agx_emit_export(agx_builder *b, unsigned base, nir_src src)
       agx_export(&b_, chan, base + (c * stride));
    }
 
-   if (memcmp(&b->cursor, &after_cursor, sizeof(agx_cursor)) == 0) {
+   if (agx_cursors_equal(b->cursor, after_cursor)) {
       b->cursor = agx_after_block_logical(b->cursor.block);
    }
 

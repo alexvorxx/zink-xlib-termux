@@ -1474,9 +1474,18 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
               instr->def.bit_size == 32) &&
              "should've been lowered");
 
-      return agx_simd_reduce_to(
-         b, dst, agx_src_index(&instr->src[0]),
-         translate_simd_op(nir_intrinsic_reduction_op(instr)));
+      unsigned cluster_size = nir_intrinsic_cluster_size(instr);
+      assert(cluster_size == 0 || cluster_size == 4 || cluster_size >= 32);
+
+      enum agx_simd_op op =
+         translate_simd_op(nir_intrinsic_reduction_op(instr));
+
+      agx_index src0 = agx_src_index(&instr->src[0]);
+
+      if (cluster_size == 4)
+         return agx_quad_reduce_to(b, dst, src0, op);
+      else
+         return agx_simd_reduce_to(b, dst, src0, op);
    }
 
    case nir_intrinsic_exclusive_scan: {

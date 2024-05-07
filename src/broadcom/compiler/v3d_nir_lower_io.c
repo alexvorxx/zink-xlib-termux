@@ -207,6 +207,8 @@ v3d_nir_lower_vpm_output(struct v3d_compile *c, nir_builder *b,
                 if (nir_src_is_const(intr->src[1]))
                     vpm_offset += nir_src_as_uint(intr->src[1]) * 4;
 
+                /* If this fires it means the shader has too many outputs */
+                assert(BITSET_BITWORD(vpm_offset) < ARRAY_SIZE(state->varyings_stored));
                 BITSET_SET(state->varyings_stored, vpm_offset);
 
                 v3d_nir_store_output(b, state->varyings_vpm_offset + vpm_offset,

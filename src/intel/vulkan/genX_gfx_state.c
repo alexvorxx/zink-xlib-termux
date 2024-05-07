@@ -1060,6 +1060,8 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
                        dyn->ms.alpha_to_coverage_enable);
       SET(BLEND_STATE, blend.AlphaToOneEnable,
                        dyn->ms.alpha_to_one_enable);
+      SET(BLEND_STATE, blend.ColorDitherEnable,
+          cmd_buffer->state.gfx.rendering_flags & VK_RENDERING_ENABLE_LEGACY_DITHERING_BIT_EXT);
 
       bool independent_alpha_blend = false;
       /* Wa_14018912822, check if we set these during RT setup. */
@@ -2149,6 +2151,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
          INIT(blend, AlphaToCoverageEnable),
          INIT(blend, AlphaToOneEnable),
          INIT(blend, IndependentAlphaBlendEnable),
+         INIT(blend, ColorDitherEnable),
       };
       GENX(BLEND_STATE_pack)(NULL, dws, &blend_state);
 

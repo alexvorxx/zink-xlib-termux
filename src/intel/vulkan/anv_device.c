@@ -372,6 +372,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_image_view_min_lod                = true,
       .EXT_index_type_uint8                  = true,
       .EXT_inline_uniform_block              = true,
+      .EXT_legacy_dithering                  = true,
       .EXT_legacy_vertex_attributes          = true,
       .EXT_line_rasterization                = true,
       .EXT_load_store_op_none                = true,
@@ -937,6 +938,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_legacy_vertex_attributes */
       .legacyVertexAttributes = true,
+
+      /* VK_EXT_legacy_dithering */
+      .legacyDithering = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without

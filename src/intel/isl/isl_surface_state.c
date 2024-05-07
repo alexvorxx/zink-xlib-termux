@@ -696,7 +696,7 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
          assert(info->aux_usage == ISL_AUX_USAGE_STC_CCS);
 
       if (isl_aux_usage_has_hiz(info->aux_usage)) {
-         /* For Gfx8-10, there are some restrictions around sampling from HiZ.
+         /* For Gfx8-11, there are some restrictions around sampling from HiZ.
           * The Skylake PRM docs for RENDER_SURFACE_STATE::AuxiliarySurfaceMode
           * say:
           *
@@ -720,8 +720,9 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
           */
          assert(info->surf->samples == 1);
 
-         /* The dimension must not be 3D */
-         assert(info->surf->dim != ISL_SURF_DIM_3D);
+         /* Prior to Gfx12, the dimension must not be 3D */
+         if (info->aux_usage == ISL_AUX_USAGE_HIZ)
+            assert(info->surf->dim != ISL_SURF_DIM_3D);
 
          /* The format must be one of the following: */
          switch (info->view->format) {

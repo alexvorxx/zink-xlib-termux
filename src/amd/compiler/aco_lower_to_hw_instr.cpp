@@ -1271,10 +1271,6 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
       assert(dst.regClass() == v1b || dst.regClass() == v2b);
 
       bool use_sdwa = ctx->program->gfx_level >= GFX9 && ctx->program->gfx_level < GFX11;
-      /* We need the v_perm_b32 (VOP3) to be able to take literals, and that's a GFX10+ feature. */
-      bool can_use_perm = ctx->program->gfx_level >= GFX10 &&
-                          (op.constantEquals(0) || op.constantEquals(0xff) ||
-                           op.constantEquals(0xffff) || op.constantEquals(0xff00));
       if (dst.regClass() == v1b && use_sdwa) {
          uint8_t val = op.constantValue();
          Operand op32 = Operand::c32((uint32_t)val | (val & 0x80u ? 0xffffff00u : 0u));
@@ -1287,6 +1283,11 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
          } else {
             bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op32);
          }
+      } else if (dst.regClass() == v1b && ctx->program->gfx_level >= GFX10) {
+         Operand fop = Operand::c32(fui(float(op.constantValue())));
+         Operand offset = Operand::c32(dst.physReg().byte());
+         Operand def_op(PhysReg(dst.physReg().reg()), v1);
+         bld.vop3(aco_opcode::v_cvt_pk_u8_f32, dst, fop, offset, def_op);
       } else if (dst.regClass() == v2b && ctx->program->gfx_level >= GFX11) {
          emit_v_mov_b16(bld, dst, op);
       } else if (dst.regClass() == v2b && use_sdwa && !op.isLiteral()) {
@@ -1298,24 +1299,10 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
          } else {
             bld.vop2_sdwa(aco_opcode::v_add_f16, dst, op, Operand::zero());
          }
-      } else if (dst.regClass() == v2b && ctx->program->gfx_level >= GFX10 &&
-                 (ctx->block->fp_mode.denorm16_64 & fp_denorm_keep_in)) {
-         if (dst.physReg().byte() == 2) {
-            Operand def_lo(dst.physReg().advance(-2), v2b);
-            Instruction* instr = bld.vop3(aco_opcode::v_pack_b32_f16, dst, def_lo, op);
-            instr->valu().opsel = 0;
-         } else {
-            assert(dst.physReg().byte() == 0);
-            Operand def_hi(dst.physReg().advance(2), v2b);
-            Instruction* instr = bld.vop3(aco_opcode::v_pack_b32_f16, dst, op, def_hi);
-            instr->valu().opsel = 2;
-         }
-      } else if (can_use_perm) {
-         uint8_t swiz[] = {4, 5, 6, 7};
-         swiz[dst.physReg().byte()] = op.constantValue() & 0xff ? bperm_255 : bperm_0;
-         if (dst.bytes() == 2)
-            swiz[dst.physReg().byte() + 1] = op.constantValue() >> 8 ? bperm_255 : bperm_0;
-         create_bperm(bld, swiz, dst, Operand::zero());
+      } else if (dst.regClass() == v2b && ctx->program->gfx_level >= GFX10) {
+         op = Operand::c32(op.constantValue());
+         Instruction* instr = bld.vop3(aco_opcode::v_add_u16_e64, dst, op, Operand::c32(0));
+         instr->valu().opsel[3] = dst.physReg().byte() == 2;
       } else {
          uint32_t offset = dst.physReg().byte() * 8u;
          uint32_t mask = ((1u << (dst.bytes() * 8)) - 1) << offset;

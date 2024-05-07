@@ -679,13 +679,14 @@ namespace brw {
           * Original gfx4 does type conversion to the destination type
           * before comparison, producing garbage results for floating
           * point comparisons.
-          *
-          * The destination type doesn't matter on newer generations,
-          * so we set the type to match src0 so we can compact the
-          * instruction.
           */
+         const enum brw_reg_type type =
+            dst.is_null() ?
+            src0.type :
+            brw_type_with_size(src0.type, brw_type_size_bits(dst.type));
+
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CMP, retype(dst, src0.type),
+                            emit(BRW_OPCODE_CMP, retype(dst, type),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
       }
@@ -704,13 +705,14 @@ namespace brw {
           * Original gfx4 does type conversion to the destination type
           * before comparison, producing garbage results for floating
           * point comparisons.
-          *
-          * The destination type doesn't matter on newer generations,
-          * so we set the type to match src0 so we can compact the
-          * instruction.
           */
+         const enum brw_reg_type type =
+            dst.is_null() ?
+            src0.type :
+            brw_type_with_size(src0.type, brw_type_size_bits(dst.type));
+
          return set_condmod(condition,
-                            emit(BRW_OPCODE_CMPN, retype(dst, src0.type),
+                            emit(BRW_OPCODE_CMPN, retype(dst, type),
                                  fix_unsigned_negate(src0),
                                  fix_unsigned_negate(src1)));
       }

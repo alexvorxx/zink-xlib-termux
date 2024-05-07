@@ -1874,8 +1874,8 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
 
       if (p) {
          if (ve_count == 0) {
-            memcpy(p + 1, cmd_buffer->device->empty_vs_input,
-                   sizeof(cmd_buffer->device->empty_vs_input));
+            memcpy(p + 1, cmd_buffer->device->physical->empty_vs_input,
+                   sizeof(cmd_buffer->device->physical->empty_vs_input));
          } else if (ve_count == pipeline->vertex_input_elems) {
             /* MESA_VK_DYNAMIC_VI is not dynamic for this pipeline, so
              * everything is in pipeline->vertex_input_data and we can just

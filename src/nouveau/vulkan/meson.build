@@ -91,6 +91,7 @@ libnvk = static_library(
     nvk_entrypoints,
     cl_generated,
     nvk_files,
+    sha1_h,
   ],
   include_directories : [
     inc_gallium,

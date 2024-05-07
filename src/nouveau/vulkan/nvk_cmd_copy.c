@@ -18,9 +18,9 @@
 #include "nouveau_context.h"
 
 #include "nvtypes.h"
-#include "nvk_cl902d.h"
-#include "nvk_cl90b5.h"
-#include "nvk_clc1b5.h"
+#include "nv_push_cl902d.h"
+#include "nv_push_cl90b5.h"
+#include "nv_push_clc1b5.h"
 
 static inline uint16_t
 nvk_cmd_buffer_copy_cls(struct nvk_cmd_buffer *cmd)

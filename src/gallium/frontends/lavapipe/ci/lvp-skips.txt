@@ -23,6 +23,9 @@ dEQP-VK.graphicsfuzz.spv-stable-pillars-volatile-nontemporal-store
 # timing out in llvm jit
 dEQP-VK.ray_query.advanced.null_as.tese.aabbs
 dEQP-VK.ray_query.advanced.null_as.tese.triangles
+dEQP-VK.ray_query.builtin.instancecustomindex.tesc.triangles
+dEQP-VK.ray_query.builtin.primitiveid.tesc.aabbs
+dEQP-VK.ray_query.builtin.primitiveid.tese.triangles
 dEQP-VK.ray_query.watertightness.nomiss.tesc.aabbs
 dEQP-VK.ray_query.watertightness.nomiss.tesc.triangles
 dEQP-VK.ray_query.watertightness.nomiss.tese.aabbs

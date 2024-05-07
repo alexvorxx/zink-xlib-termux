@@ -1,4 +1,4 @@
-nvk_classes = [
+nv_classes = [
   'cl902d',
   'cl9039',
   'cl906f',
@@ -32,19 +32,14 @@ hwref_gens = [
   'turing/tu102',
 ]
 
-nvk_cl_header_depend_files = [
-  files('class_parser.py')
-]
-
 cl_generated = []
-foreach cl : nvk_classes
+foreach cl : nv_classes
   cl_generated += custom_target(
     cl + '.h',
     input : ['class_parser.py', 'nvidia/classes/'+cl+'.h'],
-    output : ['nvk_'+cl+'.h', 'nvk_'+cl+'.c'],
+    output : ['nv_push_'+cl+'.h', 'nv_push_'+cl+'.c'],
     command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@'],
-    depend_files: nvk_cl_header_depend_files,
   )
 endforeach
 
@@ -76,14 +71,13 @@ if with_nouveau_vk
   rust = import('rust')
 
   cl_rs_generated = []
-  foreach cl : nvk_classes
+  foreach cl : nv_classes
     cl_rs_generated += custom_target(
       'nvh_classes_' + cl + '.rs',
       input : ['class_parser.py', 'nvidia/classes/'+cl+'.h'],
       output : ['nvh_classes_'+cl+'.rs'],
       command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                  '--out-rs', '@OUTPUT0@'],
-      depend_files: nvk_cl_header_depend_files,
     )
 
     fs = import('fs')

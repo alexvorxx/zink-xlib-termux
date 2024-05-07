@@ -208,6 +208,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_pci_bus_info = info->type == NV_DEVICE_TYPE_DIS,
       .EXT_pipeline_creation_cache_control = true,
       .EXT_pipeline_creation_feedback = true,
+      .EXT_pipeline_robustness = true,
       .EXT_physical_device_drm = true,
       .EXT_primitive_topology_list_restart = true,
       .EXT_private_data = true,
@@ -560,6 +561,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_EXT_non_seamless_cube_map */
       .nonSeamlessCubeMap = true,
 
+      /* VK_EXT_pipeline_robustness */
+      .pipelineRobustness = true,
+
       /* VK_EXT_primitive_topology_list_restart */
       .primitiveTopologyListRestart = true,
       .primitiveTopologyPatchListRestart = true,
@@ -904,6 +908,16 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .pciBus      = info->pci.bus,
       .pciDevice   = info->pci.dev,
       .pciFunction = info->pci.func,
+
+      /* VK_EXT_pipeline_robustness */
+      .defaultRobustnessStorageBuffers =
+         VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT,
+      .defaultRobustnessUniformBuffers =
+         VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT,
+      .defaultRobustnessVertexInputs =
+         VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT,
+      .defaultRobustnessImages =
+         VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2_EXT,
 
       /* VK_EXT_physical_device_drm gets populated later */
 

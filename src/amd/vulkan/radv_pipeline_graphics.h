@@ -555,6 +555,7 @@ struct radv_shader *radv_get_shader(struct radv_shader *const *shaders, gl_shade
 struct radv_ps_epilog_state {
    uint8_t color_attachment_count;
    VkFormat color_attachment_formats[MAX_RTS];
+   uint8_t color_attachment_mappings[MAX_RTS];
 
    uint32_t color_write_mask;
    uint32_t color_blend_enable;

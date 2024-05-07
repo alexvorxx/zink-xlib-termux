@@ -347,14 +347,6 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
       .end = (void *) cmds + sizeof(cmds),
    };
 
-   struct GENX(VERTEX_ELEMENT_STATE) empty_ve = {
-      .Valid = true,
-      .Component0Control = VFCOMP_STORE_0,
-      .Component1Control = VFCOMP_STORE_0,
-      .Component2Control = VFCOMP_STORE_0,
-      .Component3Control = VFCOMP_STORE_0,
-   };
-   GENX(VERTEX_ELEMENT_STATE_pack)(NULL, device->empty_vs_input, &empty_ve);
 
    genX(emit_pipeline_select)(&batch, _3D, device);
 
@@ -778,6 +770,15 @@ genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
    pdevice->cmd_emit_timestamp = genX(cmd_emit_timestamp);
 
    pdevice->gpgpu_pipeline_value = GPGPU;
+
+   struct GENX(VERTEX_ELEMENT_STATE) empty_ve = {
+      .Valid = true,
+      .Component0Control = VFCOMP_STORE_0,
+      .Component1Control = VFCOMP_STORE_0,
+      .Component2Control = VFCOMP_STORE_0,
+      .Component3Control = VFCOMP_STORE_0,
+   };
+   GENX(VERTEX_ELEMENT_STATE_pack)(NULL, pdevice->empty_vs_input, &empty_ve);
 }
 
 VkResult

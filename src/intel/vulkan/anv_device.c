@@ -371,6 +371,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_image_view_min_lod                = true,
       .EXT_index_type_uint8                  = true,
       .EXT_inline_uniform_block              = true,
+      .EXT_legacy_vertex_attributes          = true,
       .EXT_line_rasterization                = true,
       .EXT_load_store_op_none                = true,
       .EXT_map_memory_placed                 = device->info.has_mmap_offset,
@@ -932,6 +933,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_KHR_shader_float_controls2 */
       .shaderFloatControls2 = true,
+
+      /* VK_EXT_legacy_vertex_attributes */
+      .legacyVertexAttributes = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1246,6 +1250,15 @@ get_properties(const struct anv_physical_device *pdevice,
    VkSampleCountFlags sample_counts =
       isl_device_get_sample_counts(&pdevice->isl_dev);
 
+#if DETECT_OS_ANDROID
+   /* Used to fill struct VkPhysicalDevicePresentationPropertiesANDROID */
+   uint64_t front_rendering_usage = 0;
+   struct u_gralloc *gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
+   if (gralloc != NULL) {
+      u_gralloc_get_front_rendering_usage(gralloc, &front_rendering_usage);
+      u_gralloc_destroy(&gralloc);
+   }
+#endif /* DETECT_OS_ANDROID */
 
    *props = (struct vk_properties) {
       .apiVersion = ANV_API_VERSION,
@@ -1607,6 +1620,11 @@ get_properties(const struct anv_physical_device *pdevice,
       props->graphicsPipelineLibraryIndependentInterpolationDecoration = true;
    }
 
+   /* VK_EXT_legacy_vertex_attributes */
+   {
+      props->nativeUnalignedPerformance = true;
+   }
+
    /* VK_EXT_line_rasterization */
    {
       /* In the Skylake PRM Vol. 7, subsection titled "GIQ (Diamond) Sampling
@@ -1852,6 +1870,14 @@ get_properties(const struct anv_physical_device *pdevice,
       props->transformFeedbackRasterizationStreamSelect = false;
       props->transformFeedbackDraw = true;
    }
+
+   /* VK_ANDROID_native_buffer */
+#if DETECT_OS_ANDROID
+   {
+      props->sharedImage = front_rendering_usage ? VK_TRUE : VK_FALSE;
+   }
+#endif /* DETECT_OS_ANDROID */
+
 }
 
 static VkResult MUST_CHECK
@@ -2712,39 +2738,6 @@ void anv_DestroyInstance(
 
    vk_instance_finish(&instance->vk);
    vk_free(&instance->vk.alloc, instance);
-}
-
-void anv_GetPhysicalDeviceProperties2(
-    VkPhysicalDevice                            physicalDevice,
-    VkPhysicalDeviceProperties2*                pProperties)
-{
-   vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
-
-   /* Unfortunately the runtime isn't handling ANDROID extensions. */
-   vk_foreach_struct(ext, pProperties->pNext) {
-      switch (ext->sType) {
-#if DETECT_OS_ANDROID
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch"
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: {
-         VkPhysicalDevicePresentationPropertiesANDROID *props =
-            (VkPhysicalDevicePresentationPropertiesANDROID *)ext;
-         uint64_t front_rendering_usage = 0;
-         struct u_gralloc *gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
-         if (gralloc != NULL) {
-            u_gralloc_get_front_rendering_usage(gralloc, &front_rendering_usage);
-            u_gralloc_destroy(&gralloc);
-         }
-         props->sharedImage = front_rendering_usage ? VK_TRUE : VK_FALSE;
-         break;
-      }
-#pragma GCC diagnostic pop
-#endif
-
-      default:
-         break;
-      }
-   }
 }
 
 static const VkQueueFamilyProperties
@@ -3795,10 +3788,6 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_btd_fifo_bo;
 
-   result = anv_genX(device->info, init_device_state)(device);
-   if (result != VK_SUCCESS)
-      goto fail_trtt;
-
    struct vk_pipeline_cache_create_info pcc_info = { };
    device->default_pipeline_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
@@ -3901,10 +3890,26 @@ VkResult anv_CreateDevice(
    if (device->info->ver > 9)
       BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_PMA_FIX);
 
+   result = anv_genX(device->info, init_device_state)(device);
+   if (result != VK_SUCCESS)
+      goto fail_companion_cmd_pool;
+
    *pDevice = anv_device_to_handle(device);
 
    return VK_SUCCESS;
 
+ fail_companion_cmd_pool:
+   anv_device_finish_embedded_samplers(device);
+   anv_device_utrace_finish(device);
+   anv_device_finish_blorp(device);
+   anv_device_finish_rt_shaders(device);
+   anv_device_finish_astc_emu(device);
+   anv_device_finish_internal_kernels(device);
+
+   if (device->info->verx10 >= 125) {
+      vk_common_DestroyCommandPool(anv_device_to_handle(device),
+                                   device->companion_rcs_cmd_pool, NULL);
+   }
  fail_internal_cache:
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
  fail_default_pipeline_cache:
@@ -4040,6 +4045,9 @@ void anv_DestroyDevice(
                                    device->companion_rcs_cmd_pool, NULL);
    }
 
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+      anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
+
 #ifdef HAVE_VALGRIND
    /* We only need to free these to prevent valgrind errors.  The backing
     * BO will go away in a couple of lines so we don't actually leak.
@@ -4053,7 +4061,6 @@ void anv_DestroyDevice(
       anv_state_pool_free(&device->dynamic_state_db_pool, device->cps_states_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->slice_hash_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->border_colors_db);
-      anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
    }
 #endif
 

@@ -14,7 +14,7 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_shader_tokens.h"
 
-#include "nvk_cl9097.h"
+#include "nv_push_cl9097.h"
 
 uint64_t
 nvk_cg_get_prog_debug(void)

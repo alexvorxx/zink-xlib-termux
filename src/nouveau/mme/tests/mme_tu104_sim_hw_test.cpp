@@ -5,7 +5,7 @@
 #include "mme_runner.h"
 #include "mme_tu104_sim.h"
 
-#include "nvk_clc597.h"
+#include "nv_push_clc597.h"
 
 class mme_tu104_sim_test : public ::testing::Test, public mme_hw_runner {
 public:

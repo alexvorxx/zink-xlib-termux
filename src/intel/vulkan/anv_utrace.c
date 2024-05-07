@@ -78,7 +78,8 @@ anv_utrace_delete_submit(struct u_trace_context *utctx, void *submit_data)
 {
    struct anv_device *device =
       container_of(utctx, struct anv_device, ds.trace_context);
-   struct anv_utrace_submit *submit = submit_data;
+   struct anv_utrace_submit *submit =
+      container_of(submit_data, struct anv_utrace_submit, ds);
 
    intel_ds_flush_data_fini(&submit->ds);
 
@@ -441,7 +442,8 @@ anv_utrace_read_ts(struct u_trace_context *utctx,
    struct anv_device *device =
       container_of(utctx, struct anv_device, ds.trace_context);
    struct anv_bo *bo = timestamps;
-   struct anv_utrace_submit *submit = flush_data;
+   struct anv_utrace_submit *submit =
+      container_of(flush_data, struct anv_utrace_submit, ds);
 
    /* Only need to stall on results for the first entry: */
    if (idx == 0) {

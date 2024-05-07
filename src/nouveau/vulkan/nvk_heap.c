@@ -11,7 +11,7 @@
 #include "util/macros.h"
 
 #include "nv_push.h"
-#include "nvk_cl90b5.h"
+#include "nv_push_cl90b5.h"
 
 VkResult
 nvk_heap_init(struct nvk_device *dev, struct nvk_heap *heap,

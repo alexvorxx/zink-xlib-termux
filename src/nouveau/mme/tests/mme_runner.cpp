@@ -11,7 +11,7 @@
 #include "mme_fermi_sim.h"
 #include "mme_tu104_sim.h"
 
-#include "nvk_clc597.h"
+#include "nv_push_clc597.h"
 
 #include "nouveau_bo.h"
 #include "nouveau_context.h"

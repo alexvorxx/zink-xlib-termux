@@ -17,14 +17,14 @@
 #include "cla1c0.h"
 #include "clc0c0.h"
 #include "clc5c0.h"
-#include "nvk_cl90c0.h"
-#include "nvk_cl9097.h"
-#include "nvk_cla0c0.h"
-#include "nvk_clb0c0.h"
-#include "nvk_clb1c0.h"
-#include "nvk_clc3c0.h"
-#include "nvk_clc597.h"
-#include "nvk_clc6c0.h"
+#include "nv_push_cl90c0.h"
+#include "nv_push_cl9097.h"
+#include "nv_push_cla0c0.h"
+#include "nv_push_clb0c0.h"
+#include "nv_push_clb1c0.h"
+#include "nv_push_clc3c0.h"
+#include "nv_push_clc597.h"
+#include "nv_push_clc6c0.h"
 
 VkResult
 nvk_push_dispatch_state_init(struct nvk_device *dev, struct nv_push *p)

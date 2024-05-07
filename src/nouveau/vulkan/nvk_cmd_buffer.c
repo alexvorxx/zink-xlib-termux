@@ -22,11 +22,11 @@
 
 #include "nouveau/nouveau.h"
 
-#include "nvk_cl906f.h"
-#include "nvk_cl90b5.h"
-#include "nvk_cla097.h"
-#include "nvk_cla0c0.h"
-#include "nvk_clc597.h"
+#include "nv_push_cl906f.h"
+#include "nv_push_cl90b5.h"
+#include "nv_push_cla097.h"
+#include "nv_push_cla0c0.h"
+#include "nv_push_clc597.h"
 
 static void
 nvk_descriptor_state_fini(struct nvk_cmd_buffer *cmd,

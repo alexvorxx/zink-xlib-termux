@@ -57,6 +57,12 @@ nvk_memory_type_flags(const VkMemoryType *type,
    if (type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
       flags |= NOUVEAU_WS_BO_MAP;
 
+   /* For dma-bufs, we have to allow them to live in GART because they might
+    * get forced there by the kernel if they're shared with another GPU.
+    */
+   if (handle_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT)
+      flags |= NOUVEAU_WS_BO_GART;
+
    if (handle_types == 0)
       flags |= NOUVEAU_WS_BO_NO_SHARE;
 
@@ -85,11 +91,18 @@ nvk_GetMemoryFdPropertiesKHR(VkDevice device,
    }
 
    uint32_t type_bits = 0;
-   for (unsigned t = 0; t < ARRAY_SIZE(pdev->mem_types); t++) {
-      const enum nouveau_ws_bo_flags flags =
-         nvk_memory_type_flags(&pdev->mem_types[t], handleType);
-      if (!(flags & ~bo->flags))
-         type_bits |= (1 << t);
+   if (handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) {
+      /* We allow a dma-buf to be imported anywhere because there's no way
+       * for us to actually know where it came from.
+       */
+      type_bits = BITFIELD_MASK(pdev->mem_type_count);
+   } else {
+      for (unsigned t = 0; t < ARRAY_SIZE(pdev->mem_types); t++) {
+         const enum nouveau_ws_bo_flags flags =
+            nvk_memory_type_flags(&pdev->mem_types[t], handleType);
+         if (!(flags & ~bo->flags))
+            type_bits |= (1 << t);
+      }
    }
 
    pMemoryFdProperties->memoryTypeBits = type_bits;
@@ -151,7 +164,12 @@ nvk_AllocateMemory(VkDevice device,
          result = vk_error(dev, VK_ERROR_INVALID_EXTERNAL_HANDLE);
          goto fail_alloc;
       }
-      assert(!(flags & ~mem->bo->flags));
+
+      /* We can't really assert anything for dma-bufs because they could come
+       * in from some other device.
+       */
+      if (fd_info->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT)
+         assert(!(flags & ~mem->bo->flags));
    } else {
       mem->bo = nouveau_ws_bo_new(dev->ws_dev, aligned_size, alignment, flags);
       if (!mem->bo) {

@@ -37,6 +37,19 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       return true;
    }
 
+   case nir_intrinsic_quad_vote_any: {
+      nir_def *ballot = nir_quad_ballot_agx(b, 16, intr->src[0].ssa);
+      nir_def_rewrite_uses(&intr->def, nir_ine_imm(b, ballot, 0));
+      return true;
+   }
+
+   case nir_intrinsic_quad_vote_all: {
+      nir_def *ballot =
+         nir_quad_ballot_agx(b, 16, nir_inot(b, intr->src[0].ssa));
+      nir_def_rewrite_uses(&intr->def, nir_ieq_imm(b, ballot, 0));
+      return true;
+   }
+
    case nir_intrinsic_first_invocation: {
       nir_def *active_id = nir_load_active_subgroup_invocation_agx(b, 16);
       nir_def *is_first = nir_ieq_imm(b, active_id, 0);

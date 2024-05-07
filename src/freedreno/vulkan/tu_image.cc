@@ -13,6 +13,7 @@
 
 #include "util/u_debug.h"
 #include "util/format/u_format.h"
+#include "vulkan/vulkan_android.h"
 #include "vk_android.h"
 #include "vk_util.h"
 #include "drm-uapi/drm_fourcc.h"
@@ -169,7 +170,8 @@ tu_image_view_init(struct tu_device *device,
 {
    VK_FROM_HANDLE(tu_image, image, pCreateInfo->image);
    const VkImageSubresourceRange *range = &pCreateInfo->subresourceRange;
-   VkFormat vk_format = pCreateInfo->format;
+   VkFormat vk_format =
+      vk_select_android_external_format(pCreateInfo->pNext, pCreateInfo->format);
    VkImageAspectFlags aspect_mask = pCreateInfo->subresourceRange.aspectMask;
 
    const struct VkSamplerYcbcrConversionInfo *ycbcr_conversion =

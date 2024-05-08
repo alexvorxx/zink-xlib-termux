@@ -32,9 +32,11 @@
  */
 #if V3D_VERSION == 42
 #define V3D_CLE_READAHEAD 256
+#define V3D_CLE_BUFFER_MIN_SIZE 4096
 #endif
 #if V3D_VERSION >= 71
 #define V3D_CLE_READAHEAD 1024
+#define V3D_CLE_BUFFER_MIN_SIZE 16384
 #endif
 
 void
@@ -94,7 +96,7 @@ cl_alloc_bo(struct v3dv_cl *cl, uint32_t space, enum
     * of allocations with large command buffers. This has a very significant
     * impact on the number of draw calls per second reported by vkoverhead.
     */
-   space = align(space + unusable_space, 4096);
+   space = align(space + unusable_space, V3D_CLE_BUFFER_MIN_SIZE);
    if (cl->bo)
       space = MAX2(cl->bo->size * 2, space);
 

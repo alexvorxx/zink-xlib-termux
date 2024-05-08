@@ -407,6 +407,7 @@ create_batch_state(struct zink_context *ctx)
 
    cnd_init(&bs->usage.flush);
    mtx_init(&bs->usage.mtx, mtx_plain);
+   simple_mtx_init(&bs->ref_lock, mtx_plain);
    simple_mtx_init(&bs->exportable_lock, mtx_plain);
    memset(&bs->buffer_indices_hashlist, -1, sizeof(bs->buffer_indices_hashlist));
 
@@ -984,19 +985,19 @@ zink_batch_reference_resource_move(struct zink_batch *batch, struct zink_resourc
 {
    struct zink_batch_state *bs = batch->state;
 
-   simple_mtx_lock(&batch->ref_lock);
+   simple_mtx_lock(&bs->ref_lock);
    /* swapchains are special */
    if (zink_is_swapchain(res)) {
       struct zink_resource_object **swapchains = bs->swapchain_obj.data;
       unsigned count = util_dynarray_num_elements(&bs->swapchain_obj, struct zink_resource_object*);
       for (unsigned i = 0; i < count; i++) {
          if (swapchains[i] == res->obj) {
-            simple_mtx_unlock(&batch->ref_lock);
+            simple_mtx_unlock(&bs->ref_lock);
             return true;
          }
       }
       util_dynarray_append(&bs->swapchain_obj, struct zink_resource_object*, res->obj);
-      simple_mtx_unlock(&batch->ref_lock);
+      simple_mtx_unlock(&bs->ref_lock);
       return false;
    }
    /* Fast exit for no-op calls.
@@ -1004,7 +1005,7 @@ zink_batch_reference_resource_move(struct zink_batch *batch, struct zink_resourc
     * are outside of the winsys.
     */
    if (res->obj == bs->last_added_obj) {
-      simple_mtx_unlock(&batch->ref_lock);
+      simple_mtx_unlock(&bs->ref_lock);
       return true;
    }
 
@@ -1021,7 +1022,7 @@ zink_batch_reference_resource_move(struct zink_batch *batch, struct zink_resourc
    }
    int idx = batch_find_resource(bs, res->obj, list);
    if (idx >= 0) {
-      simple_mtx_unlock(&batch->ref_lock);
+      simple_mtx_unlock(&bs->ref_lock);
       return true;
    }
 
@@ -1057,7 +1058,7 @@ zink_batch_reference_resource_move(struct zink_batch *batch, struct zink_resourc
    }
    check_oom_flush(batch->state->ctx, batch);
    batch->has_work = true;
-   simple_mtx_unlock(&batch->ref_lock);
+   simple_mtx_unlock(&bs->ref_lock);
    return false;
 }
 

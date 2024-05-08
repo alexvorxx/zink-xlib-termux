@@ -5552,7 +5552,6 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       }
    }
 
-   simple_mtx_init(&ctx->batch.ref_lock, mtx_plain);
    zink_start_batch(ctx, &ctx->batch);
    if (!ctx->batch.state)
       goto fail;

@@ -611,6 +611,7 @@ struct zink_batch_state {
    struct util_dynarray fd_wait_semaphores; //dmabuf wait semaphores
    struct util_dynarray fd_wait_semaphore_stages; //dmabuf wait semaphores
    struct util_dynarray fences; //zink_tc_fence refs
+   simple_mtx_t ref_lock;
 
    VkSemaphore present;
    struct zink_resource *swapchain;
@@ -679,8 +680,6 @@ struct zink_batch {
    struct zink_resource *swapchain;
 
    unsigned work_count;
-
-   simple_mtx_t ref_lock;
 
    bool has_work;
    bool last_was_compute;

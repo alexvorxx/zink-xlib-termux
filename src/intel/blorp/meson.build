@@ -62,6 +62,6 @@ libblorp_elk = static_library(
 )
 
 idep_intel_blorp_elk = declare_dependency(
+  dependencies: [idep_intel_dev],
   link_with: libblorp_elk,
 )
-

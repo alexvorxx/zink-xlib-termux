@@ -48,6 +48,7 @@ libpanvk_files = files(
   'panvk_query.c',
   'panvk_wsi.c',
 )
+libpanvk_files += [sha1_h]
 
 panvk_deps = []
 panvk_flags = []

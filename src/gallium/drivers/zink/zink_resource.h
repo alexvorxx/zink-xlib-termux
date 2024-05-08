@@ -172,23 +172,23 @@ zink_resource_object_usage_unset(struct zink_resource_object *obj, struct zink_b
 }
 
 static inline void
-zink_batch_resource_usage_set(struct zink_batch *batch, struct zink_resource *res, bool write, bool is_buffer)
+zink_batch_resource_usage_set(struct zink_batch_state *bs, struct zink_resource *res, bool write, bool is_buffer)
 {
    if (!is_buffer) {
       if (res->obj->dt) {
-         VkSemaphore acquire = zink_kopper_acquire_submit(zink_screen(batch->bs->ctx->base.screen), res);
+         VkSemaphore acquire = zink_kopper_acquire_submit(zink_screen(bs->ctx->base.screen), res);
          if (acquire)
-            util_dynarray_append(&batch->bs->acquires, VkSemaphore, acquire);
+            util_dynarray_append(&bs->acquires, VkSemaphore, acquire);
       }
       if (write) {
          if (!res->valid && res->fb_bind_count)
-            batch->bs->ctx->rp_loadop_changed = true;
+            bs->ctx->rp_loadop_changed = true;
          res->valid = true;
       }
    }
-   zink_resource_usage_set(res, batch->bs, write);
+   zink_resource_usage_set(res, bs, write);
 
-   batch->bs->has_work = true;
+   bs->has_work = true;
 }
 
 void

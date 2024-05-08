@@ -944,7 +944,7 @@ zink_batch_reference_resource_rw(struct zink_context *ctx, struct zink_resource 
        !zink_resource_has_binds(res))
       /* then it already has a batch ref and doesn't need one here */
       zink_batch_reference_resource(ctx, res);
-   zink_batch_resource_usage_set(&ctx->batch, res, write, res->obj->is_buffer);
+   zink_batch_resource_usage_set(ctx->batch.bs, res, write, res->obj->is_buffer);
 }
 
 void

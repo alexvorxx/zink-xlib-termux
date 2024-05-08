@@ -1837,7 +1837,7 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
       zink_kopper_acquire(ctx, res, UINT64_MAX);
       ctx->needs_present = res;
       /* set batch usage to submit acquire semaphore */
-      zink_batch_resource_usage_set(&ctx->batch, res, true, false);
+      zink_batch_resource_usage_set(ctx->batch.bs, res, true, false);
       /* ensure the resource is set up to present garbage */
       ctx->base.flush_resource(&ctx->base, pres);
    }

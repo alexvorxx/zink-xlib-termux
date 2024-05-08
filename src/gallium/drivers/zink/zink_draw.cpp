@@ -1179,7 +1179,7 @@ zink_bind_vertex_state(struct zink_context *ctx, struct pipe_vertex_state *vstat
    zink_vertex_state_mask<HAS_POPCNT>(ctx, vstate, partial_velem_mask);
 
    struct zink_resource *res = zink_resource(vstate->input.vbuffer.buffer.resource);
-   zink_batch_resource_usage_set(&ctx->batch, res, false, true);
+   zink_batch_resource_usage_set(ctx->batch.bs, res, false, true);
    VkDeviceSize offset = vstate->input.vbuffer.buffer_offset;
    if (unlikely(zink_debug & ZINK_DEBUG_DGC)) {
       VkBindVertexBufferIndirectCommandNV *ptr;

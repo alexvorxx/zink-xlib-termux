@@ -188,7 +188,7 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
     * before the state is reused
     */
    bs->fence.submitted = false;
-   bs->has_barriers = false;
+   bs->has_reordered_work = false;
    bs->has_unsync = false;
    if (bs->fence.batch_id)
       zink_screen_update_last_finished(screen, bs->fence.batch_id);
@@ -675,7 +675,7 @@ submit_queue(void *data, void *gdata, int thread_index)
    unsigned c = 0;
    if (bs->has_unsync)
       cmdbufs[c++] = bs->unsynchronized_cmdbuf;
-   if (bs->has_barriers)
+   if (bs->has_reordered_work)
       cmdbufs[c++] = bs->reordered_cmdbuf;
    cmdbufs[c++] = bs->cmdbuf;
    si[ZINK_SUBMIT_CMDBUF].pCommandBuffers = cmdbufs;
@@ -712,7 +712,7 @@ submit_queue(void *data, void *gdata, int thread_index)
          goto end;
       }
    );
-   if (bs->has_barriers) {
+   if (bs->has_reordered_work) {
       if (bs->unordered_write_access) {
          VkMemoryBarrier mb;
          mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;

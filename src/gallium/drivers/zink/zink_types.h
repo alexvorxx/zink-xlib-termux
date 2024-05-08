@@ -664,9 +664,10 @@ struct zink_batch_state {
    VkDeviceSize resource_size;
 
    bool is_device_lost;
-   bool has_barriers;
-   bool has_unsync;
+   /* these flags correspond to the matching cmdbufs */
    bool has_work;
+   bool has_reordered_work;
+   bool has_unsync;
 };
 
 static inline struct zink_batch_state *

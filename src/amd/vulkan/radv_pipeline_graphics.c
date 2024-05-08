@@ -3590,7 +3590,7 @@ gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ct
 
 static void
 radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                       uint32_t vgt_gs_out_prim_type, const struct vk_graphics_pipeline_state *state)
+                       const struct vk_graphics_pipeline_state *state)
 
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -3794,7 +3794,7 @@ radv_pipeline_init_vgt_gs_out(struct radv_graphics_pipeline *pipeline, const str
 static void
 radv_pipeline_init_extra(struct radv_graphics_pipeline *pipeline,
                          const struct radv_graphics_pipeline_create_info *extra,
-                         const struct vk_graphics_pipeline_state *state, uint32_t *vgt_gs_out_prim_type)
+                         const struct vk_graphics_pipeline_state *state)
 {
    if (extra->custom_blend_mode == V_028808_CB_ELIMINATE_FAST_CLEAR ||
        extra->custom_blend_mode == V_028808_CB_FMASK_DECOMPRESS ||
@@ -3813,10 +3813,8 @@ radv_pipeline_init_extra(struct radv_graphics_pipeline *pipeline,
       struct radv_dynamic_state *dynamic = &pipeline->dynamic_state;
       dynamic->vk.ia.primitive_topology = V_008958_DI_PT_RECTLIST;
 
-      *vgt_gs_out_prim_type =
+      pipeline->rast_prim =
          radv_conv_prim_to_gs_out(dynamic->vk.ia.primitive_topology, radv_pipeline_has_ngg(pipeline));
-
-      pipeline->rast_prim = *vgt_gs_out_prim_type;
    }
 
    if (radv_pipeline_has_ds_attachments(state->rp)) {
@@ -3973,10 +3971,10 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    pipeline->base.dynamic_offset_count = pipeline->layout.dynamic_offset_count;
 
    if (extra) {
-      radv_pipeline_init_extra(pipeline, extra, &state, &vgt_gs_out_prim_type);
+      radv_pipeline_init_extra(pipeline, extra, &state);
    }
 
-   radv_pipeline_emit_pm4(device, pipeline, vgt_gs_out_prim_type, &state);
+   radv_pipeline_emit_pm4(device, pipeline, &state);
 
    return result;
 }

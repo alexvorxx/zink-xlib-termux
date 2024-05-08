@@ -299,28 +299,6 @@ radv_conv_tess_prim_to_gs_out(enum tess_primitive_mode prim)
    }
 }
 
-static uint32_t
-radv_conv_gl_prim_to_gs_out(unsigned gl_prim)
-{
-   switch (gl_prim) {
-   case MESA_PRIM_POINTS:
-      return V_028A6C_POINTLIST;
-   case MESA_PRIM_LINES:
-   case MESA_PRIM_LINE_STRIP:
-   case MESA_PRIM_LINES_ADJACENCY:
-      return V_028A6C_LINESTRIP;
-
-   case MESA_PRIM_TRIANGLES:
-   case MESA_PRIM_TRIANGLE_STRIP_ADJACENCY:
-   case MESA_PRIM_TRIANGLE_STRIP:
-   case MESA_PRIM_QUADS:
-      return V_028A6C_TRISTRIP;
-   default:
-      assert(0);
-      return 0;
-   }
-}
-
 static uint64_t
 radv_dynamic_state_mask(VkDynamicState state)
 {

@@ -569,7 +569,7 @@ setup_framebuffer(struct zink_context *ctx)
 
    zink_update_vk_sample_locations(ctx);
 
-   if (ctx->rp_changed || ctx->rp_layout_changed || (!ctx->batch.in_rp && ctx->rp_loadop_changed)) {
+   if (ctx->rp_changed || ctx->rp_layout_changed || (!ctx->in_rp && ctx->rp_loadop_changed)) {
       /* 0. ensure no stale pointers are set */
       ctx->gfx_pipeline_state.next_render_pass = NULL;
       /* 1. calc new rp */
@@ -577,7 +577,7 @@ setup_framebuffer(struct zink_context *ctx)
       /* 2. evaluate whether to use new rp */
       if (ctx->gfx_pipeline_state.render_pass) {
          /* 2a. if previous rp exists, check whether new rp MUST be used */
-         bool must_change = rp_must_change(ctx->gfx_pipeline_state.render_pass, rp, ctx->batch.in_rp);
+         bool must_change = rp_must_change(ctx->gfx_pipeline_state.render_pass, rp, ctx->in_rp);
          ctx->fb_changed |= must_change;
          if (!must_change)
             /* 2b. if non-essential attribs have changed, store for later use and continue on */
@@ -588,7 +588,7 @@ setup_framebuffer(struct zink_context *ctx)
       }
    } else if (ctx->gfx_pipeline_state.next_render_pass) {
       /* previous rp was calculated but deferred: use it */
-      assert(!ctx->batch.in_rp);
+      assert(!ctx->in_rp);
       rp = ctx->gfx_pipeline_state.next_render_pass;
       ctx->gfx_pipeline_state.next_render_pass = NULL;
       ctx->fb_changed = true;
@@ -758,7 +758,7 @@ begin_render_pass(struct zink_context *ctx)
    rpbi.pNext = &infos;
 
    VKCTX(CmdBeginRenderPass)(batch->state->cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-   batch->in_rp = true;
+   ctx->in_rp = true;
    return clear_buffers;
 }
 
@@ -766,7 +766,7 @@ unsigned
 zink_begin_render_pass(struct zink_context *ctx)
 {
    setup_framebuffer(ctx);
-   if (ctx->batch.in_rp)
+   if (ctx->in_rp)
       return 0;
 
    if (ctx->framebuffer->rp->state.msaa_expand_mask) {
@@ -837,7 +837,7 @@ zink_begin_render_pass(struct zink_context *ctx)
 void
 zink_end_render_pass(struct zink_context *ctx)
 {
-   if (ctx->batch.in_rp) {
+   if (ctx->in_rp) {
       VKCTX(CmdEndRenderPass)(ctx->batch.state->cmdbuf);
 
       for (unsigned i = 0; i < ctx->fb_state.nr_cbufs; i++) {
@@ -846,7 +846,7 @@ zink_end_render_pass(struct zink_context *ctx)
             csurf->transient_init = true;
       }
    }
-   ctx->batch.in_rp = false;
+   ctx->in_rp = false;
 }
 
 bool

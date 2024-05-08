@@ -606,7 +606,7 @@ zink_draw(struct pipe_context *pctx,
 
    zink_batch_rp(ctx);
    /* check dead swapchain */
-   if (unlikely(!ctx->batch.in_rp))
+   if (unlikely(!ctx->in_rp))
       return;
 
    if (BATCH_CHANGED)

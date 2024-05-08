@@ -684,7 +684,6 @@ struct zink_batch {
 
    bool has_work;
    bool last_was_compute;
-   bool in_rp; //renderpass is currently active
 };
 
 
@@ -1879,6 +1878,7 @@ struct zink_context {
    struct hash_table *render_pass_cache;
    VkExtent2D swapchain_size;
    bool fb_changed;
+   bool in_rp; //renderpass is currently active
    bool rp_changed; //force renderpass restart
    bool rp_layout_changed; //renderpass changed, maybe restart
    bool rp_loadop_changed; //renderpass changed, don't restart

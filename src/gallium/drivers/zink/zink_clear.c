@@ -107,7 +107,7 @@ clear_in_rp(struct pipe_context *pctx,
    cr.baseArrayLayer = 0;
    cr.layerCount = util_framebuffer_get_num_layers(fb);
    struct zink_batch *batch = &ctx->batch;
-   assert(batch->in_rp);
+   assert(ctx->in_rp);
    VKCTX(CmdClearAttachments)(batch->state->cmdbuf, num_attachments, attachments, 1, &cr);
    /*
        Rendering within a subpass containing a feedback loop creates a data race, except in the following
@@ -155,7 +155,6 @@ zink_clear(struct pipe_context *pctx,
    struct zink_context *ctx = zink_context(pctx);
    struct zink_screen *screen = zink_screen(pctx->screen);
    struct pipe_framebuffer_state *fb = &ctx->fb_state;
-   struct zink_batch *batch = &ctx->batch;
    bool needs_rp = false;
 
    if (scissor_state) {
@@ -202,7 +201,7 @@ zink_clear(struct pipe_context *pctx,
                                    x, y, w, h, ctx->render_condition_active);
    }
 
-   if (batch->in_rp) {
+   if (ctx->in_rp) {
       if (buffers & PIPE_CLEAR_DEPTHSTENCIL && (ctx->zsbuf_unused || ctx->zsbuf_readonly)) {
          /* this will need a layout change */
          assert(!ctx->track_renderpasses);
@@ -292,7 +291,7 @@ zink_clear(struct pipe_context *pctx,
             ctx->dynamic_fb.tc_info.zsbuf_clear = true;
       }
    }
-   assert(!ctx->batch.in_rp);
+   assert(!ctx->in_rp);
    ctx->rp_changed |= ctx->rp_clears_enabled != rp_clears_enabled;
 }
 
@@ -475,7 +474,7 @@ zink_clear_texture_dynamic(struct pipe_context *pctx,
 
    zink_blit_barriers(ctx, NULL, res, full_clear);
    VkCommandBuffer cmdbuf = zink_get_cmdbuf(ctx, NULL, res);
-   if (cmdbuf == ctx->batch.state->cmdbuf && ctx->batch.in_rp)
+   if (cmdbuf == ctx->batch.state->cmdbuf && ctx->in_rp)
       zink_batch_no_rp(ctx);
 
    if (res->aspect & VK_IMAGE_ASPECT_COLOR_BIT) {
@@ -697,7 +696,7 @@ fb_clears_apply_internal(struct zink_context *ctx, struct pipe_resource *pres, i
 {
    if (!zink_fb_clear_enabled(ctx, i))
       return;
-   if (ctx->batch.in_rp)
+   if (ctx->in_rp)
       zink_clear_framebuffer(ctx, BITFIELD_BIT(i));
    else {
       struct zink_resource *res = zink_resource(pres);

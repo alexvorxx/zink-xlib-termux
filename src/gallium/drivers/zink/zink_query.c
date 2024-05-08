@@ -886,7 +886,7 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
    if (q->type == PIPE_QUERY_TIMESTAMP_DISJOINT || q->type >= PIPE_QUERY_DRIVER_SPECIFIC)
       return;
 
-   if (q->type == PIPE_QUERY_PIPELINE_STATISTICS_SINGLE && q->index == PIPE_STAT_QUERY_CS_INVOCATIONS && ctx->batch.in_rp) {
+   if (q->type == PIPE_QUERY_PIPELINE_STATISTICS_SINGLE && q->index == PIPE_STAT_QUERY_CS_INVOCATIONS && ctx->in_rp) {
       /* refuse to start CS queries in renderpasses */
       if (!list_is_linked(&q->active_list))
          list_addtail(&q->active_list, &ctx->suspended_queries);
@@ -907,7 +907,7 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
    struct zink_query_start *start = util_dynarray_top_ptr(&q->starts, struct zink_query_start);
    if (q->type == PIPE_QUERY_TIME_ELAPSED) {
       VKCTX(CmdWriteTimestamp)(batch->state->cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, start->vkq[0]->pool->query_pool, start->vkq[0]->query_id);
-      if (!batch->in_rp)
+      if (!ctx->in_rp)
          update_qbo(ctx, q);
       zink_batch_usage_set(&q->batch_uses, batch->state);
       _mesa_set_add(&batch->state->active_queries, q);
@@ -921,7 +921,7 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
       (i.e. contain entire render pass instances).
       - 18.2. Query Operation
     */
-   q->started_in_rp = ctx->batch.in_rp;
+   q->started_in_rp = ctx->in_rp;
 
    if (q->precise)
       flags |= VK_QUERY_CONTROL_PRECISE_BIT;
@@ -982,7 +982,7 @@ zink_begin_query(struct pipe_context *pctx,
    util_dynarray_clear(&query->starts);
    query->start_offset = 0;
 
-   if (batch->in_rp) {
+   if (ctx->in_rp) {
       begin_query(ctx, batch, query);
    } else {
       /* never directly start queries out of renderpass, always defer */
@@ -1015,7 +1015,7 @@ end_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_query 
    assert(qbo);
    assert(!is_time_query(q));
    q->active = false;
-   assert(q->started_in_rp == batch->in_rp);
+   assert(q->started_in_rp == ctx->in_rp);
    struct zink_query_start *start = util_dynarray_top_ptr(&q->starts, struct zink_query_start);
 
    if (q->type == PIPE_QUERY_PRIMITIVES_EMITTED ||
@@ -1161,7 +1161,7 @@ suspend_query(struct zink_context *ctx, struct zink_query *query)
    /* if a query isn't active here then we don't need to reactivate it on the next batch */
    if (query->active && !is_time_query(query))
       end_query(ctx, &ctx->batch, query);
-   if (query->needs_update && !ctx->batch.in_rp)
+   if (query->needs_update && !ctx->in_rp)
       update_qbo(ctx, query);
 }
 
@@ -1200,7 +1200,7 @@ zink_resume_queries(struct zink_context *ctx, struct zink_batch *batch)
       query->suspended = false;
       if (query->type == PIPE_QUERY_PRIMITIVES_GENERATED)
          ctx->primitives_generated_suspended = false;
-      if (query->needs_update && !ctx->batch.in_rp)
+      if (query->needs_update && !ctx->in_rp)
          update_qbo(ctx, query);
       begin_query(ctx, batch, query);
    }
@@ -1283,7 +1283,7 @@ zink_set_active_query_state(struct pipe_context *pctx, bool enable)
    struct zink_batch *batch = &ctx->batch;
    if (ctx->queries_disabled)
       zink_suspend_queries(ctx, batch);
-   else if (ctx->batch.in_rp)
+   else if (ctx->in_rp)
       zink_resume_queries(ctx, batch);
 }
 
@@ -1339,7 +1339,7 @@ zink_render_condition(struct pipe_context *pctx,
    zink_flush_dgc_if_enabled(ctx);
    if (query == NULL) {
       /* force conditional clears if they exist */
-      if (ctx->clears_enabled && !ctx->batch.in_rp)
+      if (ctx->clears_enabled && !ctx->in_rp)
          zink_batch_rp(ctx);
       zink_stop_conditional_render(ctx);
       ctx->render_condition_active = false;
@@ -1384,7 +1384,7 @@ zink_render_condition(struct pipe_context *pctx,
    ctx->render_condition.inverted = condition;
    ctx->render_condition_active = true;
    ctx->render_condition.query = query;
-   if (ctx->batch.in_rp)
+   if (ctx->in_rp)
       zink_start_conditional_render(ctx);
 }
 

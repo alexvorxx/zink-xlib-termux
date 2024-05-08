@@ -1402,12 +1402,12 @@ radv_precompute_registers_hw_vs(struct radv_device *device, struct radv_shader_b
 
    /* VS is required to export at least one param. */
    const uint32_t nparams = MAX2(info->outinfo.param_exports, 1);
-   info->regs.vs.spi_vs_out_config = S_0286C4_VS_EXPORT_COUNT(nparams - 1);
+   info->regs.spi_vs_out_config = S_0286C4_VS_EXPORT_COUNT(nparams - 1);
    if (pdev->info.gfx_level >= GFX10) {
-      info->regs.vs.spi_vs_out_config |= S_0286C4_NO_PC_EXPORT(info->outinfo.param_exports == 0);
+      info->regs.spi_vs_out_config |= S_0286C4_NO_PC_EXPORT(info->outinfo.param_exports == 0);
    }
 
-   info->regs.vs.spi_shader_pos_format =
+   info->regs.spi_shader_pos_format =
       S_02870C_POS0_EXPORT_FORMAT(V_02870C_SPI_SHADER_4COMP) |
       S_02870C_POS1_EXPORT_FORMAT(info->outinfo.pos_exports > 1 ? V_02870C_SPI_SHADER_4COMP
                                                                 : V_02870C_SPI_SHADER_NONE) |
@@ -1421,7 +1421,7 @@ radv_precompute_registers_hw_vs(struct radv_device *device, struct radv_shader_b
    const unsigned cull_dist_mask = info->outinfo.cull_dist_mask;
    const unsigned total_mask = clip_dist_mask | cull_dist_mask;
 
-   info->regs.vs.pa_cl_vs_out_cntl =
+   info->regs.pa_cl_vs_out_cntl =
       S_02881C_USE_VTX_POINT_SIZE(info->outinfo.writes_pointsize) |
       S_02881C_USE_VTX_RENDER_TARGET_INDX(info->outinfo.writes_layer) |
       S_02881C_USE_VTX_VIEWPORT_INDX(info->outinfo.writes_viewport_index) |
@@ -1447,7 +1447,7 @@ radv_precompute_registers_hw_vs(struct radv_device *device, struct radv_shader_b
       if (pdev->info.gfx_level >= GFX10) {
          const uint32_t oversub_pc_lines = late_alloc_wave64 ? pdev->info.pc_lines / 4 : 0;
 
-         info->regs.vs.ge_pc_alloc =
+         info->regs.ge_pc_alloc =
             S_030980_OVERSUB_EN(oversub_pc_lines > 0) | S_030980_NUM_PC_LINES(oversub_pc_lines - 1);
 
          /* Required programming for tessellation (legacy pipeline only). */
@@ -1500,11 +1500,11 @@ radv_precompute_registers_hw_gs(struct radv_device *device, struct radv_shader_b
    info->regs.gs.vgt_gs_instance_cnt =
       S_028B90_CNT(MIN2(gs_num_invocations, 127)) | S_028B90_ENABLE(gs_num_invocations > 0);
 
-   info->regs.gs.spi_shader_pgm_rsrc3_gs =
+   info->regs.spi_shader_pgm_rsrc3_gs =
       ac_apply_cu_en(S_00B21C_CU_EN(0xffff) | S_00B21C_WAVE_LIMIT(0x3F), C_00B21C_CU_EN, 0, &pdev->info);
 
    if (pdev->info.gfx_level >= GFX10) {
-      info->regs.gs.spi_shader_pgm_rsrc4_gs =
+      info->regs.spi_shader_pgm_rsrc4_gs =
          ac_apply_cu_en(S_00B204_CU_EN_GFX10(0xffff) | S_00B204_SPI_SHADER_LATE_ALLOC_GS_GFX10(0), C_00B204_CU_EN_GFX10,
                         16, &pdev->info);
    }

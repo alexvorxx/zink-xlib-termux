@@ -2818,9 +2818,9 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    radeon_emit(cs, shader->config.rsrc1);
    radeon_emit(cs, shader->config.rsrc2);
 
-   radeon_set_context_reg(ctx_cs, R_0286C4_SPI_VS_OUT_CONFIG, shader->info.regs.vs.spi_vs_out_config);
-   radeon_set_context_reg(ctx_cs, R_02870C_SPI_SHADER_POS_FORMAT, shader->info.regs.vs.spi_shader_pos_format);
-   radeon_set_context_reg(ctx_cs, R_02881C_PA_CL_VS_OUT_CNTL, shader->info.regs.vs.pa_cl_vs_out_cntl);
+   radeon_set_context_reg(ctx_cs, R_0286C4_SPI_VS_OUT_CONFIG, shader->info.regs.spi_vs_out_config);
+   radeon_set_context_reg(ctx_cs, R_02870C_SPI_SHADER_POS_FORMAT, shader->info.regs.spi_shader_pos_format);
+   radeon_set_context_reg(ctx_cs, R_02881C_PA_CL_VS_OUT_CNTL, shader->info.regs.pa_cl_vs_out_cntl);
 
    if (pdev->info.gfx_level <= GFX8)
       radeon_set_context_reg(ctx_cs, R_028AB4_VGT_REUSE_OFF, shader->info.regs.vs.vgt_reuse_off);
@@ -2832,7 +2832,7 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    }
 
    if (pdev->info.gfx_level >= GFX10) {
-      radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC, shader->info.regs.vs.ge_pc_alloc);
+      radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC, shader->info.regs.ge_pc_alloc);
 
       if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
          radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, shader->info.regs.vgt_gs_onchip_cntl);
@@ -3214,10 +3214,10 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
       radeon_emit(cs, gs->config.rsrc2);
    }
 
-   radeon_set_sh_reg_idx(pdev, cs, R_00B21C_SPI_SHADER_PGM_RSRC3_GS, 3, gs->info.regs.gs.spi_shader_pgm_rsrc3_gs);
+   radeon_set_sh_reg_idx(pdev, cs, R_00B21C_SPI_SHADER_PGM_RSRC3_GS, 3, gs->info.regs.spi_shader_pgm_rsrc3_gs);
 
    if (pdev->info.gfx_level >= GFX10) {
-      radeon_set_sh_reg_idx(pdev, cs, R_00B204_SPI_SHADER_PGM_RSRC4_GS, 3, gs->info.regs.gs.spi_shader_pgm_rsrc4_gs);
+      radeon_set_sh_reg_idx(pdev, cs, R_00B204_SPI_SHADER_PGM_RSRC4_GS, 3, gs->info.regs.spi_shader_pgm_rsrc4_gs);
    }
 }
 

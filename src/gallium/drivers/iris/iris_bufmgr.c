@@ -289,6 +289,12 @@ bucket_for_size(struct iris_bufmgr *bufmgr, uint64_t size,
    if (flags & BO_ALLOC_PROTECTED)
       return NULL;
 
+   /* TODO: Enable bo cache for compressed bos
+    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/11362
+    */
+   if (bufmgr->devinfo.verx10 == 200 && (flags & BO_ALLOC_COMPRESSED))
+      return NULL;
+
    const struct intel_device_info *devinfo = &bufmgr->devinfo;
    struct iris_bucket_cache *cache = &bufmgr->bucket_cache[heap];
 

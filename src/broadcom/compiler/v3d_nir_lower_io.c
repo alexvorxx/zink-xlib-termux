@@ -322,10 +322,7 @@ v3d_nir_lower_io_instr(struct v3d_compile *c, nir_builder *b,
                 break;
 
         case nir_intrinsic_store_output:
-                if (c->s->info.stage == MESA_SHADER_VERTEX ||
-                    c->s->info.stage == MESA_SHADER_GEOMETRY) {
-                        v3d_nir_lower_vpm_output(c, b, intr, state);
-                }
+                v3d_nir_lower_vpm_output(c, b, intr, state);
                 break;
 
         case nir_intrinsic_emit_vertex:
@@ -621,22 +618,18 @@ emit_gs_vpm_output_header_prolog(struct v3d_compile *c, nir_builder *b,
 bool
 v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c)
 {
+        if (s->info.stage != MESA_SHADER_VERTEX &&
+            s->info.stage != MESA_SHADER_GEOMETRY) {
+                return false;
+        }
+
         struct v3d_nir_lower_io_state state = { 0 };
 
         /* Set up the layout of the VPM outputs. */
-        switch (s->info.stage) {
-        case MESA_SHADER_VERTEX:
+        if (s->info.stage == MESA_SHADER_VERTEX)
                 v3d_nir_setup_vpm_layout_vs(c, &state);
-                break;
-        case MESA_SHADER_GEOMETRY:
+        else
                 v3d_nir_setup_vpm_layout_gs(c, &state);
-                break;
-        case MESA_SHADER_FRAGMENT:
-        case MESA_SHADER_COMPUTE:
-                break;
-        default:
-                unreachable("Unsupported shader stage");
-        }
 
         nir_foreach_function_impl(impl, s) {
                 nir_builder b = nir_builder_create(impl);
@@ -654,7 +647,7 @@ v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c)
                 b.cursor = nir_after_block(last);
                 if (s->info.stage == MESA_SHADER_VERTEX) {
                         v3d_nir_emit_ff_vpm_outputs(c, &b, &state);
-                } else if (s->info.stage == MESA_SHADER_GEOMETRY) {
+                } else {
                         emit_gs_vpm_output_header_prolog(c, &b, &state);
                 }
 
@@ -663,10 +656,7 @@ v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c)
                                       nir_metadata_dominance);
         }
 
-        if (s->info.stage == MESA_SHADER_VERTEX ||
-            s->info.stage == MESA_SHADER_GEOMETRY) {
-                v3d_nir_lower_io_update_output_var_base(c, &state);
-        }
+        v3d_nir_lower_io_update_output_var_base(c, &state);
 
         /* It is really unlikely that we don't get progress here, and fully
          * filtering when not would make code more complex, but we are still

@@ -2565,9 +2565,11 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
 
    if (inst->dst.stride != 1)
       fprintf(file, "<%u>", inst->dst.stride);
-   fprintf(file, ":%s, ", brw_reg_type_to_letters(inst->dst.type));
+   fprintf(file, ":%s", brw_reg_type_to_letters(inst->dst.type));
 
    for (int i = 0; i < inst->sources; i++) {
+      fprintf(file, ", ");
+
       if (inst->src[i].negate)
          fprintf(file, "-");
       if (inst->src[i].abs)
@@ -2687,9 +2689,6 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
 
          fprintf(file, ":%s", brw_reg_type_to_letters(inst->src[i].type));
       }
-
-      if (i < inst->sources - 1 && inst->src[i + 1].file != BAD_FILE)
-         fprintf(file, ", ");
    }
 
    fprintf(file, " ");

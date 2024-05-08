@@ -677,7 +677,8 @@ submit_queue(void *data, void *gdata, int thread_index)
       cmdbufs[c++] = bs->unsynchronized_cmdbuf;
    if (bs->has_reordered_work)
       cmdbufs[c++] = bs->reordered_cmdbuf;
-   cmdbufs[c++] = bs->cmdbuf;
+   if (bs->has_work)
+      cmdbufs[c++] = bs->cmdbuf;
    si[ZINK_SUBMIT_CMDBUF].pCommandBuffers = cmdbufs;
    si[ZINK_SUBMIT_CMDBUF].commandBufferCount = c;
    /* assorted signal submit from wsi/externals */
@@ -704,14 +705,16 @@ submit_queue(void *data, void *gdata, int thread_index)
 
 
    VkResult result;
-   VRAM_ALLOC_LOOP(result,
-      VKSCR(EndCommandBuffer)(bs->cmdbuf),
-      if (result != VK_SUCCESS) {
-         mesa_loge("ZINK: vkEndCommandBuffer failed (%s)", vk_Result_to_str(result));
-         bs->is_device_lost = true;
-         goto end;
-      }
-   );
+   if (bs->has_work) {
+      VRAM_ALLOC_LOOP(result,
+         VKSCR(EndCommandBuffer)(bs->cmdbuf),
+         if (result != VK_SUCCESS) {
+            mesa_loge("ZINK: vkEndCommandBuffer failed (%s)", vk_Result_to_str(result));
+            bs->is_device_lost = true;
+            goto end;
+         }
+      );
+   }
    if (bs->has_reordered_work) {
       if (bs->unordered_write_access) {
          VkMemoryBarrier mb;

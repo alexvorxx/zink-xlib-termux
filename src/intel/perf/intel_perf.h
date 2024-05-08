@@ -42,8 +42,6 @@
 #include "util/hash_table.h"
 #include "util/ralloc.h"
 
-#include "drm-uapi/i915_drm.h"
-
 #define INTEL_PERF_MAX_METRIC_SETS (1500)
 
 #ifdef __cplusplus

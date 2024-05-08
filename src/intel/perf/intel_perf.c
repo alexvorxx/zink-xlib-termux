@@ -33,8 +33,6 @@
 #include <limits.h> // PATH_MAX
 #endif
 
-#include <drm-uapi/i915_drm.h>
-
 #include "common/intel_gem.h"
 #include "common/i915/intel_gem.h"
 

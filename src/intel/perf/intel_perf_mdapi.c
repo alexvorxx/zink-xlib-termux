@@ -28,9 +28,6 @@
 
 #include "dev/intel_device_info.h"
 
-#include <drm-uapi/i915_drm.h>
-
-
 int
 intel_perf_query_result_write_mdapi(void *data, uint32_t data_size,
                                     const struct intel_device_info *devinfo,

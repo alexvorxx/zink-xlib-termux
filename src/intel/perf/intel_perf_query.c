@@ -35,8 +35,6 @@
 #include "perf/intel_perf_query.h"
 #include "perf/intel_perf_regs.h"
 
-#include "drm-uapi/i915_drm.h"
-
 #include "util/compiler.h"
 #include "util/u_math.h"
 

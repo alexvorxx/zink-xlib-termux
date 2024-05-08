@@ -608,31 +608,6 @@ void radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipelin
                                    struct radv_shader **shaders, struct radv_shader_binary **binaries,
                                    struct radv_shader **gs_copy_shader, struct radv_shader_binary **gs_copy_binary);
 
-void radv_emit_vgt_gs_mode(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                           const struct radv_shader *last_vgt_api_shader);
-
-void radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                             const struct radv_shader *vs, const struct radv_shader *next_stage);
-
-void radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbuf *cs,
-                                const struct radv_shader *tcs);
-
-void radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                                struct radeon_cmdbuf *cs, const struct radv_shader *tes, const struct radv_shader *gs);
-
-void radv_emit_geometry_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                               const struct radv_shader *gs, const struct radv_shader *es,
-                               const struct radv_shader *gs_copy_shader);
-
-void radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                           const struct radv_shader *ms);
-
-void radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *cs,
-                         const struct radv_shader *last_vgt_shader, const struct radv_shader *ps);
-
-void radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                               const struct radv_shader *ps);
-
 struct radv_vgt_shader_key {
    uint8_t tess : 1;
    uint8_t gs : 1;
@@ -646,23 +621,8 @@ struct radv_vgt_shader_key {
    uint8_t vs_wave32 : 1;
 };
 
-void radv_emit_vgt_reuse(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *tes,
-                         const struct radv_vgt_shader_key *key);
-
 struct radv_vgt_shader_key radv_get_vgt_shader_key(const struct radv_device *device, struct radv_shader **shaders,
                                                    const struct radv_shader *gs_copy_shader);
-
-void radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                                 const struct radv_vgt_shader_key *key);
-
-void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                          uint32_t vgt_gs_out_prim_type);
-
-void gfx103_emit_vgt_draw_payload_cntl(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *mesh_shader,
-                                       bool enable_vrs);
-
-void gfx103_emit_vrs_state(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, const struct radv_shader *ps,
-                           bool enable_vrs_coarse_shading, bool force_vrs_per_vertex);
 
 uint32_t radv_get_vgt_gs_out(struct radv_shader **shaders, uint32_t primitive_topology);
 

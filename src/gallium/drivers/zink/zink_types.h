@@ -677,8 +677,6 @@ zink_batch_state(struct zink_fence *fence)
 
 struct zink_batch {
    struct zink_batch_state *state;
-
-   struct zink_resource *swapchain;
 };
 
 
@@ -1871,6 +1869,7 @@ struct zink_context {
    struct set rendering_state_cache[6]; //[util_logbase2_ceil(msrtss samplecount)]
    struct set render_pass_state_cache;
    struct hash_table *render_pass_cache;
+   struct zink_resource *swapchain;
    VkExtent2D swapchain_size;
    bool fb_changed;
    bool in_rp; //renderpass is currently active

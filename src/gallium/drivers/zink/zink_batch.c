@@ -823,12 +823,12 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
    ctx->work_count = 0;
 
    /* this is swapchain presentation semaphore handling */
-   if (batch->swapchain) {
-      if (zink_kopper_acquired(batch->swapchain->obj->dt, batch->swapchain->obj->dt_idx) && !batch->swapchain->obj->present) {
-         batch->state->present = zink_kopper_present(screen, batch->swapchain);
-         batch->state->swapchain = batch->swapchain;
+   if (ctx->swapchain) {
+      if (zink_kopper_acquired(ctx->swapchain->obj->dt, ctx->swapchain->obj->dt_idx) && !ctx->swapchain->obj->present) {
+         batch->state->present = zink_kopper_present(screen, ctx->swapchain);
+         batch->state->swapchain = ctx->swapchain;
       }
-      batch->swapchain = NULL;
+      ctx->swapchain = NULL;
    }
 
    if (screen->device_lost)

@@ -106,9 +106,8 @@ clear_in_rp(struct pipe_context *pctx,
    }
    cr.baseArrayLayer = 0;
    cr.layerCount = util_framebuffer_get_num_layers(fb);
-   struct zink_batch *batch = &ctx->batch;
    assert(ctx->in_rp);
-   VKCTX(CmdClearAttachments)(batch->bs->cmdbuf, num_attachments, attachments, 1, &cr);
+   VKCTX(CmdClearAttachments)(ctx->batch.bs->cmdbuf, num_attachments, attachments, 1, &cr);
    /*
        Rendering within a subpass containing a feedback loop creates a data race, except in the following
        cases:

@@ -675,11 +675,6 @@ zink_batch_state(struct zink_fence *fence)
    return (struct zink_batch_state *)fence;
 }
 
-struct zink_batch {
-   struct zink_batch_state *bs;
-};
-
-
 /** bo types */
 struct bo_export {
    /** File descriptor associated with a handle export. */
@@ -1813,7 +1808,7 @@ struct zink_context {
    bool oom_stall;
    bool track_renderpasses;
    bool no_reorder;
-   struct zink_batch batch;
+   struct zink_batch_state *bs;
 
    unsigned shader_has_inlinable_uniforms_mask;
    unsigned inlinable_uniforms_valid_mask;

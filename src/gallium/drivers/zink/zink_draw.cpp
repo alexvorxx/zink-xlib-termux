@@ -82,7 +82,7 @@ zink_emit_stream_output_targets(struct pipe_context *pctx)
                      t->base.buffer_offset + t->base.buffer_size);
    }
 
-   VKCTX(CmdBindTransformFeedbackBuffersEXT)(ctx->batch.bs->cmdbuf, 0, ctx->num_so_targets,
+   VKCTX(CmdBindTransformFeedbackBuffersEXT)(ctx->bs->cmdbuf, 0, ctx->num_so_targets,
                                                  buffers, buffer_offsets,
                                                  buffer_sizes);
    ctx->dirty_so_targets = false;
@@ -167,16 +167,16 @@ zink_bind_vertex_buffers(struct zink_context *ctx)
        DYNAMIC_STATE != ZINK_DYNAMIC_VERTEX_INPUT2 &&
        DYNAMIC_STATE != ZINK_DYNAMIC_VERTEX_INPUT) {
       if (elems->hw_state.num_bindings)
-         VKCTX(CmdBindVertexBuffers2)(ctx->batch.bs->cmdbuf, 0,
+         VKCTX(CmdBindVertexBuffers2)(ctx->bs->cmdbuf, 0,
                                              elems->hw_state.num_bindings,
                                              buffers, buffer_offsets, NULL, elems->hw_state.b.strides);
    } else if (elems->hw_state.num_bindings)
-      VKSCR(CmdBindVertexBuffers)(ctx->batch.bs->cmdbuf, 0,
+      VKSCR(CmdBindVertexBuffers)(ctx->bs->cmdbuf, 0,
                              elems->hw_state.num_bindings,
                              buffers, buffer_offsets);
 
    if (DYNAMIC_STATE == ZINK_DYNAMIC_VERTEX_INPUT2 || DYNAMIC_STATE == ZINK_DYNAMIC_VERTEX_INPUT)
-      VKCTX(CmdSetVertexInputEXT)(ctx->batch.bs->cmdbuf,
+      VKCTX(CmdSetVertexInputEXT)(ctx->bs->cmdbuf,
                                       elems->hw_state.num_bindings, elems->hw_state.dynbindings,
                                       elems->hw_state.num_attribs, elems->hw_state.dynattribs);
 
@@ -186,7 +186,7 @@ zink_bind_vertex_buffers(struct zink_context *ctx)
 ALWAYS_INLINE static void
 update_drawid(struct zink_context *ctx, unsigned draw_id)
 {
-   VKCTX(CmdPushConstants)(ctx->batch.bs->cmdbuf, ctx->curr_program->base.layout, VK_SHADER_STAGE_ALL_GRAPHICS,
+   VKCTX(CmdPushConstants)(ctx->bs->cmdbuf, ctx->curr_program->base.layout, VK_SHADER_STAGE_ALL_GRAPHICS,
                       offsetof(struct zink_gfx_push_constant, draw_id), sizeof(unsigned),
                       &draw_id);
 }
@@ -240,7 +240,7 @@ draw_indexed_need_index_buffer_unref(struct zink_context *ctx,
              unsigned draw_id,
              bool needs_drawid)
 {
-   VkCommandBuffer cmdbuf = ctx->batch.bs->cmdbuf;
+   VkCommandBuffer cmdbuf = ctx->bs->cmdbuf;
    if (dinfo->increment_draw_id && needs_drawid) {
       for (unsigned i = 0; i < num_draws; i++) {
          update_drawid(ctx, draw_id);
@@ -300,7 +300,7 @@ draw_indexed(struct zink_context *ctx,
              unsigned draw_id,
              bool needs_drawid)
 {
-   VkCommandBuffer cmdbuf = ctx->batch.bs->cmdbuf;
+   VkCommandBuffer cmdbuf = ctx->bs->cmdbuf;
    if (dinfo->increment_draw_id && needs_drawid) {
       for (unsigned i = 0; i < num_draws; i++) {
          update_drawid(ctx, draw_id);
@@ -366,7 +366,7 @@ draw(struct zink_context *ctx,
      unsigned draw_id,
      bool needs_drawid)
 {
-   VkCommandBuffer cmdbuf = ctx->batch.bs->cmdbuf;
+   VkCommandBuffer cmdbuf = ctx->bs->cmdbuf;
    if (dinfo->increment_draw_id && needs_drawid) {
       for (unsigned i = 0; i < num_draws; i++) {
          update_drawid(ctx, draw_id);
@@ -493,7 +493,7 @@ zink_draw(struct pipe_context *pctx,
    struct zink_screen *screen = zink_screen(pctx->screen);
    struct zink_rasterizer_state *rast_state = ctx->rast_state;
    struct zink_depth_stencil_alpha_state *dsa_state = ctx->dsa_state;
-   struct zink_batch_state *bs = ctx->batch.bs;
+   struct zink_batch_state *bs = ctx->bs;
    struct zink_so_target *so_target =
       dindirect && dindirect->count_from_stream_output ?
          zink_so_target(dindirect->count_from_stream_output) : NULL;
@@ -597,7 +597,7 @@ zink_draw(struct pipe_context *pctx,
       mb.pNext = NULL;
       mb.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
       mb.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-      VKSCR(CmdPipelineBarrier)(ctx->batch.bs->cmdbuf,
+      VKSCR(CmdPipelineBarrier)(ctx->bs->cmdbuf,
                                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                 0, 1, &mb, 0, NULL, 0, NULL);
@@ -1143,7 +1143,7 @@ static void
 zink_vertex_state_mask(struct zink_context *ctx, struct pipe_vertex_state *vstate, uint32_t partial_velem_mask)
 {
    struct zink_vertex_state *zstate = (struct zink_vertex_state *)vstate;
-   VkCommandBuffer cmdbuf = ctx->batch.bs->cmdbuf;
+   VkCommandBuffer cmdbuf = ctx->bs->cmdbuf;
 
    if (partial_velem_mask == vstate->input.full_velem_mask) {
       VKCTX(CmdSetVertexInputEXT)(cmdbuf,
@@ -1171,14 +1171,14 @@ static void
 zink_bind_vertex_state(struct zink_context *ctx, struct pipe_vertex_state *vstate, uint32_t partial_velem_mask)
 {
    struct zink_vertex_state *zstate = (struct zink_vertex_state *)vstate;
-   VkCommandBuffer cmdbuf = ctx->batch.bs->cmdbuf;
+   VkCommandBuffer cmdbuf = ctx->bs->cmdbuf;
    if (!vstate->input.vbuffer.buffer.resource)
       return;
 
    zink_vertex_state_mask<HAS_POPCNT>(ctx, vstate, partial_velem_mask);
 
    struct zink_resource *res = zink_resource(vstate->input.vbuffer.buffer.resource);
-   zink_batch_resource_usage_set(ctx->batch.bs, res, false, true);
+   zink_batch_resource_usage_set(ctx->bs, res, false, true);
    VkDeviceSize offset = vstate->input.vbuffer.buffer_offset;
    if (unlikely(zink_debug & ZINK_DEBUG_DGC)) {
       VkBindVertexBufferIndirectCommandNV *ptr;
@@ -1231,7 +1231,7 @@ static void
 zink_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
 {
    struct zink_context *ctx = zink_context(pctx);
-   struct zink_batch_state *bs = ctx->batch.bs;
+   struct zink_batch_state *bs = ctx->bs;
    struct zink_screen *screen = zink_screen(pctx->screen);
 
    if (ctx->render_condition_active)
@@ -1259,7 +1259,7 @@ zink_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
       mb.pNext = NULL;
       mb.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
       mb.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-      VKSCR(CmdPipelineBarrier)(ctx->batch.bs->cmdbuf,
+      VKSCR(CmdPipelineBarrier)(ctx->bs->cmdbuf,
                                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                 0, 1, &mb, 0, NULL, 0, NULL);

@@ -2512,7 +2512,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
 
    switch (inst->dst.file) {
    case VGRF:
-      fprintf(file, "vgrf%d", inst->dst.nr);
+      fprintf(file, "v%d", inst->dst.nr);
       break;
    case FIXED_GRF:
       fprintf(file, "g%d", inst->dst.nr);
@@ -2574,7 +2574,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
          fprintf(file, "|");
       switch (inst->src[i].file) {
       case VGRF:
-         fprintf(file, "vgrf%d", inst->src[i].nr);
+         fprintf(file, "v%d", inst->src[i].nr);
          break;
       case FIXED_GRF:
          fprintf(file, "g%d", inst->src[i].nr);

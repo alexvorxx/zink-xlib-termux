@@ -290,9 +290,9 @@ zink_get_cmdbuf(struct zink_context *ctx, struct zink_resource *src, struct zink
 
    if (unordered_exec) {
       ctx->bs->has_reordered_work = true;
-      ctx->bs->has_work = true;
       return ctx->bs->reordered_cmdbuf;
    }
+   ctx->bs->has_work = true;
    return ctx->bs->cmdbuf;
 }
 

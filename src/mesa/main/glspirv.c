@@ -24,6 +24,7 @@
 #include "glspirv.h"
 #include "errors.h"
 #include "shaderobj.h"
+#include "spirv_capabilities.h"
 #include "mtypes.h"
 
 #include "compiler/nir/nir.h"
@@ -260,10 +261,14 @@ _mesa_spirv_to_nir(struct gl_context *ctx,
       spec_entries[i].defined_on_module = false;
    }
 
-   const struct spirv_to_nir_options spirv_options = {
+   struct spirv_supported_capabilities spirv_caps;
+   _mesa_fill_supported_spirv_capabilities(&spirv_caps, &ctx->Const,
+                                           &ctx->Extensions);
+
+   struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENGL,
+      .caps = spirv_caps,
       .subgroup_size = SUBGROUP_SIZE_UNIFORM,
-      .caps = ctx->Const.SpirVCapabilities,
       .ubo_addr_format = nir_address_format_32bit_index_offset,
       .ssbo_addr_format = nir_address_format_32bit_index_offset,
 

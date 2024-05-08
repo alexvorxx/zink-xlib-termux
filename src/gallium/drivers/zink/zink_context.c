@@ -3902,7 +3902,8 @@ zink_flush(struct pipe_context *pctx,
       }
    }
 
-   if (!ctx->bs->has_work) {
+   bool has_work = ctx->bs->has_work | ctx->bs->has_reordered_work | ctx->bs->has_unsync;
+   if (!has_work) {
        if (pfence) {
           /* reuse last fence */
           bs = ctx->last_batch_state;
@@ -3973,7 +3974,7 @@ zink_fence_wait(struct pipe_context *pctx)
 {
    struct zink_context *ctx = zink_context(pctx);
 
-   if (ctx->bs->has_work)
+   if (ctx->bs->has_work || ctx->bs->has_reordered_work || ctx->bs->has_unsync)
       pctx->flush(pctx, NULL, PIPE_FLUSH_HINT_FINISH);
    if (ctx->last_batch_state)
       stall(ctx);

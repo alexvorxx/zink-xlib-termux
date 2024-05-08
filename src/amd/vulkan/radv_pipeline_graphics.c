@@ -2941,7 +2941,7 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
       }
    }
 
-   radeon_set_uconfig_reg(ctx_cs, R_03096C_GE_CNTL, ge_cntl);
+   radeon_set_uconfig_reg(cs, R_03096C_GE_CNTL, ge_cntl);
 
    radeon_set_sh_reg_idx(pdev, cs, R_00B21C_SPI_SHADER_PGM_RSRC3_GS, 3, shader->info.regs.spi_shader_pgm_rsrc3_gs);
    radeon_set_sh_reg_idx(pdev, cs, R_00B204_SPI_SHADER_PGM_RSRC4_GS, 3, shader->info.regs.spi_shader_pgm_rsrc4_gs);
@@ -3193,7 +3193,7 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
 
    radv_emit_hw_ngg(device, ctx_cs, cs, NULL, ms);
    radeon_set_context_reg(ctx_cs, R_028B38_VGT_GS_MAX_VERT_OUT, ms->info.regs.vgt_gs_max_vert_out);
-   radeon_set_uconfig_reg_idx(pdev, ctx_cs, R_030908_VGT_PRIMITIVE_TYPE, 1, V_008958_DI_PT_POINTLIST);
+   radeon_set_uconfig_reg_idx(pdev, cs, R_030908_VGT_PRIMITIVE_TYPE, 1, V_008958_DI_PT_POINTLIST);
 
    if (pdev->mesh_fast_launch_2) {
       radeon_set_sh_reg_seq(cs, R_00B2B0_SPI_SHADER_GS_MESHLET_DIM, 2);

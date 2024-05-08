@@ -207,7 +207,6 @@ shader-db:
   before_script:
     - !reference [.download_s3, before_script]
   script: |
-    section_switch shader-db "shader-db"
     .gitlab-ci/run-shader-db.sh
   artifacts:
     paths:

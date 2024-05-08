@@ -268,6 +268,14 @@ struct radv_shader_info {
       } gs;
 
       struct {
+         uint32_t ge_cntl; /* Not fully precomputed. */
+         uint32_t ge_max_output_per_subgroup;
+         uint32_t ge_ngg_subgrp_cntl;
+         uint32_t spi_shader_idx_format;
+         uint32_t vgt_primitiveid_en;
+      } ngg;
+
+      struct {
          uint32_t spi_shader_gs_meshlet_dim;
          uint32_t spi_shader_gs_meshlet_exp_alloc;
       } ms;

@@ -9764,6 +9764,7 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
 
       gfx10_get_ngg_info(device, &es->info, &gs->info, &gs->info.ngg_info);
+      radv_precompute_registers_hw_ngg(device, &gs->config, &gs->info);
    }
 
    /* Determine the rasterized primitive. */

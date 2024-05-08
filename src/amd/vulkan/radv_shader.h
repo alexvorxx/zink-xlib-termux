@@ -709,4 +709,7 @@ void radv_shader_combine_cfg_tes_gs(const struct radv_shader *tes, const struct 
 
 const struct radv_userdata_info *radv_get_user_sgpr(const struct radv_shader *shader, int idx);
 
+void radv_precompute_registers_hw_ngg(struct radv_device *device, const struct ac_shader_config *config,
+                                      struct radv_shader_info *info);
+
 #endif /* RADV_SHADER_H */

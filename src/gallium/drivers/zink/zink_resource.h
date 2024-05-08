@@ -176,19 +176,19 @@ zink_batch_resource_usage_set(struct zink_batch *batch, struct zink_resource *re
 {
    if (!is_buffer) {
       if (res->obj->dt) {
-         VkSemaphore acquire = zink_kopper_acquire_submit(zink_screen(batch->state->ctx->base.screen), res);
+         VkSemaphore acquire = zink_kopper_acquire_submit(zink_screen(batch->bs->ctx->base.screen), res);
          if (acquire)
-            util_dynarray_append(&batch->state->acquires, VkSemaphore, acquire);
+            util_dynarray_append(&batch->bs->acquires, VkSemaphore, acquire);
       }
       if (write) {
          if (!res->valid && res->fb_bind_count)
-            batch->state->ctx->rp_loadop_changed = true;
+            batch->bs->ctx->rp_loadop_changed = true;
          res->valid = true;
       }
    }
-   zink_resource_usage_set(res, batch->state, write);
+   zink_resource_usage_set(res, batch->bs, write);
 
-   batch->state->has_work = true;
+   batch->bs->has_work = true;
 }
 
 void

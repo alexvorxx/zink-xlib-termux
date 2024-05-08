@@ -1844,7 +1844,7 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
 
    /* handle any outstanding acquire submits (not just from above) */
    if (ctx->swapchain || ctx->needs_present) {
-      ctx->batch.state->has_work = true;
+      ctx->batch.bs->has_work = true;
       pctx->flush(pctx, NULL, PIPE_FLUSH_END_OF_FRAME);
       if (ctx->last_batch_state && screen->threaded_submit) {
          struct zink_batch_state *bs = ctx->last_batch_state;

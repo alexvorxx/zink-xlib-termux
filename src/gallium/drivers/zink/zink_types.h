@@ -676,7 +676,7 @@ zink_batch_state(struct zink_fence *fence)
 }
 
 struct zink_batch {
-   struct zink_batch_state *state;
+   struct zink_batch_state *bs;
 };
 
 

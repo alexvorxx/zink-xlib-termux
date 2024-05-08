@@ -73,7 +73,7 @@ i915_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
    if (intel_perf_has_global_sseu(perf_config) &&
        perf_config->devinfo->verx10 < 125) {
       properties[p++] = DRM_I915_PERF_PROP_GLOBAL_SSEU;
-      properties[p++] = (uintptr_t) &perf_config->sseu;
+      properties[p++] = (uintptr_t) perf_config->sseu;
    }
 
    assert(p <= ARRAY_SIZE(properties));
@@ -182,7 +182,11 @@ i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_regis
    perf->i915_perf_version = i915_perf_version(fd);
 
    /* Record the default SSEU configuration. */
-   i915_get_sseu(fd, &perf->sseu);
+   perf->sseu = rzalloc(perf, struct drm_i915_gem_context_param_sseu);
+   if (!perf->sseu)
+      return false;
+
+   i915_get_sseu(fd, perf->sseu);
 
    /* The existence of this sysctl parameter implies the kernel supports
     * the i915 perf interface.

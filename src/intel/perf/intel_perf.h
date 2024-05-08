@@ -345,8 +345,10 @@ struct intel_perf_config {
     */
    uint64_t oa_timestamp_mask;
 
-   /* Powergating configuration for the running the query. */
-   struct drm_i915_gem_context_param_sseu sseu;
+   /* Powergating configuration for the running the query.
+    * Only used in i915, struct drm_i915_gem_context_param_sseu.
+    */
+   void *sseu;
 
    struct intel_perf_query_info *queries;
    int n_queries;

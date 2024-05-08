@@ -1072,7 +1072,7 @@ enlarge_db(struct zink_context *ctx)
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    struct zink_batch_state *bs = ctx->batch.bs;
    /* ensure current db surives */
-   zink_batch_reference_resource(&ctx->batch, bs->dd.db);
+   zink_batch_reference_resource(ctx, bs->dd.db);
    /* rebinding a db mid-batch is extremely costly: if we start with a factor
     * 16 and then half the factor with each new allocation. It shouldn't need to
     * do this more than twice. */

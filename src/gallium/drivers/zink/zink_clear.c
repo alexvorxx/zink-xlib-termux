@@ -503,7 +503,7 @@ zink_clear_texture_dynamic(struct pipe_context *pctx,
       VKCTX(CmdClearAttachments)(cmdbuf, 1, &clear_att, 1, &rect);
    }
    VKCTX(CmdEndRendering)(cmdbuf);
-   zink_batch_reference_resource_rw(&ctx->batch, res, true);
+   zink_batch_reference_resource_rw(ctx, res, true);
    /* this will never destroy the surface */
    pipe_surface_reference(&surf, NULL);
 }
@@ -589,7 +589,7 @@ zink_clear_buffer(struct pipe_context *pctx,
        */
       zink_resource_buffer_transfer_dst_barrier(ctx, res, offset, size);
       VkCommandBuffer cmdbuf = zink_get_cmdbuf(ctx, NULL, res);
-      zink_batch_reference_resource_rw(&ctx->batch, res, true);
+      zink_batch_reference_resource_rw(ctx, res, true);
       VKCTX(CmdFillBuffer)(cmdbuf, res->obj->buffer, offset, size, *(uint32_t*)clear_value);
       return;
    }

@@ -635,7 +635,7 @@ zink_gfx_program_update(struct zink_context *ctx)
       }
       simple_mtx_unlock(&ctx->program_lock[zink_program_cache_stages(ctx->shader_stages)]);
       if (prog && prog != ctx->curr_program)
-         zink_batch_reference_program(&ctx->batch, &prog->base);
+         zink_batch_reference_program(ctx, &prog->base);
       ctx->curr_program = prog;
       ctx->gfx_pipeline_state.final_hash ^= ctx->curr_program->last_variant_hash;
       ctx->gfx_dirty = false;
@@ -756,7 +756,7 @@ zink_gfx_program_update_optimal(struct zink_context *ctx)
       }
       simple_mtx_unlock(&ctx->program_lock[zink_program_cache_stages(ctx->shader_stages)]);
       if (prog && prog != ctx->curr_program)
-         zink_batch_reference_program(&ctx->batch, &prog->base);
+         zink_batch_reference_program(ctx, &prog->base);
       ctx->curr_program = prog;
       ctx->gfx_pipeline_state.final_hash ^= ctx->curr_program->last_variant_hash;
    } else if (ctx->dirty_gfx_stages) {
@@ -1998,7 +1998,7 @@ zink_bind_cs_state(struct pipe_context *pctx,
       ctx->shader_has_inlinable_uniforms_mask &= ~(1 << MESA_SHADER_COMPUTE);
 
    if (ctx->curr_compute) {
-      zink_batch_reference_program(&ctx->batch, &ctx->curr_compute->base);
+      zink_batch_reference_program(ctx, &ctx->curr_compute->base);
       ctx->compute_pipeline_state.final_hash ^= ctx->compute_pipeline_state.module_hash;
       ctx->compute_pipeline_state.module = VK_NULL_HANDLE;
       ctx->compute_pipeline_state.module_hash = 0;

@@ -70,15 +70,14 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
    if (src->obj->dt)
       *needs_present_readback = zink_kopper_acquire_readback(ctx, src, &use_src);
 
-   struct zink_batch *batch = &ctx->batch;
    zink_resource_setup_transfer_layouts(ctx, use_src, dst);
    VkCommandBuffer cmdbuf = *needs_present_readback ?
                             ctx->batch.bs->cmdbuf :
                             zink_get_cmdbuf(ctx, src, dst);
    if (cmdbuf == ctx->batch.bs->cmdbuf)
       zink_flush_dgc_if_enabled(ctx);
-   zink_batch_reference_resource_rw(batch, use_src, false);
-   zink_batch_reference_resource_rw(batch, dst, true);
+   zink_batch_reference_resource_rw(ctx, use_src, false);
+   zink_batch_reference_resource_rw(ctx, dst, true);
 
    bool marker = zink_cmd_debug_marker_begin(ctx, cmdbuf, "blit_resolve(%s->%s, %dx%d->%dx%d)",
                                              util_format_short_name(info->src.format),
@@ -277,15 +276,14 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
    if (src->obj->dt)
       *needs_present_readback = zink_kopper_acquire_readback(ctx, src, &use_src);
 
-   struct zink_batch *batch = &ctx->batch;
    zink_resource_setup_transfer_layouts(ctx, use_src, dst);
    VkCommandBuffer cmdbuf = *needs_present_readback ?
                             ctx->batch.bs->cmdbuf :
                             zink_get_cmdbuf(ctx, src, dst);
    if (cmdbuf == ctx->batch.bs->cmdbuf)
       zink_flush_dgc_if_enabled(ctx);
-   zink_batch_reference_resource_rw(batch, use_src, false);
-   zink_batch_reference_resource_rw(batch, dst, true);
+   zink_batch_reference_resource_rw(ctx, use_src, false);
+   zink_batch_reference_resource_rw(ctx, dst, true);
 
    bool marker = zink_cmd_debug_marker_begin(ctx, cmdbuf, "blit_native(%s->%s, %dx%d->%dx%d)",
                                              util_format_short_name(info->src.format),

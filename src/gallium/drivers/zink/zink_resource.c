@@ -2137,7 +2137,7 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
    }
    bool needs_bda = !!res->obj->bda;
    /* this ref must be transferred before rebind or else BOOM */
-   zink_batch_reference_resource_move(&ctx->batch, res);
+   zink_batch_reference_resource_move(ctx, res);
    res->obj = new_obj;
    res->queue = VK_QUEUE_FAMILY_IGNORED;
    if (needs_bda)

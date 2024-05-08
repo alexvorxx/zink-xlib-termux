@@ -34,9 +34,11 @@
  */
 #if V3D_VERSION == 42
 #define V3D_CLE_READAHEAD 256
+#define V3D_CLE_BUFFER_MIN_SIZE 4096
 #endif
 #if V3D_VERSION >= 71
 #define V3D_CLE_READAHEAD 1024
+#define V3D_CLE_BUFFER_MIN_SIZE 16384
 #endif
 
 void
@@ -59,7 +61,9 @@ v3d_cl_ensure_space(struct v3d_cl *cl, uint32_t space, uint32_t alignment)
         }
 
         v3d_bo_unreference(&cl->bo);
-        cl->bo = v3d_bo_alloc(cl->job->v3d->screen, align(space, 4096), "CL");
+        cl->bo = v3d_bo_alloc(cl->job->v3d->screen,
+                              align(space, V3D_CLE_BUFFER_MIN_SIZE),
+                              "CL");
         cl->base = v3d_bo_map(cl->bo);
         cl->size = cl->bo->size;
         cl->next = cl->base;
@@ -82,7 +86,9 @@ v3d_cl_ensure_space_with_branch(struct v3d_cl *cl, uint32_t space)
          */
         uint32_t unusable_size = V3D_CLE_READAHEAD + cl_packet_length(BRANCH);
         struct v3d_bo *new_bo = v3d_bo_alloc(cl->job->v3d->screen,
-                                             space + unusable_size, "CL");
+                                             align(space + unusable_size,
+                                                   V3D_CLE_BUFFER_MIN_SIZE),
+                                             "CL");
         assert(space + unusable_size <= new_bo->size);
 
         /* Chain to the new BO from the old one. */

@@ -931,16 +931,6 @@ void si_decompress_subresource(struct pipe_context *ctx, struct pipe_resource *t
    }
 }
 
-struct texture_orig_info {
-   unsigned format;
-   unsigned width0;
-   unsigned height0;
-   unsigned npix_x;
-   unsigned npix_y;
-   unsigned npix0_x;
-   unsigned npix0_y;
-};
-
 void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst,
                              unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
                              struct pipe_resource *src, unsigned src_level,

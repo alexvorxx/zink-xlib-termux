@@ -675,11 +675,6 @@ virtio_bo_init_dmabuf(struct tu_device *dev,
    /* iova allocation needs to consider the object's *real* size: */
    size = real_size;
 
-   uint64_t iova;
-   result = virtio_allocate_userspace_iova(dev, size, 0, TU_BO_ALLOC_NO_FLAGS, &iova);
-   if (result != VK_SUCCESS)
-      return result;
-
    /* Importing the same dmabuf several times would yield the same
     * gem_handle. Thus there could be a race when destroying
     * BO and importing the same dmabuf from different threads.
@@ -689,6 +684,7 @@ virtio_bo_init_dmabuf(struct tu_device *dev,
    u_rwlock_wrlock(&dev->dma_bo_lock);
 
    uint32_t handle, res_id;
+   uint64_t iova;
 
    handle = vdrm_dmabuf_to_handle(vdrm, prime_fd);
    if (!handle) {
@@ -698,6 +694,7 @@ virtio_bo_init_dmabuf(struct tu_device *dev,
 
    res_id = vdrm_handle_to_res_id(vdrm, handle);
    if (!res_id) {
+      /* XXX gem_handle potentially leaked here since no refcnt */
       result = vk_error(dev, VK_ERROR_INVALID_EXTERNAL_HANDLE);
       goto out_unlock;
    }
@@ -714,21 +711,26 @@ virtio_bo_init_dmabuf(struct tu_device *dev,
 
    bo->res_id = res_id;
 
-   result = tu_bo_init(dev, bo, handle, size, iova,
-                       TU_BO_ALLOC_NO_FLAGS, "dmabuf");
-   if (result != VK_SUCCESS)
-      memset(bo, 0, sizeof(*bo));
-   else
-      *out_bo = bo;
+   result = virtio_allocate_userspace_iova(dev, size, 0, TU_BO_ALLOC_NO_FLAGS,
+                                           &iova);
+   if (result != VK_SUCCESS) {
+      vdrm_bo_close(dev->vdev->vdrm, handle);
+      goto out_unlock;
+   }
 
-out_unlock:
-   u_rwlock_wrunlock(&dev->dma_bo_lock);
+   result =
+      tu_bo_init(dev, bo, handle, size, iova, TU_BO_ALLOC_NO_FLAGS, "dmabuf");
    if (result != VK_SUCCESS) {
       mtx_lock(&dev->vma_mutex);
       util_vma_heap_free(&dev->vma, iova, size);
       mtx_unlock(&dev->vma_mutex);
+      memset(bo, 0, sizeof(*bo));
+   } else {
+      *out_bo = bo;
    }
 
+out_unlock:
+   u_rwlock_wrunlock(&dev->dma_bo_lock);
    return result;
 }
 

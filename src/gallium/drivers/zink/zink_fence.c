@@ -159,7 +159,7 @@ zink_fence_finish(struct zink_screen *screen, struct pipe_context *pctx, struct 
 
    if (pctx && mfence->deferred_ctx == pctx) {
       if (mfence->fence == ctx->deferred_fence) {
-         zink_context(pctx)->batch.has_work = true;
+         zink_context(pctx)->batch.state->has_work = true;
          /* this must be the current batch */
          pctx->flush(pctx, NULL, !timeout_ns ? PIPE_FLUSH_ASYNC : 0);
          if (!timeout_ns)
@@ -238,7 +238,7 @@ zink_fence_server_signal(struct pipe_context *pctx, struct pipe_fence_handle *pf
 
    assert(!ctx->batch.state->signal_semaphore);
    ctx->batch.state->signal_semaphore = mfence->sem;
-   ctx->batch.has_work = true;
+   ctx->batch.state->has_work = true;
    struct zink_batch_state *bs = ctx->batch.state;
    /* this must produce a synchronous flush that completes before the function returns */
    pctx->flush(pctx, NULL, 0);

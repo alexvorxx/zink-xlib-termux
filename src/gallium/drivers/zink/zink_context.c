@@ -3848,7 +3848,7 @@ zink_flush(struct pipe_context *pctx,
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    VkSemaphore export_sem = VK_NULL_HANDLE;
 
-   /* triggering clears will force has_work */
+   /* triggering clears will force state->has_work */
    if (!deferred && ctx->clears_enabled) {
       /* if fbfetch outputs are active, disable them when flushing clears */
       unsigned fbfetch_outputs = ctx->fbfetch_outputs;
@@ -3897,7 +3897,7 @@ zink_flush(struct pipe_context *pctx,
       if (zink_screen_handle_vkresult(screen, result)) {
          assert(!batch->state->signal_semaphore);
          batch->state->signal_semaphore = export_sem;
-         batch->has_work = true;
+         batch->state->has_work = true;
       } else {
          mesa_loge("ZINK: vkCreateSemaphore failed (%s)", vk_Result_to_str(result));
 
@@ -3906,7 +3906,7 @@ zink_flush(struct pipe_context *pctx,
       }
    }
 
-   if (!batch->has_work) {
+   if (!batch->state->has_work) {
        if (pfence) {
           /* reuse last fence */
           bs = ctx->last_batch_state;
@@ -3977,7 +3977,7 @@ zink_fence_wait(struct pipe_context *pctx)
 {
    struct zink_context *ctx = zink_context(pctx);
 
-   if (ctx->batch.has_work)
+   if (ctx->batch.state->has_work)
       pctx->flush(pctx, NULL, PIPE_FLUSH_HINT_FINISH);
    if (ctx->last_batch_state)
       stall(ctx);
@@ -4863,7 +4863,7 @@ zink_resource_commit(struct pipe_context *pctx, struct pipe_resource *pres, unsi
       if (sem) {
          zink_batch_add_wait_semaphore(&ctx->batch, sem);
          zink_batch_reference_resource_rw(&ctx->batch, res, true);
-         ctx->batch.has_work = true;
+         ctx->batch.state->has_work = true;
       }
    } else {
       check_device_lost(ctx);

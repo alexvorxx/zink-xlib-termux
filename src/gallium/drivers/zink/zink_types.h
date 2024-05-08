@@ -666,6 +666,7 @@ struct zink_batch_state {
    bool is_device_lost;
    bool has_barriers;
    bool has_unsync;
+   bool has_work;
 };
 
 static inline struct zink_batch_state *
@@ -681,7 +682,6 @@ struct zink_batch {
 
    unsigned work_count;
 
-   bool has_work;
    bool last_was_compute;
 };
 

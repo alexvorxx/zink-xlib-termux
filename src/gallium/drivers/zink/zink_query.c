@@ -534,7 +534,7 @@ zink_create_query(struct pipe_context *pctx,
    if (!qbo_append(pctx->screen, query))
       goto fail;
    struct zink_batch *batch = &zink_context(pctx)->batch;
-   batch->has_work = true;
+   batch->state->has_work = true;
    query->needs_reset = true;
    query->predicate_dirty = true;
    if (query->type == PIPE_QUERY_TIMESTAMP) {
@@ -902,7 +902,7 @@ begin_query(struct zink_context *ctx, struct zink_batch *batch, struct zink_quer
       reset_qbos(ctx, q);
    reset_query_range(ctx, q);
    q->active = true;
-   batch->has_work = true;
+   batch->state->has_work = true;
 
    struct zink_query_start *start = util_dynarray_top_ptr(&q->starts, struct zink_query_start);
    if (q->type == PIPE_QUERY_TIME_ELAPSED) {
@@ -999,7 +999,7 @@ static void
 update_query_id(struct zink_context *ctx, struct zink_query *q)
 {
    query_pool_get_range(ctx, q);
-   ctx->batch.has_work = true;
+   ctx->batch.state->has_work = true;
    q->has_draws = false;
 }
 

@@ -490,14 +490,14 @@ get_batch_state(struct zink_context *ctx, struct zink_batch *batch)
    return bs;
 }
 
-/* reset the batch object: get a new state and unset 'has_work' to disable flushing */
+/* reset the batch object: get a new state and unset 'state->has_work' to disable flushing */
 void
 zink_reset_batch(struct zink_context *ctx, struct zink_batch *batch)
 {
    batch->state = get_batch_state(ctx, batch);
    assert(batch->state);
 
-   batch->has_work = false;
+   batch->state->has_work = false;
 }
 
 void
@@ -1057,7 +1057,7 @@ zink_batch_reference_resource_move(struct zink_batch *batch, struct zink_resourc
        */
    }
    check_oom_flush(batch->state->ctx, batch);
-   batch->has_work = true;
+   batch->state->has_work = true;
    simple_mtx_unlock(&bs->ref_lock);
    return false;
 }
@@ -1072,7 +1072,7 @@ zink_batch_reference_program(struct zink_batch *batch,
       return;
    pipe_reference(NULL, &pg->reference);
    zink_batch_usage_set(&pg->batch_uses, batch->state);
-   batch->has_work = true;
+   batch->state->has_work = true;
 }
 
 /* a fast (hopefully) way to check whether a given batch has completed */

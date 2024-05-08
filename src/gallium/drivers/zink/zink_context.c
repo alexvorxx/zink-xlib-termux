@@ -929,13 +929,13 @@ zink_delete_sampler_state(struct pipe_context *pctx,
                           void *sampler_state)
 {
    struct zink_sampler_state *sampler = sampler_state;
-   struct zink_batch *batch = &zink_context(pctx)->batch;
+   struct zink_batch_state *bs = zink_context(pctx)->batch.bs;
    /* may be called if context_create fails */
-   if (batch->bs) {
-      util_dynarray_append(&batch->bs->zombie_samplers, VkSampler,
+   if (bs) {
+      util_dynarray_append(&bs->zombie_samplers, VkSampler,
                            sampler->sampler);
       if (sampler->sampler_clamped)
-         util_dynarray_append(&batch->bs->zombie_samplers, VkSampler,
+         util_dynarray_append(&bs->zombie_samplers, VkSampler,
                               sampler->sampler_clamped);
    }
    if (sampler->custom_border_color)
@@ -3840,7 +3840,6 @@ zink_flush(struct pipe_context *pctx,
    struct zink_context *ctx = zink_context(pctx);
    bool deferred = flags & PIPE_FLUSH_DEFERRED;
    bool deferred_fence = false;
-   struct zink_batch *batch = &ctx->batch;
    struct zink_batch_state *bs = NULL;
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    VkSemaphore export_sem = VK_NULL_HANDLE;
@@ -3892,9 +3891,9 @@ zink_flush(struct pipe_context *pctx,
       };
       VkResult result = VKSCR(CreateSemaphore)(screen->dev, &sci, NULL, &export_sem);
       if (zink_screen_handle_vkresult(screen, result)) {
-         assert(!batch->bs->signal_semaphore);
-         batch->bs->signal_semaphore = export_sem;
-         batch->bs->has_work = true;
+         assert(!ctx->batch.bs->signal_semaphore);
+         ctx->batch.bs->signal_semaphore = export_sem;
+         ctx->batch.bs->has_work = true;
       } else {
          mesa_loge("ZINK: vkCreateSemaphore failed (%s)", vk_Result_to_str(result));
 
@@ -3903,7 +3902,7 @@ zink_flush(struct pipe_context *pctx,
       }
    }
 
-   if (!batch->bs->has_work) {
+   if (!ctx->batch.bs->has_work) {
        if (pfence) {
           /* reuse last fence */
           bs = ctx->last_batch_state;
@@ -3919,7 +3918,7 @@ zink_flush(struct pipe_context *pctx,
        if (ctx->tc && !ctx->track_renderpasses)
          tc_driver_internal_flush_notify(ctx->tc);
    } else {
-      bs = batch->bs;
+      bs = ctx->batch.bs;
       if (deferred && !(flags & PIPE_FLUSH_FENCE_FD) && pfence)
          deferred_fence = true;
       else
@@ -4076,14 +4075,13 @@ zink_texture_barrier(struct pipe_context *pctx, unsigned flags)
 static inline void
 mem_barrier(struct zink_context *ctx, VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage, VkAccessFlags src, VkAccessFlags dst)
 {
-   struct zink_batch *batch = &ctx->batch;
    VkMemoryBarrier mb;
    mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
    mb.pNext = NULL;
    mb.srcAccessMask = src;
    mb.dstAccessMask = dst;
    zink_batch_no_rp(ctx);
-   VKCTX(CmdPipelineBarrier)(batch->bs->cmdbuf, src_stage, dst_stage, 0, 1, &mb, 0, NULL, 0, NULL);
+   VKCTX(CmdPipelineBarrier)(ctx->batch.bs->cmdbuf, src_stage, dst_stage, 0, 1, &mb, 0, NULL, 0, NULL);
 }
 
 void
@@ -5027,7 +5025,7 @@ zink_emit_string_marker(struct pipe_context *pctx,
                         const char *string, int len)
 {
    struct zink_screen *screen = zink_screen(pctx->screen);
-   struct zink_batch *batch = &zink_context(pctx)->batch;
+   struct zink_context *ctx = zink_context(pctx);
 
    /* make sure string is nul-terminated */
    char buf[512], *temp = NULL;
@@ -5043,7 +5041,7 @@ zink_emit_string_marker(struct pipe_context *pctx,
       string,
       { 0 }
    };
-   screen->vk.CmdInsertDebugUtilsLabelEXT(batch->bs->cmdbuf, &label);
+   screen->vk.CmdInsertDebugUtilsLabelEXT(ctx->batch.bs->cmdbuf, &label);
    free(temp);
 }
 

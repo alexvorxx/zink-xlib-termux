@@ -571,6 +571,8 @@ virtio_bo_init(struct tu_device *dev,
          .size = size,
    };
    VkResult result;
+   uint32_t res_id;
+   struct tu_bo *bo;
 
    result = virtio_allocate_userspace_iova(dev, size, client_iova,
                                            flags, &req.iova);
@@ -611,27 +613,28 @@ virtio_bo_init(struct tu_device *dev,
       vdrm_bo_create(vdev->vdrm, size, blob_flags, req.blob_id, &req.hdr);
 
    if (!handle) {
-      util_vma_heap_free(&dev->vma, req.iova, size);
-      return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+      result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      goto fail;
    }
 
-   uint32_t res_id = vdrm_handle_to_res_id(vdev->vdrm, handle);
-   struct tu_bo* bo = tu_device_lookup_bo(dev, res_id);
+   res_id = vdrm_handle_to_res_id(vdev->vdrm, handle);
+   bo = tu_device_lookup_bo(dev, res_id);
    assert(bo && bo->gem_handle == 0);
 
    bo->res_id = res_id;
 
    result = tu_bo_init(dev, bo, handle, size, req.iova, flags, name);
-   if (result != VK_SUCCESS)
+   if (result != VK_SUCCESS) {
       memset(bo, 0, sizeof(*bo));
-   else
-      *out_bo = bo;
+      goto fail;
+   }
+
+   *out_bo = bo;
 
    /* We don't use bo->name here because for the !TU_DEBUG=bo case bo->name is NULL. */
    tu_bo_set_kernel_name(dev, bo, name);
 
-   if (result == VK_SUCCESS &&
-       (mem_property & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) &&
+   if ((mem_property & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) &&
        !(mem_property & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
       tu_bo_map(dev, bo, NULL);
 
@@ -644,6 +647,12 @@ virtio_bo_init(struct tu_device *dev,
       tu_sync_cache_bo(dev, bo, 0, VK_WHOLE_SIZE, TU_MEM_SYNC_CACHE_TO_GPU);
    }
 
+   return VK_SUCCESS;
+
+fail:
+   mtx_lock(&dev->vma_mutex);
+   util_vma_heap_free(&dev->vma, req.iova, size);
+   mtx_unlock(&dev->vma_mutex);
    return result;
 }
 

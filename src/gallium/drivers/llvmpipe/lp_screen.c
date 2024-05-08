@@ -598,7 +598,13 @@ static void
 llvmpipe_get_device_uuid(struct pipe_screen *pscreen, char *uuid)
 {
    memset(uuid, 0, PIPE_UUID_SIZE);
+#pragma GCC diagnostic push
+#if defined(__clang__)
+#pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+#endif /* __clang__ */
    snprintf(uuid, PIPE_UUID_SIZE, "mesa" PACKAGE_VERSION);
+#pragma GCC diagnostic pop
 }
 
 

@@ -682,7 +682,7 @@ struct zink_batch {
 
    unsigned work_count;
 
-   bool last_was_compute;
+   bool last_work_was_compute;
 };
 
 

@@ -1120,7 +1120,7 @@ zink_draw(struct pipe_context *pctx,
    }
 
    batch->state->has_work = true;
-   batch->last_was_compute = false;
+   batch->last_work_was_compute = false;
    ctx->batch.work_count = work_count;
    /* flush if there's >100k draws */
    if (!ctx->unordered_blitting && (unlikely(work_count >= 30000) || ctx->oom_flush))
@@ -1303,7 +1303,7 @@ zink_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
    } else
       VKCTX(CmdDispatch)(batch->state->cmdbuf, info->grid[0], info->grid[1], info->grid[2]);
    batch->state->has_work = true;
-   batch->last_was_compute = true;
+   batch->last_work_was_compute = true;
    /* flush if there's >100k computes */
    if (!ctx->unordered_blitting && (unlikely(ctx->batch.work_count >= 30000) || ctx->oom_flush))
       pctx->flush(pctx, NULL, 0);

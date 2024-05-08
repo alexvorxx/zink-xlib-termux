@@ -3026,6 +3026,10 @@ zink_batch_rp(struct zink_context *ctx)
    else
       clear_buffers = begin_rendering(ctx);
    assert(!ctx->rp_changed);
+   if (ctx->unordered_blitting)
+      ctx->bs->has_reordered_work = true;
+   else
+      ctx->bs->has_work = true;
 
    /* update the render-passes HUD query */
    ctx->hud.render_passes++;
@@ -4071,6 +4075,7 @@ zink_texture_barrier(struct pipe_context *pctx, unsigned flags)
          0, NULL
       );
    }
+   ctx->bs->has_work = true;
 }
 
 static inline void
@@ -4083,6 +4088,7 @@ mem_barrier(struct zink_context *ctx, VkPipelineStageFlags src_stage, VkPipeline
    mb.dstAccessMask = dst;
    zink_batch_no_rp(ctx);
    VKCTX(CmdPipelineBarrier)(ctx->bs->cmdbuf, src_stage, dst_stage, 0, 1, &mb, 0, NULL, 0, NULL);
+   ctx->bs->has_work = true;
 }
 
 void
@@ -5231,6 +5237,7 @@ zink_flush_dgc(struct zink_context *ctx)
 
       pipe_resource_reference(&pres, NULL);
    }
+   ctx->bs->has_work = true;
    util_dynarray_clear(&ctx->dgc.pipelines);
    util_dynarray_clear(&ctx->dgc.tokens);
    ctx->dgc.valid = false;

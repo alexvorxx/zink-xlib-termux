@@ -775,6 +775,7 @@ copy_pool_results_to_buffer(struct zink_context *ctx, struct zink_query *query, 
    util_range_add(&res->base.b, &res->valid_buffer_range, offset, offset + result_size);
    assert(query_id < NUM_QUERIES);
    res->obj->unordered_read = res->obj->unordered_write = false;
+   ctx->bs->has_work = true;
    VKCTX(CmdCopyQueryPoolResults)(ctx->bs->cmdbuf, pool, query_id, num_results, res->obj->buffer,
                                   offset, base_result_size, flags);
    zink_cmd_debug_marker_end(ctx, ctx->bs->cmdbuf, marker);
@@ -1089,6 +1090,7 @@ zink_end_query(struct pipe_context *pctx,
       struct zink_query_start *start = util_dynarray_top_ptr(&query->starts, struct zink_query_start);
       VKCTX(CmdWriteTimestamp)(ctx->bs->cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                start->vkq[0]->pool->query_pool, start->vkq[0]->query_id);
+      ctx->bs->has_work = true;
       zink_batch_usage_set(&query->batch_uses, ctx->bs);
       _mesa_set_add(&ctx->bs->active_queries, query);
       query->needs_update = true;
@@ -1328,6 +1330,7 @@ zink_render_condition(struct pipe_context *pctx,
    VkQueryResultFlagBits flags = 0;
 
    zink_flush_dgc_if_enabled(ctx);
+   ctx->bs->has_work = true;
    if (query == NULL) {
       /* force conditional clears if they exist */
       if (ctx->clears_enabled && !ctx->in_rp)

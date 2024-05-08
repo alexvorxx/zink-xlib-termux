@@ -881,6 +881,7 @@ zink_end_batch(struct zink_context *ctx)
          if (sem)
             util_dynarray_append(&ctx->bs->signal_semaphores, VkSemaphore, sem);
       }
+      bs->has_work = true;
    }
 
    if (screen->threaded_submit) {

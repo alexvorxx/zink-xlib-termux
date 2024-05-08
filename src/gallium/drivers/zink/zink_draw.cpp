@@ -1118,7 +1118,6 @@ zink_draw(struct pipe_context *pctx,
       VKCTX(CmdEndTransformFeedbackEXT)(bs->cmdbuf, 0, ctx->num_so_targets, counter_buffers, counter_buffer_offsets);
    }
 
-   bs->has_work = true;
    ctx->last_work_was_compute = false;
    ctx->work_count = work_count;
    /* flush if there's >100k draws */

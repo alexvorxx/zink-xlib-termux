@@ -676,7 +676,6 @@ zink_batch_state(struct zink_fence *fence)
 struct zink_batch {
    struct zink_batch_state *state;
 
-   struct zink_batch_usage *last_batch_usage;
    struct zink_resource *swapchain;
 
    unsigned work_count;

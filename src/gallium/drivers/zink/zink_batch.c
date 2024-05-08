@@ -554,10 +554,6 @@ zink_start_batch(struct zink_context *ctx, struct zink_batch *batch)
    );
 
    batch->state->fence.completed = false;
-   if (ctx->last_batch_state) {
-      struct zink_batch_state *last_state = ctx->last_batch_state;
-      batch->last_batch_usage = &last_state->usage;
-   }
 
 #ifdef HAVE_RENDERDOC_APP_H
    if (VKCTX(CmdInsertDebugUtilsLabelEXT) && screen->renderdoc_api) {

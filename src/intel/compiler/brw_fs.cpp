@@ -2185,7 +2185,7 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
             cf_count -= 1;
 
          max_pressure = MAX2(max_pressure, rp.regs_live_at_ip[ip]);
-         fprintf(file, "{%3d} %4d: ", rp.regs_live_at_ip[ip], ip);
+         fprintf(file, "{%3d} ", rp.regs_live_at_ip[ip]);
          for (unsigned i = 0; i < cf_count; i++)
             fprintf(file, "  ");
          dump_instruction(inst, file);
@@ -2196,16 +2196,11 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
       }
       fprintf(file, "Maximum %3d registers live at once.\n", max_pressure);
    } else if (cfg && exec_list_is_empty(&instructions)) {
-      unsigned ip = 0;
       foreach_block_and_inst(block, fs_inst, inst, cfg) {
-         fprintf(file, "%4d: ", ip);
          dump_instruction(inst, file);
-         ip++;
       }
    } else {
-      int ip = 0;
       foreach_in_list(fs_inst, inst, &instructions) {
-         fprintf(file, "%4d: ", ip++);
          dump_instruction(inst, file);
       }
    }

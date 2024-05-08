@@ -36,9 +36,6 @@ xe_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_registe
    bool perf_oa_available = false;
    struct stat sb;
 
-   perf->i915_query_supported = false;
-   perf->i915_perf_version = 0;
-
    /* The existence of this file implies that this Xe KMD version supports
     * perf interface.
     */

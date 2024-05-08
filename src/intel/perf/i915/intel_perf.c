@@ -14,6 +14,7 @@
 #include "intel_perf_common.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_private.h"
+#include "util/compiler.h"
 
 #include "drm-uapi/i915_drm.h"
 
@@ -175,11 +176,17 @@ i915_get_sseu(int drm_fd, struct drm_i915_gem_context_param_sseu *sseu)
 bool
 i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_register_snapshots)
 {
+   int version = i915_perf_version(fd);
    bool i915_perf_oa_available = false;
    struct stat sb;
 
-   perf->i915_query_supported = i915_query_perf_config_supported(perf, fd);
-   perf->i915_perf_version = i915_perf_version(fd);
+   if (i915_query_perf_config_supported(perf, fd))
+      perf->features_supported |= INTEL_PERF_FEATURE_QUERY_PERF;
+
+   if (version >= 4)
+      perf->features_supported |= INTEL_PERF_FEATURE_GLOBAL_SSEU;
+   if (version >= 3)
+      perf->features_supported |= INTEL_PERF_FEATURE_HOLD_PREEMPTION;
 
    /* Record the default SSEU configuration. */
    perf->sseu = rzalloc(perf, struct drm_i915_gem_context_param_sseu);

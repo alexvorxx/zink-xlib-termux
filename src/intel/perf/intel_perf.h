@@ -331,15 +331,18 @@ struct intel_perf_query_counter_info {
    } location;
 };
 
-struct intel_perf_config {
+enum intel_perf_features {
+   INTEL_PERF_FEATURE_HOLD_PREEMPTION = (1 << 0),
+   INTEL_PERF_FEATURE_GLOBAL_SSEU = (1 << 1),
    /* Whether i915 has DRM_I915_QUERY_PERF_CONFIG support. */
-   bool i915_query_supported;
+   INTEL_PERF_FEATURE_QUERY_PERF = (1 << 2),
+};
 
+struct intel_perf_config {
    /* Have extended metrics been enabled */
    bool enable_all_metrics;
 
-   /* Version of the i915-perf subsystem, refer to i915_drm.h. */
-   int i915_perf_version;
+   enum intel_perf_features features_supported;
 
    /* Number of bits to shift the OA timestamp values by to match the ring
     * timestamp.
@@ -566,7 +569,7 @@ uint64_t intel_perf_get_oa_format(struct intel_perf_config *perf_cfg);
 static inline bool
 intel_perf_has_hold_preemption(const struct intel_perf_config *perf)
 {
-   return perf->i915_perf_version >= 3;
+   return perf->features_supported & INTEL_PERF_FEATURE_HOLD_PREEMPTION;
 }
 
 /** Whether we have the ability to lock EU array power configuration for the
@@ -576,7 +579,7 @@ intel_perf_has_hold_preemption(const struct intel_perf_config *perf)
 static inline bool
 intel_perf_has_global_sseu(const struct intel_perf_config *perf)
 {
-   return perf->i915_perf_version >= 4;
+   return perf->features_supported & INTEL_PERF_FEATURE_GLOBAL_SSEU;
 }
 
 uint32_t intel_perf_get_n_passes(struct intel_perf_config *perf,

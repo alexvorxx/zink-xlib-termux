@@ -678,7 +678,7 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
 
    /* Consider an invalid as supported. */
    if (fd == -1) {
-      perf->i915_query_supported = true;
+      perf->features_supported = INTEL_PERF_FEATURE_QUERY_PERF;
       return true;
    }
 
@@ -756,7 +756,7 @@ load_oa_metrics(struct intel_perf_config *perf, int fd,
 struct intel_perf_registers *
 intel_perf_load_configuration(struct intel_perf_config *perf_cfg, int fd, const char *guid)
 {
-   if (!perf_cfg->i915_query_supported)
+   if (!(perf_cfg->features_supported & INTEL_PERF_FEATURE_QUERY_PERF))
       return NULL;
 
    switch (perf_cfg->devinfo->kmd_type) {

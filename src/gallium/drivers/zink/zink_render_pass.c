@@ -651,7 +651,6 @@ prep_fb_attachments(struct zink_context *ctx, VkImageView *att)
 static unsigned
 begin_render_pass(struct zink_context *ctx)
 {
-   struct zink_batch *batch = &ctx->batch;
    struct pipe_framebuffer_state *fb_state = &ctx->fb_state;
 
    VkRenderPassBeginInfo rpbi = {0};
@@ -757,7 +756,7 @@ begin_render_pass(struct zink_context *ctx)
 #endif
    rpbi.pNext = &infos;
 
-   VKCTX(CmdBeginRenderPass)(batch->bs->cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+   VKCTX(CmdBeginRenderPass)(ctx->batch.bs->cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
    ctx->in_rp = true;
    return clear_buffers;
 }

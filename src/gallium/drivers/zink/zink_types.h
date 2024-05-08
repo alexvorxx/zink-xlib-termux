@@ -679,8 +679,6 @@ struct zink_batch {
    struct zink_batch_state *state;
 
    struct zink_resource *swapchain;
-
-   unsigned work_count;
 };
 
 
@@ -2034,6 +2032,7 @@ struct zink_context {
    unsigned memory_barrier;
 
    uint32_t ds3_states;
+   unsigned work_count;
 
    uint32_t num_so_targets;
    struct pipe_stream_output_target *so_targets[PIPE_MAX_SO_BUFFERS];

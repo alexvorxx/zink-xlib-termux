@@ -820,7 +820,7 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
    }
    ctx->last_batch_state = bs;
    ctx->batch_states_count++;
-   batch->work_count = 0;
+   ctx->work_count = 0;
 
    /* this is swapchain presentation semaphore handling */
    if (batch->swapchain) {

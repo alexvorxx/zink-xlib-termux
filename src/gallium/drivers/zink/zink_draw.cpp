@@ -504,7 +504,7 @@ zink_draw(struct pipe_context *pctx,
    bool mode_changed = ctx->gfx_pipeline_state.gfx_prim_mode != dinfo->mode;
    bool reads_drawid = ctx->shader_reads_drawid;
    bool reads_basevertex = ctx->shader_reads_basevertex;
-   unsigned work_count = ctx->batch.work_count;
+   unsigned work_count = ctx->work_count;
    enum mesa_prim mode = (enum mesa_prim)dinfo->mode;
 
    if (ctx->memory_barrier && !ctx->blitting)
@@ -1121,7 +1121,7 @@ zink_draw(struct pipe_context *pctx,
 
    batch->state->has_work = true;
    ctx->last_work_was_compute = false;
-   ctx->batch.work_count = work_count;
+   ctx->work_count = work_count;
    /* flush if there's >100k draws */
    if (!ctx->unordered_blitting && (unlikely(work_count >= 30000) || ctx->oom_flush))
       pctx->flush(pctx, NULL, 0);
@@ -1293,7 +1293,7 @@ zink_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
    if (ctx->di.any_bindless_dirty && ctx->curr_compute->base.dd.bindless)
       zink_descriptors_update_bindless(ctx);
 
-   batch->work_count++;
+   ctx->work_count++;
    zink_batch_no_rp(ctx);
    if (!ctx->queries_disabled)
       zink_resume_cs_query(ctx);
@@ -1305,7 +1305,7 @@ zink_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
    batch->state->has_work = true;
    ctx->last_work_was_compute = true;
    /* flush if there's >100k computes */
-   if (!ctx->unordered_blitting && (unlikely(ctx->batch.work_count >= 30000) || ctx->oom_flush))
+   if (!ctx->unordered_blitting && (unlikely(ctx->work_count >= 30000) || ctx->oom_flush))
       pctx->flush(pctx, NULL, 0);
 }
 

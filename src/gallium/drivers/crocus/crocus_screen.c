@@ -48,6 +48,7 @@
 #include "crocus_context.h"
 #include "crocus_defines.h"
 #include "crocus_fence.h"
+#include "crocus_perf.h"
 #include "crocus_pipe.h"
 #include "crocus_resource.h"
 #include "crocus_screen.h"
@@ -624,6 +625,7 @@ crocus_get_timestamp(struct pipe_screen *pscreen)
 void
 crocus_screen_destroy(struct crocus_screen *screen)
 {
+   intel_perf_free(screen->perf_cfg);
    u_transfer_helper_destroy(screen->base.transfer_helper);
    crocus_bufmgr_unref(screen->bufmgr);
    disk_cache_destroy(screen->disk_cache);

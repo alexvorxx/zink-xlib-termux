@@ -41,6 +41,7 @@
 #include "dev/intel_debug.h"
 #include "dev/intel_device_info.h"
 
+#include "perf/i915/intel_perf.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_regs.h"
 #include "perf/intel_perf_mdapi.h"
@@ -362,7 +363,7 @@ init_oa_configs(struct intel_perf_config *perf, int fd,
 static void
 compute_topology_builtins(struct intel_perf_config *perf)
 {
-   const struct intel_device_info *devinfo = &perf->devinfo;
+   const struct intel_device_info *devinfo = perf->devinfo;
 
    perf->sys_vars.slice_mask = devinfo->slice_masks;
    perf->sys_vars.n_eu_slices = devinfo->num_slices;
@@ -725,7 +726,7 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
    if (devinfo->kmd_type != INTEL_KMD_TYPE_I915)
       return false;
 
-   perf->devinfo = *devinfo;
+   perf->devinfo = devinfo;
 
    /* Consider an invalid as supported. */
    if (fd == -1) {
@@ -1180,7 +1181,7 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                            result->accumulator + query->a_offset + 32 + i);
       }
 
-      if (can_use_mi_rpc_bc_counters(&query->perf->devinfo) ||
+      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
           !query->perf->sys_vars.query_mode) {
          /* A36-37 counters are 32bits */
          accumulate_uint32(start + 40, end + 40,
@@ -1222,7 +1223,7 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                            result->accumulator + query->a_offset + 32 + i);
       }
 
-      if (can_use_mi_rpc_bc_counters(&query->perf->devinfo) ||
+      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
           !query->perf->sys_vars.query_mode) {
          /* 8x 32bit B counters */
          for (i = 0; i < 8; i++) {
@@ -1328,7 +1329,7 @@ intel_perf_query_result_accumulate_fields(struct intel_perf_query_result *result
                                           bool no_oa_accumulate)
 {
    const struct intel_perf_query_field_layout *layout = &query->perf->query_layout;
-   const struct intel_device_info *devinfo = &query->perf->devinfo;
+   const struct intel_device_info *devinfo = query->perf->devinfo;
 
    for (uint32_t r = 0; r < layout->n_fields; r++) {
       const struct intel_perf_query_field *field = &layout->fields[r];
@@ -1560,4 +1561,41 @@ intel_perf_init_metrics(struct intel_perf_config *perf_cfg,
 
    if (oa_metrics)
       intel_perf_register_mdapi_oa_query(perf_cfg, devinfo);
+}
+
+void
+intel_perf_free(struct intel_perf_config *perf_cfg)
+{
+   ralloc_free(perf_cfg);
+}
+
+uint64_t
+intel_perf_get_oa_format(struct intel_perf_config *perf_cfg)
+{
+   switch (perf_cfg->devinfo->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return i915_perf_get_oa_format(perf_cfg);
+   default:
+      unreachable("missing");
+      return 0;
+   }
+}
+
+int
+intel_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
+                       uint32_t ctx_id, uint64_t metrics_set_id,
+                       uint64_t period_exponent, bool hold_preemption,
+                       bool enable)
+{
+   uint64_t report_format = intel_perf_get_oa_format(perf_config);
+
+   switch (perf_config->devinfo->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return i915_perf_stream_open(perf_config, drm_fd, ctx_id, metrics_set_id,
+                                   report_format, period_exponent,
+                                   hold_preemption, enable);
+   default:
+         unreachable("missing");
+         return 0;
+   }
 }

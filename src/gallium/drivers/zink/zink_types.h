@@ -644,6 +644,8 @@ struct zink_batch_state {
     * batch_find_resource uses this hint to speed up buffers look up.
     */
    int16_t buffer_indices_hashlist[BUFFER_HASHLIST_SIZE];
+   uint16_t hashlist_min;
+   uint16_t hashlist_max;
    struct zink_batch_obj_list real_objs;
    struct zink_batch_obj_list slab_objs;
    struct zink_batch_obj_list sparse_objs;
@@ -815,6 +817,8 @@ struct zink_shader {
    uint32_t hash;
    struct blob blob;
    struct shader_info info;
+   /* this is deleted in zink_shader_init */
+   nir_shader *nir;
 
    struct zink_shader_info sinfo;
 
@@ -835,7 +839,6 @@ struct zink_shader {
    bool has_uniforms;
    bool has_edgeflags;
    bool needs_inlining;
-   bool uses_sample;
    struct spirv_shader *spirv;
 
    struct {

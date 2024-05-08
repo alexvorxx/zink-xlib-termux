@@ -2286,7 +2286,6 @@ struct v3dv_pipeline {
    bool sample_rate_shading;
    uint32_t sample_mask;
 
-   bool primitive_restart;
    bool negative_one_to_one;
 
    /* Accessed by binding. So vb[binding]->stride is the stride of the vertex
@@ -2348,12 +2347,6 @@ struct v3dv_pipeline {
       /* Mask with enabled color channels for each RT (4 bits per RT) */
       uint32_t color_write_masks;
    } blend;
-
-   /* Depth bias */
-   struct {
-      bool enabled;
-      bool is_z16;
-   } depth_bias;
 
    struct {
       void *mem_ctx;

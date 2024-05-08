@@ -373,7 +373,7 @@ struct intel_perf_config {
       bool     query_mode;          /** $QueryMode */
    } sys_vars;
 
-   struct intel_device_info devinfo;
+   const struct intel_device_info *devinfo;
 
    /* OA metric sets, indexed by GUID, as know by Mesa at build time, to
     * cross-reference with the GUIDs of configs advertised by the kernel at
@@ -532,6 +532,10 @@ intel_perf_new(void *ctx)
    return perf;
 }
 
+void intel_perf_free(struct intel_perf_config *perf_cfg);
+
+uint64_t intel_perf_get_oa_format(struct intel_perf_config *perf_cfg);
+
 /** Whether we have the ability to hold off preemption on a batch so we don't
  * have to look at the OA buffer to subtract unrelated workloads off the
  * values captured through MI_* commands.
@@ -560,6 +564,11 @@ void intel_perf_get_counters_passes(struct intel_perf_config *perf,
                                     const uint32_t *counter_indices,
                                     uint32_t counter_indices_count,
                                     struct intel_perf_counter_pass *counter_pass);
+
+int intel_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
+                           uint32_t ctx_id, uint64_t metrics_set_id,
+                           uint64_t period_exponent, bool hold_preemption,
+                           bool enable);
 
 #ifdef __cplusplus
 } // extern "C"

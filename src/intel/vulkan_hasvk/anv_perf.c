@@ -38,8 +38,6 @@ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
 {
    const struct intel_device_info *devinfo = &device->info;
 
-   device->perf = NULL;
-
    /* We need self modifying batches. The i915 parser prevents it on
     * Gfx7.5 :( maybe one day.
     */
@@ -93,8 +91,8 @@ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
 
    return;
 
- err:
-   ralloc_free(perf);
+err:
+   intel_perf_free(perf);
 }
 
 void
@@ -106,51 +104,11 @@ anv_device_perf_init(struct anv_device *device)
 static int
 anv_device_perf_open(struct anv_device *device, uint64_t metric_id)
 {
-   uint64_t properties[DRM_I915_PERF_PROP_MAX * 2];
-   struct drm_i915_perf_open_param param;
-   int p = 0, stream_fd;
+   uint64_t period_exponent = 31; /* slowest sampling period */
 
-   properties[p++] = DRM_I915_PERF_PROP_SAMPLE_OA;
-   properties[p++] = true;
-
-   properties[p++] = DRM_I915_PERF_PROP_OA_METRICS_SET;
-   properties[p++] = metric_id;
-
-   properties[p++] = DRM_I915_PERF_PROP_OA_FORMAT;
-   properties[p++] = device->info->ver >= 8 ?
-      I915_OA_FORMAT_A32u40_A4u32_B8_C8 :
-      I915_OA_FORMAT_A45_B8_C8;
-
-   properties[p++] = DRM_I915_PERF_PROP_OA_EXPONENT;
-   properties[p++] = 31; /* slowest sampling period */
-
-   properties[p++] = DRM_I915_PERF_PROP_CTX_HANDLE;
-   properties[p++] = device->context_id;
-
-   properties[p++] = DRM_I915_PERF_PROP_HOLD_PREEMPTION;
-   properties[p++] = true;
-
-   /* If global SSEU is available, pin it to the default. This will ensure on
-    * Gfx11 for instance we use the full EU array. Initially when perf was
-    * enabled we would use only half on Gfx11 because of functional
-    * requirements.
-    *
-    * Temporary disable this option on Gfx12.5+, kernel doesn't appear to
-    * support it.
-    */
-   if (intel_perf_has_global_sseu(device->physical->perf)) {
-      properties[p++] = DRM_I915_PERF_PROP_GLOBAL_SSEU;
-      properties[p++] = (uintptr_t) &device->physical->perf->sseu;
-   }
-
-   memset(&param, 0, sizeof(param));
-   param.flags = 0;
-   param.flags |= I915_PERF_FLAG_FD_CLOEXEC | I915_PERF_FLAG_FD_NONBLOCK;
-   param.properties_ptr = (uintptr_t)properties;
-   param.num_properties = p / 2;
-
-   stream_fd = intel_ioctl(device->fd, DRM_IOCTL_I915_PERF_OPEN, &param);
-   return stream_fd;
+   return intel_perf_stream_open(device->physical->perf, device->fd,
+                                 device->context_id, metric_id,
+                                 period_exponent, true, true);
 }
 
 /* VK_INTEL_performance_query */

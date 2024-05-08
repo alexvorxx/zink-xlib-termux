@@ -357,53 +357,9 @@ intel_perf_open(struct intel_perf_context *perf_ctx,
                 uint32_t ctx_id,
                 bool enable)
 {
-   uint64_t properties[DRM_I915_PERF_PROP_MAX * 2];
-   uint32_t p = 0;
-
-   /* Single context sampling if valid context id. */
-   if (ctx_id != INTEL_PERF_INVALID_CTX_ID) {
-      properties[p++] = DRM_I915_PERF_PROP_CTX_HANDLE;
-      properties[p++] = ctx_id;
-   }
-
-   /* Include OA reports in samples */
-   properties[p++] = DRM_I915_PERF_PROP_SAMPLE_OA;
-   properties[p++] = true;
-
-   /* OA unit configuration */
-   properties[p++] = DRM_I915_PERF_PROP_OA_METRICS_SET;
-   properties[p++] = metrics_set_id;
-
-   properties[p++] = DRM_I915_PERF_PROP_OA_FORMAT;
-   properties[p++] = report_format;
-
-   properties[p++] = DRM_I915_PERF_PROP_OA_EXPONENT;
-   properties[p++] = period_exponent;
-
-   /* If global SSEU is available, pin it to the default. This will ensure on
-    * Gfx11 for instance we use the full EU array. Initially when perf was
-    * enabled we would use only half on Gfx11 because of functional
-    * requirements.
-    *
-    * Temporary disable this option on Gfx12.5+, kernel doesn't appear to
-    * support it.
-    */
-   if (intel_perf_has_global_sseu(perf_ctx->perf) &&
-       perf_ctx->devinfo->verx10 < 125) {
-      properties[p++] = DRM_I915_PERF_PROP_GLOBAL_SSEU;
-      properties[p++] = to_user_pointer(&perf_ctx->perf->sseu);
-   }
-
-   assert(p <= ARRAY_SIZE(properties));
-
-   struct drm_i915_perf_open_param param = {
-      .flags = I915_PERF_FLAG_FD_CLOEXEC |
-               I915_PERF_FLAG_FD_NONBLOCK |
-               (enable ? 0 : I915_PERF_FLAG_DISABLED),
-      .num_properties = p / 2,
-      .properties_ptr = (uintptr_t) properties,
-   };
-   int fd = intel_ioctl(drm_fd, DRM_IOCTL_I915_PERF_OPEN, &param);
+   int fd = intel_perf_stream_open(perf_ctx->perf, drm_fd, ctx_id,
+                                   metrics_set_id, period_exponent, false,
+                                   enable);
    if (fd == -1) {
       DBG("Error opening gen perf OA stream: %m\n");
       return false;
@@ -578,6 +534,11 @@ struct intel_perf_config *
 intel_perf_config(struct intel_perf_context *ctx)
 {
    return ctx->perf;
+}
+
+void intel_perf_free_context(struct intel_perf_context *perf_ctx)
+{
+   ralloc_free(perf_ctx);
 }
 
 void

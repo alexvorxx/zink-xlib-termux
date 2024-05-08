@@ -2579,7 +2579,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    return VK_SUCCESS;
 
 fail_perf:
-   ralloc_free(device->perf);
+   intel_perf_free(device->perf);
    free(device->engine_info);
    anv_physical_device_free_disk_cache(device);
 fail_compiler:
@@ -2606,7 +2606,7 @@ anv_physical_device_destroy(struct vk_physical_device *vk_device)
    free(device->engine_info);
    anv_physical_device_free_disk_cache(device);
    ralloc_free(device->compiler);
-   ralloc_free(device->perf);
+   intel_perf_free(device->perf);
    close(device->local_fd);
    if (device->master_fd >= 0)
       close(device->master_fd);

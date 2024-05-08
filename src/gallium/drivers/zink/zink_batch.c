@@ -781,7 +781,7 @@ void
 zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
 {
    if (!ctx->queries_disabled)
-      zink_suspend_queries(ctx, batch);
+      zink_suspend_queries(ctx);
 
 
    struct zink_screen *screen = zink_screen(ctx->base.screen);

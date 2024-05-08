@@ -3011,7 +3011,7 @@ zink_batch_rp(struct zink_context *ctx)
    ctx->queries_in_rp = maybe_has_query_ends;
    /* if possible, out-of-renderpass resume any queries that were stopped when previous rp ended */
    if (!ctx->queries_disabled && !maybe_has_query_ends) {
-      zink_resume_queries(ctx, &ctx->batch);
+      zink_resume_queries(ctx);
       zink_query_update_gs_states(ctx);
    }
    unsigned clear_buffers;
@@ -3043,7 +3043,7 @@ zink_batch_rp(struct zink_context *ctx)
    }
    /* unable to previously determine that queries didn't split renderpasses: ensure queries start inside renderpass */
    if (!ctx->queries_disabled && maybe_has_query_ends) {
-      zink_resume_queries(ctx, &ctx->batch);
+      zink_resume_queries(ctx);
       zink_query_update_gs_states(ctx);
    }
 }

@@ -2122,8 +2122,22 @@ instruction_restrictions(const struct brw_isa_info *isa,
             src_type = brw_inst_3src_a16_src_type(devinfo, inst);
          }
 
-         ERROR_IF(src_type != dst_type,
-                  "CSEL source type must match destination type");
+         if (devinfo->ver == 9) {
+            ERROR_IF(src_type != BRW_TYPE_F,
+                     "CSEL source type must be F");
+         } else {
+            ERROR_IF(src_type != BRW_TYPE_F && src_type != BRW_TYPE_HF &&
+                     src_type != BRW_TYPE_D && src_type != BRW_TYPE_UD &&
+                     src_type != BRW_TYPE_W && src_type != BRW_TYPE_UW,
+                     "CSEL source type must be F, HF, *D, or *W");
+
+            ERROR_IF(brw_type_is_float(src_type) != brw_type_is_float(dst_type),
+                     "CSEL cannot mix float and integer types.");
+
+            ERROR_IF(brw_type_size_bytes(src_type) !=
+                     brw_type_size_bytes(dst_type),
+                     "CSEL cannot mix different type sizes.");
+         }
       }
    }
 

@@ -188,14 +188,16 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
     * before the state is reused
     */
    bs->fence.submitted = false;
-   bs->has_reordered_work = false;
-   bs->has_unsync = false;
    if (bs->fence.batch_id)
       zink_screen_update_last_finished(screen, bs->fence.batch_id);
    bs->fence.batch_id = 0;
    bs->usage.usage = 0;
    bs->next = NULL;
    bs->last_added_obj = NULL;
+
+   bs->has_work = false;
+   bs->has_reordered_work = false;
+   bs->has_unsync = false;
 }
 
 /* this is where deferred resource unrefs occur */
@@ -496,8 +498,6 @@ zink_reset_batch(struct zink_context *ctx)
 {
    ctx->bs = get_batch_state(ctx);
    assert(ctx->bs);
-
-   ctx->bs->has_work = false;
 }
 
 void

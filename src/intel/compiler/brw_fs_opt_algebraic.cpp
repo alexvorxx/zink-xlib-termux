@@ -138,9 +138,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
 
          if (inst->src[0].is_zero() || inst->src[1].is_zero()) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->src[0] = brw_imm_d(0);
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -148,8 +147,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
          /* a * 1.0 = a */
          if (inst->src[1].is_one()) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -157,19 +155,17 @@ brw_fs_opt_algebraic(fs_visitor &s)
          /* a * -1.0 = -a */
          if (inst->src[0].is_negative_one()) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->src[0] = inst->src[1];
             inst->src[0].negate = !inst->src[0].negate;
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
 
          if (inst->src[1].is_negative_one()) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->src[0].negate = !inst->src[0].negate;
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -182,8 +178,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
          if (brw_type_is_int(inst->src[1].type) &&
              inst->src[1].is_zero()) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -191,9 +186,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
          if (inst->src[0].file == IMM) {
             assert(inst->src[0].type == BRW_TYPE_F);
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->src[0].f += inst->src[1].f;
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -205,9 +199,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
             const uint64_t src1 = src_as_uint(inst->src[1]);
 
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->src[0] = brw_imm_for_type(src0 & src1, inst->dst.type);
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -220,9 +213,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
             const uint64_t src1 = src_as_uint(inst->src[1]);
 
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->src[0] = brw_imm_for_type(src0 | src1, inst->dst.type);
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -235,13 +227,11 @@ brw_fs_opt_algebraic(fs_visitor &s)
              */
             if (inst->src[0].negate) {
                inst->opcode = BRW_OPCODE_NOT;
-               inst->sources = 1;
                inst->src[0].negate = false;
             } else {
                inst->opcode = BRW_OPCODE_MOV;
-               inst->sources = 1;
             }
-            inst->src[1] = reg_undef;
+            inst->resize_sources(1);
             progress = true;
             break;
          }
@@ -260,10 +250,9 @@ brw_fs_opt_algebraic(fs_visitor &s)
       case BRW_OPCODE_SEL:
          if (inst->src[0].equals(inst->src[1])) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
-            inst->src[1] = reg_undef;
             inst->predicate = BRW_PREDICATE_NONE;
             inst->predicate_inverse = false;
+            inst->resize_sources(1);
             progress = true;
          } else if (inst->saturate && inst->src[1].file == IMM) {
             switch (inst->conditional_mod) {
@@ -273,9 +262,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
                case BRW_TYPE_F:
                   if (inst->src[1].f >= 1.0f) {
                      inst->opcode = BRW_OPCODE_MOV;
-                     inst->sources = 1;
-                     inst->src[1] = reg_undef;
                      inst->conditional_mod = BRW_CONDITIONAL_NONE;
+                     inst->resize_sources(1);
                      progress = true;
                   }
                   break;
@@ -289,9 +277,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
                case BRW_TYPE_F:
                   if (inst->src[1].f <= 0.0f) {
                      inst->opcode = BRW_OPCODE_MOV;
-                     inst->sources = 1;
-                     inst->src[1] = reg_undef;
                      inst->conditional_mod = BRW_CONDITIONAL_NONE;
+                     inst->resize_sources(1);
                      progress = true;
                   }
                   break;
@@ -310,14 +297,12 @@ brw_fs_opt_algebraic(fs_visitor &s)
             break;
          if (inst->src[1].is_one()) {
             inst->opcode = BRW_OPCODE_ADD;
-            inst->sources = 2;
             inst->src[1] = inst->src[2];
-            inst->src[2] = reg_undef;
+            inst->resize_sources(2);
             progress = true;
          } else if (inst->src[2].is_one()) {
             inst->opcode = BRW_OPCODE_ADD;
-            inst->sources = 2;
-            inst->src[2] = reg_undef;
+            inst->resize_sources(2);
             progress = true;
          }
          break;
@@ -347,8 +332,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
 
             inst->opcode = BRW_OPCODE_MOV;
             inst->src[0] = retype(result, inst->dst.type);
-            inst->src[1] = reg_undef;
-            inst->sources = 1;
+            inst->resize_sources(1);
 
             progress = true;
          }
@@ -357,8 +341,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
       case SHADER_OPCODE_BROADCAST:
          if (is_uniform(inst->src[0])) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
             inst->force_writemask_all = true;
+            inst->resize_sources(1);
             progress = true;
          } else if (inst->src[1].file == IMM) {
             inst->opcode = BRW_OPCODE_MOV;
@@ -373,8 +357,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
              */
             const unsigned comp = inst->src[1].ud & (inst->exec_size - 1);
             inst->src[0] = component(inst->src[0], comp);
-            inst->sources = 1;
             inst->force_writemask_all = true;
+            inst->resize_sources(1);
             progress = true;
          }
          break;
@@ -382,13 +366,13 @@ brw_fs_opt_algebraic(fs_visitor &s)
       case SHADER_OPCODE_SHUFFLE:
          if (is_uniform(inst->src[0])) {
             inst->opcode = BRW_OPCODE_MOV;
-            inst->sources = 1;
+            inst->resize_sources(1);
             progress = true;
          } else if (inst->src[1].file == IMM) {
             inst->opcode = BRW_OPCODE_MOV;
             inst->src[0] = component(inst->src[0],
                                      inst->src[1].ud);
-            inst->sources = 1;
+            inst->resize_sources(1);
             progress = true;
          }
          break;

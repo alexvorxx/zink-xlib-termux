@@ -387,6 +387,9 @@ msm_allocate_userspace_iova(struct tu_device *dev,
    int ret =
       drmCommandWriteRead(dev->fd, DRM_MSM_GEM_INFO, &req, sizeof(req));
    if (ret < 0) {
+      mtx_lock(&dev->vma_mutex);
+      util_vma_heap_free(&dev->vma, *iova, size);
+      mtx_unlock(&dev->vma_mutex);
       mesa_loge("MSM_INFO_SET_IOVA failed! %d (%s)", ret, strerror(errno));
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
@@ -446,6 +449,11 @@ tu_bo_init(struct tu_device *dev,
       if (!new_ptr) {
          dev->bo_count--;
          mtx_unlock(&dev->bo_mutex);
+         if (dev->physical_device->has_set_iova) {
+            mtx_lock(&dev->vma_mutex);
+            util_vma_heap_free(&dev->vma, iova, size);
+            mtx_unlock(&dev->vma_mutex);
+         }
          tu_gem_close(dev, gem_handle);
          return VK_ERROR_OUT_OF_HOST_MEMORY;
       }

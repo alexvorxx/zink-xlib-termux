@@ -3818,24 +3818,6 @@ agx_ia_update_direct(struct agx_context *ctx, const struct pipe_draw_info *info,
 }
 
 static uint64_t
-agx_allocate_geometry_count_buffer(
-   struct agx_batch *batch, const struct pipe_draw_info *info,
-   const struct pipe_draw_start_count_bias *draws)
-{
-   unsigned prim_per_instance =
-      u_decomposed_prims_for_vertices(info->mode, draws->count);
-   unsigned prims = prim_per_instance * info->instance_count;
-
-   unsigned stride = batch->ctx->gs->gs_count_words * 4;
-   unsigned size = prims * stride;
-
-   if (size)
-      return agx_pool_alloc_aligned(&batch->pool, size, 4).gpu;
-   else
-      return 0;
-}
-
-static uint64_t
 agx_batch_geometry_state(struct agx_batch *batch)
 {
    struct agx_context *ctx = batch->ctx;

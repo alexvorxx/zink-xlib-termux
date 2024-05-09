@@ -152,6 +152,7 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
 
    bs->resource_size = 0;
    bs->signal_semaphore = VK_NULL_HANDLE;
+   bs->sparse_semaphore = VK_NULL_HANDLE;
    util_dynarray_clear(&bs->wait_semaphore_stages);
 
    bs->present = VK_NULL_HANDLE;
@@ -649,6 +650,8 @@ submit_queue(void *data, void *gdata, int thread_index)
    /* first submit is just for acquire waits since they have a separate array */
    for (unsigned i = 0; i < ARRAY_SIZE(si); i++)
       si[i].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+   if (bs->sparse_semaphore)
+      util_dynarray_append(&ctx->bs->acquires, VkSemaphore, bs->sparse_semaphore);
    si[ZINK_SUBMIT_WAIT_ACQUIRE].waitSemaphoreCount = util_dynarray_num_elements(&bs->acquires, VkSemaphore);
    si[ZINK_SUBMIT_WAIT_ACQUIRE].pWaitSemaphores = bs->acquires.data;
    while (util_dynarray_num_elements(&bs->acquire_flags, VkPipelineStageFlags) < si[ZINK_SUBMIT_WAIT_ACQUIRE].waitSemaphoreCount) {
@@ -780,6 +783,9 @@ submit_queue(void *data, void *gdata, int thread_index)
       pipe_resource_reference(&pres, NULL);
    }
    _mesa_set_clear(&bs->dmabuf_exports, NULL);
+
+   if (bs->sparse_semaphore)
+      (void)util_dynarray_pop(&ctx->bs->acquires, VkSemaphore);
 
    bs->usage.submit_count++;
 end:
@@ -958,12 +964,6 @@ zink_batch_reference_resource_rw(struct zink_context *ctx, struct zink_resource 
       /* then it already has a batch ref and doesn't need one here */
       zink_batch_reference_resource(ctx, res);
    zink_batch_resource_usage_set(ctx->bs, res, write, res->obj->is_buffer);
-}
-
-void
-zink_batch_add_wait_semaphore(struct zink_context *ctx, VkSemaphore sem)
-{
-   util_dynarray_append(&ctx->bs->acquires, VkSemaphore, sem);
 }
 
 static bool

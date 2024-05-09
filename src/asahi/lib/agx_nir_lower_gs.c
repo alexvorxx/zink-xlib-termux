@@ -876,9 +876,9 @@ collect_components(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 }
 
 /*
- * Create the pre-GS shader. This is a small compute 1x1x1 kernel that patches
- * up the VDM Index List command from the draw to read the produced geometry, as
- * well as updates transform feedack offsets and counters as applicable (TODO).
+ * Create the pre-GS shader. This is a small compute 1x1x1 kernel that produces
+ * an indirect draw to rasterize the produced geometry, as well as updates
+ * transform feedback offsets and counters as applicable.
  */
 static nir_shader *
 agx_nir_create_pre_gs(struct lower_gs_state *state, const nir_shader *libagx,

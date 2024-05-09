@@ -113,7 +113,7 @@ radv_is_storage_image_format_supported(const struct radv_physical_device *pdev, 
    if (format == VK_FORMAT_UNDEFINED)
       return false;
 
-   if (vk_format_is_depth_or_stencil(format))
+   if (vk_format_has_stencil(format))
       return false;
 
    data_format = radv_translate_tex_dataformat(pdev, desc, vk_format_get_first_non_void_channel(format));

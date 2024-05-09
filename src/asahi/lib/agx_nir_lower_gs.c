@@ -1154,6 +1154,15 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
                  nir_shader **gs_copy, nir_shader **pre_gs,
                  enum mesa_prim *out_mode, unsigned *out_count_words)
 {
+   /* Lower I/O as assumed by the rest of GS lowering */
+   if (gs->xfb_info != NULL) {
+      NIR_PASS(_, gs, nir_io_add_const_offset_to_base,
+               nir_var_shader_in | nir_var_shader_out);
+      NIR_PASS(_, gs, nir_io_add_intrinsic_xfb_info);
+   }
+
+   NIR_PASS(_, gs, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
+
    /* Collect output component counts so we can size the geometry output buffer
     * appropriately, instead of assuming everything is vec4.
     */

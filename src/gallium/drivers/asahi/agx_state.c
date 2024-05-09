@@ -1641,15 +1641,6 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
    } else if (nir->info.stage == MESA_SHADER_GEOMETRY) {
       struct asahi_gs_shader_key *key = &key_->gs;
 
-      /* XFB occurs for GS, not VS. TODO: Check if active. */
-      if (nir->xfb_info != NULL) {
-         NIR_PASS(_, nir, nir_io_add_const_offset_to_base,
-                  nir_var_shader_in | nir_var_shader_out);
-         NIR_PASS(_, nir, nir_io_add_intrinsic_xfb_info);
-      }
-
-      NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL, NULL);
-
       NIR_PASS(_, nir, agx_nir_lower_gs, dev->libagx, key->rasterizer_discard,
                &gs_count, &gs_copy, &pre_gs, &gs_out_prim, &gs_out_count_words);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {

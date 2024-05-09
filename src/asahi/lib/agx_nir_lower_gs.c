@@ -167,6 +167,41 @@ load_instance_id(nir_builder *b)
    return nir_channel(b, nir_load_global_invocation_id(b, 32), 1);
 }
 
+/* Geometry shaders use software input assembly. The software vertex shader
+ * is invoked for each index, and the geometry shader applies the topology. This
+ * helper applies the topology.
+ */
+static nir_def *
+vertex_id_for_topology_class(nir_builder *b, nir_def *vert, enum mesa_prim cls)
+{
+   nir_def *prim = nir_load_primitive_id(b);
+   nir_def *flatshade_first = nir_ieq_imm(b, nir_load_provoking_last(b), 0);
+   nir_def *nr = nir_load_num_vertices(b);
+   nir_def *topology = nir_load_input_topology_agx(b);
+
+   switch (cls) {
+   case MESA_PRIM_POINTS:
+      return prim;
+
+   case MESA_PRIM_LINES:
+      return libagx_vertex_id_for_line_class(b, topology, prim, vert, nr);
+
+   case MESA_PRIM_TRIANGLES:
+      return libagx_vertex_id_for_tri_class(b, topology, prim, vert,
+                                            flatshade_first);
+
+   case MESA_PRIM_LINES_ADJACENCY:
+      return libagx_vertex_id_for_line_adj_class(b, topology, prim, vert);
+
+   case MESA_PRIM_TRIANGLES_ADJACENCY:
+      return libagx_vertex_id_for_tri_adj_class(b, topology, prim, vert, nr,
+                                                flatshade_first);
+
+   default:
+      unreachable("invalid topology class");
+   }
+}
+
 nir_def *
 agx_load_per_vertex_input(nir_builder *b, nir_intrinsic_instr *intr,
                           nir_def *vertex)
@@ -193,7 +228,7 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
 
    /* Calculate the vertex ID we're pulling, based on the topology class */
    nir_def *vert_in_prim = intr->src[0].ssa;
-   nir_def *vertex = agx_vertex_id_for_topology_class(
+   nir_def *vertex = vertex_id_for_topology_class(
       b, vert_in_prim, b->shader->info.gs.input_primitive);
 
    /* The unrolled vertex ID uses the input_vertices, which differs from what

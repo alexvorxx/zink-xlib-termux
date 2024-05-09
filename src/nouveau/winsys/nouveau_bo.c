@@ -269,8 +269,11 @@ nouveau_ws_bo_from_dma_buf_locked(struct nouveau_ws_device *dev, int fd)
 
    struct hash_entry *entry =
       _mesa_hash_table_search(dev->bos, (void *)(uintptr_t)handle);
-   if (entry != NULL)
-      return entry->data;
+   if (entry != NULL) {
+      struct nouveau_ws_bo *bo = entry->data;
+      nouveau_ws_bo_ref(bo);
+      return bo;
+   }
 
    /*
     * If we got here, no BO exists for the retrieved handle. If we error

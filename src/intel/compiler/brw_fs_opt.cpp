@@ -65,7 +65,6 @@ brw_fs_optimize(fs_visitor &s)
       OPT(brw_fs_opt_cse_defs);
       if (!OPT(brw_fs_opt_copy_propagation_defs))
          OPT(brw_fs_opt_copy_propagation);
-      OPT(brw_fs_opt_predicated_break);
       OPT(brw_fs_opt_cmod_propagation);
       OPT(brw_fs_opt_dead_code_eliminate);
       OPT(brw_fs_opt_peephole_sel);
@@ -78,6 +77,8 @@ brw_fs_optimize(fs_visitor &s)
 
    progress = false;
    pass_num = 0;
+
+   OPT(brw_fs_opt_predicated_break);
 
    if (OPT(brw_fs_lower_pack)) {
       OPT(brw_fs_opt_register_coalesce);

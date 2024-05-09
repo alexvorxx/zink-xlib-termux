@@ -1142,8 +1142,12 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
    result->end_timestamp = intel_perf_report_timestamp(query, end);
    result->reports_accumulated++;
 
-   switch (query->oa_format) {
-   case I915_OA_FORMAT_A24u40_A14u32_B8_C8:
+   /* oa format handling needs to match with platform version returned in
+    * intel_perf_get_oa_format()
+    */
+   assert(intel_perf_get_oa_format(query->perf) == query->oa_format);
+   if (query->perf->devinfo->verx10 >= 125) {
+      /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
       result->accumulator[query->gpu_time_offset] =
          intel_perf_report_timestamp(query, end) -
          intel_perf_report_timestamp(query, start);
@@ -1201,9 +1205,8 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                               result->accumulator + query->c_offset + i);
          }
       }
-      break;
-
-   case I915_OA_FORMAT_A32u40_A4u32_B8_C8:
+   } else if (query->perf->devinfo->verx10 >= 120) {
+      /* I915_OA_FORMAT_A32u40_A4u32_B8_C8 */
       result->accumulator[query->gpu_time_offset] =
          intel_perf_report_timestamp(query, end) -
          intel_perf_report_timestamp(query, start);
@@ -1237,9 +1240,8 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                               result->accumulator + query->c_offset + i);
          }
       }
-      break;
-
-   case I915_OA_FORMAT_A45_B8_C8:
+   } else {
+      /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
       result->accumulator[query->gpu_time_offset] =
          intel_perf_report_timestamp(query, end) -
          intel_perf_report_timestamp(query, start);
@@ -1248,12 +1250,7 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
          accumulate_uint32(start + 3 + i, end + 3 + i,
                            result->accumulator + query->a_offset + i);
       }
-      break;
-
-   default:
-      unreachable("Can't accumulate OA counters in unknown format");
    }
-
 }
 
 #define GET_FIELD(word, field) (((word)  & field ## _MASK) >> field ## _SHIFT)

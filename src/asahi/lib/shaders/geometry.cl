@@ -466,6 +466,8 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
    uint vertex_count = in_draw[0];
    uint instance_count = in_draw[1];
 
+   ia->verts_per_instance = vertex_count;
+
    /* Calculate number of primitives input into the GS */
    uint prim_per_instance = u_decomposed_prims_for_vertices(mode, vertex_count);
    p->input_primitives = prim_per_instance * instance_count;
@@ -585,4 +587,10 @@ libagx_vertex_output_address(uintptr_t buffer, uint64_t mask, uint vtx,
                              gl_varying_slot location)
 {
    return buffer + libagx_tcs_in_offs(vtx, location, mask);
+}
+
+unsigned
+libagx_input_vertices(constant struct agx_ia_state *ia)
+{
+   return ia->verts_per_instance;
 }

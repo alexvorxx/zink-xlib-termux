@@ -3835,8 +3835,8 @@ agx_batch_geometry_state(struct agx_batch *batch)
 static void
 agx_upload_ia_params(struct agx_batch *batch, const struct pipe_draw_info *info,
                      const struct pipe_draw_indirect_info *indirect,
-                     uint64_t input_index_buffer, size_t index_buffer_size_B,
-                     uint64_t unroll_output)
+                     uint32_t count, uint64_t input_index_buffer,
+                     size_t index_buffer_size_B, uint64_t unroll_output)
 {
    struct agx_ia_state ia = {
       .heap = agx_batch_geometry_state(batch),
@@ -3853,6 +3853,8 @@ agx_upload_ia_params(struct agx_batch *batch, const struct pipe_draw_info *info,
       agx_batch_reads(batch, rsrc);
 
       ia.draws = rsrc->bo->ptr.gpu + indirect->offset;
+   } else {
+      ia.verts_per_instance = count;
    }
 
    batch->uniforms.input_assembly =
@@ -3866,8 +3868,8 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
                           const struct pipe_draw_start_count_bias *draw,
                           const struct pipe_draw_indirect_info *indirect)
 {
-   agx_upload_ia_params(batch, info, indirect, input_index_buffer,
-                        index_buffer_size_B, 0);
+   agx_upload_ia_params(batch, info, indirect, draw ? draw->count : 0,
+                        input_index_buffer, index_buffer_size_B, 0);
 
    struct agx_geometry_params params = {
       .state = agx_batch_geometry_state(batch),
@@ -4125,7 +4127,7 @@ agx_draw_without_restart(struct agx_batch *batch,
       &batch->pool, 5 * sizeof(uint32_t) * indirect->draw_count, 4,
       &out_draws_rsrc.bo);
 
-   agx_upload_ia_params(batch, info, indirect, ib, ib_extent, out_draws.gpu);
+   agx_upload_ia_params(batch, info, indirect, 0, ib, ib_extent, out_draws.gpu);
 
    /* Unroll the index buffer for each draw */
    const struct pipe_grid_info grid_setup = {
@@ -4451,7 +4453,8 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
    if (info->index_size)
       ib = agx_index_buffer_ptr(batch, info, draws, &ib_extent);
 
-   agx_upload_ia_params(batch, info, indirect, ib, ib_extent, 0);
+   agx_upload_ia_params(batch, info, indirect, draws ? draws->count : 0, ib,
+                        ib_extent, 0);
    agx_upload_draw_params(batch, indirect, draws, info);
 
    /* Setup parameters */

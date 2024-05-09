@@ -1378,11 +1378,19 @@ lower_vs_before_gs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
     */
    nir_def *mask = nir_imm_int64(b, b->shader->info.outputs_written);
 
-   nir_def *linear_id =
-      nir_iadd(b,
-               nir_imul(b, load_instance_id(b),
-                        nir_channel(b, nir_load_num_workgroups(b), 0)),
-               load_primitive_id(b));
+   nir_def *nr_verts;
+   if (b->shader->info.stage == MESA_SHADER_VERTEX) {
+      nr_verts =
+         libagx_input_vertices(b, nir_load_input_assembly_buffer_agx(b));
+   } else {
+      /* TODO: Do something similar for tessellation, load_num_workgroups is
+       * annoying in a software graphics shader.
+       */
+      nr_verts = nir_channel(b, nir_load_num_workgroups(b), 0);
+   }
+
+   nir_def *linear_id = nir_iadd(b, nir_imul(b, load_instance_id(b), nr_verts),
+                                 load_primitive_id(b));
 
    nir_def *addr = libagx_vertex_output_address(
       b, nir_load_vs_output_buffer_agx(b), mask, linear_id, location);

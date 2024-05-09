@@ -55,6 +55,11 @@ struct agx_ia_state {
    /* When unrolling primitive restart, output draw descriptors */
    GLOBAL(uint) out_draws;
 
+   /* Number of vertices per instance. Written by CPU for direct draw, indirect
+    * setup kernel for indirect. This is used for VS->GS and VS->TCS indexing.
+    */
+   uint32_t verts_per_instance;
+
    /* Input: maximum draw count, count is clamped to this */
    uint32_t max_draws;
 
@@ -76,7 +81,7 @@ struct agx_ia_state {
    /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
    uint32_t index_size_B;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 18 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 19 * 4);
 
 struct agx_geometry_params {
    /* Persistent (cross-draw) geometry state */

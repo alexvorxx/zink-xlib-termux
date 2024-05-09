@@ -220,13 +220,6 @@ vc4_nir_lower_fs_input(struct vc4_compile *c, nir_builder *b,
 {
         b->cursor = nir_after_instr(&intr->instr);
 
-        if (nir_intrinsic_base(intr) >= VC4_NIR_TLB_COLOR_READ_INPUT &&
-            nir_intrinsic_base(intr) < (VC4_NIR_TLB_COLOR_READ_INPUT +
-                                        VC4_MAX_SAMPLES)) {
-                /* This doesn't need any lowering. */
-                return;
-        }
-
         nir_variable *input_var =
                 nir_find_variable_with_driver_location(c->s, nir_var_shader_in,
                                                        nir_intrinsic_base(intr));

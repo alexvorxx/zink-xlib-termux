@@ -57,8 +57,8 @@ blend_depends_on_dst_color(struct vc4_compile *c)
 static nir_def *
 vc4_nir_get_dst_color(nir_builder *b, int sample)
 {
-        return nir_load_input(b, 1, 32, nir_imm_int(b, 0),
-                              .base = VC4_NIR_TLB_COLOR_READ_INPUT + sample);
+        return nir_load_tlb_color_brcm(b, 1, 32, nir_imm_int(b, 0),
+                                       .base = sample);
 }
 
 static nir_def *

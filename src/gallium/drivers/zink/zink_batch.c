@@ -156,12 +156,14 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
 
    bs->present = VK_NULL_HANDLE;
    /* check the arrays first to avoid locking unnecessarily */
-   if (util_dynarray_contains(&bs->acquires, VkSemaphore) || util_dynarray_contains(&bs->wait_semaphores, VkSemaphore)) {
+   if (util_dynarray_contains(&bs->acquires, VkSemaphore) || util_dynarray_contains(&bs->wait_semaphores, VkSemaphore) || util_dynarray_contains(&bs->tracked_semaphores, VkSemaphore)) {
       simple_mtx_lock(&screen->semaphores_lock);
       util_dynarray_append_dynarray(&screen->semaphores, &bs->acquires);
       util_dynarray_clear(&bs->acquires);
       util_dynarray_append_dynarray(&screen->semaphores, &bs->wait_semaphores);
       util_dynarray_clear(&bs->wait_semaphores);
+      util_dynarray_append_dynarray(&screen->semaphores, &bs->tracked_semaphores);
+      util_dynarray_clear(&bs->tracked_semaphores);
       simple_mtx_unlock(&screen->semaphores_lock);
    }
    if (util_dynarray_contains(&bs->signal_semaphores, VkSemaphore) || util_dynarray_contains(&bs->fd_wait_semaphores, VkSemaphore)) {
@@ -316,6 +318,7 @@ zink_batch_state_destroy(struct zink_screen *screen, struct zink_batch_state *bs
    util_dynarray_fini(&bs->wait_semaphore_stages);
    util_dynarray_fini(&bs->fd_wait_semaphores);
    util_dynarray_fini(&bs->fd_wait_semaphore_stages);
+   util_dynarray_fini(&bs->tracked_semaphores);
    util_dynarray_fini(&bs->acquire_flags);
    unsigned num_mfences = util_dynarray_num_elements(&bs->fence.mfences, void *);
    struct zink_tc_fence **mfence = bs->fence.mfences.data;
@@ -395,6 +398,7 @@ create_batch_state(struct zink_context *ctx)
    SET_CREATE_OR_FAIL(&bs->dmabuf_exports);
    util_dynarray_init(&bs->signal_semaphores, NULL);
    util_dynarray_init(&bs->wait_semaphores, NULL);
+   util_dynarray_init(&bs->tracked_semaphores, NULL);
    util_dynarray_init(&bs->fd_wait_semaphores, NULL);
    util_dynarray_init(&bs->fences, NULL);
    util_dynarray_init(&bs->dead_querypools, NULL);

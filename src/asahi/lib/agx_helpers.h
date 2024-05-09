@@ -107,6 +107,12 @@ agx_translate_index_size(uint8_t size_B)
    return __builtin_ctz(size_B);
 }
 
+static inline uint8_t
+agx_index_size_to_B(enum agx_index_size size)
+{
+   return 1 << size;
+}
+
 static enum agx_conservative_depth
 agx_translate_depth_layout(enum gl_frag_depth_layout layout)
 {

@@ -579,13 +579,10 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
                        .src_type = nir_type_uint32);
    }
 
-   /* In OpenGL ES, it is legal to omit the point size write from the geometry
-    * shader when drawing points. In this case, the point size is
-    * implicitly 1.0. We implement this by inserting this synthetic
-    * `gl_PointSize = 1.0` write into the GS copy shader, if the GS does not
-    * export a point size while drawing points.
-    *
-    * This should not be load bearing for other APIs, but should be harmless.
+   /* It is legal to omit the point size write from the geometry shader when
+    * drawing points. In this case, the point size is implicitly 1.0. To
+    * implement, insert a synthetic `gl_PointSize = 1.0` write into the GS copy
+    * shader, if the GS does not export a point size while drawing points.
     */
    bool is_points = gs->info.gs.output_primitive == MESA_PRIM_POINTS;
 

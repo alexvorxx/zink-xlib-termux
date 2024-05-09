@@ -217,9 +217,9 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
 static nir_def *
 calc_unrolled_id(nir_builder *b)
 {
-   return nir_iadd(b,
-                   nir_imul(b, load_instance_id(b), nir_load_num_vertices(b)),
-                   load_primitive_id(b));
+   return nir_iadd(
+      b, nir_imul(b, load_instance_id(b), load_geometry_param(b, gs_grid[0])),
+      load_primitive_id(b));
 }
 
 static unsigned
@@ -1341,9 +1341,8 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
 
 /*
  * Vertex shaders (tessellation evaluation shaders) before a geometry shader run
- * as a dedicated compute prepass. They are invoked as (count, instances, 1),
- * equivalent to a geometry shader inputting POINTS, so the vertex output buffer
- * is indexed according to calc_unrolled_id.
+ * as a dedicated compute prepass. They are invoked as (count, instances, 1).
+ * Their linear ID is therefore (instances * num vertices) + vertex ID.
  *
  * This function lowers their vertex shader I/O to compute.
  *
@@ -1365,8 +1364,12 @@ lower_vs_before_gs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
     */
    nir_def *mask = nir_imm_int64(b, b->shader->info.outputs_written);
 
+   nir_def *linear_id =
+      nir_iadd(b, nir_imul(b, load_instance_id(b), nir_load_num_vertices(b)),
+               load_primitive_id(b));
+
    nir_def *addr = libagx_vertex_output_address(
-      b, nir_load_vs_output_buffer_agx(b), mask, calc_unrolled_id(b), location);
+      b, nir_load_vs_output_buffer_agx(b), mask, linear_id, location);
 
    assert(nir_src_bit_size(intr->src[0]) == 32);
    addr = nir_iadd_imm(b, addr, nir_intrinsic_component(intr) * 4);

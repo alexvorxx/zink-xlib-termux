@@ -3933,6 +3933,8 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
       params.count_buffer_stride = count_buffer_stride;
       batch->uniforms.vertex_output_buffer_ptr =
          agx_pool_alloc_aligned(&batch->pool, 8, 8).gpu;
+
+      params.vs_grid[2] = params.gs_grid[2] = 1;
    } else {
       params.vs_grid[0] = draw->count;
       params.gs_grid[0] =

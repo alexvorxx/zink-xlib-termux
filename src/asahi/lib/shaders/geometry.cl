@@ -470,14 +470,12 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
    uint prim_per_instance = u_decomposed_prims_for_vertices(mode, vertex_count);
    p->input_primitives = prim_per_instance * instance_count;
 
-   /* Invoke VS as (vertices, instances, 1); GS as (primitives, instances, 1) */
+   /* Invoke VS as (vertices, instances); GS as (primitives, instances) */
    p->vs_grid[0] = vertex_count;
    p->vs_grid[1] = instance_count;
-   p->vs_grid[2] = 1;
 
    p->gs_grid[0] = prim_per_instance;
    p->gs_grid[1] = instance_count;
-   p->gs_grid[2] = 1;
 
    p->primitives_log2 = util_logbase2_ceil(prim_per_instance);
 

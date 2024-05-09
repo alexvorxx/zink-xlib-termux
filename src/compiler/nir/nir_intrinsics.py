@@ -1774,14 +1774,14 @@ system_value("ray_tracing_stack_base_lvp", 1)
 
 system_value("shader_call_data_offset_lvp", 1)
 
-# V3D-specific instrinc for tile buffer color reads.
+# Broadcom-specific instrinc for tile buffer color reads.
 #
 # The hardware requires that we read the samples and components of a pixel
 # in order, so we cannot eliminate or remove any loads in a sequence.
 #
 # src[] = { render_target }
 # BASE = sample index
-load("tlb_color_v3d", [1], [BASE, COMPONENT], [])
+load("tlb_color_brcm", [1], [BASE, COMPONENT], [])
 
 # V3D-specific instrinc for per-sample tile buffer color writes.
 #

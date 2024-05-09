@@ -377,8 +377,6 @@ lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    else if (intr->intrinsic == nir_intrinsic_load_instance_id &&
             *lower_instance)
       id = load_instance_id(b);
-   else if (intr->intrinsic == nir_intrinsic_load_num_vertices)
-      id = nir_channel(b, nir_load_num_workgroups(b), 0);
    else if (intr->intrinsic == nir_intrinsic_load_flat_mask)
       id = load_geometry_param(b, flat_outputs);
    else if (intr->intrinsic == nir_intrinsic_load_input_topology_agx)
@@ -1389,7 +1387,9 @@ lower_vs_before_gs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    nir_def *mask = nir_imm_int64(b, b->shader->info.outputs_written);
 
    nir_def *linear_id =
-      nir_iadd(b, nir_imul(b, load_instance_id(b), nir_load_num_vertices(b)),
+      nir_iadd(b,
+               nir_imul(b, load_instance_id(b),
+                        nir_channel(b, nir_load_num_workgroups(b), 0)),
                load_primitive_id(b));
 
    nir_def *addr = libagx_vertex_output_address(

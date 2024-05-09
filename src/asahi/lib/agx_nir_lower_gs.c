@@ -176,7 +176,7 @@ vertex_id_for_topology_class(nir_builder *b, nir_def *vert, enum mesa_prim cls)
 {
    nir_def *prim = nir_load_primitive_id(b);
    nir_def *flatshade_first = nir_ieq_imm(b, nir_load_provoking_last(b), 0);
-   nir_def *nr = nir_load_num_vertices(b);
+   nir_def *nr = load_geometry_param(b, gs_grid[0]);
    nir_def *topology = nir_load_input_topology_agx(b);
 
    switch (cls) {

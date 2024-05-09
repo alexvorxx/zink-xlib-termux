@@ -478,12 +478,6 @@ lower_to_gs_rast(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       nir_def_rewrite_uses(&intr->def, state->instance_id);
       return true;
 
-   case nir_intrinsic_load_num_vertices: {
-      b->cursor = nir_before_instr(&intr->instr);
-      nir_def_rewrite_uses(&intr->def, load_geometry_param(b, gs_grid[0]));
-      return true;
-   }
-
    case nir_intrinsic_load_flat_mask:
    case nir_intrinsic_load_provoking_last:
    case nir_intrinsic_load_input_topology_agx: {

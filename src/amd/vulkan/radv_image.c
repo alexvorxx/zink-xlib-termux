@@ -383,6 +383,9 @@ radv_use_htile_for_image(const struct radv_device *device, const struct radv_ima
        (compression && compression->flags == VK_IMAGE_COMPRESSION_DISABLED_EXT))
       return false;
 
+   if (image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT)
+      return false;
+
    /* TODO:
     * - Investigate about mips+layers.
     * - Enable on other gens.

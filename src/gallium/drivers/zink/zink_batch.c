@@ -1059,7 +1059,6 @@ zink_batch_reference_resource_move(struct zink_context *ctx, struct zink_resourc
        */
    }
    check_oom_flush(bs->ctx);
-   bs->has_work = true;
    simple_mtx_unlock(&bs->ref_lock);
    return false;
 }

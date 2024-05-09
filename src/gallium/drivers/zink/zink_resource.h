@@ -187,8 +187,6 @@ zink_batch_resource_usage_set(struct zink_batch_state *bs, struct zink_resource 
       }
    }
    zink_resource_usage_set(res, bs, write);
-
-   bs->has_work = true;
 }
 
 void

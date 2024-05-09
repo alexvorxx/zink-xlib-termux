@@ -551,6 +551,23 @@ setup_empty_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue)
    return VK_SUCCESS;
 }
 
+static void
+setup_execbuf_fence_params(struct anv_execbuf *execbuf)
+{
+   if (execbuf->syncobj_values) {
+      execbuf->timeline_fences.fence_count = execbuf->syncobj_count;
+      execbuf->timeline_fences.handles_ptr = (uintptr_t)execbuf->syncobjs;
+      execbuf->timeline_fences.values_ptr = (uintptr_t)execbuf->syncobj_values;
+      anv_execbuf_add_ext(execbuf,
+                          DRM_I915_GEM_EXECBUFFER_EXT_TIMELINE_FENCES,
+                          &execbuf->timeline_fences.base);
+   } else if (execbuf->syncobjs) {
+      execbuf->execbuf.flags |= I915_EXEC_FENCE_ARRAY;
+      execbuf->execbuf.num_cliprects = execbuf->syncobj_count;
+      execbuf->execbuf.cliprects_ptr = (uintptr_t)execbuf->syncobjs;
+   }
+}
+
 static VkResult
 setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
                      struct anv_utrace_submit *submit)
@@ -615,13 +632,12 @@ setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
       .batch_len = submit->batch.next - submit->batch.start,
       .flags = I915_EXEC_NO_RELOC |
                I915_EXEC_HANDLE_LUT |
-               I915_EXEC_FENCE_ARRAY |
                exec_flags,
       .rsvd1 = context_id,
       .rsvd2 = 0,
-      .num_cliprects = execbuf->syncobj_count,
-      .cliprects_ptr = (uintptr_t)execbuf->syncobjs,
    };
+
+   setup_execbuf_fence_params(execbuf);
 
    return VK_SUCCESS;
 }
@@ -695,23 +711,6 @@ anv_i915_debug_submit(const struct anv_execbuf *execbuf)
               bo->offset, bo->offset + bo->size - 1, bo->size / 1024,
               bo->gem_handle, (bo->flags & EXEC_OBJECT_CAPTURE) != 0,
               anv_bo_is_vram_only(bo), bo->name);
-   }
-}
-
-static void
-setup_execbuf_fence_params(struct anv_execbuf *execbuf)
-{
-   if (execbuf->syncobj_values) {
-      execbuf->timeline_fences.fence_count = execbuf->syncobj_count;
-      execbuf->timeline_fences.handles_ptr = (uintptr_t)execbuf->syncobjs;
-      execbuf->timeline_fences.values_ptr = (uintptr_t)execbuf->syncobj_values;
-      anv_execbuf_add_ext(execbuf,
-                          DRM_I915_GEM_EXECBUFFER_EXT_TIMELINE_FENCES,
-                          &execbuf->timeline_fences.base);
-   } else if (execbuf->syncobjs) {
-      execbuf->execbuf.flags |= I915_EXEC_FENCE_ARRAY;
-      execbuf->execbuf.num_cliprects = execbuf->syncobj_count;
-      execbuf->execbuf.cliprects_ptr = (uintptr_t)execbuf->syncobjs;
    }
 }
 

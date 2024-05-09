@@ -637,14 +637,16 @@ anv_load_fp64_shader(struct anv_device *device)
    if (device->fp64_nir)
       return;
 
+   const struct spirv_capabilities spirv_caps = {
+      .Addresses = true,
+      .Float64 = true,
+      .Int8 = true,
+      .Int16 = true,
+      .Int64 = true,
+   };
+
    struct spirv_to_nir_options spirv_options = {
-      .caps = {
-         .address = true,
-         .float64 = true,
-         .int8 = true,
-         .int16 = true,
-         .int64 = true,
-      },
+      .capabilities = &spirv_caps,
       .environment = NIR_SPIRV_VULKAN,
       .create_library = true
    };

@@ -400,6 +400,16 @@ radv_cmd_buffer_reset_rendering(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
+radv_reset_tracked_regs(struct radv_cmd_buffer *cmd_buffer)
+{
+   struct radv_tracked_regs *tracked_regs = &cmd_buffer->tracked_regs;
+
+   /* Mark all registers as unknown. */
+   memset(tracked_regs->reg_value, 0, RADV_NUM_ALL_TRACKED_REGS * sizeof(uint32_t));
+   BITSET_ZERO(tracked_regs->reg_saved_mask);
+}
+
+static void
 radv_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer, UNUSED VkCommandBufferResetFlags flags)
 {
    struct radv_cmd_buffer *cmd_buffer = container_of(vk_cmd_buffer, struct radv_cmd_buffer, vk);
@@ -1638,12 +1648,8 @@ radv_emit_binning_state(struct radv_cmd_buffer *cmd_buffer)
 
    pa_sc_binner_cntl_0 = radv_get_binning_state(cmd_buffer);
 
-   if (pa_sc_binner_cntl_0 == cmd_buffer->state.last_pa_sc_binner_cntl_0)
-      return;
-
-   radeon_set_context_reg(cmd_buffer->cs, R_028C44_PA_SC_BINNER_CNTL_0, pa_sc_binner_cntl_0);
-
-   cmd_buffer->state.last_pa_sc_binner_cntl_0 = pa_sc_binner_cntl_0;
+   radeon_opt_set_context_reg(cmd_buffer, R_028C44_PA_SC_BINNER_CNTL_0, RADV_TRACKED_PA_SC_BINNER_CNTL_0,
+                              pa_sc_binner_cntl_0);
 }
 
 static void
@@ -1837,18 +1843,8 @@ radv_emit_rbplus_state(struct radv_cmd_buffer *cmd_buffer)
     * breaks dual source blending in SkQP and does not seem to improve
     * performance. */
 
-   if (sx_ps_downconvert != cmd_buffer->state.last_sx_ps_downconvert ||
-       sx_blend_opt_epsilon != cmd_buffer->state.last_sx_blend_opt_epsilon ||
-       sx_blend_opt_control != cmd_buffer->state.last_sx_blend_opt_control) {
-      radeon_set_context_reg_seq(cmd_buffer->cs, R_028754_SX_PS_DOWNCONVERT, 3);
-      radeon_emit(cmd_buffer->cs, sx_ps_downconvert);
-      radeon_emit(cmd_buffer->cs, sx_blend_opt_epsilon);
-      radeon_emit(cmd_buffer->cs, sx_blend_opt_control);
-
-      cmd_buffer->state.last_sx_ps_downconvert = sx_ps_downconvert;
-      cmd_buffer->state.last_sx_blend_opt_epsilon = sx_blend_opt_epsilon;
-      cmd_buffer->state.last_sx_blend_opt_control = sx_blend_opt_control;
-   }
+   radeon_opt_set_context_reg3(cmd_buffer, R_028754_SX_PS_DOWNCONVERT, RADV_TRACKED_SX_PS_DOWNCONVERT,
+                               sx_ps_downconvert, sx_blend_opt_epsilon, sx_blend_opt_control);
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_RBPLUS;
 }
@@ -2525,10 +2521,8 @@ radv_emit_primitive_restart_enable(struct radv_cmd_buffer *cmd_buffer)
       if (en && gfx_level <= GFX7) {
          const uint32_t primitive_reset_index = radv_get_primitive_reset_index(cmd_buffer);
 
-         if (primitive_reset_index != cmd_buffer->state.last_primitive_reset_index) {
-            radeon_set_context_reg(cs, R_02840C_VGT_MULTI_PRIM_IB_RESET_INDX, primitive_reset_index);
-            cmd_buffer->state.last_primitive_reset_index = primitive_reset_index;
-         }
+         radeon_opt_set_context_reg(cmd_buffer, R_02840C_VGT_MULTI_PRIM_IB_RESET_INDX,
+                                    RADV_TRACKED_VGT_MULTI_PRIM_IB_RESET_INDX, primitive_reset_index);
       }
    }
 }
@@ -3879,13 +3873,7 @@ radv_flush_occlusion_query_state(struct radv_cmd_buffer *cmd_buffer)
       }
    }
 
-   if (db_count_control != cmd_buffer->state.last_db_count_control) {
-      radeon_set_context_reg(cmd_buffer->cs, R_028004_DB_COUNT_CONTROL, db_count_control);
-
-      cmd_buffer->state.context_roll_without_scissor_emitted = true;
-
-      cmd_buffer->state.last_db_count_control = db_count_control;
-   }
+   radeon_opt_set_context_reg(cmd_buffer, R_028004_DB_COUNT_CONTROL, RADV_TRACKED_DB_COUNT_CONTROL, db_count_control);
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_OCCLUSION_QUERY;
 }
@@ -6073,15 +6061,12 @@ radv_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBegi
    cmd_buffer->state.last_drawid = -1;
    cmd_buffer->state.last_subpass_color_count = MAX_RTS;
    cmd_buffer->state.predication_type = -1;
-   cmd_buffer->state.last_sx_ps_downconvert = -1;
-   cmd_buffer->state.last_sx_blend_opt_epsilon = -1;
-   cmd_buffer->state.last_sx_blend_opt_control = -1;
    cmd_buffer->state.mesh_shading = false;
    cmd_buffer->state.last_vrs_rates = -1;
    cmd_buffer->state.last_vrs_rates_sgpr_idx = -1;
-   cmd_buffer->state.last_pa_sc_binner_cntl_0 = -1;
-   cmd_buffer->state.last_db_count_control = -1;
-   cmd_buffer->state.last_db_shader_control = -1;
+
+   radv_reset_tracked_regs(cmd_buffer);
+
    cmd_buffer->usage_flags = pBeginInfo->flags;
 
    cmd_buffer->state.dirty |=
@@ -8076,10 +8061,6 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
          primary->state.emitted_compute_pipeline = secondary->state.emitted_compute_pipeline;
       }
 
-      if (secondary->state.last_primitive_reset_index) {
-         primary->state.last_primitive_reset_index = secondary->state.last_primitive_reset_index;
-      }
-
       if (secondary->state.last_ia_multi_vgt_param) {
          primary->state.last_ia_multi_vgt_param = secondary->state.last_ia_multi_vgt_param;
       }
@@ -8090,9 +8071,6 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
 
       primary->state.last_num_instances = secondary->state.last_num_instances;
       primary->state.last_subpass_color_count = secondary->state.last_subpass_color_count;
-      primary->state.last_sx_ps_downconvert = secondary->state.last_sx_ps_downconvert;
-      primary->state.last_sx_blend_opt_epsilon = secondary->state.last_sx_blend_opt_epsilon;
-      primary->state.last_sx_blend_opt_control = secondary->state.last_sx_blend_opt_control;
 
       if (secondary->state.last_index_type != -1) {
          primary->state.last_index_type = secondary->state.last_index_type;
@@ -8101,13 +8079,17 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
       primary->state.last_vrs_rates = secondary->state.last_vrs_rates;
       primary->state.last_vrs_rates_sgpr_idx = secondary->state.last_vrs_rates_sgpr_idx;
 
-      primary->state.last_pa_sc_binner_cntl_0 = secondary->state.last_pa_sc_binner_cntl_0;
-
-      primary->state.last_db_shader_control = secondary->state.last_db_shader_control;
-
       primary->state.rb_noncoherent_dirty |= secondary->state.rb_noncoherent_dirty;
 
       primary->state.uses_draw_indirect |= secondary->state.uses_draw_indirect;
+
+      for (uint32_t reg = 0; reg < RADV_NUM_ALL_TRACKED_REGS; reg++) {
+         if (!BITSET_TEST(secondary->tracked_regs.reg_saved_mask, reg))
+            continue;
+
+         BITSET_SET(primary->tracked_regs.reg_saved_mask, reg);
+         primary->tracked_regs.reg_value[reg] = secondary->tracked_regs.reg_value[reg];
+      }
    }
 
    /* After executing commands from secondary buffers we have to dirty
@@ -8123,7 +8105,6 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
    primary->state.last_first_instance = -1;
    primary->state.last_drawid = -1;
    primary->state.last_vertex_offset_valid = false;
-   primary->state.last_db_count_control = -1;
 }
 
 static void
@@ -9445,11 +9426,8 @@ radv_emit_db_shader_control(struct radv_cmd_buffer *cmd_buffer)
       }
    }
 
-   if (db_shader_control != cmd_buffer->state.last_db_shader_control) {
-      radeon_set_context_reg(cmd_buffer->cs, R_02880C_DB_SHADER_CONTROL, db_shader_control);
-
-      cmd_buffer->state.last_db_shader_control = db_shader_control;
-   }
+   radeon_opt_set_context_reg(cmd_buffer, R_02880C_DB_SHADER_CONTROL, RADV_TRACKED_DB_SHADER_CONTROL,
+                              db_shader_control);
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_DB_SHADER_CONTROL;
 }

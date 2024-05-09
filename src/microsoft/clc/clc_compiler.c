@@ -617,6 +617,15 @@ clc_libclc_new(const struct clc_logger *logger, const struct clc_libclc_options 
       return NULL;
    }
 
+   const struct spirv_capabilities libclc_spirv_caps = {
+      .Addresses = true,
+      .Float64 = true,
+      .Int8 = true,
+      .Int16 = true,
+      .Int64 = true,
+      .Kernel = true,
+      .Linkage = true,
+   };
    const struct spirv_to_nir_options libclc_spirv_options = {
       .environment = NIR_SPIRV_OPENCL,
       .create_library = true,
@@ -625,15 +634,7 @@ clc_libclc_new(const struct clc_logger *logger, const struct clc_libclc_options 
       .shared_addr_format = nir_address_format_32bit_offset_as_64bit,
       .temp_addr_format = nir_address_format_32bit_offset_as_64bit,
       .float_controls_execution_mode = FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32,
-      .caps = {
-         .address = true,
-         .float64 = true,
-         .int8 = true,
-         .int16 = true,
-         .int64 = true,
-         .kernel = true,
-         .linkage = true,
-      },
+      .capabilities = &libclc_spirv_caps,
    };
 
    glsl_type_singleton_init_or_ref();
@@ -748,6 +749,7 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       .shared_addr_format = nir_address_format_32bit_offset_as_64bit,
       .temp_addr_format = nir_address_format_32bit_offset_as_64bit,
       .float_controls_execution_mode = FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32,
+      .printf = true,
       .caps = {
          .address = true,
          .float64 = true,
@@ -758,7 +760,6 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
          .kernel_image = true,
          .kernel_image_read_write = true,
          .literal_sampler = true,
-         .printf = true,
 
          // These aren't fully supported, but silence warnings about them from
          // code that doesn't really use them.

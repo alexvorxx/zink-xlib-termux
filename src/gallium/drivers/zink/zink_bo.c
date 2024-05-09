@@ -831,6 +831,8 @@ buffer_bo_commit(struct zink_context *ctx, struct zink_resource *res, uint32_t o
                ok = false;
                goto out;
             }
+            if (cur_sem)
+               util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
             cur_sem = buffer_commit_single(screen, res, backing->bo, backing_start,
                                            (uint64_t)span_va_page * ZINK_SPARSE_BUFFER_PAGE_SIZE,
                                            (uint64_t)backing_size * ZINK_SPARSE_BUFFER_PAGE_SIZE, true, cur_sem);
@@ -866,6 +868,8 @@ buffer_bo_commit(struct zink_context *ctx, struct zink_resource *res, uint32_t o
          }
 
          if (!done) {
+            if (cur_sem)
+               util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
             cur_sem = buffer_commit_single(screen, res, NULL, 0,
                                            (uint64_t)base_page * ZINK_SPARSE_BUFFER_PAGE_SIZE,
                                            (uint64_t)(end_va_page - base_page) * ZINK_SPARSE_BUFFER_PAGE_SIZE, false, cur_sem);
@@ -1072,6 +1076,8 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                      }
                      if (level >= res->sparse.imageMipTailFirstLod) {
                         uint32_t offset = res->sparse.imageMipTailOffset;
+                        if (cur_sem)
+                           util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
                         cur_sem = texture_commit_miptail(screen, res, backing[i]->bo, backing_start[i], offset, commit, cur_sem);
                         if (cur_sem)
                            res->obj->miptail_commits++;
@@ -1126,6 +1132,8 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                      assert(res->obj->miptail_commits);
                      res->obj->miptail_commits--;
                      if (!res->obj->miptail_commits) {
+                        if (cur_sem)
+                           util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
                         cur_sem = texture_commit_miptail(screen, res, NULL, 0, offset, commit, cur_sem);
                         if (!cur_sem)
                            ok = false;
@@ -1138,6 +1146,8 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                }
             }
             if (i == ARRAY_SIZE(ibind)) {
+               if (cur_sem)
+                  util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
                cur_sem = texture_commit_single(screen, res, ibind, ARRAY_SIZE(ibind), commit, cur_sem);
                if (!cur_sem) {
                   for (unsigned s = 0; s < i; s++) {
@@ -1157,6 +1167,8 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
       }
    }
    if (commits_pending) {
+      if (cur_sem)
+         util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
       cur_sem = texture_commit_single(screen, res, ibind, i, commit, cur_sem);
       if (!cur_sem) {
          for (unsigned s = 0; s < i; s++) {

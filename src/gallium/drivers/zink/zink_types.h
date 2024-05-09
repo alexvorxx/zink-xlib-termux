@@ -1279,6 +1279,7 @@ struct zink_resource_object {
    // }
 
 
+   unsigned miptail_commits;
    VkDeviceSize offset, size, alignment;
    uint64_t vkflags;
    uint64_t vkusage;

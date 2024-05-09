@@ -1073,7 +1073,9 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                      if (level >= res->sparse.imageMipTailFirstLod) {
                         uint32_t offset = res->sparse.imageMipTailOffset;
                         cur_sem = texture_commit_miptail(screen, res, backing[i]->bo, backing_start[i], offset, commit, cur_sem);
-                        if (!cur_sem)
+                        if (cur_sem)
+                           res->obj->miptail_commits++;
+                        else
                            ok = false;
                         goto out;
                      } else {
@@ -1121,9 +1123,13 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                   }
                   if (level >= res->sparse.imageMipTailFirstLod) {
                      uint32_t offset = res->sparse.imageMipTailOffset;
-                     cur_sem = texture_commit_miptail(screen, res, NULL, 0, offset, commit, cur_sem);
-                     if (!cur_sem)
-                        ok = false;
+                     assert(res->obj->miptail_commits);
+                     res->obj->miptail_commits--;
+                     if (!res->obj->miptail_commits) {
+                        cur_sem = texture_commit_miptail(screen, res, NULL, 0, offset, commit, cur_sem);
+                        if (!cur_sem)
+                           ok = false;
+                     }
                      goto out;
                   } else {
                      commits_pending = true;

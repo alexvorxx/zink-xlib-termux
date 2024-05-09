@@ -231,7 +231,7 @@ lower_gs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *_)
    nir_def *vertex = vertex_id_for_topology_class(
       b, vert_in_prim, b->shader->info.gs.input_primitive);
 
-   nir_def *verts = load_geometry_param(b, input_vertices);
+   nir_def *verts = load_geometry_param(b, vs_grid[0]);
    nir_def *unrolled =
       nir_iadd(b, nir_imul(b, nir_load_instance_id(b), verts), vertex);
 

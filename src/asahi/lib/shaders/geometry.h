@@ -121,13 +121,10 @@ struct agx_geometry_params {
    uint32_t xfb_prims[MAX_VERTEX_STREAMS];
 
    /* Within an indirect GS draw, the grids used to dispatch the VS/GS written
-    * out by the GS indirect setup kernel. Unused for direct GS draws.
+    * out by the GS indirect setup kernel or the CPU for a direct draw.
     */
    uint32_t vs_grid[3];
    uint32_t gs_grid[3];
-
-   /* Number of input vertices, part of the stride for the vertex buffer */
-   uint32_t input_vertices;
 
    /* Number of input primitives across all instances, calculated by the CPU for
     * a direct draw or the GS indirect setup kernel for an indirect draw.
@@ -151,7 +148,7 @@ struct agx_geometry_params {
     */
    uint32_t input_topology;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 79 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 78 * 4);
 
 struct agx_tess_params {
    /* Persistent (cross-draw) geometry state */

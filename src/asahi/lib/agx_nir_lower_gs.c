@@ -1414,12 +1414,6 @@ agx_nir_lower_vs_before_gs(struct nir_shader *vs,
       vs, lower_vs_before_gs, nir_metadata_block_index | nir_metadata_dominance,
       NULL);
 
-   /* Lower num vertices */
-   bool lower_instance = false;
-   progress |= nir_shader_intrinsics_pass(
-      vs, lower_id, nir_metadata_block_index | nir_metadata_dominance,
-      &lower_instance);
-
    /* Link libagx, used in lower_vs_before_gs */
    if (progress)
       link_libagx(vs, libagx);

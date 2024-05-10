@@ -42,6 +42,7 @@
 #include "dev/intel_device_info.h"
 
 #include "perf/i915/intel_perf.h"
+#include "perf/xe/intel_perf.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_common.h"
 #include "perf/intel_perf_regs.h"
@@ -1489,6 +1490,8 @@ intel_perf_get_oa_format(struct intel_perf_config *perf_cfg)
    switch (perf_cfg->devinfo->kmd_type) {
    case INTEL_KMD_TYPE_I915:
       return i915_perf_get_oa_format(perf_cfg);
+   case INTEL_KMD_TYPE_XE:
+      return xe_perf_get_oa_format(perf_cfg);
    default:
       unreachable("missing");
       return 0;

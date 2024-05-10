@@ -254,7 +254,7 @@ struct intel_perf_query_info {
 
    /* OA specific */
    uint64_t oa_metrics_set_id;
-   uint64_t oa_format;
+   uint64_t oa_format;/* KMD value */
 
    /* For indexing into the accumulator[] ... */
    int gpu_time_offset;

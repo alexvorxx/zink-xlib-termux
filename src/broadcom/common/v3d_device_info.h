@@ -37,6 +37,9 @@ struct v3d_device_info {
         /** V3D revision number */
         uint8_t rev;
 
+        /** V3D compatitiblity revision number */
+        uint8_t compat_rev;
+
         /** Maximum number of performance counters for a given V3D version **/
         uint8_t max_perfcnt;
 

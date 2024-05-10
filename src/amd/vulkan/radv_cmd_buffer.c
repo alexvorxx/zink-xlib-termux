@@ -2340,7 +2340,7 @@ radv_emit_primitive_topology(struct radv_cmd_buffer *cmd_buffer)
       radeon_set_config_reg(cmd_buffer->cs, R_008958_VGT_PRIMITIVE_TYPE, d->vk.ia.primitive_topology);
    }
 
-   radv_emit_vgt_gs_out(device, cmd_buffer->cs, vgt_gs_out_prim_type);
+   radv_emit_vgt_gs_out(device, cmd_buffer->cs, cmd_buffer->cs, vgt_gs_out_prim_type);
 
    if (loc->sgpr_idx == -1)
       return;

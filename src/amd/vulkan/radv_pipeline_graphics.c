@@ -3194,7 +3194,7 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
       radeon_emit(cs, ms->info.regs.ms.spi_shader_gs_meshlet_exp_alloc);
    }
 
-   radv_emit_vgt_gs_out(device, ctx_cs, gs_out);
+   radv_emit_vgt_gs_out(device, ctx_cs, cs, gs_out);
 }
 
 enum radv_ps_in_type {
@@ -3496,12 +3496,13 @@ radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdb
 }
 
 void
-radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, uint32_t vgt_gs_out_prim_type)
+radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
+                     uint32_t vgt_gs_out_prim_type)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (pdev->info.gfx_level >= GFX11) {
-      radeon_set_uconfig_reg(ctx_cs, R_030998_VGT_GS_OUT_PRIM_TYPE, vgt_gs_out_prim_type);
+      radeon_set_uconfig_reg(cs, R_030998_VGT_GS_OUT_PRIM_TYPE, vgt_gs_out_prim_type);
    } else {
       radeon_set_context_reg(ctx_cs, R_028A6C_VGT_GS_OUT_PRIM_TYPE, vgt_gs_out_prim_type);
    }

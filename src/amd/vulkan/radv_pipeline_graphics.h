@@ -633,7 +633,7 @@ struct radv_vgt_shader_key radv_get_vgt_shader_key(const struct radv_device *dev
 void radv_emit_vgt_shader_config(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
                                  const struct radv_vgt_shader_key *key);
 
-void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
+void radv_emit_vgt_gs_out(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                           uint32_t vgt_gs_out_prim_type);
 
 void gfx103_emit_vgt_draw_payload_cntl(struct radeon_cmdbuf *ctx_cs, const struct radv_shader *mesh_shader,

@@ -2822,13 +2822,13 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
       radeon_set_sh_reg_idx(pdev, cs, R_00B118_SPI_SHADER_PGM_RSRC3_VS, 3,
                             shader->info.regs.vs.spi_shader_pgm_rsrc3_vs);
       radeon_set_sh_reg(cs, R_00B11C_SPI_SHADER_LATE_ALLOC_VS, shader->info.regs.vs.spi_shader_late_alloc_vs);
-   }
 
-   if (pdev->info.gfx_level >= GFX10) {
-      radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC, shader->info.regs.ge_pc_alloc);
+      if (pdev->info.gfx_level >= GFX10) {
+         radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC, shader->info.regs.ge_pc_alloc);
 
-      if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
-         radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, shader->info.regs.vgt_gs_onchip_cntl);
+         if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
+            radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, shader->info.regs.vgt_gs_onchip_cntl);
+         }
       }
    }
 }

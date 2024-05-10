@@ -47,7 +47,7 @@
 #include "compiler/v3d_compiler.h"
 #include "drm-uapi/drm_fourcc.h"
 
-static const char *
+const char *
 v3d_screen_get_name(struct pipe_screen *pscreen)
 {
         struct v3d_screen *screen = v3d_screen(pscreen);

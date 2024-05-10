@@ -173,9 +173,7 @@ elif with_intel_clc
       'elk/elk_nir_options.h',
       'elk/elk_nir_options.c',
     ],
-    link_with : [
-      libintel_common,libisl,
-    ],
+    link_with : [libisl],
     include_directories : [inc_include, inc_src, inc_intel],
     c_args : [pre_args, no_override_init_args],
     link_args : [ld_args_build_id],
@@ -209,9 +207,7 @@ if with_tests
       ),
       ir_expression_operation_h,
       include_directories : [inc_include, inc_src, inc_intel],
-      link_with : [
-        libintel_common, libisl
-      ],
+      link_with : libisl,
       dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev,
                       idep_intel_compiler_brw],
     ),
@@ -255,7 +251,6 @@ brw_asm_tool = executable(
   dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
                   idep_intel_compiler_brw],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true
@@ -291,7 +286,6 @@ brw_disasm_tool = executable(
   dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
                   idep_intel_compiler_brw],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

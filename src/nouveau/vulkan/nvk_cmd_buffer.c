@@ -638,7 +638,6 @@ nvk_bind_descriptor_sets(UNUSED struct nvk_cmd_buffer *cmd,
             desc->set_sizes[s] = 0;
          }
          desc->sets[s] = set;
-         desc->sets_dirty |= BITFIELD_BIT(s);
 
          /* Binding descriptors invalidates push descriptors */
          desc->push_dirty &= ~BITFIELD_BIT(s);

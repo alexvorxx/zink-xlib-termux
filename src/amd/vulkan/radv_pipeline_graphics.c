@@ -1060,13 +1060,6 @@ radv_pipeline_init_dynamic_state(const struct radv_device *device, struct radv_g
    pipeline->dynamic_state.mask = states;
 }
 
-static void
-gfx10_emit_ge_pc_alloc(struct radeon_cmdbuf *cs, uint32_t oversub_pc_lines)
-{
-   radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC,
-                          S_030980_OVERSUB_EN(oversub_pc_lines > 0) | S_030980_NUM_PC_LINES(oversub_pc_lines - 1));
-}
-
 struct radv_shader *
 radv_get_shader(struct radv_shader *const *shaders, gl_shader_stage stage)
 {

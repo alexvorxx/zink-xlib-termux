@@ -3084,7 +3084,7 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_legacy_gs_info *gs_state = &gs->info.gs_ring_info;
-   uint64_t va;
+   const uint64_t va = radv_shader_get_va(gs);
 
    radeon_set_context_reg_seq(ctx_cs, R_028A60_VGT_GSVS_RING_OFFSET_1, 3);
    radeon_emit(ctx_cs, gs->info.regs.gs.vgt_gsvs_ring_offset[0]);
@@ -3100,18 +3100,8 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
 
    radeon_set_context_reg(ctx_cs, R_028B90_VGT_GS_INSTANCE_CNT, gs->info.regs.gs.vgt_gs_instance_cnt);
 
-   if (pdev->info.gfx_level <= GFX8) {
-      /* GFX6-8: ESGS offchip ring buffer is allocated according to VGT_ESGS_RING_ITEMSIZE.
-       * GFX9+: Only used to set the GS input VGPRs, emulated in shaders.
-       */
-      radeon_set_context_reg(ctx_cs, R_028AAC_VGT_ESGS_RING_ITEMSIZE, gs->info.regs.gs.vgt_esgs_ring_itemsize);
-   }
-
-   va = radv_shader_get_va(gs);
-
    if (pdev->info.gfx_level >= GFX9) {
       if (!gs->info.merged_shader_compiled_separately) {
-
          if (pdev->info.gfx_level >= GFX10) {
             radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, va >> 8);
          } else {
@@ -3132,6 +3122,11 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
       radeon_emit(cs, S_00B224_MEM_BASE(va >> 40));
       radeon_emit(cs, gs->config.rsrc1);
       radeon_emit(cs, gs->config.rsrc2);
+
+      /* GFX6-8: ESGS offchip ring buffer is allocated according to VGT_ESGS_RING_ITEMSIZE.
+       * GFX9+: Only used to set the GS input VGPRs, emulated in shaders.
+       */
+      radeon_set_context_reg(ctx_cs, R_028AAC_VGT_ESGS_RING_ITEMSIZE, gs->info.regs.gs.vgt_esgs_ring_itemsize);
    }
 
    radeon_set_sh_reg_idx(pdev, cs, R_00B21C_SPI_SHADER_PGM_RSRC3_GS, 3, gs->info.regs.spi_shader_pgm_rsrc3_gs);

@@ -53,6 +53,7 @@
 #include "crocus_resource.h"
 #include "crocus_screen.h"
 #include "intel/compiler/elk/elk_compiler.h"
+#include "intel/common/intel_debug_identifier.h"
 #include "intel/common/intel_gem.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_uuid.h"

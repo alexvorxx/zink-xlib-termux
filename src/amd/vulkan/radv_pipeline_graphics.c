@@ -2903,10 +2903,6 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
    radeon_set_context_reg(ctx_cs, R_028A84_VGT_PRIMITIVEID_EN,
                           shader->info.regs.ngg.vgt_primitiveid_en | S_028A84_PRIMITIVEID_EN(es_enable_prim_id));
 
-   if (pdev->info.gfx_level < GFX11) {
-      radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, shader->info.regs.vgt_gs_onchip_cntl);
-   }
-
    radeon_set_context_reg(ctx_cs, R_0287FC_GE_MAX_OUTPUT_PER_SUBGROUP,
                           shader->info.regs.ngg.ge_max_output_per_subgroup);
 
@@ -2919,19 +2915,21 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
       ge_cntl |= S_03096C_BREAK_PRIMGRP_AT_EOI(break_wave_at_eoi);
    } else {
       ge_cntl |= S_03096C_BREAK_WAVE_AT_EOI(break_wave_at_eoi);
-   }
 
-   /* Bug workaround for a possible hang with non-tessellation cases.
-    * Tessellation always sets GE_CNTL.VERT_GRP_SIZE = 0
-    *
-    * Requirement: GE_CNTL.VERT_GRP_SIZE = VGT_GS_ONCHIP_CNTL.ES_VERTS_PER_SUBGRP - 5
-    */
-   if (pdev->info.gfx_level == GFX10 && es_type != MESA_SHADER_TESS_EVAL && ngg_state->hw_max_esverts != 256) {
-      ge_cntl &= C_03096C_VERT_GRP_SIZE;
+      /* Bug workaround for a possible hang with non-tessellation cases.
+       * Tessellation always sets GE_CNTL.VERT_GRP_SIZE = 0
+       *
+       * Requirement: GE_CNTL.VERT_GRP_SIZE = VGT_GS_ONCHIP_CNTL.ES_VERTS_PER_SUBGRP - 5
+       */
+      if (pdev->info.gfx_level == GFX10 && es_type != MESA_SHADER_TESS_EVAL && ngg_state->hw_max_esverts != 256) {
+         ge_cntl &= C_03096C_VERT_GRP_SIZE;
 
-      if (ngg_state->hw_max_esverts > 5) {
-         ge_cntl |= S_03096C_VERT_GRP_SIZE(ngg_state->hw_max_esverts - 5);
+         if (ngg_state->hw_max_esverts > 5) {
+            ge_cntl |= S_03096C_VERT_GRP_SIZE(ngg_state->hw_max_esverts - 5);
+         }
       }
+
+      radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, shader->info.regs.vgt_gs_onchip_cntl);
    }
 
    radeon_set_uconfig_reg(cs, R_03096C_GE_CNTL, ge_cntl);

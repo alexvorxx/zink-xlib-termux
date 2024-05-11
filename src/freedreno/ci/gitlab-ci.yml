@@ -10,8 +10,7 @@ a306_gl:
     FDO_CI_CONCURRENT: 6
   parallel: 5
 
-# New jobs. Leave it as manual for now.
-.a306_piglit:
+a306_piglit:
   extends:
     - .baremetal-deqp-test
     - .a306-test

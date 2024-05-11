@@ -7157,7 +7157,9 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
       cmd_buffer->state.ia_multi_vgt_param = graphics_pipeline->ia_multi_vgt_param;
 
       cmd_buffer->state.uses_out_of_order_rast = graphics_pipeline->uses_out_of_order_rast;
+      cmd_buffer->state.uses_vrs = graphics_pipeline->uses_vrs;
       cmd_buffer->state.uses_vrs_attachment = graphics_pipeline->uses_vrs_attachment;
+      cmd_buffer->state.uses_vrs_coarse_shading = graphics_pipeline->uses_vrs_coarse_shading;
       cmd_buffer->state.uses_dynamic_vertex_binding_stride =
          !!(graphics_pipeline->dynamic_states & (RADV_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE | RADV_DYNAMIC_VERTEX_INPUT));
       break;
@@ -9477,8 +9479,7 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   const gl_shader_stage last_vgt_api_stage = radv_cmdbuf_get_last_vgt_api_stage(cmd_buffer);
-   const struct radv_shader *last_vgt_shader = cmd_buffer->state.shaders[last_vgt_api_stage];
+   const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
    radv_foreach_stage(s, cmd_buffer->state.active_stages & RADV_GRAPHICS_STAGE_BITS)
@@ -9545,8 +9546,9 @@ radv_emit_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
    radv_emit_vgt_shader_config(device, cs, &vgt_shader_cfg_key);
 
    if (pdev->info.gfx_level >= GFX10_3) {
-      gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], false);
-      gfx103_emit_vrs_state(device, cs, NULL, false, false, false);
+      gfx103_emit_vgt_draw_payload_cntl(cs, cmd_buffer->state.shaders[MESA_SHADER_MESH], cmd_buffer->state.uses_vrs);
+      gfx103_emit_vrs_state(device, cs, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT],
+                            cmd_buffer->state.uses_vrs_coarse_shading, last_vgt_shader->info.force_vrs_per_vertex);
    }
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GRAPHICS_SHADERS;
@@ -9764,6 +9766,7 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
       struct radv_shader *gs = cmd_buffer->state.shaders[MESA_SHADER_GEOMETRY];
 
       gfx10_get_ngg_info(device, &es->info, &gs->info, &gs->info.ngg_info);
+      radv_precompute_registers_hw_ngg(device, &gs->config, &gs->info);
    }
 
    /* Determine the rasterized primitive. */
@@ -12450,6 +12453,9 @@ radv_reset_pipeline_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoin
             cmd_buffer->state.db_render_control = 0;
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_FRAMEBUFFER;
          }
+
+         cmd_buffer->state.uses_vrs = false;
+         cmd_buffer->state.uses_vrs_coarse_shading = false;
 
          cmd_buffer->state.emitted_graphics_pipeline = NULL;
       }

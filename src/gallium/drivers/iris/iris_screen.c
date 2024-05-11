@@ -54,6 +54,7 @@
 #include "iris_resource.h"
 #include "iris_screen.h"
 #include "compiler/glsl_types.h"
+#include "intel/common/intel_debug_identifier.h"
 #include "intel/common/intel_gem.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_uuid.h"

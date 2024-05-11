@@ -615,6 +615,7 @@ struct zink_batch_state {
    struct util_dynarray fd_wait_semaphores; //dmabuf wait semaphores
    struct util_dynarray fd_wait_semaphore_stages; //dmabuf wait semaphores
    struct util_dynarray fences; //zink_tc_fence refs
+   simple_mtx_t ref_lock;
 
    VkSemaphore present;
    struct zink_resource *swapchain;
@@ -668,10 +669,14 @@ struct zink_batch_state {
    VkDeviceSize resource_size;
 
    bool is_device_lost;
-   
+
    bool have_timelines;
    
    bool has_barriers;
+
+   /* these flags correspond to the matching cmdbufs */
+   bool has_work;
+   bool has_reordered_work;
    bool has_unsync;
 };
 
@@ -680,22 +685,6 @@ zink_batch_state(struct zink_fence *fence)
 {
    return (struct zink_batch_state *)fence;
 }
-
-struct zink_batch {
-   struct zink_batch_state *state;
-
-   struct zink_batch_usage *last_batch_usage;
-   struct zink_resource *swapchain;
-
-   unsigned work_count;
-
-   simple_mtx_t ref_lock;
-
-   bool has_work;
-   bool last_was_compute;
-   bool in_rp; //renderpass is currently active
-};
-
 
 /** bo types */
 struct bo_export {
@@ -1871,7 +1860,7 @@ struct zink_context {
    bool oom_stall;
    bool track_renderpasses;
    bool no_reorder;
-   struct zink_batch batch;
+   struct zink_batch_state *bs;
 
    unsigned shader_has_inlinable_uniforms_mask;
    unsigned inlinable_uniforms_valid_mask;
@@ -1931,8 +1920,10 @@ struct zink_context {
    struct set rendering_state_cache[6]; //[util_logbase2_ceil(msrtss samplecount)]
    struct set render_pass_state_cache;
    struct hash_table *render_pass_cache;
+   struct zink_resource *swapchain;
    VkExtent2D swapchain_size;
    bool fb_changed;
+   bool in_rp; //renderpass is currently active
    bool rp_changed; //force renderpass restart
    bool rp_layout_changed; //renderpass changed, maybe restart
    bool rp_loadop_changed; //renderpass changed, don't restart
@@ -2091,6 +2082,7 @@ struct zink_context {
    unsigned memory_barrier;
 
    uint32_t ds3_states;
+   unsigned work_count;
 
    uint32_t num_so_targets;
    struct pipe_stream_output_target *so_targets[PIPE_MAX_SO_BUFFERS];
@@ -2116,6 +2108,7 @@ struct zink_context {
    bool stencil_ref_changed : 1;
    bool rasterizer_discard_changed : 1;
    bool rp_tc_info_updated : 1;
+   bool last_work_was_compute : 1;
 };
 
 static inline struct zink_context *

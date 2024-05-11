@@ -114,7 +114,7 @@
 #include "shader_info.h"
 #include "ac_binary.h"
 #include "ac_gpu_info.h"
-#include "util/mesa-sha1.h"
+#include "util/mesa-blake3.h"
 #include "util/u_live_shader_cache.h"
 #include "util/u_queue.h"
 #include "si_pm4.h"
@@ -298,7 +298,7 @@ enum
 #define SI_NGG_CULL_GET_CLIP_PLANE_ENABLE(x)  (((x) >> 5) & 0xff)
 
 struct si_shader_profile {
-   uint32_t sha1[SHA1_DIGEST_LENGTH32];
+   uint32_t blake3[BLAKE3_OUT_LEN32];
    uint32_t options;
 };
 

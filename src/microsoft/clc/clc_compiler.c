@@ -35,6 +35,7 @@
 #include "util/u_debug.h"
 #include <util/u_math.h>
 #include "spirv/nir_spirv.h"
+#include "spirv/spirv_info.h"
 #include "nir_builder.h"
 #include "nir_builtin_builder.h"
 
@@ -741,6 +742,22 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       return false;
    }
 
+   const struct spirv_capabilities libclc_spirv_caps = {
+      .Addresses = true,
+      .Float64 = true,
+      .Int8 = true,
+      .Int16 = true,
+      .Int64 = true,
+      .Kernel = true,
+      .ImageBasic = true,
+      .ImageReadWrite = true,
+      .LiteralSampler = true,
+
+      // These aren't fully supported, but silence warnings about them from
+      // code that doesn't really use them.
+      .Linkage = true,
+      .GenericPointer = true,
+   };
    const struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENCL,
       .clc_shader = clc_libclc_get_clc_shader(lib),
@@ -750,22 +767,7 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       .temp_addr_format = nir_address_format_32bit_offset_as_64bit,
       .float_controls_execution_mode = FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32,
       .printf = true,
-      .caps = {
-         .address = true,
-         .float64 = true,
-         .int8 = true,
-         .int16 = true,
-         .int64 = true,
-         .kernel = true,
-         .kernel_image = true,
-         .kernel_image_read_write = true,
-         .literal_sampler = true,
-
-         // These aren't fully supported, but silence warnings about them from
-         // code that doesn't really use them.
-         .linkage = true,
-         .generic_pointers = true,
-      },
+      .capabilities = &libclc_spirv_caps,
    };
    unsigned supported_int_sizes = (16 | 32 | 64);
    unsigned supported_float_sizes = (16 | 32);

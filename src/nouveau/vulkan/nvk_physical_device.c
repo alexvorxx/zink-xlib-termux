@@ -1432,7 +1432,7 @@ nvk_GetPhysicalDeviceMemoryProperties2(
          break;
       }
       default:
-         nvk_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }

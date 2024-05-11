@@ -24,6 +24,7 @@
 #include "anv_private.h"
 #include "anv_internal_kernels.h"
 
+#include "common/intel_debug_identifier.h"
 #include "ds/intel_tracepoints.h"
 #include "genxml/gen9_pack.h"
 #include "perf/intel_perf.h"

@@ -2394,9 +2394,6 @@ const nir_shader_compiler_options *v3dv_pipeline_get_nir_options(void);
 uint32_t v3dv_physical_device_vendor_id(const struct v3dv_physical_device *dev);
 uint32_t v3dv_physical_device_device_id(const struct v3dv_physical_device *dev);
 
-#define v3dv_debug_ignored_stype(sType) \
-   mesa_logd("%s: ignored VkStructureType %u:%s\n\n", __func__, (sType), vk_StructureType_to_str(sType))
-
 const uint8_t *v3dv_get_format_swizzle(struct v3dv_device *device, VkFormat f,
                                        uint8_t plane);
 const struct v3dv_format *

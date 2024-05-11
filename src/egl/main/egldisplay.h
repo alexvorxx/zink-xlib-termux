@@ -196,6 +196,7 @@ struct _egl_display {
    /* options that affect how the driver initializes the display */
    struct {
       EGLBoolean Zink;           /**< Use kopper only */
+      EGLBoolean FallbackZink;   /**< True if zink is tried as fallback */
       EGLBoolean ForceSoftware;  /**< Use software path only */
       EGLBoolean GalliumHudWarn; /**< Using hud, warn when querying buffer age */
       EGLAttrib *Attribs;        /**< Platform-specific options */

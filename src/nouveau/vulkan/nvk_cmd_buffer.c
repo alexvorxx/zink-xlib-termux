@@ -638,10 +638,6 @@ nvk_bind_descriptor_sets(UNUSED struct nvk_cmd_buffer *cmd,
             desc->set_sizes[s] = 0;
          }
          desc->sets[s] = set;
-         desc->sets_dirty |= BITFIELD_BIT(s);
-
-         /* Binding descriptors invalidates push descriptors */
-         desc->push_dirty &= ~BITFIELD_BIT(s);
       }
 
       desc->root.set_dynamic_buffer_start[s] = dyn_buffer_start;
@@ -780,10 +776,12 @@ nvk_cmd_buffer_flush_push_descriptors(struct nvk_cmd_buffer *cmd,
    const uint32_t min_cbuf_alignment = nvk_min_cbuf_alignment(&pdev->info);
    VkResult result;
 
-   if (!desc->push_dirty)
-      return;
-
    u_foreach_bit(set_idx, desc->push_dirty) {
+      /* We only have an active push descriptor set if sets[set_idx] == NULL.
+       */
+      if (desc->sets[set_idx] != NULL)
+         continue;
+
       struct nvk_push_descriptor_set *push_set = desc->push[set_idx];
       uint64_t push_set_addr;
       result = nvk_cmd_buffer_upload_data(cmd, push_set->data,

@@ -70,7 +70,7 @@
  * file not found.
  */
 _X_HIDDEN const __DRIextension **
-driOpenDriver(const char *driverName, void **out_driver_handle)
+driOpenDriver(const char *driverName, void **out_driver_handle, bool driver_name_is_inferred)
 {
    void *glhandle;
 
@@ -84,7 +84,7 @@ driOpenDriver(const char *driverName, void **out_driver_handle)
    };
 
    const __DRIextension **extensions =
-      loader_open_driver(driverName, out_driver_handle, search_path_vars);
+      loader_open_driver(driverName, out_driver_handle, search_path_vars, driver_name_is_inferred);
 
    if (glhandle)
       dlclose(glhandle);
@@ -744,7 +744,7 @@ get_driver_config(const char *driverName)
 {
    void *handle;
    char *config = NULL;
-   const __DRIextension **extensions = driOpenDriver(driverName, &handle);
+   const __DRIextension **extensions = driOpenDriver(driverName, &handle, false);
    if (extensions) {
       for (int i = 0; extensions[i]; i++) {
          if (strcmp(extensions[i]->name, __DRI_CONFIG_OPTIONS) != 0)

@@ -59,6 +59,7 @@
 #include "vk_deferred_operation.h"
 #include "vk_drm_syncobj.h"
 #include "common/intel_aux_map.h"
+#include "common/intel_debug_identifier.h"
 #include "common/intel_uuid.h"
 #include "perf/intel_perf.h"
 
@@ -2829,7 +2830,7 @@ void anv_GetPhysicalDeviceQueueFamilyProperties2(
                break;
             }
             default:
-               anv_debug_ignored_stype(ext->sType);
+               vk_debug_ignored_stype(ext->sType);
             }
          }
       }
@@ -2945,7 +2946,7 @@ void anv_GetPhysicalDeviceMemoryProperties2(
          anv_get_memory_budget(physicalDevice, (void*)ext);
          break;
       default:
-         anv_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -4331,7 +4332,7 @@ VkResult anv_AllocateMemory(
          break;
 
       default:
-         anv_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -5031,7 +5032,7 @@ anv_get_buffer_memory_requirements(struct anv_device *device,
       }
 
       default:
-         anv_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -5470,7 +5471,7 @@ void anv_GetPhysicalDeviceMultisamplePropertiesEXT(
    pMultisampleProperties->maxSampleLocationGridSize = grid_size;
 
    vk_foreach_struct(ext, pMultisampleProperties->pNext)
-      anv_debug_ignored_stype(ext->sType);
+      vk_debug_ignored_stype(ext->sType);
 }
 
 VkResult anv_GetPhysicalDeviceFragmentShadingRatesKHR(

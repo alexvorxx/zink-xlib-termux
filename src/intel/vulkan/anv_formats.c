@@ -1018,7 +1018,7 @@ void anv_GetPhysicalDeviceFormatProperties2(
          /* don't have any thing to use this for yet */
          break;
       default:
-         anv_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -1320,7 +1320,7 @@ anv_get_image_format_properties(
          /* Ignore but don't warn */
          break;
       default:
-         anv_debug_ignored_stype(s->sType);
+         vk_debug_ignored_stype(s->sType);
          break;
       }
    }
@@ -1344,7 +1344,7 @@ anv_get_image_format_properties(
          comp_props = (void *) s;
          break;
       default:
-         anv_debug_ignored_stype(s->sType);
+         vk_debug_ignored_stype(s->sType);
          break;
       }
    }
@@ -1822,7 +1822,7 @@ void anv_GetPhysicalDeviceSparseImageFormatProperties2(
    }
 
    vk_foreach_struct_const(ext, pFormatInfo->pNext)
-      anv_debug_ignored_stype(ext->sType);
+      vk_debug_ignored_stype(ext->sType);
 
    /* Check if the image is supported at all (regardless of being Sparse). */
    const VkPhysicalDeviceImageFormatInfo2 img_info = {

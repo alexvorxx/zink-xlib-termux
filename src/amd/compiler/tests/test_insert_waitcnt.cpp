@@ -90,7 +90,7 @@ BEGIN_TEST(insert_waitcnt.clause)
             Operand::zero());
    //! v1: %0:v[4] = buffer_load_dword %0:s[0-3], %0:v[0], 0
    bld.mubuf(aco_opcode::buffer_load_dword, def_v4, desc0, op_v0, Operand::zero(), 0, false);
-   //! s_waitcnt vmcnt(0) lgkmcnt(0)
+   //! s_waitcnt lgkmcnt(0) vmcnt(0)
    //! v1: %0:v[5] = buffer_load_dword %0:s[4-7], %0:v[4], 0
    bld.mubuf(aco_opcode::buffer_load_dword, def_v5, Operand(PhysReg(4), s4), op_v4, Operand::zero(),
              0, false);
@@ -108,6 +108,74 @@ BEGIN_TEST(insert_waitcnt.clause)
    //! s_waitcnt vmcnt(0)
    //! v1: %0:v[5] = buffer_load_dword %0:s[0-3], %0:v[4], 0
    bld.mubuf(aco_opcode::buffer_load_dword, def_v5, desc0, op_v4, Operand::zero(), 0, false);
+
+   finish_waitcnt_test();
+END_TEST
+
+BEGIN_TEST(insert_waitcnt.waw.mixed_vmem_lds.vmem)
+   if (!setup_cs(NULL, GFX10))
+      return;
+
+   Definition def_v4(PhysReg(260), v1);
+   Operand op_v0(PhysReg(256), v1);
+   Operand desc0(PhysReg(0), s4);
+
+   //>> BB0
+   //! /* logical preds: / linear preds: / kind: top-level, */
+   //! v1: %0:v[4] = buffer_load_dword %0:s[0-3], %0:v[0], 0
+   bld.mubuf(aco_opcode::buffer_load_dword, def_v4, desc0, op_v0, Operand::zero(), 0, false);
+
+   //>> BB1
+   //! /* logical preds: / linear preds: / kind: */
+   //! v1: %0:v[4] = ds_read_b32 %0:v[0]
+   bld.reset(program->create_and_insert_block());
+   bld.ds(aco_opcode::ds_read_b32, def_v4, op_v0);
+
+   bld.reset(program->create_and_insert_block());
+   program->blocks[2].linear_preds.push_back(0);
+   program->blocks[2].linear_preds.push_back(1);
+   program->blocks[2].logical_preds.push_back(0);
+   program->blocks[2].logical_preds.push_back(1);
+
+   //>> BB2
+   //! /* logical preds: BB0, BB1, / linear preds: BB0, BB1, / kind: uniform, */
+   //! s_waitcnt lgkmcnt(0)
+   //! v1: %0:v[4] = buffer_load_dword %0:s[0-3], %0:v[0], 0
+   bld.mubuf(aco_opcode::buffer_load_dword, def_v4, desc0, op_v0, Operand::zero(), 0, false);
+
+   finish_waitcnt_test();
+END_TEST
+
+BEGIN_TEST(insert_waitcnt.waw.mixed_vmem_lds.lds)
+   if (!setup_cs(NULL, GFX10))
+      return;
+
+   Definition def_v4(PhysReg(260), v1);
+   Operand op_v0(PhysReg(256), v1);
+   Operand desc0(PhysReg(0), s4);
+
+   //>> BB0
+   //! /* logical preds: / linear preds: / kind: top-level, */
+   //! v1: %0:v[4] = buffer_load_dword %0:s[0-3], %0:v[0], 0
+   bld.mubuf(aco_opcode::buffer_load_dword, def_v4, desc0, op_v0, Operand::zero(), 0, false);
+
+   //>> BB1
+   //! /* logical preds: / linear preds: / kind: */
+   //! v1: %0:v[4] = ds_read_b32 %0:v[0]
+   bld.reset(program->create_and_insert_block());
+   bld.ds(aco_opcode::ds_read_b32, def_v4, op_v0);
+
+   bld.reset(program->create_and_insert_block());
+   program->blocks[2].linear_preds.push_back(0);
+   program->blocks[2].linear_preds.push_back(1);
+   program->blocks[2].logical_preds.push_back(0);
+   program->blocks[2].logical_preds.push_back(1);
+
+   //>> BB2
+   //! /* logical preds: BB0, BB1, / linear preds: BB0, BB1, / kind: uniform, */
+   //! s_waitcnt vmcnt(0)
+   //! v1: %0:v[4] = ds_read_b32 %0:v[0]
+   bld.ds(aco_opcode::ds_read_b32, def_v4, op_v0);
 
    finish_waitcnt_test();
 END_TEST

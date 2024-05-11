@@ -1872,14 +1872,15 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
       /*zink_kopper_acquire(ctx, res, UINT64_MAX);
       ctx->needs_present = res;
       /* set batch usage to submit acquire semaphore */
-      /*zink_batch_resource_usage_set(&ctx->batch, res, true, false);
+      /*zink_batch_resource_usage_set(ctx->bs, res, true, false);
       /* ensure the resource is set up to present garbage */
       /*ctx->base.flush_resource(&ctx->base, pres);
    }
 
    /* handle any outstanding acquire submits (not just from above) */
-   /*if (ctx->batch.swapchain || ctx->needs_present) {
-      ctx->batch.has_work = true;
+
+   /*if (ctx->swapchain || ctx->needs_present) {
+      ctx->bs->has_work = true;
       pctx->flush(pctx, NULL, PIPE_FLUSH_END_OF_FRAME);
       if (ctx->last_batch_state && screen->threaded_submit) {
          struct zink_batch_state *bs = ctx->last_batch_state;

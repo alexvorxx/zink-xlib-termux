@@ -34,6 +34,7 @@
 #include "crocus_resource.h"
 #include "crocus_screen.h"
 #include "common/i915/intel_defines.h"
+#include "common/intel_debug_identifier.h"
 #include "common/intel_sample_positions.h"
 
 /**

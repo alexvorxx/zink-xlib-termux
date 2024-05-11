@@ -126,6 +126,9 @@ static rvcn_dec_message_avc_t get_h264_msg(struct radeon_decoder *dec,
    case PIPE_VIDEO_CHROMA_FORMAT_444:
       result.chroma_format = 3;
       break;
+   case PIPE_VIDEO_CHROMA_FORMAT_440:
+      result.chroma_format = 4;
+      break;
    }
 
    result.pps_info_flags = 0;

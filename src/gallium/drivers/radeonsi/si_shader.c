@@ -1451,8 +1451,8 @@ static void si_dump_shader_key(const struct si_shader *shader, FILE *f)
    gl_shader_stage stage = shader->selector->stage;
 
    fprintf(f, "SHADER KEY\n");
-   fprintf(f, "  source_sha1 = {");
-   _mesa_sha1_print(f, shader->selector->info.base.source_sha1);
+   fprintf(f, "  source_blake3 = {");
+   _mesa_blake3_print(f, shader->selector->info.base.source_blake3);
    fprintf(f, "}\n");
 
    switch (stage) {

@@ -67,6 +67,8 @@ vk_push_print(FILE *fp, const struct nv_push *push,
 {
    uint32_t *cur = push->start;
 
+   const bool print_offsets = true;
+
    while (cur < push->end) {
       uint32_t hdr = *cur;
       uint32_t type = hdr >> 29;
@@ -79,12 +81,13 @@ vk_push_print(FILE *fp, const struct nv_push *push,
       uint32_t value = 0;
       bool is_immd = false;
 
+      if (print_offsets)
+         fprintf(fp, "[0x%08" PRIxPTR "] ", cur - push->start);
+
       if (is_tert && tert_op != 0) {
-         fprintf(fp, "[0x%08" PRIxPTR "] HDR %x subch N/A",
-                 cur - push->start, hdr);
+         fprintf(fp, "HDR %x subch N/A", hdr);
       } else {
-         fprintf(fp, "[0x%08" PRIxPTR "] HDR %x subch %i",
-                 cur - push->start, hdr, subchan);
+         fprintf(fp, "HDR %x subch %i", hdr, subchan);
       }
 
       cur++;

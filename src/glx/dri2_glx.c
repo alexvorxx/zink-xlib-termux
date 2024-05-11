@@ -1058,7 +1058,7 @@ dri2CreateScreen(int screen, struct glx_display * priv, bool driver_name_is_infe
    }
    psc->driverName = driverName;
 
-   extensions = driOpenDriver(driverName, &psc->driver);
+   extensions = driOpenDriver(driverName, &psc->driver, driver_name_is_inferred);
    if (extensions == NULL)
       goto handle_error;
 

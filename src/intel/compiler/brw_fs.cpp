@@ -2177,15 +2177,20 @@ void
 fs_visitor::dump_instructions_to_file(FILE *file) const
 {
    if (cfg && grf_used == 0) {
-      const register_pressure &rp = regpressure_analysis.require();
+      const register_pressure *rp =
+         INTEL_DEBUG(DEBUG_REG_PRESSURE) ? &regpressure_analysis.require() : NULL;
+
       unsigned ip = 0, max_pressure = 0;
       unsigned cf_count = 0;
       foreach_block_and_inst(block, fs_inst, inst, cfg) {
          if (inst->is_control_flow_end())
             cf_count -= 1;
 
-         max_pressure = MAX2(max_pressure, rp.regs_live_at_ip[ip]);
-         fprintf(file, "{%3d} %4d: ", rp.regs_live_at_ip[ip], ip);
+         if (rp) {
+            max_pressure = MAX2(max_pressure, rp->regs_live_at_ip[ip]);
+            fprintf(file, "{%3d} ", rp->regs_live_at_ip[ip]);
+         }
+
          for (unsigned i = 0; i < cf_count; i++)
             fprintf(file, "  ");
          dump_instruction(inst, file);
@@ -2194,18 +2199,14 @@ fs_visitor::dump_instructions_to_file(FILE *file) const
          if (inst->is_control_flow_begin())
             cf_count += 1;
       }
-      fprintf(file, "Maximum %3d registers live at once.\n", max_pressure);
+      if (rp)
+         fprintf(file, "Maximum %3d registers live at once.\n", max_pressure);
    } else if (cfg && exec_list_is_empty(&instructions)) {
-      unsigned ip = 0;
       foreach_block_and_inst(block, fs_inst, inst, cfg) {
-         fprintf(file, "%4d: ", ip);
          dump_instruction(inst, file);
-         ip++;
       }
    } else {
-      int ip = 0;
       foreach_in_list(fs_inst, inst, &instructions) {
-         fprintf(file, "%4d: ", ip++);
          dump_instruction(inst, file);
       }
    }
@@ -2511,7 +2512,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
 
    switch (inst->dst.file) {
    case VGRF:
-      fprintf(file, "vgrf%d", inst->dst.nr);
+      fprintf(file, "v%d", inst->dst.nr);
       break;
    case FIXED_GRF:
       fprintf(file, "g%d", inst->dst.nr);
@@ -2564,16 +2565,18 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
 
    if (inst->dst.stride != 1)
       fprintf(file, "<%u>", inst->dst.stride);
-   fprintf(file, ":%s, ", brw_reg_type_to_letters(inst->dst.type));
+   fprintf(file, ":%s", brw_reg_type_to_letters(inst->dst.type));
 
    for (int i = 0; i < inst->sources; i++) {
+      fprintf(file, ", ");
+
       if (inst->src[i].negate)
          fprintf(file, "-");
       if (inst->src[i].abs)
          fprintf(file, "|");
       switch (inst->src[i].file) {
       case VGRF:
-         fprintf(file, "vgrf%d", inst->src[i].nr);
+         fprintf(file, "v%d", inst->src[i].nr);
          break;
       case FIXED_GRF:
          fprintf(file, "g%d", inst->src[i].nr);
@@ -2686,9 +2689,6 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
 
          fprintf(file, ":%s", brw_reg_type_to_letters(inst->src[i].type));
       }
-
-      if (i < inst->sources - 1 && inst->src[i + 1].file != BAD_FILE)
-         fprintf(file, ", ");
    }
 
    fprintf(file, " ");

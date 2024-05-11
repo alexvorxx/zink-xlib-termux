@@ -659,7 +659,7 @@ dri2_open_driver(_EGLDisplay *disp)
    };
 
    return loader_open_driver(dri2_dpy->driver_name, &dri2_dpy->driver,
-                             search_path_vars);
+                             search_path_vars, disp->Options.FallbackZink);
 }
 
 static EGLBoolean

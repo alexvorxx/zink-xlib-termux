@@ -1843,36 +1843,21 @@ vn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          /* clang-format on */
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT: {
-         VkPhysicalDeviceDrmPropertiesEXT *out_props = (void *)out;
-         const struct vn_renderer_info *info =
-            &physical_dev->instance->renderer->info;
-
-         out_props->hasPrimary = info->drm.has_primary;
-         out_props->primaryMajor = info->drm.primary_major;
-         out_props->primaryMinor = info->drm.primary_minor;
-         out_props->hasRender = info->drm.has_render;
-         out_props->renderMajor = info->drm.render_major;
-         out_props->renderMinor = info->drm.render_minor;
+         const VkPhysicalDeviceDrmPropertiesEXT *drm =
+            &physical_dev->instance->renderer->info.drm.props;
+         vk_copy_struct_guts(out, (VkBaseInStructure *)drm, sizeof(*drm));
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT:
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT: {
          /* this is used by WSI */
-         if (physical_dev->instance->renderer->info.pci.has_bus_info) {
-            VkPhysicalDevicePCIBusInfoPropertiesEXT *out_props = (void *)out;
-            const struct vn_renderer_info *info =
-               &physical_dev->instance->renderer->info;
-
-            out_props->pciDomain = info->pci.domain;
-            out_props->pciBus = info->pci.bus;
-            out_props->pciDevice = info->pci.device;
-            out_props->pciFunction = info->pci.function;
-         } else {
-            assert(VN_DEBUG(VTEST));
-            vk_copy_struct_guts(out,
-                                (VkBaseInStructure *)&in_props->pci_bus_info,
-                                sizeof(in_props->pci_bus_info));
-         }
+         const struct vn_renderer_info *info =
+            &physical_dev->instance->renderer->info;
+         const VkPhysicalDevicePCIBusInfoPropertiesEXT *pci =
+            info->pci.has_bus_info ? &info->pci.props
+                                   : &in_props->pci_bus_info;
+         vk_copy_struct_guts(out, (VkBaseInStructure *)pci, sizeof(*pci));
          break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: {
          VkPhysicalDevicePresentationPropertiesANDROID *out_props =
             (void *)out;

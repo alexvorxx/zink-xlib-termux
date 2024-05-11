@@ -646,6 +646,27 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
 
    /* clang-format on */
 
+   /* initialize native properties */
+   const struct vn_renderer_info *info =
+      &physical_dev->instance->renderer->info;
+
+   /* VK_EXT_physical_device_drm */
+   const VkPhysicalDeviceDrmPropertiesEXT *drm = &info->drm.props;
+   vk_copy_struct_guts((VkBaseOutStructure *)&props->drm,
+                       (VkBaseInStructure *)drm, sizeof(*drm));
+
+   /* VK_EXT_pci_bus_info */
+   if (info->pci.has_bus_info) {
+      /* this is used by WSI */
+      const VkPhysicalDevicePCIBusInfoPropertiesEXT *pci = &info->pci.props;
+      vk_copy_struct_guts((VkBaseOutStructure *)&props->pci_bus_info,
+                          (VkBaseInStructure *)pci, sizeof(*pci));
+   }
+
+   /* VK_ANDROID_native_buffer */
+   if (vn_android_gralloc_get_shared_present_usage())
+      VN_SET_CORE_VALUE(&props->presentation, sharedImage, VK_TRUE);
+
    const uint32_t version_override = vk_get_version_override();
    if (version_override) {
       vk10_props->apiVersion = version_override;
@@ -1831,44 +1852,25 @@ vn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       /* EXT */
       CASE(CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT, conservative_rasterization);
       CASE(CUSTOM_BORDER_COLOR_PROPERTIES_EXT, custom_border_color);
+      CASE(DRM_PROPERTIES_EXT, drm);
       CASE(EXTENDED_DYNAMIC_STATE_3_PROPERTIES_EXT, extended_dynamic_state_3);
       CASE(GRAPHICS_PIPELINE_LIBRARY_PROPERTIES_EXT, graphics_pipeline_library);
       CASE(LINE_RASTERIZATION_PROPERTIES_EXT, line_rasterization);
       CASE(MULTI_DRAW_PROPERTIES_EXT, multi_draw);
+      CASE(PCI_BUS_INFO_PROPERTIES_EXT, pci_bus_info);
       CASE(PROVOKING_VERTEX_PROPERTIES_EXT, provoking_vertex);
       CASE(ROBUSTNESS_2_PROPERTIES_EXT, robustness_2);
       CASE(TRANSFORM_FEEDBACK_PROPERTIES_EXT, transform_feedback);
       CASE(VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT, vertex_attribute_divisor);
 
-         /* clang-format on */
-
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT: {
-         const VkPhysicalDeviceDrmPropertiesEXT *drm =
-            &physical_dev->instance->renderer->info.drm.props;
-         vk_copy_struct_guts(out, (VkBaseInStructure *)drm, sizeof(*drm));
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT: {
-         /* this is used by WSI */
-         const struct vn_renderer_info *info =
-            &physical_dev->instance->renderer->info;
-         const VkPhysicalDevicePCIBusInfoPropertiesEXT *pci =
-            info->pci.has_bus_info ? &info->pci.props
-                                   : &in_props->pci_bus_info;
-         vk_copy_struct_guts(out, (VkBaseInStructure *)pci, sizeof(*pci));
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: {
-         VkPhysicalDevicePresentationPropertiesANDROID *out_props =
-            (void *)out;
-         out_props->sharedImage =
-            vn_android_gralloc_get_shared_present_usage() ? VK_TRUE
-                                                          : VK_FALSE;
-         break;
-      }
+      /* ANDROID */
+      CASE(PRESENTATION_PROPERTIES_ANDROID, presentation);
 
       default:
          break;
+
+         /* clang-format on */
+
 #undef CASE
       }
    }

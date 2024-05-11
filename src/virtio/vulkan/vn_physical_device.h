@@ -31,12 +31,14 @@ struct vn_physical_device_properties {
    VkPhysicalDeviceConservativeRasterizationPropertiesEXT
       conservative_rasterization;
    VkPhysicalDeviceCustomBorderColorPropertiesEXT custom_border_color;
+   VkPhysicalDeviceDrmPropertiesEXT drm;
    VkPhysicalDeviceExtendedDynamicState3PropertiesEXT extended_dynamic_state_3;
    VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT
       graphics_pipeline_library;
    VkPhysicalDeviceLineRasterizationPropertiesEXT line_rasterization;
    VkPhysicalDeviceMultiDrawPropertiesEXT multi_draw;
    VkPhysicalDevicePCIBusInfoPropertiesEXT pci_bus_info;
+   VkPhysicalDevicePresentationPropertiesANDROID presentation;
    VkPhysicalDeviceProvokingVertexPropertiesEXT provoking_vertex;
    VkPhysicalDeviceRobustness2PropertiesEXT robustness_2;
    VkPhysicalDeviceTransformFeedbackPropertiesEXT transform_feedback;

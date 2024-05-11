@@ -175,16 +175,6 @@ v3dv_cl_ensure_space(struct v3dv_cl *cl, uint32_t space, uint32_t alignment)
 void
 v3dv_cl_ensure_space_with_branch(struct v3dv_cl *cl, uint32_t space)
 {
-   /*
-    * The CLE processor in the simulator tries to read V3D_CL_MAX_INSTR_SIZE
-    * bytes form the CL for each new instruction. If the last instruction in our
-    * CL is smaller than that, and there are not at least V3D_CL_MAX_INSTR_SIZE
-    * bytes until the end of the BO, it will read out of bounds and possibly
-    * cause a GMP violation interrupt to trigger. Ensure we always have at
-    * least that many bytes available to read with the last instruction.
-    */
-   space += V3D_CL_MAX_INSTR_SIZE;
-
    if (v3dv_cl_offset(cl) + space <= cl->size)
       return;
 

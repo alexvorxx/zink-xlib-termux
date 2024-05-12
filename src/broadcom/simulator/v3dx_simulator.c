@@ -251,6 +251,7 @@ v3dX(simulator_submit_csd_ioctl)(struct v3d_hw *v3d,
 
 int
 v3dX(simulator_get_param_ioctl)(struct v3d_hw *v3d,
+                                uint32_t perfcnt_total,
                                 struct drm_v3d_get_param *args)
 {
         static const uint32_t reg_map[] = {
@@ -285,6 +286,9 @@ v3dX(simulator_get_param_ioctl)(struct v3d_hw *v3d,
                 return 0;
 	case DRM_V3D_PARAM_SUPPORTS_CPU_QUEUE:
 		args->value = 1;
+		return 0;
+	case DRM_V3D_PARAM_MAX_PERF_COUNTERS:
+		args->value = perfcnt_total;
 		return 0;
         }
 

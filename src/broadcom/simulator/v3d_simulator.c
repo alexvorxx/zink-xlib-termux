@@ -1074,7 +1074,9 @@ v3d_simulator_ioctl(int fd, unsigned long request, void *args)
                 return 0;
 
         case DRM_IOCTL_V3D_GET_PARAM:
-                return v3d_X_simulator(get_param_ioctl)(sim_state.v3d, args);
+                return v3d_X_simulator(get_param_ioctl)(sim_state.v3d,
+                                                        sim_state.perfcnt_total,
+                                                        args);
 
         case DRM_IOCTL_GEM_CLOSE:
                 return v3d_simulator_gem_close_ioctl(fd, args);

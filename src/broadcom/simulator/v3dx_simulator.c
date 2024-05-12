@@ -302,6 +302,30 @@ v3dX(simulator_get_param_ioctl)(struct v3d_hw *v3d,
         abort();
 }
 
+int
+v3dX(simulator_perfmon_get_counter_ioctl)(uint32_t perfcnt_total,
+                                          struct drm_v3d_perfmon_get_counter *args)
+{
+        const char **counter = NULL;
+
+        /* Make sure that the counter ID is valid */
+        if (args->counter >= perfcnt_total)
+                return -1;
+
+        counter = v3d_performance_counters[args->counter];
+
+        memcpy(args->name, counter[V3D_PERFCNT_NAME],
+               DRM_V3D_PERFCNT_MAX_NAME);
+
+        memcpy(args->category, counter[V3D_PERFCNT_CATEGORY],
+               DRM_V3D_PERFCNT_MAX_CATEGORY);
+
+        memcpy(args->description, counter[V3D_PERFCNT_DESCRIPTION],
+               DRM_V3D_PERFCNT_MAX_DESCRIPTION);
+
+        return 0;
+}
+
 static struct v3d_hw *v3d_isr_hw;
 
 

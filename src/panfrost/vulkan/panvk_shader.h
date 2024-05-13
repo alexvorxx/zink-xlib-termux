@@ -20,6 +20,10 @@
 
 #include "vk_pipeline_layout.h"
 
+#include "vk_shader.h"
+
+extern const struct vk_device_shader_ops panvk_per_arch(device_shader_ops);
+
 #define MAX_VS_ATTRIBS 16
 
 struct nir_shader;
@@ -99,6 +103,7 @@ enum panvk_bifrost_desc_table_type {
 #define COPY_DESC_HANDLE_EXTRACT_TABLE(handle) ((handle) >> 28)
 
 struct panvk_shader {
+   struct vk_shader vk;
    struct pan_shader_info info;
    struct pan_compute_dim local_size;
 

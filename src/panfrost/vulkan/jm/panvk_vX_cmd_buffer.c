@@ -458,6 +458,50 @@ panvk_per_arch(CmdPushConstants)(VkCommandBuffer commandBuffer,
                             size, pValues);
 }
 
+static void
+panvk_cmd_bind_shader(struct panvk_cmd_buffer *cmd, const gl_shader_stage stage,
+                      struct panvk_shader *shader)
+{
+   switch (stage) {
+   case MESA_SHADER_COMPUTE:
+      cmd->state.compute.shader = shader;
+      memset(&cmd->state.compute.cs.desc, 0,
+             sizeof(cmd->state.compute.cs.desc));
+      break;
+   case MESA_SHADER_VERTEX:
+      cmd->state.gfx.vs.shader = shader;
+      cmd->state.gfx.linked = false;
+      memset(&cmd->state.gfx.vs.desc, 0, sizeof(cmd->state.gfx.vs.desc));
+      break;
+   case MESA_SHADER_FRAGMENT:
+      cmd->state.gfx.fs.shader = shader;
+      cmd->state.gfx.linked = false;
+      cmd->state.gfx.fs.rsd = 0;
+      memset(&cmd->state.gfx.fs.desc, 0, sizeof(cmd->state.gfx.fs.desc));
+      break;
+   default:
+      assert(!"Unsupported stage");
+      break;
+   }
+}
+
+void
+panvk_per_arch(cmd_bind_shaders)(struct vk_command_buffer *vk_cmd,
+                                 uint32_t stage_count,
+                                 const gl_shader_stage *stages,
+                                 struct vk_shader **const shaders)
+{
+   struct panvk_cmd_buffer *cmd =
+      container_of(vk_cmd, struct panvk_cmd_buffer, vk);
+
+   for (uint32_t i = 0; i < stage_count; i++) {
+      struct panvk_shader *shader =
+         container_of(shaders[i], struct panvk_shader, vk);
+
+      panvk_cmd_bind_shader(cmd, stages[i], shader);
+   }
+}
+
 VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
                                 VkPipelineBindPoint pipelineBindPoint,
@@ -474,13 +518,8 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       vk_cmd_set_dynamic_graphics_state(&cmdbuf->vk,
                                         &gfx_pipeline->state.dynamic);
 
-      cmdbuf->state.gfx.vs.shader = gfx_pipeline->vs;
-      cmdbuf->state.gfx.fs.shader = gfx_pipeline->fs;
-
-      cmdbuf->state.gfx.fs.rsd = 0;
-      cmdbuf->state.gfx.linked = false;
-      memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
-      memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
+      panvk_cmd_bind_shader(cmdbuf, MESA_SHADER_VERTEX, gfx_pipeline->vs);
+      panvk_cmd_bind_shader(cmdbuf, MESA_SHADER_FRAGMENT, gfx_pipeline->fs);
       break;
    }
 
@@ -488,10 +527,7 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       const struct panvk_compute_pipeline *compute_pipeline =
          panvk_pipeline_to_compute_pipeline(pipeline);
 
-      cmdbuf->state.compute.shader = compute_pipeline->cs;
-
-      memset(&cmdbuf->state.compute.cs.desc, 0,
-             sizeof(cmdbuf->state.compute.cs.desc));
+      panvk_cmd_bind_shader(cmdbuf, MESA_SHADER_COMPUTE, compute_pipeline->cs);
       break;
    }
 

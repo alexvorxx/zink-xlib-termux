@@ -29,6 +29,7 @@
 
 #include "genxml/gen_macros.h"
 
+#include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
 #include "panvk_instance.h"
 #include "panvk_mempool.h"
@@ -41,6 +42,8 @@
 #include "nir_builder.h"
 #include "nir_conversion_builder.h"
 #include "nir_deref.h"
+
+#include "vk_graphics_state.h"
 #include "vk_shader_module.h"
 
 #include "compiler/bifrost_nir.h"
@@ -164,6 +167,26 @@ panvk_buffer_ssbo_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
    }
 }
 
+static const nir_shader_compiler_options *
+panvk_get_nir_options(UNUSED struct vk_physical_device *vk_pdev,
+                      UNUSED gl_shader_stage stage,
+                      UNUSED const struct vk_pipeline_robustness_state *rs)
+{
+   return GENX(pan_shader_get_compiler_options)();
+}
+
+static struct spirv_to_nir_options
+panvk_get_spirv_options(UNUSED struct vk_physical_device *vk_pdev,
+                        UNUSED gl_shader_stage stage,
+                        const struct vk_pipeline_robustness_state *rs)
+{
+   return (struct spirv_to_nir_options){
+      .ubo_addr_format = panvk_buffer_ubo_addr_format(rs->uniform_buffers),
+      .ssbo_addr_format = panvk_buffer_ssbo_addr_format(rs->storage_buffers),
+      .phys_ssbo_addr_format = nir_address_format_64bit_global,
+   };
+}
+
 static void
 panvk_preprocess_nir(UNUSED struct vk_physical_device *vk_pdev, nir_shader *nir)
 {
@@ -230,6 +253,19 @@ panvk_preprocess_nir(UNUSED struct vk_physical_device *vk_pdev, nir_shader *nir)
 
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_lower_var_copies);
+}
+
+static void
+panvk_hash_graphics_state(struct vk_physical_device *device,
+                          const struct vk_graphics_pipeline_state *state,
+                          VkShaderStageFlags stages, blake3_hash blake3_out)
+{
+   struct mesa_blake3 blake3_ctx;
+   _mesa_blake3_init(&blake3_ctx);
+
+   /* We don't need to do anything here yet */
+
+   _mesa_blake3_final(&blake3_ctx, blake3_out);
 }
 
 static void
@@ -313,7 +349,7 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
    const bool dump_asm =
       shader_flags & VK_SHADER_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_MESA;
 
-   /* TODO: ASM dumping */
+   /* TODO: ASM dumping (VK_KHR_maintenance5) */
    assert(!dump_asm);
 
    struct util_dynarray binary;
@@ -402,6 +438,335 @@ panvk_shader_upload(struct panvk_device *dev, struct panvk_shader *shader,
    }
 
    return VK_SUCCESS;
+}
+
+static void
+panvk_shader_destroy(struct vk_device *vk_dev, struct vk_shader *vk_shader,
+                     const VkAllocationCallbacks *pAllocator)
+{
+   struct panvk_device *dev = to_panvk_device(vk_dev);
+   struct panvk_shader *shader =
+      container_of(vk_shader, struct panvk_shader, vk);
+
+   panvk_pool_free_mem(&dev->mempools.exec, shader->code_mem);
+   panvk_pool_free_mem(&dev->mempools.exec, shader->rsd);
+   panvk_pool_free_mem(&dev->mempools.exec, shader->desc_info.others.map);
+
+   free((void *)shader->bin_ptr);
+   vk_shader_free(&dev->vk, pAllocator, &shader->vk);
+}
+
+static const struct vk_shader_ops panvk_shader_ops;
+
+static VkResult
+panvk_compile_shader(struct panvk_device *dev,
+                     struct vk_shader_compile_info *info,
+                     const struct vk_graphics_pipeline_state *state,
+                     const VkAllocationCallbacks *pAllocator,
+                     struct vk_shader **shader_out)
+{
+   struct panvk_physical_device *phys_dev =
+      to_panvk_physical_device(dev->vk.physical);
+
+   struct panvk_shader *shader;
+   VkResult result;
+
+   /* We consume the NIR, regardless of success or failure */
+   nir_shader *nir = info->nir;
+
+   shader = vk_shader_zalloc(&dev->vk, &panvk_shader_ops, info->stage,
+                             pAllocator, sizeof(*shader));
+   if (shader == NULL)
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   struct panfrost_compile_inputs inputs = {
+      .gpu_id = phys_dev->kmod.props.gpu_prod_id,
+      .no_ubo_to_push = true,
+      .no_idvs = true, /* TODO */
+   };
+
+   panvk_lower_nir(dev, nir, info->set_layout_count, info->set_layouts,
+                   info->robustness, &inputs, shader);
+
+   result = panvk_compile_nir(dev, nir, info->flags, &inputs, shader);
+
+   if (result != VK_SUCCESS) {
+      panvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return result;
+   }
+
+   result = panvk_shader_upload(dev, shader, pAllocator);
+
+   if (result != VK_SUCCESS) {
+      panvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+      return result;
+   }
+
+   *shader_out = &shader->vk;
+
+   return result;
+}
+
+static VkResult
+panvk_compile_shaders(struct vk_device *vk_dev, uint32_t shader_count,
+                      struct vk_shader_compile_info *infos,
+                      const struct vk_graphics_pipeline_state *state,
+                      const VkAllocationCallbacks *pAllocator,
+                      struct vk_shader **shaders_out)
+{
+   struct panvk_device *dev = to_panvk_device(vk_dev);
+   VkResult result;
+   uint32_t i;
+
+   for (i = 0; i < shader_count; i++) {
+      result = panvk_compile_shader(dev, &infos[i], state, pAllocator,
+                                    &shaders_out[i]);
+
+      /* Clean up NIR for the current shader */
+      ralloc_free(infos[i].nir);
+
+      if (result != VK_SUCCESS)
+         goto err_cleanup;
+   }
+
+   /* TODO: If we get multiple shaders here, we can perform part of the link
+    * logic at compile time. */
+
+   return VK_SUCCESS;
+
+err_cleanup:
+   /* Clean up all the shaders before this point */
+   for (uint32_t j = 0; j < i; j++)
+      panvk_shader_destroy(&dev->vk, shaders_out[j], pAllocator);
+
+   /* Clean up all the NIR after this point */
+   for (uint32_t j = i + 1; j < shader_count; j++)
+      ralloc_free(infos[j].nir);
+
+   /* Memset the output array */
+   memset(shaders_out, 0, shader_count * sizeof(*shaders_out));
+
+   return result;
+}
+
+static VkResult
+shader_desc_info_deserialize(struct blob_reader *blob,
+                             struct panvk_shader *shader)
+{
+   shader->desc_info.used_set_mask = blob_read_uint32(blob);
+   shader->desc_info.dyn_ubos.count = blob_read_uint32(blob);
+   blob_copy_bytes(blob, shader->desc_info.dyn_ubos.map,
+                   shader->desc_info.dyn_ubos.count);
+   shader->desc_info.dyn_ssbos.count = blob_read_uint32(blob);
+   blob_copy_bytes(blob, shader->desc_info.dyn_ssbos.map,
+                   shader->desc_info.dyn_ssbos.count);
+
+   uint32_t others_count = 0;
+   for (unsigned i = 0; i < ARRAY_SIZE(shader->desc_info.others.count); i++) {
+      shader->desc_info.others.count[i] = blob_read_uint32(blob);
+      others_count += shader->desc_info.others.count[i];
+   }
+
+   if (others_count) {
+      struct panvk_device *dev = to_panvk_device(shader->vk.base.device);
+      struct panvk_pool_alloc_info alloc_info = {
+         .size = others_count * sizeof(uint32_t),
+         .alignment = sizeof(uint32_t),
+      };
+      shader->desc_info.others.map =
+         panvk_pool_alloc_mem(&dev->mempools.rw, alloc_info);
+      uint32_t *copy_table =
+         panvk_priv_mem_host_addr(shader->desc_info.others.map);
+
+      if (!copy_table)
+         return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+      blob_copy_bytes(blob, copy_table, others_count * sizeof(*copy_table));
+   }
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+panvk_deserialize_shader(struct vk_device *vk_dev, struct blob_reader *blob,
+                         uint32_t binary_version,
+                         const VkAllocationCallbacks *pAllocator,
+                         struct vk_shader **shader_out)
+{
+   struct panvk_device *device = to_panvk_device(vk_dev);
+   struct panvk_shader *shader;
+   VkResult result;
+
+   struct pan_shader_info info;
+   blob_copy_bytes(blob, &info, sizeof(info));
+
+   struct pan_compute_dim local_size;
+   blob_copy_bytes(blob, &local_size, sizeof(local_size));
+
+   const uint32_t bin_size = blob_read_uint32(blob);
+
+   if (blob->overrun)
+      return vk_error(device, VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT);
+
+   shader = vk_shader_zalloc(vk_dev, &panvk_shader_ops, info.stage, pAllocator,
+                             sizeof(*shader));
+   if (shader == NULL)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   shader->info = info;
+   shader->local_size = local_size;
+   shader->bin_size = bin_size;
+
+   shader->bin_ptr = malloc(bin_size);
+   if (shader->bin_ptr == NULL) {
+      panvk_shader_destroy(vk_dev, &shader->vk, pAllocator);
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+
+   blob_copy_bytes(blob, (void *)shader->bin_ptr, shader->bin_size);
+
+   result = shader_desc_info_deserialize(blob, shader);
+
+   if (result != VK_SUCCESS) {
+      panvk_shader_destroy(vk_dev, &shader->vk, pAllocator);
+      return vk_error(device, result);
+   }
+
+   if (blob->overrun) {
+      panvk_shader_destroy(vk_dev, &shader->vk, pAllocator);
+      return vk_error(device, VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT);
+   }
+
+   result = panvk_shader_upload(device, shader, pAllocator);
+
+   if (result != VK_SUCCESS) {
+      panvk_shader_destroy(vk_dev, &shader->vk, pAllocator);
+      return result;
+   }
+
+   *shader_out = &shader->vk;
+
+   return result;
+}
+
+static void
+shader_desc_info_serialize(struct blob *blob, const struct panvk_shader *shader)
+{
+   blob_write_uint32(blob, shader->desc_info.used_set_mask);
+   blob_write_uint32(blob, shader->desc_info.dyn_ubos.count);
+   blob_write_bytes(blob, shader->desc_info.dyn_ubos.map,
+                    sizeof(*shader->desc_info.dyn_ubos.map) *
+                       shader->desc_info.dyn_ubos.count);
+   blob_write_uint32(blob, shader->desc_info.dyn_ssbos.count);
+   blob_write_bytes(blob, shader->desc_info.dyn_ssbos.map,
+                    sizeof(*shader->desc_info.dyn_ssbos.map) *
+                       shader->desc_info.dyn_ssbos.count);
+
+   unsigned others_count = 0;
+   for (unsigned i = 0; i < ARRAY_SIZE(shader->desc_info.others.count); i++) {
+      blob_write_uint32(blob, shader->desc_info.others.count[i]);
+      others_count += shader->desc_info.others.count[i];
+   }
+
+   blob_write_bytes(blob,
+                    panvk_priv_mem_host_addr(shader->desc_info.others.map),
+                    sizeof(uint32_t) * others_count);
+}
+
+static bool
+panvk_shader_serialize(struct vk_device *vk_dev,
+                       const struct vk_shader *vk_shader, struct blob *blob)
+{
+   struct panvk_shader *shader =
+      container_of(vk_shader, struct panvk_shader, vk);
+
+   /* TODO: Disallow serialization with assembly when implemented */
+   /* TODO: Implement serialization with assembly */
+
+   blob_write_bytes(blob, &shader->info, sizeof(shader->info));
+   blob_write_bytes(blob, &shader->local_size, sizeof(shader->local_size));
+   blob_write_uint32(blob, shader->bin_size);
+   blob_write_bytes(blob, shader->bin_ptr, shader->bin_size);
+   shader_desc_info_serialize(blob, shader);
+
+   return !blob->out_of_memory;
+}
+
+#define WRITE_STR(field, ...)                                                  \
+   ({                                                                          \
+      memset(field, 0, sizeof(field));                                         \
+      UNUSED int i = snprintf(field, sizeof(field), __VA_ARGS__);              \
+      assert(i > 0 && i < sizeof(field));                                      \
+   })
+
+static VkResult
+panvk_shader_get_executable_properties(
+   UNUSED struct vk_device *device, const struct vk_shader *vk_shader,
+   uint32_t *executable_count, VkPipelineExecutablePropertiesKHR *properties)
+{
+   UNUSED struct panvk_shader *shader =
+      container_of(vk_shader, struct panvk_shader, vk);
+
+   VK_OUTARRAY_MAKE_TYPED(VkPipelineExecutablePropertiesKHR, out, properties,
+                          executable_count);
+
+   vk_outarray_append_typed(VkPipelineExecutablePropertiesKHR, &out, props)
+   {
+      props->stages = mesa_to_vk_shader_stage(shader->info.stage);
+      props->subgroupSize = 8;
+      WRITE_STR(props->name, "%s",
+                _mesa_shader_stage_to_string(shader->info.stage));
+      WRITE_STR(props->description, "%s shader",
+                _mesa_shader_stage_to_string(shader->info.stage));
+   }
+
+   return vk_outarray_status(&out);
+}
+
+static VkResult
+panvk_shader_get_executable_statistics(
+   UNUSED struct vk_device *device, const struct vk_shader *vk_shader,
+   uint32_t executable_index, uint32_t *statistic_count,
+   VkPipelineExecutableStatisticKHR *statistics)
+{
+   UNUSED struct panvk_shader *shader =
+      container_of(vk_shader, struct panvk_shader, vk);
+
+   VK_OUTARRAY_MAKE_TYPED(VkPipelineExecutableStatisticKHR, out, statistics,
+                          statistic_count);
+
+   assert(executable_index == 0);
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat)
+   {
+      WRITE_STR(stat->name, "Code Size");
+      WRITE_STR(stat->description,
+                "Size of the compiled shader binary, in bytes");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = shader->bin_size;
+   }
+
+   /* TODO: more executable statistics (VK_KHR_pipeline_executable_properties) */
+
+   return vk_outarray_status(&out);
+}
+
+static VkResult
+panvk_shader_get_executable_internal_representations(
+   UNUSED struct vk_device *device, const struct vk_shader *vk_shader,
+   uint32_t executable_index, uint32_t *internal_representation_count,
+   VkPipelineExecutableInternalRepresentationKHR *internal_representations)
+{
+   UNUSED struct panvk_shader *shader =
+      container_of(vk_shader, struct panvk_shader, vk);
+   VK_OUTARRAY_MAKE_TYPED(VkPipelineExecutableInternalRepresentationKHR, out,
+                          internal_representations,
+                          internal_representation_count);
+   bool incomplete_text = false;
+
+   /* TODO: Compiler assembly (VK_KHR_pipeline_executable_properties) */
+
+   return incomplete_text ? VK_INCOMPLETE : vk_outarray_status(&out);
 }
 
 struct panvk_shader *
@@ -690,3 +1055,23 @@ panvk_per_arch(link_shaders)(struct panvk_pool *desc_pool,
 
    memcpy(link->buf_strides, buf_strides, sizeof(link->buf_strides));
 }
+
+static const struct vk_shader_ops panvk_shader_ops = {
+   .destroy = panvk_shader_destroy,
+   .serialize = panvk_shader_serialize,
+   .get_executable_properties = panvk_shader_get_executable_properties,
+   .get_executable_statistics = panvk_shader_get_executable_statistics,
+   .get_executable_internal_representations =
+      panvk_shader_get_executable_internal_representations,
+};
+
+const struct vk_device_shader_ops panvk_per_arch(device_shader_ops) = {
+   .get_nir_options = panvk_get_nir_options,
+   .get_spirv_options = panvk_get_spirv_options,
+   .preprocess_nir = panvk_preprocess_nir,
+   .hash_graphics_state = panvk_hash_graphics_state,
+   .compile = panvk_compile_shaders,
+   .deserialize = panvk_deserialize_shader,
+   .cmd_set_dynamic_graphics_state = vk_cmd_set_dynamic_graphics_state,
+   .cmd_bind_shaders = panvk_per_arch(cmd_bind_shaders),
+};

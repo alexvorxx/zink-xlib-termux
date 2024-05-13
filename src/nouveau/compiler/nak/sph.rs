@@ -453,12 +453,11 @@ impl ShaderProgramHeader {
         self.set_bit(610, does_interlock);
     }
 
-    // TODO: This seems always set on fragment shaders, figure out what this is for.
     #[inline]
     #[allow(dead_code)]
-    pub fn set_unknown_bit611(&mut self, value: bool) {
+    pub fn set_uses_underestimate(&mut self, uses_underestimate: bool) {
         assert!(self.shader_type == ShaderType::Fragment);
-        self.set_bit(611, value);
+        self.set_bit(611, uses_underestimate);
     }
 
     #[inline]
@@ -533,6 +532,8 @@ pub fn encode_header(
             }
 
             let zs_self_dep = fs_key.map_or(false, |key| key.zs_self_dep);
+            let uses_underestimate =
+                fs_key.map_or(false, |key| key.uses_underestimate);
 
             // This isn't so much a "Do we write multiple render targets?" bit
             // as a "Should color0 be broadcast to all render targets?" bit. In
@@ -547,6 +548,7 @@ pub fn encode_header(
             sph.set_omap_depth(io.writes_depth);
             sph.set_omap_targets(io.writes_color);
             sph.set_does_interlock(io.does_interlock);
+            sph.set_uses_underestimate(uses_underestimate);
 
             for (index, value) in io.barycentric_attr_in.iter().enumerate() {
                 sph.set_pervertex_imap_vector(index, *value);

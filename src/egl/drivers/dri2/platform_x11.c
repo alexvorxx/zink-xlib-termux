@@ -1712,7 +1712,9 @@ dri2_initialize_x11_dri3(_EGLDisplay *disp)
 
 cleanup:
    dri2_display_destroy(disp);
-   return status;
+   return status == DRI2_EGL_DRIVER_PREFER_ZINK ?
+          DRI2_EGL_DRIVER_PREFER_ZINK :
+          DRI2_EGL_DRIVER_FAILED;
 }
 #endif
 

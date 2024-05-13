@@ -81,6 +81,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_storage_buffer_storage_class = true,
       .KHR_descriptor_update_template = true,
       .KHR_driver_properties = true,
+      .KHR_pipeline_executable_properties = true,
       .KHR_push_descriptor = true,
 #ifdef PANVK_USE_WSI_PLATFORM
       .KHR_swapchain = true,
@@ -220,6 +221,9 @@ get_features(const struct panvk_physical_device *device,
        * color.
        */
       .customBorderColorWithoutFormat = arch != 7,
+
+      /* VK_KHR_pipeline_executable_properties */
+      .pipelineExecutableInfo = true,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,

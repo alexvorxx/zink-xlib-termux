@@ -24,18 +24,24 @@ a306_gl:
 # it started.
 .a306_piglit_gl:
   extends:
-    - .a306_piglit
+    - .baremetal-deqp-test
+    - .a306-test
+    - .google-freedreno-manual-rules
   variables:
     BM_KERNEL_EXTRA_ARGS: "msm.num_hw_submissions=1"
     DEQP_SUITE: freedreno-a306-piglit-quick-gl
     FDO_CI_CONCURRENT: 3
+    HWCI_START_XORG: 1
 
 a306_piglit_shader:
   extends:
-    - .a306_piglit
+    - .baremetal-deqp-test
+    - .a306-test
+    - .google-freedreno-manual-rules
   variables:
     DEQP_SUITE: freedreno-a306-piglit-quick-shader
     FDO_CI_CONCURRENT: 6
+    HWCI_START_XORG: 1
 
 a306-traces:
   extends:

@@ -67,8 +67,8 @@ then
     grep "Test failed" "$RESULTS"/vkd3d-proton.log > "$RESULTSFILE"
 
     # Gather the list expected failures
-    if [ -f "$INSTALL/$VKD3D_PROTON_RESULTS.txt" ]; then
-        cp "$INSTALL/$VKD3D_PROTON_RESULTS.txt" \
+    if [ -f "$INSTALL/$VKD3D_PROTON_RESULTS-vkd3d.txt" ]; then
+        cp "$INSTALL/$VKD3D_PROTON_RESULTS-vkd3d.txt" \
            ".gitlab-ci/vkd3d-proton/$VKD3D_PROTON_RESULTS.txt.baseline"
     else
         touch ".gitlab-ci/vkd3d-proton/$VKD3D_PROTON_RESULTS.txt.baseline"

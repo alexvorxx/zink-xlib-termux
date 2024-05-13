@@ -391,4 +391,4 @@
     - .kabini-test-valve
     - .radv-valve-manual-rules
   variables:
-    VKD3D_PROTON_RESULTS: radv-kabini-vkd3d
+    VKD3D_PROTON_RESULTS: radv-kabini

@@ -1435,7 +1435,8 @@ agx_nir_prefix_sum_gs(nir_builder *b, const void *data)
 
    libagx_prefix_sum(b, load_geometry_param(b, count_buffer),
                      load_geometry_param(b, input_primitives),
-                     nir_imm_int(b, *words));
+                     nir_imm_int(b, *words),
+                     nir_channel(b, nir_load_workgroup_id(b), 0));
 }
 
 void

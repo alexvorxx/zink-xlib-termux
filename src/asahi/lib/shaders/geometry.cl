@@ -544,11 +544,10 @@ libagx_work_group_scan_inclusive_add(uint x, local uint *scratch)
 }
 
 kernel void
-libagx_prefix_sum(global uint *buffer, uint len, uint words)
+libagx_prefix_sum(global uint *buffer, uint len, uint words, uint word)
 {
    local uint scratch[32];
    uint tid = get_local_id(0);
-   uint word = get_group_id(0);
 
    /* Main loop: complete workgroups processing 1024 values at once */
    uint i, count = 0;

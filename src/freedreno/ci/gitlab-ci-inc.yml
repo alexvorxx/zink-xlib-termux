@@ -146,6 +146,13 @@
     - !reference [.collabora-freedreno-rules, rules]
     - !reference [.collabora-turnip-rules, rules]
 
+.collabora-freedreno-turnip-manual-rules:
+  stage: freedreno
+  rules:
+    - !reference [.test, rules]
+    - !reference [.collabora-freedreno-manual-rules, rules]
+    - !reference [.collabora-turnip-manual-rules, rules]
+
 .google-freedreno-rules-restricted:
   stage: freedreno
   rules:

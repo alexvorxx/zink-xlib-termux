@@ -14,6 +14,7 @@
         - src/amd/ci/$GPU_VERSION-flakes.txt
         - src/amd/ci/$GPU_VERSION-skips.txt
         - src/amd/ci/$PIGLIT_TRACES_FILE
+        - src/amd/ci/$VKD3D_PROTON_RESULTS-vkd3d.txt
         - src/amd/common/**/*
         - src/amd/llvm/**/*
         - src/amd/registers/**/*

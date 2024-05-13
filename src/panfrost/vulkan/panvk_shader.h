@@ -16,6 +16,7 @@
 
 #include "panvk_descriptor_set.h"
 #include "panvk_macros.h"
+#include "panvk_mempool.h"
 
 #include "vk_pipeline_layout.h"
 
@@ -94,7 +95,7 @@ enum panvk_bifrost_desc_table_type {
 };
 
 #define COPY_DESC_HANDLE(table, idx)           ((table << 28) | (idx))
-#define COPY_DESC_HANDLE_EXTRACT_INDEX(handle) ((handle)&BITFIELD_MASK(28))
+#define COPY_DESC_HANDLE_EXTRACT_INDEX(handle) ((handle) & BITFIELD_MASK(28))
 #define COPY_DESC_HANDLE_EXTRACT_TABLE(handle) ((handle) >> 28)
 
 struct panvk_shader_desc_map {
@@ -121,7 +122,15 @@ struct panvk_shader {
 
    const void *bin_ptr;
    uint32_t bin_size;
+
+   struct panvk_priv_mem code_mem;
 };
+
+static inline mali_ptr
+panvk_shader_get_dev_addr(const struct panvk_shader *shader)
+{
+   return shader != NULL ? panvk_priv_mem_dev_addr(shader->code_mem) : 0;
+}
 
 struct panvk_shader *panvk_per_arch(shader_create)(
    struct panvk_device *dev, const VkPipelineShaderStageCreateInfo *stage_info,

@@ -31,6 +31,7 @@
 
 #include "panvk_device.h"
 #include "panvk_instance.h"
+#include "panvk_mempool.h"
 #include "panvk_physical_device.h"
 #include "panvk_shader.h"
 
@@ -46,6 +47,7 @@
 #include "util/pan_lower_framebuffer.h"
 #include "pan_shader.h"
 
+#include "vk_log.h"
 #include "vk_pipeline.h"
 #include "vk_pipeline_layout.h"
 #include "vk_util.h"
@@ -132,6 +134,20 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
       glsl_type_is_boolean(type) ? 4 : glsl_get_bit_size(type) / 8;
    unsigned length = glsl_get_vector_elements(type);
    *size = comp_size * length, *align = comp_size * (length == 3 ? 4 : length);
+}
+
+static VkResult
+panvk_shader_upload(struct panvk_device *dev, struct panvk_shader *shader,
+                    const VkAllocationCallbacks *pAllocator)
+{
+   if (shader->bin_size > 0) {
+      shader->code_mem = panvk_pool_upload_aligned(
+         &dev->mempools.exec, shader->bin_ptr, shader->bin_size, 128);
+   } else {
+      shader->code_mem = (struct panvk_priv_mem){0};
+   }
+
+   return VK_SUCCESS;
 }
 
 struct panvk_shader *
@@ -314,11 +330,8 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    if (bin_size) {
       void *data = malloc(bin_size);
 
-      if (data == NULL) {
-         ralloc_free(nir);
-         panvk_per_arch(shader_destroy)(dev, shader, alloc);
-         return NULL;
-      }
+      if (data == NULL)
+         goto err;
 
       memcpy(data, bin_ptr, bin_size);
       shader->bin_size = bin_size;
@@ -363,9 +376,18 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    shader->local_size.y = nir->info.workgroup_size[1];
    shader->local_size.z = nir->info.workgroup_size[2];
 
-   ralloc_free(nir);
+   result = panvk_shader_upload(dev, shader, alloc);
 
+   if (result != VK_SUCCESS)
+      goto err;
+
+   ralloc_free(nir);
    return shader;
+
+err:
+   ralloc_free(nir);
+   panvk_per_arch(shader_destroy)(dev, shader, alloc);
+   return NULL;
 }
 
 void
@@ -373,6 +395,8 @@ panvk_per_arch(shader_destroy)(struct panvk_device *dev,
                                struct panvk_shader *shader,
                                const VkAllocationCallbacks *alloc)
 {
+   panvk_pool_free_mem(&dev->mempools.exec, shader->code_mem);
+
    free((void *)shader->bin_ptr);
    free(shader->desc_info.dyn_ubos.map);
    vk_free2(&dev->vk.alloc, alloc, shader);

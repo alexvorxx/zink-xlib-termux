@@ -65,13 +65,6 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
    if (!shader)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   if (shader->bin_size) {
-      pshader->code = panvk_pool_upload_aligned(
-         &dev->mempools.exec, shader->bin_ptr, shader->bin_size, 128);
-   } else {
-      pshader->code = (struct panvk_priv_mem){0};
-   }
-
    pshader->base = shader;
    pshader->info = shader->info;
    pshader->desc_info.used_set_mask = shader->desc_info.used_set_mask;
@@ -113,7 +106,7 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
 
       pan_pack(panvk_priv_mem_host_addr(pshader->rsd), RENDERER_STATE, cfg) {
          pan_shader_prepare_rsd(&pshader->info,
-                                panvk_priv_mem_dev_addr(pshader->code), &cfg);
+                                panvk_shader_get_dev_addr(pshader->base), &cfg);
       }
    }
 
@@ -127,7 +120,6 @@ cleanup_pipeline_shader(struct panvk_pipeline *pipeline,
 {
    struct panvk_device *dev = to_panvk_device(pipeline->base.device);
 
-   panvk_pool_free_mem(&dev->mempools.exec, pshader->code);
    panvk_pool_free_mem(&dev->mempools.rw, pshader->rsd);
    panvk_pool_free_mem(&dev->mempools.rw, pshader->desc_info.others.map);
 

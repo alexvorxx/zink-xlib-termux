@@ -349,7 +349,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
       PAN_DESC_ARRAY(bd_count, BLEND));
    struct mali_renderer_state_packed *rsd = ptr.cpu;
    struct mali_blend_packed *bds = ptr.cpu + pan_size(RENDERER_STATE);
-   mali_ptr fs_code = panvk_priv_mem_dev_addr(pipeline->fs.code);
+   mali_ptr fs_code = panvk_shader_get_dev_addr(pipeline->fs.base);
 
    panvk_per_arch(blend_emit_descs)(
       dev, cb, cmdbuf->state.gfx.render.color_attachments.fmts,

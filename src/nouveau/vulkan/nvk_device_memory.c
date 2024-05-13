@@ -44,51 +44,6 @@ const VkExternalMemoryProperties nvk_dma_buf_mem_props = {
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 };
 
-static VkResult
-zero_vram(struct nvk_device *dev, struct nouveau_ws_bo *bo)
-{
-   uint32_t push_data[256];
-   struct nv_push push;
-   nv_push_init(&push, push_data, ARRAY_SIZE(push_data));
-   struct nv_push *p = &push;
-
-   uint64_t addr = bo->offset;
-
-   assert((bo->size % 4096) == 0);
-   assert((bo->size / 4096) < (1 << 15));
-
-   P_MTHD(p, NV90B5, OFFSET_OUT_UPPER);
-   P_NV90B5_OFFSET_OUT_UPPER(p, addr >> 32);
-   P_NV90B5_OFFSET_OUT_LOWER(p, addr & 0xffffffff);
-   P_NV90B5_PITCH_IN(p, 4096);
-   P_NV90B5_PITCH_OUT(p, 4096);
-   P_NV90B5_LINE_LENGTH_IN(p, (4096 / 16));
-   P_NV90B5_LINE_COUNT(p, bo->size / 4096);
-
-   P_IMMD(p, NV90B5, SET_REMAP_CONST_A, 0);
-   P_IMMD(p, NV90B5, SET_REMAP_COMPONENTS, {
-      .dst_x = DST_X_CONST_A,
-      .dst_y = DST_Y_CONST_A,
-      .dst_z = DST_Z_CONST_A,
-      .dst_w = DST_W_CONST_A,
-      .component_size = COMPONENT_SIZE_FOUR,
-      .num_src_components = NUM_SRC_COMPONENTS_FOUR,
-      .num_dst_components = NUM_DST_COMPONENTS_FOUR,
-   });
-
-   P_IMMD(p, NV90B5, LAUNCH_DMA, {
-      .data_transfer_type = DATA_TRANSFER_TYPE_NON_PIPELINED,
-      .multi_line_enable = MULTI_LINE_ENABLE_TRUE,
-      .flush_enable = FLUSH_ENABLE_TRUE,
-      .src_memory_layout = SRC_MEMORY_LAYOUT_PITCH,
-      .dst_memory_layout = DST_MEMORY_LAYOUT_PITCH,
-      .remap_enable = REMAP_ENABLE_TRUE,
-   });
-
-   return nvk_queue_submit_simple(&dev->queue, nv_push_dw_count(&push),
-                                  push_data, 1, &bo);
-}
-
 static enum nouveau_ws_bo_flags
 nvk_memory_type_flags(const VkMemoryType *type,
                       VkExternalMemoryHandleTypeFlagBits handle_types)
@@ -216,7 +171,13 @@ nvk_AllocateMemory(VkDevice device,
          memset(map, 0, mem->bo->size);
          nouveau_ws_bo_unmap(mem->bo, map);
       } else {
-         result = zero_vram(dev, mem->bo);
+         result = nvk_upload_queue_fill(dev, &dev->upload,
+                                        mem->bo->offset, 0, mem->bo->size);
+         if (result != VK_SUCCESS)
+            goto fail_bo;
+
+         /* Since we don't know when the memory will be freed, sync now */
+         result = nvk_upload_queue_sync(dev, &dev->upload);
          if (result != VK_SUCCESS)
             goto fail_bo;
       }

@@ -54,4 +54,8 @@ VkResult nvk_upload_queue_upload(struct nvk_device *dev,
                                  uint64_t dst_addr,
                                  const void *src, size_t size);
 
+VkResult nvk_upload_queue_fill(struct nvk_device *dev,
+                               struct nvk_upload_queue *queue,
+                               uint64_t dst_addr, uint32_t data, size_t size);
+
 #endif /* NVK_DMA_QUEUE_H */

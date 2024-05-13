@@ -72,6 +72,7 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
       pshader->code = (struct panvk_priv_mem){0};
    }
 
+   pshader->base = shader;
    pshader->info = shader->info;
    pshader->desc_info.used_set_mask = shader->desc_info.used_set_mask;
 
@@ -116,19 +117,22 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
       }
    }
 
-   panvk_per_arch(shader_destroy)(dev, shader, alloc);
    return VK_SUCCESS;
 }
 
 static void
 cleanup_pipeline_shader(struct panvk_pipeline *pipeline,
-                        struct panvk_pipeline_shader *pshader)
+                        struct panvk_pipeline_shader *pshader,
+                        const VkAllocationCallbacks *alloc)
 {
    struct panvk_device *dev = to_panvk_device(pipeline->base.device);
 
    panvk_pool_free_mem(&dev->mempools.exec, pshader->code);
    panvk_pool_free_mem(&dev->mempools.rw, pshader->rsd);
    panvk_pool_free_mem(&dev->mempools.rw, pshader->desc_info.others.map);
+
+   if (pshader->base != NULL)
+      panvk_per_arch(shader_destroy)(dev, pshader->base, alloc);
 }
 
 static mali_pixel_format
@@ -487,13 +491,13 @@ panvk_per_arch(DestroyPipeline)(VkDevice _device, VkPipeline _pipeline,
       struct panvk_graphics_pipeline *gfx_pipeline =
          panvk_pipeline_to_graphics_pipeline(pipeline);
 
-      cleanup_pipeline_shader(pipeline, &gfx_pipeline->vs);
-      cleanup_pipeline_shader(pipeline, &gfx_pipeline->fs);
+      cleanup_pipeline_shader(pipeline, &gfx_pipeline->vs, pAllocator);
+      cleanup_pipeline_shader(pipeline, &gfx_pipeline->fs, pAllocator);
    } else {
       struct panvk_compute_pipeline *compute_pipeline =
          panvk_pipeline_to_compute_pipeline(pipeline);
 
-      cleanup_pipeline_shader(pipeline, &compute_pipeline->cs);
+      cleanup_pipeline_shader(pipeline, &compute_pipeline->cs, pAllocator);
    }
 
    vk_object_free(&device->vk, pAllocator, pipeline);

@@ -27,6 +27,7 @@
 #define MAX_RTS 8
 
 struct panvk_pipeline_shader {
+   struct panvk_shader *base;
    struct panvk_priv_mem code;
    struct panvk_priv_mem rsd;
 

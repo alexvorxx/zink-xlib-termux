@@ -277,6 +277,7 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
 {
    VkResult result;
 
+   assert(dst_addr % 4 == 0);
    assert(size % 4 == 0);
 
    while (size > 0) {
@@ -327,6 +328,7 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
          .dst_memory_layout = DST_MEMORY_LAYOUT_PITCH,
       });
 
+      assert(nv_push_dw_count(&p) <= cmd_size_dw);
       queue->bo_push_end += nv_push_dw_count(&p) * 4;
 
       dst_addr += data_size;

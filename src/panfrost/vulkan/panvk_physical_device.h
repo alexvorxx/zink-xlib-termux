@@ -37,8 +37,6 @@ struct panvk_physical_device {
    } formats;
 
    char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
-   uint8_t driver_uuid[VK_UUID_SIZE];
-   uint8_t device_uuid[VK_UUID_SIZE];
    uint8_t cache_uuid[VK_UUID_SIZE];
 
    struct vk_sync_type drm_syncobj_type;

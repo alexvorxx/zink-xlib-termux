@@ -9,6 +9,9 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "util/build_id.h"
+#include "util/mesa-sha1.h"
+
 #include "vk_alloc.h"
 #include "vk_log.h"
 
@@ -126,6 +129,19 @@ panvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO);
 
+   const struct build_id_note *note =
+      build_id_find_nhdr_for_addr(panvk_CreateInstance);
+   if (!note) {
+      return vk_errorf(NULL, VK_ERROR_INITIALIZATION_FAILED,
+                       "Failed to find build-id");
+   }
+
+   unsigned build_id_len = build_id_length(note);
+   if (build_id_len < SHA1_DIGEST_LENGTH) {
+      return vk_errorf(NULL, VK_ERROR_INITIALIZATION_FAILED,
+                       "build-id too short.  It needs to be a SHA");
+   }
+
    pAllocator = pAllocator ?: vk_default_allocator();
    instance = vk_zalloc(pAllocator, sizeof(*instance), 8,
                         VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
@@ -162,6 +178,9 @@ panvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       vk_logi(VK_LOG_NO_OBJS(instance), "Created an instance");
 
    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
+
+   STATIC_ASSERT(sizeof(instance->driver_build_sha) == SHA1_DIGEST_LENGTH);
+   memcpy(instance->driver_build_sha, build_id_data(note), SHA1_DIGEST_LENGTH);
 
    *pInstance = panvk_instance_to_handle(instance);
 

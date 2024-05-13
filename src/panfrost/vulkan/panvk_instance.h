@@ -30,6 +30,8 @@ struct panvk_instance {
 
    enum panvk_debug_flags debug_flags;
 
+   uint8_t driver_build_sha[20];
+
    struct {
       struct pan_kmod_allocator allocator;
    } kmod;

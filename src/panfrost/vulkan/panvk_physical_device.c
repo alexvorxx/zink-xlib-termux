@@ -58,19 +58,6 @@ get_cache_uuid(uint16_t family, void *uuid)
 }
 
 static void
-get_driver_uuid(void *uuid)
-{
-   memset(uuid, 0, VK_UUID_SIZE);
-   snprintf(uuid, VK_UUID_SIZE, "panfrost");
-}
-
-static void
-get_device_uuid(void *uuid)
-{
-   memset(uuid, 0, VK_UUID_SIZE);
-}
-
-static void
 get_device_extensions(const struct panvk_physical_device *device,
                       struct vk_device_extension_table *ext)
 {
@@ -231,7 +218,8 @@ get_features(const struct panvk_physical_device *device,
 }
 
 static void
-get_device_properties(const struct panvk_physical_device *device,
+get_device_properties(const struct panvk_instance *instance,
+                      const struct panvk_physical_device *device,
                       struct vk_properties *properties)
 {
    /* HW supports MSAA 4, 8 and 16, but we limit ourselves to MSAA 4 for now. */
@@ -585,8 +573,19 @@ get_device_properties(const struct panvk_physical_device *device,
 
    memcpy(properties->pipelineCacheUUID, device->cache_uuid, VK_UUID_SIZE);
 
-   memcpy(properties->driverUUID, device->driver_uuid, VK_UUID_SIZE);
-   memcpy(properties->deviceUUID, device->device_uuid, VK_UUID_SIZE);
+   const struct {
+      uint16_t vendor_id;
+      uint32_t device_id;
+      uint8_t pad[8];
+   } dev_uuid = {
+      .vendor_id = ARM_VENDOR_ID,
+      .device_id = device->model->gpu_id,
+   };
+
+   STATIC_ASSERT(sizeof(dev_uuid) == VK_UUID_SIZE);
+   memcpy(properties->deviceUUID, &dev_uuid, VK_UUID_SIZE);
+   STATIC_ASSERT(sizeof(instance->driver_build_sha) >= VK_UUID_SIZE);
+   memcpy(properties->driverUUID, instance->driver_build_sha, VK_UUID_SIZE);
 
    snprintf(properties->driverName, VK_MAX_DRIVER_NAME_SIZE, "panvk");
    snprintf(properties->driverInfo, VK_MAX_DRIVER_INFO_SIZE,
@@ -687,9 +686,6 @@ panvk_physical_device_init(struct panvk_physical_device *device,
 
    vk_warn_non_conformant_implementation("panvk");
 
-   get_driver_uuid(&device->driver_uuid);
-   get_device_uuid(&device->device_uuid);
-
    device->drm_syncobj_type = vk_drm_syncobj_get_type(device->kmod.dev->fd);
    /* We don't support timelines in the uAPI yet and we don't want it getting
     * suddenly turned on by vk_drm_syncobj_get_type() without us adding panvk
@@ -704,7 +700,7 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    get_features(device, &supported_features);
 
    struct vk_properties properties;
-   get_device_properties(device, &properties);
+   get_device_properties(instance, device, &properties);
 
    struct vk_physical_device_dispatch_table dispatch_table;
    vk_physical_device_dispatch_table_from_entrypoints(

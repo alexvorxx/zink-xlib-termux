@@ -10,8 +10,6 @@
 #error "PAN_ARCH must be defined"
 #endif
 
-#include "util/u_dynarray.h"
-
 #include "util/pan_ir.h"
 
 #include "pan_desc.h"
@@ -118,9 +116,11 @@ struct panvk_shader_desc_info {
 
 struct panvk_shader {
    struct pan_shader_info info;
-   struct util_dynarray binary;
    struct pan_compute_dim local_size;
    struct panvk_shader_desc_info desc_info;
+
+   const void *bin_ptr;
+   uint32_t bin_size;
 };
 
 struct panvk_shader *panvk_per_arch(shader_create)(

@@ -65,12 +65,9 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
    if (!shader)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   void *shader_data = util_dynarray_element(&shader->binary, uint8_t, 0);
-   unsigned shader_sz = util_dynarray_num_elements(&shader->binary, uint8_t);
-
-   if (shader_sz) {
-      pshader->code = panvk_pool_upload_aligned(&dev->mempools.exec,
-                                                shader_data, shader_sz, 128);
+   if (shader->bin_size) {
+      pshader->code = panvk_pool_upload_aligned(
+         &dev->mempools.exec, shader->bin_ptr, shader->bin_size, 128);
    } else {
       pshader->code = (struct panvk_priv_mem){0};
    }

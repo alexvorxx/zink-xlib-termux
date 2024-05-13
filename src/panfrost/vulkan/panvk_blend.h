@@ -18,7 +18,6 @@
 
 struct vk_color_blend_state;
 struct panvk_device;
-struct panvk_graphics_pipeline;
 
 struct panvk_blend_shader {
    struct pan_blend_shader_key key;

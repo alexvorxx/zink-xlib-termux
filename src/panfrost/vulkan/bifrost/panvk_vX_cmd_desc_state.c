@@ -14,7 +14,6 @@
 #include "panvk_buffer.h"
 #include "panvk_cmd_desc_state.h"
 #include "panvk_entrypoints.h"
-#include "panvk_pipeline.h"
 
 #include "pan_pool.h"
 

@@ -144,14 +144,6 @@ panvk_shader_get_dev_addr(const struct panvk_shader *shader)
    return shader != NULL ? panvk_priv_mem_dev_addr(shader->code_mem) : 0;
 }
 
-struct panvk_shader *panvk_per_arch(shader_create)(
-   struct panvk_device *dev, const VkPipelineShaderStageCreateInfo *stage_info,
-   const struct vk_pipeline_layout *layout, const VkAllocationCallbacks *alloc);
-
-void panvk_per_arch(shader_destroy)(struct panvk_device *dev,
-                                    struct panvk_shader *shader,
-                                    const VkAllocationCallbacks *alloc);
-
 void panvk_per_arch(link_shaders)(struct panvk_pool *desc_pool,
                                   struct panvk_shader *vs,
                                   struct panvk_shader *fs,

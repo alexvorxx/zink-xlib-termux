@@ -16,7 +16,7 @@
 
 #include "panvk_descriptor_set.h"
 #include "panvk_macros.h"
-#include "panvk_pipeline.h"
+#include "panvk_shader.h"
 
 #include "vk_command_buffer.h"
 

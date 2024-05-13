@@ -9,13 +9,13 @@
 
 #include "vk_blend.h"
 #include "vk_format.h"
+#include "vk_graphics_state.h"
 #include "vk_log.h"
 
 #include "pan_shader.h"
 
 #include "panvk_blend.h"
 #include "panvk_device.h"
-#include "panvk_pipeline.h"
 #include "panvk_shader.h"
 
 DERIVE_HASH_TABLE(pan_blend_shader_key);

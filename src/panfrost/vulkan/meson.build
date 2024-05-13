@@ -59,7 +59,6 @@ bifrost_files = [
   'bifrost/panvk_vX_cmd_desc_state.c',
   'bifrost/panvk_vX_meta_desc_copy.c',
   'bifrost/panvk_vX_nir_lower_descriptors.c',
-  'bifrost/panvk_vX_pipeline.c',
 ]
 
 valhall_archs = [9, 10]

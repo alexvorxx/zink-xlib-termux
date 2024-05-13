@@ -165,6 +165,74 @@ panvk_buffer_ssbo_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
 }
 
 static void
+panvk_preprocess_nir(UNUSED struct vk_physical_device *vk_pdev, nir_shader *nir)
+{
+   NIR_PASS_V(nir, nir_lower_io_to_temporaries, nir_shader_get_entrypoint(nir),
+              true, true);
+
+   NIR_PASS_V(nir, nir_lower_indirect_derefs,
+              nir_var_shader_in | nir_var_shader_out, UINT32_MAX);
+
+   NIR_PASS_V(nir, nir_opt_copy_prop_vars);
+   NIR_PASS_V(nir, nir_opt_combine_stores, nir_var_all);
+   NIR_PASS_V(nir, nir_opt_loop);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      struct nir_input_attachment_options lower_input_attach_opts = {
+         .use_fragcoord_sysval = true,
+         .use_layer_id_sysval = true,
+      };
+
+      NIR_PASS_V(nir, nir_lower_input_attachments, &lower_input_attach_opts);
+   }
+
+   /* Do texture lowering here.  Yes, it's a duplication of the texture
+    * lowering in bifrost_compile.  However, we need to lower texture stuff
+    * now, before we call panvk_per_arch(nir_lower_descriptors)() because some
+    * of the texture lowering generates nir_texop_txs which we handle as part
+    * of descriptor lowering.
+    *
+    * TODO: We really should be doing this in common code, not dpulicated in
+    * panvk.  In order to do that, we need to rework the panfrost compile
+    * flow to look more like the Intel flow:
+    *
+    *  1. Compile SPIR-V to NIR and maybe do a tiny bit of lowering that needs
+    *     to be done really early.
+    *
+    *  2. pan_preprocess_nir: Does common lowering and runs the optimization
+    *     loop.  Nothing here should be API-specific.
+    *
+    *  3. Do additional lowering in panvk
+    *
+    *  4. pan_postprocess_nir: Does final lowering and runs the optimization
+    *     loop again.  This can happen as part of the final compile.
+    *
+    * This would give us a better place to do panvk-specific lowering.
+    */
+   nir_lower_tex_options lower_tex_options = {
+      .lower_txs_lod = true,
+      .lower_txp = ~0,
+      .lower_tg4_broadcom_swizzle = true,
+      .lower_txd = true,
+      .lower_invalid_implicit_lod = true,
+   };
+   NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
+   NIR_PASS_V(nir, nir_lower_system_values);
+
+   nir_lower_compute_system_values_options options = {
+      .has_base_workgroup_id = false,
+   };
+
+   NIR_PASS_V(nir, nir_lower_compute_system_values, &options);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(nir, nir_lower_wpos_center);
+
+   NIR_PASS_V(nir, nir_split_var_copies);
+   NIR_PASS_V(nir, nir_lower_var_copies);
+}
+
+static void
 panvk_lower_nir(struct panvk_device *dev, nir_shader *nir,
                 uint32_t set_layout_count,
                 struct vk_descriptor_set_layout *const *set_layouts,
@@ -344,7 +412,6 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
 {
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   gl_shader_stage stage = vk_to_mesa_shader_stage(stage_info->stage);
    struct panvk_shader *shader;
 
    shader = vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*shader), 8,
@@ -370,70 +437,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
       return NULL;
    }
 
-   NIR_PASS_V(nir, nir_lower_io_to_temporaries, nir_shader_get_entrypoint(nir),
-              true, true);
-
-   NIR_PASS_V(nir, nir_lower_indirect_derefs,
-              nir_var_shader_in | nir_var_shader_out, UINT32_MAX);
-
-   NIR_PASS_V(nir, nir_opt_copy_prop_vars);
-   NIR_PASS_V(nir, nir_opt_combine_stores, nir_var_all);
-   NIR_PASS_V(nir, nir_opt_loop);
-
-   if (stage == MESA_SHADER_FRAGMENT) {
-      struct nir_input_attachment_options lower_input_attach_opts = {
-         .use_fragcoord_sysval = true,
-         .use_layer_id_sysval = true,
-      };
-
-      NIR_PASS_V(nir, nir_lower_input_attachments, &lower_input_attach_opts);
-   }
-
-   /* Do texture lowering here.  Yes, it's a duplication of the texture
-    * lowering in bifrost_compile.  However, we need to lower texture stuff
-    * now, before we call panvk_per_arch(nir_lower_descriptors)() because some
-    * of the texture lowering generates nir_texop_txs which we handle as part
-    * of descriptor lowering.
-    *
-    * TODO: We really should be doing this in common code, not dpulicated in
-    * panvk.  In order to do that, we need to rework the panfrost compile
-    * flow to look more like the Intel flow:
-    *
-    *  1. Compile SPIR-V to NIR and maybe do a tiny bit of lowering that needs
-    *     to be done really early.
-    *
-    *  2. bi_preprocess_nir: Does common lowering and runs the optimization
-    *     loop.  Nothing here should be API-specific.
-    *
-    *  3. Do additional lowering in panvk
-    *
-    *  4. bi_postprocess_nir: Does final lowering and runs the optimization
-    *     loop again.  This can happen as part of the final compile.
-    *
-    * This would give us a better place to do panvk-specific lowering.
-    */
-   nir_lower_tex_options lower_tex_options = {
-      .lower_txs_lod = true,
-      .lower_txp = ~0,
-      .lower_tg4_broadcom_swizzle = true,
-      .lower_txd = true,
-      .lower_invalid_implicit_lod = true,
-   };
-   NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
-
-   NIR_PASS_V(nir, nir_lower_system_values);
-
-   nir_lower_compute_system_values_options options = {
-      .has_base_workgroup_id = false,
-   };
-
-   NIR_PASS_V(nir, nir_lower_compute_system_values, &options);
-
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS_V(nir, nir_lower_wpos_center);
-
-   NIR_PASS_V(nir, nir_split_var_copies);
-   NIR_PASS_V(nir, nir_lower_var_copies);
+   panvk_preprocess_nir(&phys_dev->vk, nir);
 
    struct vk_pipeline_robustness_state rs = {
       .storage_buffers =

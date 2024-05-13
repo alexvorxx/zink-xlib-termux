@@ -1177,21 +1177,21 @@ radv_replay_shader_arena_block(struct radv_device *device, const struct radv_ser
                                void *ptr)
 {
    mtx_lock(&device->shader_arena_mutex);
+
+   union radv_shader_arena_block *ret_block = NULL;
+
    uint64_t va = src->arena_va;
    void *data = _mesa_hash_table_u64_search(device->capture_replay_arena_vas, va);
 
    if (!data) {
       struct radv_shader_arena *arena = radv_create_shader_arena(device, NULL, 0, src->arena_size, true, src->arena_va);
-      if (!arena) {
-         mtx_unlock(&device->shader_arena_mutex);
-         return NULL;
-      }
+      if (!arena)
+         goto out;
 
       _mesa_hash_table_u64_insert(device->capture_replay_arena_vas, src->arena_va, arena);
       list_addtail(&arena->list, &device->shader_arenas);
       data = arena;
    }
-   mtx_unlock(&device->shader_arena_mutex);
 
    uint32_t block_begin = src->offset;
    uint32_t block_end = src->offset + src->size;
@@ -1210,17 +1210,20 @@ radv_replay_shader_arena_block(struct radv_device *device, const struct radv_ser
 
       /* If another allocated block overlaps the current replay block, allocation is impossible */
       if (hole_begin > block_begin)
-         return NULL;
+         goto out;
 
       union radv_shader_arena_block *block = insert_block(device, hole, block_begin - hole_begin, src->size, NULL);
       if (!block)
-         return NULL;
+         goto out;
 
       block->freelist.prev = NULL;
       block->freelist.next = ptr;
-      return hole;
+      break;
    }
-   return NULL;
+
+out:
+   mtx_unlock(&device->shader_arena_mutex);
+   return ret_block;
 }
 
 void

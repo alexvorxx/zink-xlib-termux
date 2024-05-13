@@ -131,7 +131,6 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
       return 0;
    }
 
-   desc->root.root_desc_addr = root_desc_addr;
    memcpy(root_desc_map, &desc->root, sizeof(desc->root));
 
    struct nak_qmd_info qmd_info = {

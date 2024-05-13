@@ -2366,7 +2366,6 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
       return;
    }
 
-   desc->root.root_desc_addr = root_desc_addr;
    memcpy(root_desc_map, &desc->root, sizeof(desc->root));
 
    /* Find cbuf maps for the 5 cbuf groups */

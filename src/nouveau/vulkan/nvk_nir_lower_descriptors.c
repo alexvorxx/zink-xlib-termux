@@ -1106,6 +1106,8 @@ try_lower_descriptors_instr(nir_builder *b, nir_instr *instr,
    }
 }
 
+#define ROOT_DESC_BASE_ADDR_HI 0x0057de3c
+
 static bool
 lower_ssbo_resource_index(nir_builder *b, nir_intrinsic_instr *intrin,
                           const struct lower_descriptors_ctx *ctx)
@@ -1134,14 +1136,6 @@ lower_ssbo_resource_index(nir_builder *b, nir_intrinsic_instr *intrin,
    }
 
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: {
-      const uint32_t root_desc_addr_offset =
-         nvk_root_descriptor_offset(root_desc_addr);
-
-      nir_def *root_desc_addr =
-         nir_ldc_nv(b, 1, 64, nir_imm_int(b, 0),
-                    nir_imm_int(b, root_desc_addr_offset),
-                    .align_mul = 8, .align_offset = 0);
-
       nir_def *dynamic_buffer_start =
          nir_iadd_imm(b, load_dynamic_buffer_start(b, set, ctx),
                       binding_layout->dynamic_buffer_index);
@@ -1151,8 +1145,9 @@ lower_ssbo_resource_index(nir_builder *b, nir_intrinsic_instr *intrin,
                                       sizeof(struct nvk_buffer_address)),
                       nvk_root_descriptor_offset(dynamic_buffers));
 
-      binding_addr = nir_iadd(b, root_desc_addr,
-                                 nir_u2u64(b, dynamic_binding_offset));
+      binding_addr =
+         nir_pack_64_2x32_split(b, dynamic_binding_offset,
+                                nir_imm_int(b, ROOT_DESC_BASE_ADDR_HI));
       binding_stride = sizeof(struct nvk_buffer_address);
       break;
    }
@@ -1166,6 +1161,9 @@ lower_ssbo_resource_index(nir_builder *b, nir_intrinsic_instr *intrin,
 
    const uint32_t binding_size = binding_layout->array_size * binding_stride;
    nir_def *offset_in_binding = nir_imul_imm(b, index, binding_stride);
+
+   /* We depend on this when we load descrptors */
+   assert(binding_layout->array_size >= 1);
 
    nir_def *addr;
    switch (ctx->ssbo_addr_format) {
@@ -1230,34 +1228,60 @@ lower_load_ssbo_descriptor(nir_builder *b, nir_intrinsic_instr *intrin,
 
    nir_def *addr = intrin->src[0].ssa;
 
-   nir_def *desc;
+   nir_def *base, *offset, *size = NULL;
    switch (ctx->ssbo_addr_format) {
    case nir_address_format_64bit_global_32bit_offset: {
-      nir_def *base = nir_pack_64_2x32(b, nir_trim_vector(b, addr, 2));
-      nir_def *offset = nir_channel(b, addr, 3);
-      /* Mask off the binding stride */
-      base = nir_iand_imm(b, base, BITFIELD64_MASK(56));
-      desc = nir_load_global_constant_offset(b, 4, 32, base, offset,
-                                             .align_mul = 16,
-                                             .align_offset = 0);
+      base = nir_pack_64_2x32(b, nir_trim_vector(b, addr, 2));
+      offset = nir_channel(b, addr, 3);
       break;
    }
 
    case nir_address_format_64bit_bounded_global: {
-      nir_def *base = nir_pack_64_2x32(b, nir_trim_vector(b, addr, 2));
-      nir_def *size = nir_channel(b, addr, 2);
-      nir_def *offset = nir_channel(b, addr, 3);
-      /* Mask off the binding stride */
-      base = nir_iand_imm(b, base, BITFIELD64_MASK(56));
-      desc = nir_load_global_constant_bounded(b, 4, 32, base, offset, size,
-                                              .align_mul = 16,
-                                              .align_offset = 0);
+      base = nir_pack_64_2x32(b, nir_trim_vector(b, addr, 2));
+      size = nir_channel(b, addr, 2);
+      offset = nir_channel(b, addr, 3);
       break;
    }
 
    default:
       unreachable("Unknown address mode");
    }
+
+   /* Mask off the binding stride */
+   base = nir_iand_imm(b, base, BITFIELD64_MASK(56));
+
+   nir_def *base_lo = nir_unpack_64_2x32_split_x(b, base);
+   nir_def *base_hi = nir_unpack_64_2x32_split_y(b, base);
+
+   nir_def *desc_root, *desc_global;
+   nir_push_if(b, nir_ieq_imm(b, base_hi, ROOT_DESC_BASE_ADDR_HI));
+   {
+      desc_root = nir_load_ubo(b, 4, 32, nir_imm_int(b, 0),
+                               nir_iadd(b, base_lo, offset),
+                               .align_mul = 16, .align_offset = 0,
+                               .range = ~0);
+      if (size != NULL) {
+         /* assert(binding_layout->array_size >= 1); */
+         nir_def *is_oob = nir_ult(b, nir_iadd_imm(b, size, -16), offset);
+         desc_root = nir_bcsel(b, is_oob, nir_imm_zero(b, 4, 32), desc_root);
+      }
+   }
+   nir_push_else(b, NULL);
+   {
+      if (size != NULL) {
+         desc_global = nir_load_global_constant_bounded(b, 4, 32, base,
+                                                        offset, size,
+                                                        .align_mul = 16,
+                                                        .align_offset = 0);
+      } else {
+         desc_global = nir_load_global_constant_offset(b, 4, 32, base,
+                                                       offset,
+                                                       .align_mul = 16,
+                                                       .align_offset = 0);
+      }
+   }
+   nir_pop_if(b, NULL);
+   nir_def *desc = nir_if_phi(b, desc_root, desc_global);
 
    nir_def_rewrite_uses(&intrin->def, desc);
 

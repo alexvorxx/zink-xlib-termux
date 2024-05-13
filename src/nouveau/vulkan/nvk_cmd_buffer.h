@@ -37,8 +37,6 @@ static_assert(sizeof(struct nvk_sample_location) == 1,
 
 /** Root descriptor table.  This gets pushed to the GPU directly */
 struct nvk_root_descriptor_table {
-   uint64_t root_desc_addr;
-
    union {
       struct {
          uint32_t base_vertex;
@@ -69,7 +67,7 @@ struct nvk_root_descriptor_table {
    union nvk_buffer_descriptor dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
 
    /* enfore alignment to 0x100 as needed pre pascal */
-   uint8_t __padding[0x40];
+   uint8_t __padding[0x48];
 };
 
 /* helper macro for computing root descriptor byte offsets */

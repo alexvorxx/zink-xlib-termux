@@ -1851,7 +1851,7 @@ get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
 
       unsigned killed_op_size = 0;
       for (Operand op : instr->operands) {
-         if (op.isTemp() && op.isKillBeforeDef() && op.regClass().type() == info.rc.type())
+         if (op.isTemp() && op.isFirstKillBeforeDef() && op.regClass().type() == info.rc.type())
             killed_op_size += op.regClass().size();
       }
 
@@ -1868,7 +1868,7 @@ get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
       /* reallocate killed operands */
       std::vector<IDAndRegClass> killed_op_vars;
       for (Operand op : instr->operands) {
-         if (op.isKillBeforeDef() && op.regClass().type() == info.rc.type())
+         if (op.isFirstKillBeforeDef() && op.regClass().type() == info.rc.type())
             killed_op_vars.emplace_back(op.tempId(), op.regClass());
       }
       compact_relocate_vars(ctx, killed_op_vars, parallelcopies, space);

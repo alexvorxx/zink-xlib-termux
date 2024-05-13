@@ -589,7 +589,7 @@ get_ahb_buffer_format_properties2(
    p->samplerYcbcrConversionComponents.b = VK_COMPONENT_SWIZZLE_IDENTITY;
    p->samplerYcbcrConversionComponents.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
-   p->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+   p->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
    p->suggestedYcbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
 
    p->suggestedXChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;

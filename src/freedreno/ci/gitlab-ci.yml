@@ -18,7 +18,7 @@ a306_gl:
     - .google-freedreno-manual-rules
   variables:
     DEQP_SUITE: freedreno-a306-piglit
-    HWCI_START_XORG: 1
+    HWCI_START_WESTON: 1
 
 # Something happened and now this hangchecks and doesn't recover.  Unkown when
 # it started.
@@ -31,7 +31,7 @@ a306_gl:
     BM_KERNEL_EXTRA_ARGS: "msm.num_hw_submissions=1"
     DEQP_SUITE: freedreno-a306-piglit-quick-gl
     FDO_CI_CONCURRENT: 3
-    HWCI_START_XORG: 1
+    HWCI_START_WESTON: 1
 
 a306_piglit_shader:
   extends:
@@ -41,7 +41,7 @@ a306_piglit_shader:
   variables:
     DEQP_SUITE: freedreno-a306-piglit-quick-shader
     FDO_CI_CONCURRENT: 6
-    HWCI_START_XORG: 1
+    HWCI_START_WESTON: 1
 
 a306-traces:
   extends:

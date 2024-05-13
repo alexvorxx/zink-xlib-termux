@@ -123,14 +123,15 @@ python-test:
     paths:
       - results/
 
-.vkd3d-proton-test:
+.b2c-vkd3d-proton-test:
   artifacts:
     when: on_failure
     name: "mesa_${CI_JOB_NAME}"
     paths:
       - results/vkd3d-proton.log
-  script:
-    - ./install/vkd3d-proton/run.sh
+  variables:
+    HWCI_TEST_SCRIPT: ./install/vkd3d-proton/run.sh
+    B2C_JOB_SUCCESS_REGEX: 'vkd3d-proton execution: SUCCESS\r$'
 
 .piglit-test:
   artifacts:

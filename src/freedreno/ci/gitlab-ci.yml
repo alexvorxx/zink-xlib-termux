@@ -134,7 +134,6 @@ a618_piglit:
   extends:
     - .lava-test-deqp:arm64
     - .lava-sc7180-trogdor-lazor-limozeen:arm64
-    - .collabora-freedreno-rules
     # Note that piglit has GL+VK integration testing.
     - .collabora-freedreno-turnip-rules
   variables:

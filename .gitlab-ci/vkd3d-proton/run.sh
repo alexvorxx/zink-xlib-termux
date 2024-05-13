@@ -62,7 +62,6 @@ then
     fi
 
     # Collect all the failures
-    VKD3D_PROTON_RESULTS="${VKD3D_PROTON_RESULTS:-vkd3d-proton-results}"
     RESULTSFILE="$RESULTS/$VKD3D_PROTON_RESULTS.txt"
     mkdir -p .gitlab-ci/vkd3d-proton
     grep "Test failed" "$RESULTS"/vkd3d-proton.log > "$RESULTSFILE"

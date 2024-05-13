@@ -9241,7 +9241,7 @@ radv_need_late_scissor_emission(struct radv_cmd_buffer *cmd_buffer, const struct
    /* Index, vertex and streamout buffers don't change context regs.
     * We assume that any other dirty flag causes context rolls.
     */
-   uint64_t used_states = ~RADV_CMD_DIRTY_ALL;
+   uint64_t used_states = RADV_CMD_DIRTY_ALL;
    used_states &= ~(RADV_CMD_DIRTY_INDEX_BUFFER | RADV_CMD_DIRTY_VERTEX_BUFFER | RADV_CMD_DIRTY_STREAMOUT_BUFFER);
 
    return cmd_buffer->state.dirty & used_states;

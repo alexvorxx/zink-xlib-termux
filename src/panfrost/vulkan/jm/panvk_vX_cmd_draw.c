@@ -1039,6 +1039,20 @@ panvk_per_arch(cmd_preload_fb_after_batch_split)(struct panvk_cmd_buffer *cmdbuf
 }
 
 static void
+panvk_cmd_prepare_draw_link_shaders(struct panvk_cmd_buffer *cmd)
+{
+   struct panvk_cmd_graphics_state *gfx = &cmd->state.gfx;
+
+   if (gfx->linked)
+      return;
+
+   panvk_per_arch(link_shaders)(&cmd->desc_pool, gfx->vs.shader, gfx->fs.shader,
+                                &gfx->link);
+
+   gfx->linked = true;
+}
+
+static void
 panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
 {
    struct panvk_batch *batch = cmdbuf->cur_batch;
@@ -1061,6 +1075,8 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
       panvk_per_arch(cmd_preload_fb_after_batch_split)(cmdbuf);
       batch = panvk_per_arch(cmd_open_batch)(cmdbuf);
    }
+
+   panvk_cmd_prepare_draw_link_shaders(cmdbuf);
 
    if (!rs->rasterizer_discard_enable)
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);

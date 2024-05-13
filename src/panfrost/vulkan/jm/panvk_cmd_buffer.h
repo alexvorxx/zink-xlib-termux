@@ -91,6 +91,7 @@ struct panvk_cmd_graphics_state {
    struct panvk_graphics_sysvals sysvals;
 
    struct panvk_shader_link link;
+   bool linked;
 
    struct {
       struct panvk_shader *shader;

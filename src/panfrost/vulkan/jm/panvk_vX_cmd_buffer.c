@@ -476,9 +476,9 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
 
       cmdbuf->state.gfx.vs.shader = gfx_pipeline->vs;
       cmdbuf->state.gfx.fs.shader = gfx_pipeline->fs;
-      cmdbuf->state.gfx.link = gfx_pipeline->link;
 
       cmdbuf->state.gfx.fs.rsd = 0;
+      cmdbuf->state.gfx.linked = false;
       memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
       memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
       break;

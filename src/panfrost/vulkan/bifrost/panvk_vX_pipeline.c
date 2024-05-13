@@ -130,9 +130,6 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
          return result;
    }
 
-   panvk_per_arch(link_shaders)(&dev->mempools.rw, gfx_pipeline->vs,
-                                gfx_pipeline->fs, &gfx_pipeline->link);
-
    return VK_SUCCESS;
 }
 

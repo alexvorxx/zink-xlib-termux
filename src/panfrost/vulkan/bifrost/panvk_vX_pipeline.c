@@ -55,38 +55,27 @@ static VkResult
 init_pipeline_shader(struct panvk_pipeline *pipeline,
                      const VkPipelineShaderStageCreateInfo *stage_info,
                      const VkAllocationCallbacks *alloc,
-                     struct panvk_pipeline_shader *pshader)
+                     struct panvk_shader **shader)
 {
    struct panvk_device *dev = to_panvk_device(pipeline->base.device);
-   struct panvk_shader *shader;
 
-   shader =
+   *shader =
       panvk_per_arch(shader_create)(dev, stage_info, pipeline->layout, alloc);
-   if (!shader)
+   if (!*shader)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   pshader->base = shader;
-   pshader->info = shader->info;
-
-   if (stage_info->stage == VK_SHADER_STAGE_COMPUTE_BIT) {
-      struct panvk_compute_pipeline *compute_pipeline =
-         panvk_pipeline_to_compute_pipeline(pipeline);
-
-      compute_pipeline->local_size = shader->local_size;
-   }
 
    return VK_SUCCESS;
 }
 
 static void
 cleanup_pipeline_shader(struct panvk_pipeline *pipeline,
-                        struct panvk_pipeline_shader *pshader,
+                        struct panvk_shader *shader,
                         const VkAllocationCallbacks *alloc)
 {
    struct panvk_device *dev = to_panvk_device(pipeline->base.device);
 
-   if (pshader->base != NULL)
-      panvk_per_arch(shader_destroy)(dev, pshader->base, alloc);
+   if (shader != NULL)
+      panvk_per_arch(shader_destroy)(dev, shader, alloc);
 }
 
 static VkResult
@@ -120,21 +109,15 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    vk_dynamic_graphics_state_fill(&gfx_pipeline->state.dynamic, &state);
    gfx_pipeline->state.rp = *state.rp;
 
-   /* Make sure the stage info is correct even if no stage info is provided for
-    * this stage in pStages.
-    */
-   gfx_pipeline->vs.info.stage = MESA_SHADER_VERTEX;
-   gfx_pipeline->fs.info.stage = MESA_SHADER_FRAGMENT;
-
    for (uint32_t i = 0; i < create_info->stageCount; i++) {
-      struct panvk_pipeline_shader *pshader = NULL;
+      struct panvk_shader **shader = NULL;
       switch (create_info->pStages[i].stage) {
       case VK_SHADER_STAGE_VERTEX_BIT:
-         pshader = &gfx_pipeline->vs;
+         shader = &gfx_pipeline->vs;
          break;
 
       case VK_SHADER_STAGE_FRAGMENT_BIT:
-         pshader = &gfx_pipeline->fs;
+         shader = &gfx_pipeline->fs;
          break;
 
       default:
@@ -142,13 +125,13 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
       }
 
       VkResult result = init_pipeline_shader(
-         &gfx_pipeline->base, &create_info->pStages[i], alloc, pshader);
+         &gfx_pipeline->base, &create_info->pStages[i], alloc, shader);
       if (result != VK_SUCCESS)
          return result;
    }
 
-   panvk_per_arch(link_shaders)(&dev->mempools.rw, gfx_pipeline->vs.base,
-                                gfx_pipeline->fs.base, &gfx_pipeline->link);
+   panvk_per_arch(link_shaders)(&dev->mempools.rw, gfx_pipeline->vs,
+                                gfx_pipeline->fs, &gfx_pipeline->link);
 
    return VK_SUCCESS;
 }
@@ -250,13 +233,13 @@ panvk_per_arch(DestroyPipeline)(VkDevice _device, VkPipeline _pipeline,
          panvk_pipeline_to_graphics_pipeline(pipeline);
 
       panvk_shader_link_cleanup(&device->mempools.rw, &gfx_pipeline->link);
-      cleanup_pipeline_shader(pipeline, &gfx_pipeline->vs, pAllocator);
-      cleanup_pipeline_shader(pipeline, &gfx_pipeline->fs, pAllocator);
+      cleanup_pipeline_shader(pipeline, gfx_pipeline->vs, pAllocator);
+      cleanup_pipeline_shader(pipeline, gfx_pipeline->fs, pAllocator);
    } else {
       struct panvk_compute_pipeline *compute_pipeline =
          panvk_pipeline_to_compute_pipeline(pipeline);
 
-      cleanup_pipeline_shader(pipeline, &compute_pipeline->cs, pAllocator);
+      cleanup_pipeline_shader(pipeline, compute_pipeline->cs, pAllocator);
    }
 
    vk_object_free(&device->vk, pAllocator, pipeline);

@@ -474,19 +474,26 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       vk_cmd_set_dynamic_graphics_state(&cmdbuf->vk,
                                         &gfx_pipeline->state.dynamic);
 
+      cmdbuf->state.gfx.vs.shader = gfx_pipeline->vs;
+      cmdbuf->state.gfx.fs.shader = gfx_pipeline->fs;
+      cmdbuf->state.gfx.link = gfx_pipeline->link;
+
       cmdbuf->state.gfx.fs.rsd = 0;
-      cmdbuf->state.gfx.pipeline = gfx_pipeline;
       memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
       memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
       break;
    }
 
-   case VK_PIPELINE_BIND_POINT_COMPUTE:
-      cmdbuf->state.compute.pipeline =
+   case VK_PIPELINE_BIND_POINT_COMPUTE: {
+      const struct panvk_compute_pipeline *compute_pipeline =
          panvk_pipeline_to_compute_pipeline(pipeline);
+
+      cmdbuf->state.compute.shader = compute_pipeline->cs;
+
       memset(&cmdbuf->state.compute.cs.desc, 0,
              sizeof(cmdbuf->state.compute.cs.desc));
       break;
+   }
 
    default:
       assert(!"Unsupported bind point");

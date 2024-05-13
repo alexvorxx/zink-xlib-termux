@@ -17,7 +17,6 @@
 
 #include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
-#include "panvk_pipeline.h"
 #include "panvk_shader.h"
 
 struct pan_nir_desc_copy_info {
@@ -297,15 +296,14 @@ panvk_per_arch(meta_desc_copy_init)(struct panvk_device *dev)
 struct panfrost_ptr
 panvk_per_arch(meta_get_copy_desc_job)(
    struct panvk_device *dev, struct pan_pool *desc_pool,
-   const struct panvk_pipeline_shader *shader,
+   const struct panvk_shader *shader,
    const struct panvk_descriptor_state *desc_state,
    const struct panvk_shader_desc_state *shader_desc_state)
 {
-   if (!shader->base)
+   if (!shader)
       return (struct panfrost_ptr){0};
 
-   mali_ptr copy_table =
-      panvk_priv_mem_dev_addr(shader->base->desc_info.others.map);
+   mali_ptr copy_table = panvk_priv_mem_dev_addr(shader->desc_info.others.map);
    if (!copy_table)
       return (struct panfrost_ptr){0};
 
@@ -320,7 +318,7 @@ panvk_per_arch(meta_get_copy_desc_job)(
 
    for (uint32_t i = 0; i < ARRAY_SIZE(copy_info.desc_copy.limits); i++)
       copy_info.desc_copy.limits[i] =
-         shader->base->desc_info.others.count[i] +
+         shader->desc_info.others.count[i] +
          (i > 0 ? copy_info.desc_copy.limits[i - 1] : 0);
 
    for (uint32_t i = 0; i < ARRAY_SIZE(desc_state->sets); i++) {
@@ -333,9 +331,8 @@ panvk_per_arch(meta_get_copy_desc_job)(
       copy_info.set_desc_counts[i] = set->desc_count;
    }
 
-   for (uint32_t i = 0; i < ARRAY_SIZE(shader->base->desc_info.others.count);
-        i++) {
-      uint32_t desc_count = shader->base->desc_info.others.count[i];
+   for (uint32_t i = 0; i < ARRAY_SIZE(shader->desc_info.others.count); i++) {
+      uint32_t desc_count = shader->desc_info.others.count[i];
 
       if (!desc_count)
          continue;

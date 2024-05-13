@@ -56,16 +56,16 @@ struct panvk_descriptor_set *panvk_per_arch(cmd_push_descriptors)(
 
 void panvk_per_arch(cmd_prepare_dyn_ssbos)(
    struct pan_pool *desc_pool, const struct panvk_descriptor_state *desc_state,
-   const struct panvk_pipeline_shader *shader,
+   const struct panvk_shader *shader,
    struct panvk_shader_desc_state *shader_desc_state);
 
 void panvk_per_arch(cmd_prepare_shader_desc_tables)(
    struct pan_pool *desc_pool, const struct panvk_descriptor_state *desc_state,
-   const struct panvk_pipeline_shader *shader,
+   const struct panvk_shader *shader,
    struct panvk_shader_desc_state *shader_desc_state);
 
 void panvk_per_arch(cmd_prepare_push_descs)(
    struct pan_pool *desc_pool, struct panvk_descriptor_state *desc_state,
-   const struct panvk_pipeline *pipeline);
+   uint32_t used_set_mask);
 
 #endif

@@ -78,12 +78,12 @@ struct panvk_meta {
 
 #if PAN_ARCH <= 7
 struct panvk_descriptor_state;
-struct panvk_pipeline_shader;
+struct panvk_shader;
 struct panvk_shader_desc_state;
 
 struct panfrost_ptr panvk_per_arch(meta_get_copy_desc_job)(
    struct panvk_device *dev, struct pan_pool *desc_pool,
-   const struct panvk_pipeline_shader *shader,
+   const struct panvk_shader *shader,
    const struct panvk_descriptor_state *desc_state,
    const struct panvk_shader_desc_state *shader_desc_state);
 #endif

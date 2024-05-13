@@ -70,6 +70,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_descriptor_update_template = true,
       .KHR_driver_properties = true,
       .KHR_pipeline_executable_properties = true,
+      .KHR_pipeline_library = true,
       .KHR_push_descriptor = true,
 #ifdef PANVK_USE_WSI_PLATFORM
       .KHR_swapchain = true,
@@ -78,6 +79,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_variable_pointers = true,
       .EXT_buffer_device_address = true,
       .EXT_custom_border_color = true,
+      .EXT_graphics_pipeline_library = true,
       .EXT_index_type_uint8 = true,
       .EXT_pipeline_creation_cache_control = true,
       .EXT_pipeline_creation_feedback = true,
@@ -188,6 +190,9 @@ get_features(const struct panvk_physical_device *device,
       .dynamicRendering = false,
       .shaderIntegerDotProduct = false,
       .maintenance4 = false,
+
+      /* VK_EXT_graphics_pipeline_library */
+      .graphicsPipelineLibrary = true,
 
       /* VK_EXT_index_type_uint8 */
       .indexTypeUint8 = true,
@@ -562,6 +567,10 @@ get_device_properties(const struct panvk_instance *instance,
 
       /* VK_EXT_custom_border_color */
       .maxCustomBorderColorSamplers = 32768,
+
+      /* VK_EXT_graphics_pipeline_library */
+      .graphicsPipelineLibraryFastLinking = true,
+      .graphicsPipelineLibraryIndependentInterpolationDecoration = true,
 
       /* VK_KHR_vertex_attribute_divisor */
       /* We will have to restrict this a bit for multiview */

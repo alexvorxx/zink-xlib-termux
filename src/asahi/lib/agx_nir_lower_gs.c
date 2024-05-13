@@ -557,7 +557,8 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
       nir_store_output(b, value, nir_imm_int(b, offset),
                        .io_semantics.location = slot - offset,
                        .io_semantics.num_slots = 1,
-                       .write_mask = nir_component_mask(value->num_components));
+                       .write_mask = nir_component_mask(value->num_components),
+                       .src_type = nir_type_uint32);
    }
 
    /* In OpenGL ES, it is legal to omit the point size write from the geometry
@@ -574,7 +575,8 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
       nir_store_output(b, nir_imm_float(b, 1.0), nir_imm_int(b, 0),
                        .io_semantics.location = VARYING_SLOT_PSIZ,
                        .io_semantics.num_slots = 1,
-                       .write_mask = nir_component_mask(1));
+                       .write_mask = nir_component_mask(1),
+                       .src_type = nir_type_float32);
 
       shader->info.outputs_written |= VARYING_BIT_PSIZ;
    }

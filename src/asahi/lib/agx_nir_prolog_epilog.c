@@ -308,7 +308,8 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
       nir_store_output(
          b, value, nir_imm_int(b, 0),
          .io_semantics.location = FRAG_RESULT_DATA0 + (dual_src ? 0 : rt),
-         .io_semantics.dual_source_blend_index = dual_src);
+         .io_semantics.dual_source_blend_index = dual_src,
+         .src_type = nir_type_float | size);
    }
 
    /* Grab the sample ID early, this has to happen in the first block. */

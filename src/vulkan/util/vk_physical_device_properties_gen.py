@@ -169,7 +169,7 @@ vk_common_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
 % endfor
 
    vk_foreach_struct(ext, pProperties->pNext) {
-      switch (ext->sType) {
+      switch ((int32_t)ext->sType) {
 % for property_struct in property_structs:
 % if property_struct.is_android:
 #ifdef ANDROID

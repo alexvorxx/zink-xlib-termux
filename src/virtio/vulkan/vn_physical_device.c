@@ -385,6 +385,86 @@ vn_physical_device_init_uuids(struct vn_physical_device *physical_dev)
 }
 
 static void
+vn_physical_device_sanitize_properties(struct vn_physical_device *physical_dev)
+{
+   struct vn_instance *instance = physical_dev->instance;
+   const struct vk_device_extension_table *exts =
+      &physical_dev->renderer_extensions;
+   struct vn_physical_device_properties *props = &physical_dev->properties;
+   VkPhysicalDeviceProperties *vk10_props = &props->vulkan_1_0;
+   VkPhysicalDeviceVulkan12Properties *vk12_props = &props->vulkan_1_2;
+
+   const uint32_t version_override = vk_get_version_override();
+   if (version_override) {
+      vk10_props->apiVersion = version_override;
+   } else {
+      /* cap the advertised api version */
+      uint32_t ver = MIN3(vk10_props->apiVersion, VN_MAX_API_VERSION,
+                          instance->renderer->info.vk_xml_version);
+      if (VK_VERSION_PATCH(ver) > VK_VERSION_PATCH(vk10_props->apiVersion)) {
+         ver = ver - VK_VERSION_PATCH(ver) +
+               VK_VERSION_PATCH(vk10_props->apiVersion);
+      }
+
+      /* Clamp to 1.2 if we disabled VK_KHR_synchronization2 since it
+       * is required for 1.3.
+       * See vn_physical_device_get_passthrough_extensions()
+       */
+      if (!physical_dev->base.base.supported_extensions.KHR_synchronization2)
+         ver = MIN2(VK_API_VERSION_1_2, ver);
+
+      vk10_props->apiVersion = ver;
+   }
+
+   /* ANGLE relies on ARM proprietary driver version for workarounds */
+   const char *engine_name = instance->base.base.app_info.engine_name;
+   const bool forward_driver_version =
+      vk12_props->driverID == VK_DRIVER_ID_ARM_PROPRIETARY && engine_name &&
+      strcmp(engine_name, "ANGLE") == 0;
+   if (!forward_driver_version)
+      vk10_props->driverVersion = vk_get_driver_version();
+
+   char device_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
+   int device_name_len =
+      snprintf(device_name, sizeof(device_name), "Virtio-GPU Venus (%s)",
+               vk10_props->deviceName);
+   if (device_name_len >= VK_MAX_PHYSICAL_DEVICE_NAME_SIZE) {
+      memcpy(device_name + VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 5, "...)", 4);
+      device_name_len = VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1;
+   }
+   memcpy(vk10_props->deviceName, device_name, device_name_len + 1);
+
+   /* store renderer VkDriverId for implementation specific workarounds */
+   physical_dev->renderer_driver_id = vk12_props->driverID;
+   VN_SET_CORE_VALUE(vk12_props, driverID, VK_DRIVER_ID_MESA_VENUS);
+
+   snprintf(vk12_props->driverName, sizeof(vk12_props->driverName), "venus");
+   snprintf(vk12_props->driverInfo, sizeof(vk12_props->driverInfo),
+            "Mesa " PACKAGE_VERSION MESA_GIT_SHA1);
+
+   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.major, 1);
+   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.minor, 3);
+   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.subminor, 0);
+   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.patch, 0);
+
+   vn_physical_device_init_uuids(physical_dev);
+
+   /* See comment for sparse binding feature disable */
+   if (physical_dev->sparse_binding_disabled) {
+      VN_SET_CORE_VALUE(vk10_props, limits.sparseAddressSpaceSize, 0);
+      VN_SET_CORE_VALUE(vk10_props, sparseProperties,
+                        (VkPhysicalDeviceSparseProperties){ 0 });
+   }
+
+   /* Disable unsupported VkPhysicalDeviceFragmentShadingRatePropertiesKHR */
+   if (exts->KHR_fragment_shading_rate) {
+      /* TODO: Add support for VK_EXT_sample_locations */
+      VN_SET_CORE_VALUE(&props->fragment_shading_rate,
+                        fragmentShadingRateWithCustomSampleLocations, false);
+   }
+}
+
+static void
 vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
 {
    const uint32_t renderer_version = physical_dev->renderer_version;
@@ -492,12 +572,6 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
 
    /* clang-format off */
 
-   /* See comment for sparse binding feature disable */
-   if (physical_dev->sparse_binding_disabled) {
-      VN_SET_CORE_VALUE(vk10_props, limits.sparseAddressSpaceSize, 0);
-      VN_SET_CORE_VALUE(vk10_props, sparseProperties, (VkPhysicalDeviceSparseProperties){ 0 });
-   }
-
    if (renderer_version < VK_API_VERSION_1_2) {
       /* Vulkan 1.1 */
       VN_SET_CORE_ARRAY(vk11_props, deviceUUID, local_props.id);
@@ -583,8 +657,6 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
       if (exts->KHR_timeline_semaphore) {
          VN_SET_CORE_FIELD(vk12_props, maxTimelineSemaphoreValueDifference, local_props.timeline_semaphore);
       }
-
-      VN_SET_CORE_VALUE(vk12_props, framebufferIntegerColorSampleCounts, VK_SAMPLE_COUNT_1_BIT);
    }
 
    if (renderer_version < VK_API_VERSION_1_3) {
@@ -667,67 +739,7 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
    if (vn_android_gralloc_get_shared_present_usage())
       VN_SET_CORE_VALUE(&props->presentation, sharedImage, VK_TRUE);
 
-   const uint32_t version_override = vk_get_version_override();
-   if (version_override) {
-      vk10_props->apiVersion = version_override;
-   } else {
-      /* cap the advertised api version */
-      uint32_t ver = MIN3(vk10_props->apiVersion, VN_MAX_API_VERSION,
-                          instance->renderer->info.vk_xml_version);
-      if (VK_VERSION_PATCH(ver) > VK_VERSION_PATCH(vk10_props->apiVersion)) {
-         ver = ver - VK_VERSION_PATCH(ver) +
-               VK_VERSION_PATCH(vk10_props->apiVersion);
-      }
-
-      /* Clamp to 1.2 if we disabled VK_KHR_synchronization2 since it
-       * is required for 1.3.
-       * See vn_physical_device_get_passthrough_extensions()
-       */
-      if (!physical_dev->base.base.supported_extensions.KHR_synchronization2)
-         ver = MIN2(VK_API_VERSION_1_2, ver);
-
-      vk10_props->apiVersion = ver;
-   }
-
-   /* ANGLE relies on ARM proprietary driver version for workarounds */
-   const char *engine_name = instance->base.base.app_info.engine_name;
-   const bool forward_driver_version =
-      vk12_props->driverID == VK_DRIVER_ID_ARM_PROPRIETARY && engine_name &&
-      strcmp(engine_name, "ANGLE") == 0;
-   if (!forward_driver_version)
-      vk10_props->driverVersion = vk_get_driver_version();
-
-   char device_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
-   int device_name_len =
-      snprintf(device_name, sizeof(device_name), "Virtio-GPU Venus (%s)",
-               vk10_props->deviceName);
-   if (device_name_len >= VK_MAX_PHYSICAL_DEVICE_NAME_SIZE) {
-      memcpy(device_name + VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 5, "...)", 4);
-      device_name_len = VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1;
-   }
-   memcpy(vk10_props->deviceName, device_name, device_name_len + 1);
-
-   /* store renderer VkDriverId for implementation specific workarounds */
-   physical_dev->renderer_driver_id = vk12_props->driverID;
-   VN_SET_CORE_VALUE(vk12_props, driverID, VK_DRIVER_ID_MESA_VENUS);
-
-   snprintf(vk12_props->driverName, sizeof(vk12_props->driverName), "venus");
-   snprintf(vk12_props->driverInfo, sizeof(vk12_props->driverInfo),
-            "Mesa " PACKAGE_VERSION MESA_GIT_SHA1);
-
-   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.major, 1);
-   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.minor, 3);
-   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.subminor, 0);
-   VN_SET_CORE_VALUE(vk12_props, conformanceVersion.patch, 0);
-
-   vn_physical_device_init_uuids(physical_dev);
-
-   /* Disable unsupported VkPhysicalDeviceFragmentShadingRatePropertiesKHR */
-   if (exts->KHR_fragment_shading_rate) {
-      /* TODO: Add support for VK_EXT_sample_locations */
-      VN_SET_CORE_VALUE(&props->fragment_shading_rate,
-                        fragmentShadingRateWithCustomSampleLocations, false);
-   }
+   vn_physical_device_sanitize_properties(physical_dev);
 }
 
 static VkResult

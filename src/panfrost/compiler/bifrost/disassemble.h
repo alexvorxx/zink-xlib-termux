@@ -32,7 +32,7 @@
 #include <stdio.h>
 #include "../bifrost.h"
 
-void disassemble_bifrost(FILE *fp, uint8_t *code, size_t size, bool verbose);
+void disassemble_bifrost(FILE *fp, const void *code, size_t size, bool verbose);
 
 void bi_disasm_fma(FILE *fp, unsigned bits, struct bifrost_regs *srcs,
                    struct bifrost_regs *next_regs, unsigned staging_register,

@@ -109,7 +109,7 @@ radeon_set_uconfig_reg_seq(struct radeon_cmdbuf *cs, unsigned reg, unsigned num)
 }
 
 static inline void
-radeon_set_uconfig_reg_seq_perfctr(enum amd_gfx_level gfx_level, enum radv_queue_family qf, struct radeon_cmdbuf *cs,
+radeon_set_uconfig_perfctr_reg_seq(enum amd_gfx_level gfx_level, enum radv_queue_family qf, struct radeon_cmdbuf *cs,
                                    unsigned reg, unsigned num)
 {
    /*
@@ -124,10 +124,10 @@ radeon_set_uconfig_reg_seq_perfctr(enum amd_gfx_level gfx_level, enum radv_queue
 }
 
 static inline void
-radeon_set_uconfig_reg_perfctr(enum amd_gfx_level gfx_level, enum radv_queue_family qf, struct radeon_cmdbuf *cs,
+radeon_set_uconfig_perfctr_reg(enum amd_gfx_level gfx_level, enum radv_queue_family qf, struct radeon_cmdbuf *cs,
                                unsigned reg, unsigned value)
 {
-   radeon_set_uconfig_reg_seq_perfctr(gfx_level, qf, cs, reg, 1);
+   radeon_set_uconfig_perfctr_reg_seq(gfx_level, qf, cs, reg, 1);
    radeon_emit(cs, value);
 }
 

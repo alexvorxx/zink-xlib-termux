@@ -129,6 +129,9 @@ struct panvk_shader {
 
    struct panvk_priv_mem code_mem;
    struct panvk_priv_mem rsd;
+
+   const char *nir_str;
+   const char *asm_str;
 };
 
 struct panvk_shader_link {

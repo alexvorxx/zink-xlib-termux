@@ -37,6 +37,7 @@
 #include "panvk_shader.h"
 
 #include "spirv/nir_spirv.h"
+#include "util/memstream.h"
 #include "util/mesa-sha1.h"
 #include "util/u_dynarray.h"
 #include "nir_builder.h"
@@ -349,9 +350,6 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
    const bool dump_asm =
       shader_flags & VK_SHADER_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_MESA;
 
-   /* TODO: ASM dumping (VK_KHR_maintenance5) */
-   assert(!dump_asm);
-
    struct util_dynarray binary;
    util_dynarray_init(&binary, NULL);
    GENX(pan_shader_compile)(nir, compile_input, &binary, &shader->info);
@@ -373,6 +371,30 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
       shader->bin_ptr = data;
    }
    util_dynarray_fini(&binary);
+
+   if (dump_asm) {
+      shader->nir_str = nir_shader_as_str(nir, NULL);
+
+      char *data = NULL;
+      size_t disasm_size = 0;
+
+      if (shader->bin_size) {
+         struct u_memstream mem;
+         if (u_memstream_open(&mem, &data, &disasm_size)) {
+            FILE *const stream = u_memstream_get(&mem);
+            pan_shader_disassemble(stream, shader->bin_ptr, shader->bin_size,
+                                   compile_input->gpu_id, false);
+            u_memstream_close(&mem);
+         }
+      }
+
+      char *asm_str = malloc(disasm_size + 1);
+      memcpy(asm_str, data, disasm_size);
+      asm_str[disasm_size] = '\0';
+      free(data);
+
+      shader->asm_str = asm_str;
+   }
 
    /* Patch the descriptor count */
    shader->info.ubo_count =
@@ -447,6 +469,9 @@ panvk_shader_destroy(struct vk_device *vk_dev, struct vk_shader *vk_shader,
    struct panvk_device *dev = to_panvk_device(vk_dev);
    struct panvk_shader *shader =
       container_of(vk_shader, struct panvk_shader, vk);
+
+   free((void *)shader->asm_str);
+   ralloc_free((void *)shader->nir_str);
 
    panvk_pool_free_mem(&dev->mempools.exec, shader->code_mem);
    panvk_pool_free_mem(&dev->mempools.exec, shader->rsd);
@@ -680,8 +705,12 @@ panvk_shader_serialize(struct vk_device *vk_dev,
    struct panvk_shader *shader =
       container_of(vk_shader, struct panvk_shader, vk);
 
-   /* TODO: Disallow serialization with assembly when implemented */
-   /* TODO: Implement serialization with assembly */
+   /**
+    * We can't currently cache assembly
+    * TODO: Implement seriaization with assembly
+    **/
+   if (shader->nir_str != NULL || shader->asm_str != NULL)
+      return false;
 
    blob_write_bytes(blob, &shader->info, sizeof(shader->info));
    blob_write_bytes(blob, &shader->local_size, sizeof(shader->local_size));
@@ -751,6 +780,27 @@ panvk_shader_get_executable_statistics(
    return vk_outarray_status(&out);
 }
 
+static bool
+write_ir_text(VkPipelineExecutableInternalRepresentationKHR *ir,
+              const char *data)
+{
+   ir->isText = VK_TRUE;
+
+   size_t data_len = strlen(data) + 1;
+
+   if (ir->pData == NULL) {
+      ir->dataSize = data_len;
+      return true;
+   }
+
+   strncpy(ir->pData, data, ir->dataSize);
+   if (ir->dataSize < data_len)
+      return false;
+
+   ir->dataSize = data_len;
+   return true;
+}
+
 static VkResult
 panvk_shader_get_executable_internal_representations(
    UNUSED struct vk_device *device, const struct vk_shader *vk_shader,
@@ -764,7 +814,28 @@ panvk_shader_get_executable_internal_representations(
                           internal_representation_count);
    bool incomplete_text = false;
 
-   /* TODO: Compiler assembly (VK_KHR_pipeline_executable_properties) */
+   if (shader->nir_str != NULL) {
+      vk_outarray_append_typed(VkPipelineExecutableInternalRepresentationKHR,
+                               &out, ir)
+      {
+         WRITE_STR(ir->name, "NIR shader");
+         WRITE_STR(ir->description,
+                   "NIR shader before sending to the back-end compiler");
+         if (!write_ir_text(ir, shader->nir_str))
+            incomplete_text = true;
+      }
+   }
+
+   if (shader->asm_str != NULL) {
+      vk_outarray_append_typed(VkPipelineExecutableInternalRepresentationKHR,
+                               &out, ir)
+      {
+         WRITE_STR(ir->name, "Assembly");
+         WRITE_STR(ir->description, "Final Assembly");
+         if (!write_ir_text(ir, shader->asm_str))
+            incomplete_text = true;
+      }
+   }
 
    return incomplete_text ? VK_INCOMPLETE : vk_outarray_status(&out);
 }

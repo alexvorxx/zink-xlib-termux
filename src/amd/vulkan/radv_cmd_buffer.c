@@ -12858,8 +12858,8 @@ radv_CmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuffer, uint32_t firstC
             radeon_emit(cs, 0);
          } else {
             /* The PKT3 CAM bit workaround seems needed for initializing this GDS register to zero. */
-            radeon_set_perfctr_reg(pdev->info.gfx_level, cmd_buffer->qf, cs,
-                                   R_031088_GDS_STRMOUT_DWORDS_WRITTEN_0 + i * 4, 0);
+            radeon_set_uconfig_reg_perfctr(pdev->info.gfx_level, cmd_buffer->qf, cs,
+                                           R_031088_GDS_STRMOUT_DWORDS_WRITTEN_0 + i * 4, 0);
          }
       } else {
          /* AMD GCN binds streamout buffers as shader resources.

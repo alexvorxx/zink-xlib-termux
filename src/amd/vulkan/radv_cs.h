@@ -112,6 +112,11 @@ static inline void
 radeon_set_uconfig_reg_seq_perfctr(enum amd_gfx_level gfx_level, enum radv_queue_family qf, struct radeon_cmdbuf *cs,
                                    unsigned reg, unsigned num)
 {
+   /*
+    * On GFX10, there is a bug with the ME implementation of its content addressable memory (CAM),
+    * that means that it can skip register writes due to not taking correctly into account the
+    * fields from the GRBM_GFX_INDEX. With this bit we can force the write.
+    */
    const bool filter_cam_workaround = gfx_level >= GFX10 && qf == RADV_QUEUE_GENERAL;
 
    assert(reg >= CIK_UCONFIG_REG_OFFSET && reg < CIK_UCONFIG_REG_END);
@@ -145,23 +150,6 @@ radeon_set_uconfig_reg_idx(const struct radeon_info *info, struct radeon_cmdbuf 
       opcode = PKT3_SET_UCONFIG_REG;
 
    radeon_set_reg_seq(cs, reg, 1, idx, CIK_UCONFIG_REG_OFFSET, opcode, false);
-   radeon_emit(cs, value);
-}
-
-static inline void
-radeon_set_perfctr_reg(enum amd_gfx_level gfx_level, enum radv_queue_family qf, struct radeon_cmdbuf *cs, unsigned reg,
-                       unsigned value)
-{
-   assert(reg >= CIK_UCONFIG_REG_OFFSET && reg < CIK_UCONFIG_REG_END);
-
-   /*
-    * On GFX10, there is a bug with the ME implementation of its content addressable memory (CAM),
-    * that means that it can skip register writes due to not taking correctly into account the
-    * fields from the GRBM_GFX_INDEX. With this bit we can force the write.
-    */
-   bool filter_cam_workaround = gfx_level >= GFX10 && qf == RADV_QUEUE_GENERAL;
-
-   radeon_set_reg_seq(cs, reg, 1, 0, CIK_UCONFIG_REG_OFFSET, PKT3_SET_UCONFIG_REG, filter_cam_workaround);
    radeon_emit(cs, value);
 }
 

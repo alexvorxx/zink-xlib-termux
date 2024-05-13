@@ -31,7 +31,6 @@ a530_gl:
     - .a530-test
   variables:
     DEQP_SUITE: freedreno-a530
-    PIGLIT_PLATFORM: gbm
     FDO_CI_CONCURRENT: 3  # if 4, sometimes "deqp-gles31, not enough memory for the allocation" appears
   parallel: 6
 

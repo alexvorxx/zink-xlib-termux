@@ -50,6 +50,7 @@
 #include "vk_log.h"
 #include "vk_pipeline.h"
 #include "vk_pipeline_layout.h"
+#include "vk_shader.h"
 #include "vk_util.h"
 
 static nir_def *
@@ -134,6 +135,80 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
       glsl_type_is_boolean(type) ? 4 : glsl_get_bit_size(type) / 8;
    unsigned length = glsl_get_vector_elements(type);
    *size = comp_size * length, *align = comp_size * (length == 3 ? 4 : length);
+}
+
+static VkResult
+panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
+                  VkShaderCreateFlagsEXT shader_flags,
+                  struct panfrost_compile_inputs *compile_input,
+                  struct panvk_shader *shader)
+{
+   const bool dump_asm =
+      shader_flags & VK_SHADER_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_MESA;
+
+   /* TODO: ASM dumping */
+   assert(!dump_asm);
+
+   struct util_dynarray binary;
+   util_dynarray_init(&binary, NULL);
+   GENX(pan_shader_compile)(nir, compile_input, &binary, &shader->info);
+
+   void *bin_ptr = util_dynarray_element(&binary, uint8_t, 0);
+   unsigned bin_size = util_dynarray_num_elements(&binary, uint8_t);
+
+   shader->bin_size = 0;
+   shader->bin_ptr = NULL;
+
+   if (bin_size) {
+      void *data = malloc(bin_size);
+
+      if (data == NULL)
+         return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      memcpy(data, bin_ptr, bin_size);
+      shader->bin_size = bin_size;
+      shader->bin_ptr = data;
+   }
+   util_dynarray_fini(&binary);
+
+   /* Patch the descriptor count */
+   shader->info.ubo_count =
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_UBO] +
+      shader->desc_info.dyn_ubos.count;
+   shader->info.texture_count =
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_TEXTURE];
+   shader->info.sampler_count =
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_SAMPLER];
+
+   /* Dummy sampler. */
+   if (!shader->info.sampler_count && shader->info.texture_count)
+      shader->info.sampler_count++;
+
+   if (nir->info.stage == MESA_SHADER_VERTEX) {
+      /* We leave holes in the attribute locations, but pan_shader.c assumes the
+       * opposite. Patch attribute_count accordingly, so
+       * pan_shader_prepare_rsd() does what we expect.
+       */
+      uint32_t gen_attribs =
+         (shader->info.attributes_read & VERT_BIT_GENERIC_ALL) >>
+         VERT_ATTRIB_GENERIC0;
+
+      shader->info.attribute_count = util_last_bit(gen_attribs);
+   }
+
+   /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
+    * and zero in other stages.
+    */
+   if (shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG] > 0)
+      shader->info.attribute_count =
+         shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG] +
+         (nir->info.stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
+
+   shader->local_size.x = nir->info.workgroup_size[0];
+   shader->local_size.y = nir->info.workgroup_size[1];
+   shader->local_size.z = nir->info.workgroup_size[2];
+
+   return VK_SUCCESS;
 }
 
 static VkResult
@@ -327,65 +402,10 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    NIR_PASS_V(nir, nir_shader_instructions_pass, panvk_lower_sysvals,
               nir_metadata_block_index | nir_metadata_dominance, NULL);
 
-   struct util_dynarray binary;
-   util_dynarray_init(&binary, NULL);
+   result = panvk_compile_nir(dev, nir, 0, &inputs, shader);
 
-   GENX(pan_shader_compile)(nir, &inputs, &binary, &shader->info);
-
-   void *bin_ptr = util_dynarray_element(&binary, uint8_t, 0);
-   unsigned bin_size = util_dynarray_num_elements(&binary, uint8_t);
-
-   shader->bin_size = 0;
-   shader->bin_ptr = NULL;
-
-   if (bin_size) {
-      void *data = malloc(bin_size);
-
-      if (data == NULL)
-         goto err;
-
-      memcpy(data, bin_ptr, bin_size);
-      shader->bin_size = bin_size;
-      shader->bin_ptr = data;
-   }
-   util_dynarray_fini(&binary);
-
-   /* Patch the descriptor count */
-   shader->info.ubo_count =
-      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_UBO] +
-      shader->desc_info.dyn_ubos.count;
-   shader->info.texture_count =
-      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_TEXTURE];
-   shader->info.sampler_count =
-      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_SAMPLER];
-
-   /* Dummy sampler. */
-   if (!shader->info.sampler_count && shader->info.texture_count)
-      shader->info.sampler_count++;
-
-   if (stage == MESA_SHADER_VERTEX) {
-      /* We leave holes in the attribute locations, but pan_shader.c assumes the
-       * opposite. Patch attribute_count accordingly, so
-       * pan_shader_prepare_rsd() does what we expect.
-       */
-      uint32_t gen_attribs =
-         (shader->info.attributes_read & VERT_BIT_GENERIC_ALL) >>
-         VERT_ATTRIB_GENERIC0;
-
-      shader->info.attribute_count = util_last_bit(gen_attribs);
-   }
-
-   /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
-    * and zero in other stages.
-    */
-   if (shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG] > 0)
-      shader->info.attribute_count =
-         shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG] +
-         (stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
-
-   shader->local_size.x = nir->info.workgroup_size[0];
-   shader->local_size.y = nir->info.workgroup_size[1];
-   shader->local_size.z = nir->info.workgroup_size[2];
+   if (result != VK_SUCCESS)
+      goto err;
 
    result = panvk_shader_upload(dev, shader, alloc);
 

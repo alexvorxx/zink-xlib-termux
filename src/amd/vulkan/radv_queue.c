@@ -1079,20 +1079,20 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    if (pdev->info.gfx_level >= GFX7) {
       if (pdev->info.gfx_level >= GFX10 && pdev->info.gfx_level < GFX11) {
          /* Logical CUs 16 - 31 */
-         radeon_set_sh_reg_idx(pdev, cs, R_00B104_SPI_SHADER_PGM_RSRC4_VS, 3,
+         radeon_set_sh_reg_idx(&pdev->info, cs, R_00B104_SPI_SHADER_PGM_RSRC4_VS, 3,
                                ac_apply_cu_en(S_00B104_CU_EN(0xffff), C_00B104_CU_EN, 16, &pdev->info));
       }
 
       if (pdev->info.gfx_level >= GFX10) {
-         radeon_set_sh_reg_idx(pdev, cs, R_00B404_SPI_SHADER_PGM_RSRC4_HS, 3,
+         radeon_set_sh_reg_idx(&pdev->info, cs, R_00B404_SPI_SHADER_PGM_RSRC4_HS, 3,
                                ac_apply_cu_en(S_00B404_CU_EN(0xffff), C_00B404_CU_EN, 16, &pdev->info));
-         radeon_set_sh_reg_idx(pdev, cs, R_00B004_SPI_SHADER_PGM_RSRC4_PS, 3,
+         radeon_set_sh_reg_idx(&pdev->info, cs, R_00B004_SPI_SHADER_PGM_RSRC4_PS, 3,
                                ac_apply_cu_en(S_00B004_CU_EN(cu_mask_ps >> 16), C_00B004_CU_EN, 16, &pdev->info));
       }
 
       if (pdev->info.gfx_level >= GFX9) {
          radeon_set_sh_reg_idx(
-            pdev, cs, R_00B41C_SPI_SHADER_PGM_RSRC3_HS, 3,
+            &pdev->info, cs, R_00B41C_SPI_SHADER_PGM_RSRC3_HS, 3,
             ac_apply_cu_en(S_00B41C_CU_EN(0xffff) | S_00B41C_WAVE_LIMIT(0x3F), C_00B41C_CU_EN, 0, &pdev->info));
       } else {
          radeon_set_sh_reg(
@@ -1110,7 +1110,7 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
                                 S_028A44_ES_VERTS_PER_SUBGRP(64) | S_028A44_GS_PRIMS_PER_SUBGRP(4));
       }
 
-      radeon_set_sh_reg_idx(pdev, cs, R_00B01C_SPI_SHADER_PGM_RSRC3_PS, 3,
+      radeon_set_sh_reg_idx(&pdev->info, cs, R_00B01C_SPI_SHADER_PGM_RSRC3_PS, 3,
                             ac_apply_cu_en(S_00B01C_CU_EN(cu_mask_ps) | S_00B01C_WAVE_LIMIT_GFX7(0x3F) |
                                               S_00B01C_LDS_GROUP_SIZE_GFX11(pdev->info.gfx_level >= GFX11),
                                            C_00B01C_CU_EN, 0, &pdev->info));

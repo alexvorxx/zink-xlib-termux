@@ -51,6 +51,9 @@ struct nvk_queue {
    } drm;
 
    struct nvk_queue_state state;
+
+   /* CB0 for all draw commands on this queue */
+   struct nouveau_ws_bo *draw_cb0;
 };
 
 static inline struct nvk_device *

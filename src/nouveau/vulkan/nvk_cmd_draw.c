@@ -88,6 +88,20 @@ nvk_mme_set_conservative_raster_state(struct mme_builder *b)
    }
 }
 
+#define NVK_DRAW_CB0_SIZE sizeof(struct nvk_root_descriptor_table)
+
+void
+nvk_mme_select_cb0(struct mme_builder *b)
+{
+   struct mme_value addr_hi = nvk_mme_load_scratch(b, CB0_ADDR_HI);
+   struct mme_value addr_lo = nvk_mme_load_scratch(b, CB0_ADDR_LO);
+
+   mme_mthd(b, NV9097_SET_CONSTANT_BUFFER_SELECTOR_A);
+   mme_emit(b, mme_imm(NVK_DRAW_CB0_SIZE));
+   mme_emit(b, addr_hi);
+   mme_emit(b, addr_lo);
+}
+
 VkResult
 nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
 {
@@ -490,6 +504,30 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
    if (pdev->info.cls_eng3d == MAXWELL_A)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
+   /* Store the address to CB0 in a pair of state registers */
+   uint64_t cb0_addr = queue->draw_cb0->offset;
+   P_MTHD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_CB0_ADDR_HI));
+   P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_ADDR_HI, cb0_addr >> 32);
+   P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_ADDR_LO, cb0_addr);
+
+   /* We leave CB0 selected by default */
+   P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SELECT_CB0));
+   P_INLINE_DATA(p, 0);
+
+   /* Bind CB0 to all shader groups */
+   for (uint32_t group = 0; group < 5; group++) {
+      P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
+         .valid = VALID_TRUE,
+         .shader_slot = 0,
+      });
+   }
+
+   /* Zero out CB0 */
+   P_1INC(p, NV9097, LOAD_CONSTANT_BUFFER_OFFSET);
+   P_NV9097_LOAD_CONSTANT_BUFFER_OFFSET(p, 0);
+   for (uint32_t dw = 0; dw < NVK_DRAW_CB0_SIZE / 4; dw++)
+      P_INLINE_DATA(p, 0);
+
    return VK_SUCCESS;
 }
 
@@ -514,6 +552,23 @@ nvk_cmd_buffer_dirty_render_pass(struct nvk_cmd_buffer *cmd)
    BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES);
 }
 
+static void
+nvk_cmd_flush_gfx_root_desc(struct nvk_cmd_buffer *cmd,
+                            struct nvk_descriptor_state *desc,
+                            size_t offset, size_t size)
+{
+   const uint32_t start_dw = offset / 4;
+   const uint32_t end_dw = DIV_ROUND_UP(offset + size, 4);
+   const uint32_t len_dw = end_dw - start_dw;
+
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 2 + len_dw);
+   P_1INC(p, NV9097, LOAD_CONSTANT_BUFFER_OFFSET);
+   P_NV9097_LOAD_CONSTANT_BUFFER_OFFSET(p, start_dw * 4);
+
+   const uint32_t *root_dw = (uint32_t *)desc->root;
+   P_INLINE_ARRAY(p, &root_dw[start_dw], len_dw);
+}
+
 void
 nvk_cmd_buffer_begin_graphics(struct nvk_cmd_buffer *cmd,
                               const VkCommandBufferBeginInfo *pBeginInfo)
@@ -532,6 +587,8 @@ nvk_cmd_buffer_begin_graphics(struct nvk_cmd_buffer *cmd,
          .constant = CONSTANT_TRUE,
       });
    }
+
+   cmd->state.gfx.descriptors.flush_root = nvk_cmd_flush_gfx_root_desc;
 
    if (cmd->vk.level != VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
        (pBeginInfo->flags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT)) {
@@ -589,6 +646,9 @@ nvk_cmd_invalidate_graphics_state(struct nvk_cmd_buffer *cmd)
    struct nvk_rendering_state render_save = cmd->state.gfx.render;
    memset(&cmd->state.gfx, 0, sizeof(cmd->state.gfx));
    cmd->state.gfx.render = render_save;
+
+   /* We need to keep the flush_root callback */
+   cmd->state.gfx.descriptors.flush_root = nvk_cmd_flush_gfx_root_desc;
 
    cmd->state.gfx.shaders_dirty = ~0;
 }
@@ -2348,28 +2408,8 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    const uint32_t min_cbuf_alignment = nvk_min_cbuf_alignment(&pdev->info);
    struct nvk_descriptor_state *desc = &cmd->state.gfx.descriptors;
-   VkResult result;
 
    nvk_cmd_buffer_flush_push_descriptors(cmd, desc);
-
-   /* pre Pascal the constant buffer sizes need to be 0x100 aligned. As we
-    * simply allocated a buffer and upload data to it, make sure its size is
-    * 0x100 aligned.
-    */
-   STATIC_ASSERT((sizeof(desc->root) & 0xff) == 0);
-   assert(sizeof(desc->root) % min_cbuf_alignment == 0);
-
-   void *root_desc_map;
-   uint64_t root_desc_addr;
-   result = nvk_cmd_buffer_upload_alloc(cmd, sizeof(desc->root),
-                                        min_cbuf_alignment,
-                                        &root_desc_addr, &root_desc_map);
-   if (unlikely(result != VK_SUCCESS)) {
-      vk_command_buffer_set_error(&cmd->vk, result);
-      return;
-   }
-
-   memcpy(root_desc_map, &desc->root, sizeof(desc->root));
 
    /* Find cbuf maps for the 5 cbuf groups */
    const struct nvk_shader *cbuf_shaders[5] = { NULL, };
@@ -2383,6 +2423,7 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
       cbuf_shaders[group] = shader;
    }
 
+   bool bound_any_cbuf = false;
    for (uint32_t g = 0; g < ARRAY_SIZE(cbuf_shaders); g++) {
       if (cbuf_shaders[g] == NULL)
          continue;
@@ -2403,6 +2444,8 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
          /* We bind these at the very end */
          if (cbuf->type == NVK_CBUF_TYPE_ROOT_DESC)
             continue;
+
+         bound_any_cbuf = true;
 
          struct nvk_buffer_address ba;
          if (nvk_cmd_buffer_get_cbuf_addr(cmd, desc, shader, cbuf, &ba)) {
@@ -2454,27 +2497,10 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
     * parameters and similar MME root table updates always hit the root
     * descriptor table and not some random UBO.
     */
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 14);
-   P_MTHD(p, NV9097, SET_CONSTANT_BUFFER_SELECTOR_A);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_A(p, sizeof(desc->root));
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, root_desc_addr >> 32);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, root_desc_addr);
-
-   for (uint32_t group = 0; group < ARRAY_SIZE(cbuf_shaders); group++) {
-      if (cbuf_shaders[group] == NULL)
-         continue;
-
-      const struct nvk_cbuf_map *cbuf_map = &cbuf_shaders[group]->cbuf_map;
-
-      for (uint32_t c = 0; c < cbuf_map->cbuf_count; c++) {
-         const struct nvk_cbuf *cbuf = &cbuf_map->cbufs[c];
-         if (cbuf->type == NVK_CBUF_TYPE_ROOT_DESC) {
-            P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
-               .valid = VALID_TRUE,
-               .shader_slot = c,
-            });
-         }
-      }
+   if (bound_any_cbuf) {
+      struct nv_push *p = nvk_cmd_buffer_push(cmd, 2);
+      P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SELECT_CB0));
+      P_INLINE_DATA(p, 0);
    }
 }
 

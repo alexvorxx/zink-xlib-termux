@@ -67,6 +67,24 @@
              sizeof((core_struct)->member));                                 \
    } while (0)
 
+/**
+ * Copy vk struct members to common vk properties.
+ */
+#define VN_SET_VK_PROPS(vk_props, vk_struct)                                 \
+   do {                                                                      \
+      vk_set_physical_device_properties_struct(                              \
+         (vk_props), (const VkBaseInStructure *)(vk_struct));                \
+   } while (0)
+
+/**
+ * Copy vk struct members to common vk properties if extension is supported.
+ */
+#define VN_SET_VK_PROPS_EXT(vk_props, vk_struct, ext_cond)                   \
+   do {                                                                      \
+      if (ext_cond)                                                          \
+         VN_SET_VK_PROPS(vk_props, vk_struct);                               \
+   } while (0)
+
 static void
 vn_physical_device_init_features(struct vn_physical_device *physical_dev)
 {
@@ -584,108 +602,74 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
    /* clang-format off */
 
    /* Vulkan 1.0 */
-   vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &props2);
+   VN_SET_VK_PROPS(props, &props2);
 
-   if (renderer_version < VK_API_VERSION_1_2) {
+   /* Vulkan 1.1 and 1.2 */
+   if (renderer_version >= VK_API_VERSION_1_2) {
+      VN_SET_VK_PROPS(props, &local_props.vulkan_1_1);
+      VN_SET_VK_PROPS(props, &local_props.vulkan_1_2);
+   } else {
       /* Vulkan 1.1 */
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.id);
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.subgroup);
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.point_clipping);
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.multiview);
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.protected_memory);
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.maintenance_3);
+      VN_SET_VK_PROPS(props, &local_props.id);
+      VN_SET_VK_PROPS(props, &local_props.subgroup);
+      VN_SET_VK_PROPS(props, &local_props.point_clipping);
+      VN_SET_VK_PROPS(props, &local_props.multiview);
+      VN_SET_VK_PROPS(props, &local_props.protected_memory);
+      VN_SET_VK_PROPS(props, &local_props.maintenance_3);
 
       /* Vulkan 1.2 */
-      if (exts->KHR_driver_properties) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.driver);
-      }
-      if (exts->KHR_shader_float_controls) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.float_controls);
-      }
-      if (exts->EXT_descriptor_indexing) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.descriptor_indexing);
-      }
-      if (exts->KHR_depth_stencil_resolve) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.depth_stencil_resolve);
-      }
-      if (exts->EXT_sampler_filter_minmax) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.sampler_filter_minmax);
-      }
-      if (exts->KHR_timeline_semaphore) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.timeline_semaphore);
-      }
-   } else {
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.vulkan_1_1);
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.vulkan_1_2);
+      VN_SET_VK_PROPS_EXT(props, &local_props.driver, exts->KHR_driver_properties);
+      VN_SET_VK_PROPS_EXT(props, &local_props.float_controls, exts->KHR_shader_float_controls);
+      VN_SET_VK_PROPS_EXT(props, &local_props.descriptor_indexing, exts->EXT_descriptor_indexing);
+      VN_SET_VK_PROPS_EXT(props, &local_props.depth_stencil_resolve, exts->KHR_depth_stencil_resolve);
+      VN_SET_VK_PROPS_EXT(props, &local_props.sampler_filter_minmax, exts->EXT_sampler_filter_minmax);
+      VN_SET_VK_PROPS_EXT(props, &local_props.timeline_semaphore, exts->KHR_timeline_semaphore);
    }
 
    /* Vulkan 1.3 */
-   if (renderer_version < VK_API_VERSION_1_3) {
-      if (exts->EXT_subgroup_size_control) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.subgroup_size_control);
-      }
-      if (exts->EXT_inline_uniform_block) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.inline_uniform_block);
-      }
-      if (exts->KHR_shader_integer_dot_product) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.shader_integer_dot_product);
-      }
-      if (exts->EXT_texel_buffer_alignment) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.texel_buffer_alignment);
-      }
-      if (exts->KHR_maintenance4) {
-         vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.maintenance4);
-      }
+   if (renderer_version >= VK_API_VERSION_1_3) {
+      VN_SET_VK_PROPS(props, &local_props.vulkan_1_3);
    } else {
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.vulkan_1_3);
+      VN_SET_VK_PROPS_EXT(props, &local_props.subgroup_size_control, exts->EXT_subgroup_size_control);
+      VN_SET_VK_PROPS_EXT(props, &local_props.inline_uniform_block, exts->EXT_inline_uniform_block);
+      VN_SET_VK_PROPS_EXT(props, &local_props.shader_integer_dot_product, exts->KHR_shader_integer_dot_product);
+      VN_SET_VK_PROPS_EXT(props, &local_props.texel_buffer_alignment, exts->EXT_texel_buffer_alignment);
+      VN_SET_VK_PROPS_EXT(props, &local_props.maintenance4, exts->KHR_maintenance4);
    }
 
    /* KHR */
-   if (exts->KHR_fragment_shading_rate)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.fragment_shading_rate);
-   if (exts->KHR_push_descriptor)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.push_descriptor);
+   VN_SET_VK_PROPS_EXT(props, &local_props.fragment_shading_rate, exts->KHR_fragment_shading_rate);
+   VN_SET_VK_PROPS_EXT(props, &local_props.push_descriptor, exts->KHR_push_descriptor);
 
    /* EXT */
-   if (exts->EXT_conservative_rasterization)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.conservative_rasterization);
-   if (exts->EXT_custom_border_color)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.custom_border_color);
-   if (exts->EXT_extended_dynamic_state3)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.extended_dynamic_state_3);
-   if (exts->EXT_graphics_pipeline_library)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.graphics_pipeline_library);
-   if (exts->EXT_line_rasterization)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.line_rasterization);
-   if (exts->EXT_multi_draw)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.multi_draw);
-   if (exts->EXT_pci_bus_info)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.pci_bus_info);
-   if (exts->EXT_provoking_vertex)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.provoking_vertex);
-   if (exts->EXT_robustness2)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.robustness_2);
-   if (exts->EXT_transform_feedback)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.transform_feedback);
-   if (exts->EXT_vertex_attribute_divisor)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &local_props.vertex_attribute_divisor);
+   VN_SET_VK_PROPS_EXT(props, &local_props.conservative_rasterization, exts->EXT_conservative_rasterization);
+   VN_SET_VK_PROPS_EXT(props, &local_props.custom_border_color, exts->EXT_custom_border_color);
+   VN_SET_VK_PROPS_EXT(props, &local_props.extended_dynamic_state_3, exts->EXT_extended_dynamic_state3);
+   VN_SET_VK_PROPS_EXT(props, &local_props.graphics_pipeline_library, exts->EXT_graphics_pipeline_library);
+   VN_SET_VK_PROPS_EXT(props, &local_props.line_rasterization, exts->EXT_line_rasterization);
+   VN_SET_VK_PROPS_EXT(props, &local_props.multi_draw, exts->EXT_multi_draw);
+   VN_SET_VK_PROPS_EXT(props, &local_props.pci_bus_info, exts->EXT_pci_bus_info);
+   VN_SET_VK_PROPS_EXT(props, &local_props.provoking_vertex, exts->EXT_provoking_vertex);
+   VN_SET_VK_PROPS_EXT(props, &local_props.robustness_2, exts->EXT_robustness2);
+   VN_SET_VK_PROPS_EXT(props, &local_props.transform_feedback, exts->EXT_transform_feedback);
+   VN_SET_VK_PROPS_EXT(props, &local_props.vertex_attribute_divisor, exts->EXT_vertex_attribute_divisor);
+
+   /* clang-format on */
 
    /* initialize native properties */
 
    /* VK_EXT_physical_device_drm */
-   vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &renderer_info->drm.props);
+   VN_SET_VK_PROPS(props, &renderer_info->drm.props);
 
    /* VK_EXT_pci_bus_info */
    if (renderer_info->pci.has_bus_info)
-      vk_set_physical_device_properties_struct(props, (VkBaseInStructure *) &renderer_info->pci.props);
+      VN_SET_VK_PROPS(props, &renderer_info->pci.props);
 
 #if DETECT_OS_ANDROID
    /* VK_ANDROID_native_buffer */
    if (vn_android_gralloc_get_shared_present_usage())
       props->sharedImage = true;
 #endif
-
-   /* clang-format on */
 
    vn_physical_device_sanitize_properties(physical_dev);
 }

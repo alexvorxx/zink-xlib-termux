@@ -1029,9 +1029,10 @@ upload_shader_desc_info(struct panvk_device *dev, struct panvk_shader *shader,
 }
 
 bool
-panvk_per_arch(nir_lower_descriptors)(nir_shader *nir, struct panvk_device *dev,
-                                      const struct vk_pipeline_layout *layout,
-                                      struct panvk_shader *shader)
+panvk_per_arch(nir_lower_descriptors)(
+   nir_shader *nir, struct panvk_device *dev, uint32_t set_layout_count,
+   struct vk_descriptor_set_layout *const *set_layouts,
+   struct panvk_shader *shader)
 {
    struct lower_desc_ctx ctx = {
       .ubo_addr_format = nir_address_format_32bit_index_offset,
@@ -1045,9 +1046,8 @@ panvk_per_arch(nir_lower_descriptors)(nir_shader *nir, struct panvk_device *dev,
 
    _mesa_hash_table_set_deleted_key(ctx.ht, DELETED_KEY);
 
-   for (uint32_t i = 0; i < layout->set_count; i++) {
-      ctx.set_layouts[i] =
-         to_panvk_descriptor_set_layout(layout->set_layouts[i]);
+   for (uint32_t i = 0; i < set_layout_count; i++) {
+      ctx.set_layouts[i] = to_panvk_descriptor_set_layout(set_layouts[i]);
    }
 
    bool progress = nir_shader_instructions_pass(nir, collect_instr_desc_access,

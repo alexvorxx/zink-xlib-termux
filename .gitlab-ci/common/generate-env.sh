@@ -119,7 +119,6 @@ VARS=(
     VIRGL_HOST_API
     VIRGL_RENDER_SERVER
     WAFFLE_PLATFORM
-    VK_CPU
     VK_DRIVER
     # required by virglrender CI
     VK_DRIVER_FILES

@@ -5246,67 +5246,6 @@ resolve_excess_vmem_const_offset(Builder& bld, Temp& voffset, unsigned const_off
    return const_offset;
 }
 
-void
-emit_single_mubuf_store(isel_context* ctx, Temp descriptor, Temp voffset, Temp soffset, Temp idx,
-                        Temp vdata, unsigned const_offset, memory_sync_info sync, bool glc,
-                        bool slc, bool swizzled)
-{
-   assert(vdata.id());
-   assert(vdata.size() != 3 || ctx->program->gfx_level != GFX6);
-   assert(vdata.size() >= 1 && vdata.size() <= 4);
-
-   Builder bld(ctx->program, ctx->block);
-   aco_opcode op = get_buffer_store_op(vdata.bytes());
-   const_offset = resolve_excess_vmem_const_offset(bld, voffset, const_offset);
-
-   bool offen = voffset.id();
-   bool idxen = idx.id();
-
-   Operand soffset_op = soffset.id() ? Operand(soffset) : Operand::zero();
-   glc |= ctx->program->gfx_level == GFX6 && vdata.bytes() < 4;
-   glc &= ctx->program->gfx_level < GFX11;
-
-   Operand vaddr_op(v1);
-   if (offen && idxen)
-      vaddr_op = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), idx, voffset);
-   else if (offen)
-      vaddr_op = Operand(voffset);
-   else if (idxen)
-      vaddr_op = Operand(idx);
-
-   Builder::Result r =
-      bld.mubuf(op, Operand(descriptor), vaddr_op, soffset_op, Operand(vdata), const_offset, offen,
-                swizzled, idxen, /* addr64 */ false, /* disable_wqm */ false, glc,
-                /* dlc*/ false, slc);
-
-   r->mubuf().sync = sync;
-}
-
-void
-store_vmem_mubuf(isel_context* ctx, Temp src, Temp descriptor, Temp voffset, Temp soffset, Temp idx,
-                 unsigned base_const_offset, unsigned elem_size_bytes, unsigned write_mask,
-                 bool swizzled, memory_sync_info sync, bool glc, bool slc)
-{
-   Builder bld(ctx->program, ctx->block);
-   assert(elem_size_bytes == 1 || elem_size_bytes == 2 || elem_size_bytes == 4 ||
-          elem_size_bytes == 8);
-   assert(write_mask);
-   write_mask = util_widen_mask(write_mask, elem_size_bytes);
-
-   unsigned write_count = 0;
-   Temp write_datas[32];
-   unsigned offsets[32];
-   split_buffer_store(ctx, NULL, false, RegType::vgpr, src, write_mask,
-                      swizzled && ctx->program->gfx_level <= GFX8 ? 4 : 16, &write_count,
-                      write_datas, offsets);
-
-   for (unsigned i = 0; i < write_count; i++) {
-      unsigned const_offset = offsets[i] + base_const_offset;
-      emit_single_mubuf_store(ctx, descriptor, voffset, soffset, idx, write_datas[i], const_offset,
-                              sync, glc, slc, swizzled);
-   }
-}
-
 Temp
 wave_id_in_threadgroup(isel_context* ctx)
 {
@@ -7189,23 +7128,20 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
    bool swizzled = nir_intrinsic_access(intrin) & ACCESS_IS_SWIZZLED_AMD;
    bool idxen = (swizzled && ctx->program->gfx_level >= GFX11) ||
                 !nir_src_is_const(intrin->src[4]) || nir_src_as_uint(intrin->src[4]);
-   bool v_offset_zero = nir_src_is_const(intrin->src[2]) && !nir_src_as_uint(intrin->src[2]);
-   bool s_offset_zero = nir_src_is_const(intrin->src[3]) && !nir_src_as_uint(intrin->src[3]);
+   bool offen = !nir_src_is_const(intrin->src[2]) || nir_src_as_uint(intrin->src[2]);
 
    Temp store_src = get_ssa_temp(ctx, intrin->src[0].ssa);
    Temp descriptor = bld.as_uniform(get_ssa_temp(ctx, intrin->src[1].ssa));
-   Temp v_offset =
-      v_offset_zero ? Temp(0, v1) : as_vgpr(ctx, get_ssa_temp(ctx, intrin->src[2].ssa));
-   Temp s_offset =
-      s_offset_zero ? Temp(0, s1) : bld.as_uniform(get_ssa_temp(ctx, intrin->src[3].ssa));
+   Temp v_offset = offen ? as_vgpr(ctx, get_ssa_temp(ctx, intrin->src[2].ssa)) : Temp();
+   Temp s_offset = bld.as_uniform(get_ssa_temp(ctx, intrin->src[3].ssa));
    Temp idx = idxen ? as_vgpr(ctx, get_ssa_temp(ctx, intrin->src[4].ssa)) : Temp();
 
-   bool glc = nir_intrinsic_access(intrin) & ACCESS_COHERENT;
-   bool slc = nir_intrinsic_access(intrin) & ACCESS_NON_TEMPORAL;
-
-   unsigned const_offset = nir_intrinsic_base(intrin);
-   unsigned write_mask = nir_intrinsic_write_mask(intrin);
    unsigned elem_size_bytes = intrin->src[0].ssa->bit_size / 8u;
+   assert(elem_size_bytes == 1 || elem_size_bytes == 2 || elem_size_bytes == 4 ||
+          elem_size_bytes == 8);
+
+   unsigned write_mask = nir_intrinsic_write_mask(intrin);
+   write_mask = util_widen_mask(write_mask, elem_size_bytes);
 
    nir_variable_mode mem_mode = nir_intrinsic_memory_modes(intrin);
    /* GS outputs are only written once. */
@@ -7214,8 +7150,39 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
    memory_sync_info sync(aco_storage_mode_from_nir_mem_mode(mem_mode),
                          written_once ? semantic_can_reorder : semantic_none);
 
-   store_vmem_mubuf(ctx, store_src, descriptor, v_offset, s_offset, idx, const_offset,
-                    elem_size_bytes, write_mask, swizzled, sync, glc, slc);
+   unsigned write_count = 0;
+   Temp write_datas[32];
+   unsigned offsets[32];
+   split_buffer_store(ctx, NULL, false, RegType::vgpr, store_src, write_mask,
+                      swizzled && ctx->program->gfx_level <= GFX8 ? 4 : 16, &write_count,
+                      write_datas, offsets);
+
+   for (unsigned i = 0; i < write_count; i++) {
+      aco_opcode op = get_buffer_store_op(write_datas[i].bytes());
+      Temp write_voffset = v_offset;
+      unsigned const_offset = resolve_excess_vmem_const_offset(
+         bld, write_voffset, offsets[i] + nir_intrinsic_base(intrin));
+
+      bool slc = nir_intrinsic_access(intrin) & ACCESS_NON_TEMPORAL;
+      bool glc = nir_intrinsic_access(intrin) & ACCESS_COHERENT;
+      glc |= ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
+      glc &= ctx->program->gfx_level < GFX11;
+
+      Operand vaddr_op(v1);
+      if (offen && idxen)
+         vaddr_op = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), idx, write_voffset);
+      else if (offen)
+         vaddr_op = Operand(write_voffset);
+      else if (idxen)
+         vaddr_op = Operand(idx);
+
+      Instruction* mubuf = bld.mubuf(op, Operand(descriptor), vaddr_op, s_offset,
+                                     Operand(write_datas[i]), const_offset, offen, swizzled, idxen,
+                                     /* addr64 */ false, /* disable_wqm */ false, glc,
+                                     /* dlc */ false, slc)
+                              .instr;
+      mubuf->mubuf().sync = sync;
+   }
 }
 
 void

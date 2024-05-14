@@ -913,69 +913,9 @@ get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
    auto is_free = [&](PhysReg reg_index)
    { return reg_file[reg_index] == 0 && !ctx.war_hint[reg_index]; };
 
-   if (stride == 1) {
-      /* best fit algorithm: find the smallest gap to fit in the variable */
-      PhysRegInterval best_gap{PhysReg{0}, UINT_MAX};
-      const unsigned max_gpr =
-         (rc.type() == RegType::vgpr) ? (256 + ctx.max_used_vgpr) : ctx.max_used_sgpr;
-
-      PhysRegIterator reg_it = bounds.begin();
-      const PhysRegIterator end_it =
-         std::min(bounds.end(), std::max(PhysRegIterator{PhysReg{max_gpr + 1}}, reg_it));
-      while (reg_it != bounds.end()) {
-         /* Find the next chunk of available register slots */
-         reg_it = std::find_if(reg_it, end_it, is_free);
-         auto next_nonfree_it = std::find_if_not(reg_it, end_it, is_free);
-         if (reg_it == bounds.end()) {
-            break;
-         }
-
-         if (next_nonfree_it == end_it) {
-            /* All registers past max_used_gpr are free */
-            next_nonfree_it = bounds.end();
-         }
-
-         PhysRegInterval gap = PhysRegInterval::from_until(*reg_it, *next_nonfree_it);
-
-         /* early return on exact matches */
-         if (size == gap.size) {
-            adjust_max_used_regs(ctx, rc, gap.lo());
-            return gap.lo();
-         }
-
-         /* check if it fits and the gap size is smaller */
-         if (size < gap.size && gap.size < best_gap.size) {
-            best_gap = gap;
-         }
-
-         /* Move past the processed chunk */
-         reg_it = next_nonfree_it;
-      }
-
-      if (best_gap.size == UINT_MAX)
-         return {};
-
-      /* find best position within gap by leaving a good stride for other variables*/
-      unsigned buffer = best_gap.size - size;
-      if (buffer > 1) {
-         if (((best_gap.lo() + size) % 8 != 0 && (best_gap.lo() + buffer) % 8 == 0) ||
-             ((best_gap.lo() + size) % 4 != 0 && (best_gap.lo() + buffer) % 4 == 0) ||
-             ((best_gap.lo() + size) % 2 != 0 && (best_gap.lo() + buffer) % 2 == 0))
-            best_gap = {PhysReg{best_gap.lo() + buffer}, best_gap.size - buffer};
-      }
-
-      adjust_max_used_regs(ctx, rc, best_gap.lo());
-      return best_gap.lo();
-   }
-
    for (PhysRegInterval reg_win = {bounds.lo(), size}; reg_win.hi() <= bounds.hi();
         reg_win += stride) {
-      if (reg_file[reg_win.lo()] != 0) {
-         continue;
-      }
-
-      bool is_valid = std::all_of(std::next(reg_win.begin()), reg_win.end(), is_free);
-      if (is_valid) {
+      if (std::all_of(reg_win.begin(), reg_win.end(), is_free)) {
          adjust_max_used_regs(ctx, rc, reg_win.lo());
          return reg_win.lo();
       }

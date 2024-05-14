@@ -666,7 +666,7 @@ void intel_ds_queue_flush_data(struct intel_ds_queue *queue,
                                bool free_data)
 {
    simple_mtx_lock(&queue->device->trace_context_mutex);
-   u_trace_flush(ut, data, free_data);
+   u_trace_flush(ut, data, U_TRACE_FRAME_UNKNOWN, free_data);
    simple_mtx_unlock(&queue->device->trace_context_mutex);
 }
 

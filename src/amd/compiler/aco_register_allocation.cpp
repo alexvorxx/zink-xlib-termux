@@ -900,15 +900,14 @@ get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
    uint32_t stride = info.rc.is_subdword() ? DIV_ROUND_UP(info.stride, 4) : info.stride;
    RegClass rc = info.rc;
 
-   DefInfo new_info = info;
-   new_info.rc = RegClass(rc.type(), size);
-   for (unsigned new_stride = 16; new_stride > stride; new_stride /= 2) {
-      if (size % new_stride)
-         continue;
-      new_info.stride = new_stride;
-      std::optional<PhysReg> res = get_reg_simple(ctx, reg_file, new_info);
-      if (res)
-         return res;
+   if (stride < size && !rc.is_subdword()) {
+      DefInfo new_info = info;
+      new_info.stride = stride * 2;
+      if (size % new_info.stride == 0) {
+         std::optional<PhysReg> res = get_reg_simple(ctx, reg_file, new_info);
+         if (res)
+            return res;
+      }
    }
 
    auto is_free = [&](PhysReg reg_index)

@@ -2635,7 +2635,7 @@ struct mme_draw_params {
    struct mme_value base_vertex;
    struct mme_value first_vertex;
    struct mme_value first_instance;
-   struct mme_value draw_idx;
+   struct mme_value draw_index;
 };
 
 static void
@@ -2648,7 +2648,7 @@ nvk_mme_build_set_draw_params(struct mme_builder *b,
    mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER(0));
    mme_emit(b, p->first_vertex);
    mme_emit(b, p->first_instance);
-   mme_emit(b, p->draw_idx);
+   mme_emit(b, p->draw_index);
    mme_emit(b, mme_zero() /* view_index */);
 
    mme_mthd(b, NV9097_SET_GLOBAL_BASE_VERTEX_INDEX);
@@ -2703,7 +2703,7 @@ nvk_mme_build_draw_loop(struct mme_builder *b,
 
 static void
 nvk_mme_build_draw(struct mme_builder *b,
-                   struct mme_value draw_idx)
+                   struct mme_value draw_index)
 {
    /* These are in VkDrawIndirectCommand order */
    struct mme_value vertex_count = mme_load(b);
@@ -2714,14 +2714,14 @@ nvk_mme_build_draw(struct mme_builder *b,
    struct mme_draw_params params = {
       .first_vertex = first_vertex,
       .first_instance = first_instance,
-      .draw_idx = draw_idx,
+      .draw_index = draw_index,
    };
    nvk_mme_build_set_draw_params(b, &params);
 
    mme_free_reg(b, first_instance);
 
    if (b->devinfo->cls_eng3d < TURING_A)
-      nvk_mme_spill(b, DRAW_IDX, draw_idx);
+      nvk_mme_spill(b, DRAW_IDX, draw_index);
 
    struct mme_value view_mask = nvk_mme_load_scratch(b, VIEW_MASK);
    mme_if(b, ieq, view_mask, mme_zero()) {
@@ -2757,16 +2757,16 @@ nvk_mme_build_draw(struct mme_builder *b,
    mme_free_reg(b, vertex_count);
 
    if (b->devinfo->cls_eng3d < TURING_A)
-      nvk_mme_unspill(b, DRAW_IDX, draw_idx);
+      nvk_mme_unspill(b, DRAW_IDX, draw_index);
 }
 
 void
 nvk_mme_draw(struct mme_builder *b)
 {
    nvk_mme_load_to_scratch(b, DRAW_BEGIN);
-   struct mme_value draw_idx = mme_load(b);
+   struct mme_value draw_index = mme_load(b);
 
-   nvk_mme_build_draw(b, draw_idx);
+   nvk_mme_build_draw(b, draw_index);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2793,7 +2793,7 @@ nvk_CmdDraw(VkCommandBuffer commandBuffer,
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 7);
    P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW));
    P_INLINE_DATA(p, begin);
-   P_INLINE_DATA(p, 0 /* draw_idx */);
+   P_INLINE_DATA(p, 0 /* draw_index */);
    P_INLINE_DATA(p, vertexCount);
    P_INLINE_DATA(p, instanceCount);
    P_INLINE_DATA(p, firstVertex);
@@ -2822,11 +2822,11 @@ nvk_CmdDrawMultiEXT(VkCommandBuffer commandBuffer,
       .split_mode = SPLIT_MODE_NORMAL_BEGIN_NORMAL_END,
    });
 
-   for (uint32_t draw_idx = 0; draw_idx < drawCount; draw_idx++) {
+   for (uint32_t draw_index = 0; draw_index < drawCount; draw_index++) {
       struct nv_push *p = nvk_cmd_buffer_push(cmd, 7);
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW));
       P_INLINE_DATA(p, begin);
-      P_INLINE_DATA(p, draw_idx);
+      P_INLINE_DATA(p, draw_index);
       P_INLINE_DATA(p, pVertexInfo->vertexCount);
       P_INLINE_DATA(p, instanceCount);
       P_INLINE_DATA(p, pVertexInfo->firstVertex);
@@ -2863,7 +2863,7 @@ nvk_mme_build_draw_indexed_loop(struct mme_builder *b,
 
 static void
 nvk_mme_build_draw_indexed(struct mme_builder *b,
-                           struct mme_value draw_idx)
+                           struct mme_value draw_index)
 {
    /* These are in VkDrawIndexedIndirectCommand order */
    struct mme_value index_count = mme_load(b);
@@ -2876,7 +2876,7 @@ nvk_mme_build_draw_indexed(struct mme_builder *b,
       .base_vertex = vertex_offset,
       .first_vertex = vertex_offset,
       .first_instance = first_instance,
-      .draw_idx = draw_idx,
+      .draw_index = draw_index,
    };
    nvk_mme_build_set_draw_params(b, &params);
 
@@ -2884,7 +2884,7 @@ nvk_mme_build_draw_indexed(struct mme_builder *b,
    mme_free_reg(b, first_instance);
 
    if (b->devinfo->cls_eng3d < TURING_A)
-      nvk_mme_spill(b, DRAW_IDX, draw_idx);
+      nvk_mme_spill(b, DRAW_IDX, draw_index);
 
    struct mme_value view_mask = nvk_mme_load_scratch(b, VIEW_MASK);
    mme_if(b, ieq, view_mask, mme_zero()) {
@@ -2920,16 +2920,16 @@ nvk_mme_build_draw_indexed(struct mme_builder *b,
    mme_free_reg(b, index_count);
 
    if (b->devinfo->cls_eng3d < TURING_A)
-      nvk_mme_unspill(b, DRAW_IDX, draw_idx);
+      nvk_mme_unspill(b, DRAW_IDX, draw_index);
 }
 
 void
 nvk_mme_draw_indexed(struct mme_builder *b)
 {
    nvk_mme_load_to_scratch(b, DRAW_BEGIN);
-   struct mme_value draw_idx = mme_load(b);
+   struct mme_value draw_index = mme_load(b);
 
-   nvk_mme_build_draw_indexed(b, draw_idx);
+   nvk_mme_build_draw_indexed(b, draw_index);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2957,7 +2957,7 @@ nvk_CmdDrawIndexed(VkCommandBuffer commandBuffer,
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 8);
    P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDEXED));
    P_INLINE_DATA(p, begin);
-   P_INLINE_DATA(p, 0 /* draw_idx */);
+   P_INLINE_DATA(p, 0 /* draw_index */);
    P_INLINE_DATA(p, indexCount);
    P_INLINE_DATA(p, instanceCount);
    P_INLINE_DATA(p, firstIndex);
@@ -2988,14 +2988,14 @@ nvk_CmdDrawMultiIndexedEXT(VkCommandBuffer commandBuffer,
       .split_mode = SPLIT_MODE_NORMAL_BEGIN_NORMAL_END,
    });
 
-   for (uint32_t draw_idx = 0; draw_idx < drawCount; draw_idx++) {
+   for (uint32_t draw_index = 0; draw_index < drawCount; draw_index++) {
       const uint32_t vertex_offset =
          pVertexOffset != NULL ? *pVertexOffset : pIndexInfo->vertexOffset;
 
       struct nv_push *p = nvk_cmd_buffer_push(cmd, 8);
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDEXED));
       P_INLINE_DATA(p, begin);
-      P_INLINE_DATA(p, draw_idx);
+      P_INLINE_DATA(p, draw_index);
       P_INLINE_DATA(p, pIndexInfo->indexCount);
       P_INLINE_DATA(p, instanceCount);
       P_INLINE_DATA(p, pIndexInfo->firstIndex);

@@ -41,7 +41,7 @@ struct nvk_root_descriptor_table {
       struct {
          uint32_t base_vertex;
          uint32_t base_instance;
-         uint32_t draw_id;
+         uint32_t draw_index;
          uint32_t view_index;
          struct nvk_sample_location sample_locations[NVK_MAX_SAMPLES];
       } draw;

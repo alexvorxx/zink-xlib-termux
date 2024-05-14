@@ -860,10 +860,7 @@ smem_combine(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             if (!smem.definitions.empty())
                new_instr->definitions[0] = smem.definitions[0];
             new_instr->smem().sync = smem.sync;
-            new_instr->smem().glc = smem.glc;
-            new_instr->smem().dlc = smem.dlc;
-            new_instr->smem().nv = smem.nv;
-            new_instr->smem().disable_wqm = smem.disable_wqm;
+            new_instr->smem().cache = smem.cache;
             instr.reset(new_instr);
          }
       }
@@ -1429,13 +1426,14 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          while (info.is_temp())
             info = ctx.info[info.temp.id()];
 
+         bool swizzled = mubuf.cache.value & ac_swizzled;
          /* According to AMDGPUDAGToDAGISel::SelectMUBUFScratchOffen(), vaddr
           * overflow for scratch accesses works only on GFX9+ and saddr overflow
           * never works. Since swizzling is the only thing that separates
           * scratch accesses and other accesses and swizzling changing how
           * addressing works significantly, this probably applies to swizzled
           * MUBUF accesses. */
-         bool vaddr_prevent_overflow = mubuf.swizzled && ctx.program->gfx_level < GFX9;
+         bool vaddr_prevent_overflow = swizzled && ctx.program->gfx_level < GFX9;
 
          if (mubuf.offen && mubuf.idxen && i == 1 && info.is_vec() &&
              info.instr->operands.size() == 2 && info.instr->operands[0].isTemp() &&
@@ -1465,7 +1463,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             mubuf.offset += offset;
             continue;
          } else if (i == 2 && parse_base_offset(ctx, instr.get(), i, &base, &offset, true) &&
-                    base.regClass() == s1 && mubuf.offset + offset < 4096 && !mubuf.swizzled) {
+                    base.regClass() == s1 && mubuf.offset + offset < 4096 && !swizzled) {
             instr->operands[i].setTemp(base);
             mubuf.offset += offset;
             continue;

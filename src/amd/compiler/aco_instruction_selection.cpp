@@ -4423,6 +4423,35 @@ lds_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned 
 
 const EmitLoadParameters lds_load_params{lds_load_callback, false, true, UINT32_MAX};
 
+ac_hw_cache_flags
+get_gfx6_cache_flags(bool glc, bool slc, bool dlc)
+{
+   uint8_t value = 0;
+   value |= glc ? ac_glc : 0;
+   value |= slc ? ac_slc : 0;
+   value |= dlc ? ac_dlc : 0;
+   return ac_hw_cache_flags{value};
+}
+
+ac_hw_cache_flags
+get_load_cache_flags(Builder& bld, bool glc, bool slc)
+{
+   bool dlc = glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+   return get_gfx6_cache_flags(glc, slc, dlc);
+}
+
+ac_hw_cache_flags
+get_store_cache_flags(Builder& bld, bool glc, bool slc)
+{
+   return get_gfx6_cache_flags(glc, slc, false);
+}
+
+ac_hw_cache_flags
+get_atomic_cache_flags(Builder& bld, bool return_previous)
+{
+   return get_gfx6_cache_flags(return_previous, false, false);
+}
+
 Temp
 smem_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned bytes_needed,
                    unsigned align, unsigned const_offset, Temp dst_hint)
@@ -4478,9 +4507,7 @@ smem_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned
    RegClass rc(RegType::sgpr, DIV_ROUND_UP(bytes_needed, 4u));
    Temp val = dst_hint.id() && dst_hint.regClass() == rc ? dst_hint : bld.tmp(rc);
    load->definitions[0] = Definition(val);
-   load->smem().glc = info.glc;
-   load->smem().dlc =
-      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+   load->smem().cache = get_load_cache_flags(bld, info.glc, false);
    load->smem().sync = info.sync;
    bld.insert(std::move(load));
    return val;
@@ -4539,13 +4566,11 @@ mubuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
    mubuf->operands[2] = soffset;
    mubuf->mubuf().offen = offen;
    mubuf->mubuf().idxen = idxen;
-   mubuf->mubuf().glc = info.glc;
-   mubuf->mubuf().dlc =
-      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   mubuf->mubuf().slc = info.slc;
+   mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
+   if (info.swizzle_component_size != 0)
+      mubuf->mubuf().cache.value |= ac_swizzled;
    mubuf->mubuf().sync = info.sync;
    mubuf->mubuf().offset = const_offset;
-   mubuf->mubuf().swizzled = info.swizzle_component_size != 0;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
    Temp val = dst_hint.id() && rc == dst_hint.regClass() ? dst_hint : bld.tmp(rc);
    mubuf->definitions[0] = Definition(val);
@@ -4607,10 +4632,7 @@ mubuf_load_format_callback(Builder& bld, const LoadEmitInfo& info, Temp offset,
    mubuf->operands[2] = soffset;
    mubuf->mubuf().offen = offen;
    mubuf->mubuf().idxen = idxen;
-   mubuf->mubuf().glc = info.glc;
-   mubuf->mubuf().dlc =
-      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   mubuf->mubuf().slc = info.slc;
+   mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
    mubuf->mubuf().sync = info.sync;
    mubuf->mubuf().offset = const_offset;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_needed);
@@ -4818,8 +4840,7 @@ global_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsign
       mubuf->operands[0] = Operand(get_gfx6_global_rsrc(bld, addr));
       mubuf->operands[1] = addr.type() == RegType::vgpr ? Operand(addr) : Operand(v1);
       mubuf->operands[2] = Operand(offset);
-      mubuf->mubuf().glc = info.glc;
-      mubuf->mubuf().dlc = false;
+      mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, false);
       mubuf->mubuf().offset = const_offset;
       mubuf->mubuf().addr64 = addr.type() == RegType::vgpr;
       mubuf->mubuf().disable_wqm = false;
@@ -4838,9 +4859,7 @@ global_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsign
          flat->operands[0] = Operand(addr);
          flat->operands[1] = Operand(s1);
       }
-      flat->flatlike().glc = info.glc;
-      flat->flatlike().dlc =
-         info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+      flat->flatlike().cache = get_load_cache_flags(bld, info.glc, false);
       flat->flatlike().sync = info.sync;
       assert(global || !const_offset);
       flat->flatlike().offset = const_offset;
@@ -5673,10 +5692,7 @@ mtbuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
    mtbuf->operands[2] = soffset;
    mtbuf->mtbuf().offen = offen;
    mtbuf->mtbuf().idxen = idxen;
-   mtbuf->mtbuf().glc = info.glc;
-   mtbuf->mtbuf().dlc =
-      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   mtbuf->mtbuf().slc = info.slc;
+   mtbuf->mtbuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
    mtbuf->mtbuf().sync = info.sync;
    mtbuf->mtbuf().offset = const_offset;
    mtbuf->mtbuf().dfmt = fetch_fmt & 0xf;
@@ -6220,6 +6236,7 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
 
    memory_sync_info sync = get_memory_sync_info(instr, storage_image, 0);
    unsigned access = nir_intrinsic_access(instr);
+   bool glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
 
    unsigned result_size = instr->def.num_components - is_sparse;
    unsigned expand_mask = nir_def_components_read(&instr->def) & u_bit_consecutive(0, result_size);
@@ -6275,9 +6292,7 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
       load->operands[2] = Operand::c32(0);
       load->definitions[0] = Definition(tmp);
       load->mubuf().idxen = true;
-      load->mubuf().glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
-      load->mubuf().dlc = load->mubuf().glc &&
-                          (ctx->options->gfx_level == GFX10 || ctx->options->gfx_level == GFX10_3);
+      load->mubuf().cache = get_load_cache_flags(bld, glc, false);
       load->mubuf().sync = sync;
       load->mubuf().tfe = is_sparse;
       if (load->mubuf().tfe)
@@ -6296,9 +6311,7 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
 
       Operand vdata = is_sparse ? emit_tfe_init(bld, tmp) : Operand(v1);
       MIMG_instruction* load = emit_mimg(bld, opcode, tmp, resource, Operand(s4), coords, vdata);
-      load->glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT) ? 1 : 0;
-      load->dlc =
-         load->glc && (ctx->options->gfx_level == GFX10 || ctx->options->gfx_level == GFX10_3);
+      load->cache = get_load_cache_flags(bld, glc, false);
       load->a16 = instr->src[1].ssa->bit_size == 16;
       load->d16 = d16;
       load->dmask = dmask;
@@ -6422,8 +6435,7 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
       store->operands[2] = Operand::c32(0);
       store->operands[3] = Operand(data);
       store->mubuf().idxen = true;
-      store->mubuf().glc = glc;
-      store->mubuf().dlc = false;
+      store->mubuf().cache = get_store_cache_flags(bld, glc, false);
       store->mubuf().disable_wqm = true;
       store->mubuf().sync = sync;
       ctx->program->needs_exact = true;
@@ -6440,8 +6452,7 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
 
    MIMG_instruction* store =
       emit_mimg(bld, opcode, Temp(0, v1), resource, Operand(s4), coords, Operand(data));
-   store->glc = glc;
-   store->dlc = false;
+   store->cache = get_store_cache_flags(bld, glc, false);
    store->a16 = instr->src[1].ssa->bit_size == 16;
    store->d16 = d16;
    store->dmask = dmask;
@@ -6581,8 +6592,7 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          mubuf->definitions[0] = def;
       mubuf->mubuf().offset = 0;
       mubuf->mubuf().idxen = true;
-      mubuf->mubuf().glc = return_previous;
-      mubuf->mubuf().dlc = false; /* Not needed for atomics */
+      mubuf->mubuf().cache = get_atomic_cache_flags(bld, return_previous);
       mubuf->mubuf().disable_wqm = true;
       mubuf->mubuf().sync = sync;
       ctx->program->needs_exact = true;
@@ -6597,8 +6607,7 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp tmp = return_previous ? (cmpswap ? bld.tmp(data.regClass()) : dst) : Temp(0, v1);
    MIMG_instruction* mimg =
       emit_mimg(bld, image_op, tmp, resource, Operand(s4), coords, Operand(data));
-   mimg->glc = return_previous;
-   mimg->dlc = false; /* Not needed for atomics */
+   mimg->cache = get_atomic_cache_flags(bld, return_previous);
    mimg->dmask = (1 << data.size()) - 1;
    mimg->a16 = instr->src[1].ssa->bit_size == 16;
    mimg->unrm = true;
@@ -6670,8 +6679,8 @@ visit_store_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
       store->operands[3] = Operand(write_datas[i]);
       store->mubuf().offset = offsets[i];
       store->mubuf().offen = (offset.type() == RegType::vgpr);
-      store->mubuf().glc = glc || (ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4);
-      store->mubuf().dlc = false;
+      store->mubuf().cache = get_store_cache_flags(
+         bld, glc || (ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4), false);
       store->mubuf().disable_wqm = true;
       store->mubuf().sync = sync;
       ctx->program->needs_exact = true;
@@ -6712,8 +6721,7 @@ visit_atomic_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
       mubuf->definitions[0] = def;
    mubuf->mubuf().offset = 0;
    mubuf->mubuf().offen = (offset.type() == RegType::vgpr);
-   mubuf->mubuf().glc = return_previous;
-   mubuf->mubuf().dlc = false; /* Not needed for atomics */
+   mubuf->mubuf().cache = get_atomic_cache_flags(bld, return_previous);
    mubuf->mubuf().disable_wqm = true;
    mubuf->mubuf().sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
    ctx->program->needs_exact = true;
@@ -6846,8 +6854,7 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
             flat->operands[1] = Operand(s1);
          }
          flat->operands[2] = Operand(write_datas[i]);
-         flat->flatlike().glc = glc;
-         flat->flatlike().dlc = false;
+         flat->flatlike().cache = get_store_cache_flags(bld, glc, false);
          assert(global || !write_const_offset);
          flat->flatlike().offset = write_const_offset;
          flat->flatlike().disable_wqm = true;
@@ -6867,8 +6874,8 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
             write_address.type() == RegType::vgpr ? Operand(write_address) : Operand(v1);
          mubuf->operands[2] = Operand(write_offset);
          mubuf->operands[3] = Operand(write_datas[i]);
-         mubuf->mubuf().glc = glc || write_datas[i].bytes() < 4;
-         mubuf->mubuf().dlc = false;
+         mubuf->mubuf().cache =
+            get_store_cache_flags(bld, glc || write_datas[i].bytes() < 4, false);
          mubuf->mubuf().offset = write_const_offset;
          mubuf->mubuf().addr64 = write_address.type() == RegType::vgpr;
          mubuf->mubuf().disable_wqm = true;
@@ -6980,8 +6987,7 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       flat->operands[2] = Operand(data);
       if (return_previous)
          flat->definitions[0] = Definition(dst);
-      flat->flatlike().glc = return_previous;
-      flat->flatlike().dlc = false; /* Not needed for atomics */
+      flat->flatlike().cache = get_atomic_cache_flags(bld, return_previous);
       assert(global || !const_offset);
       flat->flatlike().offset = const_offset;
       flat->flatlike().disable_wqm = true;
@@ -7007,8 +7013,7 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          return_previous ? (cmpswap ? bld.def(data.regClass()) : Definition(dst)) : Definition();
       if (return_previous)
          mubuf->definitions[0] = def;
-      mubuf->mubuf().glc = return_previous;
-      mubuf->mubuf().dlc = false;
+      mubuf->mubuf().cache = get_atomic_cache_flags(bld, return_previous);
       mubuf->mubuf().offset = const_offset;
       mubuf->mubuf().addr64 = addr.type() == RegType::vgpr;
       mubuf->mubuf().disable_wqm = true;
@@ -7167,6 +7172,9 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
       bool glc = nir_intrinsic_access(intrin) & ACCESS_COHERENT;
       glc |= ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
       glc &= ctx->program->gfx_level < GFX11;
+      ac_hw_cache_flags cache = get_store_cache_flags(bld, glc, slc);
+      if (swizzled)
+         cache.value |= ac_swizzled;
 
       Operand vaddr_op(v1);
       if (offen && idxen)
@@ -7177,9 +7185,8 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
          vaddr_op = Operand(idx);
 
       Instruction* mubuf = bld.mubuf(op, Operand(descriptor), vaddr_op, s_offset,
-                                     Operand(write_datas[i]), const_offset, offen, swizzled, idxen,
-                                     /* addr64 */ false, /* disable_wqm */ false, glc,
-                                     /* dlc */ false, slc)
+                                     Operand(write_datas[i]), const_offset, offen, idxen,
+                                     /* addr64 */ false, /* disable_wqm */ false, cache)
                               .instr;
       mubuf->mubuf().sync = sync;
    }
@@ -7637,9 +7644,11 @@ visit_store_scratch(isel_context* ctx, nir_intrinsic_instr* instr)
       for (unsigned i = 0; i < write_count; i++) {
          aco_opcode op = get_buffer_store_op(write_datas[i].bytes());
          Instruction* mubuf = bld.mubuf(op, rsrc, offset, ctx->program->scratch_offset,
-                                        write_datas[i], offsets[i], true, true);
+                                        write_datas[i], offsets[i], true);
          mubuf->mubuf().sync = memory_sync_info(storage_scratch, semantic_private);
-         mubuf->mubuf().glc = ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
+         bool glc = ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
+         mubuf->mubuf().cache = get_store_cache_flags(bld, glc, false);
+         mubuf->mubuf().cache.value |= ac_swizzled;
       }
    }
 }
@@ -12098,9 +12107,12 @@ select_trap_handler_shader(Program* program, struct nir_shader* shader, ac_shade
    bld.smem(aco_opcode::s_load_dwordx4, Definition(PhysReg{ttmp4}, s4), Operand(PhysReg{tma}, s2),
             Operand::zero());
 
+   ac_hw_cache_flags cache_glc;
+   cache_glc.value = ac_glc;
+
    /* Store TTMP0-TTMP1. */
    bld.smem(aco_opcode::s_buffer_store_dwordx2, Operand(PhysReg{ttmp4}, s4), Operand::zero(),
-            Operand(PhysReg{ttmp0}, s2), memory_sync_info(), true);
+            Operand(PhysReg{ttmp0}, s2), memory_sync_info(), cache_glc);
 
    uint32_t hw_regs_idx[] = {
       2, /* HW_REG_STATUS */
@@ -12116,7 +12128,8 @@ select_trap_handler_shader(Program* program, struct nir_shader* shader, ac_shade
                ((20 - 1) << 11) | hw_regs_idx[i]);
 
       bld.smem(aco_opcode::s_buffer_store_dword, Operand(PhysReg{ttmp4}, s4),
-               Operand::c32(8u + i * 4), Operand(PhysReg{ttmp8}, s1), memory_sync_info(), true);
+               Operand::c32(8u + i * 4), Operand(PhysReg{ttmp8}, s1), memory_sync_info(),
+               cache_glc);
    }
 
    program->config->float_mode = program->blocks[0].fp_mode.val;
@@ -12632,18 +12645,18 @@ load_unaligned_vs_attrib(Builder& bld, PhysReg dst, Operand desc, Operand index,
    PhysReg scratch(load.scratch);
    if (load.d16) {
       bld.mubuf(aco_opcode::buffer_load_ubyte_d16, Definition(dst, v1), desc, index,
-                Operand::c32(0u), offset, false, false, true);
+                Operand::c32(0u), offset, false, true);
       bld.mubuf(aco_opcode::buffer_load_ubyte_d16_hi, Definition(dst, v1), desc, index,
-                Operand::c32(0u), offset + 2, false, false, true);
+                Operand::c32(0u), offset + 2, false, true);
       bld.mubuf(aco_opcode::buffer_load_ubyte_d16, Definition(scratch, v1), desc, index,
-                Operand::c32(0u), offset + 1, false, false, true);
+                Operand::c32(0u), offset + 1, false, true);
       bld.mubuf(aco_opcode::buffer_load_ubyte_d16_hi, Definition(scratch, v1), desc, index,
-                Operand::c32(0u), offset + 3, false, false, true);
+                Operand::c32(0u), offset + 3, false, true);
    } else {
       for (unsigned i = 0; i < size; i++) {
          Definition def(i ? scratch.advance(i * 4 - 4) : dst, v1);
          bld.mubuf(aco_opcode::buffer_load_ubyte, def, desc, index, Operand::c32(0u), offset + i,
-                   false, false, true);
+                   false, true);
       }
    }
 
@@ -12835,7 +12848,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
             i += slots;
          } else {
             bld.mubuf(aco_opcode::buffer_load_format_xyzw, Definition(dest, v4),
-                      Operand(cur_desc, s4), fetch_index, Operand::c32(0u), 0u, false, false, true);
+                      Operand(cur_desc, s4), fetch_index, Operand::c32(0u), 0u, false, true);
             loc++;
             i++;
          }

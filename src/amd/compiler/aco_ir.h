@@ -15,6 +15,7 @@
 
 #include "ac_binary.h"
 #include "ac_hw_stage.h"
+#include "ac_shader_util.h"
 #include "amd_family.h"
 #include <algorithm>
 #include <bitset>
@@ -1309,11 +1310,7 @@ static_assert(sizeof(SALU_instruction) == sizeof(Instruction) + 4, "Unexpected p
  */
 struct SMEM_instruction : public Instruction {
    memory_sync_info sync;
-   bool glc : 1; /* VI+: globally coherent */
-   bool dlc : 1; /* NAVI: device level coherent */
-   bool nv : 1;  /* VEGA only: Non-volatile */
-   bool disable_wqm : 1;
-   uint8_t padding : 4;
+   ac_hw_cache_flags cache;
 };
 static_assert(sizeof(SMEM_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
@@ -1492,19 +1489,16 @@ static_assert(sizeof(LDSDIR_instruction) == sizeof(Instruction) + 8, "Unexpected
  */
 struct MUBUF_instruction : public Instruction {
    memory_sync_info sync;
+   ac_hw_cache_flags cache;
    bool offen : 1;           /* Supply an offset from VGPR (VADDR) */
    bool idxen : 1;           /* Supply an index from VGPR (VADDR) */
    bool addr64 : 1;          /* SI, CIK: Address size is 64-bit */
-   bool glc : 1;             /* globally coherent */
-   bool dlc : 1;             /* NAVI: device level coherent */
-   bool slc : 1;             /* system level coherent */
    bool tfe : 1;             /* texture fail enable */
    bool lds : 1;             /* Return read-data to LDS instead of VGPRs */
-   uint16_t disable_wqm : 1; /* Require an exec mask without helper invocations */
-   uint16_t offset : 12;     /* Unsigned byte offset - 12 bit */
-   uint16_t swizzled : 1;
-   uint16_t padding0 : 2;
-   uint16_t padding1;
+   bool disable_wqm : 1;     /* Require an exec mask without helper invocations */
+   uint8_t padding0 : 2;
+   uint8_t padding1;
+   uint16_t offset; /* Unsigned byte offset - 12 bit */
 };
 static_assert(sizeof(MUBUF_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
 
@@ -1518,16 +1512,14 @@ static_assert(sizeof(MUBUF_instruction) == sizeof(Instruction) + 8, "Unexpected 
  */
 struct MTBUF_instruction : public Instruction {
    memory_sync_info sync;
+   ac_hw_cache_flags cache;
    uint8_t dfmt : 4;         /* Data Format of data in memory buffer */
    uint8_t nfmt : 3;         /* Numeric format of data in memory */
    bool offen : 1;           /* Supply an offset from VGPR (VADDR) */
-   uint16_t idxen : 1;       /* Supply an index from VGPR (VADDR) */
-   uint16_t glc : 1;         /* globally coherent */
-   uint16_t dlc : 1;         /* NAVI: device level coherent */
-   uint16_t slc : 1;         /* system level coherent */
-   uint16_t tfe : 1;         /* texture fail enable */
-   uint16_t disable_wqm : 1; /* Require an exec mask without helper invocations */
-   uint16_t padding : 10;
+   bool idxen : 1;           /* Supply an index from VGPR (VADDR) */
+   bool tfe : 1;             /* texture fail enable */
+   bool disable_wqm : 1;     /* Require an exec mask without helper invocations */
+   uint8_t padding : 5;
    uint16_t offset; /* Unsigned byte offset - 12 bit */
 };
 static_assert(sizeof(MTBUF_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
@@ -1543,12 +1535,10 @@ static_assert(sizeof(MTBUF_instruction) == sizeof(Instruction) + 8, "Unexpected 
  */
 struct MIMG_instruction : public Instruction {
    memory_sync_info sync;
+   ac_hw_cache_flags cache;
    uint8_t dmask;        /* Data VGPR enable mask */
    uint8_t dim : 3;      /* NAVI: dimensionality */
    bool unrm : 1;        /* Force address to be un-normalized */
-   bool dlc : 1;         /* NAVI: device level coherent */
-   bool glc : 1;         /* globally coherent */
-   bool slc : 1;         /* system level coherent */
    bool tfe : 1;         /* texture fail enable */
    bool da : 1;          /* declare an array */
    bool lwe : 1;         /* LOD warning enable */
@@ -1557,9 +1547,8 @@ struct MIMG_instruction : public Instruction {
    bool d16 : 1;         /* Convert 32-bit data to 16-bit data */
    bool disable_wqm : 1; /* Require an exec mask without helper invocations */
    bool strict_wqm : 1;  /* VADDR is a linear VGPR and additional VGPRs may be copied into it */
-   uint8_t padding0 : 1;
+   uint8_t padding0 : 4;
    uint8_t padding1;
-   uint8_t padding2;
 };
 static_assert(sizeof(MIMG_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
 
@@ -1572,15 +1561,13 @@ static_assert(sizeof(MIMG_instruction) == sizeof(Instruction) + 8, "Unexpected p
  */
 struct FLAT_instruction : public Instruction {
    memory_sync_info sync;
-   bool slc : 1; /* system level coherent */
-   bool glc : 1; /* globally coherent */
-   bool dlc : 1; /* NAVI: device level coherent */
+   ac_hw_cache_flags cache;
    bool lds : 1;
    bool nv : 1;
    bool disable_wqm : 1; /* Require an exec mask without helper invocations */
-   uint8_t padding0 : 2;
+   uint8_t padding0 : 5;
+   uint8_t padding1;
    int16_t offset; /* Vega/Navi only */
-   uint16_t padding1;
 };
 static_assert(sizeof(FLAT_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
 

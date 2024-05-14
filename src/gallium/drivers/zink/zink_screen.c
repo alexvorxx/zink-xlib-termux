@@ -3059,6 +3059,17 @@ init_driver_workarounds(struct zink_screen *screen)
       break;
    }
 
+   screen->driver_workarounds.can_2d_view_sparse = true;
+   switch (screen->info.driver_props.driverID) {
+   case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
+   case VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS:
+      /* this does wild things to block shapes */
+      screen->driver_workarounds.can_2d_view_sparse = false;
+      break;
+   default:
+      break;
+   }
+
    if (!screen->resizable_bar)
       screen->info.have_EXT_host_image_copy = false;
 }

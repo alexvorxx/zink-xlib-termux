@@ -1544,6 +1544,7 @@ struct zink_screen {
       bool can_do_invalid_linear_modifier;
       bool io_opt;
       bool inconsistent_interpolation;
+      bool can_2d_view_sparse;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;

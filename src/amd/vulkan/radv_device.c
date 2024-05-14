@@ -751,7 +751,7 @@ radv_get_default_max_sample_dist(int log_samples)
 }
 
 void
-radv_emit_default_sample_locations(struct radeon_cmdbuf *cs, int nr_samples)
+radv_emit_default_sample_locations(const struct radv_physical_device *pdev, struct radeon_cmdbuf *cs, int nr_samples)
 {
    uint64_t centroid_priority;
 

@@ -3600,7 +3600,7 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
       S_028A4C_WALK_ALIGN8_PRIM_FITS_ST(pdev->info.gfx_level < GFX11 || !cmd_buffer->state.uses_vrs_attachment);
 
    if (!d->sample_location.count)
-      radv_emit_default_sample_locations(cmd_buffer->cs, rasterization_samples);
+      radv_emit_default_sample_locations(pdev, cmd_buffer->cs, rasterization_samples);
 
    if (ps_iter_samples > 1) {
       spi_baryc_cntl |= S_0286E0_POS_FLOAT_LOCATION(2);

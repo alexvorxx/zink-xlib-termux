@@ -72,8 +72,7 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device, const VkImageCrea
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   /* TC-compat HTILE is only available for GFX8+. */
-   if (pdev->info.gfx_level < GFX8)
+   if (!pdev->info.has_tc_compatible_htile)
       return false;
 
    /* TC-compat HTILE looks broken on Tonga (and Iceland is the same design) and the documented bug

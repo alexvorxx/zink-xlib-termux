@@ -1342,7 +1342,7 @@ si_texture_create_with_modifier(struct pipe_screen *screen,
    bool is_flushed_depth = templ->flags & SI_RESOURCE_FLAG_FLUSHED_DEPTH ||
                            templ->flags & SI_RESOURCE_FLAG_FORCE_LINEAR;
    bool tc_compatible_htile =
-      sscreen->info.gfx_level >= GFX8 && sscreen->info.gfx_level < GFX12 &&
+      sscreen->info.has_tc_compatible_htile &&
       /* There are issues with TC-compatible HTILE on Tonga (and
        * Iceland is the same design), and documented bug workarounds
        * don't help. For example, this fails:

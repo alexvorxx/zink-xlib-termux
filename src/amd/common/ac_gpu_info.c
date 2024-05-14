@@ -1223,6 +1223,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->has_dcc_constant_encode =
       info->family == CHIP_RAVEN2 || info->family == CHIP_RENOIR || info->gfx_level >= GFX10;
 
+   /* TC-compat HTILE is only available for GFX8-GFX11.5. */
+   info->has_tc_compatible_htile = info->gfx_level >= GFX8 && info->gfx_level < GFX12;
+
    info->has_etc_support = info->family == CHIP_STONEY || info->family == CHIP_VEGA10 ||
                            info->family == CHIP_RAVEN || info->family == CHIP_RAVEN2;
 

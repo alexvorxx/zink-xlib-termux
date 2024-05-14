@@ -291,11 +291,15 @@ spec@arb_vertex_attrib_64bit@execution@unused-sub-dvec4-02,Crash
 spec@arb_gpu_shader5@arb_gpu_shader5-interpolateatsample-dynamically-nonuniform,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams-without-invocations,Fail
+spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams-without-invocations spirv,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams@arb_gpu_shader5-xfb-streams,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams@arb_gpu_shader5-xfb-streams-blocks,Fail
+spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-fs-getuniformdv,Crash
 spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-gs-getuniformdv,Crash
+spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-vs-getuniformdv,Crash
 spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-wrong-type-setter,Crash
 spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-inverse-dmat4,Fail
+spec@arb_gpu_shader_fp64@uniform_buffers@fs-ubo-load.indirect.3,Fail
 spec@glsl-4.00@execution@built-in-functions@fs-op-div-double-dmat4,Fail
 
 dynamic-dEQP-VK.renderpass2.depth_stencil_resolve.image_2d_32_32.samples_2.d32_sfloat_s8_uint_separate_layouts.compatibility_depth_zero_stencil_zero_testing_stencil,Fail

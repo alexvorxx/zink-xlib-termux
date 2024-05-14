@@ -285,9 +285,16 @@ spec@arb_query_buffer_object@coherency@indirect-draw-count-GL_TRANSFORM_FEEDBACK
 spec@arb_gpu_shader5@arb_gpu_shader5-interpolateatsample-dynamically-nonuniform,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams-without-invocations,Fail
+spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams-without-invocations spirv,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams@arb_gpu_shader5-xfb-streams,Fail
 spec@arb_gpu_shader5@arb_gpu_shader5-xfb-streams@arb_gpu_shader5-xfb-streams-blocks,Fail
+spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-vs-getuniformdv,Crash
 spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-div-dmat4-dmat4,Fail
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-op-div-double-dmat4,Fail
+spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-inverse-dmat4,Fail
+spec@arb_gpu_shader_fp64@uniform_buffers@fs-ubo-load.indirect.3,Fail
+spec@glsl-4.00@execution@built-in-functions@fs-op-div-double-dmat4,Fail
+
 spec@glsl-4.00@execution@built-in-functions@fs-inverse-dmat4,Fail
 spec@glsl-4.00@execution@built-in-functions@fs-op-div-dmat4-dmat4,Fail
 
@@ -301,9 +308,6 @@ nobin-dEQP-VK.transform_feedback.simple.lines_or_triangles_triangle_strip_3,Fail
 
 spec@arb_vertex_attrib_64bit@execution@unused-sub-dvec4-01,Crash
 spec@arb_vertex_attrib_64bit@execution@unused-sub-dvec4-02,Crash
-
-spec@arb_gpu_shader_fp64@execution@built-in-functions@fs-inverse-dmat4,Fail
-spec@glsl-4.00@execution@built-in-functions@fs-op-div-double-dmat4,Fail
 
 # After switch from 6.3.1 to 6.3.13
 gmem-dEQP-VK.binding_model.descriptor_buffer.basic.limits,Fail

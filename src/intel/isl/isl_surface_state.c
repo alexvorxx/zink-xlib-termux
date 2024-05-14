@@ -611,6 +611,7 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
    assert(isl_swizzle_is_identity(info->view->swizzle));
 #endif
 
+   assert(info->address % info->surf->alignment_B == 0);
    s.SurfaceBaseAddress = info->address;
 
 #if GFX_VER >= 6
@@ -824,6 +825,7 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
       uint32_t pitch_in_tiles =
          info->aux_surf->row_pitch_B / tile_info.phys_extent_B.width;
 
+      assert(info->aux_address % info->aux_surf->alignment_B == 0);
       s.AuxiliarySurfaceBaseAddress = info->aux_address;
       s.AuxiliarySurfacePitch = pitch_in_tiles - 1;
 

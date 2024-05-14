@@ -100,6 +100,8 @@ isl_genX(emit_cpb_control_s)(const struct isl_device *dev, void *batch,
       cpb.MOCS                   = info->mocs;
       cpb.SurfaceQPitch          = isl_surf_get_array_pitch_sa_rows(info->surf) >> 2;
       cpb.TiledMode              = isl_encode_tiling[info->surf->tiling];
+
+      assert(info->address % info->surf->alignment_B == 0);
       cpb.SurfaceBaseAddress     = info->address;
 
       cpb.MipTailStartLOD        = info->surf->miptail_start_level;

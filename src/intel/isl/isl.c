@@ -4057,11 +4057,22 @@ isl_surf_get_uncompressed_surf(const struct isl_device *dev,
                                              x_offset_el,
                                              y_offset_el);
 
+         isl_surf_usage_flags_t usage = surf->usage;
+
          /* Even for cube maps there will be only single face, therefore drop
           * the corresponding flag if present.
           */
-         const isl_surf_usage_flags_t usage =
-            surf->usage & (~ISL_SURF_USAGE_CUBE_BIT);
+         usage &= ~ISL_SURF_USAGE_CUBE_BIT;
+
+         /* CCS-enabled surfaces can have different layout requirements than
+          * surfaces without CCS support. So, for accuracy, disable CCS
+          * support if the original surface lacked it.
+          */
+         if (_isl_surf_info_supports_ccs(dev, surf->format, surf->usage) !=
+             _isl_surf_info_supports_ccs(dev, view_format, usage)) {
+            assert(_isl_surf_info_supports_ccs(dev, view_format, usage));
+            usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+         }
 
          bool ok UNUSED;
          ok = isl_surf_init(dev, ucompr_surf,

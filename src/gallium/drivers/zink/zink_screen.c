@@ -301,6 +301,9 @@ disk_cache_init(struct zink_screen *screen)
    unsigned shader_debug_flags = zink_debug & ZINK_DEBUG_COMPACT;
    _mesa_sha1_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
 
+   /* add in these shader keys */
+   _mesa_sha1_update(&ctx, &screen->driver_compiler_workarounds, sizeof(screen->driver_compiler_workarounds));
+
    /* Some of the driconf options change shaders.  Let's just hash the whole
     * thing to not forget any (especially as options get added).
     */

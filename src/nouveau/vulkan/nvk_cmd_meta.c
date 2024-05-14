@@ -130,13 +130,18 @@ static void
 nvk_meta_end(struct nvk_cmd_buffer *cmd,
              struct nvk_meta_save *save)
 {
+   struct nvk_descriptor_state *desc = &cmd->state.gfx.descriptors;
+
    if (save->desc0) {
-      cmd->state.gfx.descriptors.sets[0] = save->desc0;
-      cmd->state.gfx.descriptors.set_sizes[0] = save->desc0->size;
-      cmd->state.gfx.descriptors.root.sets[0] = nvk_descriptor_set_addr(save->desc0);
+      desc->sets[0] = save->desc0;
+      desc->root.sets[0] = nvk_descriptor_set_addr(save->desc0);
+      desc->set_addrs[0] = (struct nvk_buffer_address) {
+         .base_addr = nvk_descriptor_set_addr(save->desc0),
+         .size = save->desc0->size,
+      };
    } else if (save->has_push_desc0) {
-      *cmd->state.gfx.descriptors.push[0] = save->push_desc0;
-      cmd->state.gfx.descriptors.push_dirty |= BITFIELD_BIT(0);
+      *desc->push[0] = save->push_desc0;
+      desc->push_dirty |= BITFIELD_BIT(0);
    }
 
    /* Restore the dynamic state */
@@ -158,7 +163,7 @@ nvk_meta_end(struct nvk_cmd_buffer *cmd,
 
    nvk_cmd_bind_vertex_buffer(cmd, 0, save->vb0);
 
-   memcpy(cmd->state.gfx.descriptors.root.push, save->push, sizeof(save->push));
+   memcpy(desc->root.push, save->push, sizeof(save->push));
 
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 2);
    P_IMMD(p, NV9097, SET_STATISTICS_COUNTER, {

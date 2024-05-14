@@ -632,10 +632,13 @@ nvk_bind_descriptor_sets(UNUSED struct nvk_cmd_buffer *cmd,
       if (desc->sets[s] != set) {
          if (set != NULL) {
             desc->root.sets[s] = nvk_descriptor_set_addr(set);
-            desc->set_sizes[s] = set->size;
+            desc->set_addrs[s] = (struct nvk_buffer_address) {
+               .base_addr = nvk_descriptor_set_addr(set),
+               .size = set->size,
+            };
          } else {
             desc->root.sets[s] = 0;
-            desc->set_sizes[s] = 0;
+            desc->set_addrs[s] = (struct nvk_buffer_address) { .size = 0 };
          }
          desc->sets[s] = set;
       }
@@ -794,7 +797,10 @@ nvk_cmd_buffer_flush_push_descriptors(struct nvk_cmd_buffer *cmd,
       }
 
       desc->root.sets[set_idx] = push_set_addr;
-      desc->set_sizes[set_idx] = sizeof(push_set->data);
+      desc->set_addrs[set_idx] = (struct nvk_buffer_address) {
+         .base_addr = push_set_addr,
+         .size = sizeof(push_set->data),
+      };
    }
 }
 
@@ -822,10 +828,7 @@ nvk_cmd_buffer_get_cbuf_descriptor(struct nvk_cmd_buffer *cmd,
       return true;
 
    case NVK_CBUF_TYPE_DESC_SET:
-      *desc_out = (struct nvk_buffer_address) {
-         .base_addr = desc->root.sets[cbuf->desc_set],
-         .size = desc->set_sizes[cbuf->desc_set],
-      };
+      *desc_out = desc->set_addrs[cbuf->desc_set];
       return true;
 
    case NVK_CBUF_TYPE_DYNAMIC_UBO: {
@@ -861,7 +864,7 @@ nvk_cmd_buffer_get_cbuf_descriptor_addr(struct nvk_cmd_buffer *cmd,
 {
    assert(cbuf->type == NVK_CBUF_TYPE_UBO_DESC);
 
-   assert(cbuf->desc_offset < desc->set_sizes[cbuf->desc_set]);
+   assert(cbuf->desc_offset < desc->set_addrs[cbuf->desc_set].size);
    return desc->root.sets[cbuf->desc_set] + cbuf->desc_offset;
 }
 

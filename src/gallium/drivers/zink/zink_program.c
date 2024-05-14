@@ -860,7 +860,7 @@ update_cs_shader_module(struct zink_context *ctx, struct zink_compute_program *c
    struct zink_shader_module *zm = NULL;
    unsigned inline_size = 0, nonseamless_size = 0, zs_swizzle_size = 0;
    struct zink_shader_key *key = &ctx->compute_pipeline_state.key;
-   ASSERTED bool check_robustness = screen->driver_workarounds.lower_robustImageAccess2 && (ctx->flags & PIPE_CONTEXT_ROBUST_BUFFER_ACCESS);
+   ASSERTED bool check_robustness = screen->driver_compiler_workarounds.lower_robustImageAccess2 && (ctx->flags & PIPE_CONTEXT_ROBUST_BUFFER_ACCESS);
    assert(zink_cs_key(key)->robust_access == check_robustness);
 
    if (ctx && zs->info.num_inlinable_uniforms &&
@@ -2007,7 +2007,7 @@ zink_bind_fs_state(struct pipe_context *pctx,
       }
       zink_set_zs_needs_shader_swizzle_key(ctx, MESA_SHADER_FRAGMENT, false);
       if (shadow_mask != ctx->gfx_stages[MESA_SHADER_FRAGMENT]->fs.legacy_shadow_mask &&
-          !zink_screen(pctx->screen)->driver_workarounds.needs_zs_shader_swizzle)
+          !zink_screen(pctx->screen)->driver_compiler_workarounds.needs_zs_shader_swizzle)
          zink_update_shadow_samplerviews(ctx, shadow_mask | ctx->gfx_stages[MESA_SHADER_FRAGMENT]->fs.legacy_shadow_mask);
       if (!ctx->track_renderpasses && !ctx->blitting)
          ctx->rp_tc_info_updated = true;

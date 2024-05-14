@@ -660,7 +660,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
       return screen->info.feats.features.robustBufferAccess &&
-             (screen->info.rb2_feats.robustImageAccess2 || screen->driver_workarounds.lower_robustImageAccess2);
+             (screen->info.rb2_feats.robustImageAccess2 || screen->driver_compiler_workarounds.lower_robustImageAccess2);
 
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
       return screen->info.feats.features.multiDrawIndirect;
@@ -2955,10 +2955,10 @@ init_driver_workarounds(struct zink_screen *screen)
     */
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
-      screen->driver_workarounds.needs_sanitised_layer = true;
+      screen->driver_compiler_workarounds.needs_sanitised_layer = true;
       break;
    default:
-      screen->driver_workarounds.needs_sanitised_layer = false;
+      screen->driver_compiler_workarounds.needs_sanitised_layer = false;
       break;
    }
    /* these drivers will produce undefined results when using swizzle 1 with combined z/s textures
@@ -2967,15 +2967,15 @@ init_driver_workarounds(struct zink_screen *screen)
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
    case VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA:
-      screen->driver_workarounds.needs_zs_shader_swizzle = true;
+      screen->driver_compiler_workarounds.needs_zs_shader_swizzle = true;
       break;
    default:
-      screen->driver_workarounds.needs_zs_shader_swizzle = false;
+      screen->driver_compiler_workarounds.needs_zs_shader_swizzle = false;
       break;
    }
 
    /* When robust contexts are advertised but robustImageAccess2 is not available */
-   screen->driver_workarounds.lower_robustImageAccess2 =
+   screen->driver_compiler_workarounds.lower_robustImageAccess2 =
       !screen->info.rb2_feats.robustImageAccess2 &&
       screen->info.feats.features.robustBufferAccess &&
       screen->info.rb_image_feats.robustImageAccess;
@@ -3096,9 +3096,9 @@ init_optimal_keys(struct zink_screen *screen)
                           !screen->driver_workarounds.no_linestipple &&
                           !screen->driver_workarounds.no_linesmooth &&
                           !screen->driver_workarounds.no_hw_gl_point &&
-                          !screen->driver_workarounds.lower_robustImageAccess2 &&
+                          !screen->driver_compiler_workarounds.lower_robustImageAccess2 &&
                           !screen->driconf.emulate_point_smooth &&
-                          !screen->driver_workarounds.needs_zs_shader_swizzle;
+                          !screen->driver_compiler_workarounds.needs_zs_shader_swizzle;
    if (!screen->optimal_keys && zink_debug & ZINK_DEBUG_OPTIMAL_KEYS && !(zink_debug & ZINK_DEBUG_QUIET)) {
       fprintf(stderr, "The following criteria are preventing optimal_keys enablement:\n");
       if (screen->need_decompose_attrs)
@@ -3107,7 +3107,7 @@ init_optimal_keys(struct zink_screen *screen)
          fprintf(stderr, "uniform inlining must be disabled (set ZINK_INLINE_UNIFORMS=0 in your env)\n");
       if (screen->driconf.emulate_point_smooth)
          fprintf(stderr, "smooth point emulation is enabled\n");
-      if (screen->driver_workarounds.needs_zs_shader_swizzle)
+      if (screen->driver_compiler_workarounds.needs_zs_shader_swizzle)
          fprintf(stderr, "Z/S shader swizzle workaround is enabled\n");
       CHECK_OR_PRINT(have_EXT_line_rasterization);
       CHECK_OR_PRINT(line_rast_feats.stippledBresenhamLines);
@@ -3521,7 +3521,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    zink_screen_fence_init(&screen->base);
 
    if (zink_debug & ZINK_DEBUG_IOOPT)
-      screen->driver_workarounds.io_opt = true;
+      screen->driver_compiler_workarounds.io_opt = true;
    zink_screen_init_compiler(screen);
    if (!disk_cache_init(screen)) {
       if (!screen->driver_name_is_inferred)

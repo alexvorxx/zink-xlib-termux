@@ -718,8 +718,13 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
           * ISL_MSAA_LAYOUT_INTERLEAVED which is incompatible with MCS
           * compression, this means that we can't even specify MSAA depth CCS
           * in RENDER_SURFACE_STATE::AuxiliarySurfaceMode.
+          *
+          * On Xe2+, the above restriction is not mentioned in the
+          * RENDER_SURFACE_STATE::AuxiliarySurfaceMode.
+          *
+          * Bspec 57023 (r58975)
           */
-         assert(info->surf->samples == 1);
+         assert(GFX_VER >= 20 || info->surf->samples == 1);
 
          /* Prior to Gfx12, the dimension must not be 3D */
          if (info->aux_usage == ISL_AUX_USAGE_HIZ)

@@ -1397,6 +1397,7 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
    tcs_stage->info.outputs_linked = true;
 
    tes_stage->info.tes.num_linked_inputs = num_reserved_outputs;
+   tes_stage->info.tes.num_linked_patch_inputs = num_reserved_patch_outputs;
    tes_stage->info.inputs_linked = true;
 }
 

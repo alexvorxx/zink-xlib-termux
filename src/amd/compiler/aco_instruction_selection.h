@@ -65,7 +65,6 @@ struct isel_context {
        * and parent_if.is_divergent==false. Called _break but it's also used for
        * loop continues. */
       bool exec_potentially_empty_break = false;
-      std::unique_ptr<unsigned[]> nir_to_aco; /* NIR block index to ACO block index */
    } cf_info;
 
    /* NIR range analysis. */

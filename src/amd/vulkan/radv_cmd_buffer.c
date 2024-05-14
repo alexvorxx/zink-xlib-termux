@@ -2043,8 +2043,9 @@ radv_emit_hw_ngg(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *e
          break_wave_at_eoi = true;
    }
 
-   radeon_opt_set_context_reg(cmd_buffer, R_0286C4_SPI_VS_OUT_CONFIG, RADV_TRACKED_SPI_VS_OUT_CONFIG,
-                              shader->info.regs.spi_vs_out_config);
+   if (pdev->info.gfx_level < GFX12)
+      radeon_opt_set_context_reg(cmd_buffer, R_0286C4_SPI_VS_OUT_CONFIG, RADV_TRACKED_SPI_VS_OUT_CONFIG,
+                                 shader->info.regs.spi_vs_out_config);
 
    radeon_opt_set_context_reg2(cmd_buffer, R_028708_SPI_SHADER_IDX_FORMAT, RADV_TRACKED_SPI_SHADER_IDX_FORMAT,
                                shader->info.regs.ngg.spi_shader_idx_format, shader->info.regs.spi_shader_pos_format);
@@ -2094,7 +2095,8 @@ radv_emit_hw_ngg(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *e
    radeon_set_sh_reg_idx(&pdev->info, cmd_buffer->cs, R_00B204_SPI_SHADER_PGM_RSRC4_GS, 3,
                          shader->info.regs.spi_shader_pgm_rsrc4_gs);
 
-   radeon_set_uconfig_reg(cmd_buffer->cs, R_030980_GE_PC_ALLOC, shader->info.regs.ge_pc_alloc);
+   if (pdev->info.gfx_level < GFX12)
+      radeon_set_uconfig_reg(cmd_buffer->cs, R_030980_GE_PC_ALLOC, shader->info.regs.ge_pc_alloc);
 }
 
 static void
@@ -3123,7 +3125,7 @@ radv_emit_culling(struct radv_cmd_buffer *cmd_buffer)
       S_028814_POLYMODE_FRONT_PTYPE(d->vk.rs.polygon_mode) | S_028814_POLYMODE_BACK_PTYPE(d->vk.rs.polygon_mode) |
       S_028814_PROVOKING_VTX_LAST(d->vk.rs.provoking_vertex == VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT);
 
-   if (gfx_level >= GFX10) {
+   if (gfx_level >= GFX10 && gfx_level < GFX12) {
       /* Ensure that SC processes the primitive group in the same order as PA produced them.  Needed
        * when either POLY_MODE or PERPENDICULAR_ENDCAP_ENA is set.
        */
@@ -4549,7 +4551,7 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
                              S_0283D0_VRS_SURFACE_ENABLE(vrs_surface_enable));
    }
 
-   if (pdev->info.gfx_level >= GFX8) {
+   if (pdev->info.gfx_level >= GFX8 && pdev->info.gfx_level < GFX12) {
       bool disable_constant_encode = pdev->info.has_dcc_constant_encode;
       enum amd_gfx_level gfx_level = pdev->info.gfx_level;
 

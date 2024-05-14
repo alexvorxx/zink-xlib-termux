@@ -879,7 +879,9 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       radeon_set_context_reg(cs, R_028820_PA_CL_NANINF_CNTL, 0);
       radeon_set_context_reg(cs, R_028AC0_DB_SRESULTS_COMPARE_STATE0, 0x0);
       radeon_set_context_reg(cs, R_028AC4_DB_SRESULTS_COMPARE_STATE1, 0x0);
-      radeon_set_context_reg(cs, R_028AC8_DB_PRELOAD_CONTROL, 0x0);
+
+      if (pdev->info.gfx_level < GFX12)
+         radeon_set_context_reg(cs, R_028AC8_DB_PRELOAD_CONTROL, 0x0);
    }
 
    radeon_set_context_reg(
@@ -1018,11 +1020,14 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
          meta_read_policy = no_alloc;               /* don't cache reads */
       }
 
-      radeon_set_context_reg(cs, R_02807C_DB_RMI_L2_CACHE_CONTROL,
-                             S_02807C_Z_WR_POLICY(V_02807C_CACHE_STREAM) | S_02807C_S_WR_POLICY(V_02807C_CACHE_STREAM) |
-                                S_02807C_HTILE_WR_POLICY(meta_write_policy) |
-                                S_02807C_ZPCPSD_WR_POLICY(V_02807C_CACHE_STREAM) | S_02807C_Z_RD_POLICY(no_alloc) |
-                                S_02807C_S_RD_POLICY(no_alloc) | S_02807C_HTILE_RD_POLICY(meta_read_policy));
+      if (pdev->info.gfx_level < GFX12) {
+         radeon_set_context_reg(cs, R_02807C_DB_RMI_L2_CACHE_CONTROL,
+                                S_02807C_Z_WR_POLICY(V_02807C_CACHE_STREAM) |
+                                   S_02807C_S_WR_POLICY(V_02807C_CACHE_STREAM) |
+                                   S_02807C_HTILE_WR_POLICY(meta_write_policy) |
+                                   S_02807C_ZPCPSD_WR_POLICY(V_02807C_CACHE_STREAM) | S_02807C_Z_RD_POLICY(no_alloc) |
+                                   S_02807C_S_RD_POLICY(no_alloc) | S_02807C_HTILE_RD_POLICY(meta_read_policy));
+      }
 
       uint32_t gl2_cc;
       if (pdev->info.gfx_level >= GFX11) {
@@ -1038,7 +1043,9 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       }
 
       radeon_set_context_reg(cs, R_028410_CB_RMI_GL2_CACHE_CONTROL, gl2_cc | S_028410_DCC_RD_POLICY(meta_read_policy));
-      radeon_set_context_reg(cs, R_028428_CB_COVERAGE_OUT_CONTROL, 0);
+
+      if (pdev->info.gfx_level < GFX12)
+         radeon_set_context_reg(cs, R_028428_CB_COVERAGE_OUT_CONTROL, 0);
 
       radeon_set_sh_reg_seq(cs, R_00B0C8_SPI_SHADER_USER_ACCUM_PS_0, 4);
       radeon_emit(cs, 0); /* R_00B0C8_SPI_SHADER_USER_ACCUM_PS_0 */

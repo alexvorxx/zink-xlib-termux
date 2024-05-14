@@ -313,13 +313,13 @@ nvk_queue_init_context_state(struct nvk_queue *queue,
    }
 
    if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
-      result = nvk_push_draw_state_init(dev, p);
+      result = nvk_push_draw_state_init(queue, p);
       if (result != VK_SUCCESS)
          return result;
    }
 
    if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
-      result = nvk_push_dispatch_state_init(dev, p);
+      result = nvk_push_dispatch_state_init(queue, p);
       if (result != VK_SUCCESS)
          return result;
    }

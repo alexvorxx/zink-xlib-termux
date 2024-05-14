@@ -65,10 +65,10 @@ VkResult nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
 void nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue);
 
-VkResult nvk_push_draw_state_init(struct nvk_device *dev,
+VkResult nvk_push_draw_state_init(struct nvk_queue *queue,
                                   struct nv_push *p);
 
-VkResult nvk_push_dispatch_state_init(struct nvk_device *dev,
+VkResult nvk_push_dispatch_state_init(struct nvk_queue *queue,
                                       struct nv_push *p);
 
 /* this always syncs, so only use when that doesn't matter */

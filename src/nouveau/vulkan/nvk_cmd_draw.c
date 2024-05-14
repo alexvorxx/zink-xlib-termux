@@ -89,8 +89,9 @@ nvk_mme_set_conservative_raster_state(struct mme_builder *b)
 }
 
 VkResult
-nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
+nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
 {
+   struct nvk_device *dev = nvk_queue_device(queue);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    /* 3D state */

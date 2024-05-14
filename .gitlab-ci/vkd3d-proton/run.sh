@@ -23,7 +23,8 @@ export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/:/vkd3d-proton-tests/x64/"
 MESA_VERSION=$(sed 's/\./\\./g' "$INSTALL/VERSION")
 
 # Set the Vulkan driver to use.
-export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.x86_64.json"
+ARCH=$(uname -m)
+export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.$ARCH.json"
 
 # Set environment for Wine.
 export WINEDEBUG="-all"

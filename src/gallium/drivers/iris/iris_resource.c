@@ -376,24 +376,13 @@ iris_memobj_create_from_handle(struct pipe_screen *pscreen,
 {
    struct iris_screen *screen = (struct iris_screen *)pscreen;
    struct iris_memory_object *memobj = CALLOC_STRUCT(iris_memory_object);
-   struct iris_bo *bo;
-
    if (!memobj)
       return NULL;
 
-   switch (whandle->type) {
-   case WINSYS_HANDLE_TYPE_SHARED:
-      bo = iris_bo_gem_create_from_name(screen->bufmgr, "winsys image",
-                                        whandle->handle);
-      break;
-   case WINSYS_HANDLE_TYPE_FD:
-      bo = iris_bo_import_dmabuf(screen->bufmgr, whandle->handle,
-                                 whandle->modifier);
-      break;
-   default:
-      unreachable("invalid winsys handle type");
-   }
-
+   assert(whandle->type == WINSYS_HANDLE_TYPE_FD);
+   assert(whandle->modifier == DRM_FORMAT_MOD_INVALID);
+   struct iris_bo *bo = iris_bo_import_dmabuf(screen->bufmgr, whandle->handle,
+                                              DRM_FORMAT_MOD_INVALID);
    if (!bo) {
       free(memobj);
       return NULL;

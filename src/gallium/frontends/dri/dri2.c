@@ -1293,9 +1293,6 @@ static bool
 dri2_query_image_common(__DRIimage *image, int attrib, int *value)
 {
    switch (attrib) {
-   case __DRI_IMAGE_ATTRIB_FORMAT:
-      *value = image->dri_format;
-      return true;
    case __DRI_IMAGE_ATTRIB_WIDTH:
       *value = image->texture->width0;
       return true;

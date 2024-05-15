@@ -1010,11 +1010,11 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
       /* Go through the reports and update the last timestamp. */
       offset = 0;
       while (offset < buf->len) {
-         const struct drm_i915_perf_record_header *header =
-            (const struct drm_i915_perf_record_header *) &buf->buf[offset];
+         const struct intel_perf_record_header *header =
+            (const struct intel_perf_record_header *) &buf->buf[offset];
          uint32_t *report = (uint32_t *) (header + 1);
 
-         if (header->type == DRM_I915_PERF_RECORD_SAMPLE)
+         if (header->type == INTEL_PERF_RECORD_TYPE_SAMPLE)
             last_timestamp = report[1];
 
          offset += header->size;
@@ -1281,8 +1281,8 @@ accumulate_oa_reports(struct intel_perf_context *perf_ctx,
       int offset = 0;
 
       while (offset < buf->len) {
-         const struct drm_i915_perf_record_header *header =
-            (const struct drm_i915_perf_record_header *)(buf->buf + offset);
+         const struct intel_perf_record_header *header =
+            (const struct intel_perf_record_header *)(buf->buf + offset);
 
          assert(header->size != 0);
          assert(header->size <= buf->len);
@@ -1290,7 +1290,7 @@ accumulate_oa_reports(struct intel_perf_context *perf_ctx,
          offset += header->size;
 
          switch (header->type) {
-         case DRM_I915_PERF_RECORD_SAMPLE: {
+         case INTEL_PERF_RECORD_TYPE_SAMPLE: {
             uint32_t *report = (uint32_t *)(header + 1);
             bool report_ctx_match = true;
             bool add = true;
@@ -1365,11 +1365,11 @@ accumulate_oa_reports(struct intel_perf_context *perf_ctx,
             break;
          }
 
-         case DRM_I915_PERF_RECORD_OA_BUFFER_LOST:
-             DBG("i915 perf: OA error: all reports lost\n");
+         case INTEL_PERF_RECORD_TYPE_OA_BUFFER_LOST:
+             DBG("perf: OA error: all reports lost\n");
              goto error;
-         case DRM_I915_PERF_RECORD_OA_REPORT_LOST:
-             DBG("i915 perf: OA report lost\n");
+         case INTEL_PERF_RECORD_TYPE_OA_REPORT_LOST:
+             DBG("perf: OA report lost\n");
              break;
          }
       }

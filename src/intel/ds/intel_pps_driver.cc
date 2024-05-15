@@ -202,9 +202,9 @@ std::vector<PerfRecord> IntelDriver::parse_perf_records(const std::vector<uint8_
 
    while (iter < end) {
       // Iterate a record at a time
-      auto header = reinterpret_cast<const drm_i915_perf_record_header *>(iter);
+      auto header = reinterpret_cast<const intel_perf_record_header *>(iter);
 
-      if (header->type == DRM_I915_PERF_RECORD_SAMPLE) {
+      if (header->type == INTEL_PERF_RECORD_TYPE_SAMPLE) {
          // Report is next to the header
          const uint32_t *report = reinterpret_cast<const uint32_t *>(header + 1);
          uint64_t gpu_timestamp_ldw =
@@ -304,8 +304,8 @@ uint64_t IntelDriver::gpu_next()
    }
 
    // Get first and second
-   auto record_a = reinterpret_cast<const drm_i915_perf_record_header *>(records[0].data.data());
-   auto record_b = reinterpret_cast<const drm_i915_perf_record_header *>(records[1].data.data());
+   auto record_a = reinterpret_cast<const intel_perf_record_header *>(records[0].data.data());
+   auto record_b = reinterpret_cast<const intel_perf_record_header *>(records[1].data.data());
 
    intel_perf_query_result_accumulate_fields(&perf->result,
                                              selected_query,

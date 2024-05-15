@@ -416,6 +416,19 @@ struct intel_perf_counter_pass {
    struct intel_perf_query_counter *counter;
 };
 
+enum intel_perf_record_type {
+   INTEL_PERF_RECORD_TYPE_SAMPLE = 1,
+   INTEL_PERF_RECORD_TYPE_OA_REPORT_LOST = 2,
+   INTEL_PERF_RECORD_TYPE_OA_BUFFER_LOST = 3,
+   INTEL_PERF_RECORD_TYPE_MAX,
+};
+
+struct intel_perf_record_header {
+   uint32_t type; /* enum intel_perf_record_type */
+   uint16_t pad;
+   uint16_t size;
+};
+
 /** Initialize the intel_perf_config object for a given device.
  *
  *    include_pipeline_statistics : Whether to add a pipeline statistic query

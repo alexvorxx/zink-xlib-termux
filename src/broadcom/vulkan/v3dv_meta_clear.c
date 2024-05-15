@@ -278,15 +278,16 @@ create_depth_clear_pipeline_layout(struct v3dv_device *device,
 void
 v3dv_meta_clear_init(struct v3dv_device *device)
 {
-   device->meta.color_clear.cache =
-      _mesa_hash_table_create(NULL, u64_hash, u64_compare);
+   if (device->instance->meta_cache_enabled) {
+      device->meta.color_clear.cache =
+         _mesa_hash_table_create(NULL, u64_hash, u64_compare);
+
+      device->meta.depth_clear.cache =
+         _mesa_hash_table_create(NULL, u64_hash, u64_compare);
+   }
 
    create_color_clear_pipeline_layout(device,
                                       &device->meta.color_clear.p_layout);
-
-   device->meta.depth_clear.cache =
-      _mesa_hash_table_create(NULL, u64_hash, u64_compare);
-
    create_depth_clear_pipeline_layout(device,
                                       &device->meta.depth_clear.p_layout);
 }
@@ -296,22 +297,24 @@ v3dv_meta_clear_finish(struct v3dv_device *device)
 {
    VkDevice _device = v3dv_device_to_handle(device);
 
-   hash_table_foreach(device->meta.color_clear.cache, entry) {
-      struct v3dv_meta_color_clear_pipeline *item = entry->data;
-      destroy_color_clear_pipeline(_device, (uintptr_t)item, &device->vk.alloc);
+   if (device->instance->meta_cache_enabled) {
+      hash_table_foreach(device->meta.color_clear.cache, entry) {
+         struct v3dv_meta_color_clear_pipeline *item = entry->data;
+         destroy_color_clear_pipeline(_device, (uintptr_t)item, &device->vk.alloc);
+      }
+      _mesa_hash_table_destroy(device->meta.color_clear.cache, NULL);
+
+      hash_table_foreach(device->meta.depth_clear.cache, entry) {
+         struct v3dv_meta_depth_clear_pipeline *item = entry->data;
+         destroy_depth_clear_pipeline(_device, item, &device->vk.alloc);
+      }
+      _mesa_hash_table_destroy(device->meta.depth_clear.cache, NULL);
    }
-   _mesa_hash_table_destroy(device->meta.color_clear.cache, NULL);
 
    if (device->meta.color_clear.p_layout) {
       v3dv_DestroyPipelineLayout(_device, device->meta.color_clear.p_layout,
                                  &device->vk.alloc);
    }
-
-   hash_table_foreach(device->meta.depth_clear.cache, entry) {
-      struct v3dv_meta_depth_clear_pipeline *item = entry->data;
-      destroy_depth_clear_pipeline(_device, item, &device->vk.alloc);
-   }
-   _mesa_hash_table_destroy(device->meta.depth_clear.cache, NULL);
 
    if (device->meta.depth_clear.p_layout) {
       v3dv_DestroyPipelineLayout(_device, device->meta.depth_clear.p_layout,
@@ -826,7 +829,8 @@ get_color_clear_pipeline(struct v3dv_device *device,
     * vkQuake3, the fact that we are not caching here doesn't seem to have
     * any significant impact in performance, so it might not be worth it.
     */
-   const bool can_cache_pipeline = (pass == NULL);
+   const bool can_cache_pipeline =
+      (pass == NULL) && (device->instance->meta_cache_enabled);
 
    uint64_t key;
    if (can_cache_pipeline) {
@@ -924,15 +928,18 @@ get_depth_clear_pipeline(struct v3dv_device *device,
    const VkFormat format = pass->attachments[attachment_idx].desc.format;
    assert(vk_format_is_depth_or_stencil(format));
 
-   const uint64_t key =
-      get_depth_clear_pipeline_cache_key(aspects, format, samples, is_layered);
-   mtx_lock(&device->meta.mtx);
-   struct hash_entry *entry =
-      _mesa_hash_table_search(device->meta.depth_clear.cache, &key);
-   if (entry) {
-      mtx_unlock(&device->meta.mtx);
-      *pipeline = entry->data;
-      return VK_SUCCESS;
+   uint64_t key;
+   if (device->instance->meta_cache_enabled) {
+      key = get_depth_clear_pipeline_cache_key(aspects, format, samples,
+                                               is_layered);
+      mtx_lock(&device->meta.mtx);
+      struct hash_entry *entry =
+         _mesa_hash_table_search(device->meta.depth_clear.cache, &key);
+      if (entry) {
+         mtx_unlock(&device->meta.mtx);
+         *pipeline = entry->data;
+         return VK_SUCCESS;
+      }
    }
 
    *pipeline = vk_zalloc2(&device->vk.alloc, NULL, sizeof(**pipeline), 8,
@@ -954,15 +961,18 @@ get_depth_clear_pipeline(struct v3dv_device *device,
    if (result != VK_SUCCESS)
       goto fail;
 
-   (*pipeline)->key = key;
-   _mesa_hash_table_insert(device->meta.depth_clear.cache,
-                           &(*pipeline)->key, *pipeline);
+   if (device->instance->meta_cache_enabled) {
+      (*pipeline)->key = key;
+      _mesa_hash_table_insert(device->meta.depth_clear.cache,
+                              &(*pipeline)->key, *pipeline);
+      mtx_unlock(&device->meta.mtx);
+   }
 
-   mtx_unlock(&device->meta.mtx);
    return VK_SUCCESS;
 
 fail:
-   mtx_unlock(&device->meta.mtx);
+   if (device->instance->meta_cache_enabled)
+      mtx_unlock(&device->meta.mtx);
 
    VkDevice _device = v3dv_device_to_handle(device);
    if (*pipeline) {

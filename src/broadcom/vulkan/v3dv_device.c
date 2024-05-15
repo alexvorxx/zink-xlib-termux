@@ -560,33 +560,44 @@ v3dv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    instance->vk.physical_devices.enumerate = enumerate_devices;
    instance->vk.physical_devices.destroy = destroy_physical_device;
 
-   /* We start with the default values for the pipeline_cache envvars */
+   /* We start with the default values for the pipeline_cache envvars.
+    *
+    * FIXME: with so many options now, perhaps we could use parse_debug_string
+    */
    instance->pipeline_cache_enabled = true;
    instance->default_pipeline_cache_enabled = true;
+   instance->meta_cache_enabled = true;
    const char *pipeline_cache_str = getenv("V3DV_ENABLE_PIPELINE_CACHE");
    if (pipeline_cache_str != NULL) {
       if (strncmp(pipeline_cache_str, "full", 4) == 0) {
          /* nothing to do, just to filter correct values */
       } else if (strncmp(pipeline_cache_str, "no-default-cache", 16) == 0) {
          instance->default_pipeline_cache_enabled = false;
+      } else if (strncmp(pipeline_cache_str, "no-meta-cache", 13) == 0) {
+         instance->meta_cache_enabled = false;
       } else if (strncmp(pipeline_cache_str, "off", 3) == 0) {
          instance->pipeline_cache_enabled = false;
          instance->default_pipeline_cache_enabled = false;
+         instance->meta_cache_enabled = false;
       } else {
          fprintf(stderr, "Wrong value for envvar V3DV_ENABLE_PIPELINE_CACHE. "
-                 "Allowed values are: full, no-default-cache, off\n");
+                 "Allowed values are: full, no-default-cache, no-meta-cache, off\n");
       }
    }
 
    if (instance->pipeline_cache_enabled == false) {
       fprintf(stderr, "WARNING: v3dv pipeline cache is disabled. Performance "
               "can be affected negatively\n");
-   } else {
-      if (instance->default_pipeline_cache_enabled == false) {
-        fprintf(stderr, "WARNING: default v3dv pipeline cache is disabled. "
-                "Performance can be affected negatively\n");
-      }
    }
+   if (instance->default_pipeline_cache_enabled == false) {
+      fprintf(stderr, "WARNING: default v3dv pipeline cache is disabled. "
+              "Performance can be affected negatively\n");
+   }
+   if (instance->meta_cache_enabled == false) {
+      fprintf(stderr, "WARNING: custom pipeline cache for meta operations are disabled. "
+              "Performance can be affected negatively\n");
+   }
+
 
    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
 

@@ -2433,17 +2433,19 @@ get_copy_texel_buffer_pipeline(
    bool ok = true;
 
    uint8_t key[V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE];
-   get_texel_buffer_copy_pipeline_cache_key(format, cmask, cswizzle, is_layered,
-                                            key);
+   if (device->instance->meta_cache_enabled) {
+      get_texel_buffer_copy_pipeline_cache_key(format, cmask, cswizzle, is_layered,
+                                               key);
 
-   mtx_lock(&device->meta.mtx);
-   struct hash_entry *entry =
-      _mesa_hash_table_search(device->meta.texel_buffer_copy.cache[image_type],
-                              key);
-   if (entry) {
-      mtx_unlock(&device->meta.mtx);
-      *pipeline = entry->data;
-      return true;
+      mtx_lock(&device->meta.mtx);
+      struct hash_entry *entry =
+         _mesa_hash_table_search(device->meta.texel_buffer_copy.cache[image_type],
+                                 key);
+      if (entry) {
+         mtx_unlock(&device->meta.mtx);
+         *pipeline = entry->data;
+         return true;
+      }
    }
 
    *pipeline = vk_zalloc2(&device->vk.alloc, NULL, sizeof(**pipeline), 8,
@@ -2468,16 +2470,19 @@ get_copy_texel_buffer_pipeline(
    if (!ok)
       goto fail;
 
-   uint8_t *dupkey = malloc(V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
-   memcpy(dupkey, key, V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
-   _mesa_hash_table_insert(device->meta.texel_buffer_copy.cache[image_type],
-                           dupkey, *pipeline);
+   if (device->instance->meta_cache_enabled) {
+      uint8_t *dupkey = malloc(V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
+      memcpy(dupkey, key, V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
+      _mesa_hash_table_insert(device->meta.texel_buffer_copy.cache[image_type],
+                              dupkey, *pipeline);
+      mtx_unlock(&device->meta.mtx);
+   }
 
-   mtx_unlock(&device->meta.mtx);
    return true;
 
 fail:
-   mtx_unlock(&device->meta.mtx);
+   if (device->instance->meta_cache_enabled)
+      mtx_unlock(&device->meta.mtx);
 
    VkDevice _device = v3dv_device_to_handle(device);
    if (*pipeline) {
@@ -4086,15 +4091,17 @@ get_blit_pipeline(struct v3dv_device *device,
    bool ok = true;
 
    uint8_t key[V3DV_META_BLIT_CACHE_KEY_SIZE];
-   get_blit_pipeline_cache_key(dst_format, src_format, cmask,
-                               dst_samples, src_samples, key);
-   mtx_lock(&device->meta.mtx);
-   struct hash_entry *entry =
-      _mesa_hash_table_search(device->meta.blit.cache[src_type], &key);
-   if (entry) {
-      mtx_unlock(&device->meta.mtx);
-      *pipeline = entry->data;
-      return true;
+   if (device->instance->meta_cache_enabled) {
+      get_blit_pipeline_cache_key(dst_format, src_format, cmask,
+                                  dst_samples, src_samples, key);
+      mtx_lock(&device->meta.mtx);
+      struct hash_entry *entry =
+         _mesa_hash_table_search(device->meta.blit.cache[src_type], &key);
+      if (entry) {
+         mtx_unlock(&device->meta.mtx);
+         *pipeline = entry->data;
+         return true;
+      }
    }
 
    *pipeline = vk_zalloc2(&device->vk.alloc, NULL, sizeof(**pipeline), 8,
@@ -4125,15 +4132,17 @@ get_blit_pipeline(struct v3dv_device *device,
    if (!ok)
       goto fail;
 
-   memcpy((*pipeline)->key, key, sizeof((*pipeline)->key));
-   _mesa_hash_table_insert(device->meta.blit.cache[src_type],
-                           &(*pipeline)->key, *pipeline);
-
-   mtx_unlock(&device->meta.mtx);
+   if (device->instance->meta_cache_enabled) {
+      memcpy((*pipeline)->key, key, sizeof((*pipeline)->key));
+      _mesa_hash_table_insert(device->meta.blit.cache[src_type],
+                              &(*pipeline)->key, *pipeline);
+      mtx_unlock(&device->meta.mtx);
+   }
    return true;
 
 fail:
-   mtx_unlock(&device->meta.mtx);
+   if (device->instance->meta_cache_enabled)
+      mtx_unlock(&device->meta.mtx);
 
    VkDevice _device = v3dv_device_to_handle(device);
    if (*pipeline) {

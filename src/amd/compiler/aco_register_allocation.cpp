@@ -992,10 +992,11 @@ get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
          if (!bounds.contains({PhysReg{entry.first}, rc.size()}))
             continue;
 
+         auto it = entry.second.begin();
          for (unsigned i = 0; i < 4; i += info.stride) {
             /* check if there's a block of free bytes large enough to hold the register */
             bool reg_found =
-               std::all_of(&entry.second[i], &entry.second[std::min(4u, i + rc.bytes())],
+               std::all_of(std::next(it, i), std::next(it, std::min(4u, i + rc.bytes())),
                            [](unsigned v) { return v == 0; });
 
             /* check if also the neighboring reg is free if needed */

@@ -5375,7 +5375,8 @@ static bool wrap_mode_uses_border_color(unsigned wrap, bool linear_filter)
 
 static uint32_t si_translate_border_color(struct si_context *sctx,
                                           const struct pipe_sampler_state *state,
-                                          const union pipe_color_union *color, bool is_integer)
+                                          const union pipe_color_union *color, bool is_integer,
+                                          uint32_t *border_color_ptr)
 {
    bool linear_filter = state->min_img_filter != PIPE_TEX_FILTER_NEAREST ||
                         state->mag_img_filter != PIPE_TEX_FILTER_NEAREST;
@@ -5383,16 +5384,16 @@ static uint32_t si_translate_border_color(struct si_context *sctx,
    if (!wrap_mode_uses_border_color(state->wrap_s, linear_filter) &&
        !wrap_mode_uses_border_color(state->wrap_t, linear_filter) &&
        !wrap_mode_uses_border_color(state->wrap_r, linear_filter))
-      return S_008F3C_BORDER_COLOR_TYPE(V_008F3C_SQ_TEX_BORDER_COLOR_TRANS_BLACK);
+      return V_008F3C_SQ_TEX_BORDER_COLOR_TRANS_BLACK;
 
 #define simple_border_types(elt)                                                                   \
    do {                                                                                            \
       if (color->elt[0] == 0 && color->elt[1] == 0 && color->elt[2] == 0 && color->elt[3] == 0)    \
-         return S_008F3C_BORDER_COLOR_TYPE(V_008F3C_SQ_TEX_BORDER_COLOR_TRANS_BLACK);              \
+         return V_008F3C_SQ_TEX_BORDER_COLOR_TRANS_BLACK;                                          \
       if (color->elt[0] == 0 && color->elt[1] == 0 && color->elt[2] == 0 && color->elt[3] == 1)    \
-         return S_008F3C_BORDER_COLOR_TYPE(V_008F3C_SQ_TEX_BORDER_COLOR_OPAQUE_BLACK);             \
+         return V_008F3C_SQ_TEX_BORDER_COLOR_OPAQUE_BLACK;                                         \
       if (color->elt[0] == 1 && color->elt[1] == 1 && color->elt[2] == 1 && color->elt[3] == 1)    \
-         return S_008F3C_BORDER_COLOR_TYPE(V_008F3C_SQ_TEX_BORDER_COLOR_OPAQUE_WHITE);             \
+         return V_008F3C_SQ_TEX_BORDER_COLOR_OPAQUE_WHITE;                                         \
    } while (false)
 
    if (is_integer)
@@ -5418,7 +5419,7 @@ static uint32_t si_translate_border_color(struct si_context *sctx,
                          "This is a hardware limitation.\n");
          printed = true;
       }
-      return S_008F3C_BORDER_COLOR_TYPE(V_008F3C_SQ_TEX_BORDER_COLOR_TRANS_BLACK);
+      return V_008F3C_SQ_TEX_BORDER_COLOR_TRANS_BLACK;
    }
 
    if (i == sctx->border_color_count) {
@@ -5428,9 +5429,9 @@ static uint32_t si_translate_border_color(struct si_context *sctx,
       sctx->border_color_count++;
    }
 
-   return (sctx->screen->info.gfx_level >= GFX11 ? S_008F3C_BORDER_COLOR_PTR_GFX11(i):
-                                                    S_008F3C_BORDER_COLOR_PTR_GFX6(i)) |
-          S_008F3C_BORDER_COLOR_TYPE(V_008F3C_SQ_TEX_BORDER_COLOR_REGISTER);
+   *border_color_ptr = i;
+
+   return V_008F3C_SQ_TEX_BORDER_COLOR_REGISTER;
 }
 
 static inline int S_FIXED(float value, unsigned frac_bits)
@@ -5494,6 +5495,13 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
 #ifndef NDEBUG
    rstate->magic = SI_SAMPLER_STATE_MAGIC;
 #endif
+
+   unsigned border_color_ptr = 0;
+   unsigned border_color_type =
+      si_translate_border_color(sctx, state, &state->border_color,
+                                state->border_color_is_integer,
+                                &border_color_ptr);
+
    rstate->val[0] =
       (S_008F30_CLAMP_X(si_tex_wrap(state->wrap_s)) | S_008F30_CLAMP_Y(si_tex_wrap(state->wrap_t)) |
        S_008F30_CLAMP_Z(si_tex_wrap(state->wrap_r)) | S_008F30_MAX_ANISO_RATIO(max_aniso_ratio) |
@@ -5506,8 +5514,7 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
    rstate->val[2] = (S_008F38_XY_MAG_FILTER(si_tex_filter(state->mag_img_filter, max_aniso)) |
                      S_008F38_XY_MIN_FILTER(si_tex_filter(state->min_img_filter, max_aniso)) |
                      S_008F38_MIP_FILTER(si_tex_mipfilter(state->min_mip_filter)));
-   rstate->val[3] = si_translate_border_color(sctx, state, &state->border_color,
-                                              state->border_color_is_integer);
+   rstate->val[3] = S_008F3C_BORDER_COLOR_TYPE(border_color_type);
 
    if (sscreen->info.gfx_level >= GFX12) {
       rstate->val[1] |= S_008F34_MIN_LOD_GFX12(S_FIXED(CLAMP(state->min_lod, 0, 17), 8)) |
@@ -5531,6 +5538,12 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
                         S_008F38_ANISO_OVERRIDE_GFX8(sctx->gfx_level >= GFX8);
    }
 
+   if (sscreen->info.gfx_level >= GFX11) {
+      rstate->val[3] |= S_008F3C_BORDER_COLOR_PTR_GFX11(border_color_ptr);
+   } else {
+      rstate->val[3] |= S_008F3C_BORDER_COLOR_PTR_GFX6(border_color_ptr);
+   }
+
    /* Create sampler resource for upgraded depth textures. */
    memcpy(rstate->upgraded_depth_val, rstate->val, sizeof(rstate->val));
 
@@ -5544,8 +5557,16 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
       if (sscreen->info.gfx_level <= GFX9)
          rstate->upgraded_depth_val[3] |= S_008F3C_UPGRADED_DEPTH(1);
    } else {
-      rstate->upgraded_depth_val[3] =
-         si_translate_border_color(sctx, state, &clamped_border_color, false);
+      border_color_ptr = 0;
+      border_color_type = si_translate_border_color(sctx, state, &clamped_border_color, false, &border_color_ptr);
+
+      rstate->upgraded_depth_val[3] = S_008F3C_BORDER_COLOR_TYPE(border_color_type);
+
+      if (sscreen->info.gfx_level >= GFX11) {
+         rstate->upgraded_depth_val[3] |= S_008F3C_BORDER_COLOR_PTR_GFX11(border_color_ptr);
+      } else {
+         rstate->upgraded_depth_val[3] |= S_008F3C_BORDER_COLOR_PTR_GFX6(border_color_ptr);
+      }
    }
 
    return rstate;

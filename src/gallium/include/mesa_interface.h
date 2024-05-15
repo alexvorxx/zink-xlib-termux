@@ -1556,30 +1556,6 @@ struct __DRIimageExtensionRec {
     */
    void (*unmapImage)(__DRIcontext *context, __DRIimage *image, void *data);
 
-
-   /**
-    * Creates an image with implementation's favorite modifiers.
-    *
-    * This acts like createImage except there is a list of modifiers passed in
-    * which the implementation may selectively use to create the DRIimage. The
-    * result should be the implementation selects one modifier (perhaps it would
-    * hold on to a few and later pick).
-    *
-    * The created image should be destroyed with destroyImage().
-    *
-    * Returns the new DRIimage. The chosen modifier can be obtained later on
-    * and passed back to things like the kernel's AddFB2 interface.
-    *
-    * \sa __DRIimageRec::createImage
-    *
-    * \since 14
-    */
-   __DRIimage *(*createImageWithModifiers)(__DRIscreen *screen,
-                                           int width, int height, int format,
-                                           const uint64_t *modifiers,
-                                           const unsigned int modifier_count,
-                                           void *loaderPrivate);
-
    /*
     * Like createImageFromDmaBufs, with fewer options.
     *
@@ -1697,8 +1673,6 @@ struct __DRIimageExtensionRec {
     * Creates an image with implementation's favorite modifiers and the
     * provided usage flags.
     *
-    * This acts like createImageWithModifiers except usage is also specified.
-    *
     * The created image should be destroyed with destroyImage().
     *
     * Returns the new DRIimage. The chosen modifier can be obtained later on
@@ -1708,12 +1682,12 @@ struct __DRIimageExtensionRec {
     *
     * \since 19
     */
-   __DRIimage *(*createImageWithModifiers2)(__DRIscreen *screen,
-                                            int width, int height, int format,
-                                            const uint64_t *modifiers,
-                                            const unsigned int modifier_count,
-                                            unsigned int use,
-                                            void *loaderPrivate);
+   __DRIimage *(*createImageWithModifiers)(__DRIscreen *screen,
+                                           int width, int height, int format,
+                                           const uint64_t *modifiers,
+                                           const unsigned int modifier_count,
+                                           unsigned int use,
+                                           void *loaderPrivate);
 
    /**
     * Set an in-fence-fd on the image.  If a fence-fd is already set

@@ -1350,22 +1350,10 @@ dri2_create_image(__DRIscreen *_screen,
 
 static __DRIimage *
 dri2_create_image_with_modifiers(__DRIscreen *dri_screen,
-                                 int width, int height, int format,
-                                 const uint64_t *modifiers,
-                                 const unsigned count,
-                                 void *loaderPrivate)
-{
-   return dri2_create_image_common(dri_screen, width, height, format,
-                                   __DRI_IMAGE_USE_SHARE, modifiers, count,
-                                   loaderPrivate);
-}
-
-static __DRIimage *
-dri2_create_image_with_modifiers2(__DRIscreen *dri_screen,
-                                 int width, int height, int format,
-                                 const uint64_t *modifiers,
-                                 const unsigned count, unsigned int use,
-                                 void *loaderPrivate)
+                                int width, int height, int format,
+                                const uint64_t *modifiers,
+                                const unsigned count, unsigned int use,
+                                void *loaderPrivate)
 {
    return dri2_create_image_common(dri_screen, width, height, format, use,
                                    modifiers, count, loaderPrivate);
@@ -2054,7 +2042,6 @@ static const __DRIimageExtension dri2ImageExtensionTempl = {
     .queryDmaBufFormats           = NULL,
     .queryDmaBufModifiers         = NULL,
     .queryDmaBufFormatModifierAttribs = NULL,
-    .createImageWithModifiers2    = NULL,
     .queryCompressionRates        = NULL,
     .queryCompressionModifiers    = NULL,
 };
@@ -2083,7 +2070,6 @@ const __DRIimageExtension driVkImageExtension = {
     .queryDmaBufFormats           = dri2_query_dma_buf_formats,
     .queryDmaBufModifiers         = dri2_query_dma_buf_modifiers,
     .queryDmaBufFormatModifierAttribs = dri2_query_dma_buf_format_modifier_attribs,
-    .createImageWithModifiers2    = dri2_create_image_with_modifiers2,
 };
 
 const __DRIimageExtension driVkImageExtensionSw = {
@@ -2337,8 +2323,6 @@ dri2_init_screen_extensions(struct dri_screen *screen,
    if (pscreen->resource_create_with_modifiers) {
       screen->image_extension.createImageWithModifiers =
          dri2_create_image_with_modifiers;
-      screen->image_extension.createImageWithModifiers2 =
-         dri2_create_image_with_modifiers2;
    }
 
    if (pscreen->get_param(pscreen, PIPE_CAP_NATIVE_FENCE_FD)) {

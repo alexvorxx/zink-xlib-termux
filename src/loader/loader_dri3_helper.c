@@ -1463,7 +1463,7 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
 #ifdef HAVE_DRI3_MODIFIERS
       if (draw->multiplanes_available &&
           draw->ext->image->queryDmaBufModifiers &&
-          draw->ext->image->createImageWithModifiers2) {
+          draw->ext->image->createImageWithModifiers) {
          xcb_dri3_get_supported_modifiers_cookie_t mod_cookie;
          xcb_dri3_get_supported_modifiers_reply_t *mod_reply;
          xcb_generic_error_t *error = NULL;

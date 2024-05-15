@@ -82,6 +82,8 @@ amd_common_files = files(
   'ac_surface.h',
   'ac_debug.c',
   'ac_debug.h',
+  'ac_descriptors.c',
+  'ac_descriptors.h',
   'ac_formats.c',
   'ac_formats.h',
   'ac_shadowed_regs.c',

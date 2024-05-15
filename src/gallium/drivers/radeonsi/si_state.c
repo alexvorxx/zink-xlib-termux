@@ -18,6 +18,7 @@
 #include "util/u_upload_mgr.h"
 #include "util/u_blend.h"
 
+#include "ac_descriptors.h"
 #include "ac_formats.h"
 #include "gfx10_format_table.h"
 
@@ -5470,7 +5471,6 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
    struct si_sampler_state *rstate = CALLOC_STRUCT(si_sampler_state);
    unsigned max_aniso = sscreen->force_aniso >= 0 ? sscreen->force_aniso : state->max_anisotropy;
    unsigned max_aniso_ratio = si_tex_aniso_filter(max_aniso);
-   unsigned perf_mip = max_aniso_ratio ? max_aniso_ratio + 6 : 0;
    bool trunc_coord = (state->min_img_filter == PIPE_TEX_FILTER_NEAREST &&
                        state->mag_img_filter == PIPE_TEX_FILTER_NEAREST &&
                        state->compare_mode == PIPE_TEX_COMPARE_NONE) ||
@@ -5502,47 +5502,26 @@ static void *si_create_sampler_state(struct pipe_context *ctx,
                                 state->border_color_is_integer,
                                 &border_color_ptr);
 
-   rstate->val[0] =
-      (S_008F30_CLAMP_X(si_tex_wrap(state->wrap_s)) | S_008F30_CLAMP_Y(si_tex_wrap(state->wrap_t)) |
-       S_008F30_CLAMP_Z(si_tex_wrap(state->wrap_r)) | S_008F30_MAX_ANISO_RATIO(max_aniso_ratio) |
-       S_008F30_DEPTH_COMPARE_FUNC(si_tex_compare(state->compare_mode, state->compare_func)) |
-       S_008F30_FORCE_UNNORMALIZED(state->unnormalized_coords) |
-       S_008F30_ANISO_THRESHOLD(max_aniso_ratio >> 1) | S_008F30_ANISO_BIAS(max_aniso_ratio) |
-       S_008F30_DISABLE_CUBE_WRAP(!state->seamless_cube_map) |
-       S_008F30_TRUNC_COORD(trunc_coord));
-   rstate->val[1] = 0;
-   rstate->val[2] = (S_008F38_XY_MAG_FILTER(si_tex_filter(state->mag_img_filter, max_aniso)) |
-                     S_008F38_XY_MIN_FILTER(si_tex_filter(state->min_img_filter, max_aniso)) |
-                     S_008F38_MIP_FILTER(si_tex_mipfilter(state->min_mip_filter)));
-   rstate->val[3] = S_008F3C_BORDER_COLOR_TYPE(border_color_type);
+   struct ac_sampler_state ac_state = {
+      .address_mode_u = si_tex_wrap(state->wrap_s),
+      .address_mode_v = si_tex_wrap(state->wrap_t),
+      .address_mode_w = si_tex_wrap(state->wrap_r),
+      .max_aniso_ratio = max_aniso_ratio,
+      .depth_compare_func = si_tex_compare(state->compare_mode, state->compare_func),
+      .unnormalized_coords = state->unnormalized_coords,
+      .cube_wrap = state->seamless_cube_map,
+      .trunc_coord = trunc_coord,
+      .mag_filter = si_tex_filter(state->mag_img_filter, max_aniso),
+      .min_filter = si_tex_filter(state->min_img_filter, max_aniso),
+      .mip_filter = si_tex_mipfilter(state->min_mip_filter),
+      .min_lod = state->min_lod,
+      .max_lod = state->max_lod,
+      .lod_bias = state->lod_bias,
+      .border_color_type = border_color_type,
+      .border_color_ptr = border_color_ptr,
+   };
 
-   if (sscreen->info.gfx_level >= GFX12) {
-      rstate->val[1] |= S_008F34_MIN_LOD_GFX12(S_FIXED(CLAMP(state->min_lod, 0, 17), 8)) |
-                        S_008F34_MAX_LOD_GFX12(S_FIXED(CLAMP(state->max_lod, 0, 17), 8));
-      rstate->val[2] |= S_008F38_PERF_MIP_LO(perf_mip);
-      rstate->val[3] |= S_008F3C_PERF_MIP_HI(perf_mip >> 2);
-   } else {
-      rstate->val[1] |= S_008F34_MIN_LOD_GFX6(S_FIXED(CLAMP(state->min_lod, 0, 15), 8)) |
-                        S_008F34_MAX_LOD_GFX6(S_FIXED(CLAMP(state->max_lod, 0, 15), 8)) |
-                        S_008F34_PERF_MIP(perf_mip);
-   }
-
-   if (sscreen->info.gfx_level >= GFX10) {
-      rstate->val[2] |= S_008F38_LOD_BIAS(S_FIXED(CLAMP(state->lod_bias, -32, 31), 8)) |
-                        S_008F38_ANISO_OVERRIDE_GFX10(1);
-   } else {
-      rstate->val[0] |= S_008F30_COMPAT_MODE(sctx->gfx_level >= GFX8);
-      rstate->val[2] |= S_008F38_LOD_BIAS(S_FIXED(CLAMP(state->lod_bias, -16, 16), 8)) |
-                        S_008F38_DISABLE_LSB_CEIL(sctx->gfx_level <= GFX8) |
-                        S_008F38_FILTER_PREC_FIX(1) |
-                        S_008F38_ANISO_OVERRIDE_GFX8(sctx->gfx_level >= GFX8);
-   }
-
-   if (sscreen->info.gfx_level >= GFX11) {
-      rstate->val[3] |= S_008F3C_BORDER_COLOR_PTR_GFX11(border_color_ptr);
-   } else {
-      rstate->val[3] |= S_008F3C_BORDER_COLOR_PTR_GFX6(border_color_ptr);
-   }
+   ac_build_sampler_descriptor(sscreen->info.gfx_level, &ac_state, rstate->val);
 
    /* Create sampler resource for upgraded depth textures. */
    memcpy(rstate->upgraded_depth_val, rstate->val, sizeof(rstate->val));

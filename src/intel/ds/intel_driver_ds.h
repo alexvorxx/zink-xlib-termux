@@ -194,6 +194,7 @@ void intel_ds_flush_data_fini(struct intel_ds_flush_data *data);
 void intel_ds_queue_flush_data(struct intel_ds_queue *queue,
                                struct u_trace *ut,
                                struct intel_ds_flush_data *data,
+                               uint32_t frame_nr,
                                bool free_data);
 
 void intel_ds_device_process(struct intel_ds_device *device, bool eof);

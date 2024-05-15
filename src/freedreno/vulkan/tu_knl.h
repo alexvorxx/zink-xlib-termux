@@ -63,6 +63,7 @@ struct tu_bo {
 #endif
 
    bool implicit_sync : 1;
+   bool never_unmap : 1;
 };
 
 struct tu_knl {

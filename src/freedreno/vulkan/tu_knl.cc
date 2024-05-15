@@ -72,7 +72,7 @@ tu_bo_map(struct tu_device *dev, struct tu_bo *bo, void *placed_addr)
 VkResult
 tu_bo_unmap(struct tu_device *dev, struct tu_bo *bo, bool reserve)
 {
-   if (!bo->map)
+   if (!bo->map || bo->never_unmap)
       return VK_SUCCESS;
 
    TU_RMV(bo_unmap, dev, bo);

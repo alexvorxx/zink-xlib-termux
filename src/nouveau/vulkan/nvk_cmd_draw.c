@@ -43,7 +43,8 @@ static void
 mme_set_priv_reg(struct mme_builder *b,
                  struct mme_value value,
                  struct mme_value mask,
-                 struct mme_value reg) {
+                 struct mme_value reg)
+{
    mme_mthd(b, NV9097_WAIT_FOR_IDLE);
    mme_emit(b, mme_zero());
 
@@ -74,13 +75,16 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
 }
 
 void
-nvk_mme_set_conservative_raster_state(struct mme_builder *b) {
+nvk_mme_set_conservative_raster_state(struct mme_builder *b)
+{
    struct mme_value new_state = mme_load(b);
-   struct mme_value old_state = nvk_mme_load_scratch(b, CONSERVATIVE_RASTER_STATE);
+   struct mme_value old_state =
+      nvk_mme_load_scratch(b, CONSERVATIVE_RASTER_STATE);
 
    mme_if(b, ine, new_state, old_state) {
       nvk_mme_store_scratch(b, CONSERVATIVE_RASTER_STATE, new_state);
-      mme_set_priv_reg(b, new_state, mme_imm(BITFIELD_RANGE(23, 2)), mme_imm(0x418800));
+      mme_set_priv_reg(b, new_state, mme_imm(BITFIELD_RANGE(23, 2)),
+                       mme_imm(0x418800));
    }
 }
 
@@ -128,7 +132,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     * Starting with GSP we have to do it via the firmware anyway.
     *
     * This clears bit 3 of gr_gpcs_tpcs_sm_disp_ctrl
-    * 
+    *
     * Without it,
     * dEQP-VK.subgroups.vote.frag_helper.subgroupallequal_bvec2_fragment will
     * occasionally fail.
@@ -194,7 +198,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       P_INLINE_DATA(p, BITFIELD_BIT(14));
       P_INLINE_DATA(p, reg);
    }
-   
+
    /* Set CONSERVATIVE_RASTER_STATE to an invalid value, to ensure the
     * hardware reg is always set the first time conservative rasterization
     * is enabled */
@@ -718,9 +722,9 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       if (render->color_att[i].iview) {
          const struct nvk_image_view *iview = render->color_att[i].iview;
          const struct nvk_image *image = (struct nvk_image *)iview->vk.image;
-         /* Rendering to multi-planar images is valid for a specific single plane
-          * only, so assert that what we have is a single-plane, obtain its index,
-          * and begin rendering
+         /* Rendering to multi-planar images is valid for a specific single
+          * plane only, so assert that what we have is a single-plane, obtain
+          * its index, and begin rendering
           */
          assert(iview->plane_count == 1);
          const uint8_t ip = iview->planes[0].image_plane;

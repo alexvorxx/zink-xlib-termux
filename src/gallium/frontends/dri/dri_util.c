@@ -1130,16 +1130,6 @@ static const struct {
 };
 
 uint32_t
-driGLFormatToImageFormat(mesa_format format)
-{
-   for (size_t i = 0; i < ARRAY_SIZE(format_mapping); i++)
-      if (format_mapping[i].mesa_format == format)
-         return format_mapping[i].image_format;
-
-   return __DRI_IMAGE_FORMAT_NONE;
-}
-
-uint32_t
 driGLFormatToSizedInternalGLFormat(mesa_format format)
 {
    for (size_t i = 0; i < ARRAY_SIZE(format_mapping); i++)

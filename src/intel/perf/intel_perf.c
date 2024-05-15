@@ -1570,6 +1570,8 @@ intel_perf_stream_read_samples(struct intel_perf_config *perf_config,
    switch (perf_config->devinfo->kmd_type) {
    case INTEL_KMD_TYPE_I915:
       return i915_perf_stream_read_samples(perf_stream_fd, buffer, buffer_len);
+   case INTEL_KMD_TYPE_XE:
+      return xe_perf_stream_read_samples(perf_stream_fd, buffer, buffer_len);
    default:
          unreachable("missing");
          return -1;

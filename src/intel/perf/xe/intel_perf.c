@@ -178,3 +178,81 @@ xe_perf_stream_set_metrics_id(int perf_stream_fd, uint64_t metrics_set_id)
    return intel_ioctl(perf_stream_fd, DRM_XE_PERF_IOCTL_CONFIG,
                       (void *)(uintptr_t)&prop);
 }
+
+static int
+xe_perf_stream_read_error(int perf_stream_fd, uint8_t *buffer, size_t buffer_len)
+{
+   struct drm_xe_oa_stream_status status = {};
+   struct intel_perf_record_header *header;
+   int ret;
+
+   ret = intel_ioctl(perf_stream_fd, DRM_XE_PERF_IOCTL_STATUS, &status);
+   if (ret)
+      return -errno;
+
+   header = (struct intel_perf_record_header *)buffer;
+   header->pad = 0;
+   header->type = 0;
+   header->size = sizeof(*header);
+   ret = header->size;
+
+   if (status.oa_status & INTEL_PERF_RECORD_TYPE_OA_BUFFER_LOST)
+      header->type = INTEL_PERF_RECORD_TYPE_OA_BUFFER_LOST;
+   else if (status.oa_status & DRM_XE_OASTATUS_REPORT_LOST)
+      header->type = INTEL_PERF_RECORD_TYPE_OA_REPORT_LOST;
+   else if (status.oa_status & DRM_XE_OASTATUS_COUNTER_OVERFLOW)
+      header->type = INTEL_PERF_RECORD_TYPE_COUNTER_OVERFLOW;
+   else if (status.oa_status & DRM_XE_OASTATUS_MMIO_TRG_Q_FULL)
+      header->type = INTEL_PERF_RECORD_TYPE_MMIO_TRG_Q_FULL;
+   else
+      unreachable("missing");
+
+   return header->type ? header->size : -1;
+}
+
+int
+xe_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
+                            size_t buffer_len)
+{
+   uint32_t num_samples = buffer_len / INTEL_PERF_OA_HEADER_SAMPLE_SIZE;
+   const size_t max_bytes_read = num_samples * INTEL_PERF_OA_SAMPLE_SIZE;
+   uint8_t *offset, *offset_samples;
+   int len, i;
+
+   if (buffer_len < INTEL_PERF_OA_HEADER_SAMPLE_SIZE)
+      return -ENOSPC;
+
+   do {
+      len = read(perf_stream_fd, buffer, max_bytes_read);
+   } while (len < 0 && errno == EINTR);
+
+   if (len <= 0) {
+      if (errno == EIO)
+         return xe_perf_stream_read_error(perf_stream_fd, buffer, buffer_len);
+
+      return len < 0 ? -errno : 0;
+   }
+
+   num_samples = len / INTEL_PERF_OA_SAMPLE_SIZE;
+   offset = buffer;
+   offset_samples = buffer + (buffer_len - len);
+   /* move all samples to the end of buffer */
+   memmove(offset_samples, buffer, len);
+
+   /* setup header, then copy sample from the end of buffer */
+   for (i = 0; i < num_samples; i++) {
+      struct intel_perf_record_header *header = (struct intel_perf_record_header *)offset;
+
+      /* TODO: also append REPORT_LOST and BUFFER_LOST */
+      header->type = INTEL_PERF_RECORD_TYPE_SAMPLE;
+      header->pad = 0;
+      header->size = INTEL_PERF_OA_HEADER_SAMPLE_SIZE;
+      offset += sizeof(*header);
+
+      memmove(offset, offset_samples, INTEL_PERF_OA_SAMPLE_SIZE);
+      offset += INTEL_PERF_OA_SAMPLE_SIZE;
+      offset_samples += INTEL_PERF_OA_SAMPLE_SIZE;
+   }
+
+   return offset - buffer;
+}

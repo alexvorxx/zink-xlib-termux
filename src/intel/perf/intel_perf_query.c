@@ -165,7 +165,7 @@ struct oa_sample_buf {
    struct exec_node link;
    int refcount;
    int len;
-   uint8_t buf[I915_PERF_OA_SAMPLE_SIZE * 10];
+   uint8_t buf[INTEL_PERF_OA_HEADER_SAMPLE_SIZE * 10];
    uint32_t last_timestamp;
 };
 

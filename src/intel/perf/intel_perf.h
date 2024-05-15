@@ -131,8 +131,12 @@ struct intel_pipeline_stat {
 #define STATS_BO_END_OFFSET_BYTES   (STATS_BO_SIZE / 2)
 #define MAX_STAT_COUNTERS           (STATS_BO_END_OFFSET_BYTES / 8)
 
-#define I915_PERF_OA_SAMPLE_SIZE (8 +   /* drm_i915_perf_record_header */ \
-                                  256)  /* OA counter report */
+/* Up to now all platforms uses the same sample size */
+#define INTEL_PERF_OA_SAMPLE_SIZE 256
+
+/* header + sample */
+#define INTEL_PERF_OA_HEADER_SAMPLE_SIZE (sizeof(struct intel_perf_record_header) + \
+                                          INTEL_PERF_OA_SAMPLE_SIZE)
 
 struct intel_perf_query_result {
    /**

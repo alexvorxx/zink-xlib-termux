@@ -744,7 +744,8 @@ get_color_clear_pipeline_cache_key(uint32_t rt_idx,
                                    VkFormat format,
                                    VkSampleCountFlagBits samples,
                                    uint32_t components,
-                                   bool is_layered)
+                                   bool is_layered,
+                                   bool has_multiview)
 {
    assert(rt_idx < V3D_MAX_DRAW_BUFFERS);
 
@@ -766,6 +767,9 @@ get_color_clear_pipeline_cache_key(uint32_t rt_idx,
    key |= (is_layered ? 1ull : 0ull) << bit_offset;
    bit_offset += 1;
 
+   key |= (has_multiview ? 1ull : 0ull) << bit_offset;
+   bit_offset += 1;
+
    assert(bit_offset <= 64);
    return key;
 }
@@ -774,7 +778,8 @@ static inline uint64_t
 get_depth_clear_pipeline_cache_key(VkImageAspectFlags aspects,
                                    VkFormat format,
                                    uint32_t samples,
-                                   bool is_layered)
+                                   bool is_layered,
+                                   bool has_multiview)
 {
    uint64_t key = 0;
    uint32_t bit_offset = 0;
@@ -796,6 +801,9 @@ get_depth_clear_pipeline_cache_key(VkImageAspectFlags aspects,
    key |= (is_layered ? 1ull : 0ull) << bit_offset;
    bit_offset += 1;
 
+   key |= (has_multiview ? 1ull : 0ull) << bit_offset;
+   bit_offset += 1;
+
    assert(bit_offset <= 64);
    return key;
 }
@@ -810,6 +818,7 @@ get_color_clear_pipeline(struct v3dv_device *device,
                          VkSampleCountFlagBits samples,
                          uint32_t components,
                          bool is_layered,
+                         bool has_multiview,
                          struct v3dv_meta_color_clear_pipeline **pipeline)
 {
    assert(vk_format_is_color(format));
@@ -835,7 +844,8 @@ get_color_clear_pipeline(struct v3dv_device *device,
    uint64_t key;
    if (can_cache_pipeline) {
       key = get_color_clear_pipeline_cache_key(rt_idx, format, samples,
-                                               components, is_layered);
+                                               components, is_layered,
+                                               has_multiview);
       mtx_lock(&device->meta.mtx);
       struct hash_entry *entry =
          _mesa_hash_table_search(device->meta.color_clear.cache, &key);
@@ -916,6 +926,7 @@ get_depth_clear_pipeline(struct v3dv_device *device,
                          uint32_t subpass_idx,
                          uint32_t attachment_idx,
                          bool is_layered,
+                         bool has_multiview,
                          struct v3dv_meta_depth_clear_pipeline **pipeline)
 {
    assert(subpass_idx < pass->subpass_count);
@@ -931,7 +942,7 @@ get_depth_clear_pipeline(struct v3dv_device *device,
    uint64_t key;
    if (device->instance->meta_cache_enabled) {
       key = get_depth_clear_pipeline_cache_key(aspects, format, samples,
-                                               is_layered);
+                                               is_layered, has_multiview);
       mtx_lock(&device->meta.mtx);
       struct hash_entry *entry =
          _mesa_hash_table_search(device->meta.depth_clear.cache, &key);
@@ -1013,6 +1024,7 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
                                VK_COLOR_COMPONENT_G_BIT |
                                VK_COLOR_COMPONENT_B_BIT |
                                VK_COLOR_COMPONENT_A_BIT;
+
    struct v3dv_meta_color_clear_pipeline *pipeline = NULL;
    VkResult result = get_color_clear_pipeline(cmd_buffer->device,
                                               pass,
@@ -1023,6 +1035,7 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
                                               samples,
                                               components,
                                               is_layered,
+                                              pass->multiview_enabled,
                                               &pipeline);
    if (result != VK_SUCCESS) {
       if (result == VK_ERROR_OUT_OF_HOST_MEMORY)
@@ -1105,12 +1118,14 @@ emit_subpass_ds_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
    /* Obtain a pipeline for this clear */
    assert(attachment_idx < cmd_buffer->state.pass->attachment_count);
    struct v3dv_meta_depth_clear_pipeline *pipeline = NULL;
+
    VkResult result = get_depth_clear_pipeline(cmd_buffer->device,
                                               aspects,
                                               pass,
                                               cmd_buffer->state.subpass_idx,
                                               attachment_idx,
                                               is_layered,
+                                              pass->multiview_enabled,
                                               &pipeline);
    if (result != VK_SUCCESS) {
       if (result == VK_ERROR_OUT_OF_HOST_MEMORY)

@@ -944,7 +944,8 @@ intel_perf_read_oa_stream(struct intel_perf_context *perf_ctx,
                           void* buf,
                           size_t nbytes)
 {
-   return read(perf_ctx->oa_stream_fd, buf, nbytes);
+   return intel_perf_stream_read_samples(perf_ctx->perf, perf_ctx->oa_stream_fd,
+                                         buf, nbytes);
 }
 
 enum OaReadStatus {
@@ -971,9 +972,9 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
       uint32_t offset;
       int len;
 
-      while ((len = read(perf_ctx->oa_stream_fd, buf->buf,
-                         sizeof(buf->buf))) < 0 && errno == EINTR)
-         ;
+      len = intel_perf_stream_read_samples(perf_ctx->perf,
+                                           perf_ctx->oa_stream_fd,
+                                           buf->buf, sizeof(buf->buf));
 
       if (len <= 0) {
          exec_list_push_tail(&perf_ctx->free_sample_buffers, &buf->link);
@@ -986,7 +987,7 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
             return OA_READ_STATUS_ERROR;
          }
 
-         if (errno != EAGAIN) {
+         if (len != -EAGAIN) {
             if (sample_read)
                return OA_READ_STATUS_FINISHED;
 

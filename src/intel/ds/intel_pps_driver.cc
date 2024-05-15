@@ -253,17 +253,19 @@ void IntelDriver::read_data_from_metric_set()
 {
    assert(metric_buffer.size() >= 1024 && "Metric buffer should have space for reading");
 
-   ssize_t bytes_read = 0;
-   while ((bytes_read = perf->read_oa_stream(metric_buffer.data() + total_bytes_read,
-              metric_buffer.size() - total_bytes_read)) > 0 ||
-      errno == EINTR) {
+   do {
+      ssize_t bytes_read = perf->read_oa_stream(metric_buffer.data() + total_bytes_read,
+                                                metric_buffer.size() - total_bytes_read);
+      if (bytes_read <= 0)
+         break;
+
       total_bytes_read += std::max(ssize_t(0), bytes_read);
 
       // Increase size of the buffer for the next read
       if (metric_buffer.size() / 2 < total_bytes_read) {
          metric_buffer.resize(metric_buffer.size() * 2);
       }
-   }
+   } while (true);
 
    assert(total_bytes_read < metric_buffer.size() && "Buffer not big enough");
 }

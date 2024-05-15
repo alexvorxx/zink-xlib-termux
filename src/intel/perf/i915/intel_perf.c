@@ -210,3 +210,25 @@ i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_regis
 
    return i915_perf_oa_available;
 }
+
+int
+i915_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
+                              size_t buffer_len)
+{
+   int len;
+
+   if (buffer_len < INTEL_PERF_OA_HEADER_SAMPLE_SIZE)
+      return -ENOSPC;
+
+   do {
+      len = read(perf_stream_fd, buffer, buffer_len);
+   } while (len < 0 && errno == EINTR);
+
+   if (len <= 0)
+      return len < 0 ? -errno : 0;
+
+   /* works as long drm_i915_perf_record_header and intel_perf_record_header
+    * definition matches
+    */
+   return len;
+}

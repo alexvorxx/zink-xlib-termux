@@ -1015,11 +1015,10 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
       return;
 
    /* Obtain a pipeline for this clear */
-   assert(attachment_idx < cmd_buffer->state.pass->attachment_count);
-   const VkFormat format =
-      cmd_buffer->state.pass->attachments[attachment_idx].desc.format;
+   assert(attachment_idx < pass->attachment_count);
+   const VkFormat format = pass->attachments[attachment_idx].desc.format;
    const VkSampleCountFlagBits samples =
-      cmd_buffer->state.pass->attachments[attachment_idx].desc.samples;
+      pass->attachments[attachment_idx].desc.samples;
    const uint32_t components = VK_COLOR_COMPONENT_R_BIT |
                                VK_COLOR_COMPONENT_G_BIT |
                                VK_COLOR_COMPONENT_B_BIT |
@@ -1116,7 +1115,7 @@ emit_subpass_ds_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
       return;
 
    /* Obtain a pipeline for this clear */
-   assert(attachment_idx < cmd_buffer->state.pass->attachment_count);
+   assert(attachment_idx < pass->attachment_count);
    struct v3dv_meta_depth_clear_pipeline *pipeline = NULL;
 
    VkResult result = get_depth_clear_pipeline(cmd_buffer->device,

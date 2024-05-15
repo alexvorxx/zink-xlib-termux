@@ -1496,16 +1496,6 @@ struct __DRIimageExtensionRec {
                                          int level,
                                          unsigned *error,
                                          void *loaderPrivate);
-   /**
-    * Like createImageFromNames, but takes a prime fd instead.
-    *
-    * \since 7
-    */
-   __DRIimage *(*createImageFromFds)(__DRIscreen *screen,
-                                     int width, int height, int fourcc,
-                                     int *fds, int num_fds,
-                                     int *strides, int *offsets,
-                                     void *loaderPrivate);
 
    /**
     * Blit a part of a __DRIimage to another and flushes
@@ -1555,28 +1545,6 @@ struct __DRIimageExtensionRec {
     * \since 12
     */
    void (*unmapImage)(__DRIcontext *context, __DRIimage *image, void *data);
-
-   /*
-    * Like createImageFromDmaBufs, with fewer options.
-    *
-    * For EGL_EXT_image_dma_buf_import_modifiers.
-    *
-    * Used by ChromeOS's minigbm for AMD devices as of 2023.  This is
-    * deprecated, use the current createImageFromDmaBufs() instead.
-    *
-    * \since 15
-    */
-   __DRIimage *(*createImageFromDmaBufs2)(__DRIscreen *screen,
-                                          int width, int height, int fourcc,
-                                          uint64_t modifier,
-                                          int *fds, int num_fds,
-                                          int *strides, int *offsets,
-                                          enum __DRIYUVColorSpace color_space,
-                                          enum __DRISampleRange sample_range,
-                                          enum __DRIChromaSiting horiz_siting,
-                                          enum __DRIChromaSiting vert_siting,
-                                          unsigned *error,
-                                          void *loaderPrivate);
 
    /*
     * dmabuf format query to support EGL_EXT_image_dma_buf_import_modifiers.

@@ -2859,43 +2859,60 @@ radv_get_depth_clamp_mode(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
+radv_get_viewport_zscale_ztranslate(struct radv_cmd_buffer *cmd_buffer, uint32_t vp_idx, float *zscale,
+                                    float *ztranslate)
+{
+   const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
+
+   if (d->vk.vp.depth_clip_negative_one_to_one) {
+      *zscale = d->hw_vp.xform[vp_idx].scale[2] * 0.5f;
+      *ztranslate = (d->hw_vp.xform[vp_idx].translate[2] + d->vk.vp.viewports[vp_idx].maxDepth) * 0.5f;
+   } else {
+      *zscale = d->hw_vp.xform[vp_idx].scale[2];
+      *ztranslate = d->hw_vp.xform[vp_idx].translate[2];
+   }
+}
+
+static void
+radv_get_viewport_zmin_zmax(struct radv_cmd_buffer *cmd_buffer, const VkViewport *viewport, float *zmin, float *zmax)
+{
+   const enum radv_depth_clamp_mode depth_clamp_mode = radv_get_depth_clamp_mode(cmd_buffer);
+
+   if (depth_clamp_mode == RADV_DEPTH_CLAMP_MODE_ZERO_TO_ONE) {
+      *zmin = 0.0f;
+      *zmax = 1.0f;
+   } else {
+      *zmin = MIN2(viewport->minDepth, viewport->maxDepth);
+      *zmax = MAX2(viewport->minDepth, viewport->maxDepth);
+   }
+}
+
+static void
 radv_emit_viewport(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
-   enum radv_depth_clamp_mode depth_clamp_mode = radv_get_depth_clamp_mode(cmd_buffer);
 
    assert(d->vk.vp.viewport_count);
    radeon_set_context_reg_seq(cmd_buffer->cs, R_02843C_PA_CL_VPORT_XSCALE, d->vk.vp.viewport_count * 6);
 
    for (unsigned i = 0; i < d->vk.vp.viewport_count; i++) {
+      float zscale, ztranslate;
+
+      radv_get_viewport_zscale_ztranslate(cmd_buffer, i, &zscale, &ztranslate);
+
       radeon_emit(cmd_buffer->cs, fui(d->hw_vp.xform[i].scale[0]));
       radeon_emit(cmd_buffer->cs, fui(d->hw_vp.xform[i].translate[0]));
       radeon_emit(cmd_buffer->cs, fui(d->hw_vp.xform[i].scale[1]));
       radeon_emit(cmd_buffer->cs, fui(d->hw_vp.xform[i].translate[1]));
-
-      float scale_z, translate_z;
-      if (d->vk.vp.depth_clip_negative_one_to_one) {
-         scale_z = d->hw_vp.xform[i].scale[2] * 0.5f;
-         translate_z = (d->hw_vp.xform[i].translate[2] + d->vk.vp.viewports[i].maxDepth) * 0.5f;
-      } else {
-         scale_z = d->hw_vp.xform[i].scale[2];
-         translate_z = d->hw_vp.xform[i].translate[2];
-      }
-      radeon_emit(cmd_buffer->cs, fui(scale_z));
-      radeon_emit(cmd_buffer->cs, fui(translate_z));
+      radeon_emit(cmd_buffer->cs, fui(zscale));
+      radeon_emit(cmd_buffer->cs, fui(ztranslate));
    }
 
    radeon_set_context_reg_seq(cmd_buffer->cs, R_0282D0_PA_SC_VPORT_ZMIN_0, d->vk.vp.viewport_count * 2);
    for (unsigned i = 0; i < d->vk.vp.viewport_count; i++) {
       float zmin, zmax;
 
-      if (depth_clamp_mode == RADV_DEPTH_CLAMP_MODE_ZERO_TO_ONE) {
-         zmin = 0.0f;
-         zmax = 1.0f;
-      } else {
-         zmin = MIN2(d->vk.vp.viewports[i].minDepth, d->vk.vp.viewports[i].maxDepth);
-         zmax = MAX2(d->vk.vp.viewports[i].minDepth, d->vk.vp.viewports[i].maxDepth);
-      }
+      radv_get_viewport_zmin_zmax(cmd_buffer, &d->vk.vp.viewports[i], &zmin, &zmax);
 
       radeon_emit(cmd_buffer->cs, fui(zmin));
       radeon_emit(cmd_buffer->cs, fui(zmax));

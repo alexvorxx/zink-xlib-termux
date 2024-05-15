@@ -875,24 +875,17 @@ build_copy_queries_shader(void)
    nir_variable *push = nir_variable_create(b->shader, nir_var_mem_push_const,
                                             push_iface_type, "push");
 
+   b->shader->info.workgroup_size[0] = 32;
+   nir_def *wg_id = nir_load_workgroup_id(b);
+   nir_def *i = nir_iadd(b, nir_load_subgroup_invocation(b),
+                            nir_imul_imm(b, nir_channel(b, wg_id, 0), 32));
+
    nir_def *query_count = load_struct_var(b, push, 4);
-
-   nir_variable *i = nir_local_variable_create(b->impl, glsl_uint_type(), "i");
-   nir_store_var(b, i, nir_imm_int(b, 0), 0x1);
-
-   nir_push_loop(b);
+   nir_push_if(b, nir_ilt(b, i, query_count));
    {
-      nir_push_if(b, nir_ige(b, nir_load_var(b, i), query_count));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
-
-      nvk_nir_copy_query(b, push, nir_load_var(b, i));
-
-      nir_store_var(b, i, nir_iadd_imm(b, nir_load_var(b, i), 1), 0x1);
+      nvk_nir_copy_query(b, push, i);
    }
-   nir_pop_loop(b, NULL);
+   nir_pop_if(b, NULL);
 
    return build.shader;
 }
@@ -984,7 +977,8 @@ nvk_meta_copy_query_pool_results(struct nvk_cmd_buffer *cmd,
    vk_common_CmdPushConstants(nvk_cmd_buffer_to_handle(cmd), layout,
                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
-   nvk_CmdDispatchBase(nvk_cmd_buffer_to_handle(cmd), 0, 0, 0, 1, 1, 1);
+   nvk_CmdDispatchBase(nvk_cmd_buffer_to_handle(cmd), 0, 0, 0,
+                       DIV_ROUND_UP(query_count, 32), 1, 1);
 
    /* Restore pipeline and push constants */
    if (shader_save)

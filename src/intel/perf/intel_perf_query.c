@@ -964,6 +964,7 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
       exec_node_data(struct oa_sample_buf, tail_node, link);
    uint32_t last_timestamp =
       tail_buf->len == 0 ? start_timestamp : tail_buf->last_timestamp;
+   bool sample_read = false;
 
    while (1) {
       struct oa_sample_buf *buf = get_free_sample_buf(perf_ctx);
@@ -978,11 +979,17 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
          exec_list_push_tail(&perf_ctx->free_sample_buffers, &buf->link);
 
          if (len == 0) {
+            if (sample_read)
+               return OA_READ_STATUS_FINISHED;
+
             DBG("Spurious EOF reading i915 perf samples\n");
             return OA_READ_STATUS_ERROR;
          }
 
          if (errno != EAGAIN) {
+            if (sample_read)
+               return OA_READ_STATUS_FINISHED;
+
             DBG("Error reading i915 perf samples: %m\n");
             return OA_READ_STATUS_ERROR;
          }
@@ -1011,6 +1018,7 @@ read_oa_samples_until(struct intel_perf_context *perf_ctx,
             last_timestamp = report[1];
 
          offset += header->size;
+         sample_read = true;
       }
 
       buf->last_timestamp = last_timestamp;

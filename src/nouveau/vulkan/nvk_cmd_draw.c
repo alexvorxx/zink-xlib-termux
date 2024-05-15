@@ -1176,10 +1176,22 @@ nvk_flush_shaders(struct nvk_cmd_buffer *cmd)
       /* Only copy non-NULL shaders because mesh/task alias with vertex and
        * tessellation stages.
        */
-      if (cmd->state.gfx.shaders[stage] != NULL) {
+      struct nvk_shader *shader = cmd->state.gfx.shaders[stage];
+      if (shader != NULL) {
          assert(type < ARRAY_SIZE(type_shader));
          assert(type_shader[type] == NULL);
-         type_shader[type] = cmd->state.gfx.shaders[stage];
+         type_shader[type] = shader;
+
+         const struct nvk_cbuf_map *cbuf_map = &shader->cbuf_map;
+         struct nvk_cbuf_group *cbuf_group =
+            &cmd->state.gfx.cbuf_groups[nvk_cbuf_binding_for_stage(stage)];
+         for (uint32_t i = 0; i < cbuf_map->cbuf_count; i++) {
+            if (memcmp(&cbuf_group->cbufs[i], &cbuf_map->cbufs[i],
+                       sizeof(cbuf_group->cbufs[i])) != 0) {
+               cbuf_group->cbufs[i] = cbuf_map->cbufs[i];
+               cbuf_group->dirty |= BITFIELD_BIT(i);
+            }
+         }
       }
    }
 
@@ -2369,22 +2381,26 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
       cbuf_shaders[group] = shader;
    }
 
-   uint32_t root_cbuf_count = 0;
-   for (uint32_t group = 0; group < ARRAY_SIZE(cbuf_shaders); group++) {
-      if (cbuf_shaders[group] == NULL)
+   for (uint32_t g = 0; g < ARRAY_SIZE(cbuf_shaders); g++) {
+      if (cbuf_shaders[g] == NULL)
          continue;
 
-      const struct nvk_shader *shader = cbuf_shaders[group];
+      const struct nvk_shader *shader = cbuf_shaders[g];
       const struct nvk_cbuf_map *cbuf_map = &shader->cbuf_map;
+      struct nvk_cbuf_group *group = &cmd->state.gfx.cbuf_groups[g];
 
-      for (uint32_t c = 0; c < cbuf_map->cbuf_count; c++) {
-         const struct nvk_cbuf *cbuf = &cbuf_map->cbufs[c];
+      /* We only bother to re-bind cbufs that are in use */
+      const uint32_t rebind =
+         group->dirty & BITFIELD_MASK(cbuf_map->cbuf_count);
+      if (!rebind)
+         continue;
+
+      u_foreach_bit(c, rebind) {
+         const struct nvk_cbuf *cbuf = &group->cbufs[c];
 
          /* We bind these at the very end */
-         if (cbuf->type == NVK_CBUF_TYPE_ROOT_DESC) {
-            root_cbuf_count++;
+         if (cbuf->type == NVK_CBUF_TYPE_ROOT_DESC)
             continue;
-         }
 
          struct nvk_buffer_address ba;
          if (nvk_cmd_buffer_get_cbuf_addr(cmd, desc, shader, cbuf, &ba)) {
@@ -2401,7 +2417,7 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
                P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, ba.base_addr);
             }
 
-            P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
+            P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(g), {
                .valid = ba.size > 0,
                .shader_slot = c,
             });
@@ -2413,20 +2429,22 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
                struct nv_push *p = nvk_cmd_buffer_push(cmd, 4);
 
                P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_BIND_CBUF_DESC));
-               P_INLINE_DATA(p, group | (c << 4));
+               P_INLINE_DATA(p, g | (c << 4));
                P_INLINE_DATA(p, desc_addr >> 32);
                P_INLINE_DATA(p, desc_addr);
             } else {
                struct nv_push *p = nvk_cmd_buffer_push(cmd, 2);
 
                P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_BIND_CBUF_DESC));
-               P_INLINE_DATA(p, group | (c << 4));
+               P_INLINE_DATA(p, g | (c << 4));
 
                nv_push_update_count(p, 3);
                nvk_cmd_buffer_push_indirect(cmd, desc_addr, 3);
             }
          }
       }
+
+      group->dirty &= ~rebind;
    }
 
    /* We bind all root descriptors last so that CONSTANT_BUFFER_SELECTOR is
@@ -2434,7 +2452,7 @@ nvk_flush_descriptors(struct nvk_cmd_buffer *cmd)
     * parameters and similar MME root table updates always hit the root
     * descriptor table and not some random UBO.
     */
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 4 + 2 * root_cbuf_count);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 14);
    P_MTHD(p, NV9097, SET_CONSTANT_BUFFER_SELECTOR_A);
    P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_A(p, sizeof(desc->root));
    P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, root_desc_addr >> 32);

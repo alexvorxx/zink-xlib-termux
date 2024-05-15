@@ -11,6 +11,7 @@
 #include "nvk_cmd_pool.h"
 #include "nvk_descriptor_set.h"
 #include "nvk_image.h"
+#include "nvk_shader.h"
 
 #include "util/u_dynarray.h"
 
@@ -114,6 +115,11 @@ struct nvk_graphics_state {
 
    uint32_t shaders_dirty;
    struct nvk_shader *shaders[MESA_SHADER_MESH + 1];
+
+   struct nvk_cbuf_group {
+      uint16_t dirty;
+      struct nvk_cbuf cbufs[16];
+   } cbuf_groups[5];
 
    /* Used for meta save/restore */
    struct nvk_addr_range vb0;
@@ -231,6 +237,10 @@ void nvk_cmd_bind_graphics_shader(struct nvk_cmd_buffer *cmd,
 void nvk_cmd_bind_compute_shader(struct nvk_cmd_buffer *cmd,
                                  struct nvk_shader *shader);
 
+void nvk_cmd_dirty_cbufs_for_descriptors(struct nvk_cmd_buffer *cmd,
+                                         VkShaderStageFlags stages,
+                                         uint32_t sets_start, uint32_t sets_end,
+                                         uint32_t dyn_start, uint32_t dyn_end);
 void nvk_cmd_bind_vertex_buffer(struct nvk_cmd_buffer *cmd, uint32_t vb_idx,
                                 struct nvk_addr_range addr_range);
 

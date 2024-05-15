@@ -595,6 +595,53 @@ nvk_cmd_bind_shaders(struct vk_command_buffer *vk_cmd,
    }
 }
 
+#define NVK_VK_GRAPHICS_STAGE_BITS VK_SHADER_STAGE_ALL_GRAPHICS
+
+void
+nvk_cmd_dirty_cbufs_for_descriptors(struct nvk_cmd_buffer *cmd,
+                                    VkShaderStageFlags stages,
+                                    uint32_t sets_start, uint32_t sets_end,
+                                    uint32_t dyn_start, uint32_t dyn_end)
+{
+   if (!(stages & VK_SHADER_STAGE_ALL_GRAPHICS))
+      return;
+
+   uint32_t groups = 0;
+   u_foreach_bit(i, stages & VK_SHADER_STAGE_ALL_GRAPHICS) {
+      gl_shader_stage stage = vk_to_mesa_shader_stage(1 << i);
+      uint32_t g = nvk_cbuf_binding_for_stage(stage);
+      groups |= BITFIELD_BIT(g);
+   }
+
+   u_foreach_bit(g, groups) {
+      struct nvk_cbuf_group *group = &cmd->state.gfx.cbuf_groups[g];
+
+      for (uint32_t i = 0; i < ARRAY_SIZE(group->cbufs); i++) {
+         const struct nvk_cbuf *cbuf = &group->cbufs[i];
+         switch (cbuf->type) {
+         case NVK_CBUF_TYPE_INVALID:
+         case NVK_CBUF_TYPE_ROOT_DESC:
+         case NVK_CBUF_TYPE_SHADER_DATA:
+            break;
+
+         case NVK_CBUF_TYPE_DESC_SET:
+         case NVK_CBUF_TYPE_UBO_DESC:
+            if (cbuf->desc_set >= sets_start && cbuf->desc_set < sets_end)
+               group->dirty |= BITFIELD_BIT(i);
+            break;
+
+         case NVK_CBUF_TYPE_DYNAMIC_UBO:
+            if (cbuf->dynamic_idx >= dyn_start && cbuf->dynamic_idx < dyn_end)
+               group->dirty |= BITFIELD_BIT(i);
+            break;
+
+         default:
+            unreachable("Invalid cbuf type");
+         }
+      }
+   }
+}
+
 static void
 nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
                          struct nvk_descriptor_state *desc,
@@ -621,8 +668,9 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
     * range and it's only our responsibility to adjust all
     * set_dynamic_buffer_start[p] for p > s as needed.
     */
-   uint8_t dyn_buffer_start =
+   const uint8_t dyn_buffer_start =
       desc->root.set_dynamic_buffer_start[info->firstSet];
+   uint8_t dyn_buffer_end = dyn_buffer_start;
 
    uint32_t next_dyn_offset = 0;
    for (uint32_t i = 0; i < info->descriptorSetCount; ++i) {
@@ -638,7 +686,7 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
          desc->sets[s] = set;
       }
 
-      desc->root.set_dynamic_buffer_start[s] = dyn_buffer_start;
+      desc->root.set_dynamic_buffer_start[s] = dyn_buffer_end;
 
       if (pipeline_layout->set_layouts[s] != NULL) {
          const struct nvk_descriptor_set_layout *set_layout =
@@ -655,22 +703,26 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
                } else {
                   db.addr.base_addr += offset;
                }
-               desc->root.dynamic_buffers[dyn_buffer_start + j] = db;
+               desc->root.dynamic_buffers[dyn_buffer_end + j] = db;
             }
             next_dyn_offset += set->layout->dynamic_buffer_count;
          }
 
-         dyn_buffer_start += set_layout->dynamic_buffer_count;
+         dyn_buffer_end += set_layout->dynamic_buffer_count;
       } else {
          assert(set == NULL);
       }
    }
-   assert(dyn_buffer_start <= NVK_MAX_DYNAMIC_BUFFERS);
+   assert(dyn_buffer_end <= NVK_MAX_DYNAMIC_BUFFERS);
    assert(next_dyn_offset <= info->dynamicOffsetCount);
 
    for (uint32_t s = info->firstSet + info->descriptorSetCount;
         s < NVK_MAX_SETS; s++)
-      desc->root.set_dynamic_buffer_start[s] = dyn_buffer_start;
+      desc->root.set_dynamic_buffer_start[s] = dyn_buffer_end;
+
+   nvk_cmd_dirty_cbufs_for_descriptors(cmd, info->stageFlags, info->firstSet,
+                                       info->firstSet + info->descriptorSetCount,
+                                       dyn_buffer_start, dyn_buffer_end);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -679,7 +731,7 @@ nvk_CmdBindDescriptorSets2KHR(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
 
-   if (pBindDescriptorSetsInfo->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+   if (pBindDescriptorSetsInfo->stageFlags & NVK_VK_GRAPHICS_STAGE_BITS) {
       nvk_bind_descriptor_sets(cmd, &cmd->state.gfx.descriptors,
                                pBindDescriptorSetsInfo);
    }
@@ -705,7 +757,7 @@ nvk_CmdPushConstants2KHR(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
 
-   if (pPushConstantsInfo->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS)
+   if (pPushConstantsInfo->stageFlags & NVK_VK_GRAPHICS_STAGE_BITS)
       nvk_push_constants(cmd, &cmd->state.gfx.descriptors, pPushConstantsInfo);
 
    if (pPushConstantsInfo->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT)
@@ -754,6 +806,9 @@ nvk_push_descriptor_set(struct nvk_cmd_buffer *cmd,
    nvk_push_descriptor_set_update(dev, push_set, set_layout,
                                   info->descriptorWriteCount,
                                   info->pDescriptorWrites);
+
+   nvk_cmd_dirty_cbufs_for_descriptors(cmd, info->stageFlags,
+                                       info->set, info->set + 1, 0, 0);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -762,7 +817,7 @@ nvk_CmdPushDescriptorSet2KHR(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
 
-   if (pPushDescriptorSetInfo->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+   if (pPushDescriptorSetInfo->stageFlags & NVK_VK_GRAPHICS_STAGE_BITS) {
       nvk_push_descriptor_set(cmd, &cmd->state.gfx.descriptors,
                               pPushDescriptorSetInfo);
    }

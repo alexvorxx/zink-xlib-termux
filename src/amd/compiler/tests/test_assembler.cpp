@@ -85,35 +85,39 @@ BEGIN_TEST(assembler.long_jump.unconditional_forwards)
 END_TEST
 
 BEGIN_TEST(assembler.long_jump.conditional_forwards)
-   if (!setup_cs(NULL, (amd_gfx_level)GFX10))
-      return;
+   for (amd_gfx_level gfx : filter_gfx_levels({GFX10, GFX12})) {
+      if (!setup_cs(NULL, gfx))
+         continue;
 
-   //! BB0:
-   //! s_cbranch_scc1 BB1                                          ; bf850006
-   //! s_getpc_b64 s[0:1]                                          ; be801f00
-   //! s_addc_u32 s0, s0, 0x20014                                  ; 8200ff00 00020014
-   //! s_bitcmp1_b32 s0, 0                                         ; bf0d8000
-   //! s_bitset0_b32 s0, 0                                         ; be801b80
-   //! s_setpc_b64 s[0:1]                                          ; be802000
-   bld.sopp(aco_opcode::s_cbranch_scc0, Definition(PhysReg(0), s2), 2);
+      //! BB0:
+      //! s_cbranch_scc1 BB1                                          ; $_
+      //! s_getpc_b64 s[0:1]                                          ; $_
+      //~gfx12! s_sext_i32_i16 s1, s1                                 ; $_
+      //~gfx10! s_addc_u32 s0, s0, 0x20014                            ; $_ $_
+      //~gfx12! s_add_co_ci_u32 s0, s0, 0x20014                       ; $_ $_
+      //! s_bitcmp1_b32 s0, 0                                         ; $_
+      //! s_bitset0_b32 s0, 0                                         ; $_
+      //! s_setpc_b64 s[0:1]                                          ; $_
+      bld.sopp(aco_opcode::s_cbranch_scc0, Definition(PhysReg(0), s2), 2);
 
-   bld.reset(program->create_and_insert_block());
+      bld.reset(program->create_and_insert_block());
 
-   //! BB1:
-   //! s_nop 0 ; bf800000
-   //!(then repeated 32767 times)
-   for (unsigned i = 0; i < INT16_MAX + 1; i++)
-      bld.sopp(aco_opcode::s_nop, 0);
+      //! BB1:
+      //! s_nop 0 ; bf800000
+      //!(then repeated 32767 times)
+      for (unsigned i = 0; i < INT16_MAX + 1; i++)
+         bld.sopp(aco_opcode::s_nop, 0);
 
-   //! BB2:
-   //! s_endpgm                                                    ; bf810000
-   bld.reset(program->create_and_insert_block());
+      //! BB2:
+      //! s_endpgm                                                    ; $_
+      bld.reset(program->create_and_insert_block());
 
-   program->blocks[1].linear_preds.push_back(0u);
-   program->blocks[2].linear_preds.push_back(0u);
-   program->blocks[2].linear_preds.push_back(1u);
+      program->blocks[1].linear_preds.push_back(0u);
+      program->blocks[2].linear_preds.push_back(0u);
+      program->blocks[2].linear_preds.push_back(1u);
 
-   finish_assembler_test();
+      finish_assembler_test();
+   }
 END_TEST
 
 BEGIN_TEST(assembler.long_jump.unconditional_backwards)

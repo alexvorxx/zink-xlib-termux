@@ -2891,8 +2891,12 @@ lower_to_hw_instr(Program* program)
                                   program->workgroup_size > program->wave_size;
 
             bld.insert(std::move(instr));
-            if (emit_s_barrier)
+            if (emit_s_barrier && ctx.program->gfx_level >= GFX12) {
+               bld.sop1(aco_opcode::s_barrier_signal, Operand::c32(-1));
+               bld.sopp(aco_opcode::s_barrier_wait, UINT16_MAX);
+            } else if (emit_s_barrier) {
                bld.sopp(aco_opcode::s_barrier);
+            }
          } else if (instr->opcode == aco_opcode::p_cvt_f16_f32_rtne) {
             float_mode new_mode = block->fp_mode;
             new_mode.round16_64 = fp_round_ne;

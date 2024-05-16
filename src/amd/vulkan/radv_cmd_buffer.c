@@ -2873,7 +2873,7 @@ radv_emit_viewport(struct radv_cmd_buffer *cmd_buffer)
       radeon_emit(cmd_buffer->cs, fui(d->hw_vp.xform[i].scale[1]));
       radeon_emit(cmd_buffer->cs, fui(d->hw_vp.xform[i].translate[1]));
 
-      double scale_z, translate_z;
+      float scale_z, translate_z;
       if (d->vk.vp.depth_clip_negative_one_to_one) {
          scale_z = d->hw_vp.xform[i].scale[2] * 0.5f;
          translate_z = (d->hw_vp.xform[i].translate[2] + d->vk.vp.viewports[i].maxDepth) * 0.5f;

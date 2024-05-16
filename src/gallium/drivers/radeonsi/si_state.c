@@ -2460,76 +2460,9 @@ static uint32_t si_translate_buffer_dataformat(struct pipe_screen *screen,
                                                const struct util_format_description *desc,
                                                int first_non_void)
 {
-   int i;
-
    assert(((struct si_screen *)screen)->info.gfx_level <= GFX9);
 
-   if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT)
-      return V_008F0C_BUF_DATA_FORMAT_10_11_11;
-
-   assert(first_non_void >= 0);
-
-   if (desc->nr_channels == 4 && desc->channel[0].size == 10 && desc->channel[1].size == 10 &&
-       desc->channel[2].size == 10 && desc->channel[3].size == 2)
-      return V_008F0C_BUF_DATA_FORMAT_2_10_10_10;
-
-   /* See whether the components are of the same size. */
-   for (i = 0; i < desc->nr_channels; i++) {
-      if (desc->channel[first_non_void].size != desc->channel[i].size)
-         return V_008F0C_BUF_DATA_FORMAT_INVALID;
-   }
-
-   switch (desc->channel[first_non_void].size) {
-   case 8:
-      switch (desc->nr_channels) {
-      case 1:
-      case 3: /* 3 loads */
-         return V_008F0C_BUF_DATA_FORMAT_8;
-      case 2:
-         return V_008F0C_BUF_DATA_FORMAT_8_8;
-      case 4:
-         return V_008F0C_BUF_DATA_FORMAT_8_8_8_8;
-      }
-      break;
-   case 16:
-      switch (desc->nr_channels) {
-      case 1:
-      case 3: /* 3 loads */
-         return V_008F0C_BUF_DATA_FORMAT_16;
-      case 2:
-         return V_008F0C_BUF_DATA_FORMAT_16_16;
-      case 4:
-         return V_008F0C_BUF_DATA_FORMAT_16_16_16_16;
-      }
-      break;
-   case 32:
-      switch (desc->nr_channels) {
-      case 1:
-         return V_008F0C_BUF_DATA_FORMAT_32;
-      case 2:
-         return V_008F0C_BUF_DATA_FORMAT_32_32;
-      case 3:
-         return V_008F0C_BUF_DATA_FORMAT_32_32_32;
-      case 4:
-         return V_008F0C_BUF_DATA_FORMAT_32_32_32_32;
-      }
-      break;
-   case 64:
-      /* Legacy double formats. */
-      switch (desc->nr_channels) {
-      case 1: /* 1 load */
-         return V_008F0C_BUF_DATA_FORMAT_32_32;
-      case 2: /* 1 load */
-         return V_008F0C_BUF_DATA_FORMAT_32_32_32_32;
-      case 3: /* 3 loads */
-         return V_008F0C_BUF_DATA_FORMAT_32_32;
-      case 4: /* 2 loads */
-         return V_008F0C_BUF_DATA_FORMAT_32_32_32_32;
-      }
-      break;
-   }
-
-   return V_008F0C_BUF_DATA_FORMAT_INVALID;
+   return ac_translate_buffer_dataformat(desc, first_non_void);
 }
 
 static uint32_t si_translate_buffer_numformat(struct pipe_screen *screen,

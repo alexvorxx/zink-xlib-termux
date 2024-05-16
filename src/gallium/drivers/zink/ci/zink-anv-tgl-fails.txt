@@ -584,9 +584,6 @@ spec@arb_fragment_layer_viewport@layer-no-gs,Fail
 # issues.
 KHR-GL46.sparse_texture_tests.SparseTextureCommitment,Crash
 
-# Test fails because it expects 1D images to have 2D block shapes
-KHR-GL46.sparse_texture2_tests.StandardPageSizesTestCase,Fail
-
 # Issue 11073 constains a big explanation on why this fails. The test is using a
 # 2D_3D compatible format that ends up being marked by Anv as "everything is
 # miptail" and the test is not expecting that.

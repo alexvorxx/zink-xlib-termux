@@ -890,46 +890,46 @@ anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
    bool is_standard = false;
    bool is_known_nonstandard_format = false;
 
-   if (vk_image_type != VK_IMAGE_TYPE_1D) {
-      VkExtent3D std_shape =
-         anv_sparse_get_standard_image_block_shape(surf->format,
-                                                   vk_image_type, vk_samples,
-                                                   bpb);
-      /* YUV formats don't work with Tile64, which is required if we want to
-       * claim standard block shapes. The spec requires us to support all
-       * non-compressed color formats that non-sparse supports, so we can't
-       * just say YUV formats are not supported by Sparse. So we end
-       * supporting this format and anv_sparse_calc_miptail_properties() will
-       * say that everything is part of the miptail.
-       *
-       * For more details on the hardware restriction, please check
-       * isl_gfx125_filter_tiling().
-       */
-      if (pdevice->info.verx10 >= 125 && isl_format_is_yuv(surf->format))
-         is_known_nonstandard_format = true;
+   /* We shouldn't be able to reach this function with a 1D image. */
+   assert(vk_image_type != VK_IMAGE_TYPE_1D);
 
-      /* The standard block shapes (and by extension, the tiling formats they
-       * require) are simply incompatible with getting a 2D view of a 3D
-       * image.
-       */
-      if (surf->usage & ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT)
-         is_known_nonstandard_format = true;
+   VkExtent3D std_shape =
+      anv_sparse_get_standard_image_block_shape(surf->format,
+                                                vk_image_type, vk_samples,
+                                                bpb);
+   /* YUV formats don't work with Tile64, which is required if we want to
+    * claim standard block shapes. The spec requires us to support all
+    * non-compressed color formats that non-sparse supports, so we can't just
+    * say YUV formats are not supported by Sparse. So we end supporting this
+    * format and anv_sparse_calc_miptail_properties() will say that everything
+    * is part of the miptail.
+    *
+    * For more details on the hardware restriction, please check
+    * isl_gfx125_filter_tiling().
+    */
+   if (pdevice->info.verx10 >= 125 && isl_format_is_yuv(surf->format))
+      is_known_nonstandard_format = true;
 
-      is_standard = granularity.width == std_shape.width &&
-                    granularity.height == std_shape.height &&
-                    granularity.depth == std_shape.depth;
+   /* The standard block shapes (and by extension, the tiling formats they
+    * require) are simply incompatible with getting a 2D view of a 3D image.
+    */
+   if (surf->usage & ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT)
+      is_known_nonstandard_format = true;
 
-      /* TODO: dEQP seems to care about the block shapes being standard even
-       * for the cases where is_known_nonstandard_format is true. Luckily as
-       * of today all of those cases are NotSupported but sooner or later we
-       * may end up getting a failure.
-       * Notice that in practice we report these cases as having the mip tail
-       * starting on mip level 0, so the reported block shapes are irrelevant
-       * since non-opaque binds are not supported. Still, dEQP seems to care.
-       */
-      assert(is_standard || is_known_nonstandard_format);
-      assert(!(is_standard && is_known_nonstandard_format));
-   }
+   is_standard = granularity.width == std_shape.width &&
+                 granularity.height == std_shape.height &&
+                 granularity.depth == std_shape.depth;
+
+   /* TODO: dEQP seems to care about the block shapes being standard even for
+    * the cases where is_known_nonstandard_format is true. Luckily as of today
+    * all of those cases are NotSupported but sooner or later we may end up
+    * getting a failure.
+    * Notice that in practice we report these cases as having the mip tail
+    * starting on mip level 0, so the reported block shapes are irrelevant
+    * since non-opaque binds are not supported. Still, dEQP seems to care.
+    */
+   assert(is_standard || is_known_nonstandard_format);
+   assert(!(is_standard && is_known_nonstandard_format));
 
    uint32_t block_size = granularity.width * granularity.height *
                          granularity.depth * Bpb;
@@ -1277,6 +1277,9 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
     */
    if (!(flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT))
       return VK_SUCCESS;
+
+   if (type == VK_IMAGE_TYPE_1D)
+      return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
    /* From here on, these are the rules:
     *   "A sparse image created using VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT

@@ -639,6 +639,8 @@ nvk_get_device_properties(const struct nvk_instance *instance,
                                                VK_SAMPLE_COUNT_4_BIT |
                                                VK_SAMPLE_COUNT_8_BIT;
 
+   assert(sample_counts <= (NVK_MAX_SAMPLES << 1) - 1);
+
    uint64_t os_page_size = 4096;
    os_get_page_size(&os_page_size);
 

@@ -31,6 +31,8 @@ struct nvk_sample_location {
    uint8_t x_u4:4;
    uint8_t y_u4:4;
 };
+static_assert(sizeof(struct nvk_sample_location) == 1,
+              "This struct has no holes");
 
 /** Root descriptor table.  This gets pushed to the GPU directly */
 struct nvk_root_descriptor_table {
@@ -42,7 +44,7 @@ struct nvk_root_descriptor_table {
          uint32_t base_instance;
          uint32_t draw_id;
          uint32_t view_index;
-         struct nvk_sample_location sample_locations[8];
+         struct nvk_sample_location sample_locations[NVK_MAX_SAMPLES];
       } draw;
       struct {
          uint32_t base_group[3];

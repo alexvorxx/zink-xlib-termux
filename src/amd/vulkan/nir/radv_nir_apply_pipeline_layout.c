@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  */
+#include "ac_descriptors.h"
 #include "ac_shader_util.h"
 #include "nir.h"
 #include "nir_builder.h"
@@ -138,20 +139,11 @@ visit_load_vulkan_descriptor(nir_builder *b, apply_layout_state *state, nir_intr
 static nir_def *
 load_inline_buffer_descriptor(nir_builder *b, apply_layout_state *state, nir_def *rsrc)
 {
-   uint32_t desc_type = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                        S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
-   if (state->gfx_level >= GFX11) {
-      desc_type |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   } else if (state->gfx_level >= GFX10) {
-      desc_type |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                   S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-   } else {
-      desc_type |=
-         S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) | S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-   }
+   uint32_t desc[4];
 
-   return nir_vec4(b, rsrc, nir_imm_int(b, S_008F04_BASE_ADDRESS_HI(state->address32_hi)), nir_imm_int(b, 0xffffffff),
-                   nir_imm_int(b, desc_type));
+   ac_build_raw_buffer_descriptor(state->gfx_level, (uint64_t)state->address32_hi << 32, 0xffffffff, desc);
+
+   return nir_vec4(b, rsrc, nir_imm_int(b, desc[1]), nir_imm_int(b, desc[2]), nir_imm_int(b, desc[3]));
 }
 
 static nir_def *

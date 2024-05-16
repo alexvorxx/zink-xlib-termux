@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "util/mesa-sha1.h"
+#include "ac_descriptors.h"
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
 #include "radv_cmd_buffer.h"
@@ -1077,28 +1078,11 @@ write_buffer_descriptor(struct radv_device *device, unsigned *dst, uint64_t va, 
       return;
    }
 
-   uint32_t rsrc_word3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                         S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
-
-   if (pdev->info.gfx_level >= GFX11) {
-      rsrc_word3 |=
-         S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   } else if (pdev->info.gfx_level >= GFX10) {
-      rsrc_word3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-   } else {
-      rsrc_word3 |=
-         S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) | S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-   }
-
-   dst[0] = va;
-   dst[1] = S_008F04_BASE_ADDRESS_HI(va >> 32);
    /* robustBufferAccess is relaxed enough to allow this (in combination with the alignment/size
     * we return from vkGetBufferMemoryRequirements) and this allows the shader compiler to create
     * more efficient 8/16-bit buffer accesses.
     */
-   dst[2] = align(range, 4);
-   dst[3] = rsrc_word3;
+   ac_build_raw_buffer_descriptor(pdev->info.gfx_level, va, align(range, 4), dst);
 }
 
 static ALWAYS_INLINE void

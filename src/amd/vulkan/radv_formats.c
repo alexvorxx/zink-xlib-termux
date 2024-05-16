@@ -36,8 +36,8 @@ radv_translate_buffer_dataformat(const struct util_format_description *desc, int
    if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT)
       return V_008F0C_BUF_DATA_FORMAT_10_11_11;
 
-   if (first_non_void < 0)
-      return V_008F0C_BUF_DATA_FORMAT_INVALID;
+   assert(first_non_void >= 0);
+
    type = desc->channel[first_non_void].type;
 
    if (type == UTIL_FORMAT_TYPE_FIXED)
@@ -108,8 +108,7 @@ radv_translate_buffer_numformat(const struct util_format_description *desc, int 
    if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT)
       return V_008F0C_BUF_NUM_FORMAT_FLOAT;
 
-   if (first_non_void < 0)
-      return ~0;
+   assert(first_non_void >= 0);
 
    switch (desc->channel[first_non_void].type) {
    case UTIL_FORMAT_TYPE_SIGNED:
@@ -538,12 +537,19 @@ radv_is_buffer_format_supported(VkFormat format, bool *scaled)
    if (format == VK_FORMAT_UNDEFINED)
       return false;
 
-   data_format = radv_translate_buffer_dataformat(desc, vk_format_get_first_non_void_channel(format));
-   num_format = radv_translate_buffer_numformat(desc, vk_format_get_first_non_void_channel(format));
+   const int first_non_void = vk_format_get_first_non_void_channel(format);
+   if (first_non_void < 0)
+      return false;
 
+   data_format = radv_translate_buffer_dataformat(desc, first_non_void);
+   if (data_format == V_008F0C_BUF_DATA_FORMAT_INVALID)
+      return false;
+
+   num_format = radv_translate_buffer_numformat(desc, first_non_void);
    if (scaled)
       *scaled = (num_format == V_008F0C_BUF_NUM_FORMAT_SSCALED) || (num_format == V_008F0C_BUF_NUM_FORMAT_USCALED);
-   return data_format != V_008F0C_BUF_DATA_FORMAT_INVALID && num_format != ~0;
+
+   return true;
 }
 
 bool

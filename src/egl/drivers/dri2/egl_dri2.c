@@ -2431,7 +2431,8 @@ dri2_create_image_mesa_drm_buffer(_EGLDisplay *disp, _EGLContext *ctx,
                                   const EGLint *attr_list)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
-   EGLint format, name, pitch;
+   EGLint name, pitch;
+   uint32_t fourcc;
    _EGLImageAttribs attrs;
    __DRIimage *dri_image;
 
@@ -2448,8 +2449,8 @@ dri2_create_image_mesa_drm_buffer(_EGLDisplay *disp, _EGLContext *ctx,
 
    switch (attrs.DRMBufferFormatMESA) {
    case EGL_DRM_BUFFER_FORMAT_ARGB32_MESA:
-      format = PIPE_FORMAT_BGRA8888_UNORM;
-      pitch = attrs.DRMBufferStrideMESA;
+      fourcc = DRM_FORMAT_ARGB8888;
+      pitch = attrs.DRMBufferStrideMESA * 4;
       break;
    default:
       _eglError(EGL_BAD_PARAMETER,
@@ -2457,9 +2458,9 @@ dri2_create_image_mesa_drm_buffer(_EGLDisplay *disp, _EGLContext *ctx,
       return NULL;
    }
 
-   dri_image = dri2_dpy->image->createImageFromName(
-      dri2_dpy->dri_screen_render_gpu, attrs.Width, attrs.Height, format, name,
-      pitch, NULL);
+   dri_image = dri2_dpy->image->createImageFromNames(
+      dri2_dpy->dri_screen_render_gpu, attrs.Width, attrs.Height, fourcc,
+      (int *) &name, 1, (int *) &pitch, 0, NULL);
 
    return dri2_create_image_from_dri(disp, dri_image);
 }

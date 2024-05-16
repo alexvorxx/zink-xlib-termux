@@ -1416,7 +1416,8 @@ bool
 Instruction::isTrans() const noexcept
 {
    return instr_info.classes[(int)opcode] == instr_class::valu_transcendental32 ||
-          instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental;
+          instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental ||
+          instr_info.classes[(int)opcode] == instr_class::valu_pseudo_scalar_trans;
 }
 
 size_t

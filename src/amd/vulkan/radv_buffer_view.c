@@ -47,7 +47,8 @@ radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFor
                 S_008F0C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) | S_008F0C_DST_SEL_W(ac_map_swizzle(swizzle[3]));
 
    if (pdev->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&pdev->info)[vk_format_to_pipe_format(vk_format)];
+      const struct gfx10_format *fmt =
+         &ac_get_gfx10_format_table(pdev->info.gfx_level)[vk_format_to_pipe_format(vk_format)];
 
       /* OOB_SELECT chooses the out-of-bounds check.
        *

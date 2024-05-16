@@ -2366,7 +2366,7 @@ static bool si_is_sampler_format_supported(struct pipe_screen *screen, enum pipe
       return false;
 
    if (sscreen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[format];
       if (!fmt->img_format || fmt->buffers_only)
          return false;
       return true;
@@ -2424,7 +2424,7 @@ static unsigned si_is_vertex_format_supported(struct pipe_screen *screen, enum p
    }
 
    if (sscreen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[format];
       unsigned first_image_only_format = sscreen->info.gfx_level >= GFX11 ? 64 : 128;
 
       if (!fmt->img_format || fmt->img_format >= first_image_only_format)
@@ -4430,7 +4430,7 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
               S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
 
    if (screen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(screen->info.gfx_level)[format];
 
       /* OOB_SELECT chooses the out-of-bounds check.
        *
@@ -4543,7 +4543,7 @@ static void cdna_emu_make_image_descriptor(struct si_screen *screen, struct si_t
               S_008F0C_DST_SEL_W(ac_map_swizzle(swizzle[3]));
 
    if (screen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[pipe_format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(screen->info.gfx_level)[pipe_format];
 
       state[3] |= (screen->info.gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
                                                      S_008F0C_FORMAT_GFX10(fmt->img_format)) |
@@ -4588,7 +4588,7 @@ static void gfx10_make_texture_descriptor(
    unsigned type;
 
    desc = util_format_description(pipe_format);
-   img_format = ac_get_gfx10_format_table(&screen->info)[pipe_format].img_format;
+   img_format = ac_get_gfx10_format_table(screen->info.gfx_level)[pipe_format].img_format;
 
    if (desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS) {
       const unsigned char swizzle_xxxx[4] = {0, 0, 0, 0};
@@ -5462,7 +5462,7 @@ static void *si_create_vertex_elements(struct pipe_context *ctx, unsigned count,
                               S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
 
       if (sscreen->info.gfx_level >= GFX10) {
-         const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[elements[i].src_format];
+         const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[elements[i].src_format];
          ASSERTED unsigned last_vertex_format = sscreen->info.gfx_level >= GFX11 ? 64 : 128;
          assert(fmt->img_format != 0 && fmt->img_format < last_vertex_format);
          v->elem[i].rsrc_word3 |=

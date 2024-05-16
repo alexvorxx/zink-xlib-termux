@@ -118,7 +118,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
       desc = util_format_description(PIPE_FORMAT_R8G8B8X8_SRGB);
    }
 
-   img_format = ac_get_gfx10_format_table(&pdev->info)[vk_format_to_pipe_format(vk_format)].img_format;
+   img_format = ac_get_gfx10_format_table(pdev->info.gfx_level)[vk_format_to_pipe_format(vk_format)].img_format;
 
    radv_compose_swizzle(desc, mapping, swizzle);
 

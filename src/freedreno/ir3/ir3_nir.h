@@ -70,7 +70,7 @@ bool ir3_nir_lower_64b_global(nir_shader *shader);
 bool ir3_nir_lower_64b_regs(nir_shader *shader);
 
 bool ir3_nir_opt_branch_and_or_not(nir_shader *nir);
-void ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s);
+bool ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s);
 void ir3_nir_lower_io_to_temporaries(nir_shader *s);
 void ir3_finalize_nir(struct ir3_compiler *compiler, nir_shader *s);
 void ir3_nir_post_finalize(struct ir3_shader *shader);

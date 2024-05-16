@@ -157,12 +157,13 @@ ir3_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
 
 #define OPT_V(nir, pass, ...) NIR_PASS_V(nir, pass, ##__VA_ARGS__)
 
-void
+bool
 ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
 {
    MESA_TRACE_FUNC();
 
    bool progress;
+   bool did_progress = false;
    unsigned lower_flrp = (s->options->lower_flrp16 ? 16 : 0) |
                          (s->options->lower_flrp32 ? 32 : 0) |
                          (s->options->lower_flrp64 ? 64 : 0);
@@ -262,9 +263,11 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
       progress |= OPT(s, nir_lower_64bit_phis);
       progress |= OPT(s, nir_opt_remove_phis);
       progress |= OPT(s, nir_opt_undef);
+      did_progress |= progress;
    } while (progress);
 
    OPT(s, nir_lower_var_copies);
+   return did_progress;
 }
 
 static bool
@@ -856,6 +859,9 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
 
    if (progress)
       ir3_optimize_loop(so->compiler, s);
+
+   /* verify that progress is always set */
+   assert(!ir3_optimize_loop(so->compiler, s));
 
    /* Fixup indirect load_uniform's which end up with a const base offset
     * which is too large to encode.  Do this late(ish) so we actually

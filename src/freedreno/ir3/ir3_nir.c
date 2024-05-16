@@ -725,8 +725,8 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
 
    bool progress = false;
 
-   NIR_PASS_V(s, nir_lower_io_to_scalar, nir_var_mem_ssbo,
-              ir3_nir_should_scalarize_mem, so->compiler);
+   progress |= OPT(s, nir_lower_io_to_scalar, nir_var_mem_ssbo,
+                   ir3_nir_should_scalarize_mem, so->compiler);
 
    if (so->key.has_gs || so->key.tessellation) {
       switch (so->type) {

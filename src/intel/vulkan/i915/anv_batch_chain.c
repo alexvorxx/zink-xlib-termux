@@ -50,8 +50,6 @@ struct anv_execbuf {
 
    const VkAllocationCallbacks *             alloc;
    VkSystemAllocationScope                   alloc_scope;
-
-   int                                       perf_query_pass;
 };
 
 static void
@@ -796,7 +794,6 @@ i915_queue_exec_locked(struct anv_queue *queue,
    struct anv_execbuf execbuf = {
       .alloc = &queue->device->vk.alloc,
       .alloc_scope = VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
-      .perf_query_pass = perf_query_pass,
    };
    VkResult result;
 

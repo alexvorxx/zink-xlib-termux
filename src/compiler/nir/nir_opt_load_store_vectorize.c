@@ -337,7 +337,6 @@ add_to_entry_key(nir_scalar *offset_defs, uint64_t *offset_defs_mul,
 
 static struct entry_key *
 create_entry_key_from_deref(void *mem_ctx,
-                            struct vectorize_ctx *ctx,
                             nir_deref_path *path,
                             uint64_t *offset_base)
 {
@@ -525,11 +524,11 @@ calc_alignment(struct entry *entry)
 }
 
 static struct entry *
-create_entry(struct vectorize_ctx *ctx,
+create_entry(void *mem_ctx,
              const struct intrinsic_info *info,
              nir_intrinsic_instr *intrin)
 {
-   struct entry *entry = rzalloc(ctx, struct entry);
+   struct entry *entry = rzalloc(mem_ctx, struct entry);
    entry->intrin = intrin;
    entry->instr = &intrin->instr;
    entry->info = info;
@@ -539,7 +538,7 @@ create_entry(struct vectorize_ctx *ctx,
       entry->deref = nir_src_as_deref(intrin->src[entry->info->deref_src]);
       nir_deref_path path;
       nir_deref_path_init(&path, entry->deref, NULL);
-      entry->key = create_entry_key_from_deref(entry, ctx, &path, &entry->offset);
+      entry->key = create_entry_key_from_deref(entry, &path, &entry->offset);
       nir_deref_path_finish(&path);
    } else {
       nir_def *base = entry->info->base_src >= 0 ? intrin->src[entry->info->base_src].ssa : NULL;
@@ -1471,4 +1470,34 @@ nir_opt_load_store_vectorize(nir_shader *shader, const nir_load_store_vectorize_
 
    ralloc_free(ctx);
    return progress;
+}
+
+static bool
+opt_load_store_update_alignments_callback(struct nir_builder *b,
+                                          nir_intrinsic_instr *intrin,
+                                          UNUSED void *s)
+{
+   if (!nir_intrinsic_has_align_mul(intrin))
+      return false;
+
+   const struct intrinsic_info *info = get_info(intrin->intrinsic);
+   if (!info)
+      return false;
+
+   struct entry *entry = create_entry(NULL, info, intrin);
+   const bool progress = update_align(entry);
+   ralloc_free(entry);
+
+   return progress;
+}
+
+bool
+nir_opt_load_store_update_alignments(nir_shader *shader)
+{
+   return nir_shader_intrinsics_pass(shader,
+                                     opt_load_store_update_alignments_callback,
+                                     nir_metadata_block_index |
+                                     nir_metadata_dominance |
+                                     nir_metadata_live_defs |
+                                     nir_metadata_instr_index, NULL);
 }

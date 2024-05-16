@@ -11,6 +11,26 @@
 #include "sid.h"
 
 #include "util/u_math.h"
+#include "util/format/u_format.h"
+
+unsigned
+ac_map_swizzle(unsigned swizzle)
+{
+   switch (swizzle) {
+   case PIPE_SWIZZLE_Y:
+      return V_008F0C_SQ_SEL_Y;
+   case PIPE_SWIZZLE_Z:
+      return V_008F0C_SQ_SEL_Z;
+   case PIPE_SWIZZLE_W:
+      return V_008F0C_SQ_SEL_W;
+   case PIPE_SWIZZLE_0:
+      return V_008F0C_SQ_SEL_0;
+   case PIPE_SWIZZLE_1:
+      return V_008F0C_SQ_SEL_1;
+   default: /* PIPE_SWIZZLE_X */
+      return V_008F0C_SQ_SEL_X;
+   }
+}
 
 void
 ac_build_sampler_descriptor(const enum amd_gfx_level gfx_level, const struct ac_sampler_state *state, uint32_t desc[4])

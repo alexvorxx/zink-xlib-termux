@@ -161,8 +161,8 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    state[1] = S_00A004_FORMAT_GFX10(img_format) | S_00A004_WIDTH_LO(width - 1);
    state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
               S_00A008_RESOURCE_LEVEL(pdev->info.gfx_level < GFX11);
-   state[3] = S_00A00C_DST_SEL_X(radv_map_swizzle(swizzle[0])) | S_00A00C_DST_SEL_Y(radv_map_swizzle(swizzle[1])) |
-              S_00A00C_DST_SEL_Z(radv_map_swizzle(swizzle[2])) | S_00A00C_DST_SEL_W(radv_map_swizzle(swizzle[3])) |
+   state[3] = S_00A00C_DST_SEL_X(ac_map_swizzle(swizzle[0])) | S_00A00C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+              S_00A00C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) | S_00A00C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
               S_00A00C_BASE_LEVEL(image->vk.samples > 1 ? 0 : first_level) |
               S_00A00C_LAST_LEVEL_GFX10(image->vk.samples > 1 ? util_logbase2(image->vk.samples) : last_level) |
               S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
@@ -297,8 +297,8 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    state[1] = (S_008F14_MIN_LOD(util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8)) | S_008F14_DATA_FORMAT(data_format) |
                S_008F14_NUM_FORMAT(num_format));
    state[2] = (S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1) | S_008F18_PERF_MOD(4));
-   state[3] = (S_008F1C_DST_SEL_X(radv_map_swizzle(swizzle[0])) | S_008F1C_DST_SEL_Y(radv_map_swizzle(swizzle[1])) |
-               S_008F1C_DST_SEL_Z(radv_map_swizzle(swizzle[2])) | S_008F1C_DST_SEL_W(radv_map_swizzle(swizzle[3])) |
+   state[3] = (S_008F1C_DST_SEL_X(ac_map_swizzle(swizzle[0])) | S_008F1C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+               S_008F1C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) | S_008F1C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
                S_008F1C_BASE_LEVEL(image->vk.samples > 1 ? 0 : first_level) |
                S_008F1C_LAST_LEVEL(image->vk.samples > 1 ? util_logbase2(image->vk.samples) : last_level) |
                S_008F1C_TYPE(type));

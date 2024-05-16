@@ -22,24 +22,6 @@
 #include "ac_formats.h"
 #include "gfx10_format_table.h"
 
-static unsigned si_map_swizzle(unsigned swizzle)
-{
-   switch (swizzle) {
-   case PIPE_SWIZZLE_Y:
-      return V_008F0C_SQ_SEL_Y;
-   case PIPE_SWIZZLE_Z:
-      return V_008F0C_SQ_SEL_Z;
-   case PIPE_SWIZZLE_W:
-      return V_008F0C_SQ_SEL_W;
-   case PIPE_SWIZZLE_0:
-      return V_008F0C_SQ_SEL_0;
-   case PIPE_SWIZZLE_1:
-      return V_008F0C_SQ_SEL_1;
-   default: /* PIPE_SWIZZLE_X */
-      return V_008F0C_SQ_SEL_X;
-   }
-}
-
 /* 12.4 fixed-point */
 static unsigned si_pack_float_12p4(float x)
 {
@@ -4442,10 +4424,10 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
    state[4] = 0;
    state[5] = S_008F04_STRIDE(stride);
    state[6] = num_records;
-   state[7] = S_008F0C_DST_SEL_X(si_map_swizzle(desc->swizzle[0])) |
-              S_008F0C_DST_SEL_Y(si_map_swizzle(desc->swizzle[1])) |
-              S_008F0C_DST_SEL_Z(si_map_swizzle(desc->swizzle[2])) |
-              S_008F0C_DST_SEL_W(si_map_swizzle(desc->swizzle[3]));
+   state[7] = S_008F0C_DST_SEL_X(ac_map_swizzle(desc->swizzle[0])) |
+              S_008F0C_DST_SEL_Y(ac_map_swizzle(desc->swizzle[1])) |
+              S_008F0C_DST_SEL_Z(ac_map_swizzle(desc->swizzle[2])) |
+              S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
 
    if (screen->info.gfx_level >= GFX10) {
       const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[format];
@@ -4555,10 +4537,10 @@ static void cdna_emu_make_image_descriptor(struct si_screen *screen, struct si_t
    state[0] = 0;
    state[1] = S_008F04_STRIDE(stride);
    state[2] = num_records;
-   state[3] = S_008F0C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-              S_008F0C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-              S_008F0C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-              S_008F0C_DST_SEL_W(si_map_swizzle(swizzle[3]));
+   state[3] = S_008F0C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+              S_008F0C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+              S_008F0C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+              S_008F0C_DST_SEL_W(ac_map_swizzle(swizzle[3]));
 
    if (screen->info.gfx_level >= GFX10) {
       const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[pipe_format];
@@ -4679,10 +4661,10 @@ static void gfx10_make_texture_descriptor(
                  S_00A004_WIDTH_LO(width - 1);
       state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) |
                  S_00A008_HEIGHT(height - 1);
-      state[3] = S_00A00C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-                 S_00A00C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-                 S_00A00C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-                 S_00A00C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
+      state[3] = S_00A00C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+                 S_00A00C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+                 S_00A00C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+                 S_00A00C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
                  S_00A00C_NO_EDGE_CLAMP(res->last_level > 0 &&
                                         util_format_is_compressed(res->format) &&
                                         !util_format_is_compressed(pipe_format)) |
@@ -4706,10 +4688,10 @@ static void gfx10_make_texture_descriptor(
                  S_00A008_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
 
       state[3] =
-         S_00A00C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-         S_00A00C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-         S_00A00C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-         S_00A00C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
+         S_00A00C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+         S_00A00C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+         S_00A00C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+         S_00A00C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
          S_00A00C_BASE_LEVEL(res->nr_samples > 1 ? 0 : first_level) |
          S_00A00C_LAST_LEVEL_GFX10(res->nr_samples > 1 ? util_logbase2(res->nr_samples) : last_level) |
          S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
@@ -4857,10 +4839,10 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    state[0] = 0;
    state[1] = (S_008F14_DATA_FORMAT(data_format) | S_008F14_NUM_FORMAT(num_format));
    state[2] = (S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1) | S_008F18_PERF_MOD(4));
-   state[3] = (S_008F1C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-               S_008F1C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-               S_008F1C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-               S_008F1C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
+   state[3] = (S_008F1C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+               S_008F1C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+               S_008F1C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+               S_008F1C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
                S_008F1C_BASE_LEVEL(num_samples > 1 ? 0 : first_level) |
                S_008F1C_LAST_LEVEL(num_samples > 1 ? util_logbase2(num_samples) : last_level) |
                S_008F1C_TYPE(type));
@@ -5474,10 +5456,10 @@ static void *si_create_vertex_elements(struct pipe_context *ctx, unsigned count,
          v->vb_alignment_check_mask |= 1 << vbo_index;
       }
 
-      v->elem[i].rsrc_word3 = S_008F0C_DST_SEL_X(si_map_swizzle(desc->swizzle[0])) |
-                              S_008F0C_DST_SEL_Y(si_map_swizzle(desc->swizzle[1])) |
-                              S_008F0C_DST_SEL_Z(si_map_swizzle(desc->swizzle[2])) |
-                              S_008F0C_DST_SEL_W(si_map_swizzle(desc->swizzle[3]));
+      v->elem[i].rsrc_word3 = S_008F0C_DST_SEL_X(ac_map_swizzle(desc->swizzle[0])) |
+                              S_008F0C_DST_SEL_Y(ac_map_swizzle(desc->swizzle[1])) |
+                              S_008F0C_DST_SEL_Z(ac_map_swizzle(desc->swizzle[2])) |
+                              S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
 
       if (sscreen->info.gfx_level >= GFX10) {
          const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[elements[i].src_format];

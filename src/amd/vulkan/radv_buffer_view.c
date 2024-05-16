@@ -8,6 +8,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "ac_descriptors.h"
 #include "gfx10_format_table.h"
 
 #include "radv_buffer.h"
@@ -42,8 +43,8 @@ radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFor
       range /= stride;
    }
 
-   rsrc_word3 = S_008F0C_DST_SEL_X(radv_map_swizzle(swizzle[0])) | S_008F0C_DST_SEL_Y(radv_map_swizzle(swizzle[1])) |
-                S_008F0C_DST_SEL_Z(radv_map_swizzle(swizzle[2])) | S_008F0C_DST_SEL_W(radv_map_swizzle(swizzle[3]));
+   rsrc_word3 = S_008F0C_DST_SEL_X(ac_map_swizzle(swizzle[0])) | S_008F0C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+                S_008F0C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) | S_008F0C_DST_SEL_W(ac_map_swizzle(swizzle[3]));
 
    if (pdev->info.gfx_level >= GFX10) {
       const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&pdev->info)[vk_format_to_pipe_format(vk_format)];

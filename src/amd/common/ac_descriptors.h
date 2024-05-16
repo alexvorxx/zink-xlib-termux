@@ -15,6 +15,9 @@
 extern "C" {
 #endif
 
+unsigned
+ac_map_swizzle(unsigned swizzle);
+
 struct ac_sampler_state {
    unsigned address_mode_u : 3;
    unsigned address_mode_v : 3;

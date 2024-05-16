@@ -715,25 +715,6 @@ radv_get_surface_flags(struct radv_device *device, struct radv_image *image, uns
    return flags;
 }
 
-unsigned
-radv_map_swizzle(unsigned swizzle)
-{
-   switch (swizzle) {
-   case PIPE_SWIZZLE_Y:
-      return V_008F0C_SQ_SEL_Y;
-   case PIPE_SWIZZLE_Z:
-      return V_008F0C_SQ_SEL_Z;
-   case PIPE_SWIZZLE_W:
-      return V_008F0C_SQ_SEL_W;
-   case PIPE_SWIZZLE_0:
-      return V_008F0C_SQ_SEL_0;
-   case PIPE_SWIZZLE_1:
-      return V_008F0C_SQ_SEL_1;
-   default: /* PIPE_SWIZZLE_X */
-      return V_008F0C_SQ_SEL_X;
-   }
-}
-
 void
 radv_compose_swizzle(const struct util_format_description *desc, const VkComponentMapping *mapping,
                      enum pipe_swizzle swizzle[4])

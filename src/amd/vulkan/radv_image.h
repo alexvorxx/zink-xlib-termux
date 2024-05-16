@@ -311,8 +311,6 @@ bool radv_image_use_dcc_image_stores(const struct radv_device *device, const str
 
 bool radv_image_use_dcc_predication(const struct radv_device *device, const struct radv_image *image);
 
-unsigned radv_map_swizzle(unsigned swizzle);
-
 void radv_compose_swizzle(const struct util_format_description *desc, const VkComponentMapping *mapping,
                           enum pipe_swizzle swizzle[4]);
 

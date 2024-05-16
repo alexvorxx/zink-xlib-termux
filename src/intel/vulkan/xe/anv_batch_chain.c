@@ -26,6 +26,7 @@
 #include "anv_private.h"
 #include "anv_measure.h"
 #include "common/intel_bind_timeline.h"
+#include "perf/intel_perf.h"
 
 #include "drm-uapi/xe_drm.h"
 
@@ -313,9 +314,39 @@ xe_queue_exec_locked(struct anv_queue *queue,
    xe_exec_print_debug(queue, cmd_buffer_count, cmd_buffers, perf_query_pool,
                        perf_query_pass, &exec);
 
-   /* TODO: add perfetto stuff when Xe supports it */
+   if (perf_query_pool && perf_query_pass >= 0 && cmd_buffer_count) {
+      struct drm_xe_exec perf_query_exec = {
+            .exec_queue_id = queue->exec_queue_id,
+            .num_batch_buffer = 1,
+            .address = perf_query_pool->bo->offset +
+                       khr_perf_query_preamble_offset(perf_query_pool, perf_query_pass),
+      };
+      assert(perf_query_pass < perf_query_pool->n_passes);
+      struct intel_perf_query_info *query_info = perf_query_pool->pass_query[perf_query_pass];
 
-   if (!device->info->no_hw) {
+      /* Some performance queries just the pipeline statistic HW, no need for
+       * OA in that case, so no need to reconfigure.
+       */
+      if (!INTEL_DEBUG(DEBUG_NO_OACONFIG) &&
+          (query_info->kind == INTEL_PERF_QUERY_TYPE_OA ||
+           query_info->kind == INTEL_PERF_QUERY_TYPE_RAW)) {
+         int ret = intel_perf_stream_set_metrics_id(device->physical->perf,
+                                                    device->perf_fd,
+                                                    query_info->oa_metrics_set_id);
+         if (ret < 0) {
+            result = vk_device_set_lost(&device->vk,
+                                        "intel_perf_stream_set_metrics_id failed: %s",
+                                        strerror(errno));
+         }
+      }
+
+      if (!device->info->no_hw && result == VK_SUCCESS) {
+         if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &perf_query_exec))
+            result = vk_device_set_lost(&device->vk, "perf_query_exec failed: %m");
+      }
+   }
+
+   if (!device->info->no_hw && result == VK_SUCCESS) {
       if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec))
          result = vk_device_set_lost(&device->vk, "anv_xe_queue_exec_locked failed: %m");
    }

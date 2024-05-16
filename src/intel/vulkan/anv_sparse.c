@@ -931,8 +931,12 @@ anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
    assert(is_standard || is_known_nonstandard_format);
    assert(!(is_standard && is_known_nonstandard_format));
 
-   uint32_t block_size = granularity.width * granularity.height *
-                         granularity.depth * Bpb;
+   VkExtent3D block_shape_el = vk_extent3d_px_to_el(granularity, isl_layout);
+   uint32_t block_size = block_shape_el.width * Bpb *
+                         block_shape_el.height *
+                         block_shape_el.depth * vk_samples;
+   assert(block_size == 64 * 1024 || block_size == 4096);
+
    bool wrong_block_size = block_size != ANV_SPARSE_BLOCK_SIZE;
 
    return (VkSparseImageFormatProperties) {

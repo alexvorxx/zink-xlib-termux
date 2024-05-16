@@ -4631,7 +4631,6 @@ static void gfx10_make_texture_descriptor(
    unsigned img_format;
    unsigned char swizzle[4];
    unsigned type;
-   uint64_t va;
 
    desc = util_format_description(pipe_format);
    img_format = ac_get_gfx10_format_table(&screen->info)[pipe_format].img_format;
@@ -4770,69 +4769,20 @@ static void gfx10_make_texture_descriptor(
 
    /* Initialize the sampler view for FMASK. */
    if (tex->surface.fmask_offset) {
-      uint32_t format;
+      const struct ac_fmask_state ac_state = {
+         .surf = &tex->surface,
+         .va = tex->buffer.gpu_address,
+         .width = width,
+         .height = height,
+         .depth = depth,
+         .type = si_tex_dim(screen, tex, target, 0),
+         .first_layer = first_layer,
+         .last_layer = last_layer,
+         .num_samples = res->nr_samples,
+         .num_storage_samples = res->nr_storage_samples,
+      };
 
-      va = tex->buffer.gpu_address + tex->surface.fmask_offset;
-
-#define FMASK(s, f) (((unsigned)(MAX2(1, s)) * 16) + (MAX2(1, f)))
-      switch (FMASK(res->nr_samples, res->nr_storage_samples)) {
-      case FMASK(2, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S2_F1;
-         break;
-      case FMASK(2, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S2_F2;
-         break;
-      case FMASK(4, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S4_F1;
-         break;
-      case FMASK(4, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S4_F2;
-         break;
-      case FMASK(4, 4):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S4_F4;
-         break;
-      case FMASK(8, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S8_F1;
-         break;
-      case FMASK(8, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK16_S8_F2;
-         break;
-      case FMASK(8, 4):
-         format = V_008F0C_GFX10_FORMAT_FMASK32_S8_F4;
-         break;
-      case FMASK(8, 8):
-         format = V_008F0C_GFX10_FORMAT_FMASK32_S8_F8;
-         break;
-      case FMASK(16, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK16_S16_F1;
-         break;
-      case FMASK(16, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK32_S16_F2;
-         break;
-      case FMASK(16, 4):
-         format = V_008F0C_GFX10_FORMAT_FMASK64_S16_F4;
-         break;
-      case FMASK(16, 8):
-         format = V_008F0C_GFX10_FORMAT_FMASK64_S16_F8;
-         break;
-      default:
-         unreachable("invalid nr_samples");
-      }
-#undef FMASK
-      fmask_state[0] = (va >> 8) | tex->surface.fmask_tile_swizzle;
-      fmask_state[1] = S_00A004_BASE_ADDRESS_HI(va >> 40) | S_00A004_FORMAT_GFX10(format) |
-                       S_00A004_WIDTH_LO(width - 1);
-      fmask_state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
-                       S_00A008_RESOURCE_LEVEL(1);
-      fmask_state[3] =
-         S_00A00C_DST_SEL_X(V_008F1C_SQ_SEL_X) | S_00A00C_DST_SEL_Y(V_008F1C_SQ_SEL_X) |
-         S_00A00C_DST_SEL_Z(V_008F1C_SQ_SEL_X) | S_00A00C_DST_SEL_W(V_008F1C_SQ_SEL_X) |
-         S_00A00C_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode) |
-         S_00A00C_TYPE(si_tex_dim(screen, tex, target, 0));
-      fmask_state[4] = S_00A010_DEPTH_GFX10(last_layer) | S_00A010_BASE_ARRAY(first_layer);
-      fmask_state[5] = 0;
-      fmask_state[6] = S_00A018_META_PIPE_ALIGNED(1);
-      fmask_state[7] = 0;
+      ac_build_fmask_descriptor(screen->info.gfx_level, &ac_state, &fmask_state[0]);
    }
 }
 
@@ -4860,7 +4810,6 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    unsigned char swizzle[4];
    int first_non_void;
    unsigned num_format, data_format, type, num_samples;
-   uint64_t va;
 
    desc = util_format_description(pipe_format);
 
@@ -4983,129 +4932,20 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
 
    /* Initialize the sampler view for FMASK. */
    if (tex->surface.fmask_offset) {
-      uint32_t data_format, num_format;
+      const struct ac_fmask_state ac_state = {
+         .surf = &tex->surface,
+         .va = tex->buffer.gpu_address,
+         .width = width,
+         .height = height,
+         .depth = depth,
+         .type = si_tex_dim(screen, tex, target, 0),
+         .first_layer = first_layer,
+         .last_layer = last_layer,
+         .num_samples = res->nr_samples,
+         .num_storage_samples = res->nr_storage_samples,
+      };
 
-      va = tex->buffer.gpu_address + tex->surface.fmask_offset;
-
-#define FMASK(s, f) (((unsigned)(MAX2(1, s)) * 16) + (MAX2(1, f)))
-      if (screen->info.gfx_level == GFX9) {
-         data_format = V_008F14_IMG_DATA_FORMAT_FMASK;
-         switch (FMASK(res->nr_samples, res->nr_storage_samples)) {
-         case FMASK(2, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_2_1;
-            break;
-         case FMASK(2, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_2_2;
-            break;
-         case FMASK(4, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_4_1;
-            break;
-         case FMASK(4, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_4_2;
-            break;
-         case FMASK(4, 4):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_4_4;
-            break;
-         case FMASK(8, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_8_1;
-            break;
-         case FMASK(8, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_16_8_2;
-            break;
-         case FMASK(8, 4):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_32_8_4;
-            break;
-         case FMASK(8, 8):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_32_8_8;
-            break;
-         case FMASK(16, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_16_16_1;
-            break;
-         case FMASK(16, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_32_16_2;
-            break;
-         case FMASK(16, 4):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_64_16_4;
-            break;
-         case FMASK(16, 8):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_64_16_8;
-            break;
-         default:
-            unreachable("invalid nr_samples");
-         }
-      } else {
-         switch (FMASK(res->nr_samples, res->nr_storage_samples)) {
-         case FMASK(2, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S2_F1;
-            break;
-         case FMASK(2, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S2_F2;
-            break;
-         case FMASK(4, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S4_F1;
-            break;
-         case FMASK(4, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S4_F2;
-            break;
-         case FMASK(4, 4):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S4_F4;
-            break;
-         case FMASK(8, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S8_F1;
-            break;
-         case FMASK(8, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK16_S8_F2;
-            break;
-         case FMASK(8, 4):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK32_S8_F4;
-            break;
-         case FMASK(8, 8):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK32_S8_F8;
-            break;
-         case FMASK(16, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK16_S16_F1;
-            break;
-         case FMASK(16, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK32_S16_F2;
-            break;
-         case FMASK(16, 4):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK64_S16_F4;
-            break;
-         case FMASK(16, 8):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK64_S16_F8;
-            break;
-         default:
-            unreachable("invalid nr_samples");
-         }
-         num_format = V_008F14_IMG_NUM_FORMAT_UINT;
-      }
-#undef FMASK
-
-      fmask_state[0] = (va >> 8) | tex->surface.fmask_tile_swizzle;
-      fmask_state[1] = S_008F14_BASE_ADDRESS_HI(va >> 40) | S_008F14_DATA_FORMAT(data_format) |
-                       S_008F14_NUM_FORMAT(num_format);
-      fmask_state[2] = S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1);
-      fmask_state[3] =
-         S_008F1C_DST_SEL_X(V_008F1C_SQ_SEL_X) | S_008F1C_DST_SEL_Y(V_008F1C_SQ_SEL_X) |
-         S_008F1C_DST_SEL_Z(V_008F1C_SQ_SEL_X) | S_008F1C_DST_SEL_W(V_008F1C_SQ_SEL_X) |
-         S_008F1C_TYPE(si_tex_dim(screen, tex, target, 0));
-      fmask_state[4] = 0;
-      fmask_state[5] = S_008F24_BASE_ARRAY(first_layer);
-      fmask_state[6] = 0;
-      fmask_state[7] = 0;
-
-      if (screen->info.gfx_level == GFX9) {
-         fmask_state[3] |= S_008F1C_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode);
-         fmask_state[4] |=
-            S_008F20_DEPTH(last_layer) | S_008F20_PITCH(tex->surface.u.gfx9.color.fmask_epitch);
-         fmask_state[5] |= S_008F24_META_PIPE_ALIGNED(1) |
-                           S_008F24_META_RB_ALIGNED(1);
-      } else {
-         fmask_state[3] |= S_008F1C_TILING_INDEX(tex->surface.u.legacy.color.fmask.tiling_index);
-         fmask_state[4] |= S_008F20_DEPTH(depth - 1) |
-                           S_008F20_PITCH(tex->surface.u.legacy.color.fmask.pitch_in_pixels - 1);
-         fmask_state[5] |= S_008F24_LAST_ARRAY(last_layer);
-      }
+      ac_build_fmask_descriptor(screen->info.gfx_level, &ac_state, &fmask_state[0]);
    }
 }
 

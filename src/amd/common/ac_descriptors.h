@@ -40,6 +40,26 @@ ac_build_sampler_descriptor(const enum amd_gfx_level gfx_level,
                             const struct ac_sampler_state *state,
                             uint32_t desc[4]);
 
+struct ac_fmask_state {
+   const struct radeon_surf *surf;
+   uint64_t va;
+   uint32_t width : 16;
+   uint32_t height : 16;
+   uint32_t depth : 14;
+   uint32_t type : 4;
+   uint32_t first_layer : 14;
+   uint32_t last_layer : 13;
+
+   uint32_t num_samples : 5;
+   uint32_t num_storage_samples : 4;
+   uint32_t tc_compat_cmask : 1;
+};
+
+void
+ac_build_fmask_descriptor(const enum amd_gfx_level gfx_level,
+                          const struct ac_fmask_state *state,
+                          uint32_t desc[8]);
+
 #ifdef __cplusplus
 }
 #endif

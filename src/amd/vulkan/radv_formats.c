@@ -24,6 +24,7 @@
 #include "util/format_srgb.h"
 #include "util/half_float.h"
 #include "ac_drm_fourcc.h"
+#include "ac_formats.h"
 
 uint32_t
 radv_translate_buffer_dataformat(const struct util_format_description *desc, int first_non_void)
@@ -105,32 +106,7 @@ radv_translate_buffer_numformat(const struct util_format_description *desc, int 
 {
    assert(util_format_get_num_planes(desc->format) == 1);
 
-   if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT)
-      return V_008F0C_BUF_NUM_FORMAT_FLOAT;
-
-   assert(first_non_void >= 0);
-
-   switch (desc->channel[first_non_void].type) {
-   case UTIL_FORMAT_TYPE_SIGNED:
-      if (desc->channel[first_non_void].normalized)
-         return V_008F0C_BUF_NUM_FORMAT_SNORM;
-      else if (desc->channel[first_non_void].pure_integer)
-         return V_008F0C_BUF_NUM_FORMAT_SINT;
-      else
-         return V_008F0C_BUF_NUM_FORMAT_SSCALED;
-      break;
-   case UTIL_FORMAT_TYPE_UNSIGNED:
-      if (desc->channel[first_non_void].normalized)
-         return V_008F0C_BUF_NUM_FORMAT_UNORM;
-      else if (desc->channel[first_non_void].pure_integer)
-         return V_008F0C_BUF_NUM_FORMAT_UINT;
-      else
-         return V_008F0C_BUF_NUM_FORMAT_USCALED;
-      break;
-   case UTIL_FORMAT_TYPE_FLOAT:
-   default:
-      return V_008F0C_BUF_NUM_FORMAT_FLOAT;
-   }
+   return ac_translate_buffer_numformat(desc, first_non_void);
 }
 
 static bool

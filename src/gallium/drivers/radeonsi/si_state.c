@@ -18,6 +18,7 @@
 #include "util/u_upload_mgr.h"
 #include "util/u_blend.h"
 
+#include "ac_formats.h"
 #include "gfx10_format_table.h"
 
 static unsigned si_map_swizzle(unsigned swizzle)
@@ -2537,33 +2538,7 @@ static uint32_t si_translate_buffer_numformat(struct pipe_screen *screen,
 {
    assert(((struct si_screen *)screen)->info.gfx_level <= GFX9);
 
-   if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT)
-      return V_008F0C_BUF_NUM_FORMAT_FLOAT;
-
-   assert(first_non_void >= 0);
-
-   switch (desc->channel[first_non_void].type) {
-   case UTIL_FORMAT_TYPE_SIGNED:
-   case UTIL_FORMAT_TYPE_FIXED:
-      if (desc->channel[first_non_void].size >= 32 || desc->channel[first_non_void].pure_integer)
-         return V_008F0C_BUF_NUM_FORMAT_SINT;
-      else if (desc->channel[first_non_void].normalized)
-         return V_008F0C_BUF_NUM_FORMAT_SNORM;
-      else
-         return V_008F0C_BUF_NUM_FORMAT_SSCALED;
-      break;
-   case UTIL_FORMAT_TYPE_UNSIGNED:
-      if (desc->channel[first_non_void].size >= 32 || desc->channel[first_non_void].pure_integer)
-         return V_008F0C_BUF_NUM_FORMAT_UINT;
-      else if (desc->channel[first_non_void].normalized)
-         return V_008F0C_BUF_NUM_FORMAT_UNORM;
-      else
-         return V_008F0C_BUF_NUM_FORMAT_USCALED;
-      break;
-   case UTIL_FORMAT_TYPE_FLOAT:
-   default:
-      return V_008F0C_BUF_NUM_FORMAT_FLOAT;
-   }
+   return ac_translate_buffer_numformat(desc, first_non_void);
 }
 
 static unsigned si_is_vertex_format_supported(struct pipe_screen *screen, enum pipe_format format,

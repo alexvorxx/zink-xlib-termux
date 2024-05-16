@@ -11,6 +11,8 @@
 #include "ac_gpu_info.h"
 #include "ac_surface.h"
 
+#include "util/format/u_format.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -97,6 +99,36 @@ void
 ac_set_mutable_tex_desc_fields(const struct radeon_info *info,
                                const struct ac_mutable_tex_state *state,
                                uint32_t desc[8]);
+
+struct ac_buffer_state {
+   uint64_t va;
+   uint32_t size;
+   enum pipe_format format;
+   enum pipe_swizzle swizzle[4];
+   uint32_t stride;
+   uint32_t swizzle_enable : 2;
+   uint32_t element_size : 2;
+   uint32_t index_stride : 2;
+   uint32_t add_tid : 1;
+   uint32_t gfx10_oob_select : 2;
+};
+
+void
+ac_build_buffer_descriptor(const enum amd_gfx_level gfx_level,
+                           const struct ac_buffer_state *state,
+                           uint32_t desc[4]);
+
+void
+ac_build_raw_buffer_descriptor(const enum amd_gfx_level gfx_level,
+                               uint64_t va,
+                               uint32_t size,
+                               uint32_t desc[4]);
+
+void
+ac_build_attr_ring_descriptor(const enum amd_gfx_level gfx_level,
+                              uint64_t va,
+                              uint32_t size,
+                              uint32_t desc[4]);
 
 #ifdef __cplusplus
 }

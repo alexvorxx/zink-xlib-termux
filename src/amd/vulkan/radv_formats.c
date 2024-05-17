@@ -52,29 +52,29 @@ radv_is_vertex_buffer_format_supported(VkFormat format)
 }
 
 uint32_t
-radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat format,
-                              const struct util_format_description *desc, int first_non_void)
+radv_translate_tex_dataformat(const struct radv_physical_device *pdev, const struct util_format_description *desc,
+                              int first_non_void)
 {
    bool uniform = true;
    int i;
 
-   assert(vk_format_get_plane_count(format) == 1);
+   assert(util_format_get_num_planes(desc->format) == 1);
 
    /* Colorspace (return non-RGB formats directly). */
    switch (desc->colorspace) {
       /* Depth stencil formats */
    case UTIL_FORMAT_COLORSPACE_ZS:
-      switch (format) {
-      case VK_FORMAT_D16_UNORM:
+      switch (desc->format) {
+      case PIPE_FORMAT_Z16_UNORM:
          return V_008F14_IMG_DATA_FORMAT_16;
-      case VK_FORMAT_D24_UNORM_S8_UINT:
-      case VK_FORMAT_X8_D24_UNORM_PACK32:
+      case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+      case PIPE_FORMAT_Z24X8_UNORM:
          return V_008F14_IMG_DATA_FORMAT_8_24;
-      case VK_FORMAT_S8_UINT:
+      case PIPE_FORMAT_S8_UINT:
          return V_008F14_IMG_DATA_FORMAT_8;
-      case VK_FORMAT_D32_SFLOAT:
+      case PIPE_FORMAT_Z32_FLOAT:
          return V_008F14_IMG_DATA_FORMAT_32;
-      case VK_FORMAT_D32_SFLOAT_S8_UINT:
+      case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
          return V_008F14_IMG_DATA_FORMAT_X24_8_32;
       default:
          goto out_unknown;
@@ -88,11 +88,11 @@ radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat 
    }
 
    if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
-      switch (format) {
+      switch (desc->format) {
       /* Don't ask me why this looks inverted. PAL does the same. */
-      case VK_FORMAT_G8B8G8R8_422_UNORM:
+      case PIPE_FORMAT_G8B8_G8R8_UNORM:
          return V_008F14_IMG_DATA_FORMAT_BG_RG;
-      case VK_FORMAT_B8G8R8G8_422_UNORM:
+      case PIPE_FORMAT_B8G8_R8G8_UNORM:
          return V_008F14_IMG_DATA_FORMAT_GB_GR;
       default:
          goto out_unknown;
@@ -100,12 +100,12 @@ radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat 
    }
 
    if (desc->layout == UTIL_FORMAT_LAYOUT_RGTC) {
-      switch (format) {
-      case VK_FORMAT_BC4_UNORM_BLOCK:
-      case VK_FORMAT_BC4_SNORM_BLOCK:
+      switch (desc->format) {
+      case PIPE_FORMAT_RGTC1_UNORM:
+      case PIPE_FORMAT_RGTC1_SNORM:
          return V_008F14_IMG_DATA_FORMAT_BC4;
-      case VK_FORMAT_BC5_UNORM_BLOCK:
-      case VK_FORMAT_BC5_SNORM_BLOCK:
+      case PIPE_FORMAT_RGTC2_UNORM:
+      case PIPE_FORMAT_RGTC2_SNORM:
          return V_008F14_IMG_DATA_FORMAT_BC5;
       default:
          break;
@@ -113,17 +113,17 @@ radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat 
    }
 
    if (desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
-      switch (format) {
-      case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-      case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-      case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-      case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+      switch (desc->format) {
+      case PIPE_FORMAT_DXT1_RGB:
+      case PIPE_FORMAT_DXT1_SRGB:
+      case PIPE_FORMAT_DXT1_RGBA:
+      case PIPE_FORMAT_DXT1_SRGBA:
          return V_008F14_IMG_DATA_FORMAT_BC1;
-      case VK_FORMAT_BC2_UNORM_BLOCK:
-      case VK_FORMAT_BC2_SRGB_BLOCK:
+      case PIPE_FORMAT_DXT3_RGBA:
+      case PIPE_FORMAT_DXT3_SRGBA:
          return V_008F14_IMG_DATA_FORMAT_BC2;
-      case VK_FORMAT_BC3_UNORM_BLOCK:
-      case VK_FORMAT_BC3_SRGB_BLOCK:
+      case PIPE_FORMAT_DXT5_RGBA:
+      case PIPE_FORMAT_DXT5_SRGBA:
          return V_008F14_IMG_DATA_FORMAT_BC3;
       default:
          break;
@@ -131,12 +131,12 @@ radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat 
    }
 
    if (desc->layout == UTIL_FORMAT_LAYOUT_BPTC) {
-      switch (format) {
-      case VK_FORMAT_BC6H_UFLOAT_BLOCK:
-      case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+      switch (desc->format) {
+      case PIPE_FORMAT_BPTC_RGB_UFLOAT:
+      case PIPE_FORMAT_BPTC_RGB_FLOAT:
          return V_008F14_IMG_DATA_FORMAT_BC6;
-      case VK_FORMAT_BC7_UNORM_BLOCK:
-      case VK_FORMAT_BC7_SRGB_BLOCK:
+      case PIPE_FORMAT_BPTC_RGBA_UNORM:
+      case PIPE_FORMAT_BPTC_SRGBA:
          return V_008F14_IMG_DATA_FORMAT_BC7;
       default:
          break;
@@ -144,30 +144,31 @@ radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat 
    }
 
    if (desc->layout == UTIL_FORMAT_LAYOUT_ETC) {
-      switch (format) {
-      case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
-      case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+      switch (desc->format) {
+      case PIPE_FORMAT_ETC1_RGB8:
+      case PIPE_FORMAT_ETC2_RGB8:
+      case PIPE_FORMAT_ETC2_SRGB8:
          return V_008F14_IMG_DATA_FORMAT_ETC2_RGB;
-      case VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK:
-      case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+      case PIPE_FORMAT_ETC2_RGB8A1:
+      case PIPE_FORMAT_ETC2_SRGB8A1:
          return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA1;
-      case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
-      case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+      case PIPE_FORMAT_ETC2_RGBA8:
+      case PIPE_FORMAT_ETC2_SRGBA8:
          return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA;
-      case VK_FORMAT_EAC_R11_UNORM_BLOCK:
-      case VK_FORMAT_EAC_R11_SNORM_BLOCK:
+      case PIPE_FORMAT_ETC2_R11_UNORM:
+      case PIPE_FORMAT_ETC2_R11_SNORM:
          return V_008F14_IMG_DATA_FORMAT_ETC2_R;
-      case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
-      case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
+      case PIPE_FORMAT_ETC2_RG11_UNORM:
+      case PIPE_FORMAT_ETC2_RG11_SNORM:
          return V_008F14_IMG_DATA_FORMAT_ETC2_RG;
       default:
          break;
       }
    }
 
-   if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
+   if (desc->format == PIPE_FORMAT_R9G9B9E5_FLOAT) {
       return V_008F14_IMG_DATA_FORMAT_5_9_9_9;
-   } else if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
+   } else if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT) {
       return V_008F14_IMG_DATA_FORMAT_10_11_11;
    }
 
@@ -306,7 +307,7 @@ radv_is_sampler_format_supported(const struct radv_physical_device *pdev, VkForm
       *linear_sampling = true;
    else
       *linear_sampling = false;
-   return radv_translate_tex_dataformat(pdev, format, vk_format_description(format),
+   return radv_translate_tex_dataformat(pdev, vk_format_description(format),
                                         vk_format_get_first_non_void_channel(format)) != ~0U;
 }
 
@@ -328,7 +329,7 @@ radv_is_storage_image_format_supported(const struct radv_physical_device *pdev, 
    if (vk_format_is_depth_or_stencil(format))
       return false;
 
-   data_format = radv_translate_tex_dataformat(pdev, format, desc, vk_format_get_first_non_void_channel(format));
+   data_format = radv_translate_tex_dataformat(pdev, desc, vk_format_get_first_non_void_channel(format));
    num_format = radv_translate_tex_numformat(desc, vk_format_get_first_non_void_channel(format));
 
    if (data_format == ~0)

@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+fs = import('fs')
 rust = import('rust')
 
 libmesa_rust_util_files = files(
@@ -348,6 +349,7 @@ rusticl_c = static_library(
   ],
   gnu_symbol_visibility : 'hidden',
   include_directories : [
+    fs.relative_to(meson.project_build_root(), meson.current_source_dir()),
     inc_gallium,
     inc_gallium_aux,
     inc_include,

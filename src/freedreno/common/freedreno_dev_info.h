@@ -56,6 +56,10 @@ struct fd_dev_info {
    /* Information for private memory calculations */
    uint32_t fibers_per_sp;
 
+   uint32_t threadsize_base;
+
+   uint32_t max_waves;
+
    /* number of CCU is always equal to the number of SP */
    union {
       uint32_t num_sp_cores;

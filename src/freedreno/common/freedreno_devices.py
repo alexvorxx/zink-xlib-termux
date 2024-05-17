@@ -118,7 +118,8 @@ class GPUInfo(Struct):
     def __init__(self, chip, gmem_align_w, gmem_align_h,
                  tile_align_w, tile_align_h,
                  tile_max_w, tile_max_h, num_vsc_pipes,
-                 cs_shared_mem_size, num_sp_cores, wave_granularity, fibers_per_sp):
+                 cs_shared_mem_size, num_sp_cores, wave_granularity, fibers_per_sp,
+                 threadsize_base = 64, max_waves = 16):
         self.chip          = chip.value
         self.gmem_align_w  = gmem_align_w
         self.gmem_align_h  = gmem_align_h
@@ -131,6 +132,8 @@ class GPUInfo(Struct):
         self.num_sp_cores  = num_sp_cores
         self.wave_granularity = wave_granularity
         self.fibers_per_sp = fibers_per_sp
+        self.threadsize_base = threadsize_base
+        self.max_waves     = max_waves
 
         s.gpu_infos.append(self)
 
@@ -143,7 +146,8 @@ class A6xxGPUInfo(GPUInfo):
     def __init__(self, chip, template, num_ccu,
                  tile_align_w, tile_align_h, num_vsc_pipes,
                  cs_shared_mem_size, wave_granularity, fibers_per_sp,
-                 magic_regs, raw_magic_regs = None):
+                 magic_regs, raw_magic_regs = None, threadsize_base = 64,
+                 max_waves = 16):
         if chip == CHIP.A6XX:
             tile_max_w   = 1024 # max_bitfield_val(5, 0, 5)
             tile_max_h   = max_bitfield_val(14, 8, 4) # 1008
@@ -160,7 +164,9 @@ class A6xxGPUInfo(GPUInfo):
                          cs_shared_mem_size = cs_shared_mem_size,
                          num_sp_cores = num_ccu, # The # of SP cores seems to always match # of CCU
                          wave_granularity   = wave_granularity,
-                         fibers_per_sp      = fibers_per_sp)
+                         fibers_per_sp      = fibers_per_sp,
+                         threadsize_base    = threadsize_base,
+                         max_waves    = max_waves)
 
         self.num_ccu = num_ccu
 
@@ -202,6 +208,7 @@ add_gpus([
         num_sp_cores = 0, # TODO
         wave_granularity = 2,
         fibers_per_sp = 0, # TODO
+        threadsize_base = 8, # TODO: Confirm this
     ))
 
 add_gpus([
@@ -221,6 +228,7 @@ add_gpus([
         num_sp_cores = 0, # TODO
         wave_granularity = 2,
         fibers_per_sp = 0, # TODO
+        threadsize_base = 8,
     ))
 
 add_gpus([
@@ -238,6 +246,7 @@ add_gpus([
         num_sp_cores = 0, # TODO
         wave_granularity = 2,
         fibers_per_sp = 0, # TODO
+        threadsize_base = 32, # TODO: Confirm this
     ))
 
 add_gpus([
@@ -255,6 +264,7 @@ add_gpus([
         num_sp_cores = 1,
         wave_granularity = 2,
         fibers_per_sp = 64 * 16, # Lowest number that didn't fault on spillall fs-varying-array-mat4-col-row-rd.
+        threadsize_base = 32,
     ))
 
 add_gpus([
@@ -271,6 +281,7 @@ add_gpus([
         num_sp_cores = 2,
         wave_granularity = 2,
         fibers_per_sp = 64 * 16, # Lowest number that didn't fault on spillall fs-varying-array-mat4-col-row-rd.
+        threadsize_base = 32,
     ))
 
 add_gpus([
@@ -287,6 +298,7 @@ add_gpus([
         num_sp_cores = 4,
         wave_granularity = 2,
         fibers_per_sp = 64 * 16, # Lowest number that didn't fault on spillall fs-varying-array-mat4-col-row-rd.
+        threadsize_base = 32,
     ))
 
 

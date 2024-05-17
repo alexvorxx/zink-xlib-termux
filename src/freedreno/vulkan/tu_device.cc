@@ -661,7 +661,8 @@ tu_get_physical_device_properties_1_1(struct tu_physical_device *pdevice,
    p->deviceNodeMask = 0;
    p->deviceLUIDValid = false;
 
-   p->subgroupSize = pdevice->info->a6xx.supports_double_threadsize ? 128 : 64;
+   p->subgroupSize = pdevice->info->a6xx.supports_double_threadsize ?
+      pdevice->info->threadsize_base * 2 : pdevice->info->threadsize_base;
    p->subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
    p->subgroupSupportedOperations = VK_SUBGROUP_FEATURE_BASIC_BIT |
                                     VK_SUBGROUP_FEATURE_VOTE_BIT |
@@ -778,11 +779,10 @@ static void
 tu_get_physical_device_properties_1_3(struct tu_physical_device *pdevice,
                                       struct vk_properties *p)
 {
-   /* TODO move threadsize_base and max_waves to fd_dev_info and use them here */
-   p->minSubgroupSize = 64; /* threadsize_base */
-   p->maxSubgroupSize =
-      pdevice->info->a6xx.supports_double_threadsize ? 128 : 64;
-   p->maxComputeWorkgroupSubgroups = 16; /* max_waves */
+   p->minSubgroupSize = pdevice->info->threadsize_base;
+   p->maxSubgroupSize = pdevice->info->a6xx.supports_double_threadsize ?
+      pdevice->info->threadsize_base * 2 : pdevice->info->threadsize_base;
+   p->maxComputeWorkgroupSubgroups = pdevice->info->max_waves;
    p->requiredSubgroupSizeStages = VK_SHADER_STAGE_ALL;
 
    p->maxInlineUniformBlockSize = MAX_INLINE_UBO_RANGE;
@@ -902,7 +902,9 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->maxComputeWorkGroupCount[0] =
       props->maxComputeWorkGroupCount[1] =
       props->maxComputeWorkGroupCount[2] = 65535;
-   props->maxComputeWorkGroupInvocations = pdevice->info->a6xx.supports_double_threadsize ? 2048 : 1024;
+   props->maxComputeWorkGroupInvocations = pdevice->info->a6xx.supports_double_threadsize ?
+      pdevice->info->threadsize_base * 2 * pdevice->info->max_waves :
+      pdevice->info->threadsize_base * pdevice->info->max_waves;
    props->maxComputeWorkGroupSize[0] =
       props->maxComputeWorkGroupSize[1] =
       props->maxComputeWorkGroupSize[2] = 1024;

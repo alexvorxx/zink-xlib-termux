@@ -22,6 +22,10 @@ uint32_t
 ac_translate_buffer_dataformat(const struct util_format_description *desc,
                               int first_non_void);
 
+uint32_t
+ac_translate_tex_numformat(const struct util_format_description *desc,
+                           int first_non_void);
+
 #ifdef __cplusplus
 }
 #endif

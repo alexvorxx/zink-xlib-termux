@@ -10,7 +10,7 @@
 #include "vk_log.h"
 #include "vk_util.h"
 
-#define NVK_MAX_SETS 8
+#define NVK_MAX_SETS 32
 #define NVK_MAX_PUSH_SIZE 128
 #define NVK_MAX_DYNAMIC_BUFFERS 64
 #define NVK_MAX_RTS 8

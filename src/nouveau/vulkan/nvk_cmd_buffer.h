@@ -63,7 +63,7 @@ struct nvk_root_descriptor_table {
    uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
 
    /* enfore alignment to 0x100 as needed pre pascal */
-   uint8_t __padding[0xd8];
+   uint8_t __padding[0x40];
 };
 
 /* helper macro for computing root descriptor byte offsets */

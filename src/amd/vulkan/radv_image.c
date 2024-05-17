@@ -777,7 +777,7 @@ vi_alpha_is_on_msb(const struct radv_device *device, const VkFormat format)
    if (pdev->info.gfx_level >= GFX10 && desc->nr_channels == 1)
       return desc->swizzle[3] == PIPE_SWIZZLE_X;
 
-   return radv_translate_colorswap(format, false) <= 1;
+   return radv_translate_colorswap(desc->format, false) <= 1;
 }
 
 static void

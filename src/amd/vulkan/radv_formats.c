@@ -446,7 +446,7 @@ radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, Vk
 {
    const struct util_format_description *desc = vk_format_description(format);
    uint32_t color_format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
-   uint32_t color_swap = radv_translate_colorswap(format, false);
+   uint32_t color_swap = radv_translate_colorswap(desc->format, false);
    uint32_t color_num_format = ac_get_cb_number_type(desc->format);
 
    if (color_num_format == V_028C70_NUMBER_UINT || color_num_format == V_028C70_NUMBER_SINT ||
@@ -859,16 +859,16 @@ radv_translate_dbformat(VkFormat format)
 }
 
 unsigned
-radv_translate_colorswap(VkFormat format, bool do_endian_swap)
+radv_translate_colorswap(enum pipe_format format, bool do_endian_swap)
 {
-   const struct util_format_description *desc = vk_format_description(format);
+   const struct util_format_description *desc = util_format_description(format);
 
 #define HAS_SWIZZLE(chan, swz) (desc->swizzle[chan] == PIPE_SWIZZLE_##swz)
 
-   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32)
+   if (format == PIPE_FORMAT_R11G11B10_FLOAT)
       return V_028C70_SWAP_STD;
 
-   if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32)
+   if (format == PIPE_FORMAT_R9G9B9E5_FLOAT)
       return V_028C70_SWAP_STD;
 
    if (desc->layout != UTIL_FORMAT_LAYOUT_PLAIN)

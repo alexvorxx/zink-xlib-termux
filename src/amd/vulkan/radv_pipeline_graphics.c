@@ -112,7 +112,7 @@ radv_choose_spi_color_format(const struct radv_device *device, VkFormat vk_forma
 
    format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
    ntype = ac_get_cb_number_type(desc->format);
-   swap = radv_translate_colorswap(vk_format, false);
+   swap = radv_translate_colorswap(desc->format, false);
 
    ac_choose_spi_color_formats(format, swap, ntype, false, use_rbplus, &formats);
 

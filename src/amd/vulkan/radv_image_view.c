@@ -239,6 +239,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
       (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) && view_type == VK_IMAGE_VIEW_TYPE_2D;
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
+   unsigned array_pitch = 0;
    unsigned img_format;
    unsigned type;
 
@@ -274,6 +275,24 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    } else if (type == V_008F1C_SQ_RSRC_IMG_CUBE)
       depth = image->vk.array_layers / 6;
 
+   if (create_2d_view_of_3d) {
+      assert(type == V_008F1C_SQ_RSRC_IMG_3D);
+
+      depth = !is_storage_image ? depth : u_minify(depth, first_level);
+      array_pitch = is_storage_image;
+   } else if (sliced_3d) {
+      assert(type == V_008F1C_SQ_RSRC_IMG_3D && is_storage_image);
+
+      const unsigned total = u_minify(depth, first_level);
+      const unsigned slice_count = sliced_3d->sliceCount == VK_REMAINING_3D_SLICES_EXT
+                                      ? MAX2(1, total - sliced_3d->sliceOffset)
+                                      : sliced_3d->sliceCount;
+
+      first_layer = sliced_3d->sliceOffset;
+      depth = sliced_3d->sliceOffset + slice_count;
+      array_pitch = 1;
+   }
+
    state[0] = 0;
    state[1] = S_00A004_FORMAT_GFX10(img_format) | S_00A004_WIDTH_LO(width - 1);
    state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
@@ -288,35 +307,13 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
     */
    state[4] =
       S_00A010_DEPTH_GFX10(type == V_008F1C_SQ_RSRC_IMG_3D ? depth - 1 : last_layer) | S_00A010_BASE_ARRAY(first_layer);
-   state[5] = S_00A014_ARRAY_PITCH(0) | S_00A014_PERF_MOD(4);
+   /* ARRAY_PITCH is only meaningful for 3D images, 0 means SRV, 1 means UAV.
+    * In SRV mode, BASE_ARRAY is ignored and DEPTH is the last slice of mipmap level 0.
+    * In UAV mode, BASE_ARRAY is the first slice and DEPTH is the last slice of the bound level.
+    */
+   state[5] = S_00A014_ARRAY_PITCH(array_pitch) | S_00A014_PERF_MOD(4);
    state[6] = 0;
    state[7] = 0;
-
-   if (create_2d_view_of_3d) {
-      assert(type == V_008F1C_SQ_RSRC_IMG_3D);
-
-      /* ARRAY_PITCH is only meaningful for 3D images, 0 means SRV, 1 means UAV.
-       * In SRV mode, BASE_ARRAY is ignored and DEPTH is the last slice of mipmap level 0.
-       * In UAV mode, BASE_ARRAY is the first slice and DEPTH is the last slice of the bound level.
-       */
-      state[4] &= C_00A010_DEPTH_GFX10;
-      state[4] |= S_00A010_DEPTH_GFX10(!is_storage_image ? depth - 1 : u_minify(depth, first_level) - 1);
-      state[5] |= S_00A014_ARRAY_PITCH(is_storage_image);
-   } else if (sliced_3d) {
-      unsigned total = u_minify(depth, first_level);
-
-      assert(type == V_008F1C_SQ_RSRC_IMG_3D && is_storage_image);
-
-      unsigned first_slice = sliced_3d->sliceOffset;
-      unsigned slice_count = sliced_3d->sliceCount == VK_REMAINING_3D_SLICES_EXT
-                                ? MAX2(1, total - sliced_3d->sliceOffset)
-                                : sliced_3d->sliceCount;
-      unsigned last_slice = first_slice + slice_count - 1;
-
-      state[4] = 0;
-      state[4] |= S_00A010_DEPTH_GFX10(last_slice) | S_00A010_BASE_ARRAY(first_slice);
-      state[5] |= S_00A014_ARRAY_PITCH(1);
-   }
 
    unsigned max_mip = image->vk.samples > 1 ? util_logbase2(image->vk.samples) : image->vk.mip_levels - 1;
    if (nbc_view && nbc_view->valid)

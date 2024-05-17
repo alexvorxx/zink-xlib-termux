@@ -396,7 +396,7 @@ radv_is_storage_image_format_supported(const struct radv_physical_device *pdev, 
    data_format = radv_translate_tex_dataformat(format, desc, vk_format_get_first_non_void_channel(format));
    num_format = radv_translate_tex_numformat(format, desc, vk_format_get_first_non_void_channel(format));
 
-   if (data_format == ~0 || num_format == ~0)
+   if (data_format == ~0)
       return false;
 
    /* Extracted from the GCN3 ISA document. */

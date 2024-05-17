@@ -426,9 +426,6 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    first_non_void = vk_format_get_first_non_void_channel(vk_format);
 
    num_format = radv_translate_tex_numformat(vk_format, desc, first_non_void);
-   if (num_format == ~0) {
-      num_format = 0;
-   }
 
    data_format = radv_translate_tex_dataformat(vk_format, desc, first_non_void);
    if (data_format == ~0) {

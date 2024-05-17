@@ -105,7 +105,6 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
    unsigned array_pitch = 0;
-   unsigned img_format;
    unsigned type;
 
    /* For emulated ETC2 without alpha we need to override the format to a 3-componenent format, so
@@ -118,8 +117,6 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    }
 
    desc = util_format_description(format);
-
-   img_format = ac_get_gfx10_format_table(pdev->info.gfx_level)[format].img_format;
 
    radv_compose_swizzle(desc, mapping, swizzle);
 
@@ -158,48 +155,42 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
       array_pitch = 1;
    }
 
-   state[0] = 0;
-   state[1] = S_00A004_FORMAT_GFX10(img_format) | S_00A004_WIDTH_LO(width - 1);
-   state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
-              S_00A008_RESOURCE_LEVEL(pdev->info.gfx_level < GFX11);
-   state[3] = S_00A00C_DST_SEL_X(ac_map_swizzle(swizzle[0])) | S_00A00C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
-              S_00A00C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) | S_00A00C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
-              S_00A00C_BASE_LEVEL(image->vk.samples > 1 ? 0 : first_level) |
-              S_00A00C_LAST_LEVEL_GFX10(image->vk.samples > 1 ? util_logbase2(image->vk.samples) : last_level) |
-              S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
-   /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
-    * to know the total number of layers.
-    */
-   state[4] =
-      S_00A010_DEPTH_GFX10(type == V_008F1C_SQ_RSRC_IMG_3D ? depth - 1 : last_layer) | S_00A010_BASE_ARRAY(first_layer);
-   /* ARRAY_PITCH is only meaningful for 3D images, 0 means SRV, 1 means UAV.
-    * In SRV mode, BASE_ARRAY is ignored and DEPTH is the last slice of mipmap level 0.
-    * In UAV mode, BASE_ARRAY is the first slice and DEPTH is the last slice of the bound level.
-    */
-   state[5] = S_00A014_ARRAY_PITCH(array_pitch) | S_00A014_PERF_MOD(4);
-   state[6] = 0;
-   state[7] = 0;
+   const struct ac_texture_state tex_state = {
+      .surf = &image->planes[0].surface,
+      .format = format,
+      .img_format = vk_format_to_pipe_format(image->vk.format),
+      .width = width,
+      .height = height,
+      .depth = type == V_008F1C_SQ_RSRC_IMG_3D ? depth - 1 : last_layer,
+      .type = type,
+      .swizzle =
+         {
+            swizzle[0],
+            swizzle[1],
+            swizzle[2],
+            swizzle[3],
+         },
+      .num_samples = image->vk.samples,
+      .num_storage_samples = image->vk.samples,
+      .first_level = first_level,
+      .last_level = last_level,
+      .num_levels = image->vk.mip_levels,
+      .first_layer = first_layer,
+      .last_layer = last_layer,
+      .min_lod = min_lod,
+      .gfx10 =
+         {
+            .uav3d = array_pitch,
+         },
+      .gfx9 =
+         {
+            .nbc_view = nbc_view,
+         },
+      .dcc_enabled = radv_dcc_enabled(image, first_level),
+      .tc_compat_htile_enabled = radv_image_is_tc_compat_htile(image),
+   };
 
-   unsigned max_mip = image->vk.samples > 1 ? util_logbase2(image->vk.samples) : image->vk.mip_levels - 1;
-   if (nbc_view && nbc_view->valid)
-      max_mip = nbc_view->num_levels - 1;
-
-   unsigned min_lod_clamped = util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8);
-   if (pdev->info.gfx_level >= GFX11) {
-      state[1] |= S_00A004_MAX_MIP_GFX11(max_mip);
-      state[5] |= S_00A014_MIN_LOD_LO_GFX11(min_lod_clamped);
-      state[6] |= S_00A018_MIN_LOD_HI(min_lod_clamped >> 5);
-   } else {
-      state[1] |= S_00A004_MIN_LOD(min_lod_clamped);
-      state[5] |= S_00A014_MAX_MIP(max_mip);
-   }
-
-   if (radv_dcc_enabled(image, first_level)) {
-      state[6] |=
-         S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(V_028C78_MAX_BLOCK_SIZE_256B) |
-         S_00A018_MAX_COMPRESSED_BLOCK_SIZE(image->planes[0].surface.u.gfx9.color.dcc.max_compressed_block_size) |
-         S_00A018_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, format));
-   }
+   ac_build_texture_descriptor(&pdev->info, &tex_state, &state[0]);
 
    /* Initialize the sampler view for FMASK. */
    if (fmask_state) {
@@ -245,8 +236,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    enum pipe_format format = vk_format_to_pipe_format(vk_format);
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
-   int first_non_void;
-   unsigned num_format, data_format, type;
+   unsigned type;
 
    /* For emulated ETC2 without alpha we need to override the format to a 3-componenent format, so
     * that border colors work correctly (alpha forced to 1). Since Vulkan has no such format,
@@ -260,23 +250,6 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    desc = util_format_description(format);
 
    radv_compose_swizzle(desc, mapping, swizzle);
-
-   first_non_void = util_format_get_first_non_void_channel(format);
-
-   num_format = radv_translate_tex_numformat(desc, first_non_void);
-
-   data_format = radv_translate_tex_dataformat(pdev, desc, first_non_void);
-   if (data_format == ~0) {
-      data_format = 0;
-   }
-
-   /* S8 with either Z16 or Z32 HTILE need a special format. */
-   if (pdev->info.gfx_level == GFX9 && format == PIPE_FORMAT_S8_UINT && radv_image_is_tc_compat_htile(image)) {
-      if (image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT)
-         data_format = V_008F14_IMG_DATA_FORMAT_S8_32;
-      else if (image->vk.format == VK_FORMAT_D16_UNORM_S8_UINT)
-         data_format = V_008F14_IMG_DATA_FORMAT_S8_16;
-   }
 
    if (pdev->info.gfx_level == GFX9 && create_2d_view_of_3d) {
       assert(image->vk.image_type == VK_IMAGE_TYPE_3D);
@@ -295,54 +268,35 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    } else if (type == V_008F1C_SQ_RSRC_IMG_CUBE)
       depth = image->vk.array_layers / 6;
 
-   state[0] = 0;
-   state[1] = (S_008F14_MIN_LOD(util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8)) | S_008F14_DATA_FORMAT(data_format) |
-               S_008F14_NUM_FORMAT(num_format));
-   state[2] = (S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1) | S_008F18_PERF_MOD(4));
-   state[3] = (S_008F1C_DST_SEL_X(ac_map_swizzle(swizzle[0])) | S_008F1C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
-               S_008F1C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) | S_008F1C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
-               S_008F1C_BASE_LEVEL(image->vk.samples > 1 ? 0 : first_level) |
-               S_008F1C_LAST_LEVEL(image->vk.samples > 1 ? util_logbase2(image->vk.samples) : last_level) |
-               S_008F1C_TYPE(type));
-   state[4] = 0;
-   state[5] = S_008F24_BASE_ARRAY(first_layer);
-   state[6] = 0;
-   state[7] = 0;
+   const struct ac_texture_state tex_state = {
+      .surf = &image->planes[0].surface,
+      .format = format,
+      .img_format = vk_format_to_pipe_format(image->vk.format),
+      .width = width,
+      .height = height,
+      .depth = depth,
+      .type = type,
+      .swizzle =
+         {
+            swizzle[0],
+            swizzle[1],
+            swizzle[2],
+            swizzle[3],
+         },
+      .num_samples = image->vk.samples,
+      .num_storage_samples = image->vk.samples,
+      .first_level = first_level,
+      .last_level = last_level,
+      .num_levels = image->vk.mip_levels,
+      .first_layer = first_layer,
+      .last_layer = last_layer,
+      .min_lod = min_lod,
+      .dcc_enabled = radv_dcc_enabled(image, first_level),
+      .tc_compat_htile_enabled = radv_image_is_tc_compat_htile(image),
+      .aniso_single_level = !instance->drirc.disable_aniso_single_level,
+   };
 
-   if (pdev->info.gfx_level == GFX9) {
-      unsigned bc_swizzle = ac_border_color_swizzle(desc);
-
-      /* Depth is the last accessible layer on Gfx9.
-       * The hw doesn't need to know the total number of layers.
-       */
-      if (type == V_008F1C_SQ_RSRC_IMG_3D)
-         state[4] |= S_008F20_DEPTH(depth - 1);
-      else
-         state[4] |= S_008F20_DEPTH(last_layer);
-
-      state[4] |= S_008F20_BC_SWIZZLE(bc_swizzle);
-      state[5] |= S_008F24_MAX_MIP(image->vk.samples > 1 ? util_logbase2(image->vk.samples) : image->vk.mip_levels - 1);
-   } else {
-      state[3] |= S_008F1C_POW2_PAD(image->vk.mip_levels > 1);
-      state[4] |= S_008F20_DEPTH(depth - 1);
-      state[5] |= S_008F24_LAST_ARRAY(last_layer);
-   }
-
-   if (radv_dcc_enabled(image, first_level)) {
-      state[6] = S_008F28_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, format));
-   } else {
-      if (instance->drirc.disable_aniso_single_level) {
-         /* The last dword is unused by hw. The shader uses it to clear
-          * bits in the first dword of sampler state.
-          */
-         if (pdev->info.gfx_level <= GFX7 && image->vk.samples <= 1) {
-            if (first_level == last_level)
-               state[7] = C_008F30_MAX_ANISO_RATIO;
-            else
-               state[7] = 0xffffffff;
-         }
-      }
-   }
+   ac_build_texture_descriptor(&pdev->info, &tex_state, &state[0]);
 
    /* Initialize the sampler view for FMASK. */
    if (fmask_state) {
@@ -351,7 +305,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
 
          assert(image->plane_count == 1);
 
-         const struct ac_fmask_state ac_state = {
+         const struct ac_fmask_state ac_fmask_state = {
             .surf = &image->planes[0].surface,
             .va = gpu_address + image->bindings[0].offset,
             .width = width,
@@ -365,7 +319,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
             .tc_compat_cmask = radv_image_is_tc_compat_cmask(image),
          };
 
-         ac_build_fmask_descriptor(pdev->info.gfx_level, &ac_state, &fmask_state[0]);
+         ac_build_fmask_descriptor(pdev->info.gfx_level, &ac_fmask_state, &fmask_state[0]);
       } else
          memset(fmask_state, 0, 8 * 4);
    }

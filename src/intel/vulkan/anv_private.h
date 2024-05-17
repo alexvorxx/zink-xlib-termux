@@ -1863,7 +1863,6 @@ struct anv_device {
      */
     char                                        host_null_surface_state[ANV_SURFACE_STATE_SIZE];
 
-    struct vk_pipeline_cache *                  default_pipeline_cache;
     struct vk_pipeline_cache *                  internal_cache;
 
     struct {

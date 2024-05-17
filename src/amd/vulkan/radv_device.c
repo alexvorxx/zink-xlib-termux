@@ -1686,7 +1686,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
    assert(format != V_028C70_COLOR_INVALID);
 
    swap = ac_translate_colorswap(pdev->info.gfx_level, vk_format_to_pipe_format(iview->vk.format), false);
-   endian = radv_colorformat_endian_swap(format);
+   endian = ac_colorformat_endian_swap(format);
 
    /* blend clamp should be set for all NORM/SRGB types */
    if (ntype == V_028C70_NUMBER_UNORM || ntype == V_028C70_NUMBER_SNORM || ntype == V_028C70_NUMBER_SRGB)

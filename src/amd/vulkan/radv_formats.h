@@ -159,8 +159,6 @@ bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pde
 
 bool radv_is_format_emulated(const struct radv_physical_device *pdev, VkFormat format);
 
-uint32_t radv_colorformat_endian_swap(uint32_t colorformat);
-
 bool radv_format_pack_clear_color(VkFormat format, uint32_t clear_vals[2], VkClearColorValue *value);
 
 bool radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFormat format2,

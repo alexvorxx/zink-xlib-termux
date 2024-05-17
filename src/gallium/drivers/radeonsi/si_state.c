@@ -1976,53 +1976,6 @@ static void si_emit_db_render_state(struct si_context *sctx, unsigned index)
 }
 
 /*
- * format translation
- */
-
-static uint32_t si_colorformat_endian_swap(uint32_t colorformat)
-{
-   if (UTIL_ARCH_BIG_ENDIAN) {
-      switch (colorformat) {
-      /* 8-bit buffers. */
-      case V_028C70_COLOR_8:
-         return V_028C70_ENDIAN_NONE;
-
-      /* 16-bit buffers. */
-      case V_028C70_COLOR_5_6_5:
-      case V_028C70_COLOR_1_5_5_5:
-      case V_028C70_COLOR_4_4_4_4:
-      case V_028C70_COLOR_16:
-      case V_028C70_COLOR_8_8:
-         return V_028C70_ENDIAN_8IN16;
-
-      /* 32-bit buffers. */
-      case V_028C70_COLOR_8_8_8_8:
-      case V_028C70_COLOR_2_10_10_10:
-      case V_028C70_COLOR_10_10_10_2:
-      case V_028C70_COLOR_8_24:
-      case V_028C70_COLOR_24_8:
-      case V_028C70_COLOR_16_16:
-         return V_028C70_ENDIAN_8IN32;
-
-      /* 64-bit buffers. */
-      case V_028C70_COLOR_16_16_16_16:
-         return V_028C70_ENDIAN_8IN16;
-
-      case V_028C70_COLOR_32_32:
-         return V_028C70_ENDIAN_8IN32;
-
-      /* 128-bit buffers. */
-      case V_028C70_COLOR_32_32_32_32:
-         return V_028C70_ENDIAN_8IN32;
-      default:
-         return V_028C70_ENDIAN_NONE; /* Unsupported. */
-      }
-   } else {
-      return V_028C70_ENDIAN_NONE;
-   }
-}
-
-/*
  * Texture translation
  */
 
@@ -2653,7 +2606,7 @@ static void si_initialize_color_surface(struct si_context *sctx, struct si_surfa
    }
    assert(format != V_028C70_COLOR_INVALID);
    swap = ac_translate_colorswap(sctx->gfx_level, surf->base.format, false);
-   endian = si_colorformat_endian_swap(format);
+   endian = ac_colorformat_endian_swap(format);
 
    /* blend clamp should be set for all NORM/SRGB types */
    if (ntype == V_028C70_NUMBER_UNORM || ntype == V_028C70_NUMBER_SNORM ||

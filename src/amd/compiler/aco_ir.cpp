@@ -155,7 +155,8 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
    if (program->family == CHIP_TAHITI || program->family == CHIP_CARRIZO ||
        program->family == CHIP_HAWAII)
       program->dev.has_fast_fma32 = true;
-   program->dev.has_mac_legacy32 = program->gfx_level <= GFX7 || program->gfx_level >= GFX10;
+   program->dev.has_mac_legacy32 = program->gfx_level <= GFX7 || program->gfx_level == GFX10;
+   program->dev.has_fmac_legacy32 = program->gfx_level >= GFX10_3 && program->gfx_level < GFX12;
 
    program->dev.fused_mad_mix = program->gfx_level >= GFX10;
    if (program->family == CHIP_VEGA12 || program->family == CHIP_VEGA20 ||

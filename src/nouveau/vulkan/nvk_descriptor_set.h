@@ -53,11 +53,16 @@ static_assert(sizeof(struct nvk_buffer_view_descriptor) == 4,
               "nvk_buffer_view_descriptor has no holes");
 
 /* This has to match nir_address_format_64bit_bounded_global */
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_buffer_address {
    uint64_t base_addr;
    uint32_t size;
    uint32_t zero; /* Must be zero! */
 };
+PRAGMA_DIAGNOSTIC_POP
+static_assert(sizeof(struct nvk_buffer_address) == 16,
+              "nvk_buffer_address has no holes");
 
 struct nvk_descriptor_pool {
    struct vk_object_base base;

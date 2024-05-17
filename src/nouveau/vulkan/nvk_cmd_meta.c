@@ -65,6 +65,7 @@ struct nvk_meta_save {
    struct nvk_descriptor_set *desc0;
    bool has_push_desc0;
    struct nvk_push_descriptor_set push_desc0;
+   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
    uint8_t push[128];
 };
 
@@ -87,6 +88,12 @@ nvk_meta_begin(struct nvk_cmd_buffer *cmd,
    save->has_push_desc0 = desc->push[0];
    if (save->has_push_desc0)
       save->push_desc0 = *desc->push[0];
+
+   STATIC_ASSERT(sizeof(save->set_dynamic_buffer_start) ==
+                sizeof(desc->root.set_dynamic_buffer_start));
+   memcpy(save->set_dynamic_buffer_start,
+          desc->root.set_dynamic_buffer_start,
+          sizeof(save->set_dynamic_buffer_start));
 
    STATIC_ASSERT(sizeof(save->push) == sizeof(desc->root.push));
    memcpy(save->push, desc->root.push, sizeof(save->push));
@@ -140,6 +147,15 @@ nvk_meta_end(struct nvk_cmd_buffer *cmd,
       *desc->push[0] = save->push_desc0;
       desc->push_dirty |= BITFIELD_BIT(0);
    }
+
+   /* Restore set_dynaic_buffer_start because meta binding set 0 can disturb
+    * all dynamic buffers starts for all sets.
+    */
+   STATIC_ASSERT(sizeof(save->set_dynamic_buffer_start) ==
+                sizeof(desc->root.set_dynamic_buffer_start));
+   memcpy(desc->root.set_dynamic_buffer_start,
+          save->set_dynamic_buffer_start,
+          sizeof(save->set_dynamic_buffer_start));
 
    /* Restore the dynamic state */
    assert(save->dynamic.vi == &cmd->state.gfx._dynamic_vi);

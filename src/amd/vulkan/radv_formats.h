@@ -161,7 +161,7 @@ bool radv_is_format_emulated(const struct radv_physical_device *pdev, VkFormat f
 
 uint32_t radv_colorformat_endian_swap(uint32_t colorformat);
 
-uint32_t radv_translate_dbformat(VkFormat format);
+uint32_t radv_translate_dbformat(enum pipe_format format);
 
 bool radv_format_pack_clear_color(VkFormat format, uint32_t clear_vals[2], VkClearColorValue *value);
 

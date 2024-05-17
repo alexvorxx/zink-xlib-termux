@@ -33,6 +33,7 @@
 
 #include "util/u_debug.h"
 #include "ac_binary.h"
+#include "ac_formats.h"
 #include "ac_nir.h"
 #include "ac_shader_util.h"
 #include "aco_interface.h"
@@ -112,7 +113,7 @@ radv_choose_spi_color_format(const struct radv_device *device, VkFormat vk_forma
 
    format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
    ntype = ac_get_cb_number_type(desc->format);
-   swap = radv_translate_colorswap(desc->format, false);
+   swap = ac_translate_colorswap(pdev->info.gfx_level, desc->format, false);
 
    ac_choose_spi_color_formats(format, swap, ntype, false, use_rbplus, &formats);
 

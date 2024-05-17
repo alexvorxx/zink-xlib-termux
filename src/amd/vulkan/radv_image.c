@@ -12,6 +12,7 @@
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 #include "ac_drm_fourcc.h"
+#include "ac_formats.h"
 #include "radv_android.h"
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
@@ -777,7 +778,7 @@ vi_alpha_is_on_msb(const struct radv_device *device, const VkFormat format)
    if (pdev->info.gfx_level >= GFX10 && desc->nr_channels == 1)
       return desc->swizzle[3] == PIPE_SWIZZLE_X;
 
-   return radv_translate_colorswap(desc->format, false) <= 1;
+   return ac_translate_colorswap(pdev->info.gfx_level, desc->format, false) <= 1;
 }
 
 static void

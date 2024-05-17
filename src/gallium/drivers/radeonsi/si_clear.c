@@ -9,6 +9,7 @@
 #include "util/format/u_format.h"
 #include "util/u_pack_color.h"
 #include "util/u_surface.h"
+#include "ac_formats.h"
 
 enum {
    SI_CLEAR = SI_SAVE_FRAGMENT_STATE | SI_SAVE_FRAGMENT_CONSTANT,
@@ -189,7 +190,7 @@ bool vi_alpha_is_on_msb(struct si_screen *sscreen, enum pipe_format format)
 
    format = si_simplify_cb_format(format);
    const struct util_format_description *desc = util_format_description(format);
-   unsigned comp_swap = si_translate_colorswap(sscreen->info.gfx_level, format, false);
+   unsigned comp_swap = ac_translate_colorswap(sscreen->info.gfx_level, format, false);
 
    /* The following code matches the hw behavior. */
    if (desc->nr_channels == 1) {

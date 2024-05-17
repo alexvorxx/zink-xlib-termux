@@ -2525,7 +2525,7 @@ static bool si_is_colorbuffer_format_supported(enum amd_gfx_level gfx_level,
                                                enum pipe_format format)
 {
    return ac_get_cb_format(gfx_level, format) != V_028C70_COLOR_INVALID &&
-          si_translate_colorswap(gfx_level, format, false) != ~0U;
+          ac_translate_colorswap(gfx_level, format, false) != ~0U;
 }
 
 static bool si_is_zs_format_supported(enum pipe_format format)
@@ -2667,7 +2667,7 @@ static void si_initialize_color_surface(struct si_context *sctx, struct si_surfa
       PRINT_ERR("Invalid CB format: %d, disabling CB.\n", surf->base.format);
    }
    assert(format != V_028C70_COLOR_INVALID);
-   swap = si_translate_colorswap(sctx->gfx_level, surf->base.format, false);
+   swap = ac_translate_colorswap(sctx->gfx_level, surf->base.format, false);
    endian = si_colorformat_endian_swap(format);
 
    /* blend clamp should be set for all NORM/SRGB types */

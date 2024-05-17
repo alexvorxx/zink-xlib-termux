@@ -74,6 +74,8 @@ typedef void *drmDevicePtr;
 #include "ac_llvm_util.h"
 #endif
 
+#include "ac_formats.h"
+
 static bool
 radv_spm_trace_enabled(struct radv_instance *instance)
 {
@@ -1683,7 +1685,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
    format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
    assert(format != V_028C70_COLOR_INVALID);
 
-   swap = radv_translate_colorswap(vk_format_to_pipe_format(iview->vk.format), false);
+   swap = ac_translate_colorswap(pdev->info.gfx_level, vk_format_to_pipe_format(iview->vk.format), false);
    endian = radv_colorformat_endian_swap(format);
 
    /* blend clamp should be set for all NORM/SRGB types */

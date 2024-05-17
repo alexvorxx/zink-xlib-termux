@@ -192,3 +192,67 @@ ac_translate_tex_numformat(const struct util_format_description *desc,
 
    return num_format;
 }
+
+unsigned
+ac_translate_colorswap(enum amd_gfx_level gfx_level, enum pipe_format format, bool do_endian_swap)
+{
+   const struct util_format_description *desc = util_format_description(format);
+
+#define HAS_SWIZZLE(chan, swz) (desc->swizzle[chan] == PIPE_SWIZZLE_##swz)
+
+   if (format == PIPE_FORMAT_R11G11B10_FLOAT) /* isn't plain */
+      return V_028C70_SWAP_STD;
+
+   if (gfx_level >= GFX10_3 &&
+       format == PIPE_FORMAT_R9G9B9E5_FLOAT) /* isn't plain */
+      return V_028C70_SWAP_STD;
+
+   if (desc->layout != UTIL_FORMAT_LAYOUT_PLAIN)
+      return ~0U;
+
+   switch (desc->nr_channels) {
+   case 1:
+      if (HAS_SWIZZLE(0, X))
+         return V_028C70_SWAP_STD; /* X___ */
+      else if (HAS_SWIZZLE(3, X))
+         return V_028C70_SWAP_ALT_REV; /* ___X */
+      break;
+   case 2:
+      if ((HAS_SWIZZLE(0, X) && HAS_SWIZZLE(1, Y)) || (HAS_SWIZZLE(0, X) && HAS_SWIZZLE(1, NONE)) ||
+          (HAS_SWIZZLE(0, NONE) && HAS_SWIZZLE(1, Y)))
+         return V_028C70_SWAP_STD; /* XY__ */
+      else if ((HAS_SWIZZLE(0, Y) && HAS_SWIZZLE(1, X)) ||
+               (HAS_SWIZZLE(0, Y) && HAS_SWIZZLE(1, NONE)) ||
+               (HAS_SWIZZLE(0, NONE) && HAS_SWIZZLE(1, X)))
+         /* YX__ */
+         return (do_endian_swap ? V_028C70_SWAP_STD : V_028C70_SWAP_STD_REV);
+      else if (HAS_SWIZZLE(0, X) && HAS_SWIZZLE(3, Y))
+         return V_028C70_SWAP_ALT; /* X__Y */
+      else if (HAS_SWIZZLE(0, Y) && HAS_SWIZZLE(3, X))
+         return V_028C70_SWAP_ALT_REV; /* Y__X */
+      break;
+   case 3:
+      if (HAS_SWIZZLE(0, X))
+         return (do_endian_swap ? V_028C70_SWAP_STD_REV : V_028C70_SWAP_STD);
+      else if (HAS_SWIZZLE(0, Z))
+         return V_028C70_SWAP_STD_REV; /* ZYX */
+      break;
+   case 4:
+      /* check the middle channels, the 1st and 4th channel can be NONE */
+      if (HAS_SWIZZLE(1, Y) && HAS_SWIZZLE(2, Z)) {
+         return V_028C70_SWAP_STD; /* XYZW */
+      } else if (HAS_SWIZZLE(1, Z) && HAS_SWIZZLE(2, Y)) {
+         return V_028C70_SWAP_STD_REV; /* WZYX */
+      } else if (HAS_SWIZZLE(1, Y) && HAS_SWIZZLE(2, X)) {
+         return V_028C70_SWAP_ALT; /* ZYXW */
+      } else if (HAS_SWIZZLE(1, Z) && HAS_SWIZZLE(2, W)) {
+         /* YZWX */
+         if (desc->is_array)
+            return V_028C70_SWAP_ALT_REV;
+         else
+            return (do_endian_swap ? V_028C70_SWAP_ALT : V_028C70_SWAP_ALT_REV);
+      }
+      break;
+   }
+   return ~0U;
+}

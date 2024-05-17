@@ -532,8 +532,8 @@ static nir_def *
 load_descriptor_set_addr(nir_builder *b, uint32_t set,
                          UNUSED const struct lower_descriptors_ctx *ctx)
 {
-   uint32_t set_addr_offset =
-      nvk_root_descriptor_offset(sets) + set * sizeof(uint64_t);
+   uint32_t set_addr_offset = nvk_root_descriptor_offset(sets) +
+      set * sizeof(struct nvk_buffer_address);
 
    return nir_load_ubo(b, 1, 64, nir_imm_int(b, 0),
                        nir_imm_int(b, set_addr_offset),

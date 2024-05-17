@@ -53,8 +53,8 @@ struct nvk_root_descriptor_table {
    /* Client push constants */
    uint8_t push[NVK_MAX_PUSH_SIZE];
 
-   /* Descriptor set base addresses */
-   uint64_t sets[NVK_MAX_SETS];
+   /* Descriptor set addresses */
+   struct nvk_buffer_address sets[NVK_MAX_SETS];
 
    /* Dynamic buffer bindings */
    struct nvk_buffer_address dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
@@ -63,7 +63,7 @@ struct nvk_root_descriptor_table {
    uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
 
    /* enfore alignment to 0x100 as needed pre pascal */
-   uint8_t __padding[0x18];
+   uint8_t __padding[0xd8];
 };
 
 /* helper macro for computing root descriptor byte offsets */
@@ -73,7 +73,6 @@ struct nvk_root_descriptor_table {
 struct nvk_descriptor_state {
    struct nvk_root_descriptor_table root;
    struct nvk_descriptor_set *sets[NVK_MAX_SETS];
-   struct nvk_buffer_address set_addrs[NVK_MAX_SETS];
    struct nvk_push_descriptor_set *push[NVK_MAX_SETS];
    uint32_t push_dirty;
 };

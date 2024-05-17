@@ -135,10 +135,6 @@ nvk_meta_end(struct nvk_cmd_buffer *cmd,
    if (save->desc0) {
       desc->sets[0] = save->desc0;
       desc->root.sets[0] = nvk_descriptor_set_addr(save->desc0);
-      desc->set_addrs[0] = (struct nvk_buffer_address) {
-         .base_addr = nvk_descriptor_set_addr(save->desc0),
-         .size = save->desc0->size,
-      };
    } else if (save->has_push_desc0) {
       *desc->push[0] = save->push_desc0;
       desc->push_dirty |= BITFIELD_BIT(0);

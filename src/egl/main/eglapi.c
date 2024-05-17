@@ -602,6 +602,7 @@ _eglCreateExtensionsString(_EGLDisplay *disp)
    _EGL_CHECK_EXTENSION(NV_post_sub_buffer);
 
    _EGL_CHECK_EXTENSION(WL_bind_wayland_display);
+   _EGL_CHECK_EXTENSION(WL_create_wayland_buffer_from_image);
 
 #undef _EGL_CHECK_EXTENSION
 }
@@ -2379,11 +2380,23 @@ static struct wl_buffer *EGLAPIENTRY
 eglCreateWaylandBufferFromImageWL(EGLDisplay dpy, EGLImage image)
 {
    _EGLDisplay *disp = _eglLockDisplay(dpy);
+   _EGLImage *img;
+   struct wl_buffer *ret;
 
    _EGL_FUNC_START(disp, EGL_OBJECT_DISPLAY_KHR, NULL);
 
    _EGL_CHECK_DISPLAY(disp, NULL);
-   RETURN_EGL_EVAL(disp, NULL);
+   if (!disp->Extensions.WL_create_wayland_buffer_from_image)
+      RETURN_EGL_EVAL(disp, NULL);
+
+   img = _eglLookupImage(image, disp);
+
+   if (!img)
+      RETURN_EGL_ERROR(disp, EGL_BAD_PARAMETER, NULL);
+
+   ret = disp->Driver->CreateWaylandBufferFromImageWL(disp, img);
+
+   RETURN_EGL_EVAL(disp, ret);
 }
 
 static EGLBoolean EGLAPIENTRY

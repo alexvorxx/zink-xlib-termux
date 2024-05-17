@@ -154,6 +154,7 @@ struct _egl_extensions {
    EGLBoolean NV_post_sub_buffer;
 
    EGLBoolean WL_bind_wayland_display;
+   EGLBoolean WL_create_wayland_buffer_from_image;
 };
 
 struct _egl_display {

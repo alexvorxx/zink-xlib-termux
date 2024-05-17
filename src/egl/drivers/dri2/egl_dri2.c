@@ -2402,6 +2402,20 @@ dri2_query_surface(_EGLDisplay *disp, _EGLSurface *surf, EGLint attribute,
    return ret;
 }
 
+static struct wl_buffer *
+dri2_create_wayland_buffer_from_image(_EGLDisplay *disp, _EGLImage *img)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display_lock(disp);
+   struct wl_buffer *ret = NULL;
+
+   if (dri2_dpy->vtbl->create_wayland_buffer_from_image)
+      ret = dri2_dpy->vtbl->create_wayland_buffer_from_image(disp, img);
+
+   mtx_unlock(&dri2_dpy->lock);
+
+   return ret;
+}
+
 #ifdef HAVE_LIBDRM
 static _EGLImage *
 dri2_create_image_mesa_drm_buffer(_EGLDisplay *disp, _EGLContext *ctx,
@@ -3654,6 +3668,7 @@ const _EGLDriver _eglDriver = {
    .QueryBufferAge = dri2_query_buffer_age,
    .CreateImageKHR = dri2_create_image,
    .DestroyImageKHR = dri2_destroy_image_khr,
+   .CreateWaylandBufferFromImageWL = dri2_create_wayland_buffer_from_image,
    .QuerySurface = dri2_query_surface,
    .QueryDriverName = dri2_query_driver_name,
    .QueryDriverConfig = dri2_query_driver_config,

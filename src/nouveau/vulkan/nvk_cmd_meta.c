@@ -72,6 +72,8 @@ static void
 nvk_meta_begin(struct nvk_cmd_buffer *cmd,
                struct nvk_meta_save *save)
 {
+   const struct nvk_descriptor_state *desc = &cmd->state.gfx.descriptors;
+
    save->dynamic = cmd->vk.dynamic_graphics_state;
    save->_dynamic_vi = cmd->state.gfx._dynamic_vi;
    save->_dynamic_sl = cmd->state.gfx._dynamic_sl;
@@ -81,14 +83,13 @@ nvk_meta_begin(struct nvk_cmd_buffer *cmd,
 
    save->vb0 = cmd->state.gfx.vb0;
 
-   save->desc0 = cmd->state.gfx.descriptors.sets[0];
-   save->has_push_desc0 = cmd->state.gfx.descriptors.push[0];
+   save->desc0 = desc->sets[0];
+   save->has_push_desc0 = desc->push[0];
    if (save->has_push_desc0)
-      save->push_desc0 = *cmd->state.gfx.descriptors.push[0];
+      save->push_desc0 = *desc->push[0];
 
-   STATIC_ASSERT(sizeof(save->push) ==
-                 sizeof(cmd->state.gfx.descriptors.root.push));
-   memcpy(save->push, cmd->state.gfx.descriptors.root.push, sizeof(save->push));
+   STATIC_ASSERT(sizeof(save->push) == sizeof(desc->root.push));
+   memcpy(save->push, desc->root.push, sizeof(save->push));
 
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 2);
    P_IMMD(p, NV9097, SET_STATISTICS_COUNTER, {

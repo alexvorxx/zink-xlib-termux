@@ -16,30 +16,6 @@
 
 namespace aco {
 
-#ifndef NDEBUG
-void
-perfwarn(Program* program, bool cond, const char* msg, Instruction* instr)
-{
-   if (cond) {
-      char* out;
-      size_t outsize;
-      struct u_memstream mem;
-      u_memstream_open(&mem, &out, &outsize);
-      FILE* const memf = u_memstream_get(&mem);
-
-      fprintf(memf, "%s: ", msg);
-      aco_print_instr(program->gfx_level, instr, memf);
-      u_memstream_close(&mem);
-
-      aco_perfwarn(program, out);
-      free(out);
-
-      if (debug_flags & DEBUG_PERFWARN)
-         exit(1);
-   }
-}
-#endif
-
 /**
  * The optimizer works in 4 phases:
  * (1) The first pass collects information for each ssa-def,
@@ -1324,20 +1300,6 @@ detect_clamp(Instruction* instr, unsigned* clamped_idx)
 void
 label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
-   if (instr->isSALU() || instr->isVALU() || instr->isPseudo()) {
-      ASSERTED bool all_const = false;
-      for (Operand& op : instr->operands)
-         all_const =
-            all_const && (!op.isTemp() || ctx.info[op.tempId()].is_constant_or_literal(32));
-      perfwarn(ctx.program, all_const, "All instruction operands are constant", instr.get());
-
-      ASSERTED bool is_copy = instr->opcode == aco_opcode::s_mov_b32 ||
-                              instr->opcode == aco_opcode::s_mov_b64 ||
-                              instr->opcode == aco_opcode::v_mov_b32;
-      perfwarn(ctx.program, is_copy && !instr->usesModifiers(), "Use p_parallelcopy instead",
-               instr.get());
-   }
-
    if (instr->isSMEM())
       smem_combine(ctx, instr);
 
@@ -1442,8 +1404,6 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          if (info.is_constant(bits) && alu_can_accept_constant(instr, i) &&
              (!instr->isSDWA() || ctx.program->gfx_level >= GFX9) && (!instr->isDPP() || i != 1)) {
             Operand op = get_constant_op(ctx, info, bits);
-            perfwarn(ctx.program, instr->opcode == aco_opcode::v_cndmask_b32 && i == 2,
-                     "v_cndmask_b32 with a constant selector", instr.get());
             if (i == 0 || instr->isSDWA() || instr->opcode == aco_opcode::v_readlane_b32 ||
                 instr->opcode == aco_opcode::v_writelane_b32) {
                instr->format = withoutDPP(instr->format);

@@ -82,7 +82,6 @@ enum Label {
    label_omod5 = 1 << 10,
    label_clamp = 1 << 12,
    label_undefined = 1 << 14,
-   label_vcc = 1 << 15,
    label_b2f = 1 << 16,
    label_add_sub = 1 << 17,
    label_bitwise = 1 << 18,
@@ -117,7 +116,7 @@ static constexpr uint64_t instr_mod_labels =
    label_omod2 | label_omod4 | label_omod5 | label_clamp | label_insert | label_f2f16;
 
 static constexpr uint64_t instr_labels = instr_usedef_labels | instr_mod_labels | label_split;
-static constexpr uint64_t temp_labels = label_abs | label_neg | label_temp | label_vcc | label_b2f |
+static constexpr uint64_t temp_labels = label_abs | label_neg | label_temp | label_b2f |
                                         label_uniform_bool | label_scc_invert | label_b2i |
                                         label_fcanonicalize;
 static constexpr uint32_t val_labels =
@@ -331,14 +330,6 @@ struct ssa_info {
    void set_undefined() { add_label(label_undefined); }
 
    bool is_undefined() { return label & label_undefined; }
-
-   void set_vcc(Temp vcc_val)
-   {
-      add_label(label_vcc);
-      temp = vcc_val;
-   }
-
-   bool is_vcc() { return label & label_vcc; }
 
    void set_b2f(Temp b2f_val)
    {
@@ -1947,21 +1938,11 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       break;
    }
    case aco_opcode::v_cndmask_b32:
-      if (instr->operands[0].constantEquals(0) && instr->operands[1].constantEquals(0xFFFFFFFF))
-         ctx.info[instr->definitions[0].tempId()].set_vcc(instr->operands[2].getTemp());
-      else if (instr->operands[0].constantEquals(0) &&
-               instr->operands[1].constantEquals(0x3f800000u))
+      if (instr->operands[0].constantEquals(0) && instr->operands[1].constantEquals(0x3f800000u))
          ctx.info[instr->definitions[0].tempId()].set_b2f(instr->operands[2].getTemp());
       else if (instr->operands[0].constantEquals(0) && instr->operands[1].constantEquals(1))
          ctx.info[instr->definitions[0].tempId()].set_b2i(instr->operands[2].getTemp());
 
-      break;
-   case aco_opcode::v_cmp_lg_u32:
-      if (instr->format == Format::VOPC && /* don't optimize VOP3 / SDWA / DPP */
-          instr->operands[0].constantEquals(0) && instr->operands[1].isTemp() &&
-          ctx.info[instr->operands[1].tempId()].is_vcc())
-         ctx.info[instr->definitions[0].tempId()].set_temp(
-            ctx.info[instr->operands[1].tempId()].temp);
       break;
    case aco_opcode::v_add_u32:
    case aco_opcode::v_add_co_u32:

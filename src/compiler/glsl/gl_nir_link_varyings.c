@@ -653,6 +653,19 @@ resize_tes_inputs(const struct gl_constants *consts,
    }
 }
 
+void
+set_geom_shader_input_array_size(struct gl_shader_program *prog)
+{
+   if (prog->_LinkedShaders[MESA_SHADER_GEOMETRY] == NULL)
+      return;
+
+   /* Set the size of geometry shader input arrays */
+   nir_shader *nir = prog->_LinkedShaders[MESA_SHADER_GEOMETRY]->Program->nir;
+   unsigned num_vertices =
+      mesa_vertices_per_prim(nir->info.gs.input_primitive);
+   resize_input_array(nir, prog, MESA_SHADER_GEOMETRY, num_vertices);
+}
+
 static bool
 validate_explicit_variable_location(const struct gl_constants *consts,
                                     struct explicit_location_info explicit_locations[][4],

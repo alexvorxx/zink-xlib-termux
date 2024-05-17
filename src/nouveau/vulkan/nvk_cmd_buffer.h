@@ -56,11 +56,14 @@ struct nvk_root_descriptor_table {
    /* Descriptor set addresses */
    struct nvk_buffer_address sets[NVK_MAX_SETS];
 
+   /* For each descriptor set, the index in dynamic_buffers where that set's
+    * the dynamic buffers start. This is maintained for every set, regardless
+    * of whether or not anything is bound there.
+    */
+   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
+
    /* Dynamic buffer bindings */
    struct nvk_buffer_address dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
-
-   /* Start index in dynamic_buffers where each set starts */
-   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
 
    /* enfore alignment to 0x100 as needed pre pascal */
    uint8_t __padding[0x40];

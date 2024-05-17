@@ -325,7 +325,8 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
       state[4] |= S_008F20_DEPTH(depth - 1);
       state[5] |= S_008F24_LAST_ARRAY(last_layer);
    }
-   if (!(image->planes[0].surface.flags & RADEON_SURF_Z_OR_SBUFFER) && image->planes[0].surface.meta_offset) {
+
+   if (radv_dcc_enabled(image, first_level)) {
       state[6] = S_008F28_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(device, vk_format));
    } else {
       if (instance->drirc.disable_aniso_single_level) {

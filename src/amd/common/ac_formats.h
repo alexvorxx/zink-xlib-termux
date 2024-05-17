@@ -33,6 +33,9 @@ ac_translate_colorswap(enum amd_gfx_level gfx_level,
                        enum pipe_format format,
                        bool do_endian_swap);
 
+uint32_t
+ac_translate_dbformat(enum pipe_format format);
+
 #ifdef __cplusplus
 }
 #endif

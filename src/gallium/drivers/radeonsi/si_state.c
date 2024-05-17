@@ -2022,24 +2022,6 @@ static uint32_t si_colorformat_endian_swap(uint32_t colorformat)
    }
 }
 
-static uint32_t si_translate_dbformat(enum pipe_format format)
-{
-   switch (format) {
-   case PIPE_FORMAT_Z16_UNORM:
-      return V_028040_Z_16;
-   case PIPE_FORMAT_S8_UINT_Z24_UNORM:
-   case PIPE_FORMAT_X8Z24_UNORM:
-   case PIPE_FORMAT_Z24X8_UNORM:
-   case PIPE_FORMAT_Z24_UNORM_S8_UINT:
-      return V_028040_Z_24; /* not present on GFX12 */
-   case PIPE_FORMAT_Z32_FLOAT:
-   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
-      return V_028040_Z_32_FLOAT;
-   default:
-      return V_028040_Z_INVALID;
-   }
-}
-
 /*
  * Texture translation
  */
@@ -2530,7 +2512,10 @@ static bool si_is_colorbuffer_format_supported(enum amd_gfx_level gfx_level,
 
 static bool si_is_zs_format_supported(enum pipe_format format)
 {
-   return si_translate_dbformat(format) != V_028040_Z_INVALID;
+   if (format == PIPE_FORMAT_Z16_UNORM_S8_UINT)
+      return false;
+
+   return ac_translate_dbformat(format) != V_028040_Z_INVALID;
 }
 
 static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format format,
@@ -2845,7 +2830,7 @@ static void si_init_depth_surface(struct si_context *sctx, struct si_surface *su
    unsigned level = surf->base.u.tex.level;
    unsigned format, stencil_format;
 
-   format = si_translate_dbformat(tex->db_render_format);
+   format = ac_translate_dbformat(tex->db_render_format);
    stencil_format = tex->surface.has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    assert(format != V_028040_Z_24 || sctx->gfx_level < GFX12);

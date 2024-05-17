@@ -256,3 +256,23 @@ ac_translate_colorswap(enum amd_gfx_level gfx_level, enum pipe_format format, bo
    }
    return ~0U;
 }
+
+uint32_t
+ac_translate_dbformat(enum pipe_format format)
+{
+   switch (format) {
+   case PIPE_FORMAT_Z16_UNORM:
+   case PIPE_FORMAT_Z16_UNORM_S8_UINT:
+      return V_028040_Z_16;
+   case PIPE_FORMAT_S8_UINT_Z24_UNORM:
+   case PIPE_FORMAT_X8Z24_UNORM:
+   case PIPE_FORMAT_Z24X8_UNORM:
+   case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+      return V_028040_Z_24; /* not present on GFX12 */
+   case PIPE_FORMAT_Z32_FLOAT:
+   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
+      return V_028040_Z_32_FLOAT;
+   default:
+      return V_028040_Z_INVALID;
+   }
+}

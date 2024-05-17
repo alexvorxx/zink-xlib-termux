@@ -1877,7 +1877,7 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 
    memset(ds, 0, sizeof(*ds));
 
-   format = radv_translate_dbformat(vk_format_to_pipe_format(iview->image->vk.format));
+   format = ac_translate_dbformat(vk_format_to_pipe_format(iview->image->vk.format));
    stencil_format = surf->has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;

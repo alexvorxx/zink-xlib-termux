@@ -465,8 +465,10 @@ radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, Vk
 static bool
 radv_is_zs_format_supported(VkFormat format)
 {
-   return radv_translate_dbformat(vk_format_to_pipe_format(format)) != V_028040_Z_INVALID ||
-          format == VK_FORMAT_S8_UINT;
+   if (format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_X8_D24_UNORM_PACK32)
+      return false;
+
+   return ac_translate_dbformat(vk_format_to_pipe_format(format)) != V_028040_Z_INVALID || format == VK_FORMAT_S8_UINT;
 }
 
 static bool
@@ -841,21 +843,6 @@ radv_colorformat_endian_swap(uint32_t colorformat)
       }
    } else {
       return V_028C70_ENDIAN_NONE;
-   }
-}
-
-uint32_t
-radv_translate_dbformat(enum pipe_format format)
-{
-   switch (format) {
-   case PIPE_FORMAT_Z16_UNORM:
-   case PIPE_FORMAT_Z16_UNORM_S8_UINT:
-      return V_028040_Z_16;
-   case PIPE_FORMAT_Z32_FLOAT:
-   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
-      return V_028040_Z_32_FLOAT;
-   default:
-      return V_028040_Z_INVALID;
    }
 }
 

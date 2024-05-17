@@ -147,7 +147,7 @@ uint32_t radv_translate_buffer_numformat(const struct util_format_description *d
 
 uint32_t radv_translate_tex_dataformat(VkFormat format, const struct util_format_description *desc, int first_non_void);
 
-uint32_t radv_translate_tex_numformat(VkFormat format, const struct util_format_description *desc, int first_non_void);
+uint32_t radv_translate_tex_numformat(const struct util_format_description *desc, int first_non_void);
 
 bool radv_is_atomic_format_supported(VkFormat format);
 

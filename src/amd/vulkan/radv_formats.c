@@ -293,31 +293,31 @@ out_unknown:
 }
 
 uint32_t
-radv_translate_tex_numformat(VkFormat format, const struct util_format_description *desc, int first_non_void)
+radv_translate_tex_numformat(const struct util_format_description *desc, int first_non_void)
 {
-   assert(vk_format_get_plane_count(format) == 1);
+   assert(util_format_get_num_planes(desc->format) == 1);
 
-   switch (format) {
-   case VK_FORMAT_D24_UNORM_S8_UINT:
+   switch (desc->format) {
+   case PIPE_FORMAT_S8_UINT_Z24_UNORM:
       return V_008F14_IMG_NUM_FORMAT_UNORM;
    default:
       if (first_non_void < 0) {
-         if (vk_format_is_compressed(format)) {
-            switch (format) {
-            case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-            case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-            case VK_FORMAT_BC2_SRGB_BLOCK:
-            case VK_FORMAT_BC3_SRGB_BLOCK:
-            case VK_FORMAT_BC7_SRGB_BLOCK:
-            case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
-            case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
-            case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+         if (util_format_is_compressed(desc->format)) {
+            switch (desc->format) {
+            case PIPE_FORMAT_DXT1_SRGB:
+            case PIPE_FORMAT_DXT1_SRGBA:
+            case PIPE_FORMAT_DXT3_SRGBA:
+            case PIPE_FORMAT_DXT5_SRGBA:
+            case PIPE_FORMAT_BPTC_SRGBA:
+            case PIPE_FORMAT_ETC2_SRGB8:
+            case PIPE_FORMAT_ETC2_SRGB8A1:
+            case PIPE_FORMAT_ETC2_SRGBA8:
                return V_008F14_IMG_NUM_FORMAT_SRGB;
-            case VK_FORMAT_BC4_SNORM_BLOCK:
-            case VK_FORMAT_BC5_SNORM_BLOCK:
-            case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-            case VK_FORMAT_EAC_R11_SNORM_BLOCK:
-            case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
+            case PIPE_FORMAT_RGTC1_SNORM:
+            case PIPE_FORMAT_RGTC2_SNORM:
+            case PIPE_FORMAT_BPTC_RGB_FLOAT:
+            case PIPE_FORMAT_ETC2_R11_SNORM:
+            case PIPE_FORMAT_ETC2_RG11_SNORM:
                return V_008F14_IMG_NUM_FORMAT_SNORM;
             default:
                return V_008F14_IMG_NUM_FORMAT_UNORM;
@@ -361,7 +361,7 @@ radv_is_sampler_format_supported(VkFormat format, bool *linear_sampling)
    uint32_t num_format;
    if (format == VK_FORMAT_UNDEFINED || format == VK_FORMAT_R64_UINT || format == VK_FORMAT_R64_SINT)
       return false;
-   num_format = radv_translate_tex_numformat(format, desc, vk_format_get_first_non_void_channel(format));
+   num_format = radv_translate_tex_numformat(desc, vk_format_get_first_non_void_channel(format));
 
    if (num_format == V_008F14_IMG_NUM_FORMAT_USCALED || num_format == V_008F14_IMG_NUM_FORMAT_SSCALED)
       return false;
@@ -394,7 +394,7 @@ radv_is_storage_image_format_supported(const struct radv_physical_device *pdev, 
       return false;
 
    data_format = radv_translate_tex_dataformat(format, desc, vk_format_get_first_non_void_channel(format));
-   num_format = radv_translate_tex_numformat(format, desc, vk_format_get_first_non_void_channel(format));
+   num_format = radv_translate_tex_numformat(desc, vk_format_get_first_non_void_channel(format));
 
    if (data_format == ~0)
       return false;

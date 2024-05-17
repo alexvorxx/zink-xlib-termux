@@ -81,7 +81,6 @@ enum Label {
    label_omod4 = 1 << 9,
    label_omod5 = 1 << 10,
    label_clamp = 1 << 12,
-   label_undefined = 1 << 14,
    label_b2f = 1 << 16,
    label_add_sub = 1 << 17,
    label_bitwise = 1 << 18,
@@ -326,10 +325,6 @@ struct ssa_info {
    }
 
    bool is_f2f16() { return label & label_f2f16; }
-
-   void set_undefined() { add_label(label_undefined); }
-
-   bool is_undefined() { return label & label_undefined; }
 
    void set_b2f(Temp b2f_val)
    {
@@ -1351,9 +1346,6 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          continue;
 
       ssa_info info = ctx.info[instr->operands[i].tempId()];
-      /* propagate undef */
-      if (info.is_undefined() && is_phi(instr))
-         instr->operands[i] = Operand(instr->operands[i].regClass());
       /* propagate reg->reg of same type */
       while (info.is_temp() && info.temp.regClass() == instr->operands[i].getTemp().regClass()) {
          instr->operands[i].setTemp(ctx.info[instr->operands[i].tempId()].temp);
@@ -1755,10 +1747,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          if (vec_op.isConstant()) {
             ctx.info[instr->definitions[i].tempId()].set_constant(ctx.program->gfx_level,
                                                                   vec_op.constantValue64());
-         } else if (vec_op.isUndefined()) {
-            ctx.info[instr->definitions[i].tempId()].set_undefined();
-         } else {
-            assert(vec_op.isTemp());
+         } else if (vec_op.isTemp()) {
             ctx.info[instr->definitions[i].tempId()].set_temp(vec_op.getTemp());
          }
       }

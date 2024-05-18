@@ -2385,6 +2385,8 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
    NIR_PASS(progress, nir, nir_opt_large_constants, glsl_get_natural_size_align_bytes, 16);
 
+   NIR_PASS(progress, nir, ac_nir_lower_global_access);
+
    /* Loop unrolling caused by uniform inlining can help eliminate indirect indexing, so
     * this should be done after that.
     */

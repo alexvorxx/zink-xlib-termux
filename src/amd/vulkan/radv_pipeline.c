@@ -267,86 +267,6 @@ ycbcr_conversion_lookup(const void *data, uint32_t set, uint32_t binding, uint32
    return ycbcr_samplers + array_index;
 }
 
-bool
-radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigned bit_size, unsigned num_components,
-                            nir_intrinsic_instr *low, nir_intrinsic_instr *high, void *data)
-{
-   if (num_components > 4)
-      return false;
-
-   bool is_scratch = false;
-   switch (low->intrinsic) {
-   case nir_intrinsic_load_stack:
-   case nir_intrinsic_load_scratch:
-   case nir_intrinsic_store_stack:
-   case nir_intrinsic_store_scratch:
-      is_scratch = true;
-      break;
-   default:
-      break;
-   }
-
-   /* >128 bit loads are split except with SMEM. On GFX6-8, >32 bit scratch loads are split. */
-   enum amd_gfx_level gfx_level = *(enum amd_gfx_level *)data;
-   if (bit_size * num_components > (is_scratch && gfx_level <= GFX8 ? 32 : 128))
-      return false;
-
-   uint32_t align;
-   if (align_offset)
-      align = 1 << (ffs(align_offset) - 1);
-   else
-      align = align_mul;
-
-   switch (low->intrinsic) {
-   case nir_intrinsic_load_global:
-   case nir_intrinsic_load_global_constant:
-   case nir_intrinsic_store_global:
-   case nir_intrinsic_store_ssbo:
-   case nir_intrinsic_load_ssbo:
-   case nir_intrinsic_load_ubo:
-   case nir_intrinsic_load_push_constant:
-   case nir_intrinsic_load_stack:
-   case nir_intrinsic_load_scratch:
-   case nir_intrinsic_store_stack:
-   case nir_intrinsic_store_scratch: {
-      unsigned max_components;
-      if (align % 4 == 0)
-         max_components = NIR_MAX_VEC_COMPONENTS;
-      else if (align % 2 == 0)
-         max_components = 16u / bit_size;
-      else
-         max_components = 8u / bit_size;
-      return (align % (bit_size / 8u)) == 0 && num_components <= max_components;
-   }
-   case nir_intrinsic_load_deref:
-   case nir_intrinsic_store_deref:
-      assert(nir_deref_mode_is(nir_src_as_deref(low->src[0]), nir_var_mem_shared));
-      FALLTHROUGH;
-   case nir_intrinsic_load_shared:
-   case nir_intrinsic_store_shared:
-      if (bit_size * num_components == 96) { /* 96 bit loads require 128 bit alignment and are split otherwise */
-         return align % 16 == 0;
-      } else if (bit_size == 16 && (align % 4)) {
-         /* AMD hardware can't do 2-byte aligned f16vec2 loads, but they are useful for ALU
-          * vectorization, because our vectorizer requires the scalar IR to already contain vectors.
-          */
-         return (align % 2 == 0) && num_components <= 2;
-      } else {
-         if (num_components == 3) {
-            /* AMD hardware can't do 3-component loads except for 96-bit loads, handled above. */
-            return false;
-         }
-         unsigned req = bit_size * num_components;
-         if (req == 64 || req == 128) /* 64-bit and 128-bit loads can use ds_read2_b{32,64} */
-            req /= 2u;
-         return align % (req / 8u) == 0;
-      }
-   default:
-      return false;
-   }
-   return false;
-}
-
 static unsigned
 lower_bit_size_callback(const nir_instr *instr, void *_)
 {
@@ -492,7 +412,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    nir_load_store_vectorize_options vectorize_opts = {
       .modes = nir_var_mem_ssbo | nir_var_mem_ubo | nir_var_mem_push_const | nir_var_mem_shared | nir_var_mem_global |
                nir_var_shader_temp,
-      .callback = radv_mem_vectorize_callback,
+      .callback = ac_nir_mem_vectorize_callback,
       .cb_data = &gfx_level,
       .robust_modes = 0,
       /* On GFX6, read2/write2 is out-of-bounds if the offset register is negative, even if

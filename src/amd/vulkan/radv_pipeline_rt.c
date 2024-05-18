@@ -385,7 +385,7 @@ radv_rt_nir_to_asm(struct radv_device *device, struct vk_pipeline_cache *cache,
          .address_format = nir_address_format_32bit_offset,
          .stack_alignment = 16,
          .localized_loads = true,
-         .vectorizer_callback = radv_mem_vectorize_callback,
+         .vectorizer_callback = ac_nir_mem_vectorize_callback,
          .vectorizer_data = &pdev->info.gfx_level,
       };
       nir_lower_shader_calls(stage->nir, &opts, &resume_shaders, &num_resume_shaders, stage->nir);

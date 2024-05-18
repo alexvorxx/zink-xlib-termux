@@ -46,12 +46,6 @@ struct agx_ia_state {
    /* Input: indirect draw descriptor. Raw pointer since it's strided. */
    uint64_t draws;
 
-   /* For the geom/tess path, this is the temporary prefix sum buffer.
-    * Caller-allocated. For regular MDI, this is ok since the CPU knows the
-    * worst-case draw count.
-    */
-   GLOBAL(uint) prefix_sums;
-
    /* When unrolling primitive restart, output draw descriptors */
    GLOBAL(uint) out_draws;
 
@@ -81,7 +75,7 @@ struct agx_ia_state {
    /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
    uint32_t index_size_B;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 19 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 17 * 4);
 
 struct agx_geometry_params {
    /* Persistent (cross-draw) geometry state */

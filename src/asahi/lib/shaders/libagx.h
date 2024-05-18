@@ -41,8 +41,11 @@ uint32_t nir_fence_helper_exit_agx(void);
 /* I have no idea why CL doesn't have this */
 uint ballot(bool cond);
 
+#define _S(x)            #x
+#define AGX_PASTE_(x, y) x##y
+#define AGX_PASTE(x, y)  AGX_PASTE_(x, y)
 #define AGX_STATIC_ASSERT(_COND)                                               \
-   typedef char static_assertion_##__line__[(_COND) ? 1 : -1]
+   typedef char AGX_PASTE(static_assertion, __LINE__)[(_COND) ? 1 : -1]
 
 static inline uint
 align(uint x, uint y)

@@ -2016,6 +2016,10 @@ static void visit_store_global(struct ac_nir_context *ctx,
    LLVMTypeRef type = LLVMTypeOf(data);
    LLVMValueRef addr = get_global_address(ctx, instr, type);
    LLVMValueRef val;
+   /* nir_opt_shrink_stores should be enough to simplify the writemask. Store writemasks should
+    * have no holes.
+    */
+   assert(nir_intrinsic_write_mask(instr) == BITFIELD_MASK(instr->src[0].ssa->num_components));
 
    val = LLVMBuildStore(ctx->ac.builder, data, addr);
 

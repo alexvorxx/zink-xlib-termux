@@ -154,6 +154,11 @@ nvk_populate_fs_key(struct nak_fs_key *key,
    key->sample_locations_cb = 0;
    key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
 
+   /* Turn underestimate on when no state is availaible or if explicitly set */
+   if (state == NULL || state->rs == NULL ||
+       state->rs->conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT)
+      key->uses_underestimate = true;
+
    if (state == NULL)
       return;
 

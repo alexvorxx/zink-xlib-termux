@@ -30,11 +30,13 @@ amd_json_files = [
   '../registers/gfx103.json',
   '../registers/gfx11.json',
   '../registers/gfx115.json',
+  '../registers/gfx12.json',
 
   # Manually written:
   '../registers/pkt3.json',
   '../registers/gfx10-rsrc.json',
   '../registers/gfx11-rsrc.json',
+  '../registers/gfx12-rsrc.json',
   '../registers/registers-manually-defined.json',
 ]
 
@@ -80,6 +82,10 @@ amd_common_files = files(
   'ac_surface.h',
   'ac_debug.c',
   'ac_debug.h',
+  'ac_descriptors.c',
+  'ac_descriptors.h',
+  'ac_formats.c',
+  'ac_formats.h',
   'ac_shadowed_regs.c',
   'ac_shadowed_regs.h',
   'ac_spm.c',

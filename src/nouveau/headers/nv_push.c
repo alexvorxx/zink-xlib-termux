@@ -20,6 +20,7 @@
 #include "nv_push_clc5c0.h"
 #include "nv_push_clc697.h"
 #include "nv_push_clc6c0.h"
+#include "nv_push_clc797.h"
 #include "nv_push_clc7c0.h"
 
 #ifndef NDEBUG
@@ -154,7 +155,9 @@ vk_push_print(FILE *fp, const struct nv_push *push,
             } else {
                switch (subchan) {
                case 0:
-                  if (devinfo->cls_eng3d >= 0xc697)
+                  if (devinfo->cls_eng3d >= 0xc797)
+                     mthd_name = P_PARSE_NVC797_MTHD(mthd);
+                  else if (devinfo->cls_eng3d >= 0xc697)
                      mthd_name = P_PARSE_NVC697_MTHD(mthd);
                   else if (devinfo->cls_eng3d >= 0xc597)
                      mthd_name = P_PARSE_NVC597_MTHD(mthd);

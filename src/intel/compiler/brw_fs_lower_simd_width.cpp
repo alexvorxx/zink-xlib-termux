@@ -394,7 +394,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-      return 8;
+      return devinfo->ver < 20 ? 8 : inst->exec_size;
 
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:

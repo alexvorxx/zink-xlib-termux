@@ -10,6 +10,7 @@
 #include "nv_push.h"
 #include "nvk_cmd_pool.h"
 #include "nvk_descriptor_set.h"
+#include "nvk_image.h"
 
 #include "util/u_dynarray.h"
 
@@ -30,6 +31,8 @@ struct nvk_sample_location {
    uint8_t x_u4:4;
    uint8_t y_u4:4;
 };
+static_assert(sizeof(struct nvk_sample_location) == 1,
+              "This struct has no holes");
 
 /** Root descriptor table.  This gets pushed to the GPU directly */
 struct nvk_root_descriptor_table {
@@ -41,7 +44,7 @@ struct nvk_root_descriptor_table {
          uint32_t base_instance;
          uint32_t draw_id;
          uint32_t view_index;
-         struct nvk_sample_location sample_locations[8];
+         struct nvk_sample_location sample_locations[NVK_MAX_SAMPLES];
       } draw;
       struct {
          uint32_t base_group[3];
@@ -52,17 +55,20 @@ struct nvk_root_descriptor_table {
    /* Client push constants */
    uint8_t push[NVK_MAX_PUSH_SIZE];
 
-   /* Descriptor set base addresses */
-   uint64_t sets[NVK_MAX_SETS];
+   /* Descriptor set addresses */
+   struct nvk_buffer_address sets[NVK_MAX_SETS];
+
+   /* For each descriptor set, the index in dynamic_buffers where that set's
+    * the dynamic buffers start. This is maintained for every set, regardless
+    * of whether or not anything is bound there.
+    */
+   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
 
    /* Dynamic buffer bindings */
    struct nvk_buffer_address dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
 
-   /* Start index in dynamic_buffers where each set starts */
-   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
-
    /* enfore alignment to 0x100 as needed pre pascal */
-   uint8_t __padding[0x18];
+   uint8_t __padding[0x40];
 };
 
 /* helper macro for computing root descriptor byte offsets */
@@ -71,7 +77,6 @@ struct nvk_root_descriptor_table {
 
 struct nvk_descriptor_state {
    struct nvk_root_descriptor_table root;
-   uint32_t set_sizes[NVK_MAX_SETS];
    struct nvk_descriptor_set *sets[NVK_MAX_SETS];
    struct nvk_push_descriptor_set *push[NVK_MAX_SETS];
    uint32_t push_dirty;
@@ -83,6 +88,10 @@ struct nvk_attachment {
 
    VkResolveModeFlagBits resolve_mode;
    struct nvk_image_view *resolve_iview;
+
+   /* Needed to track the value of storeOp in case we need to copy images for
+    * the DRM_FORMAT_MOD_LINEAR case */
+   VkAttachmentStoreOp store_op;
 };
 
 struct nvk_rendering_state {
@@ -277,5 +286,10 @@ void nvk_meta_resolve_rendering(struct nvk_cmd_buffer *cmd,
                                 const VkRenderingInfo *pRenderingInfo);
 
 void nvk_cmd_buffer_dump(struct nvk_cmd_buffer *cmd, FILE *fp);
+
+void nvk_linear_render_copy(struct nvk_cmd_buffer *cmd,
+                            const struct nvk_image_view *iview,
+                            VkRect2D copy_rect,
+                            bool copy_to_tiled_shadow);
 
 #endif

@@ -2378,6 +2378,10 @@ typedef enum nir_texop {
    nir_texop_sampler_descriptor_amd,
    /** Returns the sampler's LOD bias */
    nir_texop_lod_bias_agx,
+   /** Returns a bool indicating that the sampler uses a custom border colour */
+   nir_texop_has_custom_border_color_agx,
+   /** Returns the sampler's custom border colour (if has_custom_border_agx) */
+   nir_texop_custom_border_color_agx,
    /** Maps to TXQ.DIMENSION */
    nir_texop_hdr_dim_nv,
    /** Maps to TXQ.TEXTURE_TYPE */
@@ -3597,6 +3601,7 @@ typedef enum {
    nir_lower_iadd_sat64 = (1 << 21),
    nir_lower_find_lsb64 = (1 << 22),
    nir_lower_conv64 = (1 << 23),
+   nir_lower_uadd_sat64 = (1 << 24),
 } nir_lower_int64_options;
 
 typedef enum {
@@ -6440,6 +6445,8 @@ bool nir_lower_helper_writes(nir_shader *shader, bool lower_plain_stores);
 
 typedef struct nir_lower_printf_options {
    unsigned max_buffer_size;
+   unsigned ptr_bit_size;
+   bool     use_printf_base_identifier;
 } nir_lower_printf_options;
 
 bool nir_lower_printf(nir_shader *nir, const nir_lower_printf_options *options);

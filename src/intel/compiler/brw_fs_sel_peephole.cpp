@@ -71,7 +71,8 @@ count_movs_from_if(const intel_device_info *devinfo,
    int then_movs = 0;
    foreach_inst_in_block(fs_inst, inst, then_block) {
       if (then_movs == MAX_MOVS || inst->opcode != BRW_OPCODE_MOV ||
-          inst->flags_written(devinfo))
+          inst->flags_written(devinfo) ||
+          (devinfo->ver >= 20 && get_exec_type_size(inst) > 4))
          break;
 
       then_mov[then_movs] = inst;
@@ -81,7 +82,8 @@ count_movs_from_if(const intel_device_info *devinfo,
    int else_movs = 0;
    foreach_inst_in_block(fs_inst, inst, else_block) {
       if (else_movs == MAX_MOVS || inst->opcode != BRW_OPCODE_MOV ||
-          inst->flags_written(devinfo))
+          inst->flags_written(devinfo) ||
+          (devinfo->ver >= 20 && get_exec_type_size(inst) > 4))
          break;
 
       else_mov[else_movs] = inst;

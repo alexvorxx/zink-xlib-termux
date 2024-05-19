@@ -257,7 +257,7 @@ if not args.slow:
 
 
 def gfx_level_to_str(cl):
-    supported = ["gfx6", "gfx7", "gfx8", "gfx9", "gfx10", "gfx10_3", "gfx11"]
+    supported = ["gfx6", "gfx7", "gfx8", "gfx9", "gfx10", "gfx10_3", "gfx11", "gfx12"]
     if 8 <= cl and cl < 8 + len(supported):
         return supported[cl - 8]
     return supported[-1]
@@ -418,15 +418,15 @@ if args.glcts:
         "--deqp",
         "{}/build/external/openglcts/modules/glcts".format(glcts_path),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-main.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-main.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/gl46-khr-single.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/gl46-khr-single.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-gtf-main.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-gtf-main.txt".format(
             glcts_path
         ),
         "--output",
@@ -462,19 +462,19 @@ if args.escts:
         "--deqp",
         "{}/build_es/external/openglcts/modules/glcts".format(glcts_path),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles2-khr-main.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles2-khr-main.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles3-khr-main.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles3-khr-main.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles31-khr-main.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles31-khr-main.txt".format(
             glcts_path
         ),
         "--caselist",
-        "{}/external/openglcts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles32-khr-main.txt".format(
+        "{}/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass/3.2.6.x/gles32-khr-main.txt".format(
             glcts_path
         ),
         "--output",
@@ -524,7 +524,7 @@ if args.deqp:
         )
         suite.write(
             'caselists = ["{}"]\n'.format(
-                "{}/external/openglcts/data/mustpass/{}/aosp_mustpass/3.2.6.x/{}-main.txt".format(glcts_path, "egl" if k == "egl" else "gles", k)
+                "{}/external/openglcts/data/gl_cts/data/mustpass/{}/aosp_mustpass/3.2.6.x/{}-main.txt".format(glcts_path, "egl" if k == "egl" else "gles", k)
             )
         )
         if os.path.exists(baseline):

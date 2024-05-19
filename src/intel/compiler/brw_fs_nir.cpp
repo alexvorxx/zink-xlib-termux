@@ -849,173 +849,6 @@ try_emit_b2fi_of_inot(nir_to_brw_state &ntb, const fs_builder &bld,
    return true;
 }
 
-/**
- * Emit code for nir_op_fsign possibly fused with a nir_op_fmul
- *
- * If \c instr is not the \c nir_op_fsign, then \c fsign_src is the index of
- * the source of \c instr that is a \c nir_op_fsign.
- */
-static void
-emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *instr,
-           fs_reg result, fs_reg *op, unsigned fsign_src)
-{
-   const intel_device_info *devinfo = ntb.devinfo;
-
-   fs_inst *inst;
-
-   assert(instr->op == nir_op_fsign || instr->op == nir_op_fmul);
-   assert(fsign_src < nir_op_infos[instr->op].num_inputs);
-
-   if (instr->op != nir_op_fsign) {
-      const nir_alu_instr *const fsign_instr =
-         nir_src_as_alu_instr(instr->src[fsign_src].src);
-
-      /* op[fsign_src] has the nominal result of the fsign, and op[1 -
-       * fsign_src] has the other multiply source.  This must be rearranged so
-       * that op[0] is the source of the fsign op[1] is the other multiply
-       * source.
-       */
-      if (fsign_src != 0)
-         op[1] = op[0];
-
-      op[0] = get_nir_src(ntb, fsign_instr->src[0].src);
-
-      const nir_alu_type t =
-         (nir_alu_type)(nir_op_infos[instr->op].input_types[0] |
-                        nir_src_bit_size(fsign_instr->src[0].src));
-
-      op[0].type = brw_type_for_nir_type(devinfo, t);
-
-      unsigned channel = 0;
-      if (nir_op_infos[instr->op].output_size == 0) {
-         /* Since NIR is doing the scalarizing for us, we should only ever see
-          * vectorized operations with a single channel.
-          */
-         nir_component_mask_t write_mask = get_nir_write_mask(instr->def);
-         assert(util_bitcount(write_mask) == 1);
-         channel = ffs(write_mask) - 1;
-      }
-
-      op[0] = offset(op[0], bld, fsign_instr->src[0].swizzle[channel]);
-   }
-
-   if (brw_type_size_bytes(op[0].type) == 2) {
-      /* AND(val, 0x8000) gives the sign bit.
-       *
-       * Predicated OR ORs 1.0 (0x3c00) with the sign bit if val is not zero.
-       */
-      fs_reg zero = retype(brw_imm_uw(0), BRW_TYPE_HF);
-      bld.CMP(bld.null_reg_f(), op[0], zero, BRW_CONDITIONAL_NZ);
-
-      op[0].type = BRW_TYPE_UW;
-      result.type = BRW_TYPE_UW;
-      bld.AND(result, op[0], brw_imm_uw(0x8000u));
-
-      if (instr->op == nir_op_fsign)
-         inst = bld.OR(result, result, brw_imm_uw(0x3c00u));
-      else {
-         /* Use XOR here to get the result sign correct. */
-         inst = bld.XOR(result, result, retype(op[1], BRW_TYPE_UW));
-      }
-
-      inst->predicate = BRW_PREDICATE_NORMAL;
-   } else if (brw_type_size_bytes(op[0].type) == 4) {
-      /* AND(val, 0x80000000) gives the sign bit.
-       *
-       * Predicated OR ORs 1.0 (0x3f800000) with the sign bit if val is not
-       * zero.
-       */
-      bld.CMP(bld.null_reg_f(), op[0], brw_imm_f(0.0f), BRW_CONDITIONAL_NZ);
-
-      op[0].type = BRW_TYPE_UD;
-      result.type = BRW_TYPE_UD;
-      bld.AND(result, op[0], brw_imm_ud(0x80000000u));
-
-      if (instr->op == nir_op_fsign)
-         inst = bld.OR(result, result, brw_imm_ud(0x3f800000u));
-      else {
-         /* Use XOR here to get the result sign correct. */
-         inst = bld.XOR(result, result, retype(op[1], BRW_TYPE_UD));
-      }
-
-      inst->predicate = BRW_PREDICATE_NORMAL;
-   } else {
-      /* For doubles we do the same but we need to consider:
-       *
-       * - 2-src instructions can't operate with 64-bit immediates
-       * - The sign is encoded in the high 32-bit of each DF
-       * - We need to produce a DF result.
-       */
-
-      fs_reg zero = bld.MOV(brw_imm_df(0.0));
-      bld.CMP(bld.null_reg_df(), op[0], zero, BRW_CONDITIONAL_NZ);
-
-      bld.MOV(result, zero);
-
-      fs_reg r = subscript(result, BRW_TYPE_UD, 1);
-      bld.AND(r, subscript(op[0], BRW_TYPE_UD, 1),
-              brw_imm_ud(0x80000000u));
-
-      if (instr->op == nir_op_fsign) {
-         set_predicate(BRW_PREDICATE_NORMAL,
-                       bld.OR(r, r, brw_imm_ud(0x3ff00000u)));
-      } else {
-         if (devinfo->has_64bit_int) {
-            /* This could be done better in some cases.  If the scale is an
-             * immediate with the low 32-bits all 0, emitting a separate XOR and
-             * OR would allow an algebraic optimization to remove the OR.  There
-             * are currently zero instances of fsign(double(x))*IMM in shader-db
-             * or any test suite, so it is hard to care at this time.
-             */
-            fs_reg result_int64 = retype(result, BRW_TYPE_UQ);
-            inst = bld.XOR(result_int64, result_int64,
-                           retype(op[1], BRW_TYPE_UQ));
-         } else {
-            fs_reg result_int64 = retype(result, BRW_TYPE_UQ);
-            bld.MOV(subscript(result_int64, BRW_TYPE_UD, 0),
-                    subscript(op[1], BRW_TYPE_UD, 0));
-            bld.XOR(subscript(result_int64, BRW_TYPE_UD, 1),
-                    subscript(result_int64, BRW_TYPE_UD, 1),
-                    subscript(op[1], BRW_TYPE_UD, 1));
-         }
-      }
-   }
-}
-
-/**
- * Determine whether sources of a nir_op_fmul can be fused with a nir_op_fsign
- *
- * Checks the operands of a \c nir_op_fmul to determine whether or not
- * \c emit_fsign could fuse the multiplication with the \c sign() calculation.
- *
- * \param instr  The multiplication instruction
- *
- * \param fsign_src The source of \c instr that may or may not be a
- *                  \c nir_op_fsign
- */
-static bool
-can_fuse_fmul_fsign(nir_alu_instr *instr, unsigned fsign_src)
-{
-   assert(instr->op == nir_op_fmul);
-
-   nir_alu_instr *const fsign_instr =
-      nir_src_as_alu_instr(instr->src[fsign_src].src);
-
-   /* Rules:
-    *
-    * 1. instr->src[fsign_src] must be a nir_op_fsign.
-    * 2. The nir_op_fsign can only be used by this multiplication.
-    * 3. The source that is the nir_op_fsign does not have source modifiers.
-    *    \c emit_fsign only examines the source modifiers of the source of the
-    *    \c nir_op_fsign.
-    *
-    * The nir_op_fsign must also not have the saturate modifier, but steps
-    * have already been taken (in nir_opt_algebraic) to ensure that.
-    */
-   return fsign_instr != NULL && fsign_instr->op == nir_op_fsign &&
-          is_used_once(fsign_instr);
-}
-
 static bool
 is_const_zero(const nir_src &src)
 {
@@ -1271,8 +1104,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       break;
 
    case nir_op_fsign:
-      emit_fsign(ntb, bld, instr, result, op, 0);
-      break;
+      unreachable("Should have been lowered by brw_nir_lower_fsign.");
 
    case nir_op_frcp:
       bld.RCP(result, op[0]);
@@ -1360,17 +1192,6 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    }
 
    case nir_op_fmul:
-      for (unsigned i = 0; i < 2; i++) {
-         if (can_fuse_fmul_fsign(instr, i)) {
-            emit_fsign(ntb, bld, instr, result, op, i);
-            return;
-         }
-      }
-
-      /* We emit the rounding mode after the previous fsign optimization since
-       * it won't result in a MUL, but will try to negate the value by other
-       * means.
-       */
       if (nir_has_any_rounding_mode_enabled(execution_mode)) {
          brw_rnd_mode rnd =
             brw_rnd_mode_from_execution_mode(execution_mode);
@@ -1926,6 +1747,18 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       bld.CMP(bld.null_reg_d(), op[0], brw_imm_d(0), BRW_CONDITIONAL_NZ);
       inst = bld.SEL(result, op[1], op[2]);
       inst->predicate = BRW_PREDICATE_NORMAL;
+      break;
+
+   case nir_op_fcsel:
+      bld.CSEL(result, op[1], op[2], op[0], BRW_CONDITIONAL_NZ);
+      break;
+
+   case nir_op_fcsel_gt:
+      bld.CSEL(result, op[1], op[2], op[0], BRW_CONDITIONAL_G);
+      break;
+
+   case nir_op_fcsel_ge:
+      bld.CSEL(result, op[1], op[2], op[0], BRW_CONDITIONAL_GE);
       break;
 
    case nir_op_extract_u8:
@@ -6207,13 +6040,14 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
    case nir_intrinsic_load_reloc_const_intel: {
       uint32_t id = nir_intrinsic_param_idx(instr);
+      uint32_t base = nir_intrinsic_base(instr);
 
       /* Emit the reloc in the smallest SIMD size to limit register usage. */
       const fs_builder ubld = bld.exec_all().group(1, 0);
       fs_reg small_dest = ubld.vgrf(dest.type);
       ubld.UNDEF(small_dest);
-      ubld.exec_all().group(1, 0).emit(SHADER_OPCODE_MOV_RELOC_IMM,
-                                       small_dest, brw_imm_ud(id));
+      ubld.exec_all().group(1, 0).emit(SHADER_OPCODE_MOV_RELOC_IMM, small_dest,
+                                       brw_imm_ud(id), brw_imm_ud(base));
 
       /* Copy propagation will get rid of this MOV. */
       bld.MOV(dest, component(small_dest, 0));
@@ -8622,6 +8456,12 @@ nir_to_brw(fs_visitor *s)
       .mem_ctx = ralloc_context(NULL),
       .bld     = fs_builder(s).at_end(),
    };
+
+   for (unsigned i = 0; i < s->nir->printf_info_count; i++) {
+      brw_stage_prog_data_add_printf(s->prog_data,
+                                     s->mem_ctx,
+                                     &s->nir->printf_info[i]);
+   }
 
    emit_shader_float_controls_execution_mode(ntb);
 

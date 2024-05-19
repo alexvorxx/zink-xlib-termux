@@ -76,6 +76,7 @@ nvk_get_vk_version(const struct nv_device_info *info)
 static void
 nvk_get_device_extensions(const struct nvk_instance *instance,
                           const struct nv_device_info *info,
+                          bool has_tiled_bos,
                           struct vk_device_extension_table *ext)
 {
    *ext = (struct vk_device_extension_table) {
@@ -174,6 +175,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_buffer_device_address = true,
       .EXT_calibrated_timestamps = true,
       .EXT_conditional_rendering = true,
+      .EXT_conservative_rasterization = info->cls_eng3d >= MAXWELL_B,
       .EXT_color_write_enable = true,
       .EXT_custom_border_color = true,
       .EXT_depth_bias_control = true,
@@ -184,6 +186,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control = true,
 #endif
+      .EXT_image_drm_format_modifier = has_tiled_bos,
       .EXT_dynamic_rendering_unused_attachments = true,
       .EXT_extended_dynamic_state = true,
       .EXT_extended_dynamic_state2 = true,
@@ -214,6 +217,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_private_data = true,
       .EXT_primitives_generated_query = true,
       .EXT_provoking_vertex = true,
+      .EXT_queue_family_foreign = true,
       .EXT_robustness2 = true,
       .EXT_sample_locations = info->cls_eng3d >= MAXWELL_B,
       .EXT_sampler_filter_minmax = info->cls_eng3d >= MAXWELL_B,
@@ -635,6 +639,8 @@ nvk_get_device_properties(const struct nvk_instance *instance,
                                                VK_SAMPLE_COUNT_4_BIT |
                                                VK_SAMPLE_COUNT_8_BIT;
 
+   assert(sample_counts <= (NVK_MAX_SAMPLES << 1) - 1);
+
    uint64_t os_page_size = 4096;
    os_get_page_size(&os_page_size);
 
@@ -867,6 +873,17 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* VK_KHR_push_descriptor */
       .maxPushDescriptors = NVK_MAX_PUSH_DESCRIPTORS,
+
+      /* VK_EXT_conservative_rasterization */
+      .primitiveOverestimationSize = info->cls_eng3d >= VOLTA_A ? 1.0f / 512.0f : 0.0,
+      .maxExtraPrimitiveOverestimationSize = 0.75,
+      .extraPrimitiveOverestimationSizeGranularity = 0.25,
+      .primitiveUnderestimation = info->cls_eng3d >= VOLTA_A,
+      .conservativePointAndLineRasterization = true,
+      .degenerateLinesRasterized = info->cls_eng3d >= VOLTA_A,
+      .degenerateTrianglesRasterized = info->cls_eng3d >= PASCAL_A,
+      .fullyCoveredFragmentShaderInputVariable = false,
+      .conservativeRasterizationPostDepthCoverage = true,
 
       /* VK_EXT_custom_border_color */
       .maxCustomBorderColorSamplers = 4000,
@@ -1181,8 +1198,10 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    vk_physical_device_dispatch_table_from_entrypoints(
       &dispatch_table, &wsi_physical_device_entrypoints, false);
 
+   const bool has_tiled_bos = nouveau_ws_device_has_tiled_bo(ws_dev);
    struct vk_device_extension_table supported_extensions;
-   nvk_get_device_extensions(instance, &info, &supported_extensions);
+   nvk_get_device_extensions(instance, &info, has_tiled_bos,
+                             &supported_extensions);
 
    struct vk_features supported_features;
    nvk_get_device_features(&info, &supported_extensions, &supported_features);

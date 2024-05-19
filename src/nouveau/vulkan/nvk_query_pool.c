@@ -875,24 +875,17 @@ build_copy_queries_shader(void)
    nir_variable *push = nir_variable_create(b->shader, nir_var_mem_push_const,
                                             push_iface_type, "push");
 
+   b->shader->info.workgroup_size[0] = 32;
+   nir_def *wg_id = nir_load_workgroup_id(b);
+   nir_def *i = nir_iadd(b, nir_load_subgroup_invocation(b),
+                            nir_imul_imm(b, nir_channel(b, wg_id, 0), 32));
+
    nir_def *query_count = load_struct_var(b, push, 4);
-
-   nir_variable *i = nir_local_variable_create(b->impl, glsl_uint_type(), "i");
-   nir_store_var(b, i, nir_imm_int(b, 0), 0x1);
-
-   nir_push_loop(b);
+   nir_push_if(b, nir_ilt(b, i, query_count));
    {
-      nir_push_if(b, nir_ige(b, nir_load_var(b, i), query_count));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
-
-      nvk_nir_copy_query(b, push, nir_load_var(b, i));
-
-      nir_store_var(b, i, nir_iadd_imm(b, nir_load_var(b, i), 1), 0x1);
+      nvk_nir_copy_query(b, push, i);
    }
-   nir_pop_loop(b, NULL);
+   nir_pop_if(b, NULL);
 
    return build.shader;
 }
@@ -984,145 +977,13 @@ nvk_meta_copy_query_pool_results(struct nvk_cmd_buffer *cmd,
    vk_common_CmdPushConstants(nvk_cmd_buffer_to_handle(cmd), layout,
                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
-   nvk_CmdDispatchBase(nvk_cmd_buffer_to_handle(cmd), 0, 0, 0, 1, 1, 1);
+   nvk_CmdDispatchBase(nvk_cmd_buffer_to_handle(cmd), 0, 0, 0,
+                       DIV_ROUND_UP(query_count, 32), 1, 1);
 
    /* Restore pipeline and push constants */
    if (shader_save)
       nvk_cmd_bind_compute_shader(cmd, shader_save);
    memcpy(desc->root.push, push_save, NVK_MAX_PUSH_SIZE);
-}
-
-void
-nvk_mme_copy_queries(struct mme_builder *b)
-{
-   if (b->devinfo->cls_eng3d < TURING_A)
-      return;
-
-   struct mme_value64 dst_addr = mme_load_addr64(b);
-   struct mme_value64 dst_stride = mme_load_addr64(b);
-   struct mme_value64 avail_addr = mme_load_addr64(b);
-   struct mme_value64 report_addr = mme_load_addr64(b);
-
-   struct mme_value query_count = mme_load(b);
-   struct mme_value control = mme_load(b);
-
-   struct mme_value flags = control;
-   struct mme_value write64 =
-      mme_and(b, flags, mme_imm(VK_QUERY_RESULT_64_BIT));
-   struct mme_value query_stride =
-      mme_merge(b, mme_zero(), control, 0, 16, 8);
-   struct mme_value is_timestamp =
-      mme_merge(b, mme_zero(), control, 0, 1, 24);
-
-   mme_while(b, ugt, query_count, mme_zero()) {
-      struct mme_value dw_per_query = mme_srl(b, query_stride, mme_imm(2));
-      mme_tu104_read_fifoed(b, report_addr, dw_per_query);
-      mme_free_reg(b, dw_per_query);
-
-      struct mme_value64 write_addr = mme_mov64(b, dst_addr);
-      struct mme_value report_count = mme_srl(b, query_stride, mme_imm(4));
-      mme_while(b, ugt, report_count, mme_zero()) {
-         struct mme_value result_lo = mme_alloc_reg(b);
-         struct mme_value result_hi = mme_alloc_reg(b);
-         struct mme_value64 result = mme_value64(result_lo, result_hi);
-
-         mme_if(b, ine, is_timestamp, mme_zero()) {
-            mme_load_to(b, mme_zero());
-            mme_load_to(b, mme_zero());
-            mme_load_to(b, result_lo);
-            mme_load_to(b, result_hi);
-            mme_sub_to(b, report_count, report_count, mme_imm(1));
-         }
-         mme_if(b, ieq, is_timestamp, mme_zero()) {
-            struct mme_value begin_lo = mme_load(b);
-            struct mme_value begin_hi = mme_load(b);
-            struct mme_value64 begin = mme_value64(begin_lo, begin_hi);
-            mme_load_to(b, mme_zero());
-            mme_load_to(b, mme_zero());
-
-            struct mme_value end_lo = mme_load(b);
-            struct mme_value end_hi = mme_load(b);
-            struct mme_value64 end = mme_value64(end_lo, end_hi);
-            mme_load_to(b, mme_zero());
-            mme_load_to(b, mme_zero());
-
-            mme_sub64_to(b, result, end, begin);
-            mme_sub_to(b, report_count, report_count, mme_imm(2));
-
-            mme_free_reg64(b, begin);
-            mme_free_reg64(b, end);
-         }
-
-         mme_store_global(b, write_addr, result_lo);
-         mme_add64_to(b, write_addr, write_addr, mme_imm64(4));
-         mme_if(b, ine, write64, mme_zero()) {
-            mme_store_global(b, write_addr, result_hi);
-            mme_add64_to(b, write_addr, write_addr, mme_imm64(4));
-         }
-      }
-
-      struct mme_value with_availability =
-         mme_and(b, flags, mme_imm(VK_QUERY_RESULT_WITH_AVAILABILITY_BIT));
-      mme_if(b, ine, with_availability, mme_zero()) {
-         mme_tu104_read_fifoed(b, avail_addr, mme_imm(1));
-         struct mme_value avail = mme_load(b);
-         mme_store_global(b, write_addr, avail);
-         mme_if(b, ine, write64, mme_zero()) {
-            mme_add64_to(b, write_addr, write_addr, mme_imm64(4));
-            mme_store_global(b, write_addr, mme_zero());
-         }
-      }
-      mme_free_reg(b, with_availability);
-
-      mme_add64_to(b, avail_addr, avail_addr, mme_imm64(4));
-
-      mme_add64_to(b, report_addr, report_addr,
-                   mme_value64(query_stride, mme_zero()));
-
-      mme_add64_to(b, dst_addr, dst_addr, dst_stride);
-
-      mme_sub_to(b, query_count, query_count, mme_imm(1));
-   }
-}
-
-static void
-nvk_cmd_copy_query_pool_results_mme(struct nvk_cmd_buffer *cmd,
-                                    struct nvk_query_pool *pool,
-                                    uint32_t first_query,
-                                    uint32_t query_count,
-                                    uint64_t dst_addr,
-                                    uint64_t dst_stride,
-                                    VkQueryResultFlags flags)
-{
-   /* TODO: vkCmdCopyQueryPoolResults() with a compute shader */
-   ASSERTED struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
-   assert(nvk_device_physical(dev)->info.cls_eng3d >= TURING_A);
-
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 13);
-   P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
-   P_1INC(p, NVC597, CALL_MME_MACRO(NVK_MME_COPY_QUERIES));
-
-   P_INLINE_DATA(p, dst_addr >> 32);
-   P_INLINE_DATA(p, dst_addr);
-   P_INLINE_DATA(p, dst_stride >> 32);
-   P_INLINE_DATA(p, dst_stride);
-
-   uint64_t avail_start = nvk_query_available_addr(pool, first_query);
-   P_INLINE_DATA(p, avail_start >> 32);
-   P_INLINE_DATA(p, avail_start);
-
-   uint64_t report_start = nvk_query_report_addr(pool, first_query);
-   P_INLINE_DATA(p, report_start >> 32);
-   P_INLINE_DATA(p, report_start);
-
-   P_INLINE_DATA(p, query_count);
-
-   uint32_t is_timestamp = pool->vk.query_type == VK_QUERY_TYPE_TIMESTAMP;
-
-   uint32_t control = (flags & 0xff) |
-                      (pool->query_stride << 8) |
-                      (is_timestamp << 24);
-   P_INLINE_DATA(p, control);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -1160,3 +1021,4 @@ nvk_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer,
    nvk_meta_copy_query_pool_results(cmd, pool, firstQuery, queryCount,
                                     dst_addr, stride, flags);
 }
+

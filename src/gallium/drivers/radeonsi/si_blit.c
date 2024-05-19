@@ -193,6 +193,8 @@ static void si_blit_decompress_zs_planes_in_place(struct si_context *sctx,
    unsigned layer, max_layer, checked_last_layer;
    unsigned fully_decompressed_mask = 0;
 
+   assert(sctx->gfx_level < GFX12);
+
    if (!level_mask)
       return;
 
@@ -286,6 +288,8 @@ static void si_decompress_depth(struct si_context *sctx, struct si_texture *tex,
    unsigned level_mask = u_bit_consecutive(first_level, last_level - first_level + 1);
    unsigned levels_z = 0;
    unsigned levels_s = 0;
+
+   assert(sctx->gfx_level < GFX12);
 
    if (required_planes & PIPE_MASK_Z) {
       levels_z = level_mask & tex->dirty_level_mask;
@@ -401,6 +405,8 @@ static bool si_decompress_sampler_depth_textures(struct si_context *sctx,
    unsigned mask = textures->needs_depth_decompress_mask;
    bool need_flush = false;
 
+   assert(sctx->gfx_level < GFX12);
+
    while (mask) {
       struct pipe_sampler_view *view;
       struct si_sampler_view *sview;
@@ -436,6 +442,9 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
    void *custom_blend;
    unsigned layer, checked_last_layer, max_layer;
    unsigned level_mask = u_bit_consecutive(first_level, last_level - first_level + 1);
+
+   /* No decompression is ever needed on Gfx12. */
+   assert(sctx->gfx_level < GFX12);
 
    if (!need_dcc_decompress)
       level_mask &= tex->dirty_level_mask;
@@ -624,6 +633,8 @@ static void si_check_render_feedback_texture(struct si_context *sctx, struct si_
 {
    bool render_feedback = false;
 
+   assert(sctx->gfx_level < GFX12);
+
    if (!vi_dcc_enabled(tex, first_level))
       return;
 
@@ -652,6 +663,8 @@ static void si_check_render_feedback_textures(struct si_context *sctx, struct si
 {
    uint32_t mask = textures->enabled_mask & in_use_mask;
 
+   assert(sctx->gfx_level < GFX12);
+
    while (mask) {
       const struct pipe_sampler_view *view;
       struct si_texture *tex;
@@ -674,6 +687,8 @@ static void si_check_render_feedback_images(struct si_context *sctx, struct si_i
 {
    uint32_t mask = images->enabled_mask & in_use_mask;
 
+   assert(sctx->gfx_level < GFX12);
+
    while (mask) {
       const struct pipe_image_view *view;
       struct si_texture *tex;
@@ -693,6 +708,8 @@ static void si_check_render_feedback_images(struct si_context *sctx, struct si_i
 
 static void si_check_render_feedback_resident_textures(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    util_dynarray_foreach (&sctx->resident_tex_handles, struct si_texture_handle *, tex_handle) {
       struct pipe_sampler_view *view;
       struct si_texture *tex;
@@ -710,6 +727,8 @@ static void si_check_render_feedback_resident_textures(struct si_context *sctx)
 
 static void si_check_render_feedback_resident_images(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    util_dynarray_foreach (&sctx->resident_img_handles, struct si_image_handle *, img_handle) {
       struct pipe_image_view *view;
       struct si_texture *tex;
@@ -727,6 +746,8 @@ static void si_check_render_feedback_resident_images(struct si_context *sctx)
 
 static void si_check_render_feedback(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    if (!sctx->need_check_render_feedback)
       return;
 
@@ -896,6 +917,9 @@ void si_decompress_subresource(struct pipe_context *ctx, struct pipe_resource *t
    struct si_context *sctx = (struct si_context *)ctx;
    struct si_texture *stex = (struct si_texture *)tex;
 
+   if (sctx->gfx_level >= GFX12)
+      return;
+
    if (stex->db_compatible) {
       planes &= PIPE_MASK_Z | PIPE_MASK_S;
 
@@ -930,16 +954,6 @@ void si_decompress_subresource(struct pipe_context *ctx, struct pipe_resource *t
                                need_fmask_expand);
    }
 }
-
-struct texture_orig_info {
-   unsigned format;
-   unsigned width0;
-   unsigned height0;
-   unsigned npix_x;
-   unsigned npix_y;
-   unsigned npix0_x;
-   unsigned npix0_y;
-};
 
 void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst,
                              unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
@@ -1099,12 +1113,9 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
 
    struct si_texture *src = (struct si_texture *)info->src.resource;
    struct si_texture *dst = (struct si_texture *)info->dst.resource;
-   ASSERTED struct si_texture *stmp;
    unsigned dst_width = u_minify(info->dst.resource->width0, info->dst.level);
    unsigned dst_height = u_minify(info->dst.resource->height0, info->dst.level);
    enum pipe_format format = info->src.format;
-   struct pipe_resource *tmp, templ;
-   struct pipe_blit_info blit;
 
    /* Check basic requirements for hw resolve. */
    if (!(info->src.resource->nr_samples > 1 && info->dst.resource->nr_samples <= 1 &&
@@ -1136,33 +1147,30 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
       /* Check the remaining constraints. */
       if (src->surface.micro_tile_mode != dst->surface.micro_tile_mode ||
           need_rgb_to_bgr) {
+         /* Changing the microtile mode is not possible with GFX10. */
+         if (sctx->gfx_level >= GFX10)
+            return false;
+
          /* The next fast clear will switch to this mode to
           * get direct hw resolve next time if the mode is
           * different now.
-          *
-          * TODO-GFX10: This does not work in GFX10 because MSAA
-          * is restricted to 64KB_R_X and 64KB_Z_X swizzle modes.
-          * In some cases we could change the swizzle of the
-          * destination texture instead, but the more general
-          * solution is to implement compute shader resolve.
           */
          if (src->surface.micro_tile_mode != dst->surface.micro_tile_mode)
             src->last_msaa_resolve_target_micro_mode = dst->surface.micro_tile_mode;
          if (need_rgb_to_bgr)
             src->swap_rgb_to_bgr_on_next_clear = true;
 
-         goto resolve_to_temp;
+         return false;
       }
 
       /* Resolving into a surface with DCC is unsupported. Since
        * it's being overwritten anyway, clear it to uncompressed.
-       * This is still the fastest codepath even with this clear.
        */
       if (vi_dcc_enabled(dst, info->dst.level)) {
          struct si_clear_info clear_info;
 
          if (!vi_dcc_get_clear_info(sctx, dst, info->dst.level, DCC_UNCOMPRESSED, &clear_info))
-            goto resolve_to_temp;
+            return false;
 
          si_execute_clears(sctx, &clear_info, 1, SI_CLEAR_TYPE_DCC, info->render_condition_enable);
          dst->dirty_level_mask &= ~(1 << info->dst.level);
@@ -1173,50 +1181,7 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
       return true;
    }
 
-resolve_to_temp:
-   /* Shader-based resolve is VERY SLOW. Instead, resolve into
-    * a temporary texture and blit.
-    */
-   memset(&templ, 0, sizeof(templ));
-   templ.target = PIPE_TEXTURE_2D;
-   templ.format = info->src.resource->format;
-   templ.width0 = info->src.resource->width0;
-   templ.height0 = info->src.resource->height0;
-   templ.depth0 = 1;
-   templ.array_size = 1;
-   templ.usage = PIPE_USAGE_DEFAULT;
-   templ.flags = SI_RESOURCE_FLAG_FORCE_MSAA_TILING | SI_RESOURCE_FLAG_FORCE_MICRO_TILE_MODE |
-                 SI_RESOURCE_FLAG_MICRO_TILE_MODE_SET(src->surface.micro_tile_mode) |
-                 SI_RESOURCE_FLAG_DISABLE_DCC | SI_RESOURCE_FLAG_DRIVER_INTERNAL;
-
-   /* The src and dst microtile modes must be the same. */
-   if (sctx->gfx_level <= GFX8 && src->surface.micro_tile_mode == RADEON_MICRO_MODE_DISPLAY)
-      templ.bind = PIPE_BIND_SCANOUT;
-   else
-      templ.bind = 0;
-
-   tmp = ctx->screen->resource_create(ctx->screen, &templ);
-   if (!tmp)
-      return false;
-   stmp = (struct si_texture *)tmp;
-   /* Match the channel order of src. */
-   stmp->swap_rgb_to_bgr = src->swap_rgb_to_bgr;
-
-   assert(!stmp->surface.is_linear);
-   assert(src->surface.micro_tile_mode == stmp->surface.micro_tile_mode);
-
-   /* resolve */
-   si_do_CB_resolve(sctx, info, tmp, 0, 0, format);
-
-   /* blit */
-   blit = *info;
-   blit.src.resource = tmp;
-   blit.src.box.z = 0;
-
-   ctx->blit(ctx, &blit);
-
-   pipe_resource_reference(&tmp, NULL);
-   return true;
+   return false;
 }
 
 static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
@@ -1334,7 +1299,7 @@ static void si_flush_resource(struct pipe_context *ctx, struct pipe_resource *re
    struct si_context *sctx = (struct si_context *)ctx;
    struct si_texture *tex = (struct si_texture *)res;
 
-   if (res->target == PIPE_BUFFER)
+   if (sctx->gfx_level >= GFX12 || res->target == PIPE_BUFFER)
       return;
 
    if (!tex->is_depth && (tex->cmask_buffer || vi_dcc_enabled(tex, 0))) {
@@ -1350,6 +1315,8 @@ static void si_flush_resource(struct pipe_context *ctx, struct pipe_resource *re
 
 void si_flush_implicit_resources(struct si_context *sctx)
 {
+   assert(sctx->gfx_level < GFX12);
+
    hash_table_foreach(sctx->dirty_implicit_resources, entry) {
       si_flush_resource(&sctx->b, entry->data);
       pipe_resource_reference((struct pipe_resource **)&entry->data, NULL);
@@ -1359,6 +1326,7 @@ void si_flush_implicit_resources(struct si_context *sctx)
 
 void si_decompress_dcc(struct si_context *sctx, struct si_texture *tex)
 {
+   assert(sctx->gfx_level < GFX12);
    assert(!tex->is_depth);
 
    /* If graphics is disabled, we can't decompress DCC, but it shouldn't

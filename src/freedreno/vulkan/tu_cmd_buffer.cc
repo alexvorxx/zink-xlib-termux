@@ -858,6 +858,10 @@ use_hw_binning(struct tu_cmd_buffer *cmd)
    const struct tu_framebuffer *fb = cmd->state.framebuffer;
    const struct tu_tiling_config *tiling = &fb->tiling[cmd->state.gmem_layout];
 
+   if (cmd->state.rp.has_gs &&
+       cmd->device->physical_device->info->a7xx.no_gs_hw_binning_quirk)
+      return false;
+
    /* XFB commands are emitted for BINNING || SYSMEM, which makes it
     * incompatible with non-hw binning GMEM rendering. this is required because
     * some of the XFB commands need to only be executed once.
@@ -908,17 +912,21 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
    if (cmd->state.rp.disable_gmem)
       return true;
 
-   /* XFB is incompatible with non-hw binning GMEM rendering, see use_hw_binning */
-   if (cmd->state.rp.xfb_used && !cmd->state.tiling->binning_possible)
-      return true;
+   if (!cmd->state.tiling->binning_possible ||
+       (cmd->state.rp.has_gs &&
+        cmd->device->physical_device->info->a7xx.no_gs_hw_binning_quirk)) {
+      /* XFB is incompatible with non-hw binning GMEM rendering, see
+       * use_hw_binning */
+      if (cmd->state.rp.xfb_used)
+         return true;
 
-   /* QUERY_TYPE_PRIMITIVES_GENERATED is incompatible with non-hw binning
-    * GMEM rendering, see use_hw_binning.
-    */
-   if ((cmd->state.rp.has_prim_generated_query_in_rp ||
-        cmd->state.prim_generated_query_running_before_rp) &&
-       !cmd->state.tiling->binning_possible)
-      return true;
+      /* QUERY_TYPE_PRIMITIVES_GENERATED is incompatible with non-hw binning
+       * GMEM rendering, see use_hw_binning.
+       */
+      if (cmd->state.rp.has_prim_generated_query_in_rp ||
+          cmd->state.prim_generated_query_running_before_rp)
+         return true;
+   }
 
    if (TU_DEBUG(GMEM))
       return false;
@@ -1713,6 +1721,44 @@ tu_set_input_attachments(struct tu_cmd_buffer *cmd, const struct tu_subpass *sub
 }
 
 static void
+tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
+{
+   if (!u_trace_enabled(&cmd->device->trace_context))
+      return;
+
+   uint32_t load_cpp = 0;
+   uint32_t store_cpp = 0;
+   uint32_t clear_cpp = 0;
+   bool has_depth = false;
+   for (uint32_t i = 0; i < cmd->state.pass->attachment_count; i++) {
+      const struct tu_render_pass_attachment *attachment =
+         &cmd->state.pass->attachments[i];
+      if (attachment->load) {
+         load_cpp += attachment->cpp;
+      }
+
+      if (attachment->store) {
+         store_cpp += attachment->cpp;
+      }
+
+      if (attachment->clear_mask) {
+         clear_cpp += attachment->cpp;
+      }
+
+      has_depth |= vk_format_has_depth(attachment->format);
+   }
+
+   uint32_t max_samples = 0;
+   for (uint32_t i = 0; i < cmd->state.pass->subpass_count; i++) {
+      max_samples = MAX2(max_samples, cmd->state.pass->subpasses[i].samples);
+   }
+
+   trace_start_render_pass(&cmd->trace, &cmd->cs, cmd->state.framebuffer,
+                           cmd->state.tiling, max_samples, clear_cpp,
+                           load_cpp, store_cpp, has_depth);
+}
+
+static void
 tu_emit_renderpass_begin(struct tu_cmd_buffer *cmd)
 {
    /* We need to re-emit any draw states that are patched in order for them to
@@ -2016,7 +2062,10 @@ tu_cmd_render_tiles(struct tu_cmd_buffer *cmd,
 
    tu6_tile_render_end<CHIP>(cmd, &cmd->cs, autotune_result);
 
-   trace_end_render_pass(&cmd->trace, &cmd->cs);
+   trace_end_render_pass(&cmd->trace, &cmd->cs, true,
+                         cmd->state.rp.drawcall_count,
+                         cmd->state.rp.drawcall_bandwidth_per_sample_sum /
+                            cmd->state.rp.drawcall_count);
 
    /* We have trashed the dynamically-emitted viewport, scissor, and FS params
     * via the patchpoints, so we need to re-emit them if they are reused for a
@@ -2053,7 +2102,10 @@ tu_cmd_render_sysmem(struct tu_cmd_buffer *cmd,
 
    tu6_sysmem_render_end<CHIP>(cmd, &cmd->cs, autotune_result);
 
-   trace_end_render_pass(&cmd->trace, &cmd->cs);
+   trace_end_render_pass(&cmd->trace, &cmd->cs, false,
+                         cmd->state.rp.drawcall_count,
+                         cmd->state.rp.drawcall_bandwidth_per_sample_sum /
+                            cmd->state.rp.drawcall_count);
 }
 
 template <chip CHIP>
@@ -3183,6 +3235,9 @@ tu_pipeline_update_rp_state(struct tu_cmd_state *cmd_state)
    if (cmd_state->pipeline_has_tess) {
       cmd_state->rp.has_tess = true;
    }
+   if (cmd_state->pipeline_has_gs) {
+      cmd_state->rp.has_gs = true;
+   }
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -3234,6 +3289,7 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    cmd->state.prim_order_gmem = pipeline->prim_order.state_gmem;
    cmd->state.pipeline_sysmem_single_prim_mode = pipeline->prim_order.sysmem_single_prim_mode;
    cmd->state.pipeline_has_tess = pipeline->active_stages & VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+   cmd->state.pipeline_has_gs = pipeline->active_stages & VK_SHADER_STAGE_GEOMETRY_BIT;
    cmd->state.pipeline_disable_gmem = gfx_pipeline->feedback_loop_may_involve_textures;
 
    tu_pipeline_update_rp_state(&cmd->state);
@@ -3723,6 +3779,7 @@ tu_render_pass_state_merge(struct tu_render_pass_state *dst,
 {
    dst->xfb_used |= src->xfb_used;
    dst->has_tess |= src->has_tess;
+   dst->has_gs |= src->has_gs;
    dst->has_prim_generated_query_in_rp |= src->has_prim_generated_query_in_rp;
    dst->disable_gmem |= src->disable_gmem;
    dst->sysmem_single_prim_mode |= src->sysmem_single_prim_mode;
@@ -4185,8 +4242,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 
    tu_choose_gmem_layout(cmd);
 
-   trace_start_render_pass(&cmd->trace, &cmd->cs, cmd->state.framebuffer,
-                           cmd->state.tiling);
+   tu_trace_start_render_pass(cmd);
 
    /* Note: because this is external, any flushes will happen before draw_cs
     * gets called. However deferred flushes could have to happen later as part
@@ -4331,8 +4387,7 @@ tu_CmdBeginRendering(VkCommandBuffer commandBuffer,
    }
 
    if (!resuming)
-      trace_start_render_pass(&cmd->trace, &cmd->cs, cmd->state.framebuffer,
-                              cmd->state.tiling);
+      tu_trace_start_render_pass(cmd);
 
    if (!resuming || cmd->state.suspend_resume == SR_NONE) {
       cmd->trace_renderpass_start = u_trace_end_iterator(&cmd->trace);

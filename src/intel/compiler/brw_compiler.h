@@ -33,6 +33,7 @@
 #include "util/enum_operators.h"
 #include "util/ralloc.h"
 #include "util/u_math.h"
+#include "util/u_printf.h"
 #include "brw_isa_info.h"
 #include "intel_shader_enums.h"
 
@@ -460,6 +461,9 @@ enum brw_shader_reloc_id {
    BRW_SHADER_RELOC_EMBEDDED_SAMPLER_HANDLE,
    BRW_SHADER_RELOC_LAST_EMBEDDED_SAMPLER_HANDLE =
    BRW_SHADER_RELOC_EMBEDDED_SAMPLER_HANDLE + BRW_MAX_EMBEDDED_SAMPLERS - 1,
+   BRW_SHADER_RELOC_PRINTF_BUFFER_ADDR_LOW,
+   BRW_SHADER_RELOC_PRINTF_BUFFER_ADDR_HIGH,
+   BRW_SHADER_RELOC_PRINTF_BASE_IDENTIFIER,
 };
 
 enum brw_shader_reloc_type {
@@ -557,6 +561,10 @@ struct brw_stage_prog_data {
 
    /* Whether shader uses atomic operations. */
    bool uses_atomic_load_store;
+
+   /* Printf descriptions contained by the shader */
+   uint32_t printf_info_count;
+   u_printf_info *printf_info;
 };
 
 static inline uint32_t *
@@ -570,6 +578,11 @@ brw_stage_prog_data_add_params(struct brw_stage_prog_data *prog_data,
                                prog_data->nr_params);
    return prog_data->param + old_nr_params;
 }
+
+void
+brw_stage_prog_data_add_printf(struct brw_stage_prog_data *prog_data,
+                               void *mem_ctx,
+                               const u_printf_info *print);
 
 enum brw_barycentric_mode {
    BRW_BARYCENTRIC_PERSPECTIVE_PIXEL       = 0,

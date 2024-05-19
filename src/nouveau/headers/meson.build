@@ -22,6 +22,7 @@ nv_classes = [
   'clc5c0',
   'clc697',
   'clc6c0',
+  'clc797',
   'clc7c0',
 ]
 
@@ -96,6 +97,15 @@ if with_nouveau_vk
         'nvh_classes_' + cl + '_tex.rs',
         input : ['struct_parser.py', 'nvidia/classes/'+cl+'tex.h'],
         output : ['nvh_classes_'+cl+'_tex.rs'],
+        command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+                   '--out-rs', '@OUTPUT0@']
+      )
+    endif
+
+    if fs.is_file(f'nvidia/classes/@cl@sph.h')
+      cl_rs_generated += custom_target(
+        input : ['struct_parser.py', f'nvidia/classes/@cl@sph.h'],
+        output : [f'nvh_classes_@cl@_sph.rs'],
         command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                    '--out-rs', '@OUTPUT0@']
       )

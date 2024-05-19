@@ -1550,14 +1550,22 @@ brw_send_indirect_split_message(struct brw_codegen *p,
       unsigned imm_part = ex_bso ? 0 : (ex_desc_imm | sfid | eot << 5);
 
       if (ex_desc_scratch) {
-         /* Or the scratch surface offset together with the immediate part of
-          * the extended descriptor.
-          */
          assert(devinfo->verx10 >= 125);
          brw_AND(p, addr,
                  retype(brw_vec1_grf(0, 5), BRW_TYPE_UD),
                  brw_imm_ud(INTEL_MASK(31, 10)));
-         brw_OR(p, addr, addr, brw_imm_ud(imm_part));
+
+         if (devinfo->ver >= 20 && sfid == GFX12_SFID_UGM) {
+            const unsigned ex_mlen = brw_message_ex_desc_ex_mlen(devinfo, ex_desc_imm);
+            assert(ex_desc_imm == brw_message_ex_desc(devinfo, ex_mlen));
+            brw_SHR(p, addr, addr, brw_imm_ud(4));
+         } else {
+            /* Or the scratch surface offset together with the immediate part
+             * of the extended descriptor.
+             */
+            brw_OR(p, addr, addr, brw_imm_ud(imm_part));
+         }
+
       } else if (ex_desc.file == BRW_IMMEDIATE_VALUE) {
          /* ex_desc bits 15:12 don't exist in the instruction encoding prior
           * to Gfx12, so we may have fallen back to an indirect extended
@@ -1598,6 +1606,11 @@ brw_send_indirect_split_message(struct brw_codegen *p,
       assert((ex_desc.subnr & 0x3) == 0);
       brw_inst_set_send_sel_reg32_ex_desc(devinfo, send, 1);
       brw_inst_set_send_ex_desc_ia_subreg_nr(devinfo, send, phys_subnr(devinfo, ex_desc) >> 2);
+
+      if (devinfo->ver >= 20 && sfid == GFX12_SFID_UGM) {
+         const unsigned ex_mlen = brw_message_ex_desc_ex_mlen(devinfo, ex_desc_imm);
+         brw_inst_set_bits(send, 103, 99, ex_mlen / reg_unit(devinfo));
+      }
    }
 
    if (ex_bso) {
@@ -2117,13 +2130,14 @@ void
 brw_MOV_reloc_imm(struct brw_codegen *p,
                   struct brw_reg dst,
                   enum brw_reg_type src_type,
-                  uint32_t id)
+                  uint32_t id,
+                  uint32_t base)
 {
    assert(brw_type_size_bytes(src_type) == 4);
    assert(brw_type_size_bytes(dst.type) == 4);
 
    brw_add_reloc(p, id, BRW_SHADER_RELOC_TYPE_MOV_IMM,
-                 p->next_insn_offset, 0);
+                 p->next_insn_offset, base);
 
    brw_MOV(p, dst, retype(brw_imm_ud(DEFAULT_PATCH_IMM), src_type));
 }

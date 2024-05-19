@@ -359,10 +359,29 @@ anv_image_init_from_gralloc(struct anv_device *device,
    }
 
    enum isl_tiling tiling;
-   result = anv_device_get_bo_tiling(device, bo, &tiling);
-   if (result != VK_SUCCESS) {
-      return vk_errorf(device, result,
-                       "failed to get tiling from VkNativeBufferANDROID");
+   if (device->u_gralloc) {
+      struct u_gralloc_buffer_basic_info buf_info;
+      struct u_gralloc_buffer_handle gr_handle = {
+         .handle = gralloc_info->handle,
+         .hal_format = gralloc_info->format,
+         .pixel_stride = gralloc_info->stride,
+      };
+      u_gralloc_get_buffer_basic_info(device->u_gralloc, &gr_handle, &buf_info);
+      const struct isl_drm_modifier_info *mod_info =
+         isl_drm_modifier_get_info(buf_info.modifier);
+      if (mod_info) {
+         tiling = mod_info->tiling;
+      } else {
+         return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
+                          "unknown modifier of BO from VkNativeBufferANDROID");
+      }
+   } else {
+      /* Fallback to get_tiling API. */
+      result = anv_device_get_bo_tiling(device, bo, &tiling);
+      if (result != VK_SUCCESS) {
+         return vk_errorf(device, result,
+                          "failed to get tiling from VkNativeBufferANDROID");
+      }
    }
    anv_info.isl_tiling_flags = 1u << tiling;
 

@@ -412,7 +412,7 @@ namespace brw {
          left = horiz_stride(horiz_offset(tmp, left_offset), left_stride);
          right = horiz_stride(horiz_offset(tmp, right_offset), right_stride);
          if ((tmp.type == BRW_TYPE_Q || tmp.type == BRW_TYPE_UQ) &&
-             !shader->devinfo->has_64bit_int) {
+             (!shader->devinfo->has_64bit_int || shader->devinfo->ver >= 20)) {
             switch (opcode) {
             case BRW_OPCODE_MUL:
                /* This will get lowered by integer MUL lowering */

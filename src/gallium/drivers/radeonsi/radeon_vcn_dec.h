@@ -97,6 +97,10 @@ struct radeon_decoder {
    unsigned h264_valid_ref_num[17];
    unsigned h264_valid_poc_num[34];
    unsigned av1_version;
+   enum {
+      DPB_VERSION_LEGACY = 0,
+      DPB_VERSION_VCN5
+   } dpb_version;
    bool show_frame;
    unsigned ref_idx;
    bool tmz_ctx;
@@ -121,6 +125,7 @@ struct radeon_decoder {
       } bts;
       uint8_t index;
       unsigned ref_size;
+      unsigned num_refs;
       uint8_t ref_list[16];
    } ref_codec;
 

@@ -3074,6 +3074,7 @@ nir_tex_instr_result_size(const nir_tex_instr *instr)
       case GLSL_SAMPLER_DIM_RECT:
       case GLSL_SAMPLER_DIM_EXTERNAL:
       case GLSL_SAMPLER_DIM_SUBPASS:
+      case GLSL_SAMPLER_DIM_SUBPASS_MS:
          ret = 2;
          break;
       case GLSL_SAMPLER_DIM_3D:
@@ -3095,6 +3096,7 @@ nir_tex_instr_result_size(const nir_tex_instr *instr)
    case nir_texop_samples_identical:
    case nir_texop_fragment_mask_fetch_amd:
    case nir_texop_lod_bias_agx:
+   case nir_texop_has_custom_border_color_agx:
       return 1;
 
    case nir_texop_descriptor_amd:
@@ -3105,6 +3107,9 @@ nir_tex_instr_result_size(const nir_tex_instr *instr)
 
    case nir_texop_hdr_dim_nv:
    case nir_texop_tex_type_nv:
+      return 4;
+
+   case nir_texop_custom_border_color_agx:
       return 4;
 
    default:
@@ -3126,6 +3131,8 @@ nir_tex_instr_is_query(const nir_tex_instr *instr)
    case nir_texop_descriptor_amd:
    case nir_texop_sampler_descriptor_amd:
    case nir_texop_lod_bias_agx:
+   case nir_texop_custom_border_color_agx:
+   case nir_texop_has_custom_border_color_agx:
       return true;
    case nir_texop_tex:
    case nir_texop_txb:

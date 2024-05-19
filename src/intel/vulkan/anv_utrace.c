@@ -264,7 +264,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
          for (uint32_t i = 0; i < cmd_buffer_count; i++) {
             if (cmd_buffers[i]->usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) {
                intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
-                                         &submit->ds, false);
+                                         &submit->ds, device->vk.current_frame, false);
             } else {
                num_traces += cmd_buffers[i]->trace.num_traces;
                u_trace_clone_append(u_trace_begin_iterator(&cmd_buffers[i]->trace),
@@ -306,7 +306,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
             num_traces += cmd_buffers[i]->trace.num_traces;
             if (cmd_buffers[i]->usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) {
                intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
-                                         &submit->ds, false);
+                                         &submit->ds, device->vk.current_frame, false);
             } else {
                num_traces += cmd_buffers[i]->trace.num_traces;
                u_trace_clone_append(u_trace_begin_iterator(&cmd_buffers[i]->trace),
@@ -323,7 +323,8 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
          anv_genX(device->info, emit_simple_shader_end)(&submit->simple_state);
       }
 
-      intel_ds_queue_flush_data(&queue->ds, &submit->ds.trace, &submit->ds, true);
+      intel_ds_queue_flush_data(&queue->ds, &submit->ds.trace, &submit->ds,
+                                device->vk.current_frame, true);
 
       if (submit->batch.status != VK_SUCCESS) {
          result = submit->batch.status;
@@ -333,7 +334,8 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
       for (uint32_t i = 0; i < cmd_buffer_count; i++) {
          assert(cmd_buffers[i]->usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
          intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
-                                   &submit->ds, i == (cmd_buffer_count - 1));
+                                   &submit->ds, device->vk.current_frame,
+                                   i == (cmd_buffer_count - 1));
       }
    }
 
@@ -637,7 +639,8 @@ anv_queue_trace(struct anv_queue *queue, const char *label, bool frame, bool beg
       goto error_reloc_list;
    }
 
-   intel_ds_queue_flush_data(&queue->ds, &submit->ds.trace, &submit->ds, true);
+   intel_ds_queue_flush_data(&queue->ds, &submit->ds.trace, &submit->ds,
+                             device->vk.current_frame, true);
 
    pthread_mutex_lock(&device->mutex);
    device->kmd_backend->queue_exec_trace(queue, submit);

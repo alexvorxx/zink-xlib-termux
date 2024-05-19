@@ -999,6 +999,10 @@ supports_src_as_imm(const struct intel_device_info *devinfo, const fs_inst *inst
       /* ADD3 only exists on Gfx12.5+. */
       return true;
 
+   case BRW_OPCODE_CSEL:
+      /* While MAD can mix F and HF sources on some platforms, CSEL cannot. */
+      return inst->src[0].type != BRW_TYPE_F;
+
    case BRW_OPCODE_MAD:
       /* Integer types can always mix sizes. Floating point types can mix
        * sizes on Gfx12. On Gfx12.5, floating point sources must all be HF or
@@ -1301,7 +1305,15 @@ brw_fs_opt_combine_constants(fs_visitor &s)
          }
          break;
 
+      /* FINISHME: CSEL handling could be better. For some cases, src[0] and
+       * src[1] can be commutative (e.g., any integer comparison). In those
+       * cases when src[1] is IMM, the sources could be exchanged. In
+       * addition, when both sources are IMM that could be represented as
+       * 16-bits, it would be better to add both sources with
+       * allow_one_constant=true as is done for SEL.
+       */
       case BRW_OPCODE_ADD3:
+      case BRW_OPCODE_CSEL:
       case BRW_OPCODE_MAD: {
          for (int i = 0; i < inst->sources; i++) {
             if (inst->src[i].file != IMM)

@@ -39,19 +39,22 @@ nvk_cmd_buffer_3d_cls(struct nvk_cmd_buffer *cmd)
    return pdev->info.cls_eng3d;
 }
 
-void
-nvk_mme_set_priv_reg(struct mme_builder *b)
+static void
+mme_set_priv_reg(struct mme_builder *b,
+                 struct mme_value value,
+                 struct mme_value mask,
+                 struct mme_value reg)
 {
    mme_mthd(b, NV9097_WAIT_FOR_IDLE);
    mme_emit(b, mme_zero());
 
    mme_mthd(b, NV9097_SET_MME_SHADOW_SCRATCH(0));
    mme_emit(b, mme_zero());
-   mme_emit(b, mme_load(b));
-   mme_emit(b, mme_load(b));
+   mme_emit(b, value);
+   mme_emit(b, mask);
 
    mme_mthd(b, NV9097_SET_FALCON04);
-   mme_emit(b, mme_load(b));
+   mme_emit(b, reg);
 
    struct mme_value loop_cond = mme_mov(b, mme_zero());
    mme_while(b, ine, loop_cond, mme_imm(1)) {
@@ -59,6 +62,30 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
       mme_mthd(b, NV9097_NO_OPERATION);
       mme_emit(b, mme_zero());
    };
+}
+
+void
+nvk_mme_set_priv_reg(struct mme_builder *b)
+{
+   struct mme_value value = mme_load(b);
+   struct mme_value mask = mme_load(b);
+   struct mme_value reg = mme_load(b);
+
+   mme_set_priv_reg(b, value, mask, reg);
+}
+
+void
+nvk_mme_set_conservative_raster_state(struct mme_builder *b)
+{
+   struct mme_value new_state = mme_load(b);
+   struct mme_value old_state =
+      nvk_mme_load_scratch(b, CONSERVATIVE_RASTER_STATE);
+
+   mme_if(b, ine, new_state, old_state) {
+      nvk_mme_store_scratch(b, CONSERVATIVE_RASTER_STATE, new_state);
+      mme_set_priv_reg(b, new_state, mme_imm(BITFIELD_RANGE(23, 2)),
+                       mme_imm(0x418800));
+   }
 }
 
 VkResult
@@ -105,7 +132,7 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
     * Starting with GSP we have to do it via the firmware anyway.
     *
     * This clears bit 3 of gr_gpcs_tpcs_sm_disp_ctrl
-    * 
+    *
     * Without it,
     * dEQP-VK.subgroups.vote.frag_helper.subgroupallequal_bvec2_fragment will
     * occasionally fail.
@@ -171,6 +198,12 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       P_INLINE_DATA(p, BITFIELD_BIT(14));
       P_INLINE_DATA(p, reg);
    }
+
+   /* Set CONSERVATIVE_RASTER_STATE to an invalid value, to ensure the
+    * hardware reg is always set the first time conservative rasterization
+    * is enabled */
+   P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_CONSERVATIVE_RASTER_STATE),
+                     ~0);
 
    P_IMMD(p, NV9097, SET_RENDER_ENABLE_C, MODE_TRUE);
 
@@ -579,6 +612,8 @@ nvk_attachment_init(struct nvk_attachment *att,
       att->resolve_mode = info->resolveMode;
       att->resolve_iview = res_iview;
    }
+
+   att->store_op = info->storeOp;
 }
 
 static uint32_t
@@ -605,6 +640,30 @@ nvk_GetRenderingAreaGranularityKHR(
     VkExtent2D *pGranularity)
 {
    *pGranularity = (VkExtent2D) { .width = 1, .height = 1 };
+}
+
+static bool
+nvk_rendering_all_linear(const struct nvk_rendering_state *render)
+{
+   /* Depth and stencil are never linear */
+   if (render->depth_att.iview || render->stencil_att.iview)
+      return false;
+
+   for (uint32_t i = 0; i < render->color_att_count; i++) {
+      const struct nvk_image_view *iview = render->color_att[i].iview;
+      if (iview == NULL)
+         continue;
+
+      const struct nvk_image *image = (struct nvk_image *)iview->vk.image;
+      const uint8_t ip = iview->planes[0].image_plane;
+      const struct nil_image_level *level =
+         &image->planes[ip].nil.levels[iview->vk.base_mip_level];
+
+      if (level->tiling.is_tiled)
+         return false;
+   }
+
+   return true;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -641,7 +700,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
    /* Always emit at least one color attachment, even if it's just a dummy. */
    uint32_t color_att_count = MAX2(1, render->color_att_count);
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, color_att_count * 10 + 27);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, color_att_count * 12 + 29);
 
    P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_VIEW_MASK),
           render->view_mask);
@@ -656,18 +715,31 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       .height  = render->area.extent.height,
    });
 
+   const bool all_linear = nvk_rendering_all_linear(render);
+
    enum nil_sample_layout sample_layout = NIL_SAMPLE_LAYOUT_INVALID;
    for (uint32_t i = 0; i < color_att_count; i++) {
       if (render->color_att[i].iview) {
          const struct nvk_image_view *iview = render->color_att[i].iview;
          const struct nvk_image *image = (struct nvk_image *)iview->vk.image;
-         /* Rendering to multi-planar images is valid for a specific single plane
-          * only, so assert that what we have is a single-plane, obtain its index,
-          * and begin rendering
+         /* Rendering to multi-planar images is valid for a specific single
+          * plane only, so assert that what we have is a single-plane, obtain
+          * its index, and begin rendering
           */
          assert(iview->plane_count == 1);
          const uint8_t ip = iview->planes[0].image_plane;
-         const struct nil_image *nil_image = &image->planes[ip].nil;
+         const struct nvk_image_plane *plane = &image->planes[ip];
+
+         const VkAttachmentLoadOp load_op =
+            pRenderingInfo->pColorAttachments[i].loadOp;
+         if (!all_linear && !plane->nil.levels[0].tiling.is_tiled) {
+            if (load_op == VK_ATTACHMENT_LOAD_OP_LOAD)
+               nvk_linear_render_copy(cmd, iview, render->area, true);
+
+            plane = &image->linear_tiled_shadow;
+         }
+
+         const struct nil_image *nil_image = &plane->nil;
          const struct nil_image_level *level =
             &nil_image->levels[iview->vk.base_mip_level];
          struct nil_Extent4D_Samples level_extent_sa =
@@ -678,7 +750,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          sample_layout = nil_image->sample_layout;
          render->samples = image->vk.samples;
 
-         uint64_t addr = nvk_image_base_address(image, ip) + level->offset_B;
+         uint64_t addr = nvk_image_plane_base_address(plane) + level->offset_B;
 
          if (nil_image->dim == NIL_IMAGE_DIM_3D) {
             addr += nil_image_level_z_offset_B(nil_image,
@@ -752,6 +824,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i, 0);
             P_NV9097_SET_COLOR_TARGET_LAYER(p, i, 0);
          }
+
+         P_IMMD(p, NV9097, SET_COLOR_COMPRESSION(i), nil_image->compressed);
       } else {
          P_MTHD(p, NV9097, SET_COLOR_TARGET_A(i));
          P_NV9097_SET_COLOR_TARGET_A(p, i, 0);
@@ -765,6 +839,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          P_NV9097_SET_COLOR_TARGET_THIRD_DIMENSION(p, i, layer_count);
          P_NV9097_SET_COLOR_TARGET_ARRAY_PITCH(p, i, 0);
          P_NV9097_SET_COLOR_TARGET_LAYER(p, i, 0);
+
+         P_IMMD(p, NV9097, SET_COLOR_COMPRESSION(i), ENABLE_TRUE);
       }
    }
 
@@ -820,6 +896,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          vk_format_to_pipe_format(iview->vk.format);
       const uint8_t zs_format = nil_format_to_depth_stencil(p_format);
       P_NV9097_SET_ZT_FORMAT(p, zs_format);
+      assert(level->tiling.is_tiled);
       assert(level->tiling.z_log2 == 0);
       P_NV9097_SET_ZT_BLOCK_SIZE(p, {
          .width = WIDTH_ONE_GOB,
@@ -849,6 +926,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       });
 
       P_IMMD(p, NV9097, SET_ZT_LAYER, base_array_layer);
+
+      P_IMMD(p, NV9097, SET_Z_COMPRESSION, nil_image.compressed);
 
       if (nvk_cmd_buffer_3d_cls(cmd) >= MAXWELL_B) {
          P_IMMD(p, NVC597, SET_ZT_SPARSE, {
@@ -944,6 +1023,20 @@ nvk_CmdEndRendering(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    struct nvk_rendering_state *render = &cmd->state.gfx.render;
+
+   const bool all_linear = nvk_rendering_all_linear(render);
+   for (uint32_t i = 0; i < render->color_att_count; i++) {
+      struct nvk_image_view *iview = render->color_att[i].iview;
+      if (iview == NULL)
+         continue;
+
+      struct nvk_image *image = (struct nvk_image *)iview->vk.image;
+      const uint8_t ip = iview->planes[0].image_plane;
+      const struct nvk_image_plane *plane = &image->planes[ip];
+      if (!all_linear && !plane->nil.levels[0].tiling.is_tiled &&
+          render->color_att[i].store_op == VK_ATTACHMENT_STORE_OP_STORE)
+         nvk_linear_render_copy(cmd, iview, render->area, false);
+   }
 
    bool need_resolve = false;
 
@@ -1497,7 +1590,7 @@ vk_to_nv9097_provoking_vertex(VkProvokingVertexModeEXT vk_mode)
 static void
 nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 {
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 40);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 44);
 
    const struct vk_dynamic_graphics_state *dyn =
       &cmd->vk.dynamic_graphics_state;
@@ -1650,6 +1743,31 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_RASTERIZATION_STREAM))
       P_IMMD(p, NV9097, SET_RASTER_INPUT, dyn->rs.rasterization_stream);
+
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_CONSERVATIVE_MODE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_EXTRA_PRIMITIVE_OVERESTIMATION_SIZE)) {
+      if (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
+         P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_FALSE);
+      } else {
+         uint32_t extra_overestimate =
+            MIN2(3, dyn->rs.extra_primitive_overestimation_size * 4);
+
+         if (nvk_cmd_buffer_3d_cls(cmd)  < VOLTA_A) {
+            P_1INC(p, NVB197, CALL_MME_MACRO(NVK_MME_SET_CONSERVATIVE_RASTER_STATE));
+            P_INLINE_DATA(p, extra_overestimate << 23);
+         } else {
+            P_IMMD(p, NVC397, SET_CONSERVATIVE_RASTER_CONTROL, {
+                      .extra_prim_bloat = extra_overestimate,
+                      .copy_inner_to_outer = 
+                        (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT),
+                      .triangle_snap_mode = TRIANGLE_SNAP_MODE_MODE_PRE_SNAP,
+                      .line_and_point_snap_mode = LINE_AND_POINT_SNAP_MODE_MODE_PRE_SNAP,
+                      .uncertainty_region_size = UNCERTAINTY_REGION_SIZE_SIZE_512,
+                     });
+         }
+         P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_TRUE);
+      }
+   }
 }
 
 static VkSampleLocationEXT

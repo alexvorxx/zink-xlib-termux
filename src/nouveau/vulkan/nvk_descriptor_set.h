@@ -53,11 +53,18 @@ static_assert(sizeof(struct nvk_buffer_view_descriptor) == 4,
               "nvk_buffer_view_descriptor has no holes");
 
 /* This has to match nir_address_format_64bit_bounded_global */
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct nvk_buffer_address {
    uint64_t base_addr;
    uint32_t size;
    uint32_t zero; /* Must be zero! */
 };
+PRAGMA_DIAGNOSTIC_POP
+static_assert(sizeof(struct nvk_buffer_address) == 16,
+              "nvk_buffer_address has no holes");
+
+#define NVK_BUFFER_ADDRESS_NULL ((struct nvk_buffer_address) { .size = 0 })
 
 struct nvk_descriptor_pool {
    struct vk_object_base base;
@@ -89,10 +96,13 @@ struct nvk_descriptor_set {
 VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_descriptor_set, base, VkDescriptorSet,
                        VK_OBJECT_TYPE_DESCRIPTOR_SET)
 
-static inline uint64_t
+static inline struct nvk_buffer_address
 nvk_descriptor_set_addr(const struct nvk_descriptor_set *set)
 {
-   return set->addr;
+   return (struct nvk_buffer_address) {
+      .base_addr = set->addr,
+      .size = set->size,
+   };
 }
 
 struct nvk_push_descriptor_set {

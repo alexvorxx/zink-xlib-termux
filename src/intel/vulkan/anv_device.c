@@ -372,6 +372,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_image_view_min_lod                = true,
       .EXT_index_type_uint8                  = true,
       .EXT_inline_uniform_block              = true,
+      .EXT_legacy_dithering                  = true,
       .EXT_legacy_vertex_attributes          = true,
       .EXT_line_rasterization                = true,
       .EXT_load_store_op_none                = true,
@@ -508,10 +509,12 @@ get_features(const struct anv_physical_device *pdevice,
       .sparseResidencyBuffer                    = has_sparse_or_fake,
       .sparseResidencyImage2D                   = has_sparse_or_fake,
       .sparseResidencyImage3D                   = has_sparse_or_fake,
-      .sparseResidency2Samples                  = false,
-      .sparseResidency4Samples                  = false,
-      .sparseResidency8Samples                  = false,
-      .sparseResidency16Samples                 = false,
+      .sparseResidency2Samples                  = has_sparse_or_fake,
+      .sparseResidency4Samples                  = has_sparse_or_fake,
+      .sparseResidency8Samples                  = has_sparse_or_fake &&
+                                                  pdevice->info.verx10 != 125,
+      .sparseResidency16Samples                 = has_sparse_or_fake &&
+                                                  pdevice->info.verx10 != 125,
       .variableMultisampleRate                  = true,
       .inheritedQueries                         = true,
 
@@ -743,7 +746,7 @@ get_features(const struct anv_physical_device *pdevice,
       .shaderBufferFloat32AtomicAdd =  pdevice->info.has_lsc,
       .shaderBufferFloat64Atomics =
          pdevice->info.has_64bit_float && pdevice->info.has_lsc,
-      .shaderBufferFloat64AtomicAdd =  false,
+      .shaderBufferFloat64AtomicAdd =  pdevice->info.ver >= 20,
       .shaderSharedFloat32Atomics =    true,
       .shaderSharedFloat32AtomicAdd =  false,
       .shaderSharedFloat64Atomics =    false,
@@ -759,7 +762,8 @@ get_features(const struct anv_physical_device *pdevice,
       .shaderBufferFloat16AtomicMinMax = pdevice->info.has_lsc,
       .shaderBufferFloat32AtomicMinMax = true,
       .shaderBufferFloat64AtomicMinMax =
-         pdevice->info.has_64bit_float && pdevice->info.has_lsc,
+         pdevice->info.has_64bit_float && pdevice->info.has_lsc &&
+         pdevice->info.ver < 20,
       .shaderSharedFloat16Atomics      = pdevice->info.has_lsc,
       .shaderSharedFloat16AtomicAdd    = false,
       .shaderSharedFloat16AtomicMinMax = pdevice->info.has_lsc,
@@ -937,6 +941,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_legacy_vertex_attributes */
       .legacyVertexAttributes = true,
+
+      /* VK_EXT_legacy_dithering */
+      .legacyDithering = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -3815,10 +3822,16 @@ VkResult anv_CreateDevice(
       device->physical->instance->fp64_workaround_enabled)
       anv_load_fp64_shader(device);
 
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT)) {
+      result = anv_device_print_init(device);
+      if (result != VK_SUCCESS)
+         goto fail_internal_cache;
+   }
+
    result = anv_device_init_rt_shaders(device);
    if (result != VK_SUCCESS) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_internal_cache;
+      goto fail_print;
    }
 
 #if DETECT_OS_ANDROID
@@ -3911,6 +3924,9 @@ VkResult anv_CreateDevice(
       vk_common_DestroyCommandPool(anv_device_to_handle(device),
                                    device->companion_rcs_cmd_pool, NULL);
    }
+ fail_print:
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT))
+      anv_device_print_fini(device);
  fail_internal_cache:
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
  fail_default_pipeline_cache:
@@ -4030,6 +4046,9 @@ void anv_DestroyDevice(
    anv_device_finish_astc_emu(device);
 
    anv_device_finish_internal_kernels(device);
+
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT))
+      anv_device_print_fini(device);
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);

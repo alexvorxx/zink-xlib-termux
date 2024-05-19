@@ -75,6 +75,7 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
       case GFX10: program->family = CHIP_NAVI10; break;
       case GFX10_3: program->family = CHIP_NAVI21; break;
       case GFX11: program->family = CHIP_NAVI31; break;
+      case GFX12: program->family = CHIP_GFX1200; break;
       default: program->family = CHIP_UNKNOWN; break;
       }
    } else {
@@ -669,6 +670,7 @@ get_gfx11_true16_mask(aco_opcode op)
    case aco_opcode::v_sin_f16:
    case aco_opcode::v_sqrt_f16:
    case aco_opcode::v_trunc_f16:
+   case aco_opcode::v_swap_b16:
    case aco_opcode::v_mov_b16: return 0x1 | 0x8;
    case aco_opcode::v_add_f16:
    case aco_opcode::v_fmaak_f16:

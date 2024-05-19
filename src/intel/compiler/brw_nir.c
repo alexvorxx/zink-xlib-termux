@@ -1647,6 +1647,8 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    OPT(nir_opt_combine_barriers, combine_all_memory_barriers, NULL);
 
+   OPT(intel_nir_lower_printf);
+
    do {
       progress = false;
       OPT(nir_opt_algebraic_before_ffma);
@@ -1711,7 +1713,11 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    do {
       progress = false;
-      if (OPT(nir_opt_algebraic_late)) {
+
+      OPT(nir_opt_algebraic_late);
+      OPT(brw_nir_lower_fsign);
+
+      if (progress) {
          OPT(nir_opt_constant_folding);
          OPT(nir_copy_prop);
          OPT(nir_opt_dce);
@@ -2167,4 +2173,3 @@ brw_nir_get_var_type(const struct nir_shader *nir, nir_variable *var)
 
    return type;
 }
-

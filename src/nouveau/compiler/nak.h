@@ -41,8 +41,7 @@ struct nak_fs_key {
     * VkPipelineMultisampleStateCreateInfo::minSampleShading
     */
    bool force_sample_shading;
-
-   uint8_t _pad;
+   bool uses_underestimate;
 
    /**
     * The constant buffer index and offset at which the sample locations table lives.

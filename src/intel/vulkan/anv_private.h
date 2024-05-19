@@ -1468,6 +1468,7 @@ struct anv_gfx_dynamic_state {
       bool AlphaToCoverageEnable;
       bool AlphaToOneEnable;
       bool IndependentAlphaBlendEnable;
+      bool ColorDitherEnable;
       struct {
          bool     WriteDisableAlpha;
          bool     WriteDisableRed;
@@ -2033,6 +2034,21 @@ struct anv_device {
        simple_mtx_t                              mutex;
        struct hash_table                        *map;
     }                                            embedded_samplers;
+
+    struct {
+       /**
+        * Mutex for the printfs array
+        */
+       simple_mtx_t                              mutex;
+       /**
+        * Buffer in which the shader printfs are stored
+        */
+       struct anv_bo                            *bo;
+       /**
+        * Array of pointers to u_printf_info
+        */
+       struct util_dynarray                      prints;
+    } printf;
 };
 
 static inline uint32_t
@@ -2153,6 +2169,10 @@ anv_device_lookup_bo(struct anv_device *device, uint32_t gem_handle)
 VkResult anv_device_wait(struct anv_device *device, struct anv_bo *bo,
                          int64_t timeout);
 
+VkResult anv_device_print_init(struct anv_device *device);
+void anv_device_print_fini(struct anv_device *device);
+void anv_device_print_shader_prints(struct anv_device *device);
+
 VkResult anv_queue_init(struct anv_device *device, struct anv_queue *queue,
                         const VkDeviceQueueCreateInfo *pCreateInfo,
                         uint32_t index_in_family);
@@ -2191,6 +2211,9 @@ anv_queue_post_submit(struct anv_queue *queue, VkResult submit_result)
       if (result != VK_SUCCESS)
          result = vk_queue_set_lost(&queue->vk, "sync wait failed");
    }
+
+   if (INTEL_DEBUG(DEBUG_SHADER_PRINT))
+      anv_device_print_shader_prints(queue->device);
 
    return result;
 }
@@ -3133,6 +3156,7 @@ VkSparseImageFormatProperties
 anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
                                         VkImageAspectFlags aspect,
                                         VkImageType vk_image_type,
+                                        VkSampleCountFlagBits vk_samples,
                                         struct isl_surf *surf);
 void anv_sparse_calc_miptail_properties(struct anv_device *device,
                                         struct anv_image *image,
@@ -3421,6 +3445,12 @@ struct anv_push_constants {
     */
    uint32_t surfaces_base_offset;
 
+   /* Robust access pushed registers. */
+   uint64_t push_reg_mask[MESA_SHADER_STAGES];
+
+   /** Ray query globals (RT_DISPATCH_GLOBALS) */
+   uint64_t ray_query_globals;
+
    union {
       struct {
          /** Dynamic MSAA value */
@@ -3441,16 +3471,12 @@ struct anv_push_constants {
           *
           * This is never set by software but is implicitly filled out when
           * uploading the push constants for compute shaders.
+          *
+          * This *MUST* be the last field of the anv_push_constants structure.
           */
          uint32_t subgroup_id;
       } cs;
    };
-
-   /* Robust access pushed registers. */
-   uint64_t push_reg_mask[MESA_SHADER_STAGES];
-
-   /** Ray query globals (RT_DISPATCH_GLOBALS) */
-   uint64_t ray_query_globals;
 };
 
 struct anv_surface_state {

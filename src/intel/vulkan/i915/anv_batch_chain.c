@@ -822,6 +822,13 @@ i915_queue_exec_locked(struct anv_queue *queue,
    if (result != VK_SUCCESS)
       goto error;
 
+   if (device->printf.bo) {
+      result =
+         anv_execbuf_add_bo(device, &execbuf, device->printf.bo, NULL, 0);
+      if (result != VK_SUCCESS)
+         goto error;
+   }
+
    for (uint32_t i = 0; i < wait_count; i++) {
       result = anv_execbuf_add_sync(device, &execbuf,
                                     waits[i].sync,

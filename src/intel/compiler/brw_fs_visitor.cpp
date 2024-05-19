@@ -352,7 +352,8 @@ fs_visitor::emit_interpolation_setup()
 
    abld = bld.annotate("compute pos.z");
    fs_reg coarse_z;
-   if (wm_prog_data->uses_depth_w_coefficients) {
+   if (wm_prog_data->coarse_pixel_dispatch != BRW_NEVER &&
+       wm_prog_data->uses_depth_w_coefficients) {
       /* In coarse pixel mode, the HW doesn't interpolate Z coordinate
        * properly. In the same way we have to add the coarse pixel size to
        * pixels locations, here we recompute the Z value with 2 coefficients

@@ -187,65 +187,92 @@ isl_tiling_supports_standard_block_shapes(enum isl_tiling tiling)
           tiling == ISL_TILING_SKL_Ys;
 }
 
+static const VkExtent3D block_shapes_2d_1sample[] = {
+   /* 8 bits:   */ { .width = 256, .height = 256, .depth = 1 },
+   /* 16 bits:  */ { .width = 256, .height = 128, .depth = 1 },
+   /* 32 bits:  */ { .width = 128, .height = 128, .depth = 1 },
+   /* 64 bits:  */ { .width = 128, .height =  64, .depth = 1 },
+   /* 128 bits: */ { .width =  64, .height =  64, .depth = 1 },
+};
+static const VkExtent3D block_shapes_3d_1sample[] = {
+   /* 8 bits:   */ { .width = 64, .height = 32, .depth = 32 },
+   /* 16 bits:  */ { .width = 32, .height = 32, .depth = 32 },
+   /* 32 bits:  */ { .width = 32, .height = 32, .depth = 16 },
+   /* 64 bits:  */ { .width = 32, .height = 16, .depth = 16 },
+   /* 128 bits: */ { .width = 16, .height = 16, .depth = 16 },
+};
+static const VkExtent3D block_shapes_2d_2samples[] = {
+   /* 8 bits:   */ { .width = 128, .height = 256, .depth = 1 },
+   /* 16 bits:  */ { .width = 128, .height = 128, .depth = 1 },
+   /* 32 bits:  */ { .width =  64, .height = 128, .depth = 1 },
+   /* 64 bits:  */ { .width =  64, .height =  64, .depth = 1 },
+   /* 128 bits: */ { .width =  32, .height =  64, .depth = 1 },
+};
+static const VkExtent3D block_shapes_2d_4samples[] = {
+   /* 8 bits:   */ { .width = 128, .height = 128, .depth = 1 },
+   /* 16 bits:  */ { .width = 128, .height =  64, .depth = 1 },
+   /* 32 bits:  */ { .width =  64, .height =  64, .depth = 1 },
+   /* 64 bits:  */ { .width =  64, .height =  32, .depth = 1 },
+   /* 128 bits: */ { .width =  32, .height =  32, .depth = 1 },
+};
+static const VkExtent3D block_shapes_2d_8samples[] = {
+   /* 8 bits:   */ { .width = 64, .height = 128, .depth = 1 },
+   /* 16 bits:  */ { .width = 64, .height =  64, .depth = 1 },
+   /* 32 bits:  */ { .width = 32, .height =  64, .depth = 1 },
+   /* 64 bits:  */ { .width = 32, .height =  32, .depth = 1 },
+   /* 128 bits: */ { .width = 16, .height =  32, .depth = 1 },
+};
+static const VkExtent3D block_shapes_2d_16samples[] = {
+   /* 8 bits:   */ { .width = 64, .height = 64, .depth = 1 },
+   /* 16 bits:  */ { .width = 64, .height = 32, .depth = 1 },
+   /* 32 bits:  */ { .width = 32, .height = 32, .depth = 1 },
+   /* 64 bits:  */ { .width = 32, .height = 16, .depth = 1 },
+   /* 128 bits: */ { .width = 16, .height = 16, .depth = 1 },
+};
+
 static VkExtent3D
 anv_sparse_get_standard_image_block_shape(enum isl_format format,
                                           VkImageType image_type,
+                                          VkSampleCountFlagBits samples,
                                           uint16_t texel_size)
 {
    const struct isl_format_layout *layout = isl_format_get_layout(format);
    VkExtent3D block_shape = { .width = 0, .height = 0, .depth = 0 };
 
-   switch (image_type) {
-   case VK_IMAGE_TYPE_1D:
-      /* 1D images don't have a standard block format. */
-      assert(false);
-      break;
-   case VK_IMAGE_TYPE_2D:
-      switch (texel_size) {
-      case 8:
-         block_shape = (VkExtent3D) { .width = 256, .height = 256, .depth = 1 };
+   int table_idx = ffs(texel_size) - 4;
+
+   switch (samples) {
+   case VK_SAMPLE_COUNT_1_BIT:
+      switch (image_type) {
+      case VK_IMAGE_TYPE_1D:
+         /* 1D images don't have a standard block format. */
+         assert(false);
          break;
-      case 16:
-         block_shape = (VkExtent3D) { .width = 256, .height = 128, .depth = 1 };
+      case VK_IMAGE_TYPE_2D:
+         block_shape = block_shapes_2d_1sample[table_idx];
          break;
-      case 32:
-         block_shape = (VkExtent3D) { .width = 128, .height = 128, .depth = 1 };
-         break;
-      case 64:
-         block_shape = (VkExtent3D) { .width = 128, .height = 64, .depth = 1 };
-         break;
-      case 128:
-         block_shape = (VkExtent3D) { .width = 64, .height = 64, .depth = 1 };
+      case VK_IMAGE_TYPE_3D:
+         block_shape = block_shapes_3d_1sample[table_idx];
          break;
       default:
-         fprintf(stderr, "unexpected texel_size %d\n", texel_size);
+         fprintf(stderr, "unexpected image_type %d\n", image_type);
          assert(false);
       }
       break;
-   case VK_IMAGE_TYPE_3D:
-      switch (texel_size) {
-      case 8:
-         block_shape = (VkExtent3D) { .width = 64, .height = 32, .depth = 32 };
-         break;
-      case 16:
-         block_shape = (VkExtent3D) { .width = 32, .height = 32, .depth = 32 };
-         break;
-      case 32:
-         block_shape = (VkExtent3D) { .width = 32, .height = 32, .depth = 16 };
-         break;
-      case 64:
-         block_shape = (VkExtent3D) { .width = 32, .height = 16, .depth = 16 };
-         break;
-      case 128:
-         block_shape = (VkExtent3D) { .width = 16, .height = 16, .depth = 16 };
-         break;
-      default:
-         fprintf(stderr, "unexpected texel_size %d\n", texel_size);
-         assert(false);
-      }
+   case VK_SAMPLE_COUNT_2_BIT:
+      block_shape = block_shapes_2d_2samples[table_idx];
+      break;
+   case VK_SAMPLE_COUNT_4_BIT:
+      block_shape = block_shapes_2d_4samples[table_idx];
+      break;
+   case VK_SAMPLE_COUNT_8_BIT:
+      block_shape = block_shapes_2d_8samples[table_idx];
+      break;
+   case VK_SAMPLE_COUNT_16_BIT:
+      block_shape = block_shapes_2d_16samples[table_idx];
       break;
    default:
-      fprintf(stderr, "unexpected image_type %d\n", image_type);
+      fprintf(stderr, "unexpected sample count: %d\n", samples);
       assert(false);
    }
 
@@ -739,6 +766,7 @@ VkSparseImageFormatProperties
 anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
                                         VkImageAspectFlags aspect,
                                         VkImageType vk_image_type,
+                                        VkSampleCountFlagBits vk_samples,
                                         struct isl_surf *surf)
 {
    const struct isl_format_layout *isl_layout =
@@ -753,7 +781,8 @@ anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
 
    if (vk_image_type != VK_IMAGE_TYPE_1D) {
       VkExtent3D std_shape =
-         anv_sparse_get_standard_image_block_shape(surf->format, vk_image_type,
+         anv_sparse_get_standard_image_block_shape(surf->format,
+                                                   vk_image_type, vk_samples,
                                                    bpb);
       /* YUV formats don't work with Tile64, which is required if we want to
        * claim standard block shapes. The spec requires us to support all
@@ -788,6 +817,7 @@ anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
        * since non-opaque binds are not supported. Still, dEQP seems to care.
        */
       assert(is_standard || is_known_nonstandard_format);
+      assert(!(is_standard && is_known_nonstandard_format));
    }
 
    uint32_t block_size = granularity.width * granularity.height *
@@ -1050,7 +1080,10 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
     * either 4k or 64k depending on the tiling format. */
    const uint64_t block_size_B = block_shape_el.width * (layout->bpb / 8) *
                                  block_shape_el.height *
-                                 block_shape_el.depth;
+                                 block_shape_el.depth *
+                                 image->vk.samples;
+   assert(block_size_B == (64 * 1024) || block_size_B == 4096);
+
    /* How many blocks are necessary to form a whole line on this image? */
    const uint32_t blocks_per_line = surf->row_pitch_B / (layout->bpb / 8) /
                                     block_shape_el.width;
@@ -1159,8 +1192,16 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
    if (tiling == VK_IMAGE_TILING_LINEAR)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
-   /* TODO: not supported yet. */
-   if (samples != VK_SAMPLE_COUNT_1_BIT)
+   if ((samples & VK_SAMPLE_COUNT_2_BIT &&
+        !pdevice->vk.supported_features.sparseResidency2Samples) ||
+       (samples & VK_SAMPLE_COUNT_4_BIT &&
+        !pdevice->vk.supported_features.sparseResidency4Samples) ||
+       (samples & VK_SAMPLE_COUNT_8_BIT &&
+        !pdevice->vk.supported_features.sparseResidency8Samples) ||
+       (samples & VK_SAMPLE_COUNT_16_BIT &&
+        !pdevice->vk.supported_features.sparseResidency16Samples) ||
+       samples & VK_SAMPLE_COUNT_32_BIT ||
+       samples & VK_SAMPLE_COUNT_64_BIT)
       return VK_ERROR_FEATURE_NOT_PRESENT;
 
    /* While the Vulkan spec allows us to support depth/stencil sparse images
@@ -1176,6 +1217,13 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
     */
    VkImageAspectFlags aspects = vk_format_aspects(vk_format);
    if (aspects & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) {
+      /* For multi-sampled images, the image layouts for color and
+       * depth/stencil are different, and only the color layout is compatible
+       * with the standard block shapes.
+       */
+      if (samples != VK_SAMPLE_COUNT_1_BIT)
+         return VK_ERROR_FORMAT_NOT_SUPPORTED;
+
       /* For 125+, isl_gfx125_filter_tiling() claims 3D is not supported.
        * For the previous platforms, isl_gfx6_filter_tiling() says only 2D is
        * supported.
@@ -1213,6 +1261,28 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
           isl_layout->bpb != 32 && isl_layout->bpb != 64 &&
           isl_layout->bpb != 128)
          return VK_ERROR_FORMAT_NOT_SUPPORTED;
+
+      /* ISL_TILING_64_XE2_BIT's block shapes are not always Vulkan's standard
+       * block shapes, so exclude what's non-standard.
+       */
+      if (pdevice->info.ver == 20) {
+         switch (samples) {
+         case VK_SAMPLE_COUNT_2_BIT:
+            if (isl_layout->bpb == 128)
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            break;
+         case VK_SAMPLE_COUNT_8_BIT:
+             if (isl_layout->bpb == 8 || isl_layout->bpb == 32)
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            break;
+         case VK_SAMPLE_COUNT_16_BIT:
+            if (isl_layout->bpb == 64)
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            break;
+         default:
+            break;
+         }
+      }
    }
 
    /* These YUV formats are considered by Vulkan to be compressed 2x1 blocks.

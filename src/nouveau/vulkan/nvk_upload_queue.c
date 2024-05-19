@@ -277,6 +277,7 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
 {
    VkResult result;
 
+   assert(dst_addr % 4 == 0);
    assert(size % 4 == 0);
 
    while (size > 0) {
@@ -317,7 +318,7 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
       P_NV90B5_PITCH_IN(&p, data_size);
       P_NV90B5_PITCH_OUT(&p, data_size);
       P_NV90B5_LINE_LENGTH_IN(&p, data_size);
-      P_NV90B5_LINE_COUNT(&p, data_size);
+      P_NV90B5_LINE_COUNT(&p, 1);
 
       P_IMMD(&p, NV90B5, LAUNCH_DMA, {
          .data_transfer_type = DATA_TRANSFER_TYPE_NON_PIPELINED,
@@ -327,6 +328,7 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
          .dst_memory_layout = DST_MEMORY_LAYOUT_PITCH,
       });
 
+      assert(nv_push_dw_count(&p) <= cmd_size_dw);
       queue->bo_push_end += nv_push_dw_count(&p) * 4;
 
       dst_addr += data_size;
@@ -347,6 +349,90 @@ nvk_upload_queue_upload(struct nvk_device *dev,
 
    simple_mtx_lock(&queue->mutex);
    result = nvk_upload_queue_upload_locked(dev, queue, dst_addr, src, size);
+   simple_mtx_unlock(&queue->mutex);
+
+   return result;
+}
+
+static VkResult
+nvk_upload_queue_fill_locked(struct nvk_device *dev,
+                             struct nvk_upload_queue *queue,
+                             uint64_t dst_addr, uint32_t data, size_t size)
+{
+   VkResult result;
+
+   assert(dst_addr % 4 == 0);
+   assert(size % 4 == 0);
+
+   while (size > 0) {
+      const uint32_t cmd_size_dw = 14;
+      const uint32_t cmd_size = cmd_size_dw * 4;
+
+      result = nvk_upload_queue_reserve(dev, queue, cmd_size);
+      if (result != VK_SUCCESS)
+         return result;
+
+      const uint32_t max_dim = 1 << 17;
+      uint32_t width_B, height;
+      if (size > max_dim) {
+         width_B = max_dim;
+         height = MAX2(max_dim, size / width_B);
+      } else {
+         width_B = size;
+         height = 1;
+      }
+      assert(size <= width_B * height);
+
+      struct nv_push p;
+      nv_push_init(&p, queue->bo->map + queue->bo_push_end, cmd_size_dw);
+
+      P_MTHD(&p, NV90B5, OFFSET_OUT_UPPER);
+      P_NV90B5_OFFSET_OUT_UPPER(&p, dst_addr >> 32);
+      P_NV90B5_OFFSET_OUT_LOWER(&p, dst_addr & 0xffffffff);
+      P_NV90B5_PITCH_IN(&p, width_B);
+      P_NV90B5_PITCH_OUT(&p, width_B);
+      P_NV90B5_LINE_LENGTH_IN(&p, width_B / 4);
+      P_NV90B5_LINE_COUNT(&p, height);
+
+      P_IMMD(&p, NV90B5, SET_REMAP_CONST_A, data);
+      P_IMMD(&p, NV90B5, SET_REMAP_COMPONENTS, {
+         .dst_x = DST_X_CONST_A,
+         .dst_y = DST_Y_CONST_A,
+         .dst_z = DST_Z_CONST_A,
+         .dst_w = DST_W_CONST_A,
+         .component_size = COMPONENT_SIZE_FOUR,
+         .num_src_components = NUM_SRC_COMPONENTS_ONE,
+         .num_dst_components = NUM_DST_COMPONENTS_ONE,
+      });
+
+      P_IMMD(&p, NV90B5, LAUNCH_DMA, {
+         .data_transfer_type = DATA_TRANSFER_TYPE_NON_PIPELINED,
+         .multi_line_enable = height > 1,
+         .flush_enable = FLUSH_ENABLE_TRUE,
+         .src_memory_layout = SRC_MEMORY_LAYOUT_PITCH,
+         .dst_memory_layout = DST_MEMORY_LAYOUT_PITCH,
+         .remap_enable = REMAP_ENABLE_TRUE,
+      });
+
+      assert(nv_push_dw_count(&p) <= cmd_size_dw);
+      queue->bo_push_end += nv_push_dw_count(&p) * 4;
+
+      dst_addr += width_B * height;
+      size -= width_B * height;
+   }
+
+   return VK_SUCCESS;
+}
+
+VkResult
+nvk_upload_queue_fill(struct nvk_device *dev,
+                      struct nvk_upload_queue *queue,
+                      uint64_t dst_addr, uint32_t data, size_t size)
+{
+   VkResult result;
+
+   simple_mtx_lock(&queue->mutex);
+   result = nvk_upload_queue_fill_locked(dev, queue, dst_addr, data, size);
    simple_mtx_unlock(&queue->mutex);
 
    return result;

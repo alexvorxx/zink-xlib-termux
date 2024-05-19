@@ -230,14 +230,14 @@ get_reduce_opcode(amd_gfx_level gfx_level, ReduceOp op)
    case ior32: return aco_opcode::v_or_b32;
    case iadd64: return aco_opcode::num_opcodes;
    case imul64: return aco_opcode::num_opcodes;
-   case fadd64: return aco_opcode::v_add_f64;
-   case fmul64: return aco_opcode::v_mul_f64;
+   case fadd64: return aco_opcode::v_add_f64_e64;
+   case fmul64: return aco_opcode::v_mul_f64_e64;
    case imin64: return aco_opcode::num_opcodes;
    case imax64: return aco_opcode::num_opcodes;
    case umin64: return aco_opcode::num_opcodes;
    case umax64: return aco_opcode::num_opcodes;
-   case fmin64: return aco_opcode::v_min_f64;
-   case fmax64: return aco_opcode::v_max_f64;
+   case fmin64: return aco_opcode::v_min_f64_e64;
+   case fmax64: return aco_opcode::v_max_f64_e64;
    case iand64: return aco_opcode::num_opcodes;
    case ior64: return aco_opcode::num_opcodes;
    case ixor64: return aco_opcode::num_opcodes;
@@ -1317,19 +1317,6 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
    }
 }
 
-void
-addsub_subdword_gfx11(Builder& bld, Definition dst, Operand src0, Operand src1, bool sub)
-{
-   Instruction* instr =
-      bld.vop3(sub ? aco_opcode::v_sub_u16_e64 : aco_opcode::v_add_u16_e64, dst, src0, src1).instr;
-   if (src0.physReg().byte() == 2)
-      instr->valu().opsel |= 0x1;
-   if (src1.physReg().byte() == 2)
-      instr->valu().opsel |= 0x2;
-   if (dst.physReg().byte() == 2)
-      instr->valu().opsel |= 0x8;
-}
-
 bool
 do_copy(lower_context* ctx, Builder& bld, const copy_operation& copy, bool* preserve_scc,
         PhysReg scratch_sgpr)
@@ -1390,9 +1377,9 @@ swap_subdword_gfx11(Builder& bld, Definition def, Operand op)
    if (def.bytes() == 2) {
       Operand def_as_op = Operand(def.physReg(), def.regClass());
       Definition op_as_def = Definition(op.physReg(), op.regClass());
-      addsub_subdword_gfx11(bld, def, def_as_op, op, false);
-      addsub_subdword_gfx11(bld, op_as_def, def_as_op, op, true);
-      addsub_subdword_gfx11(bld, def, def_as_op, op, true);
+      Instruction* instr = bld.vop1(aco_opcode::v_swap_b16, def, op_as_def, op, def_as_op);
+      instr->valu().opsel[0] = op.physReg().byte();
+      instr->valu().opsel[3] = def.physReg().byte();
    } else {
       PhysReg op_half = op.physReg();
       op_half.reg_b &= ~1;

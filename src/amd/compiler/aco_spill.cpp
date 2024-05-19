@@ -1203,7 +1203,7 @@ load_scratch_resource(spill_ctx& ctx, Builder& bld, bool apply_scratch_offset)
       S_008F0C_ADD_TID_ENABLE(1) | S_008F0C_INDEX_STRIDE(ctx.program->wave_size == 64 ? 3 : 2);
 
    if (ctx.program->gfx_level >= GFX10) {
-      rsrc_conf |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
+      rsrc_conf |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) |
                    S_008F0C_RESOURCE_LEVEL(ctx.program->gfx_level < GFX11);
    } else if (ctx.program->gfx_level <= GFX7) {
@@ -1604,10 +1604,16 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
                      instructions.emplace_back(std::move(create));
                   } else {
                      assert(last_top_level_block_idx < block.index);
-                     /* insert before the branch at last top level block */
+                     /* insert after p_logical_end of the last top-level block */
                      std::vector<aco_ptr<Instruction>>& block_instrs =
                         ctx.program->blocks[last_top_level_block_idx].instructions;
-                     block_instrs.insert(std::prev(block_instrs.end()), std::move(create));
+                     auto insert_point =
+                        std::find_if(block_instrs.rbegin(), block_instrs.rend(),
+                                     [](const auto& iter) {
+                                        return iter->opcode == aco_opcode::p_logical_end;
+                                     })
+                           .base();
+                     block_instrs.insert(insert_point, std::move(create));
                   }
                }
 
@@ -1644,10 +1650,16 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
                      instructions.emplace_back(std::move(create));
                   } else {
                      assert(last_top_level_block_idx < block.index);
-                     /* insert before the branch at last top level block */
+                     /* insert after p_logical_end of the last top-level block */
                      std::vector<aco_ptr<Instruction>>& block_instrs =
                         ctx.program->blocks[last_top_level_block_idx].instructions;
-                     block_instrs.insert(std::prev(block_instrs.end()), std::move(create));
+                     auto insert_point =
+                        std::find_if(block_instrs.rbegin(), block_instrs.rend(),
+                                     [](const auto& iter) {
+                                        return iter->opcode == aco_opcode::p_logical_end;
+                                     })
+                           .base();
+                     block_instrs.insert(insert_point, std::move(create));
                   }
                }
 

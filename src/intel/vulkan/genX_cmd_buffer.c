@@ -5352,15 +5352,9 @@ void genX(CmdEndRendering)(
    const uint32_t layers =
       is_multiview ? util_last_bit(gfx->view_mask) : gfx->layer_count;
 
-   bool has_color_resolve = false;
    for (uint32_t i = 0; i < gfx->color_att_count; i++) {
       cmd_buffer_mark_attachment_written(cmd_buffer, &gfx->color_att[i],
                                          VK_IMAGE_ASPECT_COLOR_BIT);
-
-      /* Stash this off for later */
-      if (gfx->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE &&
-          !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT))
-         has_color_resolve = true;
    }
 
    cmd_buffer_mark_attachment_written(cmd_buffer, &gfx->depth_att,
@@ -5369,78 +5363,107 @@ void genX(CmdEndRendering)(
    cmd_buffer_mark_attachment_written(cmd_buffer, &gfx->stencil_att,
                                        VK_IMAGE_ASPECT_STENCIL_BIT);
 
-   if (has_color_resolve) {
-      /* We are about to do some MSAA resolves.  We need to flush so that the
-       * result of writes to the MSAA color attachments show up in the sampler
-       * when we blit to the single-sampled resolve target.
-       */
-      anv_add_pending_pipe_bits(cmd_buffer,
-                                ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
-                                ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT,
-                                "MSAA resolve");
+
+   if (!(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT)) {
+      bool has_color_resolve = false;
+      bool has_sparse_color_resolve = false;
+
+      for (uint32_t i = 0; i < gfx->color_att_count; i++) {
+         if (gfx->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE) {
+            has_color_resolve = true;
+            if (anv_image_is_sparse(gfx->color_att[i].iview->image))
+                  has_sparse_color_resolve = true;
+         }
+      }
+
+      if (has_color_resolve) {
+         /* We are about to do some MSAA resolves.  We need to flush so that
+          * the result of writes to the MSAA color attachments show up in the
+          * sampler when we blit to the single-sampled resolve target.
+          */
+         anv_add_pending_pipe_bits(cmd_buffer,
+                                   ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
+                                   ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT,
+                                   "MSAA resolve");
+      }
+
+      const bool has_depth_resolve =
+         gfx->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE;
+      const bool has_stencil_resolve =
+         gfx->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE;
+      const bool has_sparse_depth_resolve =
+         has_depth_resolve &&
+         anv_image_is_sparse(gfx->depth_att.iview->image);
+      const bool has_sparse_stencil_resolve =
+         has_stencil_resolve &&
+         anv_image_is_sparse(gfx->stencil_att.iview->image);
+
+      if (has_depth_resolve || has_stencil_resolve) {
+         /* We are about to do some MSAA resolves.  We need to flush so that
+          * the result of writes to the MSAA depth attachments show up in the
+          * sampler when we blit to the single-sampled resolve target.
+          */
+         anv_add_pending_pipe_bits(cmd_buffer,
+                                 ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
+                                 ANV_PIPE_DEPTH_CACHE_FLUSH_BIT,
+                                 "MSAA resolve");
+      }
+
+      if (has_sparse_color_resolve || has_sparse_depth_resolve ||
+          has_sparse_stencil_resolve) {
+         /* If the resolve image is sparse we need some extra bits to make
+          * sure unbound regions read 0, as residencyNonResidentStrict
+          * mandates.
+          */
+         anv_add_pending_pipe_bits(cmd_buffer, ANV_PIPE_TILE_CACHE_FLUSH_BIT,
+                                   "sparse MSAA resolve");
+      }
+
+      for (uint32_t i = 0; i < gfx->color_att_count; i++) {
+         const struct anv_attachment *att = &gfx->color_att[i];
+         if (att->resolve_mode == VK_RESOLVE_MODE_NONE)
+            continue;
+
+         anv_attachment_msaa_resolve(cmd_buffer, att, att->layout,
+                                     VK_IMAGE_ASPECT_COLOR_BIT);
+      }
+
+      if (has_depth_resolve) {
+         const struct anv_image_view *src_iview = gfx->depth_att.iview;
+
+         /* MSAA resolves sample from the source attachment.  Transition the
+          * depth attachment first to get rid of any HiZ that we may not be
+          * able to handle.
+          */
+         transition_depth_buffer(cmd_buffer, src_iview->image, 0, 1,
+                                 src_iview->planes[0].isl.base_array_layer,
+                                 layers,
+                                 gfx->depth_att.layout,
+                                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                 false /* will_full_fast_clear */);
+
+         anv_attachment_msaa_resolve(cmd_buffer, &gfx->depth_att,
+                                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                     VK_IMAGE_ASPECT_DEPTH_BIT);
+
+         /* Transition the source back to the original layout.  This seems a
+          * bit inefficient but, since HiZ resolves aren't destructive, going
+          * from less HiZ to more is generally a no-op.
+          */
+         transition_depth_buffer(cmd_buffer, src_iview->image, 0, 1,
+                                 src_iview->planes[0].isl.base_array_layer,
+                                 layers,
+                                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                 gfx->depth_att.layout,
+                                 false /* will_full_fast_clear */);
+      }
+
+      if (has_stencil_resolve) {
+         anv_attachment_msaa_resolve(cmd_buffer, &gfx->stencil_att,
+                                     gfx->stencil_att.layout,
+                                     VK_IMAGE_ASPECT_STENCIL_BIT);
+      }
    }
-
-   if (!(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT) &&
-       (gfx->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE ||
-        gfx->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE)) {
-      /* We are about to do some MSAA resolves.  We need to flush so that the
-       * result of writes to the MSAA depth attachments show up in the sampler
-       * when we blit to the single-sampled resolve target.
-       */
-      anv_add_pending_pipe_bits(cmd_buffer,
-                              ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
-                              ANV_PIPE_DEPTH_CACHE_FLUSH_BIT,
-                              "MSAA resolve");
-   }
-
-   for (uint32_t i = 0; i < gfx->color_att_count; i++) {
-      const struct anv_attachment *att = &gfx->color_att[i];
-      if (att->resolve_mode == VK_RESOLVE_MODE_NONE ||
-          (gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT))
-         continue;
-
-      anv_attachment_msaa_resolve(cmd_buffer, att, att->layout,
-                                  VK_IMAGE_ASPECT_COLOR_BIT);
-   }
-
-   if (gfx->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE &&
-       !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT)) {
-      const struct anv_image_view *src_iview = gfx->depth_att.iview;
-
-      /* MSAA resolves sample from the source attachment.  Transition the
-       * depth attachment first to get rid of any HiZ that we may not be
-       * able to handle.
-       */
-      transition_depth_buffer(cmd_buffer, src_iview->image, 0, 1,
-                              src_iview->planes[0].isl.base_array_layer,
-                              layers,
-                              gfx->depth_att.layout,
-                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                              false /* will_full_fast_clear */);
-
-      anv_attachment_msaa_resolve(cmd_buffer, &gfx->depth_att,
-                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                  VK_IMAGE_ASPECT_DEPTH_BIT);
-
-      /* Transition the source back to the original layout.  This seems a bit
-       * inefficient but, since HiZ resolves aren't destructive, going from
-       * less HiZ to more is generally a no-op.
-       */
-      transition_depth_buffer(cmd_buffer, src_iview->image, 0, 1,
-                              src_iview->planes[0].isl.base_array_layer,
-                              layers,
-                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                              gfx->depth_att.layout,
-                              false /* will_full_fast_clear */);
-   }
-
-   if (gfx->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE &&
-       !(gfx->rendering_flags & VK_RENDERING_SUSPENDING_BIT)) {
-      anv_attachment_msaa_resolve(cmd_buffer, &gfx->stencil_att,
-                                  gfx->stencil_att.layout,
-                                  VK_IMAGE_ASPECT_STENCIL_BIT);
-   }
-
 
    trace_intel_end_render_pass(&cmd_buffer->trace,
                                gfx->render_area.extent.width,

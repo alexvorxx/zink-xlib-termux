@@ -242,7 +242,8 @@ namespace {
           * don't support 64-bit types at all.
           */
          if ((!devinfo->has_64bit_int ||
-              intel_device_info_is_9lp(devinfo)) && brw_type_size_bytes(t) > 4)
+              intel_device_info_is_9lp(devinfo) ||
+              devinfo->ver >= 20) && brw_type_size_bytes(t) > 4)
             return BRW_TYPE_UD;
          else if (has_dst_aligned_region_restriction(devinfo, inst))
             return brw_int_type(brw_type_size_bytes(t), false);
@@ -279,7 +280,8 @@ namespace {
           * support 64-bit types at all.
           */
          if ((!has_64bit || devinfo->verx10 >= 125 ||
-              intel_device_info_is_9lp(devinfo)) && brw_type_size_bytes(t) > 4)
+              intel_device_info_is_9lp(devinfo) ||
+              devinfo->ver >= 20) && brw_type_size_bytes(t) > 4)
             return BRW_TYPE_UD;
          else
             return brw_int_type(brw_type_size_bytes(t), false);

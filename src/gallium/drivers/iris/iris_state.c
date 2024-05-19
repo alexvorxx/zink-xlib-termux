@@ -6865,7 +6865,6 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       struct iris_blend_state *cso_blend = ice->state.cso_blend;
       struct pipe_framebuffer_state *cso_fb = &ice->state.framebuffer;
       struct iris_depth_stencil_alpha_state *cso_zsa = ice->state.cso_zsa;
-      const int header_dwords = GENX(BLEND_STATE_length);
 
       bool color_blend_zero = false;
       bool alpha_blend_zero = false;
@@ -6881,7 +6880,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       uint32_t *blend_map =
          stream_state(batch, ice->state.dynamic_uploader,
                       &ice->state.last_res.blend,
-                      4 * (header_dwords + rt_dwords), 64, &blend_offset);
+                      96, 64, &blend_offset);
 
       /* Copy of blend entries for merging dynamic changes. */
       uint32_t blend_entries[4 * rt_dwords];
@@ -7501,6 +7500,8 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       bool points_or_lines = cso_rast->fill_mode_point_or_line ||
          (gs_or_tes ? ice->shaders.output_topology_is_points_or_lines
                     : ice->state.prim_is_points_or_lines);
+      const struct intel_vue_map *last =
+         &iris_vue_data(ice->shaders.last_vue_shader)->vue_map;
 
       uint32_t dynamic_clip[GENX(3DSTATE_CLIP_length)];
       iris_pack_command(GENX(3DSTATE_CLIP), &dynamic_clip, cl) {
@@ -7517,7 +7518,8 @@ iris_upload_dirty_render_state(struct iris_context *ice,
 
          cl.NonPerspectiveBarycentricEnable = fs_data->uses_nonperspective_interp_modes;
 
-         cl.ForceZeroRTAIndexEnable = cso_fb->layers <= 1;
+         cl.ForceZeroRTAIndexEnable = cso_fb->layers <= 1 ||
+                                      !(last->slots_valid & VARYING_BIT_LAYER);
          cl.MaximumVPIndex = ice->state.num_viewports - 1;
       }
       iris_emit_merge(batch, cso_rast->clip, dynamic_clip,

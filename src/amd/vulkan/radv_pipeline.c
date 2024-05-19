@@ -97,9 +97,6 @@ radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pipeline
       unreachable("invalid pipeline type");
    }
 
-   if (pipeline->cs.buf)
-      free(pipeline->cs.buf);
-
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_pipeline_to_handle(pipeline));
    vk_object_base_finish(&pipeline->base);
    vk_free2(&device->vk.alloc, allocator, pipeline);
@@ -765,12 +762,12 @@ radv_get_executable_count(struct radv_pipeline *pipeline)
       if (!pipeline->shaders[i])
          continue;
 
-      if (i == MESA_SHADER_GEOMETRY && !radv_pipeline_has_ngg(radv_pipeline_to_graphics(pipeline))) {
-         ret += 2u;
-      } else {
+      ret += 1u;
+      if (i == MESA_SHADER_GEOMETRY && pipeline->gs_copy_shader) {
          ret += 1u;
       }
    }
+
    return ret;
 }
 
@@ -803,7 +800,7 @@ radv_get_shader_from_executable_index(struct radv_pipeline *pipeline, int index,
 
       --index;
 
-      if (i == MESA_SHADER_GEOMETRY && !radv_pipeline_has_ngg(radv_pipeline_to_graphics(pipeline))) {
+      if (i == MESA_SHADER_GEOMETRY && pipeline->gs_copy_shader) {
          if (!index) {
             *stage = i;
             return pipeline->gs_copy_shader;

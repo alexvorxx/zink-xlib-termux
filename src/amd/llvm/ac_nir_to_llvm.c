@@ -1976,26 +1976,20 @@ static LLVMValueRef get_global_address(struct ac_nir_context *ctx,
                                        nir_intrinsic_instr *instr,
                                        LLVMTypeRef type)
 {
-   bool is_store = instr->intrinsic == nir_intrinsic_store_global ||
-                   instr->intrinsic == nir_intrinsic_store_global_amd;
+   bool is_store = instr->intrinsic == nir_intrinsic_store_global_amd;
    LLVMValueRef addr = get_src(ctx, instr->src[is_store ? 1 : 0]);
 
    LLVMTypeRef ptr_type = LLVMPointerType(type, AC_ADDR_SPACE_GLOBAL);
 
-   if (nir_intrinsic_has_base(instr)) {
-      /* _amd variants */
-      uint32_t base = nir_intrinsic_base(instr);
-      unsigned num_src = nir_intrinsic_infos[instr->intrinsic].num_srcs;
-      LLVMValueRef offset = get_src(ctx, instr->src[num_src - 1]);
-      offset = LLVMBuildAdd(ctx->ac.builder, offset, LLVMConstInt(ctx->ac.i32, base, false), "");
+   uint32_t base = nir_intrinsic_base(instr);
+   unsigned num_src = nir_intrinsic_infos[instr->intrinsic].num_srcs;
+   LLVMValueRef offset = get_src(ctx, instr->src[num_src - 1]);
+   offset = LLVMBuildAdd(ctx->ac.builder, offset, LLVMConstInt(ctx->ac.i32, base, false), "");
 
-      LLVMTypeRef i8_ptr_type = LLVMPointerType(ctx->ac.i8, AC_ADDR_SPACE_GLOBAL);
-      addr = LLVMBuildIntToPtr(ctx->ac.builder, addr, i8_ptr_type, "");
-      addr = LLVMBuildGEP2(ctx->ac.builder, ctx->ac.i8, addr, &offset, 1, "");
-      return LLVMBuildPointerCast(ctx->ac.builder, addr, ptr_type, "");
-   } else {
-      return LLVMBuildIntToPtr(ctx->ac.builder, addr, ptr_type, "");
-   }
+   LLVMTypeRef i8_ptr_type = LLVMPointerType(ctx->ac.i8, AC_ADDR_SPACE_GLOBAL);
+   addr = LLVMBuildIntToPtr(ctx->ac.builder, addr, i8_ptr_type, "");
+   addr = LLVMBuildGEP2(ctx->ac.builder, ctx->ac.i8, addr, &offset, 1, "");
+   return LLVMBuildPointerCast(ctx->ac.builder, addr, ptr_type, "");
 }
 
 static LLVMValueRef visit_load_global(struct ac_nir_context *ctx,
@@ -2064,8 +2058,7 @@ static LLVMValueRef visit_global_atomic(struct ac_nir_context *ctx,
 
    LLVMValueRef addr = get_global_address(ctx, instr, data_type);
 
-   if (instr->intrinsic == nir_intrinsic_global_atomic_swap ||
-       instr->intrinsic == nir_intrinsic_global_atomic_swap_amd) {
+   if (instr->intrinsic == nir_intrinsic_global_atomic_swap_amd) {
       LLVMValueRef data1 = get_src(ctx, instr->src[2]);
       result = ac_build_atomic_cmp_xchg(&ctx->ac, addr, data, data1, sync_scope);
       result = LLVMBuildExtractValue(ctx->ac.builder, result, 0, "");
@@ -3141,17 +3134,12 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_load_ssbo:
       result = visit_load_buffer(ctx, instr);
       break;
-   case nir_intrinsic_load_global_constant:
-   case nir_intrinsic_load_global:
    case nir_intrinsic_load_global_amd:
       result = visit_load_global(ctx, instr);
       break;
-   case nir_intrinsic_store_global:
    case nir_intrinsic_store_global_amd:
       visit_store_global(ctx, instr);
       break;
-   case nir_intrinsic_global_atomic:
-   case nir_intrinsic_global_atomic_swap:
    case nir_intrinsic_global_atomic_amd:
    case nir_intrinsic_global_atomic_swap_amd:
       result = visit_global_atomic(ctx, instr);

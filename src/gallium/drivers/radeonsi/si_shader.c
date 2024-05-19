@@ -2484,6 +2484,7 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
       progress = true;
    }
 
+   NIR_PASS(progress, nir, nir_lower_int64);
    NIR_PASS(progress, nir, nir_opt_idiv_const, 8);
    NIR_PASS(progress, nir, nir_lower_idiv,
             &(nir_lower_idiv_options){

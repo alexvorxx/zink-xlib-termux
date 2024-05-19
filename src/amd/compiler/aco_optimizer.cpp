@@ -668,7 +668,7 @@ valu_can_accept_vgpr(aco_ptr<Instruction>& instr, unsigned operand)
        instr->opcode == aco_opcode::v_readlane_b32 ||
        instr->opcode == aco_opcode::v_readlane_b32_e64)
       return operand == 0;
-   return true;
+   return instr_info.classes[(int)instr->opcode] != instr_class::valu_pseudo_scalar_trans;
 }
 
 /* check constant bus and literal limitations */

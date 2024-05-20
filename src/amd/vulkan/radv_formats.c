@@ -47,9 +47,6 @@ radv_is_vertex_buffer_format_supported(VkFormat format)
       return false;
 
    const struct util_format_description *desc = vk_format_description(format);
-   unsigned type = desc->channel[first_non_void].type;
-   if (type == UTIL_FORMAT_TYPE_FIXED)
-      return false;
 
    if (desc->nr_channels == 4 && desc->channel[0].size == 10 && desc->channel[1].size == 10 &&
        desc->channel[2].size == 10 && desc->channel[3].size == 2)
@@ -400,9 +397,6 @@ radv_is_buffer_dataformat_supported(const struct util_format_description *desc, 
    assert(first_non_void >= 0);
 
    type = desc->channel[first_non_void].type;
-
-   if (type == UTIL_FORMAT_TYPE_FIXED)
-      return V_008F0C_BUF_DATA_FORMAT_INVALID;
 
    if (desc->channel[first_non_void].size <= 16 && desc->nr_channels == 3 &&
        desc->format != PIPE_FORMAT_R11G11B10_FLOAT)

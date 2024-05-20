@@ -235,6 +235,8 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
                               const struct ac_surf_nbc_view *nbc_view, const VkImageViewSlicedCreateInfoEXT *sliced_3d)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const bool create_2d_view_of_3d =
+      (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) && view_type == VK_IMAGE_VIEW_TYPE_2D;
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
    unsigned img_format;
@@ -255,7 +257,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
 
    radv_compose_swizzle(desc, mapping, swizzle);
 
-   if (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) {
+   if (create_2d_view_of_3d) {
       assert(image->vk.image_type == VK_IMAGE_TYPE_3D);
       type = V_008F1C_SQ_RSRC_IMG_3D;
    } else {
@@ -290,7 +292,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    state[6] = 0;
    state[7] = 0;
 
-   if (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) {
+   if (create_2d_view_of_3d) {
       assert(type == V_008F1C_SQ_RSRC_IMG_3D);
 
       /* ARRAY_PITCH is only meaningful for 3D images, 0 means SRV, 1 means UAV.
@@ -405,6 +407,8 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   const bool create_2d_view_of_3d =
+      (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) && view_type == VK_IMAGE_VIEW_TYPE_2D;
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
    int first_non_void;
@@ -440,7 +444,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
          data_format = V_008F14_IMG_DATA_FORMAT_S8_16;
    }
 
-   if (pdev->info.gfx_level == GFX9 && img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) {
+   if (pdev->info.gfx_level == GFX9 && create_2d_view_of_3d) {
       assert(image->vk.image_type == VK_IMAGE_TYPE_3D);
       type = V_008F1C_SQ_RSRC_IMG_3D;
    } else {

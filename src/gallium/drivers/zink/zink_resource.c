@@ -1584,6 +1584,7 @@ resource_create(struct pipe_screen *pscreen,
    res->base.b = *templ;
 
    bool allow_cpu_storage = (templ->target == PIPE_BUFFER) &&
+                            (templ->usage != PIPE_USAGE_STREAM) &&
                             (templ->width0 < 0x1000);
    threaded_resource_init(&res->base.b, allow_cpu_storage);
    pipe_reference_init(&res->base.b.reference, 1);

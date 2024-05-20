@@ -715,15 +715,6 @@ add_aux_surface_if_supported(struct anv_device *device,
        ISL_SURF_USAGE_DISABLE_AUX_BIT)
       return VK_SUCCESS;
 
-   /* If resource created with sharing mode CONCURRENT when multiple queues
-    * are supported, we can't support the compression since we can't do
-    * FULL_RESOLVE/PARTIAL_RESOLVE to construct the main surface data without
-    * barrier.
-    */
-   if (image->vk.sharing_mode == VK_SHARING_MODE_CONCURRENT &&
-       device->queue_count > 1)
-      return VK_SUCCESS;
-
    uint32_t binding;
    if (image->vk.drm_format_mod == DRM_FORMAT_MOD_INVALID ||
        isl_drm_modifier_has_aux(image->vk.drm_format_mod)) {
@@ -737,20 +728,6 @@ add_aux_surface_if_supported(struct anv_device *device,
        * images.
        */
        assert(!(image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT));
-
-      /* Allow the user to control HiZ enabling. Disable by default on gfx7
-       * because resolves are not currently implemented pre-BDW.
-       */
-      if (!(image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
-         /* It will never be used as an attachment, HiZ is pointless. */
-         return VK_SUCCESS;
-      }
-
-      /* TODO: Adjust blorp for multi-LOD HiZ surface on Gen8 - Gen9*/
-      if (image->vk.mip_levels > 1 && device->info->ver <= 9) {
-         anv_perf_warn(VK_LOG_OBJS(&image->vk.base), "Enable multi-LOD HiZ");
-         return VK_SUCCESS;
-      }
 
       ok = isl_surf_get_hiz_surf(&device->isl_dev,
                                  &image->planes[plane].primary_surface.isl,
@@ -813,26 +790,6 @@ add_aux_surface_if_supported(struct anv_device *device,
             return result;
       }
    } else if ((aspect & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) && image->vk.samples == 1) {
-      if (image->n_planes != 1) {
-         /* Multiplanar images seem to hit a sampler bug with CCS and R16G16
-          * format. (Putting the clear state a page/4096bytes further fixes
-          * the issue).
-          */
-         return VK_SUCCESS;
-      }
-
-      if ((image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) && !image->from_wsi) {
-         /* The image may alias a plane of a multiplanar image. Above we ban
-          * CCS on multiplanar images.
-          *
-          * We must also reject aliasing of any image that uses
-          * ANV_IMAGE_MEMORY_BINDING_PRIVATE. Since we're already rejecting all
-          * aliasing here, there's no need to further analyze if the image needs
-          * a private binding.
-          */
-         return VK_SUCCESS;
-      }
-
       ok = isl_surf_get_ccs_surf(&device->isl_dev,
                                  &image->planes[plane].primary_surface.isl,
                                  NULL,
@@ -841,35 +798,32 @@ add_aux_surface_if_supported(struct anv_device *device,
       if (!ok)
          return VK_SUCCESS;
 
-      /* Choose aux usage */
-      if (anv_formats_ccs_e_compatible(device->info, image->vk.create_flags,
-                                       image->vk.format, image->vk.tiling,
-                                       image->vk.usage, fmt_list)) {
-         if (intel_needs_workaround(device->info, 1607794140)) {
-            /* FCV is permanently enabled on this HW. */
-            image->planes[plane].aux_usage = ISL_AUX_USAGE_FCV_CCS_E;
-         } else if (device->info->verx10 >= 125 &&
-                    !device->physical->disable_fcv) {
-            /* FCV is enabled via 3DSTATE_3D_MODE. We'd expect plain CCS_E to
-             * perform better because it allows for non-zero fast clear colors,
-             * but we've run into regressions in several benchmarks (F1 22 and
-             * RDR2) when trying to enable it. When non-zero clear colors are
-             * enabled, we've observed many partial resolves. We haven't yet
-             * root-caused what layout transitions are causing these resolves,
-             * so in the meantime, we choose to reduce our clear color support.
-             * With only zero clear colors being supported, we might as well
-             * turn on FCV.
-             */
-            image->planes[plane].aux_usage = ISL_AUX_USAGE_FCV_CCS_E;
-         } else {
-            image->planes[plane].aux_usage = ISL_AUX_USAGE_CCS_E;
-         }
+      /* Choose aux usage. */
+      if (device->info->verx10 == 125 && !device->physical->disable_fcv) {
+         /* FCV is enabled via 3DSTATE_3D_MODE. We'd expect plain CCS_E to
+          * perform better because it allows for non-zero fast clear colors,
+          * but we've run into regressions in several benchmarks (F1 22 and
+          * RDR2) when trying to enable it. When non-zero clear colors are
+          * enabled, we've observed many partial resolves. We haven't yet
+          * root-caused what layout transitions are causing these resolves,
+          * so in the meantime, we choose to reduce our clear color support.
+          * With only zero clear colors being supported, we might as well
+          * turn on FCV.
+          */
+         image->planes[plane].aux_usage = ISL_AUX_USAGE_FCV_CCS_E;
+      } else if (intel_needs_workaround(device->info, 1607794140)) {
+         /* FCV is permanently enabled on this hardware. */
+         assert(device->info->verx10 == 120);
+         image->planes[plane].aux_usage = ISL_AUX_USAGE_FCV_CCS_E;
       } else if (device->info->ver >= 12) {
-         anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
-                       "The CCS_D aux mode is not yet handled on "
-                       "Gfx12+. Not allocating a CCS buffer.");
-         image->planes[plane].aux_surface.isl.size_B = 0;
-         return VK_SUCCESS;
+         /* Support for CCS_E was already checked for in anv_image_init(). */
+         image->planes[plane].aux_usage = ISL_AUX_USAGE_CCS_E;
+      } else if (anv_formats_ccs_e_compatible(device->info,
+                                              image->vk.create_flags,
+                                              image->vk.format,
+                                              image->vk.tiling,
+                                              image->vk.usage, fmt_list)) {
+         image->planes[plane].aux_usage = ISL_AUX_USAGE_CCS_E;
       } else {
          image->planes[plane].aux_usage = ISL_AUX_USAGE_CCS_D;
       }
@@ -1679,6 +1633,25 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
        * sharing mode.
        */
       isl_extra_usage_flags |= ISL_SURF_USAGE_MULTI_ENGINE_PAR_BIT;
+
+      /* If the resource is created with the CONCURRENT sharing mode, we can't
+       * support compression because we aren't allowed barriers in order to
+       * construct the main surface data with FULL_RESOLVE/PARTIAL_RESOLVE.
+       */
+      if (image->vk.sharing_mode == VK_SHARING_MODE_CONCURRENT)
+         isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+   }
+
+   /* Aux is pointless if it will never be used as an attachment. */
+   if (vk_format_is_depth_or_stencil(image->vk.format) &&
+       !(image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
+      isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+
+   /* TODO: Adjust blorp for multi-LOD HiZ surface on Gen9. */
+   if (vk_format_has_depth(image->vk.format) &&
+       image->vk.mip_levels > 1 && device->info->ver == 9) {
+      anv_perf_warn(VK_LOG_OBJS(&image->vk.base), "Enable multi-LOD HiZ");
+      isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
    }
 
    const isl_tiling_flags_t isl_tiling_flags =
@@ -1688,6 +1661,41 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    const VkImageFormatListCreateInfo *fmt_list =
       vk_find_struct_const(pCreateInfo->pNext,
                            IMAGE_FORMAT_LIST_CREATE_INFO);
+
+   if ((image->vk.aspects & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) &&
+       image->vk.samples == 1) {
+      if (image->n_planes != 1) {
+         /* Multiplanar images seem to hit a sampler bug with CCS and R16G16
+          * format. (Putting the clear state a page/4096bytes further fixes
+          * the issue).
+          */
+         isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+      }
+
+      if ((image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) &&
+          !image->from_wsi) {
+         /* The image may alias a plane of a multiplanar image. Above we ban
+          * CCS on multiplanar images.
+          *
+          * We must also reject aliasing of any image that uses
+          * ANV_IMAGE_MEMORY_BINDING_PRIVATE. Since we're already rejecting
+          * all aliasing here, there's no need to further analyze if the image
+          * needs a private binding.
+          */
+         isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+      }
+
+      if (device->info->ver >= 12 &&
+          !anv_formats_ccs_e_compatible(device->info, image->vk.create_flags,
+                                        image->vk.format, image->vk.tiling,
+                                        image->vk.usage, fmt_list)) {
+         /* CCS_E is the only aux-mode supported for single sampled color
+          * surfaces on gfx12+. If we can't support it, we should configure
+          * the main surface without aux support.
+          */
+         isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+      }
+   }
 
    if (mod_explicit_info) {
       r = add_all_surfaces_explicit_layout(device, image, fmt_list,

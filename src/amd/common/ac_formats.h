@@ -29,6 +29,12 @@ ac_translate_tex_numformat(const struct util_format_description *desc,
                            int first_non_void);
 
 unsigned
+ac_get_cb_format(enum amd_gfx_level gfx_level, enum pipe_format format);
+
+unsigned
+ac_get_cb_number_type(enum pipe_format format);
+
+unsigned
 ac_translate_colorswap(enum amd_gfx_level gfx_level,
                        enum pipe_format format,
                        bool do_endian_swap);

@@ -14,6 +14,8 @@
 #include "radv_cs.h"
 #include "radv_formats.h"
 
+#include "ac_formats.h"
+
 struct radv_sdma_chunked_copy_info {
    unsigned extent_horizontal_blocks;
    unsigned extent_vertical_blocks;

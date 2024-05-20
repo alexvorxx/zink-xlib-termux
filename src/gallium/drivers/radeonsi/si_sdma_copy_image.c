@@ -8,7 +8,7 @@
 #include "si_build_pm4.h"
 #include "sid.h"
 #include "util/u_memory.h"
-
+#include "ac_formats.h"
 
 static
 bool si_prepare_for_sdma_copy(struct si_context *sctx, struct si_texture *dst,struct si_texture *src)

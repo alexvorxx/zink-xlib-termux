@@ -1654,6 +1654,10 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
    }
 
+   /* Mark WSI images with the right surf usage. */
+   if (image->from_wsi)
+      isl_extra_usage_flags |= ISL_SURF_USAGE_DISPLAY_BIT;
+
    const isl_tiling_flags_t isl_tiling_flags =
       choose_isl_tiling_flags(device->info, create_info, isl_mod_info,
                               image->vk.wsi_legacy_scanout);

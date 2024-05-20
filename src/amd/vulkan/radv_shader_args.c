@@ -582,7 +582,10 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
 
       for (int i = 0; i < 3; i++) {
          if (info->cs.uses_block_id[i]) {
-            ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.workgroup_ids[i]);
+            if (gfx_level >= GFX12)
+               args->ac.workgroup_ids[i].used = true;
+            else
+               ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.workgroup_ids[i]);
          }
       }
 

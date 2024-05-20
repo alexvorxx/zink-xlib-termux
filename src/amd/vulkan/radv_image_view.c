@@ -118,12 +118,9 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
    }
 
    state[0] = va >> 8;
-   state[1] &= C_008F14_BASE_ADDRESS_HI;
    state[1] |= S_008F14_BASE_ADDRESS_HI(va >> 40);
 
    if (gfx_level >= GFX8) {
-      state[6] &= C_008F28_COMPRESSION_EN;
-      state[7] = 0;
       if (!disable_compression && radv_dcc_enabled(image, first_level)) {
          meta_va = gpu_address + plane->surface.meta_offset;
          if (gfx_level == GFX8) {
@@ -141,8 +138,6 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
 
    if (gfx_level >= GFX10) {
       state[0] |= swizzle;
-
-      state[3] &= C_00A00C_SW_MODE;
 
       if (is_stencil) {
          state[3] |= S_00A00C_SW_MODE(plane->surface.u.gfx9.zs.stencil_swizzle_mode);
@@ -167,12 +162,10 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
          if (plane->surface.blk_w == 2)
             pitch *= 2;
 
-         state[4] &= C_00A010_DEPTH_GFX10 & C_00A010_PITCH_MSB_GFX103;
+         state[4] &= C_00A010_DEPTH_GFX10;
          state[4] |= S_00A010_DEPTH_GFX10(pitch - 1) | /* DEPTH contains low bits of PITCH. */
                      S_00A010_PITCH_MSB_GFX103((pitch - 1) >> 13);
       }
-
-      state[6] &= C_00A018_META_DATA_ADDRESS_LO & C_00A018_META_PIPE_ALIGNED;
 
       if (meta_va) {
          struct gfx9_surf_meta_flags meta = {
@@ -197,9 +190,6 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
    } else if (gfx_level == GFX9) {
       state[0] |= swizzle;
 
-      state[3] &= C_008F1C_SW_MODE;
-      state[4] &= C_008F20_PITCH;
-
       if (is_stencil) {
          state[3] |= S_008F1C_SW_MODE(plane->surface.u.gfx9.zs.stencil_swizzle_mode);
          state[4] |= S_008F20_PITCH(plane->surface.u.gfx9.zs.stencil_epitch);
@@ -208,7 +198,6 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
          state[4] |= S_008F20_PITCH(plane->surface.u.gfx9.epitch);
       }
 
-      state[5] &= C_008F24_META_DATA_ADDRESS & C_008F24_META_PIPE_ALIGNED & C_008F24_META_RB_ALIGNED;
       if (meta_va) {
          struct gfx9_surf_meta_flags meta = {
             .rb_aligned = 1,
@@ -232,9 +221,7 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
       if (base_level_info->mode == RADEON_SURF_MODE_2D)
          state[0] |= swizzle;
 
-      state[3] &= C_008F1C_TILING_INDEX;
       state[3] |= S_008F1C_TILING_INDEX(index);
-      state[4] &= C_008F20_PITCH;
       state[4] |= S_008F20_PITCH(pitch - 1);
 
       if (gfx_level == GFX8 && meta_va) {

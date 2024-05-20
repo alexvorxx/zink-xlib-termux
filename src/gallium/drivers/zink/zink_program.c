@@ -796,7 +796,7 @@ optimized_compile_job(void *data, void *gdata, int thread_index)
    if (pc_entry->gpl.gkey)
       pipeline = zink_create_gfx_pipeline_combined(screen, pc_entry->prog, pc_entry->gpl.ikey->pipeline, &pc_entry->gpl.gkey->pipeline, 1, pc_entry->gpl.okey->pipeline, true, false);
    else
-      pipeline = zink_create_gfx_pipeline(screen, pc_entry->prog, pc_entry->prog->objs, &pc_entry->state, pc_entry->state.element_state->binding_map, zink_primitive_topology(pc_entry->state.gfx_prim_mode), true, NULL);
+      pipeline = zink_create_gfx_pipeline(screen, pc_entry->prog, pc_entry->prog->objs, &pc_entry->state, pc_entry->state.element_state->binding_map, zink_primitive_topology(pc_entry->state.gfx_prim_mode), true);
    if (pipeline) {
       pc_entry->gpl.unoptimized_pipeline = pc_entry->pipeline;
       pc_entry->pipeline = pipeline;
@@ -814,7 +814,7 @@ optimized_shobj_compile_job(void *data, void *gdata, int thread_index)
       objs[i].mod = VK_NULL_HANDLE;
       objs[i].spirv = pc_entry->shobjs[i].spirv;
    }
-   pc_entry->pipeline = zink_create_gfx_pipeline(screen, pc_entry->prog, objs, &pc_entry->state, NULL, zink_primitive_topology(pc_entry->state.gfx_prim_mode), true, NULL);
+   pc_entry->pipeline = zink_create_gfx_pipeline(screen, pc_entry->prog, objs, &pc_entry->state, NULL, zink_primitive_topology(pc_entry->state.gfx_prim_mode), true);
    /* no unoptimized_pipeline dance */
 }
 
@@ -1699,9 +1699,6 @@ out:
 static void
 bind_gfx_stage(struct zink_context *ctx, gl_shader_stage stage, struct zink_shader *shader)
 {
-   /* RADV doesn't support binding pipelines in DGC */
-   if (zink_screen(ctx->base.screen)->info.nv_dgc_props.maxGraphicsShaderGroupCount == 0)
-      zink_flush_dgc_if_enabled(ctx);
    if (shader && shader->info.num_inlinable_uniforms)
       ctx->shader_has_inlinable_uniforms_mask |= 1 << stage;
    else
@@ -2235,7 +2232,7 @@ zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
          generate_gfx_program_modules(ctx, screen,  prog, &ctx->gfx_pipeline_state);
       VkPipeline pipeline = zink_create_gfx_pipeline(screen, prog, prog->objs, &ctx->gfx_pipeline_state,
                                                      ctx->gfx_pipeline_state.element_state->binding_map,
-                                                     shaders[MESA_SHADER_TESS_EVAL] ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, NULL);
+                                                     shaders[MESA_SHADER_TESS_EVAL] ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true);
       print_pipeline_stats(screen, pipeline, &ctx->dbg);
       VKSCR(DestroyPipeline)(screen->dev, pipeline, NULL);
    } else {

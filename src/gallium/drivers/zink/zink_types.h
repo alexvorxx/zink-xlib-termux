@@ -101,15 +101,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+ 
 extern uint32_t zink_debug;
 extern bool zink_tracing;
-
+ 
 #ifdef __cplusplus
 }
 #endif
 
-
+ 
 /** enums */
 
 /* features for draw/program templates */
@@ -238,11 +238,10 @@ enum zink_debug {
    ZINK_DEBUG_OPTIMAL_KEYS = (1<<14),
    ZINK_DEBUG_NOOPT = (1<<15),
    ZINK_DEBUG_NOBGC = (1<<16),
-   ZINK_DEBUG_DGC = (1<<17),
-   ZINK_DEBUG_MEM = (1<<18),
-   ZINK_DEBUG_QUIET = (1<<19),
-   ZINK_DEBUG_IOOPT = (1<<20),
-   ZINK_DEBUG_NOPC = (1<<21),
+   ZINK_DEBUG_MEM = (1<<17),
+   ZINK_DEBUG_QUIET = (1<<18),
+   ZINK_DEBUG_IOOPT = (1<<19),
+   ZINK_DEBUG_NOPC = (1<<20),
 };
 
 enum zink_pv_emulation_primitive {
@@ -251,15 +250,6 @@ enum zink_pv_emulation_primitive {
    /* when triangle or quad strips are used and the gs outputs triangles */
    ZINK_PVE_PRIMITIVE_TRISTRIP = 2,
    ZINK_PVE_PRIMITIVE_FAN = 3,
-};
-
-enum zink_dgc_buffer {
-   ZINK_DGC_VBO,
-   ZINK_DGC_IB,
-   ZINK_DGC_PSO,
-   ZINK_DGC_PUSH,
-   ZINK_DGC_DRAW,
-   ZINK_DGC_MAX,
 };
 
 /** fence types */
@@ -619,11 +609,6 @@ struct zink_batch_state {
    struct zink_resource *swapchain;
    struct util_dynarray acquires;
    struct util_dynarray acquire_flags;
-
-   struct {
-      struct util_dynarray pipelines;
-      struct util_dynarray layouts;
-   } dgc;
 
    VkAccessFlags unordered_write_access;
    VkPipelineStageFlags unordered_write_stages;
@@ -1938,19 +1923,6 @@ struct zink_context {
    struct {
       uint64_t render_passes;
    } hud;
-
-   struct {
-      bool valid;
-      struct u_upload_mgr *upload[ZINK_DGC_MAX];
-      struct zink_resource *buffers[ZINK_DGC_MAX];
-      struct zink_gfx_program *last_prog;
-      uint8_t *maps[ZINK_DGC_MAX];
-      size_t bind_offsets[ZINK_DGC_MAX];
-      size_t cur_offsets[ZINK_DGC_MAX];
-      size_t max_size[ZINK_DGC_MAX];
-      struct util_dynarray pipelines;
-      struct util_dynarray tokens;
-   } dgc;
 
    struct pipe_resource *dummy_vertex_buffer;
    struct pipe_resource *dummy_xfb_buffer;

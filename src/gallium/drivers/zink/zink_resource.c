@@ -1616,7 +1616,7 @@ resource_create(struct pipe_screen *pscreen,
           */
          res->base.b.flags |= PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY;
       }
-      if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB || zink_debug & ZINK_DEBUG_DGC)
+      if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB)
          zink_resource_get_address(screen, res);
    } else {
       if (templ->flags & PIPE_RESOURCE_FLAG_SPARSE)

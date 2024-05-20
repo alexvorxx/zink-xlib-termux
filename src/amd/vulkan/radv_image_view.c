@@ -118,8 +118,6 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
    }
 
    state[0] = va >> 8;
-   if (gfx_level >= GFX9 || base_level_info->mode == RADEON_SURF_MODE_2D)
-      state[0] |= swizzle;
    state[1] &= C_008F14_BASE_ADDRESS_HI;
    state[1] |= S_008F14_BASE_ADDRESS_HI(va >> 40);
 
@@ -168,6 +166,8 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
    }
 
    if (gfx_level >= GFX10) {
+      state[0] |= swizzle;
+
       state[3] &= C_00A00C_SW_MODE;
 
       if (is_stencil) {
@@ -195,6 +195,8 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
 
       state[7] = meta_va >> 16;
    } else if (gfx_level == GFX9) {
+      state[0] |= swizzle;
+
       state[3] &= C_008F1C_SW_MODE;
       state[4] &= C_008F20_PITCH;
 
@@ -223,6 +225,10 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
       /* GFX6-GFX8 */
       unsigned pitch = base_level_info->nblk_x * block_width;
       unsigned index = ac_tile_mode_index(&plane->surface, base_level, is_stencil);
+
+      /* Only macrotiled modes can set tile swizzle. */
+      if (base_level_info->mode == RADEON_SURF_MODE_2D)
+         state[0] |= swizzle;
 
       state[3] &= C_008F1C_TILING_INDEX;
       state[3] |= S_008F1C_TILING_INDEX(index);

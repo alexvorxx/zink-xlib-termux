@@ -511,24 +511,27 @@ anv_formats_ccs_e_compatible(const struct intel_device_info *devinfo,
                              VkImageUsageFlags vk_usage,
                              const VkImageFormatListCreateInfo *fmt_list)
 {
-   enum isl_format format =
-      anv_get_isl_format(devinfo, vk_format, VK_IMAGE_ASPECT_COLOR_BIT,
-                         vk_tiling);
+   u_foreach_bit(b, vk_format_aspects(vk_format)) {
+      VkImageAspectFlagBits aspect = 1 << b;
+      enum isl_format format =
+         anv_get_isl_format(devinfo, vk_format, aspect, vk_tiling);
 
-   if (!formats_ccs_e_compatible(devinfo, create_flags, format, vk_tiling,
-                                 fmt_list))
-      return false;
-
-   if (vk_usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-      if (devinfo->verx10 < 125)
+      if (!formats_ccs_e_compatible(devinfo, create_flags, format, vk_tiling,
+                                    fmt_list))
          return false;
 
-      /* Disable compression when surface can be potentially used for atomic
-       * operation.
-       */
-      if (storage_image_format_supports_atomic(devinfo, create_flags, format,
-                                               vk_tiling, fmt_list))
-         return false;
+      if (vk_usage & VK_IMAGE_USAGE_STORAGE_BIT) {
+         if (devinfo->verx10 < 125)
+            return false;
+
+         /* Disable compression when surface can be potentially used for
+          * atomic operation.
+          */
+         if (storage_image_format_supports_atomic(devinfo, create_flags,
+                                                  format, vk_tiling,
+                                                  fmt_list))
+            return false;
+      }
    }
 
    return true;

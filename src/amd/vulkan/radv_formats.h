@@ -155,7 +155,7 @@ bool radv_is_storage_image_format_supported(const struct radv_physical_device *d
 
 bool radv_is_buffer_format_supported(VkFormat format, bool *scaled);
 
-bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, VkFormat format, bool *blendable);
+bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, VkFormat format);
 
 bool radv_is_format_emulated(const struct radv_physical_device *pdev, VkFormat format);
 

@@ -2086,9 +2086,8 @@ radv_cmd_clear_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
    bool disable_compression = false;
 
    if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
-      bool blendable;
       if (cs ? !radv_is_storage_image_format_supported(pdev, format)
-             : !radv_is_colorbuffer_format_supported(pdev, format, &blendable)) {
+             : !radv_is_colorbuffer_format_supported(pdev, format)) {
          format = VK_FORMAT_R32_UINT;
          internal_clear_value.color.uint32[0] = float3_to_rgb9e5(clear_value->color.float32);
 

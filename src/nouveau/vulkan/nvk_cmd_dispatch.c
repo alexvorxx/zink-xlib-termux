@@ -103,6 +103,8 @@ nvk_compute_local_size(struct nvk_cmd_buffer *cmd)
 
 static uint64_t
 nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
+                        uint32_t base_workgroup[3],
+                        uint32_t global_size[3],
                         uint64_t *root_desc_addr_out)
 {
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
@@ -113,6 +115,13 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
    VkResult result;
 
    nvk_cmd_buffer_flush_push_descriptors(cmd, desc);
+
+   desc->root.cs.base_group[0] = base_workgroup[0];
+   desc->root.cs.base_group[1] = base_workgroup[1];
+   desc->root.cs.base_group[2] = base_workgroup[2];
+   desc->root.cs.group_count[0] = global_size[0];
+   desc->root.cs.group_count[1] = global_size[1];
+   desc->root.cs.group_count[2] = global_size[2];
 
    /* pre Pascal the constant buffer sizes need to be 0x100 aligned. As we
     * simply allocated a buffer and upload data to it, make sure its size is
@@ -138,9 +147,9 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
       .smem_size = shader->info.cs.smem_size,
       .smem_max = NVK_MAX_SHARED_SIZE,
       .global_size = {
-         desc->root.cs.group_count[0],
-         desc->root.cs.group_count[1],
-         desc->root.cs.group_count[2],
+         global_size[0],
+         global_size[1],
+         global_size[2],
       },
    };
 
@@ -225,16 +234,11 @@ nvk_CmdDispatchBase(VkCommandBuffer commandBuffer,
                     uint32_t groupCountZ)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
-   struct nvk_descriptor_state *desc = &cmd->state.cs.descriptors;
 
-   desc->root.cs.base_group[0] = baseGroupX;
-   desc->root.cs.base_group[1] = baseGroupY;
-   desc->root.cs.base_group[2] = baseGroupZ;
-   desc->root.cs.group_count[0] = groupCountX;
-   desc->root.cs.group_count[1] = groupCountY;
-   desc->root.cs.group_count[2] = groupCountZ;
-
-   uint64_t qmd_addr = nvk_flush_compute_state(cmd, NULL);
+   uint32_t base_workgroup[3] = { baseGroupX, baseGroupY, baseGroupZ };
+   uint32_t global_size[3] = { groupCountX, groupCountY, groupCountZ };
+   uint64_t qmd_addr = nvk_flush_compute_state(cmd, base_workgroup,
+                                               global_size, NULL);
    if (unlikely(qmd_addr == 0))
       return;
 
@@ -334,19 +338,19 @@ nvk_CmdDispatchIndirect(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(nvk_buffer, buffer, _buffer);
-   struct nvk_descriptor_state *desc = &cmd->state.cs.descriptors;
 
    /* TODO: Indirect dispatch pre-Turing */
    assert(nvk_cmd_buffer_compute_cls(cmd) >= TURING_COMPUTE_A);
 
-   desc->root.cs.base_group[0] = 0;
-   desc->root.cs.base_group[1] = 0;
-   desc->root.cs.base_group[2] = 0;
-
    uint64_t dispatch_addr = nvk_buffer_address(buffer, offset);
 
+   /* We set these through the MME */
+   uint32_t base_workgroup[3] = { 0, 0, 0 };
+   uint32_t global_size[3] = { 0, 0, 0 };
+
    uint64_t root_desc_addr;
-   uint64_t qmd_addr = nvk_flush_compute_state(cmd, &root_desc_addr);
+   uint64_t qmd_addr = nvk_flush_compute_state(cmd, base_workgroup,
+                                               global_size, &root_desc_addr);
    if (unlikely(qmd_addr == 0))
       return;
 

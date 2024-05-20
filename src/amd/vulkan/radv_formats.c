@@ -456,9 +456,6 @@ radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, Vk
    } else
       *blendable = true;
 
-   if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32 && pdev->info.gfx_level < GFX10_3)
-      return false;
-
    return color_format != V_028C70_COLOR_INVALID && color_swap != ~0U && color_num_format != ~0;
 }
 

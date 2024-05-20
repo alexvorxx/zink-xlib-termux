@@ -528,6 +528,15 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
    for (uint32_t dw = 0; dw < NVK_DRAW_CB0_SIZE / 4; dw++)
       P_INLINE_DATA(p, 0);
 
+   /* These are shadowed in cb0 so they need to be zeroed as well for
+    * consistency.
+    */
+   P_IMMD(p, NV9097, SET_GLOBAL_BASE_INSTANCE_INDEX, 0);
+   P_MTHD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_CB0_FIRST_VERTEX));
+   P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_FIRST_VERTEX, 0);
+   P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_DRAW_INDEX, 0);
+   P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_VIEW_INDEX, 0);
+
    return VK_SUCCESS;
 }
 
@@ -2660,6 +2669,48 @@ vk_to_nv9097_primitive_topology(VkPrimitiveTopology prim)
    }
 }
 
+static void
+nvk_mme_set_cb0_mthd(struct mme_builder *b,
+                     uint16_t cb0_offset,
+                     uint16_t mthd,
+                     struct mme_value val)
+{
+   if (b->devinfo->cls_eng3d >= TURING_A) {
+      struct mme_value old = mme_state(b, mthd);
+      mme_if(b, ine, old, val) {
+         mme_mthd(b, mthd);
+         mme_emit(b, val);
+
+         mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER_OFFSET);
+         mme_emit(b, mme_imm(cb0_offset));
+         mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER(0));
+         mme_emit(b, val);
+      }
+      mme_free_reg(b, old);
+   } else {
+      /* Fermi is really tight on registers. Don't bother with the if and set
+       * both unconditionally for now.
+       */
+      mme_mthd(b, mthd);
+      mme_emit(b, val);
+
+      mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER_OFFSET);
+      mme_emit(b, mme_imm(cb0_offset));
+      mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER(0));
+      mme_emit(b, val);
+   }
+}
+
+static void
+nvk_mme_set_cb0_scratch(struct mme_builder *b,
+                        uint16_t cb0_offset,
+                        enum nvk_mme_scratch scratch,
+                        struct mme_value val)
+{
+   const uint16_t mthd = NV9097_SET_MME_SHADOW_SCRATCH(scratch);
+   nvk_mme_set_cb0_mthd(b, cb0_offset, mthd, val);
+}
+
 struct mme_draw_params {
    struct mme_value base_vertex;
    struct mme_value first_vertex;
@@ -2671,32 +2722,32 @@ static void
 nvk_mme_build_set_draw_params(struct mme_builder *b,
                               const struct mme_draw_params *p)
 {
-   const uint32_t draw_params_offset = nvk_root_descriptor_offset(draw);
-   mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER_OFFSET);
-   mme_emit(b, mme_imm(draw_params_offset));
-   mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER(0));
-   mme_emit(b, p->first_vertex);
-   mme_emit(b, p->first_instance);
-   mme_emit(b, p->draw_index);
-   mme_emit(b, mme_zero() /* view_index */);
+   nvk_mme_set_cb0_scratch(b, nvk_root_descriptor_offset(draw.base_vertex),
+                           NVK_MME_SCRATCH_CB0_FIRST_VERTEX,
+                           p->first_vertex);
+   nvk_mme_set_cb0_mthd(b, nvk_root_descriptor_offset(draw.base_instance),
+                        NV9097_SET_GLOBAL_BASE_INSTANCE_INDEX,
+                        p->first_instance);
+   nvk_mme_set_cb0_scratch(b, nvk_root_descriptor_offset(draw.draw_index),
+                           NVK_MME_SCRATCH_CB0_DRAW_INDEX,
+                           p->draw_index);
+   nvk_mme_set_cb0_scratch(b, nvk_root_descriptor_offset(draw.view_index),
+                           NVK_MME_SCRATCH_CB0_VIEW_INDEX,
+                           mme_zero());
 
    mme_mthd(b, NV9097_SET_GLOBAL_BASE_VERTEX_INDEX);
    mme_emit(b, p->base_vertex);
    mme_mthd(b, NV9097_SET_VERTEX_ID_BASE);
    mme_emit(b, p->base_vertex);
-
-   mme_mthd(b, NV9097_SET_GLOBAL_BASE_INSTANCE_INDEX);
-   mme_emit(b, p->first_instance);
 }
 
 static void
 nvk_mme_emit_view_index(struct mme_builder *b, struct mme_value view_index)
 {
    /* Set the push constant */
-   mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER_OFFSET);
-   mme_emit(b, mme_imm(nvk_root_descriptor_offset(draw.view_index)));
-   mme_mthd(b, NV9097_LOAD_CONSTANT_BUFFER(0));
-   mme_emit(b, view_index);
+   nvk_mme_set_cb0_scratch(b, nvk_root_descriptor_offset(draw.view_index),
+                           NVK_MME_SCRATCH_CB0_VIEW_INDEX,
+                           view_index);
 
    /* Set the layer to the view index */
    STATIC_ASSERT(DRF_LO(NV9097_SET_RT_LAYER_V) == 0);

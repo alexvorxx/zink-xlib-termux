@@ -46,6 +46,11 @@ enum nvk_mme_scratch {
    NVK_MME_SCRATCH_CB0_ADDR_HI,
    NVK_MME_SCRATCH_CB0_ADDR_LO,
 
+   /* Shadow copies of values in CB0 */
+   NVK_MME_SCRATCH_CB0_FIRST_VERTEX,
+   NVK_MME_SCRATCH_CB0_DRAW_INDEX,
+   NVK_MME_SCRATCH_CB0_VIEW_INDEX,
+
    /* Must be at the end */
    NVK_MME_NUM_SCRATCH,
 };

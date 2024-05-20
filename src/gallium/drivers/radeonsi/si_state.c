@@ -2157,7 +2157,7 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
       goto out_unknown;
 
    /* This format fails on Gfx8/Carrizo´. */
-   if (format == PIPE_FORMAT_A8R8_UNORM)
+   if (sscreen->info.family == CHIP_CARRIZO && format == PIPE_FORMAT_A8R8_UNORM)
       goto out_unknown;
 
    /* See whether the components are of the same size. */
@@ -2176,7 +2176,8 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
          goto out_unknown;
       case 4:
          /* 5551 and 1555 UINT formats fail on Gfx8/Carrizo´. */
-         if (desc->channel[1].size == 5 &&
+         if (sscreen->info.family == CHIP_CARRIZO &&
+             desc->channel[1].size == 5 &&
              desc->channel[2].size == 5 &&
              desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
              desc->channel[first_non_void].pure_integer)
@@ -2205,7 +2206,8 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
       switch (desc->nr_channels) {
       case 4:
          /* 4444 UINT formats fail on Gfx8/Carrizo´. */
-         if (desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
+         if (sscreen->info.family == CHIP_CARRIZO &&
+             desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
              desc->channel[first_non_void].pure_integer)
             goto out_unknown;
 

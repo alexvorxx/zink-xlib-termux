@@ -72,6 +72,7 @@ struct isel_context {
    nir_unsigned_upper_bound_config ub_config;
 
    Temp arg_temps[AC_MAX_ARGS];
+   Operand workgroup_id[3];
 
    /* tessellation information */
    uint64_t tcs_temp_only_inputs;

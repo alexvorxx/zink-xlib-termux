@@ -27,14 +27,6 @@
 #include "ac_formats.h"
 
 uint32_t
-radv_translate_buffer_dataformat(const struct util_format_description *desc, int first_non_void)
-{
-   assert(util_format_get_num_planes(desc->format) == 1);
-
-   return ac_translate_buffer_dataformat(desc, first_non_void);
-}
-
-uint32_t
 radv_translate_buffer_numformat(const struct util_format_description *desc, int first_non_void)
 {
    assert(util_format_get_num_planes(desc->format) == 1);

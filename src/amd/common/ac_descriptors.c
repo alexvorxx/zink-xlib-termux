@@ -310,3 +310,157 @@ ac_tile_mode_index(const struct radeon_surf *surf, unsigned level, bool stencil)
    else
       return surf->u.legacy.tiling_index[level];
 }
+
+void
+ac_set_mutable_tex_desc_fields(const struct radeon_info *info, const struct ac_mutable_tex_state *state, uint32_t desc[8])
+{
+   const struct radeon_surf *surf = state->surf;
+   const struct legacy_surf_level *base_level_info = state->gfx6.base_level_info;
+   const struct ac_surf_nbc_view *nbc_view = state->gfx9.nbc_view;
+   uint8_t swizzle = surf->tile_swizzle;
+   uint64_t va = state->va, meta_va = 0;
+
+   if (info->gfx_level >= GFX9) {
+      if (state->is_stencil) {
+         va += surf->u.gfx9.zs.stencil_offset;
+      } else {
+         va += surf->u.gfx9.surf_offset;
+      }
+
+      if (nbc_view && nbc_view->valid) {
+         va += nbc_view->base_address_offset;
+         swizzle = nbc_view->tile_swizzle;
+      }
+   } else {
+      va += (uint64_t)base_level_info->offset_256B * 256;
+   }
+
+   if (!info->has_image_opcodes) {
+      /* Set it as a buffer descriptor. */
+      desc[0] = va;
+      desc[1] |= S_008F04_BASE_ADDRESS_HI(va >> 32);
+      return;
+   }
+
+   desc[0] = va >> 8;
+   desc[1] |= S_008F14_BASE_ADDRESS_HI(va >> 40);
+
+   if (info->gfx_level >= GFX8 && info->gfx_level < GFX12) {
+      if (state->dcc_enabled) {
+         meta_va = state->va + surf->meta_offset;
+         if (info->gfx_level == GFX8) {
+            meta_va += surf->u.legacy.color.dcc_level[state->gfx6.base_level].dcc_offset;
+            assert(base_level_info->mode == RADEON_SURF_MODE_2D);
+         }
+
+         unsigned dcc_tile_swizzle = swizzle << 8;
+         dcc_tile_swizzle &= (1 << surf->meta_alignment_log2) - 1;
+         meta_va |= dcc_tile_swizzle;
+      } else if (state->tc_compat_htile_enabled) {
+         meta_va = state->va + surf->meta_offset;
+      }
+   }
+
+   if (info->gfx_level >= GFX10) {
+      desc[0] |= swizzle;
+
+      if (state->is_stencil) {
+         desc[3] |= S_00A00C_SW_MODE(surf->u.gfx9.zs.stencil_swizzle_mode);
+      } else {
+         desc[3] |= S_00A00C_SW_MODE(surf->u.gfx9.swizzle_mode);
+      }
+
+      /* GFX10.3+ can set a custom pitch for 1D and 2D non-array, but it must be a multiple
+       * of 256B.
+       */
+      if (info->gfx_level >= GFX10_3 && surf->u.gfx9.uses_custom_pitch) {
+         ASSERTED unsigned min_alignment = info->gfx_level >= GFX12 ? 128 : 256;
+         assert((surf->u.gfx9.surf_pitch * surf->bpe) % min_alignment == 0);
+         assert(surf->is_linear);
+         unsigned pitch = surf->u.gfx9.surf_pitch;
+
+         /* Subsampled images have the pitch in the units of blocks. */
+         if (surf->blk_w == 2)
+            pitch *= 2;
+
+         if (info->gfx_level >= GFX12) {
+            desc[4] |= S_00A010_DEPTH_GFX12(pitch - 1) | /* DEPTH contains low bits of PITCH. */
+                       S_00A010_PITCH_MSB_GFX12((pitch - 1) >> 14);
+         } else {
+            desc[4] |= S_00A010_DEPTH_GFX10(pitch - 1) | /* DEPTH contains low bits of PITCH. */
+                       S_00A010_PITCH_MSB_GFX103((pitch - 1) >> 13);
+         }
+      }
+
+      if (meta_va) {
+         /* Gfx10-11. */
+         struct gfx9_surf_meta_flags meta = {
+            .rb_aligned = 1,
+            .pipe_aligned = 1,
+         };
+
+         if (!(surf->flags & RADEON_SURF_Z_OR_SBUFFER) && surf->meta_offset)
+            meta = surf->u.gfx9.color.dcc;
+
+         desc[6] |= S_00A018_COMPRESSION_EN(1) |
+                    S_00A018_META_PIPE_ALIGNED(meta.pipe_aligned) |
+                    S_00A018_META_DATA_ADDRESS_LO(meta_va >> 8) |
+                    /* DCC image stores require the following settings:
+                     * - INDEPENDENT_64B_BLOCKS = 0
+                     * - INDEPENDENT_128B_BLOCKS = 1
+                     * - MAX_COMPRESSED_BLOCK_SIZE = 128B
+                     * - MAX_UNCOMPRESSED_BLOCK_SIZE = 256B (always used)
+                     *
+                     * The same limitations apply to SDMA compressed stores because
+                     * SDMA uses the same DCC codec.
+                     */
+                    S_00A018_WRITE_COMPRESS_ENABLE(state->gfx10.write_compress_enable) |
+                    /* TC-compatible MSAA HTILE requires ITERATE_256. */
+                    S_00A018_ITERATE_256(state->gfx10.iterate_256);
+
+         desc[7] = meta_va >> 16;
+      }
+   } else if (info->gfx_level == GFX9) {
+      desc[0] |= surf->tile_swizzle;
+
+      if (state->is_stencil) {
+         desc[3] |= S_008F1C_SW_MODE(surf->u.gfx9.zs.stencil_swizzle_mode);
+         desc[4] |= S_008F20_PITCH(surf->u.gfx9.zs.stencil_epitch);
+      } else {
+         desc[3] |= S_008F1C_SW_MODE(surf->u.gfx9.swizzle_mode);
+         desc[4] |= S_008F20_PITCH(surf->u.gfx9.epitch);
+      }
+
+      if (meta_va) {
+         struct gfx9_surf_meta_flags meta = {
+            .rb_aligned = 1,
+            .pipe_aligned = 1,
+         };
+
+         if (!(surf->flags & RADEON_SURF_Z_OR_SBUFFER) && surf->meta_offset)
+            meta = surf->u.gfx9.color.dcc;
+
+         desc[5] |= S_008F24_META_DATA_ADDRESS(meta_va >> 40) |
+                    S_008F24_META_PIPE_ALIGNED(meta.pipe_aligned) |
+                    S_008F24_META_RB_ALIGNED(meta.rb_aligned);
+         desc[6] |= S_008F28_COMPRESSION_EN(1);
+         desc[7] = meta_va >> 8;
+      }
+   } else {
+      /* GFX6-GFX8 */
+      unsigned pitch = base_level_info->nblk_x * state->gfx6.block_width;
+      unsigned index = ac_tile_mode_index(surf, state->gfx6.base_level, state->is_stencil);
+
+      /* Only macrotiled modes can set tile swizzle. */
+      if (base_level_info->mode == RADEON_SURF_MODE_2D)
+         desc[0] |= surf->tile_swizzle;
+
+      desc[3] |= S_008F1C_TILING_INDEX(index);
+      desc[4] |= S_008F20_PITCH(pitch - 1);
+
+      if (info->gfx_level == GFX8 && meta_va) {
+         desc[6] |= S_008F28_COMPRESSION_EN(1);
+         desc[7] = meta_va >> 8;
+      }
+   }
+}

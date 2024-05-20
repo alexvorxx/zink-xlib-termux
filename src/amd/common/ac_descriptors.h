@@ -66,6 +66,35 @@ ac_tile_mode_index(const struct radeon_surf *surf,
                    unsigned level,
                    bool stencil);
 
+struct ac_mutable_tex_state {
+   const struct radeon_surf *surf;
+   uint64_t va;
+
+   struct {
+      uint32_t write_compress_enable : 1;
+      uint32_t iterate_256 : 1;
+   } gfx10;
+
+   struct {
+      const struct ac_surf_nbc_view *nbc_view;
+   } gfx9;
+
+   struct {
+      const struct legacy_surf_level *base_level_info;
+      uint32_t base_level;
+      uint32_t block_width;
+   } gfx6;
+
+   uint32_t is_stencil : 1;
+   uint32_t dcc_enabled : 1;
+   uint32_t tc_compat_htile_enabled : 1;
+};
+
+void
+ac_set_mutable_tex_desc_fields(const struct radeon_info *info,
+                               const struct ac_mutable_tex_state *state,
+                               uint32_t desc[8]);
+
 #ifdef __cplusplus
 }
 #endif

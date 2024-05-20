@@ -93,142 +93,33 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
    struct radv_image_plane *plane = &image->planes[plane_id];
    struct radv_image_binding *binding = image->disjoint ? &image->bindings[plane_id] : &image->bindings[0];
    uint64_t gpu_address = binding->bo ? radv_buffer_get_va(binding->bo) + binding->offset : 0;
-   uint64_t va = gpu_address;
-   uint8_t swizzle = plane->surface.tile_swizzle;
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   enum amd_gfx_level gfx_level = pdev->info.gfx_level;
-   uint64_t meta_va = 0;
-   if (gfx_level >= GFX9) {
-      if (is_stencil)
-         va += plane->surface.u.gfx9.zs.stencil_offset;
-      else
-         va += plane->surface.u.gfx9.surf_offset;
-      if (nbc_view && nbc_view->valid) {
-         va += nbc_view->base_address_offset;
-         swizzle = nbc_view->tile_swizzle;
-      }
-   } else
-      va += (uint64_t)base_level_info->offset_256B * 256;
 
-   if (!pdev->info.has_image_opcodes) {
-      /* Set it as a buffer descriptor. */
-      state[0] = va;
-      state[1] |= S_008F04_BASE_ADDRESS_HI(va >> 32);
-      return;
-   }
+   const struct ac_mutable_tex_state ac_state = {
+      .surf = &plane->surface,
+      .va = gpu_address,
+      .gfx10 =
+         {
+            .write_compress_enable =
+               radv_dcc_enabled(image, first_level) && is_storage_image && enable_write_compression,
+            .iterate_256 = radv_image_get_iterate256(device, image),
+         },
+      .gfx9 =
+         {
+            .nbc_view = nbc_view,
+         },
+      .gfx6 =
+         {
+            .base_level_info = base_level_info,
+            .base_level = base_level,
+            .block_width = block_width,
+         },
+      .is_stencil = is_stencil,
+      .dcc_enabled = !disable_compression && radv_dcc_enabled(image, first_level),
+      .tc_compat_htile_enabled = !disable_compression && radv_image_is_tc_compat_htile(image),
+   };
 
-   state[0] = va >> 8;
-   state[1] |= S_008F14_BASE_ADDRESS_HI(va >> 40);
-
-   if (gfx_level >= GFX8) {
-      if (!disable_compression && radv_dcc_enabled(image, first_level)) {
-         meta_va = gpu_address + plane->surface.meta_offset;
-         if (gfx_level == GFX8) {
-            meta_va += plane->surface.u.legacy.color.dcc_level[base_level].dcc_offset;
-            assert(base_level_info->mode == RADEON_SURF_MODE_2D);
-         }
-
-         unsigned dcc_tile_swizzle = swizzle << 8;
-         dcc_tile_swizzle &= (1 << plane->surface.meta_alignment_log2) - 1;
-         meta_va |= dcc_tile_swizzle;
-      } else if (!disable_compression && radv_image_is_tc_compat_htile(image)) {
-         meta_va = gpu_address + plane->surface.meta_offset;
-      }
-   }
-
-   if (gfx_level >= GFX10) {
-      state[0] |= swizzle;
-
-      if (is_stencil) {
-         state[3] |= S_00A00C_SW_MODE(plane->surface.u.gfx9.zs.stencil_swizzle_mode);
-      } else {
-         state[3] |= S_00A00C_SW_MODE(plane->surface.u.gfx9.swizzle_mode);
-      }
-
-      /* GFX10.3+ can set a custom pitch for 1D and 2D non-array, but it must be a multiple
-       * of 256B.
-       *
-       * If an imported image is used with VK_IMAGE_VIEW_TYPE_2D_ARRAY, it may hang due to VM faults
-       * because DEPTH means pitch with 2D, but it means depth with 2D array.
-       */
-      if (pdev->info.gfx_level >= GFX10_3 && plane->surface.u.gfx9.uses_custom_pitch) {
-         assert((plane->surface.u.gfx9.surf_pitch * plane->surface.bpe) % 256 == 0);
-         assert(image->vk.image_type == VK_IMAGE_TYPE_2D);
-         assert(plane->surface.is_linear);
-         assert(G_00A00C_TYPE(state[3]) == V_008F1C_SQ_RSRC_IMG_2D);
-         unsigned pitch = plane->surface.u.gfx9.surf_pitch;
-
-         /* Subsampled images have the pitch in the units of blocks. */
-         if (plane->surface.blk_w == 2)
-            pitch *= 2;
-
-         state[4] &= C_00A010_DEPTH_GFX10;
-         state[4] |= S_00A010_DEPTH_GFX10(pitch - 1) | /* DEPTH contains low bits of PITCH. */
-                     S_00A010_PITCH_MSB_GFX103((pitch - 1) >> 13);
-      }
-
-      if (meta_va) {
-         struct gfx9_surf_meta_flags meta = {
-            .rb_aligned = 1,
-            .pipe_aligned = 1,
-         };
-
-         if (!(plane->surface.flags & RADEON_SURF_Z_OR_SBUFFER))
-            meta = plane->surface.u.gfx9.color.dcc;
-
-         if (radv_dcc_enabled(image, first_level) && is_storage_image && enable_write_compression)
-            state[6] |= S_00A018_WRITE_COMPRESS_ENABLE(1);
-
-         state[6] |= S_00A018_COMPRESSION_EN(1) | S_00A018_META_PIPE_ALIGNED(meta.pipe_aligned) |
-                     S_00A018_META_DATA_ADDRESS_LO(meta_va >> 8);
-
-         if (radv_image_get_iterate256(device, image))
-            state[6] |= S_00A018_ITERATE_256(1);
-
-         state[7] = meta_va >> 16;
-      }
-   } else if (gfx_level == GFX9) {
-      state[0] |= swizzle;
-
-      if (is_stencil) {
-         state[3] |= S_008F1C_SW_MODE(plane->surface.u.gfx9.zs.stencil_swizzle_mode);
-         state[4] |= S_008F20_PITCH(plane->surface.u.gfx9.zs.stencil_epitch);
-      } else {
-         state[3] |= S_008F1C_SW_MODE(plane->surface.u.gfx9.swizzle_mode);
-         state[4] |= S_008F20_PITCH(plane->surface.u.gfx9.epitch);
-      }
-
-      if (meta_va) {
-         struct gfx9_surf_meta_flags meta = {
-            .rb_aligned = 1,
-            .pipe_aligned = 1,
-         };
-
-         if (!(plane->surface.flags & RADEON_SURF_Z_OR_SBUFFER))
-            meta = plane->surface.u.gfx9.color.dcc;
-
-         state[5] |= S_008F24_META_DATA_ADDRESS(meta_va >> 40) | S_008F24_META_PIPE_ALIGNED(meta.pipe_aligned) |
-                     S_008F24_META_RB_ALIGNED(meta.rb_aligned);
-         state[6] |= S_008F28_COMPRESSION_EN(1);
-         state[7] = meta_va >> 8;
-      }
-   } else {
-      /* GFX6-GFX8 */
-      unsigned pitch = base_level_info->nblk_x * block_width;
-      unsigned index = ac_tile_mode_index(&plane->surface, base_level, is_stencil);
-
-      /* Only macrotiled modes can set tile swizzle. */
-      if (base_level_info->mode == RADEON_SURF_MODE_2D)
-         state[0] |= swizzle;
-
-      state[3] |= S_008F1C_TILING_INDEX(index);
-      state[4] |= S_008F20_PITCH(pitch - 1);
-
-      if (gfx_level == GFX8 && meta_va) {
-         state[6] |= S_008F28_COMPRESSION_EN(1);
-         state[7] = meta_va >> 8;
-      }
-   }
+   ac_set_mutable_tex_desc_fields(&pdev->info, &ac_state, state);
 }
 
 /**

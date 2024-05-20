@@ -247,13 +247,18 @@ init_state(Program* program, Block* block, ssa_state* state, aco_ptr<Instruction
    unsigned start = block->logical_preds[0];
    unsigned end = block->linear_preds.back();
 
-   /* For boolean loop exit phis, start at the loop pre-header */
+   /* The value might not be loop-invariant if the loop has a divergent break and
+    *  - this is a boolean phi, which must be combined with logical exits from previous iterations
+    *  - or the loop also has an additional linear exit (continue_or_break), which might be taken in
+    *    a different iteration than the logical exit
+    */
    bool continue_or_break = block->linear_preds.size() > block->logical_preds.size();
    bool has_divergent_break = std::any_of(
       block->logical_preds.begin(), block->logical_preds.end(),
       [&](unsigned pred) { return !(program->blocks[pred].kind & block_kind_uniform); });
-   if (block->kind & block_kind_loop_exit &&
-       (phi->opcode == aco_opcode::p_boolean_phi || (continue_or_break && has_divergent_break))) {
+   if (block->kind & block_kind_loop_exit && has_divergent_break &&
+       (phi->opcode == aco_opcode::p_boolean_phi || continue_or_break)) {
+      /* Start at the loop pre-header as we need the value from previous iterations. */
       while (program->blocks[start].loop_nest_depth >= state->loop_nest_depth)
          start--;
       end = block->index - 1;

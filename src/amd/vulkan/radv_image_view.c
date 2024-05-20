@@ -126,20 +126,16 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
       state[7] = 0;
       if (!disable_compression && radv_dcc_enabled(image, first_level)) {
          meta_va = gpu_address + plane->surface.meta_offset;
-         if (gfx_level <= GFX8)
+         if (gfx_level == GFX8) {
             meta_va += plane->surface.u.legacy.color.dcc_level[base_level].dcc_offset;
+            assert(base_level_info->mode == RADEON_SURF_MODE_2D);
+         }
 
          unsigned dcc_tile_swizzle = swizzle << 8;
          dcc_tile_swizzle &= (1 << plane->surface.meta_alignment_log2) - 1;
          meta_va |= dcc_tile_swizzle;
       } else if (!disable_compression && radv_image_is_tc_compat_htile(image)) {
          meta_va = gpu_address + plane->surface.meta_offset;
-      }
-
-      if (meta_va) {
-         state[6] |= S_008F28_COMPRESSION_EN(1);
-         if (gfx_level <= GFX9)
-            state[7] = meta_va >> 8;
       }
    }
 
@@ -190,10 +186,10 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
          if (radv_dcc_enabled(image, first_level) && is_storage_image && enable_write_compression)
             state[6] |= S_00A018_WRITE_COMPRESS_ENABLE(1);
 
-         state[6] |= S_00A018_META_PIPE_ALIGNED(meta.pipe_aligned) | S_00A018_META_DATA_ADDRESS_LO(meta_va >> 8);
+         state[6] |= S_00A018_COMPRESSION_EN(1) | S_00A018_META_PIPE_ALIGNED(meta.pipe_aligned) |
+                     S_00A018_META_DATA_ADDRESS_LO(meta_va >> 8);
+         state[7] = meta_va >> 16;
       }
-
-      state[7] = meta_va >> 16;
    } else if (gfx_level == GFX9) {
       state[0] |= swizzle;
 
@@ -220,6 +216,8 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
 
          state[5] |= S_008F24_META_DATA_ADDRESS(meta_va >> 40) | S_008F24_META_PIPE_ALIGNED(meta.pipe_aligned) |
                      S_008F24_META_RB_ALIGNED(meta.rb_aligned);
+         state[6] |= S_008F28_COMPRESSION_EN(1);
+         state[7] = meta_va >> 8;
       }
    } else {
       /* GFX6-GFX8 */
@@ -234,6 +232,11 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
       state[3] |= S_008F1C_TILING_INDEX(index);
       state[4] &= C_008F20_PITCH;
       state[4] |= S_008F20_PITCH(pitch - 1);
+
+      if (gfx_level == GFX8 && meta_va) {
+         state[6] |= S_008F28_COMPRESSION_EN(1);
+         state[7] = meta_va >> 8;
+      }
    }
 }
 

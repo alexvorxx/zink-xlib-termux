@@ -445,3 +445,9 @@ ac_translate_dbformat(enum pipe_format format)
       return V_028040_Z_INVALID;
    }
 }
+
+bool
+ac_is_zs_format_supported(enum pipe_format format)
+{
+   return ac_translate_dbformat(format) != V_028040_Z_INVALID;
+}

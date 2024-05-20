@@ -2461,7 +2461,7 @@ static bool si_is_zs_format_supported(enum pipe_format format)
    if (format == PIPE_FORMAT_Z16_UNORM_S8_UINT)
       return false;
 
-   return ac_translate_dbformat(format) != V_028040_Z_INVALID;
+   return ac_is_zs_format_supported(format);
 }
 
 static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format format,

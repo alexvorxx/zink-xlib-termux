@@ -470,7 +470,7 @@ radv_is_zs_format_supported(VkFormat format)
    if (format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_X8_D24_UNORM_PACK32)
       return false;
 
-   return ac_translate_dbformat(vk_format_to_pipe_format(format)) != V_028040_Z_INVALID || format == VK_FORMAT_S8_UINT;
+   return ac_is_zs_format_supported(vk_format_to_pipe_format(format)) || format == VK_FORMAT_S8_UINT;
 }
 
 static bool

@@ -49,6 +49,9 @@ ac_colorformat_endian_swap(uint32_t colorformat);
 uint32_t
 ac_translate_dbformat(enum pipe_format format);
 
+bool
+ac_is_zs_format_supported(enum pipe_format format);
+
 #ifdef __cplusplus
 }
 #endif

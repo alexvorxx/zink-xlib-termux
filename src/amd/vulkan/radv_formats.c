@@ -37,30 +37,18 @@ radv_translate_buffer_numformat(const struct util_format_description *desc, int 
 static bool
 radv_is_vertex_buffer_format_supported(VkFormat format)
 {
-   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32)
-      return true;
-   if (format == VK_FORMAT_UNDEFINED || vk_format_is_srgb(format))
+   if (format == VK_FORMAT_UNDEFINED)
       return false;
 
-   int first_non_void = vk_format_get_first_non_void_channel(format);
+   if (vk_format_is_srgb(format))
+      return false;
+
+   const int first_non_void = vk_format_get_first_non_void_channel(format);
    if (first_non_void < 0)
       return false;
 
    const struct util_format_description *desc = vk_format_description(format);
-
-   if (desc->nr_channels == 4 && desc->channel[0].size == 10 && desc->channel[1].size == 10 &&
-       desc->channel[2].size == 10 && desc->channel[3].size == 2)
-      return true;
-
-   switch (desc->channel[first_non_void].size) {
-   case 8:
-   case 16:
-   case 32:
-   case 64:
-      return true;
-   default:
-      return false;
-   }
+   return ac_translate_buffer_dataformat(desc, first_non_void) != V_008F0C_BUF_DATA_FORMAT_INVALID;
 }
 
 uint32_t

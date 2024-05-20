@@ -651,6 +651,16 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
+   union nvk_buffer_descriptor dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
+   uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
+
+   /* Read off the current dynamic buffer start array so we can use it to
+    * determine where we should start binding dynamic buffers.
+    */
+   nvk_descriptor_state_get_root_array(desc, set_dynamic_buffer_start,
+                                       0, NVK_MAX_SETS,
+                                       set_dynamic_buffer_start);
+
    /* Fro the Vulkan 1.3.275 spec:
     *
     *    "When binding a descriptor set (see Descriptor Set Binding) to
@@ -668,8 +678,7 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
     * range and it's only our responsibility to adjust all
     * set_dynamic_buffer_start[p] for p > s as needed.
     */
-   const uint8_t dyn_buffer_start =
-      desc->root.set_dynamic_buffer_start[info->firstSet];
+   const uint8_t dyn_buffer_start = set_dynamic_buffer_start[info->firstSet];
    uint8_t dyn_buffer_end = dyn_buffer_start;
 
    uint32_t next_dyn_offset = 0;
@@ -678,15 +687,14 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
       VK_FROM_HANDLE(nvk_descriptor_set, set, info->pDescriptorSets[i]);
 
       if (desc->sets[s] != set) {
-         if (set != NULL) {
-            desc->root.sets[s] = nvk_descriptor_set_addr(set);
-         } else {
-            desc->root.sets[s] = NVK_BUFFER_ADDRESS_NULL;
-         }
+         struct nvk_buffer_address set_addr =
+            set != NULL ? nvk_descriptor_set_addr(set)
+                        : NVK_BUFFER_ADDRESS_NULL;
+         nvk_descriptor_state_set_root(cmd, desc, sets[s], set_addr);
          desc->sets[s] = set;
       }
 
-      desc->root.set_dynamic_buffer_start[s] = dyn_buffer_end;
+      set_dynamic_buffer_start[s] = dyn_buffer_end;
 
       if (pipeline_layout->set_layouts[s] != NULL) {
          const struct nvk_descriptor_set_layout *set_layout =
@@ -703,7 +711,7 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
                } else {
                   db.addr.base_addr += offset;
                }
-               desc->root.dynamic_buffers[dyn_buffer_end + j] = db;
+               dynamic_buffers[dyn_buffer_end + j] = db;
             }
             next_dyn_offset += set->layout->dynamic_buffer_count;
          }
@@ -716,9 +724,25 @@ nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
    assert(dyn_buffer_end <= NVK_MAX_DYNAMIC_BUFFERS);
    assert(next_dyn_offset <= info->dynamicOffsetCount);
 
+   nvk_descriptor_state_set_root_array(cmd, desc, dynamic_buffers,
+                                       dyn_buffer_start, dyn_buffer_end,
+                                       &dynamic_buffers[dyn_buffer_start]);
+
+   /* We need to set everything above first_set because later calls to
+    * nvk_bind_descriptor_sets() depend on it for knowing where to start and
+    * they may not be called on the next consecutive set.
+    */
    for (uint32_t s = info->firstSet + info->descriptorSetCount;
         s < NVK_MAX_SETS; s++)
-      desc->root.set_dynamic_buffer_start[s] = dyn_buffer_end;
+      set_dynamic_buffer_start[s] = dyn_buffer_end;
+
+   /* We need to at least sync everything from first_set to NVK_MAX_SETS.
+    * However, we only save anything if firstSet >= 4 so we may as well sync
+    * everything just to be safe.
+    */
+   nvk_descriptor_state_set_root_array(cmd, desc, set_dynamic_buffer_start,
+                                       0, NVK_MAX_SETS,
+                                       set_dynamic_buffer_start);
 
    nvk_cmd_dirty_cbufs_for_descriptors(cmd, info->stageFlags, info->firstSet,
                                        info->firstSet + info->descriptorSetCount,
@@ -747,7 +771,9 @@ nvk_push_constants(UNUSED struct nvk_cmd_buffer *cmd,
                    struct nvk_descriptor_state *desc,
                    const VkPushConstantsInfoKHR *info)
 {
-   memcpy(desc->root.push + info->offset, info->pValues, info->size);
+   nvk_descriptor_state_set_root_array(cmd, desc, push,
+                                       info->offset, info->size,
+                                       (char *)info->pValues);
 }
 
 
@@ -854,10 +880,11 @@ nvk_cmd_buffer_flush_push_descriptors(struct nvk_cmd_buffer *cmd,
          return;
       }
 
-      desc->root.sets[set_idx] = (struct nvk_buffer_address) {
+      struct nvk_buffer_address set_addr = {
          .base_addr = push_set_addr,
          .size = sizeof(push_set->data),
       };
+      nvk_descriptor_state_set_root(cmd, desc, sets[set_idx], set_addr);
    }
 }
 
@@ -888,14 +915,17 @@ nvk_cmd_buffer_get_cbuf_addr(struct nvk_cmd_buffer *cmd,
       return true;
 
    case NVK_CBUF_TYPE_DESC_SET:
-      *addr_out = desc->root.sets[cbuf->desc_set];
+      nvk_descriptor_state_get_root(desc, sets[cbuf->desc_set], addr_out);
       return true;
 
    case NVK_CBUF_TYPE_DYNAMIC_UBO: {
-      const uint32_t dyn_start =
-         desc->root.set_dynamic_buffer_start[cbuf->desc_set];
-      *addr_out = nvk_ubo_descriptor_addr(pdev,
-         desc->root.dynamic_buffers[dyn_start + cbuf->dynamic_idx]);
+      uint8_t dyn_idx;
+      nvk_descriptor_state_get_root(
+         desc, set_dynamic_buffer_start[cbuf->desc_set], &dyn_idx);
+      dyn_idx += cbuf->dynamic_idx;
+      union nvk_buffer_descriptor ubo_desc;
+      nvk_descriptor_state_get_root(desc, dynamic_buffers[dyn_idx], &ubo_desc);
+      *addr_out = nvk_ubo_descriptor_addr(pdev, ubo_desc);
       return true;
    }
 
@@ -926,8 +956,11 @@ nvk_cmd_buffer_get_cbuf_descriptor_addr(struct nvk_cmd_buffer *cmd,
 {
    assert(cbuf->type == NVK_CBUF_TYPE_UBO_DESC);
 
-   assert(cbuf->desc_offset < desc->root.sets[cbuf->desc_set].size);
-   return desc->root.sets[cbuf->desc_set].base_addr + cbuf->desc_offset;
+   struct nvk_buffer_address set_addr;
+   nvk_descriptor_state_get_root(desc, sets[cbuf->desc_set], &set_addr);
+
+   assert(cbuf->desc_offset < set_addr.size);
+   return set_addr.base_addr + cbuf->desc_offset;
 }
 
 void

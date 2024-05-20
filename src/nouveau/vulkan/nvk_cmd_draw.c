@@ -1804,7 +1804,6 @@ vk_to_nvk_sample_location(VkSampleLocationEXT loc)
 static void
 nvk_flush_ms_state(struct nvk_cmd_buffer *cmd)
 {
-   struct nvk_descriptor_state *desc = &cmd->state.gfx.descriptors;
    const struct nvk_rendering_state *render = &cmd->state.gfx.render;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd->vk.dynamic_graphics_state;
@@ -1865,10 +1864,13 @@ nvk_flush_ms_state(struct nvk_cmd_buffer *cmd)
          sl = vk_standard_sample_locations_state(samples);
       }
 
-      for (uint32_t i = 0; i < sl->per_pixel; i++) {
-         desc->root.draw.sample_locations[i] =
-            vk_to_nvk_sample_location(sl->locations[i]);
-      }
+      struct nvk_sample_location push_sl[NVK_MAX_SAMPLES];
+      for (uint32_t i = 0; i < sl->per_pixel; i++)
+         push_sl[i] = vk_to_nvk_sample_location(sl->locations[i]);
+
+      nvk_descriptor_state_set_root_array(cmd, &cmd->state.gfx.descriptors,
+                                          draw.sample_locations,
+                                          0, NVK_MAX_SAMPLES, push_sl);
 
       if (nvk_cmd_buffer_3d_cls(cmd) >= MAXWELL_B) {
          struct nvk_sample_location loc[16];

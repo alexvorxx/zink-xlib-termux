@@ -22,6 +22,7 @@
 struct nvk_buffer;
 struct nvk_cbuf;
 struct nvk_cmd_bo;
+struct nvk_cmd_buffer;
 struct nvk_cmd_pool;
 struct nvk_image_view;
 struct nvk_push_descriptor_set;
@@ -75,11 +76,45 @@ struct nvk_root_descriptor_table {
    offsetof(struct nvk_root_descriptor_table, member)
 
 struct nvk_descriptor_state {
-   struct nvk_root_descriptor_table root;
+   alignas(16) char root[sizeof(struct nvk_root_descriptor_table)];
    struct nvk_descriptor_set *sets[NVK_MAX_SETS];
    struct nvk_push_descriptor_set *push[NVK_MAX_SETS];
    uint32_t push_dirty;
 };
+
+#define nvk_descriptor_state_get_root(desc, member, dst) do { \
+   const struct nvk_root_descriptor_table *root = \
+      (const struct nvk_root_descriptor_table *)(desc)->root; \
+   *dst = root->member; \
+} while (0)
+
+#define nvk_descriptor_state_get_root_array(desc, member, \
+                                            start, count, dst) do { \
+   const struct nvk_root_descriptor_table *root = \
+      (const struct nvk_root_descriptor_table *)(desc)->root; \
+   unsigned _start = start; \
+   assert(_start + count <= ARRAY_SIZE(root->member)); \
+   for (unsigned i = 0; i < count; i++) \
+      (dst)[i] = root->member[i + _start]; \
+} while (0)
+
+#define nvk_descriptor_state_set_root(cmd, desc, member, src) do { \
+   struct nvk_descriptor_state *_desc = (desc); \
+   struct nvk_root_descriptor_table *root = \
+      (struct nvk_root_descriptor_table *)_desc->root; \
+   root->member = (src); \
+} while (0)
+
+#define nvk_descriptor_state_set_root_array(cmd, desc, member, \
+                                            start, count, src) do { \
+   struct nvk_descriptor_state *_desc = (desc); \
+   struct nvk_root_descriptor_table *root = \
+      (struct nvk_root_descriptor_table *)_desc->root; \
+   unsigned _start = start; \
+   assert(_start + count <= ARRAY_SIZE(root->member)); \
+   for (unsigned i = 0; i < count; i++) \
+      root->member[i + _start] = (src)[i]; \
+} while (0)
 
 struct nvk_attachment {
    VkFormat vk_format;

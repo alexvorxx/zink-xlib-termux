@@ -116,12 +116,10 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
 
    nvk_cmd_buffer_flush_push_descriptors(cmd, desc);
 
-   desc->root.cs.base_group[0] = base_workgroup[0];
-   desc->root.cs.base_group[1] = base_workgroup[1];
-   desc->root.cs.base_group[2] = base_workgroup[2];
-   desc->root.cs.group_count[0] = global_size[0];
-   desc->root.cs.group_count[1] = global_size[1];
-   desc->root.cs.group_count[2] = global_size[2];
+   nvk_descriptor_state_set_root_array(cmd, desc, cs.base_group,
+                                       0, 3, base_workgroup);
+   nvk_descriptor_state_set_root_array(cmd, desc, cs.group_count,
+                                       0, 3, global_size);
 
    /* pre Pascal the constant buffer sizes need to be 0x100 aligned. As we
     * simply allocated a buffer and upload data to it, make sure its size is

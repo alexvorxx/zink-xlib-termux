@@ -456,7 +456,7 @@ radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, Vk
    } else
       *blendable = true;
 
-   return color_format != V_028C70_COLOR_INVALID && color_swap != ~0U && color_num_format != ~0;
+   return color_format != V_028C70_COLOR_INVALID && color_swap != ~0U;
 }
 
 static bool

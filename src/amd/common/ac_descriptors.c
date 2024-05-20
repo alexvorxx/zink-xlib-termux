@@ -301,3 +301,12 @@ ac_build_fmask_descriptor(const enum amd_gfx_level gfx_level, const struct ac_fm
       ac_build_gfx6_fmask_descriptor(gfx_level, state, desc);
    }
 }
+
+uint32_t
+ac_tile_mode_index(const struct radeon_surf *surf, unsigned level, bool stencil)
+{
+   if (stencil)
+      return surf->u.legacy.zs.stencil_tiling_index[level];
+   else
+      return surf->u.legacy.tiling_index[level];
+}

@@ -9,6 +9,7 @@
 #define AC_DESCRIPTORS_H
 
 #include "ac_gpu_info.h"
+#include "ac_surface.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,6 +60,11 @@ void
 ac_build_fmask_descriptor(const enum amd_gfx_level gfx_level,
                           const struct ac_fmask_state *state,
                           uint32_t desc[8]);
+
+uint32_t
+ac_tile_mode_index(const struct radeon_surf *surf,
+                   unsigned level,
+                   bool stencil);
 
 #ifdef __cplusplus
 }

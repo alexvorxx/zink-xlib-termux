@@ -222,7 +222,7 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
    } else {
       /* GFX6-GFX8 */
       unsigned pitch = base_level_info->nblk_x * block_width;
-      unsigned index = radv_tile_mode_index(plane, base_level, is_stencil);
+      unsigned index = ac_tile_mode_index(&plane->surface, base_level, is_stencil);
 
       state[3] &= C_008F1C_TILING_INDEX;
       state[3] |= S_008F1C_TILING_INDEX(index);

@@ -1633,15 +1633,6 @@ radv_image_is_renderable(const struct radv_device *device, const struct radv_ima
    return true;
 }
 
-unsigned
-radv_tile_mode_index(const struct radv_image_plane *plane, unsigned level, bool stencil)
-{
-   if (stencil)
-      return plane->surface.u.legacy.zs.stencil_tiling_index[level];
-   else
-      return plane->surface.u.legacy.tiling_index[level];
-}
-
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                  VkImage *pImage)

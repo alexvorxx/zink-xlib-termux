@@ -44,6 +44,8 @@
 #include "util/u_memory.h"
 #include "util/u_upload_mgr.h"
 
+#include "ac_descriptors.h"
+
 /* NULL image and buffer descriptor for textures (alpha = 1) and images
  * (alpha = 0).
  *
@@ -436,7 +438,7 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
    } else {
       /* GFX6-GFX8 */
       unsigned pitch = base_level_info->nblk_x * block_width;
-      unsigned index = si_tile_mode_index(tex, base_level, is_stencil);
+      unsigned index = ac_tile_mode_index(&tex->surface, base_level, is_stencil);
 
       /* Only macrotiled modes can set tile swizzle. */
       if (base_level_info->mode == RADEON_SURF_MODE_2D)

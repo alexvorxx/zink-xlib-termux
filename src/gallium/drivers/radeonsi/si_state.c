@@ -2925,9 +2925,9 @@ static void si_init_depth_surface(struct si_context *sctx, struct si_surface *su
          surf->db_z_info |= S_028040_TILE_SPLIT(G_009910_TILE_SPLIT(tile_mode));
          surf->db_stencil_info |= S_028044_TILE_SPLIT(G_009910_TILE_SPLIT(stencil_tile_mode));
       } else {
-         unsigned tile_mode_index = si_tile_mode_index(tex, level, false);
+         unsigned tile_mode_index = ac_tile_mode_index(&tex->surface, level, false);
          surf->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
-         tile_mode_index = si_tile_mode_index(tex, level, true);
+         tile_mode_index = ac_tile_mode_index(&tex->surface, level, true);
          surf->db_stencil_info |= S_028044_TILE_MODE_INDEX(tile_mode_index);
       }
 
@@ -3628,7 +3628,7 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
 
          pitch_tile_max = level_info->nblk_x / 8 - 1;
          slice_tile_max = level_info->nblk_x * level_info->nblk_y / 64 - 1;
-         tile_mode_index = si_tile_mode_index(tex, cb->base.u.tex.level, false);
+         tile_mode_index = ac_tile_mode_index(&tex->surface, cb->base.u.tex.level, false);
 
          cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
          cb_color_pitch = S_028C64_TILE_MAX(pitch_tile_max);

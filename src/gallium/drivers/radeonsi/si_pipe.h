@@ -1840,14 +1840,6 @@ static inline bool vi_dcc_enabled(struct si_texture *tex, unsigned level)
    return !tex->is_depth && tex->surface.meta_offset && level < tex->surface.num_meta_levels;
 }
 
-static inline unsigned si_tile_mode_index(struct si_texture *tex, unsigned level, bool stencil)
-{
-   if (stencil)
-      return tex->surface.u.legacy.zs.stencil_tiling_index[level];
-   else
-      return tex->surface.u.legacy.tiling_index[level];
-}
-
 static inline unsigned si_get_minimum_num_gfx_cs_dwords(struct si_context *sctx,
                                                         unsigned num_draws)
 {

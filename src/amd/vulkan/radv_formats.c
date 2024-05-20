@@ -461,10 +461,7 @@ bool
 radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, VkFormat format)
 {
    const struct util_format_description *desc = vk_format_description(format);
-   uint32_t color_format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
-   uint32_t color_swap = ac_translate_colorswap(pdev->info.gfx_level, desc->format, false);
-
-   return color_format != V_028C70_COLOR_INVALID && color_swap != ~0U;
+   return ac_is_colorbuffer_format_supported(pdev->info.gfx_level, desc->format);
 }
 
 static bool

@@ -375,6 +375,13 @@ ac_translate_colorswap(enum amd_gfx_level gfx_level, enum pipe_format format, bo
    return ~0U;
 }
 
+bool
+ac_is_colorbuffer_format_supported(enum amd_gfx_level gfx_level, enum pipe_format format)
+{
+   return ac_get_cb_format(gfx_level, format) != V_028C70_COLOR_INVALID &&
+          ac_translate_colorswap(gfx_level, format, false) != ~0U;
+}
+
 uint32_t
 ac_colorformat_endian_swap(uint32_t colorformat)
 {

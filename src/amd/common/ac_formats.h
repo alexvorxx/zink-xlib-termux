@@ -39,6 +39,10 @@ ac_translate_colorswap(enum amd_gfx_level gfx_level,
                        enum pipe_format format,
                        bool do_endian_swap);
 
+bool
+ac_is_colorbuffer_format_supported(enum amd_gfx_level gfx_level,
+                                   enum pipe_format format);
+
 uint32_t
 ac_colorformat_endian_swap(uint32_t colorformat);
 

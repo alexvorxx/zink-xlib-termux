@@ -236,6 +236,7 @@ anv_image_choose_isl_surf_usage(struct anv_physical_device *device,
    if (vk_usage & VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR)
       isl_usage |= ISL_SURF_USAGE_CPB_BIT;
 
+   /* TODO: consider whether compression with sparse is workable. */
    if (vk_create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)
       isl_usage |= ISL_SURF_USAGE_SPARSE_BIT |
                    ISL_SURF_USAGE_DISABLE_AUX_BIT;
@@ -728,8 +729,7 @@ add_aux_surface_if_supported(struct anv_device *device,
                              const VkImageFormatListCreateInfo *fmt_list,
                              uint64_t offset,
                              uint32_t stride,
-                             uint64_t aux_state_offset,
-                             isl_surf_usage_flags_t isl_extra_usage_flags)
+                             uint64_t aux_state_offset)
 {
    VkImageAspectFlags aspect = plane_format.aspect;
    VkResult result;
@@ -738,11 +738,8 @@ add_aux_surface_if_supported(struct anv_device *device,
    /* The aux surface must not be already added. */
    assert(!anv_surface_is_valid(&image->planes[plane].aux_surface));
 
-   if ((isl_extra_usage_flags & ISL_SURF_USAGE_DISABLE_AUX_BIT))
-      return VK_SUCCESS;
-
-   /* TODO: consider whether compression with sparse is workable. */
-   if (anv_image_is_sparse(image))
+   if (image->planes[plane].primary_surface.isl.usage &
+       ISL_SURF_USAGE_DISABLE_AUX_BIT)
       return VK_SUCCESS;
 
    /* If resource created with sharing mode CONCURRENT when multiple queues
@@ -1332,8 +1329,7 @@ add_all_surfaces_implicit_layout(
       result = add_aux_surface_if_supported(device, image, plane, plane_format,
                                             format_list_info,
                                             ANV_OFFSET_IMPLICIT, plane_stride,
-                                            ANV_OFFSET_IMPLICIT,
-                                            isl_extra_usage_flags);
+                                            ANV_OFFSET_IMPLICIT);
       if (result != VK_SUCCESS)
          return result;
    }
@@ -1456,8 +1452,7 @@ add_all_surfaces_explicit_layout(
                                                format_list_info,
                                                aux_layout->offset,
                                                aux_layout->rowPitch,
-                                               aux_state_offset,
-                                               isl_extra_usage_flags);
+                                               aux_state_offset);
          if (result != VK_SUCCESS)
             return result;
 

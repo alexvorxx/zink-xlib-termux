@@ -188,6 +188,10 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
 
          state[6] |= S_00A018_COMPRESSION_EN(1) | S_00A018_META_PIPE_ALIGNED(meta.pipe_aligned) |
                      S_00A018_META_DATA_ADDRESS_LO(meta_va >> 8);
+
+         if (radv_image_get_iterate256(device, image))
+            state[6] |= S_00A018_ITERATE_256(1);
+
          state[7] = meta_va >> 16;
       }
    } else if (gfx_level == GFX9) {
@@ -351,10 +355,6 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
          S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(V_028C78_MAX_BLOCK_SIZE_256B) |
          S_00A018_MAX_COMPRESSED_BLOCK_SIZE(image->planes[0].surface.u.gfx9.color.dcc.max_compressed_block_size) |
          S_00A018_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(device, vk_format));
-   }
-
-   if (radv_image_get_iterate256(device, image)) {
-      state[6] |= S_00A018_ITERATE_256(1);
    }
 
    /* Initialize the sampler view for FMASK. */

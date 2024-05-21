@@ -541,7 +541,19 @@ st_link_glsl_to_nir(struct gl_context *ctx,
             _mesa_log("\n\n");
          }
 
-         prog->nir = glsl_to_nir(&st->ctx->Const, shader_program, shader->Stage, options);
+         prog->nir = glsl_to_nir(&st->ctx->Const, &shader->ir,
+                                 &shader->Program->info, shader->Stage, options);
+
+         prog->nir->info.name =
+            ralloc_asprintf(shader, "GLSL%d", shader_program->Name);
+         if (shader_program->Label)
+            prog->nir->info.label = ralloc_strdup(shader, shader_program->Label);
+
+         if (prog->nir->info.stage == MESA_SHADER_FRAGMENT) {
+            prog->nir->info.fs.pixel_center_integer = prog->info.fs.pixel_center_integer;
+            prog->nir->info.fs.origin_upper_left = prog->info.fs.origin_upper_left;
+            prog->nir->info.fs.advanced_blend_modes = prog->info.fs.advanced_blend_modes;
+         }
       }
 
       memcpy(prog->nir->info.source_blake3, shader->linked_source_blake3,

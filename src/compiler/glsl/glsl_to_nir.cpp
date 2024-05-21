@@ -150,25 +150,21 @@ private:
 
 nir_shader *
 glsl_to_nir(const struct gl_constants *consts,
-            const struct gl_shader_program *shader_prog,
-            gl_shader_stage stage,
+            struct exec_list **ir, shader_info *si, gl_shader_stage stage,
             const nir_shader_compiler_options *options)
 {
-   struct gl_linked_shader *sh = shader_prog->_LinkedShaders[stage];
-
    MESA_TRACE_FUNC();
 
-   nir_shader *shader = nir_shader_create(NULL, stage, options,
-                                          &sh->Program->info);
+   nir_shader *shader = nir_shader_create(NULL, stage, options, si);
 
    nir_visitor v1(consts, shader);
    nir_function_visitor v2(&v1);
-   v2.run(sh->ir);
-   visit_exec_list(sh->ir, &v1);
+   v2.run(*ir);
+   visit_exec_list(*ir, &v1);
 
    /* The GLSL IR won't be needed anymore. */
-   ralloc_free(sh->ir);
-   sh->ir = NULL;
+   ralloc_free(*ir);
+   *ir = NULL;
 
    nir_validate_shader(shader, "after glsl to nir, before function inline");
    if (should_print_nir(shader)) {
@@ -176,17 +172,7 @@ glsl_to_nir(const struct gl_constants *consts,
       nir_print_shader(shader, stdout);
    }
 
-   shader->info.name = ralloc_asprintf(shader, "GLSL%d", shader_prog->Name);
-   if (shader_prog->Label)
-      shader->info.label = ralloc_strdup(shader, shader_prog->Label);
-
    shader->info.subgroup_size = SUBGROUP_SIZE_UNIFORM;
-
-   if (shader->info.stage == MESA_SHADER_FRAGMENT) {
-      shader->info.fs.pixel_center_integer = sh->Program->info.fs.pixel_center_integer;
-      shader->info.fs.origin_upper_left = sh->Program->info.fs.origin_upper_left;
-      shader->info.fs.advanced_blend_modes = sh->Program->info.fs.advanced_blend_modes;
-   }
 
    return shader;
 }

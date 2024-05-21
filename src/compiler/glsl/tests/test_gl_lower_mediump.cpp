@@ -200,7 +200,9 @@ namespace
           .support_16bit_alu = true,
       };
 
-      nir = glsl_to_nir(&ctx->Const, whole_program, MESA_SHADER_FRAGMENT, &compiler_options);
+      struct gl_linked_shader *sh = whole_program->_LinkedShaders[MESA_SHADER_FRAGMENT];
+      nir = glsl_to_nir(&ctx->Const, &sh->ir, &sh->Program->info,
+                        MESA_SHADER_FRAGMENT, &compiler_options);
 
       gl_nir_inline_functions(nir);
 

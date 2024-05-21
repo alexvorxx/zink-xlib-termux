@@ -252,15 +252,15 @@ struct v3d_program_stateobj {
 
 struct v3d_constbuf_stateobj {
         struct pipe_constant_buffer cb[PIPE_MAX_CONSTANT_BUFFERS];
-        uint32_t enabled_mask;
-        uint32_t dirty_mask;
+        BITSET_DECLARE(enabled_mask, PIPE_MAX_CONSTANT_BUFFERS);
+        BITSET_DECLARE(dirty_mask, PIPE_MAX_CONSTANT_BUFFERS);
 };
 
 struct v3d_vertexbuf_stateobj {
         struct pipe_vertex_buffer vb[PIPE_MAX_ATTRIBS];
         unsigned count;
-        uint32_t enabled_mask;
-        uint32_t dirty_mask;
+        BITSET_DECLARE(enabled_mask, PIPE_MAX_ATTRIBS);
+        BITSET_DECLARE(dirty_mask, PIPE_MAX_ATTRIBS);
 };
 
 struct v3d_vertex_stateobj {
@@ -288,7 +288,7 @@ struct v3d_streamout_stateobj {
 
 struct v3d_ssbo_stateobj {
         struct pipe_shader_buffer sb[PIPE_MAX_SHADER_BUFFERS];
-        uint32_t enabled_mask;
+        BITSET_DECLARE(enabled_mask, PIPE_MAX_SHADER_BUFFERS);
 };
 
 /* Hash table key for v3d->jobs */
@@ -314,7 +314,7 @@ struct v3d_image_view {
 
 struct v3d_shaderimg_stateobj {
         struct v3d_image_view si[PIPE_MAX_SHADER_IMAGES];
-        uint32_t enabled_mask;
+        BITSET_DECLARE(enabled_mask, PIPE_MAX_SHADER_IMAGES);
 };
 
 struct v3d_perfmon_state {

@@ -162,6 +162,8 @@ static void si_create_compute_state_async(void *job, void *gdata, int thread_ind
    if (si_shader_cache_load_shader(sscreen, ir_sha1_cache_key, shader)) {
       simple_mtx_unlock(&sscreen->shader_cache_mutex);
 
+      shader->complete_shader_binary_size = si_get_shader_binary_size(sscreen, shader);
+
       if (!si_shader_binary_upload(sscreen, shader, 0))
          program->shader.compilation_failed = true;
 

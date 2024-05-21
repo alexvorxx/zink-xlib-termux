@@ -840,7 +840,10 @@ static unsigned get_shader_binaries(struct si_shader *shader, struct si_shader_b
    return num_bin;
 }
 
-static unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_shader *shader)
+/* si_get_shader_binary_size should only be called once per shader
+ * and the result should be stored in shader->complete_shader_binary_size.
+ */
+unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_shader *shader)
 {
    if (shader->binary.type == SI_SHADER_BINARY_ELF) {
       struct ac_rtld_binary rtld;
@@ -867,7 +870,7 @@ unsigned si_get_shader_prefetch_size(struct si_shader *shader)
    /* This excludes arrays of constants after instructions. */
    unsigned exec_size =
       ac_align_shader_binary_for_prefetch(&sscreen->info,
-                                          si_get_shader_binary_size(sscreen, shader));
+                                          shader->complete_shader_binary_size);
 
    /* INST_PREF_SIZE uses 128B granularity.
     * - GFX11: max 128 * 63 = 8064
@@ -3531,6 +3534,9 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
 
    /* Upload. */
    bool ok = si_shader_binary_upload(sscreen, shader, 0) >= 0;
+
+   shader->complete_shader_binary_size = si_get_shader_binary_size(sscreen, shader);
+
    si_shader_dump(sscreen, shader, debug, stderr, true);
 
    if (!ok)

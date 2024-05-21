@@ -500,6 +500,7 @@ ac_build_gfx12_texture_descriptor(const struct radeon_info *info, const struct a
    const uint32_t field_last_level = state->num_samples > 1 ? util_logbase2(state->num_samples) : state->last_level;
    const bool no_edge_clamp = state->num_levels > 1 && util_format_is_compressed(state->img_format) &&
                               !util_format_is_compressed(state->format);
+   const uint32_t min_lod_clamped = util_unsigned_fixed(CLAMP(state->min_lod, 0, 15), 8);
 
    desc[0] = 0;
    desc[1] = S_00A004_MAX_MIP_GFX12(max_mip) |
@@ -523,9 +524,11 @@ ac_build_gfx12_texture_descriptor(const struct radeon_info *info, const struct a
    desc[4] = S_00A010_DEPTH_GFX12(state->depth) |
              S_00A010_BASE_ARRAY(state->first_layer);
    desc[5] = S_00A014_UAV3D(state->gfx10.uav3d) |
-             S_00A014_PERF_MOD(4);
+             S_00A014_PERF_MOD(4) |
+             S_00A014_MIN_LOD_LO_GFX12(min_lod_clamped);
    desc[6] = S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(1 /*256B*/) |
-             S_00A018_MAX_COMPRESSED_BLOCK_SIZE(surf->u.gfx9.color.dcc.max_compressed_block_size);
+             S_00A018_MAX_COMPRESSED_BLOCK_SIZE(surf->u.gfx9.color.dcc.max_compressed_block_size) |
+             S_00A018_MIN_LOD_HI(min_lod_clamped >> 6);
    desc[7] = 0;
 }
 

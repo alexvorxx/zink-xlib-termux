@@ -1744,6 +1744,11 @@ struct anv_gfx_dynamic_state {
 
    bool pma_fix;
 
+   /**
+    * DEPTH and STENCIL attachment write state for Wa_18019816803.
+    */
+   bool ds_write_state;
+
    BITSET_DECLARE(dirty, ANV_GFX_STATE_MAX);
 };
 
@@ -3730,11 +3735,6 @@ struct anv_cmd_graphics_state {
    /* State tracking for Wa_14018912822. */
    bool color_blend_zero;
    bool alpha_blend_zero;
-
-   /**
-    * DEPTH and STENCIL attachment write state for Wa_18019816803.
-    */
-   bool ds_write_state;
 
    /**
     * State tracking for Wa_18020335297.

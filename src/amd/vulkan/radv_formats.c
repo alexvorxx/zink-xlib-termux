@@ -578,7 +578,7 @@ radv_physical_device_get_format_properties(struct radv_physical_device *pdev, Vk
       return;
    }
 
-   if ((desc->layout == UTIL_FORMAT_LAYOUT_ETC && !radv_device_supports_etc(pdev)) ||
+   if ((desc->layout == UTIL_FORMAT_LAYOUT_ETC && !pdev->info.has_etc_support) ||
        desc->layout == UTIL_FORMAT_LAYOUT_ASTC) {
       if (radv_is_format_emulated(pdev, format)) {
          /* required features for compressed formats */

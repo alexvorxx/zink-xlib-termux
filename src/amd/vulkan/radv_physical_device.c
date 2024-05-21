@@ -124,13 +124,6 @@ radv_is_conformant(const struct radv_physical_device *pdev)
    return pdev->info.gfx_level >= GFX8;
 }
 
-bool
-radv_device_supports_etc(const struct radv_physical_device *pdev)
-{
-   return pdev->info.family == CHIP_VEGA10 || pdev->info.family == CHIP_RAVEN || pdev->info.family == CHIP_RAVEN2 ||
-          pdev->info.family == CHIP_STONEY;
-}
-
 static void
 parse_hex(char *out, const char *in, unsigned length)
 {
@@ -748,7 +741,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .alphaToOne = true,
       .multiViewport = true,
       .samplerAnisotropy = true,
-      .textureCompressionETC2 = radv_device_supports_etc(pdev) || pdev->emulate_etc2,
+      .textureCompressionETC2 = pdev->info.has_etc_support || pdev->emulate_etc2,
       .textureCompressionASTC_LDR = pdev->emulate_astc,
       .textureCompressionBC = true,
       .occlusionQueryPrecise = true,
@@ -2038,10 +2031,10 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 #endif
 
 #if DETECT_OS_ANDROID
-   pdev->emulate_etc2 = !radv_device_supports_etc(pdev);
+   pdev->emulate_etc2 = !pdev->info.has_etc_support;
    pdev->emulate_astc = true;
 #else
-   pdev->emulate_etc2 = !radv_device_supports_etc(pdev) && instance->drirc.vk_require_etc2;
+   pdev->emulate_etc2 = !pdev->info.has_etc_support && instance->drirc.vk_require_etc2;
    pdev->emulate_astc = instance->drirc.vk_require_astc;
 #endif
 

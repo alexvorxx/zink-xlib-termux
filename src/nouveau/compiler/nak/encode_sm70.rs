@@ -235,30 +235,22 @@ impl SM70Instr {
         self.set_pred_src_file(range, not_bit, src, RegFile::UPred);
     }
 
-    fn set_src_cb(&mut self, range: Range<usize>, cb: &CBufRef) {
+    fn set_src_cb(&mut self, range: Range<usize>, cx_bit: usize, cb: &CBufRef) {
         let mut v = BitMutView::new_subset(self, range);
-        v.set_field(0..16, cb.offset);
-        if let CBuf::Binding(idx) = cb.buf {
-            v.set_field(16..21, idx);
-        } else {
-            panic!("Must be a bound constant buffer");
+        v.set_field(6..22, cb.offset);
+        match cb.buf {
+            CBuf::Binding(idx) => {
+                v.set_field(22..27, idx);
+                self.set_bit(cx_bit, false);
+            }
+            CBuf::BindlessUGPR(reg) => {
+                assert!(reg.base_idx() <= 63);
+                assert!(reg.file() == RegFile::UGPR);
+                v.set_field(0..6, reg.base_idx());
+                self.set_bit(cx_bit, true);
+            }
+            CBuf::BindlessSSA(_) => panic!("SSA values must be lowered"),
         }
-    }
-
-    #[allow(dead_code)]
-    fn set_src_cx(&mut self, range: Range<usize>, cb: &CBufRef) {
-        assert!(self.sm >= 75);
-
-        let mut v = BitMutView::new_subset(self, range);
-        if let CBuf::BindlessUGPR(reg) = cb.buf {
-            assert!(reg.base_idx() <= 63);
-            assert!(reg.file() == RegFile::UGPR);
-            v.set_field(0..8, reg.base_idx());
-        } else {
-            panic!("Must be a bound constant buffer");
-        }
-        assert!(cb.offset % 4 == 0);
-        v.set_field(8..22, cb.offset / 4);
     }
 
     fn set_opcode(&mut self, opcode: u16) {
@@ -424,7 +416,7 @@ impl SM70Instr {
     }
 
     fn encode_alu_cb(&mut self, cb: &ALUCBufRef, is_fp16_alu: bool) {
-        self.set_src_cb(38..59, &cb.cb);
+        self.set_src_cb(32..59, 91, &cb.cb);
         self.set_bit(62, cb.abs);
         self.set_bit(63, cb.neg);
 
@@ -1936,35 +1928,55 @@ impl SM70Instr {
         let SrcRef::CBuf(cb) = &op.cb.src_ref else {
             panic!("LDC must take a cbuf source");
         };
-        let CBuf::Binding(idx) = cb.buf else {
-            todo!("Implement bindless LDC");
-        };
 
-        if op.is_uniform() {
-            self.set_opcode(0xab9);
-            self.set_udst(op.dst);
+        match cb.buf {
+            CBuf::Binding(idx) => {
+                if op.is_uniform() {
+                    self.set_opcode(0xab9);
+                    self.set_udst(op.dst);
 
-            assert!(op.offset.is_zero());
-            assert!(op.mode == LdcMode::Indexed);
-        } else {
-            self.set_opcode(0xb82);
-            self.set_dst(op.dst);
+                    assert!(op.offset.is_zero());
+                    assert!(op.mode == LdcMode::Indexed);
+                } else {
+                    self.set_opcode(0xb82);
+                    self.set_dst(op.dst);
 
-            self.set_reg_src(24..32, op.offset);
-            self.set_field(
-                78..80,
-                match op.mode {
-                    LdcMode::Indexed => 0_u8,
-                    LdcMode::IndexedLinear => 1_u8,
-                    LdcMode::IndexedSegmented => 2_u8,
-                    LdcMode::IndexedSegmentedLinear => 3_u8,
-                },
-            );
+                    self.set_reg_src(24..32, op.offset);
+                    self.set_field(
+                        78..80,
+                        match op.mode {
+                            LdcMode::Indexed => 0_u8,
+                            LdcMode::IndexedLinear => 1_u8,
+                            LdcMode::IndexedSegmented => 2_u8,
+                            LdcMode::IndexedSegmentedLinear => 3_u8,
+                        },
+                    );
+                }
+                self.set_field(54..59, idx);
+                self.set_bit(91, false); // Bound
+            }
+            CBuf::BindlessUGPR(handle) => {
+                if op.is_uniform() {
+                    self.set_opcode(0xab9);
+                    self.set_udst(op.dst);
+
+                    assert!(op.offset.is_zero());
+                } else {
+                    self.set_opcode(0x582);
+                    self.set_dst(op.dst);
+
+                    self.set_reg_src(64..72, op.offset);
+                }
+
+                self.set_ureg(24..32, handle);
+                self.set_reg_src(64..72, op.offset);
+                assert!(op.mode == LdcMode::Indexed);
+                self.set_bit(91, true); // Bindless
+            }
+            CBuf::BindlessSSA(_) => panic!("SSA values must be lowered"),
         }
 
         self.set_field(38..54, cb.offset);
-        self.set_field(54..59, idx);
-
         self.set_mem_type(73..76, op.mem_type);
     }
 

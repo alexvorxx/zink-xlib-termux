@@ -451,3 +451,39 @@ ac_is_zs_format_supported(enum pipe_format format)
 {
    return ac_translate_dbformat(format) != V_028040_Z_INVALID;
 }
+
+uint32_t
+ac_border_color_swizzle(const struct util_format_description *desc)
+{
+   unsigned bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
+
+   if (desc->format == PIPE_FORMAT_S8_UINT) {
+      /* Swizzle of 8-bit stencil format is defined as _x__ but the hw expects XYZW. */
+      assert(desc->swizzle[1] == PIPE_SWIZZLE_X);
+      return bc_swizzle;
+   }
+
+   if (desc->swizzle[3] == PIPE_SWIZZLE_X) {
+      /* For the pre-defined border color values (white, opaque
+       * black, transparent black), the only thing that matters is
+       * that the alpha channel winds up in the correct place
+       * (because the RGB channels are all the same) so either of
+       * these enumerations will work.
+       */
+      if (desc->swizzle[2] == PIPE_SWIZZLE_Y)
+         bc_swizzle = V_008F20_BC_SWIZZLE_WZYX;
+      else
+         bc_swizzle = V_008F20_BC_SWIZZLE_WXYZ;
+   } else if (desc->swizzle[0] == PIPE_SWIZZLE_X) {
+      if (desc->swizzle[1] == PIPE_SWIZZLE_Y)
+         bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
+      else
+         bc_swizzle = V_008F20_BC_SWIZZLE_XWYZ;
+   } else if (desc->swizzle[1] == PIPE_SWIZZLE_X) {
+      bc_swizzle = V_008F20_BC_SWIZZLE_YXWZ;
+   } else if (desc->swizzle[2] == PIPE_SWIZZLE_X) {
+      bc_swizzle = V_008F20_BC_SWIZZLE_ZYXW;
+   }
+
+   return bc_swizzle;
+}

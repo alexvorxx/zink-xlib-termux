@@ -52,6 +52,9 @@ ac_translate_dbformat(enum pipe_format format);
 bool
 ac_is_zs_format_supported(enum pipe_format format);
 
+uint32_t
+ac_border_color_swizzle(const struct util_format_description *desc);
+
 #ifdef __cplusplus
 }
 #endif

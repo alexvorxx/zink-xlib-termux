@@ -4487,35 +4487,6 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
    }
 }
 
-static unsigned gfx9_border_color_swizzle(const unsigned char swizzle[4])
-{
-   unsigned bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
-
-   if (swizzle[3] == PIPE_SWIZZLE_X) {
-      /* For the pre-defined border color values (white, opaque
-       * black, transparent black), the only thing that matters is
-       * that the alpha channel winds up in the correct place
-       * (because the RGB channels are all the same) so either of
-       * these enumerations will work.
-       */
-      if (swizzle[2] == PIPE_SWIZZLE_Y)
-         bc_swizzle = V_008F20_BC_SWIZZLE_WZYX;
-      else
-         bc_swizzle = V_008F20_BC_SWIZZLE_WXYZ;
-   } else if (swizzle[0] == PIPE_SWIZZLE_X) {
-      if (swizzle[1] == PIPE_SWIZZLE_Y)
-         bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
-      else
-         bc_swizzle = V_008F20_BC_SWIZZLE_XWYZ;
-   } else if (swizzle[1] == PIPE_SWIZZLE_X) {
-      bc_swizzle = V_008F20_BC_SWIZZLE_YXWZ;
-   } else if (swizzle[2] == PIPE_SWIZZLE_X) {
-      bc_swizzle = V_008F20_BC_SWIZZLE_ZYXW;
-   }
-
-   return bc_swizzle;
-}
-
 /**
  * Translate the parameters to an image descriptor for CDNA image emulation.
  * In this function, we choose our own image descriptor format because we emulate image opcodes
@@ -4716,7 +4687,7 @@ static void gfx10_make_texture_descriptor(
                                         util_format_is_compressed(res->format) &&
                                         !util_format_is_compressed(pipe_format)) |
                  S_00A00C_LAST_LEVEL_GFX12(field_last_level) |
-                 S_00A00C_BC_SWIZZLE(gfx9_border_color_swizzle(desc->swizzle)) |
+                 S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) |
                  S_00A00C_TYPE(type);
       /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
        * to know the total number of layers.
@@ -4741,7 +4712,7 @@ static void gfx10_make_texture_descriptor(
          S_00A00C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
          S_00A00C_BASE_LEVEL(res->nr_samples > 1 ? 0 : first_level) |
          S_00A00C_LAST_LEVEL_GFX10(res->nr_samples > 1 ? util_logbase2(res->nr_samples) : last_level) |
-         S_00A00C_BC_SWIZZLE(gfx9_border_color_swizzle(desc->swizzle)) | S_00A00C_TYPE(type);
+         S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
       /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
        * to know the total number of layers.
        */
@@ -4899,7 +4870,7 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    state[7] = 0;
 
    if (screen->info.gfx_level == GFX9) {
-      unsigned bc_swizzle = gfx9_border_color_swizzle(desc->swizzle);
+      unsigned bc_swizzle = ac_border_color_swizzle(desc);
 
       /* Depth is the the last accessible layer on Gfx9.
        * The hw doesn't need to know the total number of layers.

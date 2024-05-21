@@ -17,43 +17,8 @@
 #include "radv_image.h"
 
 #include "ac_descriptors.h"
+#include "ac_formats.h"
 #include "gfx10_format_table.h"
-
-static unsigned
-gfx9_border_color_swizzle(const struct util_format_description *desc)
-{
-   unsigned bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
-
-   if (desc->format == PIPE_FORMAT_S8_UINT) {
-      /* Swizzle of 8-bit stencil format is defined as _x__ but the hw expects XYZW. */
-      assert(desc->swizzle[1] == PIPE_SWIZZLE_X);
-      return bc_swizzle;
-   }
-
-   if (desc->swizzle[3] == PIPE_SWIZZLE_X) {
-      /* For the pre-defined border color values (white, opaque
-       * black, transparent black), the only thing that matters is
-       * that the alpha channel winds up in the correct place
-       * (because the RGB channels are all the same) so either of
-       * these enumerations will work.
-       */
-      if (desc->swizzle[2] == PIPE_SWIZZLE_Y)
-         bc_swizzle = V_008F20_BC_SWIZZLE_WZYX;
-      else
-         bc_swizzle = V_008F20_BC_SWIZZLE_WXYZ;
-   } else if (desc->swizzle[0] == PIPE_SWIZZLE_X) {
-      if (desc->swizzle[1] == PIPE_SWIZZLE_Y)
-         bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
-      else
-         bc_swizzle = V_008F20_BC_SWIZZLE_XWYZ;
-   } else if (desc->swizzle[1] == PIPE_SWIZZLE_X) {
-      bc_swizzle = V_008F20_BC_SWIZZLE_YXWZ;
-   } else if (desc->swizzle[2] == PIPE_SWIZZLE_X) {
-      bc_swizzle = V_008F20_BC_SWIZZLE_ZYXW;
-   }
-
-   return bc_swizzle;
-}
 
 static unsigned
 radv_tex_dim(VkImageType image_type, VkImageViewType view_type, unsigned nr_layers, unsigned nr_samples,
@@ -200,7 +165,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
               S_00A00C_DST_SEL_Z(radv_map_swizzle(swizzle[2])) | S_00A00C_DST_SEL_W(radv_map_swizzle(swizzle[3])) |
               S_00A00C_BASE_LEVEL(image->vk.samples > 1 ? 0 : first_level) |
               S_00A00C_LAST_LEVEL_GFX10(image->vk.samples > 1 ? util_logbase2(image->vk.samples) : last_level) |
-              S_00A00C_BC_SWIZZLE(gfx9_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
+              S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
    /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
     * to know the total number of layers.
     */
@@ -343,7 +308,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    state[7] = 0;
 
    if (pdev->info.gfx_level == GFX9) {
-      unsigned bc_swizzle = gfx9_border_color_swizzle(desc);
+      unsigned bc_swizzle = ac_border_color_swizzle(desc);
 
       /* Depth is the last accessible layer on Gfx9.
        * The hw doesn't need to know the total number of layers.

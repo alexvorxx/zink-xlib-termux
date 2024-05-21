@@ -130,6 +130,87 @@ brw_fs_lower_load_payload(fs_visitor &s)
    return progress;
 }
 
+/**
+ * Lower CSEL with unsupported types to CMP+SEL.
+ *
+ * Or, for unsigned ==/!= comparisons, simply change the types.
+ */
+bool
+brw_fs_lower_csel(fs_visitor &s)
+{
+   const intel_device_info *devinfo = s.devinfo;
+   bool progress = false;
+
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      if (inst->opcode != BRW_OPCODE_CSEL)
+         continue;
+
+      bool supported = false;
+      enum brw_reg_type orig_type = inst->src[2].type;
+      enum brw_reg_type new_type = orig_type;
+
+      switch (orig_type) {
+      case BRW_TYPE_F:
+         /* Gfx9 CSEL can only do F */
+         supported = true;
+         break;
+      case BRW_TYPE_HF:
+      case BRW_TYPE_W:
+      case BRW_TYPE_D:
+         /* Gfx11+ CSEL can do HF, W, and D.  Note that we can't simply
+          * retype integer ==/!= comparisons as float on earlier hardware
+          * because it breaks for 0x8000000 and 0 (-0.0 == 0.0).
+          */
+         supported = devinfo->ver >= 11;
+         break;
+      case BRW_TYPE_UW:
+      case BRW_TYPE_UD:
+         /* CSEL doesn't support UW/UD but we can simply retype to use the
+          * signed types when comparing with == or !=.
+          */
+         supported = devinfo->ver >= 11 &&
+                     (inst->conditional_mod == BRW_CONDITIONAL_EQ ||
+                      inst->conditional_mod == BRW_CONDITIONAL_NEQ);
+
+         /* Bspec 47408, Gfx125+ CSEL does support the both signed and unsigned
+          * integer types.
+          */
+         if (devinfo->verx10 < 125) {
+            new_type = inst->src[2].type == BRW_TYPE_UD ?
+                       BRW_TYPE_D : BRW_TYPE_W;
+         }
+         break;
+      default:
+         break;
+      }
+
+      if (!supported) {
+         const fs_builder ibld(&s, block, inst);
+
+         /* CSEL: dst = src2 <op> 0 ? src0 : src1 */
+         fs_reg zero = brw_imm_reg(orig_type);
+         ibld.CMP(retype(brw_null_reg(), orig_type),
+                  inst->src[2], zero, inst->conditional_mod);
+
+         inst->opcode = BRW_OPCODE_SEL;
+         inst->predicate = BRW_PREDICATE_NORMAL;
+         inst->conditional_mod = BRW_CONDITIONAL_NONE;
+         inst->resize_sources(2);
+         progress = true;
+      } else if (new_type != orig_type) {
+         inst->src[0].type = new_type;
+         inst->src[1].type = new_type;
+         inst->src[2].type = new_type;
+         progress = true;
+      }
+   }
+
+   if (progress)
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+
+   return progress;
+}
+
 bool
 brw_fs_lower_sub_sat(fs_visitor &s)
 {

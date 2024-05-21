@@ -2103,8 +2103,10 @@ instruction_restrictions(const struct brw_isa_info *isa,
          ERROR_IF(dst_type != BRW_TYPE_F &&
                   dst_type != BRW_TYPE_HF &&
                   dst_type != BRW_TYPE_D &&
-                  dst_type != BRW_TYPE_W,
-                  "CSEL destination type must be F, HF, D, or W");
+                  dst_type != BRW_TYPE_W &&
+                  dst_type != BRW_TYPE_UD &&
+                  dst_type != BRW_TYPE_UW,
+                  "CSEL destination type must be F, HF, *D, or *W");
       }
 
       for (unsigned s = 0; s < 3; s++) {

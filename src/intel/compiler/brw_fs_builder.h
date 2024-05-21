@@ -756,17 +756,11 @@ namespace brw {
       CSEL(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1,
            const fs_reg &src2, brw_conditional_mod condition) const
       {
-         /* CSEL only operates on floats, so we can't do integer </<=/>=/>
-          * comparisons.  Zero/non-zero (== and !=) comparisons almost work.
-          * 0x80000000 fails because it is -0.0, and -0.0 == 0.0.
-          */
-         assert(src2.type == BRW_TYPE_F);
-
          return set_condmod(condition,
                             emit(BRW_OPCODE_CSEL,
-                                 retype(dst, BRW_TYPE_F),
-                                 retype(src0, BRW_TYPE_F),
-                                 retype(src1, BRW_TYPE_F),
+                                 retype(dst, src2.type),
+                                 retype(src0, src2.type),
+                                 retype(src1, src2.type),
                                  src2));
       }
 

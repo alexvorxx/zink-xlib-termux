@@ -457,26 +457,10 @@ storage_image_format_supports_atomic(const struct intel_device_info *devinfo,
    return bpb == 16 || bpb == 32 || bpb == 64;
 }
 
-static enum isl_format
-anv_get_isl_format_with_usage(const struct intel_device_info *devinfo,
-                              VkFormat vk_format,
-                              VkImageAspectFlagBits vk_aspect,
-                              VkImageUsageFlags vk_usage,
-                              VkImageTiling vk_tiling)
-{
-   assert(util_bitcount(vk_usage) == 1);
-   struct anv_format_plane format =
-      anv_get_format_aspect(devinfo, vk_format, vk_aspect,
-                            vk_tiling);
-
-   return format.isl_format;
-}
-
 static bool
 formats_ccs_e_compatible(const struct intel_device_info *devinfo,
                          VkImageCreateFlags create_flags,
                          enum isl_format format, VkImageTiling vk_tiling,
-                         VkImageUsageFlags vk_usage,
                          const VkImageFormatListCreateInfo *fmt_list)
 {
    if (!anv_format_supports_ccs_e(devinfo, format))
@@ -497,9 +481,8 @@ formats_ccs_e_compatible(const struct intel_device_info *devinfo,
          continue;
 
       enum isl_format view_format =
-         anv_get_isl_format_with_usage(devinfo, fmt_list->pViewFormats[i],
-                                       VK_IMAGE_ASPECT_COLOR_BIT, vk_usage,
-                                       vk_tiling);
+         anv_get_isl_format(devinfo, fmt_list->pViewFormats[i],
+                            VK_IMAGE_ASPECT_COLOR_BIT, vk_tiling);
 
       if (!isl_formats_are_ccs_e_compatible(devinfo, format, view_format))
          return false;
@@ -529,28 +512,15 @@ anv_formats_ccs_e_compatible(const struct intel_device_info *devinfo,
                              const VkImageFormatListCreateInfo *fmt_list)
 {
    enum isl_format format =
-      anv_get_isl_format_with_usage(devinfo, vk_format,
-                                    VK_IMAGE_ASPECT_COLOR_BIT,
-                                    VK_IMAGE_USAGE_SAMPLED_BIT, vk_tiling);
+      anv_get_isl_format(devinfo, vk_format, VK_IMAGE_ASPECT_COLOR_BIT,
+                         vk_tiling);
 
    if (!formats_ccs_e_compatible(devinfo, create_flags, format, vk_tiling,
-                                 VK_IMAGE_USAGE_SAMPLED_BIT, fmt_list))
+                                 fmt_list))
       return false;
 
    if (vk_usage & VK_IMAGE_USAGE_STORAGE_BIT) {
       if (devinfo->verx10 < 125)
-         return false;
-
-      enum isl_format lower_format =
-         anv_get_isl_format_with_usage(devinfo, vk_format,
-                                       VK_IMAGE_ASPECT_COLOR_BIT,
-                                       VK_IMAGE_USAGE_STORAGE_BIT, vk_tiling);
-
-      if (!isl_formats_are_ccs_e_compatible(devinfo, format, lower_format))
-         return false;
-
-      if (!formats_ccs_e_compatible(devinfo, create_flags, format, vk_tiling,
-                                    VK_IMAGE_USAGE_STORAGE_BIT, fmt_list))
          return false;
 
       /* Disable compression when surface can be potentially used for atomic

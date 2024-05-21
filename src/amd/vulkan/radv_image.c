@@ -772,11 +772,15 @@ vi_alpha_is_on_msb(const struct radv_device *device, const VkFormat format)
       return false;
 
    const struct util_format_description *desc = vk_format_description(format);
+   const uint32_t comp_swap = ac_translate_colorswap(pdev->info.gfx_level, desc->format, false);
 
-   if (pdev->info.gfx_level >= GFX10 && desc->nr_channels == 1)
-      return desc->swizzle[3] == PIPE_SWIZZLE_X;
+   /* The following code matches the hw behavior. */
+   if (desc->nr_channels == 1) {
+      return (comp_swap == V_028C70_SWAP_ALT_REV) !=
+             (pdev->info.family == CHIP_RAVEN2 || pdev->info.family == CHIP_RENOIR);
+   }
 
-   return ac_translate_colorswap(pdev->info.gfx_level, desc->format, false) <= 1;
+   return comp_swap != V_028C70_SWAP_STD_REV && comp_swap != V_028C70_SWAP_ALT_REV;
 }
 
 static void

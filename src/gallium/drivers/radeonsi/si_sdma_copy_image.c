@@ -168,7 +168,7 @@ static bool si_sdma_v4_v5_copy_texture(struct si_context *sctx, struct si_textur
          radeon_emit((uint32_t)md_address);
          radeon_emit((uint32_t)(md_address >> 32));
          radeon_emit(hw_fmt |
-                     vi_alpha_is_on_msb(sctx->screen, tiled->buffer.b.b.format) << 8 |
+                     ac_alpha_is_on_msb(&sctx->screen->info, tiled->buffer.b.b.format) << 8 |
                      hw_type << 9 |
                      tiled->surface.u.gfx9.color.dcc.max_compressed_block_size << 24 |
                      V_028C78_MAX_BLOCK_SIZE_256B << 26 |

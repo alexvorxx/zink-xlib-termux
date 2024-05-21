@@ -6,6 +6,7 @@
  */
 
 #include "ac_formats.h"
+#include "ac_gpu_info.h"
 
 #include "sid.h"
 
@@ -486,4 +487,32 @@ ac_border_color_swizzle(const struct util_format_description *desc)
    }
 
    return bc_swizzle;
+}
+
+/** Linearize and convert luminance/intensity to red. */
+enum pipe_format
+ac_simplify_cb_format(enum pipe_format format)
+{
+   format = util_format_linear(format);
+   format = util_format_luminance_to_red(format);
+   return util_format_intensity_to_red(format);
+}
+
+bool
+ac_alpha_is_on_msb(const struct radeon_info *info, enum pipe_format format)
+{
+   if (info->gfx_level >= GFX11)
+      return false;
+
+   format = ac_simplify_cb_format(format);
+   const struct util_format_description *desc = util_format_description(format);
+   unsigned comp_swap = ac_translate_colorswap(info->gfx_level, format, false);
+
+   /* The following code matches the hw behavior. */
+   if (desc->nr_channels == 1) {
+      return (comp_swap == V_028C70_SWAP_ALT_REV) != (info->family == CHIP_RAVEN2 ||
+                                                      info->family == CHIP_RENOIR);
+   }
+
+   return comp_swap != V_028C70_SWAP_STD_REV && comp_swap != V_028C70_SWAP_ALT_REV;
 }

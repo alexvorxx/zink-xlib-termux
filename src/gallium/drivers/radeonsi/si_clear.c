@@ -175,32 +175,6 @@ static bool si_set_clear_color(struct si_texture *tex, enum pipe_format surface_
    return true;
 }
 
-/** Linearize and convert luminance/intensity to red. */
-enum pipe_format si_simplify_cb_format(enum pipe_format format)
-{
-   format = util_format_linear(format);
-   format = util_format_luminance_to_red(format);
-   return util_format_intensity_to_red(format);
-}
-
-bool vi_alpha_is_on_msb(struct si_screen *sscreen, enum pipe_format format)
-{
-   if (sscreen->info.gfx_level >= GFX11)
-      return false;
-
-   format = si_simplify_cb_format(format);
-   const struct util_format_description *desc = util_format_description(format);
-   unsigned comp_swap = ac_translate_colorswap(sscreen->info.gfx_level, format, false);
-
-   /* The following code matches the hw behavior. */
-   if (desc->nr_channels == 1) {
-      return (comp_swap == V_028C70_SWAP_ALT_REV) != (sscreen->info.family == CHIP_RAVEN2 ||
-                                                      sscreen->info.family == CHIP_RENOIR);
-   }
-
-   return comp_swap != V_028C70_SWAP_STD_REV && comp_swap != V_028C70_SWAP_ALT_REV;
-}
-
 static bool gfx8_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_format base_format,
                                           enum pipe_format surface_format,
                                           const union pipe_color_union *color, uint32_t *clear_value,
@@ -218,7 +192,7 @@ static bool gfx8_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_f
    bool has_alpha = false;
 
    const struct util_format_description *desc =
-      util_format_description(si_simplify_cb_format(surface_format));
+      util_format_description(ac_simplify_cb_format(surface_format));
 
    /* 128-bit fast clear with different R,G,B values is unsupported. */
    if (desc->block.bits == 128 && (color->ui[0] != color->ui[1] || color->ui[0] != color->ui[2]))
@@ -230,8 +204,8 @@ static bool gfx8_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_f
    if (desc->layout != UTIL_FORMAT_LAYOUT_PLAIN)
       return true; /* need ELIMINATE_FAST_CLEAR */
 
-   bool base_alpha_is_on_msb = vi_alpha_is_on_msb(sscreen, base_format);
-   bool surf_alpha_is_on_msb = vi_alpha_is_on_msb(sscreen, surface_format);
+   bool base_alpha_is_on_msb = ac_alpha_is_on_msb(&sscreen->info, base_format);
+   bool surf_alpha_is_on_msb = ac_alpha_is_on_msb(&sscreen->info, surface_format);
 
    /* Formats with 3 channels can't have alpha. */
    if (desc->nr_channels == 3)
@@ -317,7 +291,7 @@ static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, struct si_
                                            bool fail_if_slow)
 {
    const struct util_format_description *desc =
-      util_format_description(si_simplify_cb_format(surface_format));
+      util_format_description(ac_simplify_cb_format(surface_format));
    unsigned start_bit = UINT_MAX;
    unsigned end_bit = 0;
 

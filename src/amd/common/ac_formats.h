@@ -55,6 +55,12 @@ ac_is_zs_format_supported(enum pipe_format format);
 uint32_t
 ac_border_color_swizzle(const struct util_format_description *desc);
 
+enum pipe_format
+ac_simplify_cb_format(enum pipe_format format);
+
+bool
+ac_alpha_is_on_msb(const struct radeon_info *info, enum pipe_format format);
+
 #ifdef __cplusplus
 }
 #endif

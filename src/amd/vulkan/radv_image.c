@@ -763,26 +763,6 @@ radv_compose_swizzle(const struct util_format_description *desc, const VkCompone
    }
 }
 
-bool
-vi_alpha_is_on_msb(const struct radv_device *device, const VkFormat format)
-{
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-
-   if (pdev->info.gfx_level >= GFX11)
-      return false;
-
-   const struct util_format_description *desc = vk_format_description(format);
-   const uint32_t comp_swap = ac_translate_colorswap(pdev->info.gfx_level, desc->format, false);
-
-   /* The following code matches the hw behavior. */
-   if (desc->nr_channels == 1) {
-      return (comp_swap == V_028C70_SWAP_ALT_REV) !=
-             (pdev->info.family == CHIP_RAVEN2 || pdev->info.family == CHIP_RENOIR);
-   }
-
-   return comp_swap != V_028C70_SWAP_STD_REV && comp_swap != V_028C70_SWAP_ALT_REV;
-}
-
 static void
 radv_query_opaque_metadata(struct radv_device *device, struct radv_image *image, unsigned plane_id,
                            struct radeon_bo_metadata *md)

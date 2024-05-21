@@ -1491,8 +1491,6 @@ struct si_clear_info {
    union pipe_color_union color;
 };
 
-enum pipe_format si_simplify_cb_format(enum pipe_format format);
-bool vi_alpha_is_on_msb(struct si_screen *sscreen, enum pipe_format format);
 bool vi_dcc_get_clear_info(struct si_context *sctx, struct si_texture *tex, unsigned level,
                            unsigned clear_value, struct si_clear_info *out);
 void si_init_buffer_clear(struct si_clear_info *info,

@@ -23,6 +23,7 @@
 #include <inttypes.h>
 
 #include "amd/addrlib/inc/addrinterface.h"
+#include "ac_formats.h"
 
 static enum radeon_surf_mode si_choose_tiling(struct si_screen *sscreen,
                                               const struct pipe_resource *templ,
@@ -2111,8 +2112,8 @@ bool vi_dcc_formats_compatible(struct si_screen *sscreen, enum pipe_format forma
    if (format1 == format2)
       return true;
 
-   format1 = si_simplify_cb_format(format1);
-   format2 = si_simplify_cb_format(format2);
+   format1 = ac_simplify_cb_format(format1);
+   format2 = ac_simplify_cb_format(format2);
 
    /* Check again after format adjustments. */
    if (format1 == format2)
@@ -2142,7 +2143,7 @@ bool vi_dcc_formats_compatible(struct si_screen *sscreen, enum pipe_format forma
 
    /* If the clear values are all 1 or all 0, this constraint can be
     * ignored. */
-   if (vi_alpha_is_on_msb(sscreen, format1) != vi_alpha_is_on_msb(sscreen, format2))
+   if (ac_alpha_is_on_msb(&sscreen->info, format1) != ac_alpha_is_on_msb(&sscreen->info, format2))
       return false;
 
    /* Channel types must match if the clear value of 1 is used.

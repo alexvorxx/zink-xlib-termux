@@ -197,7 +197,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
       state[6] |=
          S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(V_028C78_MAX_BLOCK_SIZE_256B) |
          S_00A018_MAX_COMPRESSED_BLOCK_SIZE(image->planes[0].surface.u.gfx9.color.dcc.max_compressed_block_size) |
-         S_00A018_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(device, vk_format));
+         S_00A018_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, vk_format_to_pipe_format(vk_format)));
    }
 
    /* Initialize the sampler view for FMASK. */
@@ -327,7 +327,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    }
 
    if (radv_dcc_enabled(image, first_level)) {
-      state[6] = S_008F28_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(device, vk_format));
+      state[6] = S_008F28_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, vk_format_to_pipe_format(vk_format)));
    } else {
       if (instance->drirc.disable_aniso_single_level) {
          /* The last dword is unused by hw. The shader uses it to clear

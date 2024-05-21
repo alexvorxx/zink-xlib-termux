@@ -895,6 +895,8 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       case FAMILY_GFX1103:
          identify_chip(GFX1103_R1);
          identify_chip(GFX1103_R2);
+         identify_chip2(GFX1103_R1X, GFX1103_R1);
+         identify_chip2(GFX1103_R2X, GFX1103_R2);
          break;
       case FAMILY_GFX1150:
          identify_chip(GFX1150);

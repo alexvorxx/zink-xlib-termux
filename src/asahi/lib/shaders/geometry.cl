@@ -79,8 +79,7 @@ libagx_vertex_id_for_tri_fan(uint prim, uint vert, bool flatshade_first)
     * Rotate accordingly.
     */
    if (flatshade_first) {
-      vert = vert + 1;
-      vert = (vert == 2) ? 0 : vert;
+      vert = (vert == 2) ? 0 : (vert + 1);
    }
 
    /* The simpler form assuming last is provoking. */

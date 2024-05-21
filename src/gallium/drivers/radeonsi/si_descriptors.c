@@ -296,6 +296,7 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
       .dcc_enabled =
          !(access & SI_IMAGE_ACCESS_DCC_OFF) && vi_dcc_enabled(tex, first_level),
       .tc_compat_htile_enabled =
+         sscreen->info.gfx_level < GFX12 &&
          vi_tc_compat_htile_enabled(tex, first_level, is_stencil ? PIPE_MASK_S : PIPE_MASK_Z),
    };
 

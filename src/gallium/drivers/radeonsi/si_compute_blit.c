@@ -372,11 +372,9 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
           (flags & SI_OP_CS_RENDER_COND_ENABLE ||
            /* CP DMA doesn't support large clear value sizes. */
            clear_value_size > 4 ||
-           /* Use compute if CP DMA is non-coherent. */
-           (sctx->screen->info.cp_sdma_ge_use_system_memory_scope &&
-            clear_value_size >= 4) ||
-           /* Use compute if the size is large enough. */
-           (clear_value_size == 4 && offset % 4 == 0 && size > compute_min_size)))
+           /* Use compute if the size is large enough. Always prefer compute on GFX12. */
+           (clear_value_size == 4 && offset % 4 == 0 &&
+            (size > compute_min_size || sctx->screen->info.cp_sdma_ge_use_system_memory_scope))))
          method = SI_COMPUTE_CLEAR_METHOD;
 
       if (method == SI_COMPUTE_CLEAR_METHOD) {

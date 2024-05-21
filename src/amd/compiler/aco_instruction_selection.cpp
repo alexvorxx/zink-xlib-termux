@@ -12,6 +12,7 @@
 #include "aco_ir.h"
 
 #include "common/ac_descriptors.h"
+#include "common/ac_gpu_info.h"
 #include "common/ac_nir.h"
 #include "common/sid.h"
 
@@ -4054,8 +4055,7 @@ struct LoadEmitInfo {
    unsigned align_offset = 0;
    pipe_format format;
 
-   bool glc = false;
-   bool slc = false;
+   ac_hw_cache_flags cache = {{0, 0, 0, 0, 0}};
    bool split_by_component_stride = true;
    bool readfirstlane_for_uniform = false;
    unsigned swizzle_component_size = 0;
@@ -4423,62 +4423,6 @@ lds_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned 
 
 const EmitLoadParameters lds_load_params{lds_load_callback, false, true, UINT32_MAX};
 
-ac_hw_cache_flags
-get_gfx6_cache_flags(bool glc, bool slc, bool dlc)
-{
-   uint8_t value = 0;
-   value |= glc ? ac_glc : 0;
-   value |= slc ? ac_slc : 0;
-   value |= dlc ? ac_dlc : 0;
-   return ac_hw_cache_flags{value};
-}
-
-ac_hw_cache_flags
-get_load_cache_flags(Builder& bld, bool glc, bool slc)
-{
-   if (bld.program->gfx_level >= GFX12) {
-      ac_hw_cache_flags cache = {0};
-      cache.gfx12.scope = (glc || slc) ? gfx12_scope_memory : gfx12_scope_cu;
-      return cache;
-   } else {
-      bool dlc = glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-      return get_gfx6_cache_flags(glc, slc, dlc);
-   }
-}
-
-ac_hw_cache_flags
-get_store_cache_flags(Builder& bld, bool glc, bool slc)
-{
-   if (bld.program->gfx_level >= GFX12) {
-      ac_hw_cache_flags cache = {0};
-      cache.gfx12.scope = gfx12_scope_memory;
-      return cache;
-   } else {
-      return get_gfx6_cache_flags(glc, slc, false);
-   }
-}
-
-ac_hw_cache_flags
-get_atomic_cache_flags(Builder& bld, bool return_previous)
-{
-   if (bld.program->gfx_level >= GFX12) {
-      ac_hw_cache_flags cache = {0};
-      cache.gfx12.temporal_hint = return_previous ? gfx12_atomic_return : 0;
-      return cache;
-   } else {
-      return get_gfx6_cache_flags(return_previous, false, false);
-   }
-}
-
-void
-set_cache_flags_swizzled(Builder& bld, ac_hw_cache_flags* cache)
-{
-   if (bld.program->gfx_level >= GFX12)
-      cache->gfx12.swizzled = true;
-   else
-      cache->value |= ac_swizzled;
-}
-
 Temp
 smem_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned bytes_needed,
                    unsigned align, unsigned const_offset, Temp dst_hint)
@@ -4534,7 +4478,7 @@ smem_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned
    RegClass rc(RegType::sgpr, DIV_ROUND_UP(bytes_needed, 4u));
    Temp val = dst_hint.id() && dst_hint.regClass() == rc ? dst_hint : bld.tmp(rc);
    load->definitions[0] = Definition(val);
-   load->smem().cache = get_load_cache_flags(bld, info.glc, false);
+   load->smem().cache = info.cache;
    load->smem().sync = info.sync;
    bld.insert(std::move(load));
    return val;
@@ -4593,9 +4537,7 @@ mubuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
    mubuf->operands[2] = soffset;
    mubuf->mubuf().offen = offen;
    mubuf->mubuf().idxen = idxen;
-   mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
-   if (info.swizzle_component_size != 0)
-      set_cache_flags_swizzled(bld, &mubuf->mubuf().cache);
+   mubuf->mubuf().cache = info.cache;
    mubuf->mubuf().sync = info.sync;
    mubuf->mubuf().offset = const_offset;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
@@ -4659,7 +4601,7 @@ mubuf_load_format_callback(Builder& bld, const LoadEmitInfo& info, Temp offset,
    mubuf->operands[2] = soffset;
    mubuf->mubuf().offen = offen;
    mubuf->mubuf().idxen = idxen;
-   mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
+   mubuf->mubuf().cache = info.cache;
    mubuf->mubuf().sync = info.sync;
    mubuf->mubuf().offset = const_offset;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_needed);
@@ -4867,7 +4809,7 @@ global_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsign
       mubuf->operands[0] = Operand(get_gfx6_global_rsrc(bld, addr));
       mubuf->operands[1] = addr.type() == RegType::vgpr ? Operand(addr) : Operand(v1);
       mubuf->operands[2] = Operand(offset);
-      mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, false);
+      mubuf->mubuf().cache = info.cache;
       mubuf->mubuf().offset = const_offset;
       mubuf->mubuf().addr64 = addr.type() == RegType::vgpr;
       mubuf->mubuf().disable_wqm = false;
@@ -4886,7 +4828,7 @@ global_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsign
          flat->operands[0] = Operand(addr);
          flat->operands[1] = Operand(s1);
       }
-      flat->flatlike().cache = get_load_cache_flags(bld, info.glc, false);
+      flat->flatlike().cache = info.cache;
       flat->flatlike().sync = info.sync;
       assert(global || !const_offset);
       flat->flatlike().offset = const_offset;
@@ -5719,7 +5661,7 @@ mtbuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
    mtbuf->operands[2] = soffset;
    mtbuf->mtbuf().offen = offen;
    mtbuf->mtbuf().idxen = idxen;
-   mtbuf->mtbuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
+   mtbuf->mtbuf().cache = info.cache;
    mtbuf->mtbuf().sync = info.sync;
    mtbuf->mtbuf().offset = const_offset;
    mtbuf->mtbuf().dfmt = fetch_fmt & 0xf;
@@ -5819,15 +5761,34 @@ visit_load_tess_coord(isel_context* ctx, nir_intrinsic_instr* instr)
    emit_split_vector(ctx, tess_coord, 3);
 }
 
+ac_hw_cache_flags
+get_cache_flags(isel_context* ctx, unsigned access)
+{
+   return ac_get_hw_cache_flags(ctx->program->gfx_level, (gl_access_qualifier)access);
+}
+
+ac_hw_cache_flags
+get_atomic_cache_flags(isel_context* ctx, bool return_previous)
+{
+   ac_hw_cache_flags cache = get_cache_flags(ctx, ACCESS_TYPE_ATOMIC);
+   if (return_previous && ctx->program->gfx_level >= GFX12)
+      cache.gfx12.temporal_hint |= gfx12_atomic_return;
+   else if (return_previous)
+      cache.value |= ac_glc;
+   return cache;
+}
+
 void
 load_buffer(isel_context* ctx, unsigned num_components, unsigned component_size, Temp dst,
-            Temp rsrc, Temp offset, unsigned align_mul, unsigned align_offset, bool glc = false,
-            bool allow_smem = true, memory_sync_info sync = memory_sync_info())
+            Temp rsrc, Temp offset, unsigned align_mul, unsigned align_offset,
+            unsigned access = ACCESS_CAN_REORDER, memory_sync_info sync = memory_sync_info())
 {
    Builder bld(ctx->program, ctx->block);
 
-   bool use_smem =
-      dst.type() != RegType::vgpr && (!glc || ctx->options->gfx_level >= GFX8) && allow_smem;
+   bool glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
+
+   bool use_smem = dst.type() != RegType::vgpr && (ctx->options->gfx_level >= GFX8 || !glc) &&
+                   (access & ACCESS_CAN_REORDER);
    if (use_smem)
       offset = bld.as_uniform(offset);
    else {
@@ -5839,7 +5800,7 @@ load_buffer(isel_context* ctx, unsigned num_components, unsigned component_size,
    }
 
    LoadEmitInfo info = {Operand(offset), dst, num_components, component_size, rsrc};
-   info.glc = glc;
+   info.cache = get_cache_flags(ctx, access | ACCESS_TYPE_LOAD | (use_smem ? ACCESS_TYPE_SMEM : 0));
    info.sync = sync;
    info.align_mul = align_mul;
    info.align_offset = align_offset;
@@ -6262,8 +6223,6 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp dst = get_ssa_temp(ctx, &instr->def);
 
    memory_sync_info sync = get_memory_sync_info(instr, storage_image, 0);
-   unsigned access = nir_intrinsic_access(instr);
-   bool glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
 
    unsigned result_size = instr->def.num_components - is_sparse;
    unsigned expand_mask = nir_def_components_read(&instr->def) & u_bit_consecutive(0, result_size);
@@ -6319,7 +6278,7 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
       load->operands[2] = Operand::c32(0);
       load->definitions[0] = Definition(tmp);
       load->mubuf().idxen = true;
-      load->mubuf().cache = get_load_cache_flags(bld, glc, false);
+      load->mubuf().cache = get_cache_flags(ctx, nir_intrinsic_access(instr) | ACCESS_TYPE_LOAD);
       load->mubuf().sync = sync;
       load->mubuf().tfe = is_sparse;
       if (load->mubuf().tfe)
@@ -6338,7 +6297,7 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
 
       Operand vdata = is_sparse ? emit_tfe_init(bld, tmp) : Operand(v1);
       MIMG_instruction* load = emit_mimg(bld, opcode, tmp, resource, Operand(s4), coords, vdata);
-      load->cache = get_load_cache_flags(bld, glc, false);
+      load->cache = get_cache_flags(ctx, nir_intrinsic_access(instr) | ACCESS_TYPE_LOAD);
       load->a16 = instr->src[1].ssa->bit_size == 16;
       load->d16 = d16;
       load->dmask = dmask;
@@ -6386,8 +6345,8 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
 
    memory_sync_info sync = get_memory_sync_info(instr, storage_image, 0);
    unsigned access = nir_intrinsic_access(instr);
-   bool glc = ctx->options->gfx_level == GFX6 ||
-              ((access & (ACCESS_VOLATILE | ACCESS_COHERENT)) && ctx->program->gfx_level < GFX11);
+   ac_hw_cache_flags cache =
+      get_cache_flags(ctx, access | ACCESS_TYPE_STORE | ACCESS_MAY_STORE_SUBDWORD);
 
    uint32_t dmask = BITFIELD_MASK(num_components);
    if (instr->src[3].ssa->bit_size == 32 || instr->src[3].ssa->bit_size == 16) {
@@ -6462,7 +6421,7 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
       store->operands[2] = Operand::c32(0);
       store->operands[3] = Operand(data);
       store->mubuf().idxen = true;
-      store->mubuf().cache = get_store_cache_flags(bld, glc, false);
+      store->mubuf().cache = cache;
       store->mubuf().disable_wqm = true;
       store->mubuf().sync = sync;
       ctx->program->needs_exact = true;
@@ -6479,7 +6438,7 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
 
    MIMG_instruction* store =
       emit_mimg(bld, opcode, Temp(0, v1), resource, Operand(s4), coords, Operand(data));
-   store->cache = get_store_cache_flags(bld, glc, false);
+   store->cache = cache;
    store->a16 = instr->src[1].ssa->bit_size == 16;
    store->d16 = d16;
    store->dmask = dmask;
@@ -6619,7 +6578,7 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          mubuf->definitions[0] = def;
       mubuf->mubuf().offset = 0;
       mubuf->mubuf().idxen = true;
-      mubuf->mubuf().cache = get_atomic_cache_flags(bld, return_previous);
+      mubuf->mubuf().cache = get_atomic_cache_flags(ctx, return_previous);
       mubuf->mubuf().disable_wqm = true;
       mubuf->mubuf().sync = sync;
       ctx->program->needs_exact = true;
@@ -6634,7 +6593,7 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp tmp = return_previous ? (cmpswap ? bld.tmp(data.regClass()) : dst) : Temp(0, v1);
    MIMG_instruction* mimg =
       emit_mimg(bld, image_op, tmp, resource, Operand(s4), coords, Operand(data));
-   mimg->cache = get_atomic_cache_flags(bld, return_previous);
+   mimg->cache = get_atomic_cache_flags(ctx, return_previous);
    mimg->dmask = (1 << data.size()) - 1;
    mimg->a16 = instr->src[1].ssa->bit_size == 16;
    mimg->unrm = true;
@@ -6659,13 +6618,10 @@ visit_load_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp rsrc = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
 
    unsigned access = nir_intrinsic_access(instr);
-   bool glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
    unsigned size = instr->def.bit_size / 8;
 
-   bool allow_smem = access & ACCESS_CAN_REORDER;
-
    load_buffer(ctx, num_components, size, dst, rsrc, get_ssa_temp(ctx, instr->src[1].ssa),
-               nir_intrinsic_align_mul(instr), nir_intrinsic_align_offset(instr), glc, allow_smem,
+               nir_intrinsic_align_mul(instr), nir_intrinsic_align_offset(instr), access,
                get_memory_sync_info(instr, storage_buffer, 0));
 }
 
@@ -6681,8 +6637,6 @@ visit_store_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp rsrc = bld.as_uniform(get_ssa_temp(ctx, instr->src[1].ssa));
 
    memory_sync_info sync = get_memory_sync_info(instr, storage_buffer, 0);
-   bool glc = (nir_intrinsic_access(instr) & (ACCESS_VOLATILE | ACCESS_COHERENT)) &&
-              ctx->program->gfx_level < GFX11;
 
    unsigned write_count = 0;
    Temp write_datas[32];
@@ -6698,6 +6652,9 @@ visit_store_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
 
    for (unsigned i = 0; i < write_count; i++) {
       aco_opcode op = get_buffer_store_op(write_datas[i].bytes());
+      unsigned access = nir_intrinsic_access(instr) | ACCESS_TYPE_STORE;
+      if (write_datas[i].bytes() < 4)
+         access |= ACCESS_MAY_STORE_SUBDWORD;
 
       aco_ptr<Instruction> store{create_instruction(op, Format::MUBUF, 4, 0)};
       store->operands[0] = Operand(rsrc);
@@ -6706,8 +6663,7 @@ visit_store_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
       store->operands[3] = Operand(write_datas[i]);
       store->mubuf().offset = offsets[i];
       store->mubuf().offen = (offset.type() == RegType::vgpr);
-      store->mubuf().cache = get_store_cache_flags(
-         bld, glc || (ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4), false);
+      store->mubuf().cache = get_cache_flags(ctx, access);
       store->mubuf().disable_wqm = true;
       store->mubuf().sync = sync;
       ctx->program->needs_exact = true;
@@ -6748,7 +6704,7 @@ visit_atomic_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
       mubuf->definitions[0] = def;
    mubuf->mubuf().offset = 0;
    mubuf->mubuf().offen = (offset.type() == RegType::vgpr);
-   mubuf->mubuf().cache = get_atomic_cache_flags(bld, return_previous);
+   mubuf->mubuf().cache = get_atomic_cache_flags(ctx, return_previous);
    mubuf->mubuf().disable_wqm = true;
    mubuf->mubuf().sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
    ctx->program->needs_exact = true;
@@ -6792,7 +6748,6 @@ visit_load_global(isel_context* ctx, nir_intrinsic_instr* instr)
       info.offset = Operand(offset);
    }
    info.const_offset = const_offset;
-   info.glc = nir_intrinsic_access(instr) & (ACCESS_VOLATILE | ACCESS_COHERENT);
    info.align_mul = nir_intrinsic_align_mul(instr);
    info.align_offset = nir_intrinsic_align_offset(instr);
    info.sync = get_memory_sync_info(instr, storage_buffer, 0);
@@ -6805,19 +6760,23 @@ visit_load_global(isel_context* ctx, nir_intrinsic_instr* instr)
    bool byte_align_for_smem_mubuf =
       can_use_byte_align_for_global_load(num_components, component_size, align, false);
 
+   unsigned access = nir_intrinsic_access(instr) | ACCESS_TYPE_LOAD;
+   bool glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
+
    /* VMEM stores don't update the SMEM cache and it's difficult to prove that
     * it's safe to use SMEM */
-   bool can_use_smem =
-      (nir_intrinsic_access(instr) & ACCESS_NON_WRITEABLE) && byte_align_for_smem_mubuf;
-   if (info.dst.type() == RegType::vgpr || (info.glc && ctx->options->gfx_level < GFX8) ||
+   bool can_use_smem = (access & ACCESS_NON_WRITEABLE) && byte_align_for_smem_mubuf;
+   if (info.dst.type() == RegType::vgpr || (ctx->options->gfx_level < GFX8 && glc) ||
        !can_use_smem) {
       EmitLoadParameters params = global_load_params;
       params.byte_align_loads = ctx->options->gfx_level > GFX6 || byte_align_for_smem_mubuf;
+      info.cache = get_cache_flags(ctx, access);
       emit_load(ctx, bld, info, params);
    } else {
       if (info.resource.id())
          info.resource = bld.as_uniform(info.resource);
       info.offset = Operand(bld.as_uniform(info.offset));
+      info.cache = get_cache_flags(ctx, access | ACCESS_TYPE_SMEM);
       emit_load(ctx, bld, info, smem_load_params);
    }
 }
@@ -6831,8 +6790,6 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
 
    Temp data = as_vgpr(ctx, get_ssa_temp(ctx, instr->src[0].ssa));
    memory_sync_info sync = get_memory_sync_info(instr, storage_buffer, 0);
-   bool glc = (nir_intrinsic_access(instr) & (ACCESS_VOLATILE | ACCESS_COHERENT)) &&
-              ctx->program->gfx_level < GFX11;
 
    unsigned write_count = 0;
    Temp write_datas[32];
@@ -6849,6 +6806,10 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
       uint32_t write_const_offset = const_offset;
       Temp write_offset = offset;
       lower_global_address(bld, offsets[i], &write_address, &write_const_offset, &write_offset);
+
+      unsigned access = nir_intrinsic_access(instr) | ACCESS_TYPE_STORE;
+      if (write_datas[i].bytes() < 4)
+         access |= ACCESS_MAY_STORE_SUBDWORD;
 
       if (ctx->options->gfx_level >= GFX7) {
          bool global = ctx->options->gfx_level >= GFX9;
@@ -6881,7 +6842,7 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
             flat->operands[1] = Operand(s1);
          }
          flat->operands[2] = Operand(write_datas[i]);
-         flat->flatlike().cache = get_store_cache_flags(bld, glc, false);
+         flat->flatlike().cache = get_cache_flags(ctx, access);
          assert(global || !write_const_offset);
          flat->flatlike().offset = write_const_offset;
          flat->flatlike().disable_wqm = true;
@@ -6901,8 +6862,7 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
             write_address.type() == RegType::vgpr ? Operand(write_address) : Operand(v1);
          mubuf->operands[2] = Operand(write_offset);
          mubuf->operands[3] = Operand(write_datas[i]);
-         mubuf->mubuf().cache =
-            get_store_cache_flags(bld, glc || write_datas[i].bytes() < 4, false);
+         mubuf->mubuf().cache = get_cache_flags(ctx, access);
          mubuf->mubuf().offset = write_const_offset;
          mubuf->mubuf().addr64 = write_address.type() == RegType::vgpr;
          mubuf->mubuf().disable_wqm = true;
@@ -7014,7 +6974,7 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       flat->operands[2] = Operand(data);
       if (return_previous)
          flat->definitions[0] = Definition(dst);
-      flat->flatlike().cache = get_atomic_cache_flags(bld, return_previous);
+      flat->flatlike().cache = get_atomic_cache_flags(ctx, return_previous);
       assert(global || !const_offset);
       flat->flatlike().offset = const_offset;
       flat->flatlike().disable_wqm = true;
@@ -7040,7 +7000,7 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          return_previous ? (cmpswap ? bld.def(data.regClass()) : Definition(dst)) : Definition();
       if (return_previous)
          mubuf->definitions[0] = def;
-      mubuf->mubuf().cache = get_atomic_cache_flags(bld, return_previous);
+      mubuf->mubuf().cache = get_atomic_cache_flags(ctx, return_previous);
       mubuf->mubuf().offset = const_offset;
       mubuf->mubuf().addr64 = addr.type() == RegType::vgpr;
       mubuf->mubuf().disable_wqm = true;
@@ -7091,8 +7051,7 @@ visit_load_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
       s_offset_zero ? Temp(0, s1) : bld.as_uniform(get_ssa_temp(ctx, intrin->src[2].ssa));
    Temp idx = idxen ? as_vgpr(ctx, get_ssa_temp(ctx, intrin->src[3].ssa)) : Temp();
 
-   bool glc = nir_intrinsic_access(intrin) & ACCESS_COHERENT;
-   bool slc = nir_intrinsic_access(intrin) & ACCESS_NON_TEMPORAL;
+   ac_hw_cache_flags cache = get_cache_flags(ctx, nir_intrinsic_access(intrin) | ACCESS_TYPE_LOAD);
 
    unsigned const_offset = nir_intrinsic_base(intrin);
    unsigned elem_size_bytes = intrin->def.bit_size / 8u;
@@ -7103,8 +7062,7 @@ visit_load_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
 
    LoadEmitInfo info = {Operand(v_offset), dst, num_components, elem_size_bytes, descriptor};
    info.idx = idx;
-   info.glc = glc;
-   info.slc = slc;
+   info.cache = cache;
    info.soffset = s_offset;
    info.const_offset = const_offset;
    info.sync = sync;
@@ -7195,14 +7153,6 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
       unsigned const_offset = resolve_excess_vmem_const_offset(
          bld, write_voffset, offsets[i] + nir_intrinsic_base(intrin));
 
-      bool slc = nir_intrinsic_access(intrin) & ACCESS_NON_TEMPORAL;
-      bool glc = nir_intrinsic_access(intrin) & ACCESS_COHERENT;
-      glc |= ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
-      glc &= ctx->program->gfx_level < GFX11;
-      ac_hw_cache_flags cache = get_store_cache_flags(bld, glc, slc);
-      if (swizzled)
-         set_cache_flags_swizzled(bld, &cache);
-
       Operand vaddr_op(v1);
       if (offen && idxen)
          vaddr_op = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), idx, write_voffset);
@@ -7210,6 +7160,11 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
          vaddr_op = Operand(write_voffset);
       else if (idxen)
          vaddr_op = Operand(idx);
+
+      unsigned access = nir_intrinsic_access(intrin);
+      if (write_datas[i].bytes() < 4)
+         access |= ACCESS_MAY_STORE_SUBDWORD;
+      ac_hw_cache_flags cache = get_cache_flags(ctx, access | ACCESS_TYPE_STORE);
 
       Instruction* mubuf = bld.mubuf(op, Operand(descriptor), vaddr_op, s_offset,
                                      Operand(write_datas[i]), const_offset, offen, idxen,
@@ -7597,6 +7552,7 @@ visit_load_scratch(isel_context* ctx, nir_intrinsic_instr* instr)
    LoadEmitInfo info = {Operand(v1), dst, instr->def.num_components, instr->def.bit_size / 8u};
    info.align_mul = nir_intrinsic_align_mul(instr);
    info.align_offset = nir_intrinsic_align_offset(instr);
+   info.cache = get_cache_flags(ctx, ACCESS_TYPE_LOAD | ACCESS_IS_SWIZZLED_AMD);
    info.swizzle_component_size = ctx->program->gfx_level <= GFX8 ? 4 : 0;
    info.sync = memory_sync_info(storage_scratch, semantic_private);
    if (ctx->program->gfx_level >= GFX9) {
@@ -7673,9 +7629,9 @@ visit_store_scratch(isel_context* ctx, nir_intrinsic_instr* instr)
          Instruction* mubuf = bld.mubuf(op, rsrc, offset, ctx->program->scratch_offset,
                                         write_datas[i], offsets[i], true);
          mubuf->mubuf().sync = memory_sync_info(storage_scratch, semantic_private);
-         bool glc = ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
-         mubuf->mubuf().cache = get_store_cache_flags(bld, glc, false);
-         set_cache_flags_swizzled(bld, &mubuf->mubuf().cache);
+         unsigned access = ACCESS_TYPE_STORE | ACCESS_IS_SWIZZLED_AMD |
+                           (write_datas[i].bytes() < 4 ? ACCESS_MAY_STORE_SUBDWORD : 0);
+         mubuf->mubuf().cache = get_cache_flags(ctx, access);
       }
    }
 }

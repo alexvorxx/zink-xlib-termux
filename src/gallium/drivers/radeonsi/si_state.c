@@ -1970,271 +1970,10 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
                                        int first_non_void)
 {
    struct si_screen *sscreen = (struct si_screen *)screen;
-   bool uniform = true;
-   int i;
 
    assert(sscreen->info.gfx_level <= GFX9);
 
-   /* Colorspace (return non-RGB formats directly). */
-   switch (desc->colorspace) {
-   /* Depth stencil formats */
-   case UTIL_FORMAT_COLORSPACE_ZS:
-      switch (format) {
-      case PIPE_FORMAT_Z16_UNORM:
-         return V_008F14_IMG_DATA_FORMAT_16;
-      case PIPE_FORMAT_X24S8_UINT:
-      case PIPE_FORMAT_S8X24_UINT:
-         /*
-          * Implemented as an 8_8_8_8 data format to fix texture
-          * gathers in stencil sampling. This affects at least
-          * GL45-CTS.texture_cube_map_array.sampling on GFX8.
-          */
-         if (sscreen->info.gfx_level <= GFX8)
-            return V_008F14_IMG_DATA_FORMAT_8_8_8_8;
-
-         if (format == PIPE_FORMAT_X24S8_UINT)
-            return V_008F14_IMG_DATA_FORMAT_8_24;
-         else
-            return V_008F14_IMG_DATA_FORMAT_24_8;
-      case PIPE_FORMAT_Z24X8_UNORM:
-      case PIPE_FORMAT_Z24_UNORM_S8_UINT:
-         return V_008F14_IMG_DATA_FORMAT_8_24;
-      case PIPE_FORMAT_X8Z24_UNORM:
-      case PIPE_FORMAT_S8_UINT_Z24_UNORM:
-         return V_008F14_IMG_DATA_FORMAT_24_8;
-      case PIPE_FORMAT_S8_UINT:
-         return V_008F14_IMG_DATA_FORMAT_8;
-      case PIPE_FORMAT_Z32_FLOAT:
-         return V_008F14_IMG_DATA_FORMAT_32;
-      case PIPE_FORMAT_X32_S8X24_UINT:
-      case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
-         return V_008F14_IMG_DATA_FORMAT_X24_8_32;
-      default:
-         goto out_unknown;
-      }
-
-   case UTIL_FORMAT_COLORSPACE_YUV:
-      goto out_unknown; /* TODO */
-
-   case UTIL_FORMAT_COLORSPACE_SRGB:
-      if (desc->nr_channels != 4 && desc->nr_channels != 1)
-         goto out_unknown;
-      break;
-
-   default:
-      break;
-   }
-
-   if (desc->layout == UTIL_FORMAT_LAYOUT_RGTC) {
-      switch (format) {
-      case PIPE_FORMAT_RGTC1_SNORM:
-      case PIPE_FORMAT_LATC1_SNORM:
-      case PIPE_FORMAT_RGTC1_UNORM:
-      case PIPE_FORMAT_LATC1_UNORM:
-         return V_008F14_IMG_DATA_FORMAT_BC4;
-      case PIPE_FORMAT_RGTC2_SNORM:
-      case PIPE_FORMAT_LATC2_SNORM:
-      case PIPE_FORMAT_RGTC2_UNORM:
-      case PIPE_FORMAT_LATC2_UNORM:
-         return V_008F14_IMG_DATA_FORMAT_BC5;
-      default:
-         goto out_unknown;
-      }
-   }
-
-   if (desc->layout == UTIL_FORMAT_LAYOUT_ETC && sscreen->info.has_etc_support) {
-      switch (format) {
-      case PIPE_FORMAT_ETC1_RGB8:
-      case PIPE_FORMAT_ETC2_RGB8:
-      case PIPE_FORMAT_ETC2_SRGB8:
-         return V_008F14_IMG_DATA_FORMAT_ETC2_RGB;
-      case PIPE_FORMAT_ETC2_RGB8A1:
-      case PIPE_FORMAT_ETC2_SRGB8A1:
-         return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA1;
-      case PIPE_FORMAT_ETC2_RGBA8:
-      case PIPE_FORMAT_ETC2_SRGBA8:
-         return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA;
-      case PIPE_FORMAT_ETC2_R11_UNORM:
-      case PIPE_FORMAT_ETC2_R11_SNORM:
-         return V_008F14_IMG_DATA_FORMAT_ETC2_R;
-      case PIPE_FORMAT_ETC2_RG11_UNORM:
-      case PIPE_FORMAT_ETC2_RG11_SNORM:
-         return V_008F14_IMG_DATA_FORMAT_ETC2_RG;
-      default:
-         goto out_unknown;
-      }
-   }
-
-   if (desc->layout == UTIL_FORMAT_LAYOUT_BPTC) {
-      switch (format) {
-      case PIPE_FORMAT_BPTC_RGBA_UNORM:
-      case PIPE_FORMAT_BPTC_SRGBA:
-         return V_008F14_IMG_DATA_FORMAT_BC7;
-      case PIPE_FORMAT_BPTC_RGB_FLOAT:
-      case PIPE_FORMAT_BPTC_RGB_UFLOAT:
-         return V_008F14_IMG_DATA_FORMAT_BC6;
-      default:
-         goto out_unknown;
-      }
-   }
-
-   if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
-      switch (format) {
-      case PIPE_FORMAT_R8G8_B8G8_UNORM:
-      case PIPE_FORMAT_G8R8_B8R8_UNORM:
-         return V_008F14_IMG_DATA_FORMAT_GB_GR;
-      case PIPE_FORMAT_G8R8_G8B8_UNORM:
-      case PIPE_FORMAT_R8G8_R8B8_UNORM:
-         return V_008F14_IMG_DATA_FORMAT_BG_RG;
-      default:
-         goto out_unknown;
-      }
-   }
-
-   if (desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
-      switch (format) {
-      case PIPE_FORMAT_DXT1_RGB:
-      case PIPE_FORMAT_DXT1_RGBA:
-      case PIPE_FORMAT_DXT1_SRGB:
-      case PIPE_FORMAT_DXT1_SRGBA:
-         return V_008F14_IMG_DATA_FORMAT_BC1;
-      case PIPE_FORMAT_DXT3_RGBA:
-      case PIPE_FORMAT_DXT3_SRGBA:
-         return V_008F14_IMG_DATA_FORMAT_BC2;
-      case PIPE_FORMAT_DXT5_RGBA:
-      case PIPE_FORMAT_DXT5_SRGBA:
-         return V_008F14_IMG_DATA_FORMAT_BC3;
-      default:
-         goto out_unknown;
-      }
-   }
-
-   if (format == PIPE_FORMAT_R9G9B9E5_FLOAT) {
-      return V_008F14_IMG_DATA_FORMAT_5_9_9_9;
-   } else if (format == PIPE_FORMAT_R11G11B10_FLOAT) {
-      return V_008F14_IMG_DATA_FORMAT_10_11_11;
-   }
-
-   /* Other "OTHER" layouts are unsupported. */
-   if (desc->layout == UTIL_FORMAT_LAYOUT_OTHER)
-      goto out_unknown;
-
-   /* hw cannot support mixed formats (except depth/stencil, since only
-    * depth is read).*/
-   if (desc->is_mixed && desc->colorspace != UTIL_FORMAT_COLORSPACE_ZS)
-      goto out_unknown;
-
-   if (first_non_void < 0 || first_non_void > 3)
-      goto out_unknown;
-
-   /* Reject SCALED formats because we don't implement them for CB and do the same for texturing. */
-   if ((desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED ||
-        desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_SIGNED) &&
-       !desc->channel[first_non_void].normalized &&
-       !desc->channel[first_non_void].pure_integer)
-      goto out_unknown;
-
-   /* Reject unsupported 32_*NORM and FIXED formats. */
-   if (desc->channel[first_non_void].size == 32 &&
-       (desc->channel[first_non_void].normalized ||
-        desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_FIXED))
-      goto out_unknown;
-
-   /* This format fails on Gfx8/Carrizo´. */
-   if (sscreen->info.family == CHIP_CARRIZO && format == PIPE_FORMAT_A8R8_UNORM)
-      goto out_unknown;
-
-   /* See whether the components are of the same size. */
-   for (i = 1; i < desc->nr_channels; i++) {
-      uniform = uniform && desc->channel[0].size == desc->channel[i].size;
-   }
-
-   /* Non-uniform formats. */
-   if (!uniform) {
-      switch (desc->nr_channels) {
-      case 3:
-         if (desc->channel[0].size == 5 && desc->channel[1].size == 6 &&
-             desc->channel[2].size == 5) {
-            return V_008F14_IMG_DATA_FORMAT_5_6_5;
-         }
-         goto out_unknown;
-      case 4:
-         /* 5551 and 1555 UINT formats fail on Gfx8/Carrizo´. */
-         if (sscreen->info.family == CHIP_CARRIZO &&
-             desc->channel[1].size == 5 &&
-             desc->channel[2].size == 5 &&
-             desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
-             desc->channel[first_non_void].pure_integer)
-            goto out_unknown;
-
-         if (desc->channel[0].size == 5 && desc->channel[1].size == 5 &&
-             desc->channel[2].size == 5 && desc->channel[3].size == 1) {
-            return V_008F14_IMG_DATA_FORMAT_1_5_5_5;
-         }
-         if (desc->channel[0].size == 1 && desc->channel[1].size == 5 &&
-             desc->channel[2].size == 5 && desc->channel[3].size == 5) {
-            return V_008F14_IMG_DATA_FORMAT_5_5_5_1;
-         }
-         if (desc->channel[0].size == 10 && desc->channel[1].size == 10 &&
-             desc->channel[2].size == 10 && desc->channel[3].size == 2) {
-            return V_008F14_IMG_DATA_FORMAT_2_10_10_10;
-         }
-         goto out_unknown;
-      }
-      goto out_unknown;
-   }
-
-   /* uniform formats */
-   switch (desc->channel[first_non_void].size) {
-   case 4:
-      switch (desc->nr_channels) {
-      case 4:
-         /* 4444 UINT formats fail on Gfx8/Carrizo´. */
-         if (sscreen->info.family == CHIP_CARRIZO &&
-             desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
-             desc->channel[first_non_void].pure_integer)
-            goto out_unknown;
-
-         return V_008F14_IMG_DATA_FORMAT_4_4_4_4;
-      }
-      break;
-   case 8:
-      switch (desc->nr_channels) {
-      case 1:
-         return V_008F14_IMG_DATA_FORMAT_8;
-      case 2:
-         return V_008F14_IMG_DATA_FORMAT_8_8;
-      case 4:
-         return V_008F14_IMG_DATA_FORMAT_8_8_8_8;
-      }
-      break;
-   case 16:
-      switch (desc->nr_channels) {
-      case 1:
-         return V_008F14_IMG_DATA_FORMAT_16;
-      case 2:
-         return V_008F14_IMG_DATA_FORMAT_16_16;
-      case 4:
-         return V_008F14_IMG_DATA_FORMAT_16_16_16_16;
-      }
-      break;
-   case 32:
-      switch (desc->nr_channels) {
-      case 1:
-         return V_008F14_IMG_DATA_FORMAT_32;
-      case 2:
-         return V_008F14_IMG_DATA_FORMAT_32_32;
-#if 0 /* Not supported for render targets */
-      case 3:
-         return V_008F14_IMG_DATA_FORMAT_32_32_32;
-#endif
-      case 4:
-         return V_008F14_IMG_DATA_FORMAT_32_32_32_32;
-      }
-   }
-
-out_unknown:
-   return ~0;
+   return ac_translate_tex_dataformat(&sscreen->info, desc, first_non_void);
 }
 
 static unsigned is_wrap_mode_legal(struct si_screen *screen, unsigned wrap)
@@ -2374,8 +2113,63 @@ static bool si_is_sampler_format_supported(struct pipe_screen *screen, enum pipe
       return true;
    }
 
-   return si_translate_texformat(screen, format, desc,
-                                 util_format_get_first_non_void_channel(format)) != ~0U;
+   const int first_non_void =  util_format_get_first_non_void_channel(format);
+
+   if (si_translate_texformat(screen, format, desc, first_non_void) == ~0U)
+      return false;
+
+   if (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB &&
+       desc->nr_channels != 4 && desc->nr_channels != 1)
+      return false;
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_ETC && !sscreen->info.has_etc_support)
+      return false;
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED &&
+       (desc->format == PIPE_FORMAT_G8B8_G8R8_UNORM ||
+        desc->format == PIPE_FORMAT_B8G8_R8G8_UNORM))
+      return false;
+
+   /* Other "OTHER" layouts are unsupported. */
+   if (desc->layout == UTIL_FORMAT_LAYOUT_OTHER &&
+       desc->format != PIPE_FORMAT_R11G11B10_FLOAT &&
+       desc->format != PIPE_FORMAT_R9G9B9E5_FLOAT)
+      return false;
+
+   /* This must be before using first_non_void. */
+   if (desc->layout != UTIL_FORMAT_LAYOUT_PLAIN)
+      return true;
+
+   if (first_non_void < 0 || first_non_void > 3)
+      return false;
+
+   /* Reject SCALED formats because we don't implement them for CB and do the same for texturing. */
+   if ((desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED ||
+        desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_SIGNED) &&
+       !desc->channel[first_non_void].normalized &&
+       !desc->channel[first_non_void].pure_integer)
+      return false;
+
+   /* Reject unsupported 32_*NORM and FIXED formats. */
+   if (desc->channel[first_non_void].size == 32 &&
+       (desc->channel[first_non_void].normalized ||
+        desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_FIXED))
+      return false;
+
+   /* This format fails on Gfx8/Carrizo´. */
+   if (sscreen->info.family == CHIP_CARRIZO && format == PIPE_FORMAT_A8R8_UNORM)
+      return false;
+
+   /* Reject unsupported 3x 32-bit formats for CB. */
+   if (desc->nr_channels == 3 && desc->channel[0].size == 32 && desc->channel[1].size == 32 &&
+       desc->channel[2].size == 32)
+      return false;
+
+   /* Reject all 64-bit formats. */
+   if (desc->channel[first_non_void].size == 64)
+      return false;
+
+   return true;
 }
 
 static uint32_t si_translate_buffer_dataformat(struct pipe_screen *screen,

@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "ac_gpu_info.h"
 #include "ac_formats.h"
 #include "ac_gpu_info.h"
 
@@ -192,6 +193,255 @@ ac_translate_tex_numformat(const struct util_format_description *desc,
    }
 
    return num_format;
+}
+
+uint32_t
+ac_translate_tex_dataformat(const struct radeon_info *info,
+                            const struct util_format_description *desc,
+                            int first_non_void)
+{
+   bool uniform = true;
+   int i;
+
+   /* Colorspace (return non-RGB formats directly). */
+   switch (desc->colorspace) {
+   /* Depth stencil formats */
+   case UTIL_FORMAT_COLORSPACE_ZS:
+      switch (desc->format) {
+      case PIPE_FORMAT_Z16_UNORM:
+         return V_008F14_IMG_DATA_FORMAT_16;
+      case PIPE_FORMAT_X24S8_UINT:
+      case PIPE_FORMAT_S8X24_UINT:
+         /*
+          * Implemented as an 8_8_8_8 data format to fix texture
+          * gathers in stencil sampling. This affects at least
+          * GL45-CTS.texture_cube_map_array.sampling on GFX8.
+          */
+         if (info->gfx_level <= GFX8)
+            return V_008F14_IMG_DATA_FORMAT_8_8_8_8;
+
+         if (desc->format == PIPE_FORMAT_X24S8_UINT)
+            return V_008F14_IMG_DATA_FORMAT_8_24;
+         else
+            return V_008F14_IMG_DATA_FORMAT_24_8;
+      case PIPE_FORMAT_Z24X8_UNORM:
+      case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+         return V_008F14_IMG_DATA_FORMAT_8_24;
+      case PIPE_FORMAT_X8Z24_UNORM:
+      case PIPE_FORMAT_S8_UINT_Z24_UNORM:
+         return V_008F14_IMG_DATA_FORMAT_24_8;
+      case PIPE_FORMAT_S8_UINT:
+         return V_008F14_IMG_DATA_FORMAT_8;
+      case PIPE_FORMAT_Z32_FLOAT:
+         return V_008F14_IMG_DATA_FORMAT_32;
+      case PIPE_FORMAT_X32_S8X24_UINT:
+      case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
+         return V_008F14_IMG_DATA_FORMAT_X24_8_32;
+      default:
+         return ~0;
+      }
+
+   case UTIL_FORMAT_COLORSPACE_YUV:
+      return ~0; /* TODO */
+
+   default:
+      break;
+   }
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_RGTC) {
+      switch (desc->format) {
+      case PIPE_FORMAT_RGTC1_SNORM:
+      case PIPE_FORMAT_LATC1_SNORM:
+      case PIPE_FORMAT_RGTC1_UNORM:
+      case PIPE_FORMAT_LATC1_UNORM:
+         return V_008F14_IMG_DATA_FORMAT_BC4;
+      case PIPE_FORMAT_RGTC2_SNORM:
+      case PIPE_FORMAT_LATC2_SNORM:
+      case PIPE_FORMAT_RGTC2_UNORM:
+      case PIPE_FORMAT_LATC2_UNORM:
+         return V_008F14_IMG_DATA_FORMAT_BC5;
+      default:
+         return ~0;
+      }
+   }
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_ETC) {
+      switch (desc->format) {
+      case PIPE_FORMAT_ETC1_RGB8:
+      case PIPE_FORMAT_ETC2_RGB8:
+      case PIPE_FORMAT_ETC2_SRGB8:
+         return V_008F14_IMG_DATA_FORMAT_ETC2_RGB;
+      case PIPE_FORMAT_ETC2_RGB8A1:
+      case PIPE_FORMAT_ETC2_SRGB8A1:
+         return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA1;
+      case PIPE_FORMAT_ETC2_RGBA8:
+      case PIPE_FORMAT_ETC2_SRGBA8:
+         return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA;
+      case PIPE_FORMAT_ETC2_R11_UNORM:
+      case PIPE_FORMAT_ETC2_R11_SNORM:
+         return V_008F14_IMG_DATA_FORMAT_ETC2_R;
+      case PIPE_FORMAT_ETC2_RG11_UNORM:
+      case PIPE_FORMAT_ETC2_RG11_SNORM:
+         return V_008F14_IMG_DATA_FORMAT_ETC2_RG;
+      default:
+         break;
+      }
+   }
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_BPTC) {
+      switch (desc->format) {
+      case PIPE_FORMAT_BPTC_RGBA_UNORM:
+      case PIPE_FORMAT_BPTC_SRGBA:
+         return V_008F14_IMG_DATA_FORMAT_BC7;
+      case PIPE_FORMAT_BPTC_RGB_FLOAT:
+      case PIPE_FORMAT_BPTC_RGB_UFLOAT:
+         return V_008F14_IMG_DATA_FORMAT_BC6;
+      default:
+         return ~0;
+      }
+   }
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
+      switch (desc->format) {
+      case PIPE_FORMAT_R8G8_B8G8_UNORM:
+      case PIPE_FORMAT_G8R8_B8R8_UNORM:
+      case PIPE_FORMAT_B8G8_R8G8_UNORM:
+         return V_008F14_IMG_DATA_FORMAT_GB_GR;
+      case PIPE_FORMAT_G8R8_G8B8_UNORM:
+      case PIPE_FORMAT_R8G8_R8B8_UNORM:
+      case PIPE_FORMAT_G8B8_G8R8_UNORM:
+         return V_008F14_IMG_DATA_FORMAT_BG_RG;
+      default:
+         return ~0;
+      }
+   }
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
+      switch (desc->format) {
+      case PIPE_FORMAT_DXT1_RGB:
+      case PIPE_FORMAT_DXT1_RGBA:
+      case PIPE_FORMAT_DXT1_SRGB:
+      case PIPE_FORMAT_DXT1_SRGBA:
+         return V_008F14_IMG_DATA_FORMAT_BC1;
+      case PIPE_FORMAT_DXT3_RGBA:
+      case PIPE_FORMAT_DXT3_SRGBA:
+         return V_008F14_IMG_DATA_FORMAT_BC2;
+      case PIPE_FORMAT_DXT5_RGBA:
+      case PIPE_FORMAT_DXT5_SRGBA:
+         return V_008F14_IMG_DATA_FORMAT_BC3;
+      default:
+         return ~0;
+      }
+   }
+
+   if (desc->format == PIPE_FORMAT_R9G9B9E5_FLOAT) {
+      return V_008F14_IMG_DATA_FORMAT_5_9_9_9;
+   } else if (desc->format == PIPE_FORMAT_R11G11B10_FLOAT) {
+      return V_008F14_IMG_DATA_FORMAT_10_11_11;
+   }
+
+   /* hw cannot support mixed formats (except depth/stencil, since only
+    * depth is read).*/
+   if (desc->is_mixed && desc->colorspace != UTIL_FORMAT_COLORSPACE_ZS)
+      return ~0;
+
+   if (first_non_void < 0 || first_non_void > 3)
+      return ~0;
+
+   /* See whether the components are of the same size. */
+   for (i = 1; i < desc->nr_channels; i++) {
+      uniform = uniform && desc->channel[0].size == desc->channel[i].size;
+   }
+
+   /* Non-uniform formats. */
+   if (!uniform) {
+      switch (desc->nr_channels) {
+      case 3:
+         if (desc->channel[0].size == 5 && desc->channel[1].size == 6 &&
+             desc->channel[2].size == 5) {
+            return V_008F14_IMG_DATA_FORMAT_5_6_5;
+         }
+         return ~0;
+      case 4:
+         /* 5551 and 1555 UINT formats fail on Gfx8/Carrizo´. */
+         if (info->family == CHIP_CARRIZO &&
+             desc->channel[1].size == 5 &&
+             desc->channel[2].size == 5 &&
+             desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
+             desc->channel[first_non_void].pure_integer)
+            return ~0;
+
+         if (desc->channel[0].size == 5 && desc->channel[1].size == 5 &&
+             desc->channel[2].size == 5 && desc->channel[3].size == 1) {
+            return V_008F14_IMG_DATA_FORMAT_1_5_5_5;
+         }
+         if (desc->channel[0].size == 1 && desc->channel[1].size == 5 &&
+             desc->channel[2].size == 5 && desc->channel[3].size == 5) {
+            return V_008F14_IMG_DATA_FORMAT_5_5_5_1;
+         }
+         if (desc->channel[0].size == 10 && desc->channel[1].size == 10 &&
+             desc->channel[2].size == 10 && desc->channel[3].size == 2) {
+            return V_008F14_IMG_DATA_FORMAT_2_10_10_10;
+         }
+         return ~0;
+      }
+      return ~0;
+   }
+
+   /* uniform formats */
+   switch (desc->channel[first_non_void].size) {
+   case 4:
+      switch (desc->nr_channels) {
+      case 4:
+         /* 4444 UINT formats fail on Gfx8/Carrizo´. */
+         if (info->family == CHIP_CARRIZO &&
+             desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
+             desc->channel[first_non_void].pure_integer)
+            return ~0;
+
+         return V_008F14_IMG_DATA_FORMAT_4_4_4_4;
+      }
+      break;
+   case 8:
+      switch (desc->nr_channels) {
+      case 1:
+         return V_008F14_IMG_DATA_FORMAT_8;
+      case 2:
+         return V_008F14_IMG_DATA_FORMAT_8_8;
+      case 4:
+         return V_008F14_IMG_DATA_FORMAT_8_8_8_8;
+      }
+      break;
+   case 16:
+      switch (desc->nr_channels) {
+      case 1:
+         return V_008F14_IMG_DATA_FORMAT_16;
+      case 2:
+         return V_008F14_IMG_DATA_FORMAT_16_16;
+      case 4:
+         return V_008F14_IMG_DATA_FORMAT_16_16_16_16;
+      }
+      break;
+   case 32:
+      switch (desc->nr_channels) {
+      case 1:
+         return V_008F14_IMG_DATA_FORMAT_32;
+      case 2:
+         return V_008F14_IMG_DATA_FORMAT_32_32;
+      /* Not supported for render targets */
+      case 3:
+         return V_008F14_IMG_DATA_FORMAT_32_32_32;
+      case 4:
+         return V_008F14_IMG_DATA_FORMAT_32_32_32_32;
+      }
+      break;
+   case 64:
+      if (desc->channel[0].type != UTIL_FORMAT_TYPE_FLOAT && desc->nr_channels == 1)
+         return V_008F14_IMG_DATA_FORMAT_32_32;
+      break;
+   }
+
+   return ~0;
 }
 
 unsigned

@@ -3260,7 +3260,8 @@ genX(CmdExecuteCommands)(
 
       /* The memcpy will take care of the 3D preemption requirements. */
       struct anv_memcpy_state memcpy_state;
-      genX(emit_so_memcpy_init)(&memcpy_state, device, &container->batch);
+      genX(emit_so_memcpy_init)(&memcpy_state, device,
+                                container, &container->batch);
 
       for (uint32_t i = 0; i < commandBufferCount; i++) {
          ANV_FROM_HANDLE(anv_cmd_buffer, secondary, pCmdBuffers[i]);
@@ -3412,7 +3413,8 @@ genX(CmdExecuteCommands)(
       trace_intel_begin_trace_copy(&container->trace);
 
       struct anv_memcpy_state memcpy_state;
-      genX(emit_so_memcpy_init)(&memcpy_state, device, &container->batch);
+      genX(emit_so_memcpy_init)(&memcpy_state, device,
+                                container, &container->batch);
       uint32_t num_traces = 0;
       for (uint32_t i = 0; i < commandBufferCount; i++) {
          ANV_FROM_HANDLE(anv_cmd_buffer, secondary, pCmdBuffers[i]);

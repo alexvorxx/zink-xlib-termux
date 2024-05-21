@@ -259,6 +259,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
 
          anv_genX(device->info, emit_so_memcpy_init)(&submit->memcpy_state,
                                                      device,
+                                                     NULL,
                                                      &submit->batch);
          uint32_t num_traces = 0;
          for (uint32_t i = 0; i < cmd_buffer_count; i++) {

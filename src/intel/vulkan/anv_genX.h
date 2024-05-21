@@ -132,6 +132,7 @@ genX(invalidate_aux_map)(struct anv_batch *batch,
 
 void genX(emit_so_memcpy_init)(struct anv_memcpy_state *state,
                                struct anv_device *device,
+                               struct anv_cmd_buffer *cmd_buffer,
                                struct anv_batch *batch);
 
 void genX(emit_so_memcpy_fini)(struct anv_memcpy_state *state);

@@ -2573,7 +2573,7 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                   ctx.vectors[op.tempId()] = instr.get();
             }
          } else if (instr->format == Format::MIMG && instr->operands.size() > 4 &&
-                    !instr->mimg().strict_wqm) {
+                    !instr->mimg().strict_wqm && ctx.program->gfx_level < GFX12) {
             for (unsigned i = 3; i < instr->operands.size(); i++)
                ctx.vectors[instr->operands[i].tempId()] = instr.get();
          } else if (instr->opcode == aco_opcode::p_split_vector &&

@@ -661,6 +661,7 @@ bool brw_fs_lower_dpas(fs_visitor &s);
 bool brw_fs_lower_find_live_channel(fs_visitor &s);
 bool brw_fs_lower_integer_multiplication(fs_visitor &s);
 bool brw_fs_lower_load_subgroup_invocation(fs_visitor &s);
+bool brw_fs_lower_indirect_mov(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);
 bool brw_fs_lower_load_payload(fs_visitor &s);

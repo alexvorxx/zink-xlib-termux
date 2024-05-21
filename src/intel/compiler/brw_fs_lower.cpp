@@ -828,3 +828,72 @@ brw_fs_lower_load_subgroup_invocation(fs_visitor &s)
 
    return progress;
 }
+
+bool
+brw_fs_lower_indirect_mov(fs_visitor &s)
+{
+   bool progress = false;
+
+   if (s.devinfo->ver < 20)
+      return progress;
+
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT) {
+         if (brw_type_size_bytes(inst->src[0].type) > 1 &&
+             brw_type_size_bytes(inst->dst.type) > 1) {
+            continue;
+         }
+
+         assert(brw_type_size_bytes(inst->src[0].type) ==
+                brw_type_size_bytes(inst->dst.type));
+
+         const fs_builder ibld(&s, block, inst);
+
+         /* Extract unaligned part */
+         uint16_t extra_offset = inst->src[0].offset & 0x1;
+         fs_reg offset = ibld.ADD(inst->src[1], brw_imm_uw(extra_offset));
+
+         /* Check if offset is odd or even so that we can choose either high or
+          * low byte from the result.
+          */
+         fs_reg is_odd = ibld.AND(offset, brw_imm_ud(1));
+
+         /* Make sure offset is word (2-bytes) aligned */
+         offset = ibld.AND(offset, brw_imm_uw(~1));
+
+         /* Indirect addressing(vx1 and vxh) not supported with UB/B datatype for
+          * Src0, so change data type for src0 and dst to UW.
+          */
+         fs_reg dst = ibld.vgrf(BRW_TYPE_UW);
+
+         /* Substract unaligned offset from src0 offset since we already
+          * accounted unaligned part in the indirect byte offset.
+          */
+         fs_reg start = retype(inst->src[0], BRW_TYPE_UW);
+         start.offset &= ~extra_offset;
+
+         /* Adjust length to account extra offset. */
+         assert(inst->src[2].file == IMM);
+         fs_reg length = brw_imm_ud(inst->src[2].ud + extra_offset);
+
+         ibld.emit(SHADER_OPCODE_MOV_INDIRECT, dst, start, offset, length);
+
+         /* Select high byte if offset is odd otherwise select low byte. */
+         fs_reg lo = ibld.AND(dst, brw_imm_uw(0xff));
+         fs_reg hi = ibld.SHR(dst, brw_imm_uw(8));
+         fs_reg result = ibld.vgrf(BRW_TYPE_UW);
+         ibld.CSEL(result, hi, lo, is_odd, BRW_CONDITIONAL_NZ);
+
+         /* Extra MOV needed here to convert back to the corresponding B type */
+         ibld.MOV(inst->dst, result);
+
+         inst->remove(block);
+         progress = true;
+      }
+   }
+
+   if (progress)
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+
+   return progress;
+}

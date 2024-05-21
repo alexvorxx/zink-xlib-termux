@@ -101,24 +101,25 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const bool create_2d_view_of_3d =
       (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) && view_type == VK_IMAGE_VIEW_TYPE_2D;
+   enum pipe_format format = vk_format_to_pipe_format(vk_format);
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
    unsigned array_pitch = 0;
    unsigned img_format;
    unsigned type;
 
-   desc = vk_format_description(vk_format);
-
    /* For emulated ETC2 without alpha we need to override the format to a 3-componenent format, so
     * that border colors work correctly (alpha forced to 1). Since Vulkan has no such format,
     * this uses the Gallium formats to set the description. */
-   if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK && vk_format == VK_FORMAT_R8G8B8A8_UNORM) {
-      desc = util_format_description(PIPE_FORMAT_R8G8B8X8_UNORM);
-   } else if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK && vk_format == VK_FORMAT_R8G8B8A8_SRGB) {
-      desc = util_format_description(PIPE_FORMAT_R8G8B8X8_SRGB);
+   if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK && format == PIPE_FORMAT_R8G8B8A8_UNORM) {
+      format = PIPE_FORMAT_R8G8B8X8_UNORM;
+   } else if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK && format == PIPE_FORMAT_R8G8B8A8_SRGB) {
+      format = PIPE_FORMAT_R8G8B8X8_SRGB;
    }
 
-   img_format = ac_get_gfx10_format_table(pdev->info.gfx_level)[vk_format_to_pipe_format(vk_format)].img_format;
+   desc = util_format_description(format);
+
+   img_format = ac_get_gfx10_format_table(pdev->info.gfx_level)[format].img_format;
 
    radv_compose_swizzle(desc, mapping, swizzle);
 
@@ -197,7 +198,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
       state[6] |=
          S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(V_028C78_MAX_BLOCK_SIZE_256B) |
          S_00A018_MAX_COMPRESSED_BLOCK_SIZE(image->planes[0].surface.u.gfx9.color.dcc.max_compressed_block_size) |
-         S_00A018_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, vk_format_to_pipe_format(vk_format)));
+         S_00A018_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, format));
    }
 
    /* Initialize the sampler view for FMASK. */
@@ -241,25 +242,26 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const bool create_2d_view_of_3d =
       (img_create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) && view_type == VK_IMAGE_VIEW_TYPE_2D;
+   enum pipe_format format = vk_format_to_pipe_format(vk_format);
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
    int first_non_void;
    unsigned num_format, data_format, type;
 
-   desc = vk_format_description(vk_format);
-
    /* For emulated ETC2 without alpha we need to override the format to a 3-componenent format, so
     * that border colors work correctly (alpha forced to 1). Since Vulkan has no such format,
     * this uses the Gallium formats to set the description. */
-   if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK && vk_format == VK_FORMAT_R8G8B8A8_UNORM) {
-      desc = util_format_description(PIPE_FORMAT_R8G8B8X8_UNORM);
-   } else if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK && vk_format == VK_FORMAT_R8G8B8A8_SRGB) {
-      desc = util_format_description(PIPE_FORMAT_R8G8B8X8_SRGB);
+   if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK && format == PIPE_FORMAT_R8G8B8A8_UNORM) {
+      format = PIPE_FORMAT_R8G8B8X8_UNORM;
+   } else if (image->vk.format == VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK && format == PIPE_FORMAT_R8G8B8A8_SRGB) {
+      format = PIPE_FORMAT_R8G8B8X8_SRGB;
    }
+
+   desc = util_format_description(format);
 
    radv_compose_swizzle(desc, mapping, swizzle);
 
-   first_non_void = vk_format_get_first_non_void_channel(vk_format);
+   first_non_void = util_format_get_first_non_void_channel(format);
 
    num_format = radv_translate_tex_numformat(desc, first_non_void);
 
@@ -269,7 +271,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    }
 
    /* S8 with either Z16 or Z32 HTILE need a special format. */
-   if (pdev->info.gfx_level == GFX9 && vk_format == VK_FORMAT_S8_UINT && radv_image_is_tc_compat_htile(image)) {
+   if (pdev->info.gfx_level == GFX9 && format == PIPE_FORMAT_S8_UINT && radv_image_is_tc_compat_htile(image)) {
       if (image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT)
          data_format = V_008F14_IMG_DATA_FORMAT_S8_32;
       else if (image->vk.format == VK_FORMAT_D16_UNORM_S8_UINT)
@@ -327,7 +329,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    }
 
    if (radv_dcc_enabled(image, first_level)) {
-      state[6] = S_008F28_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, vk_format_to_pipe_format(vk_format)));
+      state[6] = S_008F28_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&pdev->info, format));
    } else {
       if (instance->drirc.disable_aniso_single_level) {
          /* The last dword is unused by hw. The shader uses it to clear

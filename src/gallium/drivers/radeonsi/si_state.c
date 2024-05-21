@@ -1625,6 +1625,10 @@ static void si_pm4_emit_dsa(struct si_context *sctx, unsigned index)
       }
       gfx12_end_context_regs();
       radeon_end(); /* don't track context rolls on GFX12 */
+
+      gfx12_opt_push_gfx_sh_reg(R_00B030_SPI_SHADER_USER_DATA_PS_0 + SI_SGPR_ALPHA_REF * 4,
+                                SI_TRACKED_SPI_SHADER_USER_DATA_PS__ALPHA_REF,
+                                state->spi_shader_user_data_ps_alpha_ref);
    } else if (sctx->screen->info.has_set_context_pairs_packed) {
       radeon_begin(&sctx->gfx_cs);
       gfx11_begin_packed_context_regs();

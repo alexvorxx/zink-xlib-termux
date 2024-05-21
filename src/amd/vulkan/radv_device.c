@@ -1475,29 +1475,12 @@ radv_get_dcc_max_uncompressed_block_size(const struct radv_device *device, const
    return V_028C78_MAX_BLOCK_SIZE_256B;
 }
 
-static unsigned
-get_dcc_min_compressed_block_size(const struct radv_device *device)
-{
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-
-   if (!pdev->info.has_dedicated_vram) {
-      /* amdvlk: [min-compressed-block-size] should be set to 32 for
-       * dGPU and 64 for APU because all of our APUs to date use
-       * DIMMs which have a request granularity size of 64B while all
-       * other chips have a 32B request size.
-       */
-      return V_028C78_MIN_BLOCK_SIZE_64B;
-   }
-
-   return V_028C78_MIN_BLOCK_SIZE_32B;
-}
-
 static uint32_t
 radv_init_dcc_control_reg(struct radv_device *device, struct radv_image_view *iview)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    unsigned max_uncompressed_block_size = radv_get_dcc_max_uncompressed_block_size(device, iview->image);
-   unsigned min_compressed_block_size = get_dcc_min_compressed_block_size(device);
+   unsigned min_compressed_block_size = ac_get_dcc_min_compressed_block_size(&pdev->info);
    unsigned max_compressed_block_size;
    unsigned independent_128b_blocks;
    unsigned independent_64b_blocks;

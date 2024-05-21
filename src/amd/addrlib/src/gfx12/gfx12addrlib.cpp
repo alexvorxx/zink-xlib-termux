@@ -221,6 +221,36 @@ VOID Gfx12Lib::InitEquationTable()
 
 /**
 ************************************************************************************************************************
+*   Gfx12Lib::HwlGetEquationIndex
+*
+*   @brief
+*       Return equationIndex by surface info input
+*
+*   @return
+*       equationIndex
+************************************************************************************************************************
+*/
+UINT_32 Gfx12Lib::HwlGetEquationIndex(
+    const ADDR3_COMPUTE_SURFACE_INFO_INPUT* pIn    ///< [in] input structure
+    ) const
+{
+    UINT_32 equationIdx = ADDR_INVALID_EQUATION_INDEX;
+
+    if ((pIn->resourceType == ADDR_RSRC_TEX_2D) ||
+        (pIn->resourceType == ADDR_RSRC_TEX_3D))
+    {
+        const UINT_32 swMode   = static_cast<UINT_32>(pIn->swizzleMode);
+        const UINT_32 msaaIdx  = Log2(pIn->numSamples);
+        const UINT_32 elemLog2 = Log2(pIn->bpp >> 3);
+
+        equationIdx = m_equationLookupTable[swMode][msaaIdx][elemLog2];
+    }
+
+    return equationIdx;
+}
+
+/**
+************************************************************************************************************************
 *   Gfx12Lib::InitBlockDimensionTable
 *
 *   @brief
@@ -1470,7 +1500,6 @@ void Gfx12Lib::SanityCheckSurfSize(
     }
 #endif
 }
-
 
 /**
 ************************************************************************************************************************

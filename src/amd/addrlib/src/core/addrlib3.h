@@ -335,7 +335,9 @@ protected:
         return GetBlockSize(swizzleMode) > 256u;
     }
 
-    virtual UINT_32 HwlComputeMaxBaseAlignments() const  { return 256 * 1024; }
+    // The max alignment is tied to the swizzle mode and since the largest swizzle mode is 256kb, so the maximal
+    // alignment is also 256kb.
+    virtual UINT_32 HwlComputeMaxBaseAlignments() const  { return 262144u; }
 
     virtual BOOL_32 HwlInitGlobalParams(const ADDR_CREATE_INPUT* pCreateIn)
     {
@@ -408,6 +410,28 @@ protected:
     {
         ADDR_NOT_IMPLEMENTED();
         return ADDR_NOTSUPPORTED;
+    }
+
+    virtual UINT_32 HwlGetEquationIndex(
+        const ADDR3_COMPUTE_SURFACE_INFO_INPUT* pIn) const
+    {
+        ADDR_NOT_IMPLEMENTED();
+        return ADDR_INVALID_EQUATION_INDEX;
+    }
+
+    void SetEquationIndex(
+        const ADDR3_COMPUTE_SURFACE_INFO_INPUT* pIn,
+        ADDR3_COMPUTE_SURFACE_INFO_OUTPUT*      pOut) const
+    {
+        UINT_32 equationIdx = HwlGetEquationIndex(pIn);
+
+        if (pOut->pMipInfo != NULL)
+        {
+            for (UINT_32 i = 0; i < pIn->numMipLevels; i++)
+            {
+                pOut->pMipInfo[i].equationIndex = equationIdx;
+            }
+        }
     }
 
     ADDR_E_RETURNCODE ApplyCustomizedPitchHeight(

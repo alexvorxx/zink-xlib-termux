@@ -1349,6 +1349,7 @@ virtgpu_init_renderer_info(struct virtgpu *gpu)
    struct vn_renderer_info *info = &gpu->base.info;
 
    info->drm.props = (VkPhysicalDeviceDrmPropertiesEXT){
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT,
       .hasPrimary = gpu->has_primary,
       .hasRender = true,
       .primaryMajor = gpu->primary_major,
@@ -1363,6 +1364,8 @@ virtgpu_init_renderer_info(struct virtgpu *gpu)
    if (gpu->bustype == DRM_BUS_PCI) {
       info->pci.has_bus_info = true;
       info->pci.props = (VkPhysicalDevicePCIBusInfoPropertiesEXT){
+         .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT,
          .pciDomain = gpu->pci_bus_info.domain,
          .pciBus = gpu->pci_bus_info.bus,
          .pciDevice = gpu->pci_bus_info.dev,

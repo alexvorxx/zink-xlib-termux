@@ -3758,7 +3758,7 @@ radv_update_zrange_precision(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_image *image = iview->image;
-   uint32_t db_z_info = ds->db_z_info;
+   uint32_t db_z_info = ds->ac.db_z_info;
    uint32_t db_z_info_reg;
 
    if (!pdev->info.has_tc_compat_zrange_bug || !radv_image_is_tc_compat_htile(image))
@@ -3810,10 +3810,10 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   uint64_t db_htile_data_base = ds->db_htile_data_base;
-   uint32_t db_htile_surface = ds->db_htile_surface;
+   uint64_t db_htile_data_base = ds->ac.u.gfx6.db_htile_data_base;
+   uint32_t db_htile_surface = ds->ac.u.gfx6.db_htile_surface;
    uint32_t db_render_control = ds->db_render_control | cmd_buffer->state.db_render_control;
-   uint32_t db_z_info = ds->db_z_info;
+   uint32_t db_z_info = ds->ac.db_z_info;
 
    if (!depth_compressed)
       db_render_control |= S_028000_DEPTH_COMPRESS_DISABLE(1);
@@ -3840,13 +3840,13 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
    }
 
    radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
-   radeon_set_context_reg(cmd_buffer->cs, R_028008_DB_DEPTH_VIEW, ds->db_depth_view);
+   radeon_set_context_reg(cmd_buffer->cs, R_028008_DB_DEPTH_VIEW, ds->ac.db_depth_view);
    radeon_set_context_reg(cmd_buffer->cs, R_028010_DB_RENDER_OVERRIDE2, ds->db_render_override2);
    radeon_set_context_reg(cmd_buffer->cs, R_028ABC_DB_HTILE_SURFACE, db_htile_surface);
 
    if (pdev->info.gfx_level >= GFX10) {
       radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, db_htile_data_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_02801C_DB_DEPTH_SIZE_XY, ds->db_depth_size);
+      radeon_set_context_reg(cmd_buffer->cs, R_02801C_DB_DEPTH_SIZE_XY, ds->ac.db_depth_size);
 
       if (pdev->info.gfx_level >= GFX11) {
          radeon_set_context_reg_seq(cmd_buffer->cs, R_028040_DB_Z_INFO, 6);
@@ -3855,52 +3855,52 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
          radeon_emit(cmd_buffer->cs, S_02803C_RESOURCE_LEVEL(1));
       }
       radeon_emit(cmd_buffer->cs, db_z_info);
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_info);
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base);
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base);
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base);
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_info);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base);
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028068_DB_Z_READ_BASE_HI, 5);
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base >> 32);
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base >> 32);
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base >> 32);
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base >> 32);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base >> 32);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base >> 32);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base >> 32);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base >> 32);
       radeon_emit(cmd_buffer->cs, db_htile_data_base >> 32);
    } else if (pdev->info.gfx_level == GFX9) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, 3);
       radeon_emit(cmd_buffer->cs, db_htile_data_base);
       radeon_emit(cmd_buffer->cs, S_028018_BASE_HI(db_htile_data_base >> 32));
-      radeon_emit(cmd_buffer->cs, ds->db_depth_size);
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_size);
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028038_DB_Z_INFO, 10);
       radeon_emit(cmd_buffer->cs, db_z_info);                                         /* DB_Z_INFO */
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_info);                               /* DB_STENCIL_INFO */
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base);                                 /* DB_Z_READ_BASE */
-      radeon_emit(cmd_buffer->cs, S_028044_BASE_HI(ds->db_depth_base >> 32));         /* DB_Z_READ_BASE_HI */
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base);                               /* DB_STENCIL_READ_BASE */
-      radeon_emit(cmd_buffer->cs, S_02804C_BASE_HI(ds->db_stencil_base >> 32));       /* DB_STENCIL_READ_BASE_HI */
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base);                                 /* DB_Z_WRITE_BASE */
-      radeon_emit(cmd_buffer->cs, S_028054_BASE_HI(ds->db_depth_base >> 32));         /* DB_Z_WRITE_BASE_HI */
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base);                               /* DB_STENCIL_WRITE_BASE */
-      radeon_emit(cmd_buffer->cs, S_02805C_BASE_HI(ds->db_stencil_base >> 32));       /* DB_STENCIL_WRITE_BASE_HI */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_info);                            /* DB_STENCIL_INFO */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base);                              /* DB_Z_READ_BASE */
+      radeon_emit(cmd_buffer->cs, S_028044_BASE_HI(ds->ac.db_depth_base >> 32));      /* DB_Z_READ_BASE_HI */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base);                            /* DB_STENCIL_READ_BASE */
+      radeon_emit(cmd_buffer->cs, S_02804C_BASE_HI(ds->ac.db_stencil_base >> 32));    /* DB_STENCIL_READ_BASE_HI */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base);                              /* DB_Z_WRITE_BASE */
+      radeon_emit(cmd_buffer->cs, S_028054_BASE_HI(ds->ac.db_depth_base >> 32));      /* DB_Z_WRITE_BASE_HI */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base);                            /* DB_STENCIL_WRITE_BASE */
+      radeon_emit(cmd_buffer->cs, S_02805C_BASE_HI(ds->ac.db_stencil_base >> 32));    /* DB_STENCIL_WRITE_BASE_HI */
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028068_DB_Z_INFO2, 2);
-      radeon_emit(cmd_buffer->cs, ds->db_z_info2);
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_info2);
+      radeon_emit(cmd_buffer->cs, ds->ac.u.gfx6.db_z_info2);
+      radeon_emit(cmd_buffer->cs, ds->ac.u.gfx6.db_stencil_info2);
    } else {
       radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, db_htile_data_base);
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_02803C_DB_DEPTH_INFO, 9);
-      radeon_emit(cmd_buffer->cs, ds->db_depth_info);         /* R_02803C_DB_DEPTH_INFO */
-      radeon_emit(cmd_buffer->cs, db_z_info);                 /* R_028040_DB_Z_INFO */
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_info);       /* R_028044_DB_STENCIL_INFO */
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base);         /* R_028048_DB_Z_READ_BASE */
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base);       /* R_02804C_DB_STENCIL_READ_BASE */
-      radeon_emit(cmd_buffer->cs, ds->db_depth_base);         /* R_028050_DB_Z_WRITE_BASE */
-      radeon_emit(cmd_buffer->cs, ds->db_stencil_base);       /* R_028054_DB_STENCIL_WRITE_BASE */
-      radeon_emit(cmd_buffer->cs, ds->db_depth_size);         /* R_028058_DB_DEPTH_SIZE */
-      radeon_emit(cmd_buffer->cs, ds->db_depth_slice);        /* R_02805C_DB_DEPTH_SLICE */
+      radeon_emit(cmd_buffer->cs, ds->ac.u.gfx6.db_depth_info);  /* R_02803C_DB_DEPTH_INFO */
+      radeon_emit(cmd_buffer->cs, db_z_info);                    /* R_028040_DB_Z_INFO */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_info);       /* R_028044_DB_STENCIL_INFO */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base);         /* R_028048_DB_Z_READ_BASE */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base);       /* R_02804C_DB_STENCIL_READ_BASE */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_base);         /* R_028050_DB_Z_WRITE_BASE */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_stencil_base);       /* R_028054_DB_STENCIL_WRITE_BASE */
+      radeon_emit(cmd_buffer->cs, ds->ac.db_depth_size);         /* R_028058_DB_DEPTH_SIZE */
+      radeon_emit(cmd_buffer->cs, ds->ac.u.gfx6.db_depth_slice); /* R_02805C_DB_DEPTH_SLICE */
    }
 
    /* Update the ZRANGE_PRECISION value for the TC-compat bug. */

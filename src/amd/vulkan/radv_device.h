@@ -11,6 +11,7 @@
 #ifndef RADV_DEVICE_H
 #define RADV_DEVICE_H
 
+#include "ac_descriptors.h"
 #include "ac_spm.h"
 #include "ac_sqtt.h"
 
@@ -626,18 +627,8 @@ struct radv_color_buffer_info {
 };
 
 struct radv_ds_buffer_info {
-   uint64_t db_depth_base;
-   uint64_t db_stencil_base;
-   uint64_t db_htile_data_base;
-   uint32_t db_depth_info;
-   uint32_t db_z_info;
-   uint32_t db_stencil_info;
-   uint32_t db_depth_view;
-   uint32_t db_depth_size;
-   uint32_t db_depth_slice;
-   uint32_t db_htile_surface;
-   uint32_t db_z_info2;       /* GFX9 only */
-   uint32_t db_stencil_info2; /* GFX9 only */
+   struct ac_ds_surface ac;
+
    uint32_t db_render_override2;
    uint32_t db_render_control;
 };

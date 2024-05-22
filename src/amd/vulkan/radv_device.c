@@ -1851,14 +1851,14 @@ radv_initialise_vrs_surface(struct radv_image *image, struct radv_buffer *htile_
    assert(image->vk.format == VK_FORMAT_D16_UNORM);
    memset(ds, 0, sizeof(*ds));
 
-   ds->db_z_info = S_028038_FORMAT(V_028040_Z_16) | S_028038_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                   S_028038_ZRANGE_PRECISION(1) | S_028038_TILE_SURFACE_ENABLE(1);
-   ds->db_stencil_info = S_02803C_FORMAT(V_028044_STENCIL_INVALID);
+   ds->ac.db_z_info = S_028038_FORMAT(V_028040_Z_16) | S_028038_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                      S_028038_ZRANGE_PRECISION(1) | S_028038_TILE_SURFACE_ENABLE(1);
+   ds->ac.db_stencil_info = S_02803C_FORMAT(V_028044_STENCIL_INVALID);
 
-   ds->db_depth_size = S_02801C_X_MAX(image->vk.extent.width - 1) | S_02801C_Y_MAX(image->vk.extent.height - 1);
+   ds->ac.db_depth_size = S_02801C_X_MAX(image->vk.extent.width - 1) | S_02801C_Y_MAX(image->vk.extent.height - 1);
 
-   ds->db_htile_data_base = radv_buffer_get_va(htile_buffer->bo) >> 8;
-   ds->db_htile_surface =
+   ds->ac.u.gfx6.db_htile_data_base = radv_buffer_get_va(htile_buffer->bo) >> 8;
+   ds->ac.u.gfx6.db_htile_surface =
       S_028ABC_FULL_CACHE(1) | S_028ABC_PIPE_ALIGNED(1) | S_028ABC_VRS_HTILE_ENCODING(V_028ABC_VRS_HTILE_4BIT_ENCODING);
 }
 
@@ -1868,18 +1868,12 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    unsigned level = iview->vk.base_mip_level;
-   unsigned format, stencil_format;
    uint64_t va;
    bool stencil_only = iview->image->vk.format == VK_FORMAT_S8_UINT;
-   const struct radv_image_plane *plane = &iview->image->planes[0];
-   const struct radeon_surf *surf = &plane->surface;
 
    assert(vk_format_get_plane_count(iview->image->vk.format) == 1);
 
    memset(ds, 0, sizeof(*ds));
-
-   format = ac_translate_dbformat(vk_format_to_pipe_format(iview->image->vk.format));
-   stencil_format = surf->has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;
 
@@ -1889,138 +1883,44 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
    ds->db_render_override2 = S_028010_DECOMPRESS_Z_ON_FLUSH(iview->image->vk.samples >= 4) |
                              S_028010_CENTROID_COMPUTATION_MODE(pdev->info.gfx_level >= GFX10_3);
 
-   if (pdev->info.gfx_level >= GFX9) {
-      assert(surf->u.gfx9.surf_offset == 0);
+   const struct ac_ds_state ds_state = {
+      .surf = &iview->image->planes[0].surface,
+      .va = va,
+      .format = vk_format_to_pipe_format(iview->image->vk.format),
+      .width = iview->image->vk.extent.width,
+      .height = iview->image->vk.extent.height,
+      .level = level,
+      .num_levels = iview->image->vk.mip_levels,
+      .num_samples = iview->image->vk.samples,
+      .first_layer = iview->vk.base_array_layer,
+      .last_layer = max_slice,
+      .zrange_precision = true,
+      .stencil_only = stencil_only,
+      .z_read_only = !(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
+      .stencil_read_only = !(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT),
+      .htile_enabled = radv_htile_enabled(iview->image, level),
+      .htile_stencil_disabled = radv_image_tile_stencil_disabled(device, iview->image),
+      .vrs_enabled = radv_image_has_vrs_htile(device, iview->image),
+   };
 
-      ds->db_htile_data_base = 0;
-      ds->db_htile_surface = 0;
-      ds->db_depth_base = va >> 8;
-      ds->db_stencil_base = (va + surf->u.gfx9.zs.stencil_offset) >> 8;
-
-      ds->db_z_info = S_028038_FORMAT(format) | S_028038_NUM_SAMPLES(util_logbase2(iview->image->vk.samples)) |
-                      S_028038_SW_MODE(surf->u.gfx9.swizzle_mode) | S_028038_MAXMIP(iview->image->vk.mip_levels - 1) |
-                      S_028038_ZRANGE_PRECISION(1) | S_028040_ITERATE_256(pdev->info.gfx_level >= GFX11);
-      ds->db_stencil_info = S_02803C_FORMAT(stencil_format) | S_02803C_SW_MODE(surf->u.gfx9.zs.stencil_swizzle_mode) |
-                            S_028044_ITERATE_256(pdev->info.gfx_level >= GFX11);
-
-      if (pdev->info.gfx_level == GFX9) {
-         ds->db_z_info2 = S_028068_EPITCH(surf->u.gfx9.epitch);
-         ds->db_stencil_info2 = S_02806C_EPITCH(surf->u.gfx9.zs.stencil_epitch);
-      }
-
-      ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
-                          S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
-                          S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT)) |
-                          S_028008_MIPID_GFX9(level);
-      if (pdev->info.gfx_level >= GFX10) {
-         ds->db_depth_view |=
-            S_028008_SLICE_START_HI(iview->vk.base_array_layer >> 11) | S_028008_SLICE_MAX_HI(max_slice >> 11);
-      }
-
-      ds->db_depth_size =
-         S_02801C_X_MAX(iview->image->vk.extent.width - 1) | S_02801C_Y_MAX(iview->image->vk.extent.height - 1);
-
-      if (radv_htile_enabled(iview->image, level)) {
-         ds->db_z_info |= S_028038_TILE_SURFACE_ENABLE(1);
-
-         if (radv_image_tile_stencil_disabled(device, iview->image)) {
-            ds->db_stencil_info |= S_02803C_TILE_STENCIL_DISABLE(1);
-         }
-
-         va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset + surf->meta_offset;
-         ds->db_htile_data_base = va >> 8;
-         ds->db_htile_surface = S_028ABC_FULL_CACHE(1) | S_028ABC_PIPE_ALIGNED(1);
-
-         if (pdev->info.gfx_level == GFX9) {
-            ds->db_htile_surface |= S_028ABC_RB_ALIGNED(1);
-         }
-
-         if (radv_image_has_vrs_htile(device, iview->image)) {
-            ds->db_htile_surface |= S_028ABC_VRS_HTILE_ENCODING(V_028ABC_VRS_HTILE_4BIT_ENCODING);
-         }
-      }
-   } else {
-      const struct legacy_surf_level *level_info = &surf->u.legacy.level[level];
-
-      if (stencil_only)
-         level_info = &surf->u.legacy.zs.stencil_level[level];
-
-      ds->db_htile_data_base = 0;
-      ds->db_htile_surface = 0;
-      ds->db_depth_base = (va >> 8) + surf->u.legacy.level[level].offset_256B;
-      ds->db_stencil_base = (va >> 8) + surf->u.legacy.zs.stencil_level[level].offset_256B;
-
-      ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
-                          S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
-                          S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT));
-      ds->db_z_info = S_028040_FORMAT(format) | S_028040_ZRANGE_PRECISION(1);
-      ds->db_stencil_info = S_028044_FORMAT(stencil_format);
-
-      if (iview->image->vk.samples > 1)
-         ds->db_z_info |= S_028040_NUM_SAMPLES(util_logbase2(iview->image->vk.samples));
-
-      if (pdev->info.gfx_level >= GFX7) {
-         const struct radeon_info *gpu_info = &pdev->info;
-         unsigned tiling_index = surf->u.legacy.tiling_index[level];
-         unsigned stencil_index = surf->u.legacy.zs.stencil_tiling_index[level];
-         unsigned macro_index = surf->u.legacy.macro_tile_index;
-         unsigned tile_mode = gpu_info->si_tile_mode_array[tiling_index];
-         unsigned stencil_tile_mode = gpu_info->si_tile_mode_array[stencil_index];
-         unsigned macro_mode = gpu_info->cik_macrotile_mode_array[macro_index];
-
-         if (stencil_only)
-            tile_mode = stencil_tile_mode;
-
-         ds->db_depth_info |= S_02803C_ARRAY_MODE(G_009910_ARRAY_MODE(tile_mode)) |
-                              S_02803C_PIPE_CONFIG(G_009910_PIPE_CONFIG(tile_mode)) |
-                              S_02803C_BANK_WIDTH(G_009990_BANK_WIDTH(macro_mode)) |
-                              S_02803C_BANK_HEIGHT(G_009990_BANK_HEIGHT(macro_mode)) |
-                              S_02803C_MACRO_TILE_ASPECT(G_009990_MACRO_TILE_ASPECT(macro_mode)) |
-                              S_02803C_NUM_BANKS(G_009990_NUM_BANKS(macro_mode));
-         ds->db_z_info |= S_028040_TILE_SPLIT(G_009910_TILE_SPLIT(tile_mode));
-         ds->db_stencil_info |= S_028044_TILE_SPLIT(G_009910_TILE_SPLIT(stencil_tile_mode));
-      } else {
-         unsigned tile_mode_index = ac_tile_mode_index(&iview->image->planes[0].surface, level, false);
-         ds->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
-         tile_mode_index = ac_tile_mode_index(&iview->image->planes[0].surface, level, true);
-         ds->db_stencil_info |= S_028044_TILE_MODE_INDEX(tile_mode_index);
-         if (stencil_only)
-            ds->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
-      }
-
-      ds->db_depth_size =
-         S_028058_PITCH_TILE_MAX((level_info->nblk_x / 8) - 1) | S_028058_HEIGHT_TILE_MAX((level_info->nblk_y / 8) - 1);
-      ds->db_depth_slice = S_02805C_SLICE_TILE_MAX((level_info->nblk_x * level_info->nblk_y) / 64 - 1);
-
-      if (radv_htile_enabled(iview->image, level)) {
-         ds->db_z_info |= S_028040_TILE_SURFACE_ENABLE(1);
-
-         if (radv_image_tile_stencil_disabled(device, iview->image)) {
-            ds->db_stencil_info |= S_028044_TILE_STENCIL_DISABLE(1);
-         }
-
-         va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset + surf->meta_offset;
-         ds->db_htile_data_base = va >> 8;
-         ds->db_htile_surface = S_028ABC_FULL_CACHE(1);
-      }
-   }
+   ac_init_ds_surface(&pdev->info, &ds_state, &ds->ac);
 
    if (pdev->info.gfx_level >= GFX9) {
       if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
          unsigned max_zplanes = radv_calc_decompress_on_z_planes(device, iview);
 
-         ds->db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
+         ds->ac.db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
 
          if (pdev->info.gfx_level >= GFX10) {
             bool iterate256 = radv_image_get_iterate256(device, iview->image);
 
-            ds->db_z_info |= S_028040_ITERATE_FLUSH(1);
-            ds->db_stencil_info |= S_028044_ITERATE_FLUSH(1);
-            ds->db_z_info |= S_028040_ITERATE_256(iterate256);
-            ds->db_stencil_info |= S_028044_ITERATE_256(iterate256);
+            ds->ac.db_z_info |= S_028040_ITERATE_FLUSH(1);
+            ds->ac.db_stencil_info |= S_028044_ITERATE_FLUSH(1);
+            ds->ac.db_z_info |= S_028040_ITERATE_256(iterate256);
+            ds->ac.db_stencil_info |= S_028044_ITERATE_256(iterate256);
          } else {
-            ds->db_z_info |= S_028038_ITERATE_FLUSH(1);
-            ds->db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
+            ds->ac.db_z_info |= S_028038_ITERATE_FLUSH(1);
+            ds->ac.db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
          }
       }
 
@@ -2028,13 +1928,13 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          radv_gfx11_set_db_render_control(device, iview->image->vk.samples, &ds->db_render_control);
       }
    } else {
-      ds->db_depth_info |= S_02803C_ADDR5_SWIZZLE_MASK(!radv_image_is_tc_compat_htile(iview->image));
+      ds->ac.u.gfx6.db_depth_info |= S_02803C_ADDR5_SWIZZLE_MASK(!radv_image_is_tc_compat_htile(iview->image));
 
       if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
          unsigned max_zplanes = radv_calc_decompress_on_z_planes(device, iview);
 
-         ds->db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
-         ds->db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
+         ds->ac.u.gfx6.db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
+         ds->ac.db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
       }
    }
 }

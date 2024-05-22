@@ -130,6 +130,62 @@ ac_build_attr_ring_descriptor(const enum amd_gfx_level gfx_level,
                               uint32_t size,
                               uint32_t desc[4]);
 
+struct ac_ds_state {
+   const struct radeon_surf *surf;
+   uint64_t va;
+   enum pipe_format format;
+   uint32_t width : 17;
+   uint32_t height : 17;
+   uint32_t level : 5;
+   uint32_t num_levels : 6;
+   uint32_t num_samples : 5;
+   uint32_t first_layer : 14;
+   uint32_t last_layer : 14;
+
+   uint32_t zrange_precision : 1;
+   uint32_t allow_expclear : 1;
+   uint32_t stencil_only : 1;
+   uint32_t z_read_only : 1;
+   uint32_t stencil_read_only : 1;
+
+   uint32_t htile_enabled : 1;
+   uint32_t htile_stencil_disabled : 1;
+   uint32_t vrs_enabled : 1;
+};
+
+struct ac_ds_surface {
+   uint64_t db_depth_base;
+   uint64_t db_stencil_base;
+   uint32_t db_depth_view;
+   uint32_t db_depth_size;
+   uint32_t db_z_info;
+   uint32_t db_stencil_info;
+
+   union {
+      struct {
+         uint64_t hiz_base;
+         uint32_t hiz_info;
+         uint32_t hiz_size_xy;
+         uint64_t his_base;
+         uint32_t his_info;
+         uint32_t his_size_xy;
+         uint32_t db_depth_view1;
+      } gfx12;
+
+      struct {
+         uint64_t db_htile_data_base;
+         uint32_t db_depth_info;
+         uint32_t db_depth_slice;
+         uint32_t db_htile_surface;
+         uint32_t db_z_info2;
+         uint32_t db_stencil_info2;
+      } gfx6;
+   } u;
+};
+
+void
+ac_init_ds_surface(const struct radeon_info *info, const struct ac_ds_state *state, struct ac_ds_surface *ds);
+
 #ifdef __cplusplus
 }
 #endif

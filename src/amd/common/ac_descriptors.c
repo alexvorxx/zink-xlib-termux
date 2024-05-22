@@ -587,3 +587,214 @@ ac_build_attr_ring_descriptor(const enum amd_gfx_level gfx_level, uint64_t va, u
 
    ac_build_buffer_descriptor(gfx_level, &ac_state, desc);
 }
+
+static void
+ac_init_gfx6_ds_surface(const struct radeon_info *info, const struct ac_ds_state *state,
+                        uint32_t db_format, uint32_t stencil_format, struct ac_ds_surface *ds)
+{
+   const struct radeon_surf *surf = state->surf;
+   const struct legacy_surf_level *level_info = &surf->u.legacy.level[state->level];
+
+   assert(level_info->nblk_x % 8 == 0 && level_info->nblk_y % 8 == 0);
+
+   if (state->stencil_only)
+      level_info = &surf->u.legacy.zs.stencil_level[state->level];
+
+   ds->u.gfx6.db_htile_data_base = 0;
+   ds->u.gfx6.db_htile_surface = 0;
+   ds->db_depth_base = (state->va >> 8) + surf->u.legacy.level[state->level].offset_256B;
+   ds->db_stencil_base = (state->va >> 8) + surf->u.legacy.zs.stencil_level[state->level].offset_256B;
+   ds->db_depth_view = S_028008_SLICE_START(state->first_layer) |
+                       S_028008_SLICE_MAX(state->last_layer) |
+                       S_028008_Z_READ_ONLY(state->z_read_only) |
+                       S_028008_STENCIL_READ_ONLY(state->stencil_read_only);
+   ds->db_z_info = S_028040_FORMAT(db_format) |
+                   S_028040_NUM_SAMPLES(util_logbase2(state->num_samples)) |
+                   S_028040_ZRANGE_PRECISION(state->zrange_precision);
+   ds->db_stencil_info = S_028044_FORMAT(stencil_format);
+
+   if (info->gfx_level >= GFX7) {
+      const uint32_t index = surf->u.legacy.tiling_index[state->level];
+      const uint32_t stencil_index = surf->u.legacy.zs.stencil_tiling_index[state->level];
+      const uint32_t macro_index = surf->u.legacy.macro_tile_index;
+      const uint32_t stencil_tile_mode = info->si_tile_mode_array[stencil_index];
+      const uint32_t macro_mode = info->cik_macrotile_mode_array[macro_index];
+      uint32_t tile_mode = info->si_tile_mode_array[index];
+
+      if (state->stencil_only)
+         tile_mode = stencil_tile_mode;
+
+      ds->u.gfx6.db_depth_info |= S_02803C_ARRAY_MODE(G_009910_ARRAY_MODE(tile_mode)) |
+                                  S_02803C_PIPE_CONFIG(G_009910_PIPE_CONFIG(tile_mode)) |
+                                  S_02803C_BANK_WIDTH(G_009990_BANK_WIDTH(macro_mode)) |
+                                  S_02803C_BANK_HEIGHT(G_009990_BANK_HEIGHT(macro_mode)) |
+                                  S_02803C_MACRO_TILE_ASPECT(G_009990_MACRO_TILE_ASPECT(macro_mode)) |
+                                  S_02803C_NUM_BANKS(G_009990_NUM_BANKS(macro_mode));
+      ds->db_z_info |= S_028040_TILE_SPLIT(G_009910_TILE_SPLIT(tile_mode));
+      ds->db_stencil_info |= S_028044_TILE_SPLIT(G_009910_TILE_SPLIT(stencil_tile_mode));
+   } else {
+      uint32_t tile_mode_index = ac_tile_mode_index(surf, state->level, false);
+      ds->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
+
+      tile_mode_index = ac_tile_mode_index(surf, state->level, true);
+      ds->db_stencil_info |= S_028044_TILE_MODE_INDEX(tile_mode_index);
+      if (state->stencil_only)
+         ds->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
+   }
+
+   ds->db_depth_size = S_028058_PITCH_TILE_MAX((level_info->nblk_x / 8) - 1) |
+                       S_028058_HEIGHT_TILE_MAX((level_info->nblk_y / 8) - 1);
+   ds->u.gfx6.db_depth_slice = S_02805C_SLICE_TILE_MAX((level_info->nblk_x * level_info->nblk_y) / 64 - 1);
+
+   if (state->htile_enabled) {
+      ds->db_z_info |= S_028040_TILE_SURFACE_ENABLE(1) |
+                       S_028040_ALLOW_EXPCLEAR(state->allow_expclear);
+      ds->db_stencil_info |= S_028044_TILE_STENCIL_DISABLE(state->htile_stencil_disabled);
+
+      if (surf->has_stencil) {
+         /* Workaround: For a not yet understood reason, the
+          * combination of MSAA, fast stencil clear and stencil
+          * decompress messes with subsequent stencil buffer
+          * uses. Problem was reproduced on Verde, Bonaire,
+          * Tonga, and Carrizo.
+          *
+          * Disabling EXPCLEAR works around the problem.
+          *
+          * Check piglit's arb_texture_multisample-stencil-clear
+          * test if you want to try changing this.
+          */
+         if (state->num_samples <= 1)
+            ds->db_stencil_info |= S_028044_ALLOW_EXPCLEAR(state->allow_expclear);
+      }
+
+      ds->u.gfx6.db_htile_data_base = (state->va + surf->meta_offset) >> 8;
+      ds->u.gfx6.db_htile_surface = S_028ABC_FULL_CACHE(1);
+   }
+}
+
+static void
+ac_init_gfx9_ds_surface(const struct radeon_info *info, const struct ac_ds_state *state,
+                        uint32_t db_format, uint32_t stencil_format, struct ac_ds_surface *ds)
+{
+   const struct radeon_surf *surf = state->surf;
+
+   assert(surf->u.gfx9.surf_offset == 0);
+
+   ds->u.gfx6.db_htile_data_base = 0;
+   ds->u.gfx6.db_htile_surface = 0;
+   ds->db_depth_base = state->va >> 8;
+   ds->db_stencil_base = (state->va + surf->u.gfx9.zs.stencil_offset) >> 8;
+   ds->db_depth_view = S_028008_SLICE_START(state->first_layer) |
+                       S_028008_SLICE_MAX(state->last_layer) |
+                       S_028008_Z_READ_ONLY(state->z_read_only) |
+                       S_028008_STENCIL_READ_ONLY(state->stencil_read_only) |
+                       S_028008_MIPID_GFX9(state->level);
+
+   if (info->gfx_level >= GFX10) {
+      ds->db_depth_view |= S_028008_SLICE_START_HI(state->first_layer >> 11) |
+                           S_028008_SLICE_MAX_HI(state->last_layer >> 11);
+   }
+
+   ds->db_z_info = S_028038_FORMAT(db_format) |
+                   S_028038_NUM_SAMPLES(util_logbase2(state->num_samples)) |
+                   S_028038_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                   S_028038_MAXMIP(state->num_levels - 1) |
+                   S_028038_ZRANGE_PRECISION(state->zrange_precision) |
+                   S_028040_ITERATE_256(info->gfx_level >= GFX11);
+   ds->db_stencil_info = S_02803C_FORMAT(stencil_format) |
+                         S_02803C_SW_MODE(surf->u.gfx9.zs.stencil_swizzle_mode) |
+                         S_028044_ITERATE_256(info->gfx_level >= GFX11);
+
+   if (info->gfx_level == GFX9) {
+      ds->u.gfx6.db_z_info2 = S_028068_EPITCH(surf->u.gfx9.epitch);
+      ds->u.gfx6.db_stencil_info2 = S_02806C_EPITCH(surf->u.gfx9.zs.stencil_epitch);
+   }
+
+   ds->db_depth_size = S_02801C_X_MAX(state->width - 1) |
+                       S_02801C_Y_MAX(state->height - 1);
+
+   if (state->htile_enabled) {
+      ds->db_z_info |= S_028038_TILE_SURFACE_ENABLE(1) |
+                       S_028038_ALLOW_EXPCLEAR(state->allow_expclear);
+      ds->db_stencil_info |= S_02803C_TILE_STENCIL_DISABLE(state->htile_stencil_disabled);
+
+      if (surf->has_stencil && !state->htile_stencil_disabled && state->num_samples <= 1) {
+         /* Stencil buffer workaround ported from the GFX6-GFX8 code.
+          * See that for explanation.
+          */
+         ds->db_stencil_info |= S_02803C_ALLOW_EXPCLEAR(state->allow_expclear);
+      }
+
+      ds->u.gfx6.db_htile_data_base = (state->va + surf->meta_offset) >> 8;
+      ds->u.gfx6.db_htile_surface = S_028ABC_FULL_CACHE(1) |
+                                    S_028ABC_PIPE_ALIGNED(1);
+
+      if (state->vrs_enabled) {
+         assert(info->gfx_level == GFX10_3);
+         ds->u.gfx6.db_htile_surface |= S_028ABC_VRS_HTILE_ENCODING(V_028ABC_VRS_HTILE_4BIT_ENCODING);
+      } else if (info->gfx_level == GFX9) {
+         ds->u.gfx6.db_htile_surface |= S_028ABC_RB_ALIGNED(1);
+      }
+   }
+}
+
+static void
+ac_init_gfx12_ds_surface(const struct radeon_info *info, const struct ac_ds_state *state,
+                         uint32_t db_format, uint32_t stencil_format, struct ac_ds_surface *ds)
+{
+   const struct radeon_surf *surf = state->surf;
+
+   assert(db_format != V_028040_Z_24);
+
+   ds->db_depth_view = S_028004_SLICE_START(state->first_layer) |
+                       S_028004_SLICE_MAX(state->last_layer);
+   ds->u.gfx12.db_depth_view1 = S_028008_MIPID_GFX12(state->level);
+   ds->db_depth_size = S_028014_X_MAX(state->width - 1) |
+                       S_028014_Y_MAX(state->width - 1);
+   ds->db_z_info = S_028018_FORMAT(db_format) |
+                   S_028018_NUM_SAMPLES(util_logbase2(state->num_samples)) |
+                   S_028018_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                   S_028018_MAXMIP(state->num_levels - 1);
+   ds->db_stencil_info = S_02801C_FORMAT(stencil_format) |
+                         S_02801C_SW_MODE(surf->u.gfx9.zs.stencil_swizzle_mode) |
+                         S_02801C_TILE_STENCIL_DISABLE(1);
+   ds->db_depth_base = state->va >> 8;
+   ds->db_stencil_base = (state->va + surf->u.gfx9.zs.stencil_offset) >> 8;
+   ds->u.gfx12.hiz_info = 0;
+   ds->u.gfx12.his_info = 0;
+
+   /* HiZ. */
+   if (surf->u.gfx9.zs.hiz.offset) {
+      ds->u.gfx12.hiz_info = S_028B94_SURFACE_ENABLE(1) |
+                             S_028B94_FORMAT(0) | /* unorm16 */
+                             S_028B94_SW_MODE(surf->u.gfx9.zs.hiz.swizzle_mode);
+      ds->u.gfx12.hiz_size_xy = S_028BA4_X_MAX(surf->u.gfx9.zs.hiz.width_in_tiles - 1) |
+                                S_028BA4_Y_MAX(surf->u.gfx9.zs.hiz.height_in_tiles - 1);
+      ds->u.gfx12.hiz_base = (state->va + surf->u.gfx9.zs.hiz.offset) >> 8;
+   }
+
+   /* HiS. */
+   if (surf->u.gfx9.zs.his.offset) {
+      ds->u.gfx12.his_info = S_028B98_SURFACE_ENABLE(1) |
+                             S_028B98_SW_MODE(surf->u.gfx9.zs.his.swizzle_mode);
+      ds->u.gfx12.his_size_xy = S_028BB0_X_MAX(surf->u.gfx9.zs.his.width_in_tiles - 1) |
+                                S_028BB0_Y_MAX(surf->u.gfx9.zs.his.height_in_tiles - 1);
+      ds->u.gfx12.his_base = (state->va + surf->u.gfx9.zs.his.offset) >> 8;
+   }
+}
+
+void
+ac_init_ds_surface(const struct radeon_info *info, const struct ac_ds_state *state, struct ac_ds_surface *ds)
+{
+   const struct radeon_surf *surf = state->surf;
+   const uint32_t db_format = ac_translate_dbformat(state->format);
+   const uint32_t stencil_format = surf->has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
+
+   if (info->gfx_level >= GFX12) {
+      ac_init_gfx12_ds_surface(info, state, db_format, stencil_format, ds);
+   } else if (info->gfx_level >= GFX9) {
+      ac_init_gfx9_ds_surface(info, state, db_format, stencil_format, ds);
+   } else {
+      ac_init_gfx6_ds_surface(info, state, db_format, stencil_format, ds);
+   }
+}

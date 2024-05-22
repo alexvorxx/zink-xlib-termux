@@ -1869,7 +1869,7 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
    const struct radv_physical_device *pdev = radv_device_physical(device);
    unsigned level = iview->vk.base_mip_level;
    unsigned format, stencil_format;
-   uint64_t va, s_offs, z_offs;
+   uint64_t va;
    bool stencil_only = iview->image->vk.format == VK_FORMAT_S8_UINT;
    const struct radv_image_plane *plane = &iview->image->planes[0];
    const struct radeon_surf *surf = &plane->surface;
@@ -1882,19 +1882,8 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
    stencil_format = surf->has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;
-   ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
-                       S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
-                       S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT));
-   if (pdev->info.gfx_level >= GFX10) {
-      ds->db_depth_view |=
-         S_028008_SLICE_START_HI(iview->vk.base_array_layer >> 11) | S_028008_SLICE_MAX_HI(max_slice >> 11);
-   }
-
-   ds->db_htile_data_base = 0;
-   ds->db_htile_surface = 0;
 
    va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset;
-   s_offs = z_offs = va;
 
    /* Recommended value for better performance with 4x and 8x. */
    ds->db_render_override2 = S_028010_DECOMPRESS_Z_ON_FLUSH(iview->image->vk.samples >= 4) |
@@ -1902,7 +1891,11 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 
    if (pdev->info.gfx_level >= GFX9) {
       assert(surf->u.gfx9.surf_offset == 0);
-      s_offs += surf->u.gfx9.zs.stencil_offset;
+
+      ds->db_htile_data_base = 0;
+      ds->db_htile_surface = 0;
+      ds->db_depth_base = va >> 8;
+      ds->db_stencil_base = (va + surf->u.gfx9.zs.stencil_offset) >> 8;
 
       ds->db_z_info = S_028038_FORMAT(format) | S_028038_NUM_SAMPLES(util_logbase2(iview->image->vk.samples)) |
                       S_028038_SW_MODE(surf->u.gfx9.swizzle_mode) | S_028038_MAXMIP(iview->image->vk.mip_levels - 1) |
@@ -1915,7 +1908,15 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          ds->db_stencil_info2 = S_02806C_EPITCH(surf->u.gfx9.zs.stencil_epitch);
       }
 
-      ds->db_depth_view |= S_028008_MIPID_GFX9(level);
+      ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
+                          S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
+                          S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT)) |
+                          S_028008_MIPID_GFX9(level);
+      if (pdev->info.gfx_level >= GFX10) {
+         ds->db_depth_view |=
+            S_028008_SLICE_START_HI(iview->vk.base_array_layer >> 11) | S_028008_SLICE_MAX_HI(max_slice >> 11);
+      }
+
       ds->db_depth_size =
          S_02801C_X_MAX(iview->image->vk.extent.width - 1) | S_02801C_Y_MAX(iview->image->vk.extent.height - 1);
 
@@ -1966,10 +1967,15 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       if (stencil_only)
          level_info = &surf->u.legacy.zs.stencil_level[level];
 
-      z_offs += (uint64_t)surf->u.legacy.level[level].offset_256B * 256;
-      s_offs += (uint64_t)surf->u.legacy.zs.stencil_level[level].offset_256B * 256;
+      ds->db_htile_data_base = 0;
+      ds->db_htile_surface = 0;
+      ds->db_depth_base = (va >> 8) + surf->u.legacy.level[level].offset_256B;
+      ds->db_stencil_base = (va >> 8) + surf->u.legacy.zs.stencil_level[level].offset_256B;
 
       ds->db_depth_info = S_02803C_ADDR5_SWIZZLE_MASK(!radv_image_is_tc_compat_htile(iview->image));
+      ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
+                          S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
+                          S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT));
       ds->db_z_info = S_028040_FORMAT(format) | S_028040_ZRANGE_PRECISION(1);
       ds->db_stencil_info = S_028044_FORMAT(stencil_format);
 
@@ -2028,9 +2034,6 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          }
       }
    }
-
-   ds->db_depth_base = z_offs >> 8;
-   ds->db_stencil_base = s_offs >> 8;
 }
 
 void

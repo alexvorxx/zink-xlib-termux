@@ -48,6 +48,13 @@ get_phys_index(const struct v3d_device_info *devinfo)
 #define CLASS_BITS_ACC    (1 << 1)
 #define CLASS_BITS_R5     (1 << 4)
 
+static inline bool
+stage_has_payload(struct v3d_compile *c)
+{
+        return c->s->info.stage == MESA_SHADER_FRAGMENT ||
+               c->s->info.stage == MESA_SHADER_COMPUTE;
+}
+
 static uint8_t
 get_class_bit_any(const struct v3d_device_info *devinfo)
 {
@@ -387,6 +394,7 @@ add_node(struct v3d_compile *c, uint32_t temp, uint8_t class_bits)
         c->nodes.info[node].is_ldunif_dst = false;
         c->nodes.info[node].is_program_end = false;
         c->nodes.info[node].unused = false;
+        c->nodes.info[node].payload_conflict = false;
 
         return node;
 }
@@ -440,7 +448,9 @@ v3d_setup_spill_base(struct v3d_compile *c)
                             i != c->spill_base.index) {
                                 temp_class |= CLASS_BITS_ACC;
                         }
-                        add_node(c, i, temp_class);
+                        int node = add_node(c, i, temp_class);
+                        c->nodes.info[node].payload_conflict =
+                                stage_has_payload(c);
                 }
         }
 
@@ -942,10 +952,12 @@ v3d_ra_select_rf(struct v3d_ra_select_callback_data *v3d_ra,
         /* The last 3 instructions in a shader can't use some specific registers
          * (usually early rf registers, depends on v3d version) so try to
          * avoid allocating these to registers used by the last instructions
-         * in the shader.
+         * in the shader. Do the same for spilling setup instructions that
+         * may conflict with payload registers.
          */
         const uint32_t safe_rf_start = v3d_ra->devinfo->ver == 42 ? 3 : 4;
-        if (v3d_ra->nodes->info[node].is_program_end &&
+        if ((v3d_ra->nodes->info[node].is_program_end ||
+             v3d_ra->nodes->info[node].payload_conflict) &&
             v3d_ra->next_phys < safe_rf_start) {
                 v3d_ra->next_phys = safe_rf_start;
         }

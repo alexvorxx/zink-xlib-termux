@@ -1014,6 +1014,14 @@ nak_postprocess_nir(nir_shader *nir,
    nir_convert_to_lcssa(nir, true, true);
    nir_divergence_analysis(nir);
 
+   if (nak->sm >= 75) {
+      if (OPT(nir, nak_nir_lower_non_uniform_ldcx)) {
+         OPT(nir, nir_copy_prop);
+         OPT(nir, nir_opt_dce);
+         nir_divergence_analysis(nir);
+      }
+   }
+
    OPT(nir, nak_nir_remove_barriers);
 
    if (nak->sm >= 70) {

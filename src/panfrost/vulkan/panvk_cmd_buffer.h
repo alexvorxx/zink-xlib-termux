@@ -141,6 +141,8 @@ struct panvk_cmd_graphics_state {
          uint8_t samples[MAX_RTS];
       } color_attachments;
 
+      struct pan_image_view zs_pview;
+
       struct {
          struct pan_fb_info info;
          bool crc_valid[MAX_RTS];

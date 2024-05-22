@@ -2111,6 +2111,9 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
             .bos[cmdbuf->state.gfx.render.fb.bo_count++] = img->bo;
          fbinfo->zs.view.zs = &iview->pview;
 
+         if (vk_format_has_stencil(img->vk.format))
+            fbinfo->zs.preload.s = true;
+
          if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
             fbinfo->zs.clear.z = true;
             fbinfo->zs.clear_value.depth = att->clearValue.depthStencil.depth;
@@ -2142,6 +2145,17 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
          fbinfo->zs.view.s =
             &iview->pview != fbinfo->zs.view.zs ? &iview->pview : NULL;
 
+         if (vk_format_has_depth(img->vk.format)) {
+            assert(fbinfo->zs.view.zs == NULL ||
+                   &iview->pview == fbinfo->zs.view.zs);
+            fbinfo->zs.view.zs = &iview->pview;
+
+            fbinfo->zs.preload.s = false;
+            fbinfo->zs.clear.s = false;
+            if (!fbinfo->zs.clear.z)
+               fbinfo->zs.preload.z = true;
+         }
+
          if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
             fbinfo->zs.clear.s = true;
             fbinfo->zs.clear_value.stencil =
@@ -2149,6 +2163,26 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
          } else if (att->loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) {
             fbinfo->zs.preload.s = true;
          }
+      }
+   }
+
+   if (fbinfo->zs.view.zs) {
+      const struct util_format_description *fdesc =
+         util_format_description(fbinfo->zs.view.zs->format);
+      bool needs_depth = fbinfo->zs.clear.z | fbinfo->zs.preload.z |
+                         util_format_has_depth(fdesc);
+      bool needs_stencil = fbinfo->zs.clear.s | fbinfo->zs.preload.s |
+                           util_format_has_stencil(fdesc);
+      enum pipe_format new_fmt =
+         util_format_get_blocksize(fbinfo->zs.view.zs->format) == 4
+            ? PIPE_FORMAT_Z24_UNORM_S8_UINT
+            : PIPE_FORMAT_Z32_FLOAT_S8X24_UINT;
+
+      if (needs_depth && needs_stencil &&
+          fbinfo->zs.view.zs->format != new_fmt) {
+         cmdbuf->state.gfx.render.zs_pview = *fbinfo->zs.view.zs;
+         cmdbuf->state.gfx.render.zs_pview.format = new_fmt;
+         fbinfo->zs.view.zs = &cmdbuf->state.gfx.render.zs_pview;
       }
    }
 

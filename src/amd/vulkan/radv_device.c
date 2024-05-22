@@ -1923,24 +1923,6 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       if (radv_htile_enabled(iview->image, level)) {
          ds->db_z_info |= S_028038_TILE_SURFACE_ENABLE(1);
 
-         if (radv_image_is_tc_compat_htile(iview->image)) {
-            unsigned max_zplanes = radv_calc_decompress_on_z_planes(device, iview);
-
-            ds->db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
-
-            if (pdev->info.gfx_level >= GFX10) {
-               bool iterate256 = radv_image_get_iterate256(device, iview->image);
-
-               ds->db_z_info |= S_028040_ITERATE_FLUSH(1);
-               ds->db_stencil_info |= S_028044_ITERATE_FLUSH(1);
-               ds->db_z_info |= S_028040_ITERATE_256(iterate256);
-               ds->db_stencil_info |= S_028044_ITERATE_256(iterate256);
-            } else {
-               ds->db_z_info |= S_028038_ITERATE_FLUSH(1);
-               ds->db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
-            }
-         }
-
          if (radv_image_tile_stencil_disabled(device, iview->image)) {
             ds->db_stencil_info |= S_02803C_TILE_STENCIL_DISABLE(1);
          }
@@ -1957,10 +1939,6 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
             ds->db_htile_surface |= S_028ABC_VRS_HTILE_ENCODING(V_028ABC_VRS_HTILE_4BIT_ENCODING);
          }
       }
-
-      if (pdev->info.gfx_level >= GFX11) {
-         radv_gfx11_set_db_render_control(device, iview->image->vk.samples, &ds->db_render_control);
-      }
    } else {
       const struct legacy_surf_level *level_info = &surf->u.legacy.level[level];
 
@@ -1972,7 +1950,6 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       ds->db_depth_base = (va >> 8) + surf->u.legacy.level[level].offset_256B;
       ds->db_stencil_base = (va >> 8) + surf->u.legacy.zs.stencil_level[level].offset_256B;
 
-      ds->db_depth_info = S_02803C_ADDR5_SWIZZLE_MASK(!radv_image_is_tc_compat_htile(iview->image));
       ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
                           S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
                           S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT));
@@ -2025,13 +2002,39 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset + surf->meta_offset;
          ds->db_htile_data_base = va >> 8;
          ds->db_htile_surface = S_028ABC_FULL_CACHE(1);
+      }
+   }
 
-         if (radv_image_is_tc_compat_htile(iview->image)) {
-            unsigned max_zplanes = radv_calc_decompress_on_z_planes(device, iview);
+   if (pdev->info.gfx_level >= GFX9) {
+      if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
+         unsigned max_zplanes = radv_calc_decompress_on_z_planes(device, iview);
 
-            ds->db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
-            ds->db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
+         ds->db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
+
+         if (pdev->info.gfx_level >= GFX10) {
+            bool iterate256 = radv_image_get_iterate256(device, iview->image);
+
+            ds->db_z_info |= S_028040_ITERATE_FLUSH(1);
+            ds->db_stencil_info |= S_028044_ITERATE_FLUSH(1);
+            ds->db_z_info |= S_028040_ITERATE_256(iterate256);
+            ds->db_stencil_info |= S_028044_ITERATE_256(iterate256);
+         } else {
+            ds->db_z_info |= S_028038_ITERATE_FLUSH(1);
+            ds->db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
          }
+      }
+
+      if (pdev->info.gfx_level >= GFX11) {
+         radv_gfx11_set_db_render_control(device, iview->image->vk.samples, &ds->db_render_control);
+      }
+   } else {
+      ds->db_depth_info |= S_02803C_ADDR5_SWIZZLE_MASK(!radv_image_is_tc_compat_htile(iview->image));
+
+      if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
+         unsigned max_zplanes = radv_calc_decompress_on_z_planes(device, iview);
+
+         ds->db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
+         ds->db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
       }
    }
 }

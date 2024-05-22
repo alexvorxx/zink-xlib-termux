@@ -1380,7 +1380,7 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
 
    /* Count the number of per-vertex output slots we need to reserve for the TCS and TES. */
    const uint64_t nir_mask = tcs_stage->nir->info.outputs_written & tes_stage->nir->info.inputs_read &
-                             ~(VARYING_SLOT_TESS_LEVEL_OUTER | VARYING_SLOT_TESS_LEVEL_INNER);
+                             ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
    const uint64_t io_mask = radv_gather_unlinked_io_mask(nir_mask);
    const unsigned num_reserved_outputs = util_last_bit64(io_mask);
 

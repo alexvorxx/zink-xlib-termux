@@ -39,3 +39,7 @@ spec@!opengl 1.1@depthstencil-default_fb-blit samples=4
 
 # Marked as flake because it passes with ESO but crashes with pipelines.
 spec@arb_tessellation_shader@arb_tessellation_shader-tes-gs-max-output -small -scan 1 50
+
+# uprev Piglit in Mesa
+KHR-GL46.sparse_buffer_tests.BufferStorageTest
+

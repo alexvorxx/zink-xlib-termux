@@ -509,6 +509,19 @@ enum fs_vec4_type {
    FS_VEC4_TYPE_PER_PRIMITIVE,
 };
 
+#if PRINT_RELOCATE_SLOT
+static const char *fs_vec4_type_strings[] = {
+   "NONE",
+   "FLAT",
+   "INTERP_FP32",
+   "INTERP_FP16",
+   "INTERP_COLOR",
+   "INTERP_EXPLICIT",
+   "INTERP_EXPLICIT_STRICT",
+   "PER_PRIMITIVE",
+};
+#endif // PRINT_RELOCATE_SLOT
+
 static unsigned
 get_scalar_16bit_slot(nir_io_semantics sem, unsigned component)
 {
@@ -3662,7 +3675,7 @@ relocate_slot(struct linkage_info *linkage, struct scalar_slot *slot,
 
          assert(bit_size == 16 || bit_size == 32);
 
-         fprintf(stderr, "--- relocating: %s.%c%s%s -> %s.%c%s%s\n",
+         fprintf(stderr, "--- relocating: %s.%c%s%s -> %s.%c%s%s FS_VEC4_TYPE_%s\n",
                  gl_varying_slot_name_for_stage(sem.location, linkage->producer_stage) + 13,
                  "xyzw"[nir_intrinsic_component(intr) % 4],
                  (bit_size == 16 && !sem.high_16bits) ? ".lo" : "",
@@ -3670,7 +3683,8 @@ relocate_slot(struct linkage_info *linkage, struct scalar_slot *slot,
                  gl_varying_slot_name_for_stage(new_semantic, linkage->producer_stage) + 13,
                  "xyzw"[new_component % 4],
                  (bit_size == 16 && !new_high_16bits) ? ".lo" : "",
-                 (bit_size == 16 && new_high_16bits) ? ".hi" : "");
+                 (bit_size == 16 && new_high_16bits) ? ".hi" : "",
+                 fs_vec4_type_strings[fs_vec4_type]);
 #endif /* PRINT_RELOCATE_SLOT */
 
          sem.location = new_semantic;

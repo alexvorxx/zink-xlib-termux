@@ -2495,6 +2495,17 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
       NIR_PASS_V(nir, nir_clear_shared_memory, shared_size, chunk_size);
    }
 
+   NIR_PASS(progress, nir, ac_nir_lower_intrinsics_to_args, sel->screen->info.gfx_level,
+            si_select_hw_stage(nir->info.stage, key, sel->screen->info.gfx_level),
+            &args->ac);
+   NIR_PASS(progress, nir, si_nir_lower_abi, shader, args);
+
+   if (progress) {
+      si_nir_opts(sel->screen, nir, false);
+      progress = false;
+      late_opts = true;
+   }
+
    NIR_PASS(progress, nir, nir_opt_load_store_vectorize,
             &(nir_load_store_vectorize_options){
                .modes = nir_var_mem_ssbo | nir_var_mem_ubo | nir_var_mem_shared | nir_var_mem_global |
@@ -2508,11 +2519,6 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
             });
    NIR_PASS(progress, nir, nir_opt_shrink_stores, false);
    NIR_PASS(progress, nir, ac_nir_lower_global_access);
-
-   NIR_PASS(progress, nir, ac_nir_lower_intrinsics_to_args, sel->screen->info.gfx_level,
-            si_select_hw_stage(nir->info.stage, key, sel->screen->info.gfx_level),
-            &args->ac);
-   NIR_PASS(progress, nir, si_nir_lower_abi, shader, args);
 
    if (progress) {
       si_nir_opts(sel->screen, nir, false);

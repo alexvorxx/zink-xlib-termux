@@ -488,22 +488,14 @@ ac_set_mutable_tex_desc_fields(const struct radeon_info *info, const struct ac_m
 }
 
 void
-ac_build_buffer_descriptor(const enum amd_gfx_level gfx_level, const struct ac_buffer_state *state, uint32_t desc[4])
+ac_set_buf_desc_word3(const enum amd_gfx_level gfx_level, const struct ac_buffer_state *state, uint32_t *rsrc_word3)
 {
-   uint32_t rsrc_word1 = S_008F04_BASE_ADDRESS_HI(state->va >> 32) | S_008F04_STRIDE(state->stride);
-
-   if (gfx_level >= GFX11) {
-      rsrc_word1 |= S_008F04_SWIZZLE_ENABLE_GFX11(state->swizzle_enable);
-   } else {
-      rsrc_word1 |= S_008F04_SWIZZLE_ENABLE_GFX6(state->swizzle_enable);
-   }
-
-   uint32_t rsrc_word3 = S_008F0C_DST_SEL_X(ac_map_swizzle(state->swizzle[0])) |
-                         S_008F0C_DST_SEL_Y(ac_map_swizzle(state->swizzle[1])) |
-                         S_008F0C_DST_SEL_Z(ac_map_swizzle(state->swizzle[2])) |
-                         S_008F0C_DST_SEL_W(ac_map_swizzle(state->swizzle[3])) |
-                         S_008F0C_INDEX_STRIDE(state->index_stride) |
-                         S_008F0C_ADD_TID_ENABLE(state->add_tid);
+   *rsrc_word3 = S_008F0C_DST_SEL_X(ac_map_swizzle(state->swizzle[0])) |
+                 S_008F0C_DST_SEL_Y(ac_map_swizzle(state->swizzle[1])) |
+                 S_008F0C_DST_SEL_Z(ac_map_swizzle(state->swizzle[2])) |
+                 S_008F0C_DST_SEL_W(ac_map_swizzle(state->swizzle[3])) |
+                 S_008F0C_INDEX_STRIDE(state->index_stride) |
+                 S_008F0C_ADD_TID_ENABLE(state->add_tid);
 
    if (gfx_level >= GFX10) {
       const struct gfx10_format *fmt = &ac_get_gfx10_format_table(gfx_level)[state->format];
@@ -528,10 +520,10 @@ ac_build_buffer_descriptor(const enum amd_gfx_level gfx_level, const struct ac_b
        *       else:
        *          offset+payload > NUM_RECORDS
        */
-      rsrc_word3 |= gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
-                                         S_008F0C_FORMAT_GFX10(fmt->img_format) |
-                    S_008F0C_OOB_SELECT(state->gfx10_oob_select) |
-                    S_008F0C_RESOURCE_LEVEL(gfx_level < GFX11);
+      *rsrc_word3 |= gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
+                                          S_008F0C_FORMAT_GFX10(fmt->img_format) |
+                     S_008F0C_OOB_SELECT(state->gfx10_oob_select) |
+                     S_008F0C_RESOURCE_LEVEL(gfx_level < GFX11);
    } else {
       const struct util_format_description * desc =  util_format_description(state->format);
       const int first_non_void = util_format_get_first_non_void_channel(state->format);
@@ -541,10 +533,25 @@ ac_build_buffer_descriptor(const enum amd_gfx_level gfx_level, const struct ac_b
       const uint32_t data_format =
          gfx_level >= GFX8 && state->add_tid ? 0 : ac_translate_buffer_dataformat(desc, first_non_void);
 
-      rsrc_word3 |= S_008F0C_NUM_FORMAT(num_format) |
-                    S_008F0C_DATA_FORMAT(data_format) |
-                    S_008F0C_ELEMENT_SIZE(state->element_size);
+      *rsrc_word3 |= S_008F0C_NUM_FORMAT(num_format) |
+                     S_008F0C_DATA_FORMAT(data_format) |
+                     S_008F0C_ELEMENT_SIZE(state->element_size);
    }
+}
+
+void
+ac_build_buffer_descriptor(const enum amd_gfx_level gfx_level, const struct ac_buffer_state *state, uint32_t desc[4])
+{
+   uint32_t rsrc_word1 = S_008F04_BASE_ADDRESS_HI(state->va >> 32) | S_008F04_STRIDE(state->stride);
+   uint32_t rsrc_word3;
+
+   if (gfx_level >= GFX11) {
+      rsrc_word1 |= S_008F04_SWIZZLE_ENABLE_GFX11(state->swizzle_enable);
+   } else {
+      rsrc_word1 |= S_008F04_SWIZZLE_ENABLE_GFX6(state->swizzle_enable);
+   }
+
+   ac_set_buf_desc_word3(gfx_level, state, &rsrc_word3);
 
    desc[0] = state->va;
    desc[1] = rsrc_word1;

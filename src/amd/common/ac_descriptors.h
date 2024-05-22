@@ -114,6 +114,11 @@ struct ac_buffer_state {
 };
 
 void
+ac_set_buf_desc_word3(const enum amd_gfx_level gfx_level,
+                      const struct ac_buffer_state *state,
+                      uint32_t *rsrc_word3);
+
+void
 ac_build_buffer_descriptor(const enum amd_gfx_level gfx_level,
                            const struct ac_buffer_state *state,
                            uint32_t desc[4]);

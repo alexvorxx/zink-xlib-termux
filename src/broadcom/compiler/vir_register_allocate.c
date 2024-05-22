@@ -372,7 +372,7 @@ ensure_nodes(struct v3d_compile *c)
 /* Creates the interference node for a new temp. We use this to keep the node
  * list updated during the spilling process, which generates new temps/nodes.
  */
-static void
+static int
 add_node(struct v3d_compile *c, uint32_t temp, uint8_t class_bits)
 {
         ensure_nodes(c);
@@ -387,6 +387,8 @@ add_node(struct v3d_compile *c, uint32_t temp, uint8_t class_bits)
         c->nodes.info[node].is_ldunif_dst = false;
         c->nodes.info[node].is_program_end = false;
         c->nodes.info[node].unused = false;
+
+        return node;
 }
 
 /* The spill offset for this thread takes a bit of setup, so do it once at

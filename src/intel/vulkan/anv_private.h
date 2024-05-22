@@ -5898,7 +5898,6 @@ struct anv_sampler {
    struct anv_state             custom_border_color_db;
 };
 
-#define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
 
 struct anv_query_pool {
    struct vk_query_pool                         vk;

@@ -47,6 +47,13 @@
 #define __gen_get_batch_dwords anv_batch_emit_dwords
 #define __gen_address_offset anv_address_add
 #define __gen_get_batch_address(b, a) anv_batch_address(b, a)
+
+#if GFX_VERx10 >= 125
+#define ANV_PIPELINE_STATISTICS_MASK 0x00001fff
+#else
+#define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
+#endif
+
 #include "common/mi_builder.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_mdapi.h"
@@ -928,6 +935,10 @@ static const uint32_t vk_pipeline_stat_to_reg[] = {
    GENX(HS_INVOCATION_COUNT_num),
    GENX(DS_INVOCATION_COUNT_num),
    GENX(CS_INVOCATION_COUNT_num),
+#if GFX_VERx10 >= 125
+   GENX(TASK_INVOCATION_COUNT_num),
+   GENX(MESH_INVOCATION_COUNT_num)
+#endif
 };
 
 static void

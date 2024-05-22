@@ -2025,6 +2025,12 @@ panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
    struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    uint32_t att_width = 0, att_height = 0;
 
+   cmdbuf->state.gfx.render.flags = pRenderingInfo->flags;
+
+   /* Resuming from a suspended pass, the state should be unchanged. */
+   if (cmdbuf->state.gfx.render.flags & VK_RENDERING_RESUMING_BIT)
+      return;
+
    cmdbuf->state.gfx.render.fb.bo_count = 0;
    memset(cmdbuf->state.gfx.render.fb.bos, 0,
           sizeof(cmdbuf->state.gfx.render.fb.bos));
@@ -2170,7 +2176,19 @@ panvk_per_arch(CmdBeginRendering)(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
    panvk_cmd_begin_rendering_init_state(cmdbuf, pRenderingInfo);
-   panvk_per_arch(cmd_open_batch)(cmdbuf);
+
+   bool resuming = cmdbuf->state.gfx.render.flags & VK_RENDERING_RESUMING_BIT;
+
+   /* If we're not resuming, cur_batch should be NULL. */
+   assert(!cmdbuf->cur_batch || resuming);
+
+   /* The opened batch might have been disrupted by a compute job.
+    * We need to preload in that case. */
+   if (resuming && !cmdbuf->cur_batch)
+      panvk_cmd_preload_fb_after_batch_split(cmdbuf);
+
+   if (!cmdbuf->cur_batch)
+      panvk_per_arch(cmd_open_batch)(cmdbuf);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2178,8 +2196,10 @@ panvk_per_arch(CmdEndRendering)(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
-   panvk_per_arch(cmd_close_batch)(cmdbuf);
-   cmdbuf->cur_batch = NULL;
+   if (!(cmdbuf->state.gfx.render.flags & VK_RENDERING_SUSPENDING_BIT)) {
+      panvk_per_arch(cmd_close_batch)(cmdbuf);
+      cmdbuf->cur_batch = NULL;
+   }
 }
 
 VKAPI_ATTR void VKAPI_CALL

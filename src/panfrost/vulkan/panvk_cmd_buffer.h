@@ -133,6 +133,8 @@ struct panvk_cmd_graphics_state {
    } ib;
 
    struct {
+      VkRenderingFlags flags;
+
       enum vk_rp_attachment_flags bound_attachments;
       struct {
          VkFormat fmts[MAX_RTS];

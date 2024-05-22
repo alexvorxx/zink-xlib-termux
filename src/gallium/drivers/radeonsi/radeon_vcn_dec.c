@@ -2929,7 +2929,15 @@ static void radeon_dec_decode_bitstream(struct pipe_video_codec *decoder,
    if (total_bs_size > buf->res->buf->size) {
       dec->ws->buffer_unmap(dec->ws, buf->res->buf);
       dec->bs_ptr = NULL;
-      if (!si_vid_resize_buffer(dec->screen, &dec->cs, buf, total_bs_size, NULL)) {
+
+      if (!dec->bs_size) {
+         struct rvid_buffer old_buf = *buf;
+         if (!si_vid_create_buffer(dec->screen, buf, total_bs_size, buf->usage)) {
+            RVID_ERR("Can't create bitstream buffer!");
+            return;
+         }
+         si_vid_destroy_buffer(&old_buf);
+      } else if (!si_vid_resize_buffer(dec->screen, &dec->cs, buf, total_bs_size, NULL)) {
          RVID_ERR("Can't resize bitstream buffer!");
          return;
       }

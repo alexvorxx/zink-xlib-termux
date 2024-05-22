@@ -138,11 +138,14 @@ struct panvk_cmd_graphics_state {
          VkFormat fmts[MAX_RTS];
          uint8_t samples[MAX_RTS];
       } color_attachments;
-      struct pan_fb_info info;
-      bool crc_valid[MAX_RTS];
-      uint32_t bo_count;
-      struct pan_kmod_bo *bos[MAX_RTS + 2];
-   } fb;
+
+      struct {
+         struct pan_fb_info info;
+         bool crc_valid[MAX_RTS];
+         uint32_t bo_count;
+         struct pan_kmod_bo *bos[MAX_RTS + 2];
+      } fb;
+   } render;
 
    mali_ptr vpd;
 };

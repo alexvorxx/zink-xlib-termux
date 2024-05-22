@@ -128,7 +128,7 @@ panvk_debug_adjust_bo_flags(const struct panvk_device *device,
 static void
 panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf)
 {
-   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr job_ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, FRAGMENT_JOB);
@@ -146,7 +146,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    if (!batch)
       return;
 
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
 
    assert(batch);
 
@@ -183,7 +183,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    if (batch->jc.first_tiler) {
       ASSERTED unsigned num_preload_jobs =
          GENX(pan_preload_fb)(&dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
-                              &batch->jc, &cmdbuf->state.gfx.fb.info,
+                              &batch->jc, &cmdbuf->state.gfx.render.fb.info,
                               batch->tls.gpu, batch->tiler.ctx_desc.gpu, NULL);
 
       assert(num_preload_jobs == 0);
@@ -219,7 +219,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
                                     pan_sample_pattern(fbinfo->nr_samples));
 
       batch->fb.desc.gpu |=
-         GENX(pan_emit_fbd)(&cmdbuf->state.gfx.fb.info, &batch->tlsinfo,
+         GENX(pan_emit_fbd)(&cmdbuf->state.gfx.render.fb.info, &batch->tlsinfo,
                             &batch->tiler.ctx, batch->fb.desc.cpu);
 
       panvk_cmd_prepare_fragment_job(cmdbuf);
@@ -236,19 +236,19 @@ panvk_per_arch(cmd_alloc_fb_desc)(struct panvk_cmd_buffer *cmdbuf)
    if (batch->fb.desc.gpu)
       return;
 
-   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    bool has_zs_ext = fbinfo->zs.view.zs || fbinfo->zs.view.s;
 
-   batch->fb.bo_count = cmdbuf->state.gfx.fb.bo_count;
-   memcpy(batch->fb.bos, cmdbuf->state.gfx.fb.bos,
+   batch->fb.bo_count = cmdbuf->state.gfx.render.fb.bo_count;
+   memcpy(batch->fb.bos, cmdbuf->state.gfx.render.fb.bos,
           batch->fb.bo_count * sizeof(batch->fb.bos[0]));
    batch->fb.desc = pan_pool_alloc_desc_aggregate(
       &cmdbuf->desc_pool.base, PAN_DESC(FRAMEBUFFER),
       PAN_DESC_ARRAY(has_zs_ext ? 1 : 0, ZS_CRC_EXTENSION),
       PAN_DESC_ARRAY(MAX2(fbinfo->rt_count, 1), RENDER_TARGET));
 
-   memset(&cmdbuf->state.gfx.fb.info.bifrost.pre_post.dcds, 0,
-          sizeof(cmdbuf->state.gfx.fb.info.bifrost.pre_post.dcds));
+   memset(&cmdbuf->state.gfx.render.fb.info.bifrost.pre_post.dcds, 0,
+          sizeof(cmdbuf->state.gfx.render.fb.info.bifrost.pre_post.dcds));
 }
 
 void
@@ -537,14 +537,14 @@ panvk_cmd_prepare_samplers(struct panvk_cmd_buffer *cmdbuf,
 static bool
 has_depth_att(struct panvk_cmd_buffer *cmdbuf)
 {
-   return (cmdbuf->state.gfx.fb.bound_attachments &
+   return (cmdbuf->state.gfx.render.bound_attachments &
            MESA_VK_RP_ATTACHMENT_DEPTH_BIT) != 0;
 }
 
 static bool
 has_stencil_att(struct panvk_cmd_buffer *cmdbuf)
 {
-   return (cmdbuf->state.gfx.fb.bound_attachments &
+   return (cmdbuf->state.gfx.render.bound_attachments &
            MESA_VK_RP_ATTACHMENT_STENCIL_BIT) != 0;
 }
 
@@ -716,8 +716,8 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
    struct mali_blend_packed *bds = ptr.cpu + pan_size(RENDERER_STATE);
 
    panvk_per_arch(blend_emit_descs)(
-      dev, cb, cmdbuf->state.gfx.fb.color_attachments.fmts,
-      cmdbuf->state.gfx.fb.color_attachments.samples, fs_info,
+      dev, cb, cmdbuf->state.gfx.render.color_attachments.fmts,
+      cmdbuf->state.gfx.render.color_attachments.samples, fs_info,
       pipeline->fs.code, bds, &blend_reads_dest,
       &blend_shader_loads_blend_const);
 
@@ -735,7 +735,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
          }
 
          uint8_t rt_written = fs_info->outputs_written >> FRAG_RESULT_DATA0;
-         uint8_t rt_mask = cmdbuf->state.gfx.fb.bound_attachments &
+         uint8_t rt_mask = cmdbuf->state.gfx.render.bound_attachments &
                            MESA_VK_RP_ATTACHMENT_ANY_COLOR_BITS;
          cfg.properties.allow_forward_pixel_to_kill =
             fs_info->fs.can_fpk && !(rt_mask & ~rt_written) &&
@@ -822,7 +822,7 @@ void
 panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct panvk_batch *batch = cmdbuf->cur_batch;
 
    if (batch->tiler.ctx_desc.cpu)
@@ -1456,24 +1456,24 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
 static void
 panvk_cmd_preload_fb_after_batch_split(struct panvk_cmd_buffer *cmdbuf)
 {
-   for (unsigned i = 0; i < cmdbuf->state.gfx.fb.info.rt_count; i++) {
-      if (cmdbuf->state.gfx.fb.info.rts[i].view) {
-         cmdbuf->state.gfx.fb.info.rts[i].clear = false;
-         cmdbuf->state.gfx.fb.info.rts[i].preload = true;
+   for (unsigned i = 0; i < cmdbuf->state.gfx.render.fb.info.rt_count; i++) {
+      if (cmdbuf->state.gfx.render.fb.info.rts[i].view) {
+         cmdbuf->state.gfx.render.fb.info.rts[i].clear = false;
+         cmdbuf->state.gfx.render.fb.info.rts[i].preload = true;
       }
    }
 
-   if (cmdbuf->state.gfx.fb.info.zs.view.zs) {
-      cmdbuf->state.gfx.fb.info.zs.clear.z = false;
-      cmdbuf->state.gfx.fb.info.zs.preload.z = true;
+   if (cmdbuf->state.gfx.render.fb.info.zs.view.zs) {
+      cmdbuf->state.gfx.render.fb.info.zs.clear.z = false;
+      cmdbuf->state.gfx.render.fb.info.zs.preload.z = true;
    }
 
-   if (cmdbuf->state.gfx.fb.info.zs.view.s ||
-       (cmdbuf->state.gfx.fb.info.zs.view.zs &&
+   if (cmdbuf->state.gfx.render.fb.info.zs.view.s ||
+       (cmdbuf->state.gfx.render.fb.info.zs.view.zs &&
         util_format_is_depth_and_stencil(
-           cmdbuf->state.gfx.fb.info.zs.view.zs->format))) {
-      cmdbuf->state.gfx.fb.info.zs.clear.s = false;
-      cmdbuf->state.gfx.fb.info.zs.preload.s = true;
+           cmdbuf->state.gfx.render.fb.info.zs.view.zs->format))) {
+      cmdbuf->state.gfx.render.fb.info.zs.clear.s = false;
+      cmdbuf->state.gfx.render.fb.info.zs.preload.s = true;
    }
 }
 
@@ -2016,22 +2016,23 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
 }
 
 static void
-panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
-                                      const VkRenderingInfo *pRenderingInfo)
+panvk_cmd_begin_rendering_init_state(struct panvk_cmd_buffer *cmdbuf,
+                                     const VkRenderingInfo *pRenderingInfo)
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    uint32_t att_width = 0, att_height = 0;
 
-   cmdbuf->state.gfx.fb.bo_count = 0;
-   memset(cmdbuf->state.gfx.fb.bos, 0, sizeof(cmdbuf->state.gfx.fb.bos));
-   memset(cmdbuf->state.gfx.fb.crc_valid, 0,
-          sizeof(cmdbuf->state.gfx.fb.crc_valid));
-   memset(&cmdbuf->state.gfx.fb.color_attachments, 0,
-          sizeof(cmdbuf->state.gfx.fb.color_attachments));
-   cmdbuf->state.gfx.fb.bound_attachments = 0;
+   cmdbuf->state.gfx.render.fb.bo_count = 0;
+   memset(cmdbuf->state.gfx.render.fb.bos, 0,
+          sizeof(cmdbuf->state.gfx.render.fb.bos));
+   memset(cmdbuf->state.gfx.render.fb.crc_valid, 0,
+          sizeof(cmdbuf->state.gfx.render.fb.crc_valid));
+   memset(&cmdbuf->state.gfx.render.color_attachments, 0,
+          sizeof(cmdbuf->state.gfx.render.color_attachments));
+   cmdbuf->state.gfx.render.bound_attachments = 0;
 
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
@@ -2054,18 +2055,19 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      cmdbuf->state.gfx.fb.bound_attachments |=
+      cmdbuf->state.gfx.render.bound_attachments |=
          MESA_VK_RP_ATTACHMENT_COLOR_BIT(i);
-      cmdbuf->state.gfx.fb.color_attachments.fmts[i] = iview->vk.format;
-      cmdbuf->state.gfx.fb.color_attachments.samples[i] = img->vk.samples;
+      cmdbuf->state.gfx.render.color_attachments.fmts[i] = iview->vk.format;
+      cmdbuf->state.gfx.render.color_attachments.samples[i] = img->vk.samples;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
       assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
 
-      cmdbuf->state.gfx.fb.bos[cmdbuf->state.gfx.fb.bo_count++] = img->bo;
+      cmdbuf->state.gfx.render.fb.bos[cmdbuf->state.gfx.render.fb.bo_count++] =
+         img->bo;
       fbinfo->rts[i].view = &iview->pview;
-      fbinfo->rts[i].crc_valid = &cmdbuf->state.gfx.fb.crc_valid[i];
+      fbinfo->rts[i].crc_valid = &cmdbuf->state.gfx.render.fb.crc_valid[i];
       fbinfo->nr_samples =
          MAX2(fbinfo->nr_samples, pan_image_view_get_nr_samples(&iview->pview));
 
@@ -2091,13 +2093,15 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      cmdbuf->state.gfx.fb.bound_attachments |= MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
+      cmdbuf->state.gfx.render.bound_attachments |=
+         MESA_VK_RP_ATTACHMENT_DEPTH_BIT;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
       assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
 
-      cmdbuf->state.gfx.fb.bos[cmdbuf->state.gfx.fb.bo_count++] = img->bo;
+      cmdbuf->state.gfx.render.fb.bos[cmdbuf->state.gfx.render.fb.bo_count++] =
+         img->bo;
       fbinfo->zs.view.zs = &iview->pview;
 
       if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
@@ -2117,14 +2121,15 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      cmdbuf->state.gfx.fb.bound_attachments |=
+      cmdbuf->state.gfx.render.bound_attachments |=
          MESA_VK_RP_ATTACHMENT_STENCIL_BIT;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
       assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
 
-      cmdbuf->state.gfx.fb.bos[cmdbuf->state.gfx.fb.bo_count++] = img->bo;
+      cmdbuf->state.gfx.render.fb.bos[cmdbuf->state.gfx.render.fb.bo_count++] =
+         img->bo;
       fbinfo->zs.view.s =
          &iview->pview != fbinfo->zs.view.zs ? &iview->pview : NULL;
 
@@ -2141,7 +2146,7 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
    fbinfo->height = pRenderingInfo->renderArea.offset.y +
                     pRenderingInfo->renderArea.extent.height;
 
-   if (cmdbuf->state.gfx.fb.bound_attachments) {
+   if (cmdbuf->state.gfx.render.bound_attachments) {
       /* We need the rendering area to be aligned on a 32x32 section for tile
        * buffer preloading to work correctly.
        */
@@ -2164,7 +2169,7 @@ panvk_per_arch(CmdBeginRendering)(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
-   panvk_cmd_begin_rendering_init_fbinfo(cmdbuf, pRenderingInfo);
+   panvk_cmd_begin_rendering_init_state(cmdbuf, pRenderingInfo);
    panvk_per_arch(cmd_open_batch)(cmdbuf);
 }
 

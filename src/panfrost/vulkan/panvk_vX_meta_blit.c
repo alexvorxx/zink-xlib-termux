@@ -41,7 +41,7 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct pan_blit_context ctx;
    struct pan_image_view views[2] = {
       {
@@ -100,8 +100,8 @@ panvk_meta_blit(struct panvk_cmd_buffer *cmdbuf,
       fbinfo->rt_count = 1;
       fbinfo->rts[0].view = &views[0];
       fbinfo->rts[0].preload = true;
-      cmdbuf->state.gfx.fb.crc_valid[0] = false;
-      fbinfo->rts[0].crc_valid = &cmdbuf->state.gfx.fb.crc_valid[0];
+      cmdbuf->state.gfx.render.fb.crc_valid[0] = false;
+      fbinfo->rts[0].crc_valid = &cmdbuf->state.gfx.render.fb.crc_valid[0];
    }
 
    if (blitinfo->dst.planes[1].format != PIPE_FORMAT_NONE) {

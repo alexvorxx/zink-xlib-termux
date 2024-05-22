@@ -386,6 +386,8 @@ intrin_to_variable_mode(nir_intrinsic_op intrin)
 {
    switch (intrin) {
    case nir_intrinsic_load_ubo:
+   case nir_intrinsic_ldc_nv:
+   case nir_intrinsic_ldcx_nv:
       return nir_var_mem_ubo;
 
    case nir_intrinsic_load_push_constant:
@@ -442,6 +444,8 @@ lower_mem_access_instr(nir_builder *b, nir_instr *instr, void *_data)
    case nir_intrinsic_load_shared:
    case nir_intrinsic_load_scratch:
    case nir_intrinsic_load_task_payload:
+   case nir_intrinsic_ldc_nv:
+   case nir_intrinsic_ldcx_nv:
       return lower_mem_load(b, intrin, state->callback, state->cb_data);
 
    case nir_intrinsic_store_global:

@@ -2221,6 +2221,21 @@ intrinsic("dpas_intel", dest_comp=0, src_comp=[0, 0, 0],
           flags=[CAN_ELIMINATE])
 
 # NVIDIA-specific intrinsics
+# src[] = { index, offset }.
+intrinsic("ldc_nv", dest_comp=0, src_comp=[1, 1],
+          indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
+# [Un]pins an LDCX handle around non-uniform control-flow sections
+# src[] = { handle }.
+intrinsic("pin_cx_handle_nv", src_comp=[1])
+intrinsic("unpin_cx_handle_nv", src_comp=[1])
+# Explicitly copies a value to a uniform register
+intrinsic("r2ur_nv", dest_comp=0, src_comp=[0],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
+# src[] = { handle, offset }.
+intrinsic("ldcx_nv", dest_comp=0, src_comp=[1, 1],
+          indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
 intrinsic("load_sysval_nv", dest_comp=1, src_comp=[], bit_sizes=[32, 64],
           indices=[ACCESS, BASE], flags=[CAN_ELIMINATE])
 intrinsic("isberd_nv", dest_comp=1, src_comp=[1], bit_sizes=[32],

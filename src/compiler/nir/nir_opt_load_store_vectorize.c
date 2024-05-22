@@ -102,6 +102,8 @@ get_info(nir_intrinsic_op op)
       LOAD(nir_var_mem_ssbo, ssbo_uniform_block_intel, 0, 1, -1)
       LOAD(nir_var_mem_shared, shared_uniform_block_intel, -1, 0, -1)
       LOAD(nir_var_mem_global, global_constant_uniform_block_intel, -1, 0, -1)
+      INFO(nir_var_mem_ubo, ldc_nv, false, 0, 1, -1, -1)
+      INFO(nir_var_mem_ubo, ldcx_nv, false, 0, 1, -1, -1)
    default:
       break;
 #undef ATOMIC

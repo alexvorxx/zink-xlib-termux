@@ -1771,6 +1771,7 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
    anv_pipeline_emit(pipeline, final.task_control,
                      GENX(3DSTATE_TASK_CONTROL), tc) {
       tc.TaskShaderEnable = true;
+      tc.StatisticsEnable = true;
       tc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base.base, MESA_SHADER_TASK, task_bin);
       tc.MaximumNumberofThreadGroups = 511;
@@ -1831,6 +1832,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
    anv_pipeline_emit(pipeline, final.mesh_control,
                      GENX(3DSTATE_MESH_CONTROL), mc) {
       mc.MeshShaderEnable = true;
+      mc.StatisticsEnable = true;
       mc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base.base, MESA_SHADER_MESH, mesh_bin);
       mc.MaximumNumberofThreadGroups = 511;

@@ -633,9 +633,14 @@ translate_stencil_op(VkStencilOp in)
 }
 
 static bool
-fs_required(const struct vk_color_blend_state *cb,
-            const struct pan_shader_info *fs_info)
+fs_required(struct panvk_cmd_buffer *cmdbuf)
 {
+   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
+   const struct pan_shader_info *fs_info = &pipeline->fs.info;
+   const struct vk_dynamic_graphics_state *dyns =
+      &cmdbuf->vk.dynamic_graphics_state;
+   const struct vk_color_blend_state *cb = &dyns->cb;
+
    /* If we generally have side effects */
    if (fs_info->fs.sidefx)
       return true;
@@ -646,6 +651,12 @@ fs_required(const struct vk_color_blend_state *cb,
           cb->attachments[i].write_mask)
          return true;
    }
+
+   /* If alpha-to-coverage is enabled, we need to run the fragment shader even
+    * if we don't have a color attachment, so depth/stencil updates can be
+    * discarded if alpha, and thus coverage, is 0. */
+   if (dyns->ms.alpha_to_coverage_enable)
+      return true;
 
    /* If depth is written and not implied we need to execute.
     * TODO: Predicate on Z/S writes being enabled */
@@ -701,7 +712,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
    bool test_z = has_depth_att(cmdbuf) && ds->depth.test_enable;
    bool writes_z = writes_depth(cmdbuf);
    bool writes_s = writes_stencil(cmdbuf);
-   bool needs_fs = fs_required(cb, fs_info);
+   bool needs_fs = fs_required(cmdbuf);
    bool blend_shader_loads_blend_const = false;
    bool blend_reads_dest = false;
 

@@ -2029,8 +2029,8 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       }
    }
 
-   ds->db_z_read_base = ds->db_z_write_base = z_offs >> 8;
-   ds->db_stencil_read_base = ds->db_stencil_write_base = s_offs >> 8;
+   ds->db_depth_base = z_offs >> 8;
+   ds->db_stencil_base = s_offs >> 8;
 }
 
 void

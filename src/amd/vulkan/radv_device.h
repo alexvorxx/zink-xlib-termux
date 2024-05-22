@@ -626,10 +626,8 @@ struct radv_color_buffer_info {
 };
 
 struct radv_ds_buffer_info {
-   uint64_t db_z_read_base;
-   uint64_t db_stencil_read_base;
-   uint64_t db_z_write_base;
-   uint64_t db_stencil_write_base;
+   uint64_t db_depth_base;
+   uint64_t db_stencil_base;
    uint64_t db_htile_data_base;
    uint32_t db_depth_info;
    uint32_t db_z_info;

@@ -2606,7 +2606,7 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 self.set_dst(&intrin.def, dst);
             }
-            nir_intrinsic_load_ubo => {
+            nir_intrinsic_ldc_nv => {
                 let size_B =
                     (intrin.def.bit_size() / 8) * intrin.def.num_components();
                 let idx = &srcs[0];

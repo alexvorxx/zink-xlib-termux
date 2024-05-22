@@ -512,16 +512,14 @@ lower_load_constant(nir_builder *b, nir_intrinsic_instr *load,
    assert(cbuf_idx >= 0);
 
    uint32_t base = nir_intrinsic_base(load);
-   uint32_t range = nir_intrinsic_range(load);
 
    b->cursor = nir_before_instr(&load->instr);
 
    nir_def *offset = nir_iadd_imm(b, load->src[0].ssa, base);
-   nir_def *data = nir_load_ubo(b, load->def.num_components, load->def.bit_size,
-                                nir_imm_int(b, cbuf_idx), offset,
-                                .align_mul = nir_intrinsic_align_mul(load),
-                                .align_offset = nir_intrinsic_align_offset(load),
-                                .range_base = base, .range = range);
+   nir_def *data = nir_ldc_nv(b, load->def.num_components, load->def.bit_size,
+                              nir_imm_int(b, cbuf_idx), offset,
+                              .align_mul = nir_intrinsic_align_mul(load),
+                              .align_offset = nir_intrinsic_align_offset(load));
 
    nir_def_rewrite_uses(&load->def, data);
 
@@ -535,9 +533,9 @@ load_descriptor_set_addr(nir_builder *b, uint32_t set,
    uint32_t set_addr_offset = nvk_root_descriptor_offset(sets) +
       set * sizeof(struct nvk_buffer_address);
 
-   return nir_load_ubo(b, 1, 64, nir_imm_int(b, 0),
-                       nir_imm_int(b, set_addr_offset),
-                       .align_mul = 8, .align_offset = 0, .range = ~0);
+   return nir_ldc_nv(b, 1, 64, nir_imm_int(b, 0),
+                     nir_imm_int(b, set_addr_offset),
+                     .align_mul = 8, .align_offset = 0);
 }
 
 static nir_def *
@@ -560,10 +558,9 @@ load_dynamic_buffer_start(nir_builder *b, uint32_t set,
       uint32_t root_offset =
          nvk_root_descriptor_offset(set_dynamic_buffer_start) + set;
 
-      return nir_u2u32(b, nir_load_ubo(b, 1, 8, nir_imm_int(b, 0),
-                                       nir_imm_int(b, root_offset),
-                                       .align_mul = 1, .align_offset = 0,
-                                       .range = ~0));
+      return nir_u2u32(b, nir_ldc_nv(b, 1, 8, nir_imm_int(b, 0),
+                                     nir_imm_int(b, root_offset),
+                                     .align_mul = 1, .align_offset = 0));
    }
 }
 
@@ -594,8 +591,8 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
 
       assert(num_components == 4 && bit_size == 32);
       nir_def *desc =
-         nir_load_ubo(b, 4, 32, nir_imm_int(b, 0), root_desc_offset,
-                      .align_mul = 16, .align_offset = 0, .range = ~0);
+         nir_ldc_nv(b, 4, 32, nir_imm_int(b, 0), root_desc_offset,
+                    .align_mul = 16, .align_offset = 0);
       /* We know a priori that the the .w compnent (offset) is zero */
       return nir_vec4(b, nir_channel(b, desc, 0),
                          nir_channel(b, desc, 1),
@@ -641,12 +638,11 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
 
       nir_def *desc;
       if (cbuf_idx >= 0 && max_desc_ubo_offset <= NVK_MAX_CBUF_SIZE) {
-         desc = nir_load_ubo(b, num_components, bit_size,
-                             nir_imm_int(b, cbuf_idx),
-                             desc_ubo_offset,
-                             .align_mul = desc_align_mul,
-                             .align_offset = desc_align_offset,
-                             .range = ~0);
+         desc = nir_ldc_nv(b, num_components, bit_size,
+                           nir_imm_int(b, cbuf_idx),
+                           desc_ubo_offset,
+                           .align_mul = desc_align_mul,
+                           .align_offset = desc_align_offset);
       } else {
          nir_def *set_addr = load_descriptor_set_addr(b, set, ctx);
          desc = nir_load_global_constant_offset(b, num_components, bit_size,
@@ -727,13 +723,12 @@ _lower_sysval_to_root_table(nir_builder *b, nir_intrinsic_instr *intrin,
 {
    b->cursor = nir_instr_remove(&intrin->instr);
 
-   nir_def *val = nir_load_ubo(b, intrin->def.num_components,
-                               intrin->def.bit_size,
-                               nir_imm_int(b, 0), /* Root table */
-                               nir_imm_int(b, root_table_offset),
-                               .align_mul = 4,
-                               .align_offset = 0,
-                               .range = root_table_offset + 3 * 4);
+   nir_def *val = nir_ldc_nv(b, intrin->def.num_components,
+                             intrin->def.bit_size,
+                             nir_imm_int(b, 0), /* Root table */
+                             nir_imm_int(b, root_table_offset),
+                             .align_mul = 4,
+                             .align_offset = 0);
 
    nir_def_rewrite_uses(&intrin->def, val);
 
@@ -759,12 +754,10 @@ lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *load,
                                          push_region_offset + base);
 
    nir_def *val =
-      nir_load_ubo(b, load->def.num_components, load->def.bit_size,
-                   nir_imm_int(b, 0), offset,
-                   .align_mul = load->def.bit_size / 8,
-                   .align_offset = 0,
-                   .range = push_region_offset + base +
-                            nir_intrinsic_range(load));
+      nir_ldc_nv(b, load->def.num_components, load->def.bit_size,
+                 nir_imm_int(b, 0), offset,
+                 .align_mul = load->def.bit_size / 8,
+                 .align_offset = 0);
 
    nir_def_rewrite_uses(&load->def, val);
 
@@ -903,12 +896,11 @@ lower_interp_at_sample(nir_builder *b, nir_intrinsic_instr *interp,
 
    b->cursor = nir_before_instr(&interp->instr);
 
-   nir_def *loc = nir_load_ubo(b, 1, 64,
-                               nir_imm_int(b, 0), /* Root table */
-                               nir_imm_int(b, root_table_offset),
-                               .align_mul = 8,
-                               .align_offset = 0,
-                               .range = root_table_offset + 8);
+   nir_def *loc = nir_ldc_nv(b, 1, 64,
+                             nir_imm_int(b, 0), /* Root table */
+                             nir_imm_int(b, root_table_offset),
+                             .align_mul = 8,
+                             .align_offset = 0);
 
    /* Yay little endian */
    loc = nir_ushr(b, loc, nir_imul_imm(b, sample, 8));
@@ -1092,9 +1084,9 @@ lower_ssbo_resource_index(nir_builder *b, nir_intrinsic_instr *intrin,
          nvk_root_descriptor_offset(root_desc_addr);
 
       nir_def *root_desc_addr =
-         nir_load_ubo(b, 1, 64, nir_imm_int(b, 0),
-                      nir_imm_int(b, root_desc_addr_offset),
-                      .align_mul = 8, .align_offset = 0, .range = ~0);
+         nir_ldc_nv(b, 1, 64, nir_imm_int(b, 0),
+                    nir_imm_int(b, root_desc_addr_offset),
+                    .align_mul = 8, .align_offset = 0);
 
       nir_def *dynamic_buffer_start =
          nir_iadd_imm(b, load_dynamic_buffer_start(b, set, ctx),

@@ -803,7 +803,7 @@ nak_mem_vectorize_cb(unsigned align_mul, unsigned align_offset,
    assert(util_is_power_of_two_nonzero(align_mul));
 
    unsigned max_bytes = 128u / 8u;
-   if (low->intrinsic == nir_intrinsic_load_ubo)
+   if (low->intrinsic == nir_intrinsic_ldc_nv)
       max_bytes = 64u / 8u;
 
    align_mul = MIN2(align_mul, max_bytes);
@@ -830,10 +830,10 @@ nak_mem_access_size_align(nir_intrinsic_op intrin,
 
    unsigned chunk_bytes = MIN3(bytes_pow2, align, 16);
    assert(util_is_power_of_two_nonzero(chunk_bytes));
-   if (intrin == nir_intrinsic_load_ubo)
+   if (intrin == nir_intrinsic_ldc_nv)
       chunk_bytes = MIN2(chunk_bytes, 8);
 
-   if (intrin == nir_intrinsic_load_ubo && align < 4) {
+   if (intrin == nir_intrinsic_ldc_nv && align < 4) {
       /* CBufs require 4B alignment unless we're doing a ldc.u8 or ldc.i8.
        * In particular, this applies to ldc.u16 which means we either have to
        * fall back to two ldc.u8 or use ldc.u32 and shift stuff around to get

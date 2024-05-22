@@ -2022,7 +2022,8 @@ Converter::visit(nir_intrinsic_instr *insn)
       mkOp1(getOperation(op), TYPE_U32, NULL, mkImm(idx))->fixed = 1;
       break;
    }
-   case nir_intrinsic_load_ubo: {
+   case nir_intrinsic_load_ubo:
+   case nir_intrinsic_ldc_nv: {
       const DataType dType = getDType(insn);
       LValues &newDefs = convert(&insn->def);
       Value *indirectIndex;

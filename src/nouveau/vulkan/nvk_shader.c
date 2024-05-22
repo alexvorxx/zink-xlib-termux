@@ -215,54 +215,73 @@ nvk_hash_graphics_state(struct vk_physical_device *device,
 }
 
 static bool
-lower_load_global_constant_offset_instr(nir_builder *b,
-                                        nir_intrinsic_instr *intrin,
-                                        UNUSED void *_data)
+lower_load_intrinsic(nir_builder *b, nir_intrinsic_instr *load,
+                     UNUSED void *_data)
 {
-   if (intrin->intrinsic != nir_intrinsic_load_global_constant_offset &&
-       intrin->intrinsic != nir_intrinsic_load_global_constant_bounded)
+   switch (load->intrinsic) {
+   case nir_intrinsic_load_ubo: {
+      b->cursor = nir_before_instr(&load->instr);
+
+      nir_def *index = load->src[0].ssa;
+      nir_def *offset = load->src[1].ssa;
+      const enum gl_access_qualifier access = nir_intrinsic_access(load);
+      const uint32_t align_mul = nir_intrinsic_align_mul(load);
+      const uint32_t align_offset = nir_intrinsic_align_offset(load);
+
+      nir_def *val = nir_ldc_nv(b, load->num_components, load->def.bit_size,
+                                index, offset, .access = access,
+                                .align_mul = align_mul,
+                                .align_offset = align_offset);
+      nir_def_rewrite_uses(&load->def, val);
+      return true;
+   }
+
+   case nir_intrinsic_load_global_constant_offset:
+   case nir_intrinsic_load_global_constant_bounded: {
+      b->cursor = nir_before_instr(&load->instr);
+
+      nir_def *base_addr = load->src[0].ssa;
+      nir_def *offset = load->src[1].ssa;
+
+      nir_def *zero = NULL;
+      if (load->intrinsic == nir_intrinsic_load_global_constant_bounded) {
+         nir_def *bound = load->src[2].ssa;
+
+         unsigned bit_size = load->def.bit_size;
+         assert(bit_size >= 8 && bit_size % 8 == 0);
+         unsigned byte_size = bit_size / 8;
+
+         zero = nir_imm_zero(b, load->num_components, bit_size);
+
+         unsigned load_size = byte_size * load->num_components;
+
+         nir_def *sat_offset =
+            nir_umin(b, offset, nir_imm_int(b, UINT32_MAX - (load_size - 1)));
+         nir_def *in_bounds =
+            nir_ilt(b, nir_iadd_imm(b, sat_offset, load_size - 1), bound);
+
+         nir_push_if(b, in_bounds);
+      }
+
+      nir_def *val =
+         nir_build_load_global_constant(b, load->def.num_components,
+                                        load->def.bit_size,
+                                        nir_iadd(b, base_addr, nir_u2u64(b, offset)),
+                                        .align_mul = nir_intrinsic_align_mul(load),
+                                        .align_offset = nir_intrinsic_align_offset(load));
+
+      if (load->intrinsic == nir_intrinsic_load_global_constant_bounded) {
+         nir_pop_if(b, NULL);
+         val = nir_if_phi(b, val, zero);
+      }
+
+      nir_def_rewrite_uses(&load->def, val);
+      return true;
+   }
+
+   default:
       return false;
-
-   b->cursor = nir_before_instr(&intrin->instr);
-
-   nir_def *base_addr = intrin->src[0].ssa;
-   nir_def *offset = intrin->src[1].ssa;
-
-   nir_def *zero = NULL;
-   if (intrin->intrinsic == nir_intrinsic_load_global_constant_bounded) {
-      nir_def *bound = intrin->src[2].ssa;
-
-      unsigned bit_size = intrin->def.bit_size;
-      assert(bit_size >= 8 && bit_size % 8 == 0);
-      unsigned byte_size = bit_size / 8;
-
-      zero = nir_imm_zero(b, intrin->num_components, bit_size);
-
-      unsigned load_size = byte_size * intrin->num_components;
-
-      nir_def *sat_offset =
-         nir_umin(b, offset, nir_imm_int(b, UINT32_MAX - (load_size - 1)));
-      nir_def *in_bounds =
-         nir_ilt(b, nir_iadd_imm(b, sat_offset, load_size - 1), bound);
-
-      nir_push_if(b, in_bounds);
    }
-
-   nir_def *val =
-      nir_build_load_global_constant(b, intrin->def.num_components,
-                                     intrin->def.bit_size,
-                                     nir_iadd(b, base_addr, nir_u2u64(b, offset)),
-                                     .align_mul = nir_intrinsic_align_mul(intrin),
-                                     .align_offset = nir_intrinsic_align_offset(intrin));
-
-   if (intrin->intrinsic == nir_intrinsic_load_global_constant_bounded) {
-      nir_pop_if(b, NULL);
-      val = nir_if_phi(b, val, zero);
-   }
-
-   nir_def_rewrite_uses(&intrin->def, val);
-
-   return true;
 }
 
 struct lower_ycbcr_state {
@@ -402,7 +421,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo,
             nvk_buffer_addr_format(rs->uniform_buffers));
    NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-            lower_load_global_constant_offset_instr, nir_metadata_none, NULL);
+            lower_load_intrinsic, nir_metadata_none, NULL);
 
    if (!nir->info.shared_memory_explicit_layout) {
       NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,

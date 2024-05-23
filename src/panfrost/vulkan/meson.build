@@ -67,6 +67,7 @@ jm_archs = [6, 7]
 jm_inc_dir = ['jm']
 jm_files = [
   'jm/panvk_vX_cmd_buffer.c',
+  'jm/panvk_vX_cmd_draw.c',
   'jm/panvk_vX_meta.c',
   'jm/panvk_vX_meta_blit.c',
   'jm/panvk_vX_meta_clear.c',

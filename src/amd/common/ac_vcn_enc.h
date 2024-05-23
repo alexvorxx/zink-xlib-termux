@@ -204,6 +204,8 @@
 #define RENCODE_COLOR_SPACE_RGB                                                     1
 
 #define RENCODE_VCN4_AV1_MAX_NUM_LTR                                                2
+#define RENCODE_AV1_CDEF_MODE_DEFAULT                                               1
+#define RENCODE_AV1_CDEF_MODE_EXPLICIT                                              2
 
 typedef struct rvcn_enc_session_info_s {
    uint32_t interface_version;

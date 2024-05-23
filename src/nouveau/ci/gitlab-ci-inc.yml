@@ -1,6 +1,7 @@
 .nvk-valve-rules:
   stage: nouveau
   rules:
+    - !reference [.test, rules]
     - !reference [.valve-farm-rules, rules]
     - !reference [.vulkan-rules, rules]
     - changes: &nvk_file_list
@@ -25,6 +26,7 @@
   stage: nouveau
   retry: !reference [.scheduled_pipeline-rules, retry]
   rules:
+    - !reference [.test, rules]
     - !reference [.valve-farm-manual-rules, rules]
     - !reference [.vulkan-manual-rules, rules]
     - changes:

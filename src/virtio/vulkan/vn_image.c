@@ -765,23 +765,16 @@ vn_GetImageSparseMemoryRequirements2(
       pSparseMemoryRequirements);
 }
 
-static void
-vn_image_bind_wsi_memory(struct vn_image *img, struct vn_device_memory *mem)
+static VkResult
+vn_image_bind_wsi_memory(struct vn_device *dev,
+                         uint32_t count,
+                         const VkBindImageMemoryInfo *infos)
 {
-   assert(img->wsi.is_wsi && !img->wsi.memory);
-   img->wsi.memory = mem;
-}
+   STACK_ARRAY(VkBindImageMemoryInfo, local_infos, count);
+   typed_memcpy(local_infos, infos, count);
 
-VkResult
-vn_BindImageMemory2(VkDevice device,
-                    uint32_t bindInfoCount,
-                    const VkBindImageMemoryInfo *pBindInfos)
-{
-   STACK_ARRAY(VkBindImageMemoryInfo, bind_infos, bindInfoCount);
-   typed_memcpy(bind_infos, pBindInfos, bindInfoCount);
-
-   for (uint32_t i = 0; i < bindInfoCount; i++) {
-      VkBindImageMemoryInfo *info = &bind_infos[i];
+   for (uint32_t i = 0; i < count; i++) {
+      VkBindImageMemoryInfo *info = &local_infos[i];
       struct vn_image *img = vn_image_from_handle(info->image);
       struct vn_device_memory *mem =
          vn_device_memory_from_handle(info->memory);
@@ -808,15 +801,31 @@ vn_BindImageMemory2(VkDevice device,
       assert(mem && info->memory != VK_NULL_HANDLE);
 
       if (img->wsi.is_wsi)
-         vn_image_bind_wsi_memory(img, mem);
+         img->wsi.memory = mem;
    }
 
+   vn_async_vkBindImageMemory2(dev->primary_ring, vn_device_to_handle(dev),
+                               count, local_infos);
+
+   STACK_ARRAY_FINISH(local_infos);
+
+   return VK_SUCCESS;
+}
+
+VkResult
+vn_BindImageMemory2(VkDevice device,
+                    uint32_t bindInfoCount,
+                    const VkBindImageMemoryInfo *pBindInfos)
+{
    struct vn_device *dev = vn_device_from_handle(device);
+
+   for (uint32_t i = 0; i < bindInfoCount; i++) {
+      if (pBindInfos[i].memory == VK_NULL_HANDLE)
+         return vn_image_bind_wsi_memory(dev, bindInfoCount, pBindInfos);
+   }
+
    vn_async_vkBindImageMemory2(dev->primary_ring, device, bindInfoCount,
-                               bind_infos);
-
-   STACK_ARRAY_FINISH(bind_infos);
-
+                               pBindInfos);
    return VK_SUCCESS;
 }
 

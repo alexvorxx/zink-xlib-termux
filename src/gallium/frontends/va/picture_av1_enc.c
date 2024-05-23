@@ -734,12 +734,21 @@ static void av1_frame_header(vlVaContext *context, struct vl_vlc *vlc)
          av1->use_ref_frame_mvs = 0;
       else
          av1->use_ref_frame_mvs = av1_f(vlc, 1);
-
-      if (av1->disable_cdf_update)
-         av1->disable_frame_end_update_cdf = 1;
-      else
-         av1->disable_frame_end_update_cdf = av1_f(vlc, 1);
    }
+
+   if (av1->disable_cdf_update)
+      av1->disable_frame_end_update_cdf = 1;
+   else
+      av1->disable_frame_end_update_cdf = av1_f(vlc, 1);
+
+   /* tile_info()
+    * trying to keep uniform_tile_spacing_flag
+    * if the tile rows and columns are not within the range
+    * of HW capability, it will need to redo the tiling
+    * according to the limixation.
+    */
+
+   av1->uniform_tile_spacing = av1_f(vlc, 1);
 }
 
 VAStatus

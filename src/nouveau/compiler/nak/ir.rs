@@ -5902,6 +5902,13 @@ impl MappedInstrs {
 
 pub struct BasicBlock {
     pub label: Label,
+
+    /// Whether or not this block is uniform
+    ///
+    /// If true, then all non-exited lanes in a warp which execute this block
+    /// are guaranteed to execute it together
+    pub uniform: bool,
+
     pub instrs: Vec<Box<Instr>>,
 }
 
@@ -6070,7 +6077,8 @@ impl fmt::Display for Function {
         }
 
         for (i, mut b) in blocks.drain(..).enumerate() {
-            write!(f, "block {} {} [", i, self.blocks[i].label)?;
+            let u = if self.blocks[i].uniform { ".u" } else { "" };
+            write!(f, "block{u} {} {} [", i, self.blocks[i].label)?;
             for (pi, p) in self.blocks.pred_indices(i).iter().enumerate() {
                 if pi > 0 {
                     write!(f, ", ")?;

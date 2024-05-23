@@ -3254,6 +3254,7 @@ impl<'a> ShaderFromNir<'a> {
 
         let bb = BasicBlock {
             label: self.get_block_label(nb),
+            uniform: !nb.divergent,
             instrs: b.as_vec(),
         };
         self.cfg.add_node(nb.index, bb);

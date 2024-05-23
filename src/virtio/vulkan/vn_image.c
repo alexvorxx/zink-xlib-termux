@@ -809,15 +809,6 @@ vn_BindImageMemory2(VkDevice device,
 
       if (img->wsi.is_wsi)
          vn_image_bind_wsi_memory(img, mem);
-
-      /* If mem is suballocated, mem->base_memory is non-NULL and we must
-       * patch it in.  If VkBindImageMemorySwapchainInfoKHR is given, we've
-       * looked mem up above and also need to patch it in.
-       */
-      if (mem->base_memory) {
-         info->memory = vn_device_memory_to_handle(mem->base_memory);
-         info->memoryOffset += mem->base_offset;
-      }
    }
 
    struct vn_device *dev = vn_device_from_handle(device);

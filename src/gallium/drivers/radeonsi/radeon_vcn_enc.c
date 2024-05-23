@@ -16,8 +16,6 @@
 #include "util/u_video.h"
 #include "vl/vl_video_buffer.h"
 
-#include <stdio.h>
-
 static const unsigned index_to_shifts[4] = {24, 16, 8, 0};
 
 /* set quality modes from the input */
@@ -1690,6 +1688,30 @@ void radeon_enc_code_se(struct radeon_encoder *enc, int value)
       v = (value < 0 ? ((unsigned int)(0 - value) << 1) : (((unsigned int)(value) << 1) - 1));
 
    radeon_enc_code_ue(enc, v);
+}
+
+void radeon_enc_code_ns(struct radeon_encoder *enc, unsigned int value, unsigned int max)
+{
+   unsigned w = 0;
+   unsigned m;
+   unsigned max_num = max;
+
+   while ( max_num ) {
+      max_num >>= 1;
+      w++;
+   }
+
+   m = ( 1 << w ) - max;
+
+   assert(w > 1);
+
+   if ( value < m )
+      radeon_enc_code_fixed_bits(enc, value, (w - 1));
+   else {
+      unsigned diff = value - m;
+      unsigned out = (((diff >> 1) + m) << 1) | (diff & 0x1);
+      radeon_enc_code_fixed_bits(enc, out, w);
+   }
 }
 
 /* dummy function for re-using the same pipeline */

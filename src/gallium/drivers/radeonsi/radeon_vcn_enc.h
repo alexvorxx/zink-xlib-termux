@@ -108,6 +108,7 @@ struct radeon_enc_pic {
    bool pcm_enabled_flag;
    bool sps_temporal_mvp_enabled_flag;
    bool use_rc_per_pic_ex;
+   bool av1_tile_spliting_legacy_flag;
 
    struct {
       struct {
@@ -126,6 +127,7 @@ struct radeon_enc_pic {
             uint32_t stream_obu_frame:1;  /* all frames have the same number of tiles */
             uint32_t need_av1_seq:1;
             uint32_t av1_mark_long_term_reference:1;
+            uint32_t tile_config_flag:1;
          };
          uint32_t render_width;
          uint32_t render_height;
@@ -290,6 +292,23 @@ struct radeon_encoder {
    struct pipe_context *ectx;
 };
 
+
+/* structure for determining av1 tile division scheme.
+ * In one direction, it is trying to split width/height into two parts,
+ * main and  border, each of which has a length (number of sbs),
+ * Therefore, it has two possible tile sizes, even with multiple
+ * tiles, and in non-uniformed case, it is trying to make tile sizes
+ * as similar as possible.
+ */
+
+struct tile_1d_layout {
+   bool     uniform_tile_flag;
+   uint32_t nb_main_sb;     /* if non-uniform, it means the first part */
+   uint32_t nb_border_sb;   /* if non-uniform, it means the second part */
+   uint32_t nb_main_tile;
+   uint32_t nb_border_tile;
+};
+
 void radeon_enc_add_buffer(struct radeon_encoder *enc, struct pb_buffer_lean *buf,
                            unsigned usage, enum radeon_bo_domain domain, signed offset);
 
@@ -318,6 +337,9 @@ void radeon_enc_code_uvlc(struct radeon_encoder *enc, unsigned int value);
 
 void radeon_enc_code_leb128(unsigned char *buf, unsigned int value,
                             unsigned int num_bytes);
+
+void radeon_enc_code_ns(struct radeon_encoder *enc, unsigned int value,
+                        unsigned int max);
 
 void radeon_enc_1_2_init(struct radeon_encoder *enc);
 

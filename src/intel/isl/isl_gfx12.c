@@ -125,14 +125,16 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
    if (isl_format_get_layout(info->format)->bpb % 3 == 0)
       *flags &= ~ISL_TILING_64_BIT;
 
-   /* BSpec 46962: 3DSTATE_CPSIZE_CONTROL_BUFFER::Tiled Mode : TILE4 & TILE64
-    * are the only 2 valid values.
+   /* From 3DSTATE_CPSIZE_CONTROL_BUFFER::TiledMode,
     *
-    * TODO: For now we only TILE64 as we need to figure out potential
-    *       additional requirements for TILE4.
+    *    - 3h       Tile4      4KB tile mode
+    *    - 1h       Tile64     64KB tile mode
+    *    - 2h, 0h   Reserved
+    *
+    * Tile4 and Tile64 are the only two valid values.
     */
    if (info->usage & ISL_SURF_USAGE_CPB_BIT)
-      *flags &= ISL_TILING_64_BIT;
+      *flags &= ISL_TILING_4_BIT | ISL_TILING_64_BIT;
 }
 
 void
@@ -190,7 +192,8 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
          info->format != ISL_FORMAT_R16_UNORM ?
          isl_extent3d(8, 4, 1) :
          isl_extent3d(8, 8, 1);
-   } else if (isl_surf_usage_is_stencil(info->usage)) {
+   } else if (isl_surf_usage_is_stencil(info->usage) ||
+              isl_surf_usage_is_cpb(info->usage)) {
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
        *
        *    - Stencil Surfaces (8b) Must be HALIGN=16Bytes (16texels)
@@ -200,6 +203,8 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
        *    This field is intended to be set to VALIGN_8 only if
        *    the surface was rendered as a stencil buffer, since stencil buffer
        *    surfaces support only alignment of 8.
+       *
+       * TODO: Cite docs for CPB.
        */
       *image_align_el = isl_extent3d(16, 8, 1);
    } else if (!isl_is_pow2(fmtl->bpb)) {

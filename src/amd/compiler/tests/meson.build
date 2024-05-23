@@ -36,9 +36,7 @@ gen_spirv = generator(
   arguments : [
     join_paths(meson.current_source_dir(), 'glsl_scraper.py'),
     '@INPUT@', '--with-glslang', prog_glslang.full_path(), '-o', '@OUTPUT@',
-    glslang_depfile,
   ],
-  depfile: '@BASENAME@-spriv.h.d',
 )
 gen_spirv_files = gen_spirv.process(spirv_files)
 

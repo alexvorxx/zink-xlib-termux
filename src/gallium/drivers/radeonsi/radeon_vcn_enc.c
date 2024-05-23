@@ -687,11 +687,17 @@ static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
       enc->enc_pic.av1_spec_misc.cdef_uv_pri_strength[i] = (pic->cdef.cdef_uv_strengths[i] >> 2);
       enc->enc_pic.av1_spec_misc.cdef_uv_sec_strength[i] = (pic->cdef.cdef_uv_strengths[i] & 0x3);
    }
+
    enc->enc_pic.av1_spec_misc.delta_q_y_dc = pic->quantization.y_dc_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_u_dc = pic->quantization.u_dc_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_u_ac = pic->quantization.u_ac_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_v_dc = pic->quantization.v_dc_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_v_ac = pic->quantization.v_ac_delta_q;
+
+   if (enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_KEY)
+      enc->enc_pic.av1_spec_misc.separate_delta_q =
+         (pic->quantization.u_dc_delta_q != pic->quantization.v_dc_delta_q) ||
+         (pic->quantization.u_ac_delta_q != pic->quantization.v_ac_delta_q);
 
    if (enc->enc_pic.disable_screen_content_tools) {
        enc->enc_pic.force_integer_mv  = 0;
@@ -793,6 +799,31 @@ static void radeon_vcn_enc_av1_get_rc_param(struct radeon_encoder *enc,
    enc->enc_pic.rc_per_pic.max_au_size_p = pic->rc[0].max_au_size;
 }
 
+static void radeon_vcn_enc_av1_get_tile_config(struct radeon_encoder *enc,
+                                               struct pipe_av1_enc_picture_desc *pic)
+{
+   uint32_t num_tile_cols, num_tile_rows;
+
+   num_tile_cols = MIN2(RENCODE_AV1_TILE_CONFIG_MAX_NUM_COLS, pic->tile_cols);
+   num_tile_rows = MIN2(RENCODE_AV1_TILE_CONFIG_MAX_NUM_ROWS, pic->tile_rows);
+
+   enc->enc_pic.av1_tile_config.uniform_tile_spacing = !!(pic->uniform_tile_spacing);
+   enc->enc_pic.av1_tile_config.num_tile_cols = pic->tile_cols;
+   enc->enc_pic.av1_tile_config.num_tile_rows = pic->tile_rows;
+   enc->enc_pic.av1_tile_config.num_tile_groups = pic->num_tile_groups;
+   for (int i = 0; i < num_tile_cols; i++ )
+      enc->enc_pic.av1_tile_config.tile_widths[i] = pic->width_in_sbs_minus_1[i] + 1;
+   for (int i = 0; i < num_tile_rows; i++ )
+      enc->enc_pic.av1_tile_config.tile_height[i] = pic->height_in_sbs_minus_1[i] + 1;
+   for (int i = 0; i < num_tile_cols * num_tile_rows; i++ ) {
+      enc->enc_pic.av1_tile_config.tile_groups[i].start =
+         (uint32_t)pic->tile_groups[i].tile_group_start;
+      enc->enc_pic.av1_tile_config.tile_groups[i].end =
+         (uint32_t)pic->tile_groups[i].tile_group_end;
+   }
+   enc->enc_pic.av1_tile_config.context_update_tile_id = pic->context_update_tile_id;
+}
+
 static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          struct pipe_av1_enc_picture_desc *pic)
 {
@@ -844,6 +875,8 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
    radeon_vcn_enc_av1_timing_info(enc, pic);
    radeon_vcn_enc_av1_color_description(enc, pic);
    radeon_vcn_enc_av1_get_rc_param(enc, pic);
+   if (enc_pic->tile_config_flag)
+      radeon_vcn_enc_av1_get_tile_config(enc, pic);
    radeon_vcn_enc_get_input_format_param(enc, &pic->base);
    radeon_vcn_enc_get_output_format_param(enc, pic->seq.color_config.color_range);
    /* loop filter enabled all the time */
@@ -1489,8 +1522,13 @@ struct pipe_video_codec *radeon_create_encoder(struct pipe_context *context,
 
    enc->enc_pic.use_rc_per_pic_ex = false;
 
-   if (sscreen->info.vcn_ip_version >= VCN_5_0_0)
+   if (sscreen->info.vcn_ip_version >= VCN_5_0_0) {
       radeon_enc_5_0_init(enc);
+      if (sscreen->info.vcn_ip_version == VCN_5_0_0) {
+         /* this limits tile splitting scheme to use legacy method */
+         enc->enc_pic.av1_tile_spliting_legacy_flag = true;
+      }
+   }
    else if (sscreen->info.vcn_ip_version >= VCN_4_0_0) {
       if (sscreen->info.vcn_enc_minor_version >= 1)
          enc->enc_pic.use_rc_per_pic_ex = true;
@@ -1688,6 +1726,16 @@ void radeon_enc_code_se(struct radeon_encoder *enc, int value)
       v = (value < 0 ? ((unsigned int)(0 - value) << 1) : (((unsigned int)(value) << 1) - 1));
 
    radeon_enc_code_ue(enc, v);
+}
+
+unsigned int radeon_enc_av1_tile_log2(unsigned int blk_size, unsigned int max)
+{
+   unsigned int k;
+
+   assert(blk_size);
+   for (k = 0; (blk_size << k) < max; k++) {}
+
+   return k;
 }
 
 void radeon_enc_code_ns(struct radeon_encoder *enc, unsigned int value, unsigned int max)

@@ -364,4 +364,11 @@ unsigned char *radeon_enc_av1_header_size_offset(struct radeon_encoder *enc);
 
 unsigned int radeon_enc_value_bits(unsigned int value);
 
+unsigned int radeon_enc_av1_tile_log2(unsigned int blk_size, unsigned int max);
+
+bool radeon_enc_is_av1_uniform_tile (uint32_t nb_sb, uint32_t nb_tiles,
+                                     uint32_t min_nb_sb, struct tile_1d_layout *p);
+
+void radeon_enc_av1_tile_layout (uint32_t nb_sb, uint32_t nb_tiles, uint32_t min_nb_sb,
+                                 struct tile_1d_layout *p);
 #endif // _RADEON_VCN_ENC_H

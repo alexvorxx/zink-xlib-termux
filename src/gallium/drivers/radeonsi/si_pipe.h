@@ -445,13 +445,8 @@ struct si_surface {
    uint8_t db_format_index : 3;
 
    /* Color registers. */
-   unsigned cb_color_info;
-   unsigned cb_color_view;
-   unsigned cb_color_view2;
-   unsigned cb_color_attrib;
-   unsigned cb_color_attrib2;                      /* GFX9 and later */
-   unsigned cb_color_attrib3;                      /* GFX10 and later */
-   unsigned cb_dcc_control;                        /* GFX8 and later */
+   struct ac_cb_surface cb;
+
    unsigned spi_shader_col_format : 8;             /* no blending, no alpha-to-coverage. */
    unsigned spi_shader_col_format_alpha : 8;       /* alpha-to-coverage */
    unsigned spi_shader_col_format_blend : 8;       /* blending without alpha. */

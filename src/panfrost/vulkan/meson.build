@@ -69,6 +69,7 @@ jm_files = [
   'jm/panvk_vX_cmd_buffer.c',
   'jm/panvk_vX_cmd_dispatch.c',
   'jm/panvk_vX_cmd_draw.c',
+  'jm/panvk_vX_cmd_event.c',
   'jm/panvk_vX_meta.c',
   'jm/panvk_vX_meta_blit.c',
   'jm/panvk_vX_meta_clear.c',

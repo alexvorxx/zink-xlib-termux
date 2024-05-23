@@ -5906,13 +5906,6 @@ pub struct BasicBlock {
 }
 
 impl BasicBlock {
-    pub fn new(label: Label) -> BasicBlock {
-        BasicBlock {
-            label: label,
-            instrs: Vec::new(),
-        }
-    }
-
     pub fn map_instrs(
         &mut self,
         mut map: impl FnMut(Box<Instr>) -> MappedInstrs,

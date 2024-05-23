@@ -3252,8 +3252,10 @@ impl<'a> ShaderFromNir<'a> {
             }
         }
 
-        let mut bb = BasicBlock::new(self.get_block_label(nb));
-        bb.instrs.append(&mut b.as_vec());
+        let bb = BasicBlock {
+            label: self.get_block_label(nb),
+            instrs: b.as_vec(),
+        };
         self.cfg.add_node(nb.index, bb);
     }
 

@@ -5,9 +5,6 @@
  * SPDX-License-Identifier: MIT
  *
  **************************************************************************/
-
-#include <stdio.h>
-
 #include "pipe/p_video_codec.h"
 
 #include "util/u_video.h"
@@ -169,6 +166,13 @@ static void radeon_enc_encode_params_h264(struct radeon_encoder *enc)
 
 static void radeon_enc_spec_misc_av1(struct radeon_encoder *enc)
 {
+   /* if enabled using the input parameters, it is required to have cdef_bits
+    * > 0 */
+   if (enc->enc_pic.av1_spec_misc.cdef_mode && !!(enc->enc_pic.av1_spec_misc.cdef_bits))
+      enc->enc_pic.av1_spec_misc.cdef_mode = RENCODE_AV1_CDEF_MODE_EXPLICIT;
+   else if (enc->enc_pic.av1_spec_misc.cdef_mode)
+      enc->enc_pic.av1_spec_misc.cdef_mode = RENCODE_AV1_CDEF_MODE_DEFAULT;
+
    RADEON_ENC_BEGIN(enc->cmd.spec_misc_av1);
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.palette_mode_enable);
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.mv_precision);

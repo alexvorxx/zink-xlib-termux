@@ -299,9 +299,7 @@ radv_image_get_iterate256(const struct radv_device *device, struct radv_image *i
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* ITERATE_256 is required for depth or stencil MSAA images that are TC-compatible HTILE. */
-   return pdev->info.gfx_level >= GFX10 &&
-          (image->vk.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) &&
-          radv_image_is_tc_compat_htile(image) && image->vk.samples > 1;
+   return pdev->info.gfx_level >= GFX10 && radv_image_is_tc_compat_htile(image) && image->vk.samples > 1;
 }
 
 bool radv_are_formats_dcc_compatible(const struct radv_physical_device *pdev, const void *pNext, VkFormat format,

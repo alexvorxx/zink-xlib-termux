@@ -247,6 +247,8 @@ hw_vars["$GpuMinFrequency"] = "perf->sys_vars.gt_min_freq"
 hw_vars["$GpuMaxFrequency"] = "perf->sys_vars.gt_max_freq"
 hw_vars["$SkuRevisionId"] = "perf->devinfo->revision"
 hw_vars["$QueryMode"] = "perf->sys_vars.query_mode"
+hw_vars["$ComputeEngineTotalCount"] = "perf->devinfo->engine_class_supported_count[INTEL_ENGINE_CLASS_COMPUTE]"
+hw_vars["$CopyEngineTotalCount"] = "perf->devinfo->engine_class_supported_count[INTEL_ENGINE_CLASS_COPY]"
 
 def resolve_variable(name, set, allow_counters):
     if name in hw_vars:

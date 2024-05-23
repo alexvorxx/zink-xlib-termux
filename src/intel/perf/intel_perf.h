@@ -262,6 +262,7 @@ struct intel_perf_query_info {
    int c_offset;
    int perfcnt_offset;
    int rpstat_offset;
+   int pec_offset;
 
    struct intel_perf_registers config;
 };

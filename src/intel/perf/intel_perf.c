@@ -445,6 +445,8 @@ get_register_queries_function(const struct intel_device_info *devinfo)
       if (intel_device_info_eu_total(devinfo) <= 128)
          return intel_oa_register_queries_mtlgt3;
       return NULL;
+   case INTEL_PLATFORM_LNL:
+      return intel_oa_register_queries_lnl;
    default:
       return NULL;
    }

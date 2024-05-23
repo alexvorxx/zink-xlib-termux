@@ -1238,6 +1238,7 @@ lower_ssbo_descriptor_instr(nir_builder *b, nir_instr *instr,
 
 bool
 nvk_nir_lower_descriptors(nir_shader *nir,
+                          const struct nvk_physical_device *pdev,
                           const struct vk_pipeline_robustness_state *rs,
                           uint32_t set_layout_count,
                           struct vk_descriptor_set_layout * const *set_layouts,
@@ -1248,8 +1249,8 @@ nvk_nir_lower_descriptors(nir_shader *nir,
          rs->storage_buffers != VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT ||
          rs->uniform_buffers != VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT ||
          rs->images != VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_DISABLED_EXT,
-      .ssbo_addr_format = nvk_buffer_addr_format(rs->storage_buffers),
-      .ubo_addr_format = nvk_buffer_addr_format(rs->uniform_buffers),
+      .ssbo_addr_format = nvk_ssbo_addr_format(pdev, rs->storage_buffers),
+      .ubo_addr_format = nvk_ubo_addr_format(pdev, rs->uniform_buffers),
    };
 
    assert(set_layout_count <= NVK_MAX_SETS);

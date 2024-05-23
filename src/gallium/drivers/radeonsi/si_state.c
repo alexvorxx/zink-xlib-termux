@@ -1619,9 +1619,9 @@ static void si_pm4_emit_dsa(struct si_context *sctx, unsigned index)
       }
       if (state->depth_bounds_enabled) {
          gfx12_opt_set_context_reg(R_028050_DB_DEPTH_BOUNDS_MIN, SI_TRACKED_DB_DEPTH_BOUNDS_MIN,
-                                   fui(state->db_depth_bounds_min));
+                                   state->db_depth_bounds_min);
          gfx12_opt_set_context_reg(R_028054_DB_DEPTH_BOUNDS_MAX, SI_TRACKED_DB_DEPTH_BOUNDS_MAX,
-                                   fui(state->db_depth_bounds_max));
+                                   state->db_depth_bounds_max);
       }
       gfx12_end_context_regs();
       radeon_end(); /* don't track context rolls on GFX12 */

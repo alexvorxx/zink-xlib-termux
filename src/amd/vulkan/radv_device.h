@@ -607,17 +607,13 @@ bool radv_get_memory_fd(struct radv_device *device, struct radv_device_memory *m
 unsigned radv_get_dcc_max_uncompressed_block_size(const struct radv_device *device, const struct radv_image *image);
 
 struct radv_color_buffer_info {
+   struct ac_cb_surface ac;
+
    uint64_t cb_color_base;
    uint64_t cb_color_cmask;
    uint64_t cb_color_fmask;
    uint64_t cb_dcc_base;
    uint32_t cb_color_slice;
-   uint32_t cb_color_view;
-   uint32_t cb_color_info;
-   uint32_t cb_color_attrib;
-   uint32_t cb_color_attrib2; /* GFX9 and later */
-   uint32_t cb_color_attrib3; /* GFX10 and later */
-   uint32_t cb_dcc_control;
    uint32_t cb_color_cmask_slice;
    uint32_t cb_color_fmask_slice;
    union {

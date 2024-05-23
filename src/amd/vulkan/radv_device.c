@@ -1475,74 +1475,41 @@ radv_get_dcc_max_uncompressed_block_size(const struct radv_device *device, const
    return V_028C78_MAX_BLOCK_SIZE_256B;
 }
 
-static uint32_t
-radv_init_dcc_control_reg(struct radv_device *device, struct radv_image_view *iview)
-{
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-   unsigned max_uncompressed_block_size = radv_get_dcc_max_uncompressed_block_size(device, iview->image);
-   unsigned min_compressed_block_size = ac_get_dcc_min_compressed_block_size(&pdev->info);
-   unsigned max_compressed_block_size;
-   unsigned independent_128b_blocks;
-   unsigned independent_64b_blocks;
-
-   if (!radv_dcc_enabled(iview->image, iview->vk.base_mip_level))
-      return 0;
-
-   /* For GFX10+ ac_surface computes values for us (except min_compressed
-    * and max_uncompressed) */
-   if (pdev->info.gfx_level >= GFX10) {
-      max_compressed_block_size = iview->image->planes[0].surface.u.gfx9.color.dcc.max_compressed_block_size;
-      independent_128b_blocks = iview->image->planes[0].surface.u.gfx9.color.dcc.independent_128B_blocks;
-      independent_64b_blocks = iview->image->planes[0].surface.u.gfx9.color.dcc.independent_64B_blocks;
-   } else {
-      max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_64B;
-      independent_128b_blocks = 0;
-      independent_64b_blocks = 1;
-   }
-
-   uint32_t result = S_028C78_MAX_UNCOMPRESSED_BLOCK_SIZE(max_uncompressed_block_size) |
-                     S_028C78_MAX_COMPRESSED_BLOCK_SIZE(max_compressed_block_size) |
-                     S_028C78_MIN_COMPRESSED_BLOCK_SIZE(min_compressed_block_size) |
-                     S_028C78_INDEPENDENT_64B_BLOCKS(independent_64b_blocks);
-
-   if (pdev->info.gfx_level >= GFX11) {
-      result |= S_028C78_INDEPENDENT_128B_BLOCKS_GFX11(independent_128b_blocks) |
-                S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) |
-                S_028C78_FDCC_ENABLE(radv_dcc_enabled(iview->image, iview->vk.base_mip_level));
-
-      if (pdev->info.family >= CHIP_GFX1103_R2) {
-         result |= S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) | S_028C78_MAX_COMP_FRAGS(iview->image->vk.samples >= 4);
-      }
-   } else {
-      result |= S_028C78_INDEPENDENT_128B_BLOCKS_GFX10(independent_128b_blocks);
-   }
-
-   return result;
-}
-
 void
 radv_initialise_color_surface(struct radv_device *device, struct radv_color_buffer_info *cb,
                               struct radv_image_view *iview)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
-   const struct util_format_description *desc;
-   unsigned ntype, format, swap, endian;
-   unsigned blend_clamp = 0, blend_bypass = 0;
    uint64_t va;
    const struct radv_image_plane *plane = &iview->image->planes[iview->plane_id];
    const struct radeon_surf *surf = &plane->surface;
    uint8_t tile_swizzle = plane->surface.tile_swizzle;
 
-   desc = vk_format_description(iview->vk.format);
-
    memset(cb, 0, sizeof(*cb));
 
-   /* Intensity is implemented as Red, so treat it that way. */
-   if (pdev->info.gfx_level >= GFX11)
-      cb->cb_color_attrib = S_028C74_FORCE_DST_ALPHA_1_GFX11(desc->swizzle[3] == PIPE_SWIZZLE_1);
-   else
-      cb->cb_color_attrib = S_028C74_FORCE_DST_ALPHA_1_GFX6(desc->swizzle[3] == PIPE_SWIZZLE_1);
+   const unsigned num_layers =
+      iview->image->vk.image_type == VK_IMAGE_TYPE_3D ? (iview->extent.depth - 1) : (iview->image->vk.array_layers - 1);
+
+   const struct ac_cb_state cb_state = {
+      .surf = surf,
+      .format = vk_format_to_pipe_format(iview->vk.format),
+      .width = vk_format_get_plane_width(iview->image->vk.format, iview->plane_id, iview->extent.width),
+      .height = vk_format_get_plane_height(iview->image->vk.format, iview->plane_id, iview->extent.height),
+      .first_layer = iview->vk.base_array_layer,
+      .last_layer = radv_surface_max_layer_count(iview) - 1,
+      .num_layers = num_layers,
+      .num_samples = iview->image->vk.samples,
+      .num_storage_samples = iview->image->vk.samples,
+      .base_level = iview->vk.base_mip_level,
+      .num_levels = iview->image->vk.mip_levels,
+      .gfx10 =
+         {
+            .nbc_view = iview->nbc_view.valid ? &iview->nbc_view : NULL,
+         },
+   };
+
+   ac_init_cb_surface(&pdev->info, &cb_state, &cb->ac);
 
    uint32_t plane_id = iview->image->disjoint ? iview->plane_id : 0;
    va = radv_buffer_get_va(iview->image->bindings[plane_id].bo) + iview->image->bindings[plane_id].offset;
@@ -1556,13 +1523,13 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
 
    if (pdev->info.gfx_level >= GFX9) {
       if (pdev->info.gfx_level >= GFX11) {
-         cb->cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                                 S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
+         cb->ac.cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                                    S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
       } else if (pdev->info.gfx_level >= GFX10) {
-         cb->cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                                 S_028EE0_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
-                                 S_028EE0_CMASK_PIPE_ALIGNED(1) |
-                                 S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
+         cb->ac.cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                                    S_028EE0_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
+                                    S_028EE0_CMASK_PIPE_ALIGNED(1) |
+                                    S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
       } else {
          struct gfx9_surf_meta_flags meta = {
             .rb_aligned = 1,
@@ -1572,9 +1539,9 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
          if (surf->meta_offset)
             meta = surf->u.gfx9.color.dcc;
 
-         cb->cb_color_attrib |= S_028C74_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                                S_028C74_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
-                                S_028C74_RB_ALIGNED(meta.rb_aligned) | S_028C74_PIPE_ALIGNED(meta.pipe_aligned);
+         cb->ac.cb_color_attrib |= S_028C74_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                                   S_028C74_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
+                                   S_028C74_RB_ALIGNED(meta.rb_aligned) | S_028C74_PIPE_ALIGNED(meta.pipe_aligned);
          cb->cb_mrt_epitch = S_0287A0_EPITCH(surf->u.gfx9.epitch);
       }
 
@@ -1596,18 +1563,18 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       cb->cb_color_slice = S_028C68_TILE_MAX(slice_tile_max);
       cb->cb_color_cmask_slice = surf->u.legacy.color.cmask_slice_tile_max;
 
-      cb->cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
+      cb->ac.cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
 
       if (radv_image_has_fmask(iview->image)) {
          if (pdev->info.gfx_level >= GFX7)
             cb->cb_color_pitch |= S_028C64_FMASK_TILE_MAX(surf->u.legacy.color.fmask.pitch_in_pixels / 8 - 1);
-         cb->cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(surf->u.legacy.color.fmask.tiling_index);
+         cb->ac.cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(surf->u.legacy.color.fmask.tiling_index);
          cb->cb_color_fmask_slice = S_028C88_TILE_MAX(surf->u.legacy.color.fmask.slice_tile_max);
       } else {
          /* This must be set for fast clear to work without FMASK. */
          if (pdev->info.gfx_level >= GFX7)
             cb->cb_color_pitch |= S_028C64_FMASK_TILE_MAX(pitch_tile_max);
-         cb->cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(tile_mode_index);
+         cb->ac.cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(tile_mode_index);
          cb->cb_color_fmask_slice = S_028C88_TILE_MAX(slice_tile_max);
       }
    }
@@ -1629,20 +1596,6 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
    cb->cb_dcc_base = va >> 8;
    cb->cb_dcc_base |= dcc_tile_swizzle;
 
-   /* GFX10 field has the same base shift as the GFX6 field. */
-   uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;
-   uint32_t slice_start = iview->nbc_view.valid ? 0 : iview->vk.base_array_layer;
-   cb->cb_color_view = S_028C6C_SLICE_START(slice_start) | S_028C6C_SLICE_MAX_GFX10(max_slice);
-
-   if (iview->image->vk.samples > 1) {
-      unsigned log_samples = util_logbase2(iview->image->vk.samples);
-
-      if (pdev->info.gfx_level >= GFX11)
-         cb->cb_color_attrib |= S_028C74_NUM_FRAGMENTS_GFX11(log_samples);
-      else
-         cb->cb_color_attrib |= S_028C74_NUM_SAMPLES(log_samples) | S_028C74_NUM_FRAGMENTS_GFX6(log_samples);
-   }
-
    if (radv_image_has_fmask(iview->image)) {
       va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset + surf->fmask_offset;
       cb->cb_color_fmask = va >> 8;
@@ -1651,120 +1604,34 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       cb->cb_color_fmask = cb->cb_color_base;
    }
 
-   ntype = ac_get_cb_number_type(desc->format);
-   format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
-   assert(format != V_028C70_COLOR_INVALID);
-
-   swap = ac_translate_colorswap(pdev->info.gfx_level, vk_format_to_pipe_format(iview->vk.format), false);
-   endian = ac_colorformat_endian_swap(format);
-
-   /* blend clamp should be set for all NORM/SRGB types */
-   if (ntype == V_028C70_NUMBER_UNORM || ntype == V_028C70_NUMBER_SNORM || ntype == V_028C70_NUMBER_SRGB)
-      blend_clamp = 1;
-
-   /* set blend bypass according to docs if SINT/UINT or
-      8/24 COLOR variants */
-   if (ntype == V_028C70_NUMBER_UINT || ntype == V_028C70_NUMBER_SINT || format == V_028C70_COLOR_8_24 ||
-       format == V_028C70_COLOR_24_8 || format == V_028C70_COLOR_X24_8_32_FLOAT) {
-      blend_clamp = 0;
-      blend_bypass = 1;
-   }
-#if 0
-	if ((ntype == V_028C70_NUMBER_UINT || ntype == V_028C70_NUMBER_SINT) &&
-	    (format == V_028C70_COLOR_8 ||
-	     format == V_028C70_COLOR_8_8 ||
-	     format == V_028C70_COLOR_8_8_8_8))
-		->color_is_int8 = true;
-#endif
-   cb->cb_color_info = S_028C70_COMP_SWAP(swap) | S_028C70_BLEND_CLAMP(blend_clamp) |
-                       S_028C70_BLEND_BYPASS(blend_bypass) | S_028C70_SIMPLE_FLOAT(1) |
-                       S_028C70_ROUND_MODE(ntype != V_028C70_NUMBER_UNORM && ntype != V_028C70_NUMBER_SNORM &&
-                                           ntype != V_028C70_NUMBER_SRGB && format != V_028C70_COLOR_8_24 &&
-                                           format != V_028C70_COLOR_24_8) |
-                       S_028C70_NUMBER_TYPE(ntype);
-
-   if (pdev->info.gfx_level >= GFX11)
-      cb->cb_color_info |= S_028C70_FORMAT_GFX11(format);
-   else
-      cb->cb_color_info |= S_028C70_FORMAT_GFX6(format) | S_028C70_ENDIAN(endian);
-
    if (radv_image_has_fmask(iview->image)) {
-      cb->cb_color_info |= S_028C70_COMPRESSION(1);
-      if (pdev->info.gfx_level == GFX6) {
-         unsigned fmask_bankh = util_logbase2(surf->u.legacy.color.fmask.bankh);
-         cb->cb_color_attrib |= S_028C74_FMASK_BANK_HEIGHT(fmask_bankh);
-      }
-
       if (radv_image_is_tc_compat_cmask(iview->image)) {
          /* Allow the texture block to read FMASK directly without decompressing it. */
-         cb->cb_color_info |= S_028C70_FMASK_COMPRESS_1FRAG_ONLY(1);
+         cb->ac.cb_color_info |= S_028C70_FMASK_COMPRESS_1FRAG_ONLY(1);
 
          if (pdev->info.gfx_level == GFX8) {
             /* Set CMASK into a tiling format that allows
              * the texture block to read it.
              */
-            cb->cb_color_info |= S_028C70_CMASK_ADDR_TYPE(2);
+            cb->ac.cb_color_info |= S_028C70_CMASK_ADDR_TYPE(2);
          }
       }
    }
 
    if (radv_image_has_cmask(iview->image) && !(instance->debug_flags & RADV_DEBUG_NO_FAST_CLEARS))
-      cb->cb_color_info |= S_028C70_FAST_CLEAR(1);
+      cb->ac.cb_color_info |= S_028C70_FAST_CLEAR(1);
 
    if (radv_dcc_enabled(iview->image, iview->vk.base_mip_level) && !iview->disable_dcc_mrt &&
        pdev->info.gfx_level < GFX11)
-      cb->cb_color_info |= S_028C70_DCC_ENABLE(1);
+      cb->ac.cb_color_info |= S_028C70_DCC_ENABLE(1);
 
-   cb->cb_dcc_control = radv_init_dcc_control_reg(device, iview);
+   if (pdev->info.gfx_level == GFX11 && radv_dcc_enabled(iview->image, iview->vk.base_mip_level)) {
+      cb->ac.cb_dcc_control |= S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) | S_028C78_FDCC_ENABLE(1);
 
-   /* This must be set for fast clear to work without FMASK. */
-   if (!radv_image_has_fmask(iview->image) && pdev->info.gfx_level == GFX6) {
-      unsigned bankh = util_logbase2(surf->u.legacy.bankh);
-      cb->cb_color_attrib |= S_028C74_FMASK_BANK_HEIGHT(bankh);
-   }
-
-   if (pdev->info.gfx_level >= GFX9) {
-      unsigned mip0_depth = iview->image->vk.image_type == VK_IMAGE_TYPE_3D ? (iview->extent.depth - 1)
-                                                                            : (iview->image->vk.array_layers - 1);
-      unsigned width = vk_format_get_plane_width(iview->image->vk.format, iview->plane_id, iview->extent.width);
-      unsigned height = vk_format_get_plane_height(iview->image->vk.format, iview->plane_id, iview->extent.height);
-      unsigned max_mip = iview->image->vk.mip_levels - 1;
-
-      if (pdev->info.gfx_level >= GFX10) {
-         unsigned base_level = iview->vk.base_mip_level;
-
-         if (iview->nbc_view.valid) {
-            base_level = iview->nbc_view.level;
-            max_mip = iview->nbc_view.num_levels - 1;
-         }
-
-         cb->cb_color_view |= S_028C6C_MIP_LEVEL_GFX10(base_level);
-
-         cb->cb_color_attrib3 |= S_028EE0_MIP0_DEPTH(mip0_depth) | S_028EE0_RESOURCE_TYPE(surf->u.gfx9.resource_type) |
-                                 S_028EE0_RESOURCE_LEVEL(pdev->info.gfx_level >= GFX11 ? 0 : 1);
-      } else {
-         cb->cb_color_view |= S_028C6C_MIP_LEVEL_GFX9(iview->vk.base_mip_level);
-         cb->cb_color_attrib |= S_028C74_MIP0_DEPTH(mip0_depth) | S_028C74_RESOURCE_TYPE(surf->u.gfx9.resource_type);
+      if (pdev->info.family >= CHIP_GFX1103_R2) {
+         cb->ac.cb_dcc_control |=
+            S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) | S_028C78_MAX_COMP_FRAGS(iview->image->vk.samples >= 4);
       }
-
-      /* GFX10.3+ can set a custom pitch for 1D and 2D non-array, but it must be a multiple
-       * of 256B. Only set it for 2D linear for multi-GPU interop.
-       *
-       * We set the pitch in MIP0_WIDTH.
-       */
-      if (pdev->info.gfx_level >= GFX10_3 && iview->image->vk.image_type == VK_IMAGE_TYPE_2D &&
-          iview->image->vk.array_layers == 1 && plane->surface.is_linear) {
-         assert((plane->surface.u.gfx9.surf_pitch * plane->surface.bpe) % 256 == 0);
-
-         width = plane->surface.u.gfx9.surf_pitch;
-
-         /* Subsampled images have the pitch in the units of blocks. */
-         if (plane->surface.blk_w == 2)
-            width *= 2;
-      }
-
-      cb->cb_color_attrib2 =
-         S_028C68_MIP0_WIDTH(width - 1) | S_028C68_MIP0_HEIGHT(height - 1) | S_028C68_MAX_MIP(max_mip);
    }
 }
 

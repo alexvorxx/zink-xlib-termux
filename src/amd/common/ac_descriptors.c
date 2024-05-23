@@ -798,3 +798,46 @@ ac_init_ds_surface(const struct radeon_info *info, const struct ac_ds_state *sta
       ac_init_gfx6_ds_surface(info, state, db_format, stencil_format, ds);
    }
 }
+
+unsigned
+ac_get_decompress_on_z_planes(const struct radeon_info *info, enum pipe_format format, uint8_t num_samples,
+                              bool htile_stencil_disabled, bool no_d16_compression)
+{
+   uint32_t max_zplanes = 0;
+
+   if (info->gfx_level >= GFX9) {
+      const bool iterate256 = info->gfx_level >= GFX10 && num_samples >= 2;
+
+      /* Default value for 32-bit depth surfaces. */
+      max_zplanes = 4;
+
+      if (format == PIPE_FORMAT_Z16_UNORM && num_samples > 1)
+         max_zplanes = 2;
+
+      /* Workaround for a DB hang when ITERATE_256 is set to 1. Only affects 4X MSAA D/S images. */
+      if (info->has_two_planes_iterate256_bug && iterate256 && !htile_stencil_disabled && num_samples == 4)
+         max_zplanes = 1;
+
+      max_zplanes++;
+   } else {
+      if (format == PIPE_FORMAT_Z16_UNORM && no_d16_compression) {
+         /* Do not enable Z plane compression for 16-bit depth
+          * surfaces because isn't supported on GFX8. Only
+          * 32-bit depth surfaces are supported by the hardware.
+          * This allows to maintain shader compatibility and to
+          * reduce the number of depth decompressions.
+          */
+         max_zplanes = 1;
+      } else {
+         /* 0 = full compression. N = only compress up to N-1 Z planes. */
+         if (num_samples <= 1)
+            max_zplanes = 5;
+         else if (num_samples <= 4)
+            max_zplanes = 3;
+         else
+            max_zplanes = 2;
+      }
+   }
+
+   return max_zplanes;
+}

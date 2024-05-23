@@ -3528,11 +3528,10 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
 
       /* Set fields dependent on tc_compatile_htile. */
       if (sctx->gfx_level >= GFX9 && tc_compat_htile) {
-         unsigned max_zplanes = 4;
-
-         if (tex->db_render_format == PIPE_FORMAT_Z16_UNORM && tex->buffer.b.b.nr_samples > 1)
-            max_zplanes = 2;
-
+         unsigned max_zplanes =
+            ac_get_decompress_on_z_planes(&sctx->screen->info, tex->db_render_format,
+                                          tex->buffer.b.b.nr_samples,
+                                          tex->htile_stencil_disabled, false);
          if (sctx->gfx_level >= GFX10) {
             bool iterate256 = tex->buffer.b.b.nr_samples >= 2;
             db_z_info |= S_028040_ITERATE_FLUSH(1) |
@@ -3540,17 +3539,12 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
             db_stencil_info |= S_028044_ITERATE_FLUSH(!tex->htile_stencil_disabled) |
                                S_028044_ITERATE_256(iterate256);
 
-            /* Workaround for a DB hang when ITERATE_256 is set to 1. Only affects 4X MSAA D/S images. */
-            if (sctx->screen->info.has_two_planes_iterate256_bug && iterate256 &&
-                !tex->htile_stencil_disabled && tex->buffer.b.b.nr_samples == 4) {
-               max_zplanes = 1;
-            }
          } else {
             db_z_info |= S_028038_ITERATE_FLUSH(1);
             db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
          }
 
-         db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes + 1);
+         db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
       }
 
       unsigned level = zb->base.u.tex.level;
@@ -3608,13 +3602,11 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
             if (tex->tc_compatible_htile) {
                db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
 
-               /* 0 = full compression. N = only compress up to N-1 Z planes. */
-               if (tex->buffer.b.b.nr_samples <= 1)
-                  db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(5);
-               else if (tex->buffer.b.b.nr_samples <= 4)
-                  db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(3);
-               else
-                  db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(2);
+               unsigned max_zplanes =
+                  ac_get_decompress_on_z_planes(&sctx->screen->info, tex->db_render_format,
+                                                tex->buffer.b.b.nr_samples, false, false);
+
+               db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
             }
          }
 
@@ -3787,10 +3779,10 @@ static void gfx11_dgpu_emit_framebuffer_state(struct si_context *sctx, unsigned 
 
       /* Set fields dependent on tc_compatile_htile. */
       if (tc_compat_htile) {
-         unsigned max_zplanes = 4;
-
-         if (tex->db_render_format == PIPE_FORMAT_Z16_UNORM && tex->buffer.b.b.nr_samples > 1)
-            max_zplanes = 2;
+         unsigned max_zplanes =
+            ac_get_decompress_on_z_planes(&sctx->screen->info, tex->db_render_format,
+                                          tex->buffer.b.b.nr_samples,
+                                          tex->htile_stencil_disabled, false);
 
          bool iterate256 = tex->buffer.b.b.nr_samples >= 2;
          db_z_info |= S_028040_ITERATE_FLUSH(1) |
@@ -3798,12 +3790,7 @@ static void gfx11_dgpu_emit_framebuffer_state(struct si_context *sctx, unsigned 
          db_stencil_info |= S_028044_ITERATE_FLUSH(!tex->htile_stencil_disabled) |
                             S_028044_ITERATE_256(iterate256);
 
-         /* Workaround for a DB hang when ITERATE_256 is set to 1. Only affects 4X MSAA D/S images. */
-         if (sctx->screen->info.has_two_planes_iterate256_bug && iterate256 &&
-             !tex->htile_stencil_disabled && tex->buffer.b.b.nr_samples == 4)
-            max_zplanes = 1;
-
-         db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes + 1);
+         db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
       }
 
       unsigned level = zb->base.u.tex.level;

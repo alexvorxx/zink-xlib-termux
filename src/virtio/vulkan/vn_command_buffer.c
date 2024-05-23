@@ -1191,6 +1191,17 @@ vn_CmdBindIndexBuffer(VkCommandBuffer commandBuffer,
 }
 
 void
+vn_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
+                          VkBuffer buffer,
+                          VkDeviceSize offset,
+                          VkDeviceSize size,
+                          VkIndexType indexType)
+{
+   VN_CMD_ENQUEUE(vkCmdBindIndexBuffer2KHR, commandBuffer, buffer, offset,
+                  size, indexType);
+}
+
+void
 vn_CmdBindVertexBuffers(VkCommandBuffer commandBuffer,
                         uint32_t firstBinding,
                         uint32_t bindingCount,

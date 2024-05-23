@@ -12,6 +12,7 @@
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 #include "ac_drm_fourcc.h"
+#include "ac_formats.h"
 #include "radv_android.h"
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
@@ -177,9 +178,7 @@ bool
 radv_are_formats_dcc_compatible(const struct radv_physical_device *pdev, const void *pNext, VkFormat format,
                                 VkImageCreateFlags flags, bool *sign_reinterpret)
 {
-   bool blendable;
-
-   if (!radv_is_colorbuffer_format_supported(pdev, format, &blendable))
+   if (!radv_is_colorbuffer_format_supported(pdev, format))
       return false;
 
    if (sign_reinterpret != NULL)
@@ -716,25 +715,6 @@ radv_get_surface_flags(struct radv_device *device, struct radv_image *image, uns
    return flags;
 }
 
-unsigned
-radv_map_swizzle(unsigned swizzle)
-{
-   switch (swizzle) {
-   case PIPE_SWIZZLE_Y:
-      return V_008F0C_SQ_SEL_Y;
-   case PIPE_SWIZZLE_Z:
-      return V_008F0C_SQ_SEL_Z;
-   case PIPE_SWIZZLE_W:
-      return V_008F0C_SQ_SEL_W;
-   case PIPE_SWIZZLE_0:
-      return V_008F0C_SQ_SEL_0;
-   case PIPE_SWIZZLE_1:
-      return V_008F0C_SQ_SEL_1;
-   default: /* PIPE_SWIZZLE_X */
-      return V_008F0C_SQ_SEL_X;
-   }
-}
-
 void
 radv_compose_swizzle(const struct util_format_description *desc, const VkComponentMapping *mapping,
                      enum pipe_swizzle swizzle[4])
@@ -762,22 +742,6 @@ radv_compose_swizzle(const struct util_format_description *desc, const VkCompone
    } else {
       vk_format_compose_swizzles(mapping, desc->swizzle, swizzle);
    }
-}
-
-bool
-vi_alpha_is_on_msb(const struct radv_device *device, const VkFormat format)
-{
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-
-   if (pdev->info.gfx_level >= GFX11)
-      return false;
-
-   const struct util_format_description *desc = vk_format_description(format);
-
-   if (pdev->info.gfx_level >= GFX10 && desc->nr_channels == 1)
-      return desc->swizzle[3] == PIPE_SWIZZLE_X;
-
-   return radv_translate_colorswap(format, false) <= 1;
 }
 
 static void
@@ -1632,15 +1596,6 @@ radv_image_is_renderable(const struct radv_device *device, const struct radv_ima
       return false;
 
    return true;
-}
-
-unsigned
-radv_tile_mode_index(const struct radv_image_plane *plane, unsigned level, bool stencil)
-{
-   if (stencil)
-      return plane->surface.u.legacy.zs.stencil_tiling_index[level];
-   else
-      return plane->surface.u.legacy.tiling_index[level];
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

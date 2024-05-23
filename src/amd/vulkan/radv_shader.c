@@ -269,7 +269,6 @@ radv_compiler_debug(void *private_data, enum aco_compiler_debug_level level, con
    struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    static const VkDebugReportFlagsEXT vk_flags[] = {
-      [ACO_COMPILER_DEBUG_LEVEL_PERFWARN] = VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT,
       [ACO_COMPILER_DEBUG_LEVEL_ERROR] = VK_DEBUG_REPORT_ERROR_BIT_EXT,
    };
 

@@ -235,6 +235,7 @@ struct v3dv_instance {
 
    bool pipeline_cache_enabled;
    bool default_pipeline_cache_enabled;
+   bool meta_cache_enabled;
 };
 
 /* FIXME: In addition to tracking the last job submitted by GPU queue (cl, csd,

@@ -61,25 +61,17 @@ load_sysval_from_push_const(nir_builder *b, nir_intrinsic_instr *intr,
       .range = intr->def.num_components * intr->def.bit_size / 8);
 }
 
-struct sysval_options {
-   /* If non-null, a vec4 of blend constants known at pipeline compile time. If
-    * null, blend constants are dynamic.
-    */
-   float *static_blend_constants;
-};
-
 static bool
 panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
-   struct sysval_options *opts = data;
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
    nir_def *val = NULL;
    b->cursor = nir_before_instr(instr);
 
-#define SYSVAL(ptype, name) offsetof(struct panvk_ ## ptype ## _sysvals, name)
+#define SYSVAL(ptype, name) offsetof(struct panvk_##ptype##_sysvals, name)
    switch (intr->intrinsic) {
    case nir_intrinsic_load_num_workgroups:
       val =
@@ -110,19 +102,8 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
                                         SYSVAL(graphics, vs.base_instance));
       break;
    case nir_intrinsic_load_blend_const_color_rgba:
-      if (opts->static_blend_constants) {
-         const nir_const_value constants[4] = {
-            {.f32 = opts->static_blend_constants[0]},
-            {.f32 = opts->static_blend_constants[1]},
-            {.f32 = opts->static_blend_constants[2]},
-            {.f32 = opts->static_blend_constants[3]},
-         };
-
-         val = nir_build_imm(b, 4, 32, constants);
-      } else {
-         val = load_sysval_from_push_const(b, intr,
-                                           SYSVAL(graphics, blend.constants));
-      }
+      val = load_sysval_from_push_const(b, intr,
+                                        SYSVAL(graphics, blend.constants));
       break;
 
    case nir_intrinsic_load_layer_id:
@@ -212,11 +193,9 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
 }
 
 struct panvk_shader *
-panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
+panvk_per_arch(shader_create)(struct panvk_device *dev,
                               const VkPipelineShaderStageCreateInfo *stage_info,
                               const struct panvk_pipeline_layout *layout,
-                              struct pan_blend_state *blend_state,
-                              bool static_blend_constants,
                               const VkAllocationCallbacks *alloc)
 {
    VK_FROM_HANDLE(vk_shader_module, module, stage_info->module);
@@ -224,6 +203,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       to_panvk_physical_device(dev->vk.physical);
    struct panvk_instance *instance =
       to_panvk_instance(dev->vk.physical->instance);
+   gl_shader_stage stage = vk_to_mesa_shader_stage(stage_info->stage);
    struct panvk_shader *shader;
 
    shader = vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*shader), 8,
@@ -339,7 +319,21 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_lower_var_copies);
 
-   nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs, stage);
+   if (stage == MESA_SHADER_VERTEX) {
+      /* We need the driver_location to match the vertex attribute location,
+       * so we can use the attribute layout described by
+       * vk_vertex_input_state where there are holes in the attribute locations.
+       */
+      nir_foreach_shader_in_variable(var, nir) {
+         assert(var->data.location >= VERT_ATTRIB_GENERIC0 &&
+                var->data.location <= VERT_ATTRIB_GENERIC15);
+         var->data.driver_location = var->data.location - VERT_ATTRIB_GENERIC0;
+      }
+   } else {
+      nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs,
+                                  stage);
+   }
+
    nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs,
                                stage);
 
@@ -356,31 +350,11 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
 
    pan_shader_preprocess(nir, inputs.gpu_id);
 
-   if (stage == MESA_SHADER_FRAGMENT) {
-      panvk_lower_blend(dev, nir, &inputs, blend_state);
-   }
-
    if (stage == MESA_SHADER_VERTEX)
-      NIR_PASS_V(nir, pan_lower_image_index,
-                 util_bitcount64(nir->info.inputs_read));
-
-   struct sysval_options sysval_options = {
-      .static_blend_constants =
-         static_blend_constants ? blend_state->constants : NULL,
-   };
+      NIR_PASS_V(nir, pan_lower_image_index, MAX_VS_ATTRIBS);
 
    NIR_PASS_V(nir, nir_shader_instructions_pass, panvk_lower_sysvals,
-              nir_metadata_block_index | nir_metadata_dominance,
-              &sysval_options);
-
-   if (stage == MESA_SHADER_FRAGMENT) {
-      enum pipe_format rt_formats[MAX_RTS] = {PIPE_FORMAT_NONE};
-
-      for (unsigned rt = 0; rt < MAX_RTS; ++rt)
-         rt_formats[rt] = blend_state->rts[rt].format;
-
-      NIR_PASS_V(nir, GENX(pan_inline_rt_conversion), rt_formats);
-   }
+              nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    GENX(pan_shader_compile)(nir, &inputs, &shader->binary, &shader->info);
 
@@ -389,8 +363,25 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       panvk_per_arch(pipeline_layout_total_ubo_count)(layout);
    shader->info.sampler_count = layout->num_samplers;
    shader->info.texture_count = layout->num_textures;
+
+   if (stage == MESA_SHADER_VERTEX) {
+      /* We leave holes in the attribute locations, but pan_shader.c assumes the
+       * opposite. Patch attribute_count accordingly, so
+       * pan_shader_prepare_rsd() does what we expect.
+       */
+      uint32_t gen_attribs =
+         (shader->info.attributes_read & VERT_BIT_GENERIC_ALL) >>
+         VERT_ATTRIB_GENERIC0;
+
+      shader->info.attribute_count = util_last_bit(gen_attribs);
+   }
+
+   /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
+    * and zero in other stages.
+    */
    if (shader->has_img_access)
-      shader->info.attribute_count += layout->num_imgs;
+      shader->info.attribute_count =
+         layout->num_imgs + (stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
 
    shader->local_size.x = nir->info.workgroup_size[0];
    shader->local_size.y = nir->info.workgroup_size[1];

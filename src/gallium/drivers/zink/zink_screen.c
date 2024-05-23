@@ -121,7 +121,6 @@ zink_debug_options[] = {
    { "optimal_keys", ZINK_DEBUG_OPTIMAL_KEYS, "Debug/use optimal_keys" },
    { "noopt", ZINK_DEBUG_NOOPT, "Disable async optimized pipeline compiles" },
    { "nobgc", ZINK_DEBUG_NOBGC, "Disable all async pipeline compiles" },
-   { "dgc", ZINK_DEBUG_DGC, "Use DGC (driver testing only)" },
    { "mem", ZINK_DEBUG_MEM, "Debug memory allocations" },
    { "quiet", ZINK_DEBUG_QUIET, "Suppress warnings" },
    { "ioopt", ZINK_DEBUG_IOOPT, "Optimize IO" },
@@ -1676,7 +1675,6 @@ zink_destroy_screen(struct pipe_screen *pscreen)
       close(screen->drm_fd);
 
    slab_destroy_parent(&screen->transfer_pool);
-   slab_destroy(&screen->present_mempool);
    ralloc_free(screen);
    glsl_type_singleton_decref();
 }
@@ -3297,17 +3295,6 @@ init_optimal_keys(struct zink_screen *screen)
       screen->info.have_EXT_shader_object = false;
    if (screen->info.have_EXT_shader_object)
       screen->have_full_ds3 = true;
-   if (zink_debug & ZINK_DEBUG_DGC) {
-      if (!screen->optimal_keys) {
-         mesa_loge("zink: can't DGC without optimal_keys!");
-         zink_debug &= ~ZINK_DEBUG_DGC;
-      } else {
-         screen->info.have_EXT_multi_draw = false;
-         screen->info.have_EXT_shader_object = false;
-         screen->info.have_EXT_graphics_pipeline_library = false;
-         screen->info.have_EXT_vertex_input_dynamic_state = false;
-      }
-   }
 }
 
 static struct disk_cache *
@@ -3537,14 +3524,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       goto fail;
    }*/
 
-   if (zink_debug & ZINK_DEBUG_DGC) {
-      if (!screen->info.have_NV_device_generated_commands) {
-         if (!screen->driver_name_is_inferred)
-            mesa_loge("zink: can't use DGC without NV_device_generated_commands");
-         goto fail;
-      }
-   }
-
    if (zink_debug & ZINK_DEBUG_MEM) {
       simple_mtx_init(&screen->debug_mem_lock, mtx_plain);
       screen->debug_mem_sizes = _mesa_hash_table_create(screen, _mesa_hash_string, _mesa_key_string_equal);
@@ -3677,9 +3656,8 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    populate_format_props(screen);
 
    slab_create_parent(&screen->transfer_pool, sizeof(struct zink_transfer), 16);
-   slab_create(&screen->present_mempool, sizeof(struct zink_kopper_present_info), 16);
 
-   screen->driconf.inline_uniforms = debug_get_bool_option("ZINK_INLINE_UNIFORMS", screen->is_cpu) && !(zink_debug & ZINK_DEBUG_DGC);
+   screen->driconf.inline_uniforms = debug_get_bool_option("ZINK_INLINE_UNIFORMS", screen->is_cpu);
 
    switch (screen->info.driver_props.driverID) {
    case VK_DRIVER_ID_NVIDIA_PROPRIETARY:

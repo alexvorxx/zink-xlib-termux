@@ -20,9 +20,20 @@
 #include "panvk_macros.h"
 #include "panvk_pipeline_layout.h"
 
+#define MAX_VS_ATTRIBS 16
+
 struct nir_shader;
 struct pan_blend_state;
 struct panvk_device;
+
+enum panvk_varying_buf_id {
+   PANVK_VARY_BUF_GENERAL,
+   PANVK_VARY_BUF_POSITION,
+   PANVK_VARY_BUF_PSIZ,
+
+   /* Keep last */
+   PANVK_VARY_BUF_MAX,
+};
 
 struct panvk_graphics_sysvals {
    struct {
@@ -63,10 +74,8 @@ bool panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
                                           unsigned rt);
 
 struct panvk_shader *panvk_per_arch(shader_create)(
-   struct panvk_device *dev, gl_shader_stage stage,
-   const VkPipelineShaderStageCreateInfo *stage_info,
+   struct panvk_device *dev, const VkPipelineShaderStageCreateInfo *stage_info,
    const struct panvk_pipeline_layout *layout,
-   struct pan_blend_state *blend_state, bool static_blend_constants,
    const VkAllocationCallbacks *alloc);
 
 void panvk_per_arch(shader_destroy)(struct panvk_device *dev,

@@ -3920,11 +3920,12 @@ get_buffer(struct rendering_state *state, const uint8_t *ptr, size_t *offset)
 
 static size_t
 process_sequence(struct rendering_state *state,
-                 VkPipeline pipeline, struct lvp_indirect_command_layout *dlayout,
+                 VkPipeline pipeline, struct lvp_indirect_command_layout_nv *dlayout,
                  struct list_head *list, uint8_t *pbuf, size_t max_size,
-                 uint8_t **map_streams, const VkIndirectCommandsStreamNV *pstreams, uint32_t seq)
+                 uint8_t **map_streams, const VkIndirectCommandsStreamNV *pstreams, uint32_t seq, bool print_cmds)
 {
    size_t size = 0;
+
    for (uint32_t t = 0; t < dlayout->token_count; t++){
       const VkIndirectCommandsLayoutTokenNV *token = &dlayout->tokens[t];
       uint32_t stride = dlayout->stream_strides[token->stream];
@@ -3936,6 +3937,9 @@ process_sequence(struct rendering_state *state,
       struct vk_cmd_queue_entry *cmd = (struct vk_cmd_queue_entry*)(pbuf + size);
       size_t cmd_size = vk_cmd_queue_type_sizes[lvp_nv_dgc_token_to_cmd_type(token)];
       uint8_t *cmdptr = (void*)(pbuf + size + cmd_size);
+
+      if (print_cmds)
+         fprintf(stderr, "DGC %s\n", vk_IndirectCommandsTokenTypeNV_to_str(token->tokenType));
 
       if (max_size < size + cmd_size)
          abort();
@@ -4061,10 +4065,10 @@ process_sequence(struct rendering_state *state,
 }
 
 static void
-handle_preprocess_generated_commands(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
+handle_preprocess_generated_commands(struct vk_cmd_queue_entry *cmd, struct rendering_state *state, bool print_cmds)
 {
    VkGeneratedCommandsInfoNV *pre = cmd->u.preprocess_generated_commands_nv.generated_commands_info;
-   VK_FROM_HANDLE(lvp_indirect_command_layout, dlayout, pre->indirectCommandsLayout);
+   VK_FROM_HANDLE(lvp_indirect_command_layout_nv, dlayout, pre->indirectCommandsLayout);
    struct pipe_transfer *stream_maps[16];
    uint8_t *streams[16];
    for (unsigned i = 0; i < pre->streamCount; i++) {
@@ -4102,7 +4106,7 @@ handle_preprocess_generated_commands(struct vk_cmd_queue_entry *cmd, struct rend
    size_t offset = size;
    for (unsigned i = 0; i < seq_count; i++) {
       uint32_t s = seq ? seq[i] : i;
-      offset += process_sequence(state, pre->pipeline, dlayout, list, p + offset, max_size, streams, pre->pStreams, s);
+      offset += process_sequence(state, pre->pipeline, dlayout, list, p + offset, max_size, streams, pre->pStreams, s, print_cmds);
    }
 
    /* vk_cmd_queue will copy the binary and break the list, so null the tail pointer */
@@ -4123,7 +4127,7 @@ handle_execute_generated_commands(struct vk_cmd_queue_entry *cmd, struct renderi
    if (!exec->is_preprocessed) {
       struct vk_cmd_queue_entry pre;
       pre.u.preprocess_generated_commands_nv.generated_commands_info = exec->generated_commands_info;
-      handle_preprocess_generated_commands(&pre, state);
+      handle_preprocess_generated_commands(&pre, state, print_cmds);
    }
    LVP_FROM_HANDLE(lvp_buffer, pbuf, gen->preprocessBuffer);
    struct pipe_transfer *pmap;
@@ -5124,7 +5128,7 @@ static void lvp_execute_cmd_buffer(struct list_head *cmds,
          handle_graphics_pipeline_group(cmd, state);
          break;
       case VK_CMD_PREPROCESS_GENERATED_COMMANDS_NV:
-         handle_preprocess_generated_commands(cmd, state);
+         handle_preprocess_generated_commands(cmd, state, print_cmds);
          break;
       case VK_CMD_EXECUTE_GENERATED_COMMANDS_NV:
          handle_execute_generated_commands(cmd, state, print_cmds);

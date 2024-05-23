@@ -58,6 +58,9 @@ struct v3d_screen {
 
         const char *name;
 
+        /** Stores performance counters names **/
+        char **perfcnt_names;
+
         struct slab_parent_pool transfer_pool;
 
         struct v3d_bo_cache {

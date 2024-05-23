@@ -9,6 +9,7 @@
 #include "aco_ir.h"
 #include "aco_util.h"
 
+#include "common/ac_descriptors.h"
 #include "common/sid.h"
 
 #include <algorithm>
@@ -1199,24 +1200,23 @@ load_scratch_resource(spill_ctx& ctx, Builder& bld, bool apply_scratch_offset)
          bld.pseudo(aco_opcode::p_create_vector, bld.def(s2), addr_lo, addr_hi);
    }
 
-   uint32_t rsrc_conf =
-      S_008F0C_ADD_TID_ENABLE(1) | S_008F0C_INDEX_STRIDE(ctx.program->wave_size == 64 ? 3 : 2);
+   struct ac_buffer_state ac_state = {0};
+   uint32_t desc[4];
 
-   if (ctx.program->gfx_level >= GFX10) {
-      rsrc_conf |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                   S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) |
-                   S_008F0C_RESOURCE_LEVEL(ctx.program->gfx_level < GFX11);
-   } else if (ctx.program->gfx_level <= GFX7) {
-      /* dfmt modifies stride on GFX8/GFX9 when ADD_TID_EN=1 */
-      rsrc_conf |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-                   S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-   }
+   ac_state.size = 0xffffffff;
+   ac_state.format = PIPE_FORMAT_R32_FLOAT;
+   for (int i = 0; i < 4; i++)
+      ac_state.swizzle[i] = PIPE_SWIZZLE_0;
    /* older generations need element size = 4 bytes. element size removed in GFX9 */
-   if (ctx.program->gfx_level <= GFX8)
-      rsrc_conf |= S_008F0C_ELEMENT_SIZE(1);
+   ac_state.element_size = ctx.program->gfx_level <= GFX8 ? 1u : 0u;
+   ac_state.index_stride = ctx.program->wave_size == 64 ? 3u : 2u;
+   ac_state.add_tid = true;
+   ac_state.gfx10_oob_select = V_008F0C_OOB_SELECT_RAW;
+
+   ac_build_buffer_descriptor(ctx.program->gfx_level, &ac_state, desc);
 
    return bld.pseudo(aco_opcode::p_create_vector, bld.def(s4), private_segment_buffer,
-                     Operand::c32(-1u), Operand::c32(rsrc_conf));
+                     Operand::c32(desc[2]), Operand::c32(desc[3]));
 }
 
 void

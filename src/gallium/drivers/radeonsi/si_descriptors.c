@@ -44,6 +44,8 @@
 #include "util/u_memory.h"
 #include "util/u_upload_mgr.h"
 
+#include "ac_descriptors.h"
+
 /* NULL image and buffer descriptor for textures (alpha = 1) and images
  * (alpha = 0).
  *
@@ -270,185 +272,63 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
                                     /* restrict decreases overhead of si_set_sampler_view_desc ~8x. */
                                     bool is_stencil, uint16_t access, uint32_t * restrict state)
 {
-   uint64_t va, meta_va = 0;
-
    if (tex->is_depth && !si_can_sample_zs(tex, is_stencil)) {
       tex = tex->flushed_depth_texture;
       is_stencil = false;
    }
 
-   va = tex->buffer.gpu_address;
+   const struct ac_mutable_tex_state ac_state = {
+      .surf = &tex->surface,
+      .va = tex->buffer.gpu_address,
+      .gfx10 =
+         {
+            .write_compress_enable = ac_surface_supports_dcc_image_stores(sscreen->info.gfx_level, &tex->surface) &&
+                                     (access & SI_IMAGE_ACCESS_ALLOW_DCC_STORE),
+            .iterate_256 = tex->is_depth && tex->buffer.b.b.nr_samples >= 2,
+         },
+      .gfx6 =
+         {
+            .base_level_info = base_level_info,
+            .base_level = base_level,
+            .block_width = block_width,
+         },
+      .is_stencil = is_stencil,
+      .dcc_enabled =
+         !(access & SI_IMAGE_ACCESS_DCC_OFF) && vi_dcc_enabled(tex, first_level),
+      .tc_compat_htile_enabled =
+         vi_tc_compat_htile_enabled(tex, first_level, is_stencil ? PIPE_MASK_S : PIPE_MASK_Z),
+   };
 
-   if (sscreen->info.gfx_level >= GFX9) {
-      /* Only stencil_offset needs to be added here. */
-      if (is_stencil)
-         va += tex->surface.u.gfx9.zs.stencil_offset;
-      else
-         va += tex->surface.u.gfx9.surf_offset;
-   } else {
-      va += (uint64_t)base_level_info->offset_256B * 256;
-   }
+   ac_set_mutable_tex_desc_fields(&sscreen->info, &ac_state, state);
 
-   if (!sscreen->info.has_image_opcodes) {
-      /* Set it as a buffer descriptor. */
-      state[0] = va;
-      state[1] |= S_008F04_BASE_ADDRESS_HI(va >> 32);
-      return;
-   }
+   if (sscreen->info.gfx_level == GFX9 && !is_stencil) {
+      uint32_t hw_format = G_008F14_DATA_FORMAT(state[1]);
+      uint16_t epitch = tex->surface.u.gfx9.epitch;
 
-   state[0] = va >> 8;
-   state[1] |= S_008F14_BASE_ADDRESS_HI(va >> 40);
-
-   if (sscreen->info.gfx_level >= GFX8 && sscreen->info.gfx_level < GFX12) {
-      if (!(access & SI_IMAGE_ACCESS_DCC_OFF) && vi_dcc_enabled(tex, first_level)) {
-         meta_va = tex->buffer.gpu_address + tex->surface.meta_offset;
-
-         if (sscreen->info.gfx_level == GFX8) {
-            meta_va += tex->surface.u.legacy.color.dcc_level[base_level].dcc_offset;
-            assert(base_level_info->mode == RADEON_SURF_MODE_2D);
-         }
-
-         unsigned dcc_tile_swizzle = tex->surface.tile_swizzle << 8;
-         dcc_tile_swizzle &= (1 << tex->surface.meta_alignment_log2) - 1;
-         meta_va |= dcc_tile_swizzle;
-      } else if (vi_tc_compat_htile_enabled(tex, first_level,
-                                            is_stencil ? PIPE_MASK_S : PIPE_MASK_Z)) {
-         meta_va = tex->buffer.gpu_address + tex->surface.meta_offset;
-      }
-   }
-
-   if (sscreen->info.gfx_level >= GFX10) {
-      state[0] |= tex->surface.tile_swizzle;
-
-      if (is_stencil) {
-         state[3] |= S_00A00C_SW_MODE(tex->surface.u.gfx9.zs.stencil_swizzle_mode);
-      } else {
-         state[3] |= S_00A00C_SW_MODE(tex->surface.u.gfx9.swizzle_mode);
-      }
-
-      /* GFX10.3+ can set a custom pitch for 1D and 2D non-array, but it must be a multiple
-       * of 256B.
+      /* epitch is surf_pitch - 1 and are in elements unit.
+       * For some reason I don't understand, when a packed YUV format
+       * like UYUV is used, we have to double epitch (making it a pixel
+       * pitch instead of an element pitch). Note that it's only done
+       * when sampling the texture using its native format; we don't
+       * need to do this when sampling it as UINT32 (as done by
+       * SI_IMAGE_ACCESS_BLOCK_FORMAT_AS_UINT).
+       * This looks broken, so it's possible that surf_pitch / epitch
+       * are computed incorrectly, but that's the only way I found
+       * to get these use cases to work properly:
+       *   - yuyv dmabuf import (#6131)
+       *   - jpeg vaapi decode
+       *   - yuyv texture sampling (!26947)
+       *   - jpeg vaapi get image (#10375)
        */
-      if (sscreen->info.gfx_level >= GFX10_3 && tex->surface.u.gfx9.uses_custom_pitch) {
-         ASSERTED unsigned min_alignment = sscreen->info.gfx_level >= GFX12 ? 128 : 256;
-         assert((tex->surface.u.gfx9.surf_pitch * tex->surface.bpe) % min_alignment == 0);
-         assert(tex->buffer.b.b.target == PIPE_TEXTURE_2D ||
-                tex->buffer.b.b.target == PIPE_TEXTURE_RECT);
-         assert(tex->surface.is_linear);
-         unsigned pitch = tex->surface.u.gfx9.surf_pitch;
-
-         /* Subsampled images have the pitch in the units of blocks. */
-         if (tex->surface.blk_w == 2)
-            pitch *= 2;
-
-         if (sscreen->info.gfx_level >= GFX12) {
-            state[4] |= S_00A010_DEPTH_GFX12(pitch - 1) | /* DEPTH contains low bits of PITCH. */
-                        S_00A010_PITCH_MSB_GFX12((pitch - 1) >> 14);
-         } else {
-            state[4] |= S_00A010_DEPTH_GFX10(pitch - 1) | /* DEPTH contains low bits of PITCH. */
-                        S_00A010_PITCH_MSB_GFX103((pitch - 1) >> 13);
-         }
+      if ((tex->buffer.b.b.format == PIPE_FORMAT_R8G8_R8B8_UNORM ||
+          tex->buffer.b.b.format == PIPE_FORMAT_G8R8_B8R8_UNORM) &&
+          (hw_format == V_008F14_IMG_DATA_FORMAT_GB_GR ||
+             hw_format == V_008F14_IMG_DATA_FORMAT_BG_RG)) {
+         epitch = (epitch + 1) * 2 - 1;
       }
 
-      if (meta_va) {
-         /* Gfx10-11. */
-         struct gfx9_surf_meta_flags meta = {
-            .rb_aligned = 1,
-            .pipe_aligned = 1,
-         };
-
-         if (!tex->is_depth && tex->surface.meta_offset)
-            meta = tex->surface.u.gfx9.color.dcc;
-
-         state[6] |= S_00A018_COMPRESSION_EN(1) |
-                     S_00A018_META_PIPE_ALIGNED(meta.pipe_aligned) |
-                     S_00A018_META_DATA_ADDRESS_LO(meta_va >> 8) |
-                     /* DCC image stores require the following settings:
-                      * - INDEPENDENT_64B_BLOCKS = 0
-                      * - INDEPENDENT_128B_BLOCKS = 1
-                      * - MAX_COMPRESSED_BLOCK_SIZE = 128B
-                      * - MAX_UNCOMPRESSED_BLOCK_SIZE = 256B (always used)
-                      *
-                      * The same limitations apply to SDMA compressed stores because
-                      * SDMA uses the same DCC codec.
-                      */
-                     S_00A018_WRITE_COMPRESS_ENABLE(ac_surface_supports_dcc_image_stores(sscreen->info.gfx_level, &tex->surface) &&
-                                                    (access & SI_IMAGE_ACCESS_ALLOW_DCC_STORE));
-
-         /* TC-compatible MSAA HTILE requires ITERATE_256. */
-         if (tex->is_depth && tex->buffer.b.b.nr_samples >= 2)
-            state[6] |= S_00A018_ITERATE_256(1);
-
-         state[7] = meta_va >> 16;
-      }
-   } else if (sscreen->info.gfx_level == GFX9) {
-      state[0] |= tex->surface.tile_swizzle;
-
-      if (is_stencil) {
-         state[3] |= S_008F1C_SW_MODE(tex->surface.u.gfx9.zs.stencil_swizzle_mode);
-         state[4] |= S_008F20_PITCH(tex->surface.u.gfx9.zs.stencil_epitch);
-      } else {
-         state[3] |= S_008F1C_SW_MODE(tex->surface.u.gfx9.swizzle_mode);
-
-         uint32_t hw_format = G_008F14_DATA_FORMAT(state[1]);
-         uint16_t epitch = tex->surface.u.gfx9.epitch;
-
-         /* epitch is surf_pitch - 1 and are in elements unit.
-          * For some reason I don't understand, when a packed YUV format
-          * like UYUV is used, we have to double epitch (making it a pixel
-          * pitch instead of an element pitch). Note that it's only done
-          * when sampling the texture using its native format; we don't
-          * need to do this when sampling it as UINT32 (as done by
-          * SI_IMAGE_ACCESS_BLOCK_FORMAT_AS_UINT).
-          * This looks broken, so it's possible that surf_pitch / epitch
-          * are computed incorrectly, but that's the only way I found
-          * to get these use cases to work properly:
-          *   - yuyv dmabuf import (#6131)
-          *   - jpeg vaapi decode
-          *   - yuyv texture sampling (!26947)
-          *   - jpeg vaapi get image (#10375)
-          */
-         if ((tex->buffer.b.b.format == PIPE_FORMAT_R8G8_R8B8_UNORM ||
-             tex->buffer.b.b.format == PIPE_FORMAT_G8R8_B8R8_UNORM) &&
-             (hw_format == V_008F14_IMG_DATA_FORMAT_GB_GR ||
-                hw_format == V_008F14_IMG_DATA_FORMAT_BG_RG)) {
-            epitch = (epitch + 1) * 2 - 1;
-         }
-
-         state[4] |= S_008F20_PITCH(epitch);
-      }
-
-      if (meta_va) {
-         struct gfx9_surf_meta_flags meta = {
-            .rb_aligned = 1,
-            .pipe_aligned = 1,
-         };
-
-         if (!tex->is_depth && tex->surface.meta_offset)
-            meta = tex->surface.u.gfx9.color.dcc;
-
-         state[5] |= S_008F24_META_DATA_ADDRESS(meta_va >> 40) |
-                     S_008F24_META_PIPE_ALIGNED(meta.pipe_aligned) |
-                     S_008F24_META_RB_ALIGNED(meta.rb_aligned);
-         state[6] |= S_008F28_COMPRESSION_EN(1);
-         state[7] = meta_va >> 8;
-      }
-   } else {
-      /* GFX6-GFX8 */
-      unsigned pitch = base_level_info->nblk_x * block_width;
-      unsigned index = si_tile_mode_index(tex, base_level, is_stencil);
-
-      /* Only macrotiled modes can set tile swizzle. */
-      if (base_level_info->mode == RADEON_SURF_MODE_2D)
-         state[0] |= tex->surface.tile_swizzle;
-
-      state[3] |= S_008F1C_TILING_INDEX(index);
-      state[4] |= S_008F20_PITCH(pitch - 1);
-
-      if (sscreen->info.gfx_level == GFX8 && meta_va) {
-         state[6] |= S_008F28_COMPRESSION_EN(1);
-         state[7] = meta_va >> 8;
-      }
+      state[4] &= C_008F20_PITCH;
+      state[4] |= S_008F20_PITCH(epitch);
    }
 
    if (tex->swap_rgb_to_bgr) {

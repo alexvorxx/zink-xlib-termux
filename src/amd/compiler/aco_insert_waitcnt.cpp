@@ -39,7 +39,7 @@ namespace {
 
 /* Instructions of the same event will finish in-order except for smem
  * and maybe flat. Instructions of different events may not finish in-order. */
-enum wait_event : uint16_t {
+enum wait_event : uint32_t {
    event_smem = 1 << 0,
    event_lds = 1 << 1,
    event_gds = 1 << 2,
@@ -53,10 +53,12 @@ enum wait_event : uint16_t {
    event_vmem_gpr_lock = 1 << 10,
    event_sendmsg = 1 << 11,
    event_ldsdir = 1 << 12,
-   event_valu = 1 << 13,
-   event_trans = 1 << 14,
-   event_salu = 1 << 15,
-   num_events = 16,
+   event_vmem_sample = 1 << 13, /* GFX12+ */
+   event_vmem_bvh = 1 << 14,    /* GFX12+ */
+   event_valu = 1 << 15,
+   event_trans = 1 << 16,
+   event_salu = 1 << 17,
+   num_events = 18,
 };
 
 enum counter_type : uint8_t {
@@ -64,15 +66,12 @@ enum counter_type : uint8_t {
    counter_lgkm = 1 << wait_type_lgkm,
    counter_vm = 1 << wait_type_vm,
    counter_vs = 1 << wait_type_vs,
+   counter_sample = 1 << wait_type_sample,
+   counter_bvh = 1 << wait_type_bvh,
+   counter_km = 1 << wait_type_km,
    counter_alu = 1 << wait_type_num,
    num_counters = wait_type_num + 1,
    wait_counters = BITFIELD_MASK(wait_type_num),
-};
-
-enum vmem_type : uint8_t {
-   vmem_nosampler = 1 << 0,
-   vmem_sampler = 1 << 1,
-   vmem_bvh = 1 << 2,
 };
 
 /* On GFX11+ the SIMD frontend doesn't switch to issuing instructions from a different
@@ -162,11 +161,11 @@ struct alu_delay_info {
 struct wait_entry {
    wait_imm imm;
    alu_delay_info delay;
-   uint16_t events;  /* use wait_event notion */
+   uint32_t events;  /* use wait_event notion */
    uint8_t counters; /* use counter_type notion */
    bool wait_on_read : 1;
    bool logical : 1;
-   uint8_t vmem_types : 4;
+   uint8_t vmem_types : 4; /* use vmem_type notion. for counter_vm. */
 
    wait_entry(wait_event event_, wait_imm imm_, alu_delay_info delay_, uint8_t counters_,
               bool logical_, bool wait_on_read_)
@@ -243,6 +242,12 @@ struct target_info {
       events[wait_type_lgkm] = event_smem | event_lds | event_gds | event_flat | event_sendmsg;
       events[wait_type_vm] = event_vmem | event_flat;
       events[wait_type_vs] = event_vmem_store;
+      if (gfx_level >= GFX12) {
+         events[wait_type_sample] = event_vmem_sample;
+         events[wait_type_bvh] = event_vmem_bvh;
+         events[wait_type_km] = event_smem | event_sendmsg;
+         events[wait_type_lgkm] &= ~events[wait_type_km];
+      }
 
       for (unsigned i = 0; i < wait_type_num; i++) {
          u_foreach_bit (j, events[i])
@@ -338,17 +343,15 @@ struct wait_ctx {
    }
 };
 
-uint8_t
-get_vmem_type(Instruction* instr)
+wait_event
+get_vmem_event(wait_ctx& ctx, Instruction* instr, uint8_t type)
 {
-   if (instr->opcode == aco_opcode::image_bvh64_intersect_ray)
-      return vmem_bvh;
-   else if (instr->isMIMG() && !instr->operands[1].isUndefined() &&
-            instr->operands[1].regClass() == s4)
-      return vmem_sampler;
-   else if (instr->isVMEM() || instr->isScratch() || instr->isGlobal())
-      return vmem_nosampler;
-   return 0;
+   if (instr->definitions.empty() && ctx.gfx_level >= GFX10)
+      return event_vmem_store;
+   wait_event ev = event_vmem;
+   if (ctx.gfx_level >= GFX12 && type != vmem_nosampler)
+      ev = type == vmem_bvh ? event_vmem_bvh : event_vmem_sample;
+   return ev;
 }
 
 void
@@ -383,10 +386,11 @@ check_instr(wait_ctx& ctx, wait_imm& wait, alu_delay_info& delay, Instruction* i
          wait_imm reg_imm = it->second.imm;
 
          /* Vector Memory reads and writes return in the order they were issued */
-         uint8_t vmem_type = get_vmem_type(instr);
+         uint8_t vmem_type = get_vmem_type(ctx.gfx_level, instr);
          if (vmem_type) {
-            wait_type type = (wait_type)(ffs(ctx.info->get_counters_for_event(event_vmem)) - 1);
-            if ((it->second.events & ctx.info->events[type]) == event_vmem &&
+            uint32_t event = get_vmem_event(ctx, instr, vmem_type);
+            wait_type type = (wait_type)(ffs(ctx.info->get_counters_for_event(event)) - 1);
+            if ((it->second.events & ctx.info->events[type]) == event &&
                 (type != wait_type_vm || it->second.vmem_types == vmem_type))
                reg_imm[type] = wait_imm::unset_counter;
          }
@@ -701,7 +705,8 @@ insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, boo
 
    wait_entry new_entry(event, imm, delay, counters, !rc.is_linear() && !force_linear,
                         wait_on_read);
-   new_entry.vmem_types |= vmem_types;
+   if (counters & counter_vm)
+      new_entry.vmem_types |= vmem_types;
 
    for (unsigned i = 0; i < rc.size(); i++) {
       auto it = ctx.gpr_map.emplace(PhysReg{reg.reg() + i}, new_entry);
@@ -835,12 +840,13 @@ gen(Instruction* instr, wait_ctx& ctx)
    case Format::MIMG:
    case Format::GLOBAL:
    case Format::SCRATCH: {
-      wait_event ev =
-         !instr->definitions.empty() || ctx.gfx_level < GFX10 ? event_vmem : event_vmem_store;
+      uint8_t type = get_vmem_type(ctx.gfx_level, instr);
+      wait_event ev = get_vmem_event(ctx, instr, type);
+
       update_counters(ctx, ev, get_sync_info(instr));
 
       if (!instr->definitions.empty())
-         insert_wait_entry(ctx, instr->definitions[0], ev, get_vmem_type(instr));
+         insert_wait_entry(ctx, instr->definitions[0], ev, type);
 
       if (ctx.gfx_level == GFX6 && instr->format != Format::MIMG && instr->operands.size() == 4) {
          update_counters(ctx, event_vmem_gpr_lock);
@@ -872,18 +878,42 @@ gen(Instruction* instr, wait_ctx& ctx)
 void
 emit_waitcnt(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions, wait_imm& imm)
 {
-   if (imm.vs != wait_imm::unset_counter) {
-      assert(ctx.gfx_level >= GFX10);
-      Instruction* waitcnt_vs = create_instruction(aco_opcode::s_waitcnt_vscnt, Format::SOPK, 1, 0);
-      waitcnt_vs->operands[0] = Operand(sgpr_null, s1);
-      waitcnt_vs->salu().imm = imm.vs;
-      instructions.emplace_back(waitcnt_vs);
-      imm.vs = wait_imm::unset_counter;
-   }
-   if (!imm.empty()) {
-      Instruction* waitcnt = create_instruction(aco_opcode::s_waitcnt, Format::SOPP, 0, 0);
-      waitcnt->salu().imm = imm.pack(ctx.gfx_level);
-      instructions.emplace_back(waitcnt);
+   Builder bld(ctx.program, &instructions);
+
+   if (ctx.gfx_level >= GFX12) {
+      if (imm.vm != wait_imm::unset_counter && imm.lgkm != wait_imm::unset_counter) {
+         bld.sopp(aco_opcode::s_wait_loadcnt_dscnt, (imm.vm << 8) | imm.lgkm);
+         imm.vm = wait_imm::unset_counter;
+         imm.lgkm = wait_imm::unset_counter;
+      }
+
+      if (imm.vs != wait_imm::unset_counter && imm.lgkm != wait_imm::unset_counter) {
+         bld.sopp(aco_opcode::s_wait_storecnt_dscnt, (imm.vs << 8) | imm.lgkm);
+         imm.vs = wait_imm::unset_counter;
+         imm.lgkm = wait_imm::unset_counter;
+      }
+
+      aco_opcode op[wait_type_num];
+      op[wait_type_exp] = aco_opcode::s_wait_expcnt;
+      op[wait_type_lgkm] = aco_opcode::s_wait_dscnt;
+      op[wait_type_vm] = aco_opcode::s_wait_loadcnt;
+      op[wait_type_vs] = aco_opcode::s_wait_storecnt;
+      op[wait_type_sample] = aco_opcode::s_wait_samplecnt;
+      op[wait_type_bvh] = aco_opcode::s_wait_bvhcnt;
+      op[wait_type_km] = aco_opcode::s_wait_kmcnt;
+
+      for (unsigned i = 0; i < wait_type_num; i++) {
+         if (imm[i] != wait_imm::unset_counter)
+            bld.sopp(op[i], imm[i]);
+      }
+   } else {
+      if (imm.vs != wait_imm::unset_counter) {
+         assert(ctx.gfx_level >= GFX10);
+         bld.sopk(aco_opcode::s_waitcnt_vscnt, Operand(sgpr_null, s1), imm.vs);
+         imm.vs = wait_imm::unset_counter;
+      }
+      if (!imm.empty())
+         bld.sopp(aco_opcode::s_waitcnt, imm.pack(ctx.gfx_level));
    }
    imm = wait_imm();
 }

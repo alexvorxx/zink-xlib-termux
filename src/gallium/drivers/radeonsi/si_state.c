@@ -22,24 +22,6 @@
 #include "ac_formats.h"
 #include "gfx10_format_table.h"
 
-static unsigned si_map_swizzle(unsigned swizzle)
-{
-   switch (swizzle) {
-   case PIPE_SWIZZLE_Y:
-      return V_008F0C_SQ_SEL_Y;
-   case PIPE_SWIZZLE_Z:
-      return V_008F0C_SQ_SEL_Z;
-   case PIPE_SWIZZLE_W:
-      return V_008F0C_SQ_SEL_W;
-   case PIPE_SWIZZLE_0:
-      return V_008F0C_SQ_SEL_0;
-   case PIPE_SWIZZLE_1:
-      return V_008F0C_SQ_SEL_1;
-   default: /* PIPE_SWIZZLE_X */
-      return V_008F0C_SQ_SEL_X;
-   }
-}
-
 /* 12.4 fixed-point */
 static unsigned si_pack_float_12p4(float x)
 {
@@ -1976,71 +1958,6 @@ static void si_emit_db_render_state(struct si_context *sctx, unsigned index)
 }
 
 /*
- * format translation
- */
-
-static uint32_t si_colorformat_endian_swap(uint32_t colorformat)
-{
-   if (UTIL_ARCH_BIG_ENDIAN) {
-      switch (colorformat) {
-      /* 8-bit buffers. */
-      case V_028C70_COLOR_8:
-         return V_028C70_ENDIAN_NONE;
-
-      /* 16-bit buffers. */
-      case V_028C70_COLOR_5_6_5:
-      case V_028C70_COLOR_1_5_5_5:
-      case V_028C70_COLOR_4_4_4_4:
-      case V_028C70_COLOR_16:
-      case V_028C70_COLOR_8_8:
-         return V_028C70_ENDIAN_8IN16;
-
-      /* 32-bit buffers. */
-      case V_028C70_COLOR_8_8_8_8:
-      case V_028C70_COLOR_2_10_10_10:
-      case V_028C70_COLOR_10_10_10_2:
-      case V_028C70_COLOR_8_24:
-      case V_028C70_COLOR_24_8:
-      case V_028C70_COLOR_16_16:
-         return V_028C70_ENDIAN_8IN32;
-
-      /* 64-bit buffers. */
-      case V_028C70_COLOR_16_16_16_16:
-         return V_028C70_ENDIAN_8IN16;
-
-      case V_028C70_COLOR_32_32:
-         return V_028C70_ENDIAN_8IN32;
-
-      /* 128-bit buffers. */
-      case V_028C70_COLOR_32_32_32_32:
-         return V_028C70_ENDIAN_8IN32;
-      default:
-         return V_028C70_ENDIAN_NONE; /* Unsupported. */
-      }
-   } else {
-      return V_028C70_ENDIAN_NONE;
-   }
-}
-
-static uint32_t si_translate_dbformat(enum pipe_format format)
-{
-   switch (format) {
-   case PIPE_FORMAT_Z16_UNORM:
-      return V_028040_Z_16;
-   case PIPE_FORMAT_S8_UINT_Z24_UNORM:
-   case PIPE_FORMAT_X8Z24_UNORM:
-   case PIPE_FORMAT_Z24X8_UNORM:
-   case PIPE_FORMAT_Z24_UNORM_S8_UINT:
-      return V_028040_Z_24; /* not present on GFX12 */
-   case PIPE_FORMAT_Z32_FLOAT:
-   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
-      return V_028040_Z_32_FLOAT;
-   default:
-      return V_028040_Z_INVALID;
-   }
-}
-
-/*
  * Texture translation
  */
 
@@ -2222,7 +2139,7 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
       goto out_unknown;
 
    /* This format fails on Gfx8/Carrizo´. */
-   if (format == PIPE_FORMAT_A8R8_UNORM)
+   if (sscreen->info.family == CHIP_CARRIZO && format == PIPE_FORMAT_A8R8_UNORM)
       goto out_unknown;
 
    /* See whether the components are of the same size. */
@@ -2241,7 +2158,8 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
          goto out_unknown;
       case 4:
          /* 5551 and 1555 UINT formats fail on Gfx8/Carrizo´. */
-         if (desc->channel[1].size == 5 &&
+         if (sscreen->info.family == CHIP_CARRIZO &&
+             desc->channel[1].size == 5 &&
              desc->channel[2].size == 5 &&
              desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
              desc->channel[first_non_void].pure_integer)
@@ -2270,7 +2188,8 @@ static uint32_t si_translate_texformat(struct pipe_screen *screen, enum pipe_for
       switch (desc->nr_channels) {
       case 4:
          /* 4444 UINT formats fail on Gfx8/Carrizo´. */
-         if (desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
+         if (sscreen->info.family == CHIP_CARRIZO &&
+             desc->channel[first_non_void].type == UTIL_FORMAT_TYPE_UNSIGNED &&
              desc->channel[first_non_void].pure_integer)
             goto out_unknown;
 
@@ -2447,7 +2366,7 @@ static bool si_is_sampler_format_supported(struct pipe_screen *screen, enum pipe
       return false;
 
    if (sscreen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[format];
       if (!fmt->img_format || fmt->buffers_only)
          return false;
       return true;
@@ -2505,7 +2424,7 @@ static unsigned si_is_vertex_format_supported(struct pipe_screen *screen, enum p
    }
 
    if (sscreen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[format];
       unsigned first_image_only_format = sscreen->info.gfx_level >= GFX11 ? 64 : 128;
 
       if (!fmt->img_format || fmt->img_format >= first_image_only_format)
@@ -2521,16 +2440,12 @@ static unsigned si_is_vertex_format_supported(struct pipe_screen *screen, enum p
    return usage;
 }
 
-static bool si_is_colorbuffer_format_supported(enum amd_gfx_level gfx_level,
-                                               enum pipe_format format)
-{
-   return ac_get_cb_format(gfx_level, format) != V_028C70_COLOR_INVALID &&
-          si_translate_colorswap(gfx_level, format, false) != ~0U;
-}
-
 static bool si_is_zs_format_supported(enum pipe_format format)
 {
-   return si_translate_dbformat(format) != V_028040_Z_INVALID;
+   if (format == PIPE_FORMAT_Z16_UNORM_S8_UINT)
+      return false;
+
+   return ac_is_zs_format_supported(format);
 }
 
 static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format format,
@@ -2605,7 +2520,7 @@ static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format 
 
    if ((usage & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SCANOUT |
                  PIPE_BIND_SHARED | PIPE_BIND_BLENDABLE)) &&
-       si_is_colorbuffer_format_supported(sscreen->info.gfx_level, format)) {
+       ac_is_colorbuffer_format_supported(sscreen->info.gfx_level, format)) {
       retval |= usage & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SCANOUT |
                          PIPE_BIND_SHARED);
       if (!util_format_is_pure_integer(format) && !util_format_is_depth_or_stencil(format))
@@ -2667,8 +2582,8 @@ static void si_initialize_color_surface(struct si_context *sctx, struct si_surfa
       PRINT_ERR("Invalid CB format: %d, disabling CB.\n", surf->base.format);
    }
    assert(format != V_028C70_COLOR_INVALID);
-   swap = si_translate_colorswap(sctx->gfx_level, surf->base.format, false);
-   endian = si_colorformat_endian_swap(format);
+   swap = ac_translate_colorswap(sctx->gfx_level, surf->base.format, false);
+   endian = ac_colorformat_endian_swap(format);
 
    /* blend clamp should be set for all NORM/SRGB types */
    if (ntype == V_028C70_NUMBER_UNORM || ntype == V_028C70_NUMBER_SNORM ||
@@ -2845,7 +2760,7 @@ static void si_init_depth_surface(struct si_context *sctx, struct si_surface *su
    unsigned level = surf->base.u.tex.level;
    unsigned format, stencil_format;
 
-   format = si_translate_dbformat(tex->db_render_format);
+   format = ac_translate_dbformat(tex->db_render_format);
    stencil_format = tex->surface.has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    assert(format != V_028040_Z_24 || sctx->gfx_level < GFX12);
@@ -2992,9 +2907,9 @@ static void si_init_depth_surface(struct si_context *sctx, struct si_surface *su
          surf->db_z_info |= S_028040_TILE_SPLIT(G_009910_TILE_SPLIT(tile_mode));
          surf->db_stencil_info |= S_028044_TILE_SPLIT(G_009910_TILE_SPLIT(stencil_tile_mode));
       } else {
-         unsigned tile_mode_index = si_tile_mode_index(tex, level, false);
+         unsigned tile_mode_index = ac_tile_mode_index(&tex->surface, level, false);
          surf->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
-         tile_mode_index = si_tile_mode_index(tex, level, true);
+         tile_mode_index = ac_tile_mode_index(&tex->surface, level, true);
          surf->db_stencil_info |= S_028044_TILE_MODE_INDEX(tile_mode_index);
       }
 
@@ -3695,7 +3610,7 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
 
          pitch_tile_max = level_info->nblk_x / 8 - 1;
          slice_tile_max = level_info->nblk_x * level_info->nblk_y / 64 - 1;
-         tile_mode_index = si_tile_mode_index(tex, cb->base.u.tex.level, false);
+         tile_mode_index = ac_tile_mode_index(&tex->surface, cb->base.u.tex.level, false);
 
          cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
          cb_color_pitch = S_028C64_TILE_MAX(pitch_tile_max);
@@ -4509,13 +4424,13 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
    state[4] = 0;
    state[5] = S_008F04_STRIDE(stride);
    state[6] = num_records;
-   state[7] = S_008F0C_DST_SEL_X(si_map_swizzle(desc->swizzle[0])) |
-              S_008F0C_DST_SEL_Y(si_map_swizzle(desc->swizzle[1])) |
-              S_008F0C_DST_SEL_Z(si_map_swizzle(desc->swizzle[2])) |
-              S_008F0C_DST_SEL_W(si_map_swizzle(desc->swizzle[3]));
+   state[7] = S_008F0C_DST_SEL_X(ac_map_swizzle(desc->swizzle[0])) |
+              S_008F0C_DST_SEL_Y(ac_map_swizzle(desc->swizzle[1])) |
+              S_008F0C_DST_SEL_Z(ac_map_swizzle(desc->swizzle[2])) |
+              S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
 
    if (screen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(screen->info.gfx_level)[format];
 
       /* OOB_SELECT chooses the out-of-bounds check.
        *
@@ -4552,35 +4467,6 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
 
       state[7] |= S_008F0C_NUM_FORMAT(num_format) | S_008F0C_DATA_FORMAT(data_format);
    }
-}
-
-static unsigned gfx9_border_color_swizzle(const unsigned char swizzle[4])
-{
-   unsigned bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
-
-   if (swizzle[3] == PIPE_SWIZZLE_X) {
-      /* For the pre-defined border color values (white, opaque
-       * black, transparent black), the only thing that matters is
-       * that the alpha channel winds up in the correct place
-       * (because the RGB channels are all the same) so either of
-       * these enumerations will work.
-       */
-      if (swizzle[2] == PIPE_SWIZZLE_Y)
-         bc_swizzle = V_008F20_BC_SWIZZLE_WZYX;
-      else
-         bc_swizzle = V_008F20_BC_SWIZZLE_WXYZ;
-   } else if (swizzle[0] == PIPE_SWIZZLE_X) {
-      if (swizzle[1] == PIPE_SWIZZLE_Y)
-         bc_swizzle = V_008F20_BC_SWIZZLE_XYZW;
-      else
-         bc_swizzle = V_008F20_BC_SWIZZLE_XWYZ;
-   } else if (swizzle[1] == PIPE_SWIZZLE_X) {
-      bc_swizzle = V_008F20_BC_SWIZZLE_YXWZ;
-   } else if (swizzle[2] == PIPE_SWIZZLE_X) {
-      bc_swizzle = V_008F20_BC_SWIZZLE_ZYXW;
-   }
-
-   return bc_swizzle;
 }
 
 /**
@@ -4651,13 +4537,13 @@ static void cdna_emu_make_image_descriptor(struct si_screen *screen, struct si_t
    state[0] = 0;
    state[1] = S_008F04_STRIDE(stride);
    state[2] = num_records;
-   state[3] = S_008F0C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-              S_008F0C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-              S_008F0C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-              S_008F0C_DST_SEL_W(si_map_swizzle(swizzle[3]));
+   state[3] = S_008F0C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+              S_008F0C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+              S_008F0C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+              S_008F0C_DST_SEL_W(ac_map_swizzle(swizzle[3]));
 
    if (screen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&screen->info)[pipe_format];
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(screen->info.gfx_level)[pipe_format];
 
       state[3] |= (screen->info.gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
                                                      S_008F0C_FORMAT_GFX10(fmt->img_format)) |
@@ -4700,10 +4586,9 @@ static void gfx10_make_texture_descriptor(
    unsigned img_format;
    unsigned char swizzle[4];
    unsigned type;
-   uint64_t va;
 
    desc = util_format_description(pipe_format);
-   img_format = ac_get_gfx10_format_table(&screen->info)[pipe_format].img_format;
+   img_format = ac_get_gfx10_format_table(screen->info.gfx_level)[pipe_format].img_format;
 
    if (desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS) {
       const unsigned char swizzle_xxxx[4] = {0, 0, 0, 0};
@@ -4776,15 +4661,15 @@ static void gfx10_make_texture_descriptor(
                  S_00A004_WIDTH_LO(width - 1);
       state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) |
                  S_00A008_HEIGHT(height - 1);
-      state[3] = S_00A00C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-                 S_00A00C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-                 S_00A00C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-                 S_00A00C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
+      state[3] = S_00A00C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+                 S_00A00C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+                 S_00A00C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+                 S_00A00C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
                  S_00A00C_NO_EDGE_CLAMP(res->last_level > 0 &&
                                         util_format_is_compressed(res->format) &&
                                         !util_format_is_compressed(pipe_format)) |
                  S_00A00C_LAST_LEVEL_GFX12(field_last_level) |
-                 S_00A00C_BC_SWIZZLE(gfx9_border_color_swizzle(desc->swizzle)) |
+                 S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) |
                  S_00A00C_TYPE(type);
       /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
        * to know the total number of layers.
@@ -4803,13 +4688,13 @@ static void gfx10_make_texture_descriptor(
                  S_00A008_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
 
       state[3] =
-         S_00A00C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-         S_00A00C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-         S_00A00C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-         S_00A00C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
+         S_00A00C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+         S_00A00C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+         S_00A00C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+         S_00A00C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
          S_00A00C_BASE_LEVEL(res->nr_samples > 1 ? 0 : first_level) |
          S_00A00C_LAST_LEVEL_GFX10(res->nr_samples > 1 ? util_logbase2(res->nr_samples) : last_level) |
-         S_00A00C_BC_SWIZZLE(gfx9_border_color_swizzle(desc->swizzle)) | S_00A00C_TYPE(type);
+         S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(desc)) | S_00A00C_TYPE(type);
       /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
        * to know the total number of layers.
        */
@@ -4833,75 +4718,26 @@ static void gfx10_make_texture_descriptor(
       if (vi_dcc_enabled(tex, first_level)) {
          state[6] |= S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(V_028C78_MAX_BLOCK_SIZE_256B) |
                      S_00A018_MAX_COMPRESSED_BLOCK_SIZE(tex->surface.u.gfx9.color.dcc.max_compressed_block_size) |
-                     S_00A018_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(screen, pipe_format));
+                     S_00A018_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&screen->info, pipe_format));
       }
    }
 
    /* Initialize the sampler view for FMASK. */
    if (tex->surface.fmask_offset) {
-      uint32_t format;
+      const struct ac_fmask_state ac_state = {
+         .surf = &tex->surface,
+         .va = tex->buffer.gpu_address,
+         .width = width,
+         .height = height,
+         .depth = depth,
+         .type = si_tex_dim(screen, tex, target, 0),
+         .first_layer = first_layer,
+         .last_layer = last_layer,
+         .num_samples = res->nr_samples,
+         .num_storage_samples = res->nr_storage_samples,
+      };
 
-      va = tex->buffer.gpu_address + tex->surface.fmask_offset;
-
-#define FMASK(s, f) (((unsigned)(MAX2(1, s)) * 16) + (MAX2(1, f)))
-      switch (FMASK(res->nr_samples, res->nr_storage_samples)) {
-      case FMASK(2, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S2_F1;
-         break;
-      case FMASK(2, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S2_F2;
-         break;
-      case FMASK(4, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S4_F1;
-         break;
-      case FMASK(4, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S4_F2;
-         break;
-      case FMASK(4, 4):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S4_F4;
-         break;
-      case FMASK(8, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK8_S8_F1;
-         break;
-      case FMASK(8, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK16_S8_F2;
-         break;
-      case FMASK(8, 4):
-         format = V_008F0C_GFX10_FORMAT_FMASK32_S8_F4;
-         break;
-      case FMASK(8, 8):
-         format = V_008F0C_GFX10_FORMAT_FMASK32_S8_F8;
-         break;
-      case FMASK(16, 1):
-         format = V_008F0C_GFX10_FORMAT_FMASK16_S16_F1;
-         break;
-      case FMASK(16, 2):
-         format = V_008F0C_GFX10_FORMAT_FMASK32_S16_F2;
-         break;
-      case FMASK(16, 4):
-         format = V_008F0C_GFX10_FORMAT_FMASK64_S16_F4;
-         break;
-      case FMASK(16, 8):
-         format = V_008F0C_GFX10_FORMAT_FMASK64_S16_F8;
-         break;
-      default:
-         unreachable("invalid nr_samples");
-      }
-#undef FMASK
-      fmask_state[0] = (va >> 8) | tex->surface.fmask_tile_swizzle;
-      fmask_state[1] = S_00A004_BASE_ADDRESS_HI(va >> 40) | S_00A004_FORMAT_GFX10(format) |
-                       S_00A004_WIDTH_LO(width - 1);
-      fmask_state[2] = S_00A008_WIDTH_HI((width - 1) >> 2) | S_00A008_HEIGHT(height - 1) |
-                       S_00A008_RESOURCE_LEVEL(1);
-      fmask_state[3] =
-         S_00A00C_DST_SEL_X(V_008F1C_SQ_SEL_X) | S_00A00C_DST_SEL_Y(V_008F1C_SQ_SEL_X) |
-         S_00A00C_DST_SEL_Z(V_008F1C_SQ_SEL_X) | S_00A00C_DST_SEL_W(V_008F1C_SQ_SEL_X) |
-         S_00A00C_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode) |
-         S_00A00C_TYPE(si_tex_dim(screen, tex, target, 0));
-      fmask_state[4] = S_00A010_DEPTH_GFX10(last_layer) | S_00A010_BASE_ARRAY(first_layer);
-      fmask_state[5] = 0;
-      fmask_state[6] = S_00A018_META_PIPE_ALIGNED(1);
-      fmask_state[7] = 0;
+      ac_build_fmask_descriptor(screen->info.gfx_level, &ac_state, &fmask_state[0]);
    }
 }
 
@@ -4929,7 +4765,6 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    unsigned char swizzle[4];
    int first_non_void;
    unsigned num_format, data_format, type, num_samples;
-   uint64_t va;
 
    desc = util_format_description(pipe_format);
 
@@ -4967,71 +4802,7 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
 
    first_non_void = util_format_get_first_non_void_channel(pipe_format);
 
-   switch (pipe_format) {
-   case PIPE_FORMAT_S8_UINT_Z24_UNORM:
-      num_format = V_008F14_IMG_NUM_FORMAT_UNORM;
-      break;
-   default:
-      if (first_non_void < 0) {
-         if (util_format_is_compressed(pipe_format)) {
-            switch (pipe_format) {
-            case PIPE_FORMAT_DXT1_SRGB:
-            case PIPE_FORMAT_DXT1_SRGBA:
-            case PIPE_FORMAT_DXT3_SRGBA:
-            case PIPE_FORMAT_DXT5_SRGBA:
-            case PIPE_FORMAT_BPTC_SRGBA:
-            case PIPE_FORMAT_ETC2_SRGB8:
-            case PIPE_FORMAT_ETC2_SRGB8A1:
-            case PIPE_FORMAT_ETC2_SRGBA8:
-               num_format = V_008F14_IMG_NUM_FORMAT_SRGB;
-               break;
-            case PIPE_FORMAT_RGTC1_SNORM:
-            case PIPE_FORMAT_LATC1_SNORM:
-            case PIPE_FORMAT_RGTC2_SNORM:
-            case PIPE_FORMAT_LATC2_SNORM:
-            case PIPE_FORMAT_ETC2_R11_SNORM:
-            case PIPE_FORMAT_ETC2_RG11_SNORM:
-            /* implies float, so use SNORM/UNORM to determine
-               whether data is signed or not */
-            case PIPE_FORMAT_BPTC_RGB_FLOAT:
-               num_format = V_008F14_IMG_NUM_FORMAT_SNORM;
-               break;
-            default:
-               num_format = V_008F14_IMG_NUM_FORMAT_UNORM;
-               break;
-            }
-         } else if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
-            num_format = V_008F14_IMG_NUM_FORMAT_UNORM;
-         } else {
-            num_format = V_008F14_IMG_NUM_FORMAT_FLOAT;
-         }
-      } else if (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB) {
-         num_format = V_008F14_IMG_NUM_FORMAT_SRGB;
-      } else {
-         num_format = V_008F14_IMG_NUM_FORMAT_UNORM;
-
-         switch (desc->channel[first_non_void].type) {
-         case UTIL_FORMAT_TYPE_FLOAT:
-            num_format = V_008F14_IMG_NUM_FORMAT_FLOAT;
-            break;
-         case UTIL_FORMAT_TYPE_SIGNED:
-            if (desc->channel[first_non_void].normalized)
-               num_format = V_008F14_IMG_NUM_FORMAT_SNORM;
-            else if (desc->channel[first_non_void].pure_integer)
-               num_format = V_008F14_IMG_NUM_FORMAT_SINT;
-            else
-               num_format = V_008F14_IMG_NUM_FORMAT_SSCALED;
-            break;
-         case UTIL_FORMAT_TYPE_UNSIGNED:
-            if (desc->channel[first_non_void].normalized)
-               num_format = V_008F14_IMG_NUM_FORMAT_UNORM;
-            else if (desc->channel[first_non_void].pure_integer)
-               num_format = V_008F14_IMG_NUM_FORMAT_UINT;
-            else
-               num_format = V_008F14_IMG_NUM_FORMAT_USCALED;
-         }
-      }
-   }
+   num_format = ac_translate_tex_numformat(desc, first_non_void);
 
    data_format = si_translate_texformat(&screen->b, pipe_format, desc, first_non_void);
    if (data_format == ~0) {
@@ -5068,10 +4839,10 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    state[0] = 0;
    state[1] = (S_008F14_DATA_FORMAT(data_format) | S_008F14_NUM_FORMAT(num_format));
    state[2] = (S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1) | S_008F18_PERF_MOD(4));
-   state[3] = (S_008F1C_DST_SEL_X(si_map_swizzle(swizzle[0])) |
-               S_008F1C_DST_SEL_Y(si_map_swizzle(swizzle[1])) |
-               S_008F1C_DST_SEL_Z(si_map_swizzle(swizzle[2])) |
-               S_008F1C_DST_SEL_W(si_map_swizzle(swizzle[3])) |
+   state[3] = (S_008F1C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
+               S_008F1C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
+               S_008F1C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
+               S_008F1C_DST_SEL_W(ac_map_swizzle(swizzle[3])) |
                S_008F1C_BASE_LEVEL(num_samples > 1 ? 0 : first_level) |
                S_008F1C_LAST_LEVEL(num_samples > 1 ? util_logbase2(num_samples) : last_level) |
                S_008F1C_TYPE(type));
@@ -5081,7 +4852,7 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    state[7] = 0;
 
    if (screen->info.gfx_level == GFX9) {
-      unsigned bc_swizzle = gfx9_border_color_swizzle(desc->swizzle);
+      unsigned bc_swizzle = ac_border_color_swizzle(desc);
 
       /* Depth is the the last accessible layer on Gfx9.
        * The hw doesn't need to know the total number of layers.
@@ -5101,7 +4872,7 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
    }
 
    if (vi_dcc_enabled(tex, first_level)) {
-      state[6] = S_008F28_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(screen, pipe_format));
+      state[6] = S_008F28_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(&screen->info, pipe_format));
    } else {
       /* The last dword is unused by hw. The shader uses it to clear
        * bits in the first dword of sampler state.
@@ -5116,129 +4887,20 @@ static void si_make_texture_descriptor(struct si_screen *screen, struct si_textu
 
    /* Initialize the sampler view for FMASK. */
    if (tex->surface.fmask_offset) {
-      uint32_t data_format, num_format;
+      const struct ac_fmask_state ac_state = {
+         .surf = &tex->surface,
+         .va = tex->buffer.gpu_address,
+         .width = width,
+         .height = height,
+         .depth = depth,
+         .type = si_tex_dim(screen, tex, target, 0),
+         .first_layer = first_layer,
+         .last_layer = last_layer,
+         .num_samples = res->nr_samples,
+         .num_storage_samples = res->nr_storage_samples,
+      };
 
-      va = tex->buffer.gpu_address + tex->surface.fmask_offset;
-
-#define FMASK(s, f) (((unsigned)(MAX2(1, s)) * 16) + (MAX2(1, f)))
-      if (screen->info.gfx_level == GFX9) {
-         data_format = V_008F14_IMG_DATA_FORMAT_FMASK;
-         switch (FMASK(res->nr_samples, res->nr_storage_samples)) {
-         case FMASK(2, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_2_1;
-            break;
-         case FMASK(2, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_2_2;
-            break;
-         case FMASK(4, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_4_1;
-            break;
-         case FMASK(4, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_4_2;
-            break;
-         case FMASK(4, 4):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_4_4;
-            break;
-         case FMASK(8, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_8_8_1;
-            break;
-         case FMASK(8, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_16_8_2;
-            break;
-         case FMASK(8, 4):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_32_8_4;
-            break;
-         case FMASK(8, 8):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_32_8_8;
-            break;
-         case FMASK(16, 1):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_16_16_1;
-            break;
-         case FMASK(16, 2):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_32_16_2;
-            break;
-         case FMASK(16, 4):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_64_16_4;
-            break;
-         case FMASK(16, 8):
-            num_format = V_008F14_IMG_NUM_FORMAT_FMASK_64_16_8;
-            break;
-         default:
-            unreachable("invalid nr_samples");
-         }
-      } else {
-         switch (FMASK(res->nr_samples, res->nr_storage_samples)) {
-         case FMASK(2, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S2_F1;
-            break;
-         case FMASK(2, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S2_F2;
-            break;
-         case FMASK(4, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S4_F1;
-            break;
-         case FMASK(4, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S4_F2;
-            break;
-         case FMASK(4, 4):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S4_F4;
-            break;
-         case FMASK(8, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK8_S8_F1;
-            break;
-         case FMASK(8, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK16_S8_F2;
-            break;
-         case FMASK(8, 4):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK32_S8_F4;
-            break;
-         case FMASK(8, 8):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK32_S8_F8;
-            break;
-         case FMASK(16, 1):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK16_S16_F1;
-            break;
-         case FMASK(16, 2):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK32_S16_F2;
-            break;
-         case FMASK(16, 4):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK64_S16_F4;
-            break;
-         case FMASK(16, 8):
-            data_format = V_008F14_IMG_DATA_FORMAT_FMASK64_S16_F8;
-            break;
-         default:
-            unreachable("invalid nr_samples");
-         }
-         num_format = V_008F14_IMG_NUM_FORMAT_UINT;
-      }
-#undef FMASK
-
-      fmask_state[0] = (va >> 8) | tex->surface.fmask_tile_swizzle;
-      fmask_state[1] = S_008F14_BASE_ADDRESS_HI(va >> 40) | S_008F14_DATA_FORMAT(data_format) |
-                       S_008F14_NUM_FORMAT(num_format);
-      fmask_state[2] = S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1);
-      fmask_state[3] =
-         S_008F1C_DST_SEL_X(V_008F1C_SQ_SEL_X) | S_008F1C_DST_SEL_Y(V_008F1C_SQ_SEL_X) |
-         S_008F1C_DST_SEL_Z(V_008F1C_SQ_SEL_X) | S_008F1C_DST_SEL_W(V_008F1C_SQ_SEL_X) |
-         S_008F1C_TYPE(si_tex_dim(screen, tex, target, 0));
-      fmask_state[4] = 0;
-      fmask_state[5] = S_008F24_BASE_ARRAY(first_layer);
-      fmask_state[6] = 0;
-      fmask_state[7] = 0;
-
-      if (screen->info.gfx_level == GFX9) {
-         fmask_state[3] |= S_008F1C_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode);
-         fmask_state[4] |=
-            S_008F20_DEPTH(last_layer) | S_008F20_PITCH(tex->surface.u.gfx9.color.fmask_epitch);
-         fmask_state[5] |= S_008F24_META_PIPE_ALIGNED(1) |
-                           S_008F24_META_RB_ALIGNED(1);
-      } else {
-         fmask_state[3] |= S_008F1C_TILING_INDEX(tex->surface.u.legacy.color.fmask.tiling_index);
-         fmask_state[4] |= S_008F20_DEPTH(depth - 1) |
-                           S_008F20_PITCH(tex->surface.u.legacy.color.fmask.pitch_in_pixels - 1);
-         fmask_state[5] |= S_008F24_LAST_ARRAY(last_layer);
-      }
+      ac_build_fmask_descriptor(screen->info.gfx_level, &ac_state, &fmask_state[0]);
    }
 }
 
@@ -5794,13 +5456,13 @@ static void *si_create_vertex_elements(struct pipe_context *ctx, unsigned count,
          v->vb_alignment_check_mask |= 1 << vbo_index;
       }
 
-      v->elem[i].rsrc_word3 = S_008F0C_DST_SEL_X(si_map_swizzle(desc->swizzle[0])) |
-                              S_008F0C_DST_SEL_Y(si_map_swizzle(desc->swizzle[1])) |
-                              S_008F0C_DST_SEL_Z(si_map_swizzle(desc->swizzle[2])) |
-                              S_008F0C_DST_SEL_W(si_map_swizzle(desc->swizzle[3]));
+      v->elem[i].rsrc_word3 = S_008F0C_DST_SEL_X(ac_map_swizzle(desc->swizzle[0])) |
+                              S_008F0C_DST_SEL_Y(ac_map_swizzle(desc->swizzle[1])) |
+                              S_008F0C_DST_SEL_Z(ac_map_swizzle(desc->swizzle[2])) |
+                              S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
 
       if (sscreen->info.gfx_level >= GFX10) {
-         const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&sscreen->info)[elements[i].src_format];
+         const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[elements[i].src_format];
          ASSERTED unsigned last_vertex_format = sscreen->info.gfx_level >= GFX11 ? 64 : 128;
          assert(fmt->img_format != 0 && fmt->img_format < last_vertex_format);
          v->elem[i].rsrc_word3 |=
@@ -6633,7 +6295,7 @@ static void gfx10_init_gfx_preamble_state(struct si_context *sctx)
 
    for (unsigned i = 0; i < 4; ++i)
       si_pm4_set_reg(pm4, R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE0 + i * 4,
-                     i < sscreen->info.num_se ? compute_cu_en : 0x0);
+                     i < sscreen->info.max_se ? compute_cu_en : 0x0);
 
    si_pm4_set_reg(pm4, R_00B890_COMPUTE_USER_ACCUM_0, 0);
    si_pm4_set_reg(pm4, R_00B894_COMPUTE_USER_ACCUM_1, 0);
@@ -6643,7 +6305,7 @@ static void gfx10_init_gfx_preamble_state(struct si_context *sctx)
    if (sctx->gfx_level >= GFX11) {
       for (unsigned i = 4; i < 8; ++i)
          si_pm4_set_reg(pm4, R_00B8AC_COMPUTE_STATIC_THREAD_MGMT_SE4 + (i - 4) * 4,
-                        i < sscreen->info.num_se ? compute_cu_en : 0x0);
+                        i < sscreen->info.max_se ? compute_cu_en : 0x0);
 
       /* How many threads should go to 1 SE before moving onto the next. Think of GL1 cache hits.
        * Only these values are valid: 0 (disabled), 64, 128, 256, 512
@@ -6853,7 +6515,7 @@ static void gfx12_init_gfx_preamble_state(struct si_context *sctx)
    uint64_t border_color_va = sctx->border_color_buffer->gpu_address;
    uint32_t compute_cu_en = S_00B88C_SA0_CU_EN(sscreen->info.spi_cu_en) |
                             S_00B88C_SA1_CU_EN(sscreen->info.spi_cu_en);
-   unsigned num_se = sscreen->info.num_se;
+   unsigned num_se = sscreen->info.max_se;
    unsigned color_write_policy, color_read_policy;
    enum gfx12_store_temporal_hint color_write_temporal_hint, zs_write_temporal_hint;
    enum gfx12_load_temporal_hint color_read_temporal_hint, zs_read_temporal_hint;

@@ -15,6 +15,8 @@
 #include "vk_format.h"
 #include "vk_shader_module.h"
 
+#include "ac_formats.h"
+
 enum { DEPTH_CLEAR_SLOW, DEPTH_CLEAR_FAST };
 
 static void
@@ -1401,6 +1403,7 @@ gfx8_get_fast_clear_parameters(struct radv_device *device, const struct radv_ima
                                const VkClearColorValue *clear_value, uint32_t *reset_value,
                                bool *can_avoid_fast_clear_elim)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    bool values[4] = {0};
    int extra_channel;
    bool main_value = false;
@@ -1422,7 +1425,7 @@ gfx8_get_fast_clear_parameters(struct radv_device *device, const struct radv_ima
        iview->vk.format == VK_FORMAT_B5G6R5_UNORM_PACK16)
       extra_channel = -1;
    else if (desc->layout == UTIL_FORMAT_LAYOUT_PLAIN) {
-      if (vi_alpha_is_on_msb(device, iview->vk.format))
+      if (ac_alpha_is_on_msb(&pdev->info, vk_format_to_pipe_format(iview->vk.format)))
          extra_channel = desc->nr_channels - 1;
       else
          extra_channel = 0;
@@ -2086,9 +2089,8 @@ radv_cmd_clear_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
    bool disable_compression = false;
 
    if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
-      bool blendable;
       if (cs ? !radv_is_storage_image_format_supported(pdev, format)
-             : !radv_is_colorbuffer_format_supported(pdev, format, &blendable)) {
+             : !radv_is_colorbuffer_format_supported(pdev, format)) {
          format = VK_FORMAT_R32_UINT;
          internal_clear_value.color.uint32[0] = float3_to_rgb9e5(clear_value->color.float32);
 

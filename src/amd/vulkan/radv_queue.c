@@ -21,6 +21,7 @@
 #include "vk_sync.h"
 
 #include "ac_debug.h"
+#include "ac_descriptors.h"
 
 enum radeon_ctx_priority
 radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *pObj)
@@ -238,35 +239,25 @@ radv_set_ring_buffer(const struct radv_physical_device *pdev, struct radeon_wins
 {
    const uint8_t oob_select = oob_select_raw ? V_008F0C_OOB_SELECT_RAW : V_008F0C_OOB_SELECT_DISABLED;
    const uint64_t va = radv_buffer_get_va(bo) + offset;
+   const struct ac_buffer_state ac_state = {
+      .va = va,
+      .size = ring_size,
+      .format = PIPE_FORMAT_R32_FLOAT,
+      .swizzle =
+         {
+            PIPE_SWIZZLE_X,
+            PIPE_SWIZZLE_Y,
+            PIPE_SWIZZLE_Z,
+            PIPE_SWIZZLE_W,
+         },
+      .swizzle_enable = swizzle_enable,
+      .element_size = element_size,
+      .index_stride = index_stride,
+      .add_tid = add_tid,
+      .gfx10_oob_select = oob_select,
+   };
 
-   uint32_t rsrc_word1 = S_008F04_BASE_ADDRESS_HI(va >> 32);
-   if (pdev->info.gfx_level >= GFX11) {
-      rsrc_word1 |= S_008F04_SWIZZLE_ENABLE_GFX11(swizzle_enable);
-   } else {
-      rsrc_word1 |= S_008F04_SWIZZLE_ENABLE_GFX6(swizzle_enable);
-   }
-
-   uint32_t rsrc_word3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                         S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-                         S_008F0C_INDEX_STRIDE(index_stride) | S_008F0C_ADD_TID_ENABLE(add_tid);
-
-   if (pdev->info.gfx_level >= GFX11) {
-      rsrc_word3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(oob_select);
-   } else if (pdev->info.gfx_level >= GFX10) {
-      rsrc_word3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(oob_select) |
-                    S_008F0C_RESOURCE_LEVEL(1);
-   } else {
-      /* DATA_FORMAT is STRIDE[14:17] for MUBUF with ADD_TID_ENABLE=1 */
-      const uint32_t data_format = pdev->info.gfx_level >= GFX8 && add_tid ? 0 : V_008F0C_BUF_DATA_FORMAT_32;
-
-      rsrc_word3 |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) | S_008F0C_DATA_FORMAT(data_format) |
-                    S_008F0C_ELEMENT_SIZE(element_size);
-   }
-
-   desc[0] = va;
-   desc[1] = rsrc_word1;
-   desc[2] = ring_size;
-   desc[3] = rsrc_word3;
+   ac_build_buffer_descriptor(pdev->info.gfx_level, &ac_state, desc);
 }
 
 static void
@@ -350,15 +341,7 @@ radv_fill_shader_rings(struct radv_device *device, uint32_t *desc, struct radeon
    if (attr_ring_bo) {
       assert(pdev->info.gfx_level >= GFX11);
 
-      uint64_t va = radv_buffer_get_va(attr_ring_bo);
-
-      desc[0] = va;
-      desc[1] = S_008F04_BASE_ADDRESS_HI(va >> 32) | S_008F04_SWIZZLE_ENABLE_GFX11(3) /* 16B */;
-      desc[2] = attr_ring_size;
-      desc[3] = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-                S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_32_32_32_FLOAT) |
-                S_008F0C_INDEX_STRIDE(2) /* 32 elements */;
+      ac_build_attr_ring_descriptor(pdev->info.gfx_level, radv_buffer_get_va(attr_ring_bo), attr_ring_size, &desc[0]);
    }
 
    desc += 4;
@@ -503,7 +486,7 @@ radv_emit_graphics_scratch(struct radv_device *device, struct radeon_cmdbuf *cs,
       uint64_t va = radv_buffer_get_va(scratch_bo);
 
       /* WAVES is per SE for SPI_TMPRING_SIZE. */
-      waves /= gpu_info->num_se;
+      waves /= gpu_info->max_se;
 
       radeon_set_context_reg_seq(cs, R_0286E8_SPI_TMPRING_SIZE, 3);
       radeon_emit(cs, S_0286E8_WAVES(waves) | S_0286E8_WAVESIZE(DIV_ROUND_UP(size_per_wave, 256)));
@@ -542,7 +525,7 @@ radv_emit_compute_scratch(struct radv_device *device, struct radeon_cmdbuf *cs, 
       radeon_emit(cs, scratch_va >> 8);
       radeon_emit(cs, scratch_va >> 40);
 
-      waves /= gpu_info->num_se;
+      waves /= gpu_info->max_se;
    }
 
    radeon_set_sh_reg_seq(cs, R_00B900_COMPUTE_USER_DATA_0, 2);
@@ -680,7 +663,7 @@ radv_emit_compute(struct radv_device *device, struct radeon_cmdbuf *cs)
    /* R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE0 / SE1,
     * renamed COMPUTE_DESTINATION_EN_SEn on gfx10. */
    for (unsigned i = 0; i < 2; ++i) {
-      unsigned cu_mask = i < gpu_info->num_se ? gpu_info->spi_cu_en : 0x0;
+      unsigned cu_mask = i < gpu_info->max_se ? gpu_info->spi_cu_en : 0x0;
       radeon_emit(cs, S_00B88C_SA0_CU_EN(cu_mask) | S_00B88C_SA1_CU_EN(cu_mask));
    }
 
@@ -688,7 +671,7 @@ radv_emit_compute(struct radv_device *device, struct radeon_cmdbuf *cs)
       /* Also set R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE2 / SE3 */
       radeon_set_sh_reg_seq(cs, R_00B864_COMPUTE_STATIC_THREAD_MGMT_SE2, 2);
       for (unsigned i = 2; i < 4; ++i) {
-         unsigned cu_mask = i < gpu_info->num_se ? gpu_info->spi_cu_en : 0x0;
+         unsigned cu_mask = i < gpu_info->max_se ? gpu_info->spi_cu_en : 0x0;
          radeon_emit(cs, S_00B88C_SA0_CU_EN(cu_mask) | S_00B88C_SA1_CU_EN(cu_mask));
       }
 

@@ -311,12 +311,8 @@ bool radv_image_use_dcc_image_stores(const struct radv_device *device, const str
 
 bool radv_image_use_dcc_predication(const struct radv_device *device, const struct radv_image *image);
 
-unsigned radv_map_swizzle(unsigned swizzle);
-
 void radv_compose_swizzle(const struct util_format_description *desc, const VkComponentMapping *mapping,
                           enum pipe_swizzle swizzle[4]);
-
-bool vi_alpha_is_on_msb(const struct radv_device *device, const VkFormat format);
 
 void radv_init_metadata(struct radv_device *device, struct radv_image *image, struct radeon_bo_metadata *metadata);
 
@@ -375,7 +371,5 @@ unsigned radv_image_queue_family_mask(const struct radv_image *image, enum radv_
                                       enum radv_queue_family queue_family);
 
 bool radv_image_is_renderable(const struct radv_device *device, const struct radv_image *image);
-
-unsigned radv_tile_mode_index(const struct radv_image_plane *plane, unsigned level, bool stencil);
 
 #endif /* RADV_IMAGE_H */

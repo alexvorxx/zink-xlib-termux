@@ -274,18 +274,33 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
    case Format::SOPP: {
       uint16_t imm = instr->salu().imm;
       switch (instr->opcode) {
-      case aco_opcode::s_waitcnt: {
+      case aco_opcode::s_waitcnt:
+      case aco_opcode::s_wait_loadcnt_dscnt:
+      case aco_opcode::s_wait_storecnt_dscnt: {
          wait_imm unpacked;
          unpacked.unpack(gfx_level, instr);
          const char* names[wait_type_num];
          names[wait_type_exp] = "expcnt";
-         names[wait_type_vm] = "vmcnt";
-         names[wait_type_lgkm] = "lgkmcnt";
-         names[wait_type_vs] = "vscnt";
+         names[wait_type_vm] = gfx_level >= GFX12 ? "loadcnt" : "vmcnt";
+         names[wait_type_lgkm] = gfx_level >= GFX12 ? "dscnt" : "lgkmcnt";
+         names[wait_type_vs] = gfx_level >= GFX12 ? "storecnt" : "vscnt";
+         names[wait_type_sample] = "samplecnt";
+         names[wait_type_bvh] = "bvhcnt";
+         names[wait_type_km] = "kmcnt";
          for (unsigned i = 0; i < wait_type_num; i++) {
             if (unpacked[i] != wait_imm::unset_counter)
                fprintf(output, " %s(%d)", names[i], unpacked[i]);
          }
+         break;
+      }
+      case aco_opcode::s_wait_expcnt:
+      case aco_opcode::s_wait_dscnt:
+      case aco_opcode::s_wait_loadcnt:
+      case aco_opcode::s_wait_storecnt:
+      case aco_opcode::s_wait_samplecnt:
+      case aco_opcode::s_wait_bvhcnt:
+      case aco_opcode::s_wait_kmcnt: {
+         fprintf(output, " imm:%u", imm);
          break;
       }
       case aco_opcode::s_waitcnt_depctr: {

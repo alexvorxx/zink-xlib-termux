@@ -631,7 +631,7 @@ anv_device_search_for_kernel(struct anv_device *device,
 {
    /* Use the default pipeline cache if none is specified */
    if (cache == NULL)
-      cache = device->default_pipeline_cache;
+      cache = device->vk.mem_cache;
 
    bool cache_hit = false;
    struct vk_pipeline_cache_object *object =
@@ -639,7 +639,7 @@ anv_device_search_for_kernel(struct anv_device *device,
                                       &anv_shader_bin_ops, &cache_hit);
    if (user_cache_hit != NULL) {
       *user_cache_hit = object != NULL && cache_hit &&
-                        cache != device->default_pipeline_cache;
+                        cache != device->vk.mem_cache;
    }
 
    if (object == NULL)
@@ -655,9 +655,7 @@ anv_device_upload_kernel(struct anv_device *device,
 {
    /* Use the default pipeline cache if none is specified */
    if (cache == NULL)
-      cache = device->default_pipeline_cache;
-
-
+      cache = device->vk.mem_cache;
 
    struct anv_shader_bin *shader =
       anv_shader_bin_create(device,
@@ -693,7 +691,7 @@ anv_device_search_for_nir(struct anv_device *device,
                           void *mem_ctx)
 {
    if (cache == NULL)
-      cache = device->default_pipeline_cache;
+      cache = device->vk.mem_cache;
 
    return vk_pipeline_cache_lookup_nir(cache, sha1_key, SHA1_KEY_SIZE,
                                        nir_options, NULL, mem_ctx);
@@ -706,7 +704,7 @@ anv_device_upload_nir(struct anv_device *device,
                       unsigned char sha1_key[SHA1_KEY_SIZE])
 {
    if (cache == NULL)
-      cache = device->default_pipeline_cache;
+      cache = device->vk.mem_cache;
 
    vk_pipeline_cache_add_nir(cache, sha1_key, SHA1_KEY_SIZE, nir);
 }

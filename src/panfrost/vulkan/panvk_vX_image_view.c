@@ -137,8 +137,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
          util_format_compose_swizzles(r001, view->pview.swizzle, pview.swizzle);
       }
 
-      unsigned bo_size =
-         GENX(panfrost_estimate_texture_payload_size)(&pview);
+      unsigned bo_size = GENX(panfrost_estimate_texture_payload_size)(&pview);
 
       view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);

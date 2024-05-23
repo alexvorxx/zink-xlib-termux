@@ -14,6 +14,7 @@ lvp_entrypoints = custom_target(
 liblvp_files = files(
     'lvp_acceleration_structure.c',
     'lvp_device.c',
+    'lvp_device_generated_commands.c',
     'lvp_cmd_buffer.c',
     'lvp_descriptor_set.c',
     'lvp_execute.c',

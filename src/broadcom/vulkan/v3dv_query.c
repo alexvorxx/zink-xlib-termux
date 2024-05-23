@@ -1350,7 +1350,8 @@ v3dv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
 {
    V3DV_FROM_HANDLE(v3dv_physical_device, pDevice, physicalDevice);
 
-   return v3dv_X(pDevice, enumerate_performance_query_counters)(pCounterCount,
+   return v3dv_X(pDevice, enumerate_performance_query_counters)(pDevice,
+                                                                pCounterCount,
                                                                 pCounters,
                                                                 pCounterDescriptions);
 }

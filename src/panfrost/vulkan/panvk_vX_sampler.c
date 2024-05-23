@@ -127,9 +127,9 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
        * that works for normalized_coordinates=false.
        */
       cfg.wrap_mode_r =
-         pCreateInfo->unnormalizedCoordinates ?
-         MALI_WRAP_MODE_CLAMP_TO_EDGE :
-         panvk_translate_sampler_address_mode(pCreateInfo->addressModeW);
+         pCreateInfo->unnormalizedCoordinates
+            ? MALI_WRAP_MODE_CLAMP_TO_EDGE
+            : panvk_translate_sampler_address_mode(pCreateInfo->addressModeW);
       cfg.compare_function = panvk_translate_sampler_compare_func(pCreateInfo);
       cfg.border_color_r = border_color.uint32[0];
       cfg.border_color_g = border_color.uint32[1];

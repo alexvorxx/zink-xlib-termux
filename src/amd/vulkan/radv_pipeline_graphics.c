@@ -33,6 +33,7 @@
 
 #include "util/u_debug.h"
 #include "ac_binary.h"
+#include "ac_formats.h"
 #include "ac_nir.h"
 #include "ac_shader_util.h"
 #include "aco_interface.h"
@@ -112,7 +113,7 @@ radv_choose_spi_color_format(const struct radv_device *device, VkFormat vk_forma
 
    format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
    ntype = ac_get_cb_number_type(desc->format);
-   swap = radv_translate_colorswap(vk_format, false);
+   swap = ac_translate_colorswap(pdev->info.gfx_level, desc->format, false);
 
    ac_choose_spi_color_formats(format, swap, ntype, false, use_rbplus, &formats);
 
@@ -1379,7 +1380,7 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
 
    /* Count the number of per-vertex output slots we need to reserve for the TCS and TES. */
    const uint64_t nir_mask = tcs_stage->nir->info.outputs_written & tes_stage->nir->info.inputs_read &
-                             ~(VARYING_SLOT_TESS_LEVEL_OUTER | VARYING_SLOT_TESS_LEVEL_INNER);
+                             ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
    const uint64_t io_mask = radv_gather_unlinked_io_mask(nir_mask);
    const unsigned num_reserved_outputs = util_last_bit64(io_mask);
 
@@ -1396,6 +1397,7 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
    tcs_stage->info.outputs_linked = true;
 
    tes_stage->info.tes.num_linked_inputs = num_reserved_outputs;
+   tes_stage->info.tes.num_linked_patch_inputs = num_reserved_patch_outputs;
    tes_stage->info.inputs_linked = true;
 }
 

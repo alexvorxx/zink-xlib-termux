@@ -125,7 +125,7 @@
   extends:
     - .piglit-performance-base
   needs:
-    - debian/arm64_test
+    - debian/baremetal_arm64_test
     - debian-arm64-release
 
 .piglit-performance:x86_64:

@@ -1491,8 +1491,6 @@ struct si_clear_info {
    union pipe_color_union color;
 };
 
-enum pipe_format si_simplify_cb_format(enum pipe_format format);
-bool vi_alpha_is_on_msb(struct si_screen *sscreen, enum pipe_format format);
 bool vi_dcc_get_clear_info(struct si_context *sctx, struct si_texture *tex, unsigned level,
                            unsigned clear_value, struct si_clear_info *out);
 void si_init_buffer_clear(struct si_clear_info *info,
@@ -1767,8 +1765,6 @@ bool vi_dcc_formats_are_incompatible(struct pipe_resource *tex, unsigned level,
                                      enum pipe_format view_format);
 void vi_disable_dcc_if_incompatible_format(struct si_context *sctx, struct pipe_resource *tex,
                                            unsigned level, enum pipe_format view_format);
-unsigned si_translate_colorswap(enum amd_gfx_level gfx_level, enum pipe_format format,
-                                bool do_endian_swap);
 bool si_texture_disable_dcc(struct si_context *sctx, struct si_texture *tex);
 void si_init_screen_texture_functions(struct si_screen *sscreen);
 void si_init_context_texture_functions(struct si_context *sctx);
@@ -1840,14 +1836,6 @@ si_shader_selector_reference(struct si_context *sctx, /* sctx can optionally be 
 static inline bool vi_dcc_enabled(struct si_texture *tex, unsigned level)
 {
    return !tex->is_depth && tex->surface.meta_offset && level < tex->surface.num_meta_levels;
-}
-
-static inline unsigned si_tile_mode_index(struct si_texture *tex, unsigned level, bool stencil)
-{
-   if (stencil)
-      return tex->surface.u.legacy.zs.stencil_tiling_index[level];
-   else
-      return tex->surface.u.legacy.tiling_index[level];
 }
 
 static inline unsigned si_get_minimum_num_gfx_cs_dwords(struct si_context *sctx,

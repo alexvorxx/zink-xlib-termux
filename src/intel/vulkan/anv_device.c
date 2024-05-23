@@ -3796,10 +3796,10 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_btd_fifo_bo;
 
-   struct vk_pipeline_cache_create_info pcc_info = { };
-   device->default_pipeline_cache =
+   struct vk_pipeline_cache_create_info pcc_info = { .weak_ref = true, };
+   device->vk.mem_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
-   if (!device->default_pipeline_cache) {
+   if (!device->vk.mem_cache) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail_trtt;
    }
@@ -3809,9 +3809,12 @@ VkResult anv_CreateDevice(
     * shaders to remain resident while it runs. Therefore, we need a special
     * cache just for BLORP/RT that's forced to always be enabled.
     */
-   pcc_info.force_enable = true;
+   struct vk_pipeline_cache_create_info internal_pcc_info = {
+      .force_enable = true,
+      .weak_ref = false,
+   };
    device->internal_cache =
-      vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
+      vk_pipeline_cache_create(&device->vk, &internal_pcc_info, NULL);
    if (device->internal_cache == NULL) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail_default_pipeline_cache;
@@ -3930,7 +3933,7 @@ VkResult anv_CreateDevice(
  fail_internal_cache:
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
  fail_default_pipeline_cache:
-   vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+   vk_pipeline_cache_destroy(device->vk.mem_cache, NULL);
  fail_trtt:
    anv_device_finish_trtt(device);
  fail_btd_fifo_bo:
@@ -4051,7 +4054,7 @@ void anv_DestroyDevice(
       anv_device_print_fini(device);
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
-   vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+   vk_pipeline_cache_destroy(device->vk.mem_cache, NULL);
 
    anv_device_finish_embedded_samplers(device);
 

@@ -24,13 +24,22 @@
 #include "util/u_math.h"
 #include "util/ralloc.h"
 #include "v3d_context.h"
-/* We don't expect that the packets we use in this file change across across
- * hw versions, so we just explicitly set the V3D_VERSION and include
- * v3dx_pack here
- */
-#define V3D_VERSION 42
 #include "broadcom/common/v3d_macros.h"
 #include "broadcom/cle/v3dx_pack.h"
+
+/* The Control List Executor (CLE) pre-fetches V3D_CLE_READAHEAD bytes from
+ * the Control List buffer. The usage of these last bytes should be avoided or
+ * the CLE would pre-fetch the data after the end of the CL buffer, reporting
+ * the kernel "MMU error from client CLE".
+ */
+#if V3D_VERSION == 42
+#define V3D_CLE_READAHEAD 256
+#define V3D_CLE_BUFFER_MIN_SIZE 4096
+#endif
+#if V3D_VERSION >= 71
+#define V3D_CLE_READAHEAD 1024
+#define V3D_CLE_BUFFER_MIN_SIZE 16384
+#endif
 
 void
 v3d_init_cl(struct v3d_job *job, struct v3d_cl *cl)
@@ -52,7 +61,9 @@ v3d_cl_ensure_space(struct v3d_cl *cl, uint32_t space, uint32_t alignment)
         }
 
         v3d_bo_unreference(&cl->bo);
-        cl->bo = v3d_bo_alloc(cl->job->v3d->screen, align(space, 4096), "CL");
+        cl->bo = v3d_bo_alloc(cl->job->v3d->screen,
+                              align(space, V3D_CLE_BUFFER_MIN_SIZE),
+                              "CL");
         cl->base = v3d_bo_map(cl->bo);
         cl->size = cl->bo->size;
         cl->next = cl->base;
@@ -63,14 +74,27 @@ v3d_cl_ensure_space(struct v3d_cl *cl, uint32_t space, uint32_t alignment)
 void
 v3d_cl_ensure_space_with_branch(struct v3d_cl *cl, uint32_t space)
 {
-        if (cl_offset(cl) + space + cl_packet_length(BRANCH) <= cl->size)
+        if (cl_offset(cl) + space  <= cl->size)
                 return;
 
-        struct v3d_bo *new_bo = v3d_bo_alloc(cl->job->v3d->screen, space, "CL");
-        assert(space <= new_bo->size);
+        /* The last V3D_CLE_READAHEAD bytes of the buffer are unusable, so we
+         * need to take them into account when allocating a new BO for the
+         * CL. We have to be sure that we have room for a BRANCH packet so we
+         * can always chain a next BO if needed. We will need to increase
+         * cl->size by the packet length before calling cl_summit to use this
+         * reserved space.
+         */
+        uint32_t unusable_size = V3D_CLE_READAHEAD + cl_packet_length(BRANCH);
+        struct v3d_bo *new_bo = v3d_bo_alloc(cl->job->v3d->screen,
+                                             align(space + unusable_size,
+                                                   V3D_CLE_BUFFER_MIN_SIZE),
+                                             "CL");
+        assert(space + unusable_size <= new_bo->size);
 
         /* Chain to the new BO from the old one. */
         if (cl->bo) {
+                cl->size += cl_packet_length(BRANCH);
+                assert(cl->size + V3D_CLE_READAHEAD <= cl->bo->size);
                 cl_emit(cl, BRANCH, branch) {
                         branch.address = cl_address(new_bo, 0);
                 }
@@ -82,7 +106,11 @@ v3d_cl_ensure_space_with_branch(struct v3d_cl *cl, uint32_t space)
 
         cl->bo = new_bo;
         cl->base = v3d_bo_map(cl->bo);
-        cl->size = cl->bo->size;
+        /* Take only into account the usable size of the BO to guarantee that
+         * we never write in the last bytes of the CL buffer because of the
+         * readahead of the CLE
+         */
+        cl->size = cl->bo->size - unusable_size;
         cl->next = cl->base;
 }
 

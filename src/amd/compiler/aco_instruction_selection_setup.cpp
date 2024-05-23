@@ -300,8 +300,6 @@ init_context(isel_context* ctx, nir_shader* shader)
    ctx->program->allocateRange(impl->ssa_alloc);
    RegClass* regclasses = ctx->program->temp_rc.data() + ctx->first_temp_id;
 
-   std::unique_ptr<unsigned[]> nir_to_aco{new unsigned[impl->num_blocks]()};
-
    /* TODO: make this recursive to improve compile times */
    bool done = false;
    while (!done) {
@@ -603,8 +601,6 @@ init_context(isel_context* ctx, nir_shader* shader)
 
    ctx->program->config->spi_ps_input_ena = ctx->program->info.ps.spi_ps_input_ena;
    ctx->program->config->spi_ps_input_addr = ctx->program->info.ps.spi_ps_input_addr;
-
-   ctx->cf_info.nir_to_aco = std::move(nir_to_aco);
 
    /* align and copy constant data */
    while (ctx->program->constant_data.size() % 4u)

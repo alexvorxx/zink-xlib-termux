@@ -23,6 +23,7 @@
 #include <inttypes.h>
 
 #include "amd/addrlib/inc/addrinterface.h"
+#include "ac_formats.h"
 
 static enum radeon_surf_mode si_choose_tiling(struct si_screen *sscreen,
                                               const struct pipe_resource *templ,
@@ -2111,8 +2112,8 @@ bool vi_dcc_formats_compatible(struct si_screen *sscreen, enum pipe_format forma
    if (format1 == format2)
       return true;
 
-   format1 = si_simplify_cb_format(format1);
-   format2 = si_simplify_cb_format(format2);
+   format1 = ac_simplify_cb_format(format1);
+   format2 = ac_simplify_cb_format(format2);
 
    /* Check again after format adjustments. */
    if (format1 == format2)
@@ -2142,7 +2143,7 @@ bool vi_dcc_formats_compatible(struct si_screen *sscreen, enum pipe_format forma
 
    /* If the clear values are all 1 or all 0, this constraint can be
     * ignored. */
-   if (vi_alpha_is_on_msb(sscreen, format1) != vi_alpha_is_on_msb(sscreen, format2))
+   if (ac_alpha_is_on_msb(&sscreen->info, format1) != ac_alpha_is_on_msb(&sscreen->info, format2))
       return false;
 
    /* Channel types must match if the clear value of 1 is used.
@@ -2236,70 +2237,6 @@ static void si_surface_destroy(struct pipe_context *pipe, struct pipe_surface *s
 {
    pipe_resource_reference(&surface->texture, NULL);
    FREE(surface);
-}
-
-unsigned si_translate_colorswap(enum amd_gfx_level gfx_level, enum pipe_format format,
-                                bool do_endian_swap)
-{
-   const struct util_format_description *desc = util_format_description(format);
-
-#define HAS_SWIZZLE(chan, swz) (desc->swizzle[chan] == PIPE_SWIZZLE_##swz)
-
-   if (format == PIPE_FORMAT_R11G11B10_FLOAT) /* isn't plain */
-      return V_028C70_SWAP_STD;
-
-   if (gfx_level >= GFX10_3 &&
-       format == PIPE_FORMAT_R9G9B9E5_FLOAT) /* isn't plain */
-      return V_028C70_SWAP_STD;
-
-   if (desc->layout != UTIL_FORMAT_LAYOUT_PLAIN)
-      return ~0U;
-
-   switch (desc->nr_channels) {
-   case 1:
-      if (HAS_SWIZZLE(0, X))
-         return V_028C70_SWAP_STD; /* X___ */
-      else if (HAS_SWIZZLE(3, X))
-         return V_028C70_SWAP_ALT_REV; /* ___X */
-      break;
-   case 2:
-      if ((HAS_SWIZZLE(0, X) && HAS_SWIZZLE(1, Y)) || (HAS_SWIZZLE(0, X) && HAS_SWIZZLE(1, NONE)) ||
-          (HAS_SWIZZLE(0, NONE) && HAS_SWIZZLE(1, Y)))
-         return V_028C70_SWAP_STD; /* XY__ */
-      else if ((HAS_SWIZZLE(0, Y) && HAS_SWIZZLE(1, X)) ||
-               (HAS_SWIZZLE(0, Y) && HAS_SWIZZLE(1, NONE)) ||
-               (HAS_SWIZZLE(0, NONE) && HAS_SWIZZLE(1, X)))
-         /* YX__ */
-         return (do_endian_swap ? V_028C70_SWAP_STD : V_028C70_SWAP_STD_REV);
-      else if (HAS_SWIZZLE(0, X) && HAS_SWIZZLE(3, Y))
-         return V_028C70_SWAP_ALT; /* X__Y */
-      else if (HAS_SWIZZLE(0, Y) && HAS_SWIZZLE(3, X))
-         return V_028C70_SWAP_ALT_REV; /* Y__X */
-      break;
-   case 3:
-      if (HAS_SWIZZLE(0, X))
-         return (do_endian_swap ? V_028C70_SWAP_STD_REV : V_028C70_SWAP_STD);
-      else if (HAS_SWIZZLE(0, Z))
-         return V_028C70_SWAP_STD_REV; /* ZYX */
-      break;
-   case 4:
-      /* check the middle channels, the 1st and 4th channel can be NONE */
-      if (HAS_SWIZZLE(1, Y) && HAS_SWIZZLE(2, Z)) {
-         return V_028C70_SWAP_STD; /* XYZW */
-      } else if (HAS_SWIZZLE(1, Z) && HAS_SWIZZLE(2, Y)) {
-         return V_028C70_SWAP_STD_REV; /* WZYX */
-      } else if (HAS_SWIZZLE(1, Y) && HAS_SWIZZLE(2, X)) {
-         return V_028C70_SWAP_ALT; /* ZYXW */
-      } else if (HAS_SWIZZLE(1, Z) && HAS_SWIZZLE(2, W)) {
-         /* YZWX */
-         if (desc->is_array)
-            return V_028C70_SWAP_ALT_REV;
-         else
-            return (do_endian_swap ? V_028C70_SWAP_ALT : V_028C70_SWAP_ALT_REV);
-      }
-      break;
-   }
-   return ~0U;
 }
 
 static struct pipe_memory_object *

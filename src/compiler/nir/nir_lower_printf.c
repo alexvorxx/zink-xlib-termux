@@ -178,7 +178,7 @@ nir_printf_fmt(nir_builder *b,
       default:  unreachable("invalid");
       }
 
-      nir_def *def = va_arg(ap, nir_def*);
+      ASSERTED nir_def *def = va_arg(ap, nir_def*);
       assert(def->bit_size / 8 == arg_size);
 
       info->num_args++;

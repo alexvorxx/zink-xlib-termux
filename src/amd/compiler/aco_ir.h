@@ -30,7 +30,6 @@ extern uint64_t debug_flags;
 enum {
    DEBUG_VALIDATE_IR = 0x1,
    DEBUG_VALIDATE_RA = 0x2,
-   DEBUG_PERFWARN = 0x4,
    DEBUG_FORCE_WAITCNT = 0x8,
    DEBUG_NO_VN = 0x10,
    DEBUG_NO_OPT = 0x20,
@@ -179,7 +178,11 @@ enum wait_type {
    wait_type_vm = 2,
    /* GFX10+ */
    wait_type_vs = 3,
-   wait_type_num = 4,
+   /* GFX12+ */
+   wait_type_sample = 4,
+   wait_type_bvh = 5,
+   wait_type_km = 6,
+   wait_type_num = 7,
 };
 
 struct Instruction;
@@ -191,6 +194,9 @@ struct wait_imm {
    uint8_t lgkm;
    uint8_t vm;
    uint8_t vs;
+   uint8_t sample;
+   uint8_t bvh;
+   uint8_t km;
 
    wait_imm();
    wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_);
@@ -223,6 +229,9 @@ static_assert(offsetof(wait_imm, exp) == wait_type_exp);
 static_assert(offsetof(wait_imm, lgkm) == wait_type_lgkm);
 static_assert(offsetof(wait_imm, vm) == wait_type_vm);
 static_assert(offsetof(wait_imm, vs) == wait_type_vs);
+static_assert(offsetof(wait_imm, sample) == wait_type_sample);
+static_assert(offsetof(wait_imm, bvh) == wait_type_bvh);
+static_assert(offsetof(wait_imm, km) == wait_type_km);
 
 /* s_wait_event immediate bits. */
 enum wait_event_imm : uint16_t {
@@ -1771,6 +1780,17 @@ unsigned get_operand_size(aco_ptr<Instruction>& instr, unsigned index);
 
 bool should_form_clause(const Instruction* a, const Instruction* b);
 
+enum vmem_type : uint8_t {
+   vmem_nosampler = 1 << 0,
+   vmem_sampler = 1 << 1,
+   vmem_bvh = 1 << 2,
+};
+
+/* VMEM instructions of the same type return in-order. For GFX12+, this determines which counter
+ * is used.
+ */
+uint8_t get_vmem_type(enum amd_gfx_level gfx_level, Instruction* instr);
+
 enum block_kind {
    /* uniform indicates that leaving this block,
     * all actives lanes stay active */
@@ -2179,13 +2199,6 @@ bool print_asm(Program* program, std::vector<uint32_t>& binary, unsigned exec_si
 bool validate_ir(Program* program);
 bool validate_cfg(Program* program);
 bool validate_ra(Program* program);
-#ifndef NDEBUG
-void perfwarn(Program* program, bool cond, const char* msg, Instruction* instr = NULL);
-#else
-#define perfwarn(program, cond, msg, ...)                                                          \
-   do {                                                                                            \
-   } while (0)
-#endif
 
 void collect_presched_stats(Program* program);
 void collect_preasm_stats(Program* program);
@@ -2216,10 +2229,8 @@ void aco_print_program(const Program* program, FILE* output, unsigned flags = 0)
 void aco_print_program(const Program* program, FILE* output, const live& live_vars,
                        unsigned flags = 0);
 
-void _aco_perfwarn(Program* program, const char* file, unsigned line, const char* fmt, ...);
 void _aco_err(Program* program, const char* file, unsigned line, const char* fmt, ...);
 
-#define aco_perfwarn(program, ...) _aco_perfwarn(program, __FILE__, __LINE__, __VA_ARGS__)
 #define aco_err(program, ...)      _aco_err(program, __FILE__, __LINE__, __VA_ARGS__)
 
 int get_op_fixed_to_def(Instruction* instr);

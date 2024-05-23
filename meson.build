@@ -623,8 +623,22 @@ if vdpau_drivers_path == ''
   vdpau_drivers_path = join_paths(get_option('libdir'), 'vdpau')
 endif
 
-prog_glslang = find_program('glslangValidator', native : true, required : with_vulkan_overlay_layer or with_aco_tests or with_amd_vk or with_intel_vk)
+# GLSL has interesting version output and Meson doesn't parse it correctly as of
+# Meson 1.4.0
+prog_glslang = find_program('glslangValidator', native : true,
+                            required : with_vulkan_overlay_layer or with_aco_tests or with_amd_vk or with_intel_vk)
 if prog_glslang.found()
+  # Check if glslang has depfile support. Support was added in 11.3.0, but
+  # Windows path support was broken until 11.9.0.
+  # 
+  # It is intentional to check the build machine, since we need to ensure that
+  # glslang will output valid paths on the build platform
+  _glslang_check = build_machine.system() == 'windows' ? '>= 11.9.0' : '>= 11.3.0'
+  if run_command(prog_glslang, ['--version'], check : false).stdout().split(':')[2].version_compare(_glslang_check)
+    glslang_depfile = ['--depfile', '@DEPFILE@']
+  else
+    glslang_depfile = []
+  endif
   if run_command(prog_glslang, [ '--quiet', '--version' ], check : false).returncode() == 0
     glslang_quiet = ['--quiet']
   else

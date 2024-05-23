@@ -1215,7 +1215,6 @@ zink_descriptors_update_masked_buffer(struct zink_context *ctx, bool is_compute,
          bs->dd.cur_db_offset[type] = bs->dd.db_offset;
          bs->dd.db_offset += pg->dd.db_size[type];
       }
-      zink_flush_dgc_if_enabled(ctx);
       /* templates are indexed by the set id, so increment type by 1
          * (this is effectively an optimization of indirecting through screen->desc_set_id)
          */
@@ -1252,7 +1251,6 @@ zink_descriptors_update_masked(struct zink_context *ctx, bool is_compute, uint8_
    u_foreach_bit(type, changed_sets) {
       assert(type + 1 < pg->num_dsl);
       if (pg->dd.pool_key[type]) {
-         zink_flush_dgc_if_enabled(ctx);
          /* templates are indexed by the set id, so increment type by 1
           * (this is effectively an optimization of indirecting through screen->desc_set_id)
           */
@@ -1273,7 +1271,6 @@ zink_descriptors_update_masked(struct zink_context *ctx, bool is_compute, uint8_
          continue;
       /* same set indexing as above */
       assert(bs->dd.sets[is_compute][type + 1]);
-      zink_flush_dgc_if_enabled(ctx);
       VKSCR(CmdBindDescriptorSets)(bs->cmdbuf,
                               is_compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                               /* same set indexing as above */
@@ -1368,7 +1365,6 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
          enlarge_db(ctx);
          changed_sets = pg->dd.binding_usage;
          ctx->dd.push_state_changed[is_compute] = true;
-         zink_flush_dgc_if_enabled(ctx);
       }
 
       if (!bs->dd.db_bound)
@@ -1412,7 +1408,6 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
             bs->dd.cur_db_offset[ZINK_DESCRIPTOR_TYPE_UNIFORMS] = bs->dd.db_offset;
             bs->dd.db_offset += ctx->dd.db_size[is_compute];
          }
-         zink_flush_dgc_if_enabled(ctx);
          VKCTX(CmdSetDescriptorBufferOffsetsEXT)(bs->cmdbuf,
                                                  is_compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                                                  pg->layout,
@@ -1420,9 +1415,6 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
                                                  &index,
                                                  &offset);
       } else {
-         if (ctx->dd.push_state_changed[0]) {
-            zink_flush_dgc_if_enabled(ctx);
-         }
          if (have_KHR_push_descriptor) {
             if (ctx->dd.push_state_changed[is_compute])
                VKCTX(CmdPushDescriptorSetWithTemplateKHR)(bs->cmdbuf, pg->dd.templates[0],

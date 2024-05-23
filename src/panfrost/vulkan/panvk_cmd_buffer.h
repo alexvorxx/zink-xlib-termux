@@ -72,30 +72,9 @@ struct panvk_cmd_event_op {
    struct panvk_event *event;
 };
 
-enum panvk_dynamic_state_bits {
-   PANVK_DYNAMIC_VIEWPORT = 1 << 0,
-   PANVK_DYNAMIC_SCISSOR = 1 << 1,
-   PANVK_DYNAMIC_LINE_WIDTH = 1 << 2,
-   PANVK_DYNAMIC_DEPTH_BIAS = 1 << 3,
-   PANVK_DYNAMIC_BLEND_CONSTANTS = 1 << 4,
-   PANVK_DYNAMIC_DEPTH_BOUNDS = 1 << 5,
-   PANVK_DYNAMIC_STENCIL_COMPARE_MASK = 1 << 6,
-   PANVK_DYNAMIC_STENCIL_WRITE_MASK = 1 << 7,
-   PANVK_DYNAMIC_STENCIL_REFERENCE = 1 << 8,
-   PANVK_DYNAMIC_DISCARD_RECTANGLE = 1 << 9,
-   PANVK_DYNAMIC_SSBO = 1 << 10,
-   PANVK_DYNAMIC_VERTEX_INSTANCE_OFFSETS = 1 << 11,
-   PANVK_DYNAMIC_ALL = (1 << 12) - 1,
-};
-
 struct panvk_descriptor_state {
-   uint32_t dirty;
    const struct panvk_descriptor_set *sets[MAX_SETS];
    struct panvk_push_descriptor_set *push_sets[MAX_SETS];
-   union {
-      struct panvk_graphics_sysvals gfx;
-      struct panvk_compute_sysvals compute;
-   } sysvals;
 
    struct {
       struct mali_uniform_buffer_packed ubos[MAX_DYNAMIC_UNIFORM_BUFFERS];
@@ -106,10 +85,11 @@ struct panvk_descriptor_state {
    mali_ptr samplers;
    mali_ptr dyn_desc_ubo;
    mali_ptr push_uniforms;
-   mali_ptr vs_attribs;
-   mali_ptr vs_attrib_bufs;
-   mali_ptr non_vs_attribs;
-   mali_ptr non_vs_attrib_bufs;
+
+   struct {
+      mali_ptr attribs;
+      mali_ptr attrib_bufs;
+   } img;
 };
 
 struct panvk_attrib_buf {
@@ -117,24 +97,27 @@ struct panvk_attrib_buf {
    unsigned size;
 };
 
-struct panvk_cmd_state {
+struct panvk_cmd_graphics_state {
+   struct panvk_descriptor_state desc_state;
+   const struct panvk_graphics_pipeline *pipeline;
+
+   struct {
+      struct vk_vertex_input_state vi;
+      struct vk_sample_locations_state sl;
+   } dynamic;
+
    uint32_t dirty;
 
-   struct panvk_varyings_info varyings;
-   mali_ptr fs_rsd;
+   struct panvk_graphics_sysvals sysvals;
 
    struct {
-      float constants[4];
-   } blend;
+      mali_ptr rsd;
+   } fs;
 
    struct {
-      struct {
-         float constant_factor;
-         float clamp;
-         float slope_factor;
-      } depth_bias;
-      float line_width;
-   } rast;
+      mali_ptr attribs;
+      mali_ptr attrib_bufs;
+   } vs;
 
    struct {
       struct panvk_attrib_buf bufs[MAX_VBS];
@@ -150,14 +133,11 @@ struct panvk_cmd_state {
    } ib;
 
    struct {
+      enum vk_rp_attachment_flags bound_attachments;
       struct {
-         uint8_t compare_mask;
-         uint8_t write_mask;
-         uint8_t ref;
-      } s_front, s_back;
-   } zs;
-
-   struct {
+         VkFormat fmts[MAX_RTS];
+         uint8_t samples[MAX_RTS];
+      } color_attachments;
       struct pan_fb_info info;
       bool crc_valid[MAX_RTS];
       uint32_t bo_count;
@@ -165,15 +145,12 @@ struct panvk_cmd_state {
    } fb;
 
    mali_ptr vpd;
-   VkViewport viewport;
-   VkRect2D scissor;
-
-   struct panvk_batch *batch;
 };
 
-struct panvk_cmd_bind_point_state {
+struct panvk_cmd_compute_state {
    struct panvk_descriptor_state desc_state;
-   const struct panvk_pipeline *pipeline;
+   const struct panvk_compute_pipeline *pipeline;
+   struct panvk_compute_sysvals sysvals;
 };
 
 struct panvk_cmd_buffer {
@@ -183,25 +160,52 @@ struct panvk_cmd_buffer {
    struct panvk_pool varying_pool;
    struct panvk_pool tls_pool;
    struct list_head batches;
+   struct panvk_batch *cur_batch;
 
-   struct panvk_cmd_state state;
+   struct {
+      struct panvk_cmd_graphics_state gfx;
+      struct panvk_cmd_compute_state compute;
+   } state;
 
    uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
-
-   struct panvk_cmd_bind_point_state bind_points[MAX_BIND_POINTS];
 };
 
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 
-#define panvk_cmd_get_bind_point_state(cmdbuf, bindpoint)                      \
-   &(cmdbuf)->bind_points[VK_PIPELINE_BIND_POINT_##bindpoint]
+static inline const struct panvk_pipeline *
+panvk_cmd_get_pipeline(const struct panvk_cmd_buffer *cmdbuf,
+                       VkPipelineBindPoint bindpoint)
+{
+   switch (bindpoint) {
+   case VK_PIPELINE_BIND_POINT_GRAPHICS:
+      return &cmdbuf->state.gfx.pipeline->base;
 
-#define panvk_cmd_get_pipeline(cmdbuf, bindpoint)                              \
-   (cmdbuf)->bind_points[VK_PIPELINE_BIND_POINT_##bindpoint].pipeline
+   case VK_PIPELINE_BIND_POINT_COMPUTE:
+      return &cmdbuf->state.compute.pipeline->base;
 
-#define panvk_cmd_get_desc_state(cmdbuf, bindpoint)                            \
-   &(cmdbuf)->bind_points[VK_PIPELINE_BIND_POINT_##bindpoint].desc_state
+   default:
+      assert(!"Unsupported bind point");
+      return NULL;
+   }
+}
+
+static inline struct panvk_descriptor_state *
+panvk_cmd_get_desc_state(struct panvk_cmd_buffer *cmdbuf,
+                         VkPipelineBindPoint bindpoint)
+{
+   switch (bindpoint) {
+   case VK_PIPELINE_BIND_POINT_GRAPHICS:
+      return &cmdbuf->state.gfx.desc_state;
+
+   case VK_PIPELINE_BIND_POINT_COMPUTE:
+      return &cmdbuf->state.compute.desc_state;
+
+   default:
+      assert(!"Unsupported bind point");
+      return NULL;
+   }
+}
 
 extern const struct vk_command_buffer_ops panvk_per_arch(cmd_buffer_ops);
 

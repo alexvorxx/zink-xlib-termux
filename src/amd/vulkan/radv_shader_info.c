@@ -587,9 +587,12 @@ gather_shader_info_tes(struct radv_device *device, const nir_shader *nir, struct
    info->tes.reads_tess_factors =
       !!(nir->info.inputs_read & (VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER));
 
-   if (!info->inputs_linked)
+   if (!info->inputs_linked) {
       info->tes.num_linked_inputs = util_last_bit64(radv_gather_unlinked_io_mask(
          nir->info.inputs_read & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER)));
+      info->tes.num_linked_patch_inputs = util_last_bit64(
+         radv_gather_unlinked_patch_io_mask(nir->info.inputs_read, nir->info.patch_inputs_read));
+   }
    if (!info->outputs_linked)
       info->tes.num_linked_outputs = util_last_bit64(radv_gather_unlinked_io_mask(nir->info.outputs_written));
 

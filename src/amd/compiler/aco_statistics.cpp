@@ -288,10 +288,11 @@ get_wait_counter_info(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr)
       else
          info[wait_type_vs] = 320;
    } else if (instr->isSMEM()) {
+      wait_type type = gfx_level >= GFX12 ? wait_type_km : wait_type_lgkm;
       if (instr->definitions.empty()) {
-         info[wait_type_lgkm] = 200;
+         info[type] = 200;
       } else if (instr->operands.empty()) { /* s_memtime and s_memrealtime */
-         info[wait_type_lgkm] = 1;
+         info[type] = 1;
       } else {
          bool likely_desc_load = instr->operands[0].size() == 2;
          bool soe = instr->operands.size() >= (!instr->definitions.empty() ? 3 : 4);
@@ -299,15 +300,21 @@ get_wait_counter_info(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr)
             instr->operands[1].isConstant() && (!soe || instr->operands.back().isConstant());
 
          if (likely_desc_load || const_offset)
-            info[wait_type_lgkm] = 30; /* likely to hit L0 cache */
+            info[type] = 30; /* likely to hit L0 cache */
          else
-            info[wait_type_lgkm] = 200;
+            info[type] = 200;
       }
    } else if (instr->isDS()) {
       info[wait_type_lgkm] = 20;
+   } else if (instr->isVMEM() && instr->definitions.empty() && gfx_level >= GFX10) {
+      info[wait_type_vs] = 320;
    } else if (instr->isVMEM()) {
-      wait_type type =
-         instr->definitions.empty() && gfx_level >= GFX10 ? wait_type_vs : wait_type_vm;
+      uint8_t vm_type = get_vmem_type(gfx_level, instr.get());
+      wait_type type = wait_type_vm;
+      if (gfx_level >= GFX12 && vm_type == vmem_bvh)
+         type = wait_type_bvh;
+      else if (gfx_level >= GFX12 && vm_type == vmem_sampler)
+         type = wait_type_sample;
       info[type] = 320;
    }
 

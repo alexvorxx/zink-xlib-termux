@@ -2784,6 +2784,7 @@ gl_nir_link_glsl(struct gl_context *ctx, struct gl_shader_program *prog)
    }
 
    resize_tes_inputs(consts, prog);
+   set_geom_shader_input_array_size(prog);
 
    /* Validate the inputs of each stage with the output of the preceding
     * stage.

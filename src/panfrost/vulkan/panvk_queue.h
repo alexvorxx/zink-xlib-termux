@@ -12,6 +12,8 @@
 
 #include <stdint.h>
 
+#include "panvk_device.h"
+
 #include "vk_queue.h"
 
 struct panvk_queue {
@@ -21,16 +23,10 @@ struct panvk_queue {
 
 VK_DEFINE_HANDLE_CASTS(panvk_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 
-static inline struct panvk_device *
-panvk_queue_get_device(const struct panvk_queue *queue)
-{
-   return container_of(queue->vk.base.device, struct panvk_device, vk);
-}
-
 static inline void
 panvk_queue_finish(struct panvk_queue *queue)
 {
-   struct panvk_device *dev = panvk_queue_get_device(queue);
+   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
 
    vk_queue_finish(&queue->vk);
    drmSyncobjDestroy(dev->vk.drm_fd, queue->sync);

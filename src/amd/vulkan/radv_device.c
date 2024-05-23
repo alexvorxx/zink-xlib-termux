@@ -74,6 +74,9 @@ typedef void *drmDevicePtr;
 #include "ac_llvm_util.h"
 #endif
 
+#include "ac_descriptors.h"
+#include "ac_formats.h"
+
 static bool
 radv_spm_trace_enabled(struct radv_instance *instance)
 {
@@ -1618,7 +1621,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
 
       pitch_tile_max = level_info->nblk_x / 8 - 1;
       slice_tile_max = (level_info->nblk_x * level_info->nblk_y) / 64 - 1;
-      tile_mode_index = radv_tile_mode_index(plane, iview->vk.base_mip_level, false);
+      tile_mode_index = ac_tile_mode_index(&plane->surface, iview->vk.base_mip_level, false);
 
       cb->cb_color_pitch = S_028C64_TILE_MAX(pitch_tile_max);
       cb->cb_color_slice = S_028C68_TILE_MAX(slice_tile_max);
@@ -1683,8 +1686,8 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
    format = ac_get_cb_format(pdev->info.gfx_level, desc->format);
    assert(format != V_028C70_COLOR_INVALID);
 
-   swap = radv_translate_colorswap(iview->vk.format, false);
-   endian = radv_colorformat_endian_swap(format);
+   swap = ac_translate_colorswap(pdev->info.gfx_level, vk_format_to_pipe_format(iview->vk.format), false);
+   endian = ac_colorformat_endian_swap(format);
 
    /* blend clamp should be set for all NORM/SRGB types */
    if (ntype == V_028C70_NUMBER_UNORM || ntype == V_028C70_NUMBER_SNORM || ntype == V_028C70_NUMBER_SRGB)
@@ -1780,7 +1783,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
        *
        * We set the pitch in MIP0_WIDTH.
        */
-      if (pdev->info.gfx_level && iview->image->vk.image_type == VK_IMAGE_TYPE_2D &&
+      if (pdev->info.gfx_level >= GFX10_3 && iview->image->vk.image_type == VK_IMAGE_TYPE_2D &&
           iview->image->vk.array_layers == 1 && plane->surface.is_linear) {
          assert((plane->surface.u.gfx9.surf_pitch * plane->surface.bpe) % 256 == 0);
 
@@ -1875,7 +1878,7 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 
    memset(ds, 0, sizeof(*ds));
 
-   format = radv_translate_dbformat(iview->image->vk.format);
+   format = ac_translate_dbformat(vk_format_to_pipe_format(iview->image->vk.format));
    stencil_format = surf->has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;
@@ -1994,9 +1997,9 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          ds->db_z_info |= S_028040_TILE_SPLIT(G_009910_TILE_SPLIT(tile_mode));
          ds->db_stencil_info |= S_028044_TILE_SPLIT(G_009910_TILE_SPLIT(stencil_tile_mode));
       } else {
-         unsigned tile_mode_index = radv_tile_mode_index(&iview->image->planes[0], level, false);
+         unsigned tile_mode_index = ac_tile_mode_index(&iview->image->planes[0].surface, level, false);
          ds->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);
-         tile_mode_index = radv_tile_mode_index(&iview->image->planes[0], level, true);
+         tile_mode_index = ac_tile_mode_index(&iview->image->planes[0].surface, level, true);
          ds->db_stencil_info |= S_028044_TILE_MODE_INDEX(tile_mode_index);
          if (stencil_only)
             ds->db_z_info |= S_028040_TILE_MODE_INDEX(tile_mode_index);

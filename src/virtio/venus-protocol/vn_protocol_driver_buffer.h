@@ -127,6 +127,14 @@ vn_sizeof_VkBufferCreateInfo_pnext(const void *val)
 
     while (pnext) {
         switch ((int32_t)pnext->sType) {
+        case VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR:
+            if (!vn_cs_renderer_protocol_has_extension(471 /* VK_KHR_maintenance5 */))
+                break;
+            size += vn_sizeof_simple_pointer(pnext);
+            size += vn_sizeof_VkStructureType(&pnext->sType);
+            size += vn_sizeof_VkBufferCreateInfo_pnext(pnext->pNext);
+            size += vn_sizeof_VkBufferUsageFlags2CreateInfoKHR_self((const VkBufferUsageFlags2CreateInfoKHR *)pnext);
+            return size;
         case VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO:
             size += vn_sizeof_simple_pointer(pnext);
             size += vn_sizeof_VkStructureType(&pnext->sType);
@@ -187,6 +195,14 @@ vn_encode_VkBufferCreateInfo_pnext(struct vn_cs_encoder *enc, const void *val)
 
     while (pnext) {
         switch ((int32_t)pnext->sType) {
+        case VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR:
+            if (!vn_cs_renderer_protocol_has_extension(471 /* VK_KHR_maintenance5 */))
+                break;
+            vn_encode_simple_pointer(enc, pnext);
+            vn_encode_VkStructureType(enc, &pnext->sType);
+            vn_encode_VkBufferCreateInfo_pnext(enc, pnext->pNext);
+            vn_encode_VkBufferUsageFlags2CreateInfoKHR_self(enc, (const VkBufferUsageFlags2CreateInfoKHR *)pnext);
+            return;
         case VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO:
             vn_encode_simple_pointer(enc, pnext);
             vn_encode_VkStructureType(enc, &pnext->sType);

@@ -1545,6 +1545,7 @@ resource_create(struct pipe_screen *pscreen,
    res->base.b = *templ;
 
    /*bool allow_cpu_storage = (templ->target == PIPE_BUFFER) &&
+                            (templ->usage != PIPE_USAGE_STREAM) &&
                             (templ->width0 < 0x1000);
    threaded_resource_init(&res->base.b, allow_cpu_storage);*/
    threaded_resource_init(&res->base.b, false);
@@ -1579,7 +1580,7 @@ resource_create(struct pipe_screen *pscreen,
           */
          res->base.b.flags |= PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY;
       }
-      if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB || zink_debug & ZINK_DEBUG_DGC)
+      if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB)
          zink_resource_get_address(screen, res);
    } else {
       if (templ->flags & PIPE_RESOURCE_FLAG_SPARSE)

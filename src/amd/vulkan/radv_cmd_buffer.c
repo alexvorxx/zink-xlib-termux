@@ -31,6 +31,7 @@
 #include "vk_util.h"
 
 #include "ac_debug.h"
+#include "ac_descriptors.h"
 #include "ac_nir.h"
 #include "ac_shader_args.h"
 
@@ -6017,23 +6018,7 @@ radv_flush_streamout_descriptors(struct radv_cmd_buffer *cmd_buffer)
             }
          }
 
-         uint32_t rsrc_word3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                               S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
-
-         if (pdev->info.gfx_level >= GFX11) {
-            rsrc_word3 |=
-               S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-         } else if (pdev->info.gfx_level >= GFX10) {
-            rsrc_word3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                          S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-         } else {
-            rsrc_word3 |= S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-         }
-
-         desc[0] = va;
-         desc[1] = S_008F04_BASE_ADDRESS_HI(va >> 32);
-         desc[2] = size;
-         desc[3] = rsrc_word3;
+         ac_build_raw_buffer_descriptor(pdev->info.gfx_level, va, size, desc);
       }
 
       desc_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo);
@@ -7195,22 +7180,9 @@ radv_bind_descriptor_sets(struct radv_cmd_buffer *cmd_buffer,
             memset(dst, 0, 4 * 4);
          } else {
             uint64_t va = range->va + pBindDescriptorSetsInfo->pDynamicOffsets[dyn_idx];
-            dst[0] = va;
-            dst[1] = S_008F04_BASE_ADDRESS_HI(va >> 32);
-            dst[2] = no_dynamic_bounds ? 0xffffffffu : range->size;
-            dst[3] = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                     S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
+            const uint32_t size = no_dynamic_bounds ? 0xffffffffu : range->size;
 
-            if (pdev->info.gfx_level >= GFX11) {
-               dst[3] |=
-                  S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-            } else if (pdev->info.gfx_level >= GFX10) {
-               dst[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                         S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-            } else {
-               dst[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-                         S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-            }
+            ac_build_raw_buffer_descriptor(pdev->info.gfx_level, va, size, dst);
          }
 
          cmd_buffer->push_constant_stages |= set->header.layout->dynamic_shader_stages;

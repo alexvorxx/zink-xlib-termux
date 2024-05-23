@@ -175,7 +175,10 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
       program->dev.scratch_global_offset_max = 4095;
    }
 
-   if (program->gfx_level >= GFX11) {
+   if (program->gfx_level >= GFX12) {
+      /* Same as GFX11, except one less for VSAMPLE. */
+      program->dev.max_nsa_vgprs = 3;
+   } else if (program->gfx_level >= GFX11) {
       /* GFX11 can have only 1 NSA dword. The last VGPR isn't included here because it contains the
        * rest of the address.
        */

@@ -800,8 +800,11 @@ validate_ir(Program* program)
                         check(instr->operands[i].regClass() == v1,
                               "GFX10 MIMG VADDR must be v1 if NSA is used", instr.get());
                      } else {
+                        unsigned num_scalar =
+                           program->gfx_level >= GFX12 ? (instr->operands.size() - 4) : 4;
                         if (instr->opcode != aco_opcode::image_bvh_intersect_ray &&
-                            instr->opcode != aco_opcode::image_bvh64_intersect_ray && i < 7) {
+                            instr->opcode != aco_opcode::image_bvh64_intersect_ray &&
+                            i < 3 + num_scalar) {
                            check(instr->operands[i].regClass() == v1,
                                  "first 4 GFX11 MIMG VADDR must be v1 if NSA is used", instr.get());
                         }

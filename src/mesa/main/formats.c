@@ -954,7 +954,7 @@ _mesa_uncompressed_format_to_type(mesa_format format)
    case MESA_FORMAT_A1R5G5B5_UINT:
    case MESA_FORMAT_R5G5B5A1_UNORM:
    case MESA_FORMAT_R5G5B5A1_UINT:
-      return GL_UNSIGNED_SHORT_1_5_5_5_REV;
+      return GL_UNSIGNED_SHORT_5_5_5_1;
 
    case MESA_FORMAT_B10G10R10A2_UNORM:
    case MESA_FORMAT_B10G10R10A2_UINT:

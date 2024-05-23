@@ -2794,7 +2794,7 @@ static void si_init_depth_surface(struct si_context *sctx, struct si_surface *su
       .first_layer = surf->base.u.tex.first_layer,
       .last_layer = surf->base.u.tex.last_layer,
       .allow_expclear = true,
-      .htile_enabled = si_htile_enabled(tex, level, PIPE_MASK_ZS),
+      .htile_enabled = sctx->gfx_level < GFX12 && si_htile_enabled(tex, level, PIPE_MASK_ZS),
       .htile_stencil_disabled = tex->htile_stencil_disabled,
    };
 

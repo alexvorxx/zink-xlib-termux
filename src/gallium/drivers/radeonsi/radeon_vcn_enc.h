@@ -332,6 +332,12 @@ void radeon_enc_5_0_init(struct radeon_encoder *enc);
 void radeon_enc_av1_bs_instruction_type(struct radeon_encoder *enc,
                                         unsigned int inst, unsigned int obu_type);
 
+void radeon_enc_av1_temporal_delimiter(struct radeon_encoder *enc);
+
+void radeon_enc_av1_sequence_header(struct radeon_encoder *enc, bool separate_delta_q);
+
+void radeon_enc_av1_tile_group(struct radeon_encoder *enc);
+
 unsigned char *radeon_enc_av1_header_size_offset(struct radeon_encoder *enc);
 
 unsigned int radeon_enc_value_bits(unsigned int value);

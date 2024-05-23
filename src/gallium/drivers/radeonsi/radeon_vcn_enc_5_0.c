@@ -31,7 +31,8 @@ static void radeon_enc_cdf_default_table(struct radeon_encoder *enc)
 {
    bool use_cdf_default = enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_KEY ||
                           enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_INTRA_ONLY ||
-                          enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_SWITCH;
+                          enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_SWITCH ||
+                          (enc->enc_pic.enable_error_resilient_mode);
 
    enc->enc_pic.av1_cdf_default_table.use_cdf_default = use_cdf_default ? 1 : 0;
 
@@ -66,22 +67,43 @@ static void radeon_enc_spec_misc(struct radeon_encoder *enc)
 
 static void radeon_enc_encode_params(struct radeon_encoder *enc)
 {
-   switch (enc->enc_pic.picture_type) {
-   case PIPE_H2645_ENC_PICTURE_TYPE_I:
-   case PIPE_H2645_ENC_PICTURE_TYPE_IDR:
-      enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_I;
-      break;
-   case PIPE_H2645_ENC_PICTURE_TYPE_P:
-      enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_P;
-      break;
-   case PIPE_H2645_ENC_PICTURE_TYPE_SKIP:
-      enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_P_SKIP;
-      break;
-   case PIPE_H2645_ENC_PICTURE_TYPE_B:
-      enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_B;
-      break;
-   default:
-      enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_I;
+
+   bool is_av1 = u_reduce_video_profile(enc->base.profile)
+                             == PIPE_VIDEO_FORMAT_AV1;
+   if ( !is_av1 ) {
+      switch (enc->enc_pic.picture_type) {
+         case PIPE_H2645_ENC_PICTURE_TYPE_I:
+         case PIPE_H2645_ENC_PICTURE_TYPE_IDR:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_I;
+            break;
+         case PIPE_H2645_ENC_PICTURE_TYPE_P:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_P;
+            break;
+         case PIPE_H2645_ENC_PICTURE_TYPE_SKIP:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_P_SKIP;
+            break;
+         case PIPE_H2645_ENC_PICTURE_TYPE_B:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_B;
+            break;
+         default:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_I;
+      }
+   } else {
+      switch (enc->enc_pic.frame_type) {
+         case PIPE_AV1_ENC_FRAME_TYPE_KEY:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_I;
+            break;
+         case PIPE_AV1_ENC_FRAME_TYPE_INTRA_ONLY:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_I;
+            break;
+         case PIPE_AV1_ENC_FRAME_TYPE_INTER:
+         case PIPE_AV1_ENC_FRAME_TYPE_SWITCH:
+         case PIPE_AV1_ENC_FRAME_TYPE_SHOW_EXISTING:
+            enc->enc_pic.enc_params.pic_type = RENCODE_PICTURE_TYPE_P;
+            break;
+         default:
+            assert(0); /* never come to this condition */
+      }
    }
 
    if (enc->luma->meta_offset) {

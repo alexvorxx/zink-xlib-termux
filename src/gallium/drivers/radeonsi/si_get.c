@@ -787,7 +787,7 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
             union pipe_av1_enc_cap_features_ext2 attrib_ext2;
             attrib_ext2.value = 0;
 
-           attrib_ext2.bits.tile_size_bytes_minus1 = 1;
+           attrib_ext2.bits.tile_size_bytes_minus1 = 3;
            attrib_ext2.bits.obu_size_bytes_minus1 = 1;
            /**
             * tx_mode supported.

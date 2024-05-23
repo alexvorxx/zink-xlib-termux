@@ -52,33 +52,59 @@ panvk_deps = []
 panvk_flags = []
 panvk_per_arch_libs = []
 
+bifrost_archs = [6, 7]
+bifrost_inc_dir = ['bifrost']
+bifrost_files = [
+  'bifrost/panvk_vX_descriptor_set.c',
+  'bifrost/panvk_vX_descriptor_set_layout.c',
+  'bifrost/panvk_vX_nir_lower_descriptors.c',
+  'bifrost/panvk_vX_pipeline.c',
+  'bifrost/panvk_vX_pipeline_layout.c',
+]
+
+jm_archs = [6, 7]
+jm_inc_dir = ['jm']
+jm_files = [
+  'jm/panvk_vX_cmd_buffer.c',
+  'jm/panvk_vX_meta.c',
+  'jm/panvk_vX_meta_blit.c',
+  'jm/panvk_vX_meta_clear.c',
+  'jm/panvk_vX_meta_copy.c',
+  'jm/panvk_vX_queue.c',
+]
+
+common_per_arch_files = [
+  panvk_entrypoints[0],
+  'panvk_vX_blend.c',
+  'panvk_vX_buffer_view.c',
+  'panvk_vX_device.c',
+  'panvk_vX_image_view.c',
+  'panvk_vX_sampler.c',
+  'panvk_vX_shader.c',
+]
+
 foreach arch : [6, 7]
+  per_arch_files = common_per_arch_files
+  inc_panvk_per_arch = []
+
+  if arch in bifrost_archs
+    inc_panvk_per_arch += bifrost_inc_dir
+    per_arch_files += bifrost_files
+  endif
+
+  if arch in jm_archs
+    inc_panvk_per_arch += jm_inc_dir
+    per_arch_files += jm_files
+  endif
+
   panvk_per_arch_libs += static_library(
     'panvk_v@0@'.format(arch),
-    [
-      panvk_entrypoints[0],
-      'panvk_vX_blend.c',
-      'panvk_vX_buffer_view.c',
-      'panvk_vX_cmd_buffer.c',
-      'panvk_vX_descriptor_set.c',
-      'panvk_vX_descriptor_set_layout.c',
-      'panvk_vX_device.c',
-      'panvk_vX_image_view.c',
-      'panvk_vX_meta.c',
-      'panvk_vX_meta_blit.c',
-      'panvk_vX_meta_copy.c',
-      'panvk_vX_meta_clear.c',
-      'panvk_vX_nir_lower_descriptors.c',
-      'panvk_vX_pipeline.c',
-      'panvk_vX_pipeline_layout.c',
-      'panvk_vX_queue.c',
-      'panvk_vX_sampler.c',
-      'panvk_vX_shader.c',
-    ],
+    per_arch_files,
     include_directories : [
       inc_include,
       inc_src,
       inc_panfrost,
+      inc_panvk_per_arch,
     ],
     dependencies : [
       idep_nir_headers,

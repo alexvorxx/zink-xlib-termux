@@ -56,6 +56,7 @@
       when: on_success
     - changes: &panfrost_vulkan_file_list
         - src/panfrost/vulkan/*
+        - src/panfrost/vulkan/**/*
       when: on_success
     - changes: &panfrost_bifrost_file_list
         - src/panfrost/compiler/**/*

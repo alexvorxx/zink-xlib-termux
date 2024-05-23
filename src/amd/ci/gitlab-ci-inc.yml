@@ -238,6 +238,7 @@
     MESA_VK_IGNORE_CONFORMANCE_WARNING: 1
     # Enable ETC2 emulation on non-native platforms (RENOIR,RDNA+, GFX6-8 dGPUs)
     radv_require_etc2: 'true'
+    B2C_JOB_WARN_REGEX: '\*ERROR\* ring .* timeout'
 
 .b2c-test-radv-vk:
   extends:

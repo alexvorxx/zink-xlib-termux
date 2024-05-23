@@ -186,9 +186,16 @@ struct ac_ds_surface {
 void
 ac_init_ds_surface(const struct radeon_info *info, const struct ac_ds_state *state, struct ac_ds_surface *ds);
 
-unsigned
-ac_get_decompress_on_z_planes(const struct radeon_info *info, enum pipe_format format, uint8_t num_samples,
-                              bool htile_stencil_disabled, bool no_d16_compression);
+struct ac_mutable_ds_state {
+   const struct ac_ds_surface *ds; /* original DS surface */
+   enum pipe_format format;
+   uint32_t tc_compat_htile_enabled : 1;
+   uint32_t no_d16_compression : 1;
+};
+
+void
+ac_set_mutable_ds_surface_fields(const struct radeon_info *info, const struct ac_mutable_ds_state *state,
+                                 struct ac_ds_surface *ds);
 
 #ifdef __cplusplus
 }

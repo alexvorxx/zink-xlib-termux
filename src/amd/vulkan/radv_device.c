@@ -1861,41 +1861,17 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 
    ac_init_ds_surface(&pdev->info, &ds_state, &ds->ac);
 
-   unsigned max_zplanes = 0;
-   if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
-      max_zplanes = ac_get_decompress_on_z_planes(&pdev->info, vk_format_to_pipe_format(iview->vk.format),
-                                                  iview->image->vk.samples,
-                                                  radv_image_tile_stencil_disabled(device, iview->image), true);
-   }
+   const struct ac_mutable_ds_state mutable_ds_state = {
+      .ds = &ds->ac,
+      .format = vk_format_to_pipe_format(iview->image->vk.format),
+      .tc_compat_htile_enabled = radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image),
+      .no_d16_compression = true,
+   };
 
-   if (pdev->info.gfx_level >= GFX9) {
-      if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
-         ds->ac.db_z_info |= S_028038_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
+   ac_set_mutable_ds_surface_fields(&pdev->info, &mutable_ds_state, &ds->ac);
 
-         if (pdev->info.gfx_level >= GFX10) {
-            const bool htile_stencil_disabled = radv_image_tile_stencil_disabled(device, iview->image);
-            bool iterate256 = radv_image_get_iterate256(device, iview->image);
-
-            ds->ac.db_z_info |= S_028040_ITERATE_FLUSH(1);
-            ds->ac.db_stencil_info |= S_028044_ITERATE_FLUSH(!htile_stencil_disabled);
-            ds->ac.db_z_info |= S_028040_ITERATE_256(iterate256);
-            ds->ac.db_stencil_info |= S_028044_ITERATE_256(iterate256);
-         } else {
-            ds->ac.db_z_info |= S_028038_ITERATE_FLUSH(1);
-            ds->ac.db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
-         }
-      }
-
-      if (pdev->info.gfx_level >= GFX11) {
-         radv_gfx11_set_db_render_control(device, iview->image->vk.samples, &ds->db_render_control);
-      }
-   } else {
-      ds->ac.u.gfx6.db_depth_info |= S_02803C_ADDR5_SWIZZLE_MASK(!radv_image_is_tc_compat_htile(iview->image));
-
-      if (radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image)) {
-         ds->ac.u.gfx6.db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
-         ds->ac.db_z_info |= S_028040_DECOMPRESS_ON_N_ZPLANES(max_zplanes);
-      }
+   if (pdev->info.gfx_level >= GFX11) {
+      radv_gfx11_set_db_render_control(device, iview->image->vk.samples, &ds->db_render_control);
    }
 }
 

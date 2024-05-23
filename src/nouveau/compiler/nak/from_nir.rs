@@ -699,7 +699,7 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_fabs | nir_op_fadd | nir_op_fneg => {
                 let (x, y) = match alu.op {
-                    nir_op_fabs => (srcs[0].fabs(), 0.into()),
+                    nir_op_fabs => (Src::new_zero().fneg(), srcs[0].fabs()),
                     nir_op_fadd => (srcs[0], srcs[1]),
                     nir_op_fneg => (Src::new_zero().fneg(), srcs[0].fneg()),
                     _ => panic!("Unhandled case"),

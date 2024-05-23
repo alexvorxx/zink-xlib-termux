@@ -42,6 +42,36 @@ impl KillSet {
     }
 }
 
+// These two helpers are carefully paired for the purposes of RA.
+// src_ssa_ref() returns whatever SSARef is present in the source, if any.
+// src_set_reg() overwrites that SSARef with a RegRef.
+#[inline]
+fn src_ssa_ref(src: &Src) -> Option<&SSARef> {
+    match &src.src_ref {
+        SrcRef::SSA(ssa) => Some(ssa),
+        SrcRef::CBuf(CBufRef {
+            buf: CBuf::BindlessSSA(ssa),
+            ..
+        }) => Some(ssa),
+        _ => None,
+    }
+}
+
+#[inline]
+fn src_set_reg(src: &mut Src, reg: RegRef) {
+    match &mut src.src_ref {
+        SrcRef::SSA(_) => {
+            src.src_ref = reg.into();
+        }
+        SrcRef::CBuf(cb) => {
+            debug_assert!(matches!(&cb.buf, CBuf::BindlessSSA(_)));
+            debug_assert!(reg.file() == RegFile::UGPR && reg.comps() == 2);
+            cb.buf = CBuf::BindlessUGPR(reg);
+        }
+        _ => (),
+    }
+}
+
 enum SSAUse {
     FixedReg(u32),
     Vec(SSARef),
@@ -88,7 +118,7 @@ impl SSAUseMap {
                 Op::FSOut(op) => {
                     for (i, src) in op.srcs.iter().enumerate() {
                         let out_reg = u32::try_from(i).unwrap();
-                        if let SrcRef::SSA(ssa) = src.src_ref {
+                        if let Some(ssa) = src_ssa_ref(src) {
                             assert!(ssa.comps() == 1);
                             self.add_fixed_reg_use(ip, ssa[0], out_reg);
                         }
@@ -97,8 +127,8 @@ impl SSAUseMap {
                 _ => {
                     // We don't care about predicates because they're scalar
                     for src in instr.srcs() {
-                        if let SrcRef::SSA(ssa) = src.src_ref {
-                            self.add_vec_use(ip, ssa);
+                        if let Some(ssa) = src_ssa_ref(src) {
+                            self.add_vec_use(ip, *ssa);
                         }
                     }
                 }
@@ -599,9 +629,10 @@ fn instr_remap_srcs_file(instr: &mut Instr, ra: &mut PinnedRegAllocator) {
     // Collect vector sources first since those may silently pin some of our
     // scalar sources.
     for src in instr.srcs_mut() {
-        if let SrcRef::SSA(ssa) = &src.src_ref {
+        if let Some(ssa) = src_ssa_ref(src) {
             if ssa.file().unwrap() == ra.file() && ssa.comps() > 1 {
-                src.src_ref = ra.collect_vector(ssa).into();
+                let reg = ra.collect_vector(ssa);
+                src_set_reg(src, reg);
             }
         }
     }
@@ -613,9 +644,10 @@ fn instr_remap_srcs_file(instr: &mut Instr, ra: &mut PinnedRegAllocator) {
     }
 
     for src in instr.srcs_mut() {
-        if let SrcRef::SSA(ssa) = &src.src_ref {
+        if let Some(ssa) = src_ssa_ref(src) {
             if ssa.file().unwrap() == ra.file() && ssa.comps() == 1 {
-                src.src_ref = ra.collect_vector(ssa).into();
+                let reg = ra.collect_vector(ssa);
+                src_set_reg(src, reg);
             }
         }
     }
@@ -687,7 +719,7 @@ fn instr_assign_regs_file(
     let mut avail = killed.set.clone();
     let mut killed_vecs = Vec::new();
     for src in instr.srcs() {
-        if let SrcRef::SSA(vec) = src.src_ref {
+        if let Some(vec) = src_ssa_ref(src) {
             if vec.comps() > 1 {
                 let mut vec_killed = true;
                 for ssa in vec.iter() {
@@ -700,7 +732,7 @@ fn instr_assign_regs_file(
                     for ssa in vec.iter() {
                         avail.remove(ssa);
                     }
-                    killed_vecs.push(vec);
+                    killed_vecs.push(*vec);
                 }
             }
         }
@@ -893,7 +925,7 @@ impl AssignRegsBlock {
             Op::PhiSrcs(phi) => {
                 for (id, src) in phi.srcs.iter() {
                     assert!(src.src_mod.is_none());
-                    if let SrcRef::SSA(ssa) = src.src_ref {
+                    if let Some(ssa) = src_ssa_ref(src) {
                         assert!(ssa.comps() == 1);
                         let reg = self.get_scalar(ssa[0]);
                         self.phi_out.insert(*id, reg.into());
@@ -924,10 +956,10 @@ impl AssignRegsBlock {
             }
             Op::Break(op) => {
                 for src in op.srcs_as_mut_slice() {
-                    if let SrcRef::SSA(ssa) = src.src_ref {
+                    if let Some(ssa) = src_ssa_ref(src) {
                         assert!(ssa.comps() == 1);
                         let reg = self.get_scalar(ssa[0]);
-                        src.src_ref = reg.into();
+                        src_set_reg(src, reg);
                     }
                 }
 
@@ -945,10 +977,10 @@ impl AssignRegsBlock {
             }
             Op::BSSy(op) => {
                 for src in op.srcs_as_mut_slice() {
-                    if let SrcRef::SSA(ssa) = src.src_ref {
+                    if let Some(ssa) = src_ssa_ref(src) {
                         assert!(ssa.comps() == 1);
                         let reg = self.get_scalar(ssa[0]);
-                        src.src_ref = reg.into();
+                        src_set_reg(src, reg);
                     }
                 }
 
@@ -965,13 +997,18 @@ impl AssignRegsBlock {
                 Some(instr)
             }
             Op::Copy(copy) => {
-                if let SrcRef::SSA(src_vec) = &copy.src.src_ref {
-                    debug_assert!(src_vec.comps() == 1);
-                    let src_ssa = &src_vec[0];
-                    copy.src.src_ref = self.get_scalar(*src_ssa).into();
+                if let Some(ssa) = src_ssa_ref(&copy.src) {
+                    // This may be a Cbuf::BindlessSSA source so we need to
+                    // support vectors because cbuf handles are vec2s. However,
+                    // since we only have a single scalar destination, we can
+                    // just allocate and free killed up-front.
+                    let ra = &mut self.ra[ssa.file().unwrap()];
+                    let mut pra = PinnedRegAllocator::new(ra);
+                    let reg = pra.collect_vector(ssa);
+                    pra.free_killed(srcs_killed);
+                    pra.finish(pcopy);
+                    src_set_reg(&mut copy.src, reg);
                 }
-
-                self.ra.free_killed(srcs_killed);
 
                 let mut del_copy = false;
                 if let Dst::SSA(dst_vec) = &mut copy.dst {
@@ -995,10 +1032,10 @@ impl AssignRegsBlock {
             }
             Op::ParCopy(pcopy) => {
                 for (_, src) in pcopy.dsts_srcs.iter_mut() {
-                    if let SrcRef::SSA(src_vec) = src.src_ref {
+                    if let Some(src_vec) = src_ssa_ref(src) {
                         debug_assert!(src_vec.comps() == 1);
-                        let src_ssa = &src_vec[0];
-                        src.src_ref = self.get_scalar(*src_ssa).into();
+                        let reg = self.get_scalar(src_vec[0]).into();
+                        src_set_reg(src, reg);
                     }
                 }
 
@@ -1032,10 +1069,10 @@ impl AssignRegsBlock {
             }
             Op::FSOut(out) => {
                 for src in out.srcs.iter_mut() {
-                    if let SrcRef::SSA(src_vec) = src.src_ref {
+                    if let Some(src_vec) = src_ssa_ref(src) {
                         debug_assert!(src_vec.comps() == 1);
-                        let src_ssa = &src_vec[0];
-                        src.src_ref = self.get_scalar(*src_ssa).into();
+                        let reg = self.get_scalar(src_vec[0]).into();
+                        src_set_reg(src, reg);
                     }
                 }
 

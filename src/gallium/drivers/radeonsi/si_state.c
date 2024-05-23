@@ -3522,17 +3522,18 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
                                 (zb->base.texture->nr_samples > 1 ? RADEON_PRIO_DEPTH_BUFFER_MSAA
                                                                   : RADEON_PRIO_DEPTH_BUFFER));
 
+      const unsigned level = zb->base.u.tex.level;
+
       /* Set mutable fields. */
       const struct ac_mutable_ds_state mutable_ds_state = {
          .ds = &zb->ds,
          .format = tex->db_render_format,
-         .tc_compat_htile_enabled = vi_tc_compat_htile_enabled(tex, zb->base.u.tex.level, PIPE_MASK_ZS),
+         .tc_compat_htile_enabled = vi_tc_compat_htile_enabled(tex, level, PIPE_MASK_ZS),
+         .zrange_precision = tex->depth_clear_value[level] != 0,
       };
       struct ac_ds_surface ds;
 
       ac_set_mutable_ds_surface_fields(&sctx->screen->info, &mutable_ds_state, &ds);
-
-      unsigned level = zb->base.u.tex.level;
 
       if (sctx->gfx_level >= GFX10) {
          radeon_set_context_reg(R_028014_DB_HTILE_DATA_BASE, ds.u.gfx6.db_htile_data_base);
@@ -3544,8 +3545,7 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
             radeon_set_context_reg_seq(R_02803C_DB_DEPTH_INFO, 7);
             radeon_emit(S_02803C_RESOURCE_LEVEL(1)); /* DB_DEPTH_INFO */
          }
-         radeon_emit(ds.db_z_info |                  /* DB_Z_INFO */
-                     S_028038_ZRANGE_PRECISION(tex->depth_clear_value[level] != 0));
+         radeon_emit(ds.db_z_info);                  /* DB_Z_INFO */
          radeon_emit(ds.db_stencil_info);     /* DB_STENCIL_INFO */
          radeon_emit(ds.db_depth_base);   /* DB_Z_READ_BASE */
          radeon_emit(ds.db_stencil_base); /* DB_STENCIL_READ_BASE */
@@ -3565,8 +3565,7 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
          radeon_emit(ds.db_depth_size);                          /* DB_DEPTH_SIZE */
 
          radeon_set_context_reg_seq(R_028038_DB_Z_INFO, 10);
-         radeon_emit(ds.db_z_info |                                   /* DB_Z_INFO */
-                     S_028038_ZRANGE_PRECISION(tex->depth_clear_value[level] != 0));
+         radeon_emit(ds.db_z_info);                                   /* DB_Z_INFO */
          radeon_emit(ds.db_stencil_info);                             /* DB_STENCIL_INFO */
          radeon_emit(ds.db_depth_base);                           /* DB_Z_READ_BASE */
          radeon_emit(S_028044_BASE_HI(ds.db_depth_base >> 32));   /* DB_Z_READ_BASE_HI */
@@ -3586,8 +3585,7 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
 
          radeon_set_context_reg_seq(R_02803C_DB_DEPTH_INFO, 9);
          radeon_emit(ds.u.gfx6.db_depth_info);   /* DB_DEPTH_INFO */
-         radeon_emit(ds.db_z_info |           /* DB_Z_INFO */
-                     S_028040_ZRANGE_PRECISION(tex->depth_clear_value[level] != 0));
+         radeon_emit(ds.db_z_info);           /* DB_Z_INFO */
          radeon_emit(ds.db_stencil_info);     /* DB_STENCIL_INFO */
          radeon_emit(ds.db_depth_base);   /* DB_Z_READ_BASE */
          radeon_emit(ds.db_stencil_base); /* DB_STENCIL_READ_BASE */
@@ -3744,22 +3742,22 @@ static void gfx11_dgpu_emit_framebuffer_state(struct si_context *sctx, unsigned 
                                 (zb->base.texture->nr_samples > 1 ? RADEON_PRIO_DEPTH_BUFFER_MSAA
                                                                   : RADEON_PRIO_DEPTH_BUFFER));
 
+      const unsigned level = zb->base.u.tex.level;
+
       /* Set mutable fields. */
       const struct ac_mutable_ds_state mutable_ds_state = {
          .ds = &zb->ds,
          .format = tex->db_render_format,
-         .tc_compat_htile_enabled = vi_tc_compat_htile_enabled(tex, zb->base.u.tex.level, PIPE_MASK_ZS),
+         .tc_compat_htile_enabled = vi_tc_compat_htile_enabled(tex, level, PIPE_MASK_ZS),
+         .zrange_precision = tex->depth_clear_value[level] != 0,
       };
       struct ac_ds_surface ds;
 
       ac_set_mutable_ds_surface_fields(&sctx->screen->info, &mutable_ds_state, &ds);
 
-      unsigned level = zb->base.u.tex.level;
-
       gfx11_set_context_reg(R_028014_DB_HTILE_DATA_BASE, ds.u.gfx6.db_htile_data_base);
       gfx11_set_context_reg(R_02801C_DB_DEPTH_SIZE_XY, ds.db_depth_size);
-      gfx11_set_context_reg(R_028040_DB_Z_INFO, ds.db_z_info |
-                            S_028038_ZRANGE_PRECISION(tex->depth_clear_value[level] != 0));
+      gfx11_set_context_reg(R_028040_DB_Z_INFO, ds.db_z_info);
       gfx11_set_context_reg(R_028044_DB_STENCIL_INFO, ds.db_stencil_info);
       gfx11_set_context_reg(R_028048_DB_Z_READ_BASE, ds.db_depth_base);
       gfx11_set_context_reg(R_02804C_DB_STENCIL_READ_BASE, ds.db_stencil_base);

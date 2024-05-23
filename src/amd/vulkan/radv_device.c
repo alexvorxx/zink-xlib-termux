@@ -1850,7 +1850,6 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       .num_samples = iview->image->vk.samples,
       .first_layer = iview->vk.base_array_layer,
       .last_layer = max_slice,
-      .zrange_precision = true,
       .stencil_only = stencil_only,
       .z_read_only = !(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
       .stencil_read_only = !(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT),
@@ -1865,6 +1864,7 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       .ds = &ds->ac,
       .format = vk_format_to_pipe_format(iview->image->vk.format),
       .tc_compat_htile_enabled = radv_htile_enabled(iview->image, level) && radv_image_is_tc_compat_htile(iview->image),
+      .zrange_precision = true,
       .no_d16_compression = true,
    };
 

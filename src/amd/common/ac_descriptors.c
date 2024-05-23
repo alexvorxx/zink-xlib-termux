@@ -609,8 +609,7 @@ ac_init_gfx6_ds_surface(const struct radeon_info *info, const struct ac_ds_state
                        S_028008_Z_READ_ONLY(state->z_read_only) |
                        S_028008_STENCIL_READ_ONLY(state->stencil_read_only);
    ds->db_z_info = S_028040_FORMAT(db_format) |
-                   S_028040_NUM_SAMPLES(util_logbase2(state->num_samples)) |
-                   S_028040_ZRANGE_PRECISION(state->zrange_precision);
+                   S_028040_NUM_SAMPLES(util_logbase2(state->num_samples));
    ds->db_stencil_info = S_028044_FORMAT(stencil_format);
 
    if (info->gfx_level >= GFX7) {
@@ -699,7 +698,6 @@ ac_init_gfx9_ds_surface(const struct radeon_info *info, const struct ac_ds_state
                    S_028038_NUM_SAMPLES(util_logbase2(state->num_samples)) |
                    S_028038_SW_MODE(surf->u.gfx9.swizzle_mode) |
                    S_028038_MAXMIP(state->num_levels - 1) |
-                   S_028038_ZRANGE_PRECISION(state->zrange_precision) |
                    S_028040_ITERATE_256(info->gfx_level >= GFX11);
    ds->db_stencil_info = S_02803C_FORMAT(stencil_format) |
                          S_02803C_SW_MODE(surf->u.gfx9.zs.stencil_swizzle_mode) |
@@ -881,6 +879,8 @@ ac_set_mutable_ds_surface_fields(const struct radeon_info *info, const struct ac
             ds->db_stencil_info |= S_02803C_ITERATE_FLUSH(1);
          }
       }
+
+      ds->db_z_info |= S_028038_ZRANGE_PRECISION(state->zrange_precision);
    } else {
       if (state->tc_compat_htile_enabled) {
          ds->u.gfx6.db_htile_surface |= S_028ABC_TC_COMPATIBLE(1);
@@ -888,5 +888,7 @@ ac_set_mutable_ds_surface_fields(const struct radeon_info *info, const struct ac
       } else {
          ds->u.gfx6.db_depth_info |= S_02803C_ADDR5_SWIZZLE_MASK(1);
       }
+
+      ds->db_z_info |= S_028040_ZRANGE_PRECISION(state->zrange_precision);
    }
 }

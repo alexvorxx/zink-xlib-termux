@@ -1074,11 +1074,52 @@ tmu_spilling_allowed(struct v3d_compile *c)
         return c->spills + c->fills < c->max_tmu_spills;
 }
 
+static bool
+reg_is_payload(struct v3d_compile *c, struct qreg reg)
+{
+   if (reg.file != QFILE_REG)
+      return false;
+
+   if (c->devinfo->ver >= 71) {
+           if (c->s->info.stage == MESA_SHADER_FRAGMENT)
+                   return reg.index >= 1 && reg.index <= 3;
+           if (c->s->info.stage == MESA_SHADER_COMPUTE)
+                   return reg.index == 2 || reg.index == 3;
+           return false;
+   }
+
+   assert(c->devinfo->ver == 42);
+   if (c->s->info.stage == MESA_SHADER_FRAGMENT)
+           return reg.index <= 2;
+   if (c->s->info.stage == MESA_SHADER_COMPUTE)
+           return reg.index == 0 || reg.index == 2;
+   return false;
+}
+
+static bool
+inst_reads_payload(struct v3d_compile *c, struct qinst *inst)
+{
+        if (inst->qpu.type != V3D_QPU_INSTR_TYPE_ALU)
+                return false;
+
+        if (reg_is_payload(c, inst->dst))
+                return true;
+
+        if (reg_is_payload(c, inst->src[0]))
+                return true;
+
+        if (vir_get_nsrc(inst) > 1 && reg_is_payload(c, inst->src[1]))
+                return true;
+
+        return false;
+}
+
 static void
 update_graph_and_reg_classes_for_inst(struct v3d_compile *c,
                                       int *acc_nodes,
                                       int *implicit_rf_nodes,
                                       int last_ldvary_ip,
+                                      bool has_payload,
                                       struct qinst *inst)
 {
         int32_t ip = inst->ip;
@@ -1190,6 +1231,33 @@ update_graph_and_reg_classes_for_inst(struct v3d_compile *c,
                                         ra_add_node_interference(c->g,
                                                                  temp_to_node(c, i),
                                                                  implicit_rf_nodes[0]);
+                        }
+                }
+        }
+
+        /* Spill setup instructions are the only ones that we emit before
+         * reading payload registers so we want to flag their temps so we
+         * don't assign them to payload registers and stomp them before we
+         * can read them. For the case where we may have emitted spill setup
+         * before RA (i.e. for scratch), we need to do this now.
+         */
+        if (c->spill_size > 0 && has_payload && inst_reads_payload(c, inst)) {
+                struct qblock *first_block = vir_entry_block(c);
+                list_for_each_entry_from_rev(struct qinst, _i, inst->link.prev,
+                                             &first_block->instructions, link) {
+                        if (_i->qpu.type != V3D_QPU_INSTR_TYPE_ALU)
+                                continue;
+                        if (_i->dst.file == QFILE_TEMP) {
+                                int node = temp_to_node(c, _i->dst.index);
+                                c->nodes.info[node].payload_conflict = true;
+                        }
+                        if (_i->src[0].file == QFILE_TEMP) {
+                                int node = temp_to_node(c, _i->src[0].index);
+                                c->nodes.info[node].payload_conflict = true;
+                        }
+                        if (vir_get_nsrc(_i) > 1 && _i->src[1].file == QFILE_TEMP) {
+                                int node = temp_to_node(c, _i->src[1].index);
+                                c->nodes.info[node].payload_conflict = true;
                         }
                 }
         }
@@ -1368,6 +1436,7 @@ v3d_register_allocate(struct v3d_compile *c)
          */
         int ip = 0;
         int last_ldvary_ip = -1;
+        bool has_payload = stage_has_payload(c);
         vir_for_each_inst_inorder(inst, c) {
                 inst->ip = ip++;
 
@@ -1387,7 +1456,9 @@ v3d_register_allocate(struct v3d_compile *c)
 
                 update_graph_and_reg_classes_for_inst(c, acc_nodes,
                                                       implicit_rf_nodes,
-                                                      last_ldvary_ip, inst);
+                                                      last_ldvary_ip,
+                                                      has_payload,
+                                                      inst);
         }
 
         /* Flag the nodes that are used in the last instructions of the program

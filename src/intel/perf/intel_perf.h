@@ -510,6 +510,7 @@ void intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
 /** Read the timestamp value in a report.
  */
 uint64_t intel_perf_report_timestamp(const struct intel_perf_query_info *query,
+                                     const struct intel_device_info *devinfo,
                                      const uint32_t *report);
 
 /** Accumulate the delta between 2 snapshots of OA perf registers (layout

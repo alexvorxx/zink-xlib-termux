@@ -684,8 +684,11 @@ oa_metrics_available(struct intel_perf_config *perf, int fd,
 
    perf->enable_all_metrics = debug_get_bool_option("INTEL_EXTENDED_METRICS", false);
 
-   /* TODO: We should query this from i915 */
-   if (devinfo->verx10 >= 125)
+   /* TODO: We should query this from i915?
+    * Looks like Xe2 platforms don't need it but don't have a spec quote to
+    * back it.
+    */
+   if (devinfo->verx10 == 125)
       perf->oa_timestamp_shift = 1;
 
    perf->oa_timestamp_mask =
@@ -992,6 +995,15 @@ accumulate_uint40(int a_index,
    *accumulator += delta;
 }
 
+/* Accumulate 64bits OA counters */
+static inline void
+accumulate_uint64(const uint32_t *report0,
+                  const uint32_t *report1,
+                  uint64_t *accumulator)
+{
+   *accumulator += *((const uint64_t *)report1) - *((const uint64_t *)report0);
+}
+
 static void
 gfx8_read_report_clock_ratios(const uint32_t *report,
                               uint64_t *slice_freq_hz,
@@ -1054,8 +1066,14 @@ can_use_mi_rpc_bc_counters(const struct intel_device_info *devinfo)
 
 uint64_t
 intel_perf_report_timestamp(const struct intel_perf_query_info *query,
+                            const struct intel_device_info *devinfo,
                             const uint32_t *report)
 {
+   if (query->perf->devinfo->verx10 >= 200) {
+      uint64_t data_u64 = *((const uint64_t *)&report[2]);
+      return data_u64 >> query->perf->oa_timestamp_shift;
+   }
+
    return report[1] >> query->perf->oa_timestamp_shift;
 }
 
@@ -1065,25 +1083,43 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
                                    const uint32_t *start,
                                    const uint32_t *end)
 {
+   const struct intel_device_info *devinfo = query->perf->devinfo;
    int i;
 
-   if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
-       start[2] != INTEL_PERF_INVALID_CTX_ID)
-      result->hw_id = start[2];
+   if (query->perf->devinfo->verx10 >= 200) {
+      if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
+          start[4] != INTEL_PERF_INVALID_CTX_ID)
+         result->hw_id = start[4];
+   } else {
+      if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
+          start[2] != INTEL_PERF_INVALID_CTX_ID)
+         result->hw_id = start[2];
+   }
+
    if (result->reports_accumulated == 0)
-      result->begin_timestamp = intel_perf_report_timestamp(query, start);
-   result->end_timestamp = intel_perf_report_timestamp(query, end);
+      result->begin_timestamp = intel_perf_report_timestamp(query, devinfo, start);
+   result->end_timestamp = intel_perf_report_timestamp(query, devinfo, end);
    result->reports_accumulated++;
 
    /* oa format handling needs to match with platform version returned in
     * intel_perf_get_oa_format()
     */
    assert(intel_perf_get_oa_format(query->perf) == query->oa_format);
-   if (query->perf->devinfo->verx10 >= 125) {
+   if (query->perf->devinfo->verx10 >= 200) {
+      /* PEC64u64 */
+      result->accumulator[query->gpu_time_offset] =
+         intel_perf_report_timestamp(query, devinfo, end) -
+         intel_perf_report_timestamp(query, devinfo, start);
+      accumulate_uint64(start + 6, end + 6, &result->accumulator[query->gpu_clock_offset]);
+
+      for (i = 0; i < 64; i++)
+         accumulate_uint64(start + 8 + (2 * i), end + 8 + (2 * i),
+                           &result->accumulator[query->pec_offset + i]);
+   } else if (query->perf->devinfo->verx10 >= 125) {
       /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
       result->accumulator[query->gpu_time_offset] =
-         intel_perf_report_timestamp(query, end) -
-         intel_perf_report_timestamp(query, start);
+         intel_perf_report_timestamp(query, devinfo, end) -
+         intel_perf_report_timestamp(query, devinfo, start);
 
       accumulate_uint32(start + 3, end + 3,
                         result->accumulator + query->gpu_clock_offset); /* clock */
@@ -1141,8 +1177,8 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
    } else if (query->perf->devinfo->verx10 >= 120) {
       /* I915_OA_FORMAT_A32u40_A4u32_B8_C8 */
       result->accumulator[query->gpu_time_offset] =
-         intel_perf_report_timestamp(query, end) -
-         intel_perf_report_timestamp(query, start);
+         intel_perf_report_timestamp(query, devinfo, end) -
+         intel_perf_report_timestamp(query, devinfo, start);
 
       accumulate_uint32(start + 3, end + 3,
                         result->accumulator + query->gpu_clock_offset); /* clock */
@@ -1176,8 +1212,8 @@ intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
    } else {
       /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
       result->accumulator[query->gpu_time_offset] =
-         intel_perf_report_timestamp(query, end) -
-         intel_perf_report_timestamp(query, start);
+         intel_perf_report_timestamp(query, devinfo, end) -
+         intel_perf_report_timestamp(query, devinfo, start);
 
       for (i = 0; i < 61; i++) {
          accumulate_uint32(start + 3 + i, end + 3 + i,

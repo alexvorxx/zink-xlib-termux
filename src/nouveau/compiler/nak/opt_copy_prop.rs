@@ -551,6 +551,14 @@ impl CopyPropPass {
                     }
                 }
             }
+            Op::R2UR(r2ur) => {
+                assert!(r2ur.src.src_mod.is_none());
+                if r2ur.src.is_uniform() {
+                    let dst = r2ur.dst.as_ssa().unwrap();
+                    assert!(dst.comps() == 1);
+                    self.add_copy(dst[0], SrcType::GPR, r2ur.src);
+                }
+            }
             Op::Copy(copy) => {
                 let dst = copy.dst.as_ssa().unwrap();
                 assert!(dst.comps() == 1);

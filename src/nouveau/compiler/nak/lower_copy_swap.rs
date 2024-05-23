@@ -25,6 +25,7 @@ impl LowerCopySwap {
         let dst_reg = copy.dst.as_reg().unwrap();
         assert!(dst_reg.comps() == 1);
         assert!(copy.src.src_mod.is_none());
+        assert!(copy.src.is_uniform() || !dst_reg.is_uniform());
 
         match dst_reg.file() {
             RegFile::GPR => match copy.src.src_ref {
@@ -145,6 +146,37 @@ impl LowerCopySwap {
         }
     }
 
+    fn lower_r2ur(&mut self, b: &mut impl Builder, r2ur: OpR2UR) {
+        assert!(r2ur.src.src_mod.is_none());
+        if r2ur.src.is_uniform() {
+            let copy = OpCopy {
+                dst: r2ur.dst,
+                src: r2ur.src,
+            };
+            self.lower_copy(b, copy);
+        } else {
+            let src_file = r2ur.src.src_ref.as_reg().unwrap().file();
+            let dst_file = r2ur.dst.as_reg().unwrap().file();
+            match src_file {
+                RegFile::GPR => {
+                    assert!(dst_file == RegFile::UGPR);
+                    b.push_op(r2ur);
+                }
+                RegFile::Pred => {
+                    assert!(dst_file == RegFile::UPred);
+                    // It doesn't matter what channel we take
+                    b.push_op(OpVote {
+                        op: VoteOp::Any,
+                        ballot: Dst::None,
+                        vote: r2ur.dst,
+                        pred: r2ur.src,
+                    });
+                }
+                _ => panic!("No matching uniform register file"),
+            }
+        }
+    }
+
     fn lower_swap(&mut self, b: &mut impl Builder, swap: OpSwap) {
         let x = *swap.dsts[0].as_reg().unwrap();
         let y = *swap.dsts[1].as_reg().unwrap();
@@ -179,6 +211,18 @@ impl LowerCopySwap {
         let sm = s.info.sm;
         s.map_instrs(|instr: Box<Instr>, _| -> MappedInstrs {
             match instr.op {
+                Op::R2UR(r2ur) => {
+                    debug_assert!(instr.pred.is_true());
+                    let mut b = InstrBuilder::new(sm);
+                    if DEBUG.annotate() {
+                        b.push_instr(Instr::new_boxed(OpAnnotate {
+                            annotation: "r2ur lowered by lower_copy_swap"
+                                .into(),
+                        }));
+                    }
+                    self.lower_r2ur(&mut b, r2ur);
+                    b.as_mapped_instrs()
+                }
                 Op::Copy(copy) => {
                     debug_assert!(instr.pred.is_true());
                     let mut b = InstrBuilder::new(sm);

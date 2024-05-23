@@ -1280,7 +1280,6 @@ impl Src {
         self.src_ref.iter_ssa_mut()
     }
 
-    #[allow(dead_code)]
     pub fn is_uniform(&self) -> bool {
         match self.src_ref {
             SrcRef::Zero
@@ -3818,6 +3817,22 @@ impl_display_for_op!(OpPopC);
 
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpR2UR {
+    pub dst: Dst,
+
+    #[src_type(GPR)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpR2UR {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "r2ur {}", self.src)
+    }
+}
+impl_display_for_op!(OpR2UR);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpTex {
     pub dsts: [Dst; 2],
     pub fault: Dst,
@@ -5238,6 +5253,7 @@ pub enum Op {
     Shfl(OpShfl),
     PLop3(OpPLop3),
     PSetP(OpPSetP),
+    R2UR(OpR2UR),
     Tex(OpTex),
     Tld(OpTld),
     Tld4(OpTld4),
@@ -5696,6 +5712,9 @@ impl Instr {
 
             // Predicate ops
             Op::PLop3(_) | Op::PSetP(_) => true,
+
+            // Uniform ops
+            Op::R2UR(_) => false,
 
             // Texture ops
             Op::Tex(_)

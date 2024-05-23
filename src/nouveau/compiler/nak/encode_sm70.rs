@@ -262,6 +262,14 @@ impl SM70Instr {
         }
     }
 
+    fn set_udst(&mut self, dst: Dst) {
+        match dst {
+            Dst::None => self.set_ureg(16..24, RegRef::zero(RegFile::UGPR, 1)),
+            Dst::Reg(reg) => self.set_ureg(16..24, reg),
+            _ => panic!("Not a register"),
+        }
+    }
+
     fn set_bar_reg(&mut self, range: Range<usize>, reg: RegRef) {
         assert!(range.len() == 4);
         assert!(reg.file() == RegFile::Bar);
@@ -1471,6 +1479,13 @@ impl SM70Instr {
         );
     }
 
+    fn encode_r2ur(&mut self, op: &OpR2UR) {
+        self.set_opcode(0x3c2);
+        self.set_udst(op.dst);
+        self.set_reg_src(24..32, op.src);
+        self.set_pred_dst(81..84, Dst::None);
+    }
+
     fn encode_tex(&mut self, op: &OpTex) {
         self.set_opcode(0x361);
         self.set_bit(59, true); // .B
@@ -2385,6 +2400,7 @@ impl SM70Instr {
             Op::Sel(op) => si.encode_sel(op),
             Op::Shfl(op) => si.encode_shfl(op),
             Op::PLop3(op) => si.encode_plop3(op),
+            Op::R2UR(op) => si.encode_r2ur(op),
             Op::Tex(op) => si.encode_tex(op),
             Op::Tld(op) => si.encode_tld(op),
             Op::Tld4(op) => si.encode_tld4(op),

@@ -687,7 +687,7 @@ fn legalize_sm70_instr(
             copy_alu_src_if_not_reg(b, src0, SrcType::ALU);
             copy_alu_src_if_not_reg(b, src2, SrcType::ALU);
         }
-        Op::PopC(_) => (),
+        Op::PopC(_) | Op::R2UR(_) => (),
         Op::Shf(op) => {
             copy_alu_src_if_not_reg(b, &mut op.low, SrcType::ALU);
             copy_alu_src_if_both_not_reg(

@@ -751,6 +751,7 @@ typedef struct rvcn_enc_av1_recon_slot_s
 #define RENCODE_QP_MAP_TYPE_DELTA              1
 #define RENCODE_QP_MAP_TYPE_MAP_PA             4
 #define RENCODE_QP_MAP_MAX_REGIONS             32
+#define RENCODE_QP_MAP_UNIFIED_QP_BITS_SHIFT   7
 
 struct rvcn_enc_qp_map_region
 {
@@ -767,7 +768,17 @@ typedef struct rvcn_enc_qp_map_s
    uint32_t qp_map_type;
    uint32_t qp_map_buffer_address_hi;
    uint32_t qp_map_buffer_address_lo;
-   uint32_t qp_map_pitch;
+   uint32_t qp_map_pitch; /* number of units in width */
+   /* format difference between these two versions
+    * legacy is using a 32 bit for 1 unit
+    * vcn5 is using a 32 bit for 2 units, and use 2 units as the alignment
+    */
+   enum {
+      RENCODE_QP_MAP_LEGACY = 0,
+      RENCODE_QP_MAP_VCN5
+   } version;
+   uint32_t width_in_block;
+   uint32_t height_in_block;
    struct rvcn_enc_qp_map_region map[RENCODE_QP_MAP_MAX_REGIONS];
 }rvcn_enc_qp_map_t;
 

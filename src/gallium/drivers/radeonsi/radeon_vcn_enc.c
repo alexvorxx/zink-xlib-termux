@@ -131,8 +131,11 @@ static void radeon_vcn_enc_get_intra_refresh_param(struct radeon_encoder *enc,
 static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
                                          struct pipe_enc_roi *roi)
 {
+   struct si_screen *sscreen = (struct si_screen *)enc->screen;
    bool is_av1 = u_reduce_video_profile(enc->base.profile)
                              == PIPE_VIDEO_FORMAT_AV1;
+   rvcn_enc_qp_map_t *qp_map = &enc->enc_pic.enc_qp_map;
+
    if (!roi->num)
       enc->enc_pic.enc_qp_map.qp_map_type = RENCODE_QP_MAP_TYPE_NONE;
    else {
@@ -140,8 +143,13 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
       uint32_t block_length;
       int32_t i, j, pa_format = 0;
 
-      /* rate control is using a different qp map type */
-      if (enc->enc_pic.rc_session_init.rate_control_method) {
+      qp_map->version = sscreen->info.vcn_ip_version >= VCN_5_0_0
+                        ? RENCODE_QP_MAP_VCN5 : RENCODE_QP_MAP_LEGACY;
+
+      /* rate control is using a different qp map type, in case of below
+       * vcn_5_0_0 */
+      if (enc->enc_pic.rc_session_init.rate_control_method &&
+            (qp_map->version ==  RENCODE_QP_MAP_LEGACY)) {
          enc->enc_pic.enc_qp_map.qp_map_type = RENCODE_QP_MAP_TYPE_MAP_PA;
          pa_format = 1;
       }
@@ -149,6 +157,9 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
          enc->enc_pic.enc_qp_map.qp_map_type = RENCODE_QP_MAP_TYPE_DELTA;
 
       block_length = radeon_vcn_enc_blocks_in_frame(enc, &width_in_block, &height_in_block);
+
+      qp_map->width_in_block = width_in_block;
+      qp_map->height_in_block = height_in_block;
 
       for (i = RENCODE_QP_MAP_MAX_REGIONS; i >= roi->num; i--)
          enc->enc_pic.enc_qp_map.map[i].is_valid = false;
@@ -164,7 +175,7 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
             /* mapped av1 qi into the legacy qp range by dividing by 5 and
              * rounding up in any rate control mode.
              */
-            if (is_av1 && pa_format) {
+            if (is_av1 && (pa_format || (qp_map->version ==  RENCODE_QP_MAP_VCN5))) {
                if (region->qp_value > 0)
                   av1_qi_value = (region->qp_value + 2) / 5;
                else if (region->qp_value < 0)
@@ -1179,29 +1190,40 @@ static int setup_dpb(struct radeon_encoder *enc)
 /* each block (MB/CTB/SB) has one QP/QI value */
 static uint32_t roi_buffer_size(struct radeon_encoder *enc)
 {
-   uint32_t width_in_block, height_in_block;
+   uint32_t pitch_size_in_dword = 0;
+   rvcn_enc_qp_map_t *qp_map = &enc->enc_pic.enc_qp_map;
 
-   radeon_vcn_enc_blocks_in_frame(enc, &width_in_block, &height_in_block);
+   if ( qp_map->version == RENCODE_QP_MAP_LEGACY){
+      pitch_size_in_dword = qp_map->width_in_block;
+      qp_map->qp_map_pitch = qp_map->width_in_block;
+   } else {
+      /* two units merge into 1 dword */
+      pitch_size_in_dword = DIV_ROUND_UP(qp_map->width_in_block, 2);
+      qp_map->qp_map_pitch = pitch_size_in_dword * 2;
+   }
 
-   return width_in_block * height_in_block * sizeof(uint32_t);
+   return pitch_size_in_dword * qp_map->height_in_block * sizeof(uint32_t);
 }
 
-static void arrange_qp_map(uint32_t *start,
-                           struct rvcn_enc_qp_map_region *map,
-                           uint32_t width_in_block,
-                           uint32_t height_in_block)
+static void arrange_qp_map(void *start,
+                           struct rvcn_enc_qp_map_region *regin,
+                           rvcn_enc_qp_map_t *map)
 {
    uint32_t i, j;
    uint32_t offset;
-   uint32_t num_in_x = MIN2(map->x_in_unit + map->width_in_unit, width_in_block)
-                      - map->x_in_unit;
-   uint32_t num_in_y = MIN2(map->y_in_unit + map->height_in_unit, height_in_block)
-                      - map->y_in_unit;;
+   uint32_t num_in_x = MIN2(regin->x_in_unit + regin->width_in_unit, map->width_in_block)
+                      - regin->x_in_unit;
+   uint32_t num_in_y = MIN2(regin->y_in_unit + regin->height_in_unit, map->height_in_block)
+                      - regin->y_in_unit;;
 
    for (j = 0; j < num_in_y; j++) {
       for (i = 0; i < num_in_x; i++) {
-         offset = map->x_in_unit + i + (map->y_in_unit + j) * width_in_block;
-         *(start + offset) = (int32_t)map->qp_delta;
+         offset = regin->x_in_unit + i + (regin->y_in_unit + j) * map->qp_map_pitch;
+         if (map->version == RENCODE_QP_MAP_LEGACY)
+            *((uint32_t *)start + offset) = (int32_t)regin->qp_delta;
+         else
+            *((int16_t *)start + offset) =
+               (int16_t)(regin->qp_delta << RENCODE_QP_MAP_UNIFIED_QP_BITS_SHIFT);
       }
    }
 }
@@ -1214,24 +1236,23 @@ static int generate_roi_map(struct radeon_encoder *enc)
 {
    uint32_t width_in_block, height_in_block;
    uint32_t i;
-   uint32_t *p_roi = NULL;
+   void *p_roi = NULL;
 
    radeon_vcn_enc_blocks_in_frame(enc, &width_in_block, &height_in_block);
 
-   assert (enc->roi_size >= width_in_block * height_in_block);
-   p_roi = (uint32_t *)enc->ws->buffer_map(enc->ws,
+   p_roi = enc->ws->buffer_map(enc->ws,
                                enc->roi->res->buf,
                               &enc->cs,
                                PIPE_MAP_READ_WRITE | RADEON_MAP_TEMPORARY);
    if (!p_roi)
       goto error;
 
-   memset(p_roi, 0, width_in_block * height_in_block * sizeof(uint32_t));
+   memset(p_roi, 0, enc->roi_size);
 
    for (i = 0; i < ARRAY_SIZE(enc->enc_pic.enc_qp_map.map); i++) {
-      struct rvcn_enc_qp_map_region *map = &enc->enc_pic.enc_qp_map.map[i];
-      if (map->is_valid)
-         arrange_qp_map(p_roi, map, width_in_block, height_in_block);
+      struct rvcn_enc_qp_map_region *region = &enc->enc_pic.enc_qp_map.map[i];
+      if (region->is_valid)
+         arrange_qp_map(p_roi, region, &enc->enc_pic.enc_qp_map);
    }
 
    enc->ws->buffer_unmap(enc->ws, enc->roi->res->buf);

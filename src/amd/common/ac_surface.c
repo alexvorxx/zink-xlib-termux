@@ -106,17 +106,6 @@ unsigned ac_pipe_config_to_num_pipes(unsigned pipe_config)
    }
 }
 
-unsigned ac_get_dcc_min_compressed_block_size(const struct radeon_info *info)
-{
-   /* This should typically match the request size of the memory type. DIMMs have 64B minimum
-    * request size, which means compressing 64B to 32B has no benefit, while GDDR and HBM have
-    * 32B minimum request size. Sometimes a different size is used depending on the data fabric,
-    * etc.
-    */
-   return info->has_dedicated_vram || info->family == CHIP_GFX1151 ?
-            V_028C78_MIN_BLOCK_SIZE_32B : V_028C78_MIN_BLOCK_SIZE_64B;
-}
-
 bool ac_modifier_has_dcc(uint64_t modifier)
 {
    return IS_AMD_FMT_MOD(modifier) && AMD_FMT_MOD_GET(DCC, modifier);

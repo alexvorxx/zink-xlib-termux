@@ -124,7 +124,7 @@ write_storage_image_view_desc(struct nvk_descriptor_set *set,
    write_desc(set, binding, elem, &desc, sizeof(desc));
 }
 
-static struct nvk_buffer_address
+static union nvk_buffer_descriptor
 ubo_desc(struct nvk_physical_device *pdev,
          const VkDescriptorBufferInfo *const info,
          uint32_t binding, uint32_t elem)
@@ -140,10 +140,17 @@ ubo_desc(struct nvk_physical_device *pdev,
    addr_range.addr = align64(addr_range.addr, min_cbuf_alignment);
    addr_range.range = align(addr_range.range, min_cbuf_alignment);
 
-   return (struct nvk_buffer_address) {
-      .base_addr = align64(addr_range.addr, min_cbuf_alignment),
-      .size = align(addr_range.range, min_cbuf_alignment),
-   };
+   if (nvk_use_bindless_cbuf(&pdev->info)) {
+      return (union nvk_buffer_descriptor) { .cbuf = {
+         .base_addr_shift_4 = addr_range.addr >> 4,
+         .size_shift_4 = addr_range.range >> 4,
+      }};
+   } else {
+      return (union nvk_buffer_descriptor) { .addr = {
+         .base_addr = addr_range.addr,
+         .size = addr_range.range,
+      }};
+   }
 }
 
 static void
@@ -152,7 +159,7 @@ write_ubo_desc(struct nvk_physical_device *pdev,
                const VkDescriptorBufferInfo *const info,
                uint32_t binding, uint32_t elem)
 {
-   const struct nvk_buffer_address desc = ubo_desc(pdev, info, binding, elem);
+   const union nvk_buffer_descriptor desc = ubo_desc(pdev, info, binding, elem);
    write_desc(set, binding, elem, &desc, sizeof(desc));
 }
 
@@ -168,7 +175,7 @@ write_dynamic_ubo_desc(struct nvk_physical_device *pdev,
       ubo_desc(pdev, info, binding, elem);
 }
 
-static struct nvk_buffer_address
+static union nvk_buffer_descriptor
 ssbo_desc(const VkDescriptorBufferInfo *const info,
           uint32_t binding, uint32_t elem)
 {
@@ -182,10 +189,10 @@ ssbo_desc(const VkDescriptorBufferInfo *const info,
    addr_range.addr = align64(addr_range.addr, NVK_MIN_SSBO_ALIGNMENT);
    addr_range.range = align(addr_range.range, NVK_SSBO_BOUNDS_CHECK_ALIGNMENT);
 
-   return (struct nvk_buffer_address) {
-      .base_addr = align64(addr_range.addr, NVK_MIN_SSBO_ALIGNMENT),
-      .size = align(addr_range.range, NVK_SSBO_BOUNDS_CHECK_ALIGNMENT),
-   };
+   return (union nvk_buffer_descriptor) { .addr = {
+      .base_addr = addr_range.addr,
+      .size = addr_range.range,
+   }};
 }
 
 
@@ -194,7 +201,7 @@ write_ssbo_desc(struct nvk_descriptor_set *set,
                 const VkDescriptorBufferInfo *const info,
                 uint32_t binding, uint32_t elem)
 {
-   const struct nvk_buffer_address desc = ssbo_desc(info, binding, elem);
+   const union nvk_buffer_descriptor desc = ssbo_desc(info, binding, elem);
    write_desc(set, binding, elem, &desc, sizeof(desc));
 }
 

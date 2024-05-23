@@ -2255,15 +2255,38 @@ nvk_mme_bind_cbuf_desc(struct mme_builder *b)
    /* First 4 bits are group, later bits are slot */
    struct mme_value group_slot = mme_load(b);
 
-   if (b->devinfo->cls_eng3d >= TURING_A) {
-      struct mme_value64 addr = mme_load_addr64(b);
-      mme_tu104_read_fifoed(b, addr, mme_imm(3));
-   }
+   struct mme_value addr_lo, addr_hi, size;
+   if (nvk_use_bindless_cbuf(b->devinfo)) {
+      if (b->devinfo->cls_eng3d >= TURING_A) {
+         struct mme_value64 addr = mme_load_addr64(b);
+         mme_tu104_read_fifoed(b, addr, mme_imm(2));
+      }
 
-   /* Load the descriptor */
-   struct mme_value addr_lo = mme_load(b);
-   struct mme_value addr_hi = mme_load(b);
-   struct mme_value size = mme_load(b);
+      /* Load the descriptor */
+      struct mme_value desc_lo = mme_load(b);
+      struct mme_value desc_hi = mme_load(b);
+
+      /* The bottom 45 bits are addr >> 4 */
+      addr_lo = mme_merge(b, mme_zero(), desc_lo, 4, 28, 0);
+      addr_hi = mme_merge(b, mme_zero(), desc_lo, 0, 4, 28);
+      mme_merge_to(b, addr_hi, addr_hi, desc_hi, 4, 13, 0);
+
+      /* The top 19 bits are size >> 4 */
+      size = mme_merge(b, mme_zero(), desc_hi, 4, 19, 13);
+
+      mme_free_reg(b, desc_hi);
+      mme_free_reg(b, desc_lo);
+   } else {
+      if (b->devinfo->cls_eng3d >= TURING_A) {
+         struct mme_value64 addr = mme_load_addr64(b);
+         mme_tu104_read_fifoed(b, addr, mme_imm(3));
+      }
+
+      /* Load the descriptor */
+      addr_lo = mme_load(b);
+      addr_hi = mme_load(b);
+      size = mme_load(b);
+   }
 
    struct mme_value cb = mme_alloc_reg(b);
    mme_if(b, ieq, size, mme_zero()) {
@@ -2285,7 +2308,7 @@ nvk_mme_bind_cbuf_desc(struct mme_builder *b)
       mme_emit(b, addr_hi);
       mme_emit(b, addr_lo);
 
-      /* Bottim bit is the valid bit, 8:4 are shader slot */
+      /* Bottom bit is the valid bit, 8:4 are shader slot */
       mme_merge_to(b, cb, mme_imm(1), group_slot, 4, 5, 4);
    }
 

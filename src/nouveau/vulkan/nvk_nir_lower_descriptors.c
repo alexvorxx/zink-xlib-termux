@@ -50,6 +50,7 @@ compar_cbufs(const void *_a, const void *_b)
 struct lower_descriptors_ctx {
    const struct nvk_descriptor_set_layout *set_layouts[NVK_MAX_SETS];
 
+   bool use_bindless_cbuf;
    bool clamp_desc_array_bounds;
    nir_address_format ubo_addr_format;
    nir_address_format ssbo_addr_format;
@@ -610,13 +611,14 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
       index = nir_iadd(b, index,
                        nir_iadd_imm(b, dynamic_buffer_start,
                                     binding_layout->dynamic_buffer_index));
-
+      uint32_t desc_size = sizeof(union nvk_buffer_descriptor);
       nir_def *root_desc_offset =
-         nir_iadd_imm(b, nir_imul_imm(b, index, sizeof(struct nvk_buffer_address)),
+         nir_iadd_imm(b, nir_imul_imm(b, index, desc_size),
                       nvk_root_descriptor_offset(dynamic_buffers));
 
-      assert(num_components == 4 && bit_size == 32);
-      return nir_ldc_nv(b, 4, 32, nir_imm_int(b, 0), root_desc_offset,
+      assert(num_components * bit_size <= desc_size * 8);
+      return nir_ldc_nv(b, num_components, bit_size,
+                        nir_imm_int(b, 0), root_desc_offset,
                         .align_mul = 16, .align_offset = 0);
    }
 
@@ -628,12 +630,19 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
       assert(binding_layout->stride == 1);
       const uint32_t binding_size = binding_layout->array_size;
 
-      /* Convert it to nir_address_format_64bit_bounded_global */
-      assert(num_components == 4 && bit_size == 32);
-      return nir_vec4(b, nir_unpack_64_2x32_split_x(b, base_addr),
-                         nir_unpack_64_2x32_split_y(b, base_addr),
-                         nir_imm_int(b, binding_size),
-                         nir_imm_int(b, 0));
+      if (ctx->use_bindless_cbuf) {
+         assert(num_components == 1 && bit_size == 64);
+         const uint32_t size = align(binding_size, 16);
+         return nir_ior_imm(b, nir_ishr_imm(b, base_addr, 4),
+                               ((uint64_t)size >> 4) << 45);
+      } else {
+         /* Convert it to nir_address_format_64bit_bounded_global */
+         assert(num_components == 4 && bit_size == 32);
+         return nir_vec4(b, nir_unpack_64_2x32_split_x(b, base_addr),
+                            nir_unpack_64_2x32_split_y(b, base_addr),
+                            nir_imm_int(b, binding_size),
+                            nir_imm_int(b, 0));
+      }
    }
 
    default: {
@@ -686,6 +695,29 @@ is_idx_intrin(nir_intrinsic_instr *intrin)
 }
 
 static nir_def *
+buffer_address_to_ldcx_handle(nir_builder *b, nir_def *addr)
+{
+   nir_def *base_addr = nir_pack_64_2x32(b, nir_channels(b, addr, 0x3));
+   nir_def *size = nir_channel(b, addr, 2);
+   nir_def *offset = nir_channel(b, addr, 3);
+
+   nir_def *addr16 = nir_ushr_imm(b, base_addr, 4);
+   nir_def *addr16_lo = nir_unpack_64_2x32_split_x(b, addr16);
+   nir_def *addr16_hi = nir_unpack_64_2x32_split_y(b, addr16);
+
+   /* If we assume the top bis of the address are 0 as well as the bottom two
+    * bits of the size. (We can trust it since it's a descriptor) then
+    *
+    *    ((size >> 4) << 13) | addr
+    *
+    * is just an imad.
+    */
+   nir_def *handle_hi = nir_imad(b, size, nir_imm_int(b, 1 << 9), addr16_hi);
+
+   return nir_vec3(b, addr16_lo, handle_hi, offset);
+}
+
+static nir_def *
 load_descriptor_for_idx_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
                                const struct lower_descriptors_ctx *ctx)
 {
@@ -701,13 +733,23 @@ load_descriptor_for_idx_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    uint32_t binding = nir_intrinsic_binding(intrin);
    index = nir_iadd(b, index, intrin->src[0].ssa);
 
-   nir_def *desc = load_descriptor(b, 4, 32, set, binding, index, 0, ctx);
+   const VkDescriptorType desc_type = nir_intrinsic_desc_type(intrin);
+   if (descriptor_type_is_ubo(desc_type) && ctx->use_bindless_cbuf) {
+      nir_def *desc = load_descriptor(b, 1, 64, set, binding, index, 0, ctx);
 
-   /* We know a priori that the the .w compnent (offset) is zero */
-   return nir_vec4(b, nir_channel(b, desc, 0),
-                      nir_channel(b, desc, 1),
-                      nir_channel(b, desc, 2),
-                      nir_imm_int(b, 0));
+      /* The descriptor is just the handle.  NIR also needs an offset. */
+      return nir_vec3(b, nir_unpack_64_2x32_split_x(b, desc),
+                         nir_unpack_64_2x32_split_y(b, desc),
+                         nir_imm_int(b, 0));
+   } else {
+      nir_def *desc = load_descriptor(b, 4, 32, set, binding, index, 0, ctx);
+
+      /* We know a priori that the the .w compnent (offset) is zero */
+      return nir_vec4(b, nir_channel(b, desc, 0),
+                         nir_channel(b, desc, 1),
+                         nir_channel(b, desc, 2),
+                         nir_imm_int(b, 0));
+   }
 }
 
 static bool
@@ -1253,6 +1295,7 @@ nvk_nir_lower_descriptors(nir_shader *nir,
                           struct nvk_cbuf_map *cbuf_map_out)
 {
    struct lower_descriptors_ctx ctx = {
+      .use_bindless_cbuf = nvk_use_bindless_cbuf(&pdev->info),
       .clamp_desc_array_bounds =
          rs->storage_buffers != VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT ||
          rs->uniform_buffers != VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT ||

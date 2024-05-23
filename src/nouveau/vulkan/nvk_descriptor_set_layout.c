@@ -51,7 +51,7 @@ nvk_descriptor_stride_align_for_type(const struct nvk_physical_device *pdev,
 
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-      *stride = *alignment = sizeof(struct nvk_buffer_address);
+      *stride = *alignment = sizeof(union nvk_buffer_descriptor);
       break;
 
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:

@@ -116,14 +116,18 @@ nir_address_format
 nvk_ubo_addr_format(const struct nvk_physical_device *pdev,
                     VkPipelineRobustnessBufferBehaviorEXT robustness)
 {
-   switch (robustness) {
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
-      return nir_address_format_64bit_global_32bit_offset;
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
-      return nir_address_format_64bit_bounded_global;
-   default:
-      unreachable("Invalid robust buffer access behavior");
+   if (nvk_use_bindless_cbuf(&pdev->info)) {
+      return nir_address_format_vec2_index_32bit_offset;
+   } else {
+      switch (robustness) {
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
+         return nir_address_format_64bit_global_32bit_offset;
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
+         return nir_address_format_64bit_bounded_global;
+      default:
+         unreachable("Invalid robust buffer access behavior");
+      }
    }
 }
 
@@ -258,10 +262,21 @@ lower_load_intrinsic(nir_builder *b, nir_intrinsic_instr *load,
       const uint32_t align_mul = nir_intrinsic_align_mul(load);
       const uint32_t align_offset = nir_intrinsic_align_offset(load);
 
-      nir_def *val = nir_ldc_nv(b, load->num_components, load->def.bit_size,
-                                index, offset, .access = access,
-                                .align_mul = align_mul,
-                                .align_offset = align_offset);
+      nir_def *val;
+      if (load->src[0].ssa->num_components == 1) {
+         val = nir_ldc_nv(b, load->num_components, load->def.bit_size,
+                           index, offset, .access = access,
+                           .align_mul = align_mul,
+                           .align_offset = align_offset);
+      } else if (load->src[0].ssa->num_components == 2) {
+         nir_def *handle = nir_pack_64_2x32(b, load->src[0].ssa);
+         val = nir_ldcx_nv(b, load->num_components, load->def.bit_size,
+                           handle, offset, .access = access,
+                           .align_mul = align_mul,
+                           .align_offset = align_offset);
+      } else {
+         unreachable("Invalid UBO index");
+      }
       nir_def_rewrite_uses(&load->def, val);
       return true;
    }

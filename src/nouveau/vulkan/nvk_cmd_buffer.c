@@ -596,11 +596,13 @@ nvk_cmd_bind_shaders(struct vk_command_buffer *vk_cmd,
 }
 
 static void
-nvk_bind_descriptor_sets(UNUSED struct nvk_cmd_buffer *cmd,
+nvk_bind_descriptor_sets(struct nvk_cmd_buffer *cmd,
                          struct nvk_descriptor_state *desc,
                          const VkBindDescriptorSetsInfoKHR *info)
 {
    VK_FROM_HANDLE(vk_pipeline_layout, pipeline_layout, info->layout);
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    /* Fro the Vulkan 1.3.275 spec:
     *
@@ -644,9 +646,16 @@ nvk_bind_descriptor_sets(UNUSED struct nvk_cmd_buffer *cmd,
 
          if (set != NULL && set_layout->dynamic_buffer_count > 0) {
             for (uint32_t j = 0; j < set_layout->dynamic_buffer_count; j++) {
-               struct nvk_buffer_address addr = set->dynamic_buffers[j];
-               addr.base_addr += info->pDynamicOffsets[next_dyn_offset + j];
-               desc->root.dynamic_buffers[dyn_buffer_start + j] = addr;
+               union nvk_buffer_descriptor db = set->dynamic_buffers[j];
+               uint32_t offset = info->pDynamicOffsets[next_dyn_offset + j];
+               if (BITSET_TEST(set_layout->dynamic_ubos, j) &&
+                   nvk_use_bindless_cbuf(&pdev->info)) {
+                  assert((offset & 0xf) == 0);
+                  db.cbuf.base_addr_shift_4 += offset >> 4;
+               } else {
+                  db.addr.base_addr += offset;
+               }
+               desc->root.dynamic_buffers[dyn_buffer_start + j] = db;
             }
             next_dyn_offset += set->layout->dynamic_buffer_count;
          }
@@ -804,6 +813,9 @@ nvk_cmd_buffer_get_cbuf_addr(struct nvk_cmd_buffer *cmd,
                              const struct nvk_cbuf *cbuf,
                              struct nvk_buffer_address *addr_out)
 {
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
    switch (cbuf->type) {
    case NVK_CBUF_TYPE_INVALID:
       *addr_out = (struct nvk_buffer_address) { .size = 0 };
@@ -827,7 +839,8 @@ nvk_cmd_buffer_get_cbuf_addr(struct nvk_cmd_buffer *cmd,
    case NVK_CBUF_TYPE_DYNAMIC_UBO: {
       const uint32_t dyn_start =
          desc->root.set_dynamic_buffer_start[cbuf->desc_set];
-      *addr_out = desc->root.dynamic_buffers[dyn_start + cbuf->dynamic_idx];
+      *addr_out = nvk_ubo_descriptor_addr(pdev,
+         desc->root.dynamic_buffers[dyn_start + cbuf->dynamic_idx]);
       return true;
    }
 
@@ -840,8 +853,9 @@ nvk_cmd_buffer_get_cbuf_addr(struct nvk_cmd_buffer *cmd,
          return false;
 
       assert(cbuf->desc_offset < NVK_PUSH_DESCRIPTOR_SET_SIZE);
-      void *desc = &push->data[cbuf->desc_offset];
-      *addr_out = *(struct nvk_buffer_address *)desc;
+      union nvk_buffer_descriptor desc;
+      memcpy(&desc, &push->data[cbuf->desc_offset], sizeof(desc));
+      *addr_out = nvk_ubo_descriptor_addr(pdev, desc);
       return true;
    }
 

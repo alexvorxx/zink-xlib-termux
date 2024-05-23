@@ -65,7 +65,7 @@ struct nvk_root_descriptor_table {
    uint8_t set_dynamic_buffer_start[NVK_MAX_SETS];
 
    /* Dynamic buffer bindings */
-   struct nvk_buffer_address dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
+   union nvk_buffer_descriptor dynamic_buffers[NVK_MAX_DYNAMIC_BUFFERS];
 
    /* enfore alignment to 0x100 as needed pre pascal */
    uint8_t __padding[0x40];

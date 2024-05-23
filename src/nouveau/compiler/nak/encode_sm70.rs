@@ -1031,6 +1031,9 @@ impl SM70Instr {
             ALUSrc::from_src(&op.srcs[2]),
         );
 
+        self.set_pred_src(87..90, 90, false.into());
+        self.set_pred_src(77..80, 80, false.into());
+
         self.set_pred_dst(81..84, op.overflow[0]);
         self.set_pred_dst(84..87, op.overflow[1]);
     }

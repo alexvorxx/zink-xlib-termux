@@ -226,7 +226,7 @@ impl SM70Instr {
         assert!(self.sm >= 75);
 
         let mut v = BitMutView::new_subset(self, range);
-        if let CBuf::BindlessGPR(reg) = cb.buf {
+        if let CBuf::BindlessUGPR(reg) = cb.buf {
             assert!(reg.base_idx() <= 63);
             assert!(reg.file() == RegFile::UGPR);
             v.set_field(0..8, reg.base_idx());

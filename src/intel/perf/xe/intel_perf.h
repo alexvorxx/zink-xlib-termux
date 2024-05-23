@@ -25,5 +25,5 @@ int xe_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
                         bool hold_preemption, bool enable);
 int xe_perf_stream_set_state(int perf_stream_fd, bool enable);
 int xe_perf_stream_set_metrics_id(int perf_stream_fd, uint64_t metrics_set_id);
-int xe_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
-                                size_t buffer_len);
+int xe_perf_stream_read_samples(struct intel_perf_config *perf_config, int perf_stream_fd,
+                                uint8_t *buffer, size_t buffer_len);

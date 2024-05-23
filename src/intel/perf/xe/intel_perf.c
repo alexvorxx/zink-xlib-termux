@@ -211,15 +211,17 @@ xe_perf_stream_read_error(int perf_stream_fd, uint8_t *buffer, size_t buffer_len
 }
 
 int
-xe_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
-                            size_t buffer_len)
+xe_perf_stream_read_samples(struct intel_perf_config *perf_config, int perf_stream_fd,
+                            uint8_t *buffer, size_t buffer_len)
 {
-   uint32_t num_samples = buffer_len / INTEL_PERF_OA_HEADER_SAMPLE_SIZE;
-   const size_t max_bytes_read = num_samples * INTEL_PERF_OA_SAMPLE_SIZE;
+   const size_t sample_size = perf_config->oa_sample_size;
+   const size_t sample_header_size = sample_size + sizeof(struct intel_perf_record_header);
+   uint32_t num_samples = buffer_len / sample_header_size;
+   const size_t max_bytes_read = num_samples * sample_size;
    uint8_t *offset, *offset_samples;
    int len, i;
 
-   if (buffer_len < INTEL_PERF_OA_HEADER_SAMPLE_SIZE)
+   if (buffer_len < sample_header_size)
       return -ENOSPC;
 
    do {
@@ -233,7 +235,7 @@ xe_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
       return len < 0 ? -errno : 0;
    }
 
-   num_samples = len / INTEL_PERF_OA_SAMPLE_SIZE;
+   num_samples = len / sample_size;
    offset = buffer;
    offset_samples = buffer + (buffer_len - len);
    /* move all samples to the end of buffer */
@@ -246,12 +248,12 @@ xe_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
       /* TODO: also append REPORT_LOST and BUFFER_LOST */
       header->type = INTEL_PERF_RECORD_TYPE_SAMPLE;
       header->pad = 0;
-      header->size = INTEL_PERF_OA_HEADER_SAMPLE_SIZE;
+      header->size = sample_header_size;
       offset += sizeof(*header);
 
-      memmove(offset, offset_samples, INTEL_PERF_OA_SAMPLE_SIZE);
-      offset += INTEL_PERF_OA_SAMPLE_SIZE;
-      offset_samples += INTEL_PERF_OA_SAMPLE_SIZE;
+      memmove(offset, offset_samples, sample_size);
+      offset += sample_size;
+      offset_samples += sample_size;
    }
 
    return offset - buffer;

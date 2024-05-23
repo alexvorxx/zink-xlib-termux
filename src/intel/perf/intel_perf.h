@@ -125,13 +125,6 @@ struct intel_pipeline_stat {
 #define STATS_BO_END_OFFSET_BYTES   (STATS_BO_SIZE / 2)
 #define MAX_STAT_COUNTERS           (STATS_BO_END_OFFSET_BYTES / 8)
 
-/* Up to now all platforms uses the same sample size */
-#define INTEL_PERF_OA_SAMPLE_SIZE 256
-
-/* header + sample */
-#define INTEL_PERF_OA_HEADER_SAMPLE_SIZE (sizeof(struct intel_perf_record_header) + \
-                                          INTEL_PERF_OA_SAMPLE_SIZE)
-
 struct intel_perf_query_result {
    /**
     * Storage for the final accumulated OA counters.
@@ -360,6 +353,7 @@ struct intel_perf_config {
    int n_counters;
 
    struct intel_perf_query_field_layout query_layout;
+   size_t oa_sample_size;
 
    /* Variables referenced in the XML meta data for OA performance
     * counters, e.g in the normalization equations.

@@ -1445,7 +1445,7 @@ intel_perf_init_query_fields(struct intel_perf_config *perf_cfg,
                                   MAX_QUERY_FIELDS(devinfo));
 
    add_query_register(perf_cfg, INTEL_PERF_QUERY_FIELD_TYPE_MI_RPC,
-                      0, 256, 0);
+                      0, perf_cfg->oa_sample_size, 0);
 
    if (use_register_snapshots) {
       if (devinfo->ver <= 11) {
@@ -1520,6 +1520,15 @@ intel_perf_init_query_fields(struct intel_perf_config *perf_cfg,
    layout->size = align(layout->size, 64);
 }
 
+static size_t
+intel_perf_get_oa_format_size(const struct intel_device_info *devinfo)
+{
+   if (devinfo->verx10 >= 200)
+      return 576;
+
+   return 256;
+}
+
 void
 intel_perf_init_metrics(struct intel_perf_config *perf_cfg,
                         const struct intel_device_info *devinfo,
@@ -1528,6 +1537,8 @@ intel_perf_init_metrics(struct intel_perf_config *perf_cfg,
                         bool use_register_snapshots)
 {
    perf_cfg->devinfo = devinfo;
+   perf_cfg->oa_sample_size = intel_perf_get_oa_format_size(devinfo);
+
    intel_perf_init_query_fields(perf_cfg, devinfo, use_register_snapshots);
 
    if (include_pipeline_statistics) {
@@ -1608,9 +1619,9 @@ intel_perf_stream_read_samples(struct intel_perf_config *perf_config,
 {
    switch (perf_config->devinfo->kmd_type) {
    case INTEL_KMD_TYPE_I915:
-      return i915_perf_stream_read_samples(perf_stream_fd, buffer, buffer_len);
+      return i915_perf_stream_read_samples(perf_config, perf_stream_fd, buffer, buffer_len);
    case INTEL_KMD_TYPE_XE:
-      return xe_perf_stream_read_samples(perf_stream_fd, buffer, buffer_len);
+      return xe_perf_stream_read_samples(perf_config, perf_stream_fd, buffer, buffer_len);
    default:
          unreachable("missing");
          return -1;

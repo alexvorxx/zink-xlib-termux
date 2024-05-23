@@ -221,12 +221,15 @@ i915_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_regis
 }
 
 int
-i915_perf_stream_read_samples(int perf_stream_fd, uint8_t *buffer,
+i915_perf_stream_read_samples(struct intel_perf_config *perf_config,
+                              int perf_stream_fd, uint8_t *buffer,
                               size_t buffer_len)
 {
+   const size_t sample_header_size = perf_config->oa_sample_size +
+                                     sizeof(struct intel_perf_record_header);
    int len;
 
-   if (buffer_len < INTEL_PERF_OA_HEADER_SAMPLE_SIZE)
+   if (buffer_len < sample_header_size)
       return -ENOSPC;
 
    do {

@@ -254,6 +254,12 @@ struct fd_dev_info {
        * parallel with "forcebin". It is exacerbated by using "syncdraw".
        */
       bool no_gs_hw_binning_quirk;
+
+      /* Having zero consts in one FS may corrupt consts in follow up FSs,
+       * on such GPUs blob never has zero consts in FS. The mechanism of
+       * corruption is unknown.
+       */
+      bool fs_must_have_non_zero_constlen_quirk;
    } a7xx;
 };
 

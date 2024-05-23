@@ -276,6 +276,8 @@ struct ir3_compiler {
     * register.
     */
    bool has_scalar_alu;
+
+   bool fs_must_have_non_zero_constlen_quirk;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);

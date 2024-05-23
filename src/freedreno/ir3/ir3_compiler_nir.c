@@ -5479,6 +5479,11 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
 
    ctx->so->per_samp = ctx->s->info.fs.uses_sample_shading;
 
+   if (ctx->so->type == MESA_SHADER_FRAGMENT &&
+       compiler->fs_must_have_non_zero_constlen_quirk) {
+      so->constlen = MAX2(so->constlen, 4);
+   }
+
 out:
    if (ret) {
       if (so->ir)

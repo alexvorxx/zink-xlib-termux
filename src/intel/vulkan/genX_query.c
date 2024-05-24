@@ -998,7 +998,8 @@ emit_perf_intel_query(struct anv_cmd_buffer *cmd_buffer,
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_RPSTAT:
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
-      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C: {
+      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
+      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC: {
          struct anv_address addr = anv_address_add(data_addr, field->location);
          struct mi_value src = field->size == 8 ?
             mi_reg64(field->mmio_offset) :
@@ -1190,6 +1191,7 @@ void genX(CmdBeginQueryIndexedEXT)(
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
+         case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC:
             dws =
                anv_batch_emitn(&cmd_buffer->batch,
                                GENX(MI_STORE_REGISTER_MEM_length),
@@ -1353,6 +1355,7 @@ void genX(CmdEndQueryIndexedEXT)(
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
+         case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC:
             dws =
                anv_batch_emitn(&cmd_buffer->batch,
                                GENX(MI_STORE_REGISTER_MEM_length),

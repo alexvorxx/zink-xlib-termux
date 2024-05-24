@@ -41,7 +41,13 @@ intel_query_alloc(struct intel_perf_config *perf, int ncounters)
    query->oa_format = intel_perf_get_oa_format(perf);
 
    /* Accumulation buffer offsets... */
-   if (perf->devinfo->verx10 >= 125) {
+   if (perf->devinfo->verx10 >= 200) {
+      query->gpu_time_offset = 0;
+      query->gpu_clock_offset = query->gpu_time_offset + 1;
+      query->pec_offset = query->gpu_clock_offset + 1;
+      query->perfcnt_offset = query->pec_offset + 64;
+      query->rpstat_offset = query->perfcnt_offset + 2;
+   } else if (perf->devinfo->verx10 >= 125) {
       query->gpu_time_offset = 0;
       query->gpu_clock_offset = query->gpu_time_offset + 1;
       query->a_offset = query->gpu_clock_offset + 1;

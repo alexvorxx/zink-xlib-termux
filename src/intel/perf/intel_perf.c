@@ -1208,6 +1208,8 @@ query_accumulator_offset(const struct intel_perf_query_info *query,
       return query->b_offset + index;
    case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
       return query->c_offset + index;
+   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC:
+      return query->pec_offset + index;
    default:
       unreachable("Invalid register type");
       return 0;
@@ -1300,6 +1302,11 @@ intel_perf_query_result_print_fields(const struct intel_perf_query_info *query,
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
          fprintf(stderr, "C%u: 0x%08x\n", field->index, *value32);
          break;
+      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC: {
+         const uint64_t *value64 = data + field->location;
+         fprintf(stderr, "PEC%u: 0x%" PRIx64 "\n", field->index, *value64);
+         break;
+      }
       default:
          break;
       }
@@ -1315,12 +1322,13 @@ intel_perf_compare_query_names(const void *v1, const void *v2)
    return strcmp(q1->name, q2->name);
 }
 
-#define MAX_QUERY_FIELDS(devinfo) (5 + 16)
+/* Xe2: (64 x PEC) + SRM_RPSTAT + MI_RPC */
+#define MAX_QUERY_FIELDS(devinfo) (devinfo->verx10 >= 200 ? (64 + 2) : (5 + 16))
 
 static inline struct intel_perf_query_field *
 add_query_register(struct intel_perf_config *perf_cfg,
                    enum intel_perf_query_field_type type,
-                   uint16_t offset,
+                   uint32_t offset,
                    uint16_t size,
                    uint8_t index)
 {
@@ -1422,6 +1430,11 @@ intel_perf_init_query_fields(struct intel_perf_config *perf_cfg,
             for (uint32_t i = 0; i < GFX12_N_OAG_PERF_C32; i++) {
                add_query_register(perf_cfg, INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C,
                                   GFX12_OAG_PERF_C32(i), 4, i);
+            }
+         } else if (devinfo->verx10 >= 200) {
+            for (uint32_t i = 0; i < XE2_N_OAG_PERF_PEC; i++) {
+               add_query_register(perf_cfg, INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC,
+                                  XE2_OAG_PERF_PEC(i), 8, i);
             }
          }
       }

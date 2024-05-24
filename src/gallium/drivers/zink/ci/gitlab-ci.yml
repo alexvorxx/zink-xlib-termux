@@ -147,7 +147,7 @@ zink-nvk-ga106-valve:
     - .zink-nvk-manual-rules
     - .nvk-ga106-valve
   variables:
-    GPU_VERSION: zink-nvk
+    GPU_VERSION: zink-nvk-ga106
     B2C_TIMEOUT_BOOT_MINUTES: 35
     B2C_TIMEOUT_OVERALL_MINUTES: 40  # usual run time: 26min
 

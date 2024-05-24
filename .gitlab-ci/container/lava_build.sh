@@ -32,6 +32,7 @@ check_minio "${CI_PROJECT_PATH}"
 
 if [[ "$DEBIAN_ARCH" = "arm64" ]]; then
     BUILD_CL="ON"
+    BUILD_VK="ON"
     GCC_ARCH="aarch64-linux-gnu"
     KERNEL_ARCH="arm64"
     SKQP_ARCH="arm64"
@@ -54,6 +55,7 @@ if [[ "$DEBIAN_ARCH" = "arm64" ]]; then
 
 elif [[ "$DEBIAN_ARCH" = "armhf" ]]; then
     BUILD_CL="OFF"
+    BUILD_VK="OFF"
     GCC_ARCH="arm-linux-gnueabihf"
     KERNEL_ARCH="arm"
     SKQP_ARCH="arm"
@@ -79,6 +81,7 @@ elif [[ "$DEBIAN_ARCH" = "armhf" ]]; then
     )
 else
     BUILD_CL="ON"
+    BUILD_VK="ON"
     GCC_ARCH="x86_64-linux-gnu"
     KERNEL_ARCH="x86_64"
     SKQP_ARCH="x64"
@@ -198,7 +201,6 @@ PKG_DEP=(
 # arch dependent rootfs packages
 [ "$DEBIAN_ARCH" = "arm64" ] && PKG_ARCH=(
   libgl1 libglu1-mesa
-  libvulkan-dev
   firmware-linux-nonfree firmware-qcom-media
   libfontconfig1
 )
@@ -211,7 +213,6 @@ PKG_DEP=(
   spirv-tools
   libelf1 libfdt1 "libllvm${LLVM_VERSION}"
   libva2 libva-drm2
-  libvulkan-dev
   socat
   sysvinit-core
   wine
@@ -222,6 +223,9 @@ PKG_DEP=(
 
 [ "$BUILD_CL" == "ON" ] && PKG_ARCH+=(
 	ocl-icd-libopencl1
+)
+[ "$BUILD_VK" == "ON" ] && PKG_ARCH+=(
+	libvulkan-dev
 )
 
 mmdebstrap \
@@ -292,7 +296,7 @@ DEQP_API=GLES \
 DEQP_TARGET=surfaceless \
 . .gitlab-ci/container/build-deqp.sh
 
-DEQP_API=VK \
+[ "$BUILD_VK" == "ON" ] && DEQP_API=VK \
 DEQP_TARGET=default \
 . .gitlab-ci/container/build-deqp.sh
 
@@ -319,7 +323,7 @@ PIGLIT_OPTS="-DPIGLIT_USE_WAFFLE=ON
 	     -DPIGLIT_BUILD_GLES2_TESTS=ON
 	     -DPIGLIT_BUILD_GLES3_TESTS=ON
 	     -DPIGLIT_BUILD_CL_TESTS=$BUILD_CL
-	     -DPIGLIT_BUILD_VK_TESTS=ON
+	     -DPIGLIT_BUILD_VK_TESTS=$BUILD_VK
 	     -DPIGLIT_BUILD_DMA_BUF_TESTS=ON" \
   . .gitlab-ci/container/build-piglit.sh
 mv /piglit $ROOTFS/.

@@ -1488,30 +1488,16 @@ radv_init_dcc_control_reg(struct radv_device *device, struct radv_image_view *iv
    if (!radv_dcc_enabled(iview->image, iview->vk.base_mip_level))
       return 0;
 
-   /* For GFX9+ ac_surface computes values for us (except min_compressed
+   /* For GFX10+ ac_surface computes values for us (except min_compressed
     * and max_uncompressed) */
-   if (pdev->info.gfx_level >= GFX9) {
+   if (pdev->info.gfx_level >= GFX10) {
       max_compressed_block_size = iview->image->planes[0].surface.u.gfx9.color.dcc.max_compressed_block_size;
       independent_128b_blocks = iview->image->planes[0].surface.u.gfx9.color.dcc.independent_128B_blocks;
       independent_64b_blocks = iview->image->planes[0].surface.u.gfx9.color.dcc.independent_64B_blocks;
    } else {
+      max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_64B;
       independent_128b_blocks = 0;
-
-      if (iview->image->vk.usage &
-          (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
-         /* If this DCC image is potentially going to be used in texture
-          * fetches, we need some special settings.
-          */
-         independent_64b_blocks = 1;
-         max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_64B;
-      } else {
-         /* MAX_UNCOMPRESSED_BLOCK_SIZE must be >=
-          * MAX_COMPRESSED_BLOCK_SIZE. Set MAX_COMPRESSED_BLOCK_SIZE as
-          * big as possible for better compression state.
-          */
-         independent_64b_blocks = 0;
-         max_compressed_block_size = max_uncompressed_block_size;
-      }
+      independent_64b_blocks = 1;
    }
 
    uint32_t result = S_028C78_MAX_UNCOMPRESSED_BLOCK_SIZE(max_uncompressed_block_size) |

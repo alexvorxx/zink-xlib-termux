@@ -14,3 +14,6 @@ dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image_pot_d
 dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image_pot_same_format_noclear
 dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image_npot_same_format_clear
 dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image_pot_same_format_clear
+dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.whole_image
+
+dEQP-VK.renderpass2.dedicated_allocation.attachment_allocation.input_output.71

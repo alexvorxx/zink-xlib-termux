@@ -24,6 +24,7 @@ dEQP-VK.ray_tracing_pipeline.pipeline_no_null_shaders_flag.misc.miss_maintenance
 dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image
 dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image_pot_same_format_clear
 dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.partial_image_pot_same_format_noclear
+dEQP-VK.api.copy_and_blit.sparse.image_to_image.simple_tests.whole_image
 
 dEQP-VK.draw.dynamic_rendering.partial_secondary_cmd_buff.scissor.dynamic_scissor_updates_between_draws
 dEQP-VK.subgroups.clustered.framebuffer.subgroupclusteredmin_int8_t_tess_control

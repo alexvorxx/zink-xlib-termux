@@ -576,7 +576,7 @@ ac_build_raw_buffer_descriptor(const enum amd_gfx_level gfx_level, uint64_t va, 
 }
 
 void
-ac_build_attr_ring_descriptor(const enum amd_gfx_level gfx_level, uint64_t va, uint32_t size, uint32_t desc[4])
+ac_build_attr_ring_descriptor(const enum amd_gfx_level gfx_level, uint64_t va, uint32_t size, uint32_t stride, uint32_t desc[4])
 {
    assert(gfx_level >= GFX11);
 
@@ -587,6 +587,7 @@ ac_build_attr_ring_descriptor(const enum amd_gfx_level gfx_level, uint64_t va, u
       .swizzle = {
          PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z, PIPE_SWIZZLE_W,
       },
+      .stride = stride,
       .gfx10_oob_select = V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET,
       .swizzle_enable = 3, /* 16B */
       .index_stride = 2, /* 32 elements */

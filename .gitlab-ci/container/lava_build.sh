@@ -295,7 +295,21 @@ if [[ "$DEBIAN_ARCH" = "arm64" ]] \
 fi
 
 ############### Build piglit
-PIGLIT_OPTS="-DPIGLIT_BUILD_DMA_BUF_TESTS=ON -DPIGLIT_BUILD_GLX_TESTS=ON" . .gitlab-ci/container/build-piglit.sh
+PIGLIT_OPTS="-DPIGLIT_USE_WAFFLE=ON
+	     -DPIGLIT_USE_GBM=ON
+	     -DPIGLIT_USE_WAYLAND=ON
+	     -DPIGLIT_USE_X11=ON
+	     -DPIGLIT_BUILD_GLX_TESTS=ON
+	     -DPIGLIT_BUILD_EGL_TESTS=ON
+	     -DPIGLIT_BUILD_WGL_TESTS=OFF
+	     -DPIGLIT_BUILD_GL_TESTS=ON
+	     -DPIGLIT_BUILD_GLES1_TESTS=ON
+	     -DPIGLIT_BUILD_GLES2_TESTS=ON
+	     -DPIGLIT_BUILD_GLES3_TESTS=ON
+	     -DPIGLIT_BUILD_CL_TESTS=OFF
+	     -DPIGLIT_BUILD_VK_TESTS=ON
+	     -DPIGLIT_BUILD_DMA_BUF_TESTS=ON" \
+  . .gitlab-ci/container/build-piglit.sh
 mv /piglit $ROOTFS/.
 
 ############### Build libva tests

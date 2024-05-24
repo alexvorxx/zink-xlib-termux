@@ -269,6 +269,10 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
    case nir_intrinsic_load_ubo: {
       assert(!(nir_intrinsic_access(intrin) & ACCESS_NON_UNIFORM));
 
+      /* Check if the instruction already sources a descriptor and doesn't need to be lowered. */
+      if (intrin->src[0].ssa->num_components == 4 && intrin->src[0].ssa->bit_size == 32)
+         return false;
+
       nir_def *desc = load_ubo_desc(b, intrin->src[0].ssa, s);
       nir_src_rewrite(&intrin->src[0], desc);
       break;
@@ -278,12 +282,20 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
    case nir_intrinsic_ssbo_atomic_swap: {
       assert(!(nir_intrinsic_access(intrin) & ACCESS_NON_UNIFORM));
 
+      /* Check if the instruction already sources a descriptor and doesn't need to be lowered. */
+      if (intrin->src[0].ssa->num_components == 4 && intrin->src[0].ssa->bit_size == 32)
+         return false;
+
       nir_def *desc = load_ssbo_desc(b, &intrin->src[0], s);
       nir_src_rewrite(&intrin->src[0], desc);
       break;
    }
    case nir_intrinsic_store_ssbo: {
       assert(!(nir_intrinsic_access(intrin) & ACCESS_NON_UNIFORM));
+
+      /* Check if the instruction already sources a descriptor and doesn't need to be lowered. */
+      if (intrin->src[1].ssa->num_components == 4 && intrin->src[1].ssa->bit_size == 32)
+         return false;
 
       nir_def *desc = load_ssbo_desc(b, &intrin->src[1], s);
       nir_src_rewrite(&intrin->src[1], desc);

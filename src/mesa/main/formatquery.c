@@ -1507,21 +1507,14 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
    }
 
    case GL_IMAGE_PIXEL_TYPE: {
-      mesa_format image_format;
       GLenum datatype;
-      GLuint comps;
 
       if (!_mesa_has_ARB_shader_image_load_store(ctx) ||
           target == GL_RENDERBUFFER)
          goto end;
 
-      image_format = _mesa_get_shader_image_format(internalformat);
-      if (image_format == MESA_FORMAT_NONE)
-         goto end;
-
-      _mesa_uncompressed_format_to_type_and_comps(image_format, &datatype,
-                                                  &comps);
-      if (!datatype)
+      datatype = _mesa_get_shader_image_pixel_type(internalformat);
+      if (datatype == GL_NONE)
          goto end;
 
       buffer[0] = datatype;

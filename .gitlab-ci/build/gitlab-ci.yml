@@ -172,7 +172,7 @@ debian-build-testing:
       -D gallium-omx=bellagio
       -D gallium-va=enabled
       -D gallium-xa=enabled
-      -D gallium-nine=true
+      -D gallium-nine=false
       -D gallium-rusticl=false
     GALLIUM_DRIVERS: "iris,nouveau,kmsro,r300,r600,freedreno,swrast,svga,v3d,vc4,virgl,etnaviv,panfrost,lima,zink,d3d12,asahi,crocus"
     VULKAN_DRIVERS: swrast

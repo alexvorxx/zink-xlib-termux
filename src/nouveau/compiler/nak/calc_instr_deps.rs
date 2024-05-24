@@ -55,10 +55,21 @@ impl<T> RegTracker<T> {
         mut f: impl FnMut(usize, &mut T),
     ) {
         for (i, src) in instr.srcs().iter().enumerate() {
-            if let SrcRef::Reg(reg) = &src.src_ref {
-                for t in &mut self[*reg] {
-                    f(i, t);
+            match &src.src_ref {
+                SrcRef::Reg(reg) => {
+                    for t in &mut self[*reg] {
+                        f(i, t);
+                    }
                 }
+                SrcRef::CBuf(CBufRef {
+                    buf: CBuf::BindlessUGPR(reg),
+                    ..
+                }) => {
+                    for t in &mut self[*reg] {
+                        f(i, t);
+                    }
+                }
+                _ => (),
             }
         }
     }

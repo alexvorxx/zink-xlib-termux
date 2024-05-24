@@ -31,6 +31,7 @@ check_minio "${CI_PROJECT_PATH}"
 . .gitlab-ci/container/build-rust.sh
 
 if [[ "$DEBIAN_ARCH" = "arm64" ]]; then
+    BUILD_CL="ON"
     GCC_ARCH="aarch64-linux-gnu"
     KERNEL_ARCH="arm64"
     SKQP_ARCH="arm64"
@@ -52,6 +53,7 @@ if [[ "$DEBIAN_ARCH" = "arm64" ]]; then
     KERNEL_IMAGE_NAME="Image"
 
 elif [[ "$DEBIAN_ARCH" = "armhf" ]]; then
+    BUILD_CL="OFF"
     GCC_ARCH="arm-linux-gnueabihf"
     KERNEL_ARCH="arm"
     SKQP_ARCH="arm"
@@ -76,6 +78,7 @@ elif [[ "$DEBIAN_ARCH" = "armhf" ]]; then
       libxkbcommon-dev:armhf
     )
 else
+    BUILD_CL="ON"
     GCC_ARCH="x86_64-linux-gnu"
     KERNEL_ARCH="x86_64"
     SKQP_ARCH="x64"
@@ -147,6 +150,11 @@ CONTAINER_EPHEMERAL=(
     zstd
 )
 
+[ "$BUILD_CL" == "ON" ] && CONTAINER_EPHEMERAL+=(
+	ocl-icd-opencl-dev
+)
+
+
 echo "deb [trusted=yes] https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/${PKG_REPO_REV}/ ${FDO_DISTRIBUTION_VERSION%-*} main" | tee /etc/apt/sources.list.d/gfx-ci_.list
 
 apt-get update
@@ -210,6 +218,10 @@ PKG_DEP=(
 )
 [ "$DEBIAN_ARCH" = "armhf" ] && PKG_ARCH=(
   firmware-misc-nonfree
+)
+
+[ "$BUILD_CL" == "ON" ] && PKG_ARCH+=(
+	ocl-icd-libopencl1
 )
 
 mmdebstrap \
@@ -306,7 +318,7 @@ PIGLIT_OPTS="-DPIGLIT_USE_WAFFLE=ON
 	     -DPIGLIT_BUILD_GLES1_TESTS=ON
 	     -DPIGLIT_BUILD_GLES2_TESTS=ON
 	     -DPIGLIT_BUILD_GLES3_TESTS=ON
-	     -DPIGLIT_BUILD_CL_TESTS=OFF
+	     -DPIGLIT_BUILD_CL_TESTS=$BUILD_CL
 	     -DPIGLIT_BUILD_VK_TESTS=ON
 	     -DPIGLIT_BUILD_DMA_BUF_TESTS=ON" \
   . .gitlab-ci/container/build-piglit.sh

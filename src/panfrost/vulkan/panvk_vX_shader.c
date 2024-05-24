@@ -219,6 +219,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
       .ssbo_addr_format = dev->vk.enabled_features.robustBufferAccess
                              ? nir_address_format_64bit_bounded_global
                              : nir_address_format_64bit_global_32bit_offset,
+      .phys_ssbo_addr_format = nir_address_format_64bit_global,
    };
 
    nir_shader *nir;
@@ -297,6 +298,8 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
               spirv_options.ssbo_addr_format);
    NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_push_const,
               nir_address_format_32bit_offset);
+   NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_global,
+              nir_address_format_64bit_global);
 
    if (gl_shader_stage_uses_workgroup(stage)) {
       if (!nir->info.shared_memory_explicit_layout) {

@@ -970,11 +970,7 @@ _mesa_get_color_read_type(struct gl_context *ctx,
    }
    else {
       const mesa_format format = fb->_ColorReadBuffer->Format;
-      GLenum data_type;
-      GLuint comps;
-
-      _mesa_uncompressed_format_to_type_and_comps(format, &data_type,
-                                                  &comps);
+      GLenum data_type = _mesa_uncompressed_format_to_type(format);
       if (_mesa_is_gles(ctx)) {
          /* GLES allows only a limited set of format/type combinations for
             reading, namely the ones specified in table 8.2 of the GLES 3.2

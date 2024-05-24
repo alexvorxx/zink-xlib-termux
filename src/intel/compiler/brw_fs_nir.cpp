@@ -6544,6 +6544,9 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
             get_nir_buffer_intrinsic_index(ntb, bld, instr);
       } else {
          srcs[SURFACE_LOGICAL_SRC_SURFACE] = fs_reg(brw_imm_ud(GFX7_BTI_SLM));
+
+         /* SLM has to use aligned OWord Block Read messages on pre-LSC HW. */
+         assert(devinfo->has_lsc || nir_intrinsic_align(instr) >= 16);
       }
 
       const unsigned total_dwords = ALIGN(instr->num_components,

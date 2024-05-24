@@ -1930,8 +1930,14 @@ lower_surface_block_logical_send(const fs_builder &bld, fs_inst *inst)
 
    const bool has_side_effects = inst->has_side_effects();
 
+   /* SLM block reads must use the 16B-aligned OWord Block Read messages,
+    * as the unaligned message doesn't exist for SLM.  However, we still
+    * use SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL in that case
+    * (to avoid adding more opcodes), but only emit it with 16B alignment.
+    */
    const bool align_16B =
-      inst->opcode != SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL;
+      inst->opcode != SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL ||
+      (surface.file == IMM && surface.ud == GFX7_BTI_SLM);
 
    const bool write = inst->opcode == SHADER_OPCODE_OWORD_BLOCK_WRITE_LOGICAL;
 

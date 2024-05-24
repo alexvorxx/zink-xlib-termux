@@ -452,8 +452,9 @@ impl<'a> ShaderFromNir<'a> {
             _ => (),
         }
 
+        let nir_srcs = alu.srcs_as_slice();
         let mut srcs: Vec<Src> = Vec::new();
-        for (i, alu_src) in alu.srcs_as_slice().iter().enumerate() {
+        for (i, alu_src) in nir_srcs.iter().enumerate() {
             let bit_size = alu_src.src.bit_size();
             let comps = alu.src_components(i.try_into().unwrap());
             let ssa = self.get_ssa(alu_src.src.as_def());
@@ -1302,13 +1303,17 @@ impl<'a> ShaderFromNir<'a> {
                 if alu.def.bit_size() == 64 {
                     // For 64-bit shifts, we have to use clamp mode so we need
                     // to mask the shift in order satisfy NIR semantics.
-                    let shift = b.lop2(LogicOp2::And, shift, 0x3f.into());
+                    let shift = if let Some(s) = nir_srcs[1].comp_as_uint(0) {
+                        ((s & 0x3f) as u32).into()
+                    } else {
+                        b.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+                    };
                     let dst = b.alloc_ssa(RegFile::GPR, 2);
                     b.push_op(OpShf {
                         dst: dst[0].into(),
                         low: 0.into(),
                         high: x[0].into(),
-                        shift: shift.into(),
+                        shift,
                         right: false,
                         wrap: false,
                         data_type: IntType::U32,
@@ -1318,7 +1323,7 @@ impl<'a> ShaderFromNir<'a> {
                         dst: dst[1].into(),
                         low: x[0].into(),
                         high: x[1].into(),
-                        shift: shift.into(),
+                        shift,
                         right: false,
                         wrap: false,
                         data_type: IntType::U64,
@@ -1336,13 +1341,17 @@ impl<'a> ShaderFromNir<'a> {
                 if alu.def.bit_size() == 64 {
                     // For 64-bit shifts, we have to use clamp mode so we need
                     // to mask the shift in order satisfy NIR semantics.
-                    let shift = b.lop2(LogicOp2::And, shift, 0x3f.into());
+                    let shift = if let Some(s) = nir_srcs[1].comp_as_uint(0) {
+                        ((s & 0x3f) as u32).into()
+                    } else {
+                        b.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+                    };
                     let dst = b.alloc_ssa(RegFile::GPR, 2);
                     b.push_op(OpShf {
                         dst: dst[0].into(),
                         low: x[0].into(),
                         high: x[1].into(),
-                        shift: shift.into(),
+                        shift,
                         right: true,
                         wrap: false,
                         data_type: IntType::I64,
@@ -1352,7 +1361,7 @@ impl<'a> ShaderFromNir<'a> {
                         dst: dst[1].into(),
                         low: x[0].into(),
                         high: x[1].into(),
-                        shift: shift.into(),
+                        shift,
                         right: true,
                         wrap: false,
                         data_type: IntType::I32,
@@ -1544,13 +1553,17 @@ impl<'a> ShaderFromNir<'a> {
                 if alu.def.bit_size() == 64 {
                     // For 64-bit shifts, we have to use clamp mode so we need
                     // to mask the shift in order satisfy NIR semantics.
-                    let shift = b.lop2(LogicOp2::And, shift, 0x3f.into());
+                    let shift = if let Some(s) = nir_srcs[1].comp_as_uint(0) {
+                        ((s & 0x3f) as u32).into()
+                    } else {
+                        b.lop2(LogicOp2::And, shift, 0x3f.into()).into()
+                    };
                     let dst = b.alloc_ssa(RegFile::GPR, 2);
                     b.push_op(OpShf {
                         dst: dst[0].into(),
                         low: x[0].into(),
                         high: x[1].into(),
-                        shift: shift.into(),
+                        shift,
                         right: true,
                         wrap: false,
                         data_type: IntType::U64,
@@ -1560,7 +1573,7 @@ impl<'a> ShaderFromNir<'a> {
                         dst: dst[1].into(),
                         low: x[0].into(),
                         high: x[1].into(),
-                        shift: shift.into(),
+                        shift,
                         right: true,
                         wrap: false,
                         data_type: IntType::U32,

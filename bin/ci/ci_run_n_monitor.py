@@ -66,6 +66,7 @@ RUNNING_STATUSES = {"created", "pending", "running"}
 def print_job_status(
     job: gitlab.v4.objects.ProjectPipelineJob,
     new_status: bool = False,
+    job_name_field_pad: int = 0,
 ) -> None:
     """It prints a nice, colored job status with a link to the job."""
     if job.status in {"canceled", "canceling"}:
@@ -74,13 +75,15 @@ def print_job_status(
     if new_status and job.status == "created":
         return
 
+    job_name_field_pad = len(job.name) if job_name_field_pad < 1 else job_name_field_pad
+
     duration = job_duration(job)
 
     print(
         STATUS_COLORS[job.status]
         + "🞋 job "  # U+1F78B Round target
-        + link2print(job.web_url, job.name)
-        + (f" has new status: {job.status}" if new_status else f" :: {job.status}")
+        + link2print(job.web_url, job.name, job_name_field_pad)
+        + (f"has new status: {job.status}" if new_status else f"{job.status}")
         + (f" ({pretty_duration(duration)})" if job.started_at else "")
         + Style.RESET_ALL
     )
@@ -120,6 +123,7 @@ def monitor_pipeline(
     stress_status_counter: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     execution_times = defaultdict(lambda: defaultdict(tuple))
     target_id: int = -1
+    name_field_pad: int = len(max(dependencies, key=len))+2
 
     # Pre-populate the stress status counter for already completed target jobs.
     if stress:
@@ -145,23 +149,23 @@ def monitor_pipeline(
                     ):
                         stress_status_counter[job.name][target_status] += 1
                         execution_times[job.name][job.id] = (job_duration(job), target_status, job.web_url)
-                        job = enable_job(project, pipeline, job, "retry", force_manual)
+                        job = enable_job(project, pipeline, job, "retry", force_manual, name_field_pad)
                 else:
                     execution_times[job.name][job.id] = (job_duration(job), target_status, job.web_url)
-                    job = enable_job(project, pipeline, job, "target", force_manual)
+                    job = enable_job(project, pipeline, job, "target", force_manual, name_field_pad)
 
-                print_job_status(job, target_status not in target_statuses[job.name])
+                print_job_status(job, target_status not in target_statuses[job.name], name_field_pad)
                 target_statuses[job.name] = target_status
                 continue
 
             # all other non-target jobs
             if job.status != statuses[job.name]:
-                print_job_status(job, True)
+                print_job_status(job, True, name_field_pad)
                 statuses[job.name] = job.status
 
             # run dependencies and cancel the rest
             if job.name in dependencies:
-                job = enable_job(project, pipeline, job, "dep", True)
+                job = enable_job(project, pipeline, job, "dep", True, name_field_pad)
                 if job.status == "failed":
                     deps_failed.append(job.name)
             else:
@@ -173,7 +177,7 @@ def monitor_pipeline(
             enough = True
             for job_name, status in stress_status_counter.items():
                 print(
-                    f"{job_name}\tsucc: {status['success']}; "
+                    f"* {job_name:{name_field_pad}}succ: {status['success']}; "
                     f"fail: {status['failed']}; "
                     f"total: {sum(status.values())} of {stress}",
                     flush=False,
@@ -230,6 +234,7 @@ def enable_job(
     job: gitlab.v4.objects.ProjectPipelineJob,
     action_type: Literal["target", "dep", "retry"],
     force_manual: bool,
+    job_name_field_pad: int = 0,
 ) -> gitlab.v4.objects.ProjectPipelineJob:
     """enable job"""
     if (
@@ -255,7 +260,8 @@ def enable_job(
     else:
         jtype = "↪"  # U+21AA Left Arrow Curving Right
 
-    print(Fore.MAGENTA + f"{jtype} job {job.name} manually enabled" + Style.RESET_ALL)
+    job_name_field_pad = len(job.name) if job_name_field_pad < 1 else job_name_field_pad
+    print(Fore.MAGENTA + f"{jtype} job {job.name:{job_name_field_pad}}manually enabled" + Style.RESET_ALL)
 
     return job
 
@@ -382,7 +388,7 @@ def print_detected_jobs(
     def print_job_set(color: str, kind: str, job_set: Iterable[str]):
         print(
             color + f"Running {len(job_set)} {kind} jobs: ",
-            "\n",
+            "\n\t",
             ", ".join(sorted(job_set)),
             Fore.RESET,
             "\n",
@@ -462,15 +468,16 @@ def __job_duration_record(dict_item: tuple) -> str:
     Format each pair of job and its duration.
     :param job_execution: item of execution_collection[name][idn]: Dict[int, Tuple[float, str, str]]
     """
-    job_id = dict_item[0]  # dictionary key
+    job_id = f"{dict_item[0]}"  # dictionary key
     job_duration, job_status, job_url = dict_item[1]  # dictionary value, the tuple
     return (f"{STATUS_COLORS[job_status]}"
             f"{link2print(job_url, job_id)}: {pretty_duration(job_duration):>8}"
             f"{Style.RESET_ALL}")
 
 
-def link2print(url: str, text: str) -> str:
-    return f"{URL_START}{url}\a{text}{URL_END}"
+def link2print(url: str, text: str, text_pad: int = 0) -> str:
+    text_pad = len(text) if text_pad < 1 else text_pad
+    return f"{URL_START}{url}\a{text:{text_pad}}{URL_END}"
 
 
 def main() -> None:

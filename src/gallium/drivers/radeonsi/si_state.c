@@ -2920,9 +2920,24 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
       }
 
       /* Compute mutable surface parameters. */
-      uint64_t cb_color_base = tex->buffer.gpu_address >> 8;
-      uint64_t cb_dcc_base = 0;
-      unsigned cb_color_info = cb->cb.cb_color_info | tex->cb_color_info;
+      const struct ac_mutable_cb_state mutable_cb_state = {
+         .surf = &tex->surface,
+         .cb = &cb->cb,
+         .va = tex->buffer.gpu_address,
+         .base_level = cb->base.u.tex.level,
+         .num_samples = cb->base.texture->nr_samples,
+         .fmask_enabled = !!tex->surface.fmask_offset,
+         /* CMASK and fast clears are configured elsewhere. */
+         .cmask_enabled = false,
+         .fast_clear_enabled = false,
+         .dcc_enabled = vi_dcc_enabled(tex, cb->base.u.tex.level) &&
+                        (i != 1 || !is_msaa_resolve),
+      };
+      struct ac_cb_surface cb_surf;
+
+      ac_set_mutable_cb_surface_fields(&sctx->screen->info, &mutable_cb_state, &cb_surf);
+
+      cb_surf.cb_color_info |= tex->cb_color_info;
 
       if (sctx->gfx_level < GFX11) {
          if (tex->swap_rgb_to_bgr) {
@@ -2933,232 +2948,96 @@ static void gfx6_emit_framebuffer_state(struct si_context *sctx, unsigned index)
                [V_028C70_SWAP_STD_REV] = V_028C70_SWAP_ALT_REV,
                [V_028C70_SWAP_ALT_REV] = V_028C70_SWAP_STD_REV,
             };
-            unsigned swap = rgb_to_bgr[G_028C70_COMP_SWAP(cb_color_info)];
+            unsigned swap = rgb_to_bgr[G_028C70_COMP_SWAP(cb_surf.cb_color_info)];
 
-            cb_color_info &= C_028C70_COMP_SWAP;
-            cb_color_info |= S_028C70_COMP_SWAP(swap);
+            cb_surf.cb_color_info &= C_028C70_COMP_SWAP;
+            cb_surf.cb_color_info |= S_028C70_COMP_SWAP(swap);
          }
 
          if (cb->base.u.tex.level > 0)
-            cb_color_info &= C_028C70_FAST_CLEAR;
-
-
-         if (vi_dcc_enabled(tex, cb->base.u.tex.level) && (i != 1 || !is_msaa_resolve))
-            cb_color_info |= S_028C70_DCC_ENABLE(1);
-      }
-
-      /* Set up DCC. */
-      if (vi_dcc_enabled(tex, cb->base.u.tex.level)) {
-         cb_dcc_base = (tex->buffer.gpu_address + tex->surface.meta_offset) >> 8;
-
-         unsigned dcc_tile_swizzle = tex->surface.tile_swizzle;
-         dcc_tile_swizzle &= ((1 << tex->surface.meta_alignment_log2) - 1) >> 8;
-         cb_dcc_base |= dcc_tile_swizzle;
+            cb_surf.cb_color_info &= C_028C70_FAST_CLEAR;
+         else
+            cb_surf.cb_color_cmask = tex->cmask_base_address_reg;
       }
 
       if (sctx->gfx_level >= GFX11) {
-         unsigned cb_color_attrib3, cb_fdcc_control;
-
-         /* Set mutable surface parameters. */
-         cb_color_base += tex->surface.u.gfx9.surf_offset >> 8;
-         cb_color_base |= tex->surface.tile_swizzle;
-
-         cb_color_attrib3 = cb->cb.cb_color_attrib3 |
-                            S_028EE0_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode) |
-                            S_028EE0_DCC_PIPE_ALIGNED(tex->surface.u.gfx9.color.dcc.pipe_aligned);
-         cb_fdcc_control = cb->cb.cb_dcc_control |
-                           S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) |
-                           S_028C78_FDCC_ENABLE(vi_dcc_enabled(tex, cb->base.u.tex.level));
-
-         if (sctx->family >= CHIP_GFX1103_R2) {
-            cb_fdcc_control |= S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) |
-                               S_028C78_MAX_COMP_FRAGS(cb->base.texture->nr_samples >= 4);
-         }
-
-         radeon_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x3C, cb_color_base);
+         radeon_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x3C, cb_surf.cb_color_base);
 
          radeon_set_context_reg_seq(R_028C6C_CB_COLOR0_VIEW + i * 0x3C, 4);
-         radeon_emit(cb->cb.cb_color_view);                      /* CB_COLOR0_VIEW */
-         radeon_emit(cb_color_info);                          /* CB_COLOR0_INFO */
-         radeon_emit(cb->cb.cb_color_attrib);                    /* CB_COLOR0_ATTRIB */
-         radeon_emit(cb_fdcc_control);                        /* CB_COLOR0_FDCC_CONTROL */
+         radeon_emit(cb_surf.cb_color_view);                      /* CB_COLOR0_VIEW */
+         radeon_emit(cb_surf.cb_color_info);                          /* CB_COLOR0_INFO */
+         radeon_emit(cb_surf.cb_color_attrib);                    /* CB_COLOR0_ATTRIB */
+         radeon_emit(cb_surf.cb_dcc_control);                        /* CB_COLOR0_FDCC_CONTROL */
 
-         radeon_set_context_reg(R_028C94_CB_COLOR0_DCC_BASE + i * 0x3C, cb_dcc_base);
-         radeon_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_color_base >> 32);
-         radeon_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_dcc_base >> 32);
-         radeon_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb->cb.cb_color_attrib2);
-         radeon_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_color_attrib3);
+         radeon_set_context_reg(R_028C94_CB_COLOR0_DCC_BASE + i * 0x3C, cb_surf.cb_dcc_base);
+         radeon_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_surf.cb_color_base >> 32);
+         radeon_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_surf.cb_dcc_base >> 32);
+         radeon_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb_surf.cb_color_attrib2);
+         radeon_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_surf.cb_color_attrib3);
       } else if (sctx->gfx_level >= GFX10) {
-         unsigned cb_color_attrib3;
-         uint64_t cb_color_fmask, cb_color_cmask;
-
-         /* Set mutable surface parameters. */
-         cb_color_base += tex->surface.u.gfx9.surf_offset >> 8;
-         cb_color_base |= tex->surface.tile_swizzle;
-
-         if (tex->surface.fmask_offset) {
-            cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
-            cb_color_fmask |= tex->surface.fmask_tile_swizzle;
-         } else {
-            cb_color_fmask = cb_color_base;
-         }
-
-         if (cb->base.u.tex.level > 0)
-            cb_color_cmask = cb_color_base;
-         else
-            cb_color_cmask = tex->cmask_base_address_reg;
-
-         cb_color_attrib3 = cb->cb.cb_color_attrib3 |
-                            S_028EE0_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode) |
-                            S_028EE0_FMASK_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode) |
-                            S_028EE0_CMASK_PIPE_ALIGNED(1) |
-                            S_028EE0_DCC_PIPE_ALIGNED(tex->surface.u.gfx9.color.dcc.pipe_aligned);
-
          radeon_set_context_reg_seq(R_028C60_CB_COLOR0_BASE + i * 0x3C, 14);
-         radeon_emit(cb_color_base);             /* CB_COLOR0_BASE */
+         radeon_emit(cb_surf.cb_color_base);             /* CB_COLOR0_BASE */
          radeon_emit(0);                         /* hole */
          radeon_emit(0);                         /* hole */
-         radeon_emit(cb->cb.cb_color_view);         /* CB_COLOR0_VIEW */
-         radeon_emit(cb_color_info);             /* CB_COLOR0_INFO */
-         radeon_emit(cb->cb.cb_color_attrib);       /* CB_COLOR0_ATTRIB */
-         radeon_emit(cb->cb.cb_dcc_control);        /* CB_COLOR0_DCC_CONTROL */
-         radeon_emit(cb_color_cmask);            /* CB_COLOR0_CMASK */
+         radeon_emit(cb_surf.cb_color_view);         /* CB_COLOR0_VIEW */
+         radeon_emit(cb_surf.cb_color_info);             /* CB_COLOR0_INFO */
+         radeon_emit(cb_surf.cb_color_attrib);       /* CB_COLOR0_ATTRIB */
+         radeon_emit(cb_surf.cb_dcc_control);        /* CB_COLOR0_DCC_CONTROL */
+         radeon_emit(cb_surf.cb_color_cmask);            /* CB_COLOR0_CMASK */
          radeon_emit(0);                         /* hole */
-         radeon_emit(cb_color_fmask);            /* CB_COLOR0_FMASK */
+         radeon_emit(cb_surf.cb_color_fmask);            /* CB_COLOR0_FMASK */
          radeon_emit(0);                         /* hole */
          radeon_emit(tex->color_clear_value[0]); /* CB_COLOR0_CLEAR_WORD0 */
          radeon_emit(tex->color_clear_value[1]); /* CB_COLOR0_CLEAR_WORD1 */
-         radeon_emit(cb_dcc_base);               /* CB_COLOR0_DCC_BASE */
+         radeon_emit(cb_surf.cb_dcc_base);               /* CB_COLOR0_DCC_BASE */
 
-         radeon_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_color_base >> 32);
+         radeon_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_surf.cb_color_base >> 32);
          radeon_set_context_reg(R_028E60_CB_COLOR0_CMASK_BASE_EXT + i * 4,
-                                cb_color_cmask >> 32);
+                                cb_surf.cb_color_cmask >> 32);
          radeon_set_context_reg(R_028E80_CB_COLOR0_FMASK_BASE_EXT + i * 4,
-                                cb_color_fmask >> 32);
-         radeon_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_dcc_base >> 32);
-         radeon_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb->cb.cb_color_attrib2);
-         radeon_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_color_attrib3);
+                                cb_surf.cb_color_fmask >> 32);
+         radeon_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_surf.cb_dcc_base >> 32);
+         radeon_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb_surf.cb_color_attrib2);
+         radeon_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_surf.cb_color_attrib3);
       } else if (sctx->gfx_level == GFX9) {
-         struct gfx9_surf_meta_flags meta = {
-            .rb_aligned = 1,
-            .pipe_aligned = 1,
-         };
-         unsigned cb_color_attrib = cb->cb.cb_color_attrib;
-         uint64_t cb_color_fmask, cb_color_cmask;
-
-         if (!tex->is_depth && tex->surface.meta_offset)
-            meta = tex->surface.u.gfx9.color.dcc;
-
-         /* Set mutable surface parameters. */
-         cb_color_base += tex->surface.u.gfx9.surf_offset >> 8;
-         cb_color_base |= tex->surface.tile_swizzle;
-
-         if (tex->surface.fmask_offset) {
-            cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
-            cb_color_fmask |= tex->surface.fmask_tile_swizzle;
-         } else {
-            cb_color_fmask = cb_color_base;
-         }
-
-         if (cb->base.u.tex.level > 0)
-            cb_color_cmask = cb_color_base;
-         else
-            cb_color_cmask = tex->cmask_base_address_reg;
-
-         cb_color_attrib |= S_028C74_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode) |
-                            S_028C74_FMASK_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode) |
-                            S_028C74_RB_ALIGNED(meta.rb_aligned) |
-                            S_028C74_PIPE_ALIGNED(meta.pipe_aligned);
-
          radeon_set_context_reg_seq(R_028C60_CB_COLOR0_BASE + i * 0x3C, 15);
-         radeon_emit(cb_color_base);                            /* CB_COLOR0_BASE */
-         radeon_emit(S_028C64_BASE_256B(cb_color_base >> 32));  /* CB_COLOR0_BASE_EXT */
-         radeon_emit(cb->cb.cb_color_attrib2);                     /* CB_COLOR0_ATTRIB2 */
-         radeon_emit(cb->cb.cb_color_view);                        /* CB_COLOR0_VIEW */
-         radeon_emit(cb_color_info);                            /* CB_COLOR0_INFO */
-         radeon_emit(cb_color_attrib);                          /* CB_COLOR0_ATTRIB */
-         radeon_emit(cb->cb.cb_dcc_control);                       /* CB_COLOR0_DCC_CONTROL */
-         radeon_emit(cb_color_cmask);                           /* CB_COLOR0_CMASK */
-         radeon_emit(S_028C80_BASE_256B(cb_color_cmask >> 32)); /* CB_COLOR0_CMASK_BASE_EXT */
-         radeon_emit(cb_color_fmask);                           /* CB_COLOR0_FMASK */
-         radeon_emit(S_028C88_BASE_256B(cb_color_fmask >> 32)); /* CB_COLOR0_FMASK_BASE_EXT */
+         radeon_emit(cb_surf.cb_color_base);                            /* CB_COLOR0_BASE */
+         radeon_emit(S_028C64_BASE_256B(cb_surf.cb_color_base >> 32));  /* CB_COLOR0_BASE_EXT */
+         radeon_emit(cb_surf.cb_color_attrib2);                     /* CB_COLOR0_ATTRIB2 */
+         radeon_emit(cb_surf.cb_color_view);                        /* CB_COLOR0_VIEW */
+         radeon_emit(cb_surf.cb_color_info);                            /* CB_COLOR0_INFO */
+         radeon_emit(cb_surf.cb_color_attrib);                          /* CB_COLOR0_ATTRIB */
+         radeon_emit(cb_surf.cb_dcc_control);                       /* CB_COLOR0_DCC_CONTROL */
+         radeon_emit(cb_surf.cb_color_cmask);                           /* CB_COLOR0_CMASK */
+         radeon_emit(S_028C80_BASE_256B(cb_surf.cb_color_cmask >> 32)); /* CB_COLOR0_CMASK_BASE_EXT */
+         radeon_emit(cb_surf.cb_color_fmask);                           /* CB_COLOR0_FMASK */
+         radeon_emit(S_028C88_BASE_256B(cb_surf.cb_color_fmask >> 32)); /* CB_COLOR0_FMASK_BASE_EXT */
          radeon_emit(tex->color_clear_value[0]);                /* CB_COLOR0_CLEAR_WORD0 */
          radeon_emit(tex->color_clear_value[1]);                /* CB_COLOR0_CLEAR_WORD1 */
-         radeon_emit(cb_dcc_base);                              /* CB_COLOR0_DCC_BASE */
-         radeon_emit(S_028C98_BASE_256B(cb_dcc_base >> 32));    /* CB_COLOR0_DCC_BASE_EXT */
+         radeon_emit(cb_surf.cb_dcc_base);                              /* CB_COLOR0_DCC_BASE */
+         radeon_emit(S_028C98_BASE_256B(cb_surf.cb_dcc_base >> 32));    /* CB_COLOR0_DCC_BASE_EXT */
 
-         radeon_set_context_reg(R_0287A0_CB_MRT0_EPITCH + i * 4,
-                                S_0287A0_EPITCH(tex->surface.u.gfx9.epitch));
+         radeon_set_context_reg(R_0287A0_CB_MRT0_EPITCH + i * 4, cb_surf.cb_mrt_epitch);
       } else {
-         /* Compute mutable surface parameters (GFX6-GFX8). */
-         const struct legacy_surf_level *level_info =
-            &tex->surface.u.legacy.level[cb->base.u.tex.level];
-         unsigned pitch_tile_max, slice_tile_max, tile_mode_index;
-         unsigned cb_color_pitch, cb_color_slice, cb_color_fmask_slice;
-         unsigned cb_color_attrib = cb->cb.cb_color_attrib;
-         uint64_t cb_color_fmask, cb_color_cmask;
-
-         cb_color_base += level_info->offset_256B;
-         /* Only macrotiled modes can set tile swizzle. */
-         if (level_info->mode == RADEON_SURF_MODE_2D)
-            cb_color_base |= tex->surface.tile_swizzle;
-
-         if (tex->surface.fmask_offset) {
-            cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
-            cb_color_fmask |= tex->surface.fmask_tile_swizzle;
-         } else {
-            cb_color_fmask = cb_color_base;
-         }
-
-         if (cb->base.u.tex.level > 0)
-            cb_color_cmask = cb_color_base;
-         else
-            cb_color_cmask = tex->cmask_base_address_reg;
-
-         if (cb_dcc_base)
-            cb_dcc_base += tex->surface.u.legacy.color.dcc_level[cb->base.u.tex.level].dcc_offset >> 8;
-
-         pitch_tile_max = level_info->nblk_x / 8 - 1;
-         slice_tile_max = level_info->nblk_x * level_info->nblk_y / 64 - 1;
-         tile_mode_index = ac_tile_mode_index(&tex->surface, cb->base.u.tex.level, false);
-
-         cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
-         cb_color_pitch = S_028C64_TILE_MAX(pitch_tile_max);
-         cb_color_slice = S_028C68_TILE_MAX(slice_tile_max);
-
-         if (tex->surface.fmask_offset) {
-            if (sctx->gfx_level >= GFX7)
-               cb_color_pitch |=
-                  S_028C64_FMASK_TILE_MAX(tex->surface.u.legacy.color.fmask.pitch_in_pixels / 8 - 1);
-            cb_color_attrib |=
-               S_028C74_FMASK_TILE_MODE_INDEX(tex->surface.u.legacy.color.fmask.tiling_index);
-            cb_color_fmask_slice = S_028C88_TILE_MAX(tex->surface.u.legacy.color.fmask.slice_tile_max);
-         } else {
-            /* This must be set for fast clear to work without FMASK. */
-            if (sctx->gfx_level >= GFX7)
-               cb_color_pitch |= S_028C64_FMASK_TILE_MAX(pitch_tile_max);
-            cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(tile_mode_index);
-            cb_color_fmask_slice = S_028C88_TILE_MAX(slice_tile_max);
-         }
-
+         /* GFX6-8 */
          radeon_set_context_reg_seq(R_028C60_CB_COLOR0_BASE + i * 0x3C,
                                     sctx->gfx_level >= GFX8 ? 14 : 13);
-         radeon_emit(cb_color_base);                              /* CB_COLOR0_BASE */
-         radeon_emit(cb_color_pitch);                             /* CB_COLOR0_PITCH */
-         radeon_emit(cb_color_slice);                             /* CB_COLOR0_SLICE */
-         radeon_emit(cb->cb.cb_color_view);                          /* CB_COLOR0_VIEW */
-         radeon_emit(cb_color_info);                              /* CB_COLOR0_INFO */
-         radeon_emit(cb_color_attrib);                            /* CB_COLOR0_ATTRIB */
-         radeon_emit(cb->cb.cb_dcc_control);                         /* CB_COLOR0_DCC_CONTROL */
-         radeon_emit(cb_color_cmask);                             /* CB_COLOR0_CMASK */
+         radeon_emit(cb_surf.cb_color_base);                              /* CB_COLOR0_BASE */
+         radeon_emit(cb_surf.cb_color_pitch);                             /* CB_COLOR0_PITCH */
+         radeon_emit(cb_surf.cb_color_slice);                             /* CB_COLOR0_SLICE */
+         radeon_emit(cb_surf.cb_color_view);                          /* CB_COLOR0_VIEW */
+         radeon_emit(cb_surf.cb_color_info);                              /* CB_COLOR0_INFO */
+         radeon_emit(cb_surf.cb_color_attrib);                            /* CB_COLOR0_ATTRIB */
+         radeon_emit(cb_surf.cb_dcc_control);                         /* CB_COLOR0_DCC_CONTROL */
+         radeon_emit(cb_surf.cb_color_cmask);                             /* CB_COLOR0_CMASK */
          radeon_emit(tex->surface.u.legacy.color.cmask_slice_tile_max); /* CB_COLOR0_CMASK_SLICE */
-         radeon_emit(cb_color_fmask);                             /* CB_COLOR0_FMASK */
-         radeon_emit(cb_color_fmask_slice);                       /* CB_COLOR0_FMASK_SLICE */
+         radeon_emit(cb_surf.cb_color_fmask);                             /* CB_COLOR0_FMASK */
+         radeon_emit(cb_surf.cb_color_fmask_slice);                       /* CB_COLOR0_FMASK_SLICE */
          radeon_emit(tex->color_clear_value[0]);                  /* CB_COLOR0_CLEAR_WORD0 */
          radeon_emit(tex->color_clear_value[1]);                  /* CB_COLOR0_CLEAR_WORD1 */
 
          if (sctx->gfx_level >= GFX8) /* R_028C94_CB_COLOR0_DCC_BASE */
-            radeon_emit(cb_dcc_base);
+            radeon_emit(cb_surf.cb_dcc_base);
       }
    }
    for (; i < 8; i++)
@@ -3339,47 +3218,29 @@ static void gfx11_dgpu_emit_framebuffer_state(struct si_context *sctx, unsigned 
       }
 
       /* Compute mutable surface parameters. */
-      uint64_t cb_color_base = tex->buffer.gpu_address >> 8;
-      uint64_t cb_dcc_base = 0;
-      unsigned cb_color_info = cb->cb.cb_color_info | tex->cb_color_info;
+      const struct ac_mutable_cb_state mutable_cb_state = {
+         .surf = &tex->surface,
+         .cb = &cb->cb,
+         .va = tex->buffer.gpu_address,
+         .num_samples = cb->base.texture->nr_samples,
+         .dcc_enabled = vi_dcc_enabled(tex, cb->base.u.tex.level),
+      };
+      struct ac_cb_surface cb_surf;
 
-      /* Set up DCC. */
-      if (vi_dcc_enabled(tex, cb->base.u.tex.level)) {
-         cb_dcc_base = (tex->buffer.gpu_address + tex->surface.meta_offset) >> 8;
+      ac_set_mutable_cb_surface_fields(&sctx->screen->info, &mutable_cb_state, &cb_surf);
 
-         unsigned dcc_tile_swizzle = tex->surface.tile_swizzle;
-         dcc_tile_swizzle &= ((1 << tex->surface.meta_alignment_log2) - 1) >> 8;
-         cb_dcc_base |= dcc_tile_swizzle;
-      }
+      cb_surf.cb_color_info |= tex->cb_color_info;
 
-      unsigned cb_color_attrib3, cb_fdcc_control;
-
-      /* Set mutable surface parameters. */
-      cb_color_base += tex->surface.u.gfx9.surf_offset >> 8;
-      cb_color_base |= tex->surface.tile_swizzle;
-
-      cb_color_attrib3 = cb->cb.cb_color_attrib3 |
-                         S_028EE0_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode) |
-                         S_028EE0_DCC_PIPE_ALIGNED(tex->surface.u.gfx9.color.dcc.pipe_aligned);
-      cb_fdcc_control = cb->cb.cb_dcc_control |
-                        S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) |
-                        S_028C78_FDCC_ENABLE(vi_dcc_enabled(tex, cb->base.u.tex.level));
-
-      if (sctx->family >= CHIP_GFX1103_R2) {
-         cb_fdcc_control |= S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) |
-                            S_028C78_MAX_COMP_FRAGS(cb->base.texture->nr_samples >= 4);
-      }
-
-      gfx11_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x3C, cb_color_base);
-      gfx11_set_context_reg(R_028C6C_CB_COLOR0_VIEW + i * 0x3C, cb->cb.cb_color_view);
-      gfx11_set_context_reg(R_028C70_CB_COLOR0_INFO + i * 0x3C, cb_color_info);
-      gfx11_set_context_reg(R_028C74_CB_COLOR0_ATTRIB + i * 0x3C, cb->cb.cb_color_attrib);
-      gfx11_set_context_reg(R_028C78_CB_COLOR0_DCC_CONTROL + i * 0x3C, cb_fdcc_control);
-      gfx11_set_context_reg(R_028C94_CB_COLOR0_DCC_BASE + i * 0x3C, cb_dcc_base);
-      gfx11_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_color_base >> 32);
-      gfx11_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_dcc_base >> 32);
-      gfx11_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb->cb.cb_color_attrib2);
-      gfx11_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_color_attrib3);
+      gfx11_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x3C, cb_surf.cb_color_base);
+      gfx11_set_context_reg(R_028C6C_CB_COLOR0_VIEW + i * 0x3C, cb_surf.cb_color_view);
+      gfx11_set_context_reg(R_028C70_CB_COLOR0_INFO + i * 0x3C, cb_surf.cb_color_info);
+      gfx11_set_context_reg(R_028C74_CB_COLOR0_ATTRIB + i * 0x3C, cb_surf.cb_color_attrib);
+      gfx11_set_context_reg(R_028C78_CB_COLOR0_DCC_CONTROL + i * 0x3C, cb_surf.cb_dcc_control);
+      gfx11_set_context_reg(R_028C94_CB_COLOR0_DCC_BASE + i * 0x3C, cb_surf.cb_dcc_base);
+      gfx11_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_surf.cb_color_base >> 32);
+      gfx11_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_surf.cb_dcc_base >> 32);
+      gfx11_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb_surf.cb_color_attrib2);
+      gfx11_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_surf.cb_color_attrib3);
    }
    for (; i < 8; i++)
       if (sctx->framebuffer.dirty_cbufs & (1 << i))
@@ -3501,20 +3362,26 @@ static void gfx12_emit_framebuffer_state(struct si_context *sctx, unsigned index
          (tex->buffer.b.b.nr_samples > 1 ? RADEON_PRIO_COLOR_BUFFER_MSAA : RADEON_PRIO_COLOR_BUFFER));
 
       /* Compute mutable surface parameters. */
-      uint64_t cb_color_base = ((tex->buffer.gpu_address + tex->surface.u.gfx9.surf_offset) >> 8) |
-                               tex->surface.tile_swizzle;
+      const struct ac_mutable_cb_state mutable_cb_state = {
+         .surf = &tex->surface,
+         .cb = &cb->cb,
+         .va = tex->buffer.gpu_address,
+      };
+      struct ac_cb_surface cb_surf;
 
-      gfx12_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x24, cb_color_base);
-      gfx12_set_context_reg(R_028C64_CB_COLOR0_VIEW + i * 0x24, cb->cb.cb_color_view);
-      gfx12_set_context_reg(R_028C68_CB_COLOR0_VIEW2 + i * 0x24, cb->cb.cb_color_view2);
-      gfx12_set_context_reg(R_028C6C_CB_COLOR0_ATTRIB + i * 0x24, cb->cb.cb_color_attrib);
-      gfx12_set_context_reg(R_028C70_CB_COLOR0_FDCC_CONTROL + i * 0x24, cb->cb.cb_dcc_control);
-      gfx12_set_context_reg(R_028C78_CB_COLOR0_ATTRIB2 + i * 0x24, cb->cb.cb_color_attrib2);
+      ac_set_mutable_cb_surface_fields(&sctx->screen->info, &mutable_cb_state, &cb_surf);
+
+      gfx12_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x24, cb_surf.cb_color_base);
+      gfx12_set_context_reg(R_028C64_CB_COLOR0_VIEW + i * 0x24, cb_surf.cb_color_view);
+      gfx12_set_context_reg(R_028C68_CB_COLOR0_VIEW2 + i * 0x24, cb_surf.cb_color_view2);
+      gfx12_set_context_reg(R_028C6C_CB_COLOR0_ATTRIB + i * 0x24, cb_surf.cb_color_attrib);
+      gfx12_set_context_reg(R_028C70_CB_COLOR0_FDCC_CONTROL + i * 0x24, cb_surf.cb_dcc_control);
+      gfx12_set_context_reg(R_028C78_CB_COLOR0_ATTRIB2 + i * 0x24, cb_surf.cb_color_attrib2);
       gfx12_set_context_reg(R_028C7C_CB_COLOR0_ATTRIB3 + i * 0x24,
-                            cb->cb.cb_color_attrib3 |
+                            cb_surf.cb_color_attrib3 |
                             S_028C7C_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode));
-      gfx12_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_color_base >> 32);
-      gfx12_set_context_reg(R_028EC0_CB_COLOR0_INFO + i * 4, cb->cb.cb_color_info);
+      gfx12_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_surf.cb_color_base >> 32);
+      gfx12_set_context_reg(R_028EC0_CB_COLOR0_INFO + i * 4, cb_surf.cb_color_info);
    }
    /* Set unbound colorbuffers. */
    for (; i < 8; i++)

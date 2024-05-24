@@ -608,18 +608,6 @@ unsigned radv_get_dcc_max_uncompressed_block_size(const struct radv_device *devi
 
 struct radv_color_buffer_info {
    struct ac_cb_surface ac;
-
-   uint64_t cb_color_base;
-   uint64_t cb_color_cmask;
-   uint64_t cb_color_fmask;
-   uint64_t cb_dcc_base;
-   uint32_t cb_color_slice;
-   uint32_t cb_color_cmask_slice;
-   uint32_t cb_color_fmask_slice;
-   union {
-      uint32_t cb_color_pitch; // GFX6-GFX8
-      uint32_t cb_mrt_epitch;  // GFX9+
-   };
 };
 
 struct radv_ds_buffer_info {

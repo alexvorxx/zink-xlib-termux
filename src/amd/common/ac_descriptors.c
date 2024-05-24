@@ -1110,3 +1110,142 @@ ac_init_cb_surface(const struct radeon_info *info, const struct ac_cb_state *sta
       ac_init_gfx6_cb_surface(info, state, cb_format, force_dst_alpha_1, cb);
    }
 }
+
+void
+ac_set_mutable_cb_surface_fields(const struct radeon_info *info, const struct ac_mutable_cb_state *state,
+                                 struct ac_cb_surface *cb)
+{
+   const struct radeon_surf *surf = state->surf;
+   uint8_t tile_swizzle = surf->tile_swizzle;
+   uint64_t va = state->va;
+
+   memcpy(cb, state->cb, sizeof(*cb));
+
+   if (state->gfx10.nbc_view) {
+      assert(state->gfx10.nbc_view->valid);
+      va += state->gfx10.nbc_view->base_address_offset;
+      tile_swizzle = state->gfx10.nbc_view->tile_swizzle;
+   }
+
+   cb->cb_color_base = va >> 8;
+
+   if (info->gfx_level >= GFX9) {
+      cb->cb_color_base += surf->u.gfx9.surf_offset >> 8;
+      cb->cb_color_base |= tile_swizzle;
+   } else {
+      const struct legacy_surf_level *level_info = &surf->u.legacy.level[state->base_level];
+
+      cb->cb_color_base += level_info->offset_256B;
+
+      /* Only macrotiled modes can set tile swizzle. */
+      if (level_info->mode == RADEON_SURF_MODE_2D)
+         cb->cb_color_base |= tile_swizzle;
+   }
+
+   if (info->gfx_level >= GFX12)
+      return;
+
+   /* Set up DCC. */
+   if (state->dcc_enabled) {
+      cb->cb_dcc_base = (va + surf->meta_offset) >> 8;
+
+      if (info->gfx_level == GFX8)
+         cb->cb_dcc_base += surf->u.legacy.color.dcc_level[state->base_level].dcc_offset >> 8;
+
+      uint32_t dcc_tile_swizzle = tile_swizzle;
+      dcc_tile_swizzle &= ((1 << surf->meta_alignment_log2) - 1) >> 8;
+      cb->cb_dcc_base |= dcc_tile_swizzle;
+   }
+
+   if (info->gfx_level >= GFX11) {
+      cb->cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                              S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
+
+      if (state->dcc_enabled) {
+         cb->cb_dcc_control |= S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) |
+                               S_028C78_FDCC_ENABLE(1);
+
+         if (info->family >= CHIP_GFX1103_R2) {
+            cb->cb_dcc_control |= S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) |
+                                  S_028C78_MAX_COMP_FRAGS(state->num_samples >= 4);
+         }
+      }
+   } else if (info->gfx_level >= GFX10) {
+      cb->cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                              S_028EE0_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
+                              S_028EE0_CMASK_PIPE_ALIGNED(1) |
+                              S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
+   } else if (info->gfx_level == GFX9) {
+      struct gfx9_surf_meta_flags meta = {
+         .rb_aligned = 1,
+         .pipe_aligned = 1,
+      };
+
+      if (!(surf->flags & RADEON_SURF_Z_OR_SBUFFER) && surf->meta_offset)
+         meta = surf->u.gfx9.color.dcc;
+
+      cb->cb_color_attrib |= S_028C74_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
+                             S_028C74_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
+                             S_028C74_RB_ALIGNED(meta.rb_aligned) |
+                             S_028C74_PIPE_ALIGNED(meta.pipe_aligned);
+      cb->cb_mrt_epitch = S_0287A0_EPITCH(surf->u.gfx9.epitch);
+   } else {
+      /* GFX6-8 */
+      const struct legacy_surf_level *level_info = &surf->u.legacy.level[state->base_level];
+      uint32_t pitch_tile_max, slice_tile_max, tile_mode_index;
+
+      pitch_tile_max = level_info->nblk_x / 8 - 1;
+      slice_tile_max = (level_info->nblk_x * level_info->nblk_y) / 64 - 1;
+      tile_mode_index = ac_tile_mode_index(surf, state->base_level, false);
+
+      cb->cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
+      cb->cb_color_pitch = S_028C64_TILE_MAX(pitch_tile_max);
+      cb->cb_color_slice = S_028C68_TILE_MAX(slice_tile_max);
+
+      cb->cb_color_cmask_slice = surf->u.legacy.color.cmask_slice_tile_max;
+
+      if (state->fmask_enabled) {
+         if (info->gfx_level >= GFX7)
+            cb->cb_color_pitch |= S_028C64_FMASK_TILE_MAX(surf->u.legacy.color.fmask.pitch_in_pixels / 8 - 1);
+         cb->cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(surf->u.legacy.color.fmask.tiling_index);
+         cb->cb_color_fmask_slice = S_028C88_TILE_MAX(surf->u.legacy.color.fmask.slice_tile_max);
+      } else {
+         /* This must be set for fast clear to work without FMASK. */
+         if (info->gfx_level >= GFX7)
+            cb->cb_color_pitch |= S_028C64_FMASK_TILE_MAX(pitch_tile_max);
+         cb->cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(tile_mode_index);
+         cb->cb_color_fmask_slice = S_028C88_TILE_MAX(slice_tile_max);
+      }
+   }
+
+   if (state->cmask_enabled) {
+      cb->cb_color_cmask = (va + surf->cmask_offset) >> 8;
+      cb->cb_color_info |= S_028C70_FAST_CLEAR(state->fast_clear_enabled);
+   } else {
+      cb->cb_color_cmask = cb->cb_color_base;
+   }
+
+   if (state->fmask_enabled) {
+      cb->cb_color_fmask = (va + surf->fmask_offset) >> 8;
+      cb->cb_color_fmask |= surf->fmask_tile_swizzle;
+
+      if (state->tc_compat_cmask_enabled) {
+         assert(state->cmask_enabled);
+
+         /* Allow the texture block to read FMASK directly without decompressing it. */
+         cb->cb_color_info |= S_028C70_FMASK_COMPRESS_1FRAG_ONLY(1);
+
+         if (info->gfx_level == GFX8) {
+            /* Set CMASK into a tiling format that allows
+             * the texture block to read it.
+             */
+            cb->cb_color_info |= S_028C70_CMASK_ADDR_TYPE(2);
+         }
+      }
+   } else {
+      cb->cb_color_fmask = cb->cb_color_base;
+   }
+
+   if (info->gfx_level < GFX11)
+      cb->cb_color_info |= S_028C70_DCC_ENABLE(state->dcc_enabled);
+}

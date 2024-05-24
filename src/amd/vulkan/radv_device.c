@@ -1484,7 +1484,6 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
    uint64_t va;
    const struct radv_image_plane *plane = &iview->image->planes[iview->plane_id];
    const struct radeon_surf *surf = &plane->surface;
-   uint8_t tile_swizzle = plane->surface.tile_swizzle;
 
    memset(cb, 0, sizeof(*cb));
 
@@ -1514,125 +1513,25 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
    uint32_t plane_id = iview->image->disjoint ? iview->plane_id : 0;
    va = radv_buffer_get_va(iview->image->bindings[plane_id].bo) + iview->image->bindings[plane_id].offset;
 
-   if (iview->nbc_view.valid) {
-      va += iview->nbc_view.base_address_offset;
-      tile_swizzle = iview->nbc_view.tile_swizzle;
-   }
+   const struct ac_mutable_cb_state mutable_cb_state = {
+      .surf = surf,
+      .cb = &cb->ac,
+      .va = va,
+      .base_level = iview->vk.base_mip_level,
+      .num_samples = iview->image->vk.samples,
+      .fmask_enabled = radv_image_has_fmask(iview->image),
+      .cmask_enabled = radv_image_has_cmask(iview->image),
+      .fast_clear_enabled = !(instance->debug_flags & RADV_DEBUG_NO_FAST_CLEARS),
+      .tc_compat_cmask_enabled = radv_image_is_tc_compat_cmask(iview->image),
+      .dcc_enabled = radv_dcc_enabled(iview->image, iview->vk.base_mip_level) &&
+                     (pdev->info.gfx_level >= GFX11 || !iview->disable_dcc_mrt),
+      .gfx10 =
+         {
+            .nbc_view = iview->nbc_view.valid ? &iview->nbc_view : NULL,
+         },
+   };
 
-   cb->cb_color_base = va >> 8;
-
-   if (pdev->info.gfx_level >= GFX9) {
-      if (pdev->info.gfx_level >= GFX11) {
-         cb->ac.cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                                    S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
-      } else if (pdev->info.gfx_level >= GFX10) {
-         cb->ac.cb_color_attrib3 |= S_028EE0_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                                    S_028EE0_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
-                                    S_028EE0_CMASK_PIPE_ALIGNED(1) |
-                                    S_028EE0_DCC_PIPE_ALIGNED(surf->u.gfx9.color.dcc.pipe_aligned);
-      } else {
-         struct gfx9_surf_meta_flags meta = {
-            .rb_aligned = 1,
-            .pipe_aligned = 1,
-         };
-
-         if (surf->meta_offset)
-            meta = surf->u.gfx9.color.dcc;
-
-         cb->ac.cb_color_attrib |= S_028C74_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode) |
-                                   S_028C74_FMASK_SW_MODE(surf->u.gfx9.color.fmask_swizzle_mode) |
-                                   S_028C74_RB_ALIGNED(meta.rb_aligned) | S_028C74_PIPE_ALIGNED(meta.pipe_aligned);
-         cb->cb_mrt_epitch = S_0287A0_EPITCH(surf->u.gfx9.epitch);
-      }
-
-      cb->cb_color_base += surf->u.gfx9.surf_offset >> 8;
-      cb->cb_color_base |= tile_swizzle;
-   } else {
-      const struct legacy_surf_level *level_info = &surf->u.legacy.level[iview->vk.base_mip_level];
-      unsigned pitch_tile_max, slice_tile_max, tile_mode_index;
-
-      cb->cb_color_base += level_info->offset_256B;
-      if (level_info->mode == RADEON_SURF_MODE_2D)
-         cb->cb_color_base |= tile_swizzle;
-
-      pitch_tile_max = level_info->nblk_x / 8 - 1;
-      slice_tile_max = (level_info->nblk_x * level_info->nblk_y) / 64 - 1;
-      tile_mode_index = ac_tile_mode_index(&plane->surface, iview->vk.base_mip_level, false);
-
-      cb->cb_color_pitch = S_028C64_TILE_MAX(pitch_tile_max);
-      cb->cb_color_slice = S_028C68_TILE_MAX(slice_tile_max);
-      cb->cb_color_cmask_slice = surf->u.legacy.color.cmask_slice_tile_max;
-
-      cb->ac.cb_color_attrib |= S_028C74_TILE_MODE_INDEX(tile_mode_index);
-
-      if (radv_image_has_fmask(iview->image)) {
-         if (pdev->info.gfx_level >= GFX7)
-            cb->cb_color_pitch |= S_028C64_FMASK_TILE_MAX(surf->u.legacy.color.fmask.pitch_in_pixels / 8 - 1);
-         cb->ac.cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(surf->u.legacy.color.fmask.tiling_index);
-         cb->cb_color_fmask_slice = S_028C88_TILE_MAX(surf->u.legacy.color.fmask.slice_tile_max);
-      } else {
-         /* This must be set for fast clear to work without FMASK. */
-         if (pdev->info.gfx_level >= GFX7)
-            cb->cb_color_pitch |= S_028C64_FMASK_TILE_MAX(pitch_tile_max);
-         cb->ac.cb_color_attrib |= S_028C74_FMASK_TILE_MODE_INDEX(tile_mode_index);
-         cb->cb_color_fmask_slice = S_028C88_TILE_MAX(slice_tile_max);
-      }
-   }
-
-   /* CMASK variables */
-   va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset;
-   va += surf->cmask_offset;
-   cb->cb_color_cmask = va >> 8;
-
-   va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset;
-   va += surf->meta_offset;
-
-   if (radv_dcc_enabled(iview->image, iview->vk.base_mip_level) && pdev->info.gfx_level <= GFX8)
-      va += plane->surface.u.legacy.color.dcc_level[iview->vk.base_mip_level].dcc_offset;
-
-   unsigned dcc_tile_swizzle = tile_swizzle;
-   dcc_tile_swizzle &= ((1 << surf->meta_alignment_log2) - 1) >> 8;
-
-   cb->cb_dcc_base = va >> 8;
-   cb->cb_dcc_base |= dcc_tile_swizzle;
-
-   if (radv_image_has_fmask(iview->image)) {
-      va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset + surf->fmask_offset;
-      cb->cb_color_fmask = va >> 8;
-      cb->cb_color_fmask |= surf->fmask_tile_swizzle;
-   } else {
-      cb->cb_color_fmask = cb->cb_color_base;
-   }
-
-   if (radv_image_has_fmask(iview->image)) {
-      if (radv_image_is_tc_compat_cmask(iview->image)) {
-         /* Allow the texture block to read FMASK directly without decompressing it. */
-         cb->ac.cb_color_info |= S_028C70_FMASK_COMPRESS_1FRAG_ONLY(1);
-
-         if (pdev->info.gfx_level == GFX8) {
-            /* Set CMASK into a tiling format that allows
-             * the texture block to read it.
-             */
-            cb->ac.cb_color_info |= S_028C70_CMASK_ADDR_TYPE(2);
-         }
-      }
-   }
-
-   if (radv_image_has_cmask(iview->image) && !(instance->debug_flags & RADV_DEBUG_NO_FAST_CLEARS))
-      cb->ac.cb_color_info |= S_028C70_FAST_CLEAR(1);
-
-   if (radv_dcc_enabled(iview->image, iview->vk.base_mip_level) && !iview->disable_dcc_mrt &&
-       pdev->info.gfx_level < GFX11)
-      cb->ac.cb_color_info |= S_028C70_DCC_ENABLE(1);
-
-   if (pdev->info.gfx_level == GFX11 && radv_dcc_enabled(iview->image, iview->vk.base_mip_level)) {
-      cb->ac.cb_dcc_control |= S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) | S_028C78_FDCC_ENABLE(1);
-
-      if (pdev->info.family >= CHIP_GFX1103_R2) {
-         cb->ac.cb_dcc_control |=
-            S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) | S_028C78_MAX_COMP_FRAGS(iview->image->vk.samples >= 4);
-      }
-   }
+   ac_set_mutable_cb_surface_fields(&pdev->info, &mutable_cb_state, &cb->ac);
 }
 
 void

@@ -3670,69 +3670,71 @@ radv_emit_fb_color_state(struct radv_cmd_buffer *cmd_buffer, int index, struct r
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_attrib);  /* CB_COLOR0_ATTRIB */
       radeon_emit(cmd_buffer->cs, cb_fdcc_control);     /* CB_COLOR0_FDCC_CONTROL */
 
-      radeon_set_context_reg(cmd_buffer->cs, R_028C60_CB_COLOR0_BASE + index * 0x3c, cb->cb_color_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4, cb->cb_color_base >> 32);
-      radeon_set_context_reg(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, cb->cb_dcc_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_028EA0_CB_COLOR0_DCC_BASE_EXT + index * 4, cb->cb_dcc_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C60_CB_COLOR0_BASE + index * 0x3c, cb->ac.cb_color_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4, cb->ac.cb_color_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, cb->ac.cb_dcc_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028EA0_CB_COLOR0_DCC_BASE_EXT + index * 4, cb->ac.cb_dcc_base >> 32);
       radeon_set_context_reg(cmd_buffer->cs, R_028EC0_CB_COLOR0_ATTRIB2 + index * 4, cb->ac.cb_color_attrib2);
       radeon_set_context_reg(cmd_buffer->cs, R_028EE0_CB_COLOR0_ATTRIB3 + index * 4, cb->ac.cb_color_attrib3);
    } else if (pdev->info.gfx_level >= GFX10) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028C60_CB_COLOR0_BASE + index * 0x3c, 11);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_base);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_base);
       radeon_emit(cmd_buffer->cs, 0);
       radeon_emit(cmd_buffer->cs, 0);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_view);
       radeon_emit(cmd_buffer->cs, cb_color_info);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_attrib);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_dcc_control);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_cmask);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_cmask);
       radeon_emit(cmd_buffer->cs, 0);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_fmask);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_fmask);
       radeon_emit(cmd_buffer->cs, 0);
 
-      radeon_set_context_reg(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, cb->cb_dcc_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, cb->ac.cb_dcc_base);
 
-      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4, cb->cb_color_base >> 32);
-      radeon_set_context_reg(cmd_buffer->cs, R_028E60_CB_COLOR0_CMASK_BASE_EXT + index * 4, cb->cb_color_cmask >> 32);
-      radeon_set_context_reg(cmd_buffer->cs, R_028E80_CB_COLOR0_FMASK_BASE_EXT + index * 4, cb->cb_color_fmask >> 32);
-      radeon_set_context_reg(cmd_buffer->cs, R_028EA0_CB_COLOR0_DCC_BASE_EXT + index * 4, cb->cb_dcc_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4, cb->ac.cb_color_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028E60_CB_COLOR0_CMASK_BASE_EXT + index * 4,
+                             cb->ac.cb_color_cmask >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028E80_CB_COLOR0_FMASK_BASE_EXT + index * 4,
+                             cb->ac.cb_color_fmask >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028EA0_CB_COLOR0_DCC_BASE_EXT + index * 4, cb->ac.cb_dcc_base >> 32);
       radeon_set_context_reg(cmd_buffer->cs, R_028EC0_CB_COLOR0_ATTRIB2 + index * 4, cb->ac.cb_color_attrib2);
       radeon_set_context_reg(cmd_buffer->cs, R_028EE0_CB_COLOR0_ATTRIB3 + index * 4, cb->ac.cb_color_attrib3);
    } else if (pdev->info.gfx_level == GFX9) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028C60_CB_COLOR0_BASE + index * 0x3c, 11);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_base);
-      radeon_emit(cmd_buffer->cs, S_028C64_BASE_256B(cb->cb_color_base >> 32));
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_base);
+      radeon_emit(cmd_buffer->cs, S_028C64_BASE_256B(cb->ac.cb_color_base >> 32));
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_attrib2);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_view);
       radeon_emit(cmd_buffer->cs, cb_color_info);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_attrib);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_dcc_control);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_cmask);
-      radeon_emit(cmd_buffer->cs, S_028C80_BASE_256B(cb->cb_color_cmask >> 32));
-      radeon_emit(cmd_buffer->cs, cb->cb_color_fmask);
-      radeon_emit(cmd_buffer->cs, S_028C88_BASE_256B(cb->cb_color_fmask >> 32));
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_cmask);
+      radeon_emit(cmd_buffer->cs, S_028C80_BASE_256B(cb->ac.cb_color_cmask >> 32));
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_fmask);
+      radeon_emit(cmd_buffer->cs, S_028C88_BASE_256B(cb->ac.cb_color_fmask >> 32));
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, 2);
-      radeon_emit(cmd_buffer->cs, cb->cb_dcc_base);
-      radeon_emit(cmd_buffer->cs, S_028C98_BASE_256B(cb->cb_dcc_base >> 32));
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_dcc_base);
+      radeon_emit(cmd_buffer->cs, S_028C98_BASE_256B(cb->ac.cb_dcc_base >> 32));
 
-      radeon_set_context_reg(cmd_buffer->cs, R_0287A0_CB_MRT0_EPITCH + index * 4, cb->cb_mrt_epitch);
+      radeon_set_context_reg(cmd_buffer->cs, R_0287A0_CB_MRT0_EPITCH + index * 4, cb->ac.cb_mrt_epitch);
    } else {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028C60_CB_COLOR0_BASE + index * 0x3c, 11);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_base);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_pitch);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_slice);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_base);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_pitch);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_slice);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_view);
       radeon_emit(cmd_buffer->cs, cb_color_info);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_attrib);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_dcc_control);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_cmask);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_cmask_slice);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_fmask);
-      radeon_emit(cmd_buffer->cs, cb->cb_color_fmask_slice);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_cmask);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_cmask_slice);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_fmask);
+      radeon_emit(cmd_buffer->cs, cb->ac.cb_color_fmask_slice);
 
       if (is_vi) { /* DCC BASE */
-         radeon_set_context_reg(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, cb->cb_dcc_base);
+         radeon_set_context_reg(cmd_buffer->cs, R_028C94_CB_COLOR0_DCC_BASE + index * 0x3c, cb->ac.cb_dcc_base);
       }
    }
 

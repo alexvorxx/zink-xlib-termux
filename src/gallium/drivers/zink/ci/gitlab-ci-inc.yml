@@ -176,7 +176,7 @@
     VK_DRIVER: intel
     GPU_VERSION: zink-anv-tgl
 
-.zink-nvk-glcts-piglit-valve:
+.zink-nvk-test-valve:
   extends:
     - .b2c-x86_64-test-gl
     - .nvk-vkcts

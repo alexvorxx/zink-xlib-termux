@@ -2353,8 +2353,6 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
       NIR_PASS(progress, nir, nir_lower_non_uniform_access, &options);
    }
 
-   NIR_PASS(progress, nir, si_nir_lower_resource, shader, args);
-
    bool is_last_vgt_stage =
       (sel->stage == MESA_SHADER_VERTEX ||
        sel->stage == MESA_SHADER_TESS_EVAL ||
@@ -2519,6 +2517,8 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
             });
    NIR_PASS(progress, nir, nir_opt_shrink_stores, false);
    NIR_PASS(progress, nir, ac_nir_lower_global_access);
+   /* This must be after vectorization because it causes bindings_different_restrict() to fail. */
+   NIR_PASS(progress, nir, si_nir_lower_resource, shader, args);
 
    if (progress) {
       si_nir_opts(sel->screen, nir, false);

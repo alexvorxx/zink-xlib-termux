@@ -39,7 +39,6 @@
 #include "nir_builder.h"
 #include "nir_conversion_builder.h"
 #include "nir_deref.h"
-#include "nir_lower_blend.h"
 #include "vk_shader_module.h"
 
 #include "compiler/bifrost_nir.h"
@@ -121,64 +120,6 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
    b->cursor = nir_after_instr(instr);
    nir_def_rewrite_uses(&intr->def, val);
    return true;
-}
-
-static void
-panvk_lower_blend(struct panvk_device *dev, nir_shader *nir,
-                  struct panfrost_compile_inputs *inputs,
-                  struct pan_blend_state *blend_state)
-{
-   nir_lower_blend_options options = {
-      .logicop_enable = blend_state->logicop_enable,
-      .logicop_func = blend_state->logicop_func,
-   };
-
-   bool lower_blend = false;
-
-   for (unsigned rt = 0; rt < blend_state->rt_count; rt++) {
-      struct pan_blend_rt_state *rt_state = &blend_state->rts[rt];
-
-      if (!panvk_per_arch(blend_needs_lowering)(dev, blend_state, rt))
-         continue;
-
-      enum pipe_format fmt = rt_state->format;
-
-      options.format[rt] = fmt;
-      options.rt[rt].colormask = rt_state->equation.color_mask;
-
-      if (!rt_state->equation.blend_enable) {
-         static const nir_lower_blend_channel replace = {
-            .func = PIPE_BLEND_ADD,
-            .src_factor = PIPE_BLENDFACTOR_ONE,
-            .dst_factor = PIPE_BLENDFACTOR_ZERO,
-         };
-
-         options.rt[rt].rgb = replace;
-         options.rt[rt].alpha = replace;
-      } else {
-         options.rt[rt].rgb.func = rt_state->equation.rgb_func;
-         options.rt[rt].rgb.src_factor = rt_state->equation.rgb_src_factor;
-         options.rt[rt].rgb.dst_factor = rt_state->equation.rgb_dst_factor;
-         options.rt[rt].alpha.func = rt_state->equation.alpha_func;
-         options.rt[rt].alpha.src_factor = rt_state->equation.alpha_src_factor;
-         options.rt[rt].alpha.dst_factor = rt_state->equation.alpha_dst_factor;
-      }
-
-      /* Update the equation to force a color replacement */
-      rt_state->equation.color_mask = 0xf;
-      rt_state->equation.rgb_func = PIPE_BLEND_ADD;
-      rt_state->equation.rgb_src_factor = PIPE_BLENDFACTOR_ONE;
-      rt_state->equation.rgb_dst_factor = PIPE_BLENDFACTOR_ZERO;
-      rt_state->equation.alpha_func = PIPE_BLEND_ADD;
-      rt_state->equation.alpha_src_factor = PIPE_BLENDFACTOR_ONE;
-      rt_state->equation.alpha_dst_factor = PIPE_BLENDFACTOR_ZERO;
-      lower_blend = true;
-   }
-
-   if (lower_blend) {
-      NIR_PASS_V(nir, nir_lower_blend, &options);
-      NIR_PASS_V(nir, bifrost_nir_lower_load_output);
-   }
 }
 
 static void
@@ -412,36 +353,4 @@ panvk_per_arch(shader_destroy)(struct panvk_device *dev,
    util_dynarray_fini(&shader->binary);
    free(shader->desc_info.dyn_ubos.map);
    vk_free2(&dev->vk.alloc, alloc, shader);
-}
-
-bool
-panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
-                                     const struct pan_blend_state *state,
-                                     unsigned rt)
-{
-   /* LogicOp requires a blend shader */
-   if (state->logicop_enable)
-      return true;
-
-   /* Not all formats can be blended by fixed-function hardware */
-   if (!panfrost_blendable_formats_v7[state->rts[rt].format].internal)
-      return true;
-
-   unsigned constant_mask = pan_blend_constant_mask(state->rts[rt].equation);
-
-   /* v6 doesn't support blend constants in FF blend equations.
-    * v7 only uses the constant from RT 0 (TODO: what if it's the same
-    * constant? or a constant is shared?)
-    */
-   if (constant_mask && (PAN_ARCH == 6 || (PAN_ARCH == 7 && rt > 0)))
-      return true;
-
-   if (!pan_blend_is_homogenous_constant(constant_mask, state->constants))
-      return true;
-
-   struct panvk_physical_device *phys_dev =
-      to_panvk_physical_device(dev->vk.physical);
-   unsigned arch = pan_arch(phys_dev->kmod.props.gpu_prod_id);
-   bool supports_2src = pan_blend_supports_2src(arch);
-   return !pan_blend_can_fixed_function(state->rts[rt].equation, supports_2src);
 }

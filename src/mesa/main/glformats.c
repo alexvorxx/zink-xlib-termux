@@ -217,14 +217,14 @@ _mesa_compute_component_mapping(GLenum inFormat, GLenum outFormat, GLubyte *map)
 
 #if 0
    printf("from %x/%s to %x/%s map %d %d %d %d %d %d\n",
-	  inFormat, _mesa_enum_to_string(inFormat),
-	  outFormat, _mesa_enum_to_string(outFormat),
-	  map[0],
-	  map[1],
-	  map[2],
-	  map[3],
-	  map[4],
-	  map[5]);
+          inFormat, _mesa_enum_to_string(inFormat),
+          outFormat, _mesa_enum_to_string(outFormat),
+          map[0],
+          map[1],
+          map[2],
+          map[3],
+          map[4],
+          map[5]);
 #endif
 }
 
@@ -1507,10 +1507,10 @@ _mesa_base_format_has_channel(GLenum base_format, GLenum pname)
    case GL_INTERNALFORMAT_RED_SIZE:
    case GL_INTERNALFORMAT_RED_TYPE:
       if (base_format == GL_RED ||
-	  base_format == GL_RG ||
-	  base_format == GL_RGB ||
-	  base_format == GL_RGBA) {
-	 return GL_TRUE;
+          base_format == GL_RG ||
+          base_format == GL_RGB ||
+          base_format == GL_RGBA) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_TEXTURE_GREEN_SIZE:
@@ -1520,9 +1520,9 @@ _mesa_base_format_has_channel(GLenum base_format, GLenum pname)
    case GL_INTERNALFORMAT_GREEN_SIZE:
    case GL_INTERNALFORMAT_GREEN_TYPE:
       if (base_format == GL_RG ||
-	  base_format == GL_RGB ||
-	  base_format == GL_RGBA) {
-	 return GL_TRUE;
+          base_format == GL_RGB ||
+          base_format == GL_RGBA) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_TEXTURE_BLUE_SIZE:
@@ -1532,8 +1532,8 @@ _mesa_base_format_has_channel(GLenum base_format, GLenum pname)
    case GL_INTERNALFORMAT_BLUE_SIZE:
    case GL_INTERNALFORMAT_BLUE_TYPE:
       if (base_format == GL_RGB ||
-	  base_format == GL_RGBA) {
-	 return GL_TRUE;
+          base_format == GL_RGBA) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_TEXTURE_ALPHA_SIZE:
@@ -1543,22 +1543,22 @@ _mesa_base_format_has_channel(GLenum base_format, GLenum pname)
    case GL_INTERNALFORMAT_ALPHA_SIZE:
    case GL_INTERNALFORMAT_ALPHA_TYPE:
       if (base_format == GL_RGBA ||
-	  base_format == GL_ALPHA ||
-	  base_format == GL_LUMINANCE_ALPHA) {
-	 return GL_TRUE;
+          base_format == GL_ALPHA ||
+          base_format == GL_LUMINANCE_ALPHA) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_TEXTURE_LUMINANCE_SIZE:
    case GL_TEXTURE_LUMINANCE_TYPE:
       if (base_format == GL_LUMINANCE ||
-	  base_format == GL_LUMINANCE_ALPHA) {
-	 return GL_TRUE;
+          base_format == GL_LUMINANCE_ALPHA) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_TEXTURE_INTENSITY_SIZE:
    case GL_TEXTURE_INTENSITY_TYPE:
       if (base_format == GL_INTENSITY) {
-	 return GL_TRUE;
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_TEXTURE_DEPTH_SIZE:
@@ -1568,8 +1568,8 @@ _mesa_base_format_has_channel(GLenum base_format, GLenum pname)
    case GL_INTERNALFORMAT_DEPTH_SIZE:
    case GL_INTERNALFORMAT_DEPTH_TYPE:
       if (base_format == GL_DEPTH_STENCIL ||
-	  base_format == GL_DEPTH_COMPONENT) {
-	 return GL_TRUE;
+          base_format == GL_DEPTH_COMPONENT) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    case GL_RENDERBUFFER_STENCIL_SIZE:
@@ -1577,13 +1577,13 @@ _mesa_base_format_has_channel(GLenum base_format, GLenum pname)
    case GL_INTERNALFORMAT_STENCIL_SIZE:
    case GL_INTERNALFORMAT_STENCIL_TYPE:
       if (base_format == GL_DEPTH_STENCIL ||
-	  base_format == GL_STENCIL_INDEX) {
-	 return GL_TRUE;
+          base_format == GL_STENCIL_INDEX) {
+         return GL_TRUE;
       }
       return GL_FALSE;
    default:
       _mesa_warning(NULL, "%s: Unexpected channel token 0x%x\n",
-		    __func__, pname);
+                    __func__, pname);
       return GL_FALSE;
    }
 

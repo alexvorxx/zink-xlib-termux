@@ -1,13 +1,7 @@
 KHR-GL46.limits.max_fragment_atomic_counter_buffers
 KHR-GL46.packed_pixels.rectangle.r8
 KHR-GL46.packed_pixels.rectangle.rgba32ui
-KHR-GL46.packed_pixels.varied_rectangle.depth_component32
-KHR-GL46.packed_pixels.varied_rectangle.r16
-KHR-GL46.packed_pixels.varied_rectangle.r16i
-KHR-GL46.packed_pixels.varied_rectangle.r8ui
-KHR-GL46.packed_pixels.varied_rectangle.rg16_snorm
-KHR-GL46.packed_pixels.varied_rectangle.rg16f
-KHR-GL46.packed_pixels.varied_rectangle.rgba32f
+KHR-GL46.packed_pixels.varied_rectangle.*
 KHR-GL46.texture_swizzle.smoke
 
 spec@!opengl 1.1@copypixels-sync

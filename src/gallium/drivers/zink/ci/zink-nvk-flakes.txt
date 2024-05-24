@@ -39,15 +39,18 @@ spec@ext_texture_array@fbo-depth-array depth-clear
 spec@ext_texture_array@fbo-depth-array fs-writes-depth
 spec@ext_texture_array@fbo-depth-array stencil-clear
 spec@ext_texture_array@fbo-depth-array stencil-draw
+spec@ext_texture_integer@getteximage-clamping
 spec@ext_texture_snorm@fbo-blending-formats
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-float-float
 spec@glsl-1.10@execution@derivatives@glsl-derivs-abs
+spec@glsl-1.10@execution@glsl-1.10-linear-fog
 spec@glsl-1.10@execution@interpolation@interpolation-none-gl_frontsecondarycolor-smooth-none
 spec@glsl-1.10@execution@varying-packing@simple uvec3 separate
 spec@glsl-1.30@execution@built-in-functions@vs-op-bitxor-abs-not-ivec3-int
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_backsecondarycolor-smooth-fixed
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_frontsecondarycolor-flat-fixed
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojlodoffset 3d
+spec@glsl-1.30@execution@texelfetch fs sampler1d 1-513
 spec@glsl-1.30@execution@texelfetch fs sampler1darray 1x71-501x71
 spec@glsl-1.30@execution@texelfetch fs sampler2d 1x281-501x281
 spec@glsl-1.30@execution@texelfetch fs sampler2d 1x71-501x71
@@ -60,6 +63,7 @@ spec@glsl-1.30@linker@interpolation-qualifiers@default-gl_backsecondarycolor-fla
 spec@glsl-1.50@execution@built-in-functions@gs-op-assign-rshift-uvec2-int
 spec@glsl-1.50@execution@compatibility@clipping@gs-clip-vertex-enables
 spec@glsl-4.00@execution@built-in-functions@fs-op-add-dvec2-dvec2
+spec@glsl-4.00@execution@built-in-functions@fs-op-mult-dmat2x4-dvec2
 spec@glsl-4.00@execution@built-in-functions@gs-matrixcompmult-dmat2x4-dmat2x4
 spec@glsl-4.00@execution@built-in-functions@gs-max-dvec4-double
 spec@glsl-4.00@execution@built-in-functions@gs-op-mult-double-dmat4x3

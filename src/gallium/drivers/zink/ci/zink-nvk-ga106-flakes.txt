@@ -4,6 +4,7 @@ KHR-GL46.packed_pixels.rectangle.rgba32ui
 KHR-GL46.packed_pixels.varied_rectangle.*
 KHR-GL46.texture_swizzle.smoke
 
+spec@!opengl 1.0@gl-1.0-blend-func
 spec@!opengl 1.1@copypixels-sync
 spec@!opengl 1.1@draw-sync
 spec@arb_bindless_texture@execution@images@uniform-struct
@@ -11,6 +12,7 @@ spec@arb_color_buffer_float@gl_rgba16f-render
 spec@arb_color_buffer_float@gl_rgba8_snorm-render
 spec@arb_color_buffer_float@gl_rgba8_snorm-render-fog
 spec@arb_copy_image@arb_copy_image-targets gl_texture_1d_array 32 1 12 gl_texture_2d_array 32 16 18 11 0 3 5 9 7 14 1 8
+spec@arb_copy_image@arb_copy_image-targets gl_texture_1d_array 32 1 12 gl_texture_3d 32 16 18 11 0 3 5 9 2 14 1 7
 spec@arb_gpu_shader5@execution@sampler_array_indexing@vs-nonuniform-control-flow
 spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-op-div-dvec2-dvec2
 spec@arb_pixel_buffer_object@pbo-drawpixels
@@ -35,6 +37,7 @@ spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 upsample
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 4 upsample
 spec@ext_framebuffer_multisample@line-smooth 8
 spec@ext_framebuffer_multisample@polygon-smooth 2
+spec@ext_framebuffer_object@fbo-blending-formats
 spec@ext_texture_array@fbo-depth-array depth-clear
 spec@ext_texture_array@fbo-depth-array fs-writes-depth
 spec@ext_texture_array@fbo-depth-array stencil-clear
@@ -47,6 +50,7 @@ spec@glsl-1.10@execution@glsl-1.10-linear-fog
 spec@glsl-1.10@execution@interpolation@interpolation-none-gl_frontsecondarycolor-smooth-none
 spec@glsl-1.10@execution@varying-packing@simple uvec3 separate
 spec@glsl-1.30@execution@built-in-functions@vs-op-bitxor-abs-not-ivec3-int
+spec@glsl-1.30@execution@interpolation@interpolation-noperspective-gl_backsecondarycolor-flat-vertex
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_backsecondarycolor-smooth-fixed
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_frontsecondarycolor-flat-fixed
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojlodoffset 3d

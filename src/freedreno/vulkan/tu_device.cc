@@ -226,6 +226,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_color_write_enable = true,
       .EXT_conditional_rendering = true,
       .EXT_custom_border_color = true,
+      .EXT_depth_clamp_zero_one = true,
       .EXT_depth_clip_control = true,
       .EXT_depth_clip_enable = true,
       .EXT_descriptor_buffer = true,
@@ -500,6 +501,9 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_EXT_custom_border_color */
    features->customBorderColors = true;
    features->customBorderColorWithoutFormat = true;
+
+   /* VK_EXT_depth_clamp_zero_one */
+   features->depthClampZeroOne = true;
 
    /* VK_EXT_depth_clip_control */
    features->depthClipControl = true;

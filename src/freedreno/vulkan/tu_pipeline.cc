@@ -2343,11 +2343,14 @@ static const enum mesa_vk_dynamic_graphics_state tu_viewport_state[] = {
    MESA_VK_DYNAMIC_VP_VIEWPORTS,
    MESA_VK_DYNAMIC_VP_VIEWPORT_COUNT,
    MESA_VK_DYNAMIC_VP_DEPTH_CLIP_NEGATIVE_ONE_TO_ONE,
+   MESA_VK_DYNAMIC_RS_DEPTH_CLAMP_ENABLE,
 };
 
 template <chip CHIP>
 static unsigned
-tu6_viewport_size(struct tu_device *dev, const struct vk_viewport_state *vp)
+tu6_viewport_size(struct tu_device *dev,
+                  const struct vk_viewport_state *vp,
+                  const struct vk_rasterization_state *rs)
 {
    return 1 + vp->viewport_count * 6 + 1 + vp->viewport_count * 2 +
       1 + vp->viewport_count * 2 + 5;
@@ -2355,7 +2358,9 @@ tu6_viewport_size(struct tu_device *dev, const struct vk_viewport_state *vp)
 
 template <chip CHIP>
 static void
-tu6_emit_viewport(struct tu_cs *cs, const struct vk_viewport_state *vp)
+tu6_emit_viewport(struct tu_cs *cs,
+                  const struct vk_viewport_state *vp,
+                  const struct vk_rasterization_state *rs)
 {
    VkExtent2D guardband = {511, 511};
 
@@ -2426,11 +2431,22 @@ tu6_emit_viewport(struct tu_cs *cs, const struct vk_viewport_state *vp)
                      A6XX_GRAS_SC_VIEWPORT_SCISSOR_BR_Y(max.y - 1));
    }
 
+   /* A7XX+ doesn't clamp to [0,1] with disabled depth clamp, to support
+    * VK_EXT_depth_clamp_zero_one we have to always enable clamp and manually
+    * set range to [0,1] when rs->depth_clamp_enable is false.
+    */
+   bool zero_one_depth_clamp = CHIP >= A7XX && !rs->depth_clamp_enable;
+
    tu_cs_emit_pkt4(cs, REG_A6XX_GRAS_CL_Z_CLAMP(0), vp->viewport_count * 2);
    for (uint32_t i = 0; i < vp->viewport_count; i++) {
       const VkViewport *viewport = &vp->viewports[i];
-      tu_cs_emit(cs, fui(MIN2(viewport->minDepth, viewport->maxDepth)));
-      tu_cs_emit(cs, fui(MAX2(viewport->minDepth, viewport->maxDepth)));
+      if (zero_one_depth_clamp) {
+         tu_cs_emit(cs, fui(0.0f));
+         tu_cs_emit(cs, fui(1.0f));
+      } else {
+         tu_cs_emit(cs, fui(MIN2(viewport->minDepth, viewport->maxDepth)));
+         tu_cs_emit(cs, fui(MAX2(viewport->minDepth, viewport->maxDepth)));
+      }
    }
    tu_cs_emit_pkt4(cs, REG_A6XX_GRAS_CL_GUARDBAND_CLIP_ADJ, 1);
    tu_cs_emit(cs, A6XX_GRAS_CL_GUARDBAND_CLIP_ADJ_HORZ(guardband.width) |
@@ -2439,6 +2455,10 @@ tu6_emit_viewport(struct tu_cs *cs, const struct vk_viewport_state *vp)
    /* TODO: what to do about this and multi viewport ? */
    float z_clamp_min = vp->viewport_count ? MIN2(vp->viewports[0].minDepth, vp->viewports[0].maxDepth) : 0;
    float z_clamp_max = vp->viewport_count ? MAX2(vp->viewports[0].minDepth, vp->viewports[0].maxDepth) : 0;
+   if (zero_one_depth_clamp) {
+      z_clamp_min = 0.0f;
+      z_clamp_max = 1.0f;
+   }
 
    tu_cs_emit_regs(cs,
                    A6XX_RB_Z_CLAMP_MIN(z_clamp_min),
@@ -2447,6 +2467,7 @@ tu6_emit_viewport(struct tu_cs *cs, const struct vk_viewport_state *vp)
 
 struct apply_viewport_state {
    struct vk_viewport_state vp;
+   struct vk_rasterization_state rs;
    bool share_scale;
 };
 
@@ -2526,21 +2547,23 @@ fdm_apply_viewports(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
       vp.viewports[i].y = scale_y * viewport.y + offset.y;
    }
 
-   TU_CALLX(cs->device, tu6_emit_viewport)(cs, &vp);
+   TU_CALLX(cs->device, tu6_emit_viewport)(cs, &vp, &state->rs);
 }
 
 static void
 tu6_emit_viewport_fdm(struct tu_cs *cs, struct tu_cmd_buffer *cmd,
-                      const struct vk_viewport_state *vp)
+                      const struct vk_viewport_state *vp,
+                      const struct vk_rasterization_state *rs)
 {
    unsigned num_views = MAX2(cmd->state.pass->num_views, 1);
    struct apply_viewport_state state = {
       .vp = *vp,
+      .rs = *rs,
       .share_scale = !cmd->state.per_view_viewport,
    };
    if (!state.share_scale)
       state.vp.viewport_count = num_views;
-   unsigned size = TU_CALLX(cmd->device, tu6_viewport_size)(cmd->device, &state.vp);
+   unsigned size = TU_CALLX(cmd->device, tu6_viewport_size)(cmd->device, &state.vp, &state.rs);
    tu_cs_begin_sub_stream(&cmd->sub_cs, size, cs);
    tu_create_fdm_bin_patchpoint(cmd, cs, size, fdm_apply_viewports, state);
 }
@@ -3037,7 +3060,8 @@ tu6_emit_rast(struct tu_cs *cs,
                    A6XX_GRAS_CL_CNTL(
                      .znear_clip_disable = !depth_clip_enable,
                      .zfar_clip_disable = !depth_clip_enable,
-                     .z_clamp_enable = rs->depth_clamp_enable,
+                     /* To support VK_EXT_depth_clamp_zero_one on a7xx+ */
+                     .z_clamp_enable = rs->depth_clamp_enable || CHIP >= A7XX,
                      .zero_gb_scale_z = vp->depth_clip_negative_one_to_one ? 0 : 1,
                      .vp_clip_code_ignore = 1));;
 
@@ -3182,7 +3206,8 @@ tu6_emit_rb_depth_cntl(struct tu_cs *cs,
          .z_test_enable = depth_test,
          .z_write_enable = ds->depth.test_enable && ds->depth.write_enable,
          .zfunc = zfunc,
-         .z_clamp_enable = rs->depth_clamp_enable,
+         /* To support VK_EXT_depth_clamp_zero_one on a7xx+ */
+         .z_clamp_enable = rs->depth_clamp_enable || CHIP >= A7XX,
          /* TODO don't set for ALWAYS/NEVER */
          .z_read_enable = ds->depth.test_enable || ds->depth.bounds_test.enable,
          .z_bounds_enable = ds->depth.bounds_test.enable));
@@ -3273,7 +3298,8 @@ tu_pipeline_builder_emit_state(struct tu_pipeline_builder *builder,
    bool no_per_view_viewport = pipeline_contains_all_shader_state(pipeline) &&
       !pipeline->program.per_view_viewport;
    DRAW_STATE_COND(viewport, TU_DYNAMIC_STATE_VIEWPORT, no_per_view_viewport,
-                   builder->graphics_state.vp);
+                   builder->graphics_state.vp,
+                   builder->graphics_state.rs);
    DRAW_STATE_COND(scissor, TU_DYNAMIC_STATE_SCISSOR, no_per_view_viewport,
               builder->graphics_state.vp);
    DRAW_STATE(sample_locations,
@@ -3487,7 +3513,8 @@ tu_emit_draw_state(struct tu_cmd_buffer *cmd)
 #undef tu6_vertex_stride_size
 
    DRAW_STATE_FDM(viewport, TU_DYNAMIC_STATE_VIEWPORT,
-                  &cmd->vk.dynamic_graphics_state.vp);
+                  &cmd->vk.dynamic_graphics_state.vp,
+                  &cmd->vk.dynamic_graphics_state.rs);
    DRAW_STATE_FDM(scissor, TU_DYNAMIC_STATE_SCISSOR,
                   &cmd->vk.dynamic_graphics_state.vp);
    DRAW_STATE(sample_locations,

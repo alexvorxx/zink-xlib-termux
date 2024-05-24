@@ -879,7 +879,7 @@ bi_src_color_vec4(bi_builder *b, nir_src *src, nir_alu_type T)
    for (i = 0; i < num_components; i++)
       src_vals[i] = bi_extract(b, base, i);
 
-   for(; i < 3; i++)
+   for (; i < 3; i++)
       src_vals[i] = (size == 16) ? bi_imm_f16(0.0) : bi_imm_f32(0.0);
    src_vals[3] = (size == 16) ? bi_imm_f16(1.0) : bi_imm_f32(1.0);
    bi_index temp = bi_temp(b->shader);
@@ -952,7 +952,8 @@ bi_emit_fragment_out(bi_builder *b, nir_intrinsic_instr *instr)
       nir_alu_type T = nir_intrinsic_src_type(instr);
       nir_alu_type T2 = dual ? nir_intrinsic_dest_type(instr) : 0;
       bi_index color = bi_src_color_vec4(b, &instr->src[0], T);
-      bi_index color2 = dual ? bi_src_color_vec4(b, &instr->src[4], T2) : bi_null();
+      bi_index color2 =
+         dual ? bi_src_color_vec4(b, &instr->src[4], T2) : bi_null();
 
       if (instr->intrinsic == nir_intrinsic_store_output &&
           loc >= FRAG_RESULT_DATA0 && loc <= FRAG_RESULT_DATA7) {
@@ -3576,7 +3577,8 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
 
       switch (instr->src[i].src_type) {
       case nir_tex_src_coord: {
-         unsigned components = nir_src_num_components(instr->src[i].src) - instr->is_array;
+         unsigned components =
+            nir_src_num_components(instr->src[i].src) - instr->is_array;
 
          if (instr->sampler_dim == GLSL_SAMPLER_DIM_CUBE) {
             sregs[VALHALL_TEX_SREG_X_COORD] = bi_emit_texc_cube_coord(
@@ -3595,8 +3597,7 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
          }
 
          if (instr->is_array) {
-            sregs[VALHALL_TEX_SREG_ARRAY] =
-               bi_extract(b, index, components);
+            sregs[VALHALL_TEX_SREG_ARRAY] = bi_extract(b, index, components);
          }
 
          break;
@@ -4471,7 +4472,7 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
    unsigned num_comps = bytes / (bit_size / 8);
 
    /* Push constants require 32-bit loads. */
-  if (intrin == nir_intrinsic_load_push_constant) {
+   if (intrin == nir_intrinsic_load_push_constant) {
       if (align_mul >= 4) {
          /* If align_mul is bigger than 4 we can use align_offset to find
           * the exact number of words we need to read.

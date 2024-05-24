@@ -37,9 +37,9 @@ def pretty_duration(seconds):
     hours, rem = divmod(seconds, 3600)
     minutes, seconds = divmod(rem, 60)
     if hours:
-        return f"{hours:0.0f}h{minutes:0.0f}m{seconds:0.0f}s"
+        return f"{hours:0.0f}h{minutes:02.0f}m{seconds:02.0f}s"
     if minutes:
-        return f"{minutes:0.0f}m{seconds:0.0f}s"
+        return f"{minutes:0.0f}m{seconds:02.0f}s"
     return f"{seconds:0.0f}s"
 
 

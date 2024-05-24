@@ -39,9 +39,11 @@ console_patterns:
     job_success:
         regex: >-
           {{ job_success_regex }}
+{% if job_warn_regex %}
     job_warn:
         regex: >-
           {{ job_warn_regex }}
+{% endif %}
 
 # Environment to deploy
 deployment:

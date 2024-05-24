@@ -279,6 +279,7 @@ merge_requests:
         '^src/util/': ['util']
         '^src/util/00-mesa-defaults.conf': ['drirc']
         '^src/vulkan/': ['vulkan']
+        '^src/vulkan/wsi/': ['wsi']
         '^VERSION$': ['maintainer-scripts']
 
         'Android': ['android']

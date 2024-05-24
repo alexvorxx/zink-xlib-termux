@@ -89,7 +89,7 @@ else
     DEVICE_TREES=""
     KERNEL_IMAGE_NAME="bzImage"
     CONTAINER_ARCH_PACKAGES=(
-      libasound2-dev libcap-dev libfdt-dev libva-dev wayland-protocols p7zip wine
+      libasound2-dev libcap-dev libfdt-dev libva-dev p7zip wine
     )
 fi
 
@@ -150,6 +150,7 @@ CONTAINER_EPHEMERAL=(
     python3-serial
     python3-venv
     unzip
+    wayland-protocols
     zstd
 )
 

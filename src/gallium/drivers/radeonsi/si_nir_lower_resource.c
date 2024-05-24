@@ -28,28 +28,25 @@ struct lower_resource_state {
 static nir_def *load_ubo_desc_fast_path(nir_builder *b, nir_def *addr_lo,
                                             struct si_shader_selector *sel)
 {
-   nir_def *addr_hi =
-      nir_imm_int(b, S_008F04_BASE_ADDRESS_HI(sel->screen->info.address32_hi));
+   const struct ac_buffer_state buffer_state = {
+      .va = (uint64_t)sel->screen->info.address32_hi << 32,
+      .size = sel->info.constbuf0_num_slots * 16,
+      .format = PIPE_FORMAT_R32_FLOAT,
+      .swizzle =
+         {
+            PIPE_SWIZZLE_X,
+            PIPE_SWIZZLE_Y,
+            PIPE_SWIZZLE_Z,
+            PIPE_SWIZZLE_W,
+         },
+      .gfx10_oob_select = V_008F0C_OOB_SELECT_RAW,
+   };
+   uint32_t desc[4];
 
-   uint32_t rsrc3 =
-      S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-      S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
+   ac_build_buffer_descriptor(sel->screen->info.gfx_level, &buffer_state, desc);
 
-   if (sel->screen->info.gfx_level >= GFX12)
-      rsrc3 |= S_008F0C_FORMAT_GFX12(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-               S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   else if (sel->screen->info.gfx_level >= GFX11)
-      rsrc3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-               S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   else if (sel->screen->info.gfx_level >= GFX10)
-      rsrc3 |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-               S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-   else
-      rsrc3 |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-               S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-
-   return nir_vec4(b, addr_lo, addr_hi, nir_imm_int(b, sel->info.constbuf0_num_slots * 16),
-                   nir_imm_int(b, rsrc3));
+   return nir_vec4(b, addr_lo, nir_imm_int(b, desc[1]), nir_imm_int(b, desc[2]),
+                   nir_imm_int(b, desc[3]));
 }
 
 static nir_def *clamp_index(nir_builder *b, nir_def *index, unsigned max)

@@ -4015,52 +4015,21 @@ void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf
    if (screen->info.gfx_level == GFX8)
       num_records *= stride;
 
-   state[4] = 0;
-   state[5] = S_008F04_STRIDE(stride);
-   state[6] = num_records;
-   state[7] = S_008F0C_DST_SEL_X(ac_map_swizzle(desc->swizzle[0])) |
-              S_008F0C_DST_SEL_Y(ac_map_swizzle(desc->swizzle[1])) |
-              S_008F0C_DST_SEL_Z(ac_map_swizzle(desc->swizzle[2])) |
-              S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
+   const struct ac_buffer_state buffer_state = {
+      .size = num_records,
+      .format = format,
+      .swizzle =
+         {
+            desc->swizzle[0],
+            desc->swizzle[1],
+            desc->swizzle[2],
+            desc->swizzle[3],
+         },
+      .stride = stride,
+      .gfx10_oob_select = V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET,
+   };
 
-   if (screen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(screen->info.gfx_level)[format];
-
-      /* OOB_SELECT chooses the out-of-bounds check.
-       *
-       * GFX10:
-       *  - 0: (index >= NUM_RECORDS) || (offset >= STRIDE)
-       *  - 1: index >= NUM_RECORDS
-       *  - 2: NUM_RECORDS == 0
-       *  - 3: if SWIZZLE_ENABLE:
-       *          swizzle_address >= NUM_RECORDS
-       *       else:
-       *          offset >= NUM_RECORDS
-       *
-       * GFX11:
-       *  - 0: (index >= NUM_RECORDS) || (offset+payload > STRIDE)
-       *  - 1: index >= NUM_RECORDS
-       *  - 2: NUM_RECORDS == 0
-       *  - 3: if SWIZZLE_ENABLE && STRIDE:
-       *          (index >= NUM_RECORDS) || ( offset+payload > STRIDE)
-       *       else:
-       *          offset+payload > NUM_RECORDS
-       */
-      state[7] |= (screen->info.gfx_level >= GFX12 ?
-                      S_008F0C_FORMAT_GFX12(fmt->img_format) :
-                      S_008F0C_FORMAT_GFX10(fmt->img_format)) |
-                  S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET) |
-                  S_008F0C_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
-   } else {
-      int first_non_void;
-      unsigned num_format, data_format;
-
-      first_non_void = util_format_get_first_non_void_channel(format);
-      num_format = si_translate_buffer_numformat(&screen->b, desc, first_non_void);
-      data_format = si_translate_buffer_dataformat(&screen->b, desc, first_non_void);
-
-      state[7] |= S_008F0C_NUM_FORMAT(num_format) | S_008F0C_DATA_FORMAT(data_format);
-   }
+   ac_build_buffer_descriptor(screen->info.gfx_level, &buffer_state, &state[4]);
 }
 
 /**
@@ -4128,29 +4097,21 @@ static void cdna_emu_make_image_descriptor(struct si_screen *screen, struct si_t
    util_format_compose_swizzles(desc->swizzle, state_swizzle, swizzle);
 
    /* Buffer descriptor */
-   state[0] = 0;
-   state[1] = S_008F04_STRIDE(stride);
-   state[2] = num_records;
-   state[3] = S_008F0C_DST_SEL_X(ac_map_swizzle(swizzle[0])) |
-              S_008F0C_DST_SEL_Y(ac_map_swizzle(swizzle[1])) |
-              S_008F0C_DST_SEL_Z(ac_map_swizzle(swizzle[2])) |
-              S_008F0C_DST_SEL_W(ac_map_swizzle(swizzle[3]));
+   const struct ac_buffer_state buffer_state = {
+      .size = num_records,
+      .format = pipe_format,
+      .swizzle =
+         {
+            desc->swizzle[0],
+            desc->swizzle[1],
+            desc->swizzle[2],
+            desc->swizzle[3],
+         },
+      .stride = stride,
+      .gfx10_oob_select = V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET,
+   };
 
-   if (screen->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(screen->info.gfx_level)[pipe_format];
-
-      state[3] |= (screen->info.gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
-                                                     S_008F0C_FORMAT_GFX10(fmt->img_format)) |
-                  S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET) |
-                  S_008F0C_RESOURCE_LEVEL(screen->info.gfx_level < GFX11);
-   } else {
-      int first_non_void = util_format_get_first_non_void_channel(pipe_format);
-      unsigned num_format = si_translate_buffer_numformat(&screen->b, desc, first_non_void);
-      unsigned data_format = si_translate_buffer_dataformat(&screen->b, desc, first_non_void);
-
-      state[3] |= S_008F0C_NUM_FORMAT(num_format) |
-                  S_008F0C_DATA_FORMAT(data_format);
-   }
+   ac_build_buffer_descriptor(screen->info.gfx_level, &buffer_state, &state[0]);
 
    /* Additional fields used by image opcode emulation. */
    state[4] = width | (height << 16);
@@ -5050,33 +5011,24 @@ static void *si_create_vertex_elements(struct pipe_context *ctx, unsigned count,
          v->vb_alignment_check_mask |= 1 << vbo_index;
       }
 
-      v->elem[i].rsrc_word3 = S_008F0C_DST_SEL_X(ac_map_swizzle(desc->swizzle[0])) |
-                              S_008F0C_DST_SEL_Y(ac_map_swizzle(desc->swizzle[1])) |
-                              S_008F0C_DST_SEL_Z(ac_map_swizzle(desc->swizzle[2])) |
-                              S_008F0C_DST_SEL_W(ac_map_swizzle(desc->swizzle[3]));
+      const struct ac_buffer_state buffer_state = {
+         .format = elements[i].src_format,
+         .swizzle =
+            {
+               desc->swizzle[0],
+               desc->swizzle[1],
+               desc->swizzle[2],
+               desc->swizzle[3],
+            },
+         /* OOB_SELECT chooses the out-of-bounds check:
+          *  - 1: index >= NUM_RECORDS (Structured)
+          *  - 3: offset >= NUM_RECORDS (Raw)
+          */
+         .gfx10_oob_select = v->elem[i].stride ? V_008F0C_OOB_SELECT_STRUCTURED
+                                               : V_008F0C_OOB_SELECT_RAW,
+      };
 
-      if (sscreen->info.gfx_level >= GFX10) {
-         const struct gfx10_format *fmt = &ac_get_gfx10_format_table(sscreen->info.gfx_level)[elements[i].src_format];
-         ASSERTED unsigned last_vertex_format = sscreen->info.gfx_level >= GFX11 ? 64 : 128;
-         assert(fmt->img_format != 0 && fmt->img_format < last_vertex_format);
-         v->elem[i].rsrc_word3 |=
-            (sscreen->info.gfx_level >= GFX12 ?
-                S_008F0C_FORMAT_GFX12(fmt->img_format) :
-                S_008F0C_FORMAT_GFX10(fmt->img_format)) |
-            S_008F0C_RESOURCE_LEVEL(sscreen->info.gfx_level < GFX11) |
-            /* OOB_SELECT chooses the out-of-bounds check:
-             *  - 1: index >= NUM_RECORDS (Structured)
-             *  - 3: offset >= NUM_RECORDS (Raw)
-             */
-            S_008F0C_OOB_SELECT(v->elem[i].stride ? V_008F0C_OOB_SELECT_STRUCTURED
-                                                  : V_008F0C_OOB_SELECT_RAW);
-      } else {
-         unsigned data_format, num_format;
-         data_format = si_translate_buffer_dataformat(ctx->screen, desc, first_non_void);
-         num_format = si_translate_buffer_numformat(ctx->screen, desc, first_non_void);
-         v->elem[i].rsrc_word3 |= S_008F0C_NUM_FORMAT(num_format) |
-                                  S_008F0C_DATA_FORMAT(data_format);
-      }
+      ac_set_buf_desc_word3(sscreen->info.gfx_level, &buffer_state, &v->elem[i].rsrc_word3);
    }
 
    if (v->instance_divisor_is_fetched) {

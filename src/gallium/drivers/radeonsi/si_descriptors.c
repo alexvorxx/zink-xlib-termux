@@ -1033,26 +1033,23 @@ static void si_init_buffer_resources(struct si_context *sctx,
 
    si_init_descriptors(descs, shader_userdata_rel_index, 4, num_buffers);
 
+   const struct ac_buffer_state buffer_state = {
+      .format = PIPE_FORMAT_R32_FLOAT,
+      .swizzle =
+         {
+            PIPE_SWIZZLE_X,
+            PIPE_SWIZZLE_Y,
+            PIPE_SWIZZLE_Z,
+            PIPE_SWIZZLE_W,
+         },
+      .gfx10_oob_select = V_008F0C_OOB_SELECT_RAW,
+   };
+
    /* Initialize buffer descriptors, so that we don't have to do it at bind time. */
    for (unsigned i = 0; i < num_buffers; i++) {
       uint32_t *desc = descs->list + i * 4;
 
-      desc[3] = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
-
-      if (sctx->gfx_level >= GFX12) {
-         desc[3] |= S_008F0C_FORMAT_GFX12(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-      } else if (sctx->gfx_level >= GFX11) {
-         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-      } else if (sctx->gfx_level >= GFX10) {
-         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-      } else {
-         desc[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-                    S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-      }
+      ac_set_buf_desc_word3(sctx->gfx_level, &buffer_state, &desc[3]);
    }
 }
 
@@ -1482,37 +1479,31 @@ void si_set_ring_buffer(struct si_context *sctx, uint slot, struct pipe_resource
 
       /* Set the descriptor. */
       uint32_t *desc = descs->list + slot * 4;
-      desc[0] = va;
-      desc[1] = S_008F04_BASE_ADDRESS_HI(va >> 32) | S_008F04_STRIDE(stride);
-      desc[2] = num_records;
-      desc[3] = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-                S_008F0C_INDEX_STRIDE(index_stride) | S_008F0C_ADD_TID_ENABLE(add_tid);
+
+      uint32_t swizzle_enable;
 
       if (sctx->gfx_level >= GFX11) {
-         assert(!swizzle || element_size == 1 || element_size == 3); /* 4 or 16 bytes */
-         desc[1] |= S_008F04_SWIZZLE_ENABLE_GFX11(swizzle ? element_size : 0);
-      } else if (sctx->gfx_level >= GFX9) {
-         assert(!swizzle || element_size == 1); /* only 4 bytes on GFX9 */
-         desc[1] |= S_008F04_SWIZZLE_ENABLE_GFX6(swizzle);
+         swizzle_enable = swizzle ? element_size : 0;
       } else {
-         desc[1] |= S_008F04_SWIZZLE_ENABLE_GFX6(swizzle);
-         desc[3] |= S_008F0C_ELEMENT_SIZE(element_size);
+         swizzle_enable = swizzle;
       }
 
-      if (sctx->gfx_level >= GFX12) {
-         desc[3] |= S_008F0C_FORMAT_GFX12(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_DISABLED);
-      } else if (sctx->gfx_level >= GFX11) {
-         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_DISABLED);
-      } else if (sctx->gfx_level >= GFX10) {
-         desc[3] |= S_008F0C_FORMAT_GFX10(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-                    S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_DISABLED) | S_008F0C_RESOURCE_LEVEL(1);
-      } else {
-         desc[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-                    S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-      }
+      const struct ac_buffer_state buffer_state = {
+         .va = va,
+         .size = num_records,
+         .format = PIPE_FORMAT_R32_FLOAT,
+         .swizzle = {
+            PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z, PIPE_SWIZZLE_W,
+         },
+         .stride = stride,
+         .swizzle_enable = swizzle_enable,
+         .gfx10_oob_select = V_008F0C_OOB_SELECT_DISABLED,
+         .index_stride = index_stride,
+         .element_size = element_size,
+         .add_tid = add_tid,
+      };
+
+      ac_build_buffer_descriptor(sctx->gfx_level, &buffer_state, desc);
 
       pipe_resource_reference(&buffers->buffers[slot], buffer);
       radeon_add_to_buffer_list(sctx, &sctx->gfx_cs, si_resource(buffer),

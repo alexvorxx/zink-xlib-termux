@@ -310,8 +310,12 @@ impl<'a> ShaderFromNir<'a> {
         }
     }
 
+    fn get_ssa_ref(&mut self, src: &nir_src) -> SSARef {
+        SSARef::try_from(self.get_ssa(src.as_def())).unwrap()
+    }
+
     fn get_src(&mut self, src: &nir_src) -> Src {
-        SSARef::try_from(self.get_ssa(src.as_def())).unwrap().into()
+        self.get_ssa_ref(src).into()
     }
 
     fn get_io_addr_offset(
@@ -331,6 +335,15 @@ impl<'a> ShaderFromNir<'a> {
             (base.into(), addr_offset.offset)
         } else {
             (SrcRef::Zero.into(), addr_offset.offset)
+        }
+    }
+
+    fn get_cbuf_addr_offset(&mut self, addr: &nir_src) -> (Src, u16) {
+        let (off, off_imm) = self.get_io_addr_offset(addr, 16);
+        if let Ok(off_imm_u16) = u16::try_from(off_imm) {
+            (off, off_imm_u16)
+        } else {
+            (self.get_src(addr), 0)
         }
     }
 
@@ -2611,13 +2624,7 @@ impl<'a> ShaderFromNir<'a> {
                     (intrin.def.bit_size() / 8) * intrin.def.num_components();
                 let idx = &srcs[0];
 
-                let (off, off_imm) = self.get_io_addr_offset(&srcs[1], 16);
-                let (off, off_imm) =
-                    if let Ok(off_imm_u16) = u16::try_from(off_imm) {
-                        (off, off_imm_u16)
-                    } else {
-                        (self.get_src(&srcs[1]), 0)
-                    };
+                let (off, off_imm) = self.get_cbuf_addr_offset(&srcs[1]);
 
                 let dst = b.alloc_ssa(RegFile::GPR, size_B.div_ceil(4));
 
@@ -2661,6 +2668,35 @@ impl<'a> ShaderFromNir<'a> {
                         cb: cb.into(),
                         offset: off_idx.into(),
                         mode: LdcMode::IndexedSegmented,
+                        mem_type: MemType::from_size(size_B, false),
+                    });
+                }
+                self.set_dst(&intrin.def, dst);
+            }
+            nir_intrinsic_ldcx_nv => {
+                let size_B =
+                    (intrin.def.bit_size() / 8) * intrin.def.num_components();
+
+                let handle = self.get_ssa_ref(&srcs[0]);
+                let (off, off_imm) = self.get_cbuf_addr_offset(&srcs[1]);
+
+                let cb = CBufRef {
+                    buf: CBuf::BindlessSSA(handle),
+                    offset: off_imm,
+                };
+
+                let dst = b.alloc_ssa(RegFile::GPR, size_B.div_ceil(4));
+                if off.is_zero() {
+                    for (i, comp) in dst.iter().enumerate() {
+                        let i = u16::try_from(i).unwrap();
+                        b.copy_to((*comp).into(), cb.offset(i * 4).into());
+                    }
+                } else {
+                    b.push_op(OpLdc {
+                        dst: dst.into(),
+                        cb: cb.into(),
+                        offset: off,
+                        mode: LdcMode::Indexed,
                         mem_type: MemType::from_size(size_B, false),
                     });
                 }

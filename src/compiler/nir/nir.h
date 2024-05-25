@@ -4939,10 +4939,22 @@ nir_block *nir_cf_node_cf_tree_prev(nir_cf_node *node);
         block != nir_cf_node_cf_tree_next(node);            \
         block = nir_block_cf_tree_next(block))
 
+#define nir_foreach_block_in_cf_node_safe(block, node)      \
+   for (nir_block *block = nir_cf_node_cf_tree_first(node), \
+                  *next = nir_block_cf_tree_next(block);    \
+        block != nir_cf_node_cf_tree_next(node);            \
+        block = next, next = nir_block_cf_tree_next(block))
+
 #define nir_foreach_block_in_cf_node_reverse(block, node)  \
    for (nir_block *block = nir_cf_node_cf_tree_last(node); \
         block != nir_cf_node_cf_tree_prev(node);           \
         block = nir_block_cf_tree_prev(block))
+
+#define nir_foreach_block_in_cf_node_reverse_safe(block, node) \
+   for (nir_block *block = nir_cf_node_cf_tree_last(node),     \
+                  *prev = nir_block_cf_tree_prev(block);       \
+        block != nir_cf_node_cf_tree_prev(node);               \
+        block = prev, prev = nir_block_cf_tree_prev(block))
 
 /* If the following CF node is an if, this function returns that if.
  * Otherwise, it returns NULL.

@@ -509,7 +509,7 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
       layout->set[var->data.descriptor_set].layout;
    const struct tu_descriptor_set_binding_layout *binding =
       &set_layout->binding[var->data.binding];
-   const struct tu_sampler_ycbcr_conversion *ycbcr_samplers =
+   const struct vk_ycbcr_conversion_state *ycbcr_samplers =
       tu_immutable_ycbcr_samplers(set_layout, binding);
 
    if (!ycbcr_samplers)
@@ -530,7 +530,7 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
       array_index = nir_src_as_uint(deref->arr.index);
       array_index = MIN2(array_index, binding->array_size - 1);
    }
-   const struct tu_sampler_ycbcr_conversion *ycbcr_sampler = ycbcr_samplers + array_index;
+   const struct vk_ycbcr_conversion_state *ycbcr_sampler = ycbcr_samplers + array_index;
 
    if (ycbcr_sampler->ycbcr_model == VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY)
       return;

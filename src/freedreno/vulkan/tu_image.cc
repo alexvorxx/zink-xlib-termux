@@ -187,8 +187,8 @@ tu_image_view_init(struct tu_device *device,
 
    const struct VkSamplerYcbcrConversionInfo *ycbcr_conversion =
       vk_find_struct_const(pCreateInfo->pNext, SAMPLER_YCBCR_CONVERSION_INFO);
-   const struct tu_sampler_ycbcr_conversion *conversion = ycbcr_conversion ?
-      tu_sampler_ycbcr_conversion_from_handle(ycbcr_conversion->conversion) : NULL;
+   const struct vk_ycbcr_conversion *conversion = ycbcr_conversion ?
+      vk_ycbcr_conversion_from_handle(ycbcr_conversion->conversion) : NULL;
 
    vk_image_view_init(&device->vk, &iview->vk, false, pCreateInfo);
 
@@ -240,8 +240,14 @@ tu_image_view_init(struct tu_device *device,
    if (conversion) {
       unsigned char conversion_swiz[4], create_swiz[4];
       memcpy(create_swiz, args.swiz, sizeof(create_swiz));
-      vk_component_mapping_to_pipe_swizzle(conversion->components,
-                                           conversion_swiz);
+
+      VkComponentMapping component = {
+         .r = conversion->state.mapping[0],
+         .g = conversion->state.mapping[1],
+         .b = conversion->state.mapping[2],
+         .a = conversion->state.mapping[3]
+      };
+      vk_component_mapping_to_pipe_swizzle(component, conversion_swiz);
       util_format_compose_swizzles(create_swiz, conversion_swiz, args.swiz);
    }
 
@@ -268,8 +274,8 @@ tu_image_view_init(struct tu_device *device,
    STATIC_ASSERT((unsigned)VK_CHROMA_LOCATION_COSITED_EVEN == (unsigned)FDL_CHROMA_LOCATION_COSITED_EVEN);
    STATIC_ASSERT((unsigned)VK_CHROMA_LOCATION_MIDPOINT == (unsigned)FDL_CHROMA_LOCATION_MIDPOINT);
    if (conversion) {
-      args.chroma_offsets[0] = (enum fdl_chroma_location) conversion->chroma_offsets[0];
-      args.chroma_offsets[1] = (enum fdl_chroma_location) conversion->chroma_offsets[1];
+      args.chroma_offsets[0] = (enum fdl_chroma_location) conversion->state.chroma_offsets[0];
+      args.chroma_offsets[1] = (enum fdl_chroma_location) conversion->state.chroma_offsets[1];
    }
 
    fdl6_view_init(&iview->view, layouts, &args, has_z24uint_s8uint);

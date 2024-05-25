@@ -3273,10 +3273,10 @@ tu_init_sampler(struct tu_device *device,
    }
 
    sampler->ycbcr_sampler = ycbcr_conversion ?
-      tu_sampler_ycbcr_conversion_from_handle(ycbcr_conversion->conversion) : NULL;
+      vk_ycbcr_conversion_from_handle(ycbcr_conversion->conversion) : NULL;
 
    if (sampler->ycbcr_sampler &&
-       sampler->ycbcr_sampler->chroma_filter == VK_FILTER_LINEAR) {
+       sampler->ycbcr_sampler->state.chroma_filter == VK_FILTER_LINEAR) {
       sampler->descriptor[2] |= A6XX_TEX_SAMP_2_CHROMA_LINEAR;
    }
 

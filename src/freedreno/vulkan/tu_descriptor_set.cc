@@ -159,7 +159,7 @@ tu_CreateDescriptorSetLayout(
     * but using struct tu_sampler makes things simpler */
    uint32_t size = samplers_offset +
       immutable_sampler_count * sizeof(struct tu_sampler) +
-      ycbcr_sampler_count * sizeof(struct tu_sampler_ycbcr_conversion);
+      ycbcr_sampler_count * sizeof(struct vk_ycbcr_conversion);
 
    set_layout =
       (struct tu_descriptor_set_layout *) vk_descriptor_set_layout_zalloc(
@@ -173,8 +173,8 @@ tu_CreateDescriptorSetLayout(
    /* We just allocate all the immutable samplers at the end of the struct */
    struct tu_sampler *samplers =
       (struct tu_sampler *) &set_layout->binding[num_bindings];
-   struct tu_sampler_ycbcr_conversion *ycbcr_samplers =
-      (struct tu_sampler_ycbcr_conversion *) &samplers[immutable_sampler_count];
+   struct vk_ycbcr_conversion_state *ycbcr_samplers =
+      (struct vk_ycbcr_conversion_state *) &samplers[immutable_sampler_count];
 
    VkDescriptorSetLayoutBinding *bindings = NULL;
    VkResult result = vk_create_sorted_bindings(
@@ -252,7 +252,7 @@ tu_CreateDescriptorSetLayout(
             for (uint32_t i = 0; i < binding->descriptorCount; i++) {
                struct tu_sampler *sampler = tu_sampler_from_handle(binding->pImmutableSamplers[i]);
                if (sampler->ycbcr_sampler)
-                  ycbcr_samplers[i] = *sampler->ycbcr_sampler;
+                  ycbcr_samplers[i] = sampler->ycbcr_sampler->state;
                else
                   ycbcr_samplers[i].ycbcr_model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
             }
@@ -445,7 +445,7 @@ tu_GetDescriptorSetLayoutBindingOffsetEXT(
 
 static void
 sha1_update_ycbcr_sampler(struct mesa_sha1 *ctx,
-                          const struct tu_sampler_ycbcr_conversion *sampler)
+                          const struct vk_ycbcr_conversion_state *sampler)
 {
    SHA1_UPDATE_VALUE(ctx, sampler->ycbcr_model);
    SHA1_UPDATE_VALUE(ctx, sampler->ycbcr_range);
@@ -464,7 +464,7 @@ sha1_update_descriptor_set_binding_layout(struct mesa_sha1 *ctx,
    SHA1_UPDATE_VALUE(ctx, layout->dynamic_offset_offset);
    SHA1_UPDATE_VALUE(ctx, layout->immutable_samplers_offset);
 
-   const struct tu_sampler_ycbcr_conversion *ycbcr_samplers =
+   const struct vk_ycbcr_conversion_state *ycbcr_samplers =
       tu_immutable_ycbcr_samplers(set_layout, layout);
 
    if (ycbcr_samplers) {
@@ -1652,48 +1652,4 @@ tu_UpdateDescriptorSetWithTemplate(
    VK_FROM_HANDLE(tu_descriptor_set, set, descriptorSet);
 
    tu_update_descriptor_set_with_template(device, set, descriptorUpdateTemplate, pData);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_CreateSamplerYcbcrConversion(
-   VkDevice _device,
-   const VkSamplerYcbcrConversionCreateInfo *pCreateInfo,
-   const VkAllocationCallbacks *pAllocator,
-   VkSamplerYcbcrConversion *pYcbcrConversion)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   struct tu_sampler_ycbcr_conversion *conversion;
-
-   conversion = (struct tu_sampler_ycbcr_conversion *) vk_object_alloc(
-      &device->vk, pAllocator, sizeof(*conversion),
-      VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION);
-   if (!conversion)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   conversion->format =
-      vk_select_android_external_format(pCreateInfo->pNext, pCreateInfo->format);
-
-   conversion->ycbcr_model = pCreateInfo->ycbcrModel;
-   conversion->ycbcr_range = pCreateInfo->ycbcrRange;
-   conversion->components = pCreateInfo->components;
-   conversion->chroma_offsets[0] = pCreateInfo->xChromaOffset;
-   conversion->chroma_offsets[1] = pCreateInfo->yChromaOffset;
-   conversion->chroma_filter = pCreateInfo->chromaFilter;
-
-   *pYcbcrConversion = tu_sampler_ycbcr_conversion_to_handle(conversion);
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-tu_DestroySamplerYcbcrConversion(VkDevice _device,
-                                 VkSamplerYcbcrConversion ycbcrConversion,
-                                 const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   VK_FROM_HANDLE(tu_sampler_ycbcr_conversion, ycbcr_conversion, ycbcrConversion);
-
-   if (!ycbcr_conversion)
-      return;
-
-   vk_object_free(&device->vk, pAllocator, ycbcr_conversion);
 }

@@ -26,6 +26,7 @@ DEPS=(
     ccache
     cmake
     curl
+    "clang-${LLVM_VERSION}"
     fastboot
     flatbuffers-compiler
     flex
@@ -33,11 +34,15 @@ DEPS=(
     git
     glslang-tools
     kmod
+    "libclang-${LLVM_VERSION}-dev"
+    "libclang-cpp${LLVM_VERSION}-dev"
+    "libclang-common-${LLVM_VERSION}-dev"
     libasan8
     libdrm-dev
     libelf-dev
     libexpat1-dev
     libflatbuffers-dev
+    "libllvm${LLVM_VERSION}"
     libvulkan-dev
     libx11-dev
     libx11-xcb-dev
@@ -85,6 +90,29 @@ arch=armhf
 . .gitlab-ci/container/build-mold.sh
 
 . .gitlab-ci/container/build-wayland.sh
+
+. .gitlab-ci/container/build-llvm-spirv.sh
+
+. .gitlab-ci/container/build-libclc.sh
+
+# We need at least 1.4.0 for rusticl
+pip3 install --break-system-packages 'meson==1.4.0'
+
+. .gitlab-ci/container/build-rust.sh
+
+# install bindgen
+RUSTFLAGS='-L native=/usr/local/lib' cargo install \
+  bindgen-cli --version 0.65.1 \
+  --locked \
+  -j ${FDO_CI_CONCURRENT:-4} \
+  --root /usr/local
+
+# install cbindgen
+RUSTFLAGS='-L native=/usr/local/lib' cargo install \
+  cbindgen --version 0.26.0 \
+  --locked \
+  -j ${FDO_CI_CONCURRENT:-4} \
+  --root /usr/local
 
 apt-get purge -y "${EPHEMERAL[@]}"
 

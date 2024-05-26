@@ -3410,18 +3410,22 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    info->stage = nir->info.stage;
 
+   /* Check these outside the stage check since nir->info.stage is the hardware
+    * stage and these are read in the vertex *software* stage.
+    */
+   info->uses_draw_id =
+      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
+
+   info->uses_base_param =
+      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX) ||
+      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
+
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       info->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
 
       info->writes_layer_viewport =
          nir->info.outputs_written & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT);
 
-      info->uses_draw_id =
-         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
-
-      info->uses_base_param =
-         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX) ||
-         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       info->disable_tri_merging = nir->info.uses_wide_subgroup_intrinsics ||
                                   nir->info.fs.needs_quad_helper_invocations ||

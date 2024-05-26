@@ -349,6 +349,7 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .sparseResidencyImage2D                   = DETECT_OS_LINUX,
       .sparseResidencyImage3D                   = DETECT_OS_LINUX,
       .sparseResidencyAliased                   = DETECT_OS_LINUX,
+      .shaderResourceResidency                  = DETECT_OS_LINUX,
 
       /* Vulkan 1.1 */
       .storageBuffer16BitAccess            = true,

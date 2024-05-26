@@ -32,6 +32,7 @@
 #include "pipe/p_state.h"
 #include "util/u_debug.h"
 #include "lp_limits.h"
+#include "util/bitset.h"
 #if MESA_DEBUG
 #include "util/list.h"
 #endif
@@ -92,6 +93,8 @@ struct llvmpipe_resource
     * Malloc'ed data for regular textures, or a mapping to dt above.
     */
    void *tex_data;
+
+   BITSET_WORD *residency;
 
    /**
     * Data for non-texture resources.

@@ -443,9 +443,16 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
     * functions that need to be pre-compiled.
     */
    const nir_lower_tex_options tex_options = {
+      /* lower_tg4_offsets can introduce new sparse residency intrinsics
+       * which is why we have to lower everything before calling
+       * lvp_nir_lower_sparse_residency.
+       */
+      .lower_tg4_offsets = true,
       .lower_txd = true,
    };
    NIR_PASS(_, nir, nir_lower_tex, &tex_options);
+
+   NIR_PASS(_, nir, lvp_nir_lower_sparse_residency);
 
    lvp_shader_optimize(nir);
 

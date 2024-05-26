@@ -1624,7 +1624,7 @@ visit_load_image(struct lp_build_nir_context *bld_base,
 
    params.coords = coords;
    params.outdata = result;
-   params.img_op = LP_IMG_LOAD;
+   lp_img_op_from_intrinsic(&params, instr);
    if (nir_intrinsic_image_dim(instr) == GLSL_SAMPLER_DIM_MS ||
        nir_intrinsic_image_dim(instr) == GLSL_SAMPLER_DIM_SUBPASS_MS)
       params.ms_index = cast_type(bld_base, get_src(bld_base, instr->src[2]),
@@ -1707,6 +1707,11 @@ lp_img_op_from_intrinsic(struct lp_img_params *params, nir_intrinsic_instr *inst
    if (instr->intrinsic == nir_intrinsic_image_load ||
        instr->intrinsic == nir_intrinsic_bindless_image_load) {
       params->img_op = LP_IMG_LOAD;
+      return;
+   }
+
+   if (instr->intrinsic == nir_intrinsic_bindless_image_sparse_load) {
+      params->img_op = LP_IMG_LOAD_SPARSE;
       return;
    }
 
@@ -2191,6 +2196,7 @@ visit_intrinsic(struct lp_build_nir_context *bld_base,
       break;
    case nir_intrinsic_image_load:
    case nir_intrinsic_bindless_image_load:
+   case nir_intrinsic_bindless_image_sparse_load:
       visit_load_image(bld_base, instr, result);
       break;
    case nir_intrinsic_image_store:
@@ -2449,6 +2455,9 @@ lp_build_nir_sample_key(gl_shader_stage stage, nir_tex_instr *instr)
    }
 
    sample_key |= lod_property << LP_SAMPLER_LOD_PROPERTY_SHIFT;
+
+   if (instr->is_sparse)
+      sample_key |= LP_SAMPLER_RESIDENCY;
 
    return sample_key;
 }

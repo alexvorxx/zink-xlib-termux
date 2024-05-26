@@ -261,7 +261,7 @@ compile_image_function(struct llvmpipe_context *ctx, struct lp_static_texture_st
    if (op >= LP_IMG_OP_COUNT - 1) {
       params.img_op = LP_IMG_ATOMIC;
       params.op = op - (LP_IMG_OP_COUNT - 1);
-   } else if (op != LP_IMG_LOAD && op != LP_IMG_STORE) {
+   } else if (op != LP_IMG_LOAD && op != LP_IMG_LOAD_SPARSE && op != LP_IMG_STORE) {
       params.img_op = LP_IMG_ATOMIC_CAS;
    }
 
@@ -319,7 +319,7 @@ compile_image_function(struct llvmpipe_context *ctx, struct lp_static_texture_st
 
    gallivm->texture_descriptor = LLVMGetParam(function, arg_index++);
 
-   if (params.img_op != LP_IMG_LOAD)
+   if (params.img_op != LP_IMG_LOAD && params.img_op != LP_IMG_LOAD_SPARSE)
       params.exec_mask = LLVMGetParam(function, arg_index++);
 
    LLVMValueRef coords[3];
@@ -330,7 +330,7 @@ compile_image_function(struct llvmpipe_context *ctx, struct lp_static_texture_st
    if (ms)
       params.ms_index = LLVMGetParam(function, arg_index++);
 
-   if (params.img_op != LP_IMG_LOAD)
+   if (params.img_op != LP_IMG_LOAD && params.img_op != LP_IMG_LOAD_SPARSE)
       for (uint32_t i = 0; i < 4; i++)
          params.indata[i] = LLVMGetParam(function, arg_index++);
 
@@ -343,15 +343,20 @@ compile_image_function(struct llvmpipe_context *ctx, struct lp_static_texture_st
    gallivm->builder = LLVMCreateBuilderInContext(gallivm->context);
    LLVMPositionBuilderAtEnd(gallivm->builder, block);
 
-   LLVMValueRef outdata[4] = { 0 };
+   LLVMValueRef outdata[5] = { 0 };
    lp_build_img_op_soa(texture, lp_build_image_soa_dynamic_state(image_soa), gallivm, &params, outdata);
 
    for (uint32_t i = 1; i < 4; i++)
       if (!outdata[i])
          outdata[i] = outdata[0];
 
+   if (outdata[4])
+      outdata[4] = LLVMBuildZExt(gallivm->builder, outdata[4], lp_build_int_vec_type(gallivm, lp_int_type(type)), "");
+   else
+      outdata[4] = lp_build_one(gallivm, lp_int_type(type));
+
    if (params.img_op != LP_IMG_STORE)
-      LLVMBuildAggregateRet(gallivm->builder, outdata, 4);
+      LLVMBuildAggregateRet(gallivm->builder, outdata, params.img_op == LP_IMG_LOAD_SPARSE ? 5 : 4);
    else
       LLVMBuildRetVoid(gallivm->builder);
 
@@ -492,7 +497,7 @@ compile_sample_function(struct llvmpipe_context *ctx, struct lp_static_texture_s
    gallivm->builder = LLVMCreateBuilderInContext(gallivm->context);
    LLVMPositionBuilderAtEnd(gallivm->builder, block);
 
-   LLVMValueRef texel_out[4] = { 0 };
+   LLVMValueRef texel_out[5] = { 0 };
    if (supported) {
       lp_build_sample_soa_code(gallivm, texture, sampler, lp_build_sampler_soa_dynamic_state(sampler_soa),
                                type, sample_key, 0, 0, cs.jit_resources_type, NULL, cs.jit_cs_thread_data_type,
@@ -501,7 +506,12 @@ compile_sample_function(struct llvmpipe_context *ctx, struct lp_static_texture_s
       lp_build_sample_nop(gallivm, lp_build_texel_type(type, util_format_description(texture->format)), coords, texel_out);
    }
 
-   LLVMBuildAggregateRet(gallivm->builder, texel_out, 4);
+   if (texel_out[4])
+      texel_out[4] = LLVMBuildZExt(gallivm->builder, texel_out[4], lp_build_int_vec_type(gallivm, lp_int_type(type)), "");
+   else
+      texel_out[4] = lp_build_one(gallivm, lp_int_type(type));
+
+   LLVMBuildAggregateRet(gallivm->builder, texel_out, 5);
 
    LLVMDisposeBuilder(gallivm->builder);
    gallivm->builder = old_builder;

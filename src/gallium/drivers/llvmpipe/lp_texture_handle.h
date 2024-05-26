@@ -31,8 +31,6 @@
 #include "gallivm/lp_bld_sample.h"
 #include "gallivm/lp_bld_jit_sample.h"
 
-#define LP_SAMPLE_KEY_COUNT (1 << 11)
-
 struct lp_sampler_matrix {
    struct lp_texture_functions **textures;
    struct lp_static_sampler_state *samplers;

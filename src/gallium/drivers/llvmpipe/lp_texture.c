@@ -327,6 +327,8 @@ llvmpipe_resource_create_all(struct pipe_screen *_screen,
                                     -1, 0);
             madvise(lpr->tex_data, lpr->size_required, MADV_DONTNEED);
 #endif
+
+            lpr->residency = calloc(DIV_ROUND_UP(lpr->size_required, 64 * 1024 * sizeof(uint32_t) * 8), sizeof(uint32_t));
          }
       }
    } else {
@@ -577,6 +579,8 @@ llvmpipe_resource_destroy(struct pipe_screen *pscreen,
          munmap(lpr->data, lpr->size_required);
 #endif
    }
+
+   free(lpr->residency);
 
 #if MESA_DEBUG
    simple_mtx_lock(&resource_list_mutex);
@@ -1564,6 +1568,7 @@ llvmpipe_resource_bind_backing(struct pipe_screen *pscreen,
          if (llvmpipe_resource_is_texture(&lpr->base)) {
             mmap((char *)lpr->tex_data + offset, size, PROT_READ|PROT_WRITE,
                  MAP_SHARED|MAP_FIXED, mem->fd, mem->offset + fd_offset);
+            BITSET_SET(lpr->residency, offset / (64 * 1024));
          } else {
             mmap((char *)lpr->data + offset, size, PROT_READ|PROT_WRITE,
                  MAP_SHARED|MAP_FIXED, mem->fd, mem->offset + fd_offset);
@@ -1572,6 +1577,7 @@ llvmpipe_resource_bind_backing(struct pipe_screen *pscreen,
          if (llvmpipe_resource_is_texture(&lpr->base)) {
             mmap((char *)lpr->tex_data + offset, size, PROT_READ|PROT_WRITE,
                  MAP_SHARED|MAP_FIXED|MAP_ANONYMOUS, -1, 0);
+            BITSET_CLEAR(lpr->residency, offset / (64 * 1024));
          } else {
             mmap((char *)lpr->data + offset, size, PROT_READ|PROT_WRITE,
                  MAP_SHARED|MAP_FIXED|MAP_ANONYMOUS, -1, 0);

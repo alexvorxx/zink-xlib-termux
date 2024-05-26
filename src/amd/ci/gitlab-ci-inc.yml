@@ -260,7 +260,6 @@
 
 .b2c-deqp-test:
   variables:
-    B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
 
 .tahiti-test-valve:

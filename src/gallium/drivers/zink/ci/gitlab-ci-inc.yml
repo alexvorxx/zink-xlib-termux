@@ -193,7 +193,6 @@
   variables:
     VK_DRIVER: freedreno
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
-    B2C_JOB_SUCCESS_REGEX: 'Execution is over, pipeline status: 0'
     # Disable reporting, since DUTs don't have internet access
     FLAKES_CHANNEL: ""
 
@@ -207,7 +206,6 @@
     DEQP_SUITE: zink-radv
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
     B2C_KERNEL_URL: https://fs.mupuf.org/linux-6.6-b2c-radv-ci # 6.6
-    B2C_JOB_SUCCESS_REGEX: 'Execution is over, pipeline status: 0'
     B2C_TIMEOUT_OVERALL_MINUTES: 20
 
     # Disable reporting, since DUTs don't have internet access

@@ -348,4 +348,3 @@ a750_vk:
     B2C_TIMEOUT_OVERALL_MINUTES: 55
     DEQP_SUITE: freedreno-a750-vk
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
-    B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'

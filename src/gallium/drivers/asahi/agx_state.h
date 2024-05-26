@@ -166,6 +166,9 @@ struct PACKED agx_draw_uniforms {
    /* ~0/0 boolean whether the epilog lacks any discard instrction */
    uint16_t no_epilog_discard;
 
+   /* Provoking vertex: 0, 1, 2 */
+   uint16_t provoking_vertex;
+
    /* Mapping from varying slots written by the last vertex stage to UVS
     * indices. This mapping must be compatible with the fragment shader.
     */
@@ -759,6 +762,27 @@ agx_context(struct pipe_context *pctx)
 }
 
 struct agx_linked_shader;
+
+typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
+
+void agx_init_meta_shaders(struct agx_context *ctx);
+
+void agx_destroy_meta_shaders(struct agx_context *ctx);
+
+struct agx_compiled_shader *agx_build_meta_shader(struct agx_context *ctx,
+                                                  meta_shader_builder_t builder,
+                                                  void *data, size_t data_size);
+
+void agx_launch_with_data(struct agx_batch *batch,
+                          const struct pipe_grid_info *info,
+                          meta_shader_builder_t builder, void *key,
+                          size_t key_size, void *data, size_t data_size);
+
+void agx_launch_internal(struct agx_batch *batch,
+                         const struct pipe_grid_info *info,
+                         struct agx_compiled_shader *cs,
+                         enum pipe_shader_type stage, uint32_t usc);
+
 void agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
                 struct agx_compiled_shader *cs,
                 struct agx_linked_shader *linked, enum pipe_shader_type stage);
@@ -1149,13 +1173,3 @@ agx_texture_buffer_size_el(enum pipe_format format, uint32_t size)
 
    return MIN2(AGX_TEXTURE_BUFFER_MAX_SIZE, size / blocksize);
 }
-
-typedef void (*meta_shader_builder_t)(struct nir_builder *b, const void *key);
-
-void agx_init_meta_shaders(struct agx_context *ctx);
-
-void agx_destroy_meta_shaders(struct agx_context *ctx);
-
-struct agx_compiled_shader *agx_build_meta_shader(struct agx_context *ctx,
-                                                  meta_shader_builder_t builder,
-                                                  void *data, size_t data_size);

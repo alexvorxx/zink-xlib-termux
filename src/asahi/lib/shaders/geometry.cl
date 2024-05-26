@@ -249,8 +249,9 @@ first_true_thread_in_workgroup(bool cond, local uint *scratch)
  * sets up most of the new draw descriptor.
  */
 static global void *
-setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
-                      uint draw, enum mesa_prim mode, uint index_size_B)
+setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
+                      constant uint *in_draw, uint draw, enum mesa_prim mode,
+                      uint index_size_B)
 {
    /* Determine an upper bound on the memory required for the index buffer.
     * Restarts only decrease the unrolled index buffer size, so the maximum size
@@ -263,12 +264,12 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
    /* Allocate memory from the heap for the unrolled index buffer. Use an atomic
     * since multiple threads may be running to handle multidraw in parallel.
     */
-   global struct agx_geometry_state *heap = ia->heap;
+   global struct agx_geometry_state *heap = p->heap;
    uint old_heap_bottom_B = atomic_fetch_add(
       (volatile atomic_uint *)(&heap->heap_bottom), align(alloc_size, 4));
 
    /* Regardless of the input stride, we use tightly packed output draws */
-   global uint *out = &ia->out_draws[5 * draw];
+   global uint *out = &p->out_draws[5 * draw];
 
    /* Setup most of the descriptor. Count will be determined after unroll. */
    out[1] = in_draw[1];                       /* instance count */
@@ -281,28 +282,28 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
 }
 
 #define UNROLL(INDEX, suffix)                                                  \
-   kernel void libagx_unroll_restart_##suffix(global struct agx_ia_state *ia,  \
-                                              enum mesa_prim mode, uint draw,  \
-                                              uint tid)                        \
+   kernel void libagx_unroll_restart_##suffix(                                 \
+      global struct agx_restart_unroll_params *p, enum mesa_prim mode,         \
+      uint draw, uint tid)                                                     \
    {                                                                           \
       /* For an indirect multidraw, we are dispatched maxDraws times and       \
        * terminate trailing invocations.                                       \
        */                                                                      \
-      if (ia->count && draw >= *(ia->count))                                   \
+      if (p->count && draw >= *(p->count))                                     \
          return;                                                               \
                                                                                \
       constant uint *in_draw =                                                 \
-         (constant uint *)(ia->draws + (draw * ia->draw_stride));              \
+         (constant uint *)(p->draws + (draw * p->draw_stride));                \
                                                                                \
       uint count = in_draw[0];                                                 \
                                                                                \
       local uintptr_t out_ptr, in_ptr;                                         \
       if (tid == 0) {                                                          \
-         out_ptr = (uintptr_t)setup_unroll_for_draw(ia, in_draw, draw, mode,   \
+         out_ptr = (uintptr_t)setup_unroll_for_draw(p, in_draw, draw, mode,    \
                                                     sizeof(INDEX));            \
                                                                                \
          /* Accessed thru local mem because NIR deref is too aggressive */     \
-         in_ptr = (uintptr_t)(ia->index_buffer + sizeof(INDEX) * in_draw[2]);  \
+         in_ptr = (uintptr_t)(p->index_buffer + sizeof(INDEX) * in_draw[2]);   \
       }                                                                        \
                                                                                \
       barrier(CLK_LOCAL_MEM_FENCE);                                            \
@@ -312,9 +313,9 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
       local uint scratch[32];                                                  \
                                                                                \
       uint out_prims = 0;                                                      \
-      INDEX restart_idx = ia->restart_index;                                   \
-      bool flatshade_first = ia->flatshade_first;                              \
-      uint in_size_el = ia->index_buffer_size_B / sizeof(INDEX);               \
+      INDEX restart_idx = p->restart_index;                                    \
+      bool flatshade_first = p->flatshade_first;                               \
+      uint in_size_el = p->index_buffer_size_B / sizeof(INDEX);                \
                                                                                \
       uint needle = 0;                                                         \
       uint per_prim = mesa_vertices_per_prim(mode);                            \
@@ -324,6 +325,7 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
          for (;;) {                                                            \
             /* Relies on shortcircuiting */                                    \
             uint idx = next_restart + tid;                                     \
+            /* XXX: robustness here */                                         \
             bool restart = idx >= count || in[idx] == restart_idx;             \
                                                                                \
             uint next_offs = first_true_thread_in_workgroup(restart, scratch); \
@@ -353,7 +355,7 @@ setup_unroll_for_draw(global struct agx_ia_state *ia, constant uint *in_draw,
       }                                                                        \
                                                                                \
       if (tid == 0)                                                            \
-         ia->out_draws[(5 * draw) + 0] = out_prims * per_prim;                 \
+         p->out_draws[(5 * draw) + 0] = out_prims * per_prim;                  \
    }
 
 UNROLL(uchar, u8)
@@ -447,16 +449,15 @@ libagx_build_gs_draw(global struct agx_geometry_params *p, uint vertices,
 }
 
 void
-libagx_gs_setup_indirect(global struct agx_geometry_params *p,
-                         global struct agx_ia_state *ia,
-                         global uintptr_t *vertex_buffer, uint64_t vs_outputs,
+libagx_gs_setup_indirect(global struct agx_gs_setup_indirect_params *gsi,
                          enum mesa_prim mode, uint local_id)
 {
-   global uint *in_draw = (global uint *)ia->draws;
+   global struct agx_geometry_params *p = gsi->geom;
+   global struct agx_ia_state *ia = gsi->ia;
 
    /* Determine the (primitives, instances) grid size. */
-   uint vertex_count = in_draw[0];
-   uint instance_count = in_draw[1];
+   uint vertex_count = gsi->draw[0];
+   uint instance_count = gsi->draw[1];
 
    ia->verts_per_instance = vertex_count;
 
@@ -478,22 +479,27 @@ libagx_gs_setup_indirect(global struct agx_geometry_params *p,
     * indirect draw, the hardware would do this for us, but for software input
     * assembly we need to do it ourselves.
     */
-   if (ia->index_buffer) {
-      ia->index_buffer += ((constant uint *)ia->draws)[2] * ia->index_size_B;
+   if (gsi->index_buffer) {
+      ia->index_buffer = gsi->index_buffer + gsi->draw[2] * gsi->index_size_B;
    }
 
-   /* We may need to allocate VS and GS count buffers, do so now */
+   /* We need to allocate VS and GS count buffers, do so now */
    global struct agx_geometry_state *state = p->state;
 
    uint vertex_buffer_size =
-      libagx_tcs_in_size(vertex_count * instance_count, vs_outputs);
+      libagx_tcs_in_size(vertex_count * instance_count, gsi->vs_outputs);
 
    p->count_buffer = (global uint *)(state->heap + state->heap_bottom);
    state->heap_bottom +=
       align(p->input_primitives * p->count_buffer_stride, 16);
 
-   *vertex_buffer = (uintptr_t)(state->heap + state->heap_bottom);
+   *(gsi->vertex_buffer) = (uintptr_t)(state->heap + state->heap_bottom);
    state->heap_bottom += align(vertex_buffer_size, 4);
+
+   if (state->heap_bottom > 1024 * 1024 * 128) {
+      global uint *foo = (global uint *)(uintptr_t)0x1deadbeef;
+      *foo = 0x1234;
+   }
 }
 
 /*
@@ -565,12 +571,6 @@ libagx_prefix_sum(global uint *buffer, uint len, uint words, uint word)
    if (tid < len_remainder) {
       *ptr = count + scan;
    }
-}
-
-bool
-libagx_is_provoking_last(global struct agx_ia_state *ia)
-{
-   return !ia->flatshade_first;
 }
 
 uintptr_t

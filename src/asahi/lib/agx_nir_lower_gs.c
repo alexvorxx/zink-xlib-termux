@@ -379,10 +379,7 @@ lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       id = load_geometry_param(b, flat_outputs);
    else if (intr->intrinsic == nir_intrinsic_load_input_topology_agx)
       id = load_geometry_param(b, input_topology);
-   else if (intr->intrinsic == nir_intrinsic_load_provoking_last) {
-      id = nir_b2b32(
-         b, libagx_is_provoking_last(b, nir_load_input_assembly_buffer_agx(b)));
-   } else
+   else
       return false;
 
    b->cursor = nir_instr_remove(&intr->instr);
@@ -1452,10 +1449,7 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 {
    const struct agx_gs_setup_indirect_key *key = data;
 
-   libagx_gs_setup_indirect(b, nir_load_geometry_param_buffer_agx(b),
-                            nir_load_input_assembly_buffer_agx(b),
-                            nir_load_vs_output_buffer_ptr_agx(b),
-                            nir_load_vs_outputs_agx(b),
+   libagx_gs_setup_indirect(b, nir_load_preamble(b, 1, 64, .base = 0),
                             nir_imm_int(b, key->prim),
                             nir_channel(b, nir_load_local_invocation_id(b), 0));
 }
@@ -1463,10 +1457,10 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 void
 agx_nir_unroll_restart(nir_builder *b, const void *data)
 {
+   const struct agx_unroll_restart_key *key = data;
    b->shader->info.workgroup_size[0] = 1024;
 
-   const struct agx_unroll_restart_key *key = data;
-   nir_def *ia = nir_load_input_assembly_buffer_agx(b);
+   nir_def *ia = nir_load_preamble(b, 1, 64, .base = 0);
    nir_def *draw = nir_channel(b, nir_load_workgroup_id(b), 0);
    nir_def *lane = nir_channel(b, nir_load_local_invocation_id(b), 0);
    nir_def *mode = nir_imm_int(b, key->prim);

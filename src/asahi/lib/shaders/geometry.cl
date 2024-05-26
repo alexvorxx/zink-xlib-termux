@@ -419,33 +419,26 @@ libagx_end_primitive(global int *index_buffer, uint total_verts,
 }
 
 void
-libagx_build_gs_draw(global struct agx_geometry_params *p, bool indexed,
-                     uint vertices, uint primitives)
+libagx_build_gs_draw(global struct agx_geometry_params *p, uint vertices,
+                     uint primitives)
 {
    global uint *descriptor = p->indirect_desc;
    global struct agx_geometry_state *state = p->state;
 
    /* Setup the indirect draw descriptor */
-   if (indexed) {
-      uint indices = vertices + primitives; /* includes restart indices */
+   uint indices = vertices + primitives; /* includes restart indices */
 
-      /* Allocate the index buffer */
-      uint index_buffer_offset_B = state->heap_bottom;
-      p->output_index_buffer =
-         (global uint *)(state->heap + index_buffer_offset_B);
-      state->heap_bottom += (indices * 4);
+   /* Allocate the index buffer */
+   uint index_buffer_offset_B = state->heap_bottom;
+   p->output_index_buffer =
+      (global uint *)(state->heap + index_buffer_offset_B);
+   state->heap_bottom += (indices * 4);
 
-      descriptor[0] = indices;                   /* count */
-      descriptor[1] = 1;                         /* instance count */
-      descriptor[2] = index_buffer_offset_B / 4; /* start */
-      descriptor[3] = 0;                         /* index bias */
-      descriptor[4] = 0;                         /* start instance */
-   } else {
-      descriptor[0] = vertices; /* count */
-      descriptor[1] = 1;        /* instance count */
-      descriptor[2] = 0;        /* start */
-      descriptor[3] = 0;        /* start instance */
-   }
+   descriptor[0] = indices;                   /* count */
+   descriptor[1] = 1;                         /* instance count */
+   descriptor[2] = index_buffer_offset_B / 4; /* start */
+   descriptor[3] = 0;                         /* index bias */
+   descriptor[4] = 0;                         /* start instance */
 
    if (state->heap_bottom > 1024 * 1024 * 128) {
       global uint *foo = (global uint *)(uintptr_t)0xdeadbeef;

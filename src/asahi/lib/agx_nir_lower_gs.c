@@ -893,7 +893,7 @@ agx_nir_create_pre_gs(struct lower_gs_state *state, const nir_shader *libagx,
    /* Setup the draw from the rasterization stream (0). */
    if (!state->rasterizer_discard) {
       libagx_build_gs_draw(
-         b, nir_load_geometry_param_buffer_agx(b), nir_imm_bool(b, indexed),
+         b, nir_load_geometry_param_buffer_agx(b),
          previous_vertices(b, state, 0, unrolled_in_prims),
          restart ? previous_primitives(b, state, 0, unrolled_in_prims)
                  : nir_imm_int(b, 0));

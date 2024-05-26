@@ -1280,6 +1280,14 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
    struct agx_lower_output_to_var_state state = {0};
 
    u_foreach_bit64(slot, gs->info.outputs_written) {
+      /* After enough optimizations, the shader metadata can go out of sync, fix
+       * with our gathered info. Otherwise glsl_vector_type will assert fail.
+       */
+      if (component_counts[slot] == 0) {
+         gs->info.outputs_written &= ~BITFIELD64_BIT(slot);
+         continue;
+      }
+
       const char *slot_name =
          gl_varying_slot_name_for_stage(slot, MESA_SHADER_GEOMETRY);
 

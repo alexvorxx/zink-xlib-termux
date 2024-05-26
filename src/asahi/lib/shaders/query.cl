@@ -40,3 +40,11 @@ libagx_copy_query(constant struct libagx_copy_query_push *push)
       write_query_result(dst, 1, push->_64, available);
    }
 }
+
+void
+libagx_copy_xfb_counters(constant struct libagx_xfb_counter_copy *push)
+{
+   unsigned i = get_local_id(0);
+
+   *(push->dest[i]) = push->src[i] ? *(push->src[i]) : 0;
+}

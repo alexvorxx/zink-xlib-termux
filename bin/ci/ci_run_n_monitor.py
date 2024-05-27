@@ -120,8 +120,8 @@ def monitor_pipeline(
                         stress < 0
                         or sum(stress_status_counter[job.name].values()) < stress
                     ):
-                        job = enable_job(project, pipeline, job, "retry", force_manual)
                         stress_status_counter[job.name][job.status] += 1
+                        job = enable_job(project, pipeline, job, "retry", force_manual)
                 else:
                     job = enable_job(project, pipeline, job, "target", force_manual)
 
@@ -129,7 +129,7 @@ def monitor_pipeline(
                 target_statuses[job.name] = job.status
                 continue
 
-            # all jobs
+            # all other non-target jobs
             if job.status != statuses[job.name]:
                 print_job_status(job, True)
                 statuses[job.name] = job.status

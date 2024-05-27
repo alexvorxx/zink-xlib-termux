@@ -685,7 +685,6 @@ v3dX(pipeline_pack_compile_state)(struct v3dv_pipeline *pipeline,
       const VkVertexInputBindingDescription *desc =
          &vi_info->pVertexBindingDescriptions[i];
 
-      pipeline->vb[desc->binding].stride = desc->stride;
       pipeline->vb[desc->binding].instance_divisor = desc->inputRate;
    }
 

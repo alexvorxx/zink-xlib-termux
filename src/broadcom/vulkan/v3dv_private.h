@@ -2273,11 +2273,8 @@ struct v3dv_pipeline {
 
    bool negative_one_to_one;
 
-   /* Accessed by binding. So vb[binding]->stride is the stride of the vertex
-    * array with such binding
-    */
+   /* Indexed by vertex binding. */
    struct v3dv_pipeline_vertex_binding {
-      uint32_t stride;
       uint32_t instance_divisor;
    } vb[MAX_VBS];
    uint32_t vb_count;

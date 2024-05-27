@@ -1389,6 +1389,7 @@ struct v3dv_draw_info {
 struct v3dv_vertex_binding {
    struct v3dv_buffer *buffer;
    VkDeviceSize offset;
+   VkDeviceSize size;
 };
 
 struct v3dv_descriptor_state {

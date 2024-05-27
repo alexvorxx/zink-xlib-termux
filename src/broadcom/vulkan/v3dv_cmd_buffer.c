@@ -3465,14 +3465,29 @@ v3dv_CmdBindVertexBuffers2(VkCommandBuffer commandBuffer,
       if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VI_BINDING_STRIDES))
          vb_state_changed = true;
    }
-   /* FIXME: at this moment we don't do any thing with pSizes. */
+
    for (uint32_t i = 0; i < bindingCount; i++) {
-      if (vb[firstBinding + i].buffer != v3dv_buffer_from_handle(pBuffers[i])) {
+      struct v3dv_buffer *buffer = v3dv_buffer_from_handle(pBuffers[i]);
+      if (vb[firstBinding + i].buffer != buffer) {
          vb[firstBinding + i].buffer = v3dv_buffer_from_handle(pBuffers[i]);
          vb_state_changed = true;
       }
+
       if (vb[firstBinding + i].offset != pOffsets[i]) {
          vb[firstBinding + i].offset = pOffsets[i];
+         vb_state_changed = true;
+      }
+      assert(pOffsets[i] <= buffer->size);
+
+      VkDeviceSize size;
+      if (!pSizes || pSizes[i] == VK_WHOLE_SIZE)
+         size = buffer->size - pOffsets[i];
+      else
+         size = pSizes[i];
+      assert(pOffsets[i] + size <= buffer->size);
+
+      if (vb[firstBinding + i].size != size) {
+         vb[firstBinding + i].size = size;
          vb_state_changed = true;
       }
    }

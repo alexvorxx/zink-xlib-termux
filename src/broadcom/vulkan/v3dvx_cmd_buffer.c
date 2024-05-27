@@ -2620,7 +2620,9 @@ v3dX(cmd_buffer_emit_gl_shader_state)(struct v3dv_cmd_buffer *cmd_buffer)
 
          attr.stride =
             cmd_buffer->vk.dynamic_graphics_state.vi_binding_strides[binding];
-         attr.maximum_index = 0xffffff;
+
+         attr.maximum_index = attr.stride == 0 ?
+                              1u : MIN2(0xffffffu, c_vb->size / attr.stride);
       }
 
       emitted_va_count++;

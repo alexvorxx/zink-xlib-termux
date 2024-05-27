@@ -143,6 +143,8 @@ lower_store_output_to_scalar(nir_builder *b, nir_intrinsic_instr *intr)
       bool is_64bit = (nir_intrinsic_instr_src_type(intr, 0) & NIR_ALU_TYPE_SIZE_MASK) == 64;
       unsigned newi = is_64bit ? i * 2 : i;
       unsigned newc = nir_intrinsic_component(intr);
+      unsigned new_component = (newc + newi) % 4;
+
       nir_intrinsic_instr *chan_intr =
          nir_intrinsic_instr_create(b->shader, intr->intrinsic);
       chan_intr->num_components = 1;
@@ -151,26 +153,24 @@ lower_store_output_to_scalar(nir_builder *b, nir_intrinsic_instr *intr)
          chan_intr->name = intr->name;
       nir_intrinsic_set_base(chan_intr, nir_intrinsic_base(intr));
       nir_intrinsic_set_write_mask(chan_intr, 0x1);
-      nir_intrinsic_set_component(chan_intr, (newc + newi) % 4);
+      nir_intrinsic_set_component(chan_intr, new_component);
       nir_intrinsic_set_src_type(chan_intr, nir_intrinsic_src_type(intr));
       set_io_semantics(chan_intr, intr, i);
 
       if (nir_intrinsic_has_io_xfb(intr)) {
          /* Scalarize transform feedback info. */
-         unsigned component = nir_intrinsic_component(chan_intr);
-
-         for (unsigned c = 0; c <= component; c++) {
+         for (unsigned c = 0; c <= new_component; c++) {
             nir_io_xfb xfb = c < 2 ? nir_intrinsic_io_xfb(intr) : nir_intrinsic_io_xfb2(intr);
 
-            if (component < c + xfb.out[c % 2].num_components) {
+            if (new_component < c + xfb.out[c % 2].num_components) {
                nir_io_xfb scalar_xfb;
 
                memset(&scalar_xfb, 0, sizeof(scalar_xfb));
-               scalar_xfb.out[component % 2].num_components = is_64bit ? 2 : 1;
-               scalar_xfb.out[component % 2].buffer = xfb.out[c % 2].buffer;
-               scalar_xfb.out[component % 2].offset = xfb.out[c % 2].offset +
-                                                      component - c;
-               if (component < 2)
+               scalar_xfb.out[new_component % 2].num_components = is_64bit ? 2 : 1;
+               scalar_xfb.out[new_component % 2].buffer = xfb.out[c % 2].buffer;
+               scalar_xfb.out[new_component % 2].offset = xfb.out[c % 2].offset +
+                                                          new_component - c;
+               if (new_component < 2)
                   nir_intrinsic_set_io_xfb(chan_intr, scalar_xfb);
                else
                   nir_intrinsic_set_io_xfb2(chan_intr, scalar_xfb);

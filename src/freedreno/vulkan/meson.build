@@ -22,6 +22,7 @@ libtu_files = files(
   'layers/tu_rmv_layer.cc',
   'tu_autotune.cc',
   'tu_buffer.cc',
+  'tu_buffer_view.cc',
   'tu_clear_blit.cc',
   'tu_cmd_buffer.cc',
   'tu_cs_breadcrumbs.cc',

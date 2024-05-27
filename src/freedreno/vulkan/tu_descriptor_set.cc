@@ -28,6 +28,7 @@
 #include "vk_util.h"
 
 #include "tu_buffer.h"
+#include "tu_buffer_view.h"
 #include "tu_device.h"
 #include "tu_image.h"
 #include "tu_formats.h"

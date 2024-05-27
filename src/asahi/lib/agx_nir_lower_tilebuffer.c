@@ -184,6 +184,7 @@ store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
              enum pipe_format format, unsigned rt, nir_def *value)
 {
    nir_def *image = handle_for_rt(b, bindless_base, rt, true);
+   nir_def *tex_image = handle_for_rt(b, bindless_base, rt, false);
    nir_def *zero = nir_imm_intN_t(b, 0, 16);
    nir_def *lod = zero;
 
@@ -191,22 +192,43 @@ store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
    enum glsl_sampler_dim dim = dim_for_rt(b, nr_samples, &sample);
    nir_def *coords = image_coords(b);
 
+   nir_def *size =
+      nir_bindless_image_size(b, 3, 32, tex_image, nir_imm_int(b, 0),
+                              .image_array = true, .image_dim = dim);
+
    nir_begin_invocation_interlock(b);
+
+   /* XXX: We should not get out-of-bounds image coords. Yet here we are :-/
+    *
+    * Fixes faults in:
+    *
+    * dEQP-VK.pipeline.monolithic.multisample.misc.dynamic_rendering.multi_renderpass.r8g8b8a8_unorm_r16g16b16a16_sfloat_r32g32b32a32_uint_d16_unorm.random_68
+    *
+    * which hits eMRT with multisampled image stores on an odd framebuffer size,
+    * and we get coordinates that go all the way up to align((width,height),
+    * (32,32)) despite setting scissor and such.
+    *
+    * XXX: needs more investigation, macOS seems to not choke on this so what
+    * are we doing wrong?
+    */
+   nir_def *cond = nir_ball(b, nir_ult(b, nir_trim_vector(b, coords, 2),
+                                       nir_trim_vector(b, size, 2)));
 
    if (nr_samples > 1) {
       nir_def *coverage = nir_load_sample_mask(b);
       nir_def *covered = nir_ubitfield_extract(
          b, coverage, nir_u2u32(b, sample), nir_imm_int(b, 1));
 
-      nir_push_if(b, nir_ine_imm(b, covered, 0));
+      cond = nir_iand(b, cond, nir_ine_imm(b, covered, 0));
    }
 
-   nir_bindless_image_store(b, image, coords, sample, value, lod,
-                            .image_dim = dim, .image_array = true,
-                            .format = format);
-
-   if (nr_samples > 1)
-      nir_pop_if(b, NULL);
+   nir_push_if(b, cond);
+   {
+      nir_bindless_image_store(b, image, coords, sample, value, lod,
+                               .image_dim = dim, .image_array = true,
+                               .format = format);
+   }
+   nir_pop_if(b, NULL);
 }
 
 static nir_def *

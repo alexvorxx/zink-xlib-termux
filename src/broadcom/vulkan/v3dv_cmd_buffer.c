@@ -3056,6 +3056,11 @@ v3dv_cmd_buffer_emit_pre_draw(struct v3dv_cmd_buffer *cmd_buffer,
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_LINE_WIDTH))
       v3dv_X(device, cmd_buffer_emit_line_width)(cmd_buffer);
 
+   if (dyn->ia.primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST &&
+       !job->emitted_default_point_size) {
+      v3dv_X(device, cmd_buffer_emit_default_point_size)(cmd_buffer);
+   }
+
    if (*dirty & V3DV_CMD_DIRTY_PIPELINE)
       v3dv_X(device, cmd_buffer_emit_sample_state)(cmd_buffer);
 

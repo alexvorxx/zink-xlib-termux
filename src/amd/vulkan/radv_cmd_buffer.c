@@ -11232,8 +11232,8 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
       if (info->unaligned) {
          radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
          radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[0]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[1]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[2]));
+         radeon_emit(cs, S_00B820_NUM_THREAD_FULL_GFX6(compute_shader->info.cs.block_size[1]));
+         radeon_emit(cs, S_00B824_NUM_THREAD_FULL(compute_shader->info.cs.block_size[2]));
 
          dispatch_initiator |= S_00B800_USE_THREAD_DIMENSIONS(1);
       }
@@ -11334,8 +11334,8 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
 
          radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
          radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(cs_block_size[0]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[0]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(cs_block_size[1]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[1]));
-         radeon_emit(cs, S_00B81C_NUM_THREAD_FULL_GFX6(cs_block_size[2]) | S_00B81C_NUM_THREAD_PARTIAL(remainder[2]));
+         radeon_emit(cs, S_00B820_NUM_THREAD_FULL_GFX6(cs_block_size[1]) | S_00B820_NUM_THREAD_PARTIAL(remainder[1]));
+         radeon_emit(cs, S_00B824_NUM_THREAD_FULL(cs_block_size[2]) | S_00B824_NUM_THREAD_PARTIAL(remainder[2]));
 
          dispatch_initiator |= S_00B800_PARTIAL_TG_EN(1);
       }

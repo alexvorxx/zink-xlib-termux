@@ -1693,8 +1693,8 @@ radv_precompute_registers_hw_cs(struct radv_device *device, struct radv_shader_b
 
    info->regs.cs.compute_resource_limits = radv_get_compute_resource_limits(pdev, info);
    info->regs.cs.compute_num_thread_x = S_00B81C_NUM_THREAD_FULL_GFX6(info->cs.block_size[0]);
-   info->regs.cs.compute_num_thread_y = S_00B81C_NUM_THREAD_FULL_GFX6(info->cs.block_size[1]);
-   info->regs.cs.compute_num_thread_z = S_00B81C_NUM_THREAD_FULL_GFX6(info->cs.block_size[2]);
+   info->regs.cs.compute_num_thread_y = S_00B820_NUM_THREAD_FULL_GFX6(info->cs.block_size[1]);
+   info->regs.cs.compute_num_thread_z = S_00B824_NUM_THREAD_FULL(info->cs.block_size[2]);
 }
 
 static void

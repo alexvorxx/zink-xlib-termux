@@ -800,3 +800,35 @@ impl<'a, T: SSABuilder> SSABuilder for PredicatedBuilder<'a, T> {
         self.b.alloc_ssa(file, comps)
     }
 }
+
+pub struct UniformBuilder<'a, T: Builder> {
+    b: &'a mut T,
+    uniform: bool,
+}
+
+impl<'a, T: Builder> UniformBuilder<'a, T> {
+    pub fn new(b: &'a mut T, uniform: bool) -> Self {
+        Self { b, uniform }
+    }
+}
+
+impl<'a, T: Builder> Builder for UniformBuilder<'a, T> {
+    fn push_instr(&mut self, instr: Box<Instr>) -> &mut Instr {
+        self.b.push_instr(instr)
+    }
+
+    fn sm(&self) -> u8 {
+        self.b.sm()
+    }
+}
+
+impl<'a, T: SSABuilder> SSABuilder for UniformBuilder<'a, T> {
+    fn alloc_ssa(&mut self, file: RegFile, comps: u8) -> SSARef {
+        let file = if self.uniform {
+            file.to_uniform().unwrap()
+        } else {
+            file
+        };
+        self.b.alloc_ssa(file, comps)
+    }
+}

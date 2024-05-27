@@ -153,16 +153,10 @@ load_tilebuffer(nir_builder *b, struct agx_tilebuffer_layout *tib,
  * bindless handle is in the AGX-specific format.
  */
 static nir_def *
-handle_for_rt(nir_builder *b, unsigned base, unsigned rt, bool pbe,
-              bool *bindless)
+handle_for_rt(nir_builder *b, unsigned base, unsigned rt, bool pbe)
 {
    unsigned index = base + (2 * rt) + (pbe ? 1 : 0);
-   *bindless = (*bindless) || (index >= AGX_NUM_TEXTURE_STATE_REGS);
-
-   if (*bindless)
-      return nir_load_texture_handle_agx(b, nir_imm_int(b, index));
-   else
-      return nir_imm_intN_t(b, index, 16);
+   return nir_load_texture_handle_agx(b, nir_imm_int(b, index));
 }
 
 static enum glsl_sampler_dim
@@ -189,11 +183,7 @@ static void
 store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
              enum pipe_format format, unsigned rt, nir_def *value)
 {
-   /* Force bindless for multisampled image writes since they will be lowered
-    * with a descriptor crawl later.
-    */
-   bool bindless = (nr_samples > 1);
-   nir_def *image = handle_for_rt(b, bindless_base, rt, true, &bindless);
+   nir_def *image = handle_for_rt(b, bindless_base, rt, true);
    nir_def *zero = nir_imm_intN_t(b, 0, 16);
    nir_def *lod = zero;
 
@@ -211,14 +201,9 @@ store_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
       nir_push_if(b, nir_ine_imm(b, covered, 0));
    }
 
-   if (bindless) {
-      nir_bindless_image_store(b, image, coords, sample, value, lod,
-                               .image_dim = dim, .image_array = true,
-                               .format = format);
-   } else {
-      nir_image_store(b, image, coords, sample, value, lod, .image_dim = dim,
-                      .image_array = true, .format = format);
-   }
+   nir_bindless_image_store(b, image, coords, sample, value, lod,
+                            .image_dim = dim, .image_array = true,
+                            .format = format);
 
    if (nr_samples > 1)
       nir_pop_if(b, NULL);
@@ -229,8 +214,7 @@ load_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
             uint8_t comps, uint8_t bit_size, unsigned rt,
             enum pipe_format format)
 {
-   bool bindless = false;
-   nir_def *image = handle_for_rt(b, bindless_base, rt, false, &bindless);
+   nir_def *image = handle_for_rt(b, bindless_base, rt, false);
    nir_def *zero = nir_imm_intN_t(b, 0, 16);
    nir_def *lod = zero;
 
@@ -241,15 +225,9 @@ load_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
    /* Ensure pixels below this one have written out their results */
    nir_begin_invocation_interlock(b);
 
-   if (bindless) {
-      return nir_bindless_image_load(
-         b, comps, bit_size, image, coords, sample, lod, .image_dim = dim,
-         .image_array = true, .format = format, .access = ACCESS_IN_BOUNDS_AGX);
-   } else {
-      return nir_image_load(b, comps, bit_size, image, coords, sample, lod,
-                            .image_dim = dim, .image_array = true,
-                            .format = format, .access = ACCESS_IN_BOUNDS_AGX);
-   }
+   return nir_bindless_image_load(
+      b, comps, bit_size, image, coords, sample, lod, .image_dim = dim,
+      .image_array = true, .format = format, .access = ACCESS_IN_BOUNDS_AGX);
 }
 
 static nir_def *

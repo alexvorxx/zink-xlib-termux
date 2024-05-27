@@ -2687,6 +2687,8 @@ radv_emit_vgt_shader_config(struct radv_cmd_buffer *cmd_buffer, const struct rad
 static void
 gfx103_emit_vgt_draw_payload_cntl(struct radv_cmd_buffer *cmd_buffer)
 {
+   const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *mesh_shader = cmd_buffer->state.shaders[MESA_SHADER_MESH];
    const bool enable_vrs = cmd_buffer->state.uses_vrs;
    bool enable_prim_payload = false;
@@ -2701,8 +2703,16 @@ gfx103_emit_vgt_draw_payload_cntl(struct radv_cmd_buffer *cmd_buffer)
                              outinfo->writes_primitive_shading_rate_per_primitive);
    }
 
-   radeon_opt_set_context_reg(cmd_buffer, R_028A98_VGT_DRAW_PAYLOAD_CNTL, RADV_TRACKED_VGT_DRAW_PAYLOAD_CNTL,
-                              S_028A98_EN_VRS_RATE(enable_vrs) | S_028A98_EN_PRIM_PAYLOAD(enable_prim_payload));
+   const uint32_t vgt_draw_payload_cntl =
+      S_028A98_EN_VRS_RATE(enable_vrs) | S_028A98_EN_PRIM_PAYLOAD(enable_prim_payload);
+
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_opt_set_context_reg(cmd_buffer, R_028AA0_VGT_DRAW_PAYLOAD_CNTL, RADV_TRACKED_VGT_DRAW_PAYLOAD_CNTL,
+                                 vgt_draw_payload_cntl);
+   } else {
+      radeon_opt_set_context_reg(cmd_buffer, R_028A98_VGT_DRAW_PAYLOAD_CNTL, RADV_TRACKED_VGT_DRAW_PAYLOAD_CNTL,
+                                 vgt_draw_payload_cntl);
+   }
 }
 
 static void
@@ -5139,9 +5149,16 @@ radv_emit_tess_domain_origin(struct radv_cmd_buffer *cmd_buffer)
       topology = ccw ? V_028B6C_OUTPUT_TRIANGLE_CCW : V_028B6C_OUTPUT_TRIANGLE_CW;
    }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028B6C_VGT_TF_PARAM,
-                          S_028B6C_TYPE(type) | S_028B6C_PARTITIONING(partitioning) | S_028B6C_TOPOLOGY(topology) |
-                             S_028B6C_DISTRIBUTION_MODE(pdev->tess_distribution_mode));
+   uint32_t vgt_tf_param = S_028B6C_TYPE(type) | S_028B6C_PARTITIONING(partitioning) | S_028B6C_TOPOLOGY(topology) |
+                           S_028B6C_DISTRIBUTION_MODE(pdev->tess_distribution_mode);
+
+   if (pdev->info.gfx_level >= GFX12) {
+      vgt_tf_param |= S_028AA4_TEMPORAL(gfx12_load_last_use_discard);
+
+      radeon_set_context_reg(cmd_buffer->cs, R_028AA4_VGT_TF_PARAM, vgt_tf_param);
+   } else {
+      radeon_set_context_reg(cmd_buffer->cs, R_028B6C_VGT_TF_PARAM, vgt_tf_param);
+   }
 }
 
 static void

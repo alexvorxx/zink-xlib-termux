@@ -7032,6 +7032,11 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          op32 = global ? aco_opcode::global_atomic_fmax : aco_opcode::flat_atomic_fmax;
          op64 = global ? aco_opcode::global_atomic_fmax_x2 : aco_opcode::flat_atomic_fmax_x2;
          break;
+      case nir_atomic_op_ordered_add_gfx12_amd:
+         assert(ctx->options->gfx_level >= GFX12 && instr->def.bit_size == 64);
+         op32 = aco_opcode::num_opcodes;
+         op64 = aco_opcode::global_atomic_ordered_add_b64;
+         break;
       default: unreachable("unsupported atomic operation");
       }
 

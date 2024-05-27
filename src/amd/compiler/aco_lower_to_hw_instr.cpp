@@ -108,6 +108,69 @@ private:
    size_t instr_after_end_idx_ = 0;
 };
 
+void
+copy_constant_sgpr(Builder& bld, Definition dst, uint64_t constant)
+{
+   if (dst.regClass() == s1) {
+      uint32_t imm = constant;
+      Operand op = Operand::get_const(bld.program->gfx_level, imm, 4);
+      if (op.isLiteral()) {
+         if (imm >= 0xffff8000 || imm <= 0x7fff) {
+            bld.sopk(aco_opcode::s_movk_i32, dst, imm & 0xFFFFu);
+            return;
+         }
+
+         Operand rev_op = Operand::get_const(bld.program->gfx_level, util_bitreverse(imm), 4);
+         if (rev_op.constantValue() <= 64 || rev_op.constantValue() >= 0xFFFFFFF0) {
+            bld.sop1(aco_opcode::s_brev_b32, dst, rev_op);
+            return;
+         }
+
+         unsigned start = (ffs(imm) - 1) & 0x1f;
+         unsigned size = util_bitcount(imm) & 0x1f;
+         if (BITFIELD_RANGE(start, size) == imm) {
+            bld.sop2(aco_opcode::s_bfm_b32, dst, Operand::c32(size), Operand::c32(start));
+            return;
+         }
+
+         if (bld.program->gfx_level >= GFX9) {
+            Operand op_lo = Operand::c32(int32_t(int16_t(imm)));
+            Operand op_hi = Operand::c32(int32_t(int16_t(imm >> 16)));
+            if (!op_lo.isLiteral() && !op_hi.isLiteral()) {
+               bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op_lo, op_hi);
+               return;
+            }
+         }
+      }
+
+      bld.sop1(aco_opcode::s_mov_b32, dst, op);
+      return;
+   }
+
+   assert(dst.regClass() == s2);
+
+   bool can_use_mov = Operand::is_constant_representable(constant, 8, true, false);
+   if (can_use_mov && !Operand::c64(constant).isLiteral()) {
+      bld.sop1(aco_opcode::s_mov_b64, dst, Operand::c64(constant));
+      return;
+   }
+
+   unsigned start = (ffsll(constant) - 1) & 0x3f;
+   unsigned size = util_bitcount64(constant) & 0x3f;
+   if (BITFIELD64_RANGE(start, size) == constant) {
+      bld.sop2(aco_opcode::s_bfm_b64, dst, Operand::c32(size), Operand::c32(start));
+      return;
+   }
+
+   if (can_use_mov) {
+      bld.sop1(aco_opcode::s_mov_b64, dst, Operand::c64(constant));
+      return;
+   }
+
+   copy_constant_sgpr(bld, Definition(dst.physReg(), s1), (uint32_t)constant);
+   copy_constant_sgpr(bld, Definition(dst.physReg().advance(4), s1), constant >> 32);
+}
+
 /* used by handle_operands() indirectly through Builder::copy */
 uint8_t int8_mul_table[512] = {
    0, 20,  1,  1,   1,  2,   1,  3,   1,  4,   1, 5,   1,  6,   1,  7,   1,  8,   1,  9,
@@ -1210,55 +1273,22 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
 {
    assert(op.bytes() == dst.bytes());
 
+   if (dst.regClass().type() == RegType::sgpr)
+      return copy_constant_sgpr(bld, dst, op.constantValue64());
+
    if (dst.bytes() == 4 && op.isLiteral()) {
       uint32_t imm = op.constantValue();
-      if (dst.regClass() == s1 && (imm >= 0xffff8000 || imm <= 0x7fff)) {
-         bld.sopk(aco_opcode::s_movk_i32, dst, imm & 0xFFFFu);
+      Operand rev_op = Operand::get_const(ctx->program->gfx_level, util_bitreverse(imm), 4);
+      if (rev_op.constantValue() <= 64 || rev_op.constantValue() >= 0xFFFFFFF0) {
+         bld.vop1(aco_opcode::v_bfrev_b32, dst, rev_op);
          return;
-      } else if (util_bitreverse(imm) <= 64 || util_bitreverse(imm) >= 0xFFFFFFF0) {
-         uint32_t rev = util_bitreverse(imm);
-         if (dst.regClass() == s1)
-            bld.sop1(aco_opcode::s_brev_b32, dst, Operand::c32(rev));
-         else
-            bld.vop1(aco_opcode::v_bfrev_b32, dst, Operand::c32(rev));
-         return;
-      } else if (dst.regClass() == s1) {
-         unsigned start = (ffs(imm) - 1) & 0x1f;
-         unsigned size = util_bitcount(imm) & 0x1f;
-         if (BITFIELD_RANGE(start, size) == imm) {
-            bld.sop2(aco_opcode::s_bfm_b32, dst, Operand::c32(size), Operand::c32(start));
-            return;
-         }
-         if (ctx->program->gfx_level >= GFX9) {
-            Operand op_lo = Operand::c32(int32_t(int16_t(imm)));
-            Operand op_hi = Operand::c32(int32_t(int16_t(imm >> 16)));
-            if (!op_lo.isLiteral() && !op_hi.isLiteral()) {
-               bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op_lo, op_hi);
-               return;
-            }
-         }
       }
    }
 
    if (op.bytes() == 4 && op.constantEquals(0x3e22f983) && ctx->program->gfx_level >= GFX8)
       op.setFixed(PhysReg{248}); /* it can be an inline constant on GFX8+ */
 
-   if (dst.regClass() == s1) {
-      bld.sop1(aco_opcode::s_mov_b32, dst, op);
-   } else if (dst.regClass() == s2) {
-      /* s_ashr_i64 writes SCC, so we can't use it */
-      assert(Operand::is_constant_representable(op.constantValue64(), 8, true, false));
-      uint64_t imm = op.constantValue64();
-      if (op.isLiteral()) {
-         unsigned start = (ffsll(imm) - 1) & 0x3f;
-         unsigned size = util_bitcount64(imm) & 0x3f;
-         if (BITFIELD64_RANGE(start, size) == imm) {
-            bld.sop2(aco_opcode::s_bfm_b64, dst, Operand::c32(size), Operand::c32(start));
-            return;
-         }
-      }
-      bld.sop1(aco_opcode::s_mov_b64, dst, op);
-   } else if (dst.regClass() == v2) {
+   if (dst.regClass() == v2) {
       if (Operand::is_constant_representable(op.constantValue64(), 8, true, false)) {
          bld.vop3(aco_opcode::v_lshrrev_b64, dst, Operand::zero(), op);
       } else {

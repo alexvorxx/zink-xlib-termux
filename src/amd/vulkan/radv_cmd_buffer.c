@@ -1883,13 +1883,20 @@ radv_emit_epilog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *s
 static void
 radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_part *ps_epilog)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader *ps_shader = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
 
    if (cmd_buffer->state.emitted_ps_epilog == ps_epilog)
       return;
 
-   if (ps_epilog->spi_shader_z_format)
-      radeon_set_context_reg(cmd_buffer->cs, R_028710_SPI_SHADER_Z_FORMAT, ps_epilog->spi_shader_z_format);
+   if (ps_epilog->spi_shader_z_format) {
+      if (pdev->info.gfx_level >= GFX12) {
+         radeon_set_context_reg(cmd_buffer->cs, R_028650_SPI_SHADER_Z_FORMAT, ps_epilog->spi_shader_z_format);
+      } else {
+         radeon_set_context_reg(cmd_buffer->cs, R_028710_SPI_SHADER_Z_FORMAT, ps_epilog->spi_shader_z_format);
+      }
+   }
 
    assert(ps_shader->config.num_shared_vgprs == 0);
    if (G_00B848_VGPRS(ps_epilog->rsrc1) > G_00B848_VGPRS(ps_shader->config.rsrc1)) {
@@ -2544,8 +2551,13 @@ radv_emit_ps_inputs(struct radv_cmd_buffer *cmd_buffer)
 
    input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_per_primitive_mask, ps_input_cntl, &ps_offset, per_prim);
 
-   radeon_opt_set_context_regn(cmd_buffer, R_028644_SPI_PS_INPUT_CNTL_0, ps_input_cntl,
-                               cmd_buffer->tracked_regs.spi_ps_input_cntl, ps_offset);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_opt_set_context_regn(cmd_buffer, R_028664_SPI_PS_INPUT_CNTL_0, ps_input_cntl,
+                                  cmd_buffer->tracked_regs.spi_ps_input_cntl, ps_offset);
+   } else {
+      radeon_opt_set_context_regn(cmd_buffer, R_028644_SPI_PS_INPUT_CNTL_0, ps_input_cntl,
+                                  cmd_buffer->tracked_regs.spi_ps_input_cntl, ps_offset);
+   }
 }
 
 static void
@@ -2562,17 +2574,28 @@ radv_emit_fragment_shader(struct radv_cmd_buffer *cmd_buffer)
    radeon_emit(cmd_buffer->cs, ps->config.rsrc1);
    radeon_emit(cmd_buffer->cs, ps->config.rsrc2);
 
-   radeon_opt_set_context_reg2(cmd_buffer, R_0286CC_SPI_PS_INPUT_ENA, RADV_TRACKED_SPI_PS_INPUT_ENA,
-                               ps->config.spi_ps_input_ena, ps->config.spi_ps_input_addr);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_opt_set_context_reg2(cmd_buffer, R_02865C_SPI_PS_INPUT_ENA, RADV_TRACKED_SPI_PS_INPUT_ENA,
+                                  ps->config.spi_ps_input_ena, ps->config.spi_ps_input_addr);
 
-   radeon_opt_set_context_reg(cmd_buffer, R_0286D8_SPI_PS_IN_CONTROL, RADV_TRACKED_SPI_PS_IN_CONTROL,
-                              ps->info.regs.ps.spi_ps_in_control);
-   radeon_opt_set_context_reg(cmd_buffer, R_028710_SPI_SHADER_Z_FORMAT, RADV_TRACKED_SPI_SHADER_Z_FORMAT,
-                              ps->info.regs.ps.spi_shader_z_format);
+      radeon_opt_set_context_reg(cmd_buffer, R_028640_SPI_PS_IN_CONTROL, RADV_TRACKED_SPI_PS_IN_CONTROL,
+                                 ps->info.regs.ps.spi_ps_in_control);
 
-   if (pdev->info.gfx_level >= GFX9 && pdev->info.gfx_level < GFX11)
-      radeon_opt_set_context_reg(cmd_buffer, R_028C40_PA_SC_SHADER_CONTROL, RADV_TRACKED_PA_SC_SHADER_CONTROL,
-                                 ps->info.regs.ps.pa_sc_shader_control);
+      radeon_set_context_reg(cmd_buffer->cs, R_028650_SPI_SHADER_Z_FORMAT, ps->info.regs.ps.spi_shader_z_format);
+   } else {
+      radeon_opt_set_context_reg2(cmd_buffer, R_0286CC_SPI_PS_INPUT_ENA, RADV_TRACKED_SPI_PS_INPUT_ENA,
+                                  ps->config.spi_ps_input_ena, ps->config.spi_ps_input_addr);
+
+      radeon_opt_set_context_reg(cmd_buffer, R_0286D8_SPI_PS_IN_CONTROL, RADV_TRACKED_SPI_PS_IN_CONTROL,
+                                 ps->info.regs.ps.spi_ps_in_control);
+
+      radeon_opt_set_context_reg(cmd_buffer, R_028710_SPI_SHADER_Z_FORMAT, RADV_TRACKED_SPI_SHADER_Z_FORMAT,
+                                 ps->info.regs.ps.spi_shader_z_format);
+
+      if (pdev->info.gfx_level >= GFX9 && pdev->info.gfx_level < GFX11)
+         radeon_opt_set_context_reg(cmd_buffer, R_028C40_PA_SC_SHADER_CONTROL, RADV_TRACKED_PA_SC_SHADER_CONTROL,
+                                    ps->info.regs.ps.pa_sc_shader_control);
+   }
 }
 
 static void

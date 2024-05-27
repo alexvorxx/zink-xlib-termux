@@ -172,7 +172,7 @@ dim_for_rt(nir_builder *b, unsigned nr_samples, nir_def **sample)
       *sample = nir_imm_intN_t(b, 0, 16);
       return GLSL_SAMPLER_DIM_2D;
    } else {
-      *sample = nir_load_sample_id(b);
+      *sample = nir_u2u16(b, nir_load_sample_id(b));
       b->shader->info.fs.uses_sample_shading = true;
       return GLSL_SAMPLER_DIM_MS;
    }

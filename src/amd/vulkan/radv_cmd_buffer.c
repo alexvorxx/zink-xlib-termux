@@ -3247,7 +3247,11 @@ radv_emit_culling(struct radv_cmd_buffer *cmd_buffer)
                                        d->vk.rs.line.mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_KHR);
    }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028814_PA_SU_SC_MODE_CNTL, pa_su_sc_mode_cntl);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_02881C_PA_SU_SC_MODE_CNTL, pa_su_sc_mode_cntl);
+   } else {
+      radeon_set_context_reg(cmd_buffer->cs, R_028814_PA_SU_SC_MODE_CNTL, pa_su_sc_mode_cntl);
+   }
 }
 
 static void
@@ -3704,7 +3708,13 @@ radv_emit_conservative_rast_mode(struct radv_cmd_buffer *cmd_buffer)
          pa_sc_conservative_rast = S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1);
       }
 
-      radeon_set_context_reg(cmd_buffer->cs, R_028C4C_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL, pa_sc_conservative_rast);
+      if (pdev->info.gfx_level >= GFX12) {
+         radeon_set_context_reg(cmd_buffer->cs, R_028C54_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
+                                pa_sc_conservative_rast);
+      } else {
+         radeon_set_context_reg(cmd_buffer->cs, R_028C4C_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
+                                pa_sc_conservative_rast);
+      }
    }
 }
 
@@ -3734,7 +3744,7 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
       S_028A4C_WALK_FENCE_ENABLE(1) | // TODO linear dst fixes
       S_028A4C_WALK_FENCE_SIZE(pdev->info.num_tile_pipes == 2 ? 2 : 3) |
       S_028A4C_OUT_OF_ORDER_PRIMITIVE_ENABLE(cmd_buffer->state.uses_out_of_order_rast) |
-      S_028A4C_OUT_OF_ORDER_WATER_MARK(0x7) |
+      S_028A4C_OUT_OF_ORDER_WATER_MARK(pdev->info.gfx_level >= GFX12 ? 0 : 0x7) |
       /* always 1: */
       S_028A4C_SUPERTILE_WALK_ORDER_ENABLE(1) | S_028A4C_TILE_WALK_ORDER_ENABLE(1) |
       S_028A4C_MULTI_SHADER_ENGINE_PRIM_DISCARD_ENABLE(1) | S_028A4C_FORCE_EOV_CNTDWN_ENABLE(1) |
@@ -3761,7 +3771,12 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
          pa_sc_mode_cntl_1 |= S_028A4C_PS_ITER_SAMPLE(1);
    }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_0286E0_SPI_BARYC_CNTL, spi_baryc_cntl);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028658_SPI_BARYC_CNTL, spi_baryc_cntl);
+   } else {
+      radeon_set_context_reg(cmd_buffer->cs, R_0286E0_SPI_BARYC_CNTL, spi_baryc_cntl);
+   }
+
    radeon_set_context_reg(cmd_buffer->cs, R_028A4C_PA_SC_MODE_CNTL_1, pa_sc_mode_cntl_1);
 }
 
@@ -4697,8 +4712,13 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
       }
    }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028034_PA_SC_SCREEN_SCISSOR_BR,
-                          S_028034_BR_X(extent.width) | S_028034_BR_Y(extent.height));
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028184_PA_SC_SCREEN_SCISSOR_BR,
+                             S_028034_BR_X(extent.width) | S_028034_BR_Y(extent.height));
+   } else {
+      radeon_set_context_reg(cmd_buffer->cs, R_028034_PA_SC_SCREEN_SCISSOR_BR,
+                             S_028034_BR_X(extent.width) | S_028034_BR_Y(extent.height));
+   }
 
    assert(cmd_buffer->cs->cdw <= cdw_max);
 
@@ -4708,6 +4728,8 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
 static void
 radv_emit_guardband_state(struct radv_cmd_buffer *cmd_buffer)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    unsigned rast_prim = radv_get_rasterization_prim(cmd_buffer);
    const bool draw_points = radv_rast_prim_is_point(rast_prim) || radv_polygon_mode_is_point(d->vk.rs.polygon_mode);
@@ -4755,7 +4777,11 @@ radv_emit_guardband_state(struct radv_cmd_buffer *cmd_buffer)
       }
    }
 
-   radeon_set_context_reg_seq(cs, R_028BE8_PA_CL_GB_VERT_CLIP_ADJ, 4);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg_seq(cs, R_02842C_PA_CL_GB_VERT_CLIP_ADJ, 4);
+   } else {
+      radeon_set_context_reg_seq(cs, R_028BE8_PA_CL_GB_VERT_CLIP_ADJ, 4);
+   }
    radeon_emit(cs, fui(guardband_y));
    radeon_emit(cs, fui(discard_y));
    radeon_emit(cs, fui(guardband_x));

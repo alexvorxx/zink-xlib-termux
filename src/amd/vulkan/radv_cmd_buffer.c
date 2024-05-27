@@ -3236,7 +3236,12 @@ radv_emit_line_stipple(struct radv_cmd_buffer *cmd_buffer)
    radeon_set_context_reg(cmd_buffer->cs, R_028A0C_PA_SC_LINE_STIPPLE,
                           S_028A0C_LINE_PATTERN(d->vk.rs.line.stipple.pattern) |
                              S_028A0C_REPEAT_COUNT(d->vk.rs.line.stipple.factor - 1) |
-                             S_028A0C_AUTO_RESET_CNTL(auto_reset_cntl));
+                             S_028A0C_AUTO_RESET_CNTL(pdev->info.gfx_level < GFX12 ? auto_reset_cntl : 0));
+
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028A44_PA_SC_LINE_STIPPLE_RESET,
+                             S_028A44_AUTO_RESET_CNTL(auto_reset_cntl));
+   }
 }
 
 static void

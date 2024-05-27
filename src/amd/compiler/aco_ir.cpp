@@ -209,6 +209,14 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
    program->next_fp_mode.round32 = fp_round_ne;
 }
 
+bool
+is_wait_export_ready(amd_gfx_level gfx_level, const Instruction* instr)
+{
+   return instr->opcode == aco_opcode::s_wait_event &&
+          (gfx_level >= GFX12 ? (instr->salu().imm & wait_event_imm_wait_export_ready_gfx12)
+                              : !(instr->salu().imm & wait_event_imm_dont_wait_export_ready_gfx11));
+}
+
 memory_sync_info
 get_sync_info(const Instruction* instr)
 {
@@ -216,8 +224,7 @@ get_sync_info(const Instruction* instr)
     * overlapping waves in the queue family.
     */
    if (instr->opcode == aco_opcode::p_pops_gfx9_overlapped_wave_wait_done ||
-       (instr->opcode == aco_opcode::s_wait_event &&
-        !(instr->salu().imm & wait_event_imm_dont_wait_export_ready))) {
+       instr->opcode == aco_opcode::s_wait_event) {
       return memory_sync_info(storage_buffer | storage_image, semantic_acquire, scope_queuefamily);
    } else if (instr->opcode == aco_opcode::p_pops_gfx9_ordered_section_done) {
       return memory_sync_info(storage_buffer | storage_image, semantic_release, scope_queuefamily);

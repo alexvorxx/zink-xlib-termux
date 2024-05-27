@@ -562,8 +562,7 @@ perform_hazard_query(hazard_query* query, Instruction* instr, bool upwards)
     */
    if (upwards) {
       if (instr->opcode == aco_opcode::p_pops_gfx9_add_exiting_wave_id ||
-          (instr->opcode == aco_opcode::s_wait_event &&
-           !(instr->salu().imm & wait_event_imm_dont_wait_export_ready))) {
+          is_wait_export_ready(query->gfx_level, instr)) {
          return hazard_fail_unreorderable;
       }
    } else {

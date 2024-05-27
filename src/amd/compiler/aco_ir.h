@@ -240,7 +240,8 @@ enum wait_event_imm : uint16_t {
     * their ordered sections (by performing the `done` export), and that the current wave may enter
     * its ordered section.
     */
-   wait_event_imm_dont_wait_export_ready = 0x1,
+   wait_event_imm_dont_wait_export_ready_gfx11 = 0x1,
+   wait_event_imm_wait_export_ready_gfx12 = 0x2,
 };
 
 constexpr Format
@@ -1727,6 +1728,7 @@ is_phi(aco_ptr<Instruction>& instr)
    return is_phi(instr.get());
 }
 
+bool is_wait_export_ready(amd_gfx_level gfx_level, const Instruction* instr);
 memory_sync_info get_sync_info(const Instruction* instr);
 
 inline bool

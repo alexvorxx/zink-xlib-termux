@@ -11498,7 +11498,8 @@ pops_await_overlapped_waves(isel_context* ctx)
       /* GFX11+ - waiting for the export from the overlapped waves.
        * Await the export_ready event (bit wait_event_imm_dont_wait_export_ready clear).
        */
-      bld.sopp(aco_opcode::s_wait_event, 0);
+      bld.sopp(aco_opcode::s_wait_event,
+               ctx->program->gfx_level >= GFX12 ? wait_event_imm_wait_export_ready_gfx12 : 0);
       return;
    }
 

@@ -1299,16 +1299,8 @@ pipeline_populate_v3d_vs_key(struct v3d_vs_key *key,
 
    struct v3dv_pipeline *pipeline = p_stage->pipeline;
 
-   /* Vulkan specifies a point size per vertex, so true for if the prim are
-    * points, like on ES2)
-    */
-   const VkPipelineInputAssemblyStateCreateInfo *ia_info =
-      pCreateInfo->pInputAssemblyState;
-   uint8_t topology = vk_to_mesa_prim[ia_info->topology];
-
-   /* FIXME: PRIM_POINTS is not enough, in gallium the full check is
-    * MESA_PRIM_POINTS && v3d->rasterizer->base.point_size_per_vertex */
-   key->per_vertex_point_size = (topology == MESA_PRIM_POINTS);
+   key->per_vertex_point_size =
+      p_stage->nir->info.outputs_written & (1ull << VARYING_SLOT_PSIZ);
 
    key->is_coord = broadcom_shader_stage_is_binning(p_stage->stage);
 

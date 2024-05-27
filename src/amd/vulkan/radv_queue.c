@@ -570,7 +570,14 @@ radv_emit_graphics_shader_pointers(struct radv_device *device, struct radeon_cmd
 
    radv_cs_add_buffer(device->ws, cs, descriptor_bo);
 
-   if (pdev->info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level >= GFX12) {
+      uint32_t regs[] = {R_00B030_SPI_SHADER_USER_DATA_PS_0, R_00B410_SPI_SHADER_PGM_LO_HS,
+                         R_00B210_SPI_SHADER_PGM_LO_GS};
+
+      for (int i = 0; i < ARRAY_SIZE(regs); ++i) {
+         radv_emit_shader_pointer(device, cs, regs[i], va, true);
+      }
+   } else if (pdev->info.gfx_level >= GFX11) {
       uint32_t regs[] = {R_00B030_SPI_SHADER_USER_DATA_PS_0, R_00B420_SPI_SHADER_PGM_LO_HS,
                          R_00B220_SPI_SHADER_PGM_LO_GS};
 

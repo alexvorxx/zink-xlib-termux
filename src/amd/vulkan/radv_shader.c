@@ -1582,7 +1582,8 @@ radv_precompute_registers_hw_ngg(struct radv_device *device, const struct ac_sha
    if (pdev->info.gfx_level >= GFX11) {
       info->regs.ngg.ge_cntl = S_03096C_PRIMS_PER_SUBGRP(info->ngg_info.max_gsprims) |
                                S_03096C_VERTS_PER_SUBGRP(info->ngg_info.hw_max_esverts) |
-                               S_03096C_PRIM_GRP_SIZE_GFX11(252);
+                               S_03096C_PRIM_GRP_SIZE_GFX11(252) |
+                               S_03096C_DIS_PG_SIZE_ADJUST_FOR_STRIP(pdev->info.gfx_level >= GFX12);
    } else {
       info->regs.ngg.ge_cntl = S_03096C_PRIM_GRP_SIZE_GFX10(info->ngg_info.max_gsprims) |
                                S_03096C_VERT_GRP_SIZE(info->ngg_info.hw_max_esverts);

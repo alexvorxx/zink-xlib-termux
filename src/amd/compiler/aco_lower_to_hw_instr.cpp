@@ -1776,6 +1776,23 @@ handle_operands(std::map<PhysReg, copy_operation>& copy_map, lower_context* ctx,
          }
       }
 
+      /* optimize constant copies to aligned sgpr pair that's otherwise unused. */
+      if (it->first <= exec && (it->first % 2) == 0 && it->second.bytes == 4 &&
+          it->second.op.isConstant() && !it->second.is_used) {
+         PhysReg reg_hi = it->first.advance(4);
+         std::map<PhysReg, copy_operation>::iterator other = copy_map.find(reg_hi);
+         if (other != copy_map.end() && other->second.bytes == 4 && other->second.op.isConstant() &&
+             !other->second.is_used) {
+            uint64_t constant =
+               it->second.op.constantValue64() | (other->second.op.constantValue64() << 32);
+            copy_constant_sgpr(bld, Definition(it->first, s2), constant);
+            copy_map.erase(it);
+            copy_map.erase(other);
+            it = copy_map.begin();
+            continue;
+         }
+      }
+
       /* find portions where the target reg is not used as operand for any other copy */
       if (it->second.is_used) {
          if (it->second.op.isConstant() || skip_partial_copies) {

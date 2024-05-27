@@ -1382,7 +1382,7 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
    const uint64_t nir_mask = tcs_stage->nir->info.outputs_written & tes_stage->nir->info.inputs_read &
                              ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
    const uint64_t io_mask = radv_gather_unlinked_io_mask(nir_mask);
-   const unsigned num_reserved_outputs = util_last_bit64(io_mask);
+   const unsigned num_reserved_outputs = util_bitcount64(io_mask);
 
    /* Count the number of per-patch output slots we need to reserve for the TCS and TES.
     * This is necessary because we need it to determine the patch size in VRAM.
@@ -1390,7 +1390,7 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
    const uint64_t patch_io_mask = radv_gather_unlinked_patch_io_mask(
       tcs_stage->nir->info.outputs_written & tes_stage->nir->info.inputs_read,
       tcs_stage->nir->info.patch_outputs_written & tes_stage->nir->info.patch_inputs_read);
-   const unsigned num_reserved_patch_outputs = util_last_bit64(patch_io_mask);
+   const unsigned num_reserved_patch_outputs = util_bitcount64(patch_io_mask);
 
    tcs_stage->info.tcs.num_linked_outputs = num_reserved_outputs;
    tcs_stage->info.tcs.num_linked_patch_outputs = num_reserved_patch_outputs;

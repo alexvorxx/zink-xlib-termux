@@ -143,7 +143,7 @@ tu_CreateDescriptorSetLayout(
 
          bool has_ycbcr_sampler = false;
          for (unsigned i = 0; i < pCreateInfo->pBindings[j].descriptorCount; ++i) {
-            if (tu_sampler_from_handle(pCreateInfo->pBindings[j].pImmutableSamplers[i])->ycbcr_sampler)
+            if (tu_sampler_from_handle(pCreateInfo->pBindings[j].pImmutableSamplers[i])->vk.ycbcr_conversion)
                has_ycbcr_sampler = true;
          }
 
@@ -242,7 +242,7 @@ tu_CreateDescriptorSetLayout(
 
          bool has_ycbcr_sampler = false;
          for (unsigned i = 0; i < pCreateInfo->pBindings[j].descriptorCount; ++i) {
-            if (tu_sampler_from_handle(binding->pImmutableSamplers[i])->ycbcr_sampler)
+            if (tu_sampler_from_handle(binding->pImmutableSamplers[i])->vk.ycbcr_conversion)
                has_ycbcr_sampler = true;
          }
 
@@ -251,8 +251,8 @@ tu_CreateDescriptorSetLayout(
                (const char*)ycbcr_samplers - (const char*)set_layout;
             for (uint32_t i = 0; i < binding->descriptorCount; i++) {
                struct tu_sampler *sampler = tu_sampler_from_handle(binding->pImmutableSamplers[i]);
-               if (sampler->ycbcr_sampler)
-                  ycbcr_samplers[i] = sampler->ycbcr_sampler->state;
+               if (sampler->vk.ycbcr_conversion)
+                  ycbcr_samplers[i] = sampler->vk.ycbcr_conversion->state;
                else
                   ycbcr_samplers[i].ycbcr_model = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
             }

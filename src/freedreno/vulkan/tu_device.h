@@ -14,6 +14,7 @@
 
 #include "vk_buffer.h"
 #include "vk_device_memory.h"
+#include "vk_sampler.h"
 #include "vk_ycbcr_conversion.h"
 
 #include "tu_autotune.h"
@@ -479,12 +480,11 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(tu_framebuffer, base, VkFramebuffer,
 
 
 struct tu_sampler {
-   struct vk_object_base base;
+   struct vk_sampler vk;
 
    uint32_t descriptor[A6XX_TEX_SAMP_DWORDS];
-   struct vk_ycbcr_conversion *ycbcr_sampler;
 };
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_sampler, base, VkSampler,
+VK_DEFINE_NONDISP_HANDLE_CASTS(tu_sampler, vk.base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
 
 uint64_t

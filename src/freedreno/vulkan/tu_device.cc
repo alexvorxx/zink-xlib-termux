@@ -3203,27 +3203,22 @@ tu_init_sampler(struct tu_device *device,
                 struct tu_sampler *sampler,
                 const VkSamplerCreateInfo *pCreateInfo)
 {
-   const struct VkSamplerReductionModeCreateInfo *reduction =
-      vk_find_struct_const(pCreateInfo->pNext, SAMPLER_REDUCTION_MODE_CREATE_INFO);
    const struct VkSamplerYcbcrConversionInfo *ycbcr_conversion =
       vk_find_struct_const(pCreateInfo->pNext,  SAMPLER_YCBCR_CONVERSION_INFO);
-   const VkSamplerCustomBorderColorCreateInfoEXT *custom_border_color =
-      vk_find_struct_const(pCreateInfo->pNext, SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT);
    /* for non-custom border colors, the VK enum is translated directly to an offset in
     * the border color buffer. custom border colors are located immediately after the
     * builtin colors, and thus an offset of TU_BORDER_COLOR_BUILTIN is added.
     */
    uint32_t border_color = (unsigned) pCreateInfo->borderColor;
-   if (pCreateInfo->borderColor == VK_BORDER_COLOR_FLOAT_CUSTOM_EXT ||
-       pCreateInfo->borderColor == VK_BORDER_COLOR_INT_CUSTOM_EXT) {
+   if (vk_border_color_is_custom(pCreateInfo->borderColor)) {
       mtx_lock(&device->mutex);
       border_color = BITSET_FFS(device->custom_border_color) - 1;
       assert(border_color < TU_BORDER_COLOR_COUNT);
       BITSET_CLEAR(device->custom_border_color, border_color);
       mtx_unlock(&device->mutex);
 
-      VkClearColorValue color = custom_border_color->customBorderColor;
-      if (custom_border_color->format == VK_FORMAT_D24_UNORM_S8_UINT &&
+      VkClearColorValue color = sampler->vk.border_color_value;
+      if (sampler->vk.format == VK_FORMAT_D24_UNORM_S8_UINT &&
           pCreateInfo->borderColor == VK_BORDER_COLOR_INT_CUSTOM_EXT &&
           device->use_z24uint_s8uint) {
          /* When sampling stencil using the special Z24UINT_S8UINT format, the
@@ -3267,16 +3262,16 @@ tu_init_sampler(struct tu_device *device,
    sampler->descriptor[2] = A6XX_TEX_SAMP_2_BCOLOR(border_color);
    sampler->descriptor[3] = 0;
 
-   if (reduction) {
+   if (sampler->vk.reduction_mode != VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE) {
       sampler->descriptor[2] |= A6XX_TEX_SAMP_2_REDUCTION_MODE(
-         tu6_reduction_mode(reduction->reductionMode));
+         tu6_reduction_mode(sampler->vk.reduction_mode));
    }
 
-   sampler->ycbcr_sampler = ycbcr_conversion ?
+   sampler->vk.ycbcr_conversion = ycbcr_conversion ?
       vk_ycbcr_conversion_from_handle(ycbcr_conversion->conversion) : NULL;
 
-   if (sampler->ycbcr_sampler &&
-       sampler->ycbcr_sampler->state.chroma_filter == VK_FILTER_LINEAR) {
+   if (sampler->vk.ycbcr_conversion &&
+       sampler->vk.ycbcr_conversion->state.chroma_filter == VK_FILTER_LINEAR) {
       sampler->descriptor[2] |= A6XX_TEX_SAMP_2_CHROMA_LINEAR;
    }
 
@@ -3296,8 +3291,8 @@ tu_CreateSampler(VkDevice _device,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
 
-   sampler = (struct tu_sampler *) vk_object_alloc(
-      &device->vk, pAllocator, sizeof(*sampler), VK_OBJECT_TYPE_SAMPLER);
+   sampler = (struct tu_sampler *) vk_sampler_create(
+      &device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
    if (!sampler)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -3329,7 +3324,7 @@ tu_DestroySampler(VkDevice _device,
       mtx_unlock(&device->mutex);
    }
 
-   vk_object_free(&device->vk, pAllocator, sampler);
+   vk_sampler_destroy(&device->vk, pAllocator, &sampler->vk);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

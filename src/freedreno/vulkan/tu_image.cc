@@ -1086,23 +1086,6 @@ tu_DestroyImageView(VkDevice _device,
    vk_object_free(&device->vk, pAllocator, iview);
 }
 
-void
-tu_buffer_view_init(struct tu_buffer_view *view,
-                    struct tu_device *device,
-                    const VkBufferViewCreateInfo *pCreateInfo)
-{
-   VK_FROM_HANDLE(tu_buffer, buffer, pCreateInfo->buffer);
-
-   view->buffer = buffer;
-
-   uint8_t swiz[4] = { PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z,
-                       PIPE_SWIZZLE_W };
-
-   fdl6_buffer_view_init(
-      view->descriptor, tu_vk_format_to_pipe_format(view->vk.format),
-      swiz, buffer->iova + view->vk.offset, view->vk.range);
-}
-
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_CreateBufferView(VkDevice _device,
                     const VkBufferViewCreateInfo *pCreateInfo,
@@ -1110,6 +1093,7 @@ tu_CreateBufferView(VkDevice _device,
                     VkBufferView *pView)
 {
    VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_buffer, buffer, pCreateInfo->buffer);
    struct tu_buffer_view *view;
 
    view = (struct tu_buffer_view *) vk_buffer_view_create(
@@ -1118,7 +1102,12 @@ tu_CreateBufferView(VkDevice _device,
    if (!view)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   tu_buffer_view_init(view, device, pCreateInfo);
+   uint8_t swiz[4] = { PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z,
+                       PIPE_SWIZZLE_W };
+
+   fdl6_buffer_view_init(
+      view->descriptor, tu_vk_format_to_pipe_format(view->vk.format),
+      swiz, buffer->iova + view->vk.offset, view->vk.range);
 
    *pView = tu_buffer_view_to_handle(view);
 

@@ -117,11 +117,6 @@ ubwc_possible(struct tu_device *device,
               VkSampleCountFlagBits samples,
               bool use_z24uint_s8uint);
 
-void
-tu_buffer_view_init(struct tu_buffer_view *view,
-                    struct tu_device *device,
-                    const VkBufferViewCreateInfo *pCreateInfo);
-
 struct tu_frag_area {
    float width;
    float height;

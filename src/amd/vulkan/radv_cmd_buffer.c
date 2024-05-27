@@ -1139,6 +1139,8 @@ radv_compute_centroid_priority(struct radv_cmd_buffer *cmd_buffer, VkOffset2D *s
 static void
 radv_emit_sample_locations(struct radv_cmd_buffer *cmd_buffer)
 {
+   const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    uint32_t num_samples = (uint32_t)d->sample_location.per_pixel;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
@@ -1186,7 +1188,11 @@ radv_emit_sample_locations(struct radv_cmd_buffer *cmd_buffer)
       unreachable("invalid number of samples");
    }
 
-   radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg_seq(cs, R_028BF0_PA_SC_CENTROID_PRIORITY_0, 2);
+   } else {
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+   }
    radeon_emit(cs, centroid_priority);
    radeon_emit(cs, centroid_priority >> 32);
 }

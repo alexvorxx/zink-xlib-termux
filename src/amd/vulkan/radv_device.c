@@ -795,7 +795,11 @@ radv_emit_default_sample_locations(const struct radv_physical_device *pdev, stru
       break;
    }
 
-   radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg_seq(cs, R_028BF0_PA_SC_CENTROID_PRIORITY_0, 2);
+   } else {
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+   }
    radeon_emit(cs, centroid_priority);
    radeon_emit(cs, centroid_priority >> 32);
 }

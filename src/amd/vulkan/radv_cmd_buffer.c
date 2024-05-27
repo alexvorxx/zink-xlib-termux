@@ -2644,7 +2644,22 @@ radv_emit_vgt_reuse(struct radv_cmd_buffer *cmd_buffer, const struct radv_vgt_sh
 }
 
 static void
-radv_emit_vgt_shader_config(struct radv_cmd_buffer *cmd_buffer, const struct radv_vgt_shader_key *key)
+radv_emit_vgt_shader_config_gfx12(struct radv_cmd_buffer *cmd_buffer, const struct radv_vgt_shader_key *key)
+{
+   const bool ngg_wave_id_en = key->ngg_streamout || (key->mesh && key->mesh_scratch_ring);
+   uint32_t stages = 0;
+
+   stages |= S_028A98_GS_EN(key->gs) | S_028A98_GS_FAST_LAUNCH(key->mesh) | S_028A98_GS_W32_EN(key->gs_wave32) |
+             S_028A98_NGG_WAVE_ID_EN(ngg_wave_id_en) | S_028A98_PRIMGEN_PASSTHRU_NO_MSG(key->ngg_passthrough);
+
+   if (key->tess)
+      stages |= S_028A98_HS_EN(1) | S_028A98_HS_W32_EN(key->hs_wave32);
+
+   radeon_opt_set_context_reg(cmd_buffer, R_028A98_VGT_SHADER_STAGES_EN, RADV_TRACKED_VGT_SHADER_STAGES_EN, stages);
+}
+
+static void
+radv_emit_vgt_shader_config_gfx6(struct radv_cmd_buffer *cmd_buffer, const struct radv_vgt_shader_key *key)
 {
    const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -2689,6 +2704,19 @@ radv_emit_vgt_shader_config(struct radv_cmd_buffer *cmd_buffer, const struct rad
    }
 
    radeon_opt_set_context_reg(cmd_buffer, R_028B54_VGT_SHADER_STAGES_EN, RADV_TRACKED_VGT_SHADER_STAGES_EN, stages);
+}
+
+static void
+radv_emit_vgt_shader_config(struct radv_cmd_buffer *cmd_buffer, const struct radv_vgt_shader_key *key)
+{
+   const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->info.gfx_level >= GFX12) {
+      radv_emit_vgt_shader_config_gfx12(cmd_buffer, key);
+   } else {
+      radv_emit_vgt_shader_config_gfx6(cmd_buffer, key);
+   }
 }
 
 static void

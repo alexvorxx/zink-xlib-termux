@@ -449,7 +449,7 @@ Vulkan 1.1 -- all DONE: anv, lvp, nvk, radv, tu, vn
 Vulkan 1.2 -- all DONE: anv, nvk, tu, vn
 
   VK_KHR_8bit_storage                                   DONE (anv, dzn, hasvk, lvp, nvk, radv, v3dv, vn)
-  VK_KHR_buffer_device_address                          DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
+  VK_KHR_buffer_device_address                          DONE (anv, hasvk, lvp, nvk, panvk, radv, tu, v3dv, vn)
   VK_KHR_create_renderpass2                             DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_depth_stencil_resolve                          DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_draw_indirect_count                            DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, vn)
@@ -557,7 +557,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_EXT_attachment_feedback_loop_dynamic_state         DONE (anv, lvp, radv)
   VK_EXT_attachment_feedback_loop_layout                DONE (anv, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_border_color_swizzle                           DONE (anv, hasvk, lvp, nvk, radv/gfx10+, tu, v3dv, vn)
-  VK_EXT_buffer_device_address                          DONE (anv, hasvk, nvk, radv)
+  VK_EXT_buffer_device_address                          DONE (anv, hasvk, nvk, panvk, radv)
   VK_EXT_calibrated_timestamps                          DONE (anv, hasvk, nvk, lvp, radv, vn)
   VK_EXT_color_write_enable                             DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_conditional_rendering                          DONE (anv, hasvk, lvp, nvk, radv, tu, vn)

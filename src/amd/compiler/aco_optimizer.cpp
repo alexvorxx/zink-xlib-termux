@@ -665,13 +665,13 @@ alu_can_accept_constant(const aco_ptr<Instruction>& instr, unsigned operand)
 bool
 valu_can_accept_vgpr(aco_ptr<Instruction>& instr, unsigned operand)
 {
-   if (instr->opcode == aco_opcode::v_readlane_b32 ||
-       instr->opcode == aco_opcode::v_readlane_b32_e64 ||
-       instr->opcode == aco_opcode::v_writelane_b32 ||
+   if (instr->opcode == aco_opcode::v_writelane_b32 ||
        instr->opcode == aco_opcode::v_writelane_b32_e64)
-      return operand != 1;
+      return operand == 2;
    if (instr->opcode == aco_opcode::v_permlane16_b32 ||
-       instr->opcode == aco_opcode::v_permlanex16_b32)
+       instr->opcode == aco_opcode::v_permlanex16_b32 ||
+       instr->opcode == aco_opcode::v_readlane_b32 ||
+       instr->opcode == aco_opcode::v_readlane_b32_e64)
       return operand == 0;
    return true;
 }

@@ -5481,7 +5481,7 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
    unsigned max_sample_dist = 0;
    unsigned db_eqaa;
 
-   db_eqaa = S_028804_HIGH_QUALITY_INTERSECTIONS(1) | S_028804_INCOHERENT_EQAA_READS(1) |
+   db_eqaa = S_028804_HIGH_QUALITY_INTERSECTIONS(1) | S_028804_INCOHERENT_EQAA_READS(pdev->info.gfx_level < GFX12) |
              S_028804_STATIC_ANCHOR_ASSOCIATIONS(1);
 
    if (pdev->info.gfx_level >= GFX9 && d->vk.rs.conservative_mode != VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
@@ -5518,12 +5518,20 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
       unsigned log_ps_iter_samples = util_logbase2(ps_iter_samples);
       bool uses_underestimate = d->vk.rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT;
 
-      db_eqaa |= S_028804_MAX_ANCHOR_SAMPLES(log_z_samples) | S_028804_PS_ITER_SAMPLES(log_ps_iter_samples) |
-                 S_028804_MASK_EXPORT_NUM_SAMPLES(log_samples) | S_028804_ALPHA_TO_MASK_NUM_SAMPLES(log_samples);
+      pa_sc_aa_config |=
+         S_028BE0_MSAA_NUM_SAMPLES(uses_underestimate ? 0 : log_samples) | S_028BE0_MSAA_EXPOSED_SAMPLES(log_samples);
 
-      pa_sc_aa_config |= S_028BE0_MSAA_NUM_SAMPLES(uses_underestimate ? 0 : log_samples) |
-                         S_028BE0_MAX_SAMPLE_DIST(max_sample_dist) | S_028BE0_MSAA_EXPOSED_SAMPLES(log_samples) |
-                         S_028BE0_COVERED_CENTROID_IS_CENTER(pdev->info.gfx_level >= GFX10_3);
+      if (pdev->info.gfx_level >= GFX12) {
+         pa_sc_aa_config |= S_028BE0_PS_ITER_SAMPLES(log_ps_iter_samples);
+
+         db_eqaa |= S_028078_MASK_EXPORT_NUM_SAMPLES(log_samples) | S_028078_ALPHA_TO_MASK_NUM_SAMPLES(log_samples);
+      } else {
+         pa_sc_aa_config |= S_028BE0_MAX_SAMPLE_DIST(max_sample_dist) |
+                            S_028BE0_COVERED_CENTROID_IS_CENTER(pdev->info.gfx_level >= GFX10_3);
+
+         db_eqaa |= S_028804_MAX_ANCHOR_SAMPLES(log_z_samples) | S_028804_PS_ITER_SAMPLES(log_ps_iter_samples) |
+                    S_028804_MASK_EXPORT_NUM_SAMPLES(log_samples) | S_028804_ALPHA_TO_MASK_NUM_SAMPLES(log_samples);
+      }
 
       if (d->vk.rs.line.mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_KHR)
          db_eqaa |= S_028804_OVERRASTERIZATION_AMOUNT(log_samples);
@@ -5531,7 +5539,12 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
 
    pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps && ps->info.ps.reads_fully_covered);
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028804_DB_EQAA, db_eqaa);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028078_DB_EQAA, db_eqaa);
+   } else {
+      radeon_set_context_reg(cmd_buffer->cs, R_028804_DB_EQAA, db_eqaa);
+   }
+
    radeon_set_context_reg(cmd_buffer->cs, R_028BE0_PA_SC_AA_CONFIG, pa_sc_aa_config);
    radeon_set_context_reg(
       cmd_buffer->cs, R_028A48_PA_SC_MODE_CNTL_0,

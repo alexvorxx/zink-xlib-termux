@@ -3069,6 +3069,8 @@ radv_emit_scissor(struct radv_cmd_buffer *cmd_buffer)
 static void
 radv_emit_discard_rectangle(struct radv_cmd_buffer *cmd_buffer)
 {
+   const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    uint32_t cliprect_rule = 0;
 
@@ -3098,6 +3100,17 @@ radv_emit_discard_rectangle(struct radv_cmd_buffer *cmd_buffer)
          radeon_emit(cmd_buffer->cs, S_028210_TL_X(rect.offset.x) | S_028210_TL_Y(rect.offset.y));
          radeon_emit(cmd_buffer->cs, S_028214_BR_X(rect.offset.x + rect.extent.width) |
                                         S_028214_BR_Y(rect.offset.y + rect.extent.height));
+      }
+
+      if (pdev->info.gfx_level >= GFX12) {
+         radeon_set_context_reg_seq(cmd_buffer->cs, R_028374_PA_SC_CLIPRECT_0_EXT, d->vk.dr.rectangle_count);
+         for (unsigned i = 0; i < d->vk.dr.rectangle_count; ++i) {
+            VkRect2D rect = d->vk.dr.rectangles[i];
+            radeon_emit(cmd_buffer->cs, S_028374_TL_X_EXT(rect.offset.x >> 15) |
+                                           S_028374_TL_Y_EXT(rect.offset.y >> 15) |
+                                           S_028374_BR_X_EXT((rect.offset.x + rect.extent.width) >> 15) |
+                                           S_028374_BR_Y_EXT((rect.offset.y + rect.extent.height) >> 15));
+         }
       }
    }
 

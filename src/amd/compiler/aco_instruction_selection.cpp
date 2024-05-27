@@ -3889,14 +3889,6 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    case nir_op_fddy_fine:
    case nir_op_fddx_coarse:
    case nir_op_fddy_coarse: {
-      if (!nir_src_is_divergent(instr->src[0].src)) {
-         /* Source is the same in all lanes, so the derivative is zero.
-          * This also avoids emitting invalid IR.
-          */
-         bld.copy(Definition(dst), Operand::zero(dst.bytes()));
-         break;
-      }
-
       uint16_t dpp_ctrl1, dpp_ctrl2;
       if (instr->op == nir_op_fddx_fine) {
          dpp_ctrl1 = dpp_quad_perm(0, 0, 2, 2);
@@ -3923,8 +3915,12 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          opsel_lo |= opsel_lo << 1;
          opsel_hi |= opsel_hi << 1;
 
-         Temp tl = bld.vop1_dpp(aco_opcode::v_mov_b32, bld.def(v1), src, dpp_ctrl1);
-         Temp tr = bld.vop1_dpp(aco_opcode::v_mov_b32, bld.def(v1), src, dpp_ctrl2);
+         Temp tl = src;
+         Temp tr = src;
+         if (nir_src_is_divergent(instr->src[0].src)) {
+            tl = bld.vop1_dpp(aco_opcode::v_mov_b32, bld.def(v1), src, dpp_ctrl1);
+            tr = bld.vop1_dpp(aco_opcode::v_mov_b32, bld.def(v1), src, dpp_ctrl2);
+         }
 
          VALU_instruction& sub =
             bld.vop3p(aco_opcode::v_pk_add_f16, Definition(dst), tr, tl, opsel_lo, opsel_hi)
@@ -3935,9 +3931,11 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       } else {
          Temp src = as_vgpr(ctx, get_alu_src(ctx, instr->src[0]));
 
-         if (ctx->program->gfx_level >= GFX8) {
-            aco_opcode sub =
-               instr->def.bit_size == 16 ? aco_opcode::v_sub_f16 : aco_opcode::v_sub_f32;
+         aco_opcode sub =
+            instr->def.bit_size == 16 ? aco_opcode::v_sub_f16 : aco_opcode::v_sub_f32;
+         if (!nir_src_is_divergent(instr->src[0].src)) {
+            bld.vop2(sub, Definition(dst), src, src);
+         } else if (ctx->program->gfx_level >= GFX8) {
             Temp tl = bld.vop1_dpp(aco_opcode::v_mov_b32, bld.def(v1), src, dpp_ctrl1);
             bld.vop2_dpp(sub, Definition(dst), src, tl, dpp_ctrl2);
          } else {

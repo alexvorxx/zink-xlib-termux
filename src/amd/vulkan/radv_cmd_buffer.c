@@ -9522,7 +9522,7 @@ radv_cs_emit_draw_indexed_packet(struct radv_cmd_buffer *cmd_buffer, uint64_t in
    radeon_emit(cmd_buffer->cs, index_count);
    /* NOT_EOP allows merging multiple draws into 1 wave, but only user VGPRs
     * can be changed between draws and GS fast launch must be disabled.
-    * NOT_EOP doesn't work on gfx9 and older.
+    * NOT_EOP doesn't work on gfx6-gfx9 and gfx12.
     */
    radeon_emit(cmd_buffer->cs, V_0287F0_DI_SRC_SEL_DMA | S_0287F0_NOT_EOP(not_eop));
 }
@@ -9829,7 +9829,7 @@ radv_emit_draw_packets_indexed(struct radv_cmd_buffer *cmd_buffer, const struct 
    const int index_size = radv_get_vgt_index_size(state->index_type);
    unsigned i = 0;
    const bool uses_drawid = state->uses_drawid;
-   const bool can_eop = !uses_drawid && pdev->info.gfx_level >= GFX10;
+   const bool can_eop = !uses_drawid && pdev->info.gfx_level >= GFX10 && pdev->info.gfx_level < GFX12;
 
    if (uses_drawid) {
       if (vertexOffset) {

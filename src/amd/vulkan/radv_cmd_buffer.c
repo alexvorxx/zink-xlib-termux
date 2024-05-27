@@ -3319,8 +3319,12 @@ radv_emit_primitive_topology(struct radv_cmd_buffer *cmd_buffer)
    assert(!cmd_buffer->state.mesh_shading);
 
    if (pdev->info.gfx_level >= GFX7) {
-      radeon_set_uconfig_reg_idx(&pdev->info, cmd_buffer->cs, R_030908_VGT_PRIMITIVE_TYPE, 1,
-                                 d->vk.ia.primitive_topology);
+      uint32_t vgt_prim = d->vk.ia.primitive_topology;
+
+      if (pdev->info.gfx_level >= GFX12)
+         vgt_prim |= S_030908_NUM_INPUT_CP(d->vk.ts.patch_control_points);
+
+      radeon_set_uconfig_reg_idx(&pdev->info, cmd_buffer->cs, R_030908_VGT_PRIMITIVE_TYPE, 1, vgt_prim);
    } else {
       radeon_set_config_reg(cmd_buffer->cs, R_008958_VGT_PRIMITIVE_TYPE, d->vk.ia.primitive_topology);
    }
@@ -3656,10 +3660,13 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
    }
 
    ls_hs_config = S_028B58_NUM_PATCHES(cmd_buffer->state.tess_num_patches) |
-                  S_028B58_HS_NUM_INPUT_CP(d->vk.ts.patch_control_points) |
                   S_028B58_HS_NUM_OUTPUT_CP(tcs->info.tcs.tcs_vertices_out);
 
    if (pdev->info.gfx_level >= GFX7) {
+      /* GFX12 programs patch_vertices in VGT_PRIMITIVE_TYPE.NUM_INPUT_CP. */
+      if (pdev->info.gfx_level < GFX12)
+         ls_hs_config |= S_028B58_HS_NUM_INPUT_CP(d->vk.ts.patch_control_points);
+
       radeon_set_context_reg_idx(cmd_buffer->cs, R_028B58_VGT_LS_HS_CONFIG, 2, ls_hs_config);
    } else {
       radeon_set_context_reg(cmd_buffer->cs, R_028B58_VGT_LS_HS_CONFIG, ls_hs_config);
@@ -5638,7 +5645,8 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, const ui
    if (states & (RADV_DYNAMIC_PROVOKING_VERTEX_MODE | RADV_DYNAMIC_PRIMITIVE_TOPOLOGY))
       radv_emit_provoking_vertex_mode(cmd_buffer);
 
-   if (states & RADV_DYNAMIC_PRIMITIVE_TOPOLOGY)
+   if ((states & RADV_DYNAMIC_PRIMITIVE_TOPOLOGY) ||
+       (pdev->info.gfx_level >= GFX12 && states & RADV_DYNAMIC_PATCH_CONTROL_POINTS))
       radv_emit_primitive_topology(cmd_buffer);
 
    if (states & (RADV_DYNAMIC_DEPTH_TEST_ENABLE | RADV_DYNAMIC_DEPTH_WRITE_ENABLE | RADV_DYNAMIC_DEPTH_COMPARE_OP |

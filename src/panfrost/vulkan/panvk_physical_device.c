@@ -68,6 +68,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_device_group = true,
       .KHR_descriptor_update_template = true,
       .KHR_driver_properties = true,
+      .KHR_maintenance3 = true,
       .KHR_pipeline_executable_properties = true,
       .KHR_pipeline_library = true,
       .KHR_push_descriptor = true,
@@ -468,9 +469,7 @@ get_device_properties(const struct panvk_instance *instance,
       .maxMultiviewViewCount = 0,
       .maxMultiviewInstanceIndex = 0,
       .protectedNoFault = false,
-      /* Make sure everything is addressable by a signed 32-bit int, and
-       * our largest descriptors are 96 bytes. */
-      .maxPerSetDescriptors = (1ull << 31) / 96,
+      .maxPerSetDescriptors = UINT16_MAX,
       /* Our buffer size fields allow only this much */
       .maxMemoryAllocationSize = UINT32_MAX,
 

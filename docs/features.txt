@@ -438,7 +438,7 @@ Vulkan 1.1 -- all DONE: anv, lvp, nvk, radv, tu, vn
   VK_KHR_get_physical_device_properties2                DONE (anv, dzn, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_KHR_maintenance1                                   DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_maintenance2                                   DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
-  VK_KHR_maintenance3                                   DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
+  VK_KHR_maintenance3                                   DONE (anv, dzn, hasvk, lvp, nvk, panvk, radv, tu, v3dv, vn)
   VK_KHR_multiview                                      DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_relaxed_block_layout                           DONE (anv, dzn, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_sampler_ycbcr_conversion                       DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)

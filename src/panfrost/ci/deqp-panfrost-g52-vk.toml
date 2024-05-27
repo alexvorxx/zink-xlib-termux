@@ -13,6 +13,7 @@ include = [
     "dEQP-VK.api.command_buffers.render_pass_continue_no_fb",
     "dEQP-VK.api.copy_and_blit.core.*",
     "dEQP-VK.api.fill_and_update_buffer.suballocation.*",
+    "dEQP-VK.api.maintenance3_check.*",
     "dEQP-VK.binding_model.buffer_device_address.*",
     "dEQP-VK.binding_model.descriptor_copy.compute.*",
     "dEQP-VK.compute.builtin_var.*",

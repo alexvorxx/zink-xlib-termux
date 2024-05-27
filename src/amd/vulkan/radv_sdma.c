@@ -213,9 +213,13 @@ radv_sdma_get_tiled_info_dword(const struct radv_device *const device, const str
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const uint32_t element_size = util_logbase2(surf->bpe);
    const uint32_t swizzle_mode = surf->has_stencil ? surf->u.gfx9.zs.stencil_swizzle_mode : surf->u.gfx9.swizzle_mode;
-   const enum gfx9_resource_type dimension = radv_sdma_surface_resource_type(device, surf);
-   const uint32_t info = element_size | swizzle_mode << 3 | dimension << 9;
+   uint32_t info = element_size | swizzle_mode << 3;
    const enum sdma_version ver = pdev->info.sdma_ip_version;
+
+   if (ver < SDMA_7_0) {
+      const enum gfx9_resource_type dimension = radv_sdma_surface_resource_type(device, surf);
+      info |= dimension << 9;
+   }
 
    if (ver >= SDMA_5_0) {
       const uint32_t mip_max = MAX2(image->vk.mip_levels, 1);

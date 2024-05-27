@@ -52,15 +52,14 @@ panvk_EnumerateInstanceVersion(uint32_t *pApiVersion)
 static const struct vk_instance_extension_table panvk_instance_extensions = {
    .KHR_device_group_creation = true,
    .KHR_get_physical_device_properties2 = true,
-   .EXT_debug_report = true,
-   .EXT_debug_utils = true,
-
 #ifdef PANVK_USE_WSI_PLATFORM
    .KHR_surface = true,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface = true,
 #endif
+   .EXT_debug_report = true,
+   .EXT_debug_utils = true,
 #ifndef VK_USE_PLATFORM_WIN32_KHR
    .EXT_headless_surface = true,
 #endif

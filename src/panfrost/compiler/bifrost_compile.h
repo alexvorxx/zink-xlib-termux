@@ -94,6 +94,7 @@ void bifrost_compile_shader_nir(nir_shader *nir,
                                                                                \
       .has_cs_global_id = true,                                                \
       .lower_cs_local_index_to_id = true,                                      \
+      .lower_device_index_to_zero = true,                                      \
       .max_unroll_iterations = 32,                                             \
       .force_indirect_unrolling =                                              \
          (nir_var_shader_in | nir_var_shader_out | nir_var_function_temp),     \

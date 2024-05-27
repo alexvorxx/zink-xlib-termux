@@ -6636,6 +6636,7 @@ bool nir_opt_uniform_subgroup(nir_shader *shader,
 
 bool nir_opt_vectorize(nir_shader *shader, nir_vectorize_cb filter,
                        void *data);
+bool nir_opt_vectorize_io(nir_shader *shader, nir_variable_mode modes);
 
 bool nir_opt_conditional_discard(nir_shader *shader);
 bool nir_opt_move_discards_to_top(nir_shader *shader);

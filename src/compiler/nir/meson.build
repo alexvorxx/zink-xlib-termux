@@ -276,6 +276,7 @@ files_libnir = files(
   'nir_opt_uniform_subgroup.c',
   'nir_opt_varyings.c',
   'nir_opt_vectorize.c',
+  'nir_opt_vectorize_io.c',
   'nir_passthrough_gs.c',
   'nir_passthrough_tcs.c',
   'nir_phi_builder.c',

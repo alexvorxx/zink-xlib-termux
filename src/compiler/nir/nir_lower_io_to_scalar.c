@@ -144,6 +144,30 @@ lower_store_output_to_scalar(nir_builder *b, nir_intrinsic_instr *intr)
       unsigned newi = is_64bit ? i * 2 : i;
       unsigned newc = nir_intrinsic_component(intr);
       unsigned new_component = (newc + newi) % 4;
+      nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+      bool has_xfb = false;
+
+      if (nir_intrinsic_has_io_xfb(intr)) {
+         /* Find out which components are written via xfb. */
+         for (unsigned c = 0; c <= new_component; c++) {
+            nir_io_xfb xfb = c < 2 ? nir_intrinsic_io_xfb(intr) : nir_intrinsic_io_xfb2(intr);
+
+            if (new_component < c + xfb.out[c % 2].num_components) {
+               has_xfb = true;
+               break;
+            }
+         }
+      }
+
+      /* After scalarization, some channels might not write anywhere - i.e.
+       * they are not a sysval output, they don't feed the next shader, and
+       * they don't write xfb. Don't create such stores.
+       */
+      if ((sem.no_sysval_output ||
+           !nir_slot_is_sysval_output(sem.location, MESA_SHADER_NONE)) &&
+          (sem.no_varying || !nir_slot_is_varying(sem.location)) &&
+          !has_xfb)
+         continue;
 
       nir_intrinsic_instr *chan_intr =
          nir_intrinsic_instr_create(b->shader, intr->intrinsic);

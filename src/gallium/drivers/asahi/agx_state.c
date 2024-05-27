@@ -2562,8 +2562,20 @@ agx_build_meta_shader_internal(struct agx_context *ctx,
    builder(&b, data);
 
    struct agx_device *dev = agx_device(ctx->base.screen);
-   if (!prolog)
-      agx_preprocess_nir(b.shader, dev->libagx);
+   if (!prolog) {
+      /* We need to link libagx and assign shared before preprocessing, matching
+       * what the driver would otherwise produce.
+       */
+      agx_link_libagx(b.shader, dev->libagx);
+
+      NIR_PASS(_, b.shader, nir_lower_vars_to_explicit_types,
+               nir_var_mem_shared, glsl_get_cl_type_size_align);
+
+      NIR_PASS(_, b.shader, nir_lower_explicit_io, nir_var_mem_shared,
+               nir_address_format_62bit_generic);
+
+      agx_preprocess_nir(b.shader, NULL);
+   }
 
    struct agx_compiled_shader *shader = agx_compile_nir(
       dev, b.shader, NULL, PIPE_SHADER_COMPUTE, internal_kernel,

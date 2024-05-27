@@ -3230,8 +3230,7 @@ agx_link_libagx(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_remove_dead_variables,
             nir_var_function_temp | nir_var_shader_temp, NULL);
    NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
-            nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
-               nir_var_mem_global,
+            nir_var_shader_temp | nir_var_function_temp,
             glsl_get_cl_type_size_align);
 }
 
@@ -3291,10 +3290,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
 
    NIR_PASS(_, nir, nir_opt_deref);
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
-   NIR_PASS(_, nir, nir_lower_explicit_io,
-            nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
-               nir_var_mem_global,
-            nir_address_format_62bit_generic);
 
    /* We're lowered away all variables. Remove them all for smaller shaders. */
    NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_all, NULL);

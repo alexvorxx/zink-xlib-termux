@@ -111,6 +111,9 @@ lower_intrinsic_to_arg(nir_builder *b, nir_instr *instr, void *state)
    switch (intrin->intrinsic) {
    case nir_intrinsic_load_subgroup_id: {
       if (s->hw_stage == AC_HW_COMPUTE_SHADER) {
+         if (s->gfx_level >= GFX12)
+            return false;
+
          assert(s->args->tg_size.used);
 
          if (s->gfx_level >= GFX10_3) {

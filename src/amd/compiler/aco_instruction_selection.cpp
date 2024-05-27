@@ -9019,7 +9019,11 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       Temp dst = get_ssa_temp(ctx, &instr->def);
 
       if (ctx->shader->info.stage == MESA_SHADER_GEOMETRY) {
-         if (ctx->options->gfx_level >= GFX10)
+         if (ctx->options->gfx_level >= GFX12)
+            bld.vop3(aco_opcode::v_bfe_u32, Definition(dst),
+                     get_arg(ctx, ctx->args->gs_vtx_offset[0]), Operand::c32(27u),
+                     Operand::c32(5u));
+         else if (ctx->options->gfx_level >= GFX10)
             bld.vop2_e64(aco_opcode::v_and_b32, Definition(dst), Operand::c32(127u),
                          get_arg(ctx, ctx->args->gs_invocation_id));
          else

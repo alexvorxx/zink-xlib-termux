@@ -986,6 +986,8 @@ struct v3d_vs_prog_data {
         /* Value to be programmed in VCM_CACHE_SIZE. */
         uint8_t vcm_cache_size;
 
+        bool writes_psiz;
+
         /* Maps the nir->data.location to its
          * nir->data.driver_location. In general we are using the
          * driver location as index (like vattr_sizes above), so this

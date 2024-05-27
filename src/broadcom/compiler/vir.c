@@ -792,6 +792,9 @@ v3d_vs_set_prog_data(struct v3d_compile *c,
         if (prog_data->uses_iid)
                 prog_data->vpm_input_size++;
 
+        prog_data->writes_psiz =
+            c->s->info.outputs_written & (1 << VARYING_SLOT_PSIZ);
+
         /* Input/output segment size are in sectors (8 rows of 32 bits per
          * channel).
          */

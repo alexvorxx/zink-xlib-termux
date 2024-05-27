@@ -1095,14 +1095,12 @@ tu_buffer_view_init(struct tu_buffer_view *view,
 
    view->buffer = buffer;
 
-   uint32_t range = vk_buffer_range(&buffer->vk, pCreateInfo->offset,
-         pCreateInfo->range);
    uint8_t swiz[4] = { PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z,
                        PIPE_SWIZZLE_W };
 
    fdl6_buffer_view_init(
-      view->descriptor, tu_vk_format_to_pipe_format(pCreateInfo->format),
-      swiz, buffer->iova + pCreateInfo->offset, range);
+      view->descriptor, tu_vk_format_to_pipe_format(view->vk.format),
+      swiz, buffer->iova + view->vk.offset, view->vk.range);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -1114,8 +1112,9 @@ tu_CreateBufferView(VkDevice _device,
    VK_FROM_HANDLE(tu_device, device, _device);
    struct tu_buffer_view *view;
 
-   view = (struct tu_buffer_view *) vk_object_alloc(
-      &device->vk, pAllocator, sizeof(*view), VK_OBJECT_TYPE_BUFFER_VIEW);
+   view = (struct tu_buffer_view *) vk_buffer_view_create(
+      &device->vk, pCreateInfo, pAllocator, sizeof(*view));
+
    if (!view)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -1137,7 +1136,7 @@ tu_DestroyBufferView(VkDevice _device,
    if (!view)
       return;
 
-   vk_object_free(&device->vk, pAllocator, view);
+   vk_buffer_view_destroy(&device->vk, pAllocator, &view->vk);
 }
 
 /* Impelements the operations described in "Fragment Density Map Operations."

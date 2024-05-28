@@ -60,7 +60,7 @@ fn dst_is_bar(dst: Dst) -> bool {
 }
 
 impl ALUSrc {
-    fn from_src_file(src: Option<&Src>, file: RegFile) -> ALUSrc {
+    fn from_src(src: Option<&Src>, op_is_uniform: bool) -> ALUSrc {
         let Some(src) = src else {
             return ALUSrc::None;
         };
@@ -68,22 +68,33 @@ impl ALUSrc {
         match src.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 let reg = match src.src_ref {
-                    SrcRef::Zero => RegRef::zero(file, 1),
+                    SrcRef::Zero => {
+                        let file = if op_is_uniform {
+                            RegFile::UGPR
+                        } else {
+                            RegFile::GPR
+                        };
+                        RegRef::zero(file, 1)
+                    }
                     SrcRef::Reg(reg) => reg,
                     _ => panic!("Invalid source ref"),
                 };
                 assert!(reg.comps() <= 2);
-                assert!(reg.file() == file);
                 let alu_ref = ALURegRef {
                     reg: reg,
                     abs: src_mod_has_abs(src.src_mod),
                     neg: src_mod_has_neg(src.src_mod),
                     swizzle: src.src_swizzle,
                 };
-                match reg.file() {
-                    RegFile::GPR => ALUSrc::Reg(alu_ref),
-                    RegFile::UGPR => ALUSrc::UReg(alu_ref),
-                    _ => panic!("Invalid ALU register file"),
+                if op_is_uniform {
+                    assert!(reg.file() == RegFile::UGPR);
+                    ALUSrc::Reg(alu_ref)
+                } else {
+                    match reg.file() {
+                        RegFile::GPR => ALUSrc::Reg(alu_ref),
+                        RegFile::UGPR => ALUSrc::UReg(alu_ref),
+                        _ => panic!("Invalid ALU register file"),
+                    }
                 }
             }
             SrcRef::Imm32(i) => {
@@ -102,10 +113,6 @@ impl ALUSrc {
             }
             _ => panic!("Invalid ALU source"),
         }
-    }
-
-    pub fn from_src(src: Option<&Src>) -> ALUSrc {
-        ALUSrc::from_src_file(src, RegFile::GPR)
     }
 
     pub fn has_src_mod(&self) -> bool {
@@ -298,11 +305,16 @@ impl SM70Instr {
         abs_bit: usize,
         neg_bit: usize,
         swizzle_range: Range<usize>,
+        file: RegFile,
         is_fp16_alu: bool,
         has_mod: bool,
         reg: &ALURegRef,
     ) {
-        self.set_reg(range, reg.reg);
+        match file {
+            RegFile::GPR => self.set_reg(range, reg.reg),
+            RegFile::UGPR => self.set_ureg(range, reg.reg),
+            _ => panic!("Invalid ALU src register file"),
+        }
 
         if has_mod {
             self.set_bit(abs_bit, reg.abs);
@@ -318,18 +330,24 @@ impl SM70Instr {
         }
     }
 
-    fn encode_alu_src0(&mut self, src: &ALUSrc, is_fp16_alu: bool) {
+    fn encode_alu_src0(
+        &mut self,
+        src: &ALUSrc,
+        file: RegFile,
+        is_fp16_alu: bool,
+    ) {
         let reg = match src {
             ALUSrc::None => return,
             ALUSrc::Reg(reg) => reg,
             _ => panic!("Invalid ALU src"),
         };
-        self.set_alu_reg(24..32, 73, 72, 74..76, is_fp16_alu, true, reg);
+        self.set_alu_reg(24..32, 73, 72, 74..76, file, is_fp16_alu, true, reg);
     }
 
     fn encode_alu_src2(
         &mut self,
         src: &ALUSrc,
+        file: RegFile,
         is_fp16_alu: bool,
         bit74_75_are_mod: bool,
     ) {
@@ -343,6 +361,7 @@ impl SM70Instr {
             74,
             75,
             81..83,
+            file,
             is_fp16_alu,
             bit74_75_are_mod,
             reg,
@@ -350,7 +369,16 @@ impl SM70Instr {
     }
 
     fn encode_alu_reg(&mut self, reg: &ALURegRef, is_fp16_alu: bool) {
-        self.set_alu_reg(32..40, 62, 63, 60..62, is_fp16_alu, true, reg);
+        self.set_alu_reg(
+            32..40,
+            62,
+            63,
+            60..62,
+            RegFile::GPR,
+            is_fp16_alu,
+            true,
+            reg,
+        );
     }
 
     fn encode_alu_ureg(&mut self, reg: &ALURegRef, is_fp16_alu: bool) {
@@ -363,6 +391,8 @@ impl SM70Instr {
         } else {
             assert!(reg.swizzle == SrcSwizzle::None);
         }
+
+        self.set_bit(91, true);
     }
 
     fn encode_alu_imm(&mut self, imm: &u32) {
@@ -394,9 +424,9 @@ impl SM70Instr {
             self.set_dst(*dst);
         }
 
-        let src0 = ALUSrc::from_src(src0);
-        let src1 = ALUSrc::from_src(src1);
-        let src2 = ALUSrc::from_src(src2);
+        let src0 = ALUSrc::from_src(src0, false);
+        let src1 = ALUSrc::from_src(src1, false);
+        let src2 = ALUSrc::from_src(src2, false);
 
         // Bits 74..76 are used both for the swizzle on src0 and for the source
         // modifier for the register source of src1 and src2.  When both are
@@ -407,11 +437,16 @@ impl SM70Instr {
             || matches!(src2, ALUSrc::None);
         debug_assert!(bit74_75_are_mod || !src0.has_src_mod());
 
-        self.encode_alu_src0(&src0, is_fp16_alu);
+        self.encode_alu_src0(&src0, RegFile::GPR, is_fp16_alu);
 
         let form = match &src2 {
             ALUSrc::None | ALUSrc::Reg(_) => {
-                self.encode_alu_src2(&src2, is_fp16_alu, bit74_75_are_mod);
+                self.encode_alu_src2(
+                    &src2,
+                    RegFile::GPR,
+                    is_fp16_alu,
+                    bit74_75_are_mod,
+                );
                 match &src1 {
                     ALUSrc::None => 1_u8, // form
                     ALUSrc::Reg(reg1) => {
@@ -434,18 +469,33 @@ impl SM70Instr {
             }
             ALUSrc::UReg(reg2) => {
                 self.encode_alu_ureg(reg2, is_fp16_alu);
-                self.encode_alu_src2(&src1, is_fp16_alu, bit74_75_are_mod);
+                self.encode_alu_src2(
+                    &src1,
+                    RegFile::GPR,
+                    is_fp16_alu,
+                    bit74_75_are_mod,
+                );
                 7_u8 // form
             }
             ALUSrc::Imm32(imm2) => {
                 self.encode_alu_imm(imm2);
-                self.encode_alu_src2(&src1, is_fp16_alu, bit74_75_are_mod);
+                self.encode_alu_src2(
+                    &src1,
+                    RegFile::GPR,
+                    is_fp16_alu,
+                    bit74_75_are_mod,
+                );
                 2_u8 // form
             }
             ALUSrc::CBuf(cb2) => {
                 // TODO set_src_cx
                 self.encode_alu_cb(cb2, is_fp16_alu);
-                self.encode_alu_src2(&src1, is_fp16_alu, bit74_75_are_mod);
+                self.encode_alu_src2(
+                    &src1,
+                    RegFile::GPR,
+                    is_fp16_alu,
+                    bit74_75_are_mod,
+                );
                 3_u8 // form
             }
         };
@@ -474,6 +524,56 @@ impl SM70Instr {
         src2: Option<&Src>,
     ) {
         self.encode_alu_base(opcode, dst, src0, src1, src2, true);
+    }
+
+    fn encode_ualu(
+        &mut self,
+        opcode: u16,
+        dst: Option<&Dst>,
+        src0: Option<&Src>,
+        src1: Option<&Src>,
+        src2: Option<&Src>,
+    ) {
+        if let Some(dst) = dst {
+            self.set_udst(*dst);
+        }
+
+        let src0 = ALUSrc::from_src(src0, true);
+        let src1 = ALUSrc::from_src(src1, true);
+        let src2 = ALUSrc::from_src(src2, true);
+
+        // All uniform ALU requires bit 91 set
+        self.set_bit(91, true);
+
+        self.encode_alu_src0(&src0, RegFile::UGPR, false);
+        let form = match &src2 {
+            ALUSrc::None | ALUSrc::Reg(_) => {
+                self.encode_alu_src2(&src2, RegFile::UGPR, false, true);
+                match &src1 {
+                    ALUSrc::None => 1_u8, // form
+                    ALUSrc::Reg(reg1) => {
+                        self.encode_alu_ureg(reg1, false);
+                        1_u8 // form
+                    }
+                    ALUSrc::UReg(_) => panic!("UALU never has UReg"),
+                    ALUSrc::Imm32(imm1) => {
+                        self.encode_alu_imm(imm1);
+                        4_u8 // form
+                    }
+                    ALUSrc::CBuf(_) => panic!("UALU does not support cbufs"),
+                }
+            }
+            ALUSrc::UReg(_) => panic!("UALU never has UReg"),
+            ALUSrc::Imm32(imm2) => {
+                self.encode_alu_imm(imm2);
+                self.encode_alu_src2(&src1, RegFile::UGPR, false, true);
+                2_u8 // form
+            }
+            ALUSrc::CBuf(_) => panic!("UALU does not support cbufs"),
+        };
+
+        self.set_field(0..9, opcode);
+        self.set_field(9..12, form);
     }
 
     fn set_instr_deps(&mut self, deps: &InstrDeps) {

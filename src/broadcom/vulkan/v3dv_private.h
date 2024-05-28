@@ -2234,7 +2234,7 @@ struct v3dv_pipeline {
    struct v3dv_device *device;
 
    VkShaderStageFlags active_stages;
-   VkPipelineCreateFlags flags;
+   VkPipelineCreateFlagBits2KHR flags;
 
    struct v3dv_render_pass *pass;
    struct v3dv_subpass *subpass;

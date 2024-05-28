@@ -3657,6 +3657,13 @@ typedef enum {
 
    nir_io_16bit_input_output_support = BITFIELD_BIT(2),
 
+   /**
+    * Implement mediump inputs and outputs as normal 32-bit IO.
+    * Causes the mediump flag to be not set for IO semantics, essentially
+    * destroying any mediump-related IO information in the shader.
+    */
+   nir_io_mediump_is_32bit = BITFIELD_BIT(3),
+
    /* Options affecting the GLSL compiler are below. */
 
    /**

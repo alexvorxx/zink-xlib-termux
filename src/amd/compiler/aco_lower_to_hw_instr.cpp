@@ -121,7 +121,7 @@ copy_constant_sgpr(Builder& bld, Definition dst, uint64_t constant)
          }
 
          Operand rev_op = Operand::get_const(bld.program->gfx_level, util_bitreverse(imm), 4);
-         if (rev_op.constantValue() <= 64 || rev_op.constantValue() >= 0xFFFFFFF0) {
+         if (!rev_op.isLiteral()) {
             bld.sop1(aco_opcode::s_brev_b32, dst, rev_op);
             return;
          }
@@ -162,8 +162,27 @@ copy_constant_sgpr(Builder& bld, Definition dst, uint64_t constant)
       return;
    }
 
+   uint64_t rev = ((uint64_t)util_bitreverse(constant) << 32) | util_bitreverse(constant >> 32);
+   if (Operand::is_constant_representable(rev, 8, true, false)) {
+      bld.sop1(aco_opcode::s_brev_b64, dst, Operand::c64(rev));
+      return;
+   }
+
    if (can_use_mov) {
       bld.sop1(aco_opcode::s_mov_b64, dst, Operand::c64(constant));
+      return;
+   }
+
+   uint32_t derep = 0;
+   bool can_use_rep = bld.program->gfx_level >= GFX9;
+   for (unsigned i = 0; can_use_rep && i < 32; i++) {
+      uint32_t lo = (constant >> (i * 2)) & 0x1;
+      uint32_t hi = (constant >> ((i * 2) + 1)) & 0x1;
+      can_use_rep &= lo == hi;
+      derep |= lo << i;
+   }
+   if (can_use_rep) {
+      bld.sop1(aco_opcode::s_bitreplicate_b64_b32, dst, Operand::c32(derep));
       return;
    }
 
@@ -1279,7 +1298,7 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
    if (dst.bytes() == 4 && op.isLiteral()) {
       uint32_t imm = op.constantValue();
       Operand rev_op = Operand::get_const(ctx->program->gfx_level, util_bitreverse(imm), 4);
-      if (rev_op.constantValue() <= 64 || rev_op.constantValue() >= 0xFFFFFFF0) {
+      if (!rev_op.isLiteral()) {
          bld.vop1(aco_opcode::v_bfrev_b32, dst, rev_op);
          return;
       }

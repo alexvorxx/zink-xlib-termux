@@ -820,7 +820,7 @@ struct v3dv_buffer {
    struct vk_object_base base;
 
    VkDeviceSize size;
-   VkBufferUsageFlags usage;
+   VkBufferUsageFlagBits2KHR usage;
    uint32_t alignment;
 
    struct v3dv_device_memory *mem;

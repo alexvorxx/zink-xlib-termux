@@ -2497,8 +2497,17 @@ v3dv_buffer_init(struct v3dv_device *device,
                  struct v3dv_buffer *buffer,
                  uint32_t alignment)
 {
+   const VkBufferUsageFlags2CreateInfoKHR *flags2 =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR);
+   VkBufferUsageFlags2KHR usage;
+   if (flags2)
+      usage = flags2->usage;
+   else
+      usage = pCreateInfo->usage;
+
    buffer->size = pCreateInfo->size;
-   buffer->usage = pCreateInfo->usage;
+   buffer->usage = usage;
    buffer->alignment = alignment;
 }
 

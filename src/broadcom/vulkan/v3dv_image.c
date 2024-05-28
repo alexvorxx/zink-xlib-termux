@@ -893,8 +893,18 @@ v3dv_CreateBufferView(VkDevice _device,
    v3dv_X(device, get_internal_type_bpp_for_output_format)
       (view->format->planes[0].rt_type, &view->internal_type, &view->internal_bpp);
 
-   if (buffer->usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT ||
-       buffer->usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)
+   const VkBufferUsageFlags2CreateInfoKHR *flags2 =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR);
+
+   VkBufferUsageFlags2KHR usage;
+   if (flags2)
+      usage = flags2->usage;
+   else
+      usage = buffer->usage;
+
+   if (usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT ||
+       usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)
       v3dv_X(device, pack_texture_shader_state_from_buffer_view)(device, view);
 
    *pView = v3dv_buffer_view_to_handle(view);

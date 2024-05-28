@@ -4154,6 +4154,7 @@ impl DisplayOp for OpLd {
 impl_display_for_op!(OpLd);
 
 #[allow(dead_code)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum LdcMode {
     Indexed,
     IndexedLinear,
@@ -5679,7 +5680,31 @@ impl Instr {
     }
 
     pub fn can_be_uniform(&self, sm: u8) -> bool {
-        match self.op {
+        match &self.op {
+            Op::R2UR(_)
+            | Op::S2R(_)
+            | Op::BMsk(_)
+            | Op::BRev(_)
+            | Op::Flo(_)
+            | Op::IAdd3(_)
+            | Op::IAdd3X(_)
+            | Op::IMad(_)
+            | Op::IMad64(_)
+            | Op::ISetP(_)
+            | Op::Lop3(_)
+            | Op::Mov(_)
+            | Op::PLop3(_)
+            | Op::PopC(_)
+            | Op::Prmt(_)
+            | Op::PSetP(_)
+            | Op::Sel(_)
+            | Op::Shf(_)
+            | Op::Shl(_)
+            | Op::Shr(_)
+            | Op::Vote(_)
+            | Op::Copy(_) => sm >= 75,
+            Op::Ldc(op) => sm >= 75 && op.offset.is_zero(),
+            // UCLEA  USHL  USHR
             _ => false,
         }
     }

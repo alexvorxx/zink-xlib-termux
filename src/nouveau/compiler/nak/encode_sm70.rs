@@ -180,7 +180,6 @@ impl SM70Instr {
 
     fn set_pred_reg(&mut self, range: Range<usize>, reg: RegRef) {
         assert!(range.len() == 3);
-        assert!(reg.file() == RegFile::Pred);
         assert!(reg.base_idx() <= 7);
         assert!(reg.comps() == 1);
         self.set_field(range, reg.base_idx());
@@ -205,18 +204,35 @@ impl SM70Instr {
         }
     }
 
-    fn set_pred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
+    fn set_pred_src_file(
+        &mut self,
+        range: Range<usize>,
+        not_bit: usize,
+        src: Src,
+        file: RegFile,
+    ) {
         // The default for predicates is true
-        let true_reg = RegRef::new(RegFile::Pred, 7, 1);
+        let true_reg = RegRef::new(file, 7, 1);
 
         let (not, reg) = match src.src_ref {
             SrcRef::True => (false, true_reg),
             SrcRef::False => (true, true_reg),
-            SrcRef::Reg(reg) => (false, reg),
+            SrcRef::Reg(reg) => {
+                assert!(reg.file() == file);
+                (false, reg)
+            }
             _ => panic!("Not a register"),
         };
         self.set_pred_reg(range, reg);
         self.set_bit(not_bit, not ^ src_mod_is_bnot(src.src_mod));
+    }
+
+    fn set_pred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
+        self.set_pred_src_file(range, not_bit, src, RegFile::Pred);
+    }
+
+    fn set_upred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
+        self.set_pred_src_file(range, not_bit, src, RegFile::UPred);
     }
 
     fn set_src_cb(&mut self, range: Range<usize>, cb: &CBufRef) {
@@ -989,23 +1005,41 @@ impl SM70Instr {
     }
 
     fn encode_bmsk(&mut self, op: &OpBMsk) {
-        self.encode_alu(
-            0x01b,
-            Some(&op.dst),
-            Some(&op.pos),
-            Some(&op.width),
-            None,
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x09b,
+                Some(&op.dst),
+                Some(&op.pos),
+                Some(&op.width),
+                None,
+            );
+        } else {
+            self.encode_alu(
+                0x01b,
+                Some(&op.dst),
+                Some(&op.pos),
+                Some(&op.width),
+                None,
+            );
+        }
 
         self.set_bit(75, op.wrap);
     }
 
     fn encode_brev(&mut self, op: &OpBRev) {
-        self.encode_alu(0x101, Some(&op.dst), None, Some(&op.src), None);
+        if op.is_uniform() {
+            self.encode_ualu(0x0be, Some(&op.dst), None, Some(&op.src), None);
+        } else {
+            self.encode_alu(0x101, Some(&op.dst), None, Some(&op.src), None);
+        }
     }
 
     fn encode_flo(&mut self, op: &OpFlo) {
-        self.encode_alu(0x100, Some(&op.dst), None, Some(&op.src), None);
+        if op.is_uniform() {
+            self.encode_ualu(0x0bd, Some(&op.dst), None, Some(&op.src), None);
+        } else {
+            self.encode_alu(0x100, Some(&op.dst), None, Some(&op.src), None);
+        }
         self.set_pred_dst(81..84, Dst::None);
         self.set_field(74..75, op.return_shift_amount as u8);
         self.set_field(73..74, op.signed as u8);
@@ -1021,13 +1055,23 @@ impl SM70Instr {
         // Hardware requires at least one of these be unmodified
         assert!(op.srcs[0].src_mod.is_none() || op.srcs[1].src_mod.is_none());
 
-        self.encode_alu(
-            0x010,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            Some(&op.srcs[2]),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x090,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+        } else {
+            self.encode_alu(
+                0x010,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+        }
 
         self.set_pred_src(87..90, 90, false.into());
         self.set_pred_src(77..80, 80, false.into());
@@ -1040,21 +1084,34 @@ impl SM70Instr {
         // Hardware requires at least one of these be unmodified
         assert!(op.srcs[0].src_mod.is_none() || op.srcs[1].src_mod.is_none());
 
-        self.encode_alu(
-            0x010,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            Some(&op.srcs[2]),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x090,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+
+            self.set_upred_src(87..90, 90, op.carry[0]);
+            self.set_upred_src(77..80, 80, op.carry[1]);
+        } else {
+            self.encode_alu(
+                0x010,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+
+            self.set_pred_src(87..90, 90, op.carry[0]);
+            self.set_pred_src(77..80, 80, op.carry[1]);
+        }
 
         self.set_bit(74, true); // .X
 
         self.set_pred_dst(81..84, op.overflow[0]);
         self.set_pred_dst(84..87, op.overflow[1]);
-
-        self.set_pred_src(87..90, 90, op.carry[0]);
-        self.set_pred_src(77..80, 80, op.carry[1]);
     }
 
     fn encode_idp4(&mut self, op: &OpIDp4) {
@@ -1085,25 +1142,45 @@ impl SM70Instr {
     }
 
     fn encode_imad(&mut self, op: &OpIMad) {
-        self.encode_alu(
-            0x024,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            Some(&op.srcs[2]),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x0a4,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+        } else {
+            self.encode_alu(
+                0x024,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+        }
         self.set_pred_dst(81..84, Dst::None);
         self.set_bit(73, op.signed);
     }
 
     fn encode_imad64(&mut self, op: &OpIMad64) {
-        self.encode_alu(
-            0x025,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            Some(&op.srcs[2]),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x0a5,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+        } else {
+            self.encode_alu(
+                0x025,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+        }
         self.set_pred_dst(81..84, Dst::None);
         self.set_bit(73, op.signed);
     }
@@ -1142,15 +1219,30 @@ impl SM70Instr {
     }
 
     fn encode_isetp(&mut self, op: &OpISetP) {
-        self.encode_alu(
-            0x00c,
-            None,
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            None,
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x08c,
+                None,
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
 
-        self.set_pred_src(68..71, 71, op.low_cmp);
+            self.set_upred_src(68..71, 71, op.low_cmp);
+            self.set_upred_src(87..90, 90, op.accum);
+        } else {
+            self.encode_alu(
+                0x00c,
+                None,
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
+
+            self.set_pred_src(68..71, 71, op.low_cmp);
+            self.set_pred_src(87..90, 90, op.accum);
+        }
+
         self.set_bit(72, op.ex);
 
         self.set_field(
@@ -1165,40 +1257,65 @@ impl SM70Instr {
 
         self.set_pred_dst(81..84, op.dst);
         self.set_pred_dst(84..87, Dst::None); // dst1
-
-        self.set_pred_src(87..90, 90, op.accum);
     }
 
     fn encode_lop3(&mut self, op: &OpLop3) {
-        self.encode_alu(
-            0x012,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            Some(&op.srcs[2]),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x092,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+
+            self.set_upred_src(87..90, 90, SrcRef::False.into());
+        } else {
+            self.encode_alu(
+                0x012,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                Some(&op.srcs[2]),
+            );
+
+            self.set_pred_src(87..90, 90, SrcRef::False.into());
+        }
 
         self.set_field(72..80, op.op.lut);
         self.set_bit(80, false); // .PAND
         self.set_field(81..84, 7_u32); // pred
-        self.set_pred_src(87..90, 90, SrcRef::False.into());
     }
 
     fn encode_popc(&mut self, op: &OpPopC) {
-        self.encode_alu(0x109, Some(&op.dst), None, Some(&op.src), None);
+        if op.is_uniform() {
+            self.encode_ualu(0x0bf, Some(&op.dst), None, Some(&op.src), None);
+        } else {
+            self.encode_alu(0x109, Some(&op.dst), None, Some(&op.src), None);
+        }
 
         let not_mod = matches!(op.src.src_mod, SrcMod::BNot);
         self.set_field(63..64, not_mod)
     }
 
     fn encode_shf(&mut self, op: &OpShf) {
-        self.encode_alu(
-            0x019,
-            Some(&op.dst),
-            Some(&op.low),
-            Some(&op.shift),
-            Some(&op.high),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x099,
+                Some(&op.dst),
+                Some(&op.low),
+                Some(&op.shift),
+                Some(&op.high),
+            );
+        } else {
+            self.encode_alu(
+                0x019,
+                Some(&op.dst),
+                Some(&op.low),
+                Some(&op.shift),
+                Some(&op.high),
+            );
+        }
 
         self.set_field(
             73..75,
@@ -1276,18 +1393,48 @@ impl SM70Instr {
     }
 
     fn encode_mov(&mut self, op: &OpMov) {
-        self.encode_alu(0x002, Some(&op.dst), None, Some(&op.src), None);
-        self.set_field(72..76, op.quad_lanes);
+        if op.is_uniform() {
+            self.set_opcode(0xc82);
+            self.set_udst(op.dst);
+
+            // umov is encoded like a non-uniform ALU op
+            let src = ALUSrc::from_src(Some(&op.src), true);
+            let form: u8 = match &src {
+                ALUSrc::Reg(reg) => {
+                    self.encode_alu_ureg(reg, false);
+                    0x6 // form
+                }
+                ALUSrc::Imm32(imm) => {
+                    self.encode_alu_imm(imm);
+                    0x4 // form
+                }
+                _ => panic!("Invalid umov src"),
+            };
+            self.set_field(9..12, form);
+        } else {
+            self.encode_alu(0x002, Some(&op.dst), None, Some(&op.src), None);
+            self.set_field(72..76, op.quad_lanes);
+        }
     }
 
     fn encode_prmt(&mut self, op: &OpPrmt) {
-        self.encode_alu(
-            0x16,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.sel),
-            Some(&op.srcs[1]),
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x96,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.sel),
+                Some(&op.srcs[1]),
+            );
+        } else {
+            self.encode_alu(
+                0x16,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.sel),
+                Some(&op.srcs[1]),
+            );
+        }
 
         self.set_field(
             72..75,
@@ -1304,15 +1451,27 @@ impl SM70Instr {
     }
 
     fn encode_sel(&mut self, op: &OpSel) {
-        self.encode_alu(
-            0x007,
-            Some(&op.dst),
-            Some(&op.srcs[0]),
-            Some(&op.srcs[1]),
-            None,
-        );
+        if op.is_uniform() {
+            self.encode_ualu(
+                0x087,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
 
-        self.set_pred_src(87..90, 90, op.cond);
+            self.set_upred_src(87..90, 90, op.cond);
+        } else {
+            self.encode_alu(
+                0x007,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
+
+            self.set_pred_src(87..90, 90, op.cond);
+        }
     }
 
     fn encode_shfl(&mut self, op: &OpShfl) {
@@ -1364,18 +1523,30 @@ impl SM70Instr {
     }
 
     fn encode_plop3(&mut self, op: &OpPLop3) {
-        self.set_opcode(0x81c);
+        if op.is_uniform() {
+            self.set_opcode(0x89c);
+
+            self.set_upred_src(68..71, 71, op.srcs[2]);
+            self.set_upred_src(77..80, 80, op.srcs[1]);
+            self.set_upred_src(87..90, 90, op.srcs[0]);
+        } else {
+            self.set_opcode(0x81c);
+
+            if op.srcs[2].src_ref.as_reg().is_some_and(|r| r.is_uniform()) {
+                self.set_upred_src(68..71, 71, op.srcs[2]);
+                self.set_bit(67, true);
+            } else {
+                self.set_pred_src(68..71, 71, op.srcs[2]);
+            }
+            self.set_pred_src(77..80, 80, op.srcs[1]);
+            self.set_pred_src(87..90, 90, op.srcs[0]);
+        }
         self.set_field(16..24, op.ops[1].lut);
         self.set_field(64..67, op.ops[0].lut & 0x7);
         self.set_field(72..77, op.ops[0].lut >> 3);
 
-        self.set_pred_src(68..71, 71, op.srcs[2]);
-
-        self.set_pred_src(77..80, 80, op.srcs[1]);
         self.set_pred_dst(81..84, op.dsts[0]);
         self.set_pred_dst(84..87, op.dsts[1]);
-
-        self.set_pred_src(87..90, 90, op.srcs[0]);
     }
 
     fn set_tex_dim(&mut self, range: Range<usize>, dim: TexDim) {
@@ -1769,24 +1940,32 @@ impl SM70Instr {
             todo!("Implement bindless LDC");
         };
 
-        self.set_opcode(0xb82);
+        if op.is_uniform() {
+            self.set_opcode(0xab9);
+            self.set_udst(op.dst);
 
-        self.set_dst(op.dst);
+            assert!(op.offset.is_zero());
+            assert!(op.mode == LdcMode::Indexed);
+        } else {
+            self.set_opcode(0xb82);
+            self.set_dst(op.dst);
 
-        self.set_reg_src(24..32, op.offset);
+            self.set_reg_src(24..32, op.offset);
+            self.set_field(
+                78..80,
+                match op.mode {
+                    LdcMode::Indexed => 0_u8,
+                    LdcMode::IndexedLinear => 1_u8,
+                    LdcMode::IndexedSegmented => 2_u8,
+                    LdcMode::IndexedSegmentedLinear => 3_u8,
+                },
+            );
+        }
+
         self.set_field(38..54, cb.offset);
         self.set_field(54..59, idx);
 
         self.set_mem_type(73..76, op.mem_type);
-        self.set_field(
-            78..80,
-            match op.mode {
-                LdcMode::Indexed => 0_u8,
-                LdcMode::IndexedLinear => 1_u8,
-                LdcMode::IndexedSegmented => 2_u8,
-                LdcMode::IndexedSegmentedLinear => 3_u8,
-            },
-        );
     }
 
     fn encode_stg(&mut self, op: &OpSt) {
@@ -2218,7 +2397,8 @@ impl SM70Instr {
     }
 
     fn encode_s2r(&mut self, op: &OpS2R) {
-        self.set_opcode(0x919);
+        assert!(!op.is_uniform());
+        self.set_opcode(if op.is_uniform() { 0x9c3 } else { 0x919 });
         self.set_dst(op.dst);
         self.set_field(72..80, op.idx);
     }
@@ -2253,8 +2433,13 @@ impl SM70Instr {
     }
 
     fn encode_vote(&mut self, op: &OpVote) {
-        self.set_opcode(0x806);
-        self.set_dst(op.ballot);
+        if op.is_uniform() {
+            self.set_opcode(0x886);
+            self.set_udst(op.ballot);
+        } else {
+            self.set_opcode(0x806);
+            self.set_dst(op.ballot);
+        }
 
         self.set_field(
             72..74,

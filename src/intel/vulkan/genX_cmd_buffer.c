@@ -5811,8 +5811,10 @@ void genX(cmd_emit_timestamp)(struct anv_batch *batch,
             },
          });
 
-      for (uint32_t i = 0; i < ARRAY_SIZE(dwords); i++)
-         ((uint32_t *)data)[i] |= dwords[i];
+      for (uint32_t i = 0; i < ARRAY_SIZE(dwords); i++) {
+         if (dwords[i])
+            ((uint32_t *)data)[i] |= dwords[i];
+      }
       break;
    }
 
@@ -5831,8 +5833,10 @@ void genX(cmd_emit_timestamp)(struct anv_batch *batch,
             }
       });
 
-      for (uint32_t i = 0; i < ARRAY_SIZE(dwords); i++)
-         ((uint32_t *)data)[i] |= dwords[i];
+      for (uint32_t i = 0; i < ARRAY_SIZE(dwords); i++) {
+         if (dwords[i])
+            ((uint32_t *)data)[i] |= dwords[i];
+      }
       break;
    }
 #endif

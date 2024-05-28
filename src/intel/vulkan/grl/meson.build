@@ -140,8 +140,7 @@ foreach t : [['125', 'gfx125', 'dg2'], ['200', 'gfx20', 'lnl'], ]
         '-I' + join_paths(meson.current_source_dir(), 'include'),
       ],
       env: ['MESA_SHADER_CACHE_DISABLE=true',
-            'MESA_SPIRV_LOG_LEVEL=error',
-            'INTEL_FORCE_PROBE=*'],
+            'MESA_SPIRV_LOG_LEVEL=error'],
       depends : dep_prog_intel_clc
     )
   endforeach

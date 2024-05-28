@@ -663,7 +663,7 @@ int main(int argc, char **argv)
          goto fail;
       }
 
-      if (!intel_get_device_info_from_pci_id(pci_id, &params.devinfo)) {
+      if (!intel_get_device_info_for_build(pci_id, &params.devinfo)) {
          fprintf(stderr, "Failed to get device information.\n");
          goto fail;
       }

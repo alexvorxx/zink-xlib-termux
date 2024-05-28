@@ -184,6 +184,8 @@ intel_vram_all_mappable(const struct intel_device_info *devinfo)
 bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo, int min_ver, int max_ver);
 bool intel_get_device_info_from_pci_id(int pci_id,
                                        struct intel_device_info *devinfo);
+bool intel_get_device_info_for_build(int pci_id,
+                                     struct intel_device_info *devinfo);
 
 /* Only updates intel_device_info::regions::...::free fields. The
  * class/instance/size should remain the same over time.

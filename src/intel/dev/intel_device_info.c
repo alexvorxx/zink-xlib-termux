@@ -1475,7 +1475,7 @@ struct device_init_config {
 #define FORCE_PROBE .require_force_probe = true
 
 static bool
-intel_device_info_init_common(int pci_id,
+intel_device_info_init_common(int pci_id, bool building,
                               struct intel_device_info *devinfo)
 {
    struct device_init_config device_config = { 0 };
@@ -1523,8 +1523,9 @@ intel_device_info_init_common(int pci_id,
       return false;
    } else if (device_config.require_force_probe) {
       if (force_on) {
-         mesa_logw("Forcing probe of unsupported: %s (0x%x)", devinfo->name,
-                   pci_id);
+         if (!building)
+            mesa_logw("Forcing probe of unsupported: %s (0x%x)", devinfo->name,
+                      pci_id);
       } else {
          mesa_loge("%s (0x%x) requires INTEL_FORCE_PROBE", devinfo->name,
                    pci_id);
@@ -1610,11 +1611,11 @@ intel_device_info_apply_workarounds(struct intel_device_info *devinfo)
       devinfo->urb.max_entries[MESA_SHADER_GEOMETRY] = 1024;
 }
 
-bool
-intel_get_device_info_from_pci_id(int pci_id,
-                                  struct intel_device_info *devinfo)
+static bool
+intel_get_device_info_from_pci_id_common(int pci_id, bool building,
+                                         struct intel_device_info *devinfo)
 {
-   intel_device_info_init_common(pci_id, devinfo);
+   intel_device_info_init_common(pci_id, building, devinfo);
 
    /* This is a placeholder until a proper value is set. */
    devinfo->kmd_type = INTEL_KMD_TYPE_I915;
@@ -1623,6 +1624,20 @@ intel_get_device_info_from_pci_id(int pci_id,
    intel_device_info_apply_workarounds(devinfo);
 
    return true;
+}
+
+bool
+intel_get_device_info_from_pci_id(int pci_id,
+                                  struct intel_device_info *devinfo)
+{
+   return intel_get_device_info_from_pci_id_common(pci_id, false, devinfo);
+}
+
+bool
+intel_get_device_info_for_build(int pci_id,
+                                struct intel_device_info *devinfo)
+{
+   return intel_get_device_info_from_pci_id_common(pci_id, true, devinfo);
 }
 
 bool
@@ -1823,8 +1838,8 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min
       mesa_loge("Failed to query drm device.");
       return false;
    }
-   if (!intel_device_info_init_common(
-          drmdev->deviceinfo.pci->device_id, devinfo)) {
+   if (!intel_device_info_init_common(drmdev->deviceinfo.pci->device_id,
+                                      false, devinfo)) {
       drmFreeDevice(&drmdev);
       return false;
    }

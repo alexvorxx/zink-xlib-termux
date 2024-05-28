@@ -6,7 +6,7 @@
  * Copyright © 2015 Intel Corporation
  */
 
-#include "tu_query.h"
+#include "tu_query_pool.h"
 
 #include <fcntl.h>
 
@@ -989,7 +989,8 @@ emit_begin_perf_query(struct tu_cmd_buffer *cmdbuf,
     *     See emit_perfcntrs_pass_start.
     *  2) Pick the right cs setting proper pass index to the reg and prepend
     *     it to the command buffer at each submit time.
-    *     See tu_QueueSubmit in tu_drm.c
+    *     See tu_queue_build_msm_gem_submit_cmds in tu_knl_drm_msm.cc and
+    *     tu_knl_drm_virtio.cc and kgsl_queue_submit in tu_knl_kgsl.cc
     *  3) If the pass index in the reg is true, then executes the command
     *     stream below CP_COND_REG_EXEC.
     */

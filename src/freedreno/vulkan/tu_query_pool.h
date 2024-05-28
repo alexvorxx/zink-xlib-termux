@@ -7,8 +7,8 @@
  * Copyright © 2015 Intel Corporation
  */
 
-#ifndef TU_QUERY_H
-#define TU_QUERY_H
+#ifndef TU_QUERY_POOL_H
+#define TU_QUERY_POOL_H
 
 #include "tu_common.h"
 
@@ -42,4 +42,4 @@ struct tu_query_pool
 VK_DEFINE_NONDISP_HANDLE_CASTS(tu_query_pool, base, VkQueryPool,
                                VK_OBJECT_TYPE_QUERY_POOL)
 
-#endif /* TU_QUERY_H */
+#endif /* TU_QUERY_POOL_H */

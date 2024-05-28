@@ -38,7 +38,7 @@
 #include "tu_dynamic_rendering.h"
 #include "tu_image.h"
 #include "tu_pass.h"
-#include "tu_query.h"
+#include "tu_query_pool.h"
 #include "tu_rmv.h"
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"

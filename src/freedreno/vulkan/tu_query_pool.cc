@@ -94,44 +94,44 @@ struct PACKED primitives_generated_query_slot {
 
 /* Returns the IOVA or mapped address of a given uint64_t field
  * in a given slot of a query pool. */
-#define query_iova(type, pool, query, field)                         \
-   pool->bo->iova + pool->stride * (query) + offsetof(type, field)
-#define query_addr(type, pool, query, field)                         \
-   (uint64_t *) ((char *) pool->bo->map + pool->stride * (query) +   \
+#define query_iova(type, pool, query, field)                               \
+   pool->bo->iova + pool->query_stride * (query) + offsetof(type, field)
+#define query_addr(type, pool, query, field)                               \
+   (uint64_t *) ((char *) pool->bo->map + pool->query_stride * (query) +   \
                  offsetof(type, field))
 
-#define occlusion_query_iova(pool, query, field)                     \
+#define occlusion_query_iova(pool, query, field)                           \
    query_iova(struct occlusion_query_slot, pool, query, field)
-#define occlusion_query_addr(pool, query, field)                     \
+#define occlusion_query_addr(pool, query, field)                           \
    query_addr(struct occlusion_query_slot, pool, query, field)
 
-#define pipeline_stat_query_iova(pool, query, field, idx)                    \
-   pool->bo->iova + pool->stride * (query) +                                 \
+#define pipeline_stat_query_iova(pool, query, field, idx)                  \
+   pool->bo->iova + pool->query_stride * (query) +                         \
       offsetof_arr(struct pipeline_stat_query_slot, field, (idx))
 
-#define primitive_query_iova(pool, query, field, stream_id, i)               \
-   query_iova(struct primitive_query_slot, pool, query, field) +             \
-      sizeof_field(struct primitive_query_slot, field[0]) * (stream_id) +    \
+#define primitive_query_iova(pool, query, field, stream_id, i)             \
+   query_iova(struct primitive_query_slot, pool, query, field) +           \
+      sizeof_field(struct primitive_query_slot, field[0]) * (stream_id) +  \
       offsetof_arr(struct primitive_slot_value, values, (i))
 
-#define perf_query_iova(pool, query, field, i)                          \
-   pool->bo->iova + pool->stride * (query) +                             \
-   sizeof(struct query_slot) +                                   \
-   sizeof(struct perfcntr_query_slot) * (i) +                          \
+#define perf_query_iova(pool, query, field, i)                             \
+   pool->bo->iova + pool->query_stride * (query) +                         \
+   sizeof(struct query_slot) +                                             \
+   sizeof(struct perfcntr_query_slot) * (i) +                              \
    offsetof(struct perfcntr_query_slot, field)
 
-#define primitives_generated_query_iova(pool, query, field)               \
+#define primitives_generated_query_iova(pool, query, field)                \
    query_iova(struct primitives_generated_query_slot, pool, query, field)
 
-#define query_available_iova(pool, query)                            \
+#define query_available_iova(pool, query)                                  \
    query_iova(struct query_slot, pool, query, available)
 
 #define query_result_iova(pool, query, type, i)                            \
-   pool->bo->iova + pool->stride * (query) +                          \
+   pool->bo->iova + pool->query_stride * (query) +                         \
    sizeof(struct query_slot) + sizeof(type) * (i)
 
-#define query_result_addr(pool, query, type, i)                              \
-   (uint64_t *) ((char *) pool->bo->map + pool->stride * (query) +           \
+#define query_result_addr(pool, query, type, i)                            \
+   (uint64_t *) ((char *) pool->bo->map + pool->query_stride * (query) +   \
                  sizeof(struct query_slot) + sizeof(type) * (i))
 
 #define query_is_available(slot) slot->available
@@ -180,7 +180,7 @@ static struct query_slot *
 slot_address(struct tu_query_pool *pool, uint32_t query)
 {
    return (struct query_slot *) ((char *) pool->bo->map +
-                                 query * pool->stride);
+                                 query * pool->query_stride);
 }
 
 static void
@@ -260,8 +260,8 @@ tu_CreateQueryPool(VkDevice _device,
    }
 
    struct tu_query_pool *pool = (struct tu_query_pool *)
-         vk_object_alloc(&device->vk, pAllocator, pool_size,
-                         VK_OBJECT_TYPE_QUERY_POOL);
+         vk_query_pool_create(&device->vk, pCreateInfo,
+                              pAllocator, pool_size);
    if (!pool)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -317,24 +317,22 @@ tu_CreateQueryPool(VkDevice _device,
    VkResult result = tu_bo_init_new(device, &pool->bo,
          pCreateInfo->queryCount * slot_size, TU_BO_ALLOC_NO_FLAGS, "query pool");
    if (result != VK_SUCCESS) {
-      vk_object_free(&device->vk, pAllocator, pool);
+      vk_query_pool_destroy(&device->vk, pAllocator, &pool->vk);
       return result;
    }
 
    result = tu_bo_map(device, pool->bo, NULL);
    if (result != VK_SUCCESS) {
       tu_bo_finish(device, pool->bo);
-      vk_object_free(&device->vk, pAllocator, pool);
+      vk_query_pool_destroy(&device->vk, pAllocator, &pool->vk);
       return result;
    }
 
    /* Initialize all query statuses to unavailable */
    memset(pool->bo->map, 0, pool->bo->size);
 
-   pool->type = pCreateInfo->queryType;
-   pool->stride = slot_size;
    pool->size = pCreateInfo->queryCount;
-   pool->pipeline_statistics = pCreateInfo->pipelineStatistics;
+   pool->query_stride = slot_size;
 
    TU_RMV(query_pool_create, device, pool);
 
@@ -357,13 +355,13 @@ tu_DestroyQueryPool(VkDevice _device,
    TU_RMV(resource_destroy, device, pool);
 
    tu_bo_finish(device, pool->bo);
-   vk_object_free(&device->vk, pAllocator, pool);
+   vk_query_pool_destroy(&device->vk, pAllocator, &pool->vk);
 }
 
 static uint32_t
 get_result_count(struct tu_query_pool *pool)
 {
-   switch (pool->type) {
+   switch (pool->vk.query_type) {
    /* Occulusion and timestamp queries write one integer value */
    case VK_QUERY_TYPE_OCCLUSION:
    case VK_QUERY_TYPE_TIMESTAMP:
@@ -373,7 +371,7 @@ get_result_count(struct tu_query_pool *pool)
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
       return 2;
    case VK_QUERY_TYPE_PIPELINE_STATISTICS:
-      return util_bitcount(pool->pipeline_statistics);
+      return util_bitcount(pool->vk.pipeline_statistics);
    case VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR:
       return pool->counter_index_count;
    default:
@@ -495,7 +493,7 @@ get_query_pool_results(struct tu_device *device,
       struct query_slot *slot = slot_address(pool, query);
       bool available = query_is_available(slot);
       uint32_t result_count = get_result_count(pool);
-      uint32_t statistics = pool->pipeline_statistics;
+      uint32_t statistics = pool->vk.pipeline_statistics;
 
       if ((flags & VK_QUERY_RESULT_WAIT_BIT) && !available) {
          VkResult wait_result = wait_for_available(device, pool, query);
@@ -523,12 +521,12 @@ get_query_pool_results(struct tu_device *device,
          if (available) {
             uint64_t *result;
 
-            if (pool->type == VK_QUERY_TYPE_PIPELINE_STATISTICS) {
+            if (pool->vk.query_type == VK_QUERY_TYPE_PIPELINE_STATISTICS) {
                uint32_t stat_idx = statistics_index(&statistics);
                result = query_result_addr(pool, query, uint64_t, stat_idx);
-            } else if (pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
+            } else if (pool->vk.query_type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
                result = query_result_addr(pool, query, struct perfcntr_query_slot, k);
-            } else if (pool->type == VK_QUERY_TYPE_OCCLUSION) {
+            } else if (pool->vk.query_type == VK_QUERY_TYPE_OCCLUSION) {
                assert(k == 0);
                result = occlusion_query_addr(pool, query, result);
             } else {
@@ -580,7 +578,7 @@ tu_GetQueryPoolResults(VkDevice _device,
    if (vk_device_is_lost(&device->vk))
       return VK_ERROR_DEVICE_LOST;
 
-   switch (pool->type) {
+   switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_OCCLUSION:
    case VK_QUERY_TYPE_TIMESTAMP:
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
@@ -646,7 +644,7 @@ emit_copy_query_pool_results(struct tu_cmd_buffer *cmdbuf,
       uint64_t available_iova = query_available_iova(pool, query);
       uint64_t buffer_iova = buffer->iova + dstOffset + i * stride;
       uint32_t result_count = get_result_count(pool);
-      uint32_t statistics = pool->pipeline_statistics;
+      uint32_t statistics = pool->vk.pipeline_statistics;
 
       /* Wait for the available bit to be set if executed with the
        * VK_QUERY_RESULT_WAIT_BIT flag. */
@@ -663,13 +661,13 @@ emit_copy_query_pool_results(struct tu_cmd_buffer *cmdbuf,
       for (uint32_t k = 0; k < result_count; k++) {
          uint64_t result_iova;
 
-         if (pool->type == VK_QUERY_TYPE_PIPELINE_STATISTICS) {
+         if (pool->vk.query_type == VK_QUERY_TYPE_PIPELINE_STATISTICS) {
             uint32_t stat_idx = statistics_index(&statistics);
             result_iova = query_result_iova(pool, query, uint64_t, stat_idx);
-         } else if (pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
+         } else if (pool->vk.query_type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
             result_iova = query_result_iova(pool, query,
                                             struct perfcntr_query_slot, k);
-         } else if (pool->type == VK_QUERY_TYPE_OCCLUSION) {
+         } else if (pool->vk.query_type == VK_QUERY_TYPE_OCCLUSION) {
             assert(k == 0);
             result_iova = occlusion_query_iova(pool, query, result);
          } else {
@@ -730,7 +728,7 @@ tu_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer,
    struct tu_cs *cs = &cmdbuf->cs;
    assert(firstQuery + queryCount <= pool->size);
 
-   switch (pool->type) {
+   switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_OCCLUSION:
    case VK_QUERY_TYPE_TIMESTAMP:
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
@@ -757,7 +755,7 @@ emit_reset_query_pool(struct tu_cmd_buffer *cmdbuf,
 
    for (uint32_t i = 0; i < queryCount; i++) {
       uint32_t query = firstQuery + i;
-      uint32_t statistics = pool->pipeline_statistics;
+      uint32_t statistics = pool->vk.pipeline_statistics;
 
       tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 4);
       tu_cs_emit_qw(cs, query_available_iova(pool, query));
@@ -766,13 +764,13 @@ emit_reset_query_pool(struct tu_cmd_buffer *cmdbuf,
       for (uint32_t k = 0; k < get_result_count(pool); k++) {
          uint64_t result_iova;
 
-         if (pool->type == VK_QUERY_TYPE_PIPELINE_STATISTICS) {
+         if (pool->vk.query_type == VK_QUERY_TYPE_PIPELINE_STATISTICS) {
             uint32_t stat_idx = statistics_index(&statistics);
             result_iova = query_result_iova(pool, query, uint64_t, stat_idx);
-         } else if (pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
+         } else if (pool->vk.query_type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
             result_iova = query_result_iova(pool, query,
                                             struct perfcntr_query_slot, k);
-         } else if (pool->type == VK_QUERY_TYPE_OCCLUSION) {
+         } else if (pool->vk.query_type == VK_QUERY_TYPE_OCCLUSION) {
             assert(k == 0);
             result_iova = occlusion_query_iova(pool, query, result);
          } else {
@@ -796,7 +794,7 @@ tu_CmdResetQueryPool(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
 
-   switch (pool->type) {
+   switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_TIMESTAMP:
    case VK_QUERY_TYPE_OCCLUSION:
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
@@ -825,10 +823,10 @@ tu_ResetQueryPool(VkDevice device,
       for (uint32_t k = 0; k < get_result_count(pool); k++) {
          uint64_t *res;
 
-         if (pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
+         if (pool->vk.query_type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR) {
             res = query_result_addr(pool, i + firstQuery,
                                     struct perfcntr_query_slot, k);
-         } else if (pool->type == VK_QUERY_TYPE_OCCLUSION) {
+         } else if (pool->vk.query_type == VK_QUERY_TYPE_OCCLUSION) {
             assert(k == 0);
             res = occlusion_query_addr(pool, i + firstQuery, result);
          } else {
@@ -914,7 +912,7 @@ emit_begin_stat_query(struct tu_cmd_buffer *cmdbuf,
    struct tu_cs *cs = cmdbuf->state.pass ? &cmdbuf->draw_cs : &cmdbuf->cs;
    uint64_t begin_iova = pipeline_stat_query_iova(pool, query, begin, 0);
 
-   if (is_pipeline_query_with_vertex_stage(pool->pipeline_statistics)) {
+   if (is_pipeline_query_with_vertex_stage(pool->vk.pipeline_statistics)) {
       bool need_cond_exec = cmdbuf->state.pass && cmdbuf->state.prim_counters_running;
       cmdbuf->state.prim_counters_running++;
 
@@ -938,11 +936,11 @@ emit_begin_stat_query(struct tu_cmd_buffer *cmdbuf,
       }
    }
 
-   if (is_pipeline_query_with_fragment_stage(pool->pipeline_statistics)) {
+   if (is_pipeline_query_with_fragment_stage(pool->vk.pipeline_statistics)) {
       tu_emit_event_write<CHIP>(cmdbuf, cs, FD_START_FRAGMENT_CTRS);
    }
 
-   if (is_pipeline_query_with_compute_stage(pool->pipeline_statistics)) {
+   if (is_pipeline_query_with_compute_stage(pool->vk.pipeline_statistics)) {
       tu_emit_event_write<CHIP>(cmdbuf, cs, FD_START_COMPUTE_CTRS);
    }
 
@@ -1112,7 +1110,7 @@ tu_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(query < pool->size);
 
-   switch (pool->type) {
+   switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_OCCLUSION:
       /* In freedreno, there is no implementation difference between
        * GL_SAMPLES_PASSED and GL_ANY_SAMPLES_PASSED, so we can similarly
@@ -1307,7 +1305,7 @@ emit_end_stat_query(struct tu_cmd_buffer *cmdbuf,
    uint64_t stat_start_iova;
    uint64_t stat_stop_iova;
 
-   if (is_pipeline_query_with_vertex_stage(pool->pipeline_statistics)) {
+   if (is_pipeline_query_with_vertex_stage(pool->vk.pipeline_statistics)) {
       /* No need to conditionally execute STOP_PRIMITIVE_CTRS when
        * we are inside VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT inside of a
        * renderpass, because it is already stopped.
@@ -1315,11 +1313,11 @@ emit_end_stat_query(struct tu_cmd_buffer *cmdbuf,
       emit_stop_primitive_ctrs<CHIP>(cmdbuf, cs, VK_QUERY_TYPE_PIPELINE_STATISTICS);
    }
 
-   if (is_pipeline_query_with_fragment_stage(pool->pipeline_statistics)) {
+   if (is_pipeline_query_with_fragment_stage(pool->vk.pipeline_statistics)) {
       tu_emit_event_write<CHIP>(cmdbuf, cs, FD_STOP_FRAGMENT_CTRS);
    }
 
-   if (is_pipeline_query_with_compute_stage(pool->pipeline_statistics)) {
+   if (is_pipeline_query_with_compute_stage(pool->vk.pipeline_statistics)) {
       tu_emit_event_write<CHIP>(cmdbuf, cs, FD_STOP_COMPUTE_CTRS);
    }
 
@@ -1595,7 +1593,7 @@ tu_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
    assert(query < pool->size);
 
-   switch (pool->type) {
+   switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_OCCLUSION:
       emit_end_occlusion_query<CHIP>(cmdbuf, pool, query);
       break;

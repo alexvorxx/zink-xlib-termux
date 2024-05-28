@@ -12,6 +12,8 @@
 
 #include "tu_common.h"
 
+#include "vk_query_pool.h"
+
 #define PERF_CNTRS_REG 4
 
 struct tu_perf_query_data
@@ -25,12 +27,10 @@ struct tu_perf_query_data
 
 struct tu_query_pool
 {
-   struct vk_object_base base;
+   struct vk_query_pool vk;
 
-   VkQueryType type;
-   uint32_t stride;
    uint64_t size;
-   uint32_t pipeline_statistics;
+   uint32_t query_stride;
    struct tu_bo *bo;
 
    /* For performance query */
@@ -39,7 +39,8 @@ struct tu_query_pool
    uint32_t counter_index_count;
    struct tu_perf_query_data perf_query_data[0];
 };
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_query_pool, base, VkQueryPool,
+
+VK_DEFINE_NONDISP_HANDLE_CASTS(tu_query_pool, vk.base, VkQueryPool,
                                VK_OBJECT_TYPE_QUERY_POOL)
 
 #endif /* TU_QUERY_POOL_H */

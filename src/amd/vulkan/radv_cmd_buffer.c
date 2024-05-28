@@ -4847,7 +4847,7 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
          const struct radv_image_view *vrs_iview = render->vrs_att.iview;
          struct radv_image *vrs_image = vrs_iview->image;
 
-         va = radv_buffer_get_va(vrs_image->bindings[0].bo) + vrs_image->bindings[0].offset;
+         va = radv_image_get_va(vrs_image, 0);
          va |= vrs_image->planes[0].surface.tile_swizzle << 8;
 
          xmax = vrs_iview->vk.extent.width - 1;
@@ -12438,8 +12438,7 @@ radv_init_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, cons
       /* Initialize the mipmap levels without DCC. */
       if (size != image->planes[0].surface.meta_size) {
          flush_bits |= radv_fill_buffer(cmd_buffer, image, image->bindings[0].bo,
-                                        radv_buffer_get_va(image->bindings[0].bo) + image->bindings[0].offset +
-                                           image->planes[0].surface.meta_offset + size,
+                                        radv_image_get_va(image, 0) + image->planes[0].surface.meta_offset + size,
                                         image->planes[0].surface.meta_size - size, 0xffffffff);
       }
    }

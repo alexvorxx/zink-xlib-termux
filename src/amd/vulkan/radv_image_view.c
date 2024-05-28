@@ -56,8 +56,9 @@ radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *
                                  uint32_t *state, const struct ac_surf_nbc_view *nbc_view)
 {
    struct radv_image_plane *plane = &image->planes[plane_id];
-   struct radv_image_binding *binding = image->disjoint ? &image->bindings[plane_id] : &image->bindings[0];
-   uint64_t gpu_address = binding->bo ? radv_buffer_get_va(binding->bo) + binding->offset : 0;
+   const uint32_t bind_idx = image->disjoint ? plane_id : 0;
+   struct radv_image_binding *binding = &image->bindings[bind_idx];
+   uint64_t gpu_address = binding->bo ? radv_image_get_va(image, bind_idx) : 0;
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    const struct ac_mutable_tex_state ac_state = {
@@ -195,13 +196,11 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    /* Initialize the sampler view for FMASK. */
    if (fmask_state) {
       if (radv_image_has_fmask(image)) {
-         uint64_t gpu_address = radv_buffer_get_va(image->bindings[0].bo);
-
          assert(image->plane_count == 1);
 
          const struct ac_fmask_state ac_state = {
             .surf = &image->planes[0].surface,
-            .va = gpu_address + image->bindings[0].offset,
+            .va = radv_image_get_va(image, 0),
             .width = width,
             .height = height,
             .depth = depth,
@@ -301,13 +300,11 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    /* Initialize the sampler view for FMASK. */
    if (fmask_state) {
       if (radv_image_has_fmask(image)) {
-         uint64_t gpu_address = radv_buffer_get_va(image->bindings[0].bo);
-
          assert(image->plane_count == 1);
 
          const struct ac_fmask_state ac_fmask_state = {
             .surf = &image->planes[0].surface,
-            .va = gpu_address + image->bindings[0].offset,
+            .va = radv_image_get_va(image, 0),
             .width = width,
             .height = height,
             .depth = depth,

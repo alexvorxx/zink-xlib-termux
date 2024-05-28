@@ -107,6 +107,13 @@ def monitor_pipeline(
     stress_status_counter = defaultdict(lambda: defaultdict(int))
     target_id = None
 
+    # Pre-populate the stress status counter for already completed target jobs.
+    if stress:
+        # When stress test, it is necessary to collect this information before start.
+        for job in pipeline.jobs.list(all=True, include_retried=True):
+            if target_jobs_regex.fullmatch(job.name) and job.status in ["success", "failed"]:
+                stress_status_counter[job.name][job.status] += 1
+
     while True:
         deps_failed = []
         to_cancel = []
@@ -309,7 +316,9 @@ def parse_args() -> None:
         "--stress",
         default=0,
         type=int,
-        help="Stresstest job(s). Number or repetitions or -1 for infinite.",
+        help="Stresstest job(s). Specify the number of times to rerun the selected jobs, "
+             "or use -1 for indefinite. Defaults to 0. If jobs have already been executed, "
+             "this will ensure the total run count respects the specified number.",
     )
     parser.add_argument(
         "--project",

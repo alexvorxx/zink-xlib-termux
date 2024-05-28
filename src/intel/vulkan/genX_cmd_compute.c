@@ -320,7 +320,7 @@ emit_indirect_compute_walker(struct anv_cmd_buffer *cmd_buffer,
                                        &dispatch),
    };
 
-   cmd_buffer->last_indirect_dispatch =
+   cmd_buffer->state.last_indirect_dispatch =
       anv_batch_emitn(
          &cmd_buffer->batch,
          GENX(EXECUTE_INDIRECT_DISPATCH_length),
@@ -348,7 +348,7 @@ emit_compute_walker(struct anv_cmd_buffer *cmd_buffer,
    const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
-   cmd_buffer->last_compute_walker =
+   cmd_buffer->state.last_compute_walker =
       anv_batch_emitn(
          &cmd_buffer->batch,
          GENX(COMPUTE_WALKER_length),

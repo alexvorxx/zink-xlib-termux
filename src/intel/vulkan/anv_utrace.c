@@ -425,16 +425,16 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
        ANV_TIMESTAMP_CAPTURE_END_OF_PIPE) : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
 
    void *addr = capture_type ==  ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH ?
-                cmd_buffer->last_indirect_dispatch :
+                cmd_buffer->state.last_indirect_dispatch :
                 capture_type ==  ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER ?
-                cmd_buffer->last_compute_walker : NULL;
+                cmd_buffer->state.last_compute_walker : NULL;
 
    device->physical->cmd_emit_timestamp(batch, device, ts_address,
                                         capture_type,
                                         addr);
    if (is_end_compute) {
-      cmd_buffer->last_compute_walker = NULL;
-      cmd_buffer->last_indirect_dispatch = NULL;
+      cmd_buffer->state.last_compute_walker = NULL;
+      cmd_buffer->state.last_indirect_dispatch = NULL;
    }
 }
 

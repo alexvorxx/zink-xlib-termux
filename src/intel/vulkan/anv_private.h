@@ -3907,6 +3907,20 @@ struct anv_cmd_state {
     * A buffer used for spill/fill of ray queries.
     */
    struct anv_bo *                              ray_query_shadow_bo;
+
+   /** Pointer to the last emitted COMPUTE_WALKER.
+    *
+    * This is used to edit the instruction post emission to replace the "Post
+    * Sync" field for utrace timestamp emission.
+    */
+   void                                        *last_compute_walker;
+
+   /** Pointer to the last emitted EXECUTE_INDIRECT_DISPATCH.
+    *
+    * This is used to edit the instruction post emission to replace the "Post
+    * Sync" field for utrace timestamp emission.
+    */
+   void                                        *last_indirect_dispatch;
 };
 
 #define ANV_MIN_CMD_BUFFER_BATCH_SIZE 8192
@@ -4056,20 +4070,6 @@ struct anv_cmd_buffer {
     * Structure holding tracepoints recorded in the command buffer.
     */
    struct u_trace                               trace;
-
-   /** Pointer to the last emitted COMPUTE_WALKER.
-    *
-    * This is used to edit the instruction post emission to replace the "Post
-    * Sync" field for utrace timestamp emission.
-    */
-   void                                        *last_compute_walker;
-
-   /** Pointer to the last emitted EXECUTE_INDIRECT_DISPATCH.
-    *
-    * This is used to edit the instruction post emission to replace the "Post
-    * Sync" field for utrace timestamp emission.
-    */
-   void                                        *last_indirect_dispatch;
 
    struct {
       struct anv_video_session *vid;

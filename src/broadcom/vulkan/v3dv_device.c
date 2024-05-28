@@ -1088,6 +1088,27 @@ get_device_properties(const struct v3dv_physical_device *device,
       .shaderRoundingModeRTZFloat32 = false,
       .shaderRoundingModeRTZFloat64 = false,
 
+      .maxPerStageDescriptorUpdateAfterBindSamplers = V3D_MAX_TEXTURE_SAMPLERS,
+      .maxPerStageDescriptorUpdateAfterBindUniformBuffers = MAX_UNIFORM_BUFFERS,
+      .maxPerStageDescriptorUpdateAfterBindStorageBuffers = MAX_STORAGE_BUFFERS,
+      .maxPerStageDescriptorUpdateAfterBindSampledImages = MAX_SAMPLED_IMAGES,
+      .maxPerStageDescriptorUpdateAfterBindStorageImages = MAX_STORAGE_IMAGES,
+      .maxPerStageDescriptorUpdateAfterBindInputAttachments = MAX_INPUT_ATTACHMENTS,
+      .maxPerStageUpdateAfterBindResources = max_per_stage_resources,
+      .maxDescriptorSetUpdateAfterBindSamplers =
+          V3DV_SUPPORTED_SHADER_STAGES * V3D_MAX_TEXTURE_SAMPLERS,
+      .maxDescriptorSetUpdateAfterBindUniformBuffers =
+          V3DV_SUPPORTED_SHADER_STAGES * MAX_UNIFORM_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindUniformBuffersDynamic = MAX_DYNAMIC_UNIFORM_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindStorageBuffers =
+          V3DV_SUPPORTED_SHADER_STAGES * MAX_STORAGE_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindStorageBuffersDynamic = MAX_DYNAMIC_UNIFORM_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindSampledImages =
+          V3DV_SUPPORTED_SHADER_STAGES * MAX_SAMPLED_IMAGES,
+      .maxDescriptorSetUpdateAfterBindStorageImages =
+          V3DV_SUPPORTED_SHADER_STAGES * MAX_STORAGE_IMAGES,
+      .maxDescriptorSetUpdateAfterBindInputAttachments = MAX_INPUT_ATTACHMENTS,
+
       /* V3D doesn't support min/max filtering */
       .filterMinmaxSingleComponentFormats = false,
       .filterMinmaxImageComponentMapping = false,

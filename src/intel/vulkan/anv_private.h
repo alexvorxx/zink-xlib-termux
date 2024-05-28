@@ -1815,6 +1815,10 @@ struct anv_device {
     struct anv_bo_pool                          batch_bo_pool;
     /** Memory pool for utrace timestamp buffers */
     struct anv_bo_pool                          utrace_bo_pool;
+    /**
+     * Size of the timestamp captured for utrace.
+     */
+    uint32_t                                     utrace_timestamp_size;
     /** Memory pool for BVH build buffers */
     struct anv_bo_pool                          bvh_bo_pool;
 

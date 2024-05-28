@@ -542,12 +542,17 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
       const char *slot_name =
          gl_varying_slot_name_for_stage(slot, MESA_SHADER_GEOMETRY);
 
+      bool scalar = (slot == VARYING_SLOT_PSIZ) ||
+                    (slot == VARYING_SLOT_LAYER) ||
+                    (slot == VARYING_SLOT_VIEWPORT);
+      unsigned comps = scalar ? 1 : 4;
+
       rast_state.outputs.outputs[slot] = nir_variable_create(
-         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, 4),
+         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, comps),
          ralloc_asprintf(shader, "%s-temp", slot_name));
 
       rast_state.selected.outputs[slot] = nir_variable_create(
-         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, 4),
+         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, comps),
          ralloc_asprintf(shader, "%s-selected", slot_name));
    }
 

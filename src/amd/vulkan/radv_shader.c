@@ -63,6 +63,7 @@ get_nir_options_for_stage(struct radv_physical_device *pdev, gl_shader_stage sta
    options->max_unroll_iterations = 32;
    options->max_unroll_iterations_aggressive = 128;
    options->lower_doubles_options = nir_lower_drcp | nir_lower_dsqrt | nir_lower_drsq | nir_lower_ddiv;
+   options->io_options |= nir_io_mediump_is_32bit;
 }
 
 void

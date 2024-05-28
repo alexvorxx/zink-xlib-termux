@@ -3246,6 +3246,72 @@ fetch_render_target_array_index(const fs_builder &bld)
    }
 }
 
+static fs_reg
+fetch_viewport_index(const fs_builder &bld)
+{
+   const fs_visitor *v = bld.shader;
+
+   if (bld.shader->devinfo->ver >= 20) {
+      /* Gfx20+ has separate viewport indices for each pair
+       * of subspans in order to support multiple polygons, so we need
+       * to use a <1;8,0> region in order to select the correct word
+       * for each channel.
+       */
+      const fs_reg idx = bld.vgrf(BRW_TYPE_UD);
+
+      for (unsigned i = 0; i < DIV_ROUND_UP(bld.dispatch_width(), 16); i++) {
+         const fs_builder hbld = bld.group(16, i);
+         const struct brw_reg reg = retype(xe2_vec1_grf(i, 9),
+                                           BRW_TYPE_UW);
+         hbld.AND(offset(idx, hbld, i), stride(reg, 1, 8, 0),
+                  brw_imm_uw(0xf000));
+      }
+
+      bld.SHR(idx, idx, brw_imm_ud(12));
+      return idx;
+   } else if (bld.shader->devinfo->ver >= 12 && v->max_polygons == 2) {
+      /* According to the BSpec "PS Thread Payload for Normal
+       * Dispatch", the viewport index is stored as bits
+       * 30:27 of either the R1.1 or R1.6 poly info dwords, for the
+       * first and second polygons respectively in multipolygon PS
+       * dispatch mode.
+       */
+      assert(bld.dispatch_width() == 16);
+      const fs_reg idx = bld.vgrf(BRW_TYPE_UD);
+      fs_reg vp_idx_per_poly_dw[2] = {
+         brw_ud1_reg(BRW_GENERAL_REGISTER_FILE, 1, 1), /* R1.1 bits 30:27 */
+         brw_ud1_reg(BRW_GENERAL_REGISTER_FILE, 1, 6), /* R1.6 bits 30:27 */
+      };
+
+      for (unsigned i = 0; i < v->max_polygons; i++) {
+         const fs_builder hbld = bld.group(8, i);
+         hbld.SHR(offset(idx, hbld, i), vp_idx_per_poly_dw[i], brw_imm_ud(27));
+      }
+
+      return bld.AND(idx, brw_imm_ud(0xf));
+   } else if (bld.shader->devinfo->ver >= 12) {
+      /* The viewport index is provided in the thread payload as
+       * bits 30:27 of r1.1.
+       */
+      const fs_reg idx = bld.vgrf(BRW_TYPE_UD);
+      bld.SHR(idx,
+              bld.AND(brw_uw1_reg(BRW_GENERAL_REGISTER_FILE, 1, 3),
+                      brw_imm_uw(0x7800)),
+              brw_imm_ud(11));
+      return idx;
+   } else {
+      /* The viewport index is provided in the thread payload as
+       * bits 30:27 of r0.0.
+       */
+      const fs_reg idx = bld.vgrf(BRW_TYPE_UD);
+      bld.SHR(idx,
+              bld.AND(brw_uw1_reg(BRW_GENERAL_REGISTER_FILE, 0, 1),
+                      brw_imm_uw(0x7800)),
+              brw_imm_ud(11));
+      return idx;
+   }
+}
+
 /* Sample from the MCS surface attached to this multisample texture. */
 static fs_reg
 emit_mcs_fetch(nir_to_brw_state &ntb, const fs_reg &coordinate, unsigned components,

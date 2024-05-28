@@ -12,8 +12,8 @@
 #include "util/hash_table.h"
 
 
-static void si_utrace_record_ts(struct u_trace *trace, void *cs, void *timestamps, 
-                                unsigned idx, bool end_of_pipe)
+static void si_utrace_record_ts(struct u_trace *trace, void *cs, void *timestamps,
+                                unsigned idx, uint32_t flags)
 {
    struct si_context *ctx = container_of(trace, struct si_context, trace);
    struct pipe_resource *buffer = timestamps;

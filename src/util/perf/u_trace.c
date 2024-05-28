@@ -853,8 +853,7 @@ u_trace_appendv(struct u_trace *ut,
    }
 
    /* record a timestamp for the trace: */
-   ut->utctx->record_timestamp(ut, cs, chunk->timestamps, tp_idx,
-                               tp->end_of_pipe);
+   ut->utctx->record_timestamp(ut, cs, chunk->timestamps, tp_idx, tp->flags);
 
    chunk->traces[tp_idx] = (struct u_trace_event) {
       .tp = tp,

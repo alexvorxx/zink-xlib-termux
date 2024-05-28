@@ -396,7 +396,7 @@ anv_utrace_destroy_ts_buffer(struct u_trace_context *utctx, void *timestamps)
 static void
 anv_utrace_record_ts(struct u_trace *ut, void *cs,
                      void *timestamps, unsigned idx,
-                     bool end_of_pipe)
+                     uint32_t flags)
 {
    struct anv_device *device =
       container_of(ut->utctx, struct anv_device, ds.trace_context);
@@ -414,15 +414,19 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
    /* Is this a end of compute trace point? */
    const bool is_end_compute =
       cs == NULL &&
-      (cmd_buffer->last_compute_walker != NULL ||
-       cmd_buffer->last_indirect_dispatch != NULL) &&
-      end_of_pipe;
+      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE_CS);
 
-   enum anv_timestamp_capture_type capture_type = end_of_pipe ?
-      (is_end_compute ?
-       (cmd_buffer->last_indirect_dispatch != NULL ?
-        ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH : ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER) :
-       ANV_TIMESTAMP_CAPTURE_END_OF_PIPE) : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
+   assert(!is_end_compute ||
+          cmd_buffer->state.last_indirect_dispatch != NULL ||
+          cmd_buffer->state.last_compute_walker != NULL);
+
+   enum anv_timestamp_capture_type capture_type =
+      is_end_compute ?
+      (cmd_buffer->state.last_indirect_dispatch != NULL ?
+       ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH : ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER) :
+      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE) ?
+      ANV_TIMESTAMP_CAPTURE_END_OF_PIPE : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
+
 
    void *addr = capture_type ==  ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH ?
                 cmd_buffer->state.last_indirect_dispatch :

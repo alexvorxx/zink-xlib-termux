@@ -224,7 +224,7 @@ anv_utrace_destroy_ts_buffer(struct u_trace_context *utctx, void *timestamps)
 static void
 anv_utrace_record_ts(struct u_trace *ut, void *cs,
                      void *timestamps, unsigned idx,
-                     bool end_of_pipe)
+                     uint32_t flags)
 {
    struct anv_cmd_buffer *cmd_buffer =
       container_of(ut, struct anv_cmd_buffer, trace);
@@ -232,8 +232,9 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
    struct anv_bo *bo = timestamps;
 
    enum anv_timestamp_capture_type capture_type =
-      (end_of_pipe) ? ANV_TIMESTAMP_CAPTURE_END_OF_PIPE
-                    : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
+      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE) ?
+      ANV_TIMESTAMP_CAPTURE_END_OF_PIPE :
+      ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
    device->physical->cmd_emit_timestamp(&cmd_buffer->batch, device,
                                         (struct anv_address) {
                                            .bo = bo,

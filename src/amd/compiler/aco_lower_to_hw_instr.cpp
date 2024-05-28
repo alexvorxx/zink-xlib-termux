@@ -933,7 +933,7 @@ adjust_bpermute_dst(Builder& bld, Definition dst, Operand input_data)
 }
 
 void
-emit_bpermute_permlane(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
+emit_bpermute_permlane(Builder& bld, aco_ptr<Instruction>& instr)
 {
    /* Emulates proper bpermute on GFX11 in wave64 mode.
     *
@@ -941,8 +941,8 @@ emit_bpermute_permlane(Program* program, aco_ptr<Instruction>& instr, Builder& b
     * v_permlane64_b32 instruction to swap data between lo and hi halves.
     */
 
-   assert(program->gfx_level >= GFX11);
-   assert(program->wave_size == 64);
+   assert(bld.program->gfx_level >= GFX11);
+   assert(bld.program->wave_size == 64);
 
    Definition dst = instr->definitions[0];
    Definition tmp_exec = instr->definitions[1];
@@ -987,7 +987,7 @@ emit_bpermute_permlane(Program* program, aco_ptr<Instruction>& instr, Builder& b
 }
 
 void
-emit_bpermute_shared_vgpr(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
+emit_bpermute_shared_vgpr(Builder& bld, aco_ptr<Instruction>& instr)
 {
    /* Emulates proper bpermute on GFX10 in wave64 mode.
     *
@@ -996,10 +996,10 @@ emit_bpermute_shared_vgpr(Program* program, aco_ptr<Instruction>& instr, Builder
     * manually swap the data between the two halves using two shared VGPRs.
     */
 
-   assert(program->gfx_level >= GFX10 && program->gfx_level <= GFX10_3);
-   assert(program->wave_size == 64);
+   assert(bld.program->gfx_level >= GFX10 && bld.program->gfx_level <= GFX10_3);
+   assert(bld.program->wave_size == 64);
 
-   unsigned shared_vgpr_reg_0 = align(program->config->num_vgprs, 4) + 256;
+   unsigned shared_vgpr_reg_0 = align(bld.program->config->num_vgprs, 4) + 256;
    Definition dst = instr->definitions[0];
    Definition tmp_exec = instr->definitions[1];
    Definition clobber_scc = instr->definitions[2];
@@ -1059,7 +1059,7 @@ emit_bpermute_shared_vgpr(Program* program, aco_ptr<Instruction>& instr, Builder
 }
 
 void
-emit_bpermute_readlane(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
+emit_bpermute_readlane(Builder& bld, aco_ptr<Instruction>& instr)
 {
    /* Emulates bpermute using readlane instructions */
 
@@ -1086,9 +1086,9 @@ emit_bpermute_readlane(Program* program, aco_ptr<Instruction>& instr, Builder& b
     * This takes only a few instructions per lane, as opposed to a "real" loop
     * with branching, where the branch instruction alone would take 16+ cycles.
     */
-   for (unsigned n = 0; n < program->wave_size; ++n) {
+   for (unsigned n = 0; n < bld.program->wave_size; ++n) {
       /* Activate the lane which has N for its source index */
-      if (program->gfx_level >= GFX10)
+      if (bld.program->gfx_level >= GFX10)
          bld.vopc(aco_opcode::v_cmpx_eq_u32, Definition(exec, bld.lm), Operand::c32(n), index);
       else
          bld.vopc(aco_opcode::v_cmpx_eq_u32, clobber_vcc, Definition(exec, bld.lm), Operand::c32(n),
@@ -2387,15 +2387,15 @@ lower_to_hw_instr(Program* program)
                break;
             }
             case aco_opcode::p_bpermute_readlane: {
-               emit_bpermute_readlane(program, instr, bld);
+               emit_bpermute_readlane(bld, instr);
                break;
             }
             case aco_opcode::p_bpermute_shared_vgpr: {
-               emit_bpermute_shared_vgpr(program, instr, bld);
+               emit_bpermute_shared_vgpr(bld, instr);
                break;
             }
             case aco_opcode::p_bpermute_permlane: {
-               emit_bpermute_permlane(program, instr, bld);
+               emit_bpermute_permlane(bld, instr);
                break;
             }
             case aco_opcode::p_constaddr: {

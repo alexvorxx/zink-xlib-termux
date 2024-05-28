@@ -60,7 +60,11 @@ fn dst_is_bar(dst: Dst) -> bool {
 }
 
 impl ALUSrc {
-    fn from_src_file(src: &Src, file: RegFile) -> ALUSrc {
+    fn from_src_file(src: Option<&Src>, file: RegFile) -> ALUSrc {
+        let Some(src) = src else {
+            return ALUSrc::None;
+        };
+
         match src.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 let reg = match src.src_ref {
@@ -100,14 +104,8 @@ impl ALUSrc {
         }
     }
 
-    pub fn from_src(src: &Src) -> ALUSrc {
+    pub fn from_src(src: Option<&Src>) -> ALUSrc {
         ALUSrc::from_src_file(src, RegFile::GPR)
-    }
-
-    #[allow(dead_code)]
-    pub fn from_usrc(src: &Src) -> ALUSrc {
-        assert!(src.is_uniform());
-        ALUSrc::from_src_file(src, RegFile::UGPR)
     }
 
     pub fn has_src_mod(&self) -> bool {
@@ -405,15 +403,19 @@ impl SM70Instr {
     fn encode_alu_base(
         &mut self,
         opcode: u16,
-        dst: Option<Dst>,
-        src0: ALUSrc,
-        src1: ALUSrc,
-        src2: ALUSrc,
+        dst: Option<&Dst>,
+        src0: Option<&Src>,
+        src1: Option<&Src>,
+        src2: Option<&Src>,
         is_fp16_alu: bool,
     ) {
         if let Some(dst) = dst {
-            self.set_dst(dst);
+            self.set_dst(*dst);
         }
+
+        let src0 = ALUSrc::from_src(src0);
+        let src1 = ALUSrc::from_src(src1);
+        let src2 = ALUSrc::from_src(src2);
 
         // Bits 74..76 are used both for the swizzle on src0 and for the source
         // modifier for the register source of src1 and src2.  When both are
@@ -539,10 +541,10 @@ impl SM70Instr {
     fn encode_alu(
         &mut self,
         opcode: u16,
-        dst: Option<Dst>,
-        src0: ALUSrc,
-        src1: ALUSrc,
-        src2: ALUSrc,
+        dst: Option<&Dst>,
+        src0: Option<&Src>,
+        src1: Option<&Src>,
+        src2: Option<&Src>,
     ) {
         self.encode_alu_base(opcode, dst, src0, src1, src2, false);
     }
@@ -550,10 +552,10 @@ impl SM70Instr {
     fn encode_fp16_alu(
         &mut self,
         opcode: u16,
-        dst: Option<Dst>,
-        src0: ALUSrc,
-        src1: ALUSrc,
-        src2: ALUSrc,
+        dst: Option<&Dst>,
+        src0: Option<&Src>,
+        src1: Option<&Src>,
+        src2: Option<&Src>,
     ) {
         self.encode_alu_base(opcode, dst, src0, src1, src2, true);
     }
@@ -584,18 +586,18 @@ impl SM70Instr {
         if op.srcs[1].src_ref.as_reg().is_some() {
             self.encode_alu(
                 0x021,
-                Some(op.dst),
-                ALUSrc::from_src(&op.srcs[0]),
-                ALUSrc::from_src(&op.srcs[1]),
-                ALUSrc::None,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
             );
         } else {
             self.encode_alu(
                 0x021,
-                Some(op.dst),
-                ALUSrc::from_src(&op.srcs[0]),
-                ALUSrc::from_src(&Src::new_zero()),
-                ALUSrc::from_src(&op.srcs[1]),
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&Src::new_zero()),
+                Some(&op.srcs[1]),
             );
         }
         self.set_bit(77, op.saturate);
@@ -606,10 +608,10 @@ impl SM70Instr {
     fn encode_ffma(&mut self, op: &OpFFma) {
         self.encode_alu(
             0x023,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
         self.set_bit(76, op.dnz);
         self.set_bit(77, op.saturate);
@@ -620,10 +622,10 @@ impl SM70Instr {
     fn encode_fmnmx(&mut self, op: &OpFMnMx) {
         self.encode_alu(
             0x009,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&Src::new_zero()),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&Src::new_zero()),
         );
         self.set_pred_src(87..90, 90, op.min);
         self.set_bit(80, op.ftz);
@@ -632,10 +634,10 @@ impl SM70Instr {
     fn encode_fmul(&mut self, op: &OpFMul) {
         self.encode_alu(
             0x020,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&Src::new_zero()),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&Src::new_zero()),
         );
         self.set_bit(76, op.dnz);
         self.set_bit(77, op.saturate);
@@ -670,10 +672,10 @@ impl SM70Instr {
     fn encode_fset(&mut self, op: &OpFSet) {
         self.encode_alu(
             0x00a,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
         self.set_float_cmp_op(76..80, op.cmp_op);
         self.set_bit(80, op.ftz);
@@ -696,9 +698,9 @@ impl SM70Instr {
         self.encode_alu(
             0x00b,
             None,
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
 
         self.set_pred_set_op(74..76, op.set_op);
@@ -739,13 +741,7 @@ impl SM70Instr {
     }
 
     fn encode_mufu(&mut self, op: &OpMuFu) {
-        self.encode_alu(
-            0x108,
-            Some(op.dst),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.src),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x108, Some(&op.dst), None, Some(&op.src), None);
         self.set_field(
             74..80,
             match op.op {
@@ -766,10 +762,10 @@ impl SM70Instr {
     fn encode_dadd(&mut self, op: &OpDAdd) {
         self.encode_alu(
             0x029,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.srcs[1]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            None,
+            Some(&op.srcs[1]),
         );
         self.set_rnd_mode(78..80, op.rnd_mode);
     }
@@ -777,10 +773,10 @@ impl SM70Instr {
     fn encode_dfma(&mut self, op: &OpDFma) {
         self.encode_alu(
             0x02b,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
         self.set_rnd_mode(78..80, op.rnd_mode);
     }
@@ -788,10 +784,10 @@ impl SM70Instr {
     fn encode_dmul(&mut self, op: &OpDMul) {
         self.encode_alu(
             0x028,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
         self.set_rnd_mode(78..80, op.rnd_mode);
     }
@@ -802,18 +798,18 @@ impl SM70Instr {
                 self.encode_alu(
                     0x02a,
                     None,
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::from_src(&op.srcs[1]),
-                    ALUSrc::None,
+                    Some(&op.srcs[0]),
+                    Some(&op.srcs[1]),
+                    None,
                 );
             }
             _ => {
                 self.encode_alu(
                     0x02a,
                     None,
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::None,
-                    ALUSrc::from_src(&op.srcs[1]),
+                    Some(&op.srcs[0]),
+                    None,
+                    Some(&op.srcs[1]),
                 );
             }
         }
@@ -832,19 +828,19 @@ impl SM70Instr {
             SrcRef::Reg(_) | SrcRef::Zero => {
                 self.encode_fp16_alu(
                     0x030,
-                    Some(op.dst),
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::from_src(&op.srcs[1]),
-                    ALUSrc::None,
+                    Some(&op.dst),
+                    Some(&op.srcs[0]),
+                    Some(&op.srcs[1]),
+                    None,
                 );
             }
             _ => {
                 self.encode_fp16_alu(
                     0x030,
-                    Some(op.dst),
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::None,
-                    ALUSrc::from_src(&op.srcs[1]),
+                    Some(&op.dst),
+                    Some(&op.srcs[0]),
+                    None,
+                    Some(&op.srcs[1]),
                 );
             }
         }
@@ -861,10 +857,10 @@ impl SM70Instr {
 
         self.encode_fp16_alu(
             0x031,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
 
         self.set_bit(76, op.dnz);
@@ -878,10 +874,10 @@ impl SM70Instr {
     fn encode_hmul2(&mut self, op: &OpHMul2) {
         self.encode_fp16_alu(
             0x032,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
 
         self.set_bit(76, op.dnz);
@@ -897,19 +893,19 @@ impl SM70Instr {
             SrcRef::Reg(_) | SrcRef::Zero => {
                 self.encode_fp16_alu(
                     0x033,
-                    Some(op.dst),
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::from_src(&op.srcs[1]),
-                    ALUSrc::None,
+                    Some(&op.dst),
+                    Some(&op.srcs[0]),
+                    Some(&op.srcs[1]),
+                    None,
                 );
             }
             _ => {
                 self.encode_fp16_alu(
                     0x033,
-                    Some(op.dst),
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::None,
-                    ALUSrc::from_src(&op.srcs[1]),
+                    Some(&op.dst),
+                    Some(&op.srcs[0]),
+                    None,
+                    Some(&op.srcs[1]),
                 );
             }
         }
@@ -931,18 +927,18 @@ impl SM70Instr {
                 self.encode_fp16_alu(
                     0x034,
                     None,
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::from_src(&op.srcs[1]),
-                    ALUSrc::None,
+                    Some(&op.srcs[0]),
+                    Some(&op.srcs[1]),
+                    None,
                 );
             }
             _ => {
                 self.encode_fp16_alu(
                     0x034,
                     None,
-                    ALUSrc::from_src(&op.srcs[0]),
-                    ALUSrc::None,
-                    ALUSrc::from_src(&op.srcs[1]),
+                    Some(&op.srcs[0]),
+                    None,
+                    Some(&op.srcs[1]),
                 );
             }
         }
@@ -964,10 +960,10 @@ impl SM70Instr {
 
         self.encode_fp16_alu(
             0x040,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
 
         // This differentiate between integer and fp16 output
@@ -983,33 +979,21 @@ impl SM70Instr {
     fn encode_bmsk(&mut self, op: &OpBMsk) {
         self.encode_alu(
             0x01b,
-            Some(op.dst),
-            ALUSrc::from_src(&op.pos),
-            ALUSrc::from_src(&op.width),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.pos),
+            Some(&op.width),
+            None,
         );
 
         self.set_bit(75, op.wrap);
     }
 
     fn encode_brev(&mut self, op: &OpBRev) {
-        self.encode_alu(
-            0x101,
-            Some(op.dst),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.src),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x101, Some(&op.dst), None, Some(&op.src), None);
     }
 
     fn encode_flo(&mut self, op: &OpFlo) {
-        self.encode_alu(
-            0x100,
-            Some(op.dst),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.src),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x100, Some(&op.dst), None, Some(&op.src), None);
         self.set_pred_dst(81..84, Dst::None);
         self.set_field(74..75, op.return_shift_amount as u8);
         self.set_field(73..74, op.signed as u8);
@@ -1018,13 +1002,7 @@ impl SM70Instr {
     }
 
     fn encode_iabs(&mut self, op: &OpIAbs) {
-        self.encode_alu(
-            0x013,
-            Some(op.dst),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.src),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x013, Some(&op.dst), None, Some(&op.src), None);
     }
 
     fn encode_iadd3(&mut self, op: &OpIAdd3) {
@@ -1033,10 +1011,10 @@ impl SM70Instr {
 
         self.encode_alu(
             0x010,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
 
         self.set_pred_src(87..90, 90, false.into());
@@ -1052,10 +1030,10 @@ impl SM70Instr {
 
         self.encode_alu(
             0x010,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
 
         self.set_bit(74, true); // .X
@@ -1070,10 +1048,10 @@ impl SM70Instr {
     fn encode_idp4(&mut self, op: &OpIDp4) {
         self.encode_alu(
             0x026,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
 
         self.set_bit(
@@ -1097,10 +1075,10 @@ impl SM70Instr {
     fn encode_imad(&mut self, op: &OpIMad) {
         self.encode_alu(
             0x024,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
         self.set_pred_dst(81..84, Dst::None);
         self.set_bit(73, op.signed);
@@ -1109,10 +1087,10 @@ impl SM70Instr {
     fn encode_imad64(&mut self, op: &OpIMad64) {
         self.encode_alu(
             0x025,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
         self.set_pred_dst(81..84, Dst::None);
         self.set_bit(73, op.signed);
@@ -1121,10 +1099,10 @@ impl SM70Instr {
     fn encode_imnmx(&mut self, op: &OpIMnMx) {
         self.encode_alu(
             0x017,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
         self.set_pred_src(87..90, 90, op.min);
         self.set_bit(
@@ -1155,9 +1133,9 @@ impl SM70Instr {
         self.encode_alu(
             0x00c,
             None,
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
 
         self.set_pred_src(68..71, 71, op.low_cmp);
@@ -1182,10 +1160,10 @@ impl SM70Instr {
     fn encode_lop3(&mut self, op: &OpLop3) {
         self.encode_alu(
             0x012,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::from_src(&op.srcs[2]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            Some(&op.srcs[2]),
         );
 
         self.set_field(72..80, op.op.lut);
@@ -1195,13 +1173,7 @@ impl SM70Instr {
     }
 
     fn encode_popc(&mut self, op: &OpPopC) {
-        self.encode_alu(
-            0x109,
-            Some(op.dst),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.src),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x109, Some(&op.dst), None, Some(&op.src), None);
 
         let not_mod = matches!(op.src.src_mod, SrcMod::BNot);
         self.set_field(63..64, not_mod)
@@ -1210,10 +1182,10 @@ impl SM70Instr {
     fn encode_shf(&mut self, op: &OpShf) {
         self.encode_alu(
             0x019,
-            Some(op.dst),
-            ALUSrc::from_src(&op.low),
-            ALUSrc::from_src(&op.shift),
-            ALUSrc::from_src(&op.high),
+            Some(&op.dst),
+            Some(&op.low),
+            Some(&op.shift),
+            Some(&op.high),
         );
 
         self.set_field(
@@ -1234,21 +1206,9 @@ impl SM70Instr {
     fn encode_f2f(&mut self, op: &OpF2F) {
         assert!(!op.integer_rnd);
         if op.src_type.bits() <= 32 && op.dst_type.bits() <= 32 {
-            self.encode_alu(
-                0x104,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x104, Some(&op.dst), None, Some(&op.src), None);
         } else {
-            self.encode_alu(
-                0x110,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x110, Some(&op.dst), None, Some(&op.src), None);
         }
 
         if op.high {
@@ -1263,21 +1223,9 @@ impl SM70Instr {
 
     fn encode_f2i(&mut self, op: &OpF2I) {
         if op.src_type.bits() <= 32 && op.dst_type.bits() <= 32 {
-            self.encode_alu(
-                0x105,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x105, Some(&op.dst), None, Some(&op.src), None);
         } else {
-            self.encode_alu(
-                0x111,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x111, Some(&op.dst), None, Some(&op.src), None);
         }
 
         self.set_bit(72, op.dst_type.is_signed());
@@ -1290,21 +1238,9 @@ impl SM70Instr {
 
     fn encode_i2f(&mut self, op: &OpI2F) {
         if op.src_type.bits() <= 32 && op.dst_type.bits() <= 32 {
-            self.encode_alu(
-                0x106,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x106, Some(&op.dst), None, Some(&op.src), None);
         } else {
-            self.encode_alu(
-                0x112,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x112, Some(&op.dst), None, Some(&op.src), None);
         }
 
         self.set_field(60..62, 0_u8); // TODO: subop
@@ -1316,21 +1252,9 @@ impl SM70Instr {
 
     fn encode_frnd(&mut self, op: &OpFRnd) {
         if op.src_type.bits() <= 32 && op.dst_type.bits() <= 32 {
-            self.encode_alu(
-                0x107,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x107, Some(&op.dst), None, Some(&op.src), None);
         } else {
-            self.encode_alu(
-                0x113,
-                Some(op.dst),
-                ALUSrc::None,
-                ALUSrc::from_src(&op.src),
-                ALUSrc::None,
-            );
+            self.encode_alu(0x113, Some(&op.dst), None, Some(&op.src), None);
         }
 
         self.set_field(84..86, (op.src_type.bits() / 8).ilog2());
@@ -1340,23 +1264,17 @@ impl SM70Instr {
     }
 
     fn encode_mov(&mut self, op: &OpMov) {
-        self.encode_alu(
-            0x002,
-            Some(op.dst),
-            ALUSrc::None,
-            ALUSrc::from_src(&op.src),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x002, Some(&op.dst), None, Some(&op.src), None);
         self.set_field(72..76, op.quad_lanes);
     }
 
     fn encode_prmt(&mut self, op: &OpPrmt) {
         self.encode_alu(
             0x16,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.sel),
-            ALUSrc::from_src(&op.srcs[1]),
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.sel),
+            Some(&op.srcs[1]),
         );
 
         self.set_field(
@@ -1376,10 +1294,10 @@ impl SM70Instr {
     fn encode_sel(&mut self, op: &OpSel) {
         self.encode_alu(
             0x007,
-            Some(op.dst),
-            ALUSrc::from_src(&op.srcs[0]),
-            ALUSrc::from_src(&op.srcs[1]),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.srcs[0]),
+            Some(&op.srcs[1]),
+            None,
         );
 
         self.set_pred_src(87..90, 90, op.cond);
@@ -2223,13 +2141,7 @@ impl SM70Instr {
     }
 
     fn encode_warpsync(&mut self, op: &OpWarpSync) {
-        self.encode_alu(
-            0x148,
-            None,
-            ALUSrc::None,
-            ALUSrc::Imm32(op.mask),
-            ALUSrc::None,
-        );
+        self.encode_alu(0x148, None, None, Some(&Src::from(op.mask)), None);
         self.set_pred_src(87..90, 90, SrcRef::True.into());
     }
 
@@ -2302,10 +2214,10 @@ impl SM70Instr {
     fn encode_out(&mut self, op: &OpOut) {
         self.encode_alu(
             0x124,
-            Some(op.dst),
-            ALUSrc::from_src(&op.handle),
-            ALUSrc::from_src(&op.stream),
-            ALUSrc::None,
+            Some(&op.dst),
+            Some(&op.handle),
+            Some(&op.stream),
+            None,
         );
 
         self.set_field(
@@ -2321,10 +2233,10 @@ impl SM70Instr {
     fn encode_out_final(&mut self, op: &OpOutFinal) {
         self.encode_alu(
             0x124,
-            Some(Dst::None),
-            ALUSrc::from_src(&op.handle),
-            ALUSrc::from_src(&Src::new_zero()),
-            ALUSrc::None,
+            Some(&Dst::None),
+            Some(&op.handle),
+            Some(&Src::new_zero()),
+            None,
         );
     }
 

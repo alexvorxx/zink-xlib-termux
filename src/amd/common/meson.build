@@ -115,6 +115,8 @@ amd_common_files = files(
   'ac_parse_ib.c',
   'ac_perfcounter.c',
   'ac_perfcounter.h',
+  'ac_pm4.c',
+  'ac_pm4.h',
   'ac_vcn_av1_default.h',
 )
 

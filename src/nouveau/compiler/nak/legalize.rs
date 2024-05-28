@@ -725,23 +725,6 @@ fn legalize_sm70_instr(
                     src.src_ref = SrcRef::True;
                 }
             }
-
-            let [ref mut src0, ref mut src1, ref mut src2] = op.srcs;
-            if !src_is_reg(src0) && src_is_reg(src1) {
-                std::mem::swap(src0, src1);
-                for lop in &mut op.ops {
-                    *lop = LogicOp3::new_lut(&|x, y, z| lop.eval(y, x, z));
-                }
-            }
-            if !src_is_reg(src2) && src_is_reg(src1) {
-                std::mem::swap(src2, src1);
-                for lop in &mut op.ops {
-                    *lop = LogicOp3::new_lut(&|x, y, z| lop.eval(x, z, y));
-                }
-            }
-
-            copy_alu_src_if_not_reg(b, src0, SrcType::Pred);
-            copy_alu_src_if_not_reg(b, src2, SrcType::Pred);
         }
         Op::FSwzAdd(op) => {
             let [ref mut src0, ref mut src1] = op.srcs;

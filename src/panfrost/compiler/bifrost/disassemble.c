@@ -32,9 +32,11 @@
 
 #include "util/compiler.h"
 #include "util/macros.h"
+#include "bi_disasm.h"
 #include "bi_print_common.h"
 #include "bifrost.h"
 #include "disassemble.h"
+#include "../bifrost.h"
 
 // return bits (high, lo]
 static uint64_t

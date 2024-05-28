@@ -105,6 +105,22 @@ impl RegFile {
         }
     }
 
+    pub fn to_uniform(&self) -> Option<RegFile> {
+        match self {
+            RegFile::GPR | RegFile::UGPR => Some(RegFile::UGPR),
+            RegFile::Pred | RegFile::UPred => Some(RegFile::UPred),
+            RegFile::Carry | RegFile::Bar | RegFile::Mem => None,
+        }
+    }
+
+    pub fn to_warp(&self) -> RegFile {
+        match self {
+            RegFile::GPR | RegFile::UGPR => RegFile::GPR,
+            RegFile::Pred | RegFile::UPred => RegFile::Pred,
+            RegFile::Carry | RegFile::Bar | RegFile::Mem => *self,
+        }
+    }
+
     /// Returns true if the register file is general-purpose
     pub fn is_gpr(&self) -> bool {
         match self {
@@ -1412,9 +1428,27 @@ pub trait SrcsAsSlice {
     fn src_types(&self) -> SrcTypeList;
 }
 
+fn all_dsts_uniform(dsts: &[Dst]) -> bool {
+    let mut uniform = None;
+    for dst in dsts {
+        let dst_uniform = match dst {
+            Dst::None => continue,
+            Dst::Reg(r) => r.is_uniform(),
+            Dst::SSA(r) => r.is_uniform(),
+        };
+        assert!(uniform == None || uniform == Some(dst_uniform));
+        uniform = Some(dst_uniform);
+    }
+    uniform == Some(true)
+}
+
 pub trait DstsAsSlice {
     fn dsts_as_slice(&self) -> &[Dst];
     fn dsts_as_mut_slice(&mut self) -> &mut [Dst];
+
+    fn is_uniform(&self) -> bool {
+        all_dsts_uniform(self.dsts_as_slice())
+    }
 }
 
 fn fmt_dst_slice(f: &mut fmt::Formatter<'_>, dsts: &[Dst]) -> fmt::Result {
@@ -4928,6 +4962,10 @@ impl DstsAsSlice for OpPhiDsts {
     fn dsts_as_mut_slice(&mut self) -> &mut [Dst] {
         &mut self.dsts.b
     }
+
+    fn is_uniform(&self) -> bool {
+        false
+    }
 }
 
 impl DisplayOp for OpPhiDsts {
@@ -5587,6 +5625,16 @@ impl Instr {
             | Op::Annotate(_) => false,
             Op::BMov(op) => !op.clear,
             _ => true,
+        }
+    }
+
+    pub fn is_uniform(&self) -> bool {
+        self.op.is_uniform()
+    }
+
+    pub fn can_be_uniform(&self, sm: u8) -> bool {
+        match self.op {
+            _ => false,
         }
     }
 

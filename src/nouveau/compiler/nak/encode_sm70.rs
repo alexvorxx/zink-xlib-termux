@@ -149,11 +149,6 @@ impl SM70Instr {
         BitMutView::new(&mut self.inst).set_bit(bit, val);
     }
 
-    fn set_src_imm(&mut self, range: Range<usize>, u: &u32) {
-        assert!(range.len() == 32);
-        self.set_field(range, *u);
-    }
-
     fn set_reg(&mut self, range: Range<usize>, reg: RegRef) {
         assert!(range.len() == 8);
         assert!(reg.file() == RegFile::GPR);
@@ -323,80 +318,66 @@ impl SM70Instr {
         }
     }
 
-    fn set_alu_ureg(
-        &mut self,
-        range: Range<usize>,
-        abs_bit: usize,
-        neg_bit: usize,
-        swizzle_range: Range<usize>,
-        is_fp16_alu: bool,
-        has_mod: bool,
-        reg: &ALURegRef,
-    ) {
-        self.set_ureg(range, reg.reg);
+    fn encode_alu_src0(&mut self, src: &ALUSrc, is_fp16_alu: bool) {
+        let reg = match src {
+            ALUSrc::None => return,
+            ALUSrc::Reg(reg) => reg,
+            _ => panic!("Invalid ALU src"),
+        };
+        self.set_alu_reg(24..32, 73, 72, 74..76, is_fp16_alu, true, reg);
+    }
 
-        if has_mod {
-            self.set_bit(abs_bit, reg.abs);
-            self.set_bit(neg_bit, reg.neg);
-        } else {
-            assert!(!reg.abs && !reg.neg);
-        }
+    fn encode_alu_src2(
+        &mut self,
+        src: &ALUSrc,
+        is_fp16_alu: bool,
+        bit74_75_are_mod: bool,
+    ) {
+        let reg = match src {
+            ALUSrc::None => return,
+            ALUSrc::Reg(reg) => reg,
+            _ => panic!("Invalid ALU src"),
+        };
+        self.set_alu_reg(
+            64..72,
+            74,
+            75,
+            81..83,
+            is_fp16_alu,
+            bit74_75_are_mod,
+            reg,
+        );
+    }
+
+    fn encode_alu_reg(&mut self, reg: &ALURegRef, is_fp16_alu: bool) {
+        self.set_alu_reg(32..40, 62, 63, 60..62, is_fp16_alu, true, reg);
+    }
+
+    fn encode_alu_ureg(&mut self, reg: &ALURegRef, is_fp16_alu: bool) {
+        self.set_ureg(32..40, reg.reg);
+        self.set_bit(62, reg.abs);
+        self.set_bit(63, reg.neg);
 
         if is_fp16_alu {
-            self.set_swizzle(swizzle_range, reg.swizzle);
+            self.set_swizzle(60..62, reg.swizzle);
         } else {
             assert!(reg.swizzle == SrcSwizzle::None);
         }
     }
 
-    fn set_alu_cb(
-        &mut self,
-        range: Range<usize>,
-        abs_bit: usize,
-        neg_bit: usize,
-        swizzle_range: Range<usize>,
-        is_fp16_alu: bool,
-        has_mod: bool,
-        cb: &ALUCBufRef,
-    ) {
-        self.set_src_cb(range, &cb.cb);
-
-        if has_mod {
-            self.set_bit(abs_bit, cb.abs);
-            self.set_bit(neg_bit, cb.neg);
-        } else {
-            assert!(!cb.abs && !cb.neg);
-        }
-
-        if is_fp16_alu {
-            self.set_swizzle(swizzle_range, cb.swizzle);
-        } else {
-            assert!(cb.swizzle == SrcSwizzle::None);
-        }
+    fn encode_alu_imm(&mut self, imm: &u32) {
+        self.set_field(32..64, *imm);
     }
 
-    fn set_alu_reg_src(
-        &mut self,
-        range: Range<usize>,
-        abs_bit: usize,
-        neg_bit: usize,
-        swizzle_range: Range<usize>,
-        is_fp16_alu: bool,
-        has_mod: bool,
-        src: &ALUSrc,
-    ) {
-        match src {
-            ALUSrc::None => (),
-            ALUSrc::Reg(reg) => self.set_alu_reg(
-                range,
-                abs_bit,
-                neg_bit,
-                swizzle_range,
-                is_fp16_alu,
-                has_mod,
-                reg,
-            ),
-            _ => panic!("Invalid ALU src"),
+    fn encode_alu_cb(&mut self, cb: &ALUCBufRef, is_fp16_alu: bool) {
+        self.set_src_cb(38..59, &cb.cb);
+        self.set_bit(62, cb.abs);
+        self.set_bit(63, cb.neg);
+
+        if is_fp16_alu {
+            self.set_swizzle(60..62, cb.swizzle);
+        } else {
+            assert!(cb.swizzle == SrcSwizzle::None);
         }
     }
 
@@ -426,110 +407,45 @@ impl SM70Instr {
             || matches!(src2, ALUSrc::None);
         debug_assert!(bit74_75_are_mod || !src0.has_src_mod());
 
-        self.set_alu_reg_src(24..32, 73, 72, 74..76, is_fp16_alu, true, &src0);
+        self.encode_alu_src0(&src0, is_fp16_alu);
 
         let form = match &src2 {
             ALUSrc::None | ALUSrc::Reg(_) => {
-                self.set_alu_reg_src(
-                    64..72,
-                    74,
-                    75,
-                    81..83,
-                    is_fp16_alu,
-                    bit74_75_are_mod,
-                    &src2,
-                );
-
+                self.encode_alu_src2(&src2, is_fp16_alu, bit74_75_are_mod);
                 match &src1 {
                     ALUSrc::None => 1_u8, // form
                     ALUSrc::Reg(reg1) => {
-                        self.set_alu_reg(
-                            32..40,
-                            62,
-                            63,
-                            60..62,
-                            is_fp16_alu,
-                            true,
-                            reg1,
-                        );
+                        self.encode_alu_reg(reg1, is_fp16_alu);
                         1_u8 // form
                     }
                     ALUSrc::UReg(reg1) => {
-                        self.set_alu_ureg(
-                            32..40,
-                            62,
-                            63,
-                            60..62,
-                            is_fp16_alu,
-                            true,
-                            reg1,
-                        );
+                        self.encode_alu_ureg(reg1, is_fp16_alu);
                         6_u8 // form
                     }
-                    ALUSrc::Imm32(imm) => {
-                        self.set_src_imm(32..64, imm);
+                    ALUSrc::Imm32(imm1) => {
+                        self.encode_alu_imm(imm1);
                         4_u8 // form
                     }
-                    ALUSrc::CBuf(cb) => {
-                        self.set_alu_cb(
-                            38..59,
-                            62,
-                            63,
-                            60..62,
-                            is_fp16_alu,
-                            true,
-                            cb,
-                        );
+                    ALUSrc::CBuf(cb1) => {
+                        self.encode_alu_cb(cb1, is_fp16_alu);
                         5_u8 // form
                     }
                 }
             }
             ALUSrc::UReg(reg2) => {
-                self.set_alu_ureg(
-                    32..40,
-                    62,
-                    63,
-                    60..62,
-                    is_fp16_alu,
-                    true,
-                    reg2,
-                );
-                self.set_alu_reg_src(
-                    64..72,
-                    74,
-                    75,
-                    81..83,
-                    is_fp16_alu,
-                    bit74_75_are_mod,
-                    &src1,
-                );
+                self.encode_alu_ureg(reg2, is_fp16_alu);
+                self.encode_alu_src2(&src1, is_fp16_alu, bit74_75_are_mod);
                 7_u8 // form
             }
-            ALUSrc::Imm32(imm) => {
-                self.set_src_imm(32..64, imm);
-                self.set_alu_reg_src(
-                    64..72,
-                    74,
-                    75,
-                    81..83,
-                    is_fp16_alu,
-                    bit74_75_are_mod,
-                    &src1,
-                );
+            ALUSrc::Imm32(imm2) => {
+                self.encode_alu_imm(imm2);
+                self.encode_alu_src2(&src1, is_fp16_alu, bit74_75_are_mod);
                 2_u8 // form
             }
-            ALUSrc::CBuf(cb) => {
+            ALUSrc::CBuf(cb2) => {
                 // TODO set_src_cx
-                self.set_alu_cb(38..59, 62, 63, 60..62, is_fp16_alu, true, cb);
-                self.set_alu_reg_src(
-                    64..72,
-                    74,
-                    75,
-                    81..83,
-                    is_fp16_alu,
-                    bit74_75_are_mod,
-                    &src1,
-                );
+                self.encode_alu_cb(cb2, is_fp16_alu);
+                self.encode_alu_src2(&src1, is_fp16_alu, bit74_75_are_mod);
                 3_u8 // form
             }
         };

@@ -1299,6 +1299,7 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    if (pdev->info.gfx_level >= GFX12) {
       radeon_set_context_reg(cs, R_028A9C_VGT_REUSE_OFF, 0);
       radeon_set_context_reg(cs, R_028C58_PA_SC_SHADER_CONTROL, 0);
+      radeon_set_context_reg(cs, R_028000_DB_RENDER_CONTROL, 0);
    }
 
    radv_emit_compute(device, cs);

@@ -4049,7 +4049,9 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
       }
    }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
+   if (pdev->info.gfx_level < GFX12)
+      radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
+
    radeon_set_context_reg(cmd_buffer->cs, R_028008_DB_DEPTH_VIEW, ds->ac.db_depth_view);
    radeon_set_context_reg(cmd_buffer->cs, R_028010_DB_RENDER_OVERRIDE2, ds->db_render_override2);
    radeon_set_context_reg(cmd_buffer->cs, R_028ABC_DB_HTILE_SURFACE, db_htile_surface);
@@ -4123,11 +4125,6 @@ radv_emit_null_ds_state(struct radv_cmd_buffer *cmd_buffer)
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
-   unsigned db_render_control = 0;
-
-   if (gfx_level == GFX11) {
-      radv_gfx11_set_db_render_control(device, 1, &db_render_control);
-   }
 
    if (gfx_level == GFX9) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028038_DB_Z_INFO, 2);
@@ -4144,7 +4141,15 @@ radv_emit_null_ds_state(struct radv_cmd_buffer *cmd_buffer)
                S_028040_FORMAT(V_028040_Z_INVALID) | S_028040_NUM_SAMPLES(pdev->info.gfx_level >= GFX11 ? 3 : 0));
    radeon_emit(cmd_buffer->cs, S_028044_FORMAT(V_028044_STENCIL_INVALID));
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
+   if (pdev->info.gfx_level < GFX12) {
+      uint32_t db_render_control = 0;
+
+      if (gfx_level == GFX11)
+         radv_gfx11_set_db_render_control(device, 1, &db_render_control);
+
+      radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
+   }
+
    radeon_set_context_reg(cmd_buffer->cs, R_028010_DB_RENDER_OVERRIDE2,
                           S_028010_CENTROID_COMPUTATION_MODE(gfx_level >= GFX10_3));
 }

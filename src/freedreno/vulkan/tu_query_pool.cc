@@ -1102,10 +1102,11 @@ emit_begin_prim_generated_query(struct tu_cmd_buffer *cmdbuf,
 
 template <chip CHIP>
 VKAPI_ATTR void VKAPI_CALL
-tu_CmdBeginQuery(VkCommandBuffer commandBuffer,
-                 VkQueryPool queryPool,
-                 uint32_t query,
-                 VkQueryControlFlags flags)
+tu_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer,
+                           VkQueryPool queryPool,
+                           uint32_t query,
+                           VkQueryControlFlags flags,
+                           uint32_t index)
 {
    VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
@@ -1120,7 +1121,7 @@ tu_CmdBeginQuery(VkCommandBuffer commandBuffer,
       emit_begin_occlusion_query<CHIP>(cmdbuf, pool, query);
       break;
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
-      emit_begin_xfb_query<CHIP>(cmdbuf, pool, query, 0);
+      emit_begin_xfb_query<CHIP>(cmdbuf, pool, query, index);
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
       emit_begin_prim_generated_query<CHIP>(cmdbuf, pool, query);
@@ -1133,31 +1134,6 @@ tu_CmdBeginQuery(VkCommandBuffer commandBuffer,
       break;
    case VK_QUERY_TYPE_TIMESTAMP:
       unreachable("Unimplemented query type");
-   default:
-      assert(!"Invalid query type");
-   }
-}
-TU_GENX(tu_CmdBeginQuery);
-
-template <chip CHIP>
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer,
-                           VkQueryPool queryPool,
-                           uint32_t query,
-                           VkQueryControlFlags flags,
-                           uint32_t index)
-{
-   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
-   assert(query < pool->size);
-
-   switch (pool->type) {
-   case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
-      emit_begin_xfb_query<CHIP>(cmdbuf, pool, query, index);
-      break;
-   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
-      emit_begin_prim_generated_query<CHIP>(cmdbuf, pool, query);
-      break;
    default:
       assert(!"Invalid query type");
    }
@@ -1610,9 +1586,10 @@ handle_multiview_queries(struct tu_cmd_buffer *cmd,
 
 template <chip CHIP>
 VKAPI_ATTR void VKAPI_CALL
-tu_CmdEndQuery(VkCommandBuffer commandBuffer,
-               VkQueryPool queryPool,
-               uint32_t query)
+tu_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer,
+                         VkQueryPool queryPool,
+                         uint32_t query,
+                         uint32_t index)
 {
    VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
@@ -1623,7 +1600,8 @@ tu_CmdEndQuery(VkCommandBuffer commandBuffer,
       emit_end_occlusion_query<CHIP>(cmdbuf, pool, query);
       break;
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
-      emit_end_xfb_query<CHIP>(cmdbuf, pool, query, 0);
+      assert(index <= 4);
+      emit_end_xfb_query<CHIP>(cmdbuf, pool, query, index);
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
       emit_end_prim_generated_query<CHIP>(cmdbuf, pool, query);
@@ -1641,31 +1619,6 @@ tu_CmdEndQuery(VkCommandBuffer commandBuffer,
    }
 
    handle_multiview_queries(cmdbuf, pool, query);
-}
-TU_GENX(tu_CmdEndQuery);
-
-template <chip CHIP>
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer,
-                         VkQueryPool queryPool,
-                         uint32_t query,
-                         uint32_t index)
-{
-   VK_FROM_HANDLE(tu_cmd_buffer, cmdbuf, commandBuffer);
-   VK_FROM_HANDLE(tu_query_pool, pool, queryPool);
-   assert(query < pool->size);
-
-   switch (pool->type) {
-   case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
-      assert(index <= 4);
-      emit_end_xfb_query<CHIP>(cmdbuf, pool, query, index);
-      break;
-   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
-      emit_end_prim_generated_query<CHIP>(cmdbuf, pool, query);
-      break;
-   default:
-      assert(!"Invalid query type");
-   }
 }
 TU_GENX(tu_CmdEndQueryIndexedEXT);
 

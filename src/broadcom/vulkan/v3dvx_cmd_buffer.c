@@ -2747,7 +2747,7 @@ v3dX(cmd_buffer_emit_index_buffer)(struct v3dv_cmd_buffer *cmd_buffer)
       assert(ibuffer->mem->bo->size >= offset);
       cl_emit(&job->bcl, INDEX_BUFFER_SETUP, ib) {
          ib.address = v3dv_cl_address(ibuffer->mem->bo, offset);
-         ib.size = ibuffer->mem->bo->size - offset;
+         ib.size = cmd_buffer->state.index_buffer.size;
       }
    }
 

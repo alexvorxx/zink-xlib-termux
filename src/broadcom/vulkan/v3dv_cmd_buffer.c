@@ -3497,22 +3497,32 @@ v3dv_CmdBindVertexBuffers2(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-v3dv_CmdBindIndexBuffer(VkCommandBuffer commandBuffer,
-                        VkBuffer buffer,
-                        VkDeviceSize offset,
-                        VkIndexType indexType)
+v3dv_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
+                            VkBuffer buffer,
+                            VkDeviceSize offset,
+                            VkDeviceSize size,
+                            VkIndexType indexType)
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
+
+   assert(buffer != VK_NULL_HANDLE);
+
+   if (size == VK_WHOLE_SIZE) {
+      assert(v3dv_buffer_from_handle(buffer)->size >= offset);
+      size = v3dv_buffer_from_handle(buffer)->size - offset;
+   }
 
    const uint32_t index_size = vk_index_type_to_bytes(indexType);
    if (buffer == cmd_buffer->state.index_buffer.buffer &&
        offset == cmd_buffer->state.index_buffer.offset &&
+       size == cmd_buffer->state.index_buffer.size &&
        index_size == cmd_buffer->state.index_buffer.index_size) {
       return;
    }
 
    cmd_buffer->state.index_buffer.buffer = buffer;
    cmd_buffer->state.index_buffer.offset = offset;
+   cmd_buffer->state.index_buffer.size = size;
    cmd_buffer->state.index_buffer.index_size = index_size;
    cmd_buffer->state.dirty |= V3DV_CMD_DIRTY_INDEX_BUFFER;
 }

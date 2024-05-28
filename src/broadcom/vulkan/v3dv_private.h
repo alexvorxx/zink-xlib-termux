@@ -1499,6 +1499,7 @@ struct v3dv_cmd_buffer_state {
    struct {
       VkBuffer buffer;
       VkDeviceSize offset;
+      VkDeviceSize size;
       uint8_t index_size;
    } index_buffer;
 

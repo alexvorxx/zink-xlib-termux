@@ -930,7 +930,7 @@ get_device_properties(const struct v3dv_physical_device *device,
       .maxVertexInputAttributes                 = MAX_VERTEX_ATTRIBS,
       .maxVertexInputBindings                   = MAX_VBS,
       .maxVertexInputAttributeOffset            = 0xffffffff,
-      .maxVertexInputBindingStride              = 0xffffffff,
+      .maxVertexInputBindingStride              = MESA_VK_MAX_VERTEX_BINDING_STRIDE,
       .maxVertexOutputComponents                = max_varying_components,
 
       /* Tessellation limits */

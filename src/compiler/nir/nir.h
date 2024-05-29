@@ -4025,6 +4025,12 @@ typedef struct nir_shader_compiler_options {
    /* Backend supports fused comapre against zero and csel */
    bool has_fused_comp_and_csel;
 
+   /* Backend supports fneo, fequ, fltu, fgeu. */
+   bool has_fneo_fcmpu;
+
+   /* Backend supports ford and funord. */
+   bool has_ford_funord;
+
    /** Backend supports fsub, if not set fsub will automatically be lowered to
     * fadd(x, fneg(y)). If true, driver should call nir_opt_algebraic_late(). */
    bool has_fsub;

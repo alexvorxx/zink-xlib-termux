@@ -1005,27 +1005,7 @@ emit_vopc_instruction(isel_context* ctx, nir_alu_instr* instr, aco_opcode op, Te
    if (src1.type() == RegType::sgpr) {
       if (src0.type() == RegType::vgpr) {
          /* to swap the operands, we might also have to change the opcode */
-         switch (op) {
-         case aco_opcode::v_cmp_lt_f16: op = aco_opcode::v_cmp_gt_f16; break;
-         case aco_opcode::v_cmp_ge_f16: op = aco_opcode::v_cmp_le_f16; break;
-         case aco_opcode::v_cmp_lt_i16: op = aco_opcode::v_cmp_gt_i16; break;
-         case aco_opcode::v_cmp_ge_i16: op = aco_opcode::v_cmp_le_i16; break;
-         case aco_opcode::v_cmp_lt_u16: op = aco_opcode::v_cmp_gt_u16; break;
-         case aco_opcode::v_cmp_ge_u16: op = aco_opcode::v_cmp_le_u16; break;
-         case aco_opcode::v_cmp_lt_f32: op = aco_opcode::v_cmp_gt_f32; break;
-         case aco_opcode::v_cmp_ge_f32: op = aco_opcode::v_cmp_le_f32; break;
-         case aco_opcode::v_cmp_lt_i32: op = aco_opcode::v_cmp_gt_i32; break;
-         case aco_opcode::v_cmp_ge_i32: op = aco_opcode::v_cmp_le_i32; break;
-         case aco_opcode::v_cmp_lt_u32: op = aco_opcode::v_cmp_gt_u32; break;
-         case aco_opcode::v_cmp_ge_u32: op = aco_opcode::v_cmp_le_u32; break;
-         case aco_opcode::v_cmp_lt_f64: op = aco_opcode::v_cmp_gt_f64; break;
-         case aco_opcode::v_cmp_ge_f64: op = aco_opcode::v_cmp_le_f64; break;
-         case aco_opcode::v_cmp_lt_i64: op = aco_opcode::v_cmp_gt_i64; break;
-         case aco_opcode::v_cmp_ge_i64: op = aco_opcode::v_cmp_le_i64; break;
-         case aco_opcode::v_cmp_lt_u64: op = aco_opcode::v_cmp_gt_u64; break;
-         case aco_opcode::v_cmp_ge_u64: op = aco_opcode::v_cmp_le_u64; break;
-         default: /* eq and ne are commutative */ break;
-         }
+         op = get_swapped(op);
          Temp t = src0;
          src0 = src1;
          src1 = t;
@@ -3693,6 +3673,16 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                       aco_opcode::v_cmp_ge_f64);
       break;
    }
+   case nir_op_fltu: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_nge_f16, aco_opcode::v_cmp_nge_f32,
+                      aco_opcode::v_cmp_nge_f64);
+      break;
+   }
+   case nir_op_fgeu: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_nlt_f16, aco_opcode::v_cmp_nlt_f32,
+                      aco_opcode::v_cmp_nlt_f64);
+      break;
+   }
    case nir_op_feq: {
       emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_eq_f16, aco_opcode::v_cmp_eq_f32,
                       aco_opcode::v_cmp_eq_f64);
@@ -3701,6 +3691,26 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    case nir_op_fneu: {
       emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_neq_f16, aco_opcode::v_cmp_neq_f32,
                       aco_opcode::v_cmp_neq_f64);
+      break;
+   }
+   case nir_op_fequ: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_nlg_f16, aco_opcode::v_cmp_nlg_f32,
+                      aco_opcode::v_cmp_nlg_f64);
+      break;
+   }
+   case nir_op_fneo: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_lg_f16, aco_opcode::v_cmp_lg_f32,
+                      aco_opcode::v_cmp_lg_f64);
+      break;
+   }
+   case nir_op_funord: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_u_f16, aco_opcode::v_cmp_u_f32,
+                      aco_opcode::v_cmp_u_f64);
+      break;
+   }
+   case nir_op_ford: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_o_f16, aco_opcode::v_cmp_o_f32,
+                      aco_opcode::v_cmp_o_f64);
       break;
    }
    case nir_op_ilt: {

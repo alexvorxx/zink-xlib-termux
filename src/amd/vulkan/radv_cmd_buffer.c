@@ -10258,15 +10258,15 @@ radv_emit_streamout_enable_state(struct radv_cmd_buffer *cmd_buffer)
    const bool streamout_enabled = radv_is_streamout_enabled(cmd_buffer);
    uint32_t enabled_stream_buffers_mask = 0;
 
+   assert(!pdev->use_ngg_streamout);
+
    if (streamout_enabled && cmd_buffer->state.last_vgt_shader) {
       const struct radv_shader_info *info = &cmd_buffer->state.last_vgt_shader->info;
 
       enabled_stream_buffers_mask = info->so.enabled_stream_buffers_mask;
 
-      if (!pdev->use_ngg_streamout) {
-         u_foreach_bit (i, so->enabled_mask) {
-            radeon_set_context_reg(cmd_buffer->cs, R_028AD4_VGT_STRMOUT_VTX_STRIDE_0 + 16 * i, info->so.strides[i]);
-         }
+      u_foreach_bit (i, so->enabled_mask) {
+         radeon_set_context_reg(cmd_buffer->cs, R_028AD4_VGT_STRMOUT_VTX_STRIDE_0 + 16 * i, info->so.strides[i]);
       }
    }
 
@@ -12870,7 +12870,8 @@ radv_CmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuffer, uint32_t firstC
 
    radv_set_streamout_enable(cmd_buffer, true);
 
-   cmd_buffer->state.dirty |= RADV_CMD_DIRTY_STREAMOUT_ENABLE;
+   if (!pdev->use_ngg_streamout)
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_STREAMOUT_ENABLE;
 }
 
 VKAPI_ATTR void VKAPI_CALL

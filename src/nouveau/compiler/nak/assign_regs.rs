@@ -629,8 +629,8 @@ fn instr_alloc_scalar_dsts_file(
 ) {
     for dst in instr.dsts_mut() {
         if let Dst::SSA(ssa) = dst {
-            assert!(ssa.comps() == 1);
             if ssa.file() == ra.file() {
+                assert!(ssa.comps() == 1);
                 let reg = ra.alloc_scalar(ip, sum, ssa[0]);
                 *dst = RegRef::new(ra.file(), reg, 1).into();
             }

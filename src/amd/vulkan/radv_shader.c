@@ -1581,9 +1581,12 @@ radv_precompute_registers_hw_ngg(struct radv_device *device, const struct ac_sha
       S_028B90_EN_MAX_VERT_OUT_PER_GS_INSTANCE(info->ngg_info.max_vert_out_per_gs_instance);
 
    if (pdev->info.gfx_level >= GFX11) {
+      /* This should be <= 252 for performance on Gfx11. 256 works too but is slower. */
+      const uint32_t max_prim_grp_size = pdev->info.gfx_level >= GFX12 ? 256 : 252;
+
       info->regs.ngg.ge_cntl = S_03096C_PRIMS_PER_SUBGRP(info->ngg_info.max_gsprims) |
                                S_03096C_VERTS_PER_SUBGRP(info->ngg_info.hw_max_esverts) |
-                               S_03096C_PRIM_GRP_SIZE_GFX11(252) |
+                               S_03096C_PRIM_GRP_SIZE_GFX11(max_prim_grp_size) |
                                S_03096C_DIS_PG_SIZE_ADJUST_FOR_STRIP(pdev->info.gfx_level >= GFX12);
    } else {
       info->regs.ngg.ge_cntl = S_03096C_PRIM_GRP_SIZE_GFX10(info->ngg_info.max_gsprims) |

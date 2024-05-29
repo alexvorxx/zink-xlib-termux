@@ -1177,8 +1177,12 @@ dri2_display_destroy(_EGLDisplay *disp)
       u_gralloc_destroy(&dri2_dpy->gralloc);
 #endif
       break;
+   case _EGL_PLATFORM_SURFACELESS:
+      break;
+   case _EGL_PLATFORM_DEVICE:
+      break;
    default:
-      /* TODO: add teardown for other platforms */
+      unreachable("Platform teardown is not properly hooked.");
       break;
    }
 

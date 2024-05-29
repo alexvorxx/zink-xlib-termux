@@ -1947,6 +1947,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       cmdbuf->state.compute.pipeline;
    struct panfrost_ptr job =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
+   util_dynarray_append(&batch->jobs, void *, job.cpu);
 
    struct panvk_compute_sysvals *sysvals = &cmdbuf->state.compute.sysvals;
    sysvals->num_work_groups.x = x;

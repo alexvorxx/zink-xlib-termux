@@ -6068,7 +6068,11 @@ static MIMG_instruction*
 emit_mimg(Builder& bld, aco_opcode op, Temp dst, Temp rsrc, Operand samp, std::vector<Temp> coords,
           Operand vdata = Operand(v1))
 {
+   bool is_vsample = !samp.isUndefined() || op == aco_opcode::image_msaa_load;
+
    size_t nsa_size = bld.program->dev.max_nsa_vgprs;
+   if (!is_vsample && bld.program->gfx_level >= GFX12)
+      nsa_size++; /* VIMAGE can encode one more VADDR */
    nsa_size = bld.program->gfx_level >= GFX11 || coords.size() <= nsa_size ? nsa_size : 0;
 
    const bool strict_wqm = coords[0].regClass().is_linear_vgpr();
@@ -8295,18 +8299,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       emit_split_vector(ctx, dst, 3);
       break;
    }
-   case nir_intrinsic_load_ray_launch_size: {
-      Temp dst = get_ssa_temp(ctx, &instr->def);
-      bld.copy(Definition(dst), Operand(get_arg(ctx, ctx->args->rt.launch_size)));
-      emit_split_vector(ctx, dst, 3);
-      break;
-   }
-   case nir_intrinsic_load_ray_launch_id: {
-      Temp dst = get_ssa_temp(ctx, &instr->def);
-      bld.copy(Definition(dst), Operand(get_arg(ctx, ctx->args->rt.launch_id)));
-      emit_split_vector(ctx, dst, 3);
-      break;
-   }
    case nir_intrinsic_load_local_invocation_id: {
       Temp dst = get_ssa_temp(ctx, &instr->def);
       if (ctx->options->gfx_level >= GFX11) {
@@ -8341,11 +8333,8 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_load_workgroup_id: {
       Temp dst = get_ssa_temp(ctx, &instr->def);
       if (ctx->stage.hw == AC_HW_COMPUTE_SHADER) {
-         const struct ac_arg* ids = ctx->args->workgroup_ids;
-         bld.pseudo(aco_opcode::p_create_vector, Definition(dst),
-                    ids[0].used ? Operand(get_arg(ctx, ids[0])) : Operand::zero(),
-                    ids[1].used ? Operand(get_arg(ctx, ids[1])) : Operand::zero(),
-                    ids[2].used ? Operand(get_arg(ctx, ids[2])) : Operand::zero());
+         bld.pseudo(aco_opcode::p_create_vector, Definition(dst), ctx->workgroup_id[0],
+                    ctx->workgroup_id[1], ctx->workgroup_id[2]);
          emit_split_vector(ctx, dst, 3);
       } else {
          isel_err(&instr->instr, "Unsupported stage for load_workgroup_id");
@@ -8977,6 +8966,15 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_shader_clock: {
       Temp dst = get_ssa_temp(ctx, &instr->def);
       if (nir_intrinsic_memory_scope(instr) == SCOPE_SUBGROUP &&
+          ctx->options->gfx_level >= GFX12) {
+         Temp hi0 = bld.tmp(s1);
+         Temp hi1 = bld.tmp(s1);
+         Temp lo = bld.tmp(s1);
+         bld.pseudo(aco_opcode::p_shader_cycles_hi_lo_hi, Definition(hi0), Definition(lo), Definition(hi1));
+         Temp hi_eq = bld.sopc(aco_opcode::s_cmp_eq_u32, bld.def(s1, scc), hi0, hi1);
+         lo = bld.sop2(aco_opcode::s_cselect_b32, bld.def(s1), lo, Operand::zero(), bld.scc(hi_eq));
+         bld.pseudo(aco_opcode::p_create_vector, Definition(dst), lo, hi1);
+      } else if (nir_intrinsic_memory_scope(instr) == SCOPE_SUBGROUP &&
           ctx->options->gfx_level >= GFX10_3) {
          /* "((size - 1) << 11) | register" (SHADER_CYCLES is encoded as register 29) */
          Temp clock = bld.sopk(aco_opcode::s_getreg_b32, bld.def(s1), ((20 - 1) << 11) | 29);
@@ -9105,10 +9103,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    }
    case nir_intrinsic_bvh64_intersect_ray_amd: visit_bvh64_intersect_ray_amd(ctx, instr); break;
-   case nir_intrinsic_load_rt_dynamic_callable_stack_base_amd:
-      bld.copy(Definition(get_ssa_temp(ctx, &instr->def)),
-               get_arg(ctx, ctx->args->rt.dynamic_callable_stack_base));
-      break;
    case nir_intrinsic_load_resume_shader_address_amd: {
       bld.pseudo(aco_opcode::p_resume_shader_address, Definition(get_ssa_temp(ctx, &instr->def)),
                  bld.def(s1, scc), Operand::c32(nir_intrinsic_call_idx(instr)));
@@ -11139,6 +11133,9 @@ add_startpgm(struct isel_context* ctx)
          def_count++;
    }
 
+   if (ctx->stage.hw == AC_HW_COMPUTE_SHADER && ctx->program->gfx_level >= GFX12)
+      def_count += 2;
+
    Instruction* startpgm = create_instruction(aco_opcode::p_startpgm, Format::PSEUDO, 0, def_count);
    ctx->block->instructions.emplace_back(startpgm);
    for (unsigned i = 0, arg = 0; i < ctx->args->arg_count; i++) {
@@ -11169,6 +11166,32 @@ add_startpgm(struct isel_context* ctx)
             ctx->program->args_pending_vmem.push_back(def);
          }
       }
+   }
+
+   if (ctx->program->gfx_level >= GFX12 && ctx->stage.hw == AC_HW_COMPUTE_SHADER) {
+      Temp idx = ctx->program->allocateTmp(s1);
+      Temp idy = ctx->program->allocateTmp(s1);
+      startpgm->definitions[def_count - 2] = Definition(idx);
+      startpgm->definitions[def_count - 2].setFixed(PhysReg(108 + 9 /*ttmp9*/));
+      startpgm->definitions[def_count - 1] = Definition(idy);
+      startpgm->definitions[def_count - 1].setFixed(PhysReg(108 + 7 /*ttmp7*/));
+      ctx->workgroup_id[0] = Operand(idx);
+      if (ctx->args->workgroup_ids[2].used) {
+         Builder bld(ctx->program, ctx->block);
+         ctx->workgroup_id[1] =
+            bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), idy, Operand::zero(),
+                       Operand::c32(16u), Operand::zero());
+         ctx->workgroup_id[2] =
+            bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), idy, Operand::c32(1u),
+                       Operand::c32(16u), Operand::zero());
+      } else {
+         ctx->workgroup_id[1] = Operand(idy);
+         ctx->workgroup_id[2] = Operand::zero();
+      }
+   } else if (ctx->stage.hw == AC_HW_COMPUTE_SHADER) {
+      const struct ac_arg* ids = ctx->args->workgroup_ids;
+      for (unsigned i = 0; i < 3; i++)
+         ctx->workgroup_id[i] = ids[i].used ? Operand(get_arg(ctx, ids[i])) : Operand::zero();
    }
 
    /* epilog has no scratch */
@@ -12280,10 +12303,18 @@ select_rt_prolog(Program* program, ac_shader_config* config,
    PhysReg in_sbt_desc = get_arg_reg(in_args, in_args->rt.sbt_descriptors);
    PhysReg in_launch_size_addr = get_arg_reg(in_args, in_args->rt.launch_size_addr);
    PhysReg in_stack_base = get_arg_reg(in_args, in_args->rt.dynamic_callable_stack_base);
-   PhysReg in_wg_id_x = get_arg_reg(in_args, in_args->workgroup_ids[0]);
-   PhysReg in_wg_id_y = get_arg_reg(in_args, in_args->workgroup_ids[1]);
-   PhysReg in_wg_id_z = get_arg_reg(in_args, in_args->workgroup_ids[2]);
+   PhysReg in_wg_id_x;
+   PhysReg in_wg_id_y;
+   PhysReg in_wg_id_z;
    PhysReg in_scratch_offset;
+   if (options->gfx_level < GFX12) {
+      in_wg_id_x = get_arg_reg(in_args, in_args->workgroup_ids[0]);
+      in_wg_id_y = get_arg_reg(in_args, in_args->workgroup_ids[1]);
+      in_wg_id_z = get_arg_reg(in_args, in_args->workgroup_ids[2]);
+   } else {
+      in_wg_id_x = PhysReg(108 + 9 /*ttmp9*/);
+      in_wg_id_y = PhysReg(108 + 7 /*ttmp7*/);
+   }
    if (options->gfx_level < GFX11)
       in_scratch_offset = get_arg_reg(in_args, in_args->scratch_offset);
    PhysReg in_local_ids[2] = {
@@ -12306,12 +12337,12 @@ select_rt_prolog(Program* program, ac_shader_config* config,
     * Shader Record Ptr:           v[6-7]
     */
    PhysReg out_uniform_shader_addr = get_arg_reg(out_args, out_args->rt.uniform_shader_addr);
-   PhysReg out_launch_size_x = get_arg_reg(out_args, out_args->rt.launch_size);
-   PhysReg out_launch_size_y = out_launch_size_x.advance(4);
-   PhysReg out_launch_size_z = out_launch_size_y.advance(4);
+   PhysReg out_launch_size_x = get_arg_reg(out_args, out_args->rt.launch_sizes[0]);
+   PhysReg out_launch_size_y = get_arg_reg(out_args, out_args->rt.launch_sizes[1]);
+   PhysReg out_launch_size_z = get_arg_reg(out_args, out_args->rt.launch_sizes[2]);
    PhysReg out_launch_ids[3];
    for (unsigned i = 0; i < 3; i++)
-      out_launch_ids[i] = get_arg_reg(out_args, out_args->rt.launch_id).advance(i * 4);
+      out_launch_ids[i] = get_arg_reg(out_args, out_args->rt.launch_ids[i]);
    PhysReg out_stack_ptr = get_arg_reg(out_args, out_args->rt.dynamic_callable_stack_base);
    PhysReg out_record_ptr = get_arg_reg(out_args, out_args->rt.shader_record);
 
@@ -12321,6 +12352,8 @@ select_rt_prolog(Program* program, ac_shader_config* config,
    num_sgprs += 2;
    PhysReg tmp_ring_offsets = PhysReg{num_sgprs};
    num_sgprs += 2;
+   PhysReg tmp_wg_id_x_times_size = PhysReg{num_sgprs};
+   num_sgprs++;
 
    PhysReg tmp_invocation_idx = PhysReg{256 + num_vgprs++};
 
@@ -12370,9 +12403,18 @@ select_rt_prolog(Program* program, ac_shader_config* config,
                Operand(in_local_ids[0], v1));
    }
    /* Do this backwards to reduce some RAW hazards on GFX11+ */
-   bld.vop1(aco_opcode::v_mov_b32, Definition(out_launch_ids[2], v1), Operand(in_wg_id_z, s1));
-   bld.vop3(aco_opcode::v_mad_u32_u24, Definition(out_launch_ids[1], v1), Operand(in_wg_id_y, s1),
-            Operand::c32(program->workgroup_size == 32 ? 4 : 8), Operand(in_local_ids[1], v1));
+   if (options->gfx_level >= GFX12) {
+      bld.vop2_e64(aco_opcode::v_lshrrev_b32, Definition(out_launch_ids[2], v1), Operand::c32(16),
+                   Operand(in_wg_id_y, s1));
+      bld.vop3(aco_opcode::v_mad_u32_u16, Definition(out_launch_ids[1], v1),
+               Operand(in_wg_id_y, s1), Operand::c32(program->workgroup_size == 32 ? 4 : 8),
+               Operand(in_local_ids[1], v1));
+   } else {
+      bld.vop1(aco_opcode::v_mov_b32, Definition(out_launch_ids[2], v1), Operand(in_wg_id_z, s1));
+      bld.vop3(aco_opcode::v_mad_u32_u24, Definition(out_launch_ids[1], v1),
+               Operand(in_wg_id_y, s1), Operand::c32(program->workgroup_size == 32 ? 4 : 8),
+               Operand(in_local_ids[1], v1));
+   }
    bld.vop3(aco_opcode::v_mad_u32_u24, Definition(out_launch_ids[0], v1), Operand(in_wg_id_x, s1),
             Operand::c32(8), Operand(in_local_ids[0], v1));
 
@@ -12398,14 +12440,14 @@ select_rt_prolog(Program* program, ac_shader_config* config,
 
    /* For 1D dispatches converted into 2D ones, we need to fix up the launch IDs.
     * Calculating the 1D launch ID is: id = local_invocation_index + (wg_id.x * wg_size).
-    * in_wg_id_x now holds wg_id.x * wg_size.
+    * tmp_wg_id_x_times_size now holds wg_id.x * wg_size.
     */
-   bld.sop2(aco_opcode::s_lshl_b32, Definition(in_wg_id_x, s1), Definition(scc, s1),
+   bld.sop2(aco_opcode::s_lshl_b32, Definition(tmp_wg_id_x_times_size, s1), Definition(scc, s1),
             Operand(in_wg_id_x, s1), Operand::c32(program->workgroup_size == 32 ? 5 : 6));
 
    /* Calculate and add local_invocation_index */
    bld.vop3(aco_opcode::v_mbcnt_lo_u32_b32, Definition(tmp_invocation_idx, v1), Operand::c32(-1u),
-            Operand(in_wg_id_x, s1));
+            Operand(tmp_wg_id_x_times_size, s1));
    if (program->wave_size == 64) {
       if (program->gfx_level <= GFX7)
          bld.vop2(aco_opcode::v_mbcnt_hi_u32_b32, Definition(tmp_invocation_idx, v1),

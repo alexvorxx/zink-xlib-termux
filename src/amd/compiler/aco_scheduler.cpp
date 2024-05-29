@@ -596,6 +596,7 @@ perform_hazard_query(hazard_query* query, Instruction* instr, bool upwards)
    /* don't move non-reorderable instructions */
    if (instr->opcode == aco_opcode::s_memtime || instr->opcode == aco_opcode::s_memrealtime ||
        instr->opcode == aco_opcode::s_setprio || instr->opcode == aco_opcode::s_getreg_b32 ||
+       instr->opcode == aco_opcode::p_shader_cycles_hi_lo_hi ||
        instr->opcode == aco_opcode::p_init_scratch ||
        instr->opcode == aco_opcode::p_jump_to_epilog ||
        instr->opcode == aco_opcode::s_sendmsg_rtn_b32 ||

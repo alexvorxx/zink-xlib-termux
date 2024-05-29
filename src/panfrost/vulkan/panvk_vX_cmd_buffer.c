@@ -166,8 +166,8 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
          struct panfrost_ptr ptr =
             pan_pool_alloc_desc(&cmdbuf->desc_pool.base, JOB_HEADER);
          util_dynarray_append(&batch->jobs, void *, ptr.cpu);
-         pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_NULL,
-                        false, false, 0, 0, &ptr, false);
+         pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_NULL, false, false, 0, 0,
+                        &ptr, false);
          list_addtail(&batch->node, &cmdbuf->batches);
       }
       cmdbuf->cur_batch = NULL;
@@ -181,13 +181,12 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    list_addtail(&batch->node, &cmdbuf->batches);
 
    if (batch->jc.first_tiler) {
-      struct panfrost_ptr preload_jobs[2];
-      unsigned num_preload_jobs = GENX(pan_preload_fb)(
-         &dev->meta.blitter.cache, &cmdbuf->desc_pool.base, &batch->jc,
-         &cmdbuf->state.gfx.fb.info, batch->tls.gpu, batch->tiler.ctx_desc.gpu,
-         preload_jobs);
-      for (unsigned i = 0; i < num_preload_jobs; i++)
-         util_dynarray_append(&batch->jobs, void *, preload_jobs[i].cpu);
+      ASSERTED unsigned num_preload_jobs =
+         GENX(pan_preload_fb)(&dev->meta.blitter.cache, &cmdbuf->desc_pool.base,
+                              &batch->jc, &cmdbuf->state.gfx.fb.info,
+                              batch->tls.gpu, batch->tiler.ctx_desc.gpu, NULL);
+
+      assert(num_preload_jobs == 0);
    }
 
    if (batch->tlsinfo.tls.size) {
@@ -820,8 +819,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
 }
 
 void
-panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
-                                      unsigned width, unsigned height)
+panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
@@ -844,8 +842,8 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
 
    pan_pack(&batch->tiler.ctx_templ, TILER_CONTEXT, cfg) {
       cfg.hierarchy_mask = 0x28;
-      cfg.fb_width = width;
-      cfg.fb_height = height;
+      cfg.fb_width = fbinfo->width;
+      cfg.fb_height = fbinfo->height;
       cfg.heap = batch->tiler.heap_desc.gpu;
       cfg.sample_pattern = pan_sample_pattern(fbinfo->nr_samples);
    }
@@ -855,14 +853,6 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
    memcpy(batch->tiler.ctx_desc.cpu, &batch->tiler.ctx_templ,
           sizeof(batch->tiler.ctx_templ));
    batch->tiler.ctx.bifrost = batch->tiler.ctx_desc.gpu;
-}
-
-void
-panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf)
-{
-   const struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
-
-   panvk_per_arch(cmd_get_tiler_context)(cmdbuf, fbinfo->width, fbinfo->height);
 }
 
 static void
@@ -1555,13 +1545,12 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
       MAX3(pipeline->vs.info.tls_size, pipeline->fs.info.tls_size,
            batch->tlsinfo.tls.size);
 
-   unsigned vjob_id =
-      pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_VERTEX,
-                     false, false, 0, 0, &draw->jobs.vertex, false);
+   unsigned vjob_id = pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_VERTEX, false,
+                                     false, 0, 0, &draw->jobs.vertex, false);
 
    if (!rs->rasterizer_discard_enable && draw->position) {
-      pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_TILER,
-                     false, false, vjob_id, 0, &draw->jobs.tiler, false);
+      pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_TILER, false, false, vjob_id, 0,
+                     &draw->jobs.tiler, false);
    }
 
    /* Clear the dirty flags all at once */
@@ -2008,8 +1997,8 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       cfg.samplers = dispatch.samplers;
    }
 
-   pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_COMPUTE,
-                  false, false, 0, 0, &job, false);
+   pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0, &job,
+                  false);
 
    batch->tlsinfo.tls.size = pipeline->cs.info.tls_size;
    batch->tlsinfo.wls.size = pipeline->cs.info.wls_size;

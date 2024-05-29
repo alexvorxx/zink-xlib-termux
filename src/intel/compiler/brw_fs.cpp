@@ -2464,6 +2464,8 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "btd_spawn_logical";
    case SHADER_OPCODE_BTD_RETIRE_LOGICAL:
       return "btd_retire_logical";
+   case SHADER_OPCODE_READ_MASK_REG:
+      return "read_mask_reg";
    case SHADER_OPCODE_READ_SR_REG:
       return "read_sr_reg";
    }
@@ -4495,40 +4497,6 @@ brw_compile_bs(const struct brw_compiler *compiler,
    g.add_resume_sbt(num_resume_shaders, resume_sbt);
 
    return g.get_assembly();
-}
-
-/**
- * Test the dispatch mask packing assumptions of
- * brw_stage_has_packed_dispatch().  Call this from e.g. the top of
- * fs_visitor::emit_nir_code() to cause a GPU hang if any shader invocation is
- * executed with an unexpected dispatch mask.
- */
-static UNUSED void
-brw_fs_test_dispatch_packing(const fs_builder &bld)
-{
-   const fs_visitor *shader = bld.shader;
-   const gl_shader_stage stage = shader->stage;
-   const bool uses_vmask =
-      stage == MESA_SHADER_FRAGMENT &&
-      brw_wm_prog_data(shader->prog_data)->uses_vmask;
-
-   if (brw_stage_has_packed_dispatch(shader->devinfo, stage,
-                                     shader->max_polygons,
-                                     shader->prog_data)) {
-      const fs_builder ubld = bld.exec_all().group(1, 0);
-      const fs_reg tmp = component(bld.vgrf(BRW_TYPE_UD), 0);
-      const fs_reg mask = uses_vmask ? brw_vmask_reg() : brw_dmask_reg();
-
-      ubld.ADD(tmp, mask, brw_imm_ud(1));
-      ubld.AND(tmp, mask, tmp);
-
-      /* This will loop forever if the dispatch mask doesn't have the expected
-       * form '2^n-1', in which case tmp will be non-zero.
-       */
-      bld.emit(BRW_OPCODE_DO);
-      bld.CMP(bld.null_reg_ud(), tmp, brw_imm_ud(0), BRW_CONDITIONAL_NZ);
-      set_predicate(BRW_PREDICATE_NORMAL, bld.emit(BRW_OPCODE_WHILE));
-   }
 }
 
 unsigned

@@ -1299,16 +1299,8 @@ pipeline_populate_v3d_vs_key(struct v3d_vs_key *key,
 
    struct v3dv_pipeline *pipeline = p_stage->pipeline;
 
-   /* Vulkan specifies a point size per vertex, so true for if the prim are
-    * points, like on ES2)
-    */
-   const VkPipelineInputAssemblyStateCreateInfo *ia_info =
-      pCreateInfo->pInputAssemblyState;
-   uint8_t topology = vk_to_mesa_prim[ia_info->topology];
-
-   /* FIXME: PRIM_POINTS is not enough, in gallium the full check is
-    * MESA_PRIM_POINTS && v3d->rasterizer->base.point_size_per_vertex */
-   key->per_vertex_point_size = (topology == MESA_PRIM_POINTS);
+   key->per_vertex_point_size =
+      p_stage->nir->info.outputs_written & (1ull << VARYING_SLOT_PSIZ);
 
    key->is_coord = broadcom_shader_stage_is_binning(p_stage->stage);
 
@@ -2469,7 +2461,7 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
     * compile).
     */
    bool needs_executable_info =
-      pCreateInfo->flags & VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
+      pipeline->flags & VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
    if (!needs_executable_info) {
       struct v3dv_pipeline_key pipeline_key;
       pipeline_populate_graphics_key(pipeline, &pipeline_key, pCreateInfo);
@@ -2500,7 +2492,7 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
       }
    }
 
-   if (pCreateInfo->flags & VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT)
+   if (pipeline->flags & VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT)
       return VK_PIPELINE_COMPILE_REQUIRED;
 
    /* Otherwise we try to get the NIR shaders (either from the original SPIR-V
@@ -2856,7 +2848,14 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    VkResult result = VK_SUCCESS;
 
    pipeline->device = device;
-   pipeline->flags = pCreateInfo->flags;
+
+   const VkPipelineCreateFlags2CreateInfoKHR *flags2 =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR);
+   if (flags2)
+      pipeline->flags = flags2->flags;
+   else
+      pipeline->flags = pCreateInfo->flags;
 
    V3DV_FROM_HANDLE(v3dv_pipeline_layout, layout, pCreateInfo->layout);
    pipeline->layout = layout;
@@ -3133,7 +3132,7 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
     * compile).
     */
    bool needs_executable_info =
-      info->flags & VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
+      pipeline->flags & VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
    if (!needs_executable_info) {
       struct v3dv_pipeline_key pipeline_key;
       pipeline_populate_compute_key(pipeline, &pipeline_key, info);
@@ -3153,7 +3152,7 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
       }
    }
 
-   if (info->flags & VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT)
+   if (pipeline->flags & VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT)
       return VK_PIPELINE_COMPILE_REQUIRED;
 
    pipeline->shared_data = v3dv_pipeline_shared_data_new_empty(pipeline->sha1,
@@ -3223,6 +3222,13 @@ compute_pipeline_init(struct v3dv_pipeline *pipeline,
    pipeline->device = device;
    pipeline->layout = layout;
    v3dv_pipeline_layout_ref(pipeline->layout);
+
+   const VkPipelineCreateFlags2CreateInfoKHR *flags2 =
+      vk_find_struct_const(info->pNext, PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR);
+   if (flags2)
+      pipeline->flags = flags2->flags;
+   else
+      pipeline->flags = info->flags;
 
    VkResult result = pipeline_compile_compute(pipeline, cache, info, alloc);
    if (result != VK_SUCCESS)

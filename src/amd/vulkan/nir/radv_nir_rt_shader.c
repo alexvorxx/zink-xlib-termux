@@ -189,6 +189,9 @@ struct rt_variables {
 
    nir_variable *ahit_isec_count;
 
+   nir_variable *launch_sizes[3];
+   nir_variable *launch_ids[3];
+
    /* global address of the SBT entry used for the shader */
    nir_variable *shader_record_ptr;
 
@@ -233,6 +236,14 @@ create_rt_variables(nir_shader *shader, struct radv_device *device, const VkPipe
    vars.stack_ptr = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "stack_ptr");
    vars.shader_record_ptr = nir_variable_create(shader, nir_var_shader_temp, glsl_uint64_t_type(), "shader_record_ptr");
 
+   vars.launch_sizes[0] = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "launch_size_x");
+   vars.launch_sizes[1] = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "launch_size_y");
+   vars.launch_sizes[2] = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "launch_size_z");
+
+   vars.launch_ids[0] = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "launch_id_x");
+   vars.launch_ids[1] = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "launch_id_y");
+   vars.launch_ids[2] = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "launch_id_z");
+
    if (device->rra_trace.ray_history_addr)
       vars.ahit_isec_count = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "ahit_isec_count");
 
@@ -272,6 +283,12 @@ map_rt_variables(struct hash_table *var_remap, struct rt_variables *src, const s
    _mesa_hash_table_insert(var_remap, src->arg, dst->arg);
    _mesa_hash_table_insert(var_remap, src->stack_ptr, dst->stack_ptr);
    _mesa_hash_table_insert(var_remap, src->shader_record_ptr, dst->shader_record_ptr);
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(src->launch_sizes); i++)
+      _mesa_hash_table_insert(var_remap, src->launch_sizes[i], dst->launch_sizes[i]);
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(src->launch_ids); i++)
+      _mesa_hash_table_insert(var_remap, src->launch_ids[i], dst->launch_ids[i]);
 
    if (dst->ahit_isec_count)
       _mesa_hash_table_insert(var_remap, src->ahit_isec_count, dst->ahit_isec_count);
@@ -366,9 +383,16 @@ load_sbt_entry(nir_builder *b, const struct rt_variables *vars, nir_def *idx, en
    nir_store_var(b, vars->shader_record_ptr, record_addr, 1);
 }
 
+struct radv_rt_shader_info {
+   bool uses_launch_id;
+   bool uses_launch_size;
+};
+
 struct radv_lower_rt_instruction_data {
    struct rt_variables *vars;
-   bool apply_stack_ptr;
+   bool late_lowering;
+
+   struct radv_rt_shader_info *out_info;
 };
 
 static bool
@@ -389,7 +413,6 @@ radv_lower_rt_instruction(nir_builder *b, nir_instr *instr, void *_data)
 
    struct radv_lower_rt_instruction_data *data = _data;
    struct rt_variables *vars = data->vars;
-   bool apply_stack_ptr = data->apply_stack_ptr;
 
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -454,12 +477,12 @@ radv_lower_rt_instruction(nir_builder *b, nir_instr *instr, void *_data)
       break;
    }
    case nir_intrinsic_load_scratch: {
-      if (apply_stack_ptr)
+      if (data->late_lowering)
          nir_src_rewrite(&intr->src[0], nir_iadd_nuw(b, nir_load_var(b, vars->stack_ptr), intr->src[0].ssa));
       return true;
    }
    case nir_intrinsic_store_scratch: {
-      if (apply_stack_ptr)
+      if (data->late_lowering)
          nir_src_rewrite(&intr->src[1], nir_iadd_nuw(b, nir_load_var(b, vars->stack_ptr), intr->src[1].ssa));
       return true;
    }
@@ -469,6 +492,28 @@ radv_lower_rt_instruction(nir_builder *b, nir_instr *instr, void *_data)
    }
    case nir_intrinsic_load_shader_record_ptr: {
       ret = nir_load_var(b, vars->shader_record_ptr);
+      break;
+   }
+   case nir_intrinsic_load_ray_launch_size: {
+      if (data->out_info)
+         data->out_info->uses_launch_size = true;
+
+      if (!data->late_lowering)
+         return false;
+
+      ret = nir_vec3(b, nir_load_var(b, vars->launch_sizes[0]), nir_load_var(b, vars->launch_sizes[1]),
+                     nir_load_var(b, vars->launch_sizes[2]));
+      break;
+   };
+   case nir_intrinsic_load_ray_launch_id: {
+      if (data->out_info)
+         data->out_info->uses_launch_id = true;
+
+      if (!data->late_lowering)
+         return false;
+
+      ret = nir_vec3(b, nir_load_var(b, vars->launch_ids[0]), nir_load_var(b, vars->launch_ids[1]),
+                     nir_load_var(b, vars->launch_ids[2]));
       break;
    }
    case nir_intrinsic_load_ray_t_min: {
@@ -671,11 +716,13 @@ radv_lower_rt_instruction(nir_builder *b, nir_instr *instr, void *_data)
 /* This lowers all the RT instructions that we do not want to pass on to the combined shader and
  * that we can implement using the variables from the shader we are going to inline into. */
 static void
-lower_rt_instructions(nir_shader *shader, struct rt_variables *vars, bool apply_stack_ptr)
+lower_rt_instructions(nir_shader *shader, struct rt_variables *vars, bool late_lowering,
+                      struct radv_rt_shader_info *out_info)
 {
    struct radv_lower_rt_instruction_data data = {
       .vars = vars,
-      .apply_stack_ptr = apply_stack_ptr,
+      .late_lowering = late_lowering,
+      .out_info = out_info,
    };
    nir_shader_instructions_pass(shader, radv_lower_rt_instruction, nir_metadata_none, &data);
 }
@@ -782,7 +829,7 @@ insert_rt_case(nir_builder *b, nir_shader *shader, struct rt_variables *vars, ni
    struct rt_variables src_vars = create_rt_variables(shader, vars->device, vars->flags, vars->monolithic);
    map_rt_variables(var_remap, &src_vars, vars);
 
-   NIR_PASS_V(shader, lower_rt_instructions, &src_vars, false);
+   NIR_PASS_V(shader, lower_rt_instructions, &src_vars, false, NULL);
 
    NIR_PASS(_, shader, nir_lower_returns);
    NIR_PASS(_, shader, nir_opt_dce);
@@ -1907,7 +1954,9 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
    if (monolithic)
       lower_rt_instructions_monolithic(shader, device, pipeline, pCreateInfo, &vars);
 
-   lower_rt_instructions(shader, &vars, true);
+   struct radv_rt_shader_info rt_info = {0};
+
+   lower_rt_instructions(shader, &vars, true, &rt_info);
 
    if (stack_size) {
       vars.stack_size = MAX2(vars.stack_size, shader->scratch_size);
@@ -1926,14 +1975,25 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
    nir_def *descriptor_sets = ac_nir_load_arg(&b, &args->ac, args->descriptor_sets[0]);
    nir_def *push_constants = ac_nir_load_arg(&b, &args->ac, args->ac.push_constants);
    nir_def *sbt_descriptors = ac_nir_load_arg(&b, &args->ac, args->ac.rt.sbt_descriptors);
-   nir_def *launch_size = ac_nir_load_arg(&b, &args->ac, args->ac.rt.launch_size);
+
+   nir_def *launch_sizes[3];
+   for (uint32_t i = 0; i < ARRAY_SIZE(launch_sizes); i++) {
+      launch_sizes[i] = ac_nir_load_arg(&b, &args->ac, args->ac.rt.launch_sizes[i]);
+      nir_store_var(&b, vars.launch_sizes[i], launch_sizes[i], 1);
+   }
+
    nir_def *scratch_offset = NULL;
    if (args->ac.scratch_offset.used)
       scratch_offset = ac_nir_load_arg(&b, &args->ac, args->ac.scratch_offset);
    nir_def *ring_offsets = NULL;
    if (args->ac.ring_offsets.used)
       ring_offsets = ac_nir_load_arg(&b, &args->ac, args->ac.ring_offsets);
-   nir_def *launch_id = ac_nir_load_arg(&b, &args->ac, args->ac.rt.launch_id);
+
+   nir_def *launch_ids[3];
+   for (uint32_t i = 0; i < ARRAY_SIZE(launch_ids); i++) {
+      launch_ids[i] = ac_nir_load_arg(&b, &args->ac, args->ac.rt.launch_ids[i]);
+      nir_store_var(&b, vars.launch_ids[i], launch_ids[i], 1);
+   }
 
    nir_def *traversal_addr = ac_nir_load_arg(&b, &args->ac, args->ac.rt.traversal_shader_addr);
    nir_store_var(&b, vars.traversal_addr, nir_pack_64_2x32(&b, traversal_addr), 1);
@@ -1998,12 +2058,25 @@ radv_nir_lower_rt_abi(nir_shader *shader, const VkRayTracingPipelineCreateInfoKH
       ac_nir_store_arg(&b, &args->ac, args->ac.push_constants, push_constants);
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.sbt_descriptors, sbt_descriptors);
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.traversal_shader_addr, traversal_addr);
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.launch_size, launch_size);
+
+      for (uint32_t i = 0; i < ARRAY_SIZE(launch_sizes); i++) {
+         if (rt_info.uses_launch_size)
+            ac_nir_store_arg(&b, &args->ac, args->ac.rt.launch_sizes[i], launch_sizes[i]);
+         else
+            radv_store_arg(&b, args, traversal_info, args->ac.rt.launch_sizes[i], launch_sizes[i]);
+      }
+
       if (scratch_offset)
          ac_nir_store_arg(&b, &args->ac, args->ac.scratch_offset, scratch_offset);
       if (ring_offsets)
          ac_nir_store_arg(&b, &args->ac, args->ac.ring_offsets, ring_offsets);
-      ac_nir_store_arg(&b, &args->ac, args->ac.rt.launch_id, launch_id);
+
+      for (uint32_t i = 0; i < ARRAY_SIZE(launch_ids); i++) {
+         if (rt_info.uses_launch_id)
+            ac_nir_store_arg(&b, &args->ac, args->ac.rt.launch_ids[i], launch_ids[i]);
+         else
+            radv_store_arg(&b, args, traversal_info, args->ac.rt.launch_ids[i], launch_ids[i]);
+      }
 
       /* store back all variables to registers */
       ac_nir_store_arg(&b, &args->ac, args->ac.rt.dynamic_callable_stack_base, nir_load_var(&b, vars.stack_ptr));

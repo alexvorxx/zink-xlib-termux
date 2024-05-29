@@ -221,8 +221,7 @@ panvk_meta_clear_attachment_emit_tiler_job(struct pan_pool *desc_pool,
       cfg.address = tiler;
    }
 
-   pan_jc_add_job(desc_pool, jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, &job,
-                  false);
+   pan_jc_add_job(jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, &job, false);
    return job;
 }
 

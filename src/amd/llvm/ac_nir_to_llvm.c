@@ -3827,7 +3827,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       break;
    }
    case nir_intrinsic_nop_amd: {
-      LLVMValueRef arg = LLVMConstInt(ctx->ac.i32, nir_intrinsic_base(instr), 0);
+      LLVMValueRef arg = LLVMConstInt(ctx->ac.i16, nir_intrinsic_base(instr), 0);
       ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.s.nop", ctx->ac.voidt, &arg, 1, 0);
       break;
    }

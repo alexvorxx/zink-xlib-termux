@@ -87,6 +87,9 @@ protected:
         const ADDR3_COMPUTE_SLICE_PIPEBANKXOR_INPUT* pIn,
         ADDR3_COMPUTE_SLICE_PIPEBANKXOR_OUTPUT*      pOut) const override;
 
+    virtual UINT_32 HwlGetEquationIndex(
+        const ADDR3_COMPUTE_SURFACE_INFO_INPUT* pIn) const override;
+
     virtual UINT_32 HwlGetEquationTableInfo(const ADDR_EQUATION** ppEquationTable) const override
     {
         *ppEquationTable = m_equationTable;

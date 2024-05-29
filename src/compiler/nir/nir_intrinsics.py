@@ -1340,6 +1340,13 @@ store("global_ir3", [2, 1], indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET])
 # the alignment applies to the base address
 load("global_ir3", [2, 1], indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET, RANGE_BASE, RANGE], flags=[CAN_ELIMINATE])
 
+# Etnaviv-specific load/glboal intrinsics. They take a 32-bit base address and
+# a 32-bit offset, which doesn't need to be an immediate.
+# src[] = { value, address, 32-bit offset }.
+store("global_etna", [1, 1], [WRITE_MASK, ACCESS, ALIGN_MUL, ALIGN_OFFSET])
+# src[] = { address, 32-bit offset }.
+load("global_etna", [1, 1], [ACCESS, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
+
 # IR3-specific bindless handle specifier. Similar to vulkan_resource_index, but
 # without the binding because the hardware expects a single flattened index
 # rather than a (binding, index) pair. We may also want to use this with GL.
@@ -1616,9 +1623,6 @@ system_value("intersection_opaque_amd", 1, bit_sizes=[1])
 
 # pointer to the next resume shader
 system_value("resume_shader_address_amd", 1, bit_sizes=[64], indices=[CALL_IDX])
-
-# Scratch base of callable stack for ray tracing.
-system_value("rt_dynamic_callable_stack_base_amd", 1)
 
 # Ray Tracing Traversal inputs
 system_value("sbt_offset_amd", 1)

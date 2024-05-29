@@ -97,6 +97,12 @@ can_reorder(const Instruction* const instr)
    case aco_opcode::s_set_gpr_idx_idx:
    case aco_opcode::s_sendmsg_rtn_b32:
    case aco_opcode::s_sendmsg_rtn_b64:
+   case aco_opcode::s_barrier_signal:
+   case aco_opcode::s_barrier_signal_isfirst:
+   case aco_opcode::s_get_barrier_state:
+   case aco_opcode::s_barrier_init:
+   case aco_opcode::s_barrier_join:
+   case aco_opcode::s_wakeup_barrier:
    /* SOPK */
    case aco_opcode::s_cbranch_i_fork:
    case aco_opcode::s_getreg_b32:

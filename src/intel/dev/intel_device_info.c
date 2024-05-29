@@ -74,6 +74,7 @@ static const struct {
    { "dg2", 0x5690 },
    { "mtl", 0x7d60 },
    { "arl", 0x7d67 },
+   { "lnl", 0x64a0 },
 };
 
 /**
@@ -1202,6 +1203,34 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .platform = INTEL_PLATFORM_ARL_H,
 };
 
+#define XE2_FEATURES                                            \
+   /* (Sub)slice info comes from the kernel topology info */    \
+   XEHP_FEATURES(0, 1, 0),                                      \
+   .ver = 20,                                                   \
+   .verx10 = 200,                                               \
+   .num_subslices = dual_subslices(1),                          \
+   .has_64bit_float = true,                                     \
+   .has_integer_dword_mul = false,                              \
+   .has_coarse_pixel_primitive_and_cb = true,                   \
+   .has_mesh_shading = true,                                    \
+   .has_ray_tracing = true,                                     \
+   .has_indirect_unroll = true,                                 \
+   .pat = {                                                     \
+      .cached_coherent = PAT_ENTRY(1, WB, 1WAY),                \
+      .scanout = PAT_ENTRY(6, WC, NONE),                        \
+      .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
+      .writecombining = PAT_ENTRY(6, WC, NONE),                 \
+   },                                                           \
+   .cooperative_matrix_configurations = { { 0 }, },             \
+   .has_flat_ccs = true
+
+static const struct intel_device_info intel_device_info_lnl = {
+   XE2_FEATURES,
+   .platform = INTEL_PLATFORM_LNL,
+   .has_local_mem = false,
+   .apply_hwconfig = true,
+};
+
 void
 intel_device_info_topology_reset_masks(struct intel_device_info *devinfo)
 {
@@ -1334,13 +1363,90 @@ intel_device_info_update_cs_workgroup_threads(struct intel_device_info *devinfo)
 }
 
 static bool
+parse_force_probe_entry(int pci_id, const char *entry, bool *force_on,
+                        bool *force_off)
+{
+   const char *cp = entry;
+
+   bool negated = *cp == '!';
+   if (negated)
+      cp++;
+
+   if (*cp == '\0')
+      return false;
+
+   bool wildcard = *cp == '*';
+   long val = 0;
+
+   if (wildcard) {
+      cp++;
+   } else {
+      char *end;
+      val = strtol(cp, &end, 16);
+      if (end == cp)
+         return false;
+      cp = end;
+   }
+
+   if (*cp != '\0')
+      return false;
+
+   bool matched = wildcard || (long)pci_id == val;
+   if (matched) {
+      *force_on = !negated;
+      *force_off = negated;
+   }
+
+   return matched;
+}
+
+static void
+scan_for_force_probe(int pci_id, bool *force_on, bool *force_off)
+{
+   *force_on = false;
+   *force_off = false;
+
+   const char *env = getenv("INTEL_FORCE_PROBE");
+   if (env == NULL)
+      return;
+
+   size_t len = strlen(env);
+   if (len == 0)
+      return;
+
+   char *dup = strndup(env, len);
+   if (dup == NULL)
+      return;
+
+   for (char *entry = strtok(dup, ","); entry; entry = strtok(NULL, ","))
+      parse_force_probe_entry(pci_id, entry, force_on, force_off);
+
+   free(dup);
+   assert(!*force_on || !*force_off);
+}
+
+struct device_init_config {
+   bool require_force_probe;
+};
+
+/* Example PCI ID entry using FORCE_PROBE:
+ *
+ * CHIPSET(0x1234, foo, "FOO", "Intel(R) Graphics", FORCE_PROBE)
+ */
+#define FORCE_PROBE .require_force_probe = true
+
+static bool
 intel_device_info_init_common(int pci_id,
                               struct intel_device_info *devinfo)
 {
+   struct device_init_config device_config = { 0 };
    switch (pci_id) {
 #undef CHIPSET
-#define CHIPSET(id, family, fam_str, name) \
-      case id: *devinfo = intel_device_info_##family; break;
+#define CHIPSET(id, family, fam_str, name, ...)                         \
+      case id:                                                          \
+         *devinfo = intel_device_info_##family;                         \
+         device_config = *&(struct device_init_config) { __VA_ARGS__ }; \
+         break;
 #include "pci_ids/crocus_pci_ids.h"
 #include "pci_ids/iris_pci_ids.h"
 
@@ -1356,7 +1462,7 @@ intel_device_info_init_common(int pci_id,
 
    switch (pci_id) {
 #undef CHIPSET
-#define CHIPSET(_id, _family, _fam_str, _name) \
+#define CHIPSET(_id, _family, _fam_str, _name, ...) \
    case _id: \
       /* sizeof(str_literal) includes the null */ \
       STATIC_ASSERT(sizeof(_name) + sizeof(_fam_str) + 2 <= \
@@ -1367,6 +1473,24 @@ intel_device_info_init_common(int pci_id,
 #include "pci_ids/iris_pci_ids.h"
    default:
       strncpy(devinfo->name, "Intel Unknown", sizeof(devinfo->name));
+   }
+
+   bool force_on = false;
+   bool force_off = false;
+   scan_for_force_probe(pci_id, &force_on, &force_off);
+   if (force_off) {
+      mesa_logw("%s (0x%x) disabled with INTEL_FORCE_PROBE", devinfo->name,
+                pci_id);
+      return false;
+   } else if (device_config.require_force_probe) {
+      if (force_on) {
+         mesa_logw("Forcing probe of unsupported: %s (0x%x)", devinfo->name,
+                   pci_id);
+      } else {
+         mesa_loge("%s (0x%x) requires INTEL_FORCE_PROBE", devinfo->name,
+                   pci_id);
+         return false;
+      }
    }
 
    devinfo->pci_device_id = pci_id;

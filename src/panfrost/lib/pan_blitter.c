@@ -1286,8 +1286,7 @@ pan_blit_emit_tiler_job(struct pan_pool *pool, struct pan_jc *jc,
    }
 #endif
 
-   pan_jc_add_job(pool, jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, job,
-                  false);
+   pan_jc_add_job(jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, job, false);
    return pan_section_ptr(job->cpu, TILER_JOB, DRAW);
 }
 #endif
@@ -1393,8 +1392,7 @@ pan_preload_emit_tiler_job(struct pan_blitter_cache *cache, struct pan_pool *des
    void *invoc = pan_section_ptr(job.cpu, TILER_JOB, INVOCATION);
    panfrost_pack_work_groups_compute(invoc, 1, 4, 1, 1, 1, 1, true, false);
 
-   pan_jc_add_job(desc_pool, jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, &job,
-                  true);
+   pan_jc_add_job(jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, &job, true);
    return job;
 }
 #endif

@@ -81,17 +81,6 @@ zink-anv-tgl-traces-restricted:
     PIGLIT_REPLAY_EXTRA_ARGS: --db-path ${CI_PROJECT_DIR}/replayer-db/ --minio_bucket=${S3_TRACIE_PRIVATE_BUCKET} --jwt-file=${S3_JWT_FILE}
   allow_failure: true
 
-zink-nvk-ga106-glcts-piglit-valve:
-  extends:
-    - .zink-nvk-glcts-piglit-valve
-    - .zink-nvk-manual-rules
-    - .nvk-ga106-valve
-  timeout: 45m  # job runtime 29min, test runtime 27min
-  variables:
-    GPU_VERSION: zink-nvk
-    B2C_TIMEOUT_BOOT_MINUTES: 35
-    B2C_TIMEOUT_OVERALL_MINUTES: 40
-
 zink-tu-a618:
   extends:
     - .lava-test-deqp:arm64
@@ -150,8 +139,18 @@ zink-tu-a750:
     GPU_VERSION: zink-tu-a750
     HWCI_START_WESTON: 1
 
+############### Combined testing (GL, GLES, Piglit) on NVK / RADV
+zink-nvk-ga106-valve:
+  timeout: 45m
+  extends:
+    - .zink-nvk-test-valve
+    - .zink-nvk-manual-rules
+    - .nvk-ga106-valve
+  variables:
+    GPU_VERSION: zink-nvk-ga106
+    B2C_TIMEOUT_BOOT_MINUTES: 35
+    B2C_TIMEOUT_OVERALL_MINUTES: 40  # usual run time: 26min
 
-############### Combined testing (GL, GLES, Piglit) on RADV
 zink-radv-polaris10-valve:
   extends:
     - .radv-zink-test-valve

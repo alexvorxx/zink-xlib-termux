@@ -202,6 +202,8 @@ uint32_t mesa_spirv_debug = 0;
 static const struct debug_named_value mesa_spirv_debug_control[] = {
    { "structured", MESA_SPIRV_DEBUG_STRUCTURED,
      "Print information of the SPIR-V structured control flow parsing" },
+   { "values", MESA_SPIRV_DEBUG_VALUES,
+     "Print information of the SPIR-V values" },
    DEBUG_NAMED_VALUE_END,
 };
 
@@ -352,6 +354,9 @@ _vtn_fail(struct vtn_builder *b, const char *file, unsigned line,
 {
    va_list args;
 
+   if (MESA_SPIRV_DEBUG(VALUES))
+      vtn_dump_values(b, stderr);
+
    va_start(args, fmt);
    vtn_log_err(b, NIR_SPIRV_DEBUG_LEVEL_ERROR, "SPIR-V parsing FAILED:\n",
                file, line, fmt, args);
@@ -391,6 +396,33 @@ vtn_value_type_to_string(enum vtn_value_type t)
    unreachable("unknown value type");
    return "UNKNOWN";
 }
+
+static const char *
+vtn_base_type_to_string(enum vtn_base_type t)
+{
+#define CASE(typ) case vtn_base_type_##typ: return #typ
+   switch (t) {
+   CASE(void);
+   CASE(scalar);
+   CASE(vector);
+   CASE(matrix);
+   CASE(array);
+   CASE(struct);
+   CASE(pointer);
+   CASE(image);
+   CASE(sampler);
+   CASE(sampled_image);
+   CASE(accel_struct);
+   CASE(ray_query);
+   CASE(function);
+   CASE(event);
+   CASE(cooperative_matrix);
+   }
+#undef CASE
+   unreachable("unknown base type");
+   return "UNKNOWN";
+}
+
 
 void
 _vtn_fail_value_type_mismatch(struct vtn_builder *b, uint32_t value_id,
@@ -6871,6 +6903,10 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
       entry_point->is_entrypoint = true;
    }
 
+   if (MESA_SPIRV_DEBUG(VALUES)) {
+      vtn_dump_values(b, stdout);
+   }
+
    /* structurize the CFG */
    nir_lower_goto_ifs(b->shader);
 
@@ -7163,4 +7199,83 @@ spirv_library_to_nir_builder(FILE *fp, const uint32_t *words, size_t word_count,
 
    ralloc_free(b);
    return true;
+}
+
+static unsigned
+vtn_id_for_type(struct vtn_builder *b, struct vtn_type *type)
+{
+   for (unsigned i = 0; i < b->value_id_bound; i++) {
+      struct vtn_value *v = &b->values[i];
+      if (v->value_type == vtn_value_type_type &&
+          v->type == type)
+         return i;
+   }
+
+   return 0;
+}
+
+void
+vtn_print_value(struct vtn_builder *b, struct vtn_value *val, FILE *f)
+{
+   fprintf(f, "%s", vtn_value_type_to_string(val->value_type));
+   switch (val->value_type) {
+   case vtn_value_type_ssa: {
+      struct vtn_ssa_value *ssa = val->ssa;
+      fprintf(f,  " glsl_type=%s", glsl_get_type_name(ssa->type));
+      break;
+   }
+
+   case vtn_value_type_constant: {
+      fprintf(f, " type=%d", vtn_id_for_type(b, val->type));
+      if (val->is_null_constant)
+         fprintf(f, " null");
+      else if (val->is_undef_constant)
+         fprintf(f, " undef");
+      break;
+   }
+
+   case vtn_value_type_pointer: {
+      struct vtn_pointer *pointer = val->pointer;
+      fprintf(f, " ptr_type=%u", vtn_id_for_type(b, pointer->ptr_type));
+      fprintf(f, " (pointed-)type=%u", vtn_id_for_type(b, val->pointer->type));
+
+      if (pointer->deref) {
+         fprintf(f, "\n           NIR: ");
+         nir_print_instr(&pointer->deref->instr, f);
+      }
+      break;
+   }
+
+   case vtn_value_type_type: {
+      struct vtn_type *type = val->type;
+      fprintf(f, " %s", vtn_base_type_to_string(type->base_type));
+      switch (type->base_type) {
+      case vtn_base_type_pointer:
+         fprintf(f, " deref=%d", vtn_id_for_type(b, type->deref));
+         fprintf(f, " %s", spirv_storageclass_to_string(val->type->storage_class));
+         break;
+      default:
+         break;
+      }
+      if (type->type)
+         fprintf(f, " glsl_type=%s", glsl_get_type_name(type->type));
+      break;
+   }
+
+   default:
+      break;
+   }
+   fprintf(f, "\n");
+}
+
+void
+vtn_dump_values(struct vtn_builder *b, FILE *f)
+{
+   fprintf(f, "=== SPIR-V values\n");
+   for (unsigned i = 1; i < b->value_id_bound; i++) {
+      struct vtn_value *val = &b->values[i];
+      fprintf(f, "%8d = ", i);
+      vtn_print_value(b, val, f);
+   }
+   fprintf(f, "===\n");
 }

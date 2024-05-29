@@ -31,8 +31,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "compiler/glsl_types.h"
 #include "compiler/glsl/glsl_to_nir.h"
+#include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
 #include "util/half_float.h"
 #include "util/list.h"

@@ -895,6 +895,8 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       case FAMILY_GFX1103:
          identify_chip(GFX1103_R1);
          identify_chip(GFX1103_R2);
+         identify_chip2(GFX1103_R1X, GFX1103_R1);
+         identify_chip2(GFX1103_R2X, GFX1103_R2);
          break;
       case FAMILY_GFX1150:
          identify_chip(GFX1150);
@@ -1220,6 +1222,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
 
    info->has_dcc_constant_encode =
       info->family == CHIP_RAVEN2 || info->family == CHIP_RENOIR || info->gfx_level >= GFX10;
+
+   info->has_etc_support = info->family == CHIP_STONEY || info->family == CHIP_VEGA10 ||
+                           info->family == CHIP_RAVEN || info->family == CHIP_RAVEN2;
 
    info->has_rbplus = info->family == CHIP_STONEY || info->gfx_level >= GFX9;
 

@@ -120,7 +120,7 @@ struct radv_physical_device;
 
 uint32_t radv_translate_buffer_numformat(const struct util_format_description *desc, int first_non_void);
 
-uint32_t radv_translate_tex_dataformat(const struct radv_physical_device *pdev, VkFormat format,
+uint32_t radv_translate_tex_dataformat(const struct radv_physical_device *pdev,
                                        const struct util_format_description *desc, int first_non_void);
 
 uint32_t radv_translate_tex_numformat(const struct util_format_description *desc, int first_non_void);

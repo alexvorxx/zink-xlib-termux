@@ -31,7 +31,7 @@
 
 #include "vk_standard_sample_locations.h"
 
-#if GFX_VERx10 == 125 && ANV_SUPPORT_RT
+#if GFX_VERx10 >= 125 && ANV_SUPPORT_RT
 #include "grl/genX_grl.h"
 #endif
 
@@ -690,8 +690,10 @@ init_compute_queue_state(struct anv_queue *queue)
    }
 
    anv_batch_emit(&batch, GENX(STATE_COMPUTE_MODE), cm) {
+#if GFX_VER < 20
       cm.PixelAsyncComputeThreadLimit = 4;
       cm.PixelAsyncComputeThreadLimitMask = 0x7;
+#endif
    }
 #endif
 
@@ -762,7 +764,7 @@ void
 genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 {
    assert(pdevice->info.verx10 == GFX_VERx10);
-#if GFX_VERx10 == 125 && ANV_SUPPORT_RT
+#if GFX_VERx10 >= 125 && ANV_SUPPORT_RT
    genX(grl_load_rt_uuid)(pdevice->rt_uuid);
    pdevice->max_grl_scratch_size = genX(grl_max_scratch_size)();
 #endif

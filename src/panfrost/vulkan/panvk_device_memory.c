@@ -284,3 +284,12 @@ panvk_GetDeviceMemoryCommitment(VkDevice device, VkDeviceMemory memory,
 {
    *pCommittedMemoryInBytes = 0;
 }
+
+VKAPI_ATTR uint64_t VKAPI_CALL
+panvk_GetDeviceMemoryOpaqueCaptureAddress(VkDevice _device,
+                                          const VkDeviceMemoryOpaqueCaptureAddressInfo* pInfo)
+{
+   VK_FROM_HANDLE(panvk_device_memory, memory, pInfo->memory);
+
+   return memory->addr.dev;
+}

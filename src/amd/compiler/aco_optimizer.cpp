@@ -2355,11 +2355,11 @@ optimize_cmp_subgroup_invocation(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    Instruction* cpy = NULL;
    const uint64_t mask = BITFIELD64_RANGE(first_bit, num_bits);
-   if (wave_size == 64 && mask > 0x7fffffff && mask != -1ull) {
-      /* Mask can't be represented as a 64-bit constant or literal, use s_bfm_b64. */
-      cpy = create_instruction(aco_opcode::s_bfm_b64, Format::SOP2, 2, 1);
-      cpy->operands[0] = Operand::c32(num_bits);
-      cpy->operands[1] = Operand::c32(first_bit);
+   if (!Operand::is_constant_representable(mask, wave_size / 8, true, false)) {
+      /* Mask can't be represented as a 64-bit constant or literal, create a vector */
+      cpy = create_instruction(aco_opcode::p_create_vector, Format::PSEUDO, 2, 1);
+      cpy->operands[0] = Operand::c32(mask);
+      cpy->operands[1] = Operand::c32(mask >> 32);
    } else {
       /* Copy mask as a literal constant. */
       cpy = create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1);

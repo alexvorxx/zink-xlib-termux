@@ -148,8 +148,7 @@ panvk_meta_copy_emit_tiler_job(struct pan_pool *desc_pool, struct pan_jc *jc,
       cfg.address = tiler;
    }
 
-   pan_jc_add_job(desc_pool, jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, &job,
-                  false);
+   pan_jc_add_job(jc, MALI_JOB_TYPE_TILER, false, false, 0, 0, &job, false);
    return job;
 }
 
@@ -176,8 +175,7 @@ panvk_meta_copy_emit_compute_job(struct pan_pool *desc_pool, struct pan_jc *jc,
                             push_constants,
                             pan_section_ptr(job.cpu, COMPUTE_JOB, DRAW));
 
-   pan_jc_add_job(desc_pool, jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0,
-                  &job, false);
+   pan_jc_add_job(jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0, &job, false);
    return job;
 }
 

@@ -341,7 +341,8 @@ radv_fill_shader_rings(struct radv_device *device, uint32_t *desc, struct radeon
    if (attr_ring_bo) {
       assert(pdev->info.gfx_level >= GFX11);
 
-      ac_build_attr_ring_descriptor(pdev->info.gfx_level, radv_buffer_get_va(attr_ring_bo), attr_ring_size, &desc[0]);
+      ac_build_attr_ring_descriptor(pdev->info.gfx_level, radv_buffer_get_va(attr_ring_bo), attr_ring_size, 0,
+                                    &desc[0]);
    }
 
    desc += 4;

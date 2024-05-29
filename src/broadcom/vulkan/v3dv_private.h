@@ -820,7 +820,7 @@ struct v3dv_buffer {
    struct vk_object_base base;
 
    VkDeviceSize size;
-   VkBufferUsageFlags usage;
+   VkBufferUsageFlagBits2KHR usage;
    uint32_t alignment;
 
    struct v3dv_device_memory *mem;
@@ -1286,6 +1286,9 @@ struct v3dv_job {
    /* If this is a CL job, whether we should sync before binning */
    bool needs_bcl_sync;
 
+   /* If we have emitted a (default) point size packet in this job */
+   bool emitted_default_point_size;
+
    /* Job specs for CPU jobs */
    union {
       struct v3dv_reset_query_cpu_job_info          query_reset;
@@ -1386,6 +1389,7 @@ struct v3dv_draw_info {
 struct v3dv_vertex_binding {
    struct v3dv_buffer *buffer;
    VkDeviceSize offset;
+   VkDeviceSize size;
 };
 
 struct v3dv_descriptor_state {
@@ -1495,6 +1499,7 @@ struct v3dv_cmd_buffer_state {
    struct {
       VkBuffer buffer;
       VkDeviceSize offset;
+      VkDeviceSize size;
       uint8_t index_size;
    } index_buffer;
 
@@ -1599,7 +1604,6 @@ struct v3dv_cmd_buffer_state {
     * so we need to keep track of it in the cmd_buffer state
     */
    bool incompatible_ez_test;
-
 };
 
 void
@@ -2230,7 +2234,7 @@ struct v3dv_pipeline {
    struct v3dv_device *device;
 
    VkShaderStageFlags active_stages;
-   VkPipelineCreateFlags flags;
+   VkPipelineCreateFlagBits2KHR flags;
 
    struct v3dv_render_pass *pass;
    struct v3dv_subpass *subpass;
@@ -2271,11 +2275,8 @@ struct v3dv_pipeline {
 
    bool negative_one_to_one;
 
-   /* Accessed by binding. So vb[binding]->stride is the stride of the vertex
-    * array with such binding
-    */
+   /* Indexed by vertex binding. */
    struct v3dv_pipeline_vertex_binding {
-      uint32_t stride;
       uint32_t instance_divisor;
    } vb[MAX_VBS];
    uint32_t vb_count;

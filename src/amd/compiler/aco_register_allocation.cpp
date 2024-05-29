@@ -2089,6 +2089,8 @@ operand_can_use_reg(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr, unsign
              (reg != m0 || idx == 1 || idx == 3) && /* offset can be m0 */
              (reg != vcc || (instr->definitions.empty() && idx == 2) ||
               gfx_level >= GFX10); /* sdata can be vcc */
+   case Format::MUBUF:
+   case Format::MTBUF: return idx != 2 || gfx_level < GFX12 || reg != scc;
    default:
       // TODO: there are more instructions with restrictions on registers
       return true;
@@ -2573,7 +2575,7 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                   ctx.vectors[op.tempId()] = instr.get();
             }
          } else if (instr->format == Format::MIMG && instr->operands.size() > 4 &&
-                    !instr->mimg().strict_wqm) {
+                    !instr->mimg().strict_wqm && ctx.program->gfx_level < GFX12) {
             for (unsigned i = 3; i < instr->operands.size(); i++)
                ctx.vectors[instr->operands[i].tempId()] = instr.get();
          } else if (instr->opcode == aco_opcode::p_split_vector &&
@@ -2641,8 +2643,12 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                   break;
 
                case aco_opcode::v_mad_legacy_f32:
-               case aco_opcode::v_fma_legacy_f32:
                   if (instr->usesModifiers() || !ctx.program->dev.has_mac_legacy32)
+                     continue;
+                  op = instr->operands[2];
+                  break;
+               case aco_opcode::v_fma_legacy_f32:
+                  if (instr->usesModifiers() || !ctx.program->dev.has_fmac_legacy32)
                      continue;
                   op = instr->operands[2];
                   break;
@@ -2741,7 +2747,7 @@ optimize_encoding_vop2(Program* program, ra_ctx& ctx, RegisterFile& register_fil
         (instr->opcode != aco_opcode::v_fma_f16 || program->gfx_level < GFX10) &&
         (instr->opcode != aco_opcode::v_pk_fma_f16 || program->gfx_level < GFX10) &&
         (instr->opcode != aco_opcode::v_mad_legacy_f32 || !program->dev.has_mac_legacy32) &&
-        (instr->opcode != aco_opcode::v_fma_legacy_f32 || !program->dev.has_mac_legacy32) &&
+        (instr->opcode != aco_opcode::v_fma_legacy_f32 || !program->dev.has_fmac_legacy32) &&
         (instr->opcode != aco_opcode::v_dot4_i32_i8 || program->family == CHIP_VEGA20)) ||
        !instr->operands[2].isTemp() || !instr->operands[2].isKillBeforeDef() ||
        instr->operands[2].getTemp().type() != RegType::vgpr ||

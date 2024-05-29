@@ -851,6 +851,11 @@ tu_BindImageMemory2(VkDevice _device,
       }
 #endif
 
+      const VkBindMemoryStatusKHR *status =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_MEMORY_STATUS_KHR);
+      if (status)
+         *status->pResult = VK_SUCCESS;
+
       if (mem) {
          VkResult result;
          if (vk_image_is_android_hardware_buffer(&image->vk)) {
@@ -859,12 +864,18 @@ tu_BindImageMemory2(VkDevice _device,
             result = vk_android_get_ahb_layout(mem->vk.ahardware_buffer,
                                             &eci, a_plane_layouts,
                                             TU_MAX_PLANE_COUNT);
-            if (result != VK_SUCCESS)
+            if (result != VK_SUCCESS) {
+               if (status)
+                  *status->pResult = result;
                return result;
+            }
 
             result = tu_image_update_layout(device, image, eci.drmFormatModifier, a_plane_layouts);
-            if (result != VK_SUCCESS)
+            if (result != VK_SUCCESS) {
+               if (status)
+                  *status->pResult = result;
                return result;
+            }
          }
          image->bo = mem->bo;
          image->iova = mem->bo->iova + pBindInfos[i].memoryOffset;
@@ -872,8 +883,11 @@ tu_BindImageMemory2(VkDevice _device,
          if (image->vk.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT) {
             if (!mem->bo->map) {
                result = tu_bo_map(device, mem->bo, NULL);
-               if (result != VK_SUCCESS)
+               if (result != VK_SUCCESS) {
+                  if (status)
+                     *status->pResult = result;
                   return result;
+               }
             }
 
             image->map = (char *)mem->bo->map + pBindInfos[i].memoryOffset;

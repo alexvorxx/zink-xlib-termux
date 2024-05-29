@@ -342,10 +342,10 @@ a750_vk:
     - .b2c-freedreno-vk-test
     - .a750-mupuf
     - .valve-freedreno-turnip-manual-rules
-  timeout: 45m  # base runtime 36min total, 34min of testing
+  timeout: 60m  # base runtime 36min total, 34min of testing
   variables:
-    B2C_TIMEOUT_BOOT_MINUTES: 38
-    B2C_TIMEOUT_OVERALL_MINUTES: 42
+    B2C_TIMEOUT_BOOT_MINUTES: 52
+    B2C_TIMEOUT_OVERALL_MINUTES: 55
     DEQP_SUITE: freedreno-a750-vk
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
     B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'

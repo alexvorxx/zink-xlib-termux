@@ -295,7 +295,7 @@ radv_copy_sqtt_info_regs(const struct radv_device *device, struct radeon_cmdbuf 
       radeon_emit(cs, (info_va + i * 4) >> 32);
    }
 
-   if (pdev->info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level == GFX11) {
       /* On GFX11, SQ_THREAD_TRACE_WPTR is incremented from the "initial WPTR address" instead of 0.
        * To get the number of bytes (in units of 32 bytes) written by SQTT, the workaround is to
        * subtract SQ_THREAD_TRACE_WPTR from the "initial WPTR address" as follow:

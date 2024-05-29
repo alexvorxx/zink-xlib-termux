@@ -19,6 +19,8 @@ endforeach
 intel_perf_sources = [
   'i915/intel_perf.c',
   'i915/intel_perf.h',
+  'intel_perf_common.c',
+  'intel_perf_common.h',
   'intel_perf.c',
   'intel_perf_query.c',
   'intel_perf_mdapi.c',

@@ -2,6 +2,9 @@
 # non-zero-length and not starting with '#', will regex match to
 # delete lines from the test list.  Be careful.
 
+# no Vulkan support
+spec@ext_external_objects@vk.*
+
 # no msaa support
 .*msaa.*
 .*multisample.*

@@ -2341,6 +2341,12 @@ struct match {
     * value 0.
     */
    unsigned generic_location;
+
+   /**
+    * Original index, used as a fallback sorting key to ensure
+    * a stable sort
+    */
+   unsigned original_index;
 };
 
 /**
@@ -2413,7 +2419,9 @@ varying_matches_match_comparator(const void *x_generic, const void *y_generic)
 
    if (x->packing_class != y->packing_class)
       return x->packing_class - y->packing_class;
-   return x->packing_order - y->packing_order;
+   if (x->packing_order != y->packing_order)
+      return x->packing_order - y->packing_order;
+   return x->original_index - y->original_index;
 }
 
 /**
@@ -2424,21 +2432,20 @@ static int
 varying_matches_xfb_comparator(const void *x_generic, const void *y_generic)
 {
    const struct match *x = (const struct match *) x_generic;
+   const struct match *y = (const struct match *) y_generic;
+   /* if both varying are used by transform feedback, sort them */
+   if (x->producer_var != NULL && x->producer_var->data.is_xfb_only) {
+      if (y->producer_var != NULL && y->producer_var->data.is_xfb_only)
+         return 0;
+      /* if x is varying and y is not, put y first */
+      return +1;
+   } else if (y->producer_var != NULL && y->producer_var->data.is_xfb_only) {
+      /* if y is varying and x is not, leave x first */
+      return -1;
+   }
 
-   if (x->producer_var != NULL && x->producer_var->data.is_xfb_only)
-      return varying_matches_match_comparator(x_generic, y_generic);
-
-   /* FIXME: When the comparator returns 0 it means the elements being
-    * compared are equivalent. However the qsort documentation says:
-    *
-    *    "The order of equivalent elements is undefined."
-    *
-    * In practice the sort ends up reversing the order of the varyings which
-    * means locations are also assigned in this reversed order and happens to
-    * be what we want. This is also whats happening in
-    * varying_matches_match_comparator().
-    */
-   return 0;
+   /* otherwise leave the order alone */
+   return x->original_index - y->original_index;
 }
 
 /**
@@ -2449,21 +2456,15 @@ static int
 varying_matches_not_xfb_comparator(const void *x_generic, const void *y_generic)
 {
    const struct match *x = (const struct match *) x_generic;
+   const struct match *y = (const struct match *) y_generic;
 
-   if (x->producer_var != NULL && !x->producer_var->data.is_xfb)
+   if ( (x->producer_var != NULL && !x->producer_var->data.is_xfb)
+        && (y->producer_var != NULL && !y->producer_var->data.is_xfb) )
+      /* if both are non-xfb, then sort them */
       return varying_matches_match_comparator(x_generic, y_generic);
 
-   /* FIXME: When the comparator returns 0 it means the elements being
-    * compared are equivalent. However the qsort documentation says:
-    *
-    *    "The order of equivalent elements is undefined."
-    *
-    * In practice the sort ends up reversing the order of the varyings which
-    * means locations are also assigned in this reversed order and happens to
-    * be what we want. This is also whats happening in
-    * varying_matches_match_comparator().
-    */
-   return 0;
+   /* otherwise, leave the order alone */
+   return x->original_index - y->original_index;
 }
 
 static bool
@@ -2748,19 +2749,22 @@ varying_matches_assign_locations(struct varying_matches *vm,
                                  struct gl_shader_program *prog,
                                  uint8_t components[], uint64_t reserved_slots)
 {
+   /* Establish the original order of the varying_matches array; our
+    * sorts will use this for sorting when the varyings do not have
+    * xfb qualifiers
+    */
+   for (unsigned i = 0; i < vm->num_matches; i++)
+      vm->matches[i].original_index = i;
+
    /* If packing has been disabled then we cannot safely sort the varyings by
     * class as it may mean we are using a version of OpenGL where
     * interpolation qualifiers are not guaranteed to be matching across
     * shaders, sorting in this case could result in mismatching shader
-    * interfaces.
-    * When packing is disabled the sort orders varyings used by transform
-    * feedback first, but also depends on *undefined behaviour* of qsort to
-    * reverse the order of the varyings. See: xfb_comparator().
+    * interfaces. So we sort only the varyings used by transform feedback.
     *
     * If packing is only disabled for xfb varyings (mutually exclusive with
     * disable_varying_packing), we then group varyings depending on if they
-    * are captured for transform feedback. The same *undefined behaviour* is
-    * taken advantage of.
+    * are captured for transform feedback.
     */
    if (vm->disable_varying_packing) {
       /* Only sort varyings that are only used by transform feedback. */

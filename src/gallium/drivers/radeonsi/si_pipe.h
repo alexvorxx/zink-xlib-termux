@@ -16,6 +16,7 @@
 #include "util/u_threaded_context.h"
 #include "util/u_vertex_state_cache.h"
 #include "util/perf/u_trace.h"
+#include "ac_descriptors.h"
 #include "ac_sqtt.h"
 #include "ac_spm.h"
 #include "si_perfetto.h"
@@ -444,46 +445,15 @@ struct si_surface {
    uint8_t db_format_index : 3;
 
    /* Color registers. */
-   unsigned cb_color_info;
-   unsigned cb_color_view;
-   unsigned cb_color_view2;
-   unsigned cb_color_attrib;
-   unsigned cb_color_attrib2;                      /* GFX9 and later */
-   unsigned cb_color_attrib3;                      /* GFX10 and later */
-   unsigned cb_dcc_control;                        /* GFX8 and later */
+   struct ac_cb_surface cb;
+
    unsigned spi_shader_col_format : 8;             /* no blending, no alpha-to-coverage. */
    unsigned spi_shader_col_format_alpha : 8;       /* alpha-to-coverage */
    unsigned spi_shader_col_format_blend : 8;       /* blending without alpha. */
    unsigned spi_shader_col_format_blend_alpha : 8; /* blending with alpha. */
 
    /* DB registers. */
-   unsigned db_depth_view;
-   unsigned db_depth_size;
-   unsigned db_z_info;
-   unsigned db_stencil_info;
-   uint64_t db_depth_base; /* DB_Z_READ/WRITE_BASE */
-   uint64_t db_stencil_base;
-
-   union {
-      struct {
-         uint64_t db_htile_data_base;
-         unsigned db_depth_info;
-         unsigned db_z_info2; /* GFX9 only */
-         unsigned db_depth_slice;
-         unsigned db_stencil_info2; /* GFX9 only */
-         unsigned db_htile_surface;
-      } gfx6;
-
-      struct {
-         uint64_t hiz_base;
-         unsigned hiz_info;
-         unsigned hiz_size_xy;
-         uint64_t his_base;
-         unsigned his_info;
-         unsigned his_size_xy;
-         unsigned db_depth_view1;
-      } gfx12;
-   } u;
+   struct ac_ds_surface ds;
 };
 
 struct si_mmio_counter {

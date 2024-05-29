@@ -263,7 +263,7 @@ struct util_format_pack_description {
                       unsigned width, unsigned height);
 
    /**
-    * Pack pixels from Z32_FLOAT.
+    * Pack pixels from Z32_UNORM.
     * Note: strides are in bytes.
     *
     * Only defined for depth formats.

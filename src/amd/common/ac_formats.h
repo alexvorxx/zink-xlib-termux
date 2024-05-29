@@ -28,6 +28,11 @@ uint32_t
 ac_translate_tex_numformat(const struct util_format_description *desc,
                            int first_non_void);
 
+uint32_t
+ac_translate_tex_dataformat(const struct radeon_info *info,
+                            const struct util_format_description *desc,
+                            int first_non_void);
+
 unsigned
 ac_get_cb_format(enum amd_gfx_level gfx_level, enum pipe_format format);
 

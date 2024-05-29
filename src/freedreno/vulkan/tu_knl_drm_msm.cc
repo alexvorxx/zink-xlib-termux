@@ -966,7 +966,8 @@ tu_queue_submit_locked(struct tu_queue *queue, struct tu_msm_queue_submit *submi
       .syncobj_stride = sizeof(struct drm_msm_gem_submit_syncobj),
    };
 
-   if (FD_RD_DUMP(ENABLE) && fd_rd_output_begin(&queue->device->rd_output, submit_idx)) {
+   if (req.nr_cmds && FD_RD_DUMP(ENABLE) &&
+       fd_rd_output_begin(&queue->device->rd_output, submit_idx)) {
       struct tu_device *device = queue->device;
       struct fd_rd_output *rd_output = &device->rd_output;
 

@@ -722,6 +722,9 @@ validate_ir(Program* program)
                   instr.get());
             check(instr->operands.size() < 4 || instr->operands[3].isOfType(RegType::vgpr),
                   "VMEM write data must be vgpr", instr.get());
+            if (instr->operands.size() >= 3 && instr->operands[2].isConstant())
+               check(program->gfx_level < GFX12 || instr->operands[2].constantValue() == 0,
+                     "VMEM SOFFSET must not be non-zero constant on GFX12+", instr.get());
 
             const bool d16 =
                instr->opcode ==
@@ -800,8 +803,11 @@ validate_ir(Program* program)
                         check(instr->operands[i].regClass() == v1,
                               "GFX10 MIMG VADDR must be v1 if NSA is used", instr.get());
                      } else {
+                        unsigned num_scalar =
+                           program->gfx_level >= GFX12 ? (instr->operands.size() - 4) : 4;
                         if (instr->opcode != aco_opcode::image_bvh_intersect_ray &&
-                            instr->opcode != aco_opcode::image_bvh64_intersect_ray && i < 7) {
+                            instr->opcode != aco_opcode::image_bvh64_intersect_ray &&
+                            i < 3 + num_scalar) {
                            check(instr->operands[i].regClass() == v1,
                                  "first 4 GFX11 MIMG VADDR must be v1 if NSA is used", instr.get());
                         }

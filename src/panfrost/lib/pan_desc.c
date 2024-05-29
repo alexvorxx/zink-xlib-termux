@@ -166,6 +166,7 @@ translate_s_format(enum pipe_format in)
    case PIPE_FORMAT_S8X24_UINT:
       return MALI_S_FORMAT_S8X24;
    case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
+   case PIPE_FORMAT_X32_S8X24_UINT:
       return MALI_S_FORMAT_X32_S8X24;
 #endif
 

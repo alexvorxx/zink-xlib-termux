@@ -176,6 +176,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
+      .KHR_maintenance6 = true,
       .KHR_map_memory2 = true,
       .KHR_multiview = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .KHR_performance_query = TU_DEBUG(PERFC),
@@ -255,6 +256,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
+      .EXT_nested_command_buffer = true,
       .EXT_non_seamless_cube_map = true,
       .EXT_physical_device_drm = !is_kgsl(device->instance),
       .EXT_pipeline_creation_cache_control = true,
@@ -453,6 +455,9 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_KHR_maintenance5 */
    features->maintenance5 = true;
 
+   /* VK_KHR_maintenance6 */
+   features->maintenance6 = true;
+
    /* VK_KHR_performance_query */
    features->performanceCounterQueryPools = true;
    features->performanceCounterMultipleQueryPools = false;
@@ -579,6 +584,11 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_EXT_mutable_descriptor_type */
    features->mutableDescriptorType = true;
+
+   /* VK_EXT_nested_command_buffer */
+   features->nestedCommandBuffer = true,
+   features->nestedCommandBufferRendering = true,
+   features->nestedCommandBufferSimultaneousUse = true,
 
    /* VK_EXT_non_seamless_cube_map */
    features->nonSeamlessCubeMap = true;
@@ -1033,6 +1043,9 @@ tu_get_properties(struct tu_physical_device *pdevice,
    /* VK_EXT_multi_draw */
    props->maxMultiDrawCount = 2048;
 
+   /* VK_EXT_nested_command_buffer */
+   props->maxCommandBufferNestingLevel = UINT32_MAX,
+
    /* VK_EXT_graphics_pipeline_library */
    props->graphicsPipelineLibraryFastLinking = true;
    props->graphicsPipelineLibraryIndependentInterpolationDecoration = true;
@@ -1096,6 +1109,11 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->polygonModePointSize = true;
    props->nonStrictWideLinesUseParallelogram = false;
    props->nonStrictSinglePixelWideLinesUseParallelogram = false;
+
+   /* VK_KHR_maintenance6 */
+   props->blockTexelViewCompatibleMultipleLayers = true;
+   props->maxCombinedImageSamplerDescriptorCount = 1;
+   props->fragmentShadingRateClampCombinerInputs = false; /* TODO */
 }
 
 static const struct vk_pipeline_cache_object_ops *const cache_import_ops[] = {
@@ -3006,6 +3024,11 @@ tu_BindBufferMemory2(VkDevice device,
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
       VK_FROM_HANDLE(tu_buffer, buffer, pBindInfos[i].buffer);
+
+      const VkBindMemoryStatusKHR *status =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_MEMORY_STATUS_KHR);
+      if (status)
+         *status->pResult = VK_SUCCESS;
 
       if (mem) {
          buffer->bo = mem->bo;

@@ -321,6 +321,8 @@ ADDR_E_RETURNCODE Lib::ComputeSurfaceInfo(
                     }
                 }
             }
+
+            SetEquationIndex(&localIn, pOut);
         }
     }
 
@@ -365,6 +367,7 @@ ADDR_E_RETURNCODE Lib::GetPossibleSwizzleModes(
         {
             pOut->validModes.swLinear = 1;
         }
+
         // Depth/Stencil images can't be linear and must be 2D swizzle modes.
         // These three are related to DB block that supports only SW_64KB_2D and SW_256KB_2D for DSV.
         else if (flags.depth || flags.stencil)
@@ -772,8 +775,8 @@ ADDR_E_RETURNCODE Lib::ComputeSubResourceOffsetForSwizzlePattern(
     ADDR_E_RETURNCODE returnCode = ADDR_OK;
 
     if ((GetFillSizeFieldsFlags() == TRUE) &&
-        ((pIn->size  != sizeof(ADDR2_COMPUTE_SUBRESOURCE_OFFSET_FORSWIZZLEPATTERN_INPUT)) ||
-         (pOut->size != sizeof(ADDR2_COMPUTE_SUBRESOURCE_OFFSET_FORSWIZZLEPATTERN_OUTPUT))))
+        ((pIn->size  != sizeof(ADDR3_COMPUTE_SUBRESOURCE_OFFSET_FORSWIZZLEPATTERN_INPUT)) ||
+         (pOut->size != sizeof(ADDR3_COMPUTE_SUBRESOURCE_OFFSET_FORSWIZZLEPATTERN_OUTPUT))))
     {
         returnCode = ADDR_INVALIDPARAMS;
     }

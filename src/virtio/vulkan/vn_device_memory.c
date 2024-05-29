@@ -105,204 +105,6 @@ vn_device_memory_bo_fini(struct vn_device *dev, struct vn_device_memory *mem)
    }
 }
 
-static VkResult
-vn_device_memory_pool_grow_alloc(struct vn_device *dev,
-                                 uint32_t mem_type_index,
-                                 VkDeviceSize size,
-                                 struct vn_device_memory **out_mem)
-{
-   const VkMemoryAllocateInfo alloc_info = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .allocationSize = size,
-      .memoryTypeIndex = mem_type_index,
-   };
-   struct vn_device_memory *mem = vk_device_memory_create(
-      &dev->base.base, &alloc_info, NULL, sizeof(*mem));
-   if (!mem)
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
-
-   vn_object_set_id(mem, vn_get_next_obj_id(), VK_OBJECT_TYPE_DEVICE_MEMORY);
-
-   VkResult result = vn_device_memory_alloc_simple(dev, mem, &alloc_info);
-   if (result != VK_SUCCESS)
-      goto obj_fini;
-
-   result = vn_device_memory_bo_init(dev, mem);
-   if (result != VK_SUCCESS)
-      goto mem_free;
-
-   result =
-      vn_ring_submit_roundtrip(dev->primary_ring, &mem->bo_roundtrip_seqno);
-   if (result != VK_SUCCESS)
-      goto bo_unref;
-
-   mem->bo_roundtrip_seqno_valid = true;
-   *out_mem = mem;
-
-   return VK_SUCCESS;
-
-bo_unref:
-   vn_renderer_bo_unref(dev->renderer, mem->base_bo);
-mem_free:
-   vn_device_memory_free_simple(dev, mem);
-obj_fini:
-   vk_device_memory_destroy(&dev->base.base, NULL, &mem->base.base);
-   return result;
-}
-
-static struct vn_device_memory *
-vn_device_memory_pool_ref(struct vn_device *dev,
-                          struct vn_device_memory *pool_mem)
-{
-   assert(pool_mem->base_bo);
-
-   vn_renderer_bo_ref(dev->renderer, pool_mem->base_bo);
-
-   return pool_mem;
-}
-
-static void
-vn_device_memory_pool_unref(struct vn_device *dev,
-                            struct vn_device_memory *pool_mem)
-{
-   assert(pool_mem->base_bo);
-
-   if (!vn_renderer_bo_unref(dev->renderer, pool_mem->base_bo))
-      return;
-
-   /* wait on valid bo_roundtrip_seqno before vkFreeMemory */
-   if (pool_mem->bo_roundtrip_seqno_valid)
-      vn_ring_wait_roundtrip(dev->primary_ring, pool_mem->bo_roundtrip_seqno);
-
-   vn_device_memory_free_simple(dev, pool_mem);
-   vk_device_memory_destroy(&dev->base.base, NULL, &pool_mem->base.base);
-}
-
-void
-vn_device_memory_pool_fini(struct vn_device *dev, uint32_t mem_type_index)
-{
-   struct vn_device_memory_pool *pool = &dev->memory_pools[mem_type_index];
-   if (pool->memory)
-      vn_device_memory_pool_unref(dev, pool->memory);
-   mtx_destroy(&pool->mutex);
-}
-
-static VkResult
-vn_device_memory_pool_grow_locked(struct vn_device *dev,
-                                  uint32_t mem_type_index,
-                                  VkDeviceSize size)
-{
-   struct vn_device_memory *mem;
-   VkResult result =
-      vn_device_memory_pool_grow_alloc(dev, mem_type_index, size, &mem);
-   if (result != VK_SUCCESS)
-      return result;
-
-   struct vn_device_memory_pool *pool = &dev->memory_pools[mem_type_index];
-   if (pool->memory)
-      vn_device_memory_pool_unref(dev, pool->memory);
-
-   pool->memory = mem;
-   pool->used = 0;
-
-   return VK_SUCCESS;
-}
-
-static VkResult
-vn_device_memory_pool_suballocate(struct vn_device *dev,
-                                  struct vn_device_memory *mem)
-{
-   static const VkDeviceSize pool_size = 16 * 1024 * 1024;
-   /* TODO fix https://gitlab.freedesktop.org/mesa/mesa/-/issues/9351
-    * Before that, we use 64K default alignment because some GPUs have 64K
-    * pages. It is also required by newer Intel GPUs. Meanwhile, use prior 4K
-    * align on implementations known to fit.
-    */
-   const bool is_renderer_mali = dev->physical_device->renderer_driver_id ==
-                                 VK_DRIVER_ID_ARM_PROPRIETARY;
-   const VkDeviceSize pool_align = is_renderer_mali ? 4096 : 64 * 1024;
-   const struct vk_device_memory *mem_vk = &mem->base.base;
-   struct vn_device_memory_pool *pool =
-      &dev->memory_pools[mem_vk->memory_type_index];
-
-   assert(mem_vk->size <= pool_size);
-
-   mtx_lock(&pool->mutex);
-
-   if (!pool->memory || pool->used + mem_vk->size > pool_size) {
-      VkResult result = vn_device_memory_pool_grow_locked(
-         dev, mem_vk->memory_type_index, pool_size);
-      if (result != VK_SUCCESS) {
-         mtx_unlock(&pool->mutex);
-         return result;
-      }
-   }
-
-   mem->base_memory = vn_device_memory_pool_ref(dev, pool->memory);
-
-   /* point mem->base_bo at pool base_bo and assign base_offset accordingly */
-   mem->base_bo = pool->memory->base_bo;
-   mem->base_offset = pool->used;
-   pool->used += align64(mem_vk->size, pool_align);
-
-   mtx_unlock(&pool->mutex);
-
-   return VK_SUCCESS;
-}
-
-static bool
-vn_device_memory_should_suballocate(const struct vn_device *dev,
-                                    const VkMemoryAllocateInfo *alloc_info)
-{
-   if (VN_PERF(NO_MEMORY_SUBALLOC))
-      return false;
-
-   if (dev->renderer->info.has_guest_vram)
-      return false;
-
-   /* We should not support suballocations because apps can do better.  But
-    * each BO takes up a KVM memslot currently and some CTS tests exhausts
-    * them.  This might not be needed on newer (host) kernels where there are
-    * many more KVM memslots.
-    */
-
-   /* consider host-visible memory only */
-   const VkMemoryType *mem_type =
-      &dev->physical_device->memory_properties
-          .memoryTypes[alloc_info->memoryTypeIndex];
-   if (!(mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
-      return false;
-
-   /* reject larger allocations */
-   if (alloc_info->allocationSize > 64 * 1024)
-      return false;
-
-   /* reject if there is any pnext struct other than
-    * VkMemoryDedicatedAllocateInfo, or if dedicated allocation is required
-    */
-   if (alloc_info->pNext) {
-      const VkMemoryDedicatedAllocateInfo *dedicated = alloc_info->pNext;
-      if (dedicated->sType !=
-             VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO ||
-          dedicated->pNext)
-         return false;
-
-      const struct vn_image *img = vn_image_from_handle(dedicated->image);
-      if (img) {
-         for (uint32_t i = 0; i < ARRAY_SIZE(img->requirements); i++) {
-            if (img->requirements[i].dedicated.requiresDedicatedAllocation)
-               return false;
-         }
-      }
-
-      const struct vn_buffer *buf = vn_buffer_from_handle(dedicated->buffer);
-      if (buf && buf->requirements.dedicated.requiresDedicatedAllocation)
-         return false;
-   }
-
-   return true;
-}
-
 VkResult
 vn_device_memory_import_dma_buf(struct vn_device *dev,
                                 struct vn_device_memory *mem,
@@ -593,8 +395,6 @@ vn_AllocateMemory(VkDevice device,
    } else if (import_fd_info) {
       result = vn_device_memory_import_dma_buf(dev, mem, pAllocateInfo, false,
                                                import_fd_info->fd);
-   } else if (vn_device_memory_should_suballocate(dev, pAllocateInfo)) {
-      result = vn_device_memory_pool_suballocate(dev, mem);
    } else {
       result = vn_device_memory_alloc(dev, mem, pAllocateInfo);
    }
@@ -623,18 +423,13 @@ vn_FreeMemory(VkDevice device,
 
    vn_device_memory_emit_report(dev, mem, /* is_alloc */ false, VK_SUCCESS);
 
-   if (mem->base_memory) {
-      vn_device_memory_pool_unref(dev, mem->base_memory);
-   } else {
-      /* ensure renderer side import still sees the resource */
-      vn_device_memory_bo_fini(dev, mem);
+   /* ensure renderer side import still sees the resource */
+   vn_device_memory_bo_fini(dev, mem);
 
-      if (mem->bo_roundtrip_seqno_valid)
-         vn_ring_wait_roundtrip(dev->primary_ring, mem->bo_roundtrip_seqno);
+   if (mem->bo_roundtrip_seqno_valid)
+      vn_ring_wait_roundtrip(dev->primary_ring, mem->bo_roundtrip_seqno);
 
-      vn_device_memory_free_simple(dev, mem);
-   }
-
+   vn_device_memory_free_simple(dev, mem);
    vk_device_memory_destroy(&dev->base.base, pAllocator, &mem->base.base);
 }
 
@@ -643,10 +438,6 @@ vn_GetDeviceMemoryOpaqueCaptureAddress(
    VkDevice device, const VkDeviceMemoryOpaqueCaptureAddressInfo *pInfo)
 {
    struct vn_device *dev = vn_device_from_handle(device);
-   ASSERTED struct vn_device_memory *mem =
-      vn_device_memory_from_handle(pInfo->memory);
-
-   assert(!mem->base_memory);
    return vn_call_vkGetDeviceMemoryOpaqueCaptureAddress(dev->primary_ring,
                                                         device, pInfo);
 }
@@ -702,7 +493,7 @@ vn_MapMemory(VkDevice device,
 
    mem->map_end = size == VK_WHOLE_SIZE ? mem_vk->size : offset + size;
 
-   *ppData = ptr + mem->base_offset + offset;
+   *ppData = ptr + offset;
 
    return VK_SUCCESS;
 }
@@ -727,8 +518,7 @@ vn_FlushMappedMemoryRanges(VkDevice device,
       const VkDeviceSize size = range->size == VK_WHOLE_SIZE
                                    ? mem->map_end - range->offset
                                    : range->size;
-      vn_renderer_bo_flush(dev->renderer, mem->base_bo,
-                           mem->base_offset + range->offset, size);
+      vn_renderer_bo_flush(dev->renderer, mem->base_bo, range->offset, size);
    }
 
    return VK_SUCCESS;
@@ -749,8 +539,8 @@ vn_InvalidateMappedMemoryRanges(VkDevice device,
       const VkDeviceSize size = range->size == VK_WHOLE_SIZE
                                    ? mem->map_end - range->offset
                                    : range->size;
-      vn_renderer_bo_invalidate(dev->renderer, mem->base_bo,
-                                mem->base_offset + range->offset, size);
+      vn_renderer_bo_invalidate(dev->renderer, mem->base_bo, range->offset,
+                                size);
    }
 
    return VK_SUCCESS;
@@ -762,10 +552,6 @@ vn_GetDeviceMemoryCommitment(VkDevice device,
                              VkDeviceSize *pCommittedMemoryInBytes)
 {
    struct vn_device *dev = vn_device_from_handle(device);
-   ASSERTED struct vn_device_memory *mem =
-      vn_device_memory_from_handle(memory);
-
-   assert(!mem->base_memory);
    vn_call_vkGetDeviceMemoryCommitment(dev->primary_ring, device, memory,
                                        pCommittedMemoryInBytes);
 }
@@ -784,7 +570,7 @@ vn_GetMemoryFdKHR(VkDevice device,
    assert(pGetFdInfo->handleType &
           (VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
            VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT));
-   assert(!mem->base_memory && mem->base_bo);
+   assert(mem->base_bo);
    *pFd = vn_renderer_bo_export_dma_buf(dev->renderer, mem->base_bo);
    if (*pFd < 0)
       return vn_error(dev->instance, VK_ERROR_TOO_MANY_OBJECTS);

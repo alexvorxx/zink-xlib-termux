@@ -243,6 +243,21 @@ impl NirAluInfo for nir_op_info {
     }
 }
 
+pub trait NirAluSrc {
+    fn comp_as_int(&self, comp: u8) -> Option<i64>;
+    fn comp_as_uint(&self, comp: u8) -> Option<u64>;
+}
+
+impl NirAluSrc for nir_alu_src {
+    fn comp_as_int(&self, comp: u8) -> Option<i64> {
+        self.src.comp_as_int(self.swizzle[usize::from(comp)])
+    }
+
+    fn comp_as_uint(&self, comp: u8) -> Option<u64> {
+        self.src.comp_as_uint(self.swizzle[usize::from(comp)])
+    }
+}
+
 impl NirSrcsAsSlice<nir_tex_src> for nir_tex_instr {
     fn srcs_as_slice(&self) -> &[nir_tex_src] {
         unsafe { std::slice::from_raw_parts(self.src, self.num_srcs as usize) }

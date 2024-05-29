@@ -603,6 +603,11 @@ struct v3d_ra_node_info {
                 bool is_program_end;
                 bool unused;
 
+                /* If this node may have an allocation conflict with a
+                 * payload register.
+                 */
+                bool payload_conflict;
+
                 /* V3D 7.x */
                 bool is_ldunif_dst;
         } *info;
@@ -980,6 +985,8 @@ struct v3d_vs_prog_data {
 
         /* Value to be programmed in VCM_CACHE_SIZE. */
         uint8_t vcm_cache_size;
+
+        bool writes_psiz;
 
         /* Maps the nir->data.location to its
          * nir->data.driver_location. In general we are using the

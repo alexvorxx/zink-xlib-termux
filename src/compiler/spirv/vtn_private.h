@@ -43,6 +43,7 @@ extern uint32_t mesa_spirv_debug;
 #endif
 
 #define MESA_SPIRV_DEBUG_STRUCTURED     (1u << 0)
+#define MESA_SPIRV_DEBUG_VALUES         (1u << 1)
 
 struct vtn_builder;
 struct vtn_decoration;
@@ -732,6 +733,9 @@ vtn_untyped_value(struct vtn_builder *b, uint32_t value_id)
                "SPIR-V id %u is out-of-bounds", value_id);
    return &b->values[value_id];
 }
+
+void vtn_print_value(struct vtn_builder *b, struct vtn_value *val, FILE *f);
+void vtn_dump_values(struct vtn_builder *b, FILE *f);
 
 static inline uint32_t
 vtn_id_for_value(struct vtn_builder *b, struct vtn_value *value)

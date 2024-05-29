@@ -154,7 +154,9 @@ debian-testing-msan:
       -D intel-clc=enabled
       -D install-intel-clc=true
 
-debian-build-testing:
+# Disabled because it is unacceptably slow and blocks too many MRs
+# Should be re-enabled once this problem has been fixed.
+.debian-build-testing:
   extends: .meson-build
   variables:
     BUILDTYPE: debug
@@ -172,7 +174,7 @@ debian-build-testing:
       -D gallium-omx=bellagio
       -D gallium-va=enabled
       -D gallium-xa=enabled
-      -D gallium-nine=true
+      -D gallium-nine=false
       -D gallium-rusticl=false
     GALLIUM_DRIVERS: "iris,nouveau,kmsro,r300,r600,freedreno,swrast,svga,v3d,vc4,virgl,etnaviv,panfrost,lima,zink,d3d12,asahi,crocus"
     VULKAN_DRIVERS: swrast
@@ -195,13 +197,14 @@ debian-build-testing:
     .gitlab-ci/prepare-artifacts.sh
   timeout: 15m
 
-shader-db:
+# Disabled because it currently needs debian-build-testing
+.shader-db:
   stage: code-validation
   extends:
     - .use-debian/x86_64_build
     - .container+build-rules
   needs:
-    - debian-build-testing
+    - .debian-build-testing
   variables:
     S3_ARTIFACT_NAME: debian-build-testing
   before_script:

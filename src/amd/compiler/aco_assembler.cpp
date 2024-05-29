@@ -1537,13 +1537,19 @@ emit_long_jump(asm_context& ctx, SALU_instruction* branch, bool backwards,
       case aco_opcode::s_cbranch_execnz: inv = aco_opcode::s_cbranch_execz; break;
       default: unreachable("Unhandled long jump.");
       }
-      instr.reset(bld.sopp(inv, 6));
+      unsigned size = ctx.gfx_level >= GFX12 ? 7 : 6;
+      instr.reset(bld.sopp(inv, size));
       emit_sopp_instruction(ctx, out, instr.get(), true);
    }
 
    /* create the new PC and stash SCC in the LSB */
    instr.reset(bld.sop1(aco_opcode::s_getpc_b64, def).instr);
    emit_instruction(ctx, out, instr.get());
+
+   if (ctx.gfx_level >= GFX12) {
+      instr.reset(bld.sop1(aco_opcode::s_sext_i32_i16, def_tmp_hi, op_tmp_hi).instr);
+      emit_instruction(ctx, out, instr.get());
+   }
 
    instr.reset(
       bld.sop2(aco_opcode::s_addc_u32, def_tmp_lo, op_tmp_lo, Operand::literal32(0)).instr);

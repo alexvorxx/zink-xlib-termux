@@ -38,6 +38,7 @@ __gen_combine_address(__attribute__((unused)) void *data,
 #include "genxml/genX_pack.h"
 
 #include "isl_priv.h"
+#include "isl_genX_helpers.h"
 
 #if GFX_VERx10 >= 125
 static const uint8_t isl_encode_tiling[] = {
@@ -107,6 +108,10 @@ isl_genX(emit_cpb_control_s)(const struct isl_device *dev, void *batch,
        * cpb.CPCBCompressionEnable is this CCS compression? Currently disabled
        * in isl_surf_supports_ccs() for CPB buffers.
        */
+#if GFX_VER >= 20
+      cpb.CompressionFormat  =
+         isl_get_render_compression_format(info->surf->format);
+#endif
    } else {
       cpb.SurfaceType  = SURFTYPE_NULL;
       cpb.TiledMode    = TILE64;

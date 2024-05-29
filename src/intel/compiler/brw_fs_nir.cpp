@@ -6559,7 +6559,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       const nir_src load_offset = is_ssbo ? instr->src[1] : instr->src[0];
       if (nir_src_is_const(load_offset)) {
-         fs_reg addr = ubld8.MOV(brw_imm_ud(nir_src_as_uint(load_offset)));
+         const fs_builder &ubld = devinfo->ver >= 20 ? ubld16 : ubld8;
+         fs_reg addr = ubld.MOV(brw_imm_ud(nir_src_as_uint(load_offset)));
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] = component(addr, 0);
       } else {
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
@@ -8446,6 +8447,40 @@ emit_shader_float_controls_execution_mode(nir_to_brw_state &ntb)
              brw_imm_d(mode), brw_imm_d(mask));
 }
 
+/**
+ * Test the dispatch mask packing assumptions of
+ * brw_stage_has_packed_dispatch().  Call this from e.g. the top of
+ * nir_to_brw() to cause a GPU hang if any shader invocation is
+ * executed with an unexpected dispatch mask.
+ */
+static UNUSED void
+brw_fs_test_dispatch_packing(const fs_builder &bld)
+{
+   const fs_visitor *shader = bld.shader;
+   const gl_shader_stage stage = shader->stage;
+   const bool uses_vmask =
+      stage == MESA_SHADER_FRAGMENT &&
+      brw_wm_prog_data(shader->prog_data)->uses_vmask;
+
+   if (brw_stage_has_packed_dispatch(shader->devinfo, stage,
+                                     shader->max_polygons,
+                                     shader->prog_data)) {
+      const fs_builder ubld = bld.exec_all().group(1, 0);
+      const fs_reg tmp = component(bld.vgrf(BRW_TYPE_UD), 0);
+      const fs_reg mask = uses_vmask ? brw_vmask_reg() : brw_dmask_reg();
+
+      ubld.ADD(tmp, mask, brw_imm_ud(1));
+      ubld.AND(tmp, mask, tmp);
+
+      /* This will loop forever if the dispatch mask doesn't have the expected
+       * form '2^n-1', in which case tmp will be non-zero.
+       */
+      bld.emit(BRW_OPCODE_DO);
+      bld.CMP(bld.null_reg_ud(), tmp, brw_imm_ud(0), BRW_CONDITIONAL_NZ);
+      set_predicate(BRW_PREDICATE_NORMAL, bld.emit(BRW_OPCODE_WHILE));
+   }
+}
+
 void
 nir_to_brw(fs_visitor *s)
 {
@@ -8456,6 +8491,9 @@ nir_to_brw(fs_visitor *s)
       .mem_ctx = ralloc_context(NULL),
       .bld     = fs_builder(s).at_end(),
    };
+
+   if (ENABLE_FS_TEST_DISPATCH_PACKING)
+      brw_fs_test_dispatch_packing(ntb.bld);
 
    for (unsigned i = 0; i < s->nir->printf_info_count; i++) {
       brw_stage_prog_data_add_printf(s->prog_data,

@@ -1177,21 +1177,21 @@ radv_replay_shader_arena_block(struct radv_device *device, const struct radv_ser
                                void *ptr)
 {
    mtx_lock(&device->shader_arena_mutex);
+
+   union radv_shader_arena_block *ret_block = NULL;
+
    uint64_t va = src->arena_va;
    void *data = _mesa_hash_table_u64_search(device->capture_replay_arena_vas, va);
 
    if (!data) {
       struct radv_shader_arena *arena = radv_create_shader_arena(device, NULL, 0, src->arena_size, true, src->arena_va);
-      if (!arena) {
-         mtx_unlock(&device->shader_arena_mutex);
-         return NULL;
-      }
+      if (!arena)
+         goto out;
 
       _mesa_hash_table_u64_insert(device->capture_replay_arena_vas, src->arena_va, arena);
       list_addtail(&arena->list, &device->shader_arenas);
       data = arena;
    }
-   mtx_unlock(&device->shader_arena_mutex);
 
    uint32_t block_begin = src->offset;
    uint32_t block_end = src->offset + src->size;
@@ -1210,17 +1210,22 @@ radv_replay_shader_arena_block(struct radv_device *device, const struct radv_ser
 
       /* If another allocated block overlaps the current replay block, allocation is impossible */
       if (hole_begin > block_begin)
-         return NULL;
+         goto out;
 
       union radv_shader_arena_block *block = insert_block(device, hole, block_begin - hole_begin, src->size, NULL);
       if (!block)
-         return NULL;
+         goto out;
 
       block->freelist.prev = NULL;
       block->freelist.next = ptr;
-      return hole;
+
+      ret_block = hole;
+      break;
    }
-   return NULL;
+
+out:
+   mtx_unlock(&device->shader_arena_mutex);
+   return ret_block;
 }
 
 void
@@ -1666,7 +1671,8 @@ radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader_b
       S_02880C_EXEC_ON_HIER_FAIL(info->ps.writes_memory) | S_02880C_EXEC_ON_NOOP(info->ps.writes_memory) |
       S_02880C_DUAL_QUAD_DISABLE(disable_rbplus) | S_02880C_PRIMITIVE_ORDERED_PIXEL_SHADER(info->ps.pops);
 
-   const bool param_gen = pdev->info.gfx_level >= GFX11 && !info->ps.num_interp && binary->config.lds_size;
+   /* GFX11 workaround when there are no PS inputs but LDS is used. */
+   const bool param_gen = pdev->info.gfx_level == GFX11 && !info->ps.num_interp && binary->config.lds_size;
 
    info->regs.ps.spi_ps_in_control = S_0286D8_NUM_INTERP(info->ps.num_interp) |
                                      S_0286D8_NUM_PRIM_INTERP(info->ps.num_prim_interp) |
@@ -2908,8 +2914,7 @@ radv_create_rt_prolog(struct radv_device *device)
    info.wave_size = pdev->rt_wave_size;
    info.workgroup_size = info.wave_size;
    info.user_data_0 = R_00B900_COMPUTE_USER_DATA_0;
-   info.cs.is_rt_shader = true;
-   info.cs.uses_dynamic_rt_callable_stack = true;
+   info.type = RADV_SHADER_TYPE_RT_PROLOG;
    info.cs.block_size[0] = 8;
    info.cs.block_size[1] = pdev->rt_wave_size == 64 ? 8 : 4;
    info.cs.block_size[2] = 1;

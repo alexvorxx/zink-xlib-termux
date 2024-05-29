@@ -255,8 +255,6 @@ bool radv_enable_rt(const struct radv_physical_device *pdev, bool rt_pipelines);
 
 bool radv_emulate_rt(const struct radv_physical_device *pdev);
 
-bool radv_device_supports_etc(const struct radv_physical_device *pdev);
-
 uint32_t radv_find_memory_index(const struct radv_physical_device *pdev, VkMemoryPropertyFlags flags);
 
 VkResult create_null_physical_device(struct vk_instance *vk_instance);

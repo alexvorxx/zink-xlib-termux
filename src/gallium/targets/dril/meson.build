@@ -133,9 +133,8 @@ if prog_ln.found()
   foreach d : dril_drivers
     custom_target(
       d,
-      input : dril_dri,
       output : d,
-      command : [prog_ln, '-f', '@INPUT@', '@OUTPUT@'],
+      command : [prog_ln, '-sf', 'libdril_dri.so', '@OUTPUT@'],
       build_by_default : true,
     )
   endforeach

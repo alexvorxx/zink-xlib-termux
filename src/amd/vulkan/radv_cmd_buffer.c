@@ -2140,7 +2140,9 @@ radv_emit_hw_hs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *sh
    const uint64_t va = radv_shader_get_va(shader);
 
    if (pdev->info.gfx_level >= GFX9) {
-      if (pdev->info.gfx_level >= GFX10) {
+      if (pdev->info.gfx_level >= GFX12) {
+         radeon_set_sh_reg(cmd_buffer->cs, R_00B424_SPI_SHADER_PGM_LO_LS, va >> 8);
+      } else if (pdev->info.gfx_level >= GFX10) {
          radeon_set_sh_reg(cmd_buffer->cs, R_00B520_SPI_SHADER_PGM_LO_LS, va >> 8);
       } else {
          radeon_set_sh_reg(cmd_buffer->cs, R_00B410_SPI_SHADER_PGM_LO_LS, va >> 8);
@@ -2178,7 +2180,9 @@ radv_emit_vertex_shader(struct radv_cmd_buffer *cmd_buffer)
          if (vs->info.next_stage == MESA_SHADER_TESS_CTRL) {
             radv_shader_combine_cfg_vs_tcs(vs, next_stage, &rsrc1, NULL);
 
-            if (pdev->info.gfx_level >= GFX10) {
+            if (pdev->info.gfx_level >= GFX12) {
+               radeon_set_sh_reg(cmd_buffer->cs, R_00B424_SPI_SHADER_PGM_LO_LS, vs->va >> 8);
+            } else if (pdev->info.gfx_level >= GFX10) {
                radeon_set_sh_reg(cmd_buffer->cs, R_00B520_SPI_SHADER_PGM_LO_LS, vs->va >> 8);
             } else {
                radeon_set_sh_reg(cmd_buffer->cs, R_00B410_SPI_SHADER_PGM_LO_LS, vs->va >> 8);
@@ -5129,7 +5133,9 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
    } else if (cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL] == vs_shader ||
               (vs_shader->info.merged_shader_compiled_separately &&
                vs_shader->info.next_stage == MESA_SHADER_TESS_CTRL)) {
-      pgm_lo_reg = chip >= GFX10 ? R_00B520_SPI_SHADER_PGM_LO_LS : R_00B410_SPI_SHADER_PGM_LO_LS;
+      pgm_lo_reg = chip >= GFX12   ? R_00B424_SPI_SHADER_PGM_LO_LS
+                   : chip >= GFX10 ? R_00B520_SPI_SHADER_PGM_LO_LS
+                                   : R_00B410_SPI_SHADER_PGM_LO_LS;
       rsrc1_reg = R_00B428_SPI_SHADER_PGM_RSRC1_HS;
    } else if (vs_shader->info.vs.as_ls) {
       pgm_lo_reg = R_00B520_SPI_SHADER_PGM_LO_LS;

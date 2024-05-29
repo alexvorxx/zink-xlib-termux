@@ -373,6 +373,55 @@ lower_cf_list(nir_builder *b, nir_def *esc_reg, struct scope *parent_scope,
    }
 }
 
+static void
+recompute_phi_divergence_impl(nir_function_impl *impl)
+{
+   bool progress;
+   do {
+      progress = false;
+      nir_foreach_block_unstructured(block, impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type != nir_instr_type_phi)
+               break;
+
+            nir_phi_instr *phi = nir_instr_as_phi(instr);
+
+            bool divergent = false;
+            nir_foreach_phi_src(phi_src, phi) {
+               /* There is a tricky case we need to care about here where a
+                * convergent block has a divergent dominator.  This can happen
+                * if, for instance, you have the following loop:
+                *
+                *    loop {
+                *       if (div) {
+                *          %20 = load_ubo(0, 0);
+                *       } else {
+                *          terminate;
+                *       }
+                *    }
+                *    use(%20);
+                *
+                * In this case, the load_ubo() dominates the use() even though
+                * the load_ubo() exists in divergent control-flow.  In this
+                * case, we simply flag the whole phi divergent because we
+                * don't want to deal with inserting a r2ur somewhere.
+                */
+               if (phi_src->pred->divergent || phi_src->src.ssa->divergent ||
+                   phi_src->src.ssa->parent_instr->block->divergent) {
+                  divergent = true;
+                  break;
+               }
+            }
+
+            if (divergent != phi->def.divergent) {
+               phi->def.divergent = divergent;
+               progress = true;
+            }
+         }
+      }
+   } while(progress);
+}
+
 static bool
 lower_cf_func(nir_function *func)
 {
@@ -422,6 +471,7 @@ lower_cf_func(nir_function *func)
    nir_sort_unstructured_blocks(new_impl);
    nir_repair_ssa_impl(new_impl);
    nir_lower_reg_intrinsics_to_ssa_impl(new_impl);
+   recompute_phi_divergence_impl(new_impl);
 
    return true;
 }

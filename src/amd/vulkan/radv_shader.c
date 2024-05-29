@@ -1218,6 +1218,8 @@ radv_replay_shader_arena_block(struct radv_device *device, const struct radv_ser
 
       block->freelist.prev = NULL;
       block->freelist.next = ptr;
+
+      ret_block = hole;
       break;
    }
 

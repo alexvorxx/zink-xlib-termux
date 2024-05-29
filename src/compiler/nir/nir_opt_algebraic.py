@@ -146,6 +146,13 @@ def add_fabs_fneg(pattern, replacements, commutative = True):
 
 
 optimizations = [
+   # These will be recreated by late_algebraic if supported.
+   # Lowering here means we don't have to duplicate all other optimization patterns.
+   (('fgeu', a, b), ('inot', ('flt', a, b))),
+   (('fltu', a, b), ('inot', ('fge', a, b))),
+   (('fneo', 0.0, a), ('flt', 0.0, ('fabs', a))),
+   (('fequ', 0.0, a), ('inot', ('flt', 0.0, ('fabs', a)))),
+
 
    (('imul', a, '#b(is_pos_power_of_two)'), ('ishl', a, ('find_lsb', b)), '!options->lower_bitops'),
    (('imul', 'a@8', 0x80), ('ishl', a, 7), '!options->lower_bitops'),
@@ -3091,13 +3098,47 @@ late_optimizations = [
 
    # This is how SpvOpFOrdNotEqual might be implemented.  Replace it with
    # SpvOpLessOrGreater.
-   (('iand', ('fneu', a, b),   ('iand', ('feq', a, a), ('feq', b, b))), ('ior', ('!flt', a, b), ('!flt', b, a))),
-   (('iand', ('fneu', a, 0.0),          ('feq', a, a)                ), ('!flt', 0.0, ('fabs', a))),
+   *add_fabs_fneg((('iand', ('fneu', 'ma', 'mb'), ('iand', ('feq', a, a), ('feq', b, b))), ('ior', ('!flt', 'ma', 'mb'), ('!flt', 'mb', 'ma'))), {'ma' : a, 'mb' : b}),
+   (('iand', ('fneu', a, 0.0), ('feq', a, a)), ('!flt', 0.0, ('fabs', a))),
 
    # This is how SpvOpFUnordEqual might be implemented.  Replace it with
    # !SpvOpLessOrGreater.
-   (('ior', ('feq', a, b),   ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('ior', ('!flt', a, b), ('!flt', b, a)))),
-   (('ior', ('feq', a, 0.0),         ('fneu', a, a),                ), ('inot', ('!flt', 0.0, ('fabs', a)))),
+   *add_fabs_fneg((('ior', ('feq', 'ma', 'mb'), ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('ior', ('!flt', 'ma', 'mb'), ('!flt', 'mb', 'ma')))), {'ma' : a, 'mb' : b}),
+   (('ior', ('feq', a, 0.0), ('fneu', a, a)), ('inot', ('!flt', 0.0, ('fabs', a)))),
+
+   *add_fabs_fneg((('ior', ('flt', 'ma', 'mb'), ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('fge', 'ma', 'mb'))), {'ma' : a, 'mb' : b}, False),
+   *add_fabs_fneg((('ior', ('fge', 'ma', 'mb'), ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('flt', 'ma', 'mb'))), {'ma' : a, 'mb' : b}, False),
+   *add_fabs_fneg((('ior', ('flt', 'ma', 'b(is_a_number)'), ('fneu', a, a)), ('inot', ('fge', 'ma', b))), {'ma' : a}),
+   *add_fabs_fneg((('ior', ('fge', 'ma', 'b(is_a_number)'), ('fneu', a, a)), ('inot', ('flt', 'ma', b))), {'ma' : a}),
+   *add_fabs_fneg((('ior', ('flt', 'a(is_a_number)', 'mb'), ('fneu', b, b)), ('inot', ('fge', a, 'mb'))), {'mb' : b}),
+   *add_fabs_fneg((('ior', ('fge', 'a(is_a_number)', 'mb'), ('fneu', b, b)), ('inot', ('flt', a, 'mb'))), {'mb' : b}),
+   *add_fabs_fneg((('iand', ('fneu', 'ma', 'b(is_a_number)'), ('feq', a, a)), ('fneo', 'ma', b), 'options->has_fneo_fcmpu'), {'ma' : a}),
+   *add_fabs_fneg((('ior', ('feq', 'ma', 'b(is_a_number)'), ('fneu', a, a)), ('fequ', 'ma', b), 'options->has_fneo_fcmpu'), {'ma' : a}),
+
+   (('ior', ('flt', a, b), ('flt', b, a)), ('fneo', a, b), 'options->has_fneo_fcmpu'),
+   (('flt', 0.0, ('fabs', a)), ('fneo', 0.0, a), 'options->has_fneo_fcmpu'),
+
+
+   # These don't interfere with the previous optimizations which include this
+   # in the search expression, because nir_algebraic_impl visits instructions
+   # in reverse order.
+   (('ior', ('fneu', 'a@16', a), ('fneu', 'b@16', b)), ('funord', a, b), 'options->has_ford_funord'),
+   (('iand', ('feq', 'a@16', a), ('feq', 'b@16', b)), ('ford', a, b), 'options->has_ford_funord'),
+   (('ior', ('fneu', 'a@32', a), ('fneu', 'b@32', b)), ('funord', a, b), 'options->has_ford_funord'),
+   (('iand', ('feq', 'a@32', a), ('feq', 'b@32', b)), ('ford', a, b), 'options->has_ford_funord'),
+   (('ior', ('fneu', 'a@64', a), ('fneu', 'b@64', b)), ('funord', a, b), 'options->has_ford_funord'),
+   (('iand', ('feq', 'a@64', a), ('feq', 'b@64', b)), ('ford', a, b), 'options->has_ford_funord'),
+
+   (('inot', ('ford(is_used_once)', a, b)), ('funord', a, b)),
+   (('inot', ('funord(is_used_once)', a, b)), ('ford', a, b)),
+   (('inot', ('feq(is_used_once)', a, b)), ('fneu', a, b)),
+   (('inot', ('fneu(is_used_once)', a, b)), ('feq', a, b)),
+   (('inot', ('fequ(is_used_once)', a, b)), ('fneo', a, b)),
+   (('inot', ('fneo(is_used_once)', a, b)), ('fequ', a, b)),
+   (('inot', ('flt(is_used_once)', a, b)), ('fgeu', a, b), 'options->has_fneo_fcmpu'),
+   (('inot', ('fgeu(is_used_once)', a, b)), ('flt', a, b)),
+   (('inot', ('fge(is_used_once)', a, b)), ('fltu', a, b), 'options->has_fneo_fcmpu'),
+   (('inot', ('fltu(is_used_once)', a, b)), ('fge', a, b)),
 
    # nir_lower_to_source_mods will collapse this, but its existence during the
    # optimization loop can prevent other optimizations.

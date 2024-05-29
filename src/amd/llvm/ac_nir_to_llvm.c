@@ -689,11 +689,29 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_fneu:
       result = emit_float_cmp(&ctx->ac, LLVMRealUNE, src[0], src[1]);
       break;
+   case nir_op_fequ:
+      result = emit_float_cmp(&ctx->ac, LLVMRealUEQ, src[0], src[1]);
+      break;
+   case nir_op_fneo:
+      result = emit_float_cmp(&ctx->ac, LLVMRealONE, src[0], src[1]);
+      break;
    case nir_op_flt:
       result = emit_float_cmp(&ctx->ac, LLVMRealOLT, src[0], src[1]);
       break;
    case nir_op_fge:
       result = emit_float_cmp(&ctx->ac, LLVMRealOGE, src[0], src[1]);
+      break;
+   case nir_op_fltu:
+      result = emit_float_cmp(&ctx->ac, LLVMRealULT, src[0], src[1]);
+      break;
+   case nir_op_fgeu:
+      result = emit_float_cmp(&ctx->ac, LLVMRealUGE, src[0], src[1]);
+      break;
+   case nir_op_funord:
+      result = emit_float_cmp(&ctx->ac, LLVMRealUNO, src[0], src[1]);
+      break;
+   case nir_op_ford:
+      result = emit_float_cmp(&ctx->ac, LLVMRealORD, src[0], src[1]);
       break;
    case nir_op_fabs:
       result =

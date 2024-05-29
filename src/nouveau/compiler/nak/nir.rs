@@ -467,6 +467,7 @@ pub trait NirInstr {
     fn as_load_const(&self) -> Option<&nir_load_const_instr>;
     fn as_undef(&self) -> Option<&nir_undef_instr>;
     fn as_phi(&self) -> Option<&nir_phi_instr>;
+    fn def(&self) -> Option<&nir_def>;
 }
 
 impl NirInstr for nir_instr {
@@ -530,6 +531,13 @@ impl NirInstr for nir_instr {
             Some(unsafe { &*(p as *const nir_phi_instr) })
         } else {
             None
+        }
+    }
+
+    fn def(&self) -> Option<&nir_def> {
+        unsafe {
+            let def = nir_instr_def(self as *const _ as *mut _);
+            NonNull::new(def).map(|d| d.as_ref())
         }
     }
 }

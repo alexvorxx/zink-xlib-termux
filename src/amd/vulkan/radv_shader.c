@@ -1681,6 +1681,12 @@ radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader_b
 
    if (pdev->info.gfx_level >= GFX12) {
       info->regs.ps.spi_ps_in_control = S_028640_PS_W32_EN(info->wave_size == 32);
+
+      info->regs.ps.pa_sc_hisz_control = S_028BBC_ROUND(2); /* required minimum value */
+      if (info->ps.depth_layout == FRAG_DEPTH_LAYOUT_GREATER)
+         info->regs.ps.pa_sc_hisz_control |= S_028BBC_CONSERVATIVE_Z_EXPORT(V_028BBC_EXPORT_GREATER_THAN_Z);
+      else if (info->ps.depth_layout == FRAG_DEPTH_LAYOUT_LESS)
+         info->regs.ps.pa_sc_hisz_control |= S_028BBC_CONSERVATIVE_Z_EXPORT(V_028BBC_EXPORT_LESS_THAN_Z);
    } else {
       /* GFX11 workaround when there are no PS inputs but LDS is used. */
       const bool param_gen = pdev->info.gfx_level == GFX11 && !info->ps.num_interp && binary->config.lds_size;

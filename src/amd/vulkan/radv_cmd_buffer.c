@@ -2616,6 +2616,8 @@ radv_emit_fragment_shader(struct radv_cmd_buffer *cmd_buffer)
                                  ps->info.regs.ps.spi_ps_in_control);
 
       radeon_set_context_reg(cmd_buffer->cs, R_028650_SPI_SHADER_Z_FORMAT, ps->info.regs.ps.spi_shader_z_format);
+
+      radeon_set_context_reg(cmd_buffer->cs, R_028BBC_PA_SC_HISZ_CONTROL, ps->info.regs.ps.pa_sc_hisz_control);
    } else {
       radeon_opt_set_context_reg2(cmd_buffer, R_0286CC_SPI_PS_INPUT_ENA, RADV_TRACKED_SPI_PS_INPUT_ENA,
                                   ps->config.spi_ps_input_ena, ps->config.spi_ps_input_addr);

@@ -285,6 +285,7 @@ struct radv_shader_info {
          uint32_t pa_sc_shader_control;
          uint32_t spi_ps_in_control;
          uint32_t spi_shader_z_format;
+         uint32_t pa_sc_hisz_control;
       } ps;
 
       struct {

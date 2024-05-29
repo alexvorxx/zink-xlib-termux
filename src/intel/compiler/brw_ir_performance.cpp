@@ -312,7 +312,6 @@ namespace {
       case FS_OPCODE_DDY_COARSE:
       case FS_OPCODE_PIXEL_X:
       case FS_OPCODE_PIXEL_Y:
-      case SHADER_OPCODE_READ_ARCH_REG:
          if (devinfo->ver >= 11) {
             return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
                                   0, 10, 6 /* XXX */, 14, 0, 0);
@@ -456,6 +455,15 @@ namespace {
             return calculate_desc(info, EU_UNIT_FPU, 16, 6, 0, 0, 6,
                                   0, 8 /* XXX */, 4 /* XXX */,
                                   12 /* XXX */, 0, 0);
+
+      case SHADER_OPCODE_READ_ARCH_REG:
+         if (devinfo->ver >= 12) {
+            return calculate_desc(info, EU_UNIT_FPU, 20, 6, 0, 0, 6,
+                                  0, 10, 6 /* XXX */, 14, 0, 0);
+         } else {
+            return calculate_desc(info, EU_UNIT_FPU, 0, 2, 0, 0, 2,
+                                  0, 8, 4, 12, 0, 0);
+         }
 
       case SHADER_OPCODE_MOV_INDIRECT:
          if (devinfo->ver >= 11)

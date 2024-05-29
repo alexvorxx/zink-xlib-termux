@@ -2986,7 +2986,7 @@ panfrost_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info,
    /* Emulate indirect draws on JM */
    if (indirect && indirect->buffer) {
       assert(num_draws == 1);
-      util_draw_indirect(pipe, info, indirect);
+      util_draw_indirect(pipe, info, drawid_offset, indirect);
       perf_debug(ctx, "Emulating indirect draw on the CPU");
       return;
    }

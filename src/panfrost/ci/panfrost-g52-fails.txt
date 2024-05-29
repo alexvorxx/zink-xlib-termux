@@ -20,9 +20,6 @@ spec@arb_direct_state_access@gettextureimage-formats init-by-rendering,Fail
 spec@arb_framebuffer_object@fbo-luminance-alpha,Fail
 spec@arb_framebuffer_srgb@fbo-fast-clear,Fail
 spec@arb_point_sprite@arb_point_sprite-mipmap,Fail
-spec@arb_shader_draw_parameters@drawid-indirect-baseinstance,Fail
-spec@arb_shader_draw_parameters@drawid-indirect-basevertex,Fail
-spec@arb_shader_draw_parameters@drawid-indirect,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 spec@arb_shader_texture_lod@execution@tex-miplevel-selection *gradarb 2drect,Crash

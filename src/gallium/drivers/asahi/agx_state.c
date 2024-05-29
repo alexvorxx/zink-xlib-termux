@@ -4851,14 +4851,14 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    /* TODO: stop cheating */
    if (indirect && indirect->indirect_draw_count) {
       perf_debug_ctx(ctx, "multi-draw indirect");
-      util_draw_indirect(pctx, info, indirect);
+      util_draw_indirect(pctx, info, drawid_offset, indirect);
       return;
    }
 
    /* TODO: stop cheating */
    if (info->mode == MESA_PRIM_PATCHES && indirect) {
       perf_debug_ctx(ctx, "indirect tessellation");
-      util_draw_indirect(pctx, info, indirect);
+      util_draw_indirect(pctx, info, drawid_offset, indirect);
       return;
    }
 
@@ -4869,7 +4869,7 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
        indirect) {
 
       perf_debug_ctx(ctx, "indirect IA queries");
-      util_draw_indirect(pctx, info, indirect);
+      util_draw_indirect(pctx, info, drawid_offset, indirect);
       return;
    }
 

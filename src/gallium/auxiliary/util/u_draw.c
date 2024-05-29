@@ -194,6 +194,7 @@ util_draw_indirect_read(struct pipe_context *pipe,
 void
 util_draw_indirect(struct pipe_context *pipe,
                    const struct pipe_draw_info *info_in,
+                   unsigned drawid_offset,
                    const struct pipe_draw_indirect_info *indirect)
 {
    struct pipe_draw_info info;
@@ -249,7 +250,7 @@ util_draw_indirect(struct pipe_context *pipe,
       draw.index_bias = info_in->index_size ? params[3] : 0;
       info.start_instance = info_in->index_size ? params[4] : params[3];
 
-      pipe->draw_vbo(pipe, &info, i, NULL, &draw, 1);
+      pipe->draw_vbo(pipe, &info, i + drawid_offset, NULL, &draw, 1);
 
       params += indirect->stride / 4;
    }

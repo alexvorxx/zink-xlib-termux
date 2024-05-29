@@ -764,7 +764,7 @@ nv50_draw_single_vbo(struct pipe_context *pipe, const struct pipe_draw_info *inf
     * benefit.
     */
    if (indirect && indirect->buffer) {
-      util_draw_indirect(pipe, info, indirect);
+      util_draw_indirect(pipe, info, drawid_offset, indirect);
       return;
    }
 

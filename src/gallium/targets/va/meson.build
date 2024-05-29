@@ -82,7 +82,6 @@ else
       idep_mesautil,
     ],
     link_depends : va_link_depends,
-    # Will be deleted during installation, see install_megadrivers.py
     install : true,
     install_dir : va_drivers_path,
     name_suffix : 'so',

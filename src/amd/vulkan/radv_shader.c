@@ -2030,28 +2030,38 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
          unreachable("Unexpected ES shader stage");
       }
 
-      /* GS vertex offsets in NGG:
-       * - in passthrough mode, they are all packed into VGPR0
-       * - in the default mode: VGPR0: offsets 0, 1; VGPR1: offsets 2, 3
-       *
-       * The vertex offset 2 is always needed when NGG isn't in passthrough mode
-       * and uses triangle input primitives, including with NGG culling.
-       */
-      bool need_gs_vtx_offset2 = !info->is_ngg_passthrough || info->gs.vertices_in >= 3;
-
-      /* TES only needs vertex offset 2 for triangles or quads. */
-      if (stage == MESA_SHADER_TESS_EVAL)
-         need_gs_vtx_offset2 &=
-            info->tes._primitive_mode == TESS_PRIMITIVE_TRIANGLES || info->tes._primitive_mode == TESS_PRIMITIVE_QUADS;
-
-      if (info->uses_invocation_id) {
-         gs_vgpr_comp_cnt = 3; /* VGPR3 contains InvocationID. */
-      } else if (info->uses_prim_id || (es_stage == MESA_SHADER_VERTEX && info->outinfo.export_prim_id)) {
-         gs_vgpr_comp_cnt = 2; /* VGPR2 contains PrimitiveID. */
-      } else if (need_gs_vtx_offset2) {
-         gs_vgpr_comp_cnt = 1; /* VGPR1 contains offsets 2, 3 */
+      if (pdev->info.gfx_level >= GFX12) {
+         if (info->gs.vertices_in >= 4) {
+            gs_vgpr_comp_cnt = 2; /* VGPR2 contains offsets 3-5 */
+         } else if (info->uses_prim_id || (es_stage == MESA_SHADER_VERTEX && info->outinfo.export_prim_id)) {
+            gs_vgpr_comp_cnt = 1; /* VGPR1 contains PrimitiveID. */
+         } else {
+            gs_vgpr_comp_cnt = 0; /* VGPR0 contains offsets 0-2, GS invocation ID. */
+         }
       } else {
-         gs_vgpr_comp_cnt = 0; /* VGPR0 contains offsets 0, 1 (or passthrough prim) */
+         /* GS vertex offsets in NGG:
+          * - in passthrough mode, they are all packed into VGPR0
+          * - in the default mode: VGPR0: offsets 0, 1; VGPR1: offsets 2, 3
+          *
+          * The vertex offset 2 is always needed when NGG isn't in passthrough mode
+          * and uses triangle input primitives, including with NGG culling.
+          */
+         bool need_gs_vtx_offset2 = !info->is_ngg_passthrough || info->gs.vertices_in >= 3;
+
+         /* TES only needs vertex offset 2 for triangles or quads. */
+         if (stage == MESA_SHADER_TESS_EVAL)
+            need_gs_vtx_offset2 &= info->tes._primitive_mode == TESS_PRIMITIVE_TRIANGLES ||
+                                   info->tes._primitive_mode == TESS_PRIMITIVE_QUADS;
+
+         if (info->uses_invocation_id) {
+            gs_vgpr_comp_cnt = 3; /* VGPR3 contains InvocationID. */
+         } else if (info->uses_prim_id || (es_stage == MESA_SHADER_VERTEX && info->outinfo.export_prim_id)) {
+            gs_vgpr_comp_cnt = 2; /* VGPR2 contains PrimitiveID. */
+         } else if (need_gs_vtx_offset2) {
+            gs_vgpr_comp_cnt = 1; /* VGPR1 contains offsets 2, 3 */
+         } else {
+            gs_vgpr_comp_cnt = 0; /* VGPR0 contains offsets 0, 1 (or passthrough prim) */
+         }
       }
 
       /* Disable the WGP mode on gfx10.3 because it can hang. (it

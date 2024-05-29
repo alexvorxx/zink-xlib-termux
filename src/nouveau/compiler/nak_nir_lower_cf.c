@@ -42,9 +42,9 @@ push_scope(nir_builder *b,
            nir_block *merge_block)
 {
    struct scope scope = {
-      .parent = parent,
       .type = scope_type,
-      .depth = parent != NULL ? parent->depth + 1 : 0,
+      .parent = parent,
+      .depth = parent->depth + 1,
       .merge = merge_block,
    };
 

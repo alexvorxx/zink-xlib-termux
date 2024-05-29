@@ -996,10 +996,18 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       }
 
       if (pdev->info.gfx_level >= GFX10) {
-         radeon_set_sh_reg_idx(&pdev->info, cs, R_00B404_SPI_SHADER_PGM_RSRC4_HS, 3,
-                               ac_apply_cu_en(S_00B404_CU_EN(0xffff), C_00B404_CU_EN, 16, &pdev->info));
-         radeon_set_sh_reg_idx(&pdev->info, cs, R_00B004_SPI_SHADER_PGM_RSRC4_PS, 3,
-                               ac_apply_cu_en(S_00B004_CU_EN(cu_mask_ps >> 16), C_00B004_CU_EN, 16, &pdev->info));
+         if (pdev->info.gfx_level >= GFX12) {
+            radeon_set_sh_reg(cs, R_00B420_SPI_SHADER_PGM_RSRC4_HS,
+                              S_00B420_WAVE_LIMIT(0x3ff) | S_00B420_GLG_FORCE_DISABLE(1));
+            radeon_set_sh_reg(cs, R_00B01C_SPI_SHADER_PGM_RSRC4_PS,
+                              S_00B01C_WAVE_LIMIT_GFX12(0x3FF) | S_00B01C_LDS_GROUP_SIZE_GFX12(1));
+         } else {
+            radeon_set_sh_reg_idx(&pdev->info, cs, R_00B404_SPI_SHADER_PGM_RSRC4_HS, 3,
+                                  ac_apply_cu_en(S_00B404_CU_EN(0xffff), C_00B404_CU_EN, 16, &pdev->info));
+            radeon_set_sh_reg_idx(&pdev->info, cs, R_00B004_SPI_SHADER_PGM_RSRC4_PS, 3,
+                                  ac_apply_cu_en(S_00B004_CU_EN(cu_mask_ps >> 16), C_00B004_CU_EN, 16, &pdev->info));
+         }
+
       }
 
       if (pdev->info.gfx_level >= GFX9) {

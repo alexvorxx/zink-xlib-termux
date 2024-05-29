@@ -1597,7 +1597,10 @@ radv_precompute_registers_hw_ngg(struct radv_device *device, const struct ac_sha
    info->regs.spi_shader_pgm_rsrc3_gs =
       ac_apply_cu_en(S_00B21C_CU_EN(cu_mask) | S_00B21C_WAVE_LIMIT(0x3F), C_00B21C_CU_EN, 0, &pdev->info);
 
-   if (pdev->info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level >= GFX12) {
+      info->regs.spi_shader_pgm_rsrc4_gs =
+         S_00B220_SPI_SHADER_LATE_ALLOC_GS(127) | S_00B220_GLG_FORCE_DISABLE(1) | S_00B220_WAVE_LIMIT(0x3ff);
+   } else if (pdev->info.gfx_level >= GFX11) {
       info->regs.spi_shader_pgm_rsrc4_gs =
          ac_apply_cu_en(S_00B204_CU_EN_GFX11(0x1) | S_00B204_SPI_SHADER_LATE_ALLOC_GS_GFX10(late_alloc_wave64),
                         C_00B204_CU_EN_GFX11, 16, &pdev->info);

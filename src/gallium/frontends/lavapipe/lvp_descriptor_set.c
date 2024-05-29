@@ -256,7 +256,7 @@ get_buffer_resource(struct pipe_context *ctx, const VkDescriptorAddressInfoEXT *
       .cpu_addr = (void *)(uintptr_t)bda->address,
    };
 
-   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0);
+   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0, 0, 0);
    return pres;
 }
 
@@ -356,7 +356,7 @@ lvp_descriptor_set_create(struct lvp_device *device,
    set->map = device->pscreen->map_memory(device->pscreen, set->pmem);
    memset(set->map, 0, bo_size);
 
-   device->pscreen->resource_bind_backing(device->pscreen, set->bo, set->pmem, 0);
+   device->pscreen->resource_bind_backing(device->pscreen, set->bo, set->pmem, 0, 0, 0);
 
    for (uint32_t binding_index = 0; binding_index < layout->binding_count; binding_index++) {
       const struct lvp_descriptor_set_binding_layout *bind_layout = &set->layout->binding[binding_index];

@@ -2151,6 +2151,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_BindBufferMemory2(VkDevice _device,
       device->pscreen->resource_bind_backing(device->pscreen,
                                              buffer->bo,
                                              mem->pmem,
+                                             0, 0,
                                              pBindInfos[i].memoryOffset);
       if (status)
          *status->pResult = VK_SUCCESS;
@@ -2168,6 +2169,7 @@ lvp_image_plane_bind(struct lvp_device *device,
    if (!device->pscreen->resource_bind_backing(device->pscreen,
                                                plane->bo,
                                                mem->pmem,
+                                               0, 0,
                                                memory_offset + *plane_offset)) {
       /* This is probably caused by the texture being too large, so let's
        * report this as the *closest* allowed error-code. It's not ideal,
@@ -2210,6 +2212,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_BindImageMemory2(VkDevice _device,
             device->pscreen->resource_bind_backing(device->pscreen,
                                                    image->planes[0].bo,
                                                    image->planes[0].pmem,
+                                                   0, 0,
                                                    image->planes[0].memory_offset);
             did_bind = true;
             if (status)

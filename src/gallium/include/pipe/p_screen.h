@@ -691,6 +691,8 @@ struct pipe_screen {
    bool (*resource_bind_backing)(struct pipe_screen *screen,
                                  struct pipe_resource *pt,
                                  struct pipe_memory_allocation *pmem,
+                                 uint64_t fd_offset,
+                                 uint64_t size,
                                  uint64_t offset);
 
    /**

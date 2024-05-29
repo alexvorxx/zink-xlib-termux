@@ -232,7 +232,7 @@ get_buffer_resource(struct pipe_context *ctx, void *mem)
       .cpu_addr = mem,
    };
 
-   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0);
+   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0, 0, 0);
    return pres;
 }
 

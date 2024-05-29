@@ -6917,6 +6917,7 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_fla
    enum radv_cmd_flush_bits flush_bits = 0;
    bool flush_CB = true, flush_DB = true;
    bool image_is_coherent = image ? image->l2_coherent : false;
+   bool flush_L2_metadata = false;
 
    if (image) {
       if (!(image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT)) {
@@ -6929,6 +6930,8 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_fla
       if (!radv_image_has_htile(image))
          has_DB_meta = false;
    }
+
+   flush_L2_metadata = (has_CB_meta || has_DB_meta) && pdev->info.gfx_level < GFX12;
 
    /* All the L2 invalidations below are not the CB/DB. So if there are no incoherent images
     * in the L2 cache in CB/DB mode then they are already usable from all the other L2 clients. */
@@ -6962,7 +6965,7 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_fla
       case VK_ACCESS_2_TRANSFER_WRITE_BIT:
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
 
-         if (has_CB_meta || has_DB_meta)
+         if (flush_L2_metadata)
             flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
          if (!image_is_coherent)
             flush_bits |= RADV_CMD_FLAG_INV_L2;
@@ -6980,7 +6983,7 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_fla
          FALLTHROUGH;
       case VK_ACCESS_2_SHADER_SAMPLED_READ_BIT:
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
-         if (has_CB_meta || has_DB_meta)
+         if (flush_L2_metadata)
             flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
          if (!image_is_coherent)
             flush_bits |= RADV_CMD_FLAG_INV_L2;
@@ -7010,7 +7013,7 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_fla
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
          break;
       case VK_ACCESS_2_MEMORY_READ_BIT:
-         if (has_CB_meta || has_DB_meta)
+         if (flush_L2_metadata)
             flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
          FALLTHROUGH;
       case VK_ACCESS_2_MEMORY_WRITE_BIT:

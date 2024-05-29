@@ -1523,11 +1523,31 @@ radv_precompute_registers_hw_ngg(struct radv_device *device, const struct ac_sha
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    const bool no_pc_export = info->outinfo.param_exports == 0 && info->outinfo.prim_param_exports == 0;
-   const unsigned num_params = MAX2(info->outinfo.param_exports, 1);
    const unsigned num_prim_params = info->outinfo.prim_param_exports;
 
-   info->regs.spi_vs_out_config = S_0286C4_VS_EXPORT_COUNT(num_params - 1) |
-                                  S_0286C4_PRIM_EXPORT_COUNT(num_prim_params) | S_0286C4_NO_PC_EXPORT(no_pc_export);
+   if (pdev->info.gfx_level >= GFX12) {
+      unsigned num_params = info->outinfo.param_exports;
+
+      /* Since there is no alloc/dealloc mechanism for the 12-bit ordered IDs, they can wrap
+       * around if there are more than 2^12 workgroups, causing 2 workgroups to get the same
+       * ordered ID, which would break the streamout algorithm.
+       * The recommended solution is to use the alloc/dealloc mechanism of the attribute ring,
+       * which is enough to limit the range of ordered IDs that can be in flight.
+       */
+      if (info->so.num_outputs) {
+         num_params = MAX2(num_params, 8);
+      } else {
+         num_params = MAX2(num_params, 1);
+      }
+
+      info->regs.spi_vs_out_config = S_00B0C4_VS_EXPORT_COUNT(num_params - 1) |
+                                     S_00B0C4_PRIM_EXPORT_COUNT(num_prim_params) | S_00B0C4_NO_PC_EXPORT(no_pc_export);
+   } else {
+      const unsigned num_params = MAX2(info->outinfo.param_exports, 1);
+
+      info->regs.spi_vs_out_config = S_0286C4_VS_EXPORT_COUNT(num_params - 1) |
+                                     S_0286C4_PRIM_EXPORT_COUNT(num_prim_params) | S_0286C4_NO_PC_EXPORT(no_pc_export);
+   }
 
    unsigned idx_format = V_028708_SPI_SHADER_1COMP;
    if (info->outinfo.writes_layer_per_primitive || info->outinfo.writes_viewport_index_per_primitive ||
@@ -1681,6 +1701,7 @@ radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader_b
 
    if (pdev->info.gfx_level >= GFX12) {
       info->regs.ps.spi_ps_in_control = S_028640_PS_W32_EN(info->wave_size == 32);
+      info->regs.ps.spi_gs_out_config_ps = S_00B0C4_NUM_INTERP(info->ps.num_interp);
 
       info->regs.ps.pa_sc_hisz_control = S_028BBC_ROUND(2); /* required minimum value */
       if (info->ps.depth_layout == FRAG_DEPTH_LAYOUT_GREATER)

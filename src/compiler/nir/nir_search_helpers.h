@@ -29,6 +29,7 @@
 
 #include <math.h>
 #include "util/bitscan.h"
+#include "util/u_math.h"
 #include "nir.h"
 #include "nir_range_analysis.h"
 
@@ -121,6 +122,24 @@ is_nan(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
 
    for (unsigned i = 0; i < num_components; i++) {
       if (!isnan(nir_src_comp_as_float(instr->src[src].src, swizzle[i])))
+         return false;
+   }
+
+   return true;
+}
+
+static inline bool
+is_negative_zero(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
+       unsigned src, unsigned num_components, const uint8_t *swizzle)
+{
+   /* only constant srcs: */
+   if (!nir_src_is_const(instr->src[src].src))
+      return false;
+
+   for (unsigned i = 0; i < num_components; i++) {
+      union di tmp;
+      tmp.d = nir_src_comp_as_float(instr->src[src].src, swizzle[i]);
+      if (tmp.ui != 0x8000000000000000ull)
          return false;
    }
 

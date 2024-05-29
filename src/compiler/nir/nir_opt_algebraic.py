@@ -608,6 +608,12 @@ optimizations.extend([
    (('fge', -1.0, ('fneg', a)), ('fge', a, 1.0)),
    (('fneu', ('fneg', a), -1.0), ('fneu', 1.0, a)),
    (('feq', -1.0, ('fneg', a)), ('feq', a, 1.0)),
+   (('flt', a, '#b(is_negative_zero)'), ('flt', a, 0.0)),
+   (('flt', '#b(is_negative_zero)', a), ('flt', 0.0, a)),
+   (('fge', a, '#b(is_negative_zero)'), ('fge', a, 0.0)),
+   (('fge', '#b(is_negative_zero)', a), ('fge', 0.0, a)),
+   (('fneu', a, '#b(is_negative_zero)'), ('fneu', 0.0, a)),
+   (('feq', '#b(is_negative_zero)', a), ('feq', a, 0.0)),
 
    (('ieq', ('ineg', a), 0),  ('ieq', a, 0)),
    (('ine', ('ineg', a), 0),  ('ine', a, 0)),

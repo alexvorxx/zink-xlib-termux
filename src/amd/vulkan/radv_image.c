@@ -926,7 +926,9 @@ radv_image_is_l2_coherent(const struct radv_device *device, const struct radv_im
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   if (pdev->info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX12) {
+      return true; /* Everything is coherent with TC L2. */
+   } else if (pdev->info.gfx_level >= GFX10) {
       return !pdev->info.tcc_rb_non_coherent && !radv_image_is_pipe_misaligned(device, image);
    } else if (pdev->info.gfx_level == GFX9) {
       if (image->vk.samples == 1 &&

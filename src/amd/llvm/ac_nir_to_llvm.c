@@ -3116,6 +3116,9 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
             ac_get_ptr_arg(&ctx->ac, ctx->args, ctx->args->num_work_groups), ctx->ac.i32_0);
       }
       break;
+   case nir_intrinsic_load_subgroup_id:
+      result = visit_load_subgroup_id(ctx);
+      break;
    case nir_intrinsic_load_local_invocation_index:
       result = visit_load_local_invocation_index(ctx);
       break;

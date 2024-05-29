@@ -1161,10 +1161,6 @@ dri2_display_destroy(_EGLDisplay *disp)
    free(dri2_dpy->device_name);
 #endif
 
-#ifdef HAVE_ANDROID_PLATFORM
-   u_gralloc_destroy(&dri2_dpy->gralloc);
-#endif
-
    switch (disp->Platform) {
    case _EGL_PLATFORM_X11:
    case _EGL_PLATFORM_XCB:
@@ -1175,6 +1171,11 @@ dri2_display_destroy(_EGLDisplay *disp)
       break;
    case _EGL_PLATFORM_WAYLAND:
       dri2_teardown_wayland(dri2_dpy);
+      break;
+   case _EGL_PLATFORM_ANDROID:
+#ifdef HAVE_ANDROID_PLATFORM
+      u_gralloc_destroy(&dri2_dpy->gralloc);
+#endif
       break;
    default:
       /* TODO: add teardown for other platforms */

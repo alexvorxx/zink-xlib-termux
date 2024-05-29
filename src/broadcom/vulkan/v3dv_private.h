@@ -1937,6 +1937,7 @@ struct v3dv_pipeline_stage {
    const struct vk_shader_module *module;
    const char *entrypoint;
    const VkSpecializationInfo *spec_info;
+   const VkShaderModuleCreateInfo *module_info;
 
    nir_shader *nir;
 

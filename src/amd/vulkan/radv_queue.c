@@ -654,6 +654,22 @@ radv_emit_attribute_ring(struct radv_device *device, struct radeon_cmdbuf *cs, s
    radeon_set_uconfig_reg(cs, R_03111C_SPI_ATTRIBUTE_RING_SIZE,
                           S_03111C_MEM_SIZE(((attr_ring_size / pdev->info.max_se) >> 16) - 1) |
                              S_03111C_BIG_PAGE(pdev->info.discardable_allows_big_page) | S_03111C_L1_POLICY(1));
+
+   if (pdev->info.gfx_level >= GFX12) {
+      const uint64_t pos_address = va + pdev->info.pos_ring_offset;
+      const uint64_t prim_address = va + pdev->info.prim_ring_offset;
+
+      /* When one of these 4 registers is updated, all 4 must be updated. */
+      radeon_set_uconfig_reg_seq(cs, R_0309A0_GE_POS_RING_BASE, 4);
+      radeon_emit(cs, pos_address >> 16);                                          /* R_0309A0_GE_POS_RING_BASE */
+      radeon_emit(cs, S_0309A4_MEM_SIZE(pdev->info.pos_ring_size_per_se >> 5));    /* R_0309A4_GE_POS_RING_SIZE */
+      radeon_emit(cs, prim_address >> 16);                                         /* R_0309A8_GE_PRIM_RING_BASE */
+      radeon_emit(cs, S_0309AC_MEM_SIZE(pdev->info.prim_ring_size_per_se >> 5) | S_0309AC_SCOPE(gfx12_scope_device) |
+                         S_0309AC_PAF_TEMPORAL(gfx12_store_high_temporal_stay_dirty) |
+                         S_0309AC_PAB_TEMPORAL(gfx12_load_last_use_discard) |
+                         S_0309AC_SPEC_DATA_READ(gfx12_spec_read_auto) | S_0309AC_FORCE_SE_SCOPE(1) |
+                         S_0309AC_PAB_NOFILL(1)); /* R_0309AC_GE_PRIM_RING_SIZE */
+   }
 }
 
 static void

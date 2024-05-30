@@ -7,6 +7,7 @@ KHR-GL46.texture_swizzle.smoke
 spec@!opengl 1.0@gl-1.0-blend-func
 spec@!opengl 1.1@copypixels-sync
 spec@!opengl 1.1@draw-sync
+spec@!opengl 1.1@polygon-mode
 spec@arb_bindless_texture@execution@images@uniform-struct
 spec@arb_color_buffer_float@gl_rgba16f-render
 spec@arb_color_buffer_float@gl_rgba8_snorm-render
@@ -53,6 +54,7 @@ spec@glsl-1.30@execution@built-in-functions@vs-op-bitxor-abs-not-ivec3-int
 spec@glsl-1.30@execution@interpolation@interpolation-noperspective-gl_backsecondarycolor-flat-vertex
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_backsecondarycolor-smooth-fixed
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_frontsecondarycolor-flat-fixed
+spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_frontsecondarycolor-smooth-vertex
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojlodoffset 3d
 spec@glsl-1.30@execution@texelfetch fs sampler1d 1-513
 spec@glsl-1.30@execution@texelfetch fs sampler1darray 1x71-501x71
@@ -73,6 +75,7 @@ spec@glsl-4.00@execution@built-in-functions@gs-max-dvec4-double
 spec@glsl-4.00@execution@built-in-functions@gs-op-mult-double-dmat4x3
 spec@glsl-4.00@execution@built-in-functions@vs-distance-double-double
 spec@glsl-4.00@execution@built-in-functions@vs-op-div-dmat4-dmat4
+spec@glsl-4.00@execution@built-in-functions@vs-op-sub-double-dvec2
 spec@glsl-4.00@execution@built-in-functions@vs-outerproduct-dvec2-dvec3
 spec@glsl-4.20@execution@vs_in@vs-input-ubyte_uint-short_int-double_dvec3-position
 spec@glsl-4.30@execution@built-in-functions@cs-lessthan-vec4-vec4

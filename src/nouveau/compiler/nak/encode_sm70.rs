@@ -29,6 +29,14 @@ enum ALUSrc {
     CBuf(ALUCBufRef),
 }
 
+fn src_is_zero_or_gpr(src: &Src) -> bool {
+    match src.src_ref {
+        SrcRef::Zero => true,
+        SrcRef::Reg(reg) => reg.file() == RegFile::GPR,
+        _ => false,
+    }
+}
+
 fn src_mod_has_abs(src_mod: SrcMod) -> bool {
     match src_mod {
         SrcMod::None | SrcMod::FNeg | SrcMod::INeg | SrcMod::BNot => false,
@@ -599,7 +607,7 @@ impl SM70Instr {
     }
 
     fn encode_fadd(&mut self, op: &OpFAdd) {
-        if op.srcs[1].src_ref.as_reg().is_some() {
+        if src_is_zero_or_gpr(&op.srcs[1]) {
             self.encode_alu(
                 0x021,
                 Some(&op.dst),
@@ -809,25 +817,22 @@ impl SM70Instr {
     }
 
     fn encode_dsetp(&mut self, op: &OpDSetP) {
-        match op.srcs[1].src_ref {
-            SrcRef::Reg(_) | SrcRef::Zero => {
-                self.encode_alu(
-                    0x02a,
-                    None,
-                    Some(&op.srcs[0]),
-                    Some(&op.srcs[1]),
-                    None,
-                );
-            }
-            _ => {
-                self.encode_alu(
-                    0x02a,
-                    None,
-                    Some(&op.srcs[0]),
-                    None,
-                    Some(&op.srcs[1]),
-                );
-            }
+        if src_is_zero_or_gpr(&op.srcs[1]) {
+            self.encode_alu(
+                0x02a,
+                None,
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
+        } else {
+            self.encode_alu(
+                0x02a,
+                None,
+                Some(&op.srcs[0]),
+                None,
+                Some(&op.srcs[1]),
+            );
         }
 
         self.set_pred_set_op(74..76, op.set_op);
@@ -840,25 +845,22 @@ impl SM70Instr {
     }
 
     fn encode_hadd2(&mut self, op: &OpHAdd2) {
-        match op.srcs[1].src_ref {
-            SrcRef::Reg(_) | SrcRef::Zero => {
-                self.encode_fp16_alu(
-                    0x030,
-                    Some(&op.dst),
-                    Some(&op.srcs[0]),
-                    Some(&op.srcs[1]),
-                    None,
-                );
-            }
-            _ => {
-                self.encode_fp16_alu(
-                    0x030,
-                    Some(&op.dst),
-                    Some(&op.srcs[0]),
-                    None,
-                    Some(&op.srcs[1]),
-                );
-            }
+        if src_is_zero_or_gpr(&op.srcs[1]) {
+            self.encode_fp16_alu(
+                0x030,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
+        } else {
+            self.encode_fp16_alu(
+                0x030,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                None,
+                Some(&op.srcs[1]),
+            );
         }
 
         self.set_bit(77, op.saturate);
@@ -905,25 +907,22 @@ impl SM70Instr {
     }
 
     fn encode_hset2(&mut self, op: &OpHSet2) {
-        match op.srcs[1].src_ref {
-            SrcRef::Reg(_) | SrcRef::Zero => {
-                self.encode_fp16_alu(
-                    0x033,
-                    Some(&op.dst),
-                    Some(&op.srcs[0]),
-                    Some(&op.srcs[1]),
-                    None,
-                );
-            }
-            _ => {
-                self.encode_fp16_alu(
-                    0x033,
-                    Some(&op.dst),
-                    Some(&op.srcs[0]),
-                    None,
-                    Some(&op.srcs[1]),
-                );
-            }
+        if src_is_zero_or_gpr(&op.srcs[1]) {
+            self.encode_fp16_alu(
+                0x033,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
+        } else {
+            self.encode_fp16_alu(
+                0x033,
+                Some(&op.dst),
+                Some(&op.srcs[0]),
+                None,
+                Some(&op.srcs[1]),
+            );
         }
 
         self.set_bit(65, false); // .BF16_V2 (SM90+)
@@ -938,25 +937,22 @@ impl SM70Instr {
     }
 
     fn encode_hsetp2(&mut self, op: &OpHSetP2) {
-        match op.srcs[1].src_ref {
-            SrcRef::Reg(_) | SrcRef::Zero => {
-                self.encode_fp16_alu(
-                    0x034,
-                    None,
-                    Some(&op.srcs[0]),
-                    Some(&op.srcs[1]),
-                    None,
-                );
-            }
-            _ => {
-                self.encode_fp16_alu(
-                    0x034,
-                    None,
-                    Some(&op.srcs[0]),
-                    None,
-                    Some(&op.srcs[1]),
-                );
-            }
+        if src_is_zero_or_gpr(&op.srcs[1]) {
+            self.encode_fp16_alu(
+                0x034,
+                None,
+                Some(&op.srcs[0]),
+                Some(&op.srcs[1]),
+                None,
+            );
+        } else {
+            self.encode_fp16_alu(
+                0x034,
+                None,
+                Some(&op.srcs[0]),
+                None,
+                Some(&op.srcs[1]),
+            );
         }
 
         self.set_bit(65, false); // .BF16_V2 (SM90+)

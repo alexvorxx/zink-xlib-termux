@@ -1520,6 +1520,7 @@ static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_int
    LLVMValueRef ptr, addr;
    LLVMValueRef src0 = get_src(ctx, instr->src[0]);
    unsigned index = nir_intrinsic_base(instr);
+   assert(instr->def.bit_size >= 32);
 
    addr = LLVMConstInt(ctx->ac.i32, index, 0);
    addr = LLVMBuildAdd(ctx->ac.builder, addr, src0, "");
@@ -1527,7 +1528,7 @@ static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_int
    /* Load constant values from user SGPRS when possible, otherwise
     * fallback to the default path that loads directly from memory.
     */
-   if (LLVMIsConstant(src0) && instr->def.bit_size >= 32) {
+   if (LLVMIsConstant(src0)) {
       unsigned count = instr->def.num_components;
       unsigned offset = index;
 
@@ -1554,56 +1555,6 @@ static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_int
 
    struct ac_llvm_pointer pc = ac_get_ptr_arg(&ctx->ac, ctx->args, ctx->args->push_constants);
    ptr = LLVMBuildGEP2(ctx->ac.builder, pc.t, pc.v, &addr, 1, "");
-
-   if (instr->def.bit_size == 8) {
-      unsigned load_dwords = instr->def.num_components > 1 ? 2 : 1;
-      LLVMTypeRef vec_type = LLVMVectorType(ctx->ac.i8, 4 * load_dwords);
-      ptr = ac_cast_ptr(&ctx->ac, ptr, vec_type);
-      LLVMValueRef res = LLVMBuildLoad2(ctx->ac.builder, vec_type, ptr, "");
-
-      LLVMValueRef params[3];
-      if (load_dwords > 1) {
-         LLVMValueRef res_vec = LLVMBuildBitCast(ctx->ac.builder, res, ctx->ac.v2i32, "");
-         params[0] = LLVMBuildExtractElement(ctx->ac.builder, res_vec,
-                                             ctx->ac.i32_1, "");
-         params[1] = LLVMBuildExtractElement(ctx->ac.builder, res_vec,
-                                             ctx->ac.i32_0, "");
-      } else {
-         res = LLVMBuildBitCast(ctx->ac.builder, res, ctx->ac.i32, "");
-         params[0] = ctx->ac.i32_0;
-         params[1] = res;
-      }
-      params[2] = addr;
-      res = ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.alignbyte", ctx->ac.i32, params, 3, 0);
-
-      res = LLVMBuildTrunc(
-         ctx->ac.builder, res,
-         LLVMIntTypeInContext(ctx->ac.context, instr->def.num_components * 8), "");
-      if (instr->def.num_components > 1)
-         res = LLVMBuildBitCast(ctx->ac.builder, res,
-                                LLVMVectorType(ctx->ac.i8, instr->def.num_components), "");
-      return res;
-   } else if (instr->def.bit_size == 16) {
-      unsigned load_dwords = instr->def.num_components / 2 + 1;
-      LLVMTypeRef vec_type = LLVMVectorType(ctx->ac.i16, 2 * load_dwords);
-      ptr = ac_cast_ptr(&ctx->ac, ptr, vec_type);
-      LLVMValueRef res = LLVMBuildLoad2(ctx->ac.builder, vec_type, ptr, "");
-      res = LLVMBuildBitCast(ctx->ac.builder, res, vec_type, "");
-      LLVMValueRef cond = LLVMBuildLShr(ctx->ac.builder, addr, ctx->ac.i32_1, "");
-      cond = LLVMBuildTrunc(ctx->ac.builder, cond, ctx->ac.i1, "");
-      LLVMValueRef mask[] = {
-         ctx->ac.i32_0, ctx->ac.i32_1,
-         LLVMConstInt(ctx->ac.i32, 2, false), LLVMConstInt(ctx->ac.i32, 3, false),
-         LLVMConstInt(ctx->ac.i32, 4, false)};
-      LLVMValueRef swizzle_aligned = LLVMConstVector(&mask[0], instr->def.num_components);
-      LLVMValueRef swizzle_unaligned = LLVMConstVector(&mask[1], instr->def.num_components);
-      LLVMValueRef shuffle_aligned =
-         LLVMBuildShuffleVector(ctx->ac.builder, res, res, swizzle_aligned, "");
-      LLVMValueRef shuffle_unaligned =
-         LLVMBuildShuffleVector(ctx->ac.builder, res, res, swizzle_unaligned, "");
-      res = LLVMBuildSelect(ctx->ac.builder, cond, shuffle_unaligned, shuffle_aligned, "");
-      return LLVMBuildBitCast(ctx->ac.builder, res, get_def_type(ctx, &instr->def), "");
-   }
 
    LLVMTypeRef ptr_type = get_def_type(ctx, &instr->def);
    ptr = ac_cast_ptr(&ctx->ac, ptr, ptr_type);

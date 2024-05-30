@@ -190,8 +190,8 @@ panfrost_create_sampler_state(struct pipe_context *pctx,
    struct panfrost_sampler_state *so = CALLOC_STRUCT(panfrost_sampler_state);
    so->base = *cso;
 
-#if PAN_ARCH == 7
-   /* On v7, pan_texture.c composes the API swizzle with a bijective
+#if PAN_ARCH == 7 || PAN_ARCH >= 10
+   /* On v7 and v10+, pan_texture.c composes the API swizzle with a bijective
     * swizzle derived from the format, to allow more formats than the
     * hardware otherwise supports. When packing border colours, we need to
     * undo this bijection, by swizzling with its inverse.

@@ -619,11 +619,13 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
       };
 
       util_format_compose_swizzles(replicate_x, iview->swizzle, swizzle);
-   } else if (PAN_ARCH == 7 && !panfrost_format_is_yuv(format)) {
-#if PAN_ARCH == 7
+   } else if ((PAN_ARCH == 7 || PAN_ARCH == 10) &&
+              !panfrost_format_is_yuv(format)) {
+#if PAN_ARCH == 7 || PAN_ARCH >= 10
       /* v7 (only) restricts component orders when AFBC is in use.
        * Rather than restrict AFBC, we use an allowed component order
        * with an invertible swizzle composed.
+       * v10 has the same restriction, but on AFRC formats.
        */
       enum mali_rgb_component_order orig = mali_format & BITFIELD_MASK(12);
       struct pan_decomposed_swizzle decomposed =

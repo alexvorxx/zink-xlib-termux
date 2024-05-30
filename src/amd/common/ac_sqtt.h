@@ -12,6 +12,7 @@
 #include <stdbool.h>
 
 #include <assert.h>
+#include "ac_pm4.h"
 #include "ac_rgp.h"
 #include "amd_family.h"
 
@@ -561,5 +562,14 @@ uint32_t ac_sqtt_get_ctrl(const struct radeon_info *info, bool enable);
 uint32_t ac_sqtt_get_shader_mask(const struct radeon_info *info);
 
 uint32_t ac_sqtt_get_active_cu(const struct radeon_info *info, unsigned se);
+
+void ac_sqtt_emit_start(const struct radeon_info *info, struct ac_pm4_state *pm4,
+                        const struct ac_sqtt *sqtt, bool is_compute_queue);
+
+void ac_sqtt_emit_stop(const struct radeon_info *info, struct ac_pm4_state *pm4,
+                       bool is_compute_queue);
+
+void ac_sqtt_emit_wait(const struct radeon_info *info, struct ac_pm4_state *pm4,
+                       const struct ac_sqtt *sqtt, bool is_compute_queue);
 
 #endif

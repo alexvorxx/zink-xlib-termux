@@ -513,11 +513,30 @@ v3dv_image_init(struct v3dv_device *device,
 }
 
 static VkResult
+create_image_from_swapchain(struct v3dv_device *device,
+                            const VkImageCreateInfo *pCreateInfo,
+                            const VkImageSwapchainCreateInfoKHR *swapchain_info,
+                            const VkAllocationCallbacks *pAllocator,
+                            VkImage *pImage);
+
+static VkResult
 create_image(struct v3dv_device *device,
              const VkImageCreateInfo *pCreateInfo,
              const VkAllocationCallbacks *pAllocator,
              VkImage *pImage)
 {
+#if DETECT_OS_ANDROID
+   /* VkImageSwapchainCreateInfoKHR is not useful at all */
+   const VkImageSwapchainCreateInfoKHR *swapchain_info = NULL;
+#else
+   const VkImageSwapchainCreateInfoKHR *swapchain_info =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
+#endif
+
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE)
+      return create_image_from_swapchain(device, pCreateInfo, swapchain_info,
+                                         pAllocator, pImage);
+
    VkResult result;
    struct v3dv_image *image = NULL;
 
@@ -600,19 +619,6 @@ v3dv_CreateImage(VkDevice _device,
                  VkImage *pImage)
 {
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
-
-#if DETECT_OS_ANDROID
-   /* VkImageSwapchainCreateInfoKHR is not useful at all */
-   const VkImageSwapchainCreateInfoKHR *swapchain_info = NULL;
-#else
-   const VkImageSwapchainCreateInfoKHR *swapchain_info =
-      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
-#endif
-
-   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE)
-      return create_image_from_swapchain(device, pCreateInfo, swapchain_info,
-                                         pAllocator, pImage);
-
    return create_image(device, pCreateInfo, pAllocator, pImage);
 }
 

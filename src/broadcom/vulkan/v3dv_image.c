@@ -687,6 +687,26 @@ v3dv_GetImageSubresourceLayout2KHR(VkDevice _device,
 }
 
 VKAPI_ATTR void VKAPI_CALL
+v3dv_GetDeviceImageSubresourceLayoutKHR(VkDevice vk_device,
+                                        const VkDeviceImageSubresourceInfoKHR *pInfo,
+                                        VkSubresourceLayout2KHR *pLayout)
+{
+   V3DV_FROM_HANDLE(v3dv_device, device, vk_device);
+
+   memset(&pLayout->subresourceLayout, 0, sizeof(pLayout->subresourceLayout));
+
+   VkImage vk_image = VK_NULL_HANDLE;
+   VkResult result = create_image(device, pInfo->pCreateInfo, NULL, &vk_image);
+   if (result != VK_SUCCESS)
+      return;
+
+   struct v3dv_image *image = v3dv_image_from_handle(vk_image);
+   get_image_subresource_layout(device, image, pInfo->pSubresource, pLayout);
+
+   v3dv_DestroyImage(vk_device, vk_image, NULL);
+}
+
+VKAPI_ATTR void VKAPI_CALL
 v3dv_DestroyImage(VkDevice _device,
                   VkImage _image,
                   const VkAllocationCallbacks* pAllocator)

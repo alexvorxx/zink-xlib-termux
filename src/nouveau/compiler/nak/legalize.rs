@@ -89,22 +89,22 @@ fn copy_alu_src(b: &mut impl SSABuilder, src: &mut Src, src_type: SrcType) {
     src.src_ref = val.into();
 }
 
-fn copy_alu_src_if_cbuf(
-    b: &mut impl SSABuilder,
-    src: &mut Src,
-    src_type: SrcType,
-) {
-    if matches!(src.src_ref, SrcRef::CBuf(_)) {
-        copy_alu_src(b, src, src_type);
-    }
-}
-
 fn copy_alu_src_if_not_reg(
     b: &mut impl SSABuilder,
     src: &mut Src,
     src_type: SrcType,
 ) {
     if !src_is_reg(src) {
+        copy_alu_src(b, src, src_type);
+    }
+}
+
+fn copy_alu_src_if_not_reg_or_imm(
+    b: &mut impl SSABuilder,
+    src: &mut Src,
+    src_type: SrcType,
+) {
+    if !src_is_reg(src) && !matches!(&src.src_ref, SrcRef::Imm32(_)) {
         copy_alu_src(b, src, src_type);
     }
 }
@@ -337,8 +337,8 @@ fn legalize_sm50_instr(
         }
         Op::Shfl(op) => {
             copy_alu_src_if_not_reg(b, &mut op.src, SrcType::GPR);
-            copy_alu_src_if_cbuf(b, &mut op.lane, SrcType::ALU);
-            copy_alu_src_if_cbuf(b, &mut op.c, SrcType::ALU);
+            copy_alu_src_if_not_reg_or_imm(b, &mut op.lane, SrcType::ALU);
+            copy_alu_src_if_not_reg_or_imm(b, &mut op.c, SrcType::ALU);
         }
         Op::Vote(_) => {}
         Op::IAdd2(op) => {
@@ -733,12 +733,12 @@ fn legalize_sm70_instr(
         }
         Op::Shfl(op) => {
             copy_alu_src_if_not_reg(b, &mut op.src, SrcType::GPR);
-            copy_alu_src_if_cbuf(b, &mut op.lane, SrcType::ALU);
-            copy_alu_src_if_cbuf(b, &mut op.c, SrcType::ALU);
+            copy_alu_src_if_not_reg_or_imm(b, &mut op.lane, SrcType::ALU);
+            copy_alu_src_if_not_reg_or_imm(b, &mut op.c, SrcType::ALU);
         }
         Op::Out(op) => {
             copy_alu_src_if_not_reg(b, &mut op.handle, SrcType::GPR);
-            copy_alu_src_if_cbuf(b, &mut op.stream, SrcType::ALU);
+            copy_alu_src_if_not_reg_or_imm(b, &mut op.stream, SrcType::ALU);
         }
         Op::Break(op) => {
             let bar_in = op.bar_in.src_ref.as_ssa().unwrap();

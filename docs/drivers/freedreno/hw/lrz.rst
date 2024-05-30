@@ -21,8 +21,6 @@ Citing official Adreno documentation:
   is then used during the rendering pass to reject pixels efficiently before testing
   against the full resolution Z-buffer.
 
-TODO: a7xx
-
 Limitations
 -----------
 
@@ -63,6 +61,21 @@ stored in the buffer. If not, LRZ is disabled. This is necessary
 because depth buffer may have several layers and mip levels, while the
 LRZ buffer represents only a single layer + mip level.
 
+A7XX
+-------------
+
+A7XX introduces the concept of bidirectional LRZ where there are two LRZ
+buffers, one for each direction. This way LRZ doesn't need to be disabled
+when the direction changes, by default, this behavior is disabled but the
+LRZ buffers have to be allocated with this space in mind as fast clears
+will always write metadata for both.
+
+Additionally, there are now two seperate LRZ buffers (on top of one for
+each direction, a total of four) - due to concurrent binning, one can be
+used for binning and the other for rendering concurrently. These can be
+flipped between via the `LRZ_FLIP_BUFFER` event which can be put inside
+a conditional block for either the BV or BR.
+
 LRZ Fast-Clear
 --------------
 
@@ -78,6 +91,9 @@ written the LRZ block which corresponds to a single fast-clear bit is cleared:
 - To ``1.0`` if depth comparison is ``LESS``
 
 This way it's always valid to fast-clear.
+
+On A7XX, the original depth clear value can be specified exactly allowing for
+fast-clear to any value rather than just ``1.0`` or ``0.0``.
 
 LRZ Precision
 -------------

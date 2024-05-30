@@ -3688,13 +3688,11 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
    }
 
    ls_hs_config = S_028B58_NUM_PATCHES(cmd_buffer->state.tess_num_patches) |
+                  /* GFX12 programs patch_vertices in VGT_PRIMITIVE_TYPE.NUM_INPUT_CP. */
+                  S_028B58_HS_NUM_INPUT_CP(pdev->info.gfx_level < GFX12 ? d->vk.ts.patch_control_points : 0) |
                   S_028B58_HS_NUM_OUTPUT_CP(tcs->info.tcs.tcs_vertices_out);
 
    if (pdev->info.gfx_level >= GFX7) {
-      /* GFX12 programs patch_vertices in VGT_PRIMITIVE_TYPE.NUM_INPUT_CP. */
-      if (pdev->info.gfx_level < GFX12)
-         ls_hs_config |= S_028B58_HS_NUM_INPUT_CP(d->vk.ts.patch_control_points);
-
       radeon_set_context_reg_idx(cmd_buffer->cs, R_028B58_VGT_LS_HS_CONFIG, 2, ls_hs_config);
    } else {
       radeon_set_context_reg(cmd_buffer->cs, R_028B58_VGT_LS_HS_CONFIG, ls_hs_config);

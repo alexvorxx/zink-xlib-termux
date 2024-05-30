@@ -63,6 +63,13 @@ struct tu_memory_heap {
    alignas(8) VkDeviceSize used;
 };
 
+enum tu_kgsl_dma_type
+{
+   TU_KGSL_DMA_TYPE_ION_LEGACY,
+   TU_KGSL_DMA_TYPE_ION,
+   TU_KGSL_DMA_TYPE_DMAHEAP,
+};
+
 struct tu_physical_device
 {
    struct vk_physical_device vk;
@@ -85,6 +92,9 @@ struct tu_physical_device
    bool has_master;
    int64_t master_major;
    int64_t master_minor;
+
+   int kgsl_dma_fd;
+   enum tu_kgsl_dma_type kgsl_dma_type;
 
    uint32_t gmem_size;
    uint64_t gmem_base;

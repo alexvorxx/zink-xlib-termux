@@ -298,6 +298,7 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
    }
 
    device->master_fd = master_fd;
+   device->kgsl_dma_fd = -1;
 
    assert(strlen(path) < ARRAY_SIZE(device->fd_path));
    snprintf(device->fd_path, ARRAY_SIZE(device->fd_path), "%s", path);

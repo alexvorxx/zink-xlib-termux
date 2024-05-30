@@ -22,6 +22,7 @@ enum tu_bo_alloc_flags {
    TU_BO_ALLOC_REPLAYABLE = 1 << 2,
    TU_BO_ALLOC_INTERNAL_RESOURCE = 1 << 3,
    TU_BO_ALLOC_DMABUF = 1 << 4,
+   TU_BO_ALLOC_SHAREABLE = 1 << 5,
 };
 
 /* Define tu_timeline_sync type based on drm syncobj for a point type
@@ -52,6 +53,14 @@ struct tu_bo {
    int32_t refcnt;
 
    uint32_t bo_list_idx;
+
+#ifdef TU_HAS_KGSL
+   /* We have to store fd returned by ion_fd_data
+    * in order to be able to mmap this buffer and to
+    * export file descriptor.
+    */
+   int shared_fd;
+#endif
 
    bool implicit_sync : 1;
 };

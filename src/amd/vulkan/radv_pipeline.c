@@ -439,9 +439,10 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       }
    }
 
-   NIR_PASS(_, stage->nir, ac_nir_lower_subdword_loads,
-            (ac_nir_lower_subdword_options){.modes_1_comp = nir_var_mem_ubo,
-                                            .modes_N_comps = nir_var_mem_ubo | nir_var_mem_ssbo});
+   NIR_PASS(
+      _, stage->nir, ac_nir_lower_subdword_loads,
+      (ac_nir_lower_subdword_options){.modes_1_comp = nir_var_mem_ubo | nir_var_mem_push_const,
+                                      .modes_N_comps = nir_var_mem_ubo | nir_var_mem_push_const | nir_var_mem_ssbo});
 
    progress = false;
    NIR_PASS(progress, stage->nir, nir_vk_lower_ycbcr_tex, ycbcr_conversion_lookup, &stage->layout);

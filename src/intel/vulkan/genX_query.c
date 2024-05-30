@@ -1787,14 +1787,21 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
    uint32_t data_offset = 8 /* behind availability */;
    switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_OCCLUSION:
-   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
       copy_flags |= ANV_COPY_QUERY_FLAG_DELTA;
-      /* These 2 queries are the only ones where we would have partial data
+      /* Occlusion and timestamps queries are the only ones where we would have partial data
        * because they are capture with a PIPE_CONTROL post sync operation. The
        * other ones are captured with MI_STORE_REGISTER_DATA so we're always
        * available by the time we reach the copy command.
        */
       copy_flags |= (flags & VK_QUERY_RESULT_PARTIAL_BIT) ? ANV_COPY_QUERY_FLAG_PARTIAL : 0;
+      break;
+
+   case VK_QUERY_TYPE_TIMESTAMP:
+      copy_flags |= (flags & VK_QUERY_RESULT_PARTIAL_BIT) ? ANV_COPY_QUERY_FLAG_PARTIAL : 0;
+      break;
+
+   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
+      copy_flags |= ANV_COPY_QUERY_FLAG_DELTA;
       break;
 
    case VK_QUERY_TYPE_PIPELINE_STATISTICS:
@@ -1807,7 +1814,6 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
       copy_flags |= ANV_COPY_QUERY_FLAG_DELTA;
       break;
 
-   case VK_QUERY_TYPE_TIMESTAMP:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:

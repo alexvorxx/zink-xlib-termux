@@ -57,19 +57,14 @@ bifrost_archs = [6, 7]
 bifrost_inc_dir = ['bifrost']
 bifrost_files = [
   'bifrost/panvk_vX_cmd_desc_state.c',
-  'bifrost/panvk_vX_descriptor_set.c',
-  'bifrost/panvk_vX_descriptor_set_layout.c',
+  'bifrost/panvk_vX_meta_desc_copy.c',
   'bifrost/panvk_vX_nir_lower_descriptors.c',
   'bifrost/panvk_vX_pipeline.c',
-  'bifrost/panvk_vX_pipeline_layout.c',
 ]
 
 valhall_archs = [9, 10]
 valhall_inc_dir = ['valhall']
-valhall_files = [
-  'valhall/panvk_vX_descriptor_set.c',
-  'valhall/panvk_vX_descriptor_set_layout.c',
-]
+valhall_files = []
 
 jm_archs = [6, 7]
 jm_inc_dir = ['jm']
@@ -89,6 +84,8 @@ common_per_arch_files = [
   panvk_entrypoints[0],
   'panvk_vX_blend.c',
   'panvk_vX_buffer_view.c',
+  'panvk_vX_descriptor_set.c',
+  'panvk_vX_descriptor_set_layout.c',
   'panvk_vX_device.c',
   'panvk_vX_image_view.c',
   'panvk_vX_sampler.c',
@@ -101,6 +98,8 @@ foreach arch : [6, 7, 9, 10]
     # Just add the v9/v10 entrypoints for now.
     per_arch_files = [
       panvk_entrypoints[0],
+      'panvk_vX_descriptor_set.c',
+      'panvk_vX_descriptor_set_layout.c',
     ]
   else
     per_arch_files = common_per_arch_files

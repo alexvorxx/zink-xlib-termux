@@ -38,7 +38,6 @@
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
 #include "panvk_pipeline.h"
-#include "panvk_pipeline_layout.h"
 #include "panvk_priv_bo.h"
 
 #include "pan_blitter.h"
@@ -298,6 +297,10 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
 
    panvk_per_arch(cmd_desc_state_reset)(&cmdbuf->state.gfx.desc_state,
                                         &cmdbuf->state.compute.desc_state);
+   memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
+   memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
+   memset(&cmdbuf->state.compute.cs.desc, 0,
+          sizeof(cmdbuf->state.compute.cs.desc));
 }
 
 static void
@@ -401,6 +404,15 @@ panvk_per_arch(CmdBindDescriptorSets)(
    panvk_per_arch(cmd_desc_state_bind_sets)(
       desc_state, layout, firstSet, descriptorSetCount, pDescriptorSets,
       dynamicOffsetCount, pDynamicOffsets);
+
+   /* TODO: Invalidate only if the shader tables are disturbed */
+   if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS) {
+      memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
+      memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
+   } else {
+      memset(&cmdbuf->state.compute.cs.desc, 0,
+             sizeof(cmdbuf->state.compute.cs.desc));
+   }
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -439,12 +451,16 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
 
       cmdbuf->state.gfx.fs.rsd = 0;
       cmdbuf->state.gfx.pipeline = gfx_pipeline;
+      memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
+      memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
       break;
    }
 
    case VK_PIPELINE_BIND_POINT_COMPUTE:
       cmdbuf->state.compute.pipeline =
          panvk_pipeline_to_compute_pipeline(pipeline);
+      memset(&cmdbuf->state.compute.cs.desc, 0,
+             sizeof(cmdbuf->state.compute.cs.desc));
       break;
 
    default:
@@ -460,18 +476,33 @@ panvk_per_arch(CmdPushDescriptorSetKHR)(
    const VkWriteDescriptorSet *pDescriptorWrites)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   VK_FROM_HANDLE(panvk_pipeline_layout, playout, layout);
+   VK_FROM_HANDLE(vk_pipeline_layout, playout, layout);
    const struct panvk_descriptor_set_layout *set_layout =
-      vk_to_panvk_descriptor_set_layout(playout->vk.set_layouts[set]);
+      to_panvk_descriptor_set_layout(playout->set_layouts[set]);
    struct panvk_descriptor_state *desc_state =
       panvk_cmd_get_desc_state(cmdbuf, pipelineBindPoint);
-   struct panvk_push_descriptor_set *push_set =
+   struct panvk_descriptor_set *push_set =
       panvk_per_arch(cmd_push_descriptors)(&cmdbuf->vk, desc_state, set);
    if (!push_set)
       return;
 
-   panvk_per_arch(push_descriptor_set)(push_set, set_layout,
-                                       descriptorWriteCount, pDescriptorWrites);
+   push_set->layout = set_layout;
+   push_set->desc_count = set_layout->desc_count;
+
+   for (uint32_t i = 0; i < descriptorWriteCount; i++)
+      panvk_per_arch(descriptor_set_write)(push_set, &pDescriptorWrites[i],
+                                           true);
+
+   push_set->descs.dev = 0;
+   push_set->layout = NULL;
+
+   if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS) {
+      memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
+      memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
+   } else {
+      memset(&cmdbuf->state.compute.cs.desc, 0,
+             sizeof(cmdbuf->state.compute.cs.desc));
+   }
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -483,16 +514,30 @@ panvk_per_arch(CmdPushDescriptorSetWithTemplateKHR)(
    VK_FROM_HANDLE(vk_descriptor_update_template, template,
                   descriptorUpdateTemplate);
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   VK_FROM_HANDLE(panvk_pipeline_layout, playout, layout);
+   VK_FROM_HANDLE(vk_pipeline_layout, playout, layout);
    const struct panvk_descriptor_set_layout *set_layout =
-      vk_to_panvk_descriptor_set_layout(playout->vk.set_layouts[set]);
+      to_panvk_descriptor_set_layout(playout->set_layouts[set]);
    struct panvk_descriptor_state *desc_state =
       panvk_cmd_get_desc_state(cmdbuf, template->bind_point);
-   struct panvk_push_descriptor_set *push_set =
+   struct panvk_descriptor_set *push_set =
       panvk_per_arch(cmd_push_descriptors)(&cmdbuf->vk, desc_state, set);
    if (!push_set)
       return;
 
-   panvk_per_arch(push_descriptor_set_with_template)(
-      push_set, set_layout, descriptorUpdateTemplate, pData);
+   push_set->layout = set_layout;
+   push_set->desc_count = set_layout->desc_count;
+
+   panvk_per_arch(descriptor_set_write_template)(push_set, template, pData,
+                                                 true);
+
+   push_set->descs.dev = 0;
+   push_set->layout = NULL;
+
+   if (template->bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
+      memset(&cmdbuf->state.gfx.vs.desc, 0, sizeof(cmdbuf->state.gfx.vs.desc));
+      memset(&cmdbuf->state.gfx.fs.desc, 0, sizeof(cmdbuf->state.gfx.fs.desc));
+   } else {
+      memset(&cmdbuf->state.compute.cs.desc, 0,
+             sizeof(cmdbuf->state.compute.cs.desc));
+   }
 }

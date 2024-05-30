@@ -1101,28 +1101,6 @@ dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16_sint.gradient.unnormal
 dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_sfloat.gradient.normalized_coords.edge_right,Fail
 dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_sfloat.gradient.unnormalized_coords.edge_right,Fail
 
-# We store image/buffer information in a UBO, and
-# maxDescriptorSetSampledImages * sizeof(struct panvk_image_desc) exceeds the
-# maximum UBO size.
-# The easy fix would be to further limit the max value in the physical device
-# limit, but given this UBO contains information for storage buffers too, it
-# implies putting a constraint on
-# maxDescriptorSetStorageBuffers+maxDescriptorSetSampledImages.
-# The proper fix would be to use a global pointer/size pair, and lower
-# descriptor info loads to global loads.
-dEQP-VK.pipeline.monolithic.descriptor_limits.compute_shader.sampled_images_16384,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.compute_shader.sampled_images_32768,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.compute_shader.sampled_images_65535,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.compute_shader.samplers_16384,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.compute_shader.samplers_32768,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.compute_shader.samplers_65535,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.fragment_shader.sampled_images_16384,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.fragment_shader.sampled_images_32768,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.fragment_shader.sampled_images_65535,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.fragment_shader.samplers_16384,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.fragment_shader.samplers_32768,Crash
-dEQP-VK.pipeline.monolithic.descriptor_limits.fragment_shader.samplers_65535,Crash
-
 # resolve operations not supported yet
 dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_19x27_32x32_ms,Crash
 dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_32x32_39x41_ms,Crash

@@ -27,13 +27,8 @@
 
 struct panvk_dispatch_info {
    struct pan_compute_dim wg_count;
-   mali_ptr attributes;
-   mali_ptr attribute_bufs;
    mali_ptr tsd;
-   mali_ptr ubos;
    mali_ptr push_uniforms;
-   mali_ptr textures;
-   mali_ptr samplers;
 };
 
 VKAPI_ATTR void VKAPI_CALL
@@ -53,12 +48,16 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
 
    struct panvk_descriptor_state *desc_state =
       &cmdbuf->state.compute.desc_state;
+   struct panvk_shader_desc_state *cs_desc_state =
+      &cmdbuf->state.compute.cs.desc;
    const struct panvk_compute_pipeline *pipeline =
       cmdbuf->state.compute.pipeline;
-   struct pan_pool *desc_pool_base = &cmdbuf->desc_pool.base;
-   struct panfrost_ptr job =
-      pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
-   util_dynarray_append(&batch->jobs, void *, job.cpu);
+
+   panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);
+   dispatch.tsd = batch->tls.gpu;
+
+   panvk_per_arch(cmd_prepare_push_descs)(&cmdbuf->desc_pool.base, desc_state,
+                                          &pipeline->base);
 
    struct panvk_compute_sysvals *sysvals = &cmdbuf->state.compute.sysvals;
    sysvals->num_work_groups.x = x;
@@ -67,38 +66,38 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    sysvals->local_group_size.x = pipeline->local_size.x;
    sysvals->local_group_size.y = pipeline->local_size.y;
    sysvals->local_group_size.z = pipeline->local_size.z;
+   panvk_per_arch(cmd_prepare_dyn_ssbos)(&cmdbuf->desc_pool.base, desc_state,
+                                         &pipeline->cs, cs_desc_state);
+   sysvals->desc.dyn_ssbos = cs_desc_state->dyn_ssbos;
 
-   panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);
-   dispatch.tsd = batch->tls.gpu;
+   for (uint32_t i = 0; i < MAX_SETS; i++) {
+      if (pipeline->cs.desc_info.used_set_mask & BITFIELD_BIT(i))
+         sysvals->desc.sets[i] = desc_state->sets[i]->descs.dev;
+   }
 
-   panvk_per_arch(cmd_prepare_push_sets)(desc_pool_base, desc_state,
-                                         &pipeline->base);
-
-   if (pipeline->cs.has_img_access)
-      panvk_per_arch(prepare_img_attribs)(desc_pool_base, desc_state,
-                                          &pipeline->base);
-
-   dispatch.attributes = desc_state->img.attribs;
-   dispatch.attribute_bufs = desc_state->img.attrib_bufs;
-
-   panvk_per_arch(cmd_prepare_ubos)(desc_pool_base, desc_state,
-                                    &pipeline->base);
-   dispatch.ubos = desc_state->ubos;
+   cmdbuf->state.compute.push_uniforms = 0;
 
    if (!cmdbuf->state.compute.push_uniforms) {
       cmdbuf->state.compute.push_uniforms = panvk_cmd_prepare_push_uniforms(
-         desc_pool_base, &cmdbuf->state.push_constants,
+         &cmdbuf->desc_pool.base, &cmdbuf->state.push_constants,
          &cmdbuf->state.compute.sysvals, sizeof(cmdbuf->state.compute.sysvals));
    }
+
    dispatch.push_uniforms = cmdbuf->state.compute.push_uniforms;
 
-   panvk_per_arch(cmd_prepare_textures)(desc_pool_base, desc_state,
-                                        &pipeline->base);
-   dispatch.textures = desc_state->textures;
+   panvk_per_arch(cmd_prepare_shader_desc_tables)(
+      &cmdbuf->desc_pool.base, desc_state, &pipeline->cs, cs_desc_state);
 
-   panvk_per_arch(cmd_prepare_samplers)(desc_pool_base, desc_state,
-                                        &pipeline->base);
-   dispatch.samplers = desc_state->samplers;
+   struct panfrost_ptr copy_desc_job = panvk_per_arch(meta_get_copy_desc_job)(
+      dev, &cmdbuf->desc_pool.base, &pipeline->cs,
+      &cmdbuf->state.compute.desc_state, cs_desc_state);
+
+   if (copy_desc_job.cpu)
+      util_dynarray_append(&batch->jobs, void *, copy_desc_job.cpu);
+
+   struct panfrost_ptr job =
+      pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
+   util_dynarray_append(&batch->jobs, void *, job.cpu);
 
    panfrost_pack_work_groups_compute(
       pan_section_ptr(job.cpu, COMPUTE_JOB, INVOCATION), dispatch.wg_count.x,
@@ -113,17 +112,24 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
 
    pan_section_pack(job.cpu, COMPUTE_JOB, DRAW, cfg) {
       cfg.state = pipeline->cs.rsd;
-      cfg.attributes = dispatch.attributes;
-      cfg.attribute_buffers = dispatch.attribute_bufs;
+      cfg.attributes = cs_desc_state->img_attrib_table;
+      cfg.attribute_buffers =
+         cs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_IMG];
       cfg.thread_storage = dispatch.tsd;
-      cfg.uniform_buffers = dispatch.ubos;
+      cfg.uniform_buffers = cs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_UBO];
       cfg.push_uniforms = dispatch.push_uniforms;
-      cfg.textures = dispatch.textures;
-      cfg.samplers = dispatch.samplers;
+      cfg.textures = cs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_TEXTURE];
+      cfg.samplers = cs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_SAMPLER];
    }
 
-   pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0, &job,
-                  false);
+   unsigned copy_desc_dep =
+      copy_desc_job.gpu
+         ? pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0, 0,
+                          &copy_desc_job, false)
+         : 0;
+
+   pan_jc_add_job(&batch->jc, MALI_JOB_TYPE_COMPUTE, false, false, 0,
+                  copy_desc_dep, &job, false);
 
    batch->tlsinfo.tls.size = pipeline->cs.info.tls_size;
    batch->tlsinfo.wls.size = pipeline->cs.info.wls_size;
@@ -137,7 +143,6 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    }
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
-   panvk_per_arch(cmd_unprepare_push_sets)(desc_state);
 }
 
 VKAPI_ATTR void VKAPI_CALL

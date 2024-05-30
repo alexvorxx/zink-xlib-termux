@@ -167,11 +167,24 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
                                  is_3d ? view->pview.first_layer : 0);
 
       pan_pack(view->descs.img_attrib_buf[0].opaque, ATTRIBUTE_BUFFER, cfg) {
+         /* The format is the only thing we lack to emit attribute descriptors
+          * when copying from the set to the attribute tables. Instead of
+          * making the descriptor size to store an extra format, we pack
+          * the 22-bit format with the texel stride, which is expected to be
+          * fit in remaining 10 bits.
+          */
+         uint32_t fmt_blksize = util_format_get_blocksize(view->pview.format);
+         uint32_t hw_fmt =
+            GENX(panfrost_format_from_pipe_format)(view->pview.format)->hw;
+
+         assert(fmt_blksize < BITFIELD_MASK(10));
+         assert(hw_fmt < BITFIELD_MASK(22));
+
          cfg.type = image->pimage.layout.modifier == DRM_FORMAT_MOD_LINEAR
                        ? MALI_ATTRIBUTE_TYPE_3D_LINEAR
                        : MALI_ATTRIBUTE_TYPE_3D_INTERLEAVED;
          cfg.pointer = image->pimage.data.base + offset;
-         cfg.stride = util_format_get_blocksize(view->pview.format);
+         cfg.stride = fmt_blksize | (hw_fmt << 10);
          cfg.size = pan_kmod_bo_size(image->bo) - offset;
       }
 

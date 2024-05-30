@@ -36,7 +36,23 @@ struct panvk_pipeline_shader {
    } varyings;
 
    struct pan_shader_info info;
-   bool has_img_access;
+
+   struct {
+      uint32_t used_set_mask;
+
+      struct {
+         uint32_t map[MAX_DYNAMIC_UNIFORM_BUFFERS];
+         uint32_t count;
+      } dyn_ubos;
+      struct {
+         uint32_t map[MAX_DYNAMIC_STORAGE_BUFFERS];
+         uint32_t count;
+      } dyn_ssbos;
+      struct {
+         mali_ptr map;
+         uint32_t count[PANVK_BIFROST_DESC_TABLE_COUNT];
+      } others;
+   } desc_info;
 };
 
 enum panvk_pipeline_type {
@@ -48,7 +64,7 @@ struct panvk_pipeline {
    struct vk_object_base base;
    enum panvk_pipeline_type type;
 
-   const struct panvk_pipeline_layout *layout;
+   const struct vk_pipeline_layout *layout;
 
    struct panvk_pool bin_pool;
    struct panvk_pool desc_pool;

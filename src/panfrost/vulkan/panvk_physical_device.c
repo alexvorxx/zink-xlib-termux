@@ -290,7 +290,6 @@ get_device_properties(const struct panvk_physical_device *device,
        */
       .maxBoundDescriptorSets = 4,
       /* MALI_RENDERER_STATE::sampler_count is 16-bit. */
-      .maxPerStageDescriptorSamplers = UINT16_MAX,
       .maxDescriptorSetSamplers = UINT16_MAX,
       /* MALI_RENDERER_STATE::uniform_buffer_count is 8-bit. We reserve 32 slots
        * for our internal UBOs.
@@ -304,25 +303,31 @@ get_device_properties(const struct panvk_physical_device *device,
        * a minus(1) modifier, which gives a maximum of 2^12 SSBO
        * descriptors.
        */
-      .maxPerStageDescriptorStorageBuffers = 1 << 12,
       .maxDescriptorSetStorageBuffers = 1 << 12,
       /* MALI_RENDERER_STATE::sampler_count is 16-bit. */
-      .maxPerStageDescriptorSampledImages = UINT16_MAX,
       .maxDescriptorSetSampledImages = UINT16_MAX,
       /* MALI_ATTRIBUTE::buffer_index is 9-bit, and each image takes two
        * MALI_ATTRIBUTE_BUFFER slots, which gives a maximum of (1 << 8) images.
        */
-      .maxPerStageDescriptorStorageImages = 1 << 8,
       .maxDescriptorSetStorageImages = 1 << 8,
       /* A maximum of 8 color render targets, and one depth-stencil render
        * target.
        */
-      .maxPerStageDescriptorInputAttachments = 9,
       .maxDescriptorSetInputAttachments = 9,
-      /* Could be the sum of all maxPerStageXxx values, but we limit ourselves
-       * to 2^16 to make things simpler.
+
+      /* We could theoretically use the maxDescriptor values here (except for
+       * UBOs where we're really limited to 256 on the shader side), but on
+       * Bifrost we have to copy some tables around, which comes at an extra
+       * memory/processing cost, so let's pick something smaller.
        */
-      .maxPerStageResources = 1 << 16,
+      .maxPerStageDescriptorInputAttachments = 9,
+      .maxPerStageDescriptorSampledImages = 256,
+      .maxPerStageDescriptorSamplers = 128,
+      .maxPerStageDescriptorStorageBuffers = 64,
+      .maxPerStageDescriptorStorageImages = 32,
+      .maxPerStageDescriptorUniformBuffers = 64,
+      .maxPerStageResources = 9 + 256 + 128 + 64 + 32 + 64,
+
       /* Software limits to keep VkCommandBuffer tracking sane. */
       .maxDescriptorSetUniformBuffersDynamic = 16,
       .maxDescriptorSetStorageBuffersDynamic = 8,

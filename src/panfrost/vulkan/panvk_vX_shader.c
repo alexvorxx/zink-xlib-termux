@@ -32,8 +32,6 @@
 #include "panvk_device.h"
 #include "panvk_instance.h"
 #include "panvk_physical_device.h"
-#include "panvk_pipeline.h"
-#include "panvk_pipeline_layout.h"
 #include "panvk_shader.h"
 
 #include "spirv/nir_spirv.h"
@@ -49,6 +47,7 @@
 #include "pan_shader.h"
 
 #include "vk_pipeline.h"
+#include "vk_pipeline_layout.h"
 #include "vk_util.h"
 
 static nir_def *
@@ -196,7 +195,7 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
 struct panvk_shader *
 panvk_per_arch(shader_create)(struct panvk_device *dev,
                               const VkPipelineShaderStageCreateInfo *stage_info,
-                              const struct panvk_pipeline_layout *layout,
+                              const struct vk_pipeline_layout *layout,
                               const VkAllocationCallbacks *alloc)
 {
    struct panvk_physical_device *phys_dev =
@@ -289,7 +288,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
 
    NIR_PASS_V(nir, panvk_per_arch(nir_lower_descriptors), dev, layout,
-              &shader->has_img_access);
+              &shader->desc_info);
 
    NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_ubo,
               nir_address_format_32bit_index_offset);
@@ -365,9 +364,16 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
 
    /* Patch the descriptor count */
    shader->info.ubo_count =
-      panvk_per_arch(pipeline_layout_total_ubo_count)(layout);
-   shader->info.sampler_count = layout->num_samplers;
-   shader->info.texture_count = layout->num_textures;
+      shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_UBO].count +
+      shader->desc_info.dyn_ubos.count;
+   shader->info.texture_count =
+      shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_TEXTURE].count;
+   shader->info.sampler_count =
+      shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_SAMPLER].count;
+
+   /* Dummy sampler. */
+   if (!shader->info.sampler_count && shader->info.texture_count)
+      shader->info.sampler_count++;
 
    if (stage == MESA_SHADER_VERTEX) {
       /* We leave holes in the attribute locations, but pan_shader.c assumes the
@@ -384,9 +390,10 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
     * and zero in other stages.
     */
-   if (shader->has_img_access)
+   if (shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_IMG].count > 0)
       shader->info.attribute_count =
-         layout->num_imgs + (stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
+         shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_IMG].count +
+         (stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
 
    shader->local_size.x = nir->info.workgroup_size[0];
    shader->local_size.y = nir->info.workgroup_size[1];
@@ -403,6 +410,7 @@ panvk_per_arch(shader_destroy)(struct panvk_device *dev,
                                const VkAllocationCallbacks *alloc)
 {
    util_dynarray_fini(&shader->binary);
+   free(shader->desc_info.dyn_ubos.map);
    vk_free2(&dev->vk.alloc, alloc, shader);
 }
 

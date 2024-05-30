@@ -39,6 +39,11 @@ struct panvk_device {
    struct panvk_blend_shader_cache blend_shader_cache;
    struct panvk_meta meta;
 
+   struct {
+      struct panvk_priv_bo *shader_bo;
+      struct panvk_priv_bo *rsd_bo;
+   } desc_copy;
+
    struct vk_device_dispatch_table cmd_dispatch;
 
    struct panvk_queue *queues[PANVK_MAX_QUEUE_FAMILIES];

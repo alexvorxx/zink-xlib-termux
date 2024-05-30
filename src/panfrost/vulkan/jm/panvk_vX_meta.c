@@ -57,6 +57,7 @@ panvk_per_arch(meta_init)(struct panvk_device *dev)
    panvk_per_arch(meta_blit_init)(dev);
    panvk_per_arch(meta_copy_init)(dev);
    panvk_per_arch(meta_clear_init)(dev);
+   panvk_per_arch(meta_desc_copy_init)(dev);
 }
 
 void

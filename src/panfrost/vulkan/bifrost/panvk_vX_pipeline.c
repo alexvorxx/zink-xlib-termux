@@ -30,7 +30,6 @@
 #include "panvk_device.h"
 #include "panvk_entrypoints.h"
 #include "panvk_pipeline.h"
-#include "panvk_pipeline_layout.h"
 #include "panvk_priv_bo.h"
 #include "panvk_shader.h"
 
@@ -44,6 +43,7 @@
 #include "vk_blend.h"
 #include "vk_format.h"
 #include "vk_pipeline_cache.h"
+#include "vk_pipeline_layout.h"
 #include "vk_render_pass.h"
 #include "vk_util.h"
 
@@ -76,7 +76,32 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
    }
 
    pshader->info = shader->info;
-   pshader->has_img_access = shader->has_img_access;
+   pshader->desc_info.used_set_mask = shader->desc_info.used_set_mask;
+
+   uint32_t copy_count = 0;
+   for (uint32_t i = 0; i < ARRAY_SIZE(shader->desc_info.others); i++) {
+      pshader->desc_info.others.count[i] = shader->desc_info.others[i].count;
+      copy_count += shader->desc_info.others[i].count;
+   }
+
+   if (copy_count) {
+      pshader->desc_info.others.map = pan_pool_upload_aligned(
+         &pipeline->desc_pool.base, shader->desc_info.others[0].map,
+         copy_count * sizeof(uint32_t), sizeof(uint32_t));
+   }
+
+   assert(shader->desc_info.dyn_ubos.count <
+          ARRAY_SIZE(pshader->desc_info.dyn_ubos.map));
+   pshader->desc_info.dyn_ubos.count = shader->desc_info.dyn_ubos.count;
+   memcpy(pshader->desc_info.dyn_ubos.map, shader->desc_info.dyn_ubos.map,
+          shader->desc_info.dyn_ubos.count *
+             sizeof(*pshader->desc_info.dyn_ubos.map));
+   assert(shader->desc_info.dyn_ssbos.count <
+          ARRAY_SIZE(pshader->desc_info.dyn_ssbos.map));
+   pshader->desc_info.dyn_ssbos.count = shader->desc_info.dyn_ssbos.count;
+   memcpy(pshader->desc_info.dyn_ssbos.map, shader->desc_info.dyn_ssbos.map,
+          shader->desc_info.dyn_ssbos.count *
+             sizeof(*pshader->desc_info.dyn_ssbos.map));
 
    if (stage_info->stage == VK_SHADER_STAGE_COMPUTE_BIT) {
       struct panvk_compute_pipeline *compute_pipeline =
@@ -303,7 +328,7 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
                                const VkAllocationCallbacks *alloc,
                                struct panvk_pipeline **out)
 {
-   VK_FROM_HANDLE(panvk_pipeline_layout, layout, create_info->layout);
+   VK_FROM_HANDLE(vk_pipeline_layout, layout, create_info->layout);
    struct vk_graphics_pipeline_all_state all;
    struct vk_graphics_pipeline_state state = {};
    VkResult result;
@@ -401,7 +426,7 @@ panvk_compute_pipeline_create(struct panvk_device *dev,
                               const VkAllocationCallbacks *alloc,
                               struct panvk_pipeline **out)
 {
-   VK_FROM_HANDLE(panvk_pipeline_layout, layout, create_info->layout);
+   VK_FROM_HANDLE(vk_pipeline_layout, layout, create_info->layout);
    struct panvk_compute_pipeline *compute_pipeline = vk_object_zalloc(
       &dev->vk, alloc, sizeof(*compute_pipeline), VK_OBJECT_TYPE_PIPELINE);
 

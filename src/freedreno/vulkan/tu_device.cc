@@ -2818,7 +2818,7 @@ tu_AllocateMemory(VkDevice _device,
          close(fd_info->fd);
       }
    } else if (mem->vk.ahardware_buffer) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       const native_handle_t *handle = AHardwareBuffer_getNativeHandle(mem->vk.ahardware_buffer);
       assert(handle->numFds > 0);
       size_t size = lseek(handle->data[0], 0, SEEK_END);

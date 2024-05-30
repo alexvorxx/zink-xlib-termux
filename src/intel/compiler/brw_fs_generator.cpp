@@ -358,9 +358,10 @@ fs_generator::generate_shuffle(fs_inst *inst,
     * gets weird because it reads all of the channels regardless of execution
     * size.  It's easier just to split it here.
     */
-   const unsigned lower_width =
-      element_sz(src) > 4 || element_sz(dst) > 4 ? 8 :
-      MIN2(16, inst->exec_size);
+   unsigned lower_width = MIN2(16, inst->exec_size);
+   if (devinfo->ver < 20 && (element_sz(src) > 4 || element_sz(dst) > 4)) {
+      lower_width = 8;
+   }
 
    brw_set_default_exec_size(p, cvt(lower_width) - 1);
    for (unsigned group = 0; group < inst->exec_size; group += lower_width) {

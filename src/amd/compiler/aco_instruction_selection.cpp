@@ -8333,6 +8333,12 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       }
       break;
    }
+   case nir_intrinsic_load_subgroup_id: {
+      assert(ctx->options->gfx_level >= GFX12 && ctx->stage.hw == AC_HW_COMPUTE_SHADER);
+      bld.sop2(aco_opcode::s_bfe_u32, Definition(get_ssa_temp(ctx, &instr->def)), bld.def(s1, scc),
+               ctx->ttmp8, Operand::c32(25 | (5 << 16)));
+      break;
+   }
    case nir_intrinsic_load_local_invocation_index: {
       if (ctx->stage.hw == AC_HW_LOCAL_SHADER || ctx->stage.hw == AC_HW_HULL_SHADER) {
          if (ctx->options->gfx_level >= GFX11) {
@@ -8359,6 +8365,14 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       }
 
       Temp id = emit_mbcnt(ctx, bld.tmp(v1));
+
+      if (ctx->options->gfx_level >= GFX12) {
+         Temp tg_num = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), ctx->ttmp8,
+                                Operand::c32(25 | (5 << 16)));
+         bld.vop3(aco_opcode::v_lshl_or_b32, Definition(get_ssa_temp(ctx, &instr->def)), tg_num,
+                  Operand::c32(ctx->program->wave_size == 64 ? 6 : 5), id);
+         break;
+      }
 
       /* The tg_size bits [6:11] contain the subgroup id,
        * we need this multiplied by the wave size, and then OR the thread id to it.
@@ -11130,7 +11144,7 @@ add_startpgm(struct isel_context* ctx)
    }
 
    if (ctx->stage.hw == AC_HW_COMPUTE_SHADER && ctx->program->gfx_level >= GFX12)
-      def_count += 2;
+      def_count += 3;
 
    Instruction* startpgm = create_instruction(aco_opcode::p_startpgm, Format::PSEUDO, 0, def_count);
    ctx->block->instructions.emplace_back(startpgm);
@@ -11167,8 +11181,11 @@ add_startpgm(struct isel_context* ctx)
    if (ctx->program->gfx_level >= GFX12 && ctx->stage.hw == AC_HW_COMPUTE_SHADER) {
       Temp idx = ctx->program->allocateTmp(s1);
       Temp idy = ctx->program->allocateTmp(s1);
-      startpgm->definitions[def_count - 2] = Definition(idx);
-      startpgm->definitions[def_count - 2].setFixed(PhysReg(108 + 9 /*ttmp9*/));
+      ctx->ttmp8 = ctx->program->allocateTmp(s1);
+      startpgm->definitions[def_count - 3] = Definition(idx);
+      startpgm->definitions[def_count - 3].setFixed(PhysReg(108 + 9 /*ttmp9*/));
+      startpgm->definitions[def_count - 2] = Definition(ctx->ttmp8);
+      startpgm->definitions[def_count - 2].setFixed(PhysReg(108 + 8 /*ttmp8*/));
       startpgm->definitions[def_count - 1] = Definition(idy);
       startpgm->definitions[def_count - 1].setFixed(PhysReg(108 + 7 /*ttmp7*/));
       ctx->workgroup_id[0] = Operand(idx);

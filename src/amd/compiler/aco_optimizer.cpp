@@ -2155,7 +2155,7 @@ optimize_cmp_subgroup_invocation(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       return false;
 
    /* Adjust opcode so we don't have to care about const_op_idx below. */
-   const aco_opcode op = const_op_idx == 0 ? get_swapped(instr->opcode) : instr->opcode;
+   const aco_opcode op = const_op_idx == 0 ? get_vcmp_swapped(instr->opcode) : instr->opcode;
    const unsigned wave_size = ctx.program->wave_size;
    const unsigned val = instr->operands[const_op_idx].constantValue();
 
@@ -2227,7 +2227,7 @@ is_operand_constant(opt_ctx& ctx, Operand op, unsigned bit_size, uint64_t* value
    return false;
 }
 
-/* s_not(cmp(a, b)) -> get_inverse(cmp)(a, b) */
+/* s_not(cmp(a, b)) -> get_vcmp_inverse(cmp)(a, b) */
 bool
 combine_inverse_comparison(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
@@ -2240,7 +2240,7 @@ combine_inverse_comparison(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    if (!cmp)
       return false;
 
-   aco_opcode new_opcode = get_inverse(cmp->opcode);
+   aco_opcode new_opcode = get_vcmp_inverse(cmp->opcode);
    if (new_opcode == aco_opcode::num_opcodes)
       return false;
 

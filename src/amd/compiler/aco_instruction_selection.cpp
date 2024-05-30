@@ -1005,7 +1005,7 @@ emit_vopc_instruction(isel_context* ctx, nir_alu_instr* instr, aco_opcode op, Te
    if (src1.type() == RegType::sgpr) {
       if (src0.type() == RegType::vgpr) {
          /* to swap the operands, we might also have to change the opcode */
-         op = get_swapped(op);
+         op = get_vcmp_swapped(op);
          Temp t = src0;
          src0 = src1;
          src1 = t;

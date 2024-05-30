@@ -1746,14 +1746,9 @@ aco_ptr<Instruction> convert_to_DPP(amd_gfx_level gfx_level, aco_ptr<Instruction
                                     bool dpp8);
 bool needs_exec_mask(const Instruction* instr);
 
-aco_opcode get_ordered(aco_opcode op);
-aco_opcode get_unordered(aco_opcode op);
-aco_opcode get_inverse(aco_opcode op);
-aco_opcode get_swapped(aco_opcode op);
-aco_opcode get_f32_cmp(aco_opcode op);
+aco_opcode get_vcmp_inverse(aco_opcode op);
+aco_opcode get_vcmp_swapped(aco_opcode op);
 aco_opcode get_vcmpx(aco_opcode op);
-unsigned get_cmp_bitsize(aco_opcode op);
-bool is_fp_cmp(aco_opcode op);
 bool is_cmpx(aco_opcode op);
 
 bool can_swap_operands(aco_ptr<Instruction>& instr, aco_opcode* new_op, unsigned idx0 = 0,

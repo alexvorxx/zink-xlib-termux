@@ -879,40 +879,28 @@ needs_exec_mask(const Instruction* instr)
 }
 
 struct CmpInfo {
-   aco_opcode ordered;
-   aco_opcode unordered;
    aco_opcode swapped;
    aco_opcode inverse;
    aco_opcode vcmpx;
-   aco_opcode f32;
-   unsigned size;
 };
 
 static ALWAYS_INLINE bool
 get_cmp_info(aco_opcode op, CmpInfo* info)
 {
-   info->ordered = aco_opcode::num_opcodes;
-   info->unordered = aco_opcode::num_opcodes;
    info->swapped = aco_opcode::num_opcodes;
    info->inverse = aco_opcode::num_opcodes;
-   info->f32 = aco_opcode::num_opcodes;
    info->vcmpx = aco_opcode::num_opcodes;
    switch (op) {
       // clang-format off
 #define CMP2(ord, unord, ord_swap, unord_swap, sz)                                                 \
    case aco_opcode::v_cmp_##ord##_f##sz:                                                           \
    case aco_opcode::v_cmp_n##unord##_f##sz:                                                        \
-      info->ordered = aco_opcode::v_cmp_##ord##_f##sz;                                             \
-      info->unordered = aco_opcode::v_cmp_n##unord##_f##sz;                                        \
       info->swapped = op == aco_opcode::v_cmp_##ord##_f##sz ? aco_opcode::v_cmp_##ord_swap##_f##sz \
                                                       : aco_opcode::v_cmp_n##unord_swap##_f##sz;   \
       info->inverse = op == aco_opcode::v_cmp_n##unord##_f##sz ? aco_opcode::v_cmp_##unord##_f##sz \
                                                                : aco_opcode::v_cmp_n##ord##_f##sz; \
-      info->f32 = op == aco_opcode::v_cmp_##ord##_f##sz ? aco_opcode::v_cmp_##ord##_f32            \
-                                                        : aco_opcode::v_cmp_n##unord##_f32;        \
       info->vcmpx = op == aco_opcode::v_cmp_##ord##_f##sz ? aco_opcode::v_cmpx_##ord##_f##sz       \
                                                           : aco_opcode::v_cmpx_n##unord##_f##sz;   \
-      info->size = sz;                                                                             \
       return true;
 #define CMP(ord, unord, ord_swap, unord_swap)                                                      \
    CMP2(ord, unord, ord_swap, unord_swap, 16)                                                      \
@@ -928,18 +916,14 @@ get_cmp_info(aco_opcode op, CmpInfo* info)
 #undef CMP2
 #define ORD_TEST(sz)                                                                               \
    case aco_opcode::v_cmp_u_f##sz:                                                                 \
-      info->f32 = aco_opcode::v_cmp_u_f32;                                                         \
       info->swapped = aco_opcode::v_cmp_u_f##sz;                                                   \
       info->inverse = aco_opcode::v_cmp_o_f##sz;                                                   \
       info->vcmpx = aco_opcode::v_cmpx_u_f##sz;                                                    \
-      info->size = sz;                                                                             \
       return true;                                                                                 \
    case aco_opcode::v_cmp_o_f##sz:                                                                 \
-      info->f32 = aco_opcode::v_cmp_o_f32;                                                         \
       info->swapped = aco_opcode::v_cmp_o_f##sz;                                                   \
       info->inverse = aco_opcode::v_cmp_u_f##sz;                                                   \
       info->vcmpx = aco_opcode::v_cmpx_o_f##sz;                                                    \
-      info->size = sz;                                                                             \
       return true;
       ORD_TEST(16)
       ORD_TEST(32)
@@ -950,7 +934,6 @@ get_cmp_info(aco_opcode op, CmpInfo* info)
       info->swapped = aco_opcode::v_cmp_##swap##_##type##sz;                                       \
       info->inverse = aco_opcode::v_cmp_##inv##_##type##sz;                                        \
       info->vcmpx = aco_opcode::v_cmpx_##op##_##type##sz;                                          \
-      info->size = sz;                                                                             \
       return true;
 #define CMPI(op, swap, inv)                                                                        \
    CMPI2(op, swap, inv, i, 16)                                                                     \
@@ -970,7 +953,6 @@ get_cmp_info(aco_opcode op, CmpInfo* info)
 #define CMPCLASS(sz)                                                                               \
    case aco_opcode::v_cmp_class_f##sz:                                                             \
       info->vcmpx = aco_opcode::v_cmpx_class_f##sz;                                                \
-      info->size = sz;                                                                             \
       return true;
       CMPCLASS(16)
       CMPCLASS(32)
@@ -982,38 +964,17 @@ get_cmp_info(aco_opcode op, CmpInfo* info)
 }
 
 aco_opcode
-get_ordered(aco_opcode op)
-{
-   CmpInfo info;
-   return get_cmp_info(op, &info) ? info.ordered : aco_opcode::num_opcodes;
-}
-
-aco_opcode
-get_unordered(aco_opcode op)
-{
-   CmpInfo info;
-   return get_cmp_info(op, &info) ? info.unordered : aco_opcode::num_opcodes;
-}
-
-aco_opcode
-get_inverse(aco_opcode op)
+get_vcmp_inverse(aco_opcode op)
 {
    CmpInfo info;
    return get_cmp_info(op, &info) ? info.inverse : aco_opcode::num_opcodes;
 }
 
 aco_opcode
-get_swapped(aco_opcode op)
+get_vcmp_swapped(aco_opcode op)
 {
    CmpInfo info;
    return get_cmp_info(op, &info) ? info.swapped : aco_opcode::num_opcodes;
-}
-
-aco_opcode
-get_f32_cmp(aco_opcode op)
-{
-   CmpInfo info;
-   return get_cmp_info(op, &info) ? info.f32 : aco_opcode::num_opcodes;
 }
 
 aco_opcode
@@ -1021,20 +982,6 @@ get_vcmpx(aco_opcode op)
 {
    CmpInfo info;
    return get_cmp_info(op, &info) ? info.vcmpx : aco_opcode::num_opcodes;
-}
-
-unsigned
-get_cmp_bitsize(aco_opcode op)
-{
-   CmpInfo info;
-   return get_cmp_info(op, &info) ? info.size : 0;
-}
-
-bool
-is_fp_cmp(aco_opcode op)
-{
-   CmpInfo info;
-   return get_cmp_info(op, &info) && info.ordered != aco_opcode::num_opcodes;
 }
 
 bool

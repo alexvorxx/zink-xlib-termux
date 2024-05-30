@@ -782,7 +782,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
     */
    OPT_V(s, nir_opt_large_constants, glsl_get_vec4_size_align_bytes,
          32 /* bytes */);
-   OPT_V(s, ir3_nir_lower_load_constant, so);
+   progress |= OPT(s, ir3_nir_lower_load_constant, so);
 
    /* Lower large temporaries to scratch, which in Qualcomm terms is private
     * memory, to avoid excess register pressure. This should happen after
@@ -815,7 +815,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
       progress |= OPT(s, nir_opt_constant_folding);
    }
 
-   OPT(s, ir3_nir_opt_subgroups, so);
+   progress |= OPT(s, ir3_nir_opt_subgroups, so);
 
    if (so->compiler->load_shader_consts_via_preamble)
       progress |= OPT(s, ir3_nir_lower_driver_params_to_ubo, so);
@@ -847,7 +847,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
 
    progress |= OPT(s, ir3_nir_lower_preamble, so);
 
-   OPT_V(s, nir_lower_amul, ir3_glsl_type_size);
+   progress |= OPT(s, nir_lower_amul, ir3_glsl_type_size);
 
    /* UBO offset lowering has to come after we've decided what will
     * be left as load_ubo
@@ -855,7 +855,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
    if (so->compiler->gen >= 6)
       progress |= OPT(s, nir_lower_ubo_vec4);
 
-   OPT_V(s, ir3_nir_lower_io_offsets);
+   progress |= OPT(s, ir3_nir_lower_io_offsets);
 
    if (progress)
       ir3_optimize_loop(so->compiler, s);

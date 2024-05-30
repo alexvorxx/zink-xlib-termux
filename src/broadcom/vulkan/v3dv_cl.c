@@ -1,4 +1,4 @@
- /*
+/*
  * Copyright © 2019 Raspberry Pi Ltd
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -22,6 +22,12 @@
  */
 
 #include "v3dv_private.h"
+
+/* We don't expect that the packets we use in this file change across hw
+ * versions, so we just explicitly set the V3D_VERSION and include v3dx_pack
+ * here
+ */
+#define V3D_VERSION 42
 #include "broadcom/common/v3d_macros.h"
 #include "broadcom/cle/v3dx_pack.h"
 
@@ -30,14 +36,10 @@
  * the CLE would pre-fetch the data after the end of the CL buffer, reporting
  * the kernel "MMU error from client CLE".
  */
-#if V3D_VERSION == 42
-#define V3D_CLE_READAHEAD 256
-#define V3D_CLE_BUFFER_MIN_SIZE 4096
-#endif
-#if V3D_VERSION >= 71
-#define V3D_CLE_READAHEAD 1024
-#define V3D_CLE_BUFFER_MIN_SIZE 16384
-#endif
+#define V3D42_CLE_READAHEAD 256u
+#define V3D42_CLE_BUFFER_MIN_SIZE 4096u
+#define V3D71_CLE_READAHEAD 1024u
+#define V3D71_CLE_BUFFER_MIN_SIZE 16384u
 
 void
 v3dv_cl_init(struct v3dv_job *job, struct v3dv_cl *cl)
@@ -81,12 +83,14 @@ cl_alloc_bo(struct v3dv_cl *cl, uint32_t space, enum
     * calling cl_submit to use this reserved space.
     */
    uint32_t unusable_space = 0;
+   uint32_t cle_readahead = V3DV_X(cl->job->device, CLE_READAHEAD);
+   uint32_t cle_buffer_min_size = V3DV_X(cl->job->device, CLE_BUFFER_MIN_SIZE);
    switch (chain_type) {
    case V3D_CL_BO_CHAIN_WITH_BRANCH:
-      unusable_space = V3D_CLE_READAHEAD + cl_packet_length(BRANCH);
+      unusable_space = cle_readahead + cl_packet_length(BRANCH);
       break;
    case V3D_CL_BO_CHAIN_WITH_RETURN_FROM_SUB_LIST:
-      unusable_space = V3D_CLE_READAHEAD + cl_packet_length(RETURN_FROM_SUB_LIST);
+      unusable_space = cle_readahead + cl_packet_length(RETURN_FROM_SUB_LIST);
       break;
    case V3D_CL_BO_CHAIN_NONE:
       break;
@@ -96,7 +100,7 @@ cl_alloc_bo(struct v3dv_cl *cl, uint32_t space, enum
     * of allocations with large command buffers. This has a very significant
     * impact on the number of draw calls per second reported by vkoverhead.
     */
-   space = align(space + unusable_space, V3D_CLE_BUFFER_MIN_SIZE);
+   space = align(space + unusable_space, cle_buffer_min_size);
    if (cl->bo)
       space = MAX2(cl->bo->size * 2, space);
 
@@ -122,7 +126,7 @@ cl_alloc_bo(struct v3dv_cl *cl, uint32_t space, enum
       case V3D_CL_BO_CHAIN_WITH_BRANCH:
          cl->bo->cl_branch_offset = v3dv_cl_offset(cl);
          cl->size += cl_packet_length(BRANCH);
-         assert(cl->size + V3D_CLE_READAHEAD <= cl->bo->size);
+         assert(cl->size + cle_readahead <= cl->bo->size);
          cl_emit(cl, BRANCH, branch) {
             branch.address = v3dv_cl_address(bo, 0);
          }
@@ -134,7 +138,7 @@ cl_alloc_bo(struct v3dv_cl *cl, uint32_t space, enum
           * end with a 'return from sub list' command.
           */
          cl->size += cl_packet_length(RETURN_FROM_SUB_LIST);
-         assert(cl->size + V3D_CLE_READAHEAD <= cl->bo->size);
+         assert(cl->size + cle_readahead <= cl->bo->size);
          cl_emit(cl, RETURN_FROM_SUB_LIST, ret);
          FALLTHROUGH;
       case V3D_CL_BO_CHAIN_NONE:

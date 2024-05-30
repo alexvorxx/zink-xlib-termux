@@ -1731,6 +1731,7 @@ tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
    uint32_t store_cpp = 0;
    uint32_t clear_cpp = 0;
    bool has_depth = false;
+   char ubwc[12];
    for (uint32_t i = 0; i < cmd->state.pass->attachment_count; i++) {
       const struct tu_render_pass_attachment *attachment =
          &cmd->state.pass->attachments[i];
@@ -1749,6 +1750,23 @@ tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
       has_depth |= vk_format_has_depth(attachment->format);
    }
 
+   uint8_t ubwc_len = 0;
+   const struct tu_subpass *subpass = &cmd->state.pass->subpasses[0];
+   for (uint32_t i = 0; i < subpass->color_count; i++) {
+      uint32_t att = subpass->color_attachments[i].attachment;
+      ubwc[ubwc_len++] =
+         cmd->state.attachments[att]->view.ubwc_enabled ? 'y' : 'n';
+   }
+   if (subpass->depth_used) {
+      ubwc[ubwc_len++] = '|';
+      ubwc[ubwc_len++] =
+         cmd->state.attachments[subpass->depth_stencil_attachment.attachment]
+               ->view.ubwc_enabled
+            ? 'y'
+            : 'n';
+   }
+   ubwc[ubwc_len] = '\0';
+
    uint32_t max_samples = 0;
    for (uint32_t i = 0; i < cmd->state.pass->subpass_count; i++) {
       max_samples = MAX2(max_samples, cmd->state.pass->subpasses[i].samples);
@@ -1756,7 +1774,7 @@ tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
 
    trace_start_render_pass(&cmd->trace, &cmd->cs, cmd->state.framebuffer,
                            cmd->state.tiling, max_samples, clear_cpp,
-                           load_cpp, store_cpp, has_depth);
+                           load_cpp, store_cpp, has_depth, ubwc);
 }
 
 static void

@@ -38,7 +38,6 @@
 #include "util/set.h"
 #include "linker.h"
 #include "glsl_parser_extras.h"
-#include "ir_builder_print_visitor.h"
 #include "builtin_functions.h"
 #include "opt_add_neg_to_sub.h"
 #include "main/mtypes.h"
@@ -537,17 +536,6 @@ standalone_compile_shader(const struct standalone_options *_options,
          dead_variable_visitor dv;
          visit_list_elements(&dv, shader->ir);
          dv.remove_dead_variables();
-      }
-
-      if (options->dump_builder) {
-         for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
-            struct gl_linked_shader *shader = whole_program->_LinkedShaders[i];
-
-            if (!shader)
-               continue;
-
-            _mesa_print_builder_for_ir(stdout, shader->ir);
-         }
       }
    }
 

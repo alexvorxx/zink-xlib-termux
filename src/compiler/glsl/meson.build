@@ -227,8 +227,6 @@ files_libglsl = files(
 )
 
 files_libglsl_standalone = files(
-  'ir_builder_print_visitor.cpp',
-  'ir_builder_print_visitor.h',
   'opt_add_neg_to_sub.h',
   'standalone_scaffolding.cpp',
   'standalone_scaffolding.h',

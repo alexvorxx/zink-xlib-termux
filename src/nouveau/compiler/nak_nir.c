@@ -1011,6 +1011,7 @@ nak_postprocess_nir(nir_shader *nir,
       }
    } while (progress);
 
+   nir_convert_to_lcssa(nir, true, true);
    nir_divergence_analysis(nir);
 
    OPT(nir, nak_nir_remove_barriers);

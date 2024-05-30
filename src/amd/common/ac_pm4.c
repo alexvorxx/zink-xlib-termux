@@ -29,6 +29,24 @@ opcode_is_pairs_packed(unsigned opcode)
           opcode == PKT3_SET_SH_REG_PAIRS_PACKED_N;
 }
 
+static bool
+is_privileged_reg(const struct ac_pm4_state *state, unsigned reg)
+{
+   const struct radeon_info *info = state->info;
+
+   if (info->gfx_level >= GFX10 && info->gfx_level <= GFX10_3)
+      return reg == R_008D04_SQ_THREAD_TRACE_BUF0_SIZE ||
+             reg == R_008D00_SQ_THREAD_TRACE_BUF0_BASE ||
+             reg == R_008D14_SQ_THREAD_TRACE_MASK ||
+             reg == R_008D18_SQ_THREAD_TRACE_TOKEN_MASK ||
+             reg == R_008D1C_SQ_THREAD_TRACE_CTRL;
+
+   if (info->gfx_level >= GFX6 && info->gfx_level <= GFX8)
+      return reg == R_009100_SPI_CONFIG_CNTL;
+
+   return false;
+}
+
 static unsigned
 pairs_packed_opcode_to_regular(unsigned opcode)
 {
@@ -292,8 +310,22 @@ ac_pm4_set_reg_custom(struct ac_pm4_state *state, unsigned reg, uint32_t val,
    ac_pm4_cmd_end(state, false);
 }
 
+static void
+ac_pm4_set_privileged_reg(struct ac_pm4_state *state, unsigned reg, uint32_t val)
+{
+   assert(reg >= SI_CONFIG_REG_OFFSET && reg < SI_CONFIG_REG_END);
+
+   ac_pm4_cmd_add(state, PKT3(PKT3_COPY_DATA, 4, 0));
+   ac_pm4_cmd_add(state, COPY_DATA_SRC_SEL(COPY_DATA_IMM) | COPY_DATA_DST_SEL(COPY_DATA_PERF));
+   ac_pm4_cmd_add(state, val);
+   ac_pm4_cmd_add(state, 0); /* unused */
+   ac_pm4_cmd_add(state, reg >> 2);
+   ac_pm4_cmd_add(state, 0); /* unused */
+}
+
 void ac_pm4_set_reg(struct ac_pm4_state *state, unsigned reg, uint32_t val)
 {
+   const unsigned original_reg = reg;
    unsigned opcode;
 
    if (reg >= SI_CONFIG_REG_OFFSET && reg < SI_CONFIG_REG_END) {
@@ -317,9 +349,13 @@ void ac_pm4_set_reg(struct ac_pm4_state *state, unsigned reg, uint32_t val)
       return;
    }
 
-   opcode = regular_opcode_to_pairs(state, opcode);
+   if (is_privileged_reg(state, original_reg)) {
+      ac_pm4_set_privileged_reg(state, original_reg, val);
+   } else {
+      opcode = regular_opcode_to_pairs(state, opcode);
 
-   ac_pm4_set_reg_custom(state, reg, val, opcode, 0);
+      ac_pm4_set_reg_custom(state, reg, val, opcode, 0);
+   }
 }
 
 void

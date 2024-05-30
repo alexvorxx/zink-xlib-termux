@@ -227,7 +227,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
       &dev->vk, stage_info, &spirv_options,
       GENX(pan_shader_get_compiler_options)(), NULL, &nir);
    if (result != VK_SUCCESS) {
-      vk_free2(&dev->vk.alloc, alloc, shader);
+      panvk_per_arch(shader_destroy)(dev, shader, alloc);
       return NULL;
    }
 

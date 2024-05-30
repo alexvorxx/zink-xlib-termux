@@ -617,12 +617,15 @@ v3dv_CreateImage(VkDevice _device,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-v3dv_GetImageSubresourceLayout(VkDevice device,
-                               VkImage _image,
-                               const VkImageSubresource *subresource,
-                               VkSubresourceLayout *layout)
+v3dv_GetImageSubresourceLayout2KHR(VkDevice device,
+                                   VkImage _image,
+                                   const VkImageSubresource2KHR *subresource2,
+                                   VkSubresourceLayout2KHR *layout2)
 {
    V3DV_FROM_HANDLE(v3dv_image, image, _image);
+
+   const VkImageSubresource *subresource = &subresource2->imageSubresource;
+   VkSubresourceLayout *layout = &layout2->subresourceLayout;
 
    uint8_t plane = v3dv_plane_from_aspect(subresource->aspectMask);
    const struct v3d_resource_slice *slice =

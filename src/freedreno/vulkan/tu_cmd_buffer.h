@@ -310,6 +310,8 @@ struct tu_render_pass_state
     * just intended to be a rough estimate that is easy to calculate.
     */
    uint32_t drawcall_bandwidth_per_sample_sum;
+
+   const char *lrz_disable_reason;
 };
 
 /* These are the states of the suspend/resume state machine. In addition to

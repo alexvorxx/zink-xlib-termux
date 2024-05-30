@@ -2066,7 +2066,9 @@ tu_cmd_render_tiles(struct tu_cmd_buffer *cmd,
    trace_end_render_pass(&cmd->trace, &cmd->cs, true,
                          cmd->state.rp.drawcall_count,
                          cmd->state.rp.drawcall_bandwidth_per_sample_sum /
-                            cmd->state.rp.drawcall_count);
+                            cmd->state.rp.drawcall_count,
+                         cmd->state.lrz.valid,
+                         cmd->state.rp.lrz_disable_reason);
 
    /* We have trashed the dynamically-emitted viewport, scissor, and FS params
     * via the patchpoints, so we need to re-emit them if they are reused for a
@@ -2106,7 +2108,9 @@ tu_cmd_render_sysmem(struct tu_cmd_buffer *cmd,
    trace_end_render_pass(&cmd->trace, &cmd->cs, false,
                          cmd->state.rp.drawcall_count,
                          cmd->state.rp.drawcall_bandwidth_per_sample_sum /
-                            cmd->state.rp.drawcall_count);
+                            cmd->state.rp.drawcall_count,
+                         cmd->state.lrz.valid,
+                         cmd->state.rp.lrz_disable_reason);
 }
 
 template <chip CHIP>
@@ -3869,6 +3873,8 @@ tu_render_pass_state_merge(struct tu_render_pass_state *dst,
    dst->drawcall_count += src->drawcall_count;
    dst->drawcall_bandwidth_per_sample_sum +=
       src->drawcall_bandwidth_per_sample_sum;
+   if (!dst->lrz_disable_reason)
+      dst->lrz_disable_reason = src->lrz_disable_reason;
 }
 
 void

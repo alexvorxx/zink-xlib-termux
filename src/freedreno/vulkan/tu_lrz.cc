@@ -51,6 +51,12 @@
  * before using LRZ.
  */
 
+static inline void
+tu_lrz_disable_reason(struct tu_cmd_buffer *cmd, const char *reason) {
+   cmd->state.rp.lrz_disable_reason = reason;
+   perf_debug(cmd->device, "Disabling LRZ because '%s'", reason);
+}
+
 template <chip CHIP>
 static void
 tu6_emit_lrz_buffer(struct tu_cs *cs, struct tu_image *depth_image)
@@ -262,6 +268,8 @@ tu_lrz_begin_renderpass(struct tu_cmd_buffer *cmd)
 {
    const struct tu_render_pass *pass = cmd->state.pass;
 
+   cmd->state.rp.lrz_disable_reason = "";
+
    int lrz_img_count = 0;
    for (unsigned i = 0; i < pass->attachment_count; i++) {
       if (cmd->state.attachments[i]->image->lrz_height)
@@ -274,9 +282,7 @@ tu_lrz_begin_renderpass(struct tu_cmd_buffer *cmd)
        * and tiling passes, but it is untested and would add complexity for
        * presumably extremely rare case.
        */
-      perf_debug(cmd->device,
-                 "Invalidating LRZ because there are several subpasses with "
-                 "different depth attachments in a single renderpass");
+      tu_lrz_disable_reason(cmd, "Several subpasses with different depth attachments");
 
       for (unsigned i = 0; i < pass->attachment_count; i++) {
          struct tu_image *image = cmd->state.attachments[i]->image;
@@ -681,7 +687,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
          perf_debug(cmd->device, "Skipping LRZ due to FS");
          temporary_disable_lrz = true;
       } else {
-         perf_debug(cmd->device, "Disabling LRZ due to FS (TODO: fix for gpu-direction-tracking case");
+         tu_lrz_disable_reason(cmd, "FS writes depth or has side-effects (TODO: fix for gpu-direction-tracking case)");
          disable_lrz = true;
       }
    }
@@ -702,7 +708,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
        * so if there is a depth write - LRZ must be disabled.
        */
       if (z_write_enable) {
-         perf_debug(cmd->device, "Invalidating LRZ due to ALWAYS/NOT_EQUAL");
+         tu_lrz_disable_reason(cmd, "Depth write + ALWAYS/NOT_EQUAL");
          disable_lrz = true;
          gras_lrz_cntl.dir = LRZ_DIR_INVALID;
       } else {
@@ -746,7 +752,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
        lrz_direction != TU_LRZ_UNKNOWN &&
        cmd->state.lrz.prev_direction != lrz_direction) {
       if (z_write_enable) {
-         perf_debug(cmd->device, "Invalidating LRZ due to direction change");
+         tu_lrz_disable_reason(cmd, "Depth write + compare-op direction change");
          disable_lrz = true;
       } else {
          perf_debug(cmd->device, "Skipping LRZ due to direction change");
@@ -792,7 +798,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
        */
       if (!lrz_allowed) {
          if (z_write_enable) {
-            perf_debug(cmd->device, "Invalidating LRZ due to stencil write");
+            tu_lrz_disable_reason(cmd, "Stencil write");
             disable_lrz = true;
          } else {
             perf_debug(cmd->device, "Skipping LRZ due to stencil write");
@@ -823,7 +829,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
     * fragments from draw A which should be visible due to draw B.
     */
    if (reads_dest && z_write_enable && cmd->device->instance->conservative_lrz) {
-      perf_debug(cmd->device, "Invalidating LRZ due to blend+depthwrite");
+      tu_lrz_disable_reason(cmd, "Depth write + blending");
       disable_lrz = true;
    }
 

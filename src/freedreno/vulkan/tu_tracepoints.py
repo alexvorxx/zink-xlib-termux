@@ -88,7 +88,9 @@ begin_end_tp('render_pass',
     # Args known only at the end of the renderpass:
     end_args=[Arg(type='bool',                                  var='tiledRender',                                          c_format='%s', to_prim_type='({} ? "true" : "false")'),
               Arg(type='uint32_t',                              var='drawCount',                                            c_format='%u'),
-              Arg(type='uint32_t',                              var='avgPerSampleBandwidth',                                c_format='%u'),])
+              Arg(type='uint32_t',                              var='avgPerSampleBandwidth',                                c_format='%u'),
+              Arg(type='bool',                                  var='lrz',                                                  c_format='%s', to_prim_type='({} ? "true" : "false")'),
+              Arg(type='const char *',                          var='lrzDisableReason',                                     c_format='%s'),])
 
 
 begin_end_tp('binning_ib')

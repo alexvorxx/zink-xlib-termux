@@ -1870,8 +1870,8 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
                        S_00B12C_SO_EN(!!info->so.num_outputs);
    }
 
-   config->rsrc1 = S_00B848_VGPRS((num_vgprs - 1) / (info->wave_size == 32 ? 8 : 4)) | S_00B848_DX10_CLAMP(1) |
-                   S_00B848_FLOAT_MODE(config->float_mode);
+   config->rsrc1 = S_00B848_VGPRS((num_vgprs - 1) / (info->wave_size == 32 ? 8 : 4)) |
+                   S_00B848_DX10_CLAMP(pdev->info.gfx_level < GFX12) | S_00B848_FLOAT_MODE(config->float_mode);
 
    if (pdev->info.gfx_level >= GFX10) {
       config->rsrc2 |= S_00B22C_USER_SGPR_MSB_GFX10(args->num_user_sgprs >> 5);

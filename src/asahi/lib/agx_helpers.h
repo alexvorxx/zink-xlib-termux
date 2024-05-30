@@ -152,3 +152,44 @@ agx_pack_line_width(float line_width)
    /* Clamp to maximum line width */
    return MIN2(line_width_fixed, 0xFF);
 }
+
+/*
+ * Despite having both a layout *and* a flag that I only see Metal use with null
+ * textures, AGX doesn't seem to have "real" null textures. Instead we need to
+ * bind an arbitrary address and throw away the results to read all 0's.
+ * Accordingly, the caller must pass some address that lives at least as long as
+ * the texture descriptor itself.
+ */
+static void
+agx_set_null_texture(struct agx_texture_packed *tex, uint64_t valid_address)
+{
+   agx_pack(tex, TEXTURE, cfg) {
+      cfg.layout = AGX_LAYOUT_NULL;
+      cfg.channels = AGX_CHANNELS_R8;
+      cfg.type = AGX_TEXTURE_TYPE_UNORM /* don't care */;
+      cfg.swizzle_r = AGX_CHANNEL_0;
+      cfg.swizzle_g = AGX_CHANNEL_0;
+      cfg.swizzle_b = AGX_CHANNEL_0;
+      cfg.swizzle_a = AGX_CHANNEL_0;
+      cfg.address = valid_address;
+      cfg.null = true;
+   }
+}
+
+static void
+agx_set_null_pbe(struct agx_pbe_packed *pbe, uint64_t sink)
+{
+   agx_pack(pbe, PBE, cfg) {
+      cfg.width = 1;
+      cfg.height = 1;
+      cfg.levels = 1;
+      cfg.layout = AGX_LAYOUT_NULL;
+      cfg.channels = AGX_CHANNELS_R8;
+      cfg.type = AGX_TEXTURE_TYPE_UNORM /* don't care */;
+      cfg.swizzle_r = AGX_CHANNEL_R;
+      cfg.swizzle_g = AGX_CHANNEL_R;
+      cfg.swizzle_b = AGX_CHANNEL_R;
+      cfg.swizzle_a = AGX_CHANNEL_R;
+      cfg.buffer = sink;
+   }
+}

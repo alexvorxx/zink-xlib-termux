@@ -622,14 +622,12 @@ v3dv_CreateImage(VkDevice _device,
    return create_image(device, pCreateInfo, pAllocator, pImage);
 }
 
-VKAPI_ATTR void VKAPI_CALL
-v3dv_GetImageSubresourceLayout2KHR(VkDevice device,
-                                   VkImage _image,
-                                   const VkImageSubresource2KHR *subresource2,
-                                   VkSubresourceLayout2KHR *layout2)
+static void
+get_image_subresource_layout(struct v3dv_device *device,
+                             struct v3dv_image *image,
+                             const VkImageSubresource2KHR *subresource2,
+                             VkSubresourceLayout2KHR *layout2)
 {
-   V3DV_FROM_HANDLE(v3dv_image, image, _image);
-
    const VkImageSubresource *subresource = &subresource2->imageSubresource;
    VkSubresourceLayout *layout = &layout2->subresourceLayout;
 
@@ -675,6 +673,17 @@ v3dv_GetImageSubresourceLayout2KHR(VkDevice device,
             layout->size = prev_slice->offset - slice->offset;
       }
    }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+v3dv_GetImageSubresourceLayout2KHR(VkDevice _device,
+                                   VkImage _image,
+                                   const VkImageSubresource2KHR *subresource2,
+                                   VkSubresourceLayout2KHR *layout2)
+{
+   V3DV_FROM_HANDLE(v3dv_device, device, _device);
+   V3DV_FROM_HANDLE(v3dv_image, image, _image);
+   get_image_subresource_layout(device, image, subresource2, layout2);
 }
 
 VKAPI_ATTR void VKAPI_CALL

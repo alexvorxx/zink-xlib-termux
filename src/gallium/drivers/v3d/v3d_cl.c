@@ -24,6 +24,11 @@
 #include "util/u_math.h"
 #include "util/ralloc.h"
 #include "v3d_context.h"
+/* We don't expect that the packets we use in this file change across across
+ * hw versions, so we just explicitly set the V3D_VERSION and include
+ * v3dx_pack here
+ */
+#define V3D_VERSION 42
 #include "broadcom/common/v3d_macros.h"
 #include "broadcom/cle/v3dx_pack.h"
 
@@ -32,14 +37,10 @@
  * the CLE would pre-fetch the data after the end of the CL buffer, reporting
  * the kernel "MMU error from client CLE".
  */
-#if V3D_VERSION == 42
-#define V3D_CLE_READAHEAD 256
-#define V3D_CLE_BUFFER_MIN_SIZE 4096
-#endif
-#if V3D_VERSION >= 71
-#define V3D_CLE_READAHEAD 1024
-#define V3D_CLE_BUFFER_MIN_SIZE 16384
-#endif
+#define V3D42_CLE_READAHEAD 256u
+#define V3D42_CLE_BUFFER_MIN_SIZE 4096u
+#define V3D71_CLE_READAHEAD 1024u
+#define V3D71_CLE_BUFFER_MIN_SIZE 16384u
 
 void
 v3d_init_cl(struct v3d_job *job, struct v3d_cl *cl)
@@ -59,10 +60,11 @@ v3d_cl_ensure_space(struct v3d_cl *cl, uint32_t space, uint32_t alignment)
                 cl->next = cl->base + offset;
                 return offset;
         }
-
+        struct v3d_device_info *devinfo = &cl->job->v3d->screen->devinfo;
+        uint32_t cle_buffer_min_size = V3DV_X(devinfo, CLE_BUFFER_MIN_SIZE);
         v3d_bo_unreference(&cl->bo);
         cl->bo = v3d_bo_alloc(cl->job->v3d->screen,
-                              align(space, V3D_CLE_BUFFER_MIN_SIZE),
+                              align(space, cle_buffer_min_size),
                               "CL");
         cl->base = v3d_bo_map(cl->bo);
         cl->size = cl->bo->size;
@@ -84,17 +86,20 @@ v3d_cl_ensure_space_with_branch(struct v3d_cl *cl, uint32_t space)
          * cl->size by the packet length before calling cl_summit to use this
          * reserved space.
          */
-        uint32_t unusable_size = V3D_CLE_READAHEAD + cl_packet_length(BRANCH);
+        struct v3d_device_info *devinfo = &cl->job->v3d->screen->devinfo;
+        uint32_t cle_readahead = V3DV_X(devinfo, CLE_READAHEAD);
+        uint32_t cle_buffer_min_size = V3DV_X(devinfo, CLE_BUFFER_MIN_SIZE);
+        uint32_t unusable_size = cle_readahead + cl_packet_length(BRANCH);
         struct v3d_bo *new_bo = v3d_bo_alloc(cl->job->v3d->screen,
                                              align(space + unusable_size,
-                                                   V3D_CLE_BUFFER_MIN_SIZE),
+                                                   cle_buffer_min_size),
                                              "CL");
         assert(space + unusable_size <= new_bo->size);
 
         /* Chain to the new BO from the old one. */
         if (cl->bo) {
                 cl->size += cl_packet_length(BRANCH);
-                assert(cl->size + V3D_CLE_READAHEAD <= cl->bo->size);
+                assert(cl->size + cle_readahead <= cl->bo->size);
                 cl_emit(cl, BRANCH, branch) {
                         branch.address = cl_address(new_bo, 0);
                 }

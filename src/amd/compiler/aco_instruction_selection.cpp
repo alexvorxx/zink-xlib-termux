@@ -5886,11 +5886,12 @@ visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
    unsigned offset = nir_intrinsic_base(instr);
    unsigned count = instr->def.num_components;
    nir_const_value* index_cv = nir_src_as_const_value(instr->src[0]);
+   assert(instr->def.bit_size >= 32);
 
    if (instr->def.bit_size == 64)
       count *= 2;
 
-   if (index_cv && instr->def.bit_size >= 32) {
+   if (index_cv) {
       unsigned start = (offset + index_cv->u32) / 4u;
       uint64_t mask = BITFIELD64_MASK(count) << start;
       if ((ctx->args->inline_push_const_mask | mask) == ctx->args->inline_push_const_mask &&
@@ -5918,18 +5919,6 @@ visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp ptr = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->args->push_constants));
    Temp vec = dst;
    bool trim = false;
-   bool aligned = true;
-
-   if (instr->def.bit_size == 8) {
-      aligned = index_cv && (offset + index_cv->u32) % 4 == 0;
-      bool fits_in_dword = count == 1 || (index_cv && ((offset + index_cv->u32) % 4 + count) <= 4);
-      if (!aligned)
-         vec = fits_in_dword ? bld.tmp(s1) : bld.tmp(s2);
-   } else if (instr->def.bit_size == 16) {
-      aligned = index_cv && (offset + index_cv->u32) % 4 == 0;
-      if (!aligned)
-         vec = count == 4 ? bld.tmp(s4) : count > 1 ? bld.tmp(s2) : bld.tmp(s1);
-   }
 
    aco_opcode op;
 
@@ -5951,19 +5940,15 @@ visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
 
    bld.smem(op, Definition(vec), ptr, index);
 
-   if (!aligned) {
-      Operand byte_offset = index_cv ? Operand::c32((offset + index_cv->u32) % 4) : Operand(index);
-      byte_align_scalar(ctx, vec, byte_offset, dst);
-      return;
-   }
-
    if (trim) {
       emit_split_vector(ctx, vec, 4);
       RegClass rc = dst.size() == 3 ? s1 : s2;
       bld.pseudo(aco_opcode::p_create_vector, Definition(dst), emit_extract_vector(ctx, vec, 0, rc),
                  emit_extract_vector(ctx, vec, 1, rc), emit_extract_vector(ctx, vec, 2, rc));
+      ctx->allocated_vec[dst.id()] = ctx->allocated_vec[vec.id()];
+   } else {
+      emit_split_vector(ctx, dst, instr->def.num_components);
    }
-   emit_split_vector(ctx, dst, instr->def.num_components);
 }
 
 void

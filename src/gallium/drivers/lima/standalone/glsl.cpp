@@ -26,14 +26,6 @@
 #include "compiler/glsl/ir.h"
 #include "compiler/glsl/ir_optimization.h"
 
-void
-lima_do_glsl_optimizations(struct exec_list *ir)
-{
-   _mesa_print_ir(stdout, ir, NULL);
-   do_mat_op_to_vec(ir);
-   _mesa_print_ir(stdout, ir, NULL);
-}
-
 int
 st_glsl_type_size(const glsl_type *type, bool bindless)
 {

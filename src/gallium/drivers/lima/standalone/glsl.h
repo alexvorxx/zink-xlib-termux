@@ -26,8 +26,6 @@
 extern "C" {
 #endif
 
-void lima_do_glsl_optimizations(struct exec_list *ir);
-
 int st_glsl_type_size(const struct glsl_type *type, bool bindless);
 
 #ifdef __cplusplus

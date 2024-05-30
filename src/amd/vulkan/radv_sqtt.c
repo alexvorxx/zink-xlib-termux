@@ -32,32 +32,6 @@ radv_sqtt_queue_events_enabled(void)
    return debug_get_bool_option("RADV_THREAD_TRACE_QUEUE_EVENTS", true);
 }
 
-static uint32_t
-gfx11_get_sqtt_ctrl(const struct radv_device *device, bool enable)
-{
-   return S_0367B0_MODE(enable) | S_0367B0_HIWATER(5) | S_0367B0_UTIL_TIMER_GFX11(1) |
-          S_0367B0_RT_FREQ(2) | /* 4096 clk */
-          S_0367B0_DRAW_EVENT_EN(1) | S_0367B0_SPI_STALL_EN(1) | S_0367B0_SQ_STALL_EN(1) | S_0367B0_REG_AT_HWM(2);
-}
-
-static uint32_t
-gfx10_get_sqtt_ctrl(const struct radv_device *device, bool enable)
-{
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-   uint32_t sqtt_ctrl = S_008D1C_MODE(enable) | S_008D1C_HIWATER(5) | S_008D1C_UTIL_TIMER(1) |
-                        S_008D1C_RT_FREQ(2) | /* 4096 clk */
-                        S_008D1C_DRAW_EVENT_EN(1) | S_008D1C_REG_STALL_EN(1) | S_008D1C_SPI_STALL_EN(1) |
-                        S_008D1C_SQ_STALL_EN(1) | S_008D1C_REG_DROP_ON_STALL(0);
-
-   if (pdev->info.gfx_level == GFX10_3)
-      sqtt_ctrl |= S_008D1C_LOWATER_OFFSET(4);
-
-   if (pdev->info.has_sqtt_auto_flush_mode_bug)
-      sqtt_ctrl |= S_008D1C_AUTO_FLUSH_MODE(1);
-
-   return sqtt_ctrl;
-}
-
 static enum radv_queue_family
 radv_ip_to_queue_family(enum amd_ip_type t)
 {
@@ -142,7 +116,7 @@ radv_emit_sqtt_start(const struct radv_device *device, struct radeon_cmdbuf *cs,
 
          /* Should be emitted last (it enables thread traces). */
          radeon_set_uconfig_perfctr_reg(gfx_level, qf, cs, R_0367B0_SQ_THREAD_TRACE_CTRL,
-                                        gfx11_get_sqtt_ctrl(device, true));
+                                        ac_sqtt_get_ctrl(&pdev->info, true));
 
       } else if (pdev->info.gfx_level >= GFX10) {
          /* Order seems important for the following 2 registers. */
@@ -174,7 +148,7 @@ radv_emit_sqtt_start(const struct radv_device *device, struct radeon_cmdbuf *cs,
          radeon_set_privileged_config_reg(cs, R_008D18_SQ_THREAD_TRACE_TOKEN_MASK, sqtt_token_mask);
 
          /* Should be emitted last (it enables thread traces). */
-         radeon_set_privileged_config_reg(cs, R_008D1C_SQ_THREAD_TRACE_CTRL, gfx10_get_sqtt_ctrl(device, true));
+         radeon_set_privileged_config_reg(cs, R_008D1C_SQ_THREAD_TRACE_CTRL, ac_sqtt_get_ctrl(&pdev->info, true));
       } else {
          /* Order seems important for the following 4 registers. */
          radeon_set_uconfig_reg(cs, R_030CDC_SQ_THREAD_TRACE_BASE2, S_030CDC_ADDR_HI(shifted_va >> 32));
@@ -365,7 +339,7 @@ radv_emit_sqtt_stop(const struct radv_device *device, struct radeon_cmdbuf *cs, 
 
          /* Disable the thread trace mode. */
          radeon_set_uconfig_perfctr_reg(gfx_level, qf, cs, R_0367B0_SQ_THREAD_TRACE_CTRL,
-                                        gfx11_get_sqtt_ctrl(device, false));
+                                        ac_sqtt_get_ctrl(&pdev->info, false));
 
          /* Wait for thread trace completion. */
          radeon_emit(cs, PKT3(PKT3_WAIT_REG_MEM, 5, 0));
@@ -388,7 +362,7 @@ radv_emit_sqtt_stop(const struct radv_device *device, struct radeon_cmdbuf *cs, 
          }
 
          /* Disable the thread trace mode. */
-         radeon_set_privileged_config_reg(cs, R_008D1C_SQ_THREAD_TRACE_CTRL, gfx10_get_sqtt_ctrl(device, false));
+         radeon_set_privileged_config_reg(cs, R_008D1C_SQ_THREAD_TRACE_CTRL, ac_sqtt_get_ctrl(&pdev->info, false));
 
          /* Wait for thread trace completion. */
          radeon_emit(cs, PKT3(PKT3_WAIT_REG_MEM, 5, 0));

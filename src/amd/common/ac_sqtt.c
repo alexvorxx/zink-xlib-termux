@@ -11,6 +11,8 @@
 #include "util/u_math.h"
 #include "util/os_time.h"
 
+#include "sid.h"
+
 uint64_t
 ac_sqtt_get_info_offset(unsigned se)
 {
@@ -292,6 +294,35 @@ ac_sqtt_get_trace(struct ac_sqtt *data, const struct radeon_info *info,
    sqtt_trace->rgp_clock_calibration = &data->rgp_clock_calibration;
 
    return true;
+}
+
+uint32_t
+ac_sqtt_get_ctrl(const struct radeon_info *info, bool enable)
+{
+
+   uint32_t ctrl;
+
+   if (info->gfx_level >= GFX11) {
+      ctrl = S_0367B0_MODE(enable) | S_0367B0_HIWATER(5) |
+             S_0367B0_UTIL_TIMER_GFX11(1) | S_0367B0_RT_FREQ(2) | /* 4096 clk */
+             S_0367B0_DRAW_EVENT_EN(1) | S_0367B0_SPI_STALL_EN(1) |
+             S_0367B0_SQ_STALL_EN(1) | S_0367B0_REG_AT_HWM(2);
+   } else {
+      assert(info->gfx_level >= GFX10);
+
+      ctrl = S_008D1C_MODE(enable) | S_008D1C_HIWATER(5) | S_008D1C_UTIL_TIMER(1) |
+             S_008D1C_RT_FREQ(2) | /* 4096 clk */ S_008D1C_DRAW_EVENT_EN(1) |
+             S_008D1C_REG_STALL_EN(1) | S_008D1C_SPI_STALL_EN(1) |
+             S_008D1C_SQ_STALL_EN(1) | S_008D1C_REG_DROP_ON_STALL(0);
+
+      if (info->gfx_level == GFX10_3)
+         ctrl |= S_008D1C_LOWATER_OFFSET(4);
+
+      if (info->has_sqtt_auto_flush_mode_bug)
+         ctrl |= S_008D1C_AUTO_FLUSH_MODE(1);
+   }
+
+   return ctrl;
 }
 
 uint32_t

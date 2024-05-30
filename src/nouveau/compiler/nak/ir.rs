@@ -5563,10 +5563,6 @@ impl Instr {
         matches!(self.op, Op::Bra(_) | Op::Exit(_))
     }
 
-    pub fn is_barrier(&self) -> bool {
-        matches!(self.op, Op::Bar(_))
-    }
-
     pub fn uses_global_mem(&self) -> bool {
         match &self.op {
             Op::Atom(op) => op.mem_space != MemSpace::Local,

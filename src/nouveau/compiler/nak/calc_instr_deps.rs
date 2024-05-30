@@ -532,7 +532,11 @@ impl Shader {
             for b in &mut f.blocks.iter_mut().rev() {
                 let mut wt = 0_u8;
                 for instr in &mut b.instrs {
-                    if instr.is_barrier() {
+                    if matches!(&instr.op, Op::Bar(_))
+                        || matches!(&instr.op, Op::BClear(_))
+                        || matches!(&instr.op, Op::BSSy(_))
+                        || matches!(&instr.op, Op::BSync(_))
+                    {
                         instr.deps.set_yield(true);
                     } else if instr.is_branch() {
                         instr.deps.add_wt_bar_mask(0x3f);

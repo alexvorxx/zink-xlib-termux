@@ -5857,53 +5857,73 @@ impl BasicBlock {
         self.instrs = instrs;
     }
 
-    pub fn phi_dsts(&self) -> Option<&OpPhiDsts> {
-        if let Op::PhiDsts(phi) = &self.instrs.first()?.op {
-            return Some(phi);
+    pub fn phi_dsts_ip(&self) -> Option<usize> {
+        for (ip, instr) in self.instrs.iter().enumerate() {
+            match &instr.op {
+                Op::Annotate(_) => (),
+                Op::PhiDsts(_) => return Some(ip),
+                _ => break,
+            }
         }
         None
+    }
+
+    pub fn phi_dsts(&self) -> Option<&OpPhiDsts> {
+        self.phi_dsts_ip().map(|ip| match &self.instrs[ip].op {
+            Op::PhiDsts(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
     #[allow(dead_code)]
     pub fn phi_dsts_mut(&mut self) -> Option<&mut OpPhiDsts> {
-        if let Op::PhiDsts(phi) = &mut self.instrs.first_mut()?.op {
-            return Some(phi);
-        }
-        None
+        self.phi_dsts_ip().map(|ip| match &mut self.instrs[ip].op {
+            Op::PhiDsts(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
-    pub fn phi_srcs(&self) -> Option<&OpPhiSrcs> {
-        for instr in self.instrs.iter().rev() {
-            if instr.is_branch() {
-                continue;
-            }
-
+    pub fn phi_srcs_ip(&self) -> Option<usize> {
+        for (ip, instr) in self.instrs.iter().enumerate().rev() {
             match &instr.op {
-                Op::PhiSrcs(phi) => return Some(phi),
+                Op::Annotate(_) => (),
+                Op::PhiSrcs(_) => return Some(ip),
+                _ if instr.is_branch() => (),
                 _ => break,
             }
         }
         None
+    }
+    pub fn phi_srcs(&self) -> Option<&OpPhiSrcs> {
+        self.phi_srcs_ip().map(|ip| match &self.instrs[ip].op {
+            Op::PhiSrcs(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
     pub fn phi_srcs_mut(&mut self) -> Option<&mut OpPhiSrcs> {
-        for instr in self.instrs.iter_mut().rev() {
-            if instr.is_branch() {
-                continue;
-            }
-
-            match &mut instr.op {
-                Op::PhiSrcs(phi) => return Some(phi),
-                _ => break,
-            }
-        }
-        None
+        self.phi_srcs_ip().map(|ip| match &mut self.instrs[ip].op {
+            Op::PhiSrcs(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
     pub fn branch(&self) -> Option<&Instr> {
         if let Some(i) = self.instrs.last() {
             if i.is_branch() {
                 Some(i)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn branch_ip(&self) -> Option<usize> {
+        if let Some(i) = self.instrs.last() {
+            if i.is_branch() {
+                Some(self.instrs.len() - 1)
             } else {
                 None
             }

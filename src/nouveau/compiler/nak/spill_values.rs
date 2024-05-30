@@ -841,17 +841,10 @@ fn spill_values<S: Spill>(
         }
 
         // Insert spills and fills right after the phi (if any)
-        let mut ip = pb.instrs.len();
-        while ip > 0 {
-            let instr = &pb.instrs[ip - 1];
-            if !instr.is_branch() {
-                match instr.op {
-                    Op::PhiSrcs(_) => (),
-                    _ => break,
-                }
-            }
-            ip -= 1;
-        }
+        let ip = pb
+            .phi_srcs_ip()
+            .or_else(|| pb.branch_ip())
+            .unwrap_or_else(|| pb.instrs.len());
         pb.instrs.splice(ip..ip, instrs.into_iter());
     }
 }

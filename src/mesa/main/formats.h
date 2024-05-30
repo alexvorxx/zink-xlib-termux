@@ -730,9 +730,6 @@ _mesa_format_row_stride(mesa_format format, int width);
 extern GLenum
 _mesa_uncompressed_format_to_type(mesa_format format);
 
-extern void
-_mesa_test_formats(void);
-
 extern mesa_format
 _mesa_get_srgb_format_linear(mesa_format format);
 

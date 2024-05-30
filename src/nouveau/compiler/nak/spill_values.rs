@@ -85,6 +85,35 @@ trait Spill {
     fn fill(&self, dst: Dst, src: SSAValue) -> Box<Instr>;
 }
 
+struct SpillUniform {}
+
+impl SpillUniform {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Spill for SpillUniform {
+    fn spill_file(&self, file: RegFile) -> RegFile {
+        debug_assert!(file.is_uniform());
+        file.to_warp()
+    }
+
+    fn spill(&self, dst: SSAValue, src: Src) -> Box<Instr> {
+        Instr::new_boxed(OpCopy {
+            dst: dst.into(),
+            src: src,
+        })
+    }
+
+    fn fill(&self, dst: Dst, src: SSAValue) -> Box<Instr> {
+        Instr::new_boxed(OpR2UR {
+            dst: dst,
+            src: src.into(),
+        })
+    }
+}
+
 struct SpillPred {}
 
 impl SpillPred {
@@ -103,7 +132,7 @@ impl Spill for SpillPred {
     }
 
     fn spill(&self, dst: SSAValue, src: Src) -> Box<Instr> {
-        assert!(dst.file() == RegFile::GPR);
+        assert!(matches!(dst.file(), RegFile::GPR | RegFile::UGPR));
         if let Some(b) = src.as_bool() {
             let u32_src = if b {
                 Src::new_imm_u32(!0)
@@ -124,14 +153,14 @@ impl Spill for SpillPred {
     }
 
     fn fill(&self, dst: Dst, src: SSAValue) -> Box<Instr> {
-        assert!(src.file() == RegFile::GPR);
+        assert!(matches!(src.file(), RegFile::GPR | RegFile::UGPR));
         Instr::new_boxed(OpISetP {
             dst: dst,
             set_op: PredSetOp::And,
             cmp_op: IntCmpOp::Ne,
             cmp_type: IntCmpType::U32,
             ex: false,
-            srcs: [src.into(), Src::new_zero()],
+            srcs: [Src::new_zero(), src.into()],
             accum: true.into(),
             low_cmp: true.into(),
         })
@@ -244,6 +273,10 @@ impl<'a, S: Spill> SpillCache<'a, S> {
             spill: spill,
             val_spill: HashMap::new(),
         }
+    }
+
+    fn spill_file(&self, file: RegFile) -> RegFile {
+        self.spill.spill_file(file)
     }
 
     fn get_spill(&mut self, ssa: SSAValue) -> SSAValue {
@@ -430,6 +463,22 @@ fn spill_values<S: Spill>(
             LiveSet::from_iter(
                 p_w.iter().filter(|ssa| bl.is_live_in(ssa)).cloned(),
             )
+        } else if !blocks[b_idx].uniform && file.is_uniform() {
+            // If this is a non-uniform block, then we can't spill or fill any
+            // uniform registers.  The good news is that none of our non-uniform
+            // predecessors could spill, either, so we know that everything that
+            // was resident coming in will fit in the register file.
+            let mut w = LiveSet::new();
+            for p_idx in &preds {
+                if *p_idx < b_idx {
+                    let p_w = &ssa_state_out[*p_idx].w;
+                    w.extend(
+                        p_w.iter().filter(|ssa| bl.is_live_in(ssa)).cloned(),
+                    );
+                }
+            }
+            debug_assert!(w.count(file) <= limit);
+            w
         } else if blocks.is_loop_header(b_idx) {
             let mut i_b: HashSet<SSAValue> =
                 HashSet::from_iter(bl.iter_live_in().cloned());
@@ -647,6 +696,10 @@ fn spill_values<S: Spill>(
 
                     let rel_limit = limit - b.w.count(file);
                     if num_w_dsts > rel_limit {
+                        // We can't spill uniform registers in a non-uniform
+                        // block
+                        assert!(bb.uniform || !file.is_uniform());
+
                         let count = num_w_dsts - rel_limit;
                         let count = count.try_into().unwrap();
 
@@ -692,58 +745,106 @@ fn spill_values<S: Spill>(
                     }
                 }
                 _ => {
-                    // First compute fills even though those have to come
-                    // after spills.
-                    let mut fills = Vec::new();
-                    instr.for_each_ssa_use(|ssa| {
-                        if ssa.file() == file && !b.w.contains(ssa) {
-                            debug_assert!(b.s.contains(ssa));
-                            fills.push(spill.fill(*ssa));
-                            b.w.insert(*ssa);
-                        }
-                    });
-
-                    let rel_pressure = bl.get_instr_pressure(ip, &instr)[file];
-                    let abs_pressure =
-                        b.w.count(file) + u32::from(rel_pressure);
-
-                    if abs_pressure > limit {
-                        let count = abs_pressure - limit;
-                        let count = count.try_into().unwrap();
-
-                        let mut spills = SpillChooser::new(bl, ip, count);
-                        for ssa in b.w.iter() {
-                            spills.add_candidate(*ssa);
-                        }
-
-                        for ssa in spills {
-                            debug_assert!(ssa.file() == file);
-                            b.w.remove(&ssa);
-                            if DEBUG.annotate() {
-                                instrs.push(Instr::new_boxed(OpAnnotate {
-                                    annotation: "generated by spill_values"
-                                        .into(),
-                                }));
+                    if file == RegFile::UGPR && !bb.uniform {
+                        // We can't spill UGPRs in a non-uniform block.
+                        // Instead, we depend on two facts:
+                        //
+                        //  1. Uniform instructions are not allowed in
+                        //     non-uniform blocks
+                        //
+                        //  2. Non-uniform instructions can always accept a wave
+                        //     register in leu of a uniform register
+                        //
+                        debug_assert!(spill.spill_file(file) == RegFile::GPR);
+                        instr.for_each_ssa_use_mut(|ssa| {
+                            if ssa.file() == file && !b.w.contains(ssa) {
+                                *ssa = spill.get_spill(*ssa).into();
                             }
-                            instrs.push(spill.spill(ssa));
-                            b.s.insert(ssa);
+                        });
+                    } else if file == RegFile::UPred && !bb.uniform {
+                        // We can't spill UPreds in a non-uniform block.
+                        // Instead, we depend on two facts:
+                        //
+                        //  1. Uniform instructions are not allowed in
+                        //     non-uniform blocks
+                        //
+                        //  2. Non-uniform instructions can always accept a wave
+                        //     register in leu of a uniform register
+                        //
+                        //  3. We can un-spill from a UGPR directly to a Pred
+                        //
+                        // This also shouldn't come up that often in practice
+                        // so it's okay to un-spill every time on the spot.
+                        //
+                        instr.for_each_ssa_use_mut(|ssa| {
+                            if ssa.file() == file && !b.w.contains(ssa) {
+                                if DEBUG.annotate() {
+                                    instrs.push(Instr::new_boxed(OpAnnotate {
+                                        annotation: "generated by spill_values"
+                                            .into(),
+                                    }));
+                                }
+                                let tmp = spill.alloc.alloc(RegFile::Pred);
+                                instrs.push(spill.fill_dst(tmp.into(), *ssa));
+                                *ssa = tmp;
+                            }
+                        });
+                    } else {
+                        // First compute fills even though those have to come
+                        // after spills.
+                        let mut fills = Vec::new();
+                        instr.for_each_ssa_use(|ssa| {
+                            if ssa.file() == file && !b.w.contains(ssa) {
+                                debug_assert!(b.s.contains(ssa));
+                                debug_assert!(bb.uniform || !ssa.is_uniform());
+                                fills.push(spill.fill(*ssa));
+                                b.w.insert(*ssa);
+                            }
+                        });
+
+                        let rel_pressure =
+                            bl.get_instr_pressure(ip, &instr)[file];
+                        let abs_pressure =
+                            b.w.count(file) + u32::from(rel_pressure);
+
+                        if abs_pressure > limit {
+                            let count = abs_pressure - limit;
+                            let count = count.try_into().unwrap();
+
+                            let mut spills = SpillChooser::new(bl, ip, count);
+                            for ssa in b.w.iter() {
+                                spills.add_candidate(*ssa);
+                            }
+
+                            for ssa in spills {
+                                debug_assert!(ssa.file() == file);
+                                b.w.remove(&ssa);
+                                if DEBUG.annotate() {
+                                    instrs.push(Instr::new_boxed(OpAnnotate {
+                                        annotation: "generated by spill_values"
+                                            .into(),
+                                    }));
+                                }
+                                instrs.push(spill.spill(ssa));
+                                b.s.insert(ssa);
+                            }
                         }
-                    }
 
-                    if DEBUG.annotate() {
-                        instrs.push(Instr::new_boxed(OpAnnotate {
-                            annotation: "generated by spill_values".into(),
-                        }));
-                    }
-                    instrs.append(&mut fills);
-
-                    instr.for_each_ssa_use(|ssa| {
-                        if ssa.file() == file {
-                            debug_assert!(b.w.contains(ssa));
+                        if DEBUG.annotate() {
+                            instrs.push(Instr::new_boxed(OpAnnotate {
+                                annotation: "generated by spill_values".into(),
+                            }));
                         }
-                    });
+                        instrs.append(&mut fills);
 
-                    b.w.insert_instr_top_down(ip, &instr, bl);
+                        instr.for_each_ssa_use(|ssa| {
+                            if ssa.file() == file {
+                                debug_assert!(b.w.contains(ssa));
+                            }
+                        });
+
+                        b.w.insert_instr_top_down(ip, &instr, bl);
+                    }
                 }
             }
 
@@ -837,6 +938,7 @@ fn spill_values<S: Spill>(
             instrs.push(spill.spill(ssa));
         }
         for ssa in fills {
+            debug_assert!(pb.uniform || !ssa.is_uniform());
             instrs.push(spill.fill(ssa));
         }
 
@@ -905,7 +1007,15 @@ impl Function {
                 let spill = SpillGPR::new();
                 spill_values(self, file, limit, spill);
             }
+            RegFile::UGPR => {
+                let spill = SpillUniform::new();
+                spill_values(self, file, limit, spill);
+            }
             RegFile::Pred => {
+                let spill = SpillPred::new();
+                spill_values(self, file, limit, spill);
+            }
+            RegFile::UPred => {
                 let spill = SpillPred::new();
                 spill_values(self, file, limit, spill);
             }

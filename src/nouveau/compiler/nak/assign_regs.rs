@@ -1203,7 +1203,8 @@ impl Shader {
         // We want at least one temporary GPR reserved for parallel copies.
         let mut tmp_gprs = 1_u8;
 
-        let spill_files = [RegFile::Pred, RegFile::Bar];
+        let spill_files =
+            [RegFile::UPred, RegFile::Pred, RegFile::UGPR, RegFile::Bar];
         for file in spill_files {
             let num_regs = file.num_regs(self.info.sm);
             if max_live[file] > num_regs {

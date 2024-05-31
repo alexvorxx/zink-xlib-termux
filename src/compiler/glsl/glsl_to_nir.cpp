@@ -2430,7 +2430,8 @@ nir_visitor::visit(ir_texture *ir)
 
    if (ir->offset != NULL) {
       if (glsl_type_is_array(ir->offset->type)) {
-         for (int i = 0; i < glsl_array_size(ir->offset->type); i++) {
+         const int size = MIN2(glsl_array_size(ir->offset->type), 4);
+         for (int i = 0; i < size; i++) {
             const ir_constant *c =
                ir->offset->as_constant()->get_array_element(i);
 

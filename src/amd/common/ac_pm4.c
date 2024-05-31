@@ -228,15 +228,37 @@ ac_pm4_cmd_add(struct ac_pm4_state *state, uint32_t dw)
    state->last_opcode = 255; /* invalid opcode */
 }
 
+static bool
+need_reset_filter_cam(const struct ac_pm4_state *state)
+{
+   const struct radeon_info *info = state->info;
+
+   /* All SET_*_PAIRS* packets on the gfx queue must set RESET_FILTER_CAM. */
+   if (!state->is_compute_queue &&
+       (opcode_is_pairs(state->last_opcode) ||
+        opcode_is_pairs_packed(state->last_opcode)))
+      return true;
+
+   const uint32_t last_reg = state->last_reg << 2;
+
+   if (info->gfx_level >= GFX11 && !state->is_compute_queue &&
+       (last_reg + CIK_UCONFIG_REG_OFFSET == R_0367A4_SQ_THREAD_TRACE_BUF0_SIZE ||
+        last_reg + CIK_UCONFIG_REG_OFFSET == R_0367A0_SQ_THREAD_TRACE_BUF0_BASE ||
+        last_reg + CIK_UCONFIG_REG_OFFSET == R_0367B4_SQ_THREAD_TRACE_MASK ||
+        last_reg + CIK_UCONFIG_REG_OFFSET == R_0367B8_SQ_THREAD_TRACE_TOKEN_MASK ||
+        last_reg + CIK_UCONFIG_REG_OFFSET == R_0367B0_SQ_THREAD_TRACE_CTRL))
+      return true;
+
+   return false;
+}
+
 void
 ac_pm4_cmd_end(struct ac_pm4_state *state, bool predicate)
 {
    unsigned count;
    count = state->ndw - state->last_pm4 - 2;
    /* All SET_*_PAIRS* packets on the gfx queue must set RESET_FILTER_CAM. */
-   bool reset_filter_cam = !state->is_compute_queue &&
-                           (opcode_is_pairs(state->last_opcode) ||
-                            opcode_is_pairs_packed(state->last_opcode));
+   bool reset_filter_cam = need_reset_filter_cam(state);
 
    state->pm4[state->last_pm4] = PKT3(state->last_opcode, count, predicate) |
                                  PKT3_RESET_FILTER_CAM_S(reset_filter_cam);

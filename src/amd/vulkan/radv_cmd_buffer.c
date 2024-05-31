@@ -4078,14 +4078,42 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
       }
    }
 
-   if (pdev->info.gfx_level < GFX12)
+   if (pdev->info.gfx_level < GFX12) {
       radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
+      radeon_set_context_reg(cmd_buffer->cs, R_028008_DB_DEPTH_VIEW, ds->ac.db_depth_view);
+      radeon_set_context_reg(cmd_buffer->cs, R_028ABC_DB_HTILE_SURFACE, db_htile_surface);
+   }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028008_DB_DEPTH_VIEW, ds->ac.db_depth_view);
    radeon_set_context_reg(cmd_buffer->cs, R_028010_DB_RENDER_OVERRIDE2, ds->db_render_override2);
-   radeon_set_context_reg(cmd_buffer->cs, R_028ABC_DB_HTILE_SURFACE, db_htile_surface);
 
-   if (pdev->info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028004_DB_DEPTH_VIEW, ds->ac.db_depth_view);
+      radeon_set_context_reg(cmd_buffer->cs, R_028008_DB_DEPTH_VIEW1, ds->ac.u.gfx12.db_depth_view1);
+      radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_DEPTH_SIZE_XY, ds->ac.db_depth_size);
+      radeon_set_context_reg(cmd_buffer->cs, R_028018_DB_Z_INFO, ds->ac.db_z_info);
+      radeon_set_context_reg(cmd_buffer->cs, R_02801C_DB_STENCIL_INFO, ds->ac.db_stencil_info);
+      radeon_set_context_reg(cmd_buffer->cs, R_028020_DB_Z_READ_BASE, ds->ac.db_depth_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028024_DB_Z_READ_BASE_HI, ds->ac.db_depth_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028028_DB_Z_WRITE_BASE, ds->ac.db_depth_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_02802C_DB_Z_WRITE_BASE_HI, ds->ac.db_depth_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028030_DB_STENCIL_READ_BASE, ds->ac.db_stencil_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028034_DB_STENCIL_READ_BASE_HI, ds->ac.db_stencil_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028038_DB_STENCIL_WRITE_BASE, ds->ac.db_stencil_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_02803C_DB_STENCIL_WRITE_BASE_HI, ds->ac.db_stencil_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028B94_PA_SC_HIZ_INFO, ds->ac.u.gfx12.hiz_info);
+      radeon_set_context_reg(cmd_buffer->cs, R_028B98_PA_SC_HIS_INFO, ds->ac.u.gfx12.his_info);
+
+      if (ds->ac.u.gfx12.hiz_info) {
+         radeon_set_context_reg(cmd_buffer->cs, R_028B9C_PA_SC_HIZ_BASE, ds->ac.u.gfx12.hiz_base);
+         radeon_set_context_reg(cmd_buffer->cs, R_028BA0_PA_SC_HIZ_BASE_EXT, ds->ac.u.gfx12.hiz_base >> 32);
+         radeon_set_context_reg(cmd_buffer->cs, R_028BA4_PA_SC_HIZ_SIZE_XY, ds->ac.u.gfx12.hiz_size_xy);
+      }
+      if (ds->ac.u.gfx12.his_info) {
+         radeon_set_context_reg(cmd_buffer->cs, R_028BA8_PA_SC_HIS_BASE, ds->ac.u.gfx12.his_base);
+         radeon_set_context_reg(cmd_buffer->cs, R_028BAC_PA_SC_HIS_BASE_EXT, ds->ac.u.gfx12.his_base >> 32);
+         radeon_set_context_reg(cmd_buffer->cs, R_028BB0_PA_SC_HIS_SIZE_XY, ds->ac.u.gfx12.his_size_xy);
+      }
+   } else if (pdev->info.gfx_level >= GFX10) {
       radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, db_htile_data_base);
       radeon_set_context_reg(cmd_buffer->cs, R_02801C_DB_DEPTH_SIZE_XY, ds->ac.db_depth_size);
 
@@ -4155,22 +4183,28 @@ radv_emit_null_ds_state(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
 
-   if (gfx_level == GFX9) {
-      radeon_set_context_reg_seq(cmd_buffer->cs, R_028038_DB_Z_INFO, 2);
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg_seq(cmd_buffer->cs, R_028018_DB_Z_INFO, 2);
+      radeon_emit(cmd_buffer->cs, S_028018_FORMAT(V_028018_Z_INVALID) | S_028018_NUM_SAMPLES(3));
+      radeon_emit(cmd_buffer->cs, S_02801C_FORMAT(V_02801C_STENCIL_INVALID) | S_02801C_TILE_STENCIL_DISABLE(1));
+
+      radeon_set_context_reg(cmd_buffer->cs, R_028B94_PA_SC_HIZ_INFO, S_028B94_SURFACE_ENABLE(0));
+      radeon_set_context_reg(cmd_buffer->cs, R_028B98_PA_SC_HIS_INFO, S_028B98_SURFACE_ENABLE(0));
    } else {
-      radeon_set_context_reg_seq(cmd_buffer->cs, R_028040_DB_Z_INFO, 2);
-   }
+      if (gfx_level == GFX9) {
+         radeon_set_context_reg_seq(cmd_buffer->cs, R_028038_DB_Z_INFO, 2);
+      } else {
+         radeon_set_context_reg_seq(cmd_buffer->cs, R_028040_DB_Z_INFO, 2);
+      }
 
-   /* On GFX11+, the hw intentionally looks at DB_Z_INFO.NUM_SAMPLES when there is no bound
-    * depth/stencil buffer and it clamps the number of samples like MIN2(DB_Z_INFO.NUM_SAMPLES,
-    * PA_SC_AA_CONFIG.MSAA_EXPOSED_SAMPLES). Use 8x for DB_Z_INFO.NUM_SAMPLES to make sure it's not
-    * the constraining factor. This affects VRS, occlusion queries and POPS.
-    */
-   radeon_emit(cmd_buffer->cs,
-               S_028040_FORMAT(V_028040_Z_INVALID) | S_028040_NUM_SAMPLES(pdev->info.gfx_level >= GFX11 ? 3 : 0));
-   radeon_emit(cmd_buffer->cs, S_028044_FORMAT(V_028044_STENCIL_INVALID));
-
-   if (pdev->info.gfx_level < GFX12) {
+      /* On GFX11+, the hw intentionally looks at DB_Z_INFO.NUM_SAMPLES when there is no bound
+       * depth/stencil buffer and it clamps the number of samples like MIN2(DB_Z_INFO.NUM_SAMPLES,
+       * PA_SC_AA_CONFIG.MSAA_EXPOSED_SAMPLES). Use 8x for DB_Z_INFO.NUM_SAMPLES to make sure it's not
+       * the constraining factor. This affects VRS, occlusion queries and POPS.
+       */
+      radeon_emit(cmd_buffer->cs,
+                  S_028040_FORMAT(V_028040_Z_INVALID) | S_028040_NUM_SAMPLES(pdev->info.gfx_level >= GFX11 ? 3 : 0));
+      radeon_emit(cmd_buffer->cs, S_028044_FORMAT(V_028044_STENCIL_INVALID));
       uint32_t db_render_control = 0;
 
       if (gfx_level == GFX11)

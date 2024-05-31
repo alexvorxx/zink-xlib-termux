@@ -3891,7 +3891,17 @@ radv_emit_fb_color_state(struct radv_cmd_buffer *cmd_buffer, int index, struct r
       cb_color_info &= C_028C70_COMPRESSION;
    }
 
-   if (pdev->info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028C60_CB_COLOR0_BASE + index * 0x24, cb->ac.cb_color_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C64_CB_COLOR0_VIEW + index * 0x24, cb->ac.cb_color_view);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C68_CB_COLOR0_VIEW2 + index * 0x24, cb->ac.cb_color_view2);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C6C_CB_COLOR0_ATTRIB + index * 0x24, cb->ac.cb_color_attrib);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C70_CB_COLOR0_FDCC_CONTROL + index * 0x24, cb_fdcc_control);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C78_CB_COLOR0_ATTRIB2 + index * 0x24, cb->ac.cb_color_attrib2);
+      radeon_set_context_reg(cmd_buffer->cs, R_028C7C_CB_COLOR0_ATTRIB3 + index * 0x24, cb->ac.cb_color_attrib3);
+      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4, cb->ac.cb_color_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028EC0_CB_COLOR0_INFO + index * 4, cb->ac.cb_color_info);
+   } else if (pdev->info.gfx_level >= GFX11) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028C6C_CB_COLOR0_VIEW + index * 0x3c, 4);
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_view);    /* CB_COLOR0_VIEW */
       radeon_emit(cmd_buffer->cs, cb->ac.cb_color_info);    /* CB_COLOR0_INFO */
@@ -4649,8 +4659,9 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
    struct radv_rendering_state *render = &cmd_buffer->state.render;
    int i;
    bool disable_constant_encode_ac01 = false;
-   unsigned color_invalid = pdev->info.gfx_level >= GFX11 ? S_028C70_FORMAT_GFX11(V_028C70_COLOR_INVALID)
-                                                          : S_028C70_FORMAT_GFX6(V_028C70_COLOR_INVALID);
+   unsigned color_invalid = pdev->info.gfx_level >= GFX12   ? S_028EC0_FORMAT(V_028EC0_COLOR_INVALID)
+                            : pdev->info.gfx_level >= GFX11 ? S_028C70_FORMAT_GFX11(V_028C70_COLOR_INVALID)
+                                                            : S_028C70_FORMAT_GFX6(V_028C70_COLOR_INVALID);
    VkExtent2D extent = {MAX_FRAMEBUFFER_WIDTH, MAX_FRAMEBUFFER_HEIGHT};
 
    ASSERTED unsigned cdw_max = radeon_check_space(device->ws, cmd_buffer->cs, 51 + MAX_RTS * 70);
@@ -4658,7 +4669,11 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
    for (i = 0; i < render->color_att_count; ++i) {
       struct radv_image_view *iview = render->color_att[i].iview;
       if (!iview) {
-         radeon_set_context_reg(cmd_buffer->cs, R_028C70_CB_COLOR0_INFO + i * 0x3C, color_invalid);
+         if (pdev->info.gfx_level >= GFX12) {
+            radeon_set_context_reg(cmd_buffer->cs, R_028EC0_CB_COLOR0_INFO + i * 4, color_invalid);
+         } else {
+            radeon_set_context_reg(cmd_buffer->cs, R_028C70_CB_COLOR0_INFO + i * 0x3C, color_invalid);
+         }
          continue;
       }
 
@@ -4693,7 +4708,11 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
       extent.height = MIN2(extent.height, iview->vk.extent.height);
    }
    for (; i < cmd_buffer->state.last_subpass_color_count; i++) {
-      radeon_set_context_reg(cmd_buffer->cs, R_028C70_CB_COLOR0_INFO + i * 0x3C, color_invalid);
+      if (pdev->info.gfx_level >= GFX12) {
+         radeon_set_context_reg(cmd_buffer->cs, R_028EC0_CB_COLOR0_INFO + i * 4, color_invalid);
+      } else {
+         radeon_set_context_reg(cmd_buffer->cs, R_028C70_CB_COLOR0_INFO + i * 0x3C, color_invalid);
+      }
    }
    cmd_buffer->state.last_subpass_color_count = render->color_att_count;
 

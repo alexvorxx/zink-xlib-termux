@@ -1617,7 +1617,8 @@ static void si_query_hw_get_result_resource(struct si_context *sctx, struct si_q
       break;
    }
 
-   sctx->flags |= sctx->screen->barrier_flags.cp_to_L2;
+   sctx->flags |= SI_CONTEXT_INV_SCACHE | SI_CONTEXT_INV_VCACHE |
+                  (sctx->gfx_level <= GFX8 ? SI_CONTEXT_INV_L2 : 0);
    si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
 
    for (qbuf = &query->buffer; qbuf; qbuf = qbuf_prev) {
@@ -1713,8 +1714,10 @@ static void si_render_condition(struct pipe_context *ctx, struct pipe_query *que
 
          /* Settings this in the render cond atom is too late,
           * so set it here. */
-         sctx->flags |= sctx->screen->barrier_flags.L2_to_cp;
-         si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
+         if (sctx->gfx_level <= GFX8) {
+            sctx->flags |= SI_CONTEXT_WB_L2;
+            si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
+         }
 
          sctx->render_cond_enabled = old_render_cond_enabled;
       }

@@ -628,18 +628,6 @@ struct si_screen {
     */
    unsigned compressed_colortex_counter;
 
-   struct {
-      /* Context flags to set so that all writes from earlier jobs
-       * in the CP are seen by L2 clients.
-       */
-      unsigned cp_to_L2;
-
-      /* Context flags to set so that all writes from earlier jobs
-       * that end in L2 are seen by CP.
-       */
-      unsigned L2_to_cp;
-   } barrier_flags;
-
    simple_mtx_t shader_parts_mutex;
    struct si_shader_part *ps_prologs;
    struct si_shader_part *ps_epilogs;

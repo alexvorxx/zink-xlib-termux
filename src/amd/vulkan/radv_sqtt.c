@@ -74,8 +74,7 @@ radv_emit_sqtt_start(const struct radv_device *device, struct radeon_cmdbuf *cs,
    radeon_check_space(device->ws, cs, 6 + max_se * 33);
 
    for (unsigned se = 0; se < max_se; se++) {
-      uint64_t va = radv_buffer_get_va(device->sqtt.bo);
-      uint64_t data_va = ac_sqtt_get_data_va(gpu_info, &device->sqtt, va, se);
+      uint64_t data_va = ac_sqtt_get_data_va(gpu_info, &device->sqtt, se);
       uint64_t shifted_va = data_va >> SQTT_BUFFER_ALIGN_SHIFT;
       int active_cu = ac_sqtt_get_active_cu(&pdev->info, se);
 
@@ -104,7 +103,7 @@ radv_emit_sqtt_start(const struct radv_device *device, struct radeon_cmdbuf *cs,
          /* Performance counters with SQTT are considered deprecated. */
          uint32_t token_exclude = V_0367B8_TOKEN_EXCLUDE_PERF;
 
-         if (!radv_is_instruction_timing_enabled()) {
+         if (!device->sqtt.instruction_timing_enabled) {
             /* Reduce SQTT traffic when instruction timing isn't enabled. */
             token_exclude |= V_0367B8_TOKEN_EXCLUDE_VMEMEXEC | V_0367B8_TOKEN_EXCLUDE_ALUEXEC |
                              V_0367B8_TOKEN_EXCLUDE_VALUINST | V_0367B8_TOKEN_EXCLUDE_IMMEDIATE |
@@ -136,7 +135,7 @@ radv_emit_sqtt_start(const struct radv_device *device, struct radeon_cmdbuf *cs,
          /* Performance counters with SQTT are considered deprecated. */
          uint32_t token_exclude = V_008D18_TOKEN_EXCLUDE_PERF;
 
-         if (!radv_is_instruction_timing_enabled()) {
+         if (!device->sqtt.instruction_timing_enabled) {
             /* Reduce SQTT traffic when instruction timing isn't enabled. */
             token_exclude |= V_008D18_TOKEN_EXCLUDE_VMEMEXEC | V_008D18_TOKEN_EXCLUDE_ALUEXEC |
                              V_008D18_TOKEN_EXCLUDE_VALUINST | V_008D18_TOKEN_EXCLUDE_IMMEDIATE |
@@ -256,8 +255,7 @@ radv_copy_sqtt_info_regs(const struct radv_device *device, struct radeon_cmdbuf 
    }
 
    /* Get the VA where the info struct is stored for this SE. */
-   uint64_t va = radv_buffer_get_va(device->sqtt.bo);
-   uint64_t info_va = ac_sqtt_get_info_va(va, se_index);
+   uint64_t info_va = ac_sqtt_get_info_va(device->sqtt.buffer_va, se_index);
 
    /* Copy back the info struct one DWORD at a time. */
    for (unsigned i = 0; i < 3; i++) {
@@ -278,7 +276,7 @@ radv_copy_sqtt_info_regs(const struct radv_device *device, struct radeon_cmdbuf 
        * 2) shift right by 5 bits because SQ_THREAD_TRACE_WPTR is 32-byte aligned
        * 3) mask off the higher 3 bits because WPTR.OFFSET is 29 bits
        */
-      uint64_t data_va = ac_sqtt_get_data_va(&pdev->info, &device->sqtt, va, se_index);
+      uint64_t data_va = ac_sqtt_get_data_va(&pdev->info, &device->sqtt, se_index);
       uint64_t shifted_data_va = (data_va >> 5);
       uint32_t init_wptr_value = shifted_data_va & 0x1fffffff;
 
@@ -627,6 +625,8 @@ radv_sqtt_init_bo(struct radv_device *device)
    if (!device->sqtt.ptr)
       return false;
 
+   device->sqtt.buffer_va = radv_buffer_get_va(device->sqtt.bo);
+
    return true;
 }
 
@@ -718,6 +718,7 @@ radv_sqtt_init(struct radv_device *device)
 
    /* Default buffer size set to 32MB per SE. */
    device->sqtt.buffer_size = (uint32_t)debug_get_num_option("RADV_THREAD_TRACE_BUFFER_SIZE", 32 * 1024 * 1024);
+   device->sqtt.instruction_timing_enabled = radv_is_instruction_timing_enabled();
 
    if (!radv_sqtt_init_bo(device))
       return false;

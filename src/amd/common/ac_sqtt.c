@@ -38,10 +38,10 @@ ac_sqtt_get_info_va(uint64_t va, unsigned se)
 }
 
 uint64_t
-ac_sqtt_get_data_va(const struct radeon_info *rad_info, const struct ac_sqtt *data, uint64_t va,
+ac_sqtt_get_data_va(const struct radeon_info *rad_info, const struct ac_sqtt *data,
                     unsigned se)
 {
-   return va + ac_sqtt_get_data_offset(rad_info, data, se);
+   return data->buffer_va + ac_sqtt_get_data_offset(rad_info, data, se);
 }
 
 void

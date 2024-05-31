@@ -35,10 +35,12 @@ struct ac_sqtt {
    struct radeon_cmdbuf *stop_cs[2];
    /* struct radeon_winsys_bo or struct pb_buffer */
    void *bo;
+   uint64_t buffer_va;
    void *ptr;
    uint32_t buffer_size;
    int start_frame;
    char *trigger_file;
+   bool instruction_timing_enabled;
 
    uint32_t cmdbuf_ids_per_queue[AMD_NUM_IP_TYPES];
 
@@ -93,7 +95,7 @@ uint64_t ac_sqtt_get_data_offset(const struct radeon_info *rad_info, const struc
 uint64_t ac_sqtt_get_info_va(uint64_t va, unsigned se);
 
 uint64_t ac_sqtt_get_data_va(const struct radeon_info *rad_info, const struct ac_sqtt *sqtt,
-                             uint64_t va, unsigned se);
+                             unsigned se);
 
 void ac_sqtt_init(struct ac_sqtt *data);
 

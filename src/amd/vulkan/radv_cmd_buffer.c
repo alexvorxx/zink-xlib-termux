@@ -5626,6 +5626,9 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
    pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps && ps->info.ps.reads_fully_covered);
 
    if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028C5C_PA_SC_SAMPLE_PROPERTIES,
+                             S_028C5C_MAX_SAMPLE_DIST(max_sample_dist));
+
       radeon_set_context_reg(cmd_buffer->cs, R_028078_DB_EQAA, db_eqaa);
    } else {
       radeon_set_context_reg(cmd_buffer->cs, R_028804_DB_EQAA, db_eqaa);

@@ -581,10 +581,8 @@ static struct amdgpu_winsys_bo *amdgpu_create_bo(struct amdgpu_winsys *aws,
          goto error_va_alloc;
 
       unsigned vm_flags = AMDGPU_VM_PAGE_READABLE |
+                          AMDGPU_VM_PAGE_WRITEABLE |
                           AMDGPU_VM_PAGE_EXECUTABLE;
-
-      if (!(flags & RADEON_FLAG_READ_ONLY))
-         vm_flags |= AMDGPU_VM_PAGE_WRITEABLE;
 
       if (flags & RADEON_FLAG_GL2_BYPASS)
          vm_flags |= AMDGPU_VM_MTYPE_UC;

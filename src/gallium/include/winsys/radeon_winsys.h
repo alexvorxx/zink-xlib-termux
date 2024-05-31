@@ -54,7 +54,6 @@ enum radeon_bo_flag
   RADEON_FLAG_NO_SUBALLOC = (1 << 2),
   RADEON_FLAG_SPARSE = (1 << 3),
   RADEON_FLAG_NO_INTERPROCESS_SHARING = (1 << 4),
-  RADEON_FLAG_READ_ONLY = (1 << 5),
   RADEON_FLAG_32BIT = (1 << 6),
   RADEON_FLAG_ENCRYPTED = (1 << 7),
   RADEON_FLAG_GL2_BYPASS = (1 << 8), /* only gfx9 and newer */
@@ -78,8 +77,6 @@ si_res_print_flags(enum radeon_bo_flag flags) {
       fprintf(stderr, "SPARSE ");
    if (flags & RADEON_FLAG_NO_INTERPROCESS_SHARING)
       fprintf(stderr, "NO_INTERPROCESS_SHARING ");
-   if (flags & RADEON_FLAG_READ_ONLY)
-      fprintf(stderr, "READ_ONLY ");
    if (flags & RADEON_FLAG_32BIT)
       fprintf(stderr, "32BIT ");
    if (flags & RADEON_FLAG_ENCRYPTED)
@@ -813,7 +810,6 @@ radeon_bo_drop_reference(struct radeon_winsys *rws, struct pb_buffer_lean *dst)
  * the allocation cache (pb_cache).
  */
 #define RADEON_HEAP_BIT_VRAM           (1 << 0) /* if false, it's GTT */
-#define RADEON_HEAP_BIT_READ_ONLY      (1 << 1) /* both VRAM and GTT */
 #define RADEON_HEAP_BIT_32BIT          (1 << 2) /* both VRAM and GTT */
 #define RADEON_HEAP_BIT_ENCRYPTED      (1 << 3) /* both VRAM and GTT */
 
@@ -841,8 +837,6 @@ static inline unsigned radeon_flags_from_heap(int heap)
 
    unsigned flags = RADEON_FLAG_NO_INTERPROCESS_SHARING;
 
-   if (heap & RADEON_HEAP_BIT_READ_ONLY)
-      flags |= RADEON_FLAG_READ_ONLY;
    if (heap & RADEON_HEAP_BIT_32BIT)
       flags |= RADEON_FLAG_32BIT;
    if (heap & RADEON_HEAP_BIT_ENCRYPTED)
@@ -918,8 +912,6 @@ static inline int radeon_get_heap_index(enum radeon_bo_domain domain, enum radeo
 
    int heap = 0;
 
-   if (flags & RADEON_FLAG_READ_ONLY)
-      heap |= RADEON_HEAP_BIT_READ_ONLY;
    if (flags & RADEON_FLAG_32BIT)
       heap |= RADEON_HEAP_BIT_32BIT;
    if (flags & RADEON_FLAG_ENCRYPTED)

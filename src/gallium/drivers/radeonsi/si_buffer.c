@@ -103,9 +103,6 @@ void si_init_resource_fields(struct si_screen *sscreen, struct si_resource *res,
    if (sscreen->debug_flags & DBG(NO_WC))
       res->flags &= ~RADEON_FLAG_GTT_WC;
 
-   if (res->b.b.flags & SI_RESOURCE_FLAG_READ_ONLY)
-      res->flags |= RADEON_FLAG_READ_ONLY;
-
    if (res->b.b.flags & SI_RESOURCE_FLAG_32BIT)
       res->flags |= RADEON_FLAG_32BIT;
 

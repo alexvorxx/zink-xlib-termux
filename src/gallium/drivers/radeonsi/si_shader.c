@@ -922,7 +922,6 @@ static void *pre_upload_binary(struct si_screen *sscreen, struct si_shader *shad
       shader->bo = si_aligned_buffer_create(
          &sscreen->b,
          SI_RESOURCE_FLAG_DRIVER_INTERNAL | SI_RESOURCE_FLAG_32BIT |
-         (dma_upload || sscreen->info.cpdma_prefetch_writes_memory ? 0 : SI_RESOURCE_FLAG_READ_ONLY) |
          (dma_upload ? PIPE_RESOURCE_FLAG_UNMAPPABLE : 0),
          PIPE_USAGE_IMMUTABLE, align(aligned_size, SI_CPDMA_ALIGNMENT), 256);
       if (!shader->bo)

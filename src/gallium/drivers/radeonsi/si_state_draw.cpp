@@ -344,7 +344,6 @@ static bool si_update_shaders(struct si_context *sctx)
           */
          struct si_resource *bo = si_aligned_buffer_create(
             &sctx->screen->b,
-            (sctx->screen->info.cpdma_prefetch_writes_memory ? 0 : SI_RESOURCE_FLAG_READ_ONLY) |
             SI_RESOURCE_FLAG_DRIVER_INTERNAL | SI_RESOURCE_FLAG_32BIT,
             PIPE_USAGE_IMMUTABLE, align(total_size, SI_CPDMA_ALIGNMENT), 256);
 

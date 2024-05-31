@@ -14,6 +14,7 @@ spec@arb_color_buffer_float@gl_rgba8_snorm-render
 spec@arb_color_buffer_float@gl_rgba8_snorm-render-fog
 spec@arb_copy_image@arb_copy_image-targets gl_texture_1d_array 32 1 12 gl_texture_2d_array 32 16 18 11 0 3 5 9 7 14 1 8
 spec@arb_copy_image@arb_copy_image-targets gl_texture_1d_array 32 1 12 gl_texture_3d 32 16 18 11 0 3 5 9 2 14 1 7
+spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_texture_2d_array 32 16 15 11 12 5 5 7 2 14 9 9
 spec@arb_gpu_shader5@execution@sampler_array_indexing@vs-nonuniform-control-flow
 spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-op-div-dvec2-dvec2
 spec@arb_pixel_buffer_object@pbo-drawpixels
@@ -72,6 +73,7 @@ spec@glsl-4.00@execution@built-in-functions@fs-op-add-dvec2-dvec2
 spec@glsl-4.00@execution@built-in-functions@fs-op-mult-dmat2x4-dvec2
 spec@glsl-4.00@execution@built-in-functions@gs-matrixcompmult-dmat2x4-dmat2x4
 spec@glsl-4.00@execution@built-in-functions@gs-max-dvec4-double
+spec@glsl-4.00@execution@built-in-functions@gs-op-add-dmat3x2-double
 spec@glsl-4.00@execution@built-in-functions@gs-op-mult-double-dmat4x3
 spec@glsl-4.00@execution@built-in-functions@vs-distance-double-double
 spec@glsl-4.00@execution@built-in-functions@vs-op-div-dmat4-dmat4

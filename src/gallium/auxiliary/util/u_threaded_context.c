@@ -2606,9 +2606,9 @@ tc_improve_map_buffer_flags(struct threaded_context *tc,
       usage |= PIPE_MAP_UNSYNCHRONIZED;
 
    if (!(usage & PIPE_MAP_UNSYNCHRONIZED)) {
-      /* If discarding the entire range, discard the whole resource instead. */
+      /* If discarding the entire valid range, discard the whole resource instead. */
       if (usage & PIPE_MAP_DISCARD_RANGE &&
-          offset == 0 && size == tres->b.width0)
+          util_ranges_covered(&tres->valid_buffer_range, offset, offset + size))
          usage |= PIPE_MAP_DISCARD_WHOLE_RESOURCE;
 
       /* Discard the whole resource if needed. */

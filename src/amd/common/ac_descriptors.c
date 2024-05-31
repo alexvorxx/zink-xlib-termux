@@ -520,8 +520,8 @@ ac_set_buf_desc_word3(const enum amd_gfx_level gfx_level, const struct ac_buffer
        *       else:
        *          offset+payload > NUM_RECORDS
        */
-      *rsrc_word3 |= gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
-                                          S_008F0C_FORMAT_GFX10(fmt->img_format) |
+      *rsrc_word3 |= (gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
+                                           S_008F0C_FORMAT_GFX10(fmt->img_format)) |
                      S_008F0C_OOB_SELECT(state->gfx10_oob_select) |
                      S_008F0C_RESOURCE_LEVEL(gfx_level < GFX11);
    } else {
@@ -756,7 +756,7 @@ ac_init_gfx12_ds_surface(const struct radeon_info *info, const struct ac_ds_stat
                        S_028004_SLICE_MAX(state->last_layer);
    ds->u.gfx12.db_depth_view1 = S_028008_MIPID_GFX12(state->level);
    ds->db_depth_size = S_028014_X_MAX(state->width - 1) |
-                       S_028014_Y_MAX(state->width - 1);
+                       S_028014_Y_MAX(state->height - 1);
    ds->db_z_info = S_028018_FORMAT(db_format) |
                    S_028018_NUM_SAMPLES(util_logbase2(state->num_samples)) |
                    S_028018_SW_MODE(surf->u.gfx9.swizzle_mode) |

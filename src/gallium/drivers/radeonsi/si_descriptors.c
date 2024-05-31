@@ -1427,6 +1427,8 @@ void si_set_ring_buffer(struct si_context *sctx, uint slot, struct pipe_resource
    struct si_buffer_resources *buffers = &sctx->internal_bindings;
    struct si_descriptors *descs = &sctx->descriptors[SI_DESCS_INTERNAL];
 
+   /* Never used on GFX11+. (only used by ESGS and GSVS rings in memory) */
+   assert(sctx->gfx_level < GFX11);
    /* The stride field in the resource descriptor has 14 bits */
    assert(stride < (1 << 14));
 

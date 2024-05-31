@@ -755,8 +755,11 @@ fd_context_init_tc(struct pipe_context *pctx, unsigned flags)
       },
       &ctx->tc);
 
-   if (tc && tc != pctx)
+   if (tc && tc != pctx) {
       threaded_context_init_bytes_mapped_limit((struct threaded_context *)tc, 16);
+      ((struct threaded_context *)tc)->bytes_replaced_limit =
+         ((struct threaded_context *)tc)->bytes_mapped_limit / 4;
+   }
 
    return tc;
 }

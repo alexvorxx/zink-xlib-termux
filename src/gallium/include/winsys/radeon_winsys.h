@@ -810,13 +810,13 @@ radeon_bo_drop_reference(struct radeon_winsys *rws, struct pb_buffer_lean *dst)
  * the allocation cache (pb_cache).
  */
 #define RADEON_HEAP_BIT_VRAM           (1 << 0) /* if false, it's GTT */
+#define RADEON_HEAP_BIT_GL2_BYPASS     (1 << 1) /* both VRAM and GTT */
 #define RADEON_HEAP_BIT_32BIT          (1 << 2) /* both VRAM and GTT */
 #define RADEON_HEAP_BIT_ENCRYPTED      (1 << 3) /* both VRAM and GTT */
 
 #define RADEON_HEAP_BIT_NO_CPU_ACCESS  (1 << 4) /* VRAM only */
 
 #define RADEON_HEAP_BIT_WC             (1 << 4) /* GTT only, VRAM implies this to be true */
-#define RADEON_HEAP_BIT_GL2_BYPASS     (1 << 5) /* GTT only */
 
 /* The number of all possible heap descriptions using the bits above. */
 #define RADEON_NUM_HEAPS               (1 << 6)
@@ -837,6 +837,8 @@ static inline unsigned radeon_flags_from_heap(int heap)
 
    unsigned flags = RADEON_FLAG_NO_INTERPROCESS_SHARING;
 
+   if (heap & RADEON_HEAP_BIT_GL2_BYPASS)
+      flags |= RADEON_FLAG_GL2_BYPASS;
    if (heap & RADEON_HEAP_BIT_32BIT)
       flags |= RADEON_FLAG_32BIT;
    if (heap & RADEON_HEAP_BIT_ENCRYPTED)
@@ -850,8 +852,6 @@ static inline unsigned radeon_flags_from_heap(int heap)
       /* GTT only */
       if (heap & RADEON_HEAP_BIT_WC)
          flags |= RADEON_FLAG_GTT_WC;
-      if (heap & RADEON_HEAP_BIT_GL2_BYPASS)
-         flags |= RADEON_FLAG_GL2_BYPASS;
    }
 
    return flags;
@@ -875,7 +875,6 @@ static void radeon_canonicalize_bo_flags(enum radeon_bo_domain *_domain,
    switch (domain) {
    case RADEON_DOMAIN_VRAM:
       flags |= RADEON_FLAG_GTT_WC;
-      flags &= ~RADEON_FLAG_GL2_BYPASS;
       break;
    case RADEON_DOMAIN_GTT:
       flags &= ~RADEON_FLAG_NO_CPU_ACCESS;
@@ -912,6 +911,8 @@ static inline int radeon_get_heap_index(enum radeon_bo_domain domain, enum radeo
 
    int heap = 0;
 
+   if (flags & RADEON_FLAG_GL2_BYPASS)
+      heap |= RADEON_HEAP_BIT_GL2_BYPASS;
    if (flags & RADEON_FLAG_32BIT)
       heap |= RADEON_HEAP_BIT_32BIT;
    if (flags & RADEON_FLAG_ENCRYPTED)
@@ -923,13 +924,10 @@ static inline int radeon_get_heap_index(enum radeon_bo_domain domain, enum radeo
       if (flags & RADEON_FLAG_NO_CPU_ACCESS)
          heap |= RADEON_HEAP_BIT_NO_CPU_ACCESS;
       /* RADEON_FLAG_WC is ignored and implied to be true for VRAM */
-      /* RADEON_FLAG_GL2_BYPASS is ignored and implied to be false for VRAM */
    } else if (domain == RADEON_DOMAIN_GTT) {
       /* GTT is implied by RADEON_HEAP_BIT_VRAM not being set. */
       if (flags & RADEON_FLAG_GTT_WC)
          heap |= RADEON_HEAP_BIT_WC;
-      if (flags & RADEON_FLAG_GL2_BYPASS)
-         heap |= RADEON_HEAP_BIT_GL2_BYPASS;
       /* RADEON_FLAG_NO_CPU_ACCESS is ignored and implied to be false for GTT */
       /* RADEON_FLAG_MALL_NOALLOC is ignored and implied to be false for GTT */
    } else {

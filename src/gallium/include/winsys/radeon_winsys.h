@@ -929,7 +929,6 @@ static inline int radeon_get_heap_index(enum radeon_bo_domain domain, enum radeo
       if (flags & RADEON_FLAG_GTT_WC)
          heap |= RADEON_HEAP_BIT_WC;
       /* RADEON_FLAG_NO_CPU_ACCESS is ignored and implied to be false for GTT */
-      /* RADEON_FLAG_MALL_NOALLOC is ignored and implied to be false for GTT */
    } else {
       return -1; /*  */
    }

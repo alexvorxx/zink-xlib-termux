@@ -1927,7 +1927,7 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
           */
          if (pdev->info.gfx_level >= GFX10) {
             if (info->vs.needs_instance_id) {
-               vgpr_comp_cnt = 3;
+               vgpr_comp_cnt = pdev->info.gfx_level >= GFX12 ? 1 : 3;
             } else if (pdev->info.gfx_level <= GFX10_3) {
                vgpr_comp_cnt = 1;
             }
@@ -1950,6 +1950,8 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
          /* We need at least 2 components for LS.
           * VGPR0-3: (VertexID, RelAutoindex, InstanceID / StepRate0, InstanceID).
           * StepRate0 is set to 1. so that VGPR3 doesn't have to be loaded.
+          *
+          * On GFX12, InstanceID is in VGPR1.
           */
          vgpr_comp_cnt = info->vs.needs_instance_id ? 2 : 1;
       } else if (info->vs.as_es) {
@@ -2018,9 +2020,16 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
         stage == MESA_SHADER_MESH)) {
       unsigned gs_vgpr_comp_cnt, es_vgpr_comp_cnt;
 
-      /* VGPR5-8: (VertexID, UserVGPR0, UserVGPR1, UserVGPR2 / InstanceID) */
+      /* VGPR5-8: (VertexID, UserVGPR0, UserVGPR1, UserVGPR2 / InstanceID)
+       *
+       * On GFX12, InstanceID is in VGPR1.
+       */
       if (es_stage == MESA_SHADER_VERTEX) {
-         es_vgpr_comp_cnt = info->vs.needs_instance_id ? 3 : 0;
+         if (info->vs.needs_instance_id) {
+            es_vgpr_comp_cnt = pdev->info.gfx_level >= GFX12 ? 1 : 3;
+         } else {
+            es_vgpr_comp_cnt = 0;
+         }
       } else if (es_stage == MESA_SHADER_TESS_EVAL) {
          bool enable_prim_id = info->outinfo.export_prim_id || info->uses_prim_id;
          es_vgpr_comp_cnt = enable_prim_id ? 3 : 2;

@@ -1962,8 +1962,8 @@ ngg_build_streamout_buffer_info(nir_builder *b,
                 */
                for (unsigned i = 0; i < NUM_ATOMICS_IN_FLIGHT - 1; i++) {
                   nir_store_var(b, result_ring[i],
-                                nir_global_atomic(b, 64, xfb_state_address, atomic_src,
-                                                  .atomic_op = nir_atomic_op_ordered_add_gfx12_amd), 0x1);
+                                nir_global_atomic_amd(b, 64, xfb_state_address, atomic_src, nir_imm_int(b, 0),
+                                                      .atomic_op = nir_atomic_op_ordered_add_gfx12_amd), 0x1);
                }
 
                nir_variable *buffer_offset_per_lane_var =
@@ -1977,8 +1977,8 @@ ngg_build_streamout_buffer_info(nir_builder *b,
 
                      /* Issue (or repeat) the atomic. */
                      nir_store_var(b, result_ring[issue_index],
-                                   nir_global_atomic(b, 64, xfb_state_address, atomic_src,
-                                                     .atomic_op = nir_atomic_op_ordered_add_gfx12_amd), 0x1);
+                                   nir_global_atomic_amd(b, 64, xfb_state_address, atomic_src, nir_imm_int(b, 0),
+                                                         .atomic_op = nir_atomic_op_ordered_add_gfx12_amd), 0x1);
 
                      /* Break if the oldest atomic succeeded in incrementing the offsets. */
                      nir_def *oldest_result = nir_load_var(b, result_ring[read_index]);
@@ -2103,8 +2103,8 @@ ngg_build_streamout_buffer_info(nir_builder *b,
 
             nir_def *address_per_lane = nir_iadd(b, xfb_state_address,
                                                  nir_imm_intN_t(b, 4, 64));
-            nir_global_atomic(b, 32, address_per_lane, nir_ineg(b, overflow_amount_per_lane),
-                              .atomic_op = nir_atomic_op_iadd);
+            nir_global_atomic_amd(b, 32, address_per_lane, nir_ineg(b, overflow_amount_per_lane),
+                                  nir_imm_int(b, 0), .atomic_op = nir_atomic_op_iadd);
          }
          nir_pop_if(b, if_any_overflow_4_lanes);
 

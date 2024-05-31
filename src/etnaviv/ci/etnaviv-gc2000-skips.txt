@@ -1,6 +1,3 @@
-# no Vulkan support
-spec@ext_external_objects@vk.*
-
 # triggers oomkiller and kills innocent tests!
 spec@!opengl 1.1@max-texture-size
 .*tex3d-maxsize.*

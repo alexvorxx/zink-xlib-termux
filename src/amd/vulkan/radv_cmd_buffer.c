@@ -9513,12 +9513,24 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
       }
    }
 
+   const uint32_t minx = render->area.offset.x;
+   const uint32_t miny = render->area.offset.y;
+   const uint32_t maxx = minx + render->area.extent.width;
+   const uint32_t maxy = miny + render->area.extent.height;
+
    radeon_check_space(device->ws, cmd_buffer->cs, 6);
-   radeon_set_context_reg(cmd_buffer->cs, R_028204_PA_SC_WINDOW_SCISSOR_TL,
-                          S_028204_TL_X(render->area.offset.x) | S_028204_TL_Y_GFX6(render->area.offset.y));
-   radeon_set_context_reg(cmd_buffer->cs, R_028208_PA_SC_WINDOW_SCISSOR_BR,
-                          S_028208_BR_X(render->area.offset.x + render->area.extent.width) |
-                             S_028208_BR_Y(render->area.offset.y + render->area.extent.height));
+
+   if (pdev->info.gfx_level >= GFX12) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028204_PA_SC_WINDOW_SCISSOR_TL,
+                             S_028204_TL_X(minx) | S_028204_TL_Y_GFX12(miny));
+      radeon_set_context_reg(cmd_buffer->cs, R_028208_PA_SC_WINDOW_SCISSOR_BR,
+                             S_028208_BR_X(maxx - 1) | S_028208_BR_Y(maxy - 1)); /* inclusive */
+   } else {
+      radeon_set_context_reg(cmd_buffer->cs, R_028204_PA_SC_WINDOW_SCISSOR_TL,
+                             S_028204_TL_X(minx) | S_028204_TL_Y_GFX6(miny));
+      radeon_set_context_reg(cmd_buffer->cs, R_028208_PA_SC_WINDOW_SCISSOR_BR,
+                             S_028208_BR_X(maxx) | S_028208_BR_Y(maxy));
+   }
 
    radv_emit_fb_mip_change_flush(cmd_buffer);
 

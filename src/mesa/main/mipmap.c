@@ -140,7 +140,7 @@ do_span_rgba_unorm8(enum pipe_format format, int srcWidth,
       util_format_pack_description(format);
 
    uint8_t rowA[MAX_SPAN_WIDTH * 4], rowB[MAX_SPAN_WIDTH * 4];
-   uint8_t result[MAX_SPAN_WIDTH];
+   uint8_t result[MAX_SPAN_WIDTH * 4];
 
    unpack->unpack_rgba_8unorm(rowA, srcRowA, srcWidth);
    unpack->unpack_rgba_8unorm(rowB, srcRowB, srcWidth);

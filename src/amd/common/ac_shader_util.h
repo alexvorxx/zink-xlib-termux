@@ -83,7 +83,8 @@ enum gfx12_scope
     *      and the suggested programming is:
     *      * tess factor ring for GE: use ACCESS_CP_GE_COHERENT_AMD (it selects the correct scope
     *        automatically)
-    *      * query results accessed by shaders: Range-invalidate GL2 before the shaders
+    *      * query results read by shaders and SET_PREDICATION: use AMDGPU_VM_MTYPE_UC,
+    *        but use VRAM for queries not read by the CPU for better performance
     *      * vertex indices for GE: flush GL2 after buffer stores, but don't invalidate
     *      * draw indirect for CP: flush GL2 after buffer stores, but don't invalidate
     *      * shader uploads via SDMA: invalidate GL2 at the beginning of IBs

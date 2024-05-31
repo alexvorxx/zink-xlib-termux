@@ -547,7 +547,14 @@ bool si_query_buffer_alloc(struct si_context *sctx, struct si_query_buffer *buff
        */
       struct si_screen *screen = sctx->screen;
       unsigned buf_size = MAX2(size, screen->info.min_alloc_size);
-      buffer->buf = si_resource(pipe_buffer_create(&screen->b, 0, PIPE_USAGE_STAGING, buf_size));
+
+      /* We need to bypass GL2 for queries if SET_PREDICATION accesses it uncached
+       * in a spinloop.
+       */
+      buffer->buf =  si_aligned_buffer_create(&screen->b,
+                                              screen->info.cp_sdma_ge_use_system_memory_scope ?
+                                                 SI_RESOURCE_FLAG_GL2_BYPASS : 0,
+                                              PIPE_USAGE_STAGING, buf_size, 256);
       if (unlikely(!buffer->buf))
          return false;
       unprepared = true;

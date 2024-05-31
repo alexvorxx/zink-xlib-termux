@@ -549,11 +549,16 @@ bool ac_get_supported_modifiers(const struct radeon_info *info,
       uint64_t dcc_64B = AMD_FMT_MOD_SET(DCC, 1) |
                          AMD_FMT_MOD_SET(DCC_MAX_COMPRESSED_BLOCK, AMD_FMT_MOD_DCC_BLOCK_64B);
 
+      uint64_t mod_256B_2D = AMD_FMT_MOD |
+                             AMD_FMT_MOD_SET(TILE_VERSION, AMD_FMT_MOD_TILE_VER_GFX12) |
+                             AMD_FMT_MOD_SET(TILE, AMD_FMT_MOD_TILE_GFX12_256B_2D);
+
       /* Modifiers must be sorted from best to worst. */
       ADD_MOD(mod_64K_2D | dcc_128B)      /* 64K with DCC and 128B compressed blocks */
       ADD_MOD(mod_64K_2D | dcc_64B)       /* 64K with DCC and 64B compressed blocks */
       ADD_MOD(mod_64K_2D)                 /* 64K without DCC */
       ADD_MOD(mod_64K_2D_as_gfx11)        /* the same as above, but for gfx11 interop */
+      ADD_MOD(mod_256B_2D)
       ADD_MOD(DRM_FORMAT_MOD_LINEAR)
       break;
    }

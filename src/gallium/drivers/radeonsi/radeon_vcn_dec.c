@@ -3437,6 +3437,8 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
       dec->jpg_reg.version = RDECODE_JPEG_REG_VER_V3;
       dec->addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX11;
       dec->av1_version = RDECODE_AV1_VER_1;
+      if (radeon_has_video_preferred_gfx12_swizzle_mode(dec, &dec->dpb_modifier))
+         dec->dpb_use_surf = true;
       break;
    default:
       RVID_ERR("VCN is not supported.\n");

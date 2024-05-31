@@ -7713,8 +7713,7 @@ fs_nir_emit_surface_atomic(nir_to_brw_state &ntb, const fs_builder &bld,
          bld.emit(SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL,
                   retype(dest32, dest.type),
                   srcs, SURFACE_LOGICAL_NUM_SRCS);
-         bld.MOV(retype(dest, BRW_TYPE_UW),
-                 retype(dest32, BRW_TYPE_UD));
+         bld.MOV(retype(dest, BRW_TYPE_UW), dest32);
          break;
       }
 

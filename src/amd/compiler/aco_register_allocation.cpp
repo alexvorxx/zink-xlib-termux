@@ -2548,6 +2548,44 @@ init_reg_file(ra_ctx& ctx, const std::vector<IDSet>& live_out_per_block, Block& 
    return register_file;
 }
 
+bool
+vop3_can_use_vop2acc(ra_ctx& ctx, Instruction* instr)
+{
+   if (!instr->isVOP3() && !instr->isVOP3P())
+      return false;
+
+   if ((instr->opcode != aco_opcode::v_mad_f32 &&
+        (instr->opcode != aco_opcode::v_fma_f32 || ctx.program->gfx_level < GFX10) &&
+        instr->opcode != aco_opcode::v_mad_f16 && instr->opcode != aco_opcode::v_mad_legacy_f16 &&
+        (instr->opcode != aco_opcode::v_fma_f16 || ctx.program->gfx_level < GFX10) &&
+        (instr->opcode != aco_opcode::v_pk_fma_f16 || ctx.program->gfx_level < GFX10) &&
+        (instr->opcode != aco_opcode::v_mad_legacy_f32 || !ctx.program->dev.has_mac_legacy32) &&
+        (instr->opcode != aco_opcode::v_fma_legacy_f32 || !ctx.program->dev.has_fmac_legacy32) &&
+        (instr->opcode != aco_opcode::v_dot4_i32_i8 || ctx.program->family == CHIP_VEGA20)) ||
+       !instr->operands[2].isOfType(RegType::vgpr) || !instr->operands[2].isKillBeforeDef() ||
+       (!instr->operands[0].isOfType(RegType::vgpr) && !instr->operands[1].isOfType(RegType::vgpr)))
+      return false;
+
+   if (instr->isVOP3P()) {
+      if (instr->valu().opsel_lo != 0 || instr->valu().opsel_hi != 0x7)
+         return false;
+   } else {
+      if (instr->valu().opsel & (ctx.program->gfx_level < GFX11 ? 0xf : ~0x3))
+         return false;
+      for (unsigned i = 0; i < 2; i++) {
+         if (!instr->operands[i].isOfType(RegType::vgpr) && instr->valu().opsel[i])
+            return false;
+      }
+   }
+
+   unsigned im_mask = instr->isDPP16() && instr->isVOP3() ? 0x3 : 0;
+   if (instr->valu().omod || instr->valu().clamp || (instr->valu().abs & ~im_mask) ||
+       (instr->valu().neg & ~im_mask))
+      return false;
+
+   return true;
+}
+
 void
 get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
 {
@@ -2609,6 +2647,7 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
          }
 
          /* erase definitions from live */
+         int op_fixed_to_def0 = get_op_fixed_to_def(instr.get());
          for (unsigned i = 0; i < instr->definitions.size(); i++) {
             const Definition& def = instr->definitions[i];
             if (!def.isTemp())
@@ -2621,39 +2660,15 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                 def.regClass() == phi_resources[it->second][0].regClass()) {
                phi_resources[it->second][0] = def.getTemp();
                /* try to coalesce phi affinities with parallelcopies */
-               Operand op = Operand();
-               switch (instr->opcode) {
-               case aco_opcode::p_parallelcopy: op = instr->operands[i]; break;
-
-               case aco_opcode::v_interp_p2_f32:
-               case aco_opcode::v_writelane_b32:
-               case aco_opcode::v_writelane_b32_e64: op = instr->operands[2]; break;
-
-               case aco_opcode::v_fma_f32:
-               case aco_opcode::v_fma_f16:
-               case aco_opcode::v_pk_fma_f16:
-                  if (ctx.program->gfx_level < GFX10)
-                     continue;
-                  FALLTHROUGH;
-               case aco_opcode::v_mad_f32:
-               case aco_opcode::v_mad_f16:
-                  if (instr->usesModifiers())
-                     continue;
+               Operand op;
+               if (instr->opcode == aco_opcode::p_parallelcopy) {
+                  op = instr->operands[i];
+               } else if (i == 0 && op_fixed_to_def0 != -1) {
+                  op = instr->operands[op_fixed_to_def0];
+               } else if (vop3_can_use_vop2acc(ctx, instr.get())) {
                   op = instr->operands[2];
-                  break;
-
-               case aco_opcode::v_mad_legacy_f32:
-                  if (instr->usesModifiers() || !ctx.program->dev.has_mac_legacy32)
-                     continue;
-                  op = instr->operands[2];
-                  break;
-               case aco_opcode::v_fma_legacy_f32:
-                  if (instr->usesModifiers() || !ctx.program->dev.has_fmac_legacy32)
-                     continue;
-                  op = instr->operands[2];
-                  break;
-
-               default: continue;
+               } else {
+                  continue;
                }
 
                if (op.isTemp() && op.isFirstKillBeforeDef() && def.regClass() == op.regClass()) {
@@ -2737,43 +2752,15 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
 }
 
 void
-optimize_encoding_vop2(Program* program, ra_ctx& ctx, RegisterFile& register_file,
-                       aco_ptr<Instruction>& instr)
+optimize_encoding_vop2(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruction>& instr)
 {
-   /* try to optimize v_mad_f32 -> v_mac_f32 */
-   if ((instr->opcode != aco_opcode::v_mad_f32 &&
-        (instr->opcode != aco_opcode::v_fma_f32 || program->gfx_level < GFX10) &&
-        instr->opcode != aco_opcode::v_mad_f16 && instr->opcode != aco_opcode::v_mad_legacy_f16 &&
-        (instr->opcode != aco_opcode::v_fma_f16 || program->gfx_level < GFX10) &&
-        (instr->opcode != aco_opcode::v_pk_fma_f16 || program->gfx_level < GFX10) &&
-        (instr->opcode != aco_opcode::v_mad_legacy_f32 || !program->dev.has_mac_legacy32) &&
-        (instr->opcode != aco_opcode::v_fma_legacy_f32 || !program->dev.has_fmac_legacy32) &&
-        (instr->opcode != aco_opcode::v_dot4_i32_i8 || program->family == CHIP_VEGA20)) ||
-       !instr->operands[2].isTemp() || !instr->operands[2].isKillBeforeDef() ||
-       instr->operands[2].getTemp().type() != RegType::vgpr ||
-       (!instr->operands[0].isOfType(RegType::vgpr) &&
-        !instr->operands[1].isOfType(RegType::vgpr)) ||
-       instr->operands[2].physReg().byte() != 0 || instr->valu().opsel[2])
+   if (!vop3_can_use_vop2acc(ctx, instr.get()))
       return;
 
-   if (instr->isVOP3P() && (instr->valu().opsel_lo != 0 || instr->valu().opsel_hi != 0x7))
-      return;
-
-   if ((instr->operands[0].physReg().byte() != 0 || instr->operands[1].physReg().byte() != 0 ||
-        instr->valu().opsel) &&
-       program->gfx_level < GFX11)
-      return;
-
-   unsigned im_mask = instr->isDPP16() ? 0x3 : 0;
-   if (instr->valu().omod || instr->valu().clamp || (instr->valu().abs & ~im_mask) ||
-       (instr->valu().neg & ~im_mask))
-      return;
-
-   if (!instr->operands[1].isOfType(RegType::vgpr))
-      instr->valu().swapOperands(0, 1);
-
-   if (!instr->operands[0].isOfType(RegType::vgpr) && instr->valu().opsel[0])
-      return;
+   for (unsigned i = ctx.program->gfx_level < GFX11 ? 0 : 2; i < 3; i++) {
+      if (instr->operands[i].physReg().byte())
+         return;
+   }
 
    unsigned def_id = instr->definitions[0].tempId();
    if (ctx.assignments[def_id].affinity) {
@@ -2782,6 +2769,9 @@ optimize_encoding_vop2(Program* program, ra_ctx& ctx, RegisterFile& register_fil
           !register_file.test(affinity.reg, instr->operands[2].bytes()))
          return;
    }
+
+   if (!instr->operands[1].isOfType(RegType::vgpr))
+      instr->valu().swapOperands(0, 1);
 
    instr->format = (Format)(((unsigned)withoutVOP3(instr->format) & ~(unsigned)Format::VOP3P) |
                             (unsigned)Format::VOP2);
@@ -2801,8 +2791,7 @@ optimize_encoding_vop2(Program* program, ra_ctx& ctx, RegisterFile& register_fil
 }
 
 void
-optimize_encoding_sopk(Program* program, ra_ctx& ctx, RegisterFile& register_file,
-                       aco_ptr<Instruction>& instr)
+optimize_encoding_sopk(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruction>& instr)
 {
    /* try to optimize sop2 with literal source to sopk */
    if (instr->opcode != aco_opcode::s_add_i32 && instr->opcode != aco_opcode::s_mul_i32 &&
@@ -2855,13 +2844,12 @@ optimize_encoding_sopk(Program* program, ra_ctx& ctx, RegisterFile& register_fil
 }
 
 void
-optimize_encoding(Program* program, ra_ctx& ctx, RegisterFile& register_file,
-                  aco_ptr<Instruction>& instr)
+optimize_encoding(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruction>& instr)
 {
    if (instr->isVALU())
-      optimize_encoding_vop2(program, ctx, register_file, instr);
+      optimize_encoding_vop2(ctx, register_file, instr);
    if (instr->isSALU())
-      optimize_encoding_sopk(program, ctx, register_file, instr);
+      optimize_encoding_sopk(ctx, register_file, instr);
 }
 
 void
@@ -3112,7 +3100,7 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
                register_file.clear(op);
          }
 
-         optimize_encoding(program, ctx, register_file, instr);
+         optimize_encoding(ctx, register_file, instr);
 
          /* Handle definitions which must have the same register as an operand.
           * We expect that the definition has the same size as the operand, otherwise the new

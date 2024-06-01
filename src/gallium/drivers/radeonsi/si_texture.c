@@ -225,6 +225,24 @@ static int si_init_surface(struct si_screen *sscreen, struct radeon_surf *surfac
              ptex->flags & PIPE_RESOURCE_FLAG_SPARSE)
             flags |= RADEON_SURF_NO_HTILE;
       }
+
+      /* TODO: Set these for scanout after display DCC is enabled. The reason these are not set is
+       * because they overlap DCC_OFFSET_256B and the kernel driver incorrectly reads DCC_OFFSET_256B
+       * on GFX12, which completely breaks the display code.
+       */
+      if (!is_imported && !(ptex->bind & PIPE_BIND_SCANOUT)) {
+         enum pipe_format format = util_format_get_depth_only(ptex->format);
+
+         /* These should be set for both color and Z/S. */
+         surface->u.gfx9.color.dcc_number_type = ac_get_cb_number_type(format);
+         surface->u.gfx9.color.dcc_data_format = ac_get_cb_format(sscreen->info.gfx_level, format);
+      }
+
+      if (surface->modifier == DRM_FORMAT_MOD_INVALID &&
+          (ptex->bind & PIPE_BIND_CONST_BW ||
+           sscreen->debug_flags & DBG(NO_DCC) ||
+           (ptex->bind & PIPE_BIND_SCANOUT && sscreen->debug_flags & DBG(NO_DISPLAY_DCC))))
+         flags |= RADEON_SURF_DISABLE_DCC;
    } else {
       /* Gfx6-11 */
       if (!is_flushed_depth && is_depth) {
@@ -1027,6 +1045,14 @@ static struct si_texture *si_texture_create_object(struct pipe_screen *screen,
 
       /* Create the backing buffer. */
       si_init_resource_fields(sscreen, resource, alloc_size, alignment);
+
+      /* GFX12: Image descriptors always set COMPRESSION_EN=1, so this is the only thing that
+       * disables DCC in the driver.
+       */
+      if (sscreen->info.gfx_level >= GFX12 &&
+          resource->domains & RADEON_DOMAIN_VRAM &&
+          surface->u.gfx9.gfx12_enable_dcc)
+         resource->flags |= RADEON_FLAG_GFX12_ALLOW_DCC;
 
       if (!si_alloc_resource(sscreen, resource))
          goto error;

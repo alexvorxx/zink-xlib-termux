@@ -559,6 +559,9 @@ static struct amdgpu_winsys_bo *amdgpu_create_bo(struct amdgpu_winsys *aws,
       }
    }
 
+   if (flags & RADEON_FLAG_GFX12_ALLOW_DCC)
+      request.flags |= AMDGPU_GEM_CREATE_GFX12_DCC;
+
    r = amdgpu_bo_alloc(aws->dev, &request, &buf_handle);
    if (r) {
       fprintf(stderr, "amdgpu: Failed to allocate a buffer:\n");
@@ -1562,6 +1565,8 @@ static struct pb_buffer_lean *amdgpu_bo_from_handle(struct radeon_winsys *rws,
       flags |= RADEON_FLAG_ENCRYPTED;
       *((bool*)&rws->uses_secure_bos) = true;
    }
+   if (info.alloc_flags & AMDGPU_GEM_CREATE_GFX12_DCC)
+      flags |= RADEON_FLAG_GFX12_ALLOW_DCC;
 
    /* Initialize the structure. */
    pipe_reference_init(&bo->b.base.reference, 1);

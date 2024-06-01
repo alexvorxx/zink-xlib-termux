@@ -63,6 +63,7 @@ enum radeon_bo_flag
     */
   RADEON_FLAG_DISCARDABLE = (1 << 10),
   RADEON_FLAG_WINSYS_SLAB_BACKING = (1 << 11), /* only used by the winsys */
+  RADEON_FLAG_GFX12_ALLOW_DCC = (1 << 12), /* allow DCC, VRAM only */
 };
 
 static inline void
@@ -87,6 +88,8 @@ si_res_print_flags(enum radeon_bo_flag flags) {
       fprintf(stderr, "DRIVER_INTERNAL ");
    if (flags & RADEON_FLAG_DISCARDABLE)
       fprintf(stderr, "DISCARDABLE ");
+   if (flags & RADEON_FLAG_GFX12_ALLOW_DCC)
+      fprintf(stderr, "GFX12_ALLOW_DCC ");
 }
 
 enum radeon_map_flags
@@ -815,6 +818,7 @@ radeon_bo_drop_reference(struct radeon_winsys *rws, struct pb_buffer_lean *dst)
 #define RADEON_HEAP_BIT_ENCRYPTED      (1 << 3) /* both VRAM and GTT */
 
 #define RADEON_HEAP_BIT_NO_CPU_ACCESS  (1 << 4) /* VRAM only */
+#define RADEON_HEAP_BIT_GFX12_ALLOW_DCC (1 << 5) /* VRAM only */
 
 #define RADEON_HEAP_BIT_WC             (1 << 4) /* GTT only, VRAM implies this to be true */
 
@@ -848,6 +852,8 @@ static inline unsigned radeon_flags_from_heap(int heap)
       flags |= RADEON_FLAG_GTT_WC;
       if (heap & RADEON_HEAP_BIT_NO_CPU_ACCESS)
          flags |= RADEON_FLAG_NO_CPU_ACCESS;
+      if (heap & RADEON_HEAP_BIT_GFX12_ALLOW_DCC)
+         flags |= RADEON_FLAG_GFX12_ALLOW_DCC;
    } else {
       /* GTT only */
       if (heap & RADEON_HEAP_BIT_WC)
@@ -878,6 +884,7 @@ static void radeon_canonicalize_bo_flags(enum radeon_bo_domain *_domain,
       break;
    case RADEON_DOMAIN_GTT:
       flags &= ~RADEON_FLAG_NO_CPU_ACCESS;
+      flags &= ~RADEON_FLAG_GFX12_ALLOW_DCC;
       break;
    case RADEON_DOMAIN_GDS:
    case RADEON_DOMAIN_OA:
@@ -923,6 +930,8 @@ static inline int radeon_get_heap_index(enum radeon_bo_domain domain, enum radeo
       heap |= RADEON_HEAP_BIT_VRAM;
       if (flags & RADEON_FLAG_NO_CPU_ACCESS)
          heap |= RADEON_HEAP_BIT_NO_CPU_ACCESS;
+      if (flags & RADEON_FLAG_GFX12_ALLOW_DCC)
+         heap |= RADEON_HEAP_BIT_GFX12_ALLOW_DCC;
       /* RADEON_FLAG_WC is ignored and implied to be true for VRAM */
    } else if (domain == RADEON_DOMAIN_GTT) {
       /* GTT is implied by RADEON_HEAP_BIT_VRAM not being set. */

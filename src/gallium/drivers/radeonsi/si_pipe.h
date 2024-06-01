@@ -1792,6 +1792,9 @@ si_shader_selector_reference(struct si_context *sctx, /* sctx can optionally be 
 
 static inline bool vi_dcc_enabled(struct si_texture *tex, unsigned level)
 {
+   /* Gfx12 always returns false because DCC is transparent to the driver.
+    * I think DCC doesn't have to be disabled if a color buffer is simultaneously bound as a sampler.
+    */
    return !tex->is_depth && tex->surface.meta_offset && level < tex->surface.num_meta_levels;
 }
 

@@ -2568,13 +2568,15 @@ vop3_can_use_vop2acc(ra_ctx& ctx, Instruction* instr)
 
    if (instr->isVOP3P()) {
       for (unsigned i = 0; i < 3; i++) {
+         if (instr->operands[i].isLiteral())
+            continue;
+
          if (instr->valu().opsel_lo[i])
             return false;
 
          /* v_pk_fmac_f16 inline constants are replicated to hi bits starting with gfx11. */
          if (instr->valu().opsel_hi[i] ==
-             (instr->operands[i].isConstant() && !instr->operands[i].isLiteral() &&
-              ctx.program->gfx_level >= GFX11))
+             (instr->operands[i].isConstant() && ctx.program->gfx_level >= GFX11))
             return false;
       }
    } else {
@@ -2809,8 +2811,16 @@ optimize_encoding_vop2(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruc
    if (!instr->operands[1].isOfType(RegType::vgpr))
       instr->valu().swapOperands(0, 1);
 
+   if (instr->isVOP3P() && instr->operands[0].isLiteral()) {
+      unsigned literal = instr->operands[0].constantValue();
+      unsigned lo = (literal >> (instr->valu().opsel_lo[0] * 16)) & 0xffff;
+      unsigned hi = (literal >> (instr->valu().opsel_hi[0] * 16)) & 0xffff;
+      instr->operands[0] = Operand::literal32(lo | (hi << 16));
+   }
+
    instr->format = (Format)(((unsigned)withoutVOP3(instr->format) & ~(unsigned)Format::VOP3P) |
                             (unsigned)Format::VOP2);
+   instr->valu().opsel_lo = 0;
    instr->valu().opsel_hi = 0;
    switch (instr->opcode) {
    case aco_opcode::v_mad_f32: instr->opcode = aco_opcode::v_mac_f32; break;

@@ -5139,41 +5139,6 @@ try_convert_sopc_to_sopk(aco_ptr<Instruction>& instr)
 }
 
 static void
-unswizzle_vop3p_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
-{
-   /* This opt is only beneficial for v_pk_fma_f16 because we can use v_pk_fmac_f16 if the
-    * instruction doesn't use swizzles. */
-   if (instr->opcode != aco_opcode::v_pk_fma_f16)
-      return;
-
-   VALU_instruction& vop3p = instr->valu();
-
-   unsigned literal_swizzle = ~0u;
-   for (unsigned i = 0; i < instr->operands.size(); i++) {
-      if (!instr->operands[i].isLiteral())
-         continue;
-      unsigned new_swizzle = vop3p.opsel_lo[i] | (vop3p.opsel_hi[i] << 1);
-      if (literal_swizzle != ~0u && new_swizzle != literal_swizzle)
-         return; /* Literal swizzles conflict. */
-      literal_swizzle = new_swizzle;
-   }
-
-   if (literal_swizzle == 0b10 || literal_swizzle == ~0u)
-      return; /* already unswizzled */
-
-   for (unsigned i = 0; i < instr->operands.size(); i++) {
-      if (!instr->operands[i].isLiteral())
-         continue;
-      uint32_t literal = instr->operands[i].constantValue();
-      literal = (literal >> (16 * (literal_swizzle & 0x1)) & 0xffff) |
-                (literal >> (8 * (literal_swizzle & 0x2)) << 16);
-      instr->operands[i] = Operand::literal32(literal);
-      vop3p.opsel_lo[i] = false;
-      vop3p.opsel_hi[i] = true;
-   }
-}
-
-static void
 opt_fma_mix_acc(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
    /* fma_mix is only dual issued on gfx11 if dst and acc type match */
@@ -5319,9 +5284,6 @@ apply_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    if (instr->opcode == aco_opcode::s_add_u32 && ctx.uses[instr->definitions[1].tempId()] == 0 &&
        (instr->operands[0].isLiteral() || instr->operands[1].isLiteral()))
       instr->opcode = aco_opcode::s_add_i32;
-
-   if (instr->isVOP3P())
-      unswizzle_vop3p_literals(ctx, instr);
 
    if (instr->opcode == aco_opcode::v_fma_mixlo_f16 || instr->opcode == aco_opcode::v_fma_mix_f32)
       opt_fma_mix_acc(ctx, instr);

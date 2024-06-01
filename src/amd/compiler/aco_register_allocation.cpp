@@ -2586,6 +2586,32 @@ vop3_can_use_vop2acc(ra_ctx& ctx, Instruction* instr)
    return true;
 }
 
+bool
+sop2_can_use_sopk(ra_ctx& ctx, Instruction* instr)
+{
+   if (instr->opcode != aco_opcode::s_add_i32 && instr->opcode != aco_opcode::s_mul_i32 &&
+       instr->opcode != aco_opcode::s_cselect_b32)
+      return false;
+
+   uint32_t literal_idx = 0;
+
+   if (instr->opcode != aco_opcode::s_cselect_b32 && instr->operands[1].isLiteral())
+      literal_idx = 1;
+
+   if (!instr->operands[!literal_idx].isTemp() || !instr->operands[!literal_idx].isKillBeforeDef())
+      return false;
+
+   if (!instr->operands[literal_idx].isLiteral())
+      return false;
+
+   const uint32_t i16_mask = 0xffff8000u;
+   uint32_t value = instr->operands[literal_idx].constantValue();
+   if ((value & i16_mask) && (value & i16_mask) != i16_mask)
+      return false;
+
+   return true;
+}
+
 void
 get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
 {
@@ -2667,6 +2693,8 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                   op = instr->operands[op_fixed_to_def0];
                } else if (vop3_can_use_vop2acc(ctx, instr.get())) {
                   op = instr->operands[2];
+               } else if (sop2_can_use_sopk(ctx, instr.get())) {
+                  op = instr->operands[instr->operands[0].isLiteral()];
                } else {
                   continue;
                }
@@ -2794,27 +2822,11 @@ void
 optimize_encoding_sopk(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruction>& instr)
 {
    /* try to optimize sop2 with literal source to sopk */
-   if (instr->opcode != aco_opcode::s_add_i32 && instr->opcode != aco_opcode::s_mul_i32 &&
-       instr->opcode != aco_opcode::s_cselect_b32)
+   if (!sop2_can_use_sopk(ctx, instr.get()))
       return;
+   unsigned literal_idx = instr->operands[1].isLiteral();
 
-   uint32_t literal_idx = 0;
-
-   if (instr->opcode != aco_opcode::s_cselect_b32 && instr->operands[1].isLiteral())
-      literal_idx = 1;
-
-   if (!instr->operands[!literal_idx].isTemp() ||
-       !instr->operands[!literal_idx].isKillBeforeDef() ||
-       instr->operands[!literal_idx].getTemp().type() != RegType::sgpr ||
-       instr->operands[!literal_idx].physReg() >= 128)
-      return;
-
-   if (!instr->operands[literal_idx].isLiteral())
-      return;
-
-   const uint32_t i16_mask = 0xffff8000u;
-   uint32_t value = instr->operands[literal_idx].constantValue();
-   if ((value & i16_mask) && (value & i16_mask) != i16_mask)
+   if (instr->operands[!literal_idx].physReg() >= 128)
       return;
 
    unsigned def_id = instr->definitions[0].tempId();
@@ -2826,19 +2838,17 @@ optimize_encoding_sopk(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruc
    }
 
    instr->format = Format::SOPK;
-   SALU_instruction* instr_sopk = &instr->salu();
-
-   instr_sopk->imm = instr_sopk->operands[literal_idx].constantValue() & 0xffff;
+   instr->salu().imm = instr->operands[literal_idx].constantValue() & 0xffff;
    if (literal_idx == 0)
-      std::swap(instr_sopk->operands[0], instr_sopk->operands[1]);
-   if (instr_sopk->operands.size() > 2)
-      std::swap(instr_sopk->operands[1], instr_sopk->operands[2]);
-   instr_sopk->operands.pop_back();
+      std::swap(instr->operands[0], instr->operands[1]);
+   if (instr->operands.size() > 2)
+      std::swap(instr->operands[1], instr->operands[2]);
+   instr->operands.pop_back();
 
-   switch (instr_sopk->opcode) {
-   case aco_opcode::s_add_i32: instr_sopk->opcode = aco_opcode::s_addk_i32; break;
-   case aco_opcode::s_mul_i32: instr_sopk->opcode = aco_opcode::s_mulk_i32; break;
-   case aco_opcode::s_cselect_b32: instr_sopk->opcode = aco_opcode::s_cmovk_i32; break;
+   switch (instr->opcode) {
+   case aco_opcode::s_add_i32: instr->opcode = aco_opcode::s_addk_i32; break;
+   case aco_opcode::s_mul_i32: instr->opcode = aco_opcode::s_mulk_i32; break;
+   case aco_opcode::s_cselect_b32: instr->opcode = aco_opcode::s_cmovk_i32; break;
    default: unreachable("illegal instruction");
    }
 }

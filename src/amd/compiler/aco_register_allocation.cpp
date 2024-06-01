@@ -2567,8 +2567,16 @@ vop3_can_use_vop2acc(ra_ctx& ctx, Instruction* instr)
       return false;
 
    if (instr->isVOP3P()) {
-      if (instr->valu().opsel_lo != 0 || instr->valu().opsel_hi != 0x7)
-         return false;
+      for (unsigned i = 0; i < 3; i++) {
+         if (instr->valu().opsel_lo[i])
+            return false;
+
+         /* v_pk_fmac_f16 inline constants are replicated to hi bits starting with gfx11. */
+         if (instr->valu().opsel_hi[i] ==
+             (instr->operands[i].isConstant() && !instr->operands[i].isLiteral() &&
+              ctx.program->gfx_level >= GFX11))
+            return false;
+      }
    } else {
       if (instr->valu().opsel & (ctx.program->gfx_level < GFX11 ? 0xf : ~0x3))
          return false;

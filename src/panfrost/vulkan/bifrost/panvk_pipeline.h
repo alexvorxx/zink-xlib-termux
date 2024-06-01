@@ -21,6 +21,7 @@
 #include "pan_blend.h"
 #include "pan_desc.h"
 
+#include "panvk_mempool.h"
 #include "panvk_shader.h"
 
 #define MAX_RTS 8

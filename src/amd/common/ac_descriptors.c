@@ -414,7 +414,29 @@ ac_set_mutable_tex_desc_fields(const struct radeon_info *info, const struct ac_m
          }
       }
 
-      if (meta_va) {
+      if (info->gfx_level >= GFX12) {
+         /* Color and Z/S always support compressed image stores on Gfx12. Enablement is
+          * mostly controlled by PTE.D (page table bit). The rule is:
+          *
+          * Shader Engines (shaders, CB, DB, SC):
+          *    COMPRESSION_ENABLED = PTE.D && COMPRESSION_EN;
+          *
+          * Central Hub (CP, SDMA, indices, tess factor loads):
+          *    PTE.D is ignored. Packets and states fully determine enablement.
+          *
+          * If !PTE.D, the states enabling compression in shaders, CB, DB, and SC have no effect.
+          * PTE.D is set per buffer allocation in Linux, not per VM page, so that it's
+          * automatically propagated between processes. We could optionally allow setting it
+          * per VM page too.
+          *
+          * The DCC/HTILE buffer isn't allocated separately on Gfx12 anymore. The DCC/HTILE
+          * metadata storage is mostly hidden from userspace, and any buffer can be compressed.
+          */
+         if (state->dcc_enabled) {
+            desc[6] |= S_00A018_COMPRESSION_EN(1) |
+                       S_00A018_WRITE_COMPRESS_ENABLE(state->gfx10.write_compress_enable);
+         }
+      } else if (meta_va) {
          /* Gfx10-11. */
          struct gfx9_surf_meta_flags meta = {
             .rb_aligned = 1,

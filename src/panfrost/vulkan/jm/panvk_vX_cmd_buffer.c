@@ -31,6 +31,7 @@
 #include "panvk_buffer.h"
 #include "panvk_cmd_buffer.h"
 #include "panvk_cmd_pool.h"
+#include "panvk_cmd_push_constant.h"
 #include "panvk_device.h"
 #include "panvk_entrypoints.h"
 #include "panvk_event.h"
@@ -270,7 +271,6 @@ static void
 panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
                                struct panvk_draw_info *draw)
 {
-   struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
    struct panvk_graphics_sysvals *sysvals = &cmdbuf->state.gfx.sysvals;
    struct vk_color_blend_state *cb = &cmdbuf->vk.dynamic_graphics_state.cb;
 
@@ -281,14 +281,14 @@ panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
       sysvals->vs.first_vertex = draw->offset_start;
       sysvals->vs.base_vertex = base_vertex;
       sysvals->vs.base_instance = draw->first_instance;
-      desc_state->push_uniforms = 0;
+      cmdbuf->state.gfx.push_uniforms = 0;
    }
 
    if (is_dirty(cmdbuf, CB_BLEND_CONSTANTS)) {
       for (unsigned i = 0; i < ARRAY_SIZE(cb->blend_constants); i++)
          sysvals->blend.constants[i] =
             CLAMP(cb->blend_constants[i], 0.0f, 1.0f);
-      desc_state->push_uniforms = 0;
+      cmdbuf->state.gfx.push_uniforms = 0;
    }
 
    if (is_dirty(cmdbuf, VP_VIEWPORTS)) {
@@ -317,29 +317,8 @@ panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
       sysvals->viewport.offset.x = (0.5f * viewport->width) + viewport->x;
       sysvals->viewport.offset.y = (0.5f * viewport->height) + viewport->y;
       sysvals->viewport.offset.z = viewport->minDepth;
-      desc_state->push_uniforms = 0;
+      cmdbuf->state.gfx.push_uniforms = 0;
    }
-}
-
-static void
-panvk_cmd_prepare_push_uniforms(struct panvk_cmd_buffer *cmdbuf,
-                                struct panvk_descriptor_state *desc_state,
-                                void *sysvals, unsigned sysvals_sz)
-{
-   if (desc_state->push_uniforms)
-      return;
-
-   struct panfrost_ptr push_uniforms =
-      pan_pool_alloc_aligned(&cmdbuf->desc_pool.base, 512, 16);
-
-   /* The first half is used for push constants. */
-   memcpy(push_uniforms.cpu, cmdbuf->push_constants,
-          sizeof(cmdbuf->push_constants));
-
-   /* The second half is used for sysvals. */
-   memcpy((uint8_t *)push_uniforms.cpu + 256, sysvals, sysvals_sz);
-
-   desc_state->push_uniforms = push_uniforms.gpu;
 }
 
 static void
@@ -1521,10 +1500,16 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
 
    panvk_cmd_prepare_draw_sysvals(cmdbuf, draw);
+
+   struct pan_pool *desc_pool_base = &cmdbuf->desc_pool.base;
    panvk_cmd_prepare_push_sets(cmdbuf, desc_state, &pipeline->base);
-   panvk_cmd_prepare_push_uniforms(cmdbuf, desc_state,
-                                   &cmdbuf->state.gfx.sysvals,
-                                   sizeof(cmdbuf->state.gfx.sysvals));
+
+   if (!cmdbuf->state.gfx.push_uniforms) {
+      cmdbuf->state.gfx.push_uniforms = panvk_cmd_prepare_push_uniforms(
+         desc_pool_base, &cmdbuf->state.push_constants,
+         &cmdbuf->state.gfx.sysvals, sizeof(cmdbuf->state.gfx.sysvals));
+   }
+
    panvk_cmd_prepare_ubos(cmdbuf, desc_state, &pipeline->base);
    panvk_cmd_prepare_textures(cmdbuf, desc_state, &pipeline->base);
    panvk_cmd_prepare_samplers(cmdbuf, desc_state, &pipeline->base);
@@ -1533,7 +1518,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    draw->tls = batch->tls.gpu;
    draw->fb = batch->fb.desc.gpu;
    draw->ubos = desc_state->ubos;
-   draw->push_uniforms = desc_state->push_uniforms;
+   draw->push_uniforms = cmdbuf->state.gfx.push_uniforms;
    draw->textures = desc_state->textures;
    draw->samplers = desc_state->samplers;
 
@@ -1945,6 +1930,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       &cmdbuf->state.compute.desc_state;
    const struct panvk_compute_pipeline *pipeline =
       cmdbuf->state.compute.pipeline;
+   struct pan_pool *desc_pool_base = &cmdbuf->desc_pool.base;
    struct panfrost_ptr job =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, COMPUTE_JOB);
    util_dynarray_append(&batch->jobs, void *, job.cpu);
@@ -1956,7 +1942,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    sysvals->local_group_size.x = pipeline->local_size.x;
    sysvals->local_group_size.y = pipeline->local_size.y;
    sysvals->local_group_size.z = pipeline->local_size.z;
-   desc_state->push_uniforms = 0;
+   cmdbuf->state.compute.push_uniforms = 0;
 
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);
    dispatch.tsd = batch->tls.gpu;
@@ -1972,10 +1958,12 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    panvk_cmd_prepare_ubos(cmdbuf, desc_state, &pipeline->base);
    dispatch.ubos = desc_state->ubos;
 
-   panvk_cmd_prepare_push_uniforms(cmdbuf, desc_state,
-                                   &cmdbuf->state.compute.sysvals,
-                                   sizeof(cmdbuf->state.compute.sysvals));
-   dispatch.push_uniforms = desc_state->push_uniforms;
+   if (!cmdbuf->state.compute.push_uniforms) {
+      cmdbuf->state.compute.push_uniforms = panvk_cmd_prepare_push_uniforms(
+         desc_pool_base, &cmdbuf->state.push_constants,
+         &cmdbuf->state.compute.sysvals, sizeof(cmdbuf->state.compute.sysvals));
+   }
+   dispatch.push_uniforms = cmdbuf->state.compute.push_uniforms;
 
    panvk_cmd_prepare_textures(cmdbuf, desc_state, &pipeline->base);
    dispatch.textures = desc_state->textures;
@@ -2515,20 +2503,14 @@ panvk_per_arch(CmdPushConstants)(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
-   memcpy(cmdbuf->push_constants + offset, pValues, size);
+   if (stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS)
+      cmdbuf->state.gfx.push_uniforms = 0;
 
-   if (stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
-      struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
+   if (stageFlags & VK_SHADER_STAGE_COMPUTE_BIT)
+      cmdbuf->state.compute.push_uniforms = 0;
 
-      desc_state->push_uniforms = 0;
-   }
-
-   if (stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
-      struct panvk_descriptor_state *desc_state =
-         &cmdbuf->state.compute.desc_state;
-
-      desc_state->push_uniforms = 0;
-   }
+   panvk_cmd_push_constants(&cmdbuf->state.push_constants, stageFlags, offset,
+                            size, pValues);
 }
 
 VKAPI_ATTR void VKAPI_CALL

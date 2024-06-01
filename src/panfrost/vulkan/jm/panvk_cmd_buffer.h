@@ -14,6 +14,7 @@
 
 #include "vulkan/runtime/vk_command_buffer.h"
 
+#include "panvk_cmd_push_constant.h"
 #include "panvk_descriptor_set.h"
 #include "panvk_descriptor_set_layout.h"
 #include "panvk_device.h"
@@ -30,7 +31,6 @@
 
 #define MAX_BIND_POINTS         2 /* compute + graphics */
 #define MAX_VBS                 16
-#define MAX_PUSH_CONSTANTS_SIZE 128
 
 struct panvk_batch {
    struct list_head node;
@@ -84,7 +84,6 @@ struct panvk_descriptor_state {
    mali_ptr textures;
    mali_ptr samplers;
    mali_ptr dyn_desc_ubo;
-   mali_ptr push_uniforms;
 
    struct {
       mali_ptr attribs;
@@ -152,12 +151,14 @@ struct panvk_cmd_graphics_state {
    } render;
 
    mali_ptr vpd;
+   mali_ptr push_uniforms;
 };
 
 struct panvk_cmd_compute_state {
    struct panvk_descriptor_state desc_state;
    const struct panvk_compute_pipeline *pipeline;
    struct panvk_compute_sysvals sysvals;
+   mali_ptr push_uniforms;
 };
 
 struct panvk_cmd_buffer {
@@ -172,9 +173,8 @@ struct panvk_cmd_buffer {
    struct {
       struct panvk_cmd_graphics_state gfx;
       struct panvk_cmd_compute_state compute;
+      struct panvk_push_constant_state push_constants;
    } state;
-
-   uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
 };
 
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,

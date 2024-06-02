@@ -290,6 +290,7 @@ rra_fill_accel_struct_header_common(struct radv_accel_struct_header *header, siz
       .geometry_description_count = header->geometry_count,
       .interior_fp32_node_count = internal_node_data_size / sizeof(struct radv_bvh_box32_node),
       .leaf_node_count = primitive_count,
+      .rt_driver_interface_version = 8 << 16,
    };
 
    result.metadata_size = sizeof(struct rra_accel_struct_metadata) + parent_id_table_size;

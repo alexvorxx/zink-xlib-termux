@@ -335,7 +335,6 @@ if with_aco_tests and not with_amd_vk
 endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
-with_clc = with_microsoft_clc or with_intel_clc or with_gallium_asahi
 with_spirv_to_dxil = get_option('spirv-to-dxil')
 
 if host_machine.system() == 'darwin'
@@ -852,9 +851,10 @@ if with_gallium_rusticl
 
   add_languages('rust', required: true)
   rustc = meson.get_compiler('rust')
-
-  with_clc = true
 endif
+
+with_clover_spirv = with_gallium_opencl and get_option('opencl-spirv')
+with_clc = with_microsoft_clc or with_intel_clc or with_gallium_asahi or with_gallium_rusticl or with_clover_spirv
 
 dep_clc = null_dep
 if with_gallium_opencl or with_clc
@@ -1845,8 +1845,7 @@ pre_args += '-DLLVM_AVAILABLE=@0@'.format(with_llvm.to_int())
 pre_args += '-DDRAW_LLVM_AVAILABLE=@0@'.format((with_llvm and draw_with_llvm).to_int())
 pre_args += '-DAMD_LLVM_AVAILABLE=@0@'.format(amd_with_llvm.to_int())
 
-with_opencl_spirv = (_opencl != 'disabled' and get_option('opencl-spirv')) or with_clc
-if with_opencl_spirv
+if with_clover_spirv or with_clc
   chosen_llvm_version_array = dep_llvm.version().split('.')
   chosen_llvm_version_major = chosen_llvm_version_array[0].to_int()
   chosen_llvm_version_minor = chosen_llvm_version_array[1].to_int()

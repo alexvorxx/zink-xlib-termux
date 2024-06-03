@@ -40,6 +40,18 @@
         - src/vulkan/**/*
       when: on_success
 
+.radv-manual-rules:
+  stage: amd
+  rules:
+    - !reference [.test, rules]
+    - !reference [.vulkan-manual-rules, rules]
+    - changes:
+        *amd_common_file_list
+      when: manual
+    - changes:
+        *radv_file_list
+      when: manual
+
 .radv-collabora-rules:
   stage: amd
   rules:
@@ -67,13 +79,7 @@
   rules:
     - !reference [.test, rules]
     - !reference [.valve-farm-manual-rules, rules]
-    - !reference [.vulkan-manual-rules, rules]
-    - changes:
-        *amd_common_file_list
-      when: manual
-    - changes:
-        *radv_file_list
-      when: manual
+    - !reference [.radv-manual-rules, rules]
 
 .radeonsi+radv-rules:
   stage: amd

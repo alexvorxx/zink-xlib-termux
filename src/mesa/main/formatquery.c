@@ -440,10 +440,6 @@ _is_target_supported(struct gl_context *ctx, GLenum target)
       break;
 
    case GL_TEXTURE_1D_ARRAY:
-      if (!_mesa_has_EXT_texture_array(ctx))
-         return false;
-      break;
-
    case GL_TEXTURE_2D_ARRAY:
       if (!_mesa_has_EXT_texture_array(ctx))
          return false;

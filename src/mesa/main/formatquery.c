@@ -470,15 +470,15 @@ _is_target_supported(struct gl_context *ctx, GLenum target)
       break;
 
    case GL_RENDERBUFFER:
-      if (!(_mesa_has_ARB_framebuffer_object(ctx) ||
-            _mesa_is_gles3(ctx)))
+      if (!_mesa_has_ARB_framebuffer_object(ctx) &&
+          !_mesa_is_gles3(ctx))
          return false;
       break;
 
    case GL_TEXTURE_2D_MULTISAMPLE:
    case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
-      if (!(_mesa_has_ARB_texture_multisample(ctx) ||
-            _mesa_is_gles31(ctx)))
+      if (!_mesa_has_ARB_texture_multisample(ctx) &&
+          !_mesa_is_gles31(ctx))
          return false;
       break;
 
@@ -925,8 +925,8 @@ _mesa_GetInternalformativ(GLenum target, GLenum internalformat, GLenum pname,
    ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    /* ARB_internalformat_query is also mandatory for ARB_internalformat_query2 */
-   if (!(_mesa_has_ARB_internalformat_query(ctx) ||
-         _mesa_is_gles3(ctx))) {
+   if (!_mesa_has_ARB_internalformat_query(ctx) &&
+       !_mesa_is_gles3(ctx)) {
       _mesa_error(ctx, GL_INVALID_OPERATION, "glGetInternalformativ");
       return;
    }

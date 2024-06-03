@@ -380,6 +380,8 @@ standalone_compile_shader(const struct standalone_options *_options,
    switch (options->glsl_version) {
    case 100:
    case 300:
+   case 310:
+   case 320:
       glsl_es = true;
       break;
    case 110:

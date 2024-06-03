@@ -1001,7 +1001,7 @@ impl Kernel {
                             let offset: u32 = buffer.offset as u32;
                             input.extend_from_slice(&offset.to_ne_bytes());
                         }
-                        resource_info.push((res.clone(), arg.offset));
+                        resource_info.push((res.as_ref(), arg.offset));
                     }
                     KernelArgValue::Image(image) => {
                         let res = image.get_res_of_dev(q.device)?;
@@ -1084,16 +1084,11 @@ impl Kernel {
 
             let mut printf_buf = None;
             if nir_kernel_build.printf_info.is_some() {
-                let buf = Arc::new(
-                    q.device
-                        .screen
-                        .resource_create_buffer(
-                            printf_size,
-                            ResourceType::Staging,
-                            PIPE_BIND_GLOBAL,
-                        )
-                        .unwrap(),
-                );
+                let buf = q
+                    .device
+                    .screen
+                    .resource_create_buffer(printf_size, ResourceType::Staging, PIPE_BIND_GLOBAL)
+                    .unwrap();
 
                 let init_data: [u8; 1] = [4];
                 ctx.buffer_subdata(&buf, 0, init_data.as_ptr().cast(), init_data.len() as u32);
@@ -1110,7 +1105,7 @@ impl Kernel {
                         assert!(nir_kernel_build.constant_buffer.is_some());
                         input.extend_from_slice(null_ptr);
                         resource_info.push((
-                            nir_kernel_build.constant_buffer.clone().unwrap(),
+                            &nir_kernel_build.constant_buffer.as_ref().unwrap(),
                             arg.offset,
                         ));
                     }
@@ -1123,7 +1118,7 @@ impl Kernel {
                     }
                     InternalKernelArgType::PrintfBuffer => {
                         input.extend_from_slice(null_ptr);
-                        resource_info.push((printf_buf.as_ref().unwrap().clone(), arg.offset));
+                        resource_info.push((printf_buf.as_ref().unwrap(), arg.offset));
                     }
                     InternalKernelArgType::InlineSampler(cl) => {
                         samplers.push(Sampler::cl_to_pipe(cl));
@@ -1158,9 +1153,9 @@ impl Kernel {
 
             let mut resources = Vec::with_capacity(resource_info.len());
             let mut globals: Vec<*mut u32> = Vec::with_capacity(resource_info.len());
-            for (res, offset) in &resource_info {
+            for (res, offset) in resource_info {
                 resources.push(res);
-                globals.push(unsafe { input.as_mut_ptr().add(*offset) }.cast());
+                globals.push(unsafe { input.as_mut_ptr().add(offset) }.cast());
             }
 
             let temp_cso;

@@ -1882,7 +1882,7 @@ _mesa_error_check_format_and_type(const struct gl_context *ctx,
          return GL_NO_ERROR;
       case GL_RG:
       case GL_RED:
-         if (_mesa_has_rg_textures(ctx))
+         if (_mesa_has_EXT_texture_rg(ctx))
             return GL_NO_ERROR;
          FALLTHROUGH;
       default:

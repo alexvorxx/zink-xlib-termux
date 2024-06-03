@@ -1461,7 +1461,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
    }
 
    if (!queue->ring_info.gds && needs->gds) {
-      assert(pdev->info.gfx_level >= GFX10);
+      assert(pdev->info.gfx_level >= GFX10 && pdev->info.gfx_level < GFX12);
 
       /* 4 streamout GDS counters.
        * We need 256B (64 dw) of GDS, otherwise streamout hangs.
@@ -1480,7 +1480,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
    }
 
    if (!queue->ring_info.gds_oa && needs->gds_oa) {
-      assert(pdev->info.gfx_level >= GFX10);
+      assert(pdev->info.gfx_level >= GFX10 && pdev->info.gfx_level < GFX12);
 
       result = radv_bo_create(device, NULL, 1, 1, RADEON_DOMAIN_OA, ring_bo_flags, RADV_BO_PRIORITY_SCRATCH, 0, true,
                               &gds_oa_bo);

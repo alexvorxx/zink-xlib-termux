@@ -75,8 +75,9 @@ public:
    using brw_reg::abs;
    using brw_reg::address_mode;
    using brw_reg::subnr;
-   using brw_reg::nr;
+   using brw_reg::bits;
 
+   using brw_reg::nr;
    using brw_reg::swizzle;
    using brw_reg::writemask;
    using brw_reg::indirect_offset;

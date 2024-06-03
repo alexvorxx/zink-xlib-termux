@@ -467,22 +467,22 @@ fn assign_barriers(f: &mut Function, sm: u8) {
 fn calc_delays(f: &mut Function, sm: u8) {
     for b in f.blocks.iter_mut().rev() {
         let mut cycle = 0_u32;
-        let mut ready = RegTracker::new(0_u32);
-        let mut bars_ready = [0_u32; 6];
+        let mut reads = RegTracker::new(0_u32);
+        let mut bars = [0_u32; 6];
         for instr in b.instrs.iter_mut().rev() {
             // TODO: co-issue
             let mut min_start = cycle + instr.get_exec_latency(sm);
             if let Some(bar) = instr.deps.rd_bar() {
-                min_start = max(min_start, bars_ready[usize::from(bar)] + 2);
+                min_start = max(min_start, bars[usize::from(bar)] + 2);
             }
             if let Some(bar) = instr.deps.wr_bar() {
-                min_start = max(min_start, bars_ready[usize::from(bar)] + 2);
+                min_start = max(min_start, bars[usize::from(bar)] + 2);
             }
             if instr.has_fixed_latency(sm) {
                 for (idx, dst) in instr.dsts().iter().enumerate() {
                     if let Dst::Reg(reg) = dst {
                         let latency = instr.get_dst_latency(sm, idx);
-                        for c in &ready[*reg] {
+                        for c in &reads[*reg] {
                             min_start = max(min_start, *c + latency);
                         }
                     }
@@ -496,9 +496,9 @@ fn calc_delays(f: &mut Function, sm: u8) {
                 .unwrap();
             instr.deps.set_delay(delay);
 
-            ready.for_each_instr_pred_mut(instr, |c| *c = min_start);
-            ready.for_each_instr_src_mut(instr, |c| *c = min_start);
-            for (bar, c) in bars_ready.iter_mut().enumerate() {
+            reads.for_each_instr_pred_mut(instr, |c| *c = min_start);
+            reads.for_each_instr_src_mut(instr, |c| *c = min_start);
+            for (bar, c) in bars.iter_mut().enumerate() {
                 if instr.deps.wt_bar_mask & (1 << bar) != 0 {
                     *c = min_start;
                 }

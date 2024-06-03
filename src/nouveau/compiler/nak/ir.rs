@@ -5832,39 +5832,6 @@ impl Instr {
         }
     }
 
-    /// Minimum latency before another instruction can execute
-    pub fn get_exec_latency(&self, sm: u8) -> u32 {
-        match &self.op {
-            Op::Bar(_) | Op::MemBar(_) => {
-                if sm >= 80 {
-                    6
-                } else {
-                    5
-                }
-            }
-            Op::CCtl(_op) => {
-                // CCTL.C needs 8, CCTL.I needs 11
-                11
-            }
-            // Op::DepBar(_) => 4,
-            _ => 1, // TODO: co-issue
-        }
-    }
-
-    pub fn get_dst_latency(&self, sm: u8, dst_idx: usize) -> u32 {
-        debug_assert!(self.has_fixed_latency(sm));
-        let file = match self.dsts()[dst_idx] {
-            Dst::None => return 0,
-            Dst::SSA(vec) => vec.file().unwrap(),
-            Dst::Reg(reg) => reg.file(),
-        };
-        if file.is_predicate() {
-            13
-        } else {
-            6
-        }
-    }
-
     pub fn needs_yield(&self) -> bool {
         matches!(&self.op, Op::Bar(_) | Op::BSync(_))
     }

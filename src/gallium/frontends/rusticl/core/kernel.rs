@@ -1082,10 +1082,7 @@ impl Kernel {
             // subtract the shader local_size as we only request something on top of that.
             variable_local_size -= static_local_size;
 
-            let mut resources = Vec::with_capacity(resource_info.len());
-            let mut globals: Vec<*mut u32> = Vec::new();
             let printf_format = &nir_kernel_build.printf_info;
-
             let mut printf_buf = None;
             for arg in &kernel_info.internal_args {
                 if arg.offset > input.len() {
@@ -1155,6 +1152,8 @@ impl Kernel {
                 .map(|s| ctx.create_sampler_state(s))
                 .collect();
 
+            let mut resources = Vec::with_capacity(resource_info.len());
+            let mut globals: Vec<*mut u32> = Vec::with_capacity(resource_info.len());
             for (res, offset) in &resource_info {
                 resources.push(res);
                 globals.push(unsafe { input.as_mut_ptr().add(*offset) }.cast());

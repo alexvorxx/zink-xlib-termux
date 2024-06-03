@@ -454,10 +454,12 @@ copy_image_to_buffer_tlb(struct v3dv_cmd_buffer *cmd_buffer,
        &internal_type, &internal_bpp);
 
    uint32_t num_layers;
-   if (image->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->imageSubresource.layerCount;
-   else
+   if (image->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&image->vk,
+                                                    &region->imageSubresource);
+   } else {
       num_layers = region->imageExtent.depth;
+   }
    assert(num_layers > 0);
 
    struct v3dv_job *job =
@@ -913,10 +915,12 @@ copy_image_to_buffer_blit(struct v3dv_cmd_buffer *cmd_buffer,
 
    /* Compute layers to copy */
    uint32_t num_layers;
-   if (image->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->imageSubresource.layerCount;
-   else
+   if (image->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&image->vk,
+                                                    &region->imageSubresource);
+   } else {
       num_layers = region->imageExtent.depth;
+   }
    assert(num_layers > 0);
 
    /* Copy requested layers */
@@ -1072,10 +1076,12 @@ copy_image_to_buffer_texel_buffer(struct v3dv_cmd_buffer *cmd_buffer,
    handled = true;
 
    uint32_t num_layers;
-   if (src_image->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->imageSubresource.layerCount;
-   else
+   if (src_image->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&src_image->vk,
+                                                    &region->imageSubresource);
+   } else {
       num_layers = region->imageExtent.depth;
+   }
    assert(num_layers > 0);
 
    VkResult result;
@@ -1233,7 +1239,7 @@ copy_image_tfu(struct v3dv_cmd_buffer *cmd_buffer,
 
    /* Emit a TFU job for each layer to blit */
    const uint32_t layer_count = dst->vk.image_type != VK_IMAGE_TYPE_3D ?
-      region->dstSubresource.layerCount :
+      vk_image_subresource_layer_count(&dst->vk, &region->dstSubresource) :
       region->extent.depth;
    const uint32_t src_mip_level = region->srcSubresource.mipLevel;
 
@@ -1329,14 +1335,18 @@ copy_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
     *  extent (for 3D) or layers of the dstSubresource (for non-3D)."
     */
    assert((src->vk.image_type != VK_IMAGE_TYPE_3D ?
-           region->srcSubresource.layerCount : region->extent.depth) ==
+           vk_image_subresource_layer_count(&src->vk, &region->srcSubresource) :
+           region->extent.depth) ==
           (dst->vk.image_type != VK_IMAGE_TYPE_3D ?
-           region->dstSubresource.layerCount : region->extent.depth));
+           vk_image_subresource_layer_count(&dst->vk, &region->dstSubresource) :
+           region->extent.depth));
    uint32_t num_layers;
-   if (dst->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->dstSubresource.layerCount;
-   else
+   if (dst->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&dst->vk,
+                                                    &region->dstSubresource);
+   } else {
       num_layers = region->extent.depth;
+   }
    assert(num_layers > 0);
 
    struct v3dv_job *job =
@@ -1914,10 +1924,12 @@ copy_buffer_to_image_tfu(struct v3dv_cmd_buffer *cmd_buffer,
    const struct v3dv_format_plane *format_plane = &format->planes[0];
 
    uint32_t num_layers;
-   if (image->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->imageSubresource.layerCount;
-   else
+   if (image->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&image->vk,
+                                                    &region->imageSubresource);
+   } else {
       num_layers = region->imageExtent.depth;
+   }
    assert(num_layers > 0);
 
    assert(image->planes[plane].mem && image->planes[plane].mem->bo);
@@ -1987,10 +1999,12 @@ copy_buffer_to_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
        &internal_type, &internal_bpp);
 
    uint32_t num_layers;
-   if (image->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->imageSubresource.layerCount;
-   else
+   if (image->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&image->vk,
+                                                    &region->imageSubresource);
+   } else {
       num_layers = region->imageExtent.depth;
+   }
    assert(num_layers > 0);
 
    struct v3dv_job *job =
@@ -2595,7 +2609,7 @@ texel_buffer_shader_copy(struct v3dv_cmd_buffer *cmd_buffer,
    const VkImageSubresourceLayers *resource = &regions[0].imageSubresource;
    uint32_t num_layers;
    if (image->vk.image_type != VK_IMAGE_TYPE_3D) {
-      num_layers = resource->layerCount;
+      num_layers = vk_image_subresource_layer_count(&image->vk, resource);
    } else {
       assert(region_count == 1);
       num_layers = regions[0].imageExtent.depth;
@@ -2928,10 +2942,12 @@ copy_buffer_to_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
     * image subresource so we can take this from the first region.
     */
    uint32_t num_layers;
-   if (image->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = regions[0].imageSubresource.layerCount;
-   else
+   if (image->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&image->vk,
+                                                    &regions[0].imageSubresource);
+   } else {
       num_layers = regions[0].imageExtent.depth;
+   }
    assert(num_layers > 0);
 
    /* Sanity check: we can only batch multiple regions together if they have
@@ -3398,8 +3414,8 @@ blit_tfu(struct v3dv_cmd_buffer *cmd_buffer,
                                      dst->planes[0].cpp, NULL);
 
    /* Emit a TFU job for each layer to blit */
-   assert(region->dstSubresource.layerCount ==
-          region->srcSubresource.layerCount);
+   assert(vk_image_subresource_layer_count(&dst->vk, &region->dstSubresource) ==
+          vk_image_subresource_layer_count(&src->vk, &region->srcSubresource));
 
    uint32_t min_dst_layer;
    uint32_t max_dst_layer;
@@ -3410,7 +3426,9 @@ blit_tfu(struct v3dv_cmd_buffer *cmd_buffer,
                              &dst_mirror_z);
    } else {
       min_dst_layer = region->dstSubresource.baseArrayLayer;
-      max_dst_layer = min_dst_layer + region->dstSubresource.layerCount;
+      max_dst_layer = min_dst_layer +
+                      vk_image_subresource_layer_count(&dst->vk,
+                                                       &region->dstSubresource);
    }
 
    uint32_t min_src_layer;
@@ -3422,7 +3440,9 @@ blit_tfu(struct v3dv_cmd_buffer *cmd_buffer,
                              &src_mirror_z);
    } else {
       min_src_layer = region->srcSubresource.baseArrayLayer;
-      max_src_layer = min_src_layer + region->srcSubresource.layerCount;
+      max_src_layer = min_src_layer +
+                      vk_image_subresource_layer_count(&src->vk,
+                                                       &region->srcSubresource);
    }
 
    /* No Z scaling for 3D images (for non-3D images both src and dst must
@@ -4454,7 +4474,9 @@ blit_shader(struct v3dv_cmd_buffer *cmd_buffer,
    bool dst_mirror_z = false;
    if (dst->vk.image_type != VK_IMAGE_TYPE_3D) {
       min_dst_layer = region->dstSubresource.baseArrayLayer;
-      max_dst_layer = min_dst_layer + region->dstSubresource.layerCount;
+      max_dst_layer = min_dst_layer +
+                      vk_image_subresource_layer_count(&dst->vk,
+                                                       &region->dstSubresource);
    } else {
       compute_blit_3d_layers(region->dstOffsets,
                              &min_dst_layer, &max_dst_layer,
@@ -4466,7 +4488,9 @@ blit_shader(struct v3dv_cmd_buffer *cmd_buffer,
    bool src_mirror_z = false;
    if (src->vk.image_type != VK_IMAGE_TYPE_3D) {
       min_src_layer = region->srcSubresource.baseArrayLayer;
-      max_src_layer = min_src_layer + region->srcSubresource.layerCount;
+      max_src_layer = min_src_layer +
+                      vk_image_subresource_layer_count(&src->vk,
+                                                       &region->srcSubresource);
    } else {
       compute_blit_3d_layers(region->srcOffsets,
                              &min_src_layer, &max_src_layer,
@@ -4832,10 +4856,12 @@ resolve_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
    const VkFormat fb_format = src->vk.format;
 
    uint32_t num_layers;
-   if (dst->vk.image_type != VK_IMAGE_TYPE_3D)
-      num_layers = region->dstSubresource.layerCount;
-   else
+   if (dst->vk.image_type != VK_IMAGE_TYPE_3D) {
+      num_layers = vk_image_subresource_layer_count(&dst->vk,
+                                                    &region->dstSubresource);
+   } else {
       num_layers = region->extent.depth;
+   }
    assert(num_layers > 0);
 
    struct v3dv_job *job =

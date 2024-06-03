@@ -1942,8 +1942,7 @@ _mesa_error_check_format_and_type(const struct gl_context *ctx,
                return _mesa_has_texture_shared_exponent(ctx)
                   ? GL_NO_ERROR : GL_INVALID_ENUM;
             case GL_UNSIGNED_INT_10F_11F_11F_REV:
-               return _mesa_has_packed_float(ctx)
-                  ? GL_NO_ERROR : GL_INVALID_ENUM;
+               return GL_NO_ERROR;
             default:
                return GL_INVALID_ENUM;
          }
@@ -2019,9 +2018,7 @@ _mesa_error_check_format_and_type(const struct gl_context *ctx,
             return GL_INVALID_OPERATION;
 
       case GL_DEPTH_STENCIL:
-         if (type == GL_UNSIGNED_INT_24_8)
-            return GL_NO_ERROR;
-         else if (_mesa_has_float_depth_buffer(ctx) &&
+         if (type == GL_UNSIGNED_INT_24_8 ||
              type == GL_FLOAT_32_UNSIGNED_INT_24_8_REV)
             return GL_NO_ERROR;
          else

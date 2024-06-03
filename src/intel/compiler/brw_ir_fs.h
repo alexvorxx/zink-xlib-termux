@@ -556,11 +556,6 @@ public:
          bool last_rt:1;
          bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
          bool keep_payload_trailing_zeros:1;
-
-         /**
-          * Hint that this instruction has combined LOD/LOD bias with array index
-          */
-         bool has_packed_lod_ai_src:1;
          /**
           * Whether the parameters of the SEND instructions are build with
           * NoMask (for A32 messages this covers only the surface handle, for

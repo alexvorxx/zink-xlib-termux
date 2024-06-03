@@ -198,8 +198,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
       inst->components_read(TEX_LOGICAL_SRC_MIN_LOD);
 
 
-   if (inst->opcode == FS_OPCODE_TXB_LOGICAL &&
-       devinfo->ver >= 20 && inst->has_packed_lod_ai_src) {
+   if (inst->opcode == FS_OPCODE_TXB_LOGICAL && devinfo->ver >= 20) {
       num_payload_components += 3 - coord_components;
    } else if (inst->opcode == SHADER_OPCODE_TXD_LOGICAL &&
             devinfo->verx10 >= 125 && devinfo->ver < 20) {

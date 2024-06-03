@@ -1048,8 +1048,7 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst,
 
    if (min_lod.file != BAD_FILE && !min_lod_is_first) {
       /* Account for all of the missing coordinate sources */
-      if (op == FS_OPCODE_TXB_LOGICAL && devinfo->ver >= 20 &&
-          inst->has_packed_lod_ai_src) {
+      if (op == FS_OPCODE_TXB_LOGICAL && devinfo->ver >= 20) {
          /* Bspec 64985:
           *
           * For sample_b sampler message format:
@@ -1254,9 +1253,7 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     *  ld2dms         REMOVEDBY(GEN:HAS:1406788836)
     */
    if (inst->opcode == SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL ||
-       inst->opcode == SHADER_OPCODE_TXF_MCS_LOGICAL ||
-       (inst->opcode == FS_OPCODE_TXB_LOGICAL && !inst->has_packed_lod_ai_src &&
-        devinfo->ver >= 20))
+       inst->opcode == SHADER_OPCODE_TXF_MCS_LOGICAL)
       src_type_size = 2;
 
    return src_type_size * 8;

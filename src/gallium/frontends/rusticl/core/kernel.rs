@@ -1082,8 +1082,25 @@ impl Kernel {
             // subtract the shader local_size as we only request something on top of that.
             variable_local_size -= static_local_size;
 
-            let printf_format = &nir_kernel_build.printf_info;
             let mut printf_buf = None;
+            if nir_kernel_build.printf_info.is_some() {
+                let buf = Arc::new(
+                    q.device
+                        .screen
+                        .resource_create_buffer(
+                            printf_size,
+                            ResourceType::Staging,
+                            PIPE_BIND_GLOBAL,
+                        )
+                        .unwrap(),
+                );
+
+                let init_data: [u8; 1] = [4];
+                ctx.buffer_subdata(&buf, 0, init_data.as_ptr().cast(), init_data.len() as u32);
+
+                printf_buf = Some(buf);
+            }
+
             for arg in &kernel_info.internal_args {
                 if arg.offset > input.len() {
                     input.resize(arg.offset, 0);
@@ -1105,21 +1122,8 @@ impl Kernel {
                         input.extend_from_slice(null_ptr_v3);
                     }
                     InternalKernelArgType::PrintfBuffer => {
-                        let buf = Arc::new(
-                            q.device
-                                .screen
-                                .resource_create_buffer(
-                                    printf_size,
-                                    ResourceType::Staging,
-                                    PIPE_BIND_GLOBAL,
-                                )
-                                .unwrap(),
-                        );
-
                         input.extend_from_slice(null_ptr);
-                        resource_info.push((buf.clone(), arg.offset));
-
-                        printf_buf = Some(buf);
+                        resource_info.push((printf_buf.as_ref().unwrap().clone(), arg.offset));
                     }
                     InternalKernelArgType::InlineSampler(cl) => {
                         samplers.push(Sampler::cl_to_pipe(cl));
@@ -1157,16 +1161,6 @@ impl Kernel {
             for (res, offset) in &resource_info {
                 resources.push(res);
                 globals.push(unsafe { input.as_mut_ptr().add(*offset) }.cast());
-            }
-
-            if let Some(printf_buf) = &printf_buf {
-                let init_data: [u8; 1] = [4];
-                ctx.buffer_subdata(
-                    printf_buf,
-                    0,
-                    init_data.as_ptr().cast(),
-                    init_data.len() as u32,
-                );
             }
 
             let temp_cso;
@@ -1256,7 +1250,7 @@ impl Kernel {
 
                 // update our slice to make sure we don't go out of bounds
                 buf = &buf[0..(length - 4) as usize];
-                if let Some(pf) = printf_format.as_ref() {
+                if let Some(pf) = &nir_kernel_build.printf_info {
                     pf.u_printf(buf)
                 }
             }

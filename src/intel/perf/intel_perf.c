@@ -1166,6 +1166,7 @@ intel_perf_query_result_read_gt_frequency(struct intel_perf_query_result *result
    case 9:
    case 11:
    case 12:
+   case 20:
       result->gt_frequency[0] = GET_FIELD(start, GFX9_RPSTAT0_CURR_GT_FREQ) * 50ULL / 3ULL;
       result->gt_frequency[1] = GET_FIELD(end, GFX9_RPSTAT0_CURR_GT_FREQ) * 50ULL / 3ULL;
       break;

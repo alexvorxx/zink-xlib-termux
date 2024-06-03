@@ -970,7 +970,7 @@ print_tex_handle(nir_builder *b,
 
    nir_tex_instr *tex = nir_instr_as_tex(instr);
 
-   nir_src tex_src;
+   nir_src tex_src = {};
    for (unsigned i = 0; i < tex->num_srcs; i++) {
       if (tex->src[i].src_type == nir_tex_src_texture_handle)
          tex_src = tex->src[i].src;

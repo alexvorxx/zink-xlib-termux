@@ -1195,7 +1195,6 @@ impl Kernel {
             ctx.set_sampler_views(&mut sviews);
             ctx.set_shader_images(&iviews);
             ctx.set_global_binding(resources.as_slice(), &mut globals);
-            ctx.update_cb0(&input);
 
             let hw_max_grid: Vec<usize> = q
                 .device

@@ -52,6 +52,11 @@
 #define DETECT_OS_POSIX 1
 #endif
 
+#if defined(__Fuchsia__)
+#define DETECT_OS_FUCHSIA 1
+#define DETECT_OS_POSIX_LITE 1
+#endif
+
 #if defined(__GNU__)
 #define DETECT_OS_HURD 1
 #define DETECT_OS_POSIX 1
@@ -111,6 +116,9 @@
 #ifndef DETECT_OS_HAIKU
 #define DETECT_OS_HAIKU 0
 #endif
+#ifndef DETECT_OS_FUCHSIA
+#define DETECT_OS_FUCHSIA 0
+#endif
 #ifndef DETECT_OS_HURD
 #define DETECT_OS_HURD 0
 #endif
@@ -128,6 +136,9 @@
 #endif
 #ifndef DETECT_OS_POSIX
 #define DETECT_OS_POSIX 0
+#endif
+#ifndef DETECT_OS_POSIX_LITE
+#define DETECT_OS_POSIX_LITE DETECT_OS_POSIX
 #endif
 #ifndef DETECT_OS_WINDOWS
 #define DETECT_OS_WINDOWS 0

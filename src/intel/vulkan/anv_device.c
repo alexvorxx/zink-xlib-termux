@@ -698,7 +698,7 @@ get_features(const struct anv_physical_device *pdevice,
       .meshShader = mesh_shader,
       .multiviewMeshShader = false,
       .primitiveFragmentShadingRateMeshShader = mesh_shader,
-      .meshShaderQueries = true,
+      .meshShaderQueries = mesh_shader,
 
       /* VK_EXT_mutable_descriptor_type */
       .mutableDescriptorType = true,

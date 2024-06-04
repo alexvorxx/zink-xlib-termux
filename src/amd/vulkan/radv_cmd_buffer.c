@@ -3839,6 +3839,16 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    unsigned spi_baryc_cntl = S_0286E0_FRONT_FACE_ALL_BITS(1);
    unsigned pa_sc_mode_cntl_1;
+   bool has_hiz_his = false;
+
+   if (pdev->info.gfx_level >= GFX12) {
+      const struct radv_rendering_state *render = &cmd_buffer->state.render;
+
+      if (render->ds_att.iview) {
+         const struct radeon_surf *surf = &render->ds_att.iview->image->planes[0].surface;
+         has_hiz_his = surf->u.gfx9.zs.hiz.offset || surf->u.gfx9.zs.his.offset;
+      }
+   }
 
    pa_sc_mode_cntl_1 =
       S_028A4C_WALK_FENCE_ENABLE(1) | // TODO linear dst fixes
@@ -3852,7 +3862,8 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
       /* This should only be set when VRS surfaces aren't enabled on GFX11, otherwise the GPU might
        * hang.
        */
-      S_028A4C_WALK_ALIGN8_PRIM_FITS_ST(pdev->info.gfx_level < GFX11 || !cmd_buffer->state.uses_vrs_attachment);
+      S_028A4C_WALK_ALIGN8_PRIM_FITS_ST(pdev->info.gfx_level < GFX11 || !cmd_buffer->state.uses_vrs_attachment ||
+                                        (pdev->info.gfx_level >= GFX12 && !has_hiz_his));
 
    if (!d->sample_location.count)
       radv_emit_default_sample_locations(pdev, cmd_buffer->cs, rasterization_samples);
@@ -9496,6 +9507,8 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
 
    cmd_buffer->state.dirty_dynamic |= RADV_DYNAMIC_DEPTH_BIAS | RADV_DYNAMIC_STENCIL_TEST_ENABLE;
+   if (pdev->info.gfx_level >= GFX12)
+      cmd_buffer->state.dirty_dynamic |= RADV_DYNAMIC_RASTERIZATION_SAMPLES;
 
    if (render->vrs_att.iview && pdev->info.gfx_level == GFX10_3) {
       if (render->ds_att.iview &&

@@ -383,6 +383,13 @@ typedef struct {
    int packed_header_type;
    bool packed_header_emulation_bytes;
    struct set *surfaces;
+
+   struct {
+      void **buffers;
+      unsigned *sizes;
+      unsigned num_buffers;
+      unsigned allocated_size;
+   } bs;
 } vlVaContext;
 
 typedef struct {

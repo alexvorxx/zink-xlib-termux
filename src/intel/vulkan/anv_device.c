@@ -59,6 +59,7 @@
 #include "vk_deferred_operation.h"
 #include "vk_drm_syncobj.h"
 #include "common/intel_aux_map.h"
+#include "common/intel_common.h"
 #include "common/intel_debug_identifier.h"
 #include "common/intel_uuid.h"
 #include "perf/intel_perf.h"
@@ -2225,20 +2226,14 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          sparse_supports_non_render_engines;
 
       if (can_use_non_render_engines) {
-         c_count = intel_engines_supported_count(pdevice->local_fd,
-                                                 &pdevice->info,
-                                                 pdevice->engine_info,
-                                                 INTEL_ENGINE_CLASS_COMPUTE);
+         c_count = pdevice->info.engine_class_supported_count[INTEL_ENGINE_CLASS_COMPUTE];
       }
       enum intel_engine_class compute_class =
          c_count < 1 ? INTEL_ENGINE_CLASS_RENDER : INTEL_ENGINE_CLASS_COMPUTE;
 
       int blit_count = 0;
       if (pdevice->info.verx10 >= 125 && can_use_non_render_engines) {
-         blit_count = intel_engines_supported_count(pdevice->local_fd,
-                                                    &pdevice->info,
-                                                    pdevice->engine_info,
-                                                    INTEL_ENGINE_CLASS_COPY);
+         blit_count = pdevice->info.engine_class_supported_count[INTEL_ENGINE_CLASS_COPY];
       }
 
       anv_override_engine_counts(&gc_count, &g_count, &c_count, &v_count);
@@ -2581,9 +2576,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->master_fd = master_fd;
 
    device->engine_info = intel_engine_get_info(fd, device->info.kmd_type);
-   device->info.has_compute_engine = device->engine_info &&
-                                     intel_engines_count(device->engine_info,
-                                                         INTEL_ENGINE_CLASS_COMPUTE);
+   intel_common_update_device_info(fd, &devinfo);
+
    anv_physical_device_init_queue_families(device);
 
    anv_physical_device_init_perf(device, fd);

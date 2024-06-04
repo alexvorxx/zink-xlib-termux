@@ -51,6 +51,7 @@
 #include "common/intel_mem.h"
 #include "c99_alloca.h"
 #include "dev/intel_debug.h"
+#include "common/intel_common.h"
 #include "common/intel_gem.h"
 #include "dev/intel_device_info.h"
 #include "drm-uapi/dma-buf.h"
@@ -233,7 +234,6 @@ struct iris_bufmgr {
    struct intel_bind_timeline bind_timeline; /* Xe only */
    bool bo_reuse:1;
    bool use_global_vm:1;
-   bool compute_engine_supported:1;
 
    struct intel_aux_map_context *aux_map_ctx;
 
@@ -2351,17 +2351,7 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    iris_bufmgr_get_meminfo(bufmgr, devinfo);
    bufmgr->kmd_backend = iris_kmd_backend_get(devinfo->kmd_type);
 
-   struct intel_query_engine_info *engine_info;
-   engine_info = intel_engine_get_info(bufmgr->fd, bufmgr->devinfo.kmd_type);
-   bufmgr->devinfo.has_compute_engine = engine_info &&
-                                        intel_engines_count(engine_info,
-                                                            INTEL_ENGINE_CLASS_COMPUTE);
-   bufmgr->compute_engine_supported = bufmgr->devinfo.has_compute_engine &&
-                                      intel_engines_supported_count(bufmgr->fd,
-                                                                    &bufmgr->devinfo,
-                                                                    engine_info,
-                                                                    INTEL_ENGINE_CLASS_COMPUTE);
-   free(engine_info);
+   intel_common_update_device_info(bufmgr->fd, devinfo);
 
    if (!iris_bufmgr_init_global_vm(bufmgr))
       goto error_init_vm;
@@ -2638,7 +2628,7 @@ iris_bufmgr_use_global_vm_id(struct iris_bufmgr *bufmgr)
 bool
 iris_bufmgr_compute_engine_supported(struct iris_bufmgr *bufmgr)
 {
-   return bufmgr->compute_engine_supported;
+   return bufmgr->devinfo.engine_class_supported_count[INTEL_ENGINE_CLASS_COMPUTE];
 }
 
 /**

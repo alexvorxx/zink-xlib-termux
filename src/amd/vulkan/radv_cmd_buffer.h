@@ -578,6 +578,7 @@ struct radv_cmd_buffer {
 
    uint32_t sqtt_cb_id;
 
+   struct set *accel_struct_buffers;
    struct util_dynarray ray_history;
 };
 

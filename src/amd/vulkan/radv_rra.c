@@ -975,6 +975,30 @@ radv_rra_trace_clear_ray_history(VkDevice _device, struct radv_rra_trace_data *d
 }
 
 void
+radv_radv_rra_accel_struct_buffer_ref(struct radv_rra_accel_struct_buffer *buffer)
+{
+   assert(buffer->ref_cnt >= 1);
+   p_atomic_inc(&buffer->ref_cnt);
+}
+
+void
+radv_rra_accel_struct_buffer_unref(struct radv_device *device, struct radv_rra_accel_struct_buffer *buffer)
+{
+   if (p_atomic_dec_zero(&buffer->ref_cnt)) {
+      VkDevice _device = radv_device_to_handle(device);
+      radv_DestroyBuffer(_device, buffer->buffer, NULL);
+      radv_FreeMemory(_device, buffer->memory, NULL);
+   }
+}
+
+void
+radv_rra_accel_struct_buffers_unref(struct radv_device *device, struct set *buffers)
+{
+   set_foreach_remove (buffers, entry)
+      radv_rra_accel_struct_buffer_unref(device, (void *)entry->key);
+}
+
+void
 radv_rra_trace_finish(VkDevice vk_device, struct radv_rra_trace_data *data)
 {
    radv_DestroyBuffer(vk_device, data->ray_history_buffer, NULL);
@@ -997,11 +1021,14 @@ radv_rra_trace_finish(VkDevice vk_device, struct radv_rra_trace_data *data)
 }
 
 void
-radv_destroy_rra_accel_struct_data(VkDevice device, struct radv_rra_accel_struct_data *data)
+radv_destroy_rra_accel_struct_data(VkDevice _device, struct radv_rra_accel_struct_data *data)
 {
-   radv_DestroyEvent(device, data->build_event, NULL);
-   radv_DestroyBuffer(device, data->buffer, NULL);
-   radv_FreeMemory(device, data->memory, NULL);
+   VK_FROM_HANDLE(radv_device, device, _device);
+
+   if (data->buffer)
+      radv_rra_accel_struct_buffer_unref(device, data->buffer);
+
+   radv_DestroyEvent(_device, data->build_event, NULL);
    free(data);
 }
 
@@ -1131,9 +1158,9 @@ rra_map_accel_struct_data(struct rra_copy_context *ctx, uint32_t i)
    if (radv_GetEventStatus(ctx->device, data->build_event) != VK_EVENT_SET)
       return NULL;
 
-   if (data->memory) {
+   if (data->buffer->memory) {
       void *mapped_data;
-      vk_common_MapMemory(ctx->device, data->memory, 0, VK_WHOLE_SIZE, 0, &mapped_data);
+      vk_common_MapMemory(ctx->device, data->buffer->memory, 0, VK_WHOLE_SIZE, 0, &mapped_data);
       return mapped_data;
    }
 
@@ -1189,8 +1216,8 @@ rra_unmap_accel_struct_data(struct rra_copy_context *ctx, uint32_t i)
 {
    struct radv_rra_accel_struct_data *data = ctx->entries[i]->data;
 
-   if (data->memory)
-      vk_common_UnmapMemory(ctx->device, data->memory);
+   if (data->buffer && data->buffer->memory)
+      vk_common_UnmapMemory(ctx->device, data->buffer->memory);
 }
 
 enum rra_ray_history_token_type {

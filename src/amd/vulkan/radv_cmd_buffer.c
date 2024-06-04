@@ -18,6 +18,7 @@
 #include "radv_pipeline_rt.h"
 #include "radv_radeon_winsys.h"
 #include "radv_rmv.h"
+#include "radv_rra.h"
 #include "radv_shader.h"
 #include "radv_shader_object.h"
 #include "radv_sqtt.h"
@@ -309,6 +310,9 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
    if (cmd_buffer->qf != RADV_QUEUE_SPARSE) {
       util_dynarray_fini(&cmd_buffer->ray_history);
 
+      radv_rra_accel_struct_buffers_unref(device, cmd_buffer->accel_struct_buffers);
+      _mesa_set_destroy(cmd_buffer->accel_struct_buffers, NULL);
+
       list_for_each_entry_safe (struct radv_cmd_buffer_upload, up, &cmd_buffer->upload.list, list) {
          radv_rmv_log_command_buffer_bo_destroy(device, up->upload_bo);
          radv_bo_destroy(device, &cmd_buffer->vk.base, up->upload_bo);
@@ -387,6 +391,7 @@ radv_create_cmd_buffer(struct vk_command_pool *pool, VkCommandBufferLevel level,
       for (unsigned i = 0; i < MAX_BIND_POINTS; i++)
          vk_object_base_init(&device->vk, &cmd_buffer->descriptors[i].push_set.set.base, VK_OBJECT_TYPE_DESCRIPTOR_SET);
 
+      cmd_buffer->accel_struct_buffers = _mesa_pointer_set_create(NULL);
       util_dynarray_init(&cmd_buffer->ray_history, NULL);
    }
 
@@ -437,6 +442,8 @@ radv_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer, UNUSED VkCommandB
    }
 
    util_dynarray_clear(&cmd_buffer->ray_history);
+
+   radv_rra_accel_struct_buffers_unref(device, cmd_buffer->accel_struct_buffers);
 
    cmd_buffer->push_constant_stages = 0;
    cmd_buffer->scratch_size_per_wave_needed = 0;

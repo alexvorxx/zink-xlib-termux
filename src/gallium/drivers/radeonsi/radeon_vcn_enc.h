@@ -127,7 +127,6 @@ struct radeon_enc_pic {
             uint32_t stream_obu_frame:1;  /* all frames have the same number of tiles */
             uint32_t need_av1_seq:1;
             uint32_t av1_mark_long_term_reference:1;
-            uint32_t tile_config_flag:1;
          };
          uint32_t render_width;
          uint32_t render_height;

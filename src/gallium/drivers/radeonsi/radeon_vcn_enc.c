@@ -886,8 +886,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
    radeon_vcn_enc_av1_timing_info(enc, pic);
    radeon_vcn_enc_av1_color_description(enc, pic);
    radeon_vcn_enc_av1_get_rc_param(enc, pic);
-   if (enc_pic->tile_config_flag)
-      radeon_vcn_enc_av1_get_tile_config(enc, pic);
+   radeon_vcn_enc_av1_get_tile_config(enc, pic);
    radeon_vcn_enc_get_input_format_param(enc, &pic->base);
    radeon_vcn_enc_get_output_format_param(enc, pic->seq.color_config.color_range);
    /* loop filter enabled all the time */

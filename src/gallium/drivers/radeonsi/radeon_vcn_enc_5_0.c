@@ -1112,7 +1112,6 @@ void radeon_enc_5_0_init(struct radeon_encoder *enc)
    enc->cmd.rc_per_pic = RENCODE_IB_PARAM_RATE_CONTROL_PER_PICTURE;
    enc->cmd.metadata = RENCODE_IB_PARAM_METADATA_BUFFER;
    enc->cmd.ctx_override = RENCODE_IB_PARAM_ENCODE_CONTEXT_BUFFER_OVERRIDE;
-   enc->enc_pic.tile_config_flag = 1;
 
    enc->enc_pic.session_info.interface_version =
       ((RENCODE_FW_INTERFACE_MAJOR_VERSION << RENCODE_IF_MAJOR_VERSION_SHIFT) |

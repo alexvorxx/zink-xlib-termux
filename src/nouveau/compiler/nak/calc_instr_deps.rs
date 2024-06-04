@@ -478,10 +478,14 @@ fn instr_latency(op: &Op, dst_idx: usize) -> u32 {
     };
 
     // This is BS and we know it
-    if file.is_predicate() {
-        13
-    } else {
-        6
+    match file {
+        RegFile::GPR => 6,
+        RegFile::UGPR => 12,
+        RegFile::Pred => 13,
+        RegFile::UPred => 11,
+        RegFile::Bar => 0, // Barriers have a HW scoreboard
+        RegFile::Carry => 6,
+        RegFile::Mem => panic!("Not a register"),
     }
 }
 

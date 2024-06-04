@@ -51,6 +51,20 @@ struct v3d_device_info {
 
         /** If the hw has accumulator registers */
         bool has_accumulators;
+
+        /** Granularity for the Clipper XY Scaling */
+        float clipper_xy_granularity;
+
+        /** The Control List Executor (CLE) pre-fetches V3D_CLE_READAHEAD
+         *  bytes from the Control List buffer. The usage of these last bytes
+         *  should be avoided or the CLE would pre-fetch the data after the
+         *  end of the CL buffer, reporting the kernel "MMU error from client
+         *  CLE".
+         */
+        uint32_t cle_readahead;
+
+        /** Minimum size for a buffer storing the Control List Executor (CLE) */
+        uint32_t cle_buffer_min_size;
 };
 
 typedef int (*v3d_ioctl_fun)(int fd, unsigned long request, void *arg);

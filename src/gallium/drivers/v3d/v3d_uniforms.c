@@ -246,13 +246,11 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                         cl_aligned_u32(&uniforms, gallium_uniforms[data]);
                         break;
                 case QUNIFORM_VIEWPORT_X_SCALE: {
-                        float clipper_xy_granularity = V3DV_X(devinfo, CLIPPER_XY_GRANULARITY);
-                        cl_aligned_f(&uniforms, v3d->viewport.scale[0] * clipper_xy_granularity);
+                        cl_aligned_f(&uniforms, v3d->viewport.scale[0] * devinfo->clipper_xy_granularity);
                         break;
                 }
                 case QUNIFORM_VIEWPORT_Y_SCALE: {
-                        float clipper_xy_granularity = V3DV_X(devinfo, CLIPPER_XY_GRANULARITY);
-                        cl_aligned_f(&uniforms, v3d->viewport.scale[1] * clipper_xy_granularity);
+                        cl_aligned_f(&uniforms, v3d->viewport.scale[1] * devinfo->clipper_xy_granularity);
                         break;
                 }
                 case QUNIFORM_VIEWPORT_Z_OFFSET:

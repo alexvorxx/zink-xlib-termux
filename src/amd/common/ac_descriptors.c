@@ -1142,8 +1142,10 @@ ac_set_mutable_cb_surface_fields(const struct radeon_info *info, const struct ac
          cb->cb_color_base |= tile_swizzle;
    }
 
-   if (info->gfx_level >= GFX12)
+   if (info->gfx_level >= GFX12) {
+      cb->cb_color_attrib3 |= S_028C7C_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode);
       return;
+   }
 
    /* Set up DCC. */
    if (state->dcc_enabled) {

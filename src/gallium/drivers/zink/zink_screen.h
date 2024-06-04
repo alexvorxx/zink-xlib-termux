@@ -164,7 +164,7 @@ zink_screen_update_pipeline_cache(struct zink_screen *screen, struct zink_progra
 void
 zink_screen_get_pipeline_cache(struct zink_screen *screen, struct zink_program *pg, bool in_thread);
 
-void
+void VKAPI_PTR
 zink_stub_function_not_loaded(void);
 
 bool

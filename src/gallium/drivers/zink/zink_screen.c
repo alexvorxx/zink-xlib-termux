@@ -3749,7 +3749,7 @@ zink_drm_create_screen(int fd, const struct pipe_screen_config *config)
    return &ret->base;
 }
 
-void zink_stub_function_not_loaded()
+void VKAPI_PTR zink_stub_function_not_loaded()
 {
    /* this will be used by the zink_verify_*_extensions() functions on a
     * release build

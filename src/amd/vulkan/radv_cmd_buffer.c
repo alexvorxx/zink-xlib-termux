@@ -2331,9 +2331,12 @@ radv_emit_hw_gs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *gs
 
       radeon_opt_set_context_reg(cmd_buffer, R_028A44_VGT_GS_ONCHIP_CNTL, RADV_TRACKED_VGT_GS_ONCHIP_CNTL,
                                  gs->info.regs.vgt_gs_onchip_cntl);
-      radeon_opt_set_context_reg(cmd_buffer, R_028A94_VGT_GS_MAX_PRIMS_PER_SUBGROUP,
-                                 RADV_TRACKED_VGT_GS_MAX_PRIMS_PER_SUBGROUP,
-                                 gs->info.regs.gs.vgt_gs_max_prims_per_subgroup);
+
+      if (pdev->info.gfx_level == GFX9) {
+         radeon_opt_set_context_reg(cmd_buffer, R_028A94_VGT_GS_MAX_PRIMS_PER_SUBGROUP,
+                                    RADV_TRACKED_VGT_GS_MAX_PRIMS_PER_SUBGROUP,
+                                    gs->info.regs.gs.vgt_gs_max_prims_per_subgroup);
+      }
    } else {
       radeon_set_sh_reg_seq(cmd_buffer->cs, R_00B220_SPI_SHADER_PGM_LO_GS, 4);
       radeon_emit(cmd_buffer->cs, va >> 8);

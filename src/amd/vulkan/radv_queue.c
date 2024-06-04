@@ -886,8 +886,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    if (pdev->info.gfx_level >= GFX10) {
       if (pdev->info.gfx_level >= GFX12) {
          radeon_set_context_reg(cs, R_028AA0_VGT_DRAW_PAYLOAD_CNTL, 0);
-      } else {
-         radeon_set_context_reg(cs, R_028A98_VGT_DRAW_PAYLOAD_CNTL, 0);
       }
 
       radeon_set_uconfig_reg(cs, R_030964_GE_MAX_VTX_INDX, ~0);
@@ -1057,9 +1055,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
 
       radeon_set_context_reg(cs, R_028410_CB_RMI_GL2_CACHE_CONTROL, gl2_cc | S_028410_DCC_RD_POLICY(meta_read_policy));
 
-      if (pdev->info.gfx_level < GFX12)
-         radeon_set_context_reg(cs, R_028428_CB_COVERAGE_OUT_CONTROL, 0);
-
       radeon_set_sh_reg_seq(cs, R_00B0C8_SPI_SHADER_USER_ACCUM_PS_0, 4);
       radeon_emit(cs, 0); /* R_00B0C8_SPI_SHADER_USER_ACCUM_PS_0 */
       radeon_emit(cs, 0); /* R_00B0CC_SPI_SHADER_USER_ACCUM_PS_1 */
@@ -1152,10 +1147,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       if (pdev->info.gfx_level >= GFX12) {
          radeon_set_context_reg(cs, R_028C54_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
                                 S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1));
-
-      } else {
-         radeon_set_context_reg(cs, R_028C4C_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
-                                S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1));
       }
 
       radeon_set_uconfig_reg(cs, R_030968_VGT_INSTANCE_BASE_ID, 0);
@@ -1241,9 +1232,8 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    if (pdev->info.gfx_level >= GFX11) {
       if (pdev->info.gfx_level >= GFX12) {
          radeon_set_context_reg(cs, R_028C4C_PA_SC_BINNER_CNTL_2, S_028C4C_ENABLE_PING_PONG_BIN_ORDER(1));
-      } else {
-         radeon_set_context_reg(cs, R_028C54_PA_SC_BINNER_CNTL_2,
-                                S_028C54_ENABLE_PING_PONG_BIN_ORDER(pdev->info.gfx_level >= GFX11_5));
+      } else if (pdev->info.gfx_level >= GFX11_5) {
+         radeon_set_context_reg(cs, R_028C54_PA_SC_BINNER_CNTL_2, S_028C54_ENABLE_PING_PONG_BIN_ORDER(1));
       }
 
       uint64_t rb_mask = BITFIELD64_MASK(pdev->info.max_render_backends);

@@ -46,10 +46,10 @@ struct v3d_device_info {
         /** Size of the VPM, in bytes. */
         int vpm_size;
 
-        /* NSLC * QUPS from the core's IDENT registers. */
+        /** NSLC * QUPS from the core's IDENT registers. */
         int qpu_count;
 
-        /* If the hw has accumulator registers */
+        /** If the hw has accumulator registers */
         bool has_accumulators;
 };
 

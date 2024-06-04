@@ -1347,6 +1347,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
 
    uint64_t *accel_struct_offsets = NULL;
    uint64_t *ray_history_offsets = NULL;
+   uint64_t *ray_history_sizes = NULL;
    struct hash_entry **hash_entries = NULL;
    FILE *file = NULL;
 
@@ -1359,6 +1360,12 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
       util_dynarray_num_elements(&device->rra_trace.ray_history, struct radv_rra_ray_history_data *);
    ray_history_offsets = calloc(dispatch_count, sizeof(uint64_t));
    if (!ray_history_offsets) {
+      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+      goto cleanup;
+   }
+
+   ray_history_sizes = calloc(dispatch_count, sizeof(uint64_t));
+   if (!ray_history_sizes) {
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
       goto cleanup;
    }
@@ -1503,6 +1510,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
          fwrite(&begin_id, sizeof(begin_id), 1, file);
          fwrite(&begin_control, sizeof(begin_control), 1, file);
          fwrite(&begin, sizeof(begin), 1, file);
+         ray_history_sizes[ray_history_index] += sizeof(begin_id) + sizeof(begin_control) + sizeof(begin);
 
          for (uint32_t i = 0; i < src->ahit_count; i++) {
             struct rra_ray_history_id_token ahit_status_id = {
@@ -1515,6 +1523,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
             };
             fwrite(&ahit_status_id, sizeof(ahit_status_id), 1, file);
             fwrite(&ahit_status_control, sizeof(ahit_status_control), 1, file);
+            ray_history_sizes[ray_history_index] += sizeof(ahit_status_id) + sizeof(ahit_status_control);
          }
 
          for (uint32_t i = 0; i < src->isec_count; i++) {
@@ -1528,6 +1537,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
             };
             fwrite(&isec_status_id, sizeof(isec_status_id), 1, file);
             fwrite(&isec_status_control, sizeof(isec_status_control), 1, file);
+            ray_history_sizes[ray_history_index] += sizeof(isec_status_id) + sizeof(isec_status_control);
          }
 
          struct rra_ray_history_id_token end_id = {
@@ -1556,6 +1566,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
          fwrite(&end_id, sizeof(end_id), 1, file);
          fwrite(&end_control, sizeof(end_control), 1, file);
          fwrite(&end, sizeof(end), 1, file);
+         ray_history_sizes[ray_history_index] += sizeof(end_id) + sizeof(end_control) + sizeof(end);
       }
 
       for (uint32_t i = 0; i < dispatch_count; i++) {
@@ -1578,17 +1589,10 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
                               RADV_RRA_ASIC_API_INFO_CHUNK_VERSION, file);
 
    for (uint32_t i = 0; i < dispatch_count; i++) {
-      uint64_t tokens_size;
-      if (i == dispatch_count - 1)
-         tokens_size = (uint64_t)(chunk_info_offset - ray_history_offsets[i]);
-      else
-         tokens_size = (uint64_t)(ray_history_offsets[i + 1] - ray_history_offsets[i]);
-      tokens_size -= sizeof(struct radv_rra_ray_history_metadata);
-
       rra_dump_chunk_description(ray_history_offsets[i], 0, sizeof(struct radv_rra_ray_history_metadata),
                                  "HistoryMetadata", RADV_RRA_RAY_HISTORY_CHUNK_VERSION, file);
-      rra_dump_chunk_description(ray_history_offsets[i] + sizeof(struct radv_rra_ray_history_metadata), 0, tokens_size,
-                                 "HistoryTokensRaw", RADV_RRA_RAY_HISTORY_CHUNK_VERSION, file);
+      rra_dump_chunk_description(ray_history_offsets[i] + sizeof(struct radv_rra_ray_history_metadata), 0,
+                                 ray_history_sizes[i], "HistoryTokensRaw", RADV_RRA_RAY_HISTORY_CHUNK_VERSION, file);
    }
 
    for (uint32_t i = 0; i < written_accel_struct_count; ++i) {
@@ -1614,6 +1618,7 @@ cleanup:
       fclose(file);
 
    free(hash_entries);
+   free(ray_history_sizes);
    free(ray_history_offsets);
    free(accel_struct_offsets);
    return result;

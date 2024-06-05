@@ -1116,39 +1116,6 @@ dri2_create_image_from_winsys(__DRIscreen *_screen,
    return img;
 }
 
-static __DRIimage *
-dri2_create_image_from_name(__DRIscreen *_screen,
-                            int width, int height, int format,
-                            int name, int pitch, void *loaderPrivate)
-{
-   const struct dri2_format_mapping *map = dri2_get_mapping_by_format(format);
-   struct winsys_handle whandle;
-   __DRIimage *img;
-
-   if (!map)
-      return NULL;
-
-   memset(&whandle, 0, sizeof(whandle));
-   whandle.type = WINSYS_HANDLE_TYPE_SHARED;
-   whandle.handle = name;
-   whandle.format = map->pipe_format;
-   whandle.modifier = DRM_FORMAT_MOD_INVALID;
-
-   whandle.stride = pitch * util_format_get_blocksize(map->pipe_format);
-
-   img = dri2_create_image_from_winsys(_screen, width, height, map,
-                                       1, &whandle, 0, loaderPrivate);
-
-   if (!img)
-      return NULL;
-
-   img->dri_components = map->dri_components;
-   img->dri_fourcc = map->dri_fourcc;
-   img->dri_format = map->dri_format;
-
-   return img;
-}
-
 static unsigned
 dri2_get_modifier_num_planes(__DRIscreen *_screen,
                              uint64_t modifier, int fourcc)
@@ -1951,7 +1918,6 @@ dri2_get_capabilities(__DRIscreen *_screen)
 static const __DRIimageExtension dri2ImageExtensionTempl = {
     .base = { __DRI_IMAGE, 22 },
 
-    .createImageFromName          = dri2_create_image_from_name,
     .createImageFromRenderbuffer  = dri2_create_image_from_renderbuffer,
     .destroyImage                 = dri2_destroy_image,
     .createImage                  = dri2_create_image,
@@ -1977,7 +1943,6 @@ static const __DRIimageExtension dri2ImageExtensionTempl = {
 const __DRIimageExtension driVkImageExtension = {
     .base = { __DRI_IMAGE, 20 },
 
-    .createImageFromName          = dri2_create_image_from_name,
     .createImageFromRenderbuffer  = dri2_create_image_from_renderbuffer,
     .destroyImage                 = dri2_destroy_image,
     .createImage                  = dri2_create_image,
@@ -2001,7 +1966,6 @@ const __DRIimageExtension driVkImageExtension = {
 const __DRIimageExtension driVkImageExtensionSw = {
     .base = { __DRI_IMAGE, 20 },
 
-    .createImageFromName          = dri2_create_image_from_name,
     .createImageFromRenderbuffer  = dri2_create_image_from_renderbuffer,
     .destroyImage                 = dri2_destroy_image,
     .createImage                  = dri2_create_image,

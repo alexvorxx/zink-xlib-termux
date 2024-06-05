@@ -1427,11 +1427,6 @@ typedef struct __DRIimageExtensionRec __DRIimageExtension;
 struct __DRIimageExtensionRec {
     __DRIextension base;
 
-    __DRIimage *(*createImageFromName)(__DRIscreen *screen,
-				       int width, int height, int format,
-				       int name, int pitch,
-				       void *loaderPrivate);
-
     void (*destroyImage)(__DRIimage *image);
 
     __DRIimage *(*createImage)(__DRIscreen *screen,
@@ -1454,9 +1449,8 @@ struct __DRIimageExtensionRec {
    unsigned char (*validateUsage)(__DRIimage *image, unsigned int use);
 
    /**
-    * Unlike createImageFromName __DRI_IMAGE_FORMAT is not used but instead
-    * DRM_FORMAT_*, and strides are in bytes not pixels. Stride is
-    * also per block and not per pixel (for non-RGB, see gallium blocks).
+    * Create an image from a series of GEM names; uses FourCC for format
+    * and byte stride.
     *
     * \since 5
     */

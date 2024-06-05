@@ -32,6 +32,7 @@
 #include "brw_fs_builder.h"
 #include "brw_nir.h"
 #include "compiler/glsl_types.h"
+#include "dev/intel_device_info.h"
 
 using namespace brw;
 
@@ -854,8 +855,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
          fs_inst *inst = abld.emit(SHADER_OPCODE_URB_WRITE_LOGICAL, reg_undef,
                                    srcs, ARRAY_SIZE(srcs));
 
-         /* For ICL Wa_1805992985 one needs additional write in the end. */
-         if (devinfo->ver == 11 && stage == MESA_SHADER_TESS_EVAL)
+         /* For Wa_1805992985 one needs additional write in the end. */
+         if (intel_needs_workaround(devinfo, 1805992985) && stage == MESA_SHADER_TESS_EVAL)
             inst->eot = false;
          else
             inst->eot = slot == last_slot && stage != MESA_SHADER_GEOMETRY;
@@ -905,13 +906,13 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       return;
    }
 
-   /* ICL Wa_1805992985:
+   /* Wa_1805992985:
     *
-    * ICLLP GPU hangs on one of tessellation vkcts tests with DS not done. The
+    * GPU hangs on one of tessellation vkcts tests with DS not done. The
     * send cycle, which is a urb write with an eot must be 4 phases long and
     * all 8 lanes must valid.
     */
-   if (devinfo->ver == 11 && stage == MESA_SHADER_TESS_EVAL) {
+   if (intel_needs_workaround(devinfo, 1805992985) && stage == MESA_SHADER_TESS_EVAL) {
       assert(dispatch_width == 8);
       fs_reg uniform_urb_handle = fs_reg(VGRF, alloc.allocate(1), BRW_TYPE_UD);
       fs_reg uniform_mask = fs_reg(VGRF, alloc.allocate(1), BRW_TYPE_UD);

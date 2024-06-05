@@ -1462,8 +1462,7 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
    if (draw->dri_screen_render_gpu == draw->dri_screen_display_gpu) {
 #ifdef HAVE_DRI3_MODIFIERS
       if (draw->multiplanes_available &&
-          draw->ext->image->queryDmaBufModifiers &&
-          draw->ext->image->createImageWithModifiers) {
+          draw->ext->image->queryDmaBufModifiers) {
          xcb_dri3_get_supported_modifiers_cookie_t mod_cookie;
          xcb_dri3_get_supported_modifiers_reply_t *mod_reply;
          xcb_generic_error_t *error = NULL;
@@ -1528,11 +1527,10 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
       if (!buffer->image)
          goto no_image;
    } else {
-      buffer->image = draw->ext->image->createImage(draw->dri_screen_render_gpu,
-                                                    width, height,
-                                                    format,
-                                                    0,
-                                                    buffer);
+      buffer->image =
+         draw->ext->image->createImage(draw->dri_screen_render_gpu,
+                                       width, height, format,
+                                       NULL, 0, 0, buffer);
 
       if (!buffer->image)
          goto no_image;
@@ -1546,6 +1544,7 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
            draw->ext->image->createImage(draw->dri_screen_display_gpu,
                                          width, height,
                                          dri3_linear_format_for_format(draw, format),
+                                         NULL, 0,
                                          __DRI_IMAGE_USE_SHARE |
                                          __DRI_IMAGE_USE_LINEAR |
                                          __DRI_IMAGE_USE_BACKBUFFER |
@@ -1557,14 +1556,15 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
       if (!pixmap_buffer) {
          buffer->linear_buffer =
            draw->ext->image->createImage(draw->dri_screen_render_gpu,
-                                         width, height,
-                                         dri3_linear_format_for_format(draw, format),
-                                         __DRI_IMAGE_USE_SHARE |
-                                         __DRI_IMAGE_USE_LINEAR |
-                                         __DRI_IMAGE_USE_BACKBUFFER |
-                                         __DRI_IMAGE_USE_SCANOUT |
-                                         __DRI_IMAGE_USE_PRIME_BUFFER,
-                                         buffer);
+                                        width, height,
+                                        dri3_linear_format_for_format(draw, format),
+                                        NULL, 0,
+                                        __DRI_IMAGE_USE_SHARE |
+                                        __DRI_IMAGE_USE_LINEAR |
+                                        __DRI_IMAGE_USE_BACKBUFFER |
+                                        __DRI_IMAGE_USE_SCANOUT |
+                                        __DRI_IMAGE_USE_PRIME_BUFFER,
+                                        buffer);
 
          pixmap_buffer = buffer->linear_buffer;
          if (!buffer->linear_buffer) {

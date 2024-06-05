@@ -38,7 +38,7 @@ __DRIimage *loader_dri_create_image(__DRIscreen *screen,
                                     unsigned int modifiers_count,
                                     void *loaderPrivate)
 {
-   if (modifiers && modifiers_count > 0 && image->createImageWithModifiers) {
+   if (modifiers && modifiers_count > 0) {
       bool has_valid_modifier = false;
       int i;
 
@@ -56,15 +56,10 @@ __DRIimage *loader_dri_create_image(__DRIscreen *screen,
       }
       if (!has_valid_modifier)
          return NULL;
-
-      return image->createImageWithModifiers(screen, width, height,
-                                             dri_format, modifiers,
-                                             modifiers_count, dri_usage,
-                                             loaderPrivate);
    }
 
-   /* No modifier given or fallback to the legacy createImage allowed */
-   return image->createImage(screen, width, height, dri_format, dri_usage,
+   return image->createImage(screen, width, height, dri_format,
+                             modifiers, modifiers_count, dri_usage,
                              loaderPrivate);
 }
 

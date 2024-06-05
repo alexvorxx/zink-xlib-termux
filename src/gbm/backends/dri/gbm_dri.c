@@ -972,11 +972,6 @@ gbm_dri_bo_create(struct gbm_device *gbm,
    /* Gallium drivers requires shared in order to get the handle/stride */
    dri_use |= __DRI_IMAGE_USE_SHARE;
 
-   if (modifiers && !dri->image->createImageWithModifiers) {
-      errno = ENOSYS;
-      goto failed;
-   }
-
    /* If the driver supports fixed-rate compression, filter the acceptable
     * modifiers by the compression rate. */
    if (modifiers && dri->image->queryCompressionModifiers) {
@@ -1154,13 +1149,7 @@ gbm_dri_surface_create(struct gbm_device *gbm,
 		       uint32_t format, uint32_t flags,
                        const uint64_t *modifiers, const unsigned count)
 {
-   struct gbm_dri_device *dri = gbm_dri_device(gbm);
    struct gbm_dri_surface *surf;
-
-   if (modifiers && !dri->image->createImageWithModifiers) {
-      errno = ENOSYS;
-      return NULL;
-   }
 
    if (count)
       assert(modifiers);

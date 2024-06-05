@@ -2885,7 +2885,7 @@ dri2_create_drm_image_mesa(_EGLDisplay *disp, const EGLint *attr_list)
 
    dri2_img->dri_image =
       dri2_dpy->image->createImage(dri2_dpy->dri_screen_render_gpu, attrs.Width,
-                                   attrs.Height, format, dri_use, dri2_img);
+                                   attrs.Height, format, NULL, 0, dri_use, dri2_img);
    if (dri2_img->dri_image == NULL) {
       free(dri2_img);
       _eglError(EGL_BAD_ALLOC, "dri2_create_drm_image_mesa");

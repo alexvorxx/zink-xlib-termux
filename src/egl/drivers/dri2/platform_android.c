@@ -492,7 +492,7 @@ get_front_bo(struct dri2_egl_surface *dri2_surf, unsigned int format)
    } else if (dri2_surf->base.Type == EGL_PBUFFER_BIT) {
       dri2_surf->dri_image_front = dri2_dpy->image->createImage(
          dri2_dpy->dri_screen_render_gpu, dri2_surf->base.Width,
-         dri2_surf->base.Height, format, 0, NULL);
+         dri2_surf->base.Height, format, NULL, 0, 0, NULL);
       if (!dri2_surf->dri_image_front) {
          _eglLog(_EGL_WARNING, "dri2_image_front allocation failed");
          return -1;

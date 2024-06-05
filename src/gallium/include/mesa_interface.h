@@ -1429,11 +1429,6 @@ struct __DRIimageExtensionRec {
 
     void (*destroyImage)(__DRIimage *image);
 
-    __DRIimage *(*createImage)(__DRIscreen *screen,
-			       int width, int height, int format,
-			       unsigned int use,
-			       void *loaderPrivate);
-
    unsigned char (*queryImage)(__DRIimage *image, int attrib, int *value);
 
    /**
@@ -1635,6 +1630,10 @@ struct __DRIimageExtensionRec {
     * Creates an image with implementation's favorite modifiers and the
     * provided usage flags.
     *
+    * Passing either zero modifiers, or a modifier list consisting only
+    * of DRM_FORMAT_MOD_INVALID, allows the implementation to select a
+    * layout with implicit modifiers.
+    *
     * The created image should be destroyed with destroyImage().
     *
     * Returns the new DRIimage. The chosen modifier can be obtained later on
@@ -1644,12 +1643,12 @@ struct __DRIimageExtensionRec {
     *
     * \since 19
     */
-   __DRIimage *(*createImageWithModifiers)(__DRIscreen *screen,
-                                           int width, int height, int format,
-                                           const uint64_t *modifiers,
-                                           const unsigned int modifier_count,
-                                           unsigned int use,
-                                           void *loaderPrivate);
+   __DRIimage *(*createImage)(__DRIscreen *screen,
+                              int width, int height, int format,
+                              const uint64_t *modifiers,
+                              const unsigned int modifier_count,
+                              unsigned int use,
+                              void *loaderPrivate);
 
    /**
     * Set an in-fence-fd on the image.  If a fence-fd is already set

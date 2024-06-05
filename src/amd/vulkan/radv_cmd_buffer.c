@@ -3914,7 +3914,8 @@ radv_emit_fb_color_state(struct radv_cmd_buffer *cmd_buffer, int index, struct r
       radeon_set_context_reg(cmd_buffer->cs, R_028C70_CB_COLOR0_FDCC_CONTROL + index * 0x24, cb_fdcc_control);
       radeon_set_context_reg(cmd_buffer->cs, R_028C78_CB_COLOR0_ATTRIB2 + index * 0x24, cb->ac.cb_color_attrib2);
       radeon_set_context_reg(cmd_buffer->cs, R_028C7C_CB_COLOR0_ATTRIB3 + index * 0x24, cb->ac.cb_color_attrib3);
-      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4, cb->ac.cb_color_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028E40_CB_COLOR0_BASE_EXT + index * 4,
+                             S_028E40_BASE_256B(cb->ac.cb_color_base >> 32));
       radeon_set_context_reg(cmd_buffer->cs, R_028EC0_CB_COLOR0_INFO + index * 4, cb->ac.cb_color_info);
    } else if (pdev->info.gfx_level >= GFX11) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028C6C_CB_COLOR0_VIEW + index * 0x3c, 4);
@@ -4116,24 +4117,28 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
       radeon_set_context_reg(cmd_buffer->cs, R_028018_DB_Z_INFO, ds->ac.db_z_info);
       radeon_set_context_reg(cmd_buffer->cs, R_02801C_DB_STENCIL_INFO, ds->ac.db_stencil_info);
       radeon_set_context_reg(cmd_buffer->cs, R_028020_DB_Z_READ_BASE, ds->ac.db_depth_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_028024_DB_Z_READ_BASE_HI, ds->ac.db_depth_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028024_DB_Z_READ_BASE_HI, S_028024_BASE_HI(ds->ac.db_depth_base >> 32));
       radeon_set_context_reg(cmd_buffer->cs, R_028028_DB_Z_WRITE_BASE, ds->ac.db_depth_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_02802C_DB_Z_WRITE_BASE_HI, ds->ac.db_depth_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_02802C_DB_Z_WRITE_BASE_HI, S_02802C_BASE_HI(ds->ac.db_depth_base >> 32));
       radeon_set_context_reg(cmd_buffer->cs, R_028030_DB_STENCIL_READ_BASE, ds->ac.db_stencil_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_028034_DB_STENCIL_READ_BASE_HI, ds->ac.db_stencil_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_028034_DB_STENCIL_READ_BASE_HI,
+                             S_028034_BASE_HI(ds->ac.db_stencil_base >> 32));
       radeon_set_context_reg(cmd_buffer->cs, R_028038_DB_STENCIL_WRITE_BASE, ds->ac.db_stencil_base);
-      radeon_set_context_reg(cmd_buffer->cs, R_02803C_DB_STENCIL_WRITE_BASE_HI, ds->ac.db_stencil_base >> 32);
+      radeon_set_context_reg(cmd_buffer->cs, R_02803C_DB_STENCIL_WRITE_BASE_HI,
+                             S_02803C_BASE_HI(ds->ac.db_stencil_base >> 32));
       radeon_set_context_reg(cmd_buffer->cs, R_028B94_PA_SC_HIZ_INFO, ds->ac.u.gfx12.hiz_info);
       radeon_set_context_reg(cmd_buffer->cs, R_028B98_PA_SC_HIS_INFO, ds->ac.u.gfx12.his_info);
 
       if (ds->ac.u.gfx12.hiz_info) {
          radeon_set_context_reg(cmd_buffer->cs, R_028B9C_PA_SC_HIZ_BASE, ds->ac.u.gfx12.hiz_base);
-         radeon_set_context_reg(cmd_buffer->cs, R_028BA0_PA_SC_HIZ_BASE_EXT, ds->ac.u.gfx12.hiz_base >> 32);
+         radeon_set_context_reg(cmd_buffer->cs, R_028BA0_PA_SC_HIZ_BASE_EXT,
+                                S_028BA0_BASE_256B(ds->ac.u.gfx12.hiz_base >> 32));
          radeon_set_context_reg(cmd_buffer->cs, R_028BA4_PA_SC_HIZ_SIZE_XY, ds->ac.u.gfx12.hiz_size_xy);
       }
       if (ds->ac.u.gfx12.his_info) {
          radeon_set_context_reg(cmd_buffer->cs, R_028BA8_PA_SC_HIS_BASE, ds->ac.u.gfx12.his_base);
-         radeon_set_context_reg(cmd_buffer->cs, R_028BAC_PA_SC_HIS_BASE_EXT, ds->ac.u.gfx12.his_base >> 32);
+         radeon_set_context_reg(cmd_buffer->cs, R_028BAC_PA_SC_HIS_BASE_EXT,
+                                S_028BAC_BASE_256B(ds->ac.u.gfx12.his_base >> 32));
          radeon_set_context_reg(cmd_buffer->cs, R_028BB0_PA_SC_HIS_SIZE_XY, ds->ac.u.gfx12.his_size_xy);
       }
    } else if (pdev->info.gfx_level >= GFX10) {

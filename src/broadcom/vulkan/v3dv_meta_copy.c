@@ -114,6 +114,19 @@ v3dv_meta_blit_init(struct v3dv_device *device)
                                &device->meta.blit.p_layout);
 }
 
+static void
+destroy_meta_blit_pipeline(VkDevice vk_device,
+                           uint64_t obj,
+                           VkAllocationCallbacks *alloc)
+{
+   struct v3dv_meta_blit_pipeline *p =
+      (struct v3dv_meta_blit_pipeline *)(uintptr_t) obj;
+   v3dv_DestroyPipeline(vk_device, p->pipeline, alloc);
+   v3dv_DestroyRenderPass(vk_device, p->pass, alloc);
+   v3dv_DestroyRenderPass(vk_device, p->pass_no_load, alloc);
+   vk_free(alloc, p);
+}
+
 void
 v3dv_meta_blit_finish(struct v3dv_device *device)
 {
@@ -121,11 +134,8 @@ v3dv_meta_blit_finish(struct v3dv_device *device)
 
    for (uint32_t i = 0; i < 3; i++) {
       hash_table_foreach(device->meta.blit.cache[i], entry) {
-         struct v3dv_meta_blit_pipeline *item = entry->data;
-         v3dv_DestroyPipeline(_device, item->pipeline, &device->vk.alloc);
-         v3dv_DestroyRenderPass(_device, item->pass, &device->vk.alloc);
-         v3dv_DestroyRenderPass(_device, item->pass_no_load, &device->vk.alloc);
-         vk_free(&device->vk.alloc, item);
+         destroy_meta_blit_pipeline(_device, (uintptr_t)entry->data,
+                                    &device->vk.alloc);
       }
       _mesa_hash_table_destroy(device->meta.blit.cache[i], NULL);
    }
@@ -227,6 +237,19 @@ v3dv_meta_texel_buffer_copy_init(struct v3dv_device *device)
       &device->meta.texel_buffer_copy.p_layout);
 }
 
+static void
+destroy_meta_texel_buffer_copy_pipeline(VkDevice vk_device,
+                                        uint64_t obj,
+                                        VkAllocationCallbacks *alloc)
+{
+   struct v3dv_meta_texel_buffer_copy_pipeline *p =
+      (struct v3dv_meta_texel_buffer_copy_pipeline *)(uintptr_t) obj;
+   v3dv_DestroyPipeline(vk_device, p->pipeline, alloc);
+   v3dv_DestroyRenderPass(vk_device, p->pass, alloc);
+   v3dv_DestroyRenderPass(vk_device, p->pass_no_load, alloc);
+   vk_free(alloc, p);
+}
+
 void
 v3dv_meta_texel_buffer_copy_finish(struct v3dv_device *device)
 {
@@ -234,11 +257,8 @@ v3dv_meta_texel_buffer_copy_finish(struct v3dv_device *device)
 
    for (uint32_t i = 0; i < 3; i++) {
       hash_table_foreach(device->meta.texel_buffer_copy.cache[i], entry) {
-         struct v3dv_meta_texel_buffer_copy_pipeline *item = entry->data;
-         v3dv_DestroyPipeline(_device, item->pipeline, &device->vk.alloc);
-         v3dv_DestroyRenderPass(_device, item->pass, &device->vk.alloc);
-         v3dv_DestroyRenderPass(_device, item->pass_no_load, &device->vk.alloc);
-         vk_free(&device->vk.alloc, item);
+         destroy_meta_texel_buffer_copy_pipeline(_device, (uintptr_t)entry->data,
+                                                 &device->vk.alloc);
       }
       _mesa_hash_table_destroy(device->meta.texel_buffer_copy.cache[i], NULL);
    }
@@ -2422,7 +2442,7 @@ create_texel_buffer_copy_pipeline(struct v3dv_device *device,
 
 static bool
 get_copy_texel_buffer_pipeline(
-   struct v3dv_device *device,
+   struct v3dv_cmd_buffer *cmd_buffer,
    VkFormat format,
    VkColorComponentFlags cmask,
    VkComponentMapping *cswizzle,
@@ -2431,6 +2451,7 @@ get_copy_texel_buffer_pipeline(
    struct v3dv_meta_texel_buffer_copy_pipeline **pipeline)
 {
    bool ok = true;
+   struct v3dv_device *device = cmd_buffer->device;
 
    uint8_t key[V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE];
    if (device->instance->meta_cache_enabled) {
@@ -2476,6 +2497,10 @@ get_copy_texel_buffer_pipeline(
       _mesa_hash_table_insert(device->meta.texel_buffer_copy.cache[image_type],
                               dupkey, *pipeline);
       mtx_unlock(&device->meta.mtx);
+   } else {
+      v3dv_cmd_buffer_add_private_obj(
+         cmd_buffer, (uintptr_t)*pipeline,
+         (v3dv_cmd_buffer_private_obj_destroy_cb)destroy_meta_texel_buffer_copy_pipeline);
    }
 
    return true;
@@ -2579,7 +2604,7 @@ texel_buffer_shader_copy(struct v3dv_cmd_buffer *cmd_buffer,
 
    /* Get the texel buffer copy pipeline */
    struct v3dv_meta_texel_buffer_copy_pipeline *pipeline = NULL;
-   bool ok = get_copy_texel_buffer_pipeline(cmd_buffer->device,
+   bool ok = get_copy_texel_buffer_pipeline(cmd_buffer,
                                             dst_format, cmask, cswizzle,
                                             image->vk.image_type, num_layers > 1,
                                             &pipeline);
@@ -4079,7 +4104,7 @@ create_blit_pipeline(struct v3dv_device *device,
  * destination and source formats.
  */
 static bool
-get_blit_pipeline(struct v3dv_device *device,
+get_blit_pipeline(struct v3dv_cmd_buffer *cmd_buffer,
                   VkFormat dst_format,
                   VkFormat src_format,
                   VkColorComponentFlags cmask,
@@ -4089,6 +4114,7 @@ get_blit_pipeline(struct v3dv_device *device,
                   struct v3dv_meta_blit_pipeline **pipeline)
 {
    bool ok = true;
+   struct v3dv_device *device = cmd_buffer->device;
 
    uint8_t key[V3DV_META_BLIT_CACHE_KEY_SIZE];
    if (device->instance->meta_cache_enabled) {
@@ -4137,7 +4163,12 @@ get_blit_pipeline(struct v3dv_device *device,
       _mesa_hash_table_insert(device->meta.blit.cache[src_type],
                               &(*pipeline)->key, *pipeline);
       mtx_unlock(&device->meta.mtx);
+   } else {
+      v3dv_cmd_buffer_add_private_obj(
+         cmd_buffer, (uintptr_t)*pipeline,
+         (v3dv_cmd_buffer_private_obj_destroy_cb)destroy_meta_blit_pipeline);
    }
+
    return true;
 
 fail:
@@ -4486,7 +4517,7 @@ blit_shader(struct v3dv_cmd_buffer *cmd_buffer,
 
    /* Get the blit pipeline */
    struct v3dv_meta_blit_pipeline *pipeline = NULL;
-   bool ok = get_blit_pipeline(cmd_buffer->device,
+   bool ok = get_blit_pipeline(cmd_buffer,
                                dst_format, src_format, cmask, src->vk.image_type,
                                dst->vk.samples, src->vk.samples,
                                &pipeline);

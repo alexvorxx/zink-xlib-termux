@@ -583,7 +583,8 @@ unsigned radv_get_max_scratch_waves(const struct radv_device *device, struct rad
 
 const char *radv_get_shader_name(const struct radv_shader_info *info, gl_shader_stage stage);
 
-unsigned radv_compute_spi_ps_input(const struct radv_graphics_state_key *gfx_state,
+unsigned radv_compute_spi_ps_input(const struct radv_physical_device *pdev,
+                                   const struct radv_graphics_state_key *gfx_state,
                                    const struct radv_shader_info *info);
 
 bool radv_can_dump_shader(struct radv_device *device, nir_shader *nir, bool meta_shader);

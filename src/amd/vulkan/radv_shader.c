@@ -3256,7 +3256,8 @@ radv_get_shader_name(const struct radv_shader_info *info, gl_shader_stage stage)
 }
 
 unsigned
-radv_compute_spi_ps_input(const struct radv_graphics_state_key *gfx_state, const struct radv_shader_info *info)
+radv_compute_spi_ps_input(const struct radv_physical_device *pdev, const struct radv_graphics_state_key *gfx_state,
+                          const struct radv_shader_info *info)
 {
    unsigned spi_ps_input;
 
@@ -3287,7 +3288,8 @@ radv_compute_spi_ps_input(const struct radv_graphics_state_key *gfx_state, const
    }
 
    if (info->ps.reads_sample_mask_in || info->ps.reads_fully_covered) {
-      spi_ps_input |= S_0286CC_SAMPLE_COVERAGE_ENA(1);
+      spi_ps_input |= S_0286CC_SAMPLE_COVERAGE_ENA(1) |
+                      S_02865C_COVERAGE_TO_SHADER_SELECT(pdev->info.gfx_level >= GFX12 && info->ps.reads_fully_covered);
    }
 
    if (G_0286CC_POS_W_FLOAT_ENA(spi_ps_input)) {

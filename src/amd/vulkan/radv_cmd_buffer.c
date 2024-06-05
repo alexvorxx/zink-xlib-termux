@@ -5699,7 +5699,9 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
          db_eqaa |= S_028804_OVERRASTERIZATION_AMOUNT(log_samples);
    }
 
-   pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps && ps->info.ps.reads_fully_covered);
+   /* GFX12 programs it in SPI_PS_INPUT_ENA.COVERAGE_TO_SHADER_SELECT */
+   pa_sc_aa_config |=
+      S_028BE0_COVERAGE_TO_SHADER_SELECT(pdev->info.gfx_level < GFX12 && ps && ps->info.ps.reads_fully_covered);
 
    if (pdev->info.gfx_level >= GFX12) {
       radeon_set_context_reg(cmd_buffer->cs, R_028C5C_PA_SC_SAMPLE_PROPERTIES,

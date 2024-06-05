@@ -276,7 +276,7 @@ declare_ps_input_vgprs(const struct radv_shader_info *info, struct radv_shader_a
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, NULL); /* fixed pt */
 
    if (args->remap_spi_ps_input)
-      ac_compact_ps_vgpr_args(&args->ac, info->ps.spi_ps_input);
+      ac_compact_ps_vgpr_args(&args->ac, info->ps.spi_ps_input_ena);
 }
 
 static void

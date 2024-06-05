@@ -135,6 +135,7 @@
     BOOT_METHOD: depthcharge
     DEVICE_TYPE: acer-R721T-grunt
     DTB: ""
+    FARM: collabora
     FDO_CI_CONCURRENT: 3
     HWCI_FREQ_MAX: "true"
     HWCI_KERNEL_MODULES: amdgpu
@@ -148,6 +149,7 @@
     BOOT_METHOD: depthcharge
     DEVICE_TYPE: hp-14-db0003na-grunt
     DTB: ""
+    FARM: collabora
     FDO_CI_CONCURRENT: 3
     HWCI_FREQ_MAX: "true"
     HWCI_KERNEL_MODULES: amdgpu
@@ -161,6 +163,7 @@
     BOOT_METHOD: depthcharge
     DEVICE_TYPE: asus-CM1400CXA-dalboz
     DTB: ""
+    FARM: collabora
 #   FDO_CI_CONCURRENT: ?
     HWCI_FREQ_MAX: "true"
     HWCI_KERNEL_MODULES: amdgpu
@@ -173,6 +176,7 @@
     BOOT_METHOD: depthcharge
     DEVICE_TYPE: lenovo-TPad-C13-Yoga-zork
     DTB: ""
+    FARM: collabora
 #   FDO_CI_CONCURRENT: ?
     HWCI_FREQ_MAX: "true"
     HWCI_KERNEL_MODULES: amdgpu

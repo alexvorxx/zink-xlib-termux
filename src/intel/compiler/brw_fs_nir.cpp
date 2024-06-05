@@ -6740,6 +6740,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          fs_reg handle = component(ubld.vgrf(BRW_TYPE_UD), 0);
          ubld.AND(handle, retype(brw_vec1_grf(0, 5), BRW_TYPE_UD),
                           brw_imm_ud(INTEL_MASK(31, 10)));
+         if (devinfo->ver >= 20)
+            ubld.SHR(handle, handle, brw_imm_ud(4));
          srcs[SURFACE_LOGICAL_SRC_SURFACE] = brw_imm_ud(GFX125_NON_BINDLESS);
          srcs[SURFACE_LOGICAL_SRC_SURFACE_HANDLE] = handle;
       } else {
@@ -6800,6 +6802,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          fs_reg handle = component(ubld.vgrf(BRW_TYPE_UD), 0);
          ubld.AND(handle, retype(brw_vec1_grf(0, 5), BRW_TYPE_UD),
                           brw_imm_ud(INTEL_MASK(31, 10)));
+         if (devinfo->ver >= 20)
+            ubld.SHR(handle, handle, brw_imm_ud(4));
          srcs[SURFACE_LOGICAL_SRC_SURFACE] = brw_imm_ud(GFX125_NON_BINDLESS);
          srcs[SURFACE_LOGICAL_SRC_SURFACE_HANDLE] = handle;
       } else {

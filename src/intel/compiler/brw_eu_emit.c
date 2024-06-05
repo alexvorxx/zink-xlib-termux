@@ -1529,6 +1529,11 @@ brw_send_indirect_split_message(struct brw_codegen *p,
       const struct tgl_swsb swsb = brw_get_default_swsb(p);
       struct brw_reg addr = retype(brw_address_reg(2), BRW_TYPE_UD);
 
+      /* On Xe2+ ExBSO addressing is implicitly enabled for the UGM
+       * shared function.
+       */
+      ex_bso |= (devinfo->ver >= 20 && sfid == GFX12_SFID_UGM);
+
       brw_push_insn_state(p);
       brw_set_default_access_mode(p, BRW_ALIGN_1);
       brw_set_default_mask_control(p, BRW_MASK_DISABLE);

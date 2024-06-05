@@ -1858,6 +1858,8 @@ lower_lsc_block_logical_send(const fs_builder &bld, fs_inst *inst)
       ubld.AND(stateless_ex_desc,
                retype(brw_vec1_grf(0, 5), BRW_TYPE_UD),
                brw_imm_ud(INTEL_MASK(31, 10)));
+      if (devinfo->ver >= 20)
+         ubld.SHR(stateless_ex_desc, stateless_ex_desc, brw_imm_ud(4));
    }
 
    fs_reg data;

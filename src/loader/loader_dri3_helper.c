@@ -1824,7 +1824,7 @@ dri3_update_drawable(struct loader_dri3_drawable *draw)
 __DRIimage *
 loader_dri3_create_image(xcb_connection_t *c,
                          xcb_dri3_buffer_from_pixmap_reply_t *bp_reply,
-                         unsigned int format,
+                         unsigned int fourcc,
                          __DRIscreen *dri_screen,
                          const __DRIimageExtension *image,
                          void *loaderPrivate)
@@ -1848,7 +1848,7 @@ loader_dri3_create_image(xcb_connection_t *c,
    image_planar = image->createImageFromDmaBufs(dri_screen,
                                                 bp_reply->width,
                                                 bp_reply->height,
-                                                loader_image_format_to_fourcc(format),
+                                                fourcc,
                                                 DRM_FORMAT_MOD_INVALID,
                                                 fds, 1,
                                                 &stride, &offset,
@@ -1872,7 +1872,7 @@ loader_dri3_create_image(xcb_connection_t *c,
 __DRIimage *
 loader_dri3_create_image_from_buffers(xcb_connection_t *c,
                                       xcb_dri3_buffers_from_pixmap_reply_t *bp_reply,
-                                      unsigned int format,
+                                      unsigned int fourcc,
                                       __DRIscreen *dri_screen,
                                       const __DRIimageExtension *image,
                                       void *loaderPrivate)
@@ -1898,7 +1898,7 @@ loader_dri3_create_image_from_buffers(xcb_connection_t *c,
    ret = image->createImageFromDmaBufs(dri_screen,
                                        bp_reply->width,
                                        bp_reply->height,
-                                       loader_image_format_to_fourcc(format),
+                                       fourcc,
                                        bp_reply->modifier,
                                        fds, bp_reply->nfd,
                                        strides, offsets,
@@ -1931,6 +1931,7 @@ dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,
    int                                  height;
    int                                  fence_fd;
    __DRIscreen                          *cur_screen;
+   int                                  fourcc = loader_image_format_to_fourcc(format);
 
    if (buffer)
       return buffer;
@@ -1977,7 +1978,7 @@ dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,
       if (!bps_reply)
          goto no_image;
       buffer->image =
-         loader_dri3_create_image_from_buffers(draw->conn, bps_reply, format,
+         loader_dri3_create_image_from_buffers(draw->conn, bps_reply, fourcc,
                                                cur_screen, draw->ext->image,
                                                buffer);
       width = bps_reply->width;
@@ -1994,7 +1995,7 @@ dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,
       if (!bp_reply)
          goto no_image;
 
-      buffer->image = loader_dri3_create_image(draw->conn, bp_reply, format,
+      buffer->image = loader_dri3_create_image(draw->conn, bp_reply, fourcc,
                                                cur_screen, draw->ext->image,
                                                buffer);
       width = bp_reply->width;

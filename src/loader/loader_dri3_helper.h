@@ -266,7 +266,7 @@ int loader_dri3_open(xcb_connection_t *conn,
 __DRIimage *
 loader_dri3_create_image(xcb_connection_t *c,
                          xcb_dri3_buffer_from_pixmap_reply_t *bp_reply,
-                         unsigned int format,
+                         unsigned int fourcc,
                          __DRIscreen *dri_screen,
                          const __DRIimageExtension *image,
                          void *loaderPrivate);
@@ -275,7 +275,7 @@ loader_dri3_create_image(xcb_connection_t *c,
 __DRIimage *
 loader_dri3_create_image_from_buffers(xcb_connection_t *c,
                                       xcb_dri3_buffers_from_pixmap_reply_t *bp_reply,
-                                      unsigned int format,
+                                      unsigned int fourcc,
                                       __DRIscreen *dri_screen,
                                       const __DRIimageExtension *image,
                                       void *loaderPrivate);

@@ -293,7 +293,7 @@ dri3_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
    xcb_drawable_t drawable;
    xcb_dri3_buffer_from_pixmap_cookie_t bp_cookie;
    xcb_dri3_buffer_from_pixmap_reply_t *bp_reply;
-   unsigned int format;
+   unsigned int format, fourcc;
 
    drawable = (xcb_drawable_t)(uintptr_t)buffer;
    bp_cookie = xcb_dri3_buffer_from_pixmap(dri2_dpy->conn, drawable);
@@ -311,6 +311,7 @@ dri3_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
       free(bp_reply);
       return EGL_NO_IMAGE_KHR;
    }
+   fourcc = loader_image_format_to_fourcc(format);
 
    dri2_img = malloc(sizeof *dri2_img);
    if (!dri2_img) {
@@ -322,7 +323,7 @@ dri3_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
    _eglInitImage(&dri2_img->base, disp);
 
    dri2_img->dri_image = loader_dri3_create_image(
-      dri2_dpy->conn, bp_reply, format, dri2_dpy->dri_screen_render_gpu,
+      dri2_dpy->conn, bp_reply, fourcc, dri2_dpy->dri_screen_render_gpu,
       dri2_dpy->image, dri2_img);
 
    free(bp_reply);
@@ -341,7 +342,7 @@ dri3_create_image_khr_pixmap_from_buffers(_EGLDisplay *disp, _EGLContext *ctx,
    xcb_dri3_buffers_from_pixmap_cookie_t bp_cookie;
    xcb_dri3_buffers_from_pixmap_reply_t *bp_reply;
    xcb_drawable_t drawable;
-   unsigned int format;
+   unsigned int format, fourcc;
 
    drawable = (xcb_drawable_t)(uintptr_t)buffer;
    bp_cookie = xcb_dri3_buffers_from_pixmap(dri2_dpy->conn, drawable);
@@ -360,6 +361,7 @@ dri3_create_image_khr_pixmap_from_buffers(_EGLDisplay *disp, _EGLContext *ctx,
       free(bp_reply);
       return EGL_NO_IMAGE_KHR;
    }
+   fourcc = loader_image_format_to_fourcc(format);
 
    dri2_img = malloc(sizeof *dri2_img);
    if (!dri2_img) {
@@ -371,7 +373,7 @@ dri3_create_image_khr_pixmap_from_buffers(_EGLDisplay *disp, _EGLContext *ctx,
    _eglInitImage(&dri2_img->base, disp);
 
    dri2_img->dri_image = loader_dri3_create_image_from_buffers(
-      dri2_dpy->conn, bp_reply, format, dri2_dpy->dri_screen_render_gpu,
+      dri2_dpy->conn, bp_reply, fourcc, dri2_dpy->dri_screen_render_gpu,
       dri2_dpy->image, dri2_img);
    free(bp_reply);
 

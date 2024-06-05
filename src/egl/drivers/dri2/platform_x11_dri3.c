@@ -32,6 +32,7 @@
 #include <xcb/xfixes.h>
 
 #include <xf86drm.h>
+#include "drm-uapi/drm_fourcc.h"
 #include "util/macros.h"
 
 #include "egl_dri2.h"
@@ -293,7 +294,7 @@ dri3_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
    xcb_drawable_t drawable;
    xcb_dri3_buffer_from_pixmap_cookie_t bp_cookie;
    xcb_dri3_buffer_from_pixmap_reply_t *bp_reply;
-   unsigned int format, fourcc;
+   unsigned int fourcc;
 
    drawable = (xcb_drawable_t)(uintptr_t)buffer;
    bp_cookie = xcb_dri3_buffer_from_pixmap(dri2_dpy->conn, drawable);
@@ -304,14 +305,13 @@ dri3_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
       return NULL;
    }
 
-   format = dri2_format_for_depth(dri2_dpy, bp_reply->depth);
-   if (format == __DRI_IMAGE_FORMAT_NONE) {
+   fourcc = dri2_fourcc_for_depth(dri2_dpy, bp_reply->depth);
+   if (fourcc == DRM_FORMAT_INVALID) {
       _eglError(EGL_BAD_PARAMETER,
                 "dri3_create_image_khr: unsupported pixmap depth");
       free(bp_reply);
       return EGL_NO_IMAGE_KHR;
    }
-   fourcc = loader_image_format_to_fourcc(format);
 
    dri2_img = malloc(sizeof *dri2_img);
    if (!dri2_img) {
@@ -342,7 +342,7 @@ dri3_create_image_khr_pixmap_from_buffers(_EGLDisplay *disp, _EGLContext *ctx,
    xcb_dri3_buffers_from_pixmap_cookie_t bp_cookie;
    xcb_dri3_buffers_from_pixmap_reply_t *bp_reply;
    xcb_drawable_t drawable;
-   unsigned int format, fourcc;
+   unsigned int fourcc;
 
    drawable = (xcb_drawable_t)(uintptr_t)buffer;
    bp_cookie = xcb_dri3_buffers_from_pixmap(dri2_dpy->conn, drawable);
@@ -354,14 +354,13 @@ dri3_create_image_khr_pixmap_from_buffers(_EGLDisplay *disp, _EGLContext *ctx,
       return EGL_NO_IMAGE_KHR;
    }
 
-   format = dri2_format_for_depth(dri2_dpy, bp_reply->depth);
-   if (format == __DRI_IMAGE_FORMAT_NONE) {
+   fourcc = dri2_fourcc_for_depth(dri2_dpy, bp_reply->depth);
+   if (fourcc == DRM_FORMAT_INVALID) {
       _eglError(EGL_BAD_PARAMETER,
                 "dri3_create_image_khr: unsupported pixmap depth");
       free(bp_reply);
       return EGL_NO_IMAGE_KHR;
    }
-   fourcc = loader_image_format_to_fourcc(format);
 
    dri2_img = malloc(sizeof *dri2_img);
    if (!dri2_img) {

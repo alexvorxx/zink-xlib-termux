@@ -20,6 +20,7 @@ spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-op-div-dvec2-dvec2
 spec@arb_pixel_buffer_object@pbo-drawpixels
 spec@arb_shader_image_load_store@semantics@imageLoad/Tessellation control shader/r8/image2D test
 spec@arb_shader_precision@fs-fma-float-float-float
+spec@arb_shader_precision@vs-op-assign-add-vec4-float
 spec@arb_tessellation_shader@execution@tcs-input-read-nonconst
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-float-index-wr
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-float-index-wr-before-barrier
@@ -29,6 +30,7 @@ spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-vec3-i
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-vec3-index-wr-before-barrier
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-vec4-index-wr
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-vec4-index-wr-before-barrier
+spec@arb_texture_cube_map_array@texturesize@gs-texturesize-samplercubearrayshadow
 spec@arb_texture_multisample@texelfetch fs sampler2dmsarray 4 1x129x9-98x129x9
 spec@arb_texture_multisample@texelfetch fs sampler2dmsarray 4 98x1x9-98x129x9
 spec@arb_vertex_attrib_64bit@execution@vs_in@vs-input-double_dvec4-double_dmat3-position
@@ -37,15 +39,18 @@ spec@ext_external_objects@vk-image-display-muliple-textures
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 msaa
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 2 upsample
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 4 upsample
+spec@ext_framebuffer_multisample@line-smooth 6
 spec@ext_framebuffer_multisample@line-smooth 8
 spec@ext_framebuffer_multisample@polygon-smooth 2
 spec@ext_framebuffer_object@fbo-blending-formats
 spec@ext_texture_array@fbo-depth-array depth-clear
+spec@ext_texture_array@fbo-depth-array depth-draw
 spec@ext_texture_array@fbo-depth-array fs-writes-depth
 spec@ext_texture_array@fbo-depth-array stencil-clear
 spec@ext_texture_array@fbo-depth-array stencil-draw
 spec@ext_texture_integer@getteximage-clamping
 spec@ext_texture_snorm@fbo-blending-formats
+spec@ext_texture_swizzle@ext_texture_swizzle-swizzle
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-float-float
 spec@glsl-1.10@execution@derivatives@glsl-derivs-abs
 spec@glsl-1.10@execution@glsl-1.10-linear-fog
@@ -63,6 +68,7 @@ spec@glsl-1.30@execution@texelfetch fs sampler2d 1x281-501x281
 spec@glsl-1.30@execution@texelfetch fs sampler2d 1x71-501x71
 spec@glsl-1.30@execution@texelfetch fs sampler2darray 1x129x9-98x129x9
 spec@glsl-1.30@execution@texelfetch fs sampler2darray 98x1x9-98x129x9
+spec@glsl-1.30@execution@texelfetch fs sampler3d 1x129x9-98x129x9
 spec@glsl-1.30@execution@texelfetch fs sampler3d 98x1x9-98x129x9
 spec@glsl-1.30@execution@texelfetch@vs-texelfetch-isampler2darray-swizzle
 spec@glsl-1.30@execution@texelfetch@vs-texelfetch-isampler3d

@@ -300,7 +300,3 @@ dEQP-VK.robustness.robustness2.*
 dEQP-VK.shader_object.rendering.*
 dEQP-VK.sparse_resources.*
 dEQP-VK.transform_feedback.*
-
-# uprev Piglit in Mesa
-shaders@glsl-bug-110796
-

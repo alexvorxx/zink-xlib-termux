@@ -2806,11 +2806,11 @@ genX(cmd_buffer_begin_companion)(struct anv_cmd_buffer *cmd_buffer,
    cmd_buffer->state.current_db_mode = ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY;
    genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
 
-   /* Re-emit the aux table register in every command buffer.  This way we're
-    * ensured that we have the table even if this command buffer doesn't
-    * initialize any images.
+   /* Invalidate the aux table in every primary command buffer. This ensures
+    * the command buffer see the last updates made by the host.
     */
-   if (cmd_buffer->device->info->has_aux_map) {
+   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
+       cmd_buffer->device->info->has_aux_map) {
       anv_add_pending_pipe_bits(cmd_buffer,
                                 ANV_PIPE_AUX_TABLE_INVALIDATE_BIT,
                                 "new cmd buffer with aux-tt");
@@ -2904,11 +2904,11 @@ genX(BeginCommandBuffer)(
 
    if (anv_cmd_buffer_is_video_queue(cmd_buffer) ||
        anv_cmd_buffer_is_blitter_queue(cmd_buffer)) {
-      /* Re-emit the aux table register in every command buffer.  This way we're
-       * ensured that we have the table even if this command buffer doesn't
-       * initialize any images.
+      /* Invalidate the aux table in every primary command buffer. This
+       * ensures the command buffer see the last updates made by the host.
        */
-      if (cmd_buffer->device->info->has_aux_map) {
+      if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
+          cmd_buffer->device->info->has_aux_map) {
          anv_add_pending_pipe_bits(cmd_buffer,
                                    ANV_PIPE_AUX_TABLE_INVALIDATE_BIT,
                                    "new cmd buffer with aux-tt");
@@ -2946,11 +2946,11 @@ genX(BeginCommandBuffer)(
                              ANV_PIPE_VF_CACHE_INVALIDATE_BIT,
                              "new cmd buffer");
 
-   /* Re-emit the aux table register in every command buffer.  This way we're
-    * ensured that we have the table even if this command buffer doesn't
-    * initialize any images.
+   /* Invalidate the aux table in every primary command buffer. This ensures
+    * the command buffer see the last updates made by the host.
     */
-   if (cmd_buffer->device->info->has_aux_map) {
+   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY &&
+       cmd_buffer->device->info->has_aux_map) {
       anv_add_pending_pipe_bits(cmd_buffer,
                                 ANV_PIPE_AUX_TABLE_INVALIDATE_BIT,
                                 "new cmd buffer with aux-tt");

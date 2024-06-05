@@ -4504,9 +4504,9 @@ struct anv_pipeline {
    void *                                       mem_ctx;
 
    enum anv_pipeline_type                       type;
-   VkPipelineCreateFlags                        flags;
+   VkPipelineCreateFlags2KHR                    flags;
 
-   VkPipelineCreateFlags2KHR                    active_stages;
+   VkShaderStageFlags                           active_stages;
 
    uint32_t                                     ray_queries;
 

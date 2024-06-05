@@ -167,7 +167,7 @@ vn_sizeof_VkBufferCreateInfo_self(const VkBufferCreateInfo *val)
     size += vn_sizeof_VkFlags(&val->usage);
     size += vn_sizeof_VkSharingMode(&val->sharingMode);
     size += vn_sizeof_uint32_t(&val->queueFamilyIndexCount);
-    if (val->pQueueFamilyIndices) {
+    if (val->sharingMode == VK_SHARING_MODE_CONCURRENT) {
         size += vn_sizeof_array_size(val->queueFamilyIndexCount);
         size += vn_sizeof_uint32_t_array(val->pQueueFamilyIndices, val->queueFamilyIndexCount);
     } else {
@@ -234,7 +234,7 @@ vn_encode_VkBufferCreateInfo_self(struct vn_cs_encoder *enc, const VkBufferCreat
     vn_encode_VkFlags(enc, &val->usage);
     vn_encode_VkSharingMode(enc, &val->sharingMode);
     vn_encode_uint32_t(enc, &val->queueFamilyIndexCount);
-    if (val->pQueueFamilyIndices) {
+    if (val->sharingMode == VK_SHARING_MODE_CONCURRENT) {
         vn_encode_array_size(enc, val->queueFamilyIndexCount);
         vn_encode_uint32_t_array(enc, val->pQueueFamilyIndices, val->queueFamilyIndexCount);
     } else {

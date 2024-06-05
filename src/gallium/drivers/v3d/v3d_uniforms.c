@@ -372,6 +372,11 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                                        v3d->compute_num_workgroups[data]);
                         break;
 
+                case QUNIFORM_WORK_GROUP_SIZE:
+                        cl_aligned_u32(&uniforms,
+                                       v3d->compute_workgroup_size[data]);
+                        break;
+
                 case QUNIFORM_SHARED_OFFSET:
                         cl_aligned_reloc(&job->indirect, &uniforms,
                                          v3d->compute_shared_memory, 0);
@@ -464,6 +469,7 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                         break;
 
                 case QUNIFORM_NUM_WORK_GROUPS:
+                case QUNIFORM_WORK_GROUP_SIZE:
                 case QUNIFORM_SHARED_OFFSET:
                         /* Compute always recalculates uniforms. */
                         break;

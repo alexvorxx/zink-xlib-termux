@@ -1478,6 +1478,7 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
                                   V3D_CSD_CFG012_WG_COUNT_SHIFT);
         }
 
+        memcpy(v3d->compute_workgroup_size, info->block, 3 * sizeof(uint32_t));
         uint32_t wg_size = info->block[0] * info->block[1] * info->block[2];
 
         struct v3d_compute_prog_data *compute =

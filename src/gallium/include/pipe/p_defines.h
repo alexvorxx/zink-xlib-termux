@@ -1325,7 +1325,7 @@ enum pipe_perf_counter_data_type
 #define PIPE_UUID_SIZE 16
 #define PIPE_LUID_SIZE 8
 
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
 #define PIPE_MEMORY_FD
 #endif
 

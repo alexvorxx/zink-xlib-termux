@@ -79,7 +79,7 @@ static int hud_scale = HUD_DEFAULT_SCALE;
 static int hud_rotate = HUD_DEFAULT_ROTATION;
 static float hud_opacity = HUD_DEFAULT_OPACITY / 100.0f;
 
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
 static void
 signal_visible_handler(int sig, siginfo_t *siginfo, void *context)
 {
@@ -1965,7 +1965,7 @@ hud_create(struct cso_context *cso, struct hud_context *share,
    }
    const char *env = debug_get_option("GALLIUM_HUD",
       emulate_libgl_show_fps ? "stdout,fps" : NULL);
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
    unsigned signo = debug_get_num_option("GALLIUM_HUD_TOGGLE_SIGNAL", 0);
    static bool sig_handled = false;
    struct sigaction action;
@@ -2056,7 +2056,7 @@ hud_create(struct cso_context *cso, struct hud_context *share,
    list_inithead(&hud->pane_list);
 
    /* setup sig handler once for all hud contexts */
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
    if (!sig_handled && signo != 0) {
       action.sa_sigaction = &signal_visible_handler;
       action.sa_flags = SA_SIGINFO;

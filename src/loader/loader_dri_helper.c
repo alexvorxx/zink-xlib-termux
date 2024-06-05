@@ -116,9 +116,33 @@ bool dri_valid_swap_interval(__DRIscreen *driScreen,
  * translate to DRM_FORMAT codes in the call to createImageFromDmaBufs
  */
 int
+loader_fourcc_to_image_format(int fourcc)
+{
+   /* Convert from DRM_FORMAT to __DRI_IMAGE_FORMAT (sigh) */
+   switch (fourcc) {
+   case __DRI_IMAGE_FOURCC_SARGB8888: return __DRI_IMAGE_FORMAT_SARGB8;
+   case __DRI_IMAGE_FOURCC_SABGR8888: return __DRI_IMAGE_FORMAT_SABGR8;
+   case __DRI_IMAGE_FOURCC_SXRGB8888: return __DRI_IMAGE_FORMAT_SXRGB8;
+   case DRM_FORMAT_RGB565: return __DRI_IMAGE_FORMAT_RGB565;
+   case DRM_FORMAT_XRGB8888: return __DRI_IMAGE_FORMAT_XRGB8888;
+   case DRM_FORMAT_ARGB8888: return __DRI_IMAGE_FORMAT_ARGB8888;
+   case DRM_FORMAT_ABGR8888: return __DRI_IMAGE_FORMAT_ABGR8888;
+   case DRM_FORMAT_XBGR8888: return __DRI_IMAGE_FORMAT_XBGR8888;
+   case DRM_FORMAT_XRGB2101010: return __DRI_IMAGE_FORMAT_XRGB2101010;
+   case DRM_FORMAT_ARGB2101010: return __DRI_IMAGE_FORMAT_ARGB2101010;
+   case DRM_FORMAT_XBGR2101010: return __DRI_IMAGE_FORMAT_XBGR2101010;
+   case DRM_FORMAT_ABGR2101010: return __DRI_IMAGE_FORMAT_ABGR2101010;
+   case DRM_FORMAT_ABGR16161616: return __DRI_IMAGE_FORMAT_ABGR16161616;
+   case DRM_FORMAT_XBGR16161616: return __DRI_IMAGE_FORMAT_XBGR16161616;
+   case DRM_FORMAT_XBGR16161616F: return __DRI_IMAGE_FORMAT_XBGR16161616F;
+   case DRM_FORMAT_ABGR16161616F: return __DRI_IMAGE_FORMAT_ABGR16161616F;
+   }
+   return 0;
+}
+
+int
 loader_image_format_to_fourcc(int format)
 {
-
    /* Convert from __DRI_IMAGE_FORMAT to DRM_FORMAT (sigh) */
    switch (format) {
    case __DRI_IMAGE_FORMAT_SARGB8: return __DRI_IMAGE_FOURCC_SARGB8888;

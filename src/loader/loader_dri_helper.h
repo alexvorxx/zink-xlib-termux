@@ -121,6 +121,9 @@ bool dri_valid_swap_interval(__DRIscreen *driScreen,
 int
 loader_image_format_to_fourcc(int format);
 
+int
+loader_fourcc_to_image_format(int format);
+
 #ifdef HAVE_X11_PLATFORM
 void
 loader_init_screen_resources(struct loader_screen_resources *res,

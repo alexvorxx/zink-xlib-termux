@@ -411,7 +411,7 @@ loader_dri3_drawable_init(xcb_connection_t *conn,
    draw->block_on_depleted_buffers = false;
 
    draw->cur_blit_source = -1;
-   draw->back_format = __DRI_IMAGE_FORMAT_NONE;
+   draw->back_format = DRM_FORMAT_INVALID;
    mtx_init(&draw->mtx, mtx_plain);
    cnd_init(&draw->event_cnd);
 
@@ -1317,31 +1317,31 @@ loader_dri3_open(xcb_connection_t *conn,
 }
 
 static uint32_t
-dri3_cpp_for_format(uint32_t format) {
+dri3_cpp_for_fourcc(uint32_t format) {
    switch (format) {
-   case  __DRI_IMAGE_FORMAT_R8:
+   case DRM_FORMAT_R8:
       return 1;
-   case  __DRI_IMAGE_FORMAT_RGB565:
-   case  __DRI_IMAGE_FORMAT_GR88:
+   case DRM_FORMAT_RGB565:
+   case DRM_FORMAT_GR88:
       return 2;
-   case  __DRI_IMAGE_FORMAT_XRGB8888:
-   case  __DRI_IMAGE_FORMAT_ARGB8888:
-   case  __DRI_IMAGE_FORMAT_ABGR8888:
-   case  __DRI_IMAGE_FORMAT_XBGR8888:
-   case  __DRI_IMAGE_FORMAT_XRGB2101010:
-   case  __DRI_IMAGE_FORMAT_ARGB2101010:
-   case  __DRI_IMAGE_FORMAT_XBGR2101010:
-   case  __DRI_IMAGE_FORMAT_ABGR2101010:
-   case  __DRI_IMAGE_FORMAT_SARGB8:
-   case  __DRI_IMAGE_FORMAT_SABGR8:
-   case  __DRI_IMAGE_FORMAT_SXRGB8:
+   case DRM_FORMAT_XRGB8888:
+   case DRM_FORMAT_ARGB8888:
+   case DRM_FORMAT_ABGR8888:
+   case DRM_FORMAT_XBGR8888:
+   case DRM_FORMAT_XRGB2101010:
+   case DRM_FORMAT_ARGB2101010:
+   case DRM_FORMAT_XBGR2101010:
+   case DRM_FORMAT_ABGR2101010:
+   case __DRI_IMAGE_FORMAT_SARGB8:
+   case __DRI_IMAGE_FORMAT_SABGR8:
+   case __DRI_IMAGE_FORMAT_SXRGB8:
       return 4;
-   case __DRI_IMAGE_FORMAT_ABGR16161616:
-   case __DRI_IMAGE_FORMAT_XBGR16161616:
-   case __DRI_IMAGE_FORMAT_XBGR16161616F:
-   case __DRI_IMAGE_FORMAT_ABGR16161616F:
+   case DRM_FORMAT_ABGR16161616:
+   case DRM_FORMAT_XBGR16161616:
+   case DRM_FORMAT_XBGR16161616F:
+   case DRM_FORMAT_ABGR16161616F:
       return 8;
-   case  __DRI_IMAGE_FORMAT_NONE:
+   case DRM_FORMAT_INVALID:
    default:
       return 0;
    }
@@ -1422,11 +1422,12 @@ has_supported_modifier(struct loader_dri3_drawable *draw, unsigned int format,
  * Allocate an xshmfence for synchronization
  */
 static struct loader_dri3_buffer *
-dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
+dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int fourcc,
                          int width, int height, int depth)
 {
    struct loader_dri3_buffer *buffer;
    __DRIimage *pixmap_buffer = NULL, *linear_buffer_display_gpu = NULL;
+   int format = loader_fourcc_to_image_format(fourcc);
    xcb_pixmap_t pixmap;
    xcb_sync_fence_t sync_fence;
    struct xshmfence *shm_fence;
@@ -1455,7 +1456,7 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
    if (!buffer)
       goto no_buffer;
 
-   buffer->cpp = dri3_cpp_for_format(format);
+   buffer->cpp = dri3_cpp_for_fourcc(fourcc);
    if (!buffer->cpp)
       goto no_image;
 
@@ -1488,8 +1489,7 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
                    xcb_dri3_get_supported_modifiers_window_modifiers(mod_reply),
                    count * sizeof(uint64_t));
 
-            if (!has_supported_modifier(draw, loader_image_format_to_fourcc(format),
-                                        modifiers, count)) {
+            if (!has_supported_modifier(draw, fourcc, modifiers, count)) {
                free(modifiers);
                count = 0;
                modifiers = NULL;
@@ -1621,7 +1621,7 @@ dri3_alloc_render_buffer(struct loader_dri3_drawable *draw, unsigned int format,
          draw->ext->image->createImageFromDmaBufs(draw->dri_screen_render_gpu,
                                                   width,
                                                   height,
-                                                  loader_image_format_to_fourcc(format),
+                                                  fourcc,
                                                   DRM_FORMAT_MOD_INVALID,
                                                   &buffer_fds[0], num_planes,
                                                   &buffer->strides[0],
@@ -1918,7 +1918,7 @@ loader_dri3_create_image_from_buffers(xcb_connection_t *c,
  * wrap that with a __DRIimage structure using createImageFromDmaBufs
  */
 static struct loader_dri3_buffer *
-dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,
+dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int fourcc,
                        enum loader_dri3_buffer_type buffer_type,
                        struct loader_dri3_drawable *draw)
 {
@@ -1931,7 +1931,6 @@ dri3_get_pixmap_buffer(__DRIdrawable *driDrawable, unsigned int format,
    int                                  height;
    int                                  fence_fd;
    __DRIscreen                          *cur_screen;
-   int                                  fourcc = loader_image_format_to_fourcc(format);
 
    if (buffer)
       return buffer;
@@ -2032,7 +2031,7 @@ no_buffer:
  */
 static struct loader_dri3_buffer *
 dri3_get_buffer(__DRIdrawable *driDrawable,
-                unsigned int format,
+                unsigned int fourcc,
                 enum loader_dri3_buffer_type buffer_type,
                 struct loader_dri3_drawable *draw)
 {
@@ -2041,7 +2040,7 @@ dri3_get_buffer(__DRIdrawable *driDrawable,
    int buf_id;
 
    if (buffer_type == loader_dri3_buffer_back) {
-      draw->back_format = format;
+      draw->back_format = fourcc;
 
       buf_id = dri3_find_back(draw, !draw->prefer_back_buffer_reuse);
 
@@ -2064,10 +2063,10 @@ dri3_get_buffer(__DRIdrawable *driDrawable,
       /* Allocate the new buffers
        */
       new_buffer = dri3_alloc_render_buffer(draw,
-                                                   format,
-                                                   draw->width,
-                                                   draw->height,
-                                                   draw->depth);
+                                            fourcc,
+                                            draw->width,
+                                            draw->height,
+                                            draw->depth);
       if (!new_buffer)
          return NULL;
 
@@ -2205,6 +2204,7 @@ loader_dri3_get_buffers(__DRIdrawable *driDrawable,
 {
    struct loader_dri3_drawable *draw = loaderPrivate;
    struct loader_dri3_buffer   *front, *back;
+   int fourcc = loader_image_format_to_fourcc(format);
    int buf_id;
 
    buffers->image_mask = 0;
@@ -2246,14 +2246,14 @@ loader_dri3_get_buffers(__DRIdrawable *driDrawable,
       if (draw->type != LOADER_DRI3_DRAWABLE_WINDOW &&
           draw->dri_screen_render_gpu == draw->dri_screen_display_gpu)
          front = dri3_get_pixmap_buffer(driDrawable,
-                                               format,
-                                               loader_dri3_buffer_front,
-                                               draw);
-      else
-         front = dri3_get_buffer(driDrawable,
-                                        format,
+                                        fourcc,
                                         loader_dri3_buffer_front,
                                         draw);
+      else
+         front = dri3_get_buffer(driDrawable,
+                                 fourcc,
+                                 loader_dri3_buffer_front,
+                                 draw);
 
       if (!front)
          return false;
@@ -2265,9 +2265,9 @@ loader_dri3_get_buffers(__DRIdrawable *driDrawable,
 
    if (buffer_mask & __DRI_IMAGE_BUFFER_BACK) {
       back = dri3_get_buffer(driDrawable,
-                                    format,
-                                    loader_dri3_buffer_back,
-                                    draw);
+                             fourcc,
+                             loader_dri3_buffer_back,
+                             draw);
       if (!back)
          return false;
       draw->have_back = 1;
@@ -2375,7 +2375,7 @@ dri3_find_back_alloc(struct loader_dri3_drawable *draw)
 
    back = draw->buffers[id];
    /* Allocate a new back if we haven't got one */
-   if (!back && draw->back_format != __DRI_IMAGE_FORMAT_NONE &&
+   if (!back && draw->back_format != DRM_FORMAT_INVALID &&
        dri3_update_drawable(draw))
       back = dri3_alloc_render_buffer(draw, draw->back_format,
                                       draw->width, draw->height, draw->depth);

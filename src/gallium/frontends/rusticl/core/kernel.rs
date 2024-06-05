@@ -955,7 +955,6 @@ impl Kernel {
         Ok(Box::new(move |q, ctx| {
             let mut workgroup_id_offset_loc = None;
             let mut input = Vec::new();
-            let mut resource_info = Vec::new();
             // Set it once so we get the alignment padding right
             let static_local_size: u64 = nir_kernel_build.shared_size;
             let mut variable_local_size: u64 = static_local_size;
@@ -978,6 +977,24 @@ impl Kernel {
                 null_ptr_v3 = [0u8; 12].as_slice();
             };
 
+            let mut resource_info = Vec::new();
+            fn add_global<'a>(
+                q: &Queue,
+                input: &mut Vec<u8>,
+                resource_info: &mut Vec<(&'a PipeResource, usize)>,
+                res: &'a PipeResource,
+                offset: usize,
+            ) {
+                resource_info.push((res, input.len()));
+                if q.device.address_bits() == 64 {
+                    let offset: u64 = offset as u64;
+                    input.extend_from_slice(&offset.to_ne_bytes());
+                } else {
+                    let offset: u32 = offset as u32;
+                    input.extend_from_slice(&offset.to_ne_bytes());
+                }
+            }
+
             for (arg, val) in kernel_info.args.iter().zip(arg_values.iter()) {
                 if arg.dead {
                     continue;
@@ -994,14 +1011,7 @@ impl Kernel {
                     KernelArgValue::Constant(c) => input.extend_from_slice(c),
                     KernelArgValue::Buffer(buffer) => {
                         let res = buffer.get_res_of_dev(q.device)?;
-                        if q.device.address_bits() == 64 {
-                            let offset: u64 = buffer.offset as u64;
-                            input.extend_from_slice(&offset.to_ne_bytes());
-                        } else {
-                            let offset: u32 = buffer.offset as u32;
-                            input.extend_from_slice(&offset.to_ne_bytes());
-                        }
-                        resource_info.push((res.as_ref(), arg.offset));
+                        add_global(q, &mut input, &mut resource_info, res, buffer.offset);
                     }
                     KernelArgValue::Image(image) => {
                         let res = image.get_res_of_dev(q.device)?;
@@ -1103,11 +1113,8 @@ impl Kernel {
                 match arg.kind {
                     InternalKernelArgType::ConstantBuffer => {
                         assert!(nir_kernel_build.constant_buffer.is_some());
-                        input.extend_from_slice(null_ptr);
-                        resource_info.push((
-                            &nir_kernel_build.constant_buffer.as_ref().unwrap(),
-                            arg.offset,
-                        ));
+                        let res = nir_kernel_build.constant_buffer.as_ref().unwrap();
+                        add_global(q, &mut input, &mut resource_info, res, 0);
                     }
                     InternalKernelArgType::GlobalWorkOffsets => {
                         input.extend_from_slice(unsafe { as_byte_slice(&offsets) });
@@ -1117,8 +1124,8 @@ impl Kernel {
                         input.extend_from_slice(null_ptr_v3);
                     }
                     InternalKernelArgType::PrintfBuffer => {
-                        input.extend_from_slice(null_ptr);
-                        resource_info.push((printf_buf.as_ref().unwrap(), arg.offset));
+                        let res = printf_buf.as_ref().unwrap();
+                        add_global(q, &mut input, &mut resource_info, res, 0);
                     }
                     InternalKernelArgType::InlineSampler(cl) => {
                         samplers.push(Sampler::cl_to_pipe(cl));

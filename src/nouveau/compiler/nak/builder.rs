@@ -407,10 +407,20 @@ pub trait SSABuilder: Builder {
 
     fn ineg(&mut self, i: Src) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
-        self.push_op(OpINeg {
-            dst: dst.into(),
-            src: i,
-        });
+        if self.sm() >= 70 {
+            self.push_op(OpIAdd3 {
+                dst: dst.into(),
+                overflow: [Dst::None; 2],
+                srcs: [0.into(), i.ineg(), 0.into()],
+            });
+        } else {
+            self.push_op(OpIAdd2 {
+                dst: dst.into(),
+                srcs: [0.into(), i.ineg()],
+                carry_in: 0.into(),
+                carry_out: Dst::None,
+            });
+        }
         dst
     }
 

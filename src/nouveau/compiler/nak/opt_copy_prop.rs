@@ -481,10 +481,33 @@ impl CopyPropPass {
                     }
                 }
             }
-            Op::INeg(neg) => {
-                let dst = neg.dst.as_ssa().unwrap();
+            Op::IAdd2(add) => {
+                let dst = add.dst.as_ssa().unwrap();
                 assert!(dst.comps() == 1);
-                self.add_copy(dst[0], SrcType::I32, neg.src.ineg());
+                let dst = dst[0];
+
+                if add.carry_in.is_zero() {
+                    if add.srcs[0].is_zero() {
+                        self.add_copy(dst, SrcType::I32, add.srcs[1]);
+                    } else if add.srcs[1].is_zero() {
+                        self.add_copy(dst, SrcType::I32, add.srcs[0]);
+                    }
+                }
+            }
+            Op::IAdd3(add) => {
+                let dst = add.dst.as_ssa().unwrap();
+                assert!(dst.comps() == 1);
+                let dst = dst[0];
+
+                if add.srcs[0].is_zero() {
+                    if add.srcs[1].is_zero() {
+                        self.add_copy(dst, SrcType::I32, add.srcs[2]);
+                    } else if add.srcs[2].is_zero() {
+                        self.add_copy(dst, SrcType::I32, add.srcs[1]);
+                    }
+                } else if add.srcs[1].is_zero() && add.srcs[2].is_zero() {
+                    self.add_copy(dst, SrcType::I32, add.srcs[0]);
+                }
             }
             Op::Prmt(prmt) => {
                 let dst = prmt.dst.as_ssa().unwrap();

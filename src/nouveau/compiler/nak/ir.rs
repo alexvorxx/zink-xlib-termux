@@ -2997,22 +2997,6 @@ impl DisplayOp for OpIAbs {
 }
 impl_display_for_op!(OpIAbs);
 
-#[repr(C)]
-#[derive(SrcsAsSlice, DstsAsSlice)]
-pub struct OpINeg {
-    pub dst: Dst,
-
-    #[src_type(ALU)]
-    pub src: Src,
-}
-
-impl DisplayOp for OpINeg {
-    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ineg {}", self.src)
-    }
-}
-impl_display_for_op!(OpINeg);
-
 /// Only used on SM50
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
@@ -5190,7 +5174,6 @@ pub enum Op {
     Bfe(OpBfe),
     Flo(OpFlo),
     IAbs(OpIAbs),
-    INeg(OpINeg),
     IAdd2(OpIAdd2),
     IAdd3(OpIAdd3),
     IAdd3X(OpIAdd3X),
@@ -5638,7 +5621,6 @@ impl Instr {
             Op::BRev(_) | Op::Flo(_) | Op::PopC(_) => false,
             Op::BMsk(_)
             | Op::IAbs(_)
-            | Op::INeg(_)
             | Op::IAdd2(_)
             | Op::IAdd3(_)
             | Op::IAdd3X(_)
@@ -6256,32 +6238,6 @@ impl Shader {
                 MappedInstrs::None
             } else {
                 MappedInstrs::One(instr)
-            }
-        })
-    }
-
-    pub fn lower_ineg(&mut self) {
-        let sm = self.info.sm;
-        self.map_instrs(|mut instr: Box<Instr>, _| -> MappedInstrs {
-            match instr.op {
-                Op::INeg(neg) => {
-                    if sm >= 70 {
-                        instr.op = Op::IAdd3(OpIAdd3 {
-                            dst: neg.dst,
-                            overflow: [Dst::None; 2],
-                            srcs: [0.into(), neg.src.ineg(), 0.into()],
-                        });
-                    } else {
-                        instr.op = Op::IAdd2(OpIAdd2 {
-                            dst: neg.dst,
-                            srcs: [0.into(), neg.src.ineg()],
-                            carry_in: 0.into(),
-                            carry_out: Dst::None,
-                        });
-                    }
-                    MappedInstrs::One(instr)
-                }
-                _ => MappedInstrs::One(instr),
             }
         })
     }

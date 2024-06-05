@@ -424,7 +424,6 @@ fn legalize_sm50_instr(
             copy_alu_src_if_not_reg(b, &mut op.offset, SrcType::GPR);
         }
         Op::Copy(_) => (), // Nothing to do
-        Op::INeg(_) => (), // we unconditionally lower this
         Op::SuLd(op) => {
             copy_alu_src_if_not_reg(b, &mut op.handle, SrcType::GPR);
             copy_alu_src_if_not_reg(b, &mut op.coord, SrcType::GPR);
@@ -592,7 +591,7 @@ fn legalize_sm70_instr(
             copy_alu_src_if_not_reg(b, &mut op.pos, SrcType::ALU);
         }
         Op::BRev(_) | Op::Flo(_) => (),
-        Op::IAbs(_) | Op::INeg(_) => (),
+        Op::IAbs(_) => (),
         Op::IAdd3(op) => {
             let [ref mut src0, ref mut src1, ref mut src2] = op.srcs;
             swap_srcs_if_not_reg(src0, src1);

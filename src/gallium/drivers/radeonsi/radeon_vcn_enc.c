@@ -687,8 +687,6 @@ static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
    enc->enc_pic.av1_spec_misc.cdef_mode = pic->seq.seq_bits.enable_cdef;
    enc->enc_pic.av1_spec_misc.disable_cdf_update = pic->disable_cdf_update;
    enc->enc_pic.av1_spec_misc.disable_frame_end_update_cdf = pic->disable_frame_end_update_cdf;
-   /* tile has moved to tile config from vcn5 */
-   enc->enc_pic.av1_spec_misc.num_tiles_per_picture = pic->num_tiles_in_pic;
    enc->enc_pic.av1_spec_misc.palette_mode_enable = pic->palette_mode_enable;
    enc->enc_pic.av1_spec_misc.cdef_bits = pic->cdef.cdef_bits;
    enc->enc_pic.av1_spec_misc.cdef_damping_minus3 = pic->cdef.cdef_damping_minus_3;

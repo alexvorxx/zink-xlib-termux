@@ -40,8 +40,6 @@
 #define RENCODE_IB_PARAM_AV1_ENCODE_PARAMS                 0x00300004
 
 #define RENCODE_AV1_MIN_TILE_WIDTH                         256
-#define RENCODE_AV1_MAX_TILE_WIDTH                         4096
-#define RENCODE_AV1_MAX_TILE_HEIGHT                        4096
 
 static void radeon_enc_cdf_default_table(struct radeon_encoder *enc)
 {

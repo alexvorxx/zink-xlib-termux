@@ -311,6 +311,9 @@ enum quniform_contents {
          */
         QUNIFORM_WORK_GROUP_BASE,
 
+        /* Workgroup size for variable workgroup support */
+        QUNIFORM_WORK_GROUP_SIZE,
+
         /**
          * Returns the the offset of the scratch buffer for register spilling.
          */

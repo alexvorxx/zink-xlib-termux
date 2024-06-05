@@ -3668,6 +3668,18 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 break;
         }
 
+        case nir_intrinsic_load_workgroup_size: {
+                struct qreg x = vir_uniform(c, QUNIFORM_WORK_GROUP_SIZE, 0);
+                ntq_store_def(c, &instr->def, 0, x);
+
+                struct qreg y = vir_uniform(c, QUNIFORM_WORK_GROUP_SIZE, 1);
+                ntq_store_def(c, &instr->def, 1, y);
+
+                struct qreg z = vir_uniform(c, QUNIFORM_WORK_GROUP_SIZE, 2);
+                ntq_store_def(c, &instr->def, 2, z);
+                break;
+        }
+
         case nir_intrinsic_load_local_invocation_index:
                 ntq_store_def(c, &instr->def, 0,
                               emit_load_local_invocation_index(c));

@@ -119,6 +119,7 @@ if with_tools.contains('glsl')
               glsl_compiler
             ],
       suite : ['compiler', 'glsl'],
+      timeout: 60,
     )
   endif
 endif

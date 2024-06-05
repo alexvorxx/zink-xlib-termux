@@ -1279,7 +1279,7 @@ dri2_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
    xcb_get_geometry_cookie_t geometry_cookie;
    xcb_get_geometry_reply_t *geometry_reply;
    xcb_generic_error_t *error;
-   int stride, format;
+   int format, fourcc;
 
    (void)ctx;
 
@@ -1318,6 +1318,7 @@ dri2_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
       free(geometry_reply);
       return NULL;
    }
+   fourcc = loader_image_format_to_fourcc(format);
 
    dri2_img = malloc(sizeof *dri2_img);
    if (!dri2_img) {
@@ -1329,10 +1330,10 @@ dri2_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
 
    _eglInitImage(&dri2_img->base, disp);
 
-   stride = buffers[0].pitch / buffers[0].cpp;
-   dri2_img->dri_image = dri2_dpy->image->createImageFromName(
+   dri2_img->dri_image = dri2_dpy->image->createImageFromNames(
       dri2_dpy->dri_screen_render_gpu, buffers_reply->width,
-      buffers_reply->height, format, buffers[0].name, stride, dri2_img);
+      buffers_reply->height, fourcc, (int *) &buffers[0].name, 1,
+      (int *) &buffers[0].pitch, 0, dri2_img);
 
    free(buffers_reply);
    free(geometry_reply);

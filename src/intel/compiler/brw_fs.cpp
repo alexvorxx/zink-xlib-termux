@@ -427,7 +427,7 @@ fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
    if (is_send_from_grf())
       return false;
 
-   /* From Wa_1604601757:
+   /* From TGL PRM Vol 2a Pg. 1053 and Pg. 1069 MAD and MUL Instructions:
     *
     * "When multiplying a DW and any lower precision integer, source modifier
     *  is not supported."

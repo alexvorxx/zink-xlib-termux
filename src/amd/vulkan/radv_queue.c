@@ -866,7 +866,7 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       }
 
       if (pdev->info.gfx_level >= GFX12) {
-         radeon_set_context_reg(cs, R_0309B4_VGT_PRIMITIVEID_RESET, 0x0);
+         radeon_set_uconfig_reg(cs, R_0309B4_VGT_PRIMITIVEID_RESET, 0x0);
       } else {
          radeon_set_context_reg(cs, R_028A8C_VGT_PRIMITIVEID_RESET, 0x0);
       }

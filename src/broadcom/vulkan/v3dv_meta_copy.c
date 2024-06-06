@@ -4362,11 +4362,6 @@ blit_shader(struct v3dv_cmd_buffer *cmd_buffer,
    bool handled = true;
    VkResult result;
 
-   /* We don't support rendering to linear depth/stencil, this should have
-    * been rewritten to a compatible color blit by the caller.
-    */
-   assert(dst->tiled || !vk_format_is_depth_or_stencil(dst_format));
-
    /* Can't sample from linear images */
    if (!src->tiled && src->vk.image_type != VK_IMAGE_TYPE_1D) {
       return false;

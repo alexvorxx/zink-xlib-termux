@@ -1190,6 +1190,106 @@ mi_udiv32_imm(struct mi_builder *b, struct mi_value N, uint32_t D)
 /* This assumes addresses of strictly more than 32bits (aka. Gfx8+). */
 #if MI_BUILDER_CAN_WRITE_BATCH
 
+struct mi_reloc_imm_token {
+   enum mi_value_type dst_type;
+   uint32_t *ptr[2];
+};
+
+/* Emits a immediate write to an address/register where the immediate value
+ * can be updated later.
+ */
+static inline struct mi_reloc_imm_token
+mi_store_relocated_imm(struct mi_builder *b, struct mi_value dst)
+{
+   mi_builder_flush_math(b);
+
+   struct mi_reloc_imm_token token = {
+      .dst_type = dst.type,
+   };
+
+   uint32_t *dw;
+   switch (dst.type) {
+   case MI_VALUE_TYPE_MEM32:
+      dw = (uint32_t *)__gen_get_batch_dwords(b->user_data,
+                                              GENX(MI_STORE_DATA_IMM_length));
+      mi_builder_pack(b, GENX(MI_STORE_DATA_IMM), dw, sdm) {
+         sdm.DWordLength = GENX(MI_STORE_DATA_IMM_length) -
+                           GENX(MI_STORE_DATA_IMM_length_bias);
+         sdm.Address = dst.addr;
+      }
+      token.ptr[0] = dw + GENX(MI_STORE_DATA_IMM_ImmediateData_start) / 32;
+      break;
+
+   case MI_VALUE_TYPE_MEM64:
+      dw = (uint32_t *)__gen_get_batch_dwords(b->user_data,
+                                              GENX(MI_STORE_DATA_IMM_length) + 1);
+      mi_builder_pack(b, GENX(MI_STORE_DATA_IMM), dw, sdm) {
+         sdm.DWordLength = GENX(MI_STORE_DATA_IMM_length) + 1 -
+                           GENX(MI_STORE_DATA_IMM_length_bias);
+         sdm.Address = dst.addr;
+      }
+      token.ptr[0] = &dw[GENX(MI_STORE_DATA_IMM_ImmediateData_start) / 32];
+      token.ptr[1] = &dw[GENX(MI_STORE_DATA_IMM_ImmediateData_start) / 32 + 1];
+      break;
+
+   case MI_VALUE_TYPE_REG32:
+      dw = (uint32_t *)__gen_get_batch_dwords(b->user_data,
+                                              GENX(MI_LOAD_REGISTER_IMM_length));
+      mi_builder_pack(b, GENX(MI_LOAD_REGISTER_IMM), dw, lri) {
+         lri.DWordLength = GENX(MI_LOAD_REGISTER_IMM_length) -
+                           GENX(MI_LOAD_REGISTER_IMM_length_bias);
+         struct mi_reg_num reg = mi_adjust_reg_num(dst.reg);
+#if GFX_VER >= 11
+         lri.AddCSMMIOStartOffset = reg.cs;
+#endif
+         lri.RegisterOffset = reg.num;
+      }
+      token.ptr[0] = &dw[2];
+      break;
+
+   case MI_VALUE_TYPE_REG64: {
+      dw = (uint32_t *)__gen_get_batch_dwords(b->user_data,
+                                              GENX(MI_LOAD_REGISTER_IMM_length) + 2);
+      struct mi_reg_num reg = mi_adjust_reg_num(dst.reg);
+      mi_builder_pack(b, GENX(MI_LOAD_REGISTER_IMM), dw, lri) {
+         lri.DWordLength = GENX(MI_LOAD_REGISTER_IMM_length) + 2 -
+                           GENX(MI_LOAD_REGISTER_IMM_length_bias);
+#if GFX_VER >= 11
+         lri.AddCSMMIOStartOffset = reg.cs;
+#endif
+      }
+      dw[1] = reg.num;
+      dw[3] = reg.num + 4;
+      token.ptr[0] = &dw[2];
+      token.ptr[1] = &dw[4];
+      break;
+   }
+
+   default:
+      unreachable("Invalid value type");
+   }
+
+   mi_value_unref(b, dst);
+   return token;
+}
+
+static inline void
+mi_relocate_store_imm(struct mi_reloc_imm_token token, uint64_t value)
+{
+   switch (token.dst_type) {
+   case MI_VALUE_TYPE_MEM64:
+   case MI_VALUE_TYPE_REG64:
+      *token.ptr[1] = value >> 32;
+      FALLTHROUGH;
+   case MI_VALUE_TYPE_MEM32:
+   case MI_VALUE_TYPE_REG32:
+      *token.ptr[0] = value & 0xffffffff;
+      break;
+   default:
+      unreachable("Invalid value type");
+   }
+}
+
 struct mi_address_token {
    /* Pointers to address memory fields in the batch. */
    uint64_t *ptrs[2];

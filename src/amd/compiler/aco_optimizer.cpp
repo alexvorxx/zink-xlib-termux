@@ -1040,7 +1040,8 @@ can_apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_i
    } else if (instr->opcode == aco_opcode::v_mul_u32_u24 && ctx.program->gfx_level >= GFX10 &&
               !instr->usesModifiers() && sel.size() == 2 && !sel.sign_extend() &&
               (instr->operands[!idx].is16bit() ||
-               instr->operands[!idx].constantValue() <= UINT16_MAX)) {
+               (instr->operands[!idx].isConstant() &&
+                instr->operands[!idx].constantValue() <= UINT16_MAX))) {
       return true;
    } else if (idx < 2 && can_use_SDWA(ctx.program->gfx_level, instr, true) &&
               (tmp.type() == RegType::vgpr || ctx.program->gfx_level >= GFX9)) {
@@ -1722,36 +1723,39 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       break;
    }
    case aco_opcode::p_extract_vector: { /* mov */
-      ssa_info& info = ctx.info[instr->operands[0].tempId()];
       const unsigned index = instr->operands[1].constantValue();
-      const unsigned dst_offset = index * instr->definitions[0].bytes();
 
-      if (info.is_vec()) {
-         /* check if we index directly into a vector element */
-         Instruction* vec = info.instr;
-         unsigned offset = 0;
+      if (instr->operands[0].isTemp()) {
+         ssa_info& info = ctx.info[instr->operands[0].tempId()];
+         const unsigned dst_offset = index * instr->definitions[0].bytes();
 
-         for (const Operand& op : vec->operands) {
-            if (offset < dst_offset) {
-               offset += op.bytes();
-               continue;
-            } else if (offset != dst_offset || op.bytes() != instr->definitions[0].bytes()) {
+         if (info.is_vec()) {
+            /* check if we index directly into a vector element */
+            Instruction* vec = info.instr;
+            unsigned offset = 0;
+
+            for (const Operand& op : vec->operands) {
+               if (offset < dst_offset) {
+                  offset += op.bytes();
+                  continue;
+               } else if (offset != dst_offset || op.bytes() != instr->definitions[0].bytes()) {
+                  break;
+               }
+               instr->operands[0] = op;
                break;
             }
-            instr->operands[0] = op;
-            break;
+         } else if (info.is_constant_or_literal(32)) {
+            /* propagate constants */
+            uint32_t mask = u_bit_consecutive(0, instr->definitions[0].bytes() * 8u);
+            uint32_t val = (info.val >> (dst_offset * 8u)) & mask;
+            instr->operands[0] =
+               Operand::get_const(ctx.program->gfx_level, val, instr->definitions[0].bytes());
+            ;
          }
-      } else if (info.is_constant_or_literal(32)) {
-         /* propagate constants */
-         uint32_t mask = u_bit_consecutive(0, instr->definitions[0].bytes() * 8u);
-         uint32_t val = (info.val >> (dst_offset * 8u)) & mask;
-         instr->operands[0] =
-            Operand::get_const(ctx.program->gfx_level, val, instr->definitions[0].bytes());
-         ;
       }
 
       if (instr->operands[0].bytes() != instr->definitions[0].bytes()) {
-         if (instr->operands[0].size() != 1)
+         if (instr->operands[0].size() != 1 || !instr->operands[0].isTemp())
             break;
 
          if (index == 0)
@@ -2021,7 +2025,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          ctx.info[instr->definitions[0].tempId()].set_canonicalized();
       break;
    case aco_opcode::p_extract: {
-      if (instr->definitions[0].bytes() == 4) {
+      if (instr->definitions[0].bytes() == 4 && instr->operands[0].isTemp()) {
          ctx.info[instr->definitions[0].tempId()].set_extract(instr.get());
          if (instr->operands[0].regClass() == v1 && parse_insert(instr.get()))
             ctx.info[instr->operands[0].tempId()].set_insert(instr.get());
@@ -2029,7 +2033,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       break;
    }
    case aco_opcode::p_insert: {
-      if (instr->operands[0].bytes() == 4) {
+      if (instr->operands[0].bytes() == 4 && instr->operands[0].isTemp()) {
          if (instr->operands[0].regClass() == v1)
             ctx.info[instr->operands[0].tempId()].set_insert(instr.get());
          if (parse_extract(instr.get()))

@@ -1238,6 +1238,9 @@ lvp_physical_device_init(struct lvp_physical_device *device,
       device->vk.supported_extensions.EXT_image_drm_format_modifier = true;
 #endif
 
+   /* SNORM blending on llvmpipe fails CTS - disable by default */
+   device->snorm_blend = debug_get_bool_option("LVP_SNORM_BLEND", false);
+
    lvp_get_features(device, &device->vk.supported_features);
    lvp_get_properties(device, &device->vk.properties);
 

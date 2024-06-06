@@ -628,6 +628,38 @@ lower_images(nir_builder *b, nir_intrinsic_instr *intr, UNUSED void *data)
 }
 
 /*
+ * Map out-of-bounds storage texel buffer accesses to -1 indices, which will
+ * become an out-of-bounds hardware access. This gives cheap robustness2.
+ */
+static bool
+lower_buffer_image_robustness(nir_builder *b, nir_intrinsic_instr *intr,
+                              UNUSED void *data)
+{
+   b->cursor = nir_before_instr(&intr->instr);
+
+   switch (intr->intrinsic) {
+   case nir_intrinsic_image_deref_load:
+   case nir_intrinsic_image_deref_store:
+      break;
+   default:
+      return false;
+   }
+
+   if (nir_intrinsic_image_dim(intr) != GLSL_SAMPLER_DIM_BUF)
+      return false;
+
+   nir_def *size =
+      nir_image_deref_size(b, 1, 32, intr->src[0].ssa, nir_imm_int(b, 0),
+                           .image_dim = GLSL_SAMPLER_DIM_BUF);
+
+   nir_def *x = nir_channel(b, intr->src[1].ssa, 0);
+   nir_def *x_ = nir_bcsel(b, nir_ult(b, x, size), x, nir_imm_int(b, -1));
+
+   nir_src_rewrite(&intr->src[1], nir_pad_vec4(b, x_));
+   return true;
+}
+
+/*
  * Early texture lowering passes, called by the driver before lowering
  * descriptor bindings. That means these passes operate on texture derefs. The
  * purpose is to make descriptor crawls explicit in the NIR, so that the driver
@@ -638,6 +670,10 @@ bool
 agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias)
 {
    bool progress = false;
+
+   NIR_PASS(progress, s, nir_shader_intrinsics_pass,
+            lower_buffer_image_robustness,
+            nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    nir_lower_tex_options lower_tex_options = {
       .lower_txp = ~0,

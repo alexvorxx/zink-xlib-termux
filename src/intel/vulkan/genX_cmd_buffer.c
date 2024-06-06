@@ -5844,19 +5844,17 @@ void genX(cmd_emit_timestamp)(struct anv_batch *batch,
 }
 
 void genX(batch_emit_secondary_call)(struct anv_batch *batch,
+                                     struct anv_device *device,
                                      struct anv_address secondary_addr,
                                      struct anv_address secondary_return_addr)
 {
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, batch);
+   mi_builder_set_mocs(&b, anv_mocs_for_address(device, &secondary_return_addr));
+
    /* Emit a write to change the return address of the secondary */
-   uint64_t *write_return_addr =
-      anv_batch_emitn(batch,
-                      GENX(MI_STORE_DATA_IMM_length) + 1 /* QWord write */,
-                      GENX(MI_STORE_DATA_IMM),
-#if GFX_VER >= 12
-                      .ForceWriteCompletionCheck = true,
-#endif
-                      .Address = secondary_return_addr) +
-      GENX(MI_STORE_DATA_IMM_ImmediateData_start) / 8;
+   struct mi_reloc_imm_token reloc =
+      mi_store_relocated_imm(&b, mi_mem64(secondary_return_addr));
 
 #if GFX_VER >= 12
    /* Disable prefetcher before jumping into a secondary */
@@ -5876,8 +5874,9 @@ void genX(batch_emit_secondary_call)(struct anv_batch *batch,
    /* Replace the return address written by the MI_STORE_DATA_IMM above with
     * the primary's current batch address (immediately after the jump).
     */
-   *write_return_addr =
-      anv_address_physical(anv_batch_current_address(batch));
+   mi_relocate_store_imm(reloc,
+                         anv_address_physical(
+                            anv_batch_current_address(batch)));
 }
 
 void *

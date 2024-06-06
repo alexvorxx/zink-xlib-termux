@@ -230,6 +230,7 @@ void genX(blorp_exec)(struct blorp_batch *batch,
                       const struct blorp_params *params);
 
 void genX(batch_emit_secondary_call)(struct anv_batch *batch,
+                                     struct anv_device *device,
                                      struct anv_address secondary_addr,
                                      struct anv_address secondary_return_addr);
 

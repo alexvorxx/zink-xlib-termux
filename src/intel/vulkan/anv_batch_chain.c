@@ -1185,7 +1185,7 @@ anv_cmd_buffer_add_secondary(struct anv_cmd_buffer *primary,
          list_first_entry(&secondary->batch_bos, struct anv_batch_bo, link);
 
       anv_genX(primary->device->info, batch_emit_secondary_call)(
-         &primary->batch,
+         &primary->batch, primary->device,
          (struct anv_address) { .bo = first_bbo->bo },
          secondary->return_addr);
 

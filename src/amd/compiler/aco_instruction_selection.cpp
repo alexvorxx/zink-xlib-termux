@@ -5823,79 +5823,6 @@ visit_load_ubo(isel_context* ctx, nir_intrinsic_instr* instr)
 }
 
 void
-visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
-{
-   Builder bld(ctx->program, ctx->block);
-   Temp dst = get_ssa_temp(ctx, &instr->def);
-   unsigned offset = nir_intrinsic_base(instr);
-   unsigned count = instr->def.num_components;
-   nir_const_value* index_cv = nir_src_as_const_value(instr->src[0]);
-   assert(instr->def.bit_size >= 32);
-
-   if (instr->def.bit_size == 64)
-      count *= 2;
-
-   if (index_cv) {
-      unsigned start = (offset + index_cv->u32) / 4u;
-      uint64_t mask = BITFIELD64_MASK(count) << start;
-      if ((ctx->args->inline_push_const_mask | mask) == ctx->args->inline_push_const_mask &&
-          start + count <= (sizeof(ctx->args->inline_push_const_mask) * 8u)) {
-         std::array<Temp, NIR_MAX_VEC_COMPONENTS> elems;
-         aco_ptr<Instruction> vec{
-            create_instruction(aco_opcode::p_create_vector, Format::PSEUDO, count, 1)};
-         unsigned arg_index =
-            util_bitcount64(ctx->args->inline_push_const_mask & BITFIELD64_MASK(start));
-         for (unsigned i = 0; i < count; ++i) {
-            elems[i] = get_arg(ctx, ctx->args->inline_push_consts[arg_index++]);
-            vec->operands[i] = Operand{elems[i]};
-         }
-         vec->definitions[0] = Definition(dst);
-         ctx->block->instructions.emplace_back(std::move(vec));
-         ctx->allocated_vec.emplace(dst.id(), elems);
-         return;
-      }
-   }
-
-   Temp index = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
-   if (offset != 0) // TODO check if index != 0 as well
-      index = bld.nuw().sop2(aco_opcode::s_add_i32, bld.def(s1), bld.def(s1, scc),
-                             Operand::c32(offset), index);
-   Temp ptr = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->args->push_constants));
-   Temp vec = dst;
-   bool trim = false;
-
-   aco_opcode op;
-
-   switch (vec.size()) {
-   case 1: op = aco_opcode::s_load_dword; break;
-   case 2: op = aco_opcode::s_load_dwordx2; break;
-   case 3:
-      vec = bld.tmp(s4);
-      trim = true;
-      FALLTHROUGH;
-   case 4: op = aco_opcode::s_load_dwordx4; break;
-   case 6:
-      vec = bld.tmp(s8);
-      trim = true;
-      FALLTHROUGH;
-   case 8: op = aco_opcode::s_load_dwordx8; break;
-   default: unreachable("unimplemented or forbidden load_push_constant.");
-   }
-
-   bld.smem(op, Definition(vec), ptr, index);
-
-   if (trim) {
-      emit_split_vector(ctx, vec, 4);
-      RegClass rc = dst.size() == 3 ? s1 : s2;
-      bld.pseudo(aco_opcode::p_create_vector, Definition(dst), emit_extract_vector(ctx, vec, 0, rc),
-                 emit_extract_vector(ctx, vec, 1, rc), emit_extract_vector(ctx, vec, 2, rc));
-      ctx->allocated_vec[dst.id()] = ctx->allocated_vec[vec.id()];
-   } else {
-      emit_split_vector(ctx, dst, instr->def.num_components);
-   }
-}
-
-void
 visit_load_constant(isel_context* ctx, nir_intrinsic_instr* instr)
 {
    Temp dst = get_ssa_temp(ctx, &instr->def);
@@ -8199,7 +8126,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    case nir_intrinsic_load_per_vertex_input: visit_load_per_vertex_input(ctx, instr); break;
    case nir_intrinsic_load_ubo: visit_load_ubo(ctx, instr); break;
-   case nir_intrinsic_load_push_constant: visit_load_push_constant(ctx, instr); break;
    case nir_intrinsic_load_constant: visit_load_constant(ctx, instr); break;
    case nir_intrinsic_load_shared: visit_load_shared(ctx, instr); break;
    case nir_intrinsic_store_shared: visit_store_shared(ctx, instr); break;

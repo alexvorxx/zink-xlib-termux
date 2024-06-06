@@ -4448,11 +4448,11 @@ select_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             if (op.isTemp())
                ctx.uses[op.tempId()]++;
 
-            aco_ptr<Instruction> extract{
-               create_instruction(aco_opcode::p_create_vector, Format::PSEUDO, 1, 1)};
-            extract->operands[0] = op;
-            extract->definitions[0] = instr->definitions[idx];
-            instr = std::move(extract);
+            aco_ptr<Instruction> copy{
+               create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1)};
+            copy->operands[0] = op;
+            copy->definitions[0] = instr->definitions[idx];
+            instr = std::move(copy);
 
             done = true;
          }

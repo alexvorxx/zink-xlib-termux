@@ -2554,15 +2554,29 @@ vop3_can_use_vop2acc(ra_ctx& ctx, Instruction* instr)
    if (!instr->isVOP3() && !instr->isVOP3P())
       return false;
 
-   if ((instr->opcode != aco_opcode::v_mad_f32 &&
-        (instr->opcode != aco_opcode::v_fma_f32 || ctx.program->gfx_level < GFX10) &&
-        instr->opcode != aco_opcode::v_mad_f16 && instr->opcode != aco_opcode::v_mad_legacy_f16 &&
-        (instr->opcode != aco_opcode::v_fma_f16 || ctx.program->gfx_level < GFX10) &&
-        (instr->opcode != aco_opcode::v_pk_fma_f16 || ctx.program->gfx_level < GFX10) &&
-        (instr->opcode != aco_opcode::v_mad_legacy_f32 || !ctx.program->dev.has_mac_legacy32) &&
-        (instr->opcode != aco_opcode::v_fma_legacy_f32 || !ctx.program->dev.has_fmac_legacy32) &&
-        (instr->opcode != aco_opcode::v_dot4_i32_i8 || ctx.program->family == CHIP_VEGA20)) ||
-       !instr->operands[2].isOfType(RegType::vgpr) || !instr->operands[2].isKillBeforeDef() ||
+   switch (instr->opcode) {
+   case aco_opcode::v_mad_f32:
+   case aco_opcode::v_mad_f16:
+   case aco_opcode::v_mad_legacy_f16: break;
+   case aco_opcode::v_fma_f32:
+   case aco_opcode::v_pk_fma_f16:
+   case aco_opcode::v_fma_f16:
+   case aco_opcode::v_dot4_i32_i8:
+      if (ctx.program->gfx_level < GFX10)
+         return false;
+      break;
+   case aco_opcode::v_mad_legacy_f32:
+      if (!ctx.program->dev.has_mac_legacy32)
+         return false;
+      break;
+   case aco_opcode::v_fma_legacy_f32:
+      if (!ctx.program->dev.has_fmac_legacy32)
+         return false;
+      break;
+   default: return false;
+   }
+
+   if (!instr->operands[2].isOfType(RegType::vgpr) || !instr->operands[2].isKillBeforeDef() ||
        (!instr->operands[0].isOfType(RegType::vgpr) && !instr->operands[1].isOfType(RegType::vgpr)))
       return false;
 

@@ -2613,8 +2613,11 @@ vop3_can_use_vop2acc(ra_ctx& ctx, Instruction* instr)
 bool
 sop2_can_use_sopk(ra_ctx& ctx, Instruction* instr)
 {
-   if (instr->opcode != aco_opcode::s_add_i32 && instr->opcode != aco_opcode::s_mul_i32 &&
-       instr->opcode != aco_opcode::s_cselect_b32)
+   if (instr->opcode != aco_opcode::s_add_i32 && instr->opcode != aco_opcode::s_add_u32 &&
+       instr->opcode != aco_opcode::s_mul_i32 && instr->opcode != aco_opcode::s_cselect_b32)
+      return false;
+
+   if (instr->opcode == aco_opcode::s_add_u32 && !instr->definitions[1].isKill())
       return false;
 
    uint32_t literal_idx = 0;
@@ -2878,6 +2881,7 @@ optimize_encoding_sopk(ra_ctx& ctx, RegisterFile& register_file, aco_ptr<Instruc
    instr->operands.pop_back();
 
    switch (instr->opcode) {
+   case aco_opcode::s_add_u32:
    case aco_opcode::s_add_i32: instr->opcode = aco_opcode::s_addk_i32; break;
    case aco_opcode::s_mul_i32: instr->opcode = aco_opcode::s_mulk_i32; break;
    case aco_opcode::s_cselect_b32: instr->opcode = aco_opcode::s_cmovk_i32; break;

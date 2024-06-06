@@ -5280,11 +5280,6 @@ apply_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    if (instr->isSOPC() && ctx.program->gfx_level < GFX12)
       try_convert_sopc_to_sopk(instr);
 
-   /* allow more s_addk_i32 optimizations if carry isn't used */
-   if (instr->opcode == aco_opcode::s_add_u32 && ctx.uses[instr->definitions[1].tempId()] == 0 &&
-       (instr->operands[0].isLiteral() || instr->operands[1].isLiteral()))
-      instr->opcode = aco_opcode::s_add_i32;
-
    if (instr->opcode == aco_opcode::v_fma_mixlo_f16 || instr->opcode == aco_opcode::v_fma_mix_f32)
       opt_fma_mix_acc(ctx, instr);
 

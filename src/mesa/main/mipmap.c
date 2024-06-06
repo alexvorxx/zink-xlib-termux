@@ -69,24 +69,6 @@ _mesa_compute_num_levels(struct gl_context *ctx,
    return numLevels;
 }
 
-static GLint
-bytes_per_pixel(GLenum datatype, GLuint comps)
-{
-   GLint b;
-
-   if (datatype == GL_UNSIGNED_INT_8_24_REV_MESA ||
-       datatype == GL_UNSIGNED_INT_24_8_MESA)
-      return 4;
-
-   b = _mesa_sizeof_packed_type(datatype);
-   assert(b >= 0);
-
-   if (_mesa_type_is_packed(datatype))
-      return b;
-   else
-      return b * comps;
-}
-
 #define MAX_SPAN_WIDTH 64
 
 static void

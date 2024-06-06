@@ -184,39 +184,35 @@ VOID Gfx12Lib::InitEquationTable()
     {
         const Addr3SwizzleMode swMode = static_cast<Addr3SwizzleMode>(swModeIdx);
 
-        ADDR_ASSERT(IsValidSwMode(swMode));
-
-        if (IsLinear(swMode))
+        // Skip linear equation (data table is not useful for 2D/3D images-- only contains x-coordinate bits)
+        if (IsValidSwMode(swMode) && (IsLinear(swMode) == false))
         {
-            // Skip linear equation (data table is not useful for 2D/3D images-- only contains x-coordinate bits)
-            continue;
-        }
+            const UINT_32 maxMsaa = Is2dSwizzle(swMode) ? MaxMsaaRateLog2 : 1;
 
-        const UINT_32 maxMsaa = Is2dSwizzle(swMode) ? MaxMsaaRateLog2 : 1;
-
-        for (UINT_32 msaaIdx = 0; msaaIdx < maxMsaa; msaaIdx++)
-        {
-            for (UINT_32 elemLog2 = 0; elemLog2 < MaxElementBytesLog2; elemLog2++)
+            for (UINT_32 msaaIdx = 0; msaaIdx < maxMsaa; msaaIdx++)
             {
-                UINT_32                equationIndex = ADDR_INVALID_EQUATION_INDEX;
-                const ADDR_SW_PATINFO* pPatInfo = GetSwizzlePatternInfo(swMode, elemLog2, 1 << msaaIdx);
-
-                if (pPatInfo != NULL)
+                for (UINT_32 elemLog2 = 0; elemLog2 < MaxElementBytesLog2; elemLog2++)
                 {
-                    ADDR_EQUATION equation = {};
+                    UINT_32                equationIndex = ADDR_INVALID_EQUATION_INDEX;
+                    const ADDR_SW_PATINFO* pPatInfo = GetSwizzlePatternInfo(swMode, elemLog2, 1 << msaaIdx);
 
-                    ConvertSwizzlePatternToEquation(elemLog2, swMode, pPatInfo, &equation);
+                    if (pPatInfo != NULL)
+                    {
+                        ADDR_EQUATION equation = {};
 
-                    equationIndex = m_numEquations;
-                    ADDR_ASSERT(equationIndex < NumSwizzlePatterns);
+                        ConvertSwizzlePatternToEquation(elemLog2, swMode, pPatInfo, &equation);
 
-                    m_equationTable[equationIndex] = equation;
-                    m_numEquations++;
-                }
-                SetEquationTableEntry(swMode, msaaIdx, elemLog2, equationIndex);
-            }
-        }
-    }
+                        equationIndex = m_numEquations;
+                        ADDR_ASSERT(equationIndex < NumSwizzlePatterns);
+
+                        m_equationTable[equationIndex] = equation;
+                        m_numEquations++;
+                    }
+                    SetEquationTableEntry(swMode, msaaIdx, elemLog2, equationIndex);
+                } // loop through bpp sizes
+            } // loop through MSAA rates
+        } // End check for valid non-linear modes
+    } // loop through swizzle modes
 }
 
 /**
@@ -239,11 +235,7 @@ UINT_32 Gfx12Lib::HwlGetEquationIndex(
     if ((pIn->resourceType == ADDR_RSRC_TEX_2D) ||
         (pIn->resourceType == ADDR_RSRC_TEX_3D))
     {
-        const UINT_32 swMode   = static_cast<UINT_32>(pIn->swizzleMode);
-        const UINT_32 msaaIdx  = Log2(pIn->numSamples);
-        const UINT_32 elemLog2 = Log2(pIn->bpp >> 3);
-
-        equationIdx = m_equationLookupTable[swMode][msaaIdx][elemLog2];
+        equationIdx = GetEquationTableEntry(pIn->swizzleMode, Log2(pIn->numSamples), Log2(pIn->bpp >> 3));
     }
 
     return equationIdx;
@@ -270,22 +262,24 @@ VOID Gfx12Lib::InitBlockDimensionTable()
     for (UINT_32 swModeIdx = 0; swModeIdx < ADDR3_MAX_TYPE; swModeIdx++)
     {
         const Addr3SwizzleMode swMode = static_cast<Addr3SwizzleMode>(swModeIdx);
-        ADDR_ASSERT(IsValidSwMode(swMode));
 
-        surfaceInfo.swizzleMode = swMode;
-        const UINT_32 maxMsaa   = Is2dSwizzle(swMode) ? MaxMsaaRateLog2 : 1;
-
-        for (UINT_32 msaaIdx = 0; msaaIdx < maxMsaa; msaaIdx++)
+        if (IsValidSwMode(swMode))
         {
-            surfaceInfo.numSamples = (1u << msaaIdx);
-            for (UINT_32 elementBytesLog2 = 0; elementBytesLog2 < MaxElementBytesLog2; elementBytesLog2++)
+            surfaceInfo.swizzleMode = swMode;
+            const UINT_32 maxMsaa   = Is2dSwizzle(swMode) ? MaxMsaaRateLog2 : 1;
+
+            for (UINT_32 msaaIdx = 0; msaaIdx < maxMsaa; msaaIdx++)
             {
-                surfaceInfo.bpp = (1u << (elementBytesLog2 + 3));
-                ADDR3_COMPUTE_SURFACE_INFO_PARAMS_INPUT input{ &surfaceInfo };
-                ComputeBlockDimensionForSurf(&input, &m_blockDimensionTable[swModeIdx][msaaIdx][elementBytesLog2]);
-            }
-        }
-    }
+                surfaceInfo.numSamples = (1u << msaaIdx);
+                for (UINT_32 elementBytesLog2 = 0; elementBytesLog2 < MaxElementBytesLog2; elementBytesLog2++)
+                {
+                    surfaceInfo.bpp = (1u << (elementBytesLog2 + 3));
+                    ADDR3_COMPUTE_SURFACE_INFO_PARAMS_INPUT input{ &surfaceInfo };
+                    ComputeBlockDimensionForSurf(&input, &m_blockDimensionTable[swModeIdx][msaaIdx][elementBytesLog2]);
+                } // end loop through bpp sizes
+            } // end loop through MSAA rates
+        } // end check for valid swizzle modes
+    } // end loop through swizzle modes
 }
 
 /**
@@ -788,6 +782,9 @@ ADDR_E_RETURNCODE Gfx12Lib::HwlComputeSurfaceAddrFromCoordTiled(
     {
         const UINT_32 elemLog2    = Log2(pIn->bpp >> 3);
         const UINT_32 blkSizeLog2 = GetBlockSizeLog2(pIn->swizzleMode);
+
+        // Addr3 equation table excludes linear swizzle mode, and fortunately HwlComputeSurfaceAddrFromCoordTiled() is
+        // only called for non-linear swizzle mode.
         const UINT_32 eqIndex     = GetEquationTableEntry(pIn->swizzleMode, Log2(localIn.numSamples), elemLog2);
 
         if (eqIndex != ADDR_INVALID_EQUATION_INDEX)
@@ -1367,6 +1364,10 @@ ADDR_E_RETURNCODE Gfx12Lib::HwlComputeSlicePipeBankXor(
             if (pPatInfo != NULL)
             {
                 const UINT_32 elemLog2    = Log2(pIn->bpe >> 3);
+
+                // Addr3 equation table excludes linear swizzle mode, and fortunately when calling
+                // HwlComputeSlicePipeBankXor the swizzle mode is non-linear, so we don't need to worry about negative
+                // table index.
                 const UINT_32 eqIndex     = GetEquationTableEntry(pIn->swizzleMode, Log2(pIn->numSamples), elemLog2);
 
                 const UINT_32 pipeBankXorOffset = ComputeOffsetFromEquation(&m_equationTable[eqIndex],
@@ -1634,6 +1635,146 @@ ADDR_EXTENT3D Gfx12Lib::HwlGetMipInTailMaxSize(
         }
     }
     return mipTailDim;
+}
+
+
+/**
+************************************************************************************************************************
+*   Lib::GetPossibleSwizzleModes
+*
+*   @brief
+*       GFX12 specific implementation of Addr3GetPossibleSwizzleModes
+*
+*   @return
+*       ADDR_E_RETURNCODE
+************************************************************************************************************************
+*/
+ADDR_E_RETURNCODE Gfx12Lib::HwlGetPossibleSwizzleModes(
+     const ADDR3_GET_POSSIBLE_SWIZZLE_MODE_INPUT* pIn,    ///< [in] input structure
+     ADDR3_GET_POSSIBLE_SWIZZLE_MODE_OUTPUT*      pOut    ///< [out] output structure
+     ) const
+{
+    ADDR_E_RETURNCODE returnCode = ADDR_OK;
+
+    const ADDR3_SURFACE_FLAGS flags = pIn->flags;
+
+    // VRS images can only be 2D from the client API rules.
+    ADDR_ASSERT((flags.isVrsImage == 0) || IsTex2d(pIn->resourceType));
+
+    if (pIn->bpp == 96)
+    {
+        pOut->validModes.swLinear = 1;
+    }
+    // Depth/Stencil images can't be linear and must be 2D swizzle modes.
+    // These three are related to DB block that supports only SW_64KB_2D and SW_256KB_2D for DSV.
+    else if (flags.depth || flags.stencil)
+    {
+        pOut->validModes.sw2d64kB  = 1;
+        pOut->validModes.sw2d256kB = 1;
+    }
+    // The organization of elements in the hierarchical surface is the same as any other surface, and it can support
+    // any 2D swizzle mode (SW_256_2D, SW_4KB_2D, SW_64KB_2D, or SW_256KB_2D).  The swizzle mode can be selected
+    // orthogonally to the underlying z or stencil surface.
+    else if (pIn->flags.hiZHiS)
+    {
+        pOut->validModes.sw2d256B  = 1;
+        pOut->validModes.sw2d4kB   = 1;
+        pOut->validModes.sw2d64kB  = 1;
+        pOut->validModes.sw2d256kB = 1;
+    }
+    // MSAA can't be linear and must be 2D swizzle modes.
+    else if (pIn->numSamples > 1)
+    {
+        pOut->validModes.sw2d256B  = 1;
+        pOut->validModes.sw2d4kB   = 1;
+        pOut->validModes.sw2d64kB  = 1;
+        pOut->validModes.sw2d256kB = 1;
+    }
+    // Block-compressed images need to be either using 2D or linear swizzle modes.
+    else if (flags.blockCompressed)
+    {
+        pOut->validModes.swLinear = 1;
+
+        // We find cases where Tex3d BlockCompressed image adopts 2D_256B should be prohibited.
+        if (IsTex3d(pIn->resourceType) == FALSE)
+        {
+            pOut->validModes.sw2d256B = 1;
+        }
+        pOut->validModes.sw2d4kB   = 1;
+        pOut->validModes.sw2d64kB  = 1;
+        pOut->validModes.sw2d256kB = 1;
+    }
+    else if (IsTex1d(pIn->resourceType))
+    {
+        pOut->validModes.swLinear  = 1;
+        pOut->validModes.sw2d256B  = 1;
+        pOut->validModes.sw2d4kB   = 1;
+        pOut->validModes.sw2d64kB  = 1;
+        pOut->validModes.sw2d256kB = 1;
+    }
+    else if (flags.nv12 || flags.p010 || IsTex2d(pIn->resourceType) || flags.view3dAs2dArray)
+    {
+        //      NV12 and P010 support
+        //      SW_LINEAR, SW_256B_2D, SW_4KB_2D, SW_64KB_2D, SW_256KB_2D
+        // There could be more multimedia formats that require more hw specific tiling modes...
+
+        // The exception is VRS images.
+        // Linear is not allowed and the VRS surface needs to be 8BPP format.
+        if (flags.isVrsImage)
+        {
+            ADDR_ASSERT(pIn->bpp == 8);
+        }
+        else
+        {
+            pOut->validModes.swLinear = 1;
+        }
+        if (flags.view3dAs2dArray == 0)
+        {
+            // ADDR3_256B_2D can't support 3D images.
+            pOut->validModes.sw2d256B = 1;
+        }
+        pOut->validModes.sw2d4kB   = 1;
+        pOut->validModes.sw2d64kB  = 1;
+        pOut->validModes.sw2d256kB = 1;
+    }
+    else if (IsTex3d(pIn->resourceType))
+    {
+        // An eventual determination would be based on pal setting of height_watermark and depth_watermark.
+        // However, we just adopt the simpler logic currently.
+        // For 3D images w/ view3dAs2dArray = 0, SW_3D is preferred.
+        // For 3D images w/ view3dAs2dArray = 1, it should go to 2D path above.
+        // Enable linear since client may force linear tiling for 3D texture that does not set view3dAs2dArray.
+        pOut->validModes.swLinear  = 1;
+        pOut->validModes.sw3d4kB   = 1;
+        pOut->validModes.sw3d64kB  = 1;
+        pOut->validModes.sw3d256kB = 1;
+    }
+
+    // If client specifies a max alignment, remove swizzles that require alignment beyond it.
+    if (pIn->maxAlign != 0)
+    {
+        if (pIn->maxAlign < Size256K)
+        {
+            pOut->validModes.value &= ~Blk256KBSwModeMask;
+        }
+
+        if (pIn->maxAlign < Size64K)
+        {
+            pOut->validModes.value &= ~Blk64KBSwModeMask;
+        }
+
+        if (pIn->maxAlign < Size4K)
+        {
+            pOut->validModes.value &= ~Blk4KBSwModeMask;
+        }
+
+        if (pIn->maxAlign < Size256)
+        {
+            pOut->validModes.value &= ~Blk256BSwModeMask;
+        }
+    }
+
+    return returnCode;
 }
 
 } // V3

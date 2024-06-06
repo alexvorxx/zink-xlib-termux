@@ -77,7 +77,6 @@ Lib::Lib(
 */
 void Lib::Init()
 {
-    memset(m_equationTable, 0, sizeof(m_equationTable));
     memset(m_blockDimensionTable, 0, sizeof(m_blockDimensionTable));
 
     // There is no equation table entry for linear, so start at the "next" swizzle mode entry.
@@ -125,7 +124,7 @@ Lib* Lib::GetLib(
 {
     Addr::Lib* pAddrLib = Addr::Lib::GetLib(hLib);
 
-    return static_cast<Lib*>(hLib);
+    return static_cast<Lib*>(pAddrLib);
 }
 
 /**
@@ -334,16 +333,16 @@ ADDR_E_RETURNCODE Lib::ComputeSurfaceInfo(
 *   Lib::GetPossibleSwizzleModes
 *
 *   @brief
-*       Interface function stub of AddrComputeSurfaceInfo.
+*       Populates pOut with a list of the possible swizzle modes for the described surface.
 *
 *   @return
 *       ADDR_E_RETURNCODE
 ************************************************************************************************************************
 */
 ADDR_E_RETURNCODE Lib::GetPossibleSwizzleModes(
-     const ADDR3_GET_POSSIBLE_SWIZZLE_MODE_INPUT* pIn,    ///< [in] input structure
-     ADDR3_GET_POSSIBLE_SWIZZLE_MODE_OUTPUT*      pOut    ///< [out] output structure
-     ) const
+    const ADDR3_GET_POSSIBLE_SWIZZLE_MODE_INPUT*  pIn,
+    ADDR3_GET_POSSIBLE_SWIZZLE_MODE_OUTPUT*       pOut
+    ) const
 {
     ADDR_E_RETURNCODE returnCode = ADDR_OK;
 
@@ -358,130 +357,7 @@ ADDR_E_RETURNCODE Lib::GetPossibleSwizzleModes(
 
     if (returnCode == ADDR_OK)
     {
-        const ADDR3_SURFACE_FLAGS flags = pIn->flags;
-
-        // VRS images can only be 2D from the client API rules.
-        ADDR_ASSERT((flags.isVrsImage == 0) || IsTex2d(pIn->resourceType));
-
-        if (pIn->bpp == 96)
-        {
-            pOut->validModes.swLinear = 1;
-        }
-
-        // Depth/Stencil images can't be linear and must be 2D swizzle modes.
-        // These three are related to DB block that supports only SW_64KB_2D and SW_256KB_2D for DSV.
-        else if (flags.depth || flags.stencil)
-        {
-            pOut->validModes.sw2d64kB  = 1;
-            pOut->validModes.sw2d256kB = 1;
-        }
-        // The organization of elements in the hierarchical surface is the same as any other surface, and it can support
-        // any 2D swizzle mode (SW_256_2D, SW_4KB_2D, SW_64KB_2D, or SW_256KB_2D).  The swizzle mode can be selected
-        // orthogonally to the underlying z or stencil surface.
-        else if (pIn->flags.hiZHiS)
-        {
-            pOut->validModes.sw2d256B  = 1;
-            pOut->validModes.sw2d4kB   = 1;
-            pOut->validModes.sw2d64kB  = 1;
-            pOut->validModes.sw2d256kB = 1;
-        }
-        // MSAA can't be linear and must be 2D swizzle modes.
-        else if (pIn->numSamples > 1)
-        {
-            // NOTE: SW_256B_2D still supports MSAA. The removal of 256B for MSAA is reverted in HW Doc.
-            pOut->validModes.sw2d256B  = 1;
-            pOut->validModes.sw2d4kB   = 1;
-            pOut->validModes.sw2d64kB  = 1;
-            pOut->validModes.sw2d256kB = 1;
-        }
-        // Block-compressed images need to be either using 2D or linear swizzle modes.
-        else if (flags.blockCompressed)
-        {
-            pOut->validModes.swLinear = 1;
-
-            // We find cases where Tex3d BlockCompressed image adopts 2D_256B should be prohibited.
-            if (IsTex3d(pIn->resourceType) == FALSE)
-            {
-                pOut->validModes.sw2d256B = 1;
-            }
-            pOut->validModes.sw2d4kB   = 1;
-            pOut->validModes.sw2d64kB  = 1;
-            pOut->validModes.sw2d256kB = 1;
-        }
-        else if (IsTex1d(pIn->resourceType))
-        {
-            pOut->validModes.swLinear  = 1;
-            pOut->validModes.sw2d256B  = 1;
-            pOut->validModes.sw2d4kB   = 1;
-            pOut->validModes.sw2d64kB  = 1;
-            pOut->validModes.sw2d256kB = 1;
-        }
-        else if (flags.nv12 || flags.p010 || IsTex2d(pIn->resourceType) || flags.view3dAs2dArray)
-        {
-            //      NV12 and P010 support
-            //      SW_LINEAR, SW_256B_2D, SW_4KB_2D, SW_64KB_2D, SW_256KB_2D
-            // There could be more multimedia formats that require more hw specific tiling modes...
-
-            // The exception is VRS images.
-            // Linear is not allowed and the VRS surface needs to be 8BPP format.
-            if (flags.isVrsImage)
-            {
-                ADDR_ASSERT(pIn->bpp == 8);
-            }
-            else
-            {
-                pOut->validModes.swLinear = 1;
-            }
-            if (flags.view3dAs2dArray == 0)
-            {
-                // ADDR3_256B_2D can't support 3D images.
-                pOut->validModes.sw2d256B = 1;
-            }
-            pOut->validModes.sw2d4kB   = 1;
-            pOut->validModes.sw2d64kB  = 1;
-            pOut->validModes.sw2d256kB = 1;
-        }
-        else if (IsTex3d(pIn->resourceType))
-        {
-            // An eventual determination would be based on pal setting of height_watermark and depth_watermark.
-            // However, we just adopt the simpler logic currently.
-            // For 3D images w/ view3dAs2dArray = 0, SW_3D is preferred.
-            // For 3D images w/ view3dAs2dArray = 1, it should go to 2D path above.
-            // Enable linear since client may force linear tiling for 3D texture that does not set view3dAs2dArray.
-            pOut->validModes.swLinear  = 1;
-            pOut->validModes.sw3d4kB   = 1;
-            pOut->validModes.sw3d64kB  = 1;
-            pOut->validModes.sw3d256kB = 1;
-        }
-    }
-
-    constexpr UINT_32 Size256  = 256u;
-    constexpr UINT_32 Size4K   = 4 * 1024;
-    constexpr UINT_32 Size64K  = 64 * 1024;
-    constexpr UINT_32 Size256K = 256 * 1024;
-
-    // If client specifies a max alignment, remove swizzles that require alignment beyond it.
-    if (pIn->maxAlign != 0)
-    {
-        if (pIn->maxAlign < Size256K)
-        {
-            pOut->validModes.value &= ~Gfx12Blk256KBSwModeMask;
-        }
-
-        if (pIn->maxAlign < Size64K)
-        {
-            pOut->validModes.value &= ~Gfx12Blk64KBSwModeMask;
-        }
-
-        if (pIn->maxAlign < Size4K)
-        {
-            pOut->validModes.value &= ~Gfx12Blk4KBSwModeMask;
-        }
-
-        if (pIn->maxAlign < Size256)
-        {
-            pOut->validModes.value &= ~Gfx12Blk256BSwModeMask;
-        }
+        returnCode = HwlGetPossibleSwizzleModes(pIn, pOut);
     }
 
     return returnCode;

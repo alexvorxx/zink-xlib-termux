@@ -3298,6 +3298,8 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          src0 = emit_extract_vector(ctx, src0, 0, v2b);
          src1 = emit_extract_vector(ctx, src1, 0, v2b);
          bld.pseudo(aco_opcode::p_create_vector, Definition(dst), src0, src1);
+      } else if (ctx->program->gfx_level >= GFX9) {
+         bld.sop2(aco_opcode::s_pack_ll_b32_b16, Definition(dst), src0, src1);
       } else {
          src0 = bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc), src0,
                          Operand::c32(0xFFFFu));

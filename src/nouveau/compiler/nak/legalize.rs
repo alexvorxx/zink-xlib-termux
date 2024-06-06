@@ -357,14 +357,12 @@ fn legalize_sm50_instr(
         }
         Op::IMad(op) => {
             let [ref mut src0, ref mut src1, ref mut src2] = op.srcs;
-            copy_alu_src_if_not_reg(b, src0, SrcType::ALU);
-            copy_alu_src_if_not_reg(b, src2, SrcType::ALU);
             swap_srcs_if_not_reg(src0, src1);
             copy_alu_src_if_not_reg(b, src0, SrcType::ALU);
-            copy_alu_src_if_i20_overflow(b, src1, SrcType::ALU);
             if src_is_reg(src1) {
                 copy_alu_src_if_imm(b, src2, SrcType::ALU);
             } else {
+                copy_alu_src_if_i20_overflow(b, src1, SrcType::ALU);
                 copy_alu_src_if_not_reg(b, src2, SrcType::ALU);
             }
         }
@@ -412,12 +410,8 @@ fn legalize_sm50_instr(
             copy_alu_src_if_fabs(b, src2, SrcType::F32);
             swap_srcs_if_not_reg(src0, src1);
             copy_alu_src_if_not_reg(b, src0, SrcType::F32);
+            copy_alu_src_if_not_reg(b, src2, SrcType::F32);
             copy_alu_src_if_f20_overflow(b, src1, SrcType::F32);
-            if src_is_reg(src1) {
-                copy_alu_src_if_imm(b, src2, SrcType::F32);
-            } else {
-                copy_alu_src_if_not_reg(b, src2, SrcType::F32);
-            }
         }
         Op::Ldc(op) => {
             // TODO: cb must be a bound constant buffer

@@ -1881,9 +1881,7 @@ ngg_build_streamout_buffer_info(nir_builder *b,
             workgroup_buffer_sizes[buffer] = undef;
       }
 
-      nir_def *buffer_offsets = NULL;
-      nir_def *xfb_state_address = nir_load_xfb_state_address_gfx12_amd(b);
-      nir_def *xfb_voffset = nir_imul_imm(b, tid_in_tg, 8);
+      nir_def *buffer_offsets = NULL, *xfb_state_address = NULL, *xfb_voffset = NULL;
 
       /* Get current global offset of buffer and increase by amount of
        * workgroup buffer size. This is an ordered operation sorted by
@@ -1894,6 +1892,10 @@ ngg_build_streamout_buffer_info(nir_builder *b,
 
          for (unsigned buffer = 0; buffer < 4; buffer++)
             workgroup_buffer_sizes[buffer] = nir_if_phi(b, workgroup_buffer_sizes[buffer], undef);
+
+         /* These must be set after nir_pop_if and phis. */
+         xfb_state_address = nir_load_xfb_state_address_gfx12_amd(b);
+         xfb_voffset = nir_imul_imm(b, tid_in_tg, 8);
 
          nir_if *if_4lanes = nir_push_if(b, nir_ult_imm(b, tid_in_tg, 4));
          {

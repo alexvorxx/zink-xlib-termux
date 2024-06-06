@@ -1438,7 +1438,7 @@ get_reg_specified(ra_ctx& ctx, const RegisterFile& reg_file, RegClass rc,
    PhysRegInterval vcc_win = {vcc, 2};
    /* VCC is outside the bounds */
    bool is_vcc = rc.type() == RegType::sgpr && vcc_win.contains(reg_win) && ctx.program->needs_vcc;
-   bool is_m0 = rc == s1 && reg == m0;
+   bool is_m0 = rc == s1 && reg == m0 && can_write_m0(instr);
    if (!bounds.contains(reg_win) && !is_vcc && !is_m0)
       return false;
 
@@ -1792,7 +1792,7 @@ get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
          return vcc;
    }
    if (ctx.assignments[temp.id()].m0) {
-      if (get_reg_specified(ctx, reg_file, temp.regClass(), instr, m0) && can_write_m0(instr))
+      if (get_reg_specified(ctx, reg_file, temp.regClass(), instr, m0))
          return m0;
    }
 

@@ -1628,13 +1628,13 @@ copy_query_results_with_cs(struct anv_cmd_buffer *cmd_buffer,
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
-   struct mi_value result;
+   mi_builder_set_mocs(&b, anv_mocs_for_address(
+                          cmd_buffer->device,
+                          &(struct anv_address) { .bo = pool->bo }));
 
    for (uint32_t i = 0; i < query_count; i++) {
       struct anv_address query_addr = anv_query_address(pool, first_query + i);
-      const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &query_addr);
-
-      mi_builder_set_mocs(&b, mocs);
+      struct mi_value result;
 
       /* Wait for the availability write to land before we go read the data */
       if (flags & VK_QUERY_RESULT_WAIT_BIT) {

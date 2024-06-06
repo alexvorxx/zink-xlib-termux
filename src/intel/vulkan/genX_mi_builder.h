@@ -19,4 +19,5 @@
 #define __gen_get_batch_dwords anv_batch_emit_dwords
 #define __gen_address_offset anv_address_add
 #define __gen_get_batch_address(b, a) anv_batch_address(b, a)
+#define __gen_get_write_fencing_status(b) (&(b)->write_fence_status)
 #include "common/mi_builder.h"

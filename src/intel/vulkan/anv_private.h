@@ -2289,6 +2289,11 @@ struct anv_batch {
    enum intel_engine_class                      engine_class;
 
    /**
+    * Write fencing status for mi_builder.
+    */
+   bool write_fence_status;
+
+   /**
     * Number of 3DPRIMITIVE's emitted for WA 16014538804
     */
    uint8_t num_3d_primitives_emitted;

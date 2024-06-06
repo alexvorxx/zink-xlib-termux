@@ -52,6 +52,7 @@ uint64_t __gen_combine_address(mi_builder_test *test, void *location,
 void * __gen_get_batch_dwords(mi_builder_test *test, unsigned num_dwords);
 struct address __gen_get_batch_address(mi_builder_test *test,
                                        void *location);
+bool *__gen_get_write_fencing_status(mi_builder_test *test);
 
 struct address
 __gen_address_offset(address addr, uint64_t offset)
@@ -156,6 +157,8 @@ public:
    char *input;
    char *output;
    uint64_t canary;
+
+   bool write_fence_status;
 
    mi_builder b;
 };
@@ -314,6 +317,8 @@ mi_builder_test::SetUp()
    memset(data_map, 139, DATA_BO_SIZE);
    memset(&canary, 139, sizeof(canary));
 
+   write_fence_status = false;
+
    struct isl_device isl_dev;
    isl_device_init(&isl_dev, &devinfo);
    mi_builder_init(&b, &devinfo, this);
@@ -405,6 +410,12 @@ __gen_combine_address(mi_builder_test *test, void *location,
 
    return reloc.delta;
 #endif
+}
+
+bool *
+__gen_get_write_fencing_status(mi_builder_test *test)
+{
+   return &test->write_fence_status;
 }
 
 void *

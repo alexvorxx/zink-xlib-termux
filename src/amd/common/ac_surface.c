@@ -2758,8 +2758,10 @@ static unsigned gfx12_select_swizzle_mode(struct ac_addrlib *addrlib,
    get_in.numSamples = in->numSamples;
    get_in.maxAlign = info->has_dedicated_vram ? (256 * 1024) : (64 * 1024);
 
-   if (Addr3GetPossibleSwizzleModes(addrlib, &get_in, &get_out) != ADDR_OK)
-      return 0;
+   if (Addr3GetPossibleSwizzleModes(addrlib->handle, &get_in, &get_out) != ADDR_OK) {
+      assert(!"Addr3GetPossibleSwizzleModes failed");
+      return ADDR3_MAX_TYPE;
+   }
 
    /* TODO: Workaround for SW_LINEAR assertion failures in addrlib. This should be fixed in addrlib. */
    if (surf && surf->blk_w == 4)

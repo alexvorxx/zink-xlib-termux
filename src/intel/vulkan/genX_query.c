@@ -37,16 +37,7 @@
 #include "ds/intel_tracepoints.h"
 
 #include "anv_internal_kernels.h"
-
-/* We reserve :
- *    - GPR 14 for perf queries
- *    - GPR 15 for conditional rendering
- */
-#define MI_BUILDER_NUM_ALLOC_GPRS 14
-#define MI_BUILDER_CAN_WRITE_BATCH true
-#define __gen_get_batch_dwords anv_batch_emit_dwords
-#define __gen_address_offset anv_address_add
-#define __gen_get_batch_address(b, a) anv_batch_address(b, a)
+#include "genX_mi_builder.h"
 
 #if GFX_VERx10 >= 125
 #define ANV_PIPELINE_STATISTICS_MASK 0x00001fff
@@ -54,7 +45,6 @@
 #define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
 #endif
 
-#include "common/mi_builder.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_mdapi.h"
 #include "perf/intel_perf_regs.h"

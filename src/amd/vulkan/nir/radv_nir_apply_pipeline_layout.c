@@ -342,6 +342,55 @@ update_image_intrinsic(nir_builder *b, apply_layout_state *state, nir_intrinsic_
    }
 }
 
+static bool
+can_increase_load_size(nir_intrinsic_instr *intrin, unsigned offset, unsigned old, unsigned new)
+{
+   /* Only increase the size of loads if doing so won't extend into a new page/cache-line. */
+   unsigned align_mul = MIN2(nir_intrinsic_align_mul(intrin), 64u);
+   unsigned end = (nir_intrinsic_align_offset(intrin) + offset + old) & (align_mul - 1);
+   return (new - old) <= (align_mul - end);
+}
+
+static nir_def *
+load_push_constant(nir_builder *b, apply_layout_state *state, nir_intrinsic_instr *intrin)
+{
+   unsigned base = nir_intrinsic_base(intrin);
+   unsigned bit_size = intrin->def.bit_size;
+   unsigned count = intrin->def.num_components * (bit_size / 32u);
+   assert(bit_size >= 32);
+
+   /* Try to use inline push constants when possible. */
+   if (nir_src_is_const(intrin->src[0])) {
+      unsigned start = (base + nir_src_as_uint(intrin->src[0])) / 4u;
+      uint64_t mask = BITFIELD64_MASK(count) << start;
+      if ((state->args->ac.inline_push_const_mask & mask) == mask &&
+          start + count <= (sizeof(state->args->ac.inline_push_const_mask) * 8u)) {
+         start = util_bitcount64(state->args->ac.inline_push_const_mask & BITFIELD64_MASK(start));
+         nir_def *res[NIR_MAX_VEC_COMPONENTS * 2];
+         for (unsigned i = 0; i < count; i++)
+            res[i] = get_scalar_arg(b, 1, state->args->ac.inline_push_consts[start + i]);
+         return nir_extract_bits(b, res, count, 0, intrin->def.num_components, bit_size);
+      }
+   }
+
+   nir_def *addr = get_scalar_arg(b, 1, state->args->ac.push_constants);
+   addr = convert_pointer_to_64_bit(b, state, addr);
+
+   nir_def *offset = nir_iadd_imm_nuw(b, intrin->src[0].ssa, base);
+   nir_def *data[NIR_MAX_VEC_COMPONENTS];
+   unsigned num_loads = 0;
+   for (unsigned start = 0; start < count;) {
+      unsigned size = 1 << (util_last_bit(count - start) - 1); /* Round down to power of two. */
+      /* Try to round up to power of two instead. */
+      if (size < (count - start) && can_increase_load_size(intrin, start * 4, size, size * 2))
+         size *= 2;
+
+      data[num_loads++] = nir_load_smem_amd(b, size, addr, nir_iadd_imm_nuw(b, offset, start * 4));
+      start += size;
+   }
+   return nir_extract_bits(b, data, num_loads, 0, intrin->def.num_components, bit_size);
+}
+
 static void
 apply_layout_to_intrin(nir_builder *b, apply_layout_state *state, nir_intrinsic_instr *intrin)
 {
@@ -382,6 +431,11 @@ apply_layout_to_intrin(nir_builder *b, apply_layout_state *state, nir_intrinsic_
    case nir_intrinsic_image_deref_descriptor_amd:
       update_image_intrinsic(b, state, intrin);
       break;
+   case nir_intrinsic_load_push_constant: {
+      nir_def_rewrite_uses(&intrin->def, load_push_constant(b, state, intrin));
+      nir_instr_remove(&intrin->instr);
+      break;
+   }
    default:
       break;
    }

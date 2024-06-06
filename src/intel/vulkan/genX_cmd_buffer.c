@@ -639,14 +639,17 @@ set_image_compressed_bit(struct anv_cmd_buffer *cmd_buffer,
    if (!isl_aux_usage_has_ccs_e(image->planes[plane].aux_usage))
       return;
 
+   struct mi_builder b;
+   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+
    for (uint32_t a = 0; a < layer_count; a++) {
       uint32_t layer = base_layer + a;
-      anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-         sdi.Address = anv_image_get_compression_state_addr(cmd_buffer->device,
-                                                            image, aspect,
-                                                            level, layer);
-         sdi.ImmediateData = compressed ? UINT32_MAX : 0;
-      }
+      struct anv_address comp_state_addr =
+         anv_image_get_compression_state_addr(cmd_buffer->device,
+                                              image, aspect,
+                                              level, layer);
+      mi_store(&b, mi_mem32(comp_state_addr),
+                   mi_imm(compressed ? UINT32_MAX : 0));
    }
 
    /* FCV_CCS_E images are automatically fast cleared to default value at
@@ -658,11 +661,11 @@ set_image_compressed_bit(struct anv_cmd_buffer *cmd_buffer,
     */
    if (image->planes[plane].aux_usage == ISL_AUX_USAGE_FCV_CCS_E &&
        base_layer == 0 && level == 0) {
-      anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-         sdi.Address = anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                                          image, aspect);
-         sdi.ImmediateData = ANV_FAST_CLEAR_DEFAULT_VALUE;
-      }
+      struct anv_address fc_type_addr =
+         anv_image_get_fast_clear_type_addr(cmd_buffer->device,
+                                            image, aspect);
+      mi_store(&b, mi_mem32(fc_type_addr),
+                   mi_imm(ANV_FAST_CLEAR_DEFAULT_VALUE));
    }
 }
 
@@ -672,11 +675,13 @@ set_image_fast_clear_state(struct anv_cmd_buffer *cmd_buffer,
                            VkImageAspectFlagBits aspect,
                            enum anv_fast_clear_type fast_clear)
 {
-   anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-      sdi.Address = anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                                       image, aspect);
-      sdi.ImmediateData = fast_clear;
-   }
+   struct mi_builder b;
+   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+
+   struct anv_address fc_type_addr =
+      anv_image_get_fast_clear_type_addr(cmd_buffer->device,
+                                         image, aspect);
+   mi_store(&b, mi_mem32(fc_type_addr), mi_imm(fast_clear));
 
    /* Whenever we have fast-clear, we consider that slice to be compressed.
     * This makes building predicates much easier.

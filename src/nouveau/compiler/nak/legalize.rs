@@ -931,7 +931,8 @@ fn legalize_sm70_instr(
         Op::Vote(op) => {
             copy_src_if_upred(b, &mut op.pred);
         }
-        Op::Copy(_) => (), // Nothing to do
+        Op::Copy(_) => (),                     // Nothing to do
+        Op::PhiSrcs(_) | Op::PhiDsts(_) => (), // Nothing to do
         _ => {
             let src_types = instr.src_types();
             for (i, src) in instr.srcs_mut().iter_mut().enumerate() {

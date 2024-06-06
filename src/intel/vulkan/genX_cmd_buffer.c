@@ -3290,6 +3290,11 @@ genX(CmdExecuteCommands)(
       }
       genX(emit_so_memcpy_fini)(&memcpy_state);
 
+      anv_add_pending_pipe_bits(container,
+                                ANV_PIPE_CS_STALL_BIT | ANV_PIPE_STALL_AT_SCOREBOARD_BIT,
+                                "Wait for primary->secondary RP surface state copies");
+      genX(cmd_buffer_apply_pipe_flushes)(container);
+
       if (container->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
          genX(cmd_buffer_set_protected_memory)(container, true);
    }

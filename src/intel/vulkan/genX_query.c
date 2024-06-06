@@ -1739,6 +1739,11 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
 
    trace_intel_begin_query_copy_shader(&cmd_buffer->trace);
 
+   /* Ensure all query MI writes are visible to the shader */
+   struct mi_builder b;
+   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+   mi_ensure_write_fence(&b);
+
    /* If this is the first command in the batch buffer, make sure we have
     * consistent pipeline mode.
     */

@@ -5870,6 +5870,11 @@ void genX(batch_emit_secondary_call)(struct anv_batch *batch,
    struct mi_reloc_imm_token reloc =
       mi_store_relocated_imm(&b, mi_mem64(secondary_return_addr));
 
+   /* Ensure the write have landed before CS reads the address written
+    * above
+    */
+   mi_ensure_write_fence(&b);
+
 #if GFX_VER >= 12
    /* Disable prefetcher before jumping into a secondary */
    anv_batch_emit(batch, GENX(MI_ARB_CHECK), arb) {

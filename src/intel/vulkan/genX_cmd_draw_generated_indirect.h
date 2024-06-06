@@ -586,6 +586,9 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
                    mi_iadd(&b, mi_mem32(draw_base_addr),
                                mi_imm(ring_count)));
 
+      /* Make sure the MI writes are globally observable */
+      mi_ensure_write_fence(&b);
+
       anv_add_pending_pipe_bits(cmd_buffer,
                                 ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT,
                                 "after generated draws batch increment");
@@ -604,6 +607,9 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
 
       /* Reset the draw_base field in case we ever replay the command buffer. */
       mi_store(&b, mi_mem32(draw_base_addr), mi_imm(0));
+
+      /* Make sure the MI writes are globally observable */
+      mi_ensure_write_fence(&b);
 
       anv_add_pending_pipe_bits(cmd_buffer,
                                 ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT,

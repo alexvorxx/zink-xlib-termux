@@ -239,13 +239,21 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
        anv_cmd_buffer_is_video_queue(cmd_buffer))
       return;
 
+   struct anv_device *device = cmd_buffer->device;
+
    struct GENX(STATE_BASE_ADDRESS) sba = {};
    fill_state_base_addr(cmd_buffer, &sba);
 
-   /* If we are emitting a new state base address we probably need to re-emit
-    * binding tables.
-    */
-   cmd_buffer->state.descriptors_dirty |= ~0;
+#if GFX_VERx10 >= 125
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
+   struct mi_goto_target t = MI_GOTO_TARGET_INIT;
+   mi_goto_if(&b,
+              mi_ieq(&b, mi_reg64(ANV_BINDLESS_SURFACE_BASE_ADDR_REG),
+                         mi_imm(sba.BindlessSurfaceStateBaseAddress.offset)),
+              &t);
+#endif
 
    /* Emit a render target cache flush.
     *
@@ -292,10 +300,6 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     */
    if (gfx12_wa_pipeline != UINT32_MAX)
       genX(flush_pipeline_select)(cmd_buffer, gfx12_wa_pipeline);
-#endif
-
-#if GFX_VERx10 >= 125
-   genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
 #endif
 
    /* After re-setting the surface state base address, we have to do some
@@ -400,6 +404,23 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.compute.base.push_constants_data_dirty = true;
 #endif
    }
+
+#if GFX_VERx10 >= 125
+   assert(sba.BindlessSurfaceStateBaseAddress.offset != 0);
+   mi_store(&b, mi_reg64(ANV_BINDLESS_SURFACE_BASE_ADDR_REG),
+                mi_imm(sba.BindlessSurfaceStateBaseAddress.offset));
+
+   mi_goto_target(&b, &t);
+#endif
+
+#if GFX_VERx10 >= 125
+   genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
+#endif
+
+   /* If we have emitted a new state base address we probably need to re-emit
+    * binding tables.
+    */
+   cmd_buffer->state.descriptors_dirty |= ~0;
 }
 
 void

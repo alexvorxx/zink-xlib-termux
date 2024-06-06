@@ -8,10 +8,11 @@
 #include "genxml/genX_pack.h"
 
 /* We reserve :
+ *    - GPR 13 for STATE_BASE_ADDRESS bindless surface base address
  *    - GPR 14 for perf queries
  *    - GPR 15 for conditional rendering
  */
-#define MI_BUILDER_NUM_ALLOC_GPRS 14
+#define MI_BUILDER_NUM_ALLOC_GPRS 13
 #define MI_BUILDER_CAN_WRITE_BATCH true
 /* Don't do any write check by default, we manually set it where it matters.
  */

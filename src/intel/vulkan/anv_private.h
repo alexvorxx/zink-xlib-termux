@@ -223,6 +223,12 @@ struct intel_perf_query_result;
  */
 #define ANV_PERF_QUERY_OFFSET_REG 0x2670 /* MI_ALU_REG14 */
 
+/* We reserve this MI ALU register to hold the last programmed bindless
+ * surface state base address so that we can predicate STATE_BASE_ADDRESS
+ * emissions if the address doesn't change.
+ */
+#define ANV_BINDLESS_SURFACE_BASE_ADDR_REG 0x2668 /* MI_ALU_REG13 */
+
 #define ANV_GRAPHICS_SHADER_STAGE_COUNT (MESA_SHADER_MESH + 1)
 
 /* RENDER_SURFACE_STATE is a bit smaller (48b) but since it is aligned to 64

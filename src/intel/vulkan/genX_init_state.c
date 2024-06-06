@@ -35,6 +35,8 @@
 #include "grl/genX_grl.h"
 #endif
 
+#include "genX_mi_builder.h"
+
 #include "vk_util.h"
 #include "vk_format.h"
 
@@ -309,7 +311,13 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
       sba.L1CacheControl = L1CC_WB;
 #endif
    }
-#endif
+
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, batch);
+
+   mi_store(&b, mi_reg64(ANV_BINDLESS_SURFACE_BASE_ADDR_REG),
+                mi_imm(device->physical->va.internal_surface_state_pool.addr));
+#endif /* GFX_VER >= 12 */
 
 #if GFX_VERx10 >= 125
    if (ANV_SUPPORT_RT && device->info->has_ray_tracing) {

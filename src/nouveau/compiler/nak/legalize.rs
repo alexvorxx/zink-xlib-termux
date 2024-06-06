@@ -177,6 +177,17 @@ fn copy_alu_src(
     src.src_ref = val.into();
 }
 
+fn copy_alu_src_if_cbuf(
+    b: &mut impl SSABuilder,
+    src: &mut Src,
+    reg_file: RegFile,
+    src_type: SrcType,
+) {
+    if matches!(src.src_ref, SrcRef::CBuf(_)) {
+        copy_alu_src(b, src, reg_file, src_type);
+    }
+}
+
 fn copy_alu_src_if_not_reg(
     b: &mut impl SSABuilder,
     src: &mut Src,
@@ -588,6 +599,14 @@ fn legalize_sm70_instr(
     } else {
         RegFile::GPR
     };
+
+    if !matches!(&instr.op, Op::Ldc(_) | Op::Copy(_)) && instr.is_uniform() {
+        // Uniform instructions can't support cbufs
+        let src_types = instr.src_types();
+        for (i, src) in instr.srcs_mut().iter_mut().enumerate() {
+            copy_alu_src_if_cbuf(b, src, gpr, src_types[i]);
+        }
+    }
 
     match &mut instr.op {
         Op::FAdd(op) => {

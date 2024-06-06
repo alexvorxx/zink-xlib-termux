@@ -11582,8 +11582,8 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
    }
 
    uint32_t cmdbuf_size = radv_get_indirect_cmdbuf_size(pGeneratedCommandsInfo);
-   struct radeon_winsys_bo *ib_bo = prep_buffer->bo;
-   const uint64_t ib_offset = prep_buffer->offset + pGeneratedCommandsInfo->preprocessOffset;
+   const uint64_t ib_va =
+      radv_buffer_get_va(prep_buffer->bo) + prep_buffer->offset + pGeneratedCommandsInfo->preprocessOffset;
    const uint32_t view_mask = cmd_buffer->state.render.view_mask;
 
    if (!radv_cmd_buffer_uses_mec(cmd_buffer)) {
@@ -11594,12 +11594,12 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
    radv_cs_add_buffer(device->ws, cmd_buffer->cs, prep_buffer->bo);
 
    if (compute || !view_mask) {
-      device->ws->cs_execute_ib(cmd_buffer->cs, ib_bo, ib_offset, cmdbuf_size >> 2, cmd_buffer->state.predicating);
+      device->ws->cs_execute_ib(cmd_buffer->cs, NULL, ib_va, cmdbuf_size >> 2, cmd_buffer->state.predicating);
    } else {
       u_foreach_bit (view, view_mask) {
          radv_emit_view_index(&cmd_buffer->state, cmd_buffer->cs, view);
 
-         device->ws->cs_execute_ib(cmd_buffer->cs, ib_bo, ib_offset, cmdbuf_size >> 2, cmd_buffer->state.predicating);
+         device->ws->cs_execute_ib(cmd_buffer->cs, NULL, ib_va, cmdbuf_size >> 2, cmd_buffer->state.predicating);
       }
    }
 

@@ -7,6 +7,7 @@
 # Each format entry contains:
 # - name, per enum pipe_format
 # - layout, per enum util_format_layout, in shortened lower caps
+# - sublayout, to distinguish between meaningfully-different layout variants
 # - pixel block's width
 # - pixel block's height
 # - pixel block's depth, in number of pixels
@@ -815,48 +816,56 @@
 # - http://msdn.microsoft.com/en-us/library/bb694531.aspx
 - name: DXT1_RGB
   layout: s3tc
+  sublayout: dxt1
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, 1]
 - name: DXT1_RGBA
   layout: s3tc
+  sublayout: dxt1
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, W]
 - name: DXT3_RGBA
   layout: s3tc
+  sublayout: dxt3
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
   swizzles: [X, Y, Z, W]
 - name: DXT5_RGBA
   layout: s3tc
+  sublayout: dxt5
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
   swizzles: [X, Y, Z, W]
 - name: DXT1_SRGB
   layout: s3tc
+  sublayout: dxt1
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, 1]
 - name: DXT1_SRGBA
   layout: s3tc
+  sublayout: dxt1
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, W]
 - name: DXT3_SRGBA
   layout: s3tc
+  sublayout: dxt3
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
   swizzles: [X, Y, Z, W]
 - name: DXT5_SRGBA
   layout: s3tc
+  sublayout: dxt5
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
@@ -932,6 +941,7 @@
 
 - name: ETC1_RGB8
   layout: etc
+  sublayout: etc1
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
@@ -939,60 +949,70 @@
 
 - name: ETC2_RGB8
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, 1]
 - name: ETC2_SRGB8
   layout: etc
+  sublayout: etc2
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, 1]
 - name: ETC2_RGB8A1
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, W]
 - name: ETC2_SRGB8A1
   layout: etc
+  sublayout: etc2
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, Y, Z, W]
 - name: ETC2_RGBA8
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
   swizzles: [X, Y, Z, W]
 - name: ETC2_SRGBA8
   layout: etc
+  sublayout: etc2
   colorspace: SRGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
   swizzles: [X, Y, Z, W]
 - name: ETC2_R11_UNORM
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, 0, 0, 1]
 - name: ETC2_R11_SNORM
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X64]
   swizzles: [X, 0, 0, 1]
 - name: ETC2_RG11_UNORM
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]
   swizzles: [X, Y, 0, 1]
 - name: ETC2_RG11_SNORM
   layout: etc
+  sublayout: etc2
   colorspace: RGB
   block: {width: 4, height: 4, depth: 1}
   channels: [X128]

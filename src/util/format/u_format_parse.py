@@ -225,11 +225,17 @@ class Format:
         self.name = "unknown"
         self.name = f"PIPE_FORMAT_{consume_str(self, source, 'name')}"
         self.layout = consume_str(self, source, 'layout')
+        if 'sublayout' in source:
+            self.sublayout = consume_str(self, source, 'sublayout')
+        else:
+            self.sublayout = None
         self.block_width = consume_int(self, source, 'block', 'width')
         self.block_height = consume_int(self, source, 'block', 'height')
         self.block_depth = consume_int(self, source, 'block', 'depth')
         consumed(self, source, 'block')
         self.colorspace = consume_str(self, source, 'colorspace')
+        self.srgb_equivalent = None
+        self.linear_equivalent = None
 
         # Formats with no endian-dependent swizzling declare their channel and
         # swizzle layout at the top level. Else they can declare an
@@ -323,6 +329,8 @@ class Format:
         return self.name
 
     def __eq__(self, other):
+        if not other:
+            return False
         return self.name == other.name
 
     def __hash__(self):
@@ -523,6 +531,27 @@ def _parse_channels(fields, layout, colorspace, swizzles):
 
     return channels
 
+def mostly_equivalent(one, two):
+    if one.layout != two.layout or \
+       one.sublayout != two.sublayout or \
+       one.block_width != two.block_width or \
+       one.block_height != two.block_height or \
+       one.block_depth != two.block_depth or \
+       one.le_swizzles != two.le_swizzles or \
+       one.le_channels != two.le_channels or \
+       one.be_swizzles != two.be_swizzles or \
+       one.be_channels != two.be_channels:
+        return False
+    return True
+
+def should_ignore_for_mapping(fmt):
+    # This format is a really special reinterpretation of depth/stencil as
+    # RGB. Until we figure out something better, just special-case it so
+    # we won't consider it as equivalent to anything.
+    if fmt.name == "PIPE_FORMAT_Z24_UNORM_S8_UINT_AS_R8G8B8A8":
+        return True
+    return False
+    
 
 def parse(filename):
     '''Parse the format description in YAML format in terms of the
@@ -542,5 +571,25 @@ def parse(filename):
         if f in ret:
             raise RuntimeError(f"Duplicate format entry {f.name}")
         ret.append(f)
+
+    for fmt in ret:
+        if should_ignore_for_mapping(fmt):
+            continue
+        if fmt.colorspace != RGB and fmt.colorspace != SRGB:
+            continue
+        if fmt.colorspace == RGB:
+            for equiv in ret:
+                if equiv.colorspace != SRGB or not mostly_equivalent(fmt, equiv) or \
+                   should_ignore_for_mapping(equiv):
+                    continue
+                assert(fmt.srgb_equivalent == None)
+                fmt.srgb_equivalent = equiv
+        elif fmt.colorspace == SRGB:
+            for equiv in ret:
+                if equiv.colorspace != RGB or not mostly_equivalent(fmt, equiv) or \
+                   should_ignore_for_mapping(equiv):
+                    continue
+                assert(fmt.linear_equivalent == None)
+                fmt.linear_equivalent = equiv
 
     return ret

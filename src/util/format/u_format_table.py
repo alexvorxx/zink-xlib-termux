@@ -41,7 +41,6 @@ def layout_map(layout):
 def colorspace_map(colorspace):
     return 'UTIL_FORMAT_COLORSPACE_' + str(colorspace).upper()
 
-
 colorspace_channels_map = {
     'RGB': ['r', 'g', 'b', 'a'],
     'SRGB': ['sr', 'sg', 'sb', 'a'],
@@ -150,6 +149,7 @@ def write_format_aliases(formats):
             print("#define %s %s" % (f.be_alias, f.name), file=sys.stdout3)
     print("#endif", file=sys.stdout3)
 
+
 def write_format_table(formats):
     write_format_table_header(sys.stdout)
     print('#include "util/format/u_format.h"')
@@ -245,20 +245,26 @@ def write_format_table(formats):
         sn = format.short_name()
 
         print("   [%s] = {" % (format.name,))
-        print("      %s," % (format.name,))
-        print("      \"%s\"," % (format.name,))
-        print("      \"%s\"," % (sn,))
-        print("      {%u, %u, %u, %u},\t/* block */" % (format.block_width, format.block_height, format.block_depth, format.block_size()))
-        print("      %s," % (layout_map(format.layout),))
-        print("      %u,\t/* nr_channels */" % (format.nr_channels(),))
-        print("      %s,\t/* is_array */" % (bool_map(format.is_array()),))
-        print("      %s,\t/* is_bitmask */" % (bool_map(format.is_bitmask()),))
-        print("      %s,\t/* is_mixed */" % (bool_map(format.is_mixed()),))
-        print("      %s,\t/* is_unorm */" % (bool_map(format.is_unorm()),))
-        print("      %s,\t/* is_snorm */" % (bool_map(format.is_snorm()),))
+        print("      .format = %s," % (format.name,))
+        print("      .name = \"%s\"," % (format.name,))
+        print("      .short_name = \"%s\"," % (sn,))
+        print("      .block = {%u, %u, %u, %u},\t/* block */" % (format.block_width, format.block_height, format.block_depth, format.block_size()))
+        print("      .layout = %s," % (layout_map(format.layout),))
+        print("      .nr_channels = %u,\t/* nr_channels */" % (format.nr_channels(),))
+        print("      .is_array = %s,\t/* is_array */" % (bool_map(format.is_array()),))
+        print("      .is_bitmask = %s,\t/* is_bitmask */" % (bool_map(format.is_bitmask()),))
+        print("      .is_mixed = %s,\t/* is_mixed */" % (bool_map(format.is_mixed()),))
+        print("      .is_unorm = %s,\t/* is_unorm */" % (bool_map(format.is_unorm()),))
+        print("      .is_snorm = %s,\t/* is_snorm */" % (bool_map(format.is_snorm()),))
         u_format_pack.print_channels(format, do_channel_array)
         u_format_pack.print_channels(format, do_swizzle_array)
-        print("      %s," % (colorspace_map(format.colorspace),))
+        print("      .colorspace = %s," % (colorspace_map(format.colorspace),))
+        if format.srgb_equivalent:
+            print("      .srgb_equivalent = %s,\t/* srgb_equivalent */" % format.srgb_equivalent.name)
+        elif format.linear_equivalent:
+            print("      .linear_equivalent = %s,\t/* linear_equivalent */" % format.linear_equivalent.name)
+        else:
+            print("      .srgb_equivalent = PIPE_FORMAT_NONE,\t/* srgb_equivalent */")
         print("   },")
         print()
     print("};")

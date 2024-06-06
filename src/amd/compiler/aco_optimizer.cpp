@@ -2135,8 +2135,9 @@ follow_operand(opt_ctx& ctx, Operand op, bool ignore_uses = false)
    Instruction* instr = ctx.info[op.tempId()].instr;
 
    if (instr->definitions.size() == 2) {
-      assert(instr->definitions[0].isTemp() && instr->definitions[0].tempId() == op.tempId());
-      if (instr->definitions[1].isTemp() && ctx.uses[instr->definitions[1].tempId()])
+      unsigned idx = ctx.info[op.tempId()].label & label_split ? 1 : 0;
+      assert(instr->definitions[idx].isTemp() && instr->definitions[idx].tempId() == op.tempId());
+      if (instr->definitions[!idx].isTemp() && ctx.uses[instr->definitions[!idx].tempId()])
          return nullptr;
    }
 

@@ -182,7 +182,12 @@ impl CopyPropPass {
         }
     }
 
-    fn prop_to_scalar_src(&self, src_type: SrcType, src: &mut Src) {
+    fn prop_to_scalar_src(
+        &self,
+        src_type: SrcType,
+        allow_cbuf: bool,
+        src: &mut Src,
+    ) {
         loop {
             let src_ssa = match &src.src_ref {
                 SrcRef::SSA(ssa) => ssa,
@@ -197,6 +202,12 @@ impl CopyPropPass {
 
             match entry {
                 CopyPropEntry::Copy(entry) => {
+                    if matches!(&entry.src.src_ref, SrcRef::CBuf(_))
+                        && !allow_cbuf
+                    {
+                        return;
+                    }
+
                     // If there are modifiers, the source types have to match
                     if !entry.src.src_mod.is_none()
                         && entry.src_type != src_type
@@ -247,6 +258,12 @@ impl CopyPropPass {
 
                     let entry_src_idx = usize::from(entry_src_idx.unwrap());
                     let entry_src = entry.srcs[entry_src_idx];
+
+                    if matches!(&entry_src.src_ref, SrcRef::CBuf(_))
+                        && !allow_cbuf
+                    {
+                        return;
+                    }
 
                     // See if that permute is a valid swizzle
                     let new_swizzle = match src_type {
@@ -369,7 +386,7 @@ impl CopyPropPass {
         }
     }
 
-    fn prop_to_src(&self, src_type: SrcType, src: &mut Src) {
+    fn prop_to_src(&self, src_type: SrcType, allow_cbuf: bool, src: &mut Src) {
         match src_type {
             SrcType::SSA => {
                 self.prop_to_ssa_src(src);
@@ -384,9 +401,10 @@ impl CopyPropPass {
             | SrcType::I32
             | SrcType::B32
             | SrcType::Pred => {
-                self.prop_to_scalar_src(src_type, src);
+                self.prop_to_scalar_src(src_type, allow_cbuf, src);
             }
             SrcType::F64 => {
+                debug_assert!(allow_cbuf);
                 self.prop_to_f64_src(src);
             }
             SrcType::Bar => (),
@@ -582,39 +600,43 @@ impl CopyPropPass {
 
                 self.prop_to_pred(&mut instr.pred);
 
+                let allow_cbuf = !instr.is_uniform();
+
                 match &mut instr.op {
                     Op::IAdd2(add) => {
                         // Carry-out interacts funny with SrcMod::INeg so we can
                         // only propagate with modifiers if no carry is written.
+                        use SrcType::{ALU, I32};
                         if add.carry_out.is_none() {
-                            self.prop_to_src(SrcType::I32, &mut add.srcs[0]);
-                            self.prop_to_src(SrcType::I32, &mut add.srcs[1]);
+                            self.prop_to_src(I32, allow_cbuf, &mut add.srcs[0]);
+                            self.prop_to_src(I32, allow_cbuf, &mut add.srcs[1]);
                         } else {
-                            self.prop_to_src(SrcType::ALU, &mut add.srcs[0]);
-                            self.prop_to_src(SrcType::ALU, &mut add.srcs[1]);
+                            self.prop_to_src(ALU, allow_cbuf, &mut add.srcs[0]);
+                            self.prop_to_src(ALU, allow_cbuf, &mut add.srcs[1]);
                         }
                     }
                     Op::IAdd3(add) => {
                         // Overflow interacts funny with SrcMod::INeg so we can
                         // only propagate with modifiers if no overflow values
                         // are written.
+                        use SrcType::{ALU, I32};
                         if add.overflow[0].is_none()
                             && add.overflow[0].is_none()
                         {
-                            self.prop_to_src(SrcType::I32, &mut add.srcs[0]);
-                            self.prop_to_src(SrcType::I32, &mut add.srcs[1]);
-                            self.prop_to_src(SrcType::I32, &mut add.srcs[2]);
+                            self.prop_to_src(I32, allow_cbuf, &mut add.srcs[0]);
+                            self.prop_to_src(I32, allow_cbuf, &mut add.srcs[1]);
+                            self.prop_to_src(I32, allow_cbuf, &mut add.srcs[2]);
                         } else {
-                            self.prop_to_src(SrcType::ALU, &mut add.srcs[0]);
-                            self.prop_to_src(SrcType::ALU, &mut add.srcs[1]);
-                            self.prop_to_src(SrcType::ALU, &mut add.srcs[2]);
+                            self.prop_to_src(ALU, allow_cbuf, &mut add.srcs[0]);
+                            self.prop_to_src(ALU, allow_cbuf, &mut add.srcs[1]);
+                            self.prop_to_src(ALU, allow_cbuf, &mut add.srcs[2]);
                         }
                     }
                     _ => {
                         let src_types = instr.src_types();
                         for (i, src) in instr.srcs_mut().iter_mut().enumerate()
                         {
-                            self.prop_to_src(src_types[i], src);
+                            self.prop_to_src(src_types[i], allow_cbuf, src);
                         }
                     }
                 }

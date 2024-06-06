@@ -2497,14 +2497,17 @@ lower_to_hw_instr(Program* program)
                bool signext = !instr->operands[3].constantEquals(0);
 
                if (dst.regClass() == s1) {
-                  if (offset == (32 - bits)) {
-                     bld.sop2(signext ? aco_opcode::s_ashr_i32 : aco_opcode::s_lshr_b32, dst,
-                              bld.def(s1, scc), op, Operand::c32(offset));
-                  } else if (offset == 0 && signext && (bits == 8 || bits == 16)) {
+                  if (offset == 0 && signext && (bits == 8 || bits == 16)) {
                      bld.sop1(bits == 8 ? aco_opcode::s_sext_i32_i8 : aco_opcode::s_sext_i32_i16,
                               dst, op);
                   } else if (ctx.program->gfx_level >= GFX9 && offset == 0 && bits == 16) {
                      bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op, Operand::zero());
+                  } else if (ctx.program->gfx_level >= GFX9 && offset == 16 && bits == 16 &&
+                             !signext) {
+                     bld.sop2(aco_opcode::s_pack_hh_b32_b16, dst, op, Operand::zero());
+                  } else if (offset == (32 - bits)) {
+                     bld.sop2(signext ? aco_opcode::s_ashr_i32 : aco_opcode::s_lshr_b32, dst,
+                              bld.def(s1, scc), op, Operand::c32(offset));
                   } else {
                      bld.sop2(signext ? aco_opcode::s_bfe_i32 : aco_opcode::s_bfe_u32, dst,
                               bld.def(s1, scc), op, Operand::c32((bits << 16) | offset));
@@ -2574,7 +2577,11 @@ lower_to_hw_instr(Program* program)
 
                bool has_sdwa = program->gfx_level >= GFX8 && program->gfx_level < GFX11;
                if (dst.regClass() == s1) {
-                  if (offset == (32 - bits)) {
+                  if (ctx.program->gfx_level >= GFX9 && offset == 0 && bits == 16) {
+                     bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op, Operand::zero());
+                  } else if (ctx.program->gfx_level >= GFX9 && offset == 16 && bits == 16) {
+                     bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, Operand::zero(), op);
+                  } else if (offset == (32 - bits)) {
                      bld.sop2(aco_opcode::s_lshl_b32, dst, bld.def(s1, scc), op,
                               Operand::c32(offset));
                   } else if (offset == 0) {

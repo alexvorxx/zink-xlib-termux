@@ -18,7 +18,7 @@ files_mesa_format = files(
 
 u_format_pack_h = custom_target(
   'u_format_pack.h',
-  input : ['u_format_table.py', 'u_format.csv'],
+  input : ['u_format_table.py', 'u_format.yaml'],
   output : 'u_format_pack.h',
   command : [prog_python, '@INPUT@', '--header'],
   depend_files : files('u_format_pack.py', 'u_format_parse.py'),
@@ -27,7 +27,7 @@ u_format_pack_h = custom_target(
 
 u_format_table_c = custom_target(
   'u_format_table.c',
-  input : ['u_format_table.py', 'u_format.csv'],
+  input : ['u_format_table.py', 'u_format.yaml'],
   output : 'u_format_table.c',
   command : [prog_python, '@INPUT@'],
   depend_files : files('u_format_pack.py', 'u_format_parse.py'),

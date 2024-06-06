@@ -50,6 +50,7 @@ DEPS=(
     py3-packaging
     py3-pip
     py3-ply
+    py3-yaml
     vulkan-headers
     spirv-tools-dev
     util-macros

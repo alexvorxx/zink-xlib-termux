@@ -260,9 +260,15 @@ class Format:
             if self.is_bitmask():
                 raise RuntimeError("Bitmask format {self.name} must not define endian-specific swizzles")
 
+        self.le_alias = None
+        self.be_alias = None
         if 'little_endian' in source:
+            if 'alias' in source['little_endian']:
+                self.le_alias = f"PIPE_FORMAT_{consume_str(self, source, 'little_endian', 'alias')}"
             consumed(self, source, 'little_endian')
         if 'big_endian' in source:
+            if 'alias' in source['big_endian']:
+                self.be_alias = f"PIPE_FORMAT_{consume_str(self, source, 'big_endian', 'alias')}"
             consumed(self, source, 'big_endian')
 
         consumed(self, source)

@@ -84,6 +84,7 @@ nvk_deps = [
   idep_nak,
   idep_nil,
   idep_nir,
+  idep_mesautil,
   idep_nouveau_mme,
   idep_nouveau_ws,
   idep_nvidia_headers,

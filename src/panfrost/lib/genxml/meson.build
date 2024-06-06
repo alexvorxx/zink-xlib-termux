@@ -25,7 +25,7 @@ foreach ver : ['4', '5', '6', '7', '9', '10']
     'pandecode-arch-v' + ver,
     ['decode.c', 'decode_jm.c', 'decode_csf.c', pan_packers],
     include_directories : [inc_include, inc_src, inc_panfrost],
-    dependencies : [dep_libdrm, idep_pan_packers, idep_nir],
+    dependencies : [dep_libdrm, idep_pan_packers, idep_nir, idep_mesautil],
     c_args : [no_override_init_args, '-DPAN_ARCH=' + ver],
     gnu_symbol_visibility : 'hidden',
     build_by_default : false,

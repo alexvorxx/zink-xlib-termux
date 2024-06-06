@@ -129,7 +129,7 @@ libd3d12 = static_library(
   [files_libd3d12, sha1_h],
   gnu_symbol_visibility : 'hidden',
   include_directories : [inc_include, inc_src, inc_mesa, inc_gallium, inc_gallium_aux],
-  dependencies: [idep_nir_headers, idep_libdxil_compiler, dep_dxheaders],
+  dependencies: [idep_nir_headers, idep_libdxil_compiler, dep_dxheaders, idep_mesautil],
   c_args: libd3d12_compiler_args,
   cpp_args: libd3d12_compiler_args,
 )

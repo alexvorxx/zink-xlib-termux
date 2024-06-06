@@ -64,7 +64,7 @@ libsoftpipe = static_library(
   include_directories : [inc_gallium_aux, inc_gallium, inc_include, inc_src],
   c_args : [c_msvc_compat_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : idep_nir,
+  dependencies : [idep_nir, idep_mesautil],
 )
 
 driver_softpipe = declare_dependency(

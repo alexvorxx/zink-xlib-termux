@@ -26,6 +26,7 @@ libetnaviv_drm = static_library(
   dependencies : [
     dep_libdrm,
     dep_valgrind,
+    idep_mesautil,
     idep_etna_common,
   ],
   link_with : [

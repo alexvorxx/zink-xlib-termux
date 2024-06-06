@@ -38,7 +38,7 @@ libosmesa = shared_library(
     libmesa, libgallium, libws_null, osmesa_link_with,
   ],
   dependencies : [
-    dep_ws2_32, dep_selinux, dep_thread, dep_clock, dep_unwind, driver_swrast
+    dep_ws2_32, dep_selinux, dep_thread, dep_clock, dep_unwind, driver_swrast, idep_mesautil,
   ],
   name_prefix : host_machine.system() == 'windows' ? '' : [],  # otherwise mingw will create libosmesa.dll
   soversion : host_machine.system() == 'windows' ? '' : '8',
@@ -74,7 +74,7 @@ if with_tests
       'test-render.cpp',
       include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
       link_with: libosmesa,
-      dependencies : [idep_gtest],
+      dependencies : [idep_gtest, idep_mesautil],
     ),
     suite: 'gallium',
     protocol : 'gtest',

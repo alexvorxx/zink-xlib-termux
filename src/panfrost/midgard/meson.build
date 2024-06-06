@@ -60,7 +60,8 @@ libpanfrost_midgard = static_library(
    inc_panfrost_hw,
   ],
   dependencies: [
-   idep_nir
+   idep_nir,
+   idep_mesautil,
   ],
   link_with: [libpanfrost_util, libpanfrost_midgard_disasm],
   c_args : [no_override_init_args],

@@ -48,7 +48,7 @@ libv3d_neon = static_library(
   ],
   c_args : [v3d_args, v3d_neon_c_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_libdrm, dep_valgrind, idep_nir_headers],
+  dependencies : [dep_libdrm, dep_valgrind, idep_nir_headers, idep_mesautil],
 )
 
 libbroadcom_v3d = static_library(
@@ -63,7 +63,7 @@ libbroadcom_v3d = static_library(
   link_whole : v3d_libs + per_version_libs,
   link_with: [libv3d_neon],
   build_by_default : false,
-  dependencies: [dep_valgrind, dep_thread],
+  dependencies: [dep_valgrind, dep_thread, idep_mesautil],
 )
 
 if with_broadcom_vk

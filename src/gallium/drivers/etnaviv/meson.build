@@ -112,7 +112,7 @@ if with_tests
       gnu_symbol_visibility : 'hidden',
       include_directories : [inc_include, inc_src, inc_gallium],
       link_with : [libetnaviv],
-      dependencies : [idep_gtest, idep_nir],
+      dependencies : [idep_gtest, idep_nir, idep_mesautil],
     ),
     suite : ['compiler', 'etnaviv'],
     protocol : 'gtest',

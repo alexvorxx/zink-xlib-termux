@@ -44,6 +44,7 @@ librusticl = shared_library(
     driver_zink,
     idep_nir,
     idep_vtn,
+    idep_mesautil,
   ],
   link_args : [
     ld_args_build_id,

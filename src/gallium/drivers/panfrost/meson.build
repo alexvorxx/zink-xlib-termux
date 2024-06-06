@@ -56,7 +56,7 @@ foreach ver : panfrost_versions
     include_directories : panfrost_includes,
     c_args : ['-DPAN_ARCH=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [idep_pan_packers, idep_nir, dep_libdrm],
+    dependencies : [idep_pan_packers, idep_nir, dep_libdrm, idep_mesautil],
 )
 endforeach
 

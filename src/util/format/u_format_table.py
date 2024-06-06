@@ -138,10 +138,21 @@ def write_format_table_header(file):
     # This will print the copyright message on the top of this file
     print(CopyRight.strip(), file=file)
     print(file=file)
-    print('#include "util/format/u_format.h"', file=file)
+
+def write_format_aliases(formats):
+    print("#if UTIL_ARCH_LITTLE_ENDIAN", file=sys.stdout3)
+    for f in formats:
+        if f.le_alias:
+            print("#define %s %s" % (f.le_alias, f.name), file=sys.stdout3)
+    print("#elif UTIL_ARCH_BIG_ENDIAN", file=sys.stdout3)
+    for f in formats:
+        if f.be_alias:
+            print("#define %s %s" % (f.be_alias, f.name), file=sys.stdout3)
+    print("#endif", file=sys.stdout3)
 
 def write_format_table(formats):
     write_format_table_header(sys.stdout)
+    print('#include "util/format/u_format.h"')
     print('#include "u_format_bptc.h"')
     print('#include "u_format_fxt1.h"')
     print('#include "u_format_s3tc.h"')
@@ -155,6 +166,7 @@ def write_format_table(formats):
     print('#ifdef __cplusplus', file=sys.stdout2)
     print('extern "C" {', file=sys.stdout2)
     print('#endif', file=sys.stdout2)
+    print('#include "util/format/u_format.h"', file=sys.stdout2)
     print(file=sys.stdout2)
 
     u_format_pack.generate(formats)
@@ -162,6 +174,20 @@ def write_format_table(formats):
     print('#ifdef __cplusplus', file=sys.stdout2)
     print('} /* extern "C" */', file=sys.stdout2)
     print('#endif', file=sys.stdout2)
+
+
+    write_format_table_header(sys.stdout3)
+
+    print('#ifdef __cplusplus', file=sys.stdout3)
+    print('extern "C" {', file=sys.stdout3)
+    print('#endif', file=sys.stdout3)
+    print(file=sys.stdout3)
+
+    write_format_aliases(formats)
+
+    print('#ifdef __cplusplus', file=sys.stdout3)
+    print('} /* extern "C" */', file=sys.stdout3)
+    print('#endif', file=sys.stdout3)
 
     def do_channel_array(channels, swizzles):
         print("   {")
@@ -327,11 +353,18 @@ def main():
     formats = {}
 
     sys.stdout2 = open(os.devnull, "w")
+    sys.stdout3 = open(os.devnull, "w")
 
     for arg in sys.argv[1:]:
         if arg == '--header':
             sys.stdout2 = sys.stdout
             sys.stdout = open(os.devnull, "w")
+            sys.stdout3 = sys.stdout
+            continue
+        elif arg == '--enums':
+            sys.stdout3 = sys.stdout
+            sys.stdout = open(os.devnull, "w")
+            sys.stdout2 = sys.stdout
             continue
 
         to_add = parse(arg)

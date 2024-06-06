@@ -31,7 +31,7 @@ if with_tests
       c_args : [c_msvc_compat_args, no_override_init_args],
       gnu_symbol_visibility : 'hidden',
       include_directories : [inc_include, inc_src, inc_panfrost],
-      dependencies: [idep_gtest],
+      dependencies: [idep_gtest, idep_mesautil],
       link_with : [libpanfrost_shared],
     ),
     suite : ['panfrost'],

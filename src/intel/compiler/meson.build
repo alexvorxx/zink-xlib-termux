@@ -151,6 +151,7 @@ idep_intel_compiler_brw = declare_dependency(
   link_with : [libintel_compiler_brw],
   dependencies : [
     idep_nir,
+    idep_mesautil,
   ],
 )
 

@@ -12,7 +12,7 @@ libd3d12winsys = static_library(
   'd3d12winsys',
   files_libd3d12winsys,
   include_directories : [inc_src, inc_wgl, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_drivers],
-  dependencies : [dep_dxheaders, idep_nir_headers, idep_libdxil_compiler],
+  dependencies : [dep_dxheaders, idep_nir_headers, idep_libdxil_compiler, idep_mesautil],
   gnu_symbol_visibility : 'hidden',
 )
 

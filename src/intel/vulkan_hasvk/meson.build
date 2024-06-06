@@ -79,7 +79,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
       dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
       idep_vulkan_util_headers, idep_vulkan_wsi_headers,
       idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
-      idep_intel_blorp_elk,
+      idep_intel_blorp_elk, idep_mesautil,
     ],
   )
 endforeach
@@ -119,6 +119,7 @@ anv_deps = [
   dep_libdrm,
   dep_valgrind,
   idep_genxml,
+  idep_mesautil,
   idep_nir_headers,
   idep_vulkan_util_headers,
   idep_vulkan_runtime_headers,

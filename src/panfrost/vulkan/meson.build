@@ -118,6 +118,7 @@ foreach arch : [6, 7, 9, 10]
       idep_vulkan_util_headers,
       idep_vulkan_runtime_headers,
       idep_vulkan_wsi_headers,
+      idep_mesautil,
       dep_libdrm,
       dep_valgrind,
     ],

@@ -138,5 +138,5 @@ idep_vulkan_util_headers = declare_dependency(
 
 idep_vulkan_util = declare_dependency(
   link_with : libvulkan_util,
-  dependencies : idep_vulkan_util_headers
+  dependencies : [idep_vulkan_util_headers, idep_mesautil],
 )

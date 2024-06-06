@@ -8,6 +8,8 @@ subdir('kmod')
 pixel_format_versions = ['5', '6', '7', '9', '10']
 libpanfrost_pixel_format = []
 
+deps_for_libpanfrost = [dep_libdrm, idep_pan_packers, idep_mesautil]
+
 foreach ver : pixel_format_versions
   libpanfrost_pixel_format += static_library(
     'pan-format-v' + ver,
@@ -17,7 +19,7 @@ foreach ver : pixel_format_versions
     ],
     c_args : ['-DPAN_ARCH=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [idep_pan_packers, dep_libdrm, dep_valgrind],
+    dependencies : [deps_for_libpanfrost, dep_valgrind],
 )
 endforeach
 
@@ -36,7 +38,7 @@ foreach ver : ['4', '5', '6', '7', '9', '10']
     include_directories : [inc_include, inc_src, inc_panfrost_hw],
     c_args : ['-DPAN_ARCH=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [dep_libdrm, idep_pan_packers, idep_nir],
+    dependencies : [deps_for_libpanfrost, idep_nir],
   )
 endforeach
 
@@ -47,7 +49,7 @@ foreach ver : ['7']
     include_directories : [inc_include, inc_src, inc_panfrost_hw],
     c_args : ['-DPAN_ARCH=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [dep_libdrm, idep_pan_packers, idep_nir],
+    dependencies : [deps_for_libpanfrost, idep_nir],
   )
 endforeach
 
@@ -82,7 +84,7 @@ libpanfrost_lib = static_library(
 libpanfrost_dep = declare_dependency(
   link_with: [libpanfrost_lib, libpanfrost_decode, libpanfrost_midgard, libpanfrost_bifrost, libpanfrost_pixel_format, libpanfrost_per_arch],
   include_directories: [inc_include, inc_src, inc_panfrost_hw, inc_panfrost],
-  dependencies: [dep_libdrm, libpankmod_dep, idep_nir, idep_pan_packers],
+  dependencies: [deps_for_libpanfrost, libpankmod_dep, idep_nir],
 )
 
 if with_tests

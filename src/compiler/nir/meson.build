@@ -313,7 +313,7 @@ _libnir = static_library(
   include_directories : [inc_include, inc_src],
   c_args : [c_msvc_compat_args, no_override_init_args, no_misleading_indentation],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [idep_compiler, dep_valgrind],
+  dependencies : [idep_compiler, dep_valgrind, idep_mesautil],
   build_by_default : false,
 )
 

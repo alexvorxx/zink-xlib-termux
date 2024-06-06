@@ -206,6 +206,10 @@ format_srgb = custom_target(
   capture : true,
 )
 
+# subdir format provide files_mesa_format
+subdir('format')
+files_mesa_util += files_mesa_format
+
 deps_for_libmesa_util = [
   dep_zlib,
   dep_clock,
@@ -218,7 +222,8 @@ deps_for_libmesa_util = [
   dep_unwind,
   dep_futex,
   idep_blake3,
-  idep_mesautilc11
+  idep_mesautilc11,
+  idep_mesautilformat,
 ]
 
 if with_platform_android
@@ -262,10 +267,6 @@ libmesa_util_sse41 = static_library(
   include_directories : [inc_util],
   gnu_symbol_visibility : 'hidden',
 )
-
-# subdir format provide files_mesa_format
-subdir('format')
-files_mesa_util += files_mesa_format
 
 _libmesa_util = static_library(
   'mesa_util',

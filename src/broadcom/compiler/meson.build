@@ -44,7 +44,7 @@ libbroadcom_compiler = static_library(
   include_directories : [inc_include, inc_src, inc_gallium, inc_gallium_aux, inc_broadcom],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_libdrm, dep_valgrind, idep_nir_headers],
+  dependencies : [dep_libdrm, dep_valgrind, idep_nir_headers, idep_mesautil],
   build_by_default : false,
 )
 

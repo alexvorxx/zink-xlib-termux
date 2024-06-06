@@ -52,7 +52,7 @@ libintel_dev = static_library(
 
 idep_intel_dev = declare_dependency(
   link_with : libintel_dev,
-  dependencies : [idep_intel_dev_wa, idep_intel_dev_info_gen],
+  dependencies : [idep_intel_dev_wa, idep_intel_dev_info_gen, idep_mesautil],
   sources : [intel_dev_info_gen_src, intel_dev_wa_src[0]],
 )
 

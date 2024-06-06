@@ -23,7 +23,7 @@ libpanfrost_util = static_library(
   'panfrost_util',
   [libpanfrost_util_files],
   include_directories : [inc_include, inc_src, inc_panfrost_hw],
-  dependencies: [idep_nir],
+  dependencies: [idep_nir, idep_mesautil],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,

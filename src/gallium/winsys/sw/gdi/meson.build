@@ -7,4 +7,5 @@ libwsgdi = static_library(
   include_directories : [
     inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_drivers, inc_frontends
   ],
+  dependencies: idep_mesautil,
 )

@@ -55,7 +55,7 @@ foreach ver : v3d_versions
     ],
     c_args : [v3d_args, '-DV3D_VERSION=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [dep_v3d_hw, dep_libdrm, dep_valgrind, idep_nir_headers],
+    dependencies : [dep_v3d_hw, dep_libdrm, dep_valgrind, idep_nir_headers, idep_mesautil],
 )
 
 endforeach

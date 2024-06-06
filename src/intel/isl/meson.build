@@ -179,7 +179,7 @@ if with_tests
     executable(
       'isl_tile_std_y_test',
       'tests/isl_tile_std_y_test.c',
-      dependencies : dep_m,
+      dependencies : [dep_m, idep_mesautil],
       include_directories : [inc_include, inc_src, inc_intel],
       link_with : [libisl, libintel_dev],
     ),

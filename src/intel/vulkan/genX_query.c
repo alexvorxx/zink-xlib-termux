@@ -1135,7 +1135,8 @@ void genX(CmdBeginQueryIndexedEXT)(
                                                  khr_perf_query_data_offset(pool, query, 0, end) +
                                                  field->location)),
                   mi_reg64(ANV_PERF_QUERY_OFFSET_REG));
-            cmd_buffer->self_mod_locations[reloc_idx++] = mi_store_address(&b, reg_addr);
+            cmd_buffer->self_mod_locations[reloc_idx++] =
+               mi_store_relocated_address_reg64(&b, reg_addr);
 
             if (field->type != INTEL_PERF_QUERY_FIELD_TYPE_MI_RPC &&
                 field->size == 8) {
@@ -1146,7 +1147,8 @@ void genX(CmdBeginQueryIndexedEXT)(
                                                     khr_perf_query_data_offset(pool, query, 0, end) +
                                                     field->location + 4)),
                      mi_reg64(ANV_PERF_QUERY_OFFSET_REG));
-               cmd_buffer->self_mod_locations[reloc_idx++] = mi_store_address(&b, reg_addr);
+               cmd_buffer->self_mod_locations[reloc_idx++] =
+                  mi_store_relocated_address_reg64(&b, reg_addr);
             }
          }
       }
@@ -1160,7 +1162,7 @@ void genX(CmdBeginQueryIndexedEXT)(
                   khr_perf_query_availability_offset(pool, query, 0 /* pass */))),
             mi_reg64(ANV_PERF_QUERY_OFFSET_REG));
       cmd_buffer->self_mod_locations[reloc_idx++] =
-         mi_store_address(&b, availability_write_offset);
+         mi_store_relocated_address_reg64(&b, availability_write_offset);
 
       assert(reloc_idx == pdevice->n_perf_query_commands);
 
@@ -1187,10 +1189,10 @@ void genX(CmdBeginQueryIndexedEXT)(
                                   GENX(MI_REPORT_PERF_COUNT_length),
                                   GENX(MI_REPORT_PERF_COUNT),
                                   .MemoryAddress = query_addr /* Will be overwritten */);
-            _mi_resolve_address_token(&b,
-                                      cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                      dws +
-                                      GENX(MI_REPORT_PERF_COUNT_MemoryAddress_start) / 8);
+            mi_resolve_relocated_address_token(
+               &b,
+               cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+               dws + GENX(MI_REPORT_PERF_COUNT_MemoryAddress_start) / 8);
             break;
 
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_PERFCNT:
@@ -1204,10 +1206,10 @@ void genX(CmdBeginQueryIndexedEXT)(
                                GENX(MI_STORE_REGISTER_MEM),
                                .RegisterAddress = field->mmio_offset,
                                .MemoryAddress = query_addr /* Will be overwritten */ );
-            _mi_resolve_address_token(&b,
-                                      cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                      dws +
-                                      GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
+            mi_resolve_relocated_address_token(
+               &b,
+               cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+               dws + GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
             if (field->size == 8) {
                dws =
                   anv_batch_emitn(&cmd_buffer->batch,
@@ -1215,10 +1217,10 @@ void genX(CmdBeginQueryIndexedEXT)(
                                   GENX(MI_STORE_REGISTER_MEM),
                                   .RegisterAddress = field->mmio_offset + 4,
                                   .MemoryAddress = query_addr /* Will be overwritten */ );
-               _mi_resolve_address_token(&b,
-                                         cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                         dws +
-                                         GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
+               mi_resolve_relocated_address_token(
+                  &b,
+                  cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+                  dws + GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
             }
             break;
 
@@ -1350,10 +1352,10 @@ void genX(CmdEndQueryIndexedEXT)(
                                   GENX(MI_REPORT_PERF_COUNT_length),
                                   GENX(MI_REPORT_PERF_COUNT),
                                   .MemoryAddress = query_addr /* Will be overwritten */);
-            _mi_resolve_address_token(&b,
-                                      cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                      dws +
-                                      GENX(MI_REPORT_PERF_COUNT_MemoryAddress_start) / 8);
+            mi_resolve_relocated_address_token(
+               &b,
+               cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+               dws + GENX(MI_REPORT_PERF_COUNT_MemoryAddress_start) / 8);
             break;
 
          case INTEL_PERF_QUERY_FIELD_TYPE_SRM_PERFCNT:
@@ -1367,10 +1369,10 @@ void genX(CmdEndQueryIndexedEXT)(
                                GENX(MI_STORE_REGISTER_MEM),
                                .RegisterAddress = field->mmio_offset,
                                .MemoryAddress = query_addr /* Will be overwritten */ );
-            _mi_resolve_address_token(&b,
-                                      cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                      dws +
-                                      GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
+            mi_resolve_relocated_address_token(
+               &b,
+               cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+               dws + GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
             if (field->size == 8) {
                dws =
                   anv_batch_emitn(&cmd_buffer->batch,
@@ -1378,10 +1380,10 @@ void genX(CmdEndQueryIndexedEXT)(
                                   GENX(MI_STORE_REGISTER_MEM),
                                   .RegisterAddress = field->mmio_offset + 4,
                                   .MemoryAddress = query_addr /* Will be overwritten */ );
-               _mi_resolve_address_token(&b,
-                                         cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                         dws +
-                                         GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
+               mi_resolve_relocated_address_token(
+                  &b,
+                  cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+                  dws + GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8);
             }
             break;
 
@@ -1396,10 +1398,10 @@ void genX(CmdEndQueryIndexedEXT)(
                          GENX(MI_STORE_DATA_IMM_length),
                          GENX(MI_STORE_DATA_IMM),
                          .ImmediateData = true);
-      _mi_resolve_address_token(&b,
-                                cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
-                                dws +
-                                GENX(MI_STORE_DATA_IMM_Address_start) / 8);
+      mi_resolve_relocated_address_token(
+         &b,
+         cmd_buffer->self_mod_locations[cmd_buffer->perf_reloc_idx++],
+         dws + GENX(MI_STORE_DATA_IMM_Address_start) / 8);
 
       assert(cmd_buffer->perf_reloc_idx == pdevice->n_perf_query_commands);
       break;

@@ -1188,8 +1188,11 @@ struct mi_address_token {
    uint64_t *ptrs[2];
 };
 
+/* Emits a 64bit memory write to a yet unknown address using a value from a
+ * register
+ */
 static inline struct mi_address_token
-mi_store_address(struct mi_builder *b, struct mi_value addr_reg)
+mi_store_relocated_address_reg64(struct mi_builder *b, struct mi_value addr_reg)
 {
    mi_builder_flush_math(b);
 
@@ -1230,9 +1233,9 @@ mi_self_mod_barrier(struct mi_builder *b, unsigned cs_prefetch_size)
 }
 
 static inline void
-_mi_resolve_address_token(struct mi_builder *b,
-                          struct mi_address_token token,
-                          void *batch_location)
+mi_resolve_relocated_address_token(struct mi_builder *b,
+                                   struct mi_address_token token,
+                                   void *batch_location)
 {
    __gen_address_type addr = __gen_get_batch_address(b->user_data,
                                                     batch_location);

@@ -193,3 +193,40 @@ agx_set_null_pbe(struct agx_pbe_packed *pbe, uint64_t sink)
       cfg.buffer = sink;
    }
 }
+
+/*
+ * Determine the maximum vertex/divided instance index.  For robustness,
+ * the index will be clamped to this before reading (if soft fault is
+ * disabled).
+ *
+ * Index i accesses up to (exclusive) offset:
+ *
+ *    src_offset + (i * stride) + elsize_B
+ *
+ * so we require
+ *
+ *    src_offset + (i * stride) + elsize_B <= size
+ *
+ * <==>
+ *
+ *    i <= floor((size - src_offset - elsize_B) / stride)
+ */
+static inline uint32_t
+agx_calculate_vbo_clamp(uint64_t vbuf, uint64_t sink, enum pipe_format format,
+                        uint32_t size_B, uint32_t stride_B, uint32_t offset_B,
+                        uint64_t *vbuf_out)
+{
+   unsigned elsize_B = util_format_get_blocksize(format);
+   unsigned subtracted_B = offset_B + elsize_B;
+
+   /* If at least one index is valid, determine the max. Otherwise, direct reads
+    * to zero.
+    */
+   if (size_B >= subtracted_B) {
+      *vbuf_out = vbuf + offset_B;
+      return (size_B - subtracted_B) / stride_B;
+   } else {
+      *vbuf_out = sink;
+      return 0;
+   }
+}

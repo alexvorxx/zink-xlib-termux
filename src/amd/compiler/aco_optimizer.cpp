@@ -1050,6 +1050,13 @@ can_apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_i
    } else if (instr->isVALU() && sel.size() == 2 && !instr->valu().opsel[idx] &&
               can_use_opsel(ctx.program->gfx_level, instr->opcode, idx)) {
       return true;
+   } else if (instr->opcode == aco_opcode::s_pack_ll_b32_b16 && sel.size() == 2 &&
+              (idx == 1 || ctx.program->gfx_level >= GFX11 || !sel.offset())) {
+      return true;
+   } else if (sel.size() == 2 &&
+              ((instr->opcode == aco_opcode::s_pack_lh_b32_b16 && idx == 0) ||
+               (instr->opcode == aco_opcode::s_pack_hl_b32_b16 && idx == 1))) {
+      return true;
    } else if (instr->opcode == aco_opcode::p_extract) {
       SubdwordSel instrSel = parse_extract(instr.get());
 
@@ -1124,6 +1131,13 @@ apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_info&
              !info.instr->operands[0].isOfType(RegType::vgpr))
             instr->format = asVOP3(instr->format);
       }
+   } else if (instr->opcode == aco_opcode::s_pack_ll_b32_b16) {
+      if (sel.offset())
+         instr->opcode = idx ? aco_opcode::s_pack_lh_b32_b16 : aco_opcode::s_pack_hl_b32_b16;
+   } else if (instr->opcode == aco_opcode::s_pack_lh_b32_b16 ||
+              instr->opcode == aco_opcode::s_pack_hl_b32_b16) {
+      if (sel.offset())
+         instr->opcode = aco_opcode::s_pack_hh_b32_b16;
    } else if (instr->opcode == aco_opcode::p_extract) {
       SubdwordSel instrSel = parse_extract(instr.get());
 
@@ -3784,7 +3798,7 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    if (instr->definitions.empty() || is_dead(ctx.uses, instr.get()))
       return;
 
-   if (instr->isVALU()) {
+   if (instr->isVALU() || instr->isSALU()) {
       /* Apply SDWA. Do this after label_instruction() so it can remove
        * label_extract if not all instructions can take SDWA. */
       for (unsigned i = 0; i < instr->operands.size(); i++) {
@@ -3811,7 +3825,9 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             instr->operands[i].setTemp(info.instr->operands[0].getTemp());
          }
       }
+   }
 
+   if (instr->isVALU()) {
       if (can_apply_sgprs(ctx, instr))
          apply_sgprs(ctx, instr);
       combine_mad_mix(ctx, instr);

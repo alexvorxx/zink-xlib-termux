@@ -1977,3 +1977,53 @@ BEGIN_TEST(optimize.vinterp_inreg_output_modifiers)
 
    finish_opt_test();
 END_TEST
+
+BEGIN_TEST(optimize.s_pack)
+   //>> s1: %a, s1: %b, s1: %c = p_startpgm
+   if (!setup_cs("s1 s1 s1", GFX11))
+      return;
+
+   Temp lo = bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), inputs[1],
+                        Operand::c32(0), Operand::c32(16u), Operand::c32(false));
+   Temp hi = bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), inputs[2],
+                        Operand::c32(1), Operand::c32(16u), Operand::c32(false));
+
+   //! s1: %res0 = s_pack_lh_b32_b16 %b, %c
+   //! p_unit_test 0, %res0
+   writeout(0, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), lo, hi));
+
+   //! s1: %res1 = s_pack_ll_b32_b16 %b, %b
+   //! p_unit_test 1, %res1
+   writeout(1, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), lo, lo));
+
+   //! s1: %res2 = s_pack_hl_b32_b16 %c, %b
+   //! p_unit_test 2, %res2
+   writeout(2, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), hi, lo));
+
+   //! s1: %res3 = s_pack_hh_b32_b16 %c, %c
+   //! p_unit_test 3, %res3
+   writeout(3, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), hi, hi));
+
+   lo = bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), inputs[1], Operand::c32(0),
+                   Operand::c32(16u), Operand::c32(false));
+   hi = bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), inputs[2], Operand::c32(1),
+                   Operand::c32(16u), Operand::c32(false));
+
+   //! s1: %res4 = s_pack_ll_b32_b16 %a, %b
+   //! p_unit_test 4, %res4
+   writeout(4, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), inputs[0], lo));
+
+   //! s1: %res5 = s_pack_lh_b32_b16 %a, %c
+   //! p_unit_test 5, %res5
+   writeout(5, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), inputs[0], hi));
+
+   //! s1: %res6 = s_pack_ll_b32_b16 %b, %a
+   //! p_unit_test 6, %res6
+   writeout(6, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), lo, inputs[0]));
+
+   //! s1: %res7 = s_pack_hl_b32_b16 %c, %a
+   //! p_unit_test 7, %res7
+   writeout(7, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), hi, inputs[0]));
+
+   finish_opt_test();
+END_TEST

@@ -25,7 +25,16 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    b->cursor = nir_before_instr(&intr->instr);
 
    switch (intr->intrinsic) {
-   case nir_intrinsic_load_sample_pos: {
+   case nir_intrinsic_load_sample_pos:
+   case nir_intrinsic_load_sample_pos_or_center: {
+      /* Handle the center special case */
+      if (!b->shader->info.fs.uses_sample_shading) {
+         assert(intr->intrinsic == nir_intrinsic_load_sample_pos_or_center);
+         nir_def_rewrite_uses(&intr->def, nir_imm_vec2(b, 0.5, 0.5));
+         nir_instr_remove(&intr->instr);
+         return true;
+      }
+
       /* Lower sample positions to decode the packed fixed-point register:
        *
        *    uint32_t packed = load_sample_positions();

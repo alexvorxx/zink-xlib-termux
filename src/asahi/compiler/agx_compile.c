@@ -3299,7 +3299,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_opt_sink, move_all);
    NIR_PASS(_, nir, nir_opt_move, move_all);
    NIR_PASS(_, nir, agx_nir_lower_shared_bitsize);
-   NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
 }
 
 void
@@ -3325,6 +3324,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    bool needs_libagx = true /* TODO: Optimize */;
 
+   NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
    if (needs_libagx) {

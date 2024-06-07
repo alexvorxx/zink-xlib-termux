@@ -4600,6 +4600,15 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
       }
    }
 
+#if 0
+   fprintf(stderr, "Trying remat : ");
+   for (unsigned i = 0; i < resources.array.size(); i++) {
+      fprintf(stderr, "   ");
+      nir_print_instr(resources.array[i]->parent_instr, stderr);
+      fprintf(stderr, "\n");
+   }
+#endif
+
    for (unsigned i = 0; i < resources.array.size(); i++) {
       nir_def *def = resources.array[i];
 
@@ -4616,19 +4625,9 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
       case nir_instr_type_alu: {
          nir_alu_instr *alu = nir_instr_as_alu(instr);
 
-         if (nir_op_infos[alu->op].num_inputs == 2) {
-            if (alu->src[0].swizzle[0] != 0 ||
-                alu->src[1].swizzle[0] != 0)
-               break;
-         } else if (nir_op_infos[alu->op].num_inputs == 3) {
-            if (alu->src[0].swizzle[0] != 0 ||
-                alu->src[1].swizzle[0] != 0 ||
-                alu->src[2].swizzle[0] != 0)
-               break;
-         } else {
-            /* Not supported ALU input count */
+         /* Not supported ALU source count */
+         if (nir_op_infos[alu->op].num_inputs > 3)
             break;
-         }
 
          fs_reg srcs[3];
          for (unsigned s = 0; s < nir_op_infos[alu->op].num_inputs; s++) {
@@ -4706,6 +4705,20 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
             break;
          }
 
+         case nir_intrinsic_load_ubo_uniform_block_intel:
+         case nir_intrinsic_load_ssbo_uniform_block_intel: {
+            fs_reg src_data = retype(ntb.ssa_values[def->index], BRW_TYPE_D);
+            unsigned n_components = ntb.s.alloc.sizes[src_data.nr] /
+                                    (bld.dispatch_width() / 8);
+            fs_reg dst_data = ubld8.vgrf(BRW_TYPE_D, n_components);
+            ntb.resource_insts[def->index] = ubld8.MOV(dst_data, src_data);
+            for (unsigned i = 1; i < n_components; i++) {
+               ubld8.MOV(offset(dst_data, ubld8, i),
+                         offset(src_data, bld, i));
+            }
+            break;
+         }
+
          default:
             break;
          }
@@ -4716,8 +4729,20 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
          break;
       }
 
-      if (ntb.resource_insts[def->index] == NULL)
+      if (ntb.resource_insts[def->index] == NULL) {
+#if 0
+         fprintf(stderr, "Tried remat : ");
+         for (unsigned i = 0; i < resources.array.size(); i++) {
+            fprintf(stderr, "   ");
+            nir_print_instr(resources.array[i]->parent_instr, stderr);
+            fprintf(stderr, "\n");
+         }
+         fprintf(stderr, "failed at! : ");
+         nir_print_instr(instr, stderr);
+         fprintf(stderr, "\n");
+#endif
          return fs_reg();
+      }
    }
 
    assert(ntb.resource_insts[resource_def->index] != NULL);

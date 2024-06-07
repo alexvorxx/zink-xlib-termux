@@ -126,15 +126,9 @@ template <typename T>
 uint32_t
 get_gfx12_cpol(const T& instr)
 {
-   bool glc = instr.cache.value & ac_glc;
-   bool slc = instr.cache.value & ac_slc;
-   bool dlc = instr.cache.value & ac_dlc;
-   if (instr_info.is_atomic[(int)instr.opcode]) {
-      return (glc ? 1 /*TH_ATOMIC_RETURN*/ : 0) << 2;
-   } else {
-      return (instr.definitions.empty() || glc || slc || dlc) ? 3 /*SCOPE_SYS*/
-                                                              : 0 /*SCOPE_CU*/;
-   }
+   uint32_t scope = instr.cache.gfx12.scope;
+   uint32_t th = instr.cache.gfx12.temporal_hint;
+   return scope | (th << 2);
 }
 
 void
@@ -276,8 +270,7 @@ emit_smem_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction*
       encoding |= glc ? 1 << (ctx.gfx_level >= GFX11 ? 14 : 16) : 0;
    } else {
       encoding |= opcode << 13;
-      if (is_load)
-         encoding |= ((glc || dlc) ? 3 /*SCOPE_SYS*/ : 0 /*SCOPE_CU*/) << 21;
+      encoding |= get_gfx12_cpol(smem) << 21;
    }
 
    if (ctx.gfx_level <= GFX9) {

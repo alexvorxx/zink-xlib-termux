@@ -1426,7 +1426,8 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          while (info.is_temp())
             info = ctx.info[info.temp.id()];
 
-         bool swizzled = mubuf.cache.value & ac_swizzled;
+         bool swizzled = ctx.program->gfx_level >= GFX12 ? mubuf.cache.gfx12.swizzled
+                                                         : (mubuf.cache.value & ac_swizzled);
          /* According to AMDGPUDAGToDAGISel::SelectMUBUFScratchOffen(), vaddr
           * overflow for scratch accesses works only on GFX9+ and saddr overflow
           * never works. Since swizzling is the only thing that separates

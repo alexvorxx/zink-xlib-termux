@@ -266,14 +266,73 @@ template <typename T>
 static void
 print_cache_flags(enum amd_gfx_level gfx_level, const T& instr, FILE* output)
 {
-   if (instr.cache.value & ac_glc)
-      fprintf(output, " glc");
-   if (instr.cache.value & ac_slc)
-      fprintf(output, " slc");
-   if (instr.cache.value & ac_dlc)
-      fprintf(output, " dlc");
-   if (instr.cache.value & ac_swizzled)
-      fprintf(output, " swizzled");
+   if (gfx_level >= GFX12) {
+      if (instr_info.is_atomic[(unsigned)instr.opcode]) {
+         if (instr.cache.gfx12.temporal_hint & gfx12_atomic_return)
+            fprintf(output, " atomic_return");
+         if (instr.cache.gfx12.temporal_hint & gfx12_atomic_non_temporal)
+            fprintf(output, " non_temporal");
+         if (instr.cache.gfx12.temporal_hint & gfx12_atomic_accum_deferred_scope)
+            fprintf(output, " accum_deferred_scope");
+      } else if (instr.definitions.empty()) {
+         switch (instr.cache.gfx12.temporal_hint) {
+         case gfx12_load_regular_temporal: break;
+         case gfx12_load_non_temporal: fprintf(output, " non_temporal"); break;
+         case gfx12_load_high_temporal: fprintf(output, " high_temporal"); break;
+         case gfx12_load_last_use_discard: fprintf(output, " last_use_discard"); break;
+         case gfx12_load_near_non_temporal_far_regular_temporal:
+            fprintf(output, " near_non_temporal_far_regular_temporal");
+            break;
+         case gfx12_load_near_regular_temporal_far_non_temporal:
+            fprintf(output, " near_regular_temporal_far_non_temporal");
+            break;
+         case gfx12_load_near_non_temporal_far_high_temporal:
+            fprintf(output, " near_non_temporal_far_high_temporal");
+            break;
+         case gfx12_load_reserved: fprintf(output, " reserved"); break;
+         default: fprintf(output, "tmp:%u", (unsigned)instr.cache.gfx12.temporal_hint);
+         }
+      } else {
+         switch (instr.cache.gfx12.temporal_hint) {
+         case gfx12_store_regular_temporal: break;
+         case gfx12_store_non_temporal: fprintf(output, " non_temporal"); break;
+         case gfx12_store_high_temporal: fprintf(output, " high_temporal"); break;
+         case gfx12_store_high_temporal_stay_dirty:
+            fprintf(output, " high_temporal_stay_dirty");
+            break;
+         case gfx12_store_near_non_temporal_far_regular_temporal:
+            fprintf(output, " near_non_temporal_far_regular_temporal");
+            break;
+         case gfx12_store_near_regular_temporal_far_non_temporal:
+            fprintf(output, " near_regular_temporal_far_non_temporal");
+            break;
+         case gfx12_store_near_non_temporal_far_high_temporal:
+            fprintf(output, " near_non_temporal_far_high_temporal");
+            break;
+         case gfx12_store_near_non_temporal_far_writeback:
+            fprintf(output, " near_non_temporal_far_writeback");
+            break;
+         default: fprintf(output, "tmp:%u", (unsigned)instr.cache.gfx12.temporal_hint);
+         }
+      }
+      switch (instr.cache.gfx12.scope) {
+      case gfx12_scope_cu: break;
+      case gfx12_scope_se: fprintf(output, " se"); break;
+      case gfx12_scope_device: fprintf(output, " device"); break;
+      case gfx12_scope_memory: fprintf(output, " memory"); break;
+      }
+      if (instr.cache.gfx12.swizzled)
+         fprintf(output, " swizzled");
+   } else {
+      if (instr.cache.value & ac_glc)
+         fprintf(output, " glc");
+      if (instr.cache.value & ac_slc)
+         fprintf(output, " slc");
+      if (instr.cache.value & ac_dlc)
+         fprintf(output, " dlc");
+      if (instr.cache.value & ac_swizzled)
+         fprintf(output, " swizzled");
+   }
 }
 
 static void

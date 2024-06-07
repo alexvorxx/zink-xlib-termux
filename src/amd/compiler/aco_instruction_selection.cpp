@@ -4436,20 +4436,47 @@ get_gfx6_cache_flags(bool glc, bool slc, bool dlc)
 ac_hw_cache_flags
 get_load_cache_flags(Builder& bld, bool glc, bool slc)
 {
-   bool dlc = glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   return get_gfx6_cache_flags(glc, slc, dlc);
+   if (bld.program->gfx_level >= GFX12) {
+      ac_hw_cache_flags cache = {0};
+      cache.gfx12.scope = (glc || slc) ? gfx12_scope_memory : gfx12_scope_cu;
+      return cache;
+   } else {
+      bool dlc = glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+      return get_gfx6_cache_flags(glc, slc, dlc);
+   }
 }
 
 ac_hw_cache_flags
 get_store_cache_flags(Builder& bld, bool glc, bool slc)
 {
-   return get_gfx6_cache_flags(glc, slc, false);
+   if (bld.program->gfx_level >= GFX12) {
+      ac_hw_cache_flags cache = {0};
+      cache.gfx12.scope = gfx12_scope_memory;
+      return cache;
+   } else {
+      return get_gfx6_cache_flags(glc, slc, false);
+   }
 }
 
 ac_hw_cache_flags
 get_atomic_cache_flags(Builder& bld, bool return_previous)
 {
-   return get_gfx6_cache_flags(return_previous, false, false);
+   if (bld.program->gfx_level >= GFX12) {
+      ac_hw_cache_flags cache = {0};
+      cache.gfx12.temporal_hint = return_previous ? gfx12_atomic_return : 0;
+      return cache;
+   } else {
+      return get_gfx6_cache_flags(return_previous, false, false);
+   }
+}
+
+void
+set_cache_flags_swizzled(Builder& bld, ac_hw_cache_flags* cache)
+{
+   if (bld.program->gfx_level >= GFX12)
+      cache->gfx12.swizzled = true;
+   else
+      cache->value |= ac_swizzled;
 }
 
 Temp
@@ -4568,7 +4595,7 @@ mubuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
    mubuf->mubuf().idxen = idxen;
    mubuf->mubuf().cache = get_load_cache_flags(bld, info.glc, info.slc);
    if (info.swizzle_component_size != 0)
-      mubuf->mubuf().cache.value |= ac_swizzled;
+      set_cache_flags_swizzled(bld, &mubuf->mubuf().cache);
    mubuf->mubuf().sync = info.sync;
    mubuf->mubuf().offset = const_offset;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
@@ -7174,7 +7201,7 @@ visit_store_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
       glc &= ctx->program->gfx_level < GFX11;
       ac_hw_cache_flags cache = get_store_cache_flags(bld, glc, slc);
       if (swizzled)
-         cache.value |= ac_swizzled;
+         set_cache_flags_swizzled(bld, &cache);
 
       Operand vaddr_op(v1);
       if (offen && idxen)
@@ -7648,7 +7675,7 @@ visit_store_scratch(isel_context* ctx, nir_intrinsic_instr* instr)
          mubuf->mubuf().sync = memory_sync_info(storage_scratch, semantic_private);
          bool glc = ctx->program->gfx_level == GFX6 && write_datas[i].bytes() < 4;
          mubuf->mubuf().cache = get_store_cache_flags(bld, glc, false);
-         mubuf->mubuf().cache.value |= ac_swizzled;
+         set_cache_flags_swizzled(bld, &mubuf->mubuf().cache);
       }
    }
 }

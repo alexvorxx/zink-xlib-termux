@@ -411,17 +411,22 @@ BEGIN_TEST(assembler.smem)
       //! s_load_b32 s4, s[16:17], s8 offset:0x2a                     ; f4000108 1000002a
       bld.smem(aco_opcode::s_load_dword, dst, op_s2, Operand::c32(42), op_s1);
 
-      ac_hw_cache_flags cache_coherent;
-      ac_hw_cache_flags cache_non_temporal;
-      cache_coherent.value = ac_glc;
-      cache_non_temporal.value = ac_dlc;
+      ac_hw_cache_flags cache_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_non_temporal = {{0, 0, 0, 0, 0}};
+      if (gfx >= GFX12) {
+         cache_coherent.gfx12.scope = gfx12_scope_device;
+         cache_non_temporal.gfx12.temporal_hint = gfx12_load_non_temporal;
+      } else {
+         cache_coherent.value = ac_glc;
+         cache_non_temporal.value = ac_dlc;
+      }
 
       //~gfx11! s_buffer_load_b32 s4, s[32:35], s8 glc                      ; f4204110 10000000
-      //~gfx12! s_buffer_load_b32 s4, s[32:35], s8 offset:0x0 scope:SCOPE_SYS ; f4620110 10000000
+      //~gfx12! s_buffer_load_b32 s4, s[32:35], s8 offset:0x0 scope:SCOPE_DEV ; f4420110 10000000
       bld.smem(aco_opcode::s_buffer_load_dword, dst, op_s4, op_s1)->smem().cache = cache_coherent;
 
       //~gfx11! s_buffer_load_b32 s4, s[32:35], s8 dlc                      ; f4202110 10000000
-      //~gfx12! (then repeated 1 times)
+      //~gfx12! s_buffer_load_b32 s4, s[32:35], s8 offset:0x0 th:TH_LOAD_NT ; f4820110 10000000
       bld.smem(aco_opcode::s_buffer_load_dword, dst, op_s4, op_s1)->smem().cache =
          cache_non_temporal;
 
@@ -488,28 +493,36 @@ BEGIN_TEST(assembler.mubuf)
       bld.mubuf(aco_opcode::buffer_load_dword, dst, op_s4, Operand(v1), op_s1, 84, false);
 
       /* Various flags */
-      ac_hw_cache_flags cache_coherent;
-      ac_hw_cache_flags cache_sys_coherent;
-      ac_hw_cache_flags cache_non_temporal;
-      ac_hw_cache_flags cache_atomic_rtn;
-      cache_coherent.value = ac_glc;
-      cache_sys_coherent.value = ac_slc;
-      cache_non_temporal.value = ac_dlc;
-      cache_atomic_rtn.value = ac_glc;
+      ac_hw_cache_flags cache_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_sys_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_non_temporal = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_atomic_rtn = {{0, 0, 0, 0, 0}};
+      if (gfx >= GFX12) {
+         cache_coherent.gfx12.scope = gfx12_scope_device;
+         cache_sys_coherent.gfx12.scope = gfx12_scope_memory;
+         cache_non_temporal.gfx12.temporal_hint = gfx12_load_non_temporal;
+         cache_atomic_rtn.gfx12.temporal_hint = gfx12_atomic_return;
+      } else {
+         cache_coherent.value = ac_glc;
+         cache_sys_coherent.value = ac_slc;
+         cache_non_temporal.value = ac_dlc;
+         cache_atomic_rtn.value = ac_glc;
+      }
 
       //~gfx11! buffer_load_b32 v42, off, s[32:35], 0 glc                   ; e0504000 80082a80
-      //~gfx12! buffer_load_b32 v42, off, s[32:35], null scope:SCOPE_SYS    ; c405007c 008c402a 00000000
+      //~gfx12! buffer_load_b32 v42, off, s[32:35], null scope:SCOPE_DEV    ; c405007c 0088402a 00000000
       bld.mubuf(aco_opcode::buffer_load_dword, dst, op_s4, Operand(v1), Operand::zero(), 0, false)
          ->mubuf()
          .cache = cache_coherent;
 
       //~gfx11! buffer_load_b32 v42, off, s[32:35], 0 dlc                   ; e0502000 80082a80
-      //~gfx12! (then repeated 2 times)
+      //~gfx12! buffer_load_b32 v42, off, s[32:35], null th:TH_LOAD_NT      ; c405007c 0090402a 00000000
       bld.mubuf(aco_opcode::buffer_load_dword, dst, op_s4, Operand(v1), Operand::zero(), 0, false)
          ->mubuf()
          .cache = cache_non_temporal;
 
       //~gfx11! buffer_load_b32 v42, off, s[32:35], 0 slc                   ; e0501000 80082a80
+      //~gfx12! buffer_load_b32 v42, off, s[32:35], null scope:SCOPE_SYS    ; c405007c 008c402a 00000000
       bld.mubuf(aco_opcode::buffer_load_dword, dst, op_s4, Operand(v1), Operand::zero(), 0, false)
          ->mubuf()
          .cache = cache_sys_coherent;
@@ -564,11 +577,11 @@ BEGIN_TEST(assembler.mubuf)
 
       /* Stores */
       //~gfx11! buffer_store_b32 v10, off, s[32:35], s30                    ; e0680000 1e080a80
-      //~gfx12! buffer_store_b32 v10, off, s[32:35], s30 scope:SCOPE_SYS    ; c406801e 008c400a 00000000
+      //~gfx12! buffer_store_b32 v10, off, s[32:35], s30                    ; c406801e 0080400a 00000000
       bld.mubuf(aco_opcode::buffer_store_dword, op_s4, Operand(v1), op_s1, op_v1, 0, false);
 
       //~gfx11! buffer_store_b64 v[20:21], v10, s[32:35], s30 offen         ; e06c0000 1e48140a
-      //~gfx12! buffer_store_b64 v[20:21], v10, s[32:35], s30 offen scope:SCOPE_SYS ; c406c01e 408c4014 0000000a
+      //~gfx12! buffer_store_b64 v[20:21], v10, s[32:35], s30 offen         ; c406c01e 40804014 0000000a
       bld.mubuf(aco_opcode::buffer_store_dwordx2, op_s4, op_v1, op_s1, op_v2, 0, true);
 
       /* Atomic with return */
@@ -647,28 +660,35 @@ BEGIN_TEST(assembler.mtbuf)
                 false);
 
       /* Various flags */
-      ac_hw_cache_flags cache_coherent;
-      ac_hw_cache_flags cache_sys_coherent;
-      ac_hw_cache_flags cache_non_temporal;
-      cache_coherent.value = ac_glc;
-      cache_sys_coherent.value = ac_slc;
-      cache_non_temporal.value = ac_dlc;
+      ac_hw_cache_flags cache_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_sys_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_non_temporal = {{0, 0, 0, 0, 0}};
+      if (gfx >= GFX12) {
+         cache_coherent.gfx12.scope = gfx12_scope_device;
+         cache_sys_coherent.gfx12.scope = gfx12_scope_memory;
+         cache_non_temporal.gfx12.temporal_hint = gfx12_load_non_temporal;
+      } else {
+         cache_coherent.value = ac_glc;
+         cache_sys_coherent.value = ac_slc;
+         cache_non_temporal.value = ac_dlc;
+      }
 
       //~gfx11! tbuffer_load_format_x v42, off, s[32:35], 0 format:[BUF_FMT_32_32_FLOAT] glc ; e9904000 80082a80
-      //~gfx12! tbuffer_load_format_x v42, off, s[32:35], null format:[BUF_FMT_32_32_FLOAT] scope:SCOPE_SYS ; c420007c 190c402a 00000080
+      //~gfx12! tbuffer_load_format_x v42, off, s[32:35], null format:[BUF_FMT_32_32_FLOAT] scope:SCOPE_DEV ; c420007c 1908402a 00000080
       bld.mtbuf(aco_opcode::tbuffer_load_format_x, dst, op_s4, Operand(v1), Operand::zero(), dfmt,
                 nfmt, 0, false)
          ->mtbuf()
          .cache = cache_coherent;
 
       //~gfx11! tbuffer_load_format_x v42, off, s[32:35], 0 format:[BUF_FMT_32_32_FLOAT] dlc ; e9902000 80082a80
-      //~gfx12! (then repeated 2 times)
+      //~gfx12! tbuffer_load_format_x v42, off, s[32:35], null format:[BUF_FMT_32_32_FLOAT] th:TH_LOAD_NT ; c420007c 1910402a 00000080
       bld.mtbuf(aco_opcode::tbuffer_load_format_x, dst, op_s4, Operand(v1), Operand::zero(), dfmt,
                 nfmt, 0, false)
          ->mtbuf()
          .cache = cache_non_temporal;
 
       //~gfx11! tbuffer_load_format_x v42, off, s[32:35], 0 format:[BUF_FMT_32_32_FLOAT] slc ; e9901000 80082a80
+      //~gfx12! tbuffer_load_format_x v42, off, s[32:35], null format:[BUF_FMT_32_32_FLOAT] scope:SCOPE_SYS ; c420007c 190c402a 00000080
       bld.mtbuf(aco_opcode::tbuffer_load_format_x, dst, op_s4, Operand(v1), Operand::zero(), dfmt,
                 nfmt, 0, false)
          ->mtbuf()
@@ -686,12 +706,12 @@ BEGIN_TEST(assembler.mtbuf)
 
       /* Stores */
       //~gfx11! tbuffer_store_format_x v10, off, s[32:35], s30 format:[BUF_FMT_32_32_FLOAT] ; e9920000 1e080a80
-      //~gfx12! tbuffer_store_format_x v10, off, s[32:35], s30 format:[BUF_FMT_32_32_FLOAT] scope:SCOPE_SYS ; c421001e 190c400a 00000080
+      //~gfx12! tbuffer_store_format_x v10, off, s[32:35], s30 format:[BUF_FMT_32_32_FLOAT] ; c421001e 1900400a 00000080
       bld.mtbuf(aco_opcode::tbuffer_store_format_x, op_s4, Operand(v1), op_s1, op_v1, dfmt, nfmt, 0,
                 false);
 
       //~gfx11! tbuffer_store_format_xy v[20:21], v10, s[32:35], s30 format:[BUF_FMT_32_32_FLOAT] offen ; e9928000 1e48140a
-      //~gfx12! tbuffer_store_format_xy v[20:21], v10, s[32:35], s30 format:[BUF_FMT_32_32_FLOAT] offen scope:SCOPE_SYS ; c421401e 590c4014 0000000a
+      //~gfx12! tbuffer_store_format_xy v[20:21], v10, s[32:35], s30 format:[BUF_FMT_32_32_FLOAT] offen ; c421401e 59004014 0000000a
       bld.mtbuf(aco_opcode::tbuffer_store_format_xy, op_s4, op_v1, op_s1, op_v2, dfmt, nfmt, 0,
                 true);
 
@@ -740,26 +760,34 @@ BEGIN_TEST(assembler.mimg)
          0x1;
 
       /* Various flags */
-      ac_hw_cache_flags cache_coherent;
-      ac_hw_cache_flags cache_sys_coherent;
-      ac_hw_cache_flags cache_non_temporal;
-      ac_hw_cache_flags cache_atomic_rtn;
-      cache_coherent.value = ac_glc;
-      cache_sys_coherent.value = ac_slc;
-      cache_non_temporal.value = ac_dlc;
-      cache_atomic_rtn.value = ac_glc;
+      ac_hw_cache_flags cache_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_sys_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_non_temporal = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_atomic_rtn = {{0, 0, 0, 0, 0}};
+      if (gfx >= GFX12) {
+         cache_coherent.gfx12.scope = gfx12_scope_device;
+         cache_sys_coherent.gfx12.scope = gfx12_scope_memory;
+         cache_non_temporal.gfx12.temporal_hint = gfx12_load_non_temporal;
+         cache_atomic_rtn.gfx12.temporal_hint = gfx12_atomic_return;
+      } else {
+         cache_coherent.value = ac_glc;
+         cache_sys_coherent.value = ac_slc;
+         cache_non_temporal.value = ac_dlc;
+         cache_atomic_rtn.value = ac_glc;
+      }
 
       //~gfx11! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D dlc ; f06c2f00 2010540a
-      //~gfx12! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D scope:SCOPE_SYS ; e7c6c000 100c8054 0000000a
+      //~gfx12! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D th:TH_LOAD_NT ; e7c6c000 10108054 0000000a
       bld.mimg(aco_opcode::image_sample, dst_v4, op_s8, op_s4, Operand(v1), op_v1)->mimg().cache =
          cache_non_temporal;
 
       //~gfx11! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D glc ; f06c4f00 2010540a
-      //~gfx12! (then repeated 2 times)
+      //~gfx12! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D scope:SCOPE_DEV ; e7c6c000 10088054 0000000a
       bld.mimg(aco_opcode::image_sample, dst_v4, op_s8, op_s4, Operand(v1), op_v1)->mimg().cache =
          cache_coherent;
 
       //~gfx11! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D slc ; f06c1f00 2010540a
+      //~gfx12! image_sample v[84:87], v10, s[64:71], s[32:35] dmask:0xf dim:SQ_RSRC_IMG_1D scope:SCOPE_SYS ; e7c6c000 100c8054 0000000a
       bld.mimg(aco_opcode::image_sample, dst_v4, op_s8, op_s4, Operand(v1), op_v1)->mimg().cache =
          cache_sys_coherent;
 
@@ -816,7 +844,7 @@ BEGIN_TEST(assembler.mimg)
 
       /* Stores */
       //~gfx11! image_store v[30:33], v10, s[64:71] dmask:0xf dim:SQ_RSRC_IMG_1D ; f0180f00 00101e0a
-      //~gfx12! image_store v[30:33], v10, s[64:71] dmask:0xf dim:SQ_RSRC_IMG_1D scope:SCOPE_SYS ; d3c18000 000c801e 0000000a
+      //~gfx12! image_store v[30:33], v10, s[64:71] dmask:0xf dim:SQ_RSRC_IMG_1D ; d3c18000 0000801e 0000000a
       bld.mimg(aco_opcode::image_store, op_s8, Operand(s4), op_v4, op_v1);
 
       //~gfx11! image_atomic_add v10, v20, s[64:71] dmask:0xf dim:SQ_RSRC_IMG_2D ; f0300f04 00100a14
@@ -907,14 +935,21 @@ BEGIN_TEST(assembler.flat)
       bld.global(aco_opcode::global_load_dword, dst_v1, op_v2, Operand(s1), 84);
 
       /* Various flags */
-      ac_hw_cache_flags cache_coherent;
-      ac_hw_cache_flags cache_sys_coherent;
-      ac_hw_cache_flags cache_non_temporal;
-      ac_hw_cache_flags cache_atomic_rtn;
-      cache_coherent.value = ac_glc;
-      cache_sys_coherent.value = ac_slc;
-      cache_non_temporal.value = ac_dlc;
-      cache_atomic_rtn.value = ac_glc;
+      ac_hw_cache_flags cache_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_sys_coherent = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_non_temporal = {{0, 0, 0, 0, 0}};
+      ac_hw_cache_flags cache_atomic_rtn = {{0, 0, 0, 0, 0}};
+      if (gfx >= GFX12) {
+         cache_coherent.gfx12.scope = gfx12_scope_device;
+         cache_sys_coherent.gfx12.scope = gfx12_scope_memory;
+         cache_non_temporal.gfx12.temporal_hint = gfx12_load_non_temporal;
+         cache_atomic_rtn.gfx12.temporal_hint = gfx12_atomic_return;
+      } else {
+         cache_coherent.value = ac_glc;
+         cache_sys_coherent.value = ac_slc;
+         cache_non_temporal.value = ac_dlc;
+         cache_atomic_rtn.value = ac_glc;
+      }
 
       //~gfx11! flat_load_b32 v42, v[20:21] slc                             ; dc508000 2a7c0014
       //~gfx12! flat_load_b32 v42, v[20:21] scope:SCOPE_SYS                 ; ec05007c 000c002a 00000014
@@ -922,17 +957,18 @@ BEGIN_TEST(assembler.flat)
          cache_sys_coherent;
 
       //~gfx11! flat_load_b32 v42, v[20:21] glc                             ; dc504000 2a7c0014
-      //~gfx12! (then repeated 2 times)
+      //~gfx12! flat_load_b32 v42, v[20:21] scope:SCOPE_DEV                 ; ec05007c 0008002a 00000014
       bld.flat(aco_opcode::flat_load_dword, dst_v1, op_v2, Operand(s1))->flat().cache =
          cache_coherent;
 
       //~gfx11! flat_load_b32 v42, v[20:21] dlc                             ; dc502000 2a7c0014
+      //~gfx12! flat_load_b32 v42, v[20:21] th:TH_LOAD_NT                   ; ec05007c 0010002a 00000014
       bld.flat(aco_opcode::flat_load_dword, dst_v1, op_v2, Operand(s1))->flat().cache =
          cache_non_temporal;
 
       /* Stores */
       //~gfx11! flat_store_b32 v[20:21], v10                                ; dc680000 007c0a14
-      //~gfx12! flat_store_b32 v[20:21], v10 scope:SCOPE_SYS                ; ec06807c 050c0000 00000014
+      //~gfx12! flat_store_b32 v[20:21], v10                                ; ec06807c 05000000 00000014
       bld.flat(aco_opcode::flat_store_dword, op_v2, Operand(s1), op_v1);
 
       /* Atomic with return */

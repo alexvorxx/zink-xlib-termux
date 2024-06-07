@@ -75,6 +75,10 @@
         __genxml_cmd_pack(cmd)((b)->user_data, (void *)_dst, &name),    \
         _dst = NULL)
 
+/* Get the instruction pointer inside a mi_builder_pack() block */
+#define mi_builder_get_inst_ptr(b) \
+   ((uint8_t *)_dst)
+
 #define mi_builder_emit(b, cmd, name)                               \
    mi_builder_pack((b), cmd, __gen_get_batch_dwords((b)->user_data, __genxml_cmd_length(cmd)), name)
 
@@ -1206,7 +1210,7 @@ mi_store_relocated_address_reg64(struct mi_builder *b, struct mi_value addr_reg)
 
          const unsigned addr_dw =
             GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8;
-         token.ptrs[i] = (uint64_t *)((uint8_t *)_dst + addr_dw);
+         token.ptrs[i] = (uint64_t *)(mi_builder_get_inst_ptr(_dst) + addr_dw);
       }
    }
 
@@ -1390,7 +1394,8 @@ mi_goto_target(struct mi_builder *b, struct mi_goto_target *t)
 {
    mi_builder_emit(b, GENX(MI_SET_PREDICATE), sp) {
       sp.PredicateEnable = NOOPNever;
-      t->addr = __gen_get_batch_address(b->user_data, _dst);
+      t->addr = __gen_get_batch_address(b->user_data,
+                                        mi_builder_get_inst_ptr(b));
    }
    t->placed = true;
 

@@ -220,7 +220,8 @@ brw_fs_workaround_nomask_control_flow(fs_visitor &s)
              * safely omit the predication for.
              */
             if (depth && inst->force_writemask_all &&
-                is_send(inst) && !inst->predicate) {
+                is_send(inst) && !inst->predicate &&
+                !inst->has_no_mask_send_params) {
                /* We need to load the execution mask into the flag register by
                 * using a builder with channel group matching the whole shader
                 * (rather than the default which is derived from the original
@@ -270,4 +271,3 @@ brw_fs_workaround_nomask_control_flow(fs_visitor &s)
 
    return progress;
 }
-

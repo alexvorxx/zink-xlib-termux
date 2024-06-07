@@ -1077,7 +1077,9 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
       }
    }
 
-   if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_BITSTREAM && context->bs.num_buffers) {
+   if (context->decoder &&
+       context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_BITSTREAM &&
+       context->bs.num_buffers) {
       context->decoder->decode_bitstream(context->decoder, context->target, &context->desc.base,
          context->bs.num_buffers, (const void * const*)context->bs.buffers, context->bs.sizes);
       context->bs.num_buffers = 0;

@@ -669,8 +669,7 @@ unpack_res_index(nir_builder *b, nir_def *index)
    defs.dyn_offset_base = nir_extract_u8(b, packed, nir_imm_int(b, 0));
 
    defs.desc_offset_base = nir_channel(b, index, 1);
-   defs.array_index = nir_umin(b, nir_channel(b, index, 2),
-                                  nir_channel(b, index, 3));
+   defs.array_index = nir_channel(b, index, 3);
 
    return defs;
 }

@@ -580,6 +580,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
       const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device,
                                                  &draw_base_addr);
       mi_builder_set_mocs(&b, mocs);
+      mi_builder_set_write_check(&b, true);
 
       mi_store(&b, mi_mem32(draw_base_addr),
                    mi_iadd(&b, mi_mem32(draw_base_addr),

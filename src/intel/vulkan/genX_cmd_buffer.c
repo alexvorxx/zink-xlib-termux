@@ -887,20 +887,22 @@ init_fast_clear_color(struct anv_cmd_buffer *cmd_buffer,
    const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
 
    if (image->planes[plane].aux_usage == ISL_AUX_USAGE_FCV_CCS_E) {
+      struct anv_device *device = cmd_buffer->device;
+
       assert(!image->planes[plane].can_non_zero_fast_clear);
-      assert(cmd_buffer->device->isl_dev.ss.clear_color_state_size == 32);
+      assert(device->isl_dev.ss.clear_color_state_size == 32);
 
       unsigned num_dwords = 6;
       struct anv_address addr =
-         anv_image_get_clear_color_addr(cmd_buffer->device, image, aspect);
+         anv_image_get_clear_color_addr(device, image, aspect);
+
+      struct mi_builder b;
+      mi_builder_init(&b, device->info, &cmd_buffer->batch);
+      mi_builder_set_mocs(&b, anv_mocs_for_address(device, &addr));
 
       for (unsigned i = 0; i < num_dwords; i++) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-            sdi.Address = addr;
-            sdi.Address.offset += i * 4;
-            sdi.ImmediateData = 0;
-            sdi.ForceWriteCompletionCheck = i == (num_dwords - 1);
-         }
+         mi_builder_set_write_check(&b, i == (num_dwords - 1));
+         mi_store(&b, mi_mem32(anv_address_add(addr, i * 4)), mi_imm(0));
       }
    }
 #endif
@@ -932,6 +934,7 @@ genX(load_image_clear_color)(struct anv_cmd_buffer *cmd_buffer,
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+   mi_builder_set_write_check(&b, true);
 
    mi_memcpy(&b, ss_clear_addr, entry_addr, copy_size);
 
@@ -5858,6 +5861,10 @@ void genX(batch_emit_secondary_call)(struct anv_batch *batch,
    struct mi_builder b;
    mi_builder_init(&b, device->info, batch);
    mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
+   /* Make sure the write in the batch buffer lands before we just execute the
+    * jump.
+    */
+   mi_builder_set_write_check(&b, true);
 
    /* Emit a write to change the return address of the secondary */
    struct mi_reloc_imm_token reloc =

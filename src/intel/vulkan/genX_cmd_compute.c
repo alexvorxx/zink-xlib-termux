@@ -826,6 +826,7 @@ cmd_buffer_emit_rt_dispatch_globals_indirect(struct anv_cmd_buffer *cmd_buffer,
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
    const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &rtdg_addr);
    mi_builder_set_mocs(&b, mocs);
+   mi_builder_set_write_check(&b, true);
 
    /* Fill the MissGroupTable, HitGroupTable & CallableGroupTable fields of
     * RT_DISPATCH_GLOBALS using the mi_builder.
@@ -947,6 +948,7 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
       mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
       const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &rtdg_addr);
       mi_builder_set_mocs(&b, mocs);
+      mi_builder_set_write_check(&b, true);
 
       struct mi_value launch_size[3] = {
          mi_mem32(anv_address_from_u64(params->launch_size_addr + 0)),

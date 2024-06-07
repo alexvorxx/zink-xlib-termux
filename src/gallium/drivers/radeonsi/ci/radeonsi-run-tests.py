@@ -334,6 +334,7 @@ def select_baseline(basepath, gfx_level, gpu_name):
         return exact
     # 2. any baseline with the same gfx_level
     while gfx_level >= 8:
+        gfx_level_str += '-'
         for subdir, dirs, files in os.walk(basepath):
             for file in files:
                 if file.find(gfx_level_str) == 0 and file.endswith("-fail.csv"):

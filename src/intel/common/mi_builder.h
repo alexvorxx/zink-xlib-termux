@@ -39,6 +39,10 @@
 #define MI_BUILDER_NUM_ALLOC_GPRS 16
 #endif
 
+#ifndef MI_BUILDER_DEFAULT_WRITE_CHECK
+#define MI_BUILDER_DEFAULT_WRITE_CHECK true
+#endif
+
 /** These must be defined by the user of the builder
  *
  * void *__gen_get_batch_dwords(__gen_user_data *user_data,
@@ -147,6 +151,10 @@ struct mi_builder {
 #if GFX_VERx10 >= 125
    uint32_t mocs;
 #endif
+
+#if GFX_VER >= 12
+   bool write_check;
+#endif
 };
 
 static inline void
@@ -158,6 +166,9 @@ mi_builder_init(struct mi_builder *b,
    b->devinfo = devinfo;
    b->user_data = user_data;
 
+#if GFX_VER >= 12
+   b->write_check = MI_BUILDER_DEFAULT_WRITE_CHECK;
+#endif
 #if GFX_VERx10 >= 75
    b->gprs = 0;
    b->num_math_dwords = 0;
@@ -197,6 +208,30 @@ mi_builder_set_mocs(UNUSED struct mi_builder *b, UNUSED uint32_t mocs)
    if (b->mocs != 0 && b->mocs != mocs)
       mi_builder_flush_math(b);
    b->mocs = mocs;
+#endif
+}
+
+/**
+ * Set write checks on immediate writes
+ *
+ * This ensures that the next memory write will complete only when all emitted
+ * previously emitted memory write are .
+ */
+static inline void
+mi_builder_set_write_check(UNUSED struct mi_builder *b, UNUSED bool check)
+{
+#if GFX_VER >= 12
+   b->write_check = check;
+#endif
+}
+
+static inline bool
+mi_builder_write_checked(UNUSED struct mi_builder *b)
+{
+#if GFX_VER >= 12
+   return b->write_check;
+#else
+   return false;
 #endif
 }
 
@@ -459,7 +494,7 @@ _mi_copy_no_unref(struct mi_builder *b,
                sdi.StoreQword = true;
                sdi.Address = dst.addr;
 #if GFX_VER >= 12
-               sdi.ForceWriteCompletionCheck = true;
+               sdi.ForceWriteCompletionCheck = b->write_check;
 #endif
             }
             dw[3] = src.imm;
@@ -497,7 +532,7 @@ _mi_copy_no_unref(struct mi_builder *b,
          mi_builder_emit(b, GENX(MI_STORE_DATA_IMM), sdi) {
             sdi.Address = dst.addr;
 #if GFX_VER >= 12
-            sdi.ForceWriteCompletionCheck = true;
+            sdi.ForceWriteCompletionCheck = b->write_check;
 #endif
             sdi.ImmediateData = src.imm;
          }
@@ -650,10 +685,17 @@ mi_memcpy(struct mi_builder *b, __gen_address_type dst,
    assert(b->num_math_dwords == 0);
 #endif
 
+   /* Hold off write checks until the last write. */
+   bool write_check = mi_builder_write_checked(b);
+   mi_builder_set_write_check(b, false);
+
    /* This memcpy operates in units of dwords. */
    assert(size % 4 == 0);
 
    for (uint32_t i = 0; i < size; i += 4) {
+      if (i == size - 4)
+         mi_builder_set_write_check(b, write_check);
+
       struct mi_value dst_val = mi_mem32(__gen_address_offset(dst, i));
       struct mi_value src_val = mi_mem32(__gen_address_offset(src, i));
 #if GFX_VERx10 >= 75

@@ -453,11 +453,14 @@ _mi_copy_no_unref(struct mi_builder *b,
             assert(dst.type == MI_VALUE_TYPE_MEM64);
             uint32_t *dw = (uint32_t *)__gen_get_batch_dwords(b->user_data,
                                                               GENX(MI_STORE_DATA_IMM_length) + 1);
-            mi_builder_pack(b, GENX(MI_STORE_DATA_IMM), dw, sdm) {
-               sdm.DWordLength = GENX(MI_STORE_DATA_IMM_length) + 1 -
+            mi_builder_pack(b, GENX(MI_STORE_DATA_IMM), dw, sdi) {
+               sdi.DWordLength = GENX(MI_STORE_DATA_IMM_length) + 1 -
                                  GENX(MI_STORE_DATA_IMM_length_bias);
-               sdm.StoreQword = true;
-               sdm.Address = dst.addr;
+               sdi.StoreQword = true;
+               sdi.Address = dst.addr;
+#if GFX_VER >= 12
+               sdi.ForceWriteCompletionCheck = true;
+#endif
             }
             dw[3] = src.imm;
             dw[4] = src.imm >> 32;

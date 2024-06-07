@@ -600,8 +600,7 @@ KHR-GL46.sparse_texture_clamp_tests.SparseTextureClampLookupResidency,Crash
 # Error detected at x,y,z: expected [a] got [b]
 KHR-GL46.sparse_texture2_tests.SparseTexture2Commitment,Fail
 
-# This one crashes in CI but just fails in other TGL machines.
-KHR-GL46.sparse_texture2_tests.SparseTexture2Lookup,Crash
+KHR-GL46.sparse_texture2_tests.SparseTexture2Lookup,Fail
 
 # uprev Piglit in Mesa
 spec@arb_shader_storage_buffer_object@max-ssbo-size@fs,Crash

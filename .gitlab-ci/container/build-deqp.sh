@@ -17,8 +17,8 @@ set -ex -o pipefail
 # - the GLES release produces `deqp-gles*` and `deqp-egl`
 
 DEQP_VK_VERSION=1.3.8.2
-DEQP_GL_VERSION=4.6.4.0
-DEQP_GLES_VERSION=3.2.10.0
+DEQP_GL_VERSION=4.6.4.1
+DEQP_GLES_VERSION=3.2.10.1
 
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
@@ -67,14 +67,10 @@ fi
 # shellcheck disable=SC2034
 # GLES builds also EGL
 gles_cts_commits_to_backport=(
-  # Implement support for the EGL_EXT_config_select_group extension
-  88ba9ac270db5be600b1ecacbc6d9db0c55d5be4
 )
 
 # shellcheck disable=SC2034
 gles_cts_patch_files=(
-  # Correct detection mechanism for EGL_EXT_config_select_group extension
-  build-deqp-egl_Correct-EGL_EXT_config_select_group-extension-query.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then

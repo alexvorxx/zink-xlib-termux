@@ -4455,6 +4455,9 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
    uint32_t align = nir_combined_align(align_mul, align_offset);
    assert(util_is_power_of_two_nonzero(align));
 
+   /* No more than 16 bytes at a time. */
+   bytes = MIN2(bytes, 16);
+
    /* If the number of bytes is a multiple of 4, use 32-bit loads. Else if it's
     * a multiple of 2, use 16-bit loads. Else use 8-bit loads.
     */

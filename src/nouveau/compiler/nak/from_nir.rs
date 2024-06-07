@@ -2771,6 +2771,19 @@ impl<'a> ShaderFromNir<'a> {
                 });
                 self.set_dst(&intrin.def, dst);
             }
+            nir_intrinsic_r2ur_nv => {
+                let src = self.get_ssa(srcs[0].as_def());
+                let mut dst = Vec::new();
+                for comp in src {
+                    let u = b.alloc_ssa(RegFile::UGPR, 1);
+                    b.push_op(OpR2UR {
+                        src: [*comp].into(),
+                        dst: u.into(),
+                    });
+                    dst.push(u[0]);
+                }
+                self.set_ssa(&intrin.def, dst);
+            }
             nir_intrinsic_shared_atomic => {
                 let bit_size = intrin.def.bit_size();
                 let (addr, offset) = self.get_io_addr_offset(&srcs[0], 24);

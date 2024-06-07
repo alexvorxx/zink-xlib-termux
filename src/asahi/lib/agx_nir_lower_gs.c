@@ -488,11 +488,129 @@ lower_to_gs_rast(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 }
 
 /*
+ * Side effects in geometry shaders are problematic with our "GS rasterization
+ * shader" implementation. Where does the side effect happen? In the prepass?
+ * In the rast shader? In both?
+ *
+ * A perfect solution is impossible with rast shaders. Since the spec is loose
+ * here, we follow the principle of "least surprise":
+ *
+ * 1. Prefer side effects in the prepass over the rast shader. The prepass runs
+ *    once per API GS invocation so will match the expectations of buggy apps
+ *    not written for tilers.
+ *
+ * 2. If we must execute any side effect in the rast shader, try to execute all
+ *    side effects only in the rast shader. If some side effects must happen in
+ *    the rast shader and others don't, this gets consistent counts
+ *    (i.e. if the app expects plain stores and atomics to match up).
+ *
+ * 3. If we must execute side effects in both rast and the prepass,
+ *    execute all side effects in the rast shader and strip what we can from
+ *    the prepass. This gets the "unsurprising" behaviour from #2 without
+ *    falling over for ridiculous uses of atomics.
+ */
+static bool
+strip_side_effect_from_rast(nir_builder *b, nir_intrinsic_instr *intr,
+                            void *data)
+{
+   switch (intr->intrinsic) {
+   case nir_intrinsic_store_global:
+   case nir_intrinsic_global_atomic:
+   case nir_intrinsic_global_atomic_swap:
+      break;
+   default:
+      return false;
+   }
+
+   /* If there's a side effect that's actually required, keep it. */
+   if (nir_intrinsic_infos[intr->intrinsic].has_dest &&
+       !list_is_empty(&intr->def.uses)) {
+
+      bool *any = data;
+      *any = true;
+      return false;
+   }
+
+   /* Otherwise, remove the dead instruction. */
+   nir_instr_remove(&intr->instr);
+   return true;
+}
+
+static bool
+strip_side_effects_from_rast(nir_shader *s, bool *side_effects_for_rast)
+{
+   bool progress, any;
+
+   /* Rather than complex analysis, clone and try to remove as many side effects
+    * as possible. Then we check if we removed them all. We need to loop to
+    * handle complex control flow with side effects, where we can strip
+    * everything but can't figure that out with a simple one-shot analysis.
+    */
+   nir_shader *clone = nir_shader_clone(NULL, s);
+
+   /* Drop as much as we can */
+   do {
+      progress = false;
+      any = false;
+      NIR_PASS(progress, clone, nir_shader_intrinsics_pass,
+               strip_side_effect_from_rast,
+               nir_metadata_block_index | nir_metadata_dominance, &any);
+
+      NIR_PASS(progress, clone, nir_opt_dce);
+      NIR_PASS(progress, clone, nir_opt_dead_cf);
+   } while (progress);
+
+   ralloc_free(clone);
+
+   /* If we need atomics, leave them in */
+   if (any) {
+      *side_effects_for_rast = true;
+      return false;
+   }
+
+   /* Else strip it all */
+   do {
+      progress = false;
+      any = false;
+      NIR_PASS(progress, s, nir_shader_intrinsics_pass,
+               strip_side_effect_from_rast,
+               nir_metadata_block_index | nir_metadata_dominance, &any);
+
+      NIR_PASS(progress, s, nir_opt_dce);
+      NIR_PASS(progress, s, nir_opt_dead_cf);
+   } while (progress);
+
+   assert(!any);
+   return progress;
+}
+
+static bool
+strip_side_effect_from_main(nir_builder *b, nir_intrinsic_instr *intr,
+                            void *data)
+{
+   switch (intr->intrinsic) {
+   case nir_intrinsic_global_atomic:
+   case nir_intrinsic_global_atomic_swap:
+      break;
+   default:
+      return false;
+   }
+
+   if (list_is_empty(&intr->def.uses)) {
+      nir_instr_remove(&intr->instr);
+      return true;
+   }
+
+   return false;
+}
+
+/*
  * Create a GS rasterization shader. This is a hardware vertex shader that
  * shades each rasterized output vertex in parallel.
  */
 static nir_shader *
-agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
+agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx,
+                              bool *side_effects_for_rast)
 {
    /* Don't muck up the original shader */
    nir_shader *shader = nir_shader_clone(NULL, gs);
@@ -516,6 +634,8 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
    nir_builder b_ =
       nir_builder_at(nir_before_impl(nir_shader_get_entrypoint(shader)));
    nir_builder *b = &b_;
+
+   NIR_PASS(_, shader, strip_side_effects_from_rast, side_effects_for_rast);
 
    /* Optimize out pointless gl_PointSize outputs. Bizarrely, these occur. */
    if (shader->info.gs.output_primitive != MESA_PRIM_POINTS)
@@ -1113,39 +1233,6 @@ agx_nir_lower_gs_instancing(nir_shader *gs)
                               index);
 }
 
-static bool
-strip_side_effects(nir_builder *b, nir_intrinsic_instr *intr, void *_)
-{
-   switch (intr->intrinsic) {
-   case nir_intrinsic_store_global:
-   case nir_intrinsic_global_atomic:
-   case nir_intrinsic_global_atomic_swap:
-      break;
-   default:
-      return false;
-   }
-
-   /* If there's a side effect that's actually required for the prepass, we have
-    * to keep it in.
-    */
-   if (nir_intrinsic_infos[intr->intrinsic].has_dest &&
-       !list_is_empty(&intr->def.uses))
-      return false;
-
-   /* Do not strip transform feedback stores, the rasterization shader doesn't
-    * execute them.
-    */
-   if (intr->intrinsic == nir_intrinsic_store_global &&
-       nir_intrinsic_access(intr) & ACCESS_XFB)
-      return false;
-
-   /* Otherwise, remove the dead instruction. The rasterization shader will
-    * execute the side effect so the side effect still happens at least once.
-    */
-   nir_instr_remove(&intr->instr);
-   return true;
-}
-
 static void
 link_libagx(nir_shader *nir, const nir_shader *libagx)
 {
@@ -1259,7 +1346,8 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
       }
    }
 
-   *gs_copy = agx_nir_create_gs_rast_shader(gs, libagx);
+   bool side_effects_for_rast = false;
+   *gs_copy = agx_nir_create_gs_rast_shader(gs, libagx, &side_effects_for_rast);
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_id,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
@@ -1332,15 +1420,20 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
       NIR_PASS(progress, gs, nir_opt_dce);
       NIR_PASS(progress, gs, nir_opt_loop_unroll);
 
-      /* When rasterizing, we try to move side effects to the rasterizer shader
-       * and strip the prepass of the dead side effects. Run this in the opt
-       * loop because it interacts with nir_opt_dce.
-       */
-      if (rasterizes_at_least_one_vertex) {
-         NIR_PASS(progress, gs, nir_shader_intrinsics_pass, strip_side_effects,
-                  nir_metadata_block_index | nir_metadata_dominance, NULL);
-      }
    } while (progress);
+
+   /* When rasterizing, we try to handle side effects sensibly. */
+   if (rasterizes_at_least_one_vertex && side_effects_for_rast) {
+      do {
+         progress = false;
+         NIR_PASS(progress, gs, nir_shader_intrinsics_pass,
+                  strip_side_effect_from_main,
+                  nir_metadata_block_index | nir_metadata_dominance, NULL);
+
+         NIR_PASS(progress, gs, nir_opt_dce);
+         NIR_PASS(progress, gs, nir_opt_dead_cf);
+      } while (progress);
+   }
 
    /* All those variables we created should've gone away by now */
    NIR_PASS(_, gs, nir_remove_dead_variables, nir_var_function_temp, NULL);

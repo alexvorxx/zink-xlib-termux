@@ -1776,7 +1776,7 @@ typedef enum SpvOp_ {
     SpvOpSubgroupAllEqualKHR = 4430,
     SpvOpGroupNonUniformRotateKHR = 4431,
     SpvOpSubgroupReadInvocationKHR = 4432,
-    SpvOpExtInstWithForwardRefs = 4433,
+    SpvOpExtInstWithForwardRefsKHR = 4433,
     SpvOpTraceRayKHR = 4445,
     SpvOpExecuteCallableKHR = 4446,
     SpvOpConvertUToAccelerationStructureKHR = 4447,
@@ -2524,7 +2524,7 @@ inline void SpvHasResultAndType(SpvOp opcode, bool *hasResult, bool *hasResultTy
     case SpvOpSubgroupAllEqualKHR: *hasResult = true; *hasResultType = true; break;
     case SpvOpGroupNonUniformRotateKHR: *hasResult = true; *hasResultType = true; break;
     case SpvOpSubgroupReadInvocationKHR: *hasResult = true; *hasResultType = true; break;
-    case SpvOpExtInstWithForwardRefs: *hasResult = true; *hasResultType = true; break;
+    case SpvOpExtInstWithForwardRefsKHR: *hasResult = true; *hasResultType = true; break;
     case SpvOpTraceRayKHR: *hasResult = false; *hasResultType = false; break;
     case SpvOpExecuteCallableKHR: *hasResult = false; *hasResultType = false; break;
     case SpvOpConvertUToAccelerationStructureKHR: *hasResult = true; *hasResultType = true; break;
@@ -2615,14 +2615,14 @@ inline void SpvHasResultAndType(SpvOp opcode, bool *hasResult, bool *hasResultTy
     case SpvOpWritePackedPrimitiveIndices4x8NV: *hasResult = false; *hasResultType = false; break;
     case SpvOpFetchMicroTriangleVertexPositionNV: *hasResult = true; *hasResultType = true; break;
     case SpvOpFetchMicroTriangleVertexBarycentricNV: *hasResult = true; *hasResultType = true; break;
-    case SpvOpReportIntersectionNV: *hasResult = true; *hasResultType = true; break;
+    case SpvOpReportIntersectionKHR: *hasResult = true; *hasResultType = true; break;
     case SpvOpIgnoreIntersectionNV: *hasResult = false; *hasResultType = false; break;
     case SpvOpTerminateRayNV: *hasResult = false; *hasResultType = false; break;
     case SpvOpTraceNV: *hasResult = false; *hasResultType = false; break;
     case SpvOpTraceMotionNV: *hasResult = false; *hasResultType = false; break;
     case SpvOpTraceRayMotionNV: *hasResult = false; *hasResultType = false; break;
     case SpvOpRayQueryGetIntersectionTriangleVertexPositionsKHR: *hasResult = true; *hasResultType = true; break;
-    case SpvOpTypeAccelerationStructureNV: *hasResult = true; *hasResultType = false; break;
+    case SpvOpTypeAccelerationStructureKHR: *hasResult = true; *hasResultType = false; break;
     case SpvOpExecuteCallableNV: *hasResult = false; *hasResultType = false; break;
     case SpvOpTypeCooperativeMatrixNV: *hasResult = true; *hasResultType = false; break;
     case SpvOpCooperativeMatrixLoadNV: *hasResult = true; *hasResultType = true; break;
@@ -4300,7 +4300,7 @@ inline const char* SpvOpToString(SpvOp value) {
     case SpvOpSubgroupAllEqualKHR: return "OpSubgroupAllEqualKHR";
     case SpvOpGroupNonUniformRotateKHR: return "OpGroupNonUniformRotateKHR";
     case SpvOpSubgroupReadInvocationKHR: return "OpSubgroupReadInvocationKHR";
-    case SpvOpExtInstWithForwardRefs: return "OpExtInstWithForwardRefs";
+    case SpvOpExtInstWithForwardRefsKHR: return "OpExtInstWithForwardRefsKHR";
     case SpvOpTraceRayKHR: return "OpTraceRayKHR";
     case SpvOpExecuteCallableKHR: return "OpExecuteCallableKHR";
     case SpvOpConvertUToAccelerationStructureKHR: return "OpConvertUToAccelerationStructureKHR";

@@ -4785,7 +4785,7 @@ get_nir_image_intrinsic_image(nir_to_brw_state &ntb, const brw::fs_builder &bld,
 
 static fs_reg
 get_nir_buffer_intrinsic_index(nir_to_brw_state &ntb, const brw::fs_builder &bld,
-                               nir_intrinsic_instr *instr)
+                               nir_intrinsic_instr *instr, bool *no_mask_handle = NULL)
 {
    /* SSBO stores are weird in that their index is in src[1] */
    const bool is_store =
@@ -4793,12 +4793,20 @@ get_nir_buffer_intrinsic_index(nir_to_brw_state &ntb, const brw::fs_builder &bld
       instr->intrinsic == nir_intrinsic_store_ssbo_block_intel;
    nir_src src = is_store ? instr->src[1] : instr->src[0];
 
+   if (no_mask_handle)
+      *no_mask_handle = false;
+
    if (nir_src_is_const(src)) {
+      if (no_mask_handle)
+         *no_mask_handle = true;
       return brw_imm_ud(nir_src_as_uint(src));
    } else if (is_resource_src(src)) {
       fs_reg surf_index = get_resource_nir_src(ntb, src);
-      if (surf_index.file != BAD_FILE)
+      if (surf_index.file != BAD_FILE) {
+         if (no_mask_handle)
+            *no_mask_handle = true;
          return surf_index;
+      }
    }
    return bld.emit_uniformize(get_nir_src(ntb, src));
 }
@@ -6216,11 +6224,12 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
    case nir_intrinsic_load_ubo:
    case nir_intrinsic_load_ubo_uniform_block_intel: {
       fs_reg surface, surface_handle;
+      bool no_mask_handle = false;
 
       if (get_nir_src_bindless(ntb, instr->src[0]))
-         surface_handle = get_nir_buffer_intrinsic_index(ntb, bld, instr);
+         surface_handle = get_nir_buffer_intrinsic_index(ntb, bld, instr, &no_mask_handle);
       else
-         surface = get_nir_buffer_intrinsic_index(ntb, bld, instr);
+         surface = get_nir_buffer_intrinsic_index(ntb, bld, instr, &no_mask_handle);
 
       if (!nir_src_is_const(instr->src[1])) {
          if (instr->intrinsic == nir_intrinsic_load_ubo) {
@@ -6278,10 +6287,12 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                srcs[SURFACE_LOGICAL_SRC_IMM_ARG] = brw_imm_ud(block);
 
                const fs_builder &ubld = block <= 8 ? ubld8 : ubld16;
-               ubld.emit(SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
-                         retype(byte_offset(packed_consts, loaded_dwords * 4), BRW_TYPE_UD),
-                         srcs, SURFACE_LOGICAL_NUM_SRCS)->size_written =
-                  align(block_bytes, REG_SIZE * reg_unit(devinfo));
+               fs_inst *inst =
+                  ubld.emit(SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
+                            retype(byte_offset(packed_consts, loaded_dwords * 4), BRW_TYPE_UD),
+                            srcs, SURFACE_LOGICAL_NUM_SRCS);
+               inst->size_written = align(block_bytes, REG_SIZE * reg_unit(devinfo));
+               inst->has_no_mask_send_params = no_mask_handle;
 
                loaded_dwords += block;
 
@@ -6632,16 +6643,18 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       const bool is_ssbo =
          instr->intrinsic == nir_intrinsic_load_ssbo_uniform_block_intel;
+      bool no_mask_handle = false;
       if (is_ssbo) {
          srcs[get_nir_src_bindless(ntb, instr->src[0]) ?
               SURFACE_LOGICAL_SRC_SURFACE_HANDLE :
               SURFACE_LOGICAL_SRC_SURFACE] =
-            get_nir_buffer_intrinsic_index(ntb, bld, instr);
+            get_nir_buffer_intrinsic_index(ntb, bld, instr, &no_mask_handle);
       } else {
          srcs[SURFACE_LOGICAL_SRC_SURFACE] = fs_reg(brw_imm_ud(GFX7_BTI_SLM));
 
          /* SLM has to use aligned OWord Block Read messages on pre-LSC HW. */
          assert(devinfo->has_lsc || nir_intrinsic_align(instr) >= 16);
+         no_mask_handle = true;
       }
 
       const unsigned total_dwords = ALIGN(instr->num_components,
@@ -6674,10 +6687,12 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          srcs[SURFACE_LOGICAL_SRC_IMM_ARG] = brw_imm_ud(block);
 
          const fs_builder &ubld = block <= 8 ? ubld8 : ubld16;
-         ubld.emit(SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
-                   retype(byte_offset(packed_consts, loaded_dwords * 4), BRW_TYPE_UD),
-                   srcs, SURFACE_LOGICAL_NUM_SRCS)->size_written =
-            align(block_bytes, REG_SIZE * reg_unit(devinfo));
+         fs_inst *inst =
+            ubld.emit(SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
+                      retype(byte_offset(packed_consts, loaded_dwords * 4), BRW_TYPE_UD),
+                      srcs, SURFACE_LOGICAL_NUM_SRCS);
+         inst->size_written = align(block_bytes, REG_SIZE * reg_unit(devinfo));
+         inst->has_no_mask_send_params = no_mask_handle;
 
          loaded_dwords += block;
 
@@ -7435,10 +7450,15 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          instr->intrinsic == nir_intrinsic_load_ssbo_block_intel;
       fs_reg address = bld.emit_uniformize(get_nir_src(ntb, instr->src[is_ssbo ? 1 : 0]));
 
+      bool no_mask_handle = false;
       fs_reg srcs[SURFACE_LOGICAL_NUM_SRCS];
-      srcs[SURFACE_LOGICAL_SRC_SURFACE] = is_ssbo ?
-         get_nir_buffer_intrinsic_index(ntb, bld, instr) :
-         fs_reg(brw_imm_ud(GFX7_BTI_SLM));
+      if (is_ssbo) {
+         srcs[SURFACE_LOGICAL_SRC_SURFACE] =
+            get_nir_buffer_intrinsic_index(ntb, bld, instr, &no_mask_handle);
+      } else {
+         srcs[SURFACE_LOGICAL_SRC_SURFACE] = fs_reg(brw_imm_ud(GFX7_BTI_SLM));
+         no_mask_handle = true;
+      }
       srcs[SURFACE_LOGICAL_SRC_ADDRESS] = address;
 
       const fs_builder ubld1 = bld.exec_all().group(1, 0);
@@ -7456,9 +7476,12 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          srcs[SURFACE_LOGICAL_SRC_IMM_ARG] = brw_imm_ud(block);
 
          const fs_builder &ubld = block == 8 ? ubld8 : ubld16;
-         ubld.emit(SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
-                   retype(byte_offset(dest, loaded * 4), BRW_TYPE_UD),
-                   srcs, SURFACE_LOGICAL_NUM_SRCS)->size_written = block_bytes;
+         fs_inst *inst =
+            ubld.emit(SHADER_OPCODE_UNALIGNED_OWORD_BLOCK_READ_LOGICAL,
+                      retype(byte_offset(dest, loaded * 4), BRW_TYPE_UD),
+                      srcs, SURFACE_LOGICAL_NUM_SRCS);
+         inst->size_written = block_bytes;
+         inst->has_no_mask_send_params = no_mask_handle;
 
          ubld1.ADD(address, address, brw_imm_ud(block_bytes));
          loaded += block;

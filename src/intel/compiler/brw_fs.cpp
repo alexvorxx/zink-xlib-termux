@@ -2709,6 +2709,9 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file, const brw:
    if (inst->exec_size != dispatch_width)
       fprintf(file, "group%d ", inst->group);
 
+   if (inst->has_no_mask_send_params)
+      fprintf(file, "NoMaskParams ");
+
    fprintf(file, "\n");
 }
 

@@ -278,6 +278,7 @@ struct tu_render_pass_state
    bool has_tess;
    bool has_gs;
    bool has_prim_generated_query_in_rp;
+   bool has_zpass_done_sample_count_write_in_rp;
    bool disable_gmem;
    bool sysmem_single_prim_mode;
    bool shared_viewport;

@@ -88,7 +88,6 @@ static const struct drm_driver_descriptor *driver_descriptors[] = {
    &vc4_driver_descriptor,
    &panfrost_driver_descriptor,
    &panthor_driver_descriptor,
-   &asahi_driver_descriptor,
    &etnaviv_driver_descriptor,
    &tegra_driver_descriptor,
    &lima_driver_descriptor,
@@ -314,9 +313,6 @@ pipe_loader_get_compatible_render_capable_device_fd(int kms_only_fd)
    bool is_platform_device;
    struct pipe_loader_device *dev;
    const char * const drivers[] = {
-#if defined GALLIUM_ASAHI
-      "asahi",
-#endif
 #if defined GALLIUM_ETNAVIV
       "etnaviv",
 #endif

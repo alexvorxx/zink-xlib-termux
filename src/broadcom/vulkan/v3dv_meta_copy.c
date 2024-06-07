@@ -1314,6 +1314,10 @@ copy_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
       return false;
    }
 
+   /* We can't do TLB stores of linear D/S */
+   if (!dst->tiled && vk_format_is_depth_or_stencil(fb_format))
+      return false;
+
    /* From the Vulkan spec, VkImageCopy valid usage:
     *
     *    "If neither the calling command’s srcImage nor the calling command’s
@@ -1990,6 +1994,28 @@ copy_buffer_to_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
    if (!v3dv_meta_can_use_tlb(image, plane, region->imageSubresource.mipLevel,
                               &region->imageOffset, &region->imageExtent,
                               &fb_format)) {
+      return false;
+   }
+
+   /* From the Vulkan spec for VkBufferImageCopy2:
+    *
+    *   "The aspectMask member of imageSubresource must only have a
+    *    single bit set."
+    *
+    * For us this has relevant implications because we can't do TLB stores
+    * of linear depth/stencil so we work around this by loading D/S data to the
+    * color tile buffer using a compatible color format (see
+    * emit_copy_buffer_to_layer_per_tile_list and choose_tlb_format functions),
+    * however, when we are copying a single aspect to a combined D/S image
+    * we need to preserve the other aspect, and for that we will still use the
+    * D/S tile buffer to load and store the aspect of the image we need to
+    * preserve, so in this case we are still constrained by the hw restriction
+    * for linear D/S stores.
+    */
+   assert(util_bitcount(region->imageSubresource.aspectMask) == 1);
+   if (!image->tiled &&
+       vk_format_has_depth(fb_format) &&
+       vk_format_has_stencil(fb_format)) {
       return false;
    }
 

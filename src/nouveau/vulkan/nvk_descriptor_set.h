@@ -110,13 +110,15 @@ struct nvk_push_descriptor_set {
 };
 
 void
-nvk_push_descriptor_set_update(struct nvk_push_descriptor_set *push_set,
+nvk_push_descriptor_set_update(struct nvk_device *dev,
+                               struct nvk_push_descriptor_set *push_set,
                                struct nvk_descriptor_set_layout *layout,
                                uint32_t write_count,
                                const VkWriteDescriptorSet *writes);
 
 void
 nvk_push_descriptor_set_update_template(
+   struct nvk_device *dev,
    struct nvk_push_descriptor_set *push_set,
    struct nvk_descriptor_set_layout *layout,
    const struct vk_descriptor_update_template *template,

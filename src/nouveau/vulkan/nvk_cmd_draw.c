@@ -2272,10 +2272,6 @@ nvk_mme_bind_cbuf_desc(struct mme_builder *b)
    }
 
    mme_if(b, ine, size, mme_zero()) {
-      uint32_t alignment = nvk_min_cbuf_alignment(b->devinfo);
-      mme_add_to(b, size, size, mme_imm(alignment - 1));
-      mme_and_to(b, size, size, mme_imm(~(alignment - 1)));
-
       /* size = max(size, NVK_MAX_CBUF_SIZE) */
       assert(util_is_power_of_two_nonzero(NVK_MAX_CBUF_SIZE));
       struct mme_value is_large =

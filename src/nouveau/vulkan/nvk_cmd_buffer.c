@@ -731,6 +731,7 @@ nvk_push_descriptor_set(struct nvk_cmd_buffer *cmd,
                         struct nvk_descriptor_state *desc,
                         const VkPushDescriptorSetInfoKHR *info)
 {
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
    VK_FROM_HANDLE(vk_pipeline_layout, pipeline_layout, info->layout);
 
    struct nvk_push_descriptor_set *push_set =
@@ -741,7 +742,7 @@ nvk_push_descriptor_set(struct nvk_cmd_buffer *cmd,
    struct nvk_descriptor_set_layout *set_layout =
       vk_to_nvk_descriptor_set_layout(pipeline_layout->set_layouts[info->set]);
 
-   nvk_push_descriptor_set_update(push_set, set_layout,
+   nvk_push_descriptor_set_update(dev, push_set, set_layout,
                                   info->descriptorWriteCount,
                                   info->pDescriptorWrites);
 }
@@ -887,6 +888,7 @@ nvk_CmdPushDescriptorSetWithTemplate2KHR(
    const VkPushDescriptorSetWithTemplateInfoKHR *pPushDescriptorSetWithTemplateInfo)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
    VK_FROM_HANDLE(vk_descriptor_update_template, template,
                   pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
    VK_FROM_HANDLE(vk_pipeline_layout, pipeline_layout,
@@ -902,6 +904,6 @@ nvk_CmdPushDescriptorSetWithTemplate2KHR(
    struct nvk_descriptor_set_layout *set_layout =
       vk_to_nvk_descriptor_set_layout(pipeline_layout->set_layouts[pPushDescriptorSetWithTemplateInfo->set]);
 
-   nvk_push_descriptor_set_update_template(push_set, set_layout, template,
+   nvk_push_descriptor_set_update_template(dev, push_set, set_layout, template,
                                            pPushDescriptorSetWithTemplateInfo->pData);
 }

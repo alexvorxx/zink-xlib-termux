@@ -79,9 +79,6 @@ anv_cmd_state_reset(struct anv_cmd_buffer *cmd_buffer)
 {
    anv_cmd_state_finish(cmd_buffer);
    anv_cmd_state_init(cmd_buffer);
-
-   cmd_buffer->last_compute_walker = NULL;
-   cmd_buffer->last_indirect_dispatch = NULL;
 }
 
 VkResult
@@ -174,9 +171,6 @@ anv_create_cmd_buffer(struct vk_command_pool *pool,
 
    cmd_buffer->generation.jump_addr = ANV_NULL_ADDRESS;
    cmd_buffer->generation.return_addr = ANV_NULL_ADDRESS;
-
-   cmd_buffer->last_compute_walker = NULL;
-   cmd_buffer->last_indirect_dispatch = NULL;
 
    memset(&cmd_buffer->generation.shader_state, 0,
           sizeof(cmd_buffer->generation.shader_state));

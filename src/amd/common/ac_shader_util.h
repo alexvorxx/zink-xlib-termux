@@ -83,7 +83,8 @@ enum gfx12_scope
     *      and the suggested programming is:
     *      * tess factor ring for GE: use ACCESS_CP_GE_COHERENT_AMD (it selects the correct scope
     *        automatically)
-    *      * query results accessed by shaders: Range-invalidate GL2 before the shaders
+    *      * query results read by shaders and SET_PREDICATION: use AMDGPU_VM_MTYPE_UC,
+    *        but use VRAM for queries not read by the CPU for better performance
     *      * vertex indices for GE: flush GL2 after buffer stores, but don't invalidate
     *      * draw indirect for CP: flush GL2 after buffer stores, but don't invalidate
     *      * shader uploads via SDMA: invalidate GL2 at the beginning of IBs
@@ -332,7 +333,7 @@ ac_ngg_get_scratch_lds_size(gl_shader_stage stage,
 
 enum gl_access_qualifier ac_get_mem_access_flags(const nir_intrinsic_instr *instr);
 
-union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
+union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
                                               enum gl_access_qualifier access);
 
 unsigned ac_get_all_edge_flag_bits(enum amd_gfx_level gfx_level);

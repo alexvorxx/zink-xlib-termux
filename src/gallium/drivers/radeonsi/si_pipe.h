@@ -104,10 +104,9 @@ struct ac_llvm_compiler;
 #define SI_RESOURCE_FLAG_GL2_BYPASS        (PIPE_RESOURCE_FLAG_DRV_PRIV << 2)
 #define SI_RESOURCE_FLAG_DISCARDABLE       (PIPE_RESOURCE_FLAG_DRV_PRIV << 3) /* Discard instead of evict. */
 #define SI_RESOURCE_FLAG_DRIVER_INTERNAL   (PIPE_RESOURCE_FLAG_DRV_PRIV << 4)
-#define SI_RESOURCE_FLAG_READ_ONLY         (PIPE_RESOURCE_FLAG_DRV_PRIV << 5)
+#define SI_RESOURCE_AUX_PLANE              (PIPE_RESOURCE_FLAG_DRV_PRIV << 5)
 #define SI_RESOURCE_FLAG_32BIT             (PIPE_RESOURCE_FLAG_DRV_PRIV << 6)
 #define SI_RESOURCE_FLAG_CLEAR             (PIPE_RESOURCE_FLAG_DRV_PRIV << 7)
-#define SI_RESOURCE_AUX_PLANE              (PIPE_RESOURCE_FLAG_DRV_PRIV << 8)
 
 enum si_has_gs {
    GS_OFF,
@@ -255,6 +254,7 @@ enum
    DBG_TEST_VMFAULT_SHADER,
    DBG_TEST_DMA_PERF,
    DBG_TEST_MEM_PERF,
+   DBG_TEST_BLIT_PERF,
 };
 
 #define DBG_ALL_SHADERS (((1 << (DBG_CS + 1)) - 1))
@@ -628,18 +628,6 @@ struct si_screen {
     */
    unsigned compressed_colortex_counter;
 
-   struct {
-      /* Context flags to set so that all writes from earlier jobs
-       * in the CP are seen by L2 clients.
-       */
-      unsigned cp_to_L2;
-
-      /* Context flags to set so that all writes from earlier jobs
-       * that end in L2 are seen by CP.
-       */
-      unsigned L2_to_cp;
-   } barrier_flags;
-
    simple_mtx_t shader_parts_mutex;
    struct si_shader_part *ps_prologs;
    struct si_shader_part *ps_epilogs;
@@ -1003,13 +991,11 @@ struct si_context {
    void *cs_clear_buffer_rmw;
    void *cs_copy_buffer;
    void *cs_ubyte_to_ushort;
-   void *cs_copy_image[3][2][2]; /* [wg_dim-1][src_is_1d][dst_is_1d] */
-   void *cs_clear_render_target;
-   void *cs_clear_render_target_1d_array;
    void *cs_clear_12bytes_buffer;
    void *cs_dcc_retile[32];
    void *cs_fmask_expand[3][2]; /* [log2(samples)-1][is_array] */
-   struct hash_table *cs_blit_shaders;
+   struct hash_table_u64 *cs_blit_shaders;
+   struct hash_table_u64 *ps_resolve_shaders;
    struct si_screen *screen;
    struct util_debug_callback debug;
    struct ac_llvm_compiler *compiler; /* only non-threaded compilation */
@@ -1416,7 +1402,8 @@ void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
                        const struct pipe_box *src_box);
 void si_decompress_dcc(struct si_context *sctx, struct si_texture *tex);
 void si_flush_implicit_resources(struct si_context *sctx);
-bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_blit_info *info);
+bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_blit_info *info,
+                                 bool fail_if_slow);
 void si_gfx_blit(struct pipe_context *ctx, const struct pipe_blit_info *info);
 
 /* si_nir_optim.c */
@@ -1493,9 +1480,13 @@ void si_destroy_compute(struct si_compute *program);
 #define SI_OP_CS_RENDER_COND_ENABLE       (1 << 6)
 #define SI_OP_CPDMA_SKIP_CHECK_CS_SPACE   (1 << 7) /* don't call need_cs_space */
 #define SI_OP_SYNC_GE_BEFORE              (1 << 8) /* only sync VS, TCS, TES, GS */
+/* Only for si_compute_blit: */
+#define SI_OP_FAIL_IF_SLOW                (1 << 9)
+#define SI_OP_IS_NESTED                   (1 << 10)
 
 unsigned si_get_flush_flags(struct si_context *sctx, enum si_coherency coher,
                             enum si_cache_policy cache_policy);
+bool si_should_blit_clamp_to_edge(const struct pipe_blit_info *info, unsigned coord_mask);
 void si_launch_grid_internal_ssbos(struct si_context *sctx, struct pipe_grid_info *info,
                                    void *shader, unsigned flags, enum si_coherency coher,
                                    unsigned num_buffers, const struct pipe_shader_buffer *buffers,
@@ -1517,22 +1508,24 @@ void si_copy_buffer(struct si_context *sctx, struct pipe_resource *dst, struct p
                     uint64_t dst_offset, uint64_t src_offset, unsigned size, unsigned flags);
 void si_compute_shorten_ubyte_buffer(struct si_context *sctx, struct pipe_resource *dst, struct pipe_resource *src,
                                      uint64_t dst_offset, uint64_t src_offset, unsigned size, unsigned flags);
-bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
-                           struct pipe_resource *src, unsigned src_level, unsigned dstx,
-                           unsigned dsty, unsigned dstz, const struct pipe_box *src_box,
-                           unsigned flags);
 void si_compute_clear_image_dcc_single(struct si_context *sctx, struct si_texture *tex,
                                        unsigned level, enum pipe_format format,
                                        const union pipe_color_union *color, unsigned flags);
-void si_compute_clear_render_target(struct pipe_context *ctx, struct pipe_surface *dstsurf,
-                                    const union pipe_color_union *color, unsigned dstx,
-                                    unsigned dsty, unsigned width, unsigned height,
-                                    bool render_condition_enabled);
 void si_retile_dcc(struct si_context *sctx, struct si_texture *tex);
 void gfx9_clear_dcc_msaa(struct si_context *sctx, struct pipe_resource *res, uint32_t clear_value,
                          unsigned flags, enum si_coherency coher);
 void si_compute_expand_fmask(struct pipe_context *ctx, struct pipe_resource *tex);
-bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info, bool testing);
+bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
+                            enum pipe_format format, unsigned level, const struct pipe_box *box,
+                            const union pipe_color_union *color, bool render_condition_enable,
+                            bool fail_if_slow);
+bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
+                           struct pipe_resource *src, unsigned src_level, unsigned dstx,
+                           unsigned dsty, unsigned dstz, const struct pipe_box *src_box,
+                           bool fail_if_slow);
+bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
+                     const union pipe_color_union *clear_color, unsigned dst_access,
+                     unsigned src_access, unsigned flags);
 void si_init_compute_blit_functions(struct si_context *sctx);
 
 /* si_cp_dma.c */
@@ -1641,51 +1634,17 @@ void si_suspend_queries(struct si_context *sctx);
 void si_resume_queries(struct si_context *sctx);
 
 /* si_shaderlib_nir.c */
-void *si_create_copy_image_cs(struct si_context *sctx, unsigned wg_dim,
-                              bool src_is_1d_array, bool dst_is_1d_array);
+void *si_create_shader_state(struct si_context *sctx, struct nir_shader *nir);
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf);
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex);
 void *si_create_passthrough_tcs(struct si_context *sctx);
 void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim);
-
-union si_compute_blit_shader_key {
-   struct {
-      /* The key saved in _mesa_hash_table_create_u32_keys() can't be 0. */
-      bool always_true:1;
-      /* Declaration modifiers. */
-      uint8_t wg_dim:2; /* 1, 2, or 3 */
-      bool src_is_1d:1;
-      bool dst_is_1d:1;
-      bool src_is_msaa:1;
-      bool dst_is_msaa:1;
-      uint8_t log2_samples:4;
-      bool sample0_only:1; /* src is MSAA, dst is not MSAA, log2_samples is ignored */
-      /* Source coordinate modifiers. */
-      bool xy_clamp_to_edge:1;
-      bool flip_x:1;
-      bool flip_y:1;
-      /* Output modifiers. */
-      bool sint_to_uint:1;
-      bool uint_to_sint:1;
-      bool dst_is_srgb:1;
-      bool use_integer_one:1;
-      uint8_t last_src_channel:2;
-      uint8_t last_dst_channel:2;
-      bool fp16_rtz:1; /* only for equality with pixel shaders, not necessary otherwise */
-   };
-   uint32_t key;
-};
-
-void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);
-
-/* si_shaderlib_nir.c */
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
                                    bool is_clear);
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx);
 void *si_create_clear_buffer_rmw_cs(struct si_context *sctx);
-void *si_clear_render_target_shader(struct si_context *sctx, enum pipe_texture_target type);
 void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, bool is_array);
 void *si_create_query_result_cs(struct si_context *sctx);
 void *gfx11_create_sh_query_result_cs(struct si_context *sctx);
@@ -1700,8 +1659,10 @@ void si_test_blit(struct si_screen *sscreen, unsigned test_flags);
 
 /* si_test_dma_perf.c */
 void si_test_dma_perf(struct si_screen *sscreen);
-
 void si_test_mem_perf(struct si_screen *sscreen);
+
+/* si_test_blit_perf.c */
+void si_test_blit_perf(struct si_screen *sscreen);
 
 /* si_uvd.c */
 struct pipe_video_codec *si_uvd_create_decoder(struct pipe_context *context,
@@ -1805,6 +1766,9 @@ si_shader_selector_reference(struct si_context *sctx, /* sctx can optionally be 
 
 static inline bool vi_dcc_enabled(struct si_texture *tex, unsigned level)
 {
+   /* Gfx12 always returns false because DCC is transparent to the driver.
+    * I think DCC doesn't have to be disabled if a color buffer is simultaneously bound as a sampler.
+    */
    return !tex->is_depth && tex->surface.meta_offset && level < tex->surface.num_meta_levels;
 }
 

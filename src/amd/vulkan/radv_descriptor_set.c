@@ -1180,7 +1180,23 @@ write_image_descriptor(unsigned *dst, unsigned size, VkDescriptorType descriptor
    }
    assert(size > 0);
 
-   memcpy(dst, descriptor, size);
+   /* Encourage compilers to inline memcpy for combined image/sampler descriptors. */
+   switch (size) {
+   case 32:
+      memcpy(dst, descriptor, 32);
+      break;
+   case 64:
+      memcpy(dst, descriptor, 64);
+      break;
+   case 80:
+      memcpy(dst, descriptor, 80);
+      break;
+   case 96:
+      memcpy(dst, descriptor, 96);
+      break;
+   default:
+      unreachable("Invalid size");
+   }
 }
 
 static ALWAYS_INLINE void

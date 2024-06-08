@@ -100,15 +100,14 @@ do_span_zs(enum pipe_format format, int srcWidth,
    assert(desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS);
    assert(srcWidth <= MAX_SPAN_WIDTH);
    assert(dstWidth <= MAX_SPAN_WIDTH);
+   assert(util_format_has_depth(desc) &&
+          !util_format_has_stencil(desc));
 
    float rowA[MAX_SPAN_WIDTH], rowB[MAX_SPAN_WIDTH],
          result[MAX_SPAN_WIDTH];
 
-   if (util_format_has_depth(desc)) {
-      util_format_unpack_z_float(format, rowA, srcRowA, srcWidth);
-      util_format_unpack_z_float(format, rowB, srcRowB, srcWidth);
-   }
-   assert(!util_format_has_stencil(desc));
+   util_format_unpack_z_float(format, rowA, srcRowA, srcWidth);
+   util_format_unpack_z_float(format, rowB, srcRowB, srcWidth);
 
    if (srcWidth == dstWidth) {
       for (unsigned i = 0; i < dstWidth; ++i) {
@@ -121,8 +120,7 @@ do_span_zs(enum pipe_format format, int srcWidth,
       }
    }
 
-   if (util_format_has_depth(desc))
-      util_format_pack_z_float(format, dstRow, result, dstWidth);
+   util_format_pack_z_float(format, dstRow, result, dstWidth);
 }
 
 static void
@@ -142,7 +140,7 @@ do_span_rgba_unorm8(enum pipe_format format, int srcWidth,
       util_format_pack_description(format);
 
    uint8_t rowA[MAX_SPAN_WIDTH * 4], rowB[MAX_SPAN_WIDTH * 4];
-   uint8_t result[MAX_SPAN_WIDTH];
+   uint8_t result[MAX_SPAN_WIDTH * 4];
 
    unpack->unpack_rgba_8unorm(rowA, srcRowA, srcWidth);
    unpack->unpack_rgba_8unorm(rowB, srcRowB, srcWidth);

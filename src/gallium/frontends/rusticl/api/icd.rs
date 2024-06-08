@@ -14,6 +14,8 @@ use crate::api::util::*;
 use mesa_rust_util::ptr::*;
 use rusticl_opencl_gen::*;
 
+use std::ffi::c_char;
+use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
 use std::sync::Arc;
@@ -470,57 +472,59 @@ extern "C" fn clIcdGetPlatformIDsKHR(
     cl_get_platform_ids(num_entries, platforms, num_platforms)
 }
 
+macro_rules! cl_ext_func {
+    ($func:ident: $api_type:ident) => {{
+        let _func: $api_type = Some($func);
+        $func as *mut ::std::ffi::c_void
+    }};
+}
+
+#[rustfmt::skip]
 extern "C" fn cl_get_extension_function_address(
-    function_name: *const ::std::os::raw::c_char,
-) -> *mut ::std::ffi::c_void {
+    function_name: *const c_char,
+) -> *mut c_void {
     if function_name.is_null() {
         return ptr::null_mut();
     }
     match unsafe { CStr::from_ptr(function_name) }.to_str().unwrap() {
         // cl_khr_create_command_queue
-        "clCreateCommandQueueWithPropertiesKHR" => {
-            cl_create_command_queue_with_properties as *mut ::std::ffi::c_void
-        }
+        "clCreateCommandQueueWithPropertiesKHR" => cl_ext_func!(cl_create_command_queue_with_properties: clCreateCommandQueueWithPropertiesKHR_fn),
 
         // cl_khr_icd
-        "clGetPlatformInfo" => cl_get_platform_info as *mut ::std::ffi::c_void,
-        "clIcdGetPlatformIDsKHR" => cl_get_platform_ids as *mut ::std::ffi::c_void,
+        "clGetPlatformInfo" => cl_ext_func!(cl_get_platform_info: cl_api_clGetPlatformInfo),
+        "clIcdGetPlatformIDsKHR" => cl_ext_func!(cl_get_platform_ids: clIcdGetPlatformIDsKHR_fn),
 
         // cl_khr_il_program
-        "clCreateProgramWithILKHR" => cl_create_program_with_il as *mut ::std::ffi::c_void,
+        "clCreateProgramWithILKHR" => cl_ext_func!(cl_create_program_with_il: clCreateProgramWithILKHR_fn),
 
         // cl_khr_gl_sharing
-        "clCreateFromGLBuffer" => cl_create_from_gl_buffer as *mut ::std::ffi::c_void,
-        "clCreateFromGLRenderbuffer" => cl_create_from_gl_renderbuffer as *mut ::std::ffi::c_void,
-        "clCreateFromGLTexture" => cl_create_from_gl_texture as *mut ::std::ffi::c_void,
-        "clCreateFromGLTexture2D" => cl_create_from_gl_texture_2d as *mut ::std::ffi::c_void,
-        "clCreateFromGLTexture3D" => cl_create_from_gl_texture_3d as *mut ::std::ffi::c_void,
-        "clEnqueueAcquireGLObjects" => cl_enqueue_acquire_gl_objects as *mut ::std::ffi::c_void,
-        "clEnqueueReleaseGLObjects" => cl_enqueue_release_gl_objects as *mut ::std::ffi::c_void,
-        "clGetGLContextInfoKHR" => cl_get_gl_context_info_khr as *mut ::std::ffi::c_void,
-        "clGetGLObjectInfo" => cl_get_gl_object_info as *mut ::std::ffi::c_void,
-        "clGetGLTextureInfo" => cl_get_gl_texture_info as *mut ::std::ffi::c_void,
+        "clCreateFromGLBuffer" => cl_ext_func!(cl_create_from_gl_buffer: cl_api_clCreateFromGLBuffer),
+        "clCreateFromGLRenderbuffer" => cl_ext_func!(cl_create_from_gl_renderbuffer: cl_api_clCreateFromGLRenderbuffer),
+        "clCreateFromGLTexture" => cl_ext_func!(cl_create_from_gl_texture: cl_api_clCreateFromGLTexture),
+        "clCreateFromGLTexture2D" => cl_ext_func!(cl_create_from_gl_texture_2d: cl_api_clCreateFromGLTexture2D),
+        "clCreateFromGLTexture3D" => cl_ext_func!(cl_create_from_gl_texture_3d: cl_api_clCreateFromGLTexture3D),
+        "clEnqueueAcquireGLObjects" => cl_ext_func!(cl_enqueue_acquire_gl_objects: cl_api_clEnqueueAcquireGLObjects),
+        "clEnqueueReleaseGLObjects" => cl_ext_func!(cl_enqueue_release_gl_objects: cl_api_clEnqueueReleaseGLObjects),
+        "clGetGLContextInfoKHR" => cl_ext_func!(cl_get_gl_context_info_khr: cl_api_clGetGLContextInfoKHR),
+        "clGetGLObjectInfo" => cl_ext_func!(cl_get_gl_object_info: cl_api_clGetGLObjectInfo),
+        "clGetGLTextureInfo" => cl_ext_func!(cl_get_gl_texture_info: cl_api_clGetGLTextureInfo),
 
         // cl_khr_suggested_local_work_size
-        "clGetKernelSuggestedLocalWorkSizeKHR" => {
-            cl_get_kernel_suggested_local_work_size_khr as *mut ::std::ffi::c_void
-        }
+        "clGetKernelSuggestedLocalWorkSizeKHR" => cl_ext_func!(cl_get_kernel_suggested_local_work_size_khr: clGetKernelSuggestedLocalWorkSizeKHR_fn),
 
         // cl_arm_shared_virtual_memory
-        "clEnqueueSVMFreeARM" => cl_enqueue_svm_free_arm as *mut ::std::ffi::c_void,
-        "clEnqueueSVMMapARM" => cl_enqueue_svm_map_arm as *mut ::std::ffi::c_void,
-        "clEnqueueSVMMemcpyARM" => cl_enqueue_svm_memcpy_arm as *mut ::std::ffi::c_void,
-        "clEnqueueSVMMemFillARM" => cl_enqueue_svm_mem_fill_arm as *mut ::std::ffi::c_void,
-        "clEnqueueSVMUnmapARM" => cl_enqueue_svm_unmap_arm as *mut ::std::ffi::c_void,
-        "clSetKernelArgSVMPointerARM" => cl_set_kernel_arg_svm_pointer as *mut ::std::ffi::c_void,
-        "clSetKernelExecInfoARM" => cl_set_kernel_exec_info as *mut ::std::ffi::c_void,
-        "clSVMAllocARM" => cl_svm_alloc as *mut ::std::ffi::c_void,
-        "clSVMFreeARM" => cl_svm_free as *mut ::std::ffi::c_void,
+        "clEnqueueSVMFreeARM" => cl_ext_func!(cl_enqueue_svm_free_arm: cl_api_clEnqueueSVMFree),
+        "clEnqueueSVMMapARM" => cl_ext_func!(cl_enqueue_svm_map_arm: cl_api_clEnqueueSVMMap),
+        "clEnqueueSVMMemcpyARM" => cl_ext_func!(cl_enqueue_svm_memcpy_arm: cl_api_clEnqueueSVMMemcpy),
+        "clEnqueueSVMMemFillARM" => cl_ext_func!(cl_enqueue_svm_mem_fill_arm: cl_api_clEnqueueSVMMemFill),
+        "clEnqueueSVMUnmapARM" => cl_ext_func!(cl_enqueue_svm_unmap_arm: cl_api_clEnqueueSVMUnmap),
+        "clSetKernelArgSVMPointerARM" => cl_ext_func!(cl_set_kernel_arg_svm_pointer: cl_api_clSetKernelArgSVMPointer),
+        "clSetKernelExecInfoARM" => cl_ext_func!(cl_set_kernel_exec_info: cl_api_clSetKernelExecInfo),
+        "clSVMAllocARM" => cl_ext_func!(cl_svm_alloc: cl_api_clSVMAlloc),
+        "clSVMFreeARM" => cl_ext_func!(cl_svm_free: cl_api_clSVMFree),
 
         // DPCPP bug https://github.com/intel/llvm/issues/9964
-        "clSetProgramSpecializationConstant" => {
-            cl_set_program_specialization_constant as *mut ::std::ffi::c_void
-        }
+        "clSetProgramSpecializationConstant" => cl_ext_func!(cl_set_program_specialization_constant: cl_api_clSetProgramSpecializationConstant),
 
         _ => ptr::null_mut(),
     }

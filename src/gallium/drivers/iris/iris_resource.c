@@ -376,24 +376,13 @@ iris_memobj_create_from_handle(struct pipe_screen *pscreen,
 {
    struct iris_screen *screen = (struct iris_screen *)pscreen;
    struct iris_memory_object *memobj = CALLOC_STRUCT(iris_memory_object);
-   struct iris_bo *bo;
-
    if (!memobj)
       return NULL;
 
-   switch (whandle->type) {
-   case WINSYS_HANDLE_TYPE_SHARED:
-      bo = iris_bo_gem_create_from_name(screen->bufmgr, "winsys image",
-                                        whandle->handle);
-      break;
-   case WINSYS_HANDLE_TYPE_FD:
-      bo = iris_bo_import_dmabuf(screen->bufmgr, whandle->handle,
-                                 whandle->modifier);
-      break;
-   default:
-      unreachable("invalid winsys handle type");
-   }
-
+   assert(whandle->type == WINSYS_HANDLE_TYPE_FD);
+   assert(whandle->modifier == DRM_FORMAT_MOD_INVALID);
+   struct iris_bo *bo = iris_bo_import_dmabuf(screen->bufmgr, whandle->handle,
+                                              DRM_FORMAT_MOD_INVALID);
    if (!bo) {
       free(memobj);
       return NULL;
@@ -788,6 +777,23 @@ iris_resource_configure_main(const struct iris_screen *screen,
                ISL_SURF_USAGE_STENCIL_BIT : ISL_SURF_USAGE_DEPTH_BIT;
    }
 
+   if ((usage & ISL_SURF_USAGE_TEXTURE_BIT) ||
+       !isl_surf_usage_is_depth_or_stencil(usage)) {
+      /* Notify ISL that iris may access this image from different engines.
+       * The reads and writes performed by the engines are guaranteed to be
+       * sequential with respect to each other. This is due to the
+       * implementation of flush_for_cross_batch_dependencies().
+       */
+      usage |= ISL_SURF_USAGE_MULTI_ENGINE_SEQ_BIT;
+   } else {
+      /* Depth/stencil render buffers are the only surfaces which are not
+       * accessed by compute shaders. Also, iris does not use the blitter on
+       * such surfaces.
+       */
+     assert(!(templ->bind & PIPE_BIND_SHADER_IMAGE));
+     assert(!(templ->bind & PIPE_BIND_PRIME_BLIT_DST));
+   }
+
    const enum isl_format format =
       iris_format_for_usage(screen->devinfo, templ->format, usage).fmt;
 
@@ -1098,8 +1104,9 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
    /* Allocate space for the extra aux buffer. */
    if (res->aux.extra_aux.surf.size_B > 0) {
       res->aux.extra_aux.offset =
-         (uint32_t)align64(bo_size, res->aux.extra_aux.surf.alignment_B);
-      bo_size = res->aux.extra_aux.offset + res->aux.extra_aux.surf.size_B;
+         (uint32_t)align64(bo_size, INTEL_AUX_MAP_META_ALIGNMENT_B);
+      bo_size = res->aux.extra_aux.offset +
+                res->surf.size_B / INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN;
    }
 
    /* Allocate space for the indirect clear color.
@@ -1323,10 +1330,20 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
             /* Fill out some aux surface fields. */
             assert(isl_drm_modifier_has_aux(whandle->modifier));
             assert(!devinfo->has_flat_ccs);
-            assert(plane_res->bo->size >= plane_res->offset +
-                   main_res->aux.surf.size_B);
-            assert(main_res->aux.surf.row_pitch_B ==
-                   plane_res->surf.row_pitch_B);
+
+            if (devinfo->has_aux_map) {
+               assert(plane_res->surf.row_pitch_B ==
+                      main_res->surf.row_pitch_B /
+                      INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN);
+               assert(plane_res->bo->size >= plane_res->offset +
+                      main_res->surf.size_B /
+                      INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN);
+            } else {
+               assert(plane_res->surf.row_pitch_B ==
+                      main_res->aux.surf.row_pitch_B);
+               assert(plane_res->bo->size >= plane_res->offset +
+                      main_res->aux.surf.size_B);
+            }
 
             iris_bo_reference(plane_res->bo);
             main_res->aux.bo = plane_res->bo;
@@ -1670,18 +1687,24 @@ iris_resource_get_param(struct pipe_screen *pscreen,
       }
       return true;
    case PIPE_RESOURCE_PARAM_STRIDE:
-      *value = wants_cc ? 64 :
-               wants_aux ? res->aux.surf.row_pitch_B : res->surf.row_pitch_B;
+      if (wants_cc) {
+         *value = ISL_DRM_CC_PLANE_PITCH_B;
+      } else if (wants_aux) {
+         *value = screen->devinfo->has_aux_map ?
+                  res->surf.row_pitch_B / INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN :
+                  res->aux.surf.row_pitch_B;
+      } else {
+         *value = res->surf.row_pitch_B;
+      }
 
       /* Mesa's implementation of eglCreateImage rejects strides of zero (see
        * dri2_check_dma_buf_attribs). Ensure we return a non-zero stride as
        * this value may be queried from GBM and passed into EGL.
        *
-       * Also, although modifiers which use a clear color plane specify that
-       * the plane's pitch should be ignored, some kernels have been found to
-       * require 64-byte alignment.
+       * We make an exception for buffers. For OpenCL gl_sharing we have to
+       * support exporting buffers, for which we report a stride of 0 here.
        */
-      assert(*value != 0 && (!wants_cc || *value % 64 == 0));
+      assert(*value != 0 || resource->target == PIPE_BUFFER);
 
       return true;
    case PIPE_RESOURCE_PARAM_OFFSET:

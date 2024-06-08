@@ -424,6 +424,14 @@ option(
 )
 
 option(
+  'amd-use-llvm',
+  type : 'boolean',
+  value : true,
+  description : 'Whether to use LLVM for the AMD drivers, if LLVM ' +
+                'is included.'
+)
+
+option(
   'valgrind',
   type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},

@@ -358,9 +358,10 @@ fs_generator::generate_shuffle(fs_inst *inst,
     * gets weird because it reads all of the channels regardless of execution
     * size.  It's easier just to split it here.
     */
-   const unsigned lower_width =
-      element_sz(src) > 4 || element_sz(dst) > 4 ? 8 :
-      MIN2(16, inst->exec_size);
+   unsigned lower_width = MIN2(16, inst->exec_size);
+   if (devinfo->ver < 20 && (element_sz(src) > 4 || element_sz(dst) > 4)) {
+      lower_width = 8;
+   }
 
    brw_set_default_exec_size(p, cvt(lower_width) - 1);
    for (unsigned group = 0; group < inst->exec_size; group += lower_width) {
@@ -1329,7 +1330,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_float_controls_mode(p, src[0].d, src[1].d);
          break;
 
-      case SHADER_OPCODE_READ_MASK_REG:
+      case SHADER_OPCODE_READ_ARCH_REG:
          if (devinfo->ver >= 12) {
             /* There is a SWSB restriction that requires that any time sr0 is
              * accessed both the instruction doing the access and the next one
@@ -1337,33 +1338,12 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
              */
             if (brw_get_default_swsb(p).mode != TGL_SBID_NULL)
                brw_SYNC(p, TGL_SYNC_NOP);
-            assert(src[0].file == BRW_IMMEDIATE_VALUE);
             brw_set_default_swsb(p, tgl_swsb_regdist(1));
-            brw_MOV(p, dst, retype(brw_mask_reg(src[0].ud),
-                                   BRW_TYPE_UD));
+            brw_MOV(p, dst, src[0]);
             brw_set_default_swsb(p, tgl_swsb_regdist(1));
             brw_AND(p, dst, dst, brw_imm_ud(0xffffffff));
          } else {
-            brw_MOV(p, dst, retype(brw_mask_reg(src[0].ud),
-                                   BRW_TYPE_UD));
-         }
-         break;
-
-      case SHADER_OPCODE_READ_SR_REG:
-         if (devinfo->ver >= 12) {
-            /* There is a SWSB restriction that requires that any time sr0 is
-             * accessed both the instruction doing the access and the next one
-             * have SWSB set to RegDist(1).
-             */
-            if (brw_get_default_swsb(p).mode != TGL_SBID_NULL)
-               brw_SYNC(p, TGL_SYNC_NOP);
-            assert(src[0].file == BRW_IMMEDIATE_VALUE);
-            brw_set_default_swsb(p, tgl_swsb_regdist(1));
-            brw_MOV(p, dst, brw_sr0_reg(src[0].ud));
-            brw_set_default_swsb(p, tgl_swsb_regdist(1));
-            brw_AND(p, dst, dst, brw_imm_ud(0xffffffff));
-         } else {
-            brw_MOV(p, dst, brw_sr0_reg(src[0].ud));
+            brw_MOV(p, dst, src[0]);
          }
          break;
 

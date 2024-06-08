@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "ac_gpu_info.h"
 #include "ac_nir.h"
 #include "ac_nir_helpers.h"
 #include "sid.h"
@@ -111,6 +112,9 @@ lower_intrinsic_to_arg(nir_builder *b, nir_instr *instr, void *state)
    switch (intrin->intrinsic) {
    case nir_intrinsic_load_subgroup_id: {
       if (s->hw_stage == AC_HW_COMPUTE_SHADER) {
+         if (s->gfx_level >= GFX12)
+            return false;
+
          assert(s->args->tg_size.used);
 
          if (s->gfx_level >= GFX10_3) {
@@ -1505,4 +1509,70 @@ ac_nir_opt_pack_half(nir_shader *shader, enum amd_gfx_level gfx_level)
       shader->info.float_controls_execution_mode = exec_mode;
    }
    return progress;
+}
+
+nir_def *
+ac_average_samples(nir_builder *b, nir_def **samples, unsigned num_samples)
+{
+   /* This works like add-reduce by computing the sum of each pair independently, and then
+    * computing the sum of each pair of sums, and so on, to get better instruction-level
+    * parallelism.
+    */
+   if (num_samples == 16) {
+      for (unsigned i = 0; i < 8; i++)
+         samples[i] = nir_fadd(b, samples[i * 2], samples[i * 2 + 1]);
+   }
+   if (num_samples >= 8) {
+      for (unsigned i = 0; i < 4; i++)
+         samples[i] = nir_fadd(b, samples[i * 2], samples[i * 2 + 1]);
+   }
+   if (num_samples >= 4) {
+      for (unsigned i = 0; i < 2; i++)
+         samples[i] = nir_fadd(b, samples[i * 2], samples[i * 2 + 1]);
+   }
+   if (num_samples >= 2)
+      samples[0] = nir_fadd(b, samples[0], samples[1]);
+
+   return nir_fmul_imm(b, samples[0], 1.0 / num_samples); /* average the sum */
+}
+
+void
+ac_optimization_barrier_vgpr_array(const struct radeon_info *info, nir_builder *b,
+                                   nir_def **array, unsigned num_elements,
+                                   unsigned num_components)
+{
+   /* We use the optimization barrier to force LLVM to form VMEM clauses by constraining its
+    * instruction scheduling options.
+    *
+    * VMEM clauses are supported since GFX10. It's not recommended to use the optimization
+    * barrier in the compute blit for GFX6-8 because the lack of A16 combined with optimization
+    * barriers would unnecessarily increase VGPR usage for MSAA resources.
+    */
+   if (!b->shader->info.use_aco_amd && info->gfx_level >= GFX10) {
+      for (unsigned i = 0; i < num_elements; i++) {
+         unsigned prev_num = array[i]->num_components;
+         array[i] = nir_trim_vector(b, array[i], num_components);
+         array[i] = nir_optimization_barrier_vgpr_amd(b, array[i]->bit_size, array[i]);
+         array[i] = nir_pad_vector(b, array[i], prev_num);
+      }
+   }
+}
+
+nir_def *
+ac_get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size)
+{
+   unsigned mask = BITFIELD_MASK(num_components);
+
+   nir_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
+   nir_def *block_ids = nir_channels(b, nir_load_workgroup_id(b), mask);
+   nir_def *block_size = nir_channels(b, nir_load_workgroup_size(b), mask);
+
+   assert(bit_size == 32 || bit_size == 16);
+   if (bit_size == 16) {
+      local_ids = nir_i2iN(b, local_ids, bit_size);
+      block_ids = nir_i2iN(b, block_ids, bit_size);
+      block_size = nir_i2iN(b, block_size, bit_size);
+   }
+
+   return nir_iadd(b, nir_imul(b, block_ids, block_size), local_ids);
 }

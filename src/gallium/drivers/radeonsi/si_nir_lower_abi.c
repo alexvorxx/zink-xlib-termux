@@ -695,7 +695,7 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       break;
    case nir_intrinsic_load_tess_rel_patch_id_amd:
       /* LLVM need to replace patch id arg, so have to be done in LLVM backend. */
-      if (!sel->screen->use_aco)
+      if (!sel->info.base.use_aco_amd)
          return false;
 
       if (stage == MESA_SHADER_TESS_CTRL) {
@@ -776,7 +776,7 @@ static bool lower_tex(nir_builder *b, nir_instr *instr, struct lower_abi_state *
     */
 
    /* LLVM keep non-uniform sampler as index, so can't do this in NIR. */
-   if (tex->is_shadow && gfx_level >= GFX8 && gfx_level <= GFX9 && sel->screen->use_aco) {
+   if (tex->is_shadow && gfx_level >= GFX8 && gfx_level <= GFX9 && sel->info.base.use_aco_amd) {
       int samp_index = nir_tex_instr_src_index(tex, nir_tex_src_sampler_handle);
       int comp_index = nir_tex_instr_src_index(tex, nir_tex_src_comparator);
       assert(samp_index >= 0 && comp_index >= 0);

@@ -20,8 +20,6 @@
 
 #include "nouveau_context.h"
 
-#include "nouveau/nouveau.h"
-
 #include "nv_push_cl906f.h"
 #include "nv_push_cl90b5.h"
 #include "nv_push_cla097.h"

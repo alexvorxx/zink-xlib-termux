@@ -295,7 +295,7 @@ util_blit(struct d3d12_context *ctx,
 {
    util_blit_save_state(ctx);
 
-   util_blitter_blit(ctx->blitter, info);
+   util_blitter_blit(ctx->blitter, info, NULL);
 }
 
 static bool

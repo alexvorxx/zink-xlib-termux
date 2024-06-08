@@ -272,6 +272,16 @@ get_io_offset(nir_builder *b, nir_deref_instr *deref,
    return offset;
 }
 
+static bool
+is_medium_precision(const nir_shader *shader, const nir_variable *var)
+{
+   if (shader->options->io_options & nir_io_mediump_is_32bit)
+      return false;
+
+   return var->data.precision == GLSL_PRECISION_MEDIUM ||
+          var->data.precision == GLSL_PRECISION_LOW;
+}
+
 static nir_def *
 emit_load(struct lower_io_state *state,
           nir_def *array_index, nir_variable *var, nir_def *offset,
@@ -351,9 +361,7 @@ emit_load(struct lower_io_state *state,
       semantics.location = var->data.location;
       semantics.num_slots = get_number_of_slots(state, var);
       semantics.fb_fetch_output = var->data.fb_fetch_output;
-      semantics.medium_precision =
-         var->data.precision == GLSL_PRECISION_MEDIUM ||
-         var->data.precision == GLSL_PRECISION_LOW;
+      semantics.medium_precision = is_medium_precision(b->shader, var);
       semantics.high_dvec2 = high_dvec2;
       semantics.per_primitive = var->data.per_primitive;
       /* "per_vertex" is misnamed. It means "explicit interpolation with
@@ -503,9 +511,7 @@ emit_store(struct lower_io_state *state, nir_def *data,
    semantics.num_slots = get_number_of_slots(state, var);
    semantics.dual_source_blend_index = var->data.index;
    semantics.gs_streams = gs_streams;
-   semantics.medium_precision =
-      var->data.precision == GLSL_PRECISION_MEDIUM ||
-      var->data.precision == GLSL_PRECISION_LOW;
+   semantics.medium_precision = is_medium_precision(b->shader, var);
    semantics.per_view = var->data.per_view;
    semantics.invariant = var->data.invariant;
 
@@ -631,9 +637,7 @@ lower_interpolate_at(nir_intrinsic_instr *intrin, struct lower_io_state *state,
    nir_io_semantics semantics = { 0 };
    semantics.location = var->data.location;
    semantics.num_slots = get_number_of_slots(state, var);
-   semantics.medium_precision =
-      var->data.precision == GLSL_PRECISION_MEDIUM ||
-      var->data.precision == GLSL_PRECISION_LOW;
+   semantics.medium_precision = is_medium_precision(b->shader, var);
 
    nir_def *load =
       nir_load_interpolated_input(&state->builder,

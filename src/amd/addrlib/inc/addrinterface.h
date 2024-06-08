@@ -24,7 +24,7 @@ extern "C"
 #endif
 
 #define ADDRLIB_VERSION_MAJOR 9
-#define ADDRLIB_VERSION_MINOR 3
+#define ADDRLIB_VERSION_MINOR 4
 #define ADDRLIB_VERSION ((ADDRLIB_VERSION_MAJOR << 16) | ADDRLIB_VERSION_MINOR)
 
 /// Virtually all interface functions need ADDR_HANDLE as first parameter
@@ -4065,7 +4065,8 @@ typedef union _ADDR3_SURFACE_FLAGS
         UINT_32 p010               : 1;
         UINT_32 view3dAs2dArray    : 1;
         UINT_32 isVrsImage         : 1; ///< This resource is a VRS source image
-        UINT_32 reserved           : 21; ///< Reserved bits
+        UINT_32 reserved1          : 1;
+        UINT_32 reserved           : 20; ///< Reserved bits
     };
 
     UINT_32 value;
@@ -4181,7 +4182,8 @@ typedef union _ADDR3_SWMODE_SET
         UINT_32 sw3d4kB     :  1;
         UINT_32 sw3d64kB    :  1;
         UINT_32 sw3d256kB   :  1;
-        UINT_32 reserved    : 24;
+        UINT_32 reserved1   :  2;
+        UINT_32 reserved    : 22;
     };
 
     UINT_32 value;

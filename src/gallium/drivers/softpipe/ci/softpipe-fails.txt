@@ -901,7 +901,6 @@ hiz@hiz-stencil-read-window-depth0,Fail
 hiz@hiz-stencil-read-window-depth1,Fail
 hiz@hiz-stencil-test-window-depth0,Fail
 hiz@hiz-stencil-test-window-depth1,Fail
-shaders@glsl-bug-110796,Fail
 spec@!opengl 1.0@gl-1.0-drawbuffer-modes,Fail
 spec@!opengl 1.0@gl-1.0-swapbuffers-behavior,Fail
 spec@!opengl 1.0@rasterpos,Fail

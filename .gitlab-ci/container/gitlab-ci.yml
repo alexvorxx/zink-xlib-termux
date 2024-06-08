@@ -387,6 +387,7 @@ fedora/x86_64_build:
     - .container+build-rules
     - .debian-container-version
   stage: container
+  timeout: 90m
   variables:
     GIT_STRATEGY: fetch
     MESA_ROOTFS_TAG: &kernel-rootfs ${KERNEL_ROOTFS_TAG}

@@ -101,8 +101,7 @@ tar -xvf $XORGMACROS_VERSION.tar.bz2 && rm $XORGMACROS_VERSION.tar.bz2
 cd $XORGMACROS_VERSION; ./configure; make install; cd ..
 rm -rf $XORGMACROS_VERSION
 
-# We need at least 1.4.0 for rusticl
-pip install meson==1.4.0
+. .gitlab-ci/container/install-meson.sh
 
 . .gitlab-ci/container/build-mold.sh
 

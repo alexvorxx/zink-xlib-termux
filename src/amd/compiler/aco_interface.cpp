@@ -73,7 +73,7 @@ get_disasm_string(Program* program, std::vector<uint32_t>& code, unsigned exec_s
          print_asm(program, code, exec_size / 4u, memf);
       } else {
          fprintf(memf, "Shader disassembly is not supported in the current configuration"
-#if !LLVM_AVAILABLE
+#if !AMD_LLVM_AVAILABLE
                        " (LLVM not available)"
 #endif
                        ", falling back to print_program.\n\n");

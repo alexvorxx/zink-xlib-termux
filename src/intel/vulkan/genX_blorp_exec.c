@@ -317,15 +317,15 @@ blorp_exec_on_render(struct blorp_batch *batch,
    }
 #endif
 
-#if GFX_VERx10 >= 125
+#if INTEL_WA_18019816803_GFX_VER
    /* Check if blorp ds state matches ours. */
    if (intel_needs_workaround(cmd_buffer->device->info, 18019816803)) {
       bool blorp_ds_state = params->depth.enabled || params->stencil.enabled;
-      if (cmd_buffer->state.gfx.ds_write_state != blorp_ds_state) {
+      if (hw_state->ds_write_state != blorp_ds_state) {
          /* Flag the change in ds_write_state so that the next pipeline use
           * will trigger a PIPE_CONTROL too.
           */
-         cmd_buffer->state.gfx.ds_write_state = blorp_ds_state;
+         hw_state->ds_write_state = blorp_ds_state;
          BITSET_SET(hw_state->dirty, ANV_GFX_STATE_WA_18019816803);
 
          /* Add the stall that will flush prior to the blorp operation by
@@ -336,6 +336,10 @@ blorp_exec_on_render(struct blorp_batch *batch,
                                    "Wa_18019816803");
       }
    }
+#endif
+
+#if INTEL_WA_14018283232_GFX_VER
+   genX(cmd_buffer_ensure_wa_14018283232)(cmd_buffer, false);
 #endif
 
    if (params->depth.enabled &&

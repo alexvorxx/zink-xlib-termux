@@ -162,9 +162,8 @@ lvp_physical_device_get_format_properties(struct lvp_physical_device *physical_d
    if (pscreen->is_format_supported(pscreen, pformat, PIPE_TEXTURE_2D, 0, 0,
                                     PIPE_BIND_RENDER_TARGET)) {
       features |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT;
-      /* SNORM blending on llvmpipe fails CTS - disable for now */
-      if (!util_format_is_snorm(pformat) &&
-          !util_format_is_pure_integer(pformat))
+      if (!util_format_is_pure_integer(pformat) &&
+          !(util_format_is_snorm(pformat) && !physical_device->snorm_blend))
          features |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT;
    }
 

@@ -148,8 +148,9 @@ declare_vs_input_vgprs(enum amd_gfx_level gfx_level, const struct radv_shader_in
 {
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.vertex_id);
    if (info->type != RADV_SHADER_TYPE_GS_COPY) {
-      if (info->vs.as_ls || merged_vs_tcs) {
-
+      if (gfx_level >= GFX12) {
+         ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.instance_id);
+      } else if (info->vs.as_ls || merged_vs_tcs) {
          if (gfx_level >= GFX11) {
             ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, NULL); /* user VGPR */
             ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, NULL); /* user VGPR */
@@ -275,7 +276,7 @@ declare_ps_input_vgprs(const struct radv_shader_info *info, struct radv_shader_a
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, NULL); /* fixed pt */
 
    if (args->remap_spi_ps_input)
-      ac_compact_ps_vgpr_args(&args->ac, info->ps.spi_ps_input);
+      ac_compact_ps_vgpr_args(&args->ac, info->ps.spi_ps_input_ena);
 }
 
 static void
@@ -456,11 +457,17 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    add_ud_arg(args, 1, AC_ARG_INT, &args->next_stage_pc, AC_UD_NEXT_STAGE_PC);
 
    /* VGPRs (GS) */
-   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
-   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
-   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
-   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_invocation_id);
-   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[2]);
+   if (gfx_level >= GFX12) {
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
+   } else {
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_invocation_id);
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[2]);
+   }
 
    /* Preserved SGPRs */
    ac_add_preserved(&args->ac, &args->ac.ring_offsets);
@@ -493,8 +500,11 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    ac_add_preserved(&args->ac, &args->ac.gs_vtx_offset[0]);
    ac_add_preserved(&args->ac, &args->ac.gs_vtx_offset[1]);
    ac_add_preserved(&args->ac, &args->ac.gs_prim_id);
-   ac_add_preserved(&args->ac, &args->ac.gs_invocation_id);
-   ac_add_preserved(&args->ac, &args->ac.gs_vtx_offset[2]);
+
+   if (gfx_level < GFX12) {
+      ac_add_preserved(&args->ac, &args->ac.gs_invocation_id);
+      ac_add_preserved(&args->ac, &args->ac.gs_vtx_offset[2]);
+   }
 }
 
 static void
@@ -781,11 +791,17 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             }
 
             if (previous_stage != MESA_SHADER_MESH || !pdev->mesh_fast_launch_2) {
-               ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
-               ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
-               ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
-               ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_invocation_id);
-               ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[2]);
+               if (gfx_level >= GFX12) {
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
+               } else {
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_invocation_id);
+                  ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[2]);
+               }
             }
          }
 

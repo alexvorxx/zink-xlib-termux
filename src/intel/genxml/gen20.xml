@@ -18,6 +18,24 @@
     <value name="SLM_ENCODES_256K" value="9" />
     <value name="SLM_ENCODES_384K" value="10" />
   </enum>
+  <enum name="RESOURCE_BARRIER_STAGE" prefix="RESOURCE_BARRIER_STAGE">
+    <value name="None" value="0" />
+    <value name="TOP" value="1" />
+    <value name="Color" value="2" />
+    <value name="Gpgpu" value="4" />
+    <value name="Color and Compute" value="6" />
+    <value name="Geom" value="16" />
+    <value name="Geometry and Compute" value="20" />
+    <value name="Raster" value="32" />
+    <value name="Depth" value="64" />
+    <value name="Pixel" value="128" />
+  </enum>
+  <enum name="RESOURCE_BARRIER_TYPE" prefix="RESOURCE_BARRIER_TYPE">
+    <value name="Immediate" value="0" />
+    <value name="Signal" value="1" />
+    <value name="Wait" value="2" />
+    <value name="UAV" value="3" />
+  </enum>
   <enum name="UNIFIED_COMPRESSION_FORMAT">
     <value name="CMF_R8" value="0" />
     <value name="CMF_R8_G8" value="1" />
@@ -273,6 +291,21 @@
     <field name="Compression Format" start="384" end="387" type="UNIFIED_COMPRESSION_FORMAT" />
     <field name="Mip Region Depth In Log2" start="388" end="391" type="uint" />
     <field name="Disallowlowqualityfiltering" start="447" end="447" type="bool" />
+  </struct>
+  <struct name="RESOURCE_BARRIER_BODY" length="4">
+    <field name="Wait Stage" start="0" end="11" type="RESOURCE_BARRIER_STAGE" />
+    <field name="Signal Stage" start="12" end="23" type="RESOURCE_BARRIER_STAGE" />
+    <field name="Barrier Type" start="30" end="31" type="RESOURCE_BARRIER_TYPE" />
+    <field name="L1 Dataport Cache Invalidate" start="53" end="53" type="bool" />
+    <field name="Depth Cache" start="54" end="54" type="bool" />
+    <field name="Color Cache" start="55" end="55" type="bool" />
+    <field name="L1 Dataport UAV Flush" start="56" end="56" type="bool" />
+    <field name="Texture (RO)" start="57" end="57" type="bool" />
+    <field name="State (RO)" start="58" end="58" type="bool" />
+    <field name="VF (RO)" start="59" end="59" type="bool" />
+    <field name="AMFS" start="60" end="60" type="bool" />
+    <field name="Constant Cache" start="61" end="61" type="bool" />
+    <field name="Barrier ID Address" start="67" end="127" type="address" />
   </struct>
   <instruction name="3DSTATE_BTD" bias="2" length="6" engine="render|compute">
     <field name="DWord Length" start="0" end="7" type="uint" default="4" />
@@ -965,6 +998,15 @@
     <field name="Command Cache Invalidate Enable" start="61" end="61" type="bool" />
     <field name="Address" start="66" end="111" type="address" />
     <field name="Immediate Data" start="128" end="191" type="uint" />
+  </instruction>
+  <instruction name="RESOURCE_BARRIER" bias="2" length="5" engine="render|compute">
+    <field name="DWord Length" start="0" end="7" type="uint" default="3" />
+    <field name="Predicate Enable" start="24" end="24" type="bool" />
+    <field name="Opcode" start="26" end="28" type="uint" default="3">
+      <value name="RESOURCE_BARRIER" value="3" />
+    </field>
+    <field name="Command Type" start="29" end="31" type="uint" default="5" />
+    <field name="Resource Barrier Body" start="32" end="159" type="RESOURCE_BARRIER_BODY" />
   </instruction>
   <instruction name="STATE_BYTE_STRIDE" bias="2" length="2" engine="render|compute">
     <field name="DWord Length" start="0" end="7" type="uint" default="0" />

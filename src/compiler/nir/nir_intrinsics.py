@@ -2027,9 +2027,6 @@ barrier("fence_helper_exit_agx")
 # Pointer to the buffer passing outputs VS->TCS, VS->GS, or TES->GS linkage.
 system_value("vs_output_buffer_agx", 1, bit_sizes=[64])
 
-# Indirect for the above, used for indirect draws.
-system_value("vs_output_buffer_ptr_agx", 1, bit_sizes=[64])
-
 # Mask of VS->TCS, VS->GS, or TES->GS outputs. This is modelled as a sysval
 # directly so it can be dynamic with shader objects or constant folded with
 # pipelines (including GPL)

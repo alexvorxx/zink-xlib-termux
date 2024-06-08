@@ -255,7 +255,6 @@ get_fast_clear_rect(const struct isl_device *dev,
             unreachable("Unsupported tiling format");
          }
       } else {
-         assert(aux_surf->usage == ISL_SURF_USAGE_CCS_BIT);
          /* From the Ivy Bridge PRM, Vol2 Part1 11.7 "MCS Buffer for Render
           * Target(s)", beneath the "Fast Color Clear" bullet (p327):
           *
@@ -267,24 +266,28 @@ get_fast_clear_rect(const struct isl_device *dev,
           *     requirements, an MCS buffer can be created such that it
           *     follows the requirement and covers the RT.
           *
-          * The alignment size in the table that follows is related to the
-          * alignment size that is baked into the CCS surface format but with X
-          * alignment multiplied by 16 and Y alignment multiplied by 32.
+          * The alignment size in the table that follows is a multiple of the
+          * alignment size that is baked into the CCS surface format.
           */
-         x_align = isl_format_get_layout(aux_surf->format)->bw;
-         y_align = isl_format_get_layout(aux_surf->format)->bh;
+         enum isl_format ccs_format;
+         if (ISL_GFX_VERX10(dev) == 120) {
+            assert(surf->tiling == ISL_TILING_Y0);
+            switch (isl_format_get_layout(surf->format)->bpb) {
+            case   8: ccs_format = ISL_FORMAT_GFX12_CCS_8BPP_Y0;   break;
+            case  16: ccs_format = ISL_FORMAT_GFX12_CCS_16BPP_Y0;  break;
+            case  32: ccs_format = ISL_FORMAT_GFX12_CCS_32BPP_Y0;  break;
+            case  64: ccs_format = ISL_FORMAT_GFX12_CCS_64BPP_Y0;  break;
+            case 128: ccs_format = ISL_FORMAT_GFX12_CCS_128BPP_Y0; break;
+            default:  unreachable("Invalid surface bpb for fast clearing");
+            }
+         } else {
+            assert(aux_surf->usage == ISL_SURF_USAGE_CCS_BIT);
+            ccs_format = aux_surf->format;
+         }
 
-         x_align *= 16;
-
-         /* The line alignment requirement for Y-tiled is halved at SKL and again
-          * at TGL.
-          */
-         if (dev->info->ver >= 12)
-            y_align *= 8;
-         else if (dev->info->ver >= 9)
-            y_align *= 16;
-         else
-            y_align *= 32;
+         x_align = isl_format_get_layout(ccs_format)->bw * 16;
+         y_align = isl_format_get_layout(ccs_format)->bh * 32 /
+                   isl_format_get_layout(ccs_format)->bpb;
 
          /* From the Ivy Bridge PRM, Vol2 Part1 11.7 "MCS Buffer for Render
           * Target(s)", beneath the "Fast Color Clear" bullet (p327):

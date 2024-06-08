@@ -361,9 +361,6 @@ uint32_t
 v3dX(clamp_for_format_and_type)(uint32_t rt_type,
                                 VkFormat vk_format);
 
-#define V3D42_CLIPPER_XY_GRANULARITY 256.0f
-#define V3D71_CLIPPER_XY_GRANULARITY 64.0f
-
 uint32_t
 v3dX(clamp_for_format_and_type)(uint32_t rt_type,
                                 VkFormat vk_format);

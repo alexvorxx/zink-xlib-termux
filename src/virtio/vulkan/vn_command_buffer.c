@@ -1729,18 +1729,27 @@ vn_cmd_get_query_count(VkCommandBuffer cmd_handle)
              : 1;
 }
 
-static inline void
+static void
 vn_cmd_record_query(VkCommandBuffer cmd_handle,
                     VkQueryPool pool_handle,
                     uint32_t query,
                     uint32_t query_count,
                     bool copy)
 {
+   struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
    struct vn_query_pool *query_pool = vn_query_pool_from_handle(pool_handle);
-   if (!query_pool->fb_buf)
+
+   if (unlikely(VN_PERF(NO_QUERY_FEEDBACK)))
       return;
 
-   struct vn_command_buffer *cmd = vn_command_buffer_from_handle(cmd_handle);
+   if (unlikely(!query_pool->fb_buf)) {
+      if (vn_query_feedback_buffer_init_once(cmd->pool->device, query_pool) !=
+          VK_SUCCESS) {
+         cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
+         return;
+      }
+   }
+
    struct vn_cmd_query_record *record = vn_cmd_pool_alloc_query_record(
       cmd->pool, query_pool, query, query_count, copy);
    if (!record) {

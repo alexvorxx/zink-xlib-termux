@@ -1003,7 +1003,9 @@ UINT_32 Gfx11Lib::GetMetaBlkSize(
                 if ((pipeRotateLog2 > 0)  &&
                     (elemLog2 == 4)       &&
                     (numSamplesLog2 == 3) &&
-                    (IsZOrderSwizzle(swizzleMode) || (GetEffectiveNumPipes() > 3)))
+                    (IsZOrderSwizzle(swizzleMode) ||
+                     IsRtOptSwizzle(swizzleMode)  ||
+                     (GetEffectiveNumPipes() > 3)))
                 {
                     overlapLog2++;
                 }

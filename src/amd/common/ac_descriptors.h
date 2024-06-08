@@ -66,6 +66,43 @@ ac_build_fmask_descriptor(const enum amd_gfx_level gfx_level,
                           const struct ac_fmask_state *state,
                           uint32_t desc[8]);
 
+struct ac_texture_state {
+   struct radeon_surf *surf;
+   enum pipe_format format;
+   enum pipe_format img_format;
+   uint32_t width : 17;
+   uint32_t height : 17;
+   uint32_t depth : 15;
+   uint32_t type : 4;
+   enum pipe_swizzle swizzle[4];
+   uint32_t num_samples : 5;
+   uint32_t num_storage_samples : 5;
+   uint32_t first_level : 4;
+   uint32_t last_level : 5;
+   uint32_t num_levels : 6;
+   uint32_t first_layer : 14;
+   uint32_t last_layer : 13;
+   float min_lod;
+
+   struct {
+      uint32_t uav3d : 1;
+      uint32_t upgraded_depth : 1;
+   } gfx10;
+
+   struct {
+      const struct ac_surf_nbc_view *nbc_view;
+   } gfx9;
+
+   uint32_t dcc_enabled : 1;
+   uint32_t tc_compat_htile_enabled : 1;
+   uint32_t aniso_single_level : 1;
+};
+
+void
+ac_build_texture_descriptor(const struct radeon_info *info,
+                            const struct ac_texture_state *state,
+                            uint32_t desc[8]);
+
 uint32_t
 ac_tile_mode_index(const struct radeon_surf *surf,
                    unsigned level,

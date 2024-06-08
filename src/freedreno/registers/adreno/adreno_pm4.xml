@@ -98,6 +98,13 @@ xsi:schemaLocation="https://gitlab.freedesktop.org/freedreno/ rules-fd.xsd">
 	<value name="BLIT" value="30" variants="A5XX-"/>
 
 	<doc>
+	Flip between the primary and secondary LRZ buffers. This is used
+	for concurrent binning, so that BV can write to one buffer while
+	BR reads from the other.
+	</doc>
+	<value name="LRZ_FLIP_BUFFER" value="36" variants="A7XX"/>
+
+	<doc>
 		Clears based on GRAS_LRZ_CNTL configuration, could clear
 		fast-clear buffer or LRZ direction.
 		LRZ direction is stored at lrz_fc_offset + 0x200, has 1 byte which

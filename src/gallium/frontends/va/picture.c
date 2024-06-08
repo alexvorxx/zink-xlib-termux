@@ -379,9 +379,6 @@ static VAStatus
 handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
 {
    enum pipe_video_format format = u_reduce_video_profile(context->templat.profile);
-   unsigned num_buffers = 0;
-   void * const *buffers[3];
-   unsigned sizes[3];
    static const uint8_t start_code_h264[] = { 0x00, 0x00, 0x01 };
    static const uint8_t start_code_h265[] = { 0x00, 0x00, 0x01 };
    static const uint8_t start_code_vc1[] = { 0x00, 0x00, 0x01, 0x0d };
@@ -390,6 +387,16 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
    if (!context->decoder)
       return VA_STATUS_ERROR_INVALID_CONTEXT;
 
+   if (context->bs.allocated_size - context->bs.num_buffers < 3) {
+      context->bs.buffers = REALLOC(context->bs.buffers,
+                                    context->bs.allocated_size * sizeof(*context->bs.buffers),
+                                    (context->bs.allocated_size + 3) * sizeof(*context->bs.buffers));
+      context->bs.sizes = REALLOC(context->bs.sizes,
+                                  context->bs.allocated_size * sizeof(*context->bs.sizes),
+                                  (context->bs.allocated_size + 3) * sizeof(*context->bs.sizes));
+      context->bs.allocated_size += 3;
+   }
+
    format = u_reduce_video_profile(context->templat.profile);
    if (!context->desc.base.protected_playback) {
       switch (format) {
@@ -397,15 +404,15 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
          if (bufHasStartcode(buf, 0x000001, 24))
             break;
 
-         buffers[num_buffers] = (void *const)&start_code_h264;
-         sizes[num_buffers++] = sizeof(start_code_h264);
+         context->bs.buffers[context->bs.num_buffers] = (void *const)&start_code_h264;
+         context->bs.sizes[context->bs.num_buffers++] = sizeof(start_code_h264);
          break;
       case PIPE_VIDEO_FORMAT_HEVC:
          if (bufHasStartcode(buf, 0x000001, 24))
             break;
 
-         buffers[num_buffers] = (void *const)&start_code_h265;
-         sizes[num_buffers++] = sizeof(start_code_h265);
+         context->bs.buffers[context->bs.num_buffers] = (void *const)&start_code_h265;
+         context->bs.sizes[context->bs.num_buffers++] = sizeof(start_code_h265);
          break;
       case PIPE_VIDEO_FORMAT_VC1:
          if (bufHasStartcode(buf, 0x0000010d, 32) ||
@@ -414,8 +421,8 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
             break;
 
          if (context->decoder->profile == PIPE_VIDEO_PROFILE_VC1_ADVANCED) {
-            buffers[num_buffers] = (void *const)&start_code_vc1;
-            sizes[num_buffers++] = sizeof(start_code_vc1);
+            context->bs.buffers[context->bs.num_buffers] = (void *const)&start_code_vc1;
+            context->bs.sizes[context->bs.num_buffers++] = sizeof(start_code_vc1);
          }
          break;
       case PIPE_VIDEO_FORMAT_MPEG4:
@@ -423,16 +430,16 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
             break;
 
          vlVaDecoderFixMPEG4Startcode(context);
-         buffers[num_buffers] = (void *)context->mpeg4.start_code;
-         sizes[num_buffers++] = context->mpeg4.start_code_size;
+         context->bs.buffers[context->bs.num_buffers] = (void *)context->mpeg4.start_code;
+         context->bs.sizes[context->bs.num_buffers++] = context->mpeg4.start_code_size;
          break;
       case PIPE_VIDEO_FORMAT_JPEG:
          if (bufHasStartcode(buf, 0xffd8ffdb, 32))
             break;
 
          vlVaGetJpegSliceHeader(context);
-         buffers[num_buffers] = (void *)context->mjpeg.slice_header;
-         sizes[num_buffers++] = context->mjpeg.slice_header_size;
+         context->bs.buffers[context->bs.num_buffers] = (void *)context->mjpeg.slice_header;
+         context->bs.sizes[context->bs.num_buffers++] = context->mjpeg.slice_header_size;
          break;
       case PIPE_VIDEO_FORMAT_VP9:
          if (false == context->desc.base.protected_playback)
@@ -445,13 +452,12 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
       }
    }
 
-   buffers[num_buffers] = buf->data;
-   sizes[num_buffers] = buf->size;
-   ++num_buffers;
+   context->bs.buffers[context->bs.num_buffers] = buf->data;
+   context->bs.sizes[context->bs.num_buffers++] = buf->size;
 
    if (format == PIPE_VIDEO_FORMAT_JPEG) {
-      buffers[num_buffers] = (void *const)&eoi_jpeg;
-      sizes[num_buffers++] = sizeof(eoi_jpeg);
+      context->bs.buffers[context->bs.num_buffers] = (void *const)&eoi_jpeg;
+      context->bs.sizes[context->bs.num_buffers++] = sizeof(eoi_jpeg);
    }
 
    if (context->needs_begin_frame) {
@@ -459,8 +465,6 @@ handleVASliceDataBufferType(vlVaContext *context, vlVaBuffer *buf)
          &context->desc.base);
       context->needs_begin_frame = false;
    }
-   context->decoder->decode_bitstream(context->decoder, context->target, &context->desc.base,
-      num_buffers, (const void * const*)buffers, sizes);
    return VA_STATUS_SUCCESS;
 }
 
@@ -1072,6 +1076,13 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
          break;
       }
    }
+
+   if (context->decoder->entrypoint == PIPE_VIDEO_ENTRYPOINT_BITSTREAM && context->bs.num_buffers) {
+      context->decoder->decode_bitstream(context->decoder, context->target, &context->desc.base,
+         context->bs.num_buffers, (const void * const*)context->bs.buffers, context->bs.sizes);
+      context->bs.num_buffers = 0;
+   }
+
    mtx_unlock(&drv->mutex);
 
    return vaStatus;

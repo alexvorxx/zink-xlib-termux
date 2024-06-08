@@ -1288,6 +1288,7 @@ struct anv_instance {
     bool                                        has_fake_sparse;
     bool                                        disable_fcv;
     bool                                        compression_control_enabled;
+    bool                                        anv_fake_nonlocal_memory;
 
     /* HW workarounds */
     bool                                        no_16bit;
@@ -1451,6 +1452,7 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_PS_EXTRA,
    ANV_GFX_STATE_PMA_FIX, /* Fake state to implement workaround */
    ANV_GFX_STATE_WA_18019816803, /* Fake state to implement workaround */
+   ANV_GFX_STATE_WA_14018283232, /* Fake state to implement workaround */
    ANV_GFX_STATE_TBIMR_TILE_PASS_INFO,
 
    ANV_GFX_STATE_MAX,
@@ -1744,6 +1746,16 @@ struct anv_gfx_dynamic_state {
 
    bool pma_fix;
 
+   /**
+    * DEPTH and STENCIL attachment write state for Wa_18019816803.
+    */
+   bool ds_write_state;
+
+   /**
+    * Toggle tracking for Wa_14018283232.
+    */
+   bool wa_14018283232_toggle;
+
    BITSET_DECLARE(dirty, ANV_GFX_STATE_MAX);
 };
 
@@ -1815,6 +1827,10 @@ struct anv_device {
     struct anv_bo_pool                          batch_bo_pool;
     /** Memory pool for utrace timestamp buffers */
     struct anv_bo_pool                          utrace_bo_pool;
+    /**
+     * Size of the timestamp captured for utrace.
+     */
+    uint32_t                                     utrace_timestamp_size;
     /** Memory pool for BVH build buffers */
     struct anv_bo_pool                          bvh_bo_pool;
 
@@ -3728,11 +3744,6 @@ struct anv_cmd_graphics_state {
    bool alpha_blend_zero;
 
    /**
-    * DEPTH and STENCIL attachment write state for Wa_18019816803.
-    */
-   bool ds_write_state;
-
-   /**
     * State tracking for Wa_18020335297.
     */
    bool                                         viewport_set;
@@ -3903,6 +3914,20 @@ struct anv_cmd_state {
     * A buffer used for spill/fill of ray queries.
     */
    struct anv_bo *                              ray_query_shadow_bo;
+
+   /** Pointer to the last emitted COMPUTE_WALKER.
+    *
+    * This is used to edit the instruction post emission to replace the "Post
+    * Sync" field for utrace timestamp emission.
+    */
+   void                                        *last_compute_walker;
+
+   /** Pointer to the last emitted EXECUTE_INDIRECT_DISPATCH.
+    *
+    * This is used to edit the instruction post emission to replace the "Post
+    * Sync" field for utrace timestamp emission.
+    */
+   void                                        *last_indirect_dispatch;
 };
 
 #define ANV_MIN_CMD_BUFFER_BATCH_SIZE 8192
@@ -4052,20 +4077,6 @@ struct anv_cmd_buffer {
     * Structure holding tracepoints recorded in the command buffer.
     */
    struct u_trace                               trace;
-
-   /** Pointer to the last emitted COMPUTE_WALKER.
-    *
-    * This is used to edit the instruction post emission to replace the "Post
-    * Sync" field for utrace timestamp emission.
-    */
-   void                                        *last_compute_walker;
-
-   /** Pointer to the last emitted EXECUTE_INDIRECT_DISPATCH.
-    *
-    * This is used to edit the instruction post emission to replace the "Post
-    * Sync" field for utrace timestamp emission.
-    */
-   void                                        *last_indirect_dispatch;
 
    struct {
       struct anv_video_session *vid;
@@ -4494,9 +4505,9 @@ struct anv_pipeline {
    void *                                       mem_ctx;
 
    enum anv_pipeline_type                       type;
-   VkPipelineCreateFlags                        flags;
+   VkPipelineCreateFlags2KHR                    flags;
 
-   VkPipelineCreateFlags2KHR                    active_stages;
+   VkShaderStageFlags                           active_stages;
 
    uint32_t                                     ray_queries;
 
@@ -5894,7 +5905,6 @@ struct anv_sampler {
    struct anv_state             custom_border_color_db;
 };
 
-#define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
 
 struct anv_query_pool {
    struct vk_query_pool                         vk;
@@ -6022,7 +6032,11 @@ void anv_apply_per_prim_attr_wa(struct nir_shader *ms_nir,
 /* Use to emit a series of memcpy operations */
 struct anv_memcpy_state {
    struct anv_device *device;
+   struct anv_cmd_buffer *cmd_buffer;
    struct anv_batch *batch;
+
+   /* Configuration programmed by the memcpy operation */
+   struct intel_urb_config urb_cfg;
 
    struct anv_vb_cache_range vb_bound;
    struct anv_vb_cache_range vb_dirty;

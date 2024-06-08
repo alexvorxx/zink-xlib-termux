@@ -345,25 +345,73 @@ is_first_5_bits_uge_2(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
    return true;
 }
 
+/**
+ * Is this a constant that could be either int16_t or uint16_t after applying
+ * a scale factor?
+ */
+static inline bool
+is_16_bits_with_scale(const nir_alu_instr *instr,
+                      unsigned src, unsigned num_components,
+                      const uint8_t *swizzle, int scale)
+{
+   /* only constant srcs: */
+   if (!nir_src_is_const(instr->src[src].src))
+      return false;
+
+   /* All elements must be representable as int16_t or uint16_t. */
+   bool must_be_signed = false;
+   bool must_be_unsigned = false;
+
+   for (unsigned i = 0; i < num_components; i++) {
+      const int64_t val =
+         scale * nir_src_comp_as_int(instr->src[src].src, swizzle[i]);
+
+      if (val > 0xffff || val < -0x8000)
+         return false;
+
+      if (val < 0) {
+         if (must_be_unsigned)
+            return false;
+
+         must_be_signed = true;
+      }
+
+      if (val > 0x7fff) {
+         if (must_be_signed)
+            return false;
+
+         must_be_unsigned = true;
+      }
+   }
+
+   return true;
+}
+
 /** Is this a constant that could be either int16_t or uint16_t? */
 static inline bool
 is_16_bits(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
            unsigned src, unsigned num_components,
            const uint8_t *swizzle)
 {
-   /* only constant srcs: */
-   if (!nir_src_is_const(instr->src[src].src))
-      return false;
+   return is_16_bits_with_scale(instr, src, num_components, swizzle, 1);
+}
 
-   for (unsigned i = 0; i < num_components; i++) {
-      const int64_t val =
-         nir_src_comp_as_int(instr->src[src].src, swizzle[i]);
+/** Like is_16_bits, but could 2 times the constant fit in 16 bits? */
+static inline bool
+is_2x_16_bits(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
+              unsigned src, unsigned num_components,
+              const uint8_t *swizzle)
+{
+   return is_16_bits_with_scale(instr, src, num_components, swizzle, 2);
+}
 
-      if (val > 0xffff || val < -0x8000)
-         return false;
-   }
-
-   return true;
+/** Like is_16_bits, but could -2 times the constant fit in 16 bits? */
+static inline bool
+is_neg2x_16_bits(UNUSED struct hash_table *ht, const nir_alu_instr *instr,
+                 unsigned src, unsigned num_components,
+                 const uint8_t *swizzle)
+{
+   return is_16_bits_with_scale(instr, src, num_components, swizzle, -2);
 }
 
 static inline bool

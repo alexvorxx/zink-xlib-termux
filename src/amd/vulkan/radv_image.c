@@ -72,8 +72,7 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device, const VkImageCrea
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   /* TC-compat HTILE is only available for GFX8+. */
-   if (pdev->info.gfx_level < GFX8)
+   if (!pdev->info.has_tc_compatible_htile)
       return false;
 
    /* TC-compat HTILE looks broken on Tonga (and Iceland is the same design) and the documented bug
@@ -382,6 +381,9 @@ radv_use_htile_for_image(const struct radv_device *device, const struct radv_ima
 
    if (instance->debug_flags & RADV_DEBUG_NO_HIZ ||
        (compression && compression->flags == VK_IMAGE_COMPRESSION_DISABLED_EXT))
+      return false;
+
+   if (image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT)
       return false;
 
    /* TODO:
@@ -924,7 +926,9 @@ radv_image_is_l2_coherent(const struct radv_device *device, const struct radv_im
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   if (pdev->info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX12) {
+      return true; /* Everything is coherent with TC L2. */
+   } else if (pdev->info.gfx_level >= GFX10) {
       return !pdev->info.tcc_rb_non_coherent && !radv_image_is_pipe_misaligned(device, image);
    } else if (pdev->info.gfx_level == GFX9) {
       if (image->vk.samples == 1 &&

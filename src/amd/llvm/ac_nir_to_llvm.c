@@ -555,12 +555,6 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_fneg:
       src[0] = ac_to_float(&ctx->ac, src[0]);
       result = LLVMBuildFNeg(ctx->ac.builder, src[0], "");
-      if (ctx->ac.float_mode == AC_FLOAT_MODE_DENORM_FLUSH_TO_ZERO) {
-         /* fneg will be optimized by backend compiler with sign
-          * bit removed via XOR. This is probably a LLVM bug.
-          */
-         result = ac_build_canonicalize(&ctx->ac, result, instr->def.bit_size);
-      }
       break;
    case nir_op_inot:
       result = LLVMBuildNot(ctx->ac.builder, src[0], "");
@@ -704,12 +698,6 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_fabs:
       result =
          emit_intrin_1f_param(&ctx->ac, "llvm.fabs", ac_to_float_type(&ctx->ac, def_type), src[0]);
-      if (ctx->ac.float_mode == AC_FLOAT_MODE_DENORM_FLUSH_TO_ZERO) {
-         /* fabs will be optimized by backend compiler with sign
-          * bit removed via AND.
-          */
-         result = ac_build_canonicalize(&ctx->ac, result, instr->def.bit_size);
-      }
       break;
    case nir_op_fsat:
       src[0] = ac_to_float(&ctx->ac, src[0]);
@@ -1247,6 +1235,11 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    }
 
    if (result) {
+      LLVMTypeKind type_kind = LLVMGetTypeKind(LLVMTypeOf(result));
+      bool is_float = type_kind == LLVMHalfTypeKind || type_kind == LLVMFloatTypeKind || type_kind == LLVMDoubleTypeKind;
+      if (ctx->ac.float_mode == AC_FLOAT_MODE_DENORM_FLUSH_TO_ZERO && is_float)
+         result = ac_build_canonicalize(&ctx->ac, result, instr->def.bit_size);
+
       result = ac_to_integer_or_pointer(&ctx->ac, result);
       ctx->ssa_defs[instr->def.index] = result;
    }
@@ -1527,6 +1520,7 @@ static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_int
    LLVMValueRef ptr, addr;
    LLVMValueRef src0 = get_src(ctx, instr->src[0]);
    unsigned index = nir_intrinsic_base(instr);
+   assert(instr->def.bit_size >= 32);
 
    addr = LLVMConstInt(ctx->ac.i32, index, 0);
    addr = LLVMBuildAdd(ctx->ac.builder, addr, src0, "");
@@ -1534,7 +1528,7 @@ static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_int
    /* Load constant values from user SGPRS when possible, otherwise
     * fallback to the default path that loads directly from memory.
     */
-   if (LLVMIsConstant(src0) && instr->def.bit_size >= 32) {
+   if (LLVMIsConstant(src0)) {
       unsigned count = instr->def.num_components;
       unsigned offset = index;
 
@@ -1561,56 +1555,6 @@ static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_int
 
    struct ac_llvm_pointer pc = ac_get_ptr_arg(&ctx->ac, ctx->args, ctx->args->push_constants);
    ptr = LLVMBuildGEP2(ctx->ac.builder, pc.t, pc.v, &addr, 1, "");
-
-   if (instr->def.bit_size == 8) {
-      unsigned load_dwords = instr->def.num_components > 1 ? 2 : 1;
-      LLVMTypeRef vec_type = LLVMVectorType(ctx->ac.i8, 4 * load_dwords);
-      ptr = ac_cast_ptr(&ctx->ac, ptr, vec_type);
-      LLVMValueRef res = LLVMBuildLoad2(ctx->ac.builder, vec_type, ptr, "");
-
-      LLVMValueRef params[3];
-      if (load_dwords > 1) {
-         LLVMValueRef res_vec = LLVMBuildBitCast(ctx->ac.builder, res, ctx->ac.v2i32, "");
-         params[0] = LLVMBuildExtractElement(ctx->ac.builder, res_vec,
-                                             ctx->ac.i32_1, "");
-         params[1] = LLVMBuildExtractElement(ctx->ac.builder, res_vec,
-                                             ctx->ac.i32_0, "");
-      } else {
-         res = LLVMBuildBitCast(ctx->ac.builder, res, ctx->ac.i32, "");
-         params[0] = ctx->ac.i32_0;
-         params[1] = res;
-      }
-      params[2] = addr;
-      res = ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.alignbyte", ctx->ac.i32, params, 3, 0);
-
-      res = LLVMBuildTrunc(
-         ctx->ac.builder, res,
-         LLVMIntTypeInContext(ctx->ac.context, instr->def.num_components * 8), "");
-      if (instr->def.num_components > 1)
-         res = LLVMBuildBitCast(ctx->ac.builder, res,
-                                LLVMVectorType(ctx->ac.i8, instr->def.num_components), "");
-      return res;
-   } else if (instr->def.bit_size == 16) {
-      unsigned load_dwords = instr->def.num_components / 2 + 1;
-      LLVMTypeRef vec_type = LLVMVectorType(ctx->ac.i16, 2 * load_dwords);
-      ptr = ac_cast_ptr(&ctx->ac, ptr, vec_type);
-      LLVMValueRef res = LLVMBuildLoad2(ctx->ac.builder, vec_type, ptr, "");
-      res = LLVMBuildBitCast(ctx->ac.builder, res, vec_type, "");
-      LLVMValueRef cond = LLVMBuildLShr(ctx->ac.builder, addr, ctx->ac.i32_1, "");
-      cond = LLVMBuildTrunc(ctx->ac.builder, cond, ctx->ac.i1, "");
-      LLVMValueRef mask[] = {
-         ctx->ac.i32_0, ctx->ac.i32_1,
-         LLVMConstInt(ctx->ac.i32, 2, false), LLVMConstInt(ctx->ac.i32, 3, false),
-         LLVMConstInt(ctx->ac.i32, 4, false)};
-      LLVMValueRef swizzle_aligned = LLVMConstVector(&mask[0], instr->def.num_components);
-      LLVMValueRef swizzle_unaligned = LLVMConstVector(&mask[1], instr->def.num_components);
-      LLVMValueRef shuffle_aligned =
-         LLVMBuildShuffleVector(ctx->ac.builder, res, res, swizzle_aligned, "");
-      LLVMValueRef shuffle_unaligned =
-         LLVMBuildShuffleVector(ctx->ac.builder, res, res, swizzle_unaligned, "");
-      res = LLVMBuildSelect(ctx->ac.builder, cond, shuffle_unaligned, shuffle_aligned, "");
-      return LLVMBuildBitCast(ctx->ac.builder, res, get_def_type(ctx, &instr->def), "");
-   }
 
    LLVMTypeRef ptr_type = get_def_type(ctx, &instr->def);
    ptr = ac_cast_ptr(&ctx->ac, ptr, ptr_type);
@@ -1883,7 +1827,7 @@ static LLVMValueRef visit_atomic_ssbo(struct ac_nir_context *ctx, nir_intrinsic_
       }
 
       unsigned cache_flags =
-         ac_get_hw_cache_flags(ctx->ac.info,
+         ac_get_hw_cache_flags(ctx->ac.gfx_level,
 			       ac_get_mem_access_flags(instr) | ACCESS_TYPE_ATOMIC).value;
 
       params[arg_count++] = data;
@@ -2506,7 +2450,7 @@ static LLVMValueRef visit_image_atomic(struct ac_nir_context *ctx, const nir_int
          LLVMTypeRef data_type = LLVMTypeOf(params[0]);
          char type[8];
          unsigned cache_flags =
-            ac_get_hw_cache_flags(ctx->ac.info,
+            ac_get_hw_cache_flags(ctx->ac.gfx_level,
 				  ac_get_mem_access_flags(instr) | ACCESS_TYPE_ATOMIC).value;
 
          params[param_count++] = ctx->ac.i32_0; /* soffset */
@@ -3123,6 +3067,9 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
             ac_get_ptr_arg(&ctx->ac, ctx->args, ctx->args->num_work_groups), ctx->ac.i32_0);
       }
       break;
+   case nir_intrinsic_load_subgroup_id:
+      result = visit_load_subgroup_id(ctx);
+      break;
    case nir_intrinsic_load_local_invocation_index:
       result = visit_load_local_invocation_index(ctx);
       break;
@@ -3299,10 +3246,14 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    }
    case nir_intrinsic_vote_all: {
       result = ac_build_vote_all(&ctx->ac, get_src(ctx, instr->src[0]));
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    }
    case nir_intrinsic_vote_any: {
       result = ac_build_vote_any(&ctx->ac, get_src(ctx, instr->src[0]));
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    }
    case nir_intrinsic_quad_vote_any: {

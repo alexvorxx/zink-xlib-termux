@@ -154,5 +154,5 @@ libd3d12 = static_library(
 
 driver_d3d12 = declare_dependency(
   compile_args : '-DGALLIUM_D3D12',
-  link_with : [libd3d12, libgalliumvl],
+  link_with : [libd3d12],
 )

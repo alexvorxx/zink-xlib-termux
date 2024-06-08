@@ -246,13 +246,11 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                         cl_aligned_u32(&uniforms, gallium_uniforms[data]);
                         break;
                 case QUNIFORM_VIEWPORT_X_SCALE: {
-                        float clipper_xy_granularity = V3DV_X(devinfo, CLIPPER_XY_GRANULARITY);
-                        cl_aligned_f(&uniforms, v3d->viewport.scale[0] * clipper_xy_granularity);
+                        cl_aligned_f(&uniforms, v3d->viewport.scale[0] * devinfo->clipper_xy_granularity);
                         break;
                 }
                 case QUNIFORM_VIEWPORT_Y_SCALE: {
-                        float clipper_xy_granularity = V3DV_X(devinfo, CLIPPER_XY_GRANULARITY);
-                        cl_aligned_f(&uniforms, v3d->viewport.scale[1] * clipper_xy_granularity);
+                        cl_aligned_f(&uniforms, v3d->viewport.scale[1] * devinfo->clipper_xy_granularity);
                         break;
                 }
                 case QUNIFORM_VIEWPORT_Z_OFFSET:
@@ -374,6 +372,11 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                                        v3d->compute_num_workgroups[data]);
                         break;
 
+                case QUNIFORM_WORK_GROUP_SIZE:
+                        cl_aligned_u32(&uniforms,
+                                       v3d->compute_workgroup_size[data]);
+                        break;
+
                 case QUNIFORM_SHARED_OFFSET:
                         cl_aligned_reloc(&job->indirect, &uniforms,
                                          v3d->compute_shared_memory, 0);
@@ -466,6 +469,7 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                         break;
 
                 case QUNIFORM_NUM_WORK_GROUPS:
+                case QUNIFORM_WORK_GROUP_SIZE:
                 case QUNIFORM_SHARED_OFFSET:
                         /* Compute always recalculates uniforms. */
                         break;

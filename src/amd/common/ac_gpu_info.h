@@ -85,6 +85,7 @@ struct radeon_info {
    bool has_clear_state;
    bool has_distributed_tess;
    bool has_dcc_constant_encode;
+   bool has_tc_compatible_htile;
    bool has_etc_support;
    bool has_rbplus;     /* if RB+ registers exist */
    bool rbplus_allowed; /* if RB+ is allowed */

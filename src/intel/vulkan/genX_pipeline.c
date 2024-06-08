@@ -27,6 +27,7 @@
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
+#include "common/intel_compute_slm.h"
 #include "common/intel_genX_state_brw.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
@@ -1770,6 +1771,7 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
    anv_pipeline_emit(pipeline, final.task_control,
                      GENX(3DSTATE_TASK_CONTROL), tc) {
       tc.TaskShaderEnable = true;
+      tc.StatisticsEnable = true;
       tc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base.base, MESA_SHADER_TASK, task_bin);
       tc.MaximumNumberofThreadGroups = 511;
@@ -1792,9 +1794,12 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
 
       task.NumberofBarriers                  = task_prog_data->base.uses_barrier;
       task.SharedLocalMemorySize             =
-         encode_slm_size(GFX_VER, task_prog_data->base.base.total_shared);
+         intel_compute_slm_encode_size(GFX_VER, task_prog_data->base.base.total_shared);
       task.PreferredSLMAllocationSize        =
-         preferred_slm_allocation_size(devinfo);
+         intel_compute_preferred_slm_calc_encode_size(devinfo,
+                                                      task_prog_data->base.base.total_shared,
+                                                      task_dispatch.group_size,
+                                                      task_dispatch.simd_size);
 
       /*
        * 3DSTATE_TASK_SHADER_DATA.InlineData[0:1] will be used for an address
@@ -1827,6 +1832,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
    anv_pipeline_emit(pipeline, final.mesh_control,
                      GENX(3DSTATE_MESH_CONTROL), mc) {
       mc.MeshShaderEnable = true;
+      mc.StatisticsEnable = true;
       mc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base.base, MESA_SHADER_MESH, mesh_bin);
       mc.MaximumNumberofThreadGroups = 511;
@@ -1873,9 +1879,12 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
 
       mesh.NumberofBarriers                  = mesh_prog_data->base.uses_barrier;
       mesh.SharedLocalMemorySize             =
-         encode_slm_size(GFX_VER, mesh_prog_data->base.base.total_shared);
+         intel_compute_slm_encode_size(GFX_VER, mesh_prog_data->base.base.total_shared);
       mesh.PreferredSLMAllocationSize        =
-         preferred_slm_allocation_size(devinfo);
+         intel_compute_preferred_slm_calc_encode_size(devinfo,
+                                                      mesh_prog_data->base.base.total_shared,
+                                                      mesh_dispatch.group_size,
+                                                      mesh_dispatch.simd_size);
 
       /*
        * 3DSTATE_MESH_SHADER_DATA.InlineData[0:1] will be used for an address
@@ -2080,7 +2089,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
          0 : 1 + MIN2(pipeline->cs->bind_map.surface_count, 30),
       .BarrierEnable          = cs_prog_data->uses_barrier,
       .SharedLocalMemorySize  =
-         encode_slm_size(GFX_VER, cs_prog_data->base.total_shared),
+         intel_compute_slm_encode_size(GFX_VER, cs_prog_data->base.total_shared),
 
       .ConstantURBEntryReadOffset = 0,
       .ConstantURBEntryReadLength = cs_prog_data->push.per_thread.regs,

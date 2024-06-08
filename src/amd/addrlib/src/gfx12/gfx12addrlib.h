@@ -97,6 +97,10 @@ protected:
         return m_numEquations;
     }
 
+    virtual ADDR_E_RETURNCODE HwlGetPossibleSwizzleModes(
+        const ADDR3_GET_POSSIBLE_SWIZZLE_MODE_INPUT*   pIn,
+        ADDR3_GET_POSSIBLE_SWIZZLE_MODE_OUTPUT*        pOut) const override;
+
     virtual ChipFamily HwlConvertChipFamily(UINT_32 uChipFamily, UINT_32 uChipRevision) override;
 
 protected:
@@ -110,6 +114,25 @@ protected:
 
 private:
     static const SwizzleModeFlags SwizzleModeTable[ADDR3_MAX_TYPE];
+
+    // Number of unique swizzle patterns (one entry per swizzle mode + MSAA + bpp configuration)
+    static const UINT_32 NumSwizzlePatterns  = 19 * MaxElementBytesLog2;
+
+    // Equation table
+    ADDR_EQUATION        m_equationTable[NumSwizzlePatterns];
+
+    /**
+    ************************************************************************************************************************
+    * @brief Bitmasks for swizzle mode determination on GFX12
+    ************************************************************************************************************************
+    */
+    static const UINT_32 Blk256KBSwModeMask = (1u << ADDR3_256KB_2D)  |
+                                              (1u << ADDR3_256KB_3D);
+    static const UINT_32 Blk64KBSwModeMask  = (1u << ADDR3_64KB_2D)   |
+                                              (1u << ADDR3_64KB_3D);
+    static const UINT_32 Blk4KBSwModeMask   = (1u << ADDR3_4KB_2D)    |
+                                              (1u << ADDR3_4KB_3D);
+    static const UINT_32 Blk256BSwModeMask  = (1u << ADDR3_256B_2D);
 
     virtual ADDR_E_RETURNCODE HwlComputePipeBankXor(
         const ADDR3_COMPUTE_PIPEBANKXOR_INPUT* pIn,

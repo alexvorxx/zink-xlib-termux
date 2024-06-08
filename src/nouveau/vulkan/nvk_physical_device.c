@@ -228,6 +228,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier = true,
       .EXT_shader_object = true,
+      .EXT_shader_replicated_composites = true,
       .EXT_shader_subgroup_ballot = true,
       .EXT_shader_subgroup_vote = true,
       .EXT_shader_viewport_index_layer = info->cls_eng3d >= MAXWELL_B,
@@ -597,6 +598,9 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
 
       /* VK_KHR_shader_subgroup_uniform_control_flow */
       .shaderSubgroupUniformControlFlow = nvk_use_nak(info),

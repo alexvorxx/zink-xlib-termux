@@ -902,7 +902,12 @@ gather_shader_info_fs(const struct radv_device *device, const nir_shader *nir,
    info->ps.pops_is_per_sample =
       info->ps.pops && (nir->info.fs.sample_interlock_ordered || nir->info.fs.sample_interlock_unordered);
 
-   info->ps.spi_ps_input = radv_compute_spi_ps_input(gfx_state, info);
+   info->ps.spi_ps_input_ena = radv_compute_spi_ps_input(pdev, gfx_state, info);
+   info->ps.spi_ps_input_addr = info->ps.spi_ps_input_ena;
+   if (pdev->info.gfx_level >= GFX12) {
+      /* Only SPI_PS_INPUT_ENA has this bit on GFX12. */
+      info->ps.spi_ps_input_addr &= C_02865C_COVERAGE_TO_SHADER_SELECT;
+   }
 
    info->has_epilog = gfx_state->ps.has_epilog && info->ps.colors_written;
 

@@ -9,6 +9,7 @@
 #include "util/mesa-sha1.h"
 #include "sid.h"
 #include "nir.h"
+#include "aco_interface.h"
 
 struct si_shader_profile si_shader_profiles[] =
 {
@@ -619,6 +620,8 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
 {
    memset(info, 0, sizeof(*info));
    info->base = nir->info;
+   info->base.use_aco_amd = aco_is_gpu_supported(&sscreen->info) &&
+                            (sscreen->use_aco || nir->info.use_aco_amd);
 
    /* Get options from shader profiles. */
    for (unsigned i = 0; i < ARRAY_SIZE(si_shader_profiles); i++) {

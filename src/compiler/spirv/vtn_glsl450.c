@@ -275,11 +275,7 @@ vtn_nir_alu_op_for_spirv_glsl_opcode(struct vtn_builder *b,
    case GLSLstd450UnpackUnorm4x8:   return nir_op_unpack_unorm_4x8;
    case GLSLstd450UnpackSnorm2x16:  return nir_op_unpack_snorm_2x16;
    case GLSLstd450UnpackUnorm2x16:  return nir_op_unpack_unorm_2x16;
-   case GLSLstd450UnpackHalf2x16:
-      if (execution_mode & FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16)
-         return nir_op_unpack_half_2x16_flush_to_zero;
-      else
-         return nir_op_unpack_half_2x16;
+   case GLSLstd450UnpackHalf2x16:   return nir_op_unpack_half_2x16;
    case GLSLstd450UnpackDouble2x32: return nir_op_unpack_64_2x32;
 
    default:

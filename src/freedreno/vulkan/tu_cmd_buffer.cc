@@ -1849,7 +1849,7 @@ tu6_sysmem_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    tu_cs_emit_pkt7(cs, CP_SKIP_IB2_ENABLE_GLOBAL, 1);
    tu_cs_emit(cs, 0x0);
 
-   tu_lrz_sysmem_end(cmd, cs);
+   tu_lrz_sysmem_end<CHIP>(cmd, cs);
 
    tu_cs_sanity_check(cs);
 }
@@ -4450,7 +4450,7 @@ tu_CmdBeginRendering(VkCommandBuffer commandBuffer,
       cmd->state.lrz.valid = false;
    } else {
       if (resuming)
-         tu_lrz_begin_resumed_renderpass(cmd);
+         tu_lrz_begin_resumed_renderpass<CHIP>(cmd);
       else
          tu_lrz_begin_renderpass<CHIP>(cmd);
    }
@@ -5172,12 +5172,14 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
 
    if (dirty_lrz) {
       struct tu_cs cs;
-      uint32_t size = cmd->device->physical_device->info->a6xx.lrz_track_quirk ? 10 : 8;
+      uint32_t size = 8 +
+                      (cmd->device->physical_device->info->a6xx.lrz_track_quirk ? 2 : 0) +
+                      (CHIP >= A7XX ? 2 : 0); // A7XX has extra packets from LRZ_CNTL2.
 
       cmd->state.lrz_and_depth_plane_state =
          tu_cs_draw_state(&cmd->sub_cs, &cs, size);
       tu6_update_simplified_stencil_state(cmd);
-      tu6_emit_lrz(cmd, &cs);
+      tu6_emit_lrz<CHIP>(cmd, &cs);
       tu6_build_depth_plane_z_mode(cmd, &cs);
    }
 

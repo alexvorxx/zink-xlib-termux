@@ -47,6 +47,13 @@
 #define __gen_get_batch_dwords anv_batch_emit_dwords
 #define __gen_address_offset anv_address_add
 #define __gen_get_batch_address(b, a) anv_batch_address(b, a)
+
+#if GFX_VERx10 >= 125
+#define ANV_PIPELINE_STATISTICS_MASK 0x00001fff
+#else
+#define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
+#endif
+
 #include "common/mi_builder.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_mdapi.h"
@@ -184,6 +191,11 @@ VkResult genX(CreateQueryPool)(
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR:
       uint64s_per_slot = 1 + 2 /* availability + size (PostbuildInfoSerializationDesc) */;
+      break;
+
+   case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+      /* Query has two values: begin and end. */
+      uint64s_per_slot = 1 + 2;
       break;
 
 #endif
@@ -484,6 +496,7 @@ VkResult genX(GetQueryPoolResults)(
    pool->vk.query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR ||
    pool->vk.query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR ||
    pool->vk.query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR ||
+   pool->vk.query_type == VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT ||
 #endif
    pool->vk.query_type == VK_QUERY_TYPE_OCCLUSION ||
    pool->vk.query_type == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
@@ -535,7 +548,11 @@ VkResult genX(GetQueryPoolResults)(
       uint32_t idx = 0;
       switch (pool->vk.query_type) {
       case VK_QUERY_TYPE_OCCLUSION:
-      case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT: {
+      case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
+#if GFX_VERx10 >= 125
+      case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+#endif
+      {
          uint64_t *slot = query_slot(pool, firstQuery + i);
          if (write_results) {
             /* From the Vulkan 1.2.132 spec:
@@ -558,7 +575,8 @@ VkResult genX(GetQueryPoolResults)(
          while (statistics) {
             UNUSED uint32_t stat = u_bit_scan(&statistics);
             if (write_results) {
-               uint64_t result = slot[idx * 2 + 2] - slot[idx * 2 + 1];
+               /* If a query is not available but VK_QUERY_RESULT_PARTIAL_BIT is set, write 0. */
+               uint64_t result = available ? slot[idx * 2 + 2] - slot[idx * 2 + 1] : 0;
                cpu_write_query_result(pData, flags, idx, result);
             }
             idx++;
@@ -569,11 +587,17 @@ VkResult genX(GetQueryPoolResults)(
 
       case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT: {
          uint64_t *slot = query_slot(pool, firstQuery + i);
-         if (write_results)
-            cpu_write_query_result(pData, flags, idx, slot[2] - slot[1]);
+         if (write_results) {
+            /* If a query is not available but VK_QUERY_RESULT_PARTIAL_BIT is set, write 0. */
+            uint64_t result = available ? slot[2] - slot[1] : 0;
+            cpu_write_query_result(pData, flags, idx, result);
+         }
          idx++;
-         if (write_results)
-            cpu_write_query_result(pData, flags, idx, slot[4] - slot[3]);
+         if (write_results) {
+            /* If a query is not available but VK_QUERY_RESULT_PARTIAL_BIT is set, write 0. */
+            uint64_t result = available ? slot[4] - slot[3] : 0;
+            cpu_write_query_result(pData, flags, idx, result);
+         }
          idx++;
          break;
       }
@@ -737,6 +761,9 @@ emit_zero_queries(struct anv_cmd_buffer *cmd_buffer,
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
    case VK_QUERY_TYPE_PIPELINE_STATISTICS:
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
+#if GFX_VERx10 >= 125
+   case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+#endif
       for (uint32_t i = 0; i < num_queries; i++) {
          struct anv_address slot_addr =
             anv_query_address(pool, first_index + i);
@@ -844,7 +871,11 @@ void genX(CmdResetQueryPool)(
 
    case VK_QUERY_TYPE_PIPELINE_STATISTICS:
    case VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT:
-   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT: {
+   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
+#if GFX_VERx10 >= 125
+   case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+#endif
+   {
       struct mi_builder b;
       mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
 
@@ -921,6 +952,10 @@ static const uint32_t vk_pipeline_stat_to_reg[] = {
    GENX(HS_INVOCATION_COUNT_num),
    GENX(DS_INVOCATION_COUNT_num),
    GENX(CS_INVOCATION_COUNT_num),
+#if GFX_VERx10 >= 125
+   GENX(TASK_INVOCATION_COUNT_num),
+   GENX(MESH_INVOCATION_COUNT_num)
+#endif
 };
 
 static void
@@ -1041,6 +1076,18 @@ void genX(CmdBeginQueryIndexedEXT)(
       mi_store(&b, mi_mem64(anv_address_add(query_addr, 8)),
                    mi_reg64(GENX(CL_INVOCATION_COUNT_num)));
       break;
+
+#if GFX_VERx10 >= 125
+   case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+      genx_batch_emit_pipe_control(&cmd_buffer->batch,
+                                   cmd_buffer->device->info,
+                                   cmd_buffer->state.current_pipeline,
+                                   ANV_PIPE_CS_STALL_BIT |
+                                   ANV_PIPE_STALL_AT_SCOREBOARD_BIT);
+      mi_store(&b, mi_mem64(anv_address_add(query_addr, 8)),
+                   mi_reg64(GENX(MESH_PRIMITIVE_COUNT_num)));
+      break;
+#endif
 
    case VK_QUERY_TYPE_PIPELINE_STATISTICS: {
       /* TODO: This might only be necessary for certain stats */
@@ -1235,6 +1282,19 @@ void genX(CmdEndQueryIndexedEXT)(
                    mi_reg64(GENX(CL_INVOCATION_COUNT_num)));
       emit_query_mi_availability(&b, query_addr, true);
       break;
+
+#if GFX_VERx10 >= 125
+   case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+      genx_batch_emit_pipe_control(&cmd_buffer->batch,
+                                   cmd_buffer->device->info,
+                                   cmd_buffer->state.current_pipeline,
+                                   ANV_PIPE_CS_STALL_BIT |
+                                   ANV_PIPE_STALL_AT_SCOREBOARD_BIT);
+      mi_store(&b, mi_mem64(anv_address_add(query_addr, 16)),
+                   mi_reg64(GENX(MESH_PRIMITIVE_COUNT_num)));
+      emit_query_mi_availability(&b, query_addr, true);
+      break;
+#endif
 
    case VK_QUERY_TYPE_PIPELINE_STATISTICS: {
       /* TODO: This might only be necessary for certain stats */
@@ -1598,6 +1658,9 @@ copy_query_results_with_cs(struct anv_cmd_buffer *cmd_buffer,
       switch (pool->vk.query_type) {
       case VK_QUERY_TYPE_OCCLUSION:
       case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
+#if GFX_VERx10 >= 125
+      case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+#endif
          result = compute_query_result(&b, anv_address_add(query_addr, 8));
          /* Like in the case of vkGetQueryPoolResults, if the query is
           * unavailable and the VK_QUERY_RESULT_PARTIAL_BIT flag is set,
@@ -1780,14 +1843,24 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
    uint32_t data_offset = 8 /* behind availability */;
    switch (pool->vk.query_type) {
    case VK_QUERY_TYPE_OCCLUSION:
-   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
       copy_flags |= ANV_COPY_QUERY_FLAG_DELTA;
-      /* These 2 queries are the only ones where we would have partial data
+      /* Occlusion and timestamps queries are the only ones where we would have partial data
        * because they are capture with a PIPE_CONTROL post sync operation. The
        * other ones are captured with MI_STORE_REGISTER_DATA so we're always
        * available by the time we reach the copy command.
        */
       copy_flags |= (flags & VK_QUERY_RESULT_PARTIAL_BIT) ? ANV_COPY_QUERY_FLAG_PARTIAL : 0;
+      break;
+
+   case VK_QUERY_TYPE_TIMESTAMP:
+      copy_flags |= (flags & VK_QUERY_RESULT_PARTIAL_BIT) ? ANV_COPY_QUERY_FLAG_PARTIAL : 0;
+      break;
+
+   case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
+#if GFX_VERx10 >= 125
+   case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
+#endif
+      copy_flags |= ANV_COPY_QUERY_FLAG_DELTA;
       break;
 
    case VK_QUERY_TYPE_PIPELINE_STATISTICS:
@@ -1800,7 +1873,6 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
       copy_flags |= ANV_COPY_QUERY_FLAG_DELTA;
       break;
 
-   case VK_QUERY_TYPE_TIMESTAMP:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:

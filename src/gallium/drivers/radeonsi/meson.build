@@ -82,8 +82,9 @@ files_libradeonsi = files(
   'si_state_shaders.cpp',
   'si_state_streamout.c',
   'si_state_viewport.c',
-  'si_test_image_copy_region.c',
+  'si_test_blit_perf.c',
   'si_test_dma_perf.c',
+  'si_test_image_copy_region.c',
   'si_texture.c',
   'si_utrace.c',
   'si_utrace.h',
@@ -130,7 +131,7 @@ files_libradeonsi += ['si_perfetto.cpp', 'si_perfetto.h']
 
 amd_common_libs = [libamd_common]
 
-if with_llvm
+if amd_with_llvm
   files_libradeonsi += files(
     'si_shader_llvm.c',
     'si_shader_llvm.h',
@@ -167,7 +168,7 @@ libradeonsi = static_library(
 driver_radeonsi = declare_dependency(
   compile_args : '-DGALLIUM_RADEONSI',
   link_with : radeonsi_gfx_libs + [
-    libradeonsi, libradeonwinsys, libamdgpuwinsys, libamd_common, libamd_common_llvm, libgalliumvl, libvpe
+    libradeonsi, libradeonwinsys, libamdgpuwinsys, libamd_common, libamd_common_llvm, libvpe
   ],
   dependencies : idep_nir,
 )

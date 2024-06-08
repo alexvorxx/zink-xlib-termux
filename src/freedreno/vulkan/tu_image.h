@@ -38,7 +38,7 @@ struct tu_image
    uint32_t lrz_pitch;
    uint32_t lrz_offset;
    uint32_t lrz_fc_offset;
-   uint32_t lrz_fc_size;
+   bool has_lrz_fc;
 
    bool ubwc_enabled;
    bool force_linear_tile;

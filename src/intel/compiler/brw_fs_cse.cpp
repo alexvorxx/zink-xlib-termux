@@ -197,29 +197,23 @@ static bool
 instructions_match(fs_inst *a, fs_inst *b, bool *negate)
 {
    return a->opcode == b->opcode &&
-          a->force_writemask_all == b->force_writemask_all &&
           a->exec_size == b->exec_size &&
           a->group == b->group &&
-          a->saturate == b->saturate &&
           a->predicate == b->predicate &&
-          a->predicate_inverse == b->predicate_inverse &&
           a->conditional_mod == b->conditional_mod &&
-          a->flag_subreg == b->flag_subreg &&
           a->dst.type == b->dst.type &&
           a->offset == b->offset &&
           a->mlen == b->mlen &&
           a->ex_mlen == b->ex_mlen &&
           a->sfid == b->sfid &&
           a->desc == b->desc &&
+          a->ex_desc == b->ex_desc &&
           a->size_written == b->size_written &&
           a->check_tdr == b->check_tdr &&
-          a->send_has_side_effects == b->send_has_side_effects &&
-          a->eot == b->eot &&
           a->header_size == b->header_size &&
-          a->shadow_compare == b->shadow_compare &&
-          a->pi_noperspective == b->pi_noperspective &&
           a->target == b->target &&
           a->sources == b->sources &&
+          a->bits == b->bits &&
           operands_match(a, b, negate);
 }
 

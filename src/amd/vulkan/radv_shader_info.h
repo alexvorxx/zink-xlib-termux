@@ -203,7 +203,8 @@ struct radv_shader_info {
       bool pops; /* Uses Primitive Ordered Pixel Shading (fragment shader interlock) */
       bool pops_is_per_sample;
       bool mrt0_is_dual_src;
-      unsigned spi_ps_input;
+      unsigned spi_ps_input_ena;
+      unsigned spi_ps_input_addr;
       unsigned colors_written;
       unsigned spi_shader_col_format;
       unsigned cb_shader_mask;
@@ -285,6 +286,8 @@ struct radv_shader_info {
          uint32_t pa_sc_shader_control;
          uint32_t spi_ps_in_control;
          uint32_t spi_shader_z_format;
+         uint32_t spi_gs_out_config_ps;
+         uint32_t pa_sc_hisz_control;
       } ps;
 
       struct {

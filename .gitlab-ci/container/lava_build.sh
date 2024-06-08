@@ -223,6 +223,9 @@ PKG_DEP=(
 )
 
 [ "$BUILD_CL" == "ON" ] && PKG_ARCH+=(
+	clinfo
+	"libclang-cpp${LLVM_VERSION}"
+	"libclang-common-${LLVM_VERSION}-dev"
 	ocl-icd-libopencl1
 )
 [ "$BUILD_VK" == "ON" ] && PKG_ARCH+=(
@@ -260,6 +263,17 @@ fi
 ############### Building
 STRIP_CMD="${GCC_ARCH}-strip"
 mkdir -p $ROOTFS/usr/lib/$GCC_ARCH
+
+############### Build libclc
+
+if [ "$BUILD_CL" = "ON" ]; then
+  rm -rf /usr/lib/clc/*
+  . .gitlab-ci/container/build-libclc.sh
+  mkdir -p $ROOTFS/usr/{share,lib}/clc
+  mv /usr/share/clc/spirv*-mesa3d-.spv $ROOTFS/usr/share/clc/
+  ln -s /usr/share/clc/spirv64-mesa3d-.spv $ROOTFS/usr/lib/clc/
+  ln -s /usr/share/clc/spirv-mesa3d-.spv $ROOTFS/usr/lib/clc/
+fi
 
 ############### Build Vulkan validation layer (for zink)
 if [ "$DEBIAN_ARCH" = "amd64" ]; then

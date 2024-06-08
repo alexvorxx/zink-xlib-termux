@@ -165,19 +165,6 @@ intel_set_ps_dispatch_state(struct GENX(3DSTATE_PS) *ps,
 
 #endif
 
-#if GFX_VERx10 >= 125
-
-UNUSED static int
-preferred_slm_allocation_size(const struct intel_device_info *devinfo)
-{
-   if (devinfo->platform == INTEL_PLATFORM_LNL && devinfo->revision == 0)
-      return SLM_ENCODES_128K;
-
-   return 0;
-}
-
-#endif
-
 #ifdef __cplusplus
 }
 #endif

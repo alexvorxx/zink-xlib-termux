@@ -217,3 +217,19 @@ panvk_per_arch(destroy_device)(struct panvk_device *device,
    pan_kmod_dev_destroy(device->kmod.dev);
    vk_free(&device->vk.alloc, device);
 }
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(GetRenderAreaGranularity)(VkDevice device,
+                                         VkRenderPass renderPass,
+                                         VkExtent2D *pGranularity)
+{
+   *pGranularity = (VkExtent2D){32, 32};
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(GetRenderingAreaGranularityKHR)(
+   VkDevice _device, const VkRenderingAreaInfoKHR *pRenderingAreaInfo,
+   VkExtent2D *pGranularity)
+{
+   *pGranularity = (VkExtent2D){32, 32};
+}

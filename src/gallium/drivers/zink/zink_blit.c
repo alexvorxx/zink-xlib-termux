@@ -361,7 +361,7 @@ zink_blit(struct pipe_context *pctx,
             depth_blit.mask = PIPE_MASK_Z;
             if (util_blitter_is_blit_supported(ctx->blitter, &depth_blit)) {
                zink_blit_begin(ctx, ZINK_BLIT_SAVE_FB | ZINK_BLIT_SAVE_FS | ZINK_BLIT_SAVE_TEXTURES);
-               util_blitter_blit(ctx->blitter, &depth_blit);
+               util_blitter_blit(ctx->blitter, &depth_blit, NULL);
             } else {
                mesa_loge("ZINK: depth blit unsupported %s -> %s",
                          util_format_short_name(info->src.resource->format),
@@ -465,7 +465,7 @@ zink_blit(struct pipe_context *pctx,
    } else {
       struct pipe_blit_info new_info = *info;
       new_info.src.resource = &use_src->base.b;
-      util_blitter_blit(ctx->blitter, &new_info);
+      util_blitter_blit(ctx->blitter, &new_info, NULL);
    }
    ctx->blitting = false;
    ctx->rp_clears_enabled = rp_clears_enabled;

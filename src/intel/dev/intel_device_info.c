@@ -75,6 +75,7 @@ static const struct {
    { "mtl", 0x7d60 },
    { "arl", 0x7d67 },
    { "lnl", 0x64a0 },
+   { "bmg", 0xe202 },
 };
 
 /**
@@ -1210,6 +1211,7 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .verx10 = 200,                                               \
    .num_subslices = dual_subslices(1),                          \
    .has_64bit_float = true,                                     \
+   .has_64bit_int = true,                                       \
    .has_integer_dword_mul = false,                              \
    .has_coarse_pixel_primitive_and_cb = true,                   \
    .has_mesh_shading = true,                                    \
@@ -1223,6 +1225,13 @@ static const struct intel_device_info intel_device_info_arl_h = {
    },                                                           \
    .cooperative_matrix_configurations = { { 0 }, },             \
    .has_flat_ccs = true
+
+static const struct intel_device_info intel_device_info_bmg = {
+   XE2_FEATURES,
+   .platform = INTEL_PLATFORM_BMG,
+   .has_local_mem = true,
+   .apply_hwconfig = true,
+};
 
 static const struct intel_device_info intel_device_info_lnl = {
    XE2_FEATURES,
@@ -1328,6 +1337,37 @@ intel_device_info_update_l3_banks(struct intel_device_info *devinfo)
          devinfo->l3_banks = 4;
       }
    }
+}
+
+/* Returns the number of EUs of the first subslice enabled */
+uint32_t
+intel_device_info_get_eu_count_first_subslice(const struct intel_device_info *devinfo)
+{
+   uint32_t first_subslice, first_slice, offset, i;
+   uint32_t eu_count = 0;
+
+   first_slice = ffs(devinfo->slice_masks);
+   first_slice--;
+   offset = first_slice * devinfo->subslice_slice_stride;
+
+   for (i = 0; i < DIV_ROUND_UP(devinfo->max_subslices_per_slice, 8); i++) {
+      first_subslice = ffs(devinfo->subslice_masks[offset + i]);
+
+      if (first_subslice == 0)
+         continue;
+
+      break;
+   }
+
+   assert(first_subslice > 0);
+   first_subslice--;
+   offset = first_slice * devinfo->eu_slice_stride +
+            first_subslice * devinfo->eu_subslice_stride;
+   for (i = 0; i < DIV_ROUND_UP(devinfo->max_eus_per_subslice, 8); i++)
+      eu_count += __builtin_popcount(devinfo->eu_masks[offset + i]);
+
+   assert(eu_count > 0);
+   return eu_count;
 }
 
 /* Generate mask from the device data. */
@@ -1436,7 +1476,7 @@ struct device_init_config {
 #define FORCE_PROBE .require_force_probe = true
 
 static bool
-intel_device_info_init_common(int pci_id,
+intel_device_info_init_common(int pci_id, bool building,
                               struct intel_device_info *devinfo)
 {
    struct device_init_config device_config = { 0 };
@@ -1477,15 +1517,19 @@ intel_device_info_init_common(int pci_id,
 
    bool force_on = false;
    bool force_off = false;
-   scan_for_force_probe(pci_id, &force_on, &force_off);
+   if (building)
+      force_on = true;
+   else
+      scan_for_force_probe(pci_id, &force_on, &force_off);
    if (force_off) {
       mesa_logw("%s (0x%x) disabled with INTEL_FORCE_PROBE", devinfo->name,
                 pci_id);
       return false;
    } else if (device_config.require_force_probe) {
       if (force_on) {
-         mesa_logw("Forcing probe of unsupported: %s (0x%x)", devinfo->name,
-                   pci_id);
+         if (!building)
+            mesa_logw("Forcing probe of unsupported: %s (0x%x)", devinfo->name,
+                      pci_id);
       } else {
          mesa_loge("%s (0x%x) requires INTEL_FORCE_PROBE", devinfo->name,
                    pci_id);
@@ -1571,11 +1615,11 @@ intel_device_info_apply_workarounds(struct intel_device_info *devinfo)
       devinfo->urb.max_entries[MESA_SHADER_GEOMETRY] = 1024;
 }
 
-bool
-intel_get_device_info_from_pci_id(int pci_id,
-                                  struct intel_device_info *devinfo)
+static bool
+intel_get_device_info_from_pci_id_common(int pci_id, bool building,
+                                         struct intel_device_info *devinfo)
 {
-   intel_device_info_init_common(pci_id, devinfo);
+   intel_device_info_init_common(pci_id, building, devinfo);
 
    /* This is a placeholder until a proper value is set. */
    devinfo->kmd_type = INTEL_KMD_TYPE_I915;
@@ -1584,6 +1628,20 @@ intel_get_device_info_from_pci_id(int pci_id,
    intel_device_info_apply_workarounds(devinfo);
 
    return true;
+}
+
+bool
+intel_get_device_info_from_pci_id(int pci_id,
+                                  struct intel_device_info *devinfo)
+{
+   return intel_get_device_info_from_pci_id_common(pci_id, false, devinfo);
+}
+
+bool
+intel_get_device_info_for_build(int pci_id,
+                                struct intel_device_info *devinfo)
+{
+   return intel_get_device_info_from_pci_id_common(pci_id, true, devinfo);
 }
 
 bool
@@ -1784,8 +1842,8 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min
       mesa_loge("Failed to query drm device.");
       return false;
    }
-   if (!intel_device_info_init_common(
-          drmdev->deviceinfo.pci->device_id, devinfo)) {
+   if (!intel_device_info_init_common(drmdev->deviceinfo.pci->device_id,
+                                      false, devinfo)) {
       drmFreeDevice(&drmdev);
       return false;
    }
@@ -1904,7 +1962,29 @@ intel_device_info_wa_stepping(struct intel_device_info *devinfo)
     * 'compiler_field' in intel_device_info.py
     */
 
-   if (devinfo->platform == INTEL_PLATFORM_TGL) {
+   if (devinfo->platform == INTEL_PLATFORM_BMG) {
+      switch (devinfo->revision) {
+      case 0:
+         return INTEL_STEPPING_A0;
+      case 1:
+         return INTEL_STEPPING_A1;
+      case 4:
+         return INTEL_STEPPING_B0;
+      default:
+         return INTEL_STEPPING_RELEASE;
+      }
+   } else if (devinfo->platform == INTEL_PLATFORM_LNL) {
+      switch (devinfo->revision) {
+      case 0:
+         return INTEL_STEPPING_A0;
+      case 1:
+         return INTEL_STEPPING_A1;
+      case 4:
+         return INTEL_STEPPING_B0;
+      default:
+         return INTEL_STEPPING_RELEASE;
+      }
+   } else if (devinfo->platform == INTEL_PLATFORM_TGL) {
       /* TGL production steppings: B0 and C0 */
       switch (devinfo->revision) {
       case 1:
@@ -1920,3 +2000,33 @@ intel_device_info_wa_stepping(struct intel_device_info *devinfo)
    return INTEL_STEPPING_RELEASE;
 }
 
+uint32_t
+intel_device_info_get_max_slm_size(const struct intel_device_info *devinfo)
+{
+   uint32_t k_bytes = 0;
+
+   if (devinfo->verx10 >= 200) {
+      k_bytes = intel_device_info_get_max_preferred_slm_size(devinfo);
+   } else {
+      k_bytes = 64;
+   }
+
+   return k_bytes * 1024;
+}
+
+uint32_t
+intel_device_info_get_max_preferred_slm_size(const struct intel_device_info *devinfo)
+{
+   uint32_t k_bytes = 0;
+
+   if (devinfo->verx10 >= 200) {
+      if (intel_needs_workaround(devinfo, 16018610683))
+         k_bytes = 128;
+      else
+         k_bytes = 160;
+   } else {
+      k_bytes = 128;
+   }
+
+   return k_bytes * 1024;
+}

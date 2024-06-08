@@ -6,8 +6,6 @@
  *
  **************************************************************************/
 
-#include <stdio.h>
-
 #include "pipe/p_video_codec.h"
 
 #include "util/u_video.h"
@@ -512,7 +510,8 @@ static void radeon_enc_cdf_default_table(struct radeon_encoder *enc)
 {
    bool use_cdf_default = enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_KEY ||
                           enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_INTRA_ONLY ||
-                          enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_SWITCH;
+                          enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_SWITCH ||
+                          (enc->enc_pic.enable_error_resilient_mode);
 
    enc->enc_pic.av1_cdf_default_table.use_cdf_default = use_cdf_default ? 1 : 0;
 
@@ -530,7 +529,7 @@ uint8_t *radeon_enc_av1_header_size_offset(struct radeon_encoder *enc)
    return (uint8_t *)(bits_start) + (enc->bits_output >> 3);
 }
 
-static void radeon_enc_av1_temporal_delimiter(struct radeon_encoder *enc)
+void radeon_enc_av1_temporal_delimiter(struct radeon_encoder *enc)
 {
    bool use_extension_flag;
 
@@ -557,7 +556,7 @@ static void radeon_enc_av1_temporal_delimiter(struct radeon_encoder *enc)
    radeon_enc_code_fixed_bits(enc, 0, 8); /* obu has size */
 }
 
-static void radeon_enc_av1_sequence_header(struct radeon_encoder *enc)
+void radeon_enc_av1_sequence_header(struct radeon_encoder *enc, bool separate_delta_q)
 {
    uint8_t *size_offset;
    uint8_t obu_size_bin[2];
@@ -708,7 +707,7 @@ static void radeon_enc_av1_sequence_header(struct radeon_encoder *enc)
    /*  chroma_sample_position  */
    radeon_enc_code_fixed_bits(enc, enc->enc_pic.av1_color_description.chroma_sample_position, 2);
    /*  separate_uv_delta_q  */
-   radeon_enc_code_fixed_bits(enc, 0, 1);
+   radeon_enc_code_fixed_bits(enc, !!(separate_delta_q), 1);
    /*  film_grain_params_present  */
    radeon_enc_code_fixed_bits(enc, 0, 1);
 
@@ -936,7 +935,7 @@ static void radeon_enc_av1_frame_header(struct radeon_encoder *enc, bool frame_h
    }
 }
 
-static void radeon_enc_av1_tile_group(struct radeon_encoder *enc)
+void radeon_enc_av1_tile_group(struct radeon_encoder *enc)
 {
    uint32_t extension_flag = enc->enc_pic.num_temporal_layers > 1 ? 1 : 0;
 
@@ -977,7 +976,7 @@ static void radeon_enc_obu_instruction(struct radeon_encoder *enc)
 
    radeon_enc_av1_temporal_delimiter(enc);
    if (enc->enc_pic.need_av1_seq || enc->enc_pic.need_sequence_header)
-      radeon_enc_av1_sequence_header(enc);
+      radeon_enc_av1_sequence_header(enc, false);
 
    /* if others OBU types are needed such as meta data, then they need to be byte aligned and added here
     *
@@ -1126,9 +1125,10 @@ static void radeon_enc_ctx(struct radeon_encoder *enc)
 
 static void radeon_enc_header_av1(struct radeon_encoder *enc)
 {
-   enc->obu_instructions(enc);
    enc->tile_config(enc);
+   enc->obu_instructions(enc);
    enc->encode_params(enc);
+   enc->encode_params_codec_spec(enc);
    enc->cdf_default_table(enc);
 
    enc->enc_pic.frame_id++;
@@ -1152,10 +1152,11 @@ void radeon_enc_4_0_init(struct radeon_encoder *enc)
 
    if (u_reduce_video_profile(enc->base.profile) == PIPE_VIDEO_FORMAT_AV1) {
       enc->before_encode = radeon_enc_av1_dpb_management;
-      /* begin function need to set these two functions to dummy */
+      /* begin function need to set these functions to dummy */
       enc->slice_control = radeon_enc_dummy;
       enc->deblocking_filter = radeon_enc_dummy;
       enc->tile_config = radeon_enc_dummy;
+      enc->encode_params_codec_spec = radeon_enc_dummy;
       enc->cmd.cdf_default_table_av1 = RENCODE_IB_PARAM_CDF_DEFAULT_TABLE_BUFFER;
       enc->cmd.bitstream_instruction_av1 = RENCODE_AV1_IB_PARAM_BITSTREAM_INSTRUCTION;
       enc->cmd.spec_misc_av1 = RENCODE_AV1_IB_PARAM_SPEC_MISC;

@@ -129,9 +129,27 @@ genX(invalidate_aux_map)(struct anv_batch *batch,
                          enum intel_engine_class engine_class,
                          enum anv_pipe_bits bits);
 
+#if INTEL_WA_14018283232_GFX_VER
+void genX(batch_emit_wa_14018283232)(struct anv_batch *batch);
+
+static inline void
+genX(cmd_buffer_ensure_wa_14018283232)(struct anv_cmd_buffer *cmd_buffer,
+                                       bool toggle)
+{
+   struct anv_gfx_dynamic_state *hw_state =
+      &cmd_buffer->state.gfx.dyn_state;
+   if (intel_needs_workaround(cmd_buffer->device->info, 14018283232) &&
+       hw_state->wa_14018283232_toggle != toggle) {
+      hw_state->wa_14018283232_toggle = toggle;
+      BITSET_SET(hw_state->dirty, ANV_GFX_STATE_WA_14018283232);
+      genX(batch_emit_wa_14018283232)(&cmd_buffer->batch);
+   }
+}
+#endif
 
 void genX(emit_so_memcpy_init)(struct anv_memcpy_state *state,
                                struct anv_device *device,
+                               struct anv_cmd_buffer *cmd_buffer,
                                struct anv_batch *batch);
 
 void genX(emit_so_memcpy_fini)(struct anv_memcpy_state *state);

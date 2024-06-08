@@ -152,3 +152,81 @@ agx_pack_line_width(float line_width)
    /* Clamp to maximum line width */
    return MIN2(line_width_fixed, 0xFF);
 }
+
+/*
+ * Despite having both a layout *and* a flag that I only see Metal use with null
+ * textures, AGX doesn't seem to have "real" null textures. Instead we need to
+ * bind an arbitrary address and throw away the results to read all 0's.
+ * Accordingly, the caller must pass some address that lives at least as long as
+ * the texture descriptor itself.
+ */
+static void
+agx_set_null_texture(struct agx_texture_packed *tex, uint64_t valid_address)
+{
+   agx_pack(tex, TEXTURE, cfg) {
+      cfg.layout = AGX_LAYOUT_NULL;
+      cfg.channels = AGX_CHANNELS_R8;
+      cfg.type = AGX_TEXTURE_TYPE_UNORM /* don't care */;
+      cfg.swizzle_r = AGX_CHANNEL_0;
+      cfg.swizzle_g = AGX_CHANNEL_0;
+      cfg.swizzle_b = AGX_CHANNEL_0;
+      cfg.swizzle_a = AGX_CHANNEL_0;
+      cfg.address = valid_address;
+      cfg.null = true;
+   }
+}
+
+static void
+agx_set_null_pbe(struct agx_pbe_packed *pbe, uint64_t sink)
+{
+   agx_pack(pbe, PBE, cfg) {
+      cfg.width = 1;
+      cfg.height = 1;
+      cfg.levels = 1;
+      cfg.layout = AGX_LAYOUT_NULL;
+      cfg.channels = AGX_CHANNELS_R8;
+      cfg.type = AGX_TEXTURE_TYPE_UNORM /* don't care */;
+      cfg.swizzle_r = AGX_CHANNEL_R;
+      cfg.swizzle_g = AGX_CHANNEL_R;
+      cfg.swizzle_b = AGX_CHANNEL_R;
+      cfg.swizzle_a = AGX_CHANNEL_R;
+      cfg.buffer = sink;
+   }
+}
+
+/*
+ * Determine the maximum vertex/divided instance index.  For robustness,
+ * the index will be clamped to this before reading (if soft fault is
+ * disabled).
+ *
+ * Index i accesses up to (exclusive) offset:
+ *
+ *    src_offset + (i * stride) + elsize_B
+ *
+ * so we require
+ *
+ *    src_offset + (i * stride) + elsize_B <= size
+ *
+ * <==>
+ *
+ *    i <= floor((size - src_offset - elsize_B) / stride)
+ */
+static inline uint32_t
+agx_calculate_vbo_clamp(uint64_t vbuf, uint64_t sink, enum pipe_format format,
+                        uint32_t size_B, uint32_t stride_B, uint32_t offset_B,
+                        uint64_t *vbuf_out)
+{
+   unsigned elsize_B = util_format_get_blocksize(format);
+   unsigned subtracted_B = offset_B + elsize_B;
+
+   /* If at least one index is valid, determine the max. Otherwise, direct reads
+    * to zero.
+    */
+   if (size_B >= subtracted_B) {
+      *vbuf_out = vbuf + offset_B;
+      return (size_B - subtracted_B) / stride_B;
+   } else {
+      *vbuf_out = sink;
+      return 0;
+   }
+}

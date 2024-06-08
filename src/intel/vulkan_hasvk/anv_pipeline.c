@@ -29,6 +29,7 @@
 
 #include "util/mesa-sha1.h"
 #include "util/os_time.h"
+#include "common/intel_compute_slm.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "compiler/elk/elk_disasm.h"
@@ -568,7 +569,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
          const unsigned chunk_size = 16;
          const unsigned shared_size = ALIGN(nir->info.shared_size, chunk_size);
          assert(shared_size <=
-                elk_calculate_slm_size(compiler->devinfo->ver, nir->info.shared_size));
+                intel_compute_slm_calculate_size(compiler->devinfo->ver, nir->info.shared_size));
 
          NIR_PASS(_, nir, nir_zero_initialize_shared_memory,
                   shared_size, chunk_size);

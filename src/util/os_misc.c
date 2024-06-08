@@ -68,6 +68,9 @@
 #  include <kernel/OS.h>
 #elif DETECT_OS_WINDOWS
 #  include <windows.h>
+#elif DETECT_OS_FUCHSIA
+#include <unistd.h>
+#include <zircon/syscalls.h>
 #else
 #error unexpected platform in os_sysinfo.c
 #endif
@@ -311,6 +314,9 @@ os_get_total_physical_memory(uint64_t *size)
    ret = GlobalMemoryStatusEx(&status);
    *size = status.ullTotalPhys;
    return (ret == true);
+#elif DETECT_OS_FUCHSIA
+   *size = zx_system_get_physmem();
+   return true;
 #else
 #error unexpected platform in os_misc.c
    return false;
@@ -381,7 +387,7 @@ os_get_available_system_memory(uint64_t *size)
 bool
 os_get_page_size(uint64_t *size)
 {
-#if DETECT_OS_UNIX && !DETECT_OS_APPLE && !DETECT_OS_HAIKU
+#if DETECT_OS_POSIX_LITE && !DETECT_OS_APPLE && !DETECT_OS_HAIKU
    const long page_size = sysconf(_SC_PAGE_SIZE);
 
    if (page_size <= 0)

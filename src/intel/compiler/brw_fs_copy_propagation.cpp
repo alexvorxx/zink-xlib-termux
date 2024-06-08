@@ -935,39 +935,14 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    return true;
 }
 
-
 static bool
-try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
-                       acp_entry *entry, int arg)
+try_constant_propagate_value(fs_reg val, brw_reg_type dst_type,
+                             fs_inst *inst, int arg)
 {
    bool progress = false;
 
-   if (brw_type_size_bytes(entry->src.type) > 4)
+   if (brw_type_size_bytes(val.type) > 4)
       return false;
-
-   if (inst->src[arg].file != VGRF)
-      return false;
-
-   assert(entry->dst.file == VGRF);
-   if (inst->src[arg].nr != entry->dst.nr)
-      return false;
-
-   /* Bail if inst is reading a range that isn't contained in the range
-    * that entry is writing.
-    */
-   if (!region_contained_in(inst->src[arg], inst->size_read(arg),
-                            entry->dst, entry->size_written))
-      return false;
-
-   /* If the size of the use type is larger than the size of the entry
-    * type, the entry doesn't contain all of the data that the user is
-    * trying to use.
-    */
-   if (brw_type_size_bits(inst->src[arg].type) >
-       brw_type_size_bits(entry->dst.type))
-      return false;
-
-   fs_reg val = entry->src;
 
    /* If the size of the use type is smaller than the size of the entry,
     * clamp the value to the range of the use type.  This enables constant
@@ -979,9 +954,9 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
     *    mul(8)          g47<1>D         g86<8,8,1>D     g12<16,8,2>W
     */
    if (brw_type_size_bits(inst->src[arg].type) <
-       brw_type_size_bits(entry->dst.type)) {
+       brw_type_size_bits(dst_type)) {
       if (brw_type_size_bytes(inst->src[arg].type) != 2 ||
-          brw_type_size_bytes(entry->dst.type) != 4)
+          brw_type_size_bytes(dst_type) != 4)
          return false;
 
       assert(inst->src[arg].subnr == 0 || inst->src[arg].subnr == 2);
@@ -1120,7 +1095,6 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       break;
 
    case BRW_OPCODE_CMP:
-   case BRW_OPCODE_IF:
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;
@@ -1258,6 +1232,35 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
    return progress;
 }
 
+
+static bool
+try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
+{
+   if (inst->src[arg].file != VGRF)
+      return false;
+
+   assert(entry->dst.file == VGRF);
+   if (inst->src[arg].nr != entry->dst.nr)
+      return false;
+
+   /* Bail if inst is reading a range that isn't contained in the range
+    * that entry is writing.
+    */
+   if (!region_contained_in(inst->src[arg], inst->size_read(arg),
+                            entry->dst, entry->size_written))
+      return false;
+
+   /* If the size of the use type is larger than the size of the entry
+    * type, the entry doesn't contain all of the data that the user is
+    * trying to use.
+    */
+   if (brw_type_size_bits(inst->src[arg].type) >
+       brw_type_size_bits(entry->dst.type))
+      return false;
+
+   return try_constant_propagate_value(entry->src, entry->dst.type, inst, arg);
+}
+
 static bool
 can_propagate_from(fs_inst *inst)
 {
@@ -1276,6 +1279,30 @@ can_propagate_from(fs_inst *inst)
            /* Subset of !is_partial_write() conditions. */
            !inst->predicate && inst->dst.is_contiguous()) ||
           is_identity_payload(FIXED_GRF, inst);
+}
+
+static void
+commute_immediates(fs_inst *inst)
+{
+   /* ADD3 can only have the immediate as src0. */
+   if (inst->opcode == BRW_OPCODE_ADD3) {
+      if (inst->src[2].file == IMM) {
+         const auto src0 = inst->src[0];
+         inst->src[0] = inst->src[2];
+         inst->src[2] = src0;
+      }
+   }
+
+   /* If only one of the sources of a 2-source, commutative instruction (e.g.,
+    * AND) is immediate, it must be src1. If both are immediate, opt_algebraic
+    * should fold it away.
+    */
+   if (inst->sources == 2 && inst->is_commutative() &&
+       inst->src[0].file == IMM && inst->src[1].file != IMM) {
+      const auto src1 = inst->src[1];
+      inst->src[1] = inst->src[0];
+      inst->src[0] = src1;
+   }
 }
 
 /* Walks a basic block and does copy propagation on it using the acp
@@ -1300,7 +1327,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
               iter != acp.end() && (*iter)->dst.nr == inst->src[i].nr;
               ++iter) {
             if ((*iter)->src.file == IMM) {
-               if (try_constant_propagate(compiler, inst, *iter, i)) {
+               if (try_constant_propagate(inst, *iter, i)) {
                   instruction_progress = true;
                   break;
                }
@@ -1316,26 +1343,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
 
       if (instruction_progress) {
          progress = true;
-
-         /* ADD3 can only have the immediate as src0. */
-         if (inst->opcode == BRW_OPCODE_ADD3) {
-            if (inst->src[2].file == IMM) {
-               const auto src0 = inst->src[0];
-               inst->src[0] = inst->src[2];
-               inst->src[2] = src0;
-            }
-         }
-
-         /* If only one of the sources of a 2-source, commutative instruction (e.g.,
-          * AND) is immediate, it must be src1. If both are immediate, opt_algebraic
-          * should fold it away.
-          */
-         if (inst->sources == 2 && inst->is_commutative() &&
-             inst->src[0].file == IMM && inst->src[1].file != IMM) {
-            const auto src1 = inst->src[1];
-            inst->src[1] = inst->src[0];
-            inst->src[0] = src1;
-         }
+         commute_immediates(inst);
       }
 
       /* kill the destination from the ACP */

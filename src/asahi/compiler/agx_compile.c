@@ -144,10 +144,20 @@ gather_cf(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
       BITSET_SET_RANGE(set, start_comp, start_comp + nr - 1);
    } else {
-      unsigned start_comp = sem.location * 4;
-      unsigned count = sem.num_slots * 4;
+      unsigned start_comp = (sem.location * 4) + nir_intrinsic_component(intr);
+      bool compact = sem.location == VARYING_SLOT_CLIP_DIST0 ||
+                     sem.location == VARYING_SLOT_CLIP_DIST1;
+      unsigned stride = compact ? 1 : 4;
 
-      BITSET_SET_RANGE(set, start_comp, start_comp + count - 1);
+      /* For now we have to assign CF for the whole vec4 to make indirect
+       * indexiing work. This could be optimized later.
+       */
+      nr = stride;
+
+      for (unsigned i = 0; i < sem.num_slots; ++i) {
+         BITSET_SET_RANGE(set, start_comp + (i * stride),
+                          start_comp + (i * stride) + nr - 1);
+      }
    }
 
    return false;
@@ -508,7 +518,7 @@ cf_for_intrinsic(agx_builder *b, nir_intrinsic_instr *intr)
    /* Determine the base location, taking into account a constant offset */
    unsigned location = nir_intrinsic_io_semantics(intr).location;
    bool compact = location == VARYING_SLOT_CLIP_DIST0 ||
-                  location == VARYING_SLOT_CULL_DIST0;
+                  location == VARYING_SLOT_CLIP_DIST1;
 
    nir_src *offset = nir_get_io_offset_src(intr);
    if (nir_src_is_const(*offset)) {
@@ -3230,8 +3240,7 @@ agx_link_libagx(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_remove_dead_variables,
             nir_var_function_temp | nir_var_shader_temp, NULL);
    NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
-            nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
-               nir_var_mem_global,
+            nir_var_shader_temp | nir_var_function_temp,
             glsl_get_cl_type_size_align);
 }
 
@@ -3251,11 +3260,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS(_, nir, agx_nir_lower_frag_sidefx);
-   } else if (nir->info.stage == MESA_SHADER_VERTEX ||
-              nir->info.stage == MESA_SHADER_TESS_EVAL) {
-
-      if (nir->info.cull_distance_array_size)
-         NIR_PASS(_, nir, agx_nir_lower_cull_distance_vs);
    }
 
    /* Clean up deref gunk after lowering I/O */
@@ -3291,10 +3295,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
 
    NIR_PASS(_, nir, nir_opt_deref);
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
-   NIR_PASS(_, nir, nir_lower_explicit_io,
-            nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
-               nir_var_mem_global,
-            nir_address_format_62bit_generic);
 
    /* We're lowered away all variables. Remove them all for smaller shaders. */
    NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_all, NULL);
@@ -3309,7 +3309,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_opt_sink, move_all);
    NIR_PASS(_, nir, nir_opt_move, move_all);
    NIR_PASS(_, nir, agx_nir_lower_shared_bitsize);
-   NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
 }
 
 void
@@ -3335,6 +3334,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    bool needs_libagx = true /* TODO: Optimize */;
 
+   NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
 
    if (needs_libagx) {
@@ -3410,18 +3410,22 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    info->stage = nir->info.stage;
 
+   /* Check these outside the stage check since nir->info.stage is the hardware
+    * stage and these are read in the vertex *software* stage.
+    */
+   info->uses_draw_id =
+      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
+
+   info->uses_base_param =
+      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX) ||
+      BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
+
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       info->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
 
       info->writes_layer_viewport =
          nir->info.outputs_written & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT);
 
-      info->uses_draw_id =
-         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
-
-      info->uses_base_param =
-         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX) ||
-         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       info->disable_tri_merging = nir->info.uses_wide_subgroup_intrinsics ||
                                   nir->info.fs.needs_quad_helper_invocations ||

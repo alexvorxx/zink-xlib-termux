@@ -153,6 +153,7 @@ struct lvp_physical_device {
    struct pipe_screen *pscreen;
    const nir_shader_compiler_options *drv_options[LVP_SHADER_STAGES];
    uint32_t max_images;
+   bool snorm_blend;
 
    struct vk_sync_timeline_type sync_timeline_type;
    const struct vk_sync_type *sync_types[3];

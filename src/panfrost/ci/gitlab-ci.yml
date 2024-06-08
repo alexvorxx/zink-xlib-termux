@@ -17,6 +17,7 @@
         - src/panfrost/ci/$PIGLIT_TRACES_FILE
         - src/panfrost/include/*
         - src/panfrost/lib/*
+        - src/panfrost/lib/genxml/*
         - src/panfrost/lib/kmod/*
         - src/panfrost/shared/*
         - src/panfrost/util/*
@@ -55,6 +56,7 @@
       when: on_success
     - changes: &panfrost_vulkan_file_list
         - src/panfrost/vulkan/*
+        - src/panfrost/vulkan/**/*
       when: on_success
     - changes: &panfrost_bifrost_file_list
         - src/panfrost/compiler/**/*
@@ -101,6 +103,7 @@
   variables:
     DEVICE_TYPE: meson-g12b-a311d-khadas-vim3
     DTB: $DEVICE_TYPE
+    FARM: collabora
     GPU_VERSION: panfrost-g52
 #   FDO_CI_CONCURRENT: ?
     RUNNER_TAG: mesa-ci-x86-64-lava-meson-g12b-a311d-khadas-vim3
@@ -113,6 +116,7 @@
     DTB: $DEVICE_TYPE
     BOOT_METHOD: depthcharge
     KERNEL_IMAGE_TYPE: ""
+    FARM: collabora
     GPU_VERSION: panfrost-g72
 #   FDO_CI_CONCURRENT: ?
     RUNNER_TAG: mesa-ci-x86-64-lava-mt8183-kukui-jacuzzi-juniper-sku16
@@ -124,6 +128,7 @@
     DEVICE_TYPE: mt8192-asurada-spherion-r0
     DTB: $DEVICE_TYPE
 #   FDO_CI_CONCURRENT: ?
+    FARM: collabora
     GPU_VERSION: panfrost-g57
     KERNEL_IMAGE_TYPE: ""
     RUNNER_TAG: mesa-ci-x86-64-lava-mt8192-asurada-spherion-r0
@@ -136,6 +141,7 @@
     DRIVER_NAME: panfrost
     DTB: rk3288-veyron-jaq
     FDO_CI_CONCURRENT: 6
+    FARM: collabora
     GPU_VERSION: panfrost-t760
     KERNEL_IMAGE_TYPE: ""
     RUNNER_TAG: mesa-ci-x86-64-lava-rk3288-veyron-jaq
@@ -145,6 +151,7 @@
   variables:
     DEVICE_TYPE: rk3399-gru-kevin
     DTB: $DEVICE_TYPE
+    FARM: collabora
     GPU_VERSION: panfrost-t860
     DRIVER_NAME: panfrost
 #   FDO_CI_CONCURRENT: ?
@@ -157,6 +164,7 @@
   variables:
     DEVICE_TYPE: sun50i-h6-pine-h64
     DTB: sun50i-h6-pine-h64
+    FARM: collabora
     GPU_VERSION: panfrost-t720
     DEQP_SUITE: panfrost-t720
     FDO_CI_CONCURRENT: 6

@@ -500,7 +500,7 @@ fd_get_device_reset_status(struct pipe_context *pctx)
 
 static void
 fd_trace_record_ts(struct u_trace *ut, void *cs, void *timestamps,
-                   unsigned idx, bool end_of_pipe)
+                   unsigned idx, uint32_t flags)
 {
    struct fd_batch *batch = container_of(ut, struct fd_batch, trace);
    struct fd_ringbuffer *ring = cs;
@@ -755,8 +755,11 @@ fd_context_init_tc(struct pipe_context *pctx, unsigned flags)
       },
       &ctx->tc);
 
-   if (tc && tc != pctx)
+   if (tc && tc != pctx) {
       threaded_context_init_bytes_mapped_limit((struct threaded_context *)tc, 16);
+      ((struct threaded_context *)tc)->bytes_replaced_limit =
+         ((struct threaded_context *)tc)->bytes_mapped_limit / 4;
+   }
 
    return tc;
 }

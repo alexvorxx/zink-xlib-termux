@@ -6,6 +6,7 @@
  */
 
 #include "ac_descriptors.h"
+#include "ac_gpu_info.h"
 #include "ac_formats.h"
 #include "ac_surface.h"
 
@@ -324,6 +325,225 @@ ac_build_fmask_descriptor(const enum amd_gfx_level gfx_level, const struct ac_fm
    }
 }
 
+static void
+ac_build_gfx6_texture_descriptor(const struct radeon_info *info, const struct ac_texture_state *state, uint32_t desc[8])
+{
+   const struct util_format_description *fmt_desc = util_format_description(state->format);
+   uint32_t num_format, data_format, num_samples;
+   int first_non_void;
+
+   num_samples = fmt_desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS ? MAX2(1, state->num_samples)
+                                                                   : MAX2(1, state->num_storage_samples);
+
+   first_non_void = util_format_get_first_non_void_channel(state->format);
+
+   num_format = ac_translate_tex_numformat(fmt_desc, first_non_void);
+
+   data_format = ac_translate_tex_dataformat(info, fmt_desc, first_non_void);
+   if (data_format == ~0) {
+      data_format = 0;
+   }
+
+   /* S8 with either Z16 or Z32 HTILE need a special format. */
+   if (info->gfx_level == GFX9 && state->format == PIPE_FORMAT_S8_UINT && state->tc_compat_htile_enabled) {
+      if (state->img_format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
+          state->img_format == PIPE_FORMAT_Z24_UNORM_S8_UINT ||
+          state->img_format == PIPE_FORMAT_S8_UINT_Z24_UNORM) {
+         data_format = V_008F14_IMG_DATA_FORMAT_S8_32;
+      } else if (state->img_format == PIPE_FORMAT_Z16_UNORM_S8_UINT) {
+         data_format = V_008F14_IMG_DATA_FORMAT_S8_16;
+      }
+   }
+
+   desc[0] = 0;
+   desc[1] = S_008F14_MIN_LOD(util_unsigned_fixed(CLAMP(state->min_lod, 0, 15), 8)) |
+             S_008F14_DATA_FORMAT(data_format) |
+             S_008F14_NUM_FORMAT(num_format);
+   desc[2] = S_008F18_WIDTH(state->width - 1) |
+             S_008F18_HEIGHT(state->height - 1) |
+             S_008F18_PERF_MOD(4);
+   desc[3] = S_008F1C_DST_SEL_X(ac_map_swizzle(state->swizzle[0])) |
+             S_008F1C_DST_SEL_Y(ac_map_swizzle(state->swizzle[1])) |
+             S_008F1C_DST_SEL_Z(ac_map_swizzle(state->swizzle[2])) |
+             S_008F1C_DST_SEL_W(ac_map_swizzle(state->swizzle[3])) |
+             S_008F1C_BASE_LEVEL(num_samples > 1 ? 0 : state->first_level) |
+             S_008F1C_LAST_LEVEL(num_samples > 1 ? util_logbase2(num_samples) : state->last_level) |
+             S_008F1C_TYPE(state->type);
+   desc[4] = 0;
+   desc[5] = S_008F24_BASE_ARRAY(state->first_layer);
+   desc[6] = 0;
+   desc[7] = 0;
+
+   if (info->gfx_level == GFX9) {
+      const uint32_t bc_swizzle = ac_border_color_swizzle(fmt_desc);
+
+      /* Depth is the last accessible layer on Gfx9.
+       * The hw doesn't need to know the total number of layers.
+       */
+      if (state->type == V_008F1C_SQ_RSRC_IMG_3D)
+         desc[4] |= S_008F20_DEPTH(state->depth - 1);
+      else
+         desc[4] |= S_008F20_DEPTH(state->last_layer);
+
+      desc[4] |= S_008F20_BC_SWIZZLE(bc_swizzle);
+      desc[5] |= S_008F24_MAX_MIP(num_samples > 1 ? util_logbase2(num_samples) : state->num_levels - 1);
+   } else {
+      desc[3] |= S_008F1C_POW2_PAD(state->num_levels > 1);
+      desc[4] |= S_008F20_DEPTH(state->depth - 1);
+      desc[5] |= S_008F24_LAST_ARRAY(state->last_layer);
+   }
+
+   if (state->dcc_enabled) {
+      desc[6] = S_008F28_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(info, state->format));
+   } else {
+      if (!state->aniso_single_level) {
+         /* The last dword is unused by hw. The shader uses it to clear
+          * bits in the first dword of sampler state.
+          */
+         if (info->gfx_level <= GFX7 && state->num_samples <= 1) {
+            if (state->first_level == state->last_level)
+               desc[7] = C_008F30_MAX_ANISO_RATIO;
+            else
+               desc[7] = 0xffffffff;
+         }
+      }
+   }
+}
+
+static uint32_t
+ac_get_gfx10_img_format(const enum amd_gfx_level gfx_level, const struct ac_texture_state *state)
+{
+   const struct gfx10_format *fmt = &ac_get_gfx10_format_table(gfx_level)[state->format];
+   const struct util_format_description *desc = util_format_description(state->format);
+   uint32_t img_format = fmt->img_format;
+
+   if (desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS &&
+       state->gfx10.upgraded_depth && !util_format_has_stencil(desc)) {
+      if (gfx_level >= GFX11) {
+         assert(img_format == V_008F0C_GFX11_FORMAT_32_FLOAT);
+         img_format = V_008F0C_GFX11_FORMAT_32_FLOAT_CLAMP;
+      } else {
+         assert(img_format == V_008F0C_GFX10_FORMAT_32_FLOAT);
+         img_format = V_008F0C_GFX10_FORMAT_32_FLOAT_CLAMP;
+      }
+   }
+
+   return img_format;
+}
+
+static void
+ac_build_gfx10_texture_descriptor(const struct radeon_info *info, const struct ac_texture_state *state, uint32_t desc[8])
+{
+   const struct radeon_surf *surf = state->surf;
+   const struct util_format_description *fmt_desc = util_format_description(state->format);
+   const uint32_t img_format = ac_get_gfx10_img_format(info->gfx_level, state);
+   const struct ac_surf_nbc_view *nbc_view = state->gfx9.nbc_view;
+   const uint32_t field_last_level = state->num_samples > 1 ? util_logbase2(state->num_samples) : state->last_level;
+
+   desc[0] = 0;
+   desc[1] = S_00A004_FORMAT_GFX10(img_format) |
+             S_00A004_WIDTH_LO(state->width - 1);
+   desc[2] = S_00A008_WIDTH_HI((state->width - 1) >> 2) |
+             S_00A008_HEIGHT(state->height - 1) |
+             S_00A008_RESOURCE_LEVEL(info->gfx_level < GFX11);
+   desc[3] = S_00A00C_DST_SEL_X(ac_map_swizzle(state->swizzle[0])) |
+             S_00A00C_DST_SEL_Y(ac_map_swizzle(state->swizzle[1])) |
+             S_00A00C_DST_SEL_Z(ac_map_swizzle(state->swizzle[2])) |
+             S_00A00C_DST_SEL_W(ac_map_swizzle(state->swizzle[3])) |
+             S_00A00C_BASE_LEVEL(state->num_samples > 1 ? 0 : state->first_level) |
+             S_00A00C_LAST_LEVEL_GFX10(field_last_level) |
+             S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(fmt_desc)) |
+             S_00A00C_TYPE(state->type);
+
+   /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
+    * to know the total number of layers.
+    */
+   desc[4] = S_00A010_DEPTH_GFX10(state->depth) |
+             S_00A010_BASE_ARRAY(state->first_layer);
+
+   /* ARRAY_PITCH is only meaningful for 3D images, 0 means SRV, 1 means UAV.
+    * In SRV mode, BASE_ARRAY is ignored and DEPTH is the last slice of mipmap level 0.
+    * In UAV mode, BASE_ARRAY is the first slice and DEPTH is the last slice of the bound level.
+    */
+   desc[5] = S_00A014_ARRAY_PITCH(state->gfx10.uav3d) | S_00A014_PERF_MOD(4);
+   desc[6] = 0;
+   desc[7] = 0;
+
+   uint32_t max_mip = state->num_samples > 1 ? util_logbase2(state->num_samples) : state->num_levels - 1;
+   if (nbc_view && nbc_view->valid)
+      max_mip = nbc_view->num_levels - 1;
+
+   const uint32_t min_lod_clamped = util_unsigned_fixed(CLAMP(state->min_lod, 0, 15), 8);
+   if (info->gfx_level >= GFX11) {
+      desc[1] |= S_00A004_MAX_MIP_GFX11(max_mip);
+      desc[5] |= S_00A014_MIN_LOD_LO_GFX11(min_lod_clamped);
+      desc[6] |= S_00A018_MIN_LOD_HI(min_lod_clamped >> 5);
+   } else {
+      desc[1] |= S_00A004_MIN_LOD(min_lod_clamped);
+      desc[5] |= S_00A014_MAX_MIP(max_mip);
+   }
+
+   if (state->dcc_enabled) {
+      desc[6] |= S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(V_028C78_MAX_BLOCK_SIZE_256B) |
+                 S_00A018_MAX_COMPRESSED_BLOCK_SIZE(surf->u.gfx9.color.dcc.max_compressed_block_size) |
+                 S_00A018_ALPHA_IS_ON_MSB(ac_alpha_is_on_msb(info, state->format));
+   }
+}
+
+static void
+ac_build_gfx12_texture_descriptor(const struct radeon_info *info, const struct ac_texture_state *state, uint32_t desc[8])
+{
+   const struct radeon_surf *surf = state->surf;
+   const struct util_format_description *fmt_desc = util_format_description(state->format);
+   const uint32_t img_format = ac_get_gfx10_img_format(info->gfx_level, state);
+   const uint32_t max_mip = state->num_samples > 1 ? util_logbase2(state->num_samples) : state->num_levels - 1;
+   const uint32_t field_last_level = state->num_samples > 1 ? util_logbase2(state->num_samples) : state->last_level;
+   const bool no_edge_clamp = state->num_levels > 1 && util_format_is_compressed(state->img_format) &&
+                              !util_format_is_compressed(state->format);
+   const uint32_t min_lod_clamped = util_unsigned_fixed(CLAMP(state->min_lod, 0, 15), 8);
+
+   desc[0] = 0;
+   desc[1] = S_00A004_MAX_MIP_GFX12(max_mip) |
+             S_00A004_FORMAT_GFX12(img_format) |
+             S_00A004_BASE_LEVEL(state->num_samples > 1 ? 0 : state->first_level) |
+             S_00A004_WIDTH_LO(state->width - 1);
+   desc[2] = S_00A008_WIDTH_HI((state->width - 1) >> 2) |
+             S_00A008_HEIGHT(state->height - 1);
+   desc[3] = S_00A00C_DST_SEL_X(ac_map_swizzle(state->swizzle[0])) |
+             S_00A00C_DST_SEL_Y(ac_map_swizzle(state->swizzle[1])) |
+             S_00A00C_DST_SEL_Z(ac_map_swizzle(state->swizzle[2])) |
+             S_00A00C_DST_SEL_W(ac_map_swizzle(state->swizzle[3])) |
+             S_00A00C_NO_EDGE_CLAMP(no_edge_clamp) |
+             S_00A00C_LAST_LEVEL_GFX12(field_last_level) |
+             S_00A00C_BC_SWIZZLE(ac_border_color_swizzle(fmt_desc)) |
+             S_00A00C_TYPE(state->type);
+
+   /* Depth is the the last accessible layer on gfx9+. The hw doesn't need
+    * to know the total number of layers.
+    */
+   desc[4] = S_00A010_DEPTH_GFX12(state->depth) |
+             S_00A010_BASE_ARRAY(state->first_layer);
+   desc[5] = S_00A014_UAV3D(state->gfx10.uav3d) |
+             S_00A014_PERF_MOD(4) |
+             S_00A014_MIN_LOD_LO_GFX12(min_lod_clamped);
+   desc[6] = S_00A018_MAX_UNCOMPRESSED_BLOCK_SIZE(1 /*256B*/) |
+             S_00A018_MAX_COMPRESSED_BLOCK_SIZE(surf->u.gfx9.color.dcc.max_compressed_block_size) |
+             S_00A018_MIN_LOD_HI(min_lod_clamped >> 6);
+   desc[7] = 0;
+}
+
+void
+ac_build_texture_descriptor(const struct radeon_info *info, const struct ac_texture_state *state, uint32_t desc[8])
+{
+   if (info->gfx_level >= GFX12) {
+      ac_build_gfx12_texture_descriptor(info, state, desc);
+   } else if (info->gfx_level >= GFX10) {
+      ac_build_gfx10_texture_descriptor(info, state, desc);
+   } else {
+      ac_build_gfx6_texture_descriptor(info, state, desc);
+   }
+}
+
 uint32_t
 ac_tile_mode_index(const struct radeon_surf *surf, unsigned level, bool stencil)
 {
@@ -414,7 +634,29 @@ ac_set_mutable_tex_desc_fields(const struct radeon_info *info, const struct ac_m
          }
       }
 
-      if (meta_va) {
+      if (info->gfx_level >= GFX12) {
+         /* Color and Z/S always support compressed image stores on Gfx12. Enablement is
+          * mostly controlled by PTE.D (page table bit). The rule is:
+          *
+          * Shader Engines (shaders, CB, DB, SC):
+          *    COMPRESSION_ENABLED = PTE.D && COMPRESSION_EN;
+          *
+          * Central Hub (CP, SDMA, indices, tess factor loads):
+          *    PTE.D is ignored. Packets and states fully determine enablement.
+          *
+          * If !PTE.D, the states enabling compression in shaders, CB, DB, and SC have no effect.
+          * PTE.D is set per buffer allocation in Linux, not per VM page, so that it's
+          * automatically propagated between processes. We could optionally allow setting it
+          * per VM page too.
+          *
+          * The DCC/HTILE buffer isn't allocated separately on Gfx12 anymore. The DCC/HTILE
+          * metadata storage is mostly hidden from userspace, and any buffer can be compressed.
+          */
+         if (state->dcc_enabled) {
+            desc[6] |= S_00A018_COMPRESSION_EN(1) |
+                       S_00A018_WRITE_COMPRESS_ENABLE(state->gfx10.write_compress_enable);
+         }
+      } else if (meta_va) {
          /* Gfx10-11. */
          struct gfx9_surf_meta_flags meta = {
             .rb_aligned = 1,
@@ -520,8 +762,8 @@ ac_set_buf_desc_word3(const enum amd_gfx_level gfx_level, const struct ac_buffer
        *       else:
        *          offset+payload > NUM_RECORDS
        */
-      *rsrc_word3 |= gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
-                                          S_008F0C_FORMAT_GFX10(fmt->img_format) |
+      *rsrc_word3 |= (gfx_level >= GFX12 ? S_008F0C_FORMAT_GFX12(fmt->img_format) :
+                                           S_008F0C_FORMAT_GFX10(fmt->img_format)) |
                      S_008F0C_OOB_SELECT(state->gfx10_oob_select) |
                      S_008F0C_RESOURCE_LEVEL(gfx_level < GFX11);
    } else {
@@ -756,7 +998,7 @@ ac_init_gfx12_ds_surface(const struct radeon_info *info, const struct ac_ds_stat
                        S_028004_SLICE_MAX(state->last_layer);
    ds->u.gfx12.db_depth_view1 = S_028008_MIPID_GFX12(state->level);
    ds->db_depth_size = S_028014_X_MAX(state->width - 1) |
-                       S_028014_Y_MAX(state->width - 1);
+                       S_028014_Y_MAX(state->height - 1);
    ds->db_z_info = S_028018_FORMAT(db_format) |
                    S_028018_NUM_SAMPLES(util_logbase2(state->num_samples)) |
                    S_028018_SW_MODE(surf->u.gfx9.swizzle_mode) |
@@ -1142,8 +1384,10 @@ ac_set_mutable_cb_surface_fields(const struct radeon_info *info, const struct ac
          cb->cb_color_base |= tile_swizzle;
    }
 
-   if (info->gfx_level >= GFX12)
+   if (info->gfx_level >= GFX12) {
+      cb->cb_color_attrib3 |= S_028C7C_COLOR_SW_MODE(surf->u.gfx9.swizzle_mode);
       return;
+   }
 
    /* Set up DCC. */
    if (state->dcc_enabled) {

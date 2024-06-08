@@ -562,8 +562,7 @@ perform_hazard_query(hazard_query* query, Instruction* instr, bool upwards)
     */
    if (upwards) {
       if (instr->opcode == aco_opcode::p_pops_gfx9_add_exiting_wave_id ||
-          (instr->opcode == aco_opcode::s_wait_event &&
-           !(instr->salu().imm & wait_event_imm_dont_wait_export_ready))) {
+          is_wait_export_ready(query->gfx_level, instr)) {
          return hazard_fail_unreorderable;
       }
    } else {
@@ -601,7 +600,8 @@ perform_hazard_query(hazard_query* query, Instruction* instr, bool upwards)
        instr->opcode == aco_opcode::p_jump_to_epilog ||
        instr->opcode == aco_opcode::s_sendmsg_rtn_b32 ||
        instr->opcode == aco_opcode::s_sendmsg_rtn_b64 ||
-       instr->opcode == aco_opcode::p_end_with_regs)
+       instr->opcode == aco_opcode::p_end_with_regs || instr->opcode == aco_opcode::s_nop ||
+       instr->opcode == aco_opcode::s_sleep)
       return hazard_fail_unreorderable;
 
    memory_event_set instr_set;

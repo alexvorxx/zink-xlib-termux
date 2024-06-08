@@ -136,6 +136,17 @@ ac_nir_cull_primitive(nir_builder *b,
 void
 ac_nir_sleep(nir_builder *b, unsigned num_cycles);
 
+nir_def *
+ac_average_samples(nir_builder *b, nir_def **samples, unsigned num_samples);
+
+void
+ac_optimization_barrier_vgpr_array(const struct radeon_info *info, nir_builder *b,
+                                   nir_def **array, unsigned num_elements,
+                                   unsigned num_components);
+
+nir_def *
+ac_get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size);
+
 #ifdef __cplusplus
 }
 #endif

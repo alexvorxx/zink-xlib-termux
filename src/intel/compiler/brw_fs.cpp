@@ -427,7 +427,7 @@ fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
    if (is_send_from_grf())
       return false;
 
-   /* From Wa_1604601757:
+   /* From TGL PRM Vol 2a Pg. 1053 and Pg. 1069 MAD and MUL Instructions:
     *
     * "When multiplying a DW and any lower precision integer, source modifier
     *  is not supported."
@@ -2464,10 +2464,8 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "btd_spawn_logical";
    case SHADER_OPCODE_BTD_RETIRE_LOGICAL:
       return "btd_retire_logical";
-   case SHADER_OPCODE_READ_MASK_REG:
-      return "read_mask_reg";
-   case SHADER_OPCODE_READ_SR_REG:
-      return "read_sr_reg";
+   case SHADER_OPCODE_READ_ARCH_REG:
+      return "read_arch_reg";
    }
 
    unreachable("not reached");

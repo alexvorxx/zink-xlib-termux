@@ -390,7 +390,9 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
 
       fs_reg exec_mask = ubld.vgrf(BRW_TYPE_UD);
       ubld.UNDEF(exec_mask);
-      ubld.emit(SHADER_OPCODE_READ_MASK_REG, exec_mask, brw_imm_ud(0));
+      ubld.emit(SHADER_OPCODE_READ_ARCH_REG, exec_mask,
+                                             retype(brw_mask_reg(0),
+                                                    BRW_TYPE_UD));
 
       /* ce0 doesn't consider the thread dispatch mask (DMask or VMask),
        * so combine the execution and dispatch masks to obtain the true mask.
@@ -402,7 +404,9 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
       if (!(first && packed_dispatch)) {
          fs_reg mask = ubld.vgrf(BRW_TYPE_UD);
          ubld.UNDEF(mask);
-         ubld.emit(SHADER_OPCODE_READ_SR_REG, mask, brw_imm_ud(vmask ? 3 : 2));
+         ubld.emit(SHADER_OPCODE_READ_ARCH_REG, mask,
+                                                retype(brw_sr0_reg(vmask ? 3 : 2),
+                                                       BRW_TYPE_UD));
 
          /* Quarter control has the effect of magically shifting the value of
           * ce0 so you'll get the first/last active channel relative to the

@@ -71,6 +71,8 @@ gfx10_format_table_c = custom_target(
 amd_common_files = files(
   'ac_binary.c',
   'ac_binary.h',
+  'ac_cmdbuf.c',
+  'ac_cmdbuf.h',
   'ac_shader_args.c',
   'ac_shader_args.h',
   'ac_shader_util.c',
@@ -111,10 +113,15 @@ amd_common_files = files(
   'ac_nir_lower_tex.c',
   'ac_nir_lower_ngg.c',
   'ac_nir_lower_ps.c',
+  'ac_nir_meta.h',
+  'ac_nir_meta_cs_blit.c',
+  'ac_nir_meta_ps_resolve.c',
   'amd_family.c',
   'ac_parse_ib.c',
   'ac_perfcounter.c',
   'ac_perfcounter.h',
+  'ac_pm4.c',
+  'ac_pm4.h',
   'ac_vcn_av1_default.h',
 )
 

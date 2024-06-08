@@ -227,6 +227,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_shader_atomic_float2              = true,
    .EXT_shader_demote_to_helper_invocation= true,
    .EXT_shader_object                     = true,
+   .EXT_shader_replicated_composites      = true,
    .EXT_shader_stencil_export             = true,
    .EXT_shader_subgroup_ballot            = true,
    .EXT_shader_subgroup_vote              = true,
@@ -513,6 +514,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
 
       /* VK_KHR_shader_clock */
       .shaderSubgroupClock = true,
@@ -1234,6 +1238,9 @@ lvp_physical_device_init(struct lvp_physical_device *device,
    if ((supported_dmabuf_bits & dmabuf_bits) == dmabuf_bits)
       device->vk.supported_extensions.EXT_image_drm_format_modifier = true;
 #endif
+
+   /* SNORM blending on llvmpipe fails CTS - disable by default */
+   device->snorm_blend = debug_get_bool_option("LVP_SNORM_BLEND", false);
 
    lvp_get_features(device, &device->vk.supported_features);
    lvp_get_properties(device, &device->vk.properties);

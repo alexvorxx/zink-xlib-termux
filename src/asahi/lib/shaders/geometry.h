@@ -24,16 +24,13 @@
 
 /* Packed geometry state buffer */
 struct agx_geometry_state {
-   /* Heap to allocate from, in either direction. By convention, the top is used
-    * for intra-draw allocations and the bottom is used for full-batch
-    * allocations. In the future we could use kernel support to improve this.
-    */
+   /* Heap to allocate from. */
    GLOBAL(uchar) heap;
-   uint32_t heap_bottom, heap_top, heap_size, padding;
+   uint32_t heap_bottom, heap_size;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_geometry_state) == 6 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_state) == 4 * 4);
 
-struct agx_ia_state {
+struct agx_restart_unroll_params {
    /* Heap to allocate from across draws */
    GLOBAL(struct agx_geometry_state) heap;
 
@@ -46,42 +43,63 @@ struct agx_ia_state {
    /* Input: indirect draw descriptor. Raw pointer since it's strided. */
    uint64_t draws;
 
-   /* For the geom/tess path, this is the temporary prefix sum buffer.
-    * Caller-allocated. For regular MDI, this is ok since the CPU knows the
-    * worst-case draw count.
-    */
-   GLOBAL(uint) prefix_sums;
-
-   /* When unrolling primitive restart, output draw descriptors */
+   /* Output draw descriptors */
    GLOBAL(uint) out_draws;
+
+   /* Input: maximum draw count, count is clamped to this */
+   uint32_t max_draws;
+
+   /* Primitive restart index */
+   uint32_t restart_index;
+
+   /* Input index buffer size in bytes */
+   uint32_t index_buffer_size_B;
+
+   /* Stride for the draw descriptor array */
+   uint32_t draw_stride;
+
+   /* Use first vertex as the provoking vertex for flat shading. We could stick
+    * this in the key, but meh, you're already hosed for perf on the unroll
+    * path.
+    */
+   uint32_t flatshade_first;
+} PACKED;
+AGX_STATIC_ASSERT(sizeof(struct agx_restart_unroll_params) == 15 * 4);
+
+struct agx_gs_setup_indirect_params {
+   /* Index buffer if present. */
+   CONST(uchar) index_buffer;
+
+   /* Indirect draw descriptor. */
+   CONST(uint) draw;
+
+   /* Pointer to be written with allocated vertex buffer */
+   GLOBAL(uintptr_t) vertex_buffer;
+
+   /* Output input assembly state */
+   GLOBAL(struct agx_ia_state) ia;
+
+   /* Output geometry parameters */
+   GLOBAL(struct agx_geometry_params) geom;
+
+   /* Vertex (TES) output mask for sizing the allocated buffer */
+   uint64_t vs_outputs;
+
+   /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
+   uint32_t index_size_B;
+} PACKED;
+AGX_STATIC_ASSERT(sizeof(struct agx_gs_setup_indirect_params) == 13 * 4);
+
+struct agx_ia_state {
+   /* Index buffer if present. */
+   CONST(uchar) index_buffer;
 
    /* Number of vertices per instance. Written by CPU for direct draw, indirect
     * setup kernel for indirect. This is used for VS->GS and VS->TCS indexing.
     */
    uint32_t verts_per_instance;
-
-   /* Input: maximum draw count, count is clamped to this */
-   uint32_t max_draws;
-
-   /* Primitive restart index, if unrolling */
-   uint32_t restart_index;
-
-   /* Input index buffer size in bytes, if unrolling */
-   uint32_t index_buffer_size_B;
-
-   /* Stride for the draw descrptor array */
-   uint32_t draw_stride;
-
-   /* When unrolling primitive restart, use first vertex as the provoking vertex
-    * for flat shading. We could stick this in the key, but meh, you're already
-    * hosed for perf on the unroll path.
-    */
-   uint32_t flatshade_first;
-
-   /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
-   uint32_t index_size_B;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 19 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 3 * 4);
 
 struct agx_geometry_params {
    /* Persistent (cross-draw) geometry state */

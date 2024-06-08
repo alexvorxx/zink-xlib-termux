@@ -860,14 +860,6 @@ tu_lower_io(nir_shader *shader, struct tu_device *dev,
                mesa_to_vk_shader_stage(shader->info.stage)))
             continue;
 
-         /* Workaround a CTS bug by ignoring zero-sized inline uniform
-          * blocks that aren't being properly filtered out when creating the
-          * descriptor set layout, see
-          * https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/4115
-          */
-         if (binding->size == 0)
-            continue;
-
          /* If we don't know the size at compile time due to a variable
           * descriptor count, then with descriptor buffers we cannot know
           * how much space the real inline uniform has. In this case we fall
@@ -2547,7 +2539,7 @@ tu_shader_create(struct tu_device *dev,
       shader->fs.has_fdm = key->fragment_density_map;
       if (fs->has_kill)
          shader->fs.lrz.status |= TU_LRZ_FORCE_DISABLE_WRITE;
-      if (fs->no_earlyz || fs->writes_pos)
+      if (fs->no_earlyz || (fs->writes_pos && !fs->fs.early_fragment_tests))
          shader->fs.lrz.status = TU_LRZ_FORCE_DISABLE_LRZ;
       /* FDM isn't compatible with LRZ, because the LRZ image uses the original
        * resolution and we would need to use the low resolution.

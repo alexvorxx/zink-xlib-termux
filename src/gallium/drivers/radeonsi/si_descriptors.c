@@ -294,7 +294,8 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
          },
       .is_stencil = is_stencil,
       .dcc_enabled =
-         !(access & SI_IMAGE_ACCESS_DCC_OFF) && vi_dcc_enabled(tex, first_level),
+         !(access & SI_IMAGE_ACCESS_DCC_OFF) &&
+         (tex->buffer.flags & RADEON_FLAG_GFX12_ALLOW_DCC || vi_dcc_enabled(tex, first_level)),
       .tc_compat_htile_enabled =
          sscreen->info.gfx_level < GFX12 &&
          vi_tc_compat_htile_enabled(tex, first_level, is_stencil ? PIPE_MASK_S : PIPE_MASK_Z),
@@ -1427,6 +1428,8 @@ void si_set_ring_buffer(struct si_context *sctx, uint slot, struct pipe_resource
    struct si_buffer_resources *buffers = &sctx->internal_bindings;
    struct si_descriptors *descs = &sctx->descriptors[SI_DESCS_INTERNAL];
 
+   /* Never used on GFX11+. (only used by ESGS and GSVS rings in memory) */
+   assert(sctx->gfx_level < GFX11);
    /* The stride field in the resource descriptor has 14 bits */
    assert(stride < (1 << 14));
 

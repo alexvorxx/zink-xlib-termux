@@ -71,6 +71,7 @@ static unsigned si_lower_bit_size_callback(const nir_instr *instr, void *data)
 
 void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
 {
+   bool use_aco = sscreen->use_aco || nir->info.use_aco_amd;
    bool progress;
 
    do {
@@ -80,7 +81,7 @@ void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
 
       NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
       NIR_PASS(progress, nir, nir_lower_alu_to_scalar,
-               nir->options->lower_to_scalar_filter, (void *)sscreen->use_aco);
+               nir->options->lower_to_scalar_filter, (void *)use_aco);
       NIR_PASS(progress, nir, nir_lower_phis_to_scalar, false);
 
       if (first) {
@@ -103,7 +104,7 @@ void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
 
       if (lower_alu_to_scalar) {
          NIR_PASS_V(nir, nir_lower_alu_to_scalar,
-                    nir->options->lower_to_scalar_filter, (void *)sscreen->use_aco);
+                    nir->options->lower_to_scalar_filter, (void *)use_aco);
       }
       if (lower_phis_to_scalar)
          NIR_PASS_V(nir, nir_lower_phis_to_scalar, false);
@@ -145,10 +146,8 @@ void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
       if (nir->info.stage == MESA_SHADER_FRAGMENT)
          NIR_PASS_V(nir, nir_opt_move_discards_to_top);
 
-      if (sscreen->info.has_packed_math_16bit) {
-         NIR_PASS(progress, nir, nir_opt_vectorize, si_vectorize_callback,
-                  (void *)sscreen->use_aco);
-      }
+      if (sscreen->info.has_packed_math_16bit)
+         NIR_PASS(progress, nir, nir_opt_vectorize, si_vectorize_callback, (void *)use_aco);
    } while (progress);
 
    NIR_PASS_V(nir, nir_lower_var_copies);

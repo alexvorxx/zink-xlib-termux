@@ -14,6 +14,8 @@
 
 #include "vulkan/runtime/vk_command_buffer.h"
 
+#include "panvk_cmd_desc_state.h"
+#include "panvk_cmd_push_constant.h"
 #include "panvk_descriptor_set.h"
 #include "panvk_descriptor_set_layout.h"
 #include "panvk_device.h"
@@ -28,9 +30,8 @@
 
 #include "genxml/gen_macros.h"
 
-#define MAX_BIND_POINTS         2 /* compute + graphics */
-#define MAX_VBS                 16
-#define MAX_PUSH_CONSTANTS_SIZE 128
+#define MAX_BIND_POINTS 2 /* compute + graphics */
+#define MAX_VBS         16
 
 struct panvk_batch {
    struct list_head node;
@@ -70,26 +71,6 @@ enum panvk_cmd_event_op_type {
 struct panvk_cmd_event_op {
    enum panvk_cmd_event_op_type type;
    struct panvk_event *event;
-};
-
-struct panvk_descriptor_state {
-   const struct panvk_descriptor_set *sets[MAX_SETS];
-   struct panvk_push_descriptor_set *push_sets[MAX_SETS];
-
-   struct {
-      struct mali_uniform_buffer_packed ubos[MAX_DYNAMIC_UNIFORM_BUFFERS];
-      struct panvk_ssbo_addr ssbos[MAX_DYNAMIC_STORAGE_BUFFERS];
-   } dyn;
-   mali_ptr ubos;
-   mali_ptr textures;
-   mali_ptr samplers;
-   mali_ptr dyn_desc_ubo;
-   mali_ptr push_uniforms;
-
-   struct {
-      mali_ptr attribs;
-      mali_ptr attrib_bufs;
-   } img;
 };
 
 struct panvk_attrib_buf {
@@ -133,24 +114,33 @@ struct panvk_cmd_graphics_state {
    } ib;
 
    struct {
+      VkRenderingFlags flags;
+
       enum vk_rp_attachment_flags bound_attachments;
       struct {
          VkFormat fmts[MAX_RTS];
          uint8_t samples[MAX_RTS];
       } color_attachments;
-      struct pan_fb_info info;
-      bool crc_valid[MAX_RTS];
-      uint32_t bo_count;
-      struct pan_kmod_bo *bos[MAX_RTS + 2];
-   } fb;
+
+      struct pan_image_view zs_pview;
+
+      struct {
+         struct pan_fb_info info;
+         bool crc_valid[MAX_RTS];
+         uint32_t bo_count;
+         struct pan_kmod_bo *bos[MAX_RTS + 2];
+      } fb;
+   } render;
 
    mali_ptr vpd;
+   mali_ptr push_uniforms;
 };
 
 struct panvk_cmd_compute_state {
    struct panvk_descriptor_state desc_state;
    const struct panvk_compute_pipeline *pipeline;
    struct panvk_compute_sysvals sysvals;
+   mali_ptr push_uniforms;
 };
 
 struct panvk_cmd_buffer {
@@ -165,9 +155,8 @@ struct panvk_cmd_buffer {
    struct {
       struct panvk_cmd_graphics_state gfx;
       struct panvk_cmd_compute_state compute;
+      struct panvk_push_constant_state push_constants;
    } state;
-
-   uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
 };
 
 VK_DEFINE_HANDLE_CASTS(panvk_cmd_buffer, vk.base, VkCommandBuffer,
@@ -210,7 +199,7 @@ panvk_cmd_get_desc_state(struct panvk_cmd_buffer *cmdbuf,
 extern const struct vk_command_buffer_ops panvk_per_arch(cmd_buffer_ops);
 
 struct panvk_batch *
-panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf);
+   panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf);
 
@@ -223,5 +212,8 @@ void panvk_per_arch(cmd_prepare_tiler_context)(struct panvk_cmd_buffer *cmdbuf);
 
 void panvk_per_arch(emit_viewport)(const VkViewport *viewport,
                                    const VkRect2D *scissor, void *vpd);
+
+void panvk_per_arch(cmd_preload_fb_after_batch_split)(
+   struct panvk_cmd_buffer *cmdbuf);
 
 #endif

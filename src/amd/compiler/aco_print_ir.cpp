@@ -262,6 +262,79 @@ print_sync(memory_sync_info sync, FILE* output)
       print_scope(sync.scope, output);
 }
 
+template <typename T>
+static void
+print_cache_flags(enum amd_gfx_level gfx_level, const T& instr, FILE* output)
+{
+   if (gfx_level >= GFX12) {
+      if (instr_info.is_atomic[(unsigned)instr.opcode]) {
+         if (instr.cache.gfx12.temporal_hint & gfx12_atomic_return)
+            fprintf(output, " atomic_return");
+         if (instr.cache.gfx12.temporal_hint & gfx12_atomic_non_temporal)
+            fprintf(output, " non_temporal");
+         if (instr.cache.gfx12.temporal_hint & gfx12_atomic_accum_deferred_scope)
+            fprintf(output, " accum_deferred_scope");
+      } else if (instr.definitions.empty()) {
+         switch (instr.cache.gfx12.temporal_hint) {
+         case gfx12_load_regular_temporal: break;
+         case gfx12_load_non_temporal: fprintf(output, " non_temporal"); break;
+         case gfx12_load_high_temporal: fprintf(output, " high_temporal"); break;
+         case gfx12_load_last_use_discard: fprintf(output, " last_use_discard"); break;
+         case gfx12_load_near_non_temporal_far_regular_temporal:
+            fprintf(output, " near_non_temporal_far_regular_temporal");
+            break;
+         case gfx12_load_near_regular_temporal_far_non_temporal:
+            fprintf(output, " near_regular_temporal_far_non_temporal");
+            break;
+         case gfx12_load_near_non_temporal_far_high_temporal:
+            fprintf(output, " near_non_temporal_far_high_temporal");
+            break;
+         case gfx12_load_reserved: fprintf(output, " reserved"); break;
+         default: fprintf(output, "tmp:%u", (unsigned)instr.cache.gfx12.temporal_hint);
+         }
+      } else {
+         switch (instr.cache.gfx12.temporal_hint) {
+         case gfx12_store_regular_temporal: break;
+         case gfx12_store_non_temporal: fprintf(output, " non_temporal"); break;
+         case gfx12_store_high_temporal: fprintf(output, " high_temporal"); break;
+         case gfx12_store_high_temporal_stay_dirty:
+            fprintf(output, " high_temporal_stay_dirty");
+            break;
+         case gfx12_store_near_non_temporal_far_regular_temporal:
+            fprintf(output, " near_non_temporal_far_regular_temporal");
+            break;
+         case gfx12_store_near_regular_temporal_far_non_temporal:
+            fprintf(output, " near_regular_temporal_far_non_temporal");
+            break;
+         case gfx12_store_near_non_temporal_far_high_temporal:
+            fprintf(output, " near_non_temporal_far_high_temporal");
+            break;
+         case gfx12_store_near_non_temporal_far_writeback:
+            fprintf(output, " near_non_temporal_far_writeback");
+            break;
+         default: fprintf(output, "tmp:%u", (unsigned)instr.cache.gfx12.temporal_hint);
+         }
+      }
+      switch (instr.cache.gfx12.scope) {
+      case gfx12_scope_cu: break;
+      case gfx12_scope_se: fprintf(output, " se"); break;
+      case gfx12_scope_device: fprintf(output, " device"); break;
+      case gfx12_scope_memory: fprintf(output, " memory"); break;
+      }
+      if (instr.cache.gfx12.swizzled)
+         fprintf(output, " swizzled");
+   } else {
+      if (instr.cache.value & ac_glc)
+         fprintf(output, " glc");
+      if (instr.cache.value & ac_slc)
+         fprintf(output, " slc");
+      if (instr.cache.value & ac_dlc)
+         fprintf(output, " dlc");
+      if (instr.cache.value & ac_swizzled)
+         fprintf(output, " swizzled");
+   }
+}
+
 static void
 print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output)
 {
@@ -395,8 +468,8 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          break;
       }
       case aco_opcode::s_wait_event: {
-         if (!(imm & wait_event_imm_dont_wait_export_ready))
-            fprintf(output, " export_ready");
+         if (is_wait_export_ready(gfx_level, instr))
+            fprintf(output, " wait_export_ready");
          break;
       }
       default: {
@@ -428,12 +501,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
    }
    case Format::SMEM: {
       const SMEM_instruction& smem = instr->smem();
-      if (smem.glc)
-         fprintf(output, " glc");
-      if (smem.dlc)
-         fprintf(output, " dlc");
-      if (smem.nv)
-         fprintf(output, " nv");
+      print_cache_flags(gfx_level, smem, output);
       print_sync(smem.sync, output);
       break;
    }
@@ -482,12 +550,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          fprintf(output, " idxen");
       if (mubuf.addr64)
          fprintf(output, " addr64");
-      if (mubuf.glc)
-         fprintf(output, " glc");
-      if (mubuf.dlc)
-         fprintf(output, " dlc");
-      if (mubuf.slc)
-         fprintf(output, " slc");
+      print_cache_flags(gfx_level, mubuf, output);
       if (mubuf.tfe)
          fprintf(output, " tfe");
       if (mubuf.lds)
@@ -517,12 +580,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
       }
       if (mimg.unrm)
          fprintf(output, " unrm");
-      if (mimg.glc)
-         fprintf(output, " glc");
-      if (mimg.dlc)
-         fprintf(output, " dlc");
-      if (mimg.slc)
-         fprintf(output, " slc");
+      print_cache_flags(gfx_level, mimg, output);
       if (mimg.tfe)
          fprintf(output, " tfe");
       if (mimg.da)
@@ -594,12 +652,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
       const FLAT_instruction& flat = instr->flatlike();
       if (flat.offset)
          fprintf(output, " offset:%d", flat.offset);
-      if (flat.glc)
-         fprintf(output, " glc");
-      if (flat.dlc)
-         fprintf(output, " dlc");
-      if (flat.slc)
-         fprintf(output, " slc");
+      print_cache_flags(gfx_level, flat, output);
       if (flat.lds)
          fprintf(output, " lds");
       if (flat.nv)
@@ -646,12 +699,7 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
          fprintf(output, " offen");
       if (mtbuf.idxen)
          fprintf(output, " idxen");
-      if (mtbuf.glc)
-         fprintf(output, " glc");
-      if (mtbuf.dlc)
-         fprintf(output, " dlc");
-      if (mtbuf.slc)
-         fprintf(output, " slc");
+      print_cache_flags(gfx_level, mtbuf, output);
       if (mtbuf.tfe)
          fprintf(output, " tfe");
       if (mtbuf.disable_wqm)

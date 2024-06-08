@@ -600,6 +600,12 @@ struct threaded_context {
    uint64_t bytes_mapped_estimate;
    uint64_t bytes_mapped_limit;
 
+   /* Estimation of how replacement buffer bytes are in
+    * the current tc_batch.
+    */
+   uint64_t bytes_replaced_estimate;
+   uint64_t bytes_replaced_limit;
+
    struct util_queue queue;
    struct util_queue_fence *fence;
 

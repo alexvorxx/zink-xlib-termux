@@ -379,10 +379,7 @@ lower_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       id = load_geometry_param(b, flat_outputs);
    else if (intr->intrinsic == nir_intrinsic_load_input_topology_agx)
       id = load_geometry_param(b, input_topology);
-   else if (intr->intrinsic == nir_intrinsic_load_provoking_last) {
-      id = nir_b2b32(
-         b, libagx_is_provoking_last(b, nir_load_input_assembly_buffer_agx(b)));
-   } else
+   else
       return false;
 
    b->cursor = nir_instr_remove(&intr->instr);
@@ -545,12 +542,17 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
       const char *slot_name =
          gl_varying_slot_name_for_stage(slot, MESA_SHADER_GEOMETRY);
 
+      bool scalar = (slot == VARYING_SLOT_PSIZ) ||
+                    (slot == VARYING_SLOT_LAYER) ||
+                    (slot == VARYING_SLOT_VIEWPORT);
+      unsigned comps = scalar ? 1 : 4;
+
       rast_state.outputs.outputs[slot] = nir_variable_create(
-         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, 4),
+         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, comps),
          ralloc_asprintf(shader, "%s-temp", slot_name));
 
       rast_state.selected.outputs[slot] = nir_variable_create(
-         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, 4),
+         shader, nir_var_shader_temp, glsl_vector_type(GLSL_TYPE_UINT, comps),
          ralloc_asprintf(shader, "%s-selected", slot_name));
    }
 
@@ -568,8 +570,9 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
       /* We set NIR_COMPACT_ARRAYS so clip/cull distance needs to come all in
        * DIST0. Undo the offset if we need to.
        */
+      assert(slot != VARYING_SLOT_CULL_DIST1);
       unsigned offset = 0;
-      if (slot == VARYING_SLOT_CULL_DIST1 || slot == VARYING_SLOT_CLIP_DIST1)
+      if (slot == VARYING_SLOT_CLIP_DIST1)
          offset = 1;
 
       nir_store_output(b, value, nir_imm_int(b, offset),
@@ -893,7 +896,7 @@ agx_nir_create_pre_gs(struct lower_gs_state *state, const nir_shader *libagx,
    /* Setup the draw from the rasterization stream (0). */
    if (!state->rasterizer_discard) {
       libagx_build_gs_draw(
-         b, nir_load_geometry_param_buffer_agx(b), nir_imm_bool(b, indexed),
+         b, nir_load_geometry_param_buffer_agx(b),
          previous_vertices(b, state, 0, unrolled_in_prims),
          restart ? previous_primitives(b, state, 0, unrolled_in_prims)
                  : nir_imm_int(b, 0));
@@ -1152,8 +1155,7 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_lower_indirect_derefs, nir_var_function_temp, 64);
    NIR_PASS(_, nir, nir_opt_dce);
    NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
-            nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
-               nir_var_mem_global,
+            nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared,
             glsl_get_cl_type_size_align);
    NIR_PASS(_, nir, nir_opt_deref);
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
@@ -1280,6 +1282,14 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
    struct agx_lower_output_to_var_state state = {0};
 
    u_foreach_bit64(slot, gs->info.outputs_written) {
+      /* After enough optimizations, the shader metadata can go out of sync, fix
+       * with our gathered info. Otherwise glsl_vector_type will assert fail.
+       */
+      if (component_counts[slot] == 0) {
+         gs->info.outputs_written &= ~BITFIELD64_BIT(slot);
+         continue;
+      }
+
       const char *slot_name =
          gl_varying_slot_name_for_stage(slot, MESA_SHADER_GEOMETRY);
 
@@ -1444,10 +1454,7 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 {
    const struct agx_gs_setup_indirect_key *key = data;
 
-   libagx_gs_setup_indirect(b, nir_load_geometry_param_buffer_agx(b),
-                            nir_load_input_assembly_buffer_agx(b),
-                            nir_load_vs_output_buffer_ptr_agx(b),
-                            nir_load_vs_outputs_agx(b),
+   libagx_gs_setup_indirect(b, nir_load_preamble(b, 1, 64, .base = 0),
                             nir_imm_int(b, key->prim),
                             nir_channel(b, nir_load_local_invocation_id(b), 0));
 }
@@ -1455,10 +1462,10 @@ agx_nir_gs_setup_indirect(nir_builder *b, const void *data)
 void
 agx_nir_unroll_restart(nir_builder *b, const void *data)
 {
+   const struct agx_unroll_restart_key *key = data;
    b->shader->info.workgroup_size[0] = 1024;
 
-   const struct agx_unroll_restart_key *key = data;
-   nir_def *ia = nir_load_input_assembly_buffer_agx(b);
+   nir_def *ia = nir_load_preamble(b, 1, 64, .base = 0);
    nir_def *draw = nir_channel(b, nir_load_workgroup_id(b), 0);
    nir_def *lane = nir_channel(b, nir_load_local_invocation_id(b), 0);
    nir_def *mode = nir_imm_int(b, key->prim);

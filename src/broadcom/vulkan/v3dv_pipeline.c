@@ -335,30 +335,50 @@ static nir_shader *
 shader_module_compile_to_nir(struct v3dv_device *device,
                              struct v3dv_pipeline_stage *stage)
 {
+   assert(stage->module || stage->module_info);
+
    nir_shader *nir;
    const nir_shader_compiler_options *nir_options = &v3dv_nir_options;
    gl_shader_stage gl_stage = broadcom_shader_stage_to_gl(stage->stage);
 
+   if (V3D_DBG(DUMP_SPIRV)) {
+      char *spirv_data = NULL;
+      uint32_t spirv_size = 0;
+      if (stage->module != NULL && !stage->module->nir) {
+         spirv_data = (char *) stage->module->data;
+         spirv_size = stage->module->size;
+      } else if (stage->module_info) {
+         spirv_data = (char *) stage->module_info->pCode;
+         spirv_size = stage->module_info->codeSize;
+      }
 
-   if (V3D_DBG(DUMP_SPIRV) && stage->module->nir == NULL)
-      v3dv_print_spirv(stage->module->data, stage->module->size, stderr);
+      if (spirv_data)
+         v3dv_print_spirv(spirv_data, spirv_size, stderr);
+   }
 
-   /* vk_shader_module_to_nir also handles internal shaders, when module->nir
-    * != NULL. It also calls nir_validate_shader on both cases, so we don't
-    * call it again here.
+   const VkPipelineShaderStageCreateInfo stage_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      .pNext = !stage->module ? stage->module_info : NULL,
+      .stage = mesa_to_vk_shader_stage(gl_stage),
+      .module = vk_shader_module_to_handle((struct vk_shader_module *)stage->module),
+      .pName = stage->entrypoint,
+      .pSpecializationInfo = stage->spec_info,
+   };
+
+   /* vk_pipeline_shader_stage_to_nir also handles internal shaders when
+    * module->nir != NULL. It also calls nir_validate_shader on both cases
+    * so we don't have to call it here.
     */
-   VkResult result = vk_shader_module_to_nir(&device->vk, stage->module,
-                                             gl_stage,
-                                             stage->entrypoint,
-                                             stage->spec_info,
-                                             &default_spirv_options,
-                                             nir_options,
-                                             NULL, &nir);
+   VkResult result = vk_pipeline_shader_stage_to_nir(&device->vk,
+                                                     &stage_info,
+                                                     &default_spirv_options,
+                                                     nir_options,
+                                                     NULL, &nir);
    if (result != VK_SUCCESS)
       return NULL;
    assert(nir->info.stage == gl_stage);
 
-   if (V3D_DBG(SHADERDB) && stage->module->nir == NULL) {
+   if (V3D_DBG(SHADERDB) && (!stage->module || stage->module->nir == NULL)) {
       char sha1buf[41];
       _mesa_sha1_format(sha1buf, stage->pipeline->sha1);
       nir->info.name = ralloc_strdup(nir, sha1buf);
@@ -1404,6 +1424,8 @@ pipeline_stage_create_binning(const struct v3dv_pipeline_stage *src,
    p_stage->stage = bin_stage;
    p_stage->entrypoint = src->entrypoint;
    p_stage->module = src->module;
+   p_stage->module_info = src->module_info;
+
    /* For binning shaders we will clone the NIR code from the corresponding
     * render shader later, when we call pipeline_compile_xxx_shader. This way
     * we only have to run the relevant NIR lowerings once for render shaders
@@ -2306,7 +2328,8 @@ pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
    p_stage->pipeline = pipeline;
    p_stage->stage = BROADCOM_SHADER_GEOMETRY;
    p_stage->entrypoint = "main";
-   p_stage->module = 0;
+   p_stage->module = NULL;
+   p_stage->module_info = NULL;
    p_stage->nir = nir;
    pipeline_compute_sha1_from_nir(p_stage);
    p_stage->program_id = p_atomic_inc_return(&physical_device->next_program_id);
@@ -2387,6 +2410,10 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
       p_stage->entrypoint = sinfo->pName;
       p_stage->module = vk_shader_module_from_handle(sinfo->module);
       p_stage->spec_info = sinfo->pSpecializationInfo;
+      if (!p_stage->module) {
+         p_stage->module_info =
+            vk_find_struct_const(sinfo->pNext, SHADER_MODULE_CREATE_INFO);
+      }
 
       vk_pipeline_robustness_state_fill(&device->vk, &p_stage->robustness,
                                         pCreateInfo->pNext, sinfo->pNext);
@@ -2433,7 +2460,8 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
       p_stage->pipeline = pipeline;
       p_stage->stage = BROADCOM_SHADER_FRAGMENT;
       p_stage->entrypoint = "main";
-      p_stage->module = 0;
+      p_stage->module = NULL;
+      p_stage->module_info = NULL;
       p_stage->nir = b.shader;
       vk_pipeline_robustness_state_fill(&device->vk, &p_stage->robustness,
                                         NULL, NULL);
@@ -3114,6 +3142,10 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
    p_stage->module = vk_shader_module_from_handle(sinfo->module);
    p_stage->spec_info = sinfo->pSpecializationInfo;
    p_stage->feedback = (VkPipelineCreationFeedback) { 0 };
+   if (!p_stage->module) {
+      p_stage->module_info =
+         vk_find_struct_const(sinfo->pNext, SHADER_MODULE_CREATE_INFO);
+   }
 
    vk_pipeline_robustness_state_fill(&device->vk, &p_stage->robustness,
                                      info->pNext, sinfo->pNext);

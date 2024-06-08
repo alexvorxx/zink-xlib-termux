@@ -30,6 +30,7 @@
 #include "vk_util.h"
 
 #include "common/intel_aux_map.h"
+#include "common/intel_compute_slm.h"
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
@@ -283,8 +284,12 @@ get_interface_descriptor_data(struct anv_cmd_buffer *cmd_buffer,
       .BindingTableEntryCount = devinfo->verx10 == 125 ?
          0 : 1 + MIN2(shader->bind_map.surface_count, 30),
       .NumberofThreadsinGPGPUThreadGroup = dispatch->threads,
-      .SharedLocalMemorySize = encode_slm_size(GFX_VER, prog_data->base.total_shared),
-      .PreferredSLMAllocationSize = preferred_slm_allocation_size(devinfo),
+      .SharedLocalMemorySize = intel_compute_slm_encode_size(GFX_VER, prog_data->base.total_shared),
+      .PreferredSLMAllocationSize =
+         intel_compute_preferred_slm_calc_encode_size(devinfo,
+                                                      prog_data->base.total_shared,
+                                                      dispatch->group_size,
+                                                      dispatch->simd_size),
       .NumberOfBarriers = prog_data->uses_barrier,
    };
 }
@@ -310,6 +315,11 @@ emit_indirect_compute_walker(struct anv_cmd_buffer *cmd_buffer,
       .MessageSIMD              = dispatch_size,
       .IndirectDataStartAddress = comp_state->push_data.offset,
       .IndirectDataLength       = comp_state->push_data.alloc_size,
+      .GenerateLocalID          = prog_data->generate_local_id != 0,
+      .EmitLocal                = prog_data->generate_local_id,
+      .WalkOrder                = prog_data->walk_order,
+      .TileLayout               = prog_data->walk_order == INTEL_WALK_ORDER_YXZ ?
+                                  TileY32bpe : Linear,
       .LocalXMaximum            = prog_data->local_size[0] - 1,
       .LocalYMaximum            = prog_data->local_size[1] - 1,
       .LocalZMaximum            = prog_data->local_size[2] - 1,
@@ -320,7 +330,7 @@ emit_indirect_compute_walker(struct anv_cmd_buffer *cmd_buffer,
                                        &dispatch),
    };
 
-   cmd_buffer->last_indirect_dispatch =
+   cmd_buffer->state.last_indirect_dispatch =
       anv_batch_emitn(
          &cmd_buffer->batch,
          GENX(EXECUTE_INDIRECT_DISPATCH_length),
@@ -348,7 +358,7 @@ emit_compute_walker(struct anv_cmd_buffer *cmd_buffer,
    const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
-   cmd_buffer->last_compute_walker =
+   cmd_buffer->state.last_compute_walker =
       anv_batch_emitn(
          &cmd_buffer->batch,
          GENX(COMPUTE_WALKER_length),

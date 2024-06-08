@@ -263,7 +263,8 @@ panvk_meta_clear_attachment(struct panvk_cmd_buffer *cmdbuf, unsigned rt,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_meta *meta = &dev->meta;
    struct panvk_batch *batch = cmdbuf->cur_batch;
-   enum pipe_format pfmt = cmdbuf->state.gfx.fb.info.rts[rt].view->format;
+   enum pipe_format pfmt =
+      cmdbuf->state.gfx.render.fb.info.rts[rt].view->format;
    unsigned minx = MAX2(clear_rect->rect.offset.x, 0);
    unsigned miny = MAX2(clear_rect->rect.offset.y, 0);
    unsigned maxx =
@@ -325,7 +326,7 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct pan_image_view view = {
       .format = img->pimage.layout.format,
       .dim = MALI_TEXTURE_DIMENSION_2D,
@@ -335,14 +336,14 @@ panvk_meta_clear_color_img(struct panvk_cmd_buffer *cmdbuf,
                   PIPE_SWIZZLE_W},
    };
 
-   cmdbuf->state.gfx.fb.crc_valid[0] = false;
+   cmdbuf->state.gfx.render.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .nr_samples = img->pimage.layout.nr_samples,
       .rt_count = 1,
       .rts[0].view = &view,
       .rts[0].clear = true,
-      .rts[0].crc_valid = &cmdbuf->state.gfx.fb.crc_valid[0],
+      .rts[0].crc_valid = &cmdbuf->state.gfx.render.fb.crc_valid[0],
    };
 
    uint32_t clearval[4];
@@ -398,7 +399,7 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct pan_image_view view = {
       .format = img->pimage.layout.format,
       .dim = MALI_TEXTURE_DIMENSION_2D,
@@ -408,7 +409,7 @@ panvk_meta_clear_zs_img(struct panvk_cmd_buffer *cmdbuf,
                   PIPE_SWIZZLE_W},
    };
 
-   cmdbuf->state.gfx.fb.crc_valid[0] = false;
+   cmdbuf->state.gfx.render.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .nr_samples = img->pimage.layout.nr_samples,

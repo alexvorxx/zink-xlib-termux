@@ -29,6 +29,7 @@
 
 #include "util/mesa-sha1.h"
 #include "util/os_time.h"
+#include "common/intel_compute_slm.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "compiler/brw_disasm.h"
@@ -969,7 +970,7 @@ print_tex_handle(nir_builder *b,
 
    nir_tex_instr *tex = nir_instr_as_tex(instr);
 
-   nir_src tex_src;
+   nir_src tex_src = {};
    for (unsigned i = 0; i < tex->num_srcs; i++) {
       if (tex->src[i].src_type == nir_tex_src_texture_handle)
          tex_src = tex->src[i].src;
@@ -1162,7 +1163,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
          const unsigned chunk_size = 16;
          const unsigned shared_size = ALIGN(nir->info.shared_size, chunk_size);
          assert(shared_size <=
-                intel_calculate_slm_size(compiler->devinfo->ver, nir->info.shared_size));
+                intel_compute_slm_calculate_size(compiler->devinfo->ver, nir->info.shared_size));
 
          NIR_PASS(_, nir, nir_zero_initialize_shared_memory,
                   shared_size, chunk_size);

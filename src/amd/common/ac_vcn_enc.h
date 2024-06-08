@@ -133,6 +133,9 @@
 #define RENCODE_AV1_CDEF_ALGORITHM_FRAME_CONTEXT_SIZE                               (64 * 8 * 3)
 #define RENCODE_AV1_CDEF_MAX_NUM                                                    8
 #define RENCODE_MAX_METADATA_BUFFER_SIZE_PER_FRAME                                  1024
+#define RENCODE_AV1_MAX_TILE_COLS                                                   64
+#define RENCODE_AV1_MAX_TILE_ROWS                                                   64
+#define RENCODE_AV1_MAX_TILE_AREA                                                   (4096 * 2304)
 #define RENCODE_INVALID_COLOC_OFFSET                                                0XFFFFFFFF
 
 #define RENCODE_PICTURE_TYPE_B                                                      0
@@ -204,6 +207,8 @@
 #define RENCODE_COLOR_SPACE_RGB                                                     1
 
 #define RENCODE_VCN4_AV1_MAX_NUM_LTR                                                2
+#define RENCODE_AV1_CDEF_MODE_DEFAULT                                               1
+#define RENCODE_AV1_CDEF_MODE_EXPLICIT                                              2
 
 typedef struct rvcn_enc_session_info_s {
    uint32_t interface_version;
@@ -298,17 +303,18 @@ typedef struct rvcn_enc_av1_spec_misc_s {
    uint32_t disable_frame_end_update_cdf;
    uint32_t num_tiles_per_picture;
    /* for vcn5 */
+   bool separate_delta_q;
    uint32_t cdef_bits;
    uint32_t cdef_damping_minus3;
    uint32_t cdef_y_pri_strength[RENCODE_AV1_CDEF_MAX_NUM];
    uint32_t cdef_y_sec_strength[RENCODE_AV1_CDEF_MAX_NUM];
    uint32_t cdef_uv_pri_strength[RENCODE_AV1_CDEF_MAX_NUM];
    uint32_t cdef_uv_sec_strength[RENCODE_AV1_CDEF_MAX_NUM];
-   uint32_t delta_q_y_dc;
-   uint32_t delta_q_u_dc;
-   uint32_t delta_q_u_ac;
-   uint32_t delta_q_v_dc;
-   uint32_t delta_q_v_ac;
+    int32_t delta_q_y_dc;
+    int32_t delta_q_u_dc;
+    int32_t delta_q_u_ac;
+    int32_t delta_q_v_dc;
+    int32_t delta_q_v_ac;
 } rvcn_enc_av1_spec_misc_t;
 
 /* vcn5 */
@@ -317,11 +323,16 @@ typedef struct rvcn_enc_av1_tile_group_s {
    uint32_t end;
 } rvcn_enc_av1_tile_group_t;
 
-#define RENCODE_AV1_TILE_CONFIG_MAX_NUM_COLS            2
-#define RENCODE_AV1_TILE_CONFIG_MAX_NUM_ROWS            16
-#define RENCODE_AV1_CONTEXT_UPDATE_TILE_ID_MODE_DEFAULT 2
+#define RENCODE_AV1_TILE_CONFIG_MAX_NUM_COLS               2
+#define RENCODE_AV1_TILE_CONFIG_MAX_NUM_ROWS               16
+#define RENCODE_AV1_CONTEXT_UPDATE_TILE_ID_MODE_CUSTOMIZED 1
+#define RENCODE_AV1_CONTEXT_UPDATE_TILE_ID_MODE_DEFAULT    2
 /* vcn5 */
 typedef struct rvcn_enc_av1_tile_config_s {
+   /* check if app settings can be applied or not, due to some
+    * constraints, the settings only meet the limitations can
+    * be used, then all the app settings can be applied.*/
+   bool     apply_app_setting;
    bool     uniform_tile_spacing;
    uint32_t num_tile_cols;
    uint32_t num_tile_rows;
@@ -740,6 +751,7 @@ typedef struct rvcn_enc_av1_recon_slot_s
 #define RENCODE_QP_MAP_TYPE_DELTA              1
 #define RENCODE_QP_MAP_TYPE_MAP_PA             4
 #define RENCODE_QP_MAP_MAX_REGIONS             32
+#define RENCODE_QP_MAP_UNIFIED_QP_BITS_SHIFT   7
 
 struct rvcn_enc_qp_map_region
 {
@@ -756,7 +768,17 @@ typedef struct rvcn_enc_qp_map_s
    uint32_t qp_map_type;
    uint32_t qp_map_buffer_address_hi;
    uint32_t qp_map_buffer_address_lo;
-   uint32_t qp_map_pitch;
+   uint32_t qp_map_pitch; /* number of units in width */
+   /* format difference between these two versions
+    * legacy is using a 32 bit for 1 unit
+    * vcn5 is using a 32 bit for 2 units, and use 2 units as the alignment
+    */
+   enum {
+      RENCODE_QP_MAP_LEGACY = 0,
+      RENCODE_QP_MAP_VCN5
+   } version;
+   uint32_t width_in_block;
+   uint32_t height_in_block;
    struct rvcn_enc_qp_map_region map[RENCODE_QP_MAP_MAX_REGIONS];
 }rvcn_enc_qp_map_t;
 

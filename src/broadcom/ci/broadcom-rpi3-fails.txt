@@ -105,7 +105,6 @@ glx@glx_arb_sync_control@waitformsc,Fail
 
 glslparsertest@glsl2@gst-gl-text-download-i420-yv12.frag,Fail
 shaders@glsl-arb-fragment-coord-conventions,Fail
-shaders@glsl-bug-110796,Fail
 shaders@glsl-max-vertex-attrib,Fail
 spec@!opengl 1.0@gl-1.0-drawbuffer-modes,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail

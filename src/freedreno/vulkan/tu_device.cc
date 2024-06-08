@@ -275,6 +275,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_separate_stencil_usage = true,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier = true,
+      .EXT_shader_replicated_composites = true,
       .EXT_shader_stencil_export = true,
       .EXT_shader_viewport_index_layer = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .EXT_subgroup_size_control = true,
@@ -617,6 +618,9 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_EXT_shader_module_identifier */
    features->shaderModuleIdentifier = true;
+
+   /* VK_EXT_shader_replicated_composites */
+   features->shaderReplicatedComposites = true;
 
 #ifdef TU_USE_WSI_PLATFORM
    /* VK_EXT_swapchain_maintenance1 */
@@ -1696,7 +1700,7 @@ tu_trace_destroy_ts_buffer(struct u_trace_context *utctx, void *timestamps)
 template <chip CHIP>
 static void
 tu_trace_record_ts(struct u_trace *ut, void *cs, void *timestamps,
-                   unsigned idx, bool end_of_pipe)
+                   unsigned idx, uint32_t)
 {
    struct tu_bo *bo = (struct tu_bo *) timestamps;
    struct tu_cs *ts_cs = (struct tu_cs *) cs;
@@ -2508,7 +2512,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       physical_device->info->a6xx.has_z24uint_s8uint &&
       !border_color_without_format;
    device->use_lrz =
-      !TU_DEBUG(NOLRZ) && device->physical_device->info->chip == 6;
+      !TU_DEBUG(NOLRZ);
 
    tu_gpu_tracepoint_config_variable();
 
@@ -2818,7 +2822,7 @@ tu_AllocateMemory(VkDevice _device,
          close(fd_info->fd);
       }
    } else if (mem->vk.ahardware_buffer) {
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
       const native_handle_t *handle = AHardwareBuffer_getNativeHandle(mem->vk.ahardware_buffer);
       assert(handle->numFds > 0);
       size_t size = lseek(handle->data[0], 0, SEEK_END);

@@ -105,7 +105,7 @@ typedef void (*u_trace_record_ts)(struct u_trace *ut,
                                   void *cs,
                                   void *timestamps,
                                   unsigned idx,
-                                  bool end_of_pipe);
+                                  uint32_t flags);
 
 /**
  * Driver provided callback to read back a previously recorded timestamp.

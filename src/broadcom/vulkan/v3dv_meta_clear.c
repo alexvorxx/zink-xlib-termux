@@ -809,7 +809,7 @@ get_depth_clear_pipeline_cache_key(VkImageAspectFlags aspects,
 }
 
 static VkResult
-get_color_clear_pipeline(struct v3dv_device *device,
+get_color_clear_pipeline(struct v3dv_cmd_buffer *cmd_buffer,
                          struct v3dv_render_pass *pass,
                          uint32_t subpass_idx,
                          uint32_t rt_idx,
@@ -822,6 +822,7 @@ get_color_clear_pipeline(struct v3dv_device *device,
                          struct v3dv_meta_color_clear_pipeline **pipeline)
 {
    assert(vk_format_is_color(format));
+   struct v3dv_device *device = cmd_buffer->device;
 
    VkResult result = VK_SUCCESS;
 
@@ -898,6 +899,10 @@ get_color_clear_pipeline(struct v3dv_device *device,
                               &(*pipeline)->key, *pipeline);
 
       mtx_unlock(&device->meta.mtx);
+   } else {
+      v3dv_cmd_buffer_add_private_obj(
+         cmd_buffer, (uintptr_t)*pipeline,
+         (v3dv_cmd_buffer_private_obj_destroy_cb)destroy_color_clear_pipeline);
    }
 
    return VK_SUCCESS;
@@ -920,7 +925,7 @@ fail:
 }
 
 static VkResult
-get_depth_clear_pipeline(struct v3dv_device *device,
+get_depth_clear_pipeline(struct v3dv_cmd_buffer *cmd_buffer,
                          VkImageAspectFlags aspects,
                          struct v3dv_render_pass *pass,
                          uint32_t subpass_idx,
@@ -934,6 +939,7 @@ get_depth_clear_pipeline(struct v3dv_device *device,
    assert(attachment_idx < pass->attachment_count);
 
    VkResult result = VK_SUCCESS;
+   struct v3dv_device *device = cmd_buffer->device;
 
    const uint32_t samples = pass->attachments[attachment_idx].desc.samples;
    const VkFormat format = pass->attachments[attachment_idx].desc.format;
@@ -977,6 +983,10 @@ get_depth_clear_pipeline(struct v3dv_device *device,
       _mesa_hash_table_insert(device->meta.depth_clear.cache,
                               &(*pipeline)->key, *pipeline);
       mtx_unlock(&device->meta.mtx);
+   } else {
+      v3dv_cmd_buffer_add_private_obj(
+         cmd_buffer, (uintptr_t)*pipeline,
+         (v3dv_cmd_buffer_private_obj_destroy_cb)destroy_depth_clear_pipeline);
    }
 
    return VK_SUCCESS;
@@ -1025,7 +1035,7 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
                                VK_COLOR_COMPONENT_A_BIT;
 
    struct v3dv_meta_color_clear_pipeline *pipeline = NULL;
-   VkResult result = get_color_clear_pipeline(cmd_buffer->device,
+   VkResult result = get_color_clear_pipeline(cmd_buffer,
                                               pass,
                                               cmd_buffer->state.subpass_idx,
                                               rt_idx,
@@ -1083,15 +1093,6 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
       }
    }
 
-   /* Subpass pipelines can't be cached because they include a reference to the
-    * render pass currently bound by the application, which means that we need
-    * to destroy them manually here.
-    */
-   assert(!pipeline->cached);
-   v3dv_cmd_buffer_add_private_obj(
-      cmd_buffer, (uintptr_t)pipeline,
-      (v3dv_cmd_buffer_private_obj_destroy_cb) destroy_color_clear_pipeline);
-
    v3dv_cmd_buffer_meta_state_pop(cmd_buffer, false);
 }
 
@@ -1118,7 +1119,7 @@ emit_subpass_ds_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
    assert(attachment_idx < pass->attachment_count);
    struct v3dv_meta_depth_clear_pipeline *pipeline = NULL;
 
-   VkResult result = get_depth_clear_pipeline(cmd_buffer->device,
+   VkResult result = get_depth_clear_pipeline(cmd_buffer,
                                               aspects,
                                               pass,
                                               cmd_buffer->state.subpass_idx,

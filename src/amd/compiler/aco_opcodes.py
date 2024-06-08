@@ -105,9 +105,7 @@ class Format(IntEnum):
          return [('uint32_t', 'imm', '0')]
       elif self == Format.SMEM:
          return [('memory_sync_info', 'sync', 'memory_sync_info()'),
-                 ('bool', 'glc', 'false'),
-                 ('bool', 'dlc', 'false'),
-                 ('bool', 'nv', 'false')]
+                 ('ac_hw_cache_flags', 'cache', '{{0, 0, 0, 0, 0}}')]
       elif self == Format.DS:
          return [('uint16_t', 'offset0', '0'),
                  ('uint8_t', 'offset1', '0'),
@@ -125,20 +123,15 @@ class Format(IntEnum):
                  ('bool', 'offen', None),
                  ('bool', 'idxen', 'false'),
                  ('bool', 'disable_wqm', 'false'),
-                 ('bool', 'glc', 'false'),
-                 ('bool', 'dlc', 'false'),
-                 ('bool', 'slc', 'false'),
+                 ('ac_hw_cache_flags', 'cache', '{{0, 0, 0, 0, 0}}'),
                  ('bool', 'tfe', 'false')]
       elif self == Format.MUBUF:
          return [('unsigned', 'offset', None),
                  ('bool', 'offen', None),
-                 ('bool', 'swizzled', 'false'),
                  ('bool', 'idxen', 'false'),
                  ('bool', 'addr64', 'false'),
                  ('bool', 'disable_wqm', 'false'),
-                 ('bool', 'glc', 'false'),
-                 ('bool', 'dlc', 'false'),
-                 ('bool', 'slc', 'false'),
+                 ('ac_hw_cache_flags', 'cache', '{{0, 0, 0, 0, 0}}'),
                  ('bool', 'tfe', 'false'),
                  ('bool', 'lds', 'false')]
       elif self == Format.MIMG:
@@ -146,9 +139,7 @@ class Format(IntEnum):
                  ('bool', 'da', 'false'),
                  ('bool', 'unrm', 'false'),
                  ('bool', 'disable_wqm', 'false'),
-                 ('bool', 'glc', 'false'),
-                 ('bool', 'dlc', 'false'),
-                 ('bool', 'slc', 'false'),
+                 ('ac_hw_cache_flags', 'cache', '{{0, 0, 0, 0, 0}}'),
                  ('bool', 'tfe', 'false'),
                  ('bool', 'lwe', 'false'),
                  ('bool', 'r128', 'false'),
@@ -195,8 +186,7 @@ class Format(IntEnum):
       elif self in [Format.FLAT, Format.GLOBAL, Format.SCRATCH]:
          return [('int16_t', 'offset', 0),
                  ('memory_sync_info', 'sync', 'memory_sync_info()'),
-                 ('bool', 'glc', 'false'),
-                 ('bool', 'slc', 'false'),
+                 ('ac_hw_cache_flags', 'cache', '{{0, 0, 0, 0, 0}}'),
                  ('bool', 'lds', 'false'),
                  ('bool', 'nv', 'false')]
       else:

@@ -20,19 +20,13 @@
 
 pipe_loader_link_args = [ld_args_gc_sections, ld_args_build_id]
 pipe_loader_link_deps = []
-pipe_loader_link_with = [libgallium]
+pipe_loader_link_with = [libgallium, libgalliumvl_stub]
 pipe_loader_comp_args = []
 pipe_loader_incs = [
   inc_include, inc_src, inc_util, inc_gallium, inc_gallium_drivers,
   inc_gallium_winsys, inc_gallium_aux,
 ]
 
-if (with_gallium_va or with_gallium_vdpau or with_gallium_omx != 'disabled' or
-    with_dri or with_gallium_radeonsi)
-  pipe_loader_link_with += libgalliumvl
-else
-  pipe_loader_link_with += libgalliumvl_stub
-endif
 if (with_gallium_va or with_gallium_vdpau or with_gallium_omx != 'disabled')
   pipe_loader_link_with += libgalliumvlwinsys
 endif
@@ -71,7 +65,7 @@ foreach x : pipe_loaders
 
   foreach d : [[x[1] in ['r300', 'r600', 'radeonsi'], 'radeon_drm_winsys_create'],
                [x[1] == 'radeonsi', 'amdgpu_winsys_create'],
-               [x[1] == 'radeonsi' and with_llvm, 'ac_init_shared_llvm_once'],
+               [x[1] == 'radeonsi' and amd_with_llvm, 'ac_init_shared_llvm_once'],
                [x[1] != 'swrast', 'driver_descriptor'],
                [x[1] == 'swrast', 'swrast_driver_descriptor']]
     if d[0]

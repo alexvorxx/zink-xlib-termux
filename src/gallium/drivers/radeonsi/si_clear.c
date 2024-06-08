@@ -1126,6 +1126,39 @@ static void si_fast_clear(struct si_context *sctx, unsigned *buffers,
    si_execute_clears(sctx, info, num_clears, clear_types, sctx->render_cond_enabled);
 }
 
+static void si_fb_clear_via_compute(struct si_context *sctx, unsigned *buffers,
+                                    const union pipe_color_union *color)
+{
+   struct pipe_framebuffer_state *fb = &sctx->framebuffer.state;
+
+   unsigned color_buffer_mask = (*buffers & PIPE_CLEAR_COLOR) >> util_logbase2(PIPE_CLEAR_COLOR0);
+   while (color_buffer_mask) {
+      unsigned i = u_bit_scan(&color_buffer_mask);
+
+      struct pipe_surface *surf = fb->cbufs[i];
+      unsigned depth = surf->u.tex.last_layer - surf->u.tex.first_layer + 1;
+      struct si_texture *tex = (struct si_texture *)surf->texture;
+
+      /* If DCC is enable (which can happen with thick tiling on gfx8, don't use compute to get
+       * compressed clears.
+       */
+      if (vi_dcc_enabled(tex, surf->u.tex.level))
+         continue;
+
+      /* Clears of thick and linear layouts are fastest with compute. */
+      if (tex->surface.thick_tiling ||
+          (tex->surface.is_linear && (surf->height > 1 || depth > 1 || surf->width >= 8192))) {
+         struct pipe_box box;
+
+         u_box_3d(0, 0, surf->u.tex.first_layer, surf->width, surf->height, depth, &box);
+
+         if (si_compute_clear_image(sctx, &tex->buffer.b.b, surf->format, surf->u.tex.level, &box,
+                                    color, sctx->render_cond_enabled, true))
+            *buffers &= ~(PIPE_CLEAR_COLOR0 << i); /* success */
+      }
+   }
+}
+
 static void gfx6_clear(struct pipe_context *ctx, unsigned buffers,
                        const struct pipe_scissor_state *scissor_state,
                        const union pipe_color_union *color, double depth, unsigned stencil)
@@ -1146,6 +1179,10 @@ static void gfx6_clear(struct pipe_context *ctx, unsigned buffers,
       buffers &= ~PIPE_CLEAR_STENCIL;
 
    si_fast_clear(sctx, &buffers, color, depth, stencil);
+   if (!buffers)
+      return; /* all buffers have been cleared */
+
+   si_fb_clear_via_compute(sctx, &buffers, color);
    if (!buffers)
       return; /* all buffers have been cleared */
 
@@ -1421,12 +1458,9 @@ static void si_clear_render_target(struct pipe_context *ctx, struct pipe_surface
                                    render_condition_enabled, true))
       return;
 
-   if (dst->texture->nr_samples <= 1 &&
-       (sctx->gfx_level >= GFX10 || !vi_dcc_enabled(sdst, dst->u.tex.level))) {
-      si_compute_clear_render_target(ctx, dst, color, dstx, dsty, width, height,
-                                     render_condition_enabled);
+   if (si_compute_clear_image(sctx, dst->texture, dst->format, dst->u.tex.level, &box, color,
+                              render_condition_enabled, true))
       return;
-   }
 
    si_gfx_clear_render_target(ctx, dst, color, dstx, dsty, width, height,
                               render_condition_enabled);

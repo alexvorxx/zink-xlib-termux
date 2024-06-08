@@ -47,7 +47,6 @@
     GPU_VERSION: nvk-ga106
     FDO_CI_CONCURRENT: 16
     RUNNER_FARM_LOCATION: mupuf
-    B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'
     B2C_JOB_WARN_REGEX: 'nouveau .+ job timeout|NMI backtrace for cpu \d+'
     # Default kernel is missing the GA106 GSP
     # 1 - clone b2c

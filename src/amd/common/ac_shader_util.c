@@ -79,6 +79,7 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->has_udot_4x8_sat = info->has_accelerated_dot_product;
    options->has_dot_2x16 = info->has_accelerated_dot_product && info->gfx_level < GFX11;
    options->has_find_msb_rev = true;
+   options->has_pack_32_4x8 = true;
    options->has_pack_half_2x16_rtz = true;
    options->has_bit_test = !use_llvm;
    options->has_fmulz = true;
@@ -1307,7 +1308,7 @@ enum gl_access_qualifier ac_get_mem_access_flags(const nir_intrinsic_instr *inst
  * "access" must be a result of ac_get_mem_access_flags() with the appropriate ACCESS_TYPE_*
  * flags set.
  */
-union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
+union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
                                               enum gl_access_qualifier access)
 {
    union ac_hw_cache_flags result;
@@ -1321,9 +1322,10 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
 
    bool scope_is_device = access & (ACCESS_COHERENT | ACCESS_VOLATILE);
 
-   if (info->gfx_level >= GFX12) {
+   if (gfx_level >= GFX12) {
       if (access & ACCESS_CP_GE_COHERENT_AMD) {
-         result.gfx12.scope = info->cp_sdma_ge_use_system_memory_scope ?
+         bool cp_sdma_ge_use_system_memory_scope = gfx_level == GFX12;
+         result.gfx12.scope = cp_sdma_ge_use_system_memory_scope ?
                                  gfx12_scope_memory : gfx12_scope_device;
       } else if (scope_is_device) {
          result.gfx12.scope = gfx12_scope_device;
@@ -1342,7 +1344,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
             result.gfx12.temporal_hint = gfx12_atomic_non_temporal;
          }
       }
-   } else if (info->gfx_level >= GFX11) {
+   } else if (gfx_level >= GFX11) {
       /* GFX11 simplified it and exposes what is actually useful.
        *
        * GLC means device scope for loads only. (stores and atomics are always device scope)
@@ -1356,7 +1358,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
 
       if (access & ACCESS_NON_TEMPORAL && !(access & ACCESS_TYPE_SMEM))
          result.value |= ac_slc;
-   } else if (info->gfx_level >= GFX10) {
+   } else if (gfx_level >= GFX10) {
       /* GFX10-10.3:
        *
        * VMEM and SMEM loads (SMEM only supports the first four):
@@ -1410,7 +1412,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
        */
       if (scope_is_device && !(access & ACCESS_TYPE_ATOMIC)) {
          /* SMEM doesn't support the device scope on GFX6-7. */
-         assert(info->gfx_level >= GFX8 || !(access & ACCESS_TYPE_SMEM));
+         assert(gfx_level >= GFX8 || !(access & ACCESS_TYPE_SMEM));
          result.value |= ac_glc;
       }
 
@@ -1420,12 +1422,12 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
       /* GFX6 has a TC L1 bug causing corruption of 8bit/16bit stores. All store opcodes not
        * aligned to a dword are affected.
        */
-      if (info->gfx_level == GFX6 && access & ACCESS_MAY_STORE_SUBDWORD)
+      if (gfx_level == GFX6 && access & ACCESS_MAY_STORE_SUBDWORD)
          result.value |= ac_glc;
    }
 
    if (access & ACCESS_IS_SWIZZLED_AMD) {
-      if (info->gfx_level >= GFX12)
+      if (gfx_level >= GFX12)
          result.gfx12.swizzled = true;
       else
          result.value |= ac_swizzled;

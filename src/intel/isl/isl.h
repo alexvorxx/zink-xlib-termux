@@ -1152,6 +1152,8 @@ typedef uint64_t isl_surf_usage_flags_t;
 #define ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT (1u << 21)
 #define ISL_SURF_USAGE_BLITTER_DST_BIT         (1u << 22)
 #define ISL_SURF_USAGE_BLITTER_SRC_BIT         (1u << 23)
+#define ISL_SURF_USAGE_MULTI_ENGINE_SEQ_BIT    (1u << 24)
+#define ISL_SURF_USAGE_MULTI_ENGINE_PAR_BIT    (1u << 25)
 /** @} */
 
 /**
@@ -2401,6 +2403,11 @@ extern const struct isl_drm_modifier_info isl_drm_modifier_info_list[];
         __info->modifier != DRM_FORMAT_MOD_INVALID; \
         ++__info)
 
+/* According to drm_fourcc.h, the clear color pitch is ignored on MTL but it
+ * should be 64B aligned for TGL and DG2. There's no need to special-case MTL.
+ */
+#define ISL_DRM_CC_PLANE_PITCH_B 64
+
 const struct isl_drm_modifier_info * ATTRIBUTE_CONST
 isl_drm_modifier_get_info(uint64_t modifier);
 
@@ -2703,6 +2710,16 @@ isl_surf_get_ccs_surf(const struct isl_device *dev,
                       const struct isl_surf *hiz_or_mcs_surf,
                       struct isl_surf *ccs_surf,
                       uint32_t row_pitch_B);
+
+/* The value is from Bspec 47709, MCS/CCS Buffers for Render Target(s):
+ *
+ *    "CCS is a linear buffer created for storing meta-data (AUX data) for
+ *    lossless compression. This buffer related information is mentioned in
+ *    Render Surface State. CCS buffer's size is based on the padded main
+ *    surface (after following Halign and Valign requirements mentioned in the
+ *    Render Surface State). CCS_Buffer_Size = Padded_Main_Surface_Size/256"
+ */
+#define ISL_MAIN_TO_CCS_SIZE_RATIO_XE 256
 
 #define isl_surf_fill_state(dev, state, ...) \
    (dev)->surf_fill_state_s(dev, state, \

@@ -21,6 +21,7 @@
 #include "tu_formats.h"
 #include "tu_image.h"
 #include "tu_tracepoints.h"
+#include "tu_lrz.h"
 
 #include "common/freedreno_gpu_event.h"
 
@@ -1317,7 +1318,6 @@ r3d_src_gmem(struct tu_cmd_buffer *cmd,
    r3d_src_common(cmd, cs, desc, 0, 0, VK_FILTER_NEAREST);
 }
 
-template <chip CHIP>
 static void
 r3d_dst(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer,
         enum pipe_format src_format)
@@ -1338,9 +1338,6 @@ r3d_dst(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer,
 
    tu_cs_emit_pkt4(cs, REG_A6XX_RB_MRT_FLAG_BUFFER(0), 3);
    tu_cs_image_flag_ref(cs, iview, layer);
-
-   if (CHIP >= A7XX)
-      tu_cs_emit_regs(cs, A7XX_GRAS_LRZ_DEPTH_BUFFER_INFO(0));
 
    /* Use color format from RB_MRT_BUF_INFO. This register is relevant for
     * FMT6_NV12_Y.
@@ -1541,6 +1538,9 @@ r3d_setup(struct tu_cmd_buffer *cmd,
    tu_cs_emit_regs(cs, A6XX_GRAS_LRZ_CNTL(0));
    tu_cs_emit_regs(cs, A6XX_RB_LRZ_CNTL(0));
 
+   if (CHIP >= A7XX)
+      tu_cs_emit_regs(cs, A7XX_GRAS_LRZ_DEPTH_BUFFER_INFO());
+
    tu_cs_emit_write_reg(cs, REG_A6XX_GRAS_SC_CNTL,
                         A6XX_GRAS_SC_CNTL_CCUSINGLECACHELINESIZE(2));
 
@@ -1661,7 +1661,7 @@ static const struct blit_ops r3d_ops = {
    .clear_value = r3d_clear_value,
    .src = r3d_src,
    .src_buffer = r3d_src_buffer<CHIP>,
-   .dst = r3d_dst<CHIP>,
+   .dst = r3d_dst,
    .dst_depth = r3d_dst_depth,
    .dst_stencil = r3d_dst_stencil,
    .dst_buffer = r3d_dst_buffer,
@@ -1832,16 +1832,30 @@ tu6_dirty_lrz_fc(struct tu_cmd_buffer *cmd,
    VkClearValue clear = {};
    clear.color.uint32[0] = 0xffffffff;
 
-   /* LRZ fast-clear buffer is always allocated with 512 bytes size. */
+   using LRZFC = tu_lrzfc_layout<CHIP>;
+   uint64_t lrz_fc_iova = image->iova + image->lrz_fc_offset;
    ops->setup(cmd, cs, PIPE_FORMAT_R32_UINT, PIPE_FORMAT_R32_UINT,
               VK_IMAGE_ASPECT_COLOR_BIT, 0, true, false,
               VK_SAMPLE_COUNT_1_BIT);
    ops->clear_value(cmd, cs, PIPE_FORMAT_R32_UINT, &clear);
    ops->dst_buffer(cs, PIPE_FORMAT_R32_UINT,
-                   image->iova + image->lrz_fc_offset, 512,
+                   lrz_fc_iova + offsetof(LRZFC, fc1),
+                   sizeof(LRZFC::fc1),
                    PIPE_FORMAT_R32_UINT);
-   ops->coords(cmd, cs, (VkOffset2D) {}, blt_no_coord, (VkExtent2D) {128, 1});
+   ops->coords(cmd, cs, (VkOffset2D) {}, blt_no_coord, (VkExtent2D) {
+      sizeof(LRZFC::fc1) / sizeof(uint32_t), 1
+   });
    ops->run(cmd, cs);
+   if constexpr (LRZFC::HAS_BIDIR) {
+      ops->dst_buffer(cs, PIPE_FORMAT_R32_UINT,
+                      lrz_fc_iova + offsetof(LRZFC, fc2),
+                      sizeof(LRZFC::fc2),
+                      PIPE_FORMAT_R32_UINT);
+      ops->coords(cmd, cs, (VkOffset2D) {}, blt_no_coord, (VkExtent2D) {
+         sizeof(LRZFC::fc2) / sizeof(uint32_t), 1
+      });
+      ops->run(cmd, cs);
+   }
    ops->teardown(cmd, cs);
 }
 TU_GENX(tu6_dirty_lrz_fc);
@@ -3317,7 +3331,7 @@ tu_CmdClearAttachments(VkCommandBuffer commandBuffer,
       if ((pAttachments[j].aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) == 0)
          continue;
 
-      tu_lrz_disable_during_renderpass(cmd);
+      tu_lrz_disable_during_renderpass<CHIP>(cmd);
    }
 
    /* vkCmdClearAttachments is supposed to respect the predicate if active. The
@@ -3883,7 +3897,7 @@ store_3d_blit(struct tu_cmd_buffer *cmd,
          r3d_dst_stencil(cs, iview, layer);
       }
    } else {
-      r3d_dst<CHIP>(cs, &iview->view, layer, src_format);
+      r3d_dst(cs, &iview->view, layer, src_format);
    }
 
    r3d_src_gmem<CHIP>(cmd, cs, iview, src_format, dst_format, gmem_offset, cpp);

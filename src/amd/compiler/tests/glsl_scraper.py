@@ -91,8 +91,6 @@ class Shader:
         if self.target_env:
             args += ['--target-env', self.target_env]
         args += ['-o', out_file.name, in_file.name]
-        if depfile is not None:
-            args.extend(['--depfile', depfile])
         with subprocess.Popen(args,
                               stdout = subprocess.PIPE,
                               stderr = subprocess.PIPE,
@@ -302,8 +300,6 @@ def parse_args():
                         default='glslangValidator',
                         dest='glslang',
                         help='Full path to the glslangValidator shader compiler.')
-    p.add_argument('--depfile', metavar='DEPFILE', default=None, action="store",
-                   help="Where to have glslang write a depfile")
     p.add_argument('infile', metavar='INFILE')
 
     return p.parse_args()
@@ -313,7 +309,6 @@ args = parse_args()
 infname = args.infile
 outfname = args.outfile
 glslang = args.glslang
-depfile = args.depfile
 
 with open_file(infname, 'r') as infile:
     parser = Parser(infile)

@@ -50,7 +50,7 @@ union anv_utrace_timestamp {
     *        [2] = 32b Context Timestamp End
     *        [3] = 32b Global Timestamp End"
     */
-   uint32_t compute_walker[4];
+   uint32_t compute_walker[8];
 };
 
 static uint32_t
@@ -259,6 +259,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
 
          anv_genX(device->info, emit_so_memcpy_init)(&submit->memcpy_state,
                                                      device,
+                                                     NULL,
                                                      &submit->batch);
          uint32_t num_traces = 0;
          for (uint32_t i = 0; i < cmd_buffer_count; i++) {
@@ -396,7 +397,7 @@ anv_utrace_destroy_ts_buffer(struct u_trace_context *utctx, void *timestamps)
 static void
 anv_utrace_record_ts(struct u_trace *ut, void *cs,
                      void *timestamps, unsigned idx,
-                     bool end_of_pipe)
+                     uint32_t flags)
 {
    struct anv_device *device =
       container_of(ut->utctx, struct anv_device, ds.trace_context);
@@ -414,27 +415,31 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
    /* Is this a end of compute trace point? */
    const bool is_end_compute =
       cs == NULL &&
-      (cmd_buffer->last_compute_walker != NULL ||
-       cmd_buffer->last_indirect_dispatch != NULL) &&
-      end_of_pipe;
+      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE_CS);
 
-   enum anv_timestamp_capture_type capture_type = end_of_pipe ?
-      (is_end_compute ?
-       (cmd_buffer->last_indirect_dispatch != NULL ?
-        ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH : ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER) :
-       ANV_TIMESTAMP_CAPTURE_END_OF_PIPE) : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
+   assert(!is_end_compute ||
+          cmd_buffer->state.last_indirect_dispatch != NULL ||
+          cmd_buffer->state.last_compute_walker != NULL);
+
+   enum anv_timestamp_capture_type capture_type =
+      is_end_compute ?
+      (cmd_buffer->state.last_indirect_dispatch != NULL ?
+       ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH : ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER) :
+      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE) ?
+      ANV_TIMESTAMP_CAPTURE_END_OF_PIPE : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
+
 
    void *addr = capture_type ==  ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH ?
-                cmd_buffer->last_indirect_dispatch :
+                cmd_buffer->state.last_indirect_dispatch :
                 capture_type ==  ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER ?
-                cmd_buffer->last_compute_walker : NULL;
+                cmd_buffer->state.last_compute_walker : NULL;
 
    device->physical->cmd_emit_timestamp(batch, device, ts_address,
                                         capture_type,
                                         addr);
    if (is_end_compute) {
-      cmd_buffer->last_compute_walker = NULL;
-      cmd_buffer->last_indirect_dispatch = NULL;
+      cmd_buffer->state.last_compute_walker = NULL;
+      cmd_buffer->state.last_indirect_dispatch = NULL;
    }
 }
 
@@ -509,6 +514,8 @@ anv_device_utrace_init(struct anv_device *device)
                                  intel_engines_class_to_string(queue->family->engine_class),
                                  queue->vk.index_in_family);
    }
+
+   device->utrace_timestamp_size = sizeof(union anv_utrace_timestamp);
 }
 
 void

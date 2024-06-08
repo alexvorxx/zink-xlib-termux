@@ -14,11 +14,12 @@
 #include <unistd.h>
 
 #include "c11/threads.h"
+#include "util/detect_os.h"
 #include "util/log.h"
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 
-#ifdef ANDROID
+#if DETECT_OS_ANDROID
 static const char *fd_rd_output_base_path = "/data/local/tmp";
 #else
 static const char *fd_rd_output_base_path = "/tmp";

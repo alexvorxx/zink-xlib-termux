@@ -16,8 +16,6 @@
 #include "util/u_video.h"
 #include "vl/vl_video_buffer.h"
 
-#include <stdio.h>
-
 static const unsigned index_to_shifts[4] = {24, 16, 8, 0};
 
 /* set quality modes from the input */
@@ -133,8 +131,11 @@ static void radeon_vcn_enc_get_intra_refresh_param(struct radeon_encoder *enc,
 static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
                                          struct pipe_enc_roi *roi)
 {
+   struct si_screen *sscreen = (struct si_screen *)enc->screen;
    bool is_av1 = u_reduce_video_profile(enc->base.profile)
                              == PIPE_VIDEO_FORMAT_AV1;
+   rvcn_enc_qp_map_t *qp_map = &enc->enc_pic.enc_qp_map;
+
    if (!roi->num)
       enc->enc_pic.enc_qp_map.qp_map_type = RENCODE_QP_MAP_TYPE_NONE;
    else {
@@ -142,8 +143,13 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
       uint32_t block_length;
       int32_t i, j, pa_format = 0;
 
-      /* rate control is using a different qp map type */
-      if (enc->enc_pic.rc_session_init.rate_control_method) {
+      qp_map->version = sscreen->info.vcn_ip_version >= VCN_5_0_0
+                        ? RENCODE_QP_MAP_VCN5 : RENCODE_QP_MAP_LEGACY;
+
+      /* rate control is using a different qp map type, in case of below
+       * vcn_5_0_0 */
+      if (enc->enc_pic.rc_session_init.rate_control_method &&
+            (qp_map->version ==  RENCODE_QP_MAP_LEGACY)) {
          enc->enc_pic.enc_qp_map.qp_map_type = RENCODE_QP_MAP_TYPE_MAP_PA;
          pa_format = 1;
       }
@@ -151,6 +157,9 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
          enc->enc_pic.enc_qp_map.qp_map_type = RENCODE_QP_MAP_TYPE_DELTA;
 
       block_length = radeon_vcn_enc_blocks_in_frame(enc, &width_in_block, &height_in_block);
+
+      qp_map->width_in_block = width_in_block;
+      qp_map->height_in_block = height_in_block;
 
       for (i = RENCODE_QP_MAP_MAX_REGIONS; i >= roi->num; i--)
          enc->enc_pic.enc_qp_map.map[i].is_valid = false;
@@ -166,7 +175,7 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
             /* mapped av1 qi into the legacy qp range by dividing by 5 and
              * rounding up in any rate control mode.
              */
-            if (is_av1 && pa_format) {
+            if (is_av1 && (pa_format || (qp_map->version ==  RENCODE_QP_MAP_VCN5))) {
                if (region->qp_value > 0)
                   av1_qi_value = (region->qp_value + 2) / 5;
                else if (region->qp_value < 0)
@@ -689,11 +698,17 @@ static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
       enc->enc_pic.av1_spec_misc.cdef_uv_pri_strength[i] = (pic->cdef.cdef_uv_strengths[i] >> 2);
       enc->enc_pic.av1_spec_misc.cdef_uv_sec_strength[i] = (pic->cdef.cdef_uv_strengths[i] & 0x3);
    }
+
    enc->enc_pic.av1_spec_misc.delta_q_y_dc = pic->quantization.y_dc_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_u_dc = pic->quantization.u_dc_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_u_ac = pic->quantization.u_ac_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_v_dc = pic->quantization.v_dc_delta_q;
    enc->enc_pic.av1_spec_misc.delta_q_v_ac = pic->quantization.v_ac_delta_q;
+
+   if (enc->enc_pic.frame_type == PIPE_AV1_ENC_FRAME_TYPE_KEY)
+      enc->enc_pic.av1_spec_misc.separate_delta_q =
+         (pic->quantization.u_dc_delta_q != pic->quantization.v_dc_delta_q) ||
+         (pic->quantization.u_ac_delta_q != pic->quantization.v_ac_delta_q);
 
    if (enc->enc_pic.disable_screen_content_tools) {
        enc->enc_pic.force_integer_mv  = 0;
@@ -795,6 +810,31 @@ static void radeon_vcn_enc_av1_get_rc_param(struct radeon_encoder *enc,
    enc->enc_pic.rc_per_pic.max_au_size_p = pic->rc[0].max_au_size;
 }
 
+static void radeon_vcn_enc_av1_get_tile_config(struct radeon_encoder *enc,
+                                               struct pipe_av1_enc_picture_desc *pic)
+{
+   uint32_t num_tile_cols, num_tile_rows;
+
+   num_tile_cols = MIN2(RENCODE_AV1_TILE_CONFIG_MAX_NUM_COLS, pic->tile_cols);
+   num_tile_rows = MIN2(RENCODE_AV1_TILE_CONFIG_MAX_NUM_ROWS, pic->tile_rows);
+
+   enc->enc_pic.av1_tile_config.uniform_tile_spacing = !!(pic->uniform_tile_spacing);
+   enc->enc_pic.av1_tile_config.num_tile_cols = pic->tile_cols;
+   enc->enc_pic.av1_tile_config.num_tile_rows = pic->tile_rows;
+   enc->enc_pic.av1_tile_config.num_tile_groups = pic->num_tile_groups;
+   for (int i = 0; i < num_tile_cols; i++ )
+      enc->enc_pic.av1_tile_config.tile_widths[i] = pic->width_in_sbs_minus_1[i] + 1;
+   for (int i = 0; i < num_tile_rows; i++ )
+      enc->enc_pic.av1_tile_config.tile_height[i] = pic->height_in_sbs_minus_1[i] + 1;
+   for (int i = 0; i < num_tile_cols * num_tile_rows; i++ ) {
+      enc->enc_pic.av1_tile_config.tile_groups[i].start =
+         (uint32_t)pic->tile_groups[i].tile_group_start;
+      enc->enc_pic.av1_tile_config.tile_groups[i].end =
+         (uint32_t)pic->tile_groups[i].tile_group_end;
+   }
+   enc->enc_pic.av1_tile_config.context_update_tile_id = pic->context_update_tile_id;
+}
+
 static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          struct pipe_av1_enc_picture_desc *pic)
 {
@@ -846,6 +886,8 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
    radeon_vcn_enc_av1_timing_info(enc, pic);
    radeon_vcn_enc_av1_color_description(enc, pic);
    radeon_vcn_enc_av1_get_rc_param(enc, pic);
+   if (enc_pic->tile_config_flag)
+      radeon_vcn_enc_av1_get_tile_config(enc, pic);
    radeon_vcn_enc_get_input_format_param(enc, &pic->base);
    radeon_vcn_enc_get_output_format_param(enc, pic->seq.color_config.color_range);
    /* loop filter enabled all the time */
@@ -1148,29 +1190,40 @@ static int setup_dpb(struct radeon_encoder *enc)
 /* each block (MB/CTB/SB) has one QP/QI value */
 static uint32_t roi_buffer_size(struct radeon_encoder *enc)
 {
-   uint32_t width_in_block, height_in_block;
+   uint32_t pitch_size_in_dword = 0;
+   rvcn_enc_qp_map_t *qp_map = &enc->enc_pic.enc_qp_map;
 
-   radeon_vcn_enc_blocks_in_frame(enc, &width_in_block, &height_in_block);
+   if ( qp_map->version == RENCODE_QP_MAP_LEGACY){
+      pitch_size_in_dword = qp_map->width_in_block;
+      qp_map->qp_map_pitch = qp_map->width_in_block;
+   } else {
+      /* two units merge into 1 dword */
+      pitch_size_in_dword = DIV_ROUND_UP(qp_map->width_in_block, 2);
+      qp_map->qp_map_pitch = pitch_size_in_dword * 2;
+   }
 
-   return width_in_block * height_in_block * sizeof(uint32_t);
+   return pitch_size_in_dword * qp_map->height_in_block * sizeof(uint32_t);
 }
 
-static void arrange_qp_map(uint32_t *start,
-                           struct rvcn_enc_qp_map_region *map,
-                           uint32_t width_in_block,
-                           uint32_t height_in_block)
+static void arrange_qp_map(void *start,
+                           struct rvcn_enc_qp_map_region *regin,
+                           rvcn_enc_qp_map_t *map)
 {
    uint32_t i, j;
    uint32_t offset;
-   uint32_t num_in_x = MIN2(map->x_in_unit + map->width_in_unit, width_in_block)
-                      - map->x_in_unit;
-   uint32_t num_in_y = MIN2(map->y_in_unit + map->height_in_unit, height_in_block)
-                      - map->y_in_unit;;
+   uint32_t num_in_x = MIN2(regin->x_in_unit + regin->width_in_unit, map->width_in_block)
+                      - regin->x_in_unit;
+   uint32_t num_in_y = MIN2(regin->y_in_unit + regin->height_in_unit, map->height_in_block)
+                      - regin->y_in_unit;;
 
    for (j = 0; j < num_in_y; j++) {
       for (i = 0; i < num_in_x; i++) {
-         offset = map->x_in_unit + i + (map->y_in_unit + j) * width_in_block;
-         *(start + offset) = (int32_t)map->qp_delta;
+         offset = regin->x_in_unit + i + (regin->y_in_unit + j) * map->qp_map_pitch;
+         if (map->version == RENCODE_QP_MAP_LEGACY)
+            *((uint32_t *)start + offset) = (int32_t)regin->qp_delta;
+         else
+            *((int16_t *)start + offset) =
+               (int16_t)(regin->qp_delta << RENCODE_QP_MAP_UNIFIED_QP_BITS_SHIFT);
       }
    }
 }
@@ -1183,24 +1236,23 @@ static int generate_roi_map(struct radeon_encoder *enc)
 {
    uint32_t width_in_block, height_in_block;
    uint32_t i;
-   uint32_t *p_roi = NULL;
+   void *p_roi = NULL;
 
    radeon_vcn_enc_blocks_in_frame(enc, &width_in_block, &height_in_block);
 
-   assert (enc->roi_size >= width_in_block * height_in_block);
-   p_roi = (uint32_t *)enc->ws->buffer_map(enc->ws,
+   p_roi = enc->ws->buffer_map(enc->ws,
                                enc->roi->res->buf,
                               &enc->cs,
                                PIPE_MAP_READ_WRITE | RADEON_MAP_TEMPORARY);
    if (!p_roi)
       goto error;
 
-   memset(p_roi, 0, width_in_block * height_in_block * sizeof(uint32_t));
+   memset(p_roi, 0, enc->roi_size);
 
    for (i = 0; i < ARRAY_SIZE(enc->enc_pic.enc_qp_map.map); i++) {
-      struct rvcn_enc_qp_map_region *map = &enc->enc_pic.enc_qp_map.map[i];
-      if (map->is_valid)
-         arrange_qp_map(p_roi, map, width_in_block, height_in_block);
+      struct rvcn_enc_qp_map_region *region = &enc->enc_pic.enc_qp_map.map[i];
+      if (region->is_valid)
+         arrange_qp_map(p_roi, region, &enc->enc_pic.enc_qp_map);
    }
 
    enc->ws->buffer_unmap(enc->ws, enc->roi->res->buf);
@@ -1491,8 +1543,13 @@ struct pipe_video_codec *radeon_create_encoder(struct pipe_context *context,
 
    enc->enc_pic.use_rc_per_pic_ex = false;
 
-   if (sscreen->info.vcn_ip_version >= VCN_5_0_0)
+   if (sscreen->info.vcn_ip_version >= VCN_5_0_0) {
       radeon_enc_5_0_init(enc);
+      if (sscreen->info.vcn_ip_version == VCN_5_0_0) {
+         /* this limits tile splitting scheme to use legacy method */
+         enc->enc_pic.av1_tile_spliting_legacy_flag = true;
+      }
+   }
    else if (sscreen->info.vcn_ip_version >= VCN_4_0_0) {
       if (sscreen->info.vcn_enc_minor_version >= 1)
          enc->enc_pic.use_rc_per_pic_ex = true;
@@ -1690,6 +1747,40 @@ void radeon_enc_code_se(struct radeon_encoder *enc, int value)
       v = (value < 0 ? ((unsigned int)(0 - value) << 1) : (((unsigned int)(value) << 1) - 1));
 
    radeon_enc_code_ue(enc, v);
+}
+
+unsigned int radeon_enc_av1_tile_log2(unsigned int blk_size, unsigned int max)
+{
+   unsigned int k;
+
+   assert(blk_size);
+   for (k = 0; (blk_size << k) < max; k++) {}
+
+   return k;
+}
+
+void radeon_enc_code_ns(struct radeon_encoder *enc, unsigned int value, unsigned int max)
+{
+   unsigned w = 0;
+   unsigned m;
+   unsigned max_num = max;
+
+   while ( max_num ) {
+      max_num >>= 1;
+      w++;
+   }
+
+   m = ( 1 << w ) - max;
+
+   assert(w > 1);
+
+   if ( value < m )
+      radeon_enc_code_fixed_bits(enc, value, (w - 1));
+   else {
+      unsigned diff = value - m;
+      unsigned out = (((diff >> 1) + m) << 1) | (diff & 0x1);
+      radeon_enc_code_fixed_bits(enc, out, w);
+   }
 }
 
 /* dummy function for re-using the same pipeline */

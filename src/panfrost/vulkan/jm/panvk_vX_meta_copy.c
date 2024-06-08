@@ -563,7 +563,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    struct panvk_meta_copy_img2img_format_info key = {
       .srcfmt = panvk_meta_copy_img_format(src->pimage.layout.format),
       .dstfmt = panvk_meta_copy_img_format(dst->pimage.layout.format),
@@ -629,7 +629,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
       u_minify(dst->pimage.layout.width, region->dstSubresource.mipLevel);
    unsigned height =
       u_minify(dst->pimage.layout.height, region->dstSubresource.mipLevel);
-   cmdbuf->state.gfx.fb.crc_valid[0] = false;
+   cmdbuf->state.gfx.render.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .width = width,
@@ -642,7 +642,7 @@ panvk_meta_copy_img2img(struct panvk_cmd_buffer *cmdbuf,
       .rt_count = 1,
       .rts[0].view = &dstview,
       .rts[0].preload = true,
-      .rts[0].crc_valid = &cmdbuf->state.gfx.fb.crc_valid[0],
+      .rts[0].crc_valid = &cmdbuf->state.gfx.render.fb.crc_valid[0],
    };
 
    mali_ptr texture =
@@ -1011,7 +1011,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
-   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.fb.info;
+   struct pan_fb_info *fbinfo = &cmdbuf->state.gfx.render.fb.info;
    unsigned minx = MAX2(region->imageOffset.x, 0);
    unsigned miny = MAX2(region->imageOffset.y, 0);
    unsigned maxx =
@@ -1062,7 +1062,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
    };
 
    /* TODO: don't force preloads of dst resources if unneeded */
-   cmdbuf->state.gfx.fb.crc_valid[0] = false;
+   cmdbuf->state.gfx.render.fb.crc_valid[0] = false;
    *fbinfo = (struct pan_fb_info){
       .tile_buf_budget = panfrost_query_optimal_tib_size(phys_dev->model),
       .width =
@@ -1077,7 +1077,7 @@ panvk_meta_copy_buf2img(struct panvk_cmd_buffer *cmdbuf,
       .rt_count = 1,
       .rts[0].view = &view,
       .rts[0].preload = true,
-      .rts[0].crc_valid = &cmdbuf->state.gfx.fb.crc_valid[0],
+      .rts[0].crc_valid = &cmdbuf->state.gfx.render.fb.crc_valid[0],
    };
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);

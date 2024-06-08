@@ -642,6 +642,7 @@ struct si_ps_epilog_bits {
 union si_shader_part_key {
    struct {
       struct si_ps_prolog_bits states;
+      unsigned use_aco : 1;
       unsigned wave32 : 1;
       unsigned num_input_sgprs : 6;
       /* Color interpolation and two-side color selection. */
@@ -654,6 +655,7 @@ union si_shader_part_key {
    } ps_prolog;
    struct {
       struct si_ps_epilog_bits states;
+      unsigned use_aco : 1;
       unsigned wave32 : 1;
       unsigned uses_discard : 1;
       unsigned colors_written : 8;

@@ -93,6 +93,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_SHADER_SPILLING_RATE(0)
       DRI_CONF_OPT_B(intel_tbimr, true, "Enable TBIMR tiled rendering")
       DRI_CONF_ANV_COMPRESSION_CONTROL_ENABLED(false)
+      DRI_CONF_ANV_FAKE_NONLOCAL_MEMORY(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
@@ -408,6 +409,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_shader_atomic_float2              = true,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier          = true,
+      .EXT_shader_replicated_composites      = true,
       .EXT_shader_stencil_export             = true,
       .EXT_shader_subgroup_ballot            = true,
       .EXT_shader_subgroup_vote              = true,
@@ -436,6 +438,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .INTEL_shader_integer_functions2       = true,
       .EXT_multi_draw                        = true,
       .NV_compute_shader_derivatives         = true,
+      .MESA_image_alignment_control          = true,
       .VALVE_mutable_descriptor_type         = true,
    };
 }
@@ -697,7 +700,7 @@ get_features(const struct anv_physical_device *pdevice,
       .meshShader = mesh_shader,
       .multiviewMeshShader = false,
       .primitiveFragmentShadingRateMeshShader = mesh_shader,
-      .meshShaderQueries = false,
+      .meshShaderQueries = mesh_shader,
 
       /* VK_EXT_mutable_descriptor_type */
       .mutableDescriptorType = true,
@@ -740,6 +743,9 @@ get_features(const struct anv_physical_device *pdevice,
       .robustBufferAccess2 = true,
       .robustImageAccess2 = true,
       .nullDescriptor = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
 
       /* VK_EXT_shader_atomic_float */
       .shaderBufferFloat32Atomics =    true,
@@ -944,6 +950,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_legacy_dithering */
       .legacyDithering = true,
+
+      /* VK_MESA_image_alignment_control */
+      .imageAlignmentControl = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1338,7 +1347,7 @@ get_properties(const struct anv_physical_device *pdevice,
       .maxFragmentOutputAttachments             = 8,
       .maxFragmentDualSrcAttachments            = 1,
       .maxFragmentCombinedOutputResources       = MAX_RTS + max_ssbos + max_images,
-      .maxComputeSharedMemorySize               = 64 * 1024,
+      .maxComputeSharedMemorySize               = intel_device_info_get_max_slm_size(&pdevice->info),
       .maxComputeWorkGroupCount                 = { 65535, 65535, 65535 },
       .maxComputeWorkGroupInvocations           = max_workgroup_size,
       .maxComputeWorkGroupSize = {
@@ -1886,6 +1895,12 @@ get_properties(const struct anv_physical_device *pdevice,
    }
 #endif /* DETECT_OS_ANDROID */
 
+
+   /* VK_MESA_image_alignment_control */
+   {
+      /* We support 4k/64k tiling alignments on most platforms */
+      props->supportedImageAlignmentMask = (1 << 12) | (1 << 16);
+   }
 }
 
 static VkResult MUST_CHECK
@@ -2125,12 +2140,12 @@ anv_override_engine_counts(int *gc_count, int *g_count, int *c_count, int *v_cou
    int g_override = -1;
    int c_override = -1;
    int v_override = -1;
-   char *env = getenv("ANV_QUEUE_OVERRIDE");
+   const char *env_ = os_get_option("ANV_QUEUE_OVERRIDE");
 
-   if (env == NULL)
+   if (env_ == NULL)
       return;
 
-   env = strdup(env);
+   char *env = strdup(env_);
    char *save = NULL;
    char *next = strtok_r(env, ",", &save);
    while (next != NULL) {
@@ -2683,6 +2698,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "anv_external_memory_implicit_sync");
     instance->compression_control_enabled =
        driQueryOptionb(&instance->dri_options, "compression_control_enabled");
+    instance->anv_fake_nonlocal_memory =
+            driQueryOptionb(&instance->dri_options, "anv_fake_nonlocal_memory");
 }
 
 VkResult anv_CreateInstance(
@@ -2864,6 +2881,26 @@ void anv_GetPhysicalDeviceMemoryProperties(
          .size    = physical_device->memory.heaps[i].size,
          .flags   = physical_device->memory.heaps[i].flags,
       };
+   }
+
+   /* Some games (e.g. Total War: WARHAMMER III) sometimes completely refuse
+    * to use memory types with VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT set.
+    * On iGPUs we have only device-local memory, so we must hide it
+    * from the flags.
+    *
+    * Additionally, TW also seems to crash if a non-local but also
+    * non host-visible memory is present, so we should be careful which
+    * memory types we hide this flag from.
+    */
+   if (physical_device->instance->anv_fake_nonlocal_memory &&
+       !anv_physical_device_has_vram(physical_device)) {
+      for (uint32_t i = 0; i < physical_device->memory.type_count; i++) {
+         if (pMemoryProperties->memoryTypes[i].propertyFlags &
+             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+            pMemoryProperties->memoryTypes[i].propertyFlags &=
+                  ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+         }
+      }
    }
 }
 
@@ -3904,6 +3941,8 @@ VkResult anv_CreateDevice(
    }
    if (!intel_needs_workaround(device->info, 18019816803))
       BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_WA_18019816803);
+   if (!intel_needs_workaround(device->info, 14018283232))
+      BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_WA_14018283232);
    if (device->info->ver > 9)
       BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_PMA_FIX);
 

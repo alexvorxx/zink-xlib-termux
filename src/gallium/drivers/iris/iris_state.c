@@ -96,6 +96,7 @@
 #include "util/u_trace_gallium.h"
 #include "nir.h"
 #include "intel/common/intel_aux_map.h"
+#include "intel/common/intel_compute_slm.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_sample_positions.h"
 #include "intel/ds/intel_tracepoints.h"
@@ -309,17 +310,6 @@ translate_wrap(unsigned pipe_wrap)
       [PIPE_TEX_WRAP_MIRROR_CLAMP_TO_BORDER] = -1,
    };
    return map[pipe_wrap];
-}
-
-
-static inline uint32_t
-iris_encode_slm_size(unsigned gen, uint32_t bytes)
-{
-#if GFX_VER >= 9
-   return encode_slm_size(gen, bytes);
-#else
-   return elk_encode_slm_size(gen, bytes);
-#endif
 }
 
 /**
@@ -6494,6 +6484,9 @@ calculate_tile_dimensions(struct iris_context *ice,
    struct iris_screen *screen = (void *)ice->ctx.screen;
    const struct intel_device_info *devinfo = screen->devinfo;
 
+   assert(GFX_VER == 12);
+   const unsigned aux_scale = ISL_MAIN_TO_CCS_SIZE_RATIO_XE;
+
    /* Perform a rough calculation of the tile cache footprint of the
     * pixel pipeline, approximating it as the sum of the amount of
     * memory used per pixel by every render target, depth, stencil and
@@ -6519,7 +6512,11 @@ calculate_tile_dimensions(struct iris_context *ice,
           */
          if (ice->state.draw_aux_usage[i]) {
             pixel_size += intel_calculate_surface_pixel_size(&res->aux.surf);
-            pixel_size += intel_calculate_surface_pixel_size(&res->aux.extra_aux.surf);
+
+            if (isl_aux_usage_has_ccs(res->aux.usage)) {
+               pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
+                                             &res->surf), aux_scale);
+            }
          }
       }
    }
@@ -6537,7 +6534,11 @@ calculate_tile_dimensions(struct iris_context *ice,
           */
          if (iris_resource_level_has_hiz(devinfo, zres, cso->zsbuf->u.tex.level)) {
             pixel_size += intel_calculate_surface_pixel_size(&zres->aux.surf);
-            pixel_size += intel_calculate_surface_pixel_size(&zres->aux.extra_aux.surf);
+
+            if (isl_aux_usage_has_ccs(zres->aux.usage)) {
+               pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
+                                             &zres->surf), aux_scale);
+            }
          }
       }
 
@@ -8812,6 +8813,7 @@ static void iris_emit_execute_indirect_dispatch(struct iris_context *ice,
    const struct iris_screen *screen = batch->screen;
    struct iris_compiled_shader *shader =
       ice->shaders.prog[MESA_SHADER_COMPUTE];
+   const struct iris_cs_data *cs_data = iris_cs_data(shader);
    const struct intel_cs_dispatch_info dispatch =
       iris_get_cs_dispatch_info(screen->devinfo, shader, grid->block);
    struct iris_bo *indirect = iris_resource_bo(grid->indirect);
@@ -8820,6 +8822,11 @@ static void iris_emit_execute_indirect_dispatch(struct iris_context *ice,
    struct GENX(COMPUTE_WALKER_BODY) body = {};
    body.SIMDSize            = dispatch_size;
    body.MessageSIMD         = dispatch_size;
+   body.GenerateLocalID     = cs_data->generate_local_id != 0;
+   body.EmitLocal           = cs_data->generate_local_id;
+   body.WalkOrder           = cs_data->walk_order;
+   body.TileLayout          = cs_data->walk_order == INTEL_WALK_ORDER_YXZ ?
+                              TileY32bpe : Linear;
    body.LocalXMaximum       = grid->block[0] - 1;
    body.LocalYMaximum       = grid->block[1] - 1;
    body.LocalZMaximum       = grid->block[2] - 1;
@@ -8871,14 +8878,18 @@ iris_upload_compute_walker(struct iris_context *ice,
    idd.KernelStartPointer = KSP(shader);
    idd.NumberofThreadsinGPGPUThreadGroup = dispatch.threads;
    idd.SharedLocalMemorySize =
-      iris_encode_slm_size(GFX_VER, shader->total_shared);
+      intel_compute_slm_encode_size(GFX_VER, shader->total_shared);
+   idd.PreferredSLMAllocationSize =
+      intel_compute_preferred_slm_calc_encode_size(devinfo,
+                                                   shader->total_shared,
+                                                   dispatch.group_size,
+                                                   dispatch.simd_size);
    idd.SamplerStatePointer = shs->sampler_table.offset;
    idd.SamplerCount = encode_sampler_count(shader),
    idd.BindingTablePointer = binder->bt_offset[MESA_SHADER_COMPUTE];
    /* Typically set to 0 to avoid prefetching on every thread dispatch. */
    idd.BindingTableEntryCount = devinfo->verx10 == 125 ?
       0 : MIN2(shader->bt.size_bytes / 4, 31);
-   idd.PreferredSLMAllocationSize = preferred_slm_allocation_size(devinfo);
    idd.NumberOfBarriers = cs_data->uses_barrier;
 
    iris_measure_snapshot(ice, batch, INTEL_SNAPSHOT_COMPUTE, NULL, NULL, NULL);
@@ -9029,7 +9040,7 @@ iris_upload_gpgpu_walker(struct iris_context *ice,
 
       iris_pack_state(GENX(INTERFACE_DESCRIPTOR_DATA), desc, idd) {
          idd.SharedLocalMemorySize =
-            iris_encode_slm_size(GFX_VER, ish->kernel_shared_size + grid->variable_shared_mem);
+            intel_compute_slm_encode_size(GFX_VER, ish->kernel_shared_size + grid->variable_shared_mem);
          idd.KernelStartPointer =
             KSP(shader) + iris_cs_data_prog_offset(cs_data, dispatch.simd_size);
          idd.SamplerStatePointer = shs->sampler_table.offset;

@@ -3816,7 +3816,7 @@ to upconvert to 32b float internally?
 			- 0.0 if GREATER
 			- 1.0 if LESS
 		</doc>
-		<bitfield name="FC_ENABLE" pos="3" type="boolean"/>
+		<bitfield name="FC_ENABLE" pos="3" type="boolean" variants="A6XX"/>
 		<!-- set when depth-test + depth-write enabled -->
 		<bitfield name="Z_TEST_ENABLE" pos="4" type="boolean"/>
 		<bitfield name="Z_BOUNDS_ENABLE" pos="5" type="boolean"/>
@@ -3830,7 +3830,7 @@ to upconvert to 32b float internally?
 			Disable LRZ based on previous direction and the current one.
 			If DIR_WRITE is not enabled - there is no write to direction buffer.
 		</doc>
-		<bitfield name="DISABLE_ON_WRONG_DIR" pos="9" type="boolean"/>
+		<bitfield name="DISABLE_ON_WRONG_DIR" pos="9" type="boolean" variants="A6XX"/>
 		<bitfield name="Z_FUNC" low="11" high="13" type="adreno_compare_func" variants="A7XX-"/>
 	</reg32>
 
@@ -3903,7 +3903,10 @@ to upconvert to 32b float internally?
 		<bitfield name="BASE_MIP_LEVEL" low="28" high="31" type="uint"/>
 	</reg32>
 
-	<reg32 offset="0x810b" name="GRAS_UNKNOWN_810B" variants="A7XX-" usage="cmd"/>
+	<reg32 offset="0x810b" name="GRAS_LRZ_CNTL2" variants="A7XX-" usage="rp_blit">
+		<bitfield name="DISABLE_ON_WRONG_DIR" pos="0" type="boolean"/>
+		<bitfield name="FC_ENABLE" pos="1" type="boolean"/>
+	</reg32>
 
 	<!-- 0x810c-0x810f invalid -->
 
@@ -3912,7 +3915,10 @@ to upconvert to 32b float internally?
 	<!-- A bit tentative but it's a color and it is followed by LRZ_CLEAR -->
 	<reg32 offset="0x8111" name="GRAS_LRZ_CLEAR_DEPTH_F32" type="float" variants="A7XX-"/>
 
-	<reg32 offset="0x8113" name="GRAS_LRZ_DEPTH_BUFFER_INFO" variants="A7XX-" usage="rp_blit"/>
+	<reg32 offset="0x8113" name="GRAS_LRZ_DEPTH_BUFFER_INFO" variants="A7XX-" usage="rp_blit">
+		<bitfield name="DEPTH_FORMAT" low="0" high="2" type="a6xx_depth_format"/>
+		<bitfield name="UNK3" pos="3"/>
+	</reg32>
 
 	<!-- Always written together and always equal 09510840 00000a62 -->
 	<reg32 offset="0x8120" name="GRAS_UNKNOWN_8120" variants="A7XX-" usage="cmd"/>
@@ -4473,7 +4479,10 @@ to upconvert to 32b float internally?
 	<reg32 offset="0x8c2d" name="RB_2D_SRC_SOLID_C1" usage="rp_blit"/>
 	<reg32 offset="0x8c2e" name="RB_2D_SRC_SOLID_C2" usage="rp_blit"/>
 	<reg32 offset="0x8c2f" name="RB_2D_SRC_SOLID_C3" usage="rp_blit"/>
-	<!-- 0x8c34-0x8dff invalid -->
+
+	<reg32 offset="0x8c34" name="RB_UNKNOWN_8C34" variants="A7XX-" usage="cmd"/>
+
+	<!-- 0x8c35-0x8dff invalid -->
 
 	<!-- always 0x1 ? either doesn't exist for a650 or write-only: -->
 	<reg32 offset="0x8e01" name="RB_UNKNOWN_8E01" usage="cmd"/>

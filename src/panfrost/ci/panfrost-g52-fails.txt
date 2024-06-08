@@ -6,7 +6,6 @@ glx@glx-multi-window-single-context,Fail
 glx@glx-swap-pixmap-bad,Fail
 glx@glx-visuals-depth -pixmap,Crash
 glx@glx-visuals-stencil -pixmap,Crash
-shaders@glsl-bug-110796,Fail
 shaders@point-vertex-id divisor,Fail
 shaders@point-vertex-id gl_instanceid divisor,Fail
 shaders@point-vertex-id gl_instanceid,Fail
@@ -21,9 +20,6 @@ spec@arb_direct_state_access@gettextureimage-formats init-by-rendering,Fail
 spec@arb_framebuffer_object@fbo-luminance-alpha,Fail
 spec@arb_framebuffer_srgb@fbo-fast-clear,Fail
 spec@arb_point_sprite@arb_point_sprite-mipmap,Fail
-spec@arb_shader_draw_parameters@drawid-indirect-baseinstance,Fail
-spec@arb_shader_draw_parameters@drawid-indirect-basevertex,Fail
-spec@arb_shader_draw_parameters@drawid-indirect,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 spec@arb_shader_texture_lod@execution@tex-miplevel-selection *gradarb 2drect,Crash
@@ -44,7 +40,6 @@ spec@arb_texture_float@fbo-generatemipmap-formats@GL_INTENSITY16F_ARB,Fail
 spec@arb_texture_float@fbo-generatemipmap-formats@GL_INTENSITY16F_ARB NPOT,Fail
 spec@arb_texture_float@multisample-formats 2 gl_arb_texture_float,Fail
 spec@arb_texture_float@multisample-formats 4 gl_arb_texture_float,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch,Fail
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R16I,Fail
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R16_SNORM,Fail
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R32I,Fail
@@ -76,7 +71,6 @@ spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA8,Fail
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA8I,Fail
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_SRGB8_ALPHA8,Fail
-spec@arb_texture_rectangle@1-1-linear-texture,Fail
 spec@arb_texture_rectangle@tex-miplevel-selection gl2:texture() 2drect,Crash
 spec@arb_texture_rectangle@tex-miplevel-selection gl2:texture() 2drectshadow,Crash
 spec@arb_texture_rectangle@tex-miplevel-selection gl2:textureproj 2drect,Crash
@@ -356,8 +350,6 @@ spec@!opengl 3.1@primitive-restart-xfb flush,Fail
 spec@!opengl 3.1@primitive-restart-xfb generated,Fail
 spec@!opengl 3.1@primitive-restart-xfb written,Fail
 spec@!opengl es 3.0@gles-3.0-transform-feedback-uniform-buffer-object,Fail
-
-dEQP-GLES31.functional.texture.border_clamp.range_clamp.linear_float_color,Fail
 
 # Resolve operations not supported
 dEQP-VK.rasterization.interpolation_multisample_4_bit.lines,Crash

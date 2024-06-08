@@ -21,3 +21,8 @@ struct libagx_copy_query_push {
    uint16_t _64;
    uint16_t with_availability;
 };
+
+struct libagx_xfb_counter_copy {
+   GLOBAL(uint32_t) dest[4];
+   GLOBAL(uint32_t) src[4];
+};

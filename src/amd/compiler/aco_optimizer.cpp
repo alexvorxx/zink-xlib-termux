@@ -665,13 +665,13 @@ alu_can_accept_constant(const aco_ptr<Instruction>& instr, unsigned operand)
 bool
 valu_can_accept_vgpr(aco_ptr<Instruction>& instr, unsigned operand)
 {
-   if (instr->opcode == aco_opcode::v_readlane_b32 ||
-       instr->opcode == aco_opcode::v_readlane_b32_e64 ||
-       instr->opcode == aco_opcode::v_writelane_b32 ||
+   if (instr->opcode == aco_opcode::v_writelane_b32 ||
        instr->opcode == aco_opcode::v_writelane_b32_e64)
-      return operand != 1;
+      return operand == 2;
    if (instr->opcode == aco_opcode::v_permlane16_b32 ||
-       instr->opcode == aco_opcode::v_permlanex16_b32)
+       instr->opcode == aco_opcode::v_permlanex16_b32 ||
+       instr->opcode == aco_opcode::v_readlane_b32 ||
+       instr->opcode == aco_opcode::v_readlane_b32_e64)
       return operand == 0;
    return true;
 }
@@ -860,10 +860,7 @@ smem_combine(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             if (!smem.definitions.empty())
                new_instr->definitions[0] = smem.definitions[0];
             new_instr->smem().sync = smem.sync;
-            new_instr->smem().glc = smem.glc;
-            new_instr->smem().dlc = smem.dlc;
-            new_instr->smem().nv = smem.nv;
-            new_instr->smem().disable_wqm = smem.disable_wqm;
+            new_instr->smem().cache = smem.cache;
             instr.reset(new_instr);
          }
       }
@@ -1429,13 +1426,15 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          while (info.is_temp())
             info = ctx.info[info.temp.id()];
 
+         bool swizzled = ctx.program->gfx_level >= GFX12 ? mubuf.cache.gfx12.swizzled
+                                                         : (mubuf.cache.value & ac_swizzled);
          /* According to AMDGPUDAGToDAGISel::SelectMUBUFScratchOffen(), vaddr
           * overflow for scratch accesses works only on GFX9+ and saddr overflow
           * never works. Since swizzling is the only thing that separates
           * scratch accesses and other accesses and swizzling changing how
           * addressing works significantly, this probably applies to swizzled
           * MUBUF accesses. */
-         bool vaddr_prevent_overflow = mubuf.swizzled && ctx.program->gfx_level < GFX9;
+         bool vaddr_prevent_overflow = swizzled && ctx.program->gfx_level < GFX9;
 
          if (mubuf.offen && mubuf.idxen && i == 1 && info.is_vec() &&
              info.instr->operands.size() == 2 && info.instr->operands[0].isTemp() &&
@@ -1465,7 +1464,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
             mubuf.offset += offset;
             continue;
          } else if (i == 2 && parse_base_offset(ctx, instr.get(), i, &base, &offset, true) &&
-                    base.regClass() == s1 && mubuf.offset + offset < 4096 && !mubuf.swizzled) {
+                    base.regClass() == s1 && mubuf.offset + offset < 4096 && !swizzled) {
             instr->operands[i].setTemp(base);
             mubuf.offset += offset;
             continue;
@@ -5139,41 +5138,6 @@ try_convert_sopc_to_sopk(aco_ptr<Instruction>& instr)
 }
 
 static void
-unswizzle_vop3p_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
-{
-   /* This opt is only beneficial for v_pk_fma_f16 because we can use v_pk_fmac_f16 if the
-    * instruction doesn't use swizzles. */
-   if (instr->opcode != aco_opcode::v_pk_fma_f16)
-      return;
-
-   VALU_instruction& vop3p = instr->valu();
-
-   unsigned literal_swizzle = ~0u;
-   for (unsigned i = 0; i < instr->operands.size(); i++) {
-      if (!instr->operands[i].isLiteral())
-         continue;
-      unsigned new_swizzle = vop3p.opsel_lo[i] | (vop3p.opsel_hi[i] << 1);
-      if (literal_swizzle != ~0u && new_swizzle != literal_swizzle)
-         return; /* Literal swizzles conflict. */
-      literal_swizzle = new_swizzle;
-   }
-
-   if (literal_swizzle == 0b10 || literal_swizzle == ~0u)
-      return; /* already unswizzled */
-
-   for (unsigned i = 0; i < instr->operands.size(); i++) {
-      if (!instr->operands[i].isLiteral())
-         continue;
-      uint32_t literal = instr->operands[i].constantValue();
-      literal = (literal >> (16 * (literal_swizzle & 0x1)) & 0xffff) |
-                (literal >> (8 * (literal_swizzle & 0x2)) << 16);
-      instr->operands[i] = Operand::literal32(literal);
-      vop3p.opsel_lo[i] = false;
-      vop3p.opsel_hi[i] = true;
-   }
-}
-
-static void
 opt_fma_mix_acc(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
    /* fma_mix is only dual issued on gfx11 if dst and acc type match */
@@ -5314,14 +5278,6 @@ apply_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    if (instr->isSOPC() && ctx.program->gfx_level < GFX12)
       try_convert_sopc_to_sopk(instr);
-
-   /* allow more s_addk_i32 optimizations if carry isn't used */
-   if (instr->opcode == aco_opcode::s_add_u32 && ctx.uses[instr->definitions[1].tempId()] == 0 &&
-       (instr->operands[0].isLiteral() || instr->operands[1].isLiteral()))
-      instr->opcode = aco_opcode::s_add_i32;
-
-   if (instr->isVOP3P())
-      unswizzle_vop3p_literals(ctx, instr);
 
    if (instr->opcode == aco_opcode::v_fma_mixlo_f16 || instr->opcode == aco_opcode::v_fma_mix_f32)
       opt_fma_mix_acc(ctx, instr);

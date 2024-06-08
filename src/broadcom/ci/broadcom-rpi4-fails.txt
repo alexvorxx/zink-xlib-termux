@@ -5,7 +5,6 @@ glx@glx-visuals-depth -pixmap,Fail
 glx@glx-visuals-stencil -pixmap,Fail
 glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
 glx@glx_arb_create_context_no_error@no error,Fail
-shaders@glsl-bug-110796,Fail
 shaders@point-vertex-id divisor,Fail
 shaders@point-vertex-id gl_instanceid divisor,Fail
 shaders@point-vertex-id gl_instanceid,Fail
@@ -128,8 +127,6 @@ spec@arb_texture_buffer_object@formats (fs- arb)@GL_LUMINANCE_ALPHA32UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_LUMINANCE_ALPHA8I_EXT,Fail
 spec@arb_texture_buffer_object@formats (fs- arb)@GL_LUMINANCE_ALPHA8UI_EXT,Fail
 spec@arb_texture_buffer_object@formats (vs- arb),Fail
-spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA16F_ARB,Fail
-spec@arb_texture_buffer_object@formats (vs- arb)@GL_ALPHA32F_ARB,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_INTENSITY16F_ARB,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_INTENSITY16I_EXT,Fail
 spec@arb_texture_buffer_object@formats (vs- arb)@GL_INTENSITY16UI_EXT,Fail
@@ -179,39 +176,6 @@ spec@arb_texture_float@texwrap formats bordercolor@GL_LUMINANCE32F_ARB- border c
 spec@arb_texture_float@texwrap formats bordercolor@GL_LUMINANCE_ALPHA32F_ARB- border color only,Fail
 spec@arb_texture_float@texwrap formats bordercolor@GL_RGB32F- border color only,Fail
 spec@arb_texture_float@texwrap formats bordercolor@GL_RGBA32F- border color only,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch.*,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R16I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R16_SNORM,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R32I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R8I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_R8_SNORM,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG16F,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG16I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG16_SNORM,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG32F,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG32I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG8I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RG8_SNORM,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB10,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB10_A2,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB10_A2UI,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB16I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB16_SNORM,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB32I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB4,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB8,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB8I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB9_E5,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA16,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA16F,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA16I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA32F,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA32I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA4,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA8,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGBA8I,Fail
-spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_SRGB8_ALPHA8,Fail
 spec@arb_texture_rectangle@1-1-linear-texture,Fail
 spec@arb_texture_rg@fbo-blending-formats-float,Fail
 spec@arb_texture_rg@fbo-blending-formats-float@GL_R32F,Fail

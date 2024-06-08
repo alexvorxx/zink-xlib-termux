@@ -372,7 +372,10 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
 {
    const struct anv_device *device = cmd_buffer->device;
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
-   const unsigned aux_scale = 256;
+
+   assert(GFX_VER == 12);
+   const unsigned aux_scale = ISL_MAIN_TO_CCS_SIZE_RATIO_XE;
+
    unsigned pixel_size = 0;
 
    /* Perform a rough calculation of the tile cache footprint of the
@@ -396,10 +399,6 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
             pixel_size += intel_calculate_surface_pixel_size(
                &plane->aux_surface.isl);
 
-         /* XXX - Use proper implicit CCS surface metadata tracking
-          *       instead of inferring pixel size from primary
-          *       surface.
-          */
          if (isl_aux_usage_has_ccs(att->aux_usage))
             pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
                                           &plane->primary_surface.isl),
@@ -422,10 +421,6 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
          pixel_size += intel_calculate_surface_pixel_size(
             &plane->aux_surface.isl);
 
-      /* XXX - Use proper implicit CCS surface metadata tracking
-       *       instead of inferring pixel size from primary
-       *       surface.
-       */
       if (isl_aux_usage_has_ccs(image->planes[p].aux_usage))
          pixel_size += DIV_ROUND_UP(intel_calculate_surface_pixel_size(
                                        &plane->primary_surface.isl),
@@ -968,16 +963,24 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       SET(PMA_FIX, pma_fix, pma);
 #endif
 
-#if GFX_VERx10 >= 125
+#if INTEL_WA_18019816803_GFX_VER
       if (intel_needs_workaround(cmd_buffer->device->info, 18019816803)) {
          bool ds_write_state = opt_ds.depth.write_enable || opt_ds.stencil.write_enable;
-         if (gfx->ds_write_state != ds_write_state) {
-            gfx->ds_write_state = ds_write_state;
-            BITSET_SET(hw_state->dirty, ANV_GFX_STATE_WA_18019816803);
-         }
+         SET(WA_18019816803, ds_write_state, ds_write_state);
       }
 #endif
    }
+
+#if INTEL_WA_14018283232_GFX_VER
+   if (intel_needs_workaround(cmd_buffer->device->info, 14018283232) &&
+       ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
+        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE))) {
+      SET(WA_14018283232, wa_14018283232_toggle,
+          dyn->ds.depth.bounds_test.enable &&
+          wm_prog_data &&
+          wm_prog_data->uses_kill);
+   }
+#endif
 
 #if GFX_VER >= 12
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE) ||
@@ -1585,6 +1588,21 @@ emit_wa_18020335297_dummy_draw(struct anv_cmd_buffer *cmd_buffer)
       }
    }
 }
+
+#if INTEL_WA_14018283232_GFX_VER
+void
+genX(batch_emit_wa_14018283232)(struct anv_batch *batch)
+{
+   anv_batch_emit(batch, GENX(RESOURCE_BARRIER), barrier) {
+      barrier.ResourceBarrierBody = (struct GENX(RESOURCE_BARRIER_BODY)) {
+         .BarrierType = RESOURCE_BARRIER_TYPE_IMMEDIATE,
+         .SignalStage = RESOURCE_BARRIER_STAGE_COLOR,
+            .WaitStage = RESOURCE_BARRIER_STAGE_PIXEL,
+      };
+   }
+}
+#endif
+
 /**
  * This function handles dirty state emission to the batch buffer.
  */
@@ -2192,12 +2210,17 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
       }
    }
 
-#if GFX_VERx10 >= 125
+#if INTEL_WA_18019816803_GFX_VER
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_WA_18019816803)) {
       genx_batch_emit_pipe_control(&cmd_buffer->batch, cmd_buffer->device->info,
                                    cmd_buffer->state.current_pipeline,
                                    ANV_PIPE_PSS_STALL_SYNC_BIT);
    }
+#endif
+
+#if INTEL_WA_14018283232_GFX_VER
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_WA_14018283232))
+      genX(batch_emit_wa_14018283232)(&cmd_buffer->batch);
 #endif
 
 #if GFX_VER == 9

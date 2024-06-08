@@ -135,7 +135,8 @@ fs_nir_setup_outputs(nir_to_brw_state &ntb)
    if (s.stage == MESA_SHADER_TESS_CTRL ||
        s.stage == MESA_SHADER_TASK ||
        s.stage == MESA_SHADER_MESH ||
-       s.stage == MESA_SHADER_FRAGMENT)
+       s.stage == MESA_SHADER_FRAGMENT ||
+       s.stage == MESA_SHADER_COMPUTE)
       return;
 
    unsigned vec4s[VARYING_SLOT_TESS_MAX] = { 0, };

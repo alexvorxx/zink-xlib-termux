@@ -1554,10 +1554,20 @@ exec_ccs_op(struct anv_cmd_buffer *cmd_buffer,
     * that the contents of the previous draw hit the render target before we
     * resolve and then use a second PIPE_CONTROL after the resolve to ensure
     * that it is completed before any additional drawing occurs.
+    *
+    * Bspec 57340 (r59562):
+    *
+    *   Synchronization:
+    *      Due to interaction of scaled clearing rectangle with pixel
+    *      scoreboard, we require one of the following commands to be issued.
+    *      (Rows of PIPE_CONTROL command in the table)
+    *
+    * Requiring tile cache flush bit has been dropped since Xe2.
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-                             ANV_PIPE_TILE_CACHE_FLUSH_BIT |
+                             (devinfo->verx10 < 200 ?
+                                ANV_PIPE_TILE_CACHE_FLUSH_BIT : 0) |
                              (devinfo->verx10 == 120 ?
                                 ANV_PIPE_DEPTH_STALL_BIT : 0) |
                              (devinfo->verx10 == 125 ?
@@ -1708,10 +1718,20 @@ exec_mcs_op(struct anv_cmd_buffer *cmd_buffer,
     * that the contents of the previous draw hit the render target before we
     * resolve and then use a second PIPE_CONTROL after the resolve to ensure
     * that it is completed before any additional drawing occurs.
+    *
+    * Bspec 57340 (r59562):
+    *
+    *   Synchronization:
+    *      Due to interaction of scaled clearing rectangle with pixel
+    *      scoreboard, we require one of the following commands to be issued.
+    *      (Rows of PIPE_CONTROL command in the table)
+    *
+    * Requiring tile cache flush bit has been dropped since Xe2.
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-                             ANV_PIPE_TILE_CACHE_FLUSH_BIT |
+                             (devinfo->verx10 < 200 ?
+                                ANV_PIPE_TILE_CACHE_FLUSH_BIT : 0) |
                              (devinfo->verx10 == 120 ?
                                 ANV_PIPE_DEPTH_STALL_BIT : 0) |
                              (devinfo->verx10 == 125 ?

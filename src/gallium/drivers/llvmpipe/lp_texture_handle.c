@@ -507,13 +507,13 @@ static uint64_t
 get_sample_function(uint64_t _matrix, uint64_t _texture_functions, uint64_t _sampler_desc, uint32_t sample_key)
 {
    struct lp_sampler_matrix *matrix = (void *)(uintptr_t)_matrix;
-   struct lp_texture_functions *texture_functions = (void *)(uintptr_t)_texture_functions;
    struct lp_descriptor *sampler_desc = (void *)(uintptr_t)_sampler_desc;
-
    uint32_t sampler_index = sampler_desc->texture.sampler_index;
-   void *key = &texture_functions->sample_functions[sampler_index][sample_key];
 
    simple_mtx_lock(&matrix->lock);
+
+   struct lp_texture_functions *texture_functions = (void *)(uintptr_t)_texture_functions;
+   void *key = &texture_functions->sample_functions[sampler_index][sample_key];
 
    void *result;
    struct hash_entry *entry = _mesa_hash_table_search(matrix->cache, key);

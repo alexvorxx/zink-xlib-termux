@@ -56,7 +56,8 @@ agx_nir_lower_poly_stipple(nir_shader *s)
 }
 
 static bool
-lower_vbo(nir_shader *s, const struct agx_velem_key *key)
+lower_vbo(nir_shader *s, const struct agx_velem_key *key,
+          const struct agx_robustness rs)
 {
    struct agx_attribute out[AGX_MAX_VBUFS];
 
@@ -69,7 +70,7 @@ lower_vbo(nir_shader *s, const struct agx_velem_key *key)
       };
    }
 
-   return agx_nir_lower_vbo(s, out);
+   return agx_nir_lower_vbo(s, out, rs);
 }
 
 static int
@@ -166,7 +167,7 @@ agx_nir_vs_prolog(nir_builder *b, const void *key_)
    nir_export_agx(b, nir_load_instance_id(b), .base = 6 * 2);
 
    /* Now lower the resulting program using the key */
-   lower_vbo(b->shader, key->attribs);
+   lower_vbo(b->shader, key->attribs, key->robustness);
 
    if (!key->hw) {
       agx_nir_lower_index_buffer(b->shader, key->sw_index_size_B, false);

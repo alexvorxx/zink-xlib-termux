@@ -2213,6 +2213,14 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
    struct agx_fast_link_key link_key = {
       .prolog.vs.hw = key.hw,
       .prolog.vs.sw_index_size_B = key.hw ? 0 : index_size_B,
+
+      /* TODO: We could optimize this */
+      .prolog.vs.robustness =
+         {
+            .level = AGX_ROBUSTNESS_GL,
+            .soft_fault = false,
+         },
+
       .main = ctx->vs,
    };
 

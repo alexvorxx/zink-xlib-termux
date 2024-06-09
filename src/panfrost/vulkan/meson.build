@@ -66,7 +66,9 @@ bifrost_files = [
 
 valhall_archs = [9, 10]
 valhall_inc_dir = ['valhall']
-valhall_files = []
+valhall_files = [
+  'valhall/panvk_vX_descriptor_set_layout.c',
+]
 
 jm_archs = [6, 7]
 jm_inc_dir = ['jm']

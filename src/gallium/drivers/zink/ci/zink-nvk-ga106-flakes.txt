@@ -5,6 +5,9 @@ KHR-GL46.packed_pixels.varied_rectangle.*
 KHR-GL46.texture_buffer.texture_buffer_max_size
 KHR-GL46.texture_swizzle.smoke
 
+# All the double tests in this group seem to be flaky
+spec@glsl-4.00@execution@built-in-functions@.*(double|dvec|dmat).*
+
 spec@!opengl 1.0@gl-1.0-blend-func
 spec@!opengl 1.1@copypixels-sync
 spec@!opengl 1.1@draw-sync
@@ -85,17 +88,6 @@ spec@glsl-1.30@execution@texelfetchoffset@fs-texelfetch-sampler1darray
 spec@glsl-1.30@linker@interpolation-qualifiers@default-gl_backsecondarycolor-flat-gl_secondarycolor
 spec@glsl-1.50@execution@built-in-functions@gs-op-assign-rshift-uvec2-int
 spec@glsl-1.50@execution@compatibility@clipping@gs-clip-vertex-enables
-spec@glsl-4.00@execution@built-in-functions@fs-op-add-dvec2-dvec2
-spec@glsl-4.00@execution@built-in-functions@fs-op-mult-dmat2x4-dvec2
-spec@glsl-4.00@execution@built-in-functions@gs-matrixcompmult-dmat2x4-dmat2x4
-spec@glsl-4.00@execution@built-in-functions@gs-max-dvec4-double
-spec@glsl-4.00@execution@built-in-functions@gs-op-add-dmat3x2-double
-spec@glsl-4.00@execution@built-in-functions@gs-op-mult-double-dmat4x3
-spec@glsl-4.00@execution@built-in-functions@vs-distance-double-double
-spec@glsl-4.00@execution@built-in-functions@vs-op-div-dmat4-dmat4
-spec@glsl-4.00@execution@built-in-functions@vs-op-sub-double-dvec2
-spec@glsl-4.00@execution@built-in-functions@vs-outerproduct-dvec2-dvec3
-spec@glsl-4.00@execution@built-in-functions@vs-refract-dvec4-dvec4-double
 spec@glsl-4.20@execution@vs_in@vs-input-ubyte_uint-short_int-double_dvec3-position
 spec@glsl-4.30@execution@built-in-functions@cs-lessthan-vec4-vec4
 spec@glsl-4.30@execution@built-in-functions@cs-op-assign-sub-mat3x2-mat3x2

@@ -15,6 +15,7 @@
 
 #include "tu_clear_blit.h"
 #include "tu_cs.h"
+#include "tu_event.h"
 #include "tu_image.h"
 #include "tu_tracepoints.h"
 
@@ -6232,7 +6233,7 @@ tu_CmdEndRendering(VkCommandBuffer commandBuffer)
    }
 }
 
-static void
+void
 tu_barrier(struct tu_cmd_buffer *cmd,
            const VkDependencyInfo *dep_info)
 {
@@ -6356,9 +6357,9 @@ tu_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
 }
 
 template <chip CHIP>
-static void
-write_event(struct tu_cmd_buffer *cmd, struct tu_event *event,
-            VkPipelineStageFlags2 stageMask, unsigned value)
+void
+tu_write_event(struct tu_cmd_buffer *cmd, struct tu_event *event,
+               VkPipelineStageFlags2 stageMask, unsigned value)
 {
    struct tu_cs *cs = &cmd->cs;
 
@@ -6395,64 +6396,7 @@ write_event(struct tu_cmd_buffer *cmd, struct tu_event *event,
       tu_cs_emit(cs, value);
    }
 }
-
-template <chip CHIP>
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdSetEvent2(VkCommandBuffer commandBuffer,
-                VkEvent _event,
-                const VkDependencyInfo *pDependencyInfo)
-{
-   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_event, event, _event);
-   VkPipelineStageFlags2 src_stage_mask = 0;
-
-   for (uint32_t i = 0; i < pDependencyInfo->memoryBarrierCount; i++)
-      src_stage_mask |= pDependencyInfo->pMemoryBarriers[i].srcStageMask;
-   for (uint32_t i = 0; i < pDependencyInfo->bufferMemoryBarrierCount; i++)
-      src_stage_mask |= pDependencyInfo->pBufferMemoryBarriers[i].srcStageMask;
-   for (uint32_t i = 0; i < pDependencyInfo->imageMemoryBarrierCount; i++)
-      src_stage_mask |= pDependencyInfo->pImageMemoryBarriers[i].srcStageMask;
-
-   write_event<CHIP>(cmd, event, src_stage_mask, 1);
-}
-TU_GENX(tu_CmdSetEvent2);
-
-template <chip CHIP>
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdResetEvent2(VkCommandBuffer commandBuffer,
-                  VkEvent _event,
-                  VkPipelineStageFlags2 stageMask)
-{
-   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_event, event, _event);
-
-   write_event<CHIP>(cmd, event, stageMask, 0);
-}
-TU_GENX(tu_CmdResetEvent2);
-
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdWaitEvents2(VkCommandBuffer commandBuffer,
-                  uint32_t eventCount,
-                  const VkEvent *pEvents,
-                  const VkDependencyInfo* pDependencyInfos)
-{
-   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   struct tu_cs *cs = cmd->state.pass ? &cmd->draw_cs : &cmd->cs;
-
-   for (uint32_t i = 0; i < eventCount; i++) {
-      VK_FROM_HANDLE(tu_event, event, pEvents[i]);
-
-      tu_cs_emit_pkt7(cs, CP_WAIT_REG_MEM, 6);
-      tu_cs_emit(cs, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_EQ) |
-                     CP_WAIT_REG_MEM_0_POLL(POLL_MEMORY));
-      tu_cs_emit_qw(cs, event->bo->iova); /* POLL_ADDR_LO/HI */
-      tu_cs_emit(cs, CP_WAIT_REG_MEM_3_REF(1));
-      tu_cs_emit(cs, CP_WAIT_REG_MEM_4_MASK(~0u));
-      tu_cs_emit(cs, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(20));
-   }
-
-   tu_barrier(cmd, pDependencyInfos);
-}
+TU_GENX(tu_write_event);
 
 template <chip CHIP>
 VKAPI_ATTR void VKAPI_CALL
@@ -6519,7 +6463,7 @@ tu_CmdWriteBufferMarker2AMD(VkCommandBuffer commandBuffer,
                             VkDeviceSize dstOffset,
                             uint32_t marker)
 {
-   /* Almost the same as write_event, but also allowed in renderpass */
+   /* Almost the same as tu_write_event, but also allowed in renderpass */
    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(tu_buffer, buffer, dstBuffer);
 

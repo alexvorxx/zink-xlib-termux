@@ -717,6 +717,16 @@ struct tu_fdm_bin_patchpoint {
    tu_fdm_bin_apply_t apply;
 };
 
+
+void
+tu_barrier(struct tu_cmd_buffer *cmd,
+           const VkDependencyInfo *dep_info);
+
+template <chip CHIP>
+void
+tu_write_event(struct tu_cmd_buffer *cmd, struct tu_event *event,
+               VkPipelineStageFlags2 stageMask, unsigned value);
+
 static inline void
 _tu_create_fdm_bin_patchpoint(struct tu_cmd_buffer *cmd,
                               struct tu_cs *cs,

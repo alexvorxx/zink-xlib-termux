@@ -28,6 +28,7 @@ libtu_files = files(
   'tu_device.cc',
   'tu_descriptor_set.cc',
   'tu_dynamic_rendering.cc',
+  'tu_event.cc',
   'tu_formats.cc',
   'tu_image.cc',
   'tu_knl.cc',

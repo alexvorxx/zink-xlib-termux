@@ -476,12 +476,6 @@ struct tu_framebuffer
 VK_DEFINE_NONDISP_HANDLE_CASTS(tu_framebuffer, base, VkFramebuffer,
                                VK_OBJECT_TYPE_FRAMEBUFFER)
 
-struct tu_event
-{
-   struct vk_object_base base;
-   struct tu_bo *bo;
-};
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 
 struct tu_sampler {
    struct vk_object_base base;

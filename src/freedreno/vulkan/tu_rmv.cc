@@ -8,6 +8,7 @@
 #include "tu_cmd_buffer.h"
 #include "tu_cs.h"
 #include "tu_device.h"
+#include "tu_event.h"
 #include "tu_image.h"
 #include "tu_query.h"
 

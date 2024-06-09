@@ -224,7 +224,12 @@ agx_calculate_vbo_clamp(uint64_t vbuf, uint64_t sink, enum pipe_format format,
     */
    if (size_B >= subtracted_B) {
       *vbuf_out = vbuf + offset_B;
-      return (size_B - subtracted_B) / stride_B;
+
+      /* If stride is zero, do not clamp, everything is valid. */
+      if (stride_B)
+         return ((size_B - subtracted_B) / stride_B);
+      else
+         return UINT32_MAX;
    } else {
       *vbuf_out = sink;
       return 0;

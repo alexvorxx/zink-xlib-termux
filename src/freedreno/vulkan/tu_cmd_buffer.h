@@ -720,6 +720,7 @@ struct tu_fdm_bin_patchpoint {
 
 void
 tu_barrier(struct tu_cmd_buffer *cmd,
+           uint32_t dep_count,
            const VkDependencyInfo *dep_info);
 
 template <chip CHIP>

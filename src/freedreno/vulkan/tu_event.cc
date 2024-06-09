@@ -152,5 +152,5 @@ tu_CmdWaitEvents2(VkCommandBuffer commandBuffer,
       tu_cs_emit(cs, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(20));
    }
 
-   tu_barrier(cmd, pDependencyInfos);
+   tu_barrier(cmd, eventCount, pDependencyInfos);
 }

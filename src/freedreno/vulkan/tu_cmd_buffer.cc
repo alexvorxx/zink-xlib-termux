@@ -6235,7 +6235,8 @@ tu_CmdEndRendering(VkCommandBuffer commandBuffer)
 
 void
 tu_barrier(struct tu_cmd_buffer *cmd,
-           const VkDependencyInfo *dep_info)
+           uint32_t dep_count,
+           const VkDependencyInfo *dep_infos)
 {
    VkPipelineStageFlags2 srcStage = 0;
    VkPipelineStageFlags2 dstStage = 0;
@@ -6248,61 +6249,64 @@ tu_barrier(struct tu_cmd_buffer *cmd,
    bool gmem = cmd->state.ccu_state == TU_CMD_CCU_GMEM &&
       !cmd->state.pass;
 
+   for (uint32_t dep_idx = 0; dep_idx < dep_count; dep_idx++) {
+      const VkDependencyInfo *dep_info = &dep_infos[dep_idx];
 
-   for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
-      VkPipelineStageFlags2 sanitized_src_stage =
-         sanitize_src_stage(dep_info->pMemoryBarriers[i].srcStageMask);
-      VkPipelineStageFlags2 sanitized_dst_stage =
-         sanitize_dst_stage(dep_info->pMemoryBarriers[i].dstStageMask);
-      src_flags |= vk2tu_access(dep_info->pMemoryBarriers[i].srcAccessMask,
-                                sanitized_src_stage, false, gmem);
-      dst_flags |= vk2tu_access(dep_info->pMemoryBarriers[i].dstAccessMask,
-                                sanitized_dst_stage, false, gmem);
-      srcStage |= sanitized_src_stage;
-      dstStage |= sanitized_dst_stage;
-   }
-
-   for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
-      VkPipelineStageFlags2 sanitized_src_stage =
-         sanitize_src_stage(dep_info->pBufferMemoryBarriers[i].srcStageMask);
-      VkPipelineStageFlags2 sanitized_dst_stage =
-         sanitize_dst_stage(dep_info->pBufferMemoryBarriers[i].dstStageMask);
-      src_flags |= vk2tu_access(dep_info->pBufferMemoryBarriers[i].srcAccessMask,
-                                sanitized_src_stage, false, gmem);
-      dst_flags |= vk2tu_access(dep_info->pBufferMemoryBarriers[i].dstAccessMask,
-                                sanitized_dst_stage, false, gmem);
-      srcStage |= sanitized_src_stage;
-      dstStage |= sanitized_dst_stage;
-   }
-
-   for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
-      VkImageLayout old_layout = dep_info->pImageMemoryBarriers[i].oldLayout;
-      if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
-         /* The underlying memory for this image may have been used earlier
-          * within the same queue submission for a different image, which
-          * means that there may be old, stale cache entries which are in the
-          * "wrong" location, which could cause problems later after writing
-          * to the image. We don't want these entries being flushed later and
-          * overwriting the actual image, so we need to flush the CCU.
-          */
-         VK_FROM_HANDLE(tu_image, image, dep_info->pImageMemoryBarriers[i].image);
-
-         if (vk_format_is_depth_or_stencil(image->vk.format)) {
-            src_flags |= TU_ACCESS_CCU_DEPTH_INCOHERENT_WRITE;
-         } else {
-            src_flags |= TU_ACCESS_CCU_COLOR_INCOHERENT_WRITE;
-         }
+      for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
+         VkPipelineStageFlags2 sanitized_src_stage =
+            sanitize_src_stage(dep_info->pMemoryBarriers[i].srcStageMask);
+         VkPipelineStageFlags2 sanitized_dst_stage =
+            sanitize_dst_stage(dep_info->pMemoryBarriers[i].dstStageMask);
+         src_flags |= vk2tu_access(dep_info->pMemoryBarriers[i].srcAccessMask,
+                                   sanitized_src_stage, false, gmem);
+         dst_flags |= vk2tu_access(dep_info->pMemoryBarriers[i].dstAccessMask,
+                                   sanitized_dst_stage, false, gmem);
+         srcStage |= sanitized_src_stage;
+         dstStage |= sanitized_dst_stage;
       }
-      VkPipelineStageFlags2 sanitized_src_stage =
-         sanitize_src_stage(dep_info->pImageMemoryBarriers[i].srcStageMask);
-      VkPipelineStageFlags2 sanitized_dst_stage =
-         sanitize_dst_stage(dep_info->pImageMemoryBarriers[i].dstStageMask);
-      src_flags |= vk2tu_access(dep_info->pImageMemoryBarriers[i].srcAccessMask,
-                                sanitized_src_stage, true, gmem);
-      dst_flags |= vk2tu_access(dep_info->pImageMemoryBarriers[i].dstAccessMask,
-                                sanitized_dst_stage, true, gmem);
-      srcStage |= sanitized_src_stage;
-      dstStage |= sanitized_dst_stage;
+
+      for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
+         VkPipelineStageFlags2 sanitized_src_stage =
+            sanitize_src_stage(dep_info->pBufferMemoryBarriers[i].srcStageMask);
+         VkPipelineStageFlags2 sanitized_dst_stage =
+            sanitize_dst_stage(dep_info->pBufferMemoryBarriers[i].dstStageMask);
+         src_flags |= vk2tu_access(dep_info->pBufferMemoryBarriers[i].srcAccessMask,
+                                   sanitized_src_stage, false, gmem);
+         dst_flags |= vk2tu_access(dep_info->pBufferMemoryBarriers[i].dstAccessMask,
+                                   sanitized_dst_stage, false, gmem);
+         srcStage |= sanitized_src_stage;
+         dstStage |= sanitized_dst_stage;
+      }
+
+      for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+         VkImageLayout old_layout = dep_info->pImageMemoryBarriers[i].oldLayout;
+         if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+            /* The underlying memory for this image may have been used earlier
+             * within the same queue submission for a different image, which
+             * means that there may be old, stale cache entries which are in the
+             * "wrong" location, which could cause problems later after writing
+             * to the image. We don't want these entries being flushed later and
+             * overwriting the actual image, so we need to flush the CCU.
+             */
+            VK_FROM_HANDLE(tu_image, image, dep_info->pImageMemoryBarriers[i].image);
+
+            if (vk_format_is_depth_or_stencil(image->vk.format)) {
+               src_flags |= TU_ACCESS_CCU_DEPTH_INCOHERENT_WRITE;
+            } else {
+               src_flags |= TU_ACCESS_CCU_COLOR_INCOHERENT_WRITE;
+            }
+         }
+         VkPipelineStageFlags2 sanitized_src_stage =
+            sanitize_src_stage(dep_info->pImageMemoryBarriers[i].srcStageMask);
+         VkPipelineStageFlags2 sanitized_dst_stage =
+            sanitize_dst_stage(dep_info->pImageMemoryBarriers[i].dstStageMask);
+         src_flags |= vk2tu_access(dep_info->pImageMemoryBarriers[i].srcAccessMask,
+                                   sanitized_src_stage, true, gmem);
+         dst_flags |= vk2tu_access(dep_info->pImageMemoryBarriers[i].dstAccessMask,
+                                   sanitized_dst_stage, true, gmem);
+         srcStage |= sanitized_src_stage;
+         dstStage |= sanitized_dst_stage;
+      }
    }
 
    if (cmd->state.pass) {
@@ -6353,7 +6357,7 @@ tu_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(tu_cmd_buffer, cmd_buffer, commandBuffer);
 
-   tu_barrier(cmd_buffer, pDependencyInfo);
+   tu_barrier(cmd_buffer, 1, pDependencyInfo);
 }
 
 template <chip CHIP>

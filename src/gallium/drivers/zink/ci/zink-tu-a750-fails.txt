@@ -5,13 +5,6 @@ dEQP-GLES3.functional.fbo.depth.depth_write_clamp.depth32f_stencil8,Fail
 dEQP-GLES3.functional.fbo.depth.depth_write_clamp.depth_component32f,Fail
 dEQP-GLES31.functional.texture.border_clamp.range_clamp.linear_float_color,Fail
 
-dEQP-GLES2.functional.rasterization.primitives.line_strip_wide,Fail
-dEQP-GLES2.functional.rasterization.primitives.lines_wide,Fail
-dEQP-GLES3.functional.rasterization.fbo.rbo_singlesample.primitives.lines_wide,Fail
-dEQP-GLES3.functional.rasterization.fbo.texture_2d.primitives.lines_wide,Fail
-dEQP-GLES3.functional.rasterization.primitives.line_strip_wide,Fail
-dEQP-GLES3.functional.rasterization.primitives.lines_wide,Fail
-
 GTF-GL46.gtf30.GL3Tests.sgis_texture_lod.sgis_texture_lod_basic_lod_selection,Fail
 
 KHR-Single-GL46.arrays_of_arrays_gl.SubroutineFunctionCalls2,Crash

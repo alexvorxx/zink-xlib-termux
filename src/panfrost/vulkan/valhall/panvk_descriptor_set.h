@@ -30,6 +30,14 @@ struct panvk_opaque_desc {
    uint32_t data[PANVK_DESCRIPTOR_SIZE / sizeof(uint32_t)];
 };
 
+#if PAN_ARCH < 9
+struct panvk_ssbo_addr {
+   uint64_t base_addr;
+   uint32_t size;
+   uint32_t zero[5]; /* Must be zero! */
+};
+#endif
+
 struct panvk_descriptor_set {
    struct vk_object_base base;
    const struct panvk_descriptor_set_layout *layout;

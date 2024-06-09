@@ -96,7 +96,14 @@ write_image_view_desc(struct panvk_descriptor_set *set,
    if (pImageInfo && pImageInfo->imageView != VK_NULL_HANDLE) {
       VK_FROM_HANDLE(panvk_image_view, view, pImageInfo->imageView);
 
+#if PAN_ARCH <= 7
+      if (type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+         write_desc(set, binding, elem, &view->descs.img_attrib_buf, type);
+      else
+         write_desc(set, binding, elem, &view->descs.tex, type);
+#else
       write_desc(set, binding, elem, &view->descs.tex, type);
+#endif
    }
 }
 
@@ -109,6 +116,28 @@ write_buffer_desc(struct panvk_descriptor_set *set,
    const uint64_t range = panvk_buffer_range(buffer, info->offset, info->range);
    assert(range <= UINT32_MAX);
 
+#if PAN_ARCH <= 7
+   if (type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+      struct panvk_ssbo_addr desc = {
+         .base_addr = panvk_buffer_gpu_ptr(buffer, info->offset),
+         .size = range,
+      };
+
+      write_desc(set, binding, elem, &desc, type);
+   } else {
+      struct {
+         struct mali_uniform_buffer_packed ubo;
+         uint32_t pad[6];
+      } padded_desc = {0};
+
+      pan_pack(&padded_desc.ubo, UNIFORM_BUFFER, cfg) {
+         cfg.pointer = panvk_buffer_gpu_ptr(buffer, info->offset);
+         cfg.entries = DIV_ROUND_UP(range, 16);
+      }
+
+      write_desc(set, binding, elem, &padded_desc, type);
+   }
+#else
    struct mali_buffer_packed desc;
 
    pan_pack(&desc, BUFFER, cfg) {
@@ -116,6 +145,7 @@ write_buffer_desc(struct panvk_descriptor_set *set,
       cfg.size = range;
    }
    write_desc(set, binding, elem, &desc, type);
+#endif
 }
 
 static void
@@ -145,7 +175,14 @@ write_buffer_view_desc(struct panvk_descriptor_set *set,
    if (bufferView != VK_NULL_HANDLE) {
       VK_FROM_HANDLE(panvk_buffer_view, view, bufferView);
 
+#if PAN_ARCH <= 7
+      if (type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+         write_desc(set, binding, elem, &view->descs.img_attrib_buf, type);
+      else
+         write_desc(set, binding, elem, &view->descs.tex, type);
+#else
       write_desc(set, binding, elem, &view->descs.tex, type);
+#endif
    }
 }
 

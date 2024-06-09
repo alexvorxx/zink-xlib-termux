@@ -2737,8 +2737,11 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
     * in certain blocks, causing some if-else statements to become
     * trivial. We want to peephole select those, given that control flow
     * prediction instructions are costly.
+    *
+    * We need to lower int64 again to deal with the resulting 64-bit csels.
     */
    NIR_PASS(_, nir, nir_opt_peephole_select, 64, false, true);
+   NIR_PASS(_, nir, nir_lower_int64);
 
    NIR_PASS(_, nir, nir_opt_algebraic_late);
 

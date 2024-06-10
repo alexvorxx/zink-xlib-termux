@@ -286,8 +286,8 @@ panvk_GetDeviceMemoryCommitment(VkDevice device, VkDeviceMemory memory,
 }
 
 VKAPI_ATTR uint64_t VKAPI_CALL
-panvk_GetDeviceMemoryOpaqueCaptureAddress(VkDevice _device,
-                                          const VkDeviceMemoryOpaqueCaptureAddressInfo* pInfo)
+panvk_GetDeviceMemoryOpaqueCaptureAddress(
+   VkDevice _device, const VkDeviceMemoryOpaqueCaptureAddressInfo *pInfo)
 {
    VK_FROM_HANDLE(panvk_device_memory, memory, pInfo->memory);
 

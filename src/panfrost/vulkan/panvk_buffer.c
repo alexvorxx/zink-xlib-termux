@@ -21,7 +21,7 @@ panvk_GetBufferDeviceAddress(VkDevice _device,
 
 VKAPI_ATTR uint64_t VKAPI_CALL
 panvk_GetBufferOpaqueCaptureAddress(VkDevice _device,
-                                    const VkBufferDeviceAddressInfo* pInfo)
+                                    const VkBufferDeviceAddressInfo *pInfo)
 {
    return panvk_GetBufferDeviceAddress(_device, pInfo);
 }

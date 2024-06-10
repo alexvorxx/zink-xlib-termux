@@ -22,6 +22,10 @@ impl KillSet {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.vec.len()
+    }
+
     pub fn clear(&mut self) {
         self.set.clear();
         self.vec.clear();
@@ -867,6 +871,13 @@ impl AssignRegsBlock {
         RegRef::new(ssa.file(), reg, 1)
     }
 
+    fn pin_vector(&mut self, reg: RegRef) {
+        let ra = &mut self.ra[reg.file()];
+        for c in 0..reg.comps() {
+            ra.pin_reg(reg.comp(c).base_idx());
+        }
+    }
+
     fn try_coalesce(&mut self, ssa: SSAValue, src: &Src) -> bool {
         debug_assert!(src.src_mod.is_none());
         let SrcRef::Reg(src_reg) = src.src_ref else {
@@ -1024,6 +1035,62 @@ impl AssignRegsBlock {
                     None
                 } else {
                     Some(instr)
+                }
+            }
+            Op::Pin(OpPin { src, dst }) | Op::Unpin(OpUnpin { src, dst }) => {
+                assert!(instr.pred.is_true());
+
+                // These basically act as a vector version of OpCopy except that
+                // they only work on SSA values and we pin the destination if
+                // it's OpPin.
+                let src_vec = src.as_ssa().unwrap();
+                let dst_vec = dst.as_ssa().unwrap();
+                assert!(src_vec.comps() == dst_vec.comps());
+
+                if srcs_killed.len() == src_vec.comps().into()
+                    && src_vec.file() == dst_vec.file()
+                {
+                    let ra = &mut self.ra[src_vec.file().unwrap()];
+                    let mut vra = VecRegAllocator::new(ra);
+                    let reg = vra.collect_vector(src_vec);
+                    vra.finish(pcopy);
+                    for c in 0..src_vec.comps() {
+                        let c_reg = ra.free_ssa(src_vec[usize::from(c)]);
+                        debug_assert!(c_reg == reg.comp(c).base_idx());
+                        ra.assign_reg(dst_vec[usize::from(c)], c_reg);
+                    }
+
+                    if matches!(&instr.op, Op::Pin(_)) {
+                        self.pin_vector(reg);
+                    }
+                    self.ra.free_killed(dsts_killed);
+
+                    None
+                } else {
+                    // Otherwise, turn into a parallel copy
+                    //
+                    // We can always allocate the destination first in this
+                    // case.
+                    assert!(dst_vec.comps() > 1 || srcs_killed.is_empty());
+
+                    let dst_ra = &mut self.ra[dst_vec.file().unwrap()];
+                    let mut vra = VecRegAllocator::new(dst_ra);
+                    let dst_reg = vra.alloc_vector(*dst_vec);
+                    vra.finish(pcopy);
+
+                    let mut pin_copy = OpParCopy::new();
+                    for c in 0..dst_reg.comps() {
+                        let src_reg = self.get_scalar(src_vec[usize::from(c)]);
+                        pin_copy.push(dst_reg.comp(c).into(), src_reg.into());
+                    }
+
+                    if matches!(&instr.op, Op::Pin(_)) {
+                        self.pin_vector(dst_reg);
+                    }
+                    self.ra.free_killed(srcs_killed);
+                    self.ra.free_killed(dsts_killed);
+
+                    Some(Instr::new_boxed(pin_copy))
                 }
             }
             Op::ParCopy(pcopy) => {

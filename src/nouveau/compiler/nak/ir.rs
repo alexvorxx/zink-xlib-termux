@@ -5048,6 +5048,38 @@ impl_display_for_op!(OpCopy);
 
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
+/// Copies a value and pins its destination in the register file
+pub struct OpPin {
+    pub dst: Dst,
+    #[src_type(SSA)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpPin {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "pin {}", self.src)
+    }
+}
+impl_display_for_op!(OpPin);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+/// Copies a pinned value to an unpinned value
+pub struct OpUnpin {
+    pub dst: Dst,
+    #[src_type(SSA)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpUnpin {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unpin {}", self.src)
+    }
+}
+impl_display_for_op!(OpUnpin);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpSwap {
     pub dsts: [Dst; 2],
     pub srcs: [Src; 2],
@@ -5326,6 +5358,8 @@ pub enum Op {
     PhiSrcs(OpPhiSrcs),
     PhiDsts(OpPhiDsts),
     Copy(OpCopy),
+    Pin(OpPin),
+    Unpin(OpUnpin),
     Swap(OpSwap),
     ParCopy(OpParCopy),
     FSOut(OpFSOut),
@@ -5702,7 +5736,9 @@ impl Instr {
             | Op::Shl(_)
             | Op::Shr(_)
             | Op::Vote(_)
-            | Op::Copy(_) => sm >= 75,
+            | Op::Copy(_)
+            | Op::Pin(_)
+            | Op::Unpin(_) => sm >= 75,
             Op::Ldc(op) => sm >= 75 && op.offset.is_zero(),
             // UCLEA  USHL  USHR
             _ => false,
@@ -5823,6 +5859,8 @@ impl Instr {
             | Op::PhiSrcs(_)
             | Op::PhiDsts(_)
             | Op::Copy(_)
+            | Op::Pin(_)
+            | Op::Unpin(_)
             | Op::Swap(_)
             | Op::ParCopy(_)
             | Op::FSOut(_)

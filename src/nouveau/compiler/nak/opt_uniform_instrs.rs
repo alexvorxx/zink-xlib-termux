@@ -57,7 +57,11 @@ impl Shader {
         self.map_instrs(|mut instr, alloc| {
             if matches!(
                 &instr.op,
-                Op::PhiDsts(_) | Op::PhiSrcs(_) | Op::Vote(_)
+                Op::PhiDsts(_)
+                    | Op::PhiSrcs(_)
+                    | Op::Pin(_)
+                    | Op::Unpin(_)
+                    | Op::Vote(_)
             ) {
                 MappedInstrs::One(instr)
             } else if instr.is_uniform() {

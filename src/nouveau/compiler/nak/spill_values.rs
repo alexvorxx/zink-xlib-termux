@@ -306,6 +306,7 @@ impl<'a, S: Spill> SpillCache<'a, S> {
 
 struct SpillChooser<'a> {
     bl: &'a NextUseBlockLiveness,
+    pinned: &'a HashSet<SSAValue>,
     ip: usize,
     count: usize,
     spills: BinaryHeap<Reverse<SSANextUse>>,
@@ -317,9 +318,15 @@ struct SpillChoiceIter {
 }
 
 impl<'a> SpillChooser<'a> {
-    pub fn new(bl: &'a NextUseBlockLiveness, ip: usize, count: usize) -> Self {
+    pub fn new(
+        bl: &'a NextUseBlockLiveness,
+        pinned: &'a HashSet<SSAValue>,
+        ip: usize,
+        count: usize,
+    ) -> Self {
         Self {
             bl: bl,
+            pinned: pinned,
             ip: ip,
             count: count,
             spills: BinaryHeap::new(),
@@ -328,10 +335,14 @@ impl<'a> SpillChooser<'a> {
     }
 
     pub fn add_candidate(&mut self, ssa: SSAValue) {
-        let next_use = self.bl.next_use_after_or_at_ip(&ssa, self.ip).unwrap();
+        // Don't spill anything that's pinned
+        if self.pinned.contains(&ssa) {
+            return;
+        }
 
         // Ignore anything used sonner than spill options we've already
         // rejected.
+        let next_use = self.bl.next_use_after_or_at_ip(&ssa, self.ip).unwrap();
         if next_use < self.min_next_use {
             return;
         }
@@ -379,6 +390,8 @@ struct SSAState {
     // The set of variables which have already been spilled.  These don't need
     // to be spilled again.
     s: HashSet<SSAValue>,
+    // The set of pinned variables
+    p: HashSet<SSAValue>,
 }
 
 fn spill_values<S: Spill>(
@@ -623,11 +636,19 @@ fn spill_values<S: Spill>(
             s
         };
 
+        let mut p = HashSet::new();
+        for p_idx in &preds {
+            if *p_idx < b_idx {
+                let p_p = &ssa_state_out[*p_idx].p;
+                p.extend(p_p.iter().filter(|ssa| bl.is_live_in(ssa)).cloned());
+            }
+        }
+
         for ssa in bl.iter_live_in() {
             debug_assert!(w.contains(ssa) || s.contains(ssa));
         }
 
-        let mut b = SSAState { w: w, s: s };
+        let mut b = SSAState { w: w, s: s, p: p };
 
         assert!(ssa_state_in.len() == b_idx);
         ssa_state_in.push(b.clone());
@@ -703,7 +724,7 @@ fn spill_values<S: Spill>(
                         let count = num_w_dsts - rel_limit;
                         let count = count.try_into().unwrap();
 
-                        let mut spills = SpillChooser::new(bl, ip, count);
+                        let mut spills = SpillChooser::new(bl, &b.p, ip, count);
                         for (dst, _) in pcopy.dsts_srcs.iter() {
                             let dst_ssa = &dst.as_ssa().unwrap()[0];
                             if dst_ssa.file() == file {
@@ -811,7 +832,8 @@ fn spill_values<S: Spill>(
                             let count = abs_pressure - limit;
                             let count = count.try_into().unwrap();
 
-                            let mut spills = SpillChooser::new(bl, ip, count);
+                            let mut spills =
+                                SpillChooser::new(bl, &b.p, ip, count);
                             for ssa in b.w.iter() {
                                 spills.add_candidate(*ssa);
                             }
@@ -846,6 +868,14 @@ fn spill_values<S: Spill>(
                         b.w.insert_instr_top_down(ip, &instr, bl);
                     }
                 }
+            }
+
+            // OpPin takes the normal spilling path but we want to also mark any
+            // of its destination SSA values as pinned.
+            if matches!(&instr.op, Op::Pin(_)) {
+                instr.for_each_ssa_def(|ssa| {
+                    b.p.insert(*ssa);
+                });
             }
 
             instrs.push(instr);

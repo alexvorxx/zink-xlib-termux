@@ -932,6 +932,7 @@ fn legalize_sm70_instr(
             copy_src_if_upred(b, &mut op.pred);
         }
         Op::Copy(_) => (),                     // Nothing to do
+        Op::Pin(_) | Op::Unpin(_) => (),       // Nothing to do
         Op::PhiSrcs(_) | Op::PhiDsts(_) => (), // Nothing to do
         _ => {
             let src_types = instr.src_types();

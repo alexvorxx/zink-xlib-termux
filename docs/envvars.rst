@@ -631,6 +631,8 @@ Intel driver environment variables
       dump shader assembly for vertex shaders
    ``wm``
       dump shader assembly for fragment shaders (same as ``fs``)
+   ``cl-quiet``
+      quiets the OpenCL warnings recommending use of Intel compute-runtime
 
 .. envvar:: INTEL_DECODE
 

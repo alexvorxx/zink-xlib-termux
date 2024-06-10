@@ -192,7 +192,7 @@ impl Function {
 
         // Populate phi sources for any back-edges
         loop {
-            let Some(b_idx) = needs_src.next_set(0) else {
+            let Some(b_idx) = needs_src.iter().next() else {
                 break;
             };
             needs_src.remove(b_idx);

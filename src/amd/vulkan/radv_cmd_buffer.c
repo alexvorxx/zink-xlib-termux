@@ -11591,6 +11591,8 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
       radeon_emit(cmd_buffer->cs, 0);
    }
 
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, prep_buffer->bo);
+
    if (compute || !view_mask) {
       device->ws->cs_execute_ib(cmd_buffer->cs, ib_bo, ib_offset, cmdbuf_size >> 2, cmd_buffer->state.predicating);
    } else {

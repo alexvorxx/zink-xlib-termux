@@ -255,6 +255,10 @@ rusticl_libc_bindings_rs = rust.bindgen(
   ]
 )
 
+_idep_mesa_bindings = declare_dependency(
+  sources : spirv_info,
+)
+
 rusticl_mesa_bindings = rust.bindgen(
   input : 'rusticl_mesa_bindings.h',
   output : 'rusticl_mesa_bindings.rs',
@@ -266,6 +270,7 @@ rusticl_mesa_bindings = rust.bindgen(
     inc_src,
   ],
   dependencies: [
+    _idep_mesa_bindings,
     idep_nir_headers,
     dep_valgrind,
   ],

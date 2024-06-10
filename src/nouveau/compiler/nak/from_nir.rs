@@ -2666,6 +2666,20 @@ impl<'a> ShaderFromNir<'a> {
                 }
                 self.set_dst(&intrin.def, dst);
             }
+            nir_intrinsic_pin_cx_handle_nv => {
+                let handle = self.get_ssa_ref(&srcs[0]);
+                b.push_op(OpPin {
+                    src: handle.into(),
+                    dst: handle.into(),
+                });
+            }
+            nir_intrinsic_unpin_cx_handle_nv => {
+                let handle = self.get_ssa_ref(&srcs[0]);
+                b.push_op(OpUnpin {
+                    src: handle.into(),
+                    dst: handle.into(),
+                });
+            }
             nir_intrinsic_barrier => {
                 let modes = intrin.memory_modes();
                 let semantics = intrin.memory_semantics();
@@ -3377,11 +3391,13 @@ impl<'a> ShaderFromNir<'a> {
             }
         }
 
-        Function {
+        let mut f = Function {
             ssa_alloc: ssa_alloc,
             phi_alloc: phi_alloc,
             blocks: cfg,
-        }
+        };
+        f.repair_ssa();
+        f
     }
 
     pub fn parse_shader(mut self) -> Shader {

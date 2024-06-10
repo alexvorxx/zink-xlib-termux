@@ -337,7 +337,6 @@ inst_uses_src_acc(const struct brw_isa_info *isa,
    switch (brw_inst_opcode(isa, inst)) {
    case BRW_OPCODE_MAC:
    case BRW_OPCODE_MACH:
-   case BRW_OPCODE_SADA2:
       return true;
    default:
       break;

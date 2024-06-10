@@ -301,8 +301,6 @@ namespace {
       case BRW_OPCODE_ROR:
       case BRW_OPCODE_ROL:
       case BRW_OPCODE_SUBB:
-      case BRW_OPCODE_SAD2:
-      case BRW_OPCODE_SADA2:
       case BRW_OPCODE_LINE:
       case BRW_OPCODE_NOP:
       case SHADER_OPCODE_CLUSTER_BROADCAST:

@@ -108,8 +108,6 @@ rndu 		{ yylval.integer = BRW_OPCODE_RNDU; return RNDU; }
 rndz 		{ yylval.integer = BRW_OPCODE_RNDZ; return RNDZ; }
 rol 		{ yylval.integer = BRW_OPCODE_ROL; return ROL; }
 ror 		{ yylval.integer = BRW_OPCODE_ROR; return ROR; }
-sad2 		{ yylval.integer = BRW_OPCODE_SAD2; return SAD2; }
-sada2 		{ yylval.integer = BRW_OPCODE_SADA2; return SADA2; }
 sel 		{ yylval.integer = BRW_OPCODE_SEL; return SEL; }
 send 		{
 			yylval.integer = BRW_OPCODE_SEND;

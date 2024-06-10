@@ -196,12 +196,6 @@ i965_asm_binary_instruction(int opcode,
 	case BRW_OPCODE_ROR:
 		brw_ROR(p, dest, src0, src1);
 		break;
-	case BRW_OPCODE_SAD2:
-		fprintf(stderr, "Opcode BRW_OPCODE_SAD2 unhandled\n");
-		break;
-	case BRW_OPCODE_SADA2:
-		fprintf(stderr, "Opcode BRW_OPCODE_SADA2 unhandled\n");
-		break;
 	case BRW_OPCODE_SUBB:
 		brw_SUBB(p, dest, src0, src1);
 		break;
@@ -389,7 +383,7 @@ add_label(struct brw_codegen *p, const char* label_name, enum instr_label_type t
 %token <integer> OR
 %token <integer> PLN POP PUSH
 %token <integer> RET RNDD RNDE RNDU RNDZ ROL ROR
-%token <integer> SAD2 SADA2 SEL SENDS SENDSC SHL SHR SMOV SUBB SYNC
+%token <integer> SEL SENDS SENDSC SHL SHR SMOV SUBB SYNC
 %token <integer> SEND_GFX4 SENDC_GFX4 SEND_GFX12 SENDC_GFX12
 %token <integer> WAIT WHILE
 %token <integer> XOR
@@ -783,8 +777,6 @@ binaryopcodes:
 	| PLN
 	| ROL
 	| ROR
-	| SAD2
-	| SADA2
 	| SUBB
 	;
 

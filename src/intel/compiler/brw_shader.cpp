@@ -443,7 +443,6 @@ fs_inst::reads_accumulator_implicitly() const
    switch (opcode) {
    case BRW_OPCODE_MAC:
    case BRW_OPCODE_MACH:
-   case BRW_OPCODE_SADA2:
       return true;
    default:
       return false;

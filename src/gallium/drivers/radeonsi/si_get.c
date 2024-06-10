@@ -188,6 +188,12 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_CL_GL_SHARING:
       return 1;
 
+   /* Tahiti and Verde only: reduction mode is unsupported due to a bug
+    * (it might work sometimes, but that's not enough)
+    */
+   case PIPE_CAP_SAMPLER_REDUCTION_MINMAX:
+      return !(sscreen->info.family == CHIP_TAHITI || sscreen->info.family == CHIP_VERDE);
+
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
       return PIPE_TEXTURE_TRANSFER_BLIT | PIPE_TEXTURE_TRANSFER_COMPUTE;
 

@@ -948,6 +948,7 @@ fn legalize_sm70_instr(
 fn legalize_instr(
     b: &mut impl SSABuilder,
     bl: &impl BlockLiveness,
+    block_uniform: bool,
     ip: usize,
     instr: &mut Instr,
 ) {
@@ -961,6 +962,19 @@ fn legalize_instr(
     for (i, src) in instr.srcs_mut().iter_mut().enumerate() {
         *src = src.fold_imm(src_types[i]);
         copy_src_if_not_same_file(b, src);
+
+        if !block_uniform {
+            // In non-uniform control-flow, we can't collect uniform vectors so
+            // we need to insert copies to warp regs which we can collect.
+            match &mut src.src_ref {
+                SrcRef::SSA(vec) => {
+                    if vec.is_uniform() && vec.comps() > 1 {
+                        copy_ssa_ref(b, vec, vec.file().unwrap().to_warp());
+                    }
+                }
+                _ => (),
+            }
+        }
     }
 
     if b.sm() >= 70 {
@@ -1017,11 +1031,12 @@ impl Shader {
 
             for (bi, b) in f.blocks.iter_mut().enumerate() {
                 let bl = live.block_live(bi);
+                let bu = b.uniform;
 
                 let mut instrs = Vec::new();
                 for (ip, mut instr) in b.instrs.drain(..).enumerate() {
                     let mut b = SSAInstrBuilder::new(sm, &mut f.ssa_alloc);
-                    legalize_instr(&mut b, bl, ip, &mut instr);
+                    legalize_instr(&mut b, bl, bu, ip, &mut instr);
                     b.push_instr(instr);
                     instrs.append(&mut b.as_vec());
                 }

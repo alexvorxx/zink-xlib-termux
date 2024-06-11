@@ -8,6 +8,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "util/list.h"
 #include "util/u_atomic.h"
 
 #include "panfrost-job.h"
@@ -16,6 +17,7 @@ struct panvk_kmod_bo;
 
 /* Used for internal object allocation. */
 struct panvk_priv_bo {
+   struct list_head node;
    uint64_t refcnt;
    struct panvk_device *dev;
    struct pan_kmod_bo *bo;

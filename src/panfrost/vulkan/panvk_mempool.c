@@ -31,10 +31,11 @@
 void
 panvk_bo_pool_cleanup(struct panvk_bo_pool *bo_pool)
 {
-   util_dynarray_foreach(&bo_pool->free_bos, struct panvk_priv_bo *, bo)
-      panvk_priv_bo_unref(*bo);
-
-   util_dynarray_fini(&bo_pool->free_bos);
+   list_for_each_entry_safe(struct panvk_priv_bo, bo, &bo_pool->free_bos,
+                            node) {
+      list_del(&bo->node);
+      panvk_priv_bo_unref(bo);
+   }
 }
 
 /* Knockoff u_upload_mgr. Uploads wherever we left off, allocating new entries
@@ -58,9 +59,10 @@ panvk_pool_alloc_backing(struct panvk_pool *pool, size_t bo_sz)
 
    /* If there's a free BO in our BO pool, let's pick it. */
    if (pool->bo_pool && bo_sz == pool->base.slab_size &&
-       util_dynarray_num_elements(&pool->bo_pool->free_bos,
-                                  struct panvk_priv_bo *)) {
-      bo = util_dynarray_pop(&pool->bo_pool->free_bos, struct panvk_priv_bo *);
+       !list_is_empty(&pool->bo_pool->free_bos)) {
+      bo =
+         list_first_entry(&pool->bo_pool->free_bos, struct panvk_priv_bo, node);
+      list_del(&bo->node);
    } else {
       /* We don't know what the BO will be used for, so let's flag it
        * RW and attach it to both the fragment and vertex/tiler jobs.
@@ -73,9 +75,10 @@ panvk_pool_alloc_backing(struct panvk_pool *pool, size_t bo_sz)
    }
 
    if (pan_kmod_bo_size(bo->bo) == pool->base.slab_size)
-      util_dynarray_append(&pool->bos, struct panvk_priv_bo *, bo);
+      list_addtail(&bo->node, &pool->bos);
    else
-      util_dynarray_append(&pool->big_bos, struct panvk_priv_bo *, bo);
+      list_addtail(&bo->node, &pool->big_bos);
+   pool->bo_count++;
    pool->transient_bo = bo;
    pool->transient_offset = 0;
 
@@ -121,8 +124,8 @@ panvk_pool_init(struct panvk_pool *pool, struct panvk_device *dev,
    pool->label = label;
    pool->bo_pool = bo_pool;
 
-   util_dynarray_init(&pool->bos, NULL);
-   util_dynarray_init(&pool->big_bos, NULL);
+   list_inithead(&pool->bos);
+   list_inithead(&pool->big_bos);
 
    if (prealloc)
       panvk_pool_alloc_backing(pool, pool->base.slab_size);
@@ -132,21 +135,21 @@ void
 panvk_pool_reset(struct panvk_pool *pool)
 {
    if (pool->bo_pool) {
-      unsigned num_bos = panvk_pool_num_bos(pool);
-      void *ptr = util_dynarray_grow(&pool->bo_pool->free_bos,
-                                     struct panvk_priv_bo *, num_bos);
-      memcpy(ptr, util_dynarray_begin(&pool->bos),
-             num_bos * sizeof(struct panvk_priv_bo *));
+      list_splicetail(&pool->bos, &pool->bo_pool->free_bos);
+      list_inithead(&pool->bos);
    } else {
-      util_dynarray_foreach(&pool->bos, struct panvk_priv_bo *, bo)
-         panvk_priv_bo_unref(*bo);
+      list_for_each_entry_safe(struct panvk_priv_bo, bo, &pool->bos, node) {
+         list_del(&bo->node);
+         panvk_priv_bo_unref(bo);
+      }
    }
 
-   util_dynarray_foreach(&pool->big_bos, struct panvk_priv_bo *, bo)
-      panvk_priv_bo_unref(*bo);
+   list_for_each_entry_safe(struct panvk_priv_bo, bo, &pool->big_bos, node) {
+      list_del(&bo->node);
+      panvk_priv_bo_unref(bo);
+   }
 
-   util_dynarray_clear(&pool->bos);
-   util_dynarray_clear(&pool->big_bos);
+   pool->bo_count = 0;
    pool->transient_bo = NULL;
 }
 
@@ -154,16 +157,16 @@ void
 panvk_pool_cleanup(struct panvk_pool *pool)
 {
    panvk_pool_reset(pool);
-   util_dynarray_fini(&pool->bos);
-   util_dynarray_fini(&pool->big_bos);
 }
 
 void
 panvk_pool_get_bo_handles(struct panvk_pool *pool, uint32_t *handles)
 {
    unsigned idx = 0;
-   util_dynarray_foreach(&pool->bos, struct panvk_priv_bo *, bo) {
-      assert(pan_kmod_bo_handle((*bo)->bo) > 0);
-      handles[idx++] = pan_kmod_bo_handle((*bo)->bo);
-   }
+
+   list_for_each_entry(struct panvk_priv_bo, bo, &pool->bos, node)
+      handles[idx++] = pan_kmod_bo_handle(bo->bo);
+
+   list_for_each_entry(struct panvk_priv_bo, bo, &pool->big_bos, node)
+      handles[idx++] = pan_kmod_bo_handle(bo->bo);
 }

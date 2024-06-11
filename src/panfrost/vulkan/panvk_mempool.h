@@ -27,16 +27,18 @@
 
 #include "pan_pool.h"
 
+#include "util/list.h"
+
 struct panvk_priv_bo;
 
 struct panvk_bo_pool {
-   struct util_dynarray free_bos;
+   struct list_head free_bos;
 };
 
 static inline void
 panvk_bo_pool_init(struct panvk_bo_pool *bo_pool)
 {
-   util_dynarray_init(&bo_pool->free_bos, NULL);
+   list_inithead(&bo_pool->free_bos);
 }
 
 void panvk_bo_pool_cleanup(struct panvk_bo_pool *bo_pool);
@@ -63,8 +65,9 @@ struct panvk_pool {
    struct panvk_bo_pool *bo_pool;
 
    /* BOs allocated by this pool */
-   struct util_dynarray bos;
-   struct util_dynarray big_bos;
+   struct list_head bos;
+   struct list_head big_bos;
+   unsigned bo_count;
 
    /* Current transient BO */
    struct panvk_priv_bo *transient_bo;
@@ -90,7 +93,7 @@ void panvk_pool_cleanup(struct panvk_pool *pool);
 static inline unsigned
 panvk_pool_num_bos(struct panvk_pool *pool)
 {
-   return util_dynarray_num_elements(&pool->bos, struct panvk_priv_bo *);
+   return pool->bo_count;
 }
 
 void panvk_pool_get_bo_handles(struct panvk_pool *pool, uint32_t *handles);

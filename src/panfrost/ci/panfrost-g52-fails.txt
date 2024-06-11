@@ -1051,6 +1051,56 @@ dEQP-VK.pipeline.monolithic.depth.nocolor.format.x8_d24_unorm_pack32.compare_ops
 dEQP-VK.pipeline.monolithic.depth.nocolor.format.x8_d24_unorm_pack32.compare_ops.line_list_not_equal_not_equal_greater_always,Fail
 dEQP-VK.pipeline.monolithic.depth.nocolor.format.x8_d24_unorm_pack32.compare_ops.line_list_not_equal_not_equal_not_equal_not_equal,Fail
 
+# CTS tests pick a value that's too close to pixel edge, which cause a precision loss
+# on coordinate rounding, leading to an off-by-one on all edge_right tests
+# (see https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/5168).
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_srgb.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_srgb.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.b8g8r8a8_sint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.b8g8r8a8_sint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_unorm.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_unorm.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_uint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_uint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_sint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_sint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8b8a8_srgb.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8b8a8_srgb.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8b8a8_unorm.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8b8a8_unorm.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.b8g8r8a8_unorm.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.b8g8r8a8_unorm.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_srgb.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_srgb.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_uint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_uint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8b8a8_uint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8b8a8_uint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_sint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8g8_sint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_unorm.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r8_unorm.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32g32_sfloat.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32g32_sfloat.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32g32b32_uint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32g32b32_uint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16b16a16_sfloat.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16b16a16_sfloat.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16_uint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16_uint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32g32b32a32_sint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32g32b32a32_sint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16_sfloat.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16_sfloat.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_sint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_sint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_uint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_uint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16_sint.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r16g16_sint.gradient.unnormalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_sfloat.gradient.normalized_coords.edge_right,Fail
+dEQP-VK.pipeline.monolithic.sampler.exact_sampling.r32_sfloat.gradient.unnormalized_coords.edge_right,Fail
+
 # We store image/buffer information in a UBO, and
 # maxDescriptorSetSampledImages * sizeof(struct panvk_image_desc) exceeds the
 # maximum UBO size.

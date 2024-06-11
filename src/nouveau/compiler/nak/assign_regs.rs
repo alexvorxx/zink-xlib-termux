@@ -385,16 +385,16 @@ impl RegAllocator {
     }
 }
 
-struct PinnedRegAllocator<'a> {
+struct VecRegAllocator<'a> {
     ra: &'a mut RegAllocator,
     pcopy: OpParCopy,
     pinned: BitSet,
     evicted: HashMap<SSAValue, u32>,
 }
 
-impl<'a> PinnedRegAllocator<'a> {
+impl<'a> VecRegAllocator<'a> {
     fn new(ra: &'a mut RegAllocator) -> Self {
-        PinnedRegAllocator {
+        VecRegAllocator {
             ra: ra,
             pcopy: OpParCopy::new(),
             pinned: Default::default(),
@@ -602,13 +602,13 @@ impl<'a> PinnedRegAllocator<'a> {
     }
 }
 
-impl Drop for PinnedRegAllocator<'_> {
+impl Drop for VecRegAllocator<'_> {
     fn drop(&mut self) {
         assert!(self.evicted.is_empty());
     }
 }
 
-fn instr_remap_srcs_file(instr: &mut Instr, ra: &mut PinnedRegAllocator) {
+fn instr_remap_srcs_file(instr: &mut Instr, ra: &mut VecRegAllocator) {
     // Collect vector sources first since those may silently pin some of our
     // scalar sources.
     for src in instr.srcs_mut() {
@@ -686,10 +686,10 @@ fn instr_assign_regs_file(
 
     // No vector destinations is the easy case
     if vec_dst_comps == 0 {
-        let mut pra = PinnedRegAllocator::new(ra);
-        instr_remap_srcs_file(instr, &mut pra);
-        pra.free_killed(killed);
-        pra.finish(pcopy);
+        let mut vra = VecRegAllocator::new(ra);
+        instr_remap_srcs_file(instr, &mut vra);
+        vra.free_killed(killed);
+        vra.finish(pcopy);
         instr_alloc_scalar_dsts_file(instr, ip, sum, ra);
         return;
     }
@@ -750,55 +750,55 @@ fn instr_assign_regs_file(
     }
 
     if vec_dsts_map_to_killed_srcs {
-        let mut pra = PinnedRegAllocator::new(ra);
-        instr_remap_srcs_file(instr, &mut pra);
+        let mut vra = VecRegAllocator::new(ra);
+        instr_remap_srcs_file(instr, &mut vra);
 
         for vec_dst in &mut vec_dsts {
             let src_vec = vec_dst.killed.as_ref().unwrap();
-            vec_dst.reg = pra.try_get_vec_reg(src_vec).unwrap();
+            vec_dst.reg = vra.try_get_vec_reg(src_vec).unwrap();
         }
 
-        pra.free_killed(killed);
+        vra.free_killed(killed);
 
         for vec_dst in vec_dsts {
             let dst = &mut instr.dsts_mut()[vec_dst.dst_idx];
-            *dst = pra
+            *dst = vra
                 .assign_pin_vec_reg(*dst.as_ssa().unwrap(), vec_dst.reg)
                 .into();
         }
 
-        pra.finish(pcopy);
+        vra.finish(pcopy);
 
         instr_alloc_scalar_dsts_file(instr, ip, sum, ra);
     } else if could_trivially_allocate {
-        let mut pra = PinnedRegAllocator::new(ra);
+        let mut vra = VecRegAllocator::new(ra);
         for vec_dst in vec_dsts {
             let dst = &mut instr.dsts_mut()[vec_dst.dst_idx];
-            *dst = pra
+            *dst = vra
                 .assign_pin_vec_reg(*dst.as_ssa().unwrap(), vec_dst.reg)
                 .into();
         }
 
-        instr_remap_srcs_file(instr, &mut pra);
-        pra.free_killed(killed);
-        pra.finish(pcopy);
+        instr_remap_srcs_file(instr, &mut vra);
+        vra.free_killed(killed);
+        vra.finish(pcopy);
         instr_alloc_scalar_dsts_file(instr, ip, sum, ra);
     } else {
-        let mut pra = PinnedRegAllocator::new(ra);
-        instr_remap_srcs_file(instr, &mut pra);
+        let mut vra = VecRegAllocator::new(ra);
+        instr_remap_srcs_file(instr, &mut vra);
 
         // Allocate vector destinations first so we have the most freedom.
         // Scalar destinations can fill in holes.
         for dst in instr.dsts_mut() {
             if let Dst::SSA(ssa) = dst {
-                if ssa.file().unwrap() == pra.file() && ssa.comps() > 1 {
-                    *dst = pra.alloc_vector(*ssa).into();
+                if ssa.file().unwrap() == vra.file() && ssa.comps() > 1 {
+                    *dst = vra.alloc_vector(*ssa).into();
                 }
             }
         }
 
-        pra.free_killed(killed);
-        pra.finish(pcopy);
+        vra.free_killed(killed);
+        vra.finish(pcopy);
 
         instr_alloc_scalar_dsts_file(instr, ip, sum, ra);
     }
@@ -986,10 +986,10 @@ impl AssignRegsBlock {
                     // since we only have a single scalar destination, we can
                     // just allocate and free killed up-front.
                     let ra = &mut self.ra[ssa.file().unwrap()];
-                    let mut pra = PinnedRegAllocator::new(ra);
-                    let reg = pra.collect_vector(ssa);
-                    pra.free_killed(srcs_killed);
-                    pra.finish(pcopy);
+                    let mut vra = VecRegAllocator::new(ra);
+                    let reg = vra.collect_vector(ssa);
+                    vra.free_killed(srcs_killed);
+                    vra.finish(pcopy);
                     src_set_reg(&mut copy.src, reg);
                 }
 

@@ -27,8 +27,15 @@ panvk_per_arch(blend_shader_cache_init)(struct panvk_device *dev)
 
    simple_mtx_init(&cache->lock, mtx_plain);
 
-   panvk_pool_init(&cache->bin_pool, dev, NULL, PAN_KMOD_BO_FLAG_EXECUTABLE,
-                   16 * 1024, "blend shaders", false);
+   struct panvk_pool_properties bin_pool_props = {
+      .create_flags = PAN_KMOD_BO_FLAG_EXECUTABLE,
+      .slab_size = 16 * 1024,
+      .label = "blend shaders",
+      .owns_bos = true,
+      .prealloc = false,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&cache->bin_pool, dev, NULL, &bin_pool_props);
 
    cache->ht = pan_blend_shader_key_table_create(NULL);
    if (!cache->ht)

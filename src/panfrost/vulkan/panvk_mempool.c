@@ -53,8 +53,9 @@ panvk_bo_pool_cleanup(struct panvk_bo_pool *bo_pool)
  */
 
 static struct panvk_priv_bo *
-panvk_pool_alloc_backing(struct panvk_pool *pool, size_t bo_sz)
+panvk_pool_alloc_backing(struct panvk_pool *pool, size_t sz)
 {
+   size_t bo_sz = ALIGN_POT(MAX2(pool->base.slab_size, sz), 4096);
    struct panvk_priv_bo *bo;
 
    /* If there's a free BO in our BO pool, let's pick it. */
@@ -70,64 +71,111 @@ panvk_pool_alloc_backing(struct panvk_pool *pool, size_t bo_sz)
        * flags to this function and keep the read/write,
        * fragment/vertex+tiler pools separate.
        */
-      bo = panvk_priv_bo_create(pool->dev, bo_sz, pool->create_flags,
+      bo = panvk_priv_bo_create(pool->dev, bo_sz, pool->props.create_flags,
                                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    }
 
-   if (pan_kmod_bo_size(bo->bo) == pool->base.slab_size)
-      list_addtail(&bo->node, &pool->bos);
-   else
-      list_addtail(&bo->node, &pool->big_bos);
-   pool->bo_count++;
-   pool->transient_bo = bo;
-   pool->transient_offset = 0;
+   if (pool->props.owns_bos) {
+      if (pan_kmod_bo_size(bo->bo) == pool->base.slab_size)
+         list_addtail(&bo->node, &pool->bos);
+      else
+         list_addtail(&bo->node, &pool->big_bos);
+      pool->bo_count++;
+   }
+
+   size_t new_remaining_size = pan_kmod_bo_size(bo->bo) - sz;
+   size_t prev_remaining_size =
+      pool->transient_bo
+         ? pan_kmod_bo_size(pool->transient_bo->bo) - pool->transient_offset
+         : 0;
+
+   /* If there's less room in the new BO after the allocation, we stick to the
+    * previous one. We also don't hold on BOs that are bigger than the pool
+    * allocation granularity, to avoid memory fragmentation (retaining a big
+    * BO which has just one tiny allocation active is not great). */
+   if (prev_remaining_size < new_remaining_size &&
+       (pool->props.owns_bos || bo_sz <= pool->base.slab_size)) {
+      if (!pool->props.owns_bos)
+         panvk_priv_bo_unref(pool->transient_bo);
+
+      pool->transient_bo = bo;
+      pool->transient_offset = 0;
+   }
 
    return bo;
+}
+
+struct panvk_priv_mem
+panvk_pool_alloc_mem(struct panvk_pool *pool, struct panvk_pool_alloc_info info)
+{
+   assert(info.alignment == util_next_power_of_two(info.alignment));
+
+   if (pool->props.needs_locking)
+      simple_mtx_lock(&pool->lock);
+
+   /* Find or create a suitable BO */
+   struct panvk_priv_bo *bo = pool->transient_bo;
+   unsigned offset = ALIGN_POT(pool->transient_offset, info.alignment);
+
+   /* If we don't fit, allocate a new backing */
+   if (unlikely(bo == NULL || (offset + info.size) >= pool->base.slab_size)) {
+      bo = panvk_pool_alloc_backing(pool, info.size);
+      offset = 0;
+   }
+
+   if (pool->transient_bo == bo) {
+      pool->transient_offset = offset + info.size;
+      if (!pool->props.owns_bos)
+         panvk_priv_bo_ref(bo);
+   }
+
+   struct panvk_priv_mem ret = {
+      .bo = bo,
+      .offset = offset,
+   };
+
+   if (pool->props.needs_locking)
+      simple_mtx_unlock(&pool->lock);
+
+   return ret;
 }
 
 static struct panfrost_ptr
 panvk_pool_alloc_aligned(struct panvk_pool *pool, size_t sz, unsigned alignment)
 {
-   assert(alignment == util_next_power_of_two(alignment));
+   /* We just return the host/dev address, so callers can't
+    * release the BO ref they acquired. */
+   assert(pool->props.owns_bos);
 
-   /* Find or create a suitable BO */
-   struct panvk_priv_bo *bo = pool->transient_bo;
-   unsigned offset = ALIGN_POT(pool->transient_offset, alignment);
-
-   /* If we don't fit, allocate a new backing */
-   if (unlikely(bo == NULL || (offset + sz) >= pool->base.slab_size)) {
-      bo = panvk_pool_alloc_backing(
-         pool, ALIGN_POT(MAX2(pool->base.slab_size, sz), 4096));
-      offset = 0;
-   }
-
-   pool->transient_offset = offset + sz;
-
-   struct panfrost_ptr ret = {
-      .cpu = bo->addr.host + offset,
-      .gpu = bo->addr.dev + offset,
+   struct panvk_pool_alloc_info info = {
+      .size = sz,
+      .alignment = alignment,
    };
+   struct panvk_priv_mem mem = panvk_pool_alloc_mem(pool, info);
 
-   return ret;
+   return (struct panfrost_ptr){
+      .cpu = panvk_priv_mem_host_addr(mem),
+      .gpu = panvk_priv_mem_dev_addr(mem),
+   };
 }
 PAN_POOL_ALLOCATOR(struct panvk_pool, panvk_pool_alloc_aligned)
 
 void
 panvk_pool_init(struct panvk_pool *pool, struct panvk_device *dev,
-                struct panvk_bo_pool *bo_pool, unsigned create_flags,
-                size_t slab_size, const char *label, bool prealloc)
+                struct panvk_bo_pool *bo_pool,
+                const struct panvk_pool_properties *props)
 {
    memset(pool, 0, sizeof(*pool));
-   pan_pool_init(&pool->base, slab_size);
+   pool->props = *props;
+   simple_mtx_init(&pool->lock, mtx_plain);
+   pan_pool_init(&pool->base, pool->props.slab_size);
    pool->dev = dev;
-   pool->create_flags = create_flags;
-   pool->label = label;
    pool->bo_pool = bo_pool;
 
    list_inithead(&pool->bos);
    list_inithead(&pool->big_bos);
 
-   if (prealloc)
+   if (props->prealloc)
       panvk_pool_alloc_backing(pool, pool->base.slab_size);
 }
 

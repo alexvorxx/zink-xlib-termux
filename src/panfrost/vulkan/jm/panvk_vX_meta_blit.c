@@ -234,12 +234,25 @@ panvk_per_arch(meta_blit_init)(struct panvk_device *dev)
 {
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
+   struct panvk_pool_properties bin_pool_props = {
+      .create_flags = PAN_KMOD_BO_FLAG_EXECUTABLE,
+      .slab_size = 16 * 1024,
+      .label = "panvk_meta blitter binary pool",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   struct panvk_pool_properties desc_pool_props = {
+      .create_flags = 0,
+      .slab_size = 16 * 1024,
+      .label = "panvk_meta blitter descriptor pool",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
 
-   panvk_pool_init(&dev->meta.blitter.bin_pool, dev, NULL,
-                   PAN_KMOD_BO_FLAG_EXECUTABLE, 16 * 1024,
-                   "panvk_meta blitter binary pool", false);
-   panvk_pool_init(&dev->meta.blitter.desc_pool, dev, NULL, 0, 16 * 1024,
-                   "panvk_meta blitter descriptor pool", false);
+   panvk_pool_init(&dev->meta.blitter.bin_pool, dev, NULL, &bin_pool_props);
+   panvk_pool_init(&dev->meta.blitter.desc_pool, dev, NULL, &desc_pool_props);
    pan_blend_shader_cache_init(&dev->meta.blend_shader_cache,
                                phys_dev->kmod.props.gpu_prod_id);
    GENX(pan_blitter_cache_init)

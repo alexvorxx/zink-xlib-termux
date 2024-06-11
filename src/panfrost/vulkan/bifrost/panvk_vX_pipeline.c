@@ -352,11 +352,25 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    vk_dynamic_graphics_state_fill(&gfx_pipeline->state.dynamic, &state);
    gfx_pipeline->state.rp = *state.rp;
 
-   panvk_pool_init(&gfx_pipeline->base.bin_pool, dev, NULL,
-                   PAN_KMOD_BO_FLAG_EXECUTABLE, 4096,
-                   "Pipeline shader binaries", false);
-   panvk_pool_init(&gfx_pipeline->base.desc_pool, dev, NULL, 0, 4096,
-                   "Pipeline static state", false);
+   struct panvk_pool_properties bin_pool_props = {
+      .create_flags = PAN_KMOD_BO_FLAG_EXECUTABLE,
+      .slab_size = 4096,
+      .label = "Pipeline shader binaries",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&gfx_pipeline->base.bin_pool, dev, NULL, &bin_pool_props);
+
+   struct panvk_pool_properties desc_pool_props = {
+      .create_flags = 0,
+      .slab_size = 4096,
+      .label = "Pipeline static state",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&gfx_pipeline->base.desc_pool, dev, NULL, &desc_pool_props);
 
    /* Make sure the stage info is correct even if no stage info is provided for
     * this stage in pStages.
@@ -437,11 +451,27 @@ panvk_compute_pipeline_create(struct panvk_device *dev,
    compute_pipeline->base.layout = layout;
    compute_pipeline->base.type = PANVK_PIPELINE_COMPUTE;
 
+   struct panvk_pool_properties bin_pool_props = {
+      .create_flags = PAN_KMOD_BO_FLAG_EXECUTABLE,
+      .slab_size = 4096,
+      .label = "Pipeline shader binaries",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
    panvk_pool_init(&compute_pipeline->base.bin_pool, dev, NULL,
-                   PAN_KMOD_BO_FLAG_EXECUTABLE, 4096,
-                   "Pipeline shader binaries", false);
-   panvk_pool_init(&compute_pipeline->base.desc_pool, dev, NULL, 0, 4096,
-                   "Pipeline static state", false);
+                   &bin_pool_props);
+
+   struct panvk_pool_properties desc_pool_props = {
+      .create_flags = 0,
+      .slab_size = 4096,
+      .label = "Pipeline static state",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&compute_pipeline->base.desc_pool, dev, NULL,
+                   &desc_pool_props);
 
    VkResult result =
       init_pipeline_shader(&compute_pipeline->base, &create_info->stage, alloc,

@@ -355,16 +355,41 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool, VkCommandBufferLevel level,
    cmdbuf->vk.dynamic_graphics_state.ms.sample_locations =
       &cmdbuf->state.gfx.dynamic.sl;
 
-   panvk_pool_init(&cmdbuf->desc_pool, device, &pool->desc_bo_pool, 0,
-                   64 * 1024, "Command buffer descriptor pool", true);
-   panvk_pool_init(
-      &cmdbuf->tls_pool, device, &pool->tls_bo_pool,
-      panvk_debug_adjust_bo_flags(device, PAN_KMOD_BO_FLAG_NO_MMAP), 64 * 1024,
-      "TLS pool", false);
-   panvk_pool_init(
-      &cmdbuf->varying_pool, device, &pool->varying_bo_pool,
-      panvk_debug_adjust_bo_flags(device, PAN_KMOD_BO_FLAG_NO_MMAP), 64 * 1024,
-      "Varyings pool", false);
+   struct panvk_pool_properties desc_pool_props = {
+      .create_flags = 0,
+      .slab_size = 64 * 1024,
+      .label = "Command buffer descriptor pool",
+      .prealloc = true,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&cmdbuf->desc_pool, device, &pool->desc_bo_pool,
+                   &desc_pool_props);
+
+   struct panvk_pool_properties tls_pool_props = {
+      .create_flags =
+         panvk_debug_adjust_bo_flags(device, PAN_KMOD_BO_FLAG_NO_MMAP),
+      .slab_size = 64 * 1024,
+      .label = "TLS pool",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&cmdbuf->tls_pool, device, &pool->tls_bo_pool,
+                   &tls_pool_props);
+
+   struct panvk_pool_properties var_pool_props = {
+      .create_flags =
+         panvk_debug_adjust_bo_flags(device, PAN_KMOD_BO_FLAG_NO_MMAP),
+      .slab_size = 64 * 1024,
+      .label = "TLS pool",
+      .prealloc = false,
+      .owns_bos = true,
+      .needs_locking = false,
+   };
+   panvk_pool_init(&cmdbuf->varying_pool, device, &pool->varying_bo_pool,
+                   &var_pool_props);
+
    list_inithead(&cmdbuf->batches);
    *cmdbuf_out = &cmdbuf->vk;
    return VK_SUCCESS;

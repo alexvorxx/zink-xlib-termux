@@ -40,11 +40,8 @@ load_vertex_id(nir_builder *b, struct state *state)
    if (state->index_size) {
       nir_def *ia = nir_load_input_assembly_buffer_agx(b);
 
-      nir_def *address =
-         libagx_index_buffer(b, ia, id, nir_imm_int(b, state->index_size));
-
-      nir_def *index = nir_load_global_constant(b, address, state->index_size,
-                                                1, state->index_size * 8);
+      nir_def *index =
+         libagx_load_index_buffer(b, ia, id, nir_imm_int(b, state->index_size));
 
       id = nir_u2uN(b, index, id->bit_size);
    }

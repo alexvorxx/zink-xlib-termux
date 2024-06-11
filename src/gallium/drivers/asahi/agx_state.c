@@ -3949,6 +3949,7 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
 {
    struct agx_ia_state ia = {
       .index_buffer = input_index_buffer,
+      .index_buffer_range_el = index_buffer_size_B / info->index_size,
       .verts_per_instance = draw ? draw->count : 0,
    };
 
@@ -4111,6 +4112,7 @@ agx_launch_gs_prerast(struct agx_batch *batch,
 
       struct agx_gs_setup_indirect_params gsi = {
          .index_buffer = ib,
+         .index_buffer_range_el = ib_extent / info->index_size,
          .draw = rsrc->bo->ptr.gpu + indirect->offset,
          .vertex_buffer = batch->uniforms.vertex_output_buffer_ptr,
          .ia = batch->uniforms.input_assembly,
@@ -4239,7 +4241,7 @@ agx_draw_without_restart(struct agx_batch *batch,
       .index_buffer = ib,
       .out_draws = out_draws.gpu,
       .restart_index = info->restart_index,
-      .index_buffer_size_B = ib_extent,
+      .index_buffer_size_el = ib_extent / info->index_size,
       .flatshade_first = batch->ctx->rast->base.flatshade_first,
       .draws = indirect_rsrc->bo->ptr.gpu + indirect->offset,
    };
@@ -4559,6 +4561,7 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
 
    struct agx_ia_state ia = {
       .index_buffer = ib,
+      .index_buffer_range_el = ib_extent,
       .verts_per_instance = draws ? draws->count : 0,
    };
 

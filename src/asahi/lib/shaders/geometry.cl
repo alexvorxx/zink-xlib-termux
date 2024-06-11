@@ -227,6 +227,45 @@ libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
    }
 }
 
+static uint
+load_index_buffer(uintptr_t index_buffer, uint32_t index_buffer_range_el,
+                  uint id, uint index_size)
+{
+   bool oob = id >= index_buffer_range_el;
+
+   /* If the load would be out-of-bounds, load the first element which is
+    * assumed valid. If the application index buffer is empty with robustness2,
+    * index_buffer will point to a zero sink where only the first is valid.
+    */
+   if (oob) {
+      id = 0;
+   }
+
+   uint el;
+   if (index_size == 1) {
+      el = ((constant uint8_t *)index_buffer)[id];
+   } else if (index_size == 2) {
+      el = ((constant uint16_t *)index_buffer)[id];
+   } else {
+      el = ((constant uint32_t *)index_buffer)[id];
+   }
+
+   /* D3D robustness semantics. TODO: Optimize? */
+   if (oob) {
+      el = 0;
+   }
+
+   return el;
+}
+
+uint
+libagx_load_index_buffer(constant struct agx_ia_state *p, uint id,
+                         uint index_size)
+{
+   return load_index_buffer(p->index_buffer, p->index_buffer_range_el, id,
+                            index_size);
+}
+
 /*
  * Return the ID of the first thread in the workgroup where cond is true, or
  * 1024 if cond is false across the workgroup.
@@ -303,19 +342,19 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
                                                     sizeof(INDEX));            \
                                                                                \
          /* Accessed thru local mem because NIR deref is too aggressive */     \
-         in_ptr = (uintptr_t)(p->index_buffer + sizeof(INDEX) * in_draw[2]);   \
+         in_ptr = (uintptr_t)(libagx_index_buffer(                             \
+            p->index_buffer, p->index_buffer_size_el, in_draw[2],              \
+            sizeof(INDEX), p->zero_sink));                                     \
       }                                                                        \
                                                                                \
       barrier(CLK_LOCAL_MEM_FENCE);                                            \
       global INDEX *out = (global INDEX *)out_ptr;                             \
-      constant INDEX *in = (constant INDEX *)in_ptr;                           \
                                                                                \
       local uint scratch[32];                                                  \
                                                                                \
       uint out_prims = 0;                                                      \
       INDEX restart_idx = p->restart_index;                                    \
       bool flatshade_first = p->flatshade_first;                               \
-      uint in_size_el = p->index_buffer_size_B / sizeof(INDEX);                \
                                                                                \
       uint needle = 0;                                                         \
       uint per_prim = mesa_vertices_per_prim(mode);                            \
@@ -323,10 +362,11 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
          /* Search for next restart or the end. Lanes load in parallel. */     \
          uint next_restart = needle;                                           \
          for (;;) {                                                            \
-            /* Relies on shortcircuiting */                                    \
             uint idx = next_restart + tid;                                     \
-            /* XXX: robustness here */                                         \
-            bool restart = idx >= count || in[idx] == restart_idx;             \
+            bool restart =                                                     \
+               idx >= count ||                                                 \
+               load_index_buffer(in_ptr, p->index_buffer_size_el, idx,         \
+                                 sizeof(INDEX)) == restart_idx;                \
                                                                                \
             uint next_offs = first_true_thread_in_workgroup(restart, scratch); \
                                                                                \
@@ -346,7 +386,8 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
                uint offset = needle + id;                                      \
                                                                                \
                out[((out_prims_base + i) * per_prim) + vtx] =                  \
-                  offset < in_size_el ? in[offset] : 0;                        \
+                  load_index_buffer(in_ptr, p->index_buffer_size_el, offset,   \
+                                    sizeof(INDEX));                            \
             }                                                                  \
          }                                                                     \
                                                                                \
@@ -361,13 +402,6 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
 UNROLL(uchar, u8)
 UNROLL(ushort, u16)
 UNROLL(uint, u32)
-
-uintptr_t
-libagx_index_buffer(constant struct agx_ia_state *p, uint id,
-                    uint index_size)
-{
-   return (uintptr_t)&p->index_buffer[id * index_size];
-}
 
 uint
 libagx_setup_xfb_buffer(global struct agx_geometry_params *p, uint i)
@@ -479,8 +513,13 @@ libagx_gs_setup_indirect(global struct agx_gs_setup_indirect_params *gsi,
     * indirect draw, the hardware would do this for us, but for software input
     * assembly we need to do it ourselves.
     */
-   if (gsi->index_buffer) {
-      ia->index_buffer = gsi->index_buffer + gsi->draw[2] * gsi->index_size_B;
+   if (gsi->index_size_B) {
+      ia->index_buffer =
+         libagx_index_buffer(gsi->index_buffer, gsi->index_buffer_range_el,
+                             gsi->draw[2], gsi->index_size_B, gsi->zero_sink);
+
+      ia->index_buffer_range_el =
+         libagx_index_buffer_range_el(gsi->index_buffer_range_el, gsi->draw[2]);
    }
 
    /* We need to allocate VS and GS count buffers, do so now */

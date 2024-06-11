@@ -9,11 +9,13 @@
 
 #ifndef __OPENCL_VERSION__
 #include "util/bitscan.h"
-#define CONST(type_)       uint64_t
-#define libagx_popcount(x) util_bitcount64(x)
+#define CONST(type_)         uint64_t
+#define libagx_popcount(x)   util_bitcount64(x)
+#define libagx_sub_sat(x, y) ((x >= y) ? (x - y) : 0)
 #else
-#define CONST(type_)       constant type_ *
-#define libagx_popcount(x) popcount(x)
+#define CONST(type_)         constant type_ *
+#define libagx_popcount(x)   popcount(x)
+#define libagx_sub_sat(x, y) sub_sat(x, y)
 #endif
 
 #ifndef LIBAGX_GEOMETRY_H
@@ -35,7 +37,7 @@ struct agx_restart_unroll_params {
    GLOBAL(struct agx_geometry_state) heap;
 
    /* Input: index buffer if present. */
-   CONST(uchar) index_buffer;
+   uint64_t index_buffer;
 
    /* Input: draw count */
    CONST(uint) count;
@@ -46,14 +48,17 @@ struct agx_restart_unroll_params {
    /* Output draw descriptors */
    GLOBAL(uint) out_draws;
 
+   /* Pointer to zero */
+   uint64_t zero_sink;
+
    /* Input: maximum draw count, count is clamped to this */
    uint32_t max_draws;
 
    /* Primitive restart index */
    uint32_t restart_index;
 
-   /* Input index buffer size in bytes */
-   uint32_t index_buffer_size_B;
+   /* Input index buffer size in elements */
+   uint32_t index_buffer_size_el;
 
    /* Stride for the draw descriptor array */
    uint32_t draw_stride;
@@ -64,11 +69,11 @@ struct agx_restart_unroll_params {
     */
    uint32_t flatshade_first;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_restart_unroll_params) == 15 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_restart_unroll_params) == 17 * 4);
 
 struct agx_gs_setup_indirect_params {
    /* Index buffer if present. */
-   CONST(uchar) index_buffer;
+   uint64_t index_buffer;
 
    /* Indirect draw descriptor. */
    CONST(uint) draw;
@@ -82,24 +87,49 @@ struct agx_gs_setup_indirect_params {
    /* Output geometry parameters */
    GLOBAL(struct agx_geometry_params) geom;
 
+   /* Pointer to zero */
+   uint64_t zero_sink;
+
    /* Vertex (TES) output mask for sizing the allocated buffer */
    uint64_t vs_outputs;
 
    /* The index size (1, 2, 4) or 0 if drawing without an index buffer. */
    uint32_t index_size_B;
+
+   /* Size of the index buffer */
+   uint32_t index_buffer_range_el;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_gs_setup_indirect_params) == 13 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_gs_setup_indirect_params) == 16 * 4);
 
 struct agx_ia_state {
    /* Index buffer if present. */
-   CONST(uchar) index_buffer;
+   uint64_t index_buffer;
+
+   /* Size of the bound index buffer for bounds checking */
+   uint32_t index_buffer_range_el;
 
    /* Number of vertices per instance. Written by CPU for direct draw, indirect
     * setup kernel for indirect. This is used for VS->GS and VS->TCS indexing.
     */
    uint32_t verts_per_instance;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 3 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_ia_state) == 4 * 4);
+
+static inline uint64_t
+libagx_index_buffer(uint64_t index_buffer, uint size_el, uint offset_el,
+                    uint elsize_B, uint64_t zero_sink)
+{
+   if (offset_el < size_el)
+      return index_buffer + (offset_el * elsize_B);
+   else
+      return zero_sink;
+}
+
+static inline uint
+libagx_index_buffer_range_el(uint size_el, uint offset_el)
+{
+   return libagx_sub_sat(size_el, offset_el);
+}
 
 struct agx_geometry_params {
    /* Persistent (cross-draw) geometry state */

@@ -184,6 +184,7 @@ struct RegAllocator {
     file: RegFile,
     num_regs: u32,
     used: BitSet,
+    pinned: BitSet,
     reg_ssa: Vec<SSAValue>,
     ssa_reg: HashMap<SSAValue, u32>,
 }
@@ -194,6 +195,7 @@ impl RegAllocator {
             file: file,
             num_regs: num_regs,
             used: BitSet::new(),
+            pinned: BitSet::new(),
             reg_ssa: Vec::new(),
             ssa_reg: HashMap::new(),
         }
@@ -209,6 +211,10 @@ impl RegAllocator {
 
     pub fn reg_is_used(&self, reg: u32) -> bool {
         self.used.get(reg.try_into().unwrap())
+    }
+
+    pub fn reg_is_pinned(&self, reg: u32) -> bool {
+        self.pinned.get(reg.try_into().unwrap())
     }
 
     pub fn try_get_reg(&self, ssa: SSAValue) -> Option<u32> {
@@ -249,6 +255,7 @@ impl RegAllocator {
         let reg_usize = usize::try_from(reg).unwrap();
         assert!(self.reg_ssa[reg_usize] == ssa);
         self.used.remove(reg_usize);
+        self.pinned.remove(reg_usize);
         reg
     }
 
@@ -265,6 +272,11 @@ impl RegAllocator {
         let old = self.ssa_reg.insert(ssa, reg);
         assert!(old.is_none());
         self.used.insert(reg_usize);
+    }
+
+    pub fn pin_reg(&mut self, reg: u32) {
+        assert!(self.reg_is_used(reg));
+        self.pinned.insert(reg.try_into().unwrap());
     }
 
     fn reg_range_is_unset(set: &BitSet, reg: u32, comps: u8) -> bool {
@@ -394,10 +406,11 @@ struct VecRegAllocator<'a> {
 
 impl<'a> VecRegAllocator<'a> {
     fn new(ra: &'a mut RegAllocator) -> Self {
+        let pinned = ra.pinned.clone();
         VecRegAllocator {
-            ra: ra,
+            ra,
             pcopy: OpParCopy::new(),
-            pinned: Default::default(),
+            pinned,
             evicted: HashMap::new(),
         }
     }
@@ -1104,6 +1117,9 @@ impl AssignRegsBlock {
                 for (ssa, reg) in &pred_raf.ssa_reg {
                     if bl.is_live_in(ssa) {
                         raf.assign_reg(*ssa, *reg);
+                        if pred_raf.reg_is_pinned(*reg) {
+                            raf.pin_reg(*reg);
+                        }
                         self.live_in.push(LiveValue {
                             live_ref: LiveRef::SSA(*ssa),
                             reg_ref: RegRef::new(raf.file(), *reg, 1),

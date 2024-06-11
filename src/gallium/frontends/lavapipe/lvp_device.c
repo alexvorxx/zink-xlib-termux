@@ -47,6 +47,7 @@
 
 #if DETECT_OS_LINUX
 #include <sys/mman.h>
+#include <sys/resource.h>
 #endif
 
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
@@ -343,6 +344,11 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .shaderInt16                              = (min_shader_param(pdevice->pscreen, PIPE_SHADER_CAP_INT16) == 1),
       .variableMultisampleRate                  = false,
       .inheritedQueries                         = false,
+      .sparseBinding                            = DETECT_OS_LINUX,
+      .sparseResidencyBuffer                    = DETECT_OS_LINUX,
+      .sparseResidencyImage2D                   = DETECT_OS_LINUX,
+      .sparseResidencyImage3D                   = DETECT_OS_LINUX,
+      .sparseResidencyAliased                   = DETECT_OS_LINUX,
 
       /* Vulkan 1.1 */
       .storageBuffer16BitAccess            = true,
@@ -628,8 +634,8 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .shaderSharedFloat64AtomicAdd =  false,
       .shaderImageFloat32Atomics =     true,
       .shaderImageFloat32AtomicAdd =   true,
-      .sparseImageFloat32Atomics =     false,
-      .sparseImageFloat32AtomicAdd =   false,
+      .sparseImageFloat32Atomics =     DETECT_OS_LINUX,
+      .sparseImageFloat32AtomicAdd =   DETECT_OS_LINUX,
 
       /* VK_EXT_shader_atomic_float2 */
       .shaderBufferFloat16Atomics      = false,
@@ -773,7 +779,7 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .maxMemoryAllocationCount                 = UINT32_MAX,
       .maxSamplerAllocationCount                = 32 * 1024,
       .bufferImageGranularity                   = 64, /* A cache line */
-      .sparseAddressSpaceSize                   = 0,
+      .sparseAddressSpaceSize                   = 2UL*1024*1024*1024,
       .maxBoundDescriptorSets                   = MAX_SETS,
       .maxPerStageDescriptorSamplers            = MAX_DESCRIPTORS,
       .maxPerStageDescriptorUniformBuffers      = MAX_DESCRIPTORS,
@@ -871,6 +877,9 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
       .optimalBufferCopyOffsetAlignment         = 128,
       .optimalBufferCopyRowPitchAlignment       = 128,
       .nonCoherentAtomSize                      = 64,
+      .sparseResidencyStandard2DBlockShape      = true,
+      .sparseResidencyStandard2DMultisampleBlockShape = true,
+      .sparseResidencyStandard3DBlockShape      = true,
 
       /* Vulkan 1.1 */
       /* The LUID is for Windows. */
@@ -1418,7 +1427,8 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceQueueFamilyProperties2(
       p->queueFamilyProperties = (VkQueueFamilyProperties) {
          .queueFlags = VK_QUEUE_GRAPHICS_BIT |
          VK_QUEUE_COMPUTE_BIT |
-         VK_QUEUE_TRANSFER_BIT,
+         VK_QUEUE_TRANSFER_BIT |
+         (DETECT_OS_LINUX ? VK_QUEUE_SPARSE_BINDING_BIT : 0),
          .queueCount = 1,
          .timestampValidBits = 64,
          .minImageTransferGranularity = (VkExtent3D) { 1, 1, 1 },
@@ -1534,6 +1544,24 @@ lvp_queue_submit(struct vk_queue *vk_queue,
       return result;
 
    simple_mtx_lock(&queue->lock);
+
+   for (uint32_t i = 0; i < submit->buffer_bind_count; i++) {
+      VkSparseBufferMemoryBindInfo *bind = &submit->buffer_binds[i];
+
+      lvp_buffer_bind_sparse(queue->device, queue, bind);
+   }
+
+   for (uint32_t i = 0; i < submit->image_opaque_bind_count; i++) {
+      VkSparseImageOpaqueMemoryBindInfo *bind = &submit->image_opaque_binds[i];
+
+      lvp_image_bind_opaque_sparse(queue->device, queue, bind);
+   }
+
+   for (uint32_t i = 0; i < submit->image_bind_count; i++) {
+      VkSparseImageMemoryBindInfo *bind = &submit->image_binds[i];
+
+      lvp_image_bind_sparse(queue->device, queue, bind);
+   }
 
    for (uint32_t i = 0; i < submit->command_buffer_count; i++) {
       struct lvp_cmd_buffer *cmd_buffer =
@@ -1993,6 +2021,12 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetDeviceBufferMemoryRequirements(
 {
    pMemoryRequirements->memoryRequirements.memoryTypeBits = 1;
    pMemoryRequirements->memoryRequirements.alignment = 64;
+
+   if (pInfo->pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
+      uint64_t alignment;
+      os_get_page_size(&alignment);
+      pMemoryRequirements->memoryRequirements.alignment = alignment;
+   }
    pMemoryRequirements->memoryRequirements.size = 0;
 
    VkBuffer _buffer;
@@ -2001,15 +2035,6 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetDeviceBufferMemoryRequirements(
    LVP_FROM_HANDLE(lvp_buffer, buffer, _buffer);
    pMemoryRequirements->memoryRequirements.size = buffer->total_size;
    lvp_DestroyBuffer(_device, _buffer, NULL);
-}
-
-VKAPI_ATTR void VKAPI_CALL lvp_GetDeviceImageSparseMemoryRequirements(
-    VkDevice                                    device,
-    const VkDeviceImageMemoryRequirements*      pInfo,
-    uint32_t*                                   pSparseMemoryRequirementCount,
-    VkSparseImageMemoryRequirements2*           pSparseMemoryRequirements)
-{
-   stub();
 }
 
 VKAPI_ATTR void VKAPI_CALL lvp_GetDeviceImageMemoryRequirements(
@@ -2037,6 +2062,12 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetBufferMemoryRequirements(
 {
    LVP_FROM_HANDLE(lvp_buffer, buffer, _buffer);
 
+   pMemoryRequirements->alignment = 64;
+   if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
+      uint64_t alignment;
+      os_get_page_size(&alignment);
+      pMemoryRequirements->alignment = alignment;
+   }
    /* The Vulkan spec (git aaed022) says:
     *
     *    memoryTypeBits is a bitfield and contains one bit set for every
@@ -2049,7 +2080,6 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetBufferMemoryRequirements(
    pMemoryRequirements->memoryTypeBits = 1;
 
    pMemoryRequirements->size = buffer->total_size;
-   pMemoryRequirements->alignment = 64;
 }
 
 VKAPI_ATTR void VKAPI_CALL lvp_GetBufferMemoryRequirements2(
@@ -2107,24 +2137,6 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetImageMemoryRequirements2(
          break;
       }
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL lvp_GetImageSparseMemoryRequirements(
-   VkDevice                                    device,
-   VkImage                                     image,
-   uint32_t*                                   pSparseMemoryRequirementCount,
-   VkSparseImageMemoryRequirements*            pSparseMemoryRequirements)
-{
-   stub();
-}
-
-VKAPI_ATTR void VKAPI_CALL lvp_GetImageSparseMemoryRequirements2(
-   VkDevice                                    device,
-   const VkImageSparseMemoryRequirementsInfo2* pInfo,
-   uint32_t* pSparseMemoryRequirementCount,
-   VkSparseImageMemoryRequirements2* pSparseMemoryRequirements)
-{
-   stub();
 }
 
 VKAPI_ATTR void VKAPI_CALL lvp_GetDeviceMemoryCommitment(
@@ -2290,15 +2302,6 @@ lvp_GetMemoryFdPropertiesKHR(VkDevice _device,
 }
 
 #endif
-
-VKAPI_ATTR VkResult VKAPI_CALL lvp_QueueBindSparse(
-   VkQueue                                     queue,
-   uint32_t                                    bindInfoCount,
-   const VkBindSparseInfo*                     pBindInfo,
-   VkFence                                     fence)
-{
-   stub_return(VK_ERROR_INCOMPATIBLE_DRIVER);
-}
 
 VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateEvent(
    VkDevice                                    _device,

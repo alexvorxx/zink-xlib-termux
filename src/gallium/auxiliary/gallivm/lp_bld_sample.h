@@ -198,6 +198,8 @@ struct lp_static_texture_state
    unsigned pot_height:1;
    unsigned pot_depth:1;
    unsigned level_zero_only:1;
+   unsigned tiled:1;
+   unsigned tiled_samples:5;
 };
 
 
@@ -736,6 +738,21 @@ lp_build_sample_offset(struct lp_build_context *bld,
                        LLVMValueRef *out_offset,
                        LLVMValueRef *out_i,
                        LLVMValueRef *out_j);
+
+
+void
+lp_build_tiled_sample_offset(struct lp_build_context *bld,
+                             enum pipe_format format,
+                             const struct lp_static_texture_state *static_texture_state,
+                             LLVMValueRef x,
+                             LLVMValueRef y,
+                             LLVMValueRef z,
+                             LLVMValueRef width,
+                             LLVMValueRef height,
+                             LLVMValueRef z_stride,
+                             LLVMValueRef *out_offset,
+                             LLVMValueRef *out_i,
+                             LLVMValueRef *out_j);
 
 
 void

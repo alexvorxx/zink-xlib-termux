@@ -122,6 +122,8 @@ struct llvmpipe_resource
 struct llvmpipe_transfer
 {
    struct pipe_transfer base;
+   void *map;
+   struct pipe_box block_box;
 };
 
 struct llvmpipe_memory_allocation
@@ -299,5 +301,10 @@ llvmpipe_transfer_map_ms(struct pipe_context *pipe,
                          unsigned sample,
                          const struct pipe_box *box,
                          struct pipe_transfer **transfer);
+
+uint32_t
+llvmpipe_get_texel_offset(struct pipe_resource *resource,
+                          uint32_t level, uint32_t x,
+                          uint32_t y, uint32_t z);
 
 #endif /* LP_TEXTURE_H */

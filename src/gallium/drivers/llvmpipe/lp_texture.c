@@ -116,15 +116,38 @@ llvmpipe_texture_layout(struct llvmpipe_screen *screen,
     * for the virgl driver when host uses llvmpipe, causing Qemu and crosvm to
     * bail out on the KVM error.
     */
-   if (lpr->base.flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT)
+   if (lpr->base.flags & PIPE_RESOURCE_FLAG_SPARSE)
+      mip_align = 64 * 1024;
+   else if (lpr->base.flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT)
       os_get_page_size(&mip_align);
 
    assert(LP_MAX_TEXTURE_2D_LEVELS <= LP_MAX_TEXTURE_LEVELS);
    assert(LP_MAX_TEXTURE_3D_LEVELS <= LP_MAX_TEXTURE_LEVELS);
 
+   uint32_t dimensions = 1;
+   switch (pt->target) {
+   case PIPE_TEXTURE_2D:
+   case PIPE_TEXTURE_CUBE:
+   case PIPE_TEXTURE_RECT:
+   case PIPE_TEXTURE_2D_ARRAY:
+      dimensions = 2;
+      break;
+   case PIPE_TEXTURE_3D:
+      dimensions = 3;
+      break;
+   default:
+      break;
+   }
+
+   uint32_t sparse_tile_size[3] = {
+      util_format_get_tilesize(pt->format, dimensions, pt->nr_samples, 0),
+      util_format_get_tilesize(pt->format, dimensions, pt->nr_samples, 1),
+      util_format_get_tilesize(pt->format, dimensions, pt->nr_samples, 2),
+   };
+
    for (unsigned level = 0; level <= pt->last_level; level++) {
       uint64_t mipsize;
-      unsigned align_x, align_y, nblocksx, nblocksy, block_size, num_slices;
+      unsigned align_x, align_y, align_z, nblocksx, nblocksy, block_size, num_slices;
 
       /* Row stride and image stride */
 
@@ -145,12 +168,19 @@ llvmpipe_texture_layout(struct llvmpipe_screen *screen,
          else
             align_y = LP_RASTER_BLOCK_SIZE;
       }
+      align_z = 1;
 
       nblocksx = util_format_get_nblocksx(pt->format,
                                           align(width, align_x));
       nblocksy = util_format_get_nblocksy(pt->format,
                                           align(height, align_y));
       block_size = util_format_get_blocksize(pt->format);
+
+      if (pt->flags & PIPE_RESOURCE_FLAG_SPARSE) {
+         nblocksx = align(nblocksx, sparse_tile_size[0]);
+         nblocksy = align(nblocksy, sparse_tile_size[1]);
+         align_z = MAX2(align_z, sparse_tile_size[2]);
+      }
 
       if (util_format_is_compressed(pt->format))
          lpr->row_stride[level] = nblocksx * block_size;
@@ -166,7 +196,7 @@ llvmpipe_texture_layout(struct llvmpipe_screen *screen,
       }
 
       if (lpr->base.target == PIPE_TEXTURE_3D)
-         num_slices = depth;
+         num_slices = align(depth, align_z);
       else if (lpr->base.target == PIPE_TEXTURE_1D_ARRAY ||
                lpr->base.target == PIPE_TEXTURE_2D_ARRAY ||
                lpr->base.target == PIPE_TEXTURE_CUBE ||
@@ -200,6 +230,11 @@ llvmpipe_texture_layout(struct llvmpipe_screen *screen,
       } else {
          memset(lpr->tex_data, 0, total_size);
       }
+   }
+   if (lpr->base.flags & PIPE_RESOURCE_FLAG_SPARSE) {
+      uint64_t page_align;
+      os_get_page_size(&page_align);
+      lpr->size_required = align64(lpr->size_required, page_align);
    }
 
    return true;
@@ -285,6 +320,14 @@ llvmpipe_resource_create_all(struct pipe_screen *_screen,
          /* texture map */
          if (!llvmpipe_texture_layout(screen, lpr, alloc_backing))
             goto fail;
+
+         if (templat->flags & PIPE_RESOURCE_FLAG_SPARSE) {
+#if DETECT_OS_LINUX
+            lpr->tex_data = os_mmap(NULL, lpr->size_required, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED,
+                                    -1, 0);
+            madvise(lpr->tex_data, lpr->size_required, MADV_DONTNEED);
+#endif
+         }
       }
    } else {
       /* other data (vertex buffer, const buffer, etc) */
@@ -309,9 +352,8 @@ llvmpipe_resource_create_all(struct pipe_screen *_screen,
       if (!(templat->flags & PIPE_RESOURCE_FLAG_DONT_OVER_ALLOCATE))
          lpr->size_required += (LP_RASTER_BLOCK_SIZE - 1) * 4 * sizeof(float);
 
+      uint64_t alignment = sizeof(uint64_t) * 16;
       if (alloc_backing) {
-         uint64_t alignment = sizeof(uint64_t) * 16;
-
          if (templat->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT)
             os_get_page_size(&alignment);
 
@@ -320,6 +362,16 @@ llvmpipe_resource_create_all(struct pipe_screen *_screen,
          if (!lpr->data)
             goto fail;
          memset(lpr->data, 0, bytes);
+      }
+
+      if (templat->flags & PIPE_RESOURCE_FLAG_SPARSE) {
+         os_get_page_size(&alignment);
+         lpr->size_required = align64(lpr->size_required, alignment);
+#if DETECT_OS_LINUX
+         lpr->data = os_mmap(NULL, lpr->size_required, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED,
+                             -1, 0);
+         madvise(lpr->data, lpr->size_required, MADV_DONTNEED);
+#endif
       }
    }
 
@@ -516,6 +568,15 @@ llvmpipe_resource_destroy(struct pipe_screen *pscreen,
    if (lpr->dmabuf_alloc)
       pscreen->free_memory_fd(pscreen, (struct pipe_memory_allocation*)lpr->dmabuf_alloc);
 #endif
+
+   if (lpr->base.flags & PIPE_RESOURCE_FLAG_SPARSE) {
+#if DETECT_OS_LINUX
+      if (llvmpipe_resource_is_texture(pt))
+         munmap(lpr->tex_data, lpr->size_required);
+      else
+         munmap(lpr->data, lpr->size_required);
+#endif
+   }
 
 #if MESA_DEBUG
    simple_mtx_lock(&resource_list_mutex);
@@ -914,6 +975,48 @@ llvmpipe_transfer_map_ms(struct pipe_context *pipe,
 
    format = lpr->base.format;
 
+   if (llvmpipe_resource_is_texture(resource) && (resource->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
+      map = llvmpipe_resource_map(resource, 0, 0, tex_usage);
+
+      lpt->block_box = (struct pipe_box) {
+         .x = box->x / util_format_get_blockwidth(format),
+         .width = DIV_ROUND_UP(box->x + box->width, util_format_get_blockwidth(format)),
+         .y = box->y / util_format_get_blockheight(format),
+         .height = DIV_ROUND_UP(box->y + box->height, util_format_get_blockheight(format)),
+         .z = box->z / util_format_get_blockdepth(format),
+         .depth = DIV_ROUND_UP(box->z + box->depth, util_format_get_blockdepth(format)),
+      };
+
+      lpt->block_box.width -= lpt->block_box.x;
+      lpt->block_box.height -= lpt->block_box.y;
+      lpt->block_box.depth -= lpt->block_box.z;
+
+      uint32_t block_stride = util_format_get_blocksize(format);
+      pt->stride = lpt->block_box.width * block_stride;
+      pt->layer_stride = pt->stride * lpt->block_box.height;
+
+      uint8_t *staging_map = malloc(pt->layer_stride * lpt->block_box.depth);
+      lpt->map = staging_map;
+
+      if (usage & PIPE_MAP_READ) {
+         for (uint32_t z = 0; z < lpt->block_box.depth; z++) {
+            for (uint32_t y = 0; y < lpt->block_box.height; y++) {
+               for (uint32_t x = 0; x < lpt->block_box.width; x++) {
+                  memcpy(staging_map,
+                         map + llvmpipe_get_texel_offset(resource, level,
+                                                         lpt->block_box.x + x,
+                                                         lpt->block_box.y + y,
+                                                         lpt->block_box.z + z),
+                         block_stride);
+                  staging_map += block_stride;
+               }
+            }
+         }
+      }
+
+      return lpt->map;
+   }
+
    map = llvmpipe_resource_map(resource, level, box->z, tex_usage);
 
 
@@ -934,6 +1037,60 @@ llvmpipe_transfer_map_ms(struct pipe_context *pipe,
    return map;
 }
 
+uint32_t
+llvmpipe_get_texel_offset(struct pipe_resource *resource,
+                          uint32_t level, uint32_t x,
+                          uint32_t y, uint32_t z)
+{
+   struct llvmpipe_resource *lpr = llvmpipe_resource(resource);
+
+   uint32_t layer = 0;
+   if (resource->target != PIPE_TEXTURE_3D) {
+      layer = z;
+      z = 0;
+   }
+
+   uint32_t dimensions = 1;
+   switch (resource->target) {
+   case PIPE_TEXTURE_2D:
+   case PIPE_TEXTURE_CUBE:
+   case PIPE_TEXTURE_RECT:
+   case PIPE_TEXTURE_2D_ARRAY:
+      dimensions = 2;
+      break;
+   case PIPE_TEXTURE_3D:
+      dimensions = 3;
+      break;
+   default:
+      break;
+   }
+
+   uint32_t sparse_tile_size[3] = {
+      util_format_get_tilesize(resource->format, dimensions, resource->nr_samples, 0),
+      util_format_get_tilesize(resource->format, dimensions, resource->nr_samples, 1),
+      util_format_get_tilesize(resource->format, dimensions, resource->nr_samples, 2),
+   };
+
+   uint32_t num_tiles_x = DIV_ROUND_UP(u_minify(resource->width0, level),
+                                       sparse_tile_size[0] * util_format_get_blockwidth(resource->format));
+   uint32_t num_tiles_y = DIV_ROUND_UP(u_minify(resource->height0, level),
+                                       sparse_tile_size[1] * util_format_get_blockheight(resource->format));
+
+   uint32_t offset = (
+      x / sparse_tile_size[0] +
+      y / sparse_tile_size[1] * num_tiles_x +
+      z / sparse_tile_size[2] * num_tiles_x * num_tiles_y
+   ) * 64 * 1024;
+
+   offset += (
+      x % sparse_tile_size[0] + 
+      (y % sparse_tile_size[1]) * sparse_tile_size[0] +
+      (z % sparse_tile_size[2]) * sparse_tile_size[0] * sparse_tile_size[1]
+   ) * util_format_get_blocksize(resource->format);
+
+   return offset + lpr->mip_offsets[level] + lpr->img_stride[level] * layer;   
+}
+
 
 static void *
 llvmpipe_transfer_map(struct pipe_context *pipe,
@@ -952,18 +1109,39 @@ static void
 llvmpipe_transfer_unmap(struct pipe_context *pipe,
                         struct pipe_transfer *transfer)
 {
-   assert(transfer->resource);
+   struct llvmpipe_transfer *lpt = (struct llvmpipe_transfer *)transfer;
+   struct pipe_resource *resource = transfer->resource;
+   struct llvmpipe_resource *lpr = llvmpipe_resource(resource);
 
-   llvmpipe_resource_unmap(transfer->resource,
+   assert(resource);
+
+   if (llvmpipe_resource_is_texture(resource) && (resource->flags & PIPE_RESOURCE_FLAG_SPARSE) &&
+       (transfer->usage & PIPE_MAP_WRITE)) {
+      uint32_t block_stride = util_format_get_blocksize(resource->format);
+
+      const uint8_t *src = lpt->map;
+      uint8_t *dst = lpr->tex_data;
+
+      for (uint32_t z = 0; z < lpt->block_box.depth; z++) {
+         for (uint32_t y = 0; y < lpt->block_box.height; y++) {
+            for (uint32_t x = 0; x < lpt->block_box.width; x++) {
+               memcpy(dst + llvmpipe_get_texel_offset(resource, transfer->level,
+                                                      lpt->block_box.x + x,
+                                                      lpt->block_box.y + y,
+                                                      lpt->block_box.z + z),
+                      src, block_stride);
+               src += block_stride;
+            }
+         }
+      }
+   }
+
+   llvmpipe_resource_unmap(resource,
                            transfer->level,
                            transfer->box.z);
 
-   /* Effectively do the texture_update work here - if texture images
-    * needed post-processing to put them into hardware layout, this is
-    * where it would happen.  For llvmpipe, nothing to do.
-    */
-   assert (transfer->resource);
-   pipe_resource_reference(&transfer->resource, NULL);
+   pipe_resource_reference(&resource, NULL);
+   free(lpt->map);
    FREE(transfer);
 }
 
@@ -1378,6 +1556,31 @@ llvmpipe_resource_bind_backing(struct pipe_screen *pscreen,
    void *addr;
    if (!lpr->backable)
       return false;
+
+   if ((lpr->base.flags & PIPE_RESOURCE_FLAG_SPARSE) && offset < lpr->size_required) {
+#if DETECT_OS_LINUX
+      struct llvmpipe_memory_allocation *mem = (struct llvmpipe_memory_allocation *)pmem;
+      if (mem) {
+         if (llvmpipe_resource_is_texture(&lpr->base)) {
+            mmap((char *)lpr->tex_data + offset, size, PROT_READ|PROT_WRITE,
+                 MAP_SHARED|MAP_FIXED, mem->fd, mem->offset + fd_offset);
+         } else {
+            mmap((char *)lpr->data + offset, size, PROT_READ|PROT_WRITE,
+                 MAP_SHARED|MAP_FIXED, mem->fd, mem->offset + fd_offset);
+         }
+      } else {
+         if (llvmpipe_resource_is_texture(&lpr->base)) {
+            mmap((char *)lpr->tex_data + offset, size, PROT_READ|PROT_WRITE,
+                 MAP_SHARED|MAP_FIXED|MAP_ANONYMOUS, -1, 0);
+         } else {
+            mmap((char *)lpr->data + offset, size, PROT_READ|PROT_WRITE,
+                 MAP_SHARED|MAP_FIXED|MAP_ANONYMOUS, -1, 0);
+         }
+      }
+#endif
+
+      return true;
+   }
 
    addr = llvmpipe_map_memory(pscreen, pmem);
 

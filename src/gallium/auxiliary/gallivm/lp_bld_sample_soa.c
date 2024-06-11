@@ -138,10 +138,19 @@ lp_build_sample_texel_soa(struct lp_build_sample_context *bld,
    }
 
    /* convert x,y,z coords to linear offset from start of texture, in bytes */
-   lp_build_sample_offset(&bld->int_coord_bld,
-                          bld->format_desc,
-                          x, y, z, y_stride, z_stride,
-                          &offset, &i, &j);
+   if (bld->static_texture_state->tiled) {
+      lp_build_tiled_sample_offset(&bld->int_coord_bld,
+                                   bld->format_desc->format,
+                                   bld->static_texture_state,
+                                   x, y, z, width, height, z_stride,
+                                   &offset, &i, &j);
+   } else {
+      lp_build_sample_offset(&bld->int_coord_bld,
+                             bld->format_desc,
+                             x, y, z, y_stride, z_stride,
+                             &offset, &i, &j);
+   }
+
    if (mipoffsets) {
       offset = lp_build_add(&bld->int_coord_bld, offset, mipoffsets);
    }
@@ -3248,10 +3257,18 @@ lp_build_fetch_texel(struct lp_build_sample_context *bld,
       }
    }
 
-   lp_build_sample_offset(int_coord_bld,
-                          bld->format_desc,
-                          x, y, z, row_stride_vec, img_stride_vec,
-                          &offset, &i, &j);
+   if (bld->static_texture_state->tiled) {
+      lp_build_tiled_sample_offset(&bld->int_coord_bld,
+                                   bld->format_desc->format,
+                                   bld->static_texture_state,
+                                   x, y, z, width, height, img_stride_vec,
+                                   &offset, &i, &j);
+   } else {
+      lp_build_sample_offset(int_coord_bld,
+                             bld->format_desc,
+                             x, y, z, row_stride_vec, img_stride_vec,
+                             &offset, &i, &j);
+   }
 
    if (bld->static_texture_state->target != PIPE_BUFFER) {
       offset = lp_build_add(int_coord_bld, offset,
@@ -3766,6 +3783,8 @@ lp_build_sample_soa_code(struct gallivm_state *gallivm,
       use_aos &= bld.num_lods <= num_quads ||
                  derived_sampler_state.min_img_filter ==
                     derived_sampler_state.mag_img_filter;
+
+      use_aos &= !static_texture_state->tiled;
 
       if (gallivm_perf & GALLIVM_PERF_NO_AOS_SAMPLING) {
          use_aos = 0;
@@ -4957,10 +4976,18 @@ lp_build_img_op_soa(const struct lp_static_texture_state *static_texture_state,
    }
 
    LLVMValueRef offset, i, j;
-   lp_build_sample_offset(&int_coord_bld,
-                          format_desc,
-                          x, y, z, row_stride_vec, img_stride_vec,
-                          &offset, &i, &j);
+   if (static_texture_state->tiled) {
+      lp_build_tiled_sample_offset(&int_coord_bld,
+                                   format_desc->format,
+                                   static_texture_state,
+                                   x, y, z, width, height, img_stride_vec,
+                                   &offset, &i, &j);
+   } else {
+      lp_build_sample_offset(&int_coord_bld,
+                             format_desc,
+                             x, y, z, row_stride_vec, img_stride_vec,
+                             &offset, &i, &j);
+   }
 
    if (params->ms_index && static_texture_state->level_zero_only) {
       LLVMValueRef num_samples = dynamic_state->last_level(gallivm,

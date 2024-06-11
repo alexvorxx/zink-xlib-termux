@@ -582,6 +582,7 @@ struct lvp_buffer {
    uint64_t total_size;
    uint64_t offset;
    void *map;
+   struct pipe_transfer *transfer;
 };
 
 struct lvp_buffer_view {
@@ -686,6 +687,16 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_indirect_command_layout_nv, base, VkIndirectC
                                VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 
 void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp);
+
+VkResult lvp_buffer_bind_sparse(struct lvp_device *device,
+                                struct lvp_queue *queue,
+                                VkSparseBufferMemoryBindInfo *bind);
+VkResult lvp_image_bind_opaque_sparse(struct lvp_device *device,
+                                      struct lvp_queue *queue,
+                                      VkSparseImageOpaqueMemoryBindInfo *bind);
+VkResult lvp_image_bind_sparse(struct lvp_device *device,
+                               struct lvp_queue *queue,
+                               VkSparseImageMemoryBindInfo *bind);
 
 VkResult lvp_execute_cmds(struct lvp_device *device,
                           struct lvp_queue *queue,

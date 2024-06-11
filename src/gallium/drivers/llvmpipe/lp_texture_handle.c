@@ -122,7 +122,7 @@ llvmpipe_create_image_handle(struct pipe_context *pctx, const struct pipe_image_
    if (view->u.tex.first_layer == view->u.tex.last_layer) {
       if (state.target == PIPE_TEXTURE_1D_ARRAY)
          state.target = PIPE_TEXTURE_1D;
-      else if (state.target == PIPE_TEXTURE_2D_ARRAY || state.target == PIPE_TEXTURE_3D)
+      else if (state.target == PIPE_TEXTURE_2D_ARRAY || (state.target == PIPE_TEXTURE_3D && !state.tiled))
          state.target = PIPE_TEXTURE_2D;
       else if (state.target == PIPE_TEXTURE_CUBE_ARRAY)
          state.target = PIPE_TEXTURE_CUBE;

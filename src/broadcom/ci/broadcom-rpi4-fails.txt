@@ -549,3 +549,75 @@ spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 8,Fai
 # This seems to be a Vulkan Loader issue. Can be fixed by compiling the loader from the Github repo.
 dEQP-VK.api.get_device_proc_addr.non_enabled,Fail
 dEQP-VK.api.version_check.unavailable_entry_points,Fail
+
+# Piglit OpenCL tests
+api@clbuildprogram,Fail
+api@clcompileprogram,Fail
+api@clgetcommandqueueinfo,Fail
+api@clgetdeviceinfo,Fail
+api@clgetextensionfunctionaddressforplatform,Fail
+api@clgetkernelarginfo,Fail
+api@cllinkprogram,Fail
+program@build@include-directories,Fail
+program@build@vector-data-types,Fail
+program@execute@amdgcn-f32-inline-immediates,Fail
+program@execute@amdgcn-f32-inline-immediates@add integer 64,Fail
+program@execute@amdgcn.sign_extend_inreg,Crash
+program@execute@builtin@builtin-float-nextafter-1.0.generated,Fail
+program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float1,Fail
+program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float16,Fail
+program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float2,Fail
+program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float4,Fail
+program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float8,Fail
+program@execute@builtin@builtin-float-pow-1.0.generated,Fail
+program@execute@builtin@builtin-float-pow-1.0.generated@pow float16,Fail
+program@execute@builtin@builtin-float-pow-1.0.generated@pow float4,Fail
+program@execute@builtin@builtin-float-pow-1.0.generated@pow float8,Fail
+program@execute@builtin@builtin-float-powr-1.0.generated,Fail
+program@execute@builtin@builtin-float-powr-1.0.generated@powr float16,Fail
+program@execute@builtin@builtin-float-powr-1.0.generated@powr float4,Fail
+program@execute@builtin@builtin-float-sign-1.0.generated,Fail
+program@execute@builtin@builtin-float-sign-1.0.generated@sign float1,Fail
+program@execute@builtin@builtin-float-sign-1.0.generated@sign float16,Fail
+program@execute@builtin@builtin-float-sign-1.0.generated@sign float2,Fail
+program@execute@builtin@builtin-float-sign-1.0.generated@sign float4,Fail
+program@execute@builtin@builtin-float-sign-1.0.generated@sign float8,Fail
+program@execute@builtin@builtin-long-abs-1.0.generated,Crash
+program@execute@builtin@builtin-long-clamp-1.1.generated,Crash
+program@execute@builtin@builtin-long-mad_hi-1.0.generated,Crash
+program@execute@builtin@builtin-long-mad_sat-1.0.generated,Crash
+program@execute@builtin@builtin-long-max-1.1.generated,Crash
+program@execute@builtin@builtin-long-min-1.1.generated,Crash
+program@execute@builtin@builtin-long-mul_hi-1.0.generated,Crash
+program@execute@builtin@builtin-long-popcount-1.2.generated,Fail
+program@execute@builtin@builtin-long-popcount-1.2.generated@popcount long1,Fail
+program@execute@builtin@builtin-long-popcount-1.2.generated@popcount long16,Fail
+program@execute@builtin@builtin-long-popcount-1.2.generated@popcount long2,Fail
+program@execute@builtin@builtin-long-popcount-1.2.generated@popcount long4,Fail
+program@execute@builtin@builtin-long-popcount-1.2.generated@popcount long8,Fail
+program@execute@builtin@builtin-ulong-clamp-1.1.generated,Crash
+program@execute@builtin@builtin-ulong-mad_hi-1.0.generated,Crash
+program@execute@builtin@builtin-ulong-mad_sat-1.0.generated,Crash
+program@execute@builtin@builtin-ulong-max-1.1.generated,Crash
+program@execute@builtin@builtin-ulong-min-1.1.generated,Crash
+program@execute@builtin@builtin-ulong-mul_hi-1.0.generated,Crash
+program@execute@builtin@builtin-ulong-popcount-1.2.generated,Fail
+program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong1,Fail
+program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong16,Fail
+program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong2,Fail
+program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong4,Fail
+program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong8,Fail
+program@execute@calls-large-struct,Fail
+program@execute@calls-large-struct@byval struct,Fail
+program@execute@calls-struct,Fail
+program@execute@calls-struct@regs struct,Fail
+program@execute@calls-struct@small struct in regs,Fail
+program@execute@global-offset,Fail
+program@execute@global-offset@3d- input dependent,Fail
+program@execute@scalar-arithmetic-long,Crash
+program@execute@scalar-arithmetic-ulong,Crash
+program@execute@scalar-comparison-long,Crash
+program@execute@scalar-comparison-ulong,Crash
+program@execute@scalar-load-long,Crash
+program@execute@scalar-load-ulong,Crash
+program@run kernel with max work item sizes,Fail

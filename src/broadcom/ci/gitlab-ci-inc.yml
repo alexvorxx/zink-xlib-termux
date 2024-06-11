@@ -77,6 +77,19 @@
         *v3d_file_list
       when: manual
 
+.v3d-rusticl-rules:
+  stage: broadcom
+  rules:
+    - !reference [.v3d-rules, rules]
+    - !reference [.rusticl-rules, rules]
+
+.v3d-rusticl-manual-rules:
+  stage: broadcom
+  retry: !reference [.scheduled_pipeline-rules, retry]
+  rules:
+    - !reference [.v3d-manual-rules, rules]
+    - !reference [.rusticl-manual-rules, rules]
+
 .v3dv-rules:
   stage: broadcom
   rules:

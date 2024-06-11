@@ -46,6 +46,15 @@ v3d-rpi4-gl-full:arm64:
     TEST_PHASE_TIMEOUT: 40
     DEQP_FRACTION: 1
 
+v3d-rpi4-rusticl:arm64:
+  extends:
+    - .igalia-bcm2711-rpi-4:arm64
+    - .broadcom-test:arm64
+    - .v3d-rusticl-manual-rules
+  timeout: 30m  # base run time = 17min test, 19min total
+  variables:
+    DEQP_SUITE: broadcom-rpi4-cl
+    TEST_PHASE_TIMEOUT: 25
 
 v3d-rpi4-traces:arm64:
   extends:

@@ -146,7 +146,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
 
       unsigned bo_size = GENX(panfrost_estimate_texture_payload_size)(&pview);
 
-      view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
+      view->bo = panvk_priv_bo_create(device, bo_size, 0,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 
       struct panfrost_ptr ptr = {
@@ -221,6 +221,6 @@ panvk_per_arch(DestroyImageView)(VkDevice _device, VkImageView _view,
    if (!view)
       return;
 
-   panvk_priv_bo_destroy(view->bo, NULL);
+   panvk_priv_bo_unref(view->bo);
    vk_image_view_destroy(&device->vk, pAllocator, &view->vk);
 }

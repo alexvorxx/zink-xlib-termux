@@ -32,7 +32,7 @@ void
 panvk_bo_pool_cleanup(struct panvk_bo_pool *bo_pool)
 {
    util_dynarray_foreach(&bo_pool->free_bos, struct panvk_priv_bo *, bo)
-      panvk_priv_bo_destroy(*bo, NULL);
+      panvk_priv_bo_unref(*bo);
 
    util_dynarray_fini(&bo_pool->free_bos);
 }
@@ -68,7 +68,7 @@ panvk_pool_alloc_backing(struct panvk_pool *pool, size_t bo_sz)
        * flags to this function and keep the read/write,
        * fragment/vertex+tiler pools separate.
        */
-      bo = panvk_priv_bo_create(pool->dev, bo_sz, pool->create_flags, NULL,
+      bo = panvk_priv_bo_create(pool->dev, bo_sz, pool->create_flags,
                                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    }
 
@@ -139,11 +139,11 @@ panvk_pool_reset(struct panvk_pool *pool)
              num_bos * sizeof(struct panvk_priv_bo *));
    } else {
       util_dynarray_foreach(&pool->bos, struct panvk_priv_bo *, bo)
-         panvk_priv_bo_destroy(*bo, NULL);
+         panvk_priv_bo_unref(*bo);
    }
 
    util_dynarray_foreach(&pool->big_bos, struct panvk_priv_bo *, bo)
-      panvk_priv_bo_destroy(*bo, NULL);
+      panvk_priv_bo_unref(*bo);
 
    util_dynarray_clear(&pool->bos);
    util_dynarray_clear(&pool->big_bos);

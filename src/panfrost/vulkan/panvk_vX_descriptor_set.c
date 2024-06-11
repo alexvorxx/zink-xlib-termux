@@ -220,7 +220,7 @@ panvk_destroy_descriptor_pool(struct panvk_device *device,
 
    if (pool->desc_bo) {
       util_vma_heap_finish(&pool->desc_heap);
-      panvk_priv_bo_destroy(pool->desc_bo, NULL);
+      panvk_priv_bo_unref(pool->desc_bo);
    }
 
    vk_object_free(&device->vk, pAllocator, pool);
@@ -262,7 +262,7 @@ panvk_per_arch(CreateDescriptorPool)(
       desc_count += pool->max_sets;
 
       uint64_t pool_size = desc_count * PANVK_DESCRIPTOR_SIZE;
-      pool->desc_bo = panvk_priv_bo_create(device, pool_size, 0, NULL,
+      pool->desc_bo = panvk_priv_bo_create(device, pool_size, 0,
                                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (!pool->desc_bo) {
          panvk_destroy_descriptor_pool(device, pAllocator, pool);

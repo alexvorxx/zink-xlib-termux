@@ -131,11 +131,11 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
    device->tiler_heap = panvk_priv_bo_create(
       device, 128 * 1024 * 1024,
       PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
-      &device->vk.alloc, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-
-   device->sample_positions = panvk_priv_bo_create(
-      device, panfrost_sample_positions_buffer_size(), 0, &device->vk.alloc,
       VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+
+   device->sample_positions =
+      panvk_priv_bo_create(device, panfrost_sample_positions_buffer_size(), 0,
+                           VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    panfrost_upload_sample_positions(device->sample_positions->addr.host);
 
    vk_device_set_drm_fd(&device->vk, device->kmod.dev->fd);
@@ -182,8 +182,8 @@ fail:
 
    panvk_per_arch(meta_cleanup)(device);
    panvk_per_arch(blend_shader_cache_cleanup)(device);
-   panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
-   panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
+   panvk_priv_bo_unref(device->tiler_heap);
+   panvk_priv_bo_unref(device->sample_positions);
    pan_kmod_vm_destroy(device->kmod.vm);
    pan_kmod_dev_destroy(device->kmod.dev);
 
@@ -207,8 +207,8 @@ panvk_per_arch(destroy_device)(struct panvk_device *device,
 
    panvk_per_arch(meta_cleanup)(device);
    panvk_per_arch(blend_shader_cache_cleanup)(device);
-   panvk_priv_bo_destroy(device->tiler_heap, &device->vk.alloc);
-   panvk_priv_bo_destroy(device->sample_positions, &device->vk.alloc);
+   panvk_priv_bo_unref(device->tiler_heap);
+   panvk_priv_bo_unref(device->sample_positions);
    pan_kmod_vm_destroy(device->kmod.vm);
 
    if (device->debug.decode_ctx)

@@ -211,15 +211,6 @@ impl RegAllocator {
         self.used.get(reg.try_into().unwrap())
     }
 
-    fn reg_range_is_unused(&self, reg: u32, comps: u8) -> bool {
-        for c in 0..u32::from(comps) {
-            if self.reg_is_used(reg + c) {
-                return false;
-            }
-        }
-        true
-    }
-
     pub fn try_get_reg(&self, ssa: SSAValue) -> Option<u32> {
         self.ssa_reg.get(&ssa).cloned()
     }
@@ -276,8 +267,18 @@ impl RegAllocator {
         self.used.insert(reg_usize);
     }
 
-    pub fn try_find_unused_reg_range(
+    fn reg_range_is_unset(set: &BitSet, reg: u32, comps: u8) -> bool {
+        for c in 0..u32::from(comps) {
+            if set.get((reg + c).try_into().unwrap()) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn try_find_unset_reg_range(
         &self,
+        set: &BitSet,
         start_reg: u32,
         align: u32,
         comps: u8,
@@ -286,8 +287,7 @@ impl RegAllocator {
 
         let mut next_reg = start_reg;
         loop {
-            let reg: u32 = self
-                .used
+            let reg: u32 = set
                 .next_unset(usize::try_from(next_reg).unwrap())
                 .try_into()
                 .unwrap();
@@ -301,12 +301,21 @@ impl RegAllocator {
                 return None;
             }
 
-            if self.reg_range_is_unused(reg, comps) {
+            if Self::reg_range_is_unset(set, reg, comps) {
                 return Some(reg);
             }
 
             next_reg = reg + align;
         }
+    }
+
+    pub fn try_find_unused_reg_range(
+        &self,
+        start_reg: u32,
+        align: u32,
+        comps: u8,
+    ) -> Option<u32> {
+        self.try_find_unset_reg_range(&self.used, start_reg, align, comps)
     }
 
     pub fn alloc_scalar(
@@ -412,12 +421,7 @@ impl<'a> PinnedRegAllocator<'a> {
     }
 
     fn reg_range_is_unpinned(&self, reg: u32, comps: u8) -> bool {
-        for c in 0..u32::from(comps) {
-            if self.reg_is_pinned(reg + c) {
-                return false;
-            }
-        }
-        true
+        RegAllocator::reg_range_is_unset(&self.pinned, reg, comps)
     }
 
     fn assign_pin_reg(&mut self, ssa: SSAValue, reg: u32) -> RegRef {
@@ -440,29 +444,8 @@ impl<'a> PinnedRegAllocator<'a> {
         align: u32,
         comps: u8,
     ) -> Option<u32> {
-        let mut next_reg = start_reg;
-        loop {
-            let reg: u32 = self
-                .pinned
-                .next_unset(usize::try_from(next_reg).unwrap())
-                .try_into()
-                .unwrap();
-
-            // Ensure we're properly aligned
-            let reg = reg.next_multiple_of(align);
-
-            // Ensure we're in-bounds. This also serves as a check to ensure
-            // that u8::try_from(reg + i) will succeed.
-            if reg > self.ra.num_regs - u32::from(comps) {
-                return None;
-            }
-
-            if self.reg_range_is_unpinned(reg, comps) {
-                return Some(reg);
-            }
-
-            next_reg = reg + align;
-        }
+        self.ra
+            .try_find_unset_reg_range(&self.pinned, start_reg, align, comps)
     }
 
     pub fn evict_ssa(&mut self, ssa: SSAValue, old_reg: u32) {

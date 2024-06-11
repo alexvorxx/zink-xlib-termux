@@ -208,8 +208,8 @@ impl CopyPropPass {
                     src.src_mod = entry.src.src_mod.modify(src.src_mod);
                 }
                 CopyPropEntry::Prmt(entry) => {
-                    // Turn the swizzle into a permute. For F16, we use Xx to indicate
-                    // that it only takes the bottom 16 bits.
+                    // Turn the swizzle into a permute. For F16, we use Xx to
+                    // indicate that it only takes the bottom 16 bits.
                     let swizzle_prmt: [u8; 4] = match src_type {
                         SrcType::F16 => [0, 1, 0, 1],
                         SrcType::F16v2 => match src.src_swizzle {
@@ -234,8 +234,8 @@ impl CopyPropPass {
 
                         let target_src_idx = val / 4;
 
-                        // Ensure we are using the same source, we cannot combine
-                        // multiple sources.
+                        // Ensure we are using the same source, we cannot
+                        // combine multiple sources.
                         if entry_src_idx.is_none() {
                             entry_src_idx = Some(target_src_idx);
                         } else if entry_src_idx != Some(target_src_idx) {

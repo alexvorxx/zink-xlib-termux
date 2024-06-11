@@ -35,6 +35,7 @@
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
 
+#include "util/detect_os.h"
 #include "util/simple_mtx.h"
 #include "util/u_inlines.h"
 #include "util/u_cpu_detect.h"
@@ -42,6 +43,10 @@
 #include "util/u_math.h"
 #include "util/u_memory.h"
 #include "util/u_transfer.h"
+
+#if DETECT_OS_POSIX
+#include "util/os_mman.h"
+#endif
 
 #include "lp_context.h"
 #include "lp_flush.h"
@@ -1101,22 +1106,60 @@ llvmpipe_memory_barrier(struct pipe_context *pipe,
 
 
 static struct pipe_memory_allocation *
-llvmpipe_allocate_memory(struct pipe_screen *screen, uint64_t size)
+llvmpipe_allocate_memory(struct pipe_screen *_screen, uint64_t size)
 {
+   struct llvmpipe_screen *screen = llvmpipe_screen(_screen);
    struct llvmpipe_memory_allocation *mem = CALLOC_STRUCT(llvmpipe_memory_allocation);
    uint64_t alignment;
    if (!os_get_page_size(&alignment))
       alignment = 256;
-   mem->cpu_addr = os_malloc_aligned(size, alignment);
+
+   mem->fd = screen->fd_mem_alloc;
+   mem->size = align64(size, alignment);
+
+#if DETECT_OS_LINUX
+   mem->cpu_addr = MAP_FAILED;
+
+   mtx_lock(&screen->mem_mutex);
+
+   mem->offset = util_vma_heap_alloc(&screen->mem_heap, mem->size, alignment);
+
+   if (mem->offset + mem->size > screen->mem_file_size) {
+      /* expand the anonymous file */
+      screen->mem_file_size = mem->offset + mem->size;
+      ftruncate(screen->fd_mem_alloc, screen->mem_file_size);
+   }
+
+   mtx_unlock(&screen->mem_mutex);
+#else
+   mem->cpu_addr = malloc(mem->size);
+#endif
+
    return (struct pipe_memory_allocation *)mem;
 }
 
 
 static void
-llvmpipe_free_memory(struct pipe_screen *screen,
+llvmpipe_free_memory(struct pipe_screen *pscreen,
                      struct pipe_memory_allocation *pmem)
 {
-   os_free_aligned(pmem);
+   struct llvmpipe_screen *screen = llvmpipe_screen(pscreen);
+   struct llvmpipe_memory_allocation *mem = (struct llvmpipe_memory_allocation *)pmem;
+
+   if (mem->fd) {
+      mtx_lock(&screen->mem_mutex);
+      util_vma_heap_free(&screen->mem_heap, mem->offset, mem->size);
+      mtx_unlock(&screen->mem_mutex);
+   }
+
+#if DETECT_OS_LINUX
+   if (mem->cpu_addr != MAP_FAILED)
+      munmap(mem->cpu_addr, mem->size);
+#else
+   free(mem->cpu_addr);
+#endif
+
+   FREE(mem);
 }
 
 
@@ -1300,6 +1343,17 @@ llvmpipe_map_memory(struct pipe_screen *screen,
                     struct pipe_memory_allocation *pmem)
 {
    struct llvmpipe_memory_allocation *mem = (struct llvmpipe_memory_allocation *)pmem;
+
+#if DETECT_OS_LINUX
+   if (mem->cpu_addr != MAP_FAILED)
+      return mem->cpu_addr;
+
+   /* create a "CPU" mapping */
+   mem->cpu_addr = mmap(NULL, mem->size, PROT_READ|PROT_WRITE, MAP_SHARED,
+                        mem->fd, mem->offset);
+   assert(mem->cpu_addr != MAP_FAILED);
+#endif
+
    return mem->cpu_addr;
 }
 

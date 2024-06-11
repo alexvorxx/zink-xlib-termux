@@ -126,6 +126,8 @@ struct llvmpipe_transfer
 
 struct llvmpipe_memory_allocation
 {
+   int fd;
+   uint64_t offset;
    void *cpu_addr;
    uint64_t size;
    enum llvmpipe_memory_fd_type type;

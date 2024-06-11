@@ -170,6 +170,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .KHR_maintenance2                     = true,
       .KHR_maintenance3                     = true,
       .KHR_maintenance4                     = true,
+      .KHR_maintenance5                     = true,
       .KHR_multiview                        = true,
       .KHR_pipeline_executable_properties   = true,
       .KHR_separate_depth_stencil_layouts   = true,
@@ -496,6 +497,9 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_KHR_dynamic_rendering */
       .dynamicRendering = true,
+
+      /* VK_KHR_maintenance5 */
+      .maintenance5 = true,
 
 #ifdef V3DV_USE_WSI_PLATFORM
       /* VK_EXT_swapchain_maintenance1 */
@@ -1215,6 +1219,14 @@ get_device_properties(const struct v3dv_physical_device *device,
       .requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT,
 
       .subgroupSupportedOperations = subgroup_ops,
+
+      /* VK_KHR_maintenance5 */
+      .earlyFragmentMultisampleCoverageAfterSampleCounting = true,
+      .earlyFragmentSampleMaskTestBeforeSampleCounting = true,
+      .depthStencilSwizzleOneSupport = true,
+      .polygonModePointSize = true,
+      .nonStrictSinglePixelWideLinesUseParallelogram = true,
+      .nonStrictWideLinesUseParallelogram = true,
    };
 
    /* VkPhysicalDeviceShaderModuleIdentifierPropertiesEXT */

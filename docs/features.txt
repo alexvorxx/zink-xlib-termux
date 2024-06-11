@@ -524,7 +524,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_KHR_index_type_uint8                               DONE (anv, nvk, pvr, radv, tu, v3dv)
   VK_KHR_line_rasterization                             DONE (anv, nvk, radv, tu, v3dv)
   VK_KHR_load_store_op_none                             DONE (anv, nvk, radv, tu, v3dv)
-  VK_KHR_maintenance5                                   DONE (anv, lvp, nvk, radv, tu, vn)
+  VK_KHR_maintenance5                                   DONE (anv, lvp, nvk, radv, tu, v3dv, vn)
   VK_KHR_maintenance6                                   DONE (anv, lvp, nvk, radv, tu)
   VK_KHR_performance_query                              DONE (anv, radv/gfx10.3+, tu, v3dv)
   VK_KHR_pipeline_executable_properties                 DONE (anv, nvk, panvk, hasvk, radv, tu, v3dv)

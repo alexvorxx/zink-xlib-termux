@@ -5816,14 +5816,13 @@ impl BasicBlock {
         }
     }
 
-    fn map_instrs_priv(
+    pub fn map_instrs(
         &mut self,
-        map: &mut impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
-        ssa_alloc: &mut SSAValueAllocator,
+        mut map: impl FnMut(Box<Instr>) -> MappedInstrs,
     ) {
         let mut instrs = Vec::new();
         for i in self.instrs.drain(..) {
-            match map(i, ssa_alloc) {
+            match map(i) {
                 MappedInstrs::None => (),
                 MappedInstrs::One(i) => {
                     instrs.push(i);
@@ -5940,20 +5939,14 @@ pub struct Function {
 }
 
 impl Function {
-    fn map_instrs_priv(
-        &mut self,
-        map: &mut impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
-    ) {
-        for b in &mut self.blocks {
-            b.map_instrs_priv(map, &mut self.ssa_alloc);
-        }
-    }
-
     pub fn map_instrs(
         &mut self,
         mut map: impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
     ) {
-        self.map_instrs_priv(&mut map);
+        let alloc = &mut self.ssa_alloc;
+        for b in &mut self.blocks {
+            b.map_instrs(|i| map(i, alloc));
+        }
     }
 }
 
@@ -6227,7 +6220,7 @@ impl Shader {
         mut map: impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
     ) {
         for f in &mut self.functions {
-            f.map_instrs_priv(&mut map);
+            f.map_instrs(&mut map);
         }
     }
 

@@ -21,6 +21,7 @@
  *  IN THE SOFTWARE.
  */
 
+#include "dev/intel_debug.h"
 #include "isl_gfx20.h"
 #include "isl_priv.h"
 
@@ -221,6 +222,19 @@ isl_gfx20_choose_image_alignment_el(const struct isl_device *dev,
        *      is always Linear.
        */
       *image_align_el = isl_extent3d(128 * 8 / fmtl->bpb, 4, 1);
+
+      /* WA_22018390030:
+       *
+       * Don't choose VALIGN_4 on Xe2 for color, non-volumetric, Tile4 surfaces
+       * which can be fast cleared. We choose the next smallest option instead,
+       * VALIGN_8.
+       */
+      if (!INTEL_DEBUG(DEBUG_NO_FAST_CLEAR) &&
+          intel_needs_workaround(dev->info, 22018390030) &&
+          tiling == ISL_TILING_4 &&
+          info->dim != ISL_SURF_DIM_3D) {
+         image_align_el->h = 8;
+      }
    } else if (fmtl->bpb >= 64) {
       assert(fmtl->bpb == 64 || fmtl->bpb == 128);
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,

@@ -1079,6 +1079,10 @@ d3d12_video_encoder_disable_rc_qualitylevels(struct D3D12EncodeRateControlState 
 {
    rcState.m_Flags &= ~D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_QUALITY_VS_SPEED;
    switch (rcState.m_Mode) {
+      case D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CQP:
+      {
+         rcState.m_Config.m_Configuration_CQP1.QualityVsSpeed = 0;
+      } break;
       case D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR:
       {
          rcState.m_Config.m_Configuration_CBR1.QualityVsSpeed = 0;

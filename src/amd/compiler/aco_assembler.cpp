@@ -628,44 +628,41 @@ emit_mtbuf_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction
    bool glc = mtbuf.cache.value & ac_glc;
    bool slc = mtbuf.cache.value & ac_slc;
    bool dlc = mtbuf.cache.value & ac_dlc;
-
    uint32_t img_format = ac_get_tbuffer_format(ctx.gfx_level, mtbuf.dfmt, mtbuf.nfmt);
-
-   uint32_t encoding = (0b111010 << 26);
    assert(img_format <= 0x7F);
    assert(!dlc || ctx.gfx_level >= GFX10);
-   if (ctx.gfx_level >= GFX11) {
-      encoding |= (slc ? 1 : 0) << 12;
-      encoding |= (dlc ? 1 : 0) << 13;
-   } else {
+
+   uint32_t encoding = (0b111010 << 26);
+   encoding |= (img_format << 19); /* Handles both the GFX10 FORMAT and the old NFMT+DFMT */
+   if (ctx.gfx_level >= GFX10 && ctx.gfx_level < GFX11) {
       /* DLC bit replaces one bit of the OPCODE on GFX10 */
+      encoding |= (opcode & 0x07) << 16; /* 3 LSBs of 4-bit OPCODE */
       encoding |= (dlc ? 1 : 0) << 15;
+   } else {
+      encoding |= opcode << 15;
    }
-   if (ctx.gfx_level <= GFX10_3) {
+   encoding |= (glc ? 1 : 0) << 14;
+   if (ctx.gfx_level >= GFX11) {
+      encoding |= (dlc ? 1 : 0) << 13;
+      encoding |= (slc ? 1 : 0) << 12;
+   } else {
       encoding |= (mtbuf.idxen ? 1 : 0) << 13;
       encoding |= (mtbuf.offen ? 1 : 0) << 12;
    }
-   encoding |= (glc ? 1 : 0) << 14;
    encoding |= 0x0FFF & mtbuf.offset;
-   encoding |= (img_format << 19); /* Handles both the GFX10 FORMAT and the old NFMT+DFMT */
-
-   if (ctx.gfx_level == GFX8 || ctx.gfx_level == GFX9 || ctx.gfx_level >= GFX11) {
-      encoding |= opcode << 15;
-   } else {
-      encoding |= (opcode & 0x07) << 16; /* 3 LSBs of 4-bit OPCODE */
-   }
-
    out.push_back(encoding);
-   encoding = 0;
 
+   encoding = 0;
    encoding |= reg(ctx, instr->operands[2]) << 24;
    if (ctx.gfx_level >= GFX11) {
-      encoding |= (mtbuf.tfe ? 1 : 0) << 21;
-      encoding |= (mtbuf.offen ? 1 : 0) << 22;
       encoding |= (mtbuf.idxen ? 1 : 0) << 23;
+      encoding |= (mtbuf.offen ? 1 : 0) << 22;
+      encoding |= (mtbuf.tfe ? 1 : 0) << 21;
    } else {
       encoding |= (mtbuf.tfe ? 1 : 0) << 23;
       encoding |= (slc ? 1 : 0) << 22;
+      if (ctx.gfx_level >= GFX10)
+         encoding |= (((opcode & 0x08) >> 3) << 21); /* MSB of 4-bit OPCODE */
    }
    encoding |= (reg(ctx, instr->operands[0]) >> 2) << 16;
    if (instr->operands.size() > 3)
@@ -673,11 +670,6 @@ emit_mtbuf_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction
    else
       encoding |= reg(ctx, instr->definitions[0], 8) << 8;
    encoding |= reg(ctx, instr->operands[1], 8);
-
-   if (ctx.gfx_level >= GFX10 && ctx.gfx_level < GFX11) {
-      encoding |= (((opcode & 0x08) >> 3) << 21); /* MSB of 4-bit OPCODE */
-   }
-
    out.push_back(encoding);
 }
 

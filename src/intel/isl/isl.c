@@ -37,6 +37,7 @@
 #include "isl_gfx8.h"
 #include "isl_gfx9.h"
 #include "isl_gfx12.h"
+#include "isl_gfx20.h"
 #include "isl_priv.h"
 
 isl_genX_declare_get_func(surf_fill_state_s)
@@ -1059,7 +1060,9 @@ isl_surf_choose_tiling(const struct isl_device *dev,
       return true;
    }
 
-   if (ISL_GFX_VERX10(dev) >= 125) {
+   if (ISL_GFX_VERX10(dev) >= 200) {
+      isl_gfx20_filter_tiling(dev, info, &tiling_flags);
+   } else if (ISL_GFX_VERX10(dev) >= 125) {
       isl_gfx125_filter_tiling(dev, info, &tiling_flags);
    } else if (ISL_GFX_VER(dev) >= 6) {
       isl_gfx6_filter_tiling(dev, info, &tiling_flags);
@@ -1393,7 +1396,10 @@ isl_choose_image_alignment_el(const struct isl_device *dev,
       return;
    }
 
-   if (ISL_GFX_VERX10(dev) >= 125) {
+   if (ISL_GFX_VERX10(dev) >= 200) {
+      isl_gfx20_choose_image_alignment_el(dev, info, tiling, dim_layout,
+                                           msaa_layout, image_align_el);
+   } else if (ISL_GFX_VERX10(dev) >= 125) {
       isl_gfx125_choose_image_alignment_el(dev, info, tiling, dim_layout,
                                            msaa_layout, image_align_el);
    } else if (ISL_GFX_VER(dev) >= 12) {

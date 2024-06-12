@@ -165,6 +165,7 @@ init_vcn_decoder(struct radv_physical_device *pdev)
    case VCN_2_5_0:
    case VCN_2_6_0:
    case VCN_3_0_0:
+   case VCN_3_0_2:
    case VCN_3_0_16:
    case VCN_3_0_33:
    case VCN_3_1_1:

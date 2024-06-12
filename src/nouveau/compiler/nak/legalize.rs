@@ -997,6 +997,10 @@ fn legalize_instr(
                         copy_ssa_ref(b, vec, vec.file().unwrap().to_warp());
                     }
                 }
+                SrcRef::CBuf(CBufRef {
+                    buf: CBuf::BindlessSSA(handle),
+                    ..
+                }) => assert!(pinned.contains(handle)),
                 _ => (),
             }
         }

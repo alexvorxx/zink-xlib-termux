@@ -1667,6 +1667,37 @@ is_conversion_to_8bit(nir_op op)
 }
 
 static agx_instr *
+agx_fminmax_to(agx_builder *b, agx_index dst, agx_index s0, agx_index s1,
+               nir_alu_instr *alu)
+{
+   bool fmax = alu->op == nir_op_fmax;
+   enum agx_fcond fcond = fmax ? AGX_FCOND_GTN : AGX_FCOND_LTN;
+   enum agx_icond icond = fmax ? AGX_ICOND_SGT : AGX_ICOND_SLT;
+
+   /* Calculate min/max with the appropriate hardware instruction */
+   agx_index tmp = agx_fcmpsel(b, s0, s1, s0, s1, fcond);
+
+   /* The hardware ltn/gtn modes implement IEEE 754 NaN rules. Unfortunately,
+    * they do not respect signed zeros, causing conformance fails.  To
+    * workaround, when both operands are zero, we instead use integer min/max to
+    * get the appropriate sign on the result. We detect that case by checking
+    * for float equality of the inputs: signed zero is the only case where the
+    * floats are equal but the integer values are not, so this works for all
+    * cases. It's annoying that we need 3 SCIB instructions instead of 1, but
+    * hopefully apps don't ask for signed zero preserve if they don't need it.
+    */
+   if (nir_is_float_control_signed_zero_preserve(alu->fp_fast_math,
+                                                 alu->def.bit_size)) {
+
+      agx_index iminmax = agx_icmpsel(b, s0, s1, s0, s1, icond);
+      tmp = agx_fcmpsel(b, s0, s1, iminmax, tmp, AGX_FCOND_EQ);
+   }
+
+   /* Flush denorms, as cmpsel will not. */
+   return agx_fadd_to(b, dst, tmp, agx_negzero());
+}
+
+static agx_instr *
 agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
 {
    unsigned srcs = nir_op_infos[instr->op].num_inputs;
@@ -1773,16 +1804,10 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
    case nir_op_fneg:
       return agx_fmov_to(b, dst, agx_neg(s0));
 
-   case nir_op_fmin: {
-      agx_index tmp = agx_fcmpsel(b, s0, s1, s0, s1, AGX_FCOND_LTN);
-      /* flush denorms */
-      return agx_fadd_to(b, dst, tmp, agx_negzero());
-   }
-   case nir_op_fmax: {
-      agx_index tmp = agx_fcmpsel(b, s0, s1, s0, s1, AGX_FCOND_GTN);
-      /* flush denorms */
-      return agx_fadd_to(b, dst, tmp, agx_negzero());
-   }
+   case nir_op_fmin:
+   case nir_op_fmax:
+      return agx_fminmax_to(b, dst, s0, s1, instr);
+
    case nir_op_imin:
       return agx_icmpsel_to(b, dst, s0, s1, s0, s1, AGX_ICOND_SLT);
    case nir_op_imax:

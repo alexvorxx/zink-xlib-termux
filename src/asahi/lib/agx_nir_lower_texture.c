@@ -12,6 +12,7 @@
 #include "agx_nir_passes.h"
 #include "glsl_types.h"
 #include "libagx_shaders.h"
+#include "nir_builder_opcodes.h"
 #include "nir_builtin_builder.h"
 #include "nir_intrinsics.h"
 #include "nir_intrinsics_indices.h"
@@ -622,12 +623,12 @@ lower_images(nir_builder *b, nir_intrinsic_instr *intr, UNUSED void *data)
 }
 
 /*
- * Map out-of-bounds storage texel buffer accesses to -1 indices, which will
- * become an out-of-bounds hardware access. This gives cheap robustness2.
+ * Map out-of-bounds storage texel buffer accesses and multisampled image stores
+ * to -1 indices, which will become an out-of-bounds hardware access. This gives
+ * cheap robustness2.
  */
 static bool
-lower_buffer_image_robustness(nir_builder *b, nir_intrinsic_instr *intr,
-                              UNUSED void *data)
+lower_robustness(nir_builder *b, nir_intrinsic_instr *intr, UNUSED void *data)
 {
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -639,17 +640,43 @@ lower_buffer_image_robustness(nir_builder *b, nir_intrinsic_instr *intr,
       return false;
    }
 
-   if (nir_intrinsic_image_dim(intr) != GLSL_SAMPLER_DIM_BUF)
+   enum glsl_sampler_dim dim = nir_intrinsic_image_dim(intr);
+   bool array = nir_intrinsic_image_array(intr);
+   unsigned size_components = nir_image_intrinsic_coord_components(intr);
+
+   nir_def *deref = intr->src[0].ssa;
+   nir_def *coord = intr->src[1].ssa;
+
+   if (dim != GLSL_SAMPLER_DIM_BUF &&
+       !(dim == GLSL_SAMPLER_DIM_MS &&
+         intr->intrinsic == nir_intrinsic_image_deref_store))
       return false;
 
+   /* Bounds check the coordinate */
    nir_def *size =
-      nir_image_deref_size(b, 1, 32, intr->src[0].ssa, nir_imm_int(b, 0),
-                           .image_dim = GLSL_SAMPLER_DIM_BUF);
+      nir_image_deref_size(b, size_components, 32, deref, nir_imm_int(b, 0),
+                           .image_dim = dim, .image_array = array);
+   nir_def *oob = nir_bany(b, nir_uge(b, coord, size));
 
-   nir_def *x = nir_channel(b, intr->src[1].ssa, 0);
-   nir_def *x_ = nir_bcsel(b, nir_ult(b, x, size), x, nir_imm_int(b, -1));
+   /* Bounds check the sample */
+   if (dim == GLSL_SAMPLER_DIM_MS) {
+      nir_def *samples = nir_image_deref_samples(b, 32, deref, .image_dim = dim,
+                                                 .image_array = array);
 
-   nir_src_rewrite(&intr->src[1], nir_pad_vec4(b, x_));
+      oob = nir_ior(b, oob, nir_uge(b, intr->src[2].ssa, samples));
+   }
+
+   /* Replace the last coordinate component with a large coordinate for
+    * out-of-bounds. We pick 65535 as it fits in 16-bit, and it is not signed as
+    * 32-bit so we won't get in-bounds coordinates for arrays due to two's
+    * complement wraparound. This ensures the resulting hardware coordinate is
+    * definitely out-of-bounds, giving hardware-level robustness2 behaviour.
+    */
+   unsigned c = size_components - 1;
+   nir_def *r =
+      nir_bcsel(b, oob, nir_imm_int(b, 65535), nir_channel(b, coord, c));
+
+   nir_src_rewrite(&intr->src[1], nir_vector_insert_imm(b, coord, r, c));
    return true;
 }
 
@@ -665,8 +692,7 @@ agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias)
 {
    bool progress = false;
 
-   NIR_PASS(progress, s, nir_shader_intrinsics_pass,
-            lower_buffer_image_robustness,
+   NIR_PASS(progress, s, nir_shader_intrinsics_pass, lower_robustness,
             nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    nir_lower_tex_options lower_tex_options = {

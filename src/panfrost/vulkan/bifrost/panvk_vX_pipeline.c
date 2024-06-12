@@ -67,32 +67,6 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
 
    pshader->base = shader;
    pshader->info = shader->info;
-   pshader->desc_info.used_set_mask = shader->desc_info.used_set_mask;
-
-   uint32_t copy_count = 0;
-   for (uint32_t i = 0; i < ARRAY_SIZE(shader->desc_info.others); i++) {
-      pshader->desc_info.others.count[i] = shader->desc_info.others[i].count;
-      copy_count += shader->desc_info.others[i].count;
-   }
-
-   if (copy_count) {
-      pshader->desc_info.others.map = panvk_pool_upload_aligned(
-         &dev->mempools.rw, shader->desc_info.others[0].map,
-         copy_count * sizeof(uint32_t), sizeof(uint32_t));
-   }
-
-   assert(shader->desc_info.dyn_ubos.count <
-          ARRAY_SIZE(pshader->desc_info.dyn_ubos.map));
-   pshader->desc_info.dyn_ubos.count = shader->desc_info.dyn_ubos.count;
-   memcpy(pshader->desc_info.dyn_ubos.map, shader->desc_info.dyn_ubos.map,
-          shader->desc_info.dyn_ubos.count *
-             sizeof(*pshader->desc_info.dyn_ubos.map));
-   assert(shader->desc_info.dyn_ssbos.count <
-          ARRAY_SIZE(pshader->desc_info.dyn_ssbos.map));
-   pshader->desc_info.dyn_ssbos.count = shader->desc_info.dyn_ssbos.count;
-   memcpy(pshader->desc_info.dyn_ssbos.map, shader->desc_info.dyn_ssbos.map,
-          shader->desc_info.dyn_ssbos.count *
-             sizeof(*pshader->desc_info.dyn_ssbos.map));
 
    if (stage_info->stage == VK_SHADER_STAGE_COMPUTE_BIT) {
       struct panvk_compute_pipeline *compute_pipeline =
@@ -121,7 +95,6 @@ cleanup_pipeline_shader(struct panvk_pipeline *pipeline,
    struct panvk_device *dev = to_panvk_device(pipeline->base.device);
 
    panvk_pool_free_mem(&dev->mempools.rw, pshader->rsd);
-   panvk_pool_free_mem(&dev->mempools.rw, pshader->desc_info.others.map);
 
    if (pshader->base != NULL)
       panvk_per_arch(shader_destroy)(dev, pshader->base, alloc);

@@ -150,8 +150,9 @@ panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
    sysvals->desc.fs_dyn_ssbos = fs_desc_state->dyn_ssbos;
 
    for (uint32_t i = 0; i < MAX_SETS; i++) {
-      uint32_t used_set_mask = pipeline->vs.desc_info.used_set_mask |
-                               pipeline->fs.desc_info.used_set_mask;
+      uint32_t used_set_mask =
+         pipeline->vs.base->desc_info.used_set_mask |
+         (pipeline->fs.base ? pipeline->fs.base->desc_info.used_set_mask : 0);
 
       if (used_set_mask & BITFIELD_BIT(i))
          sysvals->desc.sets[i] = desc_state->sets[i]->descs.dev;
@@ -648,7 +649,7 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
    const struct vk_vertex_input_state *vi =
       cmdbuf->vk.dynamic_graphics_state.vi;
    unsigned num_imgs =
-      pipeline->vs.desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG];
+      pipeline->vs.base->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG];
    unsigned num_vs_attribs = util_last_bit(vi->attributes_valid);
    unsigned num_vbs = util_last_bit(vi->bindings_valid);
    unsigned attrib_count =

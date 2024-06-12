@@ -36,9 +36,26 @@
 #include "nir.h"
 #include "nir_builder.h"
 
+struct panvk_shader_desc_map {
+   /* The index of the map serves as the table offset, the value of the
+    * entry is a COPY_DESC_HANDLE() encoding the source set, and the
+    * index of the descriptor in the set. */
+   uint32_t *map;
+
+   /* Number of entries in the map array. */
+   uint32_t count;
+};
+
+struct panvk_shader_desc_info {
+   uint32_t used_set_mask;
+   struct panvk_shader_desc_map dyn_ubos;
+   struct panvk_shader_desc_map dyn_ssbos;
+   struct panvk_shader_desc_map others[PANVK_BIFROST_DESC_TABLE_COUNT];
+};
+
 struct lower_desc_ctx {
    const struct panvk_descriptor_set_layout *set_layouts[MAX_SETS];
-   struct panvk_shader_desc_info *desc_info;
+   struct panvk_shader_desc_info desc_info;
    struct hash_table *ht;
    bool add_bounds_checks;
    nir_address_format ubo_addr_format;
@@ -166,14 +183,14 @@ shader_desc_idx(uint32_t set, uint32_t binding, VkDescriptorType subdesc_type,
    uint32_t *entry = he->data;
 
    if (bind_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-      map = &ctx->desc_info->dyn_ubos;
+      map = &ctx->desc_info.dyn_ubos;
    } else if (bind_layout->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
-      map = &ctx->desc_info->dyn_ssbos;
+      map = &ctx->desc_info.dyn_ssbos;
    } else {
       uint32_t table = desc_type_to_table_type(bind_layout->type, src.subdesc);
 
       assert(table < PANVK_BIFROST_DESC_TABLE_COUNT);
-      map = &ctx->desc_info->others[table];
+      map = &ctx->desc_info.others[table];
    }
 
    assert(entry >= map->map && entry < map->map + map->count);
@@ -183,7 +200,7 @@ shader_desc_idx(uint32_t set, uint32_t binding, VkDescriptorType subdesc_type,
    /* Adjust the destination index for all dynamic UBOs, which are laid out
     * just after the regular UBOs in the UBO table. */
    if (bind_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
-      idx += ctx->desc_info->others[PANVK_BIFROST_DESC_TABLE_UBO].count;
+      idx += ctx->desc_info.others[PANVK_BIFROST_DESC_TABLE_UBO].count;
 
    return idx;
 }
@@ -757,7 +774,7 @@ record_binding(struct lower_desc_ctx *ctx, unsigned set, unsigned binding,
    uint32_t desc_stride = panvk_get_desc_stride(binding_layout->type);
 
    assert(desc_stride == 1 || desc_stride == 2);
-   ctx->desc_info->used_set_mask |= BITFIELD_BIT(set);
+   ctx->desc_info.used_set_mask |= BITFIELD_BIT(set);
 
    /* SSBOs are accessed directly from the sets, no need to record accesses
     * to such resources. */
@@ -792,16 +809,16 @@ record_binding(struct lower_desc_ctx *ctx, unsigned set, unsigned binding,
    uint32_t desc_count_diff = new_desc_count - old_desc_count;
 
    if (binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-      ctx->desc_info->dyn_ubos.count += desc_count_diff;
+      ctx->desc_info.dyn_ubos.count += desc_count_diff;
    } else if (binding_layout->type ==
               VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
-      ctx->desc_info->dyn_ssbos.count += desc_count_diff;
+      ctx->desc_info.dyn_ssbos.count += desc_count_diff;
    } else {
       uint32_t table =
          desc_type_to_table_type(binding_layout->type, subdesc_idx);
 
       assert(table < PANVK_BIFROST_DESC_TABLE_COUNT);
-      ctx->desc_info->others[table].count += desc_count_diff;
+      ctx->desc_info.others[table].count += desc_count_diff;
    }
 
    he->data = (void *)(uintptr_t)new_desc_count;
@@ -828,16 +845,16 @@ fill_copy_descs_for_binding(struct lower_desc_ctx *ctx, unsigned set,
       struct panvk_shader_desc_map *map;
 
       if (binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-         map = &ctx->desc_info->dyn_ubos;
+         map = &ctx->desc_info.dyn_ubos;
       } else if (binding_layout->type ==
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
-         map = &ctx->desc_info->dyn_ssbos;
+         map = &ctx->desc_info.dyn_ssbos;
       } else {
          uint32_t dst_table =
             desc_type_to_table_type(binding_layout->type, subdesc_idx);
 
          assert(dst_table < PANVK_BIFROST_DESC_TABLE_COUNT);
-         map = &ctx->desc_info->others[dst_table];
+         map = &ctx->desc_info.others[dst_table];
       }
 
       if (!first_entry)
@@ -852,7 +869,7 @@ fill_copy_descs_for_binding(struct lower_desc_ctx *ctx, unsigned set,
 static void
 create_copy_table(struct lower_desc_ctx *ctx)
 {
-   struct panvk_shader_desc_info *desc_info = ctx->desc_info;
+   struct panvk_shader_desc_info *desc_info = &ctx->desc_info;
    uint32_t *copy_table;
    uint32_t copy_count;
 
@@ -863,7 +880,7 @@ create_copy_table(struct lower_desc_ctx *ctx)
    if (copy_count == 0)
       return;
 
-   copy_table = calloc(copy_count, sizeof(*copy_table));
+   copy_table = rzalloc_array(ctx->ht, uint32_t, copy_count);
    assert(copy_table);
 
    desc_info->dyn_ubos.map = copy_table;
@@ -981,13 +998,42 @@ collect_instr_desc_access(nir_builder *b, nir_instr *instr, void *data)
    }
 }
 
+static void
+upload_shader_desc_info(struct panvk_device *dev, struct panvk_shader *shader,
+                        const struct panvk_shader_desc_info *desc_info)
+{
+   unsigned copy_count = 0;
+   for (unsigned i = 0; i < ARRAY_SIZE(shader->desc_info.others.count); i++) {
+      shader->desc_info.others.count[i] = desc_info->others[i].count;
+      copy_count += desc_info->others[i].count;
+   }
+
+   if (copy_count > 0) {
+      shader->desc_info.others.map = panvk_pool_upload_aligned(
+         &dev->mempools.rw, desc_info->others[0].map,
+         copy_count * sizeof(uint32_t), sizeof(uint32_t));
+   }
+
+   assert(desc_info->dyn_ubos.count <
+          ARRAY_SIZE(shader->desc_info.dyn_ubos.map));
+   shader->desc_info.dyn_ubos.count = desc_info->dyn_ubos.count;
+   memcpy(shader->desc_info.dyn_ubos.map, desc_info->dyn_ubos.map,
+          desc_info->dyn_ubos.count * sizeof(*shader->desc_info.dyn_ubos.map));
+   assert(desc_info->dyn_ssbos.count <
+          ARRAY_SIZE(shader->desc_info.dyn_ssbos.map));
+   shader->desc_info.dyn_ssbos.count = desc_info->dyn_ssbos.count;
+   memcpy(
+      shader->desc_info.dyn_ssbos.map, desc_info->dyn_ssbos.map,
+      desc_info->dyn_ssbos.count * sizeof(*shader->desc_info.dyn_ssbos.map));
+   shader->desc_info.used_set_mask = desc_info->used_set_mask;
+}
+
 bool
 panvk_per_arch(nir_lower_descriptors)(nir_shader *nir, struct panvk_device *dev,
                                       const struct vk_pipeline_layout *layout,
-                                      struct panvk_shader_desc_info *desc_info)
+                                      struct panvk_shader *shader)
 {
    struct lower_desc_ctx ctx = {
-      .desc_info = desc_info,
       .ubo_addr_format = nir_address_format_32bit_index_offset,
       .ssbo_addr_format = dev->vk.enabled_features.robustBufferAccess
                              ? nir_address_format_64bit_bounded_global
@@ -1010,6 +1056,7 @@ panvk_per_arch(nir_lower_descriptors)(nir_shader *nir, struct panvk_device *dev,
       goto out;
 
    create_copy_table(&ctx);
+   upload_shader_desc_info(dev, shader, &ctx.desc_info);
 
    progress = nir_shader_instructions_pass(
       nir, lower_descriptors_instr,

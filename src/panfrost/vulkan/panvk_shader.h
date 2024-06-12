@@ -98,27 +98,26 @@ enum panvk_bifrost_desc_table_type {
 #define COPY_DESC_HANDLE_EXTRACT_INDEX(handle) ((handle) & BITFIELD_MASK(28))
 #define COPY_DESC_HANDLE_EXTRACT_TABLE(handle) ((handle) >> 28)
 
-struct panvk_shader_desc_map {
-   /* The index of the map serves as the table offset, the value of the
-    * entry is a COPY_DESC_HANDLE() encoding the source set, and the
-    * index of the descriptor in the set. */
-   uint32_t *map;
-
-   /* Number of entries in the map array. */
-   uint32_t count;
-};
-
-struct panvk_shader_desc_info {
-   uint32_t used_set_mask;
-   struct panvk_shader_desc_map dyn_ubos;
-   struct panvk_shader_desc_map dyn_ssbos;
-   struct panvk_shader_desc_map others[PANVK_BIFROST_DESC_TABLE_COUNT];
-};
-
 struct panvk_shader {
    struct pan_shader_info info;
    struct pan_compute_dim local_size;
-   struct panvk_shader_desc_info desc_info;
+
+   struct {
+      uint32_t used_set_mask;
+
+      struct {
+         uint32_t map[MAX_DYNAMIC_UNIFORM_BUFFERS];
+         uint32_t count;
+      } dyn_ubos;
+      struct {
+         uint32_t map[MAX_DYNAMIC_STORAGE_BUFFERS];
+         uint32_t count;
+      } dyn_ssbos;
+      struct {
+         struct panvk_priv_mem map;
+         uint32_t count[PANVK_BIFROST_DESC_TABLE_COUNT];
+      } others;
+   } desc_info;
 
    const void *bin_ptr;
    uint32_t bin_size;
@@ -142,7 +141,6 @@ void panvk_per_arch(shader_destroy)(struct panvk_device *dev,
 
 bool panvk_per_arch(nir_lower_descriptors)(
    nir_shader *nir, struct panvk_device *dev,
-   const struct vk_pipeline_layout *layout,
-   struct panvk_shader_desc_info *shader_desc_info);
+   const struct vk_pipeline_layout *layout, struct panvk_shader *shader);
 
 #endif

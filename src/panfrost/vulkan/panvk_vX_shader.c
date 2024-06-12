@@ -243,8 +243,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    };
    NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
 
-   NIR_PASS_V(nir, panvk_per_arch(nir_lower_descriptors), dev, layout,
-              &shader->desc_info);
+   NIR_PASS_V(nir, panvk_per_arch(nir_lower_descriptors), dev, layout, shader);
 
    NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_ubo,
               nir_address_format_32bit_index_offset);
@@ -341,12 +340,12 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
 
    /* Patch the descriptor count */
    shader->info.ubo_count =
-      shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_UBO].count +
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_UBO] +
       shader->desc_info.dyn_ubos.count;
    shader->info.texture_count =
-      shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_TEXTURE].count;
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_TEXTURE];
    shader->info.sampler_count =
-      shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_SAMPLER].count;
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_SAMPLER];
 
    /* Dummy sampler. */
    if (!shader->info.sampler_count && shader->info.texture_count)
@@ -367,9 +366,9 @@ panvk_per_arch(shader_create)(struct panvk_device *dev,
    /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
     * and zero in other stages.
     */
-   if (shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_IMG].count > 0)
+   if (shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG] > 0)
       shader->info.attribute_count =
-         shader->desc_info.others[PANVK_BIFROST_DESC_TABLE_IMG].count +
+         shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG] +
          (stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
 
    shader->local_size.x = nir->info.workgroup_size[0];
@@ -395,9 +394,9 @@ panvk_per_arch(shader_destroy)(struct panvk_device *dev,
                                struct panvk_shader *shader,
                                const VkAllocationCallbacks *alloc)
 {
+   panvk_pool_free_mem(&dev->mempools.rw, shader->desc_info.others.map);
    panvk_pool_free_mem(&dev->mempools.exec, shader->code_mem);
 
    free((void *)shader->bin_ptr);
-   free(shader->desc_info.dyn_ubos.map);
    vk_free2(&dev->vk.alloc, alloc, shader);
 }

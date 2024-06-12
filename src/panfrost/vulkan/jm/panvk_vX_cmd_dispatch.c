@@ -71,7 +71,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    sysvals->desc.dyn_ssbos = cs_desc_state->dyn_ssbos;
 
    for (uint32_t i = 0; i < MAX_SETS; i++) {
-      if (pipeline->cs.desc_info.used_set_mask & BITFIELD_BIT(i))
+      if (pipeline->cs.base->desc_info.used_set_mask & BITFIELD_BIT(i))
          sysvals->desc.sets[i] = desc_state->sets[i]->descs.dev;
    }
 

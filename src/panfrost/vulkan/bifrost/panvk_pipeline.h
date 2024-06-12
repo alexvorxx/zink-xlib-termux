@@ -36,23 +36,6 @@ struct panvk_pipeline_shader {
    } varyings;
 
    struct pan_shader_info info;
-
-   struct {
-      uint32_t used_set_mask;
-
-      struct {
-         uint32_t map[MAX_DYNAMIC_UNIFORM_BUFFERS];
-         uint32_t count;
-      } dyn_ubos;
-      struct {
-         uint32_t map[MAX_DYNAMIC_STORAGE_BUFFERS];
-         uint32_t count;
-      } dyn_ssbos;
-      struct {
-         struct panvk_priv_mem map;
-         uint32_t count[PANVK_BIFROST_DESC_TABLE_COUNT];
-      } others;
-   } desc_info;
 };
 
 enum panvk_pipeline_type {

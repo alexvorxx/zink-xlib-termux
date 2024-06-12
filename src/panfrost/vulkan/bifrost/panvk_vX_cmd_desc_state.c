@@ -122,16 +122,18 @@ panvk_per_arch(cmd_prepare_dyn_ssbos)(
    const struct panvk_pipeline_shader *shader,
    struct panvk_shader_desc_state *shader_desc_state)
 {
-   if (!shader->desc_info.dyn_ssbos.count || shader_desc_state->dyn_ssbos)
+   if (!shader->base || !shader->base->desc_info.dyn_ssbos.count ||
+       shader_desc_state->dyn_ssbos)
       return;
 
    struct panfrost_ptr ptr = pan_pool_alloc_aligned(
-      desc_pool, shader->desc_info.dyn_ssbos.count * PANVK_DESCRIPTOR_SIZE,
+      desc_pool,
+      shader->base->desc_info.dyn_ssbos.count * PANVK_DESCRIPTOR_SIZE,
       PANVK_DESCRIPTOR_SIZE);
 
    struct panvk_ssbo_addr *ssbos = ptr.cpu;
-   for (uint32_t i = 0; i < shader->desc_info.dyn_ssbos.count; i++) {
-      uint32_t src_handle = shader->desc_info.dyn_ssbos.map[i];
+   for (uint32_t i = 0; i < shader->base->desc_info.dyn_ssbos.count; i++) {
+      uint32_t src_handle = shader->base->desc_info.dyn_ssbos.map[i];
       uint32_t set_idx = COPY_DESC_HANDLE_EXTRACT_TABLE(src_handle);
       uint32_t dyn_buf_idx = COPY_DESC_HANDLE_EXTRACT_INDEX(src_handle);
       const struct panvk_descriptor_set *set = desc_state->sets[set_idx];
@@ -156,12 +158,12 @@ panvk_cmd_fill_dyn_ubos(const struct panvk_descriptor_state *desc_state,
                         struct mali_uniform_buffer_packed *ubos,
                         uint32_t ubo_count)
 {
-   for (uint32_t i = 0; i < shader->desc_info.dyn_ubos.count; i++) {
-      uint32_t src_handle = shader->desc_info.dyn_ubos.map[i];
+   for (uint32_t i = 0; i < shader->base->desc_info.dyn_ubos.count; i++) {
+      uint32_t src_handle = shader->base->desc_info.dyn_ubos.map[i];
       uint32_t set_idx = COPY_DESC_HANDLE_EXTRACT_TABLE(src_handle);
       uint32_t dyn_buf_idx = COPY_DESC_HANDLE_EXTRACT_INDEX(src_handle);
       uint32_t ubo_idx =
-         i + shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_UBO];
+         i + shader->base->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_UBO];
       const struct panvk_descriptor_set *set = desc_state->sets[set_idx];
       const uint32_t dyn_buf_offset =
          desc_state->dyn_buf_offsets[set_idx][dyn_buf_idx];
@@ -183,11 +185,15 @@ panvk_per_arch(cmd_prepare_shader_desc_tables)(
    const struct panvk_pipeline_shader *shader,
    struct panvk_shader_desc_state *shader_desc_state)
 {
-   for (uint32_t i = 0; i < ARRAY_SIZE(shader->desc_info.others.count); i++) {
-      uint32_t desc_count =
-         shader->desc_info.others.count[i] +
-         (i == PANVK_BIFROST_DESC_TABLE_UBO ? shader->desc_info.dyn_ubos.count
-                                            : 0);
+   if (!shader->base)
+      return;
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(shader->base->desc_info.others.count);
+        i++) {
+      uint32_t desc_count = shader->base->desc_info.others.count[i] +
+                            (i == PANVK_BIFROST_DESC_TABLE_UBO
+                                ? shader->base->desc_info.dyn_ubos.count
+                                : 0);
       uint32_t desc_size =
          i == PANVK_BIFROST_DESC_TABLE_UBO ? 8 : PANVK_DESCRIPTOR_SIZE;
 
@@ -211,9 +217,9 @@ panvk_per_arch(cmd_prepare_shader_desc_tables)(
    }
 
    uint32_t tex_count =
-      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_TEXTURE];
+      shader->base->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_TEXTURE];
    uint32_t sampler_count =
-      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_SAMPLER];
+      shader->base->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_SAMPLER];
 
    if (tex_count && !sampler_count) {
       struct panfrost_ptr sampler = pan_pool_alloc_desc(desc_pool, SAMPLER);

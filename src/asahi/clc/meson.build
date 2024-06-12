@@ -9,5 +9,8 @@ prog_asahi_clc = executable(
   c_args : [pre_args, no_override_init_args],
   link_args : [ld_args_build_id],
   dependencies : [idep_mesaclc, dep_llvm, dep_spirv_tools, idep_nir],
-  native : true,
+  # If we can run host binaries directly, just build asahi_clc for the host.
+  # Most commonly this happens when doing a cross compile from an x86_64 build
+  # machine to an x86 host
+  native : not meson.can_run_host_binaries(),
 )

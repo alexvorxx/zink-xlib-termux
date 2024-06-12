@@ -501,15 +501,45 @@ impl SSARef {
             4
         }
     }
-}
 
-impl HasRegFile for SSARef {
-    fn file(&self) -> RegFile {
+    pub fn file(&self) -> Option<RegFile> {
         let comps = usize::from(self.comps());
+        let file = self.v[0].file();
         for i in 1..comps {
-            assert!(self.v[i].file() == self.v[0].file());
+            if self.v[i].file() != file {
+                return None;
+            }
         }
-        self.v[0].file()
+        Some(file)
+    }
+
+    pub fn is_uniform(&self) -> bool {
+        for ssa in &self[..] {
+            if !ssa.is_uniform() {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_gpr(&self) -> bool {
+        for ssa in &self[..] {
+            if !ssa.is_gpr() {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_predicate(&self) -> bool {
+        if self.v[0].is_predicate() {
+            true
+        } else {
+            for ssa in &self[..] {
+                debug_assert!(!ssa.is_predicate());
+            }
+            false
+        }
     }
 }
 
@@ -826,7 +856,7 @@ impl SrcRef {
     #[allow(dead_code)]
     pub fn is_barrier(&self) -> bool {
         match self {
-            SrcRef::SSA(ssa) => ssa.file() == RegFile::Bar,
+            SrcRef::SSA(ssa) => ssa.file() == Some(RegFile::Bar),
             SrcRef::Reg(reg) => reg.file() == RegFile::Bar,
             _ => false,
         }
@@ -1433,7 +1463,7 @@ fn all_dsts_uniform(dsts: &[Dst]) -> bool {
         let dst_uniform = match dst {
             Dst::None => continue,
             Dst::Reg(r) => r.is_uniform(),
-            Dst::SSA(r) => r.is_uniform(),
+            Dst::SSA(r) => r.file().unwrap().is_uniform(),
         };
         assert!(uniform == None || uniform == Some(dst_uniform));
         uniform = Some(dst_uniform);
@@ -5800,7 +5830,7 @@ impl Instr {
         debug_assert!(self.has_fixed_latency(sm));
         let file = match self.dsts()[dst_idx] {
             Dst::None => return 0,
-            Dst::SSA(vec) => vec.file(),
+            Dst::SSA(vec) => vec.file().unwrap(),
             Dst::Reg(reg) => reg.file(),
         };
         if file.is_predicate() {

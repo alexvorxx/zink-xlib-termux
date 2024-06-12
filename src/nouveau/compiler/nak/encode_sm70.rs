@@ -54,7 +54,7 @@ fn src_mod_is_bnot(src_mod: SrcMod) -> bool {
 fn dst_is_bar(dst: Dst) -> bool {
     match dst {
         Dst::None => false,
-        Dst::SSA(ssa) => ssa.file() == RegFile::Bar,
+        Dst::SSA(ssa) => ssa.file().unwrap() == RegFile::Bar,
         Dst::Reg(reg) => reg.file() == RegFile::Bar,
     }
 }

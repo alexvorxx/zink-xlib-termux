@@ -600,7 +600,7 @@ fn instr_remap_srcs_file(instr: &mut Instr, ra: &mut PinnedRegAllocator) {
     // scalar sources.
     for src in instr.srcs_mut() {
         if let SrcRef::SSA(ssa) = &src.src_ref {
-            if ssa.file() == ra.file() && ssa.comps() > 1 {
+            if ssa.file().unwrap() == ra.file() && ssa.comps() > 1 {
                 src.src_ref = ra.collect_vector(ssa).into();
             }
         }
@@ -614,7 +614,7 @@ fn instr_remap_srcs_file(instr: &mut Instr, ra: &mut PinnedRegAllocator) {
 
     for src in instr.srcs_mut() {
         if let SrcRef::SSA(ssa) = &src.src_ref {
-            if ssa.file() == ra.file() && ssa.comps() == 1 {
+            if ssa.file().unwrap() == ra.file() && ssa.comps() == 1 {
                 src.src_ref = ra.collect_vector(ssa).into();
             }
         }
@@ -629,7 +629,7 @@ fn instr_alloc_scalar_dsts_file(
 ) {
     for dst in instr.dsts_mut() {
         if let Dst::SSA(ssa) = dst {
-            if ssa.file() == ra.file() {
+            if ssa.file().unwrap() == ra.file() {
                 assert!(ssa.comps() == 1);
                 let reg = ra.alloc_scalar(ip, sum, ssa[0]);
                 *dst = RegRef::new(ra.file(), reg, 1).into();
@@ -657,7 +657,7 @@ fn instr_assign_regs_file(
     let mut vec_dst_comps = 0;
     for (i, dst) in instr.dsts().iter().enumerate() {
         if let Dst::SSA(ssa) = dst {
-            if ssa.file() == ra.file() && ssa.comps() > 1 {
+            if ssa.file().unwrap() == ra.file() && ssa.comps() > 1 {
                 vec_dsts.push(VecDst {
                     dst_idx: i,
                     comps: ssa.comps(),
@@ -776,7 +776,7 @@ fn instr_assign_regs_file(
         // Scalar destinations can fill in holes.
         for dst in instr.dsts_mut() {
             if let Dst::SSA(ssa) = dst {
-                if ssa.file() == pra.file() && ssa.comps() > 1 {
+                if ssa.file().unwrap() == pra.file() && ssa.comps() > 1 {
                     *dst = pra.alloc_vector(*ssa).into();
                 }
             }

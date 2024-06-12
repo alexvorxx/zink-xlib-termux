@@ -1021,13 +1021,14 @@ llvmpipe_clear_sample_functions_cache(struct llvmpipe_context *ctx, struct pipe_
 
    simple_mtx_unlock(&matrix->lock);
 
-   if (fence)
+   if (fence) {
       ctx->pipe.screen->fence_finish(ctx->pipe.screen, NULL, *fence, OS_TIMEOUT_INFINITE);
 
-   /* All work is finished, it's safe to move cache entries into the table. */
-   hash_table_foreach_remove(matrix->cache, entry) {
-      struct sample_function_cache_key *key = (void *)entry->key;
-      key->texture_functions->sample_functions[key->sampler_index][key->sample_key] = entry->data;
-      free(key);
+      /* All work is finished, it's safe to move cache entries into the table. */
+      hash_table_foreach_remove(matrix->cache, entry) {
+         struct sample_function_cache_key *key = (void *)entry->key;
+         key->texture_functions->sample_functions[key->sampler_index][key->sample_key] = entry->data;
+         free(key);
+      }
    }
 }

@@ -42,18 +42,15 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
                          isl_tiling_flags_t *flags)
 {
    /* Clear flags unsupported on this hardware */
-   assert(ISL_GFX_VERX10(dev) >= 125);
-
-   const isl_tiling_flags_t tile64_bit =
-      ISL_GFX_VERX10(dev) >= 200 ? ISL_TILING_64_XE2_BIT : ISL_TILING_64_BIT;
+   assert(ISL_GFX_VERX10(dev) == 125);
 
    *flags &= ISL_TILING_LINEAR_BIT |
              ISL_TILING_X_BIT |
              ISL_TILING_4_BIT |
-             tile64_bit;
+             ISL_TILING_64_BIT;
 
    if (isl_surf_usage_is_depth_or_stencil(info->usage)) {
-      *flags &= ISL_TILING_4_BIT | ISL_TILING_STD_64_MASK;
+      *flags &= ISL_TILING_4_BIT | ISL_TILING_64_BIT;
 
       /* We choose to avoid Tile64 for 3D depth/stencil buffers. The swizzle
        * for Tile64 is dependent on the image dimension. So, reads and writes
@@ -64,11 +61,11 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
        * 3DSTATE_(DEPTH|STENCIL)_BUFFER.
        */
       if (info->dim == ISL_SURF_DIM_3D)
-         *flags &= ~ISL_TILING_STD_64_MASK;
+         *flags &= ~ISL_TILING_64_BIT;
    }
 
    if (info->usage & ISL_SURF_USAGE_DISPLAY_BIT)
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_BIT;
 
    /* From RENDER_SURFACE_STATE::AuxiliarySurfaceMode,
     *
@@ -105,13 +102,13 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
     * will not support as Tile64"
     */
    if (isl_format_is_yuv(info->format))
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_BIT;
 
    /* Tile64 tilings for 3D have a different swizzling than a 2D surface. So
     * filter them out if the usage wants 2D/3D compatibility.
     */
    if (info->usage & ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT)
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_BIT;
 
    /* From RENDER_SURFACE_STATE::NumberofMultisamples,
     *
@@ -122,11 +119,11 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
     * Tile64 is required for multisampling.
     */
    if (info->samples > 1)
-      *flags &= ISL_TILING_STD_64_MASK;
+      *flags &= ISL_TILING_64_BIT;
 
    /* Tile64 is not defined for format sizes that are 24, 48, and 96 bpb. */
    if (isl_format_get_layout(info->format)->bpb % 3 == 0)
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_BIT;
 
    /* BSpec 46962: 3DSTATE_CPSIZE_CONTROL_BUFFER::Tiled Mode : TILE4 & TILE64
     * are the only 2 valid values.
@@ -135,7 +132,7 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
     *       additional requirements for TILE4.
     */
    if (info->usage & ISL_SURF_USAGE_CPB_BIT)
-      *flags &= ISL_TILING_STD_64_MASK;
+      *flags &= ISL_TILING_64_BIT;
 }
 
 void
@@ -151,7 +148,7 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
 
    const struct isl_format_layout *fmtl = isl_format_get_layout(info->format);
 
-   if (isl_tiling_is_64(tiling)) {
+   if (tiling == ISL_TILING_64) {
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
        *
        *   This field is ignored for Tile64 surface formats because horizontal

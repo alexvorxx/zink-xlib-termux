@@ -445,6 +445,3 @@ nir-stress=dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.b8g8
 nir-stress=dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r16_sint.input.dont_care.dont_care.clear_draw,Fail
 nir-stress=dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r8g8_sint.input.clear.dont_care.draw,Fail
 nir-stress=dEQP-VK.dynamic_rendering.primary_cmd_buff.suballocation.formats.r8g8_unorm.input.load.dont_care.draw,Fail
-
-# Regression in https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/28998
-dEQP-VK.graphicsfuzz.cov-loop-switch-discard-never-hit,Fail

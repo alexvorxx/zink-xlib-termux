@@ -694,11 +694,11 @@ opt_loop_cf_list(nir_builder *b, struct exec_list *cf_list,
       }
 
       case nir_cf_node_loop: {
-         current_loop = nir_cf_node_as_loop(cf_node);
-         assert(!nir_loop_has_continue_construct(current_loop));
-         progress |= opt_loop_cf_list(b, &current_loop->body, current_loop);
-         progress |= opt_loop_last_block(nir_loop_last_block(current_loop), true, false);
-         progress |= opt_loop_peel_initial_break(current_loop);
+         nir_loop *loop = nir_cf_node_as_loop(cf_node);
+         assert(!nir_loop_has_continue_construct(loop));
+         progress |= opt_loop_cf_list(b, &loop->body, loop);
+         progress |= opt_loop_last_block(nir_loop_last_block(loop), true, false);
+         progress |= opt_loop_peel_initial_break(loop);
          break;
       }
 

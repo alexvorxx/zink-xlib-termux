@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Intel Corporation
+ * Copyright (c) 2024 Intel Corporation
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a
  *  copy of this software and associated documentation files (the "Software"),
@@ -21,8 +21,8 @@
  *  IN THE SOFTWARE.
  */
 
-#ifndef ISL_GFX12_H
-#define ISL_GFX12_H
+#ifndef ISL_GFX20_H
+#define ISL_GFX20_H
 
 #include "isl.h"
 
@@ -31,28 +31,19 @@ extern "C" {
 #endif
 
 void
-isl_gfx125_filter_tiling(const struct isl_device *dev,
-                         const struct isl_surf_init_info *restrict info,
-                         isl_tiling_flags_t *flags);
+isl_gfx20_filter_tiling(const struct isl_device *dev,
+                        const struct isl_surf_init_info *restrict info,
+                        isl_tiling_flags_t *flags);
 
 void
-isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
-                                     const struct isl_surf_init_info *restrict info,
-                                     enum isl_tiling tiling,
-                                     enum isl_dim_layout dim_layout,
-                                     enum isl_msaa_layout msaa_layout,
-                                     struct isl_extent3d *image_align_el);
-
-void
-isl_gfx12_choose_image_alignment_el(const struct isl_device *dev,
+isl_gfx20_choose_image_alignment_el(const struct isl_device *dev,
                                     const struct isl_surf_init_info *restrict info,
                                     enum isl_tiling tiling,
                                     enum isl_dim_layout dim_layout,
                                     enum isl_msaa_layout msaa_layout,
                                     struct isl_extent3d *image_align_el);
-
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* ISL_GFX12_H */
+#endif /* ISL_GFX20_H */

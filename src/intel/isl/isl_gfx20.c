@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Intel Corporation
+ * Copyright (c) 2024 Intel Corporation
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a
  *  copy of this software and associated documentation files (the "Software"),
@@ -21,8 +21,7 @@
  *  IN THE SOFTWARE.
  */
 
-#include "isl_gfx9.h"
-#include "isl_gfx12.h"
+#include "isl_gfx20.h"
 #include "isl_priv.h"
 
 /**
@@ -37,23 +36,20 @@
  * flags except ISL_TILING_4_BIT, ISL_TILING_X_BIT, and ISL_TILING_LINEAR_BIT.
  */
 void
-isl_gfx125_filter_tiling(const struct isl_device *dev,
-                         const struct isl_surf_init_info *restrict info,
-                         isl_tiling_flags_t *flags)
+isl_gfx20_filter_tiling(const struct isl_device *dev,
+                        const struct isl_surf_init_info *restrict info,
+                        isl_tiling_flags_t *flags)
 {
    /* Clear flags unsupported on this hardware */
-   assert(ISL_GFX_VERX10(dev) >= 125);
-
-   const isl_tiling_flags_t tile64_bit =
-      ISL_GFX_VERX10(dev) >= 200 ? ISL_TILING_64_XE2_BIT : ISL_TILING_64_BIT;
+   assert(ISL_GFX_VERX10(dev) >= 200);
 
    *flags &= ISL_TILING_LINEAR_BIT |
              ISL_TILING_X_BIT |
              ISL_TILING_4_BIT |
-             tile64_bit;
+             ISL_TILING_64_XE2_BIT;
 
    if (isl_surf_usage_is_depth_or_stencil(info->usage)) {
-      *flags &= ISL_TILING_4_BIT | ISL_TILING_STD_64_MASK;
+      *flags &= ISL_TILING_4_BIT | ISL_TILING_64_XE2_BIT;
 
       /* We choose to avoid Tile64 for 3D depth/stencil buffers. The swizzle
        * for Tile64 is dependent on the image dimension. So, reads and writes
@@ -64,11 +60,11 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
        * 3DSTATE_(DEPTH|STENCIL)_BUFFER.
        */
       if (info->dim == ISL_SURF_DIM_3D)
-         *flags &= ~ISL_TILING_STD_64_MASK;
+         *flags &= ~ISL_TILING_64_XE2_BIT;
    }
 
    if (info->usage & ISL_SURF_USAGE_DISPLAY_BIT)
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_XE2_BIT;
 
    /* From RENDER_SURFACE_STATE::AuxiliarySurfaceMode,
     *
@@ -105,13 +101,13 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
     * will not support as Tile64"
     */
    if (isl_format_is_yuv(info->format))
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_XE2_BIT;
 
    /* Tile64 tilings for 3D have a different swizzling than a 2D surface. So
     * filter them out if the usage wants 2D/3D compatibility.
     */
    if (info->usage & ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT)
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_XE2_BIT;
 
    /* From RENDER_SURFACE_STATE::NumberofMultisamples,
     *
@@ -122,11 +118,11 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
     * Tile64 is required for multisampling.
     */
    if (info->samples > 1)
-      *flags &= ISL_TILING_STD_64_MASK;
+      *flags &= ISL_TILING_64_XE2_BIT;
 
    /* Tile64 is not defined for format sizes that are 24, 48, and 96 bpb. */
    if (isl_format_get_layout(info->format)->bpb % 3 == 0)
-      *flags &= ~ISL_TILING_STD_64_MASK;
+      *flags &= ~ISL_TILING_64_XE2_BIT;
 
    /* BSpec 46962: 3DSTATE_CPSIZE_CONTROL_BUFFER::Tiled Mode : TILE4 & TILE64
     * are the only 2 valid values.
@@ -135,23 +131,23 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
     *       additional requirements for TILE4.
     */
    if (info->usage & ISL_SURF_USAGE_CPB_BIT)
-      *flags &= ISL_TILING_STD_64_MASK;
+      *flags &= ISL_TILING_64_XE2_BIT;
 }
 
 void
-isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
-                                     const struct isl_surf_init_info *restrict info,
-                                     enum isl_tiling tiling,
-                                     enum isl_dim_layout dim_layout,
-                                     enum isl_msaa_layout msaa_layout,
-                                     struct isl_extent3d *image_align_el)
+isl_gfx20_choose_image_alignment_el(const struct isl_device *dev,
+                                    const struct isl_surf_init_info *restrict info,
+                                    enum isl_tiling tiling,
+                                    enum isl_dim_layout dim_layout,
+                                    enum isl_msaa_layout msaa_layout,
+                                    struct isl_extent3d *image_align_el)
 {
    /* Handled by isl_choose_image_alignment_el */
    assert(info->format != ISL_FORMAT_GFX125_HIZ);
 
    const struct isl_format_layout *fmtl = isl_format_get_layout(info->format);
 
-   if (isl_tiling_is_64(tiling)) {
+   if (tiling == ISL_TILING_64_XE2) {
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
        *
        *   This field is ignored for Tile64 surface formats because horizontal
@@ -248,73 +244,5 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
        * possible, HALIGN=32.
        */
       *image_align_el = isl_extent3d(32 * 8 / fmtl->bpb, 4, 1);
-   }
-}
-
-void
-isl_gfx12_choose_image_alignment_el(const struct isl_device *dev,
-                                    const struct isl_surf_init_info *restrict info,
-                                    enum isl_tiling tiling,
-                                    enum isl_dim_layout dim_layout,
-                                    enum isl_msaa_layout msaa_layout,
-                                    struct isl_extent3d *image_align_el)
-{
-   /* Handled by isl_choose_image_alignment_el */
-   assert(info->format != ISL_FORMAT_HIZ);
-
-   const struct isl_format_layout *fmtl = isl_format_get_layout(info->format);
-   if (fmtl->txc == ISL_TXC_CCS) {
-      /* This CCS compresses a 2D-view of the entire surface. */
-      assert(info->levels == 1 && info->array_len == 1 && info->depth == 1);
-      *image_align_el = isl_extent3d(1, 1, 1);
-      return;
-   }
-
-   if (isl_tiling_is_std_y(tiling)) {
-      /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
-       *
-       *   This field is ignored for Tile64 surface formats because horizontal
-       *   alignment is always to the start of the next tile in that case.
-       *
-       * From RENDER_SURFACE_STATE::SurfaceQPitch,
-       *
-       *   Because MSAA is only supported for Tile64, QPitch must also be
-       *   programmed to an aligned tile boundary for MSAA surfaces.
-       *
-       * Images in this surface must be tile-aligned.  The table on the Bspec
-       * page, "2D/CUBE Alignment Requirement", shows that the vertical
-       * alignment is also a tile height for non-MSAA as well.
-       */
-      struct isl_tile_info tile_info;
-      isl_tiling_get_info(tiling, info->dim, msaa_layout, fmtl->bpb,
-                          info->samples, &tile_info);
-
-      *image_align_el = isl_extent3d(tile_info.logical_extent_el.w,
-                                     tile_info.logical_extent_el.h,
-                                     1);
-   } else if (isl_surf_usage_is_depth(info->usage)) {
-      /* The alignment parameters for depth buffers are summarized in the
-       * following table:
-       *
-       *     Surface Format  |    MSAA     | Align Width | Align Height
-       *    -----------------+-------------+-------------+--------------
-       *       D16_UNORM     | 1x, 4x, 16x |      8      |      8
-       *     ----------------+-------------+-------------+--------------
-       *       D16_UNORM     |   2x, 8x    |     16      |      4
-       *     ----------------+-------------+-------------+--------------
-       *         other       |     any     |      8      |      4
-       *    -----------------+-------------+-------------+--------------
-       */
-      assert(isl_is_pow2(info->samples));
-      *image_align_el =
-         info->format != ISL_FORMAT_R16_UNORM ?
-         isl_extent3d(8, 4, 1) :
-         (info->samples == 2 || info->samples == 8 ?
-          isl_extent3d(16, 4, 1) : isl_extent3d(8, 8, 1));
-   } else if (isl_surf_usage_is_stencil(info->usage)) {
-      *image_align_el = isl_extent3d(16, 8, 1);
-   } else {
-      isl_gfx9_choose_image_alignment_el(dev, info, tiling, dim_layout,
-                                         msaa_layout, image_align_el);
    }
 }

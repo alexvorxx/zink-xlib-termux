@@ -639,13 +639,15 @@ set_image_compressed_bit(struct anv_cmd_buffer *cmd_buffer,
    if (!isl_aux_usage_has_ccs_e(image->planes[plane].aux_usage))
       return;
 
+   struct anv_device *device = cmd_buffer->device;
    struct mi_builder b;
-   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
 
    for (uint32_t a = 0; a < layer_count; a++) {
       uint32_t layer = base_layer + a;
       struct anv_address comp_state_addr =
-         anv_image_get_compression_state_addr(cmd_buffer->device,
+         anv_image_get_compression_state_addr(device,
                                               image, aspect,
                                               level, layer);
       mi_store(&b, mi_mem32(comp_state_addr),
@@ -662,8 +664,7 @@ set_image_compressed_bit(struct anv_cmd_buffer *cmd_buffer,
    if (image->planes[plane].aux_usage == ISL_AUX_USAGE_FCV_CCS_E &&
        base_layer == 0 && level == 0) {
       struct anv_address fc_type_addr =
-         anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                            image, aspect);
+         anv_image_get_fast_clear_type_addr(device, image, aspect);
       mi_store(&b, mi_mem32(fc_type_addr),
                    mi_imm(ANV_FAST_CLEAR_DEFAULT_VALUE));
    }
@@ -675,12 +676,13 @@ set_image_fast_clear_state(struct anv_cmd_buffer *cmd_buffer,
                            VkImageAspectFlagBits aspect,
                            enum anv_fast_clear_type fast_clear)
 {
+   struct anv_device *device = cmd_buffer->device;
    struct mi_builder b;
-   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
 
    struct anv_address fc_type_addr =
-      anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                         image, aspect);
+      anv_image_get_fast_clear_type_addr(device, image, aspect);
    mi_store(&b, mi_mem32(fc_type_addr), mi_imm(fast_clear));
 
    /* Whenever we have fast-clear, we consider that slice to be compressed.
@@ -701,12 +703,12 @@ anv_cmd_compute_resolve_predicate(struct anv_cmd_buffer *cmd_buffer,
                                   enum isl_aux_op resolve_op,
                                   enum anv_fast_clear_type fast_clear_supported)
 {
-   struct anv_address addr = anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                                                image, aspect);
+   struct anv_device *device = cmd_buffer->device;
+   struct anv_address addr =
+      anv_image_get_fast_clear_type_addr(device, image, aspect);
    struct mi_builder b;
-   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
-   const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &addr);
-   mi_builder_set_mocs(&b, mocs);
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
 
    const struct mi_value fast_clear_type = mi_mem32(addr);
 
@@ -720,7 +722,7 @@ anv_cmd_compute_resolve_predicate(struct anv_cmd_buffer *cmd_buffer,
        * compressed.  See also set_image_fast_clear_state.
        */
       const struct mi_value compression_state =
-         mi_mem32(anv_image_get_compression_state_addr(cmd_buffer->device,
+         mi_mem32(anv_image_get_compression_state_addr(device,
                                                        image, aspect,
                                                        level, array_layer));
       mi_store(&b, mi_reg64(MI_PREDICATE_SRC0), compression_state);
@@ -5855,7 +5857,7 @@ void genX(batch_emit_secondary_call)(struct anv_batch *batch,
 {
    struct mi_builder b;
    mi_builder_init(&b, device->info, batch);
-   mi_builder_set_mocs(&b, anv_mocs_for_address(device, &secondary_return_addr));
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
 
    /* Emit a write to change the return address of the secondary */
    struct mi_reloc_imm_token reloc =

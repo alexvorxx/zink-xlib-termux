@@ -2877,14 +2877,6 @@ pipeline_init(struct v3dv_pipeline *pipeline,
 
    pipeline->device = device;
 
-   const VkPipelineCreateFlags2CreateInfoKHR *flags2 =
-      vk_find_struct_const(pCreateInfo->pNext,
-                           PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR);
-   if (flags2)
-      pipeline->flags = flags2->flags;
-   else
-      pipeline->flags = pCreateInfo->flags;
-
    V3DV_FROM_HANDLE(v3dv_pipeline_layout, layout, pCreateInfo->layout);
    pipeline->layout = layout;
    v3dv_pipeline_layout_ref(pipeline->layout);
@@ -3004,18 +2996,33 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    return result;
 }
 
+static VkPipelineCreateFlagBits2KHR
+pipeline_create_info_get_flags(VkPipelineCreateFlags flags, const void *pNext)
+{
+   const VkPipelineCreateFlags2CreateInfoKHR *flags2 =
+      vk_find_struct_const(pNext, PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR);
+   if (flags2)
+      return flags2->flags;
+   else
+      return flags;
+}
+
 static VkResult
 graphics_pipeline_create(VkDevice _device,
                          VkPipelineCache _cache,
                          const VkGraphicsPipelineCreateInfo *pCreateInfo,
                          const VkAllocationCallbacks *pAllocator,
-                         VkPipeline *pPipeline)
+                         VkPipeline *pPipeline,
+                         VkPipelineCreateFlagBits2KHR *flags)
 {
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    V3DV_FROM_HANDLE(v3dv_pipeline_cache, cache, _cache);
 
    struct v3dv_pipeline *pipeline;
    VkResult result;
+
+   *flags = pipeline_create_info_get_flags(pCreateInfo->flags,
+                                           pCreateInfo->pNext);
 
    /* Use the default pipeline cache if none is specified */
    if (cache == NULL && device->instance->default_pipeline_cache_enabled)
@@ -3027,6 +3034,7 @@ graphics_pipeline_create(VkDevice _device,
    if (pipeline == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   pipeline->flags = *flags;
    result = pipeline_init(pipeline, device, cache, pCreateInfo, pAllocator);
 
    if (result != VK_SUCCESS) {
@@ -3059,18 +3067,18 @@ v3dv_CreateGraphicsPipelines(VkDevice _device,
    for (; i < count; i++) {
       VkResult local_result;
 
+      VkPipelineCreateFlagBits2KHR flags;
       local_result = graphics_pipeline_create(_device,
                                               pipelineCache,
                                               &pCreateInfos[i],
                                               pAllocator,
-                                              &pPipelines[i]);
+                                              &pPipelines[i],
+                                              &flags);
 
       if (local_result != VK_SUCCESS) {
          result = local_result;
          pPipelines[i] = VK_NULL_HANDLE;
-
-         if (pCreateInfos[i].flags &
-             VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT)
+         if (flags & VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT)
             break;
       }
    }
@@ -3256,13 +3264,6 @@ compute_pipeline_init(struct v3dv_pipeline *pipeline,
    pipeline->layout = layout;
    v3dv_pipeline_layout_ref(pipeline->layout);
 
-   const VkPipelineCreateFlags2CreateInfoKHR *flags2 =
-      vk_find_struct_const(info->pNext, PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR);
-   if (flags2)
-      pipeline->flags = flags2->flags;
-   else
-      pipeline->flags = info->flags;
-
    VkResult result = pipeline_compile_compute(pipeline, cache, info, alloc);
    if (result != VK_SUCCESS)
       return result;
@@ -3275,13 +3276,17 @@ compute_pipeline_create(VkDevice _device,
                          VkPipelineCache _cache,
                          const VkComputePipelineCreateInfo *pCreateInfo,
                          const VkAllocationCallbacks *pAllocator,
-                         VkPipeline *pPipeline)
+                         VkPipeline *pPipeline,
+                         VkPipelineCreateFlagBits2KHR *flags)
 {
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    V3DV_FROM_HANDLE(v3dv_pipeline_cache, cache, _cache);
 
    struct v3dv_pipeline *pipeline;
    VkResult result;
+
+   *flags = pipeline_create_info_get_flags(pCreateInfo->flags,
+                                           pCreateInfo->pNext);
 
    /* Use the default pipeline cache if none is specified */
    if (cache == NULL && device->instance->default_pipeline_cache_enabled)
@@ -3292,6 +3297,7 @@ compute_pipeline_create(VkDevice _device,
    if (pipeline == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   pipeline->flags = *flags;
    result = compute_pipeline_init(pipeline, device, cache,
                                   pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
@@ -3323,18 +3329,18 @@ v3dv_CreateComputePipelines(VkDevice _device,
    uint32_t i = 0;
    for (; i < createInfoCount; i++) {
       VkResult local_result;
+      VkPipelineCreateFlagBits2KHR flags;
       local_result = compute_pipeline_create(_device,
                                               pipelineCache,
                                               &pCreateInfos[i],
                                               pAllocator,
-                                              &pPipelines[i]);
+                                              &pPipelines[i],
+                                              &flags);
 
       if (local_result != VK_SUCCESS) {
          result = local_result;
          pPipelines[i] = VK_NULL_HANDLE;
-
-         if (pCreateInfos[i].flags &
-             VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT)
+         if (flags & VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT)
             break;
       }
    }

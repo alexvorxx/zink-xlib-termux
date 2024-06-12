@@ -13,6 +13,12 @@ fn copy_ssa(b: &mut impl SSABuilder, ssa: &mut SSAValue, reg_file: RegFile) {
     *ssa = tmp;
 }
 
+fn copy_ssa_ref(b: &mut impl SSABuilder, vec: &mut SSARef, reg_file: RegFile) {
+    for ssa in &mut vec[..] {
+        copy_ssa(b, ssa, reg_file);
+    }
+}
+
 fn src_is_upred_reg(src: &Src) -> bool {
     match &src.src_ref {
         SrcRef::True | SrcRef::False => false,
@@ -56,6 +62,30 @@ fn copy_src_if_upred(b: &mut impl SSABuilder, src: &mut Src) {
         }
         SrcRef::Reg(_) => panic!("Not in SSA form"),
         _ => panic!("Not a predicate source"),
+    }
+}
+
+fn copy_src_if_not_same_file(b: &mut impl SSABuilder, src: &mut Src) {
+    let SrcRef::SSA(vec) = &mut src.src_ref else {
+        return;
+    };
+
+    if vec.comps() == 1 {
+        return;
+    }
+
+    let mut all_same = true;
+    let file = vec[0].file();
+    for i in 1..vec.comps() {
+        let c_file = vec[usize::from(i)].file();
+        if c_file != file {
+            debug_assert!(c_file.to_warp() == file.to_warp());
+            all_same = false;
+        }
+    }
+
+    if !all_same {
+        copy_ssa_ref(b, vec, file.to_warp());
     }
 }
 
@@ -930,6 +960,7 @@ fn legalize_instr(
     let src_types = instr.src_types();
     for (i, src) in instr.srcs_mut().iter_mut().enumerate() {
         *src = src.fold_imm(src_types[i]);
+        copy_src_if_not_same_file(b, src);
     }
 
     if b.sm() >= 70 {

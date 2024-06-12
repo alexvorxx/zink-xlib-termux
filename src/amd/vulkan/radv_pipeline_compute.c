@@ -91,6 +91,12 @@ radv_get_compute_shader_metadata(const struct radv_device *device, const struct 
 
    metadata->push_const_sgpr = upload_sgpr | (inline_sgpr << 16);
    metadata->inline_push_const_mask = cs->info.inline_push_constant_mask;
+
+   const struct radv_userdata_info *indirect_desc_sets_loc = radv_get_user_sgpr(cs, AC_UD_INDIRECT_DESCRIPTOR_SETS);
+   if (indirect_desc_sets_loc->sgpr_idx != -1) {
+      metadata->indirect_desc_sets_sgpr =
+         (cs->info.user_data_0 + 4 * indirect_desc_sets_loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
+   }
 }
 
 void

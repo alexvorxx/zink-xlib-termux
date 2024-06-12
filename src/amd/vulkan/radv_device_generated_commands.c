@@ -17,7 +17,7 @@
 
 static void
 radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout,
-                               const struct radv_compute_pipeline *pipeline, uint32_t *cmd_size)
+                               const struct radv_compute_pipeline *pipeline, uint32_t *cmd_size, uint32_t *upload_size)
 {
    const struct radv_device *device = container_of(layout->base.device, struct radv_device, vk);
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -59,6 +59,12 @@ radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout
          /* PKT3_SET_SH_REG for pointer */
          *cmd_size += 4 * 4;
       }
+
+      /* PKT3_SET_SH_REG for indirect descriptor sets pointer */
+      *cmd_size += 3 * 4;
+
+      /* Reserve space for indirect pipelines because they might use indirect descriptor sets. */
+      *upload_size += MAX_SETS * 4;
    }
 
    if (device->sqtt.bo) {
@@ -169,7 +175,7 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
    } else {
       assert(layout->pipeline_bind_point == VK_PIPELINE_BIND_POINT_COMPUTE);
       struct radv_compute_pipeline *compute_pipeline = pipeline ? radv_pipeline_to_compute(pipeline) : NULL;
-      radv_get_sequence_size_compute(layout, compute_pipeline, cmd_size);
+      radv_get_sequence_size_compute(layout, compute_pipeline, cmd_size, upload_size);
    }
 }
 
@@ -264,6 +270,9 @@ struct radv_dgc_params {
 
    uint8_t bind_pipeline;
    uint16_t pipeline_params_offset;
+
+   /* For indirect descriptor sets */
+   uint32_t indirect_desc_sets_va;
 };
 
 enum {
@@ -1080,6 +1089,9 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
 
    nir_def *param_buf = radv_meta_load_descriptor(b, 0, 0);
    nir_def *param_offset = nir_imul_imm(b, vbo_cnt, 24);
+   param_offset = nir_iadd(
+      b, param_offset,
+      nir_bcsel(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1), nir_imm_int(b, MAX_SETS * 4), nir_imm_int(b, 0)));
    nir_def *param_offset_offset = nir_iadd_imm(b, param_offset, MESA_VULKAN_SHADER_STAGES * 12);
    nir_def *param_const_offset =
       nir_iadd_imm(b, param_offset, MAX_PUSH_CONSTANTS_SIZE + MESA_VULKAN_SHADER_STAGES * 12);
@@ -1499,7 +1511,7 @@ dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *d
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV.
  */
 static void
-dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr)
+dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_variable *upload_offset)
 {
    const struct radv_device *device = cs->dev;
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -1527,7 +1539,19 @@ dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr)
    dgc_cs_emit(load_metadata32(b, block_size_x));
    dgc_cs_emit(load_metadata32(b, block_size_y));
    dgc_cs_emit(load_metadata32(b, block_size_z));
+
+   nir_def *indirect_desc_sets_sgpr = load_metadata32(b, indirect_desc_sets_sgpr);
+   nir_push_if(b, nir_ine_imm(b, indirect_desc_sets_sgpr, 0));
+   {
+      dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
+      dgc_cs_emit(indirect_desc_sets_sgpr);
+      dgc_cs_emit(load_param32(b, indirect_desc_sets_va));
+   }
+   nir_pop_if(b, NULL);
+
    dgc_cs_end();
+
+   nir_store_var(b, upload_offset, nir_iadd_imm(b, nir_load_var(b, upload_offset), MAX_SETS * 4), 0x1);
 }
 
 static nir_def *
@@ -1637,7 +1661,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
 
       nir_push_if(&b, nir_ieq_imm(&b, load_param8(&b, bind_pipeline), 1));
       {
-         dgc_emit_bind_pipeline(&cmd_buf, stream_addr);
+         dgc_emit_bind_pipeline(&cmd_buf, stream_addr, upload_offset);
       }
       nir_pop_if(&b, 0);
 
@@ -2089,8 +2113,9 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
    VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const uint32_t desc_size = pipeline ? 0 : MAX_SETS * 4;
 
-   *upload_size = MAX2(*upload_size, 16);
+   *upload_size = MAX2(*upload_size + desc_size, 16);
 
    if (!radv_cmd_buffer_upload_alloc(cmd_buffer, *upload_size, upload_offset, upload_data)) {
       vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -2121,8 +2146,24 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
          params->grid_base_sgpr = (cs->info.user_data_0 + 4 * loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
       }
    } else {
+      struct radv_descriptor_state *descriptors_state =
+         radv_get_descriptors_state(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);
+
       params->bind_pipeline = 1;
       params->pipeline_params_offset = layout->pipeline_params_offset;
+
+      for (unsigned i = 0; i < MAX_SETS; i++) {
+         uint32_t *uptr = ((uint32_t *)*upload_data) + i;
+         uint64_t set_va = 0;
+         if (descriptors_state->valid & (1u << i))
+            set_va = radv_descriptor_get_va(descriptors_state, i);
+
+         uptr[0] = set_va & 0xffffffff;
+      }
+
+      params->indirect_desc_sets_va = radv_buffer_get_va(cmd_buffer->upload.upload_bo) + *upload_offset;
+
+      *upload_data = (char *)*upload_data + desc_size;
    }
 }
 

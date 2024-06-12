@@ -943,7 +943,7 @@ radv_emit_userdata_address(struct radv_device *device, struct radeon_cmdbuf *cs,
    radv_emit_shader_pointer(device, cs, base_reg + loc->sgpr_idx * 4, va, false);
 }
 
-static uint64_t
+uint64_t
 radv_descriptor_get_va(const struct radv_descriptor_state *descriptors_state, unsigned set_idx)
 {
    struct radv_descriptor_set *set = descriptors_state->sets[set_idx];
@@ -11598,6 +11598,9 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
 
    if (compute) {
       cmd_buffer->push_constant_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
+
+      if (!pGeneratedCommandsInfo->pipeline)
+         radv_mark_descriptor_sets_dirty(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);
 
       radv_dgc_after_dispatch(cmd_buffer);
    } else {

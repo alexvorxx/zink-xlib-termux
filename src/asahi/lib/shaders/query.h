@@ -20,6 +20,7 @@ struct libagx_copy_query_push {
    uint16_t partial;
    uint16_t _64;
    uint16_t with_availability;
+   uint16_t reports_per_query;
 };
 
 struct libagx_xfb_counter_copy {

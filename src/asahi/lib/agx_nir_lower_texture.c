@@ -324,14 +324,8 @@ lower_regular_texture(nir_builder *b, nir_instr *instr, UNUSED void *data)
 static nir_def *
 bias_for_tex(nir_builder *b, nir_tex_instr *tex)
 {
-   nir_instr *instr = nir_get_texture_size(b, tex)->parent_instr;
-   nir_tex_instr *query = nir_instr_as_tex(instr);
-
-   query->op = nir_texop_lod_bias_agx;
-   query->dest_type = nir_type_float16;
-
-   nir_def_init(instr, &query->def, 1, 16);
-   return &query->def;
+   return nir_build_texture_query(b, tex, nir_texop_lod_bias_agx, 1,
+                                  nir_type_float16, false, false);
 }
 
 static bool

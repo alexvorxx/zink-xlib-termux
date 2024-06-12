@@ -687,8 +687,6 @@ static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
    enc->enc_pic.av1_spec_misc.cdef_mode = pic->seq.seq_bits.enable_cdef;
    enc->enc_pic.av1_spec_misc.disable_cdf_update = pic->disable_cdf_update;
    enc->enc_pic.av1_spec_misc.disable_frame_end_update_cdf = pic->disable_frame_end_update_cdf;
-   /* tile has moved to tile config from vcn5 */
-   enc->enc_pic.av1_spec_misc.num_tiles_per_picture = pic->num_tiles_in_pic;
    enc->enc_pic.av1_spec_misc.palette_mode_enable = pic->palette_mode_enable;
    enc->enc_pic.av1_spec_misc.cdef_bits = pic->cdef.cdef_bits;
    enc->enc_pic.av1_spec_misc.cdef_damping_minus3 = pic->cdef.cdef_damping_minus_3;
@@ -886,8 +884,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
    radeon_vcn_enc_av1_timing_info(enc, pic);
    radeon_vcn_enc_av1_color_description(enc, pic);
    radeon_vcn_enc_av1_get_rc_param(enc, pic);
-   if (enc_pic->tile_config_flag)
-      radeon_vcn_enc_av1_get_tile_config(enc, pic);
+   radeon_vcn_enc_av1_get_tile_config(enc, pic);
    radeon_vcn_enc_get_input_format_param(enc, &pic->base);
    radeon_vcn_enc_get_output_format_param(enc, pic->seq.color_config.color_range);
    /* loop filter enabled all the time */

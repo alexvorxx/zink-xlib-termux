@@ -1,7 +1,3 @@
-# nvk sparse needs more testing
-KHR-GL46.sparse_texture2_tests.SparseTexture2Commitment,Fail
-KHR-GL46.sparse_texture2_tests.SparseTexture2Lookup,Fail
-
 dEQP-GLES2.functional.clipping.triangle_vertex.clip_three.clip_neg_x_neg_y_pos_z_and_pos_x_neg_y_neg_z_and_pos_x_pos_y_neg_z,Crash
 dEQP-GLES2.functional.clipping.triangle_vertex.clip_three.clip_neg_x_neg_z_and_neg_x_pos_y_pos_z_and_pos_x_neg_y_neg_z,Crash
 dEQP-GLES2.functional.clipping.triangle_vertex.clip_three.clip_neg_x_pos_y_and_neg_y_neg_z_and_pos_y_pos_z,Crash

@@ -40,8 +40,6 @@
 #define RENCODE_IB_PARAM_AV1_ENCODE_PARAMS                 0x00300004
 
 #define RENCODE_AV1_MIN_TILE_WIDTH                         256
-#define RENCODE_AV1_MAX_TILE_WIDTH                         4096
-#define RENCODE_AV1_MAX_TILE_HEIGHT                        4096
 
 static void radeon_enc_cdf_default_table(struct radeon_encoder *enc)
 {
@@ -1112,7 +1110,6 @@ void radeon_enc_5_0_init(struct radeon_encoder *enc)
    enc->cmd.rc_per_pic = RENCODE_IB_PARAM_RATE_CONTROL_PER_PICTURE;
    enc->cmd.metadata = RENCODE_IB_PARAM_METADATA_BUFFER;
    enc->cmd.ctx_override = RENCODE_IB_PARAM_ENCODE_CONTEXT_BUFFER_OVERRIDE;
-   enc->enc_pic.tile_config_flag = 1;
 
    enc->enc_pic.session_info.interface_version =
       ((RENCODE_FW_INTERFACE_MAJOR_VERSION << RENCODE_IF_MAJOR_VERSION_SHIFT) |

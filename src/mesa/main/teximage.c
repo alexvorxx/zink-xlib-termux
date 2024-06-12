@@ -1987,7 +1987,7 @@ texture_error_check( struct gl_context *ctx,
        *     "Specifying a value for internalformat that is not one of the
        *      above (acceptable) values generates the error INVALID VALUE."
        */
-      if (err == GL_INVALID_ENUM && _mesa_is_gles(ctx) && ctx->Version < 20)
+      if (err == GL_INVALID_ENUM && _mesa_is_gles1(ctx))
          err = GL_INVALID_VALUE;
 
       _mesa_error(ctx, err,

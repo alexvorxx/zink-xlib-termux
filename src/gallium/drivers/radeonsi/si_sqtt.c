@@ -43,6 +43,8 @@ static bool si_sqtt_init_bo(struct si_context *sctx)
    if (!sctx->sqtt->bo)
       return false;
 
+   sctx->sqtt->buffer_va = sctx->ws->buffer_get_virtual_address(sctx->sqtt->bo);
+
    return true;
 }
 
@@ -57,9 +59,8 @@ static void si_emit_sqtt_start(struct si_context *sctx,
    radeon_begin(cs);
 
    for (unsigned se = 0; se < max_se; se++) {
-      uint64_t va = sctx->ws->buffer_get_virtual_address(sctx->sqtt->bo);
       uint64_t data_va =
-         ac_sqtt_get_data_va(&sctx->screen->info, sctx->sqtt, va, se);
+         ac_sqtt_get_data_va(&sctx->screen->info, sctx->sqtt, se);
       uint64_t shifted_va = data_va >> SQTT_BUFFER_ALIGN_SHIFT;
 
       if (ac_sqtt_se_is_disabled(&sctx->screen->info, se))
@@ -265,8 +266,7 @@ static void si_copy_sqtt_info_regs(struct si_context *sctx,
    }
 
    /* Get the VA where the info struct is stored for this SE. */
-   uint64_t va = sctx->ws->buffer_get_virtual_address(sctx->sqtt->bo);
-   uint64_t info_va = ac_sqtt_get_info_va(va, se_index);
+   uint64_t info_va = ac_sqtt_get_info_va(sctx->sqtt->buffer_va, se_index);
 
    radeon_begin(cs);
 
@@ -290,7 +290,7 @@ static void si_copy_sqtt_info_regs(struct si_context *sctx,
        * 3) mask off the higher 3 bits because WPTR.OFFSET is 29 bits
        */
       uint64_t data_va =
-         ac_sqtt_get_data_va(&sctx->screen->info, sctx->sqtt, va, se_index);
+         ac_sqtt_get_data_va(&sctx->screen->info, sctx->sqtt, se_index);
       uint64_t shifted_data_va = (data_va >> 5);
       uint64_t init_wptr_value = shifted_data_va & 0x1fffffff;
 
@@ -633,6 +633,7 @@ bool si_init_sqtt(struct si_context *sctx)
    /* Default buffer size set to 32MB per SE. */
    sctx->sqtt->buffer_size =
       debug_get_num_option("AMD_THREAD_TRACE_BUFFER_SIZE", 32 * 1024) * 1024;
+   sctx->sqtt->instruction_timing_enabled = false;
    sctx->sqtt->start_frame = 10;
 
    const char *trigger = getenv("AMD_THREAD_TRACE_TRIGGER");

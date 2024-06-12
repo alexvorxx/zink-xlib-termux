@@ -64,7 +64,7 @@
       <value name="Ftz" value="0" />
       <value name="SetByKernel" value="1" />
     </field>
-    <field name="Thread Preemption" start="84" end="84" type="bool" />
+    <field name="Thread Preemption" start="84" end="84" type="bool" default="1" />
     <field name="Sampler Count" start="98" end="100" type="uint">
       <value name="No samplers used" value="0" />
       <value name="Between 1 and 4 samplers used" value="1" />
@@ -116,6 +116,19 @@
     </field>
     <field name="BTD Mode" start="191" end="191" type="uint" />
     <field name="Preferred SLM Allocation Size" start="224" end="227" type="PREF_SLM_ALLOCATION_SIZE" />
+  </struct>
+  <struct name="POSTSYNC_DATA" length="5">
+    <field name="Operation" start="0" end="1" type="uint" default="0">
+      <value name="No Write" value="0" />
+      <value name="Write Immediate Data" value="1" />
+      <value name="Write Timestamp" value="3" />
+    </field>
+    <field name="HDC Pipeline Flush" start="2" end="2" type="bool" />
+    <field name="MOCS" start="4" end="10" type="uint" nonzero="true" />
+    <field name="System Memory Fence Request" start="11" end="11" type="bool" />
+    <field name="Dataport Subslice Cache Flush" start="12" end="12" type="bool" />
+    <field name="Destination Address" start="32" end="95" type="address" />
+    <field name="Immediate Data" start="96" end="159" type="uint" />
   </struct>
   <struct name="COMPUTE_WALKER_BODY" length="39">
     <field name="Indirect Data Length" start="32" end="48" type="uint" />
@@ -329,7 +342,7 @@
       <value name="512" value="2" />
       <value name="1024" value="3" />
     </field>
-    <field name="BTD Mid thread preemption" start="63" end="63" type="bool" />
+    <field name="BTD Mid thread preemption" start="63" end="63" type="bool" default="1" />
     <field name="Per DSS Memory Backed Buffer Size" start="64" end="66" type="uint" default="6">
       <value name="2KB" value="0" />
       <value name="4KB" value="1" />
@@ -510,6 +523,22 @@
     </field>
     <field name="Single Program Flow" start="251" end="251" type="bool" />
     <field name="Dispatch GRF Start Register For URB Data [5]" start="252" end="252" type="uint" />
+  </instruction>
+  <instruction name="3DSTATE_MESH_CONTROL" bias="2" length="3">
+    <field name="DWord Length" start="0" end="7" type="uint" default="1" />
+    <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="119" />
+    <field name="3D Command Opcode" start="24" end="26" type="uint" default="0" />
+    <field name="Command SubType" start="27" end="28" type="uint" default="3" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Maximum Number of ThreadGroups" start="32" end="40" type="uint" />
+    <field name="VP and RTA Index Autostrip Enable" start="59" end="59" type="bool" />
+    <field name="Thread Dispatch Priority" start="60" end="60" type="uint">
+      <value name="High" value="1" />
+    </field>
+    <field name="Fused EU Dispatch" start="61" end="61" type="bool" />
+    <field name="Statistics Enable" start="62" end="62" type="bool" />
+    <field name="MeshShader Enable" start="63" end="63" type="uint" />
+    <field name="Scratch Space Buffer" start="74" end="95" type="uint" />
   </instruction>
   <instruction name="3DSTATE_PS" bias="2" length="12" engine="render">
     <field name="DWord Length" start="0" end="7" type="uint" default="10" />
@@ -827,6 +856,30 @@
     <field name="Sample Mask" start="128" end="143" type="uint" />
     <field name="Depth Clear Value" start="160" end="191" type="float" />
   </instruction>
+  <instruction name="CFE_STATE" bias="2" length="6">
+    <field name="DWord Length" start="0" end="7" type="uint" default="4" />
+    <field name="CFE SubOpcode Variant" start="16" end="17" type="uint" default="0" />
+    <field name="CFE SubOpcode" start="18" end="23" type="uint" default="0" />
+    <field name="Compute Command Opcode" start="24" end="26" type="uint" default="2" />
+    <field name="Pipeline" start="27" end="28" type="uint" default="2" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Scratch Space Buffer" start="42" end="63" type="uint" />
+    <field name="Stack ID Control" start="96" end="97" type="uint">
+      <value name="StackIDs 2048" value="0" />
+      <value name="StackIDs 1024" value="1" />
+      <value name="StackIDs 512" value="2" />
+      <value name="StackIDs 256" value="3" />
+    </field>
+    <field name="Compute Dispatch All walker Enable" start="108" end="108" type="bool" />
+    <field name="Single Slice Dispatch CCS Mode" start="109" end="109" type="bool" />
+    <field name="Over Dispatch Control" start="110" end="111" type="uint">
+      <value name="Over Dispatch None" value="0" />
+      <value name="Over Dispatch Low" value="1" />
+      <value name="Over Dispatch Normal" value="2" />
+      <value name="Over Dispatch High" value="3" />
+    </field>
+    <field name="Maximum Number of Threads" start="112" end="127" type="uint" />
+  </instruction>
   <instruction name="COMPUTE_WALKER" bias="2" length="40">
     <field name="DWord Length" start="0" end="7" type="uint" default="38" />
     <field name="Predicate Enable" start="8" end="8" type="bool" />
@@ -1048,7 +1101,12 @@
     </field>
     <field name="EU Thread Scheduling Mode Override" start="45" end="46" type="uint" />
     <field name="Large GRF Mode" start="47" end="47" type="bool" />
+    <field name="Z Pass Async Compute Thread Limit Mask" start="48" end="50" type="uint" />
     <field name="Mask1" start="48" end="63" type="uint" />
+    <field name="Z Async Throttle settings Mask" start="51" end="52" type="uint" />
+    <field name="Pixel Async Compute Thread Limit Mask" start="55" end="57" type="uint" />
+    <field name="EU Thread Scheduling Mode Override Mask" start="61" end="62" type="uint" />
+    <field name="Large GRF Mode Mask" start="63" end="63" type="bool" />
     <field name="Midthread Preemption Delay Timer" start="64" end="66" type="uint">
       <value name="MTP_TIMER_VAL_0" value="0" />
       <value name="MTP_TIMER_VAL_50" value="1" />
@@ -1073,7 +1131,12 @@
       <value name="Full" value="0" />
       <value name="Min" value="1" />
     </field>
+    <field name="Midthread Preemption Delay Timer Mask" start="80" end="82" type="uint" />
     <field name="Mask2" start="80" end="95" type="uint" />
+    <field name="Midthread Preemption Overdispatch Thread group count Mask" start="83" end="84" type="uint" />
+    <field name="Midthread Preemption Overdispatch Test mode Mask" start="85" end="85" type="uint" />
+    <field name="UAV Coherency Mode Mask" start="86" end="86" type="uint" />
+    <field name="Memory allocation for Scratch and Midthread Preemption buffers Mask" start="91" end="91" type="uint" />
   </instruction>
   <instruction name="XY_BLOCK_COPY_BLT" bias="2" length="22" engine="blitter">
     <field name="DWord Length" start="0" end="7" type="uint" default="20" />

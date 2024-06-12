@@ -136,6 +136,8 @@
 #define RENCODE_AV1_MAX_TILE_COLS                                                   64
 #define RENCODE_AV1_MAX_TILE_ROWS                                                   64
 #define RENCODE_AV1_MAX_TILE_AREA                                                   (4096 * 2304)
+#define RENCODE_AV1_MAX_TILE_WIDTH                                                  4096
+#define RENCODE_AV1_MAX_TILE_HEIGHT                                                 4096
 #define RENCODE_INVALID_COLOC_OFFSET                                                0XFFFFFFFF
 
 #define RENCODE_PICTURE_TYPE_B                                                      0

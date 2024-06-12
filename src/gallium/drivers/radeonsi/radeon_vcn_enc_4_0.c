@@ -464,35 +464,52 @@ static void radeon_enc_av1_dpb_management(struct radeon_encoder *enc)
 
 static void radeon_enc_spec_misc_av1(struct radeon_encoder *enc)
 {
-   uint32_t num_of_tiles = enc->enc_pic.av1_spec_misc.num_tiles_per_picture;
-   uint32_t threshold_low, threshold_high;
-   uint32_t num_rows;
-   uint32_t num_columns;
+   rvcn_enc_av1_tile_config_t *p_config = &enc->enc_pic.av1_tile_config;
+   struct tile_1d_layout tile_layout;
+   uint32_t num_of_tiles;
+   uint32_t frame_width_in_sb;
+   uint32_t frame_height_in_sb;
+   uint32_t num_tiles_cols;
+   uint32_t num_tiles_rows;
+   uint32_t max_tile_area_sb = RENCODE_AV1_MAX_TILE_AREA >> (2 * 6);
+   uint32_t max_tile_width_in_sb = RENCODE_AV1_MAX_TILE_WIDTH >> 6;
+   uint32_t max_tile_ares_in_sb = 0;
+   uint32_t max_tile_height_in_sb = 0;
+   uint32_t min_log2_tiles_width_in_sb;
+   uint32_t min_log2_tiles;
 
-   num_rows = PIPE_ALIGN_IN_BLOCK_SIZE(enc->enc_pic.session_init.aligned_picture_height,
+   frame_width_in_sb = PIPE_ALIGN_IN_BLOCK_SIZE(enc->enc_pic.session_init.aligned_picture_width,
                                        PIPE_AV1_ENC_SB_SIZE);
-   num_columns = PIPE_ALIGN_IN_BLOCK_SIZE(enc->enc_pic.session_init.aligned_picture_width,
+   frame_height_in_sb = PIPE_ALIGN_IN_BLOCK_SIZE(enc->enc_pic.session_init.aligned_picture_height,
                                        PIPE_AV1_ENC_SB_SIZE);
+   num_tiles_cols = (frame_width_in_sb > max_tile_width_in_sb) ? 2 : 1;
+   num_tiles_rows = CLAMP(p_config->num_tile_rows,
+                         1, RENCODE_AV1_TILE_CONFIG_MAX_NUM_ROWS);
+   min_log2_tiles_width_in_sb = radeon_enc_av1_tile_log2(max_tile_width_in_sb, frame_width_in_sb);
+   min_log2_tiles = MAX2(min_log2_tiles_width_in_sb, radeon_enc_av1_tile_log2(max_tile_area_sb,
+                                                     frame_width_in_sb * frame_height_in_sb));
 
-   if (num_rows > 64) {
-      /* max tile size 4096 x 2304 */
-      threshold_low = ((num_rows + 63) / 64) * ((num_columns + 35) / 36);
-      num_of_tiles = (num_of_tiles & 1) ? num_of_tiles - 1 : num_of_tiles;
-   } else
-      threshold_low = 1;
+   max_tile_width_in_sb = (num_tiles_cols == 1) ? frame_width_in_sb : max_tile_width_in_sb;
 
-   threshold_high = num_rows > 16 ? 16 : num_rows;
-   threshold_high = num_columns > 64 ? threshold_high * 2 : threshold_high;
+   if (min_log2_tiles)
+      max_tile_ares_in_sb = (frame_width_in_sb * frame_height_in_sb)
+                                             >> (min_log2_tiles + 1);
+   else
+      max_tile_ares_in_sb = frame_width_in_sb * frame_height_in_sb;
 
-   num_of_tiles = CLAMP(num_of_tiles, threshold_low, threshold_high);
+   max_tile_height_in_sb = DIV_ROUND_UP(max_tile_ares_in_sb, max_tile_width_in_sb);
+   num_tiles_rows = MAX2(num_tiles_rows,
+                         DIV_ROUND_UP(frame_height_in_sb, max_tile_height_in_sb));
 
+   radeon_enc_av1_tile_layout(frame_height_in_sb, num_tiles_rows, 1, &tile_layout);
+   num_tiles_rows = tile_layout.nb_main_tile + tile_layout.nb_border_tile;
+
+   num_of_tiles = num_tiles_cols * num_tiles_rows;
    /* in case of multiple tiles, it should be an obu frame */
    if (num_of_tiles > 1)
       enc->enc_pic.stream_obu_frame = 1;
    else
       enc->enc_pic.stream_obu_frame = enc->enc_pic.is_obu_frame;
-
-   enc->enc_pic.av1_spec_misc.num_tiles_per_picture = num_of_tiles;
 
    RADEON_ENC_BEGIN(enc->cmd.spec_misc_av1);
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.palette_mode_enable);
@@ -500,9 +517,9 @@ static void radeon_enc_spec_misc_av1(struct radeon_encoder *enc)
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_mode);
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.disable_cdf_update);
    RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.disable_frame_end_update_cdf);
-   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.num_tiles_per_picture);
-   RADEON_ENC_CS(0);
-   RADEON_ENC_CS(0);
+   RADEON_ENC_CS(num_of_tiles);
+   RADEON_ENC_CS(0xFFFFFFFF);
+   RADEON_ENC_CS(0xFFFFFFFF);
    RADEON_ENC_END();
 }
 

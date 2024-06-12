@@ -226,6 +226,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_color_write_enable = true,
       .EXT_conditional_rendering = true,
       .EXT_custom_border_color = true,
+      .EXT_depth_clamp_zero_one = true,
       .EXT_depth_clip_control = true,
       .EXT_depth_clip_enable = true,
       .EXT_descriptor_buffer = true,
@@ -500,6 +501,9 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_EXT_custom_border_color */
    features->customBorderColors = true;
    features->customBorderColorWithoutFormat = true;
+
+   /* VK_EXT_depth_clamp_zero_one */
+   features->depthClampZeroOne = true;
 
    /* VK_EXT_depth_clip_control */
    features->depthClipControl = true;
@@ -3059,91 +3063,6 @@ tu_QueueBindSparse(VkQueue _queue,
                    const VkBindSparseInfo *pBindInfo,
                    VkFence _fence)
 {
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_CreateEvent(VkDevice _device,
-               const VkEventCreateInfo *pCreateInfo,
-               const VkAllocationCallbacks *pAllocator,
-               VkEvent *pEvent)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-
-   struct tu_event *event = (struct tu_event *)
-         vk_object_alloc(&device->vk, pAllocator, sizeof(*event),
-                         VK_OBJECT_TYPE_EVENT);
-   if (!event)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   VkResult result = tu_bo_init_new(device, &event->bo, 0x1000,
-                                    TU_BO_ALLOC_NO_FLAGS, "event");
-   if (result != VK_SUCCESS)
-      goto fail_alloc;
-
-   result = tu_bo_map(device, event->bo, NULL);
-   if (result != VK_SUCCESS)
-      goto fail_map;
-
-   TU_RMV(event_create, device, pCreateInfo, event);
-
-   *pEvent = tu_event_to_handle(event);
-
-   return VK_SUCCESS;
-
-fail_map:
-   tu_bo_finish(device, event->bo);
-fail_alloc:
-   vk_object_free(&device->vk, pAllocator, event);
-   return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-}
-
-VKAPI_ATTR void VKAPI_CALL
-tu_DestroyEvent(VkDevice _device,
-                VkEvent _event,
-                const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   VK_FROM_HANDLE(tu_event, event, _event);
-
-   if (!event)
-      return;
-
-   TU_RMV(resource_destroy, device, event);
-
-   tu_bo_finish(device, event->bo);
-   vk_object_free(&device->vk, pAllocator, event);
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_GetEventStatus(VkDevice _device, VkEvent _event)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   VK_FROM_HANDLE(tu_event, event, _event);
-
-   if (vk_device_is_lost(&device->vk))
-      return VK_ERROR_DEVICE_LOST;
-
-   if (*(uint64_t*) event->bo->map == 1)
-      return VK_EVENT_SET;
-   return VK_EVENT_RESET;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_SetEvent(VkDevice _device, VkEvent _event)
-{
-   VK_FROM_HANDLE(tu_event, event, _event);
-   *(uint64_t*) event->bo->map = 1;
-
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_ResetEvent(VkDevice _device, VkEvent _event)
-{
-   VK_FROM_HANDLE(tu_event, event, _event);
-   *(uint64_t*) event->bo->map = 0;
-
    return VK_SUCCESS;
 }
 

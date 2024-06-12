@@ -21457,7 +21457,7 @@ vn_sizeof_VkPhysicalDeviceImageDrmFormatModifierInfoEXT_self(const VkPhysicalDev
     size += vn_sizeof_uint64_t(&val->drmFormatModifier);
     size += vn_sizeof_VkSharingMode(&val->sharingMode);
     size += vn_sizeof_uint32_t(&val->queueFamilyIndexCount);
-    if (val->pQueueFamilyIndices) {
+    if (val->sharingMode == VK_SHARING_MODE_CONCURRENT) {
         size += vn_sizeof_array_size(val->queueFamilyIndexCount);
         size += vn_sizeof_uint32_t_array(val->pQueueFamilyIndices, val->queueFamilyIndexCount);
     } else {
@@ -21492,7 +21492,7 @@ vn_encode_VkPhysicalDeviceImageDrmFormatModifierInfoEXT_self(struct vn_cs_encode
     vn_encode_uint64_t(enc, &val->drmFormatModifier);
     vn_encode_VkSharingMode(enc, &val->sharingMode);
     vn_encode_uint32_t(enc, &val->queueFamilyIndexCount);
-    if (val->pQueueFamilyIndices) {
+    if (val->sharingMode == VK_SHARING_MODE_CONCURRENT) {
         vn_encode_array_size(enc, val->queueFamilyIndexCount);
         vn_encode_uint32_t_array(enc, val->pQueueFamilyIndices, val->queueFamilyIndexCount);
     } else {

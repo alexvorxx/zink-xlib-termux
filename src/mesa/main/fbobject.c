@@ -1344,7 +1344,7 @@ _mesa_test_framebuffer_completeness(struct gl_context *ctx,
              * due to invalid format. This is special case for the extension where
              * CTS tests expect unsupported framebuffer status instead of incomplete.
              */
-            if ((_mesa_is_gles(ctx) && _mesa_has_EXT_color_buffer_half_float(ctx)) &&
+            if (_mesa_has_EXT_color_buffer_half_float(ctx) &&
                 !gles_check_float_renderable(ctx, att)) {
                fb->_Status = GL_FRAMEBUFFER_UNSUPPORTED;
                return;

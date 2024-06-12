@@ -17,6 +17,7 @@
 #include "vk_device.h"
 #include "vk_drm_syncobj.h"
 #include "vk_format.h"
+#include "vk_limits.h"
 #include "vk_log.h"
 #include "vk_util.h"
 
@@ -333,7 +334,7 @@ get_device_properties(const struct panvk_physical_device *device,
       /* MALI_ATTRIBUTE::offset is 32-bit. */
       .maxVertexInputAttributeOffset = UINT32_MAX,
       /* MALI_ATTRIBUTE_BUFFER::stride is 32-bit. */
-      .maxVertexInputBindingStride = UINT32_MAX,
+      .maxVertexInputBindingStride = MESA_VK_MAX_VERTEX_BINDING_STRIDE,
       /* 32 vec4 varyings. */
       .maxVertexOutputComponents = 128,
       /* Tesselation shaders not supported. */

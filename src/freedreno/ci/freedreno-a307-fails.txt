@@ -162,7 +162,6 @@ glx@glx-visuals-stencil -pixmap,Crash
 glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
 glx@glx_arb_create_context_no_error@no error,Fail
 glx@glx_arb_create_context_robustness@invalid reset notification strategy,Fail
-shaders@glsl-bug-110796,Fail
 shaders@point-vertex-id divisor,Crash
 shaders@point-vertex-id gl_instanceid,Crash
 shaders@point-vertex-id gl_instanceid divisor,Crash
@@ -215,8 +214,6 @@ spec@!opengl 3.1@required-texture-attachment-formats,Fail
 spec@!opengl 3.1@vao-broken-attrib,Crash
 spec@!opengl es 3.0@minmax,Fail
 spec@amd_seamless_cubemap_per_texture@amd_seamless_cubemap_per_texture,Fail
-spec@arb_blend_func_extended@arb_blend_func_extended-getfragdataindex,Fail
-spec@arb_blend_func_extended@arb_blend_func_extended-getfragdataindex_gles3,Fail
 spec@arb_clip_control@arb_clip_control-depth-precision,Fail
 spec@arb_depth_buffer_float@fbo-clear-formats,Fail
 spec@arb_depth_buffer_float@fbo-clear-formats stencil,Fail

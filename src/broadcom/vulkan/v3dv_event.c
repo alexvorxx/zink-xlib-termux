@@ -450,6 +450,8 @@ v3dv_GetEventStatus(VkDevice _device, VkEvent _event)
 {
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    V3DV_FROM_HANDLE(v3dv_event, event, _event);
+   if (vk_device_is_lost(&device->vk))
+      return VK_ERROR_DEVICE_LOST;
    return event_get_value(device, event) ? VK_EVENT_SET : VK_EVENT_RESET;
 }
 

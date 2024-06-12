@@ -94,6 +94,12 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_OPT_B(intel_tbimr, true, "Enable TBIMR tiled rendering")
       DRI_CONF_ANV_COMPRESSION_CONTROL_ENABLED(false)
       DRI_CONF_ANV_FAKE_NONLOCAL_MEMORY(false)
+      DRI_CONF_OPT_E(intel_stack_id, 512, 256, 2048,
+                     "Control the number stackIDs (i.e. number of unique rays in the RT subsytem)",
+                     DRI_CONF_ENUM(256,  "256 stackids")
+                     DRI_CONF_ENUM(512,  "512 stackids")
+                     DRI_CONF_ENUM(1024, "1024 stackids")
+                     DRI_CONF_ENUM(2048, "2048 stackids"))
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
@@ -103,7 +109,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_X11_IGNORE_SUBOPTIMAL(false)
       DRI_CONF_LIMIT_TRIG_INPUT_RANGE(false)
       DRI_CONF_ANV_MESH_CONV_PRIM_ATTRS_TO_VERT_ATTRS(-2)
-      DRI_CONF_FORCE_VK_VENDOR(0)
+      DRI_CONF_FORCE_VK_VENDOR()
       DRI_CONF_FAKE_SPARSE(false)
 #if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 34
       DRI_CONF_VK_REQUIRE_ASTC(true)
@@ -2700,6 +2706,20 @@ anv_init_dri_options(struct anv_instance *instance)
        driQueryOptionb(&instance->dri_options, "compression_control_enabled");
     instance->anv_fake_nonlocal_memory =
             driQueryOptionb(&instance->dri_options, "anv_fake_nonlocal_memory");
+
+    instance->stack_ids = driQueryOptioni(&instance->dri_options, "intel_stack_id");
+    switch (instance->stack_ids) {
+    case 256:
+    case 512:
+    case 1024:
+    case 2048:
+       break;
+    default:
+       mesa_logw("Invalid value provided for drirc intel_stack_id=%u, reverting to 512.",
+                 instance->stack_ids);
+       instance->stack_ids = 512;
+       break;
+    }
 }
 
 VkResult anv_CreateInstance(

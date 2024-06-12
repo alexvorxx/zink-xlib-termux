@@ -56,11 +56,10 @@ radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const 
 }
 
 void
-radv_get_compute_pipeline_metadata(const struct radv_device *device, const struct radv_compute_pipeline *pipeline,
-                                   struct radv_compute_pipeline_metadata *metadata)
+radv_get_compute_shader_metadata(const struct radv_device *device, const struct radv_shader *cs,
+                                 struct radv_compute_pipeline_metadata *metadata)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   const struct radv_shader *cs = pipeline->base.shaders[MESA_SHADER_COMPUTE];
    uint32_t upload_sgpr = 0, inline_sgpr = 0;
 
    memset(metadata, 0, sizeof(*metadata));

@@ -79,6 +79,15 @@ genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
                                       &cmd_buffer->device->scratch_pool,
                                       total_scratch);
          cfe.ScratchSpaceBuffer = scratch_surf >> 4;
+#if GFX_VER >= 20
+         switch (cmd_buffer->device->physical->instance->stack_ids) {
+         case 256:  cfe.StackIDControl = StackIDs256;  break;
+         case 512:  cfe.StackIDControl = StackIDs512;  break;
+         case 1024: cfe.StackIDControl = StackIDs1024; break;
+         case 2048: cfe.StackIDControl = StackIDs2048; break;
+         default:   unreachable("invalid stack_ids value");
+         }
+#endif
       }
 
       cfe.OverDispatchControl = 2; /* 50% overdispatch */
@@ -1043,6 +1052,9 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
                                       pipeline->base.scratch_size);
          btd.ScratchSpaceBuffer = scratch_surf >> 4;
       }
+#if INTEL_NEEDS_WA_14017794102
+      btd.BTDMidthreadpreemption = false;
+#endif
    }
 
    genX(cmd_buffer_ensure_cfe_state)(cmd_buffer, pipeline->base.scratch_size);
@@ -1079,6 +1091,9 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
          .BindingTablePointer = surfaces->offset,
          .NumberofThreadsinGPGPUThreadGroup = 1,
          .BTDMode = true,
+#if INTEL_NEEDS_WA_14017794102
+         .ThreadPreemption = false,
+#endif
       };
 
       struct brw_rt_raygen_trampoline_params trampoline_params = {

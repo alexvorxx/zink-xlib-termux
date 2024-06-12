@@ -144,7 +144,6 @@ VAStatus vlVaHandleVAEncPictureParameterBufferTypeAV1(vlVaDriver *drv, vlVaConte
    context->desc.av1enc.allow_high_precision_mv = av1->picture_flags.bits.allow_high_precision_mv;
    context->desc.av1enc.palette_mode_enable = av1->picture_flags.bits.palette_mode_enable;
    context->desc.av1enc.long_term_reference = av1->picture_flags.bits.long_term_reference;
-   context->desc.av1enc.num_tiles_in_pic = av1->tile_cols * av1->tile_rows;
    context->desc.av1enc.tile_rows = av1->tile_rows;
    context->desc.av1enc.tile_cols = av1->tile_cols;
    context->desc.av1enc.context_update_tile_id = av1->context_update_tile_id;

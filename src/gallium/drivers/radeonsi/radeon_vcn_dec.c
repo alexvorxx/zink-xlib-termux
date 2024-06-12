@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 #include "ac_vcn_av1_default.h"
+#include "ac_drm_fourcc.h"
 
 #define FB_BUFFER_OFFSET             0x2000
 #define FB_BUFFER_SIZE               2048
@@ -1819,6 +1820,7 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
       rvcn_dec_message_dynamic_dpb_t2_t *dynamic_dpb_t2, bool encrypted)
 {
    struct rvcn_dec_dynamic_dpb_t2 *dpb = NULL, *dummy = NULL;
+   struct si_resource *res;
    unsigned width, height, size;
    uint64_t addr;
    int i;
@@ -1827,19 +1829,24 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
    height = align(decode->height_in_samples, dec->db_alignment);
    size = align((width * height * 3) / 2, 256);
    if (dec->ref_codec.bts == CODEC_10_BITS)
-      size = dec->dpb_version == DPB_VERSION_VCN5 ? size * 2 : size * 3 / 2;
+      size = (((struct si_screen *)dec->screen)->info.vcn_ip_version == VCN_5_0_0) ? size * 2 : size * 3 / 2;
 
    list_for_each_entry_safe(struct rvcn_dec_dynamic_dpb_t2, d, &dec->dpb_ref_list, list) {
       bool found = false;
+
+      res = (dec->dpb_use_surf) ? &(((struct si_texture *)((struct vl_video_buffer *)d->vbuf)->resources[0])->buffer) :
+            d->dpb.res;
       for (i = 0; i < dec->ref_codec.ref_size; ++i) {
          if (((dec->ref_codec.ref_list[i] & 0x7f) != 0x7f) && (d->index == (dec->ref_codec.ref_list[i] & 0x7f))) {
             if (!dummy)
                dummy = d;
-
-            addr = dec->ws->buffer_get_virtual_address(d->dpb.res->buf);
+            addr = dec->ws->buffer_get_virtual_address(res->buf);
             if (!addr && dummy) {
+               struct si_resource *dummy_res;
                RVID_ERR("Ref list from application is incorrect, using dummy buffer instead.\n");
-               addr = dec->ws->buffer_get_virtual_address(dummy->dpb.res->buf);
+               dummy_res = (dec->dpb_use_surf) ? &(((struct si_texture *)((struct vl_video_buffer *)dummy->vbuf)->resources[0])->buffer) :
+                           dummy->dpb.res;
+               addr = dec->ws->buffer_get_virtual_address(dummy_res->buf);
             }
             dynamic_dpb_t2->dpbAddrLo[i] = addr;
             dynamic_dpb_t2->dpbAddrHi[i] = addr >> 32;
@@ -1848,7 +1855,8 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
          }
       }
       if (!found) {
-         if (d->dpb.res->b.b.width0 * d->dpb.res->b.b.height0 != size) {
+         if ((!dec->dpb_use_surf && (d->dpb.res->b.b.width0 * d->dpb.res->b.b.height0 != size)) ||
+             ((dec->dpb_use_surf) && (d->vbuf->width != width || d->vbuf->height != height))) {
             list_del(&d->list);
             list_addtail(&d->list, &dec->dpb_unref_list);
          } else {
@@ -1858,7 +1866,8 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
    }
 
    list_for_each_entry_safe(struct rvcn_dec_dynamic_dpb_t2, d, &dec->dpb_ref_list, list) {
-      if (d->dpb.res->b.b.width0 * d->dpb.res->b.b.height0 == size && d->index == dec->ref_codec.index) {
+      if ((!dec->dpb_use_surf && (d->dpb.res->b.b.width0 * d->dpb.res->b.b.height0 == size && d->index == dec->ref_codec.index)) ||
+          (dec->dpb_use_surf && ((d->vbuf->width == width && d->vbuf->height == height) && d->index == dec->ref_codec.index))) {
          dpb = d;
          break;
       }
@@ -1878,7 +1887,10 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
       if (dec->prev_fence)
          dec->ws->fence_wait(dec->ws, dec->prev_fence, PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS);
       list_del(&d->list);
-      si_vid_destroy_buffer(&d->dpb);
+      if (dec->dpb_use_surf)
+         d->vbuf->destroy(d->vbuf);
+      else
+         si_vid_destroy_buffer(&d->dpb);
       FREE(d);
    }
 
@@ -1888,11 +1900,26 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
       if (!dpb)
          return 1;
       dpb->index = dec->ref_codec.index;
-      if (encrypted)
-         r = si_vid_create_tmz_buffer(dec->screen, &dpb->dpb, size, PIPE_USAGE_DEFAULT);
-      else
-         r = si_vid_create_buffer(dec->screen, &dpb->dpb, size, PIPE_USAGE_DEFAULT);
-      assert(encrypted == (bool)(dpb->dpb.res->flags & RADEON_FLAG_ENCRYPTED));
+
+      if (dec->dpb_use_surf) {
+         struct pipe_video_buffer templat;
+         memset(&templat, 0, sizeof(templat));
+         templat.buffer_format = (dec->ref_codec.bts != CODEC_10_BITS) ? PIPE_FORMAT_NV12 : PIPE_FORMAT_P010;
+         templat.width = width;
+         templat.height = height;
+         if (encrypted)
+            templat.bind |= PIPE_BIND_PROTECTED;
+
+         dpb->vbuf =
+            dec->base.context->create_video_buffer_with_modifiers(dec->base.context, &templat, &dec->dpb_modifier, 1);
+         r = (dpb->vbuf != NULL);
+      } else {
+         if (encrypted)
+            r = si_vid_create_tmz_buffer(dec->screen, &dpb->dpb, size, PIPE_USAGE_DEFAULT);
+         else
+            r = si_vid_create_buffer(dec->screen, &dpb->dpb, size, PIPE_USAGE_DEFAULT);
+         assert(encrypted == (bool)(dpb->dpb.res->flags & RADEON_FLAG_ENCRYPTED));
+      }
 
       if (!r) {
          RVID_ERR("Can't allocated dpb buffer.\n");
@@ -1905,9 +1932,16 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
    if (dynamic_dpb_t2->dpbArraySize < dec->ref_codec.num_refs) {
       struct rvcn_dec_dynamic_dpb_t2 *d =
          list_first_entry(&dec->dpb_ref_list, struct rvcn_dec_dynamic_dpb_t2, list);
-      addr = dec->ws->buffer_get_virtual_address(d->dpb.res->buf);
-      if (!addr && dummy)
-         addr = dec->ws->buffer_get_virtual_address(dummy->dpb.res->buf);
+
+      res = (dec->dpb_use_surf) ? &(((struct si_texture *)((struct vl_video_buffer *)d->vbuf)->resources[0])->buffer) :
+            d->dpb.res;
+      addr = dec->ws->buffer_get_virtual_address(res->buf);
+      if (!addr && dummy) {
+         struct si_resource *dummy_res;
+         dummy_res = (dec->dpb_use_surf) ? &(((struct si_texture *)((struct vl_video_buffer *)dummy->vbuf)->resources[0])->buffer) :
+                     dummy->dpb.res;
+         addr = dec->ws->buffer_get_virtual_address(dummy_res->buf);
+      }
       assert(addr);
       for (i = 0; i < dec->ref_codec.num_refs; ++i) {
          if (dynamic_dpb_t2->dpbAddrLo[i] || dynamic_dpb_t2->dpbAddrHi[i])
@@ -1919,31 +1953,53 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
       assert(dynamic_dpb_t2->dpbArraySize == dec->ref_codec.num_refs);
    }
 
-   dec->ws->cs_add_buffer(&dec->cs, dpb->dpb.res->buf,
-      RADEON_USAGE_READWRITE | RADEON_USAGE_SYNCHRONIZED, RADEON_DOMAIN_VRAM);
-   addr = dec->ws->buffer_get_virtual_address(dpb->dpb.res->buf);
+   if (dec->dpb_use_surf) {
+      struct si_texture *dpb_luma, *dpb_chroma;
+
+      dpb_luma   = (struct si_texture *)((struct vl_video_buffer *)dpb->vbuf)->resources[0];
+      dpb_chroma = (struct si_texture *)((struct vl_video_buffer *)dpb->vbuf)->resources[1];
+
+      decode->db_swizzle_mode = dpb_luma->surface.u.gfx9.swizzle_mode;
+
+      dec->ws->cs_add_buffer(&dec->cs, (dpb_luma->buffer).buf, RADEON_USAGE_READWRITE | RADEON_USAGE_SYNCHRONIZED, RADEON_DOMAIN_VRAM);
+      addr = dec->ws->buffer_get_virtual_address((dpb_luma->buffer).buf);
+
+      dynamic_dpb_t2->dpbLumaPitch = dpb_luma->buffer.b.b.width0;
+      dynamic_dpb_t2->dpbLumaAlignedHeight = dpb_luma->buffer.b.b.height0;
+      dynamic_dpb_t2->dpbLumaAlignedSize = dpb_luma->surface.u.gfx9.surf_slice_size;
+      dynamic_dpb_t2->dpbChromaPitch = dpb_chroma->buffer.b.b.width0;
+      dynamic_dpb_t2->dpbChromaAlignedHeight = dpb_chroma->buffer.b.b.height0;
+      dynamic_dpb_t2->dpbChromaAlignedSize = dpb_chroma->surface.u.gfx9.surf_slice_size;
+   } else {
+      dec->ws->cs_add_buffer(&dec->cs, dpb->dpb.res->buf, RADEON_USAGE_READWRITE | RADEON_USAGE_SYNCHRONIZED, RADEON_DOMAIN_VRAM);
+      addr = dec->ws->buffer_get_virtual_address(dpb->dpb.res->buf);
+
+      if (((struct si_screen *)dec->screen)->info.vcn_ip_version == VCN_5_0_0)
+         decode->db_swizzle_mode = RDECODE_VCN5_256B_D;
+      dynamic_dpb_t2->dpbLumaPitch = align(decode->width_in_samples, dec->db_alignment);
+      dynamic_dpb_t2->dpbLumaAlignedHeight = align(decode->height_in_samples, dec->db_alignment);
+      dynamic_dpb_t2->dpbLumaAlignedSize = dynamic_dpb_t2->dpbLumaPitch *
+         dynamic_dpb_t2->dpbLumaAlignedHeight;
+      dynamic_dpb_t2->dpbChromaPitch = dynamic_dpb_t2->dpbLumaPitch >> 1;
+      dynamic_dpb_t2->dpbChromaAlignedHeight = dynamic_dpb_t2->dpbLumaAlignedHeight >> 1;
+      dynamic_dpb_t2->dpbChromaAlignedSize = dynamic_dpb_t2->dpbChromaPitch *
+         dynamic_dpb_t2->dpbChromaAlignedHeight * 2;
+
+      if (dec->ref_codec.bts == CODEC_10_BITS) {
+          if (((struct si_screen *)dec->screen)->info.vcn_ip_version == VCN_5_0_0) {
+             dynamic_dpb_t2->dpbLumaAlignedSize = dynamic_dpb_t2->dpbLumaAlignedSize * 2;
+             dynamic_dpb_t2->dpbChromaAlignedSize = dynamic_dpb_t2->dpbChromaAlignedSize * 2;
+          } else {
+             dynamic_dpb_t2->dpbLumaAlignedSize = dynamic_dpb_t2->dpbLumaAlignedSize * 3 / 2;
+             dynamic_dpb_t2->dpbChromaAlignedSize = dynamic_dpb_t2->dpbChromaAlignedSize * 3 / 2;
+          }
+      }
+   }
+
    dynamic_dpb_t2->dpbCurrLo = addr;
    dynamic_dpb_t2->dpbCurrHi = addr >> 32;
    decode->decode_flags = 1;
    dynamic_dpb_t2->dpbConfigFlags = 0;
-   dynamic_dpb_t2->dpbLumaPitch = align(decode->width_in_samples, dec->db_alignment);
-   dynamic_dpb_t2->dpbLumaAlignedHeight = align(decode->height_in_samples, dec->db_alignment);
-   dynamic_dpb_t2->dpbLumaAlignedSize = dynamic_dpb_t2->dpbLumaPitch *
-      dynamic_dpb_t2->dpbLumaAlignedHeight;
-   dynamic_dpb_t2->dpbChromaPitch = dynamic_dpb_t2->dpbLumaPitch >> 1;
-   dynamic_dpb_t2->dpbChromaAlignedHeight = dynamic_dpb_t2->dpbLumaAlignedHeight >> 1;
-   dynamic_dpb_t2->dpbChromaAlignedSize = dynamic_dpb_t2->dpbChromaPitch *
-      dynamic_dpb_t2->dpbChromaAlignedHeight * 2;
-
-   if (dec->ref_codec.bts == CODEC_10_BITS) {
-      if (dec->dpb_version == DPB_VERSION_VCN5) {
-         dynamic_dpb_t2->dpbLumaAlignedSize = dynamic_dpb_t2->dpbLumaAlignedSize * 2;
-         dynamic_dpb_t2->dpbChromaAlignedSize = dynamic_dpb_t2->dpbChromaAlignedSize * 2;
-      } else {
-         dynamic_dpb_t2->dpbLumaAlignedSize = dynamic_dpb_t2->dpbLumaAlignedSize * 3 / 2;
-         dynamic_dpb_t2->dpbChromaAlignedSize = dynamic_dpb_t2->dpbChromaAlignedSize * 3 / 2;
-      }
-   }
 
    return 0;
 }
@@ -2237,8 +2293,6 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
    decode->dt_field_mode = ((struct vl_video_buffer *)out_surf)->base.interlaced;
    decode->dt_surf_tile_config = 0;
    decode->dt_uv_surf_tile_config = 0;
-   if (dec->dpb_version == DPB_VERSION_VCN5)
-      decode->db_swizzle_mode = RDECODE_VCN5_256B_D;
 
    decode->dt_luma_top_offset = luma->surface.u.gfx9.surf_offset;
    decode->dt_chroma_top_offset = chroma->surface.u.gfx9.surf_offset;
@@ -2856,7 +2910,10 @@ static void radeon_dec_destroy(struct pipe_video_codec *decoder)
    } else {
       list_for_each_entry_safe(struct rvcn_dec_dynamic_dpb_t2, d, &dec->dpb_ref_list, list) {
          list_del(&d->list);
-         si_vid_destroy_buffer(&d->dpb);
+         if (dec->dpb_use_surf)
+            d->vbuf->destroy(d->vbuf);
+         else
+            si_vid_destroy_buffer(&d->dpb);
          FREE(d);
       }
    }
@@ -3073,6 +3130,34 @@ static void radeon_dec_destroy_fence(struct pipe_video_codec *decoder,
    dec->ws->fence_reference(dec->ws, &fence, NULL);
 }
 
+static bool radeon_has_video_preferred_gfx12_swizzle_mode(struct radeon_decoder *dec, uint64_t* modifier)
+{
+   uint64_t *allowed_modifiers;
+   int allowed_mod_count, i, j;
+   enum pipe_format format[2] = { PIPE_FORMAT_NV12, PIPE_FORMAT_P010 };
+
+   for (i = 0; i < 2; ++i) {
+      dec->screen->query_dmabuf_modifiers(dec->screen, format[i], 0, NULL, NULL, &allowed_mod_count);
+      allowed_modifiers = (uint64_t *)calloc(allowed_mod_count, sizeof(uint64_t));
+      if (!allowed_modifiers)
+         return false;
+
+      dec->screen->query_dmabuf_modifiers(dec->screen, format[i], allowed_mod_count,
+                                          allowed_modifiers, NULL, &allowed_mod_count);
+      for (j = 0; j < allowed_mod_count; ++j) {
+         if (AMD_FMT_MOD_GET(TILE, allowed_modifiers[j]) == AMD_FMT_MOD_TILE_GFX12_256B_2D)
+            break;
+      }
+      if (j == allowed_mod_count) {
+         free(allowed_modifiers);
+         return false;;
+      }
+      *modifier = allowed_modifiers[j];
+      free(allowed_modifiers);
+   }
+
+   return true;
+}
 /**
  * update render list when target buffer got updated, use the existing
  * index and update the new buffer to associate with it.
@@ -3300,7 +3385,6 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
 
    dec->addr_gfx_mode = RDECODE_ARRAY_MODE_LINEAR;
    dec->av1_version = RDECODE_AV1_VER_0;
-   dec->dpb_version = DPB_VERSION_LEGACY;
 
    switch (sctx->vcn_ip_ver) {
    case VCN_1_0_0:
@@ -3353,7 +3437,8 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
       dec->jpg_reg.version = RDECODE_JPEG_REG_VER_V3;
       dec->addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX11;
       dec->av1_version = RDECODE_AV1_VER_1;
-      dec->dpb_version = DPB_VERSION_VCN5;
+      if (radeon_has_video_preferred_gfx12_swizzle_mode(dec, &dec->dpb_modifier))
+         dec->dpb_use_surf = true;
       break;
    default:
       RVID_ERR("VCN is not supported.\n");

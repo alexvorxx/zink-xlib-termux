@@ -773,6 +773,9 @@ v3dv_GetQueryPoolResults(VkDevice _device,
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    V3DV_FROM_HANDLE(v3dv_query_pool, pool, queryPool);
 
+   if (vk_device_is_lost(&device->vk))
+      return VK_ERROR_DEVICE_LOST;
+
    return v3dv_get_query_pool_results_cpu(device, pool, firstQuery, queryCount,
                                           pData, stride, flags);
 }

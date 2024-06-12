@@ -503,8 +503,6 @@ fs_inst::can_do_cmod() const
    case BRW_OPCODE_RNDE:
    case BRW_OPCODE_RNDU:
    case BRW_OPCODE_RNDZ:
-   case BRW_OPCODE_SAD2:
-   case BRW_OPCODE_SADA2:
    case BRW_OPCODE_SHL:
    case BRW_OPCODE_SHR:
    case BRW_OPCODE_SUBB:

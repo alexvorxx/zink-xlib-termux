@@ -2825,14 +2825,14 @@ pipeline_setup_rendering_info(struct v3dv_device *device,
 static VkResult
 pipeline_init_dynamic_state(struct v3dv_device *device,
                             struct v3dv_pipeline *pipeline,
+                            struct vk_graphics_pipeline_all_state *pipeline_all_state,
                             struct vk_graphics_pipeline_state *pipeline_state,
                             const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
    VkResult result = VK_SUCCESS;
-   struct vk_graphics_pipeline_all_state all;
    result = vk_graphics_pipeline_state_fill(&pipeline->device->vk, pipeline_state,
                                             pCreateInfo, &pipeline->rendering_info, 0,
-                                            &all, NULL, 0, NULL);
+                                            pipeline_all_state, NULL, 0, NULL);
    if (result != VK_SUCCESS)
       return result;
 
@@ -2902,8 +2902,9 @@ pipeline_init(struct v3dv_pipeline *pipeline,
       pCreateInfo->pInputAssemblyState;
    pipeline->topology = vk_to_mesa_prim[ia_info->topology];
 
+   struct vk_graphics_pipeline_all_state all;
    struct vk_graphics_pipeline_state pipeline_state = { };
-   result = pipeline_init_dynamic_state(device, pipeline, &pipeline_state,
+   result = pipeline_init_dynamic_state(device, pipeline, &all, &pipeline_state,
                                         pCreateInfo);
 
    if (result != VK_SUCCESS) {

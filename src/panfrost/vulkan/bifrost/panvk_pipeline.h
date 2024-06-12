@@ -27,11 +27,11 @@
 #define MAX_RTS 8
 
 struct panvk_pipeline_shader {
-   mali_ptr code;
-   mali_ptr rsd;
+   struct panvk_priv_mem code;
+   struct panvk_priv_mem rsd;
 
    struct {
-      mali_ptr attribs;
+      struct panvk_priv_mem attribs;
       unsigned buf_strides[PANVK_VARY_BUF_MAX];
    } varyings;
 
@@ -49,7 +49,7 @@ struct panvk_pipeline_shader {
          uint32_t count;
       } dyn_ssbos;
       struct {
-         mali_ptr map;
+         struct panvk_priv_mem map;
          uint32_t count[PANVK_BIFROST_DESC_TABLE_COUNT];
       } others;
    } desc_info;
@@ -65,9 +65,6 @@ struct panvk_pipeline {
    enum panvk_pipeline_type type;
 
    const struct vk_pipeline_layout *layout;
-
-   struct panvk_pool bin_pool;
-   struct panvk_pool desc_pool;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,

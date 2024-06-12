@@ -111,7 +111,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    }
 
    pan_section_pack(job.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = pipeline->cs.rsd;
+      cfg.state = panvk_priv_mem_dev_addr(pipeline->cs.rsd);
       cfg.attributes = cs_desc_state->img_attrib_table;
       cfg.attribute_buffers =
          cs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_IMG];

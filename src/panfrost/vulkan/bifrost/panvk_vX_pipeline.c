@@ -69,10 +69,10 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
    unsigned shader_sz = util_dynarray_num_elements(&shader->binary, uint8_t);
 
    if (shader_sz) {
-      pshader->code = pan_pool_upload_aligned(&pipeline->bin_pool.base,
-                                              shader_data, shader_sz, 128);
+      pshader->code = panvk_pool_upload_aligned(&dev->mempools.exec,
+                                                shader_data, shader_sz, 128);
    } else {
-      pshader->code = 0;
+      pshader->code = (struct panvk_priv_mem){0};
    }
 
    pshader->info = shader->info;
@@ -85,8 +85,8 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
    }
 
    if (copy_count) {
-      pshader->desc_info.others.map = pan_pool_upload_aligned(
-         &pipeline->desc_pool.base, shader->desc_info.others[0].map,
+      pshader->desc_info.others.map = panvk_pool_upload_aligned(
+         &dev->mempools.rw, shader->desc_info.others[0].map,
          copy_count * sizeof(uint32_t), sizeof(uint32_t));
    }
 
@@ -111,18 +111,27 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
    }
 
    if (stage_info->stage != VK_SHADER_STAGE_FRAGMENT_BIT) {
-      struct panfrost_ptr rsd =
-         pan_pool_alloc_desc(&pipeline->desc_pool.base, RENDERER_STATE);
+      pshader->rsd = panvk_pool_alloc_desc(&dev->mempools.rw, RENDERER_STATE);
 
-      pan_pack(rsd.cpu, RENDERER_STATE, cfg) {
-         pan_shader_prepare_rsd(&pshader->info, pshader->code, &cfg);
+      pan_pack(panvk_priv_mem_host_addr(pshader->rsd), RENDERER_STATE, cfg) {
+         pan_shader_prepare_rsd(&pshader->info,
+                                panvk_priv_mem_dev_addr(pshader->code), &cfg);
       }
-
-      pshader->rsd = rsd.gpu;
    }
 
    panvk_per_arch(shader_destroy)(dev, shader, alloc);
    return VK_SUCCESS;
+}
+
+static void
+cleanup_pipeline_shader(struct panvk_pipeline *pipeline,
+                        struct panvk_pipeline_shader *pshader)
+{
+   struct panvk_device *dev = to_panvk_device(pipeline->base.device);
+
+   panvk_pool_free_mem(&dev->mempools.exec, pshader->code);
+   panvk_pool_free_mem(&dev->mempools.rw, pshader->rsd);
+   panvk_pool_free_mem(&dev->mempools.rw, pshader->desc_info.others.map);
 }
 
 static mali_pixel_format
@@ -204,16 +213,16 @@ varying_format(gl_varying_slot loc, enum pipe_format pfmt)
    }
 }
 
-static mali_ptr
-emit_varying_attrs(struct pan_pool *desc_pool,
+static struct panvk_priv_mem
+emit_varying_attrs(struct panvk_pool *desc_pool,
                    const struct pan_shader_varying *varyings,
                    unsigned varying_count, const struct varyings_info *info,
                    unsigned *buf_offsets)
 {
    unsigned attr_count = BITSET_COUNT(info->active);
-   struct panfrost_ptr ptr =
-      pan_pool_alloc_desc_array(desc_pool, attr_count, ATTRIBUTE);
-   struct mali_attribute_packed *attrs = ptr.cpu;
+   struct panvk_priv_mem mem =
+      panvk_pool_alloc_desc_array(desc_pool, attr_count, ATTRIBUTE);
+   struct mali_attribute_packed *attrs = panvk_priv_mem_host_addr(mem);
    unsigned attr_idx = 0;
 
    for (unsigned i = 0; i < varying_count; i++) {
@@ -238,7 +247,7 @@ emit_varying_attrs(struct pan_pool *desc_pool,
       }
    }
 
-   return ptr.gpu;
+   return mem;
 }
 
 static void
@@ -246,6 +255,7 @@ link_shaders(struct panvk_graphics_pipeline *pipeline,
              struct panvk_pipeline_shader *stage,
              struct panvk_pipeline_shader *next_stage)
 {
+   struct panvk_device *dev = to_panvk_device(pipeline->base.base.device);
    BITSET_DECLARE(active_attrs, VARYING_SLOT_MAX) = {0};
    unsigned buf_strides[PANVK_VARY_BUF_MAX] = {0};
    unsigned buf_offsets[VARYING_SLOT_MAX] = {0};
@@ -310,10 +320,10 @@ link_shaders(struct panvk_graphics_pipeline *pipeline,
    }
 
    stage->varyings.attribs = emit_varying_attrs(
-      &pipeline->base.desc_pool.base, stage->info.varyings.output,
+      &dev->mempools.rw, stage->info.varyings.output,
       stage->info.varyings.output_count, &out_vars, buf_offsets);
    next_stage->varyings.attribs = emit_varying_attrs(
-      &pipeline->base.desc_pool.base, next_stage->info.varyings.input,
+      &dev->mempools.rw, next_stage->info.varyings.input,
       next_stage->info.varyings.input_count, &in_vars, buf_offsets);
    memcpy(stage->varyings.buf_strides, buf_strides,
           sizeof(stage->varyings.buf_strides));
@@ -351,26 +361,6 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    gfx_pipeline->state.dynamic.ms.sample_locations = &gfx_pipeline->state.sl;
    vk_dynamic_graphics_state_fill(&gfx_pipeline->state.dynamic, &state);
    gfx_pipeline->state.rp = *state.rp;
-
-   struct panvk_pool_properties bin_pool_props = {
-      .create_flags = PAN_KMOD_BO_FLAG_EXECUTABLE,
-      .slab_size = 4096,
-      .label = "Pipeline shader binaries",
-      .prealloc = false,
-      .owns_bos = true,
-      .needs_locking = false,
-   };
-   panvk_pool_init(&gfx_pipeline->base.bin_pool, dev, NULL, &bin_pool_props);
-
-   struct panvk_pool_properties desc_pool_props = {
-      .create_flags = 0,
-      .slab_size = 4096,
-      .label = "Pipeline static state",
-      .prealloc = false,
-      .owns_bos = true,
-      .needs_locking = false,
-   };
-   panvk_pool_init(&gfx_pipeline->base.desc_pool, dev, NULL, &desc_pool_props);
 
    /* Make sure the stage info is correct even if no stage info is provided for
     * this stage in pStages.
@@ -451,28 +441,6 @@ panvk_compute_pipeline_create(struct panvk_device *dev,
    compute_pipeline->base.layout = layout;
    compute_pipeline->base.type = PANVK_PIPELINE_COMPUTE;
 
-   struct panvk_pool_properties bin_pool_props = {
-      .create_flags = PAN_KMOD_BO_FLAG_EXECUTABLE,
-      .slab_size = 4096,
-      .label = "Pipeline shader binaries",
-      .prealloc = false,
-      .owns_bos = true,
-      .needs_locking = false,
-   };
-   panvk_pool_init(&compute_pipeline->base.bin_pool, dev, NULL,
-                   &bin_pool_props);
-
-   struct panvk_pool_properties desc_pool_props = {
-      .create_flags = 0,
-      .slab_size = 4096,
-      .label = "Pipeline static state",
-      .prealloc = false,
-      .owns_bos = true,
-      .needs_locking = false,
-   };
-   panvk_pool_init(&compute_pipeline->base.desc_pool, dev, NULL,
-                   &desc_pool_props);
-
    VkResult result =
       init_pipeline_shader(&compute_pipeline->base, &create_info->stage, alloc,
                            &compute_pipeline->cs);
@@ -518,7 +486,18 @@ panvk_per_arch(DestroyPipeline)(VkDevice _device, VkPipeline _pipeline,
    VK_FROM_HANDLE(panvk_device, device, _device);
    VK_FROM_HANDLE(panvk_pipeline, pipeline, _pipeline);
 
-   panvk_pool_cleanup(&pipeline->bin_pool);
-   panvk_pool_cleanup(&pipeline->desc_pool);
+   if (pipeline->type == PANVK_PIPELINE_GRAPHICS) {
+      struct panvk_graphics_pipeline *gfx_pipeline =
+         panvk_pipeline_to_graphics_pipeline(pipeline);
+
+      cleanup_pipeline_shader(pipeline, &gfx_pipeline->vs);
+      cleanup_pipeline_shader(pipeline, &gfx_pipeline->fs);
+   } else {
+      struct panvk_compute_pipeline *compute_pipeline =
+         panvk_pipeline_to_compute_pipeline(pipeline);
+
+      cleanup_pipeline_shader(pipeline, &compute_pipeline->cs);
+   }
+
    vk_object_free(&device->vk, pAllocator, pipeline);
 }

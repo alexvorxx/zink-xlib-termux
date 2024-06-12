@@ -92,14 +92,16 @@ panvk_per_arch(CreateBufferView)(VkDevice _device,
 
       pan_image_layout_init(arch, &plane.layout, NULL);
 
-      unsigned bo_size = GENX(panfrost_estimate_texture_payload_size)(&pview);
+      struct panvk_pool_alloc_info alloc_info = {
+         .alignment = pan_alignment(TEXTURE),
+         .size = GENX(panfrost_estimate_texture_payload_size)(&pview),
+      };
 
-      view->bo = panvk_priv_bo_create(device, bo_size, 0,
-                                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      view->mem = panvk_pool_alloc_mem(&device->mempools.rw, alloc_info);
 
       struct panfrost_ptr ptr = {
-         .gpu = view->bo->addr.dev,
-         .cpu = view->bo->addr.host,
+         .gpu = panvk_priv_mem_dev_addr(view->mem),
+         .cpu = panvk_priv_mem_host_addr(view->mem),
       };
 
       GENX(panfrost_new_texture)(&pview, view->descs.tex.opaque, &ptr);
@@ -151,6 +153,6 @@ panvk_per_arch(DestroyBufferView)(VkDevice _device, VkBufferView bufferView,
    if (!view)
       return;
 
-   panvk_priv_bo_unref(view->bo);
+   panvk_pool_free_mem(&device->mempools.rw, view->mem);
    vk_buffer_view_destroy(&device->vk, pAllocator, &view->vk);
 }

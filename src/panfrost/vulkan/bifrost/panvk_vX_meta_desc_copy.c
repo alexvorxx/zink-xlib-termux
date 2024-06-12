@@ -301,7 +301,7 @@ panvk_per_arch(meta_get_copy_desc_job)(
    const struct panvk_descriptor_state *desc_state,
    const struct panvk_shader_desc_state *shader_desc_state)
 {
-   mali_ptr copy_table = shader->desc_info.others.map;
+   mali_ptr copy_table = panvk_priv_mem_dev_addr(shader->desc_info.others.map);
    if (!copy_table)
       return (struct panfrost_ptr){0};
 

@@ -44,6 +44,11 @@ struct panvk_device {
       struct panvk_priv_bo *rsd_bo;
    } desc_copy;
 
+   struct {
+      struct panvk_pool rw;
+      struct panvk_pool exec;
+   } mempools;
+
    struct vk_device_dispatch_table cmd_dispatch;
 
    struct panvk_queue *queues[PANVK_MAX_QUEUE_FAMILIES];

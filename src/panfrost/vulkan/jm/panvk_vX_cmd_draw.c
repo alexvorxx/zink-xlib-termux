@@ -349,18 +349,18 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
       PAN_DESC_ARRAY(bd_count, BLEND));
    struct mali_renderer_state_packed *rsd = ptr.cpu;
    struct mali_blend_packed *bds = ptr.cpu + pan_size(RENDERER_STATE);
+   mali_ptr fs_code = panvk_priv_mem_dev_addr(pipeline->fs.code);
 
    panvk_per_arch(blend_emit_descs)(
       dev, cb, cmdbuf->state.gfx.render.color_attachments.fmts,
-      cmdbuf->state.gfx.render.color_attachments.samples, fs_info,
-      pipeline->fs.code, bds, &blend_reads_dest,
-      &blend_shader_loads_blend_const);
+      cmdbuf->state.gfx.render.color_attachments.samples, fs_info, fs_code, bds,
+      &blend_reads_dest, &blend_shader_loads_blend_const);
 
    pan_pack(rsd, RENDERER_STATE, cfg) {
       bool alpha_to_coverage = dyns->ms.alpha_to_coverage_enable;
 
       if (needs_fs) {
-         pan_shader_prepare_rsd(fs_info, pipeline->fs.code, &cfg);
+         pan_shader_prepare_rsd(fs_info, fs_code, &cfg);
 
          if (blend_shader_loads_blend_const) {
             /* Preload the blend constant if the blend shader depends on it. */
@@ -543,8 +543,8 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
       draw->line_width = 1.0f;
 
    draw->varying_bufs = bufs.gpu;
-   draw->vs.varyings = pipeline->vs.varyings.attribs;
-   draw->fs.varyings = pipeline->fs.varyings.attribs;
+   draw->vs.varyings = panvk_priv_mem_dev_addr(pipeline->vs.varyings.attribs);
+   draw->fs.varyings = panvk_priv_mem_dev_addr(pipeline->fs.varyings.attribs);
 }
 
 static void
@@ -805,7 +805,7 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
    }
 
    pan_section_pack(ptr.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = pipeline->vs.rsd;
+      cfg.state = panvk_priv_mem_dev_addr(pipeline->vs.rsd);
       cfg.attributes = draw->vs.attributes;
       cfg.attribute_buffers = draw->vs.attribute_bufs;
       cfg.varyings = draw->vs.varyings;

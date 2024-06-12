@@ -803,7 +803,13 @@ hs_store_tess_factors_for_tes(nir_builder *b, tess_levels tessfactors, lower_tes
    nir_def *offchip_offset = nir_load_ring_tess_offchip_offset_amd(b);
    nir_def *zero = nir_imm_int(b, 0);
 
-   if (st->tcs_tess_level_outer_mask) {
+   /* For linked shaders, we must only write the tess factors that the TES actually reads,
+    * otherwise we would write to a memory location reserved for another per-patch output.
+    */
+   const bool tes_reads_outer = st->tes_inputs_read & VARYING_BIT_TESS_LEVEL_OUTER;
+   const bool tes_reads_inner = st->tes_inputs_read & VARYING_BIT_TESS_LEVEL_INNER;
+
+   if (st->tcs_tess_level_outer_mask && tes_reads_outer) {
       const unsigned tf_outer_loc = hs_output_vram_map_io_location(b->shader, false, VARYING_SLOT_TESS_LEVEL_OUTER, st);
       nir_def *vmem_off_outer = hs_per_patch_output_vmem_offset(b, st, NULL, tf_outer_loc * 16);
 
@@ -813,7 +819,7 @@ hs_store_tess_factors_for_tes(nir_builder *b, tess_levels tessfactors, lower_tes
                            .access = ACCESS_COHERENT);
    }
 
-   if (tessfactors.inner && st->tcs_tess_level_inner_mask) {
+   if (tessfactors.inner && st->tcs_tess_level_inner_mask && tes_reads_inner) {
       const unsigned tf_inner_loc = hs_output_vram_map_io_location(b->shader, false, VARYING_SLOT_TESS_LEVEL_INNER, st);
       nir_def *vmem_off_inner = hs_per_patch_output_vmem_offset(b, st, NULL, tf_inner_loc * 16);
 

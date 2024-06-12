@@ -899,7 +899,7 @@ radv_declare_shader_args(const struct radv_device *device, const struct radv_gra
 
    uint32_t num_desc_set = util_bitcount(info->desc_set_used_mask);
 
-   if (info->merged_shader_compiled_separately || remaining_sgprs < num_desc_set) {
+   if (info->force_indirect_desc_sets || remaining_sgprs < num_desc_set) {
       user_sgpr_info.indirect_all_descriptor_sets = true;
       user_sgpr_info.remaining_sgprs--;
    } else {

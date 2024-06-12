@@ -1121,7 +1121,7 @@ void
 radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *nir,
                           const struct radv_shader_layout *layout, const struct radv_shader_stage_key *stage_key,
                           const struct radv_graphics_state_key *gfx_state, const enum radv_pipeline_type pipeline_type,
-                          bool consider_force_vrs, struct radv_shader_info *info)
+                          bool consider_force_vrs, bool is_indirect_bindable, struct radv_shader_info *info)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct nir_function *func = (struct nir_function *)exec_list_get_head_const(&nir->functions);
@@ -1232,6 +1232,7 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
 
    info->user_data_0 = radv_get_user_data_0(device, info);
    info->merged_shader_compiled_separately = radv_is_merged_shader_compiled_separately(device, info);
+   info->force_indirect_desc_sets = info->merged_shader_compiled_separately || is_indirect_bindable;
 
    switch (nir->info.stage) {
    case MESA_SHADER_COMPUTE:

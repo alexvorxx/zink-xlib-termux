@@ -695,8 +695,7 @@ get_likely_cost(Instruction* instr)
 }
 
 void
-schedule_SMEM(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register_demand,
-              Instruction* current, int idx)
+schedule_SMEM(sched_ctx& ctx, Block* block, Instruction* current, int idx)
 {
    assert(idx != 0);
    int window_size = SMEM_WINDOW_SIZE;
@@ -840,8 +839,7 @@ schedule_SMEM(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& registe
 }
 
 void
-schedule_VMEM(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register_demand,
-              Instruction* current, int idx)
+schedule_VMEM(sched_ctx& ctx, Block* block, Instruction* current, int idx)
 {
    assert(idx != 0);
    int window_size = VMEM_WINDOW_SIZE;
@@ -1012,8 +1010,7 @@ schedule_VMEM(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& registe
 }
 
 void
-schedule_LDS(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register_demand,
-             Instruction* current, int idx)
+schedule_LDS(sched_ctx& ctx, Block* block, Instruction* current, int idx)
 {
    assert(idx != 0);
    int window_size = LDS_WINDOW_SIZE;
@@ -1091,8 +1088,7 @@ schedule_LDS(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register
 }
 
 void
-schedule_position_export(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register_demand,
-                         Instruction* current, int idx)
+schedule_position_export(sched_ctx& ctx, Block* block, Instruction* current, int idx)
 {
    assert(idx != 0);
    int window_size = POS_EXP_WINDOW_SIZE / ctx.schedule_pos_export_div;
@@ -1138,8 +1134,7 @@ schedule_position_export(sched_ctx& ctx, Block* block, std::vector<RegisterDeman
 }
 
 unsigned
-schedule_VMEM_store(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register_demand,
-                    Instruction* current, int idx)
+schedule_VMEM_store(sched_ctx& ctx, Block* block, Instruction* current, int idx)
 {
    hazard_query hq;
    init_hazard_query(ctx, &hq);
@@ -1189,8 +1184,7 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block, live& live_vars)
          unsigned target = current->exp().dest;
          if (target >= V_008DFC_SQ_EXP_POS && target < V_008DFC_SQ_EXP_PRIM) {
             ctx.mv.current = current;
-            schedule_position_export(ctx, block, live_vars.register_demand[block->index], current,
-                                     idx);
+            schedule_position_export(ctx, block, current, idx);
          }
       }
 
@@ -1201,17 +1195,17 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block, live& live_vars)
 
       if (current->isVMEM() || current->isFlatLike()) {
          ctx.mv.current = current;
-         schedule_VMEM(ctx, block, live_vars.register_demand[block->index], current, idx);
+         schedule_VMEM(ctx, block, current, idx);
       }
 
       if (current->isSMEM()) {
          ctx.mv.current = current;
-         schedule_SMEM(ctx, block, live_vars.register_demand[block->index], current, idx);
+         schedule_SMEM(ctx, block, current, idx);
       }
 
       if (current->isLDSDIR() || (current->isDS() && !current->ds().gds)) {
          ctx.mv.current = current;
-         schedule_LDS(ctx, block, live_vars.register_demand[block->index], current, idx);
+         schedule_LDS(ctx, block, current, idx);
       }
    }
 
@@ -1223,8 +1217,7 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block, live& live_vars)
             continue;
 
          ctx.mv.current = current;
-         idx -=
-            schedule_VMEM_store(ctx, block, live_vars.register_demand[block->index], current, idx);
+         idx -= schedule_VMEM_store(ctx, block, current, idx);
       }
    }
 

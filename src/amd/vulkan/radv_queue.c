@@ -651,10 +651,13 @@ radv_emit_attribute_ring(struct radv_device *device, struct radeon_cmdbuf *cs, s
    radeon_emit(cs, 0); /* GCR_CNTL */
 
    /* The PS will read inputs from this address. */
-   radeon_set_uconfig_reg(cs, R_031118_SPI_ATTRIBUTE_RING_BASE, va >> 16);
-   radeon_set_uconfig_reg(cs, R_03111C_SPI_ATTRIBUTE_RING_SIZE,
-                          S_03111C_MEM_SIZE(((attr_ring_size / pdev->info.max_se) >> 16) - 1) |
-                             S_03111C_BIG_PAGE(pdev->info.discardable_allows_big_page) | S_03111C_L1_POLICY(1));
+   radeon_set_uconfig_reg_seq(cs, R_031110_SPI_GS_THROTTLE_CNTL1, 4);
+   radeon_emit(cs, 0x12355123); /* SPI_GS_THROTTLE_CNTL1 */
+   radeon_emit(cs, 0x1544D);    /* SPI_GS_THROTTLE_CNTL2 */
+   radeon_emit(cs, va >> 16);   /* SPI_ATTRIBUTE_RING_BASE */
+   radeon_emit(cs, S_03111C_MEM_SIZE(((attr_ring_size / pdev->info.max_se) >> 16) - 1) |
+                      S_03111C_BIG_PAGE(pdev->info.discardable_allows_big_page) |
+                      S_03111C_L1_POLICY(1)); /* SPI_ATTRIBUTE_RING_SIZE */
 
    if (pdev->info.gfx_level >= GFX12) {
       const uint64_t pos_address = va + pdev->info.pos_ring_offset;
@@ -1243,9 +1246,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       radeon_emit(cs, PIXEL_PIPE_STATE_CNTL_COUNTER_ID(0) | PIXEL_PIPE_STATE_CNTL_STRIDE(2) |
                          PIXEL_PIPE_STATE_CNTL_INSTANCE_EN_LO(rb_mask));
       radeon_emit(cs, PIXEL_PIPE_STATE_CNTL_INSTANCE_EN_HI(rb_mask));
-
-      radeon_set_uconfig_reg(cs, R_031110_SPI_GS_THROTTLE_CNTL1, 0x12355123);
-      radeon_set_uconfig_reg(cs, R_031114_SPI_GS_THROTTLE_CNTL2, 0x1544D);
    }
 
    /* The exclusion bits can be set to improve rasterization efficiency if no sample lies on the

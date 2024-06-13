@@ -961,6 +961,7 @@ handle_split(struct ra_ctx *ctx, struct ir3_instruction *split)
       spill_split->split.off = split->split.off;
       ir3_instr_move_after(spill_split, split);
       dst_interval->spill_def = dst;
+      list_del(&split->node);
       return;
    }
 
@@ -1192,7 +1193,7 @@ handle_block(struct ra_ctx *ctx, struct ir3_block *block)
    if (block->predecessors_count > 1)
       record_pred_live_outs(ctx, block);
 
-   foreach_instr (instr, &block->instr_list) {
+   foreach_instr_safe (instr, &block->instr_list) {
       di(instr, "processing");
 
       handle_instr(ctx, instr);

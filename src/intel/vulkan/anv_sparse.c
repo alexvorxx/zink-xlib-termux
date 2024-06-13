@@ -1131,6 +1131,19 @@ anv_sparse_bind_image_opaque(struct anv_device *device,
       &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
    assert(!image->disjoint);
 
+   if (INTEL_DEBUG(DEBUG_SPARSE)) {
+      sparse_debug("%s:\n", __func__);
+      dump_anv_image(image);
+      u_foreach_bit(b, image->vk.aspects) {
+         VkImageAspectFlagBits aspect = 1 << b;
+         const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
+         struct isl_surf *surf = &image->planes[plane].primary_surface.isl;
+         sparse_debug("aspect 0x%x (plane %d):\n", aspect, plane);
+         dump_isl_surf(surf);
+      }
+      sparse_debug("\n");
+   }
+
    return anv_sparse_bind_resource_memory(device, &b->sparse_data,
                                           b->memory_range.size,
                                           vk_bind, submit);
@@ -1162,7 +1175,7 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
       isl_format_get_layout(surf->format);
 
    if (INTEL_DEBUG(DEBUG_SPARSE)) {
-      sparse_debug("%s:", __func__);
+      sparse_debug("%s:\n", __func__);
       sparse_debug("mip_level:%d array_layer:%d\n", mip_level, array_layer);
       sparse_debug("aspect:0x%x plane:%d\n", aspect, plane);
       sparse_debug("binding offset: [%d, %d, %d] extent: [%d, %d, %d]\n",

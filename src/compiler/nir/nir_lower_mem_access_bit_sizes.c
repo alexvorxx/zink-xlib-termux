@@ -241,6 +241,7 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_src *offset_src = nir_get_io_offset_src(intrin);
    const bool offset_is_const = nir_src_is_const(*offset_src);
    nir_def *offset = offset_src->ssa;
+   bool is_scratch = intrin->intrinsic == nir_intrinsic_store_scratch;
 
    nir_component_mask_t writemask = nir_intrinsic_write_mask(intrin);
    assert(writemask < (1 << num_components));
@@ -295,7 +296,7 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
           chunk_bytes > max_chunk_bytes) {
          /* Otherwise the caller made a mistake with their return values. */
          assert(chunk_bytes <= 4);
-         assert(allow_unaligned_stores_as_atomics);
+         assert(allow_unaligned_stores_as_atomics || is_scratch);
 
          /* We'll turn this into a pair of 32-bit atomics to modify only the right
           * bits of memory.
@@ -360,6 +361,13 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
                               .atomic_op = nir_atomic_op_ior,
                               .base = nir_intrinsic_base(intrin));
             break;
+         case nir_intrinsic_store_scratch: {
+            nir_def *value = nir_load_scratch(b, 1, 32, chunk_offset);
+            value = nir_iand(b, value, iand_mask);
+            value = nir_ior(b, value, data);
+            nir_store_scratch(b, value, chunk_offset);
+            break;
+         }
          default:
             unreachable("Unsupported unaligned store");
          }

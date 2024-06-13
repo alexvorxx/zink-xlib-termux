@@ -698,8 +698,8 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .INTEL_shader_integer_functions2 = true,
       .MESA_image_alignment_control = pdev->info.gfx_level >= GFX9 && pdev->info.gfx_level <= GFX11_5,
       .NV_compute_shader_derivatives = true,
-      .NV_device_generated_commands = !pdev->use_llvm && instance->drirc.enable_dgc,
-      .NV_device_generated_commands_compute = !pdev->use_llvm && instance->drirc.enable_dgc,
+      .NV_device_generated_commands = instance->drirc.enable_dgc,
+      .NV_device_generated_commands_compute = instance->drirc.enable_dgc,
       /* Undocumented extension purely for vkd3d-proton. This check is to prevent anyone else from
        * using it.
        */

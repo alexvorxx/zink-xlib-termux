@@ -615,14 +615,8 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
                       nvk_root_descriptor_offset(dynamic_buffers));
 
       assert(num_components == 4 && bit_size == 32);
-      nir_def *desc =
-         nir_ldc_nv(b, 4, 32, nir_imm_int(b, 0), root_desc_offset,
-                    .align_mul = 16, .align_offset = 0);
-      /* We know a priori that the the .w compnent (offset) is zero */
-      return nir_vec4(b, nir_channel(b, desc, 0),
-                         nir_channel(b, desc, 1),
-                         nir_channel(b, desc, 2),
-                         nir_imm_int(b, 0));
+      return nir_ldc_nv(b, 4, 32, nir_imm_int(b, 0), root_desc_offset,
+                        .align_mul = 16, .align_offset = 0);
    }
 
    case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK: {
@@ -661,30 +655,19 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
       };
       int cbuf_idx = get_mapped_cbuf_idx(&cbuf_key, ctx);
 
-      nir_def *desc;
       if (cbuf_idx >= 0 && max_desc_ubo_offset <= NVK_MAX_CBUF_SIZE) {
-         desc = nir_ldc_nv(b, num_components, bit_size,
+         return nir_ldc_nv(b, num_components, bit_size,
                            nir_imm_int(b, cbuf_idx),
                            desc_ubo_offset,
                            .align_mul = desc_align_mul,
                            .align_offset = desc_align_offset);
       } else {
          nir_def *set_addr = load_descriptor_set_addr(b, set, ctx);
-         desc = nir_load_global_constant_offset(b, num_components, bit_size,
+         return nir_load_global_constant_offset(b, num_components, bit_size,
                                                 set_addr, desc_ubo_offset,
                                                 .align_mul = desc_align_mul,
                                                 .align_offset = desc_align_offset);
       }
-      if (binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-          binding_layout->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
-         /* We know a priori that the the .w compnent (offset) is zero */
-         assert(num_components == 4 && bit_size == 32);
-         desc = nir_vec4(b, nir_channel(b, desc, 0),
-                            nir_channel(b, desc, 1),
-                            nir_channel(b, desc, 2),
-                            nir_imm_int(b, 0));
-      }
-      return desc;
    }
    }
 }
@@ -717,7 +700,13 @@ load_descriptor_for_idx_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    uint32_t binding = nir_intrinsic_binding(intrin);
    index = nir_iadd(b, index, intrin->src[0].ssa);
 
-   return load_descriptor(b, 4, 32, set, binding, index, 0, ctx);
+   nir_def *desc = load_descriptor(b, 4, 32, set, binding, index, 0, ctx);
+
+   /* We know a priori that the the .w compnent (offset) is zero */
+   return nir_vec4(b, nir_channel(b, desc, 0),
+                      nir_channel(b, desc, 1),
+                      nir_channel(b, desc, 2),
+                      nir_imm_int(b, 0));
 }
 
 static bool

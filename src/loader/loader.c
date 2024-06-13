@@ -883,7 +883,7 @@ loader_open_driver(const char *driver_name,
    const struct __DRIextensionRec **extensions = NULL;
    const struct __DRIextensionRec **(*get_extensions)(void);
 
-   void *driver = loader_open_driver_lib(driver_name, "_dri", search_path_vars,
+   void *driver = loader_open_driver_lib("libgallium", "", search_path_vars,
                                          DEFAULT_DRIVER_DIR, !driver_name_is_inferred);
 
    if (!driver)

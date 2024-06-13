@@ -2095,8 +2095,7 @@ public:
 
    uint32_t peekAllocationId() { return allocationID; }
 
-   friend void reindex_ssa(Program* program);
-   friend void reindex_ssa(Program* program, std::vector<IDSet>& live_out);
+   friend void reindex_ssa(Program* program, bool update_live_out);
 
    Block* create_and_insert_block()
    {

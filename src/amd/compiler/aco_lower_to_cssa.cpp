@@ -516,7 +516,7 @@ emit_parallelcopies(cssa_ctx& ctx)
 void
 lower_to_cssa(Program* program)
 {
-   reindex_ssa(program, program->live.live_out);
+   reindex_ssa(program, true);
    cssa_ctx ctx = {program, program->live.live_out};
    collect_parallelcopies(ctx);
    emit_parallelcopies(ctx);

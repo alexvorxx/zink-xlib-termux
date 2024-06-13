@@ -3679,10 +3679,6 @@ zink_set_framebuffer_state(struct pipe_context *pctx,
          check_framebuffer_surface_mutable(pctx, psurf);
          if (zink_csurface(psurf)->info.layerCount > layers)
             ctx->fb_layer_mismatch |= BITFIELD_BIT(i);
-         if (res->modifiers) {
-            assert(!ctx->needs_present || ctx->needs_present == res);
-            ctx->needs_present = res;
-         }
          if (res->obj->dt) {
             /* #6274 */
             if (!zink_screen(ctx->base.screen)->info.have_KHR_swapchain_mutable_format &&

@@ -2218,23 +2218,44 @@ isl_calc_row_pitch_alignment(const struct isl_device *dev,
                              const struct isl_tile_info *tile_info)
 {
    if (tile_info->tiling != ISL_TILING_LINEAR) {
-      /* From Bspec 49252, Render Decompression:
-       *
-       *    "Compressed displayable surfaces must be 16KB aligned and have
-       *    pitches padded to multiple of 4 tiles."
-       *
-       * Only consider padding the pitch when the caller has specified no
-       * pitch. isl_surf_supports_ccs() will confirm that the main surface
-       * pitch matches CCS expectations.
-       */
-      if (ISL_GFX_VER(dev) == 12 &&
-          isl_surf_usage_is_display(surf_info->usage) &&
+
+      /* On gfx12, aligning to 512B may be wanted or needed for CCS_E. */
+      if (ISL_GFX_VER(dev) == 12 && surf_info->samples == 1 &&
+          !isl_surf_usage_is_depth_or_stencil(surf_info->usage) &&
           _isl_surf_info_supports_ccs(dev, surf_info->format,
                                       surf_info->usage) &&
           tile_info->tiling != ISL_TILING_X &&
           surf_info->row_pitch_B == 0) {
-         assert(tile_info->phys_extent_B.width == 128);
-         return 512;
+
+         /* From Bspec 49252, Render Decompression:
+          *
+          *    "Compressed displayable surfaces must be 16KB aligned and have
+          *    pitches padded to multiple of 4 tiles."
+          *
+          * Only consider padding the pitch when the caller has specified no
+          * pitch. isl_surf_supports_ccs() will confirm that the main surface
+          * pitch matches CCS expectations.
+          */
+         if (isl_surf_usage_is_display(surf_info->usage)) {
+            assert(tile_info->phys_extent_B.width == 128);
+            return 512;
+         }
+
+         /* On gfx12.0, CCS fast clears don't seem to cover the correct
+          * portion of the aux buffer when the pitch is not 512B-aligned. Pad
+          * the pitch unless Wa_18020603990 applies (slow clear surfaces up
+          * to 256x256, 32bpp). isl_surf_supports_ccs() won't confirm this
+          * alignment, so drivers must fall back to slow clears as needed.
+          */
+         if (ISL_GFX_VERX10(dev) == 120) {
+            assert(intel_needs_workaround(dev->info, 18020603990));
+            if (tile_info->format_bpb > 32 ||
+                surf_info->width > 256 ||
+                surf_info->height > 256) {
+               assert(tile_info->phys_extent_B.width == 128);
+               return 512;
+            }
+         }
       }
 
       return tile_info->phys_extent_B.width;

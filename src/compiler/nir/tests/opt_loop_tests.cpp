@@ -27,13 +27,15 @@ class nir_opt_loop_test : public nir_test {
 protected:
    nir_opt_loop_test();
 
-   nir_deref_instr *add_loop_terminators(nir_if **term1, nir_if **term2);
+   nir_deref_instr *add_loop_terminators(nir_if **term1, nir_if **term2,
+                                         bool deref_array);
    void create_loop_phis(nir_loop *loop, nir_if *term1, nir_if *term2,
                          nir_def *def1, nir_def *def2);
 
    nir_def *in_def;
    nir_variable *out_var;
    nir_variable *ubo_var;
+   nir_variable *ubo_var_array;
 };
 
 nir_opt_loop_test::nir_opt_loop_test()
@@ -43,12 +45,14 @@ nir_opt_loop_test::nir_opt_loop_test()
    in_def = nir_load_var(b, var);
 
    ubo_var = nir_variable_create(b->shader, nir_var_mem_ubo, glsl_int_type(), "ubo1");
+   ubo_var_array = nir_variable_create(b->shader, nir_var_mem_ubo, glsl_array_type(glsl_int_type(), 4, 0), "ubo_array");
 
    out_var = nir_variable_create(b->shader, nir_var_shader_out, glsl_int_type(), "out");
 }
 
 nir_deref_instr *
-nir_opt_loop_test::add_loop_terminators(nir_if **term1, nir_if **term2)
+nir_opt_loop_test::add_loop_terminators(nir_if **term1, nir_if **term2,
+                                        bool deref_array)
 {
    /* Add first terminator */
    nir_def *one = nir_imm_int(b, 1);
@@ -60,7 +64,13 @@ nir_opt_loop_test::add_loop_terminators(nir_if **term1, nir_if **term2)
    if (term1)
       *term1 = nif;
 
-   nir_deref_instr *deref = nir_build_deref_var(b, ubo_var);
+   nir_deref_instr *deref;
+   if (deref_array) {
+      nir_def *index = nir_imm_int(b, 3);
+      deref = nir_build_deref_array(b, nir_build_deref_var(b, ubo_var_array), index);
+   } else {
+      deref = nir_build_deref_var(b, ubo_var);
+   }
    nir_def *ubo_def = nir_load_deref(b, deref);
 
    /* Add second terminator */
@@ -97,7 +107,31 @@ TEST_F(nir_opt_loop_test, opt_loop_merge_terminators_deref_after_first_if)
     */
    nir_loop *loop = nir_push_loop(b);
 
-   nir_deref_instr *deref = add_loop_terminators(NULL, NULL);
+   nir_deref_instr *deref = add_loop_terminators(NULL, NULL, false);
+
+   /* Load from deref that will be moved inside the continue branch of the
+    * first if-statements continue block. If not handled correctly during
+    * the merge this will fail nir validation.
+    */
+   nir_def *ubo_def = nir_load_deref(b, deref);
+   nir_store_var(b, out_var, ubo_def, 1);
+
+   nir_pop_loop(b, loop);
+
+   ASSERT_TRUE(nir_opt_loop(b->shader));
+
+   nir_validate_shader(b->shader, NULL);
+}
+
+TEST_F(nir_opt_loop_test, opt_loop_merge_terminators_deref_phi_index)
+{
+   /* Tests that opt_loop_merge_terminators creates valid nir after it merges
+    * terminators that have a deref statement and index value between them and
+    * where that deref and index are both later used again later in the code:
+    */
+   nir_loop *loop = nir_push_loop(b);
+
+   nir_deref_instr *deref = add_loop_terminators(NULL, NULL, true);
 
    /* Load from deref that will be moved inside the continue branch of the
     * first if-statements continue block. If not handled correctly during
@@ -126,7 +160,7 @@ TEST_F(nir_opt_loop_test, opt_loop_merge_terminators_skip_merge_if_phis)
 
    nir_if *term1;
    nir_if *term2;
-   add_loop_terminators(&term1, &term2);
+   add_loop_terminators(&term1, &term2, false);
 
    nir_pop_loop(b, loop);
 
@@ -154,7 +188,7 @@ TEST_F(nir_opt_loop_test, opt_loop_merge_terminators_skip_merge_if_phis_nested_l
 
    nir_if *term1;
    nir_if *term2;
-   add_loop_terminators(&term1, &term2);
+   add_loop_terminators(&term1, &term2, false);
 
    nir_pop_loop(b, loop);
 

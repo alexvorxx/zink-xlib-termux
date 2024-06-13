@@ -32,7 +32,7 @@
 #include <xcb/present.h>
 
 #include <GL/gl.h>
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include <c11/threads.h>
 
 enum loader_dri3_buffer_type {

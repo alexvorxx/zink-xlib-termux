@@ -60,7 +60,7 @@
 #include <xcb/sync.h>
 
 #include "loader_dri3_helper.h"
-#include "GL/internal/mesa_interface.h"
+#include "mesa_interface.h"
 
 struct dri3_display
 {

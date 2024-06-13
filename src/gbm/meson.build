@@ -16,7 +16,7 @@ args_gbm = [
 ]
 deps_gbm = []
 incs_gbm = [
-  include_directories('main'), inc_include, inc_src, inc_loader,
+  include_directories('main'), inc_include, inc_src, inc_loader, inc_gallium
 ]
 
 if with_dri2

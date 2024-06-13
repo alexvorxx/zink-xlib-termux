@@ -35,7 +35,7 @@
 #define _DRI_UTIL_H_
 
 #include <GL/gl.h>
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include "kopper_interface.h"
 #include "main/formats.h"
 #include "main/glconfig.h"

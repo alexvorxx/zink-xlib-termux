@@ -30,7 +30,7 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <stddef.h>
-#include "GL/internal/mesa_interface.h"
+#include "mesa_interface.h"
 
 #ifdef __cplusplus
 extern "C" {

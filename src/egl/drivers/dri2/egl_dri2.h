@@ -59,8 +59,7 @@ struct zwp_linux_dmabuf_feedback_v1;
 #endif
 
 #include <GL/gl.h>
-#include <GL/internal/mesa_interface.h>
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include "kopper_interface.h"
 
 #ifdef HAVE_DRM_PLATFORM

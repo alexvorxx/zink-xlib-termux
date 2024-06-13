@@ -17,7 +17,7 @@ extern "C" {
 #include <stdbool.h>
 
 #include "util/macros.h"
-#include "GL/internal/mesa_interface.h"
+#include "mesa_interface.h"
 
 struct u_gralloc;
 

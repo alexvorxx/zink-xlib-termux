@@ -21,7 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "GL/internal/mesa_interface.h"
+#include "mesa_interface.h"
 #include "git_sha1.h"
 #include "util/format/u_format.h"
 #include "util/u_memory.h"

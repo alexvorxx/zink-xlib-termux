@@ -31,7 +31,7 @@
 #include "util/libdrm.h"
 #include "git_sha1.h"
 #include "GL/mesa_glinterop.h"
-#include "GL/internal/mesa_interface.h"
+#include "mesa_interface.h"
 #include "util/disk_cache.h"
 #include "util/u_memory.h"
 #include "util/u_inlines.h"

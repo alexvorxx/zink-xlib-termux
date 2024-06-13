@@ -38,7 +38,7 @@
 
 #ifdef GLX_DIRECT_RENDERING
 
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include <stdbool.h>
 #include "loader.h"
 #include "util/macros.h" /* for PRINTFLIKE */

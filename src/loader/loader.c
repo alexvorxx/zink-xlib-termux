@@ -45,7 +45,7 @@
 #include <sys/sysmacros.h>
 #endif
 #include <GL/gl.h>
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include "loader.h"
 #include "util/libdrm.h"
 #include "util/os_file.h"

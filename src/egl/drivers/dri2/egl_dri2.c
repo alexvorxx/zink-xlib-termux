@@ -42,7 +42,7 @@
 #include "drm-uapi/drm_fourcc.h"
 #endif
 #include <GL/gl.h>
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "dri_screen.h"

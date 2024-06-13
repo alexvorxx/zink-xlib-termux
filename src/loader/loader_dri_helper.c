@@ -24,7 +24,7 @@
 #include <sys/types.h>
 
 #include <GL/gl.h> /* mesa_interface needs GL types */
-#include <GL/internal/mesa_interface.h>
+#include "mesa_interface.h"
 
 #include "drm-uapi/drm_fourcc.h"
 #include "loader_dri_helper.h"

@@ -34,18 +34,15 @@
 #include <errno.h>
 #include <limits.h>
 #include <assert.h>
-
 #include <sys/types.h>
 #include <unistd.h>
 #include <dlfcn.h>
 #include <xf86drm.h>
 #include "drm-uapi/drm_fourcc.h"
-
 #include <GL/gl.h> /* mesa_interface needs GL types */
-#include <GL/internal/mesa_interface.h>
 
+#include "mesa_interface.h"
 #include "gbm_driint.h"
-
 #include "gbmint.h"
 #include "loader_dri_helper.h"
 #include "kopper_interface.h"

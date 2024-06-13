@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#include "GL/internal/mesa_interface.h"
+#include "mesa_interface.h"
 
 struct dri2_screen {
    struct glx_screen base;

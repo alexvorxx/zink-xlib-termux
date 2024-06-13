@@ -30,7 +30,7 @@ endif
 _libmesa_u_gralloc = static_library(
   '_mesa_u_gralloc',
   [files_u_gralloc],
-  include_directories : [inc_gallium, inc_include, inc_util],
+  include_directories : [inc_include, inc_util],
   c_args : c_args_for_u_gralloc,
   cpp_args : cpp_args_for_u_gralloc,
   override_options : options_for_u_gralloc,

@@ -381,6 +381,7 @@ endif
 
 with_platform_android = _platforms.contains('android')
 with_platform_x11 = _platforms.contains('x11')
+with_platform_xcb = _platforms.contains('xcb')
 with_platform_wayland = _platforms.contains('wayland')
 with_platform_haiku = _platforms.contains('haiku')
 with_platform_windows = _platforms.contains('windows')

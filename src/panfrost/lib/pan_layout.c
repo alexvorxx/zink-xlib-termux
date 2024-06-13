@@ -470,8 +470,8 @@ pan_image_layout_init(unsigned arch, struct pan_image_layout *layout,
    if (explicit_layout)
       layout->data_size = offset;
    else
-      layout->data_size =
-         ALIGN_POT(layout->array_stride * layout->array_size, 4096);
+      layout->data_size = ALIGN_POT(
+         (uint64_t)layout->array_stride * (uint64_t)layout->array_size, 4096);
 
    return true;
 }

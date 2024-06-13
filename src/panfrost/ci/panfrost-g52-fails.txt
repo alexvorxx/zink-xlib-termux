@@ -1179,12 +1179,6 @@ dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.pattern.137_1
 dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.write.128_128_1.samples_4,Crash
 dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.write.137_191_1.samples_4,Crash
 
-# Some huge tests fail to allocate when running several deqp-vk instances. Those pass just fine
-# when executed in isolation. There's still something strange though: the CTS trips out on a NULL
-# VkDeviceMemory when it should report a VK_ERROR. This needs further investigation.
-dEQP-VK.pipeline.monolithic.render_to_image.core.2d_array.huge.width_height_layers.r8g8b8a8_unorm_d16_unorm,Fail
-dEQP-VK.pipeline.monolithic.render_to_image.core.2d_array.huge.width_height_layers.r8g8b8a8_unorm_d32_sfloat_s8_uint,Fail
-
 # uprev Piglit in Mesa
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 

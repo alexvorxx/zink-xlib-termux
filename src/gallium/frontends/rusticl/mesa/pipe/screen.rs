@@ -81,7 +81,7 @@ impl ResourceType {
     fn apply(&self, tmpl: &mut pipe_resource, screen: &PipeScreen) {
         match self {
             Self::Staging => {
-                tmpl.set_usage(pipe_resource_usage::PIPE_USAGE_STAGING.0);
+                tmpl.set_usage(pipe_resource_usage::PIPE_USAGE_STAGING);
                 tmpl.flags |= PIPE_RESOURCE_FLAG_MAP_PERSISTENT | PIPE_RESOURCE_FLAG_MAP_COHERENT;
                 tmpl.bind |= PIPE_BIND_LINEAR;
             }

@@ -262,16 +262,15 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     * this, we get GPU hangs when using multi-level command buffers which
     * clear depth, reset state base address, and then go render stuff.
     */
-   genx_batch_emit_pipe_control
-      (&cmd_buffer->batch, cmd_buffer->device->info,
-       cmd_buffer->state.current_pipeline,
+   genx_batch_emit_pipe_control(&cmd_buffer->batch, device->info,
+                                cmd_buffer->state.current_pipeline,
 #if GFX_VER >= 12
-       ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
+                                ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
 #else
-       ANV_PIPE_DATA_CACHE_FLUSH_BIT |
+                                ANV_PIPE_DATA_CACHE_FLUSH_BIT |
 #endif
-       ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-       ANV_PIPE_CS_STALL_BIT);
+                                ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
+                                ANV_PIPE_CS_STALL_BIT);
 
 #if INTEL_NEEDS_WA_1607854226
    /* Wa_1607854226:
@@ -349,8 +348,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
       ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT |
       ANV_PIPE_STATE_CACHE_INVALIDATE_BIT |
-      (intel_needs_workaround(cmd_buffer->device->info, 16013000631) ?
-          ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0);
+      (intel_needs_workaround(device->info, 16013000631) ?
+       ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0);
 
 #if GFX_VER >= 9 && GFX_VER <= 11
       /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
@@ -364,7 +363,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       if (cmd_buffer->state.current_pipeline == GPGPU)
          bits |= ANV_PIPE_CS_STALL_BIT;
 #endif
-   genx_batch_emit_pipe_control(&cmd_buffer->batch, cmd_buffer->device->info,
+   genx_batch_emit_pipe_control(&cmd_buffer->batch, device->info,
                                 cmd_buffer->state.current_pipeline,
                                 bits);
 
@@ -376,8 +375,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
          ptr.SliceHashStatePointerValid = true;
          ptr.SliceHashTableStatePointer = cmd_buffer->state.current_db_mode ==
                                           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-                                          cmd_buffer->device->slice_hash_db.offset :
-                                          cmd_buffer->device->slice_hash.offset;
+                                          device->slice_hash_db.offset :
+                                          device->slice_hash.offset;
       }
 #endif
 
@@ -390,7 +389,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_SCISSOR);
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_CC_STATE);
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_BLEND_STATE);
-      if (cmd_buffer->device->vk.enabled_extensions.KHR_fragment_shading_rate) {
+      if (device->vk.enabled_extensions.KHR_fragment_shading_rate) {
          struct vk_dynamic_graphics_state *dyn =
             &cmd_buffer->vk.dynamic_graphics_state;
          BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_FSR);

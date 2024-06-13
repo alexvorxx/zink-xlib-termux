@@ -80,6 +80,158 @@ convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
       fprintf(stdout, ") reason: %s\n", reason); \
    }
 
+static inline void
+fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
+                     struct GENX(STATE_BASE_ADDRESS) *sba)
+{
+   struct anv_device *device = cmd_buffer->device;
+   const uint32_t mocs = isl_mocs(&device->isl_dev, 0, false);
+
+   /* If no API entry point selected the current mode (this can happen if the
+    * first operation in the command buffer is a , select BUFFER if
+    * EXT_descriptor_buffer is enabled, otherwise LEGACY.
+    */
+   if (cmd_buffer->state.pending_db_mode ==
+       ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN) {
+      cmd_buffer->state.pending_db_mode =
+         cmd_buffer->device->vk.enabled_extensions.EXT_descriptor_buffer ?
+         ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER :
+         ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY;
+   }
+
+   *sba = (struct GENX(STATE_BASE_ADDRESS)) { GENX(STATE_BASE_ADDRESS_header), };
+
+   sba->GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
+   sba->GeneralStateMOCS = mocs;
+   sba->GeneralStateBufferSize = 0xfffff;
+   sba->GeneralStateBaseAddressModifyEnable = true;
+   sba->GeneralStateBufferSizeModifyEnable = true;
+
+   sba->StatelessDataPortAccessMOCS = mocs;
+
+#if GFX_VERx10 >= 125
+   sba->SurfaceStateBaseAddress =
+      (struct anv_address) { .offset =
+                             device->physical->va.internal_surface_state_pool.addr,
+   };
+#else
+   sba->SurfaceStateBaseAddress =
+      anv_cmd_buffer_surface_base_address(cmd_buffer);
+#endif
+   sba->SurfaceStateMOCS = mocs;
+   sba->SurfaceStateBaseAddressModifyEnable = true;
+
+   sba->IndirectObjectBaseAddress = (struct anv_address) { NULL, 0 };
+   sba->IndirectObjectMOCS = mocs;
+   sba->IndirectObjectBufferSize = 0xfffff;
+   sba->IndirectObjectBaseAddressModifyEnable = true;
+   sba->IndirectObjectBufferSizeModifyEnable  = true;
+
+   sba->InstructionBaseAddress =
+      (struct anv_address) { device->instruction_state_pool.block_pool.bo, 0 };
+   sba->InstructionMOCS = mocs;
+   sba->InstructionBufferSize =
+      device->physical->va.instruction_state_pool.size / 4096;
+   sba->InstructionBaseAddressModifyEnable = true;
+   sba->InstructionBuffersizeModifyEnable = true;
+
+#if GFX_VER >= 11
+   sba->BindlessSamplerStateBaseAddress = ANV_NULL_ADDRESS;
+   sba->BindlessSamplerStateBufferSize = 0;
+   sba->BindlessSamplerStateMOCS = mocs;
+   sba->BindlessSamplerStateBaseAddressModifyEnable = true;
+#endif
+
+   if (cmd_buffer->state.pending_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
+      sba->DynamicStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.dynamic_state_db_pool.addr,
+      };
+      sba->DynamicStateBufferSize =
+         (device->physical->va.dynamic_state_db_pool.size +
+          device->physical->va.descriptor_buffer_pool.size +
+          device->physical->va.push_descriptor_buffer_pool.size) / 4096;
+      sba->DynamicStateMOCS = mocs;
+      sba->DynamicStateBaseAddressModifyEnable = true;
+      sba->DynamicStateBufferSizeModifyEnable = true;
+
+#if GFX_VERx10 >= 125
+      sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.descriptor_buffer_pool.addr,
+      };
+      sba->BindlessSurfaceStateSize =
+         (device->physical->va.descriptor_buffer_pool.size +
+          device->physical->va.push_descriptor_buffer_pool.size) - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
+#else
+      const uint64_t surfaces_addr =
+         cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
+         cmd_buffer->state.descriptor_buffers.surfaces_address :
+         anv_address_physical(device->workaround_address);
+      const uint64_t surfaces_size =
+         cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
+         MIN2(device->physical->va.descriptor_buffer_pool.size -
+              (cmd_buffer->state.descriptor_buffers.surfaces_address -
+               device->physical->va.descriptor_buffer_pool.addr),
+              anv_physical_device_bindless_heap_size(device->physical, true)) :
+         (device->workaround_bo->size - device->workaround_address.offset);
+      sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
+         .offset = surfaces_addr,
+      };
+      sba->BindlessSurfaceStateSize = surfaces_size / ANV_SURFACE_STATE_SIZE - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
+#endif /* GFX_VERx10 < 125 */
+   } else if (!device->physical->indirect_descriptors) {
+#if GFX_VERx10 >= 125
+      sba->DynamicStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.dynamic_state_pool.addr,
+      };
+      sba->DynamicStateBufferSize =
+         (device->physical->va.dynamic_state_pool.size +
+          device->physical->va.sampler_state_pool.size) / 4096;
+      sba->DynamicStateMOCS = mocs;
+      sba->DynamicStateBaseAddressModifyEnable = true;
+      sba->DynamicStateBufferSizeModifyEnable = true;
+
+      sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.internal_surface_state_pool.addr,
+      };
+      sba->BindlessSurfaceStateSize =
+         (device->physical->va.internal_surface_state_pool.size +
+          device->physical->va.bindless_surface_state_pool.size) - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
+#else
+      unreachable("Direct descriptor not supported");
+#endif
+   } else {
+      sba->DynamicStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.dynamic_state_pool.addr,
+      };
+      sba->DynamicStateBufferSize =
+         (device->physical->va.dynamic_state_pool.size +
+          device->physical->va.sampler_state_pool.size) / 4096;
+      sba->DynamicStateMOCS = mocs;
+      sba->DynamicStateBaseAddressModifyEnable = true;
+      sba->DynamicStateBufferSizeModifyEnable = true;
+
+      sba->BindlessSurfaceStateBaseAddress =
+         (struct anv_address) { .offset =
+                                device->physical->va.bindless_surface_state_pool.addr,
+      };
+      sba->BindlessSurfaceStateSize =
+         anv_physical_device_bindless_heap_size(device->physical, false) /
+         ANV_SURFACE_STATE_SIZE - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
+   }
+
+#if GFX_VERx10 >= 125
+   sba->L1CacheControl = L1CC_WB;
+#endif
+}
+
 void
 genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 {
@@ -87,8 +239,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
        anv_cmd_buffer_is_video_queue(cmd_buffer))
       return;
 
-   struct anv_device *device = cmd_buffer->device;
-   const uint32_t mocs = isl_mocs(&device->isl_dev, 0, false);
+   struct GENX(STATE_BASE_ADDRESS) sba = {};
+   fill_state_base_addr(cmd_buffer, &sba);
 
    /* If we are emitting a new state base address we probably need to re-emit
     * binding tables.
@@ -123,148 +275,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
    genX(flush_pipeline_select_3d)(cmd_buffer);
 #endif
 
-   /* If no API entry point selected the current mode (this can happen if the
-    * first operation in the command buffer is a , select BUFFER if
-    * EXT_descriptor_buffer is enabled, otherwise LEGACY.
-    */
-   if (cmd_buffer->state.pending_db_mode ==
-       ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN) {
-      cmd_buffer->state.pending_db_mode =
-         cmd_buffer->device->vk.enabled_extensions.EXT_descriptor_buffer ?
-         ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER :
-         ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY;
-   }
-
-   anv_batch_emit(&cmd_buffer->batch, GENX(STATE_BASE_ADDRESS), sba) {
-      sba.GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.GeneralStateMOCS = mocs;
-      sba.GeneralStateBufferSize = 0xfffff;
-      sba.GeneralStateBaseAddressModifyEnable = true;
-      sba.GeneralStateBufferSizeModifyEnable = true;
-
-      sba.StatelessDataPortAccessMOCS = mocs;
-
-#if GFX_VERx10 >= 125
-      sba.SurfaceStateBaseAddress =
-         (struct anv_address) { .offset =
-         device->physical->va.internal_surface_state_pool.addr,
-      };
-#else
-      sba.SurfaceStateBaseAddress =
-         anv_cmd_buffer_surface_base_address(cmd_buffer);
-#endif
-      sba.SurfaceStateMOCS = mocs;
-      sba.SurfaceStateBaseAddressModifyEnable = true;
-
-      sba.IndirectObjectBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.IndirectObjectMOCS = mocs;
-      sba.IndirectObjectBufferSize = 0xfffff;
-      sba.IndirectObjectBaseAddressModifyEnable = true;
-      sba.IndirectObjectBufferSizeModifyEnable  = true;
-
-      sba.InstructionBaseAddress =
-         (struct anv_address) { device->instruction_state_pool.block_pool.bo, 0 };
-      sba.InstructionMOCS = mocs;
-      sba.InstructionBufferSize =
-         device->physical->va.instruction_state_pool.size / 4096;
-      sba.InstructionBaseAddressModifyEnable = true;
-      sba.InstructionBuffersizeModifyEnable = true;
-
-#if GFX_VER >= 11
-      sba.BindlessSamplerStateBaseAddress = ANV_NULL_ADDRESS;
-      sba.BindlessSamplerStateBufferSize = 0;
-      sba.BindlessSamplerStateMOCS = mocs;
-      sba.BindlessSamplerStateBaseAddressModifyEnable = true;
-#endif
-
-      if (cmd_buffer->state.pending_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
-         sba.DynamicStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.dynamic_state_db_pool.addr,
-         };
-         sba.DynamicStateBufferSize =
-            (device->physical->va.dynamic_state_db_pool.size +
-             device->physical->va.descriptor_buffer_pool.size +
-             device->physical->va.push_descriptor_buffer_pool.size) / 4096;
-         sba.DynamicStateMOCS = mocs;
-         sba.DynamicStateBaseAddressModifyEnable = true;
-         sba.DynamicStateBufferSizeModifyEnable = true;
-
-#if GFX_VERx10 >= 125
-         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.descriptor_buffer_pool.addr,
-         };
-         sba.BindlessSurfaceStateSize =
-            (device->physical->va.descriptor_buffer_pool.size +
-             device->physical->va.push_descriptor_buffer_pool.size) - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
-#else
-         const uint64_t surfaces_addr =
-            cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
-            cmd_buffer->state.descriptor_buffers.surfaces_address :
-            anv_address_physical(device->workaround_address);
-         const uint64_t surfaces_size =
-            cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
-            MIN2(device->physical->va.descriptor_buffer_pool.size -
-                 (cmd_buffer->state.descriptor_buffers.surfaces_address -
-                  device->physical->va.descriptor_buffer_pool.addr),
-                 anv_physical_device_bindless_heap_size(device->physical, true)) :
-            (device->workaround_bo->size - device->workaround_address.offset);
-         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
-            .offset = surfaces_addr,
-         };
-         sba.BindlessSurfaceStateSize = surfaces_size / ANV_SURFACE_STATE_SIZE - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
-#endif /* GFX_VERx10 < 125 */
-      } else if (!device->physical->indirect_descriptors) {
-#if GFX_VERx10 >= 125
-         sba.DynamicStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.dynamic_state_pool.addr,
-         };
-         sba.DynamicStateBufferSize =
-            (device->physical->va.dynamic_state_pool.size +
-             device->physical->va.sampler_state_pool.size) / 4096;
-         sba.DynamicStateMOCS = mocs;
-         sba.DynamicStateBaseAddressModifyEnable = true;
-         sba.DynamicStateBufferSizeModifyEnable = true;
-
-         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.internal_surface_state_pool.addr,
-         };
-         sba.BindlessSurfaceStateSize =
-            (device->physical->va.internal_surface_state_pool.size +
-             device->physical->va.bindless_surface_state_pool.size) - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
-#else
-         unreachable("Direct descriptor not supported");
-#endif
-      } else {
-         sba.DynamicStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.dynamic_state_pool.addr,
-         };
-         sba.DynamicStateBufferSize =
-            (device->physical->va.dynamic_state_pool.size +
-             device->physical->va.sampler_state_pool.size) / 4096;
-         sba.DynamicStateMOCS = mocs;
-         sba.DynamicStateBaseAddressModifyEnable = true;
-         sba.DynamicStateBufferSizeModifyEnable = true;
-
-         sba.BindlessSurfaceStateBaseAddress =
-            (struct anv_address) { .offset =
-            device->physical->va.bindless_surface_state_pool.addr,
-         };
-         sba.BindlessSurfaceStateSize =
-            anv_physical_device_bindless_heap_size(device->physical, false) /
-            ANV_SURFACE_STATE_SIZE - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
-      }
-
-#if GFX_VERx10 >= 125
-      sba.L1CacheControl = L1CC_WB;
-#endif
+   anv_batch_emit(&cmd_buffer->batch, GENX(STATE_BASE_ADDRESS), _sba) {
+      _sba = sba;
    }
 
    bool db_mode_changed = false;
@@ -360,8 +372,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
          ptr.SliceHashStatePointerValid = true;
          ptr.SliceHashTableStatePointer = cmd_buffer->state.current_db_mode ==
                                           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-                                          device->slice_hash_db.offset :
-                                          device->slice_hash.offset;
+                                          cmd_buffer->device->slice_hash_db.offset :
+                                          cmd_buffer->device->slice_hash.offset;
       }
 #endif
 

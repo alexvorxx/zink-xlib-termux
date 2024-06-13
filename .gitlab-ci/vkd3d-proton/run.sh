@@ -37,7 +37,7 @@ quiet() {
 # Sanity check to ensure that our environment is sufficient to make our tests
 # run against the Mesa built by CI, rather than any installed distro version.
 MESA_VERSION=$(cat "$INSTALL/VERSION")
-if ! vulkaninfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION";
+if ! vulkaninfo | grep driverInfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION";
 then
     printf "%s\n" "Found $(cat /tmp/version.txt), expected $MESA_VERSION"
     exit 1

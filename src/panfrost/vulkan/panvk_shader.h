@@ -123,6 +123,7 @@ struct panvk_shader {
    uint32_t bin_size;
 
    struct panvk_priv_mem code_mem;
+   struct panvk_priv_mem rsd;
 };
 
 static inline mali_ptr

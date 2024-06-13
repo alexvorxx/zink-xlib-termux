@@ -36,6 +36,13 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
                             uint32_t y, uint32_t z)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   const struct panvk_compute_pipeline *pipeline =
+      cmdbuf->state.compute.pipeline;
+
+   /* If there's no compute shader, we can skip the dispatch. */
+   if (!panvk_priv_mem_dev_addr(pipeline->cs.base->rsd))
+      return;
+
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
@@ -50,8 +57,6 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       &cmdbuf->state.compute.desc_state;
    struct panvk_shader_desc_state *cs_desc_state =
       &cmdbuf->state.compute.cs.desc;
-   const struct panvk_compute_pipeline *pipeline =
-      cmdbuf->state.compute.pipeline;
 
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, false);
    dispatch.tsd = batch->tls.gpu;
@@ -111,7 +116,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    }
 
    pan_section_pack(job.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = panvk_priv_mem_dev_addr(pipeline->cs.rsd);
+      cfg.state = panvk_priv_mem_dev_addr(pipeline->cs.base->rsd);
       cfg.attributes = cs_desc_state->img_attrib_table;
       cfg.attribute_buffers =
          cs_desc_state->tables[PANVK_BIFROST_DESC_TABLE_IMG];

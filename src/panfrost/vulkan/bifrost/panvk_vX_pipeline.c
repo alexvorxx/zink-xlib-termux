@@ -75,15 +75,6 @@ init_pipeline_shader(struct panvk_pipeline *pipeline,
       compute_pipeline->local_size = shader->local_size;
    }
 
-   if (stage_info->stage != VK_SHADER_STAGE_FRAGMENT_BIT) {
-      pshader->rsd = panvk_pool_alloc_desc(&dev->mempools.rw, RENDERER_STATE);
-
-      pan_pack(panvk_priv_mem_host_addr(pshader->rsd), RENDERER_STATE, cfg) {
-         pan_shader_prepare_rsd(&pshader->info,
-                                panvk_shader_get_dev_addr(pshader->base), &cfg);
-      }
-   }
-
    return VK_SUCCESS;
 }
 
@@ -93,8 +84,6 @@ cleanup_pipeline_shader(struct panvk_pipeline *pipeline,
                         const VkAllocationCallbacks *alloc)
 {
    struct panvk_device *dev = to_panvk_device(pipeline->base.device);
-
-   panvk_pool_free_mem(&dev->mempools.rw, pshader->rsd);
 
    if (pshader->base != NULL)
       panvk_per_arch(shader_destroy)(dev, pshader->base, alloc);

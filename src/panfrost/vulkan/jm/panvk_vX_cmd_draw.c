@@ -806,7 +806,7 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
    }
 
    pan_section_pack(ptr.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = panvk_priv_mem_dev_addr(pipeline->vs.rsd);
+      cfg.state = panvk_priv_mem_dev_addr(pipeline->vs.base->rsd);
       cfg.attributes = draw->vs.attributes;
       cfg.attribute_buffers = draw->vs.attribute_bufs;
       cfg.varyings = draw->vs.varyings;
@@ -1042,6 +1042,10 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
    const struct vk_rasterization_state *rs =
       &cmdbuf->vk.dynamic_graphics_state.rs;
+
+   /* If there's no vertex shader, we can skip the draw. */
+   if (!panvk_priv_mem_dev_addr(pipeline->vs.base->rsd))
+      return;
 
    /* There are only 16 bits in the descriptor for the job ID. Each job has a
     * pilot shader dealing with descriptor copies, and we need one

@@ -140,11 +140,23 @@ static VkResult
 panvk_shader_upload(struct panvk_device *dev, struct panvk_shader *shader,
                     const VkAllocationCallbacks *pAllocator)
 {
-   if (shader->bin_size > 0) {
-      shader->code_mem = panvk_pool_upload_aligned(
-         &dev->mempools.exec, shader->bin_ptr, shader->bin_size, 128);
-   } else {
-      shader->code_mem = (struct panvk_priv_mem){0};
+   shader->code_mem = (struct panvk_priv_mem){0};
+   shader->rsd = (struct panvk_priv_mem){0};
+
+   if (!shader->bin_size)
+      return VK_SUCCESS;
+
+   shader->code_mem = panvk_pool_upload_aligned(
+      &dev->mempools.exec, shader->bin_ptr, shader->bin_size, 128);
+
+   if (shader->info.stage == MESA_SHADER_FRAGMENT)
+      return VK_SUCCESS;
+
+   shader->rsd = panvk_pool_alloc_desc(&dev->mempools.rw, RENDERER_STATE);
+
+   pan_pack(panvk_priv_mem_host_addr(shader->rsd), RENDERER_STATE, cfg) {
+      pan_shader_prepare_rsd(&shader->info, panvk_shader_get_dev_addr(shader),
+                             &cfg);
    }
 
    return VK_SUCCESS;
@@ -394,6 +406,7 @@ panvk_per_arch(shader_destroy)(struct panvk_device *dev,
                                struct panvk_shader *shader,
                                const VkAllocationCallbacks *alloc)
 {
+   panvk_pool_free_mem(&dev->mempools.rw, shader->rsd);
    panvk_pool_free_mem(&dev->mempools.rw, shader->desc_info.others.map);
    panvk_pool_free_mem(&dev->mempools.exec, shader->code_mem);
 

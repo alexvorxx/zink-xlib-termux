@@ -140,11 +140,13 @@ isl_gfx125_filter_tiling(const struct isl_device *dev,
 void
 isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
                                      const struct isl_surf_init_info *restrict info,
-                                     enum isl_tiling tiling,
+                                     const struct isl_tile_info *tile_info,
                                      enum isl_dim_layout dim_layout,
                                      enum isl_msaa_layout msaa_layout,
                                      struct isl_extent3d *image_align_el)
 {
+   enum isl_tiling tiling = tile_info->tiling;
+
    /* Handled by isl_choose_image_alignment_el */
    assert(info->format != ISL_FORMAT_GFX125_HIZ);
 
@@ -165,12 +167,8 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
        * page, "2D/CUBE Alignment Requirement", shows that the vertical
        * alignment is also a tile height for non-MSAA as well.
        */
-      struct isl_tile_info tile_info;
-      isl_tiling_get_info(tiling, info->dim, msaa_layout, fmtl->bpb,
-                          info->samples, &tile_info);
-
-      *image_align_el = isl_extent3d(tile_info.logical_extent_el.w,
-                                     tile_info.logical_extent_el.h,
+      *image_align_el = isl_extent3d(tile_info->logical_extent_el.w,
+                                     tile_info->logical_extent_el.h,
                                      1);
    } else if (isl_surf_usage_is_depth(info->usage)) {
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
@@ -256,15 +254,15 @@ isl_gfx125_choose_image_alignment_el(const struct isl_device *dev,
 void
 isl_gfx12_choose_image_alignment_el(const struct isl_device *dev,
                                     const struct isl_surf_init_info *restrict info,
-                                    enum isl_tiling tiling,
+                                    const struct isl_tile_info *tile_info,
                                     enum isl_dim_layout dim_layout,
                                     enum isl_msaa_layout msaa_layout,
                                     struct isl_extent3d *image_align_el)
 {
+   enum isl_tiling tiling = tile_info->tiling;
+
    /* Handled by isl_choose_image_alignment_el */
    assert(info->format != ISL_FORMAT_HIZ);
-
-   const struct isl_format_layout *fmtl = isl_format_get_layout(info->format);
 
    if (isl_tiling_is_std_y(tiling)) {
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
@@ -281,12 +279,8 @@ isl_gfx12_choose_image_alignment_el(const struct isl_device *dev,
        * page, "2D/CUBE Alignment Requirement", shows that the vertical
        * alignment is also a tile height for non-MSAA as well.
        */
-      struct isl_tile_info tile_info;
-      isl_tiling_get_info(tiling, info->dim, msaa_layout, fmtl->bpb,
-                          info->samples, &tile_info);
-
-      *image_align_el = isl_extent3d(tile_info.logical_extent_el.w,
-                                     tile_info.logical_extent_el.h,
+      *image_align_el = isl_extent3d(tile_info->logical_extent_el.w,
+                                     tile_info->logical_extent_el.h,
                                      1);
    } else if (isl_surf_usage_is_depth(info->usage)) {
       /* The alignment parameters for depth buffers are summarized in the
@@ -310,7 +304,7 @@ isl_gfx12_choose_image_alignment_el(const struct isl_device *dev,
    } else if (isl_surf_usage_is_stencil(info->usage)) {
       *image_align_el = isl_extent3d(16, 8, 1);
    } else {
-      isl_gfx9_choose_image_alignment_el(dev, info, tiling, dim_layout,
+      isl_gfx9_choose_image_alignment_el(dev, info, tile_info, dim_layout,
                                          msaa_layout, image_align_el);
    }
 }

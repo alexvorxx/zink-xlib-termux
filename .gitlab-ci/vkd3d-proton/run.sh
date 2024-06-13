@@ -38,13 +38,11 @@ quiet() {
     set -x
 }
 
-set +e
 if ! vulkaninfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION";
 then
     printf "%s\n" "Found $(cat /tmp/version.txt), expected $MESA_VERSION"
     exit 1
 fi
-set -e
 
 if [ -d "$RESULTS" ]; then
     cd "$RESULTS" && rm -rf ..?* .[!.]* * && cd -

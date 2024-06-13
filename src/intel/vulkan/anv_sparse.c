@@ -978,7 +978,6 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
       image->planes[plane].primary_surface.memory_range.offset;
    struct isl_tile_info tile_info;
    isl_surf_get_tile_info(surf, &tile_info);
-   uint32_t tile_size = isl_calc_tile_size(&tile_info);
    uint64_t layer1_offset;
    uint32_t x_off, y_off;
 
@@ -991,7 +990,7 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
     * nothing and focus our efforts into making things use the appropriate
     * tiling formats that give us the standard block shapes.
     */
-   if (tile_size != ANV_SPARSE_BLOCK_SIZE)
+   if (isl_calc_tile_size(&tile_info) != ANV_SPARSE_BLOCK_SIZE)
       goto out_everything_is_miptail;
 
    assert(surf->tiling != ISL_TILING_LINEAR);
@@ -1004,7 +1003,7 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
       if (x_off || y_off)
          goto out_everything_is_miptail;
    }
-   assert(layer1_offset % tile_size == 0);
+   assert(layer1_offset % ANV_SPARSE_BLOCK_SIZE == 0);
 
    /* We could try to do better here, but there's not really any point since
     * we should be supporting the appropriate tiling formats everywhere.
@@ -1021,10 +1020,10 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
                                        &miptail_offset,
                                        &x_off, &y_off);
    assert(x_off == 0 && y_off == 0);
-   assert(miptail_offset % tile_size == 0);
+   assert(miptail_offset % ANV_SPARSE_BLOCK_SIZE == 0);
 
    *imageMipTailFirstLod = miptail_first_level;
-   *imageMipTailSize = tile_size;
+   *imageMipTailSize = ANV_SPARSE_BLOCK_SIZE;
    *imageMipTailOffset = binding_plane_offset + miptail_offset;
    *imageMipTailStride = layer1_offset;
    goto out_debug;
@@ -1191,9 +1190,11 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
    };
    VkExtent3D bind_extent_el = vk_extent3d_px_to_el(bind_extent_px, layout);
 
-   /* A sparse block should correspond to our tile size, so this has to be
-    * either 4k or 64k depending on the tiling format. */
-   const uint32_t block_size_B = isl_calc_tile_size(&tile_info);
+   /* Nothing that has a tile_size different than ANV_SPARSE_BLOCK_SIZE should
+    * be reaching here, as these cases should be treated as "everything is
+    * part of the miptail" (see anv_sparse_calc_miptail_properties()).
+    */
+   assert(isl_calc_tile_size(&tile_info) == ANV_SPARSE_BLOCK_SIZE);
 
    /* How many blocks are necessary to form a whole line on this image? */
    const uint32_t blocks_per_line = surf->row_pitch_B / (layout->bpb / 8) /
@@ -1205,7 +1206,7 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
     */
    uint64_t line_bind_size_in_blocks = bind_extent_el.width /
                                        block_shape_el.width;
-   uint64_t line_bind_size = line_bind_size_in_blocks * block_size_B;
+   uint64_t line_bind_size = line_bind_size_in_blocks * ANV_SPARSE_BLOCK_SIZE;
    assert(line_bind_size_in_blocks != 0);
    assert(line_bind_size != 0);
 
@@ -1220,7 +1221,7 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
                                           &subresource_x_offset,
                                           &subresource_y_offset);
       assert(subresource_x_offset == 0 && subresource_y_offset == 0);
-      assert(subresource_offset_B % block_size_B == 0);
+      assert(subresource_offset_B % ANV_SPARSE_BLOCK_SIZE == 0);
 
       for (uint32_t y = bind_offset_el.y;
            y < bind_offset_el.y + bind_extent_el.height;
@@ -1228,10 +1229,10 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
          uint32_t line_block_offset = y / block_shape_el.height *
                                       blocks_per_line;
          uint64_t line_start_B = subresource_offset_B +
-                                 line_block_offset * block_size_B;
+                                 line_block_offset * ANV_SPARSE_BLOCK_SIZE;
          uint64_t bind_offset_B = line_start_B +
                                   (bind_offset_el.x / block_shape_el.width) *
-                                  block_size_B;
+                                  ANV_SPARSE_BLOCK_SIZE;
 
          VkSparseMemoryBind opaque_bind = {
             .resourceOffset = binding_plane_offset + bind_offset_B,
@@ -1243,9 +1244,9 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
 
          memory_offset += line_bind_size;
 
-         assert(line_start_B % block_size_B == 0);
-         assert(opaque_bind.resourceOffset % block_size_B == 0);
-         assert(opaque_bind.size % block_size_B == 0);
+         assert(line_start_B % ANV_SPARSE_BLOCK_SIZE == 0);
+         assert(opaque_bind.resourceOffset % ANV_SPARSE_BLOCK_SIZE == 0);
+         assert(opaque_bind.size % ANV_SPARSE_BLOCK_SIZE == 0);
 
          struct anv_vm_bind anv_bind = vk_bind_to_anv_vm_bind(sparse_data,
                                                               &opaque_bind);

@@ -37,8 +37,7 @@ quiet() {
 # Sanity check to ensure that our environment is sufficient to make our tests
 # run against the Mesa built by CI, rather than any installed distro version.
 MESA_VERSION=$(cat "$INSTALL/VERSION")
-if ! vulkaninfo | grep driverInfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION";
-then
+if ! vulkaninfo | grep driverInfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION"; then
     printf "%s\n" "Found $(cat /tmp/version.txt), expected $MESA_VERSION"
     exit 1
 fi
@@ -51,8 +50,7 @@ fi
 
 quiet printf "%s\n" "Running vkd3d-proton testsuite..."
 
-if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton-log.txt";
-then
+if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton-log.txt"; then
     # Check if the executable finished (ie. no segfault).
     if ! grep "tests executed" "$RESULTS/vkd3d-proton-log.txt" > /dev/null; then
         error "Failed, see ${ARTIFACTS_BASE_URL}/results/vkd3d-proton-log.txt"

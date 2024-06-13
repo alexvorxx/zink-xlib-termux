@@ -581,7 +581,7 @@ struct pipe_resource
 
    unsigned compression_rate:4; /**< Fixed-rate compresion bitrate if any */
 
-   unsigned usage:8;         /**< PIPE_USAGE_x (not a bitmask) */
+   unsigned usage:4;         /**< PIPE_USAGE_x (not a bitmask) */
    unsigned bind;            /**< bitmask of PIPE_BIND_x */
    unsigned flags;           /**< bitmask of PIPE_RESOURCE_FLAG_x */
 

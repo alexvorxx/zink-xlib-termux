@@ -69,7 +69,6 @@ struct spill_ctx {
    Program* program;
    aco::monotonic_buffer_resource memory;
 
-   live& live_vars;
    std::vector<aco::map<Temp, Temp>> renames;
    std::vector<aco::unordered_map<Temp, uint32_t>> spills_entry;
    std::vector<aco::unordered_map<Temp, uint32_t>> spills_exit;
@@ -89,8 +88,8 @@ struct spill_ctx {
    unsigned vgpr_spill_slots;
    Temp scratch_rsrc;
 
-   spill_ctx(const RegisterDemand target_pressure_, Program* program_, live& live_vars_)
-       : target_pressure(target_pressure_), program(program_), memory(), live_vars(live_vars_),
+   spill_ctx(const RegisterDemand target_pressure_, Program* program_)
+       : target_pressure(target_pressure_), program(program_), memory(),
          renames(program->blocks.size(), aco::map<Temp, Temp>(memory)),
          spills_entry(program->blocks.size(), aco::unordered_map<Temp, uint32_t>(memory)),
          spills_exit(program->blocks.size(), aco::unordered_map<Temp, uint32_t>(memory)),
@@ -173,7 +172,7 @@ gather_ssa_use_info(spill_ctx& ctx)
 {
    unsigned instruction_idx = 0;
    for (Block& block : ctx.program->blocks) {
-      IDSet& live_set = ctx.live_vars.live_out[block.index];
+      IDSet& live_set = ctx.program->live.live_out[block.index];
 
       for (int i = block.instructions.size() - 1; i >= 0; i--) {
          aco_ptr<Instruction>& instr = block.instructions[i];
@@ -300,12 +299,12 @@ RegisterDemand
 get_demand_before(spill_ctx& ctx, unsigned block_idx, unsigned idx)
 {
    if (idx == 0) {
-      RegisterDemand demand = ctx.live_vars.register_demand[block_idx][idx];
+      RegisterDemand demand = ctx.program->live.register_demand[block_idx][idx];
       aco_ptr<Instruction>& instr = ctx.program->blocks[block_idx].instructions[idx];
       aco_ptr<Instruction> instr_before(nullptr);
       return get_demand_before(demand, instr, instr_before);
    } else {
-      return ctx.live_vars.register_demand[block_idx][idx - 1];
+      return ctx.program->live.register_demand[block_idx][idx - 1];
    }
 }
 
@@ -335,7 +334,7 @@ get_live_in_demand(spill_ctx& ctx, unsigned block_idx)
     * reg_pressure if the branch instructions define sgprs. */
    for (unsigned pred : block.linear_preds)
       reg_pressure.sgpr =
-         std::max<int16_t>(reg_pressure.sgpr, ctx.live_vars.register_demand[pred].back().sgpr);
+         std::max<int16_t>(reg_pressure.sgpr, ctx.program->live.register_demand[pred].back().sgpr);
 
    return reg_pressure;
 }
@@ -350,7 +349,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       return {0, 0};
 
    /* live-in variables at the beginning of the current block */
-   const IDSet& live_in = ctx.live_vars.live_out[block_idx];
+   const IDSet& live_in = ctx.program->live.live_out[block_idx];
 
    /* loop header block */
    if (block->kind & block_kind_loop_header) {
@@ -404,7 +403,8 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          for (unsigned t : live_in) {
             Temp var = Temp(t, ctx.program->temp_rc[t]);
             if (var.type() != type || ctx.spills_entry[block_idx].count(var) ||
-                !ctx.live_vars.live_out[block_idx - 1].count(t) || var.regClass().is_linear_vgpr())
+                !ctx.program->live.live_out[block_idx - 1].count(t) ||
+                var.regClass().is_linear_vgpr())
                continue;
 
             unsigned can_remat = ctx.remat.count(var);
@@ -514,7 +514,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       uint32_t spill_id = 0;
       for (unsigned pred_idx : preds) {
          /* variable is not even live at the predecessor: probably from a phi */
-         if (!ctx.live_vars.live_out[pred_idx].count(t)) {
+         if (!ctx.program->live.live_out[pred_idx].count(t)) {
             spill = false;
             break;
          }
@@ -618,7 +618,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
    if (block->linear_preds.size() == 1 &&
        !(block->kind & (block_kind_loop_exit | block_kind_loop_header))) {
       assert(ctx.processed[block->linear_preds[0]]);
-      assert(ctx.live_vars.register_demand[block_idx].size() == block->instructions.size());
+      assert(ctx.program->live.register_demand[block_idx].size() == block->instructions.size());
 
       ctx.renames[block_idx] = ctx.renames[block->linear_preds[0]];
       if (!block->logical_preds.empty() && block->logical_preds[0] != block->linear_preds[0]) {
@@ -724,7 +724,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
 
       for (unsigned pred_idx : preds) {
          /* variable is dead at predecessor, it must be from a phi: this works because of CSSA form */
-         if (!ctx.live_vars.live_out[pred_idx].count(pair.first.id()))
+         if (!ctx.program->live.live_out[pred_idx].count(pair.first.id()))
             continue;
 
          /* variable is already spilled at predecessor */
@@ -846,9 +846,9 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
 
       Block::edge_vec& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
       /* if a variable is dead at any predecessor, it must be from a phi */
-      const bool is_dead =
-         std::any_of(preds.begin(), preds.end(),
-                     [&](unsigned pred) { return !ctx.live_vars.live_out[pred].count(var.id()); });
+      const bool is_dead = std::any_of(
+         preds.begin(), preds.end(),
+         [&](unsigned pred) { return !ctx.program->live.live_out[pred].count(var.id()); });
       if (is_dead)
          continue;
 
@@ -933,11 +933,10 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
    if (!ctx.processed[block_idx]) {
       assert(!(block->kind & block_kind_loop_header));
       RegisterDemand demand_before = get_demand_before(ctx, block_idx, idx);
-      ctx.live_vars.register_demand[block->index].erase(
-         ctx.live_vars.register_demand[block->index].begin(),
-         ctx.live_vars.register_demand[block->index].begin() + idx);
-      ctx.live_vars.register_demand[block->index].insert(
-         ctx.live_vars.register_demand[block->index].begin(), instructions.size(), demand_before);
+      std::vector<RegisterDemand>& register_demand =
+         ctx.program->live.register_demand[block->index];
+      register_demand.erase(register_demand.begin(), register_demand.begin() + idx);
+      register_demand.insert(register_demand.begin(), instructions.size(), demand_before);
    }
 
    std::vector<aco_ptr<Instruction>>::iterator start = std::next(block->instructions.begin(), idx);
@@ -983,7 +982,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             continue;
 
          if (op.isFirstKill())
-            ctx.live_vars.live_out[block_idx].erase(op.tempId());
+            ctx.program->live.live_out[block_idx].erase(op.tempId());
          ctx.ssa_infos[op.tempId()].num_uses--;
 
          if (!current_spills.count(op.getTemp()))
@@ -1000,7 +999,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
       /* check if register demand is low enough before and after the current instruction */
       if (block->register_demand.exceeds(ctx.target_pressure)) {
 
-         RegisterDemand new_demand = ctx.live_vars.register_demand[block_idx][idx];
+         RegisterDemand new_demand = ctx.program->live.register_demand[block_idx][idx];
          new_demand.update(get_demand_before(ctx, block_idx, idx));
 
          /* if reg pressure is too high, spill variable with furthest next use */
@@ -1013,7 +1012,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             if (new_demand.vgpr - spilled_registers.vgpr > ctx.target_pressure.vgpr)
                type = RegType::vgpr;
 
-            for (unsigned t : ctx.live_vars.live_out[block_idx]) {
+            for (unsigned t : ctx.program->live.live_out[block_idx]) {
                RegClass rc = ctx.program->temp_rc[t];
                Temp var = Temp(t, rc);
                if (rc.type() != type || current_spills.count(var) || rc.is_linear_vgpr())
@@ -1071,7 +1070,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
 
       for (const Definition& def : instr->definitions) {
          if (def.isTemp() && !def.isKill())
-            ctx.live_vars.live_out[block_idx].insert(def.tempId());
+            ctx.program->live.live_out[block_idx].insert(def.tempId());
       }
       /* rename operands */
       for (Operand& op : instr->operands) {
@@ -1112,7 +1111,7 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
 
    if (!(block->kind & block_kind_loop_header)) {
       /* add spill/reload code on incoming control flow edges */
-      add_coupling_code(ctx, block, ctx.live_vars.live_out[block_idx]);
+      add_coupling_code(ctx, block, ctx.program->live.live_out[block_idx]);
    }
 
    assert(ctx.spills_exit[block_idx].empty());
@@ -1691,7 +1690,7 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
 } /* end namespace */
 
 void
-spill(Program* program, live& live_vars)
+spill(Program* program)
 {
    program->config->spilled_vgprs = 0;
    program->config->spilled_sgprs = 0;
@@ -1703,7 +1702,7 @@ spill(Program* program, live& live_vars)
       return;
 
    /* lower to CSSA before spilling to ensure correctness w.r.t. phis */
-   lower_to_cssa(program, live_vars);
+   lower_to_cssa(program);
 
    /* calculate target register demand */
    const RegisterDemand demand = program->max_reg_demand; /* current max */
@@ -1733,7 +1732,7 @@ spill(Program* program, live& live_vars)
    const RegisterDemand target(vgpr_limit - extra_vgprs, sgpr_limit - extra_sgprs);
 
    /* initialize ctx */
-   spill_ctx ctx(target, program, live_vars);
+   spill_ctx ctx(target, program);
    gather_ssa_use_info(ctx);
    get_rematerialize_info(ctx);
 
@@ -1745,7 +1744,7 @@ spill(Program* program, live& live_vars)
    assign_spill_slots(ctx, extra_vgprs);
 
    /* update live variable information */
-   live_vars = live_var_analysis(program);
+   live_var_analysis(program);
 
    assert(program->num_waves > 0);
 }

@@ -107,14 +107,14 @@ instr_needs_vcc(Instruction* instr)
 }
 
 void
-process_live_temps_per_block(Program* program, live& lives, Block* block, unsigned& worklist,
+process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
                              std::vector<PhiInfo>& phi_info)
 {
-   std::vector<RegisterDemand>& register_demand = lives.register_demand[block->index];
+   std::vector<RegisterDemand>& register_demand = program->live.register_demand[block->index];
    RegisterDemand new_demand;
 
    register_demand.resize(block->instructions.size());
-   IDSet live = lives.live_out[block->index];
+   IDSet live = program->live.live_out[block->index];
 
    /* initialize register demand */
    for (unsigned t : live)
@@ -239,7 +239,7 @@ process_live_temps_per_block(Program* program, live& lives, Block* block, unsign
 
    if (fast_merge) {
       for (unsigned pred_idx : block->linear_preds) {
-         if (lives.live_out[pred_idx].insert(live))
+         if (program->live.live_out[pred_idx].insert(live))
             worklist = std::max(worklist, pred_idx + 1);
       }
    } else {
@@ -254,7 +254,7 @@ process_live_temps_per_block(Program* program, live& lives, Block* block, unsign
 #endif
 
          for (unsigned pred_idx : preds) {
-            auto it = lives.live_out[pred_idx].insert(t);
+            auto it = program->live.live_out[pred_idx].insert(t);
             if (it.second)
                worklist = std::max(worklist, pred_idx + 1);
          }
@@ -276,7 +276,7 @@ process_live_temps_per_block(Program* program, live& lives, Block* block, unsign
          if (operand.isFixed() && operand.physReg() == vcc)
             program->needs_vcc = true;
          /* check if we changed an already processed block */
-         const bool inserted = lives.live_out[preds[i]].insert(operand.tempId()).second;
+         const bool inserted = program->live.live_out[preds[i]].insert(operand.tempId()).second;
          if (inserted) {
             worklist = std::max(worklist, preds[i] + 1);
             if (insn->opcode == aco_opcode::p_phi && operand.getTemp().type() == RegType::sgpr) {
@@ -455,12 +455,12 @@ update_vgpr_sgpr_demand(Program* program, const RegisterDemand new_demand)
    }
 }
 
-live
+void
 live_var_analysis(Program* program)
 {
-   live result;
-   result.live_out.resize(program->blocks.size());
-   result.register_demand.resize(program->blocks.size());
+   program->live.live_out.clear();
+   program->live.live_out.resize(program->blocks.size());
+   program->live.register_demand.resize(program->blocks.size());
    unsigned worklist = program->blocks.size();
    std::vector<PhiInfo> phi_info(program->blocks.size());
    RegisterDemand new_demand;
@@ -471,19 +471,20 @@ live_var_analysis(Program* program)
     * program->blocks vector */
    while (worklist) {
       unsigned block_idx = --worklist;
-      process_live_temps_per_block(program, result, &program->blocks[block_idx], worklist,
-                                   phi_info);
+      process_live_temps_per_block(program, &program->blocks[block_idx], worklist, phi_info);
    }
 
    /* Handle branches: we will insert copies created for linear phis just before the branch. */
    for (Block& block : program->blocks) {
-      result.register_demand[block.index].back().sgpr += phi_info[block.index].linear_phi_defs;
-      result.register_demand[block.index].back().sgpr -= phi_info[block.index].linear_phi_ops;
+      program->live.register_demand[block.index].back().sgpr +=
+         phi_info[block.index].linear_phi_defs;
+      program->live.register_demand[block.index].back().sgpr -=
+         phi_info[block.index].linear_phi_ops;
 
       /* update block's register demand */
       if (program->progress < CompilationProgress::after_ra) {
          block.register_demand = RegisterDemand();
-         for (RegisterDemand& demand : result.register_demand[block.index])
+         for (RegisterDemand& demand : program->live.register_demand[block.index])
             block.register_demand.update(demand);
       }
 
@@ -493,8 +494,6 @@ live_var_analysis(Program* program)
    /* calculate the program's register demand and number of waves */
    if (program->progress < CompilationProgress::after_ra)
       update_vgpr_sgpr_demand(program, new_demand);
-
-   return result;
 }
 
 } // namespace aco

@@ -1007,7 +1007,7 @@ print_stage(Stage stage, FILE* output)
 
 void
 aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, unsigned flags,
-                const live& live_vars)
+                const Program* program)
 {
    fprintf(output, "BB%d\n", block->index);
    fprintf(output, "/* logical preds: ");
@@ -1022,7 +1022,7 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
 
    if (flags & print_live_vars) {
       fprintf(output, "\tlive out:");
-      for (unsigned id : live_vars.live_out[block->index])
+      for (unsigned id : program->live.live_out[block->index])
          fprintf(output, " %%%d", id);
       fprintf(output, "\n");
 
@@ -1034,7 +1034,7 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
    for (auto const& instr : block->instructions) {
       fprintf(output, "\t");
       if (flags & print_live_vars) {
-         RegisterDemand demand = live_vars.register_demand[block->index][index];
+         RegisterDemand demand = program->live.register_demand[block->index][index];
          fprintf(output, "(%3u vgpr, %3u sgpr)   ", demand.vgpr, demand.sgpr);
       }
       if (flags & print_perf_info)
@@ -1047,7 +1047,7 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
 }
 
 void
-aco_print_program(const Program* program, FILE* output, const live& live_vars, unsigned flags)
+aco_print_program(const Program* program, FILE* output, unsigned flags)
 {
    switch (program->progress) {
    case CompilationProgress::after_isel: fprintf(output, "After Instruction Selection:\n"); break;
@@ -1061,7 +1061,7 @@ aco_print_program(const Program* program, FILE* output, const live& live_vars, u
    print_stage(program->stage, output);
 
    for (Block const& block : program->blocks)
-      aco_print_block(program->gfx_level, &block, output, flags, live_vars);
+      aco_print_block(program->gfx_level, &block, output, flags, program);
 
    if (program->constant_data.size()) {
       fprintf(output, "\n/* constant data */\n");
@@ -1079,12 +1079,6 @@ aco_print_program(const Program* program, FILE* output, const live& live_vars, u
    }
 
    fprintf(output, "\n");
-}
-
-void
-aco_print_program(const Program* program, FILE* output, unsigned flags)
-{
-   aco_print_program(program, output, live(), flags);
 }
 
 } // namespace aco

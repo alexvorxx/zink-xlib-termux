@@ -2064,6 +2064,13 @@ public:
    bool pending_lds_access = false;
 
    struct {
+      /* live temps out per block */
+      std::vector<IDSet> live_out;
+      /* register demand (sgpr/vgpr) per instruction per block */
+      std::vector<std::vector<RegisterDemand>> register_demand;
+   } live;
+
+   struct {
       FILE* output = stderr;
       bool shorten_messages = false;
       void (*func)(void* private_data, enum aco_compiler_debug_level level, const char* message);
@@ -2112,13 +2119,6 @@ private:
    uint32_t allocationID = 1;
 };
 
-struct live {
-   /* live temps out per block */
-   std::vector<IDSet> live_out;
-   /* register demand (sgpr/vgpr) per instruction per block */
-   std::vector<std::vector<RegisterDemand>> register_demand;
-};
-
 struct ra_test_policy {
    /* Force RA to always use its pessimistic fallback algorithm */
    bool skip_optimistic_path = false;
@@ -2158,7 +2158,7 @@ void lower_phis(Program* program);
 void lower_subdword(Program* program);
 void calc_min_waves(Program* program);
 void update_vgpr_sgpr_demand(Program* program, const RegisterDemand new_demand);
-live live_var_analysis(Program* program);
+void live_var_analysis(Program* program);
 std::vector<uint16_t> dead_code_analysis(Program* program);
 void dominator_tree(Program* program);
 void insert_exec_mask(Program* program);
@@ -2166,14 +2166,14 @@ void value_numbering(Program* program);
 void optimize(Program* program);
 void optimize_postRA(Program* program);
 void setup_reduce_temp(Program* program);
-void lower_to_cssa(Program* program, live& live_vars);
-void register_allocation(Program* program, live& live_vars, ra_test_policy = {});
+void lower_to_cssa(Program* program);
+void register_allocation(Program* program, ra_test_policy = {});
 void ssa_elimination(Program* program);
 void lower_to_hw_instr(Program* program);
-void schedule_program(Program* program, live& live_vars);
+void schedule_program(Program* program);
 void schedule_ilp(Program* program);
 void schedule_vopd(Program* program);
-void spill(Program* program, live& live_vars);
+void spill(Program* program);
 void insert_wait_states(Program* program);
 bool dealloc_vgprs(Program* program);
 void insert_NOPs(Program* program);
@@ -2216,8 +2216,6 @@ void aco_print_operand(const Operand* operand, FILE* output, unsigned flags = 0)
 void aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
                      unsigned flags = 0);
 void aco_print_program(const Program* program, FILE* output, unsigned flags = 0);
-void aco_print_program(const Program* program, FILE* output, const live& live_vars,
-                       unsigned flags = 0);
 
 void _aco_err(Program* program, const char* file, unsigned line, const char* fmt, ...);
 

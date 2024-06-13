@@ -1691,7 +1691,7 @@ alloc_linear_vgpr(ra_ctx& ctx, const RegisterFile& reg_file, aco_ptr<Instruction
 }
 
 bool
-should_compact_linear_vgprs(ra_ctx& ctx, live& live_vars, const RegisterFile& reg_file)
+should_compact_linear_vgprs(ra_ctx& ctx, const RegisterFile& reg_file)
 {
    if (!(ctx.block->kind & block_kind_top_level) || ctx.block->linear_succs.empty())
       return false;
@@ -1709,7 +1709,7 @@ should_compact_linear_vgprs(ra_ctx& ctx, live& live_vars, const RegisterFile& re
       ctx.program->blocks[next_toplevel].instructions;
    if (!instructions.empty() && is_phi(instructions[0])) {
       max_vgpr_usage =
-         MAX2(max_vgpr_usage, (unsigned)live_vars.register_demand[next_toplevel][0].vgpr);
+         MAX2(max_vgpr_usage, (unsigned)ctx.program->live.register_demand[next_toplevel][0].vgpr);
    }
 
    for (unsigned tmp : find_vars(ctx, reg_file, get_reg_bounds(ctx, RegType::vgpr, true)))
@@ -2971,9 +2971,9 @@ emit_parallel_copy(ra_ctx& ctx, std::vector<std::pair<Operand, Definition>>& par
 } /* end namespace */
 
 void
-register_allocation(Program* program, live& live_vars, ra_test_policy policy)
+register_allocation(Program* program, ra_test_policy policy)
 {
-   std::vector<IDSet>& live_out_per_block = live_vars.live_out;
+   std::vector<IDSet>& live_out_per_block = program->live.live_out;
    ra_ctx ctx(program, policy);
    get_affinities(ctx, live_out_per_block);
 
@@ -3342,7 +3342,7 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
          ASSERTED PhysRegInterval sgpr_bounds = get_reg_bounds(ctx, RegType::sgpr, false);
          assert(register_file.count_zero(vgpr_bounds) == ctx.vgpr_bounds);
          assert(register_file.count_zero(sgpr_bounds) == ctx.sgpr_bounds);
-      } else if (should_compact_linear_vgprs(ctx, live_vars, register_file)) {
+      } else if (should_compact_linear_vgprs(ctx, register_file)) {
          aco_ptr<Instruction> br = std::move(instructions.back());
          instructions.pop_back();
 

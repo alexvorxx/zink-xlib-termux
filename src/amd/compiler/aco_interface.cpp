@@ -100,7 +100,6 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
    ASSERTED bool is_valid = validate_cfg(program.get());
    assert(is_valid);
 
-   live live_vars;
    if (!info->is_trap_handler_shader) {
       dominator_tree(program.get());
       lower_phis(program.get());
@@ -124,10 +123,10 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
       validate(program.get());
 
       /* spilling and scheduling */
-      live_vars = live_var_analysis(program.get());
+      live_var_analysis(program.get());
       if (program->collect_statistics)
          collect_presched_stats(program.get());
-      spill(program.get(), live_vars);
+      spill(program.get());
    }
 
    if (options->record_ir) {
@@ -146,15 +145,15 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
    }
 
    if ((debug_flags & DEBUG_LIVE_INFO) && options->dump_shader)
-      aco_print_program(program.get(), stderr, live_vars, print_live_vars | print_kill);
+      aco_print_program(program.get(), stderr, print_live_vars | print_kill);
 
    if (!info->is_trap_handler_shader) {
       if (!options->optimisations_disabled && !(debug_flags & DEBUG_NO_SCHED))
-         schedule_program(program.get(), live_vars);
+         schedule_program(program.get());
       validate(program.get());
 
       /* Register Allocation */
-      register_allocation(program.get(), live_vars);
+      register_allocation(program.get());
 
       if (validate_ra(program.get())) {
          aco_print_program(program.get(), stderr);

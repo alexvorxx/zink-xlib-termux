@@ -1165,12 +1165,12 @@ schedule_VMEM_store(sched_ctx& ctx, Block* block, Instruction* current, int idx)
 }
 
 void
-schedule_block(sched_ctx& ctx, Program* program, Block* block, live& live_vars)
+schedule_block(sched_ctx& ctx, Program* program, Block* block)
 {
    ctx.last_SMEM_dep_idx = 0;
    ctx.last_SMEM_stall = INT16_MIN;
    ctx.mv.block = block;
-   ctx.mv.register_demand = live_vars.register_demand[block->index].data();
+   ctx.mv.register_demand = program->live.register_demand[block->index].data();
 
    /* go through all instructions and find memory loads */
    unsigned num_stores = 0;
@@ -1224,12 +1224,12 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block, live& live_vars)
    /* resummarize the block's register demand */
    block->register_demand = RegisterDemand();
    for (unsigned idx = 0; idx < block->instructions.size(); idx++) {
-      block->register_demand.update(live_vars.register_demand[block->index][idx]);
+      block->register_demand.update(program->live.register_demand[block->index][idx]);
    }
 }
 
 void
-schedule_program(Program* program, live& live_vars)
+schedule_program(Program* program)
 {
    /* don't use program->max_reg_demand because that is affected by max_waves_per_simd */
    RegisterDemand demand;
@@ -1278,7 +1278,7 @@ schedule_program(Program* program, live& live_vars)
    }
 
    for (Block& block : program->blocks)
-      schedule_block(ctx, program, &block, live_vars);
+      schedule_block(ctx, program, &block);
 
    /* update max_reg_demand and num_waves */
    RegisterDemand new_demand;

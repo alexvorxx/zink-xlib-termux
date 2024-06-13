@@ -292,6 +292,7 @@ ubo_deref_to_cbuf(nir_deref_instr *deref,
       get_binding_layout(set, binding, ctx);
 
    switch (binding_layout->type) {
+   case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER: {
       *offset_out = 0;
       *start_out = offset;

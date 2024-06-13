@@ -7,7 +7,6 @@ glx@glx-visuals-stencil -pixmap,Fail
 glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
 glx@glx_arb_create_context_no_error@no error,Fail
 glx@glx_arb_sync_control@waitformsc,Fail
-shaders@glsl-bug-110796,Fail
 shaders@glsl-max-varyings >max_varying_components,Fail
 shaders@glsl-uniform-interstage-limits@subdivide 5,Fail
 shaders@glsl-uniform-interstage-limits@subdivide 5- statechanges,Fail

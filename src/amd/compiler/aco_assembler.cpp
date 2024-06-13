@@ -634,7 +634,10 @@ emit_mtbuf_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction
 
    uint32_t encoding = (0b111010 << 26);
    encoding |= (img_format << 19); /* Handles both the GFX10 FORMAT and the old NFMT+DFMT */
-   if (ctx.gfx_level >= GFX10 && ctx.gfx_level < GFX11) {
+   if (ctx.gfx_level < GFX8) {
+      encoding |= opcode << 16;
+      /* ADDR64 is unused */
+   } else if (ctx.gfx_level >= GFX10 && ctx.gfx_level < GFX11) {
       /* DLC bit replaces one bit of the OPCODE on GFX10 */
       encoding |= (opcode & 0x07) << 16; /* 3 LSBs of 4-bit OPCODE */
       encoding |= (dlc ? 1 : 0) << 15;

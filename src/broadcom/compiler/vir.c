@@ -725,13 +725,7 @@ v3d_lower_nir(struct v3d_compile *c)
         }
 
         NIR_PASS(_, c->s, nir_lower_compute_system_values, NULL);
-
-        NIR_PASS(_, c->s, nir_lower_vars_to_scratch,
-                 nir_var_function_temp,
-                 0,
-                 glsl_get_natural_size_align_bytes);
         NIR_PASS(_, c->s, nir_lower_is_helper_invocation);
-        NIR_PASS(_, c->s, v3d_nir_lower_scratch);
         NIR_PASS(_, c->s, v3d_nir_lower_null_pointers);
 }
 
@@ -1708,10 +1702,15 @@ v3d_attempt_compile(struct v3d_compile *c)
                 NIR_PASS(_, c->s, nir_lower_robust_access, &opts);
         }
 
+        NIR_PASS(_, c->s, nir_lower_vars_to_scratch,
+                 nir_var_function_temp,
+                 0,
+                 glsl_get_natural_size_align_bytes);
+
         NIR_PASS(_, c->s, v3d_nir_lower_global_2x32);
         NIR_PASS(_, c->s, nir_lower_wrmasks, should_split_wrmask, c->s);
-
         NIR_PASS(_, c->s, v3d_nir_lower_load_store_bitsize);
+        NIR_PASS(_, c->s, v3d_nir_lower_scratch);
 
         NIR_PASS(_, c->s, v3d_nir_lower_subgroup_intrinsics, c);
 

@@ -133,6 +133,16 @@ v3d_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
                   uint32_t align_offset, bool offset_is_const,
                   const void *cb_data)
 {
+        /* we only support single component 32 bit load/stores on scratch */
+        if (intrin == nir_intrinsic_load_scratch ||
+            intrin == nir_intrinsic_store_scratch) {
+                return (nir_mem_access_size_align){
+                        .num_components = 1,
+                        .bit_size = 32,
+                        .align = 4,
+                };
+        }
+
         align = nir_combined_align(align, align_offset);
         assert(util_is_power_of_two_nonzero(align));
 
@@ -210,7 +220,7 @@ v3d_nir_lower_load_store_bitsize(nir_shader *s)
         nir_lower_mem_access_bit_sizes_options lower_options = {
                 .modes = nir_var_mem_global | nir_var_mem_ssbo |
                          nir_var_mem_ubo | nir_var_mem_constant |
-                         nir_var_mem_shared,
+                         nir_var_mem_shared | nir_var_function_temp,
                 .callback = v3d_size_align_cb,
         };
 

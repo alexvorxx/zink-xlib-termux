@@ -136,7 +136,7 @@ def monitor_pipeline(
     while True:
         deps_failed = []
         to_cancel = []
-        for job in pipeline.jobs.list(all=True, sort="desc"):
+        for job in sorted(pipeline.jobs.list(all=True), key=lambda j: j.name):
             # target jobs
             if target_jobs_regex.fullmatch(job.name):
                 target_id = job.id
@@ -175,7 +175,7 @@ def monitor_pipeline(
 
         if stress:
             enough = True
-            for job_name, status in stress_status_counter.items():
+            for job_name, status in sorted(stress_status_counter.items()):
                 print(
                     f"* {job_name:{name_field_pad}}succ: {status['success']}; "
                     f"fail: {status['failed']}; "

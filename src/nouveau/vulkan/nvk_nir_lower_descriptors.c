@@ -402,8 +402,21 @@ record_cbuf_uses_instr(UNUSED nir_builder *b, nir_instr *instr, void *_ctx)
 static void
 build_cbuf_map(nir_shader *nir, struct lower_descriptors_ctx *ctx)
 {
-   ctx->cbufs = nvk_cbuf_table_create(NULL);
+   ctx->cbuf_map->cbuf_count = 0;
 
+   /* Root descriptors always go in cbuf 0 */
+   ctx->cbuf_map->cbufs[ctx->cbuf_map->cbuf_count++] = (struct nvk_cbuf) {
+      .type = NVK_CBUF_TYPE_ROOT_DESC,
+   };
+
+   /* If we have constant data, put it at cbuf 1 */
+   if (nir->constant_data_size > 0) {
+      ctx->cbuf_map->cbufs[ctx->cbuf_map->cbuf_count++] = (struct nvk_cbuf) {
+         .type = NVK_CBUF_TYPE_SHADER_DATA,
+      };
+   }
+
+   ctx->cbufs = nvk_cbuf_table_create(NULL);
    nir_shader_instructions_pass(nir, record_cbuf_uses_instr,
                                 nir_metadata_all, (void *)ctx);
 
@@ -426,19 +439,6 @@ build_cbuf_map(nir_shader *nir, struct lower_descriptors_ctx *ctx)
 
    qsort(cbufs, num_cbufs, sizeof(*cbufs), compar_cbufs);
 
-   uint32_t mapped_cbuf_count = 0;
-
-   /* Root descriptors always go in cbuf 0 */
-   ctx->cbuf_map->cbufs[mapped_cbuf_count++] = (struct nvk_cbuf) {
-      .type = NVK_CBUF_TYPE_ROOT_DESC,
-   };
-
-   if (nir->constant_data_size > 0) {
-      ctx->cbuf_map->cbufs[mapped_cbuf_count++] = (struct nvk_cbuf) {
-         .type = NVK_CBUF_TYPE_SHADER_DATA,
-      };
-   }
-
    uint8_t max_cbuf_bindings;
    if (nir->info.stage == MESA_SHADER_COMPUTE ||
        nir->info.stage == MESA_SHADER_KERNEL) {
@@ -448,7 +448,7 @@ build_cbuf_map(nir_shader *nir, struct lower_descriptors_ctx *ctx)
    }
 
    for (uint32_t i = 0; i < num_cbufs; i++) {
-      if (mapped_cbuf_count >= max_cbuf_bindings)
+      if (ctx->cbuf_map->cbuf_count >= max_cbuf_bindings)
          break;
 
       /* We can't support indirect cbufs in compute yet */
@@ -457,9 +457,8 @@ build_cbuf_map(nir_shader *nir, struct lower_descriptors_ctx *ctx)
           cbufs[i].key.type == NVK_CBUF_TYPE_UBO_DESC)
          continue;
 
-      ctx->cbuf_map->cbufs[mapped_cbuf_count++] = cbufs[i].key;
+      ctx->cbuf_map->cbufs[ctx->cbuf_map->cbuf_count++] = cbufs[i].key;
    }
-   ctx->cbuf_map->cbuf_count = mapped_cbuf_count;
 
    ralloc_free(ctx->cbufs);
    ctx->cbufs = NULL;

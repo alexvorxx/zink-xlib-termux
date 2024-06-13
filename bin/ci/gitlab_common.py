@@ -50,7 +50,7 @@ def get_gitlab_pipeline_from_url(gl, pipeline_url) -> tuple:
     :param pipeline_url: string with a url to a pipeline
     :return: ProjectPipeline, Project objects
     """
-    pattern = rf"^{GITLAB_URL}/(.*)/-/pipelines/([0-9]+)$"
+    pattern = rf"^{re.escape(GITLAB_URL)}/(.*)/-/pipelines/([0-9]+)$"
     match = re.match(pattern, pipeline_url)
     if not match:
         raise AssertionError(f"url {pipeline_url} doesn't follow the pattern {pattern}")

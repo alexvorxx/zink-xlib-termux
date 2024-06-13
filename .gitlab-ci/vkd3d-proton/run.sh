@@ -18,10 +18,6 @@ RESULTS=$(realpath -s "$PWD"/results)
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/:/vkd3d-proton-tests/x64/"
 
 
-# Sanity check to ensure that our environment is sufficient to make our tests
-# run against the Mesa built by CI, rather than any installed distro version.
-MESA_VERSION=$(cat "$INSTALL/VERSION")
-
 # Set the Vulkan driver to use.
 ARCH=$(uname -m)
 export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.$ARCH.json"
@@ -38,6 +34,9 @@ quiet() {
     set -x
 }
 
+# Sanity check to ensure that our environment is sufficient to make our tests
+# run against the Mesa built by CI, rather than any installed distro version.
+MESA_VERSION=$(cat "$INSTALL/VERSION")
 if ! vulkaninfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION";
 then
     printf "%s\n" "Found $(cat /tmp/version.txt), expected $MESA_VERSION"

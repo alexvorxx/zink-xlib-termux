@@ -844,7 +844,6 @@ anv_sparse_calc_block_shape(struct anv_physical_device *pdevice,
 {
    const struct isl_format_layout *layout =
       isl_format_get_layout(surf->format);
-   const int Bpb = layout->bpb / 8;
 
    struct isl_tile_info tile_info;
    isl_surf_get_tile_info(surf, &tile_info);
@@ -856,19 +855,7 @@ anv_sparse_calc_block_shape(struct anv_physical_device *pdevice,
    };
    VkExtent3D block_shape_px = vk_extent3d_el_to_px(block_shape_el, layout);
 
-   if (surf->tiling == ISL_TILING_LINEAR) {
-      uint32_t elements_per_row = surf->row_pitch_B /
-                                  (block_shape_el.width * Bpb);
-      uint32_t rows_per_tile = ANV_SPARSE_BLOCK_SIZE /
-                               (elements_per_row * Bpb);
-      assert(rows_per_tile * elements_per_row * Bpb == ANV_SPARSE_BLOCK_SIZE);
-
-      block_shape_px = (VkExtent3D) {
-         .width = elements_per_row * layout->bw,
-         .height = rows_per_tile * layout->bh,
-         .depth = layout->bd,
-      };
-   }
+   assert(surf->tiling != ISL_TILING_LINEAR);
 
    return block_shape_px;
 }

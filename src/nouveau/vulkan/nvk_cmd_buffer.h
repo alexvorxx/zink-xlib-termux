@@ -272,11 +272,11 @@ nvk_cmd_buffer_flush_push_descriptors(struct nvk_cmd_buffer *cmd,
                                       struct nvk_descriptor_state *desc);
 
 bool
-nvk_cmd_buffer_get_cbuf_descriptor(struct nvk_cmd_buffer *cmd,
-                                   const struct nvk_descriptor_state *desc,
-                                   const struct nvk_shader *shader,
-                                   const struct nvk_cbuf *cbuf,
-                                   struct nvk_buffer_address *desc_out);
+nvk_cmd_buffer_get_cbuf_addr(struct nvk_cmd_buffer *cmd,
+                             const struct nvk_descriptor_state *desc,
+                             const struct nvk_shader *shader,
+                             const struct nvk_cbuf *cbuf,
+                             struct nvk_buffer_address *addr_out);
 uint64_t
 nvk_cmd_buffer_get_cbuf_descriptor_addr(struct nvk_cmd_buffer *cmd,
                                         const struct nvk_descriptor_state *desc,

@@ -1005,11 +1005,13 @@ nvk_CmdPushDescriptorSetWithTemplate2KHR(
       return;
 
    struct nvk_descriptor_set_layout *set_layout =
-      vk_to_nvk_descriptor_set_layout(pipeline_layout->set_layouts[pPushDescriptorSetWithTemplateInfo->set]);
+      vk_to_nvk_descriptor_set_layout(pipeline_layout->set_layouts[set]);
 
    nvk_push_descriptor_set_update_template(dev, push_set, set_layout, template,
                                            pPushDescriptorSetWithTemplateInfo->pData);
 
-   nvk_cmd_dirty_cbufs_for_descriptors(cmd, info->stageFlags,
+   /* We don't know the actual set of stages here so assume everything */
+   nvk_cmd_dirty_cbufs_for_descriptors(cmd, NVK_VK_GRAPHICS_STAGE_BITS |
+                                            VK_SHADER_STAGE_COMPUTE_BIT,
                                        set, set + 1, 0, 0);
 }

@@ -300,6 +300,38 @@ v3d_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
         };
 }
 
+static nir_intrinsic_op
+convert_global_2x32_to_scalar(nir_intrinsic_op op)
+{
+        switch (op) {
+        case nir_intrinsic_global_atomic_2x32:
+                return nir_intrinsic_global_atomic;
+        case nir_intrinsic_global_atomic_swap_2x32:
+                return nir_intrinsic_global_atomic_swap;
+        case nir_intrinsic_load_global_2x32:
+                return nir_intrinsic_load_global;
+        case nir_intrinsic_store_global_2x32:
+                return nir_intrinsic_store_global;
+        default:
+                return op;
+        }
+}
+
+static bool
+lower_global_2x32(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+        nir_intrinsic_op op = convert_global_2x32_to_scalar(intr->intrinsic);
+        if (op == intr->intrinsic)
+            return false;
+
+        b->cursor = nir_before_instr(&intr->instr);
+        nir_src *addr_src = nir_get_io_offset_src(intr);
+        nir_src_rewrite(addr_src, nir_channel(b, addr_src->ssa, 0));
+        intr->intrinsic = op;
+
+        return true;
+}
+
 bool
 v3d_nir_lower_load_store_bitsize(nir_shader *s)
 {
@@ -316,4 +348,13 @@ v3d_nir_lower_load_store_bitsize(nir_shader *s)
                                               NULL);
         res |= nir_lower_mem_access_bit_sizes(s, &lower_options);
         return res;
+}
+
+bool
+v3d_nir_lower_global_2x32(nir_shader *s)
+{
+        return  nir_shader_intrinsics_pass(s, lower_global_2x32,
+                                           nir_metadata_block_index |
+                                           nir_metadata_dominance,
+                                           NULL);
 }

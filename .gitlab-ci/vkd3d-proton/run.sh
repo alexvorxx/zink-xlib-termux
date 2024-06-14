@@ -52,7 +52,6 @@ fi
 
 quiet printf "%s\n" "Running vkd3d-proton testsuite..."
 
-set +e
 if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton.log";
 then
     # Check if the executable finished (ie. no segfault).

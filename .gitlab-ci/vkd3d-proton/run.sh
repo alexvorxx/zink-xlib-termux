@@ -29,13 +29,6 @@ export WINEDEBUG="-all"
 export WINEPREFIX="/vkd3d-proton-wine64"
 export WINEESYNC=1
 
-# wrapper to supress +x to avoid spamming the log
-quiet() {
-    set +x
-    "$@"
-    set -x
-}
-
 # Sanity check to ensure that our environment is sufficient to make our tests
 # run against the Mesa built by CI, rather than any installed distro version.
 MESA_VERSION=$(cat "$INSTALL/VERSION")
@@ -44,7 +37,7 @@ if ! vulkaninfo | grep driverInfo | tee /tmp/version.txt | grep -F "Mesa $MESA_V
     exit 1
 fi
 
-quiet printf "%s\n" "Running vkd3d-proton testsuite..."
+printf "%s\n" "Running vkd3d-proton testsuite..."
 
 if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton-log.txt"; then
     # Check if the executable finished (ie. no segfault).

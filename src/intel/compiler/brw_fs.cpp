@@ -2712,6 +2712,12 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file, const brw:
    if (inst->has_no_mask_send_params)
       fprintf(file, "NoMaskParams ");
 
+   if (inst->sched.pipe != TGL_PIPE_NONE) {
+      fprintf(file, "{ ");
+      brw_print_swsb(file, devinfo, inst->sched);
+      fprintf(file, " } ");
+   }
+
    fprintf(file, "\n");
 }
 
@@ -4586,5 +4592,32 @@ namespace brw {
                               dynamic_msaa_flags(wm_prog_data),
                               brw_imm_ud(flag));
       inst->conditional_mod = BRW_CONDITIONAL_NZ;
+   }
+}
+
+void
+brw_print_swsb(FILE *f, const struct intel_device_info *devinfo, const tgl_swsb swsb)
+{
+   if (swsb.pipe == TGL_PIPE_NONE)
+      return;
+
+   if (swsb.regdist) {
+      fprintf(f, "%s@%d",
+              (devinfo && devinfo->verx10 < 125 ? "" :
+               swsb.pipe == TGL_PIPE_FLOAT ? "F" :
+               swsb.pipe == TGL_PIPE_INT ? "I" :
+               swsb.pipe == TGL_PIPE_LONG ? "L" :
+               swsb.pipe == TGL_PIPE_ALL ? "A"  :
+               swsb.pipe == TGL_PIPE_MATH ? "M" : "" ),
+              swsb.regdist);
+   }
+
+   if (swsb.mode) {
+      if (swsb.regdist)
+          fprintf(f, " ");
+
+      fprintf(f, "$%d%s", swsb.sbid,
+              (swsb.mode & TGL_SBID_SET ? "" :
+               swsb.mode & TGL_SBID_DST ? ".dst" : ".src"));
    }
 }

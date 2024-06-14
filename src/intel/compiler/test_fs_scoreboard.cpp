@@ -130,18 +130,20 @@ bool operator ==(const tgl_swsb &a, const tgl_swsb &b)
 }
 
 std::ostream &operator<<(std::ostream &os, const tgl_swsb &swsb) {
-   if (swsb.regdist)
-      os << "@" << swsb.regdist;
+   char *buf;
+   size_t len;
+   FILE *f = open_memstream(&buf, &len);
 
-   if (swsb.mode) {
-      if (swsb.regdist)
-         os << " ";
-      os << "$" << swsb.sbid;
-      if (swsb.mode & TGL_SBID_DST)
-         os << ".dst";
-      if (swsb.mode & TGL_SBID_SRC)
-         os << ".src";
-   }
+   /* Because we don't have a devinfo to pass here, for TGL we'll see
+    * F@1 annotations instead of @1 since the float pipe is the only one
+    * used there.
+    */
+   brw_print_swsb(f, NULL, swsb);
+   fflush(f);
+   fclose(f);
+
+   os << buf;
+   free(buf);
 
    return os;
 }

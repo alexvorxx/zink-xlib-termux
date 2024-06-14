@@ -44,7 +44,6 @@ struct radv_indirect_command_layout {
    uint64_t push_constant_mask;
    uint32_t push_constant_offsets[MAX_PUSH_CONSTANTS_SIZE / 4];
    uint32_t push_constant_size;
-   uint32_t dynamic_offset_count;
 
    uint32_t ibo_type_32;
    uint32_t ibo_type_8;

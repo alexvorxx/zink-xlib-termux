@@ -154,7 +154,7 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
       }
 
       if (need_copy) {
-         *upload_size += align(layout->push_constant_size + 16 * layout->dynamic_offset_count, 16);
+         *upload_size += align(layout->push_constant_size, 16);
       }
    }
 
@@ -1822,7 +1822,7 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
             layout->push_constant_offsets[j] = pCreateInfo->pTokens[i].offset + k * 4;
          }
          layout->push_constant_size = pipeline_layout->push_constant_size;
-         layout->dynamic_offset_count = pipeline_layout->dynamic_offset_count;
+         assert(!pipeline_layout->dynamic_offset_count);
          break;
       }
       case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV:
@@ -2126,8 +2126,8 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       .stream_addr = stream_addr,
    };
 
-   upload_size = layout->push_constant_size + 16 * layout->dynamic_offset_count +
-                 sizeof(layout->push_constant_offsets) + ARRAY_SIZE(pipeline->shaders) * 12;
+   upload_size =
+      layout->push_constant_size + sizeof(layout->push_constant_offsets) + ARRAY_SIZE(pipeline->shaders) * 12;
    if (!layout->push_constant_mask)
       upload_size = 0;
 
@@ -2182,7 +2182,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
 
       params.push_constant_shader_cnt = idx;
 
-      params.const_copy_size = layout->push_constant_size + 16 * layout->dynamic_offset_count;
+      params.const_copy_size = layout->push_constant_size;
       params.push_constant_mask = layout->push_constant_mask;
 
       memcpy(upload_data, layout->push_constant_offsets, sizeof(layout->push_constant_offsets));
@@ -2190,11 +2190,6 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
 
       memcpy(upload_data, cmd_buffer->push_constants, layout->push_constant_size);
       upload_data = (char *)upload_data + layout->push_constant_size;
-
-      struct radv_descriptor_state *descriptors_state =
-         radv_get_descriptors_state(cmd_buffer, pGeneratedCommandsInfo->pipelineBindPoint);
-      memcpy(upload_data, descriptors_state->dynamic_buffers, 16 * layout->dynamic_offset_count);
-      upload_data = (char *)upload_data + 16 * layout->dynamic_offset_count;
    }
 
    radv_buffer_init(&token_buffer, device, cmd_buffer->upload.upload_bo, upload_size, upload_offset);

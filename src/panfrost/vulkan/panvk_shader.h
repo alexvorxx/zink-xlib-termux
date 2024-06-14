@@ -126,6 +126,13 @@ struct panvk_shader {
    struct panvk_priv_mem rsd;
 };
 
+struct panvk_shader_link {
+   struct {
+      struct panvk_priv_mem attribs;
+   } vs, fs;
+   unsigned buf_strides[PANVK_VARY_BUF_MAX];
+};
+
 static inline mali_ptr
 panvk_shader_get_dev_addr(const struct panvk_shader *shader)
 {
@@ -139,6 +146,19 @@ struct panvk_shader *panvk_per_arch(shader_create)(
 void panvk_per_arch(shader_destroy)(struct panvk_device *dev,
                                     struct panvk_shader *shader,
                                     const VkAllocationCallbacks *alloc);
+
+void panvk_per_arch(link_shaders)(struct panvk_pool *desc_pool,
+                                  struct panvk_shader *vs,
+                                  struct panvk_shader *fs,
+                                  struct panvk_shader_link *link);
+
+static inline void
+panvk_shader_link_cleanup(struct panvk_pool *desc_pool,
+                          struct panvk_shader_link *link)
+{
+   panvk_pool_free_mem(desc_pool, link->vs.attribs);
+   panvk_pool_free_mem(desc_pool, link->fs.attribs);
+}
 
 bool panvk_per_arch(nir_lower_descriptors)(
    nir_shader *nir, struct panvk_device *dev,

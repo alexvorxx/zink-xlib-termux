@@ -29,11 +29,6 @@
 struct panvk_pipeline_shader {
    struct panvk_shader *base;
 
-   struct {
-      struct panvk_priv_mem attribs;
-      unsigned buf_strides[PANVK_VARY_BUF_MAX];
-   } varyings;
-
    struct pan_shader_info info;
 };
 
@@ -57,6 +52,7 @@ struct panvk_graphics_pipeline {
 
    struct panvk_pipeline_shader vs;
    struct panvk_pipeline_shader fs;
+   struct panvk_shader_link link;
 
    struct {
       struct vk_dynamic_graphics_state dynamic;

@@ -511,7 +511,7 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
    mali_ptr psiz_buf = 0;
 
    for (unsigned i = 0; i < PANVK_VARY_BUF_MAX; i++) {
-      unsigned buf_size = vertex_count * pipeline->vs.varyings.buf_strides[i];
+      unsigned buf_size = vertex_count * pipeline->link.buf_strides[i];
       mali_ptr buf_addr =
          buf_size
             ? pan_pool_alloc_aligned(&cmdbuf->varying_pool.base, buf_size, 64)
@@ -519,7 +519,7 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
             : 0;
 
       pan_pack(&buf_descs[i], ATTRIBUTE_BUFFER, cfg) {
-         cfg.stride = pipeline->vs.varyings.buf_strides[i];
+         cfg.stride = pipeline->link.buf_strides[i];
          cfg.size = buf_size;
          cfg.pointer = buf_addr;
       }
@@ -544,8 +544,8 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
       draw->line_width = 1.0f;
 
    draw->varying_bufs = bufs.gpu;
-   draw->vs.varyings = panvk_priv_mem_dev_addr(pipeline->vs.varyings.attribs);
-   draw->fs.varyings = panvk_priv_mem_dev_addr(pipeline->fs.varyings.attribs);
+   draw->vs.varyings = panvk_priv_mem_dev_addr(pipeline->link.vs.attribs);
+   draw->fs.varyings = panvk_priv_mem_dev_addr(pipeline->link.fs.attribs);
 }
 
 static void

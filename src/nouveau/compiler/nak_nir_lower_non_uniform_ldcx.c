@@ -281,7 +281,7 @@ sort_and_mark_live_handles(nir_builder *b, struct non_uniform_section *nus)
    for (unsigned i = 0; i < num_handles && i < max_live_handles; i++) {
       nir_def *handle = handles[i].handle;
       if (handle->divergent)
-         handle = nir_r2ur_nv(b, 64, handles[i].handle);
+         handle = nir_as_uniform(b, handles[i].handle);
       nir_pin_cx_handle_nv(b, handle);
 
       _mesa_hash_table_insert(nus->live_handles, handle, handle);
@@ -368,7 +368,7 @@ lower_ldcx_block(nir_builder *b, nir_block *block,
                progress = true;
             } else if (handle->divergent) {
                b->cursor = nir_before_instr(&load->instr);
-               nir_def *ugpr = nir_r2ur_nv(b, 64, handle);
+               nir_def *ugpr = nir_as_uniform(b, handle);
                nir_src_rewrite(&load->src[0], ugpr);
                progress = true;
             }

@@ -2229,9 +2229,6 @@ intrinsic("ldc_nv", dest_comp=0, src_comp=[1, 1],
 # src[] = { handle }.
 intrinsic("pin_cx_handle_nv", src_comp=[1])
 intrinsic("unpin_cx_handle_nv", src_comp=[1])
-# Explicitly copies a value to a uniform register
-intrinsic("r2ur_nv", dest_comp=0, src_comp=[0],
-          flags=[CAN_ELIMINATE, CAN_REORDER])
 # src[] = { handle, offset }.
 intrinsic("ldcx_nv", dest_comp=0, src_comp=[1, 1],
           indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET],

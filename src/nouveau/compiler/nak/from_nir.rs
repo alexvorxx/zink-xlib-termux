@@ -2054,6 +2054,19 @@ impl<'a> ShaderFromNir<'a> {
                     panic!("Invalid VTG I/O intrinsic");
                 }
             }
+            nir_intrinsic_as_uniform => {
+                let src = self.get_ssa(srcs[0].as_def());
+                let mut dst = Vec::new();
+                for comp in src {
+                    let u = b.alloc_ssa(RegFile::UGPR, 1);
+                    b.push_op(OpR2UR {
+                        src: [*comp].into(),
+                        dst: u.into(),
+                    });
+                    dst.push(u[0]);
+                }
+                self.set_ssa(&intrin.def, dst);
+            }
             nir_intrinsic_ballot => {
                 assert!(srcs[0].bit_size() == 1);
                 let src = self.get_src(&srcs[0]);
@@ -2820,19 +2833,6 @@ impl<'a> ShaderFromNir<'a> {
                     op: ShflOp::Bfly,
                 });
                 self.set_dst(&intrin.def, dst);
-            }
-            nir_intrinsic_r2ur_nv => {
-                let src = self.get_ssa(srcs[0].as_def());
-                let mut dst = Vec::new();
-                for comp in src {
-                    let u = b.alloc_ssa(RegFile::UGPR, 1);
-                    b.push_op(OpR2UR {
-                        src: [*comp].into(),
-                        dst: u.into(),
-                    });
-                    dst.push(u[0]);
-                }
-                self.set_ssa(&intrin.def, dst);
             }
             nir_intrinsic_shared_atomic => {
                 let bit_size = intrin.def.bit_size();

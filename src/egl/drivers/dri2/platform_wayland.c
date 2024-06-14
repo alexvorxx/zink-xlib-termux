@@ -622,6 +622,29 @@ static const struct zwp_linux_dmabuf_feedback_v1_listener
       .done = surface_dmabuf_feedback_done,
 };
 
+static bool
+dri2_wl_modifiers_have_common(struct u_vector *modifiers1,
+                              struct u_vector *modifiers2)
+{
+   uint64_t *mod1, *mod2;
+
+   /* If both modifier vectors are empty, assume there is a compatible
+    * implicit modifier. */
+   if (u_vector_length(modifiers1) == 0 && u_vector_length(modifiers2) == 0)
+       return true;
+
+   u_vector_foreach(mod1, modifiers1)
+   {
+      u_vector_foreach(mod2, modifiers2)
+      {
+         if (*mod1 == *mod2)
+            return true;
+      }
+   }
+
+   return false;
+}
+
 /**
  * Called via eglCreateWindowSurface(), drv->CreateWindowSurface().
  */
@@ -678,6 +701,20 @@ dri2_wl_create_window_surface(_EGLDisplay *disp, _EGLConfig *conf,
    } else {
       assert(dri2_dpy->wl_shm);
       dri2_surf->format = dri2_wl_shm_format_from_visual_idx(visual_idx);
+   }
+
+   if (dri2_surf->base.PresentOpaque) {
+      uint32_t opaque_fourcc =
+         dri2_wl_visuals[visual_idx].opaque_wl_drm_format;
+      int opaque_visual_idx = dri2_wl_visual_idx_from_fourcc(opaque_fourcc);
+
+      if (!server_supports_format(&dri2_dpy->formats, opaque_visual_idx) ||
+          !dri2_wl_modifiers_have_common(
+               &dri2_dpy->formats.modifiers[visual_idx],
+               &dri2_dpy->formats.modifiers[opaque_visual_idx])) {
+         _eglError(EGL_BAD_MATCH, "Unsupported opaque format");
+         goto cleanup_surf;
+      }
    }
 
    dri2_surf->wl_queue = wl_display_create_queue_with_name(dri2_dpy->wl_dpy,
@@ -973,26 +1010,47 @@ create_dri_image(struct dri2_egl_surface *dri2_surf,
       dri2_egl_display(dri2_surf->base.Resource.Display);
    int visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
    struct u_vector modifiers_subset;
+   struct u_vector modifiers_subset_opaque;
    uint64_t *modifiers;
    unsigned int num_modifiers;
-   struct u_vector *modifiers_set;
+   struct u_vector *modifiers_present;
 
    assert(visual_idx != -1);
 
-   if (!BITSET_TEST(formats->formats_bitmap, visual_idx))
-      return;
+   if (dri2_surf->base.PresentOpaque) {
+      uint32_t opaque_fourcc =
+            dri2_wl_visuals[visual_idx].opaque_wl_drm_format;
+      int opaque_visual_idx = dri2_wl_visual_idx_from_fourcc(opaque_fourcc);
+      struct u_vector *modifiers_dpy = &dri2_dpy->formats.modifiers[visual_idx];
+      /* Surface creation would have failed if we didn't support the matching
+       * opaque format. */
+      assert(opaque_visual_idx != -1);
 
-   modifiers_set = &formats->modifiers[visual_idx];
+      if (!BITSET_TEST(formats->formats_bitmap, opaque_visual_idx))
+         return;
+
+      if (!intersect_modifiers(&modifiers_subset_opaque,
+                               &formats->modifiers[opaque_visual_idx],
+                               u_vector_tail(modifiers_dpy),
+                               u_vector_length(modifiers_dpy)))
+         return;
+
+      modifiers_present = &modifiers_subset_opaque;
+   } else {
+      if (!BITSET_TEST(formats->formats_bitmap, visual_idx))
+         return;
+      modifiers_present = &formats->modifiers[visual_idx];
+   }
 
    if (surf_modifiers_count > 0) {
-      if (!intersect_modifiers(&modifiers_subset, modifiers_set, surf_modifiers,
-                               surf_modifiers_count))
-         return;
+      if (!intersect_modifiers(&modifiers_subset, modifiers_present,
+                               surf_modifiers, surf_modifiers_count))
+         goto cleanup_present;
       modifiers = u_vector_tail(&modifiers_subset);
       num_modifiers = u_vector_length(&modifiers_subset);
    } else {
-      modifiers = u_vector_tail(modifiers_set);
-      num_modifiers = u_vector_length(modifiers_set);
+      modifiers = u_vector_tail(modifiers_present);
+      num_modifiers = u_vector_length(modifiers_present);
    }
 
    /* For the purposes of this function, an INVALID modifier on
@@ -1013,6 +1071,10 @@ create_dri_image(struct dri2_egl_surface *dri2_surf,
       u_vector_finish(&modifiers_subset);
       update_surface(dri2_surf, dri2_surf->back->dri_image);
    }
+
+cleanup_present:
+   if (modifiers_present == &modifiers_subset_opaque)
+      u_vector_finish(&modifiers_subset_opaque);
 }
 
 static void

@@ -319,6 +319,14 @@ dgc_emit(struct dgc_cmdbuf *cs, unsigned count, nir_def **values)
                                                 .base = offsetof(struct radv_dgc_params, field), .range = 8))
 
 /* Pipeline metadata */
+static nir_def *
+dgc_get_pipeline_va(nir_builder *b, nir_def *stream_addr)
+{
+   return nir_build_load_global(b, 1, 64,
+                                nir_iadd(b, stream_addr, nir_u2u64(b, load_param16(b, pipeline_params_offset))),
+                                .access = ACCESS_NON_WRITEABLE);
+}
+
 #define load_metadata32(b, field)                                                                                      \
    nir_load_global(                                                                                                    \
       b, nir_iadd(b, pipeline_va, nir_imm_int64(b, offsetof(struct radv_compute_pipeline_metadata, field))), 4, 1, 32)
@@ -944,14 +952,13 @@ dgc_emit_index_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *inde
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV.
  */
 static nir_def *
-dgc_get_push_constant_shader_cnt(nir_builder *b, nir_def *stream_addr, nir_def *pipeline_params_offset)
+dgc_get_push_constant_shader_cnt(nir_builder *b, nir_def *stream_addr)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       res1 = nir_b2i32(b, nir_ine_imm(b, load_metadata32(b, push_const_sgpr), 0));
    }
@@ -966,14 +973,13 @@ dgc_get_push_constant_shader_cnt(nir_builder *b, nir_def *stream_addr, nir_def *
 
 static nir_def *
 dgc_get_upload_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, nir_def *param_offset,
-                    nir_def *cur_shader_idx, nir_def *pipeline_params_offset)
+                    nir_def *cur_shader_idx)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       res1 = load_metadata32(b, push_const_sgpr);
    }
@@ -990,14 +996,13 @@ dgc_get_upload_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
 
 static nir_def *
 dgc_get_inline_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, nir_def *param_offset,
-                    nir_def *cur_shader_idx, nir_def *pipeline_params_offset)
+                    nir_def *cur_shader_idx)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       res1 = load_metadata32(b, push_const_sgpr);
    }
@@ -1014,14 +1019,13 @@ dgc_get_inline_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
 
 static nir_def *
 dgc_get_inline_mask(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, nir_def *param_offset,
-                    nir_def *cur_shader_idx, nir_def *pipeline_params_offset)
+                    nir_def *cur_shader_idx)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       res1 = load_metadata64(b, inline_push_const_mask);
    }
@@ -1037,14 +1041,13 @@ dgc_get_inline_mask(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
 }
 
 static nir_def *
-dgc_push_constant_needs_copy(nir_builder *b, nir_def *stream_addr, nir_def *pipeline_params_offset)
+dgc_push_constant_needs_copy(nir_builder *b, nir_def *stream_addr)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       res1 = nir_ine_imm(b, nir_ubfe_imm(b, load_metadata32(b, push_const_sgpr), 0, 16), 0);
    }
@@ -1058,13 +1061,13 @@ dgc_push_constant_needs_copy(nir_builder *b, nir_def *stream_addr, nir_def *pipe
 }
 
 static void
-dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pipeline_params_offset,
-                       nir_def *push_const_mask, nir_variable *upload_offset)
+dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
+                       nir_variable *upload_offset)
 {
    nir_builder *b = cs->b;
 
    nir_def *vbo_cnt = load_param8(b, vbo_cnt);
-   nir_def *const_copy = dgc_push_constant_needs_copy(b, stream_addr, pipeline_params_offset);
+   nir_def *const_copy = dgc_push_constant_needs_copy(b, stream_addr);
    nir_def *const_copy_size = load_param16(b, const_copy_size);
    nir_def *const_copy_words = nir_ushr_imm(b, const_copy_size, 2);
    const_copy_words = nir_bcsel(b, const_copy, const_copy_words, nir_imm_int(b, 0));
@@ -1118,7 +1121,7 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pip
 
    nir_variable *shader_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "shader_idx");
    nir_store_var(b, shader_idx, nir_imm_int(b, 0), 0x1);
-   nir_def *shader_cnt = dgc_get_push_constant_shader_cnt(b, stream_addr, pipeline_params_offset);
+   nir_def *shader_cnt = dgc_get_push_constant_shader_cnt(b, stream_addr);
 
    nir_push_loop(b);
    {
@@ -1129,12 +1132,9 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pip
       }
       nir_pop_if(b, NULL);
 
-      nir_def *upload_sgpr =
-         dgc_get_upload_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx, pipeline_params_offset);
-      nir_def *inline_sgpr =
-         dgc_get_inline_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx, pipeline_params_offset);
-      nir_def *inline_mask =
-         dgc_get_inline_mask(b, stream_addr, param_buf, param_offset, cur_shader_idx, pipeline_params_offset);
+      nir_def *upload_sgpr = dgc_get_upload_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx);
+      nir_def *inline_sgpr = dgc_get_inline_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx);
+      nir_def *inline_mask = dgc_get_inline_mask(b, stream_addr, param_buf, param_offset, cur_shader_idx);
 
       nir_push_if(b, nir_ine_imm(b, upload_sgpr, 0));
       {
@@ -1375,14 +1375,13 @@ dgc_emit_vertex_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *vbo
  * For emitting VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV.
  */
 static nir_def *
-dgc_get_grid_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *pipeline_params_offset)
+dgc_get_grid_sgpr(nir_builder *b, nir_def *stream_addr)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       res1 = load_metadata32(b, grid_base_sgpr);
    }
@@ -1396,14 +1395,13 @@ dgc_get_grid_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *pipeline_params
 }
 
 static nir_def *
-dgc_get_dispatch_initiator(nir_builder *b, nir_def *stream_addr, nir_def *pipeline_params_offset)
+dgc_get_dispatch_initiator(nir_builder *b, nir_def *stream_addr)
 {
    nir_def *res1, *res2;
 
    nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
    {
-      nir_def *pipeline_va = nir_build_load_global(
-         b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+      nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
       nir_def *dispatch_initiator = load_param32(b, dispatch_initiator);
       nir_def *wave32 = nir_ieq_imm(b, load_metadata32(b, wave32), 1);
@@ -1419,8 +1417,8 @@ dgc_get_dispatch_initiator(nir_builder *b, nir_def *stream_addr, nir_def *pipeli
 }
 
 static void
-dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch_params_offset,
-                  nir_def *pipeline_params_offset, nir_def *sequence_id, const struct radv_device *device)
+dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch_params_offset, nir_def *sequence_id,
+                  const struct radv_device *device)
 {
    nir_builder *b = cs->b;
 
@@ -1430,7 +1428,7 @@ dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch
    nir_def *wg_y = nir_channel(b, dispatch_data, 1);
    nir_def *wg_z = nir_channel(b, dispatch_data, 2);
 
-   nir_def *grid_sgpr = dgc_get_grid_sgpr(b, stream_addr, pipeline_params_offset);
+   nir_def *grid_sgpr = dgc_get_grid_sgpr(b, stream_addr);
    nir_push_if(b, nir_ine_imm(b, grid_sgpr, 0));
    {
       if (device->load_grid_size_from_user_sgpr) {
@@ -1446,7 +1444,7 @@ dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDispatch);
       dgc_emit_sqtt_marker_event_with_dims(cs, sequence_id, wg_x, wg_y, wg_z, EventCmdDispatch);
 
-      nir_def *dispatch_initiator = dgc_get_dispatch_initiator(b, stream_addr, pipeline_params_offset);
+      nir_def *dispatch_initiator = dgc_get_dispatch_initiator(b, stream_addr);
       dgc_emit_dispatch_direct(cs, wg_x, wg_y, wg_z, dispatch_initiator);
 
       dgc_emit_sqtt_thread_trace_marker(cs);
@@ -1498,14 +1496,12 @@ dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *d
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV.
  */
 static void
-dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pipeline_params_offset,
-                       const struct radv_device *device)
+dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr, const struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
-   nir_def *pipeline_va = nir_build_load_global(
-      b, 1, 64, nir_iadd(b, stream_addr, nir_u2u64(b, pipeline_params_offset)), .access = ACCESS_NON_WRITEABLE);
+   nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
    dgc_cs_begin(cs);
    dgc_cs_set_sh_reg_seq(R_00B830_COMPUTE_PGM_LO, 1);
@@ -1632,14 +1628,13 @@ build_dgc_prepare_shader(struct radv_device *dev)
       nir_def *push_const_mask = load_param64(&b, push_constant_mask);
       nir_push_if(&b, nir_ine_imm(&b, push_const_mask, 0));
       {
-         dgc_emit_push_constant(&cmd_buf, stream_addr, load_param16(&b, pipeline_params_offset), push_const_mask,
-                                upload_offset);
+         dgc_emit_push_constant(&cmd_buf, stream_addr, push_const_mask, upload_offset);
       }
       nir_pop_if(&b, 0);
 
       nir_push_if(&b, nir_ieq_imm(&b, load_param8(&b, bind_pipeline), 1));
       {
-         dgc_emit_bind_pipeline(&cmd_buf, stream_addr, load_param16(&b, pipeline_params_offset), dev);
+         dgc_emit_bind_pipeline(&cmd_buf, stream_addr, dev);
       }
       nir_pop_if(&b, 0);
 
@@ -1690,8 +1685,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       }
       nir_push_else(&b, NULL);
       {
-         dgc_emit_dispatch(&cmd_buf, stream_addr, load_param16(&b, dispatch_params_offset),
-                           load_param16(&b, pipeline_params_offset), sequence_id, dev);
+         dgc_emit_dispatch(&cmd_buf, stream_addr, load_param16(&b, dispatch_params_offset), sequence_id, dev);
       }
       nir_pop_if(&b, NULL);
 

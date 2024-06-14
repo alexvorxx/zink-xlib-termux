@@ -357,7 +357,7 @@ translate_superblock_size(uint64_t modifier)
 }
 
 static void
-panfrost_emit_plane(const struct pan_image_layout *layout,
+panfrost_emit_plane(int index, const struct pan_image_layout *layout,
                     enum pipe_format format, mali_ptr pointer, unsigned level,
                     int32_t row_stride, int32_t surface_stride,
                     mali_ptr plane2_ptr, void **payload)
@@ -368,6 +368,7 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
    assert(row_stride >= 0 && surface_stride >= 0 && "negative stride");
 
    bool afbc = drm_is_afbc(layout->modifier);
+   bool afrc = drm_is_afrc(layout->modifier);
    // TODO: this isn't technically guaranteed to be YUV, but it is in practice.
    bool is_3_planar_yuv = desc->layout == UTIL_FORMAT_LAYOUT_PLANAR3;
 
@@ -386,6 +387,7 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
 
       if (desc->layout == UTIL_FORMAT_LAYOUT_ASTC) {
          assert(!afbc);
+         assert(!afrc);
 
          if (desc->block.depth > 1) {
             cfg.plane_type = MALI_PLANE_TYPE_ASTC_3D;
@@ -421,17 +423,29 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
          cfg.afbc.prefetch = true;
          cfg.afbc.compression_mode = GENX(pan_afbc_compression_mode)(format);
          cfg.afbc.header_stride = layout->slices[level].afbc.header_size;
+      } else if (afrc) {
+#if PAN_ARCH >= 10
+         struct pan_afrc_format_info finfo =
+            panfrost_afrc_get_format_info(format);
+
+         cfg.plane_type = MALI_PLANE_TYPE_AFRC;
+         cfg.afrc.block_size =
+            GENX(pan_afrc_block_size)(layout->modifier, index);
+         cfg.afrc.format =
+            GENX(pan_afrc_format)(finfo, layout->modifier, index);
+#endif
       } else {
          cfg.plane_type = is_3_planar_yuv ? MALI_PLANE_TYPE_CHROMA_2P
                                           : MALI_PLANE_TYPE_GENERIC;
          cfg.clump_format = panfrost_clump_format(format);
       }
 
-      if (!afbc &&
-          layout->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
-         cfg.clump_ordering = MALI_CLUMP_ORDERING_TILED_U_INTERLEAVED;
-      else if (!afbc)
-         cfg.clump_ordering = MALI_CLUMP_ORDERING_LINEAR;
+      if (!afbc && !afrc) {
+         if (layout->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
+            cfg.clump_ordering = MALI_CLUMP_ORDERING_TILED_U_INTERLEAVED;
+         else
+            cfg.clump_ordering = MALI_CLUMP_ORDERING_LINEAR;
+      }
    }
    *payload += pan_size(PLANE);
 }
@@ -498,12 +512,12 @@ panfrost_emit_surface(const struct pan_image_view *iview, unsigned level,
          /* 3-plane YUV requires equal stride for both chroma planes */
          assert(row_strides[2] == 0 || row_strides[1] == row_strides[2]);
 
-         panfrost_emit_plane(layouts[i], format, plane_ptrs[i], level,
+         panfrost_emit_plane(i, layouts[i], format, plane_ptrs[i], level,
                              row_strides[i], surface_strides[i], plane_ptrs[2],
                              payload);
       }
    } else {
-      panfrost_emit_plane(layouts[0], format, plane_ptrs[0], level,
+      panfrost_emit_plane(0, layouts[0], format, plane_ptrs[0], level,
                           row_strides[0], surface_strides[0], 0, payload);
    }
    return;

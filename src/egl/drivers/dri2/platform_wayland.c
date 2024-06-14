@@ -967,13 +967,22 @@ static void
 create_dri_image(struct dri2_egl_surface *dri2_surf,
                  enum pipe_format pipe_format, uint32_t use_flags,
                  uint64_t *surf_modifiers, int surf_modifiers_count,
-                 struct u_vector *modifiers_set)
+                 struct dri2_wl_formats *formats)
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
+   int visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
    struct u_vector modifiers_subset;
    uint64_t *modifiers;
    unsigned int num_modifiers;
+   struct u_vector *modifiers_set;
+
+   assert(visual_idx != -1);
+
+   if (!BITSET_TEST(formats->formats_bitmap, visual_idx))
+      return;
+
+   modifiers_set = &formats->modifiers[visual_idx];
 
    if (surf_modifiers_count > 0) {
       if (!intersect_modifiers(&modifiers_subset, modifiers_set, surf_modifiers,
@@ -1013,15 +1022,11 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
                                       uint64_t *surf_modifiers,
                                       int surf_modifiers_count)
 {
-   int visual_idx;
    uint32_t flags;
 
    /* We don't have valid dma-buf feedback, so return */
    if (dri2_surf->dmabuf_feedback.main_device == 0)
       return;
-
-   visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
-   assert(visual_idx != -1);
 
    /* Iterates through the dma-buf feedback to pick a new set of modifiers. The
     * tranches are sent in descending order of preference by the compositor, so
@@ -1035,17 +1040,12 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
     * incompatible with the main device. */
    util_dynarray_foreach (&dri2_surf->dmabuf_feedback.tranches,
                           struct dmabuf_feedback_tranche, tranche) {
-      /* Ignore tranches that do not contain dri2_surf->format */
-      if (!BITSET_TEST(tranche->formats.formats_bitmap, visual_idx))
-         continue;
-
       flags = use_flags;
       if (tranche->flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT)
          flags |= __DRI_IMAGE_USE_SCANOUT;
 
       create_dri_image(dri2_surf, pipe_format, flags, surf_modifiers,
-                       surf_modifiers_count,
-                       &tranche->formats.modifiers[visual_idx]);
+                       surf_modifiers_count, &tranche->formats);
 
       if (dri2_surf->back->dri_image)
          return;
@@ -1060,12 +1060,8 @@ create_dri_image_from_formats(struct dri2_egl_surface *dri2_surf,
 {
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
-   int visual_idx;
-
-   visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
    create_dri_image(dri2_surf, pipe_format, use_flags, surf_modifiers,
-                    surf_modifiers_count,
-                    &dri2_dpy->formats.modifiers[visual_idx]);
+                    surf_modifiers_count, &dri2_dpy->formats);
 }
 
 static int

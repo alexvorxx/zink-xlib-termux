@@ -431,7 +431,7 @@ dgc_emit_sqtt_thread_trace_marker(nir_builder *b, struct dgc_cmdbuf *cs)
       return;
 
    nir_def *values[2] = {
-      nir_pkt3(b, PKT3_EVENT_WRITE, nir_imm_int(b, 0)),
+      nir_imm_int(b, PKT3(PKT3_EVENT_WRITE, 0, 0)),
       nir_imm_int(b, EVENT_TYPE(V_028A90_THREAD_TRACE_MARKER | EVENT_INDEX(0))),
    };
 
@@ -1141,7 +1141,7 @@ dgc_emit_push_constant(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_ad
 
                nir_store_var(b, data, new_data, 0x1);
 
-               nir_def *pkt[3] = {nir_pkt3(b, PKT3_SET_SH_REG, nir_imm_int(b, 1)),
+               nir_def *pkt[3] = {nir_imm_int(b, PKT3(PKT3_SET_SH_REG, 1, 0)),
                                   nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)), nir_load_var(b, data)};
 
                dgc_emit(b, cs, 3, pkt);
@@ -1158,7 +1158,7 @@ dgc_emit_push_constant(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_ad
                      nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_const_offset, nir_ishl_imm(b, cur_idx, 2)));
                   nir_store_var(b, data, new_data, 0x1);
 
-                  nir_def *pkt[3] = {nir_pkt3(b, PKT3_SET_SH_REG, nir_imm_int(b, 1)),
+                  nir_def *pkt[3] = {nir_imm_int(b, PKT3(PKT3_SET_SH_REG, 1, 0)),
                                      nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)), nir_load_var(b, data)};
 
                   dgc_emit(b, cs, 3, pkt);

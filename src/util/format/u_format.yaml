@@ -4,6 +4,13 @@
 # When adding new format entries, enum pipe_format in
 # src/util/format/u_formats.h must be updated along with it.
 #
+# These formats are the main descriptions used for drivers, and should uniquely
+# describe a format without the need for any annotation. The only difference
+# is DRM format modifiers, which are used to describe differences in the
+# storage (e.g. tiled and/or compressed).
+#
+# These do not correspond one-to-one to GL formats or internalformats.
+#
 # Each format entry contains:
 # - name, per enum pipe_format
 # - layout, per enum util_format_layout, in shortened lower caps
@@ -27,16 +34,6 @@
 #
 # The channel encoding and swizzle may be defined separately for little-endian
 # and big-endian hosts when using a packed (non-array/bitmask) format.
-#
-# See also:
-# - http://msdn.microsoft.com/en-us/library/bb172558.aspx (D3D9)
-# - http://msdn.microsoft.com/en-us/library/bb205073.aspx#mapping_texture_formats (D3D9 -> D3D10)
-# - http://msdn.microsoft.com/en-us/library/bb173059.aspx (D3D10)
-#
-# Note that GL doesn't really specify the layout of internal formats. See
-# OpenGL 2.1 specification, Table 3.16, on the "Correspondence of sized
-# internal formats to base in- ternal formats, and desired component
-# resolutions for each sized internal format."
 
 # None
 # Described as regular uint_8 bytes, i.e. PIPE_FORMAT_R8_USCALED

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2035 # FIXME glob
 
 set -ex
 
@@ -10,6 +9,9 @@ fi
 INSTALL=$(realpath -s "$PWD"/install)
 
 RESULTS=$(realpath -s "$PWD"/results)
+
+# Make sure the results folder exists
+mkdir -p "$RESULTS"
 
 # Set up the driver environment.
 # Modifiying here directly LD_LIBRARY_PATH may cause problems when
@@ -40,12 +42,6 @@ MESA_VERSION=$(cat "$INSTALL/VERSION")
 if ! vulkaninfo | grep driverInfo | tee /tmp/version.txt | grep -F "Mesa $MESA_VERSION"; then
     printf "%s\n" "Found $(cat /tmp/version.txt), expected $MESA_VERSION"
     exit 1
-fi
-
-if [ -d "$RESULTS" ]; then
-    cd "$RESULTS" && rm -rf ..?* .[!.]* * && cd -
-else
-    mkdir "$RESULTS"
 fi
 
 quiet printf "%s\n" "Running vkd3d-proton testsuite..."

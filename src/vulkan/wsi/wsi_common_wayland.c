@@ -242,7 +242,9 @@ stringify_wayland_id(uint32_t id)
 {
    char *out;
 
-   asprintf(&out, "wl%d", id);
+   if (asprintf(&out, "wl%d", id) < 0)
+      return NULL;
+
    return out;
 }
 
@@ -1991,7 +1993,7 @@ trace_present(const struct wsi_wl_present_id *id,
    /* Close the previous image display interval first, if there is one. */
    if (surface->analytics.presenting && util_perfetto_is_tracing_enabled()) {
       buffer_name = stringify_wayland_id(surface->analytics.presenting);
-      MESA_TRACE_TIMESTAMP_END(buffer_name,
+      MESA_TRACE_TIMESTAMP_END(buffer_name ? buffer_name : "Wayland buffer",
                                surface->analytics.presentation_track_id,
                                presentation_time);
       free(buffer_name);
@@ -2001,7 +2003,7 @@ trace_present(const struct wsi_wl_present_id *id,
 
    if (util_perfetto_is_tracing_enabled()) {
       buffer_name = stringify_wayland_id(id->buffer_id);
-      MESA_TRACE_TIMESTAMP_BEGIN(buffer_name,
+      MESA_TRACE_TIMESTAMP_BEGIN(buffer_name ? buffer_name : "Wayland buffer",
                                  surface->analytics.presentation_track_id,
                                  id->flow_id,
                                  presentation_time);

@@ -73,6 +73,7 @@ then
         cp "$INSTALL/$VKD3D_PROTON_RESULTS-vkd3d.txt" \
            ".gitlab-ci/vkd3d-proton/$VKD3D_PROTON_RESULTS.txt.baseline"
     else
+        printf "%s\n" "$VKD3D_PROTON_RESULTS-vkd3d.txt not found, assuming a \"no failures\" baseline."
         touch ".gitlab-ci/vkd3d-proton/$VKD3D_PROTON_RESULTS.txt.baseline"
     fi
 

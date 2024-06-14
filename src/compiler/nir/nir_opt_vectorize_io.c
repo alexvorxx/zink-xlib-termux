@@ -439,6 +439,10 @@ nir_opt_vectorize_io(nir_shader *shader, nir_variable_mode modes)
 {
    assert(!(modes & ~(nir_var_shader_in | nir_var_shader_out)));
 
+   if (shader->info.stage == MESA_SHADER_FRAGMENT &&
+       shader->options->io_options & nir_io_prefer_scalar_fs_inputs)
+      modes &= ~nir_var_shader_in;
+
    if ((shader->info.stage == MESA_SHADER_TESS_CTRL ||
         shader->info.stage == MESA_SHADER_GEOMETRY) &&
        util_bitcount(modes) == 2) {

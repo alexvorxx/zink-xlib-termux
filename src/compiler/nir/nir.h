@@ -3677,6 +3677,11 @@ typedef enum {
     */
    nir_io_mediump_is_32bit = BITFIELD_BIT(3),
 
+   /**
+    * Whether nir_opt_vectorize_io should ignore FS inputs.
+    */
+   nir_io_prefer_scalar_fs_inputs = BITFIELD_BIT(4),
+
    /* Options affecting the GLSL compiler are below. */
 
    /**

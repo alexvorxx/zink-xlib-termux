@@ -70,6 +70,4 @@ if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton-log.txt"; then
     fi
 fi
 
-printf "%s\n" "vkd3d-proton execution: SUCCESS"
-
 exit 0

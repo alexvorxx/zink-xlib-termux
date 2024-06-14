@@ -62,7 +62,10 @@ then
     # Collect all the failures
     RESULTSFILE="$RESULTS/$VKD3D_PROTON_RESULTS.txt"
     mkdir -p .gitlab-ci/vkd3d-proton
-    grep "Test failed" "$RESULTS"/vkd3d-proton.log > "$RESULTSFILE"
+    if ! grep "Test failed" "$RESULTS"/vkd3d-proton.log > "$RESULTSFILE"; then
+      error "Failed to get the list of failing tests, see vkd3d-proton.log!"
+      exit 1
+    fi
 
     # Gather the list expected failures
     if [ -f "$INSTALL/$VKD3D_PROTON_RESULTS-vkd3d.txt" ]; then

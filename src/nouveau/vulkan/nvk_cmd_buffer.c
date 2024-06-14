@@ -603,11 +603,11 @@ nvk_cmd_dirty_cbufs_for_descriptors(struct nvk_cmd_buffer *cmd,
                                     uint32_t sets_start, uint32_t sets_end,
                                     uint32_t dyn_start, uint32_t dyn_end)
 {
-   if (!(stages & VK_SHADER_STAGE_ALL_GRAPHICS))
+   if (!(stages & NVK_VK_GRAPHICS_STAGE_BITS))
       return;
 
    uint32_t groups = 0;
-   u_foreach_bit(i, stages & VK_SHADER_STAGE_ALL_GRAPHICS) {
+   u_foreach_bit(i, stages & NVK_VK_GRAPHICS_STAGE_BITS) {
       gl_shader_stage stage = vk_to_mesa_shader_stage(1 << i);
       uint32_t g = nvk_cbuf_binding_for_stage(stage);
       groups |= BITFIELD_BIT(g);
@@ -995,11 +995,12 @@ nvk_CmdPushDescriptorSetWithTemplate2KHR(
                   pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
    VK_FROM_HANDLE(vk_pipeline_layout, pipeline_layout,
                   pPushDescriptorSetWithTemplateInfo->layout);
+   const uint32_t set = pPushDescriptorSetWithTemplateInfo->set;
 
    struct nvk_descriptor_state *desc =
       nvk_get_descriptors_state(cmd, template->bind_point);
    struct nvk_push_descriptor_set *push_set =
-      nvk_cmd_push_descriptors(cmd, desc, pPushDescriptorSetWithTemplateInfo->set);
+      nvk_cmd_push_descriptors(cmd, desc, set);
    if (unlikely(push_set == NULL))
       return;
 
@@ -1008,4 +1009,7 @@ nvk_CmdPushDescriptorSetWithTemplate2KHR(
 
    nvk_push_descriptor_set_update_template(dev, push_set, set_layout, template,
                                            pPushDescriptorSetWithTemplateInfo->pData);
+
+   nvk_cmd_dirty_cbufs_for_descriptors(cmd, info->stageFlags,
+                                       set, set + 1, 0, 0);
 }

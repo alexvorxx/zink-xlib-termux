@@ -277,12 +277,11 @@ enum {
 };
 
 struct dgc_cmdbuf {
+   const struct radv_device *dev;
+
    nir_builder *b;
    nir_def *va;
    nir_variable *offset;
-
-   enum amd_gfx_level gfx_level;
-   bool sqtt_enabled;
 };
 
 static void
@@ -380,8 +379,9 @@ dgc_get_nop_packet(nir_builder *b, const struct radv_device *device)
 
 static void
 dgc_emit_userdata_vertex(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def *first_vertex, nir_def *first_instance,
-                         nir_def *drawid, const struct radv_device *device)
+                         nir_def *drawid)
 {
+   const struct radv_device *device = cs->dev;
    nir_builder *b = cs->b;
 
    vtx_base_sgpr = nir_u2u32(b, vtx_base_sgpr);
@@ -404,8 +404,9 @@ dgc_emit_userdata_vertex(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def 
 
 static void
 dgc_emit_userdata_mesh(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def *x, nir_def *y, nir_def *z,
-                       nir_def *drawid, const struct radv_device *device)
+                       nir_def *drawid)
 {
+   const struct radv_device *device = cs->dev;
    nir_builder *b = cs->b;
 
    vtx_base_sgpr = nir_u2u32(b, vtx_base_sgpr);
@@ -434,13 +435,15 @@ dgc_emit_userdata_mesh(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def *x
 static void
 dgc_emit_sqtt_userdata(struct dgc_cmdbuf *cs, nir_def *data)
 {
+   const struct radv_device *device = cs->dev;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
-   if (!cs->sqtt_enabled)
+   if (!cs->dev->sqtt.bo)
       return;
 
    dgc_cs_begin(cs);
-   dgc_cs_emit(nir_pkt3_base(b, PKT3_SET_UCONFIG_REG, nir_imm_int(b, 1), cs->gfx_level >= GFX10));
+   dgc_cs_emit(nir_pkt3_base(b, PKT3_SET_UCONFIG_REG, nir_imm_int(b, 1), pdev->info.gfx_level >= GFX10));
    dgc_cs_emit_imm((R_030D08_SQ_THREAD_TRACE_USERDATA_2 - CIK_UCONFIG_REG_OFFSET) >> 2);
    dgc_cs_emit(data);
    dgc_cs_end();
@@ -449,7 +452,7 @@ dgc_emit_sqtt_userdata(struct dgc_cmdbuf *cs, nir_def *data)
 static void
 dgc_emit_sqtt_thread_trace_marker(struct dgc_cmdbuf *cs)
 {
-   if (!cs->sqtt_enabled)
+   if (!cs->dev->sqtt.bo)
       return;
 
    dgc_cs_begin(cs);
@@ -831,8 +834,7 @@ build_dgc_buffer_preamble(nir_builder *b, nir_def *sequence_count, const struct 
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV.
  */
 static void
-dgc_emit_draw(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset, nir_def *sequence_id,
-              const struct radv_device *device)
+dgc_emit_draw(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset, nir_def *sequence_id)
 {
    nir_builder *b = cs->b;
 
@@ -850,7 +852,7 @@ dgc_emit_draw(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDraw);
       dgc_emit_sqtt_marker_event(cs, sequence_id, EventCmdDraw);
 
-      dgc_emit_userdata_vertex(cs, vtx_base_sgpr, vertex_offset, first_instance, sequence_id, device);
+      dgc_emit_userdata_vertex(cs, vtx_base_sgpr, vertex_offset, first_instance, sequence_id);
       dgc_emit_instance_count(cs, instance_count);
       dgc_emit_draw_index_auto(cs, vertex_count);
 
@@ -865,7 +867,7 @@ dgc_emit_draw(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_
  */
 static void
 dgc_emit_draw_indexed(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset, nir_def *sequence_id,
-                      nir_def *max_index_count, const struct radv_device *device)
+                      nir_def *max_index_count)
 {
    nir_builder *b = cs->b;
 
@@ -887,7 +889,7 @@ dgc_emit_draw_indexed(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDrawIndexed);
       dgc_emit_sqtt_marker_event(cs, sequence_id, EventCmdDrawIndexed);
 
-      dgc_emit_userdata_vertex(cs, vtx_base_sgpr, vertex_offset, first_instance, sequence_id, device);
+      dgc_emit_userdata_vertex(cs, vtx_base_sgpr, vertex_offset, first_instance, sequence_id);
       dgc_emit_instance_count(cs, instance_count);
       dgc_emit_draw_index_offset_2(cs, first_index, index_count, max_index_count);
 
@@ -902,8 +904,9 @@ dgc_emit_draw_indexed(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw
  */
 static void
 dgc_emit_index_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *index_buffer_offset, nir_def *ibo_type_32,
-                      nir_def *ibo_type_8, nir_variable *max_index_count_var, const struct radv_device *device)
+                      nir_def *ibo_type_8, nir_variable *max_index_count_var)
 {
+   const struct radv_device *device = cs->dev;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
@@ -1229,9 +1232,9 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
  * For emitting VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV.
  */
 static void
-dgc_emit_vertex_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *vbo_bind_mask, nir_variable *upload_offset,
-                       const struct radv_device *device)
+dgc_emit_vertex_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *vbo_bind_mask, nir_variable *upload_offset)
 {
+   const struct radv_device *device = cs->dev;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
@@ -1417,9 +1420,9 @@ dgc_get_dispatch_initiator(nir_builder *b, nir_def *stream_addr)
 }
 
 static void
-dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch_params_offset, nir_def *sequence_id,
-                  const struct radv_device *device)
+dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch_params_offset, nir_def *sequence_id)
 {
+   const struct radv_device *device = cs->dev;
    nir_builder *b = cs->b;
 
    nir_def *dispatch_data = nir_build_load_global(
@@ -1457,9 +1460,9 @@ dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV.
  */
 static void
-dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset, nir_def *sequence_id,
-                         const struct radv_device *device)
+dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset, nir_def *sequence_id)
 {
+   const struct radv_device *device = cs->dev;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
@@ -1476,7 +1479,7 @@ dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *d
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDrawMeshTasksEXT);
       dgc_emit_sqtt_marker_event(cs, sequence_id, EventCmdDrawMeshTasksEXT);
 
-      dgc_emit_userdata_mesh(cs, vtx_base_sgpr, x, y, z, sequence_id, device);
+      dgc_emit_userdata_mesh(cs, vtx_base_sgpr, x, y, z, sequence_id);
       dgc_emit_instance_count(cs, nir_imm_int(b, 1));
 
       if (pdev->mesh_fast_launch_2) {
@@ -1496,8 +1499,9 @@ dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *d
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV.
  */
 static void
-dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr, const struct radv_device *device)
+dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr)
 {
+   const struct radv_device *device = cs->dev;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
@@ -1601,10 +1605,9 @@ build_dgc_prepare_shader(struct radv_device *dev)
    {
       struct dgc_cmdbuf cmd_buf = {
          .b = &b,
+         .dev = dev,
          .va = nir_pack_64_2x32_split(&b, load_param32(&b, upload_addr), nir_imm_int(&b, pdev->info.address32_hi)),
          .offset = nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "cmd_buf_offset"),
-         .gfx_level = pdev->info.gfx_level,
-         .sqtt_enabled = !!dev->sqtt.bo,
       };
       nir_store_var(&b, cmd_buf.offset, nir_iadd(&b, nir_imul(&b, global_id, cmd_buf_stride), cmd_buf_base_offset), 1);
       nir_def *cmd_buf_end = nir_iadd(&b, nir_load_var(&b, cmd_buf.offset), cmd_buf_stride);
@@ -1621,7 +1624,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       nir_def *vbo_bind_mask = load_param32(&b, vbo_bind_mask);
       nir_push_if(&b, nir_ine_imm(&b, vbo_bind_mask, 0));
       {
-         dgc_emit_vertex_buffer(&cmd_buf, stream_addr, vbo_bind_mask, upload_offset, dev);
+         dgc_emit_vertex_buffer(&cmd_buf, stream_addr, vbo_bind_mask, upload_offset);
       }
       nir_pop_if(&b, NULL);
 
@@ -1634,7 +1637,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
 
       nir_push_if(&b, nir_ieq_imm(&b, load_param8(&b, bind_pipeline), 1));
       {
-         dgc_emit_bind_pipeline(&cmd_buf, stream_addr, dev);
+         dgc_emit_bind_pipeline(&cmd_buf, stream_addr);
       }
       nir_pop_if(&b, 0);
 
@@ -1645,11 +1648,11 @@ build_dgc_prepare_shader(struct radv_device *dev)
             nir_def *draw_mesh_tasks = load_param8(&b, draw_mesh_tasks);
             nir_push_if(&b, nir_ieq_imm(&b, draw_mesh_tasks, 0));
             {
-               dgc_emit_draw(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id, dev);
+               dgc_emit_draw(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
             }
             nir_push_else(&b, NULL);
             {
-               dgc_emit_draw_mesh_tasks(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id, dev);
+               dgc_emit_draw_mesh_tasks(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
             }
             nir_pop_if(&b, NULL);
          }
@@ -1666,13 +1669,12 @@ build_dgc_prepare_shader(struct radv_device *dev)
                   nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "max_index_count");
 
                dgc_emit_index_buffer(&cmd_buf, stream_addr, load_param16(&b, index_buffer_offset),
-                                     load_param32(&b, ibo_type_32), load_param32(&b, ibo_type_8), max_index_count_var,
-                                     dev);
+                                     load_param32(&b, ibo_type_32), load_param32(&b, ibo_type_8), max_index_count_var);
 
                nir_def *max_index_count = nir_load_var(&b, max_index_count_var);
 
                dgc_emit_draw_indexed(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id,
-                                     max_index_count, dev);
+                                     max_index_count);
             }
             nir_push_else(&b, NULL);
             {
@@ -1685,7 +1687,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       }
       nir_push_else(&b, NULL);
       {
-         dgc_emit_dispatch(&cmd_buf, stream_addr, load_param16(&b, dispatch_params_offset), sequence_id, dev);
+         dgc_emit_dispatch(&cmd_buf, stream_addr, load_param16(&b, dispatch_params_offset), sequence_id);
       }
       nir_pop_if(&b, NULL);
 

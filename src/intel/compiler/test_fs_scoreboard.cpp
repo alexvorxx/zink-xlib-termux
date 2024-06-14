@@ -891,3 +891,51 @@ TEST_F(scoreboard_test, gfx125_RaR_over_different_pipes)
    EXPECT_EQ(instruction(block0, 1)->sched, tgl_swsb_null());
    EXPECT_EQ(instruction(block0, 2)->sched, tgl_swsb_regdist(1));
 }
+
+TEST_F(scoreboard_test, DISABLED_gitlab_issue_from_mr_29723)
+{
+   brw_init_isa_info(&compiler->isa, devinfo);
+
+   struct brw_reg a = brw_ud8_grf(29, 0);
+   struct brw_reg b = brw_ud8_grf(2, 0);
+
+   auto bld1 = bld.exec_all().group(1, 0);
+   bld1.ADD(             a, stride(b, 0, 1, 0),    brw_imm_ud(256));
+   bld1.CMP(brw_null_reg(), stride(a, 2, 1, 2), stride(b, 0, 1, 0), BRW_CONDITIONAL_L);
+
+   v->calculate_cfg();
+   bblock_t *block0 = v->cfg->blocks[0];
+   ASSERT_EQ(0, block0->start_ip);
+   ASSERT_EQ(1, block0->end_ip);
+
+   lower_scoreboard(v);
+   ASSERT_EQ(0, block0->start_ip);
+   ASSERT_EQ(1, block0->end_ip);
+
+   EXPECT_EQ(instruction(block0, 0)->sched, tgl_swsb_null());
+   EXPECT_EQ(instruction(block0, 1)->sched, tgl_swsb_regdist(1));
+}
+
+TEST_F(scoreboard_test, DISABLED_gitlab_issue_11069)
+{
+   brw_init_isa_info(&compiler->isa, devinfo);
+
+   struct brw_reg a = brw_ud8_grf(76, 0);
+   struct brw_reg b = brw_ud8_grf(2, 0);
+
+   auto bld1 = bld.exec_all().group(1, 0);
+   bld1.ADD(stride(a, 2, 1, 2), stride(b, 0, 1, 0),   brw_imm_ud(0x80));
+   bld1.CMP(    brw_null_reg(), stride(a, 0, 1, 0), stride(b, 0, 1, 0), BRW_CONDITIONAL_L);
+
+   v->calculate_cfg();
+   bblock_t *block0 = v->cfg->blocks[0];
+   ASSERT_EQ(0, block0->start_ip);
+   ASSERT_EQ(1, block0->end_ip);
+
+   lower_scoreboard(v);
+   ASSERT_EQ(0, block0->start_ip);
+   ASSERT_EQ(1, block0->end_ip);
+
+   EXPECT_EQ(instruction(block0, 0)->sched, tgl_swsb_null());
+   EXPECT_EQ(instruction(block0, 1)->sched, tgl_swsb_regdist(1));
+}

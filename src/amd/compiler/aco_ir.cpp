@@ -887,7 +887,7 @@ struct CmpInfo {
    unsigned size;
 };
 
-ALWAYS_INLINE bool
+static ALWAYS_INLINE bool
 get_cmp_info(aco_opcode op, CmpInfo* info)
 {
    info->ordered = aco_opcode::num_opcodes;

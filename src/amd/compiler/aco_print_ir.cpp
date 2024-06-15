@@ -14,6 +14,8 @@
 
 namespace aco {
 
+namespace {
+
 const std::array<const char*, num_reduce_ops> reduce_ops = []()
 {
    std::array<const char*, num_reduce_ops> ret{};
@@ -138,39 +140,6 @@ print_constant(uint8_t reg, FILE* output)
    case 246: fprintf(output, "4.0"); break;
    case 247: fprintf(output, "-4.0"); break;
    case 248: fprintf(output, "1/(2*PI)"); break;
-   }
-}
-
-void
-aco_print_operand(const Operand* operand, FILE* output, unsigned flags)
-{
-   if (operand->isLiteral() || (operand->isConstant() && operand->bytes() == 1)) {
-      if (operand->bytes() == 1)
-         fprintf(output, "0x%.2x", operand->constantValue());
-      else if (operand->bytes() == 2)
-         fprintf(output, "0x%.4x", operand->constantValue());
-      else
-         fprintf(output, "0x%x", operand->constantValue());
-   } else if (operand->isConstant()) {
-      print_constant(operand->physReg().reg(), output);
-   } else if (operand->isUndefined()) {
-      print_reg_class(operand->regClass(), output);
-      fprintf(output, "undef");
-   } else {
-      if (operand->isLateKill())
-         fprintf(output, "(latekill)");
-      if (operand->is16bit())
-         fprintf(output, "(is16bit)");
-      if (operand->is24bit())
-         fprintf(output, "(is24bit)");
-      if ((flags & print_kill) && operand->isKill())
-         fprintf(output, "(kill)");
-
-      if (!(flags & print_no_ssa))
-         fprintf(output, "%%%d%s", operand->tempId(), operand->isFixed() ? ":" : "");
-
-      if (operand->isFixed())
-         print_physReg(operand->physReg(), operand->bytes(), output, flags);
    }
 }
 
@@ -842,95 +811,6 @@ print_vopd_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* o
    }
 }
 
-void
-aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
-                unsigned flags)
-{
-   if (instr->isVOPD()) {
-      print_vopd_instr(gfx_level, instr, output, flags);
-      return;
-   }
-
-   if (!instr->definitions.empty()) {
-      for (unsigned i = 0; i < instr->definitions.size(); ++i) {
-         print_definition(&instr->definitions[i], output, flags);
-         if (i + 1 != instr->definitions.size())
-            fprintf(output, ", ");
-      }
-      fprintf(output, " = ");
-   }
-   fprintf(output, "%s", instr_info.name[(int)instr->opcode]);
-   if (instr->operands.size()) {
-      const unsigned num_operands = instr->operands.size();
-      bitarray8 abs = 0;
-      bitarray8 neg = 0;
-      bitarray8 neg_lo = 0;
-      bitarray8 neg_hi = 0;
-      bitarray8 opsel = 0;
-      bitarray8 f2f32 = 0;
-      bitarray8 opsel_lo = 0;
-      bitarray8 opsel_hi = -1;
-
-      if (instr->opcode == aco_opcode::v_fma_mix_f32 ||
-          instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
-          instr->opcode == aco_opcode::v_fma_mixhi_f16) {
-         const VALU_instruction& vop3p = instr->valu();
-         abs = vop3p.abs;
-         neg = vop3p.neg;
-         f2f32 = vop3p.opsel_hi;
-         opsel = f2f32 & vop3p.opsel_lo;
-      } else if (instr->isVOP3P()) {
-         const VALU_instruction& vop3p = instr->valu();
-         neg = vop3p.neg_lo & vop3p.neg_hi;
-         neg_lo = vop3p.neg_lo & ~neg;
-         neg_hi = vop3p.neg_hi & ~neg;
-         opsel_lo = vop3p.opsel_lo;
-         opsel_hi = vop3p.opsel_hi;
-      } else if (instr->isVALU() && instr->opcode != aco_opcode::v_permlane16_b32 &&
-                 instr->opcode != aco_opcode::v_permlanex16_b32) {
-         const VALU_instruction& valu = instr->valu();
-         abs = valu.abs;
-         neg = valu.neg;
-         opsel = valu.opsel;
-      }
-      for (unsigned i = 0; i < num_operands; ++i) {
-         if (i)
-            fprintf(output, ", ");
-         else
-            fprintf(output, " ");
-
-         if (i < 3) {
-            if (neg[i])
-               fprintf(output, "-");
-            if (abs[i])
-               fprintf(output, "|");
-            if (opsel[i])
-               fprintf(output, "hi(");
-            else if (f2f32[i])
-               fprintf(output, "lo(");
-         }
-
-         aco_print_operand(&instr->operands[i], output, flags);
-
-         if (i < 3) {
-            if (f2f32[i] || opsel[i])
-               fprintf(output, ")");
-            if (abs[i])
-               fprintf(output, "|");
-
-            if (opsel_lo[i] || !opsel_hi[i])
-               fprintf(output, ".%c%c", opsel_lo[i] ? 'y' : 'x', opsel_hi[i] ? 'y' : 'x');
-
-            if (neg_lo[i])
-               fprintf(output, "*[-1,1]");
-            if (neg_hi[i])
-               fprintf(output, "*[1,-1]");
-         }
-      }
-   }
-   print_instr_format_specific(gfx_level, instr, output);
-}
-
 static void
 print_block_kind(uint16_t kind, FILE* output)
 {
@@ -1044,6 +924,130 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
       fprintf(output, "\n");
       index++;
    }
+}
+
+} /* end namespace */
+
+void
+aco_print_operand(const Operand* operand, FILE* output, unsigned flags)
+{
+   if (operand->isLiteral() || (operand->isConstant() && operand->bytes() == 1)) {
+      if (operand->bytes() == 1)
+         fprintf(output, "0x%.2x", operand->constantValue());
+      else if (operand->bytes() == 2)
+         fprintf(output, "0x%.4x", operand->constantValue());
+      else
+         fprintf(output, "0x%x", operand->constantValue());
+   } else if (operand->isConstant()) {
+      print_constant(operand->physReg().reg(), output);
+   } else if (operand->isUndefined()) {
+      print_reg_class(operand->regClass(), output);
+      fprintf(output, "undef");
+   } else {
+      if (operand->isLateKill())
+         fprintf(output, "(latekill)");
+      if (operand->is16bit())
+         fprintf(output, "(is16bit)");
+      if (operand->is24bit())
+         fprintf(output, "(is24bit)");
+      if ((flags & print_kill) && operand->isKill())
+         fprintf(output, "(kill)");
+
+      if (!(flags & print_no_ssa))
+         fprintf(output, "%%%d%s", operand->tempId(), operand->isFixed() ? ":" : "");
+
+      if (operand->isFixed())
+         print_physReg(operand->physReg(), operand->bytes(), output, flags);
+   }
+}
+
+void
+aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
+                unsigned flags)
+{
+   if (instr->isVOPD()) {
+      print_vopd_instr(gfx_level, instr, output, flags);
+      return;
+   }
+
+   if (!instr->definitions.empty()) {
+      for (unsigned i = 0; i < instr->definitions.size(); ++i) {
+         print_definition(&instr->definitions[i], output, flags);
+         if (i + 1 != instr->definitions.size())
+            fprintf(output, ", ");
+      }
+      fprintf(output, " = ");
+   }
+   fprintf(output, "%s", instr_info.name[(int)instr->opcode]);
+   if (instr->operands.size()) {
+      const unsigned num_operands = instr->operands.size();
+      bitarray8 abs = 0;
+      bitarray8 neg = 0;
+      bitarray8 neg_lo = 0;
+      bitarray8 neg_hi = 0;
+      bitarray8 opsel = 0;
+      bitarray8 f2f32 = 0;
+      bitarray8 opsel_lo = 0;
+      bitarray8 opsel_hi = -1;
+
+      if (instr->opcode == aco_opcode::v_fma_mix_f32 ||
+          instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
+          instr->opcode == aco_opcode::v_fma_mixhi_f16) {
+         const VALU_instruction& vop3p = instr->valu();
+         abs = vop3p.abs;
+         neg = vop3p.neg;
+         f2f32 = vop3p.opsel_hi;
+         opsel = f2f32 & vop3p.opsel_lo;
+      } else if (instr->isVOP3P()) {
+         const VALU_instruction& vop3p = instr->valu();
+         neg = vop3p.neg_lo & vop3p.neg_hi;
+         neg_lo = vop3p.neg_lo & ~neg;
+         neg_hi = vop3p.neg_hi & ~neg;
+         opsel_lo = vop3p.opsel_lo;
+         opsel_hi = vop3p.opsel_hi;
+      } else if (instr->isVALU() && instr->opcode != aco_opcode::v_permlane16_b32 &&
+                 instr->opcode != aco_opcode::v_permlanex16_b32) {
+         const VALU_instruction& valu = instr->valu();
+         abs = valu.abs;
+         neg = valu.neg;
+         opsel = valu.opsel;
+      }
+      for (unsigned i = 0; i < num_operands; ++i) {
+         if (i)
+            fprintf(output, ", ");
+         else
+            fprintf(output, " ");
+
+         if (i < 3) {
+            if (neg[i])
+               fprintf(output, "-");
+            if (abs[i])
+               fprintf(output, "|");
+            if (opsel[i])
+               fprintf(output, "hi(");
+            else if (f2f32[i])
+               fprintf(output, "lo(");
+         }
+
+         aco_print_operand(&instr->operands[i], output, flags);
+
+         if (i < 3) {
+            if (f2f32[i] || opsel[i])
+               fprintf(output, ")");
+            if (abs[i])
+               fprintf(output, "|");
+
+            if (opsel_lo[i] || !opsel_hi[i])
+               fprintf(output, ".%c%c", opsel_lo[i] ? 'y' : 'x', opsel_hi[i] ? 'y' : 'x');
+
+            if (neg_lo[i])
+               fprintf(output, "*[-1,1]");
+            if (neg_hi[i])
+               fprintf(output, "*[1,-1]");
+         }
+      }
+   }
+   print_instr_format_specific(gfx_level, instr, output);
 }
 
 void

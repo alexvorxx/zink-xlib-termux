@@ -28,6 +28,8 @@
 
 namespace aco {
 
+namespace {
+
 enum MoveResult {
    move_success,
    move_fail_ssa,
@@ -1227,6 +1229,8 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block)
       block->register_demand.update(program->live.register_demand[block->index][idx]);
    }
 }
+
+} /* end namespace */
 
 void
 schedule_program(Program* program)

@@ -15,6 +15,8 @@
 
 namespace aco {
 
+namespace {
+
 enum class pred_defined : uint8_t {
    undef = 0,
    const_1 = 1,
@@ -377,6 +379,8 @@ lower_subdword_phis(Program* program, Block* block, aco_ptr<Instruction>& phi)
    }
    return;
 }
+
+} /* end namespace */
 
 void
 lower_phis(Program* program)

@@ -16,6 +16,7 @@
 
 namespace aco {
 
+namespace {
 /**
  * The optimizer works in 4 phases:
  * (1) The first pass collects information for each ssa-def,
@@ -598,12 +599,6 @@ can_apply_sgprs(opt_ctx& ctx, aco_ptr<Instruction>& instr)
           instr->opcode != aco_opcode::v_wmma_bf16_16x16x16_bf16 &&
           instr->opcode != aco_opcode::v_wmma_i32_16x16x16_iu8 &&
           instr->opcode != aco_opcode::v_wmma_i32_16x16x16_iu4;
-}
-
-bool
-is_operand_vgpr(Operand op)
-{
-   return op.isTemp() && op.getTemp().type() == RegType::vgpr;
 }
 
 /* only covers special cases */
@@ -5286,6 +5281,8 @@ apply_literals(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 
    ctx.instructions.emplace_back(std::move(instr));
 }
+
+} /* end namespace */
 
 void
 optimize(Program* program)

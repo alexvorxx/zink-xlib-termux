@@ -51,19 +51,19 @@ fi
 
 quiet printf "%s\n" "Running vkd3d-proton testsuite..."
 
-if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton.log";
+if ! /vkd3d-proton-tests/x64/bin/d3d12 > "$RESULTS/vkd3d-proton-log.txt";
 then
     # Check if the executable finished (ie. no segfault).
-    if ! grep "tests executed" "$RESULTS/vkd3d-proton.log" > /dev/null; then
-        error "Failed, see vkd3d-proton.log!"
+    if ! grep "tests executed" "$RESULTS/vkd3d-proton-log.txt" > /dev/null; then
+        error "Failed, see vkd3d-proton-log.txt!"
         exit 1
     fi
 
     # Collect all the failures
     RESULTSFILE="$RESULTS/$VKD3D_PROTON_RESULTS.txt"
     mkdir -p .gitlab-ci/vkd3d-proton
-    if ! grep "Test failed" "$RESULTS"/vkd3d-proton.log > "$RESULTSFILE"; then
-      error "Failed to get the list of failing tests, see vkd3d-proton.log!"
+    if ! grep "Test failed" "$RESULTS"/vkd3d-proton-log.txt > "$RESULTSFILE"; then
+      error "Failed to get the list of failing tests, see vkd3d-proton-log.txt!"
       exit 1
     fi
 
@@ -78,7 +78,7 @@ then
 
     # Make sure that the failures found in this run match the current expectation
     if ! diff --color=always -u ".gitlab-ci/vkd3d-proton/$VKD3D_PROTON_RESULTS.txt.baseline" "$RESULTSFILE"; then
-        error "Changes found, see vkd3d-proton.log!"
+        error "Changes found, see vkd3d-proton-log.txt!"
         exit 1
     fi
 fi

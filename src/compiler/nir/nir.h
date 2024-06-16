@@ -3322,6 +3322,18 @@ typedef enum {
     */
    nir_metadata_instr_index = 0x20,
 
+   /** All control flow metadata
+    *
+    * This includes all metadata preserved by a pass that preserves control flow
+    * but modifies instructions. For example, a pass using
+    * nir_shader_instructions_pass will typically preserve this if it does not
+    * insert control flow.
+    *
+    * This is the most common metadata set to preserve, so it has its own alias.
+    */
+   nir_metadata_control_flow = nir_metadata_block_index |
+                               nir_metadata_dominance,
+
    /** All metadata
     *
     * This includes all nir_metadata flags except not_properly_reset.  Passes

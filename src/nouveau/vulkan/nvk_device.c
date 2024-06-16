@@ -183,15 +183,15 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    /* If we have a full BAR, go ahead and do shader uploads on the CPU.
     * Otherwise, we fall back to doing shader uploads via the upload queue.
     *
-    * Also, the I-cache pre-fetches and we don't really know by how much.
-    * Over-allocating shader BOs by 4K ensures we don't run past.
+    * Also, the I-cache pre-fetches and NVIDIA has informed us
+    * overallocating shaders BOs by 2K is sufficient.
     */
    enum nvkmd_mem_map_flags shader_map_flags = 0;
    if (pdev->info.bar_size_B >= pdev->info.vram_size_B)
       shader_map_flags = NVKMD_MEM_MAP_WR;
    result = nvk_heap_init(dev, &dev->shader_heap,
                           NVKMD_MEM_LOCAL, shader_map_flags,
-                          4096 /* overalloc */,
+                          2048 /* overalloc */,
                           pdev->info.cls_eng3d < VOLTA_A);
    if (result != VK_SUCCESS)
       goto fail_samplers;

@@ -66,6 +66,7 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case BRW_OPCODE_FBH:
    case BRW_OPCODE_FBL:
    case BRW_OPCODE_CBIT:
+   case BRW_OPCODE_ADD3:
    case BRW_OPCODE_RNDU:
    case BRW_OPCODE_RNDD:
    case BRW_OPCODE_RNDE:
@@ -208,6 +209,13 @@ operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
          }
       }
       return match;
+   } else if (a->sources == 3) {
+      return (xs[0].equals(ys[0]) && xs[1].equals(ys[1]) && xs[2].equals(ys[2])) ||
+             (xs[0].equals(ys[0]) && xs[1].equals(ys[2]) && xs[2].equals(ys[1])) ||
+             (xs[0].equals(ys[1]) && xs[1].equals(ys[0]) && xs[2].equals(ys[2])) ||
+             (xs[0].equals(ys[1]) && xs[1].equals(ys[2]) && xs[2].equals(ys[1])) ||
+             (xs[0].equals(ys[2]) && xs[1].equals(ys[0]) && xs[2].equals(ys[1])) ||
+             (xs[0].equals(ys[2]) && xs[1].equals(ys[1]) && xs[2].equals(ys[0]));
    } else {
       return (xs[0].equals(ys[0]) && xs[1].equals(ys[1])) ||
              (xs[1].equals(ys[0]) && xs[0].equals(ys[1]));
@@ -319,10 +327,11 @@ hash_inst(const void *v)
 
       hash = src_hash[0] * src_hash[1];
    } else if (inst->is_commutative()) {
-      /* Commutatively combine both sources */
+      /* Commutatively combine the sources */
       uint32_t hash0 = hash_reg(hash, inst->src[0]);
       uint32_t hash1 = hash_reg(hash, inst->src[1]);
-      hash = hash0 * hash1;
+      uint32_t hash2 = inst->sources > 2 ? hash_reg(hash, inst->src[2]) : 1;
+      hash = hash0 * hash1 * hash2;
    } else {
       /* Just hash all the sources */
       for (int i = 0; i < inst->sources; i++)

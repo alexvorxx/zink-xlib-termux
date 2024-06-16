@@ -124,7 +124,7 @@ get_blend_shader_locked(struct panvk_device *dev,
       GENX(pan_blend_create_shader)(state, src0_type, src1_type, rt);
 
    NIR_PASS_V(nir, nir_shader_instructions_pass, lower_load_blend_const,
-              nir_metadata_block_index | nir_metadata_dominance, NULL);
+              nir_metadata_control_flow, NULL);
 
    /* Compile the NIR shader */
    struct panfrost_compile_inputs inputs = {

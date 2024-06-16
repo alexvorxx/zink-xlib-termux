@@ -652,8 +652,7 @@ v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c)
                 }
 
                 nir_metadata_preserve(impl,
-                                      nir_metadata_block_index |
-                                      nir_metadata_dominance);
+                                      nir_metadata_control_flow);
         }
 
         v3d_nir_lower_io_update_output_var_base(c, &state);

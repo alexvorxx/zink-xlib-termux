@@ -403,8 +403,7 @@ nir_opt_intrinsics(nir_shader *shader)
    nir_foreach_function_impl(impl, shader) {
       if (opt_intrinsics_impl(impl, shader->options)) {
          progress = true;
-         nir_metadata_preserve(impl, nir_metadata_block_index |
-                                        nir_metadata_dominance);
+         nir_metadata_preserve(impl, nir_metadata_control_flow);
       } else {
          nir_metadata_preserve(impl, nir_metadata_all);
       }

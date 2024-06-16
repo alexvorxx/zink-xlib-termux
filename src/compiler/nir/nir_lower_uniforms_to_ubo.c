@@ -129,8 +129,7 @@ nir_lower_uniforms_to_ubo(nir_shader *shader, bool dword_packed, bool load_vec4)
 
    progress = nir_shader_instructions_pass(shader,
                                            nir_lower_uniforms_to_ubo_instr,
-                                           nir_metadata_block_index |
-                                              nir_metadata_dominance,
+                                           nir_metadata_control_flow,
                                            &state);
 
    if (progress) {

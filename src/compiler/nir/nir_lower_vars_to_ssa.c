@@ -863,8 +863,7 @@ nir_lower_vars_to_ssa_impl(nir_function_impl *impl)
 
    nir_phi_builder_finish(state.phi_builder);
 
-   nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
 
    ralloc_free(state.dead_ctx);
 

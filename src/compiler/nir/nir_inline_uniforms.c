@@ -465,8 +465,7 @@ nir_inline_uniforms(nir_shader *shader, unsigned num_uniforms,
             }
          }
 
-         nir_metadata_preserve(impl, nir_metadata_block_index |
-                                        nir_metadata_dominance);
+         nir_metadata_preserve(impl, nir_metadata_control_flow);
       }
    }
 }

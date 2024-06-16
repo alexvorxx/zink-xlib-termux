@@ -206,7 +206,6 @@ bool
 agx_nir_lower_sample_intrinsics(nir_shader *shader,
                                 bool ignore_sample_mask_without_msaa)
 {
-   return nir_shader_intrinsics_pass(
-      shader, lower, nir_metadata_block_index | nir_metadata_dominance,
-      &ignore_sample_mask_without_msaa);
+   return nir_shader_intrinsics_pass(shader, lower, nir_metadata_control_flow,
+                                     &ignore_sample_mask_without_msaa);
 }

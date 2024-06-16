@@ -229,8 +229,7 @@ nir_opt_offsets(nir_shader *shader, const nir_opt_offsets_options *options)
    state.options = options;
 
    bool p = nir_shader_instructions_pass(shader, process_instr,
-                                         nir_metadata_block_index |
-                                            nir_metadata_dominance,
+                                         nir_metadata_control_flow,
                                          &state);
 
    if (state.range_ht)

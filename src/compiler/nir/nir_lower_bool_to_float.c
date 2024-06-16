@@ -261,7 +261,6 @@ nir_lower_bool_to_float(nir_shader *shader, bool has_fcsel_ne)
    };
 
    return nir_shader_instructions_pass(shader, nir_lower_bool_to_float_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        &data);
 }

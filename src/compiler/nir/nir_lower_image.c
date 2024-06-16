@@ -218,7 +218,6 @@ bool
 nir_lower_image(nir_shader *nir, const nir_lower_image_options *options)
 {
    return nir_shader_intrinsics_pass(nir, lower_image_intrin,
-                                     nir_metadata_block_index |
-                                        nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      (void *)options);
 }

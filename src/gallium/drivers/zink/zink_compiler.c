@@ -1066,7 +1066,7 @@ static bool
 lower_64bit_pack(nir_shader *shader)
 {
    return nir_shader_instructions_pass(shader, lower_64bit_pack_instr,
-                                       nir_metadata_block_index | nir_metadata_dominance, NULL);
+                                       nir_metadata_control_flow, NULL);
 }
 
 nir_shader *
@@ -3690,7 +3690,9 @@ lower_zs_swizzle_tex(nir_shader *nir, const void *swizzle, bool shadow_only)
    /* We don't use nir_lower_tex to do our swizzling, because of this base_sampler_id. */
    unsigned base_sampler_id = gl_shader_stage_is_compute(nir->info.stage) ? 0 : PIPE_MAX_SAMPLERS * nir->info.stage;
    struct lower_zs_swizzle_state state = {shadow_only, base_sampler_id, swizzle};
-   return nir_shader_instructions_pass(nir, lower_zs_swizzle_tex_instr, nir_metadata_dominance | nir_metadata_block_index, (void*)&state);
+   return nir_shader_instructions_pass(nir, lower_zs_swizzle_tex_instr,
+                                       nir_metadata_control_flow,
+                                       (void*)&state);
 }
 
 static bool
@@ -4123,7 +4125,7 @@ zink_shader_compile(struct zink_screen *screen, bool can_shobj, struct zink_shad
             nir_fixup_deref_modes(nir);
             NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
             NIR_PASS_V(nir, nir_shader_intrinsics_pass, remove_interpolate_at_sample,
-                       nir_metadata_dominance | nir_metadata_block_index, NULL);
+                       nir_metadata_control_flow, NULL);
 
             need_optimize = true;
          }

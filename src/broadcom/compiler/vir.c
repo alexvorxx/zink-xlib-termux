@@ -676,8 +676,7 @@ static bool
 v3d_nir_lower_null_pointers(nir_shader *s)
 {
         return nir_shader_intrinsics_pass(s, v3d_nir_lower_null_pointers_cb,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance, NULL);
+                                            nir_metadata_control_flow, NULL);
 }
 
 static void
@@ -1518,8 +1517,7 @@ v3d_nir_sort_constant_ubo_loads(nir_shader *s, struct v3d_compile *c)
                                 v3d_nir_sort_constant_ubo_loads_block(c, block);
                 }
                 nir_metadata_preserve(impl,
-                                      nir_metadata_block_index |
-                                      nir_metadata_dominance);
+                                      nir_metadata_control_flow);
         }
         return c->sorted_any_ubo_loads;
 }
@@ -1616,8 +1614,7 @@ v3d_nir_lower_subgroup_intrinsics(nir_shader *s, struct v3d_compile *c)
                         progress |= lower_subgroup_intrinsics(c, block, &b);
 
                 nir_metadata_preserve(impl,
-                                      nir_metadata_block_index |
-                                      nir_metadata_dominance);
+                                      nir_metadata_control_flow);
         }
         return progress;
 }

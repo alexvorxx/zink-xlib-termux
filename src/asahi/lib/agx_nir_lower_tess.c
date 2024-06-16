@@ -201,8 +201,7 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
 bool
 agx_nir_lower_tcs(nir_shader *tcs, const struct nir_shader *libagx)
 {
-   nir_shader_intrinsics_pass(
-      tcs, lower_tcs, nir_metadata_block_index | nir_metadata_dominance, NULL);
+   nir_shader_intrinsics_pass(tcs, lower_tcs, nir_metadata_control_flow, NULL);
 
    link_libagx(tcs, libagx);
    return true;
@@ -261,8 +260,7 @@ agx_nir_lower_tes(nir_shader *tes, const nir_shader *libagx)
    nir_lower_tess_coord_z(
       tes, tes->info.tess._primitive_mode == TESS_PRIMITIVE_TRIANGLES);
 
-   nir_shader_intrinsics_pass(
-      tes, lower_tes, nir_metadata_block_index | nir_metadata_dominance, NULL);
+   nir_shader_intrinsics_pass(tes, lower_tes, nir_metadata_control_flow, NULL);
 
    /* Points mode renders as points, make sure we write point size for the HW */
    if (tes->info.tess.point_mode &&

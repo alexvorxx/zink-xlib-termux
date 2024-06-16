@@ -231,7 +231,6 @@ nir_lower_alu(nir_shader *shader)
       return false;
 
    return nir_shader_instructions_pass(shader, lower_alu_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }

@@ -225,8 +225,7 @@ v3d_nir_lower_load_store_bitsize(nir_shader *s)
         };
 
         bool res = nir_shader_intrinsics_pass(s, lower_load_store_bitsize,
-                                              nir_metadata_block_index |
-                                              nir_metadata_dominance,
+                                              nir_metadata_control_flow,
                                               NULL);
         res |= nir_lower_mem_access_bit_sizes(s, &lower_options);
         return res;
@@ -236,7 +235,6 @@ bool
 v3d_nir_lower_global_2x32(nir_shader *s)
 {
         return  nir_shader_intrinsics_pass(s, lower_global_2x32,
-                                           nir_metadata_block_index |
-                                           nir_metadata_dominance,
+                                           nir_metadata_control_flow,
                                            NULL);
 }

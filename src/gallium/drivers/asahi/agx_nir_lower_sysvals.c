@@ -491,8 +491,7 @@ agx_nir_lower_sysvals(nir_shader *shader, enum pipe_shader_type desc_stage,
    shader->info.stage = desc_stage;
 
    bool progress = nir_shader_instructions_pass(
-      shader, lower_sysvals, nir_metadata_block_index | nir_metadata_dominance,
-      &lower_draw_params);
+      shader, lower_sysvals, nir_metadata_control_flow, &lower_draw_params);
 
    shader->info.stage = phys_stage;
    return progress;
@@ -508,8 +507,7 @@ agx_nir_layout_uniforms(nir_shader *shader,
       .hw_stage = shader->info.stage,
    };
 
-   nir_shader_intrinsics_pass(shader, record_loads,
-                              nir_metadata_block_index | nir_metadata_dominance,
+   nir_shader_intrinsics_pass(shader, record_loads, nir_metadata_control_flow,
                               &state);
 
    *push_size = lay_out_uniforms(compiled, &state);

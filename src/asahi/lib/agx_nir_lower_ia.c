@@ -67,7 +67,7 @@ lower_vertex_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 bool
 agx_nir_lower_index_buffer(nir_shader *s, unsigned index_size_B, bool patches)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_vertex_id, nir_metadata_block_index | nir_metadata_dominance,
-      &(struct state){index_size_B, patches});
+   return nir_shader_intrinsics_pass(s, lower_vertex_id,
+                                     nir_metadata_control_flow,
+                                     &(struct state){index_size_B, patches});
 }

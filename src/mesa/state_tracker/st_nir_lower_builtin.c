@@ -244,8 +244,7 @@ st_nir_lower_builtin(nir_shader *shader)
       progress |= nir_lower_indirect_var_derefs(shader, vars);
 
       if (nir_shader_intrinsics_pass(shader, lower_builtin_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance, NULL)) {
+                                       nir_metadata_control_flow, NULL)) {
          nir_remove_dead_derefs(shader);
          progress = true;
       }

@@ -4299,13 +4299,11 @@ nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
 
    nir_metadata_preserve(linkage->producer_builder.impl,
                          progress & nir_progress_producer ?
-                            (nir_metadata_block_index |
-                             nir_metadata_dominance) :
+                            (nir_metadata_control_flow) :
                             nir_metadata_all);
    nir_metadata_preserve(linkage->consumer_builder.impl,
                          progress & nir_progress_consumer ?
-                            (nir_metadata_block_index |
-                             nir_metadata_dominance) :
+                            (nir_metadata_control_flow) :
                             nir_metadata_all);
    free_linkage(linkage);
    FREE(linkage);

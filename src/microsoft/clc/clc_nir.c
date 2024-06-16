@@ -338,7 +338,6 @@ bool
 clc_nir_lower_global_pointers_to_constants(nir_shader *nir)
 {
    return nir_shader_intrinsics_pass(nir, lower_deref_base_to_constant,
-                                     nir_metadata_block_index |
-                                     nir_metadata_dominance |
+                                     nir_metadata_control_flow |
                                      nir_metadata_loop_analysis, NULL);
 }

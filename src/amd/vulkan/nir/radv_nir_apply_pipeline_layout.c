@@ -513,6 +513,6 @@ radv_nir_apply_pipeline_layout(nir_shader *shader, struct radv_device *device, c
          }
       }
 
-      nir_metadata_preserve(function->impl, nir_metadata_block_index | nir_metadata_dominance);
+      nir_metadata_preserve(function->impl, nir_metadata_control_flow);
    }
 }

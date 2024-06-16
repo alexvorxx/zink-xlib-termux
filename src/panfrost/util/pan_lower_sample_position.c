@@ -67,5 +67,5 @@ pan_lower_sample_pos(nir_shader *shader)
 
    return nir_shader_intrinsics_pass(
       shader, pan_lower_sample_pos_impl,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+      nir_metadata_control_flow, NULL);
 }

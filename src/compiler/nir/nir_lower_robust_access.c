@@ -236,6 +236,6 @@ bool
 nir_lower_robust_access(nir_shader *s,
                         const nir_lower_robust_access_options *opts)
 {
-   return nir_shader_instructions_pass(s, lower, nir_metadata_block_index | nir_metadata_dominance,
+   return nir_shader_instructions_pass(s, lower, nir_metadata_control_flow,
                                        (void *)opts);
 }

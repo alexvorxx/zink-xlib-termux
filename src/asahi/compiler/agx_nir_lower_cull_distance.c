@@ -78,8 +78,7 @@ agx_nir_lower_cull_distance_vs(nir_shader *s)
    assert(s->info.stage == MESA_SHADER_VERTEX ||
           s->info.stage == MESA_SHADER_TESS_EVAL);
 
-   nir_shader_intrinsics_pass(
-      s, lower_write, nir_metadata_block_index | nir_metadata_dominance, NULL);
+   nir_shader_intrinsics_pass(s, lower_write, nir_metadata_control_flow, NULL);
 
    s->info.outputs_written |=
       BITFIELD64_RANGE(VARYING_SLOT_CULL_PRIMITIVE,
@@ -124,7 +123,6 @@ agx_nir_lower_cull_distance_fs(nir_shader *s, unsigned nr_distances)
                                            DIV_ROUND_UP(nr_distances, 4));
 
    s->info.fs.uses_discard = true;
-   nir_metadata_preserve(b->impl,
-                         nir_metadata_dominance | nir_metadata_block_index);
+   nir_metadata_preserve(b->impl, nir_metadata_control_flow);
    return true;
 }

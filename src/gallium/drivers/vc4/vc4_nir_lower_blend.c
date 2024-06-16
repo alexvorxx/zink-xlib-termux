@@ -596,8 +596,7 @@ vc4_nir_lower_blend(nir_shader *s, struct vc4_compile *c)
                 }
 
                 nir_metadata_preserve(impl,
-                                      nir_metadata_block_index |
-                                      nir_metadata_dominance);
+                                      nir_metadata_control_flow);
         }
 
         /* If we didn't do alpha-to-coverage on the output color, we still

@@ -2058,8 +2058,7 @@ nir_function_impl_lower_instructions(nir_function_impl *impl,
 {
    nir_builder b = nir_builder_create(impl);
 
-   nir_metadata preserved = nir_metadata_block_index |
-                            nir_metadata_dominance;
+   nir_metadata preserved = nir_metadata_control_flow;
 
    bool progress = false;
    nir_cursor iter = nir_before_impl(impl);

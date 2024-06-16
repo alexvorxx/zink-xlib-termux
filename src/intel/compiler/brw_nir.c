@@ -617,14 +617,12 @@ brw_nir_lower_fs_inputs(nir_shader *nir,
       nir_lower_single_sampled(nir);
    } else if (key->persample_interp == BRW_ALWAYS) {
       nir_shader_intrinsics_pass(nir, lower_barycentric_per_sample,
-                                   nir_metadata_block_index |
-                                   nir_metadata_dominance,
+                                   nir_metadata_control_flow,
                                    NULL);
    }
 
    nir_shader_intrinsics_pass(nir, lower_barycentric_at_offset,
-                                nir_metadata_block_index |
-                                nir_metadata_dominance,
+                                nir_metadata_control_flow,
                                 NULL);
 
    /* This pass needs actual constants */
@@ -1173,7 +1171,7 @@ static bool
 brw_nir_zero_inputs(nir_shader *shader, uint64_t *zero_inputs)
 {
    return nir_shader_intrinsics_pass(shader, brw_nir_zero_inputs_instr,
-                                     nir_metadata_block_index | nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      zero_inputs);
 }
 

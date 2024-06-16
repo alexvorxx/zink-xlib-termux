@@ -358,7 +358,7 @@ nak_nir_lower_fs_inputs(nir_shader *nir,
       .fs_key = fs_key,
    };
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_fs_input_intrin,
-              nir_metadata_block_index | nir_metadata_dominance,
+              nir_metadata_control_flow,
               (void *)&fs_in_ctx);
 
    return true;

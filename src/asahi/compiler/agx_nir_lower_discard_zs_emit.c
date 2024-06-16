@@ -111,9 +111,8 @@ agx_nir_lower_discard(nir_shader *s)
    if (!s->info.fs.uses_discard)
       return false;
 
-   return nir_shader_intrinsics_pass(
-      s, lower_discard, nir_metadata_block_index | nir_metadata_dominance,
-      NULL);
+   return nir_shader_intrinsics_pass(s, lower_discard,
+                                     nir_metadata_control_flow, NULL);
 }
 
 static bool
@@ -134,8 +133,7 @@ agx_nir_lower_zs_emit(nir_shader *s)
       }
 
       if (progress) {
-         nir_metadata_preserve(
-            impl, nir_metadata_block_index | nir_metadata_dominance);
+         nir_metadata_preserve(impl, nir_metadata_control_flow);
       } else {
          nir_metadata_preserve(impl, nir_metadata_all);
       }

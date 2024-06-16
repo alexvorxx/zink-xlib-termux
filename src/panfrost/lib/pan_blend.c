@@ -788,9 +788,8 @@ inline_rt_conversion(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 bool
 GENX(pan_inline_rt_conversion)(nir_shader *s, enum pipe_format *formats)
 {
-   return nir_shader_intrinsics_pass(
-      s, inline_rt_conversion,
-      nir_metadata_block_index | nir_metadata_dominance, formats);
+   return nir_shader_intrinsics_pass(s, inline_rt_conversion,
+                                     nir_metadata_control_flow, formats);
 }
 #endif
 
@@ -857,7 +856,7 @@ GENX(pan_blend_get_shader_locked)(struct pan_blend_shader_cache *cache,
       GENX(pan_blend_create_shader)(state, src0_type, src1_type, rt);
 
    nir_shader_intrinsics_pass(nir, pan_inline_blend_constants,
-                              nir_metadata_block_index | nir_metadata_dominance,
+                              nir_metadata_control_flow,
                               (void *)state->constants);
 
    /* Compile the NIR shader */

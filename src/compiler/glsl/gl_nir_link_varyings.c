@@ -3475,8 +3475,7 @@ fixup_vars_lowered_to_temp(nir_shader *shader, nir_variable_mode mode)
    if (mode == nir_var_shader_in && shader->info.stage == MESA_SHADER_FRAGMENT) {
       (void) nir_shader_instructions_pass(shader,
                                           replace_unused_interpolate_at_with_undef,
-                                          nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                          nir_metadata_control_flow,
                                           NULL);
    }
 

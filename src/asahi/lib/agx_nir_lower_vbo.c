@@ -306,6 +306,6 @@ agx_nir_lower_vbo(nir_shader *shader, struct agx_attribute *attribs,
    assert(shader->info.stage == MESA_SHADER_VERTEX);
 
    struct ctx ctx = {.attribs = attribs, .rs = robustness};
-   return nir_shader_intrinsics_pass(
-      shader, pass, nir_metadata_block_index | nir_metadata_dominance, &ctx);
+   return nir_shader_intrinsics_pass(shader, pass, nir_metadata_control_flow,
+                                     &ctx);
 }

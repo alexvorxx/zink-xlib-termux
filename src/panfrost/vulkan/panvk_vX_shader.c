@@ -338,7 +338,7 @@ panvk_lower_nir(struct panvk_device *dev, nir_shader *nir,
       NIR_PASS_V(nir, pan_lower_image_index, MAX_VS_ATTRIBS);
 
    NIR_PASS_V(nir, nir_shader_instructions_pass, panvk_lower_sysvals,
-              nir_metadata_block_index | nir_metadata_dominance, NULL);
+              nir_metadata_control_flow, NULL);
 }
 
 static VkResult

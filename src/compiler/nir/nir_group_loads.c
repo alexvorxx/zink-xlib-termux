@@ -475,8 +475,7 @@ nir_group_loads(nir_shader *shader, nir_load_grouping grouping,
          process_block(block, grouping, max_distance);
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance |
+      nir_metadata_preserve(impl, nir_metadata_control_flow |
                                      nir_metadata_loop_analysis);
    }
 }

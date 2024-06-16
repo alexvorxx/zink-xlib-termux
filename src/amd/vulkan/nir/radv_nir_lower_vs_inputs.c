@@ -405,6 +405,5 @@ radv_nir_lower_vs_inputs(nir_shader *shader, const struct radv_shader_stage *vs_
       .gpu_info = gpu_info,
    };
 
-   return nir_shader_intrinsics_pass(shader, lower_vs_input_instr, nir_metadata_dominance | nir_metadata_block_index,
-                                     &state);
+   return nir_shader_intrinsics_pass(shader, lower_vs_input_instr, nir_metadata_control_flow, &state);
 }

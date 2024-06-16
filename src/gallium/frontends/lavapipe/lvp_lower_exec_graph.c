@@ -65,7 +65,7 @@ static bool
 lvp_lower_node_payload_derefs(nir_shader *nir)
 {
    return nir_shader_instructions_pass(nir, lvp_lower_node_payload_deref,
-                                       nir_metadata_block_index | nir_metadata_dominance, NULL);
+                                       nir_metadata_control_flow, NULL);
 }
 
 static void
@@ -126,7 +126,7 @@ static bool
 lvp_lower_exec_graph_intrinsics(nir_shader *nir)
 {
    return nir_shader_intrinsics_pass(nir, lvp_lower_node_payload_intrinsic,
-                                       nir_metadata_block_index | nir_metadata_dominance, NULL);
+                                       nir_metadata_control_flow, NULL);
 }
 
 static void

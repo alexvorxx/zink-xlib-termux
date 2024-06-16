@@ -1645,7 +1645,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       if (key->hw) {
          NIR_PASS(_, nir, agx_nir_lower_point_size, true);
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
-                  nir_metadata_block_index | nir_metadata_dominance, NULL);
+                  nir_metadata_control_flow, NULL);
 
          NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL,
                   NULL);
@@ -1734,7 +1734,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       NIR_PASS(_, gs_copy, agx_nir_lower_point_size, false);
 
       NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               nir_metadata_control_flow, NULL);
 
       NIR_PASS(_, gs_copy, nir_lower_io_to_scalar, nir_var_shader_out, NULL,
                NULL);
@@ -1883,8 +1883,7 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
        (nir->info.inputs_read & VARYING_BITS_TEX_ANY)) {
 
       NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-               agx_nir_lower_point_sprite_zw,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               agx_nir_lower_point_sprite_zw, nir_metadata_control_flow, NULL);
    }
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
@@ -2140,7 +2139,7 @@ build_fs_prolog(nir_builder *b, const void *key)
    agx_nir_fs_prolog(b, key);
 
    NIR_PASS(_, b->shader, nir_shader_intrinsics_pass, lower_fs_prolog_abi,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 }
 
 static struct agx_linked_shader *

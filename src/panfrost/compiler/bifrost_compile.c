@@ -4571,7 +4571,7 @@ bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS_V(nir, nir_shader_intrinsics_pass,
                  bifrost_nir_lower_blend_components,
-                 nir_metadata_block_index | nir_metadata_dominance, NULL);
+                 nir_metadata_control_flow, NULL);
    }
 
    /* Backend scheduler is purely local, so do some global optimizations
@@ -4790,7 +4790,7 @@ bifrost_nir_lower_load_output(nir_shader *nir)
 
    return nir_shader_intrinsics_pass(
       nir, bi_lower_load_output,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+      nir_metadata_control_flow, NULL);
 }
 
 static bool
@@ -4930,7 +4930,7 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
                  ~bi_fp32_varying_mask(nir), false);
 
       NIR_PASS_V(nir, nir_shader_intrinsics_pass, bi_lower_sample_mask_writes,
-                 nir_metadata_block_index | nir_metadata_dominance, NULL);
+                 nir_metadata_control_flow, NULL);
 
       NIR_PASS_V(nir, bifrost_nir_lower_load_output);
    } else if (nir->info.stage == MESA_SHADER_VERTEX) {
@@ -4953,7 +4953,7 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
 
    NIR_PASS_V(nir, nir_shader_intrinsics_pass,
               bi_lower_load_push_const_with_dyn_offset,
-              nir_metadata_block_index | nir_metadata_dominance, NULL);
+              nir_metadata_control_flow, NULL);
 
    NIR_PASS_V(nir, nir_lower_ssbo);
    NIR_PASS_V(nir, pan_lower_sample_pos);
@@ -5015,7 +5015,7 @@ bi_compile_variant_nir(nir_shader *nir,
          ctx->nir = nir = nir_shader_clone(ctx, nir);
 
       NIR_PASS_V(nir, nir_shader_instructions_pass, bifrost_nir_specialize_idvs,
-                 nir_metadata_block_index | nir_metadata_dominance, &idvs);
+                 nir_metadata_control_flow, &idvs);
 
       /* After specializing, clean up the mess */
       bool progress = true;

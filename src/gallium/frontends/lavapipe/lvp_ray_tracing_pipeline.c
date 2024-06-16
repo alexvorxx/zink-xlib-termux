@@ -135,7 +135,7 @@ lvp_lower_ray_tracing_derefs(nir_shader *shader)
    }
 
    if (progress)
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    else
       nir_metadata_preserve(impl, nir_metadata_all);
 
@@ -189,7 +189,7 @@ lvp_compile_ray_tracing_stages(struct lvp_pipeline *pipeline,
       NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_function_temp, nir_address_format_32bit_offset);
 
       NIR_PASS(_, nir, nir_shader_intrinsics_pass, lvp_move_ray_tracing_intrinsic,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               nir_metadata_control_flow, NULL);
 
       pipeline->rt.stages[i] = lvp_create_pipeline_nir(nir);
       if (!pipeline->rt.stages[i]) {
@@ -1102,7 +1102,7 @@ lvp_compile_ray_tracing_pipeline(struct lvp_pipeline *pipeline,
             nir_address_format_32bit_offset);
 
    NIR_PASS(_, b->shader, nir_shader_intrinsics_pass, lvp_lower_ray_tracing_stack_base,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    /* We can not support dynamic stack sizes, assume the worst. */
    b->shader->scratch_size +=

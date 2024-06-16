@@ -1184,8 +1184,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 #if DEBUG_PRINTF_EXAMPLE
    if (stage->stage == MESA_SHADER_FRAGMENT) {
       nir_shader_intrinsics_pass(nir, print_ubo_load,
-                                 nir_metadata_block_index |
-                                 nir_metadata_dominance,
+                                 nir_metadata_control_flow,
                                  NULL);
    }
 #endif

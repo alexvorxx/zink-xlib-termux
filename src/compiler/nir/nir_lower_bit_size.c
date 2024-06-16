@@ -285,8 +285,7 @@ lower_impl(nir_function_impl *impl,
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -362,7 +361,6 @@ bool
 nir_lower_64bit_phis(nir_shader *shader)
 {
    return nir_shader_instructions_pass(shader, lower_64bit_phi_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }

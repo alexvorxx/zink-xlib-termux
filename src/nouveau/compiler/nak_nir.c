@@ -346,8 +346,7 @@ static bool
 nak_nir_lower_subgroup_id(nir_shader *nir)
 {
    return nir_shader_intrinsics_pass(nir, nak_nir_lower_subgroup_id_intrin,
-                                     nir_metadata_block_index |
-                                     nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      NULL);
 }
 
@@ -722,8 +721,7 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
       return false;
 
    bool progress = nir_shader_intrinsics_pass(nir, lower_fs_output_intrin,
-                                              nir_metadata_block_index |
-                                              nir_metadata_dominance,
+                                              nir_metadata_control_flow,
                                               NULL);
 
    if (progress) {
@@ -785,8 +783,7 @@ nak_nir_remove_barriers(nir_shader *nir)
    nir->info.uses_control_barrier = false;
 
    return nir_shader_intrinsics_pass(nir, nak_nir_remove_barrier_intrin,
-                                     nir_metadata_block_index |
-                                     nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      NULL);
 }
 

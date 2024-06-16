@@ -191,7 +191,7 @@ ac_nir_lower_intrinsics_to_args(nir_shader *shader, const enum amd_gfx_level gfx
    };
 
    return nir_shader_instructions_pass(shader, lower_intrinsic_to_arg,
-                                       nir_metadata_block_index | nir_metadata_dominance, &state);
+                                       nir_metadata_control_flow, &state);
 }
 
 void
@@ -935,7 +935,7 @@ ac_nir_lower_legacy_vs(nir_shader *nir,
                        bool force_vrs)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
-   nir_metadata preserved = nir_metadata_block_index | nir_metadata_dominance;
+   nir_metadata preserved = nir_metadata_control_flow;
 
    nir_builder b = nir_builder_at(nir_after_impl(impl));
 
@@ -1334,7 +1334,7 @@ ac_nir_lower_legacy_gs(nir_shader *nir,
    }
 
    nir_shader_instructions_pass(nir, lower_legacy_gs_intrinsic,
-                                nir_metadata_block_index | nir_metadata_dominance, &s);
+                                nir_metadata_control_flow, &s);
 
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
 
@@ -1501,7 +1501,8 @@ ac_nir_opt_pack_half(nir_shader *shader, enum amd_gfx_level gfx_level)
    }
 
    bool progress = nir_shader_instructions_pass(shader, split_pack_half,
-                                                nir_metadata_block_index | nir_metadata_dominance, &gfx_level);
+                                                nir_metadata_control_flow,
+                                                &gfx_level);
 
    if (set_mode && progress) {
       exec_mode &= ~(FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP16 | FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP64);

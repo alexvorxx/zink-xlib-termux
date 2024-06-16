@@ -84,7 +84,6 @@ nir_lower_point_size(nir_shader *s, float min, float max)
 
    float minmax[] = { min, max };
    return nir_shader_intrinsics_pass(s, lower_point_size_intrin,
-                                     nir_metadata_block_index |
-                                        nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      minmax);
 }

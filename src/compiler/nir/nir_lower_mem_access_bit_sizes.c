@@ -474,7 +474,6 @@ nir_lower_mem_access_bit_sizes(nir_shader *shader,
                                const nir_lower_mem_access_bit_sizes_options *options)
 {
    return nir_shader_instructions_pass(shader, lower_mem_access_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        (void *)options);
 }

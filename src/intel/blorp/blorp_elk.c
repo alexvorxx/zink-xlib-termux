@@ -148,7 +148,7 @@ blorp_compile_cs_elk(struct blorp_context *blorp, void *mem_ctx,
    NIR_PASS_V(nir, elk_nir_lower_cs_intrinsics, compiler->devinfo,
               cs_prog_data);
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_base_workgroup_id,
-              nir_metadata_block_index | nir_metadata_dominance, NULL);
+              nir_metadata_control_flow, NULL);
 
    struct elk_cs_prog_key cs_key;
    memset(&cs_key, 0, sizeof(cs_key));

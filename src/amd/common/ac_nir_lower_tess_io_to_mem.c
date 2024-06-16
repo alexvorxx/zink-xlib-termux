@@ -966,7 +966,7 @@ ac_nir_lower_ls_outputs_to_mem(nir_shader *shader,
    };
 
    nir_shader_intrinsics_pass(shader, lower_ls_output_store,
-                                nir_metadata_block_index | nir_metadata_dominance,
+                                nir_metadata_control_flow,
                                 &state);
 }
 

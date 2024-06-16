@@ -572,5 +572,5 @@ radv_nir_lower_abi(nir_shader *shader, enum amd_gfx_level gfx_level, const struc
          state.gsvs_ring[i] = load_gsvs_ring(&b, &state, i);
    }
 
-   nir_shader_intrinsics_pass(shader, lower_abi_instr, nir_metadata_dominance | nir_metadata_block_index, &state);
+   nir_shader_intrinsics_pass(shader, lower_abi_instr, nir_metadata_control_flow, &state);
 }

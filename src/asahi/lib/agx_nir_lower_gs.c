@@ -360,9 +360,8 @@ lower_prolog_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 bool
 agx_nir_lower_sw_vs_id(nir_shader *s)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_prolog_id, nir_metadata_dominance | nir_metadata_block_index,
-      NULL);
+   return nir_shader_intrinsics_pass(s, lower_prolog_id,
+                                     nir_metadata_control_flow, NULL);
 }
 
 static bool
@@ -409,10 +408,10 @@ agx_nir_create_geometry_count_shader(nir_shader *gs, const nir_shader *libagx,
    }
 
    NIR_PASS(_, shader, nir_shader_intrinsics_pass, lower_gs_count_instr,
-            nir_metadata_block_index | nir_metadata_dominance, state);
+            nir_metadata_control_flow, state);
 
    NIR_PASS(_, shader, nir_shader_intrinsics_pass, lower_id,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    agx_preprocess_nir(shader, libagx);
    return shader;
@@ -553,8 +552,7 @@ strip_side_effects_from_rast(nir_shader *s, bool *side_effects_for_rast)
       progress = false;
       any = false;
       NIR_PASS(progress, clone, nir_shader_intrinsics_pass,
-               strip_side_effect_from_rast,
-               nir_metadata_block_index | nir_metadata_dominance, &any);
+               strip_side_effect_from_rast, nir_metadata_control_flow, &any);
 
       NIR_PASS(progress, clone, nir_opt_dce);
       NIR_PASS(progress, clone, nir_opt_dead_cf);
@@ -573,8 +571,7 @@ strip_side_effects_from_rast(nir_shader *s, bool *side_effects_for_rast)
       progress = false;
       any = false;
       NIR_PASS(progress, s, nir_shader_intrinsics_pass,
-               strip_side_effect_from_rast,
-               nir_metadata_block_index | nir_metadata_dominance, &any);
+               strip_side_effect_from_rast, nir_metadata_control_flow, &any);
 
       NIR_PASS(progress, s, nir_opt_dce);
       NIR_PASS(progress, s, nir_opt_dead_cf);
@@ -677,8 +674,7 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx,
    }
 
    nir_shader_intrinsics_pass(shader, lower_to_gs_rast,
-                              nir_metadata_block_index | nir_metadata_dominance,
-                              &rast_state);
+                              nir_metadata_control_flow, &rast_state);
 
    b->cursor = nir_after_impl(b->impl);
 
@@ -1229,8 +1225,7 @@ agx_nir_lower_gs_instancing(nir_shader *gs)
 
    /* Use the loop counter as the invocation ID each iteration */
    nir_shader_intrinsics_pass(gs, rewrite_invocation_id,
-                              nir_metadata_block_index | nir_metadata_dominance,
-                              index);
+                              nir_metadata_control_flow, index);
 }
 
 static void
@@ -1283,13 +1278,12 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
       nir_function_impl *impl = nir_shader_get_entrypoint(gs);
       nir_builder b = nir_builder_at(nir_before_impl(impl));
 
-      nir_shader_intrinsics_pass(
-         gs, rewrite_invocation_id,
-         nir_metadata_block_index | nir_metadata_dominance, nir_imm_int(&b, 0));
+      nir_shader_intrinsics_pass(gs, rewrite_invocation_id,
+                                 nir_metadata_control_flow, nir_imm_int(&b, 0));
    }
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_gs_inputs,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    /* Lower geometry shader writes to contain all of the required counts, so we
     * know where in the various buffers we should write vertices.
@@ -1350,7 +1344,7 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
    *gs_copy = agx_nir_create_gs_rast_shader(gs, libagx, &side_effects_for_rast);
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_id,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    link_libagx(gs, libagx);
 
@@ -1392,7 +1386,7 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
    }
 
    NIR_PASS(_, gs, nir_shader_instructions_pass, agx_lower_output_to_var,
-            nir_metadata_block_index | nir_metadata_dominance, &state);
+            nir_metadata_control_flow, &state);
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_gs_instr,
             nir_metadata_none, &gs_state);
@@ -1427,8 +1421,7 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
       do {
          progress = false;
          NIR_PASS(progress, gs, nir_shader_intrinsics_pass,
-                  strip_side_effect_from_main,
-                  nir_metadata_block_index | nir_metadata_dominance, NULL);
+                  strip_side_effect_from_main, nir_metadata_control_flow, NULL);
 
          NIR_PASS(progress, gs, nir_opt_dce);
          NIR_PASS(progress, gs, nir_opt_dead_cf);
@@ -1442,7 +1435,7 @@ agx_nir_lower_gs(nir_shader *gs, const nir_shader *libagx,
    NIR_PASS(_, gs, nir_opt_move, ~0);
 
    NIR_PASS(_, gs, nir_shader_intrinsics_pass, lower_id,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    /* Create auxiliary programs */
    *pre_gs = agx_nir_create_pre_gs(
@@ -1513,9 +1506,8 @@ agx_nir_lower_vs_before_gs(struct nir_shader *vs,
    bool progress = false;
 
    /* Lower vertex stores to memory stores */
-   progress |= nir_shader_intrinsics_pass(
-      vs, lower_vs_before_gs, nir_metadata_block_index | nir_metadata_dominance,
-      NULL);
+   progress |= nir_shader_intrinsics_pass(vs, lower_vs_before_gs,
+                                          nir_metadata_control_flow, NULL);
 
    /* Link libagx, used in lower_vs_before_gs */
    if (progress)

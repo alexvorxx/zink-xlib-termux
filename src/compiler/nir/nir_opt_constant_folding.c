@@ -399,8 +399,7 @@ nir_opt_constant_folding(nir_shader *shader)
    state.has_indirect_load_const = false;
 
    bool progress = nir_shader_instructions_pass(shader, try_fold_instr,
-                                                nir_metadata_block_index |
-                                                   nir_metadata_dominance,
+                                                nir_metadata_control_flow,
                                                 &state);
 
    /* This doesn't free the constant data if there are no constant loads because

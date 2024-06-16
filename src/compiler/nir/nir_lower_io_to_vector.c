@@ -597,8 +597,7 @@ nir_lower_io_to_vector_impl(nir_function_impl *impl, nir_variable_mode modes)
    util_dynarray_fini(&demote_vars);
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 
    return progress;
@@ -688,7 +687,7 @@ nir_vectorize_tess_levels_impl(nir_function_impl *impl)
    }
 
    if (progress)
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    else
       nir_metadata_preserve(impl, nir_metadata_all);
 

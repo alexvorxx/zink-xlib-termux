@@ -101,8 +101,7 @@ d3d12_lower_yflip(nir_shader *nir)
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 }
 
@@ -155,8 +154,7 @@ d3d12_lower_depth_range(nir_shader *nir)
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 }
 
@@ -194,7 +192,7 @@ d3d12_lower_compute_state_vars(nir_shader *nir)
    assert(nir->info.stage == MESA_SHADER_COMPUTE);
    struct compute_state_vars vars = { 0 };
    return nir_shader_instructions_pass(nir, lower_compute_state_vars,
-      nir_metadata_block_index | nir_metadata_dominance, &vars);
+      nir_metadata_control_flow, &vars);
 }
 
 static bool
@@ -249,8 +247,7 @@ d3d12_lower_uint_cast(nir_shader *nir, bool is_signed)
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 }
 
@@ -285,7 +282,7 @@ d3d12_lower_load_draw_params(struct nir_shader *nir)
       return false;
 
    return nir_shader_intrinsics_pass(nir, lower_load_draw_params,
-                                     nir_metadata_block_index | nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      &draw_params);
 }
 
@@ -315,7 +312,7 @@ d3d12_lower_load_patch_vertices_in(struct nir_shader *nir)
       return false;
 
    return nir_shader_intrinsics_pass(nir, lower_load_patch_vertices_in,
-                                     nir_metadata_block_index | nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      &var);
 }
 
@@ -417,8 +414,7 @@ d3d12_nir_invert_depth(nir_shader *shader, unsigned viewport_mask, bool clip_hal
          invert_depth_impl(&b, &state);
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 }
 
@@ -533,8 +529,7 @@ d3d12_lower_state_vars(nir_shader *nir, struct d3d12_shader *shader)
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 
    if (progress) {
@@ -602,8 +597,7 @@ d3d12_add_missing_dual_src_target(struct nir_shader *s,
 
       nir_store_var(&b, out, zero, 0xf);
    }
-   nir_metadata_preserve(impl, nir_metadata_block_index |
-                               nir_metadata_dominance);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
 }
 
 void
@@ -982,7 +976,7 @@ d3d12_split_needed_varyings(nir_shader *s)
 
    if (progress) {
       nir_shader_intrinsics_pass(s, split_varying_accesses,
-                                 nir_metadata_block_index | nir_metadata_dominance,
+                                 nir_metadata_control_flow,
                                  &state);
    } else {
       nir_shader_preserve_all_metadata(s);
@@ -1041,6 +1035,6 @@ d3d12_write_0_to_new_varying(nir_shader *s, nir_variable *var)
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 }

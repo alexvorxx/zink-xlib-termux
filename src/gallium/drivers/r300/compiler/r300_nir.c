@@ -197,8 +197,7 @@ r300_optimize_nir(struct nir_shader *s, struct pipe_screen *screen)
       NIR_PASS(progress, s, nir_opt_if, nir_opt_if_optimize_phi_true_false);
       if (is_r500)
          nir_shader_intrinsics_pass(s, set_speculate,
-                                    nir_metadata_block_index |
-                                    nir_metadata_dominance, NULL);
+                                    nir_metadata_control_flow, NULL);
       NIR_PASS(progress, s, nir_opt_peephole_select, is_r500 ? 8 : ~0, true, true);
       if (s->info.stage == MESA_SHADER_FRAGMENT) {
          NIR_PASS(progress, s, r300_nir_lower_bool_to_float_fs);

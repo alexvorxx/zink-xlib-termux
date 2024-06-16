@@ -216,8 +216,7 @@ brw_nir_adjust_task_payload_offsets(nir_shader *nir)
 {
    return nir_shader_intrinsics_pass(nir,
                                        brw_nir_adjust_task_payload_offsets_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }
 
@@ -256,8 +255,7 @@ brw_nir_align_launch_mesh_workgroups(nir_shader *nir)
 {
    return nir_shader_intrinsics_pass(nir,
                                        brw_nir_align_launch_mesh_workgroups_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }
 
@@ -1238,8 +1236,7 @@ brw_nir_initialize_mue(nir_shader *nir,
    if (remaining) {
       nir_metadata_preserve(entrypoint, nir_metadata_none);
    } else {
-      nir_metadata_preserve(entrypoint, nir_metadata_block_index |
-                                        nir_metadata_dominance);
+      nir_metadata_preserve(entrypoint, nir_metadata_control_flow);
    }
 }
 
@@ -1298,8 +1295,7 @@ brw_nir_adjust_offset_for_arrayed_indices(nir_shader *nir, const struct brw_mue_
 {
    return nir_shader_intrinsics_pass(nir,
                                        brw_nir_adjust_offset_for_arrayed_indices_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        (void *)map);
 }
 
@@ -1466,8 +1462,7 @@ brw_pack_primitive_indices(nir_shader *nir, void *data)
    state->packed_prim_indices->data.per_primitive = 1;
 
    return nir_shader_intrinsics_pass(nir, brw_pack_primitive_indices_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        data);
 }
 

@@ -315,8 +315,7 @@ nir_lower_io_to_scalar(nir_shader *shader, nir_variable_mode mask, nir_instr_fil
    };
    return nir_shader_instructions_pass(shader,
                                        nir_lower_io_to_scalar_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        &state);
 }
 
@@ -564,8 +563,7 @@ nir_lower_io_to_scalar_early(nir_shader *shader, nir_variable_mode mask)
 
    bool progress = nir_shader_instructions_pass(shader,
                                                 nir_lower_io_to_scalar_early_instr,
-                                                nir_metadata_block_index |
-                                                   nir_metadata_dominance,
+                                                nir_metadata_control_flow,
                                                 &state);
 
    /* Remove old input from the shaders inputs list */

@@ -693,7 +693,7 @@ agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias)
    bool progress = false;
 
    NIR_PASS(progress, s, nir_shader_intrinsics_pass, lower_robustness,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    nir_lower_tex_options lower_tex_options = {
       .lower_txp = ~0,
@@ -717,7 +717,7 @@ agx_nir_lower_texture_early(nir_shader *s, bool support_lod_bias)
     */
    if (support_lod_bias) {
       NIR_PASS(progress, s, nir_shader_instructions_pass, lower_sampler_bias,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               nir_metadata_control_flow, NULL);
    }
 
    return progress;
@@ -740,14 +740,14 @@ agx_nir_lower_texture(nir_shader *s)
     * different fencing than other image operations.
     */
    NIR_PASS(progress, s, nir_shader_intrinsics_pass, fence_image,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    NIR_PASS(progress, s, nir_lower_image_atomics_to_global);
 
    NIR_PASS(progress, s, nir_shader_intrinsics_pass, legalize_image_lod,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
    NIR_PASS(progress, s, nir_shader_intrinsics_pass, lower_images,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
    NIR_PASS(progress, s, nir_legalize_16bit_sampler_srcs, tex_constraints);
 
    /* Fold constants after nir_legalize_16bit_sampler_srcs so we can detect 0 in
@@ -762,7 +762,7 @@ agx_nir_lower_texture(nir_shader *s)
    NIR_PASS(progress, s, nir_shader_instructions_pass, lower_regular_texture,
             nir_metadata_none, NULL);
    NIR_PASS(progress, s, nir_shader_instructions_pass, lower_tex_crawl,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    return progress;
 }
@@ -792,9 +792,8 @@ lower_multisampled_store(nir_builder *b, nir_intrinsic_instr *intr,
 bool
 agx_nir_lower_multisampled_image_store(nir_shader *s)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_multisampled_store,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+   return nir_shader_intrinsics_pass(s, lower_multisampled_store,
+                                     nir_metadata_control_flow, NULL);
 }
 
 /*

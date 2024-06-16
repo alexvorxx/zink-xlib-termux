@@ -1694,8 +1694,7 @@ static bool si_nir_kill_outputs(nir_shader *nir, const union si_shader_key *key)
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_dominance |
-                                  nir_metadata_block_index);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -1778,8 +1777,7 @@ static bool si_nir_kill_ps_outputs(nir_shader *nir, const union si_shader_key *k
 {
    assert(nir->info.stage == MESA_SHADER_FRAGMENT);
    return nir_shader_instructions_pass(nir, kill_ps_outputs_cb,
-                                       nir_metadata_dominance |
-                                       nir_metadata_block_index, (void*)key);
+                                       nir_metadata_control_flow, (void*)key);
 }
 
 static bool clamp_vertex_color_instr(nir_builder *b,
@@ -1815,7 +1813,7 @@ static bool si_nir_clamp_vertex_color(nir_shader *nir)
       return false;
 
    return nir_shader_intrinsics_pass(nir, clamp_vertex_color_instr,
-                                       nir_metadata_dominance | nir_metadata_block_index,
+                                       nir_metadata_control_flow,
                                        NULL);
 }
 
@@ -2193,7 +2191,7 @@ static bool si_nir_lower_ps_color_input(nir_shader *nir, const union si_shader_k
 
    /* lower nir_load_color0/1 to use the color value. */
    return nir_shader_instructions_pass(nir, lower_ps_load_color_intrinsic,
-                                       nir_metadata_block_index | nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        colors) || progress;
 }
 

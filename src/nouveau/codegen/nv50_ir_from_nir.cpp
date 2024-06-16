@@ -89,7 +89,7 @@ nv50_nir_lower_load_user_clip_plane_cb(nir_builder *b, nir_intrinsic_instr *intr
 bool
 nv50_nir_lower_load_user_clip_plane(nir_shader *nir, struct nv50_ir_prog_info *info) {
    return nir_shader_intrinsics_pass(nir, nv50_nir_lower_load_user_clip_plane_cb,
-                                     nir_metadata_block_index | nir_metadata_dominance,
+                                     nir_metadata_control_flow,
                                      info);
 }
 
@@ -3157,8 +3157,7 @@ nv_nir_move_stores_to_end(nir_shader *s)
       }
    }
    nir_metadata_preserve(impl,
-                         nir_metadata_block_index |
-                         nir_metadata_dominance);
+                         nir_metadata_control_flow);
 }
 
 unsigned

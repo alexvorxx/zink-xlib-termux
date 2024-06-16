@@ -313,8 +313,7 @@ ir3_nir_opt_preamble(nir_shader *nir, struct ir3_shader_variant *v)
       return false;
 
    bool progress = nir_shader_intrinsics_pass(nir, set_speculate,
-                                              nir_metadata_block_index |
-                                              nir_metadata_dominance, NULL);
+                                              nir_metadata_control_flow, NULL);
 
    nir_opt_preamble_options options = {
       .drawid_uniform = true,

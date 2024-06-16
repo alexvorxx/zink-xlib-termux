@@ -50,8 +50,7 @@ agx_nir_lower_poly_stipple(nir_shader *s)
    nir_demote_if(b, nir_ieq_imm(b, bit, 0));
    s->info.fs.uses_discard = true;
 
-   nir_metadata_preserve(b->impl,
-                         nir_metadata_dominance | nir_metadata_block_index);
+   nir_metadata_preserve(b->impl, nir_metadata_control_flow);
    return true;
 }
 
@@ -177,8 +176,7 @@ agx_nir_vs_prolog(nir_builder *b, const void *key_)
    /* Finally, lower uniforms according to our ABI */
    unsigned nr = DIV_ROUND_UP(BITSET_LAST_BIT(key->component_mask), 4);
    nir_shader_intrinsics_pass(b->shader, lower_non_monolithic_uniforms,
-                              nir_metadata_dominance | nir_metadata_block_index,
-                              &nr);
+                              nir_metadata_control_flow, &nr);
    b->shader->info.io_lowered = true;
 }
 
@@ -214,10 +212,9 @@ bool
 agx_nir_lower_vs_input_to_prolog(nir_shader *s,
                                  BITSET_WORD *attrib_components_read)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_input_to_prolog,
-      nir_metadata_dominance | nir_metadata_block_index,
-      attrib_components_read);
+   return nir_shader_intrinsics_pass(s, lower_input_to_prolog,
+                                     nir_metadata_control_flow,
+                                     attrib_components_read);
 }
 
 static bool
@@ -253,9 +250,8 @@ lower_tests_zs(nir_shader *s, bool value)
    if (!s->info.fs.uses_discard)
       return false;
 
-   return nir_shader_intrinsics_pass(
-      s, lower_tests_zs_intr, nir_metadata_dominance | nir_metadata_block_index,
-      &value);
+   return nir_shader_intrinsics_pass(s, lower_tests_zs_intr,
+                                     nir_metadata_control_flow, &value);
 }
 
 static inline bool
@@ -443,8 +439,7 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
 
    /* Finally, lower uniforms according to our ABI */
    nir_shader_intrinsics_pass(b->shader, lower_non_monolithic_uniforms,
-                              nir_metadata_dominance | nir_metadata_block_index,
-                              NULL);
+                              nir_metadata_control_flow, NULL);
 
    /* There is no shader part after the epilog, so we're always responsible for
     * running our own tests, unless the fragment shader forced early tests.
@@ -576,8 +571,7 @@ agx_nir_lower_fs_output_to_epilog(nir_shader *s,
    struct lower_epilog_ctx ctx = {.info = out};
 
    nir_shader_intrinsics_pass(s, lower_output_to_epilog,
-                              nir_metadata_dominance | nir_metadata_block_index,
-                              &ctx);
+                              nir_metadata_control_flow, &ctx);
 
    if (ctx.masked_samples) {
       nir_builder b =
@@ -601,9 +595,8 @@ agx_nir_lower_fs_output_to_epilog(nir_shader *s,
 bool
 agx_nir_lower_fs_active_samples_to_register(nir_shader *s)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_active_samples_to_register,
-      nir_metadata_dominance | nir_metadata_block_index, NULL);
+   return nir_shader_intrinsics_pass(s, lower_active_samples_to_register,
+                                     nir_metadata_control_flow, NULL);
 }
 
 static bool
@@ -620,8 +613,7 @@ agx_nir_lower_stats_fs(nir_shader *s)
    nir_def *addr = nir_load_stat_query_address_agx(b, .base = query);
    nir_global_atomic(b, 32, addr, samples, .atomic_op = nir_atomic_op_iadd);
 
-   nir_metadata_preserve(b->impl,
-                         nir_metadata_block_index | nir_metadata_dominance);
+   nir_metadata_preserve(b->impl, nir_metadata_control_flow);
    return true;
 }
 
@@ -656,8 +648,7 @@ agx_nir_fs_prolog(nir_builder *b, const void *key_)
    NIR_PASS(_, b->shader, agx_nir_lower_discard_zs_emit);
    NIR_PASS(_, b->shader, agx_nir_lower_sample_mask);
    NIR_PASS(_, b->shader, nir_shader_intrinsics_pass,
-            lower_non_monolithic_uniforms,
-            nir_metadata_dominance | nir_metadata_block_index, NULL);
+            lower_non_monolithic_uniforms, nir_metadata_control_flow, NULL);
    NIR_PASS(_, b->shader, lower_tests_zs, key->run_zs_tests);
 
    b->shader->info.io_lowered = true;

@@ -661,7 +661,7 @@ pan_blitter_get_blit_shader(struct pan_blitter_cache *cache,
 
    if (PAN_ARCH == 4) {
       NIR_PASS_V(b.shader, nir_shader_intrinsics_pass, lower_sampler_parameters,
-                 nir_metadata_block_index | nir_metadata_dominance, NULL);
+                 nir_metadata_control_flow, NULL);
    }
 
    GENX(pan_shader_compile)(b.shader, &inputs, &binary, &shader->info);

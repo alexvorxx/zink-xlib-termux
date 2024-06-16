@@ -324,16 +324,14 @@ static bool
 v3d_nir_lower_uniform_offset_to_bytes(nir_shader *s)
 {
         return nir_shader_intrinsics_pass(s, lower_uniform_offset_to_bytes_cb,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance, NULL);
+                                            nir_metadata_control_flow, NULL);
 }
 
 static bool
 v3d_nir_lower_textures(nir_shader *s)
 {
         return nir_shader_instructions_pass(s, lower_textures_cb,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance, NULL);
+                                            nir_metadata_control_flow, NULL);
 }
 
 static void *

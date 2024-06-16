@@ -3311,7 +3311,7 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
    NIR_PASS(_, nir, nir_lower_flrp, 16 | 32 | 64, false);
    NIR_PASS(_, nir, agx_lower_sincos);
    NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_lower_front_face,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
    NIR_PASS(_, nir, agx_nir_lower_subgroups);
    NIR_PASS(_, nir, nir_lower_phis_to_scalar, true);
 
@@ -3406,7 +3406,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    NIR_PASS(_, nir, nir_opt_constant_folding);
    NIR_PASS(_, nir, nir_shader_intrinsics_pass, lower_load_from_texture_handle,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    info->push_count = key->reserved_preamble;
    agx_optimize_nir(nir, key->secondary ? NULL : &info->push_count);

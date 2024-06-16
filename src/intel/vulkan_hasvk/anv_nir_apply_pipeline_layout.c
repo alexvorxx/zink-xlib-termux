@@ -1455,8 +1455,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
     *     intrinsics in that pass.
     */
    nir_shader_instructions_pass(shader, lower_direct_buffer_instr,
-                                nir_metadata_block_index |
-                                nir_metadata_dominance,
+                                nir_metadata_control_flow,
                                 &state);
 
    /* We just got rid of all the direct access.  Delete it so it's not in the
@@ -1465,8 +1464,7 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
    nir_opt_dce(shader);
 
    nir_shader_instructions_pass(shader, apply_pipeline_layout,
-                                nir_metadata_block_index |
-                                nir_metadata_dominance,
+                                nir_metadata_control_flow,
                                 &state);
 
    ralloc_free(mem_ctx);

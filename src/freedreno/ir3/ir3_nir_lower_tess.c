@@ -312,7 +312,7 @@ ir3_nir_lower_to_explicit_output(nir_shader *shader,
       lower_block_to_explicit_output(block, &b, &state);
 
    nir_metadata_preserve(impl,
-                         nir_metadata_block_index | nir_metadata_dominance);
+                         nir_metadata_control_flow);
 
    v->output_size = state.map.stride;
 }

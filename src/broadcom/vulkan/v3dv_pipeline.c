@@ -887,8 +887,7 @@ lower_pipeline_layout_info(nir_shader *shader,
    };
 
    progress = nir_shader_instructions_pass(shader, lower_pipeline_layout_cb,
-                                           nir_metadata_block_index |
-                                           nir_metadata_dominance,
+                                           nir_metadata_control_flow,
                                            &state);
 
    *needs_default_sampler_state = state.needs_default_sampler_state;
@@ -921,8 +920,7 @@ v3d_nir_lower_point_coord(nir_shader *s)
 {
    assert(s->info.stage == MESA_SHADER_FRAGMENT);
    return nir_shader_intrinsics_pass(s, lower_point_coord_cb,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance, NULL);
+                                       nir_metadata_control_flow, NULL);
 }
 
 static void

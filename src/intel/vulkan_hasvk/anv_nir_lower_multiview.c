@@ -274,8 +274,7 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
       }
    }
 
-   nir_metadata_preserve(entrypoint, nir_metadata_block_index |
-                                     nir_metadata_dominance);
+   nir_metadata_preserve(entrypoint, nir_metadata_control_flow);
 
    return true;
 }

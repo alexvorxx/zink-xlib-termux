@@ -220,6 +220,5 @@ bool
 ac_nir_lower_subdword_loads(nir_shader *nir, ac_nir_lower_subdword_options options)
 {
    return nir_shader_instructions_pass(nir, lower_subdword_loads,
-                                       nir_metadata_dominance |
-                                       nir_metadata_block_index, &options);
+                                       nir_metadata_control_flow, &options);
 }

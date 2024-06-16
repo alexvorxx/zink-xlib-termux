@@ -148,7 +148,7 @@ agx_nir_lower_uvs(nir_shader *s, struct agx_unlinked_uvs_layout *layout)
 
    /* Determine the unlinked UVS layout */
    NIR_PASS(progress, s, nir_shader_intrinsics_pass, gather_components,
-            nir_metadata_block_index | nir_metadata_dominance, layout);
+            nir_metadata_control_flow, layout);
 
    unsigned sizes[UVS_NUM_GROUP] = {
       [UVS_POSITION] = 4,
@@ -179,7 +179,7 @@ agx_nir_lower_uvs(nir_shader *s, struct agx_unlinked_uvs_layout *layout)
    /* Now lower in terms of the unlinked layout */
    struct ctx ctx = {.layout = layout};
    NIR_PASS(progress, s, nir_shader_intrinsics_pass, lower,
-            nir_metadata_block_index | nir_metadata_dominance, &ctx);
+            nir_metadata_control_flow, &ctx);
 
    if (ctx.layer || ctx.viewport) {
       write_layer_viewport_sysval(&ctx);

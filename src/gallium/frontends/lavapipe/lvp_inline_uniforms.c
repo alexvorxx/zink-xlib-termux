@@ -256,7 +256,6 @@ lvp_inline_uniforms(nir_shader *nir, const struct lvp_shader *shader, const uint
          }
       }
 
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    }
 }

@@ -1463,9 +1463,8 @@ nir_opt_load_store_vectorize(nir_shader *shader, const nir_load_store_vectorize_
          progress |= process_block(impl, ctx, block);
 
       nir_metadata_preserve(impl,
-                            nir_metadata_block_index |
-                               nir_metadata_dominance |
-                               nir_metadata_live_defs);
+                            nir_metadata_control_flow |
+                            nir_metadata_live_defs);
    }
 
    ralloc_free(ctx);
@@ -1496,8 +1495,7 @@ nir_opt_load_store_update_alignments(nir_shader *shader)
 {
    return nir_shader_intrinsics_pass(shader,
                                      opt_load_store_update_alignments_callback,
-                                     nir_metadata_block_index |
-                                     nir_metadata_dominance |
+                                     nir_metadata_control_flow |
                                      nir_metadata_live_defs |
                                      nir_metadata_instr_index, NULL);
 }

@@ -291,7 +291,7 @@ lower_cs_intrinsics_convert_impl(struct lower_intrinsics_state *state)
    }
 
    nir_metadata_preserve(state->impl,
-                         nir_metadata_block_index | nir_metadata_dominance);
+                         nir_metadata_control_flow);
 }
 
 bool

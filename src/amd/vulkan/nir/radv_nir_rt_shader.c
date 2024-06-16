@@ -158,7 +158,7 @@ lower_rt_derefs(nir_shader *shader)
    }
 
    if (progress)
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    else
       nir_metadata_preserve(impl, nir_metadata_all);
 
@@ -879,8 +879,7 @@ radv_nir_lower_rt_io(nir_shader *nir, bool monolithic, uint32_t payload_offset)
          nir_lower_vars_to_explicit_types(nir, nir_var_function_temp, glsl_get_natural_size_align_bytes);
          nir->scratch_size = scratch_size;
 
-         nir_shader_intrinsics_pass(nir, radv_lower_payload_arg_to_offset,
-                                    nir_metadata_block_index | nir_metadata_dominance, NULL);
+         nir_shader_intrinsics_pass(nir, radv_lower_payload_arg_to_offset, nir_metadata_control_flow, NULL);
       }
 
       NIR_PASS(_, nir, radv_nir_lower_ray_payload_derefs, payload_offset);

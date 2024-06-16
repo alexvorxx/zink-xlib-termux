@@ -403,7 +403,7 @@ ir3_nir_lower_array_sampler(nir_shader *shader)
 {
    return nir_shader_instructions_pass(
       shader, ir3_nir_lower_array_sampler_cb,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+      nir_metadata_control_flow, NULL);
 }
 
 void

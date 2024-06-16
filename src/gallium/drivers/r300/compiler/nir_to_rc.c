@@ -2280,8 +2280,7 @@ nir_to_rc_lower_tex(nir_shader *s)
 {
    return nir_shader_instructions_pass(s,
                                        nir_to_rc_lower_tex_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }
 

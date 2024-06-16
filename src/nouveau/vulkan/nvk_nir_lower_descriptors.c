@@ -1356,20 +1356,17 @@ nvk_nir_lower_descriptors(nir_shader *nir,
 
       pass_lower_ubo =
          nir_shader_intrinsics_pass(nir, lower_load_ubo_intrin,
-                                    nir_metadata_block_index |
-                                    nir_metadata_dominance,
+                                    nir_metadata_control_flow,
                                     (void *)&ctx);
    }
 
    bool pass_lower_descriptors =
       nir_shader_instructions_pass(nir, try_lower_descriptors_instr,
-                                   nir_metadata_block_index |
-                                   nir_metadata_dominance,
+                                   nir_metadata_control_flow,
                                    (void *)&ctx);
    bool pass_lower_ssbo =
       nir_shader_instructions_pass(nir, lower_ssbo_descriptor_instr,
-                                   nir_metadata_block_index |
-                                   nir_metadata_dominance,
+                                   nir_metadata_control_flow,
                                    (void *)&ctx);
    return pass_lower_ubo || pass_lower_descriptors || pass_lower_ssbo;
 }

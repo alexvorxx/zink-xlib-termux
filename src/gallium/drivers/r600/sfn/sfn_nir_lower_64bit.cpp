@@ -1430,7 +1430,7 @@ r600_lower_64bit_to_vec2(nir_shader *s)
 {
    return nir_shader_instructions_pass(s,
                                        r600_lower_64bit_to_vec2_instr,
-                                       nir_metadata_block_index | nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }
 

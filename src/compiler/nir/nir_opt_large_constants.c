@@ -594,7 +594,6 @@ nir_opt_large_constants(nir_shader *shader,
 
    ralloc_free(var_infos);
 
-   nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
    return true;
 }

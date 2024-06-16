@@ -339,7 +339,6 @@ anv_nir_lower_ycbcr_textures(nir_shader *shader,
 {
    return nir_shader_instructions_pass(shader,
                                        anv_nir_lower_ycbcr_textures_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        (void *)layout);
 }

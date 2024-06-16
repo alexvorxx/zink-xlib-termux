@@ -1058,9 +1058,8 @@ panvk_per_arch(nir_lower_descriptors)(
    create_copy_table(&ctx);
    upload_shader_desc_info(dev, shader, &ctx.desc_info);
 
-   progress = nir_shader_instructions_pass(
-      nir, lower_descriptors_instr,
-      nir_metadata_block_index | nir_metadata_dominance, &ctx);
+   progress = nir_shader_instructions_pass(nir, lower_descriptors_instr,
+                                           nir_metadata_control_flow, &ctx);
 
 out:
    _mesa_hash_table_destroy(ctx.ht, NULL);

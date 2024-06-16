@@ -123,7 +123,7 @@ compile_shader(struct anv_device *device,
       };
       NIR_PASS_V(nir, nir_lower_compute_system_values, &options);
       NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_base_workgroup_id,
-                 nir_metadata_block_index | nir_metadata_dominance, NULL);
+                 nir_metadata_control_flow, NULL);
    }
 
    /* Reset sizes before gathering information */

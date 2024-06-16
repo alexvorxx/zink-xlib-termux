@@ -129,8 +129,7 @@ r300_nir_lower_fcsel_r500(nir_shader *shader)
 {
    bool progress = nir_shader_instructions_pass(shader,
                                                 r300_nir_lower_fcsel_instr,
-                                                nir_metadata_block_index |
-                                                   nir_metadata_dominance,
+                                                nir_metadata_control_flow,
                                                 NULL);
    return progress;
 }

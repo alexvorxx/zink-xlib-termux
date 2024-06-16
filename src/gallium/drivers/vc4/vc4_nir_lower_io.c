@@ -349,8 +349,7 @@ vc4_nir_lower_io_impl(struct vc4_compile *c, nir_function_impl *impl)
                         vc4_nir_lower_io_instr(c, &b, instr);
         }
 
-        nir_metadata_preserve(impl, nir_metadata_block_index |
-                              nir_metadata_dominance);
+        nir_metadata_preserve(impl, nir_metadata_control_flow);
 
         return true;
 }

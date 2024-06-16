@@ -2487,8 +2487,7 @@ nir_lower_vars_to_explicit_types_impl(nir_function_impl *impl,
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance |
+      nir_metadata_preserve(impl, nir_metadata_control_flow |
                                      nir_metadata_live_defs |
                                      nir_metadata_loop_analysis);
    } else {
@@ -3042,7 +3041,7 @@ nir_io_add_const_offset_to_base(nir_shader *nir, nir_variable_mode modes)
       }
       progress |= impl_progress;
       if (impl_progress)
-         nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+         nir_metadata_preserve(impl, nir_metadata_control_flow);
       else
          nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -3123,8 +3122,7 @@ nir_lower_color_inputs(nir_shader *nir)
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_dominance |
-                                     nir_metadata_block_index);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }

@@ -189,5 +189,5 @@ bool
 nir_lower_pack(nir_shader *shader)
 {
    return nir_shader_instructions_pass(shader, lower_pack_instr,
-                                       nir_metadata_block_index | nir_metadata_dominance, NULL);
+                                       nir_metadata_control_flow, NULL);
 }

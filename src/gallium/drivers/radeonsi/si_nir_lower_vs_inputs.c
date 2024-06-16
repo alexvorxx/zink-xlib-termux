@@ -603,6 +603,6 @@ si_nir_lower_vs_inputs(nir_shader *nir, struct si_shader *shader, struct si_shad
       get_vertex_index_for_all_inputs(nir, &state);
 
    return nir_shader_intrinsics_pass(nir, lower_vs_input_instr,
-                                       nir_metadata_dominance | nir_metadata_block_index,
+                                       nir_metadata_control_flow,
                                        &state);
 }

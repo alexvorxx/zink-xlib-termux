@@ -706,7 +706,7 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
             }
 
             nir_metadata_preserve(
-               function->impl, nir_metadata_block_index | nir_metadata_dominance);
+               function->impl, nir_metadata_control_flow);
          }
       }
    }
@@ -798,7 +798,7 @@ ir3_nir_lower_ubo_loads(nir_shader *nir, struct ir3_shader_variant *v)
          }
 
          nir_metadata_preserve(
-            function->impl, nir_metadata_block_index | nir_metadata_dominance);
+            function->impl, nir_metadata_control_flow);
       }
    }
    /* Update the num_ubos field for GL (first_ubo_is_default_ubo).  With

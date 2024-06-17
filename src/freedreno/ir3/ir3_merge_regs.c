@@ -541,7 +541,9 @@ dump_merge_sets(struct ir3 *ir)
               merge_set->alignment);
             for (unsigned j = 0; j < merge_set->regs_count; j++) {
                struct ir3_register *reg = merge_set->regs[j];
-               d("\t" SYN_SSA("ssa_%u") ":%u, offset %u",
+               const char *s = (reg->flags & IR3_REG_SHARED) ? "s" : "";
+               const char *h = (reg->flags & IR3_REG_HALF) ? "h" : "";
+               d("\t%s%s" SYN_SSA("ssa_%u") ":%u, offset %u", s, h,
                  reg->instr->serialno, reg->name, reg->merge_set_offset);
             }
 

@@ -359,27 +359,32 @@ load_push_constant(nir_builder *b, apply_layout_state *state, nir_intrinsic_inst
    unsigned count = intrin->def.num_components * (bit_size / 32u);
    assert(bit_size >= 32);
 
-   /* Try to use inline push constants when possible. */
-   if (nir_src_is_const(intrin->src[0])) {
-      unsigned start = (base + nir_src_as_uint(intrin->src[0])) / 4u;
-      uint64_t mask = BITFIELD64_MASK(count) << start;
-      if ((state->args->ac.inline_push_const_mask & mask) == mask &&
-          start + count <= (sizeof(state->args->ac.inline_push_const_mask) * 8u)) {
-         start = util_bitcount64(state->args->ac.inline_push_const_mask & BITFIELD64_MASK(start));
-         nir_def *res[NIR_MAX_VEC_COMPONENTS * 2];
-         for (unsigned i = 0; i < count; i++)
-            res[i] = get_scalar_arg(b, 1, state->args->ac.inline_push_consts[start + i]);
-         return nir_extract_bits(b, res, count, 0, intrin->def.num_components, bit_size);
-      }
-   }
+   nir_def *addr = NULL;
+   nir_def *offset = NULL;
+   unsigned const_offset = -1;
+   if (nir_src_is_const(intrin->src[0]))
+      const_offset = (base + nir_src_as_uint(intrin->src[0])) / 4u;
 
-   nir_def *addr = get_scalar_arg(b, 1, state->args->ac.push_constants);
-   addr = convert_pointer_to_64_bit(b, state, addr);
+   const unsigned max_push_constant = sizeof(state->args->ac.inline_push_const_mask) * 8u;
 
-   nir_def *offset = nir_iadd_imm_nuw(b, intrin->src[0].ssa, base);
-   nir_def *data[NIR_MAX_VEC_COMPONENTS];
+   nir_def *data[NIR_MAX_VEC_COMPONENTS * 2];
    unsigned num_loads = 0;
    for (unsigned start = 0; start < count;) {
+      /* Try to use inline push constants when possible. */
+      unsigned inline_idx = const_offset + start;
+      if (const_offset != -1 && inline_idx < max_push_constant &&
+          (state->args->ac.inline_push_const_mask & BITFIELD64_BIT(inline_idx))) {
+         inline_idx = util_bitcount64(state->args->ac.inline_push_const_mask & BITFIELD64_MASK(inline_idx));
+         data[num_loads++] = get_scalar_arg(b, 1, state->args->ac.inline_push_consts[inline_idx]);
+         start += 1;
+         continue;
+      }
+
+      if (!offset) {
+         addr = get_scalar_arg(b, 1, state->args->ac.push_constants);
+         addr = convert_pointer_to_64_bit(b, state, addr);
+         offset = nir_iadd_imm_nuw(b, intrin->src[0].ssa, base);
+      }
       unsigned size = 1 << (util_last_bit(count - start) - 1); /* Round down to power of two. */
       /* Try to round up to power of two instead. */
       if (size < (count - start) && can_increase_load_size(intrin, start * 4, size, size * 2))

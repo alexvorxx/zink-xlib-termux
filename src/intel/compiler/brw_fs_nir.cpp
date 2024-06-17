@@ -4898,18 +4898,24 @@ choose_oword_block_size_dwords(const struct intel_device_info *devinfo,
    return block;
 }
 
-static void
+static fs_reg
 increment_a64_address(const fs_builder &bld, fs_reg address, uint32_t v)
 {
    if (bld.shader->devinfo->has_64bit_int) {
-      bld.ADD(address, address, brw_imm_ud(v));
+      struct brw_reg imm = brw_imm_reg(address.type);
+      imm.u64 = v;
+      return bld.ADD(address, imm);
    } else {
-      fs_reg low = retype(address, BRW_TYPE_UD);
-      fs_reg high = offset(low, bld, 1);
+      fs_reg dst = bld.vgrf(BRW_TYPE_UQ);
+      fs_reg dst_low = subscript(dst, BRW_TYPE_UD, 0);
+      fs_reg dst_high = subscript(dst, BRW_TYPE_UD, 1);
+      fs_reg src_low = subscript(address, BRW_TYPE_UD, 0);
+      fs_reg src_high = subscript(address, BRW_TYPE_UD, 1);
 
       /* Add low and if that overflows, add carry to high. */
-      bld.ADD(low, low, brw_imm_ud(v))->conditional_mod = BRW_CONDITIONAL_O;
-      bld.ADD(high, high, brw_imm_ud(0x1))->predicate = BRW_PREDICATE_NORMAL;
+      bld.ADD(dst_low, src_low, brw_imm_ud(v))->conditional_mod = BRW_CONDITIONAL_O;
+      bld.ADD(dst_high, src_high, brw_imm_ud(0x1))->predicate = BRW_PREDICATE_NORMAL;
+      return dst_low;
    }
 }
 
@@ -6534,7 +6540,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                    srcs, A64_LOGICAL_NUM_SRCS)->size_written =
             align(block_bytes, REG_SIZE * reg_unit(devinfo));
 
-         increment_a64_address(ubld1, address, block_bytes);
+         address = increment_a64_address(ubld1, address, block_bytes);
          loaded_dwords += block;
       }
 
@@ -7376,7 +7382,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                    retype(byte_offset(dest, loaded * 4), BRW_TYPE_UD),
                    srcs, A64_LOGICAL_NUM_SRCS)->size_written = block_bytes;
 
-         increment_a64_address(ubld1, address, block_bytes);
+         address = increment_a64_address(ubld1, address, block_bytes);
          loaded += block;
       }
 
@@ -7413,7 +7419,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                    srcs, A64_LOGICAL_NUM_SRCS);
 
          const unsigned block_bytes = block * 4;
-         increment_a64_address(ubld1, address, block_bytes);
+         address = increment_a64_address(ubld1, address, block_bytes);
          written += block;
       }
 

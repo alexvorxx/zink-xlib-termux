@@ -4630,48 +4630,42 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
             break;
          }
 
+         fs_reg srcs[3];
+         for (unsigned s = 0; s < nir_op_infos[alu->op].num_inputs; s++) {
+            srcs[s] = offset(
+               ntb.resource_insts[alu->src[s].src.ssa->index]->dst,
+               ubld8, alu->src[s].swizzle[0]);
+            assert(srcs[s].file != BAD_FILE);
+            assert(srcs[s].type == BRW_TYPE_UD);
+         }
+
          switch (alu->op) {
          case nir_op_iadd: {
-            fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
-            fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
-            assert(src0.file != BAD_FILE && src1.file != BAD_FILE);
-            assert(src0.type == BRW_TYPE_UD);
-            assert(src1.type == BRW_TYPE_UD);
-            ubld8.ADD(src0.file != IMM ? src0 : src1,
-                      src0.file != IMM ? src1 : src0,
+            ubld8.ADD(srcs[0].file != IMM ? srcs[0] : srcs[1],
+                      srcs[0].file != IMM ? srcs[1] : srcs[0],
                       &ntb.resource_insts[def->index]);
             break;
          }
          case nir_op_iadd3: {
-            fs_reg dst = ubld8.vgrf(BRW_TYPE_UD);
-            fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
-            fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
-            fs_reg src2 = ntb.resource_insts[alu->src[2].src.ssa->index]->dst;
-            assert(src0.file != BAD_FILE && src1.file != BAD_FILE && src2.file != BAD_FILE);
-            assert(src0.type == BRW_TYPE_UD);
+            fs_reg dst = ubld8.vgrf(srcs[0].type);
             ntb.resource_insts[def->index] =
                ubld8.ADD3(dst,
-                          src1.file == IMM ? src1 : src0,
-                          src1.file == IMM ? src0 : src1,
-                          src2);
+                          srcs[1].file == IMM ? srcs[1] : srcs[0],
+                          srcs[1].file == IMM ? srcs[0] : srcs[1],
+                          srcs[2]);
             break;
          }
          case nir_op_ushr: {
-            fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
-            fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
-            assert(src0.file != BAD_FILE && src1.file != BAD_FILE);
-            assert(src0.type == BRW_TYPE_UD);
-            assert(src1.type == BRW_TYPE_UD);
-            ubld8.SHR(src0, src1, &ntb.resource_insts[def->index]);
+            enum brw_reg_type utype =
+               brw_type_with_size(srcs[0].type,
+                                  brw_type_size_bits(srcs[0].type));
+            ubld8.SHR(retype(srcs[0], utype),
+                      retype(srcs[1], utype),
+                      &ntb.resource_insts[def->index]);
             break;
          }
          case nir_op_ishl: {
-            fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
-            fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
-            assert(src0.file != BAD_FILE && src1.file != BAD_FILE);
-            assert(src0.type == BRW_TYPE_UD);
-            assert(src1.type == BRW_TYPE_UD);
-            ubld8.SHL(src0, src1, &ntb.resource_insts[def->index]);
+            ubld8.SHL(srcs[0], srcs[1], &ntb.resource_insts[def->index]);
             break;
          }
          case nir_op_mov: {

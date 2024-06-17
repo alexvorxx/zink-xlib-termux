@@ -977,6 +977,19 @@ void si_print_texture_info(struct si_screen *sscreen, struct si_texture *tex,
    }
 }
 
+static void print_debug_tex(struct si_screen *sscreen, struct si_texture *tex)
+{
+   if (sscreen->debug_flags & DBG(TEX)) {
+      puts("Texture:");
+      struct u_log_context log;
+      u_log_context_init(&log);
+      si_print_texture_info(sscreen, tex, &log);
+      u_log_new_page_print(&log, stdout);
+      fflush(stdout);
+      u_log_context_destroy(&log);
+   }
+}
+
 /**
  * Common function for si_texture_create and si_texture_from_handle.
  *
@@ -1077,17 +1090,8 @@ static struct si_texture *si_texture_create_object(struct pipe_screen *screen,
       fprintf(stderr, "\n");
    }
 
-   if (sscreen->debug_flags & DBG(TEX)) {
-      puts("Texture:");
-      struct u_log_context log;
-      u_log_context_init(&log);
-      si_print_texture_info(sscreen, tex, &log);
-      u_log_new_page_print(&log, stdout);
-      fflush(stdout);
-      u_log_context_destroy(&log);
-   }
-
    if (sscreen->info.gfx_level >= GFX12) {
+      print_debug_tex(sscreen, tex);
       if (tex->is_depth) {
          /* Z24 is no longer supported. We should use Z32_FLOAT instead. */
          if (base->format == PIPE_FORMAT_Z16_UNORM) {
@@ -1125,6 +1129,8 @@ static struct si_texture *si_texture_create_object(struct pipe_screen *screen,
                               (sscreen->info.gfx_level >= GFX8 &&
                                tex->surface.flags & RADEON_SURF_TC_COMPATIBLE_HTILE &&
                                tex->buffer.b.b.last_level > 0);
+
+   print_debug_tex(sscreen, tex);
 
    /* TC-compatible HTILE:
     * - GFX8 only supports Z32_FLOAT.

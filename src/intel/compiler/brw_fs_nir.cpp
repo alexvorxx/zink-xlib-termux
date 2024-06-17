@@ -4599,11 +4599,6 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
             nir_instr_as_load_const(def->parent_instr);
          return brw_imm_ud(load_const->value[0].i32);
       } else {
-         assert(def->parent_instr->type == nir_instr_type_intrinsic &&
-                (nir_instr_as_intrinsic(def->parent_instr)->intrinsic ==
-                 nir_intrinsic_load_uniform ||
-                 nir_instr_as_intrinsic(def->parent_instr)->intrinsic ==
-                 nir_intrinsic_load_reloc_const_intel));
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(def->parent_instr);
          switch (intrin->intrinsic) {
          case nir_intrinsic_load_uniform: {

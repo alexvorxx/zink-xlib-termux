@@ -939,7 +939,7 @@ reload(struct ra_spill_ctx *ctx, struct ir3_register *reg,
       dst->array.id = reg->array.id;
       dst->size = reg->size;
    } else {
-      dst->wrmask = MASK(elems);
+      dst->wrmask = reg->wrmask;
    }
 
    dst->merge_set = reg->merge_set;

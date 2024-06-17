@@ -807,11 +807,13 @@ a7xx_725 = A7XXProps(
         cmdbuf_start_a725_quirk = True,
         supports_ibo_ubwc = True,
         fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = True,
     )
 
 a7xx_730 = A7XXProps(
         supports_ibo_ubwc = True,
         fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = True,
     )
 
 a7xx_740 = A7XXProps(
@@ -820,6 +822,7 @@ a7xx_740 = A7XXProps(
         ubwc_unorm_snorm_int_compatible = True,
         supports_ibo_ubwc = True,
         fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = True,
     )
 
 a7xx_740_a32 = A7XXProps(
@@ -829,6 +832,7 @@ a7xx_740_a32 = A7XXProps(
         ubwc_unorm_snorm_int_compatible = True,
         supports_ibo_ubwc = True,
         fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = True,
     )
 
 a7xx_750 = A7XXProps(

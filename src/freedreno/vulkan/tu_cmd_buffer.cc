@@ -1269,7 +1269,17 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
       if (!magic_reg.reg)
          break;
 
-      tu_cs_emit_write_reg(cs, magic_reg.reg, magic_reg.value);
+      uint32_t value = magic_reg.value;
+      switch(magic_reg.reg) {
+         case REG_A6XX_TPL1_DBG_ECO_CNTL1:
+            value = (value & ~A6XX_TPL1_DBG_ECO_CNTL1_TP_UBWC_FLAG_HINT) |
+                    (phys_dev->info->a7xx.enable_tp_ubwc_flag_hint
+                        ? A6XX_TPL1_DBG_ECO_CNTL1_TP_UBWC_FLAG_HINT
+                        : 0);
+            break;
+      }
+
+      tu_cs_emit_write_reg(cs, magic_reg.reg, value);
    }
 
    tu_cs_emit_write_reg(cs, REG_A6XX_RB_DBG_ECO_CNTL,

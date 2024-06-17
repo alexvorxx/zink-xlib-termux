@@ -265,6 +265,13 @@ struct fd_dev_info {
        * corruption is unknown.
        */
       bool fs_must_have_non_zero_constlen_quirk;
+
+      /* On a740 TPL1_DBG_ECO_CNTL1.TP_UBWC_FLAG_HINT must be the same between
+       * all drivers in the system, somehow having different values affects
+       * BLIT_OP_SCALE. We cannot automatically match blob's value, so the
+       * best thing we could do is a toggle.
+       */
+      bool enable_tp_ubwc_flag_hint;
    } a7xx;
 };
 

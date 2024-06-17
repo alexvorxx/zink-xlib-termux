@@ -346,13 +346,12 @@ can_rematerialize(struct ir3_register *reg)
 }
 
 static struct ir3_register *
-rematerialize(struct ir3_register *reg, struct ir3_instruction *after,
-              struct ir3_block *block)
+rematerialize(struct ir3_register *reg, struct ir3_cursor cursor)
 {
    d("rematerializing ssa_%u:%u", reg->instr->serialno, reg->name);
 
    struct ir3_instruction *remat =
-      ir3_instr_create(block, reg->instr->opc, 1, reg->instr->srcs_count);
+      ir3_instr_create_at(cursor, reg->instr->opc, 1, reg->instr->srcs_count);
    struct ir3_register *dst = __ssa_dst(remat);
    dst->flags |= reg->flags & (IR3_REG_HALF | IR3_REG_ARRAY);
    for (unsigned i = 0; i < reg->instr->srcs_count; i++) {
@@ -367,10 +366,6 @@ rematerialize(struct ir3_register *reg, struct ir3_instruction *after,
    dst->merge_set_offset = reg->merge_set_offset;
    dst->interval_start = reg->interval_start;
    dst->interval_end = reg->interval_end;
-
-   if (after)
-      ir3_instr_move_before(remat, after);
-
    return dst;
 }
 
@@ -727,33 +722,30 @@ set_src_val(struct ir3_register *src, const struct reg_or_immed *val)
 
 static struct ir3_register *
 materialize_pcopy_src(const struct reg_or_immed *src,
-                      struct ir3_instruction *instr,
-                      struct ir3_block *block)
+                      struct ir3_builder *builder)
 {
-   struct ir3_instruction *mov = ir3_instr_create(block, OPC_MOV, 1, 1);
+   struct ir3_instruction *mov = ir3_build_instr(builder, OPC_MOV, 1, 1);
    struct ir3_register *dst = __ssa_dst(mov);
    dst->flags |= src->flags & IR3_REG_HALF;
    struct ir3_register *mov_src = ir3_src_create(mov, INVALID_REG, src->flags);
    set_src_val(mov_src, src);
    mov->cat1.src_type = mov->cat1.dst_type =
       (src->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;
-
-   if (instr)
-      ir3_instr_move_before(mov, instr);
    return dst;
 }
 
 static void
 spill(struct ra_spill_ctx *ctx, const struct reg_or_immed *val,
-      unsigned spill_slot, struct ir3_instruction *instr, struct ir3_block *block)
+      unsigned spill_slot, struct ir3_cursor cursor)
 {
    struct ir3_register *reg;
+   struct ir3_builder builder = ir3_builder_at(cursor);
 
    /* If spilling an immed/const pcopy src, we need to actually materialize it
     * first with a mov.
     */
    if (val->flags & (IR3_REG_CONST | IR3_REG_IMMED)) {
-      reg = materialize_pcopy_src(val, instr, block);
+      reg = materialize_pcopy_src(val, &builder);
    } else {
       reg = val->def;
       reg->instr->flags &= ~IR3_INSTR_UNUSED;
@@ -764,7 +756,7 @@ spill(struct ra_spill_ctx *ctx, const struct reg_or_immed *val,
 
    unsigned elems = reg_elems(reg);
    struct ir3_instruction *spill =
-      ir3_instr_create(block, OPC_SPILL_MACRO, 0, 3);
+      ir3_build_instr(&builder, OPC_SPILL_MACRO, 0, 3);
    ir3_src_create(spill, INVALID_REG, ctx->base_reg->flags)->def = ctx->base_reg;
    unsigned src_flags = reg->flags & (IR3_REG_HALF | IR3_REG_IMMED |
                                       IR3_REG_CONST | IR3_REG_SSA |
@@ -782,25 +774,22 @@ spill(struct ra_spill_ctx *ctx, const struct reg_or_immed *val,
    } else {
       src->wrmask = reg->wrmask;
    }
-
-   if (instr)
-      ir3_instr_move_before(spill, instr);
 }
 
 static void
 spill_interval(struct ra_spill_ctx *ctx, struct ra_spill_interval *interval,
-               struct ir3_instruction *instr, struct ir3_block *block)
+               struct ir3_cursor cursor)
 {
    if (interval->can_rematerialize && !interval->interval.reg->merge_set)
       return;
 
    spill(ctx, &interval->dst, get_spill_slot(ctx, interval->interval.reg),
-         instr, block);
+         cursor);
 }
 
 /* This is similar to "limit" in the paper. */
 static void
-limit(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
+limit(struct ra_spill_ctx *ctx, struct ir3_cursor cursor)
 {
    if (ctx->cur_pressure.half > ctx->limit_pressure.half) {
       d("cur half pressure %u exceeds %u", ctx->cur_pressure.half,
@@ -811,7 +800,7 @@ limit(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
            interval->interval.reg->name);
          if (!interval->cant_spill) {
             if (!interval->already_spilled)
-               spill_interval(ctx, interval, instr, instr->block);
+               spill_interval(ctx, interval, cursor);
             ir3_reg_interval_remove_all(&ctx->reg_ctx, &interval->interval);
             if (ctx->cur_pressure.half <= ctx->limit_pressure.half)
                break;
@@ -830,7 +819,7 @@ limit(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
            interval->interval.reg->name);
          if (!interval->cant_spill) {
             if (!interval->already_spilled)
-               spill_interval(ctx, interval, instr, instr->block);
+               spill_interval(ctx, interval, cursor);
             ir3_reg_interval_remove_all(&ctx->reg_ctx, &interval->interval);
             if (ctx->cur_pressure.full <= ctx->limit_pressure.full)
                break;
@@ -865,8 +854,7 @@ add_to_merge_set(struct ir3_merge_set *set, struct ir3_register *def,
 }
 
 static struct ir3_register *
-split(struct ir3_register *def, unsigned offset,
-      struct ir3_instruction *after, struct ir3_block *block)
+split(struct ir3_register *def, unsigned offset, struct ir3_builder *builder)
 {
    if (reg_elems(def) == 1) {
       assert(offset == 0);
@@ -876,7 +864,7 @@ split(struct ir3_register *def, unsigned offset,
    assert(!(def->flags & IR3_REG_ARRAY));
    assert(def->merge_set);
    struct ir3_instruction *split =
-      ir3_instr_create(block, OPC_META_SPLIT, 1, 1);
+      ir3_build_instr(builder, OPC_META_SPLIT, 1, 1);
    split->split.off = offset;
    struct ir3_register *dst = __ssa_dst(split);
    dst->flags |= def->flags & IR3_REG_HALF;
@@ -885,25 +873,24 @@ split(struct ir3_register *def, unsigned offset,
    src->def = def;
    add_to_merge_set(def->merge_set, dst,
                     def->merge_set_offset + offset * reg_elem_size(def));
-   if (after)
-      ir3_instr_move_before(split, after);
    return dst;
 }
 
 static struct ir3_register *
 extract(struct ir3_register *parent_def, unsigned offset, unsigned elems,
-        struct ir3_instruction *after, struct ir3_block *block)
+        struct ir3_cursor cursor)
 {
    if (offset == 0 && elems == reg_elems(parent_def))
       return parent_def;
 
+   struct ir3_builder builder = ir3_builder_at(cursor);
    struct ir3_register *srcs[elems];
    for (unsigned i = 0; i < elems; i++) {
-      srcs[i] = split(parent_def, offset + i, after, block);
+      srcs[i] = split(parent_def, offset + i, &builder);
    }
 
    struct ir3_instruction *collect =
-      ir3_instr_create(block, OPC_META_COLLECT, 1, elems);
+      ir3_build_instr(&builder, OPC_META_COLLECT, 1, elems);
    struct ir3_register *dst = __ssa_dst(collect);
    dst->flags |= parent_def->flags & IR3_REG_HALF;
    dst->wrmask = MASK(elems);
@@ -913,14 +900,12 @@ extract(struct ir3_register *parent_def, unsigned offset, unsigned elems,
       ir3_src_create(collect, INVALID_REG, parent_def->flags)->def = srcs[i];
    }
 
-   if (after)
-      ir3_instr_move_before(collect, after);
    return dst;
 }
 
 static struct ir3_register *
 reload(struct ra_spill_ctx *ctx, struct ir3_register *reg,
-       struct ir3_instruction *after, struct ir3_block *block)
+       struct ir3_cursor cursor)
 {
    unsigned spill_slot = get_spill_slot(ctx, reg);
 
@@ -929,7 +914,7 @@ reload(struct ra_spill_ctx *ctx, struct ir3_register *reg,
 
    unsigned elems = reg_elems(reg);
    struct ir3_instruction *reload =
-      ir3_instr_create(block, OPC_RELOAD_MACRO, 1, 3);
+      ir3_instr_create_at(cursor, OPC_RELOAD_MACRO, 1, 3);
    struct ir3_register *dst = __ssa_dst(reload);
    dst->flags |= reg->flags & (IR3_REG_HALF | IR3_REG_ARRAY);
    /* The reload may be split into multiple pieces, and if the destination
@@ -959,10 +944,6 @@ reload(struct ra_spill_ctx *ctx, struct ir3_register *reg,
    dst->merge_set_offset = reg->merge_set_offset;
    dst->interval_start = reg->interval_start;
    dst->interval_end = reg->interval_end;
-
-   if (after)
-      ir3_instr_move_before(reload, after);
-
    return dst;
 }
 
@@ -970,8 +951,7 @@ static void
 rewrite_src_interval(struct ra_spill_ctx *ctx,
                     struct ra_spill_interval *interval,
                     struct ir3_register *def,
-                    struct ir3_instruction *instr,
-                    struct ir3_block *block)
+                    struct ir3_cursor cursor)
 {
    interval->dst.flags = def->flags;
    interval->dst.def = def;
@@ -983,14 +963,14 @@ rewrite_src_interval(struct ra_spill_ctx *ctx,
       struct ir3_register *child_def =
          extract(def, (child_reg->interval_start -
                        interval->interval.reg->interval_start) / reg_elem_size(def),
-                 reg_elems(child_reg), instr, block);
-      rewrite_src_interval(ctx, child, child_def, instr, block);
+                 reg_elems(child_reg), cursor);
+      rewrite_src_interval(ctx, child, child_def, cursor);
    }
 }
 
 static void
 reload_def(struct ra_spill_ctx *ctx, struct ir3_register *def,
-           struct ir3_instruction *instr, struct ir3_block *block)
+           struct ir3_cursor cursor)
 {
    unsigned elems = reg_elems(def);
    struct ra_spill_interval *interval = ctx->intervals[def->name];
@@ -1004,28 +984,28 @@ reload_def(struct ra_spill_ctx *ctx, struct ir3_register *def,
          interval->dst.flags = def->flags;
          interval->dst.def = extract(
             parent->dst.def, (def->interval_start - parent->dst.def->interval_start) /
-            reg_elem_size(def), elems, instr, block);
+            reg_elem_size(def), elems, cursor);
          return;
       }
    }
 
    struct ir3_register *dst;
    if (interval->can_rematerialize)
-      dst = rematerialize(def, instr, block);
+      dst = rematerialize(def, cursor);
    else
-      dst = reload(ctx, def, instr, block);
+      dst = reload(ctx, def, cursor);
 
-   rewrite_src_interval(ctx, interval, dst, instr, block);
+   rewrite_src_interval(ctx, interval, dst, cursor);
 }
 
 static void
-reload_src(struct ra_spill_ctx *ctx, struct ir3_instruction *instr,
+reload_src(struct ra_spill_ctx *ctx, struct ir3_cursor cursor,
             struct ir3_register *src)
 {
    struct ra_spill_interval *interval = ctx->intervals[src->def->name];
 
    if (interval->needs_reload) {
-      reload_def(ctx, src->def, instr, instr->block);
+      reload_def(ctx, src->def, cursor);
    }
 
    ra_spill_interval_root(interval)->cant_spill = false;
@@ -1086,13 +1066,13 @@ handle_instr(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
    }
 
    if (ctx->spilling)
-      limit(ctx, instr);
+      limit(ctx, ir3_before_instr(instr));
    else
       update_max_pressure(ctx);
 
    if (ctx->spilling) {
       ra_foreach_src (src, instr) {
-         reload_src(ctx, instr, src);
+         reload_src(ctx, ir3_before_instr(instr), src);
          update_src_next_use(ctx, src);
       }
    }
@@ -1107,7 +1087,7 @@ handle_instr(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
    }
 
    if (ctx->spilling)
-      limit(ctx, instr);
+      limit(ctx, ir3_before_instr(instr));
    else
       update_max_pressure(ctx);
 
@@ -1246,7 +1226,7 @@ handle_pcopy(struct ra_spill_ctx *ctx, struct ir3_instruction *pcopy)
                ra_spill_ctx_remove(ctx, src_interval);
             dst_interval->cant_spill = true;
             ra_spill_ctx_insert(ctx, dst_interval);
-            limit(ctx, pcopy);
+            limit(ctx, ir3_before_instr(pcopy));
             dst_interval->cant_spill = false;
             dst_interval->dst = src_interval->dst;
          }
@@ -1257,8 +1237,8 @@ handle_pcopy(struct ra_spill_ctx *ctx, struct ir3_instruction *pcopy)
          temp_interval->next_use_distance = src->next_use;
 
          insert_src(ctx, src);
-         limit(ctx, pcopy);
-         reload_src(ctx, pcopy, src);
+         limit(ctx, ir3_before_instr(pcopy));
+         reload_src(ctx, ir3_before_instr(pcopy), src);
          update_src_next_use(ctx, src);
          if (is_last_pcopy_src(pcopy, i))
             remove_src(ctx, pcopy, src);
@@ -1268,7 +1248,7 @@ handle_pcopy(struct ra_spill_ctx *ctx, struct ir3_instruction *pcopy)
 
          temp_interval->cant_spill = true;
          ra_spill_ctx_insert(ctx, temp_interval);
-         limit(ctx, pcopy);
+         limit(ctx, ir3_before_instr(pcopy));
          temp_interval->cant_spill = false;
 
          src->flags = temp->flags;
@@ -1293,7 +1273,7 @@ handle_pcopy(struct ra_spill_ctx *ctx, struct ir3_instruction *pcopy)
       if (!(src->flags & IR3_REG_SSA)) {
          dst_interval->cant_spill = true;
          ra_spill_ctx_insert(ctx, dst_interval);
-         limit(ctx, pcopy);
+         limit(ctx, ir3_before_instr(pcopy));
          dst_interval->cant_spill = false;
 
          assert(src->flags & (IR3_REG_CONST | IR3_REG_IMMED));
@@ -1308,8 +1288,8 @@ handle_pcopy(struct ra_spill_ctx *ctx, struct ir3_instruction *pcopy)
          struct ra_spill_interval *temp_interval = ctx->intervals[src->def->name];
 
          insert_src(ctx, src);
-         limit(ctx, pcopy);
-         reload_src(ctx, pcopy, src);
+         limit(ctx, ir3_before_instr(pcopy));
+         reload_src(ctx, ir3_before_instr(pcopy), src);
          remove_src(ctx, pcopy, src);
 
          dst_interval->dst = temp_interval->dst;
@@ -1437,7 +1417,8 @@ spill_live_in(struct ra_spill_ctx *ctx, struct ir3_register *def,
 
       struct reg_or_immed *pred_def = read_live_in(ctx, def, block, i);
       if (pred_def) {
-         spill(ctx, pred_def, get_spill_slot(ctx, def), NULL, pred);
+         spill(ctx, pred_def, get_spill_slot(ctx, def),
+               ir3_before_terminator(pred));
       }
    }
 }
@@ -1516,7 +1497,7 @@ live_in_rewrite(struct ra_spill_ctx *ctx,
          extract(new_val->def,
                  (child->interval.reg->interval_start - def->interval_start) /
                  reg_elem_size(def), reg_elems(child->interval.reg),
-                 NULL, pred);
+                 ir3_before_terminator(pred));
       struct reg_or_immed *child_val = ralloc(ctx, struct reg_or_immed);
       child_val->def = child_def;
       child_val->flags = child_def->flags;
@@ -1543,9 +1524,9 @@ reload_live_in(struct ra_spill_ctx *ctx, struct ir3_register *def,
       if (!new_val) {
          new_val = ralloc(ctx, struct reg_or_immed);
          if (interval->can_rematerialize)
-            new_val->def = rematerialize(def, NULL, pred);
+            new_val->def = rematerialize(def, ir3_before_terminator(pred));
          else
-            new_val->def = reload(ctx, def, NULL, pred);
+            new_val->def = reload(ctx, def, ir3_before_terminator(pred));
          new_val->flags = new_val->def->flags;
       }
       live_in_rewrite(ctx, interval, new_val, block, i);
@@ -1599,8 +1580,8 @@ add_live_in_phi(struct ra_spill_ctx *ctx, struct ir3_register *def,
       return;
    }
 
-   struct ir3_instruction *phi =
-      ir3_instr_create(block, OPC_META_PHI, 1, block->predecessors_count);
+   struct ir3_instruction *phi = ir3_instr_create_at(
+      ir3_before_block(block), OPC_META_PHI, 1, block->predecessors_count);
    struct ir3_register *dst = __ssa_dst(phi);
    dst->flags |= def->flags & (IR3_REG_HALF | IR3_REG_ARRAY);
    dst->size = def->size;
@@ -1631,8 +1612,6 @@ add_live_in_phi(struct ra_spill_ctx *ctx, struct ir3_register *def,
 
    interval->dst.def = dst;
    interval->dst.flags = dst->flags;
-
-   ir3_instr_move_before_block(phi, block);
 }
 
 /* When spilling a block with a single predecessors, the pred may have other
@@ -1696,8 +1675,10 @@ spill_live_out(struct ra_spill_ctx *ctx, struct ra_spill_interval *interval,
    struct ir3_register *def = interval->interval.reg;
 
    if (interval->interval.reg->merge_set ||
-       !interval->can_rematerialize)
-      spill(ctx, &interval->dst, get_spill_slot(ctx, def), NULL, block);
+       !interval->can_rematerialize) {
+      spill(ctx, &interval->dst, get_spill_slot(ctx, def),
+            ir3_before_terminator(block));
+   }
    ir3_reg_interval_remove_all(&ctx->reg_ctx, &interval->interval);
 }
 
@@ -1720,7 +1701,7 @@ reload_live_out(struct ra_spill_ctx *ctx, struct ir3_register *def,
    struct ra_spill_interval *interval = ctx->intervals[def->name];
    ir3_reg_interval_insert(&ctx->reg_ctx, &interval->interval);
 
-   reload_def(ctx, def, NULL, block);
+   reload_def(ctx, def, ir3_before_terminator(block));
 }
 
 static void

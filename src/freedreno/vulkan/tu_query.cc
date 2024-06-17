@@ -1189,11 +1189,14 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
    uint64_t begin_iova = occlusion_query_iova(pool, query, begin);
    uint64_t result_iova = occlusion_query_iova(pool, query, result);
    uint64_t end_iova = occlusion_query_iova(pool, query, end);
-   tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 4);
-   tu_cs_emit_qw(cs, end_iova);
-   tu_cs_emit_qw(cs, 0xffffffffffffffffull);
 
-   tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+   if (!cmdbuf->device->physical_device->info->a7xx.has_event_write_sample_count) {
+      tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 4);
+      tu_cs_emit_qw(cs, end_iova);
+      tu_cs_emit_qw(cs, 0xffffffffffffffffull);
+
+      tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+   }
 
    tu_cs_emit_regs(cs,
                    A6XX_RB_SAMPLE_COUNT_CONTROL(.copy = true));
@@ -1208,6 +1211,24 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
          tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
          tu_cs_emit(cs, CCU_CLEAN_DEPTH);
       }
+
+      tu_cs_emit_pkt7(cs, CP_WAIT_REG_MEM, 6);
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_NE) |
+                     CP_WAIT_REG_MEM_0_POLL(POLL_MEMORY));
+      tu_cs_emit_qw(cs, end_iova);
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_3_REF(0xffffffff));
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_4_MASK(~0));
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(16));
+
+      /* result (dst) = result (srcA) + end (srcB) - begin (srcC) */
+      tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 9);
+      tu_cs_emit(cs, CP_MEM_TO_MEM_0_DOUBLE | CP_MEM_TO_MEM_0_NEG_C);
+      tu_cs_emit_qw(cs, result_iova);
+      tu_cs_emit_qw(cs, result_iova);
+      tu_cs_emit_qw(cs, end_iova);
+      tu_cs_emit_qw(cs, begin_iova);
+
+      tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
    } else {
       /* When outside of renderpass, potential autotuner activity can cause
        * interference between ZPASS_DONE event pairs. In that case, like at the
@@ -1229,27 +1250,9 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
                                        .sample_count_end_offset = true,
                                        .write_accum_sample_count_diff = true).value);
       tu_cs_emit_qw(cs, begin_iova);
+
+      tu_cs_emit_wfi(cs);
    }
-
-   tu_cs_emit_pkt7(cs, CP_WAIT_REG_MEM, 6);
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_NE) |
-                  CP_WAIT_REG_MEM_0_POLL(POLL_MEMORY));
-   tu_cs_emit_qw(cs, end_iova);
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_3_REF(0xffffffff));
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_4_MASK(~0));
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(16));
-
-   if (!cmdbuf->device->physical_device->info->a7xx.has_event_write_sample_count) {
-      /* result (dst) = result (srcA) + end (srcB) - begin (srcC) */
-      tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 9);
-      tu_cs_emit(cs, CP_MEM_TO_MEM_0_DOUBLE | CP_MEM_TO_MEM_0_NEG_C);
-      tu_cs_emit_qw(cs, result_iova);
-      tu_cs_emit_qw(cs, result_iova);
-      tu_cs_emit_qw(cs, end_iova);
-      tu_cs_emit_qw(cs, begin_iova);
-   }
-
-   tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
 
    if (pass)
       /* Technically, queries should be tracked per-subpass, but here we track

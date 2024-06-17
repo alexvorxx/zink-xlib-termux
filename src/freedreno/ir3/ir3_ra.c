@@ -2452,7 +2452,8 @@ calc_min_limit_pressure(struct ir3_shader_variant *v,
          cur_pressure = (struct ir3_pressure) {0};
 
          ra_foreach_dst (dst, instr) {
-            if (dst->tied && !(dst->tied->flags & IR3_REG_KILL))
+            if ((dst->tied && !(dst->tied->flags & IR3_REG_KILL)) ||
+                (dst->flags & IR3_REG_EARLY_CLOBBER))
                add_pressure(&cur_pressure, dst, v->mergedregs);
          }
 

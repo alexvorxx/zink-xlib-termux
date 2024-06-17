@@ -553,3 +553,4 @@ spec@arb_texture_barrier@arb_texture_barrier-blending-in-shader 512 42 8 8 8,Fai
 
 # This seems to be a Vulkan Loader issue. Can be fixed by compiling the loader from the Github repo.
 dEQP-VK.api.get_device_proc_addr.non_enabled,Fail
+dEQP-VK.api.version_check.unavailable_entry_points,Fail

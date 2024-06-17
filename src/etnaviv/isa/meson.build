@@ -105,6 +105,7 @@ if with_tools.contains('etnaviv')
     args : [
       '--disable-header-comment',
       '--ignore-functions',
+      '--allowlist-type', 'etna_asm_result',
       '--allowlist-type', 'etna_inst',
       '--allowlist-type', 'isa_swiz',
       '--default-enum-style', 'rust',

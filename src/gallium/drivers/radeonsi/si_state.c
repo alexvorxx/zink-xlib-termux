@@ -2637,6 +2637,23 @@ static void si_set_framebuffer_state(struct pipe_context *ctx,
        * Note that lower mipmap levels aren't compressed.
        */
       si_make_DB_shader_coherent(sctx, 1, false, sctx->framebuffer.DB_has_shader_readable_metadata);
+   } else if (old_has_zsbuf &&
+              sctx->gfx_level == GFX11 && sctx->screen->info.family == CHIP_NAVI33) {
+      struct si_surface *old_zsurf = (struct si_surface *)sctx->framebuffer.state.zsbuf;
+      struct si_texture *old_ztex = (struct si_texture *)old_zsurf->base.texture;
+
+      if (old_ztex->upgraded_depth) {
+         /* TODO: some failures related to hyperz appeared after 969ed851 on nv33:
+          * - piglit tex-miplevel-selection
+          * - KHR-GL46.direct_state_access.framebuffers_texture_attachment
+          * - GTF-GL46.gtf30.GL3Tests.blend_minmax.blend_minmax_draw
+          * - KHR-GL46.direct_state_access.framebuffers_texture_layer_attachment
+          *
+          * This seems to fix them:
+          */
+         sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_DB | SI_CONTEXT_INV_L2;
+         si_mark_atom_dirty(sctx, &sctx->atoms.s.cache_flush);
+      }
    } else if (sctx->gfx_level == GFX9) {
       /* It appears that DB metadata "leaks" in a sequence of:
        *  - depth clear

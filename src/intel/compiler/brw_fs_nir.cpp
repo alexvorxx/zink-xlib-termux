@@ -4709,6 +4709,7 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
             ntb.resource_insts[def->index] =
                ubld8.emit(SHADER_OPCODE_MOV_RELOC_IMM, dst,
                           brw_imm_ud(id), brw_imm_ud(0));
+            break;
          }
 
          default:

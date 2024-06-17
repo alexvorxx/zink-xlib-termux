@@ -1195,7 +1195,7 @@ blorp_build_nir_shader(struct blorp_context *blorp,
       key->base.shader_pipeline == BLORP_SHADER_PIPELINE_COMPUTE;
    gl_shader_stage stage =
       compute ? MESA_SHADER_COMPUTE : MESA_SHADER_FRAGMENT;
-   blorp_nir_init_shader(&b, mem_ctx, stage, NULL);
+   blorp_nir_init_shader(&b, blorp, mem_ctx, stage, NULL);
 
    struct blorp_blit_vars v;
    blorp_blit_vars_init(&b, &v, key);

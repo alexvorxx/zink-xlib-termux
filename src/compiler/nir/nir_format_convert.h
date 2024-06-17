@@ -408,12 +408,16 @@ nir_format_pack_r9g9b9e5(nir_builder *b, nir_def *color)
 {
    /* See also float3_to_rgb9e5 */
 
-   /* First, get rid of negatives and NaN */
-   nir_def *clamped = nir_bcsel(b, nir_ugt_imm(b, color, 0x7f800000),
-                                nir_imm_float(b, 0), clamped);
-
-   /* Clamp it to range. */
-   clamped = nir_fmin(b, color, nir_imm_float(b, MAX_RGB9E5));
+   /* First, we need to clamp it to range. The fmax(color, 0) will also flush
+    * NaN to 0.  We set exact to ensure that nothing optimizes this behavior
+    * away from us.
+    */
+   float exact_save = b->exact;
+   b->exact = true;
+   nir_def *clamped =
+      nir_fmin(b, nir_fmax(b, color, nir_imm_float(b, 0)),
+                  nir_imm_float(b, MAX_RGB9E5));
+   b->exact = exact_save;
 
    /* maxrgb.u = MAX3(rc.u, gc.u, bc.u); */
    nir_def *maxu = nir_umax(b, nir_channel(b, clamped, 0),

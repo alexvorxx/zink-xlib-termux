@@ -147,6 +147,12 @@ if with_tools.contains('etnaviv')
     required: true,
   )
 
+  dep_pest = dependency('pest',
+    version: '>= 2.7.6',
+    fallback: ['pest', 'dep_pest'],
+    required: true,
+  )
+
   _libetnaviv_isa_proc_rs = rust.proc_macro(
     'etnaviv_isa_proc',
     files('isa_proc.rs', 'isa.rs'),
@@ -163,8 +169,8 @@ if with_tools.contains('etnaviv')
     files('lib.rs'),
     gnu_symbol_visibility : 'hidden',
     rust_abi : 'c',
-    dependencies: [dep_indexmap, dep_roxmltree],
-    link_with: [_libetnaviv_isa_bindings_gen],
+    dependencies: [dep_indexmap, dep_roxmltree, dep_pest],
+    link_with: [_libetnaviv_isa_bindings_gen, _libetnaviv_isa_proc_rs],
   )
 
 endif

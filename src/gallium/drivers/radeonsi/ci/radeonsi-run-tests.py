@@ -310,9 +310,12 @@ def verify_results(results):
     return False
 
 
-def parse_test_filters(include_tests):
+def parse_test_filters(include_tests, baseline):
     cmd = []
     for t in include_tests:
+        if t == 'baseline':
+            t = baseline
+
         if os.path.exists(t):
             with open(t, "r") as file:
                 for row in csv.reader(file, delimiter=","):
@@ -347,8 +350,8 @@ def select_baseline(basepath, gfx_level, gpu_name):
 
 
 success = True
-filters_args = parse_test_filters(args.include_tests)
 baseline = select_baseline(base, gfx_level, gpu_name)
+filters_args = parse_test_filters(args.include_tests, baseline)
 flakes = [
     f
     for f in (

@@ -2097,6 +2097,8 @@ fixup_merge_sets(struct ir3_liveness *live, struct ir3 *ir)
       }
    }
 
+   ir3_index_instrs_for_merge_sets(ir);
+
    foreach_block (block, &ir->block_list) {
       foreach_instr (instr, &block->instr_list) {
          if (instr->opc != OPC_META_SPLIT &&
@@ -2115,7 +2117,6 @@ fixup_merge_sets(struct ir3_liveness *live, struct ir3 *ir)
       }
    }
 
-   ir3_index_instrs_for_merge_sets(ir);
    ir3_merge_regs(live, ir);
 }
 

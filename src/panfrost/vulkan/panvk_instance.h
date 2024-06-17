@@ -23,7 +23,9 @@ enum panvk_debug_flags {
    PANVK_DEBUG_NO_KNOWN_WARN = 1 << 7,
 };
 
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
+    defined(VK_USE_PLATFORM_XCB_KHR) || \
+    defined(VK_USE_PLATFORM_XLIB_KHR)
 #define PANVK_USE_WSI_PLATFORM
 #endif
 

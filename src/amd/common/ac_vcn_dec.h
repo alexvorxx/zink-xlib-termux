@@ -1206,5 +1206,6 @@ struct jpeg_params {
 
 unsigned ac_vcn_dec_calc_ctx_size_av1(unsigned av1_version);
 void ac_vcn_av1_init_probs(unsigned av1_version, uint8_t *prob);
+void ac_vcn_av1_init_film_grain_buffer(rvcn_dec_film_grain_params_t *fg_params, rvcn_dec_av1_fg_init_buf_t *fg_buf);
 
 #endif

@@ -420,6 +420,8 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
          stream, " dst_offset=%d, src_offset = %d, src_size = %d",
          instr->push_consts.dst_base, instr->push_consts.src_base,
          instr->push_consts.src_size);
+   } else if (instr->opc == OPC_SPILL_MACRO) {
+      mesa_log_stream_printf(stream, " dst_offset=%d", instr->cat6.dst_offset);
    }
 
    if (is_flow(instr) && instr->cat0.target) {

@@ -4604,7 +4604,8 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
          case nir_intrinsic_load_uniform: {
             unsigned base_offset = nir_intrinsic_base(intrin);
             unsigned load_offset = nir_src_as_uint(intrin->src[0]);
-            fs_reg src(UNIFORM, base_offset / 4, BRW_TYPE_UD);
+            fs_reg src(UNIFORM, base_offset / 4,
+                       brw_type_with_size(BRW_TYPE_UD, intrin->def.bit_size));
             src.offset = load_offset + base_offset % 4;
             return src;
          }
@@ -4653,7 +4654,6 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
                ntb.resource_insts[alu->src[s].src.ssa->index]->dst,
                ubld8, alu->src[s].swizzle[0]);
             assert(srcs[s].file != BAD_FILE);
-            assert(srcs[s].type == BRW_TYPE_UD);
          }
 
          switch (alu->op) {
@@ -4705,7 +4705,8 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
 
             unsigned base_offset = nir_intrinsic_base(intrin);
             unsigned load_offset = nir_src_as_uint(intrin->src[0]);
-            fs_reg src(UNIFORM, base_offset / 4, BRW_TYPE_UD);
+            fs_reg src(UNIFORM, base_offset / 4,
+                       brw_type_with_size(BRW_TYPE_D, intrin->def.bit_size));
             src.offset = load_offset + base_offset % 4;
             ubld8.MOV(src, &ntb.resource_insts[def->index]);
             break;
@@ -4722,10 +4723,12 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
 
          case nir_intrinsic_load_ubo_uniform_block_intel:
          case nir_intrinsic_load_ssbo_uniform_block_intel: {
-            fs_reg src_data = retype(ntb.ssa_values[def->index], BRW_TYPE_D);
+            enum brw_reg_type type =
+               brw_type_with_size(BRW_TYPE_D, intrin->def.bit_size);
+            fs_reg src_data = retype(ntb.ssa_values[def->index], type);
             unsigned n_components = ntb.s.alloc.sizes[src_data.nr] /
                                     (bld.dispatch_width() / 8);
-            fs_reg dst_data = ubld8.vgrf(BRW_TYPE_D, n_components);
+            fs_reg dst_data = ubld8.vgrf(type, n_components);
             ntb.resource_insts[def->index] = ubld8.MOV(dst_data, src_data);
             for (unsigned i = 1; i < n_components; i++) {
                ubld8.MOV(offset(dst_data, ubld8, i),

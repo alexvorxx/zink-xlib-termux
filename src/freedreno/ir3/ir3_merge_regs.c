@@ -565,8 +565,6 @@ dump_merge_sets(struct ir3 *ir)
 void
 ir3_merge_regs(struct ir3_liveness *live, struct ir3 *ir)
 {
-   ir3_index_instrs_for_merge_sets(ir);
-
    /* First pass: coalesce phis, which must be together. */
    foreach_block (block, &ir->block_list) {
       foreach_instr (instr, &block->instr_list) {

@@ -176,6 +176,8 @@ void ir3_merge_regs(struct ir3_liveness *live, struct ir3 *ir);
 void ir3_force_merge(struct ir3_register *a, struct ir3_register *b,
                      int b_offset);
 
+void ir3_index_instrs_for_merge_sets(struct ir3 *ir);
+
 struct ir3_pressure {
    unsigned full, half, shared, shared_half;
 };

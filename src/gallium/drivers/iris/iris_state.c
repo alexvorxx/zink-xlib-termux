@@ -1232,6 +1232,12 @@ toggle_protected(struct iris_batch *batch)
 #endif
 }
 
+#if GFX_VER >= 20
+#define _3DSTATE_DRAWING_RECTANGLE GENX(3DSTATE_DRAWING_RECTANGLE_FAST)
+#else
+#define _3DSTATE_DRAWING_RECTANGLE GENX(3DSTATE_DRAWING_RECTANGLE)
+#endif
+
 /**
  * Upload the initial GPU state for a render context.
  *
@@ -1383,7 +1389,7 @@ iris_init_render_context(struct iris_batch *batch)
     * instead include the render target dimensions in the viewport, so
     * viewport extents clipping takes care of pruning stray geometry.
     */
-   iris_emit_cmd(batch, GENX(3DSTATE_DRAWING_RECTANGLE), rect) {
+   iris_emit_cmd(batch, _3DSTATE_DRAWING_RECTANGLE, rect) {
       rect.ClippedDrawingRectangleXMax = UINT16_MAX;
       rect.ClippedDrawingRectangleYMax = UINT16_MAX;
    }

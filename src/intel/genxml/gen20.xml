@@ -439,6 +439,24 @@
     <field name="LOD" start="240" end="243" type="uint" />
     <field name="Render Target View Extent" start="245" end="255" type="uint" />
   </instruction>
+  <instruction name="3DSTATE_DRAWING_RECTANGLE_FAST" bias="2" length="4" engine="render">
+    <field name="DWord Length" start="0" end="7" type="uint" default="2" />
+    <field name="Core Mode Select" start="14" end="15" type="uint">
+      <value name="Legacy" value="0" />
+      <value name="Core 0 Enabled" value="1" />
+      <value name="Core 1 Enabled" value="2" />
+    </field>
+    <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="0" />
+    <field name="3D Command Opcode" start="24" end="26" type="uint" default="0" />
+    <field name="Command SubType" start="27" end="28" type="uint" default="3" />
+    <field name="Command Type" start="29" end="31" type="uint" default="3" />
+    <field name="Clipped Drawing Rectangle X Min" start="32" end="47" type="uint" />
+    <field name="Clipped Drawing Rectangle Y Min" start="48" end="63" type="uint" />
+    <field name="Clipped Drawing Rectangle X Max" start="64" end="79" type="uint" />
+    <field name="Clipped Drawing Rectangle Y Max" start="80" end="95" type="uint" />
+    <field name="Drawing Rectangle Origin X" start="96" end="111" type="int" />
+    <field name="Drawing Rectangle Origin Y" start="112" end="127" type="int" />
+  </instruction>
   <instruction name="3DSTATE_GS" bias="2" length="10" engine="render">
     <field name="DWord Length" start="0" end="7" type="uint" default="8" />
     <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="17" />

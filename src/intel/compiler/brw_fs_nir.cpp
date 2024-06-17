@@ -4540,6 +4540,28 @@ struct rebuild_resource {
 };
 
 static bool
+skip_rebuild_instr(nir_instr *instr)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_load_ubo_uniform_block_intel:
+   case nir_intrinsic_load_ssbo_uniform_block_intel:
+   case nir_intrinsic_load_global_constant_uniform_block_intel:
+      /* Those intrinsic are generated using NoMask so we can trust their
+       * destination registers are fully populated. No need to rematerialize
+       * further.
+       */
+      return true;
+
+   default:
+      return false;
+   }
+}
+
+static bool
 add_rebuild_src(nir_src *src, void *state)
 {
    struct rebuild_resource *res = (struct rebuild_resource *) state;
@@ -4549,7 +4571,8 @@ add_rebuild_src(nir_src *src, void *state)
          return true;
    }
 
-   nir_foreach_src(src->ssa->parent_instr, add_rebuild_src, state);
+   if (!skip_rebuild_instr(src->ssa->parent_instr))
+      nir_foreach_src(src->ssa->parent_instr, add_rebuild_src, state);
    res->array.push_back(src->ssa);
    return true;
 }

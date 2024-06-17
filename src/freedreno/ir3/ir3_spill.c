@@ -864,6 +864,7 @@ split(struct ir3_register *def, unsigned offset,
    assert(def->merge_set);
    struct ir3_instruction *split =
       ir3_instr_create(block, OPC_META_SPLIT, 1, 1);
+   split->split.off = offset;
    struct ir3_register *dst = __ssa_dst(split);
    dst->flags |= def->flags & IR3_REG_HALF;
    struct ir3_register *src = ir3_src_create(split, INVALID_REG, def->flags);

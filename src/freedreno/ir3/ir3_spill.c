@@ -1325,8 +1325,10 @@ remove_input_phi(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
       return;
 
    if (instr->opc == OPC_META_TEX_PREFETCH) {
-      ra_foreach_src (src, instr)
-         remove_src(ctx, instr, src);
+      ra_foreach_src (src, instr) {
+         if (src->flags & IR3_REG_FIRST_KILL)
+            remove_src(ctx, instr, src);
+      }
    }
    if (instr->dsts[0]->flags & IR3_REG_UNUSED)
       remove_dst(ctx, instr->dsts[0]);

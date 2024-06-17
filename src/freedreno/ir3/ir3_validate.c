@@ -472,8 +472,8 @@ ir3_validate(struct ir3 *ir)
 
       struct ir3_instruction *prev = NULL;
       foreach_instr (instr, &block->instr_list) {
-         validate_assert(ctx, instr->block == block);
          ctx->current_instr = instr;
+         validate_assert(ctx, instr->block == block);
          if (instr->opc == OPC_META_PHI) {
             /* phis must be the first in the block */
             validate_assert(ctx, prev == NULL || prev->opc == OPC_META_PHI);

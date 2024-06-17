@@ -1750,7 +1750,7 @@ tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
    uint32_t store_cpp = 0;
    uint32_t clear_cpp = 0;
    bool has_depth = false;
-   char ubwc[12];
+   char ubwc[MAX_RTS + 3];
    for (uint32_t i = 0; i < cmd->state.pass->attachment_count; i++) {
       const struct tu_render_pass_attachment *attachment =
          &cmd->state.pass->attachments[i];
@@ -1773,8 +1773,10 @@ tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
    const struct tu_subpass *subpass = &cmd->state.pass->subpasses[0];
    for (uint32_t i = 0; i < subpass->color_count; i++) {
       uint32_t att = subpass->color_attachments[i].attachment;
-      ubwc[ubwc_len++] =
-         cmd->state.attachments[att]->view.ubwc_enabled ? 'y' : 'n';
+      ubwc[ubwc_len++] = att == VK_ATTACHMENT_UNUSED ? '-'
+                         : cmd->state.attachments[att]->view.ubwc_enabled
+                            ? 'y'
+                            : 'n';
    }
    if (subpass->depth_used) {
       ubwc[ubwc_len++] = '|';
@@ -2103,7 +2105,7 @@ tu_cmd_render_tiles(struct tu_cmd_buffer *cmd,
    trace_end_render_pass(&cmd->trace, &cmd->cs, true,
                          cmd->state.rp.drawcall_count,
                          cmd->state.rp.drawcall_bandwidth_per_sample_sum /
-                            cmd->state.rp.drawcall_count,
+                            MAX2(cmd->state.rp.drawcall_count, 1),
                          cmd->state.lrz.valid,
                          cmd->state.rp.lrz_disable_reason);
 
@@ -2145,7 +2147,7 @@ tu_cmd_render_sysmem(struct tu_cmd_buffer *cmd,
    trace_end_render_pass(&cmd->trace, &cmd->cs, false,
                          cmd->state.rp.drawcall_count,
                          cmd->state.rp.drawcall_bandwidth_per_sample_sum /
-                            cmd->state.rp.drawcall_count,
+                            MAX2(cmd->state.rp.drawcall_count, 1),
                          cmd->state.lrz.valid,
                          cmd->state.rp.lrz_disable_reason);
 }

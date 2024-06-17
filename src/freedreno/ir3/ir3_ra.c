@@ -870,8 +870,9 @@ try_evict_regs(struct ra_ctx *ctx, struct ra_file *file,
          unsigned conflicting_size =
             conflicting->physreg_end - conflicting->physreg_start;
          if (size >= conflicting_size &&
-             !check_dst_overlap(ctx, file, reg, avail_start, avail_start +
-                                conflicting_size)) {
+             (is_source ||
+              !check_dst_overlap(ctx, file, reg, avail_start,
+                                 avail_start + conflicting_size))) {
             for (unsigned i = 0;
                  i < conflicting->physreg_end - conflicting->physreg_start; i++)
                BITSET_CLEAR(available_to_evict, avail_start + i);

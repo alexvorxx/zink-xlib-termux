@@ -157,6 +157,16 @@ if with_tools.contains('etnaviv')
     # triggers a bug in meson
     # rust.test('isa', _libetnaviv_isa_proc_rs, suite : ['etnaviv'])
   endif
+
+  libetnaviv_isa_rs = static_library(
+    'etnaviv_isa_rs',
+    files('lib.rs'),
+    gnu_symbol_visibility : 'hidden',
+    rust_abi : 'c',
+    dependencies: [dep_indexmap, dep_roxmltree],
+    link_with: [_libetnaviv_isa_bindings_gen],
+  )
+
 endif
 
 subdir('tests')

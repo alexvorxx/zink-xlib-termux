@@ -1043,6 +1043,17 @@ static void
 handle_instr(struct ra_spill_ctx *ctx, struct ir3_instruction *instr)
 {
    ra_foreach_dst (dst, instr) {
+      /* No need to handle instructions inserted while spilling. Most are
+       * ignored automatically by virtue of being inserted before the current
+       * instruction. However, for live-ins, we may insert extracts after the
+       * phis. Trying to handle them ends badly as they don't have intervals
+       * allocated.
+       * Note: since liveness is calculated before spilling, original
+       * instruction have a name while new ones don't.
+       */
+      if (!dst->name)
+         return;
+
       init_dst(ctx, dst);
    }
 
@@ -1489,20 +1500,6 @@ live_in_rewrite(struct ra_spill_ctx *ctx,
 
    if (def)
       _mesa_hash_table_insert(state->remap, def, new_val);
-
-   rb_tree_foreach (struct ra_spill_interval, child,
-                    &interval->interval.children, interval.node) {
-      assert(new_val->flags & IR3_REG_SSA);
-      struct ir3_register *child_def =
-         extract(new_val->def,
-                 (child->interval.reg->interval_start - def->interval_start) /
-                 reg_elem_size(def), reg_elems(child->interval.reg),
-                 ir3_before_terminator(pred));
-      struct reg_or_immed *child_val = ralloc(ctx, struct reg_or_immed);
-      child_val->def = child_def;
-      child_val->flags = child_def->flags;
-      live_in_rewrite(ctx, child, child_val, block, pred_idx);
-   }
 }
 
 static void
@@ -1544,7 +1541,7 @@ reload_live_ins(struct ra_spill_ctx *ctx, struct ir3_block *block)
 
 static void
 add_live_in_phi(struct ra_spill_ctx *ctx, struct ir3_register *def,
-                struct ir3_block *block)
+                struct ir3_register *parent_def, struct ir3_block *block)
 {
    struct ra_spill_interval *interval = ctx->intervals[def->name];
    if (!interval->interval.inserted)
@@ -1577,6 +1574,26 @@ add_live_in_phi(struct ra_spill_ctx *ctx, struct ir3_register *def,
    if (!needs_phi) {
       interval->dst.def = cur_def;
       interval->dst.flags = cur_def->flags;
+
+      rb_tree_foreach (struct ra_spill_interval, child,
+                       &interval->interval.children, interval.node) {
+         add_live_in_phi(ctx, child->interval.reg, cur_def, block);
+      }
+
+      return;
+   }
+
+   if (parent_def) {
+      /* We have a child interval that needs a phi but whose parent does not
+       * need one (otherwise parent_def would be NULL). Just extract the child
+       * from the parent without creating a phi for the child.
+       */
+      unsigned offset = (def->interval_start - parent_def->interval_start) /
+                        reg_elem_size(def);
+      struct ir3_register *extracted =
+         extract(parent_def, offset, reg_elems(def), ir3_after_phis(block));
+      rewrite_src_interval(ctx, interval, extracted,
+                           ir3_after_instr(extracted->instr));
       return;
    }
 
@@ -1612,6 +1629,19 @@ add_live_in_phi(struct ra_spill_ctx *ctx, struct ir3_register *def,
 
    interval->dst.def = dst;
    interval->dst.flags = dst->flags;
+   rewrite_src_interval(ctx, interval, dst, ir3_after_phis(block));
+}
+
+static void
+add_live_in_phis(struct ra_spill_ctx *ctx, struct ir3_block *block)
+{
+   rb_tree_foreach (struct ra_spill_interval, interval, &ctx->reg_ctx.intervals,
+                    interval.node) {
+      if (BITSET_TEST(ctx->live->live_in[block->index],
+                      interval->interval.reg->name)) {
+         add_live_in_phi(ctx, interval->interval.reg, NULL, block);
+      }
+   }
 }
 
 /* When spilling a block with a single predecessors, the pred may have other
@@ -1843,11 +1873,7 @@ handle_block(struct ra_spill_ctx *ctx, struct ir3_block *block)
                break;
             rewrite_phi(ctx, instr, block);
          }
-         BITSET_FOREACH_SET (name, ctx->live->live_in[block->index],
-                             ctx->live->definitions_count) {
-            struct ir3_register *reg = ctx->live->definitions[name];
-            add_live_in_phi(ctx, reg, block);
-         }
+         add_live_in_phis(ctx, block);
       }
    } else {
       update_max_pressure(ctx);

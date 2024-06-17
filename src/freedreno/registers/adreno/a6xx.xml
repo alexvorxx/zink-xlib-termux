@@ -5888,7 +5888,7 @@ to upconvert to 32b float internally?
 		<!-- Affects UBWC in some way, if BLIT_OP_SCALE is done with this bit set
 		     and if other blit is done without it - UBWC image may be copied incorrectly.
 		 -->
-		<bitfield name="UBWC_WORKAROUND" pos="18" type="boolean"/>
+		<bitfield name="TP_UBWC_FLAG_HINT" pos="18" type="boolean"/>
 	</reg32>
 	<reg32 offset="0xb604" name="TPL1_NC_MODE_CNTL">
 		<bitfield name="MODE" pos="0" type="boolean"/>

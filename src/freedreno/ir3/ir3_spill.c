@@ -613,6 +613,19 @@ remove_src_early(struct ra_spill_ctx *ctx, struct ir3_instruction *instr,
 {
    struct ra_spill_interval *interval = ctx->intervals[src->def->name];
 
+   if (ctx->spilling) {
+      /* It might happen that a collect that cannot be coalesced with one of its
+       * sources while spilling can be coalesced with it afterwards. In this
+       * case, we might be able to remove it here during spilling but not
+       * afterwards (because it may have a child interval). If this happens, we
+       * could end up with a register pressure that is higher after spilling
+       * than before. Prevent this by never removing collects early while
+       * spilling.
+       */
+      if (src->def->instr->opc == OPC_META_COLLECT)
+         return;
+   }
+
    if (!interval->interval.inserted || interval->interval.parent ||
        !rb_tree_is_empty(&interval->interval.children))
       return;

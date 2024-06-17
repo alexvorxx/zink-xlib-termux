@@ -537,14 +537,15 @@ dump_merge_sets(struct ir3 *ir)
             if (!merge_set || _mesa_set_search(merge_sets, merge_set))
                continue;
 
-            d("merge set, size %u, align %u:", merge_set->size,
-              merge_set->alignment);
+            d("merge set, size %u, align %u, interval start %u:",
+              merge_set->size, merge_set->alignment, merge_set->interval_start);
             for (unsigned j = 0; j < merge_set->regs_count; j++) {
                struct ir3_register *reg = merge_set->regs[j];
                const char *s = (reg->flags & IR3_REG_SHARED) ? "s" : "";
                const char *h = (reg->flags & IR3_REG_HALF) ? "h" : "";
-               d("\t%s%s" SYN_SSA("ssa_%u") ":%u, offset %u", s, h,
-                 reg->instr->serialno, reg->name, reg->merge_set_offset);
+               d("\t%s%s" SYN_SSA("ssa_%u") ":%u, offset %u, interval: %u-%u",
+                 s, h, reg->instr->serialno, reg->name, reg->merge_set_offset,
+                 reg->interval_start, reg->interval_end);
             }
 
             _mesa_set_add(merge_sets, merge_set);

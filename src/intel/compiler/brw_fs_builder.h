@@ -564,20 +564,31 @@ namespace brw {
 #define ALU1(op) _ALU1(BRW_OPCODE_, op)
 #define VIRT1(op) _ALU1(SHADER_OPCODE_, op)
 
+      fs_inst *
+      alu2(opcode op, const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const
+      {
+         return emit(op, dst, src0, src1);
+      }
+      fs_reg
+      alu2(opcode op, const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const
+      {
+         enum brw_reg_type inferred_dst_type =
+            brw_type_larger_of(src0.type, src1.type);
+         fs_inst *inst = alu2(op, vgrf(inferred_dst_type), src0, src1);
+         if (out) *out = inst;
+         return inst->dst;
+      }
+
 #define _ALU2(prefix, op)                                                    \
       fs_inst *                                                              \
       op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const    \
       {                                                                      \
-         return emit(prefix##op, dst, src0, src1);                           \
+         return alu2(prefix##op, dst, src0, src1);                           \
       }                                                                      \
       fs_reg                                                                 \
       op(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const \
       {                                                                      \
-         enum brw_reg_type inferred_dst_type =                               \
-            brw_type_larger_of(src0.type, src1.type);                        \
-         fs_inst *inst = op(vgrf(inferred_dst_type), src0, src1);            \
-         if (out) *out = inst;                                               \
-         return inst->dst;                                                   \
+         return alu2(prefix##op, src0, src1, out);                           \
       }
 #define ALU2(op) _ALU2(BRW_OPCODE_, op)
 #define VIRT2(op) _ALU2(SHADER_OPCODE_, op)

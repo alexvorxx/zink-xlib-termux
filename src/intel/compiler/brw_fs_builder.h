@@ -610,7 +610,6 @@ namespace brw {
          return emit(BRW_OPCODE_##op, dst, src0, src1, src2);           \
       }
 
-      ALU2(ADD)
       ALU3(ADD3)
       ALU2_ACC(ADDC)
       ALU2(AND)
@@ -671,6 +670,21 @@ namespace brw {
 #undef VIRT1
 #undef _ALU1
       /** @} */
+
+      fs_inst *
+      ADD(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const
+      {
+         return alu2(BRW_OPCODE_ADD, dst, src0, src1);
+      }
+
+      fs_reg
+      ADD(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const
+      {
+         if (src1.file == IMM && src1.ud == 0 && !out)
+            return src0;
+
+         return alu2(BRW_OPCODE_ADD, src0, src1, out);
+      }
 
       /**
        * CMP: Sets the low bit of the destination channels with the result

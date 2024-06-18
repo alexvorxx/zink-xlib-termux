@@ -75,7 +75,7 @@ brw_reg_from_fs_reg(const struct intel_device_info *devinfo, fs_inst *inst,
    case FIXED_GRF:
    case IMM:
       assert(reg->offset == 0);
-      brw_reg = reg->as_brw_reg();
+      brw_reg = *reg;
       break;
    case BAD_FILE:
       /* Probably unused. */

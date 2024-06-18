@@ -36,20 +36,6 @@ public:
    fs_reg(struct ::brw_reg reg);
    fs_reg(enum brw_reg_file file, unsigned nr);
    fs_reg(enum brw_reg_file file, unsigned nr, enum brw_reg_type type);
-
-   const brw_reg &as_brw_reg() const
-   {
-      assert(file == ARF || file == FIXED_GRF || file == IMM);
-      assert(offset == 0);
-      return static_cast<const brw_reg &>(*this);
-   }
-
-   brw_reg &as_brw_reg()
-   {
-      assert(file == ARF || file == FIXED_GRF || file == IMM);
-      assert(offset == 0);
-      return static_cast<brw_reg &>(*this);
-   }
 };
 
 static inline fs_reg

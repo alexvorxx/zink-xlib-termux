@@ -204,7 +204,7 @@ brw_fs_validate(const fs_visitor &s)
        */
       if (intel_needs_workaround(devinfo, 14014617373) &&
           inst->dst.is_accumulator() &&
-          phys_subnr(devinfo, inst->dst.as_brw_reg()) == 0) {
+          phys_subnr(devinfo, inst->dst) == 0) {
          fsv_assert_eq(inst->dst.hstride, 1);
       }
 

@@ -90,11 +90,8 @@ public:
    using brw_reg::d64;
    using brw_reg::u64;
 
-   /** Offset from the start of the (virtual) register in bytes. */
-   uint16_t offset;
-
-   /** Register region horizontal stride */
-   uint8_t stride;
+   using brw_reg::offset;
+   using brw_reg::stride;
 };
 
 static inline fs_reg

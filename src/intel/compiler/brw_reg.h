@@ -187,6 +187,12 @@ struct brw_reg {
       int   d;
       unsigned ud;
    };
+
+   /** Offset from the start of the virtual register in bytes. */
+   uint16_t offset;
+
+   /** Register region horizontal stride of virtual registers */
+   uint8_t stride;
 };
 
 static inline unsigned
@@ -225,7 +231,10 @@ phys_subnr(const struct intel_device_info *devinfo, const struct brw_reg reg)
 static inline bool
 brw_regs_equal(const struct brw_reg *a, const struct brw_reg *b)
 {
-   return a->bits == b->bits && a->u64 == b->u64;
+   return a->bits   == b->bits &&
+          a->u64    == b->u64 &&
+          a->offset == b->offset &&
+          a->stride == b->stride;
 }
 
 static inline bool
@@ -369,6 +378,16 @@ brw_reg(enum brw_reg_file file,
    reg.width = width;
    reg.hstride = hstride;
    reg.pad1 = 0;
+
+   reg.offset = 0;
+   reg.stride = 1;
+   if (file == IMM &&
+       type != BRW_TYPE_V &&
+       type != BRW_TYPE_UV &&
+       type != BRW_TYPE_VF) {
+      reg.stride = 0;
+   }
+
    return reg;
 }
 

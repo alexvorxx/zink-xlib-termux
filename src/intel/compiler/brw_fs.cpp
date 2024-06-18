@@ -569,17 +569,13 @@ fs_reg::fs_reg(struct ::brw_reg reg) :
 bool
 fs_reg::equals(const fs_reg &r) const
 {
-   return brw_regs_equal(this, &r) &&
-          offset == r.offset &&
-          stride == r.stride;
+   return brw_regs_equal(this, &r);
 }
 
 bool
 fs_reg::negative_equals(const fs_reg &r) const
 {
-   return brw_regs_negative_equal(this, &r) &&
-          offset == r.offset &&
-          stride == r.stride;
+   return brw_regs_negative_equal(this, &r);
 }
 
 bool

@@ -983,8 +983,10 @@ eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLContext ctx)
        !draw_surf->ProtectedContent)
       RETURN_EGL_ERROR(disp, EGL_BAD_ACCESS, EGL_FALSE);
 
-   egl_relax (disp, &draw_surf->Resource, &read_surf->Resource,
-              &context->Resource) {
+   egl_relax (disp,
+              draw_surf ? &draw_surf->Resource : NULL,
+              read_surf ? &read_surf->Resource : NULL,
+              context ? &context->Resource : NULL) {
       ret = disp->Driver->MakeCurrent(disp, draw_surf, read_surf, context);
    }
 
@@ -1837,7 +1839,7 @@ _eglCreateImageCommon(_EGLDisplay *disp, EGLContext ctx, EGLenum target,
    if (ctx != EGL_NO_CONTEXT && target == EGL_LINUX_DMA_BUF_EXT)
       RETURN_EGL_ERROR(disp, EGL_BAD_PARAMETER, EGL_NO_IMAGE_KHR);
 
-   egl_relax (disp, &context->Resource) {
+   egl_relax (disp, context ? &context->Resource : NULL) {
       img =
          disp->Driver->CreateImageKHR(disp, context, target, buffer, attr_list);
    }

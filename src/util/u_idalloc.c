@@ -154,7 +154,7 @@ util_idalloc_free(struct util_idalloc *buf, unsigned id)
        return;
 
    buf->lowest_free_idx = MIN2(idx, buf->lowest_free_idx);
-   buf->data[idx] &= ~(1 << (id % 32));
+   buf->data[idx] &= ~(1u << (id % 32));
 
    /* Decrease num_used to the last used element + 1. */
    if (buf->num_set_elements == idx + 1) {

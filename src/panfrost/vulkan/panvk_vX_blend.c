@@ -38,9 +38,12 @@ panvk_per_arch(blend_shader_cache_init)(struct panvk_device *dev)
    panvk_pool_init(&cache->bin_pool, dev, NULL, &bin_pool_props);
 
    cache->ht = pan_blend_shader_key_table_create(NULL);
-   if (!cache->ht)
+   if (!cache->ht) {
+      panvk_pool_cleanup(&cache->bin_pool);
+      simple_mtx_destroy(&cache->lock);
       return vk_errorf(dev, VK_ERROR_OUT_OF_HOST_MEMORY,
                        "couldn't create blend shader hash table");
+   }
 
    return VK_SUCCESS;
 }

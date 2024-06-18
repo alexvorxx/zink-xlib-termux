@@ -45,6 +45,7 @@ libgbm = shared_library(
   gnu_symbol_visibility : 'hidden',
   version : '1.0.0',
   install : true,
+  install_rpath : dri_drivers_path,
 )
 
 if with_tests

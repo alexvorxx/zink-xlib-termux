@@ -644,17 +644,15 @@ static const struct dri_extension_match optional_core_extensions[] = {
    {__DRI_KOPPER, 1, offsetof(struct dri2_egl_display, kopper), true},
 };
 
+const __DRIextension **
+dri_loader_get_extensions(const char *driver_name);
+
 static const __DRIextension **
 dri2_open_driver(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
-   static const char *search_path_vars[] = {
-      "LIBGL_DRIVERS_PATH",
-      NULL,
-   };
 
-   return loader_open_driver(dri2_dpy->driver_name, &dri2_dpy->driver,
-                             search_path_vars, disp->Options.FallbackZink);
+   return dri_loader_get_extensions(dri2_dpy->driver_name);
 }
 
 static EGLBoolean
@@ -666,13 +664,14 @@ dri2_load_driver_common(_EGLDisplay *disp,
    const __DRIextension **extensions;
 
    extensions = dri2_open_driver(disp);
-   if (!extensions)
+   if (!extensions) {
+      if (disp->Options.FallbackZink)
+         _eglLog(_LOADER_WARNING, "MESA-LOADER: failed to open %s: driver not built!)\n", dri2_dpy->driver_name);
       return EGL_FALSE;
+   }
 
    if (!loader_bind_extensions(dri2_dpy, driver_extensions, num_matches,
                                extensions)) {
-      dlclose(dri2_dpy->driver);
-      dri2_dpy->driver = NULL;
       return EGL_FALSE;
    }
    dri2_dpy->driver_extensions = extensions;
@@ -1136,14 +1135,6 @@ dri2_display_destroy(_EGLDisplay *disp)
       close(dri2_dpy->fd_display_gpu);
    if (dri2_dpy->fd_render_gpu >= 0)
       close(dri2_dpy->fd_render_gpu);
-
-      /* Don't dlclose the driver when building with the address sanitizer, so
-       * you get good symbols from the leak reports.
-       */
-#if !BUILT_WITH_ASAN || defined(NDEBUG)
-   if (dri2_dpy->driver)
-      dlclose(dri2_dpy->driver);
-#endif
 
    free(dri2_dpy->driver_name);
 

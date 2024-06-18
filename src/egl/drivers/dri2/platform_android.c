@@ -1012,8 +1012,6 @@ droid_unload_driver(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
 
-   dlclose(dri2_dpy->driver);
-   dri2_dpy->driver = NULL;
    free(dri2_dpy->driver_name);
    dri2_dpy->driver_name = NULL;
 }

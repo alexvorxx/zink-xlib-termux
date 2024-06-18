@@ -240,7 +240,6 @@ struct dri2_egl_display {
    __DRIscreen *dri_screen_display_gpu;
    bool own_dri_screen;
    const __DRIconfig **driver_configs;
-   void *driver;
    const __DRIcoreExtension *core;
    const __DRImesaCoreExtension *mesa;
    const __DRIimageDriverExtension *image_driver;

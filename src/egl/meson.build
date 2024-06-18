@@ -7,6 +7,12 @@ inc_egl_dri2 = include_directories('drivers/dri2')
 c_args_for_egl = [asan_c_args]
 cpp_args_for_egl = []
 link_for_egl = []
+if with_dri
+  link_for_egl += libgallium_dri
+endif
+if with_platform_windows
+  link_for_egl += libgallium_wgl
+endif
 deps_for_egl = []
 incs_for_egl = [inc_include, inc_src, inc_egl]
 
@@ -184,6 +190,7 @@ libegl = shared_library(
   link_args : [ld_args_bsymbolic, ld_args_gc_sections],
   dependencies : [deps_for_egl, dep_dl, dep_libdrm, dep_clock, dep_thread, idep_mesautil],
   install : true,
+  install_rpath : dri_drivers_path,
   version : egl_lib_version,
   soversion : egl_lib_soversion,
   name_prefix : host_machine.system() == 'windows' ? 'lib' : [],  # always use lib, but avoid warnings on !windows

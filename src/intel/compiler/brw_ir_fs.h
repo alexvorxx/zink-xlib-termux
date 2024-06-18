@@ -28,7 +28,7 @@
 #include "brw_ir.h"
 #include "brw_ir_allocator.h"
 
-class fs_reg : private brw_reg {
+class fs_reg : public brw_reg {
 public:
    void init();
 
@@ -66,32 +66,6 @@ public:
     * register assuming the given execution width.
     */
    unsigned component_size(unsigned width) const;
-
-   using brw_reg::type;
-   using brw_reg::file;
-   using brw_reg::negate;
-   using brw_reg::abs;
-   using brw_reg::address_mode;
-   using brw_reg::subnr;
-   using brw_reg::bits;
-
-   using brw_reg::nr;
-   using brw_reg::swizzle;
-   using brw_reg::writemask;
-   using brw_reg::indirect_offset;
-   using brw_reg::vstride;
-   using brw_reg::width;
-   using brw_reg::hstride;
-
-   using brw_reg::df;
-   using brw_reg::f;
-   using brw_reg::d;
-   using brw_reg::ud;
-   using brw_reg::d64;
-   using brw_reg::u64;
-
-   using brw_reg::offset;
-   using brw_reg::stride;
 };
 
 static inline fs_reg

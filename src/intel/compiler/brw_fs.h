@@ -608,7 +608,7 @@ namespace brw {
    inline fs_reg
    dynamic_msaa_flags(const struct brw_wm_prog_data *wm_prog_data)
    {
-      return fs_reg(UNIFORM, wm_prog_data->msaa_flags_param, BRW_TYPE_UD);
+      return brw_uniform_reg(wm_prog_data->msaa_flags_param, BRW_TYPE_UD);
    }
 
    void

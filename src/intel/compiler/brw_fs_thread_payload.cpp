@@ -399,7 +399,7 @@ cs_thread_payload::load_subgroup_id(const fs_builder &bld,
       assert(gl_shader_stage_is_compute(bld.shader->stage));
       int index = brw_get_subgroup_id_param_index(devinfo,
                                                   bld.shader->prog_data);
-      bld.MOV(dest, fs_reg(UNIFORM, index, BRW_TYPE_UD));
+      bld.MOV(dest, brw_uniform_reg(index, BRW_TYPE_UD));
    }
 }
 

@@ -30,12 +30,8 @@
 
 class fs_reg : public brw_reg {
 public:
-   void init();
-
    fs_reg();
-   fs_reg(struct ::brw_reg reg);
-   fs_reg(enum brw_reg_file file, unsigned nr);
-   fs_reg(enum brw_reg_file file, unsigned nr, enum brw_reg_type type);
+   fs_reg(struct ::brw_reg reg) : brw_reg(reg) {}
 };
 
 static inline fs_reg

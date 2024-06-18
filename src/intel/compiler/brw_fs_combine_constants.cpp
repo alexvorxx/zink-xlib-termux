@@ -1172,7 +1172,7 @@ allocate_slots(struct register_allocation *regs, unsigned num_regs,
 
             regs[i].avail &= ~(mask << j);
 
-            fs_reg reg(VGRF, regs[i].nr);
+            fs_reg reg = brw_vgrf(regs[i].nr, BRW_TYPE_F);
             reg.offset = j * 2;
 
             return reg;
@@ -1569,7 +1569,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       const uint32_t width = 1;
       const fs_builder ibld = fs_builder(&s, width).at(insert_block, n).exec_all();
 
-      fs_reg reg(VGRF, imm->nr);
+      fs_reg reg = brw_vgrf(imm->nr, BRW_TYPE_F);
       reg.offset = imm->subreg_offset;
       reg.stride = 0;
 

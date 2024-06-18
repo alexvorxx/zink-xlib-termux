@@ -933,7 +933,7 @@ fs_reg_alloc::alloc_spill_reg(unsigned size, int ip)
    }
    spill_vgrf_ip[spill_node_count++] = ip;
 
-   return fs_reg(VGRF, vgrf);
+   return brw_vgrf(vgrf, BRW_TYPE_F);
 }
 
 void

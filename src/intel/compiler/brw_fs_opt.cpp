@@ -324,8 +324,8 @@ brw_fs_opt_split_sends(fs_visitor &s)
       assert(lp2->size_written % REG_SIZE == 0);
       assert((lp1->size_written + lp2->size_written) / REG_SIZE == send->mlen);
 
-      lp1->dst = fs_reg(VGRF, s.alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
-      lp2->dst = fs_reg(VGRF, s.alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
+      lp1->dst = brw_vgrf(s.alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
+      lp2->dst = brw_vgrf(s.alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
 
       send->resize_sources(4);
       send->src[2] = lp1->dst;

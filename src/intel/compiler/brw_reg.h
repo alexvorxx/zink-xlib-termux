@@ -975,6 +975,39 @@ brw_mask_stack_depth_reg(unsigned subnr)
                       BRW_ARF_MASK_STACK_DEPTH, subnr);
 }
 
+static inline struct brw_reg
+brw_vgrf(unsigned nr, enum brw_reg_type type)
+{
+   struct brw_reg reg = {};
+   reg.file = VGRF;
+   reg.nr = nr;
+   reg.type = type;
+   reg.stride = 1;
+   return reg;
+}
+
+static inline struct brw_reg
+brw_attr_reg(unsigned nr, enum brw_reg_type type)
+{
+   struct brw_reg reg = {};
+   reg.file = ATTR;
+   reg.nr = nr;
+   reg.type = type;
+   reg.stride = 1;
+   return reg;
+}
+
+static inline struct brw_reg
+brw_uniform_reg(unsigned nr, enum brw_reg_type type)
+{
+   struct brw_reg reg = {};
+   reg.file = UNIFORM;
+   reg.nr = nr;
+   reg.type = type;
+   reg.stride = 0;
+   return reg;
+}
+
 /* This is almost always called with a numeric constant argument, so
  * make things easy to evaluate at compile time:
  */

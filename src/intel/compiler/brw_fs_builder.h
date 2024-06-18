@@ -191,10 +191,10 @@ namespace brw {
          assert(dispatch_width() <= 32);
 
          if (n > 0)
-            return fs_reg(VGRF, shader->alloc.allocate(
-                              DIV_ROUND_UP(n * brw_type_size_bytes(type) * dispatch_width(),
-                                           unit * REG_SIZE) * unit),
-                           type);
+            return brw_vgrf(shader->alloc.allocate(
+                               DIV_ROUND_UP(n * brw_type_size_bytes(type) * dispatch_width(),
+                                            unit * REG_SIZE) * unit),
+                            type);
          else
             return retype(null_reg_ud(), type);
       }

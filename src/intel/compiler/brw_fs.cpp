@@ -538,32 +538,13 @@ fs_inst::can_change_types() const
             !src[1].abs && !src[1].negate && src[1].file != ATTR));
 }
 
-void
-fs_reg::init()
+/** Generic unset register constructor. */
+fs_reg::fs_reg()
 {
    memset((void*)this, 0, sizeof(*this));
    type = BRW_TYPE_UD;
    stride = 1;
-}
-
-/** Generic unset register constructor. */
-fs_reg::fs_reg()
-{
-   init();
    this->file = BAD_FILE;
-}
-
-fs_reg::fs_reg(struct ::brw_reg reg) :
-   brw_reg(reg)
-{
-   this->offset = 0;
-   this->stride = 1;
-   if (this->file == IMM &&
-       (this->type != BRW_TYPE_V &&
-        this->type != BRW_TYPE_UV &&
-        this->type != BRW_TYPE_VF)) {
-      this->stride = 0;
-   }
 }
 
 bool
@@ -1068,24 +1049,6 @@ fs_inst::has_sampler_residency() const
    default:
       return false;
    }
-}
-
-fs_reg::fs_reg(enum brw_reg_file file, unsigned nr)
-{
-   init();
-   this->file = file;
-   this->nr = nr;
-   this->type = BRW_TYPE_F;
-   this->stride = (file == UNIFORM ? 0 : 1);
-}
-
-fs_reg::fs_reg(enum brw_reg_file file, unsigned nr, enum brw_reg_type type)
-{
-   init();
-   this->file = file;
-   this->nr = nr;
-   this->type = type;
-   this->stride = (file == UNIFORM ? 0 : 1);
 }
 
 /* For SIMD16, we need to follow from the uniform setup of SIMD8 dispatch.

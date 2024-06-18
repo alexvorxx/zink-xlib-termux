@@ -150,7 +150,7 @@ brw_fs_opt_split_virtual_grfs(fs_visitor &s)
                reg = vgrf_to_reg[inst->dst.nr] + reg_offset + size_written / REG_SIZE;
                fs_inst *undef =
                   ibld.UNDEF(
-                     byte_offset(fs_reg(VGRF, new_virtual_grf[reg], inst->dst.type),
+                     byte_offset(brw_vgrf(new_virtual_grf[reg], inst->dst.type),
                                  new_reg_offset[reg] * REG_SIZE));
                undef->size_written =
                   MIN2(inst->size_written - size_written, undef->size_written);

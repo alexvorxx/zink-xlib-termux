@@ -383,7 +383,7 @@ remap_sources(fs_visitor &s, const brw::def_analysis &defs,
                if (def_block->end_ip_delta)
                   s.cfg->adjust_block_ips();
 
-               fs_reg neg(VGRF, new_nr, BRW_TYPE_F);
+               fs_reg neg = brw_vgrf(new_nr, BRW_TYPE_F);
                fs_reg tmp = dbld.MOV(negate(neg));
                inst->src[i].nr = tmp.nr;
                remap_table[old_nr] = tmp.nr;

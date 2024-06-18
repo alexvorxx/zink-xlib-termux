@@ -72,11 +72,11 @@ fs_visitor::interp_reg(const fs_builder &bld, unsigned location,
        * component() to select the specified parameter.
        */
       const fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-      bld.MOV(tmp, offset(fs_reg(ATTR, regnr, BRW_TYPE_UD),
+      bld.MOV(tmp, offset(brw_attr_reg(regnr, BRW_TYPE_UD),
                           dispatch_width, comp));
       return retype(tmp, BRW_TYPE_F);
    } else {
-      return component(fs_reg(ATTR, regnr, BRW_TYPE_F), comp);
+      return component(brw_attr_reg(regnr, BRW_TYPE_F), comp);
    }
 }
 
@@ -107,11 +107,11 @@ fs_visitor::per_primitive_reg(const fs_builder &bld, int location, unsigned comp
        * component() to select the specified parameter.
        */
       const fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-      bld.MOV(tmp, offset(fs_reg(ATTR, regnr, BRW_TYPE_UD),
+      bld.MOV(tmp, offset(brw_attr_reg(regnr, BRW_TYPE_UD),
                           dispatch_width, comp % 4));
       return retype(tmp, BRW_TYPE_F);
    } else {
-      return component(fs_reg(ATTR, regnr, BRW_TYPE_F), comp % 4);
+      return component(brw_attr_reg(regnr, BRW_TYPE_F), comp % 4);
    }
 }
 
@@ -760,8 +760,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
             break;
          }
 
-         fs_reg zero(VGRF, alloc.allocate(dispatch_width / 8),
-                     BRW_TYPE_UD);
+         fs_reg zero = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                BRW_TYPE_UD);
          bld.MOV(zero, brw_imm_ud(0u));
 
          if (vue_map->slots_valid & VARYING_BIT_PRIMITIVE_SHADING_RATE &&
@@ -769,8 +769,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
             sources[length++] = this->outputs[VARYING_SLOT_PRIMITIVE_SHADING_RATE];
          } else if (devinfo->has_coarse_pixel_primitive_and_cb) {
             uint32_t one_fp16 = 0x3C00;
-            fs_reg one_by_one_fp16(VGRF, alloc.allocate(dispatch_width / 8),
-                                   BRW_TYPE_UD);
+            fs_reg one_by_one_fp16 = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                              BRW_TYPE_UD);
             bld.MOV(one_by_one_fp16, brw_imm_ud((one_fp16 << 16) | one_fp16));
             sources[length++] = one_by_one_fp16;
          } else {
@@ -843,9 +843,8 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
 
          srcs[URB_LOGICAL_SRC_HANDLE] = urb_handle;
          srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = per_slot_offsets;
-         srcs[URB_LOGICAL_SRC_DATA] = fs_reg(VGRF,
-                                             alloc.allocate((dispatch_width / 8) * length),
-                                             BRW_TYPE_F);
+         srcs[URB_LOGICAL_SRC_DATA] = brw_vgrf(alloc.allocate((dispatch_width / 8) * length),
+                                               BRW_TYPE_F);
          srcs[URB_LOGICAL_SRC_COMPONENTS] = brw_imm_ud(length);
          abld.LOAD_PAYLOAD(srcs[URB_LOGICAL_SRC_DATA], sources, length, 0);
 
@@ -884,10 +883,10 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       if (stage == MESA_SHADER_GEOMETRY)
          return;
 
-      fs_reg uniform_urb_handle = fs_reg(VGRF, alloc.allocate(dispatch_width / 8),
-                                         BRW_TYPE_UD);
-      fs_reg payload = fs_reg(VGRF, alloc.allocate(dispatch_width / 8),
-                              BRW_TYPE_UD);
+      fs_reg uniform_urb_handle = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                           BRW_TYPE_UD);
+      fs_reg payload = brw_vgrf(alloc.allocate(dispatch_width / 8),
+                                BRW_TYPE_UD);
 
       bld.exec_all().MOV(uniform_urb_handle, urb_handle);
 
@@ -911,9 +910,9 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
     */
    if (intel_needs_workaround(devinfo, 1805992985) && stage == MESA_SHADER_TESS_EVAL) {
       assert(dispatch_width == 8);
-      fs_reg uniform_urb_handle = fs_reg(VGRF, alloc.allocate(1), BRW_TYPE_UD);
-      fs_reg uniform_mask = fs_reg(VGRF, alloc.allocate(1), BRW_TYPE_UD);
-      fs_reg payload = fs_reg(VGRF, alloc.allocate(4), BRW_TYPE_UD);
+      fs_reg uniform_urb_handle = brw_vgrf(alloc.allocate(1), BRW_TYPE_UD);
+      fs_reg uniform_mask = brw_vgrf(alloc.allocate(1), BRW_TYPE_UD);
+      fs_reg payload = brw_vgrf(alloc.allocate(4), BRW_TYPE_UD);
 
       /* Workaround requires all 8 channels (lanes) to be valid. This is
        * understood to mean they all need to be alive. First trick is to find
@@ -984,8 +983,8 @@ fs_visitor::emit_cs_terminate()
     * make sure it uses the appropriate register range.
     */
    struct brw_reg g0 = retype(brw_vec8_grf(0, 0), BRW_TYPE_UD);
-   fs_reg payload = fs_reg(VGRF, alloc.allocate(reg_unit(devinfo)),
-                           BRW_TYPE_UD);
+   fs_reg payload = brw_vgrf(alloc.allocate(reg_unit(devinfo)),
+                             BRW_TYPE_UD);
    ubld.group(8 * reg_unit(devinfo), 0).MOV(payload, g0);
 
    /* Set the descriptor to "Dereference Resource" and "Root Thread" */

@@ -222,12 +222,12 @@ brw_fs_lower_mul_dword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
                           inst->src[1], inst->size_read(1)) ||
           inst->dst.stride >= 4) {
          needs_mov = true;
-         low = fs_reg(VGRF, s.alloc.allocate(regs_written(inst)),
-                      inst->dst.type);
+         low = brw_vgrf(s.alloc.allocate(regs_written(inst)),
+                        inst->dst.type);
       }
 
       /* Get a new VGRF but keep the same stride as inst->dst */
-      fs_reg high(VGRF, s.alloc.allocate(regs_written(inst)), inst->dst.type);
+      fs_reg high = brw_vgrf(s.alloc.allocate(regs_written(inst)), inst->dst.type);
       high.stride = inst->dst.stride;
       high.offset = inst->dst.offset % REG_SIZE;
 
@@ -319,17 +319,17 @@ brw_fs_lower_mul_qword_inst(fs_visitor &s, fs_inst *inst, bblock_t *block)
    unsigned int q_regs = regs_written(inst);
    unsigned int d_regs = (q_regs + 1) / 2;
 
-   fs_reg bd(VGRF, s.alloc.allocate(q_regs), BRW_TYPE_UQ);
-   fs_reg ad(VGRF, s.alloc.allocate(d_regs), BRW_TYPE_UD);
-   fs_reg bc(VGRF, s.alloc.allocate(d_regs), BRW_TYPE_UD);
+   fs_reg bd = brw_vgrf(s.alloc.allocate(q_regs), BRW_TYPE_UQ);
+   fs_reg ad = brw_vgrf(s.alloc.allocate(d_regs), BRW_TYPE_UD);
+   fs_reg bc = brw_vgrf(s.alloc.allocate(d_regs), BRW_TYPE_UD);
 
    /* Here we need the full 64 bit result for 32b * 32b. */
    if (devinfo->has_integer_dword_mul) {
       ibld.MUL(bd, subscript(inst->src[0], BRW_TYPE_UD, 0),
                subscript(inst->src[1], BRW_TYPE_UD, 0));
    } else {
-      fs_reg bd_high(VGRF, s.alloc.allocate(d_regs), BRW_TYPE_UD);
-      fs_reg bd_low(VGRF, s.alloc.allocate(d_regs), BRW_TYPE_UD);
+      fs_reg bd_high = brw_vgrf(s.alloc.allocate(d_regs), BRW_TYPE_UD);
+      fs_reg bd_low  = brw_vgrf(s.alloc.allocate(d_regs), BRW_TYPE_UD);
       const unsigned acc_width = reg_unit(devinfo) * 8;
       fs_reg acc = suboffset(retype(brw_acc_reg(inst->exec_size), BRW_TYPE_UD),
                              inst->group % acc_width);

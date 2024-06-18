@@ -553,8 +553,9 @@ brw_fs_lower_sends_overlapping_payload(fs_visitor &s)
          const unsigned arg = inst->mlen < inst->ex_mlen ? 2 : 3;
          const unsigned len = MIN2(inst->mlen, inst->ex_mlen);
 
-         fs_reg tmp = fs_reg(VGRF, s.alloc.allocate(len),
-                             BRW_TYPE_UD);
+         fs_reg tmp = brw_vgrf(s.alloc.allocate(len),
+                               BRW_TYPE_UD);
+
          /* Sadly, we've lost all notion of channels and bit sizes at this
           * point.  Just WE_all it.
           */
@@ -593,8 +594,8 @@ brw_fs_lower_3src_null_dest(fs_visitor &s)
 
    foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
       if (inst->is_3src(s.compiler) && inst->dst.is_null()) {
-         inst->dst = fs_reg(VGRF, s.alloc.allocate(s.dispatch_width / 8),
-                            inst->dst.type);
+         inst->dst = brw_vgrf(s.alloc.allocate(s.dispatch_width / 8),
+                              inst->dst.type);
          progress = true;
       }
    }

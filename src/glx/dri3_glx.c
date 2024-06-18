@@ -842,7 +842,7 @@ dri3_create_screen(int screen, struct glx_display * priv, bool driver_name_is_in
       goto handle_error;
    }
 
-   extensions = driOpenDriver(driverName, &psc->driver, driver_name_is_inferred);
+   extensions = driOpenDriver(driverName, driver_name_is_inferred);
    if (extensions == NULL)
       goto handle_error;
 
@@ -1033,8 +1033,6 @@ handle_error:
       close(psc->fd_display_gpu);
    if (psc->fd_render_gpu >= 0)
       close(psc->fd_render_gpu);
-   if (psc->driver)
-      dlclose(psc->driver);
 
    free(driverName);
    glx_screen_cleanup(&psc->base);

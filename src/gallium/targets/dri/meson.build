@@ -34,7 +34,7 @@ libgallium_dri = shared_library(
   link_depends : gallium_dri_link_depends,
   link_with : [
     libdri, libmesa, libgalliumvl,
-    libgallium, libglapi, libloader, libpipe_loader_static, libws_null, libwsw, libswdri,
+    libgallium, libglapi, libpipe_loader_static, libws_null, libwsw, libswdri,
     libswkmsdri,
   ],
   dependencies : [
@@ -45,7 +45,6 @@ libgallium_dri = shared_library(
     driver_panfrost, driver_iris, driver_lima, driver_zink, driver_d3d12,
     driver_asahi, driver_crocus
   ],
-  # Will be deleted during installation, see install_megadrivers.py
   install : true,
   install_dir : dri_drivers_path,
   name_suffix : 'so',

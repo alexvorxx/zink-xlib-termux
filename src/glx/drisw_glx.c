@@ -800,8 +800,6 @@ driswDestroyScreen(struct glx_screen *base)
    psc->core->destroyScreen(psc->driScreen);
    driDestroyConfigs(psc->driver_configs);
    psc->driScreen = NULL;
-   if (psc->driver)
-      dlclose(psc->driver);
    free(psc);
 }
 
@@ -955,7 +953,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
       return NULL;
    }
 
-   extensions = driOpenDriver(driver, &psc->driver, driver_name_is_inferred);
+   extensions = driOpenDriver(driver, driver_name_is_inferred);
    if (extensions == NULL)
       goto handle_error;
    psc->name = driver;
@@ -1051,8 +1049,6 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
        psc->core->destroyScreen(psc->driScreen);
    psc->driScreen = NULL;
 
-   if (psc->driver)
-      dlclose(psc->driver);
    glx_screen_cleanup(&psc->base);
    free(psc);
 

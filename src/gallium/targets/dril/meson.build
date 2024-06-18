@@ -130,8 +130,6 @@ endforeach
 # This only works on Unix-like oses, which is probably fine for dri
 prog_ln = find_program('ln', required : false)
 if prog_ln.found()
-  devenv.set('LIBGL_DRIVERS_PATH', meson.current_build_dir())
-
   foreach d : dril_drivers
     custom_target(
       'devenv_@0@'.format(d),

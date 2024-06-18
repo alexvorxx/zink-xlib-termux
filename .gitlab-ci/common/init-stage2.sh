@@ -94,7 +94,7 @@ fi
 # Fix prefix confusion: the build installs to $CI_PROJECT_DIR, but we expect
 # it in /install
 ln -sf $CI_PROJECT_DIR/install /install
-export LD_LIBRARY_PATH=/install/lib
+export LD_LIBRARY_PATH=/install/lib:/install/lib/dri
 export LIBGL_DRIVERS_PATH=/install/lib/dri
 
 # https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/22495#note_1876691
@@ -113,7 +113,7 @@ export PYTHONPATH=$(python3 -c "import sys;print(\":\".join(sys.path))")
 if [ -n "$MESA_LOADER_DRIVER_OVERRIDE" ]; then
   rm /install/lib/dri/!($MESA_LOADER_DRIVER_OVERRIDE)_dri.so
 fi
-ls -1 /install/lib/dri/*_dri.so || true
+ls -1 /install/lib/dri/*.so || true
 
 if [ "$HWCI_FREQ_MAX" = "true" ]; then
   # Ensure initialization of the DRM device (needed by MSM)

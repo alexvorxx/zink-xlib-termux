@@ -47,7 +47,7 @@ export WINEDLLOVERRIDES="mscoree=d;mshtml=d"  # FIXME: drop, not needed anymore?
 # Modifiying here directly LD_LIBRARY_PATH may cause problems when
 # using a command wrapper. Hence, we will just set it when running the
 # command.
-export __LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/"
+export __LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$INSTALL/lib/:$INSTALL/lib/dri"
 if [ -n "${VK_DRIVER}" ]; then
   # Set environment for DXVK.
   export DXVK_LOG_LEVEL="info"

@@ -26,7 +26,7 @@ if with_shared_glapi
     executable(
       'glx-test',
       [files_glx_test, glx_indirect_size_h, main_dispatch_h],
-      link_with : [libglx, libglapi, libloader],
+      link_with : [libglx, libglapi, glx_gallium_link, libloader],
       include_directories : [
         inc_src, inc_include, inc_mesa, inc_mapi, inc_glx, inc_loader, inc_gallium
       ],

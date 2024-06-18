@@ -53,7 +53,6 @@ struct drisw_screen
 
    const __DRIconfig **driver_configs;
 
-   void *driver;
    const char *name;
 
    bool has_multibuffer;

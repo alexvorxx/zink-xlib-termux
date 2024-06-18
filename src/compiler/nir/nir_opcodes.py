@@ -931,10 +931,10 @@ binop("umax", tuint, _2src_commutative + associative, "src1 > src0 ? src1 : src0
 binop("fpow", tfloat, "", "bit_size == 64 ? pow(src0, src1) : powf(src0, src1)")
 
 binop_horiz("pack_half_2x16_split", 1, tuint32, 1, tfloat32, 1, tfloat32,
-            "pack_half_1x16(src0.x) | (pack_half_1x16(src1.x) << 16)")
+            "pack_half_1x16(src0.x) | ((uint32_t)(pack_half_1x16(src1.x)) << 16)")
 
 binop_horiz("pack_half_2x16_rtz_split", 1, tuint32, 1, tfloat32, 1, tfloat32,
-            "pack_half_1x16_rtz(src0.x) | (pack_half_1x16_rtz(src1.x) << 16)")
+            "pack_half_1x16_rtz(src0.x) | (uint32_t)(pack_half_1x16_rtz(src1.x) << 16)")
 
 binop_convert("pack_64_2x32_split", tuint64, tuint32, "",
               "src0 | ((uint64_t)src1 << 32)")
@@ -1405,11 +1405,11 @@ for (int i = 0; i < 32; i += 8) {
 """)
 
 # unorm multiply: (a * b) / 255.
-binop("umul_unorm_4x8_vc4", tint32, _2src_commutative + associative, """
+binop("umul_unorm_4x8_vc4", tuint32, _2src_commutative + associative, """
 dst = 0;
 for (int i = 0; i < 32; i += 8) {
-   int src0_chan = (src0 >> i) & 0xff;
-   int src1_chan = (src1 >> i) & 0xff;
+   uint32_t src0_chan = (src0 >> i) & 0xff;
+   uint32_t src1_chan = (src1 >> i) & 0xff;
    dst |= ((src0_chan * src1_chan) / 255) << i;
 }
 """)
@@ -1453,7 +1453,7 @@ opcode("pack_4x16_to_4x8_v3d", 0, tuint32, [0, 0], [tuint32, tuint32],
 unop("pack_2x16_to_unorm_2x8_v3d", tuint32,
      "_mesa_half_to_unorm(src0 & 0xffff, 8) | (_mesa_half_to_unorm(src0 >> 16, 8) << 16)")
 unop("pack_2x16_to_snorm_2x8_v3d", tuint32,
-     "_mesa_half_to_snorm(src0 & 0xffff, 8) | (_mesa_half_to_snorm(src0 >> 16, 8) << 16)")
+     "_mesa_half_to_snorm(src0 & 0xffff, 8) | ((uint32_t)(_mesa_half_to_snorm(src0 >> 16, 8)) << 16)")
 
 # v3d-specific (v71) instructions to convert 32-bit floating point to 16 bit unorm/snorm
 unop("f2unorm_16_v3d", tuint32, "_mesa_float_to_unorm16(src0)")

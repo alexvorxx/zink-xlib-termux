@@ -199,7 +199,11 @@ _nir_format_norm_factor(nir_builder *b, const unsigned *bits,
    nir_const_value factor[NIR_MAX_VEC_COMPONENTS];
    memset(factor, 0, sizeof(factor));
    for (unsigned i = 0; i < num_components; i++) {
-      assert(bits[i] <= 32);
+      /* A 16-bit float only has 23 bits of mantissa.  This isn't enough to
+       * convert 24 or 32-bit UNORM/SNORM accurately.  For that, we would need
+       * fp64 or some sort of fixed-point math.
+       */
+      assert(bits[i] <= 16);
       factor[i].f32 = (1ull << (bits[i] - is_signed)) - 1;
    }
    return nir_build_imm(b, num_components, 32, factor);

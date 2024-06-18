@@ -102,9 +102,15 @@ panvk_kmod_zalloc(const struct pan_kmod_allocator *allocator, size_t size,
 {
    const VkAllocationCallbacks *vkalloc = allocator->priv;
 
-   return vk_zalloc(vkalloc, size, 8,
-                    transient ? VK_SYSTEM_ALLOCATION_SCOPE_COMMAND
-                              : VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+   void *obj = vk_zalloc(vkalloc, size, 8,
+                         transient ? VK_SYSTEM_ALLOCATION_SCOPE_COMMAND
+                                   : VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+
+   /* We force errno to -ENOMEM on host allocation failures so we can properly
+    * report it back as VK_ERROR_OUT_OF_HOST_MEMORY. */
+   errno = obj ? 0 : -ENOMEM;
+
+   return obj;
 }
 
 static void

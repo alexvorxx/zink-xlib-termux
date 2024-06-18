@@ -34,9 +34,15 @@ panvk_kmod_zalloc(const struct pan_kmod_allocator *allocator, size_t size,
 {
    const VkAllocationCallbacks *vkalloc = allocator->priv;
 
-   return vk_zalloc(vkalloc, size, 8,
-                    transient ? VK_SYSTEM_ALLOCATION_SCOPE_COMMAND
-                              : VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   void *obj = vk_zalloc(vkalloc, size, 8,
+                         transient ? VK_SYSTEM_ALLOCATION_SCOPE_COMMAND
+                                   : VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+
+   /* We force errno to -ENOMEM on host allocation failures so we can properly
+    * report it back as VK_ERROR_OUT_OF_HOST_MEMORY. */
+   errno = obj ? 0 : -ENOMEM;
+
+   return obj;
 }
 
 static void
@@ -146,6 +152,11 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
       pan_kmod_dev_create(dup(physical_device->kmod.dev->fd),
                           PAN_KMOD_DEV_FLAG_OWNS_FD, &device->kmod.allocator);
 
+   if (!device->kmod.dev) {
+      result = vk_errorf(instance, panvk_errno_to_vk_error(), "cannot create device");
+      goto fail_dev;
+   }
+
    if (instance->debug_flags &
        (PANVK_DEBUG_TRACE | PANVK_DEBUG_SYNC | PANVK_DEBUG_DUMP))
       device->debug.decode_ctx = pandecode_create_context(false);
@@ -162,6 +173,11 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
       pan_kmod_vm_create(device->kmod.dev, PAN_KMOD_VM_FLAG_AUTO_VA,
                          user_va_start, user_va_end - user_va_start);
 
+   if (!device->kmod.vm) {
+      result = vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_vm;
+   }
+
    panvk_device_init_mempools(device);
 
    device->tiler_heap = panvk_priv_bo_create(
@@ -169,14 +185,29 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
       PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
       VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
 
+   if (!device->tiler_heap) {
+      result = vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_priv_bo;
+   }
+
    device->sample_positions =
       panvk_priv_bo_create(device, panfrost_sample_positions_buffer_size(), 0,
                            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+
+   if (!device->sample_positions) {
+      result = vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_priv_bo;
+   }
+
    panfrost_upload_sample_positions(device->sample_positions->addr.host);
 
    vk_device_set_drm_fd(&device->vk, device->kmod.dev->fd);
 
-   panvk_per_arch(blend_shader_cache_init)(device);
+   result = panvk_per_arch(blend_shader_cache_init)(device);
+
+   if (result != VK_SUCCESS)
+      goto fail_priv_bo;
+
    panvk_per_arch(meta_init)(device);
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
@@ -218,12 +249,17 @@ fail:
 
    panvk_per_arch(meta_cleanup)(device);
    panvk_per_arch(blend_shader_cache_cleanup)(device);
-   panvk_priv_bo_unref(device->tiler_heap);
+
+fail_priv_bo:
    panvk_priv_bo_unref(device->sample_positions);
+   panvk_priv_bo_unref(device->tiler_heap);
    panvk_device_cleanup_mempools(device);
    pan_kmod_vm_destroy(device->kmod.vm);
+
+fail_vm:
    pan_kmod_dev_destroy(device->kmod.dev);
 
+fail_dev:
    vk_free(&device->vk.alloc, device);
    return result;
 }

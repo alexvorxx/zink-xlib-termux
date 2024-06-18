@@ -671,6 +671,12 @@ panvk_physical_device_init(struct panvk_physical_device *device,
 
    device->kmod.dev = pan_kmod_dev_create(fd, PAN_KMOD_DEV_FLAG_OWNS_FD,
                                           &instance->kmod.allocator);
+
+   if (!device->kmod.dev) {
+      result = vk_errorf(instance, panvk_errno_to_vk_error(), "cannot create device");
+      goto fail;
+   }
+
    pan_kmod_dev_query_props(device->kmod.dev, &device->kmod.props);
 
    unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);

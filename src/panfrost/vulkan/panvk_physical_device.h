@@ -66,6 +66,17 @@ panvk_get_vk_version()
    return VK_MAKE_API_VERSION(0, 1, 0, VK_HEADER_VERSION);
 }
 
+static inline VkResult
+panvk_errno_to_vk_error(void)
+{
+   switch (errno) {
+   case -ENOMEM:
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+   default:
+      return VK_ERROR_UNKNOWN;
+   }
+}
+
 VkResult panvk_physical_device_init(struct panvk_physical_device *device,
                                     struct panvk_instance *instance,
                                     drmDevicePtr drm_device);

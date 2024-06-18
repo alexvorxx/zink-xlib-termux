@@ -193,6 +193,24 @@ struct brw_reg {
 
    /** Register region horizontal stride of virtual registers */
    uint8_t stride;
+
+#ifdef __cplusplus
+   bool equals(const brw_reg &r) const;
+   bool negative_equals(const brw_reg &r) const;
+   bool is_contiguous() const;
+
+   bool is_zero() const;
+   bool is_one() const;
+   bool is_negative_one() const;
+   bool is_null() const;
+   bool is_accumulator() const;
+
+   /**
+    * Return the size in bytes of a single logical component of the
+    * register assuming the given execution width.
+    */
+   unsigned component_size(unsigned width) const;
+#endif /* __cplusplus */
 };
 
 static inline unsigned

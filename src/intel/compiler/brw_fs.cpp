@@ -567,19 +567,19 @@ fs_reg::fs_reg(struct ::brw_reg reg) :
 }
 
 bool
-fs_reg::equals(const fs_reg &r) const
+brw_reg::equals(const brw_reg &r) const
 {
    return brw_regs_equal(this, &r);
 }
 
 bool
-fs_reg::negative_equals(const fs_reg &r) const
+brw_reg::negative_equals(const brw_reg &r) const
 {
    return brw_regs_negative_equal(this, &r);
 }
 
 bool
-fs_reg::is_contiguous() const
+brw_reg::is_contiguous() const
 {
    switch (file) {
    case ARF:
@@ -599,7 +599,7 @@ fs_reg::is_contiguous() const
 }
 
 unsigned
-fs_reg::component_size(unsigned width) const
+brw_reg::component_size(unsigned width) const
 {
    if (file == ARF || file == FIXED_GRF) {
       const unsigned w = MIN2(width, 1u << this->width);

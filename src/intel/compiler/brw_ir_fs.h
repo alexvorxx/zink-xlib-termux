@@ -50,22 +50,6 @@ public:
       assert(offset == 0);
       return static_cast<brw_reg &>(*this);
    }
-
-   bool equals(const fs_reg &r) const;
-   bool negative_equals(const fs_reg &r) const;
-   bool is_contiguous() const;
-
-   bool is_zero() const;
-   bool is_one() const;
-   bool is_negative_one() const;
-   bool is_null() const;
-   bool is_accumulator() const;
-
-   /**
-    * Return the size in bytes of a single logical component of the
-    * register assuming the given execution width.
-    */
-   unsigned component_size(unsigned width) const;
 };
 
 static inline fs_reg

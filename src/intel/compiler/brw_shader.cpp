@@ -183,7 +183,7 @@ fs_reg_abs_immediate(fs_reg *reg)
 }
 
 bool
-fs_reg::is_zero() const
+brw_reg::is_zero() const
 {
    if (file != IMM)
       return false;
@@ -214,7 +214,7 @@ fs_reg::is_zero() const
 }
 
 bool
-fs_reg::is_one() const
+brw_reg::is_one() const
 {
    if (file != IMM)
       return false;
@@ -245,7 +245,7 @@ fs_reg::is_one() const
 }
 
 bool
-fs_reg::is_negative_one() const
+brw_reg::is_negative_one() const
 {
    if (file != IMM)
       return false;
@@ -273,14 +273,14 @@ fs_reg::is_negative_one() const
 }
 
 bool
-fs_reg::is_null() const
+brw_reg::is_null() const
 {
    return file == ARF && nr == BRW_ARF_NULL;
 }
 
 
 bool
-fs_reg::is_accumulator() const
+brw_reg::is_accumulator() const
 {
    return file == ARF && (nr & 0xF0) == BRW_ARF_ACCUMULATOR;
 }

@@ -172,7 +172,7 @@ driCreateConfigs(enum pipe_format format,
       if (is_float || color_bits[i] == 0)
          masks[i] = 0;
       else
-         masks[i] = ((1 << color_bits[i]) - 1) << shifts[i];
+         masks[i] = ((1u << color_bits[i]) - 1) << shifts[i];
    }
 
    num_modes = num_zs_formats * num_db_modes * num_accum_bits * num_msaa_modes;

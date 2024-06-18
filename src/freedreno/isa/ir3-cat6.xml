@@ -335,7 +335,7 @@ SOFTWARE.
 	<pattern low="40" high="48">xxxxxxxxx</pattern>
 	<pattern low="52" high="53">xx</pattern>
 	<encode>
-		<map name="OFF">extract_reg_uim(src->srcs[1])</map>
+		<map name="OFF">extract_reg_iim(src->srcs[1])</map>
 		<map name="SRC">src->srcs[0]</map>
 		<map name="SIZE">extract_reg_uim(src->srcs[2])</map>
 	</encode>

@@ -49,7 +49,6 @@ struct gbm_dri_visual {
 struct gbm_dri_device {
    struct gbm_device base;
 
-   void *driver;
    char *driver_name; /* Name of the DRI module, without the _dri suffix */
    bool software; /* A software driver was loaded */
 

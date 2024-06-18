@@ -204,9 +204,6 @@ endif
 if with_dri
   subdir('frontends/dri')
   subdir('targets/dri')
-  if with_glx == 'dri' or with_platform_x11 or with_platform_xcb
-    subdir('targets/dril')
-  endif
 endif
 if with_osmesa
   subdir('frontends/osmesa')

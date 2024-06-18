@@ -40,7 +40,7 @@ libgbm = shared_library(
   include_directories : incs_gbm,
   c_args : [args_gbm],
   link_args : [ld_args_gc_sections],
-  link_with : libloader,
+  link_with : [libloader, libgallium_dri],
   dependencies : [deps_gbm, dep_dl, dep_thread, idep_mesautil, idep_xmlconfig],
   gnu_symbol_visibility : 'hidden',
   version : '1.0.0',

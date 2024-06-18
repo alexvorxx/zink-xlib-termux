@@ -101,11 +101,6 @@ endif
 if with_gallium_asahi or with_tools.contains('asahi')
   subdir('asahi')
 endif
-if with_gbm
-  subdir('gbm')
-else
-  inc_gbm = []
-endif
 if with_gallium
   subdir('mesa')
   subdir('gallium')
@@ -121,8 +116,18 @@ if with_gallium
     subdir('mesa/state_tracker/tests')
   endif
 endif
+if with_gbm
+  subdir('gbm')
+else
+  inc_gbm = []
+endif
 if with_egl
   subdir('egl')
+endif
+if with_gallium and with_gbm
+  if with_glx == 'dri' or with_platform_x11 or with_platform_xcb
+    subdir('gallium/targets/dril')
+  endif
 endif
 
 # This must be after at least mesa, glx, and gallium, since libgl will be

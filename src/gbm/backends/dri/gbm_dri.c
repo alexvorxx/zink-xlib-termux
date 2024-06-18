@@ -248,8 +248,11 @@ static struct dri_extension_match gbm_swrast_device_extensions[] = {
    { __DRI_KOPPER, 1, offsetof(struct gbm_dri_device, kopper), true },
 };
 
+const __DRIextension **
+dri_loader_get_extensions(const char *driver_name);
+
 static const __DRIextension **
-dri_open_driver(struct gbm_dri_device *dri, bool driver_name_is_inferred)
+dri_open_driver(struct gbm_dri_device *dri)
 {
    /* Temporarily work around dri driver libs that need symbols in libglapi
     * but don't automatically link it in.
@@ -259,19 +262,7 @@ dri_open_driver(struct gbm_dri_device *dri, bool driver_name_is_inferred)
     */
    dlopen("libglapi.so.0", RTLD_LAZY | RTLD_GLOBAL);
 
-   static const char *search_path_vars[] = {
-      /* Read GBM_DRIVERS_PATH first for compatibility, but LIBGL_DRIVERS_PATH
-       * is recommended over GBM_DRIVERS_PATH.
-       */
-      "GBM_DRIVERS_PATH",
-      /* Read LIBGL_DRIVERS_PATH if GBM_DRIVERS_PATH was not set.
-       * LIBGL_DRIVERS_PATH is recommended over GBM_DRIVERS_PATH.
-       */
-      "LIBGL_DRIVERS_PATH",
-      NULL
-   };
-   return loader_open_driver(dri->driver_name, &dri->driver, search_path_vars,
-                             driver_name_is_inferred);
+   return dri_loader_get_extensions(dri->driver_name);
 }
 
 static int
@@ -281,9 +272,12 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
 
    dri->driver_name = swrast ? strdup("swrast") : driver_name;
 
-   const __DRIextension **extensions = dri_open_driver(dri, driver_name_is_inferred);
-   if (!extensions)
+   const __DRIextension **extensions = dri_open_driver(dri);
+   if (!extensions) {
+      if (driver_name_is_inferred)
+         fprintf(stderr, "MESA-LOADER: failed to open %s: driver not built!)\n", dri->driver_name);
       goto fail;
+   }
 
    bool bind_ok;
    if (!swrast) {
@@ -298,7 +292,7 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
 
    if (!bind_ok) {
       fprintf(stderr, "failed to bind extensions\n");
-      goto close_driver;
+      goto fail;
    }
 
    dri->driver_extensions = extensions;
@@ -308,7 +302,7 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
                                              dri->driver_extensions,
                                              &dri->driver_configs, driver_name_is_inferred, dri);
    if (dri->screen == NULL)
-      goto close_driver;
+      goto fail;
 
    if (!swrast) {
       extensions = dri->core->getExtensions(dri->screen);
@@ -325,9 +319,6 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool
 
 free_screen:
    dri->core->destroyScreen(dri->screen);
-
-close_driver:
-   dlclose(dri->driver);
 
 fail:
    free(dri->driver_name);
@@ -1220,7 +1211,6 @@ dri_destroy(struct gbm_device *gbm)
    for (i = 0; dri->driver_configs[i]; i++)
       free((__DRIconfig *) dri->driver_configs[i]);
    free(dri->driver_configs);
-   dlclose(dri->driver);
    free(dri->driver_name);
 
    free(dri);

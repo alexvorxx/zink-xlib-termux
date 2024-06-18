@@ -30,8 +30,6 @@
 
 class fs_reg : private brw_reg {
 public:
-   DECLARE_RALLOC_CXX_OPERATORS(fs_reg)
-
    void init();
 
    fs_reg();

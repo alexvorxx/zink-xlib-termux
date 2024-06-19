@@ -589,7 +589,7 @@ public:
 
    void calculate_deps();
    bool is_compressed(const fs_inst *inst);
-   bool register_needs_barrier(const fs_reg &reg);
+   bool register_needs_barrier(const brw_reg &reg);
    schedule_node *choose_instruction_to_schedule();
    int calculate_issue_time(const fs_inst *inst);
 
@@ -602,7 +602,7 @@ public:
    void schedule_instructions();
    void run(instruction_scheduler_mode mode);
 
-   int grf_index(const fs_reg &reg);
+   int grf_index(const brw_reg &reg);
 
    void *mem_ctx;
    linear_ctx *lin_ctx;
@@ -1071,7 +1071,7 @@ has_cross_lane_access(const fs_inst *inst)
  * Some register access need dependencies on other instructions.
  */
 bool
-instruction_scheduler::register_needs_barrier(const fs_reg &reg)
+instruction_scheduler::register_needs_barrier(const brw_reg &reg)
 {
    if (reg.file != ARF || reg.is_null())
       return false;
@@ -1175,7 +1175,7 @@ instruction_scheduler::clear_last_grf_write()
 }
 
 int
-instruction_scheduler::grf_index(const fs_reg &reg)
+instruction_scheduler::grf_index(const brw_reg &reg)
 {
    if (post_reg_alloc)
       return reg.nr;

@@ -500,19 +500,19 @@ needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
  * lbld.group() from the i-th source region of instruction \p inst and return
  * it as result in packed form.
  */
-static fs_reg
+static brw_reg
 emit_unzip(const fs_builder &lbld, fs_inst *inst, unsigned i)
 {
    assert(lbld.group() >= inst->group);
 
    /* Specified channel group from the source region. */
-   const fs_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
+   const brw_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
 
    if (needs_src_copy(lbld, inst, i)) {
       const unsigned num_components = inst->components_read(i);
-      const fs_reg tmp = lbld.vgrf(inst->src[i].type, num_components);
+      const brw_reg tmp = lbld.vgrf(inst->src[i].type, num_components);
 
-      fs_reg comps[num_components];
+      brw_reg comps[num_components];
       for (unsigned k = 0; k < num_components; ++k)
          comps[k] = offset(src, inst->exec_size, k);
       lbld.VEC(tmp, comps, num_components);
@@ -585,7 +585,7 @@ needs_dst_copy(const fs_builder &lbld, const fs_inst *inst)
  * inserted using \p lbld_before and any copy instructions required for
  * zipping up the destination of \p inst will be inserted using \p lbld_after.
  */
-static fs_reg
+static brw_reg
 emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
          fs_inst *inst)
 {
@@ -596,7 +596,7 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
    const struct intel_device_info *devinfo = lbld_before.shader->devinfo;
 
    /* Specified channel group from the destination region. */
-   const fs_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
+   const brw_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
 
    if (!needs_dst_copy(lbld_after, inst)) {
       /* No need to allocate a temporary for the lowered instruction, just
@@ -611,7 +611,7 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
    const unsigned dst_size = (inst->size_written - residency_size) /
       inst->dst.component_size(inst->exec_size);
 
-   const fs_reg tmp = lbld_after.vgrf(inst->dst.type,
+   const brw_reg tmp = lbld_after.vgrf(inst->dst.type,
                                       dst_size + inst->has_sampler_residency());
 
    if (inst->predicate) {
@@ -639,9 +639,9 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
        * SIMD16 16 bit values.
        */
       const fs_builder rbld = lbld_after.exec_all().group(1, 0);
-      fs_reg local_res_reg = component(
+      brw_reg local_res_reg = component(
          retype(offset(tmp, lbld_before, dst_size), BRW_TYPE_UW), 0);
-      fs_reg final_res_reg =
+      brw_reg final_res_reg =
          retype(byte_offset(inst->dst,
                             inst->size_written - residency_size +
                             lbld_after.group() / 8), BRW_TYPE_UW);

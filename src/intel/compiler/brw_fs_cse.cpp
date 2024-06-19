@@ -162,8 +162,8 @@ local_only(const fs_inst *inst)
 static bool
 operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
 {
-   fs_reg *xs = a->src;
-   fs_reg *ys = b->src;
+   brw_reg *xs = a->src;
+   brw_reg *ys = b->src;
 
    if (a->opcode == BRW_OPCODE_MAD) {
       return xs[0].equals(ys[0]) &&
@@ -251,7 +251,7 @@ instructions_match(fs_inst *a, fs_inst *b, bool *negate)
 #define HASH(hash, data) XXH32(&(data), sizeof(data), hash)
 
 uint32_t
-hash_reg(uint32_t hash, const fs_reg &r)
+hash_reg(uint32_t hash, const brw_reg &r)
 {
    struct {
       uint64_t u64;
@@ -314,7 +314,7 @@ hash_inst(const void *v)
       /* Canonicalize negations on either source (or both) and commutatively
        * combine the hashes for both sources.
        */
-      fs_reg src[2] = { inst->src[0], inst->src[1] };
+      brw_reg src[2] = { inst->src[0], inst->src[1] };
       uint32_t src_hash[2];
 
       for (int i = 0; i < 2; i++) {
@@ -383,8 +383,8 @@ remap_sources(fs_visitor &s, const brw::def_analysis &defs,
                if (def_block->end_ip_delta)
                   s.cfg->adjust_block_ips();
 
-               fs_reg neg = brw_vgrf(new_nr, BRW_TYPE_F);
-               fs_reg tmp = dbld.MOV(negate(neg));
+               brw_reg neg = brw_vgrf(new_nr, BRW_TYPE_F);
+               brw_reg tmp = dbld.MOV(negate(neg));
                inst->src[i].nr = tmp.nr;
                remap_table[old_nr] = tmp.nr;
             } else {

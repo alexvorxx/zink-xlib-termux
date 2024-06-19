@@ -30,7 +30,7 @@
 #include "util/macros.h"
 
 bool
-fs_reg_saturate_immediate(fs_reg *reg)
+fs_reg_saturate_immediate(brw_reg *reg)
 {
    union {
       unsigned ud;
@@ -93,7 +93,7 @@ fs_reg_saturate_immediate(fs_reg *reg)
 }
 
 bool
-fs_reg_negate_immediate(fs_reg *reg)
+fs_reg_negate_immediate(brw_reg *reg)
 {
    switch (reg->type) {
    case BRW_TYPE_D:
@@ -136,7 +136,7 @@ fs_reg_negate_immediate(fs_reg *reg)
 }
 
 bool
-fs_reg_abs_immediate(fs_reg *reg)
+fs_reg_abs_immediate(brw_reg *reg)
 {
    switch (reg->type) {
    case BRW_TYPE_D:
@@ -579,7 +579,7 @@ fs_inst::remove(bblock_t *block, bool defer_later_block_ip_updates)
    if (exec_list_is_singular(&block->instructions)) {
       this->opcode = BRW_OPCODE_NOP;
       this->resize_sources(0);
-      this->dst = fs_reg();
+      this->dst = brw_reg();
       this->size_written = 0;
       return;
    }

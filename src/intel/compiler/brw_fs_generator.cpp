@@ -66,7 +66,6 @@ brw_math_function(enum opcode op)
 
 static struct brw_reg
 normalize_brw_reg_for_encoding(brw_reg *reg)
-
 {
    struct brw_reg brw_reg;
 

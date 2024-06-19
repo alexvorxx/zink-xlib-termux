@@ -464,7 +464,7 @@ namespace brw {
              brw_type_size_bytes(inst->src[i].type) == get_exec_type_size(inst));
 
       const fs_builder ibld(v, block, inst);
-      const fs_reg tmp = ibld.vgrf(get_exec_type(inst));
+      const brw_reg tmp = ibld.vgrf(get_exec_type(inst));
 
       lower_instruction(v, block, ibld.MOV(tmp, inst->src[i]));
       inst->src[i] = tmp;
@@ -495,7 +495,7 @@ namespace {
       const unsigned stride =
          brw_type_size_bytes(inst->dst.type) * inst->dst.stride <= brw_type_size_bytes(type) ? 1 :
          brw_type_size_bytes(inst->dst.type) * inst->dst.stride / brw_type_size_bytes(type);
-      fs_reg tmp = ibld.vgrf(type, stride);
+      brw_reg tmp = ibld.vgrf(type, stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, stride);
 
@@ -549,7 +549,7 @@ namespace {
                       inst->exec_size * stride *
                       brw_type_size_bytes(inst->src[i].type),
                       reg_unit(devinfo) * REG_SIZE) * reg_unit(devinfo);
-      fs_reg tmp = brw_vgrf(v->alloc.allocate(size), inst->src[i].type);
+      brw_reg tmp = brw_vgrf(v->alloc.allocate(size), inst->src[i].type);
       ibld.UNDEF(tmp);
       tmp = byte_offset(horiz_stride(tmp, stride),
                         required_src_byte_offset(devinfo, inst, i));
@@ -560,7 +560,7 @@ namespace {
       const brw_reg_type raw_type = brw_int_type(MIN2(brw_type_size_bytes(tmp.type), 4),
                                                  false);
       const unsigned n = brw_type_size_bytes(tmp.type) / brw_type_size_bytes(raw_type);
-      fs_reg raw_src = inst->src[i];
+      brw_reg raw_src = inst->src[i];
       raw_src.negate = false;
       raw_src.abs = false;
 
@@ -578,7 +578,7 @@ namespace {
       /* Point the original instruction at the temporary, making sure to keep
        * any source modifiers in the instruction.
        */
-      fs_reg lower_src = tmp;
+      brw_reg lower_src = tmp;
       lower_src.negate = inst->src[i].negate;
       lower_src.abs = inst->src[i].abs;
       inst->src[i] = lower_src;
@@ -607,7 +607,7 @@ namespace {
       const unsigned stride = required_dst_byte_stride(inst) /
                               brw_type_size_bytes(inst->dst.type);
       assert(stride > 0);
-      fs_reg tmp = ibld.vgrf(inst->dst.type, stride);
+      brw_reg tmp = ibld.vgrf(inst->dst.type, stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, stride);
 
@@ -665,7 +665,7 @@ namespace {
       const unsigned n = get_exec_type_size(inst) / brw_type_size_bytes(raw_type);
       const fs_builder ibld(v, block, inst);
 
-      fs_reg tmp = ibld.vgrf(inst->dst.type, inst->dst.stride);
+      brw_reg tmp = ibld.vgrf(inst->dst.type, inst->dst.stride);
       ibld.UNDEF(tmp);
       tmp = horiz_stride(tmp, inst->dst.stride);
 

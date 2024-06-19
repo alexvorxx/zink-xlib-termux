@@ -48,11 +48,11 @@
 using namespace brw;
 
 static void
-initialize_sources(fs_inst *inst, const fs_reg src[], uint8_t num_sources);
+initialize_sources(fs_inst *inst, const brw_reg src[], uint8_t num_sources);
 
 void
-fs_inst::init(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-              const fs_reg *src, unsigned sources)
+fs_inst::init(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+              const brw_reg *src, unsigned sources)
 {
    memset((void*)this, 0, sizeof(*this));
 
@@ -100,34 +100,34 @@ fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size)
    init(opcode, exec_size, reg_undef, NULL, 0);
 }
 
-fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst)
+fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst)
 {
    init(opcode, exec_size, dst, NULL, 0);
 }
 
-fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-                 const fs_reg &src0)
+fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+                 const brw_reg &src0)
 {
-   const fs_reg src[1] = { src0 };
+   const brw_reg src[1] = { src0 };
    init(opcode, exec_size, dst, src, 1);
 }
 
-fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-                 const fs_reg &src0, const fs_reg &src1)
+fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+                 const brw_reg &src0, const brw_reg &src1)
 {
-   const fs_reg src[2] = { src0, src1 };
+   const brw_reg src[2] = { src0, src1 };
    init(opcode, exec_size, dst, src, 2);
 }
 
-fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-                 const fs_reg &src0, const fs_reg &src1, const fs_reg &src2)
+fs_inst::fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+                 const brw_reg &src0, const brw_reg &src1, const brw_reg &src2)
 {
-   const fs_reg src[3] = { src0, src1, src2 };
+   const brw_reg src[3] = { src0, src1, src2 };
    init(opcode, exec_size, dst, src, 3);
 }
 
-fs_inst::fs_inst(enum opcode opcode, uint8_t exec_width, const fs_reg &dst,
-                 const fs_reg src[], unsigned sources)
+fs_inst::fs_inst(enum opcode opcode, uint8_t exec_width, const brw_reg &dst,
+                 const brw_reg src[], unsigned sources)
 {
    init(opcode, exec_width, dst, src, sources);
 }
@@ -145,10 +145,10 @@ fs_inst::~fs_inst()
 }
 
 static void
-initialize_sources(fs_inst *inst, const fs_reg src[], uint8_t num_sources)
+initialize_sources(fs_inst *inst, const brw_reg src[], uint8_t num_sources)
 {
    if (num_sources > ARRAY_SIZE(inst->builtin_src))
-      inst->src = new fs_reg[num_sources];
+      inst->src = new brw_reg[num_sources];
    else
       inst->src = inst->builtin_src;
 
@@ -164,14 +164,14 @@ fs_inst::resize_sources(uint8_t num_sources)
    if (this->sources == num_sources)
       return;
 
-   fs_reg *old_src = this->src;
-   fs_reg *new_src;
+   brw_reg *old_src = this->src;
+   brw_reg *new_src;
 
    const unsigned builtin_size = ARRAY_SIZE(this->builtin_src);
 
    if (old_src == this->builtin_src) {
       if (num_sources > builtin_size) {
-         new_src = new fs_reg[num_sources];
+         new_src = new brw_reg[num_sources];
          for (unsigned i = 0; i < this->sources; i++)
             new_src[i] = old_src[i];
 
@@ -189,7 +189,7 @@ fs_inst::resize_sources(uint8_t num_sources)
          new_src = old_src;
 
       } else {
-         new_src = new fs_reg[num_sources];
+         new_src = new brw_reg[num_sources];
          for (unsigned i = 0; i < num_sources; i++)
             new_src[i] = old_src[i];
       }
@@ -204,10 +204,10 @@ fs_inst::resize_sources(uint8_t num_sources)
 
 void
 fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
-                                       const fs_reg &dst,
-                                       const fs_reg &surface,
-                                       const fs_reg &surface_handle,
-                                       const fs_reg &varying_offset,
+                                       const brw_reg &dst,
+                                       const brw_reg &surface,
+                                       const brw_reg &surface_handle,
+                                       const brw_reg &varying_offset,
                                        uint32_t const_offset,
                                        uint8_t alignment,
                                        unsigned components)
@@ -218,7 +218,7 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
     * be any component of a vector, and then we load 4 contiguous
     * components starting from that.  TODO: Support loading fewer than 4.
     */
-   fs_reg total_offset = bld.ADD(varying_offset, brw_imm_ud(const_offset));
+   brw_reg total_offset = bld.ADD(varying_offset, brw_imm_ud(const_offset));
 
    /* The pull load message will load a vec4 (16 bytes). If we are loading
     * a double this means we are only loading 2 elements worth of data.
@@ -226,9 +226,9 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
     * so other parts of the driver don't get confused about the size of the
     * result.
     */
-   fs_reg vec4_result = bld.vgrf(BRW_TYPE_F, 4);
+   brw_reg vec4_result = bld.vgrf(BRW_TYPE_F, 4);
 
-   fs_reg srcs[PULL_VARYING_CONSTANT_SRCS];
+   brw_reg srcs[PULL_VARYING_CONSTANT_SRCS];
    srcs[PULL_VARYING_CONSTANT_SRC_SURFACE]        = surface;
    srcs[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE] = surface_handle;
    srcs[PULL_VARYING_CONSTANT_SRC_OFFSET]         = total_offset;
@@ -668,7 +668,7 @@ fs_inst::is_partial_write() const
    /* Special case UNDEF since a lot of places in the backend do things like this :
     *
     *  fs_builder ubld = bld.exec_all().group(1, 0);
-    *  fs_reg tmp = ubld.vgrf(BRW_TYPE_UD);
+    *  brw_reg tmp = ubld.vgrf(BRW_TYPE_UD);
     *  ubld.UNDEF(tmp); <- partial write, even if the whole register is concerned
     */
    if (this->opcode == SHADER_OPCODE_UNDEF) {
@@ -1151,13 +1151,13 @@ fs_visitor::emit_gs_thread_end()
       if (mark_last_urb_write_with_eot())
          return;
 
-      fs_reg srcs[URB_LOGICAL_NUM_SRCS];
+      brw_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = gs_payload().urb_handles;
       srcs[URB_LOGICAL_SRC_COMPONENTS] = brw_imm_ud(0);
       inst = abld.emit(SHADER_OPCODE_URB_WRITE_LOGICAL, reg_undef,
                        srcs, ARRAY_SIZE(srcs));
    } else {
-      fs_reg srcs[URB_LOGICAL_NUM_SRCS];
+      brw_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = gs_payload().urb_handles;
       srcs[URB_LOGICAL_SRC_DATA] = this->final_gs_vertex_count;
       srcs[URB_LOGICAL_SRC_COMPONENTS] = brw_imm_ud(1);
@@ -1212,7 +1212,7 @@ fs_visitor::assign_curb_setup()
       /* The base offset for our push data is passed in as R0.0[31:6]. We have
        * to mask off the bottom 6 bits.
        */
-      fs_reg base_addr =
+      brw_reg base_addr =
          ubld.AND(retype(brw_vec1_grf(0, 0), BRW_TYPE_UD),
                   brw_imm_ud(INTEL_MASK(31, 6)));
 
@@ -1228,17 +1228,17 @@ fs_visitor::assign_curb_setup()
          /* This pass occurs after all of the optimization passes, so don't
           * emit an 'ADD addr, base_addr, 0' instruction.
           */
-         fs_reg addr = i == 0 ? base_addr :
+         brw_reg addr = i == 0 ? base_addr :
             ubld.ADD(base_addr, brw_imm_ud(i * REG_SIZE));
 
-         fs_reg srcs[4] = {
+         brw_reg srcs[4] = {
             brw_imm_ud(0), /* desc */
             brw_imm_ud(0), /* ex_desc */
             addr,          /* payload */
-            fs_reg(),      /* payload2 */
+            brw_reg(),      /* payload2 */
          };
 
-         fs_reg dest = retype(brw_vec8_grf(payload().num_regs + i, 0),
+         brw_reg dest = retype(brw_vec8_grf(payload().num_regs + i, 0),
                               BRW_TYPE_UD);
          fs_inst *send = ubld.emit(SHADER_OPCODE_SEND, dest, srcs, 4);
 
@@ -1310,10 +1310,10 @@ fs_visitor::assign_curb_setup()
       struct brw_reg mask = brw_vec1_grf(payload().num_regs + mask_param / 8,
                                                               mask_param % 8);
 
-      fs_reg b32;
+      brw_reg b32;
       for (unsigned i = 0; i < 64; i++) {
          if (i % 16 == 0 && (want_zero & BITFIELD64_RANGE(i, 16))) {
-            fs_reg shifted = ubld.vgrf(BRW_TYPE_W, 2);
+            brw_reg shifted = ubld.vgrf(BRW_TYPE_W, 2);
             ubld.SHL(horiz_offset(shifted, 8),
                      byte_offset(retype(mask, BRW_TYPE_W), i / 8),
                      brw_imm_v(0x01234567));
@@ -1625,13 +1625,13 @@ fs_visitor::assign_urb_setup()
    foreach_block_and_inst(block, fs_inst, inst, cfg) {
       for (int i = 0; i < inst->sources; i++) {
          if (inst->src[i].file == ATTR) {
-            /* ATTR fs_reg::nr in the FS is in units of logical scalar
+            /* ATTR brw_reg::nr in the FS is in units of logical scalar
              * inputs each of which consumes 16B on Gfx4-Gfx12.  In
              * single polygon mode this leads to the following layout
              * of the vertex setup plane parameters in the ATTR
              * register file:
              *
-             *  fs_reg::nr   Input   Comp0  Comp1  Comp2  Comp3
+             *  brw_reg::nr   Input   Comp0  Comp1  Comp2  Comp3
              *      0       Attr0.x  a1-a0  a2-a0   N/A    a0
              *      1       Attr0.y  a1-a0  a2-a0   N/A    a0
              *      2       Attr0.z  a1-a0  a2-a0   N/A    a0
@@ -1644,7 +1644,7 @@ fs_visitor::assign_urb_setup()
              * different plane parameters, so each parameter above is
              * represented as a dispatch_width-wide vector:
              *
-             *  fs_reg::nr     fs_reg::offset    Input      Comp0     ...    CompN
+             *  brw_reg::nr     brw_reg::offset    Input      Comp0     ...    CompN
              *      0                 0          Attr0.x  a1[0]-a0[0] ... a1[N]-a0[N]
              *      0        4 * dispatch_width  Attr0.x  a2[0]-a0[0] ... a2[N]-a0[N]
              *      0        8 * dispatch_width  Attr0.x     N/A      ...     N/A
@@ -1955,7 +1955,7 @@ fs_visitor::assign_constant_locations()
 }
 
 bool
-fs_visitor::get_pull_locs(const fs_reg &src,
+fs_visitor::get_pull_locs(const brw_reg &src,
                           unsigned *out_surf_index,
                           unsigned *out_pull_index)
 {
@@ -1993,11 +1993,11 @@ fs_visitor::emit_repclear_shader()
    assert(uniforms == 0);
    assume(key->nr_color_regions > 0);
 
-   fs_reg color_output = retype(brw_vec4_grf(127, 0), BRW_TYPE_UD);
-   fs_reg header = retype(brw_vec8_grf(125, 0), BRW_TYPE_UD);
+   brw_reg color_output = retype(brw_vec4_grf(127, 0), BRW_TYPE_UD);
+   brw_reg header = retype(brw_vec8_grf(125, 0), BRW_TYPE_UD);
 
    /* We pass the clear color as a flat input.  Copy it to the output. */
-   fs_reg color_input =
+   brw_reg color_input =
       brw_make_reg(BRW_GENERAL_REGISTER_FILE, 2, 3, 0, 0, BRW_TYPE_UD,
               BRW_VERTICAL_STRIDE_8, BRW_WIDTH_2, BRW_HORIZONTAL_STRIDE_4,
               BRW_SWIZZLE_XYZW, WRITEMASK_XYZW);
@@ -2047,7 +2047,7 @@ fs_visitor::emit_repclear_shader()
  * thread payload, \p bld is required to have a dispatch_width() not greater
  * than 16 for fragment shaders.
  */
-fs_reg
+brw_reg
 brw_sample_mask_reg(const fs_builder &bld)
 {
    const fs_visitor &s = *bld.shader;
@@ -2107,7 +2107,7 @@ brw_emit_predicate_on_sample_mask(const fs_builder &bld, fs_inst *inst)
           bld.dispatch_width() == inst->exec_size);
 
    const fs_visitor &s = *bld.shader;
-   const fs_reg sample_mask = brw_sample_mask_reg(bld);
+   const brw_reg sample_mask = brw_sample_mask_reg(bld);
    const unsigned subreg = sample_mask_flag_subreg(s);
 
    if (s.devinfo->ver >= 20 || brw_wm_prog_data(s.prog_data)->uses_kill) {
@@ -3011,8 +3011,8 @@ fs_visitor::set_tcs_invocation_id()
     *  * 22:16 on gfx11+
     *  * 23:17 otherwise
     */
-   fs_reg t =
-      bld.AND(fs_reg(retype(brw_vec1_grf(0, 2), BRW_TYPE_UD)),
+   brw_reg t =
+      bld.AND(brw_reg(retype(brw_vec1_grf(0, 2), BRW_TYPE_UD)),
               brw_imm_ud(instance_id_mask));
 
    if (vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH) {
@@ -3023,9 +3023,9 @@ fs_visitor::set_tcs_invocation_id()
 
    assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH);
 
-   fs_reg channels_uw = bld.vgrf(BRW_TYPE_UW);
-   fs_reg channels_ud = bld.vgrf(BRW_TYPE_UD);
-   bld.MOV(channels_uw, fs_reg(brw_imm_uv(0x76543210)));
+   brw_reg channels_uw = bld.vgrf(BRW_TYPE_UW);
+   brw_reg channels_ud = bld.vgrf(BRW_TYPE_UD);
+   bld.MOV(channels_uw, brw_reg(brw_imm_uv(0x76543210)));
    bld.MOV(channels_ud, channels_uw);
 
    if (tcs_prog_data->instances == 1) {
@@ -3054,7 +3054,7 @@ fs_visitor::emit_tcs_thread_end()
     * algorithm to set it optimally).  On other platforms, we simply write
     * zero to a reserved/MBZ patch header DWord which has no consequence.
     */
-   fs_reg srcs[URB_LOGICAL_NUM_SRCS];
+   brw_reg srcs[URB_LOGICAL_NUM_SRCS];
    srcs[URB_LOGICAL_SRC_HANDLE] = tcs_payload().patch_urb_output;
    srcs[URB_LOGICAL_SRC_CHANNEL_MASK] = brw_imm_ud(WRITEMASK_X << 16);
    srcs[URB_LOGICAL_SRC_DATA] = brw_imm_ud(0);
@@ -3258,7 +3258,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
              * stored in R0.15/R1.15 on gfx20+ and in R1.7/R2.7 on
              * gfx6+.
              */
-            const fs_reg dispatch_mask =
+            const brw_reg dispatch_mask =
                devinfo->ver >= 20 ? xe2_vec1_grf(i, 15) :
                                     brw_vec1_grf(i + 1, 7);
             bld.exec_all().group(1, 0)
@@ -4533,18 +4533,18 @@ bool brw_should_print_shader(const nir_shader *shader, uint64_t debug_flag)
 }
 
 namespace brw {
-   fs_reg
+   brw_reg
    fetch_payload_reg(const brw::fs_builder &bld, uint8_t regs[2],
                      brw_reg_type type, unsigned n)
    {
       if (!regs[0])
-         return fs_reg();
+         return brw_reg();
 
       if (bld.dispatch_width() > 16) {
-         const fs_reg tmp = bld.vgrf(type, n);
+         const brw_reg tmp = bld.vgrf(type, n);
          const brw::fs_builder hbld = bld.exec_all().group(16, 0);
          const unsigned m = bld.dispatch_width() / hbld.dispatch_width();
-         fs_reg *const components = new fs_reg[m * n];
+         brw_reg *const components = new brw_reg[m * n];
 
          for (unsigned c = 0; c < n; c++) {
             for (unsigned g = 0; g < m; g++)
@@ -4558,22 +4558,22 @@ namespace brw {
          return tmp;
 
       } else {
-         return fs_reg(retype(brw_vec8_grf(regs[0], 0), type));
+         return brw_reg(retype(brw_vec8_grf(regs[0], 0), type));
       }
    }
 
-   fs_reg
+   brw_reg
    fetch_barycentric_reg(const brw::fs_builder &bld, uint8_t regs[2])
    {
       if (!regs[0])
-         return fs_reg();
+         return brw_reg();
       else if (bld.shader->devinfo->ver >= 20)
          return fetch_payload_reg(bld, regs, BRW_TYPE_F, 2);
 
-      const fs_reg tmp = bld.vgrf(BRW_TYPE_F, 2);
+      const brw_reg tmp = bld.vgrf(BRW_TYPE_F, 2);
       const brw::fs_builder hbld = bld.exec_all().group(8, 0);
       const unsigned m = bld.dispatch_width() / hbld.dispatch_width();
-      fs_reg *const components = new fs_reg[2 * m];
+      brw_reg *const components = new brw_reg[2 * m];
 
       for (unsigned c = 0; c < 2; c++) {
          for (unsigned g = 0; g < m; g++)

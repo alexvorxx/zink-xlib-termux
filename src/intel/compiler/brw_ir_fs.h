@@ -28,10 +28,8 @@
 #include "brw_ir.h"
 #include "brw_ir_allocator.h"
 
-using fs_reg = brw_reg;
-
-static inline fs_reg
-horiz_offset(const fs_reg &reg, unsigned delta)
+static inline brw_reg
+horiz_offset(const brw_reg &reg, unsigned delta)
 {
    switch (reg.file) {
    case BAD_FILE:
@@ -65,8 +63,8 @@ horiz_offset(const fs_reg &reg, unsigned delta)
    unreachable("Invalid register file");
 }
 
-static inline fs_reg
-offset(fs_reg reg, unsigned width, unsigned delta)
+static inline brw_reg
+offset(brw_reg reg, unsigned width, unsigned delta)
 {
    switch (reg.file) {
    case BAD_FILE:
@@ -87,8 +85,8 @@ offset(fs_reg reg, unsigned width, unsigned delta)
  * Get the scalar channel of \p reg given by \p idx and replicate it to all
  * channels of the result.
  */
-static inline fs_reg
-component(fs_reg reg, unsigned idx)
+static inline brw_reg
+component(brw_reg reg, unsigned idx)
 {
    reg = horiz_offset(reg, idx);
    reg.stride = 0;
@@ -109,7 +107,7 @@ component(fs_reg reg, unsigned idx)
  * address spaces, one for each allocation and input attribute respectively.
  */
 static inline uint32_t
-reg_space(const fs_reg &r)
+reg_space(const brw_reg &r)
 {
    return r.file << 16 | (r.file == VGRF || r.file == ATTR ? r.nr : 0);
 }
@@ -119,7 +117,7 @@ reg_space(const fs_reg &r)
  * reg_space().
  */
 static inline unsigned
-reg_offset(const fs_reg &r)
+reg_offset(const brw_reg &r)
 {
    return (r.file == VGRF || r.file == IMM || r.file == ATTR ? 0 : r.nr) *
           (r.file == UNIFORM ? 4 : REG_SIZE) + r.offset +
@@ -132,7 +130,7 @@ reg_offset(const fs_reg &r)
  * one, or zero if components are tightly packed in the register file.
  */
 static inline unsigned
-reg_padding(const fs_reg &r)
+reg_padding(const brw_reg &r)
 {
    const unsigned stride = ((r.file != ARF && r.file != FIXED_GRF) ? r.stride :
                             r.hstride == 0 ? 0 :
@@ -146,7 +144,7 @@ reg_padding(const fs_reg &r)
  * spanning \p ds bytes.
  */
 static inline bool
-regions_overlap(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
+regions_overlap(const brw_reg &r, unsigned dr, const brw_reg &s, unsigned ds)
 {
    if (r.file != s.file)
       return false;
@@ -166,7 +164,7 @@ regions_overlap(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
  * [s.offset, s.offset + ds[.
  */
 static inline bool
-region_contained_in(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
+region_contained_in(const brw_reg &r, unsigned dr, const brw_reg &s, unsigned ds)
 {
    return reg_space(r) == reg_space(s) &&
           reg_offset(r) >= reg_offset(s) &&
@@ -179,7 +177,7 @@ region_contained_in(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
  * channels.
  */
 static inline bool
-is_periodic(const fs_reg &reg, unsigned n)
+is_periodic(const brw_reg &reg, unsigned n)
 {
    if (reg.file == BAD_FILE || reg.is_null()) {
       return true;
@@ -203,7 +201,7 @@ is_periodic(const fs_reg &reg, unsigned n)
 }
 
 static inline bool
-is_uniform(const fs_reg &reg)
+is_uniform(const brw_reg &reg)
 {
    return is_periodic(reg, 1);
 }
@@ -211,47 +209,47 @@ is_uniform(const fs_reg &reg)
 /**
  * Get the specified 8-component quarter of a register.
  */
-static inline fs_reg
-quarter(const fs_reg &reg, unsigned idx)
+static inline brw_reg
+quarter(const brw_reg &reg, unsigned idx)
 {
    assert(idx < 4);
    return horiz_offset(reg, 8 * idx);
 }
 
-static inline fs_reg
-horiz_stride(fs_reg reg, unsigned s)
+static inline brw_reg
+horiz_stride(brw_reg reg, unsigned s)
 {
    reg.stride *= s;
    return reg;
 }
 
-bool fs_reg_saturate_immediate(fs_reg *reg);
-bool fs_reg_negate_immediate(fs_reg *reg);
-bool fs_reg_abs_immediate(fs_reg *reg);
+bool fs_reg_saturate_immediate(brw_reg *reg);
+bool fs_reg_negate_immediate(brw_reg *reg);
+bool fs_reg_abs_immediate(brw_reg *reg);
 
-static const fs_reg reg_undef;
+static const brw_reg reg_undef;
 
 struct fs_inst : public exec_node {
 private:
    fs_inst &operator=(const fs_inst &);
 
-   void init(enum opcode opcode, uint8_t exec_width, const fs_reg &dst,
-             const fs_reg *src, unsigned sources);
+   void init(enum opcode opcode, uint8_t exec_width, const brw_reg &dst,
+             const brw_reg *src, unsigned sources);
 
 public:
    DECLARE_RALLOC_CXX_OPERATORS(fs_inst)
 
    fs_inst();
    fs_inst(enum opcode opcode, uint8_t exec_size);
-   fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst);
-   fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-           const fs_reg &src0);
-   fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-           const fs_reg &src0, const fs_reg &src1);
-   fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-           const fs_reg &src0, const fs_reg &src1, const fs_reg &src2);
-   fs_inst(enum opcode opcode, uint8_t exec_size, const fs_reg &dst,
-           const fs_reg src[], unsigned sources);
+   fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst);
+   fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+           const brw_reg &src0);
+   fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+           const brw_reg &src0, const brw_reg &src1);
+   fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+           const brw_reg &src0, const brw_reg &src1, const brw_reg &src2);
+   fs_inst(enum opcode opcode, uint8_t exec_size, const brw_reg &dst,
+           const brw_reg src[], unsigned sources);
    fs_inst(const fs_inst &that);
    ~fs_inst();
 
@@ -332,7 +330,7 @@ public:
    const char *annotation;
    /** @} */
 
-   uint8_t sources; /**< Number of fs_reg sources. */
+   uint8_t sources; /**< Number of brw_reg sources. */
 
    /**
     * Execution size of the instruction.  This is used by the generator to
@@ -425,9 +423,9 @@ public:
       uint32_t bits;
    };
 
-   fs_reg dst;
-   fs_reg *src;
-   fs_reg builtin_src[4];
+   brw_reg dst;
+   brw_reg *src;
+   brw_reg builtin_src[4];
 };
 
 /**
@@ -587,7 +585,7 @@ is_unordered(const intel_device_info *devinfo, const fs_inst *inst)
  * single one-dimensional stride.
  */
 static inline unsigned
-byte_stride(const fs_reg &reg)
+byte_stride(const brw_reg &reg)
 {
    switch (reg.file) {
    case BAD_FILE:
@@ -675,7 +673,7 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
 static inline bool
 has_subdword_integer_region_restriction(const intel_device_info *devinfo,
                                         const fs_inst *inst,
-                                        const fs_reg *srcs, unsigned num_srcs)
+                                        const brw_reg *srcs, unsigned num_srcs)
 {
    if (devinfo->ver >= 20 &&
        brw_type_is_int(inst->dst.type) &&
@@ -741,7 +739,7 @@ is_copy_payload(brw_reg_file file, const fs_inst *inst)
 inline bool
 is_identity_payload(brw_reg_file file, const fs_inst *inst) {
    if (is_copy_payload(file, inst)) {
-      fs_reg reg = inst->src[0];
+      brw_reg reg = inst->src[0];
 
       for (unsigned i = 0; i < inst->sources; i++) {
          reg.type = inst->src[i].type;
@@ -823,7 +821,7 @@ brw_fs_bit_mask(unsigned n)
 }
 
 static inline unsigned
-brw_fs_flag_mask(const fs_reg &r, unsigned sz)
+brw_fs_flag_mask(const brw_reg &r, unsigned sz)
 {
    if (r.file == ARF) {
       const unsigned start = (r.nr - BRW_ARF_FLAG) * 4 + r.subnr;

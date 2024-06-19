@@ -46,8 +46,8 @@ namespace { /* avoid conflict with opt_copy_propagation_elements */
 struct acp_entry {
    struct rb_node by_dst;
    struct rb_node by_src;
-   fs_reg dst;
-   fs_reg src;
+   brw_reg dst;
+   brw_reg src;
    unsigned global_idx;
    unsigned size_written;
    unsigned size_read;
@@ -338,7 +338,7 @@ fs_copy_prop_dataflow::fs_copy_prop_dataflow(linear_ctx *lin_ctx, cfg_t *cfg,
  * Like reg_offset, but register must be VGRF or FIXED_GRF.
  */
 static inline unsigned
-grf_reg_offset(const fs_reg &r)
+grf_reg_offset(const brw_reg &r)
 {
    return (r.file == VGRF ? 0 : r.nr) * REG_SIZE +
           r.offset +
@@ -349,7 +349,7 @@ grf_reg_offset(const fs_reg &r)
  * Like regions_overlap, but register must be VGRF or FIXED_GRF.
  */
 static inline bool
-grf_regions_overlap(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
+grf_regions_overlap(const brw_reg &r, unsigned dr, const brw_reg &s, unsigned ds)
 {
    return reg_space(r) == reg_space(s) &&
           !(grf_reg_offset(r) + dr <= grf_reg_offset(s) ||
@@ -793,7 +793,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * regioning restrictions that apply to integer types smaller than a dword.
     * See BSpec #56640 for details.
     */
-   const fs_reg tmp = horiz_stride(entry->src, inst->src[arg].stride);
+   const brw_reg tmp = horiz_stride(entry->src, inst->src[arg].stride);
    if (has_subdword_integer_region_restriction(devinfo, inst, &tmp, 1))
       return false;
 
@@ -936,7 +936,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
 }
 
 static bool
-try_constant_propagate_value(fs_reg val, brw_reg_type dst_type,
+try_constant_propagate_value(brw_reg val, brw_reg_type dst_type,
                              fs_inst *inst, int arg)
 {
    bool progress = false;
@@ -1394,7 +1394,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
                  inst->src[i].is_contiguous())) {
                const brw_reg_type t = i < inst->header_size ?
                   BRW_TYPE_UD : inst->src[i].type;
-               fs_reg dst = byte_offset(retype(inst->dst, t), offset);
+               brw_reg dst = byte_offset(retype(inst->dst, t), offset);
                if (!dst.equals(inst->src[i])) {
                   acp_entry *entry = linear_zalloc(lin_ctx, acp_entry);
                   entry->dst = dst;
@@ -1486,7 +1486,7 @@ brw_fs_opt_copy_propagation(fs_visitor &s)
 static bool
 try_copy_propagate_def(const brw_compiler *compiler,
                        const brw::simple_allocator &alloc,
-                       fs_inst *def, const fs_reg &val,
+                       fs_inst *def, const brw_reg &val,
                        fs_inst *inst, int arg,
                        uint8_t max_polygons)
 {
@@ -1716,7 +1716,7 @@ try_copy_propagate_def(const brw_compiler *compiler,
 }
 
 static bool
-try_constant_propagate_def(fs_inst *def, fs_reg val, fs_inst *inst, int arg)
+try_constant_propagate_def(fs_inst *def, brw_reg val, fs_inst *inst, int arg)
 {
    /* Bail if inst is reading more than a single vector component of entry */
    if (inst->size_read(arg) > def->dst.component_size(inst->exec_size))
@@ -1728,8 +1728,8 @@ try_constant_propagate_def(fs_inst *def, fs_reg val, fs_inst *inst, int arg)
 /**
  * Handle cases like UW subreads of a UD immediate, with an offset.
  */
-static fs_reg
-extract_imm(fs_reg val, brw_reg_type type, unsigned offset)
+static brw_reg
+extract_imm(brw_reg val, brw_reg_type type, unsigned offset)
 {
    assert(val.file == IMM);
 
@@ -1748,16 +1748,16 @@ extract_imm(fs_reg val, brw_reg_type type, unsigned offset)
       val.d = (val.d << (bitsize * (32/bitsize - 1 - offset))) >> ((32/bitsize - 1) * bitsize);
       break;
    default:
-      return fs_reg();
+      return brw_reg();
    }
 
    return val;
 }
 
-static fs_reg
-find_value_for_offset(fs_inst *def, const fs_reg &src, unsigned src_size)
+static brw_reg
+find_value_for_offset(fs_inst *def, const brw_reg &src, unsigned src_size)
 {
-   fs_reg val;
+   brw_reg val;
 
    switch (def->opcode) {
    case BRW_OPCODE_MOV:
@@ -1837,7 +1837,7 @@ brw_fs_opt_copy_propagation_defs(fs_visitor &s)
             }
          }
 
-         fs_reg val =
+         brw_reg val =
             find_value_for_offset(def, inst->src[i], inst->size_read(i));
 
          if (val.file == IMM) {

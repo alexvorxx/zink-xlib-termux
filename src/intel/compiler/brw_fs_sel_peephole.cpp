@@ -200,14 +200,14 @@ brw_fs_opt_peephole_sel(fs_visitor &s)
              * in the "then" clause uses a constant, we need to put it in a
              * temporary.
              */
-            fs_reg src0(then_mov[i]->src[0]);
+            brw_reg src0(then_mov[i]->src[0]);
             if (src0.file == IMM) {
                src0 = ibld.vgrf(then_mov[i]->src[0].type);
                ibld.MOV(src0, then_mov[i]->src[0]);
             }
 
             /* 64-bit immediates can't be placed in src1. */
-            fs_reg src1(else_mov[i]->src[0]);
+            brw_reg src1(else_mov[i]->src[0]);
             if (src1.file == IMM && brw_type_size_bytes(src1.type) == 8) {
                src1 = ibld.vgrf(else_mov[i]->src[0].type);
                ibld.MOV(src1, else_mov[i]->src[0]);

@@ -76,21 +76,21 @@ namespace brw {
       ~def_analysis();
 
       fs_inst *
-      get(const fs_reg &reg) const
+      get(const brw_reg &reg) const
       {
          return reg.file == VGRF && reg.nr < def_count ?
                 def_insts[reg.nr] : NULL;
       }
 
       bblock_t *
-      get_block(const fs_reg &reg) const
+      get_block(const brw_reg &reg) const
       {
          return reg.file == VGRF && reg.nr < def_count ?
                 def_blocks[reg.nr] : NULL;
       }
 
       uint32_t
-      get_use_count(const fs_reg &reg) const
+      get_use_count(const brw_reg &reg) const
       {
          return reg.file == VGRF && reg.nr < def_count ?
                 def_use_counts[reg.nr] : 0;
@@ -164,33 +164,33 @@ protected:
 struct vs_thread_payload : public thread_payload {
    vs_thread_payload(const fs_visitor &v);
 
-   fs_reg urb_handles;
+   brw_reg urb_handles;
 };
 
 struct tcs_thread_payload : public thread_payload {
    tcs_thread_payload(const fs_visitor &v);
 
-   fs_reg patch_urb_output;
-   fs_reg primitive_id;
-   fs_reg icp_handle_start;
+   brw_reg patch_urb_output;
+   brw_reg primitive_id;
+   brw_reg icp_handle_start;
 };
 
 struct tes_thread_payload : public thread_payload {
    tes_thread_payload(const fs_visitor &v);
 
-   fs_reg patch_urb_input;
-   fs_reg primitive_id;
-   fs_reg coords[3];
-   fs_reg urb_output;
+   brw_reg patch_urb_input;
+   brw_reg primitive_id;
+   brw_reg coords[3];
+   brw_reg urb_output;
 };
 
 struct gs_thread_payload : public thread_payload {
    gs_thread_payload(fs_visitor &v);
 
-   fs_reg urb_handles;
-   fs_reg primitive_id;
-   fs_reg instance_id;
-   fs_reg icp_handle_start;
+   brw_reg urb_handles;
+   brw_reg primitive_id;
+   brw_reg instance_id;
+   brw_reg icp_handle_start;
 };
 
 struct fs_thread_payload : public thread_payload {
@@ -215,34 +215,34 @@ struct fs_thread_payload : public thread_payload {
 struct cs_thread_payload : public thread_payload {
    cs_thread_payload(const fs_visitor &v);
 
-   void load_subgroup_id(const brw::fs_builder &bld, fs_reg &dest) const;
+   void load_subgroup_id(const brw::fs_builder &bld, brw_reg &dest) const;
 
-   fs_reg local_invocation_id[3];
+   brw_reg local_invocation_id[3];
 
 protected:
-   fs_reg subgroup_id_;
+   brw_reg subgroup_id_;
 };
 
 struct task_mesh_thread_payload : public cs_thread_payload {
    task_mesh_thread_payload(fs_visitor &v);
 
-   fs_reg extended_parameter_0;
-   fs_reg local_index;
-   fs_reg inline_parameter;
+   brw_reg extended_parameter_0;
+   brw_reg local_index;
+   brw_reg inline_parameter;
 
-   fs_reg urb_output;
+   brw_reg urb_output;
 
    /* URB to read Task memory inputs. Only valid for MESH stage. */
-   fs_reg task_urb_input;
+   brw_reg task_urb_input;
 };
 
 struct bs_thread_payload : public thread_payload {
    bs_thread_payload(const fs_visitor &v);
 
-   fs_reg global_arg_ptr;
-   fs_reg local_arg_ptr;
+   brw_reg global_arg_ptr;
+   brw_reg local_arg_ptr;
 
-   void load_shader_type(const brw::fs_builder &bld, fs_reg &dest) const;
+   void load_shader_type(const brw::fs_builder &bld, brw_reg &dest) const;
 };
 
 enum instruction_scheduler_mode {
@@ -293,10 +293,10 @@ public:
    void import_uniforms(fs_visitor *v);
 
    void VARYING_PULL_CONSTANT_LOAD(const brw::fs_builder &bld,
-                                   const fs_reg &dst,
-                                   const fs_reg &surface,
-                                   const fs_reg &surface_handle,
-                                   const fs_reg &varying_offset,
+                                   const brw_reg &dst,
+                                   const brw_reg &surface,
+                                   const brw_reg &surface_handle,
+                                   const brw_reg &varying_offset,
                                    uint32_t const_offset,
                                    uint8_t alignment,
                                    unsigned components);
@@ -324,7 +324,7 @@ public:
    void calculate_payload_ranges(unsigned payload_node_count,
                                  int *payload_last_use_ip) const;
    void assign_constant_locations();
-   bool get_pull_locs(const fs_reg &src, unsigned *out_surf_index,
+   bool get_pull_locs(const brw_reg &src, unsigned *out_surf_index,
                       unsigned *out_pull_index);
    void invalidate_analysis(brw::analysis_dependency_class c);
 
@@ -343,23 +343,23 @@ public:
    void set_tcs_invocation_id();
 
    fs_inst *emit_single_fb_write(const brw::fs_builder &bld,
-                                 fs_reg color1, fs_reg color2,
-                                 fs_reg src0_alpha, unsigned components);
+                                 brw_reg color1, brw_reg color2,
+                                 brw_reg src0_alpha, unsigned components);
    void do_emit_fb_writes(int nr_color_regions, bool replicate_alpha);
    void emit_fb_writes();
-   void emit_urb_writes(const fs_reg &gs_vertex_count = fs_reg());
-   void emit_gs_control_data_bits(const fs_reg &vertex_count);
-   fs_reg gs_urb_channel_mask(const fs_reg &dword_index);
-   fs_reg gs_urb_per_slot_dword_index(const fs_reg &vertex_count);
+   void emit_urb_writes(const brw_reg &gs_vertex_count = brw_reg());
+   void emit_gs_control_data_bits(const brw_reg &vertex_count);
+   brw_reg gs_urb_channel_mask(const brw_reg &dword_index);
+   brw_reg gs_urb_per_slot_dword_index(const brw_reg &vertex_count);
    void emit_gs_thread_end();
    bool mark_last_urb_write_with_eot();
    void emit_tcs_thread_end();
    void emit_urb_fence();
    void emit_cs_terminate();
 
-   fs_reg interp_reg(const brw::fs_builder &bld, unsigned location,
+   brw_reg interp_reg(const brw::fs_builder &bld, unsigned location,
                      unsigned channel, unsigned comp);
-   fs_reg per_primitive_reg(const brw::fs_builder &bld,
+   brw_reg per_primitive_reg(const brw::fs_builder &bld,
                             int location, unsigned comp);
 
    void dump_instruction_to_file(const fs_inst *inst, FILE *file, const brw::def_analysis *defs) const;
@@ -416,11 +416,11 @@ public:
     */
    int *push_constant_loc;
 
-   fs_reg frag_depth;
-   fs_reg frag_stencil;
-   fs_reg sample_mask;
-   fs_reg outputs[VARYING_SLOT_MAX];
-   fs_reg dual_src_output;
+   brw_reg frag_depth;
+   brw_reg frag_stencil;
+   brw_reg sample_mask;
+   brw_reg outputs[VARYING_SLOT_MAX];
+   brw_reg dual_src_output;
    int first_non_payload_grf;
 
    bool failed;
@@ -479,15 +479,15 @@ public:
 
    bool source_depth_to_render_target;
 
-   fs_reg pixel_x;
-   fs_reg pixel_y;
-   fs_reg pixel_z;
-   fs_reg wpos_w;
-   fs_reg pixel_w;
-   fs_reg delta_xy[BRW_BARYCENTRIC_MODE_COUNT];
-   fs_reg final_gs_vertex_count;
-   fs_reg control_data_bits;
-   fs_reg invocation_id;
+   brw_reg pixel_x;
+   brw_reg pixel_y;
+   brw_reg pixel_z;
+   brw_reg wpos_w;
+   brw_reg pixel_w;
+   brw_reg delta_xy[BRW_BARYCENTRIC_MODE_COUNT];
+   brw_reg final_gs_vertex_count;
+   brw_reg control_data_bits;
+   brw_reg invocation_id;
 
    unsigned grf_used;
    bool spilled_any_registers;
@@ -597,15 +597,15 @@ private:
 };
 
 namespace brw {
-   fs_reg
+   brw_reg
    fetch_payload_reg(const brw::fs_builder &bld, uint8_t regs[2],
                      brw_reg_type type = BRW_TYPE_F,
                      unsigned n = 1);
 
-   fs_reg
+   brw_reg
    fetch_barycentric_reg(const brw::fs_builder &bld, uint8_t regs[2]);
 
-   inline fs_reg
+   inline brw_reg
    dynamic_msaa_flags(const struct brw_wm_prog_data *wm_prog_data)
    {
       return brw_uniform_reg(wm_prog_data->msaa_flags_param, BRW_TYPE_UD);
@@ -621,8 +621,8 @@ namespace brw {
 }
 
 void shuffle_from_32bit_read(const brw::fs_builder &bld,
-                             const fs_reg &dst,
-                             const fs_reg &src,
+                             const brw_reg &dst,
+                             const brw_reg &src,
                              uint32_t first_component,
                              uint32_t components);
 
@@ -636,7 +636,7 @@ void brw_compute_urb_setup_index(struct brw_wm_prog_data *wm_prog_data);
 
 bool brw_nir_lower_simd(nir_shader *nir, unsigned dispatch_width);
 
-fs_reg brw_sample_mask_reg(const brw::fs_builder &bld);
+brw_reg brw_sample_mask_reg(const brw::fs_builder &bld);
 void brw_emit_predicate_on_sample_mask(const brw::fs_builder &bld, fs_inst *inst);
 
 int brw_get_subgroup_id_param_index(const intel_device_info *devinfo,

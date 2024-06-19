@@ -80,6 +80,10 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
 
 #define SYSVAL(ptype, name) offsetof(struct panvk_##ptype##_sysvals, name)
    switch (intr->intrinsic) {
+   case nir_intrinsic_load_base_workgroup_id:
+      val =
+         load_sysval_from_push_const(b, intr, SYSVAL(compute, base));
+      break;
    case nir_intrinsic_load_num_workgroups:
       val =
          load_sysval_from_push_const(b, intr, SYSVAL(compute, num_work_groups));
@@ -244,7 +248,7 @@ panvk_preprocess_nir(UNUSED struct vk_physical_device *vk_pdev, nir_shader *nir)
    NIR_PASS_V(nir, nir_lower_system_values);
 
    nir_lower_compute_system_values_options options = {
-      .has_base_workgroup_id = false,
+      .has_base_workgroup_id = true,
    };
 
    NIR_PASS_V(nir, nir_lower_compute_system_values, &options);

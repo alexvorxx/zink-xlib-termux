@@ -32,8 +32,10 @@ struct panvk_dispatch_info {
 };
 
 VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
-                            uint32_t y, uint32_t z)
+panvk_per_arch(CmdDispatchBase)(VkCommandBuffer commandBuffer,
+                                uint32_t baseGroupX, uint32_t baseGroupY,
+                                uint32_t baseGroupZ, uint32_t groupCountX,
+                                uint32_t groupCountY, uint32_t groupCountZ)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
    const struct panvk_shader *shader = cmdbuf->state.compute.shader;
@@ -46,7 +48,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
    struct panvk_dispatch_info dispatch = {
-      .wg_count = {x, y, z},
+      .wg_count = {groupCountX, groupCountY, groupCountZ},
    };
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
@@ -64,9 +66,12 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
                                           shader->desc_info.used_set_mask);
 
    struct panvk_compute_sysvals *sysvals = &cmdbuf->state.compute.sysvals;
-   sysvals->num_work_groups.x = x;
-   sysvals->num_work_groups.y = y;
-   sysvals->num_work_groups.z = z;
+   sysvals->base.x = baseGroupX;
+   sysvals->base.y = baseGroupY;
+   sysvals->base.z = baseGroupZ;
+   sysvals->num_work_groups.x = groupCountX;
+   sysvals->num_work_groups.y = groupCountY;
+   sysvals->num_work_groups.z = groupCountZ;
    sysvals->local_group_size.x = shader->local_size.x;
    sysvals->local_group_size.y = shader->local_size.y;
    sysvals->local_group_size.z = shader->local_size.z;
@@ -147,14 +152,6 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    }
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdDispatchBase)(VkCommandBuffer commandBuffer, uint32_t base_x,
-                                uint32_t base_y, uint32_t base_z, uint32_t x,
-                                uint32_t y, uint32_t z)
-{
-   panvk_stub();
 }
 
 VKAPI_ATTR void VKAPI_CALL

@@ -68,6 +68,9 @@ struct panvk_graphics_sysvals {
 struct panvk_compute_sysvals {
    struct {
       uint32_t x, y, z;
+   } base;
+   struct {
+      uint32_t x, y, z;
    } num_work_groups;
    struct {
       uint32_t x, y, z;

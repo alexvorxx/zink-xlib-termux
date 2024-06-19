@@ -3249,6 +3249,10 @@ anv_device_destroy_context_or_vm(struct anv_device *device)
 static VkResult
 anv_device_init_trtt(struct anv_device *device)
 {
+   if (device->physical->sparse_type != ANV_SPARSE_TYPE_TRTT ||
+       !device->vk.enabled_features.sparseBinding)
+      return VK_SUCCESS;
+
    struct anv_trtt *trtt = &device->trtt;
 
    VkResult result =
@@ -3270,6 +3274,10 @@ anv_device_init_trtt(struct anv_device *device)
 static void
 anv_device_finish_trtt(struct anv_device *device)
 {
+   if (device->physical->sparse_type != ANV_SPARSE_TYPE_TRTT ||
+       !device->vk.enabled_features.sparseBinding)
+      return;
+
    struct anv_trtt *trtt = &device->trtt;
 
    anv_sparse_trtt_garbage_collect_batches(device, true);

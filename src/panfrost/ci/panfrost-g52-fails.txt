@@ -2741,3 +2741,17 @@ dEQP-VK.pipeline.pipeline_library.multisample_shader_builtin.sample_mask.write.1
 # uprev Piglit in Mesa
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 
+# physical device and device needs more robustness in allocation handling
+dEQP-VK.api.device_init.create_instance_device_intentional_alloc_fail.basic,Crash
+
+# query pool not supported yet
+dEQP-VK.api.null_handle.destroy_query_pool,Crash
+dEQP-VK.api.object_management.alloc_callback_fail.query_pool,Crash
+dEQP-VK.api.object_management.multiple_unique_resources.query_pool,Crash
+dEQP-VK.api.object_management.multiple_shared_resources.query_pool,Crash
+dEQP-VK.api.object_management.single.query_pool,Crash
+dEQP-VK.api.object_management.single_alloc_callbacks.query_pool,Crash
+dEQP-VK.api.object_management.max_concurrent.query_pool,Crash
+dEQP-VK.api.object_management.multithreaded_shared_resources.query_pool,Crash
+dEQP-VK.api.object_management.multithreaded_per_thread_device.query_pool,Crash
+dEQP-VK.api.object_management.multithreaded_per_thread_resources.query_pool,Crash

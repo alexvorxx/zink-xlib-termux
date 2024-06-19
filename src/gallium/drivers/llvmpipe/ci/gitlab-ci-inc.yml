@@ -63,9 +63,7 @@
   rules:
     - !reference [.test, rules]
     - !reference [.llvmpipe-cl-rules, rules]
-    - changes:
-      - src/gallium/frontends/rusticl/**/*
-      when: on_success
+    - !reference [.rusticl-rules, rules]
 
 
 .llvmpipe-test:

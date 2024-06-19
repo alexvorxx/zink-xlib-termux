@@ -104,7 +104,7 @@ panvk_kmod_zalloc(const struct pan_kmod_allocator *allocator, size_t size,
 
    return vk_zalloc(vkalloc, size, 8,
                     transient ? VK_SYSTEM_ALLOCATION_SCOPE_COMMAND
-                              : VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+                              : VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
 }
 
 static void

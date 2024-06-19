@@ -3306,6 +3306,7 @@ generate_fragment(struct llvmpipe_context *lp,
       LLVMValueRef glob_sample_pos =
          LLVMAddGlobal(gallivm->module,
                        LLVMArrayType(flt_type, key->coverage_samples * 2), "");
+      LLVMSetLinkage(glob_sample_pos, LLVMInternalLinkage);
       LLVMValueRef sample_pos_array;
 
       if (key->multisample && key->coverage_samples == 4) {

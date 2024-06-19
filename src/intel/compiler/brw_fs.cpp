@@ -2007,7 +2007,7 @@ fs_visitor::emit_repclear_shader()
 
    /* We pass the clear color as a flat input.  Copy it to the output. */
    fs_reg color_input =
-      brw_reg(BRW_GENERAL_REGISTER_FILE, 2, 3, 0, 0, BRW_TYPE_UD,
+      brw_make_reg(BRW_GENERAL_REGISTER_FILE, 2, 3, 0, 0, BRW_TYPE_UD,
               BRW_VERTICAL_STRIDE_8, BRW_WIDTH_2, BRW_HORIZONTAL_STRIDE_4,
               BRW_SWIZZLE_XYZW, WRITEMASK_XYZW);
 

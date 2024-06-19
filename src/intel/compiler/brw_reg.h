@@ -356,17 +356,17 @@ brw_int_type(unsigned sz, bool is_signed)
  * \param writemask WRITEMASK_X/Y/Z/W bitfield
  */
 static inline struct brw_reg
-brw_reg(enum brw_reg_file file,
-        unsigned nr,
-        unsigned subnr,
-        unsigned negate,
-        unsigned abs,
-        enum brw_reg_type type,
-        unsigned vstride,
-        unsigned width,
-        unsigned hstride,
-        unsigned swizzle,
-        unsigned writemask)
+brw_make_reg(enum brw_reg_file file,
+             unsigned nr,
+             unsigned subnr,
+             unsigned negate,
+             unsigned abs,
+             enum brw_reg_type type,
+             unsigned vstride,
+             unsigned width,
+             unsigned hstride,
+             unsigned swizzle,
+             unsigned writemask)
 {
    struct brw_reg reg;
    if (file == BRW_GENERAL_REGISTER_FILE)
@@ -413,7 +413,7 @@ brw_reg(enum brw_reg_file file,
 static inline struct brw_reg
 brw_vec16_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return brw_make_reg(file,
                   nr,
                   subnr,
                   0,
@@ -430,7 +430,7 @@ brw_vec16_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 static inline struct brw_reg
 brw_vec8_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return brw_make_reg(file,
                   nr,
                   subnr,
                   0,
@@ -447,7 +447,7 @@ brw_vec8_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 static inline struct brw_reg
 brw_vec4_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return brw_make_reg(file,
                   nr,
                   subnr,
                   0,
@@ -464,7 +464,7 @@ brw_vec4_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 static inline struct brw_reg
 brw_vec2_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return brw_make_reg(file,
                   nr,
                   subnr,
                   0,
@@ -481,7 +481,7 @@ brw_vec2_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 static inline struct brw_reg
 brw_vec1_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 {
-   return brw_reg(file,
+   return brw_make_reg(file,
                   nr,
                   subnr,
                   0,
@@ -610,7 +610,7 @@ brw_ud1_reg(enum brw_reg_file file, unsigned nr, unsigned subnr)
 static inline struct brw_reg
 brw_imm_reg(enum brw_reg_type type)
 {
-   return brw_reg(BRW_IMMEDIATE_VALUE,
+   return brw_make_reg(BRW_IMMEDIATE_VALUE,
                   0,
                   0,
                   0,
@@ -891,7 +891,7 @@ brw_tdr_reg(void)
 static inline struct brw_reg
 brw_ip_reg(void)
 {
-   return brw_reg(BRW_ARCHITECTURE_REGISTER_FILE,
+   return brw_make_reg(BRW_ARCHITECTURE_REGISTER_FILE,
                   BRW_ARF_IP,
                   0,
                   0,
@@ -907,7 +907,7 @@ brw_ip_reg(void)
 static inline struct brw_reg
 brw_notification_reg(void)
 {
-   return brw_reg(BRW_ARCHITECTURE_REGISTER_FILE,
+   return brw_make_reg(BRW_ARCHITECTURE_REGISTER_FILE,
                   BRW_ARF_NOTIFICATION_COUNT,
                   0,
                   0,

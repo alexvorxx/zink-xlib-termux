@@ -93,17 +93,17 @@ isPowerofTwo(unsigned int x)
 static struct brw_reg
 set_direct_src_operand(struct brw_reg *reg, int type)
 {
-	return brw_reg(reg->file,
-		       reg->nr,
-		       reg->subnr,
-		       0,		// negate
-		       0,		// abs
-		       type,
-		       0,		// vstride
-		       0,		// width
-		       0,		// hstride
-		       BRW_SWIZZLE_NOOP,
-		       WRITEMASK_XYZW);
+	return brw_make_reg(reg->file,
+                            reg->nr,
+                            reg->subnr,
+                            0,		// negate
+                            0,		// abs
+                            type,
+                            0,		// vstride
+                            0,		// width
+                            0,		// hstride
+                            BRW_SWIZZLE_NOOP,
+                            WRITEMASK_XYZW);
 }
 
 static void
@@ -1471,17 +1471,17 @@ directsrcaccoperand:
 srcarcoperandex:
 	srcarcoperandex_typed region reg_type
 	{
-		$$ = brw_reg($1.file,
-			     $1.nr,
-			     $1.subnr,
-			     0,
-			     0,
-			     $3,
-			     $2.vstride,
-			     $2.width,
-			     $2.hstride,
-			     BRW_SWIZZLE_NOOP,
-			     WRITEMASK_XYZW);
+		$$ = brw_make_reg($1.file,
+			          $1.nr,
+			          $1.subnr,
+			          0,
+			          0,
+			          $3,
+			          $2.vstride,
+			          $2.width,
+			          $2.hstride,
+			          BRW_SWIZZLE_NOOP,
+			          WRITEMASK_XYZW);
 	}
 	| nullreg region reg_type
 	{
@@ -1508,17 +1508,17 @@ srcarcoperandex_typed:
 indirectsrcoperand:
 	negate abs indirectgenreg indirectregion swizzle reg_type
 	{
-		$$ = brw_reg($3.file,
-			     0,
-			     $3.subnr,
-			     $1,  // negate
-			     $2,  // abs
-			     $6,
-			     $4.vstride,
-			     $4.width,
-			     $4.hstride,
-			     $5,
-			     WRITEMASK_X);
+		$$ = brw_make_reg($3.file,
+			          0,
+			          $3.subnr,
+			          $1,  // negate
+			          $2,  // abs
+			          $6,
+			          $4.vstride,
+			          $4.width,
+			          $4.hstride,
+			          $5,
+			          WRITEMASK_X);
 
 		$$.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
 		// brw_reg set indirect_offset to 0 so set it to valid value
@@ -1536,17 +1536,17 @@ directgenreg_list:
 directsrcoperand:
 	negate abs directgenreg_list region swizzle reg_type
 	{
-		$$ = brw_reg($3.file,
-			     $3.nr,
-			     $3.subnr,
-			     $1,
-			     $2,
-			     $6,
-			     $4.vstride,
-			     $4.width,
-			     $4.hstride,
-			     $5,
-			     WRITEMASK_X);
+		$$ = brw_make_reg($3.file,
+			          $3.nr,
+			          $3.subnr,
+			          $1,
+			          $2,
+			          $6,
+			          $4.vstride,
+			          $4.width,
+			          $4.hstride,
+			          $5,
+			          WRITEMASK_X);
 	}
 	| srcarcoperandex
 	;

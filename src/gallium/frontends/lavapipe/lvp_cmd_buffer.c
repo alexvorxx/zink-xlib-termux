@@ -166,39 +166,6 @@ VKAPI_ATTR void VKAPI_CALL lvp_CmdPushDescriptorSetWithTemplate2KHR(
       }
    }
 }
-
-
-static void
-vk_free_cmd_push_constants2_khr(struct vk_cmd_queue *queue,
-                                struct vk_cmd_queue_entry *cmd)
-{
-   vk_free(queue->alloc, (void*)cmd->u.push_constants2_khr.push_constants_info->pValues);
-   vk_free(queue->alloc, (VkPushConstantsInfoKHR*)cmd->u.push_constants2_khr.push_constants_info);
-   vk_free(queue->alloc, cmd);
-}
-
-VKAPI_ATTR void VKAPI_CALL lvp_CmdPushConstants2KHR(
-   VkCommandBuffer                             commandBuffer,
-   const VkPushConstantsInfoKHR* pPushConstantsInfo)
-{
-   LVP_FROM_HANDLE(lvp_cmd_buffer, cmd_buffer, commandBuffer);
-   struct vk_cmd_queue_entry *cmd = vk_zalloc(cmd_buffer->vk.cmd_queue.alloc, vk_cmd_queue_type_sizes[VK_CMD_PUSH_CONSTANTS2_KHR], 8,
-                                              VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (!cmd)
-      return;
-
-   cmd->type = VK_CMD_PUSH_CONSTANTS2_KHR;
-      
-   cmd->u.push_constants2_khr.push_constants_info = vk_zalloc(cmd_buffer->vk.cmd_queue.alloc, sizeof(VkPushConstantsInfoKHR), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   memcpy((void*)cmd->u.push_constants2_khr.push_constants_info, pPushConstantsInfo, sizeof(VkPushConstantsInfoKHR));
-
-   cmd->u.push_constants2_khr.push_constants_info->pValues = vk_zalloc(cmd_buffer->vk.cmd_queue.alloc, pPushConstantsInfo->size, 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   memcpy((void*)cmd->u.push_constants2_khr.push_constants_info->pValues, pPushConstantsInfo->pValues, pPushConstantsInfo->size);
-
-   list_addtail(&cmd->cmd_link, &cmd_buffer->vk.cmd_queue.cmds);
-}
-
-
 static void
 lvp_free_cmd_push_descriptor_set2_khr(struct vk_cmd_queue *queue,
                                      struct vk_cmd_queue_entry *cmd)

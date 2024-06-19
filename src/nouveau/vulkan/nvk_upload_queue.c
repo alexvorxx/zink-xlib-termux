@@ -376,12 +376,12 @@ nvk_upload_queue_fill_locked(struct nvk_device *dev,
       uint32_t width_B, height;
       if (size > max_dim) {
          width_B = max_dim;
-         height = MAX2(max_dim, size / width_B);
+         height = MIN2(max_dim, size / width_B);
       } else {
          width_B = size;
          height = 1;
       }
-      assert(size <= width_B * height);
+      assert(width_B * height <= size);
 
       struct nv_push p;
       nv_push_init(&p, queue->bo->map + queue->bo_push_end, cmd_size_dw);

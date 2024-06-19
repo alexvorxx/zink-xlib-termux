@@ -361,7 +361,13 @@ static void
 push_descriptors_set_free(struct vk_cmd_queue *queue,
                           struct vk_cmd_queue_entry *cmd)
 {
-  struct vk_cmd_push_descriptor_set_khr *pds = &cmd->u.push_descriptor_set_khr;
+   struct vk_command_buffer *cmd_buffer =
+      container_of(queue, struct vk_command_buffer, cmd_queue);
+   struct vk_cmd_push_descriptor_set_khr *pds = &cmd->u.push_descriptor_set_khr;
+
+   VK_FROM_HANDLE(vk_pipeline_layout, vk_layout, pds->layout);
+   vk_pipeline_layout_unref(cmd_buffer->base.device, vk_layout);
+
   for (unsigned i = 0; i < pds->descriptor_write_count; i++) {
     VkWriteDescriptorSet *entry = &pds->descriptor_writes[i];
     switch (entry->descriptorType) {
@@ -411,9 +417,15 @@ vk_cmd_enqueue_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
    list_addtail(&cmd->cmd_link, &cmd_buffer->cmd_queue.cmds);
 
    pds->pipeline_bind_point = pipelineBindPoint;
-   pds->layout = layout;
    pds->set = set;
    pds->descriptor_write_count = descriptorWriteCount;
+
+   /* From the application's perspective, the vk_cmd_queue_entry can outlive the
+    * layout. Take a reference.
+    */
+   VK_FROM_HANDLE(vk_pipeline_layout, vk_layout, layout);
+   pds->layout = layout;
+   vk_pipeline_layout_ref(vk_layout);
 
    if (pDescriptorWrites) {
       pds->descriptor_writes =

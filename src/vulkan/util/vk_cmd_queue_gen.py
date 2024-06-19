@@ -56,12 +56,10 @@ MANUAL_COMMANDS = [
     'CmdPushDescriptorSetWithTemplate2KHR',
     'CmdPushDescriptorSetWithTemplateKHR',
     'CmdPushConstants2KHR',
+    'CmdPushDescriptorSet2KHR',
 ]
 
 NO_ENQUEUE_COMMANDS = [
-    # pData's size cannot be calculated from the xml
-    'CmdPushDescriptorSet2KHR',
-
     # These don't return void
     'CmdSetPerformanceMarkerINTEL',
     'CmdSetPerformanceStreamMarkerINTEL',

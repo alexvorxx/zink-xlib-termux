@@ -1511,6 +1511,23 @@ dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *d
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV.
  */
 static void
+dgc_emit_indirect_sets(struct dgc_cmdbuf *cs, nir_def *pipeline_va)
+{
+   nir_builder *b = cs->b;
+
+   nir_def *indirect_desc_sets_sgpr = load_metadata32(b, indirect_desc_sets_sgpr);
+   nir_push_if(b, nir_ine_imm(b, indirect_desc_sets_sgpr, 0));
+   {
+      dgc_cs_begin(cs);
+      dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
+      dgc_cs_emit(indirect_desc_sets_sgpr);
+      dgc_cs_emit(load_param32(b, indirect_desc_sets_va));
+      dgc_cs_end();
+   }
+   nir_pop_if(b, NULL);
+}
+
+static void
 dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_variable *upload_offset)
 {
    const struct radv_device *device = cs->dev;
@@ -1539,17 +1556,9 @@ dgc_emit_bind_pipeline(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_variable
    dgc_cs_emit(load_metadata32(b, block_size_x));
    dgc_cs_emit(load_metadata32(b, block_size_y));
    dgc_cs_emit(load_metadata32(b, block_size_z));
-
-   nir_def *indirect_desc_sets_sgpr = load_metadata32(b, indirect_desc_sets_sgpr);
-   nir_push_if(b, nir_ine_imm(b, indirect_desc_sets_sgpr, 0));
-   {
-      dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
-      dgc_cs_emit(indirect_desc_sets_sgpr);
-      dgc_cs_emit(load_param32(b, indirect_desc_sets_va));
-   }
-   nir_pop_if(b, NULL);
-
    dgc_cs_end();
+
+   dgc_emit_indirect_sets(cs, pipeline_va);
 
    nir_store_var(b, upload_offset, nir_iadd_imm(b, nir_load_var(b, upload_offset), MAX_SETS * 4), 0x1);
 }

@@ -1253,7 +1253,7 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
     * The env var is in seconds (a float).
     * Zero means update after every frame.
     */
-   period_env = getenv("GALLIUM_HUD_PERIOD");
+   period_env = os_get_option("GALLIUM_HUD_PERIOD");
    if (period_env) {
       float p = (float) atof(period_env);
       if (p >= 0.0f) {
@@ -1558,7 +1558,7 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
       }
    }
 
-   const char *hud_dump_dir = getenv("GALLIUM_HUD_DUMP_DIR");
+   const char *hud_dump_dir = os_get_option("GALLIUM_HUD_DUMP_DIR");
    if ((hud_dump_dir && access(hud_dump_dir, W_OK) == 0) || to_stdout) {
       LIST_FOR_EACH_ENTRY(pane, &hud->pane_list, head) {
          struct hud_graph *gr;
@@ -1954,7 +1954,7 @@ hud_create(struct cso_context *cso, struct hud_context *share,
    struct hud_context *hud;
    unsigned i;
    unsigned default_period_ms = 500;/* default period (1/2 second) */
-   const char *show_fps = getenv("LIBGL_SHOW_FPS");
+   const char *show_fps = os_get_option("LIBGL_SHOW_FPS");
    bool emulate_libgl_show_fps = false;
    if (show_fps) {
       default_period_ms = atoi(show_fps) * 1000;

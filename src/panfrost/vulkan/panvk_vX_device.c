@@ -246,6 +246,7 @@ panvk_per_arch(destroy_device)(struct panvk_device *device,
    panvk_per_arch(blend_shader_cache_cleanup)(device);
    panvk_priv_bo_unref(device->tiler_heap);
    panvk_priv_bo_unref(device->sample_positions);
+   panvk_device_cleanup_mempools(device);
    pan_kmod_vm_destroy(device->kmod.vm);
 
    if (device->debug.decode_ctx)

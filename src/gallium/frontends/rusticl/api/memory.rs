@@ -275,12 +275,25 @@ fn create_buffer_with_properties(
         return Err(CL_INVALID_BUFFER_SIZE);
     }
 
-    // ... or if size is greater than CL_DEVICE_MAX_MEM_ALLOC_SIZE for all devices in context.
+    // ... or if size is greater than CL_DEVICE_MAX_MEM_ALLOC_SIZE for all devices in context,
     if checked_compare(size, Ordering::Greater, c.max_mem_alloc()) {
         return Err(CL_INVALID_BUFFER_SIZE);
     }
 
     validate_host_ptr(host_ptr, flags)?;
+
+    // or if CL_MEM_USE_HOST_PTR is set in flags and host_ptr is a pointer returned by clSVMAlloc
+    // and size is greater than the size passed to clSVMAlloc.
+    if let Some((svm_ptr, svm_layout)) = c.find_svm_alloc(host_ptr as usize) {
+        // SAFETY: they are part of the same allocation, and because host_ptr >= svm_ptr we can cast
+        // to usize.
+        let diff = unsafe { host_ptr.offset_from(svm_ptr) } as usize;
+
+        // technically we don't have to account for the offset, but it's almost for free.
+        if size > svm_layout.size() - diff {
+            return Err(CL_INVALID_BUFFER_SIZE);
+        }
+    }
 
     let props = Properties::from_ptr_raw(properties);
     // CL_INVALID_PROPERTY if a property name in properties is not a supported property name, if

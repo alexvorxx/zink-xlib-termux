@@ -4713,7 +4713,7 @@ struct anv_graphics_pipeline {
    /* Pre computed CS instructions that can directly be copied into
     * anv_cmd_buffer.
     */
-   uint32_t                                     batch_data[416];
+   uint32_t                                     batch_data[480];
 
    /* Urb setup utilized by this pipeline. */
    struct intel_urb_config urb_cfg;
@@ -4733,12 +4733,17 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  vs;
       struct anv_gfx_state_ptr                  hs;
       struct anv_gfx_state_ptr                  ds;
+      struct anv_gfx_state_ptr                  vs_protected;
+      struct anv_gfx_state_ptr                  hs_protected;
+      struct anv_gfx_state_ptr                  ds_protected;
 
       struct anv_gfx_state_ptr                  task_control;
+      struct anv_gfx_state_ptr                  task_control_protected;
       struct anv_gfx_state_ptr                  task_shader;
       struct anv_gfx_state_ptr                  task_redistrib;
       struct anv_gfx_state_ptr                  clip_mesh;
       struct anv_gfx_state_ptr                  mesh_control;
+      struct anv_gfx_state_ptr                  mesh_control_protected;
       struct anv_gfx_state_ptr                  mesh_shader;
       struct anv_gfx_state_ptr                  mesh_distrib;
       struct anv_gfx_state_ptr                  sbe_mesh;
@@ -4756,8 +4761,10 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  wm;
       struct anv_gfx_state_ptr                  so;
       struct anv_gfx_state_ptr                  gs;
+      struct anv_gfx_state_ptr                  gs_protected;
       struct anv_gfx_state_ptr                  te;
       struct anv_gfx_state_ptr                  ps;
+      struct anv_gfx_state_ptr                  ps_protected;
       struct anv_gfx_state_ptr                  vfg;
    } partial;
 };

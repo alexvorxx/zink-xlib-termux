@@ -2430,6 +2430,25 @@ _anv_combine_address(struct anv_batch *batch, void *location,
            _dst = NULL;                                                 \
          }))
 
+#define anv_batch_emit_merge_protected(batch, cmd, pipeline, state,     \
+                                       name, protected)                 \
+   for (struct cmd name = { 0 },                                        \
+        *_dst = anv_batch_emit_dwords(batch, __anv_cmd_length(cmd));    \
+        __builtin_expect(_dst != NULL, 1);                              \
+        ({ struct anv_gfx_state_ptr *_cmd_state = protected ?           \
+              &(pipeline)->state##_protected :                          \
+              &(pipeline)->state;                                       \
+           uint32_t _partial[__anv_cmd_length(cmd)];                    \
+           assert(_cmd_state->len == __anv_cmd_length(cmd));            \
+           __anv_cmd_pack(cmd)(batch, _partial, &name);                 \
+           for (uint32_t i = 0; i < __anv_cmd_length(cmd); i++) {       \
+              ((uint32_t *)_dst)[i] = _partial[i] |                     \
+                 (pipeline)->batch_data[_cmd_state->offset + i];        \
+           }                                                            \
+           VG(VALGRIND_CHECK_MEM_IS_DEFINED(_dst, __anv_cmd_length(cmd) * 4)); \
+           _dst = NULL;                                                 \
+         }))
+
 #define anv_batch_emit(batch, cmd, name)                            \
    for (struct cmd name = { __anv_cmd_header(cmd) },                    \
         *_dst = anv_batch_emit_dwords(batch, __anv_cmd_length(cmd));    \
@@ -4793,6 +4812,21 @@ struct anv_graphics_pipeline {
          break;                                                         \
       memcpy(dw, &(pipeline)->batch_data[(pipeline)->state.offset],     \
              4 * (pipeline)->state.len);                                \
+   } while (0)
+
+#define anv_batch_emit_pipeline_state_protected(batch, pipeline,        \
+                                                state, protected)       \
+   do {                                                                 \
+      struct anv_gfx_state_ptr *_cmd_state = protected ?                \
+         &(pipeline)->state##_protected : &(pipeline)->state;           \
+      if (_cmd_state->len == 0)                                         \
+         break;                                                         \
+      uint32_t *dw;                                                     \
+      dw = anv_batch_emit_dwords((batch), _cmd_state->len);             \
+      if (!dw)                                                          \
+         break;                                                         \
+      memcpy(dw, &(pipeline)->batch_data[_cmd_state->offset],           \
+             4 * _cmd_state->len);                                      \
    } while (0)
 
 

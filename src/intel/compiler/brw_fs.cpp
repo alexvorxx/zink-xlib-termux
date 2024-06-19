@@ -538,15 +538,6 @@ fs_inst::can_change_types() const
             !src[1].abs && !src[1].negate && src[1].file != ATTR));
 }
 
-/** Generic unset register constructor. */
-fs_reg::fs_reg()
-{
-   memset((void*)this, 0, sizeof(*this));
-   type = BRW_TYPE_UD;
-   stride = 1;
-   this->file = BAD_FILE;
-}
-
 bool
 brw_reg::equals(const brw_reg &r) const
 {

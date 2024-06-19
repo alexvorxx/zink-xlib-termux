@@ -154,7 +154,7 @@ uint32_t brw_swizzle_immediate(enum brw_reg_type type, uint32_t x, unsigned swz)
  * WM programs to implement shaders decomposed into "channel serial"
  * or "structure of array" form:
  */
-struct brw_reg {
+typedef struct brw_reg {
    union {
       struct {
          enum brw_reg_type type:5;
@@ -195,6 +195,17 @@ struct brw_reg {
    uint8_t stride;
 
 #ifdef __cplusplus
+   /* TODO: Remove this constructor to make this type a POD.  To achieve this
+    * we need to make sure the zero value (currently ARF_NULL) is a good
+    * replacement for BAD_FILE or make the zero value BAD_FILE.
+    */
+   brw_reg() {
+      memset((void*)this, 0, sizeof(*this));
+      this->type = BRW_TYPE_UD;
+      this->stride = 1;
+      this->file = BAD_FILE;
+   }
+
    bool equals(const brw_reg &r) const;
    bool negative_equals(const brw_reg &r) const;
    bool is_contiguous() const;
@@ -211,7 +222,7 @@ struct brw_reg {
     */
    unsigned component_size(unsigned width) const;
 #endif /* __cplusplus */
-};
+} brw_reg;
 
 static inline unsigned
 phys_nr(const struct intel_device_info *devinfo, const struct brw_reg reg)

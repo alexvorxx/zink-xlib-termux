@@ -28,11 +28,7 @@
 #include "brw_ir.h"
 #include "brw_ir_allocator.h"
 
-class fs_reg : public brw_reg {
-public:
-   fs_reg();
-   fs_reg(struct ::brw_reg reg) : brw_reg(reg) {}
-};
+using fs_reg = brw_reg;
 
 static inline fs_reg
 horiz_offset(const fs_reg &reg, unsigned delta)

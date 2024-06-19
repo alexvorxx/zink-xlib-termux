@@ -237,6 +237,8 @@ nak_is_only_used_by_iadd(const nir_alu_instr *instr)
    return true;
 }
 
+void nak_optimize_nir(nir_shader *nir, const struct nak_compiler *nak);
+
 struct nak_memstream {
    FILE *stream;
    char *buffer;

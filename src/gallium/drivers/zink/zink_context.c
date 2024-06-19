@@ -2725,7 +2725,7 @@ calc_max_dummy_fbo_size(struct zink_context *ctx)
 }
 
 static unsigned
-begin_rendering(struct zink_context *ctx)
+begin_rendering(struct zink_context *ctx, bool check_msaa_expand)
 {
    unsigned clear_buffers = 0;
    ctx->gfx_pipeline_state.render_pass = NULL;
@@ -2738,7 +2738,10 @@ begin_rendering(struct zink_context *ctx)
    bool changed_layout = false;
    bool changed_size = false;
    bool zsbuf_used = zink_is_zsbuf_used(ctx);
+   bool has_msrtss = zink_screen(ctx->base.screen)->info.have_EXT_multisampled_render_to_single_sampled;
    bool use_tc_info = !ctx->blitting && ctx->track_renderpasses;
+   uint32_t msaa_expand_mask = 0;
+
    if (ctx->rp_changed || ctx->rp_layout_changed || (!ctx->in_rp && ctx->rp_loadop_changed)) {
       /* init imageviews, base loadOp, formats */
       for (int i = 0; i < ctx->fb_state.nr_cbufs; i++) {
@@ -2756,6 +2759,8 @@ begin_rendering(struct zink_context *ctx)
             else
                ctx->dynamic_fb.attachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
          }
+         if (ctx->dynamic_fb.attachments[i].loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+            msaa_expand_mask |= BITFIELD_BIT(i);
       }
 
       /* unset depth and stencil info: reset below */
@@ -2782,6 +2787,10 @@ begin_rendering(struct zink_context *ctx)
                ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
          }
 
+         /* maybe TODO but also not handled by legacy rp...
+         if (ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+            msaa_expand_mask |= BITFIELD_BIT(PIPE_MAX_COLOR_BUFS);
+         */
          /* stencil may or may not be used but init it anyway */
          ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS+1].loadOp = ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].loadOp;
          ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS+1].storeOp = ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].storeOp;
@@ -2842,6 +2851,11 @@ begin_rendering(struct zink_context *ctx)
       ctx->rp_loadop_changed = false;
       ctx->rp_layout_changed = false;
    }
+   msaa_expand_mask &= ctx->transient_attachments;
+   if (!has_msrtss && msaa_expand_mask && check_msaa_expand) {
+      zink_render_msaa_expand(ctx, msaa_expand_mask);
+      return begin_rendering(ctx, false);
+   }
    /* always assemble clear_buffers mask:
     * if a scissored clear must be triggered during glFlush,
     * the renderpass metadata may be unchanged (e.g., LOAD from previous rp),
@@ -2886,11 +2900,24 @@ begin_rendering(struct zink_context *ctx)
       VkImageView iv = VK_NULL_HANDLE;
       struct zink_surface *surf = zink_csurface(ctx->fb_state.cbufs[i]);
       if (surf) {
-         iv = zink_prep_fb_attachment(ctx, surf, i);
+         struct zink_surface *transient = zink_transient_surface(ctx->fb_state.cbufs[i]);
+         if (transient && !has_msrtss) {
+            iv = zink_prep_fb_attachment(ctx, transient, i);
+            ctx->dynamic_fb.attachments[i].imageLayout = zink_resource(transient->base.texture)->layout;
+            ctx->dynamic_fb.attachments[i].resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+            ctx->dynamic_fb.attachments[i].resolveImageView = zink_prep_fb_attachment(ctx, surf, i);
+            ctx->dynamic_fb.attachments[i].resolveImageLayout = zink_resource(surf->base.texture)->layout;
+         } else {
+            iv = zink_prep_fb_attachment(ctx, surf, i);
+            ctx->dynamic_fb.attachments[i].imageLayout = zink_resource(surf->base.texture)->layout;
+            ctx->dynamic_fb.attachments[i].resolveMode = VK_RESOLVE_MODE_NONE;
+            ctx->dynamic_fb.attachments[i].resolveImageView = VK_NULL_HANDLE;
+            ctx->dynamic_fb.attachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+         }
          if (!iv)
             /* dead swapchain */
             return 0;
-         ctx->dynamic_fb.attachments[i].imageLayout = zink_resource(surf->base.texture)->layout;
+
       }
       ctx->dynamic_fb.attachments[i].imageView = iv;
    }
@@ -2907,9 +2934,19 @@ begin_rendering(struct zink_context *ctx)
    }
    if (ctx->fb_state.zsbuf && zsbuf_used) {
       struct zink_surface *surf = zink_csurface(ctx->fb_state.zsbuf);
-      VkImageView iv = zink_prep_fb_attachment(ctx, surf, ctx->fb_state.nr_cbufs);
+      struct zink_surface *transient = zink_transient_surface(ctx->fb_state.zsbuf);
+      VkImageView iv;
+      if (transient && !has_msrtss) {
+         iv = zink_prep_fb_attachment(ctx, transient, ctx->fb_state.nr_cbufs);
+         ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].imageLayout = zink_resource(transient->base.texture)->layout;
+         ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].resolveImageView = zink_prep_fb_attachment(ctx, surf, ctx->fb_state.nr_cbufs);
+         ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].resolveImageLayout = zink_resource(surf->base.texture)->layout;
+      } else {
+         iv = zink_prep_fb_attachment(ctx, surf, ctx->fb_state.nr_cbufs);
+         ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].imageLayout = zink_resource(surf->base.texture)->layout;
+      }
       ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].imageView = iv;
-      ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].imageLayout = zink_resource(surf->base.texture)->layout;
+
       assert(ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS].imageLayout != VK_IMAGE_LAYOUT_UNDEFINED);
       ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS+1].imageView = iv;
       ctx->dynamic_fb.attachments[PIPE_MAX_COLOR_BUFS+1].imageLayout = zink_resource(surf->base.texture)->layout;
@@ -2935,9 +2972,8 @@ begin_rendering(struct zink_context *ctx)
       ctx->gfx_pipeline_state.rast_samples + 1,
    };
 
-   if (zink_screen(ctx->base.screen)->info.have_EXT_multisampled_render_to_single_sampled)
+   if (has_msrtss)
       ctx->dynamic_fb.info.pNext = ctx->transient_attachments ? &msrtss : NULL;
-   assert(!ctx->transient_attachments || msrtss.rasterizationSamples != VK_SAMPLE_COUNT_1_BIT);
    VKCTX(CmdBeginRendering)(ctx->bs->cmdbuf, &ctx->dynamic_fb.info);
    ctx->in_rp = true;
    return clear_buffers;
@@ -3004,11 +3040,10 @@ zink_batch_rp(struct zink_context *ctx)
     * - dynamic rendering doesn't have input attachments
     */
    if (!zink_screen(ctx->base.screen)->info.have_KHR_dynamic_rendering ||
-       (ctx->transient_attachments && !zink_screen(ctx->base.screen)->info.have_EXT_multisampled_render_to_single_sampled) ||
        (ctx->fbfetch_outputs && !zink_screen(ctx->base.screen)->info.have_KHR_dynamic_rendering_local_read))
       clear_buffers = zink_begin_render_pass(ctx);
    else
-      clear_buffers = begin_rendering(ctx);
+      clear_buffers = begin_rendering(ctx, true);
    assert(!ctx->rp_changed);
    if (ctx->unordered_blitting)
       ctx->bs->has_reordered_work = true;

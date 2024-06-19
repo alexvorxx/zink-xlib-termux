@@ -277,12 +277,6 @@ brw_regs_negative_equal(const struct brw_reg *a, const struct brw_reg *b)
    }
 }
 
-struct brw_indirect {
-   unsigned addr_subnr:4;
-   int addr_offset:10;
-   unsigned pad:18;
-};
-
 static inline enum brw_reg_type
 get_exec_type(const enum brw_reg_type type)
 {
@@ -1121,16 +1115,6 @@ brw_abs(struct brw_reg reg)
 /************************************************************************/
 
 static inline struct brw_reg
-brw_vec4_indirect(unsigned subnr, int offset)
-{
-   struct brw_reg reg =  brw_vec4_grf(0, 0);
-   reg.subnr = subnr;
-   reg.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
-   reg.indirect_offset = offset;
-   return reg;
-}
-
-static inline struct brw_reg
 brw_vec1_indirect(unsigned subnr, int offset)
 {
    struct brw_reg reg =  brw_vec1_grf(0, 0);
@@ -1149,65 +1133,6 @@ brw_VxH_indirect(unsigned subnr, int offset)
    reg.address_mode = BRW_ADDRESS_REGISTER_INDIRECT_REGISTER;
    reg.indirect_offset = offset;
    return reg;
-}
-
-static inline struct brw_reg
-deref_4f(struct brw_indirect ptr, int offset)
-{
-   return brw_vec4_indirect(ptr.addr_subnr, ptr.addr_offset + offset);
-}
-
-static inline struct brw_reg
-deref_1f(struct brw_indirect ptr, int offset)
-{
-   return brw_vec1_indirect(ptr.addr_subnr, ptr.addr_offset + offset);
-}
-
-static inline struct brw_reg
-deref_4b(struct brw_indirect ptr, int offset)
-{
-   return retype(deref_4f(ptr, offset), BRW_TYPE_B);
-}
-
-static inline struct brw_reg
-deref_1uw(struct brw_indirect ptr, int offset)
-{
-   return retype(deref_1f(ptr, offset), BRW_TYPE_UW);
-}
-
-static inline struct brw_reg
-deref_1d(struct brw_indirect ptr, int offset)
-{
-   return retype(deref_1f(ptr, offset), BRW_TYPE_D);
-}
-
-static inline struct brw_reg
-deref_1ud(struct brw_indirect ptr, int offset)
-{
-   return retype(deref_1f(ptr, offset), BRW_TYPE_UD);
-}
-
-static inline struct brw_reg
-get_addr_reg(struct brw_indirect ptr)
-{
-   return brw_address_reg(ptr.addr_subnr);
-}
-
-static inline struct brw_indirect
-brw_indirect_offset(struct brw_indirect ptr, int offset)
-{
-   ptr.addr_offset += offset;
-   return ptr;
-}
-
-static inline struct brw_indirect
-brw_indirect(unsigned addr_subnr, int offset)
-{
-   struct brw_indirect ptr;
-   ptr.addr_subnr = addr_subnr;
-   ptr.addr_offset = offset;
-   ptr.pad = 0;
-   return ptr;
 }
 
 static inline bool

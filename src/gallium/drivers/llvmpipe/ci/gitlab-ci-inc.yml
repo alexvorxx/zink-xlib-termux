@@ -46,13 +46,13 @@
     # FIXME: figure out if this really needs to not be `!reference [.core-rules, rules]`
     # and if some of the missing items really need to not be there, consider splitting the .core-rules list in two.
     - changes: &llvmpipe_cl_files
-      - .gitlab-ci.yml
-      - .gitlab-ci/**/*
-      - meson.build
-      - .gitattributes
-      - include/**/*
-      - src/compiler/**/*
-      - src/util/**/*
+        - .gitlab-ci.yml
+        - .gitlab-ci/**/*
+        - meson.build
+        - .gitattributes
+        - include/**/*
+        - src/compiler/**/*
+        - src/util/**/*
       when: on_success
     - !reference [.gallium-core-rules, rules]
     - changes:

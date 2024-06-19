@@ -30,7 +30,7 @@
 #include "util/macros.h"
 
 bool
-fs_reg_saturate_immediate(brw_reg *reg)
+brw_reg_saturate_immediate(brw_reg *reg)
 {
    union {
       unsigned ud;
@@ -93,7 +93,7 @@ fs_reg_saturate_immediate(brw_reg *reg)
 }
 
 bool
-fs_reg_negate_immediate(brw_reg *reg)
+brw_reg_negate_immediate(brw_reg *reg)
 {
    switch (reg->type) {
    case BRW_TYPE_D:
@@ -136,7 +136,7 @@ fs_reg_negate_immediate(brw_reg *reg)
 }
 
 bool
-fs_reg_abs_immediate(brw_reg *reg)
+brw_reg_abs_immediate(brw_reg *reg)
 {
    switch (reg->type) {
    case BRW_TYPE_D:

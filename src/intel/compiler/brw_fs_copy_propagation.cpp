@@ -974,14 +974,14 @@ try_constant_propagate_value(brw_reg val, brw_reg_type dst_type,
 
    if (inst->src[arg].abs) {
       if (is_logic_op(inst->opcode) ||
-          !fs_reg_abs_immediate(&val)) {
+          !brw_reg_abs_immediate(&val)) {
          return false;
       }
    }
 
    if (inst->src[arg].negate) {
       if (is_logic_op(inst->opcode) ||
-          !fs_reg_negate_immediate(&val)) {
+          !brw_reg_negate_immediate(&val)) {
          return false;
       }
    }

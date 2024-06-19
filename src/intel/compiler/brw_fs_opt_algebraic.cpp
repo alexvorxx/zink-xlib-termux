@@ -99,7 +99,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
                 inst->src[0].type != BRW_TYPE_F)
                assert(!"unimplemented: saturate mixed types");
 
-            if (fs_reg_saturate_immediate(&inst->src[0])) {
+            if (brw_reg_saturate_immediate(&inst->src[0])) {
                inst->saturate = false;
                progress = true;
             }

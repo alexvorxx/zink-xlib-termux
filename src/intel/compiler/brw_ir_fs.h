@@ -223,9 +223,9 @@ horiz_stride(brw_reg reg, unsigned s)
    return reg;
 }
 
-bool fs_reg_saturate_immediate(brw_reg *reg);
-bool fs_reg_negate_immediate(brw_reg *reg);
-bool fs_reg_abs_immediate(brw_reg *reg);
+bool brw_reg_saturate_immediate(brw_reg *reg);
+bool brw_reg_negate_immediate(brw_reg *reg);
+bool brw_reg_abs_immediate(brw_reg *reg);
 
 static const brw_reg reg_undef;
 

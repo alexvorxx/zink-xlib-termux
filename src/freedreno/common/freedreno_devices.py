@@ -1037,7 +1037,7 @@ add_gpus([
         ],
     ))
 
-# Values from blob v744.19
+# Values from blob v676.0
 add_gpus([
         GPUId(chip_id=0x43050a00, name="FDA32"), # Adreno A32 (G3x Gen 2)
         GPUId(chip_id=0xffff43050a00, name="FDA32"),
@@ -1053,7 +1053,7 @@ add_gpus([
         fibers_per_sp = 128 * 2 * 16,
         magic_regs = dict(
             # PC_POWER_CNTL = 7,
-            TPL1_DBG_ECO_CNTL = 0x13100000,
+            TPL1_DBG_ECO_CNTL = 0x11100000,
             GRAS_DBG_ECO_CNTL = 0x00004800,
             SP_CHICKEN_BITS = 0x10001400,
             UCHE_CLIENT_PF = 0x00000084,
@@ -1064,17 +1064,17 @@ add_gpus([
             RB_DBG_ECO_CNTL = 0x00000000,
             RB_DBG_ECO_CNTL_blit = 0x00000000,  # is it even needed?
             # HLSQ_DBG_ECO_CNTL = 0x0,
-            RB_UNKNOWN_8E01 = 0x0,
+            RB_UNKNOWN_8E01 = 0x00000000,
             VPC_DBG_ECO_CNTL = 0x02000000,
-            UCHE_UNKNOWN_0E12 = 0x40000000,
+            UCHE_UNKNOWN_0E12 = 0x00000000,
 
             RB_UNKNOWN_8E06 = 0x02080000,
         ),
         raw_magic_regs = [
             [A6XXRegs.REG_A6XX_UCHE_CACHE_WAYS, 0x00040004],
-            [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00040700],
+            [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00000700],
 
-            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00400400],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00000400],
             [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE09, 0x00430820],
             [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE0A, 0x00000000],
             [A6XXRegs.REG_A7XX_UCHE_UNKNOWN_0E10, 0x00000000],

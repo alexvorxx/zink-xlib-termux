@@ -902,6 +902,7 @@ VkResult anv_bo_pool_alloc(struct anv_bo_pool *pool, uint32_t size,
 void anv_bo_pool_free(struct anv_bo_pool *pool, struct anv_bo *bo);
 
 struct anv_scratch_pool {
+   enum anv_bo_alloc_flags alloc_flags;
    /* Indexed by Per-Thread Scratch Space number (the hardware value) and stage */
    struct anv_bo *bos[16][MESA_SHADER_STAGES];
    uint32_t surfs[16];
@@ -909,7 +910,8 @@ struct anv_scratch_pool {
 };
 
 void anv_scratch_pool_init(struct anv_device *device,
-                           struct anv_scratch_pool *pool);
+                           struct anv_scratch_pool *pool,
+                           bool protected);
 void anv_scratch_pool_finish(struct anv_device *device,
                              struct anv_scratch_pool *pool);
 struct anv_bo *anv_scratch_pool_alloc(struct anv_device *device,
@@ -1903,6 +1905,7 @@ struct anv_device {
     struct anv_queue  *                         queues;
 
     struct anv_scratch_pool                     scratch_pool;
+    struct anv_scratch_pool                     protected_scratch_pool;
     struct anv_bo                              *rt_scratch_bos[16];
     struct anv_bo                              *btd_fifo_bo;
     struct anv_address                          rt_uuid_addr;

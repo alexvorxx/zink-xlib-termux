@@ -417,7 +417,7 @@ test_unary(unsigned verbose, FILE *fp, const struct unary_test_t *test, unsigned
 {
    char test_name[128];
    snprintf(test_name, sizeof test_name, "%s.v%u", test->name, length);
-   LLVMContextRef context;
+   lp_context_ref context;
    struct gallivm_state *gallivm;
    LLVMValueRef test_func;
    unary_func_t test_func_jit;
@@ -433,11 +433,8 @@ test_unary(unsigned verbose, FILE *fp, const struct unary_test_t *test, unsigned
       in[i] = 1.0;
    }
 
-   context = LLVMContextCreate();
-#if LLVM_VERSION_MAJOR == 15
-   LLVMContextSetOpaquePointers(context, false);
-#endif
-   gallivm = gallivm_create("test_module", context, NULL);
+   lp_context_create(&context);
+   gallivm = gallivm_create("test_module", &context, NULL);
 
    test_func = build_unary_test_func(gallivm, test, length, test_name);
 
@@ -512,7 +509,7 @@ test_unary(unsigned verbose, FILE *fp, const struct unary_test_t *test, unsigned
    }
 
    gallivm_destroy(gallivm);
-   LLVMContextDispose(context);
+   lp_context_destroy(&context);
 
    align_free(in);
    align_free(out);

@@ -79,7 +79,7 @@ lp_build_init(void);
 
 
 struct gallivm_state *
-gallivm_create(const char *name, LLVMContextRef context,
+gallivm_create(const char *name, lp_context_ref *context,
                struct lp_cached_code *cache);
 
 void

@@ -1241,7 +1241,7 @@ generate_variant(struct llvmpipe_context *lp,
    if (!cached.data_size)
       needs_caching = true;
 
-   variant->gallivm = gallivm_create(module_name, lp->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &lp->context, &cached);
    if (!variant->gallivm) {
       FREE(variant);
       return NULL;

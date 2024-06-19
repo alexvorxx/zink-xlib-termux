@@ -652,7 +652,7 @@ generate_setup_variant(struct lp_setup_variant_key *key,
             variant->no);
 
    struct gallivm_state *gallivm;
-   variant->gallivm = gallivm = gallivm_create(func_name, lp->context, NULL);
+   variant->gallivm = gallivm = gallivm_create(func_name, &lp->context, NULL);
    if (!variant->gallivm) {
       goto fail;
    }

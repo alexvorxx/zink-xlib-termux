@@ -329,7 +329,7 @@ fail:
  */
 static bool
 init_gallivm_state(struct gallivm_state *gallivm, const char *name,
-                   LLVMContextRef context, struct lp_cached_code *cache)
+                   lp_context_ref *context, struct lp_cached_code *cache)
 {
    assert(!gallivm->context);
    assert(!gallivm->module);
@@ -337,7 +337,7 @@ init_gallivm_state(struct gallivm_state *gallivm, const char *name,
    if (!lp_build_init())
       return false;
 
-   gallivm->context = context;
+   gallivm->context = context->ref;
    gallivm->cache = cache;
    if (!gallivm->context)
       goto fail;
@@ -486,7 +486,7 @@ lp_build_init(void)
  * Create a new gallivm_state object.
  */
 struct gallivm_state *
-gallivm_create(const char *name, LLVMContextRef context,
+gallivm_create(const char *name, lp_context_ref *context,
                struct lp_cached_code *cache)
 {
    struct gallivm_state *gallivm;

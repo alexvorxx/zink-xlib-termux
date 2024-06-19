@@ -201,19 +201,19 @@ llvmpipe_sampler_matrix_destroy(struct llvmpipe_context *ctx)
 
    util_dynarray_fini(&ctx->sampler_matrix.gallivms);
 
-   if (ctx->sampler_matrix.context)
-      LLVMContextDispose(ctx->sampler_matrix.context);
+   if (ctx->sampler_matrix.context.ref)
+      lp_context_destroy(&ctx->sampler_matrix.context);
 }
 
-static LLVMContextRef
+static lp_context_ref *
 get_llvm_context(struct llvmpipe_context *ctx)
 {
    struct lp_sampler_matrix *matrix = &ctx->sampler_matrix;
 
-   if (!matrix->context)
-      matrix->context = LLVMContextCreate();
+   if (!matrix->context.ref)
+      lp_context_create(&matrix->context);
 
-   return matrix->context;
+   return &matrix->context;
 }
 
 static void *

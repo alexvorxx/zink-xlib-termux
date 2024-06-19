@@ -3751,7 +3751,7 @@ generate_variant(struct llvmpipe_context *lp,
    char module_name[64];
    snprintf(module_name, sizeof(module_name), "fs%u_variant%u",
             shader->no, shader->variants_created);
-   variant->gallivm = gallivm_create(module_name, lp->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &lp->context, &cached);
    if (!variant->gallivm) {
       FREE(variant);
       return NULL;

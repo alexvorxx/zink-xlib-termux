@@ -28,6 +28,7 @@ spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_textu
 spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_texture_2d_array 32 16 15 11 12 5 5 7 2 14 9 9
 spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_texture_cube_map_array 32 32 18 11 5 2 5 9 7 14 7 11
 spec@arb_copy_image@arb_copy_image-targets gl_texture_3d 32 32 17 gl_texture_3d 32 16 18 11 5 2 5 9 7 14 7 11
+spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map 32 32 6 gl_texture_2d 32 16 1 11 12 3 5 7 0 14 9 1
 spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map 32 32 6 gl_texture_2d_array 32 16 15 11 12 1 5 3 2 14 11 4
 spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map_array 32 32 18 gl_texture_cube_map_array 16 16 18 11 5 2 5 9 7 5 7 11
 spec@arb_gpu_shader5@execution@sampler_array_indexing@vs-nonuniform-control-flow
@@ -78,6 +79,7 @@ spec@glsl-1.10@execution@glsl-1.10-linear-fog
 spec@glsl-1.10@execution@interpolation@interpolation-none-gl_frontsecondarycolor-smooth-none
 spec@glsl-1.10@execution@varying-packing@simple uvec3 separate
 spec@glsl-1.30@execution@built-in-functions@vs-op-bitxor-abs-not-ivec3-int
+spec@glsl-1.30@execution@fs-texture-sampler2dshadow-03
 spec@glsl-1.30@execution@interpolation@interpolation-none-gl_backcolor-flat-distance
 spec@glsl-1.30@execution@interpolation@interpolation-noperspective-gl_backsecondarycolor-flat-vertex
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_backsecondarycolor-smooth-fixed

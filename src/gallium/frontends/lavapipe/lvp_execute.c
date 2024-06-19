@@ -48,6 +48,7 @@
 
 #include "vk_blend.h"
 #include "vk_cmd_enqueue_entrypoints.h"
+#include "vk_descriptor_update_template.h"
 #include "vk_util.h"
 
 #define VK_PROTOTYPES
@@ -3313,7 +3314,7 @@ static void handle_push_descriptor_set_with_template(struct vk_cmd_queue_entry *
                                                      struct rendering_state *state)
 {
    VkPushDescriptorSetWithTemplateInfoKHR *pds = cmd->u.push_descriptor_set_with_template2_khr.push_descriptor_set_with_template_info;
-   LVP_FROM_HANDLE(lvp_descriptor_update_template, templ, pds->descriptorUpdateTemplate);
+   LVP_FROM_HANDLE(vk_descriptor_update_template, templ, pds->descriptorUpdateTemplate);
    LVP_FROM_HANDLE(lvp_pipeline_layout, layout, pds->layout);
    struct lvp_descriptor_set_layout *set_layout = (struct lvp_descriptor_set_layout *)layout->vk.set_layouts[pds->set];
 
@@ -3328,7 +3329,7 @@ static void handle_push_descriptor_set_with_template(struct vk_cmd_queue_entry *
 
    VkDescriptorSet set_handle = lvp_descriptor_set_to_handle(set);
    lvp_descriptor_set_update_with_template(lvp_device_to_handle(state->device), set_handle,
-                                           pds->descriptorUpdateTemplate, pds->pData, true);
+                                           pds->descriptorUpdateTemplate, pds->pData);
 
    VkBindDescriptorSetsInfoKHR bind_cmd = {
       .stageFlags = vk_shader_stages_from_bind_point(templ->bind_point),
@@ -4740,6 +4741,7 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdWriteTimestamp2)
    ENQUEUE_CMD(CmdPushConstants2KHR)
    ENQUEUE_CMD(CmdPushDescriptorSet2KHR)
+   ENQUEUE_CMD(CmdPushDescriptorSetWithTemplate2KHR)
    ENQUEUE_CMD(CmdBindDescriptorBuffersEXT)
    ENQUEUE_CMD(CmdSetDescriptorBufferOffsets2EXT)
    ENQUEUE_CMD(CmdBindDescriptorBufferEmbeddedSamplers2EXT)

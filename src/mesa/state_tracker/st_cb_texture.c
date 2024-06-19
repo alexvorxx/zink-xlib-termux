@@ -82,7 +82,6 @@
 #include "util/u_math.h"
 #include "util/box.h"
 #include "util/u_memory.h"
-#include "util/u_simple_shaders.h"
 #include "cso_cache/cso_context.h"
 
 #define DBG if (0) printf

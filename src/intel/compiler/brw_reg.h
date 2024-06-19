@@ -546,9 +546,25 @@ offset(struct brw_reg reg, unsigned delta)
 static inline struct brw_reg
 byte_offset(struct brw_reg reg, unsigned bytes)
 {
-   unsigned newoffset = reg.nr * REG_SIZE + reg.subnr + bytes;
-   reg.nr = newoffset / REG_SIZE;
-   reg.subnr = newoffset % REG_SIZE;
+   switch (reg.file) {
+   case BAD_FILE:
+      break;
+   case VGRF:
+   case ATTR:
+   case UNIFORM:
+      reg.offset += bytes;
+      break;
+   case ARF:
+   case FIXED_GRF: {
+      const unsigned suboffset = reg.subnr + bytes;
+      reg.nr += suboffset / REG_SIZE;
+      reg.subnr = suboffset % REG_SIZE;
+      break;
+   }
+   case IMM:
+   default:
+      assert(bytes == 0);
+   }
    return reg;
 }
 
@@ -1063,19 +1079,29 @@ spread(struct brw_reg reg, unsigned s)
 static inline struct brw_reg
 subscript(struct brw_reg reg, enum brw_reg_type type, unsigned i)
 {
-   unsigned scale = brw_type_size_bytes(reg.type) / brw_type_size_bytes(type);
-   assert(scale >= 1 && i < scale);
+   assert((i + 1) * brw_type_size_bytes(type) <= brw_type_size_bytes(reg.type));
 
-   if (reg.file == IMM) {
+   if (reg.file == ARF || reg.file == FIXED_GRF) {
+      /* The stride is encoded inconsistently for fixed GRF and ARF registers
+       * as the log2 of the actual vertical and horizontal strides.
+       */
+      const int delta = util_logbase2(brw_type_size_bytes(reg.type)) -
+                        util_logbase2(brw_type_size_bytes(type));
+      reg.hstride += (reg.hstride ? delta : 0);
+      reg.vstride += (reg.vstride ? delta : 0);
+
+   } else if (reg.file == IMM) {
       unsigned bit_size = brw_type_size_bits(type);
       reg.u64 >>= i * bit_size;
       reg.u64 &= BITFIELD64_MASK(bit_size);
       if (bit_size <= 16)
          reg.u64 |= reg.u64 << 16;
       return retype(reg, type);
+   } else {
+      reg.stride *= brw_type_size_bytes(reg.type) / brw_type_size_bytes(type);
    }
 
-   return suboffset(retype(spread(reg, scale), type), i);
+   return byte_offset(retype(reg, type), i * brw_type_size_bytes(type));
 }
 
 static inline struct brw_reg

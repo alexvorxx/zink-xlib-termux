@@ -35,46 +35,6 @@ public:
 };
 
 static inline fs_reg
-negate(fs_reg reg)
-{
-   assert(reg.file != IMM);
-   reg.negate = !reg.negate;
-   return reg;
-}
-
-static inline fs_reg
-retype(fs_reg reg, enum brw_reg_type type)
-{
-   reg.type = type;
-   return reg;
-}
-
-static inline fs_reg
-byte_offset(fs_reg reg, unsigned delta)
-{
-   switch (reg.file) {
-   case BAD_FILE:
-      break;
-   case VGRF:
-   case ATTR:
-   case UNIFORM:
-      reg.offset += delta;
-      break;
-   case ARF:
-   case FIXED_GRF: {
-      const unsigned suboffset = reg.subnr + delta;
-      reg.nr += suboffset / REG_SIZE;
-      reg.subnr = suboffset % REG_SIZE;
-      break;
-   }
-   case IMM:
-   default:
-      assert(delta == 0);
-   }
-   return reg;
-}
-
-static inline fs_reg
 horiz_offset(const fs_reg &reg, unsigned delta)
 {
    switch (reg.file) {
@@ -260,38 +220,6 @@ quarter(const fs_reg &reg, unsigned idx)
 {
    assert(idx < 4);
    return horiz_offset(reg, 8 * idx);
-}
-
-/**
- * Reinterpret each channel of register \p reg as a vector of values of the
- * given smaller type and take the i-th subcomponent from each.
- */
-static inline fs_reg
-subscript(fs_reg reg, brw_reg_type type, unsigned i)
-{
-   assert((i + 1) * brw_type_size_bytes(type) <= brw_type_size_bytes(reg.type));
-
-   if (reg.file == ARF || reg.file == FIXED_GRF) {
-      /* The stride is encoded inconsistently for fixed GRF and ARF registers
-       * as the log2 of the actual vertical and horizontal strides.
-       */
-      const int delta = util_logbase2(brw_type_size_bytes(reg.type)) -
-                        util_logbase2(brw_type_size_bytes(type));
-      reg.hstride += (reg.hstride ? delta : 0);
-      reg.vstride += (reg.vstride ? delta : 0);
-
-   } else if (reg.file == IMM) {
-      unsigned bit_size = brw_type_size_bits(type);
-      reg.u64 >>= i * bit_size;
-      reg.u64 &= BITFIELD64_MASK(bit_size);
-      if (bit_size <= 16)
-         reg.u64 |= reg.u64 << 16;
-      return retype(reg, type);
-   } else {
-      reg.stride *= brw_type_size_bytes(reg.type) / brw_type_size_bytes(type);
-   }
-
-   return byte_offset(retype(reg, type), i * brw_type_size_bytes(type));
 }
 
 static inline fs_reg

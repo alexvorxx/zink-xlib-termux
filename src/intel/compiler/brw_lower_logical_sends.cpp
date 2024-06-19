@@ -995,12 +995,12 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst,
             sources[length] = retype(sources[length], payload_unsigned_type);
             bld.MOV(sources[length++],
                     mcs.file == IMM ? mcs :
-                    subscript(tmp, payload_unsigned_type, 0));
+                    fs_reg(subscript(tmp, payload_unsigned_type, 0)));
 
             sources[length] = retype(sources[length], payload_unsigned_type);
             bld.MOV(sources[length++],
                     mcs.file == IMM ? mcs :
-                    subscript(tmp, payload_unsigned_type, 1));
+                    fs_reg(subscript(tmp, payload_unsigned_type, 1)));
          } else {
             sources[length] = retype(sources[length], payload_unsigned_type);
             bld.MOV(sources[length++],

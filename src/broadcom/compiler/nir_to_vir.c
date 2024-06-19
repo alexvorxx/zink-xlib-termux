@@ -1417,11 +1417,15 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 } else {
                         result = vir_FTOIZ(c, src[0]);
                 }
+                if (nir_src_bit_size(instr->src[0].src) == 16)
+                        vir_set_unpack(c->defs[result.index], 0, V3D_QPU_UNPACK_L);
                 break;
         }
 
         case nir_op_f2u32:
                 result = vir_FTOUZ(c, src[0]);
+                if (nir_src_bit_size(instr->src[0].src) == 16)
+                        vir_set_unpack(c->defs[result.index], 0, V3D_QPU_UNPACK_L);
                 break;
         case nir_op_i2f32:
                 result = vir_ITOF(c, src[0]);
@@ -1429,12 +1433,40 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
         case nir_op_u2f32:
                 result = vir_UTOF(c, src[0]);
                 break;
+        case nir_op_b2f16:
+                result = vir_AND(c, src[0], vir_uniform_ui(c, 0x3c00));
+                break;
         case nir_op_b2f32:
                 result = vir_AND(c, src[0], vir_uniform_f(c, 1.0));
                 break;
         case nir_op_b2i32:
                 result = vir_AND(c, src[0], vir_uniform_ui(c, 1));
                 break;
+
+        case nir_op_i2f16: {
+                uint32_t bit_size = nir_src_bit_size(instr->src[0].src);
+                assert(bit_size <= 32);
+                if (bit_size < 32) {
+                        uint32_t mask = bit_size == 16 ? 0xffff : 0xff;
+                        result = vir_AND(c, src[0], vir_uniform_ui(c, mask));
+                        result = sign_extend(c, result, bit_size, 32);
+                }
+                result = vir_ITOF(c, result);
+                vir_set_pack(c->defs[result.index], V3D_QPU_PACK_L);
+                break;
+        }
+
+        case nir_op_u2f16: {
+                uint32_t bit_size = nir_src_bit_size(instr->src[0].src);
+                assert(bit_size <= 32);
+                if (bit_size < 32) {
+                        uint32_t mask = bit_size == 16 ? 0xffff : 0xff;
+                        result = vir_AND(c, src[0], vir_uniform_ui(c, mask));
+                }
+                result = vir_UTOF(c, result);
+                vir_set_pack(c->defs[result.index], V3D_QPU_PACK_L);
+                break;
+        }
 
         case nir_op_f2f16:
         case nir_op_f2f16_rtne:

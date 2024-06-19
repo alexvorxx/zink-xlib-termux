@@ -720,3 +720,31 @@ err:
 
    vk_command_buffer_set_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
 }
+
+VKAPI_ATTR void VKAPI_CALL vk_cmd_enqueue_CmdPushConstants2KHR(
+   VkCommandBuffer                             commandBuffer,
+   const VkPushConstantsInfoKHR* pPushConstantsInfo)
+{
+   VK_FROM_HANDLE(vk_command_buffer, cmd_buffer, commandBuffer);
+   struct vk_cmd_queue *queue = &cmd_buffer->cmd_queue;
+
+   struct vk_cmd_queue_entry *cmd = vk_zalloc(queue->alloc, vk_cmd_queue_type_sizes[VK_CMD_PUSH_CONSTANTS2_KHR], 8,
+                                              VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!cmd)
+      return;
+
+   cmd->type = VK_CMD_PUSH_CONSTANTS2_KHR;
+
+   VkPushConstantsInfoKHR *info = vk_zalloc(queue->alloc, sizeof(*info), 8,
+                                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   void *pValues = vk_zalloc(queue->alloc, pPushConstantsInfo->size, 8,
+                             VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+
+   memcpy(info, pPushConstantsInfo, sizeof(*info));
+   memcpy(pValues, pPushConstantsInfo->pValues, pPushConstantsInfo->size);
+
+   cmd->u.push_constants2_khr.push_constants_info = info;
+   info->pValues = pValues;
+
+   list_addtail(&cmd->cmd_link, &cmd_buffer->cmd_queue.cmds);
+}

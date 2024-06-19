@@ -55,11 +55,11 @@ MANUAL_COMMANDS = [
     # pData's size cannot be calculated from the xml
     'CmdPushDescriptorSetWithTemplate2KHR',
     'CmdPushDescriptorSetWithTemplateKHR',
+    'CmdPushConstants2KHR',
 ]
 
 NO_ENQUEUE_COMMANDS = [
     # pData's size cannot be calculated from the xml
-    'CmdPushConstants2KHR',
     'CmdPushDescriptorSet2KHR',
 
     # These don't return void

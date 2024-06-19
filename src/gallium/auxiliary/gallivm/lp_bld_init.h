@@ -89,6 +89,14 @@ gallivm_verify_function(struct gallivm_state *gallivm,
                         LLVMValueRef func);
 
 void
+gallivm_add_global_mapping(struct gallivm_state *gallivm, LLVMValueRef sym, void* addr);
+
+/**
+ * for ORCJIT, after this function gets called, all access and modification to
+ * module and any structure associated to it should be avoided,
+ * as module has been moved into ORCJIT and may be recycled
+ */
+void
 gallivm_compile_module(struct gallivm_state *gallivm);
 
 func_pointer

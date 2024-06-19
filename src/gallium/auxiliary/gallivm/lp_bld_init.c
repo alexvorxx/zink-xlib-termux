@@ -420,6 +420,11 @@ gallivm_destroy(struct gallivm_state *gallivm)
    FREE(gallivm);
 }
 
+void
+gallivm_add_global_mapping(struct gallivm_state *gallivm, LLVMValueRef sym, void* addr)
+{
+   LLVMAddGlobalMapping(gallivm->engine, sym, addr);
+}
 
 /**
  * Validate a function.
@@ -522,10 +527,10 @@ gallivm_compile_module(struct gallivm_state *gallivm)
    ++gallivm->compiled;
 
    lp_init_printf_hook(gallivm);
-   LLVMAddGlobalMapping(gallivm->engine, gallivm->debug_printf_hook, debug_printf);
+   gallivm_add_global_mapping(gallivm, gallivm->debug_printf_hook, debug_printf);
 
    lp_init_clock_hook(gallivm);
-   LLVMAddGlobalMapping(gallivm->engine, gallivm->get_time_hook, os_time_get_nano);
+   gallivm_add_global_mapping(gallivm, gallivm->get_time_hook, os_time_get_nano);
 
    lp_build_coro_add_malloc_hooks(gallivm);
 

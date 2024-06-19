@@ -860,8 +860,8 @@ lvp_descriptor_set_update_with_template(VkDevice _device, VkDescriptorSet descri
          idx *= bind_layout->stride;
          switch (entry->descriptorType) {
          case VK_DESCRIPTOR_TYPE_SAMPLER: {
-            LVP_FROM_HANDLE(lvp_sampler, sampler,
-                            *(VkSampler *)pSrc);
+            VkDescriptorImageInfo *info = (VkDescriptorImageInfo *)pSrc;
+            LVP_FROM_HANDLE(lvp_sampler, sampler, info->sampler);
 
             for (unsigned k = 0; k < bind_layout->stride; k++) {
                desc[idx + k].sampler = sampler->desc.sampler;

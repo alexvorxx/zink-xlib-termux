@@ -200,7 +200,6 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
    uint16_t linear_phi_defs = 0;
    int phi_idx = idx;
    while (phi_idx >= 0) {
-      register_demand[phi_idx] = new_demand;
       Instruction* insn = block->instructions[phi_idx].get();
 
       assert(is_phi(insn) && insn->definitions.size() == 1);
@@ -215,10 +214,12 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
       const Temp temp = definition.getTemp();
       const size_t n = live.erase(temp.id());
 
-      if (n)
+      if (n) {
          definition.setKill(false);
-      else
+      } else {
+         new_demand += temp;
          definition.setKill(true);
+      }
 
       if (insn->opcode == aco_opcode::p_linear_phi) {
          assert(definition.getTemp().type() == RegType::sgpr);
@@ -268,6 +269,7 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
    /* handle phi operands */
    phi_idx = idx;
    while (phi_idx >= 0) {
+      register_demand[phi_idx] = new_demand;
       Instruction* insn = block->instructions[phi_idx].get();
       assert(is_phi(insn));
       /* directly insert into the predecessors live-out set */
@@ -296,6 +298,9 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
       }
       phi_idx--;
    }
+
+   block->live_in_demand = new_demand;
+   block->live_in_demand.sgpr += 2; /* Add 2 SGPRs for potential long-jumps. */
 
    assert(!block->linear_preds.empty() || (new_demand == RegisterDemand() && live.empty()));
 }

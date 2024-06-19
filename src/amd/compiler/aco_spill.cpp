@@ -309,34 +309,6 @@ get_demand_before(spill_ctx& ctx, unsigned block_idx, unsigned idx)
 }
 
 RegisterDemand
-get_live_in_demand(spill_ctx& ctx, unsigned block_idx)
-{
-   unsigned idx = 0;
-   RegisterDemand reg_pressure = RegisterDemand();
-   Block& block = ctx.program->blocks[block_idx];
-   for (aco_ptr<Instruction>& phi : block.instructions) {
-      if (!is_phi(phi))
-         break;
-      idx++;
-
-      /* Killed phi definitions increase pressure in the predecessor but not
-       * the block they're in. Since the loops below are both to control
-       * pressure of the start of this block and the ends of it's
-       * predecessors, we need to count killed unspilled phi definitions here. */
-      if (phi->definitions[0].isTemp() && phi->definitions[0].isKill() &&
-          !ctx.spills_entry[block_idx].count(phi->definitions[0].getTemp()))
-         reg_pressure += phi->definitions[0].getTemp();
-   }
-
-   reg_pressure += get_demand_before(ctx, block_idx, idx);
-
-   /* In order to create long jumps, we might need an empty SGPR pair. */
-   reg_pressure.sgpr += 2;
-
-   return reg_pressure;
-}
-
-RegisterDemand
 init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
 {
    RegisterDemand spilled_registers;
@@ -354,7 +326,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       assert(block->logical_preds[0] == block_idx - 1);
 
       /* check how many live-through variables should be spilled */
-      RegisterDemand reg_pressure = get_live_in_demand(ctx, block_idx);
+      RegisterDemand reg_pressure = block->live_in_demand;
       RegisterDemand loop_demand = reg_pressure;
       unsigned i = block_idx;
       while (ctx.program->blocks[i].loop_nest_depth >= block->loop_nest_depth)
@@ -570,7 +542,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
    }
 
    /* if reg pressure at first instruction is still too high, add partially spilled variables */
-   RegisterDemand reg_pressure = get_live_in_demand(ctx, block_idx);
+   RegisterDemand reg_pressure = block->live_in_demand;
    reg_pressure -= spilled_registers;
 
    while (reg_pressure.exceeds(ctx.target_pressure)) {
@@ -929,11 +901,10 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
 
    if (!ctx.processed[block_idx]) {
       assert(!(block->kind & block_kind_loop_header));
-      RegisterDemand demand_before = get_demand_before(ctx, block_idx, idx);
       std::vector<RegisterDemand>& register_demand =
          ctx.program->live.register_demand[block->index];
       register_demand.erase(register_demand.begin(), register_demand.begin() + idx);
-      register_demand.insert(register_demand.begin(), instructions.size(), demand_before);
+      register_demand.insert(register_demand.begin(), instructions.size(), block->live_in_demand);
    }
 
    std::vector<aco_ptr<Instruction>>::iterator start = std::next(block->instructions.begin(), idx);

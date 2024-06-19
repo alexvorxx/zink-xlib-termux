@@ -1887,6 +1887,7 @@ struct Block {
    edge_vec logical_succs;
    edge_vec linear_succs;
    RegisterDemand register_demand = RegisterDemand();
+   RegisterDemand live_in_demand = RegisterDemand();
    uint32_t kind = 0;
    int32_t logical_idom = -1;
    int32_t linear_idom = -1;

@@ -1296,18 +1296,20 @@ schedule_program(Program* program)
    int prev_num_waves = program->num_waves;
    const RegisterDemand prev_max_demand = program->max_reg_demand;
 
-   std::vector<RegisterDemand> demands(program->blocks.size());
+   std::vector<RegisterDemand> block_demands(program->blocks.size());
+   std::vector<std::vector<RegisterDemand>> register_demands(program->blocks.size());
    for (unsigned j = 0; j < program->blocks.size(); j++) {
-      demands[j] = program->blocks[j].register_demand;
+      block_demands[j] = program->blocks[j].register_demand;
+      register_demands[j] = program->live.register_demand[j];
    }
 
-   live live_vars2 = aco::live_var_analysis(program);
+   aco::live_var_analysis(program);
 
    for (unsigned j = 0; j < program->blocks.size(); j++) {
       Block &b = program->blocks[j];
       for (unsigned i = 0; i < b.instructions.size(); i++)
-         assert(live_vars.register_demand[b.index][i] == live_vars2.register_demand[b.index][i]);
-      assert(b.register_demand == demands[j]);
+         assert(register_demands[b.index][i] == program->live.register_demand[b.index][i]);
+      assert(b.register_demand == block_demands[j]);
    }
 
    assert(program->max_reg_demand == prev_max_demand);

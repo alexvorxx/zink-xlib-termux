@@ -200,6 +200,9 @@ panvk_pool_reset(struct panvk_pool *pool)
       panvk_priv_bo_unref(bo);
    }
 
+   if (!pool->props.owns_bos)
+      panvk_priv_bo_unref(pool->transient_bo);
+
    pool->bo_count = 0;
    pool->transient_bo = NULL;
 }

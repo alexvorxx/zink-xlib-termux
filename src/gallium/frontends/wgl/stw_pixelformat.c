@@ -298,7 +298,7 @@ add_color_format_variants(const struct stw_pf_color_info *color_formats,
                   stw_pixelformat_add(stw_dev, extended, &color_formats[cfmt],
                                        depth, acc * 16,
                                        (flag & stw_pfd_double_buffer) != 0,
-                                       (flag == stw_pfd_gdi_support) != 0, samples);
+                                       (flag & stw_pfd_gdi_support) != 0, samples);
                   num_added++;
                }
             }

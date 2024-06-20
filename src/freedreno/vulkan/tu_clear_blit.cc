@@ -1799,7 +1799,7 @@ tu6_clear_lrz(struct tu_cmd_buffer *cmd,
     * LRZ via CCU. Don't need to invalidate CCU since we are presumably
     * writing whole cache lines we assume to be 64 bytes.
     */
-   tu_emit_event_write<CHIP>(cmd, &cmd->cs, FD_CACHE_FLUSH);
+   tu_emit_event_write<CHIP>(cmd, &cmd->cs, FD_CACHE_CLEAN);
 
    ops->setup(cmd, cs, PIPE_FORMAT_Z16_UNORM, PIPE_FORMAT_Z16_UNORM,
               VK_IMAGE_ASPECT_DEPTH_BIT, 0, true, false,
@@ -1817,7 +1817,7 @@ tu6_clear_lrz(struct tu_cmd_buffer *cmd,
     * UCHE in the earlier GRAS stage.
     */
    cmd->state.cache.flush_bits |=
-      TU_CMD_FLAG_CCU_FLUSH_COLOR | TU_CMD_FLAG_CACHE_INVALIDATE |
+      TU_CMD_FLAG_CCU_CLEAN_COLOR | TU_CMD_FLAG_CACHE_INVALIDATE |
       TU_CMD_FLAG_WAIT_FOR_IDLE;
 }
 TU_GENX(tu6_clear_lrz);
@@ -2481,7 +2481,7 @@ tu_copy_image_to_image(struct tu_cmd_buffer *cmd,
       /* When executed by the user there has to be a pipeline barrier here,
        * but since we're doing it manually we'll have to flush ourselves.
        */
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_COLOR);
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_COLOR);
       tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
       tu_cs_emit_wfi(cs);
 
@@ -3461,11 +3461,11 @@ tu_clear_sysmem_attachment(struct tu_cmd_buffer *cmd,
     * beforehand as depth should already be flushed.
     */
    if (vk_format_is_depth_or_stencil(attachment->format)) {
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_COLOR);
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_DEPTH);
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_COLOR);
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_DEPTH);
       tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_INVALIDATE_DEPTH);
    } else {
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_COLOR);
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_COLOR);
       tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_INVALIDATE_COLOR);
    }
 
@@ -3840,7 +3840,7 @@ store_cp_blit(struct tu_cmd_buffer *cmd,
       /* On A7XX, we need to wait for any CP_EVENT_WRITE::BLIT operations
        * arising from GMEM load/clears to land before we can continue.
        */
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_BLIT_CACHE);
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_BLIT_CACHE);
 
    /* Wait for cache event to land */
    tu_cs_emit_wfi(cs);
@@ -3851,7 +3851,7 @@ store_cp_blit(struct tu_cmd_buffer *cmd,
     * sysmem, and we generally assume that GMEM renderpasses leave their
     * results in sysmem, so we need to flush manually here.
     */
-   tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_COLOR);
+   tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_COLOR);
 }
 
 template <chip CHIP>
@@ -3917,7 +3917,7 @@ store_3d_blit(struct tu_cmd_buffer *cmd,
     * results in sysmem, so we need to flush manually here. The 3d blit path
     * writes to depth images as a color RT, so there's no need to flush depth.
     */
-   tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_COLOR);
+   tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_COLOR);
 
    /* Restore RB_BIN_CONTROL/GRAS_BIN_CONTROL saved above. */
    tu_cs_emit_pkt7(cs, CP_SCRATCH_TO_REG, 1);

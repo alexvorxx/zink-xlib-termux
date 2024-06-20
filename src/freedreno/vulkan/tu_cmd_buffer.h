@@ -195,11 +195,11 @@ enum tu_stage {
 };
 
 enum tu_cmd_flush_bits {
-   TU_CMD_FLAG_CCU_FLUSH_DEPTH = 1 << 0,
-   TU_CMD_FLAG_CCU_FLUSH_COLOR = 1 << 1,
+   TU_CMD_FLAG_CCU_CLEAN_DEPTH = 1 << 0,
+   TU_CMD_FLAG_CCU_CLEAN_COLOR = 1 << 1,
    TU_CMD_FLAG_CCU_INVALIDATE_DEPTH = 1 << 2,
    TU_CMD_FLAG_CCU_INVALIDATE_COLOR = 1 << 3,
-   TU_CMD_FLAG_CACHE_FLUSH = 1 << 4,
+   TU_CMD_FLAG_CACHE_CLEAN = 1 << 4,
    TU_CMD_FLAG_CACHE_INVALIDATE = 1 << 5,
    TU_CMD_FLAG_CCHE_INVALIDATE = 1 << 6,
    TU_CMD_FLAG_WAIT_MEM_WRITES = 1 << 7,
@@ -209,12 +209,12 @@ enum tu_cmd_flush_bits {
    /* This is an unusual flush that isn't automatically executed if pending,
     * as it isn't necessary. Therefore, it's not included in ALL_FLUSH.
     */
-   TU_CMD_FLAG_BLIT_CACHE_FLUSH = 1 << 11,
+   TU_CMD_FLAG_BLIT_CACHE_CLEAN = 1 << 11,
 
-   TU_CMD_FLAG_ALL_FLUSH =
-      TU_CMD_FLAG_CCU_FLUSH_DEPTH |
-      TU_CMD_FLAG_CCU_FLUSH_COLOR |
-      TU_CMD_FLAG_CACHE_FLUSH |
+   TU_CMD_FLAG_ALL_CLEAN =
+      TU_CMD_FLAG_CCU_CLEAN_DEPTH |
+      TU_CMD_FLAG_CCU_CLEAN_COLOR |
+      TU_CMD_FLAG_CACHE_CLEAN |
       /* Treat the CP as a sort of "cache" which may need to be "flushed" via
        * waiting for writes to land with WAIT_FOR_MEM_WRITES.
        */

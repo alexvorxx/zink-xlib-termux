@@ -167,7 +167,7 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
    cache->flush_bits = 0;
 
    if (TU_DEBUG(FLUSHALL))
-      flushes |= TU_CMD_FLAG_ALL_FLUSH | TU_CMD_FLAG_ALL_INVALIDATE;
+      flushes |= TU_CMD_FLAG_ALL_CLEAN | TU_CMD_FLAG_ALL_INVALIDATE;
 
    if (TU_DEBUG(SYNCDRAW))
       flushes |= TU_CMD_FLAG_WAIT_MEM_WRITES |
@@ -179,18 +179,18 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
     * any data remains that hasn't yet been made available through a barrier.
     * However it does seem to work for UCHE.
     */
-   if (flushes & (TU_CMD_FLAG_CCU_FLUSH_COLOR |
+   if (flushes & (TU_CMD_FLAG_CCU_CLEAN_COLOR |
                   TU_CMD_FLAG_CCU_INVALIDATE_COLOR))
-      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_FLUSH_COLOR);
-   if (flushes & (TU_CMD_FLAG_CCU_FLUSH_DEPTH |
+      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_CLEAN_COLOR);
+   if (flushes & (TU_CMD_FLAG_CCU_CLEAN_DEPTH |
                   TU_CMD_FLAG_CCU_INVALIDATE_DEPTH))
-      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_FLUSH_DEPTH);
+      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_CLEAN_DEPTH);
    if (flushes & TU_CMD_FLAG_CCU_INVALIDATE_COLOR)
       tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_INVALIDATE_COLOR);
    if (flushes & TU_CMD_FLAG_CCU_INVALIDATE_DEPTH)
       tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_INVALIDATE_DEPTH);
-   if (flushes & TU_CMD_FLAG_CACHE_FLUSH)
-      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CACHE_FLUSH);
+   if (flushes & TU_CMD_FLAG_CACHE_CLEAN)
+      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CACHE_CLEAN);
    if (flushes & TU_CMD_FLAG_CACHE_INVALIDATE)
       tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CACHE_INVALIDATE);
    if (flushes & TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE) {
@@ -199,11 +199,11 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
             .gfx_bindless = CHIP == A6XX ? 0x1f : 0xff,
       ));
    }
-   if (CHIP >= A7XX && flushes & TU_CMD_FLAG_BLIT_CACHE_FLUSH)
+   if (CHIP >= A7XX && flushes & TU_CMD_FLAG_BLIT_CACHE_CLEAN)
       /* On A7XX, blit cache flushes are required to ensure blit writes are visible
        * via UCHE. This isn't necessary on A6XX, all writes should be visible implictly.
        */
-      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_FLUSH_BLIT_CACHE);
+      tu_emit_event_write<CHIP>(cmd_buffer, cs, FD_CCU_CLEAN_BLIT_CACHE);
    if (CHIP >= A7XX && (flushes & TU_CMD_FLAG_CCHE_INVALIDATE) &&
        /* Invalidating UCHE seems to also invalidate CCHE */
        !(flushes & TU_CMD_FLAG_CACHE_INVALIDATE))
@@ -345,11 +345,11 @@ tu_emit_cache_flush_ccu(struct tu_cmd_buffer *cmd_buffer,
    if (ccu_state != cmd_buffer->state.ccu_state) {
       if (cmd_buffer->state.ccu_state != TU_CMD_CCU_GMEM) {
          cmd_buffer->state.cache.flush_bits |=
-            TU_CMD_FLAG_CCU_FLUSH_COLOR |
-            TU_CMD_FLAG_CCU_FLUSH_DEPTH;
+            TU_CMD_FLAG_CCU_CLEAN_COLOR |
+            TU_CMD_FLAG_CCU_CLEAN_DEPTH;
          cmd_buffer->state.cache.pending_flush_bits &= ~(
-            TU_CMD_FLAG_CCU_FLUSH_COLOR |
-            TU_CMD_FLAG_CCU_FLUSH_DEPTH);
+            TU_CMD_FLAG_CCU_CLEAN_COLOR |
+            TU_CMD_FLAG_CCU_CLEAN_DEPTH);
       }
       cmd_buffer->state.cache.flush_bits |=
          TU_CMD_FLAG_CCU_INVALIDATE_COLOR |
@@ -1139,9 +1139,9 @@ tu6_emit_sysmem_resolves(struct tu_cmd_buffer *cmd,
        * resolve case. However, a flush afterwards isn't needed because of the
        * last sentence and the fact that we're in sysmem mode.
        */
-      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_COLOR);
+      tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_COLOR);
       if (subpass->resolve_depth_stencil)
-         tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_DEPTH);
+         tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_DEPTH);
 
       tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
 
@@ -1597,7 +1597,7 @@ tu6_emit_binning_pass(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
     * emit_vsc_overflow_test) or the VSC_DATA buffer directly (implicitly as
     * part of draws).
     */
-   tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_FLUSH);
+   tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_CLEAN);
 
    tu_cs_emit_wfi(cs);
 
@@ -2059,7 +2059,7 @@ tu6_tile_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 
    tu_lrz_tiling_end<CHIP>(cmd, cs);
 
-   tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_FLUSH_BLIT_CACHE);
+   tu_emit_event_write<CHIP>(cmd, cs, FD_CCU_CLEAN_BLIT_CACHE);
 
    tu_cs_sanity_check(cs);
 }
@@ -3239,14 +3239,14 @@ tu_CmdPushConstants2KHR(VkCommandBuffer commandBuffer,
    cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
 }
 
-/* Flush everything which has been made available but we haven't actually
- * flushed yet.
+/* Clean everything which has been made available but we haven't actually
+ * cleaned yet.
  */
 static void
-tu_flush_all_pending(struct tu_cache_state *cache)
+tu_clean_all_pending(struct tu_cache_state *cache)
 {
-   cache->flush_bits |= cache->pending_flush_bits & TU_CMD_FLAG_ALL_FLUSH;
-   cache->pending_flush_bits &= ~TU_CMD_FLAG_ALL_FLUSH;
+   cache->flush_bits |= cache->pending_flush_bits & TU_CMD_FLAG_ALL_CLEAN;
+   cache->pending_flush_bits &= ~TU_CMD_FLAG_ALL_CLEAN;
 }
 
 template <chip CHIP>
@@ -3268,15 +3268,15 @@ tu_EndCommandBuffer(VkCommandBuffer commandBuffer)
     * command buffers there wouldn't be any unnecessary flushes in between.
     */
    if (cmd_buffer->state.pass) {
-      tu_flush_all_pending(&cmd_buffer->state.renderpass_cache);
+      tu_clean_all_pending(&cmd_buffer->state.renderpass_cache);
       tu_emit_cache_flush_renderpass<CHIP>(cmd_buffer);
 
       trace_end_cmd_buffer(&cmd_buffer->trace, &cmd_buffer->draw_cs);
    } else {
-      tu_flush_all_pending(&cmd_buffer->state.cache);
+      tu_clean_all_pending(&cmd_buffer->state.cache);
       cmd_buffer->state.cache.flush_bits |=
-         TU_CMD_FLAG_CCU_FLUSH_COLOR |
-         TU_CMD_FLAG_CCU_FLUSH_DEPTH;
+         TU_CMD_FLAG_CCU_CLEAN_COLOR |
+         TU_CMD_FLAG_CCU_CLEAN_DEPTH;
       tu_emit_cache_flush<CHIP>(cmd_buffer);
 
       trace_end_cmd_buffer(&cmd_buffer->trace, &cmd_buffer->cs);
@@ -3520,27 +3520,27 @@ tu_flush_for_access(struct tu_cache_state *cache,
          TU_CMD_FLAG_ALL_INVALIDATE;
    }
 
-#define SRC_FLUSH(domain, flush, invalidate) \
+#define SRC_FLUSH(domain, clean, invalidate) \
    if (src_mask & TU_ACCESS_##domain##_WRITE) {                      \
-      cache->pending_flush_bits |= TU_CMD_FLAG_##flush |             \
+      cache->pending_flush_bits |= TU_CMD_FLAG_##clean |             \
          (TU_CMD_FLAG_ALL_INVALIDATE & ~TU_CMD_FLAG_##invalidate);   \
    }
 
-   SRC_FLUSH(UCHE, CACHE_FLUSH, CACHE_INVALIDATE)
-   SRC_FLUSH(CCU_COLOR, CCU_FLUSH_COLOR, CCU_INVALIDATE_COLOR)
-   SRC_FLUSH(CCU_DEPTH, CCU_FLUSH_DEPTH, CCU_INVALIDATE_DEPTH)
+   SRC_FLUSH(UCHE, CACHE_CLEAN, CACHE_INVALIDATE)
+   SRC_FLUSH(CCU_COLOR, CCU_CLEAN_COLOR, CCU_INVALIDATE_COLOR)
+   SRC_FLUSH(CCU_DEPTH, CCU_CLEAN_DEPTH, CCU_INVALIDATE_DEPTH)
 
 #undef SRC_FLUSH
 
-#define SRC_INCOHERENT_FLUSH(domain, flush, invalidate)              \
+#define SRC_INCOHERENT_FLUSH(domain, clean, invalidate)              \
    if (src_mask & TU_ACCESS_##domain##_INCOHERENT_WRITE) {           \
-      flush_bits |= TU_CMD_FLAG_##flush;                             \
+      flush_bits |= TU_CMD_FLAG_##clean;                             \
       cache->pending_flush_bits |=                                   \
          (TU_CMD_FLAG_ALL_INVALIDATE & ~TU_CMD_FLAG_##invalidate);   \
    }
 
-   SRC_INCOHERENT_FLUSH(CCU_COLOR, CCU_FLUSH_COLOR, CCU_INVALIDATE_COLOR)
-   SRC_INCOHERENT_FLUSH(CCU_DEPTH, CCU_FLUSH_DEPTH, CCU_INVALIDATE_DEPTH)
+   SRC_INCOHERENT_FLUSH(CCU_COLOR, CCU_CLEAN_COLOR, CCU_INVALIDATE_COLOR)
+   SRC_INCOHERENT_FLUSH(CCU_DEPTH, CCU_CLEAN_DEPTH, CCU_INVALIDATE_DEPTH)
 
 #undef SRC_INCOHERENT_FLUSH
 
@@ -3548,20 +3548,20 @@ tu_flush_for_access(struct tu_cache_state *cache,
     * drains the queue before signalling completion to the host.
     */
    if (dst_mask & (TU_ACCESS_SYSMEM_READ | TU_ACCESS_SYSMEM_WRITE)) {
-      flush_bits |= cache->pending_flush_bits & TU_CMD_FLAG_ALL_FLUSH;
+      flush_bits |= cache->pending_flush_bits & TU_CMD_FLAG_ALL_CLEAN;
    }
 
-#define DST_FLUSH(domain, flush, invalidate) \
+#define DST_FLUSH(domain, clean, invalidate) \
    if (dst_mask & (TU_ACCESS_##domain##_READ |                 \
                    TU_ACCESS_##domain##_WRITE)) {              \
       flush_bits |= cache->pending_flush_bits &                \
          (TU_CMD_FLAG_##invalidate |                           \
-          (TU_CMD_FLAG_ALL_FLUSH & ~TU_CMD_FLAG_##flush));     \
+          (TU_CMD_FLAG_ALL_CLEAN & ~TU_CMD_FLAG_##clean));     \
    }
 
-   DST_FLUSH(UCHE, CACHE_FLUSH, CACHE_INVALIDATE)
-   DST_FLUSH(CCU_COLOR, CCU_FLUSH_COLOR, CCU_INVALIDATE_COLOR)
-   DST_FLUSH(CCU_DEPTH, CCU_FLUSH_DEPTH, CCU_INVALIDATE_DEPTH)
+   DST_FLUSH(UCHE, CACHE_CLEAN, CACHE_INVALIDATE)
+   DST_FLUSH(CCU_COLOR, CCU_CLEAN_COLOR, CCU_INVALIDATE_COLOR)
+   DST_FLUSH(CCU_DEPTH, CCU_CLEAN_DEPTH, CCU_INVALIDATE_DEPTH)
 
 #undef DST_FLUSH
 
@@ -3570,11 +3570,11 @@ tu_flush_for_access(struct tu_cache_state *cache,
                    TU_ACCESS_##domain##_INCOHERENT_WRITE)) {   \
       flush_bits |= TU_CMD_FLAG_##invalidate |                 \
           (cache->pending_flush_bits &                         \
-           (TU_CMD_FLAG_ALL_FLUSH & ~TU_CMD_FLAG_##flush));    \
+           (TU_CMD_FLAG_ALL_CLEAN & ~TU_CMD_FLAG_##flush));    \
    }
 
-   DST_INCOHERENT_FLUSH(CCU_COLOR, CCU_FLUSH_COLOR, CCU_INVALIDATE_COLOR)
-   DST_INCOHERENT_FLUSH(CCU_DEPTH, CCU_FLUSH_DEPTH, CCU_INVALIDATE_DEPTH)
+   DST_INCOHERENT_FLUSH(CCU_COLOR, CCU_CLEAN_COLOR, CCU_INVALIDATE_COLOR)
+   DST_INCOHERENT_FLUSH(CCU_DEPTH, CCU_CLEAN_DEPTH, CCU_INVALIDATE_DEPTH)
 
    if (dst_mask & TU_ACCESS_BINDLESS_DESCRIPTOR_READ) {
       flush_bits |= TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE;
@@ -3589,7 +3589,7 @@ tu_flush_for_access(struct tu_cache_state *cache,
 
    /* The blit cache is a special case dependency between CP_EVENT_WRITE::BLIT
     * (from GMEM loads/clears) to any GMEM attachment reads done via the UCHE
-    * (Eg: Input attachments/CP_BLIT) which needs an explicit BLIT_CACHE_FLUSH
+    * (Eg: Input attachments/CP_BLIT) which needs an explicit BLIT_CACHE_CLEAN
     * for the event blit writes to land, it has the following properties:
     * - Set on reads rather than on writes, like flushes.
     * - Not executed automatically if pending, like invalidates.
@@ -3597,12 +3597,12 @@ tu_flush_for_access(struct tu_cache_state *cache,
     *   continuing the render pass.
     */
    if (src_mask & TU_ACCESS_BLIT_WRITE_GMEM) {
-      cache->pending_flush_bits |= TU_CMD_FLAG_BLIT_CACHE_FLUSH;
+      cache->pending_flush_bits |= TU_CMD_FLAG_BLIT_CACHE_CLEAN;
    }
 
    if ((dst_mask & TU_ACCESS_UCHE_READ_GMEM) &&
-       (cache->pending_flush_bits & TU_CMD_FLAG_BLIT_CACHE_FLUSH)) {
-      flush_bits |= TU_CMD_FLAG_BLIT_CACHE_FLUSH;
+       (cache->pending_flush_bits & TU_CMD_FLAG_BLIT_CACHE_CLEAN)) {
+      flush_bits |= TU_CMD_FLAG_BLIT_CACHE_CLEAN;
    }
 
 #undef DST_INCOHERENT_FLUSH
@@ -4057,10 +4057,10 @@ tu_CmdExecuteCommands(VkCommandBuffer commandBuffer,
 
    /* Emit any pending flushes. */
    if (cmd->state.pass) {
-      tu_flush_all_pending(&cmd->state.renderpass_cache);
+      tu_clean_all_pending(&cmd->state.renderpass_cache);
       TU_CALLX(cmd->device, tu_emit_cache_flush_renderpass)(cmd);
    } else {
-      tu_flush_all_pending(&cmd->state.cache);
+      tu_clean_all_pending(&cmd->state.cache);
       TU_CALLX(cmd->device, tu_emit_cache_flush)(cmd);
    }
 
@@ -4221,7 +4221,7 @@ tu_CmdExecuteCommands(VkCommandBuffer commandBuffer,
    if (cmd->state.pass) {
       struct tu_cache_state *cache = &cmd->state.renderpass_cache;
       BITMASK_ENUM(tu_cmd_flush_bits) retained_pending_flush_bits =
-         cache->pending_flush_bits & TU_CMD_FLAG_BLIT_CACHE_FLUSH;
+         cache->pending_flush_bits & TU_CMD_FLAG_BLIT_CACHE_CLEAN;
       tu_cache_init(cache);
       cache->pending_flush_bits |= retained_pending_flush_bits;
    } else {

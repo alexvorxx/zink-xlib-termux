@@ -100,13 +100,13 @@ constexpr inline struct fd_gpu_event_info fd_gpu_events<A7XX>[FD_GPU_EVENT_MAX] 
     {FLUSH_SO_1, false},              /* FD_FLUSH_SO_1 */
     {FLUSH_SO_2, false},              /* FD_FLUSH_SO_2 */
     {FLUSH_SO_3, false},              /* FD_FLUSH_SO_3 */
-    {CACHE_FLUSH7, false},            /* FD_CACHE_CLEAN */
+    {CACHE_CLEAN, false},             /* FD_CACHE_CLEAN */
     {CACHE_INVALIDATE7, false},       /* FD_CACHE_INVALIDATE */
     {CCU_INVALIDATE_DEPTH, false},    /* FD_CCU_INVALIDATE_DEPTH */
     {CCU_INVALIDATE_COLOR, false},    /* FD_CCU_INVALIDATE_COLOR */
     {CCU_RESOLVE_CLEAN, false},       /* FD_CCU_CLEAN_BLIT_CACHE */
-    {CCU_FLUSH_DEPTH, false},         /* FD_CCU_CLEAN_DEPTH */
-    {CCU_FLUSH_COLOR, false},         /* FD_CCU_CLEAN_COLOR */
+    {CCU_CLEAN_DEPTH, false},         /* FD_CCU_CLEAN_DEPTH */
+    {CCU_CLEAN_COLOR, false},         /* FD_CCU_CLEAN_COLOR */
     {LRZ_CLEAR, false},               /* FD_LRZ_CLEAR */
     {LRZ_FLUSH, false},               /* FD_LRZ_FLUSH */
     {BLIT, false},                    /* FD_BLIT */

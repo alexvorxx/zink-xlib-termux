@@ -225,6 +225,9 @@ get_features(const struct panvk_physical_device *device,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
+
+      /* VK_EXT_shader_module_identifier */
+      .shaderModuleIdentifier = true,
    };
 }
 

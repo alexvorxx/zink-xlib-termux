@@ -835,6 +835,17 @@ build_dgc_buffer_tail_gfx(nir_builder *b, nir_def *sequence_count, const struct 
 }
 
 static void
+build_dgc_buffer_tail_ace(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
+{
+   nir_def *cmd_buf_offset = nir_iadd(b, dgc_main_cmd_buf_offset(b, AMD_IP_GFX, device), load_param32(b, cmd_buf_size));
+   cmd_buf_offset = nir_iadd(b, cmd_buf_offset, dgc_main_cmd_buf_offset(b, AMD_IP_COMPUTE, device));
+   nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, true, device);
+   nir_def *cmd_buf_stride = load_param32(b, ace_cmd_buf_stride);
+
+   build_dgc_buffer_tail(b, cmd_buf_offset, cmd_buf_size, cmd_buf_stride, sequence_count, device);
+}
+
+static void
 build_dgc_buffer_preamble(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_buf_size, unsigned preamble_size,
                           nir_def *sequence_count, const struct radv_device *device)
 {
@@ -896,6 +907,16 @@ build_dgc_buffer_preamble_gfx(nir_builder *b, nir_def *sequence_count, const str
    nir_def *cmd_buf_offset = nir_imm_int(b, 0);
    nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, false, device);
    unsigned preamble_size = radv_dgc_preamble_cmdbuf_size(device, AMD_IP_GFX);
+
+   build_dgc_buffer_preamble(b, cmd_buf_offset, cmd_buf_size, preamble_size, sequence_count, device);
+}
+
+static void
+build_dgc_buffer_preamble_ace(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
+{
+   nir_def *cmd_buf_offset = nir_iadd(b, dgc_main_cmd_buf_offset(b, AMD_IP_GFX, device), load_param32(b, cmd_buf_size));
+   nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, true, device);
+   unsigned preamble_size = radv_dgc_preamble_cmdbuf_size(device, AMD_IP_COMPUTE);
 
    build_dgc_buffer_preamble(b, cmd_buf_offset, cmd_buf_size, preamble_size, sequence_count, device);
 }
@@ -1925,6 +1946,42 @@ build_dgc_prepare_shader(struct radv_device *dev)
 
    build_dgc_buffer_tail_gfx(&b, sequence_count, dev);
    build_dgc_buffer_preamble_gfx(&b, sequence_count, dev);
+
+   /* Prepare the ACE command stream */
+   nir_push_if(&b, nir_ieq_imm(&b, load_param8(&b, has_task_shader), 1));
+   {
+      nir_def *ace_cmd_buf_stride = load_param32(&b, ace_cmd_buf_stride);
+      nir_def *ace_cmd_buf_base_offset =
+         nir_iadd(&b, dgc_main_cmd_buf_offset(&b, AMD_IP_GFX, dev), load_param32(&b, cmd_buf_size));
+      ace_cmd_buf_base_offset = nir_iadd(&b, ace_cmd_buf_base_offset, dgc_main_cmd_buf_offset(&b, AMD_IP_COMPUTE, dev));
+
+      nir_push_if(&b, nir_ult(&b, sequence_id, sequence_count));
+      {
+         struct dgc_cmdbuf cmd_buf = {
+            .b = &b,
+            .dev = dev,
+            .va = nir_pack_64_2x32_split(&b, load_param32(&b, upload_addr), nir_imm_int(&b, pdev->info.address32_hi)),
+            .offset = nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "cmd_buf_offset"),
+         };
+         nir_store_var(&b, cmd_buf.offset,
+                       nir_iadd(&b, nir_imul(&b, global_id, ace_cmd_buf_stride), ace_cmd_buf_base_offset), 1);
+         nir_def *cmd_buf_end = nir_iadd(&b, nir_load_var(&b, cmd_buf.offset), ace_cmd_buf_stride);
+
+         nir_def *stream_addr = load_param64(&b, stream_addr);
+         stream_addr = nir_iadd(&b, stream_addr, nir_u2u64(&b, nir_imul(&b, sequence_id, stream_stride)));
+
+         dgc_emit_draw_mesh_tasks_ace(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
+
+         /* Pad the cmdbuffer if we did not use the whole stride */
+         dgc_pad_cmdbuf(&cmd_buf, cmd_buf_end);
+      }
+      nir_pop_if(&b, NULL);
+
+      build_dgc_buffer_tail_ace(&b, sequence_count, dev);
+      build_dgc_buffer_preamble_ace(&b, sequence_count, dev);
+   }
+   nir_pop_if(&b, NULL);
+
    return b.shader;
 }
 

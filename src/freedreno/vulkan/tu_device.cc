@@ -2957,15 +2957,6 @@ tu_GetDeviceMemoryCommitment(VkDevice device,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-tu_QueueBindSparse(VkQueue _queue,
-                   uint32_t bindInfoCount,
-                   const VkBindSparseInfo *pBindInfo,
-                   VkFence _fence)
-{
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
 tu_CreateFramebuffer(VkDevice _device,
                      const VkFramebufferCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator,

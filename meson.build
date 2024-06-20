@@ -140,7 +140,7 @@ system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'gnu/kfreebsd', 'dragonfly
 gallium_drivers = get_option('gallium-drivers')
 if gallium_drivers.contains('auto')
   if system_has_kms_drm
-    # TODO: PPC, Sparc
+    # TODO: Sparc
     if ['x86', 'x86_64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'svga', 'swrast',
@@ -152,7 +152,7 @@ if gallium_drivers.contains('auto')
         'tegra', 'virgl', 'lima', 'panfrost', 'swrast', 'iris',
         'zink'
       ]
-    elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
+    elif ['mips', 'mips64', 'ppc', 'ppc64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'swrast', 'zink'
       ]

@@ -346,6 +346,12 @@ alpine/x86_64_build:
     - .alpine/x86_64_build-base
   variables:
     MESA_IMAGE_TAG: &alpine-x86_64_build ${ALPINE_X86_64_BUILD_TAG}
+  rules:
+    - !reference [pages, rules]
+    - !reference [test-docs, rules]
+    - !reference [test-docs-mr, rules]
+    - !reference [linkcheck-docs, rules]
+    - !reference [.container, rules]
 
 .use-alpine/x86_64_build:
   extends:

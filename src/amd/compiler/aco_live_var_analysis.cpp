@@ -75,17 +75,6 @@ get_temp_registers(aco_ptr<Instruction>& instr)
    return demand_after;
 }
 
-RegisterDemand
-get_demand_before(RegisterDemand demand, aco_ptr<Instruction>& instr,
-                  aco_ptr<Instruction>& instr_before)
-{
-   demand -= get_live_changes(instr);
-   demand -= get_temp_registers(instr);
-   if (instr_before)
-      demand += get_temp_registers(instr_before);
-   return demand;
-}
-
 namespace {
 struct PhiInfo {
    uint16_t logical_phi_sgpr_ops = 0;

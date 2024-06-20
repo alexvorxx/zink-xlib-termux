@@ -3584,10 +3584,12 @@ anv_pipe_invalidate_bits_for_access_flags(struct anv_cmd_buffer *cmd_buffer,
           * completed before the command streamer loads from memory.
           */
          pipe_bits |=  ANV_PIPE_CS_STALL_BIT;
-         /* Indirect draw commands also set gl_BaseVertex & gl_BaseIndex
-          * through a vertex buffer, so invalidate that cache.
-          */
-         pipe_bits |= ANV_PIPE_VF_CACHE_INVALIDATE_BIT;
+         if (device->info->ver == 9) {
+            /* Indirect draw commands on Gfx9 also set gl_BaseVertex &
+             * gl_BaseIndex through a vertex buffer, so invalidate that cache.
+             */
+            pipe_bits |= ANV_PIPE_VF_CACHE_INVALIDATE_BIT;
+         }
          /* For CmdDipatchIndirect, we also load gl_NumWorkGroups through a
           * UBO from the buffer, so we need to invalidate constant cache.
           */

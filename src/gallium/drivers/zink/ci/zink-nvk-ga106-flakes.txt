@@ -10,7 +10,7 @@ dEQP-GLES3.functional.shaders.precision.int.highp_div_fragment
 dEQP-GLES31.functional.texture.format.sized.cube_array.depth_component32f_npot
 
 # All the double tests in this group seem to be flaky
-spec@glsl-4.00@execution@built-in-functions@.*(double|dvec|dmat).*
+spec@.*@execution@built-in-functions@.*(double|dvec|dmat).*
 
 spec@!opengl 1.0@gl-1.0-blend-func
 spec@!opengl 1.1@copypixels-sync
@@ -32,9 +32,6 @@ spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map 32 32 6 gl_textur
 spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map 32 32 6 gl_texture_2d_array 32 16 15 11 12 1 5 3 2 14 11 4
 spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map_array 32 32 18 gl_texture_cube_map_array 16 16 18 11 5 2 5 9 7 5 7 11
 spec@arb_gpu_shader5@execution@sampler_array_indexing@vs-nonuniform-control-flow
-spec@arb_gpu_shader_fp64@execution@built-in-functions@gs-op-mult-dmat4-double
-spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-op-div-dvec2-dvec2
-spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-reflect-double-double
 spec@arb_pixel_buffer_object@pbo-drawpixels
 spec@arb_shader_image_load_store@semantics@imageLoad/Tessellation control shader/r8/image2D test
 spec@arb_shader_precision@fs-fma-float-float-float

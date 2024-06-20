@@ -20,8 +20,7 @@ lower_to_per_sample(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    case nir_intrinsic_load_sample_id: {
       nir_def *mask = nir_u2u32(b, nir_load_active_samples_agx(b));
       nir_def *bit = nir_ufind_msb(b, mask);
-      nir_def_rewrite_uses(&intr->def, nir_u2uN(b, bit, intr->def.bit_size));
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, nir_u2uN(b, bit, intr->def.bit_size));
       return true;
    }
 

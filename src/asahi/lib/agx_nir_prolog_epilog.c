@@ -203,8 +203,7 @@ lower_input_to_prolog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       BITSET_SET(comps_read, base + c);
    }
 
-   nir_def_rewrite_uses(&intr->def, val);
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, val);
    return true;
 }
 

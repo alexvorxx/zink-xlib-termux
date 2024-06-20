@@ -124,8 +124,7 @@ remove_phis_block(nir_block *block, nir_builder *b)
          def = nir_mov_alu(b, mov->src[0], def->num_components);
       }
 
-      nir_def_rewrite_uses(&phi->def, def);
-      nir_instr_remove(&phi->instr);
+      nir_def_replace(&phi->def, def);
 
       progress = true;
    }

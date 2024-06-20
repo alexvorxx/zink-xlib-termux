@@ -138,9 +138,7 @@ lower_load_push_constant(struct tu_device *dev,
             nir_ushr_imm(b, instr->src[0].ssa, 2),
             .base = base);
 
-   nir_def_rewrite_uses(&instr->def, load);
-
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, load);
 }
 
 static void
@@ -216,8 +214,7 @@ lower_vulkan_resource_index(struct tu_device *dev, nir_builder *b,
                                         nir_ishl(b, vulkan_idx, shift)),
                                shift);
 
-   nir_def_rewrite_uses(&instr->def, def);
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, def);
 }
 
 static void
@@ -233,8 +230,7 @@ lower_vulkan_resource_reindex(nir_builder *b, nir_intrinsic_instr *instr)
                         nir_ishl(b, delta, shift)),
                shift);
 
-   nir_def_rewrite_uses(&instr->def, new_index);
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, new_index);
 }
 
 static void
@@ -248,8 +244,7 @@ lower_load_vulkan_descriptor(nir_builder *b, nir_intrinsic_instr *intrin)
       nir_vec3(b, nir_channel(b, old_index, 0),
                nir_channel(b, old_index, 1),
                nir_imm_int(b, 0));
-   nir_def_rewrite_uses(&intrin->def, new_index);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, new_index);
 }
 
 static bool
@@ -480,8 +475,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
          ir3_load_driver_ubo_indirect(b, 2, &shader->const_state.fdm_ubo,
                                       param, view, nir_intrinsic_range(instr));
 
-      nir_def_rewrite_uses(&instr->def, result);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, result);
       return true;
    }
    case nir_intrinsic_load_frag_invocation_count: {
@@ -492,8 +486,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
          ir3_load_driver_ubo(b, 1, &shader->const_state.fdm_ubo,
                              IR3_DP_FS_FRAG_INVOCATION_COUNT);
 
-      nir_def_rewrite_uses(&instr->def, result);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, result);
       return true;
    }
 
@@ -717,8 +710,7 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
                              nir_ishr_imm(b, offset, 2), .base = base);
    }
 
-   nir_def_rewrite_uses(&intrin->def, val);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, val);
    return true;
 }
 

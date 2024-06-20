@@ -353,8 +353,7 @@ lower_zero_lod(nir_builder *b, nir_tex_instr *tex)
    b->cursor = nir_before_instr(&tex->instr);
 
    if (tex->op == nir_texop_lod) {
-      nir_def_rewrite_uses(&tex->def, nir_imm_int(b, 0));
-      nir_instr_remove(&tex->instr);
+      nir_def_replace(&tex->def, nir_imm_int(b, 0));
       return;
    }
 
@@ -959,8 +958,7 @@ lower_tex_to_txd(nir_builder *b, nir_tex_instr *tex)
                 tex->def.num_components,
                 tex->def.bit_size);
    nir_builder_instr_insert(b, &txd->instr);
-   nir_def_rewrite_uses(&tex->def, &txd->def);
-   nir_instr_remove(&tex->instr);
+   nir_def_replace(&tex->def, &txd->def);
    return txd;
 }
 
@@ -999,8 +997,7 @@ lower_txb_to_txl(nir_builder *b, nir_tex_instr *tex)
                 tex->def.num_components,
                 tex->def.bit_size);
    nir_builder_instr_insert(b, &txl->instr);
-   nir_def_rewrite_uses(&tex->def, &txl->def);
-   nir_instr_remove(&tex->instr);
+   nir_def_replace(&tex->def, &txl->def);
    return txl;
 }
 
@@ -1303,8 +1300,7 @@ lower_tg4_offsets(nir_builder *b, nir_tex_instr *tex)
    dest[4] = nir_get_scalar(residency, 0);
 
    nir_def *res = nir_vec_scalars(b, dest, tex->def.num_components);
-   nir_def_rewrite_uses(&tex->def, res);
-   nir_instr_remove(&tex->instr);
+   nir_def_replace(&tex->def, res);
 
    return true;
 }

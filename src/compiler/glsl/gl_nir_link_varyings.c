@@ -3457,9 +3457,7 @@ replace_unused_interpolate_at_with_undef(nir_builder *b, nir_instr *instr,
             nir_def *undef =
                nir_undef(b, intrin->def.num_components,
                              intrin->def.bit_size);
-            nir_def_rewrite_uses(&intrin->def, undef);
-
-            nir_instr_remove(&intrin->instr);
+            nir_def_replace(&intrin->def, undef);
             return true;
          }
       }

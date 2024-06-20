@@ -2276,8 +2276,7 @@ lower_explicit_io_array_length(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_def *remaining = nir_usub_sat(b, size, offset);
    nir_def *arr_size = nir_udiv_imm(b, remaining, stride);
 
-   nir_def_rewrite_uses(&intrin->def, arr_size);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, arr_size);
 }
 
 static void
@@ -3115,8 +3114,7 @@ nir_lower_color_inputs(nir_shader *nir)
             load = nir_channels(&b, load, BITFIELD_RANGE(start, count));
          }
 
-         nir_def_rewrite_uses(&intrin->def, load);
-         nir_instr_remove(instr);
+         nir_def_replace(&intrin->def, load);
          progress = true;
       }
    }

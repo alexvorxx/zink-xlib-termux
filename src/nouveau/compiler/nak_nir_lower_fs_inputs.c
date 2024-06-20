@@ -342,8 +342,7 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       return false;
    }
 
-   nir_def_rewrite_uses(&intrin->def, res);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, res);
 
    return true;
 }

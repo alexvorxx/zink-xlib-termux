@@ -152,8 +152,7 @@ vectorize_load(nir_intrinsic_instr *chan[8], unsigned start, unsigned count,
       }
    } else {
       for (unsigned i = start; i < start + count; i++) {
-         nir_def_rewrite_uses(&chan[i]->def, nir_channel(&b, def, i - start));
-         nir_instr_remove(&chan[i]->instr);
+         nir_def_replace(&chan[i]->def, nir_channel(&b, def, i - start));
       }
    }
 }

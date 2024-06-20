@@ -108,9 +108,7 @@ nir_lower_uniforms_to_ubo_instr(nir_builder *b, nir_instr *instr, void *data)
          nir_intrinsic_set_range_base(load, nir_intrinsic_base(intr) * multiplier);
          nir_intrinsic_set_range(load, nir_intrinsic_range(intr) * multiplier);
       }
-      nir_def_rewrite_uses(&intr->def, load_result);
-
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, load_result);
       return true;
    }
 

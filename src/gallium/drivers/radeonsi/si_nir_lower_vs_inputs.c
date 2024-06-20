@@ -578,8 +578,7 @@ lower_vs_input_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
 
    nir_def *replacement = nir_vec(b, &comp[component], num_components);
 
-   nir_def_rewrite_uses(&intrin->def, replacement);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, replacement);
    nir_instr_free(&intrin->instr);
 
    return true;

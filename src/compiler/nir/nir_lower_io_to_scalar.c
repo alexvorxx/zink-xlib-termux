@@ -77,9 +77,7 @@ lower_load_input_to_scalar(nir_builder *b, nir_intrinsic_instr *intr)
       loads[i] = &chan_intr->def;
    }
 
-   nir_def_rewrite_uses(&intr->def,
-                        nir_vec(b, loads, intr->num_components));
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, nir_vec(b, loads, intr->num_components));
 }
 
 static void
@@ -124,9 +122,7 @@ lower_load_to_scalar(nir_builder *b, nir_intrinsic_instr *intr)
       loads[i] = &chan_intr->def;
    }
 
-   nir_def_rewrite_uses(&intr->def,
-                        nir_vec(b, loads, intr->num_components));
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, nir_vec(b, loads, intr->num_components));
 }
 
 static void
@@ -432,11 +428,7 @@ lower_load_to_scalar_early(nir_builder *b, nir_intrinsic_instr *intr,
       loads[i] = &chan_intr->def;
    }
 
-   nir_def_rewrite_uses(&intr->def,
-                        nir_vec(b, loads, intr->num_components));
-
-   /* Remove the old load intrinsic */
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, nir_vec(b, loads, intr->num_components));
 }
 
 static void

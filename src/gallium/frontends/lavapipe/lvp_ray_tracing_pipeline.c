@@ -128,8 +128,7 @@ lvp_lower_ray_tracing_derefs(nir_shader *shader)
             nir_def *offset = is_shader_call_data ? arg_offset : nir_imm_int(b, 0);
             nir_deref_instr *replacement =
                nir_build_deref_cast(b, offset, nir_var_function_temp, deref->var->type, 0);
-            nir_def_rewrite_uses(&deref->def, &replacement->def);
-            nir_instr_remove(&deref->instr);
+            nir_def_replace(&deref->def, &replacement->def);
          }
       }
    }
@@ -542,8 +541,7 @@ lvp_lower_isec_intrinsic(nir_builder *b, nir_intrinsic_instr *instr, void *data)
    }
    nir_pop_if(b, NULL);
 
-   nir_def_rewrite_uses(&instr->def, nir_load_var(b, commit));
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, nir_load_var(b, commit));
 
    return true;
 }
@@ -1026,8 +1024,7 @@ lvp_lower_ray_tracing_stack_base(nir_builder *b, nir_intrinsic_instr *instr, voi
 
    b->cursor = nir_after_instr(&instr->instr);
 
-   nir_def_rewrite_uses(&instr->def, nir_imm_int(b, b->shader->scratch_size));
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, nir_imm_int(b, b->shader->scratch_size));
 
    return true;
 }

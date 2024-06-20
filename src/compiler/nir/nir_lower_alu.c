@@ -214,8 +214,7 @@ lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
    }
 
    if (lowered) {
-      nir_def_rewrite_uses(&instr->def, lowered);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, lowered);
       return true;
    } else {
       return false;

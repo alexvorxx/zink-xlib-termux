@@ -385,8 +385,7 @@ lower_vs_input_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
       replacement = lower_load_vs_input(b, intrin, s);
    }
 
-   nir_def_rewrite_uses(&intrin->def, replacement);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, replacement);
    nir_instr_free(&intrin->instr);
 
    return true;

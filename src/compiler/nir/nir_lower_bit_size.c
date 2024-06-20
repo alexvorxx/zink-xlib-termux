@@ -338,8 +338,7 @@ split_phi(nir_builder *b, nir_phi_instr *phi)
 
    b->cursor = nir_after_phis(nir_cursor_current_block(b->cursor));
    nir_def *merged = nir_pack_64_2x32_split(b, &lowered[0]->def, &lowered[1]->def);
-   nir_def_rewrite_uses(&phi->def, merged);
-   nir_instr_remove(&phi->instr);
+   nir_def_replace(&phi->def, merged);
 }
 
 static bool

@@ -117,8 +117,7 @@ r300_nir_lower_fcsel_instr(nir_builder *b, nir_instr *instr, void *data)
                         nir_ssa_for_alu_src(b, alu, 1), slt);
       }
 
-      nir_def_rewrite_uses(&alu->def, lrp);
-      nir_instr_remove(&alu->instr);
+      nir_def_replace(&alu->def, lrp);
       return true;
    }
    return false;

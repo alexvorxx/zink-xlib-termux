@@ -80,8 +80,7 @@ nv50_nir_lower_load_user_clip_plane_cb(nir_builder *b, nir_intrinsic_instr *intr
       nir_load_ubo(b, 4, 32, nir_imm_int(b, info->io.auxCBSlot),
                    nir_imm_int(b, offset), .range = ~0u);
 
-   nir_def_rewrite_uses(&intrin->def, replacement);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, replacement);
 
    return true;
 }

@@ -437,8 +437,7 @@ lower_ycbcr_tex_instr(nir_builder *b, nir_instr *instr, void *_state)
                                            swizzled_bpcs);
    }
 
-   nir_def_rewrite_uses(&tex->def, result);
-   nir_instr_remove(&tex->instr);
+   nir_def_replace(&tex->def, result);
 
    return true;
 }

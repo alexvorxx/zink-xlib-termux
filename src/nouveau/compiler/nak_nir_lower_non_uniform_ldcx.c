@@ -47,8 +47,7 @@ lower_ldcx_to_global(nir_builder *b, nir_intrinsic_instr *load)
    nir_pop_if(b, NULL);
    val = nir_if_phi(b, val, zero);
 
-   nir_def_rewrite_uses(&load->def, val);
-   nir_instr_remove(&load->instr);
+   nir_def_replace(&load->def, val);
 }
 
 struct non_uniform_section {

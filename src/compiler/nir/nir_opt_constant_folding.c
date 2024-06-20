@@ -87,8 +87,7 @@ try_fold_alu(nir_builder *b, nir_alu_instr *alu)
    nir_def *imm = nir_build_imm(b, alu->def.num_components,
                                 alu->def.bit_size,
                                 dest);
-   nir_def_rewrite_uses(&alu->def, imm);
-   nir_instr_remove(&alu->instr);
+   nir_def_replace(&alu->def, imm);
    nir_instr_free(&alu->instr);
 
    return true;
@@ -206,8 +205,7 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
          b->cursor = nir_before_instr(&intrin->instr);
          nir_def *val = nir_build_imm(b, intrin->def.num_components,
                                       intrin->def.bit_size, v);
-         nir_def_rewrite_uses(&intrin->def, val);
-         nir_instr_remove(&intrin->instr);
+         nir_def_replace(&intrin->def, val);
          return true;
       }
       return false;
@@ -245,8 +243,7 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
          val = nir_build_imm(b, intrin->def.num_components,
                              intrin->def.bit_size, imm);
       }
-      nir_def_rewrite_uses(&intrin->def, val);
-      nir_instr_remove(&intrin->instr);
+      nir_def_replace(&intrin->def, val);
       return true;
    }
 
@@ -270,9 +267,7 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
        * the data is constant.
        */
       if (nir_src_is_const(intrin->src[0])) {
-         nir_def_rewrite_uses(&intrin->def,
-                              intrin->src[0].ssa);
-         nir_instr_remove(&intrin->instr);
+         nir_def_replace(&intrin->def, intrin->src[0].ssa);
          return true;
       }
       return false;
@@ -281,9 +276,7 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
    case nir_intrinsic_vote_ieq:
       if (nir_src_is_const(intrin->src[0])) {
          b->cursor = nir_before_instr(&intrin->instr);
-         nir_def_rewrite_uses(&intrin->def,
-                              nir_imm_true(b));
-         nir_instr_remove(&intrin->instr);
+         nir_def_replace(&intrin->def, nir_imm_true(b));
          return true;
       }
       return false;

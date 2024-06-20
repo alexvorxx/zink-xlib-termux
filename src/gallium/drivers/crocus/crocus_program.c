@@ -497,9 +497,7 @@ crocus_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                          intrin->def.bit_size);
             nir_builder_instr_insert(&b, &load_ubo->instr);
 
-            nir_def_rewrite_uses(&intrin->def,
-                                     &load_ubo->def);
-            nir_instr_remove(&intrin->instr);
+            nir_def_replace(&intrin->def, &load_ubo->def);
             continue;
          }
          case nir_intrinsic_load_user_clip_plane: {

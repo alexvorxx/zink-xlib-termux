@@ -1057,8 +1057,7 @@ lower_64bit_pack_instr(nir_builder *b, nir_instr *instr, void *data)
    default:
       unreachable("Impossible opcode");
    }
-   nir_def_rewrite_uses(&alu_instr->def, dest);
-   nir_instr_remove(&alu_instr->instr);
+   nir_def_replace(&alu_instr->def, dest);
    return true;
 }
 
@@ -1197,8 +1196,7 @@ lower_system_values_to_inlined_uniforms_instr(nir_builder *b,
       new_dest_def = dwords[0];
    else
       new_dest_def = nir_pack_64_2x32_split(b, dwords[0], dwords[1]);
-   nir_def_rewrite_uses(&intrin->def, new_dest_def);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, new_dest_def);
    return true;
 }
 
@@ -2370,8 +2368,7 @@ rewrite_atomic_ssbo_instr(nir_builder *b, nir_instr *instr, struct bo_vars *bo)
    }
 
    nir_def *load = nir_vec(b, result, num_components);
-   nir_def_rewrite_uses(&intr->def, load);
-   nir_instr_remove(instr);
+   nir_def_replace(&intr->def, load);
 }
 
 static bool
@@ -2804,8 +2801,7 @@ rewrite_read_as_0(nir_builder *b, nir_instr *instr, void *data)
          break;
       }
    }
-   nir_def_rewrite_uses(&intr->def, zero);
-   nir_instr_remove(instr);
+   nir_def_replace(&intr->def, zero);
    return true;
 }
 

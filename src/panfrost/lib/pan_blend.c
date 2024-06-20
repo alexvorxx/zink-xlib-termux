@@ -611,8 +611,7 @@ pan_inline_blend_constants(nir_builder *b, nir_intrinsic_instr *intr,
 
    b->cursor = nir_after_instr(&intr->instr);
    nir_def *constant = nir_build_imm(b, 4, 32, constants);
-   nir_def_rewrite_uses(&intr->def, constant);
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, constant);
    return true;
 }
 

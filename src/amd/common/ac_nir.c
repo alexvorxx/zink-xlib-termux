@@ -174,8 +174,7 @@ lower_intrinsic_to_arg(nir_builder *b, nir_instr *instr, void *state)
    }
 
    assert(replacement);
-   nir_def_rewrite_uses(&intrin->def, replacement);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, replacement);
    return true;
 }
 
@@ -1475,8 +1474,7 @@ split_pack_half(nir_builder *b, nir_instr *instr, void *param)
     */
    nir_def *lo = nir_f2f16(b, nir_ssa_for_alu_src(b, alu, 0));
    nir_def *hi = nir_f2f16(b, nir_ssa_for_alu_src(b, alu, 1));
-   nir_def_rewrite_uses(&alu->def, nir_pack_32_2x16_split(b, lo, hi));
-   nir_instr_remove(&alu->instr);
+   nir_def_replace(&alu->def, nir_pack_32_2x16_split(b, lo, hi));
    return true;
 }
 

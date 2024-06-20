@@ -217,8 +217,7 @@ lower_mem_load(nir_builder *b, nir_intrinsic_instr *intrin,
 
    nir_def *result = nir_extract_bits(b, chunks, num_chunks, 0,
                                       num_components, bit_size);
-   nir_def_rewrite_uses(&intrin->def, result);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, result);
 
    return true;
 }

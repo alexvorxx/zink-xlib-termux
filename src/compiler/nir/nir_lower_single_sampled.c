@@ -78,8 +78,7 @@ lower_single_sampled_instr(nir_builder *b,
       return false;
    }
 
-   nir_def_rewrite_uses(&intrin->def, lowered);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, lowered);
    return true;
 }
 

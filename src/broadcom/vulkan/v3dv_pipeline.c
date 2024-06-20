@@ -573,9 +573,7 @@ lower_vulkan_resource_index(nir_builder *b,
     * vulkan_load_descriptor return a vec2 providing an index and
     * offset. Our backend compiler only cares about the index part.
     */
-   nir_def_rewrite_uses(&instr->def,
-                            nir_imm_ivec2(b, index, 0));
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, nir_imm_ivec2(b, index, 0));
 }
 
 static uint8_t
@@ -830,8 +828,7 @@ lower_intrinsic(nir_builder *b,
       /* Loading the descriptor happens as part of load/store instructions,
        * so for us this is a no-op.
        */
-      nir_def_rewrite_uses(&instr->def, instr->src[0].ssa);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, instr->src[0].ssa);
       return true;
    }
 

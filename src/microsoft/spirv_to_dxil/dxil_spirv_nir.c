@@ -374,8 +374,7 @@ lower_load_push_constant(struct nir_builder *builder, nir_instr *instr,
       .range_base = base,
       .range = range);
 
-   nir_def_rewrite_uses(&intrin->def, load_data);
-   nir_instr_remove(instr);
+   nir_def_replace(&intrin->def, load_data);
    return true;
 }
 

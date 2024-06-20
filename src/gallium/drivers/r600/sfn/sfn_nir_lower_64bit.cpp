@@ -1405,8 +1405,7 @@ r600_lower_64bit_load_const(nir_builder *b, nir_load_const_instr *instr)
       num_components == 4 ? nir_channel(b, &second->def, 1) : NULL,
    };
    nir_def *new_ir = nir_vec(b, channels, num_components);
-   nir_def_rewrite_uses(&instr->def, new_ir);
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, new_ir);
 
    return true;
 }

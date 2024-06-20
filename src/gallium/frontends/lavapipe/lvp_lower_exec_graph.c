@@ -110,12 +110,10 @@ lvp_lower_node_payload_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
       nir_instr_remove(&intr->instr);
       return true;
    case nir_intrinsic_finalize_incoming_node_payload:
-      nir_def_rewrite_uses(&intr->def, nir_imm_true(b));
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, nir_imm_true(b));
       return true;
    case nir_intrinsic_load_coalesced_input_count:
-      nir_def_rewrite_uses(&intr->def, nir_imm_int(b, 1));
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, nir_imm_int(b, 1));
       return true;
    default:
       return false;

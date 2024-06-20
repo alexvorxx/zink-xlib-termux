@@ -49,8 +49,7 @@ replace_intrinsic_with_vec(nir_builder *b, nir_intrinsic_instr *intr,
         /* Replace the old intrinsic with a reference to our reconstructed
          * vector.
          */
-        nir_def_rewrite_uses(&intr->def, vec);
-        nir_instr_remove(&intr->instr);
+        nir_def_replace(&intr->def, vec);
 }
 
 static nir_def *

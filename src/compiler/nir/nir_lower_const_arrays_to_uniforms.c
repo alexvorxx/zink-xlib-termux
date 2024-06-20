@@ -402,8 +402,7 @@ nir_lower_const_arrays_to_uniforms(nir_shader *shader,
 
          nir_def *new_def = nir_load_deref(&b, new_deref_instr);
 
-         nir_def_rewrite_uses(&intrin->def, new_def);
-         nir_instr_remove(&intrin->instr);
+         nir_def_replace(&intrin->def, new_def);
       }
    }
 

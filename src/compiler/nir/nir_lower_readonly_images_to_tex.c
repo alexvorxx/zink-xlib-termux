@@ -172,8 +172,7 @@ lower_readonly_image_instr_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
    nir_def *res = nir_trim_vector(b, &tex->def,
                                   intrin->def.num_components);
 
-   nir_def_rewrite_uses(&intrin->def, res);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, res);
 
    return true;
 }

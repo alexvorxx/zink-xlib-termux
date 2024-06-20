@@ -272,8 +272,7 @@ lower_cs_intrinsics_convert_block(struct lower_intrinsics_state *state,
       if (intrinsic->def.bit_size == 64)
          sysval = nir_u2u64(b, sysval);
 
-      nir_def_rewrite_uses(&intrinsic->def, sysval);
-      nir_instr_remove(&intrinsic->instr);
+      nir_def_replace(&intrinsic->def, sysval);
 
       state->progress = true;
    }

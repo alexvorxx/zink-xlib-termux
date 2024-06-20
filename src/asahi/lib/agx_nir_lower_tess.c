@@ -240,8 +240,7 @@ lower_tes(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    nir_def *repl = lower_tes_impl(b, intr, data);
 
    if (repl) {
-      nir_def_rewrite_uses(&intr->def, repl);
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, repl);
       return true;
    } else {
       return false;

@@ -268,8 +268,7 @@ lower_load_draw_params(nir_builder *b, nir_intrinsic_instr *intr,
    unsigned channel = intr->intrinsic == nir_intrinsic_load_first_vertex ? 0 :
       intr->intrinsic == nir_intrinsic_load_base_instance ? 1 :
       intr->intrinsic == nir_intrinsic_load_draw_id ? 2 : 3;
-   nir_def_rewrite_uses(&intr->def, nir_channel(b, load, channel));
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, nir_channel(b, load, channel));
 
    return true;
 }
@@ -297,8 +296,7 @@ lower_load_patch_vertices_in(nir_builder *b, nir_intrinsic_instr *intr,
    nir_def *load = b->shader->info.stage == MESA_SHADER_TESS_CTRL ?
       d3d12_get_state_var(b, D3D12_STATE_VAR_PATCH_VERTICES_IN, "d3d12_FirstVertex", glsl_uint_type(), _state) :
       nir_imm_int(b, b->shader->info.tess.tcs_vertices_out);
-   nir_def_rewrite_uses(&intr->def, load);
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, load);
    return true;
 }
 
@@ -482,10 +480,7 @@ lower_instr(nir_intrinsic_instr *instr, nir_builder *b,
                    .range = ~0,
                    );
 
-   nir_def_rewrite_uses(&instr->def, load);
-
-   /* Remove the old load_* instruction and any parent derefs */
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, load);
    for (nir_deref_instr *d = deref; d; d = nir_deref_instr_parent(d)) {
       /* If anyone is using this deref, leave it alone */
       if (!list_is_empty(&d->def.uses))

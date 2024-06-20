@@ -213,8 +213,7 @@ nir_opt_idiv_const_instr(nir_builder *b, nir_instr *instr, void *user_data)
    }
 
    nir_def *qvec = nir_vec(b, q, alu->def.num_components);
-   nir_def_rewrite_uses(&alu->def, qvec);
-   nir_instr_remove(&alu->instr);
+   nir_def_replace(&alu->def, qvec);
 
    return true;
 }

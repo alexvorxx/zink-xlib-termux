@@ -668,8 +668,7 @@ rename_variables(struct lower_variables_state *state)
                val = nir_vector_extract(&b, val, comp);
             }
 
-            nir_def_rewrite_uses(&intrin->def, val);
-            nir_instr_remove(&intrin->instr);
+            nir_def_replace(&intrin->def, val);
             break;
          }
 

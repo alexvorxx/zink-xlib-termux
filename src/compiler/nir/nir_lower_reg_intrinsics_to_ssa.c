@@ -71,8 +71,7 @@ rewrite_load(nir_intrinsic_instr *load, struct regs_to_ssa_state *state)
    nir_intrinsic_instr *decl = nir_instr_as_intrinsic(reg->parent_instr);
    nir_def *def = nir_phi_builder_value_get_block_def(value, block);
 
-   nir_def_rewrite_uses(&load->def, def);
-   nir_instr_remove(&load->instr);
+   nir_def_replace(&load->def, def);
 
    if (nir_def_is_unused(&decl->def))
       nir_instr_remove(&decl->instr);

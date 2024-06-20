@@ -1163,9 +1163,7 @@ opt_remove_sampler_cast(nir_deref_instr *cast)
    /* We're a cast from a more detailed sampler type to a bare sampler or a
     * texture type with the same dimensionality.
     */
-   nir_def_rewrite_uses(&cast->def,
-                        &parent->def);
-   nir_instr_remove(&cast->instr);
+   nir_def_replace(&cast->def, &parent->def);
 
    /* Recursively crawl the deref tree and clean up types */
    nir_deref_instr_fixup_child_types(parent);
@@ -1284,9 +1282,7 @@ opt_deref_ptr_as_array(nir_builder *b, nir_deref_instr *deref)
           parent->cast.align_mul == 0 &&
           nir_deref_cast_is_trivial(parent))
          parent = nir_deref_instr_parent(parent);
-      nir_def_rewrite_uses(&deref->def,
-                           &parent->def);
-      nir_instr_remove(&deref->instr);
+      nir_def_replace(&deref->def, &parent->def);
       return true;
    }
 
@@ -1464,8 +1460,7 @@ opt_known_deref_mode_is(nir_builder *b, nir_intrinsic_instr *intrin)
    if (deref_is == NULL)
       return false;
 
-   nir_def_rewrite_uses(&intrin->def, deref_is);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, deref_is);
    return true;
 }
 

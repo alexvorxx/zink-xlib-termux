@@ -2104,9 +2104,7 @@ static bool lower_ps_load_color_intrinsic(nir_builder *b, nir_instr *instr, void
    unsigned index = intrin->intrinsic == nir_intrinsic_load_color0 ? 0 : 1;
    assert(colors[index]);
 
-   nir_def_rewrite_uses(&intrin->def, colors[index]);
-
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, colors[index]);
    return true;
 }
 

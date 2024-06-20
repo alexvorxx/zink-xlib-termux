@@ -340,9 +340,7 @@ lower_rt_intrinsics_impl(nir_function_impl *impl,
          progress = true;
 
          if (sysval) {
-            nir_def_rewrite_uses(&intrin->def,
-                                     sysval);
-            nir_instr_remove(&intrin->instr);
+            nir_def_replace(&intrin->def, sysval);
          }
       }
    }

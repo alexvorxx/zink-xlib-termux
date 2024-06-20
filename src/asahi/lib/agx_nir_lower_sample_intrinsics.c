@@ -30,8 +30,7 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       /* Handle the center special case */
       if (!b->shader->info.fs.uses_sample_shading) {
          assert(intr->intrinsic == nir_intrinsic_load_sample_pos_or_center);
-         nir_def_rewrite_uses(&intr->def, nir_imm_vec2(b, 0.5, 0.5));
-         nir_instr_remove(&intr->instr);
+         nir_def_replace(&intr->def, nir_imm_vec2(b, 0.5, 0.5));
          return true;
       }
 
@@ -65,8 +64,7 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       }
 
       /* Collect and rewrite */
-      nir_def_rewrite_uses(&intr->def, nir_vec2(b, xy[0], xy[1]));
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, nir_vec2(b, xy[0], xy[1]));
       return true;
    }
 

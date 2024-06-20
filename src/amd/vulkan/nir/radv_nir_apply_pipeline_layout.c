@@ -188,8 +188,7 @@ visit_get_ssbo_size(nir_builder *b, apply_layout_state *state, nir_intrinsic_ins
       size = nir_channel(b, desc, 2);
    }
 
-   nir_def_rewrite_uses(&intrin->def, size);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, size);
 }
 
 static nir_def *
@@ -335,8 +334,7 @@ update_image_intrinsic(nir_builder *b, apply_layout_state *state, nir_intrinsic_
                                     nir_intrinsic_access(intrin) & ACCESS_NON_UNIFORM, NULL, !is_load);
 
    if (intrin->intrinsic == nir_intrinsic_image_deref_descriptor_amd) {
-      nir_def_rewrite_uses(&intrin->def, desc);
-      nir_instr_remove(&intrin->instr);
+      nir_def_replace(&intrin->def, desc);
    } else {
       nir_rewrite_image_intrinsic(intrin, desc, true);
    }
@@ -437,8 +435,7 @@ apply_layout_to_intrin(nir_builder *b, apply_layout_state *state, nir_intrinsic_
       update_image_intrinsic(b, state, intrin);
       break;
    case nir_intrinsic_load_push_constant: {
-      nir_def_rewrite_uses(&intrin->def, load_push_constant(b, state, intrin));
-      nir_instr_remove(&intrin->instr);
+      nir_def_replace(&intrin->def, load_push_constant(b, state, intrin));
       break;
    }
    default:
@@ -513,8 +510,7 @@ apply_layout_to_tex(nir_builder *b, apply_layout_state *state, nir_tex_instr *te
    }
 
    if (tex->op == nir_texop_descriptor_amd) {
-      nir_def_rewrite_uses(&tex->def, image);
-      nir_instr_remove(&tex->instr);
+      nir_def_replace(&tex->def, image);
       return;
    }
 

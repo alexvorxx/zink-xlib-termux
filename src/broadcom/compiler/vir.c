@@ -1536,8 +1536,7 @@ lower_load_num_subgroups(struct v3d_compile *c,
                              c->s->info.workgroup_size[1] *
                              c->s->info.workgroup_size[2], V3D_CHANNELS);
         nir_def *result = nir_imm_int(b, num_subgroups);
-        nir_def_rewrite_uses(&intr->def, result);
-        nir_instr_remove(&intr->instr);
+        nir_def_replace(&intr->def, result);
 }
 
 static bool

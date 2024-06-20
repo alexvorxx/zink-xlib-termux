@@ -880,8 +880,7 @@ lower_alu(struct etna_compile *c, nir_alu_instr *alu)
       nir_def *def = nir_build_imm(&b, num_components, 32, value);
 
       if (num_components == info->num_inputs) {
-         nir_def_rewrite_uses(&alu->def, def);
-         nir_instr_remove(&alu->instr);
+         nir_def_replace(&alu->def, def);
          return;
       }
 

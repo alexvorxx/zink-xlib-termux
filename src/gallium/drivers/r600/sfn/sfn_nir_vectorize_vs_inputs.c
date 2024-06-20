@@ -147,10 +147,7 @@ r600_create_new_load(nir_builder *b,
    for (unsigned i = 0; i < old_num_comps; ++i)
       channels[i] = comp - var->data.location_frac + i;
    nir_def *load = nir_swizzle(b, &new_intr->def, channels, old_num_comps);
-   nir_def_rewrite_uses(&intr->def, load);
-
-   /* Remove the old load intrinsic */
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, load);
 }
 
 static bool

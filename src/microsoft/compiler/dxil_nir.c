@@ -115,8 +115,7 @@ lower_32b_offset_load(nir_builder *b, nir_intrinsic_instr *intr, nir_variable *v
    }
 
    nir_def *result = nir_vec(b, comps, num_components);
-   nir_def_rewrite_uses(&intr->def, result);
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, result);
 
    return true;
 }
@@ -672,8 +671,7 @@ lower_shared_atomic(nir_builder *b, nir_intrinsic_instr *intr, nir_variable *var
       result = nir_deref_atomic(b, 32, &deref->def, intr->src[1].ssa,
                                 .atomic_op = nir_intrinsic_atomic_op(intr));
 
-   nir_def_rewrite_uses(&intr->def, result);
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, result);
    return true;
 }
 
@@ -757,9 +755,7 @@ lower_deref_ssbo(nir_builder *b, nir_deref_instr *deref)
       nir_deref_instr *deref_cast =
          nir_build_deref_cast(b, ptr, nir_var_mem_ssbo, deref->type,
                               glsl_get_explicit_stride(var->type));
-      nir_def_rewrite_uses(&deref->def,
-                               &deref_cast->def);
-      nir_instr_remove(&deref->instr);
+      nir_def_replace(&deref->def, &deref_cast->def);
 
       deref = deref_cast;
       return true;
@@ -884,8 +880,7 @@ cast_phi(nir_builder *b, nir_phi_instr *phi, unsigned new_bit_size)
    b->cursor = nir_after_phis(nir_cursor_current_block(b->cursor));
    nir_def *result = nir_u2uN(b, &lowered->def, old_bit_size);
 
-   nir_def_rewrite_uses(&phi->def, result);
-   nir_instr_remove(&phi->instr);
+   nir_def_replace(&phi->def, result);
 }
 
 static bool
@@ -1225,8 +1220,7 @@ lower_load_local_group_size(nir_builder *b, nir_intrinsic_instr *intr)
       nir_const_value_for_int(b->shader->info.workgroup_size[2], 32)
    };
    nir_def *size = nir_build_imm(b, 3, 32, v);
-   nir_def_rewrite_uses(&intr->def, size);
-   nir_instr_remove(&intr->instr);
+   nir_def_replace(&intr->def, size);
 }
 
 static bool
@@ -2045,8 +2039,7 @@ split_unaligned_load(nir_builder *b, nir_intrinsic_instr *intrin, unsigned align
    }
 
    nir_def *new_dest = nir_extract_bits(b, srcs, num_loads, 0, num_comps, intrin->def.bit_size);
-   nir_def_rewrite_uses(&intrin->def, new_dest);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, new_dest);
 }
 
 static void
@@ -2865,8 +2858,7 @@ kill_undefined_varyings(struct nir_builder *b,
     */
    nir_def *zero = nir_imm_zero(b, intr->def.num_components,
                                        intr->def.bit_size);
-   nir_def_rewrite_uses(&intr->def, zero);
-   nir_instr_remove(instr);
+   nir_def_replace(&intr->def, zero);
    return true;
 }
 

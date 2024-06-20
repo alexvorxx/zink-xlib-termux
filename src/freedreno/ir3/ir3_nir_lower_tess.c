@@ -348,8 +348,7 @@ lower_block_to_explicit_input(nir_block *block, nir_builder *b,
          b->cursor = nir_before_instr(&intr->instr);
 
          nir_def *iid = build_invocation_id(b, state);
-         nir_def_rewrite_uses(&intr->def, iid);
-         nir_instr_remove(&intr->instr);
+         nir_def_replace(&intr->def, iid);
          break;
       }
 

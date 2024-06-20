@@ -404,8 +404,7 @@ lower_res_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
 
    assert(intrin->def.bit_size == res->bit_size);
    assert(intrin->def.num_components == res->num_components);
-   nir_def_rewrite_uses(&intrin->def, res);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, res);
 
    return true;
 }
@@ -619,8 +618,7 @@ lower_tex(nir_builder *b, nir_tex_instr *tex, const struct lower_desc_ctx *ctx)
          unreachable("Unsupported texture query op");
       }
 
-      nir_def_rewrite_uses(&tex->def, res);
-      nir_instr_remove(&tex->instr);
+      nir_def_replace(&tex->def, res);
       return true;
    }
 
@@ -718,8 +716,7 @@ lower_img_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
          unreachable("Unsupported image query op");
       }
 
-      nir_def_rewrite_uses(&intr->def, res);
-      nir_instr_remove(&intr->instr);
+      nir_def_replace(&intr->def, res);
    } else {
       nir_rewrite_image_intrinsic(intr, get_img_index(b, deref, ctx), false);
    }

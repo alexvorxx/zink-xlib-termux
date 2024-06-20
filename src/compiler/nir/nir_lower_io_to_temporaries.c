@@ -244,8 +244,7 @@ fixup_interpolation_instr(struct lower_io_state *state,
     * correct part of the temporary.
     */
    nir_def *load = nir_load_deref(b, nir_src_as_deref(interp->src[0]));
-   nir_def_rewrite_uses(&interp->def, load);
-   nir_instr_remove(&interp->instr);
+   nir_def_replace(&interp->def, load);
 
    nir_deref_path_finish(&interp_path);
 }

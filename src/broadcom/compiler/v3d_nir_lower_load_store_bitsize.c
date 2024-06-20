@@ -103,9 +103,7 @@ lower_load_bitsize(nir_builder *b,
         }
 
         nir_def *new_dst = nir_vec(b, dest_components, num_comp);
-        nir_def_rewrite_uses(&intr->def, new_dst);
-
-        nir_instr_remove(&intr->instr);
+        nir_def_replace(&intr->def, new_dst);
         return true;
 }
 

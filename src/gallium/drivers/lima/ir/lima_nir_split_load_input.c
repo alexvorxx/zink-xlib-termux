@@ -80,9 +80,7 @@ lima_nir_split_load_input_instr(nir_builder *b,
    new_intrin->src[0] = nir_src_for_ssa(intrin->src[0].ssa);
 
    nir_builder_instr_insert(b, &new_intrin->instr);
-   nir_def_rewrite_uses(&alu->def,
-                            &new_intrin->def);
-   nir_instr_remove(&alu->instr);
+   nir_def_replace(&alu->def, &new_intrin->def);
    return true;
 }
 

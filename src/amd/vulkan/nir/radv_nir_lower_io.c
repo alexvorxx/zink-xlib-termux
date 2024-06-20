@@ -176,8 +176,7 @@ radv_nir_lower_draw_id_to_zero_callback(struct nir_builder *b, nir_intrinsic_ins
       return false;
 
    nir_def *replacement = nir_imm_zero(b, intrin->def.num_components, intrin->def.bit_size);
-   nir_def_rewrite_uses(&intrin->def, replacement);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, replacement);
    nir_instr_free(&intrin->instr);
 
    return true;

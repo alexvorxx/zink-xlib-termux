@@ -151,8 +151,7 @@ lower_rt_derefs(nir_shader *shader)
             b.cursor = nir_before_instr(&deref->instr);
             nir_deref_instr *replacement =
                nir_build_deref_cast(&b, arg_offset, nir_var_function_temp, deref->var->type, 0);
-            nir_def_rewrite_uses(&deref->def, &replacement->def);
-            nir_instr_remove(&deref->instr);
+            nir_def_replace(&deref->def, &replacement->def);
          }
       }
    }
@@ -1091,13 +1090,11 @@ lower_any_hit_for_intersection(nir_shader *any_hit)
                break;
 
             case nir_intrinsic_load_ray_t_max:
-               nir_def_rewrite_uses(&intrin->def, hit_t);
-               nir_instr_remove(&intrin->instr);
+               nir_def_replace(&intrin->def, hit_t);
                break;
 
             case nir_intrinsic_load_ray_hit_kind:
-               nir_def_rewrite_uses(&intrin->def, hit_kind);
-               nir_instr_remove(&intrin->instr);
+               nir_def_replace(&intrin->def, hit_kind);
                break;
 
             /* We place all any_hit scratch variables after intersection scratch variables.

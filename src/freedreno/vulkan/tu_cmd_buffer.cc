@@ -6226,8 +6226,6 @@ tu_dispatch(struct tu_cmd_buffer *cmd,
    if (emit_instrlen_workaround) {
       tu_emit_event_write<CHIP>(cmd, cs, FD_LABEL);
    }
-
-   tu_cs_emit_wfi(cs);
 }
 
 template <chip CHIP>

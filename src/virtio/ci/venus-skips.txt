@@ -3,6 +3,7 @@ dEQP-VK.api.object_management.max_concurrent.graphics_pipeline
 dEQP-VK.api.object_management.max_concurrent.compute_pipeline
 
 # Can timeout
+dEQP-VK.api.descriptor_pool.repeated_free_reset_long
 dEQP-VK.api.info.image_format_properties2.2d.linear.g12x4_b12x4r12x4_2plane_422_unorm_3pack16
 dEQP-VK.api.info.vulkan1p2.feature_bits_influence
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays_mixed.*.update_copy.*

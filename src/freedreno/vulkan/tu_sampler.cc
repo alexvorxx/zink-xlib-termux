@@ -12,11 +12,22 @@
 #include "tu_device.h"
 #include "tu_util.h"
 
-static void
-tu_init_sampler(struct tu_device *device,
-                struct tu_sampler *sampler,
-                const VkSamplerCreateInfo *pCreateInfo)
+VKAPI_ATTR VkResult VKAPI_CALL
+tu_CreateSampler(VkDevice _device,
+                 const VkSamplerCreateInfo *pCreateInfo,
+                 const VkAllocationCallbacks *pAllocator,
+                 VkSampler *pSampler)
 {
+   VK_FROM_HANDLE(tu_device, device, _device);
+   struct tu_sampler *sampler;
+
+   assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
+
+   sampler = (struct tu_sampler *) vk_sampler_create(
+      &device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
+   if (!sampler)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
    const struct VkSamplerYcbcrConversionInfo *ycbcr_conversion =
       vk_find_struct_const(pCreateInfo->pNext,  SAMPLER_YCBCR_CONVERSION_INFO);
    /* for non-custom border colors, the VK enum is translated directly to an offset in
@@ -92,25 +103,7 @@ tu_init_sampler(struct tu_device *device,
    /* TODO:
     * A6XX_TEX_SAMP_1_MIPFILTER_LINEAR_FAR disables mipmapping, but vk has no NONE mipfilter?
     */
-}
 
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_CreateSampler(VkDevice _device,
-                 const VkSamplerCreateInfo *pCreateInfo,
-                 const VkAllocationCallbacks *pAllocator,
-                 VkSampler *pSampler)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   struct tu_sampler *sampler;
-
-   assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
-
-   sampler = (struct tu_sampler *) vk_sampler_create(
-      &device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
-   if (!sampler)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   tu_init_sampler(device, sampler, pCreateInfo);
    *pSampler = tu_sampler_to_handle(sampler);
 
    return VK_SUCCESS;

@@ -1137,6 +1137,11 @@ zink_bo_commit(struct zink_context *ctx, struct zink_resource *res, unsigned lev
                            util_dynarray_append(&ctx->bs->tracked_semaphores, VkSemaphore, cur_sem);
                         else
                            ok = false;
+                        ok = sparse_backing_free(screen, backing[i]->bo, backing[i], backing_start[i], backing_size[i]);
+                        if (!ok) {
+                           /* Couldn't allocate tracking data structures, so we have to leak */
+                           fprintf(stderr, "zink: leaking sparse backing memory\n");
+                        }
                      }
                      goto out;
                   } else {

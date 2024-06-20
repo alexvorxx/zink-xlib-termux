@@ -202,8 +202,14 @@ _nir_format_norm_factor(nir_builder *b, const unsigned *bits,
       /* A 16-bit float only has 23 bits of mantissa.  This isn't enough to
        * convert 24 or 32-bit UNORM/SNORM accurately.  For that, we would need
        * fp64 or some sort of fixed-point math.
+       *
+       * Unfortunately, GL is silly and includes 32-bit normalized vertex
+       * formats even though you're guaranteed to lose precision. Those formats
+       * are broken by design, but we do need to support them with the
+       * bugginess, and the loss of precision here is acceptable for GL. This
+       * helper is used for the vertex format conversion on Asahi, so we can't
+       * assert(bits[i] <= 16). But if it's not, you get to pick up the pieces.
        */
-      assert(bits[i] <= 16);
       factor[i].f32 = (1ull << (bits[i] - is_signed)) - 1;
    }
    return nir_build_imm(b, num_components, 32, factor);

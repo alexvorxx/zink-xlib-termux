@@ -1738,6 +1738,47 @@ dgc_is_cond_render_enabled(nir_builder *b)
    return nir_if_phi(b, res1, res2);
 }
 
+static void
+dgc_pad_cmdbuf(struct dgc_cmdbuf *cs, nir_def *cmd_buf_end)
+{
+   const struct radv_device *device = cs->dev;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   nir_builder *b = cs->b;
+
+   nir_push_if(b, nir_ine(b, nir_load_var(b, cs->offset), cmd_buf_end));
+   {
+      if (pdev->info.gfx_ib_pad_with_type2) {
+         nir_push_loop(b);
+         {
+            nir_def *curr_offset = nir_load_var(b, cs->offset);
+
+            nir_push_if(b, nir_ieq(b, curr_offset, cmd_buf_end));
+            {
+               nir_jump(b, nir_jump_break);
+            }
+            nir_pop_if(b, NULL);
+
+            nir_def *pkt = nir_imm_int(b, PKT2_NOP_PAD);
+
+            dgc_cs_begin(cs);
+            dgc_cs_emit(pkt);
+            dgc_cs_end();
+         }
+         nir_pop_loop(b, NULL);
+      } else {
+         nir_def *cnt = nir_isub(b, cmd_buf_end, nir_load_var(b, cs->offset));
+         cnt = nir_ushr_imm(b, cnt, 2);
+         cnt = nir_iadd_imm(b, cnt, -2);
+         nir_def *pkt = nir_pkt3(b, PKT3_NOP, cnt);
+
+         dgc_cs_begin(cs);
+         dgc_cs_emit(pkt);
+         dgc_cs_end();
+      }
+   }
+   nir_pop_if(b, NULL);
+}
+
 static nir_shader *
 build_dgc_prepare_shader(struct radv_device *dev)
 {
@@ -1878,38 +1919,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       nir_pop_if(&b, NULL);
 
       /* Pad the cmdbuffer if we did not use the whole stride */
-      nir_push_if(&b, nir_ine(&b, nir_load_var(&b, cmd_buf.offset), cmd_buf_end));
-      {
-         if (pdev->info.gfx_ib_pad_with_type2) {
-            nir_push_loop(&b);
-            {
-               nir_def *curr_offset = nir_load_var(&b, cmd_buf.offset);
-
-               nir_push_if(&b, nir_ieq(&b, curr_offset, cmd_buf_end));
-               {
-                  nir_jump(&b, nir_jump_break);
-               }
-               nir_pop_if(&b, NULL);
-
-               nir_def *pkt = nir_imm_int(&b, PKT2_NOP_PAD);
-
-               dgc_cs_begin(&cmd_buf);
-               dgc_cs_emit(pkt);
-               dgc_cs_end();
-            }
-            nir_pop_loop(&b, NULL);
-         } else {
-            nir_def *cnt = nir_isub(&b, cmd_buf_end, nir_load_var(&b, cmd_buf.offset));
-            cnt = nir_ushr_imm(&b, cnt, 2);
-            cnt = nir_iadd_imm(&b, cnt, -2);
-            nir_def *pkt = nir_pkt3(&b, PKT3_NOP, cnt);
-
-            dgc_cs_begin(&cmd_buf);
-            dgc_cs_emit(pkt);
-            dgc_cs_end();
-         }
-      }
-      nir_pop_if(&b, NULL);
+      dgc_pad_cmdbuf(&cmd_buf, cmd_buf_end);
    }
    nir_pop_if(&b, NULL);
 

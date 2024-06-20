@@ -1443,15 +1443,15 @@ create_physical_device(struct v3dv_instance *instance,
    device->sync_types[2] = NULL;
    device->vk.supported_sync_types = device->sync_types;
 
+   get_device_extensions(device, &device->vk.supported_extensions);
+   get_features(device, &device->vk.supported_features);
+   get_device_properties(device, &device->vk.properties);
+
    result = v3dv_wsi_init(device);
    if (result != VK_SUCCESS) {
       vk_error(instance, result);
       goto fail;
    }
-
-   get_device_extensions(device, &device->vk.supported_extensions);
-   get_features(device, &device->vk.supported_features);
-   get_device_properties(device, &device->vk.properties);
 
    mtx_init(&device->mutex, mtx_plain);
 

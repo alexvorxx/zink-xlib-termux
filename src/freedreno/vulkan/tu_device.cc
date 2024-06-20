@@ -2948,10 +2948,15 @@ tu_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInf
    return tu_bo_unmap(device, mem->bo, pMemoryUnmapInfo->flags & VK_MEMORY_UNMAP_RESERVE_BIT_EXT);
 }
 
-static void
-tu_get_buffer_memory_requirements(struct tu_device *dev, uint64_t size,
-                                  VkMemoryRequirements2 *pMemoryRequirements)
+VKAPI_ATTR void VKAPI_CALL
+tu_GetDeviceBufferMemoryRequirements(
+   VkDevice _device,
+   const VkDeviceBufferMemoryRequirements *pInfo,
+   VkMemoryRequirements2 *pMemoryRequirements)
 {
+   VK_FROM_HANDLE(tu_device, device, _device);
+
+   uint64_t size = pInfo->pCreateInfo->size;
    pMemoryRequirements->memoryRequirements = (VkMemoryRequirements) {
       .size = MAX2(align64(size, 64), size),
       .alignment = 64,
@@ -2971,28 +2976,6 @@ tu_get_buffer_memory_requirements(struct tu_device *dev, uint64_t size,
          break;
       }
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL
-tu_GetBufferMemoryRequirements2(
-   VkDevice _device,
-   const VkBufferMemoryRequirementsInfo2 *pInfo,
-   VkMemoryRequirements2 *pMemoryRequirements)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   VK_FROM_HANDLE(tu_buffer, buffer, pInfo->buffer);
-
-   tu_get_buffer_memory_requirements(device, buffer->vk.size, pMemoryRequirements);
-}
-
-VKAPI_ATTR void VKAPI_CALL
-tu_GetDeviceBufferMemoryRequirements(
-   VkDevice _device,
-   const VkDeviceBufferMemoryRequirements *pInfo,
-   VkMemoryRequirements2 *pMemoryRequirements)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-   tu_get_buffer_memory_requirements(device, pInfo->pCreateInfo->size, pMemoryRequirements);
 }
 
 VKAPI_ATTR void VKAPI_CALL

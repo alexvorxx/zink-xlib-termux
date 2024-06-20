@@ -675,6 +675,27 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       print_named_value(f, "SIZE", size, 32);
       break;
    }
+   case PKT3_DISPATCH_TASKMESH_GFX:
+      tmp = ac_ib_get(ib);
+      print_named_value(f, "RING_ENTRY_REG", (tmp >> 16) & 0xffff, 16);
+      print_named_value(f, "XYZ_DIM_REG", (tmp & 0xffff), 16);
+      tmp = ac_ib_get(ib);
+      print_named_value(f, "THREAD_TRACE_MARKER_ENABLE", (tmp >> 31) & 0x1, 1);
+      if (ib->gfx_level >= GFX11) {
+         print_named_value(f, "XYZ_DIM_ENABLE", (tmp >> 30) & 0x1, 1);
+         print_named_value(f, "MODE1_ENABLE", (tmp >> 29) & 0x1, 1);
+         print_named_value(f, "LINEAR_DISPATCH_ENABLED", (tmp >> 28) & 0x1, 1);
+      }
+      print_named_value(f, "DI_SRC_SEL_AUTO_INDEX", ac_ib_get(ib), ~0);
+      break;
+   case PKT3_DISPATCH_TASKMESH_DIRECT_ACE:
+      print_named_value(f, "X_DIM", ac_ib_get(ib), ~0);
+      print_named_value(f, "Y_DIM", ac_ib_get(ib), ~0);
+      print_named_value(f, "Z_DIM", ac_ib_get(ib), ~0);
+      ac_dump_reg(f, ib->gfx_level, ib->family, R_00B800_COMPUTE_DISPATCH_INITIATOR,
+                  ac_ib_get(ib), ~0);
+      print_named_value(f, "RING_ENTRY_REG", ac_ib_get(ib), 16);
+      break;
    }
 
    /* print additional dwords */

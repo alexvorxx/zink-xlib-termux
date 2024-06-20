@@ -237,6 +237,24 @@ radv_get_indirect_cmdbuf_size(const VkGeneratedCommandsInfoNV *cmd_info)
 }
 
 uint32_t
+radv_get_indirect_ace_cmdbuf_offset(const VkGeneratedCommandsInfoNV *cmd_info)
+{
+   VK_FROM_HANDLE(radv_indirect_command_layout, layout, cmd_info->indirectCommandsLayout);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, cmd_info->pipeline);
+   const struct radv_device *device = container_of(layout->base.device, struct radv_device, vk);
+
+   uint32_t cmd_size, ace_cmd_size, upload_size;
+   radv_get_sequence_size(layout, pipeline, &cmd_size, &ace_cmd_size, &upload_size);
+
+   uint32_t offset = radv_align_cmdbuf_size(device, cmd_size * cmd_info->sequencesCount, AMD_IP_GFX);
+
+   if (radv_dgc_use_preamble(cmd_info))
+      offset += radv_dgc_preamble_cmdbuf_size(device, AMD_IP_GFX);
+
+   return offset;
+}
+
+uint32_t
 radv_get_indirect_ace_cmdbuf_size(const VkGeneratedCommandsInfoNV *cmd_info)
 {
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, cmd_info->indirectCommandsLayout);

@@ -43,18 +43,6 @@
 #include <llvm/Config/llvm-config.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/BitWriter.h>
-#if GALLIVM_USE_NEW_PASS == 1
-#include <llvm-c/Transforms/PassBuilder.h>
-#elif GALLIVM_HAVE_CORO == 1
-#include <llvm-c/Transforms/Scalar.h>
-#if LLVM_VERSION_MAJOR >= 7
-#include <llvm-c/Transforms/Utils.h>
-#endif
-#if LLVM_VERSION_MAJOR <= 8 && (DETECT_ARCH_AARCH64 || DETECT_ARCH_ARM || DETECT_ARCH_S390 || DETECT_ARCH_MIPS64)
-#include <llvm-c/Transforms/IPO.h>
-#endif
-#include <llvm-c/Transforms/Coroutines.h>
-#endif
 
 unsigned gallivm_perf = 0;
 
@@ -115,23 +103,6 @@ enum LLVM_CodeGenOpt_Level {
 static bool
 create_pass_manager(struct gallivm_state *gallivm)
 {
-#if GALLIVM_USE_NEW_PASS == 0
-   assert(!gallivm->passmgr);
-   assert(gallivm->target);
-
-   gallivm->passmgr = LLVMCreateFunctionPassManagerForModule(gallivm->module);
-   if (!gallivm->passmgr)
-      return false;
-
-#if GALLIVM_HAVE_CORO == 1
-   gallivm->cgpassmgr = LLVMCreatePassManager();
-#endif
-   /*
-    * TODO: some per module pass manager with IPO passes might be helpful -
-    * the generated texture functions may benefit from inlining if they are
-    * simple, or constant propagation into them, etc.
-    */
-
    {
       char *td_str;
       // New ones from the Module.
@@ -140,58 +111,7 @@ create_pass_manager(struct gallivm_state *gallivm)
       free(td_str);
    }
 
-#if GALLIVM_HAVE_CORO == 1
-#if LLVM_VERSION_MAJOR <= 8 && (DETECT_ARCH_AARCH64 || DETECT_ARCH_ARM || DETECT_ARCH_S390 || DETECT_ARCH_MIPS64)
-   LLVMAddArgumentPromotionPass(gallivm->cgpassmgr);
-   LLVMAddFunctionAttrsPass(gallivm->cgpassmgr);
-#endif
-   LLVMAddCoroEarlyPass(gallivm->cgpassmgr);
-   LLVMAddCoroSplitPass(gallivm->cgpassmgr);
-   LLVMAddCoroElidePass(gallivm->cgpassmgr);
-#endif
-
-   if ((gallivm_perf & GALLIVM_PERF_NO_OPT) == 0) {
-      /*
-       * TODO: Evaluate passes some more - keeping in mind
-       * both quality of generated code and compile times.
-       */
-      /*
-       * NOTE: if you change this, don't forget to change the output
-       * with GALLIVM_DEBUG_DUMP_BC in gallivm_compile_module.
-       */
-      LLVMAddScalarReplAggregatesPass(gallivm->passmgr);
-      LLVMAddEarlyCSEPass(gallivm->passmgr);
-      LLVMAddCFGSimplificationPass(gallivm->passmgr);
-      /*
-       * FIXME: LICM is potentially quite useful. However, for some
-       * rather crazy shaders the compile time can reach _hours_ per shader,
-       * due to licm implying lcssa (since llvm 3.5), which can take forever.
-       * Even for sane shaders, the cost of licm is rather high (and not just
-       * due to lcssa, licm itself too), though mostly only in cases when it
-       * can actually move things, so having to disable it is a pity.
-       * LLVMAddLICMPass(gallivm->passmgr);
-       */
-      LLVMAddReassociatePass(gallivm->passmgr);
-      LLVMAddPromoteMemoryToRegisterPass(gallivm->passmgr);
-#if LLVM_VERSION_MAJOR <= 11
-      LLVMAddConstantPropagationPass(gallivm->passmgr);
-#else
-      LLVMAddInstructionSimplifyPass(gallivm->passmgr);
-#endif
-      LLVMAddInstructionCombiningPass(gallivm->passmgr);
-      LLVMAddGVNPass(gallivm->passmgr);
-   }
-   else {
-      /* We need at least this pass to prevent the backends to fail in
-       * unexpected ways.
-       */
-      LLVMAddPromoteMemoryToRegisterPass(gallivm->passmgr);
-   }
-#if GALLIVM_HAVE_CORO == 1
-   LLVMAddCoroCleanupPass(gallivm->passmgr);
-#endif
-#endif
-   return true;
+   return lp_passmgr_create(gallivm->module, &gallivm->passmgr);
 }
 
 /**
@@ -201,17 +121,7 @@ create_pass_manager(struct gallivm_state *gallivm)
 void
 gallivm_free_ir(struct gallivm_state *gallivm)
 {
-#if GALLIVM_USE_NEW_PASS == 0
-   if (gallivm->passmgr) {
-      LLVMDisposePassManager(gallivm->passmgr);
-   }
-
-#if GALLIVM_HAVE_CORO == 1
-   if (gallivm->cgpassmgr) {
-      LLVMDisposePassManager(gallivm->cgpassmgr);
-   }
-#endif
-#endif
+   lp_passmgr_dispose(gallivm->passmgr);
 
    if (gallivm->engine) {
       /* This will already destroy any associated module */
@@ -239,12 +149,7 @@ gallivm_free_ir(struct gallivm_state *gallivm)
    gallivm->target = NULL;
    gallivm->module = NULL;
    gallivm->module_name = NULL;
-#if GALLIVM_USE_NEW_PASS == 0
-#if GALLIVM_HAVE_CORO == 1
-   gallivm->cgpassmgr = NULL;
-#endif
    gallivm->passmgr = NULL;
-#endif
    gallivm->context = NULL;
    gallivm->builder = NULL;
    gallivm->cache = NULL;
@@ -556,8 +461,6 @@ void lp_init_clock_hook(struct gallivm_state *gallivm)
 void
 gallivm_compile_module(struct gallivm_state *gallivm)
 {
-   int64_t time_begin = 0;
-
    assert(!gallivm->compiled);
 
    if (gallivm->builder) {
@@ -592,65 +495,10 @@ gallivm_compile_module(struct gallivm_state *gallivm)
                    "[-mattr=<-mattr option(s)>]");
    }
 
-   if (gallivm_debug & GALLIVM_DEBUG_PERF)
-      time_begin = os_time_get();
-
-#if GALLIVM_USE_NEW_PASS == 1
-   char passes[1024];
-   passes[0] = 0;
-
-   /*
-    * there should be some way to combine these two pass runs but I'm not seeing it,
-    * at the time of writing.
-    */
-   strcpy(passes, "default<O0>");
-
-   LLVMPassBuilderOptionsRef opts = LLVMCreatePassBuilderOptions();
-   LLVMRunPasses(gallivm->module, passes, LLVMGetExecutionEngineTargetMachine(gallivm->engine), opts);
-
-   if (!(gallivm_perf & GALLIVM_PERF_NO_OPT))
-#if LLVM_VERSION_MAJOR >= 18
-      strcpy(passes, "sroa,early-cse,simplifycfg,reassociate,mem2reg,instsimplify,instcombine<no-verify-fixpoint>");
-#else
-      strcpy(passes, "sroa,early-cse,simplifycfg,reassociate,mem2reg,instsimplify,instcombine");
-#endif
-   else
-      strcpy(passes, "mem2reg");
-
-   LLVMRunPasses(gallivm->module, passes, LLVMGetExecutionEngineTargetMachine(gallivm->engine), opts);
-   LLVMDisposePassBuilderOptions(opts);
-#else
-#if GALLIVM_HAVE_CORO == 1
-   LLVMRunPassManager(gallivm->cgpassmgr, gallivm->module);
-#endif
-   /* Run optimization passes */
-   LLVMInitializeFunctionPassManager(gallivm->passmgr);
-   LLVMValueRef func;
-   func = LLVMGetFirstFunction(gallivm->module);
-   while (func) {
-      if (0) {
-         debug_printf("optimizing func %s...\n", LLVMGetValueName(func));
-      }
-
-   /* Disable frame pointer omission on debug/profile builds */
-   /* XXX: And workaround http://llvm.org/PR21435 */
-#if MESA_DEBUG || defined(PROFILE) || DETECT_ARCH_X86 || DETECT_ARCH_X86_64
-      LLVMAddTargetDependentFunctionAttr(func, "no-frame-pointer-elim", "true");
-      LLVMAddTargetDependentFunctionAttr(func, "no-frame-pointer-elim-non-leaf", "true");
-#endif
-
-      LLVMRunFunctionPassManager(gallivm->passmgr, func);
-      func = LLVMGetNextFunction(func);
-   }
-   LLVMFinalizeFunctionPassManager(gallivm->passmgr);
-#endif
-   if (gallivm_debug & GALLIVM_DEBUG_PERF) {
-      int64_t time_end = os_time_get();
-      int time_msec = (int)((time_end - time_begin) / 1000);
-      assert(gallivm->module_name);
-      debug_printf("optimizing module %s took %d msec\n",
-                   gallivm->module_name, time_msec);
-   }
+   lp_passmgr_run(gallivm->passmgr,
+                  gallivm->module,
+                  LLVMGetExecutionEngineTargetMachine(gallivm->engine),
+                  gallivm->module_name);
 
    /* Setting the module's DataLayout to an empty string will cause the
     * ExecutionEngine to copy to the DataLayout string from its target machine

@@ -366,6 +366,8 @@ if draw_with_llvm
     'gallivm/lp_bld_nir_soa.c',
     'gallivm/lp_bld_pack.c',
     'gallivm/lp_bld_pack.h',
+    'gallivm/lp_bld_passmgr.h',
+    'gallivm/lp_bld_passmgr.c',
     'gallivm/lp_bld_printf.c',
     'gallivm/lp_bld_printf.h',
     'gallivm/lp_bld_quad.c',

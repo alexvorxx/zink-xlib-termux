@@ -16,3 +16,11 @@ include:
     FLAKES_CHANNEL: "#virgl-ci"
   script:
     - ./install/crosvm-runner.sh ./install/deqp-runner.sh
+
+venus-lavapipe-full:
+  extends:
+    - .venus-lavapipe
+    - .venus-manual-rules
+  timeout: 3h
+  variables:
+    DEQP_FRACTION: 6  # 1 would take 12h so this is as close as we can get

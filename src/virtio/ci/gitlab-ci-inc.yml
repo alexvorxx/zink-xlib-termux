@@ -7,6 +7,14 @@
         - src/virtio/**/*
       when: on_success
 
+.venus-manual-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.test, rules]
+    - !reference [.lavapipe-manual-rules, rules]
+    - changes: *venus_file_list
+      when: manual
+
 
 .venus-lavapipe-test:
   extends:

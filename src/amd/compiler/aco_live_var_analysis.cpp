@@ -32,18 +32,15 @@ get_live_changes(aco_ptr<Instruction>& instr)
    return changes;
 }
 
-void
-handle_def_fixed_to_op(RegisterDemand* demand, RegisterDemand demand_before, Instruction* instr,
-                       int op_idx)
+RegisterDemand
+get_additional_operand_demand(Instruction* instr)
 {
-   /* Usually the register demand before an instruction would be considered part of the previous
-    * instruction, since it's not greater than the register demand for that previous instruction.
-    * Except, it can be greater in the case of an definition fixed to a non-killed operand: the RA
-    * needs to reserve space between the two instructions for the definition (containing a copy of
-    * the operand).
-    */
-   demand_before += instr->definitions[0].getTemp();
-   demand->update(demand_before);
+   RegisterDemand additional_demand;
+   int op_idx = get_op_fixed_to_def(instr);
+   if (op_idx != -1 && !instr->operands[op_idx].isKill())
+      additional_demand += instr->definitions[0].getTemp();
+
+   return additional_demand;
 }
 
 RegisterDemand
@@ -67,10 +64,7 @@ get_temp_registers(aco_ptr<Instruction>& instr)
       }
    }
 
-   int op_idx = get_op_fixed_to_def(instr.get());
-   if (op_idx != -1 && !instr->operands[op_idx].isKill())
-      demand_before += instr->definitions[0].getTemp();
-
+   demand_before += get_additional_operand_demand(instr.get());
    demand_after.update(demand_before);
    return demand_after;
 }
@@ -176,13 +170,8 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
          }
       }
 
-      int op_idx = get_op_fixed_to_def(insn);
-      if (op_idx != -1 && !insn->operands[op_idx].isKill()) {
-         RegisterDemand before_instr = new_demand;
-         handle_def_fixed_to_op(&register_demand[idx], before_instr, insn, op_idx);
-      }
-
-      register_demand[idx].update(new_demand);
+      RegisterDemand before_instr = new_demand + get_additional_operand_demand(insn);
+      register_demand[idx].update(before_instr);
    }
 
    /* handle phi definitions */

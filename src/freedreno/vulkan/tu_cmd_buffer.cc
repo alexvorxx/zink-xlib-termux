@@ -5962,6 +5962,9 @@ tu_emit_compute_driver_params(struct tu_cmd_buffer *cmd,
 
          uint64_t indirect_iova = info->indirect->iova + info->indirect_offset;
 
+         /* Wait for any previous uses to finish. */
+         tu_cs_emit_wfi(cs);
+
          for (uint32_t i = 0; i < 3; i++) {
             tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 5);
             tu_cs_emit(cs, 0);
@@ -5989,6 +5992,7 @@ tu_emit_compute_driver_params(struct tu_cmd_buffer *cmd,
 
          tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
          tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+         tu_cs_emit_wfi(cs);
 
          iova = global_iova(cmd, cs_indirect_xyz[0]);
       }
@@ -6057,6 +6061,9 @@ tu_emit_compute_driver_params(struct tu_cmd_buffer *cmd,
 
          uint64_t indirect_iova = info->indirect->iova + info->indirect_offset;
 
+         /* Wait for any previous uses to finish. */
+         tu_cs_emit_wfi(cs);
+
          for (uint32_t i = 0; i < 3; i++) {
             tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 5);
             tu_cs_emit(cs, 0);
@@ -6066,6 +6073,7 @@ tu_emit_compute_driver_params(struct tu_cmd_buffer *cmd,
 
          tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
          tu_emit_event_write<CHIP>(cmd, cs, FD_CACHE_INVALIDATE);
+         tu_cs_emit_wfi(cs);
 
          tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3);
          tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(offset) |

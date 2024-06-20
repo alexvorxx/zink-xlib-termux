@@ -150,14 +150,14 @@ swrastGetDrawableInfo(__DRIdrawable *draw, int *x, int *y, int *w, int *h,
 }
 
 static void
-swrastPutImage(__DRIdrawable *draw, int op, int x, int y, int w, int h,
-               char *data, void *loaderPrivate)
+swrastPutImage2(__DRIdrawable *draw, int op, int x, int y, int w, int h,
+                int stride, char *data, void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
-   size_t hdr_len = sizeof(xcb_put_image_request_t);
    int stride_b = dri2_surf->bytes_per_pixel * w;
+   size_t hdr_len = sizeof(xcb_put_image_request_t);
    size_t size = (hdr_len + stride_b * h) >> 2;
    uint64_t max_req_len = xcb_get_maximum_request_length(dri2_dpy->conn);
 
@@ -177,9 +177,20 @@ swrastPutImage(__DRIdrawable *draw, int op, int x, int y, int w, int h,
    /* clamp to drawable size */
    if (y + h > dri2_surf->base.Height)
       h = dri2_surf->base.Height - y;
-   /* y-invert */
-   y = dri2_surf->base.Height - y - h;
-   if (size < max_req_len) {
+
+   /* If stride of pixels to copy is different from the surface stride
+    * then we need to copy lines one by one.
+    */
+   if (stride_b != stride) {
+      for (unsigned i = 0; i < h; i++) {
+         cookie = xcb_put_image(
+            dri2_dpy->conn, XCB_IMAGE_FORMAT_Z_PIXMAP, dri2_surf->drawable, gc, w,
+            1, x, y+i, 0, dri2_surf->depth, stride_b, (uint8_t*)data);
+         xcb_discard_reply(dri2_dpy->conn, cookie.sequence);
+
+         data += stride;
+      }
+   } else if (size < max_req_len) {
       cookie = xcb_put_image(
          dri2_dpy->conn, XCB_IMAGE_FORMAT_Z_PIXMAP, dri2_surf->drawable, gc, w,
          h, x, y, 0, dri2_surf->depth, h * stride_b, (const uint8_t *)data);
@@ -200,13 +211,16 @@ swrastPutImage(__DRIdrawable *draw, int op, int x, int y, int w, int h,
          y_todo -= this_lines;
       }
    }
+   xcb_flush(dri2_dpy->conn);
 }
 
 static void
-swrastPutImage2(__DRIdrawable *draw, int op, int x, int y, int w, int h,
-                int stride, char *data, void *loaderPrivate)
+swrastPutImage(__DRIdrawable *draw, int op, int x, int y, int w, int h,
+               char *data, void *loaderPrivate)
 {
-   swrastPutImage(draw, op, x, y, w, h, data, loaderPrivate);
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+   int stride_b = dri2_surf->bytes_per_pixel * w;
+   swrastPutImage2(draw, op, x, y, w, h, stride_b, data, loaderPrivate);
 }
 
 static void
@@ -1638,6 +1652,8 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
       if (dri2_dpy->multibuffers_available)
          dri2_set_WL_bind_wayland_display(disp);
 #endif
+   } else {
+      disp->Extensions.EXT_swap_buffers_with_damage = EGL_TRUE;
    }
    disp->Extensions.EXT_buffer_age = EGL_TRUE;
    disp->Extensions.ANGLE_sync_control_rate = EGL_TRUE;

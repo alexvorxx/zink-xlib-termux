@@ -107,8 +107,15 @@ radv_get_sequence_size_graphics(const struct radv_indirect_command_layout *layou
       }
    } else {
       if (layout->draw_mesh_tasks) {
-         /* userdata writes + instance count + non-indexed draw */
-         *cmd_size += (6 + 2 + (pdev->mesh_fast_launch_2 ? 5 : 3)) * 4;
+         const struct radv_shader *task_shader = radv_get_shader(pipeline->base.shaders, MESA_SHADER_TASK);
+
+         if (task_shader) {
+            /* PKT3_DISPATCH_TASKMESH_GFX */
+            *cmd_size += 4 * 4;
+         } else {
+            /* userdata writes + instance count + non-indexed draw */
+            *cmd_size += (6 + 2 + (pdev->mesh_fast_launch_2 ? 5 : 3)) * 4;
+         }
       } else {
          /* userdata writes + instance count + non-indexed draw */
          *cmd_size += (5 + 2 + 3) * 4;
@@ -252,6 +259,11 @@ struct radv_dgc_params {
    uint16_t vtx_base_sgpr;
    uint32_t max_index_count;
    uint8_t draw_mesh_tasks;
+
+   /* task/mesh info */
+   uint8_t has_task_shader;
+   uint16_t mesh_ring_entry_sgpr;
+   uint8_t linear_dispatch_en;
 
    /* dispatch info */
    uint32_t dispatch_initiator;
@@ -1470,7 +1482,42 @@ dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV.
  */
 static void
-dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset, nir_def *sequence_id)
+dgc_emit_dispatch_taskmesh_gfx(struct dgc_cmdbuf *cs)
+{
+   const struct radv_device *device = cs->dev;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   nir_builder *b = cs->b;
+
+   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
+   nir_def *has_grid_size = nir_test_mask(b, vtx_base_sgpr, DGC_USES_GRID_SIZE);
+   nir_def *has_linear_dispatch_en = nir_ieq_imm(b, load_param8(b, linear_dispatch_en), 1);
+
+   nir_def *base_reg = nir_iand_imm(b, vtx_base_sgpr, 0x3FFF);
+   nir_def *xyz_dim_reg = nir_bcsel(b, has_grid_size, base_reg, nir_imm_int(b, 0));
+   nir_def *ring_entry_reg = load_param16(b, mesh_ring_entry_sgpr);
+
+   nir_def *xyz_dim_enable = nir_bcsel(b, has_grid_size, nir_imm_int(b, S_4D1_XYZ_DIM_ENABLE(1)), nir_imm_int(b, 0));
+   nir_def *mode1_enable = nir_imm_int(b, S_4D1_MODE1_ENABLE(!pdev->mesh_fast_launch_2));
+   nir_def *linear_dispatch_en =
+      nir_bcsel(b, has_linear_dispatch_en, nir_imm_int(b, S_4D1_LINEAR_DISPATCH_ENABLE(1)), nir_imm_int(b, 0));
+   nir_def *sqtt_enable = nir_imm_int(b, device->sqtt.bo ? S_4D1_THREAD_TRACE_MARKER_ENABLE(1) : 0);
+
+   dgc_cs_begin(cs);
+   dgc_cs_emit_imm(PKT3(PKT3_DISPATCH_TASKMESH_GFX, 2, 0) | PKT3_RESET_FILTER_CAM_S(1));
+   /* S_4D0_RING_ENTRY_REG(ring_entry_reg) | S_4D0_XYZ_DIM_REG(xyz_dim_reg) */
+   dgc_cs_emit(nir_ior(b, xyz_dim_reg, nir_ishl_imm(b, ring_entry_reg, 16)));
+   if (pdev->info.gfx_level >= GFX11) {
+      dgc_cs_emit(nir_ior(b, xyz_dim_enable, nir_ior(b, mode1_enable, nir_ior(b, linear_dispatch_en, sqtt_enable))));
+   } else {
+      dgc_cs_emit(sqtt_enable);
+   }
+   dgc_cs_emit_imm(V_0287F0_DI_SRC_SEL_AUTO_INDEX);
+   dgc_cs_end();
+}
+
+static void
+dgc_emit_draw_mesh_tasks_gfx(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_offset,
+                             nir_def *sequence_id)
 {
    const struct radv_device *device = cs->dev;
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -1489,18 +1536,26 @@ dgc_emit_draw_mesh_tasks(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *d
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDrawMeshTasksEXT);
       dgc_emit_sqtt_marker_event(cs, sequence_id, EventCmdDrawMeshTasksEXT);
 
-      dgc_emit_userdata_mesh(cs, vtx_base_sgpr, x, y, z, sequence_id);
-      dgc_emit_instance_count(cs, nir_imm_int(b, 1));
-
-      if (pdev->mesh_fast_launch_2) {
-         dgc_emit_dispatch_mesh_direct(cs, x, y, z);
-      } else {
-         nir_def *vertex_count = nir_imul(b, x, nir_imul(b, y, z));
-         dgc_emit_draw_index_auto(cs, vertex_count);
+      nir_push_if(b, nir_ieq_imm(b, load_param8(b, has_task_shader), 1));
+      {
+         dgc_emit_dispatch_taskmesh_gfx(cs);
       }
+      nir_push_else(b, NULL);
+      {
+         dgc_emit_userdata_mesh(cs, vtx_base_sgpr, x, y, z, sequence_id);
+         dgc_emit_instance_count(cs, nir_imm_int(b, 1));
 
-      dgc_emit_sqtt_thread_trace_marker(cs);
-      dgc_emit_sqtt_end_api_marker(cs, ApiCmdDrawMeshTasksEXT);
+         if (pdev->mesh_fast_launch_2) {
+            dgc_emit_dispatch_mesh_direct(cs, x, y, z);
+         } else {
+            nir_def *vertex_count = nir_imul(b, x, nir_imul(b, y, z));
+            dgc_emit_draw_index_auto(cs, vertex_count);
+         }
+
+         dgc_emit_sqtt_thread_trace_marker(cs);
+         dgc_emit_sqtt_end_api_marker(cs, ApiCmdDrawMeshTasksEXT);
+      }
+      nir_pop_if(b, NULL);
    }
    nir_pop_if(b, NULL);
 }
@@ -1683,7 +1738,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
             }
             nir_push_else(&b, NULL);
             {
-               dgc_emit_draw_mesh_tasks(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
+               dgc_emit_draw_mesh_tasks_gfx(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
             }
             nir_pop_if(&b, NULL);
          }
@@ -2073,8 +2128,19 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
 
    if (layout->draw_mesh_tasks) {
       struct radv_shader *mesh_shader = radv_get_shader(graphics_pipeline->base.shaders, MESA_SHADER_MESH);
+      const struct radv_shader *task_shader = radv_get_shader(graphics_pipeline->base.shaders, MESA_SHADER_TASK);
+
       if (mesh_shader->info.cs.uses_grid_size)
          vtx_base_sgpr |= DGC_USES_GRID_SIZE;
+
+      if (task_shader) {
+         const struct radv_userdata_info *mesh_ring_entry_loc = radv_get_user_sgpr(mesh_shader, AC_UD_TASK_RING_ENTRY);
+
+         params->has_task_shader = 0; /* TODO: Enable when fully implemented */
+         params->mesh_ring_entry_sgpr =
+            ((mesh_shader->info.user_data_0 - SI_SH_REG_OFFSET) >> 2) + mesh_ring_entry_loc->sgpr_idx;
+         params->linear_dispatch_en = task_shader->info.cs.linear_taskmesh_dispatch;
+      }
    } else {
       if (cmd_buffer->state.graphics_pipeline->uses_baseinstance)
          vtx_base_sgpr |= DGC_USES_BASEINSTANCE;

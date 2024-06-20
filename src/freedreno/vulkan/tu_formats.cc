@@ -872,36 +872,3 @@ tu_GetPhysicalDeviceSparseImageFormatProperties2(
    /* Sparse images are not yet supported. */
    *pPropertyCount = 0;
 }
-
-VKAPI_ATTR void VKAPI_CALL
-tu_GetPhysicalDeviceExternalBufferProperties(
-   VkPhysicalDevice physicalDevice,
-   const VkPhysicalDeviceExternalBufferInfo *pExternalBufferInfo,
-   VkExternalBufferProperties *pExternalBufferProperties)
-{
-   BITMASK_ENUM(VkExternalMemoryFeatureFlagBits) flags = 0;
-   VkExternalMemoryHandleTypeFlags export_flags = 0;
-   VkExternalMemoryHandleTypeFlags compat_flags = 0;
-   switch (pExternalBufferInfo->handleType) {
-   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
-   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
-      flags = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
-              VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
-      compat_flags = export_flags =
-         VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
-         VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-      break;
-   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT:
-      flags = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
-      compat_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-      break;
-   default:
-      break;
-   }
-   pExternalBufferProperties->externalMemoryProperties =
-      (VkExternalMemoryProperties) {
-         .externalMemoryFeatures = flags,
-         .exportFromImportedHandleTypes = export_flags,
-         .compatibleHandleTypes = compat_flags,
-      };
-}

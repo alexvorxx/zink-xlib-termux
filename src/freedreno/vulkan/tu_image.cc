@@ -19,6 +19,7 @@
 #include "drm-uapi/drm_fourcc.h"
 #include "vulkan/vulkan_core.h"
 
+#include "tu_buffer.h"
 #include "tu_cs.h"
 #include "tu_descriptor_set.h"
 #include "tu_device.h"

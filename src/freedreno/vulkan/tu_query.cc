@@ -15,6 +15,7 @@
 
 #include "vk_util.h"
 
+#include "tu_buffer.h"
 #include "tu_cmd_buffer.h"
 #include "tu_cs.h"
 #include "tu_device.h"

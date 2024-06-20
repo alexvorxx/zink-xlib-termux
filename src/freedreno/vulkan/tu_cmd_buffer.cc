@@ -13,6 +13,7 @@
 #include "vk_render_pass.h"
 #include "vk_util.h"
 
+#include "tu_buffer.h"
 #include "tu_clear_blit.h"
 #include "tu_cs.h"
 #include "tu_event.h"

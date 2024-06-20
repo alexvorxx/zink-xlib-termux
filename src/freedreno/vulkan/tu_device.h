@@ -12,7 +12,6 @@
 
 #include "tu_common.h"
 
-#include "vk_buffer.h"
 #include "vk_device_memory.h"
 
 #include "tu_autotune.h"
@@ -419,16 +418,6 @@ struct tu_device_memory
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(tu_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
-
-struct tu_buffer
-{
-   struct vk_buffer vk;
-
-   struct tu_bo *bo;
-   uint64_t iova;
-};
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_buffer, vk.base, VkBuffer,
-                               VK_OBJECT_TYPE_BUFFER)
 
 struct tu_attachment_info
 {

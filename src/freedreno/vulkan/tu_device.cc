@@ -2161,41 +2161,15 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    VK_FROM_HANDLE(tu_physical_device, physical_device, physicalDevice);
    VkResult result;
    struct tu_device *device;
-   bool custom_border_colors = false;
-   bool perf_query_pools = false;
-   bool robust_buffer_access2 = false;
    bool border_color_without_format = false;
-   bool global_priority_query = false;
 
-   vk_foreach_struct_const(ext, pCreateInfo->pNext) {
+   vk_foreach_struct_const (ext, pCreateInfo->pNext) {
       switch (ext->sType) {
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT: {
-         const VkPhysicalDeviceCustomBorderColorFeaturesEXT
-            *border_color_features =
-               (const VkPhysicalDeviceCustomBorderColorFeaturesEXT *) ext;
-         custom_border_colors = border_color_features->customBorderColors;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT:
          border_color_without_format =
-            border_color_features->customBorderColorWithoutFormat;
+            ((const VkPhysicalDeviceCustomBorderColorFeaturesEXT *) ext)
+               ->customBorderColorWithoutFormat;
          break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR: {
-         const VkPhysicalDevicePerformanceQueryFeaturesKHR *feature =
-            (VkPhysicalDevicePerformanceQueryFeaturesKHR *)ext;
-         perf_query_pools = feature->performanceCounterQueryPools;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT: {
-         VkPhysicalDeviceRobustness2FeaturesEXT *features =
-            (VkPhysicalDeviceRobustness2FeaturesEXT *) ext;
-         robust_buffer_access2 = features->robustBufferAccess2;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GLOBAL_PRIORITY_QUERY_FEATURES_KHR: {
-         VkPhysicalDeviceGlobalPriorityQueryFeaturesKHR *features =
-            (VkPhysicalDeviceGlobalPriorityQueryFeaturesKHR *) ext;
-         global_priority_query = features->globalPriorityQuery;
-         break;
-      }
       default:
          break;
       }
@@ -2308,8 +2282,8 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       device->queue_count[qfi] = queue_create->queueCount;
 
       for (unsigned q = 0; q < queue_create->queueCount; q++) {
-         result = tu_queue_init(device, &device->queues[qfi][q], q,
-                                queue_create, global_priority_query);
+         result = tu_queue_init(device, &device->queues[qfi][q], q, queue_create,
+                                device->vk.enabled_features.globalPriorityQuery);
          if (result != VK_SUCCESS) {
             device->queue_count[qfi] = q;
             goto fail_queues;
@@ -2319,7 +2293,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    {
       struct ir3_compiler_options ir3_options = {
-         .robust_buffer_access2 = robust_buffer_access2,
+         .robust_buffer_access2 = device->vk.enabled_features.robustBufferAccess2,
          .push_ubo_with_preamble = true,
          .disable_cache = true,
          .bindless_fb_read_descriptor = -1,
@@ -2355,7 +2329,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    device->vsc_draw_strm_pitch = 0x1000 + VSC_PAD;
    device->vsc_prim_strm_pitch = 0x4000 + VSC_PAD;
 
-   if (custom_border_colors)
+   if (device->vk.enabled_features.customBorderColors)
       global_size += TU_BORDER_COLOR_COUNT * sizeof(struct bcolor_entry);
 
    tu_bo_suballocator_init(
@@ -2429,7 +2403,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_pipeline_cache;
    }
 
-   if (perf_query_pools) {
+   if (device->vk.enabled_features.performanceCounterQueryPools) {
       /* Prepare command streams setting pass index to the PERF_CNTRS_REG
        * from 0 to 31. One of these will be picked up at cmd submit time
        * when the perf query is executed.
@@ -2519,8 +2493,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    device->use_z24uint_s8uint =
       physical_device->info->a6xx.has_z24uint_s8uint &&
       !border_color_without_format;
-   device->use_lrz =
-      !TU_DEBUG(NOLRZ);
+   device->use_lrz = !TU_DEBUG(NOLRZ);
 
    tu_gpu_tracepoint_config_variable();
 

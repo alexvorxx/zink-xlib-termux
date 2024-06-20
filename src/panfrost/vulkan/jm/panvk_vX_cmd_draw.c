@@ -720,12 +720,16 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
    draw->vs.attribute_bufs = cmdbuf->state.gfx.vs.attrib_bufs;
 }
 
-void
-panvk_per_arch(emit_viewport)(const VkViewport *viewport,
-                              const VkRect2D *scissor, void *vpd)
+static void
+panvk_emit_viewport(const struct vk_viewport_state *vp, void *vpd)
 {
+   assert(vp->viewport_count == 1);
+
+   const VkViewport *viewport = &vp->viewports[0];
+   const VkRect2D *scissor = &vp->scissors[0];
+
    /* The spec says "width must be greater than 0.0" */
-   assert(viewport->x >= 0);
+   assert(viewport->width >= 0);
    int minx = (int)viewport->x;
    int maxx = (int)(viewport->x + viewport->width);
 
@@ -742,6 +746,12 @@ panvk_per_arch(emit_viewport)(const VkViewport *viewport,
    /* Make sure we don't end up with a max < min when width/height is 0 */
    maxx = maxx > minx ? maxx - 1 : maxx;
    maxy = maxy > miny ? maxy - 1 : maxy;
+
+   /* Clamp viewport scissor to valid range */
+   minx = CLAMP(minx, 0, UINT16_MAX);
+   maxx = CLAMP(maxx, 0, UINT16_MAX);
+   miny = CLAMP(miny, 0, UINT16_MAX);
+   maxy = CLAMP(maxy, 0, UINT16_MAX);
 
    assert(viewport->minDepth >= 0.0f && viewport->minDepth <= 1.0f);
    assert(viewport->maxDepth >= 0.0f && viewport->maxDepth <= 1.0f);
@@ -761,14 +771,10 @@ panvk_draw_prepare_viewport(struct panvk_cmd_buffer *cmdbuf,
                             struct panvk_draw_info *draw)
 {
    if (is_dirty(cmdbuf, VP_VIEWPORTS) || is_dirty(cmdbuf, VP_SCISSORS)) {
-      const VkViewport *viewport =
-         &cmdbuf->vk.dynamic_graphics_state.vp.viewports[0];
-      const VkRect2D *scissor =
-         &cmdbuf->vk.dynamic_graphics_state.vp.scissors[0];
       struct panfrost_ptr vp =
          pan_pool_alloc_desc(&cmdbuf->desc_pool.base, VIEWPORT);
 
-      panvk_per_arch(emit_viewport)(viewport, scissor, vp.cpu);
+      panvk_emit_viewport(&cmdbuf->vk.dynamic_graphics_state.vp, vp.cpu);
       cmdbuf->state.gfx.vpd = vp.gpu;
    }
 

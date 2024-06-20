@@ -49,28 +49,30 @@ handle_def_fixed_to_op(RegisterDemand* demand, RegisterDemand demand_before, Ins
 RegisterDemand
 get_temp_registers(aco_ptr<Instruction>& instr)
 {
-   RegisterDemand temp_registers;
+   RegisterDemand demand_before;
+   RegisterDemand demand_after;
 
    for (Definition def : instr->definitions) {
-      if (!def.isTemp())
-         continue;
       if (def.isKill())
-         temp_registers += def.getTemp();
+         demand_after += def.getTemp();
+      else if (def.isTemp())
+         demand_before -= def.getTemp();
    }
 
    for (Operand op : instr->operands) {
-      if (op.isTemp() && op.isLateKill() && op.isFirstKill())
-         temp_registers += op.getTemp();
+      if (op.isFirstKill()) {
+         demand_before += op.getTemp();
+         if (op.isLateKill())
+            demand_after += op.getTemp();
+      }
    }
 
    int op_idx = get_op_fixed_to_def(instr.get());
-   if (op_idx != -1 && !instr->operands[op_idx].isKill()) {
-      RegisterDemand before_instr;
-      before_instr -= get_live_changes(instr);
-      handle_def_fixed_to_op(&temp_registers, before_instr, instr.get(), op_idx);
-   }
+   if (op_idx != -1 && !instr->operands[op_idx].isKill())
+      demand_before += instr->definitions[0].getTemp();
 
-   return temp_registers;
+   demand_after.update(demand_before);
+   return demand_after;
 }
 
 RegisterDemand
@@ -190,6 +192,8 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
          RegisterDemand before_instr = new_demand;
          handle_def_fixed_to_op(&register_demand[idx], before_instr, insn, op_idx);
       }
+
+      register_demand[idx].update(new_demand);
    }
 
    /* handle phi definitions */

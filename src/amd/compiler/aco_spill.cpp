@@ -993,11 +993,9 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
          spilled_registers -= new_tmp;
       }
 
-      /* check if register demand is low enough before and after the current instruction */
+      /* check if register demand is low enough during and after the current instruction */
       if (block->register_demand.exceeds(ctx.target_pressure)) {
-
          RegisterDemand new_demand = ctx.program->live.register_demand[block_idx][idx];
-         new_demand.update(get_demand_before(ctx, block_idx, idx));
 
          /* if reg pressure is too high, spill variable with furthest next use */
          while ((new_demand - spilled_registers).exceeds(ctx.target_pressure)) {

@@ -1392,7 +1392,7 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
    struct radv_amdgpu_cs *cs = (struct radv_amdgpu_cs *)_cs;
    struct radv_amdgpu_winsys *ws = cs->ws;
 
-   if (cs->use_ib) {
+   if (cs->use_ib && !radv_amdgpu_cs_has_external_ib(cs)) {
       struct radv_amdgpu_cs_ib_info ib_info = radv_amdgpu_cs_ib_to_info(cs, cs->ib_buffers[0]);
 
       struct ac_addr_info addr_info;
@@ -1428,6 +1428,11 @@ radv_amdgpu_winsys_cs_dump(struct radeon_cmdbuf *_cs, FILE *file, const int *tra
          struct radv_amdgpu_ib *ib = &cs->ib_buffers[i];
          char name[64];
          void *mapped;
+
+         if (!ib->bo) {
+            fprintf(file, "Chunk %d isn't owned by this CS.\n\n", i);
+            continue;
+         }
 
          mapped = radv_buffer_map(&ws->base, ib->bo);
          if (!mapped)

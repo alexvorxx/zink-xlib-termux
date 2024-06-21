@@ -9840,7 +9840,7 @@ radv_cs_emit_indirect_mesh_draw_packet(struct radv_cmd_buffer *cmd_buffer, uint3
    else
       radeon_emit(cs, S_4C2_DRAW_INDEX_ENABLE(draw_id_enable) | S_4C2_COUNT_INDIRECT_ENABLE(!!count_va));
    radeon_emit(cs, draw_count);
-   radeon_emit(cs, count_va & 0xFFFFFFFF);
+   radeon_emit(cs, count_va);
    radeon_emit(cs, count_va >> 32);
    radeon_emit(cs, stride);
    radeon_emit(cs, V_0287F0_DI_SRC_SEL_AUTO_INDEX);

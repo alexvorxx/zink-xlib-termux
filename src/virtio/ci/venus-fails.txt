@@ -8,4 +8,3 @@ dEQP-VK.binding_model.mutable_descriptor.multiple_arrays_mixed.constant_size.noa
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays_mixed.constant_size.noaliasing.update_copy.nonmutable_source.host_only_source.pool_same_types.pre_update.index_push_constant.comp,Crash
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays_mixed.unbounded.noaliasing.update_copy.nonmutable_source.normal_source.pool_expand_types.pre_update.index_constant.comp,Crash
 dEQP-VK.binding_model.mutable_descriptor.multiple_arrays.unbounded.aliasing.update_write.no_source.no_source.pool_expand_types.pre_update.index_push_constant.comp,Crash
-dEQP-VK.pipeline.monolithic.timestamp.calibrated.calibration_test,Fail

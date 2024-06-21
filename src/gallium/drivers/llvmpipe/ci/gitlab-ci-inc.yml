@@ -33,6 +33,18 @@
   rules:
     - !reference [.test, rules]
     - !reference [.no_scheduled_pipelines-rules, rules]
+    # Old copy of .core-rules, missing:
+    #   - meson_options.txt
+    #   - build-support/**/*
+    #   - subprojects/**/*
+    #   - src/*
+    #   - src/drm-shim/**/*
+    #   - src/gbm/**/*
+    #   - src/gtest/**/*
+    #   - src/mesa/**/*.h
+    #   - src/tool/**/*
+    # FIXME: figure out if this really needs to not be `!reference [.core-rules, rules]`
+    # and if some of the missing items really need to not be there, consider splitting the .core-rules list in two.
     - changes: &llvmpipe_cl_files
       - .gitlab-ci.yml
       - .gitlab-ci/**/*

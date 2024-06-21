@@ -5463,6 +5463,8 @@ anv_image_get_fast_clear_type_addr(const struct anv_device *device,
                                    const struct anv_image *image,
                                    VkImageAspectFlagBits aspect)
 {
+   /* Xe2+ platforms don't need fast clear type. We shouldn't get here. */
+   assert(device->info->ver < 20);
    struct anv_address addr =
       anv_image_get_clear_color_addr(device, image, aspect);
 
@@ -5485,6 +5487,8 @@ anv_image_get_compression_state_addr(const struct anv_device *device,
                                      VkImageAspectFlagBits aspect,
                                      uint32_t level, uint32_t array_layer)
 {
+   /* Xe2+ platforms don't use compression state. We shouldn't get here. */
+   assert(device->info->ver < 20);
    assert(level < anv_image_aux_levels(image, aspect));
    assert(array_layer < anv_image_aux_layers(image, aspect, level));
    UNUSED uint32_t plane = anv_image_aspect_to_plane(image, aspect);

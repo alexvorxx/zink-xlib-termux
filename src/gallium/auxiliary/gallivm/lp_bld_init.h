@@ -108,6 +108,8 @@ unsigned gallivm_get_perf_flags(void);
 
 void lp_init_clock_hook(struct gallivm_state *gallivm);
 
+void lp_init_env_options(void);
+
 static inline void
 lp_bld_ppc_disable_denorms(void)
 {

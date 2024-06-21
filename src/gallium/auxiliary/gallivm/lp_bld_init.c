@@ -44,39 +44,7 @@
 #include <llvm-c/Analysis.h>
 #include <llvm-c/BitWriter.h>
 
-unsigned gallivm_perf = 0;
-
-static const struct debug_named_value lp_bld_perf_flags[] = {
-   { "brilinear", GALLIVM_PERF_BRILINEAR, "enable brilinear optimization" },
-   { "rho_approx", GALLIVM_PERF_RHO_APPROX, "enable rho_approx optimization" },
-   { "no_quad_lod", GALLIVM_PERF_NO_QUAD_LOD, "disable quad_lod optimization" },
-   { "no_aos_sampling", GALLIVM_PERF_NO_AOS_SAMPLING, "disable aos sampling optimization" },
-   { "nopt",   GALLIVM_PERF_NO_OPT, "disable optimization passes to speed up shader compilation" },
-   DEBUG_NAMED_VALUE_END
-};
-
-unsigned gallivm_debug = 0;
-
-static const struct debug_named_value lp_bld_debug_flags[] = {
-   { "tgsi",   GALLIVM_DEBUG_TGSI, NULL },
-   { "ir",     GALLIVM_DEBUG_IR, NULL },
-   { "asm",    GALLIVM_DEBUG_ASM, NULL },
-   { "perf",   GALLIVM_DEBUG_PERF, NULL },
-   { "gc",     GALLIVM_DEBUG_GC, NULL },
-/* Don't allow setting DUMP_BC for release builds, since writing the files may be an issue with setuid. */
-#if MESA_DEBUG
-   { "dumpbc", GALLIVM_DEBUG_DUMP_BC, NULL },
-#endif
-   DEBUG_NAMED_VALUE_END
-};
-
-DEBUG_GET_ONCE_FLAGS_OPTION(gallivm_debug, "GALLIVM_DEBUG", lp_bld_debug_flags, 0)
-
-
 static bool gallivm_initialized = false;
-
-unsigned lp_native_vector_width;
-
 
 /*
  * Optimization values are:
@@ -325,19 +293,6 @@ fail:
    return false;
 }
 
-unsigned
-lp_build_init_native_width(void)
-{
-   // Default to 256 until we're confident llvmpipe with 512 is as correct and not slower than 256
-   lp_native_vector_width = MIN2(util_get_cpu_caps()->max_vector_bits, 256);
-   assert(lp_native_vector_width);
-
-   lp_native_vector_width = debug_get_num_option("LP_NATIVE_VECTOR_WIDTH", lp_native_vector_width);
-   assert(lp_native_vector_width);
-
-   return lp_native_vector_width;
-}
-
 bool
 lp_build_init(void)
 {
@@ -352,9 +307,7 @@ lp_build_init(void)
     */
    LLVMLinkInMCJIT();
 
-   gallivm_debug = debug_get_option_gallivm_debug();
-
-   gallivm_perf = debug_get_flags_option("GALLIVM_PERF", lp_bld_perf_flags, 0 );
+   lp_init_env_options();
 
    lp_set_target_options();
 
@@ -404,39 +357,6 @@ void
 gallivm_add_global_mapping(struct gallivm_state *gallivm, LLVMValueRef sym, void* addr)
 {
    LLVMAddGlobalMapping(gallivm->engine, sym, addr);
-}
-
-/**
- * Validate a function.
- * Verification is only done with debug builds.
- */
-void
-gallivm_verify_function(struct gallivm_state *gallivm,
-                        LLVMValueRef func)
-{
-   /* Verify the LLVM IR.  If invalid, dump and abort */
-#if MESA_DEBUG
-   if (LLVMVerifyFunction(func, LLVMPrintMessageAction)) {
-      lp_debug_dump_value(func);
-      assert(0);
-      return;
-   }
-#endif
-
-   if (gallivm_debug & GALLIVM_DEBUG_IR) {
-      /* Print the LLVM IR to stderr */
-      lp_debug_dump_value(func);
-      debug_printf("\n");
-   }
-}
-
-void lp_init_clock_hook(struct gallivm_state *gallivm)
-{
-   if (gallivm->get_time_hook)
-      return;
-
-   LLVMTypeRef get_time_type = LLVMFunctionType(LLVMInt64TypeInContext(gallivm->context), NULL, 0, 1);
-   gallivm->get_time_hook = LLVMAddFunction(gallivm->module, "get_time_hook", get_time_type);
 }
 
 /**
@@ -574,9 +494,4 @@ gallivm_jit_function(struct gallivm_state *gallivm,
    }
 
    return jit_func;
-}
-
-unsigned gallivm_get_perf_flags(void)
-{
-   return gallivm_perf;
 }

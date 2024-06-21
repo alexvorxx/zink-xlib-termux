@@ -1351,6 +1351,7 @@ prelink_lowering(const struct gl_constants *consts,
 
       if (!nir->options->compact_arrays) {
          NIR_PASS(_, nir, nir_lower_clip_cull_distance_to_vec4s);
+         NIR_PASS(_, nir, nir_vectorize_tess_levels);
       }
 
       /* Combine clip and cull outputs into one array and set:

@@ -9923,8 +9923,7 @@ radv_cs_emit_dispatch_taskmesh_gfx_packet(const struct radv_device *device, cons
    const struct radv_shader *mesh_shader = cmd_state->shaders[MESA_SHADER_MESH];
    const bool predicating = cmd_state->predicating;
 
-   const struct radv_userdata_info *ring_entry_loc =
-      radv_get_user_sgpr(cmd_state->last_vgt_shader, AC_UD_TASK_RING_ENTRY);
+   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr(mesh_shader, AC_UD_TASK_RING_ENTRY);
 
    assert(ring_entry_loc->sgpr_idx != -1);
 

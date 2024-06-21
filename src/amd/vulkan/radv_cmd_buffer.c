@@ -9860,7 +9860,7 @@ radv_cs_emit_dispatch_taskmesh_direct_ace_packet(const struct radv_device *devic
    const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr(task_shader, AC_UD_TASK_RING_ENTRY);
    assert(ring_entry_loc && ring_entry_loc->sgpr_idx != -1 && ring_entry_loc->num_sgprs == 1);
 
-   uint32_t ring_entry_reg = (R_00B900_COMPUTE_USER_DATA_0 + ring_entry_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
+   uint32_t ring_entry_reg = (task_shader->info.user_data_0 + ring_entry_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
 
    radeon_emit(ace_cs, PKT3(PKT3_DISPATCH_TASKMESH_DIRECT_ACE, 4, predicating) | PKT3_SHADER_TYPE_S(1));
    radeon_emit(ace_cs, x);
@@ -9895,11 +9895,11 @@ radv_cs_emit_dispatch_taskmesh_indirect_multi_ace_packet(const struct radv_devic
    assert(!draw_id_enable || (draw_id_loc->sgpr_idx != -1 && draw_id_loc->num_sgprs == 1));
 
    const uint32_t ring_entry_reg =
-      (R_00B900_COMPUTE_USER_DATA_0 + ring_entry_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
+      (task_shader->info.user_data_0 + ring_entry_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
    const uint32_t xyz_dim_reg =
-      !xyz_dim_enable ? 0 : (R_00B900_COMPUTE_USER_DATA_0 + xyz_dim_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
+      !xyz_dim_enable ? 0 : (task_shader->info.user_data_0 + xyz_dim_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
    const uint32_t draw_id_reg =
-      !draw_id_enable ? 0 : (R_00B900_COMPUTE_USER_DATA_0 + draw_id_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
+      !draw_id_enable ? 0 : (task_shader->info.user_data_0 + draw_id_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
 
    radeon_emit(ace_cs, PKT3(PKT3_DISPATCH_TASKMESH_INDIRECT_MULTI_ACE, 9, 0) | PKT3_SHADER_TYPE_S(1));
    radeon_emit(ace_cs, data_va);
@@ -10030,7 +10030,7 @@ radv_emit_userdata_task(const struct radv_cmd_state *cmd_state, struct radeon_cm
 
    if (xyz_loc->sgpr_idx != -1) {
       assert(xyz_loc->num_sgprs == 3);
-      unsigned xyz_reg = R_00B900_COMPUTE_USER_DATA_0 + xyz_loc->sgpr_idx * 4;
+      unsigned xyz_reg = task_shader->info.user_data_0 + xyz_loc->sgpr_idx * 4;
 
       radeon_set_sh_reg_seq(ace_cs, xyz_reg, 3);
       radeon_emit(ace_cs, x);
@@ -10040,7 +10040,7 @@ radv_emit_userdata_task(const struct radv_cmd_state *cmd_state, struct radeon_cm
 
    if (draw_id_loc->sgpr_idx != -1) {
       assert(draw_id_loc->num_sgprs == 1);
-      unsigned draw_id_reg = R_00B900_COMPUTE_USER_DATA_0 + draw_id_loc->sgpr_idx * 4;
+      unsigned draw_id_reg = task_shader->info.user_data_0 + draw_id_loc->sgpr_idx * 4;
 
       radeon_set_sh_reg_seq(ace_cs, draw_id_reg, 1);
       radeon_emit(ace_cs, draw_id);

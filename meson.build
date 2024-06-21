@@ -224,7 +224,7 @@ if _vulkan_drivers.contains('auto')
       _vulkan_drivers = ['amd', 'intel', 'intel_hasvk', 'nouveau', 'swrast']
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['swrast', 'intel']
-    elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
+    elif ['mips', 'mips64', 'ppc', 'ppc64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']
     elif ['loongarch64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']

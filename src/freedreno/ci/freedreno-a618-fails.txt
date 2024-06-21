@@ -235,8 +235,9 @@ spec@oes_egl_image_external_essl3@oes_egl_image_external_essl3,Fail
 # "Failure with Polygon Stipple set to fail mode."
 spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
 
-# crash in tgsi exec doing st_freedback_draw_vbo().
-spec@!opengl 1.0@rasterpos,Crash
+spec@!opengl 1.0@rasterpos,Fail
+spec@!opengl 1.0@rasterpos@glsl_vs_gs_linked,Fail
+spec@!opengl 1.0@rasterpos@glsl_vs_tes_linked,Fail
 
 spec@!opengl 1.1@polygon-mode-facing,Fail
 spec@!opengl 1.1@polygon-mode,Fail

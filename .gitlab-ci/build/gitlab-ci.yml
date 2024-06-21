@@ -484,12 +484,13 @@ debian-arm64:
     DRI_LOADERS:
       -D glvnd=disabled
     EXTRA_OPTION: >
-      -D llvm=disabled
       -D valgrind=disabled
       -D imagination-srv=true
       -D perfetto=true
       -D freedreno-kmds=msm,virtio
       -D teflon=true
+    GALLIUM_ST:
+      -D gallium-rusticl=true
     S3_ARTIFACT_NAME: mesa-arm64-default-${BUILDTYPE}
   script:
     - .gitlab-ci/meson/build.sh
@@ -502,7 +503,6 @@ debian-arm64-asan:
     DRI_LOADERS:
       -D glvnd=disabled
     EXTRA_OPTION: >
-      -D llvm=disabled
       -D b_sanitize=address
       -D valgrind=disabled
       -D tools=dlclose-skip

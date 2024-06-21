@@ -4657,12 +4657,11 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
          }
 
          switch (alu->op) {
-         case nir_op_iadd: {
+         case nir_op_iadd:
             ubld8.ADD(srcs[0].file != IMM ? srcs[0] : srcs[1],
                       srcs[0].file != IMM ? srcs[1] : srcs[0],
                       &ntb.resource_insts[def->index]);
             break;
-         }
          case nir_op_iadd3: {
             fs_reg dst = ubld8.vgrf(srcs[0].type);
             ntb.resource_insts[def->index] =
@@ -4681,13 +4680,11 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
                       &ntb.resource_insts[def->index]);
             break;
          }
-         case nir_op_ishl: {
+         case nir_op_ishl:
             ubld8.SHL(srcs[0], srcs[1], &ntb.resource_insts[def->index]);
             break;
-         }
-         case nir_op_mov: {
+         case nir_op_mov:
             break;
-         }
          default:
             break;
          }

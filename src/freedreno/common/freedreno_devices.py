@@ -776,7 +776,7 @@ a7xx_base = A6XXProps(
         vs_max_inputs_count = 32,
         max_sets = 8,
 
-        reg_size_vec4 = 64,
+        reg_size_vec4 = 96,
         # Blob limits it to 128 but we hang with 128
         instr_cache_size = 127,
         supports_multiview_mask = True,

@@ -323,7 +323,7 @@ preprocess_nir(nir_shader *nir)
             nir_var_function_temp, 2);
 
    NIR_PASS(_, nir, nir_lower_array_deref_of_vec,
-            nir_var_mem_ubo | nir_var_mem_ssbo,
+            nir_var_mem_ubo | nir_var_mem_ssbo, NULL,
             nir_lower_direct_array_deref_of_vec_load);
 
    NIR_PASS(_, nir, nir_lower_frexp);

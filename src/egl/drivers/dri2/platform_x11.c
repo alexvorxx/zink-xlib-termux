@@ -37,6 +37,7 @@
 #include <unistd.h>
 /* clang-format off */
 #include <xcb/xcb.h>
+#include <xcb/shm.h>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_xcb.h>
 /* clang-format on */
@@ -46,6 +47,7 @@
 #include "util/bitscan.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
+#include "util/log.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -224,8 +226,9 @@ swrastPutImage(__DRIdrawable *draw, int op, int x, int y, int w, int h,
 }
 
 static void
-swrastGetImage(__DRIdrawable *read, int x, int y, int w, int h, char *data,
-               void *loaderPrivate)
+swrastGetImage2(__DRIdrawable * read,
+                int x, int y, int w, int h, int stride,
+                char *data, void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
    struct dri2_egl_display *dri2_dpy =
@@ -247,9 +250,118 @@ swrastGetImage(__DRIdrawable *read, int x, int y, int w, int h, char *data,
    } else {
       uint32_t bytes = xcb_get_image_data_length(reply);
       uint8_t *idata = xcb_get_image_data(reply);
-      memcpy(data, idata, bytes);
+      int stride_b = w * dri2_surf->bytes_per_pixel;
+      /* Only copy line by line if we have a different stride */
+      if (stride != stride_b) {
+         for (int i = 0; i < h; i++) {
+            memcpy(data, idata, stride_b);
+            data += stride;
+            idata += stride_b;
+         }
+      } else {
+         memcpy(data, idata, bytes);
+      }
    }
    free(reply);
+}
+
+static void
+swrastGetImage(__DRIdrawable *read, int x, int y, int w, int h, char *data,
+               void *loaderPrivate)
+{
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+   int stride_b = w * dri2_surf->bytes_per_pixel;
+   swrastGetImage2(read, x, y, w, h, stride_b, data, loaderPrivate);
+}
+
+static void
+swrastPutImageShm(__DRIdrawable * draw, int op,
+                  int x, int y, int w, int h, int stride,
+                  int shmid, char *shmaddr, unsigned offset,
+                  void *loaderPrivate)
+{
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   xcb_generic_error_t *error = NULL;
+
+   xcb_shm_seg_t shm_seg = xcb_generate_id(dri2_dpy->conn);
+   error = xcb_request_check(dri2_dpy->conn,
+                             xcb_shm_attach_checked(dri2_dpy->conn,
+                                                    shm_seg, shmid, 0));
+   if (error) {
+      mesa_loge("Failed to attach to x11 shm");
+      _eglError(EGL_BAD_SURFACE, "xcb_shm_attach_checked");
+      free(error);
+      return;
+   }
+
+   xcb_gcontext_t gc;
+   xcb_void_cookie_t cookie;
+   switch (op) {
+   case __DRI_SWRAST_IMAGE_OP_DRAW:
+      gc = dri2_surf->gc;
+      break;
+   case __DRI_SWRAST_IMAGE_OP_SWAP:
+      gc = dri2_surf->swapgc;
+      break;
+   default:
+      return;
+   }
+
+   cookie = xcb_shm_put_image(dri2_dpy->conn,
+         dri2_surf->drawable,
+         gc,
+         stride / dri2_surf->bytes_per_pixel, h,
+         x, 0,
+         w, h,
+         x, y,
+         dri2_surf->depth,
+         XCB_IMAGE_FORMAT_Z_PIXMAP,
+         0, shm_seg, stride * y);
+   xcb_discard_reply(dri2_dpy->conn, cookie.sequence);
+
+   xcb_flush(dri2_dpy->conn);
+   xcb_shm_detach(dri2_dpy->conn, shm_seg);
+}
+
+static void
+swrastGetImageShm(__DRIdrawable * read,
+                  int x, int y, int w, int h,
+                  int shmid, void *loaderPrivate)
+{
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   xcb_generic_error_t *error = NULL;
+
+   xcb_shm_seg_t shm_seg = xcb_generate_id(dri2_dpy->conn);
+   error = xcb_request_check(dri2_dpy->conn,
+                             xcb_shm_attach_checked(dri2_dpy->conn,
+                                                    shm_seg, shmid, 0));
+   if (error) {
+      mesa_loge("Failed to attach to x11 shm");
+      _eglError(EGL_BAD_SURFACE, "xcb_shm_attach_checked");
+      free(error);
+      return;
+   }
+
+   xcb_shm_get_image_cookie_t cookie;
+   xcb_shm_get_image_reply_t *reply;
+
+   cookie = xcb_shm_get_image(dri2_dpy->conn,
+         dri2_surf->drawable,
+         x, y,
+         w, h,
+         ~0, XCB_IMAGE_FORMAT_Z_PIXMAP,
+         shm_seg, 0);
+   reply = xcb_shm_get_image_reply(dri2_dpy->conn, cookie, NULL);
+   if (reply == NULL)
+      _eglLog(_EGL_WARNING, "error in xcb_shm_get_image");
+   else
+      free(reply);
+
+   xcb_shm_detach(dri2_dpy->conn, shm_seg);
 }
 
 static xcb_screen_t *
@@ -1475,6 +1587,18 @@ static const __DRIswrastLoaderExtension swrast_loader_extension = {
    .getImage = swrastGetImage,
 };
 
+static const __DRIswrastLoaderExtension swrast_loader_shm_extension = {
+   .base = {__DRI_SWRAST_LOADER, 4},
+
+   .getDrawableInfo = swrastGetDrawableInfo,
+   .putImage = swrastPutImage,
+   .putImage2 = swrastPutImage2,
+   .putImageShm = swrastPutImageShm,
+   .getImage = swrastGetImage,
+   .getImage2 = swrastGetImage2,
+   .getImageShm = swrastGetImageShm,
+};
+
 static_assert(sizeof(struct kopper_vk_surface_create_storage) >=
                  sizeof(VkXcbSurfaceCreateInfoKHR),
               "");
@@ -1506,6 +1630,13 @@ static const __DRIkopperLoaderExtension kopper_loader_extension = {
 
 static const __DRIextension *swrast_loader_extensions[] = {
    &swrast_loader_extension.base,
+   &image_lookup_extension.base,
+   &kopper_loader_extension.base,
+   NULL,
+};
+
+static const __DRIextension *swrast_loader_shm_extensions[] = {
+   &swrast_loader_shm_extension.base,
    &image_lookup_extension.base,
    &kopper_loader_extension.base,
    NULL,
@@ -1595,6 +1726,38 @@ dri2_x11_setup_swap_interval(_EGLDisplay *disp)
    dri2_setup_swap_interval(disp, arbitrary_max_interval);
 }
 
+static bool
+check_xshm(struct dri2_egl_display *dri2_dpy)
+{
+   xcb_void_cookie_t cookie;
+   xcb_generic_error_t *error;
+   int ret = true;
+   xcb_query_extension_cookie_t shm_cookie;
+   xcb_query_extension_reply_t *shm_reply;
+   bool has_mit_shm;
+
+   shm_cookie = xcb_query_extension(dri2_dpy->conn, 7, "MIT-SHM");
+   shm_reply = xcb_query_extension_reply(dri2_dpy->conn, shm_cookie, NULL);
+
+   has_mit_shm = shm_reply->present;
+   free(shm_reply);
+   if (!has_mit_shm)
+      return false;
+
+   cookie = xcb_shm_detach_checked(dri2_dpy->conn, 0);
+   if ((error = xcb_request_check(dri2_dpy->conn, cookie))) {
+      /* BadRequest means we're a remote client. If we were local we'd
+       * expect BadValue since 'info' has an invalid segment name.
+       */
+      if (error->error_code == BadRequest)
+         ret = false;
+      free(error);
+   }
+
+   return ret;
+}
+
+
 static EGLBoolean
 dri2_initialize_x11_swrast(_EGLDisplay *disp)
 {
@@ -1619,7 +1782,11 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
    if (!dri2_load_driver_swrast(disp))
       goto cleanup;
 
-   dri2_dpy->loader_extensions = swrast_loader_extensions;
+   if (check_xshm(dri2_dpy)) {
+      dri2_dpy->loader_extensions = swrast_loader_shm_extensions;
+   } else {
+      dri2_dpy->loader_extensions = swrast_loader_extensions;
+   }
 
    if (!dri2_create_screen(disp))
       goto cleanup;

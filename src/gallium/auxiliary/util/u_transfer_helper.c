@@ -172,7 +172,7 @@ u_transfer_helper_resource_destroy(struct pipe_screen *pscreen,
    helper->vtbl->resource_destroy(pscreen, prsc);
 }
 
-static bool needs_pack(unsigned usage)
+static inline bool needs_pack(unsigned usage)
 {
    return (usage & PIPE_MAP_READ) &&
       !(usage & (PIPE_MAP_DISCARD_WHOLE_RESOURCE | PIPE_MAP_DISCARD_RANGE));

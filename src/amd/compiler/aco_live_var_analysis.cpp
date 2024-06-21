@@ -95,10 +95,8 @@ void
 process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
                              std::vector<PhiInfo>& phi_info)
 {
-   std::vector<RegisterDemand>& register_demand = program->live.register_demand[block->index];
    RegisterDemand new_demand;
 
-   register_demand.resize(block->instructions.size());
    IDSet live = program->live.live_out[block->index];
 
    /* initialize register demand */
@@ -114,7 +112,7 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
          break;
 
       program->needs_vcc |= instr_needs_vcc(insn);
-      register_demand[idx] = RegisterDemand(new_demand.vgpr, new_demand.sgpr);
+      insn->register_demand = RegisterDemand(new_demand.vgpr, new_demand.sgpr);
 
       /* KILL */
       for (Definition& definition : insn->definitions) {
@@ -131,7 +129,7 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
             new_demand -= temp;
             definition.setKill(false);
          } else {
-            register_demand[idx] += temp;
+            insn->register_demand += temp;
             definition.setKill(true);
          }
       }
@@ -164,21 +162,21 @@ process_live_temps_per_block(Program* program, Block* block, unsigned& worklist,
                   }
                }
                if (operand.isLateKill())
-                  register_demand[idx] += temp;
+                  insn->register_demand += temp;
                new_demand += temp;
             }
          }
       }
 
       RegisterDemand before_instr = new_demand + get_additional_operand_demand(insn);
-      register_demand[idx].update(before_instr);
+      insn->register_demand.update(before_instr);
    }
 
    /* handle phi definitions */
    uint16_t linear_phi_defs = 0;
    for (int phi_idx = 0; phi_idx <= idx; phi_idx++) {
-      register_demand[phi_idx] = new_demand;
       Instruction* insn = block->instructions[phi_idx].get();
+      insn->register_demand = new_demand;
 
       assert(is_phi(insn) && insn->definitions.size() == 1);
       if (!insn->definitions[0].isTemp()) {
@@ -443,7 +441,6 @@ live_var_analysis(Program* program)
    program->live.live_out.clear();
    program->live.memory.release();
    program->live.live_out.resize(program->blocks.size(), IDSet(program->live.memory));
-   program->live.register_demand.resize(program->blocks.size());
    unsigned worklist = program->blocks.size();
    std::vector<PhiInfo> phi_info(program->blocks.size());
    RegisterDemand new_demand;
@@ -459,16 +456,14 @@ live_var_analysis(Program* program)
 
    /* Handle branches: we will insert copies created for linear phis just before the branch. */
    for (Block& block : program->blocks) {
-      program->live.register_demand[block.index].back().sgpr +=
-         phi_info[block.index].linear_phi_defs;
-      program->live.register_demand[block.index].back().sgpr -=
-         phi_info[block.index].linear_phi_ops;
+      block.instructions.back()->register_demand.sgpr += phi_info[block.index].linear_phi_defs;
+      block.instructions.back()->register_demand.sgpr -= phi_info[block.index].linear_phi_ops;
 
       /* update block's register demand */
       if (program->progress < CompilationProgress::after_ra) {
          block.register_demand = RegisterDemand();
-         for (RegisterDemand& demand : program->live.register_demand[block.index])
-            block.register_demand.update(demand);
+         for (const aco_ptr<Instruction>& instr : block.instructions)
+            block.register_demand.update(instr->register_demand);
       }
 
       new_demand.update(block.register_demand);

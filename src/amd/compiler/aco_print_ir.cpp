@@ -910,11 +910,10 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
       fprintf(output, "\tdemand: %u vgpr, %u sgpr\n", demand.vgpr, demand.sgpr);
    }
 
-   unsigned index = 0;
    for (auto const& instr : block->instructions) {
       fprintf(output, "\t");
       if (flags & print_live_vars) {
-         RegisterDemand demand = program->live.register_demand[block->index][index];
+         RegisterDemand demand = instr->register_demand;
          fprintf(output, "(%3u vgpr, %3u sgpr)   ", demand.vgpr, demand.sgpr);
       }
       if (flags & print_perf_info)
@@ -922,7 +921,6 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
 
       aco_print_instr(gfx_level, instr.get(), output, flags);
       fprintf(output, "\n");
-      index++;
    }
 }
 

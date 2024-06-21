@@ -574,7 +574,6 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
    if (block->linear_preds.size() == 1 &&
        !(block->kind & (block_kind_loop_exit | block_kind_loop_header))) {
       assert(ctx.processed[block->linear_preds[0]]);
-      assert(ctx.program->live.register_demand[block_idx].size() == block->instructions.size());
 
       ctx.renames[block_idx] = ctx.renames[block->linear_preds[0]];
       if (!block->logical_preds.empty() && block->logical_preds[0] != block->linear_preds[0]) {
@@ -872,9 +871,8 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
             phi->operands[i] = Operand(tmp);
          }
          phi->definitions[0] = Definition(rename);
+         phi->register_demand = block->live_in_demand;
          block->instructions.insert(block->instructions.begin(), std::move(phi));
-         ctx.program->live.register_demand[block->index].insert(
-            ctx.program->live.register_demand[block->index].begin(), block->live_in_demand);
       }
 
       /* the variable was renamed: add new name to renames */
@@ -935,7 +933,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
 
       /* check if register demand is low enough during and after the current instruction */
       if (block->register_demand.exceeds(ctx.target_pressure)) {
-         RegisterDemand new_demand = ctx.program->live.register_demand[block_idx][idx];
+         RegisterDemand new_demand = instr->register_demand;
 
          /* if reg pressure is too high, spill variable with furthest next use */
          while ((new_demand - spilled_registers).exceeds(ctx.target_pressure)) {

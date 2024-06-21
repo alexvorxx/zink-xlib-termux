@@ -386,17 +386,21 @@ dri_fill_in_modes(struct dri_screen *screen)
       uint8_t msaa_modes[MSAA_VISUAL_MAX_SAMPLES];
 
       /* Expose only BGRA ordering if the loader doesn't support RGBA ordering. */
-      if (!allow_rgba_ordering &&
-          util_format_get_component_shift(pipe_formats[f],
-                                          UTIL_FORMAT_COLORSPACE_RGB, 0)
+      if (!allow_rgba_ordering) {
+          unsigned sh_ax = util_format_get_component_shift(pipe_formats[f], UTIL_FORMAT_COLORSPACE_RGB, 3);
+          unsigned sh_b = util_format_get_component_shift(pipe_formats[f], UTIL_FORMAT_COLORSPACE_RGB, 2);
 #if UTIL_ARCH_BIG_ENDIAN
-         >
+          unsigned sz_b = util_format_get_component_bits(pipe_formats[f], UTIL_FORMAT_COLORSPACE_RGB, 2);
+
+          if (sz_b + sh_b == sh_ax)
+             continue;
 #else
-         <
+          unsigned sz_ax = util_format_get_component_bits(pipe_formats[f], UTIL_FORMAT_COLORSPACE_RGB, 3);
+
+          if (sz_ax + sh_ax == sh_b)
+             continue;
 #endif
-          util_format_get_component_shift(pipe_formats[f],
-                                          UTIL_FORMAT_COLORSPACE_RGB, 2))
-         continue;
+       }
 
       if (!allow_rgb10 &&
           util_format_get_component_bits(pipe_formats[f],

@@ -53,6 +53,9 @@ static nir_def *lower_image_coords(nir_builder *b, nir_def *desc, nir_def *coord
    unsigned num_coord_components = get_coord_components(dim, is_array);
    nir_def *zero = nir_imm_int(b, 0);
 
+   if (coord->bit_size == 16)
+      coord = nir_u2u32(b, coord);
+
    /* Get coordinates. */
    nir_def *x = nir_channel(b, coord, 0);
    nir_def *y = num_coord_components >= 2 ? nir_channel(b, coord, 1) : NULL;
@@ -156,6 +159,9 @@ static nir_def *emulated_tex_level_zero(nir_builder *b, unsigned num_components,
    nir_def *zero = nir_imm_int(b, 0);
    nir_def *fp_one = nir_imm_floatN_t(b, 1, bit_size);
    nir_def *coord[3] = {0};
+
+   if (coord_vec->bit_size == 16)
+      coord_vec = nir_f2f32(b, coord_vec);
 
    assert(num_coord_components <= 3);
    for (unsigned i = 0; i < num_coord_components; i++)

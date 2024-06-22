@@ -302,6 +302,7 @@ static bool lower_image_opcodes(nir_builder *b, nir_instr *instr, void *data)
       enum gl_access_qualifier access;
       enum glsl_sampler_dim dim;
       bool is_array;
+      unsigned num_desc_components;
       nir_def *desc = NULL, *result = NULL;
       ASSERTED const char *intr_name;
 
@@ -316,8 +317,14 @@ static bool lower_image_opcodes(nir_builder *b, nir_instr *instr, void *data)
          if (dim == GLSL_SAMPLER_DIM_BUF)
             return false;
          is_array = nir_intrinsic_image_array(intr);
-         desc = nir_image_descriptor_amd(b, dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8,
-                                         32, intr->src[0].ssa);
+         num_desc_components = dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8;
+
+         if (intr->src[0].ssa->bit_size == 32 &&
+             intr->src[0].ssa->num_components == num_desc_components)
+            desc = intr->src[0].ssa;
+         else
+            desc = nir_image_descriptor_amd(b, num_desc_components,
+                                            32, intr->src[0].ssa);
          break;
 
       case nir_intrinsic_image_deref_load:
@@ -328,8 +335,14 @@ static bool lower_image_opcodes(nir_builder *b, nir_instr *instr, void *data)
          if (dim == GLSL_SAMPLER_DIM_BUF)
             return false;
          is_array = glsl_sampler_type_is_array(deref->type);
-         desc = nir_image_deref_descriptor_amd(b, dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8,
-                                               32, intr->src[0].ssa);
+         num_desc_components = dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8;
+
+         if (intr->src[0].ssa->bit_size == 32 &&
+             intr->src[0].ssa->num_components == num_desc_components)
+            desc = intr->src[0].ssa;
+         else
+            desc = nir_image_deref_descriptor_amd(b, num_desc_components,
+                                                  32, intr->src[0].ssa);
          break;
 
       case nir_intrinsic_bindless_image_load:
@@ -339,8 +352,14 @@ static bool lower_image_opcodes(nir_builder *b, nir_instr *instr, void *data)
          if (dim == GLSL_SAMPLER_DIM_BUF)
             return false;
          is_array = nir_intrinsic_image_array(intr);
-         desc = nir_bindless_image_descriptor_amd(b, dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8,
-                                                  32, intr->src[0].ssa);
+         num_desc_components = dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8;
+
+         if (intr->src[0].ssa->bit_size == 32 &&
+             intr->src[0].ssa->num_components == num_desc_components)
+            desc = intr->src[0].ssa;
+         else
+            desc = nir_bindless_image_descriptor_amd(b, num_desc_components,
+                                                     32, intr->src[0].ssa);
          break;
 
       /* These don't need any lowering. */

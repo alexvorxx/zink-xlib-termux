@@ -644,6 +644,10 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
       props->sharedImage = true;
 #endif
 
+   /* TODO: Fix sparse binding on lavapipe. */
+   if (props->driverID == VK_DRIVER_ID_MESA_LLVMPIPE)
+      physical_dev->sparse_binding_disabled = true;
+
    vn_physical_device_sanitize_properties(physical_dev);
 }
 

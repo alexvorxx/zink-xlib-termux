@@ -491,12 +491,12 @@ vn_android_get_image_builder(struct vn_device *dev,
    return VK_SUCCESS;
 }
 
-VkResult
-vn_android_image_from_anb(struct vn_device *dev,
-                          const VkImageCreateInfo *create_info,
-                          const VkNativeBufferANDROID *anb_info,
-                          const VkAllocationCallbacks *alloc,
-                          struct vn_image **out_img)
+static VkResult
+vn_android_image_from_anb_internal(struct vn_device *dev,
+                                   const VkImageCreateInfo *create_info,
+                                   const VkNativeBufferANDROID *anb_info,
+                                   const VkAllocationCallbacks *alloc,
+                                   struct vn_image **out_img)
 {
    /* If anb_info->handle points to a classic resouce created from
     * virtio_gpu_cmd_resource_create_3d, anb_info->stride is the stride of the
@@ -595,16 +595,6 @@ vn_android_image_from_anb(struct vn_device *dev,
    /* Android WSI image owns the memory */
    img->wsi.memory = vn_device_memory_from_handle(mem_handle);
    img->wsi.memory_owned = true;
-
-   const VkBindImageMemoryInfo bind_info = {
-      .sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO,
-      .image = vn_image_to_handle(img),
-      .memory = vn_device_memory_to_handle(img->wsi.memory),
-   };
-   result = vn_BindImageMemory2(vn_device_to_handle(dev), 1, &bind_info);
-   if (result != VK_SUCCESS)
-      goto fail;
-
    *out_img = img;
 
    return VK_SUCCESS;
@@ -613,6 +603,35 @@ fail:
    /* this handles mem free for owned import */
    vn_DestroyImage(vn_device_to_handle(dev), vn_image_to_handle(img), alloc);
    return result;
+}
+
+VkResult
+vn_android_image_from_anb(struct vn_device *dev,
+                          const VkImageCreateInfo *create_info,
+                          const VkNativeBufferANDROID *anb_info,
+                          const VkAllocationCallbacks *alloc,
+                          struct vn_image **out_img)
+{
+   struct vn_image *img = NULL;
+   VkResult result = vn_android_image_from_anb_internal(
+      dev, create_info, anb_info, alloc, &img);
+   if (result != VK_SUCCESS)
+      return result;
+
+   const VkBindImageMemoryInfo bind_info = {
+      .sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO,
+      .image = vn_image_to_handle(img),
+      .memory = vn_device_memory_to_handle(img->wsi.memory),
+   };
+   result = vn_BindImageMemory2(vn_device_to_handle(dev), 1, &bind_info);
+   if (result != VK_SUCCESS) {
+      vn_DestroyImage(vn_device_to_handle(dev), vn_image_to_handle(img),
+                      alloc);
+      return result;
+   }
+
+   *out_img = img;
+   return VK_SUCCESS;
 }
 
 static VkResult

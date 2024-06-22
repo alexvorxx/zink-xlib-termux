@@ -589,8 +589,10 @@ vn_get_memory_dma_buf_properties(struct vn_device *dev,
    struct vn_renderer_bo *bo;
    VkResult result = vn_renderer_bo_create_from_dma_buf(
       dev->renderer, 0 /* size */, fd, 0 /* flags */, &bo);
-   if (result != VK_SUCCESS)
+   if (result != VK_SUCCESS) {
+      vn_log(dev->instance, "bo_create_from_dma_buf failed");
       return result;
+   }
 
    vn_ring_roundtrip(dev->primary_ring);
 
@@ -605,8 +607,10 @@ vn_get_memory_dma_buf_properties(struct vn_device *dev,
    result = vn_call_vkGetMemoryResourcePropertiesMESA(
       dev->primary_ring, device, bo->res_id, &props);
    vn_renderer_bo_unref(dev->renderer, bo);
-   if (result != VK_SUCCESS)
+   if (result != VK_SUCCESS) {
+      vn_log(dev->instance, "vkGetMemoryResourcePropertiesMESA failed");
       return result;
+   }
 
    *out_alloc_size = alloc_size_props.allocationSize;
    *out_mem_type_bits = props.memoryTypeBits;

@@ -523,10 +523,20 @@ vn_android_image_from_anb_internal(struct vn_device *dev,
       return result;
 
    /* encoder will strip the Android specific pNext structs */
-   result = vn_image_create(dev, &builder.create, alloc, &img);
-   if (result != VK_SUCCESS) {
-      vn_log(dev->instance, "anb: vn_image_create failed");
-      return result;
+   if (*out_img) {
+      /* driver side img obj has been created for deferred init like ahb */
+      img = *out_img;
+      result = vn_image_init_deferred(dev, &builder.create, img);
+      if (result != VK_SUCCESS) {
+         vn_log(dev->instance, "anb: vn_image_init_deferred failed");
+         return result;
+      }
+   } else {
+      result = vn_image_create(dev, &builder.create, alloc, &img);
+      if (result != VK_SUCCESS) {
+         vn_log(dev->instance, "anb: vn_image_create failed");
+         return result;
+      }
    }
 
    img->wsi.is_wsi = true;
@@ -632,6 +642,25 @@ vn_android_image_from_anb(struct vn_device *dev,
 
    *out_img = img;
    return VK_SUCCESS;
+}
+
+struct vn_device_memory *
+vn_android_get_wsi_memory_from_bind_info(
+   struct vn_device *dev, const VkBindImageMemoryInfo *bind_info)
+{
+   const VkNativeBufferANDROID *anb_info =
+      vk_find_struct_const(bind_info->pNext, NATIVE_BUFFER_ANDROID);
+   assert(anb_info && anb_info->handle);
+
+   struct vn_image *img = vn_image_from_handle(bind_info->image);
+   VkResult result = vn_android_image_from_anb_internal(
+      dev, &img->deferred_info->create, anb_info, &dev->base.base.alloc,
+      &img);
+   if (result != VK_SUCCESS)
+      return NULL;
+
+   assert(img->wsi.memory_owned);
+   return img->wsi.memory;
 }
 
 static VkResult

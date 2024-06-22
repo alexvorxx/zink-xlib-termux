@@ -1169,14 +1169,6 @@ vn_physical_device_init_supported_extensions(
             physical_dev->extension_spec_versions[i], props->specVersion);
       }
    }
-
-   /* override VK_ANDROID_native_buffer spec version */
-   if (native.ANDROID_native_buffer) {
-      const uint32_t index =
-         VN_EXTENSION_TABLE_INDEX(native, ANDROID_native_buffer);
-      physical_dev->extension_spec_versions[index] =
-         VN_ANDROID_NATIVE_BUFFER_SPEC_VERSION;
-   }
 }
 
 static VkResult

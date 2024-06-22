@@ -343,6 +343,12 @@ static bool lower_image_opcodes(nir_builder *b, nir_instr *instr, void *data)
                                                   32, intr->src[0].ssa);
          break;
 
+      /* These don't need any lowering. */
+      case nir_intrinsic_image_descriptor_amd:
+      case nir_intrinsic_image_deref_descriptor_amd:
+      case nir_intrinsic_bindless_image_descriptor_amd:
+         return false;
+
       default:
          intr_name = nir_intrinsic_infos[intr->intrinsic].name;
 

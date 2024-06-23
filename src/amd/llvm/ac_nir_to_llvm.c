@@ -3633,7 +3633,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
        * It's pipelined such that we only wait for the oldest atomic, so there is always
        * "num_atomics" atomics in flight while the shader is waiting.
        */
-      unsigned inst_block_size = 3 + 1 + 3 + 2; /* size of the next sprintf in dwords */
+      unsigned inst_block_size = 3 + 1 + 3; /* size of the next sprintf in dwords */
 
       for (unsigned i = 0; i < num_atomics; i++) {
          unsigned issue_index = (num_atomics - 1 + i) % num_atomics;
@@ -3650,17 +3650,14 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
                          */
                         "v_cmp_eq_u32 %s, $3, v%u\n"
                         "v_mov_b32 $0, v%u\n"
-                        "s_cbranch_vccnz 0x%x\n"
-                        /* This is roughly "atomic_latency / num_atomics - latency_of_last_5_instructions" cycles. */
-                        "s_nop 15\n"
-                        "s_nop 10\n",
+                        "s_cbranch_vccnz 0x%x\n",
                         issue_index * 2,
                         issue_index * 2 + 1,
                         num_atomics - 1, /* wait count */
                         ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
                         read_index * 2, /* v_cmp_eq: src1 */
                         read_index * 2 + 1, /* output */
-                        inst_block_size * (num_atomics - i - 1) + 3); /* forward s_cbranch as loop break */
+                        inst_block_size * (num_atomics - i - 1) + 1); /* forward s_cbranch as loop break */
       }
 
       /* Jump to the beginning of the loop. */

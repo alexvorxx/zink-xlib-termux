@@ -3601,7 +3601,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       break;
    }
    case nir_intrinsic_ordered_add_loop_gfx12_amd: {
-      const unsigned num_atomics = 6; /* max 8, using v0..v15 as temporaries */
+      const unsigned num_atomics = 6;
       char code[2048];
       char *ptr = code;
 
@@ -3623,8 +3623,8 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
          /* global_atomic_ordered_add_b64 dst, offset, data, address */
          ptr += sprintf(ptr,
                         "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n",
-                        i * 2,
-                        i * 2 + 1);
+                        3 + i * 2,
+                        3 + i * 2 + 1);
       }
 
       /* This is an infinite while loop with breaks. The loop body executes "num_atomics"
@@ -3651,12 +3651,12 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
                         "v_cmp_eq_u32 %s, $3, v%u\n"
                         "v_mov_b32 $0, v%u\n"
                         "s_cbranch_vccnz 0x%x\n",
-                        issue_index * 2,
-                        issue_index * 2 + 1,
+                        3 + issue_index * 2,
+                        3 + issue_index * 2 + 1,
                         num_atomics - 1, /* wait count */
                         ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
-                        read_index * 2, /* v_cmp_eq: src1 */
-                        read_index * 2 + 1, /* output */
+                        3 + read_index * 2, /* v_cmp_eq: src1 */
+                        3 + read_index * 2 + 1, /* output */
                         inst_block_size * (num_atomics - i - 1) + 1); /* forward s_cbranch as loop break */
       }
 
@@ -3671,11 +3671,20 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
 
       /* =v means a VGPR output, =& means the dst register must be different from src registers,
        * s means an SGPR input, v means a VGPR input, ~{reg} means that the register is clobbered
+       *
+       * We need to list the registers manually because the clobber constraint doesn't prevent
+       * input and output registers from being assigned the same registers as the ones that are
+       * clobbered.
+       *
+       * Since registers in the clobber constraints are ignored by LLVM during computation of
+       * register usage, we have to set the input register to the highest used register because
+       * that one is included in the register usage computation.
        */
       char constraint[128];
-      snprintf(constraint, sizeof(constraint), "=&v,s,v,s,v,~{%s},~{v[0:%u]}",
+      snprintf(constraint, sizeof(constraint), "=&{v0},{s[8:9]},{v%u},{s12},{v[1:2]},~{%s},~{v[3:%u]}",
+               3 + num_atomics * 2,
                ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
-               num_atomics * 2 - 1);
+               3 + num_atomics * 2 - 1);
 
       LLVMValueRef inlineasm = LLVMConstInlineAsm(calltype, code, constraint, true, false);
 

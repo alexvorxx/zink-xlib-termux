@@ -1945,14 +1945,6 @@ ngg_build_streamout_buffer_info(nir_builder *b,
             } else {
                /* The NIR version of the above using nir_atomic_op_ordered_add_gfx12_amd. */
                enum { NUM_ATOMICS_IN_FLIGHT = 6 };
-               unsigned atomic_latency = 230; /* TODO: set the correct value depending on the chip */
-
-               /* Set the sleep time to latency/num_atomics minus some lost time estimate due to wave
-                * scheduling.
-                */
-               unsigned sleep_time = MAX2(1, atomic_latency / NUM_ATOMICS_IN_FLIGHT);
-               if (sleep_time > 10)
-                  sleep_time -= 10;
 
                nir_variable *result_ring[NUM_ATOMICS_IN_FLIGHT] = {0};
                for (unsigned i = 0; i < NUM_ATOMICS_IN_FLIGHT; i++)
@@ -2002,9 +1994,6 @@ ngg_build_streamout_buffer_info(nir_builder *b,
                         nir_jump(b, nir_jump_break);
                      }
                      nir_pop_if(b, if_break);
-
-                     /* Sleep and try again. */
-                     ac_nir_sleep(b, sleep_time);
                   }
                }
                nir_pop_loop(b, loop);

@@ -1940,8 +1940,8 @@ ngg_build_streamout_buffer_info(nir_builder *b,
              */
             if (use_gfx12_xfb_intrinsic) {
                buffer_offset_per_lane =
-                  nir_ordered_xfb_counter_add_gfx12_amd(b, xfb_state_address, xfb_voffset, ordered_id,
-                                                        atomic_src);
+                  nir_ordered_add_loop_gfx12_amd(b, xfb_state_address, xfb_voffset, ordered_id,
+                                                 atomic_src);
             } else {
                /* The NIR version of the above using nir_atomic_op_ordered_add_gfx12_amd. */
                enum { NUM_ATOMICS_IN_FLIGHT = 6 };

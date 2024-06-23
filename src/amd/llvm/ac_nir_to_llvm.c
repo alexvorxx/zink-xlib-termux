@@ -3600,20 +3600,20 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       }
       break;
    }
-   case nir_intrinsic_ordered_xfb_counter_add_gfx12_amd: {
+   case nir_intrinsic_ordered_add_loop_gfx12_amd: {
       const unsigned num_atomics = 6; /* max 8, using v0..v15 as temporaries */
       char code[2048];
       char *ptr = code;
 
       /* Assembly outputs:
-       *    i32 VGPR $0 = dwordsWritten (set in 4 lanes)
+       *    i32 VGPR $0 = previous value in memory
        *
        * Assembly inputs:
-       *    EXEC = 0xf (4 lanes, set by nir_push_if())
+       *    EXEC = one lane per counter (use nir_push_if, streamout should always enable 4 lanes)
        *    i64 SGPR $1 = atomic base address
-       *    i32 VGPR $2 = voffset = 8 * threadIDInGroup
+       *    i32 VGPR $2 = 32-bit VGPR voffset (streamout should set local_invocation_index * 8)
        *    i32 SGPR $3 = orderedID
-       *    i64 VGPR $4 = {orderedID, numDwords} (set in 4 lanes)
+       *    i64 VGPR $4 = 64-bit VGPR atomic src (streamout should set {orderedID, numDwords})
        */
 
       /* Issue (num_atomics - 1) atomics to initialize the results.
@@ -3639,13 +3639,12 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
          unsigned issue_index = (num_atomics - 1 + i) % num_atomics;
          unsigned read_index = i;
 
-         /* result = dwords_written */
          ptr += sprintf(ptr,
                         /* Issue (or repeat) the attempt. */
                         "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n"
                         "s_wait_loadcnt 0x%x\n"
                         /* if (result[check_index].ordered_id == ordered_id) {
-                         *    dwords_written = result[check_index].dwords_written;
+                         *    return_value = result[check_index].value;
                          *    break;
                          * }
                          */

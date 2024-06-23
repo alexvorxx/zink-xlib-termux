@@ -36,6 +36,7 @@
 #include <limits.h>
 #include <time.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include "util/detect_os.h"
 #include "util/mesa-sha1.h"
@@ -1342,5 +1343,117 @@ TEST_F(Cache, Disabled)
 
    int err = rmrf_local(CACHE_TEST_TMP);
    EXPECT_EQ(err, 0) << "Removing " CACHE_TEST_TMP " again";
+#endif
+}
+
+TEST_F(Cache, DoNotDeleteNewCache)
+{
+#ifndef ENABLE_SHADER_CACHE
+   GTEST_SKIP() << "ENABLE_SHADER_CACHE not defined.";
+#else
+
+#ifdef SHADER_CACHE_DISABLE_BY_DEFAULT
+   setenv("MESA_SHADER_CACHE_DISABLE", "false", 1);
+#endif /* SHADER_CACHE_DISABLE_BY_DEFAULT */
+
+   char dir_template[] = "/tmp/tmpdir.XXXXXX";
+   char *dir_name = mkdtemp(dir_template);
+   ASSERT_NE(dir_name, nullptr);
+
+   char cache_dir_name[256];
+   sprintf(cache_dir_name, "%s/mesa_shader_cache", dir_name);
+   mkdir(cache_dir_name, 0755);
+
+   setenv("MESA_SHADER_CACHE_DIR", dir_name, 1);
+
+   disk_cache_delete_old_cache();
+
+   struct stat st;
+   EXPECT_EQ(stat(cache_dir_name, &st), 0);
+
+   unsetenv("MESA_SHADER_CACHE_DIR");
+   rmdir(cache_dir_name);
+   rmdir(dir_name);
+#endif
+}
+
+TEST_F(Cache, DoNotDeleteCacheWithNewMarker)
+{
+#ifndef ENABLE_SHADER_CACHE
+   GTEST_SKIP() << "ENABLE_SHADER_CACHE not defined.";
+#else
+
+#ifdef SHADER_CACHE_DISABLE_BY_DEFAULT
+   setenv("MESA_SHADER_CACHE_DISABLE", "false", 1);
+#endif /* SHADER_CACHE_DISABLE_BY_DEFAULT */
+
+   char dir_template[] = "/tmp/tmpdir.XXXXXX";
+   char *dir_name = mkdtemp(dir_template);
+   ASSERT_NE(dir_name, nullptr);
+
+   char cache_dir_name[240];
+   sprintf(cache_dir_name, "%s/mesa_shader_cache", dir_name);
+   mkdir(cache_dir_name, 0755);
+
+   char file_name[256];
+   sprintf(file_name, "%s/marker", cache_dir_name);
+
+   FILE *file = fopen(file_name, "w");
+   fclose(file);
+
+   setenv("MESA_SHADER_CACHE_DIR", dir_name, 1);
+
+   disk_cache_delete_old_cache();
+
+   struct stat st;
+   EXPECT_EQ(stat(cache_dir_name, &st), 0);
+
+   unsetenv("MESA_SHADER_CACHE_DIR");
+   unlink(file_name);
+   rmdir(cache_dir_name);
+   rmdir(dir_name);
+#endif
+}
+
+TEST_F(Cache, DeleteOldCache)
+{
+#ifndef ENABLE_SHADER_CACHE
+   GTEST_SKIP() << "ENABLE_SHADER_CACHE not defined.";
+#else
+
+#ifdef SHADER_CACHE_DISABLE_BY_DEFAULT
+   setenv("MESA_SHADER_CACHE_DISABLE", "false", 1);
+#endif /* SHADER_CACHE_DISABLE_BY_DEFAULT */
+
+   char dir_template[] = "/tmp/tmpdir.XXXXXX";
+   char *dir_name = mkdtemp(dir_template);
+   ASSERT_NE(dir_name, nullptr) << "Creating temporary directory failed";
+
+   char cache_dir_name[240];
+   sprintf(cache_dir_name, "%s/mesa_shader_cache", dir_name);
+   mkdir(cache_dir_name, 0755);
+
+   char file_name[256];
+   sprintf(file_name, "%s/marker", cache_dir_name);
+
+   FILE *file = fopen(file_name, "w");
+   fclose(file);
+
+   struct utimbuf utime_buf = { };
+   EXPECT_EQ(utime(file_name, &utime_buf), 0);
+
+
+   setenv("MESA_SHADER_CACHE_DIR", dir_name, 1);
+
+   disk_cache_delete_old_cache();
+
+   struct stat st;
+   EXPECT_NE(stat(cache_dir_name, &st), 0);
+   EXPECT_EQ(errno, ENOENT);
+
+   unsetenv("MESA_SHADER_CACHE_DIR");
+   unlink(file_name);
+   rmdir(cache_dir_name);
+   rmdir(dir_name);
 #endif
 }

@@ -837,7 +837,7 @@ fill_copy_descs_for_binding(struct lower_desc_ctx *ctx, unsigned set,
    assert(desc_count <= binding_layout->desc_count);
 
    for (uint32_t i = 0; i < desc_count; i++) {
-      uint32_t src_idx = src_idx =
+      uint32_t src_idx =
          binding_layout->desc_idx + (i * desc_stride) + subdesc_idx;
       struct panvk_shader_desc_map *map;
 

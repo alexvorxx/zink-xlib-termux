@@ -314,7 +314,7 @@ tu_CreateQueryPool(VkDevice _device,
             compare_perfcntr_pass);
    }
 
-   VkResult result = tu_bo_init_new(device, &pool->bo,
+   VkResult result = tu_bo_init_new(device, &pool->vk.base, &pool->bo,
          pCreateInfo->queryCount * slot_size, TU_BO_ALLOC_NO_FLAGS, "query pool");
    if (result != VK_SUCCESS) {
       vk_query_pool_destroy(&device->vk, pAllocator, &pool->vk);

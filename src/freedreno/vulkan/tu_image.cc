@@ -15,6 +15,7 @@
 #include "util/format/u_format.h"
 #include "vulkan/vulkan_android.h"
 #include "vk_android.h"
+#include "vk_debug_utils.h"
 #include "vk_util.h"
 #include "drm-uapi/drm_fourcc.h"
 #include "vulkan/vulkan_core.h"
@@ -821,6 +822,7 @@ tu_DestroyImage(VkDevice _device,
 {
    VK_FROM_HANDLE(tu_device, device, _device);
    VK_FROM_HANDLE(tu_image, image, _image);
+   struct tu_instance *instance = device->physical_device->instance;
 
    if (!image)
       return;
@@ -831,6 +833,11 @@ tu_DestroyImage(VkDevice _device,
    tu_perfetto_log_destroy_image(device, image);
 #endif
 
+   if (image->iova)
+      vk_address_binding_report(&instance->vk, &image->vk.base,
+                                image->iova, image->total_size,
+                                VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
+
    vk_image_destroy(&device->vk, pAllocator, &image->vk);
 }
 
@@ -840,6 +847,7 @@ tu_BindImageMemory2(VkDevice _device,
                     const VkBindImageMemoryInfo *pBindInfos)
 {
    VK_FROM_HANDLE(tu_device, device, _device);
+   struct tu_instance *instance = device->physical_device->instance;
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
@@ -860,6 +868,10 @@ tu_BindImageMemory2(VkDevice _device,
          image->iova = wsi_img->iova;
 
          TU_RMV(image_bind, device, image);
+
+         vk_address_binding_report(&instance->vk, &image->vk.base,
+                                   image->iova, image->total_size,
+                                   VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
 
          continue;
       }
@@ -919,6 +931,10 @@ tu_BindImageMemory2(VkDevice _device,
       }
 
       TU_RMV(image_bind, device, image);
+
+      vk_address_binding_report(&instance->vk, &image->vk.base,
+                                image->iova, image->total_size,
+                                VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    }
 
    return VK_SUCCESS;

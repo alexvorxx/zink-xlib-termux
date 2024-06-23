@@ -1084,7 +1084,7 @@ tu_get_tess_iova(struct tu_device *dev,
    if (!dev->tess_bo) {
       mtx_lock(&dev->mutex);
       if (!dev->tess_bo) {
-         tu_bo_init_new(dev, &dev->tess_bo, TU_TESS_BO_SIZE,
+         tu_bo_init_new(dev, NULL, &dev->tess_bo, TU_TESS_BO_SIZE,
                         TU_BO_ALLOC_INTERNAL_RESOURCE, "tess");
       }
       mtx_unlock(&dev->mutex);

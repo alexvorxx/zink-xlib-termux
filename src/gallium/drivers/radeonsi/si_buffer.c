@@ -641,6 +641,7 @@ static struct pipe_resource *si_buffer_from_user_memory(struct pipe_screen *scre
    }
 
    buf->gpu_address = ws->buffer_get_virtual_address(buf->buf);
+   buf->bo_size = templ->width0;
    return &buf->b.b;
 }
 

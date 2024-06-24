@@ -599,7 +599,7 @@ Debugging random failures
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In most cases random GPU faults and rendering artifacts are caused by some kind
-of undifined behaviour that falls under the following categories:
+of undefined behavior that falls under the following categories:
 
 - Usage of a stale reg value;
 - Usage of stale memory (e.g. expecting it to be zeroed when it is not);

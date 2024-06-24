@@ -598,11 +598,7 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
 
          nir_store_var(b, clock, nir_vec2(b, clock_lo, clock_hi), 0x3);
 
-         nir_push_if(b, nir_ieq(b, clock_hi, nir_channel(b, last_clock, 1)));
-         {
-            nir_jump(b, nir_jump_break);
-         }
-         nir_pop_if(b, NULL);
+         nir_break_if(b, nir_ieq(b, clock_hi, nir_channel(b, last_clock, 1)));
       }
       nir_pop_loop(b, NULL);
 

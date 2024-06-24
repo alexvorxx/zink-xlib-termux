@@ -754,11 +754,7 @@ build_dgc_buffer_tail(nir_builder *b, nir_def *sequence_count, const struct radv
          nir_def *curr_offset = nir_load_var(b, offset);
          const unsigned MAX_PACKET_WORDS = 0x3FFC;
 
-         nir_push_if(b, nir_ieq(b, curr_offset, cmd_buf_size));
-         {
-            nir_jump(b, nir_jump_break);
-         }
-         nir_pop_if(b, NULL);
+         nir_break_if(b, nir_ieq(b, curr_offset, cmd_buf_size));
 
          nir_def *packet, *packet_size;
 
@@ -1098,11 +1094,7 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
    nir_push_loop(b);
    {
       nir_def *cur_idx = nir_load_var(b, idx);
-      nir_push_if(b, nir_uge(b, cur_idx, const_copy_words));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_uge(b, cur_idx, const_copy_words));
 
       nir_variable *data = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "copy_data");
 
@@ -1141,11 +1133,7 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
    nir_push_loop(b);
    {
       nir_def *cur_shader_idx = nir_load_var(b, shader_idx);
-      nir_push_if(b, nir_uge(b, cur_shader_idx, shader_cnt));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_uge(b, cur_shader_idx, shader_cnt));
 
       nir_def *upload_sgpr = dgc_get_upload_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx);
       nir_def *inline_sgpr = dgc_get_inline_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx);
@@ -1171,11 +1159,7 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
          nir_push_loop(b);
          {
             nir_def *cur_idx = nir_load_var(b, idx);
-            nir_push_if(b, nir_uge_imm(b, cur_idx, 64 /* bits in inline_mask */));
-            {
-               nir_jump(b, nir_jump_break);
-            }
-            nir_pop_if(b, NULL);
+            nir_break_if(b, nir_uge_imm(b, cur_idx, 64 /* bits in inline_mask */));
 
             nir_def *l = nir_ishl(b, nir_imm_int64(b, 1), cur_idx);
             nir_push_if(b, nir_ieq_imm(b, nir_iand(b, l, inline_mask), 0));
@@ -1256,11 +1240,7 @@ dgc_emit_vertex_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *vbo
 
    nir_push_loop(b);
    {
-      nir_push_if(b, nir_uge(b, nir_load_var(b, vbo_idx), vbo_cnt));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_uge(b, nir_load_var(b, vbo_idx), vbo_cnt));
 
       nir_def *vbo_offset = nir_imul_imm(b, nir_load_var(b, vbo_idx), 16);
       nir_variable *vbo_data = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uvec4_type(), "vbo_data");

@@ -608,9 +608,7 @@ lvp_handle_aabb_intersection(nir_builder *b, struct lvp_leaf_intersection *inter
       nir_store_var(b, state->sbt_index, sbt_index, 0x1);
       nir_store_var(b, state->traversal.hit, nir_imm_true(b), 0x1);
 
-      nir_push_if(b, nir_load_var(b, state->terminate));
-      nir_jump(b, nir_jump_break);
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_load_var(b, state->terminate));
    }
    nir_push_else(b, NULL);
    {
@@ -686,9 +684,7 @@ lvp_handle_triangle_intersection(nir_builder *b,
       nir_store_var(b, state->sbt_index, sbt_index, 0x1);
       nir_store_var(b, state->traversal.hit, nir_imm_true(b), 0x1);
 
-      nir_push_if(b, nir_load_var(b, state->terminate));
-      nir_jump(b, nir_jump_break);
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_load_var(b, state->terminate));
    }
    nir_push_else(b, NULL);
    {

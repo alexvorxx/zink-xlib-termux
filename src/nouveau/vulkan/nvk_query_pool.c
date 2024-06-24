@@ -823,11 +823,7 @@ nvk_nir_copy_query(nir_builder *b, nir_variable *push, nir_def *i)
 
          nir_push_loop(b);
          {
-            nir_push_if(b, nir_ige(b, nir_load_var(b, r), num_reports));
-            {
-               nir_jump(b, nir_jump_break);
-            }
-            nir_pop_if(b, NULL);
+            nir_break_if(b, nir_ige(b, nir_load_var(b, r), num_reports));
 
             nir_get_query_delta(b, nir_iadd(b, dst_addr, dst_offset),
                                 report_addr, nir_load_var(b, r), flags);

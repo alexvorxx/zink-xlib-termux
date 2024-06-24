@@ -1461,11 +1461,7 @@ handle_candidate_triangle(nir_builder *b, struct radv_triangle_intersection *int
    nir_store_var(b, data->trav_vars->hit, nir_imm_true(b), 1);
 
    nir_def *ray_terminated = nir_load_var(b, data->vars->ahit_terminate);
-   nir_push_if(b, nir_ior(b, ray_flags->terminate_on_first_hit, ray_terminated));
-   {
-      nir_jump(b, nir_jump_break);
-   }
-   nir_pop_if(b, NULL);
+   nir_break_if(b, nir_ior(b, ray_flags->terminate_on_first_hit, ray_terminated));
 }
 
 static void
@@ -1525,11 +1521,7 @@ handle_candidate_aabb(nir_builder *b, struct radv_leaf_intersection *intersectio
 
       nir_def *terminate_on_first_hit = nir_test_mask(b, args->flags, SpvRayFlagsTerminateOnFirstHitKHRMask);
       nir_def *ray_terminated = nir_load_var(b, data->vars->ahit_terminate);
-      nir_push_if(b, nir_ior(b, terminate_on_first_hit, ray_terminated));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_ior(b, terminate_on_first_hit, ray_terminated));
    }
    nir_pop_if(b, NULL);
 }

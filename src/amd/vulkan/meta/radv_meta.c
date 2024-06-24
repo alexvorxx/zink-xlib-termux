@@ -715,9 +715,7 @@ radv_break_on_count(nir_builder *b, nir_variable *var, nir_def *count)
 {
    nir_def *counter = nir_load_var(b, var);
 
-   nir_push_if(b, nir_uge(b, counter, count));
-   nir_jump(b, nir_jump_break);
-   nir_pop_if(b, NULL);
+   nir_break_if(b, nir_uge(b, counter, count));
 
    counter = nir_iadd_imm(b, counter, 1);
    nir_store_var(b, var, counter, 0x1);

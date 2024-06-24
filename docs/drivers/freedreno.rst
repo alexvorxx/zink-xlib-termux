@@ -246,7 +246,7 @@ to pre-load the descriptors into cache.
    - registers: none
    - state-type: ``ST6_UBO``
    - state-block: ``SB6_xS_SHADER``
-- IBOs - global acress shader 3d stages, separate for compute shader
+- IBOs - global across shader 3d stages, separate for compute shader
    - registers: ``SP_IBO``/``SP_IBO_COUNT`` or ``SP_CS_IBO``/``SP_CS_IBO_COUNT``
    - state-type: ``ST6_SHADER``
    - state-block: ``ST6_IBO`` or ``ST6_CS_IBO`` for compute shaders

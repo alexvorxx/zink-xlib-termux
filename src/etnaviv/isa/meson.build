@@ -121,6 +121,41 @@ if with_tools.contains('etnaviv')
       '-Anon_camel_case_types',
     ],
   )
+
+  dep_indexmap = dependency('indexmap',
+    version : '>= 2.2.6',
+    fallback : ['indexmap', 'dep_indexmap'],
+    required : true,
+  )
+
+  dep_roxmltree = dependency('roxmltree',
+    version : '>= 0.20.roxmltree',
+    fallback : ['roxmltree', 'dep_roxmltree'],
+    required : true,
+  )
+
+  dep_syn = dependency('syn',
+    version : '>= 2.0.15',
+    fallback : ['syn', 'dep_syn'],
+    required : true,
+  )
+
+  dep_pest_generator = dependency('pest_generator',
+    version: '>= 2.7.6',
+    fallback: ['pest_generator', 'dep_pest_generator'],
+    required: true,
+  )
+
+  _libetnaviv_isa_proc_rs = rust.proc_macro(
+    'etnaviv_isa_proc',
+    files('isa_proc.rs', 'isa.rs'),
+    dependencies : [dep_indexmap, dep_roxmltree, dep_syn, dep_pest_generator],
+  )
+
+  if with_tests
+    # triggers a bug in meson
+    # rust.test('isa', _libetnaviv_isa_proc_rs, suite : ['etnaviv'])
+  endif
 endif
 
 subdir('tests')

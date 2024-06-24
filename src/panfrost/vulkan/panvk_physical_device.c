@@ -85,6 +85,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .EXT_index_type_uint8 = true,
       .EXT_pipeline_creation_cache_control = true,
       .EXT_pipeline_creation_feedback = true,
+      .EXT_private_data = true,
       .EXT_shader_module_identifier = true,
       .EXT_vertex_attribute_divisor = true,
    };

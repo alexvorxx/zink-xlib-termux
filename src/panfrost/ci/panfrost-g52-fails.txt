@@ -2755,6 +2755,7 @@ dEQP-VK.api.object_management.max_concurrent.query_pool,Crash
 dEQP-VK.api.object_management.multithreaded_shared_resources.query_pool,Crash
 dEQP-VK.api.object_management.multithreaded_per_thread_device.query_pool,Crash
 dEQP-VK.api.object_management.multithreaded_per_thread_resources.query_pool,Crash
+dEQP-VK.api.object_management.private_data.query_pool,Crash
 
 # CmdDispatchIndirect not supported yet
 dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.empty_command,Crash

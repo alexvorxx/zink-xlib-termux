@@ -667,7 +667,7 @@ Intel driver environment variables
    will specify all known PCI IDs. If ``!`` precedes a PCI ID, or the
    wildcard value, then the device support will be disabled. All
    numbers are interpreted in base 16, and a ``0x`` prefix is
-   optional. Values specified later take precidence, so the wildcard
+   optional. Values specified later take precedence, so the wildcard
    probably should only be used at the beginning.
 
    Some examples :

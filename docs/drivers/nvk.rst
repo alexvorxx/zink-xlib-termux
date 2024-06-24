@@ -1,7 +1,7 @@
 NVK
 ===
 
-NVK is a Vulkan driver for Nvidia GPUs.
+NVK is a Vulkan driver for NVIDIA GPUs.
 
 Hardware support
 ----------------

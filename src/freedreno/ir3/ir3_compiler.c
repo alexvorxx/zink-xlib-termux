@@ -50,6 +50,7 @@ static const struct debug_named_value shader_debug_options[] = {
    {"fullsync",   IR3_DBG_FULLSYNC,   "Add (sy) + (ss) after each cat5/cat6"},
    {"fullnop",    IR3_DBG_FULLNOP,    "Add nops before each instruction"},
    {"noearlypreamble", IR3_DBG_NOEARLYPREAMBLE, "Disable early preambles"},
+   {"nodescprefetch", IR3_DBG_NODESCPREFETCH, "Disable descriptor prefetch optimization"},
 #if MESA_DEBUG
    /* MESA_DEBUG-only options: */
    {"schedmsgs",  IR3_DBG_SCHEDMSGS,  "Enable scheduler debug messages"},

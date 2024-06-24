@@ -457,6 +457,273 @@ ir3_rematerialize_def_for_preamble(nir_builder *b, nir_def *def,
    return new_def;
 }
 
+
+static void
+get_descriptors(nir_instr *instr, nir_def **descs)
+{
+   if (instr->type == nir_instr_type_tex) {
+      nir_tex_instr *tex = nir_instr_as_tex(instr);
+      /* TODO: handle non-bindless tex instructions. These are more complicated,
+       * because of the implicit addition in the instruction.
+       */
+      int texture_index =
+         nir_tex_instr_src_index(tex, nir_tex_src_texture_handle);
+      int sampler_index =
+         nir_tex_instr_src_index(tex, nir_tex_src_sampler_handle);
+      if (texture_index >= 0)
+         descs[0] = tex->src[texture_index].src.ssa;
+      if (sampler_index >= 0)
+         descs[1] = tex->src[sampler_index].src.ssa;
+   } else if (instr->type == nir_instr_type_intrinsic) {
+      nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+      switch (intrin->intrinsic) {
+      case nir_intrinsic_load_ssbo:
+      case nir_intrinsic_load_ubo:
+      case nir_intrinsic_ssbo_atomic:
+      case nir_intrinsic_ssbo_atomic_swap:
+      case nir_intrinsic_get_ssbo_size:
+      case nir_intrinsic_image_load:
+      case nir_intrinsic_bindless_image_load:
+      case nir_intrinsic_image_store:
+      case nir_intrinsic_bindless_image_store:
+      case nir_intrinsic_image_atomic:
+      case nir_intrinsic_bindless_image_atomic:
+      case nir_intrinsic_image_size:
+      case nir_intrinsic_bindless_image_size:
+         descs[0] = intrin->src[0].ssa;
+         break;
+      case nir_intrinsic_store_ssbo:
+         descs[0] = intrin->src[1].ssa;
+         break;
+      default:
+         break;
+      }
+   }
+}
+
+#define MAX_PREFETCHES 32
+
+struct prefetches {
+   nir_def *prefetches[MAX_PREFETCHES];
+   unsigned num_prefetches;
+};
+
+static bool
+is_already_prefetched(struct prefetches *prefetches, nir_def *def)
+{
+   for (unsigned i = 0; i < prefetches->num_prefetches; i++) {
+      if (prefetches->prefetches[i] == def)
+         return true;
+   }
+
+   return false;
+}
+
+static void
+add_prefetch(struct prefetches *prefetches, nir_def *def)
+{
+   assert(prefetches->num_prefetches < MAX_PREFETCHES);
+   prefetches->prefetches[prefetches->num_prefetches++] = def;
+}
+
+struct prefetch_state {
+   struct prefetches tex, sampler;
+};
+
+static bool
+emit_descriptor_prefetch(nir_builder *b, nir_instr *instr, nir_def **descs,
+                         struct prefetch_state *state)
+{
+   if (instr->type == nir_instr_type_tex) {
+      nir_tex_instr *tex = nir_instr_as_tex(instr);
+      int sampler_index =
+         nir_tex_instr_src_index(tex, nir_tex_src_sampler_handle);
+      int texture_index =
+         nir_tex_instr_src_index(tex, nir_tex_src_texture_handle);
+
+      /* For texture instructions, prefetch if at least one source hasn't been
+       * prefetched already. For example, the same sampler may be used with
+       * different textures, and we still want to prefetch the texture
+       * descriptor if we've already prefetched the sampler descriptor.
+       */
+
+      bool tex_already_prefetched = is_already_prefetched(&state->tex, descs[0]);
+
+      if (!tex_already_prefetched &&
+          state->tex.num_prefetches == MAX_PREFETCHES)
+         return false;
+
+      assert(texture_index >= 0);
+      if (sampler_index >= 0) {
+         bool sampler_already_prefetched =
+            is_already_prefetched(&state->sampler, descs[1]);
+
+         if (!sampler_already_prefetched &&
+             state->sampler.num_prefetches == MAX_PREFETCHES)
+            return false;
+
+         if (tex_already_prefetched && sampler_already_prefetched)
+            return false;
+
+         if (!tex_already_prefetched)
+            add_prefetch(&state->tex, descs[0]);
+         if (!sampler_already_prefetched)
+            add_prefetch(&state->sampler, descs[1]);
+
+         nir_prefetch_sam_ir3(b, descs[0], descs[1]);
+      } else {
+         if (tex_already_prefetched)
+            return false;
+
+         add_prefetch(&state->tex, descs[0]);
+         nir_prefetch_tex_ir3(b, descs[0]);
+      }
+   } else {
+      assert(instr->type == nir_instr_type_intrinsic);
+
+      if (state->tex.num_prefetches == MAX_PREFETCHES)
+         return false;
+
+      if (is_already_prefetched(&state->tex, descs[0]))
+         return false;
+
+      add_prefetch(&state->tex, descs[0]);
+
+      nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+      if (intrin->intrinsic == nir_intrinsic_load_ubo)
+         nir_prefetch_ubo_ir3(b, descs[0]);
+      else
+         nir_prefetch_tex_ir3(b, descs[0]);
+   }
+
+   return true;
+}
+
+static unsigned
+get_preamble_offset(nir_def *def)
+{
+   return nir_intrinsic_base(nir_instr_as_intrinsic(def->parent_instr));
+}
+
+/* Prefetch descriptors in the preamble. This is an optimization introduced on
+ * a7xx, mainly useful when the preamble is an early preamble, and replaces the
+ * use of CP_LOAD_STATE on a6xx to prefetch descriptors in HLSQ.
+ */
+
+bool
+ir3_nir_opt_prefetch_descriptors(nir_shader *nir, struct ir3_shader_variant *v)
+{
+   struct ir3_const_state *const_state = ir3_const_state(v);
+
+   nir_function_impl *main = nir_shader_get_entrypoint(nir);
+   struct set *instr_set = nir_instr_set_create(NULL);
+   nir_function_impl *preamble = main->preamble ? main->preamble->impl : NULL;
+   nir_builder b;
+   bool progress = false;
+   struct prefetch_state state = {};
+
+   nir_def **preamble_defs = calloc(const_state->preamble_size * 4,
+                                    sizeof(nir_def *));
+
+   /* Collect preamble defs. This is useful if the computation of the offset has
+    * already been hoisted to the preamble.
+    */
+   if (preamble) {
+      nir_foreach_block (block, preamble) {
+         nir_foreach_instr (instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+
+            nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+
+            if (intrin->intrinsic != nir_intrinsic_store_preamble)
+               continue;
+
+            assert(nir_intrinsic_base(intrin) < const_state->preamble_size * 4);
+            preamble_defs[nir_intrinsic_base(intrin)] = intrin->src[0].ssa;
+         }
+      }
+   }
+
+   nir_foreach_block (block, main) {
+      nir_foreach_instr (instr, block) {
+         nir_def *descs[2] = { NULL, NULL };
+         nir_def *preamble_descs[2] = { NULL, NULL };
+         get_descriptors(instr, descs);
+
+         /* We must have found at least one descriptor */
+         if (!descs[0] && !descs[1])
+            continue;
+
+         /* The instruction itself must be hoistable.
+          * TODO: If the descriptor is statically referenced and in-bounds, then
+          * we should be able to hoist the descriptor load even if the
+          * descriptor contents aren't guaranteed. This would require more
+          * plumbing.
+          * TODO: Textures. This is broken in nir_opt_preamble at the moment and
+          * handling them would also require more plumbing.
+          */
+         if (instr->type == nir_instr_type_intrinsic &&
+             nir_intrinsic_has_access(nir_instr_as_intrinsic(instr)) &&
+             !(nir_intrinsic_access(nir_instr_as_intrinsic(instr)) &
+               ACCESS_CAN_SPECULATE) &&
+             block->cf_node.parent->type != nir_cf_node_function)
+            continue;
+
+         /* Each descriptor must be rematerializable */
+         if (descs[0] &&
+             !ir3_def_is_rematerializable_for_preamble(descs[0], preamble_defs))
+            continue;
+         if (descs[1] &&
+             !ir3_def_is_rematerializable_for_preamble(descs[1], preamble_defs))
+            continue;
+
+         /* If the preamble hasn't been created then this descriptor isn't a
+          * duplicate and we will definitely insert an instruction, so create
+          * the preamble if it hasn't already been created.
+          */
+         if (!preamble) {
+            preamble = nir_shader_get_preamble(nir);
+         }
+
+         b = nir_builder_at(nir_after_impl(preamble));
+
+         /* Materialize descriptors for the prefetch. Note that we deduplicate
+          * descriptors so that we don't blow our budget when repeatedly loading
+          * from the same descriptor, even if the calculation of the descriptor
+          * offset hasn't been CSE'd because the accesses are in different
+          * blocks. This is common because we emit the bindless_resource_ir3
+          * intrinsic right before the access.
+          */
+         for (unsigned i = 0; i < 2; i++) {
+            if (!descs[i])
+               continue;
+
+            preamble_descs[i] =
+               ir3_rematerialize_def_for_preamble(&b, descs[i], instr_set,
+                                                  preamble_defs);
+         }
+
+         progress |= emit_descriptor_prefetch(&b, instr, preamble_descs, &state);
+
+         if (state.sampler.num_prefetches == MAX_PREFETCHES &&
+             state.tex.num_prefetches == MAX_PREFETCHES)
+            goto finished;
+      }
+   }
+
+finished:
+   nir_metadata_preserve(main, nir_metadata_all);
+   if (preamble) {
+      nir_metadata_preserve(preamble,
+                            nir_metadata_block_index |
+                            nir_metadata_dominance);
+   }
+   nir_instr_set_destroy(instr_set);
+   free(preamble_defs);
+   return progress;
+}
+
 bool
 ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v)
 {

@@ -855,6 +855,10 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
 
    progress |= OPT(s, ir3_nir_lower_ubo_loads, so);
 
+   if (so->compiler->gen >= 7 &&
+       !(ir3_shader_debug & (IR3_DBG_NOPREAMBLE | IR3_DBG_NODESCPREFETCH)))
+      progress |= OPT(s, ir3_nir_opt_prefetch_descriptors, so);
+
    if (so->shader_options.push_consts_type == IR3_PUSH_CONSTS_SHARED_PREAMBLE)
       progress |= OPT(s, ir3_nir_lower_push_consts_to_preamble, so);
 

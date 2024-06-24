@@ -359,7 +359,7 @@ concepts used in PowerVR GPUs appear in AGX.
 
    PBE
    Pixel BackEnd
-      Hardware unit which writes to color attachements and images. Also the
+      Hardware unit which writes to color attachments and images. Also the
       name for a descriptor passed to :term:`PBE` instructions.
 
    UVS

@@ -1523,7 +1523,7 @@ RadeonSI driver environment variables
    ``nodpbb``
       Disable DPBB. Overrules the dpbb enable option.
    ``noefc``
-      Disable hardware based encoder colour format conversion
+      Disable hardware based encoder color format conversion
    ``notiling``
       Disable tiling
    ``nofmask``

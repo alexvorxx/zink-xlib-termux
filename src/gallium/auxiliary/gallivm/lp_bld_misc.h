@@ -97,6 +97,13 @@ lp_free_objcache(void *objcache);
 void
 lp_set_module_stack_alignment_override(LLVMModuleRef M, unsigned align);
 #ifdef __cplusplus
+
+void
+lp_build_fill_mattrs(std::vector<std::string> &MAttrs);
+
+void
+lp_build_dump_mattrs(std::vector<std::string> &MAttrs);
+
 }
 #endif
 

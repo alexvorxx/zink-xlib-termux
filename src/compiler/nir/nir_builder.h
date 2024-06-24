@@ -2124,6 +2124,16 @@ nir_goto_if(nir_builder *build, struct nir_block *target, nir_def *cond,
 }
 
 static inline void
+nir_break_if(nir_builder *build, nir_def *cond)
+{
+   nir_if *nif = nir_push_if(build, cond);
+   {
+      nir_jump(build, nir_jump_break);
+   }
+   nir_pop_if(build, nif);
+}
+
+static inline void
 nir_build_call(nir_builder *build, nir_function *func, size_t count,
                nir_def **args)
 {

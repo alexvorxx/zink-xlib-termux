@@ -2755,3 +2755,23 @@ dEQP-VK.api.object_management.max_concurrent.query_pool,Crash
 dEQP-VK.api.object_management.multithreaded_shared_resources.query_pool,Crash
 dEQP-VK.api.object_management.multithreaded_per_thread_device.query_pool,Crash
 dEQP-VK.api.object_management.multithreaded_per_thread_resources.query_pool,Crash
+
+# CmdDispatchIndirect not supported yet
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.empty_command,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.large_offset,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.large_offset_multiple_invocations,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.multi_dispatch,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.multi_dispatch_reuse_command,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.multiple_groups,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.multiple_groups_multiple_invocations,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.single_invocation,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.gen_in_compute.small_offset,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.empty_command,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.large_offset,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.large_offset_multiple_invocations,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.multi_dispatch,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.multi_dispatch_reuse_command,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.multiple_groups,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.multiple_groups_multiple_invocations,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.single_invocation,Crash
+dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.small_offset,Crash

@@ -19,7 +19,7 @@ include = [
     "dEQP-VK.api.object_management.*",
     "dEQP-VK.binding_model.buffer_device_address.*",
     "dEQP-VK.binding_model.descriptor_copy.compute.*",
-    "dEQP-VK.compute.builtin_var.*",
+    "dEQP-VK.compute.*",
     "dEQP-VK.draw.renderpass.instanced.draw_indexed_vk_*",
     "dEQP-VK.draw.renderpass.offscreen_viewport.*",
     "dEQP-VK.image.atomic_operations.*",

@@ -383,7 +383,8 @@ rematerialize_load_global_bases(nir_shader *nir,
          continue;
 
       range->ubo.global_base =
-         ir3_rematerialize_def_for_preamble(b, range->ubo.global_base);
+         ir3_rematerialize_def_for_preamble(b, range->ubo.global_base, NULL,
+                                            NULL);
    }
 
    return true;
@@ -404,7 +405,8 @@ copy_global_to_uniform(nir_shader *nir, struct ir3_ubo_analysis_state *state)
       assert(range->ubo.global);
 
       nir_def *base =
-         ir3_rematerialize_def_for_preamble(b, range->ubo.global_base);
+         ir3_rematerialize_def_for_preamble(b, range->ubo.global_base, NULL,
+                                            NULL);
       unsigned start = range->start;
       if (start > (1 << 10)) {
          /* This is happening pretty late, so we need to add the offset
@@ -587,7 +589,7 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
          nir_foreach_block (block, function->impl) {
             nir_foreach_instr (instr, block) {
                if (instr_is_load_const(instr) &&
-                   ir3_def_is_rematerializable_for_preamble(nir_instr_as_intrinsic(instr)->src[0].ssa))
+                   ir3_def_is_rematerializable_for_preamble(nir_instr_as_intrinsic(instr)->src[0].ssa, NULL))
                   gather_ubo_ranges(nir, nir_instr_as_intrinsic(instr), &state,
                                     compiler->const_upload_unit,
                                     &upload_remaining);

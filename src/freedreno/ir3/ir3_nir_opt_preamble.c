@@ -23,6 +23,7 @@
 
 #include "ir3_compiler.h"
 #include "ir3_nir.h"
+#include "nir_instr_set.h"
 
 /* Preamble optimization happens in two parts: first we generate the preamble
  * using the generic NIR pass, then we setup the preamble sequence and inline
@@ -340,7 +341,8 @@ ir3_nir_opt_preamble(nir_shader *nir, struct ir3_shader_variant *v)
  * opt_preamble. Currently we only handle a few uncomplicated intrinsics.
  */
 bool
-ir3_def_is_rematerializable_for_preamble(nir_def *def)
+ir3_def_is_rematerializable_for_preamble(nir_def *def,
+                                         nir_def **preamble_defs)
 {
    switch (def->parent_instr->type) {
    case nir_instr_type_load_const:
@@ -349,10 +351,18 @@ ir3_def_is_rematerializable_for_preamble(nir_def *def)
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(def->parent_instr);
       switch (intrin->intrinsic) {
       case nir_intrinsic_load_ubo:
-         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa) &&
-            ir3_def_is_rematerializable_for_preamble(intrin->src[1].ssa);
+         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa,
+                                                         preamble_defs) &&
+            ir3_def_is_rematerializable_for_preamble(intrin->src[1].ssa,
+                                                     preamble_defs) &&
+            (def->parent_instr->block->cf_node.parent->type ==
+             nir_cf_node_function ||
+             (nir_intrinsic_access(intrin) & ACCESS_CAN_SPECULATE));
       case nir_intrinsic_bindless_resource_ir3:
-         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa);
+         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa,
+                                                         preamble_defs);
+      case nir_intrinsic_load_preamble:
+         return !!preamble_defs;
       default:
          return false;
       }
@@ -360,7 +370,8 @@ ir3_def_is_rematerializable_for_preamble(nir_def *def)
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(def->parent_instr);
       for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; i++) {
-         if (!ir3_def_is_rematerializable_for_preamble(alu->src[i].src.ssa))
+         if (!ir3_def_is_rematerializable_for_preamble(alu->src[i].src.ssa,
+                                                       preamble_defs))
             return false;
       }
       return true;
@@ -372,6 +383,7 @@ ir3_def_is_rematerializable_for_preamble(nir_def *def)
 
 static nir_def *
 _rematerialize_def(nir_builder *b, struct hash_table *remap_ht,
+                   struct set *instr_set, nir_def **preamble_defs,
                    nir_def *def)
 {
    if (_mesa_hash_table_search(remap_ht, def->parent_instr))
@@ -382,15 +394,23 @@ _rematerialize_def(nir_builder *b, struct hash_table *remap_ht,
       break;
    case nir_instr_type_intrinsic: {
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(def->parent_instr);
-      for (unsigned i = 0; i < nir_intrinsic_infos[intrin->intrinsic].num_srcs;
-           i++)
-         _rematerialize_def(b, remap_ht, intrin->src[i].ssa);
+      if (intrin->intrinsic == nir_intrinsic_load_preamble) {
+         _mesa_hash_table_insert(remap_ht, def,
+                                 preamble_defs[nir_intrinsic_base(intrin)]);
+         return preamble_defs[nir_intrinsic_base(intrin)];
+      } else {
+         for (unsigned i = 0; i < nir_intrinsic_infos[intrin->intrinsic].num_srcs;
+              i++)
+            _rematerialize_def(b, remap_ht, instr_set, preamble_defs,
+                               intrin->src[i].ssa);
+      }
       break;
    }
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(def->parent_instr);
       for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; i++)
-         _rematerialize_def(b, remap_ht, alu->src[i].src.ssa);
+         _rematerialize_def(b, remap_ht, instr_set, preamble_defs,
+                            alu->src[i].src.ssa);
       break;
    }
    default:
@@ -399,16 +419,38 @@ _rematerialize_def(nir_builder *b, struct hash_table *remap_ht,
 
    nir_instr *instr = nir_instr_clone_deep(b->shader, def->parent_instr,
                                            remap_ht);
-   nir_builder_instr_insert(b, instr);
+   if (instr_set) {
+      nir_instr *other_instr =
+         nir_instr_set_add_or_rewrite(instr_set, instr, NULL);
+      if (other_instr) {
+         instr = other_instr;
+         _mesa_hash_table_insert(remap_ht, def, nir_instr_def(other_instr));
+      } else {
+         nir_builder_instr_insert(b, instr);
+      }
+   } else {
+      nir_builder_instr_insert(b, instr);
+   }
+
    return nir_instr_def(instr);
 }
 
+/* Hoist a given definition into the preamble. If "instr_set" is non-NULL,
+ * de-duplicate the hoisted definitions, and if "preamble_defs" is non-NULL then
+ * it is used to remap load_preamble instructions back to the original
+ * definition in the preamble, if the definition uses load_preamble
+ * instructions.
+ */
+
 nir_def *
-ir3_rematerialize_def_for_preamble(nir_builder *b, nir_def *def)
+ir3_rematerialize_def_for_preamble(nir_builder *b, nir_def *def,
+                                   struct set *instr_set,
+                                   nir_def **preamble_defs)
 {
    struct hash_table *remap_ht = _mesa_pointer_hash_table_create(NULL);
 
-   nir_def *new_def = _rematerialize_def(b, remap_ht, def);
+   nir_def *new_def =
+      _rematerialize_def(b, remap_ht, instr_set, preamble_defs, def);
 
    _mesa_hash_table_destroy(remap_ht, NULL);
 

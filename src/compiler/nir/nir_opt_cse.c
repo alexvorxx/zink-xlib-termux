@@ -47,6 +47,7 @@ nir_opt_cse_impl(nir_function_impl *impl)
       nir_foreach_instr_safe(instr, block) {
          if (nir_instr_set_add_or_rewrite(instr_set, instr, dominates)) {
             progress = true;
+            nir_instr_remove(instr);
          }
       }
    }

@@ -778,8 +778,6 @@ nir_instr_set_add_or_rewrite(struct set *instr_set, nir_instr *instr,
 
       nir_def_rewrite_uses(def, new_def);
 
-      nir_instr_remove(instr);
-
       return match;
    } else {
       /* otherwise, replace hashed instruction */

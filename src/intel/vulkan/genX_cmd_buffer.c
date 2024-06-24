@@ -1776,30 +1776,6 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
          bits & (ANV_PIPE_FLUSH_BITS | ANV_PIPE_STALL_BITS |
                  ANV_PIPE_END_OF_PIPE_SYNC_BIT);
 
-#if GFX_VERx10 >= 125
-      if (current_pipeline != GPGPU) {
-         if (flush_bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
-            flush_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
-      } else {
-         if (flush_bits & (ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
-                           ANV_PIPE_DATA_CACHE_FLUSH_BIT))
-            flush_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
-      }
-
-      /* BSpec 47112: PIPE_CONTROL::Untyped Data-Port Cache Flush:
-       *
-       *    "'HDC Pipeline Flush' bit must be set for this bit to take
-       *     effect."
-       */
-      if (flush_bits & ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT)
-         flush_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
-#endif
-
-#if GFX_VER < 12
-      if (flush_bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
-         flush_bits |= ANV_PIPE_DATA_CACHE_FLUSH_BIT;
-#endif
-
       uint32_t sync_op = NoWrite;
       struct anv_address addr = ANV_NULL_ADDRESS;
 
@@ -1849,33 +1825,6 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
    }
 
    if (bits & ANV_PIPE_INVALIDATE_BITS) {
-      /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
-       *
-       *    "If the VF Cache Invalidation Enable is set to a 1 in a
-       *    PIPE_CONTROL, a separate Null PIPE_CONTROL, all bitfields sets to
-       *    0, with the VF Cache Invalidation Enable set to 0 needs to be sent
-       *    prior to the PIPE_CONTROL with VF Cache Invalidation Enable set to
-       *    a 1."
-       *
-       * This appears to hang Broadwell, so we restrict it to just gfx9.
-       */
-      if (GFX_VER == 9 && (bits & ANV_PIPE_VF_CACHE_INVALIDATE_BIT))
-         anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe);
-
-#if GFX_VER >= 9 && GFX_VER <= 11
-      /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
-       *
-       *    "Workaround : “CS Stall” bit in PIPE_CONTROL command must be
-       *     always set for GPGPU workloads when “Texture Cache
-       *     Invalidation Enable” bit is set".
-       *
-       * Workaround stopped appearing in TGL PRMs.
-       */
-      if (current_pipeline == GPGPU &&
-          (bits & ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT))
-         bits |= ANV_PIPE_CS_STALL_BIT;
-#endif
-
       uint32_t sync_op = NoWrite;
       struct anv_address addr = ANV_NULL_ADDRESS;
 
@@ -2584,6 +2533,57 @@ genX(batch_emit_pipe_control_write)(struct anv_batch *batch,
     */
    if (bits & ANV_PIPE_DEPTH_CACHE_FLUSH_BIT)
       bits |= ANV_PIPE_DEPTH_STALL_BIT;
+#endif
+
+#if GFX_VERx10 >= 125
+   if (current_pipeline != GPGPU) {
+      if (bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
+         bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+   } else {
+      if (bits & (ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
+                  ANV_PIPE_DATA_CACHE_FLUSH_BIT))
+         bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+   }
+
+   /* BSpec 47112: PIPE_CONTROL::Untyped Data-Port Cache Flush:
+    *
+    *    "'HDC Pipeline Flush' bit must be set for this bit to take
+    *     effect."
+    */
+   if (bits & ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT)
+      bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+#endif
+
+#if GFX_VER < 12
+   if (bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
+      bits |= ANV_PIPE_DATA_CACHE_FLUSH_BIT;
+#endif
+
+   /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
+    *
+    *    "If the VF Cache Invalidation Enable is set to a 1 in a
+    *    PIPE_CONTROL, a separate Null PIPE_CONTROL, all bitfields sets to
+    *    0, with the VF Cache Invalidation Enable set to 0 needs to be sent
+    *    prior to the PIPE_CONTROL with VF Cache Invalidation Enable set to
+    *    a 1."
+    *
+    * This appears to hang Broadwell, so we restrict it to just gfx9.
+    */
+   if (GFX_VER == 9 && (bits & ANV_PIPE_VF_CACHE_INVALIDATE_BIT))
+      anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe);
+
+#if GFX_VER >= 9 && GFX_VER <= 11
+   /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
+    *
+    *    "Workaround : “CS Stall” bit in PIPE_CONTROL command must be
+    *     always set for GPGPU workloads when “Texture Cache
+    *     Invalidation Enable” bit is set".
+    *
+    * Workaround stopped appearing in TGL PRMs.
+    */
+   if (current_pipeline == GPGPU &&
+       (bits & ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT))
+      bits |= ANV_PIPE_CS_STALL_BIT;
 #endif
 
    anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe) {

@@ -87,6 +87,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_GENERATED_INDIRECT_RING_THRESHOLD(100)
       DRI_CONF_NO_16BIT(false)
       DRI_CONF_INTEL_ENABLE_WA_14018912822(false)
+      DRI_CONF_INTEL_SAMPLER_ROUTE_TO_LSC(false)
       DRI_CONF_ANV_QUERY_CLEAR_WITH_BLORP_THRESHOLD(6)
       DRI_CONF_ANV_QUERY_COPY_WITH_SHADER_THRESHOLD(6)
       DRI_CONF_ANV_FORCE_INDIRECT_DESCRIPTORS(false)
@@ -2556,6 +2557,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    isl_device_init(&device->isl_dev, &device->info);
    device->isl_dev.buffer_length_in_aux_addr = !intel_needs_workaround(device->isl_dev.info, 14019708328);
+   device->isl_dev.sampler_route_to_lsc =
+      driQueryOptionb(&instance->dri_options, "intel_sampler_route_to_lsc");
 
    result = anv_physical_device_init_uuids(device);
    if (result != VK_SUCCESS)

@@ -1332,6 +1332,7 @@ struct isl_device {
    } mocs;
 
    /* Options to configure by the driver: */
+   bool sampler_route_to_lsc;
 
    /**
     * Write buffer length in the upper dword of the

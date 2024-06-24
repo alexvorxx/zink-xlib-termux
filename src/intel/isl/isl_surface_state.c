@@ -580,9 +580,8 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
 
 #if GFX_VERx10 >= 200
    s.EnableSamplerRoutetoLSC =
-      isl_format_support_sampler_route_to_lsc(info->view->format);
-   s.EnableSamplerRoutetoLSC &= (s.SurfaceType == SURFTYPE_2D &&
-                                 info->view->array_len == 1);
+      isl_format_support_sampler_route_to_lsc(info->view->format) &&
+      s.SurfaceType == SURFTYPE_2D && info->view->array_len == 1;
 
 /* Wa_14018471104:
  * For APIs that use ResourceMinLod, do the following: (remains same as before)
@@ -592,6 +591,9 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
 #if INTEL_NEEDS_WA_14018471104
    s.EnableSamplerRoutetoLSC &= info->view->min_lod_clamp == 0;
 #endif
+
+   /* Per application override. */
+   s.EnableSamplerRoutetoLSC &= dev->sampler_route_to_lsc;
 #endif /* if GFX_VERx10 >= 200 */
 
 #else

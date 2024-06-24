@@ -25,7 +25,7 @@ them by running::
   git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 Most code editors also support automatically formatting code as you
-write it; check your editor or its pluggins to see how to enable this.
+write it; check your editor or its plug-ins to see how to enable this.
 
 Vim
 ***

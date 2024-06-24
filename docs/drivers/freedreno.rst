@@ -286,7 +286,7 @@ instruction.  The address of the descriptor is calculated as::
 
 .. note::
    Turnip reserves one descriptor set for internal use and exposes the other
-   four for the application via the vulkan API.
+   four for the application via the Vulkan API.
 
 Software Architecture
 ---------------------

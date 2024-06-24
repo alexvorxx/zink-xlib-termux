@@ -40,6 +40,9 @@ panvk_per_arch(CmdDispatchBase)(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
    const struct panvk_shader *shader = cmdbuf->state.compute.shader;
 
+   if (groupCountX == 0 || groupCountY == 0 || groupCountZ == 0)
+      return;
+
    /* If there's no compute shader, we can skip the dispatch. */
    if (!panvk_priv_mem_dev_addr(shader->rsd))
       return;

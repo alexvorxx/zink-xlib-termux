@@ -31,7 +31,9 @@ nir_opt_reuse_constants(nir_shader *shader)
                _mesa_set_add(consts, instr);
             }
 
-            func_progress |= nir_instr_set_add_or_rewrite(consts, instr, nir_instrs_equal);
+            if (nir_instr_set_add_or_rewrite(consts, instr, nir_instrs_equal)) {
+               func_progress = true;
+            }
          }
       }
 

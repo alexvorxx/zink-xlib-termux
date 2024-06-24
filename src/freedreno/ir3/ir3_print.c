@@ -381,6 +381,22 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
       mesa_log_stream_printf(stream, " ");
    }
 
+   if (opc_cat(instr->opc) == 1) {
+      switch (instr->cat1.round) {
+      case ROUND_ZERO:
+         break;
+      case ROUND_EVEN:
+         mesa_log_stream_printf(stream, "(even)");
+         break;
+      case ROUND_POS_INF:
+         mesa_log_stream_printf(stream, "(pos_infinity)");
+         break;
+      case ROUND_NEG_INF:
+         mesa_log_stream_printf(stream, "(neg_infinity)");
+         break;
+      }
+   }
+
    bool first = true;
    foreach_dst (reg, instr) {
       if (reg->wrmask == 0)

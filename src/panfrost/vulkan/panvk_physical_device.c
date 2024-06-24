@@ -243,6 +243,11 @@ get_device_properties(const struct panvk_instance *instance,
    uint64_t os_page_size = 4096;
    os_get_page_size(&os_page_size);
 
+   ASSERTED unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
+
+   /* Ensure that the max threads count per workgroup is valid for Bifrost */
+   assert(arch > 8 || device->kmod.props.max_threads_per_wg <= 1024);
+
    *properties = (struct vk_properties){
       .apiVersion = panvk_get_vk_version(),
       .driverVersion = vk_get_driver_version(),
@@ -383,11 +388,14 @@ get_device_properties(const struct panvk_instance *instance,
        * dispatch in several jobs if it's too big.
        */
       .maxComputeWorkGroupCount = {65535, 65535, 65535},
-      /* We have 10 bits to encode the local-size, and there's a minus(1)
-       * modifier, so, a size of 1 takes no bit.
+
+      /* We could also split into serveral jobs but this has many limitations.
+       * As such we limit to the max threads per workgroup supported by the GPU.
        */
-      .maxComputeWorkGroupInvocations = 1 << 10,
-      .maxComputeWorkGroupSize = {1 << 10, 1 << 10, 1 << 10},
+      .maxComputeWorkGroupInvocations = device->kmod.props.max_threads_per_wg,
+      .maxComputeWorkGroupSize = {device->kmod.props.max_threads_per_wg,
+                                  device->kmod.props.max_threads_per_wg,
+                                  device->kmod.props.max_threads_per_wg},
       /* 8-bit subpixel precision. */
       .subPixelPrecisionBits = 8,
       .subTexelPrecisionBits = 8,

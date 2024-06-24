@@ -40,7 +40,7 @@ LibGL environment variables
 
 .. envvar:: LIBGL_KOPPER_DISABLE
 
-   disable vulkan swapchains with zink if set to ``true``.
+   disable vulkan swapchains with Zink if set to ``true``.
    In general, this should not be used unless you know what you are
    doing. Some examples of "knowing what you are doing" include:
    - using a VK driver which has no WSI implementation for your display server
@@ -48,7 +48,7 @@ LibGL environment variables
 
 .. envvar:: LIBGL_KOPPER_DRI2
 
-   disable DRI3 with zink if set to ``true``.
+   disable DRI3 with Zink if set to ``true``.
    In general, this should not be used unless you know what you are
    doing. Some examples of "knowing what you are doing" include:
    - running xrdp

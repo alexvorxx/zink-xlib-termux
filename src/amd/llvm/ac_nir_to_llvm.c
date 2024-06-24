@@ -3622,7 +3622,9 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       for (int i = 0; i < num_atomics - 1; i++) {
          /* global_atomic_ordered_add_b64 dst, offset, data, address */
          ptr += sprintf(ptr,
-                        "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n",
+                        "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n"
+                        "s_nop 15\n"
+                        "s_nop 7\n",
                         3 + i * 2,
                         3 + i * 2 + 1);
       }
@@ -3663,6 +3665,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       /* Jump to the beginning of the loop. */
       ptr += sprintf(ptr,
                      "s_branch 0x%x\n"
+                     "s_wait_alu 0xfffe\n"
                      "s_wait_loadcnt 0x0\n",
                      (inst_block_size * -(int)num_atomics - 1) & 0xffff);
 

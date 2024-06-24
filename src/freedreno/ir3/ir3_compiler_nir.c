@@ -3042,6 +3042,47 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
                  load->push_consts.dst_base + load->push_consts.src_size, 4));
       break;
    }
+   case nir_intrinsic_prefetch_sam_ir3: {
+      struct tex_src_info info =
+         get_bindless_samp_src(ctx, &intr->src[0], &intr->src[1]);
+      struct ir3_instruction *sam =
+         emit_sam(ctx, OPC_SAM, info, TYPE_F32, 0b1111, NULL, NULL);
+
+      sam->dsts_count = 0;
+      array_insert(ctx->block, ctx->block->keeps, sam);
+      break;
+   }
+   case nir_intrinsic_prefetch_tex_ir3: {
+      struct ir3_instruction *idx = ir3_get_src(ctx, &intr->src[0])[0];
+      struct ir3_instruction *resinfo = ir3_RESINFO(b, idx, 0);
+      resinfo->cat6.iim_val = 1;
+      resinfo->cat6.d = 1;
+      resinfo->cat6.type = TYPE_U32;
+      resinfo->cat6.typed = false;
+
+      ir3_handle_bindless_cat6(resinfo, intr->src[0]);
+      if (resinfo->flags & IR3_INSTR_B)
+         ctx->so->bindless_tex = true;
+
+      resinfo->dsts_count = 0;
+      array_insert(ctx->block, ctx->block->keeps, resinfo);
+      break;
+   }
+   case nir_intrinsic_prefetch_ubo_ir3: {
+      struct ir3_instruction *offset = create_immed(ctx->block, 0);
+      struct ir3_instruction *idx = ir3_get_src(ctx, &intr->src[0])[0];
+      struct ir3_instruction *ldc = ir3_LDC(b, idx, 0, offset, 0);
+      ldc->cat6.iim_val = 1;
+      ldc->cat6.type = TYPE_U32;
+
+      ir3_handle_bindless_cat6(ldc, intr->src[0]);
+      if (ldc->flags & IR3_INSTR_B)
+         ctx->so->bindless_ubo = true;
+
+      ldc->dsts_count = 0;
+      array_insert(ctx->block, ctx->block->keeps, ldc);
+      break;
+   }
    default:
       ir3_context_error(ctx, "Unhandled intrinsic type: %s\n",
                         nir_intrinsic_infos[intr->intrinsic].name);

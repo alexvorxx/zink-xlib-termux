@@ -1402,6 +1402,11 @@ intrinsic("inclusive_scan_clusters_ir3", dest_comp=1, src_comp=[1],
 intrinsic("exclusive_scan_clusters_ir3", dest_comp=1, src_comp=[1, 1],
           bit_sizes=src0, indices=[REDUCTION_OP])
 
+# IR3-specific intrinsics for prefetching descriptors in preambles.
+intrinsic("prefetch_sam_ir3", [1, 1], flags=[CAN_REORDER])
+intrinsic("prefetch_tex_ir3", [1], flags=[CAN_REORDER])
+intrinsic("prefetch_ubo_ir3", [1], flags=[CAN_REORDER])
+
 # Intrinsics used by the Midgard/Bifrost blend pipeline. These are defined
 # within a blend shader to read/write the raw value from the tile buffer,
 # without applying any format conversion in the process. If the shader needs

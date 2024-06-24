@@ -1293,7 +1293,7 @@ RADV driver environment variables
    ``epilogs``
       dump fragment shader epilogs
    ``extra_md``
-      add extra information in bo metadatas to help tools (umr)
+      add extra information in bo metadata to help tools (umr)
    ``forcecompress``
       Enables DCC,FMASK,CMASK,HTILE in situations where the driver supports it
       but normally does not deem it beneficial.
@@ -1599,7 +1599,7 @@ RadeonSI driver environment variables
    ``dpbb``
       Enable DPBB. Enable DPBB for gfx9 dGPU. Default enabled for gfx9 APU and >= gfx10.
    ``extra_md``
-      add extra information in bo metadatas to help tools (umr)
+      add extra information in bo metadata to help tools (umr)
 
 r600 driver environment variables
 ---------------------------------

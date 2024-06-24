@@ -23,6 +23,7 @@ include = [
     "dEQP-VK.draw.renderpass.instanced.draw_indexed_vk_*",
     "dEQP-VK.draw.renderpass.offscreen_viewport.*",
     "dEQP-VK.image.atomic_operations.*",
+    "dEQP-VK.glsl.440.linkage.*",
     "dEQP-VK.glsl.builtin.function.*",
     "dEQP-VK.glsl.builtin.precision.frexp.*",
     "dEQP-VK.glsl.builtin.precision.ldexp.*",

@@ -48,7 +48,7 @@ specific to NVK:
    a comma-separated list of named flags, which do various things:
 
    ``push``
-      Dumps all pusbufs to stderr on submit.  This requires that
+      Dumps all pushbufs to stderr on submit.  This requires that
       ``push_sync`` also be set.
    ``push_sync``
       Waits for submit to complete before continuing

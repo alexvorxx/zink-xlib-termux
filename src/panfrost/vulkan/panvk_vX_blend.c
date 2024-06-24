@@ -362,12 +362,22 @@ panvk_per_arch(blend_emit_descs)(
    for (uint8_t i = 0; i < cb->attachment_count; i++) {
       struct pan_blend_rt_state *rt = &bs.rts[i];
 
+      if (!(cb->color_write_enables & BITFIELD_BIT(i))) {
+         rt->equation.color_mask = 0;
+         continue;
+      }
+
       if (bs.logicop_enable && bs.logicop_func == PIPE_LOGICOP_NOOP) {
          rt->equation.color_mask = 0;
          continue;
       }
 
       if (color_attachment_formats[i] == VK_FORMAT_UNDEFINED) {
+         rt->equation.color_mask = 0;
+         continue;
+      }
+
+      if (!cb->attachments[i].write_mask) {
          rt->equation.color_mask = 0;
          continue;
       }

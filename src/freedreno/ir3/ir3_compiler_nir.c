@@ -277,13 +277,18 @@ create_cov(struct ir3_context *ctx, struct ir3_instruction *src,
 
    if (op == nir_op_f2f16_rtne) {
       cov->cat1.round = ROUND_EVEN;
-   } else if (op == nir_op_f2f16) {
+   } else if (op == nir_op_f2f16_rtz) {
+      cov->cat1.round = ROUND_ZERO;
+   } else if (dst_type == TYPE_F16 || dst_type == TYPE_F32) {
       unsigned execution_mode = ctx->s->info.float_controls_execution_mode;
+      nir_alu_type type =
+         dst_type == TYPE_F16 ? nir_type_float16 : nir_type_float32;
       nir_rounding_mode rounding_mode =
-         nir_get_rounding_mode_from_float_controls(execution_mode,
-                                                   nir_type_float16);
+         nir_get_rounding_mode_from_float_controls(execution_mode, type);
       if (rounding_mode == nir_rounding_mode_rtne)
          cov->cat1.round = ROUND_EVEN;
+      else if (rounding_mode == nir_rounding_mode_rtz)
+         cov->cat1.round = ROUND_ZERO;
    }
 
    return cov;

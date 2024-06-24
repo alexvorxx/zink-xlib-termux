@@ -144,7 +144,6 @@ dEQP-VK.robustness.image_robustness.push.notemplate.rg32i.dontunroll.nonvolatile
 dEQP-VK.robustness.robustness2.push.notemplate.r32ui.unroll.nonvolatile.storage_buffer.readonly.no_fmt_qual.len_12.samples_1.1d.comp
 
 dEQP-VK.spirv_assembly.instruction.graphics.float16.arithmetic_1.log_tesse
-dEQP-VK.spirv_assembly.instruction.graphics.float_controls.fp32.generated_args.transpose_zero_preserve_vert
 
 dEQP-VK.ssbo.layout.2_level_array.std140.column_major_mat3_comp_access_store_cols
 dEQP-VK.ssbo.phys.layout.single_basic_type.std430.row_major_lowp_mat2x3_store_cols

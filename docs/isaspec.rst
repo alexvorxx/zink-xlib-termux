@@ -282,7 +282,7 @@ preceded by a line with just ``l42:``.
 ``branch`` and ``absbranch`` fields can additionally have a ``call="true"``
 attribute. For now, this just changes the disassembly. In particular the label
 prefix is changed to ``fxn`` and an extra empty line before the destination is
-added to visually seperate the disassembly into functions. So, for example, a
+added to visually separate the disassembly into functions. So, for example, a
 call instruction defined like this:
 
 .. code-block:: xml

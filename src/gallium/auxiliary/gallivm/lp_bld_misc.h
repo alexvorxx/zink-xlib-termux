@@ -64,6 +64,8 @@ gallivm_dispose_target_library_info(LLVMTargetLibraryInfoRef library_info);
 extern void
 lp_set_target_options(void);
 
+extern void
+lp_bld_init_native_targets();
 
 extern int
 lp_build_create_jit_compiler_for_module(LLVMExecutionEngineRef *OutJIT,

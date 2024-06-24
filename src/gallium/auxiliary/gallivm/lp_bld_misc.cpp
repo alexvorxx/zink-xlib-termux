@@ -108,7 +108,7 @@ static LLVMEnsureMultithreaded lLVMEnsureMultithreaded;
 
 static once_flag init_native_targets_once_flag = ONCE_FLAG_INIT;
 
-static void init_native_targets()
+void lp_bld_init_native_targets()
 {
    // If we have a native target, initialize it to ensure it is linked in and
    // usable by the JIT.
@@ -150,7 +150,7 @@ lp_set_target_options(void)
     * LLVM targets should be initialized before the driver or gallium frontend tries
     * to access the registry.
     */
-   call_once(&init_native_targets_once_flag, init_native_targets);
+   call_once(&init_native_targets_once_flag, lp_bld_init_native_targets);
 }
 
 extern "C"

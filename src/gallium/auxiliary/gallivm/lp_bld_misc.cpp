@@ -406,6 +406,14 @@ lp_build_fill_mattrs(std::vector<std::string> &MAttrs)
    /* MSA requires a 64-bit FPU register file */
    MAttrs.push_back("+fp64");
 #endif
+
+#if DETECT_ARCH_RISCV64 == 1
+   /* Before riscv is more matured and util_get_cpu_caps() is implemented,
+    * assume this for now since most of linux capable riscv machine are
+    * riscv64gc
+    */
+   MAttrs = {"+m","+c","+a","+d","+f"};
+#endif
 }
 
 void

@@ -51,9 +51,9 @@ high bits   padded_num_vertices
 111x		   :math:`2^{n+4}`
 ==========  =======================
 
-For example, if :math:`\text{num_vertices} = 70` is passed to glDraw(),
-its binary representation is 1000110, so :math:`n = 3` and the high bits
-are 1000, and therefore
+For example, if :math:`\text{num_vertices} = 70` is passed to
+:c:func:`glDraw()`, its binary representation is 1000110, so :math:`n = 3`
+and the high bits are 1000, and therefore
 :math:`\text{padded_num_vertices} = 9 \cdot 2^3 = 72`.
 
 The attribute unit works in terms of the original linear_id. if

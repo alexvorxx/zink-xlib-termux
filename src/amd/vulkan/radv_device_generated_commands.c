@@ -2413,7 +2413,7 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
          const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_GRID_SIZE);
          const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
 
-         params->has_task_shader = 0; /* TODO: Enable when fully implemented */
+         params->has_task_shader = 1;
          params->mesh_ring_entry_sgpr =
             ((mesh_shader->info.user_data_0 - SI_SH_REG_OFFSET) >> 2) + mesh_ring_entry_loc->sgpr_idx;
          params->linear_dispatch_en = task_shader->info.cs.linear_taskmesh_dispatch;

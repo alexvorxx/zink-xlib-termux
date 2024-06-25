@@ -3704,6 +3704,29 @@ typedef enum {
     */
    nir_io_prefer_scalar_fs_inputs = BITFIELD_BIT(4),
 
+   /**
+    * Whether interpolated fragment shader vec4 slots can use load_input for
+    * a subset of its components to skip interpolation for those components.
+    * The result of such load_input is a value from a random (not necessarily
+    * provoking) vertex. If a value from the provoking vertex is required,
+    * the vec4 slot should have no load_interpolated_input instructions.
+    *
+    * This exposes the AMD capability that allows packing flat inputs with
+    * interpolated inputs in a limited number of cases. Normally, flat
+    * components must be in a separate vec4 slot to get the value from
+    * the provoking vertex. If the compiler can prove that all per-vertex
+    * values are equal (convergent, i.e. the provoking vertex doesn't matter),
+    * it can put such flat components into any interpolated vec4 slot.
+    *
+    * It should also be set if the hw can mix flat and interpolated components
+    * in the same vec4 slot.
+    *
+    * This causes nir_opt_varyings to skip interpolation for all varyings
+    * that are convergent, and enables better compaction and inter-shader code
+    * motion for convergent varyings.
+    */
+   nir_io_mix_convergent_flat_with_interpolated = BITFIELD_BIT(5),
+
    /* Options affecting the GLSL compiler are below. */
 
    /**

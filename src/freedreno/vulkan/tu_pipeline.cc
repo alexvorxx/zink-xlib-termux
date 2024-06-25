@@ -4607,6 +4607,14 @@ tu_GetPipelineExecutableStatisticsKHR(
       stat->value.u64 = exe->stats.ldp_count;
    }
 
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Early preamble");
+      WRITE_STR(stat->description,
+                "Whether the preamble will be executed early.");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR;
+      stat->value.b32 = exe->stats.early_preamble;
+   }
+
    return vk_outarray_status(&out);
 }
 

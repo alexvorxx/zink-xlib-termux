@@ -2434,8 +2434,12 @@ overwrite:
       }
    }
    trans->base.b.usage = usage;
-   if (usage & PIPE_MAP_WRITE)
+   if (usage & PIPE_MAP_WRITE) {
       util_range_add(&res->base.b, &res->valid_buffer_range, box->x, box->x + box->width);
+
+      struct zink_resource *orig_res = zink_resource(trans->base.b.resource);
+      util_range_add(&orig_res->base.b, &orig_res->valid_buffer_range, box->x, box->x + box->width);
+   }
 
 success:
    /* ensure the copy context gets unlocked */

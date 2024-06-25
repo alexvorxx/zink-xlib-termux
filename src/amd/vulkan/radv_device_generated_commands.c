@@ -2033,6 +2033,27 @@ build_dgc_prepare_shader(struct radv_device *dev)
          nir_def *stream_addr = load_param64(&b, stream_addr);
          stream_addr = nir_iadd(&b, stream_addr, nir_u2u64(&b, nir_imul(&b, sequence_id, stream_stride)));
 
+         nir_variable *upload_offset =
+            nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "upload_offset");
+         nir_def *upload_offset_init = nir_iadd(&b, load_param32(&b, upload_main_offset),
+                                                nir_imul(&b, load_param32(&b, upload_stride), sequence_id));
+         nir_store_var(&b, upload_offset, upload_offset_init, 0x1);
+
+         nir_def *push_const_mask = load_param64(&b, push_constant_mask);
+         nir_push_if(&b, nir_ine_imm(&b, push_const_mask, 0));
+         {
+            nir_def *push_constant_stages = dgc_get_push_constant_stages(&b, stream_addr);
+
+            nir_push_if(&b, nir_test_mask(&b, push_constant_stages, VK_SHADER_STAGE_TASK_BIT_EXT));
+            {
+               const struct dgc_pc_params params = dgc_get_pc_params(&b);
+               dgc_emit_push_constant_for_stage(&cmd_buf, stream_addr, push_const_mask, &params, MESA_SHADER_TASK,
+                                                upload_offset);
+            }
+            nir_pop_if(&b, NULL);
+         }
+         nir_pop_if(&b, 0);
+
          dgc_emit_draw_mesh_tasks_ace(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
 
          /* Pad the cmdbuffer if we did not use the whole stride */

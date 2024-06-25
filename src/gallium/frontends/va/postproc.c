@@ -519,27 +519,6 @@ vlVaApplyDeint(vlVaDriver *drv, vlVaContext *context,
    return context->deint->video_buffer;
 }
 
-static bool can_convert_with_efc(vlVaSurface *src, vlVaSurface *dst)
-{
-   enum pipe_format src_format, dst_format;
-
-   if (src->buffer->interlaced)
-      return false;
-
-   src_format = src->buffer->buffer_format;
-
-   if (src_format != PIPE_FORMAT_B8G8R8A8_UNORM &&
-       src_format != PIPE_FORMAT_R8G8B8A8_UNORM &&
-       src_format != PIPE_FORMAT_B8G8R8X8_UNORM &&
-       src_format != PIPE_FORMAT_R8G8B8X8_UNORM)
-      return false;
-
-   dst_format = dst->encoder_format != PIPE_FORMAT_NONE ?
-      dst->encoder_format : dst->buffer->buffer_format;
-
-   return dst_format == PIPE_FORMAT_NV12;
-}
-
 VAStatus
 vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *context, vlVaBuffer *buf)
 {
@@ -586,11 +565,12 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
        src_region->height == dst_region->height &&
        src_region->x == dst_region->x &&
        src_region->y == dst_region->y &&
-       can_convert_with_efc(src_surface, dst_surface) &&
-       pscreen->get_video_param(pscreen,
-                                PIPE_VIDEO_PROFILE_UNKNOWN,
-                                PIPE_VIDEO_ENTRYPOINT_ENCODE,
-                                PIPE_VIDEO_CAP_EFC_SUPPORTED)) {
+       pscreen->is_video_target_buffer_supported &&
+       pscreen->is_video_target_buffer_supported(pscreen,
+                                                 dst_surface->buffer->buffer_format,
+                                                 src_surface->buffer,
+                                                 PIPE_VIDEO_PROFILE_UNKNOWN,
+                                                 PIPE_VIDEO_ENTRYPOINT_ENCODE)) {
 
       vlVaSurface *surf = dst_surface;
 

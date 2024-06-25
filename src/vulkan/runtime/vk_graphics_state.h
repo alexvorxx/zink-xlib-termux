@@ -1136,21 +1136,21 @@ vk_graphics_pipeline_get_state(const struct vk_graphics_pipeline_state *state,
 
 /** Initialize a vk_dynamic_graphics_state with defaults
  *
- * :param dyn:          |out| Dynamic graphics state to initizlie
+ * :param dyn:          |out| Dynamic graphics state to initialize
  */
 void
 vk_dynamic_graphics_state_init(struct vk_dynamic_graphics_state *dyn);
 
 /** Clear a vk_dynamic_graphics_state to defaults
  *
- * :param dyn:          |out| Dynamic graphics state to initizlie
+ * :param dyn:          |out| Dynamic graphics state to initialize
  */
 void
 vk_dynamic_graphics_state_clear(struct vk_dynamic_graphics_state *dyn);
 
 /** Initialize a vk_dynamic_graphics_state for a pipeline
  *
- * :param dyn:          |out| Dynamic graphics state to initizlie
+ * :param dyn:          |out| Dynamic graphics state to initialize
  * :param supported:    |in|  Bitset of all dynamic state supported by the driver.
  * :param p:            |in|  The pipeline state from which to initialize the
  *                            dynamic state.

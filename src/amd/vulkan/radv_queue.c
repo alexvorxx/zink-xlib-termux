@@ -2162,7 +2162,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
          goto fail;
 
       if (radv_device_fault_detection_enabled(device)) {
-         radv_check_gpu_hangs(queue, &submit);
+         result = radv_check_gpu_hangs(queue, &submit);
       }
 
       if (device->tma_bo) {

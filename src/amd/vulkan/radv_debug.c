@@ -706,7 +706,7 @@ enum radv_device_fault_chunk {
    RADV_DEVICE_FAULT_CHUNK_COUNT,
 };
 
-void
+VkResult
 radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_info *submit_info)
 {
    enum amd_ip_type ring;
@@ -715,7 +715,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
    bool hang_occurred = radv_gpu_hang_occurred(queue, ring);
    if (!hang_occurred)
-      return;
+      return VK_SUCCESS;
 
    fprintf(stderr, "radv: GPU hang detected...\n");
 
@@ -849,6 +849,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
    }
 
 #endif
+   return VK_ERROR_DEVICE_LOST;
 }
 
 void

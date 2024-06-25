@@ -160,12 +160,23 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
             struct radv_userdata_locations *locs = &pipeline->shaders[i]->info.user_sgprs_locs;
             if (locs->shader_data[AC_UD_PUSH_CONSTANTS].sgpr_idx >= 0) {
                /* One PKT3_SET_SH_REG for emitting push constants pointer (32-bit) */
-               *cmd_size += 3 * 4;
+               if (i == MESA_SHADER_TASK) {
+                  *ace_cmd_size += 3 * 4;
+               } else {
+                  *cmd_size += 3 * 4;
+               }
                need_copy = true;
             }
-            if (locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].sgpr_idx >= 0)
+            if (locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].sgpr_idx >= 0) {
                /* One PKT3_SET_SH_REG writing all inline push constants. */
-               *cmd_size += (3 * util_bitcount64(layout->push_constant_mask)) * 4;
+               const uint32_t inline_pc_size = (3 * util_bitcount64(layout->push_constant_mask)) * 4;
+
+               if (i == MESA_SHADER_TASK) {
+                  *ace_cmd_size += inline_pc_size;
+               } else {
+                  *cmd_size += inline_pc_size;
+               }
+            }
          }
       } else {
          /* Assume the compute shader needs both user SGPRs because we can't know the information

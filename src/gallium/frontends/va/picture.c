@@ -1304,6 +1304,16 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
       }
       context->desc.base.input_full_range = surf->full_range;
 
+      if (screen->is_video_target_buffer_supported &&
+          !screen->is_video_target_buffer_supported(screen,
+                                                    context->desc.base.output_format,
+                                                    context->target,
+                                                    context->decoder->profile,
+                                                    context->decoder->entrypoint)) {
+            mtx_unlock(&drv->mutex);
+            return VA_STATUS_ERROR_INVALID_SURFACE;
+      }
+
       int driver_metadata_support = drv->pipe->screen->get_video_param(drv->pipe->screen,
                                                                        context->decoder->profile,
                                                                        context->decoder->entrypoint,

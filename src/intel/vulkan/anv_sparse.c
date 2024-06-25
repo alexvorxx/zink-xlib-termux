@@ -405,9 +405,9 @@ trtt_get_page_table_bo(struct anv_device *device, struct anv_bo **bo,
 }
 
 static VkResult
-anv_trtt_init_context_state(struct anv_device *device,
-                            struct anv_async_submit *submit)
+anv_trtt_init_context_state(struct anv_queue *queue)
 {
+   struct anv_device *device = queue->device;
    struct anv_trtt *trtt = &device->trtt;
 
    struct anv_bo *l3_bo;
@@ -430,8 +430,26 @@ anv_trtt_init_context_state(struct anv_device *device,
       goto fail_free_l3;
    }
 
-   result = anv_genX(device->info, init_trtt_context_state)(device, submit);
 
+   struct anv_async_submit submit;
+   result = anv_async_submit_init(&submit, queue, &device->batch_bo_pool,
+                                  false, true);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = anv_genX(device->info, init_trtt_context_state)(device, &submit);
+   if (result != VK_SUCCESS)
+      goto fail_fini_submit;
+
+   anv_genX(device->info, async_submit_end)(&submit);
+
+   result = device->kmd_backend->queue_exec_async(&submit, 0, NULL, 1,
+                                                  &submit.signal);
+
+   anv_async_submit_wait(&submit);
+
+fail_fini_submit:
+   anv_async_submit_fini(&submit);
    return result;
 
 fail_free_l3:
@@ -627,7 +645,7 @@ anv_sparse_bind_trtt(struct anv_device *device,
     * submission.
     */
    if (!trtt->l3_addr) {
-      result = anv_trtt_init_context_state(device, &submit->base);
+      result = anv_trtt_init_context_state(sparse_submit->queue);
       if (result != VK_SUCCESS)
          goto error_add_bind;
    }

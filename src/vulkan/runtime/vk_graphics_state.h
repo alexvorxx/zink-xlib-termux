@@ -40,7 +40,7 @@ struct vk_device;
 
 /** Enumeration of all Vulkan dynamic graphics states
  *
- * Enumerants are named with both the abreviation of the state group to which
+ * Enumerants are named with both the abbreviation of the state group to which
  * the state belongs as well as the name of the state itself.  These are
  * intended to pretty closely match the VkDynamicState enum but may not match
  * perfectly all the time.

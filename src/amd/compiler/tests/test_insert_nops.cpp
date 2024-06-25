@@ -1129,6 +1129,79 @@ BEGIN_TEST(insert_nops.valu_mask_write)
    finish_insert_nops_test();
 END_TEST
 
+BEGIN_TEST(insert_nops.wmma_raw)
+   if (!setup_cs(NULL, GFX11))
+      return;
+
+   /* Basic case. */
+   //>> p_unit_test 0
+   //! v4: %_:v[20-23] = v_wmma_f16_16x16x16_f16 %_:v[0-7].xx, %_:v[8-15].xx, %_:v[20-23].xx
+   //! v_nop
+   //! v4: %_:v[48-51] = v_wmma_f16_16x16x16_f16 %_:v[24-31].xx, %_:v[16-23].xx, %_:v[48-51].xx
+   bld.pseudo(aco_opcode::p_unit_test, Operand::c32(0));
+   Operand A(PhysReg(256 + 0), v8);
+   Operand B(PhysReg(256 + 8), v8);
+   Operand C(PhysReg(256 + 20), v4);
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+   A.setFixed(PhysReg(256 + 24));
+   B.setFixed(PhysReg(256 + 16));
+   C.setFixed(PhysReg(256 + 48));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+
+   /* Mitigation. */
+   //! p_unit_test 1
+   //! v4: %_:v[20-23] = v_wmma_f16_16x16x16_f16 %_:v[0-7].xx, %_:v[8-15].xx, %_:v[20-23].xx
+   //! v1: %_:v[56] = v_rcp_f32 0
+   //! v4: %_:v[48-51] = v_wmma_f16_16x16x16_f16 %_:v[24-31].xx, %_:v[16-23].xx, %_:v[48-51].xx
+   bld.pseudo(aco_opcode::p_unit_test, Operand::c32(1));
+   A.setFixed(PhysReg(256 + 0));
+   B.setFixed(PhysReg(256 + 8));
+   C.setFixed(PhysReg(256 + 20));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+   bld.vop1(aco_opcode::v_rcp_f32, Definition(PhysReg(256 + 56), v1), Operand::zero());
+   A.setFixed(PhysReg(256 + 24));
+   B.setFixed(PhysReg(256 + 16));
+   C.setFixed(PhysReg(256 + 48));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+
+   /* No hazard. */
+   //>> p_unit_test 2
+   //! v4: %_:v[20-23] = v_wmma_f16_16x16x16_f16 %_:v[0-7].xx, %_:v[8-15].xx, %_:v[20-23].xx
+   //! v4: %_:v[48-51] = v_wmma_f16_16x16x16_f16 %_:v[24-31].xx, %_:v[32-39].xx, %_:v[48-51].xx
+   bld.pseudo(aco_opcode::p_unit_test, Operand::c32(2));
+   A.setFixed(PhysReg(256 + 0));
+   B.setFixed(PhysReg(256 + 8));
+   C.setFixed(PhysReg(256 + 20));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+   A.setFixed(PhysReg(256 + 24));
+   B.setFixed(PhysReg(256 + 32));
+   C.setFixed(PhysReg(256 + 48));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+
+   //>> p_unit_test 3
+   //! v4: %_:v[20-23] = v_wmma_f16_16x16x16_f16 %_:v[0-7].xx, %_:v[8-15].xx, %_:v[20-23].xx
+   //! v4: %_:v[20-23] = v_wmma_f16_16x16x16_f16 %_:v[24-31].xx, %_:v[32-39].xx, %_:v[20-23].xx
+   bld.pseudo(aco_opcode::p_unit_test, Operand::c32(3));
+   A.setFixed(PhysReg(256 + 0));
+   B.setFixed(PhysReg(256 + 8));
+   C.setFixed(PhysReg(256 + 20));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+   A.setFixed(PhysReg(256 + 24));
+   B.setFixed(PhysReg(256 + 32));
+   C.setFixed(PhysReg(256 + 20));
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
+
+   finish_insert_nops_test();
+END_TEST
+
 BEGIN_TEST(insert_nops.setpc_gfx6)
    if (!setup_cs(NULL, GFX6))
       return;
@@ -1445,6 +1518,20 @@ BEGIN_TEST(insert_nops.setpc_gfx11)
    //! s_setpc_b64 0
    bld.pseudo(aco_opcode::p_unit_test, Operand::c32(6));
    bld.ds(aco_opcode::ds_read_b32, Definition(PhysReg(256), v1), Operand(PhysReg(256), v1));
+   bld.sop1(aco_opcode::s_setpc_b64, Operand::zero(8));
+
+   /* WMMA Hazards */
+   //! p_unit_test 7
+   //! v4: %0:v[20-23] = v_wmma_f16_16x16x16_f16 %0:v[0-7].xx, %0:v[8-15].xx, %0:v[20-23].xx
+   //! v_nop
+   //! s_waitcnt_depctr va_vdst(0)
+   //! s_setpc_b64 0
+   bld.pseudo(aco_opcode::p_unit_test, Operand::c32(7));
+   Operand A(PhysReg(256 + 0), v8);
+   Operand B(PhysReg(256 + 8), v8);
+   Operand C(PhysReg(256 + 20), v4);
+   bld.vop3p(aco_opcode::v_wmma_f16_16x16x16_f16, Definition(C.physReg(), C.regClass()), A, B, C, 0,
+             0);
    bld.sop1(aco_opcode::s_setpc_b64, Operand::zero(8));
 
    finish_insert_nops_test(true);

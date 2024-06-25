@@ -266,6 +266,9 @@ struct NOP_ctx_gfx11 {
    std::bitset<128> sgpr_read_by_valu_as_lanemask;
    std::bitset<128> sgpr_read_by_valu_as_lanemask_then_wr_by_salu;
 
+   /* WMMAHazards */
+   std::bitset<256> vgpr_written_by_wmma;
+
    void join(const NOP_ctx_gfx11& other)
    {
       has_Vcmpx |= other.has_Vcmpx;
@@ -279,6 +282,7 @@ struct NOP_ctx_gfx11 {
       sgpr_read_by_valu_as_lanemask |= other.sgpr_read_by_valu_as_lanemask;
       sgpr_read_by_valu_as_lanemask_then_wr_by_salu |=
          other.sgpr_read_by_valu_as_lanemask_then_wr_by_salu;
+      vgpr_written_by_wmma |= other.vgpr_written_by_wmma;
    }
 
    bool operator==(const NOP_ctx_gfx11& other)
@@ -293,7 +297,8 @@ struct NOP_ctx_gfx11 {
              trans_since_wr_by_trans == other.trans_since_wr_by_trans &&
              sgpr_read_by_valu_as_lanemask == other.sgpr_read_by_valu_as_lanemask &&
              sgpr_read_by_valu_as_lanemask_then_wr_by_salu ==
-                other.sgpr_read_by_valu_as_lanemask_then_wr_by_salu;
+                other.sgpr_read_by_valu_as_lanemask_then_wr_by_salu &&
+             vgpr_written_by_wmma == other.vgpr_written_by_wmma;
    }
 };
 
@@ -1118,6 +1123,18 @@ fill_vgpr_bitset(std::bitset<256>& set, PhysReg reg, unsigned bytes)
       set.set(reg.reg() - 256 + i);
 }
 
+bool
+test_vgpr_bitset(std::bitset<256>& set, Operand op)
+{
+   if (op.physReg().reg() < 256)
+      return false;
+   for (unsigned i = 0; i < op.size(); i++) {
+      if (set[op.physReg().reg() - 256 + i])
+         return true;
+   }
+   return false;
+}
+
 /* GFX11 */
 unsigned
 parse_vdst_wait(aco_ptr<Instruction>& instr)
@@ -1568,6 +1585,24 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
          ctx.vgpr_used_by_ds.reset();
       }
    }
+
+   /* WMMA Hazards */
+   if (instr_info.classes[(int)instr->opcode] == instr_class::wmma) {
+      assert(instr->operands.back().regClass() == instr->definitions[0].regClass());
+
+      bool is_swmma = instr->operands.size() == 4;
+      if (test_vgpr_bitset(ctx.vgpr_written_by_wmma, instr->operands[0]) ||
+          test_vgpr_bitset(ctx.vgpr_written_by_wmma, instr->operands[1]) ||
+          (is_swmma && test_vgpr_bitset(ctx.vgpr_written_by_wmma, instr->operands[2]))) {
+         bld.vop1(aco_opcode::v_nop);
+      }
+
+      ctx.vgpr_written_by_wmma.reset();
+      fill_vgpr_bitset(ctx.vgpr_written_by_wmma, instr->definitions[0].physReg(),
+                       instr->definitions[0].bytes());
+   } else if (instr->isVALU()) {
+      ctx.vgpr_written_by_wmma.reset();
+   }
 }
 
 bool
@@ -1619,9 +1654,10 @@ resolve_all_gfx11(State& state, NOP_ctx_gfx11& ctx,
       ctx.trans_since_wr_by_trans.reset();
    }
 
-   /* VcmpxPermlaneHazard */
-   if (ctx.has_Vcmpx) {
+   /* VcmpxPermlaneHazard/WMMAHazards */
+   if (ctx.has_Vcmpx || ctx.vgpr_written_by_wmma.any()) {
       ctx.has_Vcmpx = false;
+      ctx.vgpr_written_by_wmma.reset();
       bld.vop1(aco_opcode::v_nop);
    }
 

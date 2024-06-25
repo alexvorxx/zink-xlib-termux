@@ -88,9 +88,7 @@ gather_load_fs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
    const bool per_primitive = nir->info.per_primitive_inputs & BITFIELD64_BIT(location);
 
    if (!per_primitive) {
-      if (intrin->intrinsic == nir_intrinsic_load_input) {
-         info->ps.flat_shaded_mask |= mapped_mask;
-      } else if (intrin->intrinsic == nir_intrinsic_load_input_vertex) {
+      if (intrin->intrinsic == nir_intrinsic_load_input_vertex) {
          if (io_sem.interp_explicit_strict)
             info->ps.explicit_strict_shaded_mask |= mapped_mask;
          else
@@ -100,6 +98,8 @@ gather_load_fs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
             info->ps.float16_hi_shaded_mask |= mapped_mask;
          else
             info->ps.float16_shaded_mask |= mapped_mask;
+      } else if (intrin->intrinsic == nir_intrinsic_load_interpolated_input) {
+         info->ps.float32_shaded_mask |= mapped_mask;
       }
    }
 

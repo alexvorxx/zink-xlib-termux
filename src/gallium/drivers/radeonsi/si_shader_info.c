@@ -298,9 +298,9 @@ static void scan_io_usage(const nir_shader *nir, struct si_shader_info *info,
 
          info->input[loc].semantic = semantic + i;
 
-         if (semantic == VARYING_SLOT_PRIMITIVE_ID)
-            info->input[loc].interpolate = INTERP_MODE_FLAT;
-         else
+         /* "interpolate" starts out as FLAT. The first seen load_interpolated_input overwrites it.  */
+         if (semantic != VARYING_SLOT_PRIMITIVE_ID &&
+             info->input[loc].interpolate == INTERP_MODE_FLAT)
             info->input[loc].interpolate = interp;
 
          if (mask) {
@@ -660,6 +660,12 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
        * conditions are met.
        */
       info->writes_1_if_tex_is_1 = nir->info.writes_memory ? 0 : 0xff;
+
+      /* Initialize all FS inputs to flat. If we see load_interpolated_input for any component,
+       * it will be changed to its interp mode.
+       */
+      for (unsigned i = 0; i < ARRAY_SIZE(info->input); i++)
+         info->input[i].interpolate = INTERP_MODE_FLAT;
    }
 
    info->constbuf0_num_slots = nir->num_uniforms;

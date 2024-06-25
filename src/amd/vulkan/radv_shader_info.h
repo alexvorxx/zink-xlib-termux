@@ -175,7 +175,7 @@ struct radv_shader_info {
       uint8_t input_clips_culls_mask;
       uint32_t input_mask;
       uint32_t input_per_primitive_mask;
-      uint32_t flat_shaded_mask;
+      uint32_t float32_shaded_mask;
       uint32_t explicit_shaded_mask;
       uint32_t explicit_strict_shaded_mask;
       uint32_t float16_shaded_mask;

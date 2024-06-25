@@ -39,7 +39,7 @@ struct vk_image;
  *
  *    1. VkRenderingAttachmentInfo::loadOp == LOAD_OP_CLEAR
  *
- *    2. VkRenderingInfo::renderArea is tne entire image view LOD
+ *    2. VkRenderingInfo::renderArea is the entire image view LOD
  *
  *    3. For 3D image attachments, VkRenderingInfo::viewMask == 0 AND
  *       VkRenderingInfo::layerCount references the entire bound image view

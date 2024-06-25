@@ -822,7 +822,7 @@ branchstack_header: T_A_BRANCHSTACK const_val { variant->branchstack = $2; }
 
 pvtmem_header: T_A_PVTMEM const_val { variant->pvtmem_size = $2; }
 
-earlypreamble_header: T_A_EARLYPREAMBLE { info->early_preamble = 1; }
+earlypreamble_header: T_A_EARLYPREAMBLE { variant->early_preamble = 1; }
 
 /* Stubs for now */
 in_header:         T_A_IN '(' T_REGISTER ')' T_IDENTIFIER '(' T_IDENTIFIER '=' integer ')' { }

@@ -293,6 +293,8 @@ ir3_collect_info(struct ir3_shader_variant *v)
    info->size = MAX2(v->instrlen * compiler->instr_align, instr_count + 4) * 8;
    info->sizedwords = info->size / 4;
 
+   info->early_preamble = v->early_preamble;
+
    bool in_preamble = false;
    bool has_eq = false;
 

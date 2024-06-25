@@ -1656,7 +1656,7 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
       }
    }
 
-   so->info.early_preamble = has_preamble && !gpr_in_preamble &&
+   so->early_preamble = has_preamble && !gpr_in_preamble &&
       !pred_in_preamble && !relative_in_preamble &&
       ir->compiler->has_early_preamble &&
       !(ir3_shader_debug & IR3_DBG_NOEARLYPREAMBLE);
@@ -1665,7 +1665,7 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
     * dependencies must be synchronized with (ss) there must be an extra
     * (r) on the source of the mova1 instruction.
     */
-   if (so->info.early_preamble && ir->compiler->gen >= 7) {
+   if (so->early_preamble && ir->compiler->gen >= 7) {
       foreach_block (block, &ir->block_list) {
          if (block == start_block)
             break;

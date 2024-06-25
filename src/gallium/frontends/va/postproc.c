@@ -560,7 +560,17 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
    src_region = vlVaRegionDefault(param->surface_region, src_surface, &def_src_region);
    dst_region = vlVaRegionDefault(param->output_region, dst_surface, &def_dst_region);
 
-   if (!param->num_filters &&
+   /* EFC can only do one conversion, and it must be the last postproc
+    * operation immediately before encoding.
+    * Disable EFC completely if this is not the case. */
+   if (drv->last_efc_surface) {
+      vlVaSurface *surf = drv->last_efc_surface;
+      surf->efc_surface = NULL;
+      drv->last_efc_surface = NULL;
+      drv->efc_count = -1;
+   }
+
+   if (drv->efc_count >= 0 && !param->num_filters &&
        src_region->width == dst_region->width &&
        src_region->height == dst_region->height &&
        src_region->x == dst_region->x &&
@@ -572,24 +582,16 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
                                                  PIPE_VIDEO_PROFILE_UNKNOWN,
                                                  PIPE_VIDEO_ENTRYPOINT_ENCODE)) {
 
-      vlVaSurface *surf = dst_surface;
+      dst_surface->efc_surface = src_surface;
+      drv->last_efc_surface = dst_surface;
 
-      // EFC will convert the buffer to a format the encoder accepts
-      if (src_surface->buffer->buffer_format != surf->buffer->buffer_format) {
-         surf->encoder_format = surf->buffer->buffer_format;
-
-         surf->templat.interlaced = src_surface->templat.interlaced;
-         surf->templat.buffer_format = src_surface->templat.buffer_format;
-         surf->buffer->destroy(surf->buffer);
-
-         if (vlVaHandleSurfaceAllocate(drv, surf, &surf->templat, NULL, 0) != VA_STATUS_SUCCESS)
-            return VA_STATUS_ERROR_ALLOCATION_FAILED;
-      }
-
-      pipe_resource_reference(&(((struct vl_video_buffer *)(surf->buffer))->resources[0]), ((struct vl_video_buffer *)(src_surface->buffer))->resources[0]);
-      context->target = surf->buffer;
-
-      return VA_STATUS_SUCCESS;
+      /* Do the blit for first few conversions as a fallback in case EFC
+       * could not be used (see above), after that assume EFC can always
+       * be used and skip the blit. */
+      if (drv->efc_count < 16)
+         drv->efc_count++;
+      else
+         return VA_STATUS_SUCCESS;
    }
 
    src = src_surface->buffer;

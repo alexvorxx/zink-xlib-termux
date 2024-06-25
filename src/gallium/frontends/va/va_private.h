@@ -303,6 +303,9 @@ typedef struct {
    char vendor_string[256];
 
    bool has_external_handles;
+
+   int efc_count;
+   void *last_efc_surface;
 } vlVaDriver;
 
 typedef struct {
@@ -399,7 +402,7 @@ typedef struct {
    unsigned int rt_format;
 } vlVaConfig;
 
-typedef struct {
+typedef struct vlVaSurface {
    struct pipe_video_buffer templat, *buffer;
    struct util_dynarray subpics; /* vlVaSubpicture */
    vlVaContext *ctx;
@@ -408,9 +411,9 @@ typedef struct {
    unsigned int frame_num_cnt;
    bool force_flushed;
    struct pipe_video_buffer *obsolete_buf;
-   enum pipe_format encoder_format;
    bool full_range;
    struct pipe_fence_handle *fence;
+   struct vlVaSurface *efc_surface; /* input surface for EFC */
 } vlVaSurface;
 
 typedef struct {

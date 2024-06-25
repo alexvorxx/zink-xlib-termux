@@ -1291,9 +1291,18 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
             getEncParamPresetH265(context);
       }
 
-      context->desc.base.input_format = surf->buffer->buffer_format;
+      if (surf->efc_surface) {
+         assert(surf == drv->last_efc_surface);
+         context->target = surf->efc_surface->buffer;
+         context->desc.base.input_format = surf->efc_surface->buffer->buffer_format;
+         context->desc.base.output_format = surf->buffer->buffer_format;
+         surf->efc_surface = NULL;
+         drv->last_efc_surface = NULL;
+      } else {
+         context->desc.base.input_format = surf->buffer->buffer_format;
+         context->desc.base.output_format = surf->buffer->buffer_format;
+      }
       context->desc.base.input_full_range = surf->full_range;
-      context->desc.base.output_format = surf->encoder_format;
 
       int driver_metadata_support = drv->pipe->screen->get_video_param(drv->pipe->screen,
                                                                        context->decoder->profile,

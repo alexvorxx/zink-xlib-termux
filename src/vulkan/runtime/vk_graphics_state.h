@@ -981,7 +981,7 @@ struct vk_graphics_pipeline_state {
    /** Fragment shading rate state */
    const struct vk_fragment_shading_rate_state *fsr;
 
-   /** Multiesample state */
+   /** Multisample state */
    const struct vk_multisample_state *ms;
 
    /** Depth stencil state */

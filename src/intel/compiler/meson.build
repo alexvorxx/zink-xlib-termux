@@ -213,6 +213,7 @@ if with_tests
         'test_fs_cmod_propagation.cpp',
         'test_fs_combine_constants.cpp',
         'test_fs_copy_propagation.cpp',
+        'test_fs_cse.cpp',
         'test_fs_saturate_propagation.cpp',
         'test_fs_scoreboard.cpp',
         'test_simd_selection.cpp',

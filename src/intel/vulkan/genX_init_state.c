@@ -1449,16 +1449,23 @@ genX(init_trtt_context_state)(struct anv_device *device,
    struct anv_trtt *trtt = &device->trtt;
    struct anv_batch *batch = &submit->batch;
 
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_INVAL), trtt_inval) {
+   assert((trtt->l3_addr & 0xFFF) == 0);
+   uint32_t l3_addr_low = (trtt->l3_addr & 0xFFFFF000) >> 12;
+   uint32_t l3_addr_high = (trtt->l3_addr >> 32) & 0xFFFF;
+
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_INVAL), trtt_inval)
       trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
-   }
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_NULL), trtt_null) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_NULL), trtt_null)
       trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
-   }
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_LOW), trtt_base_low)
+      trtt_base_low.TRVAL3PointerLowerAddress = l3_addr_low;
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_HIGH), trtt_base_high)
+      trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
+
 #if GFX_VER >= 20
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
-      trtt_va_range.TRVABase = device->physical->va.trtt.addr >> 44;
-   }
+   uint32_t trva_base = device->physical->va.trtt.addr >> 44;
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range)
+      trtt_va_range.TRVABase = trva_base;
 #else
    anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
       trtt_va_range.TRVAMaskValue = 0xF;
@@ -1466,22 +1473,10 @@ genX(init_trtt_context_state)(struct anv_device *device,
    }
 #endif
 
-   uint64_t l3_addr = trtt->l3_addr;
-   assert((l3_addr & 0xFFF) == 0);
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_LOW), trtt_base_low) {
-      trtt_base_low.TRVAL3PointerLowerAddress =
-         (l3_addr & 0xFFFFF000) >> 12;
-   }
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_HIGH),
-         trtt_base_high) {
-      trtt_base_high.TRVAL3PointerUpperAddress =
-         (l3_addr >> 32) & 0xFFFF;
-   }
    /* Enabling TR-TT needs to be done after setting up the other registers.
-   */
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_CR), trtt_cr) {
+    */
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_CR), trtt_cr)
       trtt_cr.TRTTEnable = true;
-   }
 
    genx_batch_emit_pipe_control(batch, device->info, _3D,
                                 ANV_PIPE_CS_STALL_BIT |

@@ -1117,6 +1117,47 @@ static bool si_vid_is_format_supported(struct pipe_screen *screen, enum pipe_for
    return vl_video_buffer_is_format_supported(screen, format, profile, entrypoint);
 }
 
+static bool si_vid_is_target_buffer_supported(struct pipe_screen *screen,
+                                              enum pipe_format format,
+                                              struct pipe_video_buffer *target,
+                                              enum pipe_video_profile profile,
+                                              enum pipe_video_entrypoint entrypoint)
+{
+   struct si_screen *sscreen = (struct si_screen *)screen;
+   struct si_texture *tex = (struct si_texture *)((struct vl_video_buffer *)target)->resources[0];
+   const bool is_dcc = tex->surface.meta_offset;
+   const bool is_format_conversion = format != target->buffer_format;
+
+   switch (entrypoint) {
+   case PIPE_VIDEO_ENTRYPOINT_BITSTREAM:
+      return !is_dcc && !is_format_conversion;
+
+   case PIPE_VIDEO_ENTRYPOINT_ENCODE:
+      /* EFC */
+      if (is_format_conversion) {
+         if (sscreen->info.family <= CHIP_RENOIR ||
+             sscreen->debug_flags & DBG(NO_EFC))
+            return false;
+
+         /* Input formats */
+         if (target->buffer_format != PIPE_FORMAT_B8G8R8A8_UNORM &&
+             target->buffer_format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+             target->buffer_format != PIPE_FORMAT_B8G8R8X8_UNORM &&
+             target->buffer_format != PIPE_FORMAT_R8G8B8X8_UNORM)
+            return false;
+
+         /* Output formats */
+         if (format != PIPE_FORMAT_NV12)
+            return false;
+      }
+
+      return !is_dcc;
+
+   default:
+      return !is_format_conversion;
+   }
+}
+
 static unsigned get_max_threads_per_block(struct si_screen *screen, enum pipe_shader_ir ir_type)
 {
    if (ir_type == PIPE_SHADER_IR_NATIVE)
@@ -1549,6 +1590,7 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
        sscreen->info.ip[AMD_IP_VPE].num_queues) {
       sscreen->b.get_video_param = si_get_video_param;
       sscreen->b.is_video_format_supported = si_vid_is_format_supported;
+      sscreen->b.is_video_target_buffer_supported = si_vid_is_target_buffer_supported;
    } else {
       sscreen->b.get_video_param = si_get_video_param_no_video_hw;
       sscreen->b.is_video_format_supported = vl_video_buffer_is_format_supported;

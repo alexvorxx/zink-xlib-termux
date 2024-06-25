@@ -115,7 +115,7 @@ driver_swrast = declare_dependency(
 
 if with_tests and with_gallium_softpipe and draw_with_llvm
   foreach t : ['lp_test_format', 'lp_test_arit', 'lp_test_blend',
-               'lp_test_conv', 'lp_test_printf']
+               'lp_test_conv', 'lp_test_printf', 'lp_test_lookup_multiple']
     test(
       t,
       executable(

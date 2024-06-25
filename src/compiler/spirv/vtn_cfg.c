@@ -88,6 +88,51 @@ vtn_ssa_value_add_to_call_params(struct vtn_builder *b,
    }
 }
 
+struct vtn_func_arg_info {
+   bool by_value;
+};
+
+static void
+function_parameter_decoration_cb(struct vtn_builder *b, struct vtn_value *val,
+                                 int member, const struct vtn_decoration *dec,
+                                 void *arg_info)
+{
+   struct vtn_func_arg_info *info = arg_info;
+
+   switch (dec->decoration) {
+   case SpvDecorationFuncParamAttr:
+      for (uint32_t i = 0; i < dec->num_operands; i++) {
+         uint32_t attr = dec->operands[i];
+         switch (attr) {
+         /* ignore for now */
+         case SpvFunctionParameterAttributeNoAlias:
+         case SpvFunctionParameterAttributeSext:
+         case SpvFunctionParameterAttributeZext:
+            break;
+
+         case SpvFunctionParameterAttributeByVal:
+            info->by_value = true;
+            break;
+
+         default:
+            vtn_warn("Function parameter Decoration not handled: %s",
+                     spirv_functionparameterattribute_to_string(attr));
+            break;
+         }
+      }
+      break;
+
+   /* ignore for now */
+   case SpvDecorationAlignment:
+      break;
+
+   default:
+      vtn_warn("Function parameter Decoration not handled: %s",
+               spirv_decoration_to_string(dec->decoration));
+      break;
+   }
+}
+
 static void
 vtn_ssa_value_load_function_param(struct vtn_builder *b,
                                   struct vtn_ssa_value *value,
@@ -262,10 +307,15 @@ vtn_cfg_handle_prepass_instruction(struct vtn_builder *b, SpvOp opcode,
 
    case SpvOpFunctionParameter: {
       vtn_assert(b->func_param_idx < b->func->nir_func->num_params);
+
+      struct vtn_func_arg_info arg_info = {0};
       struct vtn_type *type = vtn_get_type(b, w[1]);
-      struct vtn_ssa_value *value = vtn_create_ssa_value(b, type->type);
-      vtn_ssa_value_load_function_param(b, value, &b->func_param_idx);
-      vtn_push_ssa_value(b, w[2], value);
+      struct vtn_ssa_value *ssa = vtn_create_ssa_value(b, type->type);
+      struct vtn_value *val = vtn_untyped_value(b, w[2]);
+
+      vtn_foreach_decoration(b, val, function_parameter_decoration_cb, &arg_info);
+      vtn_ssa_value_load_function_param(b, ssa, &b->func_param_idx);
+      vtn_push_ssa_value(b, w[2], ssa);
       break;
    }
 

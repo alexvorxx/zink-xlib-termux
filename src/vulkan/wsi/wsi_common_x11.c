@@ -76,6 +76,8 @@
 #define XCB_PRESENT_CAPABILITY_ASYNC_MAY_TEAR 8
 #endif
 
+#define MAX_DAMAGE_RECTS 64
+
 struct wsi_x11_connection {
    bool has_dri3;
    bool has_dri3_modifiers;
@@ -1062,6 +1064,8 @@ struct x11_image {
    uint8_t *                                 shmaddr;
    uint64_t                                  present_id;
    VkPresentModeKHR                          present_mode;
+   xcb_rectangle_t                           rects[MAX_DAMAGE_RECTS];
+   int                                       rectangle_count;
 
    /* In IMMEDIATE and MAILBOX modes, we can have multiple pending presentations per image.
     * We need to keep track of them when considering present ID. */
@@ -1480,7 +1484,24 @@ x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index)
    size_t size = (hdr_len + stride_b * chain->extent.height) >> 2;
    uint64_t max_req_len = xcb_get_maximum_request_length(chain->conn);
 
-   if (size < max_req_len) {
+   if (image->rectangle_count > 0) {
+      for (int i = 0; i < image->rectangle_count; i++) {
+         xcb_rectangle_t rect = chain->images[image_index].rects[i];
+         const uint8_t *data = (const uint8_t*)myptr + (rect.y * stride_b) + (rect.x * 4);
+         for (int j = 0; j < rect.height; j++) {
+            cookie = xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP,
+                                   chain->window, chain->gc,
+                                   rect.width,
+                                   1,
+                                   rect.x, rect.y + j,
+                                   0, chain->depth,
+                                   rect.width * 4,
+                                   data);
+            xcb_discard_reply(chain->conn, cookie.sequence);
+            data += stride_b;
+         }
+      }
+   } else if (size < max_req_len) {
       cookie = xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP,
                              chain->window,
                              chain->gc,
@@ -1755,8 +1776,6 @@ x11_acquire_next_image(struct wsi_swapchain *anv_chain,
    return result;
 }
 
-#define MAX_DAMAGE_RECTS 64
-
 /**
  * Queue a new presentation of an image that was previously acquired by the
  * consumer.
@@ -1780,7 +1799,7 @@ x11_queue_present(struct wsi_swapchain *anv_chain,
 
    if (damage && damage->pRectangles && damage->rectangleCount > 0 &&
       damage->rectangleCount <= MAX_DAMAGE_RECTS) {
-      xcb_rectangle_t rects[MAX_DAMAGE_RECTS];
+      xcb_rectangle_t *rects = chain->images[image_index].rects;
 
       update_area = chain->images[image_index].update_region;
       for (unsigned i = 0; i < damage->rectangleCount; i++) {
@@ -1792,6 +1811,9 @@ x11_queue_present(struct wsi_swapchain *anv_chain,
          rects[i].height = rect->extent.height;
       }
       xcb_xfixes_set_region(chain->conn, update_area, damage->rectangleCount, rects);
+      chain->images[image_index].rectangle_count = damage->rectangleCount;
+   } else {
+      chain->images[image_index].rectangle_count = 0;
    }
    chain->images[image_index].update_area = update_area;
    chain->images[image_index].present_id = present_id;

@@ -229,7 +229,7 @@ test_one(unsigned verbose,
 
    gallivm_compile_module(gallivm);
 
-   conv_test_ptr = (conv_test_ptr_t)gallivm_jit_function(gallivm, func);
+   conv_test_ptr = (conv_test_ptr_t)gallivm_jit_function(gallivm, func, "test");
 
    gallivm_free_ir(gallivm);
 

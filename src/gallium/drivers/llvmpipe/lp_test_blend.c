@@ -458,7 +458,7 @@ test_one(unsigned verbose,
 
    gallivm_compile_module(gallivm);
 
-   blend_test_ptr = (blend_test_ptr_t)gallivm_jit_function(gallivm, func);
+   blend_test_ptr = (blend_test_ptr_t)gallivm_jit_function(gallivm, func, "test");
 
    gallivm_free_ir(gallivm);
 

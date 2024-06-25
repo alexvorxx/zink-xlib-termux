@@ -102,7 +102,7 @@ gallivm_compile_module(struct gallivm_state *gallivm);
 
 func_pointer
 gallivm_jit_function(struct gallivm_state *gallivm,
-                     LLVMValueRef func);
+                     LLVMValueRef func, const char *func_name);
 
 unsigned gallivm_get_perf_flags(void);
 

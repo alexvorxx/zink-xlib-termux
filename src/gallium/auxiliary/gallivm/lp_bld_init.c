@@ -470,7 +470,7 @@ gallivm_compile_module(struct gallivm_state *gallivm)
 
 func_pointer
 gallivm_jit_function(struct gallivm_state *gallivm,
-                     LLVMValueRef func)
+                     LLVMValueRef func, const char *func_name)
 {
    void *code;
    func_pointer jit_func;

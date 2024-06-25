@@ -226,13 +226,14 @@ get_llvm_context(struct llvmpipe_context *ctx)
 
 static void *
 compile_function(struct llvmpipe_context *ctx, struct gallivm_state *gallivm, LLVMValueRef function,
+                 const char *func_name,
                  bool needs_caching,
                  uint8_t cache_key[SHA1_DIGEST_LENGTH])
 {
    gallivm_verify_function(gallivm, function);
    gallivm_compile_module(gallivm);
 
-   void *function_ptr = func_to_pointer(gallivm_jit_function(gallivm, function));
+   void *function_ptr = func_to_pointer(gallivm_jit_function(gallivm, function, func_name));
 
    if (needs_caching)
       lp_disk_cache_insert_shader(llvmpipe_screen(ctx->pipe.screen), gallivm->cache, cache_key);
@@ -365,7 +366,7 @@ compile_image_function(struct llvmpipe_context *ctx, struct lp_static_texture_st
 
    free(image_soa);
 
-   return compile_function(ctx, gallivm, function, needs_caching, cache_key);
+   return compile_function(ctx, gallivm, function, "image", needs_caching, cache_key);
 }
 
 static void *
@@ -518,7 +519,7 @@ compile_sample_function(struct llvmpipe_context *ctx, struct lp_static_texture_s
 
    free(sampler_soa);
 
-   return compile_function(ctx, gallivm, function, needs_caching, cache_key);
+   return compile_function(ctx, gallivm, function, "sample", needs_caching, cache_key);
 }
 
 static uint64_t
@@ -670,7 +671,7 @@ compile_jit_sample_function(struct llvmpipe_context *ctx, uint32_t sample_key)
    LLVMDisposeBuilder(gallivm->builder);
    gallivm->builder = old_builder;
 
-   return compile_function(ctx, gallivm, function, needs_caching, cache_key);
+   return compile_function(ctx, gallivm, function, "sample", needs_caching, cache_key);
 }
 
 static void *
@@ -752,7 +753,7 @@ compile_size_function(struct llvmpipe_context *ctx, struct lp_static_texture_sta
 
    free(sampler_soa);
 
-   return compile_function(ctx, gallivm, function, needs_caching, cache_key);
+   return compile_function(ctx, gallivm, function, "size", needs_caching, cache_key);
 }
 
 static void

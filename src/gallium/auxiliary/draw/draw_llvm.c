@@ -525,7 +525,7 @@ draw_llvm_create_variant(struct draw_llvm *llvm,
    gallivm_compile_module(variant->gallivm);
 
    variant->jit_func = (draw_jit_vert_func)
-         gallivm_jit_function(variant->gallivm, variant->function);
+         gallivm_jit_function(variant->gallivm, variant->function, variant->function_name);
 
    if (needs_caching)
       llvm->draw->disk_cache_insert_shader(llvm->draw->disk_cache_cookie,
@@ -1628,6 +1628,8 @@ draw_llvm_generate(struct draw_llvm *llvm, struct draw_llvm_variant *variant)
 
    variant_func = LLVMAddFunction(gallivm->module, func_name, func_type);
    variant->function = variant_func;
+   variant->function_name = MALLOC(strlen(func_name)+1);
+   strcpy(variant->function_name, func_name);
 
    LLVMSetFunctionCallConv(variant_func, LLVMCCallConv);
    for (i = 0; i < num_arg_types; ++i)
@@ -2245,6 +2247,8 @@ draw_llvm_destroy_variant(struct draw_llvm_variant *variant)
    variant->shader->variants_cached--;
    list_del(&variant->list_item_global.list);
    llvm->nr_variants--;
+   if(variant->function_name)
+      FREE(variant->function_name);
    FREE(variant);
 }
 
@@ -2354,6 +2358,8 @@ draw_gs_llvm_generate(struct draw_llvm *llvm,
    variant_func = LLVMAddFunction(gallivm->module, func_name, func_type);
 
    variant->function = variant_func;
+   variant->function_name = MALLOC(strlen(func_name)+1);
+   strcpy(variant->function_name, func_name);
 
    LLVMSetFunctionCallConv(variant_func, LLVMCCallConv);
 
@@ -2532,7 +2538,7 @@ draw_gs_llvm_create_variant(struct draw_llvm *llvm,
    gallivm_compile_module(variant->gallivm);
 
    variant->jit_func = (draw_gs_jit_func)
-         gallivm_jit_function(variant->gallivm, variant->function);
+         gallivm_jit_function(variant->gallivm, variant->function, variant->function_name);
 
    if (needs_caching)
       llvm->draw->disk_cache_insert_shader(llvm->draw->disk_cache_cookie,
@@ -2565,6 +2571,8 @@ draw_gs_llvm_destroy_variant(struct draw_gs_llvm_variant *variant)
    variant->shader->variants_cached--;
    list_del(&variant->list_item_global.list);
    llvm->nr_gs_variants--;
+   if(variant->function_name)
+      FREE(variant->function_name);
    FREE(variant);
 }
 
@@ -2938,6 +2946,8 @@ draw_tcs_llvm_generate(struct draw_llvm *llvm,
    variant_coro = LLVMAddFunction(gallivm->module, func_name_coro, coro_func_type);
 
    variant->function = variant_func;
+   variant->function_name = MALLOC(strlen(func_name)+1);
+   strcpy(variant->function_name, func_name);
    LLVMSetFunctionCallConv(variant_func, LLVMCCallConv);
 
    LLVMSetFunctionCallConv(variant_coro, LLVMCCallConv);
@@ -3188,7 +3198,7 @@ draw_tcs_llvm_create_variant(struct draw_llvm *llvm,
    gallivm_compile_module(variant->gallivm);
 
    variant->jit_func = (draw_tcs_jit_func)
-      gallivm_jit_function(variant->gallivm, variant->function);
+      gallivm_jit_function(variant->gallivm, variant->function, variant->function_name);
 
    if (needs_caching)
       llvm->draw->disk_cache_insert_shader(llvm->draw->disk_cache_cookie,
@@ -3221,6 +3231,8 @@ draw_tcs_llvm_destroy_variant(struct draw_tcs_llvm_variant *variant)
    variant->shader->variants_cached--;
    list_del(&variant->list_item_global.list);
    llvm->nr_tcs_variants--;
+   if(variant->function_name)
+      FREE(variant->function_name);
    FREE(variant);
 }
 
@@ -3503,6 +3515,8 @@ draw_tes_llvm_generate(struct draw_llvm *llvm,
    variant_func = LLVMAddFunction(gallivm->module, func_name, func_type);
 
    variant->function = variant_func;
+   variant->function_name = MALLOC(strlen(func_name)+1);
+   strcpy(variant->function_name, func_name);
    LLVMSetFunctionCallConv(variant_func, LLVMCCallConv);
 
    for (i = 0; i < ARRAY_SIZE(arg_types); ++i)
@@ -3710,7 +3724,7 @@ draw_tes_llvm_create_variant(struct draw_llvm *llvm,
    gallivm_compile_module(variant->gallivm);
 
    variant->jit_func = (draw_tes_jit_func)
-      gallivm_jit_function(variant->gallivm, variant->function);
+      gallivm_jit_function(variant->gallivm, variant->function, variant->function_name);
 
    if (needs_caching)
       llvm->draw->disk_cache_insert_shader(llvm->draw->disk_cache_cookie,
@@ -3743,6 +3757,8 @@ draw_tes_llvm_destroy_variant(struct draw_tes_llvm_variant *variant)
    variant->shader->variants_cached--;
    list_del(&variant->list_item_global.list);
    llvm->nr_tes_variants--;
+   if(variant->function_name)
+      FREE(variant->function_name);
    FREE(variant);
 }
 

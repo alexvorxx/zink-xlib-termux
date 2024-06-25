@@ -102,7 +102,7 @@ test_printf(unsigned verbose, FILE *fp,
 
    gallivm_compile_module(gallivm);
 
-   test_printf_func = (test_printf_t) gallivm_jit_function(gallivm, test);
+   test_printf_func = (test_printf_t) gallivm_jit_function(gallivm, test, "test_printf");
 
    gallivm_free_ir(gallivm);
 

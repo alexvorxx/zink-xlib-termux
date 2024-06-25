@@ -107,6 +107,6 @@ Altogether, given the divisor d, the algorithm the driver must follow is:
 
 1. Set shift = :math:`\lfloor \log_2(d) \rfloor`.
 2. Compute :math:`m = \lceil 2^{shift + 32} / d \rceil` and :math:`e = 2^{shift + 32} % d`.
-3. If :math:`e <= 2^{shift}`, then we need to use the round-down algorithm. Set
+3. If :math:`e \leq 2^{shift}`, then we need to use the round-down algorithm. Set
    magic_divisor = m - 1 and extra_flags = 1.
 4. Otherwise, set magic_divisor = m and extra_flags = 0.

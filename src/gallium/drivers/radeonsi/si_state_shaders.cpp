@@ -4613,6 +4613,11 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    } else {
       ls_current = sctx->shader.vs.current;
       ls = sctx->shader.vs.cso;
+
+      if (!ls_current) {
+         sctx->do_update_shaders = true;
+         return;
+      }
    }
 
    if (sctx->last_ls == ls_current && sctx->last_tcs == tcs &&

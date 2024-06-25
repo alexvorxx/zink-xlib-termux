@@ -136,14 +136,37 @@ function_parameter_decoration_cb(struct vtn_builder *b, struct vtn_value *val,
 static void
 vtn_ssa_value_load_function_param(struct vtn_builder *b,
                                   struct vtn_ssa_value *value,
+                                  struct vtn_type *type,
+                                  struct vtn_func_arg_info *info,
                                   unsigned *param_idx)
 {
    if (glsl_type_is_vector_or_scalar(value->type)) {
-      value->def = nir_load_param(&b->nb, (*param_idx)++);
+      /* if the parameter is passed by value, we need to create a local copy if it's a pointer */
+      if (info->by_value && type && type->base_type == vtn_base_type_pointer) {
+         struct vtn_type *pointee_type = type->deref;
+
+         nir_variable *copy =
+            nir_local_variable_create(b->nb.impl, pointee_type->type, NULL);
+
+         nir_variable_mode mode;
+         vtn_storage_class_to_mode(b, type->storage_class, NULL, &mode);
+
+         nir_def *param = nir_load_param(&b->nb, (*param_idx)++);
+         nir_deref_instr *src = nir_build_deref_cast(&b->nb, param, mode, copy->type, 0);
+         nir_deref_instr *dst = nir_build_deref_var(&b->nb, copy);
+
+         nir_copy_deref(&b->nb, dst, src);
+
+         nir_deref_instr *load =
+            nir_build_deref_cast(&b->nb, &dst->def, nir_var_function_temp, type->type, 0);
+         value->def = &load->def;
+      } else {
+         value->def = nir_load_param(&b->nb, (*param_idx)++);
+      }
    } else {
       unsigned elems = glsl_get_length(value->type);
       for (unsigned i = 0; i < elems; i++)
-         vtn_ssa_value_load_function_param(b, value->elems[i], param_idx);
+         vtn_ssa_value_load_function_param(b, value->elems[i], NULL, info, param_idx);
    }
 }
 
@@ -314,7 +337,7 @@ vtn_cfg_handle_prepass_instruction(struct vtn_builder *b, SpvOp opcode,
       struct vtn_value *val = vtn_untyped_value(b, w[2]);
 
       vtn_foreach_decoration(b, val, function_parameter_decoration_cb, &arg_info);
-      vtn_ssa_value_load_function_param(b, ssa, &b->func_param_idx);
+      vtn_ssa_value_load_function_param(b, ssa, type, &arg_info, &b->func_param_idx);
       vtn_push_ssa_value(b, w[2], ssa);
       break;
    }

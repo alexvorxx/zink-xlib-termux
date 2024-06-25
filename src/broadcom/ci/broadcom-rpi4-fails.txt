@@ -607,11 +607,6 @@ program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong16,Fa
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong2,Fail
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong4,Fail
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong8,Fail
-program@execute@calls-large-struct,Fail
-program@execute@calls-large-struct@byval struct,Fail
-program@execute@calls-struct,Fail
-program@execute@calls-struct@regs struct,Fail
-program@execute@calls-struct@small struct in regs,Fail
 program@execute@global-offset,Fail
 program@execute@global-offset@3d- input dependent,Fail
 program@execute@scalar-arithmetic-long,Crash

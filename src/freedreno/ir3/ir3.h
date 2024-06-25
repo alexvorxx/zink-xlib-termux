@@ -1369,6 +1369,9 @@ is_reg_gpr(const struct ir3_register *reg)
 {
    if ((reg_num(reg) == REG_A0) || (reg->flags & IR3_REG_PREDICATE))
       return false;
+   if (!(reg->flags & (IR3_REG_SSA | IR3_REG_RELATIV)) &&
+       reg->num == INVALID_REG)
+      return false;
    return true;
 }
 

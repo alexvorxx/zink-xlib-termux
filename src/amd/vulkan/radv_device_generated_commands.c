@@ -1169,13 +1169,37 @@ dgc_push_constant_needs_copy(nir_builder *b, nir_def *stream_addr)
    return nir_if_phi(b, res1, res2);
 }
 
+struct dgc_pc_params {
+   nir_def *buf;
+   nir_def *offset;
+   nir_def *offset_offset;
+   nir_def *const_offset;
+};
+
+static struct dgc_pc_params
+dgc_get_pc_params(nir_builder *b)
+{
+   struct dgc_pc_params params = {0};
+
+   nir_def *vbo_cnt = load_param8(b, vbo_cnt);
+   nir_def *param_offset = nir_imul_imm(b, vbo_cnt, 24);
+
+   params.buf = radv_meta_load_descriptor(b, 0, 0);
+   params.offset = nir_iadd(
+      b, param_offset,
+      nir_bcsel(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1), nir_imm_int(b, MAX_SETS * 4), nir_imm_int(b, 0)));
+   params.offset_offset = nir_iadd_imm(b, params.offset, MESA_VULKAN_SHADER_STAGES * 12);
+   params.const_offset = nir_iadd_imm(b, params.offset, MAX_PUSH_CONSTANTS_SIZE + MESA_VULKAN_SHADER_STAGES * 12);
+
+   return params;
+}
+
 static void
-dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
-                       nir_variable *upload_offset)
+dgc_alloc_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
+                        const struct dgc_pc_params *params, nir_variable *upload_offset)
 {
    nir_builder *b = cs->b;
 
-   nir_def *vbo_cnt = load_param8(b, vbo_cnt);
    nir_def *const_copy = dgc_push_constant_needs_copy(b, stream_addr);
    nir_def *const_copy_size = load_param16(b, const_copy_size);
    nir_def *const_copy_words = nir_ushr_imm(b, const_copy_size, 2);
@@ -1184,14 +1208,6 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
    nir_variable *idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "const_copy_idx");
    nir_store_var(b, idx, nir_imm_int(b, 0), 0x1);
 
-   nir_def *param_buf = radv_meta_load_descriptor(b, 0, 0);
-   nir_def *param_offset = nir_imul_imm(b, vbo_cnt, 24);
-   param_offset = nir_iadd(
-      b, param_offset,
-      nir_bcsel(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1), nir_imm_int(b, MAX_SETS * 4), nir_imm_int(b, 0)));
-   nir_def *param_offset_offset = nir_iadd_imm(b, param_offset, MESA_VULKAN_SHADER_STAGES * 12);
-   nir_def *param_const_offset =
-      nir_iadd_imm(b, param_offset, MAX_PUSH_CONSTANTS_SIZE + MESA_VULKAN_SHADER_STAGES * 12);
    nir_push_loop(b);
    {
       nir_def *cur_idx = nir_load_var(b, idx);
@@ -1205,16 +1221,16 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
       nir_push_if(b, nir_ine_imm(b, update, 0));
       {
          nir_def *stream_offset =
-            nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_offset_offset, nir_ishl_imm(b, cur_idx, 2)));
+            nir_load_ssbo(b, 1, 32, params->buf, nir_iadd(b, params->offset_offset, nir_ishl_imm(b, cur_idx, 2)));
          nir_def *new_data = nir_build_load_global(b, 1, 32, nir_iadd(b, stream_addr, nir_u2u64(b, stream_offset)),
                                                    .access = ACCESS_NON_WRITEABLE);
          nir_store_var(b, data, new_data, 0x1);
       }
       nir_push_else(b, NULL);
       {
-         nir_store_var(b, data,
-                       nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_const_offset, nir_ishl_imm(b, cur_idx, 2))),
-                       0x1);
+         nir_store_var(
+            b, data,
+            nir_load_ssbo(b, 1, 32, params->buf, nir_iadd(b, params->const_offset, nir_ishl_imm(b, cur_idx, 2))), 0x1);
       }
       nir_pop_if(b, NULL);
 
@@ -1226,6 +1242,115 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
       nir_store_var(b, idx, nir_iadd_imm(b, cur_idx, 1), 0x1);
    }
    nir_pop_loop(b, NULL);
+}
+
+static void
+dgc_emit_push_constant_for_stage(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
+                                 const struct dgc_pc_params *params, nir_def *cur_shader_idx,
+                                 nir_variable *upload_offset)
+{
+   nir_builder *b = cs->b;
+
+   nir_def *upload_sgpr = dgc_get_upload_sgpr(b, stream_addr, params->buf, params->offset, cur_shader_idx);
+   nir_def *inline_sgpr = dgc_get_inline_sgpr(b, stream_addr, params->buf, params->offset, cur_shader_idx);
+   nir_def *inline_mask = dgc_get_inline_mask(b, stream_addr, params->buf, params->offset, cur_shader_idx);
+
+   nir_push_if(b, nir_ine_imm(b, upload_sgpr, 0));
+   {
+      dgc_cs_begin(cs);
+      dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
+      dgc_cs_emit(upload_sgpr);
+      dgc_cs_emit(nir_iadd(b, load_param32(b, upload_addr), nir_load_var(b, upload_offset)));
+      dgc_cs_end();
+   }
+   nir_pop_if(b, NULL);
+
+   nir_variable *idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "const_copy_idx");
+   nir_store_var(b, idx, nir_imm_int(b, 0), 0x1);
+
+   nir_push_if(b, nir_ine_imm(b, inline_sgpr, 0));
+   {
+      nir_store_var(b, idx, nir_imm_int(b, 0), 0x1);
+
+      nir_variable *pc_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "pc_idx");
+      nir_store_var(b, pc_idx, nir_imm_int(b, 0), 0x1);
+
+      nir_push_loop(b);
+      {
+         nir_def *cur_idx = nir_load_var(b, idx);
+         nir_push_if(b, nir_uge_imm(b, cur_idx, 64 /* bits in inline_mask */));
+         {
+            nir_jump(b, nir_jump_break);
+         }
+         nir_pop_if(b, NULL);
+
+         nir_def *l = nir_ishl(b, nir_imm_int64(b, 1), cur_idx);
+         nir_push_if(b, nir_ieq_imm(b, nir_iand(b, l, inline_mask), 0));
+         {
+            nir_store_var(b, idx, nir_iadd_imm(b, cur_idx, 1), 0x1);
+            nir_jump(b, nir_jump_continue);
+         }
+         nir_pop_if(b, NULL);
+
+         nir_variable *data = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "copy_data");
+
+         nir_def *update = nir_iand(b, push_const_mask, nir_ishl(b, nir_imm_int64(b, 1), cur_idx));
+         update = nir_bcsel(b, nir_ult_imm(b, cur_idx, 64 /* bits in push_const_mask */), update, nir_imm_int64(b, 0));
+
+         nir_push_if(b, nir_ine_imm(b, update, 0));
+         {
+            nir_def *stream_offset =
+               nir_load_ssbo(b, 1, 32, params->buf, nir_iadd(b, params->offset_offset, nir_ishl_imm(b, cur_idx, 2)));
+            nir_def *new_data = nir_build_load_global(b, 1, 32, nir_iadd(b, stream_addr, nir_u2u64(b, stream_offset)),
+                                                      .access = ACCESS_NON_WRITEABLE);
+
+            nir_store_var(b, data, new_data, 0x1);
+
+            dgc_cs_begin(cs);
+            dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
+            dgc_cs_emit(nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)));
+            dgc_cs_emit(nir_load_var(b, data));
+            dgc_cs_end();
+         }
+         nir_push_else(b, NULL);
+         {
+            nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
+            {
+               /* For indirect pipeline binds, partial push constant updates can't be emitted
+                * when the DGC execute is called because there is no bound pipeline and they have
+                * to be emitted from the DGC prepare shader.
+                */
+               nir_def *new_data =
+                  nir_load_ssbo(b, 1, 32, params->buf, nir_iadd(b, params->const_offset, nir_ishl_imm(b, cur_idx, 2)));
+               nir_store_var(b, data, new_data, 0x1);
+
+               dgc_cs_begin(cs);
+               dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
+               dgc_cs_emit(nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)));
+               dgc_cs_emit(nir_load_var(b, data));
+               dgc_cs_end();
+            }
+            nir_pop_if(b, NULL);
+         }
+
+         nir_pop_if(b, NULL);
+
+         nir_store_var(b, idx, nir_iadd_imm(b, cur_idx, 1), 0x1);
+         nir_store_var(b, pc_idx, nir_iadd_imm(b, nir_load_var(b, pc_idx), 1), 0x1);
+      }
+      nir_pop_loop(b, NULL);
+   }
+   nir_pop_if(b, NULL);
+}
+
+static void
+dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
+                       nir_variable *upload_offset)
+{
+   const struct dgc_pc_params params = dgc_get_pc_params(cs->b);
+   nir_builder *b = cs->b;
+
+   dgc_alloc_push_constant(cs, stream_addr, push_const_mask, &params, upload_offset);
 
    nir_variable *shader_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "shader_idx");
    nir_store_var(b, shader_idx, nir_imm_int(b, 0), 0x1);
@@ -1236,90 +1361,8 @@ dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pus
       nir_def *cur_shader_idx = nir_load_var(b, shader_idx);
       nir_break_if(b, nir_uge(b, cur_shader_idx, shader_cnt));
 
-      nir_def *upload_sgpr = dgc_get_upload_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx);
-      nir_def *inline_sgpr = dgc_get_inline_sgpr(b, stream_addr, param_buf, param_offset, cur_shader_idx);
-      nir_def *inline_mask = dgc_get_inline_mask(b, stream_addr, param_buf, param_offset, cur_shader_idx);
+      dgc_emit_push_constant_for_stage(cs, stream_addr, push_const_mask, &params, cur_shader_idx, upload_offset);
 
-      nir_push_if(b, nir_ine_imm(b, upload_sgpr, 0));
-      {
-         dgc_cs_begin(cs);
-         dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
-         dgc_cs_emit(upload_sgpr);
-         dgc_cs_emit(nir_iadd(b, load_param32(b, upload_addr), nir_load_var(b, upload_offset)));
-         dgc_cs_end();
-      }
-      nir_pop_if(b, NULL);
-
-      nir_push_if(b, nir_ine_imm(b, inline_sgpr, 0));
-      {
-         nir_store_var(b, idx, nir_imm_int(b, 0), 0x1);
-
-         nir_variable *pc_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "pc_idx");
-         nir_store_var(b, pc_idx, nir_imm_int(b, 0), 0x1);
-
-         nir_push_loop(b);
-         {
-            nir_def *cur_idx = nir_load_var(b, idx);
-            nir_break_if(b, nir_uge_imm(b, cur_idx, 64 /* bits in inline_mask */));
-
-            nir_def *l = nir_ishl(b, nir_imm_int64(b, 1), cur_idx);
-            nir_push_if(b, nir_ieq_imm(b, nir_iand(b, l, inline_mask), 0));
-            {
-               nir_store_var(b, idx, nir_iadd_imm(b, cur_idx, 1), 0x1);
-               nir_jump(b, nir_jump_continue);
-            }
-            nir_pop_if(b, NULL);
-
-            nir_variable *data = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "copy_data");
-
-            nir_def *update = nir_iand(b, push_const_mask, nir_ishl(b, nir_imm_int64(b, 1), cur_idx));
-            update =
-               nir_bcsel(b, nir_ult_imm(b, cur_idx, 64 /* bits in push_const_mask */), update, nir_imm_int64(b, 0));
-
-            nir_push_if(b, nir_ine_imm(b, update, 0));
-            {
-               nir_def *stream_offset =
-                  nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_offset_offset, nir_ishl_imm(b, cur_idx, 2)));
-               nir_def *new_data = nir_build_load_global(
-                  b, 1, 32, nir_iadd(b, stream_addr, nir_u2u64(b, stream_offset)), .access = ACCESS_NON_WRITEABLE);
-
-               nir_store_var(b, data, new_data, 0x1);
-
-               dgc_cs_begin(cs);
-               dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
-               dgc_cs_emit(nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)));
-               dgc_cs_emit(nir_load_var(b, data));
-               dgc_cs_end();
-            }
-            nir_push_else(b, NULL);
-            {
-               nir_push_if(b, nir_ieq_imm(b, load_param8(b, bind_pipeline), 1));
-               {
-                  /* For indirect pipeline binds, partial push constant updates can't be emitted
-                   * when the DGC execute is called because there is no bound pipeline and they have
-                   * to be emitted from the DGC prepare shader.
-                   */
-                  nir_def *new_data =
-                     nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_const_offset, nir_ishl_imm(b, cur_idx, 2)));
-                  nir_store_var(b, data, new_data, 0x1);
-
-                  dgc_cs_begin(cs);
-                  dgc_cs_emit_imm(PKT3(PKT3_SET_SH_REG, 1, 0));
-                  dgc_cs_emit(nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)));
-                  dgc_cs_emit(nir_load_var(b, data));
-                  dgc_cs_end();
-               }
-               nir_pop_if(b, NULL);
-            }
-
-            nir_pop_if(b, NULL);
-
-            nir_store_var(b, idx, nir_iadd_imm(b, cur_idx, 1), 0x1);
-            nir_store_var(b, pc_idx, nir_iadd_imm(b, nir_load_var(b, pc_idx), 1), 0x1);
-         }
-         nir_pop_loop(b, NULL);
-      }
-      nir_pop_if(b, NULL);
       nir_store_var(b, shader_idx, nir_iadd_imm(b, cur_shader_idx, 1), 0x1);
    }
    nir_pop_loop(b, NULL);

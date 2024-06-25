@@ -1442,10 +1442,11 @@ genX(apply_task_urb_workaround)(struct anv_cmd_buffer *cmd_buffer)
 }
 
 VkResult
-genX(init_trtt_context_state)(struct anv_device *device,
-                              struct anv_async_submit *submit)
+genX(init_trtt_context_state)(struct anv_async_submit *submit)
 {
 #if GFX_VER >= 12
+   struct anv_queue *queue = submit->queue;
+   struct anv_device *device = queue->device;
    struct anv_trtt *trtt = &device->trtt;
    struct anv_batch *batch = &submit->batch;
 
@@ -1462,12 +1463,42 @@ genX(init_trtt_context_state)(struct anv_device *device,
    anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_HIGH), trtt_base_high)
       trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
 
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_INVAL), trtt_inval)
+      trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_NULL), trtt_null)
+      trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_L3_BASE_LOW), trtt_base_low)
+      trtt_base_low.TRVAL3PointerLowerAddress = l3_addr_low;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_L3_BASE_HIGH), trtt_base_high)
+      trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
+
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_INVAL), trtt_inval)
+      trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_NULL), trtt_null)
+      trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_L3_BASE_LOW), trtt_base_low)
+      trtt_base_low.TRVAL3PointerLowerAddress = l3_addr_low;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_L3_BASE_HIGH), trtt_base_high)
+      trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
+
 #if GFX_VER >= 20
    uint32_t trva_base = device->physical->va.trtt.addr >> 44;
    anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range)
       trtt_va_range.TRVABase = trva_base;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_VA_RANGE), trtt_va_range)
+      trtt_va_range.TRVABase = trva_base;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_VA_RANGE), trtt_va_range)
+      trtt_va_range.TRVABase = trva_base;
 #else
    anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
+      trtt_va_range.TRVAMaskValue = 0xF;
+      trtt_va_range.TRVADataValue = 0xF;
+   }
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_VA_RANGE), trtt_va_range) {
+      trtt_va_range.TRVAMaskValue = 0xF;
+      trtt_va_range.TRVADataValue = 0xF;
+   }
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_VA_RANGE), trtt_va_range) {
       trtt_va_range.TRVAMaskValue = 0xF;
       trtt_va_range.TRVADataValue = 0xF;
    }
@@ -1477,10 +1508,16 @@ genX(init_trtt_context_state)(struct anv_device *device,
     */
    anv_batch_write_reg(batch, GENX(GFX_TRTT_CR), trtt_cr)
       trtt_cr.TRTTEnable = true;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_CR), trtt_cr)
+      trtt_cr.TRTTEnable = true;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_CR), trtt_cr)
+      trtt_cr.TRTTEnable = true;
 
-   genx_batch_emit_pipe_control(batch, device->info, _3D,
-                                ANV_PIPE_CS_STALL_BIT |
-                                ANV_PIPE_TLB_INVALIDATE_BIT);
+   if (queue->family->engine_class != INTEL_ENGINE_CLASS_COPY) {
+      genx_batch_emit_pipe_control(batch, device->info, _3D,
+                                   ANV_PIPE_CS_STALL_BIT |
+                                   ANV_PIPE_TLB_INVALIDATE_BIT);
+   }
 #endif
    return VK_SUCCESS;
 }

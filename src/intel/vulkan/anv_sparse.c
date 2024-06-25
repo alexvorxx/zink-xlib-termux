@@ -405,9 +405,8 @@ trtt_get_page_table_bo(struct anv_device *device, struct anv_bo **bo,
 }
 
 static VkResult
-anv_trtt_init_context_state(struct anv_queue *queue)
+anv_trtt_init_queues_state(struct anv_device *device)
 {
-   struct anv_device *device = queue->device;
    struct anv_trtt *trtt = &device->trtt;
 
    struct anv_bo *l3_bo;
@@ -417,43 +416,52 @@ anv_trtt_init_context_state(struct anv_queue *queue)
 
    trtt->l3_mirror = vk_zalloc(&device->vk.alloc, 4096, 8,
                                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (!trtt->l3_mirror) {
-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      return result;
-   }
+   if (!trtt->l3_mirror)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    /* L3 has 512 entries, so we can have up to 512 L2 tables. */
    trtt->l2_mirror = vk_zalloc(&device->vk.alloc, 512 * 4096, 8,
                                VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!trtt->l2_mirror) {
-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_free_l3;
+      vk_free(&device->vk.alloc, trtt->l3_mirror);
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
+   struct anv_async_submit submits[device->queue_count];
+   int submits_used = 0;
+   for (uint32_t i = 0; i < device->queue_count; i++) {
+      struct anv_queue *q = &device->queues[i];
 
-   struct anv_async_submit submit;
-   result = anv_async_submit_init(&submit, queue, &device->batch_bo_pool,
-                                  false, true);
-   if (result != VK_SUCCESS)
-      return result;
+      result = anv_async_submit_init(&submits[submits_used], q,
+                                     &device->batch_bo_pool, false, true);
+      if (result != VK_SUCCESS)
+         break;
 
-   result = anv_genX(device->info, init_trtt_context_state)(device, &submit);
-   if (result != VK_SUCCESS)
-      goto fail_fini_submit;
+      struct anv_async_submit *submit = &submits[submits_used++];
 
-   anv_genX(device->info, async_submit_end)(&submit);
+      result = anv_genX(device->info, init_trtt_context_state)(submit);
+      if (result != VK_SUCCESS) {
+         anv_async_submit_fini(submit);
+         submits_used--;
+         break;
+      }
 
-   result = device->kmd_backend->queue_exec_async(&submit, 0, NULL, 1,
-                                                  &submit.signal);
+      anv_genX(device->info, async_submit_end)(submit);
 
-   anv_async_submit_wait(&submit);
+      result = device->kmd_backend->queue_exec_async(submit, 0, NULL, 1,
+                                                     &submit->signal);
+      if (result != VK_SUCCESS) {
+         anv_async_submit_fini(submit);
+         submits_used--;
+         break;
+      }
+   }
 
-fail_fini_submit:
-   anv_async_submit_fini(&submit);
-   return result;
+   for (uint32_t i = 0; i < submits_used; i++) {
+      anv_async_submit_wait(&submits[i]);
+      anv_async_submit_fini(&submits[i]);
+   }
 
-fail_free_l3:
-   vk_free(&device->vk.alloc, trtt->l3_mirror);
    return result;
 }
 
@@ -645,7 +653,7 @@ anv_sparse_bind_trtt(struct anv_device *device,
     * submission.
     */
    if (!trtt->l3_addr) {
-      result = anv_trtt_init_context_state(sparse_submit->queue);
+      result = anv_trtt_init_queues_state(device);
       if (result != VK_SUCCESS)
          goto error_add_bind;
    }

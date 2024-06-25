@@ -9,16 +9,21 @@ libvulkan_lvp = shared_library(
   link_with : [libpipe_loader_static, libgallium, libwsw, libswdri, libws_null, libswkmsdri ],
   gnu_symbol_visibility : 'hidden',
   link_args : [ld_args_bsymbolic, ld_args_gc_sections],
+  # On Apple systems, "weak" is actually "weak_import", which is slightly different.
+  # The linker still expects a definition for weak symbols at build time, just not at runtime.
+  # We have to forcibly ignore undefined symbols, which unfortunately applies to all symbols.
+  override_options : ['b_lundef=@0@'.format(host_machine.system() == 'darwin' ? 'false' : get_option('b_lundef').to_string())],
   dependencies : driver_swrast,
   name_prefix : host_machine.system() == 'windows' ? '' : [],
   install : true,
 )
 
-icd_lib_path = join_paths(get_option('prefix'), get_option('libdir'))
-icd_file_name = 'libvulkan_lvp.so'
 if with_platform_windows
   icd_lib_path = import('fs').relative_to(get_option('bindir'), with_vulkan_icd_dir)
   icd_file_name = 'vulkan_lvp.dll'
+else
+  icd_lib_path = join_paths(get_option('prefix'), get_option('libdir'))
+  icd_file_name = 'libvulkan_lvp.@0@'.format(host_machine.system() == 'darwin' ? 'dylib' : 'so')
 endif
 
 icd_command = [

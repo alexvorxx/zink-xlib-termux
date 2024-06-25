@@ -320,12 +320,11 @@ struct radv_dgc_params {
    uint16_t vbo_reg;
    uint16_t const_copy_size;
 
+   uint16_t push_constant_stages;
    uint64_t push_constant_mask;
 
    uint32_t ibo_type_32;
    uint32_t ibo_type_8;
-
-   uint16_t push_constant_shader_cnt;
 
    uint8_t is_dispatch;
    uint8_t use_preamble;
@@ -1061,7 +1060,7 @@ dgc_emit_index_buffer(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *inde
  * Emit VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV.
  */
 static nir_def *
-dgc_get_push_constant_shader_cnt(nir_builder *b, nir_def *stream_addr)
+dgc_get_push_constant_stages(nir_builder *b, nir_def *stream_addr)
 {
    nir_def *res1, *res2;
 
@@ -1069,11 +1068,12 @@ dgc_get_push_constant_shader_cnt(nir_builder *b, nir_def *stream_addr)
    {
       nir_def *pipeline_va = dgc_get_pipeline_va(b, stream_addr);
 
-      res1 = nir_b2i32(b, nir_ine_imm(b, load_metadata32(b, push_const_sgpr), 0));
+      nir_def *has_push_constant = nir_ine_imm(b, load_metadata32(b, push_const_sgpr), 0);
+      res1 = nir_bcsel(b, has_push_constant, nir_imm_int(b, VK_SHADER_STAGE_COMPUTE_BIT), nir_imm_int(b, 0));
    }
    nir_push_else(b, 0);
    {
-      res2 = load_param16(b, push_constant_shader_cnt);
+      res2 = load_param16(b, push_constant_stages);
    }
    nir_pop_if(b, 0);
 
@@ -1082,7 +1082,7 @@ dgc_get_push_constant_shader_cnt(nir_builder *b, nir_def *stream_addr)
 
 static nir_def *
 dgc_get_upload_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, nir_def *param_offset,
-                    nir_def *cur_shader_idx)
+                    gl_shader_stage stage)
 {
    nir_def *res1, *res2;
 
@@ -1094,7 +1094,7 @@ dgc_get_upload_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
    }
    nir_push_else(b, 0);
    {
-      res2 = nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_offset, nir_imul_imm(b, cur_shader_idx, 12)));
+      res2 = nir_load_ssbo(b, 1, 32, param_buf, nir_iadd_imm(b, param_offset, stage * 12));
    }
    nir_pop_if(b, 0);
 
@@ -1105,7 +1105,7 @@ dgc_get_upload_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
 
 static nir_def *
 dgc_get_inline_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, nir_def *param_offset,
-                    nir_def *cur_shader_idx)
+                    gl_shader_stage stage)
 {
    nir_def *res1, *res2;
 
@@ -1117,7 +1117,7 @@ dgc_get_inline_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
    }
    nir_push_else(b, 0);
    {
-      res2 = nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_offset, nir_imul_imm(b, cur_shader_idx, 12)));
+      res2 = nir_load_ssbo(b, 1, 32, param_buf, nir_iadd_imm(b, param_offset, stage * 12));
    }
    nir_pop_if(b, 0);
 
@@ -1128,7 +1128,7 @@ dgc_get_inline_sgpr(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
 
 static nir_def *
 dgc_get_inline_mask(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, nir_def *param_offset,
-                    nir_def *cur_shader_idx)
+                    gl_shader_stage stage)
 {
    nir_def *res1, *res2;
 
@@ -1140,8 +1140,7 @@ dgc_get_inline_mask(nir_builder *b, nir_def *stream_addr, nir_def *param_buf, ni
    }
    nir_push_else(b, 0);
    {
-      nir_def *reg_info = nir_load_ssbo(
-         b, 2, 32, param_buf, nir_iadd(b, param_offset, nir_iadd_imm(b, nir_imul_imm(b, cur_shader_idx, 12), 4)));
+      nir_def *reg_info = nir_load_ssbo(b, 2, 32, param_buf, nir_iadd_imm(b, param_offset, stage * 12 + 4));
       res2 = nir_pack_64_2x32(b, nir_channels(b, reg_info, 0x3));
    }
    nir_pop_if(b, 0);
@@ -1246,14 +1245,13 @@ dgc_alloc_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *pu
 
 static void
 dgc_emit_push_constant_for_stage(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
-                                 const struct dgc_pc_params *params, nir_def *cur_shader_idx,
-                                 nir_variable *upload_offset)
+                                 const struct dgc_pc_params *params, gl_shader_stage stage, nir_variable *upload_offset)
 {
    nir_builder *b = cs->b;
 
-   nir_def *upload_sgpr = dgc_get_upload_sgpr(b, stream_addr, params->buf, params->offset, cur_shader_idx);
-   nir_def *inline_sgpr = dgc_get_inline_sgpr(b, stream_addr, params->buf, params->offset, cur_shader_idx);
-   nir_def *inline_mask = dgc_get_inline_mask(b, stream_addr, params->buf, params->offset, cur_shader_idx);
+   nir_def *upload_sgpr = dgc_get_upload_sgpr(b, stream_addr, params->buf, params->offset, stage);
+   nir_def *inline_sgpr = dgc_get_inline_sgpr(b, stream_addr, params->buf, params->offset, stage);
+   nir_def *inline_mask = dgc_get_inline_mask(b, stream_addr, params->buf, params->offset, stage);
 
    nir_push_if(b, nir_ine_imm(b, upload_sgpr, 0));
    {
@@ -1345,27 +1343,22 @@ dgc_emit_push_constant_for_stage(struct dgc_cmdbuf *cs, nir_def *stream_addr, ni
 
 static void
 dgc_emit_push_constant(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *push_const_mask,
-                       nir_variable *upload_offset)
+                       nir_variable *upload_offset, VkShaderStageFlags stages)
 {
    const struct dgc_pc_params params = dgc_get_pc_params(cs->b);
    nir_builder *b = cs->b;
 
    dgc_alloc_push_constant(cs, stream_addr, push_const_mask, &params, upload_offset);
 
-   nir_variable *shader_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "shader_idx");
-   nir_store_var(b, shader_idx, nir_imm_int(b, 0), 0x1);
-   nir_def *shader_cnt = dgc_get_push_constant_shader_cnt(b, stream_addr);
-
-   nir_push_loop(b);
+   nir_def *push_constant_stages = dgc_get_push_constant_stages(b, stream_addr);
+   radv_foreach_stage(s, stages)
    {
-      nir_def *cur_shader_idx = nir_load_var(b, shader_idx);
-      nir_break_if(b, nir_uge(b, cur_shader_idx, shader_cnt));
-
-      dgc_emit_push_constant_for_stage(cs, stream_addr, push_const_mask, &params, cur_shader_idx, upload_offset);
-
-      nir_store_var(b, shader_idx, nir_iadd_imm(b, cur_shader_idx, 1), 0x1);
+      nir_push_if(b, nir_test_mask(b, push_constant_stages, mesa_to_vk_shader_stage(s)));
+      {
+         dgc_emit_push_constant_for_stage(cs, stream_addr, push_const_mask, &params, s, upload_offset);
+      }
+      nir_pop_if(b, NULL);
    }
-   nir_pop_loop(b, NULL);
 }
 
 /**
@@ -1937,7 +1930,10 @@ build_dgc_prepare_shader(struct radv_device *dev)
       nir_def *push_const_mask = load_param64(&b, push_constant_mask);
       nir_push_if(&b, nir_ine_imm(&b, push_const_mask, 0));
       {
-         dgc_emit_push_constant(&cmd_buf, stream_addr, push_const_mask, upload_offset);
+         const VkShaderStageFlags stages =
+            VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_MESH_BIT_EXT;
+
+         dgc_emit_push_constant(&cmd_buf, stream_addr, push_const_mask, upload_offset, stages);
       }
       nir_pop_if(&b, 0);
 
@@ -2590,10 +2586,9 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
    }
 
    if (layout->push_constant_mask) {
+      VkShaderStageFlags pc_stages = 0;
       uint32_t *desc = upload_data;
       upload_data = (char *)upload_data + ARRAY_SIZE(pipeline->shaders) * 12;
-
-      unsigned idx = 0;
 
       if (pipeline) {
          for (unsigned i = 0; i < ARRAY_SIZE(pipeline->shaders); ++i) {
@@ -2620,16 +2615,17 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
                   inline_sgpr = (shader->info.user_data_0 +
                                  4 * locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].sgpr_idx - SI_SH_REG_OFFSET) >>
                                 2;
-                  desc[idx * 3 + 1] = pipeline->shaders[i]->info.inline_push_constant_mask;
-                  desc[idx * 3 + 2] = pipeline->shaders[i]->info.inline_push_constant_mask >> 32;
+                  desc[i * 3 + 1] = pipeline->shaders[i]->info.inline_push_constant_mask;
+                  desc[i * 3 + 2] = pipeline->shaders[i]->info.inline_push_constant_mask >> 32;
                }
-               desc[idx * 3] = upload_sgpr | (inline_sgpr << 16);
-               ++idx;
+               desc[i * 3] = upload_sgpr | (inline_sgpr << 16);
+
+               pc_stages |= mesa_to_vk_shader_stage(i);
             }
          }
       }
 
-      params.push_constant_shader_cnt = idx;
+      params.push_constant_stages = pc_stages;
 
       params.const_copy_size = layout->push_constant_size;
       params.push_constant_mask = layout->push_constant_mask;

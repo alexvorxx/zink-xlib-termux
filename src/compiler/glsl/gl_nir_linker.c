@@ -892,10 +892,6 @@ init_program_resource_list(struct gl_shader_program *prog)
    }
 }
 
-/* TODO: as we keep adding features, this method is becoming more and more
- * similar to its GLSL counterpart at linker.cpp. Eventually it would be good
- * to check if they could be refactored, and reduce code duplication somehow
- */
 void
 nir_build_program_resource_list(const struct gl_constants *consts,
                                 struct gl_shader_program *prog,

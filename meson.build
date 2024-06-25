@@ -1734,6 +1734,7 @@ if with_clc
   llvm_optional_modules += ['all-targets', 'windowsdriver', 'frontendhlsl', 'frontenddriver']
 endif
 draw_with_llvm = get_option('draw-use-llvm')
+llvm_with_orcjit = get_option('llvm-orcjit')
 if draw_with_llvm
   llvm_modules += 'native'
   # lto is needded with LLVM>=15, but we don't know what LLVM verrsion we are using yet
@@ -1741,7 +1742,7 @@ if draw_with_llvm
 endif
 amd_with_llvm = get_option('amd-use-llvm')
 
-if with_amd_vk or with_gallium_radeonsi or with_clc
+if with_amd_vk or with_gallium_radeonsi or with_clc or llvm_with_orcjit
   _llvm_version = '>= 15.0.0'
 elif with_gallium_clover
   _llvm_version = '>= 11.0.0'
@@ -1827,6 +1828,7 @@ amd_with_llvm = amd_with_llvm and with_llvm
 pre_args += '-DLLVM_AVAILABLE=@0@'.format(with_llvm.to_int())
 pre_args += '-DDRAW_LLVM_AVAILABLE=@0@'.format((with_llvm and draw_with_llvm).to_int())
 pre_args += '-DAMD_LLVM_AVAILABLE=@0@'.format(amd_with_llvm.to_int())
+pre_args += '-DGALLIVM_USE_ORCJIT=@0@'.format((with_llvm and llvm_with_orcjit).to_int())
 
 if with_clover_spirv or with_clc
   chosen_llvm_version_array = dep_llvm.version().split('.')

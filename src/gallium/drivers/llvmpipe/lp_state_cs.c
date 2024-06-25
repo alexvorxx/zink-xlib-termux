@@ -1274,9 +1274,16 @@ generate_variant(struct llvmpipe_context *lp,
 
    generate_compute(lp, shader, variant);
 
+#if GALLIVM_USE_ORCJIT
+/* module has been moved into ORCJIT after gallivm_compile_module */
+   variant->nr_instrs += lp_build_count_ir_module(variant->gallivm->module);
+
+   gallivm_compile_module(variant->gallivm);
+#else
    gallivm_compile_module(variant->gallivm);
 
    variant->nr_instrs += lp_build_count_ir_module(variant->gallivm->module);
+#endif
 
    variant->jit_function = (lp_jit_cs_func)
       gallivm_jit_function(variant->gallivm, variant->function, variant->function_name);

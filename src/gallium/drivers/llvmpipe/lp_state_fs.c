@@ -3916,9 +3916,16 @@ generate_variant(struct llvmpipe_context *lp,
     * Compile everything
     */
 
+#if GALLIVM_USE_ORCJIT
+/* module has been moved into ORCJIT after gallivm_compile_module */
+   variant->nr_instrs += lp_build_count_ir_module(variant->gallivm->module);
+
+   gallivm_compile_module(variant->gallivm);
+#else
    gallivm_compile_module(variant->gallivm);
 
    variant->nr_instrs += lp_build_count_ir_module(variant->gallivm->module);
+#endif
 
    if (variant->function[RAST_EDGE_TEST]) {
       variant->jit_function[RAST_EDGE_TEST] = (lp_jit_frag_func)

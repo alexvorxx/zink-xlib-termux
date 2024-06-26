@@ -800,8 +800,10 @@ v3d_update_compiled_gs(struct v3d_context *v3d, uint8_t prim_mode)
         /* The last bin-mode shader in the geometry pipeline only outputs
          * varyings used by transform feedback.
          */
-        memcpy(key->used_outputs, uncompiled->tf_outputs,
-               sizeof(*key->used_outputs) * uncompiled->num_tf_outputs);
+        if (uncompiled->num_tf_outputs > 0) {
+                memcpy(key->used_outputs, uncompiled->tf_outputs,
+                       sizeof(*key->used_outputs) * uncompiled->num_tf_outputs);
+        }
         if (uncompiled->num_tf_outputs < key->num_used_outputs) {
                 uint32_t size = sizeof(*key->used_outputs) *
                                 (key->num_used_outputs -
@@ -907,9 +909,11 @@ v3d_update_compiled_vs(struct v3d_context *v3d, uint8_t prim_mode)
          * gl_Position or TF outputs.
          */
         if (!v3d->prog.bind_gs) {
-                memcpy(key->used_outputs, shader_state->tf_outputs,
-                       sizeof(*key->used_outputs) *
-                       shader_state->num_tf_outputs);
+                if (shader_state->num_tf_outputs > 0) {
+                        memcpy(key->used_outputs, shader_state->tf_outputs,
+                               sizeof(*key->used_outputs) *
+                               shader_state->num_tf_outputs);
+                }
                 if (shader_state->num_tf_outputs < key->num_used_outputs) {
                         uint32_t tail_bytes =
                                 sizeof(*key->used_outputs) *

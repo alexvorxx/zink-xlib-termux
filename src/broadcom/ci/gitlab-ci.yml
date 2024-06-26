@@ -3,7 +3,7 @@ include:
 
 vc4-rpi3-gl:arm32:
   extends:
-    - .igalia-bcm2837-rpi-3-b:arm64
+    - .igalia-bcm2837-rpi-3-b
     - .broadcom-test:arm32
     - .vc4-rules
   parallel: 4
@@ -24,7 +24,7 @@ vc4-rpi3-gl-piglit-full:arm32:
 
 v3d-rpi4-gl:arm64:
   extends:
-    - .igalia-bcm2711-rpi-4:arm64
+    - .igalia-bcm2711-rpi-4
     - .broadcom-test:arm64
     - .v3d-rules
   parallel: 8
@@ -58,7 +58,7 @@ v3d-rpi4-rusticl:arm64:
 
 v3d-rpi4-traces:arm64:
   extends:
-    - .igalia-bcm2711-rpi-4:arm64
+    - .igalia-bcm2711-rpi-4
     - .piglit-traces-test
     - .broadcom-test:arm64
     - .v3d-rules
@@ -71,7 +71,7 @@ v3d-rpi4-traces:arm64:
 
 v3dv-rpi4-vk:arm64:
   extends:
-    - .igalia-bcm2711-rpi-4:arm64
+    - .igalia-bcm2711-rpi-4
     - .broadcom-test:arm64
     - .v3dv-rules
   parallel: 10
@@ -99,7 +99,7 @@ v3dv-rpi4-vk-full:arm64:
 
 .v3dv-rpi5-vk:arm64:
   extends:
-    - .igalia-bcm2712-rpi-5:arm64
+    - .igalia-bcm2712-rpi-5
     - .broadcom-test:arm64
     - .v3dv-rules
   variables:

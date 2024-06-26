@@ -168,4 +168,4 @@
     - .broadcom-test
     - .baremetal-test-arm32
   variables:
-    BM_BOOTFS: /boot/raspberrypi_armhf
+    BM_BOOTFS: /boot/raspberrypi_arm32

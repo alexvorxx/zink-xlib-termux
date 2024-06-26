@@ -2918,11 +2918,18 @@ fs_inputs_compare(const void *key1, const void *key2)
         const struct vc4_fs_inputs *inputs1 = key1;
         const struct vc4_fs_inputs *inputs2 = key2;
 
-        return (inputs1->num_inputs == inputs2->num_inputs &&
-                memcmp(inputs1->input_slots,
-                       inputs2->input_slots,
-                       sizeof(*inputs1->input_slots) *
-                       inputs1->num_inputs) == 0);
+        if (inputs1->num_inputs == inputs2->num_inputs) {
+                if (inputs1->num_inputs == 0) {
+                        return true;
+                } else {
+                        return memcmp(inputs1->input_slots,
+                                      inputs2->input_slots,
+                                      sizeof(*inputs1->input_slots) *
+                                      inputs1->num_inputs) == 0;
+                }
+        }
+
+        return false;
 }
 
 static void

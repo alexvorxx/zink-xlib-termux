@@ -2063,11 +2063,11 @@ struct v3dv_descriptor_set_layout {
    /* Shader stages affected by this descriptor set */
    uint16_t shader_stages;
 
-   /* Number of descriptors in this descriptor set */
-   uint32_t descriptor_count;
-
    /* Number of dynamic offsets used by this descriptor set */
    uint16_t dynamic_offset_count;
+
+   /* Number of descriptors in this descriptor set */
+   uint32_t descriptor_count;
 
    /* Descriptor set layouts can be destroyed even if they are still being
     * used.

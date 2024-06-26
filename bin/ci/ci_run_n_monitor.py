@@ -60,6 +60,7 @@ STATUS_COLORS = {
 }
 
 COMPLETED_STATUSES = {"success", "failed"}
+RUNNING_STATUSES = {"created", "pending", "running"}
 
 
 def print_job_status(job, new_status=False) -> None:
@@ -190,13 +191,13 @@ def monitor_pipeline(
 
         if (
             {"failed"}.intersection(target_statuses.values())
-            and not {"running", "pending"}.intersection(target_statuses.values())
+            and not RUNNING_STATUSES.intersection(target_statuses.values())
         ):
             return None, 1, execution_times
 
         if (
             {"skipped"}.intersection(target_statuses.values())
-            and not {"running", "pending"}.intersection(target_statuses.values())
+            and not RUNNING_STATUSES.intersection(target_statuses.values())
         ):
             print(
                 Fore.RED,
@@ -231,7 +232,7 @@ def enable_job(
     if (
         (job.status in COMPLETED_STATUSES and action_type != "retry")
         or (job.status == "manual" and not force_manual)
-        or job.status in {"skipped", "running", "created", "pending"}
+        or job.status in {"skipped"} | RUNNING_STATUSES
     ):
         return job
 
@@ -258,13 +259,7 @@ def enable_job(
 
 def cancel_job(project, job) -> None:
     """Cancel GitLab job"""
-    if job.status in [
-        "canceled",
-        "canceling",
-        "success",
-        "failed",
-        "skipped",
-    ]:
+    if job.status not in RUNNING_STATUSES:
         return
     pjob = project.jobs.get(job.id, lazy=True)
     pjob.cancel()

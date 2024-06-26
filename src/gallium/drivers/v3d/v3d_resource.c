@@ -1180,7 +1180,7 @@ v3d_resource_get_stencil(struct pipe_resource *prsc)
 {
         struct v3d_resource *rsc = v3d_resource(prsc);
 
-        return &rsc->separate_stencil->base;
+        return rsc->separate_stencil ? &rsc->separate_stencil->base : NULL;
 }
 
 static const struct u_transfer_vtbl transfer_vtbl = {

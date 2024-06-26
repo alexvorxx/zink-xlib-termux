@@ -1275,7 +1275,9 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
    if (dst.regClass().type() == RegType::sgpr)
       return copy_constant_sgpr(bld, dst, op.constantValue64());
 
-   if (dst.bytes() == 4 && op.isLiteral()) {
+   bool dual_issue_mov = ctx->program->gfx_level >= GFX11 && ctx->program->wave_size == 64 &&
+                         ctx->program->workgroup_size > 32;
+   if (dst.bytes() == 4 && op.isLiteral() && !dual_issue_mov) {
       uint32_t imm = op.constantValue();
       Operand rev_op = Operand::get_const(ctx->program->gfx_level, util_bitreverse(imm), 4);
       if (!rev_op.isLiteral()) {

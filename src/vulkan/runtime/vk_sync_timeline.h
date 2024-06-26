@@ -24,6 +24,7 @@
 #define VK_SYNC_TIMELINE_H
 
 #include "c11/threads.h"
+#include "util/cnd_monotonic.h"
 #include "util/list.h"
 #include "util/macros.h"
 

@@ -1388,7 +1388,7 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 break;
 
         case nir_op_fneg:
-                result = vir_XOR(c, src[0], vir_uniform_ui(c, 1 << 31));
+                result = vir_XOR(c, src[0], vir_uniform_ui(c, UINT32_C(1) << 31));
                 break;
         case nir_op_ineg:
                 result = vir_NEG(c, src[0]);

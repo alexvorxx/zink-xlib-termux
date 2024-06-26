@@ -70,16 +70,10 @@ get_temp_registers(aco_ptr<Instruction>& instr)
 }
 
 namespace {
-struct PhiInfo {
-   uint16_t logical_phi_sgpr_ops = 0;
-   uint16_t linear_phi_ops = 0;
-   uint16_t linear_phi_defs = 0;
-};
 
 struct live_ctx {
    Program* program;
    int worklist;
-   std::vector<PhiInfo> phi_info;
 };
 
 bool
@@ -107,7 +101,6 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
    /* initialize register demand */
    for (unsigned t : live)
       new_demand += Temp(t, ctx.program->temp_rc[t]);
-   new_demand.sgpr -= ctx.phi_info[block->index].logical_phi_sgpr_ops;
 
    /* traverse the instructions backwards */
    int idx;
@@ -139,37 +132,32 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
          }
       }
 
-      /* GEN */
-      if (insn->opcode == aco_opcode::p_logical_end) {
-         new_demand.sgpr += ctx.phi_info[block->index].logical_phi_sgpr_ops;
-      } else {
-         /* we need to do this in a separate loop because the next one can
-          * setKill() for several operands at once and we don't want to
-          * overwrite that in a later iteration */
-         for (Operand& op : insn->operands)
-            op.setKill(false);
+      /* we need to do this in a separate loop because the next one can
+       * setKill() for several operands at once and we don't want to
+       * overwrite that in a later iteration */
+      for (Operand& op : insn->operands)
+         op.setKill(false);
 
-         for (unsigned i = 0; i < insn->operands.size(); ++i) {
-            Operand& operand = insn->operands[i];
-            if (!operand.isTemp())
-               continue;
-            if (operand.isFixed() && operand.physReg() == vcc)
-               ctx.program->needs_vcc = true;
-            const Temp temp = operand.getTemp();
-            const bool inserted = live.insert(temp.id()).second;
-            if (inserted) {
-               operand.setFirstKill(true);
-               for (unsigned j = i + 1; j < insn->operands.size(); ++j) {
-                  if (insn->operands[j].isTemp() &&
-                      insn->operands[j].tempId() == operand.tempId()) {
-                     insn->operands[j].setFirstKill(false);
-                     insn->operands[j].setKill(true);
-                  }
+      /* GEN */
+      for (unsigned i = 0; i < insn->operands.size(); ++i) {
+         Operand& operand = insn->operands[i];
+         if (!operand.isTemp())
+            continue;
+         if (operand.isFixed() && operand.physReg() == vcc)
+            ctx.program->needs_vcc = true;
+         const Temp temp = operand.getTemp();
+         const bool inserted = live.insert(temp.id()).second;
+         if (inserted) {
+            operand.setFirstKill(true);
+            for (unsigned j = i + 1; j < insn->operands.size(); ++j) {
+               if (insn->operands[j].isTemp() && insn->operands[j].tempId() == operand.tempId()) {
+                  insn->operands[j].setFirstKill(false);
+                  insn->operands[j].setKill(true);
                }
-               if (operand.isLateKill())
-                  insn->register_demand += temp;
-               new_demand += temp;
             }
+            if (operand.isLateKill())
+               insn->register_demand += temp;
+            new_demand += temp;
          }
       }
 
@@ -178,7 +166,6 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
    }
 
    /* handle phi definitions */
-   uint16_t linear_phi_defs = 0;
    for (int phi_idx = 0; phi_idx <= idx; phi_idx++) {
       Instruction* insn = block->instructions[phi_idx].get();
       insn->register_demand = new_demand;
@@ -196,17 +183,10 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
 
       if (n) {
          definition.setKill(false);
-         if (insn->opcode == aco_opcode::p_linear_phi) {
-            assert(definition.getTemp().type() == RegType::sgpr);
-            linear_phi_defs += definition.size();
-         }
       } else {
          definition.setKill(true);
       }
    }
-
-   for (unsigned pred_idx : block->linear_preds)
-      ctx.phi_info[pred_idx].linear_phi_defs = linear_phi_defs;
 
    /* now, we need to merge the live-ins into the live-out sets */
    bool fast_merge =
@@ -260,15 +240,8 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
             ctx.program->needs_vcc = true;
          /* check if we changed an already processed block */
          const bool inserted = ctx.program->live.live_out[preds[i]].insert(operand.tempId()).second;
-         if (inserted) {
+         if (inserted)
             ctx.worklist = std::max<int>(ctx.worklist, preds[i]);
-            if (insn->opcode == aco_opcode::p_phi && operand.getTemp().type() == RegType::sgpr) {
-               ctx.phi_info[preds[i]].logical_phi_sgpr_ops += operand.size();
-            } else if (insn->opcode == aco_opcode::p_linear_phi) {
-               assert(operand.getTemp().type() == RegType::sgpr);
-               ctx.phi_info[preds[i]].linear_phi_ops += operand.size();
-            }
-         }
 
          /* set if the operand is killed by this (or another) phi instruction */
          operand.setKill(!live.count(operand.tempId()));
@@ -452,7 +425,6 @@ live_var_analysis(Program* program)
    live_ctx ctx;
    ctx.program = program;
    ctx.worklist = program->blocks.size() - 1;
-   ctx.phi_info = std::vector<PhiInfo>(program->blocks.size());
 
    /* this implementation assumes that the block idx corresponds to the block's position in
     * program->blocks vector */
@@ -460,12 +432,8 @@ live_var_analysis(Program* program)
       process_live_temps_per_block(ctx, &program->blocks[ctx.worklist--]);
    }
 
-   /* Handle branches: we will insert copies created for linear phis just before the branch. */
+   /* update block's register demand */
    for (Block& block : program->blocks) {
-      block.instructions.back()->register_demand.sgpr += ctx.phi_info[block.index].linear_phi_defs;
-      block.instructions.back()->register_demand.sgpr -= ctx.phi_info[block.index].linear_phi_ops;
-
-      /* update block's register demand */
       if (program->progress < CompilationProgress::after_ra) {
          block.register_demand = RegisterDemand();
          for (const aco_ptr<Instruction>& instr : block.instructions)

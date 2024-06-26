@@ -2714,6 +2714,10 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    }
    case nir_intrinsic_elect:
       dst[0] = ir3_ELECT_MACRO(ctx->block);
+      dst[0]->flags |= IR3_INSTR_NEEDS_HELPERS;
+      break;
+   case nir_intrinsic_elect_any_ir3:
+      dst[0] = ir3_ELECT_MACRO(ctx->block);
       break;
    case nir_intrinsic_preamble_start_ir3:
       dst[0] = ir3_SHPS_MACRO(ctx->block);
@@ -3987,6 +3991,7 @@ instr_can_be_predicated(nir_instr *instr)
       case nir_intrinsic_brcst_active_ir3:
       case nir_intrinsic_ballot:
       case nir_intrinsic_elect:
+      case nir_intrinsic_elect_any_ir3:
       case nir_intrinsic_read_invocation_cond_ir3:
       case nir_intrinsic_demote:
       case nir_intrinsic_demote_if:
@@ -4126,7 +4131,8 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
       ir3_BALL(ctx->block, pred, IR3_REG_PREDICATE);
    } else if (condition->opc == OPC_ELECT_MACRO &&
               condition->block == ctx->block) {
-      ir3_GETONE(ctx->block);
+      struct ir3_instruction *branch = ir3_GETONE(ctx->block);
+      branch->flags |= condition->flags & IR3_INSTR_NEEDS_HELPERS;
    } else if (condition->opc == OPC_SHPS_MACRO &&
               condition->block == ctx->block) {
       /* TODO: technically this only works if the block is the only user of the

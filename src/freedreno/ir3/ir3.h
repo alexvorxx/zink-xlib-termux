@@ -1207,15 +1207,18 @@ uses_helpers(struct ir3_instruction *instr)
    case OPC_BALLOT_MACRO:
    case OPC_ANY_MACRO:
    case OPC_ALL_MACRO:
-   case OPC_ELECT_MACRO:
    case OPC_READ_FIRST_MACRO:
    case OPC_READ_COND_MACRO:
    case OPC_MOVMSK:
    case OPC_BRCST_ACTIVE:
       return true;
 
-   /* Catch lowered READ_FIRST/READ_COND. */
+   /* Catch lowered READ_FIRST/READ_COND. For elect, don't include the getone
+    * in the preamble because it doesn't actually matter which fiber is
+    * selected.
+    */
    case OPC_MOV:
+   case OPC_ELECT_MACRO:
       return instr->flags & IR3_INSTR_NEEDS_HELPERS;
 
    default:

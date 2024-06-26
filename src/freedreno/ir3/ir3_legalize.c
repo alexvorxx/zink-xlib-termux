@@ -1399,7 +1399,8 @@ helper_sched(struct ir3_legalize_ctx *ctx, struct ir3 *ir,
       struct ir3_instruction *terminator = ir3_block_get_terminator(block);
       if (terminator) {
          if (terminator->opc == OPC_BALL || terminator->opc == OPC_BANY ||
-             terminator->opc == OPC_GETONE) {
+             (terminator->opc == OPC_GETONE &&
+              (terminator->flags & IR3_INSTR_NEEDS_HELPERS))) {
             bd->uses_helpers_beginning = true;
             bd->uses_helpers_end = true;
             non_prefetch_helpers = true;

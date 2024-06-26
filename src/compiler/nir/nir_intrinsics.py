@@ -1372,6 +1372,10 @@ intrinsic("preamble_start_ir3", [], dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORD
 
 barrier("preamble_end_ir3")
 
+# IR3-specific intrinsic to choose any invocation. This is implemented the same
+# as elect, except that it doesn't require helper invocations. Used by preambles.
+intrinsic("elect_any_ir3", dest_comp=1, flags=[CAN_ELIMINATE])
+
 # IR3-specific intrinsic for stc. Should be used in the shader preamble.
 store("uniform_ir3", [], indices=[BASE])
 

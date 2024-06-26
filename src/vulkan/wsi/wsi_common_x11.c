@@ -44,6 +44,7 @@
 #include <fcntl.h>
 #include <xf86drm.h>
 #include "drm-uapi/drm_fourcc.h"
+#include "util/cnd_monotonic.h"
 #include "util/hash_table.h"
 #include "util/mesa-blake3.h"
 #include "util/os_file.h"
@@ -89,7 +90,7 @@ struct wsi_x11_connection {
 struct wsi_x11 {
    struct wsi_interface base;
 
-   pthread_mutex_t                              mutex;
+   mtx_t mutex;
    /* Hash table of xcb_connection -> wsi_x11_connection mappings */
    struct hash_table *connections;
 };
@@ -415,21 +416,21 @@ wsi_x11_get_connection(struct wsi_device *wsi_dev,
    struct wsi_x11 *wsi =
       (struct wsi_x11 *)wsi_dev->wsi[VK_ICD_WSI_PLATFORM_XCB];
 
-   pthread_mutex_lock(&wsi->mutex);
+   mtx_lock(&wsi->mutex);
 
    struct hash_entry *entry = _mesa_hash_table_search(wsi->connections, conn);
    if (!entry) {
       /* We're about to make a bunch of blocking calls.  Let's drop the
        * mutex for now so we don't block up too badly.
        */
-      pthread_mutex_unlock(&wsi->mutex);
+      mtx_unlock(&wsi->mutex);
 
       struct wsi_x11_connection *wsi_conn =
          wsi_x11_connection_create(wsi_dev, conn);
       if (!wsi_conn)
          return NULL;
 
-      pthread_mutex_lock(&wsi->mutex);
+      mtx_lock(&wsi->mutex);
 
       entry = _mesa_hash_table_search(wsi->connections, conn);
       if (entry) {
@@ -440,7 +441,7 @@ wsi_x11_get_connection(struct wsi_device *wsi_dev,
       }
    }
 
-   pthread_mutex_unlock(&wsi->mutex);
+   mtx_unlock(&wsi->mutex);
 
    return entry->data;
 }
@@ -1109,13 +1110,13 @@ struct x11_swapchain {
     * Lock is also taken when reading and writing status.
     * When reading status in application threads,
     * x11_swapchain_read_status_atomic can be used as a wrapper function. */
-   pthread_mutex_t                              thread_state_lock;
-   pthread_cond_t                               thread_state_cond;
+   mtx_t                                        thread_state_lock;
+   struct u_cnd_monotonic                       thread_state_cond;
 
    /* Lock and condition variable for present wait.
     * Signalled by event thread and waited on by callers to PresentWaitKHR. */
-   pthread_mutex_t                              present_progress_mutex;
-   pthread_cond_t                               present_progress_cond;
+   mtx_t                                        present_progress_mutex;
+   struct u_cnd_monotonic                       present_progress_cond;
    uint64_t                                     present_id;
    VkResult                                     present_progress_error;
 
@@ -1129,12 +1130,12 @@ static void x11_present_complete(struct x11_swapchain *swapchain,
 {
    uint64_t signal_present_id = image->pending_completions[index].signal_present_id;
    if (signal_present_id) {
-      pthread_mutex_lock(&swapchain->present_progress_mutex);
+      mtx_lock(&swapchain->present_progress_mutex);
       if (signal_present_id > swapchain->present_id) {
          swapchain->present_id = signal_present_id;
-         pthread_cond_broadcast(&swapchain->present_progress_cond);
+         u_cnd_monotonic_broadcast(&swapchain->present_progress_cond);
       }
-      pthread_mutex_unlock(&swapchain->present_progress_mutex);
+      mtx_unlock(&swapchain->present_progress_mutex);
    }
 
    image->present_queued_count--;
@@ -1145,24 +1146,24 @@ static void x11_present_complete(struct x11_swapchain *swapchain,
               sizeof(image->pending_completions[0]));
    }
 
-   pthread_cond_signal(&swapchain->thread_state_cond);
+   u_cnd_monotonic_signal(&swapchain->thread_state_cond);
 }
 
 static void x11_notify_pending_present(struct x11_swapchain *swapchain,
                                        struct x11_image *image)
 {
-   pthread_cond_signal(&swapchain->thread_state_cond);
+   u_cnd_monotonic_signal(&swapchain->thread_state_cond);
 }
 
 /* It is assumed that thread_state_lock is taken when calling this function. */
 static void x11_swapchain_notify_error(struct x11_swapchain *swapchain, VkResult result)
 {
-   pthread_mutex_lock(&swapchain->present_progress_mutex);
+   mtx_lock(&swapchain->present_progress_mutex);
    swapchain->present_id = UINT64_MAX;
    swapchain->present_progress_error = result;
-   pthread_cond_broadcast(&swapchain->present_progress_cond);
-   pthread_mutex_unlock(&swapchain->present_progress_mutex);
-   pthread_cond_broadcast(&swapchain->thread_state_cond);
+   u_cnd_monotonic_broadcast(&swapchain->present_progress_cond);
+   mtx_unlock(&swapchain->present_progress_mutex);
+   u_cnd_monotonic_broadcast(&swapchain->thread_state_cond);
 }
 
 /**
@@ -1736,9 +1737,9 @@ x11_acquire_next_image(struct wsi_swapchain *anv_chain,
       return info->timeout ? VK_TIMEOUT : VK_NOT_READY;
 
    if (result < 0) {
-      pthread_mutex_lock(&chain->thread_state_lock);
+      mtx_lock(&chain->thread_state_lock);
       result = x11_swapchain_result(chain, result);
-      pthread_mutex_unlock(&chain->thread_state_lock);
+      mtx_unlock(&chain->thread_state_lock);
    } else {
       result = x11_swapchain_read_status_atomic(chain);
    }
@@ -1836,7 +1837,7 @@ x11_manage_event_queue(void *state)
     * but we don't know which mode is being used. */
    unsigned forward_progress_guaranteed_acquired_images = chain->base.image_count - 1;
 
-   pthread_mutex_lock(&chain->thread_state_lock);
+   mtx_lock(&chain->thread_state_lock);
 
    while (chain->status >= 0) {
       /* This thread should only go sleep waiting for X events when we know there are pending events.
@@ -1862,10 +1863,10 @@ x11_manage_event_queue(void *state)
 
       if (assume_forward_progress) {
          /* Only yield lock when blocking on X11 event. */
-         pthread_mutex_unlock(&chain->thread_state_lock);
+         mtx_unlock(&chain->thread_state_lock);
          xcb_generic_event_t *event =
                xcb_wait_for_special_event(chain->conn, chain->special_event);
-         pthread_mutex_lock(&chain->thread_state_lock);
+         mtx_lock(&chain->thread_state_lock);
 
          /* Re-check status since we dropped the lock while waiting for X. */
          VkResult result = chain->status;
@@ -1888,11 +1889,11 @@ x11_manage_event_queue(void *state)
          free(event);
       } else {
          /* Nothing important to do, go to sleep until queue thread wakes us up. */
-         pthread_cond_wait(&chain->thread_state_cond, &chain->thread_state_lock);
+         u_cnd_monotonic_wait(&chain->thread_state_cond, &chain->thread_state_lock);
       }
    }
 
-   pthread_mutex_unlock(&chain->thread_state_lock);
+   mtx_unlock(&chain->thread_state_lock);
    return 0;
 }
 
@@ -1952,25 +1953,25 @@ x11_manage_present_queue(void *state)
          }
       }
 
-      pthread_mutex_lock(&chain->thread_state_lock);
+      mtx_lock(&chain->thread_state_lock);
 
       /* In IMMEDIATE and MAILBOX modes, there is a risk that we have exhausted the presentation queue,
        * since IDLE could return multiple times before observing a COMPLETE. */
       while (chain->status >= 0 &&
              chain->images[image_index].present_queued_count ==
              ARRAY_SIZE(chain->images[image_index].pending_completions)) {
-         pthread_cond_wait(&chain->thread_state_cond, &chain->thread_state_lock);
+         u_cnd_monotonic_wait(&chain->thread_state_cond, &chain->thread_state_lock);
       }
 
       if (chain->status < 0) {
-         pthread_mutex_unlock(&chain->thread_state_lock);
+         mtx_unlock(&chain->thread_state_lock);
          break;
       }
 
       result = x11_present_to_x11(chain, image_index, target_msc, present_mode);
 
       if (result < 0) {
-         pthread_mutex_unlock(&chain->thread_state_lock);
+         mtx_unlock(&chain->thread_state_lock);
          break;
       }
 
@@ -1981,7 +1982,7 @@ x11_manage_present_queue(void *state)
          while (chain->status >= 0 && chain->images[image_index].present_queued_count != 0) {
             /* In FIFO mode, we need to make sure we observe a COMPLETE before queueing up
              * another present. */
-            pthread_cond_wait(&chain->thread_state_cond, &chain->thread_state_lock);
+            u_cnd_monotonic_wait(&chain->thread_state_cond, &chain->thread_state_lock);
          }
 
          /* If next present is not FIFO, we still need to ensure we don't override that
@@ -1989,14 +1990,14 @@ x11_manage_present_queue(void *state)
          target_msc = chain->last_present_msc + 1;
       }
 
-      pthread_mutex_unlock(&chain->thread_state_lock);
+      mtx_unlock(&chain->thread_state_lock);
    }
 
-   pthread_mutex_lock(&chain->thread_state_lock);
+   mtx_lock(&chain->thread_state_lock);
    x11_swapchain_result(chain, result);
    if (!chain->base.image_info.explicit_sync)
       wsi_queue_push(&chain->acquire_queue, UINT32_MAX);
-   pthread_mutex_unlock(&chain->thread_state_lock);
+   mtx_unlock(&chain->thread_state_lock);
 
    return 0;
 }
@@ -2363,10 +2364,10 @@ x11_swapchain_destroy(struct wsi_swapchain *anv_chain,
    struct x11_swapchain *chain = (struct x11_swapchain *)anv_chain;
    xcb_void_cookie_t cookie;
 
-   pthread_mutex_lock(&chain->thread_state_lock);
+   mtx_lock(&chain->thread_state_lock);
    chain->status = VK_ERROR_OUT_OF_DATE_KHR;
-   pthread_cond_broadcast(&chain->thread_state_cond);
-   pthread_mutex_unlock(&chain->thread_state_lock);
+   u_cnd_monotonic_broadcast(&chain->thread_state_cond);
+   mtx_unlock(&chain->thread_state_lock);
 
    /* Push a UINT32_MAX to wake up the manager */
    wsi_queue_push(&chain->present_queue, UINT32_MAX);
@@ -2386,10 +2387,10 @@ x11_swapchain_destroy(struct wsi_swapchain *anv_chain,
                                              XCB_PRESENT_EVENT_MASK_NO_EVENT);
    xcb_discard_reply(chain->conn, cookie.sequence);
 
-   pthread_mutex_destroy(&chain->present_progress_mutex);
-   pthread_cond_destroy(&chain->present_progress_cond);
-   pthread_mutex_destroy(&chain->thread_state_lock);
-   pthread_cond_destroy(&chain->thread_state_cond);
+   mtx_destroy(&chain->present_progress_mutex);
+   u_cnd_monotonic_destroy(&chain->present_progress_cond);
+   mtx_destroy(&chain->thread_state_lock);
+   u_cnd_monotonic_destroy(&chain->thread_state_cond);
 
    wsi_swapchain_finish(&chain->base);
 
@@ -2443,11 +2444,11 @@ static VkResult x11_wait_for_present(struct wsi_swapchain *wsi_chain,
 
    timespec_from_nsec(&abs_timespec, abs_timeout);
 
-   pthread_mutex_lock(&chain->present_progress_mutex);
+   mtx_lock(&chain->present_progress_mutex);
    while (chain->present_id < waitValue) {
-      int ret = pthread_cond_timedwait(&chain->present_progress_cond,
-                                       &chain->present_progress_mutex,
-                                       &abs_timespec);
+      int ret = u_cnd_monotonic_timedwait(&chain->present_progress_cond,
+                                          &chain->present_progress_mutex,
+                                          &abs_timespec);
       if (ret == ETIMEDOUT) {
          result = VK_TIMEOUT;
          break;
@@ -2459,7 +2460,7 @@ static VkResult x11_wait_for_present(struct wsi_swapchain *wsi_chain,
    }
    if (result == VK_SUCCESS && chain->present_progress_error)
       result = chain->present_progress_error;
-   pthread_mutex_unlock(&chain->present_progress_mutex);
+   mtx_unlock(&chain->present_progress_mutex);
    return result;
 }
 
@@ -2542,32 +2543,32 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    if (chain == NULL)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   int ret = pthread_mutex_init(&chain->present_progress_mutex, NULL);
-   if (ret != 0) {
+   int ret = mtx_init(&chain->present_progress_mutex, mtx_plain);
+   if (ret != thrd_success) {
       vk_free(pAllocator, chain);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
-   ret = pthread_mutex_init(&chain->thread_state_lock, NULL);
-   if (ret != 0) {
-      pthread_mutex_destroy(&chain->present_progress_mutex);
+   ret = mtx_init(&chain->thread_state_lock, mtx_plain);
+   if (ret != thrd_success) {
+      mtx_destroy(&chain->present_progress_mutex);
       vk_free(pAllocator, chain);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
-   ret = pthread_cond_init(&chain->thread_state_cond, NULL);
-   if (ret != 0) {
-      pthread_mutex_destroy(&chain->present_progress_mutex);
-      pthread_mutex_destroy(&chain->thread_state_lock);
+   ret = u_cnd_monotonic_init(&chain->thread_state_cond);
+   if (ret != thrd_success) {
+      mtx_destroy(&chain->present_progress_mutex);
+      mtx_destroy(&chain->thread_state_lock);
       vk_free(pAllocator, chain);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
-   bool bret = wsi_init_pthread_cond_monotonic(&chain->present_progress_cond);
-   if (!bret) {
-      pthread_mutex_destroy(&chain->present_progress_mutex);
-      pthread_mutex_destroy(&chain->thread_state_lock);
-      pthread_cond_destroy(&chain->thread_state_cond);
+   ret = u_cnd_monotonic_init(&chain->present_progress_cond);
+   if (ret != thrd_success) {
+      mtx_destroy(&chain->present_progress_mutex);
+      mtx_destroy(&chain->thread_state_lock);
+      u_cnd_monotonic_destroy(&chain->thread_state_cond);
       vk_free(pAllocator, chain);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
@@ -2802,8 +2803,8 @@ wsi_x11_init_wsi(struct wsi_device *wsi_device,
       goto fail;
    }
 
-   int ret = pthread_mutex_init(&wsi->mutex, NULL);
-   if (ret != 0) {
+   int ret = mtx_init(&wsi->mutex, mtx_plain);
+   if (ret != thrd_success) {
       if (ret == ENOMEM) {
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
       } else {
@@ -2860,7 +2861,7 @@ wsi_x11_init_wsi(struct wsi_device *wsi_device,
    return VK_SUCCESS;
 
 fail_mutex:
-   pthread_mutex_destroy(&wsi->mutex);
+   mtx_destroy(&wsi->mutex);
 fail_alloc:
    vk_free(alloc, wsi);
 fail:
@@ -2883,7 +2884,7 @@ wsi_x11_finish_wsi(struct wsi_device *wsi_device,
 
       _mesa_hash_table_destroy(wsi->connections, NULL);
 
-      pthread_mutex_destroy(&wsi->mutex);
+      mtx_destroy(&wsi->mutex);
 
       vk_free(alloc, wsi);
    }

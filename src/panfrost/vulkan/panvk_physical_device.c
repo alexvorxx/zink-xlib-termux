@@ -72,6 +72,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_pipeline_executable_properties = true,
       .KHR_pipeline_library = true,
       .KHR_push_descriptor = true,
+      .KHR_sampler_mirror_clamp_to_edge = true,
       .KHR_shader_expect_assume = true,
       .KHR_storage_buffer_storage_class = true,
 #ifdef PANVK_USE_WSI_PLATFORM
@@ -128,7 +129,7 @@ get_features(const struct panvk_physical_device *device,
       .shaderDrawParameters = false,
 
       /* Vulkan 1.2 */
-      .samplerMirrorClampToEdge = false,
+      .samplerMirrorClampToEdge = true,
       .drawIndirectCount = false,
       .storageBuffer8BitAccess = false,
       .uniformAndStorageBuffer8BitAccess = false,

@@ -80,7 +80,7 @@ struct vk_sync_timeline {
    struct vk_sync sync;
 
    mtx_t mutex;
-   cnd_t cond;
+   struct u_cnd_monotonic cond;
 
    uint64_t highest_past;
    uint64_t highest_pending;

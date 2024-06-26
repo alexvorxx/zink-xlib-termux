@@ -1221,7 +1221,7 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block)
    }
 
    /* resummarize the block's register demand */
-   block->register_demand = RegisterDemand();
+   block->register_demand = block->live_in_demand;
    for (const aco_ptr<Instruction>& instr : block->instructions)
       block->register_demand.update(instr->register_demand);
 }

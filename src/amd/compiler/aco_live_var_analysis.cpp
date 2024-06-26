@@ -95,7 +95,7 @@ void
 process_live_temps_per_block(live_ctx& ctx, Block* block)
 {
    RegisterDemand new_demand;
-
+   block->register_demand = RegisterDemand();
    IDSet live = ctx.program->live.live_out[block->index];
 
    /* initialize register demand */
@@ -163,6 +163,7 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
 
       RegisterDemand before_instr = new_demand + get_additional_operand_demand(insn);
       insn->register_demand.update(before_instr);
+      block->register_demand.update(insn->register_demand);
    }
 
    /* handle phi definitions */
@@ -250,6 +251,8 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
 
    block->live_in_demand = new_demand;
    block->live_in_demand.sgpr += 2; /* Add 2 SGPRs for potential long-jumps. */
+   block->register_demand.update(block->live_in_demand);
+   ctx.program->max_reg_demand.update(block->register_demand);
 
    assert(!block->linear_preds.empty() || (new_demand == RegisterDemand() && live.empty()));
 }
@@ -430,17 +433,6 @@ live_var_analysis(Program* program)
     * program->blocks vector */
    while (ctx.worklist >= 0) {
       process_live_temps_per_block(ctx, &program->blocks[ctx.worklist--]);
-   }
-
-   /* update block's register demand */
-   for (Block& block : program->blocks) {
-      if (program->progress < CompilationProgress::after_ra) {
-         block.register_demand = RegisterDemand();
-         for (const aco_ptr<Instruction>& instr : block.instructions)
-            block.register_demand.update(instr->register_demand);
-      }
-
-      program->max_reg_demand.update(block.register_demand);
    }
 
    /* calculate the program's register demand and number of waves */

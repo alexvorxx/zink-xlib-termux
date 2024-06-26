@@ -2544,8 +2544,10 @@ v3dv_cmd_buffer_meta_state_push(struct v3dv_cmd_buffer *cmd_buffer,
       state->meta.attachment_alloc_count = state->attachment_alloc_count;
    }
    state->meta.attachment_count = state->attachment_alloc_count;
-   memcpy(state->meta.attachments, state->attachments,
-          attachment_state_total_size);
+   if (state->meta.attachments) {
+      memcpy(state->meta.attachments, state->attachments,
+             attachment_state_total_size);
+   }
 
    if (state->subpass_idx != -1) {
       state->meta.subpass_idx = state->subpass_idx;
@@ -2599,8 +2601,10 @@ v3dv_cmd_buffer_meta_state_pop(struct v3dv_cmd_buffer *cmd_buffer,
       sizeof(struct v3dv_cmd_buffer_attachment_state);
    const uint32_t attachment_state_total_size =
       attachment_state_item_size * state->meta.attachment_count;
-   memcpy(state->attachments, state->meta.attachments,
-          attachment_state_total_size);
+   if (attachment_state_total_size > 0) {
+      memcpy(state->attachments, state->meta.attachments,
+             attachment_state_total_size);
+   }
 
    if (state->meta.subpass_idx != -1) {
       state->pass = v3dv_render_pass_from_handle(state->meta.pass);
@@ -3945,7 +3949,8 @@ v3dv_cmd_buffer_ensure_array_state(struct v3dv_cmd_buffer *cmd_buffer,
          return;
       }
 
-      memcpy(*ptr, old_buffer, prev_slot_count * slot_size);
+      if (old_buffer)
+         memcpy(*ptr, old_buffer, prev_slot_count * slot_size);
       *alloc_count = new_slot_count;
    }
    assert(used_count < *alloc_count);

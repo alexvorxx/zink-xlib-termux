@@ -510,14 +510,19 @@ v3d_emit_spill_tmua(struct v3d_compile *c,
         add_node(c, offset.index, get_class_bit_any(c->devinfo));
 
         /* We always enable per-quad on spills/fills to ensure we spill
-         * any channels involved with helper invocations.
+         * any channels involved with helper invocations, but only if
+         * the spill is not conditional, since otherwise we may be spilling
+         * invalida lanes and overwriting valid data from a previous spill
+         * to the same address.
          */
         struct qreg tmua = vir_reg(QFILE_MAGIC, V3D_QPU_WADDR_TMUAU);
         struct qinst *inst = vir_ADD_dest(c, tmua, c->spill_base, offset);
         inst->qpu.flags.ac = cond;
         inst->ldtmu_count = 1;
-        inst->uniform = vir_get_uniform_index(c, QUNIFORM_CONSTANT,
-                                              0xffffff7f); /* per-quad */
+        inst->uniform =
+                vir_get_uniform_index(c, QUNIFORM_CONSTANT,
+                                      cond != V3D_QPU_COND_NONE ?
+                                              0xffffffff : 0xffffff7f /* per-quad*/);
 
         vir_emit_thrsw(c);
 

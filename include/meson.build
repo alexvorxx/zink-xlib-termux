@@ -133,7 +133,7 @@ opencl_headers = files(
 )
 # Only install the headers if we are building a stand alone implementation and
 # not an ICD enabled implementation
-if with_gallium_opencl and not with_opencl_icd
+if with_gallium_clover and not with_opencl_icd
   install_headers(
     opencl_headers,
     subdir: 'CL'

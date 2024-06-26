@@ -191,7 +191,7 @@ if with_gallium_d3d12
 else
   driver_d3d12 = declare_dependency()
 endif
-if with_gallium_opencl
+if with_gallium_clover
   # TODO: this isn't really clover specific, but ATM clover is the only
   # consumer
   subdir('targets/pipe-loader')

@@ -832,10 +832,10 @@ if _opencl != 'disabled'
     error('The Clover OpenCL state tracker requires rtti')
   endif
 
-  with_gallium_opencl = true
+  with_gallium_clover = true
   with_opencl_icd = _opencl == 'icd'
 else
-  with_gallium_opencl = false
+  with_gallium_clover = false
   with_opencl_icd = false
 endif
 
@@ -853,11 +853,11 @@ if with_gallium_rusticl
   rustc = meson.get_compiler('rust')
 endif
 
-with_clover_spirv = with_gallium_opencl and get_option('opencl-spirv')
+with_clover_spirv = with_gallium_clover and get_option('opencl-spirv')
 with_clc = with_microsoft_clc or with_intel_clc or with_gallium_asahi or with_gallium_rusticl or with_clover_spirv
 
 dep_clc = null_dep
-if with_gallium_opencl or with_clc
+if with_gallium_clover or with_clc
   dep_clc = dependency('libclc')
 endif
 
@@ -1734,7 +1734,7 @@ if with_amd_vk or with_gallium_radeonsi or with_gallium_r600
     llvm_modules += 'asmparser'
   endif
 endif
-if with_gallium_opencl
+if with_gallium_clover
   llvm_modules += [
     'linker', 'coverage', 'instrumentation', 'ipo', 'irreader',
     'lto', 'option', 'objcarcopts', 'profiledata'
@@ -1760,7 +1760,7 @@ amd_with_llvm = get_option('amd-use-llvm')
 
 if with_amd_vk or with_gallium_radeonsi or with_clc
   _llvm_version = '>= 15.0.0'
-elif with_gallium_opencl
+elif with_gallium_clover
   _llvm_version = '>= 11.0.0'
 else
   _llvm_version = '>= 5.0.0'
@@ -1781,7 +1781,7 @@ if _llvm.allowed()
     modules : llvm_modules,
     optional_modules : llvm_optional_modules,
     required : (
-      with_amd_vk or with_gallium_radeonsi or with_gallium_opencl or with_clc
+      with_amd_vk or with_gallium_radeonsi or with_gallium_clover or with_clc
       or _llvm.enabled()
     ),
     static : not _shared_llvm,
@@ -1833,7 +1833,7 @@ elif with_amd_vk and with_aco_tests
   error('ACO tests require LLVM, but LLVM is disabled.')
 elif with_swrast_vk
   error('The following drivers require LLVM: Lavapipe. One of these is enabled, but LLVM is disabled.')
-elif with_gallium_opencl
+elif with_gallium_clover
   error('The OpenCL "Clover" state tracker requires LLVM, but LLVM is disabled.')
 elif with_clc
   error('The CLC compiler requires LLVM, but LLVM is disabled.')
@@ -2433,7 +2433,7 @@ if with_gallium
   if with_gallium_st_nine
     gallium_frontends += 'nine'
   endif
-  if with_gallium_opencl
+  if with_gallium_clover
     gallium_frontends += 'clover'
   endif
   if with_gallium_rusticl

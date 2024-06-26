@@ -444,7 +444,7 @@ ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v)
 
    nir_if *outer_if = nir_push_if(b, nir_preamble_start_ir3(b, 1));
    {
-      nir_if *inner_if = nir_push_if(b, nir_elect(b, 1));
+      nir_if *inner_if = nir_push_if(b, nir_elect_any_ir3(b, 1));
       {
          nir_call_instr *call = nir_call_instr_create(nir, main->preamble);
          nir_builder_instr_insert(b, &call->instr);

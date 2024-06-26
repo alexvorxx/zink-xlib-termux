@@ -44,7 +44,7 @@ test-docs:
     # fork pipeline
     - if: '$CI_COMMIT_BRANCH && $CI_PROJECT_NAMESPACE != "mesa"'
       changes: *docs-or-ci
-      when: manual
+      when: on_success
     # Other cases default to never
 
 linkcheck-docs:

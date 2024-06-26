@@ -121,7 +121,7 @@ def monitor_pipeline(
     if stress:
         # When stress test, it is necessary to collect this information before start.
         for job in pipeline.jobs.list(all=True, include_retried=True):
-            if target_jobs_regex.fullmatch(job.name) and job.status in {"success", "failed"}:
+            if target_jobs_regex.fullmatch(job.name) and job.status in COMPLETED_STATUSES:
                 stress_status_counter[job.name][job.status] += 1
                 execution_times[job.name][job.id] = (job_duration(job), job.status, job.web_url)
 
@@ -134,7 +134,7 @@ def monitor_pipeline(
                 target_id = job.id
                 target_status = job.status
 
-                if stress and target_status in {"success", "failed"}:
+                if stress and target_status in COMPLETED_STATUSES:
                     if (
                         stress < 0
                         or sum(stress_status_counter[job.name].values()) < stress
@@ -229,7 +229,7 @@ def enable_job(
 ) -> gitlab.v4.objects.ProjectPipelineJob:
     """enable job"""
     if (
-        (job.status in {"success", "failed"} and action_type != "retry")
+        (job.status in COMPLETED_STATUSES and action_type != "retry")
         or (job.status == "manual" and not force_manual)
         or job.status in {"skipped", "running", "created", "pending"}
     ):

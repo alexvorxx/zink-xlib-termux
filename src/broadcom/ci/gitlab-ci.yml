@@ -1,19 +1,19 @@
 include:
   - local: 'src/broadcom/ci/gitlab-ci-inc.yml'
 
-vc4-rpi3-gl:arm32:
+vc4-rpi3-gl:arm64:
   extends:
     - .igalia-bcm2837-rpi-3-b
-    - .broadcom-test:arm32
+    - .broadcom-test:arm64
     - .vc4-rules
   parallel: 4
   variables:
     DEQP_SUITE: broadcom-rpi3
     HWCI_START_WESTON: 1
 
-vc4-rpi3-gl-piglit-full:arm32:
+vc4-rpi3-gl-piglit-full:arm64:
   extends:
-    - vc4-rpi3-gl:arm32
+    - vc4-rpi3-gl:arm64
     - .vc4-manual-rules
   tags:
     - igalia-rpi3

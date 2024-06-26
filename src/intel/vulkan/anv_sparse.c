@@ -626,9 +626,11 @@ anv_sparse_bind_trtt(struct anv_device *device,
    /* If the TRTT L3 table was never set, initialize it as part of this
     * submission.
     */
-   if (!trtt->l3_addr)
-      anv_trtt_init_context_state(device, &submit->base);
-
+   if (!trtt->l3_addr) {
+      result = anv_trtt_init_context_state(device, &submit->base);
+      if (result != VK_SUCCESS)
+         goto error_add_bind;
+   }
    assert(trtt->l3_addr);
 
    /* These capacities are conservative estimations. For L1 binds the

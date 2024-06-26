@@ -1102,8 +1102,8 @@ struct x11_swapchain {
    bool                                         copy_is_suboptimal;
    struct wsi_queue                             present_queue;
    struct wsi_queue                             acquire_queue;
-   pthread_t                                    queue_manager;
-   pthread_t                                    event_manager;
+   thrd_t                                       queue_manager;
+   thrd_t                                       event_manager;
 
    /* Used for communicating between event_manager and queue_manager.
     * Lock is also taken when reading and writing status.
@@ -1824,7 +1824,7 @@ static unsigned x11_driver_owned_images(const struct x11_swapchain *chain)
  * For IMMEDIATE and MAILBOX, the application thread pumped the event queue, which caused a lot of pain
  * when trying to deal with present wait.
  */
-static void *
+static int
 x11_manage_event_queue(void *state)
 {
    struct x11_swapchain *chain = state;
@@ -1893,7 +1893,7 @@ x11_manage_event_queue(void *state)
    }
 
    pthread_mutex_unlock(&chain->thread_state_lock);
-   return NULL;
+   return 0;
 }
 
 /**
@@ -1909,7 +1909,7 @@ x11_manage_event_queue(void *state)
  * - WaitForFence workaround:
  *     In some cases, we need to wait for image to complete rendering before submitting it to X.
  */
-static void *
+static int
 x11_manage_present_queue(void *state)
 {
    struct x11_swapchain *chain = state;
@@ -1998,7 +1998,7 @@ x11_manage_present_queue(void *state)
       wsi_queue_push(&chain->acquire_queue, UINT32_MAX);
    pthread_mutex_unlock(&chain->thread_state_lock);
 
-   return NULL;
+   return 0;
 }
 
 static uint8_t *
@@ -2370,8 +2370,8 @@ x11_swapchain_destroy(struct wsi_swapchain *anv_chain,
 
    /* Push a UINT32_MAX to wake up the manager */
    wsi_queue_push(&chain->present_queue, UINT32_MAX);
-   pthread_join(chain->queue_manager, NULL);
-   pthread_join(chain->event_manager, NULL);
+   thrd_join(chain->queue_manager, NULL);
+   thrd_join(chain->event_manager, NULL);
 
    if (!chain->base.image_info.explicit_sync)
       wsi_queue_destroy(&chain->acquire_queue);
@@ -2742,14 +2742,14 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
          wsi_queue_push(&chain->acquire_queue, i);
    }
 
-   ret = pthread_create(&chain->queue_manager, NULL,
-                        x11_manage_present_queue, chain);
-   if (ret)
+   ret = thrd_create(&chain->queue_manager,
+                     x11_manage_present_queue, chain);
+   if (ret != thrd_success)
       goto fail_init_fifo_queue;
 
-   ret = pthread_create(&chain->event_manager, NULL,
-                        x11_manage_event_queue, chain);
-   if (ret)
+   ret = thrd_create(&chain->event_manager,
+                     x11_manage_event_queue, chain);
+   if (ret != thrd_success)
       goto fail_init_event_queue;
 
    /* It is safe to set it here as only one swapchain can be associated with
@@ -2765,7 +2765,7 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
 fail_init_event_queue:
    /* Push a UINT32_MAX to wake up the manager */
    wsi_queue_push(&chain->present_queue, UINT32_MAX);
-   pthread_join(chain->queue_manager, NULL);
+   thrd_join(chain->queue_manager, NULL);
 
 fail_init_fifo_queue:
    wsi_queue_destroy(&chain->present_queue);

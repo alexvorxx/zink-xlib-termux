@@ -349,7 +349,6 @@ alpine/x86_64_build:
   rules:
     - !reference [pages, rules]
     - !reference [test-docs, rules]
-    - !reference [test-docs-mr, rules]
     - !reference [linkcheck-docs, rules]
     - !reference [.container, rules]
 

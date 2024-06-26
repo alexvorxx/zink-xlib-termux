@@ -37,18 +37,14 @@ test-docs:
   stage: deploy
   rules:
     - !reference [.no_scheduled_pipelines-rules, rules]
-    - if: '$CI_COMMIT_BRANCH && $CI_PROJECT_NAMESPACE != "mesa"'
-      changes: *docs-or-ci
-      when: manual
-    # Other cases default to never
-
-test-docs-mr:
-  extends:
-    - test-docs
-  rules:
+    # pre-merge or merge pipeline
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes: *docs-or-ci
       when: on_success
+    # fork pipeline
+    - if: '$CI_COMMIT_BRANCH && $CI_PROJECT_NAMESPACE != "mesa"'
+      changes: *docs-or-ci
+      when: manual
     # Other cases default to never
 
 linkcheck-docs:

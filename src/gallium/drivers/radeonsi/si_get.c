@@ -192,6 +192,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
     * (it might work sometimes, but that's not enough)
     */
    case PIPE_CAP_SAMPLER_REDUCTION_MINMAX:
+   case PIPE_CAP_SAMPLER_REDUCTION_MINMAX_ARB:
       return !(sscreen->info.family == CHIP_TAHITI || sscreen->info.family == CHIP_VERDE);
 
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:

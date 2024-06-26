@@ -2245,6 +2245,40 @@ static bool si_is_zs_format_supported(enum pipe_format format)
    return ac_is_zs_format_supported(format);
 }
 
+/* GFX6-8:
+ * - no integer format support
+ * - no depth format support (depth formats without shadow samplers are supported,
+ *   but that's not enough)
+ * - only single-channel formats are supported
+ * - limitations of early chips (GFX6 only): no R9G9B9E5 support
+ *
+ * GFX9+:
+ * - all formats are supported
+ */
+static bool si_is_reduction_mode_supported(struct pipe_screen *screen, enum pipe_format format)
+{
+   struct si_screen *sscreen = (struct si_screen *)screen;
+   const struct util_format_description *desc = util_format_description(format);
+
+   if (sscreen->info.gfx_level <= GFX8) {
+      /* old HW limitations */
+      if (sscreen->info.gfx_level == GFX6 &&
+          format == PIPE_FORMAT_R9G9B9E5_FLOAT)
+         return false;
+
+      /* reject if more than one channel */
+      if (desc->nr_channels > 1)
+         return false;
+
+      /* no integer or depth format support */
+      if (util_format_is_pure_integer(format) ||
+          util_format_has_depth(desc))
+         return false;
+   }
+
+   return true;
+}
+
 static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format format,
                                    enum pipe_texture_target target, unsigned sample_count,
                                    unsigned storage_sample_count, unsigned usage)
@@ -2342,6 +2376,11 @@ static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format 
    if ((usage & PIPE_BIND_LINEAR) && !util_format_is_compressed(format) &&
        !(usage & PIPE_BIND_DEPTH_STENCIL))
       retval |= PIPE_BIND_LINEAR;
+
+   if ((usage & PIPE_BIND_SAMPLER_REDUCTION_MINMAX) &&
+       screen->get_param(screen, PIPE_CAP_SAMPLER_REDUCTION_MINMAX) &&
+       si_is_reduction_mode_supported(screen, format))
+      retval |= PIPE_BIND_SAMPLER_REDUCTION_MINMAX;
 
    return retval == usage;
 }

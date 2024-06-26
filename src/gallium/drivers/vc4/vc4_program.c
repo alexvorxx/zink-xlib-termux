@@ -1550,6 +1550,9 @@ ntq_setup_inputs(struct vc4_compile *c)
         nir_foreach_shader_in_variable(var, c->s)
                 num_entries++;
 
+        if (num_entries == 0)
+                return;
+
         nir_variable *vars[num_entries];
 
         unsigned i = 0;
@@ -2581,39 +2584,41 @@ vc4_setup_compiled_fs_inputs(struct vc4_context *vc4, struct vc4_compile *c,
         struct vc4_fs_inputs inputs;
 
         memset(&inputs, 0, sizeof(inputs));
-        inputs.input_slots = ralloc_array(shader,
-                                          struct vc4_varying_slot,
-                                          c->num_input_slots);
+        if (c->num_input_slots > 0) {
+                inputs.input_slots = ralloc_array(shader,
+                                                  struct vc4_varying_slot,
+                                                  c->num_input_slots);
 
-        bool input_live[c->num_input_slots];
+                bool input_live[c->num_input_slots];
 
-        memset(input_live, 0, sizeof(input_live));
-        qir_for_each_inst_inorder(inst, c) {
-                for (int i = 0; i < qir_get_nsrc(inst); i++) {
-                        if (inst->src[i].file == QFILE_VARY)
-                                input_live[inst->src[i].index] = true;
-                }
-        }
-
-        for (int i = 0; i < c->num_input_slots; i++) {
-                struct vc4_varying_slot *slot = &c->input_slots[i];
-
-                if (!input_live[i])
-                        continue;
-
-                /* Skip non-VS-output inputs. */
-                if (slot->slot == (uint8_t)~0)
-                        continue;
-
-                if (slot->slot == VARYING_SLOT_COL0 ||
-                    slot->slot == VARYING_SLOT_COL1 ||
-                    slot->slot == VARYING_SLOT_BFC0 ||
-                    slot->slot == VARYING_SLOT_BFC1) {
-                        shader->color_inputs |= (1 << inputs.num_inputs);
+                memset(input_live, 0, sizeof(input_live));
+                qir_for_each_inst_inorder(inst, c) {
+                        for (int i = 0; i < qir_get_nsrc(inst); i++) {
+                                if (inst->src[i].file == QFILE_VARY)
+                                        input_live[inst->src[i].index] = true;
+                        }
                 }
 
-                inputs.input_slots[inputs.num_inputs] = *slot;
-                inputs.num_inputs++;
+                for (int i = 0; i < c->num_input_slots; i++) {
+                        struct vc4_varying_slot *slot = &c->input_slots[i];
+
+                        if (!input_live[i])
+                                continue;
+
+                        /* Skip non-VS-output inputs. */
+                        if (slot->slot == (uint8_t)~0)
+                                continue;
+
+                        if (slot->slot == VARYING_SLOT_COL0 ||
+                            slot->slot == VARYING_SLOT_COL1 ||
+                            slot->slot == VARYING_SLOT_BFC0 ||
+                            slot->slot == VARYING_SLOT_BFC1) {
+                                shader->color_inputs |= (1 << inputs.num_inputs);
+                        }
+
+                        inputs.input_slots[inputs.num_inputs] = *slot;
+                        inputs.num_inputs++;
+                }
         }
         shader->num_inputs = inputs.num_inputs;
 

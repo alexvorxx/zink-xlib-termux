@@ -5860,8 +5860,8 @@ visit_load_constant(isel_context* ctx, nir_intrinsic_instr* instr)
                           Operand::c32(MIN2(base + range, ctx->shader->constant_data_size)),
                           Operand::c32(desc[3]));
    unsigned size = instr->def.bit_size / 8;
-   // TODO: get alignment information for subdword constants
-   load_buffer(ctx, instr->num_components, size, dst, rsrc, offset, size, 0);
+   load_buffer(ctx, instr->num_components, size, dst, rsrc, offset, nir_intrinsic_align_mul(instr),
+               nir_intrinsic_align_offset(instr));
 }
 
 /* Packs multiple Temps of different sizes in to a vector of v1 Temps.

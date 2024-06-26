@@ -25,6 +25,7 @@ files_mesa_util = files(
   'box.h',
   'build_id.c',
   'build_id.h',
+  'cnd_monotonic.c',
   'cnd_monotonic.h',
   'compiler.h',
   'compress.c',

@@ -53,6 +53,7 @@ STATUS_COLORS = {
     "success": Fore.GREEN,
     "failed": Fore.RED,
     "canceled": Fore.MAGENTA,
+    "canceling": Fore.MAGENTA,
     "manual": "",
     "pending": "",
     "skipped": "",
@@ -63,7 +64,7 @@ COMPLETED_STATUSES = ["success", "failed"]
 
 def print_job_status(job, new_status=False) -> None:
     """It prints a nice, colored job status with a link to the job."""
-    if job.status == "canceled":
+    if job.status in {"canceled", "canceling"}:
         return
 
     if new_status and job.status == "created":
@@ -236,7 +237,7 @@ def enable_job(
 
     pjob = project.jobs.get(job.id, lazy=True)
 
-    if job.status in ["success", "failed", "canceled"]:
+    if job.status in ["success", "failed", "canceled", "canceling"]:
         new_job = pjob.retry()
         job = get_pipeline_job(pipeline, new_job["id"])
     else:
@@ -259,6 +260,7 @@ def cancel_job(project, job) -> None:
     """Cancel GitLab job"""
     if job.status in [
         "canceled",
+        "canceling",
         "success",
         "failed",
         "skipped",

@@ -417,7 +417,9 @@ a6xx_gen4 = A6XXProps(
         has_scalar_alu = True,
         has_isam_v = True,
         has_ssbo_imm_offsets = True,
-        has_early_preamble = True,
+        # TODO: there seems to be a quirk where at least rcp can't be in an
+        # early preamble. a660 at least is affected.
+        #has_early_preamble = True,
     )
 
 a6xx_a690_quirk = A6XXProps(

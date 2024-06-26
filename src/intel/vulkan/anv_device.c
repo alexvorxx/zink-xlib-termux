@@ -2576,7 +2576,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->master_fd = master_fd;
 
    device->engine_info = intel_engine_get_info(fd, device->info.kmd_type);
-   intel_common_update_device_info(fd, &devinfo);
+   intel_common_update_device_info(fd, &device->info);
 
    anv_physical_device_init_queue_families(device);
 

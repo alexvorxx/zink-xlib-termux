@@ -5,7 +5,7 @@
   artifacts:
     expose_as: 'Documentation preview'
     paths:
-    - public/
+      - public/
   script:
     - meson setup _build -D prefix=$(pwd) --auto-features=disabled
       -D vulkan-drivers="" -D gallium-drivers="" -D glx=disabled
@@ -20,13 +20,13 @@ pages:
     - !reference [.no_scheduled_pipelines-rules, rules]
     - if: '$CI_PROJECT_NAMESPACE == "mesa" && $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH && $CI_COMMIT_BRANCH'
       changes: &docs-or-ci
-      - docs/**/*
-      - .gitlab-ci.yml
-      # All the source files documentation is extracted from
-      # git grep -h ":file: src/" -- docs | sort | uniq
-      - src/compiler/nir/nir.h
-      - src/intel/isl/**/*
-      - src/vulkan/runtime/**/*
+        - docs/**/*
+        - .gitlab-ci.yml
+        # All the source files documentation is extracted from
+        # git grep -h ":file: src/" -- docs | sort | uniq
+        - src/compiler/nir/nir.h
+        - src/intel/isl/**/*
+        - src/vulkan/runtime/**/*
       when: always
     # Other cases default to never
 

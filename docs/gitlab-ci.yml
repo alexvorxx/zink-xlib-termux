@@ -36,7 +36,6 @@ test-docs:
   interruptible: true
   stage: deploy
   rules:
-    - !reference [.no_scheduled_pipelines-rules, rules]
     # pre-merge or merge pipeline
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes: *docs-or-ci

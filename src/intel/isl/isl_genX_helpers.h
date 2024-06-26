@@ -204,9 +204,11 @@ isl_get_qpitch(const struct isl_surf *surf)
 UNUSED static uint8_t
 isl_get_render_compression_format(enum isl_format format)
 {
-   /* Bspec 63919 (r47142) Enumeration_UNIFIED_COMPRESSION_FORMAT:
+   /* Bspec 63919 (r60413):
     *
     *   Table "[Enumeration] UNIFIED_COMPRESSION_FORMAT"
+    *
+    * These ISL formats have explicitly defined CMF values in the spec.
     */
    switch(format) {
    case ISL_FORMAT_R8_UNORM:
@@ -314,6 +316,16 @@ isl_get_render_compression_format(enum isl_format format)
    case ISL_FORMAT_BC7_UNORM_SRGB:
    case ISL_FORMAT_BC6H_UF16:
       return CMF_ML8;
+   /* These formats are not in the CMF table in the Bspec 63919 (r60413).
+    * We choose CMF values for them by their number of channels x channel bit
+    * size.
+    */
+   case ISL_FORMAT_L8A8_UNORM_SRGB:
+      return CMF_R8_G8;
+   case ISL_FORMAT_L8_UNORM_SRGB:
+      return CMF_R8;
+   case ISL_FORMAT_R9G9B9E5_SHAREDEXP:
+      return CMF_R11_G11_B10;
    default:
       unreachable("Unsupported render compression format!");
       return 0;

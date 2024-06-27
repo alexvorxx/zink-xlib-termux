@@ -1,4 +1,7 @@
 /* MESA: A hack to avoid #ifdefs in driver code. */
+
+#undef __ANDROID__
+
 #ifdef __ANDROID__
 
 #include <cutils/native_handle.h>
@@ -31,8 +34,6 @@ typedef void *buffer_handle_t;
 
 #ifndef __VK_ANDROID_NATIVE_BUFFER_H__
 #define __VK_ANDROID_NATIVE_BUFFER_H__
-
-#undef __ANDROID__
 
 #include <vulkan/vulkan.h>
 

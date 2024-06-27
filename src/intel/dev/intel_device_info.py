@@ -147,20 +147,12 @@ Enum("intel_device_info_mmap_mode",
        "INTEL_DEVICE_INFO_MMAP_MODE_WB"
        ])
 
-Enum("intel_device_info_coherency_mode",
-     [EnumValue("INTEL_DEVICE_INFO_COHERENCY_MODE_NONE", value=0),
-      EnumValue("INTEL_DEVICE_INFO_COHERENCY_MODE_1WAY", comment="CPU caches are snooped by GPU"),
-      EnumValue("INTEL_DEVICE_INFO_COHERENCY_MODE_2WAY",
-                comment="Fully coherent between GPU and CPU")
-      ])
-
 Struct("intel_device_info_pat_entry",
        [Member("uint8_t", "index"),
         Member("intel_device_info_mmap_mode", "mmap",
                comment=dedent("""\
                This tells KMD what caching mode the CPU mapping should use.
-               It has nothing to do with any PAT cache modes.""")),
-        Member("intel_device_info_coherency_mode", "coherency")])
+               It has nothing to do with any PAT cache modes."""))])
 
 Enum("intel_cmat_scope",
      [EnumValue("INTEL_CMAT_SCOPE_NONE", value=0),

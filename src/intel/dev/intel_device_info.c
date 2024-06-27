@@ -985,10 +985,10 @@ static const struct intel_device_info intel_device_info_ehl_2x4 = {
    .simulator_id = 22,                                          \
    .max_eus_per_subslice = 16,                                  \
    .pat = {                                                     \
-         .cached_coherent = PAT_ENTRY(0, WB, 2WAY),             \
-         .scanout = PAT_ENTRY(1, WC, NONE),                     \
-         .writeback_incoherent = PAT_ENTRY(0, WB, 2WAY),        \
-         .writecombining = PAT_ENTRY(1, WC, NONE),              \
+         .cached_coherent = PAT_ENTRY(0, WB),                   \
+         .scanout = PAT_ENTRY(1, WC),                           \
+         .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         .writecombining = PAT_ENTRY(1, WC),                    \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
@@ -1130,10 +1130,10 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_flat_ccs = true,                                        \
    /* There is no PAT table for DG2, using TGL ones */          \
    .pat = {                                                     \
-         .cached_coherent = PAT_ENTRY(0, WB, 1WAY),             \
-         .scanout = PAT_ENTRY(1, WC, NONE),                     \
-         .writeback_incoherent = PAT_ENTRY(0, WB, 2WAY),        \
-         .writecombining = PAT_ENTRY(1, WC, NONE),              \
+         .cached_coherent = PAT_ENTRY(0, WB),                   \
+         .scanout = PAT_ENTRY(1, WC),                           \
+         .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         .writecombining = PAT_ENTRY(1, WC),                    \
    }
 
 static const struct intel_device_info intel_device_info_dg2_g10 = {
@@ -1173,10 +1173,10 @@ static const struct intel_device_info intel_device_info_atsm_g11 = {
    .has_mesh_shading = true,                                    \
    .has_ray_tracing = true,                                     \
    .pat = {                                                     \
-         .cached_coherent = PAT_ENTRY(3, WB, 1WAY),             \
-         .scanout = PAT_ENTRY(1, WC, NONE),                     \
-         .writeback_incoherent = PAT_ENTRY(0, WB, NONE),        \
-         .writecombining = PAT_ENTRY(1, WC, NONE),              \
+         .cached_coherent = PAT_ENTRY(3, WB),                   \
+         .scanout = PAT_ENTRY(1, WC),                           \
+         .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         .writecombining = PAT_ENTRY(1, WC),                    \
    }
 
 static const struct intel_device_info intel_device_info_mtl_u = {
@@ -1214,11 +1214,11 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .has_ray_tracing = true,                                     \
    .has_indirect_unroll = true,                                 \
    .pat = {                                                     \
-      .cached_coherent = PAT_ENTRY(1, WB, 1WAY),                \
-      .scanout = PAT_ENTRY(6, WC, NONE),                        \
-      .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
-      .writecombining = PAT_ENTRY(6, WC, NONE),                 \
-      .compressed = PAT_ENTRY(11, WC, NONE)                     \
+      .cached_coherent = PAT_ENTRY(1, WB),                      \
+      .scanout = PAT_ENTRY(6, WC),                              \
+      .writeback_incoherent = PAT_ENTRY(0, WB),                 \
+      .writecombining = PAT_ENTRY(6, WC),                       \
+      .compressed = PAT_ENTRY(11, WC)                           \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \

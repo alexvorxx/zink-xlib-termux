@@ -64,11 +64,10 @@ extern "C" {
 #define intel_device_info_is_mtl_or_arl(devinfo) \
    (intel_device_info_is_mtl(devinfo) || intel_device_info_is_arl(devinfo))
 
-#define PAT_ENTRY(index_, mmap_, coh_)                      \
+#define PAT_ENTRY(index_, mmap_)                            \
 {                                                           \
    .index = index_,                                         \
-   .mmap = INTEL_DEVICE_INFO_MMAP_MODE_##mmap_,             \
-   .coherency = INTEL_DEVICE_INFO_COHERENCY_MODE_##coh_     \
+   .mmap = INTEL_DEVICE_INFO_MMAP_MODE_##mmap_              \
 }
 
 #ifdef GFX_VER

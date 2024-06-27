@@ -469,16 +469,17 @@ nir_fixup_deref_types_instr(UNUSED struct nir_builder *b, nir_instr *instr, UNUS
    if (deref->deref_type == nir_deref_type_var) {
       parent_derived_type = deref->var->type;
    } else if (deref->deref_type == nir_deref_type_array ||
-              deref->deref_type == nir_deref_type_struct) {
+              deref->deref_type == nir_deref_type_array_wildcard) {
       nir_deref_instr *parent = nir_src_as_deref(deref->parent);
-      if (deref->deref_type == nir_deref_type_array) {
-         parent_derived_type = glsl_get_array_element(parent->type);
-      } else if (deref->deref_type == nir_deref_type_struct) {
-         parent_derived_type =
-            glsl_get_struct_field(parent->type, deref->strct.index);
-      } else {
-         unreachable("Unsupported deref type");
-      }
+      parent_derived_type = glsl_get_array_element(parent->type);
+   }  else if (deref->deref_type == nir_deref_type_struct) {
+      nir_deref_instr *parent = nir_src_as_deref(deref->parent);
+      parent_derived_type = glsl_get_struct_field(parent->type, deref->strct.index);
+   } else if (deref->deref_type == nir_deref_type_ptr_as_array) {
+      nir_deref_instr *parent = nir_src_as_deref(deref->parent);
+      parent_derived_type = parent->type;
+   } else if (deref->deref_type == nir_deref_type_cast) {
+      return false;
    } else {
       unreachable("Unsupported deref type");
    }

@@ -836,7 +836,13 @@ impl Device {
         self.caps.has_images
             && !FORMATS
                 .iter()
-                .filter(|f| f.req_for_full_read_or_write)
+                .filter(|f| {
+                    if self.embedded {
+                        f.req_for_embeded_read_or_write
+                    } else {
+                        f.req_for_full_read_or_write
+                    }
+                })
                 .map(|f| self.formats.get(&f.cl_image_format).unwrap())
                 .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
                 .any(|f| *f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0)

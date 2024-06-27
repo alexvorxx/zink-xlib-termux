@@ -41,18 +41,47 @@
         - src/panfrost/midgard/**/*
       when: manual
 
-.panfrost-bifrost-rules:
+.panfrost-bifrost-gl-rules:
   stage: arm
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-rules, rules]
-    - !reference [.vulkan-rules, rules]
     - !reference [.gl-rules, rules]
     - changes:
         *panfrost_common_file_list
       when: on_success
     - changes:
         *panfrost_gallium_file_list
+      when: on_success
+    - changes: &panfrost_bifrost_file_list
+        - src/panfrost/compiler/**/*
+      when: on_success
+
+.panfrost-bifrost-gl-manual-rules:
+  stage: arm
+  retry: !reference [.scheduled_pipeline-rules, retry]
+  rules:
+    - !reference [.test, rules]
+    - !reference [.collabora-farm-manual-rules, rules]
+    - !reference [.gl-manual-rules, rules]
+    - changes:
+        *panfrost_common_file_list
+      when: manual
+    - changes:
+        *panfrost_gallium_file_list
+      when: manual
+    - changes:
+        *panfrost_bifrost_file_list
+      when: manual
+
+.panfrost-bifrost-vk-rules:
+  stage: arm
+  rules:
+    - !reference [.test, rules]
+    - !reference [.collabora-farm-rules, rules]
+    - !reference [.vulkan-rules, rules]
+    - changes:
+        *panfrost_common_file_list
       when: on_success
     - changes: &panfrost_vulkan_file_list
         - src/panfrost/vulkan/**/*
@@ -61,19 +90,15 @@
         - src/panfrost/compiler/**/*
       when: on_success
 
-.panfrost-bifrost-manual-rules:
+.panfrost-bifrost-vk-manual-rules:
   stage: arm
   retry: !reference [.scheduled_pipeline-rules, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]
     - !reference [.vulkan-manual-rules, rules]
-    - !reference [.gl-manual-rules, rules]
     - changes:
         *panfrost_common_file_list
-      when: manual
-    - changes:
-        *panfrost_gallium_file_list
       when: manual
     - changes:
         *panfrost_vulkan_file_list
@@ -230,7 +255,7 @@ panfrost-g52-gl:arm64:
   parallel: 3
   extends:
     - .lava-test-deqp:arm64
-    - .panfrost-bifrost-rules
+    - .panfrost-bifrost-gl-rules
     - .panfrost-test
     - .lava-meson-g12b-a311d-khadas-vim3:arm64
   variables:
@@ -244,7 +269,7 @@ panfrost-g52-vk:arm64:
     - .lava-test-deqp:arm64
     - .panfrost-test
     - .lava-meson-g12b-a311d-khadas-vim3:arm64
-    - .panfrost-bifrost-manual-rules
+    - .panfrost-bifrost-vk-manual-rules
   variables:
     MESA_VK_IGNORE_CONFORMANCE_WARNING: 1
     PAN_I_WANT_A_BROKEN_VULKAN_DRIVER: 1
@@ -255,7 +280,7 @@ panfrost-g52-vk:arm64:
 panfrost-g52-piglit-gles2:arm64:
   extends:
     - .lava-piglit:arm64
-    - .panfrost-bifrost-rules
+    - .panfrost-bifrost-gl-rules
     - .panfrost-test
     - .lava-meson-g12b-a311d-khadas-vim3:arm64
   variables:
@@ -267,7 +292,7 @@ panfrost-g72-gl:arm64:
   parallel: 3
   extends:
     - .lava-test-deqp:arm64
-    - .panfrost-bifrost-rules
+    - .panfrost-bifrost-gl-rules
     - .panfrost-test
     - .lava-mt8183-kukui-jacuzzi-juniper-sku16:arm64
   variables:
@@ -276,7 +301,7 @@ panfrost-g72-gl:arm64:
 panfrost-g57-gl:arm64:
   extends:
     - .lava-test-deqp:arm64
-    - .panfrost-bifrost-rules
+    - .panfrost-bifrost-gl-rules
     - .panfrost-test
     - .lava-mt8192-asurada-spherion-r0:arm64
   parallel: 6

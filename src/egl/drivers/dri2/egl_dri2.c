@@ -838,9 +838,12 @@ dri2_setup_screen(_EGLDisplay *disp)
       } else {
          disp->Extensions.MESA_drm_image = EGL_TRUE;
       }
-      if (dri2_dpy->image->base.version >= 11)
-         disp->Extensions.MESA_image_dma_buf_export = EGL_TRUE;
-
+#ifdef HAVE_LIBDRM
+      if (dri2_dpy->image->base.version >= 11 &&
+          get_screen_param(disp, PIPE_CAP_DMABUF) & DRM_PRIME_CAP_EXPORT) {
+         disp->Extensions.MESA_image_dma_buf_export = true;
+      }
+#endif
       disp->Extensions.MESA_x11_native_visual_id = EGL_TRUE;
 
       disp->Extensions.EXT_surface_compression = EGL_TRUE;

@@ -1236,8 +1236,8 @@ static const struct intel_device_info intel_device_info_arl_h = {
       .scanout = PAT_ENTRY(6, WC),                              \
       /* CPU: WB, GPU: PAT 0 => WB, 0WAY */                     \
       .writeback_incoherent = PAT_ENTRY(0, WB),                 \
-      /* CPU: WC, GPU: PAT 6 => XD */                           \
-      .writecombining = PAT_ENTRY(6, WC),                       \
+      /* CPU: WC, GPU: PAT 0 => WB */                           \
+      .writecombining = PAT_ENTRY(0, WC),                       \
       /* CPU: WC, GPU: PAT 11 => XD, compressed */              \
       .compressed = PAT_ENTRY(11, WC)                           \
    },                                                           \

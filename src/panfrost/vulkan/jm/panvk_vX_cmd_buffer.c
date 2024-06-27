@@ -578,15 +578,16 @@ panvk_per_arch(CmdPushDescriptorSetKHR)(
 }
 
 VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdPushDescriptorSetWithTemplateKHR)(
-   VkCommandBuffer commandBuffer,
-   VkDescriptorUpdateTemplate descriptorUpdateTemplate, VkPipelineLayout layout,
-   uint32_t set, const void *pData)
+panvk_per_arch(CmdPushDescriptorSetWithTemplate2KHR)(
+   VkCommandBuffer commandBuffer, const VkPushDescriptorSetWithTemplateInfoKHR
+                                     *pPushDescriptorSetWithTemplateInfo)
 {
    VK_FROM_HANDLE(vk_descriptor_update_template, template,
-                  descriptorUpdateTemplate);
+                  pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   VK_FROM_HANDLE(vk_pipeline_layout, playout, layout);
+   VK_FROM_HANDLE(vk_pipeline_layout, playout,
+                  pPushDescriptorSetWithTemplateInfo->layout);
+   const uint32_t set = pPushDescriptorSetWithTemplateInfo->set;
    const struct panvk_descriptor_set_layout *set_layout =
       to_panvk_descriptor_set_layout(playout->set_layouts[set]);
    struct panvk_descriptor_state *desc_state =
@@ -599,8 +600,8 @@ panvk_per_arch(CmdPushDescriptorSetWithTemplateKHR)(
    push_set->layout = set_layout;
    push_set->desc_count = set_layout->desc_count;
 
-   panvk_per_arch(descriptor_set_write_template)(push_set, template, pData,
-                                                 true);
+   panvk_per_arch(descriptor_set_write_template)(
+      push_set, template, pPushDescriptorSetWithTemplateInfo->pData, true);
 
    push_set->descs.dev = 0;
    push_set->layout = NULL;

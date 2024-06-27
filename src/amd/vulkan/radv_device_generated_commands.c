@@ -1724,8 +1724,7 @@ dgc_emit_dispatch_taskmesh_direct_ace(struct dgc_cmdbuf *ace_cs, nir_def *x, nir
 }
 
 static void
-dgc_emit_draw_mesh_tasks_ace(struct dgc_cmdbuf *ace_cs, nir_def *stream_addr, nir_def *draw_params_offset,
-                             nir_def *sequence_id)
+dgc_emit_draw_mesh_tasks_ace(struct dgc_cmdbuf *ace_cs, nir_def *stream_addr, nir_def *draw_params_offset)
 {
    nir_builder *b = ace_cs->b;
 
@@ -2054,7 +2053,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
          }
          nir_pop_if(&b, 0);
 
-         dgc_emit_draw_mesh_tasks_ace(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset), sequence_id);
+         dgc_emit_draw_mesh_tasks_ace(&cmd_buf, stream_addr, load_param16(&b, draw_params_offset));
 
          /* Pad the cmdbuffer if we did not use the whole stride */
          dgc_pad_cmdbuf(&cmd_buf, cmd_buf_end);

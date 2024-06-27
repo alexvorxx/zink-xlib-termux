@@ -2295,9 +2295,12 @@ radv_use_dgc_predication(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
 
    /* Enable conditional rendering (if not enabled by user) to skip prepare/execute DGC calls when
     * the indirect sequence count might be zero. This can only be enabled on GFX because on ACE it's
-    * not possible to skip the execute DGC call (ie. no INDIRECT_PACKET)
+    * not possible to skip the execute DGC call (ie. no INDIRECT_PACKET). It should also be disabled
+    * when the graphics pipelines has a task shader for the same reason (otherwise the DGC ACE IB
+    * would be uninitialized).
     */
-   return cmd_buffer->qf == RADV_QUEUE_GENERAL && seq_count_buffer && !cmd_buffer->state.predicating;
+   return cmd_buffer->qf == RADV_QUEUE_GENERAL && !radv_dgc_with_task_shader(pGeneratedCommandsInfo) &&
+          seq_count_buffer && !cmd_buffer->state.predicating;
 }
 
 static bool

@@ -4000,7 +4000,9 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
    VkAccessFlags2 src_flags = 0;
    VkAccessFlags2 dst_flags = 0;
 
+#if GFX_VER < 20
    bool apply_sparse_flushes = false;
+#endif
    bool flush_query_copies = false;
 
    for (uint32_t d = 0; d < n_dep_infos; d++) {
@@ -4025,18 +4027,19 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
              cmd_buffer_has_pending_copy_query(cmd_buffer))
             flush_query_copies = true;
 
+#if GFX_VER < 20
          /* There's no way of knowing if this memory barrier is related to
           * sparse buffers! This is pretty horrible.
           */
          if (mask_is_write(src_flags) &&
              p_atomic_read(&device->num_sparse_resources) > 0)
             apply_sparse_flushes = true;
+#endif
       }
 
       for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
          const VkBufferMemoryBarrier2 *buf_barrier =
             &dep_info->pBufferMemoryBarriers[i];
-         ANV_FROM_HANDLE(anv_buffer, buffer, buf_barrier->buffer);
 
          src_flags |= buf_barrier->srcAccessMask;
          dst_flags |= buf_barrier->dstAccessMask;
@@ -4056,8 +4059,12 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
              cmd_buffer_has_pending_copy_query(cmd_buffer))
             flush_query_copies = true;
 
+#if GFX_VER < 20
+         ANV_FROM_HANDLE(anv_buffer, buffer, buf_barrier->buffer);
+
          if (anv_buffer_is_sparse(buffer) && mask_is_write(src_flags))
             apply_sparse_flushes = true;
+#endif
       }
 
       for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
@@ -4164,8 +4171,10 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
             }
          }
 
+#if GFX_VER < 20
          if (anv_image_is_sparse(image) && mask_is_write(src_flags))
             apply_sparse_flushes = true;
+#endif
       }
    }
 
@@ -4173,6 +4182,7 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
       anv_pipe_flush_bits_for_access_flags(cmd_buffer, src_flags) |
       anv_pipe_invalidate_bits_for_access_flags(cmd_buffer, dst_flags);
 
+#if GFX_VER < 20
    /* Our HW implementation of the sparse feature lives in the GAM unit
     * (interface between all the GPU caches and external memory). As a result
     * writes to NULL bound images & buffers that should be ignored are
@@ -4182,6 +4192,7 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
     */
    if (apply_sparse_flushes)
       bits |= ANV_PIPE_FLUSH_BITS;
+#endif
 
    /* Copies from query pools are executed with a shader writing through the
     * dataport.

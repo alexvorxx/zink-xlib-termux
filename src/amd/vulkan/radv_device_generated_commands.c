@@ -464,13 +464,14 @@ dgc_get_nop_packet(nir_builder *b, const struct radv_device *device)
 }
 
 static void
-dgc_emit_userdata_vertex(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def *first_vertex, nir_def *first_instance,
-                         nir_def *drawid)
+dgc_emit_userdata_vertex(struct dgc_cmdbuf *cs, nir_def *first_vertex, nir_def *first_instance, nir_def *drawid)
 {
    const struct radv_device *device = cs->dev;
    nir_builder *b = cs->b;
 
+   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
    vtx_base_sgpr = nir_u2u32(b, vtx_base_sgpr);
+
    nir_def *has_drawid = nir_test_mask(b, vtx_base_sgpr, DGC_USES_DRAWID);
    nir_def *has_baseinstance = nir_test_mask(b, vtx_base_sgpr, DGC_USES_BASEINSTANCE);
 
@@ -489,13 +490,14 @@ dgc_emit_userdata_vertex(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def 
 }
 
 static void
-dgc_emit_userdata_mesh(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, nir_def *x, nir_def *y, nir_def *z,
-                       nir_def *drawid)
+dgc_emit_userdata_mesh(struct dgc_cmdbuf *cs, nir_def *x, nir_def *y, nir_def *z, nir_def *drawid)
 {
    const struct radv_device *device = cs->dev;
    nir_builder *b = cs->b;
 
+   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
    vtx_base_sgpr = nir_u2u32(b, vtx_base_sgpr);
+
    nir_def *has_grid_size = nir_test_mask(b, vtx_base_sgpr, DGC_USES_GRID_SIZE);
    nir_def *has_drawid = nir_test_mask(b, vtx_base_sgpr, DGC_USES_DRAWID);
 
@@ -711,11 +713,12 @@ dgc_emit_pkt3_set_base(struct dgc_cmdbuf *cs, nir_def *va)
 }
 
 static void
-dgc_emit_pkt3_draw_indirect(struct dgc_cmdbuf *cs, nir_def *vtx_base_sgpr, bool indexed)
+dgc_emit_pkt3_draw_indirect(struct dgc_cmdbuf *cs, bool indexed)
 {
    const unsigned di_src_sel = indexed ? V_0287F0_DI_SRC_SEL_DMA : V_0287F0_DI_SRC_SEL_AUTO_INDEX;
    nir_builder *b = cs->b;
 
+   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
    vtx_base_sgpr = nir_iand_imm(b, nir_u2u32(b, vtx_base_sgpr), 0x3FFF);
 
    nir_def *has_drawid = nir_test_mask(b, vtx_base_sgpr, DGC_USES_DRAWID);
@@ -769,14 +772,13 @@ dgc_emit_draw_indirect(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dra
 {
    nir_builder *b = cs->b;
 
-   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
    nir_def *va = nir_iadd(b, stream_addr, nir_u2u64(b, draw_params_offset));
 
    dgc_emit_sqtt_begin_api_marker(cs, indexed ? ApiCmdDrawIndexedIndirect : ApiCmdDrawIndirect);
    dgc_emit_sqtt_marker_event(cs, sequence_id, indexed ? EventCmdDrawIndexedIndirect : EventCmdDrawIndirect);
 
    dgc_emit_pkt3_set_base(cs, va);
-   dgc_emit_pkt3_draw_indirect(cs, vtx_base_sgpr, indexed);
+   dgc_emit_pkt3_draw_indirect(cs, indexed);
 
    dgc_emit_sqtt_thread_trace_marker(cs);
    dgc_emit_sqtt_end_api_marker(cs, indexed ? ApiCmdDrawIndexedIndirect : ApiCmdDrawIndirect);
@@ -954,8 +956,6 @@ dgc_emit_draw(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_
 {
    nir_builder *b = cs->b;
 
-   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
-
    nir_def *draw_data0 = nir_build_load_global(b, 4, 32, nir_iadd(b, stream_addr, nir_u2u64(b, draw_params_offset)),
                                                .access = ACCESS_NON_WRITEABLE);
    nir_def *vertex_count = nir_channel(b, draw_data0, 0);
@@ -968,7 +968,7 @@ dgc_emit_draw(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw_params_
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDraw);
       dgc_emit_sqtt_marker_event(cs, sequence_id, EventCmdDraw);
 
-      dgc_emit_userdata_vertex(cs, vtx_base_sgpr, vertex_offset, first_instance, sequence_id);
+      dgc_emit_userdata_vertex(cs, vertex_offset, first_instance, sequence_id);
       dgc_emit_instance_count(cs, instance_count);
       dgc_emit_draw_index_auto(cs, vertex_count);
 
@@ -987,8 +987,6 @@ dgc_emit_draw_indexed(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw
 {
    nir_builder *b = cs->b;
 
-   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
-
    nir_def *draw_data0 = nir_build_load_global(b, 4, 32, nir_iadd(b, stream_addr, nir_u2u64(b, draw_params_offset)),
                                                .access = ACCESS_NON_WRITEABLE);
    nir_def *draw_data1 =
@@ -1005,7 +1003,7 @@ dgc_emit_draw_indexed(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *draw
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDrawIndexed);
       dgc_emit_sqtt_marker_event(cs, sequence_id, EventCmdDrawIndexed);
 
-      dgc_emit_userdata_vertex(cs, vtx_base_sgpr, vertex_offset, first_instance, sequence_id);
+      dgc_emit_userdata_vertex(cs, vertex_offset, first_instance, sequence_id);
       dgc_emit_instance_count(cs, instance_count);
       dgc_emit_draw_index_offset_2(cs, first_index, index_count, max_index_count);
 
@@ -1641,8 +1639,6 @@ dgc_emit_draw_mesh_tasks_gfx(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_de
    const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_builder *b = cs->b;
 
-   nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
-
    nir_def *draw_data = nir_build_load_global(b, 3, 32, nir_iadd(b, stream_addr, nir_u2u64(b, draw_params_offset)),
                                               .access = ACCESS_NON_WRITEABLE);
    nir_def *x = nir_channel(b, draw_data, 0);
@@ -1660,7 +1656,7 @@ dgc_emit_draw_mesh_tasks_gfx(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_de
       }
       nir_push_else(b, NULL);
       {
-         dgc_emit_userdata_mesh(cs, vtx_base_sgpr, x, y, z, sequence_id);
+         dgc_emit_userdata_mesh(cs, x, y, z, sequence_id);
          dgc_emit_instance_count(cs, nir_imm_int(b, 1));
 
          if (pdev->mesh_fast_launch_2) {

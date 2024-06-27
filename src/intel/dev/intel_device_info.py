@@ -156,7 +156,10 @@ Enum("intel_device_info_coherency_mode",
 
 Struct("intel_device_info_pat_entry",
        [Member("uint8_t", "index"),
-        Member("intel_device_info_mmap_mode", "mmap"),
+        Member("intel_device_info_mmap_mode", "mmap",
+               comment=dedent("""\
+               This tells KMD what caching mode the CPU mapping should use.
+               It has nothing to do with any PAT cache modes.""")),
         Member("intel_device_info_coherency_mode", "coherency")])
 
 Enum("intel_cmat_scope",

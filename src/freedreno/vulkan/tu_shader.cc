@@ -477,10 +477,12 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
          instr->intrinsic == nir_intrinsic_load_frag_size_ir3 ?
          IR3_DP_FS_FRAG_SIZE : IR3_DP_FS_FRAG_OFFSET;
 
+      unsigned offset = param - IR3_DP_FS_DYNAMIC;
+
       nir_def *view = instr->src[0].ssa;
       nir_def *result =
          ir3_load_driver_ubo_indirect(b, 2, &shader->const_state.fdm_ubo,
-                                      param, view, nir_intrinsic_range(instr));
+                                      offset, view, nir_intrinsic_range(instr));
 
       nir_def_replace(&instr->def, result);
       return true;
@@ -491,7 +493,8 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
 
       nir_def *result =
          ir3_load_driver_ubo(b, 1, &shader->const_state.fdm_ubo,
-                             IR3_DP_FS_FRAG_INVOCATION_COUNT);
+                             IR3_DP_FS_FRAG_INVOCATION_COUNT -
+                             IR3_DP_FS_DYNAMIC);
 
       nir_def_replace(&instr->def, result);
       return true;

@@ -69,7 +69,7 @@ impl DeviceCaps {
             Self::shader_param(screen, pipe_shader_cap::PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS) as u32;
         let image_2d_size = screen.param(pipe_cap::PIPE_CAP_MAX_TEXTURE_2D_SIZE) as u32;
 
-        let has_images =
+        let has_images = screen.param(pipe_cap::PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT) != 0 &&
             // The minimum value is 8 if CL_DEVICE_IMAGE_SUPPORT is CL_TRUE
             max_read_images >= 8 &&
             // The minimum value is 8 if CL_DEVICE_IMAGE_SUPPORT is CL_TRUE

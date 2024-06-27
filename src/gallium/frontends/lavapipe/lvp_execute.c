@@ -48,6 +48,7 @@
 
 #include "vk_blend.h"
 #include "vk_cmd_enqueue_entrypoints.h"
+#include "vk_descriptor_update_template.h"
 #include "vk_util.h"
 
 #define VK_PROTOTYPES
@@ -226,7 +227,12 @@ get_buffer_resource(struct pipe_context *ctx, void *mem)
 
    uint64_t size;
    struct pipe_resource *pres = pscreen->resource_create_unbacked(pscreen, &templ, &size);
-   pscreen->resource_bind_backing(pscreen, pres, mem, 0);
+
+   struct llvmpipe_memory_allocation alloc = {
+      .cpu_addr = mem,
+   };
+
+   pscreen->resource_bind_backing(pscreen, pres, (void *)&alloc, 0, 0, 0);
    return pres;
 }
 
@@ -730,19 +736,11 @@ handle_graphics_stages(struct rendering_state *state, VkShaderStageFlagBits shad
          break;
       case VK_SHADER_STAGE_TASK_BIT_EXT:
          state->inlines_dirty[MESA_SHADER_TASK] = state->shaders[MESA_SHADER_TASK]->inlines.can_inline;
-         state->dispatch_info.block[0] = state->shaders[MESA_SHADER_TASK]->pipeline_nir->nir->info.workgroup_size[0];
-         state->dispatch_info.block[1] = state->shaders[MESA_SHADER_TASK]->pipeline_nir->nir->info.workgroup_size[1];
-         state->dispatch_info.block[2] = state->shaders[MESA_SHADER_TASK]->pipeline_nir->nir->info.workgroup_size[2];
          if (!state->shaders[MESA_SHADER_TASK]->inlines.can_inline)
             state->pctx->bind_ts_state(state->pctx, state->shaders[MESA_SHADER_TASK]->shader_cso);
          break;
       case VK_SHADER_STAGE_MESH_BIT_EXT:
          state->inlines_dirty[MESA_SHADER_MESH] = state->shaders[MESA_SHADER_MESH]->inlines.can_inline;
-         if (!(shader_stages & VK_SHADER_STAGE_TASK_BIT_EXT)) {
-            state->dispatch_info.block[0] = state->shaders[MESA_SHADER_MESH]->pipeline_nir->nir->info.workgroup_size[0];
-            state->dispatch_info.block[1] = state->shaders[MESA_SHADER_MESH]->pipeline_nir->nir->info.workgroup_size[1];
-            state->dispatch_info.block[2] = state->shaders[MESA_SHADER_MESH]->pipeline_nir->nir->info.workgroup_size[2];
-         }
          if (!state->shaders[MESA_SHADER_MESH]->inlines.can_inline)
             state->pctx->bind_ms_state(state->pctx, state->shaders[MESA_SHADER_MESH]->shader_cso);
          break;
@@ -3321,7 +3319,7 @@ static void handle_push_descriptor_set_with_template(struct vk_cmd_queue_entry *
                                                      struct rendering_state *state)
 {
    VkPushDescriptorSetWithTemplateInfoKHR *pds = cmd->u.push_descriptor_set_with_template2_khr.push_descriptor_set_with_template_info;
-   LVP_FROM_HANDLE(lvp_descriptor_update_template, templ, pds->descriptorUpdateTemplate);
+   LVP_FROM_HANDLE(vk_descriptor_update_template, templ, pds->descriptorUpdateTemplate);
    LVP_FROM_HANDLE(lvp_pipeline_layout, layout, pds->layout);
    struct lvp_descriptor_set_layout *set_layout = (struct lvp_descriptor_set_layout *)layout->vk.set_layouts[pds->set];
 
@@ -3336,7 +3334,7 @@ static void handle_push_descriptor_set_with_template(struct vk_cmd_queue_entry *
 
    VkDescriptorSet set_handle = lvp_descriptor_set_to_handle(set);
    lvp_descriptor_set_update_with_template(lvp_device_to_handle(state->device), set_handle,
-                                           pds->descriptorUpdateTemplate, pds->pData, true);
+                                           pds->descriptorUpdateTemplate, pds->pData);
 
    VkBindDescriptorSetsInfoKHR bind_cmd = {
       .stageFlags = vk_shader_stages_from_bind_point(templ->bind_point),
@@ -3863,9 +3861,24 @@ handle_shaders(struct vk_cmd_queue_entry *cmd, struct rendering_state *state)
    }
 }
 
+static void
+update_mesh_state(struct rendering_state *state)
+{
+   if (state->shaders[MESA_SHADER_TASK]) {
+      state->dispatch_info.block[0] = state->shaders[MESA_SHADER_TASK]->pipeline_nir->nir->info.workgroup_size[0];
+      state->dispatch_info.block[1] = state->shaders[MESA_SHADER_TASK]->pipeline_nir->nir->info.workgroup_size[1];
+      state->dispatch_info.block[2] = state->shaders[MESA_SHADER_TASK]->pipeline_nir->nir->info.workgroup_size[2];
+   } else {
+      state->dispatch_info.block[0] = state->shaders[MESA_SHADER_MESH]->pipeline_nir->nir->info.workgroup_size[0];
+      state->dispatch_info.block[1] = state->shaders[MESA_SHADER_MESH]->pipeline_nir->nir->info.workgroup_size[1];
+      state->dispatch_info.block[2] = state->shaders[MESA_SHADER_MESH]->pipeline_nir->nir->info.workgroup_size[2];
+   }
+}
+
 static void handle_draw_mesh_tasks(struct vk_cmd_queue_entry *cmd,
                                    struct rendering_state *state)
 {
+   update_mesh_state(state);
    state->dispatch_info.grid[0] = cmd->u.draw_mesh_tasks_ext.group_count_x;
    state->dispatch_info.grid[1] = cmd->u.draw_mesh_tasks_ext.group_count_y;
    state->dispatch_info.grid[2] = cmd->u.draw_mesh_tasks_ext.group_count_z;
@@ -3880,6 +3893,7 @@ static void handle_draw_mesh_tasks(struct vk_cmd_queue_entry *cmd,
 static void handle_draw_mesh_tasks_indirect(struct vk_cmd_queue_entry *cmd,
                                             struct rendering_state *state)
 {
+   update_mesh_state(state);
    state->dispatch_info.indirect = lvp_buffer_from_handle(cmd->u.draw_mesh_tasks_indirect_ext.buffer)->bo;
    state->dispatch_info.indirect_offset = cmd->u.draw_mesh_tasks_indirect_ext.offset;
    state->dispatch_info.indirect_stride = cmd->u.draw_mesh_tasks_indirect_ext.stride;
@@ -3890,6 +3904,7 @@ static void handle_draw_mesh_tasks_indirect(struct vk_cmd_queue_entry *cmd,
 static void handle_draw_mesh_tasks_indirect_count(struct vk_cmd_queue_entry *cmd,
                                                   struct rendering_state *state)
 {
+   update_mesh_state(state);
    state->dispatch_info.indirect = lvp_buffer_from_handle(cmd->u.draw_mesh_tasks_indirect_count_ext.buffer)->bo;
    state->dispatch_info.indirect_offset = cmd->u.draw_mesh_tasks_indirect_count_ext.offset;
    state->dispatch_info.indirect_stride = cmd->u.draw_mesh_tasks_indirect_count_ext.stride;
@@ -4729,6 +4744,9 @@ void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp)
    ENQUEUE_CMD(CmdSetEvent2)
    ENQUEUE_CMD(CmdWaitEvents2)
    ENQUEUE_CMD(CmdWriteTimestamp2)
+   ENQUEUE_CMD(CmdPushConstants2KHR)
+   ENQUEUE_CMD(CmdPushDescriptorSet2KHR)
+   ENQUEUE_CMD(CmdPushDescriptorSetWithTemplate2KHR)
    ENQUEUE_CMD(CmdBindDescriptorBuffersEXT)
    ENQUEUE_CMD(CmdSetDescriptorBufferOffsets2EXT)
    ENQUEUE_CMD(CmdBindDescriptorBufferEmbeddedSamplers2EXT)
@@ -5252,8 +5270,7 @@ VkResult lvp_execute_cmds(struct lvp_device *device,
       }
    }
 
-   if (util_dynarray_num_elements(&state->push_desc_sets, struct lvp_descriptor_set *))
-      finish_fence(state);
+   finish_fence(state);
 
    util_dynarray_foreach (&state->push_desc_sets, struct lvp_descriptor_set *, set)
       lvp_descriptor_set_destroy(device, *set);

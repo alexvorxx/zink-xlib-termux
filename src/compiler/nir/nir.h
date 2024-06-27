@@ -3322,6 +3322,18 @@ typedef enum {
     */
    nir_metadata_instr_index = 0x20,
 
+   /** All control flow metadata
+    *
+    * This includes all metadata preserved by a pass that preserves control flow
+    * but modifies instructions. For example, a pass using
+    * nir_shader_instructions_pass will typically preserve this if it does not
+    * insert control flow.
+    *
+    * This is the most common metadata set to preserve, so it has its own alias.
+    */
+   nir_metadata_control_flow = nir_metadata_block_index |
+                               nir_metadata_dominance,
+
    /** All metadata
     *
     * This includes all nir_metadata flags except not_properly_reset.  Passes
@@ -3664,6 +3676,11 @@ typedef enum {
     * destroying any mediump-related IO information in the shader.
     */
    nir_io_mediump_is_32bit = BITFIELD_BIT(3),
+
+   /**
+    * Whether nir_opt_vectorize_io should ignore FS inputs.
+    */
+   nir_io_prefer_scalar_fs_inputs = BITFIELD_BIT(4),
 
    /* Options affecting the GLSL compiler are below. */
 
@@ -4008,6 +4025,12 @@ typedef struct nir_shader_compiler_options {
    /* Backend supports fused comapre against zero and csel */
    bool has_fused_comp_and_csel;
 
+   /* Backend supports fneo, fequ, fltu, fgeu. */
+   bool has_fneo_fcmpu;
+
+   /* Backend supports ford and funord. */
+   bool has_ford_funord;
+
    /** Backend supports fsub, if not set fsub will automatically be lowered to
     * fadd(x, fneg(y)). If true, driver should call nir_opt_algebraic_late(). */
    bool has_fsub;
@@ -4180,6 +4203,12 @@ typedef struct nir_shader_compiler_options {
 
    /** clip/cull distance and tess level arrays use compact semantics */
    bool compact_arrays;
+
+   /**
+    * Whether discard gets emitted as nir_intrinsic_demote.
+    * Otherwise, nir_intrinsic_terminate is being used.
+    */
+   bool discard_is_demote;
 
    /** Options determining lowering and behavior of inputs and outputs. */
    nir_io_options io_options;
@@ -4844,6 +4873,13 @@ void nir_def_rewrite_uses_src(nir_def *def, nir_src new_src);
 void nir_def_rewrite_uses_after(nir_def *def, nir_def *new_ssa,
                                 nir_instr *after_me);
 
+static inline void
+nir_def_replace(nir_def *def, nir_def *new_ssa)
+{
+   nir_def_rewrite_uses(def, new_ssa);
+   nir_instr_remove(def->parent_instr);
+}
+
 nir_component_mask_t nir_src_components_read(const nir_src *src);
 nir_component_mask_t nir_def_components_read(const nir_def *def);
 bool nir_def_all_uses_are_fsat(const nir_def *def);
@@ -4939,10 +4975,22 @@ nir_block *nir_cf_node_cf_tree_prev(nir_cf_node *node);
         block != nir_cf_node_cf_tree_next(node);            \
         block = nir_block_cf_tree_next(block))
 
+#define nir_foreach_block_in_cf_node_safe(block, node)      \
+   for (nir_block *block = nir_cf_node_cf_tree_first(node), \
+                  *next = nir_block_cf_tree_next(block);    \
+        block != nir_cf_node_cf_tree_next(node);            \
+        block = next, next = nir_block_cf_tree_next(block))
+
 #define nir_foreach_block_in_cf_node_reverse(block, node)  \
    for (nir_block *block = nir_cf_node_cf_tree_last(node); \
         block != nir_cf_node_cf_tree_prev(node);           \
         block = nir_block_cf_tree_prev(block))
+
+#define nir_foreach_block_in_cf_node_reverse_safe(block, node) \
+   for (nir_block *block = nir_cf_node_cf_tree_last(node),     \
+                  *prev = nir_block_cf_tree_prev(block);       \
+        block != nir_cf_node_cf_tree_prev(node);               \
+        block = prev, prev = nir_block_cf_tree_prev(block))
 
 /* If the following CF node is an if, this function returns that if.
  * Otherwise, it returns NULL.
@@ -6382,9 +6430,6 @@ typedef enum {
 
 bool nir_lower_discard_if(nir_shader *shader, nir_lower_discard_if_options options);
 
-bool nir_lower_discard_or_demote(nir_shader *shader,
-                                 bool force_correct_quad_ops_after_discard);
-
 bool nir_lower_terminate_to_demote(nir_shader *nir);
 
 bool nir_lower_memory_model(nir_shader *shader);
@@ -6563,6 +6608,21 @@ typedef struct {
 
    /** nir_load/store_buffer_amd max base offset */
    uint32_t buffer_max;
+
+   /**
+    * Callback to get the max base offset for instructions for which the
+    * corresponding value above is zero.
+    */
+   uint32_t (*max_offset_cb)(nir_intrinsic_instr *intr, const void *data);
+
+   /** Data to pass to max_offset_cb. */
+   const void *max_offset_data;
+
+   /**
+    * Allow the offset calculation to wrap. If false, constant additions that
+    * might wrap will not be folded into the offset.
+    */
+   bool allow_offset_wrap;
 } nir_opt_offsets_options;
 
 bool nir_opt_offsets(nir_shader *shader, const nir_opt_offsets_options *options);
@@ -6594,6 +6654,7 @@ bool nir_opt_uniform_subgroup(nir_shader *shader,
 
 bool nir_opt_vectorize(nir_shader *shader, nir_vectorize_cb filter,
                        void *data);
+bool nir_opt_vectorize_io(nir_shader *shader, nir_variable_mode modes);
 
 bool nir_opt_conditional_discard(nir_shader *shader);
 bool nir_opt_move_discards_to_top(nir_shader *shader);

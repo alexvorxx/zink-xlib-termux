@@ -5,13 +5,18 @@ KHR-GL46.packed_pixels.varied_rectangle.*
 KHR-GL46.texture_buffer.texture_buffer_max_size
 KHR-GL46.texture_swizzle.smoke
 
+dEQP-GLES3.functional.shaders.builtin_variable.max_vertex_uniform_vectors_fragment
+dEQP-GLES3.functional.shaders.precision.int.highp_div_fragment
+dEQP-GLES31.functional.texture.format.sized.cube_array.depth_component32f_npot
+
 # All the double tests in this group seem to be flaky
-spec@glsl-4.00@execution@built-in-functions@.*(double|dvec|dmat).*
+spec@.*@execution@built-in-functions@.*(double|dvec|dmat).*
 
 spec@!opengl 1.0@gl-1.0-blend-func
 spec@!opengl 1.1@copypixels-sync
 spec@!opengl 1.1@draw-sync
 spec@!opengl 1.1@polygon-mode
+spec@!opengl 1.2@tex3d
 spec@!opengl 2.0@tex3d-npot
 spec@arb_bindless_texture@execution@images@uniform-struct
 spec@arb_color_buffer_float@gl_rgba16f-render
@@ -19,16 +24,18 @@ spec@arb_color_buffer_float@gl_rgba8_snorm-render
 spec@arb_color_buffer_float@gl_rgba8_snorm-render-fog
 spec@arb_copy_image@arb_copy_image-targets gl_texture_1d_array 32 1 12 gl_texture_2d_array 32 16 18 11 0 3 5 9 7 14 1 8
 spec@arb_copy_image@arb_copy_image-targets gl_texture_1d_array 32 1 12 gl_texture_3d 32 16 18 11 0 3 5 9 2 14 1 7
+spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_texture_1d_array 32 1 16 11 2 5 5 0 7 14 1 7
 spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_texture_2d_array 32 16 15 11 12 5 5 7 2 14 9 9
+spec@arb_copy_image@arb_copy_image-targets gl_texture_2d_array 32 32 15 gl_texture_cube_map_array 32 32 18 11 5 2 5 9 7 14 7 11
+spec@arb_copy_image@arb_copy_image-targets gl_texture_3d 32 32 17 gl_texture_3d 32 16 18 11 5 2 5 9 7 14 7 11
+spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map 32 32 6 gl_texture_2d 32 16 1 11 12 3 5 7 0 14 9 1
 spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map 32 32 6 gl_texture_2d_array 32 16 15 11 12 1 5 3 2 14 11 4
 spec@arb_copy_image@arb_copy_image-targets gl_texture_cube_map_array 32 32 18 gl_texture_cube_map_array 16 16 18 11 5 2 5 9 7 5 7 11
 spec@arb_gpu_shader5@execution@sampler_array_indexing@vs-nonuniform-control-flow
-spec@arb_gpu_shader_fp64@execution@built-in-functions@gs-op-mult-dmat4-double
-spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-op-div-dvec2-dvec2
-spec@arb_gpu_shader_fp64@execution@built-in-functions@vs-reflect-double-double
 spec@arb_pixel_buffer_object@pbo-drawpixels
 spec@arb_shader_image_load_store@semantics@imageLoad/Tessellation control shader/r8/image2D test
 spec@arb_shader_precision@fs-fma-float-float-float
+spec@arb_shader_precision@gs-radians-float
 spec@arb_shader_precision@vs-op-assign-add-vec4-float
 spec@arb_tessellation_shader@execution@tcs-input-read-nonconst
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-float-index-wr
@@ -59,6 +66,7 @@ spec@ext_texture_array@fbo-depth-array depth-draw
 spec@ext_texture_array@fbo-depth-array fs-writes-depth
 spec@ext_texture_array@fbo-depth-array stencil-clear
 spec@ext_texture_array@fbo-depth-array stencil-draw
+spec@ext_texture_array@fbo-depth-array stencil-layered-clear
 spec@ext_texture_integer@getteximage-clamping
 spec@ext_texture_snorm@fbo-blending-formats
 spec@ext_texture_swizzle@ext_texture_swizzle-swizzle
@@ -68,16 +76,19 @@ spec@glsl-1.10@execution@glsl-1.10-linear-fog
 spec@glsl-1.10@execution@interpolation@interpolation-none-gl_frontsecondarycolor-smooth-none
 spec@glsl-1.10@execution@varying-packing@simple uvec3 separate
 spec@glsl-1.30@execution@built-in-functions@vs-op-bitxor-abs-not-ivec3-int
+spec@glsl-1.30@execution@fs-texture-sampler2dshadow-03
 spec@glsl-1.30@execution@interpolation@interpolation-none-gl_backcolor-flat-distance
 spec@glsl-1.30@execution@interpolation@interpolation-noperspective-gl_backsecondarycolor-flat-vertex
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_backsecondarycolor-smooth-fixed
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_frontsecondarycolor-flat-fixed
 spec@glsl-1.30@execution@interpolation@interpolation-smooth-gl_frontsecondarycolor-smooth-vertex
+spec@glsl-1.30@execution@interpolation@interpolation-smooth-other-flat-fixed
 spec@glsl-1.30@execution@tex-miplevel-selection textureprojlodoffset 3d
 spec@glsl-1.30@execution@texelfetch fs sampler1d 1-513
 spec@glsl-1.30@execution@texelfetch fs sampler1darray 1x71-501x71
 spec@glsl-1.30@execution@texelfetch fs sampler2d 1x281-501x281
 spec@glsl-1.30@execution@texelfetch fs sampler2d 1x71-501x71
+spec@glsl-1.30@execution@texelfetch fs sampler2d 71x1-71x281
 spec@glsl-1.30@execution@texelfetch fs sampler2darray 1x129x9-98x129x9
 spec@glsl-1.30@execution@texelfetch fs sampler2darray 98x1x9-98x129x9
 spec@glsl-1.30@execution@texelfetch fs sampler3d 1x129x9-98x129x9

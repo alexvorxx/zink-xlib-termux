@@ -892,10 +892,6 @@ init_program_resource_list(struct gl_shader_program *prog)
    }
 }
 
-/* TODO: as we keep adding features, this method is becoming more and more
- * similar to its GLSL counterpart at linker.cpp. Eventually it would be good
- * to check if they could be refactored, and reduce code duplication somehow
- */
 void
 nir_build_program_resource_list(const struct gl_constants *consts,
                                 struct gl_shader_program *prog,
@@ -1138,7 +1134,7 @@ gl_nir_add_point_size(nir_shader *nir)
    nir->info.outputs_written |= VARYING_BIT_PSIZ;
 
    /* We always modify the entrypoint */
-   nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
    return true;
 }
 
@@ -1174,8 +1170,7 @@ gl_nir_zero_initialize_clip_distance(nir_shader *nir)
    if (clip_dist1)
       zero_array_members(&b, clip_dist1);
 
-   nir_metadata_preserve(impl, nir_metadata_dominance |
-                               nir_metadata_block_index);
+   nir_metadata_preserve(impl, nir_metadata_control_flow);
    return true;
 }
 
@@ -1369,6 +1364,13 @@ prelink_lowering(const struct gl_constants *consts,
    return true;
 }
 
+static unsigned
+get_varying_nir_var_mask(nir_shader *nir)
+{
+   return (nir->info.stage != MESA_SHADER_VERTEX ? nir_var_shader_in : 0) |
+          (nir->info.stage != MESA_SHADER_FRAGMENT ? nir_var_shader_out : 0);
+}
+
 /**
  * Lower load_deref and store_deref on input/output variables to load_input
  * and store_output intrinsics, and perform varying optimizations and
@@ -1413,16 +1415,27 @@ gl_nir_lower_optimize_varyings(const struct gl_constants *consts,
    }
 
    /* There is nothing to optimize for only 1 shader. */
-   if (num_shaders == 1)
+   if (num_shaders == 1) {
+      nir_shader *nir = shaders[0];
+
+      /* Even with a separate shader, it's still worth to re-vectorize IO from
+       * scratch because the original shader might not be vectorized optimally.
+       */
+      NIR_PASS(_, nir, nir_lower_io_to_scalar, get_varying_nir_var_mask(nir),
+               NULL, NULL);
+      NIR_PASS(_, nir, nir_opt_vectorize_io, get_varying_nir_var_mask(nir));
       return;
+   }
 
    for (unsigned i = 0; i < num_shaders; i++) {
       nir_shader *nir = shaders[i];
 
-      /* nir_opt_varyings requires scalar IO. */
-      NIR_PASS_V(nir, nir_lower_io_to_scalar,
-                 (i != 0 ? nir_var_shader_in : 0) |
-                 (i != num_shaders - 1 ? nir_var_shader_out : 0), NULL, NULL);
+      /* nir_opt_varyings requires scalar IO. Scalarize all varyings (not just
+       * the ones we optimize) because we want to re-vectorize everything to
+       * get better vectorization and other goodies from nir_opt_vectorize_io.
+       */
+      NIR_PASS(_, nir, nir_lower_io_to_scalar, get_varying_nir_var_mask(nir),
+               NULL, NULL);
 
       /* nir_opt_varyings requires shaders to be optimized. */
       gl_nir_opts(nir);
@@ -1478,6 +1491,9 @@ gl_nir_lower_optimize_varyings(const struct gl_constants *consts,
    /* Final cleanups. */
    for (unsigned i = 0; i < num_shaders; i++) {
       nir_shader *nir = shaders[i];
+
+      /* Re-vectorize IO. */
+      NIR_PASS(_, nir, nir_opt_vectorize_io, get_varying_nir_var_mask(nir));
 
       /* Recompute intrinsic bases, which are totally random after
        * optimizations and compaction. Do that for all inputs and outputs,

@@ -1645,7 +1645,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       if (key->hw) {
          NIR_PASS(_, nir, agx_nir_lower_point_size, true);
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
-                  nir_metadata_block_index | nir_metadata_dominance, NULL);
+                  nir_metadata_control_flow, NULL);
 
          NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL,
                   NULL);
@@ -1734,7 +1734,7 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       NIR_PASS(_, gs_copy, agx_nir_lower_point_size, false);
 
       NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               nir_metadata_control_flow, NULL);
 
       NIR_PASS(_, gs_copy, nir_lower_io_to_scalar, nir_var_shader_out, NULL,
                NULL);
@@ -1883,8 +1883,7 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
        (nir->info.inputs_read & VARYING_BITS_TEX_ANY)) {
 
       NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-               agx_nir_lower_point_sprite_zw,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               agx_nir_lower_point_sprite_zw, nir_metadata_control_flow, NULL);
    }
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
@@ -2140,7 +2139,7 @@ build_fs_prolog(nir_builder *b, const void *key)
    agx_nir_fs_prolog(b, key);
 
    NIR_PASS(_, b->shader, nir_shader_intrinsics_pass, lower_fs_prolog_abi,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 }
 
 static struct agx_linked_shader *
@@ -2213,6 +2212,14 @@ agx_update_vs(struct agx_context *ctx, unsigned index_size_B)
    struct agx_fast_link_key link_key = {
       .prolog.vs.hw = key.hw,
       .prolog.vs.sw_index_size_B = key.hw ? 0 : index_size_B,
+
+      /* TODO: We could optimize this */
+      .prolog.vs.robustness =
+         {
+            .level = AGX_ROBUSTNESS_GL,
+            .soft_fault = false,
+         },
+
       .main = ctx->vs,
    };
 
@@ -3949,6 +3956,7 @@ agx_batch_geometry_params(struct agx_batch *batch, uint64_t input_index_buffer,
 {
    struct agx_ia_state ia = {
       .index_buffer = input_index_buffer,
+      .index_buffer_range_el = index_buffer_size_B / info->index_size,
       .verts_per_instance = draw ? draw->count : 0,
    };
 
@@ -4111,6 +4119,7 @@ agx_launch_gs_prerast(struct agx_batch *batch,
 
       struct agx_gs_setup_indirect_params gsi = {
          .index_buffer = ib,
+         .index_buffer_range_el = ib_extent / info->index_size,
          .draw = rsrc->bo->ptr.gpu + indirect->offset,
          .vertex_buffer = batch->uniforms.vertex_output_buffer_ptr,
          .ia = batch->uniforms.input_assembly,
@@ -4239,7 +4248,7 @@ agx_draw_without_restart(struct agx_batch *batch,
       .index_buffer = ib,
       .out_draws = out_draws.gpu,
       .restart_index = info->restart_index,
-      .index_buffer_size_B = ib_extent,
+      .index_buffer_size_el = ib_extent / info->index_size,
       .flatshade_first = batch->ctx->rast->base.flatshade_first,
       .draws = indirect_rsrc->bo->ptr.gpu + indirect->offset,
    };
@@ -4559,6 +4568,7 @@ agx_draw_patches(struct agx_context *ctx, const struct pipe_draw_info *info,
 
    struct agx_ia_state ia = {
       .index_buffer = ib,
+      .index_buffer_range_el = ib_extent,
       .verts_per_instance = draws ? draws->count : 0,
    };
 

@@ -705,6 +705,7 @@ snapshot_query_layout(struct intel_perf_context *perf_ctx,
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
       case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
+      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC:
          perf_cfg->vtbl.store_register_mem(perf_ctx->ctx, query->oa.bo,
                                            field->mmio_offset, field->size,
                                            offset + field->location);

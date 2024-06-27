@@ -526,7 +526,7 @@ public:
           */
          unsigned rcount:4;
 
-         unsigned pad:3;
+         unsigned pad:2;
 
          bool predicate_inverse:1;
          bool writes_accumulator:1; /**< instruction implicitly writes accumulator */
@@ -561,6 +561,12 @@ public:
           * Hint that this instruction has combined LOD/LOD bias with array index
           */
          bool has_packed_lod_ai_src:1;
+         /**
+          * Whether the parameters of the SEND instructions are build with
+          * NoMask (for A32 messages this covers only the surface handle, for
+          * A64 messages this covers the load address).
+          */
+         bool has_no_mask_send_params:1;
       };
       uint32_t bits;
    };

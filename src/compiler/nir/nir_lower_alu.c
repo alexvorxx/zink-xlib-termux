@@ -104,16 +104,19 @@ lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
           *
           * http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
           */
+
+         lowered = nir_ssa_for_alu_src(b, instr, 0);
+         unsigned bit_size = lowered->bit_size;
+
          nir_def *c1 = nir_imm_int(b, 1);
          nir_def *c2 = nir_imm_int(b, 2);
          nir_def *c4 = nir_imm_int(b, 4);
-         nir_def *c24 = nir_imm_int(b, 24);
-         nir_def *c33333333 = nir_imm_int(b, 0x33333333);
-         nir_def *c55555555 = nir_imm_int(b, 0x55555555);
-         nir_def *c0f0f0f0f = nir_imm_int(b, 0x0f0f0f0f);
-         nir_def *c01010101 = nir_imm_int(b, 0x01010101);
+         nir_def *cshift = nir_imm_int(b, bit_size - 8);
+         nir_def *c33333333 = nir_imm_intN_t(b, 0x33333333, bit_size);
+         nir_def *c55555555 = nir_imm_intN_t(b, 0x55555555, bit_size);
+         nir_def *c0f0f0f0f = nir_imm_intN_t(b, 0x0f0f0f0f, bit_size);
+         nir_def *c01010101 = nir_imm_intN_t(b, 0x01010101, bit_size);
 
-         lowered = nir_ssa_for_alu_src(b, instr, 0);
 
          lowered = nir_isub(b, lowered,
                             nir_iand(b, nir_ushr(b, lowered, c1), c55555555));
@@ -130,7 +133,9 @@ lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
                                                        nir_ushr(b, lowered, c4)),
                                               c0f0f0f0f),
                                      c01010101),
-                            c24);
+                            cshift);
+
+         lowered = nir_u2u32(b, lowered);
       }
       break;
 
@@ -214,8 +219,7 @@ lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
    }
 
    if (lowered) {
-      nir_def_rewrite_uses(&instr->def, lowered);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, lowered);
       return true;
    } else {
       return false;
@@ -231,7 +235,6 @@ nir_lower_alu(nir_shader *shader)
       return false;
 
    return nir_shader_instructions_pass(shader, lower_alu_instr,
-                                       nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        NULL);
 }

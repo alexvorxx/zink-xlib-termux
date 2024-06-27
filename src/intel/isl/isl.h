@@ -593,8 +593,6 @@ enum isl_tiling {
    ISL_TILING_HIZ,
    /** Tiling format for CCS surfaces */
    ISL_TILING_CCS,
-   /** Tiling format for Gfx12 CCS surfaces */
-   ISL_TILING_GFX12_CCS,
 };
 
 /**
@@ -615,7 +613,6 @@ typedef uint32_t isl_tiling_flags_t;
 #define ISL_TILING_64_XE2_BIT             (1u << ISL_TILING_64_XE2)
 #define ISL_TILING_HIZ_BIT                (1u << ISL_TILING_HIZ)
 #define ISL_TILING_CCS_BIT                (1u << ISL_TILING_CCS)
-#define ISL_TILING_GFX12_CCS_BIT          (1u << ISL_TILING_GFX12_CCS)
 #define ISL_TILING_ANY_MASK               (~0u)
 #define ISL_TILING_NON_LINEAR_MASK        (~ISL_TILING_LINEAR_BIT)
 
@@ -1335,6 +1332,7 @@ struct isl_device {
    } mocs;
 
    /* Options to configure by the driver: */
+   bool sampler_route_to_lsc;
 
    /**
     * Write buffer length in the upper dword of the
@@ -1345,6 +1343,8 @@ struct isl_device {
     * address, size).
     */
    bool buffer_length_in_aux_addr;
+
+   uint64_t dummy_aux_address;
 
    void (*surf_fill_state_s)(const struct isl_device *dev, void *state,
                              const struct isl_surf_fill_state_info *restrict info);
@@ -2047,7 +2047,6 @@ bool isl_formats_are_ccs_e_compatible(const struct intel_device_info *devinfo,
                                       enum isl_format format1,
                                       enum isl_format format2);
 uint8_t isl_format_get_aux_map_encoding(enum isl_format format);
-uint8_t isl_get_render_compression_format(enum isl_format format);
 
 bool isl_formats_have_same_bits_per_channel(enum isl_format format1,
                                             enum isl_format format2);
@@ -2422,6 +2421,15 @@ isl_drm_modifier_has_aux(uint64_t modifier)
 }
 
 static inline bool
+isl_drm_modifier_needs_display_layout(uint64_t modifier)
+{
+   /* Modifiers supporting compression are specified to be compatible with the
+    * display engine, even if they won't actually be used for scanout.
+    */
+   return isl_drm_modifier_has_aux(modifier);
+}
+
+static inline bool
 isl_drm_modifier_plane_is_clear_color(uint64_t modifier, uint32_t plane)
 {
    if (modifier == DRM_FORMAT_MOD_INVALID)
@@ -2691,14 +2699,7 @@ isl_surf_get_mcs_surf(const struct isl_device *dev,
  *   scale-down from the main surfaced that's attached side-band via a second
  *   set of page tables.
  *
- * In spite of this, it's sometimes useful to think of it as being a linear
- * buffer-like surface, at least for the purposes of allocation.  When invoked
- * on Tigerlake or later, this function still works and produces such a linear
- * surface.
- *
  * :param surf:                 |in|  The main surface
- * :param hiz_or_mcs_surf:      |in|  HiZ or MCS surface associated with the main
- *                                    surface
  * :param ccs_surf:             |out| The CCS to populate on success
  * :param row_pitch_B:                The row pitch for the CCS in bytes or 0 if
  *                                    ISL should calculate the row pitch.
@@ -2707,7 +2708,6 @@ isl_surf_get_mcs_surf(const struct isl_device *dev,
 bool
 isl_surf_get_ccs_surf(const struct isl_device *dev,
                       const struct isl_surf *surf,
-                      const struct isl_surf *hiz_or_mcs_surf,
                       struct isl_surf *ccs_surf,
                       uint32_t row_pitch_B);
 

@@ -537,14 +537,18 @@ merge_terminators(nir_builder *b, nir_if *dest_if, nir_if *src_if)
    /* Add phis if needed after we moved instructions to the src if-statements
     * continue block.
     */
-    struct merge_term_state m_state;
-    m_state.shader = b->shader;
-    m_state.after_src_if = nir_after_cf_node(&src_if->cf_node);
-    m_state.old_break_block = break_blk;
-    m_state.continue_block = continue_blk_c.block;
-    nir_foreach_instr(instr, m_state.continue_block) {
-       nir_foreach_def(instr, insert_phis_after_terminator_merge, &m_state);
-    }
+   struct merge_term_state m_state;
+   m_state.shader = b->shader;
+   m_state.after_src_if = nir_after_cf_node(&src_if->cf_node);
+   m_state.old_break_block = break_blk;
+   m_state.continue_block = continue_blk_c.block;
+   /* Use _safe because nir_rematerialize_deref_in_use_blocks might remove dead derefs. */
+   nir_foreach_instr_reverse_safe(instr, m_state.continue_block) {
+      if (instr->type == nir_instr_type_deref)
+         nir_rematerialize_deref_in_use_blocks(nir_instr_as_deref(instr));
+      else
+         nir_foreach_def(instr, insert_phis_after_terminator_merge, &m_state);
+   }
 
    b->cursor = nir_before_src(&dest_if->condition);
    nir_def *new_c = nir_ior(b, dest_if->condition.ssa, src_if->condition.ssa);
@@ -690,11 +694,11 @@ opt_loop_cf_list(nir_builder *b, struct exec_list *cf_list,
       }
 
       case nir_cf_node_loop: {
-         current_loop = nir_cf_node_as_loop(cf_node);
-         assert(!nir_loop_has_continue_construct(current_loop));
-         progress |= opt_loop_cf_list(b, &current_loop->body, current_loop);
-         progress |= opt_loop_last_block(nir_loop_last_block(current_loop), true, false);
-         progress |= opt_loop_peel_initial_break(current_loop);
+         nir_loop *loop = nir_cf_node_as_loop(cf_node);
+         assert(!nir_loop_has_continue_construct(loop));
+         progress |= opt_loop_cf_list(b, &loop->body, loop);
+         progress |= opt_loop_last_block(nir_loop_last_block(loop), true, false);
+         progress |= opt_loop_peel_initial_break(loop);
          break;
       }
 

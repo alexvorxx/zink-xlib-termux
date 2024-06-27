@@ -394,8 +394,7 @@ nir_remove_dead_derefs_impl(nir_function_impl *impl)
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -453,10 +452,9 @@ void
 nir_fixup_deref_modes(nir_shader *shader)
 {
    nir_shader_instructions_pass(shader, nir_fixup_deref_modes_instr,
-                                nir_metadata_block_index |
-                                   nir_metadata_dominance |
-                                   nir_metadata_live_defs |
-                                   nir_metadata_instr_index,
+                                nir_metadata_control_flow |
+                                nir_metadata_live_defs |
+                                nir_metadata_instr_index,
                                 NULL);
 }
 
@@ -497,10 +495,9 @@ void
 nir_fixup_deref_types(nir_shader *shader)
 {
    nir_shader_instructions_pass(shader, nir_fixup_deref_types_instr,
-                                nir_metadata_block_index |
-                                   nir_metadata_dominance |
-                                   nir_metadata_live_defs |
-                                   nir_metadata_instr_index,
+                                nir_metadata_control_flow |
+                                nir_metadata_live_defs |
+                                nir_metadata_instr_index,
                                 NULL);
 }
 
@@ -1166,9 +1163,7 @@ opt_remove_sampler_cast(nir_deref_instr *cast)
    /* We're a cast from a more detailed sampler type to a bare sampler or a
     * texture type with the same dimensionality.
     */
-   nir_def_rewrite_uses(&cast->def,
-                        &parent->def);
-   nir_instr_remove(&cast->instr);
+   nir_def_replace(&cast->def, &parent->def);
 
    /* Recursively crawl the deref tree and clean up types */
    nir_deref_instr_fixup_child_types(parent);
@@ -1287,9 +1282,7 @@ opt_deref_ptr_as_array(nir_builder *b, nir_deref_instr *deref)
           parent->cast.align_mul == 0 &&
           nir_deref_cast_is_trivial(parent))
          parent = nir_deref_instr_parent(parent);
-      nir_def_rewrite_uses(&deref->def,
-                           &parent->def);
-      nir_instr_remove(&deref->instr);
+      nir_def_replace(&deref->def, &parent->def);
       return true;
    }
 
@@ -1467,8 +1460,7 @@ opt_known_deref_mode_is(nir_builder *b, nir_intrinsic_instr *intrin)
    if (deref_is == NULL)
       return false;
 
-   nir_def_rewrite_uses(&intrin->def, deref_is);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, deref_is);
    return true;
 }
 
@@ -1548,8 +1540,7 @@ nir_opt_deref_impl(nir_function_impl *impl)
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }

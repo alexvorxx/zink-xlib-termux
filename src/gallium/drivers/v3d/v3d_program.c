@@ -324,16 +324,14 @@ static bool
 v3d_nir_lower_uniform_offset_to_bytes(nir_shader *s)
 {
         return nir_shader_intrinsics_pass(s, lower_uniform_offset_to_bytes_cb,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance, NULL);
+                                            nir_metadata_control_flow, NULL);
 }
 
 static bool
 v3d_nir_lower_textures(nir_shader *s)
 {
         return nir_shader_instructions_pass(s, lower_textures_cb,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance, NULL);
+                                            nir_metadata_control_flow, NULL);
 }
 
 static void *
@@ -365,6 +363,9 @@ v3d_uncompiled_shader_create(struct pipe_context *pctx,
                 }
                 s = tgsi_to_nir(ir, pctx->screen, false);
         }
+
+        if (s->info.stage == MESA_SHADER_KERNEL)
+                s->info.stage = MESA_SHADER_COMPUTE;
 
         if (s->info.stage != MESA_SHADER_VERTEX &&
             s->info.stage != MESA_SHADER_GEOMETRY) {
@@ -1112,6 +1113,22 @@ v3d_create_compute_state(struct pipe_context *pctx,
                                             (void *)cso->prog);
 }
 
+static void
+v3d_get_compute_state_info(struct pipe_context *pctx,
+                           void *cso,
+                           struct pipe_compute_state_object_info *info)
+{
+        struct v3d_context *v3d = v3d_context(pctx);
+
+        /* this API requires compiled shaders */
+        v3d_compute_state_bind(pctx, cso);
+        v3d_update_compiled_cs(v3d);
+
+        info->max_threads = V3D_CHANNELS * v3d->prog.compute->prog_data.base->threads;
+        info->preferred_simd_size = V3D_CHANNELS;
+        info->private_memory = 0;
+}
+
 void
 v3d_program_init(struct pipe_context *pctx)
 {
@@ -1134,6 +1151,7 @@ v3d_program_init(struct pipe_context *pctx)
                 pctx->create_compute_state = v3d_create_compute_state;
                 pctx->delete_compute_state = v3d_shader_state_delete;
                 pctx->bind_compute_state = v3d_compute_state_bind;
+                pctx->get_compute_state_info = v3d_get_compute_state_info;
         }
 
         v3d->prog.cache[MESA_SHADER_VERTEX] =

@@ -5,12 +5,38 @@ use crate::ir::*;
 
 use std::collections::HashMap;
 
+enum CBufRule {
+    Yes,
+    No,
+    BindlessRequiresBlock(usize),
+}
+
+impl CBufRule {
+    fn allows_src(&self, src_bi: usize, src: &Src) -> bool {
+        let SrcRef::CBuf(cb) = &src.src_ref else {
+            return true;
+        };
+
+        match self {
+            CBufRule::Yes => true,
+            CBufRule::No => false,
+            CBufRule::BindlessRequiresBlock(bi) => match cb.buf {
+                CBuf::Binding(_) => true,
+                CBuf::BindlessSSA(_) => src_bi == *bi,
+                CBuf::BindlessUGPR(_) => panic!("Not in SSA form"),
+            },
+        }
+    }
+}
+
 struct CopyEntry {
+    bi: usize,
     src_type: SrcType,
     src: Src,
 }
 
 struct PrmtEntry {
+    bi: usize,
     srcs: [Src; 2],
     selection: u16,
 }
@@ -31,27 +57,45 @@ impl CopyPropPass {
         }
     }
 
-    fn add_copy(&mut self, dst: SSAValue, src_type: SrcType, src: Src) {
+    fn add_copy(
+        &mut self,
+        bi: usize,
+        dst: SSAValue,
+        src_type: SrcType,
+        src: Src,
+    ) {
         assert!(src.src_ref.get_reg().is_none());
         self.ssa_map
-            .insert(dst, CopyPropEntry::Copy(CopyEntry { src_type, src }));
+            .insert(dst, CopyPropEntry::Copy(CopyEntry { bi, src_type, src }));
     }
 
-    fn add_prmt(&mut self, dst: SSAValue, srcs: [Src; 2], selection: u16) {
+    fn add_prmt(
+        &mut self,
+        bi: usize,
+        dst: SSAValue,
+        srcs: [Src; 2],
+        selection: u16,
+    ) {
         assert!(
             srcs[0].src_ref.get_reg().is_none()
                 && srcs[1].src_ref.get_reg().is_none()
         );
-        self.ssa_map
-            .insert(dst, CopyPropEntry::Prmt(PrmtEntry { srcs, selection }));
+        self.ssa_map.insert(
+            dst,
+            CopyPropEntry::Prmt(PrmtEntry {
+                bi,
+                srcs,
+                selection,
+            }),
+        );
     }
 
-    fn add_fp64_copy(&mut self, dst: &SSARef, src: Src) {
+    fn add_fp64_copy(&mut self, bi: usize, dst: &SSARef, src: Src) {
         assert!(dst.comps() == 2);
         match src.src_ref {
             SrcRef::Zero | SrcRef::Imm32(_) => {
-                self.add_copy(dst[0], SrcType::ALU, Src::new_zero());
-                self.add_copy(dst[1], SrcType::F64, src);
+                self.add_copy(bi, dst[0], SrcType::ALU, Src::new_zero());
+                self.add_copy(bi, dst[1], SrcType::F64, src);
             }
             SrcRef::CBuf(cb) => {
                 let lo32 = Src::from(SrcRef::CBuf(cb));
@@ -60,8 +104,8 @@ impl CopyPropPass {
                     src_mod: src.src_mod,
                     src_swizzle: src.src_swizzle,
                 };
-                self.add_copy(dst[0], SrcType::ALU, lo32);
-                self.add_copy(dst[1], SrcType::F64, hi32);
+                self.add_copy(bi, dst[0], SrcType::ALU, lo32);
+                self.add_copy(bi, dst[1], SrcType::F64, hi32);
             }
             SrcRef::SSA(ssa) => {
                 assert!(ssa.comps() == 2);
@@ -71,8 +115,8 @@ impl CopyPropPass {
                     src_mod: src.src_mod,
                     src_swizzle: src.src_swizzle,
                 };
-                self.add_copy(dst[0], SrcType::ALU, lo32);
-                self.add_copy(dst[1], SrcType::F64, hi32);
+                self.add_copy(bi, dst[0], SrcType::ALU, lo32);
+                self.add_copy(bi, dst[1], SrcType::F64, hi32);
             }
             _ => (),
         }
@@ -182,7 +226,12 @@ impl CopyPropPass {
         }
     }
 
-    fn prop_to_scalar_src(&self, src_type: SrcType, src: &mut Src) {
+    fn prop_to_scalar_src(
+        &self,
+        src_type: SrcType,
+        cbuf_rule: &CBufRule,
+        src: &mut Src,
+    ) {
         loop {
             let src_ssa = match &src.src_ref {
                 SrcRef::SSA(ssa) => ssa,
@@ -197,6 +246,10 @@ impl CopyPropPass {
 
             match entry {
                 CopyPropEntry::Copy(entry) => {
+                    if !cbuf_rule.allows_src(entry.bi, &entry.src) {
+                        return;
+                    }
+
                     // If there are modifiers, the source types have to match
                     if !entry.src.src_mod.is_none()
                         && entry.src_type != src_type
@@ -208,8 +261,8 @@ impl CopyPropPass {
                     src.src_mod = entry.src.src_mod.modify(src.src_mod);
                 }
                 CopyPropEntry::Prmt(entry) => {
-                    // Turn the swizzle into a permute. For F16, we use Xx to indicate
-                    // that it only takes the bottom 16 bits.
+                    // Turn the swizzle into a permute. For F16, we use Xx to
+                    // indicate that it only takes the bottom 16 bits.
                     let swizzle_prmt: [u8; 4] = match src_type {
                         SrcType::F16 => [0, 1, 0, 1],
                         SrcType::F16v2 => match src.src_swizzle {
@@ -234,8 +287,8 @@ impl CopyPropPass {
 
                         let target_src_idx = val / 4;
 
-                        // Ensure we are using the same source, we cannot combine
-                        // multiple sources.
+                        // Ensure we are using the same source, we cannot
+                        // combine multiple sources.
                         if entry_src_idx.is_none() {
                             entry_src_idx = Some(target_src_idx);
                         } else if entry_src_idx != Some(target_src_idx) {
@@ -247,6 +300,10 @@ impl CopyPropPass {
 
                     let entry_src_idx = usize::from(entry_src_idx.unwrap());
                     let entry_src = entry.srcs[entry_src_idx];
+
+                    if !cbuf_rule.allows_src(entry.bi, &entry_src) {
+                        return;
+                    }
 
                     // See if that permute is a valid swizzle
                     let new_swizzle = match src_type {
@@ -278,7 +335,7 @@ impl CopyPropPass {
         }
     }
 
-    fn prop_to_f64_src(&self, src: &mut Src) {
+    fn prop_to_f64_src(&self, cbuf_rule: &CBufRule, src: &mut Src) {
         loop {
             let src_ssa = match &mut src.src_ref {
                 SrcRef::SSA(ssa) => ssa,
@@ -332,6 +389,12 @@ impl CopyPropPass {
                 return;
             }
 
+            if !cbuf_rule.allows_src(hi_entry.bi, &hi_entry.src)
+                || !cbuf_rule.allows_src(lo_entry.bi, &lo_entry.src)
+            {
+                return;
+            }
+
             let new_src_ref = match hi_entry.src.src_ref {
                 SrcRef::Zero => match lo_entry.src.src_ref {
                     SrcRef::Zero | SrcRef::Imm32(0) => SrcRef::Zero,
@@ -369,7 +432,12 @@ impl CopyPropPass {
         }
     }
 
-    fn prop_to_src(&self, src_type: SrcType, src: &mut Src) {
+    fn prop_to_src(
+        &self,
+        src_type: SrcType,
+        cbuf_rule: &CBufRule,
+        src: &mut Src,
+    ) {
         match src_type {
             SrcType::SSA => {
                 self.prop_to_ssa_src(src);
@@ -384,16 +452,16 @@ impl CopyPropPass {
             | SrcType::I32
             | SrcType::B32
             | SrcType::Pred => {
-                self.prop_to_scalar_src(src_type, src);
+                self.prop_to_scalar_src(src_type, cbuf_rule, src);
             }
             SrcType::F64 => {
-                self.prop_to_f64_src(src);
+                self.prop_to_f64_src(cbuf_rule, src);
             }
             SrcType::Bar => (),
         }
     }
 
-    fn try_add_instr(&mut self, instr: &Instr) {
+    fn try_add_instr(&mut self, bi: usize, instr: &Instr) {
         match &instr.op {
             Op::HAdd2(add) => {
                 let dst = add.dst.as_ssa().unwrap();
@@ -402,9 +470,9 @@ impl CopyPropPass {
 
                 if !add.saturate {
                     if add.srcs[0].is_fneg_zero(SrcType::F16v2) {
-                        self.add_copy(dst, SrcType::F16v2, add.srcs[1]);
+                        self.add_copy(bi, dst, SrcType::F16v2, add.srcs[1]);
                     } else if add.srcs[1].is_fneg_zero(SrcType::F16v2) {
-                        self.add_copy(dst, SrcType::F16v2, add.srcs[0]);
+                        self.add_copy(bi, dst, SrcType::F16v2, add.srcs[0]);
                     }
                 }
             }
@@ -415,18 +483,18 @@ impl CopyPropPass {
 
                 if !add.saturate {
                     if add.srcs[0].is_fneg_zero(SrcType::F32) {
-                        self.add_copy(dst, SrcType::F32, add.srcs[1]);
+                        self.add_copy(bi, dst, SrcType::F32, add.srcs[1]);
                     } else if add.srcs[1].is_fneg_zero(SrcType::F32) {
-                        self.add_copy(dst, SrcType::F32, add.srcs[0]);
+                        self.add_copy(bi, dst, SrcType::F32, add.srcs[0]);
                     }
                 }
             }
             Op::DAdd(add) => {
                 let dst = add.dst.as_ssa().unwrap();
                 if add.srcs[0].is_fneg_zero(SrcType::F64) {
-                    self.add_fp64_copy(dst, add.srcs[1]);
+                    self.add_fp64_copy(bi, dst, add.srcs[1]);
                 } else if add.srcs[1].is_fneg_zero(SrcType::F64) {
-                    self.add_fp64_copy(dst, add.srcs[0]);
+                    self.add_fp64_copy(bi, dst, add.srcs[0]);
                 }
             }
             Op::Lop3(lop) => {
@@ -436,9 +504,10 @@ impl CopyPropPass {
 
                 let op = lop.op;
                 if op.lut == 0 {
-                    self.add_copy(dst, SrcType::ALU, SrcRef::Zero.into());
+                    self.add_copy(bi, dst, SrcType::ALU, SrcRef::Zero.into());
                 } else if op.lut == !0 {
                     self.add_copy(
+                        bi,
                         dst,
                         SrcType::ALU,
                         SrcRef::Imm32(u32::MAX).into(),
@@ -446,7 +515,7 @@ impl CopyPropPass {
                 } else {
                     for s in 0..3 {
                         if op.lut == LogicOp3::SRC_MASKS[s] {
-                            self.add_copy(dst, SrcType::ALU, lop.srcs[s]);
+                            self.add_copy(bi, dst, SrcType::ALU, lop.srcs[s]);
                         }
                     }
                 }
@@ -463,15 +532,31 @@ impl CopyPropPass {
 
                     let op = lop.ops[i];
                     if op.lut == 0 {
-                        self.add_copy(dst, SrcType::Pred, SrcRef::False.into());
+                        self.add_copy(
+                            bi,
+                            dst,
+                            SrcType::Pred,
+                            SrcRef::False.into(),
+                        );
                     } else if op.lut == !0 {
-                        self.add_copy(dst, SrcType::Pred, SrcRef::True.into());
+                        self.add_copy(
+                            bi,
+                            dst,
+                            SrcType::Pred,
+                            SrcRef::True.into(),
+                        );
                     } else {
                         for s in 0..3 {
                             if op.lut == LogicOp3::SRC_MASKS[s] {
-                                self.add_copy(dst, SrcType::Pred, lop.srcs[s]);
+                                self.add_copy(
+                                    bi,
+                                    dst,
+                                    SrcType::Pred,
+                                    lop.srcs[s],
+                                );
                             } else if op.lut == !LogicOp3::SRC_MASKS[s] {
                                 self.add_copy(
+                                    bi,
                                     dst,
                                     SrcType::Pred,
                                     lop.srcs[s].bnot(),
@@ -481,10 +566,33 @@ impl CopyPropPass {
                     }
                 }
             }
-            Op::INeg(neg) => {
-                let dst = neg.dst.as_ssa().unwrap();
+            Op::IAdd2(add) => {
+                let dst = add.dst.as_ssa().unwrap();
                 assert!(dst.comps() == 1);
-                self.add_copy(dst[0], SrcType::I32, neg.src.ineg());
+                let dst = dst[0];
+
+                if add.carry_in.is_zero() {
+                    if add.srcs[0].is_zero() {
+                        self.add_copy(bi, dst, SrcType::I32, add.srcs[1]);
+                    } else if add.srcs[1].is_zero() {
+                        self.add_copy(bi, dst, SrcType::I32, add.srcs[0]);
+                    }
+                }
+            }
+            Op::IAdd3(add) => {
+                let dst = add.dst.as_ssa().unwrap();
+                assert!(dst.comps() == 1);
+                let dst = dst[0];
+
+                if add.srcs[0].is_zero() {
+                    if add.srcs[1].is_zero() {
+                        self.add_copy(bi, dst, SrcType::I32, add.srcs[2]);
+                    } else if add.srcs[2].is_zero() {
+                        self.add_copy(bi, dst, SrcType::I32, add.srcs[1]);
+                    }
+                } else if add.srcs[1].is_zero() && add.srcs[2].is_zero() {
+                    self.add_copy(bi, dst, SrcType::I32, add.srcs[0]);
+                }
             }
             Op::Prmt(prmt) => {
                 let dst = prmt.dst.as_ssa().unwrap();
@@ -497,9 +605,9 @@ impl CopyPropPass {
                 };
 
                 if sel == 0x3210 {
-                    self.add_copy(dst[0], SrcType::GPR, prmt.srcs[0]);
+                    self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[0]);
                 } else if sel == 0x7654 {
-                    self.add_copy(dst[0], SrcType::GPR, prmt.srcs[1]);
+                    self.add_copy(bi, dst[0], SrcType::GPR, prmt.srcs[1]);
                 } else {
                     let mut is_imm = true;
                     let mut imm = 0_u32;
@@ -518,9 +626,10 @@ impl CopyPropPass {
                         }
                     }
                     if is_imm {
-                        self.add_copy(dst[0], SrcType::GPR, imm.into());
+                        self.add_copy(bi, dst[0], SrcType::GPR, imm.into());
                     } else {
                         self.add_prmt(
+                            bi,
                             dst[0],
                             prmt.srcs,
                             sel.try_into().unwrap(),
@@ -528,16 +637,24 @@ impl CopyPropPass {
                     }
                 }
             }
+            Op::R2UR(r2ur) => {
+                assert!(r2ur.src.src_mod.is_none());
+                if r2ur.src.is_uniform() {
+                    let dst = r2ur.dst.as_ssa().unwrap();
+                    assert!(dst.comps() == 1);
+                    self.add_copy(bi, dst[0], SrcType::GPR, r2ur.src);
+                }
+            }
             Op::Copy(copy) => {
                 let dst = copy.dst.as_ssa().unwrap();
                 assert!(dst.comps() == 1);
-                self.add_copy(dst[0], SrcType::GPR, copy.src);
+                self.add_copy(bi, dst[0], SrcType::GPR, copy.src);
             }
             Op::ParCopy(pcopy) => {
                 for (dst, src) in pcopy.dsts_srcs.iter() {
                     let dst = dst.as_ssa().unwrap();
                     assert!(dst.comps() == 1);
-                    self.add_copy(dst[0], SrcType::GPR, *src);
+                    self.add_copy(bi, dst[0], SrcType::GPR, *src);
                 }
             }
             _ => (),
@@ -545,15 +662,60 @@ impl CopyPropPass {
     }
 
     pub fn run(&mut self, f: &mut Function) {
-        for b in &mut f.blocks {
+        for (bi, b) in f.blocks.iter_mut().enumerate() {
+            let b_uniform = b.uniform;
             for instr in &mut b.instrs {
-                self.try_add_instr(instr);
+                self.try_add_instr(bi, instr);
 
                 self.prop_to_pred(&mut instr.pred);
 
-                let src_types = instr.src_types();
-                for (i, src) in instr.srcs_mut().iter_mut().enumerate() {
-                    self.prop_to_src(src_types[i], src);
+                let cbuf_rule = if instr.is_uniform() {
+                    CBufRule::No
+                } else if !b_uniform {
+                    CBufRule::BindlessRequiresBlock(bi)
+                } else {
+                    CBufRule::Yes
+                };
+
+                match &mut instr.op {
+                    Op::IAdd2(add) => {
+                        // Carry-out interacts funny with SrcMod::INeg so we can
+                        // only propagate with modifiers if no carry is written.
+                        use SrcType::{ALU, I32};
+                        let [src0, src1] = &mut add.srcs;
+                        if add.carry_out.is_none() {
+                            self.prop_to_src(I32, &cbuf_rule, src0);
+                            self.prop_to_src(I32, &cbuf_rule, src1);
+                        } else {
+                            self.prop_to_src(ALU, &cbuf_rule, src0);
+                            self.prop_to_src(ALU, &cbuf_rule, src1);
+                        }
+                    }
+                    Op::IAdd3(add) => {
+                        // Overflow interacts funny with SrcMod::INeg so we can
+                        // only propagate with modifiers if no overflow values
+                        // are written.
+                        use SrcType::{ALU, I32};
+                        let [src0, src1, src2] = &mut add.srcs;
+                        if add.overflow[0].is_none()
+                            && add.overflow[0].is_none()
+                        {
+                            self.prop_to_src(I32, &cbuf_rule, src0);
+                            self.prop_to_src(I32, &cbuf_rule, src1);
+                            self.prop_to_src(I32, &cbuf_rule, src2);
+                        } else {
+                            self.prop_to_src(ALU, &cbuf_rule, src0);
+                            self.prop_to_src(ALU, &cbuf_rule, src1);
+                            self.prop_to_src(ALU, &cbuf_rule, src2);
+                        }
+                    }
+                    _ => {
+                        let src_types = instr.src_types();
+                        for (i, src) in instr.srcs_mut().iter_mut().enumerate()
+                        {
+                            self.prop_to_src(src_types[i], &cbuf_rule, src);
+                        }
+                    }
                 }
             }
         }

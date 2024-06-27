@@ -169,12 +169,12 @@ remove_barriers(nir_shader *nir, bool is_compute)
 static bool
 lower_demote_impl(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
-   if (intr->intrinsic == nir_intrinsic_demote || intr->intrinsic == nir_intrinsic_terminate) {
-      intr->intrinsic = nir_intrinsic_discard;
+   if (intr->intrinsic == nir_intrinsic_demote) {
+      intr->intrinsic = nir_intrinsic_terminate;
       return true;
    }
-   if (intr->intrinsic == nir_intrinsic_demote_if || intr->intrinsic == nir_intrinsic_terminate_if) {
-      intr->intrinsic = nir_intrinsic_discard_if;
+   if (intr->intrinsic == nir_intrinsic_demote_if) {
+      intr->intrinsic = nir_intrinsic_terminate_if;
       return true;
    }
    return false;
@@ -443,9 +443,16 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
     * functions that need to be pre-compiled.
     */
    const nir_lower_tex_options tex_options = {
+      /* lower_tg4_offsets can introduce new sparse residency intrinsics
+       * which is why we have to lower everything before calling
+       * lvp_nir_lower_sparse_residency.
+       */
+      .lower_tg4_offsets = true,
       .lower_txd = true,
    };
    NIR_PASS(_, nir, nir_lower_tex, &tex_options);
+
+   NIR_PASS(_, nir, lvp_nir_lower_sparse_residency);
 
    lvp_shader_optimize(nir);
 

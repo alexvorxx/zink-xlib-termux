@@ -115,6 +115,11 @@ iris_apply_brw_wm_prog_data(struct iris_compiled_shader *shader,
    iris->has_side_effects     = brw->has_side_effects;
    iris->pulls_bary           = brw->pulls_bary;
 
+   iris->uses_sample_offsets        = brw->uses_sample_offsets;
+   iris->uses_npc_bary_coefficients = brw->uses_npc_bary_coefficients;
+   iris->uses_pc_bary_coefficients  = brw->uses_pc_bary_coefficients;
+   iris->uses_depth_w_coefficients  = brw->uses_depth_w_coefficients;
+
    iris->uses_nonperspective_interp_modes = brw->uses_nonperspective_interp_modes;
 
    iris->is_per_sample = brw_wm_prog_data_is_persample(brw, 0);
@@ -836,8 +841,7 @@ iris_fix_edge_flags(nir_shader *nir)
    nir_fixup_deref_modes(nir);
 
    nir_foreach_function_impl(impl, nir) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance |
+      nir_metadata_preserve(impl, nir_metadata_control_flow |
                                   nir_metadata_live_defs |
                                   nir_metadata_loop_analysis);
    }

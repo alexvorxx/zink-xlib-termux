@@ -69,6 +69,59 @@ namespace brw {
 
       unsigned *regs_live_at_ip;
    };
+
+   class def_analysis {
+   public:
+      def_analysis(const fs_visitor *v);
+      ~def_analysis();
+
+      fs_inst *
+      get(const fs_reg &reg) const
+      {
+         return reg.file == VGRF && reg.nr < def_count ?
+                def_insts[reg.nr] : NULL;
+      }
+
+      bblock_t *
+      get_block(const fs_reg &reg) const
+      {
+         return reg.file == VGRF && reg.nr < def_count ?
+                def_blocks[reg.nr] : NULL;
+      }
+
+      uint32_t
+      get_use_count(const fs_reg &reg) const
+      {
+         return reg.file == VGRF && reg.nr < def_count ?
+                def_use_counts[reg.nr] : 0;
+      }
+
+      unsigned count() const { return def_count; }
+
+      void print_stats(const fs_visitor *) const;
+
+      analysis_dependency_class
+      dependency_class() const
+      {
+         return DEPENDENCY_INSTRUCTION_IDENTITY |
+                DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                DEPENDENCY_VARIABLES |
+                DEPENDENCY_BLOCKS;
+      }
+
+      bool validate(const fs_visitor *) const;
+
+   private:
+      void mark_invalid(int);
+      bool fully_defines(const fs_visitor *v, fs_inst *);
+      void update_for_reads(const idom_tree &idom, bblock_t *block, fs_inst *);
+      void update_for_write(const fs_visitor *v, bblock_t *block, fs_inst *);
+
+      fs_inst **def_insts;
+      bblock_t **def_blocks;
+      uint32_t *def_use_counts;
+      unsigned def_count;
+   };
 }
 
 #define UBO_START ((1 << 16) - 4)
@@ -309,12 +362,12 @@ public:
    fs_reg per_primitive_reg(const brw::fs_builder &bld,
                             int location, unsigned comp);
 
-   void dump_instruction_to_file(const fs_inst *inst, FILE *file) const;
+   void dump_instruction_to_file(const fs_inst *inst, FILE *file, const brw::def_analysis *defs) const;
    void dump_instructions_to_file(FILE *file) const;
 
    /* Convenience functions based on the above. */
-   void dump_instruction(const fs_inst *inst, FILE *file = stderr) const {
-      dump_instruction_to_file(inst, file);
+   void dump_instruction(const fs_inst *inst, FILE *file = stderr, const brw::def_analysis *defs = nullptr) const {
+      dump_instruction_to_file(inst, file, defs);
    }
    void dump_instructions(const char *name = nullptr) const;
 
@@ -349,6 +402,7 @@ public:
    brw_analysis<brw::register_pressure, fs_visitor> regpressure_analysis;
    brw_analysis<brw::performance, fs_visitor> performance_analysis;
    brw_analysis<brw::idom_tree, fs_visitor> idom_analysis;
+   brw_analysis<brw::def_analysis, fs_visitor> def_analysis;
 
    /** Number of uniform variable components visited. */
    unsigned uniforms;
@@ -403,6 +457,11 @@ public:
       return *static_cast<fs_thread_payload *>(this->payload_);
    };
 
+   const fs_thread_payload &fs_payload() const {
+      assert(stage == MESA_SHADER_FRAGMENT);
+      return *static_cast<const fs_thread_payload *>(this->payload_);
+   };
+
    cs_thread_payload &cs_payload() {
       assert(gl_shader_stage_uses_workgroup(stage));
       return *static_cast<cs_thread_payload *>(this->payload_);
@@ -449,6 +508,8 @@ public:
                         const char *pass_name,
                         int iteration, int pass_num) const;
 };
+
+void brw_print_swsb(FILE *f, const struct intel_device_info *devinfo, const tgl_swsb swsb);
 
 /**
  * Return the flag register used in fragment shaders to keep track of live
@@ -599,6 +660,7 @@ bool brw_fs_lower_derivatives(fs_visitor &s);
 bool brw_fs_lower_dpas(fs_visitor &s);
 bool brw_fs_lower_find_live_channel(fs_visitor &s);
 bool brw_fs_lower_integer_multiplication(fs_visitor &s);
+bool brw_fs_lower_load_subgroup_invocation(fs_visitor &s);
 bool brw_fs_lower_logical_sends(fs_visitor &s);
 bool brw_fs_lower_pack(fs_visitor &s);
 bool brw_fs_lower_load_payload(fs_visitor &s);
@@ -616,7 +678,8 @@ bool brw_fs_opt_cmod_propagation(fs_visitor &s);
 bool brw_fs_opt_combine_constants(fs_visitor &s);
 bool brw_fs_opt_compact_virtual_grfs(fs_visitor &s);
 bool brw_fs_opt_copy_propagation(fs_visitor &s);
-bool brw_fs_opt_cse(fs_visitor &s);
+bool brw_fs_opt_copy_propagation_defs(fs_visitor &s);
+bool brw_fs_opt_cse_defs(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
 bool brw_fs_opt_dead_control_flow_eliminate(fs_visitor &s);
 bool brw_fs_opt_eliminate_find_live_channel(fs_visitor &s);

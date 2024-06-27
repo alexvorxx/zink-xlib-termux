@@ -10,6 +10,7 @@ use mesa_rust_util::properties::*;
 use rusticl_opencl_gen::*;
 
 use std::mem;
+use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -71,7 +72,7 @@ struct QueueState {
     last: Weak<Event>,
     // `Sync` on `Sender` was stabilized in 1.72, until then, put it into our Mutex.
     // see https://github.com/rust-lang/rust/commit/5f56956b3c7edb9801585850d1f41b0aeb1888ff
-    chan_in: mpsc::Sender<Vec<Arc<Event>>>,
+    chan_in: ManuallyDrop<mpsc::Sender<Vec<Arc<Event>>>>,
 }
 
 pub struct Queue {
@@ -81,7 +82,7 @@ pub struct Queue {
     pub props: cl_command_queue_properties,
     pub props_v2: Option<Properties<cl_queue_properties>>,
     state: Mutex<QueueState>,
-    _thrd: JoinHandle<()>,
+    thrd: ManuallyDrop<JoinHandle<()>>,
 }
 
 impl_cl_type_trait!(cl_command_queue, Queue, CL_INVALID_COMMAND_QUEUE);
@@ -113,61 +114,63 @@ impl Queue {
             state: Mutex::new(QueueState {
                 pending: Vec::new(),
                 last: Weak::new(),
-                chan_in: tx_q,
+                chan_in: ManuallyDrop::new(tx_q),
             }),
-            _thrd: thread::Builder::new()
-                .name("rusticl queue thread".into())
-                .spawn(move || loop {
-                    let r = rx_t.recv();
-                    if r.is_err() {
-                        break;
-                    }
-
-                    let new_events = r.unwrap();
-                    let mut flushed = Vec::new();
-
-                    for e in new_events {
-                        // If we hit any deps from another queue, flush so we don't risk a dead
-                        // lock.
-                        if e.deps.iter().any(|ev| ev.queue != e.queue) {
-                            flush_events(&mut flushed, &ctx);
+            thrd: ManuallyDrop::new(
+                thread::Builder::new()
+                    .name("rusticl queue thread".into())
+                    .spawn(move || loop {
+                        let r = rx_t.recv();
+                        if r.is_err() {
+                            break;
                         }
 
-                        // We have to wait on user events or events from other queues.
-                        let err = e
-                            .deps
-                            .iter()
-                            .filter(|ev| ev.is_user() || ev.queue != e.queue)
-                            .map(|e| e.wait())
-                            .find(|s| *s < 0);
+                        let new_events = r.unwrap();
+                        let mut flushed = Vec::new();
 
-                        if let Some(err) = err {
-                            // If a dependency failed, fail this event as well.
-                            e.set_user_status(err);
-                            continue;
+                        for e in new_events {
+                            // If we hit any deps from another queue, flush so we don't risk a dead
+                            // lock.
+                            if e.deps.iter().any(|ev| ev.queue != e.queue) {
+                                flush_events(&mut flushed, &ctx);
+                            }
+
+                            // We have to wait on user events or events from other queues.
+                            let err = e
+                                .deps
+                                .iter()
+                                .filter(|ev| ev.is_user() || ev.queue != e.queue)
+                                .map(|e| e.wait())
+                                .find(|s| *s < 0);
+
+                            if let Some(err) = err {
+                                // If a dependency failed, fail this event as well.
+                                e.set_user_status(err);
+                                continue;
+                            }
+
+                            e.call(&ctx);
+
+                            if e.is_user() {
+                                // On each user event we flush our events as application might
+                                // wait on them before signaling user events.
+                                flush_events(&mut flushed, &ctx);
+
+                                // Wait on user events as they are synchronization points in the
+                                // application's control.
+                                e.wait();
+                            } else if Platform::dbg().sync_every_event {
+                                flushed.push(e);
+                                flush_events(&mut flushed, &ctx);
+                            } else {
+                                flushed.push(e);
+                            }
                         }
 
-                        e.call(&ctx);
-
-                        if e.is_user() {
-                            // On each user event we flush our events as application might
-                            // wait on them before signaling user events.
-                            flush_events(&mut flushed, &ctx);
-
-                            // Wait on user events as they are synchronization points in the
-                            // application's control.
-                            e.wait();
-                        } else if Platform::dbg().sync_every_event {
-                            flushed.push(e);
-                            flush_events(&mut flushed, &ctx);
-                        } else {
-                            flushed.push(e);
-                        }
-                    }
-
-                    flush_events(&mut flushed, &ctx);
-                })
-                .unwrap(),
+                        flush_events(&mut flushed, &ctx);
+                    })
+                    .unwrap(),
+            ),
         }))
     }
 
@@ -230,5 +233,15 @@ impl Drop for Queue {
         // commands in command_queue.
         // TODO: maybe we have to do it on every release?
         let _ = self.flush(true);
+
+        let state = self.state.get_mut().unwrap();
+
+        unsafe {
+            // disconnect the channel
+            ManuallyDrop::drop(&mut state.chan_in);
+
+            // and now explicitly wait on the thread to quit, because it won't happen implicitly.
+            ManuallyDrop::take(&mut self.thrd).join().unwrap();
+        }
     }
 }

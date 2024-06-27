@@ -14,6 +14,8 @@
 
 namespace aco {
 
+namespace {
+
 const std::array<const char*, num_reduce_ops> reduce_ops = []()
 {
    std::array<const char*, num_reduce_ops> ret{};
@@ -138,39 +140,6 @@ print_constant(uint8_t reg, FILE* output)
    case 246: fprintf(output, "4.0"); break;
    case 247: fprintf(output, "-4.0"); break;
    case 248: fprintf(output, "1/(2*PI)"); break;
-   }
-}
-
-void
-aco_print_operand(const Operand* operand, FILE* output, unsigned flags)
-{
-   if (operand->isLiteral() || (operand->isConstant() && operand->bytes() == 1)) {
-      if (operand->bytes() == 1)
-         fprintf(output, "0x%.2x", operand->constantValue());
-      else if (operand->bytes() == 2)
-         fprintf(output, "0x%.4x", operand->constantValue());
-      else
-         fprintf(output, "0x%x", operand->constantValue());
-   } else if (operand->isConstant()) {
-      print_constant(operand->physReg().reg(), output);
-   } else if (operand->isUndefined()) {
-      print_reg_class(operand->regClass(), output);
-      fprintf(output, "undef");
-   } else {
-      if (operand->isLateKill())
-         fprintf(output, "(latekill)");
-      if (operand->is16bit())
-         fprintf(output, "(is16bit)");
-      if (operand->is24bit())
-         fprintf(output, "(is24bit)");
-      if ((flags & print_kill) && operand->isKill())
-         fprintf(output, "(kill)");
-
-      if (!(flags & print_no_ssa))
-         fprintf(output, "%%%d%s", operand->tempId(), operand->isFixed() ? ":" : "");
-
-      if (operand->isFixed())
-         print_physReg(operand->physReg(), operand->bytes(), output, flags);
    }
 }
 
@@ -842,6 +811,156 @@ print_vopd_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* o
    }
 }
 
+static void
+print_block_kind(uint16_t kind, FILE* output)
+{
+   if (kind & block_kind_uniform)
+      fprintf(output, "uniform, ");
+   if (kind & block_kind_top_level)
+      fprintf(output, "top-level, ");
+   if (kind & block_kind_loop_preheader)
+      fprintf(output, "loop-preheader, ");
+   if (kind & block_kind_loop_header)
+      fprintf(output, "loop-header, ");
+   if (kind & block_kind_loop_exit)
+      fprintf(output, "loop-exit, ");
+   if (kind & block_kind_continue)
+      fprintf(output, "continue, ");
+   if (kind & block_kind_break)
+      fprintf(output, "break, ");
+   if (kind & block_kind_continue_or_break)
+      fprintf(output, "continue_or_break, ");
+   if (kind & block_kind_branch)
+      fprintf(output, "branch, ");
+   if (kind & block_kind_merge)
+      fprintf(output, "merge, ");
+   if (kind & block_kind_invert)
+      fprintf(output, "invert, ");
+   if (kind & block_kind_uses_discard)
+      fprintf(output, "discard, ");
+   if (kind & block_kind_resume)
+      fprintf(output, "resume, ");
+   if (kind & block_kind_export_end)
+      fprintf(output, "export_end, ");
+   if (kind & block_kind_end_with_regs)
+      fprintf(output, "end_with_regs, ");
+}
+
+static void
+print_stage(Stage stage, FILE* output)
+{
+   fprintf(output, "ACO shader stage: SW (");
+
+   u_foreach_bit (s, (uint32_t)stage.sw) {
+      switch ((SWStage)(1 << s)) {
+      case SWStage::VS: fprintf(output, "VS"); break;
+      case SWStage::GS: fprintf(output, "GS"); break;
+      case SWStage::TCS: fprintf(output, "TCS"); break;
+      case SWStage::TES: fprintf(output, "TES"); break;
+      case SWStage::FS: fprintf(output, "FS"); break;
+      case SWStage::CS: fprintf(output, "CS"); break;
+      case SWStage::TS: fprintf(output, "TS"); break;
+      case SWStage::MS: fprintf(output, "MS"); break;
+      case SWStage::RT: fprintf(output, "RT"); break;
+      default: unreachable("invalid SW stage");
+      }
+      if (stage.num_sw_stages() > 1)
+         fprintf(output, "+");
+   }
+
+   fprintf(output, "), HW (");
+
+   switch (stage.hw) {
+   case AC_HW_LOCAL_SHADER: fprintf(output, "LOCAL_SHADER"); break;
+   case AC_HW_HULL_SHADER: fprintf(output, "HULL_SHADER"); break;
+   case AC_HW_EXPORT_SHADER: fprintf(output, "EXPORT_SHADER"); break;
+   case AC_HW_LEGACY_GEOMETRY_SHADER: fprintf(output, "LEGACY_GEOMETRY_SHADER"); break;
+   case AC_HW_VERTEX_SHADER: fprintf(output, "VERTEX_SHADER"); break;
+   case AC_HW_NEXT_GEN_GEOMETRY_SHADER: fprintf(output, "NEXT_GEN_GEOMETRY_SHADER"); break;
+   case AC_HW_PIXEL_SHADER: fprintf(output, "PIXEL_SHADER"); break;
+   case AC_HW_COMPUTE_SHADER: fprintf(output, "COMPUTE_SHADER"); break;
+   default: unreachable("invalid HW stage");
+   }
+
+   fprintf(output, ")\n");
+}
+
+void
+aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, unsigned flags,
+                const Program* program)
+{
+   fprintf(output, "BB%d\n", block->index);
+   fprintf(output, "/* logical preds: ");
+   for (unsigned pred : block->logical_preds)
+      fprintf(output, "BB%d, ", pred);
+   fprintf(output, "/ linear preds: ");
+   for (unsigned pred : block->linear_preds)
+      fprintf(output, "BB%d, ", pred);
+   fprintf(output, "/ kind: ");
+   print_block_kind(block->kind, output);
+   fprintf(output, "*/\n");
+
+   if (flags & print_live_vars) {
+      fprintf(output, "\tlive out:");
+      for (unsigned id : program->live.live_out[block->index])
+         fprintf(output, " %%%d", id);
+      fprintf(output, "\n");
+
+      RegisterDemand demand = block->register_demand;
+      fprintf(output, "\tdemand: %u vgpr, %u sgpr\n", demand.vgpr, demand.sgpr);
+   }
+
+   unsigned index = 0;
+   for (auto const& instr : block->instructions) {
+      fprintf(output, "\t");
+      if (flags & print_live_vars) {
+         RegisterDemand demand = program->live.register_demand[block->index][index];
+         fprintf(output, "(%3u vgpr, %3u sgpr)   ", demand.vgpr, demand.sgpr);
+      }
+      if (flags & print_perf_info)
+         fprintf(output, "(%3u clk)   ", instr->pass_flags);
+
+      aco_print_instr(gfx_level, instr.get(), output, flags);
+      fprintf(output, "\n");
+      index++;
+   }
+}
+
+} /* end namespace */
+
+void
+aco_print_operand(const Operand* operand, FILE* output, unsigned flags)
+{
+   if (operand->isLiteral() || (operand->isConstant() && operand->bytes() == 1)) {
+      if (operand->bytes() == 1)
+         fprintf(output, "0x%.2x", operand->constantValue());
+      else if (operand->bytes() == 2)
+         fprintf(output, "0x%.4x", operand->constantValue());
+      else
+         fprintf(output, "0x%x", operand->constantValue());
+   } else if (operand->isConstant()) {
+      print_constant(operand->physReg().reg(), output);
+   } else if (operand->isUndefined()) {
+      print_reg_class(operand->regClass(), output);
+      fprintf(output, "undef");
+   } else {
+      if (operand->isLateKill())
+         fprintf(output, "(latekill)");
+      if (operand->is16bit())
+         fprintf(output, "(is16bit)");
+      if (operand->is24bit())
+         fprintf(output, "(is24bit)");
+      if ((flags & print_kill) && operand->isKill())
+         fprintf(output, "(kill)");
+
+      if (!(flags & print_no_ssa))
+         fprintf(output, "%%%d%s", operand->tempId(), operand->isFixed() ? ":" : "");
+
+      if (operand->isFixed())
+         print_physReg(operand->physReg(), operand->bytes(), output, flags);
+   }
+}
+
 void
 aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* output,
                 unsigned flags)
@@ -931,123 +1050,8 @@ aco_print_instr(enum amd_gfx_level gfx_level, const Instruction* instr, FILE* ou
    print_instr_format_specific(gfx_level, instr, output);
 }
 
-static void
-print_block_kind(uint16_t kind, FILE* output)
-{
-   if (kind & block_kind_uniform)
-      fprintf(output, "uniform, ");
-   if (kind & block_kind_top_level)
-      fprintf(output, "top-level, ");
-   if (kind & block_kind_loop_preheader)
-      fprintf(output, "loop-preheader, ");
-   if (kind & block_kind_loop_header)
-      fprintf(output, "loop-header, ");
-   if (kind & block_kind_loop_exit)
-      fprintf(output, "loop-exit, ");
-   if (kind & block_kind_continue)
-      fprintf(output, "continue, ");
-   if (kind & block_kind_break)
-      fprintf(output, "break, ");
-   if (kind & block_kind_continue_or_break)
-      fprintf(output, "continue_or_break, ");
-   if (kind & block_kind_branch)
-      fprintf(output, "branch, ");
-   if (kind & block_kind_merge)
-      fprintf(output, "merge, ");
-   if (kind & block_kind_invert)
-      fprintf(output, "invert, ");
-   if (kind & block_kind_uses_discard)
-      fprintf(output, "discard, ");
-   if (kind & block_kind_resume)
-      fprintf(output, "resume, ");
-   if (kind & block_kind_export_end)
-      fprintf(output, "export_end, ");
-   if (kind & block_kind_end_with_regs)
-      fprintf(output, "end_with_regs, ");
-}
-
-static void
-print_stage(Stage stage, FILE* output)
-{
-   fprintf(output, "ACO shader stage: SW (");
-
-   u_foreach_bit (s, (uint32_t)stage.sw) {
-      switch ((SWStage)(1 << s)) {
-      case SWStage::VS: fprintf(output, "VS"); break;
-      case SWStage::GS: fprintf(output, "GS"); break;
-      case SWStage::TCS: fprintf(output, "TCS"); break;
-      case SWStage::TES: fprintf(output, "TES"); break;
-      case SWStage::FS: fprintf(output, "FS"); break;
-      case SWStage::CS: fprintf(output, "CS"); break;
-      case SWStage::TS: fprintf(output, "TS"); break;
-      case SWStage::MS: fprintf(output, "MS"); break;
-      case SWStage::RT: fprintf(output, "RT"); break;
-      default: unreachable("invalid SW stage");
-      }
-      if (stage.num_sw_stages() > 1)
-         fprintf(output, "+");
-   }
-
-   fprintf(output, "), HW (");
-
-   switch (stage.hw) {
-   case AC_HW_LOCAL_SHADER: fprintf(output, "LOCAL_SHADER"); break;
-   case AC_HW_HULL_SHADER: fprintf(output, "HULL_SHADER"); break;
-   case AC_HW_EXPORT_SHADER: fprintf(output, "EXPORT_SHADER"); break;
-   case AC_HW_LEGACY_GEOMETRY_SHADER: fprintf(output, "LEGACY_GEOMETRY_SHADER"); break;
-   case AC_HW_VERTEX_SHADER: fprintf(output, "VERTEX_SHADER"); break;
-   case AC_HW_NEXT_GEN_GEOMETRY_SHADER: fprintf(output, "NEXT_GEN_GEOMETRY_SHADER"); break;
-   case AC_HW_PIXEL_SHADER: fprintf(output, "PIXEL_SHADER"); break;
-   case AC_HW_COMPUTE_SHADER: fprintf(output, "COMPUTE_SHADER"); break;
-   default: unreachable("invalid HW stage");
-   }
-
-   fprintf(output, ")\n");
-}
-
 void
-aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, unsigned flags,
-                const live& live_vars)
-{
-   fprintf(output, "BB%d\n", block->index);
-   fprintf(output, "/* logical preds: ");
-   for (unsigned pred : block->logical_preds)
-      fprintf(output, "BB%d, ", pred);
-   fprintf(output, "/ linear preds: ");
-   for (unsigned pred : block->linear_preds)
-      fprintf(output, "BB%d, ", pred);
-   fprintf(output, "/ kind: ");
-   print_block_kind(block->kind, output);
-   fprintf(output, "*/\n");
-
-   if (flags & print_live_vars) {
-      fprintf(output, "\tlive out:");
-      for (unsigned id : live_vars.live_out[block->index])
-         fprintf(output, " %%%d", id);
-      fprintf(output, "\n");
-
-      RegisterDemand demand = block->register_demand;
-      fprintf(output, "\tdemand: %u vgpr, %u sgpr\n", demand.vgpr, demand.sgpr);
-   }
-
-   unsigned index = 0;
-   for (auto const& instr : block->instructions) {
-      fprintf(output, "\t");
-      if (flags & print_live_vars) {
-         RegisterDemand demand = live_vars.register_demand[block->index][index];
-         fprintf(output, "(%3u vgpr, %3u sgpr)   ", demand.vgpr, demand.sgpr);
-      }
-      if (flags & print_perf_info)
-         fprintf(output, "(%3u clk)   ", instr->pass_flags);
-
-      aco_print_instr(gfx_level, instr.get(), output, flags);
-      fprintf(output, "\n");
-      index++;
-   }
-}
-
-void
-aco_print_program(const Program* program, FILE* output, const live& live_vars, unsigned flags)
+aco_print_program(const Program* program, FILE* output, unsigned flags)
 {
    switch (program->progress) {
    case CompilationProgress::after_isel: fprintf(output, "After Instruction Selection:\n"); break;
@@ -1061,7 +1065,7 @@ aco_print_program(const Program* program, FILE* output, const live& live_vars, u
    print_stage(program->stage, output);
 
    for (Block const& block : program->blocks)
-      aco_print_block(program->gfx_level, &block, output, flags, live_vars);
+      aco_print_block(program->gfx_level, &block, output, flags, program);
 
    if (program->constant_data.size()) {
       fprintf(output, "\n/* constant data */\n");
@@ -1079,12 +1083,6 @@ aco_print_program(const Program* program, FILE* output, const live& live_vars, u
    }
 
    fprintf(output, "\n");
-}
-
-void
-aco_print_program(const Program* program, FILE* output, unsigned flags)
-{
-   aco_print_program(program, output, live(), flags);
 }
 
 } // namespace aco

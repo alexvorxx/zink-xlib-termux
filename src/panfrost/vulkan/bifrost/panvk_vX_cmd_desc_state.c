@@ -14,8 +14,6 @@
 #include "panvk_buffer.h"
 #include "panvk_cmd_desc_state.h"
 #include "panvk_entrypoints.h"
-#include "panvk_pipeline.h"
-#include "panvk_pipeline_layout.h"
 
 #include "pan_pool.h"
 
@@ -24,246 +22,6 @@
 #include "vk_alloc.h"
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
-
-void
-panvk_per_arch(cmd_prepare_push_sets)(struct pan_pool *desc_pool_base,
-                                      struct panvk_descriptor_state *desc_state,
-                                      const struct panvk_pipeline *pipeline)
-{
-   const struct panvk_pipeline_layout *playout = pipeline->layout;
-
-   for (unsigned i = 0; i < playout->vk.set_count; i++) {
-      const struct panvk_descriptor_set_layout *slayout =
-         vk_to_panvk_descriptor_set_layout(playout->vk.set_layouts[i]);
-      bool is_push_set =
-         slayout->flags &
-         VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-
-      if (desc_state->sets[i] || !is_push_set || !desc_state->push_sets[i])
-         continue;
-
-      struct panvk_descriptor_set *set = &desc_state->push_sets[i]->set;
-
-      panvk_per_arch(push_descriptor_set_assign_layout)(
-         desc_state->push_sets[i], slayout);
-      if (slayout->desc_ubo_size) {
-         struct panfrost_ptr desc_ubo =
-            pan_pool_alloc_aligned(desc_pool_base, slayout->desc_ubo_size, 16);
-         struct mali_uniform_buffer_packed *ubos = set->ubos;
-
-         memcpy(desc_ubo.cpu, set->desc_ubo.addr.host, slayout->desc_ubo_size);
-         set->desc_ubo.addr.dev = desc_ubo.gpu;
-         set->desc_ubo.addr.host = desc_ubo.cpu;
-
-         pan_pack(&ubos[slayout->desc_ubo_index], UNIFORM_BUFFER, cfg) {
-            cfg.pointer = set->desc_ubo.addr.dev;
-            cfg.entries = DIV_ROUND_UP(slayout->desc_ubo_size, 16);
-         }
-      }
-
-      desc_state->sets[i] = &desc_state->push_sets[i]->set;
-   }
-}
-
-void
-panvk_per_arch(cmd_unprepare_push_sets)(
-   struct panvk_descriptor_state *desc_state)
-{
-   for (unsigned i = 0; i < ARRAY_SIZE(desc_state->sets); i++) {
-      if (desc_state->push_sets[i] &&
-          &desc_state->push_sets[i]->set == desc_state->sets[i])
-         desc_state->sets[i] = NULL;
-   }
-}
-
-static void
-panvk_cmd_prepare_dyn_ssbos(struct pan_pool *desc_pool_base,
-                            struct panvk_descriptor_state *desc_state,
-                            const struct panvk_pipeline *pipeline)
-{
-   if (!pipeline->layout->num_dyn_ssbos || desc_state->dyn_desc_ubo)
-      return;
-
-   struct panfrost_ptr ssbo_descs =
-      pan_pool_alloc_aligned(desc_pool_base, sizeof(desc_state->dyn.ssbos), 16);
-
-   memcpy(ssbo_descs.cpu, desc_state->dyn.ssbos, sizeof(desc_state->dyn.ssbos));
-
-   desc_state->dyn_desc_ubo = ssbo_descs.gpu;
-}
-
-void
-panvk_per_arch(cmd_prepare_ubos)(struct pan_pool *desc_pool_base,
-                                 struct panvk_descriptor_state *desc_state,
-                                 const struct panvk_pipeline *pipeline)
-{
-   unsigned ubo_count =
-      panvk_per_arch(pipeline_layout_total_ubo_count)(pipeline->layout);
-
-   if (!ubo_count || desc_state->ubos)
-      return;
-
-   panvk_cmd_prepare_dyn_ssbos(desc_pool_base, desc_state, pipeline);
-
-   struct panfrost_ptr ubos =
-      pan_pool_alloc_desc_array(desc_pool_base, ubo_count, UNIFORM_BUFFER);
-   struct mali_uniform_buffer_packed *ubo_descs = ubos.cpu;
-
-   for (unsigned s = 0; s < pipeline->layout->vk.set_count; s++) {
-      const struct panvk_descriptor_set_layout *set_layout =
-         vk_to_panvk_descriptor_set_layout(pipeline->layout->vk.set_layouts[s]);
-      const struct panvk_descriptor_set *set = desc_state->sets[s];
-
-      unsigned ubo_start =
-         panvk_per_arch(pipeline_layout_ubo_start)(pipeline->layout, s, false);
-
-      if (!set) {
-         memset(&ubo_descs[ubo_start], 0,
-                set_layout->num_ubos * sizeof(*ubo_descs));
-      } else {
-         memcpy(&ubo_descs[ubo_start], set->ubos,
-                set_layout->num_ubos * sizeof(*ubo_descs));
-      }
-   }
-
-   unsigned dyn_ubos_offset =
-      panvk_per_arch(pipeline_layout_dyn_ubos_offset)(pipeline->layout);
-
-   memcpy(&ubo_descs[dyn_ubos_offset], desc_state->dyn.ubos,
-          pipeline->layout->num_dyn_ubos * sizeof(*ubo_descs));
-
-   if (pipeline->layout->num_dyn_ssbos) {
-      unsigned dyn_desc_ubo =
-         panvk_per_arch(pipeline_layout_dyn_desc_ubo_index)(pipeline->layout);
-
-      pan_pack(&ubo_descs[dyn_desc_ubo], UNIFORM_BUFFER, cfg) {
-         cfg.pointer = desc_state->dyn_desc_ubo;
-         cfg.entries =
-            pipeline->layout->num_dyn_ssbos * sizeof(struct panvk_ssbo_addr);
-      }
-   }
-
-   desc_state->ubos = ubos.gpu;
-}
-
-void
-panvk_per_arch(cmd_prepare_textures)(struct pan_pool *desc_pool_base,
-                                     struct panvk_descriptor_state *desc_state,
-                                     const struct panvk_pipeline *pipeline)
-{
-   unsigned num_textures = pipeline->layout->num_textures;
-
-   if (!num_textures || desc_state->textures)
-      return;
-
-   struct panfrost_ptr textures = pan_pool_alloc_aligned(
-      desc_pool_base, num_textures * pan_size(TEXTURE), pan_size(TEXTURE));
-
-   void *texture = textures.cpu;
-
-   for (unsigned i = 0; i < ARRAY_SIZE(desc_state->sets); i++) {
-      if (!desc_state->sets[i])
-         continue;
-
-      memcpy(texture, desc_state->sets[i]->textures,
-             desc_state->sets[i]->layout->num_textures * pan_size(TEXTURE));
-
-      texture += desc_state->sets[i]->layout->num_textures * pan_size(TEXTURE);
-   }
-
-   desc_state->textures = textures.gpu;
-}
-
-void
-panvk_per_arch(cmd_prepare_samplers)(struct pan_pool *desc_pool_base,
-                                     struct panvk_descriptor_state *desc_state,
-                                     const struct panvk_pipeline *pipeline)
-{
-   unsigned num_samplers = pipeline->layout->num_samplers;
-
-   if (!num_samplers || desc_state->samplers)
-      return;
-
-   struct panfrost_ptr samplers =
-      pan_pool_alloc_desc_array(desc_pool_base, num_samplers, SAMPLER);
-
-   void *sampler = samplers.cpu;
-
-   /* Prepare the dummy sampler */
-   pan_pack(sampler, SAMPLER, cfg) {
-      cfg.seamless_cube_map = false;
-      cfg.magnify_nearest = true;
-      cfg.minify_nearest = true;
-      cfg.normalized_coordinates = false;
-   }
-
-   sampler += pan_size(SAMPLER);
-
-   for (unsigned i = 0; i < ARRAY_SIZE(desc_state->sets); i++) {
-      if (!desc_state->sets[i])
-         continue;
-
-      memcpy(sampler, desc_state->sets[i]->samplers,
-             desc_state->sets[i]->layout->num_samplers * pan_size(SAMPLER));
-
-      sampler += desc_state->sets[i]->layout->num_samplers * pan_size(SAMPLER);
-   }
-
-   desc_state->samplers = samplers.gpu;
-}
-
-void
-panvk_per_arch(fill_img_attribs)(struct panvk_descriptor_state *desc_state,
-                                 const struct panvk_pipeline *pipeline,
-                                 void *attrib_bufs, void *attribs,
-                                 unsigned first_buf)
-{
-   for (unsigned s = 0; s < pipeline->layout->vk.set_count; s++) {
-      const struct panvk_descriptor_set *set = desc_state->sets[s];
-
-      if (!set)
-         continue;
-
-      const struct panvk_descriptor_set_layout *layout = set->layout;
-      unsigned img_idx = pipeline->layout->sets[s].img_offset;
-      unsigned offset = img_idx * pan_size(ATTRIBUTE_BUFFER) * 2;
-      unsigned size = layout->num_imgs * pan_size(ATTRIBUTE_BUFFER) * 2;
-
-      memcpy(attrib_bufs + offset, desc_state->sets[s]->img_attrib_bufs, size);
-
-      offset = img_idx * pan_size(ATTRIBUTE);
-      for (unsigned i = 0; i < layout->num_imgs; i++) {
-         pan_pack(attribs + offset, ATTRIBUTE, cfg) {
-            cfg.buffer_index = first_buf + (img_idx + i) * 2;
-            cfg.format = desc_state->sets[s]->img_fmts[i];
-            cfg.offset_enable = false;
-         }
-         offset += pan_size(ATTRIBUTE);
-      }
-   }
-}
-
-void
-panvk_per_arch(prepare_img_attribs)(struct pan_pool *desc_pool_base,
-                                    struct panvk_descriptor_state *desc_state,
-                                    const struct panvk_pipeline *pipeline)
-{
-   if (desc_state->img.attribs)
-      return;
-
-   unsigned attrib_count = pipeline->layout->num_imgs;
-   unsigned attrib_buf_count = (pipeline->layout->num_imgs * 2);
-   struct panfrost_ptr bufs = pan_pool_alloc_desc_array(
-      desc_pool_base, attrib_buf_count + 1, ATTRIBUTE_BUFFER);
-   struct panfrost_ptr attribs =
-      pan_pool_alloc_desc_array(desc_pool_base, attrib_count, ATTRIBUTE);
-
-   panvk_per_arch(fill_img_attribs)(desc_state, pipeline, bufs.cpu, attribs.cpu,
-                                    0);
-
-   desc_state->img.attrib_bufs = bufs.gpu;
-   desc_state->img.attribs = attribs.gpu;
-}
 
 void
 panvk_per_arch(cmd_desc_state_reset)(
@@ -288,62 +46,6 @@ panvk_per_arch(cmd_desc_state_cleanup)(
    }
 }
 
-static void
-panvk_emit_dyn_ubo(struct panvk_descriptor_state *desc_state,
-                   const struct panvk_descriptor_set *desc_set,
-                   unsigned binding, unsigned array_idx, uint32_t dyn_offset,
-                   unsigned dyn_ubo_slot)
-{
-   struct mali_uniform_buffer_packed *ubo = &desc_state->dyn.ubos[dyn_ubo_slot];
-   const struct panvk_descriptor_set_layout *slayout = desc_set->layout;
-   VkDescriptorType type = slayout->bindings[binding].type;
-
-   assert(type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
-   assert(dyn_ubo_slot < ARRAY_SIZE(desc_state->dyn.ubos));
-
-   const unsigned dyn_ubo_idx = slayout->bindings[binding].dyn_ubo_idx;
-   const struct panvk_buffer_desc *bdesc =
-      &desc_set->dyn_ubos[dyn_ubo_idx + array_idx];
-   mali_ptr address =
-      panvk_buffer_gpu_ptr(bdesc->buffer, bdesc->offset + dyn_offset);
-   size_t size = panvk_buffer_range(bdesc->buffer, bdesc->offset + dyn_offset,
-                                    bdesc->size);
-
-   if (size) {
-      pan_pack(ubo, UNIFORM_BUFFER, cfg) {
-         cfg.pointer = address;
-         cfg.entries = DIV_ROUND_UP(size, 16);
-      }
-   } else {
-      memset(ubo, 0, sizeof(*ubo));
-   }
-}
-
-static void
-panvk_emit_dyn_ssbo(struct panvk_descriptor_state *desc_state,
-                    const struct panvk_descriptor_set *desc_set,
-                    unsigned binding, unsigned array_idx, uint32_t dyn_offset,
-                    unsigned dyn_ssbo_slot)
-{
-   struct panvk_ssbo_addr *ssbo = &desc_state->dyn.ssbos[dyn_ssbo_slot];
-   const struct panvk_descriptor_set_layout *slayout = desc_set->layout;
-   VkDescriptorType type = slayout->bindings[binding].type;
-
-   assert(type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC);
-   assert(dyn_ssbo_slot < ARRAY_SIZE(desc_state->dyn.ssbos));
-
-   const unsigned dyn_ssbo_idx = slayout->bindings[binding].dyn_ssbo_idx;
-   const struct panvk_buffer_desc *bdesc =
-      &desc_set->dyn_ssbos[dyn_ssbo_idx + array_idx];
-
-   *ssbo = (struct panvk_ssbo_addr){
-      .base_addr =
-         panvk_buffer_gpu_ptr(bdesc->buffer, bdesc->offset + dyn_offset),
-      .size = panvk_buffer_range(bdesc->buffer, bdesc->offset + dyn_offset,
-                                 bdesc->size),
-   };
-}
-
 void
 panvk_per_arch(cmd_desc_state_bind_sets)(
    struct panvk_descriptor_state *desc_state, VkPipelineLayout layout,
@@ -351,77 +53,196 @@ panvk_per_arch(cmd_desc_state_bind_sets)(
    const VkDescriptorSet *desc_sets, uint32_t dyn_offset_count,
    const uint32_t *dyn_offsets)
 {
-   VK_FROM_HANDLE(panvk_pipeline_layout, playout, layout);
-
    unsigned dynoffset_idx = 0;
    for (unsigned i = 0; i < desc_set_count; ++i) {
-      unsigned idx = i + first_set;
+      unsigned set_idx = i + first_set;
       VK_FROM_HANDLE(panvk_descriptor_set, set, desc_sets[i]);
 
-      desc_state->sets[idx] = set;
+      /* Invalidate the push set. */
+      if (desc_state->sets[set_idx] &&
+          desc_state->sets[set_idx] == desc_state->push_sets[set_idx])
+         desc_state->push_sets[set_idx]->descs.dev = 0;
 
-      if (set->layout->num_dyn_ssbos || set->layout->num_dyn_ubos) {
-         unsigned dyn_ubo_slot = playout->sets[idx].dyn_ubo_offset;
-         unsigned dyn_ssbo_slot = playout->sets[idx].dyn_ssbo_offset;
+      desc_state->sets[set_idx] = set;
 
-         for (unsigned b = 0; b < set->layout->binding_count; b++) {
-            for (unsigned e = 0; e < set->layout->bindings[b].array_size; e++) {
-               VkDescriptorType type = set->layout->bindings[b].type;
+      if (!set || !set->layout->dyn_buf_count)
+         continue;
 
-               if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-                  panvk_emit_dyn_ubo(desc_state, set, b, e,
-                                     dyn_offsets[dynoffset_idx++],
-                                     dyn_ubo_slot++);
-               } else if (type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
-                  panvk_emit_dyn_ssbo(desc_state, set, b, e,
-                                      dyn_offsets[dynoffset_idx++],
-                                      dyn_ssbo_slot++);
-               }
-            }
+      for (unsigned b = 0; b < set->layout->binding_count; b++) {
+         VkDescriptorType type = set->layout->bindings[b].type;
+
+         if (type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC &&
+             type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
+            continue;
+
+         unsigned dyn_buf_idx = set->layout->bindings[b].desc_idx;
+         for (unsigned e = 0; e < set->layout->bindings[b].desc_count; e++) {
+            desc_state->dyn_buf_offsets[set_idx][dyn_buf_idx++] =
+               dyn_offsets[dynoffset_idx++];
          }
       }
    }
 
-   /* Unconditionally reset all previously emitted descriptors tables.
-    * TODO: we could be smarter by checking which part of the pipeline layout
-    * are compatible with the previouly bound descriptor sets.
-    */
-   desc_state->ubos = 0;
-   desc_state->textures = 0;
-   desc_state->samplers = 0;
-   desc_state->dyn_desc_ubo = 0;
-   desc_state->img.attrib_bufs = 0;
-   desc_state->img.attribs = 0;
-
    assert(dynoffset_idx == dyn_offset_count);
 }
 
-struct panvk_push_descriptor_set *
+struct panvk_descriptor_set *
 panvk_per_arch(cmd_push_descriptors)(struct vk_command_buffer *cmdbuf,
                                      struct panvk_descriptor_state *desc_state,
-                                     uint32_t set)
+                                     uint32_t set_idx)
 {
-   assert(set < MAX_SETS);
-   if (unlikely(desc_state->push_sets[set] == NULL)) {
-      desc_state->push_sets[set] =
-         vk_zalloc(&cmdbuf->pool->alloc, sizeof(*desc_state->push_sets[0]), 8,
-                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-      if (unlikely(desc_state->push_sets[set] == NULL)) {
+   assert(set_idx < MAX_SETS);
+
+   if (unlikely(desc_state->push_sets[set_idx] == NULL)) {
+      VK_MULTIALLOC(ma);
+      VK_MULTIALLOC_DECL(&ma, struct panvk_descriptor_set, set, 1);
+      VK_MULTIALLOC_DECL(&ma, struct panvk_opaque_desc, descs, MAX_PUSH_DESCS);
+
+      if (unlikely(!vk_multialloc_zalloc(&ma, &cmdbuf->pool->alloc,
+                                         VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))) {
          vk_command_buffer_set_error(cmdbuf, VK_ERROR_OUT_OF_HOST_MEMORY);
          return NULL;
       }
+
+      desc_state->push_sets[set_idx] = set;
+      set->descs.host = descs;
    }
 
-   /* Pushing descriptors replaces whatever sets are bound */
-   desc_state->sets[set] = NULL;
+   struct panvk_descriptor_set *set = desc_state->push_sets[set_idx];
 
-   /* Reset all descs to force emission of new tables on the next draw/dispatch.
-    * TODO: Be smarter and only reset those when required.
-    */
-   desc_state->ubos = 0;
-   desc_state->textures = 0;
-   desc_state->samplers = 0;
-   desc_state->img.attrib_bufs = 0;
-   desc_state->img.attribs = 0;
-   return desc_state->push_sets[set];
+   /* Pushing descriptors replaces whatever sets are bound */
+   desc_state->sets[set_idx] = set;
+   return set;
+}
+
+void
+panvk_per_arch(cmd_prepare_dyn_ssbos)(
+   struct pan_pool *desc_pool, const struct panvk_descriptor_state *desc_state,
+   const struct panvk_shader *shader,
+   struct panvk_shader_desc_state *shader_desc_state)
+{
+   if (!shader || !shader->desc_info.dyn_ssbos.count ||
+       shader_desc_state->dyn_ssbos)
+      return;
+
+   struct panfrost_ptr ptr = pan_pool_alloc_aligned(
+      desc_pool, shader->desc_info.dyn_ssbos.count * PANVK_DESCRIPTOR_SIZE,
+      PANVK_DESCRIPTOR_SIZE);
+
+   struct panvk_ssbo_addr *ssbos = ptr.cpu;
+   for (uint32_t i = 0; i < shader->desc_info.dyn_ssbos.count; i++) {
+      uint32_t src_handle = shader->desc_info.dyn_ssbos.map[i];
+      uint32_t set_idx = COPY_DESC_HANDLE_EXTRACT_TABLE(src_handle);
+      uint32_t dyn_buf_idx = COPY_DESC_HANDLE_EXTRACT_INDEX(src_handle);
+      const struct panvk_descriptor_set *set = desc_state->sets[set_idx];
+      const uint32_t dyn_buf_offset =
+         desc_state->dyn_buf_offsets[set_idx][dyn_buf_idx];
+
+      assert(set_idx < MAX_SETS);
+      assert(set);
+
+      ssbos[i] = (struct panvk_ssbo_addr){
+         .base_addr = set->dyn_bufs[dyn_buf_idx].dev_addr + dyn_buf_offset,
+         .size = set->dyn_bufs[dyn_buf_idx].size,
+      };
+   }
+
+   shader_desc_state->dyn_ssbos = ptr.gpu;
+}
+
+static void
+panvk_cmd_fill_dyn_ubos(const struct panvk_descriptor_state *desc_state,
+                        const struct panvk_shader *shader,
+                        struct mali_uniform_buffer_packed *ubos,
+                        uint32_t ubo_count)
+{
+   for (uint32_t i = 0; i < shader->desc_info.dyn_ubos.count; i++) {
+      uint32_t src_handle = shader->desc_info.dyn_ubos.map[i];
+      uint32_t set_idx = COPY_DESC_HANDLE_EXTRACT_TABLE(src_handle);
+      uint32_t dyn_buf_idx = COPY_DESC_HANDLE_EXTRACT_INDEX(src_handle);
+      uint32_t ubo_idx =
+         i + shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_UBO];
+      const struct panvk_descriptor_set *set = desc_state->sets[set_idx];
+      const uint32_t dyn_buf_offset =
+         desc_state->dyn_buf_offsets[set_idx][dyn_buf_idx];
+
+      assert(set_idx < MAX_SETS);
+      assert(set);
+      assert(ubo_idx < ubo_count);
+
+      pan_pack(&ubos[ubo_idx], UNIFORM_BUFFER, cfg) {
+         cfg.pointer = set->dyn_bufs[dyn_buf_idx].dev_addr + dyn_buf_offset;
+         cfg.entries = DIV_ROUND_UP(set->dyn_bufs[dyn_buf_idx].size, 16);
+      }
+   }
+}
+
+void
+panvk_per_arch(cmd_prepare_shader_desc_tables)(
+   struct pan_pool *desc_pool, const struct panvk_descriptor_state *desc_state,
+   const struct panvk_shader *shader,
+   struct panvk_shader_desc_state *shader_desc_state)
+{
+   if (!shader)
+      return;
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(shader->desc_info.others.count); i++) {
+      uint32_t desc_count =
+         shader->desc_info.others.count[i] +
+         (i == PANVK_BIFROST_DESC_TABLE_UBO ? shader->desc_info.dyn_ubos.count
+                                            : 0);
+      uint32_t desc_size =
+         i == PANVK_BIFROST_DESC_TABLE_UBO ? 8 : PANVK_DESCRIPTOR_SIZE;
+
+      if (!desc_count || shader_desc_state->tables[i])
+         continue;
+
+      struct panfrost_ptr ptr = pan_pool_alloc_aligned(
+         desc_pool, desc_count * desc_size, PANVK_DESCRIPTOR_SIZE);
+
+      shader_desc_state->tables[i] = ptr.gpu;
+
+      if (i == PANVK_BIFROST_DESC_TABLE_UBO)
+         panvk_cmd_fill_dyn_ubos(desc_state, shader, ptr.cpu, desc_count);
+
+      if (i == PANVK_BIFROST_DESC_TABLE_IMG) {
+         assert(!shader_desc_state->img_attrib_table);
+
+         ptr = pan_pool_alloc_desc_array(desc_pool, desc_count, ATTRIBUTE);
+         shader_desc_state->img_attrib_table = ptr.gpu;
+      }
+   }
+
+   uint32_t tex_count =
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_TEXTURE];
+   uint32_t sampler_count =
+      shader->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_SAMPLER];
+
+   if (tex_count && !sampler_count) {
+      struct panfrost_ptr sampler = pan_pool_alloc_desc(desc_pool, SAMPLER);
+
+      /* Emit a dummy sampler if we have to. */
+      pan_pack(sampler.cpu, SAMPLER, _) {
+      }
+
+      shader_desc_state->tables[PANVK_BIFROST_DESC_TABLE_SAMPLER] = sampler.gpu;
+   }
+}
+
+void
+panvk_per_arch(cmd_prepare_push_descs)(struct pan_pool *desc_pool,
+                                       struct panvk_descriptor_state *desc_state,
+                                       uint32_t used_set_mask)
+{
+   for (unsigned i = 0; i < ARRAY_SIZE(desc_state->push_sets); i++) {
+      struct panvk_descriptor_set *push_set = desc_state->push_sets[i];
+
+      if (!(used_set_mask & BITFIELD_BIT(i)) || !push_set ||
+          desc_state->sets[i] != push_set || push_set->descs.dev)
+         continue;
+
+      push_set->descs.dev = pan_pool_upload_aligned(
+         desc_pool, push_set->descs.host,
+         push_set->desc_count * PANVK_DESCRIPTOR_SIZE, PANVK_DESCRIPTOR_SIZE);
+   }
 }

@@ -46,6 +46,21 @@ static const char *si_get_device_vendor(struct pipe_screen *pscreen)
    return "AMD";
 }
 
+static bool
+si_is_compute_copy_faster(struct pipe_screen *pscreen,
+                          enum pipe_format src_format,
+                          enum pipe_format dst_format,
+                          unsigned width,
+                          unsigned height,
+                          unsigned depth,
+                          bool cpu)
+{
+   if (cpu)
+      /* very basic for now */
+      return width * height * depth > 64 * 64;
+   return false;
+}
+
 static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 {
    struct si_screen *sscreen = (struct si_screen *)pscreen;
@@ -174,7 +189,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 1;
 
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
-      return PIPE_TEXTURE_TRANSFER_BLIT;
+      return PIPE_TEXTURE_TRANSFER_BLIT | PIPE_TEXTURE_TRANSFER_COMPUTE;
 
    case PIPE_CAP_DRAW_VERTEX_STATE:
       return !(sscreen->debug_flags & DBG(NO_FAST_DISPLAY_LIST));
@@ -1487,6 +1502,19 @@ static unsigned si_varying_estimate_instr_cost(nir_instr *instr)
    }
 }
 
+
+static void
+si_driver_thread_add_job(struct pipe_screen *screen, void *data,
+                         struct util_queue_fence *fence,
+                         pipe_driver_thread_func execute,
+                         pipe_driver_thread_func cleanup,
+                         const size_t job_size)
+{
+   struct si_screen *sscreen = (struct si_screen *)screen;
+   util_queue_add_job(&sscreen->shader_compiler_queue, data, fence, execute, cleanup, job_size);
+}
+
+
 void si_init_screen_get_functions(struct si_screen *sscreen)
 {
    sscreen->b.get_name = si_get_name;
@@ -1494,6 +1522,8 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
    sscreen->b.get_device_vendor = si_get_device_vendor;
    sscreen->b.get_screen_fd = si_get_screen_fd;
    sscreen->b.get_param = si_get_param;
+   sscreen->b.is_compute_copy_faster = si_is_compute_copy_faster;
+   sscreen->b.driver_thread_add_job = si_driver_thread_add_job;
    sscreen->b.get_paramf = si_get_paramf;
    sscreen->b.get_compute_param = si_get_compute_param;
    sscreen->b.get_timestamp = si_get_timestamp;
@@ -1570,6 +1600,7 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
     */
    options->force_f2f16_rtz = true;
    options->io_options = nir_io_has_flexible_input_interpolation_except_flat |
+                         nir_io_prefer_scalar_fs_inputs |
                          nir_io_glsl_lower_derefs |
                          (sscreen->options.optimize_io ? nir_io_glsl_opt_varyings : 0);
    options->lower_mediump_io = sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16 ?

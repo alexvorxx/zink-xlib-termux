@@ -369,7 +369,6 @@ static bool lower_resinfo(nir_builder *b, nir_instr *instr, void *data)
 bool ac_nir_lower_resinfo(nir_shader *nir, enum amd_gfx_level gfx_level)
 {
    return nir_shader_instructions_pass(nir, lower_resinfo,
-                                       nir_metadata_dominance |
-                                       nir_metadata_block_index,
+                                       nir_metadata_control_flow,
                                        &gfx_level);
 }

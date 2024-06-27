@@ -453,6 +453,5 @@ v3d_nir_lower_image_load_store(nir_shader *s, struct v3d_compile *c)
 {
         return nir_shader_intrinsics_pass(s,
                                             v3d_nir_lower_image_load_store_cb,
-                                            nir_metadata_block_index |
-                                            nir_metadata_dominance, c);
+                                            nir_metadata_control_flow, c);
 }

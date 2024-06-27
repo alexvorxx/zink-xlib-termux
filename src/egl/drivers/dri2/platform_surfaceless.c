@@ -190,6 +190,8 @@ surfaceless_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
    switch (cap) {
    case DRI_LOADER_CAP_FP16:
       return 1;
+   case DRI_LOADER_CAP_RGBA_ORDERING:
+      return 1;
    default:
       return 0;
    }

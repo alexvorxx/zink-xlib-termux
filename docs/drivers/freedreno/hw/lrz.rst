@@ -95,6 +95,21 @@ This way it's always valid to fast-clear.
 On A7XX, the original depth clear value can be specified exactly allowing for
 fast-clear to any value rather than just ``1.0`` or ``0.0``.
 
+LRZ Feedback
+-------------
+
+Some draws do write depth but cannot contribute to LRZ during the BINNING pass
+e.g. when fragment shader has "discard" in it, however they can contribute to LRZ
+during the RENDERING pass via LRZ feedback mechanism. This may allow the draws
+that follow to depth test against the updated LRZ, this is especially important
+if such "bad" draws were at the start of the renderpass.
+
+LRZ feedback happens during the RENDERING pass when ``LRZ_FEEDBACK_ZMODE_MASK``
+is set, if draw has a6xx_ztest_mode that has corresponding flag set in
+``LRZ_FEEDBACK_ZMODE_MASK`` - its depth values would be used for feedback.
+
+LRZ feedback alongside with LRZ testing also works during sysmem rendering.
+
 LRZ Precision
 -------------
 

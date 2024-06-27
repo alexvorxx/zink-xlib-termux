@@ -29,6 +29,7 @@ panvk_entrypoints = custom_target(
     prog_python, '@INPUT0@', '--xml', '@INPUT1@', '--proto', '--weak',
     '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@', '--prefix', 'panvk',
     '--device-prefix', 'panvk_v6', '--device-prefix', 'panvk_v7',
+    '--device-prefix', 'panvk_v9', '--device-prefix', 'panvk_v10',
     '--beta', with_vulkan_beta.to_string()
   ],
   depend_files : vk_entrypoints_gen_depend_files,
@@ -47,6 +48,7 @@ libpanvk_files = files(
   'panvk_query.c',
   'panvk_wsi.c',
 )
+libpanvk_files += [sha1_h]
 
 panvk_deps = []
 panvk_flags = []
@@ -56,12 +58,13 @@ bifrost_archs = [6, 7]
 bifrost_inc_dir = ['bifrost']
 bifrost_files = [
   'bifrost/panvk_vX_cmd_desc_state.c',
-  'bifrost/panvk_vX_descriptor_set.c',
-  'bifrost/panvk_vX_descriptor_set_layout.c',
+  'bifrost/panvk_vX_meta_desc_copy.c',
   'bifrost/panvk_vX_nir_lower_descriptors.c',
-  'bifrost/panvk_vX_pipeline.c',
-  'bifrost/panvk_vX_pipeline_layout.c',
 ]
+
+valhall_archs = [9, 10]
+valhall_inc_dir = ['valhall']
+valhall_files = []
 
 jm_archs = [6, 7]
 jm_inc_dir = ['jm']
@@ -81,19 +84,35 @@ common_per_arch_files = [
   panvk_entrypoints[0],
   'panvk_vX_blend.c',
   'panvk_vX_buffer_view.c',
+  'panvk_vX_descriptor_set.c',
+  'panvk_vX_descriptor_set_layout.c',
   'panvk_vX_device.c',
   'panvk_vX_image_view.c',
   'panvk_vX_sampler.c',
   'panvk_vX_shader.c',
 ]
 
-foreach arch : [6, 7]
-  per_arch_files = common_per_arch_files
+foreach arch : [6, 7, 9, 10]
+  if arch in valhall_archs
+    # We're lacking key components to compile common source files for v9/v10.
+    # Just add the v9/v10 entrypoints for now.
+    per_arch_files = [
+      panvk_entrypoints[0],
+      'panvk_vX_descriptor_set.c',
+      'panvk_vX_descriptor_set_layout.c',
+    ]
+  else
+    per_arch_files = common_per_arch_files
+  endif
+
   inc_panvk_per_arch = []
 
   if arch in bifrost_archs
     inc_panvk_per_arch += bifrost_inc_dir
     per_arch_files += bifrost_files
+  elif arch in valhall_archs
+    inc_panvk_per_arch += valhall_inc_dir
+    per_arch_files += valhall_files
   endif
 
   if arch in jm_archs

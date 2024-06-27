@@ -405,9 +405,6 @@ fs_visitor::emit_interpolation_setup()
 
       switch (wm_prog_data->coarse_pixel_dispatch) {
       case BRW_NEVER:
-         assert(wm_prog_data->uses_src_depth);
-         assert(!wm_prog_data->uses_depth_w_coefficients);
-         this->pixel_z = sample_z;
          break;
 
       case BRW_SOMETIMES:
@@ -1036,7 +1033,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
      debug_enabled(debug_enabled),
      key(key), gs_compile(NULL), prog_data(prog_data),
      live_analysis(this), regpressure_analysis(this),
-     performance_analysis(this), idom_analysis(this),
+     performance_analysis(this), idom_analysis(this), def_analysis(this),
      needs_register_pressure(needs_register_pressure),
      dispatch_width(dispatch_width),
      max_polygons(0),
@@ -1060,7 +1057,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
      debug_enabled(debug_enabled),
      key(&key->base), gs_compile(NULL), prog_data(&prog_data->base),
      live_analysis(this), regpressure_analysis(this),
-     performance_analysis(this), idom_analysis(this),
+     performance_analysis(this), idom_analysis(this), def_analysis(this),
      needs_register_pressure(needs_register_pressure),
      dispatch_width(dispatch_width),
      max_polygons(max_polygons),
@@ -1088,7 +1085,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler,
      key(&c->key.base), gs_compile(c),
      prog_data(&prog_data->base.base),
      live_analysis(this), regpressure_analysis(this),
-     performance_analysis(this), idom_analysis(this),
+     performance_analysis(this), idom_analysis(this), def_analysis(this),
      needs_register_pressure(needs_register_pressure),
      dispatch_width(compiler->devinfo->ver >= 20 ? 16 : 8),
      max_polygons(0),

@@ -237,8 +237,7 @@ clc_lower_input_image_deref(nir_builder *b, struct clc_image_lower_context *cont
                }
 
                /* No actual intrinsic needed here, just reference the loaded variable */
-               nir_def_rewrite_uses(&intrinsic->def, *cached_deref);
-               nir_instr_remove(&intrinsic->instr);
+               nir_def_replace(&intrinsic->def, *cached_deref);
                break;
             }
 

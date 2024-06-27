@@ -102,6 +102,7 @@ static const struct intel_device_info intel_device_info_gfx3 = {
    .num_subslices = { 1, },
    .max_eus_per_subslice = 8,
    .num_thread_per_eu = 4,
+   .grf_size = 32,
    .timestamp_frequency = 12500000,
 };
 
@@ -113,6 +114,7 @@ static const struct intel_device_info intel_device_info_i965 = {
    .num_subslices = { 1, },
    .max_eus_per_subslice = 8,
    .num_thread_per_eu = 4,
+   .grf_size = 32,
    .max_vs_threads = 16,
    .max_gs_threads = 2,
    .max_wm_threads = 8 * 4,
@@ -134,6 +136,7 @@ static const struct intel_device_info intel_device_info_g4x = {
    .num_subslices = { 1, },
    .max_eus_per_subslice = 10,
    .num_thread_per_eu = 5,
+   .grf_size = 32,
    .max_vs_threads = 32,
    .max_gs_threads = 2,
    .max_wm_threads = 10 * 5,
@@ -154,6 +157,7 @@ static const struct intel_device_info intel_device_info_ilk = {
    .num_subslices = { 1, },
    .max_eus_per_subslice = 12,
    .num_thread_per_eu = 6,
+   .grf_size = 32,
    .max_vs_threads = 72,
    .max_gs_threads = 32,
    .max_wm_threads = 12 * 6,
@@ -177,6 +181,7 @@ static const struct intel_device_info intel_device_info_snb_gt1 = {
    .num_subslices = { 1, },
    .max_eus_per_subslice = 6,
    .num_thread_per_eu = 6, /* Not confirmed */
+   .grf_size = 32,
    .max_vs_threads = 24,
    .max_gs_threads = 21, /* conservative; 24 if rendering disabled. */
    .max_wm_threads = 40,
@@ -207,6 +212,7 @@ static const struct intel_device_info intel_device_info_snb_gt2 = {
    .num_subslices = { 1, },
    .max_eus_per_subslice = 12,
    .num_thread_per_eu = 6, /* Not confirmed */
+   .grf_size = 32,
    .max_vs_threads = 60,
    .max_gs_threads = 60,
    .max_wm_threads = 80,
@@ -232,6 +238,7 @@ static const struct intel_device_info intel_device_info_snb_gt2 = {
    .has_pln = true,                                 \
    .has_64bit_float = true,                         \
    .has_surface_tile_offset = true,                 \
+   .grf_size = 32,                                  \
    .timestamp_frequency = 12500000,                 \
    .max_constant_urb_size_kb = 16
 
@@ -428,6 +435,7 @@ static const struct intel_device_info intel_device_info_hsw_gt3 = {
    .supports_simd16_3src = true,                    \
    .has_surface_tile_offset = true,                 \
    .num_thread_per_eu = 7,                          \
+   .grf_size = 32,                                  \
    .max_vs_threads = 504,                           \
    .max_tcs_threads = 504,                          \
    .max_tes_threads = 504,                          \
@@ -620,7 +628,6 @@ static const struct intel_device_info intel_device_info_chv = {
    .has_sample_with_hiz = true,                     \
    .has_illegal_ccs_values = true,                                    \
    .cooperative_matrix_configurations = {                             \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -852,7 +859,6 @@ static const struct intel_device_info intel_device_info_cfl_gt3 = {
    .num_subslices = _subslices,                       \
    .max_eus_per_subslice = 8,                                         \
    .cooperative_matrix_configurations = {                             \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -985,7 +991,6 @@ static const struct intel_device_info intel_device_info_ehl_2x4 = {
          .writecombining = PAT_ENTRY(1, WC, NONE),              \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -1117,7 +1122,6 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_aux_map = false,                                        \
    .simulator_id = 29,                                          \
    .cooperative_matrix_configurations = {                       \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -1210,6 +1214,7 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .ver = 20,                                                   \
    .verx10 = 200,                                               \
    .num_subslices = dual_subslices(1),                          \
+   .grf_size = 64,                                              \
    .has_64bit_float = true,                                     \
    .has_64bit_int = true,                                       \
    .has_integer_dword_mul = false,                              \
@@ -1223,7 +1228,11 @@ static const struct intel_device_info intel_device_info_arl_h = {
       .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
       .writecombining = PAT_ENTRY(6, WC, NONE),                 \
    },                                                           \
-   .cooperative_matrix_configurations = { { 0 }, },             \
+   .cooperative_matrix_configurations = {                       \
+    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
+    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
+    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
+   },                                                           \
    .has_flat_ccs = true
 
 static const struct intel_device_info intel_device_info_bmg = {

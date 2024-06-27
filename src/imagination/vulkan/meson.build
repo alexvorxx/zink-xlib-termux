@@ -117,7 +117,7 @@ endif
 
 libvulkan_powervr_mesa = shared_library(
   'vulkan_powervr_mesa',
-  [pvr_files, pvr_entrypoints, u_format_pack_h],
+  [pvr_files, pvr_entrypoints, sha1_h, u_format_pack_h],
   include_directories : [
     pvr_includes,
     inc_imagination,

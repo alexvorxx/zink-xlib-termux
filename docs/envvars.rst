@@ -40,7 +40,7 @@ LibGL environment variables
 
 .. envvar:: LIBGL_KOPPER_DISABLE
 
-   disable vulkan swapchains with zink if set to ``true``.
+   disable Vulkan swapchains with Zink if set to ``true``.
    In general, this should not be used unless you know what you are
    doing. Some examples of "knowing what you are doing" include:
    - using a VK driver which has no WSI implementation for your display server
@@ -48,7 +48,7 @@ LibGL environment variables
 
 .. envvar:: LIBGL_KOPPER_DRI2
 
-   disable DRI3 with zink if set to ``true``.
+   disable DRI3 with Zink if set to ``true``.
    In general, this should not be used unless you know what you are
    doing. Some examples of "knowing what you are doing" include:
    - running xrdp
@@ -401,7 +401,7 @@ Core Mesa environment variables
    - ``DRI_PRIME=vendor_id:device_id``: selects the first GPU matching these ids.
 
    For Vulkan it's possible to append ``!``, in which case only the selected GPU
-   will be exposed to the application (eg: DRI_PRIME=1!).
+   will be exposed to the application (e.g.: DRI_PRIME=1!).
 
    .. note::
 
@@ -548,7 +548,7 @@ Intel driver environment variables
    ``gs``
       dump shader assembly for geometry shaders
    ``heaps``
-      print information about the driver's heaps (Anv only)
+      print information about the driver's heaps (ANV only)
    ``hex``
       print instruction hex dump with the disassembly
    ``l3``
@@ -656,7 +656,7 @@ Intel driver environment variables
 
 .. envvar:: INTEL_EXTENDED_METRICS
 
-   By default, only a standard set of gpu metrics are advertised. This
+   By default, only a standard set of GPU metrics are advertised. This
    reduces time to collect metrics and hides infrequently used metrics.
    To enable all metrics, set value to 1.
 
@@ -667,7 +667,7 @@ Intel driver environment variables
    will specify all known PCI IDs. If ``!`` precedes a PCI ID, or the
    wildcard value, then the device support will be disabled. All
    numbers are interpreted in base 16, and a ``0x`` prefix is
-   optional. Values specified later take precidence, so the wildcard
+   optional. Values specified later take precedence, so the wildcard
    probably should only be used at the beginning.
 
    Some examples :
@@ -1293,7 +1293,7 @@ RADV driver environment variables
    ``epilogs``
       dump fragment shader epilogs
    ``extra_md``
-      add extra information in bo metadatas to help tools (umr)
+      add extra information in bo metadata to help tools (umr)
    ``forcecompress``
       Enables DCC,FMASK,CMASK,HTILE in situations where the driver supports it
       but normally does not deem it beneficial.
@@ -1523,7 +1523,7 @@ RadeonSI driver environment variables
    ``nodpbb``
       Disable DPBB. Overrules the dpbb enable option.
    ``noefc``
-      Disable hardware based encoder colour format conversion
+      Disable hardware based encoder color format conversion
    ``notiling``
       Disable tiling
    ``nofmask``
@@ -1599,7 +1599,7 @@ RadeonSI driver environment variables
    ``dpbb``
       Enable DPBB. Enable DPBB for gfx9 dGPU. Default enabled for gfx9 APU and >= gfx10.
    ``extra_md``
-      add extra information in bo metadatas to help tools (umr)
+      add extra information in bo metadata to help tools (umr)
 
 r600 driver environment variables
 ---------------------------------

@@ -719,6 +719,7 @@ vmw_ioctl_syncforcpu(struct vmw_region *region,
                      bool allow_cs)
 {
    struct drm_vmw_synccpu_arg arg;
+   int ret;
 
    memset(&arg, 0, sizeof(arg));
    arg.op = drm_vmw_synccpu_grab;
@@ -731,7 +732,16 @@ vmw_ioctl_syncforcpu(struct vmw_region *region,
    if (allow_cs)
       arg.flags |= drm_vmw_synccpu_allow_cs;
 
-   return drmCommandWrite(region->drm_fd, DRM_VMW_SYNCCPU, &arg, sizeof(arg));
+   do {
+      ret = drmCommandWrite(region->drm_fd, DRM_VMW_SYNCCPU, &arg, sizeof(arg));
+      if (ret == -EBUSY)
+         usleep(1000);
+   } while (ret == -ERESTART || ret == -EBUSY);
+
+   if (ret)
+      vmw_error("%s Failed synccpu with error %s.\n", __func__, strerror(-ret));
+
+   return ret;
 }
 
 /**

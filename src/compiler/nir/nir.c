@@ -2058,8 +2058,7 @@ nir_function_impl_lower_instructions(nir_function_impl *impl,
 {
    nir_builder b = nir_builder_create(impl);
 
-   nir_metadata preserved = nir_metadata_block_index |
-                            nir_metadata_dominance;
+   nir_metadata preserved = nir_metadata_control_flow;
 
    bool progress = false;
    nir_cursor iter = nir_before_impl(impl);
@@ -2906,8 +2905,14 @@ nir_alu_instr_is_comparison(const nir_alu_instr *instr)
    switch (instr->op) {
       CASE_ALL_SIZES(nir_op_flt)
       CASE_ALL_SIZES(nir_op_fge)
+      CASE_ALL_SIZES(nir_op_fltu)
+      CASE_ALL_SIZES(nir_op_fgeu)
       CASE_ALL_SIZES(nir_op_feq)
       CASE_ALL_SIZES(nir_op_fneu)
+      CASE_ALL_SIZES(nir_op_fequ)
+      CASE_ALL_SIZES(nir_op_fneo)
+      CASE_ALL_SIZES(nir_op_funord)
+      CASE_ALL_SIZES(nir_op_ford)
       CASE_ALL_SIZES(nir_op_ilt)
       CASE_ALL_SIZES(nir_op_ult)
       CASE_ALL_SIZES(nir_op_ige)

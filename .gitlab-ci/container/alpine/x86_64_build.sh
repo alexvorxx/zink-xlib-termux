@@ -29,11 +29,13 @@ DEPS=(
     git
     gettext
     glslang
+    graphviz
     linux-headers
     llvm16-static
     llvm16-dev
     meson
     mold
+    musl-dev
     expat-dev
     elfutils-dev
     libdrm-dev
@@ -42,9 +44,11 @@ DEPS=(
     libpciaccess-dev
     zlib-dev
     python3-dev
+    py3-clang
     py3-cparser
     py3-mako
     py3-packaging
+    py3-pip
     py3-ply
     vulkan-headers
     spirv-tools-dev
@@ -54,6 +58,8 @@ DEPS=(
 )
 
 apk --no-cache add "${DEPS[@]}" "${EPHEMERAL[@]}"
+
+pip3 install --break-system-packages sphinx===5.1.1 hawkmoth===0.16.0
 
 . .gitlab-ci/container/build-llvm-spirv.sh
 

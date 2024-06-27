@@ -271,7 +271,7 @@ midgard_nir_lower_global_load(nir_shader *shader)
 {
    return nir_shader_intrinsics_pass(
       shader, midgard_nir_lower_global_load_instr,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+      nir_metadata_control_flow, NULL);
 }
 
 static bool
@@ -1570,9 +1570,9 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
       break;
    }
 
-   case nir_intrinsic_discard_if:
-   case nir_intrinsic_discard: {
-      bool conditional = instr->intrinsic == nir_intrinsic_discard_if;
+   case nir_intrinsic_terminate_if:
+   case nir_intrinsic_terminate: {
+      bool conditional = instr->intrinsic == nir_intrinsic_terminate_if;
       struct midgard_instruction discard = v_branch(conditional, false);
       discard.branch.target_type = TARGET_DISCARD;
 

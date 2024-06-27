@@ -313,8 +313,7 @@ ir3_nir_opt_preamble(nir_shader *nir, struct ir3_shader_variant *v)
       return false;
 
    bool progress = nir_shader_intrinsics_pass(nir, set_speculate,
-                                              nir_metadata_block_index |
-                                              nir_metadata_dominance, NULL);
+                                              nir_metadata_control_flow, NULL);
 
    nir_opt_preamble_options options = {
       .drawid_uniform = true,
@@ -445,7 +444,7 @@ ir3_nir_lower_preamble(nir_shader *nir, struct ir3_shader_variant *v)
 
    nir_if *outer_if = nir_push_if(b, nir_preamble_start_ir3(b, 1));
    {
-      nir_if *inner_if = nir_push_if(b, nir_elect(b, 1));
+      nir_if *inner_if = nir_push_if(b, nir_elect_any_ir3(b, 1));
       {
          nir_call_instr *call = nir_call_instr_create(nir, main->preamble);
          nir_builder_instr_insert(b, &call->instr);

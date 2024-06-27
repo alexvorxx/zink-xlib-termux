@@ -493,6 +493,6 @@ bool
 nir_lower_alu_vec8_16_srcs(nir_shader *shader)
 {
    return nir_shader_instructions_pass(shader, lower_alu_vec8_16_src,
-      nir_metadata_block_index | nir_metadata_dominance,
+      nir_metadata_control_flow,
       NULL);
 }

@@ -352,9 +352,7 @@ lower_ubo_load_to_uniform(nir_intrinsic_instr *instr, nir_builder *b,
       nir_load_uniform(b, instr->num_components, instr->def.bit_size,
                        uniform_offset, .base = const_offset);
 
-   nir_def_rewrite_uses(&instr->def, uniform);
-
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, uniform);
 
    return true;
 }
@@ -706,7 +704,7 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
             }
 
             nir_metadata_preserve(
-               function->impl, nir_metadata_block_index | nir_metadata_dominance);
+               function->impl, nir_metadata_control_flow);
          }
       }
    }
@@ -798,7 +796,7 @@ ir3_nir_lower_ubo_loads(nir_shader *nir, struct ir3_shader_variant *v)
          }
 
          nir_metadata_preserve(
-            function->impl, nir_metadata_block_index | nir_metadata_dominance);
+            function->impl, nir_metadata_control_flow);
       }
    }
    /* Update the num_ubos field for GL (first_ubo_is_default_ubo).  With

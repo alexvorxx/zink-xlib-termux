@@ -346,6 +346,14 @@ alpine/x86_64_build:
     - .alpine/x86_64_build-base
   variables:
     MESA_IMAGE_TAG: &alpine-x86_64_build ${ALPINE_X86_64_BUILD_TAG}
+  rules:
+    # Note: the next three lines must remain in that order, so that the rules
+    # in `linkcheck-docs` catch nightly pipelines before the rules in `pages`
+    # exclude them.
+    - !reference [linkcheck-docs, rules]
+    - !reference [pages, rules]
+    - !reference [test-docs, rules]
+    - !reference [.container, rules]
 
 .use-alpine/x86_64_build:
   extends:

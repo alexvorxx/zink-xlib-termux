@@ -3730,13 +3730,28 @@ to upconvert to 32b float internally?
 		<value value="3" name="BUFFERS_IN_SYSMEM"/>
 	</enum>
 
+	<enum name="a6xx_lrz_feedback_mask">
+		<value value="0x0" name="LRZ_FEEDBACK_NONE"/>
+		<value value="0x1" name="LRZ_FEEDBACK_EARLY_Z"/>
+		<value value="0x2" name="LRZ_FEEDBACK_EARLY_LRZ_LATE_Z"/>
+		<!-- We don't have a flag type and this flags combination is often used -->
+		<value value="0x3" name="LRZ_FEEDBACK_EARLY_Z_OR_EARLY_LRZ_LATE_Z"/>
+		<value value="0x4" name="LRZ_FEEDBACK_LATE_Z"/>
+	</enum>
+
 	<reg32 offset="0x80a1" name="GRAS_BIN_CONTROL" usage="rp_blit">
 		<bitfield name="BINW" low="0" high="5" shr="5" type="uint"/>
 		<bitfield name="BINH" low="8" high="14" shr="4" type="uint"/>
 		<bitfield name="RENDER_MODE" low="18" high="20" type="a6xx_render_mode"/>
+		<doc>Disable LRZ feedback writes</doc>
 		<bitfield name="FORCE_LRZ_WRITE_DIS" pos="21" type="boolean"/>
 		<bitfield name="BUFFERS_LOCATION" low="22" high="23" type="a6xx_buffers_location" variants="A6XX"/>
-		<bitfield name="LRZ_FEEDBACK_ZMODE_MASK" low="24" high="26"/>
+		<doc>
+			Allows draws that don't have GRAS_LRZ_CNTL.LRZ_WRITE but have
+			GRAS_LRZ_CNTL.ENABLE to contribute to LRZ during RENDERING pass.
+			In sysmem mode GRAS_LRZ_CNTL.LRZ_WRITE is not considered.
+		</doc>
+		<bitfield name="LRZ_FEEDBACK_ZMODE_MASK" low="24" high="26" type="a6xx_lrz_feedback_mask"/>
 		<bitfield name="UNK27" pos="27"/>
 	</reg32>
 
@@ -3992,7 +4007,7 @@ to upconvert to 32b float internally?
 		<bitfield name="RENDER_MODE" low="18" high="20" type="a6xx_render_mode"/>
 		<bitfield name="FORCE_LRZ_WRITE_DIS" pos="21" type="boolean"/>
 		<bitfield name="BUFFERS_LOCATION" low="22" high="23" type="a6xx_buffers_location"/>
-		<bitfield name="LRZ_FEEDBACK_ZMODE_MASK" low="24" high="26"/>
+		<bitfield name="LRZ_FEEDBACK_ZMODE_MASK" low="24" high="26" type="a6xx_lrz_feedback_mask"/>
 	</reg32>
 
 	<reg32 offset="0x8800" name="RB_BIN_CONTROL" variants="A7XX-" usage="rp_blit">
@@ -4000,7 +4015,7 @@ to upconvert to 32b float internally?
 		<bitfield name="BINH" low="8" high="14" shr="4" type="uint"/>
 		<bitfield name="RENDER_MODE" low="18" high="20" type="a6xx_render_mode"/>
 		<bitfield name="FORCE_LRZ_WRITE_DIS" pos="21" type="boolean"/>
-		<bitfield name="LRZ_FEEDBACK_ZMODE_MASK" low="24" high="26"/>
+		<bitfield name="LRZ_FEEDBACK_ZMODE_MASK" low="24" high="26" type="a6xx_lrz_feedback_mask"/>
 	</reg32>
 
 	<reg32 offset="0x8801" name="RB_RENDER_CNTL" variants="A6XX" usage="rp_blit">
@@ -5884,7 +5899,12 @@ to upconvert to 32b float internally?
 	<!-- always 0x100000 or 0x1000000? -->
 	<reg32 offset="0xb600" name="TPL1_DBG_ECO_CNTL" low="0" high="25" usage="cmd"/>
 	<reg32 offset="0xb601" name="TPL1_ADDR_MODE_CNTL" type="a5xx_address_mode"/>
-	<reg32 offset="0xb602" name="TPL1_DBG_ECO_CNTL1" usage="cmd"/>
+	<reg32 offset="0xb602" name="TPL1_DBG_ECO_CNTL1" usage="cmd">
+		<!-- Affects UBWC in some way, if BLIT_OP_SCALE is done with this bit set
+		     and if other blit is done without it - UBWC image may be copied incorrectly.
+		 -->
+		<bitfield name="TP_UBWC_FLAG_HINT" pos="18" type="boolean"/>
+	</reg32>
 	<reg32 offset="0xb604" name="TPL1_NC_MODE_CNTL">
 		<bitfield name="MODE" pos="0" type="boolean"/>
 		<bitfield name="LOWER_BIT" low="1" high="2" type="uint"/>

@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+fs = import('fs')
 rust = import('rust')
 
 libmesa_rust_util_files = files(
@@ -254,6 +255,10 @@ rusticl_libc_bindings_rs = rust.bindgen(
   ]
 )
 
+_idep_mesa_bindings = declare_dependency(
+  sources : spirv_info,
+)
+
 rusticl_mesa_bindings = rust.bindgen(
   input : 'rusticl_mesa_bindings.h',
   output : 'rusticl_mesa_bindings.rs',
@@ -265,6 +270,7 @@ rusticl_mesa_bindings = rust.bindgen(
     inc_src,
   ],
   dependencies: [
+    _idep_mesa_bindings,
     idep_nir_headers,
     dep_valgrind,
   ],
@@ -348,6 +354,7 @@ rusticl_c = static_library(
   ],
   gnu_symbol_visibility : 'hidden',
   include_directories : [
+    fs.relative_to(meson.project_build_root(), meson.current_source_dir()),
     inc_gallium,
     inc_gallium_aux,
     inc_include,

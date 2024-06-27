@@ -1575,12 +1575,6 @@ anv_device_alloc_bo(struct anv_device *device,
    assert((alloc_flags & ANV_BO_ALLOC_MAPPED) == 0 ||
           (alloc_flags & (ANV_BO_ALLOC_HOST_CACHED | ANV_BO_ALLOC_HOST_COHERENT)));
 
-   /* KMD requires a valid PAT index, so setting HOST_COHERENT/WC to bos that
-    * don't need CPU access
-    */
-   if ((alloc_flags & ANV_BO_ALLOC_MAPPED) == 0)
-      alloc_flags |= ANV_BO_ALLOC_HOST_COHERENT;
-
    /* In platforms with LLC we can promote all bos to cached+coherent for free */
    const enum anv_bo_alloc_flags not_allowed_promotion = ANV_BO_ALLOC_SCANOUT |
                                                          ANV_BO_ALLOC_EXTERNAL |

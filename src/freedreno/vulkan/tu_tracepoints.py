@@ -78,7 +78,8 @@ begin_end_tp('render_pass',
           Arg(type='uint8_t',  var='clearCPP',    c_format='%u'),
           Arg(type='uint8_t',  var='loadCPP',     c_format='%u'),
           Arg(type='uint8_t',  var='storeCPP',    c_format='%u'),
-          Arg(type='bool',     var='hasDepth',    c_format='%s', to_prim_type='({} ? "true" : "false")'),],
+          Arg(type='bool',     var='hasDepth',    c_format='%s', to_prim_type='({} ? "true" : "false")'),
+          Arg(type='str',      var='ubwc',        c_format='%s', length_arg='11', copy_func='strncpy'),],
     tp_struct=[Arg(type='uint16_t', name='width',               var='fb->width',                                            c_format='%u'),
                Arg(type='uint16_t', name='height',              var='fb->height',                                           c_format='%u'),
                Arg(type='uint8_t',  name='attachment_count',    var='fb->attachment_count',                                 c_format='%u'),
@@ -88,7 +89,9 @@ begin_end_tp('render_pass',
     # Args known only at the end of the renderpass:
     end_args=[Arg(type='bool',                                  var='tiledRender',                                          c_format='%s', to_prim_type='({} ? "true" : "false")'),
               Arg(type='uint32_t',                              var='drawCount',                                            c_format='%u'),
-              Arg(type='uint32_t',                              var='avgPerSampleBandwidth',                                c_format='%u'),])
+              Arg(type='uint32_t',                              var='avgPerSampleBandwidth',                                c_format='%u'),
+              Arg(type='bool',                                  var='lrz',                                                  c_format='%s', to_prim_type='({} ? "true" : "false")'),
+              Arg(type='const char *',                          var='lrzDisableReason',                                     c_format='%s'),])
 
 
 begin_end_tp('binning_ib')

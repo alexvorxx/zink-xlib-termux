@@ -480,8 +480,7 @@ libmesa = static_library(
     inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux,
     inc_libmesa_asm, include_directories('main'),
   ],
-  link_with : [libglsl, libmesa_sse41],
-  dependencies : [idep_nir, idep_vtn, dep_vdpau, idep_mesautil],
+  link_with : [libmesa_sse41],
+  dependencies : [idep_libglsl, idep_nir, idep_vtn, dep_vdpau, idep_mesautil],
   build_by_default : false,
 )
-

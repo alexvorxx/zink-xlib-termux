@@ -229,6 +229,9 @@ Struct("intel_device_info_pat_desc",
         Member("intel_device_info_pat_entry", "scanout",
                comment="scanout and external BOs"),
 
+        Member("intel_device_info_pat_entry", "compressed",
+               comment="Only supported in Xe2, compressed + WC"),
+
         Member("intel_device_info_pat_entry", "writeback_incoherent",
                comment=("BOs without special needs, can be WB not coherent "
                         "or WC it depends on the platforms and KMD")),
@@ -370,6 +373,9 @@ Struct("intel_device_info",
         Member("unsigned", "num_thread_per_eu", compiler_field=True,
                comment="Number of threads per eu, varies between 4 and 8 between generations."),
 
+        Member("uint8_t", "grf_size",
+               comment="Size of a register from the EU GRF file in bytes."),
+
         Member("uint8_t", "slice_masks",
                comment="A bit mask of the slices available."),
 
@@ -458,7 +464,8 @@ Struct("intel_device_info",
         Member("intel_device_info_urb_desc", "urb"),
         Member("unsigned", "max_constant_urb_size_kb"),
         Member("unsigned", "mesh_max_constant_urb_size_kb"),
-        Member("unsigned", "engine_class_prefetch", array="INTEL_ENGINE_CLASS_COMPUTE + 1"),
+        Member("unsigned", "engine_class_prefetch", array="INTEL_ENGINE_CLASS_INVALID"),
+        Member("unsigned", "engine_class_supported_count", array="INTEL_ENGINE_CLASS_INVALID"),
         Member("unsigned", "mem_alignment"),
         Member("uint64_t", "timestamp_frequency"),
         Member("uint64_t", "aperture_bytes"),

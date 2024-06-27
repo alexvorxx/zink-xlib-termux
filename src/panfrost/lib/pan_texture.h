@@ -110,7 +110,7 @@ struct pan_image_layout {
 
    struct pan_image_slice_layout slices[MAX_MIP_LEVELS];
 
-   unsigned data_size;
+   uint64_t data_size;
    unsigned array_stride;
 };
 

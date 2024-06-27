@@ -561,6 +561,7 @@ ac_prepare_compute_blit(const struct ac_cs_blit_options *options,
 
    if (blit->dst.format == PIPE_FORMAT_A8R8_UNORM || /* This format fails AMD_TEST=imagecopy. */
        max_dst_chan_size == 5 || /* PIPE_FORMAT_R5G5B5A1_UNORM has precision issues */
+       max_dst_chan_size == 6 || /* PIPE_FORMAT_R5G6B5_UNORM has precision issues */
        util_format_is_depth_or_stencil(blit->dst.format) ||
        dst_samples > SI_MAX_COMPUTE_BLIT_SAMPLES ||
        (!is_clear &&

@@ -3228,7 +3228,7 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       emit_store_reg(ctx, intr);
       break;
 
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
       emit_discard(ctx, intr);
       break;
 
@@ -4395,8 +4395,9 @@ get_spacing(enum gl_tess_spacing spacing)
 }
 
 struct spirv_shader *
-nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, uint32_t spirv_version)
+nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, const struct zink_screen *screen)
 {
+   const uint32_t spirv_version = screen->spirv_version;
    struct spirv_shader *ret = NULL;
 
    struct ntv_context ctx = {0};
@@ -4420,7 +4421,8 @@ nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, uint32_
    case MESA_SHADER_FRAGMENT:
       if (s->info.fs.uses_sample_shading)
          spirv_builder_emit_cap(&ctx.builder, SpvCapabilitySampleRateShading);
-      if (s->info.fs.uses_demote && spirv_version < SPIRV_VERSION(1, 6))
+      if (s->info.fs.uses_discard && spirv_version < SPIRV_VERSION(1, 6) &&
+          screen->info.have_EXT_shader_demote_to_helper_invocation)
          spirv_builder_emit_extension(&ctx.builder,
                                       "SPV_EXT_demote_to_helper_invocation");
       break;

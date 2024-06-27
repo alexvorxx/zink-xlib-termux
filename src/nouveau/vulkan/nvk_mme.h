@@ -10,6 +10,7 @@
 struct nv_device_info;
 
 enum nvk_mme {
+   NVK_MME_SELECT_CB0,
    NVK_MME_BIND_CBUF_DESC,
    NVK_MME_CLEAR,
    NVK_MME_DRAW,
@@ -40,6 +41,15 @@ enum nvk_mme_scratch {
    NVK_MME_SCRATCH_WRITE_MASK_DYN,
    NVK_MME_SCRATCH_WRITE_MASK_PIPELINE,
    NVK_MME_SCRATCH_CONSERVATIVE_RASTER_STATE,
+
+   /* Addres of cb0 */
+   NVK_MME_SCRATCH_CB0_ADDR_HI,
+   NVK_MME_SCRATCH_CB0_ADDR_LO,
+
+   /* Shadow copies of values in CB0 */
+   NVK_MME_SCRATCH_CB0_FIRST_VERTEX,
+   NVK_MME_SCRATCH_CB0_DRAW_INDEX,
+   NVK_MME_SCRATCH_CB0_VIEW_INDEX,
 
    /* Must be at the end */
    NVK_MME_NUM_SCRATCH,
@@ -113,6 +123,7 @@ uint32_t *nvk_build_mme(const struct nv_device_info *devinfo,
 
 void nvk_test_build_all_mmes(const struct nv_device_info *devinfo);
 
+void nvk_mme_select_cb0(struct mme_builder *b);
 void nvk_mme_bind_cbuf_desc(struct mme_builder *b);
 void nvk_mme_clear(struct mme_builder *b);
 void nvk_mme_draw(struct mme_builder *b);

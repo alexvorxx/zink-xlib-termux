@@ -88,7 +88,6 @@ static const struct drm_driver_descriptor *driver_descriptors[] = {
    &vc4_driver_descriptor,
    &panfrost_driver_descriptor,
    &panthor_driver_descriptor,
-   &asahi_driver_descriptor,
    &etnaviv_driver_descriptor,
    &tegra_driver_descriptor,
    &lima_driver_descriptor,
@@ -106,7 +105,7 @@ get_driver_descriptor(const char *driver_name, struct util_dl_library **plib)
    }
    return &kmsro_driver_descriptor;
 #else
-   const char *search_dir = getenv("GALLIUM_PIPE_SEARCH_DIR");
+   const char *search_dir = os_get_option("GALLIUM_PIPE_SEARCH_DIR");
    if (search_dir == NULL)
       search_dir = PIPE_SEARCH_DIR;
 
@@ -314,9 +313,6 @@ pipe_loader_get_compatible_render_capable_device_fd(int kms_only_fd)
    bool is_platform_device;
    struct pipe_loader_device *dev;
    const char * const drivers[] = {
-#if defined GALLIUM_ASAHI
-      "asahi",
-#endif
 #if defined GALLIUM_ETNAVIV
       "etnaviv",
 #endif

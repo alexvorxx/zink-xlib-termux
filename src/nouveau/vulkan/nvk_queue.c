@@ -295,7 +295,7 @@ nvk_queue_init_context_state(struct nvk_queue *queue,
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VkResult result;
 
-   uint32_t push_data[2048];
+   uint32_t push_data[1024 * 3];
    struct nv_push push;
    nv_push_init(&push, push_data, ARRAY_SIZE(push_data));
    struct nv_push *p = &push;
@@ -313,13 +313,13 @@ nvk_queue_init_context_state(struct nvk_queue *queue,
    }
 
    if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
-      result = nvk_push_draw_state_init(dev, p);
+      result = nvk_push_draw_state_init(queue, p);
       if (result != VK_SUCCESS)
          return result;
    }
 
    if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
-      result = nvk_push_dispatch_state_init(dev, p);
+      result = nvk_push_dispatch_state_init(queue, p);
       if (result != VK_SUCCESS)
          return result;
    }
@@ -358,9 +358,25 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
    nvk_queue_state_init(&queue->state);
 
+   if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
+      queue->draw_cb0 = nouveau_ws_bo_new(dev->ws_dev, 4096, 0,
+                                          NOUVEAU_WS_BO_LOCAL |
+                                          NOUVEAU_WS_BO_NO_SHARE);
+      if (queue->draw_cb0 == NULL) {
+         result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+         goto fail_state;
+      }
+
+      result = nvk_upload_queue_fill(dev, &dev->upload,
+                                     queue->draw_cb0->offset, 0,
+                                     queue->draw_cb0->size);
+      if (result != VK_SUCCESS)
+         goto fail_draw_cb0;
+   }
+
    result = nvk_queue_init_drm_nouveau(dev, queue, queue_flags);
    if (result != VK_SUCCESS)
-      goto fail_init;
+      goto fail_draw_cb0;
 
    result = nvk_queue_init_context_state(queue, queue_flags);
    if (result != VK_SUCCESS)
@@ -370,7 +386,11 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
 fail_drm:
    nvk_queue_finish_drm_nouveau(dev, queue);
-fail_init:
+fail_draw_cb0:
+   if (queue->draw_cb0 != NULL)
+      nouveau_ws_bo_destroy(queue->draw_cb0);
+fail_state:
+   nvk_queue_state_finish(dev, &queue->state);
    vk_queue_finish(&queue->vk);
 
    return result;
@@ -379,6 +399,10 @@ fail_init:
 void
 nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue)
 {
+   if (queue->draw_cb0 != NULL) {
+      nvk_upload_queue_sync(dev, &dev->upload);
+      nouveau_ws_bo_destroy(queue->draw_cb0);
+   }
    nvk_queue_state_finish(dev, &queue->state);
    nvk_queue_finish_drm_nouveau(dev, queue);
    vk_queue_finish(&queue->vk);

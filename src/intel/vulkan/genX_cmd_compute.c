@@ -38,15 +38,7 @@
 
 #include "ds/intel_tracepoints.h"
 
-/* We reserve :
- *    - GPR 14 for secondary command buffer returns
- *    - GPR 15 for conditional rendering
- */
-#define MI_BUILDER_NUM_ALLOC_GPRS 14
-#define __gen_get_batch_dwords anv_batch_emit_dwords
-#define __gen_address_offset anv_address_add
-#define __gen_get_batch_address(b, a) anv_batch_address(b, a)
-#include "common/mi_builder.h"
+#include "genX_mi_builder.h"
 
 void
 genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
@@ -78,7 +70,8 @@ genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
             anv_scratch_pool_get_surf(cmd_buffer->device,
                                       &cmd_buffer->device->scratch_pool,
                                       total_scratch);
-         cfe.ScratchSpaceBuffer = scratch_surf >> 4;
+         cfe.ScratchSpaceBuffer =
+            scratch_surf >> ANV_SCRATCH_SPACE_SHIFT(GFX_VER);
 #if GFX_VER >= 20
          switch (cmd_buffer->device->physical->instance->stack_ids) {
          case 256:  cfe.StackIDControl = StackIDs256;  break;
@@ -834,6 +827,7 @@ cmd_buffer_emit_rt_dispatch_globals_indirect(struct anv_cmd_buffer *cmd_buffer,
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
    const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &rtdg_addr);
    mi_builder_set_mocs(&b, mocs);
+   mi_builder_set_write_check(&b, true);
 
    /* Fill the MissGroupTable, HitGroupTable & CallableGroupTable fields of
     * RT_DISPATCH_GLOBALS using the mi_builder.
@@ -955,6 +949,7 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
       mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
       const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &rtdg_addr);
       mi_builder_set_mocs(&b, mocs);
+      mi_builder_set_write_check(&b, true);
 
       struct mi_value launch_size[3] = {
          mi_mem32(anv_address_from_u64(params->launch_size_addr + 0)),
@@ -1050,7 +1045,7 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
             anv_scratch_pool_get_surf(cmd_buffer->device,
                                       &device->scratch_pool,
                                       pipeline->base.scratch_size);
-         btd.ScratchSpaceBuffer = scratch_surf >> 4;
+         btd.ScratchSpaceBuffer = scratch_surf >> ANV_SCRATCH_SPACE_SHIFT(GFX_VER);
       }
 #if INTEL_NEEDS_WA_14017794102
       btd.BTDMidthreadpreemption = false;

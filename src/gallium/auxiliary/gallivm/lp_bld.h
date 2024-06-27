@@ -48,9 +48,11 @@
 
 #include <llvm/Config/llvm-config.h>
 
-#include <llvm-c/Core.h>  
+#include <llvm-c/Core.h>
 
-
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 /**
  * Redefine these LLVM entrypoints as invalid macros to make sure we
@@ -81,18 +83,11 @@
 #define LLVMInsertBasicBlock ILLEGAL_LLVM_FUNCTION
 #define LLVMCreateBuilder ILLEGAL_LLVM_FUNCTION
 
-#if LLVM_VERSION_MAJOR >= 15
-#define GALLIVM_HAVE_CORO 0
-#define GALLIVM_USE_NEW_PASS 1
-#elif LLVM_VERSION_MAJOR >= 8
-#define GALLIVM_HAVE_CORO 1
-#define GALLIVM_USE_NEW_PASS 0
+#if LLVM_VERSION_MAJOR >= 8
+#define GALLIVM_COROUTINES 1
 #else
-#define GALLIVM_HAVE_CORO 0
-#define GALLIVM_USE_NEW_PASS 0
+#define GALLIVM_COROUTINES 0
 #endif
-
-#define GALLIVM_COROUTINES (GALLIVM_HAVE_CORO || GALLIVM_USE_NEW_PASS)
 
 /* LLVM is transitioning to "opaque pointers", and as such deprecates
  * LLVMBuildGEP, LLVMBuildCall, LLVMBuildLoad, replacing them with
@@ -135,5 +130,33 @@ LLVMBuildCall2(LLVMBuilderRef B, LLVMTypeRef Ty, LLVMValueRef Fn,
 }
 
 #endif /* LLVM_VERSION_MAJOR < 8 */
+
+typedef struct lp_context_ref {
+   LLVMContextRef ref;
+   bool owned;
+} lp_context_ref;
+
+static inline void
+lp_context_create(lp_context_ref *context)
+{
+   assert(context != NULL);
+   context->ref = LLVMContextCreate();
+   context->owned = true;
+#if LLVM_VERSION_MAJOR == 15
+   if (context->ref) {
+      LLVMContextSetOpaquePointers(context->ref, false);
+   }
+#endif
+}
+
+static inline void
+lp_context_destroy(lp_context_ref *context)
+{
+   assert(context != NULL);
+   if (context->owned) {
+      LLVMContextDispose(context->ref);
+      context->ref = NULL;
+   }
+}
 
 #endif /* LP_BLD_H */

@@ -3218,6 +3218,54 @@ tu6_emit_rb_depth_cntl(struct tu_cs *cs,
    }
 }
 
+static const enum mesa_vk_dynamic_graphics_state tu_prim_mode_sysmem_state[] = {
+   MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE,
+};
+
+template <chip CHIP>
+static unsigned
+tu6_prim_mode_sysmem_size(struct tu_device *dev,
+                          bool raster_order_attachment_access,
+                          VkImageAspectFlags feedback_loops,
+                          bool *sysmem_single_prim_mode)
+{
+   return 2;
+}
+
+template <chip CHIP>
+static void
+tu6_emit_prim_mode_sysmem(struct tu_cs *cs,
+                          bool raster_order_attachment_access,
+                          VkImageAspectFlags feedback_loops,
+                          bool *sysmem_single_prim_mode)
+{
+   /* VK_EXT_rasterization_order_attachment_access:
+    *
+    * This extension allow access to framebuffer attachments when used as both
+    * input and color attachments from one fragment to the next, in
+    * rasterization order, without explicit synchronization.
+    */
+   raster_order_attachment_access |= TU_DEBUG(RAST_ORDER);
+
+   /* If there is a feedback loop, then the shader can read the previous value
+    * of a pixel being written out. It can also write some components and then
+    * read different components without a barrier in between. This is a
+    * problem in sysmem mode with UBWC, because the main buffer and flags
+    * buffer can get out-of-sync if only one is flushed. We fix this by
+    * setting the SINGLE_PRIM_MODE field to the same value that the blob does
+    * for advanced_blend in sysmem mode if a feedback loop is detected.
+    */
+   enum a6xx_single_prim_mode sysmem_prim_mode =
+      (raster_order_attachment_access || feedback_loops) ?
+      FLUSH_PER_OVERLAP_AND_OVERWRITE : NO_FLUSH;
+
+   if (sysmem_prim_mode == FLUSH_PER_OVERLAP_AND_OVERWRITE)
+      *sysmem_single_prim_mode = true;
+
+   tu_cs_emit_regs(cs, A6XX_GRAS_SC_CNTL(.ccusinglecachelinesize = 2,
+                                         .single_prim_mode = sysmem_prim_mode));
+}
+
 static inline bool
 emit_pipeline_state(BITSET_WORD *keep, BITSET_WORD *remove,
                     BITSET_WORD *pipeline_set,
@@ -3380,6 +3428,26 @@ tu_pipeline_builder_emit_state(struct tu_pipeline_builder *builder,
                    pipeline->shaders[MESA_SHADER_TESS_EVAL],
                    &pipeline->program,
                    builder->graphics_state.ts->patch_control_points);
+   bool has_raster_order_state = false;
+   if (pipeline->type == TU_PIPELINE_GRAPHICS) {
+      has_raster_order_state = true;
+   } else {
+      struct tu_graphics_lib_pipeline *lib =
+         tu_pipeline_to_graphics_lib(pipeline);
+      has_raster_order_state =
+         (lib->state & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) &&
+         (lib->state &
+          VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT);
+   }
+   if (!builder->device->physical_device->info->a6xx.has_coherent_ubwc_flag_caches) {
+      DRAW_STATE_COND(prim_mode_sysmem,
+                      TU_DYNAMIC_STATE_PRIM_MODE_SYSMEM,
+                      has_raster_order_state,
+                      pipeline->output.raster_order_attachment_access ||
+                      pipeline->ds.raster_order_attachment_access,
+                      vk_pipeline_flags_feedback_loops(builder->graphics_state.pipeline_flags),
+                      &pipeline->prim_order.sysmem_single_prim_mode);
+   }
 #undef DRAW_STATE
 #undef DRAW_STATE_COND
 #undef EMIT_STATE
@@ -3452,7 +3520,7 @@ tu_emit_draw_state(struct tu_cmd_buffer *cmd)
    emit_draw_state(&cmd->vk.dynamic_graphics_state, tu_##name##_state,        \
                    ARRAY_SIZE(tu_##name##_state))
 #define DRAW_STATE_COND(name, id, extra_cond, ...)                            \
-   if ((EMIT_STATE(name) || extra_cond) &&                                    \
+   if ((EMIT_STATE(name) || (extra_cond)) &&                                  \
        !(cmd->state.pipeline_draw_states & (1u << id))) {                     \
       unsigned size = tu6_##name##_size<CHIP>(cmd->device, __VA_ARGS__);      \
       if (size > 0) {                                                         \
@@ -3569,6 +3637,16 @@ tu_emit_draw_state(struct tu_cmd_buffer *cmd)
                    cmd->state.shaders[MESA_SHADER_TESS_EVAL],
                    &cmd->state.program,
                    cmd->vk.dynamic_graphics_state.ts.patch_control_points);
+   if (!cmd->device->physical_device->info->a6xx.has_coherent_ubwc_flag_caches) {
+      DRAW_STATE_COND(prim_mode_sysmem,
+                      TU_DYNAMIC_STATE_PRIM_MODE_SYSMEM,
+                      cmd->state.dirty & (TU_CMD_DIRTY_RAST_ORDER |
+                                          TU_CMD_DIRTY_FEEDBACK_LOOPS),
+                      cmd->state.raster_order_attachment_access,
+                      cmd->vk.dynamic_graphics_state.feedback_loops |
+                      cmd->state.pipeline_feedback_loops,
+                      &cmd->state.rp.sysmem_single_prim_mode);
+   }
 #undef DRAW_STATE
 #undef DRAW_STATE_COND
 #undef EMIT_STATE
@@ -3651,7 +3729,6 @@ tu_pipeline_builder_parse_rasterization_order(
     * when implemented in the future.
     */
 
-   enum a6xx_single_prim_mode sysmem_prim_mode = NO_FLUSH;
    enum a6xx_single_prim_mode gmem_prim_mode = NO_FLUSH;
 
    if (raster_order_attachment_access) {
@@ -3661,27 +3738,7 @@ tu_pipeline_builder_parse_rasterization_order(
        * both input and color attachments from one fragment to the next,
        * in rasterization order, without explicit synchronization.
        */
-      if (builder->device->physical_device->info->a6xx.has_coherent_ubwc_flag_caches)
-         sysmem_prim_mode = FLUSH_PER_OVERLAP;
-      else
-         sysmem_prim_mode = FLUSH_PER_OVERLAP_AND_OVERWRITE;
       gmem_prim_mode = FLUSH_PER_OVERLAP;
-      pipeline->prim_order.sysmem_single_prim_mode = true;
-   } else if (!builder->device->physical_device->info->a6xx.has_coherent_ubwc_flag_caches) {
-      /* If there is a feedback loop, then the shader can read the previous value
-       * of a pixel being written out. It can also write some components and then
-       * read different components without a barrier in between. This is a
-       * problem in sysmem mode with UBWC, because the main buffer and flags
-       * buffer can get out-of-sync if only one is flushed. We fix this by
-       * setting the SINGLE_PRIM_MODE field to the same value that the blob does
-       * for advanced_blend in sysmem mode if a feedback loop is detected.
-       */
-      if (builder->graphics_state.pipeline_flags &
-          (VK_PIPELINE_CREATE_2_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT |
-           VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)) {
-         sysmem_prim_mode = FLUSH_PER_OVERLAP_AND_OVERWRITE;
-         pipeline->prim_order.sysmem_single_prim_mode = true;
-      }
    }
 
    struct tu_cs cs;
@@ -3690,11 +3747,6 @@ tu_pipeline_builder_parse_rasterization_order(
    tu_cs_emit_write_reg(&cs, REG_A6XX_GRAS_SC_CNTL,
                         A6XX_GRAS_SC_CNTL_CCUSINGLECACHELINESIZE(2) |
                         A6XX_GRAS_SC_CNTL_SINGLE_PRIM_MODE(gmem_prim_mode));
-
-   pipeline->prim_order.state_sysmem = tu_cs_draw_state(&pipeline->cs, &cs, 2);
-   tu_cs_emit_write_reg(&cs, REG_A6XX_GRAS_SC_CNTL,
-                        A6XX_GRAS_SC_CNTL_CCUSINGLECACHELINESIZE(2) |
-                        A6XX_GRAS_SC_CNTL_SINGLE_PRIM_MODE(sysmem_prim_mode));
 }
 
 static void
@@ -3870,12 +3922,8 @@ tu_pipeline_builder_build(struct tu_pipeline_builder *builder,
          &gfx_pipeline->sample_locations;
       vk_dynamic_graphics_state_fill(&gfx_pipeline->dynamic_state,
                                      &builder->graphics_state);
-      gfx_pipeline->feedback_loop_color =
-         (builder->graphics_state.pipeline_flags &
-          VK_PIPELINE_CREATE_2_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT);
-      gfx_pipeline->feedback_loop_ds =
-         (builder->graphics_state.pipeline_flags &
-          VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT);
+      gfx_pipeline->feedback_loops =
+         vk_pipeline_flags_feedback_loops(builder->graphics_state.pipeline_flags);
       gfx_pipeline->feedback_loop_may_involve_textures =
          builder->graphics_state.feedback_loop_not_input_only;
    }
@@ -4557,6 +4605,14 @@ tu_GetPipelineExecutableStatisticsKHR(
                 "shader executable.");
       stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
       stat->value.u64 = exe->stats.ldp_count;
+   }
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Early preamble");
+      WRITE_STR(stat->description,
+                "Whether the preamble will be executed early.");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR;
+      stat->value.b32 = exe->stats.early_preamble;
    }
 
    return vk_outarray_status(&out);

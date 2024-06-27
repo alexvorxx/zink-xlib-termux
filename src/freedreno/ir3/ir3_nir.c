@@ -92,10 +92,11 @@ ir3_nir_should_scalarize_mem(const nir_instr *instr, const void *data)
 
    /* Scalarize load_ssbo's that we could otherwise lower to isam,
     * as the tex cache benefit outweighs the benefit of vectorizing
+    * Don't do this if (vectorized) isam.v is supported.
     */
    if ((intrin->intrinsic == nir_intrinsic_load_ssbo) &&
        (nir_intrinsic_access(intrin) & ACCESS_CAN_REORDER) &&
-       compiler->has_isam_ssbo) {
+       compiler->has_isam_ssbo && !compiler->has_isam_v) {
       return true;
    }
 
@@ -112,11 +113,12 @@ ir3_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
    unsigned byte_size = bit_size / 8;
 
    /* Don't vectorize load_ssbo's that we could otherwise lower to isam,
-    * as the tex cache benefit outweighs the benefit of vectorizing
+    * as the tex cache benefit outweighs the benefit of vectorizing. If we
+    * support isam.v, we can vectorize this though.
     */
    if ((low->intrinsic == nir_intrinsic_load_ssbo) &&
        (nir_intrinsic_access(low) & ACCESS_CAN_REORDER) &&
-       compiler->has_isam_ssbo) {
+       compiler->has_isam_ssbo && !compiler->has_isam_v) {
       return false;
    }
 
@@ -213,7 +215,7 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
       progress |= OPT(s, nir_lower_pack);
       progress |= OPT(s, nir_opt_constant_folding);
 
-      static const nir_opt_offsets_options offset_options = {
+      const nir_opt_offsets_options offset_options = {
          /* How large an offset we can encode in the instr's immediate field.
           */
          .uniform_max = (1 << 9) - 1,
@@ -223,7 +225,10 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
           */
          .shared_max = (1 << 12) - 1,
 
-         .buffer_max = ~0,
+         .buffer_max = 0,
+         .max_offset_cb = ir3_nir_max_imm_offset,
+         .max_offset_data = compiler,
+         .allow_offset_wrap = true,
       };
       progress |= OPT(s, nir_opt_offsets, &offset_options);
 
@@ -398,7 +403,7 @@ ir3_nir_lower_array_sampler(nir_shader *shader)
 {
    return nir_shader_instructions_pass(
       shader, ir3_nir_lower_array_sampler_cb,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+      nir_metadata_control_flow, NULL);
 }
 
 void

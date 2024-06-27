@@ -159,6 +159,9 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_TEXTURE_QUERY_LOD:
                 return 1;
 
+        case PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT:
+                return 0;
+
         case PIPE_CAP_PACKED_UNIFORMS:
                 /* We can't enable this flag, because it results in load_ubo
                  * intrinsics across a 16b boundary, but v3d's TMU general
@@ -495,9 +498,6 @@ v3d_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
                  */
                 RET((uint64_t []) { 256 });
 
-        case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE:
-                RET((uint64_t []) { 1024 * 1024 * 1024 });
-
         case PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE:
                 /* GL_MAX_COMPUTE_SHARED_MEMORY_SIZE */
                 RET((uint64_t []) { 32768 });
@@ -506,10 +506,16 @@ v3d_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
         case PIPE_COMPUTE_CAP_MAX_INPUT_SIZE:
                 RET((uint64_t []) { 4096 });
 
-        case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: {
+        case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE: {
                 struct sysinfo si;
                 sysinfo(&si);
                 RET((uint64_t []) { si.totalram });
+        }
+
+        case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: {
+                struct sysinfo si;
+                sysinfo(&si);
+                RET((uint64_t []) { MIN2(V3D_MAX_BUFFER_RANGE, si.totalram) });
         }
 
         case PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY:
@@ -707,10 +713,22 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_ifind_msb = true,
         .lower_isign = true,
         .lower_ldexp = true,
+        .lower_hadd = true,
+        .lower_fisnormal = true,
         .lower_mul_high = true,
         .lower_wpos_pntc = true,
         .lower_to_scalar = true,
-        .lower_int64_options = nir_lower_imul_2x32_64,
+        .lower_int64_options =
+                nir_lower_bcsel64 |
+                nir_lower_conv64 |
+                nir_lower_iadd64 |
+                nir_lower_icmp64 |
+                nir_lower_imul_2x32_64 |
+                nir_lower_imul64 |
+                nir_lower_ineg64 |
+                nir_lower_logic64 |
+                nir_lower_shift64 |
+                nir_lower_ufind_msb64,
         .lower_fquantize2f16 = true,
         .has_fsub = true,
         .has_isub = true,

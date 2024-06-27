@@ -22,9 +22,9 @@ zink-venus-lvp:
     - .test-gl
     - .deqp-test
     - .zink-venus-lvp-test
+  timeout: 15min  # base run time = 5min, but it's on the shared runners so it can go up
   variables:
     DEQP_SUITE: zink-venus-lvp
-    DEQP_FRACTION: 8
     PIGLIT_NO_WINDOW: 1
     # Enable validation (except for on piglit, see deqp-zink-venus-lvp.toml), logging
     # to stdout and aborting on unknown failures.

@@ -102,7 +102,57 @@ def lowered_sincos(c):
 def intBitsToFloat(i):
     return struct.unpack('!f', struct.pack('!I', i))[0]
 
+# Takes a pattern as input and returns a list of patterns where each
+# pattern has a different permutation of fneg/fabs(value) as the replacement
+# for the key operands in replacements.
+def add_fabs_fneg(pattern, replacements, commutative = True):
+    def to_list(pattern):
+        return [to_list(i) if isinstance(i, tuple) else i for i in pattern]
+
+    def to_tuple(pattern):
+        return tuple(to_tuple(i) if isinstance(i, list) else i for i in pattern)
+
+    def replace_varible(pattern, search, replace):
+        for i in range(len(pattern)):
+            if pattern[i] == search:
+                pattern[i] = replace
+            elif isinstance(pattern[i], list):
+                replace_varible(pattern[i], search, replace)
+
+    if commutative:
+        perms = itertools.combinations_with_replacement(range(4), len(replacements))
+    else:
+        perms = itertools.product(range(4), repeat=len(replacements))
+
+    result = []
+
+    for perm in perms:
+        curr = to_list(pattern)
+
+        for i, (search, base) in enumerate(replacements.items()):
+            if perm[i] == 0:
+                replace = ['fneg', ['fabs', base]]
+            elif perm[i] == 1:
+                replace = ['fabs', base]
+            elif perm[i] == 2:
+                replace = ['fneg', base]
+            elif perm[i] == 3:
+                replace = base
+
+            replace_varible(curr, search, replace)
+
+        result.append(to_tuple(curr))
+    return result
+
+
 optimizations = [
+   # These will be recreated by late_algebraic if supported.
+   # Lowering here means we don't have to duplicate all other optimization patterns.
+   (('fgeu', a, b), ('inot', ('flt', a, b))),
+   (('fltu', a, b), ('inot', ('fge', a, b))),
+   (('fneo', 0.0, a), ('flt', 0.0, ('fabs', a))),
+   (('fequ', 0.0, a), ('inot', ('flt', 0.0, ('fabs', a)))),
+
 
    (('imul', a, '#b(is_pos_power_of_two)'), ('ishl', a, ('find_lsb', b)), '!options->lower_bitops'),
    (('imul', 'a@8', 0x80), ('ishl', a, 7), '!options->lower_bitops'),
@@ -274,21 +324,21 @@ optimizations = [
 
    # Optimize open-coded fmulz.
    # (b==0.0 ? 0.0 : a) * (a==0.0 ? 0.0 : b) -> fmulz(a, b)
-   (('fmul@32(nsz)', ('bcsel', ignore_exact('feq', b, 0.0), 0.0, a), ('bcsel', ignore_exact('feq', a, 0.0), 0.0, b)),
-    ('fmulz', a, b), has_fmulz),
-   (('fmul@32(nsz)', a, ('bcsel', ignore_exact('feq', a, 0.0), 0.0, '#b(is_not_const_zero)')),
-    ('fmulz', a, b), has_fmulz),
+   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ignore_exact('feq', b, 0.0), 0.0, 'ma'), ('bcsel', ignore_exact('feq', a, 0.0), 0.0, 'mb')),
+    ('fmulz', 'ma', 'mb'), has_fmulz), {'ma' : a, 'mb' : b}),
+   *add_fabs_fneg((('fmul@32(nsz)', 'ma', ('bcsel', ignore_exact('feq', a, 0.0), 0.0, '#b(is_not_const_zero)')),
+    ('fmulz', 'ma', b), has_fmulz), {'ma' : a}),
 
    # ffma(b==0.0 ? 0.0 : a, a==0.0 ? 0.0 : b, c) -> ffmaz(a, b, c)
-   (('ffma@32(nsz)', ('bcsel', ignore_exact('feq', b, 0.0), 0.0, a), ('bcsel', ignore_exact('feq', a, 0.0), 0.0, b), c),
-    ('ffmaz', a, b, c), has_fmulz),
-   (('ffma@32(nsz)', a, ('bcsel', ignore_exact('feq', a, 0.0), 0.0, '#b(is_not_const_zero)'), c),
-    ('ffmaz', a, b, c), has_fmulz),
+   *add_fabs_fneg((('ffma@32(nsz)', ('bcsel', ignore_exact('feq', b, 0.0), 0.0, 'ma'), ('bcsel', ignore_exact('feq', a, 0.0), 0.0, 'mb'), c),
+    ('ffmaz', 'ma', 'mb', c), has_fmulz), {'ma' : a, 'mb' : b}),
+   *add_fabs_fneg((('ffma@32(nsz)', 'ma', ('bcsel', ignore_exact('feq', a, 0.0), 0.0, '#b(is_not_const_zero)'), c),
+    ('ffmaz', 'ma', b, c), has_fmulz), {'ma' : a}),
 
    # b == 0.0 ? 1.0 : fexp2(fmul(a, b)) -> fexp2(fmulz(a, b))
-   (('bcsel(nsz,nnan,ninf)', ignore_exact('feq', b, 0.0), 1.0, ('fexp2', ('fmul@32', a, b))),
-    ('fexp2', ('fmulz', a, b)),
-    has_fmulz),
+   *add_fabs_fneg((('bcsel(nsz,nnan,ninf)', ignore_exact('feq', b, 0.0), 1.0, ('fexp2', ('fmul@32', a, 'mb'))),
+    ('fexp2', ('fmulz', a, 'mb')),
+    has_fmulz), {'mb': b}),
 ]
 
 # Shorthand for the expansion of just the dot product part of the [iu]dp4a
@@ -559,17 +609,27 @@ optimizations.extend([
    (('fge', ('fneg', a), ('fneg', b)), ('fge', b, a)),
    (('feq', ('fneg', a), ('fneg', b)), ('feq', b, a)),
    (('fneu', ('fneg', a), ('fneg', b)), ('fneu', b, a)),
-   (('flt', ('fneg', a), -1.0), ('flt', 1.0, a)),
-   (('flt', -1.0, ('fneg', a)), ('flt', a, 1.0)),
-   (('fge', ('fneg', a), -1.0), ('fge', 1.0, a)),
-   (('fge', -1.0, ('fneg', a)), ('fge', a, 1.0)),
-   (('fneu', ('fneg', a), -1.0), ('fneu', 1.0, a)),
-   (('feq', -1.0, ('fneg', a)), ('feq', a, 1.0)),
+   (('flt', ('fneg', 'a(is_not_const)'), '#b'), ('flt', ('fneg', b), a)),
+   (('flt', '#b', ('fneg', 'a(is_not_const)')), ('flt', a, ('fneg', b))),
+   (('fge', ('fneg', 'a(is_not_const)'), '#b'), ('fge', ('fneg', b), a)),
+   (('fge', '#b', ('fneg', 'a(is_not_const)')), ('fge', a, ('fneg', b))),
+   (('fneu', ('fneg', 'a(is_not_const)'), '#b'), ('fneu', ('fneg', b), a)),
+   (('feq', '#b', ('fneg', 'a(is_not_const)')), ('feq', a, ('fneg', b))),
+   (('flt', a, '#b(is_negative_zero)'), ('flt', a, 0.0)),
+   (('flt', '#b(is_negative_zero)', a), ('flt', 0.0, a)),
+   (('fge', a, '#b(is_negative_zero)'), ('fge', a, 0.0)),
+   (('fge', '#b(is_negative_zero)', a), ('fge', 0.0, a)),
+   (('fneu', a, '#b(is_negative_zero)'), ('fneu', 0.0, a)),
+   (('feq', '#b(is_negative_zero)', a), ('feq', a, 0.0)),
 
    (('ieq', ('ineg', a), 0),  ('ieq', a, 0)),
    (('ine', ('ineg', a), 0),  ('ine', a, 0)),
    (('ieq', ('iabs', a), 0),  ('ieq', a, 0)),
    (('ine', ('iabs', a), 0),  ('ine', a, 0)),
+   (('fneu', ('fabs', a), 0.0), ('fneu', a, 0.0)),
+   (('feq', ('fabs', a), 0.0), ('feq', a, 0.0)),
+   (('fneu', ('fabs', a), ('fabs', a)), ('fneu', a, a)),
+   (('feq', ('fabs', a), ('fabs', a)), ('feq', a, a)),
 
    # b < fsat(NaN) -> b < 0 -> false, and b < Nan -> false.
    (('flt', '#b(is_gt_0_and_lt_1)', ('fsat(is_used_once)', a)), ('flt', b, a)),
@@ -3038,13 +3098,47 @@ late_optimizations = [
 
    # This is how SpvOpFOrdNotEqual might be implemented.  Replace it with
    # SpvOpLessOrGreater.
-   (('iand', ('fneu', a, b),   ('iand', ('feq', a, a), ('feq', b, b))), ('ior', ('!flt', a, b), ('!flt', b, a))),
-   (('iand', ('fneu', a, 0.0),          ('feq', a, a)                ), ('!flt', 0.0, ('fabs', a))),
+   *add_fabs_fneg((('iand', ('fneu', 'ma', 'mb'), ('iand', ('feq', a, a), ('feq', b, b))), ('ior', ('!flt', 'ma', 'mb'), ('!flt', 'mb', 'ma'))), {'ma' : a, 'mb' : b}),
+   (('iand', ('fneu', a, 0.0), ('feq', a, a)), ('!flt', 0.0, ('fabs', a))),
 
    # This is how SpvOpFUnordEqual might be implemented.  Replace it with
    # !SpvOpLessOrGreater.
-   (('ior', ('feq', a, b),   ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('ior', ('!flt', a, b), ('!flt', b, a)))),
-   (('ior', ('feq', a, 0.0),         ('fneu', a, a),                ), ('inot', ('!flt', 0.0, ('fabs', a)))),
+   *add_fabs_fneg((('ior', ('feq', 'ma', 'mb'), ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('ior', ('!flt', 'ma', 'mb'), ('!flt', 'mb', 'ma')))), {'ma' : a, 'mb' : b}),
+   (('ior', ('feq', a, 0.0), ('fneu', a, a)), ('inot', ('!flt', 0.0, ('fabs', a)))),
+
+   *add_fabs_fneg((('ior', ('flt', 'ma', 'mb'), ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('fge', 'ma', 'mb'))), {'ma' : a, 'mb' : b}, False),
+   *add_fabs_fneg((('ior', ('fge', 'ma', 'mb'), ('ior', ('fneu', a, a), ('fneu', b, b))), ('inot', ('flt', 'ma', 'mb'))), {'ma' : a, 'mb' : b}, False),
+   *add_fabs_fneg((('ior', ('flt', 'ma', 'b(is_a_number)'), ('fneu', a, a)), ('inot', ('fge', 'ma', b))), {'ma' : a}),
+   *add_fabs_fneg((('ior', ('fge', 'ma', 'b(is_a_number)'), ('fneu', a, a)), ('inot', ('flt', 'ma', b))), {'ma' : a}),
+   *add_fabs_fneg((('ior', ('flt', 'a(is_a_number)', 'mb'), ('fneu', b, b)), ('inot', ('fge', a, 'mb'))), {'mb' : b}),
+   *add_fabs_fneg((('ior', ('fge', 'a(is_a_number)', 'mb'), ('fneu', b, b)), ('inot', ('flt', a, 'mb'))), {'mb' : b}),
+   *add_fabs_fneg((('iand', ('fneu', 'ma', 'b(is_a_number)'), ('feq', a, a)), ('fneo', 'ma', b), 'options->has_fneo_fcmpu'), {'ma' : a}),
+   *add_fabs_fneg((('ior', ('feq', 'ma', 'b(is_a_number)'), ('fneu', a, a)), ('fequ', 'ma', b), 'options->has_fneo_fcmpu'), {'ma' : a}),
+
+   (('ior', ('flt', a, b), ('flt', b, a)), ('fneo', a, b), 'options->has_fneo_fcmpu'),
+   (('flt', 0.0, ('fabs', a)), ('fneo', 0.0, a), 'options->has_fneo_fcmpu'),
+
+
+   # These don't interfere with the previous optimizations which include this
+   # in the search expression, because nir_algebraic_impl visits instructions
+   # in reverse order.
+   (('ior', ('fneu', 'a@16', a), ('fneu', 'b@16', b)), ('funord', a, b), 'options->has_ford_funord'),
+   (('iand', ('feq', 'a@16', a), ('feq', 'b@16', b)), ('ford', a, b), 'options->has_ford_funord'),
+   (('ior', ('fneu', 'a@32', a), ('fneu', 'b@32', b)), ('funord', a, b), 'options->has_ford_funord'),
+   (('iand', ('feq', 'a@32', a), ('feq', 'b@32', b)), ('ford', a, b), 'options->has_ford_funord'),
+   (('ior', ('fneu', 'a@64', a), ('fneu', 'b@64', b)), ('funord', a, b), 'options->has_ford_funord'),
+   (('iand', ('feq', 'a@64', a), ('feq', 'b@64', b)), ('ford', a, b), 'options->has_ford_funord'),
+
+   (('inot', ('ford(is_used_once)', a, b)), ('funord', a, b)),
+   (('inot', ('funord(is_used_once)', a, b)), ('ford', a, b)),
+   (('inot', ('feq(is_used_once)', a, b)), ('fneu', a, b)),
+   (('inot', ('fneu(is_used_once)', a, b)), ('feq', a, b)),
+   (('inot', ('fequ(is_used_once)', a, b)), ('fneo', a, b)),
+   (('inot', ('fneo(is_used_once)', a, b)), ('fequ', a, b)),
+   (('inot', ('flt(is_used_once)', a, b)), ('fgeu', a, b), 'options->has_fneo_fcmpu'),
+   (('inot', ('fgeu(is_used_once)', a, b)), ('flt', a, b)),
+   (('inot', ('fge(is_used_once)', a, b)), ('fltu', a, b), 'options->has_fneo_fcmpu'),
+   (('inot', ('fltu(is_used_once)', a, b)), ('fge', a, b)),
 
    # nir_lower_to_source_mods will collapse this, but its existence during the
    # optimization loop can prevent other optimizations.

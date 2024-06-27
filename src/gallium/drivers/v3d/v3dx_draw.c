@@ -1526,12 +1526,21 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
         if (v3d->prog.compute->prog_data.base->threads == 4)
                 submit.cfg[5] |= V3D_CSD_CFG5_THREADING;
 
-        if (v3d->prog.compute->prog_data.compute->shared_size) {
+        uint32_t shared_size = v3d->prog.compute->prog_data.compute->shared_size +
+                               info->variable_shared_mem;
+        if (shared_size) {
                 v3d->compute_shared_memory =
                         v3d_bo_alloc(v3d->screen,
-                                     v3d->prog.compute->prog_data.compute->shared_size *
-                                     num_wgs,
+                                     shared_size * num_wgs,
                                      "shared_vars");
+                v3d->shared_memory = shared_size;
+        }
+
+        util_dynarray_foreach(&v3d->global_buffers, struct pipe_resource *, res) {
+                if (!*res)
+                        continue;
+                struct v3d_resource *rsc = v3d_resource(*res);
+                v3d_job_add_bo(job, rsc->bo);
         }
 
         struct v3d_cl_reloc uniforms = v3d_write_uniforms(v3d, job,
@@ -1589,6 +1598,14 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
                            PIPE_MAX_SHADER_IMAGES) {
                 struct v3d_resource *rsc = v3d_resource(
                         v3d->shaderimg[PIPE_SHADER_COMPUTE].si[i].base.resource);
+                rsc->writes++;
+                rsc->compute_written = true;
+        }
+
+        util_dynarray_foreach(&v3d->global_buffers, struct pipe_resource *, res) {
+                struct v3d_resource *rsc = v3d_resource(*res);
+                if (!rsc)
+                        continue;
                 rsc->writes++;
                 rsc->compute_written = true;
         }
@@ -1787,6 +1804,39 @@ v3d_clear_depth_stencil(struct pipe_context *pctx, struct pipe_surface *ps,
                                          stencil, x, y, w, h);
 }
 
+static void
+v3d_set_global_binding(struct pipe_context *pctx,
+                       unsigned first, unsigned count,
+                       struct pipe_resource **resources,
+                       uint32_t **handles)
+{
+        struct v3d_context *v3d = v3d_context(pctx);
+        unsigned old_size = util_dynarray_num_elements(&v3d->global_buffers, *resources);
+
+        if (old_size < first + count) {
+                /* we are screwed no matter what */
+                if (!util_dynarray_grow(&v3d->global_buffers, *resources, (first + count) - old_size))
+                        unreachable("out of memory");
+
+                for (unsigned i = old_size; i < first + count; i++)
+                        *util_dynarray_element(&v3d->global_buffers, struct pipe_resource *, i) = NULL;
+        }
+
+
+        for (unsigned i = first; i < first + count; ++i) {
+                struct pipe_resource **res = util_dynarray_element(&v3d->global_buffers, struct pipe_resource *, first + i);
+                if (resources && resources[i]) {
+                        struct v3d_resource *rsc = v3d_resource(resources[i]);
+                        pipe_resource_reference(res, resources[i]);
+
+                        /* We have to add the base address as there might be an existing offset */
+                        *handles[i] += rsc->bo->offset;
+                } else {
+                        pipe_resource_reference(res, NULL);
+                }
+        }
+}
+
 void
 v3dX(draw_init)(struct pipe_context *pctx)
 {
@@ -1794,6 +1844,8 @@ v3dX(draw_init)(struct pipe_context *pctx)
         pctx->clear = v3d_clear;
         pctx->clear_render_target = v3d_clear_render_target;
         pctx->clear_depth_stencil = v3d_clear_depth_stencil;
-        if (v3d_context(pctx)->screen->has_csd)
+        if (v3d_context(pctx)->screen->has_csd) {
                 pctx->launch_grid = v3d_launch_grid;
+                pctx->set_global_binding = v3d_set_global_binding;
+        }
 }

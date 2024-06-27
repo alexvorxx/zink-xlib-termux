@@ -42,7 +42,8 @@ xe_gem_create(struct anv_device *device,
    /* TODO: protected content */
    assert((alloc_flags & ANV_BO_ALLOC_PROTECTED) == 0);
    /* WB+0 way coherent not supported by Xe KMD */
-   assert(alloc_flags & ANV_BO_ALLOC_HOST_COHERENT);
+   assert((alloc_flags & ANV_BO_ALLOC_HOST_CACHED) == 0 ||
+          (alloc_flags & ANV_BO_ALLOC_HOST_CACHED_COHERENT) == ANV_BO_ALLOC_HOST_CACHED_COHERENT);
 
    uint32_t flags = 0;
    if (alloc_flags & ANV_BO_ALLOC_SCANOUT)
@@ -345,10 +346,8 @@ anv_xe_kmd_backend_get(void)
       .vm_bind = xe_vm_bind,
       .vm_bind_bo = xe_vm_bind_bo,
       .vm_unbind_bo = xe_vm_unbind_bo,
-      .execute_simple_batch = xe_execute_simple_batch,
-      .execute_trtt_batch = xe_execute_trtt_batch,
       .queue_exec_locked = xe_queue_exec_locked,
-      .queue_exec_trace = xe_queue_exec_utrace_locked,
+      .queue_exec_async = xe_queue_exec_async,
       .bo_alloc_flags_to_bo_flags = xe_bo_alloc_flags_to_bo_flags,
    };
    return &xe_backend;

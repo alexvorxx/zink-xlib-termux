@@ -102,6 +102,8 @@ get_info(nir_intrinsic_op op)
       LOAD(nir_var_mem_ssbo, ssbo_uniform_block_intel, 0, 1, -1)
       LOAD(nir_var_mem_shared, shared_uniform_block_intel, -1, 0, -1)
       LOAD(nir_var_mem_global, global_constant_uniform_block_intel, -1, 0, -1)
+      INFO(nir_var_mem_ubo, ldc_nv, false, 0, 1, -1, -1)
+      INFO(nir_var_mem_ubo, ldcx_nv, false, 0, 1, -1, -1)
    default:
       break;
 #undef ATOMIC
@@ -1308,8 +1310,6 @@ handle_barrier(struct vectorize_ctx *ctx, bool *progress, nir_function_impl *imp
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
       switch (intrin->intrinsic) {
       /* prevent speculative loads/stores */
-      case nir_intrinsic_discard_if:
-      case nir_intrinsic_discard:
       case nir_intrinsic_terminate_if:
       case nir_intrinsic_terminate:
       case nir_intrinsic_launch_mesh_workgroups:
@@ -1463,9 +1463,8 @@ nir_opt_load_store_vectorize(nir_shader *shader, const nir_load_store_vectorize_
          progress |= process_block(impl, ctx, block);
 
       nir_metadata_preserve(impl,
-                            nir_metadata_block_index |
-                               nir_metadata_dominance |
-                               nir_metadata_live_defs);
+                            nir_metadata_control_flow |
+                            nir_metadata_live_defs);
    }
 
    ralloc_free(ctx);
@@ -1496,8 +1495,7 @@ nir_opt_load_store_update_alignments(nir_shader *shader)
 {
    return nir_shader_intrinsics_pass(shader,
                                      opt_load_store_update_alignments_callback,
-                                     nir_metadata_block_index |
-                                     nir_metadata_dominance |
+                                     nir_metadata_control_flow |
                                      nir_metadata_live_defs |
                                      nir_metadata_instr_index, NULL);
 }

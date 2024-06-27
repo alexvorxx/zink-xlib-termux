@@ -564,20 +564,31 @@ namespace brw {
 #define ALU1(op) _ALU1(BRW_OPCODE_, op)
 #define VIRT1(op) _ALU1(SHADER_OPCODE_, op)
 
+      fs_inst *
+      alu2(opcode op, const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const
+      {
+         return emit(op, dst, src0, src1);
+      }
+      fs_reg
+      alu2(opcode op, const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const
+      {
+         enum brw_reg_type inferred_dst_type =
+            brw_type_larger_of(src0.type, src1.type);
+         fs_inst *inst = alu2(op, vgrf(inferred_dst_type), src0, src1);
+         if (out) *out = inst;
+         return inst->dst;
+      }
+
 #define _ALU2(prefix, op)                                                    \
       fs_inst *                                                              \
       op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const    \
       {                                                                      \
-         return emit(prefix##op, dst, src0, src1);                           \
+         return alu2(prefix##op, dst, src0, src1);                           \
       }                                                                      \
       fs_reg                                                                 \
       op(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const \
       {                                                                      \
-         enum brw_reg_type inferred_dst_type =                               \
-            brw_type_larger_of(src0.type, src1.type);                        \
-         fs_inst *inst = op(vgrf(inferred_dst_type), src0, src1);            \
-         if (out) *out = inst;                                               \
-         return inst->dst;                                                   \
+         return alu2(prefix##op, src0, src1, out);                           \
       }
 #define ALU2(op) _ALU2(BRW_OPCODE_, op)
 #define VIRT2(op) _ALU2(SHADER_OPCODE_, op)
@@ -599,7 +610,6 @@ namespace brw {
          return emit(BRW_OPCODE_##op, dst, src0, src1, src2);           \
       }
 
-      ALU2(ADD)
       ALU3(ADD3)
       ALU2_ACC(ADDC)
       ALU2(AND)
@@ -660,6 +670,21 @@ namespace brw {
 #undef VIRT1
 #undef _ALU1
       /** @} */
+
+      fs_inst *
+      ADD(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const
+      {
+         return alu2(BRW_OPCODE_ADD, dst, src0, src1);
+      }
+
+      fs_reg
+      ADD(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const
+      {
+         if (src1.file == IMM && src1.ud == 0 && !out)
+            return src0;
+
+         return alu2(BRW_OPCODE_ADD, src0, src1, out);
+      }
 
       /**
        * CMP: Sets the low bit of the destination channels with the result
@@ -789,16 +814,11 @@ namespace brw {
          return inst;
       }
 
-      void
+      fs_inst *
       VEC(const fs_reg &dst, const fs_reg *src, unsigned sources) const
       {
-         /* For now, this emits a series of MOVs to ease the transition
-          * to the new helper.  The intention is to have this emit either
-          * a single MOV or a LOAD_PAYLOAD to fully initialize dst from a
-          * the list of sources.
-          */
-         for (unsigned i = 0; i < sources; i++)
-            MOV(offset(dst, dispatch_width(), i), src[i]);
+         return sources == 1 ? MOV(dst, src[0])
+                             : LOAD_PAYLOAD(dst, src, sources, 0);
       }
 
       fs_inst *
@@ -832,9 +852,9 @@ namespace brw {
          inst->rcount = rcount;
 
          if (dst.type == BRW_TYPE_HF) {
-            inst->size_written = rcount * REG_SIZE / 2;
+            inst->size_written = reg_unit(shader->devinfo) * rcount * REG_SIZE / 2;
          } else {
-            inst->size_written = rcount * REG_SIZE;
+            inst->size_written = reg_unit(shader->devinfo) * rcount * REG_SIZE;
          }
 
          return inst;

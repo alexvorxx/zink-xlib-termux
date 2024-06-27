@@ -63,7 +63,8 @@ panvk_add_wait_event_operation(struct panvk_cmd_buffer *cmdbuf,
       /* Let's close the current batch so any future commands wait on the
        * event signal operation.
        */
-      if (cmdbuf->cur_batch->fragment_job || cmdbuf->cur_batch->jc.first_job) {
+      if (cmdbuf->cur_batch->frag_jc.first_job ||
+          cmdbuf->cur_batch->vtc_jc.first_job) {
          panvk_per_arch(cmd_close_batch)(cmdbuf);
          panvk_per_arch(cmd_preload_fb_after_batch_split)(cmdbuf);
          panvk_per_arch(cmd_open_batch)(cmdbuf);

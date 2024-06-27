@@ -108,6 +108,8 @@ dri_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
    switch (cap) {
    case DRI_LOADER_CAP_FP16:
       return 1;
+   case DRI_LOADER_CAP_RGBA_ORDERING:
+      return 1;
    default:
       return 0;
    }
@@ -942,6 +944,9 @@ gbm_dri_bo_create(struct gbm_device *gbm,
    struct gbm_dri_bo *bo;
    int dri_format;
    unsigned dri_use = 0;
+   uint64_t *mods_comp = NULL;
+   uint64_t *mods_filtered = NULL;
+   unsigned int count_filtered = 0;
 
    format = gbm_core.v0.format_canonicalize(format);
 
@@ -982,11 +987,97 @@ gbm_dri_bo_create(struct gbm_device *gbm,
       goto failed;
    }
 
+   /* If the driver supports fixed-rate compression, filter the acceptable
+    * modifiers by the compression rate. */
+   if (modifiers && dri->image->queryCompressionModifiers) {
+      enum __DRIFixedRateCompression comp = __DRI_FIXED_RATE_COMPRESSION_NONE;
+
+      switch (usage & GBM_BO_FIXED_COMPRESSION_MASK) {
+#define CASE(x) case GBM_BO_FIXED_COMPRESSION_ ## x: comp = __DRI_FIXED_RATE_COMPRESSION_ ## x; break;
+      CASE(DEFAULT);
+      CASE(1BPC);
+      CASE(2BPC);
+      CASE(3BPC);
+      CASE(4BPC);
+      CASE(5BPC);
+      CASE(6BPC);
+      CASE(7BPC);
+      CASE(8BPC);
+      CASE(9BPC);
+      CASE(10BPC);
+      CASE(11BPC);
+      CASE(12BPC);
+#undef CASE
+      default:
+         break;
+      }
+
+      int count_comp = 0;
+
+      /* Find how many acceptable modifiers there are for our rate. If there
+       * are none, fall back to no compression, as it is not mandatory to use
+       * the specified compression rate. */
+      if (!dri->image->queryCompressionModifiers(dri->screen, format, comp,
+                                                 0, NULL, &count_comp) ||
+         count_comp == 0) {
+         if (comp == __DRI_FIXED_RATE_COMPRESSION_NONE) {
+            errno = EINVAL;
+            goto failed;
+         }
+
+         comp = __DRI_FIXED_RATE_COMPRESSION_NONE;
+         if (!dri->image->queryCompressionModifiers(dri->screen, format, comp,
+                                                    0, NULL, &count_comp)) {
+            errno = EINVAL;
+            goto failed;
+         }
+      }
+
+      if (count_comp == 0) {
+         errno = EINVAL;
+         goto failed;
+      }
+
+      mods_comp = malloc(count_comp * sizeof(uint64_t));
+      mods_filtered = malloc(count_comp * sizeof(uint64_t));
+      if (!mods_comp || !mods_filtered) {
+         errno = ENOMEM;
+         goto failed;
+      }
+
+      if (!dri->image->queryCompressionModifiers(dri->screen, format, comp,
+                                                 count_comp, mods_comp,
+                                                 &count_comp)) {
+         errno = ENOMEM;
+         goto failed;
+      }
+
+
+      /* Intersect the list of user-supplied acceptable modifiers with the set
+       * of modifiers acceptable for this compression rate. */
+      for (unsigned int i = 0; i < count_comp; i++) {
+         for (unsigned int j = 0; j < count; j++) {
+            if (mods_comp[i] == modifiers[j]) {
+               mods_filtered[count_filtered++] = mods_comp[i];
+               break;
+            }
+         }
+      }
+
+      free(mods_comp);
+      mods_comp = NULL;
+   }
+
    bo->image = loader_dri_create_image(dri->screen, dri->image, width, height,
-                                       dri_format, dri_use, modifiers, count,
+                                       dri_format, dri_use,
+                                       mods_filtered ? mods_filtered : modifiers,
+                                       mods_filtered ? count_filtered : count,
                                        bo);
    if (bo->image == NULL)
       goto failed;
+
+   free(mods_filtered);
+   mods_filtered = NULL;
 
    if (modifiers)
       assert(gbm_dri_bo_get_modifier(&bo->base) != DRM_FORMAT_MOD_INVALID);
@@ -999,6 +1090,8 @@ gbm_dri_bo_create(struct gbm_device *gbm,
    return &bo->base;
 
 failed:
+   free(mods_comp);
+   free(mods_filtered);
    free(bo);
    return NULL;
 }

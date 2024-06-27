@@ -434,6 +434,11 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
          NIR_PASS(_, stage->nir, nir_copy_prop);
          NIR_PASS(_, stage->nir, nir_opt_shrink_stores, !instance->drirc.disable_shrink_image_store);
 
+         /* Ensure vectorized load_push_constant still have constant offsets, for
+          * radv_nir_apply_pipeline_layout. */
+         if (stage->args.ac.inline_push_const_mask)
+            NIR_PASS(_, stage->nir, nir_opt_constant_folding);
+
          /* Gather info again, to update whether 8/16-bit are used. */
          nir_shader_gather_info(stage->nir, nir_shader_get_entrypoint(stage->nir));
       }

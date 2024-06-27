@@ -114,7 +114,10 @@ impl PipeContext {
 
     pub fn clear_buffer(&self, res: &PipeResource, pattern: &[u8], offset: u32, size: u32) {
         unsafe {
-            self.pipe.as_ref().clear_buffer.unwrap()(
+            self.pipe
+                .as_ref()
+                .clear_buffer
+                .unwrap_or(u_default_clear_buffer)(
                 self.pipe.as_ptr(),
                 res.pipe(),
                 offset,
@@ -143,9 +146,6 @@ impl PipeContext {
                     .map(|i| ((origin[i] + [0, y, z][i]) * pitch[i]) as u32)
                     .sum();
 
-                // SAFETY: clear_buffer arguments are specified
-                // in bytes, so pattern.len() dimension value
-                // should be multiplied by pixel_size
                 unsafe {
                     self.pipe.as_ref().clear_buffer.unwrap()(
                         self.pipe.as_ptr(),
@@ -153,7 +153,7 @@ impl PipeContext {
                         offset,
                         (region[0] * pixel_size) as u32,
                         pattern.as_ptr().cast(),
-                        (pattern.len() * pixel_size) as i32,
+                        pixel_size as i32,
                     )
                 };
             }
@@ -675,7 +675,6 @@ fn has_required_cbs(context: &pipe_context) -> bool {
         & has_required_feature!(context, buffer_map)
         & has_required_feature!(context, buffer_subdata)
         & has_required_feature!(context, buffer_unmap)
-        & has_required_feature!(context, clear_buffer)
         & has_required_feature!(context, create_compute_state)
         & has_required_feature!(context, create_query)
         & has_required_feature!(context, delete_compute_state)

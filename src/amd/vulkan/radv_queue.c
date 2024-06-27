@@ -651,10 +651,13 @@ radv_emit_attribute_ring(struct radv_device *device, struct radeon_cmdbuf *cs, s
    radeon_emit(cs, 0); /* GCR_CNTL */
 
    /* The PS will read inputs from this address. */
-   radeon_set_uconfig_reg(cs, R_031118_SPI_ATTRIBUTE_RING_BASE, va >> 16);
-   radeon_set_uconfig_reg(cs, R_03111C_SPI_ATTRIBUTE_RING_SIZE,
-                          S_03111C_MEM_SIZE(((attr_ring_size / pdev->info.max_se) >> 16) - 1) |
-                             S_03111C_BIG_PAGE(pdev->info.discardable_allows_big_page) | S_03111C_L1_POLICY(1));
+   radeon_set_uconfig_reg_seq(cs, R_031110_SPI_GS_THROTTLE_CNTL1, 4);
+   radeon_emit(cs, 0x12355123); /* SPI_GS_THROTTLE_CNTL1 */
+   radeon_emit(cs, 0x1544D);    /* SPI_GS_THROTTLE_CNTL2 */
+   radeon_emit(cs, va >> 16);   /* SPI_ATTRIBUTE_RING_BASE */
+   radeon_emit(cs, S_03111C_MEM_SIZE(((attr_ring_size / pdev->info.max_se) >> 16) - 1) |
+                      S_03111C_BIG_PAGE(pdev->info.discardable_allows_big_page) |
+                      S_03111C_L1_POLICY(1)); /* SPI_ATTRIBUTE_RING_SIZE */
 
    if (pdev->info.gfx_level >= GFX12) {
       const uint64_t pos_address = va + pdev->info.pos_ring_offset;
@@ -886,8 +889,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    if (pdev->info.gfx_level >= GFX10) {
       if (pdev->info.gfx_level >= GFX12) {
          radeon_set_context_reg(cs, R_028AA0_VGT_DRAW_PAYLOAD_CNTL, 0);
-      } else {
-         radeon_set_context_reg(cs, R_028A98_VGT_DRAW_PAYLOAD_CNTL, 0);
       }
 
       radeon_set_uconfig_reg(cs, R_030964_GE_MAX_VTX_INDX, ~0);
@@ -1057,9 +1058,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
 
       radeon_set_context_reg(cs, R_028410_CB_RMI_GL2_CACHE_CONTROL, gl2_cc | S_028410_DCC_RD_POLICY(meta_read_policy));
 
-      if (pdev->info.gfx_level < GFX12)
-         radeon_set_context_reg(cs, R_028428_CB_COVERAGE_OUT_CONTROL, 0);
-
       radeon_set_sh_reg_seq(cs, R_00B0C8_SPI_SHADER_USER_ACCUM_PS_0, 4);
       radeon_emit(cs, 0); /* R_00B0C8_SPI_SHADER_USER_ACCUM_PS_0 */
       radeon_emit(cs, 0); /* R_00B0CC_SPI_SHADER_USER_ACCUM_PS_1 */
@@ -1106,7 +1104,7 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
                                 S_028B50_DONUT_SPLIT_GFX9(24) | S_028B50_TRAP_SPLIT(6));
    } else if (pdev->info.gfx_level >= GFX9) {
       radeon_set_context_reg(cs, R_028B50_VGT_TESS_DISTRIBUTION,
-                             S_028B50_ACCUM_ISOLINE(40) | S_028B50_ACCUM_TRI(30) | S_028B50_ACCUM_QUAD(24) |
+                             S_028B50_ACCUM_ISOLINE(12) | S_028B50_ACCUM_TRI(30) | S_028B50_ACCUM_QUAD(24) |
                                 S_028B50_DONUT_SPLIT_GFX9(24) | S_028B50_TRAP_SPLIT(6));
    } else if (pdev->info.gfx_level >= GFX8) {
       uint32_t vgt_tess_distribution;
@@ -1151,10 +1149,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
 
       if (pdev->info.gfx_level >= GFX12) {
          radeon_set_context_reg(cs, R_028C54_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
-                                S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1));
-
-      } else {
-         radeon_set_context_reg(cs, R_028C4C_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
                                 S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1));
       }
 
@@ -1241,9 +1235,8 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
    if (pdev->info.gfx_level >= GFX11) {
       if (pdev->info.gfx_level >= GFX12) {
          radeon_set_context_reg(cs, R_028C4C_PA_SC_BINNER_CNTL_2, S_028C4C_ENABLE_PING_PONG_BIN_ORDER(1));
-      } else {
-         radeon_set_context_reg(cs, R_028C54_PA_SC_BINNER_CNTL_2,
-                                S_028C54_ENABLE_PING_PONG_BIN_ORDER(pdev->info.gfx_level >= GFX11_5));
+      } else if (pdev->info.gfx_level >= GFX11_5) {
+         radeon_set_context_reg(cs, R_028C54_PA_SC_BINNER_CNTL_2, S_028C54_ENABLE_PING_PONG_BIN_ORDER(1));
       }
 
       uint64_t rb_mask = BITFIELD64_MASK(pdev->info.max_render_backends);
@@ -1253,9 +1246,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
       radeon_emit(cs, PIXEL_PIPE_STATE_CNTL_COUNTER_ID(0) | PIXEL_PIPE_STATE_CNTL_STRIDE(2) |
                          PIXEL_PIPE_STATE_CNTL_INSTANCE_EN_LO(rb_mask));
       radeon_emit(cs, PIXEL_PIPE_STATE_CNTL_INSTANCE_EN_HI(rb_mask));
-
-      radeon_set_uconfig_reg(cs, R_031110_SPI_GS_THROTTLE_CNTL1, 0x12355123);
-      radeon_set_uconfig_reg(cs, R_031114_SPI_GS_THROTTLE_CNTL2, 0x1544D);
    }
 
    /* The exclusion bits can be set to improve rasterization efficiency if no sample lies on the
@@ -2172,7 +2162,7 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
          goto fail;
 
       if (radv_device_fault_detection_enabled(device)) {
-         radv_check_gpu_hangs(queue, &submit);
+         result = radv_check_gpu_hangs(queue, &submit);
       }
 
       if (device->tma_bo) {

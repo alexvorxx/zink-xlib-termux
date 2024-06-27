@@ -484,6 +484,20 @@ option(
 )
 
 option(
+  'html-docs',
+  type : 'feature',
+  value : 'disabled',
+  description : 'Build HTML documentation.'
+)
+
+option(
+  'html-docs-path',
+  type : 'string',
+  value : '',
+  description : 'Location to install HTML documentation. Default: $datadir/doc/mesa.'
+)
+
+option(
   'selinux',
   type : 'boolean',
   value : false,

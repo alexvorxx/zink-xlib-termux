@@ -242,7 +242,9 @@ stringify_wayland_id(uint32_t id)
 {
    char *out;
 
-   asprintf(&out, "wl%d", id);
+   if (asprintf(&out, "wl%d", id) < 0)
+      return NULL;
+
    return out;
 }
 
@@ -882,7 +884,8 @@ static VkResult
 wsi_wl_display_init(struct wsi_wayland *wsi_wl,
                     struct wsi_wl_display *display,
                     struct wl_display *wl_display,
-                    bool get_format_list, bool sw)
+                    bool get_format_list, bool sw,
+                    const char *queue_name)
 {
    VkResult result = VK_SUCCESS;
    memset(display, 0, sizeof(*display));
@@ -894,8 +897,7 @@ wsi_wl_display_init(struct wsi_wayland *wsi_wl,
    display->wl_display = wl_display;
    display->sw = sw;
 
-   display->queue = wl_display_create_queue_with_name(wl_display,
-                                                      "mesa vk display queue");
+   display->queue = wl_display_create_queue_with_name(wl_display, queue_name);
    if (!display->queue) {
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
       goto fail;
@@ -1011,7 +1013,7 @@ wsi_wl_display_create(struct wsi_wayland *wsi, struct wl_display *wl_display,
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    VkResult result = wsi_wl_display_init(wsi, display, wl_display, true,
-                                         sw);
+                                         sw, "mesa vk display queue");
    if (result != VK_SUCCESS) {
       vk_free(wsi->alloc, display);
       return result;
@@ -1045,7 +1047,7 @@ wsi_GetPhysicalDeviceWaylandPresentationSupportKHR(VkPhysicalDevice physicalDevi
 
    struct wsi_wl_display display;
    VkResult ret = wsi_wl_display_init(wsi, &display, wl_display, false,
-                                      wsi_device->sw);
+                                      wsi_device->sw, "mesa presentation support query");
    if (ret == VK_SUCCESS)
       wsi_wl_display_finish(&display);
 
@@ -1217,7 +1219,7 @@ wsi_wl_surface_get_formats(VkIcdSurfaceBase *icd_surface,
 
    struct wsi_wl_display display;
    if (wsi_wl_display_init(wsi, &display, surface->display, true,
-                           wsi_device->sw))
+                           wsi_device->sw, "mesa formats query"))
       return VK_ERROR_SURFACE_LOST_KHR;
 
    VK_OUTARRAY_MAKE_TYPED(VkSurfaceFormatKHR, out,
@@ -1256,7 +1258,7 @@ wsi_wl_surface_get_formats2(VkIcdSurfaceBase *icd_surface,
 
    struct wsi_wl_display display;
    if (wsi_wl_display_init(wsi, &display, surface->display, true,
-                           wsi_device->sw))
+                           wsi_device->sw, "mesa formats2 query"))
       return VK_ERROR_SURFACE_LOST_KHR;
 
    VK_OUTARRAY_MAKE_TYPED(VkSurfaceFormat2KHR, out,
@@ -1294,7 +1296,7 @@ wsi_wl_surface_get_present_modes(VkIcdSurfaceBase *icd_surface,
 
    struct wsi_wl_display display;
    if (wsi_wl_display_init(wsi, &display, surface->display, true,
-                           wsi_device->sw))
+                           wsi_device->sw, "mesa present modes query"))
       return VK_ERROR_SURFACE_LOST_KHR;
 
    VkPresentModeKHR present_modes[3];
@@ -1991,7 +1993,7 @@ trace_present(const struct wsi_wl_present_id *id,
    /* Close the previous image display interval first, if there is one. */
    if (surface->analytics.presenting && util_perfetto_is_tracing_enabled()) {
       buffer_name = stringify_wayland_id(surface->analytics.presenting);
-      MESA_TRACE_TIMESTAMP_END(buffer_name,
+      MESA_TRACE_TIMESTAMP_END(buffer_name ? buffer_name : "Wayland buffer",
                                surface->analytics.presentation_track_id,
                                presentation_time);
       free(buffer_name);
@@ -2001,7 +2003,7 @@ trace_present(const struct wsi_wl_present_id *id,
 
    if (util_perfetto_is_tracing_enabled()) {
       buffer_name = stringify_wayland_id(id->buffer_id);
-      MESA_TRACE_TIMESTAMP_BEGIN(buffer_name,
+      MESA_TRACE_TIMESTAMP_BEGIN(buffer_name ? buffer_name : "Wayland buffer",
                                  surface->analytics.presentation_track_id,
                                  id->flow_id,
                                  presentation_time);

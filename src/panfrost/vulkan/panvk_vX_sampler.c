@@ -135,6 +135,11 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
       cfg.border_color_g = border_color.uint32[1];
       cfg.border_color_b = border_color.uint32[2];
       cfg.border_color_a = border_color.uint32[3];
+
+      if (pCreateInfo->anisotropyEnable && pCreateInfo->maxAnisotropy > 1) {
+         cfg.maximum_anisotropy = pCreateInfo->maxAnisotropy;
+         cfg.lod_algorithm = MALI_LOD_ALGORITHM_ANISOTROPIC;
+      }
    }
 
    *pSampler = panvk_sampler_to_handle(sampler);

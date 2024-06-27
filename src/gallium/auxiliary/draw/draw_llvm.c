@@ -382,7 +382,7 @@ get_vertex_header_ptr_type(struct draw_llvm_variant *variant)
  * Create per-context LLVM info.
  */
 struct draw_llvm *
-draw_llvm_create(struct draw_context *draw, LLVMContextRef context)
+draw_llvm_create(struct draw_context *draw, lp_context_ref *context)
 {
    struct draw_llvm *llvm;
 
@@ -395,17 +395,14 @@ draw_llvm_create(struct draw_context *draw, LLVMContextRef context)
 
    llvm->draw = draw;
 
-   llvm->context = context;
-   if (!llvm->context) {
-      llvm->context = LLVMContextCreate();
-
-#if LLVM_VERSION_MAJOR == 15
-      LLVMContextSetOpaquePointers(llvm->context, false);
-#endif
-
-      llvm->context_owned = true;
+   if (context) {
+      llvm->context = *context;
+      llvm->context.owned = false;
    }
-   if (!llvm->context)
+   if (!llvm->context.ref) {
+      lp_context_create(&llvm->context);
+   }
+   if (!llvm->context.ref)
       goto fail;
 
    llvm->nr_variants = 0;
@@ -434,9 +431,7 @@ fail:
 void
 draw_llvm_destroy(struct draw_llvm *llvm)
 {
-   if (llvm->context_owned)
-      LLVMContextDispose(llvm->context);
-   llvm->context = NULL;
+   lp_context_destroy(&llvm->context);
 
    /* XXX free other draw_llvm data? */
    FREE(llvm);
@@ -510,7 +505,7 @@ draw_llvm_create_variant(struct draw_llvm *llvm,
       if (!cached.data_size)
          needs_caching = true;
    }
-   variant->gallivm = gallivm_create(module_name, llvm->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &llvm->context, &cached);
 
    create_vs_jit_types(variant);
 
@@ -2525,7 +2520,7 @@ draw_gs_llvm_create_variant(struct draw_llvm *llvm,
       if (!cached.data_size)
          needs_caching = true;
    }
-   variant->gallivm = gallivm_create(module_name, llvm->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &llvm->context, &cached);
 
    create_gs_jit_types(variant);
 
@@ -3179,7 +3174,7 @@ draw_tcs_llvm_create_variant(struct draw_llvm *llvm,
          needs_caching = true;
    }
 
-   variant->gallivm = gallivm_create(module_name, llvm->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &llvm->context, &cached);
 
    create_tcs_jit_types(variant);
 
@@ -3698,7 +3693,7 @@ draw_tes_llvm_create_variant(struct draw_llvm *llvm,
       if (!cached.data_size)
          needs_caching = true;
    }
-   variant->gallivm = gallivm_create(module_name, llvm->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &llvm->context, &cached);
 
    create_tes_jit_types(variant);
 

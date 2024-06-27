@@ -239,6 +239,7 @@ void initialize_context_to_defaults(struct gl_context *ctx, gl_api api)
 
    ctx->Extensions.EXT_gpu_shader4 = true;
    ctx->Extensions.EXT_shader_integer_mix = true;
+   ctx->Extensions.EXT_shadow_samplers = true;
    ctx->Extensions.EXT_texture_array = true;
 
    ctx->Extensions.MESA_shader_integer_functions = true;

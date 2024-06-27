@@ -42,15 +42,3 @@ dEQP-GLES31.functional.texture.specification.texstorage3d.format.depth32f_stenci
 multisample-dEQP-GLES31.functional.blend_equation_advanced.basic.multiply,Fail
 multisample-dEQP-GLES31.functional.blend_equation_advanced.basic.overlay,Fail
 multisample-dEQP-GLES31.functional.blend_equation_advanced.basic.screen,Fail
-
-# Regression from https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/29436
-# https://gitlab.freedesktop.org/mesa/mesa/-/issues/11253
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_implicit.isolines,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_implicit.quads,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_implicit.triangles,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_query.isolines,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_query.quads,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_query.triangles,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_shader_builtin.isolines,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_shader_builtin.quads,Fail
-dEQP-GLES31.functional.tessellation.user_defined_io.per_patch_block_array.vertex_io_array_size_shader_builtin.triangles,Fail

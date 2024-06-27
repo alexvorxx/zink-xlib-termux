@@ -348,27 +348,6 @@ DRM_DRIVER_DESCRIPTOR_STUB(panfrost)
 DRM_DRIVER_DESCRIPTOR_STUB(panthor)
 #endif
 
-#ifdef GALLIUM_ASAHI
-#include "asahi/drm/asahi_drm_public.h"
-
-static struct pipe_screen *
-pipe_asahi_create_screen(int fd, const struct pipe_screen_config *config)
-{
-   struct pipe_screen *screen;
-
-   screen = asahi_drm_screen_create(fd, config);
-   return screen ? debug_screen_wrap(screen) : NULL;
-}
-
-const driOptionDescription asahi_driconf[] = {
-      #include "asahi/driinfo_asahi.h"
-};
-DRM_DRIVER_DESCRIPTOR(asahi, asahi_driconf, ARRAY_SIZE(asahi_driconf))
-
-#else
-DRM_DRIVER_DESCRIPTOR_STUB(asahi)
-#endif
-
 #ifdef GALLIUM_ETNAVIV
 #include "etnaviv/drm/etnaviv_drm_public.h"
 

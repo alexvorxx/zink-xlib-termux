@@ -138,9 +138,7 @@ lower_load_push_constant(struct tu_device *dev,
             nir_ushr_imm(b, instr->src[0].ssa, 2),
             .base = base);
 
-   nir_def_rewrite_uses(&instr->def, load);
-
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, load);
 }
 
 static void
@@ -216,8 +214,7 @@ lower_vulkan_resource_index(struct tu_device *dev, nir_builder *b,
                                         nir_ishl(b, vulkan_idx, shift)),
                                shift);
 
-   nir_def_rewrite_uses(&instr->def, def);
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, def);
 }
 
 static void
@@ -233,8 +230,7 @@ lower_vulkan_resource_reindex(nir_builder *b, nir_intrinsic_instr *instr)
                         nir_ishl(b, delta, shift)),
                shift);
 
-   nir_def_rewrite_uses(&instr->def, new_index);
-   nir_instr_remove(&instr->instr);
+   nir_def_replace(&instr->def, new_index);
 }
 
 static void
@@ -248,8 +244,7 @@ lower_load_vulkan_descriptor(nir_builder *b, nir_intrinsic_instr *intrin)
       nir_vec3(b, nir_channel(b, old_index, 0),
                nir_channel(b, old_index, 1),
                nir_imm_int(b, 0));
-   nir_def_rewrite_uses(&intrin->def, new_index);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, new_index);
 }
 
 static bool
@@ -480,8 +475,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
          ir3_load_driver_ubo_indirect(b, 2, &shader->const_state.fdm_ubo,
                                       param, view, nir_intrinsic_range(instr));
 
-      nir_def_rewrite_uses(&instr->def, result);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, result);
       return true;
    }
    case nir_intrinsic_load_frag_invocation_count: {
@@ -492,8 +486,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
          ir3_load_driver_ubo(b, 1, &shader->const_state.fdm_ubo,
                              IR3_DP_FS_FRAG_INVOCATION_COUNT);
 
-      nir_def_rewrite_uses(&instr->def, result);
-      nir_instr_remove(&instr->instr);
+      nir_def_replace(&instr->def, result);
       return true;
    }
 
@@ -516,7 +509,7 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
       layout->set[var->data.descriptor_set].layout;
    const struct tu_descriptor_set_binding_layout *binding =
       &set_layout->binding[var->data.binding];
-   const struct tu_sampler_ycbcr_conversion *ycbcr_samplers =
+   const struct vk_ycbcr_conversion_state *ycbcr_samplers =
       tu_immutable_ycbcr_samplers(set_layout, binding);
 
    if (!ycbcr_samplers)
@@ -537,7 +530,7 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
       array_index = nir_src_as_uint(deref->arr.index);
       array_index = MIN2(array_index, binding->array_size - 1);
    }
-   const struct tu_sampler_ycbcr_conversion *ycbcr_sampler = ycbcr_samplers + array_index;
+   const struct vk_ycbcr_conversion_state *ycbcr_sampler = ycbcr_samplers + array_index;
 
    if (ycbcr_sampler->ycbcr_model == VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY)
       return;
@@ -717,8 +710,7 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
                              nir_ishr_imm(b, offset, 2), .base = base);
    }
 
-   nir_def_rewrite_uses(&intrin->def, val);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, val);
    return true;
 }
 
@@ -1168,6 +1160,7 @@ tu6_emit_xs(struct tu_cs *cs,
                .fullregfootprint = xs->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(xs),
                .mergedregs = xs->mergedregs,
+               .earlypreamble = xs->early_preamble,
       ));
       break;
    case MESA_SHADER_TESS_CTRL:
@@ -1175,6 +1168,7 @@ tu6_emit_xs(struct tu_cs *cs,
                .halfregfootprint = xs->info.max_half_reg + 1,
                .fullregfootprint = xs->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(xs),
+               .earlypreamble = xs->early_preamble,
       ));
       break;
    case MESA_SHADER_TESS_EVAL:
@@ -1182,6 +1176,7 @@ tu6_emit_xs(struct tu_cs *cs,
                .halfregfootprint = xs->info.max_half_reg + 1,
                .fullregfootprint = xs->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(xs),
+               .earlypreamble = xs->early_preamble,
       ));
       break;
    case MESA_SHADER_GEOMETRY:
@@ -1189,6 +1184,7 @@ tu6_emit_xs(struct tu_cs *cs,
                .halfregfootprint = xs->info.max_half_reg + 1,
                .fullregfootprint = xs->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(xs),
+               .earlypreamble = xs->early_preamble,
       ));
       break;
    case MESA_SHADER_FRAGMENT:
@@ -1202,6 +1198,7 @@ tu6_emit_xs(struct tu_cs *cs,
                /* unknown bit, seems unnecessary */
                .unk24 = true,
                .pixlodenable = xs->need_pixlod,
+               .earlypreamble = xs->early_preamble,
                .mergedregs = xs->mergedregs,
       ));
       break;
@@ -1213,6 +1210,7 @@ tu6_emit_xs(struct tu_cs *cs,
                .fullregfootprint = xs->info.max_reg + 1,
                .branchstack = ir3_shader_branchstack_hw(xs),
                .threadsize = thrsz,
+               .earlypreamble = xs->early_preamble,
                .mergedregs = xs->mergedregs,
       ));
       break;

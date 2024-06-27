@@ -301,4 +301,5 @@ static const nir_shader_compiler_options agx_nir_options = {
    .lower_doubles_options = (nir_lower_doubles_options)(~0),
    .lower_fquantize2f16 = true,
    .compact_arrays = true,
+   .discard_is_demote = true,
 };

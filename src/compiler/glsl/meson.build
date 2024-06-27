@@ -168,9 +168,7 @@ files_libglsl = files(
   'ir_equals.cpp',
   'ir_expression_flattening.cpp',
   'ir_expression_flattening.h',
-  'ir_function_can_inline.cpp',
   'ir_function_detect_recursion.cpp',
-  'ir_function_inlining.h',
   'ir_function.cpp',
   'ir_hierarchical_visitor.cpp',
   'ir_hierarchical_visitor.h',
@@ -227,8 +225,6 @@ files_libglsl = files(
 )
 
 files_libglsl_standalone = files(
-  'ir_builder_print_visitor.cpp',
-  'ir_builder_print_visitor.h',
   'opt_add_neg_to_sub.h',
   'standalone_scaffolding.cpp',
   'standalone_scaffolding.h',
@@ -236,12 +232,16 @@ files_libglsl_standalone = files(
   'standalone.h',
 )
 
+libglsl_headers = [
+  ir_expression_operation_h, cross_platform_settings_piece_all_h, bc1_glsl_h,
+  bc4_glsl_h, etc2_rgba_stitch_glsl_h, astc_glsl_h
+]
+
 libglsl = static_library(
   'glsl',
-  [files_libglsl, glsl_parser, glsl_lexer_cpp, ir_expression_operation_h,
+  [files_libglsl, glsl_parser, glsl_lexer_cpp, libglsl_headers,
    ir_expression_operation_strings_h, ir_expression_operation_constant_h,
-   float64_glsl_h, cross_platform_settings_piece_all_h, bc1_glsl_h, bc4_glsl_h,
-   etc2_rgba_stitch_glsl_h, astc_glsl_h],
+   float64_glsl_h],
   c_args : [c_msvc_compat_args, no_override_init_args],
   cpp_args : [cpp_msvc_compat_args],
   gnu_symbol_visibility : 'hidden',
@@ -249,6 +249,11 @@ libglsl = static_library(
   include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
   dependencies : idep_nir,
   build_by_default : false,
+)
+
+idep_libglsl = declare_dependency(
+  sources: libglsl_headers,
+  link_with: libglsl,
 )
 
 libglsl_standalone = static_library(

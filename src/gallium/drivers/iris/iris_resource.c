@@ -457,7 +457,6 @@ iris_resource_disable_aux(struct iris_resource *res)
    res->aux.usage = ISL_AUX_USAGE_NONE;
    res->aux.surf.size_B = 0;
    res->aux.bo = NULL;
-   res->aux.extra_aux.surf.size_B = 0;
    res->aux.clear_color_bo = NULL;
    res->aux.state = NULL;
 }
@@ -636,8 +635,6 @@ map_aux_addresses(struct iris_screen *screen, struct iris_resource *res,
       return;
 
    if (isl_aux_usage_has_ccs(res->aux.usage)) {
-      const unsigned aux_offset = res->aux.extra_aux.surf.size_B > 0 ?
-         res->aux.extra_aux.offset : res->aux.offset;
       const enum isl_format format =
          iris_format_for_usage(screen->devinfo, pfmt, res->surf.usage).fmt;
       const uint64_t format_bits =
@@ -645,7 +642,8 @@ map_aux_addresses(struct iris_screen *screen, struct iris_resource *res,
       const bool mapped =
          intel_aux_map_add_mapping(aux_map_ctx,
                                    res->bo->address + res->offset,
-                                   res->aux.bo->address + aux_offset,
+                                   res->aux.bo->address +
+                                   res->aux.comp_ctrl_surf_offset,
                                    res->surf.size_B, format_bits);
       assert(mapped);
       res->bo->aux_map_address = res->aux.bo->address;
@@ -762,6 +760,9 @@ iris_resource_configure_main(const struct iris_screen *screen,
    if (templ->bind & PIPE_BIND_SCANOUT)
       usage |= ISL_SURF_USAGE_DISPLAY_BIT;
 
+   else if (isl_drm_modifier_needs_display_layout(modifier))
+      usage |= ISL_SURF_USAGE_DISPLAY_BIT;
+
    if (templ->target == PIPE_TEXTURE_CUBE ||
        templ->target == PIPE_TEXTURE_CUBE_ARRAY) {
       usage |= ISL_SURF_USAGE_CUBE_BIT;
@@ -820,37 +821,6 @@ iris_resource_configure_main(const struct iris_screen *screen,
    return true;
 }
 
-static bool
-iris_get_ccs_surf_or_support(const struct isl_device *dev,
-                             const struct isl_surf *surf,
-                             struct isl_surf *aux_surf,
-                             struct isl_surf *extra_aux_surf)
-{
-   assert(extra_aux_surf->size_B == 0);
-
-   struct isl_surf *ccs_surf;
-   const struct isl_surf *hiz_or_mcs_surf;
-   if (aux_surf->size_B > 0) {
-      assert(aux_surf->usage & (ISL_SURF_USAGE_HIZ_BIT |
-                                ISL_SURF_USAGE_MCS_BIT));
-      hiz_or_mcs_surf = aux_surf;
-      ccs_surf = extra_aux_surf;
-   } else {
-      hiz_or_mcs_surf = NULL;
-      ccs_surf = aux_surf;
-   }
-
-   if (dev->info->has_flat_ccs) {
-      /* CCS doesn't require VMA on XeHP. So, instead of creating a separate
-       * surface, we can just return whether CCS is supported for the given
-       * input surfaces.
-       */
-      return isl_surf_supports_ccs(dev, surf, hiz_or_mcs_surf);
-   } else  {
-      return isl_surf_get_ccs_surf(dev, surf, hiz_or_mcs_surf, ccs_surf, 0);
-   }
-}
-
 /**
  * Configure aux for the resource, but don't allocate it. For images which
  * might be shared with modifiers, we must allocate the image and aux data in
@@ -871,9 +841,9 @@ iris_resource_configure_aux(struct iris_screen *screen,
    const bool has_hiz =
       isl_surf_get_hiz_surf(&screen->isl_dev, &res->surf, &res->aux.surf);
 
-   const bool has_ccs =
-      iris_get_ccs_surf_or_support(&screen->isl_dev, &res->surf,
-                                   &res->aux.surf, &res->aux.extra_aux.surf);
+   const bool has_ccs = devinfo->has_aux_map || devinfo->has_flat_ccs ?
+      isl_surf_supports_ccs(&screen->isl_dev, &res->surf, &res->aux.surf) :
+      isl_surf_get_ccs_surf(&screen->isl_dev, &res->surf, &res->aux.surf, 0);
 
    if (has_mcs) {
       assert(!res->mod_info);
@@ -908,8 +878,8 @@ iris_resource_configure_aux(struct iris_screen *screen,
       } else if (res->mod_info && res->mod_info->supports_media_compression) {
          res->aux.usage = ISL_AUX_USAGE_MC;
       } else if (want_ccs_e_for_format(devinfo, res->surf.format)) {
-         res->aux.usage = devinfo->ver < 12 ?
-            ISL_AUX_USAGE_CCS_E : ISL_AUX_USAGE_FCV_CCS_E;
+         res->aux.usage = intel_needs_workaround(devinfo, 1607794140) ?
+            ISL_AUX_USAGE_FCV_CCS_E : ISL_AUX_USAGE_CCS_E;
       } else {
          assert(isl_format_supports_ccs_d(devinfo, res->surf.format));
          res->aux.usage = ISL_AUX_USAGE_CCS_D;
@@ -955,13 +925,13 @@ iris_resource_init_aux_buf(struct iris_screen *screen,
    if (!res->aux.state)
       return false;
 
-   if (res->aux.surf.size_B > 0) {
+   if (res->aux.offset > 0 || res->aux.comp_ctrl_surf_offset > 0) {
       res->aux.bo = res->bo;
       iris_bo_reference(res->aux.bo);
       map_aux_addresses(screen, res, res->internal_format, 0);
    }
 
-   if (iris_get_aux_clear_color_state_size(screen, res) > 0) {
+   if (res->aux.clear_color_offset > 0) {
       res->aux.clear_color_bo = res->bo;
       iris_bo_reference(res->aux.clear_color_bo);
       res->aux.clear_color_unknown = !res->aux.clear_color_bo->zeroed;
@@ -1037,6 +1007,70 @@ iris_resource_create_for_buffer(struct pipe_screen *pscreen,
    return &res->base.b;
 }
 
+static bool
+iris_resource_image_is_pat_compressible(const struct iris_screen *screen,
+                                        const struct pipe_resource *templ,
+                                        struct iris_resource *res,
+                                        unsigned flags)
+{
+   assert(templ->target != PIPE_BUFFER);
+
+   if (INTEL_DEBUG(DEBUG_NO_CCS))
+      return false;
+
+   if (screen->devinfo->ver < 20)
+      return false;
+
+   if (flags & (BO_ALLOC_PROTECTED |
+                BO_ALLOC_COHERENT |
+                BO_ALLOC_CPU_VISIBLE))
+      return false;
+
+   struct iris_bufmgr *bufmgr = screen->bufmgr;
+   if ((iris_bufmgr_vram_size(bufmgr) > 0) && (flags & BO_ALLOC_SMEM))
+      return false;
+
+   /* We don't have modifiers with compression enabled on Xe2 so far. */
+   if (res->mod_info) {
+      assert(!isl_drm_modifier_has_aux(res->mod_info->modifier));
+      return false;
+   }
+
+   /* TODO: Enable compression on depth surfaces.
+    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/11361
+    */
+   if (isl_surf_usage_is_depth(res->surf.usage))
+      return false;
+
+   /* Bspec 58797 (r58646):
+    *
+    *    Enabling compression is not legal for TileX surfaces.
+    */
+   if (res->surf.tiling == ISL_TILING_X)
+      return false;
+
+   /* Bspec 71650 (r59764):
+    *
+    *    3 SW  must disable or resolve compression
+    *       Display: Access to anything except Tile4 Framebuffers...
+    *          Display Page Tables
+    *          Display State Buffers
+    *          Linear/TileX Framebuffers
+    *          Display Write-Back Buffers
+    *          Etc.
+    *
+    * So far, we don't support resolving on Xe2 and may not want to enable
+    * compression under these conditions later, so we only enable it when
+    * a TILING_4 image is to display.
+    */
+   if ((flags & BO_ALLOC_SCANOUT) && res->surf.tiling != ISL_TILING_4) {
+      assert(res->surf.tiling == ISL_TILING_LINEAR);
+      return false;
+   }
+
+   return true;
+}
+
 static struct pipe_resource *
 iris_resource_create_for_image(struct pipe_screen *pscreen,
                                const struct pipe_resource *templ,
@@ -1084,6 +1118,9 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
 
    unsigned flags = iris_resource_alloc_flags(screen, templ, res);
 
+   if (iris_resource_image_is_pat_compressible(screen, templ, res, flags))
+      flags |= BO_ALLOC_COMPRESSED;
+
    /* These are for u_upload_mgr buffers only */
    assert(!(templ->flags & (IRIS_RESOURCE_FLAG_SHADER_MEMZONE |
                             IRIS_RESOURCE_FLAG_SURFACE_MEMZONE |
@@ -1101,11 +1138,11 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
       bo_size = res->aux.offset + res->aux.surf.size_B;
    }
 
-   /* Allocate space for the extra aux buffer. */
-   if (res->aux.extra_aux.surf.size_B > 0) {
-      res->aux.extra_aux.offset =
+   /* Allocate space for the compression control surface. */
+   if (devinfo->has_aux_map && isl_aux_usage_has_ccs(res->aux.usage)) {
+      res->aux.comp_ctrl_surf_offset =
          (uint32_t)align64(bo_size, INTEL_AUX_MAP_META_ALIGNMENT_B);
-      bo_size = res->aux.extra_aux.offset +
+      bo_size = res->aux.comp_ctrl_surf_offset +
                 res->surf.size_B / INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN;
    }
 
@@ -1331,6 +1368,9 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
             assert(isl_drm_modifier_has_aux(whandle->modifier));
             assert(!devinfo->has_flat_ccs);
 
+            iris_bo_reference(plane_res->bo);
+            res->aux.bo = plane_res->bo;
+
             if (devinfo->has_aux_map) {
                assert(plane_res->surf.row_pitch_B ==
                       main_res->surf.row_pitch_B /
@@ -1338,17 +1378,18 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
                assert(plane_res->bo->size >= plane_res->offset +
                       main_res->surf.size_B /
                       INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN);
+
+               main_res->aux.comp_ctrl_surf_offset = plane_res->offset;
+               map_aux_addresses(screen, main_res, whandle->format,
+                                 main_plane);
             } else {
                assert(plane_res->surf.row_pitch_B ==
                       main_res->aux.surf.row_pitch_B);
                assert(plane_res->bo->size >= plane_res->offset +
                       main_res->aux.surf.size_B);
-            }
 
-            iris_bo_reference(plane_res->bo);
-            main_res->aux.bo = plane_res->bo;
-            main_res->aux.offset = plane_res->offset;
-            map_aux_addresses(screen, main_res, whandle->format, main_plane);
+               main_res->aux.offset = plane_res->offset;
+            }
          } else {
             /* Fill out fields that are convenient to initialize now. */
             assert(plane == main_plane);
@@ -1556,8 +1597,7 @@ iris_reallocate_resource_inplace(struct iris_context *ice,
    old_res->aux.surf = new_res->aux.surf;
    old_res->aux.bo = new_res->aux.bo;
    old_res->aux.offset = new_res->aux.offset;
-   old_res->aux.extra_aux.surf = new_res->aux.extra_aux.surf;
-   old_res->aux.extra_aux.offset = new_res->aux.extra_aux.offset;
+   old_res->aux.comp_ctrl_surf_offset = new_res->aux.comp_ctrl_surf_offset;
    old_res->aux.clear_color_bo = new_res->aux.clear_color_bo;
    old_res->aux.clear_color_offset = new_res->aux.clear_color_offset;
    old_res->aux.usage = new_res->aux.usage;
@@ -1708,8 +1748,15 @@ iris_resource_get_param(struct pipe_screen *pscreen,
 
       return true;
    case PIPE_RESOURCE_PARAM_OFFSET:
-      *value = wants_cc ? res->aux.clear_color_offset :
-               wants_aux ? res->aux.offset : res->offset;
+      if (wants_cc) {
+         *value = res->aux.clear_color_offset;
+      } else if (wants_aux) {
+         *value = screen->devinfo->has_aux_map ?
+                  res->aux.comp_ctrl_surf_offset :
+                  res->aux.offset;
+      } else {
+         *value = res->offset;
+      }
       return true;
    case PIPE_RESOURCE_PARAM_MODIFIER:
       if (res->mod_info) {

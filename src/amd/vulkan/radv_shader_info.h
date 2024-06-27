@@ -108,6 +108,7 @@ struct radv_shader_info {
    bool outputs_linked;
    bool has_epilog;                        /* Only for TCS or PS */
    bool merged_shader_compiled_separately; /* GFX9+ */
+   bool force_indirect_desc_sets;
 
    struct {
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
@@ -316,7 +317,7 @@ void radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shad
                                const struct radv_shader_layout *layout, const struct radv_shader_stage_key *stage_key,
                                const struct radv_graphics_state_key *gfx_state,
                                const enum radv_pipeline_type pipeline_type, bool consider_force_vrs,
-                               struct radv_shader_info *info);
+                               bool is_indirect_bindable, struct radv_shader_info *info);
 
 void gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info,
                         struct radv_shader_info *gs_info, struct gfx10_ngg_info *out);

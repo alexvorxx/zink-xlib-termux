@@ -49,8 +49,7 @@ replace_intrinsic_with_vec(nir_builder *b, nir_intrinsic_instr *intr,
         /* Replace the old intrinsic with a reference to our reconstructed
          * vector.
          */
-        nir_def_rewrite_uses(&intr->def, vec);
-        nir_instr_remove(&intr->instr);
+        nir_def_replace(&intr->def, vec);
 }
 
 static nir_def *
@@ -349,8 +348,7 @@ vc4_nir_lower_io_impl(struct vc4_compile *c, nir_function_impl *impl)
                         vc4_nir_lower_io_instr(c, &b, instr);
         }
 
-        nir_metadata_preserve(impl, nir_metadata_block_index |
-                              nir_metadata_dominance);
+        nir_metadata_preserve(impl, nir_metadata_control_flow);
 
         return true;
 }

@@ -1005,27 +1005,7 @@ emit_vopc_instruction(isel_context* ctx, nir_alu_instr* instr, aco_opcode op, Te
    if (src1.type() == RegType::sgpr) {
       if (src0.type() == RegType::vgpr) {
          /* to swap the operands, we might also have to change the opcode */
-         switch (op) {
-         case aco_opcode::v_cmp_lt_f16: op = aco_opcode::v_cmp_gt_f16; break;
-         case aco_opcode::v_cmp_ge_f16: op = aco_opcode::v_cmp_le_f16; break;
-         case aco_opcode::v_cmp_lt_i16: op = aco_opcode::v_cmp_gt_i16; break;
-         case aco_opcode::v_cmp_ge_i16: op = aco_opcode::v_cmp_le_i16; break;
-         case aco_opcode::v_cmp_lt_u16: op = aco_opcode::v_cmp_gt_u16; break;
-         case aco_opcode::v_cmp_ge_u16: op = aco_opcode::v_cmp_le_u16; break;
-         case aco_opcode::v_cmp_lt_f32: op = aco_opcode::v_cmp_gt_f32; break;
-         case aco_opcode::v_cmp_ge_f32: op = aco_opcode::v_cmp_le_f32; break;
-         case aco_opcode::v_cmp_lt_i32: op = aco_opcode::v_cmp_gt_i32; break;
-         case aco_opcode::v_cmp_ge_i32: op = aco_opcode::v_cmp_le_i32; break;
-         case aco_opcode::v_cmp_lt_u32: op = aco_opcode::v_cmp_gt_u32; break;
-         case aco_opcode::v_cmp_ge_u32: op = aco_opcode::v_cmp_le_u32; break;
-         case aco_opcode::v_cmp_lt_f64: op = aco_opcode::v_cmp_gt_f64; break;
-         case aco_opcode::v_cmp_ge_f64: op = aco_opcode::v_cmp_le_f64; break;
-         case aco_opcode::v_cmp_lt_i64: op = aco_opcode::v_cmp_gt_i64; break;
-         case aco_opcode::v_cmp_ge_i64: op = aco_opcode::v_cmp_le_i64; break;
-         case aco_opcode::v_cmp_lt_u64: op = aco_opcode::v_cmp_gt_u64; break;
-         case aco_opcode::v_cmp_ge_u64: op = aco_opcode::v_cmp_le_u64; break;
-         default: /* eq and ne are commutative */ break;
-         }
+         op = get_vcmp_swapped(op);
          Temp t = src0;
          src0 = src1;
          src1 = t;
@@ -3693,6 +3673,16 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                       aco_opcode::v_cmp_ge_f64);
       break;
    }
+   case nir_op_fltu: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_nge_f16, aco_opcode::v_cmp_nge_f32,
+                      aco_opcode::v_cmp_nge_f64);
+      break;
+   }
+   case nir_op_fgeu: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_nlt_f16, aco_opcode::v_cmp_nlt_f32,
+                      aco_opcode::v_cmp_nlt_f64);
+      break;
+   }
    case nir_op_feq: {
       emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_eq_f16, aco_opcode::v_cmp_eq_f32,
                       aco_opcode::v_cmp_eq_f64);
@@ -3701,6 +3691,26 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    case nir_op_fneu: {
       emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_neq_f16, aco_opcode::v_cmp_neq_f32,
                       aco_opcode::v_cmp_neq_f64);
+      break;
+   }
+   case nir_op_fequ: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_nlg_f16, aco_opcode::v_cmp_nlg_f32,
+                      aco_opcode::v_cmp_nlg_f64);
+      break;
+   }
+   case nir_op_fneo: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_lg_f16, aco_opcode::v_cmp_lg_f32,
+                      aco_opcode::v_cmp_lg_f64);
+      break;
+   }
+   case nir_op_funord: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_u_f16, aco_opcode::v_cmp_u_f32,
+                      aco_opcode::v_cmp_u_f64);
+      break;
+   }
+   case nir_op_ford: {
+      emit_comparison(ctx, instr, dst, aco_opcode::v_cmp_o_f16, aco_opcode::v_cmp_o_f32,
+                      aco_opcode::v_cmp_o_f64);
       break;
    }
    case nir_op_ilt: {
@@ -5820,79 +5830,6 @@ visit_load_ubo(isel_context* ctx, nir_intrinsic_instr* instr)
    unsigned size = instr->def.bit_size / 8;
    load_buffer(ctx, instr->num_components, size, dst, rsrc, get_ssa_temp(ctx, instr->src[1].ssa),
                nir_intrinsic_align_mul(instr), nir_intrinsic_align_offset(instr));
-}
-
-void
-visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
-{
-   Builder bld(ctx->program, ctx->block);
-   Temp dst = get_ssa_temp(ctx, &instr->def);
-   unsigned offset = nir_intrinsic_base(instr);
-   unsigned count = instr->def.num_components;
-   nir_const_value* index_cv = nir_src_as_const_value(instr->src[0]);
-   assert(instr->def.bit_size >= 32);
-
-   if (instr->def.bit_size == 64)
-      count *= 2;
-
-   if (index_cv) {
-      unsigned start = (offset + index_cv->u32) / 4u;
-      uint64_t mask = BITFIELD64_MASK(count) << start;
-      if ((ctx->args->inline_push_const_mask | mask) == ctx->args->inline_push_const_mask &&
-          start + count <= (sizeof(ctx->args->inline_push_const_mask) * 8u)) {
-         std::array<Temp, NIR_MAX_VEC_COMPONENTS> elems;
-         aco_ptr<Instruction> vec{
-            create_instruction(aco_opcode::p_create_vector, Format::PSEUDO, count, 1)};
-         unsigned arg_index =
-            util_bitcount64(ctx->args->inline_push_const_mask & BITFIELD64_MASK(start));
-         for (unsigned i = 0; i < count; ++i) {
-            elems[i] = get_arg(ctx, ctx->args->inline_push_consts[arg_index++]);
-            vec->operands[i] = Operand{elems[i]};
-         }
-         vec->definitions[0] = Definition(dst);
-         ctx->block->instructions.emplace_back(std::move(vec));
-         ctx->allocated_vec.emplace(dst.id(), elems);
-         return;
-      }
-   }
-
-   Temp index = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
-   if (offset != 0) // TODO check if index != 0 as well
-      index = bld.nuw().sop2(aco_opcode::s_add_i32, bld.def(s1), bld.def(s1, scc),
-                             Operand::c32(offset), index);
-   Temp ptr = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->args->push_constants));
-   Temp vec = dst;
-   bool trim = false;
-
-   aco_opcode op;
-
-   switch (vec.size()) {
-   case 1: op = aco_opcode::s_load_dword; break;
-   case 2: op = aco_opcode::s_load_dwordx2; break;
-   case 3:
-      vec = bld.tmp(s4);
-      trim = true;
-      FALLTHROUGH;
-   case 4: op = aco_opcode::s_load_dwordx4; break;
-   case 6:
-      vec = bld.tmp(s8);
-      trim = true;
-      FALLTHROUGH;
-   case 8: op = aco_opcode::s_load_dwordx8; break;
-   default: unreachable("unimplemented or forbidden load_push_constant.");
-   }
-
-   bld.smem(op, Definition(vec), ptr, index);
-
-   if (trim) {
-      emit_split_vector(ctx, vec, 4);
-      RegClass rc = dst.size() == 3 ? s1 : s2;
-      bld.pseudo(aco_opcode::p_create_vector, Definition(dst), emit_extract_vector(ctx, vec, 0, rc),
-                 emit_extract_vector(ctx, vec, 1, rc), emit_extract_vector(ctx, vec, 2, rc));
-      ctx->allocated_vec[dst.id()] = ctx->allocated_vec[vec.id()];
-   } else {
-      emit_split_vector(ctx, dst, instr->def.num_components);
-   }
 }
 
 void
@@ -8199,7 +8136,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    case nir_intrinsic_load_per_vertex_input: visit_load_per_vertex_input(ctx, instr); break;
    case nir_intrinsic_load_ubo: visit_load_ubo(ctx, instr); break;
-   case nir_intrinsic_load_push_constant: visit_load_push_constant(ctx, instr); break;
    case nir_intrinsic_load_constant: visit_load_constant(ctx, instr); break;
    case nir_intrinsic_load_shared: visit_load_shared(ctx, instr); break;
    case nir_intrinsic_store_shared: visit_store_shared(ctx, instr); break;
@@ -8874,12 +8810,9 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       break;
    }
    case nir_intrinsic_terminate:
-   case nir_intrinsic_terminate_if:
-   case nir_intrinsic_discard:
-   case nir_intrinsic_discard_if: {
+   case nir_intrinsic_terminate_if: {
       Operand cond = Operand::c32(-1u);
-      if (instr->intrinsic == nir_intrinsic_discard_if ||
-          instr->intrinsic == nir_intrinsic_terminate_if) {
+      if (instr->intrinsic == nir_intrinsic_terminate_if) {
          Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
          assert(src.regClass() == bld.lm);
          cond =
@@ -10263,6 +10196,17 @@ lcssa_workaround(isel_context* ctx, nir_loop* loop)
 
    std::map<unsigned, unsigned> renames;
    nir_foreach_block_in_cf_node (block, &loop->cf_node) {
+      /* These values are reachable from the loop exit even when continue_or_break is used. We
+       * shouldn't create phis with undef operands in case the contents are important even if exec
+       * is zero (for example, memory access addresses). */
+      if (nir_block_dominates(block, nir_loop_last_block(loop)))
+         continue;
+
+      /* Definitions in this block are not reachable from the loop exit, and so all uses are inside
+       * the loop. */
+      if (!nir_block_dominates(block, block_after_loop))
+         continue;
+
       nir_foreach_instr (instr, block) {
          nir_def* def = nir_instr_def(instr);
          if (!def)

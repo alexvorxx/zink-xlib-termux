@@ -234,6 +234,12 @@ zink_blit_region_fills(struct u_rect region, unsigned width, unsigned height);
 bool
 zink_blit_region_covers(struct u_rect region, struct u_rect covers);
 
+void
+zink_draw_rectangle(struct blitter_context *blitter, void *vertex_elements_cso,
+                    blitter_get_vs_func get_vs, int x1, int y1, int x2, int y2,
+                    float depth, unsigned num_instances, enum blitter_attrib_type type,
+                    const union blitter_attrib *attrib);
+
 static inline struct u_rect
 zink_rect_from_box(const struct pipe_box *box)
 {

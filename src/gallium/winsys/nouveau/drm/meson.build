@@ -40,7 +40,7 @@ libnouveauwinsys = static_library(
     cc.get_supported_arguments('-Wno-gnu-variable-sized-type-not-at-end')
   ],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_libdrm, idep_mesautil],
+  dependencies : [dep_libdrm, idep_mesautil, idep_nvidia_headers],
 )
 
 idep_libnouveauwinsys = declare_dependency(

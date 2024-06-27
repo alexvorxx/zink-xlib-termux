@@ -1117,7 +1117,23 @@ impl Kernel {
                         add_global(q, &mut input, &mut resource_info, res, 0);
                     }
                     InternalKernelArgType::GlobalWorkOffsets => {
-                        input.extend_from_slice(unsafe { as_byte_slice(&offsets) });
+                        if q.device.address_bits() == 64 {
+                            input.extend_from_slice(unsafe {
+                                as_byte_slice(&[
+                                    offsets[0] as u64,
+                                    offsets[1] as u64,
+                                    offsets[2] as u64,
+                                ])
+                            });
+                        } else {
+                            input.extend_from_slice(unsafe {
+                                as_byte_slice(&[
+                                    offsets[0] as u32,
+                                    offsets[1] as u32,
+                                    offsets[2] as u32,
+                                ])
+                            });
+                        }
                     }
                     InternalKernelArgType::WorkGroupOffsets => {
                         workgroup_id_offset_loc = Some(input.len());

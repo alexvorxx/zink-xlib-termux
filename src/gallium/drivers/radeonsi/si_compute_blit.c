@@ -733,6 +733,8 @@ bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
                             const union pipe_color_union *color, bool render_condition_enable,
                             bool fail_if_slow)
 {
+   unsigned access = 0;
+
    struct pipe_blit_info info;
    memset(&info, 0, sizeof(info));
    info.dst.resource = tex;
@@ -742,7 +744,13 @@ bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
    info.mask = util_format_is_depth_or_stencil(format) ? PIPE_MASK_ZS : PIPE_MASK_RGBA;
    info.render_condition_enable = render_condition_enable;
 
-   return si_compute_blit(sctx, &info, color, 0, 0,
+   if (util_format_is_subsampled_422(tex->format)) {
+      access |= SI_IMAGE_ACCESS_BLOCK_FORMAT_AS_UINT;
+      info.dst.format = PIPE_FORMAT_R32_UINT;
+      info.dst.box.x = util_format_get_nblocksx(tex->format, info.dst.box.x);
+   }
+
+   return si_compute_blit(sctx, &info, color, access, 0,
                           SI_OP_SYNC_BEFORE_AFTER | (fail_if_slow ? SI_OP_FAIL_IF_SLOW : 0));
 }
 

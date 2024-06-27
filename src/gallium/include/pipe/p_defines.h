@@ -509,6 +509,12 @@ enum pipe_flush_flags
 #define PIPE_RESOURCE_FLAG_FRONTEND_PRIV         (1 << 24) /* gallium frontend private */
 
 /**
+ * Fixed-rate compression
+ */
+#define PIPE_COMPRESSION_FIXED_RATE_NONE    0x0
+#define PIPE_COMPRESSION_FIXED_RATE_DEFAULT 0xF
+
+/**
  * Hint about the expected lifecycle of a resource.
  * Sorted according to GPU vs CPU access.
  */
@@ -947,6 +953,7 @@ enum pipe_cap
    PIPE_CAP_VALIDATE_ALL_DIRTY_STATES,
    PIPE_CAP_HAS_CONST_BW,
    PIPE_CAP_PERFORMANCE_MONITOR,
+   PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT,
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */
 };

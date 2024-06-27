@@ -803,6 +803,8 @@ bool si_shader_binary_open(struct si_screen *screen, struct si_shader *shader,
                                        .options =
                                           {
                                              .halt_at_entry = screen->options.halt_shaders,
+                                             .waitcnt_wa = num_parts > 1 &&
+                                                           screen->info.needs_llvm_wait_wa,
                                           },
                                        .shader_type = sel->stage,
                                        .wave_size = shader->wave_size,
@@ -838,7 +840,10 @@ static unsigned get_shader_binaries(struct si_shader *shader, struct si_shader_b
    return num_bin;
 }
 
-static unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_shader *shader)
+/* si_get_shader_binary_size should only be called once per shader
+ * and the result should be stored in shader->complete_shader_binary_size.
+ */
+unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_shader *shader)
 {
    if (shader->binary.type == SI_SHADER_BINARY_ELF) {
       struct ac_rtld_binary rtld;
@@ -865,7 +870,7 @@ unsigned si_get_shader_prefetch_size(struct si_shader *shader)
    /* This excludes arrays of constants after instructions. */
    unsigned exec_size =
       ac_align_shader_binary_for_prefetch(&sscreen->info,
-                                          si_get_shader_binary_size(sscreen, shader));
+                                          shader->complete_shader_binary_size);
 
    /* INST_PREF_SIZE uses 128B granularity.
     * - GFX11: max 128 * 63 = 8064
@@ -1694,8 +1699,7 @@ static bool si_nir_kill_outputs(nir_shader *nir, const union si_shader_key *key)
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_dominance |
-                                  nir_metadata_block_index);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -1778,8 +1782,7 @@ static bool si_nir_kill_ps_outputs(nir_shader *nir, const union si_shader_key *k
 {
    assert(nir->info.stage == MESA_SHADER_FRAGMENT);
    return nir_shader_instructions_pass(nir, kill_ps_outputs_cb,
-                                       nir_metadata_dominance |
-                                       nir_metadata_block_index, (void*)key);
+                                       nir_metadata_control_flow, (void*)key);
 }
 
 static bool clamp_vertex_color_instr(nir_builder *b,
@@ -1815,7 +1818,7 @@ static bool si_nir_clamp_vertex_color(nir_shader *nir)
       return false;
 
    return nir_shader_intrinsics_pass(nir, clamp_vertex_color_instr,
-                                       nir_metadata_dominance | nir_metadata_block_index,
+                                       nir_metadata_control_flow,
                                        NULL);
 }
 
@@ -2101,9 +2104,7 @@ static bool lower_ps_load_color_intrinsic(nir_builder *b, nir_instr *instr, void
    unsigned index = intrin->intrinsic == nir_intrinsic_load_color0 ? 0 : 1;
    assert(colors[index]);
 
-   nir_def_rewrite_uses(&intrin->def, colors[index]);
-
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, colors[index]);
    return true;
 }
 
@@ -2193,7 +2194,7 @@ static bool si_nir_lower_ps_color_input(nir_shader *nir, const union si_shader_k
 
    /* lower nir_load_color0/1 to use the color value. */
    return nir_shader_instructions_pass(nir, lower_ps_load_color_intrinsic,
-                                       nir_metadata_block_index | nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        colors) || progress;
 }
 
@@ -3088,14 +3089,13 @@ si_get_shader_part(struct si_screen *sscreen, struct si_shader_part **list,
    result = CALLOC_STRUCT(si_shader_part);
    result->key = *key;
 
-   ASSERTED bool use_aco = sscreen->use_aco ||
-                           (stage == MESA_SHADER_FRAGMENT &&
-                            ((prolog && key->ps_prolog.use_aco) ||
-                             (!prolog && key->ps_epilog.use_aco)));
-
    bool ok =
 #if AMD_LLVM_AVAILABLE
-      !use_aco ? si_llvm_build_shader_part(sscreen, stage, prolog, compiler, debug, name, result) :
+      !(sscreen->use_aco ||
+        (stage == MESA_SHADER_FRAGMENT &&
+         ((prolog && key->ps_prolog.use_aco) ||
+          (!prolog && key->ps_epilog.use_aco)))) ?
+      si_llvm_build_shader_part(sscreen, stage, prolog, compiler, debug, name, result) :
 #endif
       si_aco_build_shader_part(sscreen, stage, prolog, debug, name, result);
 
@@ -3531,6 +3531,9 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
 
    /* Upload. */
    bool ok = si_shader_binary_upload(sscreen, shader, 0) >= 0;
+
+   shader->complete_shader_binary_size = si_get_shader_binary_size(sscreen, shader);
+
    si_shader_dump(sscreen, shader, debug, stderr, true);
 
    if (!ok)

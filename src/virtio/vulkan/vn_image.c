@@ -680,8 +680,12 @@ vn_CreateImage(VkDevice device,
    } else if (ahb_info) {
       result = vn_image_create_deferred(dev, pCreateInfo, alloc, &img);
    } else if (swapchain_info) {
+#if DETECT_OS_ANDROID
+      result = vn_image_create_deferred(dev, pCreateInfo, alloc, &img);
+#else
       result = vn_wsi_create_image_from_swapchain(
          dev, pCreateInfo, swapchain_info, alloc, &img);
+#endif
    } else {
       struct vn_image_create_info local_info;
       if (external_info &&
@@ -781,10 +785,11 @@ vn_image_bind_wsi_memory(struct vn_device *dev,
 
       if (!mem) {
 #if DETECT_OS_ANDROID
-         /* TODO handle VkNativeBufferANDROID when we bump up
-          * VN_ANDROID_NATIVE_BUFFER_SPEC_VERSION
-          */
-         unreachable("VkBindImageMemoryInfo with no memory");
+         mem = vn_android_get_wsi_memory_from_bind_info(dev, info);
+         if (!mem) {
+            STACK_ARRAY_FINISH(local_infos);
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+         }
 #else
          const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
             vk_find_struct_const(info->pNext,
@@ -795,8 +800,8 @@ vn_image_bind_wsi_memory(struct vn_device *dev,
             vn_image_from_handle(wsi_common_get_image(
                swapchain_info->swapchain, swapchain_info->imageIndex));
          mem = swapchain_img->wsi.memory;
-         info->memory = vn_device_memory_to_handle(mem);
 #endif
+         info->memory = vn_device_memory_to_handle(mem);
       }
       assert(mem && info->memory != VK_NULL_HANDLE);
 

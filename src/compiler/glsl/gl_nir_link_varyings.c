@@ -3457,9 +3457,7 @@ replace_unused_interpolate_at_with_undef(nir_builder *b, nir_instr *instr,
             nir_def *undef =
                nir_undef(b, intrin->def.num_components,
                              intrin->def.bit_size);
-            nir_def_rewrite_uses(&intrin->def, undef);
-
-            nir_instr_remove(&intrin->instr);
+            nir_def_replace(&intrin->def, undef);
             return true;
          }
       }
@@ -3475,8 +3473,7 @@ fixup_vars_lowered_to_temp(nir_shader *shader, nir_variable_mode mode)
    if (mode == nir_var_shader_in && shader->info.stage == MESA_SHADER_FRAGMENT) {
       (void) nir_shader_instructions_pass(shader,
                                           replace_unused_interpolate_at_with_undef,
-                                          nir_metadata_block_index |
-                                          nir_metadata_dominance,
+                                          nir_metadata_control_flow,
                                           NULL);
    }
 

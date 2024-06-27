@@ -156,6 +156,8 @@ is_intrinsic_load(nir_intrinsic_op op)
    }
 }
 
+uint32_t ir3_nir_max_imm_offset(nir_intrinsic_instr *intrin, const void *data);
+
 ENDC;
 
 #endif /* IR3_NIR_H_ */

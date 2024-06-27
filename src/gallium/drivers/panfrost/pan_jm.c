@@ -236,10 +236,17 @@ void
 GENX(jm_preload_fb)(struct panfrost_batch *batch, struct pan_fb_info *fb)
 {
    struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
+   struct panfrost_ptr preload_jobs[2];
 
-   GENX(pan_preload_fb)
-   (&dev->blitter, &batch->pool.base, &batch->jm.jobs.vtc_jc, fb,
-    batch->tls.gpu, PAN_ARCH >= 6 ? batch->tiler_ctx.bifrost : 0, NULL);
+   unsigned preload_job_count = GENX(pan_preload_fb)(
+      &dev->blitter, &batch->pool.base, fb, 0, batch->tls.gpu, preload_jobs);
+
+   assert(PAN_ARCH < 6 || !preload_job_count);
+
+   for (unsigned j = 0; j < preload_job_count; j++) {
+      pan_jc_add_job(&batch->jm.jobs.vtc_jc, MALI_JOB_TYPE_TILER, false, false,
+                     0, 0, &preload_jobs[j], true);
+   }
 }
 
 void
@@ -249,7 +256,13 @@ GENX(jm_emit_fragment_job)(struct panfrost_batch *batch,
    struct panfrost_ptr transfer =
       pan_pool_alloc_desc(&batch->pool.base, FRAGMENT_JOB);
 
-   GENX(pan_emit_fragment_job)(pfb, batch->framebuffer.gpu, transfer.cpu);
+   GENX(pan_emit_fragment_job_payload)
+   (pfb, batch->framebuffer.gpu, transfer.cpu);
+
+   pan_section_pack(transfer.cpu, FRAGMENT_JOB, HEADER, header) {
+      header.type = MALI_JOB_TYPE_FRAGMENT;
+      header.index = 1;
+   }
 
    batch->jm.jobs.frag = transfer.gpu;
 }

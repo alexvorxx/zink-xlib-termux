@@ -15,16 +15,7 @@
 
 namespace aco {
 
-/* sgpr_presched/vgpr_presched */
-void
-collect_presched_stats(Program* program)
-{
-   RegisterDemand presched_demand;
-   for (Block& block : program->blocks)
-      presched_demand.update(block.register_demand);
-   program->statistics[aco_statistic_sgpr_presched] = presched_demand.sgpr;
-   program->statistics[aco_statistic_vgpr_presched] = presched_demand.vgpr;
-}
+namespace {
 
 class BlockCycleEstimator {
 public:
@@ -50,7 +41,6 @@ public:
    int32_t reg_available[512] = {0};
    std::deque<int32_t> mem_ops[wait_type_num];
 
-   unsigned predict_cost(aco_ptr<Instruction>& instr);
    void add(aco_ptr<Instruction>& instr);
    void join(const BlockCycleEstimator& other);
 
@@ -377,13 +367,6 @@ BlockCycleEstimator::get_dependency_cost(aco_ptr<Instruction>& instr)
    return deps_available - cur_cycle;
 }
 
-unsigned
-BlockCycleEstimator::predict_cost(aco_ptr<Instruction>& instr)
-{
-   int32_t dep = get_dependency_cost(instr);
-   return dep + std::max(cycles_until_res_available(instr) - dep, 0);
-}
-
 static bool
 is_vector(aco_opcode op)
 {
@@ -474,6 +457,19 @@ BlockCycleEstimator::join(const BlockCycleEstimator& pred)
       for (int j = pred_ops.size() - ops.size() - 1; j >= 0; j--)
          ops.push_front(pred_ops[j] - pred.cur_cycle);
    }
+}
+
+} /* end namespace */
+
+/* sgpr_presched/vgpr_presched */
+void
+collect_presched_stats(Program* program)
+{
+   RegisterDemand presched_demand;
+   for (Block& block : program->blocks)
+      presched_demand.update(block.register_demand);
+   program->statistics[aco_statistic_sgpr_presched] = presched_demand.sgpr;
+   program->statistics[aco_statistic_vgpr_presched] = presched_demand.vgpr;
 }
 
 /* instructions/branches/vmem_clauses/smem_clauses/cycles */

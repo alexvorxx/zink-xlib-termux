@@ -1796,8 +1796,7 @@ remove_dead_varyings(struct linkage_info *linkage,
                else
                   replacement = nir_undef(b, 1, loadi->def.bit_size);
 
-               nir_def_rewrite_uses(&loadi->def, replacement);
-               nir_instr_remove(&loadi->instr);
+               nir_def_replace(&loadi->def, replacement);
 
                *progress |= list_index ? nir_progress_producer :
                                          nir_progress_consumer;
@@ -2189,8 +2188,7 @@ propagate_uniform_expressions(struct linkage_info *linkage,
                clone = build_convert_inf_to_nan(b, clone);
 
             /* Replace the original load. */
-            nir_def_rewrite_uses(&loadi->def, clone);
-            nir_instr_remove(&loadi->instr);
+            nir_def_replace(&loadi->def, clone);
             *progress |= list_index ? nir_progress_producer :
                                       nir_progress_consumer;
          }
@@ -4299,13 +4297,11 @@ nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
 
    nir_metadata_preserve(linkage->producer_builder.impl,
                          progress & nir_progress_producer ?
-                            (nir_metadata_block_index |
-                             nir_metadata_dominance) :
+                            (nir_metadata_control_flow) :
                             nir_metadata_all);
    nir_metadata_preserve(linkage->consumer_builder.impl,
                          progress & nir_progress_consumer ?
-                            (nir_metadata_block_index |
-                             nir_metadata_dominance) :
+                            (nir_metadata_control_flow) :
                             nir_metadata_all);
    free_linkage(linkage);
    FREE(linkage);

@@ -81,8 +81,8 @@ add_descriptor_set(struct radv_shader_args *args, enum ac_arg_type type, struct 
 }
 
 static void
-declare_global_input_sgprs(const struct radv_shader_info *info, const struct user_sgpr_info *user_sgpr_info,
-                           struct radv_shader_args *args)
+declare_global_input_sgprs(const enum amd_gfx_level gfx_level, const struct radv_shader_info *info,
+                           const struct user_sgpr_info *user_sgpr_info, struct radv_shader_args *args)
 {
    if (user_sgpr_info) {
       /* 1 for each descriptor set */
@@ -118,6 +118,9 @@ declare_global_input_sgprs(const struct radv_shader_info *info, const struct use
 
    if (needs_streamout_buffers) {
       add_ud_arg(args, 1, AC_ARG_CONST_DESC_PTR, &args->streamout_buffers, AC_UD_STREAMOUT_BUFFERS);
+
+      if (gfx_level >= GFX12)
+         add_ud_arg(args, 1, AC_ARG_CONST_DESC_PTR, &args->streamout_state, AC_UD_STREAMOUT_STATE);
    }
 }
 
@@ -396,7 +399,7 @@ declare_unmerged_vs_tcs_args(const enum amd_gfx_level gfx_level, const struct ra
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.draw_id, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.start_instance, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
 
-   declare_global_input_sgprs(info, user_sgpr_info, args);
+   declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
    add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
@@ -443,7 +446,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.draw_id, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.start_instance, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
 
-   declare_global_input_sgprs(info, user_sgpr_info, args);
+   declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
    add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
@@ -488,6 +491,8 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    ac_add_preserved(&args->ac, &args->descriptor_sets[0]);
    ac_add_preserved(&args->ac, &args->ac.push_constants);
    ac_add_preserved(&args->ac, &args->streamout_buffers);
+   if (gfx_level >= GFX12)
+      ac_add_preserved(&args->ac, &args->streamout_state);
    ac_add_preserved(&args->ac, &args->ac.view_index);
    ac_add_preserved(&args->ac, &args->tcs_offchip_layout);
    ac_add_preserved(&args->ac, &args->shader_query_state);
@@ -566,7 +571,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
    switch (stage) {
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_TASK:
-      declare_global_input_sgprs(info, user_sgpr_info, args);
+      declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
       if (info->cs.uses_grid_size) {
          if (args->load_grid_size_from_user_sgpr)
@@ -623,7 +628,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
 
       declare_vs_specific_input_sgprs(info, args);
 
-      declare_global_input_sgprs(info, user_sgpr_info, args);
+      declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
       if (info->uses_view_index) {
          add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
@@ -668,7 +673,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
          } else {
             declare_vs_specific_input_sgprs(info, args);
 
-            declare_global_input_sgprs(info, user_sgpr_info, args);
+            declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
             if (info->uses_view_index) {
                add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
@@ -688,7 +693,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             declare_vs_input_vgprs(gfx_level, info, args, true);
          }
       } else {
-         declare_global_input_sgprs(info, user_sgpr_info, args);
+         declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
          if (info->uses_view_index) {
             add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
@@ -715,7 +720,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
       /* NGG is handled by the GS case */
       assert(!info->is_ngg);
 
-      declare_global_input_sgprs(info, user_sgpr_info, args);
+      declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
       if (info->uses_view_index)
          add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
@@ -766,7 +771,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
                declare_ms_input_sgprs(info, args);
             }
 
-            declare_global_input_sgprs(info, user_sgpr_info, args);
+            declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
             if (info->uses_view_index) {
                add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
@@ -813,7 +818,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             declare_ms_input_vgprs(device, args);
          }
       } else {
-         declare_global_input_sgprs(info, user_sgpr_info, args);
+         declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
          if (info->uses_view_index) {
             add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
@@ -839,7 +844,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
       }
       break;
    case MESA_SHADER_FRAGMENT:
-      declare_global_input_sgprs(info, user_sgpr_info, args);
+      declare_global_input_sgprs(gfx_level, info, user_sgpr_info, args);
 
       if (info->has_epilog) {
          add_ud_arg(args, 1, AC_ARG_INT, &args->epilog_pc, AC_UD_EPILOG_PC);
@@ -894,7 +899,7 @@ radv_declare_shader_args(const struct radv_device *device, const struct radv_gra
 
    uint32_t num_desc_set = util_bitcount(info->desc_set_used_mask);
 
-   if (info->merged_shader_compiled_separately || remaining_sgprs < num_desc_set) {
+   if (info->force_indirect_desc_sets || remaining_sgprs < num_desc_set) {
       user_sgpr_info.indirect_all_descriptor_sets = true;
       user_sgpr_info.remaining_sgprs--;
    } else {

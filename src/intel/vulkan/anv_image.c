@@ -790,11 +790,17 @@ add_aux_surface_if_supported(struct anv_device *device,
             return result;
       }
    } else if ((aspect & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) && image->vk.samples == 1) {
-      ok = isl_surf_get_ccs_surf(&device->isl_dev,
-                                 &image->planes[plane].primary_surface.isl,
-                                 NULL,
-                                 &image->planes[plane].aux_surface.isl,
-                                 stride);
+
+      if (device->info->has_flat_ccs || device->info->has_aux_map) {
+         ok = isl_surf_supports_ccs(&device->isl_dev,
+                                    &image->planes[plane].primary_surface.isl,
+                                    NULL);
+      } else {
+         ok = isl_surf_get_ccs_surf(&device->isl_dev,
+                                    &image->planes[plane].primary_surface.isl,
+                                    &image->planes[plane].aux_surface.isl,
+                                    stride);
+      }
       if (!ok)
          return VK_SUCCESS;
 
@@ -1548,6 +1554,8 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    image->vk.stencil_usage =
       anv_image_create_usage(pCreateInfo, image->vk.stencil_usage);
 
+   isl_surf_usage_flags_t isl_extra_usage_flags =
+      create_info->isl_extra_usage_flags;
    if (pCreateInfo->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       assert(!image->vk.wsi_legacy_scanout);
       mod_explicit_info =
@@ -1567,6 +1575,9 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       assert(isl_mod_info);
       assert(image->vk.drm_format_mod == DRM_FORMAT_MOD_INVALID);
       image->vk.drm_format_mod = isl_mod_info->modifier;
+
+      if (isl_drm_modifier_needs_display_layout(image->vk.drm_format_mod))
+         isl_extra_usage_flags |= ISL_SURF_USAGE_DISPLAY_BIT;
    }
 
    for (int i = 0; i < ANV_IMAGE_MEMORY_BINDING_END; ++i) {
@@ -1598,7 +1609,6 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    image->disjoint = image->n_planes > 1 &&
                      (pCreateInfo->flags & VK_IMAGE_CREATE_DISJOINT_BIT);
 
-   isl_surf_usage_flags_t isl_extra_usage_flags = create_info->isl_extra_usage_flags;
    if (anv_is_format_emulated(device->physical, pCreateInfo->format)) {
       assert(image->n_planes == 1 &&
              vk_format_is_compressed(image->vk.format));
@@ -1653,6 +1663,10 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       anv_perf_warn(VK_LOG_OBJS(&image->vk.base), "Enable multi-LOD HiZ");
       isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
    }
+
+   /* Mark WSI images with the right surf usage. */
+   if (image->from_wsi)
+      isl_extra_usage_flags |= ISL_SURF_USAGE_DISPLAY_BIT;
 
    const isl_tiling_flags_t isl_tiling_flags =
       choose_isl_tiling_flags(device->info, create_info, isl_mod_info,
@@ -1970,6 +1984,64 @@ resolve_ahw_image(struct anv_device *device,
 #endif
 }
 
+static bool
+anv_image_is_pat_compressible(struct anv_device *device, struct anv_image *image)
+{
+   if (INTEL_DEBUG(DEBUG_NO_CCS))
+      return false;
+
+   if (device->info->ver < 20)
+      return false;
+
+   /*
+    * Be aware that Vulkan spec requires that Images with some properties
+    * always returns the same memory types, so this function also needs to
+    * have the same return for the same set of properties.
+    *
+    *    For images created with a color format, the memoryTypeBits member is
+    *    identical for all VkImage objects created with the same combination
+    *    of values for the tiling member, the
+    *    VK_IMAGE_CREATE_SPARSE_BINDING_BIT bit of the flags member, the
+    *    VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT bit of the flags
+    *    member, handleTypes member of VkExternalMemoryImageCreateInfo, and
+    *    the VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT of the usage member in
+    *    the VkImageCreateInfo structure passed to vkCreateImage.
+    *
+    *    For images created with a depth/stencil format, the memoryTypeBits
+    *    member is identical for all VkImage objects created with the same
+    *    combination of values for the format member, the tiling member, the
+    *    VK_IMAGE_CREATE_SPARSE_BINDING_BIT bit of the flags member, the
+    *    VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT bit of the flags
+    *    member, handleTypes member of VkExternalMemoryImageCreateInfo, and
+    *    the VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT of the usage member in
+    *    the VkImageCreateInfo structure passed to vkCreateImage.
+    */
+
+   /* There are no compression-enabled modifiers on Xe2, and all legacy
+    * modifiers are not defined with compression. We simply disable
+    * compression on all modifiers.
+    *
+    * We disable this in anv_AllocateMemory() as well.
+    */
+   if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+      return false;
+
+   /* TODO: Enable compression on depth surfaces.
+    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/11361
+    */
+   for (uint32_t plane = 0; plane < image->n_planes; plane++) {
+      const struct isl_surf *surf =
+         &image->planes[plane].primary_surface.isl;
+      if (surf && isl_surf_usage_is_depth(surf->usage)) {
+         anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
+                       "Disable PAT-based compression on depth images.");
+         return false;
+      }
+   }
+
+   return true;
+}
+
 void
 anv_image_get_memory_requirements(struct anv_device *device,
                                   struct anv_image *image,
@@ -1983,10 +2055,15 @@ anv_image_get_memory_requirements(struct anv_device *device,
     *    only if the memory type `i` in the VkPhysicalDeviceMemoryProperties
     *    structure for the physical device is supported.
     */
-   uint32_t memory_types =
-      (image->vk.create_flags & VK_IMAGE_CREATE_PROTECTED_BIT) ?
-      device->physical->memory.protected_mem_types :
-      device->physical->memory.default_buffer_mem_types;
+   uint32_t memory_types;
+
+   if (image->vk.create_flags & VK_IMAGE_CREATE_PROTECTED_BIT) {
+      memory_types = device->physical->memory.protected_mem_types;
+   } else {
+      memory_types = device->physical->memory.default_buffer_mem_types;
+      if (anv_image_is_pat_compressible(device, image))
+         memory_types |= device->physical->memory.compressed_mem_types;
+   }
 
    vk_foreach_struct(ext, pMemoryRequirements->pNext) {
       switch (ext->sType) {
@@ -3469,6 +3546,17 @@ anv_can_fast_clear_color_view(struct anv_device *device,
           anv_surf->isl.logical_level0_px.w <= 256 &&
           anv_surf->isl.logical_level0_px.h <= 256)
          return false;
+   }
+
+   /* On gfx12.0, CCS fast clears don't seem to cover the correct portion of
+    * the aux buffer when the pitch is not 512B-aligned.
+    */
+   if (device->info->verx10 == 120 &&
+       iview->image->planes->primary_surface.isl.samples == 1 &&
+       iview->image->planes->primary_surface.isl.row_pitch_B % 512) {
+      anv_perf_warn(VK_LOG_OBJS(&iview->image->vk.base),
+                    "Pitch not 512B-aligned. Slow clearing surface.");
+      return false;
    }
 
    /* Disable sRGB fast-clears for non-0/1 color values on Gfx9. For texturing

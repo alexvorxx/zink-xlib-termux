@@ -217,8 +217,8 @@ agx_nir_lower_subgroups(nir_shader *s)
    bool progress = nir_lower_subgroups(s, &opts);
 
    /* Then do AGX-only lowerings on top */
-   progress |= nir_shader_intrinsics_pass(
-      s, lower, nir_metadata_block_index | nir_metadata_dominance, NULL);
+   progress |=
+      nir_shader_intrinsics_pass(s, lower, nir_metadata_control_flow, NULL);
 
    return progress;
 }

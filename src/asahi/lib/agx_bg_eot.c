@@ -40,9 +40,8 @@ agx_compile_bg_eot_shader(struct agx_bg_eot_cache *cache, nir_shader *shader,
       agx_nir_lower_multisampled_image_store(shader);
       agx_nir_lower_texture(shader);
 
-      nir_shader_intrinsics_pass(
-         shader, lower_tex_handle_to_u0,
-         nir_metadata_dominance | nir_metadata_block_index, NULL);
+      nir_shader_intrinsics_pass(shader, lower_tex_handle_to_u0,
+                                 nir_metadata_control_flow, NULL);
    }
 
    key->libagx = cache->dev->libagx;

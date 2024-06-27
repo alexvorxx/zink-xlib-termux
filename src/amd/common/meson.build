@@ -123,6 +123,7 @@ amd_common_files = files(
   'ac_pm4.c',
   'ac_pm4.h',
   'ac_vcn_av1_default.h',
+  'ac_vcn_dec.c',
 )
 
 if dep_elf.found()

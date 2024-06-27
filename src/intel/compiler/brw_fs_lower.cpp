@@ -703,3 +703,47 @@ brw_fs_lower_vgrfs_to_fixed_grfs(fs_visitor &s)
    s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
                          DEPENDENCY_VARIABLES);
 }
+
+bool
+brw_fs_lower_load_subgroup_invocation(fs_visitor &s)
+{
+   bool progress = false;
+
+   foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
+      if (inst->opcode != SHADER_OPCODE_LOAD_SUBGROUP_INVOCATION)
+         continue;
+
+      const fs_builder abld =
+         fs_builder(&s, block, inst).annotate("SubgroupInvocation", NULL);
+      const fs_builder ubld8 = abld.group(8, 0).exec_all();
+
+      if (inst->exec_size == 8) {
+         assert(inst->dst.type == BRW_TYPE_UD);
+         fs_reg uw = retype(inst->dst, BRW_TYPE_UW);
+         ubld8.MOV(uw, brw_imm_v(0x76543210));
+         ubld8.MOV(inst->dst, uw);
+      } else {
+         assert(inst->dst.type == BRW_TYPE_UW);
+         abld.UNDEF(inst->dst);
+         ubld8.MOV(inst->dst, brw_imm_v(0x76543210));
+         ubld8.ADD(byte_offset(inst->dst, 16), inst->dst, brw_imm_uw(8u));
+         if (inst->exec_size > 16) {
+            const fs_builder ubld16 = abld.group(16, 0).exec_all();
+            ubld16.ADD(byte_offset(inst->dst, 32), inst->dst, brw_imm_uw(16u));
+         }
+      }
+
+      inst->remove(block);
+      progress = true;
+
+      /* Currently this is only ever emitted once, so there's no point in
+       * continuing to look for more cases.  Drop if we ever re-emit it.
+       */
+      break;
+   }
+
+   if (progress)
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+
+   return progress;
+}

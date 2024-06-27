@@ -689,11 +689,29 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_fneu:
       result = emit_float_cmp(&ctx->ac, LLVMRealUNE, src[0], src[1]);
       break;
+   case nir_op_fequ:
+      result = emit_float_cmp(&ctx->ac, LLVMRealUEQ, src[0], src[1]);
+      break;
+   case nir_op_fneo:
+      result = emit_float_cmp(&ctx->ac, LLVMRealONE, src[0], src[1]);
+      break;
    case nir_op_flt:
       result = emit_float_cmp(&ctx->ac, LLVMRealOLT, src[0], src[1]);
       break;
    case nir_op_fge:
       result = emit_float_cmp(&ctx->ac, LLVMRealOGE, src[0], src[1]);
+      break;
+   case nir_op_fltu:
+      result = emit_float_cmp(&ctx->ac, LLVMRealULT, src[0], src[1]);
+      break;
+   case nir_op_fgeu:
+      result = emit_float_cmp(&ctx->ac, LLVMRealUGE, src[0], src[1]);
+      break;
+   case nir_op_funord:
+      result = emit_float_cmp(&ctx->ac, LLVMRealUNO, src[0], src[1]);
+      break;
+   case nir_op_ford:
+      result = emit_float_cmp(&ctx->ac, LLVMRealORD, src[0], src[1]);
       break;
    case nir_op_fabs:
       result =
@@ -1513,53 +1531,6 @@ static LLVMValueRef build_tex_intrinsic(struct ac_nir_context *ctx, const nir_te
    }
 
    return ac_build_image_opcode(&ctx->ac, args);
-}
-
-static LLVMValueRef visit_load_push_constant(struct ac_nir_context *ctx, nir_intrinsic_instr *instr)
-{
-   LLVMValueRef ptr, addr;
-   LLVMValueRef src0 = get_src(ctx, instr->src[0]);
-   unsigned index = nir_intrinsic_base(instr);
-   assert(instr->def.bit_size >= 32);
-
-   addr = LLVMConstInt(ctx->ac.i32, index, 0);
-   addr = LLVMBuildAdd(ctx->ac.builder, addr, src0, "");
-
-   /* Load constant values from user SGPRS when possible, otherwise
-    * fallback to the default path that loads directly from memory.
-    */
-   if (LLVMIsConstant(src0)) {
-      unsigned count = instr->def.num_components;
-      unsigned offset = index;
-
-      if (instr->def.bit_size == 64)
-         count *= 2;
-
-      offset += LLVMConstIntGetZExtValue(src0);
-      offset /= 4;
-
-      uint64_t mask = BITFIELD64_MASK(count) << offset;
-      if ((ctx->args->inline_push_const_mask | mask) == ctx->args->inline_push_const_mask &&
-          offset + count <= (sizeof(ctx->args->inline_push_const_mask) * 8u)) {
-         LLVMValueRef *const push_constants = alloca(count * sizeof(LLVMValueRef));
-         unsigned arg_index =
-            util_bitcount64(ctx->args->inline_push_const_mask & BITFIELD64_MASK(offset));
-         for (unsigned i = 0; i < count; i++)
-            push_constants[i] = ac_get_arg(&ctx->ac, ctx->args->inline_push_consts[arg_index++]);
-         LLVMValueRef res = ac_build_gather_values(&ctx->ac, push_constants, count);
-         return instr->def.bit_size == 64
-                   ? LLVMBuildBitCast(ctx->ac.builder, res, get_def_type(ctx, &instr->def), "")
-                   : res;
-      }
-   }
-
-   struct ac_llvm_pointer pc = ac_get_ptr_arg(&ctx->ac, ctx->args, ctx->args->push_constants);
-   ptr = LLVMBuildGEP2(ctx->ac.builder, pc.t, pc.v, &addr, 1, "");
-
-   LLVMTypeRef ptr_type = get_def_type(ctx, &instr->def);
-   ptr = ac_cast_ptr(&ctx->ac, ptr, ptr_type);
-
-   return LLVMBuildLoad2(ctx->ac.builder, ptr_type, ptr, "");
 }
 
 static LLVMValueRef visit_get_ssbo_size(struct ac_nir_context *ctx,
@@ -2487,12 +2458,10 @@ static void emit_discard(struct ac_nir_context *ctx, const nir_intrinsic_instr *
 {
    LLVMValueRef cond;
 
-   if (instr->intrinsic == nir_intrinsic_discard_if ||
-       instr->intrinsic == nir_intrinsic_terminate_if) {
+   if (instr->intrinsic == nir_intrinsic_terminate_if) {
       cond = LLVMBuildNot(ctx->ac.builder, get_src(ctx, instr->src[0]), "");
    } else {
-      assert(instr->intrinsic == nir_intrinsic_discard ||
-             instr->intrinsic == nir_intrinsic_terminate);
+      assert(instr->intrinsic == nir_intrinsic_terminate);
       cond = ctx->ac.i1false;
    }
 
@@ -3076,9 +3045,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_first_invocation:
       result = visit_first_invocation(ctx);
       break;
-   case nir_intrinsic_load_push_constant:
-      result = visit_load_push_constant(ctx, instr);
-      break;
    case nir_intrinsic_store_ssbo:
       visit_store_ssbo(ctx, instr);
       break;
@@ -3140,8 +3106,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_shader_clock:
       result = ac_build_shader_clock(&ctx->ac, nir_intrinsic_memory_scope(instr));
       break;
-   case nir_intrinsic_discard:
-   case nir_intrinsic_discard_if:
    case nir_intrinsic_terminate:
    case nir_intrinsic_terminate_if:
       emit_discard(ctx, instr);

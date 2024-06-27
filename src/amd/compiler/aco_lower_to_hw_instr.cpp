@@ -14,6 +14,8 @@
 
 namespace aco {
 
+namespace {
+
 struct lower_context {
    Program* program;
    Block* block;
@@ -2089,37 +2091,6 @@ emit_set_mode_from_block(Builder& bld, Program& program, Block* block)
 }
 
 void
-hw_init_scratch(Builder& bld, Definition def, Operand scratch_addr, Operand scratch_offset)
-{
-   /* Since we know what the high 16 bits of scratch_hi is, we can set all the high 16
-    * bits in the same instruction that we add the carry.
-    */
-   Operand hi_add = Operand::c32(0xffff0000 - S_008F04_SWIZZLE_ENABLE_GFX6(1));
-   Operand scratch_addr_lo(scratch_addr.physReg(), s1);
-   Operand scratch_addr_hi(scratch_addr_lo.physReg().advance(4), s1);
-
-   if (bld.program->gfx_level >= GFX10) {
-      PhysReg scratch_lo = def.physReg();
-      PhysReg scratch_hi = def.physReg().advance(4);
-
-      bld.sop2(aco_opcode::s_add_u32, Definition(scratch_lo, s1), Definition(scc, s1),
-               scratch_addr_lo, scratch_offset);
-      bld.sop2(aco_opcode::s_addc_u32, Definition(scratch_hi, s1), Definition(scc, s1),
-               scratch_addr_hi, hi_add, Operand(scc, s1));
-
-      /* "((size - 1) << 11) | register" (FLAT_SCRATCH_LO/HI is encoded as register
-       * 20/21) */
-      bld.sopk(aco_opcode::s_setreg_b32, Operand(scratch_lo, s1), (31 << 11) | 20);
-      bld.sopk(aco_opcode::s_setreg_b32, Operand(scratch_hi, s1), (31 << 11) | 21);
-   } else {
-      bld.sop2(aco_opcode::s_add_u32, Definition(flat_scr_lo, s1), Definition(scc, s1),
-               scratch_addr_lo, scratch_offset);
-      bld.sop2(aco_opcode::s_addc_u32, Definition(flat_scr_hi, s1), Definition(scc, s1),
-               scratch_addr_hi, hi_add, Operand(scc, s1));
-   }
-}
-
-void
 lower_image_sample(lower_context* ctx, aco_ptr<Instruction>& instr)
 {
    Operand linear_vgpr = instr->operands[3];
@@ -2177,6 +2148,39 @@ lower_image_sample(lower_context* ctx, aco_ptr<Instruction>& instr)
          instr->operands.pop_back();
    }
    std::copy(vaddr, vaddr + num_vaddr, std::next(instr->operands.begin(), 3));
+}
+
+} /* end namespace */
+
+void
+hw_init_scratch(Builder& bld, Definition def, Operand scratch_addr, Operand scratch_offset)
+{
+   /* Since we know what the high 16 bits of scratch_hi is, we can set all the high 16
+    * bits in the same instruction that we add the carry.
+    */
+   Operand hi_add = Operand::c32(0xffff0000 - S_008F04_SWIZZLE_ENABLE_GFX6(1));
+   Operand scratch_addr_lo(scratch_addr.physReg(), s1);
+   Operand scratch_addr_hi(scratch_addr_lo.physReg().advance(4), s1);
+
+   if (bld.program->gfx_level >= GFX10) {
+      PhysReg scratch_lo = def.physReg();
+      PhysReg scratch_hi = def.physReg().advance(4);
+
+      bld.sop2(aco_opcode::s_add_u32, Definition(scratch_lo, s1), Definition(scc, s1),
+               scratch_addr_lo, scratch_offset);
+      bld.sop2(aco_opcode::s_addc_u32, Definition(scratch_hi, s1), Definition(scc, s1),
+               scratch_addr_hi, hi_add, Operand(scc, s1));
+
+      /* "((size - 1) << 11) | register" (FLAT_SCRATCH_LO/HI is encoded as register
+       * 20/21) */
+      bld.sopk(aco_opcode::s_setreg_b32, Operand(scratch_lo, s1), (31 << 11) | 20);
+      bld.sopk(aco_opcode::s_setreg_b32, Operand(scratch_hi, s1), (31 << 11) | 21);
+   } else {
+      bld.sop2(aco_opcode::s_add_u32, Definition(flat_scr_lo, s1), Definition(scc, s1),
+               scratch_addr_lo, scratch_offset);
+      bld.sop2(aco_opcode::s_addc_u32, Definition(flat_scr_hi, s1), Definition(scc, s1),
+               scratch_addr_hi, hi_add, Operand(scc, s1));
+   }
 }
 
 void
@@ -2371,8 +2375,10 @@ lower_to_hw_instr(Program* program)
                   if (program->stage == fragment_fs)
                      bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0,
                              target, false, true, true);
-                  if (should_dealloc_vgprs)
+                  if (should_dealloc_vgprs) {
+                     bld.sopp(aco_opcode::s_nop, 0);
                      bld.sopp(aco_opcode::s_sendmsg, sendmsg_dealloc_vgprs);
+                  }
                   bld.sopp(aco_opcode::s_endpgm);
 
                   bld.reset(&ctx.instructions);

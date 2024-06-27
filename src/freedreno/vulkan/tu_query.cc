@@ -15,6 +15,7 @@
 
 #include "vk_util.h"
 
+#include "tu_buffer.h"
 #include "tu_cmd_buffer.h"
 #include "tu_cs.h"
 #include "tu_device.h"
@@ -880,6 +881,27 @@ emit_begin_occlusion_query(struct tu_cmd_buffer *cmdbuf,
       tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
                                        .write_sample_count = true).value);
       tu_cs_emit_qw(cs, begin_iova);
+
+      /* ZPASS_DONE events should come in begin-end pairs. When emitting and
+       * occlusion query outside of a renderpass, we emit a fake end event that
+       * closes the previous one since the autotuner's ZPASS_DONE use could end
+       * up causing problems. This events writes into the end field of the query
+       * slot, but it will be overwritten by events in emit_end_occlusion_query
+       * with the proper value.
+       * When inside a renderpass, the corresponding ZPASS_DONE event will be
+       * emitted in emit_end_occlusion_query. We note the use of ZPASS_DONE on
+       * the state object, enabling autotuner to optimize its own events.
+       */
+      if (!cmdbuf->state.pass) {
+         tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
+         tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
+                                          .write_sample_count = true,
+                                          .sample_count_end_offset = true,
+                                          .write_accum_sample_count_diff = true).value);
+         tu_cs_emit_qw(cs, begin_iova);
+      } else {
+         cmdbuf->state.rp.has_zpass_done_sample_count_write_in_rp = true;
+      }
    }
 }
 
@@ -1168,11 +1190,14 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
    uint64_t begin_iova = occlusion_query_iova(pool, query, begin);
    uint64_t result_iova = occlusion_query_iova(pool, query, result);
    uint64_t end_iova = occlusion_query_iova(pool, query, end);
-   tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 4);
-   tu_cs_emit_qw(cs, end_iova);
-   tu_cs_emit_qw(cs, 0xffffffffffffffffull);
 
-   tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+   if (!cmdbuf->device->physical_device->info->a7xx.has_event_write_sample_count) {
+      tu_cs_emit_pkt7(cs, CP_MEM_WRITE, 4);
+      tu_cs_emit_qw(cs, end_iova);
+      tu_cs_emit_qw(cs, 0xffffffffffffffffull);
+
+      tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+   }
 
    tu_cs_emit_regs(cs,
                    A6XX_RB_SAMPLE_COUNT_CONTROL(.copy = true));
@@ -1187,24 +1212,15 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
          tu_cs_emit_pkt7(cs, CP_EVENT_WRITE, 1);
          tu_cs_emit(cs, CCU_CLEAN_DEPTH);
       }
-   } else {
-      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
-      tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
-                                       .write_sample_count = true,
-                                       .sample_count_end_offset = true,
-                                       .write_accum_sample_count_diff = true).value);
-      tu_cs_emit_qw(cs, begin_iova);
-   }
 
-   tu_cs_emit_pkt7(cs, CP_WAIT_REG_MEM, 6);
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_NE) |
-                  CP_WAIT_REG_MEM_0_POLL(POLL_MEMORY));
-   tu_cs_emit_qw(cs, end_iova);
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_3_REF(0xffffffff));
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_4_MASK(~0));
-   tu_cs_emit(cs, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(16));
+      tu_cs_emit_pkt7(cs, CP_WAIT_REG_MEM, 6);
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_NE) |
+                     CP_WAIT_REG_MEM_0_POLL(POLL_MEMORY));
+      tu_cs_emit_qw(cs, end_iova);
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_3_REF(0xffffffff));
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_4_MASK(~0));
+      tu_cs_emit(cs, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(16));
 
-   if (!cmdbuf->device->physical_device->info->a7xx.has_event_write_sample_count) {
       /* result (dst) = result (srcA) + end (srcB) - begin (srcC) */
       tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 9);
       tu_cs_emit(cs, CP_MEM_TO_MEM_0_DOUBLE | CP_MEM_TO_MEM_0_NEG_C);
@@ -1212,9 +1228,32 @@ emit_end_occlusion_query(struct tu_cmd_buffer *cmdbuf,
       tu_cs_emit_qw(cs, result_iova);
       tu_cs_emit_qw(cs, end_iova);
       tu_cs_emit_qw(cs, begin_iova);
-   }
 
-   tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+      tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
+   } else {
+      /* When outside of renderpass, potential autotuner activity can cause
+       * interference between ZPASS_DONE event pairs. In that case, like at the
+       * beginning of the occlusion query, a fake ZPASS_DONE event is emitted to
+       * compose a begin-end event pair. The first event will write into the end
+       * field, but that will be overwritten by the second ZPASS_DONE which will
+       * also handle the diff accumulation.
+       */
+      if (!cmdbuf->state.pass) {
+         tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
+         tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
+                                          .write_sample_count = true).value);
+         tu_cs_emit_qw(cs, end_iova);
+      }
+
+      tu_cs_emit_pkt7(cs, CP_EVENT_WRITE7, 3);
+      tu_cs_emit(cs, CP_EVENT_WRITE7_0(.event = ZPASS_DONE,
+                                       .write_sample_count = true,
+                                       .sample_count_end_offset = true,
+                                       .write_accum_sample_count_diff = true).value);
+      tu_cs_emit_qw(cs, begin_iova);
+
+      tu_cs_emit_wfi(cs);
+   }
 
    if (pass)
       /* Technically, queries should be tracked per-subpass, but here we track
@@ -1443,7 +1482,7 @@ emit_end_xfb_query(struct tu_cmd_buffer *cmdbuf,
    tu_emit_event_write<CHIP>(cmdbuf, cs, FD_WRITE_PRIMITIVE_COUNTS);
 
    tu_cs_emit_wfi(cs);
-   tu_emit_event_write<CHIP>(cmdbuf, cs, FD_CACHE_FLUSH);
+   tu_emit_event_write<CHIP>(cmdbuf, cs, FD_CACHE_CLEAN);
 
    /* Set the count of written primitives */
    tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 9);
@@ -1454,7 +1493,7 @@ emit_end_xfb_query(struct tu_cmd_buffer *cmdbuf,
    tu_cs_emit_qw(cs, end_written_iova);
    tu_cs_emit_qw(cs, begin_written_iova);
 
-   tu_emit_event_write<CHIP>(cmdbuf, cs, FD_CACHE_FLUSH);
+   tu_emit_event_write<CHIP>(cmdbuf, cs, FD_CACHE_CLEAN);
 
    /* Set the count of generated primitives */
    tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 9);

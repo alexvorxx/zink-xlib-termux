@@ -1743,11 +1743,11 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
       bi_emit_ld_tile(b, instr);
       break;
 
-   case nir_intrinsic_discard_if:
+   case nir_intrinsic_terminate_if:
       bi_discard_b32(b, bi_src_index(&instr->src[0]));
       break;
 
-   case nir_intrinsic_discard:
+   case nir_intrinsic_terminate:
       bi_discard_f32(b, bi_zero(), bi_zero(), BI_CMPF_EQ);
       break;
 
@@ -4455,6 +4455,9 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
    uint32_t align = nir_combined_align(align_mul, align_offset);
    assert(util_is_power_of_two_nonzero(align));
 
+   /* No more than 16 bytes at a time. */
+   bytes = MIN2(bytes, 16);
+
    /* If the number of bytes is a multiple of 4, use 32-bit loads. Else if it's
     * a multiple of 2, use 16-bit loads. Else use 8-bit loads.
     */
@@ -4568,7 +4571,7 @@ bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS_V(nir, nir_shader_intrinsics_pass,
                  bifrost_nir_lower_blend_components,
-                 nir_metadata_block_index | nir_metadata_dominance, NULL);
+                 nir_metadata_control_flow, NULL);
    }
 
    /* Backend scheduler is purely local, so do some global optimizations
@@ -4787,7 +4790,7 @@ bifrost_nir_lower_load_output(nir_shader *nir)
 
    return nir_shader_intrinsics_pass(
       nir, bi_lower_load_output,
-      nir_metadata_block_index | nir_metadata_dominance, NULL);
+      nir_metadata_control_flow, NULL);
 }
 
 static bool
@@ -4811,8 +4814,6 @@ bi_lower_load_push_const_with_dyn_offset(nir_builder *b,
    uint32_t base = nir_intrinsic_base(intr);
    uint32_t range = nir_intrinsic_range(intr);
    uint32_t nwords = intr->def.num_components;
-   uint32_t first_word = base / 4;
-   uint32_t last_word = (base + range) / 4;
 
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -4822,12 +4823,12 @@ bi_lower_load_push_const_with_dyn_offset(nir_builder *b,
     */
    nir_def *lut[64] = {0};
 
-   assert(last_word <= ARRAY_SIZE(lut));
+   assert(range / 4 <= ARRAY_SIZE(lut));
 
    /* Load all words in the range. */
-   for (uint32_t w = first_word; w < last_word; w++) {
+   for (uint32_t w = 0; w < range / 4; w++) {
       lut[w] = nir_load_push_constant(b, 1, 32, nir_imm_int(b, 0),
-                                      .base = w * 4, .range = 4);
+                                      .base = base + (w * 4), .range = 4);
    }
 
    nir_def *index = intr->src[0].ssa;
@@ -4840,10 +4841,10 @@ bi_lower_load_push_const_with_dyn_offset(nir_builder *b,
       uint32_t stride = lut_sz / 2;
       nir_def *bit_test = NULL;
 
-      /* Stop when the first and last component don't fit in the new LUT
-       * window.
+      /* Stop when the LUT is smaller than the number of words we're trying to
+       * extract.
        */
-      if (((first_word + nwords - 1) & stride) != (first_word & stride))
+      if (lut_sz <= nwords)
          break;
 
       for (uint32_t i = 0; i < stride; i++) {
@@ -4863,14 +4864,9 @@ bi_lower_load_push_const_with_dyn_offset(nir_builder *b,
             lut[i] = lut[i + stride];
          }
       }
-
-      /* Adjust first_word so it always points to the bottom half of our LUT,
-       * which contains the result of the CSELs we've just done.
-       */
-      first_word &= stride - 1;
    }
 
-   nir_def *res = nir_vec(b, &lut[first_word], nwords);
+   nir_def *res = nir_vec(b, &lut[0], nwords);
 
    nir_def_rewrite_uses(&intr->def, res);
    nir_instr_remove(&intr->instr);
@@ -4934,7 +4930,7 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
                  ~bi_fp32_varying_mask(nir), false);
 
       NIR_PASS_V(nir, nir_shader_intrinsics_pass, bi_lower_sample_mask_writes,
-                 nir_metadata_block_index | nir_metadata_dominance, NULL);
+                 nir_metadata_control_flow, NULL);
 
       NIR_PASS_V(nir, bifrost_nir_lower_load_output);
    } else if (nir->info.stage == MESA_SHADER_VERTEX) {
@@ -4957,7 +4953,7 @@ bifrost_preprocess_nir(nir_shader *nir, unsigned gpu_id)
 
    NIR_PASS_V(nir, nir_shader_intrinsics_pass,
               bi_lower_load_push_const_with_dyn_offset,
-              nir_metadata_block_index | nir_metadata_dominance, NULL);
+              nir_metadata_control_flow, NULL);
 
    NIR_PASS_V(nir, nir_lower_ssbo);
    NIR_PASS_V(nir, pan_lower_sample_pos);
@@ -5019,7 +5015,7 @@ bi_compile_variant_nir(nir_shader *nir,
          ctx->nir = nir = nir_shader_clone(ctx, nir);
 
       NIR_PASS_V(nir, nir_shader_instructions_pass, bifrost_nir_specialize_idvs,
-                 nir_metadata_block_index | nir_metadata_dominance, &idvs);
+                 nir_metadata_control_flow, &idvs);
 
       /* After specializing, clean up the mess */
       bool progress = true;

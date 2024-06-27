@@ -307,7 +307,8 @@ anv_import_ahw_memory(VkDevice device_h,
    if (dma_buf < 0)
       return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 
-   VkResult result = anv_device_import_bo(device, dma_buf, 0,
+   VkResult result = anv_device_import_bo(device, dma_buf,
+                                          ANV_BO_ALLOC_EXTERNAL,
                                           0 /* client_address */,
                                           &mem->bo);
    assert(result == VK_SUCCESS);

@@ -585,7 +585,6 @@ zink_start_batch(struct zink_context *ctx)
 
    bs->fence.completed = false;
 
-#ifdef HAVE_RENDERDOC_APP_H
    if (VKCTX(CmdInsertDebugUtilsLabelEXT) && screen->renderdoc_api) {
       VkDebugUtilsLabelEXT capture_label;
       /* Magic fallback which lets us bridge the Wine barrier over to Linux RenderDoc. */
@@ -604,7 +603,6 @@ zink_start_batch(struct zink_context *ctx)
       screen->renderdoc_api->StartFrameCapture(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(screen->instance), NULL);
       screen->renderdoc_capturing = true;
    }
-#endif
 
    /* descriptor buffers must always be bound at the start of a batch */
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB && !(ctx->flags & ZINK_CONTEXT_COPY_ONLY))
@@ -958,12 +956,11 @@ zink_end_batch(struct zink_context *ctx)
       submit_queue(bs, NULL, 0);
       post_submit(bs, NULL, 0);
    }
-#ifdef HAVE_RENDERDOC_APP_H
+
    if (!(ctx->flags & ZINK_CONTEXT_COPY_ONLY) && screen->renderdoc_capturing && p_atomic_read(&screen->renderdoc_frame) > screen->renderdoc_capture_end) {
       screen->renderdoc_api->EndFrameCapture(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(screen->instance), NULL);
       screen->renderdoc_capturing = false;
    }
-#endif
 }
 
 ALWAYS_INLINE static void

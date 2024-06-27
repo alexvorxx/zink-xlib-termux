@@ -303,8 +303,7 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
 
       nir_def *desc = load_ssbo_desc(b, &intrin->src[0], s);
       nir_def *size = nir_channel(b, desc, 2);
-      nir_def_rewrite_uses(&intrin->def, size);
-      nir_instr_remove(&intrin->instr);
+      nir_def_replace(&intrin->def, size);
       break;
    }
    case nir_intrinsic_image_deref_load:
@@ -335,8 +334,7 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
       nir_def *desc = load_deref_image_desc(b, deref, desc_type, is_load, s);
 
       if (intrin->intrinsic == nir_intrinsic_image_deref_descriptor_amd) {
-         nir_def_rewrite_uses(&intrin->def, desc);
-         nir_instr_remove(&intrin->instr);
+         nir_def_replace(&intrin->def, desc);
       } else {
          nir_intrinsic_set_image_dim(intrin, glsl_get_sampler_dim(deref->type));
          nir_intrinsic_set_image_array(intrin, glsl_sampler_type_is_array(deref->type));
@@ -349,7 +347,8 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
    case nir_intrinsic_bindless_image_fragment_mask_load_amd:
    case nir_intrinsic_bindless_image_store:
    case nir_intrinsic_bindless_image_atomic:
-   case nir_intrinsic_bindless_image_atomic_swap: {
+   case nir_intrinsic_bindless_image_atomic_swap:
+   case nir_intrinsic_bindless_image_descriptor_amd: {
       assert(!(nir_intrinsic_access(intrin) & ACCESS_NON_UNIFORM));
 
       enum ac_descriptor_type desc_type;
@@ -376,8 +375,7 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
       nir_def *desc = load_bindless_image_desc(b, index, desc_type, is_load, s);
 
       if (intrin->intrinsic == nir_intrinsic_bindless_image_descriptor_amd) {
-         nir_def_rewrite_uses(&intrin->def, desc);
-         nir_instr_remove(&intrin->instr);
+         nir_def_replace(&intrin->def, desc);
       } else {
          nir_src_rewrite(&intrin->src[0], desc);
       }
@@ -515,8 +513,7 @@ static bool lower_resource_tex(nir_builder *b, nir_tex_instr *tex,
          image = load_deref_sampler_desc(b, texture_deref, desc_type, s, true);
       else
          image = load_bindless_sampler_desc(b, texture_handle, desc_type, s);
-      nir_def_rewrite_uses(&tex->def, image);
-      nir_instr_remove(&tex->instr);
+      nir_def_replace(&tex->def, image);
       return true;
    }
 
@@ -526,8 +523,7 @@ static bool lower_resource_tex(nir_builder *b, nir_tex_instr *tex,
          sampler = load_deref_sampler_desc(b, sampler_deref, AC_DESC_SAMPLER, s, true);
       else
          sampler = load_bindless_sampler_desc(b, sampler_handle, AC_DESC_SAMPLER, s);
-      nir_def_rewrite_uses(&tex->def, sampler);
-      nir_instr_remove(&tex->instr);
+      nir_def_replace(&tex->def, sampler);
       return true;
    }
 
@@ -595,6 +591,6 @@ bool si_nir_lower_resource(nir_shader *nir, struct si_shader *shader,
    };
 
    return nir_shader_instructions_pass(nir, lower_resource_instr,
-                                       nir_metadata_dominance | nir_metadata_block_index,
+                                       nir_metadata_control_flow,
                                        &state);
 }

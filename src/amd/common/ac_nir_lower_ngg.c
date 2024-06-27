@@ -725,7 +725,7 @@ static void
 remove_culling_shader_outputs(nir_shader *culling_shader, lower_ngg_nogs_state *s)
 {
    nir_shader_instructions_pass(culling_shader, remove_culling_shader_output,
-                                nir_metadata_block_index | nir_metadata_dominance, s);
+                                nir_metadata_control_flow, s);
 
    /* Remove dead code resulting from the deleted outputs. */
    bool progress;
@@ -836,7 +836,7 @@ static void
 remove_extra_pos_outputs(nir_shader *shader, lower_ngg_nogs_state *s)
 {
    nir_shader_instructions_pass(shader, remove_extra_pos_output,
-                                nir_metadata_block_index | nir_metadata_dominance,
+                                nir_metadata_control_flow,
                                 s);
 }
 

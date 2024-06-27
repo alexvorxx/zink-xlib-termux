@@ -779,12 +779,13 @@ blorp_emit_ps_config(struct blorp_batch *batch,
       switch (params->fast_clear_op) {
       case ISL_AUX_OP_NONE:
          break;
+#if GFX_VER < 20
 #if GFX_VER >= 10
       case ISL_AUX_OP_AMBIGUATE:
          ps.RenderTargetFastClearEnable = true;
          ps.RenderTargetResolveType = FAST_CLEAR_0;
          break;
-#endif
+#endif /* GFX_VER >= 10 */
       case ISL_AUX_OP_PARTIAL_RESOLVE:
          ps.RenderTargetResolveType = RESOLVE_PARTIAL;
          break;
@@ -800,6 +801,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 #endif
          ps.RenderTargetResolveType = RESOLVE_FULL;
          break;
+#endif /* GFX_VER < 20 */
       case ISL_AUX_OP_FAST_CLEAR:
          /* WA 1406738321:
           * 3D/Volumetric surfaces do not support Fast Clear operation.

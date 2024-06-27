@@ -49,6 +49,7 @@ static const struct debug_named_value shader_debug_options[] = {
    {"nopreamble", IR3_DBG_NOPREAMBLE, "Disable the preamble pass"},
    {"fullsync",   IR3_DBG_FULLSYNC,   "Add (sy) + (ss) after each cat5/cat6"},
    {"fullnop",    IR3_DBG_FULLNOP,    "Add nops before each instruction"},
+   {"noearlypreamble", IR3_DBG_NOEARLYPREAMBLE, "Disable early preambles"},
 #if MESA_DEBUG
    /* MESA_DEBUG-only options: */
    {"schedmsgs",  IR3_DBG_SCHEDMSGS,  "Enable scheduler debug messages"},
@@ -224,6 +225,10 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->has_branch_and_or = true;
       compiler->has_predication = true;
       compiler->has_scalar_alu = dev_info->a6xx.has_scalar_alu;
+      compiler->has_isam_v = dev_info->a6xx.has_isam_v;
+      compiler->has_ssbo_imm_offsets = dev_info->a6xx.has_ssbo_imm_offsets;
+      compiler->fs_must_have_non_zero_constlen_quirk = dev_info->a7xx.fs_must_have_non_zero_constlen_quirk;
+      compiler->has_early_preamble = dev_info->a6xx.has_early_preamble;
    } else {
       compiler->max_const_pipeline = 512;
       compiler->max_const_geom = 512;
@@ -236,6 +241,9 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->max_const_safe = 256;
 
       compiler->has_scalar_alu = false;
+      compiler->has_isam_v = false;
+      compiler->has_ssbo_imm_offsets = false;
+      compiler->has_early_preamble = false;
    }
 
    /* This is just a guess for a4xx. */

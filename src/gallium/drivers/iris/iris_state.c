@@ -1232,6 +1232,12 @@ toggle_protected(struct iris_batch *batch)
 #endif
 }
 
+#if GFX_VER >= 20
+#define _3DSTATE_DRAWING_RECTANGLE GENX(3DSTATE_DRAWING_RECTANGLE_FAST)
+#else
+#define _3DSTATE_DRAWING_RECTANGLE GENX(3DSTATE_DRAWING_RECTANGLE)
+#endif
+
 /**
  * Upload the initial GPU state for a render context.
  *
@@ -1369,6 +1375,13 @@ iris_init_render_context(struct iris_batch *batch)
    };
 #endif
 
+#if GFX_VER >= 20
+   iris_emit_cmd(batch, GENX(3DSTATE_3D_MODE), p) {
+      p.DX10OGLBorderModeforYCRCB = true;
+      p.DX10OGLBorderModeforYCRCBMask = true;
+   }
+#endif
+
    upload_pixel_hashing_tables(batch);
 
    /* 3DSTATE_DRAWING_RECTANGLE is non-pipelined, so we want to avoid
@@ -1376,7 +1389,7 @@ iris_init_render_context(struct iris_batch *batch)
     * instead include the render target dimensions in the viewport, so
     * viewport extents clipping takes care of pruning stray geometry.
     */
-   iris_emit_cmd(batch, GENX(3DSTATE_DRAWING_RECTANGLE), rect) {
+   iris_emit_cmd(batch, _3DSTATE_DRAWING_RECTANGLE, rect) {
       rect.ClippedDrawingRectangleXMax = UINT16_MAX;
       rect.ClippedDrawingRectangleYMax = UINT16_MAX;
    }
@@ -1410,8 +1423,14 @@ iris_init_render_context(struct iris_batch *batch)
    iris_emit_cmd(batch, GENX(3DSTATE_TASK_CONTROL), foo);
 #endif
 
-   iris_alloc_push_constants(batch);
+#if INTEL_NEEDS_WA_14019857787
+   iris_emit_cmd(batch, GENX(3DSTATE_3D_MODE), p) {
+      p.EnableOOOreadsinRCPB = true;
+      p.EnableOOOreadsinRCPBMask = true;
+   }
+#endif
 
+   iris_alloc_push_constants(batch);
 
 #if GFX_VER >= 12
    init_aux_map_state(batch);
@@ -4960,13 +4979,25 @@ encode_sampler_count(const struct iris_compiled_shader *shader)
       INIT_THREAD_SCRATCH_SIZE(pkt)                                       \
    }
 
+/* Note that on Gfx12HP we pass a scratch space surface state offset
+ * shifted by 2 relative to the value specified on the BSpec, since
+ * that allows the compiler to save a shift instruction while
+ * constructing the extended descriptor for SS addressing.  That
+ * worked because we limit the scratch surface state pool to 8 MB and
+ * because we relied on the legacy (ExBSO=0) encoding of the extended
+ * descriptor in order to save the shift, which is no longer supported
+ * for the UGM shared function on Xe2 platforms, so we no longer
+ * attempt to do that trick.
+ */
+#define SCRATCH_SPACE_BUFFER_SHIFT (GFX_VER >= 20 ? 6 : 4)
+
 #if GFX_VERx10 >= 125
 #define INIT_THREAD_SCRATCH_SIZE(pkt)
 #define MERGE_SCRATCH_ADDR(name)                                          \
 {                                                                         \
    uint32_t pkt2[GENX(name##_length)] = {0};                              \
    _iris_pack_command(batch, GENX(name), pkt2, p) {                       \
-      p.ScratchSpaceBuffer = scratch_addr >> 4;                           \
+      p.ScratchSpaceBuffer = scratch_addr >> SCRATCH_SPACE_BUFFER_SHIFT;  \
    }                                                                      \
    iris_emit_merge(batch, pkt, pkt2, GENX(name##_length));                \
 }
@@ -5080,6 +5111,9 @@ iris_store_tes_state(const struct intel_device_info *devinfo,
 
    iris_pack_command(GENX(3DSTATE_TE), te_state, te) {
       te.Partitioning = tes_data->partitioning;
+#if GFX_VER >= 20
+      te.NumberOfRegionsPerPatch = 2;
+#endif
       te.OutputTopology = tes_data->output_topology;
       te.TEDomain = tes_data->domain;
       te.TEEnable = true;
@@ -5219,6 +5253,17 @@ iris_store_fs_state(const struct intel_device_info *devinfo,
       psx.PixelShaderPullsBary = fs_data->pulls_bary;
 #endif
       psx.PixelShaderComputesStencil = fs_data->computed_stencil;
+#endif
+
+#if GFX_VER >= 11
+      psx.PixelShaderRequiresSubpixelSampleOffsets =
+         fs_data->uses_sample_offsets;
+      psx.PixelShaderRequiresNonPerspectiveBaryPlaneCoefficients =
+         fs_data->uses_npc_bary_coefficients;
+      psx.PixelShaderRequiresPerspectiveBaryPlaneCoefficients =
+         fs_data->uses_pc_bary_coefficients;
+      psx.PixelShaderRequiresSourceDepthandorWPlaneCoefficients =
+         fs_data->uses_depth_w_coefficients;
 #endif
    }
 }
@@ -7244,7 +7289,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
 #endif
 
 #if GFX_VERx10 >= 125
-               ps.ScratchSpaceBuffer = scratch_addr >> 4;
+               ps.ScratchSpaceBuffer = scratch_addr >> SCRATCH_SPACE_BUFFER_SHIFT;
 #else
                ps.ScratchSpaceBasePointer =
                   rw_bo(NULL, scratch_addr, IRIS_DOMAIN_NONE);
@@ -7291,7 +7336,8 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             uint32_t ds_state[GENX(3DSTATE_DS_length)] = { 0 };
             iris_pack_command(GENX(3DSTATE_DS), ds_state, ds) {
                if (scratch_addr)
-                  ds.ScratchSpaceBuffer = scratch_addr >> 4;
+                  ds.ScratchSpaceBuffer =
+                     scratch_addr >> SCRATCH_SPACE_BUFFER_SHIFT;
             }
 
             uint32_t *shader_ds = (uint32_t *) shader->derived_data;
@@ -8870,7 +8916,7 @@ iris_upload_compute_walker(struct iris_context *ice,
             devinfo->max_cs_threads * devinfo->subslice_total;
          uint32_t scratch_addr = pin_scratch_space(ice, batch, shader,
                                                    MESA_SHADER_COMPUTE);
-         cfe.ScratchSpaceBuffer = scratch_addr >> 4;
+         cfe.ScratchSpaceBuffer = scratch_addr >> SCRATCH_SPACE_BUFFER_SHIFT;
       }
    }
 

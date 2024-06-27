@@ -1198,7 +1198,7 @@ validate_ra(Program* program)
       return false;
 
    bool err = false;
-   aco::live live_vars = aco::live_var_analysis(program);
+   aco::live_var_analysis(program);
    std::vector<std::vector<Temp>> phi_sgpr_ops(program->blocks.size());
    uint16_t sgpr_limit = get_addr_sgpr_from_waves(program, program->num_waves);
 
@@ -1287,7 +1287,7 @@ validate_ra(Program* program)
       std::array<unsigned, 2048> regs; /* register file in bytes */
       regs.fill(0);
 
-      IDSet live = live_vars.live_out[block.index];
+      IDSet live = program->live.live_out[block.index];
       /* remove killed p_phi sgpr operands */
       for (Temp tmp : phi_sgpr_ops[block.index])
          live.erase(tmp.id());

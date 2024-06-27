@@ -874,6 +874,7 @@ struct si_shader {
    bool is_binary_shared;
    bool is_gs_copy_shader;
    uint8_t wave_size;
+   unsigned complete_shader_binary_size;
 
    /* The following data is all that's needed for binary shaders. */
    struct si_shader_binary binary;
@@ -1008,6 +1009,7 @@ bool si_shader_binary_open(struct si_screen *screen, struct si_shader *shader,
 bool si_get_external_symbol(enum amd_gfx_level gfx_level, void *data, const char *name,
                             uint64_t *value);
 unsigned si_get_shader_prefetch_size(struct si_shader *shader);
+unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_shader *shader);
 
 /* si_shader_info.c */
 void si_nir_scan_shader(struct si_screen *sscreen,  const struct nir_shader *nir,

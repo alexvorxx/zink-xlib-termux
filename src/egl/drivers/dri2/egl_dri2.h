@@ -527,6 +527,12 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config,
 void
 dri2_add_pbuffer_configs_for_visuals(_EGLDisplay *disp);
 
+EGLint
+dri2_from_dri_compression_rate(enum __DRIFixedRateCompression rate);
+
+enum __DRIFixedRateCompression
+dri2_to_dri_compression_rate(EGLint rate);
+
 _EGLImage *
 dri2_create_image_khr(_EGLDisplay *disp, _EGLContext *ctx, EGLenum target,
                       EGLClientBuffer buffer, const EGLint *attr_list);

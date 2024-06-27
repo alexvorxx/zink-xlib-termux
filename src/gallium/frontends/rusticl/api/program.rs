@@ -22,7 +22,7 @@ use std::ptr;
 use std::slice;
 use std::sync::Arc;
 
-#[cl_info_entrypoint(cl_get_program_info)]
+#[cl_info_entrypoint(clGetProgramInfo)]
 impl CLInfo<cl_program_info> for cl_program {
     fn query(&self, q: cl_program_info, vals: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
         let prog = Program::ref_from_raw(*self)?;
@@ -60,7 +60,7 @@ impl CLInfo<cl_program_info> for cl_program {
     }
 }
 
-#[cl_info_entrypoint(cl_get_program_build_info)]
+#[cl_info_entrypoint(clGetProgramBuildInfo)]
 impl CLInfoObj<cl_program_build_info, cl_device_id> for cl_program {
     fn query(&self, d: cl_device_id, q: cl_program_build_info) -> CLResult<Vec<MaybeUninit<u8>>> {
         let prog = Program::ref_from_raw(*self)?;
@@ -93,7 +93,7 @@ fn validate_devices<'a>(
     Ok(devs)
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clCreateProgramWithSource)]
 fn create_program_with_source(
     context: cl_context,
     count: cl_uint,
@@ -172,7 +172,7 @@ fn create_program_with_source(
     .into_cl())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clCreateProgramWithBinary)]
 fn create_program_with_binary(
     context: cl_context,
     num_devices: cl_uint,
@@ -233,7 +233,7 @@ fn create_program_with_binary(
     //• CL_INVALID_BINARY if an invalid program binary was encountered for any device. binary_status will return specific status for each device.
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clCreateProgramWithIL)]
 fn create_program_with_il(
     context: cl_context,
     il: *const ::std::os::raw::c_void,
@@ -251,12 +251,12 @@ fn create_program_with_il(
     Ok(Program::from_spirv(c, spirv).into_cl())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clRetainProgram)]
 fn retain_program(program: cl_program) -> CLResult<()> {
     Program::retain(program)
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clReleaseProgram)]
 fn release_program(program: cl_program) -> CLResult<()> {
     Program::release(program)
 }
@@ -272,7 +272,7 @@ fn debug_logging(p: &Program, devs: &[&Device]) {
     }
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clBuildProgram)]
 fn build_program(
     program: cl_program,
     num_devices: cl_uint,
@@ -317,7 +317,7 @@ fn build_program(
     }
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clCompileProgram)]
 fn compile_program(
     program: cl_program,
     num_devices: cl_uint,
@@ -462,7 +462,7 @@ pub fn link_program(
     //• CL_INVALID_OPERATION if the rules for devices containing compiled binaries or libraries as described in input_programs argument above are not followed.
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clSetProgramSpecializationConstant)]
 fn set_program_specialization_constant(
     program: cl_program,
     spec_id: cl_uint,
@@ -497,7 +497,7 @@ fn set_program_specialization_constant(
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clSetProgramReleaseCallback)]
 fn set_program_release_callback(
     _program: cl_program,
     _pfn_notify: ::std::option::Option<FuncProgramCB>,

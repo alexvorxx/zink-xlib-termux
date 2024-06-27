@@ -139,7 +139,7 @@ test_format_float(unsigned verbose, FILE *fp,
                   const struct util_format_description *desc,
                   unsigned use_cache)
 {
-   LLVMContextRef context;
+   lp_context_ref context;
    struct gallivm_state *gallivm;
    LLVMValueRef fetch = NULL;
    fetch_ptr_t fetch_ptr;
@@ -149,11 +149,8 @@ test_format_float(unsigned verbose, FILE *fp,
    bool success = true;
    unsigned i, j, k, l;
 
-   context = LLVMContextCreate();
-#if LLVM_VERSION_MAJOR == 15
-   LLVMContextSetOpaquePointers(context, false);
-#endif
-   gallivm = gallivm_create("test_module_float", context, NULL);
+   lp_context_create(&context);
+   gallivm = gallivm_create("test_module_float", &context, NULL);
 
    fetch = add_fetch_rgba_test(gallivm, verbose, desc,
                                lp_float32_vec4_type(), use_cache);
@@ -228,7 +225,7 @@ test_format_float(unsigned verbose, FILE *fp,
    }
 
    gallivm_destroy(gallivm);
-   LLVMContextDispose(context);
+   lp_context_destroy(&context);
 
    if (fp)
       write_tsv_row(fp, desc, success);
@@ -243,7 +240,7 @@ test_format_unorm8(unsigned verbose, FILE *fp,
                    const struct util_format_description *desc,
                    unsigned use_cache)
 {
-   LLVMContextRef context;
+   lp_context_ref context;
    struct gallivm_state *gallivm;
    LLVMValueRef fetch = NULL;
    fetch_ptr_t fetch_ptr;
@@ -253,11 +250,8 @@ test_format_unorm8(unsigned verbose, FILE *fp,
    bool success = true;
    unsigned i, j, k, l;
 
-   context = LLVMContextCreate();
-#if LLVM_VERSION_MAJOR == 15
-   LLVMContextSetOpaquePointers(context, false);
-#endif
-   gallivm = gallivm_create("test_module_unorm8", context, NULL);
+   lp_context_create(&context);
+   gallivm = gallivm_create("test_module_unorm8", &context, NULL);
 
    fetch = add_fetch_rgba_test(gallivm, verbose, desc,
                                lp_unorm8_vec4_type(), use_cache);
@@ -331,7 +325,7 @@ test_format_unorm8(unsigned verbose, FILE *fp,
    }
 
    gallivm_destroy(gallivm);
-   LLVMContextDispose(context);
+   lp_context_destroy(&context);
 
    if (fp)
       write_tsv_row(fp, desc, success);

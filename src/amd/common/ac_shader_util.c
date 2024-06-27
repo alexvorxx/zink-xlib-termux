@@ -69,6 +69,8 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->has_bfe = true;
    options->has_bfm = true;
    options->has_bitfield_select = true;
+   options->has_fneo_fcmpu = true;
+   options->has_ford_funord = true;
    options->has_fsub = true;
    options->has_isub = true;
    options->has_sdot_4x8 = info->has_accelerated_dot_product;
@@ -93,6 +95,7 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->lower_fisnormal = true;
    options->support_16bit_alu = info->gfx_level >= GFX8;
    options->vectorize_vec2_16bit = info->has_packed_math_16bit;
+   options->discard_is_demote = true;
 }
 
 bool

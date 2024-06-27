@@ -823,7 +823,7 @@ bool si_nir_lower_abi(nir_shader *nir, struct si_shader *shader, struct si_shade
    }
 
    nir_metadata preserved = progress ?
-      nir_metadata_dominance | nir_metadata_block_index :
+      nir_metadata_control_flow :
       nir_metadata_all;
    nir_metadata_preserve(impl, preserved);
 

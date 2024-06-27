@@ -444,8 +444,7 @@ r600_nir_lower_atomics(nir_shader *shader)
    }
 
    return nir_shader_intrinsics_pass(shader, r600_lower_deref_instr,
-                                     nir_metadata_block_index | nir_metadata_dominance,
-                                     NULL);
+                                     nir_metadata_control_flow, NULL);
 }
 using r600::r600_lower_fs_out_to_vector;
 using r600::r600_lower_scratch_addresses;

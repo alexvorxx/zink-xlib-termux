@@ -107,12 +107,10 @@ static nir_def *
 load_sample_pos_at(nir_builder *b, nir_def *sample_id,
                    const struct nak_fs_key *fs_key)
 {
-   nir_def *loc = nir_load_ubo(b, 1, 64,
-                               nir_imm_int(b, fs_key->sample_locations_cb),
-                               nir_imm_int(b, fs_key->sample_locations_offset),
-                               .align_mul = 8,
-                               .align_offset = 0,
-                               .range = fs_key->sample_locations_offset + 8);
+   nir_def *loc = nir_ldc_nv(b, 1, 64,
+                             nir_imm_int(b, fs_key->sample_locations_cb),
+                             nir_imm_int(b, fs_key->sample_locations_offset),
+                             .align_mul = 8, .align_offset = 0);
 
    /* Yay little endian */
    loc = nir_ushr(b, loc, nir_imul_imm(b, sample_id, 8));
@@ -344,8 +342,7 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       return false;
    }
 
-   nir_def_rewrite_uses(&intrin->def, res);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, res);
 
    return true;
 }
@@ -360,7 +357,7 @@ nak_nir_lower_fs_inputs(nir_shader *nir,
       .fs_key = fs_key,
    };
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_fs_input_intrin,
-              nir_metadata_block_index | nir_metadata_dominance,
+              nir_metadata_control_flow,
               (void *)&fs_in_ctx);
 
    return true;

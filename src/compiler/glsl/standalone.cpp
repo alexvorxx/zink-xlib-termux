@@ -38,7 +38,6 @@
 #include "util/set.h"
 #include "linker.h"
 #include "glsl_parser_extras.h"
-#include "ir_builder_print_visitor.h"
 #include "builtin_functions.h"
 #include "opt_add_neg_to_sub.h"
 #include "main/mtypes.h"
@@ -472,47 +471,10 @@ standalone_compile_shader(const struct standalone_options *_options,
       }
    }
 
-   if (status == EXIT_SUCCESS) {
+   if (status == EXIT_SUCCESS && options->do_link) {
       _mesa_clear_shader_program_data(ctx, whole_program);
 
-      if (options->do_link)  {
-         link_shaders(ctx, whole_program);
-      } else {
-         const gl_shader_stage stage = whole_program->Shaders[0]->Stage;
-
-         whole_program->data->LinkStatus = LINKING_SUCCESS;
-         whole_program->_LinkedShaders[stage] =
-            link_intrastage_shaders(whole_program /* mem_ctx */,
-                                    ctx,
-                                    whole_program,
-                                    whole_program->Shaders,
-                                    1,
-                                    true);
-
-         /* Par-linking can fail, for example, if there are undefined external
-          * references.
-          */
-         if (whole_program->_LinkedShaders[stage] != NULL) {
-            assert(whole_program->data->LinkStatus);
-
-            struct gl_shader_compiler_options *const compiler_options =
-               &ctx->Const.ShaderCompilerOptions[stage];
-
-            exec_list *const ir =
-               whole_program->_LinkedShaders[stage]->ir;
-
-            bool progress;
-            do {
-               progress = do_function_inlining(ir);
-
-               progress = do_common_optimization(ir,
-                                                 false,
-                                                 compiler_options,
-                                                 true)
-                  && progress;
-            } while(progress);
-         }
-      }
+      link_shaders(ctx, whole_program);
 
       status = (whole_program->data->LinkStatus) ? EXIT_SUCCESS : EXIT_FAILURE;
 
@@ -537,17 +499,6 @@ standalone_compile_shader(const struct standalone_options *_options,
          dead_variable_visitor dv;
          visit_list_elements(&dv, shader->ir);
          dv.remove_dead_variables();
-      }
-
-      if (options->dump_builder) {
-         for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
-            struct gl_linked_shader *shader = whole_program->_LinkedShaders[i];
-
-            if (!shader)
-               continue;
-
-            _mesa_print_builder_for_ir(stdout, shader->ir);
-         }
       }
    }
 

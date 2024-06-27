@@ -9,6 +9,7 @@
 
 #include "nouveau_bo.h"
 #include "nvk_device.h"
+#include "nvk_physical_device.h"
 #include "vk_object.h"
 #include "vk_descriptor_update_template.h"
 
@@ -52,6 +53,16 @@ PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct nvk_buffer_view_descriptor) == 4,
               "nvk_buffer_view_descriptor has no holes");
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
+struct nvk_bindless_cbuf {
+   uint64_t base_addr_shift_4:45;
+   uint64_t size_shift_4:19;
+};
+PRAGMA_DIAGNOSTIC_POP
+static_assert(sizeof(struct nvk_bindless_cbuf) == 8,
+              "nvk_bindless_cbuf has no holes");
+
 /* This has to match nir_address_format_64bit_bounded_global */
 PRAGMA_DIAGNOSTIC_PUSH
 PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
@@ -63,6 +74,31 @@ struct nvk_buffer_address {
 PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct nvk_buffer_address) == 16,
               "nvk_buffer_address has no holes");
+
+union nvk_buffer_descriptor {
+   struct nvk_buffer_address addr;
+   struct nvk_bindless_cbuf cbuf;
+};
+
+static inline bool
+nvk_use_bindless_cbuf(const struct nv_device_info *info)
+{
+   return info->cls_eng3d >= 0xC597 /* TURING_A */;
+}
+
+static inline struct nvk_buffer_address
+nvk_ubo_descriptor_addr(const struct nvk_physical_device *pdev,
+                        union nvk_buffer_descriptor desc)
+{
+   if (nvk_use_bindless_cbuf(&pdev->info)) {
+      return (struct nvk_buffer_address) {
+         .base_addr = desc.cbuf.base_addr_shift_4 << 4,
+         .size = desc.cbuf.size_shift_4 << 4,
+      };
+   } else {
+      return desc.addr;
+   }
+}
 
 #define NVK_BUFFER_ADDRESS_NULL ((struct nvk_buffer_address) { .size = 0 })
 
@@ -90,7 +126,7 @@ struct nvk_descriptor_set {
    uint64_t addr;
    uint32_t size;
 
-   struct nvk_buffer_address dynamic_buffers[];
+   union nvk_buffer_descriptor dynamic_buffers[];
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_descriptor_set, base, VkDescriptorSet,
@@ -110,13 +146,15 @@ struct nvk_push_descriptor_set {
 };
 
 void
-nvk_push_descriptor_set_update(struct nvk_push_descriptor_set *push_set,
+nvk_push_descriptor_set_update(struct nvk_device *dev,
+                               struct nvk_push_descriptor_set *push_set,
                                struct nvk_descriptor_set_layout *layout,
                                uint32_t write_count,
                                const VkWriteDescriptorSet *writes);
 
 void
 nvk_push_descriptor_set_update_template(
+   struct nvk_device *dev,
    struct nvk_push_descriptor_set *push_set,
    struct nvk_descriptor_set_layout *layout,
    const struct vk_descriptor_update_template *template,

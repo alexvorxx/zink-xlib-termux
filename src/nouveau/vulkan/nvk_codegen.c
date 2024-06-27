@@ -117,7 +117,7 @@ nvk_cg_preprocess_nir(nir_shader *nir)
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS(_, nir, nir_shader_instructions_pass, lower_fragcoord_instr,
-               nir_metadata_block_index | nir_metadata_dominance, NULL);
+               nir_metadata_control_flow, NULL);
    }
 
    nvk_cg_optimize_nir(nir);
@@ -258,7 +258,7 @@ static void
 nak_cg_postprocess_nir(nir_shader *nir)
 {
    NIR_PASS(_, nir, nir_shader_intrinsics_pass, lower_image_size_to_txs,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            nir_metadata_control_flow, NULL);
 
    uint32_t indirect_mask = nir_var_function_temp;
 

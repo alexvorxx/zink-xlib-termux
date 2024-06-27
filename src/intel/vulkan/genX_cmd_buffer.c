@@ -37,16 +37,7 @@
 
 #include "ds/intel_tracepoints.h"
 
-/* We reserve :
- *    - GPR 14 for secondary command buffer returns
- *    - GPR 15 for conditional rendering
- */
-#define MI_BUILDER_NUM_ALLOC_GPRS 14
-#define __gen_get_batch_dwords anv_batch_emit_dwords
-#define __gen_address_offset anv_address_add
-#define __gen_get_batch_address(b, a) anv_batch_address(b, a)
-#include "common/mi_builder.h"
-
+#include "genX_mi_builder.h"
 #include "genX_cmd_draw_generated_flush.h"
 
 static void genX(flush_pipeline_select)(struct anv_cmd_buffer *cmd_buffer,
@@ -89,48 +80,12 @@ convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
       fprintf(stdout, ") reason: %s\n", reason); \
    }
 
-void
-genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
+static inline void
+fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
+                     struct GENX(STATE_BASE_ADDRESS) *sba)
 {
-   if (anv_cmd_buffer_is_blitter_queue(cmd_buffer) ||
-       anv_cmd_buffer_is_video_queue(cmd_buffer))
-      return;
-
    struct anv_device *device = cmd_buffer->device;
    const uint32_t mocs = isl_mocs(&device->isl_dev, 0, false);
-
-   /* If we are emitting a new state base address we probably need to re-emit
-    * binding tables.
-    */
-   cmd_buffer->state.descriptors_dirty |= ~0;
-
-   /* Emit a render target cache flush.
-    *
-    * This isn't documented anywhere in the PRM.  However, it seems to be
-    * necessary prior to changing the surface state base address.  Without
-    * this, we get GPU hangs when using multi-level command buffers which
-    * clear depth, reset state base address, and then go render stuff.
-    */
-   genx_batch_emit_pipe_control
-      (&cmd_buffer->batch, cmd_buffer->device->info,
-       cmd_buffer->state.current_pipeline,
-#if GFX_VER >= 12
-       ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
-#else
-       ANV_PIPE_DATA_CACHE_FLUSH_BIT |
-#endif
-       ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-       ANV_PIPE_CS_STALL_BIT);
-
-#if INTEL_NEEDS_WA_1607854226
-   /* Wa_1607854226:
-    *
-    *  Workaround the non pipelined state not applying in MEDIA/GPGPU pipeline
-    *  mode by putting the pipeline temporarily in 3D mode.
-    */
-   uint32_t gfx12_wa_pipeline = cmd_buffer->state.current_pipeline;
-   genX(flush_pipeline_select_3d)(cmd_buffer);
-#endif
 
    /* If no API entry point selected the current mode (this can happen if the
     * first operation in the command buffer is a , select BUFFER if
@@ -144,136 +99,191 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
          ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY;
    }
 
-   anv_batch_emit(&cmd_buffer->batch, GENX(STATE_BASE_ADDRESS), sba) {
-      sba.GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.GeneralStateMOCS = mocs;
-      sba.GeneralStateBufferSize = 0xfffff;
-      sba.GeneralStateBaseAddressModifyEnable = true;
-      sba.GeneralStateBufferSizeModifyEnable = true;
+   *sba = (struct GENX(STATE_BASE_ADDRESS)) { GENX(STATE_BASE_ADDRESS_header), };
 
-      sba.StatelessDataPortAccessMOCS = mocs;
+   sba->GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
+   sba->GeneralStateMOCS = mocs;
+   sba->GeneralStateBufferSize = 0xfffff;
+   sba->GeneralStateBaseAddressModifyEnable = true;
+   sba->GeneralStateBufferSizeModifyEnable = true;
+
+   sba->StatelessDataPortAccessMOCS = mocs;
 
 #if GFX_VERx10 >= 125
-      sba.SurfaceStateBaseAddress =
-         (struct anv_address) { .offset =
-         device->physical->va.internal_surface_state_pool.addr,
-      };
+   sba->SurfaceStateBaseAddress =
+      (struct anv_address) { .offset =
+                             device->physical->va.internal_surface_state_pool.addr,
+   };
 #else
-      sba.SurfaceStateBaseAddress =
-         anv_cmd_buffer_surface_base_address(cmd_buffer);
+   sba->SurfaceStateBaseAddress =
+      anv_cmd_buffer_surface_base_address(cmd_buffer);
 #endif
-      sba.SurfaceStateMOCS = mocs;
-      sba.SurfaceStateBaseAddressModifyEnable = true;
+   sba->SurfaceStateMOCS = mocs;
+   sba->SurfaceStateBaseAddressModifyEnable = true;
 
-      sba.IndirectObjectBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.IndirectObjectMOCS = mocs;
-      sba.IndirectObjectBufferSize = 0xfffff;
-      sba.IndirectObjectBaseAddressModifyEnable = true;
-      sba.IndirectObjectBufferSizeModifyEnable  = true;
+   sba->IndirectObjectBaseAddress = (struct anv_address) { NULL, 0 };
+   sba->IndirectObjectMOCS = mocs;
+   sba->IndirectObjectBufferSize = 0xfffff;
+   sba->IndirectObjectBaseAddressModifyEnable = true;
+   sba->IndirectObjectBufferSizeModifyEnable  = true;
 
-      sba.InstructionBaseAddress =
-         (struct anv_address) { device->instruction_state_pool.block_pool.bo, 0 };
-      sba.InstructionMOCS = mocs;
-      sba.InstructionBufferSize =
-         device->physical->va.instruction_state_pool.size / 4096;
-      sba.InstructionBaseAddressModifyEnable = true;
-      sba.InstructionBuffersizeModifyEnable = true;
+   sba->InstructionBaseAddress =
+      (struct anv_address) { device->instruction_state_pool.block_pool.bo, 0 };
+   sba->InstructionMOCS = mocs;
+   sba->InstructionBufferSize =
+      device->physical->va.instruction_state_pool.size / 4096;
+   sba->InstructionBaseAddressModifyEnable = true;
+   sba->InstructionBuffersizeModifyEnable = true;
 
 #if GFX_VER >= 11
-      sba.BindlessSamplerStateBaseAddress = ANV_NULL_ADDRESS;
-      sba.BindlessSamplerStateBufferSize = 0;
-      sba.BindlessSamplerStateMOCS = mocs;
-      sba.BindlessSamplerStateBaseAddressModifyEnable = true;
+   sba->BindlessSamplerStateBaseAddress = ANV_NULL_ADDRESS;
+   sba->BindlessSamplerStateBufferSize = 0;
+   sba->BindlessSamplerStateMOCS = mocs;
+   sba->BindlessSamplerStateBaseAddressModifyEnable = true;
 #endif
 
-      if (cmd_buffer->state.pending_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
-         sba.DynamicStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.dynamic_state_db_pool.addr,
-         };
-         sba.DynamicStateBufferSize =
-            (device->physical->va.dynamic_state_db_pool.size +
-             device->physical->va.descriptor_buffer_pool.size +
-             device->physical->va.push_descriptor_buffer_pool.size) / 4096;
-         sba.DynamicStateMOCS = mocs;
-         sba.DynamicStateBaseAddressModifyEnable = true;
-         sba.DynamicStateBufferSizeModifyEnable = true;
+   if (cmd_buffer->state.pending_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
+      sba->DynamicStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.dynamic_state_db_pool.addr,
+      };
+      sba->DynamicStateBufferSize =
+         (device->physical->va.dynamic_state_db_pool.size +
+          device->physical->va.descriptor_buffer_pool.size +
+          device->physical->va.push_descriptor_buffer_pool.size) / 4096;
+      sba->DynamicStateMOCS = mocs;
+      sba->DynamicStateBaseAddressModifyEnable = true;
+      sba->DynamicStateBufferSizeModifyEnable = true;
 
 #if GFX_VERx10 >= 125
-         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.descriptor_buffer_pool.addr,
-         };
-         sba.BindlessSurfaceStateSize =
-            (device->physical->va.descriptor_buffer_pool.size +
-             device->physical->va.push_descriptor_buffer_pool.size) - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
+      sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.descriptor_buffer_pool.addr,
+      };
+      sba->BindlessSurfaceStateSize =
+         (device->physical->va.descriptor_buffer_pool.size +
+          device->physical->va.push_descriptor_buffer_pool.size) - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
 #else
-         const uint64_t surfaces_addr =
-            cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
-            cmd_buffer->state.descriptor_buffers.surfaces_address :
-            anv_address_physical(device->workaround_address);
-         const uint64_t surfaces_size =
-            cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
-            MIN2(device->physical->va.descriptor_buffer_pool.size -
-                 (cmd_buffer->state.descriptor_buffers.surfaces_address -
-                  device->physical->va.descriptor_buffer_pool.addr),
-                 anv_physical_device_bindless_heap_size(device->physical, true)) :
-            (device->workaround_bo->size - device->workaround_address.offset);
-         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
-            .offset = surfaces_addr,
-         };
-         sba.BindlessSurfaceStateSize = surfaces_size / ANV_SURFACE_STATE_SIZE - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
+      const uint64_t surfaces_addr =
+         cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
+         cmd_buffer->state.descriptor_buffers.surfaces_address :
+         anv_address_physical(device->workaround_address);
+      const uint64_t surfaces_size =
+         cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
+         MIN2(device->physical->va.descriptor_buffer_pool.size -
+              (cmd_buffer->state.descriptor_buffers.surfaces_address -
+               device->physical->va.descriptor_buffer_pool.addr),
+              anv_physical_device_bindless_heap_size(device->physical, true)) :
+         (device->workaround_bo->size - device->workaround_address.offset);
+      sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
+         .offset = surfaces_addr,
+      };
+      sba->BindlessSurfaceStateSize = surfaces_size / ANV_SURFACE_STATE_SIZE - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
 #endif /* GFX_VERx10 < 125 */
-      } else if (!device->physical->indirect_descriptors) {
+   } else if (!device->physical->indirect_descriptors) {
 #if GFX_VERx10 >= 125
-         sba.DynamicStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.dynamic_state_pool.addr,
-         };
-         sba.DynamicStateBufferSize =
-            (device->physical->va.dynamic_state_pool.size +
-             device->physical->va.sampler_state_pool.size) / 4096;
-         sba.DynamicStateMOCS = mocs;
-         sba.DynamicStateBaseAddressModifyEnable = true;
-         sba.DynamicStateBufferSizeModifyEnable = true;
+      sba->DynamicStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.dynamic_state_pool.addr,
+      };
+      sba->DynamicStateBufferSize =
+         (device->physical->va.dynamic_state_pool.size +
+          device->physical->va.sampler_state_pool.size) / 4096;
+      sba->DynamicStateMOCS = mocs;
+      sba->DynamicStateBaseAddressModifyEnable = true;
+      sba->DynamicStateBufferSizeModifyEnable = true;
 
-         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.internal_surface_state_pool.addr,
-         };
-         sba.BindlessSurfaceStateSize =
-            (device->physical->va.internal_surface_state_pool.size +
-             device->physical->va.bindless_surface_state_pool.size) - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
+      sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.internal_surface_state_pool.addr,
+      };
+      sba->BindlessSurfaceStateSize =
+         (device->physical->va.internal_surface_state_pool.size +
+          device->physical->va.bindless_surface_state_pool.size) - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
 #else
-         unreachable("Direct descriptor not supported");
+      unreachable("Direct descriptor not supported");
 #endif
-      } else {
-         sba.DynamicStateBaseAddress = (struct anv_address) {
-            .offset = device->physical->va.dynamic_state_pool.addr,
-         };
-         sba.DynamicStateBufferSize =
-            (device->physical->va.dynamic_state_pool.size +
-             device->physical->va.sampler_state_pool.size) / 4096;
-         sba.DynamicStateMOCS = mocs;
-         sba.DynamicStateBaseAddressModifyEnable = true;
-         sba.DynamicStateBufferSizeModifyEnable = true;
+   } else {
+      sba->DynamicStateBaseAddress = (struct anv_address) {
+         .offset = device->physical->va.dynamic_state_pool.addr,
+      };
+      sba->DynamicStateBufferSize =
+         (device->physical->va.dynamic_state_pool.size +
+          device->physical->va.sampler_state_pool.size) / 4096;
+      sba->DynamicStateMOCS = mocs;
+      sba->DynamicStateBaseAddressModifyEnable = true;
+      sba->DynamicStateBufferSizeModifyEnable = true;
 
-         sba.BindlessSurfaceStateBaseAddress =
-            (struct anv_address) { .offset =
-            device->physical->va.bindless_surface_state_pool.addr,
-         };
-         sba.BindlessSurfaceStateSize =
-            anv_physical_device_bindless_heap_size(device->physical, false) /
-            ANV_SURFACE_STATE_SIZE - 1;
-         sba.BindlessSurfaceStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
-      }
+      sba->BindlessSurfaceStateBaseAddress =
+         (struct anv_address) { .offset =
+                                device->physical->va.bindless_surface_state_pool.addr,
+      };
+      sba->BindlessSurfaceStateSize =
+         anv_physical_device_bindless_heap_size(device->physical, false) /
+         ANV_SURFACE_STATE_SIZE - 1;
+      sba->BindlessSurfaceStateMOCS = mocs;
+      sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
+   }
 
 #if GFX_VERx10 >= 125
-      sba.L1CacheControl = L1CC_WB;
+   sba->L1CacheControl = L1CC_WB;
 #endif
+}
+
+void
+genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
+{
+   if (anv_cmd_buffer_is_blitter_queue(cmd_buffer) ||
+       anv_cmd_buffer_is_video_queue(cmd_buffer))
+      return;
+
+   struct anv_device *device = cmd_buffer->device;
+
+   struct GENX(STATE_BASE_ADDRESS) sba = {};
+   fill_state_base_addr(cmd_buffer, &sba);
+
+#if GFX_VERx10 >= 125
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
+   struct mi_goto_target t = MI_GOTO_TARGET_INIT;
+   mi_goto_if(&b,
+              mi_ieq(&b, mi_reg64(ANV_BINDLESS_SURFACE_BASE_ADDR_REG),
+                         mi_imm(sba.BindlessSurfaceStateBaseAddress.offset)),
+              &t);
+#endif
+
+   /* Emit a render target cache flush.
+    *
+    * This isn't documented anywhere in the PRM.  However, it seems to be
+    * necessary prior to changing the surface state base address.  Without
+    * this, we get GPU hangs when using multi-level command buffers which
+    * clear depth, reset state base address, and then go render stuff.
+    */
+   genx_batch_emit_pipe_control(&cmd_buffer->batch, device->info,
+                                cmd_buffer->state.current_pipeline,
+#if GFX_VER >= 12
+                                ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
+#else
+                                ANV_PIPE_DATA_CACHE_FLUSH_BIT |
+#endif
+                                ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
+                                ANV_PIPE_CS_STALL_BIT);
+
+#if INTEL_NEEDS_WA_1607854226
+   /* Wa_1607854226:
+    *
+    *  Workaround the non pipelined state not applying in MEDIA/GPGPU pipeline
+    *  mode by putting the pipeline temporarily in 3D mode.
+    */
+   uint32_t gfx12_wa_pipeline = cmd_buffer->state.current_pipeline;
+   genX(flush_pipeline_select_3d)(cmd_buffer);
+#endif
+
+   anv_batch_emit(&cmd_buffer->batch, GENX(STATE_BASE_ADDRESS), _sba) {
+      _sba = sba;
    }
 
    bool db_mode_changed = false;
@@ -289,10 +299,6 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     */
    if (gfx12_wa_pipeline != UINT32_MAX)
       genX(flush_pipeline_select)(cmd_buffer, gfx12_wa_pipeline);
-#endif
-
-#if GFX_VERx10 >= 125
-   genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
 #endif
 
    /* After re-setting the surface state base address, we have to do some
@@ -342,8 +348,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
       ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT |
       ANV_PIPE_STATE_CACHE_INVALIDATE_BIT |
-      (intel_needs_workaround(cmd_buffer->device->info, 16013000631) ?
-          ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0);
+      (intel_needs_workaround(device->info, 16013000631) ?
+       ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0);
 
 #if GFX_VER >= 9 && GFX_VER <= 11
       /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
@@ -357,7 +363,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       if (cmd_buffer->state.current_pipeline == GPGPU)
          bits |= ANV_PIPE_CS_STALL_BIT;
 #endif
-   genx_batch_emit_pipe_control(&cmd_buffer->batch, cmd_buffer->device->info,
+   genx_batch_emit_pipe_control(&cmd_buffer->batch, device->info,
                                 cmd_buffer->state.current_pipeline,
                                 bits);
 
@@ -383,7 +389,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_SCISSOR);
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_CC_STATE);
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_BLEND_STATE);
-      if (cmd_buffer->device->vk.enabled_extensions.KHR_fragment_shading_rate) {
+      if (device->vk.enabled_extensions.KHR_fragment_shading_rate) {
          struct vk_dynamic_graphics_state *dyn =
             &cmd_buffer->vk.dynamic_graphics_state;
          BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_FSR);
@@ -397,6 +403,23 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.compute.base.push_constants_data_dirty = true;
 #endif
    }
+
+#if GFX_VERx10 >= 125
+   assert(sba.BindlessSurfaceStateBaseAddress.offset != 0);
+   mi_store(&b, mi_reg64(ANV_BINDLESS_SURFACE_BASE_ADDR_REG),
+                mi_imm(sba.BindlessSurfaceStateBaseAddress.offset));
+
+   mi_goto_target(&b, &t);
+#endif
+
+#if GFX_VERx10 >= 125
+   genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
+#endif
+
+   /* If we have emitted a new state base address we probably need to re-emit
+    * binding tables.
+    */
+   cmd_buffer->state.descriptors_dirty |= ~0;
 }
 
 void
@@ -648,14 +671,19 @@ set_image_compressed_bit(struct anv_cmd_buffer *cmd_buffer,
    if (!isl_aux_usage_has_ccs_e(image->planes[plane].aux_usage))
       return;
 
+   struct anv_device *device = cmd_buffer->device;
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
+
    for (uint32_t a = 0; a < layer_count; a++) {
       uint32_t layer = base_layer + a;
-      anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-         sdi.Address = anv_image_get_compression_state_addr(cmd_buffer->device,
-                                                            image, aspect,
-                                                            level, layer);
-         sdi.ImmediateData = compressed ? UINT32_MAX : 0;
-      }
+      struct anv_address comp_state_addr =
+         anv_image_get_compression_state_addr(device,
+                                              image, aspect,
+                                              level, layer);
+      mi_store(&b, mi_mem32(comp_state_addr),
+                   mi_imm(compressed ? UINT32_MAX : 0));
    }
 
    /* FCV_CCS_E images are automatically fast cleared to default value at
@@ -667,11 +695,10 @@ set_image_compressed_bit(struct anv_cmd_buffer *cmd_buffer,
     */
    if (image->planes[plane].aux_usage == ISL_AUX_USAGE_FCV_CCS_E &&
        base_layer == 0 && level == 0) {
-      anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-         sdi.Address = anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                                          image, aspect);
-         sdi.ImmediateData = ANV_FAST_CLEAR_DEFAULT_VALUE;
-      }
+      struct anv_address fc_type_addr =
+         anv_image_get_fast_clear_type_addr(device, image, aspect);
+      mi_store(&b, mi_mem32(fc_type_addr),
+                   mi_imm(ANV_FAST_CLEAR_DEFAULT_VALUE));
    }
 }
 
@@ -681,11 +708,14 @@ set_image_fast_clear_state(struct anv_cmd_buffer *cmd_buffer,
                            VkImageAspectFlagBits aspect,
                            enum anv_fast_clear_type fast_clear)
 {
-   anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-      sdi.Address = anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                                       image, aspect);
-      sdi.ImmediateData = fast_clear;
-   }
+   struct anv_device *device = cmd_buffer->device;
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
+
+   struct anv_address fc_type_addr =
+      anv_image_get_fast_clear_type_addr(device, image, aspect);
+   mi_store(&b, mi_mem32(fc_type_addr), mi_imm(fast_clear));
 
    /* Whenever we have fast-clear, we consider that slice to be compressed.
     * This makes building predicates much easier.
@@ -705,12 +735,12 @@ anv_cmd_compute_resolve_predicate(struct anv_cmd_buffer *cmd_buffer,
                                   enum isl_aux_op resolve_op,
                                   enum anv_fast_clear_type fast_clear_supported)
 {
-   struct anv_address addr = anv_image_get_fast_clear_type_addr(cmd_buffer->device,
-                                                                image, aspect);
+   struct anv_device *device = cmd_buffer->device;
+   struct anv_address addr =
+      anv_image_get_fast_clear_type_addr(device, image, aspect);
    struct mi_builder b;
-   mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
-   const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device, &addr);
-   mi_builder_set_mocs(&b, mocs);
+   mi_builder_init(&b, device->info, &cmd_buffer->batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
 
    const struct mi_value fast_clear_type = mi_mem32(addr);
 
@@ -724,7 +754,7 @@ anv_cmd_compute_resolve_predicate(struct anv_cmd_buffer *cmd_buffer,
        * compressed.  See also set_image_fast_clear_state.
        */
       const struct mi_value compression_state =
-         mi_mem32(anv_image_get_compression_state_addr(cmd_buffer->device,
+         mi_mem32(anv_image_get_compression_state_addr(device,
                                                        image, aspect,
                                                        level, array_layer));
       mi_store(&b, mi_reg64(MI_PREDICATE_SRC0), compression_state);
@@ -889,20 +919,22 @@ init_fast_clear_color(struct anv_cmd_buffer *cmd_buffer,
    const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
 
    if (image->planes[plane].aux_usage == ISL_AUX_USAGE_FCV_CCS_E) {
+      struct anv_device *device = cmd_buffer->device;
+
       assert(!image->planes[plane].can_non_zero_fast_clear);
-      assert(cmd_buffer->device->isl_dev.ss.clear_color_state_size == 32);
+      assert(device->isl_dev.ss.clear_color_state_size == 32);
 
       unsigned num_dwords = 6;
       struct anv_address addr =
-         anv_image_get_clear_color_addr(cmd_buffer->device, image, aspect);
+         anv_image_get_clear_color_addr(device, image, aspect);
+
+      struct mi_builder b;
+      mi_builder_init(&b, device->info, &cmd_buffer->batch);
+      mi_builder_set_mocs(&b, anv_mocs_for_address(device, &addr));
 
       for (unsigned i = 0; i < num_dwords; i++) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdi) {
-            sdi.Address = addr;
-            sdi.Address.offset += i * 4;
-            sdi.ImmediateData = 0;
-            sdi.ForceWriteCompletionCheck = i == (num_dwords - 1);
-         }
+         mi_builder_set_write_check(&b, i == (num_dwords - 1));
+         mi_store(&b, mi_mem32(anv_address_add(addr, i * 4)), mi_imm(0));
       }
    }
 #endif
@@ -934,6 +966,7 @@ genX(load_image_clear_color)(struct anv_cmd_buffer *cmd_buffer,
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+   mi_builder_set_write_check(&b, true);
 
    mi_memcpy(&b, ss_clear_addr, entry_addr, copy_size);
 
@@ -1743,30 +1776,6 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
          bits & (ANV_PIPE_FLUSH_BITS | ANV_PIPE_STALL_BITS |
                  ANV_PIPE_END_OF_PIPE_SYNC_BIT);
 
-#if GFX_VERx10 >= 125
-      if (current_pipeline != GPGPU) {
-         if (flush_bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
-            flush_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
-      } else {
-         if (flush_bits & (ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
-                           ANV_PIPE_DATA_CACHE_FLUSH_BIT))
-            flush_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
-      }
-
-      /* BSpec 47112: PIPE_CONTROL::Untyped Data-Port Cache Flush:
-       *
-       *    "'HDC Pipeline Flush' bit must be set for this bit to take
-       *     effect."
-       */
-      if (flush_bits & ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT)
-         flush_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
-#endif
-
-#if GFX_VER < 12
-      if (flush_bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
-         flush_bits |= ANV_PIPE_DATA_CACHE_FLUSH_BIT;
-#endif
-
       uint32_t sync_op = NoWrite;
       struct anv_address addr = ANV_NULL_ADDRESS;
 
@@ -1816,33 +1825,6 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
    }
 
    if (bits & ANV_PIPE_INVALIDATE_BITS) {
-      /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
-       *
-       *    "If the VF Cache Invalidation Enable is set to a 1 in a
-       *    PIPE_CONTROL, a separate Null PIPE_CONTROL, all bitfields sets to
-       *    0, with the VF Cache Invalidation Enable set to 0 needs to be sent
-       *    prior to the PIPE_CONTROL with VF Cache Invalidation Enable set to
-       *    a 1."
-       *
-       * This appears to hang Broadwell, so we restrict it to just gfx9.
-       */
-      if (GFX_VER == 9 && (bits & ANV_PIPE_VF_CACHE_INVALIDATE_BIT))
-         anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe);
-
-#if GFX_VER >= 9 && GFX_VER <= 11
-      /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
-       *
-       *    "Workaround : “CS Stall” bit in PIPE_CONTROL command must be
-       *     always set for GPGPU workloads when “Texture Cache
-       *     Invalidation Enable” bit is set".
-       *
-       * Workaround stopped appearing in TGL PRMs.
-       */
-      if (current_pipeline == GPGPU &&
-          (bits & ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT))
-         bits |= ANV_PIPE_CS_STALL_BIT;
-#endif
-
       uint32_t sync_op = NoWrite;
       struct anv_address addr = ANV_NULL_ADDRESS;
 
@@ -2551,6 +2533,57 @@ genX(batch_emit_pipe_control_write)(struct anv_batch *batch,
     */
    if (bits & ANV_PIPE_DEPTH_CACHE_FLUSH_BIT)
       bits |= ANV_PIPE_DEPTH_STALL_BIT;
+#endif
+
+#if GFX_VERx10 >= 125
+   if (current_pipeline != GPGPU) {
+      if (bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
+         bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+   } else {
+      if (bits & (ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
+                  ANV_PIPE_DATA_CACHE_FLUSH_BIT))
+         bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+   }
+
+   /* BSpec 47112: PIPE_CONTROL::Untyped Data-Port Cache Flush:
+    *
+    *    "'HDC Pipeline Flush' bit must be set for this bit to take
+    *     effect."
+    */
+   if (bits & ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT)
+      bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+#endif
+
+#if GFX_VER < 12
+   if (bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
+      bits |= ANV_PIPE_DATA_CACHE_FLUSH_BIT;
+#endif
+
+   /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
+    *
+    *    "If the VF Cache Invalidation Enable is set to a 1 in a
+    *    PIPE_CONTROL, a separate Null PIPE_CONTROL, all bitfields sets to
+    *    0, with the VF Cache Invalidation Enable set to 0 needs to be sent
+    *    prior to the PIPE_CONTROL with VF Cache Invalidation Enable set to
+    *    a 1."
+    *
+    * This appears to hang Broadwell, so we restrict it to just gfx9.
+    */
+   if (GFX_VER == 9 && (bits & ANV_PIPE_VF_CACHE_INVALIDATE_BIT))
+      anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe);
+
+#if GFX_VER >= 9 && GFX_VER <= 11
+   /* From the SKL PRM, Vol. 2a, "PIPE_CONTROL",
+    *
+    *    "Workaround : “CS Stall” bit in PIPE_CONTROL command must be
+    *     always set for GPGPU workloads when “Texture Cache
+    *     Invalidation Enable” bit is set".
+    *
+    * Workaround stopped appearing in TGL PRMs.
+    */
+   if (current_pipeline == GPGPU &&
+       (bits & ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT))
+      bits |= ANV_PIPE_CS_STALL_BIT;
 #endif
 
    anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe) {
@@ -3748,62 +3781,73 @@ mask_is_transfer_write(const VkAccessFlags2 access)
 
 static void
 cmd_buffer_barrier_video(struct anv_cmd_buffer *cmd_buffer,
-                        const VkDependencyInfo *dep_info)
+                         uint32_t n_dep_infos,
+                         const VkDependencyInfo *dep_infos)
 {
    assert(anv_cmd_buffer_is_video_queue(cmd_buffer));
 
    bool flush_llc = false;
    bool flush_ccs = false;
-   for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
-      const VkImageMemoryBarrier2 *img_barrier =
-         &dep_info->pImageMemoryBarriers[i];
 
-      ANV_FROM_HANDLE(anv_image, image, img_barrier->image);
-      const VkImageSubresourceRange *range = &img_barrier->subresourceRange;
+   for (uint32_t d = 0; d < n_dep_infos; d++) {
+      const VkDependencyInfo *dep_info = &dep_infos[d];
 
-      /* If srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this
-       * memory barrier defines a queue family ownership transfer.
-       */
-      if (img_barrier->srcQueueFamilyIndex != img_barrier->dstQueueFamilyIndex)
-         flush_llc = true;
 
-      VkImageAspectFlags img_aspects =
+      for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+         const VkImageMemoryBarrier2 *img_barrier =
+            &dep_info->pImageMemoryBarriers[i];
+
+         ANV_FROM_HANDLE(anv_image, image, img_barrier->image);
+         const VkImageSubresourceRange *range = &img_barrier->subresourceRange;
+
+         /* If srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this
+          * memory barrier defines a queue family ownership transfer.
+          */
+         if (img_barrier->srcQueueFamilyIndex != img_barrier->dstQueueFamilyIndex)
+            flush_llc = true;
+
+         VkImageAspectFlags img_aspects =
             vk_image_expand_aspect_mask(&image->vk, range->aspectMask);
-      anv_foreach_image_aspect_bit(aspect_bit, image, img_aspects) {
-         const uint32_t plane =
-            anv_image_aspect_to_plane(image, 1UL << aspect_bit);
-         if (isl_aux_usage_has_ccs(image->planes[plane].aux_usage)) {
-            flush_ccs = true;
+         anv_foreach_image_aspect_bit(aspect_bit, image, img_aspects) {
+            const uint32_t plane =
+               anv_image_aspect_to_plane(image, 1UL << aspect_bit);
+            if (isl_aux_usage_has_ccs(image->planes[plane].aux_usage)) {
+               flush_ccs = true;
+            }
          }
       }
-   }
 
-   for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
-      /* Flush the cache if something is written by the video operations and
-       * used by any other stages except video encode/decode stages or if
-       * srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this memory
-       * barrier defines a queue family ownership transfer.
-       */
-      if ((stage_is_video(dep_info->pBufferMemoryBarriers[i].srcStageMask) &&
-           mask_is_write(dep_info->pBufferMemoryBarriers[i].srcAccessMask) &&
-           !stage_is_video(dep_info->pBufferMemoryBarriers[i].dstStageMask)) ||
-          (dep_info->pBufferMemoryBarriers[i].srcQueueFamilyIndex !=
-           dep_info->pBufferMemoryBarriers[i].dstQueueFamilyIndex)) {
-         flush_llc = true;
-         break;
+      for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
+         /* Flush the cache if something is written by the video operations and
+          * used by any other stages except video encode/decode stages or if
+          * srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this memory
+          * barrier defines a queue family ownership transfer.
+          */
+         if ((stage_is_video(dep_info->pBufferMemoryBarriers[i].srcStageMask) &&
+              mask_is_write(dep_info->pBufferMemoryBarriers[i].srcAccessMask) &&
+              !stage_is_video(dep_info->pBufferMemoryBarriers[i].dstStageMask)) ||
+             (dep_info->pBufferMemoryBarriers[i].srcQueueFamilyIndex !=
+              dep_info->pBufferMemoryBarriers[i].dstQueueFamilyIndex)) {
+            flush_llc = true;
+            break;
+         }
       }
-   }
 
-   for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
-      /* Flush the cache if something is written by the video operations and
-       * used by any other stages except video encode/decode stage.
-       */
-      if (stage_is_video(dep_info->pMemoryBarriers[i].srcStageMask) &&
-          mask_is_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
-          !stage_is_video(dep_info->pMemoryBarriers[i].dstStageMask)) {
-         flush_llc = true;
-         break;
+      for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
+         /* Flush the cache if something is written by the video operations and
+          * used by any other stages except video encode/decode stage.
+          */
+         if (stage_is_video(dep_info->pMemoryBarriers[i].srcStageMask) &&
+             mask_is_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
+             !stage_is_video(dep_info->pMemoryBarriers[i].dstStageMask)) {
+            flush_llc = true;
+            break;
+         }
       }
+
+      /* We cannot gather more information than that. */
+      if (flush_ccs && flush_llc)
+         break;
    }
 
    if (flush_ccs || flush_llc) {
@@ -3824,7 +3868,8 @@ cmd_buffer_barrier_video(struct anv_cmd_buffer *cmd_buffer,
 
 static void
 cmd_buffer_barrier_blitter(struct anv_cmd_buffer *cmd_buffer,
-                           const VkDependencyInfo *dep_info)
+                           uint32_t n_dep_infos,
+                           const VkDependencyInfo *dep_infos)
 {
 #if GFX_VERx10 >= 125
    assert(anv_cmd_buffer_is_blitter_queue(cmd_buffer));
@@ -3834,65 +3879,74 @@ cmd_buffer_barrier_blitter(struct anv_cmd_buffer *cmd_buffer,
     */
    bool flush_llc = false;
    bool flush_ccs = false;
-   for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
-      const VkImageMemoryBarrier2 *img_barrier =
-         &dep_info->pImageMemoryBarriers[i];
 
-      ANV_FROM_HANDLE(anv_image, image, img_barrier->image);
-      const VkImageSubresourceRange *range = &img_barrier->subresourceRange;
+   for (uint32_t d = 0; d < n_dep_infos; d++) {
+      const VkDependencyInfo *dep_info = &dep_infos[d];
 
-      /* If srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this
-       * memory barrier defines a queue family transfer operation.
-       */
-      if (img_barrier->srcQueueFamilyIndex != img_barrier->dstQueueFamilyIndex)
-         flush_llc = true;
+      for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+         const VkImageMemoryBarrier2 *img_barrier =
+            &dep_info->pImageMemoryBarriers[i];
 
-      /* Flush cache if transfer command reads the output of the previous
-       * transfer command, ideally we should just wait for the completion but
-       * for now just flush the cache to make the data visible.
-       */
-      if ((img_barrier->oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ||
-            img_barrier->oldLayout == VK_IMAGE_LAYOUT_GENERAL) &&
-          (img_barrier->newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ||
-           img_barrier->newLayout == VK_IMAGE_LAYOUT_GENERAL)) {
-         flush_llc = true;
-      }
+         ANV_FROM_HANDLE(anv_image, image, img_barrier->image);
+         const VkImageSubresourceRange *range = &img_barrier->subresourceRange;
 
-      VkImageAspectFlags img_aspects =
+         /* If srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this
+          * memory barrier defines a queue family transfer operation.
+          */
+         if (img_barrier->srcQueueFamilyIndex != img_barrier->dstQueueFamilyIndex)
+            flush_llc = true;
+
+         /* Flush cache if transfer command reads the output of the previous
+          * transfer command, ideally we should just wait for the completion
+          * but for now just flush the cache to make the data visible.
+          */
+         if ((img_barrier->oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ||
+              img_barrier->oldLayout == VK_IMAGE_LAYOUT_GENERAL) &&
+             (img_barrier->newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ||
+              img_barrier->newLayout == VK_IMAGE_LAYOUT_GENERAL)) {
+            flush_llc = true;
+         }
+
+         VkImageAspectFlags img_aspects =
             vk_image_expand_aspect_mask(&image->vk, range->aspectMask);
-      anv_foreach_image_aspect_bit(aspect_bit, image, img_aspects) {
-         const uint32_t plane =
-            anv_image_aspect_to_plane(image, 1UL << aspect_bit);
-         if (isl_aux_usage_has_ccs(image->planes[plane].aux_usage)) {
-            flush_ccs = true;
+         anv_foreach_image_aspect_bit(aspect_bit, image, img_aspects) {
+            const uint32_t plane =
+               anv_image_aspect_to_plane(image, 1UL << aspect_bit);
+            if (isl_aux_usage_has_ccs(image->planes[plane].aux_usage)) {
+               flush_ccs = true;
+            }
          }
       }
-   }
 
-   for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
-      /* Flush the cache if something is written by the transfer command and
-       * used by any other stages except transfer stage or if
-       * srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this memory
-       * barrier defines a queue family transfer operation.
-       */
-      if ((stage_is_transfer(dep_info->pBufferMemoryBarriers[i].srcStageMask) &&
-           mask_is_write(dep_info->pBufferMemoryBarriers[i].srcAccessMask)) ||
-          (dep_info->pBufferMemoryBarriers[i].srcQueueFamilyIndex !=
-           dep_info->pBufferMemoryBarriers[i].dstQueueFamilyIndex)) {
-         flush_llc = true;
-         break;
+      for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
+         /* Flush the cache if something is written by the transfer command
+          * and used by any other stages except transfer stage or if
+          * srcQueueFamilyIndex is not equal to dstQueueFamilyIndex, this
+          * memory barrier defines a queue family transfer operation.
+          */
+         if ((stage_is_transfer(dep_info->pBufferMemoryBarriers[i].srcStageMask) &&
+              mask_is_write(dep_info->pBufferMemoryBarriers[i].srcAccessMask)) ||
+             (dep_info->pBufferMemoryBarriers[i].srcQueueFamilyIndex !=
+              dep_info->pBufferMemoryBarriers[i].dstQueueFamilyIndex)) {
+            flush_llc = true;
+            break;
+         }
       }
-   }
 
-   for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
-      /* Flush the cache if something is written by the transfer command and
-       * used by any other stages except transfer stage.
-       */
-      if (stage_is_transfer(dep_info->pMemoryBarriers[i].srcStageMask) &&
-          mask_is_write(dep_info->pMemoryBarriers[i].srcAccessMask)) {
-         flush_llc = true;
-         break;
+      for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
+         /* Flush the cache if something is written by the transfer command
+          * and used by any other stages except transfer stage.
+          */
+         if (stage_is_transfer(dep_info->pMemoryBarriers[i].srcStageMask) &&
+             mask_is_write(dep_info->pMemoryBarriers[i].srcAccessMask)) {
+            flush_llc = true;
+            break;
+         }
       }
+
+      /* We cannot gather more information than that. */
+      if (flush_ccs && flush_llc)
+         break;
    }
 
    if (flush_ccs || flush_llc) {
@@ -3921,24 +3975,25 @@ cmd_buffer_has_pending_copy_query(struct anv_cmd_buffer *cmd_buffer)
 
 static void
 cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
-                   const VkDependencyInfo *dep_info,
+                   uint32_t n_dep_infos,
+                   const VkDependencyInfo *dep_infos,
                    const char *reason)
 {
    if (anv_cmd_buffer_is_video_queue(cmd_buffer)) {
-      cmd_buffer_barrier_video(cmd_buffer, dep_info);
+      cmd_buffer_barrier_video(cmd_buffer, n_dep_infos, dep_infos);
       return;
    }
 
    if (anv_cmd_buffer_is_blitter_queue(cmd_buffer)) {
-      cmd_buffer_barrier_blitter(cmd_buffer, dep_info);
+      cmd_buffer_barrier_blitter(cmd_buffer, n_dep_infos, dep_infos);
       return;
    }
 
    struct anv_device *device = cmd_buffer->device;
 
    /* XXX: Right now, we're really dumb and just flush whatever categories
-    * the app asks for.  One of these days we may make this a bit better
-    * but right now that's all the hardware allows for in most areas.
+    * the app asks for. One of these days we may make this a bit better but
+    * right now that's all the hardware allows for in most areas.
     */
    VkAccessFlags2 src_flags = 0;
    VkAccessFlags2 dst_flags = 0;
@@ -3946,166 +4001,170 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
    bool apply_sparse_flushes = false;
    bool flush_query_copies = false;
 
-   for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
-      src_flags |= dep_info->pMemoryBarriers[i].srcAccessMask;
-      dst_flags |= dep_info->pMemoryBarriers[i].dstAccessMask;
+   for (uint32_t d = 0; d < n_dep_infos; d++) {
+      const VkDependencyInfo *dep_info = &dep_infos[d];
 
-      /* Shader writes to buffers that could then be written by a transfer
-       * command (including queries).
-       */
-      if (stage_is_shader(dep_info->pMemoryBarriers[i].srcStageMask) &&
-          mask_is_shader_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
-          stage_is_transfer(dep_info->pMemoryBarriers[i].dstStageMask)) {
-         cmd_buffer->state.queries.buffer_write_bits |=
-            ANV_QUERY_COMPUTE_WRITES_PENDING_BITS;
+      for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
+         src_flags |= dep_info->pMemoryBarriers[i].srcAccessMask;
+         dst_flags |= dep_info->pMemoryBarriers[i].dstAccessMask;
+
+         /* Shader writes to buffers that could then be written by a transfer
+          * command (including queries).
+          */
+         if (stage_is_shader(dep_info->pMemoryBarriers[i].srcStageMask) &&
+             mask_is_shader_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
+             stage_is_transfer(dep_info->pMemoryBarriers[i].dstStageMask)) {
+            cmd_buffer->state.queries.buffer_write_bits |=
+               ANV_QUERY_COMPUTE_WRITES_PENDING_BITS;
+         }
+
+         if (stage_is_transfer(dep_info->pMemoryBarriers[i].srcStageMask) &&
+             mask_is_transfer_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
+             cmd_buffer_has_pending_copy_query(cmd_buffer))
+            flush_query_copies = true;
+
+         /* There's no way of knowing if this memory barrier is related to
+          * sparse buffers! This is pretty horrible.
+          */
+         if (mask_is_write(src_flags) &&
+             p_atomic_read(&device->num_sparse_resources) > 0)
+            apply_sparse_flushes = true;
       }
 
-      if (stage_is_transfer(dep_info->pMemoryBarriers[i].srcStageMask) &&
-          mask_is_transfer_write(dep_info->pMemoryBarriers[i].srcAccessMask) &&
-          cmd_buffer_has_pending_copy_query(cmd_buffer))
-         flush_query_copies = true;
+      for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
+         const VkBufferMemoryBarrier2 *buf_barrier =
+            &dep_info->pBufferMemoryBarriers[i];
+         ANV_FROM_HANDLE(anv_buffer, buffer, buf_barrier->buffer);
 
-      /* There's no way of knowing if this memory barrier is related to sparse
-       * buffers! This is pretty horrible.
-       */
-      if (mask_is_write(src_flags) &&
-          p_atomic_read(&device->num_sparse_resources) > 0)
-         apply_sparse_flushes = true;
-   }
+         src_flags |= buf_barrier->srcAccessMask;
+         dst_flags |= buf_barrier->dstAccessMask;
 
-   for (uint32_t i = 0; i < dep_info->bufferMemoryBarrierCount; i++) {
-      const VkBufferMemoryBarrier2 *buf_barrier =
-         &dep_info->pBufferMemoryBarriers[i];
-      ANV_FROM_HANDLE(anv_buffer, buffer, buf_barrier->buffer);
+         /* Shader writes to buffers that could then be written by a transfer
+          * command (including queries).
+          */
+         if (stage_is_shader(buf_barrier->srcStageMask) &&
+             mask_is_shader_write(buf_barrier->srcAccessMask) &&
+             stage_is_transfer(buf_barrier->dstStageMask)) {
+            cmd_buffer->state.queries.buffer_write_bits |=
+               ANV_QUERY_COMPUTE_WRITES_PENDING_BITS;
+         }
 
-      src_flags |= buf_barrier->srcAccessMask;
-      dst_flags |= buf_barrier->dstAccessMask;
+         if (stage_is_transfer(buf_barrier->srcStageMask) &&
+             mask_is_transfer_write(buf_barrier->srcAccessMask) &&
+             cmd_buffer_has_pending_copy_query(cmd_buffer))
+            flush_query_copies = true;
 
-      /* Shader writes to buffers that could then be written by a transfer
-       * command (including queries).
-       */
-      if (stage_is_shader(buf_barrier->srcStageMask) &&
-          mask_is_shader_write(buf_barrier->srcAccessMask) &&
-          stage_is_transfer(buf_barrier->dstStageMask)) {
-         cmd_buffer->state.queries.buffer_write_bits |=
-            ANV_QUERY_COMPUTE_WRITES_PENDING_BITS;
+         if (anv_buffer_is_sparse(buffer) && mask_is_write(src_flags))
+            apply_sparse_flushes = true;
       }
 
-      if (stage_is_transfer(buf_barrier->srcStageMask) &&
-          mask_is_transfer_write(buf_barrier->srcAccessMask) &&
-          cmd_buffer_has_pending_copy_query(cmd_buffer))
-         flush_query_copies = true;
+      for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+         const VkImageMemoryBarrier2 *img_barrier =
+            &dep_info->pImageMemoryBarriers[i];
 
-      if (anv_buffer_is_sparse(buffer) && mask_is_write(src_flags))
-         apply_sparse_flushes = true;
-   }
+         src_flags |= img_barrier->srcAccessMask;
+         dst_flags |= img_barrier->dstAccessMask;
 
-   for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
-      const VkImageMemoryBarrier2 *img_barrier =
-         &dep_info->pImageMemoryBarriers[i];
+         ANV_FROM_HANDLE(anv_image, image, img_barrier->image);
+         const VkImageSubresourceRange *range = &img_barrier->subresourceRange;
 
-      src_flags |= img_barrier->srcAccessMask;
-      dst_flags |= img_barrier->dstAccessMask;
+         uint32_t base_layer, layer_count;
+         if (image->vk.image_type == VK_IMAGE_TYPE_3D) {
+            base_layer = 0;
+            layer_count = u_minify(image->vk.extent.depth, range->baseMipLevel);
+         } else {
+            base_layer = range->baseArrayLayer;
+            layer_count = vk_image_subresource_layer_count(&image->vk, range);
+         }
+         const uint32_t level_count =
+            vk_image_subresource_level_count(&image->vk, range);
 
-      ANV_FROM_HANDLE(anv_image, image, img_barrier->image);
-      const VkImageSubresourceRange *range = &img_barrier->subresourceRange;
+         VkImageLayout old_layout = img_barrier->oldLayout;
+         VkImageLayout new_layout = img_barrier->newLayout;
 
-      uint32_t base_layer, layer_count;
-      if (image->vk.image_type == VK_IMAGE_TYPE_3D) {
-         base_layer = 0;
-         layer_count = u_minify(image->vk.extent.depth, range->baseMipLevel);
-      } else {
-         base_layer = range->baseArrayLayer;
-         layer_count = vk_image_subresource_layer_count(&image->vk, range);
-      }
-      const uint32_t level_count =
-         vk_image_subresource_level_count(&image->vk, range);
+         /* If we're inside a render pass, the runtime might have converted
+          * some layouts from GENERAL to FEEDBACK_LOOP. Check if that's the
+          * case and reconvert back to the original layout so that application
+          * barriers within renderpass are operating with consistent layouts.
+          */
+         if (!cmd_buffer->vk.runtime_rp_barrier &&
+             cmd_buffer->vk.render_pass != NULL) {
+            assert(anv_cmd_graphics_state_has_image_as_attachment(&cmd_buffer->state.gfx,
+                                                                  image));
+            VkImageLayout subpass_att_layout, subpass_stencil_att_layout;
 
-      VkImageLayout old_layout = img_barrier->oldLayout;
-      VkImageLayout new_layout = img_barrier->newLayout;
+            vk_command_buffer_get_attachment_layout(
+               &cmd_buffer->vk, &image->vk,
+               &subpass_att_layout, &subpass_stencil_att_layout);
 
-      /* If we're inside a render pass, the runtime might have converted some
-       * layouts from GENERAL to FEEDBACK_LOOP. Check if that's the case and
-       * reconvert back to the original layout so that application barriers
-       * within renderpass are operating with consistent layouts.
-       */
-      if (!cmd_buffer->vk.runtime_rp_barrier &&
-          cmd_buffer->vk.render_pass != NULL) {
-         assert(anv_cmd_graphics_state_has_image_as_attachment(&cmd_buffer->state.gfx,
-                                                               image));
-         VkImageLayout subpass_att_layout, subpass_stencil_att_layout;
+            old_layout = subpass_att_layout;
+            new_layout = subpass_att_layout;
+         }
 
-         vk_command_buffer_get_attachment_layout(
-            &cmd_buffer->vk, &image->vk,
-            &subpass_att_layout, &subpass_stencil_att_layout);
-
-         old_layout = subpass_att_layout;
-         new_layout = subpass_att_layout;
-      }
-
-      if (range->aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) {
-         transition_depth_buffer(cmd_buffer, image,
-                                 range->baseMipLevel, level_count,
-                                 base_layer, layer_count,
-                                 old_layout, new_layout,
-                                 false /* will_full_fast_clear */);
-      }
-
-      if (range->aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) {
-         transition_stencil_buffer(cmd_buffer, image,
-                                   range->baseMipLevel, level_count,
-                                   base_layer, layer_count,
-                                   old_layout, new_layout,
-                                   false /* will_full_fast_clear */);
-      }
-
-      if (range->aspectMask & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) {
-         VkImageAspectFlags color_aspects =
-            vk_image_expand_aspect_mask(&image->vk, range->aspectMask);
-         anv_foreach_image_aspect_bit(aspect_bit, image, color_aspects) {
-            transition_color_buffer(cmd_buffer, image, 1UL << aspect_bit,
+         if (range->aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) {
+            transition_depth_buffer(cmd_buffer, image,
                                     range->baseMipLevel, level_count,
                                     base_layer, layer_count,
                                     old_layout, new_layout,
-                                    img_barrier->srcQueueFamilyIndex,
-                                    img_barrier->dstQueueFamilyIndex,
                                     false /* will_full_fast_clear */);
          }
-      }
 
-      /* Mark image as compressed if the destination layout has untracked
-       * writes to the aux surface.
-       */
-      VkImageAspectFlags aspects =
-         vk_image_expand_aspect_mask(&image->vk, range->aspectMask);
-      anv_foreach_image_aspect_bit(aspect_bit, image, aspects) {
-         VkImageAspectFlagBits aspect = 1UL << aspect_bit;
-         if (anv_layout_has_untracked_aux_writes(
-                device->info,
-                image, aspect,
-                img_barrier->newLayout,
-                cmd_buffer->queue_family->queueFlags)) {
-            for (uint32_t l = 0; l < level_count; l++) {
-               const uint32_t level = range->baseMipLevel + l;
-               const uint32_t aux_layers =
-                  anv_image_aux_layers(image, aspect, level);
+         if (range->aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) {
+            transition_stencil_buffer(cmd_buffer, image,
+                                      range->baseMipLevel, level_count,
+                                      base_layer, layer_count,
+                                      old_layout, new_layout,
+                                      false /* will_full_fast_clear */);
+         }
 
-               if (base_layer >= aux_layers)
-                  break; /* We will only get fewer layers as level increases */
-
-               uint32_t level_layer_count =
-                  MIN2(layer_count, aux_layers - base_layer);
-
-               set_image_compressed_bit(cmd_buffer, image, aspect,
-                                        level,
-                                        base_layer, level_layer_count,
-                                        true);
+         if (range->aspectMask & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) {
+            VkImageAspectFlags color_aspects =
+               vk_image_expand_aspect_mask(&image->vk, range->aspectMask);
+            anv_foreach_image_aspect_bit(aspect_bit, image, color_aspects) {
+               transition_color_buffer(cmd_buffer, image, 1UL << aspect_bit,
+                                       range->baseMipLevel, level_count,
+                                       base_layer, layer_count,
+                                       old_layout, new_layout,
+                                       img_barrier->srcQueueFamilyIndex,
+                                       img_barrier->dstQueueFamilyIndex,
+                                       false /* will_full_fast_clear */);
             }
          }
-      }
 
-      if (anv_image_is_sparse(image) && mask_is_write(src_flags))
-         apply_sparse_flushes = true;
+         /* Mark image as compressed if the destination layout has untracked
+          * writes to the aux surface.
+          */
+         VkImageAspectFlags aspects =
+            vk_image_expand_aspect_mask(&image->vk, range->aspectMask);
+         anv_foreach_image_aspect_bit(aspect_bit, image, aspects) {
+            VkImageAspectFlagBits aspect = 1UL << aspect_bit;
+            if (anv_layout_has_untracked_aux_writes(
+                   device->info,
+                   image, aspect,
+                   img_barrier->newLayout,
+                   cmd_buffer->queue_family->queueFlags)) {
+               for (uint32_t l = 0; l < level_count; l++) {
+                  const uint32_t level = range->baseMipLevel + l;
+                  const uint32_t aux_layers =
+                     anv_image_aux_layers(image, aspect, level);
+
+                  if (base_layer >= aux_layers)
+                     break; /* We will only get fewer layers as level increases */
+
+                  uint32_t level_layer_count =
+                     MIN2(layer_count, aux_layers - base_layer);
+
+                  set_image_compressed_bit(cmd_buffer, image, aspect,
+                                           level,
+                                           base_layer, level_layer_count,
+                                           true);
+               }
+            }
+         }
+
+         if (anv_image_is_sparse(image) && mask_is_write(src_flags))
+            apply_sparse_flushes = true;
+      }
    }
 
    enum anv_pipe_bits bits =
@@ -4142,7 +4201,7 @@ void genX(CmdPipelineBarrier2)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
-   cmd_buffer_barrier(cmd_buffer, pDependencyInfo, "pipe barrier");
+   cmd_buffer_barrier(cmd_buffer, 1, pDependencyInfo, "pipe barrier");
 }
 
 void
@@ -5668,7 +5727,7 @@ void genX(CmdWaitEvents2)(
       }
    }
 
-   cmd_buffer_barrier(cmd_buffer, pDependencyInfos, "wait event");
+   cmd_buffer_barrier(cmd_buffer, eventCount, pDependencyInfos, "wait event");
 }
 
 static uint32_t vk_to_intel_index_type(VkIndexType type)
@@ -5853,19 +5912,26 @@ void genX(cmd_emit_timestamp)(struct anv_batch *batch,
 }
 
 void genX(batch_emit_secondary_call)(struct anv_batch *batch,
+                                     struct anv_device *device,
                                      struct anv_address secondary_addr,
                                      struct anv_address secondary_return_addr)
 {
+   struct mi_builder b;
+   mi_builder_init(&b, device->info, batch);
+   mi_builder_set_mocs(&b, isl_mocs(&device->isl_dev, 0, false));
+   /* Make sure the write in the batch buffer lands before we just execute the
+    * jump.
+    */
+   mi_builder_set_write_check(&b, true);
+
    /* Emit a write to change the return address of the secondary */
-   uint64_t *write_return_addr =
-      anv_batch_emitn(batch,
-                      GENX(MI_STORE_DATA_IMM_length) + 1 /* QWord write */,
-                      GENX(MI_STORE_DATA_IMM),
-#if GFX_VER >= 12
-                      .ForceWriteCompletionCheck = true,
-#endif
-                      .Address = secondary_return_addr) +
-      GENX(MI_STORE_DATA_IMM_ImmediateData_start) / 8;
+   struct mi_reloc_imm_token reloc =
+      mi_store_relocated_imm(&b, mi_mem64(secondary_return_addr));
+
+   /* Ensure the write have landed before CS reads the address written
+    * above
+    */
+   mi_ensure_write_fence(&b);
 
 #if GFX_VER >= 12
    /* Disable prefetcher before jumping into a secondary */
@@ -5885,8 +5951,9 @@ void genX(batch_emit_secondary_call)(struct anv_batch *batch,
    /* Replace the return address written by the MI_STORE_DATA_IMM above with
     * the primary's current batch address (immediately after the jump).
     */
-   *write_return_addr =
-      anv_address_physical(anv_batch_current_address(batch));
+   mi_relocate_store_imm(reloc,
+                         anv_address_physical(
+                            anv_batch_current_address(batch)));
 }
 
 void *
@@ -6094,22 +6161,17 @@ genX(cmd_buffer_end_companion_rcs_syncpoint)(struct anv_cmd_buffer *cmd_buffer,
 #endif
 }
 
-VkResult
-genX(write_trtt_entries)(struct anv_trtt_submission *submit)
+void
+genX(write_trtt_entries)(struct anv_async_submit *submit,
+                         struct anv_trtt_bind *l3l2_binds,
+                         uint32_t n_l3l2_binds,
+                         struct anv_trtt_bind *l1_binds,
+                         uint32_t n_l1_binds)
 {
 #if GFX_VER >= 12
    const struct intel_device_info *devinfo =
-      submit->sparse->queue->device->info;
-
-   size_t batch_size = submit->l3l2_binds_len * 20 +
-                       submit->l1_binds_len * 16 +
-                       GENX(PIPE_CONTROL_length) * sizeof(uint32_t) + 8;
-   STACK_ARRAY(uint32_t, cmds, batch_size);
-   struct anv_batch batch = {
-      .start = cmds,
-      .next = cmds,
-      .end = (void *)cmds + batch_size,
-   };
+      submit->queue->device->info;
+   struct anv_batch *batch = &submit->batch;
 
    /* BSpec says:
     *   "DWord Length programmed must not exceed 0x3FE."
@@ -6127,90 +6189,86 @@ genX(write_trtt_entries)(struct anv_trtt_submission *submit)
     * contiguous addresses.
     */
 
-   for (int i = 0; i < submit->l3l2_binds_len; i++) {
+   for (uint32_t i = 0; i < n_l3l2_binds; i++) {
       int extra_writes = 0;
-      for (int j = i + 1;
-           j < submit->l3l2_binds_len &&
-            extra_writes <= max_qword_extra_writes;
+      for (uint32_t j = i + 1;
+           j < n_l3l2_binds && extra_writes <= max_qword_extra_writes;
            j++) {
-         if (submit->l3l2_binds[i].pte_addr + (j - i) * 8 ==
-             submit->l3l2_binds[j].pte_addr) {
+         if (l3l2_binds[i].pte_addr + (j - i) * 8 == l3l2_binds[j].pte_addr) {
             extra_writes++;
          } else {
             break;
          }
       }
-      bool is_last_write = submit->l1_binds_len == 0 &&
-                           i + extra_writes + 1 == submit->l3l2_binds_len;
+      bool is_last_write = n_l1_binds == 0 &&
+                           i + extra_writes + 1 == n_l3l2_binds;
 
       uint32_t total_len = GENX(MI_STORE_DATA_IMM_length_bias) +
                            qword_write_len + (extra_writes * 2);
       uint32_t *dw;
-      dw = anv_batch_emitn(&batch, total_len, GENX(MI_STORE_DATA_IMM),
+      dw = anv_batch_emitn(batch, total_len, GENX(MI_STORE_DATA_IMM),
          .ForceWriteCompletionCheck = is_last_write,
          .StoreQword = true,
-         .Address = anv_address_from_u64(submit->l3l2_binds[i].pte_addr),
+         .Address = anv_address_from_u64(l3l2_binds[i].pte_addr),
       );
       dw += 3;
-      for (int j = 0; j < extra_writes + 1; j++) {
-         uint64_t entry_addr_64b = submit->l3l2_binds[i + j].entry_addr;
+      for (uint32_t j = 0; j < extra_writes + 1; j++) {
+         uint64_t entry_addr_64b = l3l2_binds[i + j].entry_addr;
          *dw = entry_addr_64b & 0xFFFFFFFF;
          dw++;
          *dw = (entry_addr_64b >> 32) & 0xFFFFFFFF;
          dw++;
       }
-      assert(dw == batch.next);
+      assert(dw == batch->next);
 
       i += extra_writes;
    }
 
-   for (int i = 0; i < submit->l1_binds_len; i++) {
+   for (uint32_t i = 0; i < n_l1_binds; i++) {
       int extra_writes = 0;
-      for (int j = i + 1;
-           j < submit->l1_binds_len && extra_writes <= max_dword_extra_writes;
+      for (uint32_t j = i + 1;
+           j < n_l1_binds && extra_writes <= max_dword_extra_writes;
            j++) {
-         if (submit->l1_binds[i].pte_addr + (j - i) * 4 ==
-             submit->l1_binds[j].pte_addr) {
+         if (l1_binds[i].pte_addr + (j - i) * 4 ==
+             l1_binds[j].pte_addr) {
             extra_writes++;
          } else {
             break;
          }
       }
 
-      bool is_last_write = i + extra_writes + 1 == submit->l1_binds_len;
+      bool is_last_write = i + extra_writes + 1 == n_l1_binds;
 
       uint32_t total_len = GENX(MI_STORE_DATA_IMM_length_bias) +
                            dword_write_len + extra_writes;
       uint32_t *dw;
-      dw = anv_batch_emitn(&batch, total_len, GENX(MI_STORE_DATA_IMM),
+      dw = anv_batch_emitn(batch, total_len, GENX(MI_STORE_DATA_IMM),
          .ForceWriteCompletionCheck = is_last_write,
-         .Address = anv_address_from_u64(submit->l1_binds[i].pte_addr),
+         .Address = anv_address_from_u64(l1_binds[i].pte_addr),
       );
       dw += 3;
-      for (int j = 0; j < extra_writes + 1; j++) {
-         *dw = (submit->l1_binds[i + j].entry_addr >> 16) & 0xFFFFFFFF;
+      for (uint32_t j = 0; j < extra_writes + 1; j++) {
+         *dw = (l1_binds[i + j].entry_addr >> 16) & 0xFFFFFFFF;
          dw++;
       }
-      assert(dw == batch.next);
+      assert(dw == batch->next);
 
       i += extra_writes;
    }
 
-   genx_batch_emit_pipe_control(&batch, devinfo, _3D,
+   genx_batch_emit_pipe_control(batch, devinfo, _3D,
                                 ANV_PIPE_CS_STALL_BIT |
                                 ANV_PIPE_TLB_INVALIDATE_BIT);
-
-   anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
-
-   assert(batch.next <= batch.end);
-
-   VkResult result = anv_queue_submit_trtt_batch(submit->sparse, &batch);
-   STACK_ARRAY_FINISH(cmds);
-
-   return result;
-
+#else
+   unreachable("Not implemented");
 #endif
-   return VK_SUCCESS;
+}
+
+void
+genX(async_submit_end)(struct anv_async_submit *submit)
+{
+   struct anv_batch *batch = &submit->batch;
+   anv_batch_emit(batch, GENX(MI_BATCH_BUFFER_END), bbe);
 }
 
 void

@@ -1,3 +1,18 @@
+/* MESA: A hack to avoid #ifdefs in driver code. */
+#ifdef __ANDROID__
+
+#include <cutils/native_handle.h>
+#if ANDROID_API_LEVEL < 28
+/* buffer_handle_t was defined in the deprecated system/window.h */
+typedef const native_handle_t *buffer_handle_t;
+#endif
+
+#else
+
+typedef void *buffer_handle_t;
+
+#endif
+
 /*
  * Copyright 2015 The Android Open Source Project
  *
@@ -19,19 +34,7 @@
 
 #undef __ANDROID__
 
-/* MESA: A hack to avoid #ifdefs in driver code. */
-#ifdef __ANDROID__
-#include <cutils/native_handle.h>
 #include <vulkan/vulkan.h>
-
-#if ANDROID_API_LEVEL < 28
-/* buffer_handle_t was defined in the deprecated system/window.h */
-typedef const native_handle_t *buffer_handle_t;
-#endif
-
-#else
-typedef void *buffer_handle_t;
-#endif
 
 #ifdef __cplusplus
 extern "C" {

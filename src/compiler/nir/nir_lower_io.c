@@ -2276,8 +2276,7 @@ lower_explicit_io_array_length(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_def *remaining = nir_usub_sat(b, size, offset);
    nir_def *arr_size = nir_udiv_imm(b, remaining, stride);
 
-   nir_def_rewrite_uses(&intrin->def, arr_size);
-   nir_instr_remove(&intrin->instr);
+   nir_def_replace(&intrin->def, arr_size);
 }
 
 static void
@@ -2487,8 +2486,7 @@ nir_lower_vars_to_explicit_types_impl(nir_function_impl *impl,
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                     nir_metadata_dominance |
+      nir_metadata_preserve(impl, nir_metadata_control_flow |
                                      nir_metadata_live_defs |
                                      nir_metadata_loop_analysis);
    } else {
@@ -2760,7 +2758,9 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
    case nir_intrinsic_task_payload_atomic:
    case nir_intrinsic_task_payload_atomic_swap:
    case nir_intrinsic_global_atomic:
+   case nir_intrinsic_global_atomic_2x32:
    case nir_intrinsic_global_atomic_swap:
+   case nir_intrinsic_global_atomic_swap_2x32:
    case nir_intrinsic_load_coefficients_agx:
       return 0;
    case nir_intrinsic_load_ubo:
@@ -2779,6 +2779,8 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
    case nir_intrinsic_store_scratch:
    case nir_intrinsic_ssbo_atomic:
    case nir_intrinsic_ssbo_atomic_swap:
+   case nir_intrinsic_ldc_nv:
+   case nir_intrinsic_ldcx_nv:
       return 1;
    case nir_intrinsic_store_ssbo:
    case nir_intrinsic_store_per_vertex_output:
@@ -3038,7 +3040,7 @@ nir_io_add_const_offset_to_base(nir_shader *nir, nir_variable_mode modes)
       }
       progress |= impl_progress;
       if (impl_progress)
-         nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+         nir_metadata_preserve(impl, nir_metadata_control_flow);
       else
          nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -3112,15 +3114,13 @@ nir_lower_color_inputs(nir_shader *nir)
             load = nir_channels(&b, load, BITFIELD_RANGE(start, count));
          }
 
-         nir_def_rewrite_uses(&intrin->def, load);
-         nir_instr_remove(instr);
+         nir_def_replace(&intrin->def, load);
          progress = true;
       }
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_dominance |
-                                     nir_metadata_block_index);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }

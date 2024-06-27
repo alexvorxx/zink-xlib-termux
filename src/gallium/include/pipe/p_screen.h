@@ -691,6 +691,8 @@ struct pipe_screen {
    bool (*resource_bind_backing)(struct pipe_screen *screen,
                                  struct pipe_resource *pt,
                                  struct pipe_memory_allocation *pmem,
+                                 uint64_t fd_offset,
+                                 uint64_t size,
                                  uint64_t offset);
 
    /**
@@ -803,6 +805,44 @@ struct pipe_screen {
                                      uint32_t in_data_size,
                                      void *data,
                                      bool *need_export_dmabuf);
+
+   /**
+    * Get supported compression fixed rates (bits per component) for a format.
+    * If \p max is 0, the total number of supported rates for the supplied
+    * format is returned in \p count, with no modification to \p rates.
+    * Otherwise, \p rates is filled with upto \p max supported compression
+    * rates, and \p count with the number of values copied.
+    */
+   void (*query_compression_rates)(struct pipe_screen *screen,
+                                   enum pipe_format format, int max,
+                                   uint32_t *rates, int *count);
+
+   /**
+    * Get modifiers associated with a given compression fixed rate.
+    * If \p rate is PIPE_COMPRESSION_FIXED_RATE_DEFAULT, supported compression
+    * modifiers are returned in order of priority.
+    * If \p max is 0, the total number of supported modifiers for the supplied
+    * compression rate is returned in \p count, with no modification to \p
+    * modifiers. Otherwise, \p modifiers is filled with upto \p max supported
+    * modifiers, and \p count with the number of values copied.
+    */
+   void (*query_compression_modifiers)(struct pipe_screen *screen,
+                                       enum pipe_format format, uint32_t rate,
+                                       int max, uint64_t *modifiers, int *count);
+
+   /**
+    * Determine whether the modifer is enabling fixed-rate compression for
+    * the given screen and format.
+    *
+    * If \p rate is not NULL, the value it points to will be set to the
+    * bitrate (bits per component) associated with the modifier.
+    *
+    * \return true if the format+modifier pair is enabling fixed-rate
+    *         compression on \p screen, false otherwise.
+    */
+   bool (*is_compression_modifier)(struct pipe_screen *screen,
+                                   enum pipe_format format, uint64_t modifier,
+                                   uint32_t *rate);
 };
 
 

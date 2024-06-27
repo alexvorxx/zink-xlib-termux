@@ -291,9 +291,13 @@ bool ac_is_modifier_supported(const struct radeon_info *info,
       if (!options->dcc)
          return false;
 
-      if (ac_modifier_has_dcc_retile(modifier) &&
-          (!info->use_display_dcc_with_retile_blit || !options->dcc_retile))
-         return false;
+      if (ac_modifier_has_dcc_retile(modifier)) {
+         /* radeonsi and radv retiling shaders only support bpe == 32. */
+         if (util_format_get_blocksizebits(format) != 32)
+            return false;
+         if (!info->use_display_dcc_with_retile_blit || !options->dcc_retile)
+            return false;
+      }
    }
 
    return true;
@@ -4028,14 +4032,54 @@ ac_surface_addr_from_coord(struct ac_addrlib *addrlib, const struct radeon_info 
    return output.addr;
 }
 
-void
-ac_surface_compute_nbc_view(struct ac_addrlib *addrlib, const struct radeon_info *info,
+static void
+gfx12_surface_compute_nbc_view(struct ac_addrlib *addrlib, const struct radeon_info *info,
                             const struct radeon_surf *surf, const struct ac_surf_info *surf_info,
                             unsigned level, unsigned layer, struct ac_surf_nbc_view *out)
 {
-   /* Only implemented for GFX10+ */
-   assert(info->gfx_level >= GFX10);
+   ADDR3_COMPUTE_NONBLOCKCOMPRESSEDVIEW_INPUT input = {0};
+   input.size = sizeof(ADDR3_COMPUTE_NONBLOCKCOMPRESSEDVIEW_INPUT);
+   input.swizzleMode = surf->u.gfx9.swizzle_mode;
+   input.resourceType = (AddrResourceType)surf->u.gfx9.resource_type;
+   switch (surf->bpe) {
+   case 8:
+      input.format = ADDR_FMT_BC1;
+      break;
+   case 16:
+      input.format = ADDR_FMT_BC3;
+      break;
+   default:
+      assert(0);
+   }
+   input.unAlignedDims.width = surf_info->width;
+   input.unAlignedDims.height = surf_info->height;
+   input.numMipLevels = surf_info->levels;
+   input.pipeBankXor = surf->tile_swizzle;
+   input.slice = layer;
+   input.mipId = level;
 
+   ADDR_E_RETURNCODE res;
+   ADDR3_COMPUTE_NONBLOCKCOMPRESSEDVIEW_OUTPUT output = {0};
+   output.size = sizeof(ADDR3_COMPUTE_NONBLOCKCOMPRESSEDVIEW_OUTPUT);
+   res = Addr3ComputeNonBlockCompressedView(addrlib->handle, &input, &output);
+   if (res == ADDR_OK) {
+      out->base_address_offset = output.offset;
+      out->tile_swizzle = output.pipeBankXor;
+      out->width = output.unAlignedDims.width;
+      out->height = output.unAlignedDims.height;
+      out->num_levels = output.numMipLevels;
+      out->level = output.mipId;
+      out->valid = true;
+   } else {
+      out->valid = false;
+   }
+}
+
+static void
+gfx10_surface_compute_nbc_view(struct ac_addrlib *addrlib, const struct radeon_info *info,
+                            const struct radeon_surf *surf, const struct ac_surf_info *surf_info,
+                            unsigned level, unsigned layer, struct ac_surf_nbc_view *out)
+{
    ADDR2_COMPUTE_NONBLOCKCOMPRESSEDVIEW_INPUT input = {0};
    input.size = sizeof(ADDR2_COMPUTE_NONBLOCKCOMPRESSEDVIEW_INPUT);
    input.swizzleMode = surf->u.gfx9.swizzle_mode;
@@ -4072,6 +4116,21 @@ ac_surface_compute_nbc_view(struct ac_addrlib *addrlib, const struct radeon_info
       out->valid = true;
    } else {
       out->valid = false;
+   }
+}
+
+void
+ac_surface_compute_nbc_view(struct ac_addrlib *addrlib, const struct radeon_info *info,
+                            const struct radeon_surf *surf, const struct ac_surf_info *surf_info,
+                            unsigned level, unsigned layer, struct ac_surf_nbc_view *out)
+{
+   /* Only implemented for GFX10+ */
+   assert(info->gfx_level >= GFX10);
+
+   if (info->gfx_level >= GFX12) {
+      gfx12_surface_compute_nbc_view(addrlib, info, surf, surf_info, level, layer, out);
+   } else {
+      gfx10_surface_compute_nbc_view(addrlib, info, surf, surf_info, level, layer, out);
    }
 }
 

@@ -27,6 +27,7 @@ liblvp_files = files(
     'lvp_lower_vulkan_resource.h',
     'lvp_lower_input_attachments.c',
     'lvp_nir_lower_ray_queries.c',
+    'lvp_nir_lower_sparse_residency.c',
     'lvp_nir_ray_tracing.c',
     'lvp_nir_ray_tracing.h',
     'lvp_pipe_sync.c',

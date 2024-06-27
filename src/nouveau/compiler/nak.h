@@ -29,7 +29,6 @@ uint64_t nak_debug_flags(const struct nak_compiler *nak);
 const struct nir_shader_compiler_options *
 nak_nir_options(const struct nak_compiler *nak);
 
-void nak_optimize_nir(nir_shader *nir, const struct nak_compiler *nak);
 void nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak);
 
 PRAGMA_DIAGNOSTIC_PUSH

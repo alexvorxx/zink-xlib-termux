@@ -103,14 +103,6 @@ if meson.can_run_host_binaries()
 endif
 
 if with_tools.contains('glsl')
-  test(
-    'glsl dump-builder test',
-    glsl_compiler,
-    args : ['--version', '110', '--dump-builder',
-            files('standalone_dump-builder.frag'),
-           ],
-    suite : ['compiler', 'glsl'],
-  )
   if with_gles2
     test(
       'glsl lower-precision test',

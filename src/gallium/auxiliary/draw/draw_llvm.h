@@ -538,8 +538,7 @@ struct llvm_tess_eval_shader {
 struct draw_llvm {
    struct draw_context *draw;
 
-   LLVMContextRef context;
-   bool context_owned;
+   lp_context_ref context;
 
    struct draw_vs_jit_context vs_jit_context;
    struct draw_gs_jit_context gs_jit_context;
@@ -585,7 +584,7 @@ llvm_tess_eval_shader(struct draw_tess_eval_shader *tes)
 }
 
 struct draw_llvm *
-draw_llvm_create(struct draw_context *draw, LLVMContextRef llvm_context);
+draw_llvm_create(struct draw_context *draw, lp_context_ref *llvm_context);
 
 void
 draw_llvm_destroy(struct draw_llvm *llvm);

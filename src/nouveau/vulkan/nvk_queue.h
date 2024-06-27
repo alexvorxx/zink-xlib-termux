@@ -51,6 +51,9 @@ struct nvk_queue {
    } drm;
 
    struct nvk_queue_state state;
+
+   /* CB0 for all draw commands on this queue */
+   struct nouveau_ws_bo *draw_cb0;
 };
 
 static inline struct nvk_device *
@@ -65,10 +68,10 @@ VkResult nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
 void nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue);
 
-VkResult nvk_push_draw_state_init(struct nvk_device *dev,
+VkResult nvk_push_draw_state_init(struct nvk_queue *queue,
                                   struct nv_push *p);
 
-VkResult nvk_push_dispatch_state_init(struct nvk_device *dev,
+VkResult nvk_push_dispatch_state_init(struct nvk_queue *queue,
                                       struct nv_push *p);
 
 /* this always syncs, so only use when that doesn't matter */

@@ -230,15 +230,13 @@ enum lvp_device_memory_type {
 struct lvp_device_memory {
    struct vk_object_base base;
    struct pipe_memory_allocation *pmem;
+   struct llvmpipe_memory_allocation mem_alloc;
    uint32_t                                     type_index;
    VkDeviceSize                                 map_size;
    VkDeviceSize                                 size;
    void *                                       map;
    enum lvp_device_memory_type memory_type;
    int                                          backed_fd;
-#ifdef PIPE_MEMORY_FD
-   struct llvmpipe_memory_fd_alloc              *alloc;
-#endif
 };
 
 struct lvp_pipe_sync {
@@ -376,39 +374,7 @@ struct lvp_descriptor_pool {
    struct list_head sets;
 };
 
-struct lvp_descriptor_update_template {
-   struct vk_object_base base;
-   unsigned ref_cnt;
-   uint32_t entry_count;
-   uint32_t set;
-   VkDescriptorUpdateTemplateType type;
-   VkPipelineBindPoint bind_point;
-   struct lvp_pipeline_layout *pipeline_layout;
-   VkDescriptorUpdateTemplateEntry entry[0];
-};
-
 uint32_t lvp_descriptor_update_template_entry_size(VkDescriptorType type);
-
-static inline void
-lvp_descriptor_template_templ_ref(struct lvp_descriptor_update_template *templ)
-{
-   assert(templ && templ->ref_cnt >= 1);
-   p_atomic_inc(&templ->ref_cnt);
-}
-
-void
-lvp_descriptor_template_destroy(struct lvp_device *device, struct lvp_descriptor_update_template *templ);
-
-static inline void
-lvp_descriptor_template_templ_unref(struct lvp_device *device,
-                                    struct lvp_descriptor_update_template *templ)
-{
-   if (!templ)
-      return;
-   assert(templ->ref_cnt >= 1);
-   if (p_atomic_dec_zero(&templ->ref_cnt))
-      lvp_descriptor_template_destroy(device, templ);
-}
 
 VkResult
 lvp_descriptor_set_create(struct lvp_device *device,
@@ -422,7 +388,7 @@ lvp_descriptor_set_destroy(struct lvp_device *device,
 void
 lvp_descriptor_set_update_with_template(VkDevice _device, VkDescriptorSet descriptorSet,
                                         VkDescriptorUpdateTemplate descriptorUpdateTemplate,
-                                        const void *pData, bool push);
+                                        const void *pData);
 
 struct lvp_pipeline_layout {
    struct vk_pipeline_layout vk;
@@ -611,10 +577,12 @@ struct lvp_event {
 struct lvp_buffer {
    struct vk_buffer vk;
 
-   struct pipe_memory_allocation *pmem;
+   struct lvp_device_memory *mem;
    struct pipe_resource *bo;
    uint64_t total_size;
    uint64_t offset;
+   void *map;
+   struct pipe_transfer *transfer;
 };
 
 struct lvp_buffer_view {
@@ -697,8 +665,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_descriptor_set, base, VkDescriptorSet,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET)
 VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_descriptor_set_layout, vk.base, VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_descriptor_update_template, base, VkDescriptorUpdateTemplate,
-                               VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_device_memory, base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
@@ -721,6 +687,16 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_indirect_command_layout_nv, base, VkIndirectC
                                VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 
 void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp);
+
+VkResult lvp_buffer_bind_sparse(struct lvp_device *device,
+                                struct lvp_queue *queue,
+                                VkSparseBufferMemoryBindInfo *bind);
+VkResult lvp_image_bind_opaque_sparse(struct lvp_device *device,
+                                      struct lvp_queue *queue,
+                                      VkSparseImageOpaqueMemoryBindInfo *bind);
+VkResult lvp_image_bind_sparse(struct lvp_device *device,
+                               struct lvp_queue *queue,
+                               VkSparseImageMemoryBindInfo *bind);
 
 VkResult lvp_execute_cmds(struct lvp_device *device,
                           struct lvp_queue *queue,
@@ -795,6 +771,8 @@ void *
 lvp_shader_compile(struct lvp_device *device, struct lvp_shader *shader, nir_shader *nir, bool locked);
 bool
 lvp_nir_lower_ray_queries(struct nir_shader *shader);
+bool
+lvp_nir_lower_sparse_residency(struct nir_shader *shader);
 enum vk_cmd_type
 lvp_nv_dgc_token_to_cmd_type(const VkIndirectCommandsLayoutTokenNV *token);
 #ifdef __cplusplus

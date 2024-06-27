@@ -823,11 +823,7 @@ nvk_nir_copy_query(nir_builder *b, nir_variable *push, nir_def *i)
 
          nir_push_loop(b);
          {
-            nir_push_if(b, nir_ige(b, nir_load_var(b, r), num_reports));
-            {
-               nir_jump(b, nir_jump_break);
-            }
-            nir_pop_if(b, NULL);
+            nir_break_if(b, nir_ige(b, nir_load_var(b, r), num_reports));
 
             nir_get_query_delta(b, nir_iadd(b, dst_addr, dst_offset),
                                 report_addr, nir_load_var(b, r), flags);
@@ -931,7 +927,6 @@ nvk_meta_copy_query_pool_results(struct nvk_cmd_buffer *cmd,
                                  VkQueryResultFlags flags)
 {
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
-   struct nvk_descriptor_state *desc = &cmd->state.cs.descriptors;
    VkResult result;
 
    const struct nvk_copy_query_push push = {
@@ -968,7 +963,8 @@ nvk_meta_copy_query_pool_results(struct nvk_cmd_buffer *cmd,
    /* Save pipeline and push constants */
    struct nvk_shader *shader_save = cmd->state.cs.shader;
    uint8_t push_save[NVK_MAX_PUSH_SIZE];
-   memcpy(push_save, desc->root.push, NVK_MAX_PUSH_SIZE);
+   nvk_descriptor_state_get_root_array(&cmd->state.cs.descriptors, push,
+                                       0, NVK_MAX_PUSH_SIZE, push_save);
 
    dev->vk.dispatch_table.CmdBindPipeline(nvk_cmd_buffer_to_handle(cmd),
                                           VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -983,7 +979,8 @@ nvk_meta_copy_query_pool_results(struct nvk_cmd_buffer *cmd,
    /* Restore pipeline and push constants */
    if (shader_save)
       nvk_cmd_bind_compute_shader(cmd, shader_save);
-   memcpy(desc->root.push, push_save, NVK_MAX_PUSH_SIZE);
+   nvk_descriptor_state_set_root_array(cmd, &cmd->state.cs.descriptors, push,
+                                       0, NVK_MAX_PUSH_SIZE, push_save);
 }
 
 VKAPI_ATTR void VKAPI_CALL

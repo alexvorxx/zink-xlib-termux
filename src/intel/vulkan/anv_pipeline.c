@@ -1184,8 +1184,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 #if DEBUG_PRINTF_EXAMPLE
    if (stage->stage == MESA_SHADER_FRAGMENT) {
       nir_shader_intrinsics_pass(nir, print_ubo_load,
-                                 nir_metadata_block_index |
-                                 nir_metadata_dominance,
+                                 nir_metadata_control_flow,
                                  NULL);
    }
 #endif
@@ -2493,7 +2492,7 @@ anv_graphics_pipeline_compile(struct anv_graphics_base_pipeline *pipeline,
          goto fail;
       }
 
-      anv_nir_validate_push_layout(&stage->prog_data.base,
+      anv_nir_validate_push_layout(device->physical, &stage->prog_data.base,
                                    &stage->bind_map);
 
       struct anv_shader_upload_params upload_params = {
@@ -2682,7 +2681,8 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
          return vk_error(pipeline, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
 
-      anv_nir_validate_push_layout(&stage.prog_data.base, &stage.bind_map);
+      anv_nir_validate_push_layout(device->physical, &stage.prog_data.base,
+                                   &stage.bind_map);
 
       if (!stage.prog_data.cs.uses_num_work_groups) {
          assert(stage.bind_map.surface_to_descriptor[0].set ==

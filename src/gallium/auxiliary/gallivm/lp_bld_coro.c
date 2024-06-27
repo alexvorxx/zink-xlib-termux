@@ -165,8 +165,8 @@ void lp_build_coro_add_malloc_hooks(struct gallivm_state *gallivm)
 
    assert(gallivm->coro_malloc_hook);
    assert(gallivm->coro_free_hook);
-   LLVMAddGlobalMapping(gallivm->engine, gallivm->coro_malloc_hook, coro_malloc);
-   LLVMAddGlobalMapping(gallivm->engine, gallivm->coro_free_hook, coro_free);
+   gallivm_add_global_mapping(gallivm, gallivm->coro_malloc_hook, coro_malloc);
+   gallivm_add_global_mapping(gallivm, gallivm->coro_free_hook, coro_free);
 }
 
 void lp_build_coro_declare_malloc_hooks(struct gallivm_state *gallivm)

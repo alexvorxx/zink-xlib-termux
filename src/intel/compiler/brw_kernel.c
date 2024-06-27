@@ -232,8 +232,7 @@ lower_kernel_intrinsics(nir_shader *nir)
    }
 
    if (progress) {
-      nir_metadata_preserve(impl, nir_metadata_block_index |
-                                  nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -544,11 +543,8 @@ nir_remove_llvm17_scratch(nir_shader *nir)
                if (offset == NULL)
                   continue;
 
-               nir_def_rewrite_uses(&intrin->def,
-                                    rebuild_value_from_store(
-                                       &scratch_stores, &intrin->def,
-                                       nir_src_as_uint(intrin->src[0])));
-               nir_instr_remove(instr);
+               nir_def_replace(&intrin->def,
+                               rebuild_value_from_store(&scratch_stores, &intrin->def, nir_src_as_uint(intrin->src[0])));
 
                progress = true;
             }

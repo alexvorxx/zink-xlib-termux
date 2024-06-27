@@ -107,7 +107,7 @@ impl PipeResource {
     }
 
     pub fn is_staging(&self) -> bool {
-        self.as_ref().usage() & pipe_resource_usage::PIPE_USAGE_STAGING.0 != 0
+        self.as_ref().usage() == pipe_resource_usage::PIPE_USAGE_STAGING
     }
 
     pub fn pipe_image_view(

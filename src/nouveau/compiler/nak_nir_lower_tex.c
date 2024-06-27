@@ -583,7 +583,6 @@ bool
 nak_nir_lower_tex(nir_shader *nir, const struct nak_compiler *nak)
 {
    return nir_shader_instructions_pass(nir, lower_tex_instr,
-                                       nir_metadata_block_index |
-                                       nir_metadata_dominance,
+                                       nir_metadata_control_flow,
                                        (void *)nak);
 }

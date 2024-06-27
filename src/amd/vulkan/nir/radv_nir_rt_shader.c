@@ -151,14 +151,13 @@ lower_rt_derefs(nir_shader *shader)
             b.cursor = nir_before_instr(&deref->instr);
             nir_deref_instr *replacement =
                nir_build_deref_cast(&b, arg_offset, nir_var_function_temp, deref->var->type, 0);
-            nir_def_rewrite_uses(&deref->def, &replacement->def);
-            nir_instr_remove(&deref->instr);
+            nir_def_replace(&deref->def, &replacement->def);
          }
       }
    }
 
    if (progress)
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
+      nir_metadata_preserve(impl, nir_metadata_control_flow);
    else
       nir_metadata_preserve(impl, nir_metadata_all);
 
@@ -879,8 +878,7 @@ radv_nir_lower_rt_io(nir_shader *nir, bool monolithic, uint32_t payload_offset)
          nir_lower_vars_to_explicit_types(nir, nir_var_function_temp, glsl_get_natural_size_align_bytes);
          nir->scratch_size = scratch_size;
 
-         nir_shader_intrinsics_pass(nir, radv_lower_payload_arg_to_offset,
-                                    nir_metadata_block_index | nir_metadata_dominance, NULL);
+         nir_shader_intrinsics_pass(nir, radv_lower_payload_arg_to_offset, nir_metadata_control_flow, NULL);
       }
 
       NIR_PASS(_, nir, radv_nir_lower_ray_payload_derefs, payload_offset);
@@ -1092,13 +1090,11 @@ lower_any_hit_for_intersection(nir_shader *any_hit)
                break;
 
             case nir_intrinsic_load_ray_t_max:
-               nir_def_rewrite_uses(&intrin->def, hit_t);
-               nir_instr_remove(&intrin->instr);
+               nir_def_replace(&intrin->def, hit_t);
                break;
 
             case nir_intrinsic_load_ray_hit_kind:
-               nir_def_rewrite_uses(&intrin->def, hit_kind);
-               nir_instr_remove(&intrin->instr);
+               nir_def_replace(&intrin->def, hit_kind);
                break;
 
             /* We place all any_hit scratch variables after intersection scratch variables.
@@ -1465,11 +1461,7 @@ handle_candidate_triangle(nir_builder *b, struct radv_triangle_intersection *int
    nir_store_var(b, data->trav_vars->hit, nir_imm_true(b), 1);
 
    nir_def *ray_terminated = nir_load_var(b, data->vars->ahit_terminate);
-   nir_push_if(b, nir_ior(b, ray_flags->terminate_on_first_hit, ray_terminated));
-   {
-      nir_jump(b, nir_jump_break);
-   }
-   nir_pop_if(b, NULL);
+   nir_break_if(b, nir_ior(b, ray_flags->terminate_on_first_hit, ray_terminated));
 }
 
 static void
@@ -1529,11 +1521,7 @@ handle_candidate_aabb(nir_builder *b, struct radv_leaf_intersection *intersectio
 
       nir_def *terminate_on_first_hit = nir_test_mask(b, args->flags, SpvRayFlagsTerminateOnFirstHitKHRMask);
       nir_def *ray_terminated = nir_load_var(b, data->vars->ahit_terminate);
-      nir_push_if(b, nir_ior(b, terminate_on_first_hit, ray_terminated));
-      {
-         nir_jump(b, nir_jump_break);
-      }
-      nir_pop_if(b, NULL);
+      nir_break_if(b, nir_ior(b, terminate_on_first_hit, ray_terminated));
    }
    nir_pop_if(b, NULL);
 }

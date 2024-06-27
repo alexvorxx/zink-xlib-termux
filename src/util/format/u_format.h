@@ -1809,6 +1809,8 @@ unsigned util_format_get_last_component(enum pipe_format format);
 int util_format_get_largest_non_void_channel(enum pipe_format format);
 unsigned util_format_get_max_channel_size(enum pipe_format format);
 
+uint32_t util_format_get_tilesize(enum pipe_format format, uint32_t dimensions, uint32_t samples, uint32_t axis);
+
 #ifdef __cplusplus
 } // extern "C" {
 #endif

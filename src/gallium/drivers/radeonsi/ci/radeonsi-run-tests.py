@@ -304,15 +304,29 @@ def run_cmd(args, verbosity):
 
 def verify_results(results):
     with open(results) as file:
-        if len(file.readlines()) == 0:
+        lines = file.readlines()
+        if len(lines) == 0:
             return True
-    print_red("New results (fails or pass). Check {}".format(results))
+        print("{} new result{}:".format(len(lines), 's' if len(lines) > 1 else ''))
+        for i in range(min(10, len(lines))):
+            print("  * ", end='')
+            if "Pass" in lines[i]:
+                print_green(lines[i][:-1])
+            else:
+                print_red(lines[i][:-1])
+        if len(lines) > 10:
+            print_yellow("...")
+        print("Full results: {}".format(results))
+
     return False
 
 
-def parse_test_filters(include_tests):
+def parse_test_filters(include_tests, baseline):
     cmd = []
     for t in include_tests:
+        if t == 'baseline':
+            t = baseline
+
         if os.path.exists(t):
             with open(t, "r") as file:
                 for row in csv.reader(file, delimiter=","):
@@ -334,6 +348,7 @@ def select_baseline(basepath, gfx_level, gpu_name):
         return exact
     # 2. any baseline with the same gfx_level
     while gfx_level >= 8:
+        gfx_level_str += '-'
         for subdir, dirs, files in os.walk(basepath):
             for file in files:
                 if file.find(gfx_level_str) == 0 and file.endswith("-fail.csv"):
@@ -346,8 +361,8 @@ def select_baseline(basepath, gfx_level, gpu_name):
 
 
 success = True
-filters_args = parse_test_filters(args.include_tests)
 baseline = select_baseline(base, gfx_level, gpu_name)
+filters_args = parse_test_filters(args.include_tests, baseline)
 flakes = [
     f
     for f in (

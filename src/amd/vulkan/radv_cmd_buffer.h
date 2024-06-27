@@ -578,6 +578,7 @@ struct radv_cmd_buffer {
 
    uint32_t sqtt_cb_id;
 
+   struct set *accel_struct_buffers;
    struct util_dynarray ray_history;
 };
 
@@ -778,5 +779,7 @@ void radv_emit_set_predication_state(struct radv_cmd_buffer *cmd_buffer, bool dr
 void radv_begin_conditional_rendering(struct radv_cmd_buffer *cmd_buffer, uint64_t va, bool draw_visible);
 
 void radv_end_conditional_rendering(struct radv_cmd_buffer *cmd_buffer);
+
+uint64_t radv_descriptor_get_va(const struct radv_descriptor_state *descriptors_state, unsigned set_idx);
 
 #endif /* RADV_CMD_BUFFER_H */

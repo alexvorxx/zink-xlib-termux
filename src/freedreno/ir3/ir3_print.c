@@ -200,6 +200,8 @@ print_instr_name(struct log_stream *stream, struct ir3_instruction *instr,
          mesa_log_stream_printf(stream, ".p");
       if (instr->flags & IR3_INSTR_S)
          mesa_log_stream_printf(stream, ".s");
+      if (instr->flags & IR3_INSTR_V)
+         mesa_log_stream_printf(stream, ".v");
       if (instr->flags & IR3_INSTR_A1EN)
          mesa_log_stream_printf(stream, ".a1en");
       if (instr->flags & IR3_INSTR_U)
@@ -379,6 +381,22 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
       mesa_log_stream_printf(stream, " ");
    }
 
+   if (opc_cat(instr->opc) == 1) {
+      switch (instr->cat1.round) {
+      case ROUND_ZERO:
+         break;
+      case ROUND_EVEN:
+         mesa_log_stream_printf(stream, "(even)");
+         break;
+      case ROUND_POS_INF:
+         mesa_log_stream_printf(stream, "(pos_infinity)");
+         break;
+      case ROUND_NEG_INF:
+         mesa_log_stream_printf(stream, "(neg_infinity)");
+         break;
+      }
+   }
+
    bool first = true;
    foreach_dst (reg, instr) {
       if (reg->wrmask == 0)
@@ -418,6 +436,8 @@ print_instr(struct log_stream *stream, struct ir3_instruction *instr, int lvl)
          stream, " dst_offset=%d, src_offset = %d, src_size = %d",
          instr->push_consts.dst_base, instr->push_consts.src_base,
          instr->push_consts.src_size);
+   } else if (instr->opc == OPC_SPILL_MACRO) {
+      mesa_log_stream_printf(stream, " dst_offset=%d", instr->cat6.dst_offset);
    }
 
    if (is_flow(instr) && instr->cat0.target) {

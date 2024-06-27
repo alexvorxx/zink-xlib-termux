@@ -105,6 +105,22 @@ impl RegFile {
         }
     }
 
+    pub fn to_uniform(&self) -> Option<RegFile> {
+        match self {
+            RegFile::GPR | RegFile::UGPR => Some(RegFile::UGPR),
+            RegFile::Pred | RegFile::UPred => Some(RegFile::UPred),
+            RegFile::Carry | RegFile::Bar | RegFile::Mem => None,
+        }
+    }
+
+    pub fn to_warp(&self) -> RegFile {
+        match self {
+            RegFile::GPR | RegFile::UGPR => RegFile::GPR,
+            RegFile::Pred | RegFile::UPred => RegFile::Pred,
+            RegFile::Carry | RegFile::Bar | RegFile::Mem => *self,
+        }
+    }
+
     /// Returns true if the register file is general-purpose
     pub fn is_gpr(&self) -> bool {
         match self {
@@ -485,15 +501,45 @@ impl SSARef {
             4
         }
     }
-}
 
-impl HasRegFile for SSARef {
-    fn file(&self) -> RegFile {
+    pub fn file(&self) -> Option<RegFile> {
         let comps = usize::from(self.comps());
+        let file = self.v[0].file();
         for i in 1..comps {
-            assert!(self.v[i].file() == self.v[0].file());
+            if self.v[i].file() != file {
+                return None;
+            }
         }
-        self.v[0].file()
+        Some(file)
+    }
+
+    pub fn is_uniform(&self) -> bool {
+        for ssa in &self[..] {
+            if !ssa.is_uniform() {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_gpr(&self) -> bool {
+        for ssa in &self[..] {
+            if !ssa.is_gpr() {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_predicate(&self) -> bool {
+        if self.v[0].is_predicate() {
+            true
+        } else {
+            for ssa in &self[..] {
+                debug_assert!(!ssa.is_predicate());
+            }
+            false
+        }
     }
 }
 
@@ -739,10 +785,10 @@ pub enum CBuf {
     Binding(u8),
 
     #[allow(dead_code)]
-    BindlessSSA(SSAValue),
+    BindlessSSA(SSARef),
 
     #[allow(dead_code)]
-    BindlessGPR(RegRef),
+    BindlessUGPR(RegRef),
 }
 
 impl fmt::Display for CBuf {
@@ -750,7 +796,7 @@ impl fmt::Display for CBuf {
         match self {
             CBuf::Binding(idx) => write!(f, "c[{:#x}]", idx),
             CBuf::BindlessSSA(v) => write!(f, "cx[{}]", v),
-            CBuf::BindlessGPR(r) => write!(f, "cx[{}]", r),
+            CBuf::BindlessUGPR(r) => write!(f, "cx[{}]", r),
         }
     }
 }
@@ -810,7 +856,7 @@ impl SrcRef {
     #[allow(dead_code)]
     pub fn is_barrier(&self) -> bool {
         match self {
-            SrcRef::SSA(ssa) => ssa.file() == RegFile::Bar,
+            SrcRef::SSA(ssa) => ssa.file() == Some(RegFile::Bar),
             SrcRef::Reg(reg) => reg.file() == RegFile::Bar,
             _ => false,
         }
@@ -839,7 +885,7 @@ impl SrcRef {
             | SrcRef::SSA(_) => None,
             SrcRef::CBuf(cb) => match &cb.buf {
                 CBuf::Binding(_) | CBuf::BindlessSSA(_) => None,
-                CBuf::BindlessGPR(reg) => Some(reg),
+                CBuf::BindlessUGPR(reg) => Some(reg),
             },
             SrcRef::Reg(reg) => Some(reg),
         }
@@ -853,8 +899,8 @@ impl SrcRef {
             | SrcRef::Imm32(_)
             | SrcRef::Reg(_) => &[],
             SrcRef::CBuf(cb) => match &cb.buf {
-                CBuf::Binding(_) | CBuf::BindlessGPR(_) => &[],
-                CBuf::BindlessSSA(ssa) => slice::from_ref(ssa),
+                CBuf::Binding(_) | CBuf::BindlessUGPR(_) => &[],
+                CBuf::BindlessSSA(ssa) => ssa.deref(),
             },
             SrcRef::SSA(ssa) => ssa.deref(),
         }
@@ -869,8 +915,8 @@ impl SrcRef {
             | SrcRef::Imm32(_)
             | SrcRef::Reg(_) => &mut [],
             SrcRef::CBuf(cb) => match &mut cb.buf {
-                CBuf::Binding(_) | CBuf::BindlessGPR(_) => &mut [],
-                CBuf::BindlessSSA(ssa) => slice::from_mut(ssa),
+                CBuf::Binding(_) | CBuf::BindlessUGPR(_) => &mut [],
+                CBuf::BindlessSSA(ssa) => ssa.deref_mut(),
             },
             SrcRef::SSA(ssa) => ssa.deref_mut(),
         }
@@ -1264,7 +1310,6 @@ impl Src {
         self.src_ref.iter_ssa_mut()
     }
 
-    #[allow(dead_code)]
     pub fn is_uniform(&self) -> bool {
         match self.src_ref {
             SrcRef::Zero
@@ -1412,9 +1457,27 @@ pub trait SrcsAsSlice {
     fn src_types(&self) -> SrcTypeList;
 }
 
+fn all_dsts_uniform(dsts: &[Dst]) -> bool {
+    let mut uniform = None;
+    for dst in dsts {
+        let dst_uniform = match dst {
+            Dst::None => continue,
+            Dst::Reg(r) => r.is_uniform(),
+            Dst::SSA(r) => r.file().unwrap().is_uniform(),
+        };
+        assert!(uniform == None || uniform == Some(dst_uniform));
+        uniform = Some(dst_uniform);
+    }
+    uniform == Some(true)
+}
+
 pub trait DstsAsSlice {
     fn dsts_as_slice(&self) -> &[Dst];
     fn dsts_as_mut_slice(&mut self) -> &mut [Dst];
+
+    fn is_uniform(&self) -> bool {
+        all_dsts_uniform(self.dsts_as_slice())
+    }
 }
 
 fn fmt_dst_slice(f: &mut fmt::Formatter<'_>, dsts: &[Dst]) -> fmt::Result {
@@ -2997,22 +3060,6 @@ impl DisplayOp for OpIAbs {
 }
 impl_display_for_op!(OpIAbs);
 
-#[repr(C)]
-#[derive(SrcsAsSlice, DstsAsSlice)]
-pub struct OpINeg {
-    pub dst: Dst,
-
-    #[src_type(ALU)]
-    pub src: Src,
-}
-
-impl DisplayOp for OpINeg {
-    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ineg {}", self.src)
-    }
-}
-impl_display_for_op!(OpINeg);
-
 /// Only used on SM50
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
@@ -3800,6 +3847,22 @@ impl_display_for_op!(OpPopC);
 
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpR2UR {
+    pub dst: Dst,
+
+    #[src_type(GPR)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpR2UR {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "r2ur {}", self.src)
+    }
+}
+impl_display_for_op!(OpR2UR);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpTex {
     pub dsts: [Dst; 2],
     pub fault: Dst,
@@ -4091,6 +4154,7 @@ impl DisplayOp for OpLd {
 impl_display_for_op!(OpLd);
 
 #[allow(dead_code)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum LdcMode {
     Indexed,
     IndexedLinear,
@@ -4944,6 +5008,10 @@ impl DstsAsSlice for OpPhiDsts {
     fn dsts_as_mut_slice(&mut self) -> &mut [Dst] {
         &mut self.dsts.b
     }
+
+    fn is_uniform(&self) -> bool {
+        false
+    }
 }
 
 impl DisplayOp for OpPhiDsts {
@@ -4977,6 +5045,38 @@ impl DisplayOp for OpCopy {
     }
 }
 impl_display_for_op!(OpCopy);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+/// Copies a value and pins its destination in the register file
+pub struct OpPin {
+    pub dst: Dst,
+    #[src_type(SSA)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpPin {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "pin {}", self.src)
+    }
+}
+impl_display_for_op!(OpPin);
+
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+/// Copies a pinned value to an unpinned value
+pub struct OpUnpin {
+    pub dst: Dst,
+    #[src_type(SSA)]
+    pub src: Src,
+}
+
+impl DisplayOp for OpUnpin {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unpin {}", self.src)
+    }
+}
+impl_display_for_op!(OpUnpin);
 
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
@@ -5190,7 +5290,6 @@ pub enum Op {
     Bfe(OpBfe),
     Flo(OpFlo),
     IAbs(OpIAbs),
-    INeg(OpINeg),
     IAdd2(OpIAdd2),
     IAdd3(OpIAdd3),
     IAdd3X(OpIAdd3X),
@@ -5217,6 +5316,7 @@ pub enum Op {
     Shfl(OpShfl),
     PLop3(OpPLop3),
     PSetP(OpPSetP),
+    R2UR(OpR2UR),
     Tex(OpTex),
     Tld(OpTld),
     Tld4(OpTld4),
@@ -5258,6 +5358,8 @@ pub enum Op {
     PhiSrcs(OpPhiSrcs),
     PhiDsts(OpPhiDsts),
     Copy(OpCopy),
+    Pin(OpPin),
+    Unpin(OpUnpin),
     Swap(OpSwap),
     ParCopy(OpParCopy),
     FSOut(OpFSOut),
@@ -5563,10 +5665,6 @@ impl Instr {
         matches!(self.op, Op::Bra(_) | Op::Exit(_))
     }
 
-    pub fn is_barrier(&self) -> bool {
-        matches!(self.op, Op::Bar(_))
-    }
-
     pub fn uses_global_mem(&self) -> bool {
         match &self.op {
             Op::Atom(op) => op.mem_space != MemSpace::Local,
@@ -5611,6 +5709,42 @@ impl Instr {
         }
     }
 
+    pub fn is_uniform(&self) -> bool {
+        self.op.is_uniform()
+    }
+
+    pub fn can_be_uniform(&self, sm: u8) -> bool {
+        match &self.op {
+            Op::R2UR(_)
+            | Op::S2R(_)
+            | Op::BMsk(_)
+            | Op::BRev(_)
+            | Op::Flo(_)
+            | Op::IAdd3(_)
+            | Op::IAdd3X(_)
+            | Op::IMad(_)
+            | Op::IMad64(_)
+            | Op::ISetP(_)
+            | Op::Lop3(_)
+            | Op::Mov(_)
+            | Op::PLop3(_)
+            | Op::PopC(_)
+            | Op::Prmt(_)
+            | Op::PSetP(_)
+            | Op::Sel(_)
+            | Op::Shf(_)
+            | Op::Shl(_)
+            | Op::Shr(_)
+            | Op::Vote(_)
+            | Op::Copy(_)
+            | Op::Pin(_)
+            | Op::Unpin(_) => sm >= 75,
+            Op::Ldc(op) => sm >= 75 && op.offset.is_zero(),
+            // UCLEA  USHL  USHR
+            _ => false,
+        }
+    }
+
     pub fn has_fixed_latency(&self, _sm: u8) -> bool {
         match &self.op {
             // Float ALU
@@ -5642,7 +5776,6 @@ impl Instr {
             Op::BRev(_) | Op::Flo(_) | Op::PopC(_) => false,
             Op::BMsk(_)
             | Op::IAbs(_)
-            | Op::INeg(_)
             | Op::IAdd2(_)
             | Op::IAdd3(_)
             | Op::IAdd3X(_)
@@ -5670,6 +5803,9 @@ impl Instr {
 
             // Predicate ops
             Op::PLop3(_) | Op::PSetP(_) => true,
+
+            // Uniform ops
+            Op::R2UR(_) => false,
 
             // Texture ops
             Op::Tex(_)
@@ -5700,13 +5836,10 @@ impl Instr {
             Op::Bra(_) | Op::Exit(_) => true,
             Op::WarpSync(_) => false,
 
-            // BMOV: barriers only when using gprs (and only valid for the gpr),
-            // no barriers for the others.
-            Op::BMov(op) => match &op.dst {
-                Dst::None => true,
-                Dst::SSA(vec) => vec.file() == RegFile::Bar,
-                Dst::Reg(reg) => reg.file() == RegFile::Bar,
-            },
+            // The barrier half is HW scoreboarded by the GPR isn't.  When
+            // moving from a GPR to a barrier, we still need a token for WaR
+            // hazards.
+            Op::BMov(_) => false,
 
             // Geometry ops
             Op::Out(_) | Op::OutFinal(_) => false,
@@ -5726,45 +5859,14 @@ impl Instr {
             | Op::PhiSrcs(_)
             | Op::PhiDsts(_)
             | Op::Copy(_)
+            | Op::Pin(_)
+            | Op::Unpin(_)
             | Op::Swap(_)
             | Op::ParCopy(_)
             | Op::FSOut(_)
             | Op::Annotate(_) => {
                 panic!("Not a hardware opcode")
             }
-        }
-    }
-
-    /// Minimum latency before another instruction can execute
-    pub fn get_exec_latency(&self, sm: u8) -> u32 {
-        match &self.op {
-            Op::Bar(_) | Op::MemBar(_) => {
-                if sm >= 80 {
-                    6
-                } else {
-                    5
-                }
-            }
-            Op::CCtl(_op) => {
-                // CCTL.C needs 8, CCTL.I needs 11
-                11
-            }
-            // Op::DepBar(_) => 4,
-            _ => 1, // TODO: co-issue
-        }
-    }
-
-    pub fn get_dst_latency(&self, sm: u8, dst_idx: usize) -> u32 {
-        debug_assert!(self.has_fixed_latency(sm));
-        let file = match self.dsts()[dst_idx] {
-            Dst::None => return 0,
-            Dst::SSA(vec) => vec.file(),
-            Dst::Reg(reg) => reg.file(),
-        };
-        if file.is_predicate() {
-            13
-        } else {
-            6
         }
     }
 
@@ -5830,25 +5932,24 @@ impl MappedInstrs {
 
 pub struct BasicBlock {
     pub label: Label,
+
+    /// Whether or not this block is uniform
+    ///
+    /// If true, then all non-exited lanes in a warp which execute this block
+    /// are guaranteed to execute it together
+    pub uniform: bool,
+
     pub instrs: Vec<Box<Instr>>,
 }
 
 impl BasicBlock {
-    pub fn new(label: Label) -> BasicBlock {
-        BasicBlock {
-            label: label,
-            instrs: Vec::new(),
-        }
-    }
-
-    fn map_instrs_priv(
+    pub fn map_instrs(
         &mut self,
-        map: &mut impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
-        ssa_alloc: &mut SSAValueAllocator,
+        mut map: impl FnMut(Box<Instr>) -> MappedInstrs,
     ) {
         let mut instrs = Vec::new();
         for i in self.instrs.drain(..) {
-            match map(i, ssa_alloc) {
+            match map(i) {
                 MappedInstrs::None => (),
                 MappedInstrs::One(i) => {
                     instrs.push(i);
@@ -5861,53 +5962,73 @@ impl BasicBlock {
         self.instrs = instrs;
     }
 
-    pub fn phi_dsts(&self) -> Option<&OpPhiDsts> {
-        if let Op::PhiDsts(phi) = &self.instrs.first()?.op {
-            return Some(phi);
+    pub fn phi_dsts_ip(&self) -> Option<usize> {
+        for (ip, instr) in self.instrs.iter().enumerate() {
+            match &instr.op {
+                Op::Annotate(_) => (),
+                Op::PhiDsts(_) => return Some(ip),
+                _ => break,
+            }
         }
         None
+    }
+
+    pub fn phi_dsts(&self) -> Option<&OpPhiDsts> {
+        self.phi_dsts_ip().map(|ip| match &self.instrs[ip].op {
+            Op::PhiDsts(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
     #[allow(dead_code)]
     pub fn phi_dsts_mut(&mut self) -> Option<&mut OpPhiDsts> {
-        if let Op::PhiDsts(phi) = &mut self.instrs.first_mut()?.op {
-            return Some(phi);
-        }
-        None
+        self.phi_dsts_ip().map(|ip| match &mut self.instrs[ip].op {
+            Op::PhiDsts(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
-    pub fn phi_srcs(&self) -> Option<&OpPhiSrcs> {
-        for instr in self.instrs.iter().rev() {
-            if instr.is_branch() {
-                continue;
-            }
-
+    pub fn phi_srcs_ip(&self) -> Option<usize> {
+        for (ip, instr) in self.instrs.iter().enumerate().rev() {
             match &instr.op {
-                Op::PhiSrcs(phi) => return Some(phi),
+                Op::Annotate(_) => (),
+                Op::PhiSrcs(_) => return Some(ip),
+                _ if instr.is_branch() => (),
                 _ => break,
             }
         }
         None
+    }
+    pub fn phi_srcs(&self) -> Option<&OpPhiSrcs> {
+        self.phi_srcs_ip().map(|ip| match &self.instrs[ip].op {
+            Op::PhiSrcs(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
     pub fn phi_srcs_mut(&mut self) -> Option<&mut OpPhiSrcs> {
-        for instr in self.instrs.iter_mut().rev() {
-            if instr.is_branch() {
-                continue;
-            }
-
-            match &mut instr.op {
-                Op::PhiSrcs(phi) => return Some(phi),
-                _ => break,
-            }
-        }
-        None
+        self.phi_srcs_ip().map(|ip| match &mut self.instrs[ip].op {
+            Op::PhiSrcs(phi) => phi,
+            _ => panic!("Expected to find the phi"),
+        })
     }
 
     pub fn branch(&self) -> Option<&Instr> {
         if let Some(i) = self.instrs.last() {
             if i.is_branch() {
                 Some(i)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn branch_ip(&self) -> Option<usize> {
+        if let Some(i) = self.instrs.last() {
+            if i.is_branch() {
+                Some(self.instrs.len() - 1)
             } else {
                 None
             }
@@ -5945,20 +6066,14 @@ pub struct Function {
 }
 
 impl Function {
-    fn map_instrs_priv(
-        &mut self,
-        map: &mut impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
-    ) {
-        for b in &mut self.blocks {
-            b.map_instrs_priv(map, &mut self.ssa_alloc);
-        }
-    }
-
     pub fn map_instrs(
         &mut self,
         mut map: impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
     ) {
-        self.map_instrs_priv(&mut map);
+        let alloc = &mut self.ssa_alloc;
+        for b in &mut self.blocks {
+            b.map_instrs(|i| map(i, alloc));
+        }
     }
 }
 
@@ -5992,7 +6107,8 @@ impl fmt::Display for Function {
         }
 
         for (i, mut b) in blocks.drain(..).enumerate() {
-            write!(f, "block {} {} [", i, self.blocks[i].label)?;
+            let u = if self.blocks[i].uniform { ".u" } else { "" };
+            write!(f, "block{u} {} {} [", i, self.blocks[i].label)?;
             for (pi, p) in self.blocks.pred_indices(i).iter().enumerate() {
                 if pi > 0 {
                     write!(f, ", ")?;
@@ -6232,7 +6348,7 @@ impl Shader {
         mut map: impl FnMut(Box<Instr>, &mut SSAValueAllocator) -> MappedInstrs,
     ) {
         for f in &mut self.functions {
-            f.map_instrs_priv(&mut map);
+            f.map_instrs(&mut map);
         }
     }
 
@@ -6243,32 +6359,6 @@ impl Shader {
                 MappedInstrs::None
             } else {
                 MappedInstrs::One(instr)
-            }
-        })
-    }
-
-    pub fn lower_ineg(&mut self) {
-        let sm = self.info.sm;
-        self.map_instrs(|mut instr: Box<Instr>, _| -> MappedInstrs {
-            match instr.op {
-                Op::INeg(neg) => {
-                    if sm >= 70 {
-                        instr.op = Op::IAdd3(OpIAdd3 {
-                            dst: neg.dst,
-                            overflow: [Dst::None; 2],
-                            srcs: [0.into(), neg.src.ineg(), 0.into()],
-                        });
-                    } else {
-                        instr.op = Op::IAdd2(OpIAdd2 {
-                            dst: neg.dst,
-                            srcs: [0.into(), neg.src.ineg()],
-                            carry_in: 0.into(),
-                            carry_out: Dst::None,
-                        });
-                    }
-                    MappedInstrs::One(instr)
-                }
-                _ => MappedInstrs::One(instr),
             }
         })
     }

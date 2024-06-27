@@ -388,8 +388,10 @@ a6xx_gen3 = A6XXProps(
         has_lrz_dir_tracking = True,
         enable_lrz_fast_clear = True,
         lrz_track_quirk = True,
+        has_lrz_feedback = True,
         has_per_view_viewport = True,
         has_scalar_alu = True,
+        has_early_preamble = True,
     )
 
 a6xx_gen4 = A6XXProps(
@@ -412,8 +414,14 @@ a6xx_gen4 = A6XXProps(
         has_dp4acc = True,
         enable_lrz_fast_clear = True,
         has_lrz_dir_tracking = True,
+        has_lrz_feedback = True,
         has_per_view_viewport = True,
         has_scalar_alu = True,
+        has_isam_v = True,
+        has_ssbo_imm_offsets = True,
+        # TODO: there seems to be a quirk where at least rcp can't be in an
+        # early preamble. a660 at least is affected.
+        #has_early_preamble = True,
     )
 
 a6xx_a690_quirk = A6XXProps(
@@ -772,7 +780,7 @@ a7xx_base = A6XXProps(
         vs_max_inputs_count = 32,
         max_sets = 8,
 
-        reg_size_vec4 = 64,
+        reg_size_vec4 = 96,
         # Blob limits it to 128 but we hang with 128
         instr_cache_size = 127,
         supports_multiview_mask = True,
@@ -789,20 +797,28 @@ a7xx_base = A6XXProps(
         has_dp4acc = True,
         enable_lrz_fast_clear = True,
         has_lrz_dir_tracking = True,
+        has_lrz_feedback = True,
         has_per_view_viewport = True,
         line_width_min = 1.0,
         line_width_max = 127.5,
         has_scalar_alu = True,
         has_coherent_ubwc_flag_caches = True,
+        has_isam_v = True,
+        has_ssbo_imm_offsets = True,
+        has_early_preamble = True,
     )
 
 a7xx_725 = A7XXProps(
         cmdbuf_start_a725_quirk = True,
         supports_ibo_ubwc = True,
+        fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = True,
     )
 
 a7xx_730 = A7XXProps(
         supports_ibo_ubwc = True,
+        fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = True,
     )
 
 a7xx_740 = A7XXProps(
@@ -810,6 +826,10 @@ a7xx_740 = A7XXProps(
         has_event_write_sample_count = True,
         ubwc_unorm_snorm_int_compatible = True,
         supports_ibo_ubwc = True,
+        fs_must_have_non_zero_constlen_quirk = True,
+        # Most devices with a740 have blob v6xx which doesn't have
+        # this hint set. Match them for better compatibility by default.
+        enable_tp_ubwc_flag_hint = False,
     )
 
 a7xx_740_a32 = A7XXProps(
@@ -818,6 +838,8 @@ a7xx_740_a32 = A7XXProps(
         has_event_write_sample_count = True,
         ubwc_unorm_snorm_int_compatible = True,
         supports_ibo_ubwc = True,
+        fs_must_have_non_zero_constlen_quirk = True,
+        enable_tp_ubwc_flag_hint = False,
     )
 
 a7xx_750 = A7XXProps(
@@ -854,7 +876,7 @@ a730_magic_regs = dict(
 
 a730_raw_magic_regs = [
         [A6XXRegs.REG_A6XX_UCHE_CACHE_WAYS, 0x00840004],
-        [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00000724],
+        [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00040724],
 
         [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00002400],
         [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE09, 0x00000000],
@@ -969,7 +991,7 @@ add_gpus([
         ),
         raw_magic_regs = [
             [A6XXRegs.REG_A6XX_UCHE_CACHE_WAYS, 0x00040004],
-            [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00000724],
+            [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00040724],
 
             [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00000400],
             [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE09, 0x00430800],
@@ -1020,7 +1042,7 @@ add_gpus([
         ],
     ))
 
-# Values from blob v744.19
+# Values from blob v676.0
 add_gpus([
         GPUId(chip_id=0x43050a00, name="FDA32"), # Adreno A32 (G3x Gen 2)
         GPUId(chip_id=0xffff43050a00, name="FDA32"),
@@ -1036,7 +1058,7 @@ add_gpus([
         fibers_per_sp = 128 * 2 * 16,
         magic_regs = dict(
             # PC_POWER_CNTL = 7,
-            TPL1_DBG_ECO_CNTL = 0x13100000,
+            TPL1_DBG_ECO_CNTL = 0x11100000,
             GRAS_DBG_ECO_CNTL = 0x00004800,
             SP_CHICKEN_BITS = 0x10001400,
             UCHE_CLIENT_PF = 0x00000084,
@@ -1047,9 +1069,9 @@ add_gpus([
             RB_DBG_ECO_CNTL = 0x00000000,
             RB_DBG_ECO_CNTL_blit = 0x00000000,  # is it even needed?
             # HLSQ_DBG_ECO_CNTL = 0x0,
-            RB_UNKNOWN_8E01 = 0x0,
+            RB_UNKNOWN_8E01 = 0x00000000,
             VPC_DBG_ECO_CNTL = 0x02000000,
-            UCHE_UNKNOWN_0E12 = 0x40000000,
+            UCHE_UNKNOWN_0E12 = 0x00000000,
 
             RB_UNKNOWN_8E06 = 0x02080000,
         ),
@@ -1057,7 +1079,7 @@ add_gpus([
             [A6XXRegs.REG_A6XX_UCHE_CACHE_WAYS, 0x00040004],
             [A6XXRegs.REG_A6XX_TPL1_DBG_ECO_CNTL1, 0x00000700],
 
-            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00400400],
+            [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE08, 0x00000400],
             [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE09, 0x00430820],
             [A6XXRegs.REG_A7XX_SP_UNKNOWN_AE0A, 0x00000000],
             [A6XXRegs.REG_A7XX_UCHE_UNKNOWN_0E10, 0x00000000],

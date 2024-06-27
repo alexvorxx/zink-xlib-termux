@@ -46,6 +46,7 @@
 #include "util/set.h"
 #include "util/simple_mtx.h"
 #include "util/slab.h"
+#include "util/u_blitter.h"
 #include "util/u_dynarray.h"
 #include "util/u_idalloc.h"
 #include "util/u_live_shader_cache.h"
@@ -62,9 +63,7 @@
 #include "zink_shader_keys.h"
 #include "vk_dispatch_table.h"
 
-#ifdef HAVE_RENDERDOC_APP_H
 #include "renderdoc_app.h"
-#endif
 
 /* the descriptor binding id for fbfetch/input attachment */
 #define ZINK_FBFETCH_BINDING 5
@@ -1525,14 +1524,12 @@ struct zink_screen {
 
    unsigned screen_id;
 
-#ifdef HAVE_RENDERDOC_APP_H
    RENDERDOC_API_1_0_0 *renderdoc_api;
    unsigned renderdoc_capture_start;
    unsigned renderdoc_capture_end;
    unsigned renderdoc_frame;
    bool renderdoc_capturing;
    bool renderdoc_capture_all;
-#endif
 
    struct vk_uncompacted_dispatch_table vk;
 
@@ -1576,6 +1573,7 @@ struct zink_screen {
       bool needs_zs_shader_swizzle;
       bool can_do_invalid_linear_modifier;
       bool io_opt;
+      bool inconsistent_interpolation;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;
@@ -2073,6 +2071,8 @@ struct zink_context {
    bool is_device_lost;
    bool primitive_restart;
    bool blitting : 1;
+   bool blit_scissor : 1;
+   bool blit_nearest : 1;
    bool unordered_blitting : 1;
    bool vertex_state_changed : 1;
    bool blend_state_changed : 1;

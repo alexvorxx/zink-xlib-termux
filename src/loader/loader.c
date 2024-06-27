@@ -815,7 +815,7 @@ loader_open_driver_lib(const char *driver_name,
    search_paths = NULL;
    if (__normal_user() && search_path_vars) {
       for (int i = 0; search_path_vars[i] != NULL; i++) {
-         search_paths = getenv(search_path_vars[i]);
+         search_paths = os_get_option(search_path_vars[i]);
          if (search_paths)
             break;
       }

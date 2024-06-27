@@ -2538,7 +2538,7 @@ emit_fbd(struct panfrost_batch *batch, struct pan_fb_info *fb)
 #endif
 
    batch->framebuffer.gpu |=
-      GENX(pan_emit_fbd)(fb, &tls, &batch->tiler_ctx, batch->framebuffer.cpu);
+      GENX(pan_emit_fbd)(fb, 0, &tls, &batch->tiler_ctx, batch->framebuffer.cpu);
 }
 
 /* Mark a surface as written */

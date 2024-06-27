@@ -40,11 +40,8 @@ load_vertex_id(nir_builder *b, struct state *state)
    if (state->index_size) {
       nir_def *ia = nir_load_input_assembly_buffer_agx(b);
 
-      nir_def *address =
-         libagx_index_buffer(b, ia, id, nir_imm_int(b, state->index_size));
-
-      nir_def *index = nir_load_global_constant(b, address, state->index_size,
-                                                1, state->index_size * 8);
+      nir_def *index =
+         libagx_load_index_buffer(b, ia, id, nir_imm_int(b, state->index_size));
 
       id = nir_u2uN(b, index, id->bit_size);
    }
@@ -70,7 +67,7 @@ lower_vertex_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 bool
 agx_nir_lower_index_buffer(nir_shader *s, unsigned index_size_B, bool patches)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_vertex_id, nir_metadata_block_index | nir_metadata_dominance,
-      &(struct state){index_size_B, patches});
+   return nir_shader_intrinsics_pass(s, lower_vertex_id,
+                                     nir_metadata_control_flow,
+                                     &(struct state){index_size_B, patches});
 }

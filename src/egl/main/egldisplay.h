@@ -111,6 +111,7 @@ struct _egl_extensions {
    EGLBoolean EXT_protected_content;
    EGLBoolean EXT_protected_surface;
    EGLBoolean EXT_query_reset_notification_strategy;
+   EGLBoolean EXT_surface_compression;
    EGLBoolean EXT_surface_CTA861_3_metadata;
    EGLBoolean EXT_surface_SMPTE2086_metadata;
    EGLBoolean EXT_swap_buffers_with_damage;

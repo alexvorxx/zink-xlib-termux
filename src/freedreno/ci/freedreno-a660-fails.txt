@@ -758,7 +758,4 @@ nobin-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_
 gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.pgq_64bit_xfb_32bit.triangle_strip_with_adjacency.indirect,Fail
 gmem-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_1.pgq_64bit_xfb_32bit.line_strip.draw,Fail
 nobin-dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.pgq_32bit_xfb_64bit.point_list.indirect,Fail
-gmem-dEQP-VK.spirv_assembly.instruction.graphics.float_controls.fp32.input_args.rounding_rte_conv_from_int32_up_vert,Fail
-dEQP-VK.spirv_assembly.instruction.graphics.float_controls.fp32.input_args.rounding_rte_conv_from_int32_up_frag,Fail
-dEQP-VK.spirv_assembly.instruction.graphics.float_controls.fp32.input_args.rounding_rte_conv_from_int32_up_vert,Fail
 dEQP-VK.clipping.user_defined.clip_cull_distance_dynamic_index.vert_geom.8,Fail

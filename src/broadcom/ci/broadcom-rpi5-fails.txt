@@ -6,3 +6,4 @@ dEQP-VK.query_pool.performance_query.query_graphic_copy,Fail
 
 # This seems to be a Vulkan Loader issue. Can be fixed by compiling the loader from the Github repo.
 dEQP-VK.api.get_device_proc_addr.non_enabled,Fail
+dEQP-VK.api.version_check.unavailable_entry_points,Fail

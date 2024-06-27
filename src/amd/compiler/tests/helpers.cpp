@@ -247,8 +247,8 @@ finish_ra_test(ra_test_policy policy)
    }
 
    program->workgroup_size = program->wave_size;
-   aco::live live_vars = aco::live_var_analysis(program.get());
-   aco::register_allocation(program.get(), live_vars, policy);
+   aco::live_var_analysis(program.get());
+   aco::register_allocation(program.get(), policy);
 
    if (aco::validate_ra(program.get())) {
       fail_test("Validation after register allocation failed");

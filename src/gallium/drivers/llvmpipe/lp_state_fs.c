@@ -3306,6 +3306,7 @@ generate_fragment(struct llvmpipe_context *lp,
       LLVMValueRef glob_sample_pos =
          LLVMAddGlobal(gallivm->module,
                        LLVMArrayType(flt_type, key->coverage_samples * 2), "");
+      LLVMSetLinkage(glob_sample_pos, LLVMInternalLinkage);
       LLVMValueRef sample_pos_array;
 
       if (key->multisample && key->coverage_samples == 4) {
@@ -3751,7 +3752,7 @@ generate_variant(struct llvmpipe_context *lp,
    char module_name[64];
    snprintf(module_name, sizeof(module_name), "fs%u_variant%u",
             shader->no, shader->variants_created);
-   variant->gallivm = gallivm_create(module_name, lp->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &lp->context, &cached);
    if (!variant->gallivm) {
       FREE(variant);
       return NULL;

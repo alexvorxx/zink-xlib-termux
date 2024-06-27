@@ -26,7 +26,7 @@ const SPIRV_SUPPORT: [cl_name_version; 5] = [
 ];
 type ClDevIdpAccelProps = cl_device_integer_dot_product_acceleration_properties_khr;
 
-#[cl_info_entrypoint(cl_get_device_info)]
+#[cl_info_entrypoint(clGetDeviceInfo)]
 impl CLInfo<cl_device_info> for cl_device_id {
     fn query(&self, q: cl_device_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
         let dev = Device::ref_from_raw(*self)?;
@@ -316,7 +316,7 @@ impl CLInfo<cl_device_info> for cl_device_id {
     }
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clGetDeviceIDs)]
 fn get_device_ids(
     platform: cl_platform_id,
     device_type: cl_device_type,
@@ -364,17 +364,17 @@ fn get_device_ids(
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clRetainDevice)]
 fn retain_device(_device: cl_device_id) -> CLResult<()> {
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clReleaseDevice)]
 fn release_device(_device: cl_device_id) -> CLResult<()> {
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clGetDeviceAndHostTimer)]
 fn get_device_and_host_timer(
     device: cl_device_id,
     device_timestamp: *mut cl_ulong,
@@ -400,7 +400,7 @@ fn get_device_and_host_timer(
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clGetHostTimer)]
 fn get_host_timer(device_id: cl_device_id, host_timestamp: *mut cl_ulong) -> CLResult<()> {
     if host_timestamp.is_null() {
         // CL_INVALID_VALUE if host_timestamp is NULL
@@ -420,7 +420,7 @@ fn get_host_timer(device_id: cl_device_id, host_timestamp: *mut cl_ulong) -> CLR
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clSetDefaultDeviceCommandQueue)]
 fn set_default_device_command_queue(
     _context: cl_context,
     _device: cl_device_id,

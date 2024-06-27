@@ -61,6 +61,9 @@ struct agx_vs_prolog_key {
 
    /* If !hw and the draw call is indexed, the index size */
    uint8_t sw_index_size_B;
+
+   /* Robustness settings for the vertex fetch */
+   struct agx_robustness robustness;
 };
 
 struct agx_fs_prolog_key {

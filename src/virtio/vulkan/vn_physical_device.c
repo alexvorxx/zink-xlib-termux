@@ -313,24 +313,6 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
     */
    VN_SET_CORE_VALUE(feats, deviceMemoryReport, true);
 
-   /* To support sparse binding with feedback, we require sparse binding queue
-    * families to  also support submiting feedback commands. Any queue
-    * families that exclusively support sparse binding are filtered out. If a
-    * device only supports sparse binding with exclusive queue families that
-    * get filtered out then disable the feature.
-    */
-   if (physical_dev->sparse_binding_disabled) {
-      VN_SET_CORE_VALUE(feats, sparseBinding, false);
-      VN_SET_CORE_VALUE(feats, sparseResidencyBuffer, false);
-      VN_SET_CORE_VALUE(feats, sparseResidencyImage2D, false);
-      VN_SET_CORE_VALUE(feats, sparseResidencyImage3D, false);
-      VN_SET_CORE_VALUE(feats, sparseResidency2Samples, false);
-      VN_SET_CORE_VALUE(feats, sparseResidency4Samples, false);
-      VN_SET_CORE_VALUE(feats, sparseResidency8Samples, false);
-      VN_SET_CORE_VALUE(feats, sparseResidency16Samples, false);
-      VN_SET_CORE_VALUE(feats, sparseResidencyAliased, false);
-   }
-
    /* Disable unsupported ExtendedDynamicState3Features */
    if (exts->EXT_extended_dynamic_state3) {
       /* TODO: Add support for VK_EXT_sample_locations */
@@ -458,17 +440,6 @@ vn_physical_device_sanitize_properties(struct vn_physical_device *physical_dev)
    VN_SET_CORE_VALUE(props, conformanceVersion.patch, 0);
 
    vn_physical_device_init_uuids(physical_dev);
-
-   /* See comment for sparse binding feature disable */
-   if (physical_dev->sparse_binding_disabled) {
-      VN_SET_CORE_VALUE(props, sparseAddressSpaceSize, 0);
-      VN_SET_CORE_VALUE(props, sparseResidencyStandard2DBlockShape, 0);
-      VN_SET_CORE_VALUE(props, sparseResidencyStandard2DMultisampleBlockShape,
-                        0);
-      VN_SET_CORE_VALUE(props, sparseResidencyStandard3DBlockShape, 0);
-      VN_SET_CORE_VALUE(props, sparseResidencyAlignedMipSize, 0);
-      VN_SET_CORE_VALUE(props, sparseResidencyNonResidentStrict, 0);
-   }
 
    /* Disable unsupported VkPhysicalDeviceFragmentShadingRatePropertiesKHR */
    if (exts->KHR_fragment_shading_rate) {
@@ -672,6 +643,10 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
    if (vn_android_gralloc_get_shared_present_usage())
       props->sharedImage = true;
 #endif
+
+   /* TODO: Fix sparse binding on lavapipe. */
+   if (props->driverID == VK_DRIVER_ID_MESA_LLVMPIPE)
+      physical_dev->sparse_binding_disabled = true;
 
    vn_physical_device_sanitize_properties(physical_dev);
 }
@@ -1169,14 +1144,6 @@ vn_physical_device_init_supported_extensions(
             physical_dev->extension_spec_versions[i], props->specVersion);
       }
    }
-
-   /* override VK_ANDROID_native_buffer spec version */
-   if (native.ANDROID_native_buffer) {
-      const uint32_t index =
-         VN_EXTENSION_TABLE_INDEX(native, ANDROID_native_buffer);
-      physical_dev->extension_spec_versions[index] =
-         VN_ANDROID_NATIVE_BUFFER_SPEC_VERSION;
-   }
 }
 
 static VkResult
@@ -1329,6 +1296,38 @@ vn_image_format_cache_fini(struct vn_physical_device *physical_dev)
       vn_image_format_cache_debug_dump(cache);
 }
 
+static void
+vn_physical_device_disable_sparse_binding(
+   struct vn_physical_device *physical_dev)
+{
+   /* To support sparse binding with feedback, we require sparse binding queue
+    * families to  also support submiting feedback commands. Any queue
+    * families that exclusively support sparse binding are filtered out. If a
+    * device only supports sparse binding with exclusive queue families that
+    * get filtered out then disable the feature.
+    */
+
+   struct vk_features *feats = &physical_dev->base.base.supported_features;
+   VN_SET_CORE_VALUE(feats, sparseBinding, false);
+   VN_SET_CORE_VALUE(feats, sparseResidencyBuffer, false);
+   VN_SET_CORE_VALUE(feats, sparseResidencyImage2D, false);
+   VN_SET_CORE_VALUE(feats, sparseResidencyImage3D, false);
+   VN_SET_CORE_VALUE(feats, sparseResidency2Samples, false);
+   VN_SET_CORE_VALUE(feats, sparseResidency4Samples, false);
+   VN_SET_CORE_VALUE(feats, sparseResidency8Samples, false);
+   VN_SET_CORE_VALUE(feats, sparseResidency16Samples, false);
+   VN_SET_CORE_VALUE(feats, sparseResidencyAliased, false);
+
+   struct vk_properties *props = &physical_dev->base.base.properties;
+   VN_SET_CORE_VALUE(props, sparseAddressSpaceSize, 0);
+   VN_SET_CORE_VALUE(props, sparseResidencyStandard2DBlockShape, 0);
+   VN_SET_CORE_VALUE(props, sparseResidencyStandard2DMultisampleBlockShape,
+                     0);
+   VN_SET_CORE_VALUE(props, sparseResidencyStandard3DBlockShape, 0);
+   VN_SET_CORE_VALUE(props, sparseResidencyAlignedMipSize, 0);
+   VN_SET_CORE_VALUE(props, sparseResidencyNonResidentStrict, 0);
+}
+
 static VkResult
 vn_physical_device_init(struct vn_physical_device *physical_dev)
 {
@@ -1353,6 +1352,8 @@ vn_physical_device_init(struct vn_physical_device *physical_dev)
    /* TODO query all caps with minimal round trips */
    vn_physical_device_init_features(physical_dev);
    vn_physical_device_init_properties(physical_dev);
+   if (physical_dev->sparse_binding_disabled)
+      vn_physical_device_disable_sparse_binding(physical_dev);
 
    vn_physical_device_init_memory_properties(physical_dev);
 

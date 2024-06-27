@@ -3109,6 +3109,12 @@ anv_layout_to_fast_clear_type(const struct intel_device_info * const devinfo,
    if (INTEL_DEBUG(DEBUG_NO_FAST_CLEAR))
       return ANV_FAST_CLEAR_NONE;
 
+   /* Xe2+ platforms don't have fast clear type and can always support
+    * arbitrary fast-clear values.
+    */
+   if (devinfo->ver >= 20)
+      return ANV_FAST_CLEAR_ANY;
+
    const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
 
    /* If there is no auxiliary surface allocated, there are no fast-clears */

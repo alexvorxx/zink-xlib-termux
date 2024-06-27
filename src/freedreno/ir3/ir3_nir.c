@@ -72,7 +72,8 @@ ir3_load_driver_ubo_indirect(nir_builder *b, unsigned components,
                              unsigned base, nir_def *offset,
                              unsigned range)
 {
-   ubo->size = MAX2(ubo->size, base + components + range * 4);
+   assert(range > 0);
+   ubo->size = MAX2(ubo->size, base + components + (range - 1) * 4);
 
    return nir_load_ubo(b, components, 32, ir3_get_driver_ubo(b, ubo),
                        nir_iadd(b, nir_imul24(b, offset, nir_imm_int(b, 16)),

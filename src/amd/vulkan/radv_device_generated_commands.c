@@ -270,8 +270,11 @@ radv_get_indirect_ace_cmdbuf_size(const VkGeneratedCommandsInfoNV *cmd_info)
 }
 
 struct radv_dgc_params {
+   uint32_t cmd_buf_main_offset;
    uint32_t cmd_buf_stride;
    uint32_t cmd_buf_size;
+   uint32_t ace_cmd_buf_preamble_offset;
+   uint32_t ace_cmd_buf_main_offset;
    uint32_t ace_cmd_buf_stride;
    uint32_t ace_cmd_buf_size;
    uint32_t upload_stride;
@@ -787,14 +790,6 @@ dgc_cmd_buf_size(nir_builder *b, nir_def *sequence_count, bool is_ace, const str
    return nir_bcsel(b, use_preamble, size, cmd_buf_size);
 }
 
-static nir_def *
-dgc_main_cmd_buf_offset(nir_builder *b, enum amd_ip_type ip_type, const struct radv_device *device)
-{
-   nir_def *use_preamble = nir_ine_imm(b, load_param8(b, use_preamble), 0);
-   nir_def *base_offset = nir_imm_int(b, radv_dgc_preamble_cmdbuf_size(device, ip_type));
-   return nir_bcsel(b, use_preamble, base_offset, nir_imm_int(b, 0));
-}
-
 static void
 build_dgc_buffer_tail(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_buf_size, nir_def *cmd_buf_stride,
                       nir_def *sequence_count, const struct radv_device *device)
@@ -845,7 +840,7 @@ build_dgc_buffer_tail(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_buf_
 static void
 build_dgc_buffer_tail_gfx(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
 {
-   nir_def *cmd_buf_offset = dgc_main_cmd_buf_offset(b, AMD_IP_GFX, device);
+   nir_def *cmd_buf_offset = load_param32(b, cmd_buf_main_offset);
    nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, false, device);
    nir_def *cmd_buf_stride = load_param32(b, cmd_buf_stride);
 
@@ -855,8 +850,7 @@ build_dgc_buffer_tail_gfx(nir_builder *b, nir_def *sequence_count, const struct 
 static void
 build_dgc_buffer_tail_ace(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
 {
-   nir_def *cmd_buf_offset = nir_iadd(b, dgc_main_cmd_buf_offset(b, AMD_IP_GFX, device), load_param32(b, cmd_buf_size));
-   cmd_buf_offset = nir_iadd(b, cmd_buf_offset, dgc_main_cmd_buf_offset(b, AMD_IP_COMPUTE, device));
+   nir_def *cmd_buf_offset = load_param32(b, ace_cmd_buf_main_offset);
    nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, true, device);
    nir_def *cmd_buf_stride = load_param32(b, ace_cmd_buf_stride);
 
@@ -864,8 +858,9 @@ build_dgc_buffer_tail_ace(nir_builder *b, nir_def *sequence_count, const struct 
 }
 
 static void
-build_dgc_buffer_preamble(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_buf_size, unsigned preamble_size,
-                          nir_def *sequence_count, const struct radv_device *device)
+build_dgc_buffer_preamble(nir_builder *b, nir_def *cmd_buf_preamble_offset, nir_def *cmd_buf_size,
+                          nir_def *cmd_buf_main_offset, unsigned preamble_size, nir_def *sequence_count,
+                          const struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
@@ -875,12 +870,9 @@ build_dgc_buffer_preamble(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_
    nir_push_if(b, nir_iand(b, nir_ieq_imm(b, global_id, 0), use_preamble));
    {
       nir_def *va = nir_pack_64_2x32_split(b, load_param32(b, upload_addr), nir_imm_int(b, pdev->info.address32_hi));
-      va = nir_iadd(b, va, nir_u2u64(b, cmd_buf_offset));
+      va = nir_iadd(b, va, nir_u2u64(b, cmd_buf_preamble_offset));
 
       nir_def *words = nir_ushr_imm(b, cmd_buf_size, 2);
-
-      nir_def *addr = nir_iadd(b, cmd_buf_offset, load_param32(b, upload_addr));
-      addr = nir_iadd_imm(b, addr, preamble_size);
 
       nir_def *nop_packet = dgc_get_nop_packet(b, device);
 
@@ -907,7 +899,7 @@ build_dgc_buffer_preamble(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_
 
       nir_def *chain_packets[] = {
          nir_imm_int(b, PKT3(PKT3_INDIRECT_BUFFER, 2, 0)),
-         addr,
+         nir_iadd(b, cmd_buf_main_offset, load_param32(b, upload_addr)),
          nir_imm_int(b, pdev->info.address32_hi),
          nir_ior_imm(b, words, S_3F2_CHAIN(1) | S_3F2_VALID(1) | S_3F2_PRE_ENA(false)),
       };
@@ -922,21 +914,25 @@ build_dgc_buffer_preamble(nir_builder *b, nir_def *cmd_buf_offset, nir_def *cmd_
 static void
 build_dgc_buffer_preamble_gfx(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
 {
-   nir_def *cmd_buf_offset = nir_imm_int(b, 0);
+   nir_def *cmd_buf_preamble_offset = nir_imm_int(b, 0);
+   nir_def *cmd_buf_main_offset = load_param32(b, cmd_buf_main_offset);
    nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, false, device);
    unsigned preamble_size = radv_dgc_preamble_cmdbuf_size(device, AMD_IP_GFX);
 
-   build_dgc_buffer_preamble(b, cmd_buf_offset, cmd_buf_size, preamble_size, sequence_count, device);
+   build_dgc_buffer_preamble(b, cmd_buf_preamble_offset, cmd_buf_size, cmd_buf_main_offset, preamble_size,
+                             sequence_count, device);
 }
 
 static void
 build_dgc_buffer_preamble_ace(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
 {
-   nir_def *cmd_buf_offset = nir_iadd(b, dgc_main_cmd_buf_offset(b, AMD_IP_GFX, device), load_param32(b, cmd_buf_size));
+   nir_def *cmd_buf_preamble_offset = load_param32(b, ace_cmd_buf_preamble_offset);
+   nir_def *cmd_buf_main_offset = load_param32(b, ace_cmd_buf_main_offset);
    nir_def *cmd_buf_size = dgc_cmd_buf_size(b, sequence_count, true, device);
    unsigned preamble_size = radv_dgc_preamble_cmdbuf_size(device, AMD_IP_COMPUTE);
 
-   build_dgc_buffer_preamble(b, cmd_buf_offset, cmd_buf_size, preamble_size, sequence_count, device);
+   build_dgc_buffer_preamble(b, cmd_buf_preamble_offset, cmd_buf_size, cmd_buf_main_offset, preamble_size,
+                             sequence_count, device);
 }
 
 /**
@@ -1836,7 +1832,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
    nir_def *use_count = nir_iand_imm(&b, sequence_count, 1u << 31);
    sequence_count = nir_iand_imm(&b, sequence_count, UINT32_MAX >> 1);
 
-   nir_def *cmd_buf_base_offset = dgc_main_cmd_buf_offset(&b, AMD_IP_GFX, dev);
+   nir_def *cmd_buf_base_offset = load_param32(&b, cmd_buf_main_offset);
 
    /* The effective number of draws is
     * min(sequencesCount, sequencesCountBuffer[sequencesCountOffset]) when
@@ -1969,9 +1965,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
    nir_push_if(&b, nir_ieq_imm(&b, load_param8(&b, has_task_shader), 1));
    {
       nir_def *ace_cmd_buf_stride = load_param32(&b, ace_cmd_buf_stride);
-      nir_def *ace_cmd_buf_base_offset =
-         nir_iadd(&b, dgc_main_cmd_buf_offset(&b, AMD_IP_GFX, dev), load_param32(&b, cmd_buf_size));
-      ace_cmd_buf_base_offset = nir_iadd(&b, ace_cmd_buf_base_offset, dgc_main_cmd_buf_offset(&b, AMD_IP_COMPUTE, dev));
+      nir_def *ace_cmd_buf_base_offset = load_param32(&b, ace_cmd_buf_main_offset);
 
       nir_push_if(&b, nir_ult(&b, sequence_id, sequence_count));
       {
@@ -2482,9 +2476,28 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       sequence_count_addr = radv_buffer_get_va(sequence_count_buffer->bo) + sequence_count_buffer->offset +
                             pGeneratedCommandsInfo->sequencesCountOffset;
 
+   /* Determine cmdbuf offsets. */
+   const bool use_preamble = radv_dgc_use_preamble(pGeneratedCommandsInfo);
+   uint32_t cmd_buf_main_offset, ace_cmd_buf_preamble_offset, ace_cmd_buf_main_offset;
+   uint32_t offset = 0;
+
+   if (use_preamble)
+      offset += radv_dgc_preamble_cmdbuf_size(device, AMD_IP_GFX);
+   cmd_buf_main_offset = offset;
+
+   offset += cmd_buf_size;
+   ace_cmd_buf_preamble_offset = offset;
+
+   if (use_preamble)
+      offset += radv_dgc_preamble_cmdbuf_size(device, AMD_IP_COMPUTE);
+   ace_cmd_buf_main_offset = offset;
+
    struct radv_dgc_params params = {
+      .cmd_buf_main_offset = cmd_buf_main_offset,
       .cmd_buf_stride = cmd_stride,
       .cmd_buf_size = cmd_buf_size,
+      .ace_cmd_buf_preamble_offset = ace_cmd_buf_preamble_offset,
+      .ace_cmd_buf_main_offset = ace_cmd_buf_main_offset,
       .ace_cmd_buf_stride = ace_cmd_stride,
       .ace_cmd_buf_size = ace_cmd_buf_size,
       .upload_addr = (uint32_t)upload_addr,
@@ -2492,7 +2505,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       .sequence_count = pGeneratedCommandsInfo->sequencesCount | (sequence_count_addr ? 1u << 31 : 0),
       .sequence_count_addr = sequence_count_addr,
       .stream_stride = layout->input_stride,
-      .use_preamble = radv_dgc_use_preamble(pGeneratedCommandsInfo),
+      .use_preamble = use_preamble,
       .stream_addr = stream_addr,
    };
 

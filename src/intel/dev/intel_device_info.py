@@ -143,8 +143,12 @@ Struct("intel_memory_class_instance",
 
 Enum("intel_device_info_mmap_mode",
       [EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_UC", value=0),
-       "INTEL_DEVICE_INFO_MMAP_MODE_WC",
-       "INTEL_DEVICE_INFO_MMAP_MODE_WB"
+       EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_WC"),
+       EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_WB"),
+       EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_XD",
+                 comment=dedent("""\
+                 Xe2+ only. Only supported in GPU side and used for displayable
+                 buffers."""))
        ])
 
 Struct("intel_device_info_pat_entry",

@@ -984,10 +984,15 @@ static const struct intel_device_info intel_device_info_ehl_2x4 = {
    .gt = _gt, .num_slices = _slices, .l3_banks = _l3,           \
    .simulator_id = 22,                                          \
    .max_eus_per_subslice = 16,                                  \
+   /* BSpec 45101 (r51017) */                                   \
    .pat = {                                                     \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
          .cached_coherent = PAT_ENTRY(0, WB),                   \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
          .scanout = PAT_ENTRY(1, WC),                           \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
          .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
          .writecombining = PAT_ENTRY(1, WC),                    \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
@@ -1129,10 +1134,15 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_ray_tracing = true,                                     \
    .has_flat_ccs = true,                                        \
    /* There is no PAT table for DG2, using TGL ones */          \
+   /* BSpec 45101 (r51017) */                                   \
    .pat = {                                                     \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
          .cached_coherent = PAT_ENTRY(0, WB),                   \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
          .scanout = PAT_ENTRY(1, WC),                           \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
          .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
          .writecombining = PAT_ENTRY(1, WC),                    \
    }
 
@@ -1172,10 +1182,15 @@ static const struct intel_device_info intel_device_info_atsm_g11 = {
    .has_coarse_pixel_primitive_and_cb = true,                   \
    .has_mesh_shading = true,                                    \
    .has_ray_tracing = true,                                     \
+   /* BSpec 45101 (r51017) */                                   \
    .pat = {                                                     \
+         /* CPU: WB, GPU: PAT 3 => WB, 1WAY */                  \
          .cached_coherent = PAT_ENTRY(3, WB),                   \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
          .scanout = PAT_ENTRY(1, WC),                           \
+         /* CPU: WB, GPU: PAT 0 => WB, 0WAY */                  \
          .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
          .writecombining = PAT_ENTRY(1, WC),                    \
    }
 
@@ -1213,11 +1228,17 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .has_mesh_shading = true,                                    \
    .has_ray_tracing = true,                                     \
    .has_indirect_unroll = true,                                 \
+   /* BSpec 71582 (r59285) */                                   \
    .pat = {                                                     \
+      /* CPU: WB, GPU: PAT 1 => WB, 1WAY */                     \
       .cached_coherent = PAT_ENTRY(1, WB),                      \
+      /* CPU: WC, GPU: PAT 6 => XD */                           \
       .scanout = PAT_ENTRY(6, WC),                              \
+      /* CPU: WB, GPU: PAT 0 => WB, 0WAY */                     \
       .writeback_incoherent = PAT_ENTRY(0, WB),                 \
+      /* CPU: WC, GPU: PAT 6 => XD */                           \
       .writecombining = PAT_ENTRY(6, WC),                       \
+      /* CPU: WC, GPU: PAT 11 => XD, compressed */              \
       .compressed = PAT_ENTRY(11, WC)                           \
    },                                                           \
    .cooperative_matrix_configurations = {                       \

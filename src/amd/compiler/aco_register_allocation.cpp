@@ -2685,7 +2685,7 @@ get_affinities(ra_ctx& ctx, std::vector<IDSet>& live_out_per_block)
                   op = instr->operands[op_fixed_to_def0];
                } else if (vop3_can_use_vop2acc(ctx, instr.get())) {
                   op = instr->operands[2];
-               } else if (sop2_can_use_sopk(ctx, instr.get())) {
+               } else if (i == 0 && sop2_can_use_sopk(ctx, instr.get())) {
                   op = instr->operands[instr->operands[0].isLiteral()];
                } else {
                   continue;

@@ -1171,9 +1171,11 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
 
    if (initial_layout_undefined) {
       /* The subresource may have been aliased and populated with arbitrary
-       * data.
+       * data, so we should initialize fast-clear state on platforms prior to
+       * Xe2. Xe2+ platforms don't need it thanks to the new design of fast-
+       * clear.
        */
-      must_init_fast_clear_state = true;
+      must_init_fast_clear_state = devinfo->ver < 20;
 
       if (image->planes[plane].aux_usage == ISL_AUX_USAGE_MCS ||
           devinfo->has_illegal_ccs_values) {
@@ -1254,7 +1256,7 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
    }
 
    if (must_init_aux_surface) {
-      assert(must_init_fast_clear_state);
+      assert(devinfo->ver >= 20 || must_init_fast_clear_state);
 
       /* Initialize the aux buffers to enable correct rendering.  In order to
        * ensure that things such as storage images work correctly, aux buffers
@@ -5039,10 +5041,11 @@ void genX(CmdBeginRendering)(
             clear_view_mask &= ~1u;
             base_clear_layer++;
             clear_layer_count--;
-
+#if GFX_VER < 20
             genX(set_fast_clear_state)(cmd_buffer, iview->image,
                                        iview->planes[0].isl.format,
                                        clear_color);
+#endif
          }
 
          if (is_multiview) {

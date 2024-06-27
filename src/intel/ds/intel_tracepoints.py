@@ -116,14 +116,14 @@ def define_tracepoints(args):
 
     # Blorp operations, Anv & Iris
     begin_end_tp('blorp',
-                 tp_args=[Arg(type='enum blorp_op', name='op', var='op', c_format='%s', to_prim_type='blorp_op_to_name({})'),
-                          Arg(type='uint32_t', name='width', var='width', c_format='%u'),
-                          Arg(type='uint32_t', name='height', var='height', c_format='%u'),
-                          Arg(type='uint32_t', name='samples', var='samples', c_format='%u'),
-                          Arg(type='enum blorp_shader_pipeline', name='blorp_pipe', var='shader_pipe', c_format='%s', to_prim_type='blorp_shader_pipeline_to_name({})'),
-                          Arg(type='enum isl_format', name='dst_fmt', var='dst_fmt', c_format='%s', to_prim_type='isl_format_get_short_name({})'),
-                          Arg(type='enum isl_format', name='src_fmt', var='src_fmt', c_format='%s', to_prim_type='isl_format_get_short_name({})'),
-                          Arg(type='uint8_t', name='predicated', var='predicated', c_format='%hhu'),
+                 tp_args=[Arg(type='enum blorp_op', var='op', c_format='%s', to_prim_type='blorp_op_to_name({})'),
+                          Arg(type='uint32_t', var='width', c_format='%u'),
+                          Arg(type='uint32_t', var='height', c_format='%u'),
+                          Arg(type='uint32_t', var='samples', c_format='%u'),
+                          Arg(type='enum blorp_shader_pipeline', var='shader_pipe', c_format='%s', to_prim_type='blorp_shader_pipeline_to_name({})'),
+                          Arg(type='enum isl_format', var='dst_fmt', c_format='%s', to_prim_type='isl_format_get_short_name({})'),
+                          Arg(type='enum isl_format', var='src_fmt', c_format='%s', to_prim_type='isl_format_get_short_name({})'),
+                          Arg(type='uint8_t', var='predicated', c_format='%hhu'),
                           ])
 
     # vkCmdWriteBufferMarker*, only for Anv

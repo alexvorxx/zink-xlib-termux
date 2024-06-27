@@ -1571,19 +1571,19 @@ dgc_emit_dispatch(struct dgc_cmdbuf *cs, nir_def *stream_addr, nir_def *dispatch
    nir_def *wg_y = nir_channel(b, dispatch_data, 1);
    nir_def *wg_z = nir_channel(b, dispatch_data, 2);
 
-   nir_def *grid_sgpr = dgc_get_grid_sgpr(b, stream_addr);
-   nir_push_if(b, nir_ine_imm(b, grid_sgpr, 0));
-   {
-      if (device->load_grid_size_from_user_sgpr) {
-         dgc_emit_grid_size_user_sgpr(cs, grid_sgpr, wg_x, wg_y, wg_z);
-      } else {
-         dgc_emit_grid_size_pointer(cs, grid_sgpr, stream_addr, dispatch_params_offset);
-      }
-   }
-   nir_pop_if(b, 0);
-
    nir_push_if(b, nir_iand(b, nir_ine_imm(b, wg_x, 0), nir_iand(b, nir_ine_imm(b, wg_y, 0), nir_ine_imm(b, wg_z, 0))));
    {
+      nir_def *grid_sgpr = dgc_get_grid_sgpr(b, stream_addr);
+      nir_push_if(b, nir_ine_imm(b, grid_sgpr, 0));
+      {
+         if (device->load_grid_size_from_user_sgpr) {
+            dgc_emit_grid_size_user_sgpr(cs, grid_sgpr, wg_x, wg_y, wg_z);
+         } else {
+            dgc_emit_grid_size_pointer(cs, grid_sgpr, stream_addr, dispatch_params_offset);
+         }
+      }
+      nir_pop_if(b, 0);
+
       dgc_emit_sqtt_begin_api_marker(cs, ApiCmdDispatch);
       dgc_emit_sqtt_marker_event_with_dims(cs, sequence_id, wg_x, wg_y, wg_z, EventCmdDispatch);
 

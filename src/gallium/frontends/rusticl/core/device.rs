@@ -308,6 +308,14 @@ impl Device {
             })
             .map(|f| self.formats[&f.cl_image_format][&CL_MEM_OBJECT_IMAGE3D])
             .any(|f| f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0);
+
+        // if we can't advertize 3d image write ext, we have to disable them all
+        if !self.caps.has_3d_image_writes {
+            for f in &mut self.formats.values_mut() {
+                *f.get_mut(&CL_MEM_OBJECT_IMAGE3D).unwrap() &=
+                    !cl_mem_flags::from(CL_MEM_WRITE_ONLY | CL_MEM_READ_WRITE);
+            }
+        }
     }
 
     fn check_valid(screen: &PipeScreen) -> bool {

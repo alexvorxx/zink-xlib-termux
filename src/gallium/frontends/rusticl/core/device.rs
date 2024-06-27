@@ -48,7 +48,9 @@ pub struct Device {
     helper_ctx: Mutex<PipeContext>,
 }
 
+#[derive(Default)]
 pub struct DeviceCaps {
+    pub has_3d_image_writes: bool,
     pub has_images: bool,
     pub has_timestamp: bool,
     pub image_2d_size: u32,
@@ -83,6 +85,7 @@ impl DeviceCaps {
             max_read_images: has_images.then_some(max_read_images).unwrap_or_default(),
             max_write_images: has_images.then_some(max_write_images).unwrap_or_default(),
             timer_resolution: timer_resolution,
+            ..Default::default()
         }
     }
 
@@ -213,13 +216,13 @@ impl Device {
             lib_clc: lib_clc?,
         };
 
-        d.fill_format_tables();
-
         // check if we are embedded or full profile first
         d.embedded = d.check_embedded_profile();
 
         // check if we have to report it as a custom device
         d.custom = d.check_custom();
+
+        d.fill_format_tables();
 
         // query supported extensions
         d.fill_extensions();
@@ -292,6 +295,19 @@ impl Device {
             }
             self.formats.insert(f.cl_image_format, fs);
         }
+
+        // now enable some caps based on advertized formats
+        self.caps.has_3d_image_writes = !FORMATS
+            .iter()
+            .filter(|f| {
+                if self.embedded {
+                    f.req_for_embeded_read_or_write
+                } else {
+                    f.req_for_full_read_or_write
+                }
+            })
+            .map(|f| self.formats[&f.cl_image_format][&CL_MEM_OBJECT_IMAGE3D])
+            .any(|f| f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0);
     }
 
     fn check_valid(screen: &PipeScreen) -> bool {
@@ -582,7 +598,7 @@ impl Device {
                 add_feat(1, 0, 0, "__opencl_c_read_write_images");
             }
 
-            if self.image_3d_write_supported() {
+            if self.caps.has_3d_image_writes {
                 add_ext(1, 0, 0, "cl_khr_3d_image_writes");
                 add_feat(1, 0, 0, "__opencl_c_3d_image_writes");
             }
@@ -832,22 +848,6 @@ impl Device {
                 .any(|f| *f & cl_mem_flags::from(CL_MEM_KERNEL_READ_AND_WRITE) == 0)
     }
 
-    pub fn image_3d_write_supported(&self) -> bool {
-        self.caps.has_images
-            && !FORMATS
-                .iter()
-                .filter(|f| {
-                    if self.embedded {
-                        f.req_for_embeded_read_or_write
-                    } else {
-                        f.req_for_full_read_or_write
-                    }
-                })
-                .map(|f| self.formats.get(&f.cl_image_format).unwrap())
-                .map(|f| f.get(&CL_MEM_OBJECT_IMAGE3D).unwrap())
-                .any(|f| *f & cl_mem_flags::from(CL_MEM_WRITE_ONLY) == 0)
-    }
-
     pub fn little_endian(&self) -> bool {
         let endianness = self.screen.param(pipe_cap::PIPE_CAP_ENDIANNESS);
         endianness == (pipe_endian::PIPE_ENDIAN_LITTLE as i32)
@@ -1020,7 +1020,7 @@ impl Device {
             int64: self.int64_supported(),
             images: self.caps.has_images,
             images_read_write: self.image_read_write_supported(),
-            images_write_3d: self.image_3d_write_supported(),
+            images_write_3d: self.caps.has_3d_image_writes,
             integer_dot_product: true,
             subgroups: subgroups_supported,
             subgroups_shuffle: subgroups_supported,

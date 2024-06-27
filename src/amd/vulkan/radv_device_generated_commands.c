@@ -277,6 +277,7 @@ struct radv_dgc_params {
    uint32_t ace_cmd_buf_main_offset;
    uint32_t ace_cmd_buf_stride;
    uint32_t ace_cmd_buf_size;
+   uint32_t upload_main_offset;
    uint32_t upload_stride;
    uint32_t upload_addr;
    uint32_t sequence_count;
@@ -1879,8 +1880,8 @@ build_dgc_prepare_shader(struct radv_device *dev)
 
       nir_variable *upload_offset =
          nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "upload_offset");
-      nir_def *upload_offset_init = nir_iadd(&b, nir_iadd(&b, load_param32(&b, cmd_buf_size), cmd_buf_base_offset),
-                                             nir_imul(&b, load_param32(&b, upload_stride), sequence_id));
+      nir_def *upload_offset_init =
+         nir_iadd(&b, load_param32(&b, upload_main_offset), nir_imul(&b, load_param32(&b, upload_stride), sequence_id));
       nir_store_var(&b, upload_offset, upload_offset_init, 0x1);
 
       nir_def *vbo_bind_mask = load_param32(&b, vbo_bind_mask);
@@ -2492,6 +2493,8 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       offset += radv_dgc_preamble_cmdbuf_size(device, AMD_IP_COMPUTE);
    ace_cmd_buf_main_offset = offset;
 
+   const uint32_t upload_main_offset = cmd_buf_main_offset + cmd_buf_size;
+
    struct radv_dgc_params params = {
       .cmd_buf_main_offset = cmd_buf_main_offset,
       .cmd_buf_stride = cmd_stride,
@@ -2500,6 +2503,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       .ace_cmd_buf_main_offset = ace_cmd_buf_main_offset,
       .ace_cmd_buf_stride = ace_cmd_stride,
       .ace_cmd_buf_size = ace_cmd_buf_size,
+      .upload_main_offset = upload_main_offset,
       .upload_addr = (uint32_t)upload_addr,
       .upload_stride = upload_stride,
       .sequence_count = pGeneratedCommandsInfo->sequencesCount | (sequence_count_addr ? 1u << 31 : 0),

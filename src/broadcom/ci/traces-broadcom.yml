@@ -22,11 +22,6 @@ traces:
       label: [unsupported]
       text: needs GL 4.5
 
-  filament/filament-default.trace:
-    broadcom-rpi4:
-      label: [unsupported]
-      text: needs GL 4.1
-
   glxgears/glxgears-2-v2.trace:
     broadcom-rpi4:
       label: [skip, flakes]

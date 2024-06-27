@@ -354,15 +354,17 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
       cs == NULL &&
       (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE_CS);
 
-   assert(!is_end_compute ||
+   assert(device->info->verx10 < 125 ||
+          !is_end_compute ||
           cmd_buffer->state.last_indirect_dispatch != NULL ||
           cmd_buffer->state.last_compute_walker != NULL);
 
    enum anv_timestamp_capture_type capture_type =
-      is_end_compute ?
+      (device->info->verx10 >= 125 && is_end_compute) ?
       (cmd_buffer->state.last_indirect_dispatch != NULL ?
        ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH : ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER) :
-      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE) ?
+      (flags & (INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE |
+                INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE_CS)) ?
       ANV_TIMESTAMP_CAPTURE_END_OF_PIPE : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
 
 

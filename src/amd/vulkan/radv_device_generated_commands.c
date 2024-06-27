@@ -2562,7 +2562,9 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       offset += radv_dgc_preamble_cmdbuf_size(device, AMD_IP_COMPUTE);
    ace_cmd_buf_main_offset = offset;
 
-   const uint32_t upload_main_offset = cmd_buf_main_offset + cmd_buf_size;
+   uint32_t upload_main_offset = cmd_buf_main_offset + cmd_buf_size;
+   if (radv_dgc_with_task_shader(pGeneratedCommandsInfo))
+      upload_main_offset = ace_cmd_buf_main_offset + ace_cmd_buf_size;
 
    struct radv_dgc_params params = {
       .cmd_buf_main_offset = cmd_buf_main_offset,

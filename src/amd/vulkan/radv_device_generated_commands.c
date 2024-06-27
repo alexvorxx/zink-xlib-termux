@@ -2199,6 +2199,25 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
 }
 
 bool
+radv_dgc_with_task_shader(const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
+{
+   VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
+
+   if (layout->pipeline_bind_point != VK_PIPELINE_BIND_POINT_GRAPHICS)
+      return false;
+
+   if (!layout->draw_mesh_tasks)
+      return false;
+
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
+   const struct radv_shader *task_shader = radv_get_shader(pipeline->shaders, MESA_SHADER_TASK);
+   if (!task_shader)
+      return false;
+
+   return true;
+}
+
+bool
 radv_use_dgc_predication(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
 {
    VK_FROM_HANDLE(radv_buffer, seq_count_buffer, pGeneratedCommandsInfo->sequencesCountBuffer);

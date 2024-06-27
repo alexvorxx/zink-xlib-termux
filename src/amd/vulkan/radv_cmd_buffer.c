@@ -11510,12 +11510,10 @@ static void radv_dgc_after_dispatch(struct radv_cmd_buffer *cmd_buffer);
 static void
 radv_dgc_execute_ib(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
 {
-   VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
    VK_FROM_HANDLE(radv_buffer, prep_buffer, pGeneratedCommandsInfo->preprocessBuffer);
-   VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   const bool has_task_shader = layout->pipeline_bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS &&
-                                pipeline->shaders[MESA_SHADER_TASK] && false /* TODO: Enable when fully implemented */;
+   const bool has_task_shader =
+      radv_dgc_with_task_shader(pGeneratedCommandsInfo) && false /* TODO: Enable when fully implemented */;
 
    const uint32_t cmdbuf_size = radv_get_indirect_cmdbuf_size(pGeneratedCommandsInfo);
    const uint64_t ib_va =

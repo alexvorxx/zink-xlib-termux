@@ -835,13 +835,11 @@ dri2_setup_screen(_EGLDisplay *disp)
          disp->Extensions.MESA_drm_image =
             (capabilities & __DRI_IMAGE_CAP_GLOBAL_NAMES) != 0;
 
-         if (dri2_dpy->image->base.version >= 11)
-            disp->Extensions.MESA_image_dma_buf_export = EGL_TRUE;
       } else {
          disp->Extensions.MESA_drm_image = EGL_TRUE;
-         if (dri2_dpy->image->base.version >= 11)
-            disp->Extensions.MESA_image_dma_buf_export = EGL_TRUE;
       }
+      if (dri2_dpy->image->base.version >= 11)
+         disp->Extensions.MESA_image_dma_buf_export = EGL_TRUE;
 
       disp->Extensions.MESA_x11_native_visual_id = EGL_TRUE;
 

@@ -2366,10 +2366,10 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
 
    uint16_t vtx_base_sgpr = 0;
 
-   if (cmd_buffer->state.graphics_pipeline->vtx_base_sgpr)
-      vtx_base_sgpr = (cmd_buffer->state.graphics_pipeline->vtx_base_sgpr - SI_SH_REG_OFFSET) >> 2;
+   if (graphics_pipeline->vtx_base_sgpr)
+      vtx_base_sgpr = (graphics_pipeline->vtx_base_sgpr - SI_SH_REG_OFFSET) >> 2;
 
-   if (cmd_buffer->state.graphics_pipeline->uses_drawid)
+   if (graphics_pipeline->uses_drawid)
       vtx_base_sgpr |= DGC_USES_DRAWID;
 
    if (layout->draw_mesh_tasks) {
@@ -2390,7 +2390,7 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
          params->task_draw_id_sgpr = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
       }
    } else {
-      if (cmd_buffer->state.graphics_pipeline->uses_baseinstance)
+      if (graphics_pipeline->uses_baseinstance)
          vtx_base_sgpr |= DGC_USES_BASEINSTANCE;
    }
 

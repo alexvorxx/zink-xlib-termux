@@ -240,7 +240,6 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_src *offset_src = nir_get_io_offset_src(intrin);
    const bool offset_is_const = nir_src_is_const(*offset_src);
    nir_def *offset = offset_src->ssa;
-   bool is_scratch = intrin->intrinsic == nir_intrinsic_store_scratch;
 
    nir_component_mask_t writemask = nir_intrinsic_write_mask(intrin);
    assert(writemask < (1 << num_components));
@@ -295,7 +294,8 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
           chunk_bytes > max_chunk_bytes) {
          /* Otherwise the caller made a mistake with their return values. */
          assert(chunk_bytes <= 4);
-         assert(allow_unaligned_stores_as_atomics || is_scratch);
+         assert(allow_unaligned_stores_as_atomics ||
+                intrin->intrinsic == nir_intrinsic_store_scratch);
 
          /* We'll turn this into a pair of 32-bit atomics to modify only the right
           * bits of memory.

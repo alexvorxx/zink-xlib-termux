@@ -495,3 +495,14 @@ gallivm_jit_function(struct gallivm_state *gallivm,
 
    return jit_func;
 }
+
+void
+gallivm_stub_func(struct gallivm_state *gallivm, LLVMValueRef func)
+{
+   /*
+    * MCJIT can accept an empty function, nothing is needed here.
+    * The only code is to silence unused var warning.
+    */
+   (void) gallivm;
+   (void) func;
+}

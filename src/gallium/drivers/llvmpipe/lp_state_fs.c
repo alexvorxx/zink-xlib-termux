@@ -3217,8 +3217,10 @@ generate_fragment(struct llvmpipe_context *lp,
       if (LLVMGetTypeKind(arg_types[i]) == LLVMPointerTypeKind)
          lp_add_function_attr(function, i + 1, LP_FUNC_ATTR_NOALIAS);
 
-   if (variant->gallivm->cache->data_size)
+   if (variant->gallivm->cache->data_size) {
+      gallivm_stub_func(gallivm, function);
       return;
+   }
 
    context_ptr  = LLVMGetParam(function, 0);
    resources_ptr  = LLVMGetParam(function, 1);

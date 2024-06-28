@@ -116,6 +116,9 @@ func_pointer
 gallivm_jit_function(struct gallivm_state *gallivm,
                      LLVMValueRef func, const char *func_name);
 
+void
+gallivm_stub_func(struct gallivm_state *gallivm, LLVMValueRef func);
+
 unsigned gallivm_get_perf_flags(void);
 
 void lp_init_clock_hook(struct gallivm_state *gallivm);

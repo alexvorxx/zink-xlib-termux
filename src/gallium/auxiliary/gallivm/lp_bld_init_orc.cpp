@@ -37,6 +37,8 @@
 #include <llvm/ADT/StringMap.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
+#include <llvm/ExecutionEngine/Orc/CompileUtils.h>
+#include <llvm/ExecutionEngine/ObjectCache.h>
 #include "llvm/ExecutionEngine/JITLink/JITLink.h"
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Support/TargetSelect.h>
@@ -61,6 +63,41 @@
 /* else use old RTDyldObjectLinkingLayer (RuntimeDyld backend) */
 
 namespace {
+
+class LPObjectCacheORC : public llvm::ObjectCache {
+private:
+   bool has_object;
+   std::string mid;
+   struct lp_cached_code *cache_out;
+public:
+   LPObjectCacheORC(struct lp_cached_code *cache) {
+      cache_out = cache;
+      has_object = false;
+   }
+
+   ~LPObjectCacheORC() {
+   }
+   void notifyObjectCompiled(const llvm::Module *M, llvm::MemoryBufferRef Obj) override {
+      const std::string ModuleID = M->getModuleIdentifier();
+      if (has_object)
+         fprintf(stderr, "CACHE ALREADY HAS MODULE OBJECT\n");
+      if (mid == ModuleID)
+         fprintf(stderr, "CACHING ANOTHER MODULE\n");
+      has_object = true;
+      mid = ModuleID;
+      cache_out->data_size = Obj.getBufferSize();
+      cache_out->data = malloc(cache_out->data_size);
+      memcpy(cache_out->data, Obj.getBufferStart(), cache_out->data_size);
+   }
+
+   std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module *M) override {
+      const std::string ModuleID = M->getModuleIdentifier();
+      if (cache_out->data_size)
+         return llvm::MemoryBuffer::getMemBuffer(llvm::StringRef((const char *)cache_out->data, cache_out->data_size), "", false);
+      return NULL;
+   }
+
+};
 
 class LPJit;
 
@@ -215,6 +252,12 @@ public:
       ExitOnErr(es.removeJITDylib(* ::unwrap(jd)));
    }
 
+   static void set_object_cache(llvm::ObjectCache *objcache) {
+      auto &ircl = LPJit::get_instance()->lljit->getIRCompileLayer();
+      auto &irc = ircl.getCompiler();
+      auto &sc = dynamic_cast<llvm::orc::SimpleCompiler &>(irc);
+      sc.setObjectCache(objcache);
+   }
    LLVMTargetMachineRef tm;
 
 private:
@@ -481,10 +524,7 @@ init_gallivm_state(struct gallivm_state *gallivm, const char *name,
    if (!lp_build_init())
       return false;
 
-   // cache is not implemented
    gallivm->cache = cache;
-   if (gallivm->cache)
-      gallivm->cache->data_size = 0;
 
    gallivm->_ts_context = context->ref;
    gallivm->context = LLVMOrcThreadSafeContextGetContext(context->ref);
@@ -543,6 +583,12 @@ gallivm_free_ir(struct gallivm_state *gallivm)
    if (gallivm->builder)
       LLVMDisposeBuilder(gallivm->builder);
 
+   if (gallivm->cache) {
+      if (gallivm->cache->jit_obj_cache)
+         lp_free_objcache(gallivm->cache->jit_obj_cache);
+      free(gallivm->cache->data);
+   }
+
    gallivm->target = NULL;
    gallivm->module=NULL;
    gallivm->module_name=NULL;
@@ -551,6 +597,7 @@ gallivm_free_ir(struct gallivm_state *gallivm)
    gallivm->_ts_context=NULL;
    gallivm->cache=NULL;
    LPJit::deregister_gallivm_state(gallivm);
+   LPJit::set_object_cache(NULL);
 }
 
 void
@@ -580,6 +627,14 @@ gallivm_compile_module(struct gallivm_state *gallivm)
    LPJit::register_gallivm_state(gallivm);
    gallivm->module = nullptr;
 
+   if (gallivm->cache) {
+      if (!gallivm->cache->jit_obj_cache) {
+         LPObjectCacheORC *objcache = new LPObjectCacheORC(gallivm->cache);
+         gallivm->cache->jit_obj_cache = (void *)objcache;
+      }
+      auto *objcache = (LPObjectCacheORC *)gallivm->cache->jit_obj_cache;
+      LPJit::set_object_cache(objcache);
+   }
    /* defer compilation till first lookup by gallivm_jit_function */
 }
 
@@ -589,4 +644,19 @@ gallivm_jit_function(struct gallivm_state *gallivm,
 {
    return pointer_to_func(
       LPJit::lookup_in_jd(func_name, gallivm->_per_module_jd));
+}
+
+void
+gallivm_stub_func(struct gallivm_state *gallivm, LLVMValueRef func)
+{
+   /*
+    * ORCJIT cannot accept a function with absolutely no content at all.
+    * Generate a "void func() {}" stub here.
+    */
+   LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(gallivm->context,
+                                                           func, "entry");
+   LLVMBuilderRef builder = gallivm->builder;
+   assert(builder);
+   LLVMPositionBuilderAtEnd(builder, block);
+   LLVMBuildRetVoid(builder);
 }

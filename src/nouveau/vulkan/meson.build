@@ -56,7 +56,9 @@ nvk_files = files(
   'nvk_upload_queue.c',
   'nvk_upload_queue.h',
   'nvk_wsi.c',
-  'nvk_wsi.h'
+  'nvk_wsi.h',
+  'nvkmd/nvkmd.c',
+  'nvkmd/nvkmd.h',
 )
 
 nvk_entrypoints = custom_target(

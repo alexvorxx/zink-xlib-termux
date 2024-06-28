@@ -11526,19 +11526,23 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
    }
 
    if (!radv_dgc_can_preprocess(layout, pipeline)) {
+      /* Suspend conditional rendering when the DGC execute is called on the compute queue to
+       * generate a cmdbuf which will skips dispatches when necessary. This is because the
+       * compute queue is missing IB2 which means it's not possible to skip the cmdbuf entirely.
+       * It should also be suspended when task shaders are used because the DGC ACE IB would be
+       * uninitialized otherwise.
+       */
+      const bool suspend_cond_render =
+         (cmd_buffer->qf == RADV_QUEUE_COMPUTE || radv_dgc_with_task_shader(pGeneratedCommandsInfo));
       const bool old_predicating = cmd_buffer->state.predicating;
 
-      if (cmd_buffer->qf == RADV_QUEUE_COMPUTE && cmd_buffer->state.predicating) {
-         /* Suspend conditional rendering when the DGC execute is called on the compute queue to
-          * generate a cmdbuf which will skips dispatches when necessary. This is because the
-          * compute queue is missing IB2 which means it's not possible to skip the cmdbuf entirely.
-          */
+      if (suspend_cond_render && cmd_buffer->state.predicating) {
          cmd_buffer->state.predicating = false;
       }
 
       radv_prepare_dgc(cmd_buffer, pGeneratedCommandsInfo, old_predicating);
 
-      if (cmd_buffer->qf == RADV_QUEUE_COMPUTE) {
+      if (suspend_cond_render) {
          cmd_buffer->state.predicating = old_predicating;
       }
 

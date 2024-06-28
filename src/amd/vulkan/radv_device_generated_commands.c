@@ -2408,30 +2408,14 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
          vtx_base_sgpr |= DGC_USES_GRID_SIZE;
 
       if (task_shader) {
-         const struct radv_userdata_info *mesh_ring_entry_loc =
-            radv_get_user_sgpr_info(mesh_shader, AC_UD_TASK_RING_ENTRY);
-         const struct radv_userdata_info *task_ring_entry_loc =
-            radv_get_user_sgpr_info(task_shader, AC_UD_TASK_RING_ENTRY);
-         const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_GRID_SIZE);
-         const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_TASK_DRAW_ID);
-
          params->has_task_shader = 1;
-         params->mesh_ring_entry_sgpr =
-            ((mesh_shader->info.user_data_0 - SI_SH_REG_OFFSET) >> 2) + mesh_ring_entry_loc->sgpr_idx;
+         params->mesh_ring_entry_sgpr = radv_get_user_sgpr(mesh_shader, AC_UD_TASK_RING_ENTRY);
          params->linear_dispatch_en = task_shader->info.cs.linear_taskmesh_dispatch;
-         params->task_ring_entry_sgpr =
-            (task_shader->info.user_data_0 + task_ring_entry_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
+         params->task_ring_entry_sgpr = radv_get_user_sgpr(task_shader, AC_UD_TASK_RING_ENTRY);
          params->dispatch_initiator_task =
             device->dispatch_initiator_task | S_00B800_CS_W32_EN(task_shader->info.wave_size == 32);
-
-         if (xyz_loc->sgpr_idx != -1) {
-            params->task_xyz_sgpr = ((task_shader->info.user_data_0 + xyz_loc->sgpr_idx * 4) - SI_SH_REG_OFFSET) >> 2;
-         }
-
-         if (draw_id_loc->sgpr_idx != -1) {
-            params->task_draw_id_sgpr =
-               ((task_shader->info.user_data_0 + draw_id_loc->sgpr_idx * 4) - SI_SH_REG_OFFSET) >> 2;
-         }
+         params->task_xyz_sgpr = radv_get_user_sgpr(task_shader, AC_UD_CS_GRID_SIZE);
+         params->task_draw_id_sgpr = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
       }
    } else {
       if (cmd_buffer->state.graphics_pipeline->uses_baseinstance)
@@ -2468,9 +2452,8 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
          ++idx;
       }
       params->vbo_cnt = idx;
-      params->vbo_reg = ((radv_get_user_sgpr_info(vs, AC_UD_VS_VERTEX_BUFFERS)->sgpr_idx * 4 + vs->info.user_data_0) -
-                         SI_SH_REG_OFFSET) >>
-                        2;
+      params->vbo_reg = radv_get_user_sgpr(vs, AC_UD_VS_VERTEX_BUFFERS);
+
       *upload_data = (char *)*upload_data + vb_size;
    }
 }
@@ -2512,10 +2495,7 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
          params->dispatch_initiator |= S_00B800_CS_W32_EN(1);
       }
 
-      const struct radv_userdata_info *loc = radv_get_user_sgpr_info(cs, AC_UD_CS_GRID_SIZE);
-      if (loc->sgpr_idx != -1) {
-         params->grid_base_sgpr = (cs->info.user_data_0 + 4 * loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
-      }
+      params->grid_base_sgpr = radv_get_user_sgpr(cs, AC_UD_CS_GRID_SIZE);
    } else {
       struct radv_descriptor_state *descriptors_state =
          radv_get_descriptors_state(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);

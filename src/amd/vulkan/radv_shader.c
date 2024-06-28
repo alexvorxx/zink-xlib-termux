@@ -3309,6 +3309,25 @@ radv_get_user_sgpr_info(const struct radv_shader *shader, int idx)
    return &shader->info.user_sgprs_locs.shader_data[idx];
 }
 
+uint32_t
+radv_get_user_sgpr_loc(const struct radv_shader *shader, int idx)
+{
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(shader, idx);
+
+   if (loc->sgpr_idx == -1)
+      return 0;
+
+   return shader->info.user_data_0 + loc->sgpr_idx * 4;
+}
+
+uint32_t
+radv_get_user_sgpr(const struct radv_shader *shader, int idx)
+{
+   const uint32_t offset = radv_get_user_sgpr_loc(shader, idx);
+
+   return offset ? ((offset - SI_SH_REG_OFFSET) >> 2) : 0;
+}
+
 static uint32_t
 radv_get_tess_patch_size(uint32_t tcs_num_input_vertices, uint32_t tcs_num_output_vertices, uint32_t tcs_num_inputs,
                          uint32_t tcs_num_lds_outputs, uint32_t tcs_num_lds_patch_outputs)

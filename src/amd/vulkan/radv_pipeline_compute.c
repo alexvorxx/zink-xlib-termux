@@ -74,30 +74,15 @@ radv_get_compute_shader_metadata(const struct radv_device *device, const struct 
    metadata->block_size_z = cs->info.cs.block_size[2];
    metadata->wave32 = cs->info.wave_size == 32;
 
-   const struct radv_userdata_info *grid_size_loc = radv_get_user_sgpr_info(cs, AC_UD_CS_GRID_SIZE);
-   if (grid_size_loc->sgpr_idx != -1) {
-      metadata->grid_base_sgpr = (cs->info.user_data_0 + 4 * grid_size_loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
-   }
+   metadata->grid_base_sgpr = radv_get_user_sgpr(cs, AC_UD_CS_GRID_SIZE);
 
-   const struct radv_userdata_info *push_constant_loc = radv_get_user_sgpr_info(cs, AC_UD_PUSH_CONSTANTS);
-   if (push_constant_loc->sgpr_idx != -1) {
-      upload_sgpr = (cs->info.user_data_0 + 4 * push_constant_loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
-   }
-
-   const struct radv_userdata_info *inline_push_constant_loc = radv_get_user_sgpr_info(cs, AC_UD_INLINE_PUSH_CONSTANTS);
-   if (inline_push_constant_loc->sgpr_idx != -1) {
-      inline_sgpr = (cs->info.user_data_0 + 4 * inline_push_constant_loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
-   }
+   upload_sgpr = radv_get_user_sgpr(cs, AC_UD_PUSH_CONSTANTS);
+   inline_sgpr = radv_get_user_sgpr(cs, AC_UD_INLINE_PUSH_CONSTANTS);
 
    metadata->push_const_sgpr = upload_sgpr | (inline_sgpr << 16);
    metadata->inline_push_const_mask = cs->info.inline_push_constant_mask;
 
-   const struct radv_userdata_info *indirect_desc_sets_loc =
-      radv_get_user_sgpr_info(cs, AC_UD_INDIRECT_DESCRIPTOR_SETS);
-   if (indirect_desc_sets_loc->sgpr_idx != -1) {
-      metadata->indirect_desc_sets_sgpr =
-         (cs->info.user_data_0 + 4 * indirect_desc_sets_loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
-   }
+   metadata->indirect_desc_sets_sgpr = radv_get_user_sgpr(cs, AC_UD_INDIRECT_DESCRIPTOR_SETS);
 }
 
 void

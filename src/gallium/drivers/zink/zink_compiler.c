@@ -5522,7 +5522,7 @@ create_io_var(nir_shader *nir, struct rework_io_state *ris)
 static void
 loop_io_var_mask(nir_shader *nir, nir_variable_mode mode, bool indirect, bool patch, uint64_t mask)
 {
-   bool is_vertex_input = nir->info.stage == MESA_SHADER_VERTEX && mode == nir_var_shader_in;
+   ASSERTED bool is_vertex_input = nir->info.stage == MESA_SHADER_VERTEX && mode == nir_var_shader_in;
    u_foreach_bit64(slot, mask) {
       if (patch)
          slot += VARYING_SLOT_PATCH0;

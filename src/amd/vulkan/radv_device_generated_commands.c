@@ -27,7 +27,7 @@ radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout
 
    if (pipeline) {
       struct radv_shader *cs = radv_get_shader(pipeline->base.shaders, MESA_SHADER_COMPUTE);
-      const struct radv_userdata_info *loc = radv_get_user_sgpr(cs, AC_UD_CS_GRID_SIZE);
+      const struct radv_userdata_info *loc = radv_get_user_sgpr_info(cs, AC_UD_CS_GRID_SIZE);
       if (loc->sgpr_idx != -1) {
          if (device->load_grid_size_from_user_sgpr) {
             /* PKT3_SET_SH_REG for immediate values */
@@ -110,8 +110,8 @@ radv_get_sequence_size_graphics(const struct radv_indirect_command_layout *layou
          const struct radv_shader *task_shader = radv_get_shader(pipeline->base.shaders, MESA_SHADER_TASK);
 
          if (task_shader) {
-            const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_GRID_SIZE);
-            const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
+            const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_GRID_SIZE);
+            const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_TASK_DRAW_ID);
 
             /* PKT3_DISPATCH_TASKMESH_GFX */
             *cmd_size += 4 * 4;
@@ -2408,10 +2408,12 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
          vtx_base_sgpr |= DGC_USES_GRID_SIZE;
 
       if (task_shader) {
-         const struct radv_userdata_info *mesh_ring_entry_loc = radv_get_user_sgpr(mesh_shader, AC_UD_TASK_RING_ENTRY);
-         const struct radv_userdata_info *task_ring_entry_loc = radv_get_user_sgpr(task_shader, AC_UD_TASK_RING_ENTRY);
-         const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_GRID_SIZE);
-         const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
+         const struct radv_userdata_info *mesh_ring_entry_loc =
+            radv_get_user_sgpr_info(mesh_shader, AC_UD_TASK_RING_ENTRY);
+         const struct radv_userdata_info *task_ring_entry_loc =
+            radv_get_user_sgpr_info(task_shader, AC_UD_TASK_RING_ENTRY);
+         const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_GRID_SIZE);
+         const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_TASK_DRAW_ID);
 
          params->has_task_shader = 1;
          params->mesh_ring_entry_sgpr =
@@ -2466,9 +2468,9 @@ radv_prepare_dgc_graphics(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedC
          ++idx;
       }
       params->vbo_cnt = idx;
-      params->vbo_reg =
-         ((radv_get_user_sgpr(vs, AC_UD_VS_VERTEX_BUFFERS)->sgpr_idx * 4 + vs->info.user_data_0) - SI_SH_REG_OFFSET) >>
-         2;
+      params->vbo_reg = ((radv_get_user_sgpr_info(vs, AC_UD_VS_VERTEX_BUFFERS)->sgpr_idx * 4 + vs->info.user_data_0) -
+                         SI_SH_REG_OFFSET) >>
+                        2;
       *upload_data = (char *)*upload_data + vb_size;
    }
 }
@@ -2510,7 +2512,7 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
          params->dispatch_initiator |= S_00B800_CS_W32_EN(1);
       }
 
-      const struct radv_userdata_info *loc = radv_get_user_sgpr(cs, AC_UD_CS_GRID_SIZE);
+      const struct radv_userdata_info *loc = radv_get_user_sgpr_info(cs, AC_UD_CS_GRID_SIZE);
       if (loc->sgpr_idx != -1) {
          params->grid_base_sgpr = (cs->info.user_data_0 + 4 * loc->sgpr_idx - SI_SH_REG_OFFSET) >> 2;
       }

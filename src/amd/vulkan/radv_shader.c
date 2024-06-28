@@ -3304,7 +3304,7 @@ radv_compute_spi_ps_input(const struct radv_physical_device *pdev, const struct 
 }
 
 const struct radv_userdata_info *
-radv_get_user_sgpr(const struct radv_shader *shader, int idx)
+radv_get_user_sgpr_info(const struct radv_shader *shader, int idx)
 {
    return &shader->info.user_sgprs_locs.shader_data[idx];
 }

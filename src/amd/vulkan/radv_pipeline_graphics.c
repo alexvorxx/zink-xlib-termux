@@ -2916,7 +2916,7 @@ radv_pipeline_init_shader_stages_state(const struct radv_device *device, struct 
       radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH) ? MESA_SHADER_MESH : MESA_SHADER_VERTEX;
 
    const struct radv_shader *shader = radv_get_shader(pipeline->base.shaders, first_stage);
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(shader, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(shader, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
 
    if (loc->sgpr_idx != -1) {
       pipeline->vtx_base_sgpr = shader->info.user_data_0;

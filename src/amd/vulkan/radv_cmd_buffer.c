@@ -2392,7 +2392,8 @@ radv_emit_geometry_shader(struct radv_cmd_buffer *cmd_buffer)
                               gs->info.regs.vgt_gs_max_vert_out);
 
    if (gs->info.merged_shader_compiled_separately) {
-      const struct radv_userdata_info *vgt_esgs_ring_itemsize = radv_get_user_sgpr(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
+      const struct radv_userdata_info *vgt_esgs_ring_itemsize =
+         radv_get_user_sgpr_info(gs, AC_UD_VGT_ESGS_RING_ITEMSIZE);
 
       assert(vgt_esgs_ring_itemsize->sgpr_idx != -1 && vgt_esgs_ring_itemsize->num_sgprs == 1);
 
@@ -2400,7 +2401,7 @@ radv_emit_geometry_shader(struct radv_cmd_buffer *cmd_buffer)
                         es->info.esgs_itemsize / 4);
 
       if (gs->info.is_ngg) {
-         const struct radv_userdata_info *ngg_lds_layout = radv_get_user_sgpr(gs, AC_UD_NGG_LDS_LAYOUT);
+         const struct radv_userdata_info *ngg_lds_layout = radv_get_user_sgpr_info(gs, AC_UD_NGG_LDS_LAYOUT);
 
          assert(ngg_lds_layout->sgpr_idx != -1 && ngg_lds_layout->num_sgprs == 1);
          assert(!(gs->info.ngg_info.esgs_ring_size & 0xffff0000) && !(gs->info.ngg_info.scratch_lds_base & 0xffff0000));
@@ -3348,7 +3349,7 @@ radv_emit_provoking_vertex_mode(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
    const unsigned stage = last_vgt_shader->info.stage;
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_NGG_PROVOKING_VTX);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_NGG_PROVOKING_VTX);
    unsigned provoking_vtx = 0;
    uint32_t base_reg;
 
@@ -3374,7 +3375,7 @@ radv_emit_primitive_topology(struct radv_cmd_buffer *cmd_buffer)
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_NUM_VERTS_PER_PRIM);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_NUM_VERTS_PER_PRIM);
    const uint32_t vgt_gs_out_prim_type = radv_get_rasterization_prim(cmd_buffer);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    uint32_t base_reg;
@@ -3756,7 +3757,7 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
    }
 
    /* Emit user SGPRs for dynamic patch control points. */
-   const struct radv_userdata_info *offchip = radv_get_user_sgpr(tcs, AC_UD_TCS_OFFCHIP_LAYOUT);
+   const struct radv_userdata_info *offchip = radv_get_user_sgpr_info(tcs, AC_UD_TCS_OFFCHIP_LAYOUT);
    if (offchip->sgpr_idx == -1)
       return;
    assert(offchip->num_sgprs == 1);
@@ -3773,7 +3774,7 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
    base_reg = tcs->info.user_data_0;
    radeon_set_sh_reg(cmd_buffer->cs, base_reg + offchip->sgpr_idx * 4, tcs_offchip_layout);
 
-   const struct radv_userdata_info *tes_offchip = radv_get_user_sgpr(tes, AC_UD_TCS_OFFCHIP_LAYOUT);
+   const struct radv_userdata_info *tes_offchip = radv_get_user_sgpr_info(tes, AC_UD_TCS_OFFCHIP_LAYOUT);
    assert(tes_offchip->sgpr_idx != -1 && tes_offchip->num_sgprs == 1);
 
    base_reg = tes->info.user_data_0;
@@ -5994,7 +5995,7 @@ static void
 radv_emit_all_inline_push_consts(struct radv_device *device, struct radeon_cmdbuf *cs, struct radv_shader *shader,
                                  uint32_t base_reg, uint32_t *values, bool *need_push_constants)
 {
-   if (radv_get_user_sgpr(shader, AC_UD_PUSH_CONSTANTS)->sgpr_idx != -1)
+   if (radv_get_user_sgpr_info(shader, AC_UD_PUSH_CONSTANTS)->sgpr_idx != -1)
       *need_push_constants |= true;
 
    const uint64_t mask = shader->info.inline_push_constant_mask;
@@ -6339,7 +6340,7 @@ static void
 radv_emit_streamout_buffers(struct radv_cmd_buffer *cmd_buffer, uint64_t va)
 {
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_STREAMOUT_BUFFERS);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_STREAMOUT_BUFFERS);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    uint32_t base_reg;
 
@@ -6364,7 +6365,7 @@ static void
 radv_emit_streamout_state(struct radv_cmd_buffer *cmd_buffer, uint64_t va)
 {
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_STREAMOUT_STATE);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_STREAMOUT_STATE);
    const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    uint32_t base_reg;
 
@@ -6471,7 +6472,7 @@ radv_flush_shader_query_state_gfx(struct radv_cmd_buffer *cmd_buffer)
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_SHADER_QUERY_STATE);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_SHADER_QUERY_STATE);
    enum radv_shader_query_state shader_query_state = radv_shader_query_none;
    uint32_t base_reg;
 
@@ -6508,7 +6509,7 @@ radv_flush_shader_query_state_gfx(struct radv_cmd_buffer *cmd_buffer)
 static void
 radv_flush_shader_query_state_ace(struct radv_cmd_buffer *cmd_buffer, struct radv_shader *task_shader)
 {
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(task_shader, AC_UD_SHADER_QUERY_STATE);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(task_shader, AC_UD_SHADER_QUERY_STATE);
    enum radv_shader_query_state shader_query_state = radv_shader_query_none;
    uint32_t base_reg;
 
@@ -6563,7 +6564,7 @@ radv_flush_force_vrs_state(struct radv_cmd_buffer *cmd_buffer)
       loc = &cmd_buffer->state.gs_copy_shader->info.user_sgprs_locs.shader_data[AC_UD_FORCE_VRS_RATES];
       base_reg = R_00B130_SPI_SHADER_USER_DATA_VS_0;
    } else {
-      loc = radv_get_user_sgpr(last_vgt_shader, AC_UD_FORCE_VRS_RATES);
+      loc = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_FORCE_VRS_RATES);
       base_reg = last_vgt_shader->info.user_data_0;
    }
 
@@ -7914,12 +7915,12 @@ radv_bind_pre_rast_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
           shader->info.stage == MESA_SHADER_TESS_EVAL || shader->info.stage == MESA_SHADER_GEOMETRY ||
           shader->info.stage == MESA_SHADER_MESH);
 
-   if (radv_get_user_sgpr(shader, AC_UD_NGG_PROVOKING_VTX)->sgpr_idx != -1) {
+   if (radv_get_user_sgpr_info(shader, AC_UD_NGG_PROVOKING_VTX)->sgpr_idx != -1) {
       /* Re-emit the provoking vertex mode state because the SGPR idx can be different. */
       cmd_buffer->state.dirty_dynamic |= RADV_DYNAMIC_PROVOKING_VERTEX_MODE;
    }
 
-   if (radv_get_user_sgpr(shader, AC_UD_STREAMOUT_BUFFERS)->sgpr_idx != -1) {
+   if (radv_get_user_sgpr_info(shader, AC_UD_STREAMOUT_BUFFERS)->sgpr_idx != -1) {
       /* Re-emit the streamout buffers because the SGPR idx can be different and with NGG streamout
        * they always need to be emitted because a buffer size of 0 is used to disable streamout.
        */
@@ -7931,12 +7932,12 @@ radv_bind_pre_rast_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       }
    }
 
-   if (radv_get_user_sgpr(shader, AC_UD_NUM_VERTS_PER_PRIM)->sgpr_idx != -1) {
+   if (radv_get_user_sgpr_info(shader, AC_UD_NUM_VERTS_PER_PRIM)->sgpr_idx != -1) {
       /* Re-emit the primitive topology because the SGPR idx can be different. */
       cmd_buffer->state.dirty_dynamic |= RADV_DYNAMIC_PRIMITIVE_TOPOLOGY;
    }
 
-   if (radv_get_user_sgpr(shader, AC_UD_SHADER_QUERY_STATE)->sgpr_idx != -1) {
+   if (radv_get_user_sgpr_info(shader, AC_UD_SHADER_QUERY_STATE)->sgpr_idx != -1) {
       /* Re-emit shader query state when SGPR exists but location potentially changed. */
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_SHADER_QUERY;
    }
@@ -7946,7 +7947,7 @@ radv_bind_pre_rast_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       (shader->info.stage == MESA_SHADER_GEOMETRY && !shader->info.merged_shader_compiled_separately) ||
       (shader->info.stage == MESA_SHADER_TESS_CTRL && !shader->info.merged_shader_compiled_separately);
 
-   loc = radv_get_user_sgpr(shader, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
+   loc = radv_get_user_sgpr_info(shader, AC_UD_VS_BASE_VERTEX_START_INSTANCE);
    if (needs_vtx_sgpr && loc->sgpr_idx != -1) {
       cmd_buffer->state.vtx_base_sgpr = shader->info.user_data_0 + loc->sgpr_idx * 4;
       cmd_buffer->state.vtx_emit_num = loc->num_sgprs;
@@ -8070,7 +8071,7 @@ radv_bind_fragment_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
    }
 
    /* Re-emit the FS state because the SGPR idx can be different. */
-   if (radv_get_user_sgpr(ps, AC_UD_PS_STATE)->sgpr_idx != -1) {
+   if (radv_get_user_sgpr_info(ps, AC_UD_PS_STATE)->sgpr_idx != -1) {
       cmd_buffer->state.dirty_dynamic |= RADV_DYNAMIC_RASTERIZATION_SAMPLES | RADV_DYNAMIC_LINE_RASTERIZATION_MODE;
    }
 
@@ -9620,7 +9621,7 @@ static void
 radv_emit_view_index_per_stage(struct radeon_cmdbuf *cs, const struct radv_shader *shader, uint32_t base_reg,
                                unsigned index)
 {
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(shader, AC_UD_VIEW_INDEX);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(shader, AC_UD_VIEW_INDEX);
 
    if (loc->sgpr_idx == -1)
       return;
@@ -9825,7 +9826,7 @@ radv_cs_emit_dispatch_taskmesh_direct_ace_packet(const struct radv_device *devic
    const uint32_t dispatch_initiator =
       device->dispatch_initiator_task | S_00B800_CS_W32_EN(task_shader->info.wave_size == 32);
 
-   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr(task_shader, AC_UD_TASK_RING_ENTRY);
+   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr_info(task_shader, AC_UD_TASK_RING_ENTRY);
    assert(ring_entry_loc && ring_entry_loc->sgpr_idx != -1 && ring_entry_loc->num_sgprs == 1);
 
    uint32_t ring_entry_reg = (task_shader->info.user_data_0 + ring_entry_loc->sgpr_idx * 4 - SI_SH_REG_OFFSET) >> 2;
@@ -9854,9 +9855,9 @@ radv_cs_emit_dispatch_taskmesh_indirect_multi_ace_packet(const struct radv_devic
    const uint32_t dispatch_initiator =
       device->dispatch_initiator_task | S_00B800_CS_W32_EN(task_shader->info.wave_size == 32);
 
-   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr(task_shader, AC_UD_TASK_RING_ENTRY);
-   const struct radv_userdata_info *xyz_dim_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_GRID_SIZE);
-   const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
+   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr_info(task_shader, AC_UD_TASK_RING_ENTRY);
+   const struct radv_userdata_info *xyz_dim_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_GRID_SIZE);
+   const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_TASK_DRAW_ID);
 
    assert(ring_entry_loc->sgpr_idx != -1 && ring_entry_loc->num_sgprs == 1);
    assert(!xyz_dim_enable || (xyz_dim_loc->sgpr_idx != -1 && xyz_dim_loc->num_sgprs == 3));
@@ -9891,7 +9892,7 @@ radv_cs_emit_dispatch_taskmesh_gfx_packet(const struct radv_device *device, cons
    const struct radv_shader *mesh_shader = cmd_state->shaders[MESA_SHADER_MESH];
    const bool predicating = cmd_state->predicating;
 
-   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr(mesh_shader, AC_UD_TASK_RING_ENTRY);
+   const struct radv_userdata_info *ring_entry_loc = radv_get_user_sgpr_info(mesh_shader, AC_UD_TASK_RING_ENTRY);
 
    assert(ring_entry_loc->sgpr_idx != -1);
 
@@ -9993,8 +9994,8 @@ radv_emit_userdata_task(const struct radv_cmd_state *cmd_state, struct radeon_cm
 {
    const struct radv_shader *task_shader = cmd_state->shaders[MESA_SHADER_TASK];
 
-   const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_GRID_SIZE);
-   const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr(task_shader, AC_UD_CS_TASK_DRAW_ID);
+   const struct radv_userdata_info *xyz_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_GRID_SIZE);
+   const struct radv_userdata_info *draw_id_loc = radv_get_user_sgpr_info(task_shader, AC_UD_CS_TASK_DRAW_ID);
 
    if (xyz_loc->sgpr_idx != -1) {
       assert(xyz_loc->num_sgprs == 3);
@@ -10564,13 +10565,13 @@ radv_emit_ngg_culling_state(struct radv_cmd_buffer *cmd_buffer)
       }
 
       uint32_t vp_reg_values[4] = {fui(vp_scale[0]), fui(vp_scale[1]), fui(vp_translate[0]), fui(vp_translate[1])};
-      const int8_t vp_sgpr_idx = radv_get_user_sgpr(last_vgt_shader, AC_UD_NGG_VIEWPORT)->sgpr_idx;
+      const int8_t vp_sgpr_idx = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_NGG_VIEWPORT)->sgpr_idx;
       assert(vp_sgpr_idx != -1);
       radeon_set_sh_reg_seq(cmd_buffer->cs, base_reg + vp_sgpr_idx * 4, 4);
       radeon_emit_array(cmd_buffer->cs, vp_reg_values, 4);
    }
 
-   const int8_t nggc_sgpr_idx = radv_get_user_sgpr(last_vgt_shader, AC_UD_NGG_CULLING_SETTINGS)->sgpr_idx;
+   const int8_t nggc_sgpr_idx = radv_get_user_sgpr_info(last_vgt_shader, AC_UD_NGG_CULLING_SETTINGS)->sgpr_idx;
    assert(nggc_sgpr_idx != -1);
 
    radeon_set_sh_reg(cmd_buffer->cs, base_reg + nggc_sgpr_idx * 4, nggc_settings);
@@ -10586,7 +10587,7 @@ radv_emit_fs_state(struct radv_cmd_buffer *cmd_buffer)
    if (!ps)
       return;
 
-   loc = radv_get_user_sgpr(ps, AC_UD_PS_STATE);
+   loc = radv_get_user_sgpr_info(ps, AC_UD_PS_STATE);
    if (loc->sgpr_idx == -1)
       return;
    assert(loc->num_sgprs == 1);
@@ -10893,7 +10894,7 @@ radv_bind_graphics_shaders(struct radv_cmd_buffer *cmd_buffer)
          continue;
 
       /* Compute push constants/indirect descriptors state. */
-      need_indirect_descriptor_sets |= radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
+      need_indirect_descriptor_sets |= radv_get_user_sgpr_info(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
       push_constant_size += shader_obj->push_constant_size;
       dynamic_offset_count += shader_obj->dynamic_offset_count;
    }
@@ -11682,7 +11683,7 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
    struct radeon_winsys *ws = device->ws;
    bool predicating = cmd_buffer->state.predicating;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   const struct radv_userdata_info *loc = radv_get_user_sgpr(compute_shader, AC_UD_CS_GRID_SIZE);
+   const struct radv_userdata_info *loc = radv_get_user_sgpr_info(compute_shader, AC_UD_CS_GRID_SIZE);
 
    radv_describe_dispatch(cmd_buffer, info);
 
@@ -12262,24 +12263,25 @@ radv_trace_rays(struct radv_cmd_buffer *cmd_buffer, VkTraceRaysIndirectCommand2K
 
    ASSERTED unsigned cdw_max = radeon_check_space(device->ws, cmd_buffer->cs, 15);
 
-   const struct radv_userdata_info *desc_loc = radv_get_user_sgpr(rt_prolog, AC_UD_CS_SBT_DESCRIPTORS);
+   const struct radv_userdata_info *desc_loc = radv_get_user_sgpr_info(rt_prolog, AC_UD_CS_SBT_DESCRIPTORS);
    if (desc_loc->sgpr_idx != -1) {
       radv_emit_shader_pointer(device, cmd_buffer->cs, base_reg + desc_loc->sgpr_idx * 4, sbt_va, true);
    }
 
-   const struct radv_userdata_info *size_loc = radv_get_user_sgpr(rt_prolog, AC_UD_CS_RAY_LAUNCH_SIZE_ADDR);
+   const struct radv_userdata_info *size_loc = radv_get_user_sgpr_info(rt_prolog, AC_UD_CS_RAY_LAUNCH_SIZE_ADDR);
    if (size_loc->sgpr_idx != -1) {
       radv_emit_shader_pointer(device, cmd_buffer->cs, base_reg + size_loc->sgpr_idx * 4, launch_size_va, true);
    }
 
-   const struct radv_userdata_info *base_loc = radv_get_user_sgpr(rt_prolog, AC_UD_CS_RAY_DYNAMIC_CALLABLE_STACK_BASE);
+   const struct radv_userdata_info *base_loc =
+      radv_get_user_sgpr_info(rt_prolog, AC_UD_CS_RAY_DYNAMIC_CALLABLE_STACK_BASE);
    if (base_loc->sgpr_idx != -1) {
       const struct radv_shader_info *cs_info = &rt_prolog->info;
       radeon_set_sh_reg(cmd_buffer->cs, R_00B900_COMPUTE_USER_DATA_0 + base_loc->sgpr_idx * 4,
                         rt_prolog->config.scratch_bytes_per_wave / cs_info->wave_size);
    }
 
-   const struct radv_userdata_info *shader_loc = radv_get_user_sgpr(rt_prolog, AC_UD_CS_TRAVERSAL_SHADER_ADDR);
+   const struct radv_userdata_info *shader_loc = radv_get_user_sgpr_info(rt_prolog, AC_UD_CS_TRAVERSAL_SHADER_ADDR);
    struct radv_shader *traversal_shader = cmd_buffer->state.shaders[MESA_SHADER_INTERSECTION];
    if (shader_loc->sgpr_idx != -1 && traversal_shader) {
       uint64_t traversal_va = traversal_shader->va | radv_rt_priority_traversal;
@@ -13751,7 +13753,7 @@ radv_bind_compute_shader(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_
    struct radv_push_constant_state *pc_state = &cmd_buffer->push_constant_state[VK_PIPELINE_BIND_POINT_COMPUTE];
 
    descriptors_state->need_indirect_descriptor_sets =
-      radv_get_user_sgpr(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
+      radv_get_user_sgpr_info(shader, AC_UD_INDIRECT_DESCRIPTOR_SETS)->sgpr_idx != -1;
    pc_state->size = shader_obj->push_constant_size;
    pc_state->dynamic_offset_count = shader_obj->dynamic_offset_count;
 

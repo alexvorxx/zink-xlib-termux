@@ -7138,9 +7138,6 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
          }
 
          break;
-      case VK_ACCESS_2_INDEX_READ_BIT:
-      case VK_ACCESS_2_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT:
-         break;
       case VK_ACCESS_2_UNIFORM_READ_BIT:
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_SCACHE;
          break;
@@ -7178,10 +7175,6 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
          if (pdev->info.gfx_level < GFX9)
             flush_bits |= RADV_CMD_FLAG_INV_L2;
-         break;
-      case VK_ACCESS_2_SHADER_WRITE_BIT:
-      case VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT:
-      case VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR:
          break;
       case VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT:
       case VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT:

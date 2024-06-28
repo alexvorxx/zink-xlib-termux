@@ -7031,7 +7031,6 @@ radv_src_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
       case VK_ACCESS_2_COMMAND_PREPROCESS_WRITE_BIT_NV:
          flush_bits |= RADV_CMD_FLAG_INV_L2;
          break;
-      case VK_ACCESS_2_SHADER_WRITE_BIT:
       case VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT:
          /* since the STORAGE bit isn't set we know that this is a meta operation.
           * on the dst flush side we skip CB/DB flushes without the STORAGE bit, so
@@ -7064,16 +7063,6 @@ radv_src_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
          break;
       case VK_ACCESS_2_TRANSFER_WRITE_BIT:
-         flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_DB;
-
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         if (has_CB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
-         if (has_DB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
-         break;
-      case VK_ACCESS_2_MEMORY_WRITE_BIT:
          flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_DB;
 
          if (!image_is_coherent)
@@ -7156,7 +7145,6 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
          flush_bits |= RADV_CMD_FLAG_INV_SCACHE;
          break;
       case VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR:
-      case VK_ACCESS_2_SHADER_READ_BIT:
       case VK_ACCESS_2_SHADER_STORAGE_READ_BIT:
          /* Unlike LLVM, ACO uses SMEM for SSBOs and we have to
           * invalidate the scalar cache. */
@@ -7190,10 +7178,6 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
          if (has_DB_meta)
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
          break;
-      case VK_ACCESS_2_MEMORY_READ_BIT:
-         if (flush_L2_metadata)
-            flush_bits |= RADV_CMD_FLAG_INV_L2_METADATA;
-         FALLTHROUGH;
       case VK_ACCESS_2_MEMORY_WRITE_BIT:
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_SCACHE;
          if (!image_is_coherent)

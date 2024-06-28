@@ -11418,6 +11418,29 @@ radv_CmdDrawMeshTasksIndirectCountEXT(VkCommandBuffer commandBuffer, VkBuffer _b
 static void radv_dgc_before_dispatch(struct radv_cmd_buffer *cmd_buffer);
 static void radv_dgc_after_dispatch(struct radv_cmd_buffer *cmd_buffer);
 
+VKAPI_ATTR void VKAPI_CALL
+radv_CmdPreprocessGeneratedCommandsNV(VkCommandBuffer commandBuffer,
+                                      const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
+{
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
+
+   if (!radv_dgc_can_preprocess(layout, pipeline))
+      return;
+
+   /* VK_EXT_conditional_rendering says that copy commands should not be
+    * affected by conditional rendering.
+    */
+   const bool old_predicating = cmd_buffer->state.predicating;
+   cmd_buffer->state.predicating = false;
+
+   radv_prepare_dgc(cmd_buffer, pGeneratedCommandsInfo, false);
+
+   /* Restore conditional rendering. */
+   cmd_buffer->state.predicating = old_predicating;
+}
+
 static void
 radv_dgc_execute_ib(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
 {

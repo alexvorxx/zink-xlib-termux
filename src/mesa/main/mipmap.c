@@ -76,7 +76,7 @@ do_span_zs(enum pipe_format format, int srcWidth,
            const void *srcRowA, const void *srcRowB,
            int dstWidth, void *dstRow)
 {
-   const struct util_format_description *desc =
+   ASSERTED const struct util_format_description *desc =
       util_format_description(format);
 
    assert(desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS);

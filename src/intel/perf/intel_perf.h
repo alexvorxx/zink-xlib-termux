@@ -29,12 +29,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#if defined(MAJOR_IN_SYSMACROS)
-#include <sys/sysmacros.h>
-#elif defined(MAJOR_IN_MKDEV)
-#include <sys/mkdev.h>
-#endif
-
 #include "compiler/glsl/list.h"
 #include "dev/intel_device_info.h"
 #include "util/bitscan.h"

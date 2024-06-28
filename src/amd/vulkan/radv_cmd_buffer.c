@@ -11490,16 +11490,12 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
 
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_L2;
 
-      if (!compute) {
-         struct radv_graphics_pipeline *graphics_pipeline = radv_pipeline_to_graphics(pipeline);
-
+      if (radv_dgc_with_task_shader(pGeneratedCommandsInfo)) {
          /* Make sure the DGC ACE IB will wait for the DGC prepare shader before the execution
           * starts.
           */
-         if (radv_pipeline_has_stage(graphics_pipeline, MESA_SHADER_TASK)) {
-            radv_gang_barrier(cmd_buffer, VK_PIPELINE_STAGE_2_COMMAND_PREPROCESS_BIT_NV,
-                              VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
-         }
+         radv_gang_barrier(cmd_buffer, VK_PIPELINE_STAGE_2_COMMAND_PREPROCESS_BIT_NV,
+                           VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
       }
    }
 

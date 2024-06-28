@@ -7133,7 +7133,6 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
       case VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT:
       case VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT:
       case VK_ACCESS_2_TRANSFER_READ_BIT:
-      case VK_ACCESS_2_TRANSFER_WRITE_BIT:
          flush_bits |= RADV_CMD_FLAG_INV_VCACHE;
 
          if (flush_L2_metadata)
@@ -7165,27 +7164,12 @@ radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 
             flush_bits |= RADV_CMD_FLAG_INV_L2;
          break;
       case VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT:
-      case VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT:
          if (flush_CB)
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
          if (has_CB_meta)
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
          break;
       case VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT:
-      case VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT:
-         if (flush_DB)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
-         if (has_DB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
-         break;
-      case VK_ACCESS_2_MEMORY_WRITE_BIT:
-         flush_bits |= RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_SCACHE;
-         if (!image_is_coherent)
-            flush_bits |= RADV_CMD_FLAG_INV_L2;
-         if (flush_CB)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB;
-         if (has_CB_meta)
-            flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB_META;
          if (flush_DB)
             flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_DB;
          if (has_DB_meta)

@@ -1704,13 +1704,8 @@ should_compact_linear_vgprs(ra_ctx& ctx, const RegisterFile& reg_file)
       max_vgpr_usage =
          MAX2(max_vgpr_usage, (unsigned)ctx.program->blocks[next_toplevel].register_demand.vgpr);
    }
-
-   std::vector<aco_ptr<Instruction>>& instructions =
-      ctx.program->blocks[next_toplevel].instructions;
-   if (!instructions.empty() && is_phi(instructions[0])) {
-      max_vgpr_usage =
-         MAX2(max_vgpr_usage, (unsigned)ctx.program->live.register_demand[next_toplevel][0].vgpr);
-   }
+   max_vgpr_usage =
+      MAX2(max_vgpr_usage, (unsigned)ctx.program->blocks[next_toplevel].live_in_demand.vgpr);
 
    for (unsigned tmp : find_vars(ctx, reg_file, get_reg_bounds(ctx, RegType::vgpr, true)))
       max_vgpr_usage -= ctx.assignments[tmp].rc.size();

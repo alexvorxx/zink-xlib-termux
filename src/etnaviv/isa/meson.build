@@ -1,7 +1,5 @@
-#
 # Copyright © 2023 Igalia S.L.
 # SPDX-License-Identifier: MIT
-#
 
 isa_depend_files = [
   'etnaviv.xml',

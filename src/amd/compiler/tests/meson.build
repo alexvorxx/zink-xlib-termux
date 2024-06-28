@@ -1,5 +1,4 @@
 # Copyright © 2020 Valve Corporation
-#
 # SPDX-License-Identifier: MIT
 
 aco_tests_files = files(

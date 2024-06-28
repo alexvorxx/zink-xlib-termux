@@ -1,5 +1,4 @@
 # Copyright © 2022 Konstantin Seurer
-#
 # SPDX-License-Identifier: MIT
 
 radix_sort_shaders = [

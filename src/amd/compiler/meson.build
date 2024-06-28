@@ -1,5 +1,4 @@
 # Copyright © 2018 Valve Corporation
-#
 # SPDX-License-Identifier: MIT
 
 aco_depends = files('aco_opcodes.py')

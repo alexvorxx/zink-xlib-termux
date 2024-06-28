@@ -1,5 +1,4 @@
 # Copyright © 2017 Intel Corporation
-#
 # SPDX-License-Identifier: MIT
 
 radv_entrypoints_gen_command = [

@@ -1401,7 +1401,7 @@ zink_screen_init_compiler(struct zink_screen *screen)
    if (screen->driver_workarounds.io_opt) {
       screen->nir_options.io_options |= nir_io_glsl_opt_varyings;
 
-      switch (screen->info.driver_props.driverID) {
+      switch (zink_driverid(screen)) {
       case VK_DRIVER_ID_MESA_RADV:
       case VK_DRIVER_ID_AMD_OPEN_SOURCE:
       case VK_DRIVER_ID_AMD_PROPRIETARY:
@@ -1425,9 +1425,9 @@ zink_screen_init_compiler(struct zink_screen *screen)
        -Table 84. Precision of core SPIR-V Instructions
        * for drivers that are known to have imprecise fmod for doubles, lower dmod
     */
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_RADV ||
-       screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
-       screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY)
+   if (zink_driverid(screen) == VK_DRIVER_ID_MESA_RADV ||
+       zink_driverid(screen) == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
+       zink_driverid(screen) == VK_DRIVER_ID_AMD_PROPRIETARY)
       screen->nir_options.lower_doubles_options = nir_lower_dmod;
 
    if (screen->info.have_EXT_shader_demote_to_helper_invocation)

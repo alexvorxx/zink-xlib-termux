@@ -130,6 +130,12 @@ zink_string_vkflags_unroll(char *buf, size_t bufsize, uint64_t flags, zink_vkfla
 VkSemaphore
 zink_create_semaphore(struct zink_screen *screen);
 
+static inline VkDriverId
+zink_driverid(const struct zink_screen *screen)
+{
+   return screen->info.driver_props.driverID;
+}
+
 void
 zink_screen_lock_context(struct zink_screen *screen);
 void

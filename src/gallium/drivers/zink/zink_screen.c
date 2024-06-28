@@ -1157,9 +1157,7 @@ zink_get_shader_param(struct pipe_screen *pscreen,
           * with what we need for GL, so we can still force a conformant value here
           */
          if (zink_driverid(screen) == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-             zink_driverid(screen) == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS ||
-             (zink_driverid(screen) == VK_DRIVER_ID_MESA_VENUS
-              && screen->info.props.vendorID == 0x8086))
+             zink_driverid(screen) == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
             return 32;
          max = screen->info.props.limits.maxFragmentInputComponents / 4;
          break;
@@ -2810,7 +2808,7 @@ static void
 init_driver_workarounds(struct zink_screen *screen)
 {
    /* enable implicit sync for all non-mesa drivers */
-   screen->driver_workarounds.implicit_sync = true;
+   screen->driver_workarounds.implicit_sync = screen->info.driver_props.driverID != VK_DRIVER_ID_MESA_VENUS;
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_RADV:
    case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
@@ -2818,7 +2816,6 @@ init_driver_workarounds(struct zink_screen *screen)
    case VK_DRIVER_ID_MESA_TURNIP:
    case VK_DRIVER_ID_MESA_V3DV:
    case VK_DRIVER_ID_MESA_PANVK:
-   case VK_DRIVER_ID_MESA_VENUS:
       screen->driver_workarounds.implicit_sync = false;
       break;
    default:
@@ -2930,7 +2927,6 @@ init_driver_workarounds(struct zink_screen *screen)
    case VK_DRIVER_ID_MESA_RADV:
    case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
    case VK_DRIVER_ID_MESA_LLVMPIPE:
-   case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
    case VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS:
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
@@ -2942,7 +2938,6 @@ init_driver_workarounds(struct zink_screen *screen)
    /* these drivers don't use VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT, so it can always be set */
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_LLVMPIPE:
-   case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
       screen->driver_workarounds.always_feedback_loop_zs = screen->info.have_EXT_attachment_feedback_loop_layout;
@@ -3015,7 +3010,6 @@ init_driver_workarounds(struct zink_screen *screen)
    /* these drivers can successfully do INVALID <-> LINEAR dri3 modifier swap */
    switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_TURNIP:
-   case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_MESA_NVK:
       screen->driver_workarounds.can_do_invalid_linear_modifier = true;
       break;
@@ -3610,7 +3604,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    }
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_AUTO) {
       /* descriptor buffer is not performant with virt yet */
-      if (zink_driverid(screen) == VK_DRIVER_ID_MESA_VENUS)
+      if (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_VENUS)
          zink_descriptor_mode = ZINK_DESCRIPTOR_MODE_LAZY;
       else
          zink_descriptor_mode = can_db ? ZINK_DESCRIPTOR_MODE_DB : ZINK_DESCRIPTOR_MODE_LAZY;

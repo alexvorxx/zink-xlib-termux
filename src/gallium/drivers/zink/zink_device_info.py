@@ -407,6 +407,9 @@ struct zink_device_info {
 %endfor
 
    VkPhysicalDeviceProperties props;
+   VkPhysicalDeviceProperties vk_layered_props;
+   VkPhysicalDeviceLayeredApiPropertiesKHR layered_props;
+   VkPhysicalDeviceDriverPropertiesKHR vk_layered_driver_props;
 %for version in versions:
    VkPhysicalDeviceVulkan${version.struct()}Properties props${version.struct()};
 %endfor
@@ -545,6 +548,7 @@ zink_get_physical_device_info(struct zink_screen *screen)
    }
 
    // check for device properties
+   bool copy_layered_props = false;
    if (screen->vk.GetPhysicalDeviceProperties2) {
       VkPhysicalDeviceProperties2 props = {0};
       props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
@@ -590,8 +594,34 @@ zink_get_physical_device_info(struct zink_screen *screen)
          props.pNext = &info->subgroup;
       }
 
+      /* set up structs to capture underlying driver info */
+      VkPhysicalDeviceLayeredApiVulkanPropertiesKHR vk_layered_props = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LAYERED_API_VULKAN_PROPERTIES_KHR,
+      };
+      vk_layered_props.properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+      info->vk_layered_driver_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+      if (support_KHR_driver_properties || info->have_vulkan12)
+        vk_layered_props.properties.pNext = &info->vk_layered_driver_props;
+      info->layered_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LAYERED_API_PROPERTIES_KHR;
+      info->layered_props.pNext = &vk_layered_props;
+      VkPhysicalDeviceLayeredApiPropertiesListKHR layered_props_list = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LAYERED_API_PROPERTIES_LIST_KHR,
+        props.pNext,
+        1,
+        &info->layered_props
+      };
+      if (support_KHR_maintenance7)
+         props.pNext = &layered_props_list;
+
       // note: setting up local VkPhysicalDeviceProperties2.
       screen->vk.GetPhysicalDeviceProperties2(screen->pdev, &props);
+
+      if (support_KHR_maintenance7 && layered_props_list.layeredApiCount) {
+        info->vk_layered_props = vk_layered_props.properties.properties;
+      } else {
+        info->vk_layered_props = info->props;
+        copy_layered_props = true;
+      }
    }
 
    /* We re-apply the fields from VkPhysicalDeviceVulkanXYFeatures struct
@@ -629,6 +659,9 @@ zink_get_physical_device_info(struct zink_screen *screen)
    }
 %endif
 %endfor
+
+   if (copy_layered_props)
+     info->vk_layered_driver_props = info->driver_props;
 
    // enable the extensions if they match the conditions given by ext.enable_conds 
    if (screen->vk.GetPhysicalDeviceProperties2) {

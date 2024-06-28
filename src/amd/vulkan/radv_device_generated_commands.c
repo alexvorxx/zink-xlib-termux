@@ -2597,15 +2597,11 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
                unsigned inline_sgpr = 0;
 
                if (locs->shader_data[AC_UD_PUSH_CONSTANTS].sgpr_idx >= 0) {
-                  upload_sgpr = (shader->info.user_data_0 + 4 * locs->shader_data[AC_UD_PUSH_CONSTANTS].sgpr_idx -
-                                 SI_SH_REG_OFFSET) >>
-                                2;
+                  upload_sgpr = radv_get_user_sgpr(shader, AC_UD_PUSH_CONSTANTS);
                }
 
                if (locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].sgpr_idx >= 0) {
-                  inline_sgpr = (shader->info.user_data_0 +
-                                 4 * locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].sgpr_idx - SI_SH_REG_OFFSET) >>
-                                2;
+                  inline_sgpr = radv_get_user_sgpr(shader, AC_UD_INLINE_PUSH_CONSTANTS);
                   desc[i * 3 + 1] = pipeline->shaders[i]->info.inline_push_constant_mask;
                   desc[i * 3 + 2] = pipeline->shaders[i]->info.inline_push_constant_mask >> 32;
                }

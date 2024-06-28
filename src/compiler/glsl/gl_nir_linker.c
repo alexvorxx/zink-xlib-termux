@@ -1678,11 +1678,11 @@ cross_validate_globals(void *mem_ctx, const struct gl_constants *consts,
       if (glsl_without_array(var->type) == var->interface_type)
          continue;
 
-      /* Don't cross validate temporaries that are at global scope.  These
-       * will eventually get pulled into the shaders 'main'.
+      /* Don't cross validate compiler temporaries that are at global scope.
+       *  These will eventually get pulled into the shaders 'main'.
        */
-      if (var->data.mode == nir_var_function_temp ||
-          var->data.mode == nir_var_shader_temp)
+      if (var->data.mode == nir_var_shader_temp &&
+          var->data.how_declared == nir_var_hidden)
          continue;
 
       /* If a global with this name has already been seen, verify that the

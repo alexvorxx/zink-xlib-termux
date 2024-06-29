@@ -6,6 +6,7 @@
 #include "nvk_upload_queue.h"
 
 #include "nvk_device.h"
+#include "nvkmd/nvkmd.h"
 #include "vk_alloc.h"
 
 #include <xf86drm.h>
@@ -15,13 +16,12 @@
 #include "nv_push.h"
 #include "nv_push_cl90b5.h"
 
-#define NVK_UPLOAD_BO_SIZE 64*1024
+#define NVK_UPLOAD_MEM_SIZE 64*1024
 
-struct nvk_upload_bo {
-   struct nouveau_ws_bo *bo;
-   void *map;
+struct nvk_upload_mem {
+   struct nvkmd_mem *mem;
 
-   /** Link in nvk_upload_queue::bos */
+   /** Link in nvk_upload_queue::recycle */
    struct list_head link;
 
    /** Time point at which point this BO will be idle */
@@ -29,37 +29,37 @@ struct nvk_upload_bo {
 };
 
 static VkResult
-nvk_upload_bo_create(struct nvk_device *dev,
-                     struct nvk_upload_bo **bo_out)
+nvk_upload_mem_create(struct nvk_device *dev,
+                     struct nvk_upload_mem **mem_out)
 {
-   struct nvk_upload_bo *bo;
+   struct nvk_upload_mem *mem;
+   VkResult result;
 
-   bo = vk_zalloc(&dev->vk.alloc, sizeof(*bo), 8,
+   mem = vk_zalloc(&dev->vk.alloc, sizeof(*mem), 8,
                   VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (bo == NULL)
+   if (mem == NULL)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   uint32_t flags = NOUVEAU_WS_BO_GART | NOUVEAU_WS_BO_MAP |
-                    NOUVEAU_WS_BO_NO_SHARE;
-   bo->bo = nouveau_ws_bo_new_mapped(dev->ws_dev, NVK_UPLOAD_BO_SIZE, 0,
-                                     flags, NOUVEAU_WS_BO_WR, &bo->map);
-   if (bo->bo == NULL) {
-      vk_free(&dev->vk.alloc, bo);
-      return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+   uint32_t flags = NVKMD_MEM_GART | NVKMD_MEM_CAN_MAP | NVKMD_MEM_NO_SHARE;
+   result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
+                                       NVK_UPLOAD_MEM_SIZE, 0,
+                                       flags, NVKMD_MEM_MAP_WR, &mem->mem);
+   if (result != VK_SUCCESS) {
+      vk_free(&dev->vk.alloc, mem);
+      return result;
    }
 
-   *bo_out = bo;
+   *mem_out = mem;
 
    return VK_SUCCESS;
 }
 
 static void
-nvk_upload_bo_destroy(struct nvk_device *dev,
-                      struct nvk_upload_bo *bo)
+nvk_upload_mem_destroy(struct nvk_device *dev,
+                      struct nvk_upload_mem *mem)
 {
-   nouveau_ws_bo_unmap(bo->bo, bo->map);
-   nouveau_ws_bo_destroy(bo->bo);
-   vk_free(&dev->vk.alloc, bo);
+   nvkmd_mem_unref(mem->mem);
+   vk_free(&dev->vk.alloc, mem);
 }
 
 VkResult
@@ -88,7 +88,7 @@ nvk_upload_queue_init(struct nvk_device *dev,
       goto fail_context;
    }
 
-   list_inithead(&queue->bos);
+   list_inithead(&queue->recycle);
 
    return VK_SUCCESS;
 
@@ -104,11 +104,11 @@ void
 nvk_upload_queue_finish(struct nvk_device *dev,
                         struct nvk_upload_queue *queue)
 {
-   list_for_each_entry_safe(struct nvk_upload_bo, bo, &queue->bos, link)
-      nvk_upload_bo_destroy(dev, bo);
+   list_for_each_entry_safe(struct nvk_upload_mem, mem, &queue->recycle, link)
+      nvk_upload_mem_destroy(dev, mem);
 
-   if (queue->bo != NULL)
-      nvk_upload_bo_destroy(dev, queue->bo);
+   if (queue->mem != NULL)
+      nvk_upload_mem_destroy(dev, queue->mem);
 
    drmSyncobjDestroy(dev->ws_dev->fd, queue->drm.syncobj);
    nouveau_ws_context_destroy(queue->drm.ws_ctx);
@@ -120,7 +120,7 @@ nvk_upload_queue_flush_locked(struct nvk_device *dev,
                               struct nvk_upload_queue *queue,
                               uint64_t *time_point_out)
 {
-   if (queue->bo == NULL || queue->bo_push_start == queue->bo_push_end) {
+   if (queue->mem == NULL || queue->mem_push_start == queue->mem_push_end) {
       if (time_point_out != NULL)
          *time_point_out = queue->last_time_point;
       return VK_SUCCESS;
@@ -131,8 +131,8 @@ nvk_upload_queue_flush_locked(struct nvk_device *dev,
       abort();
 
    struct drm_nouveau_exec_push push = {
-      .va = queue->bo->bo->offset + queue->bo_push_start,
-      .va_len = queue->bo_push_end - queue->bo_push_start,
+      .va = queue->mem->mem->va->addr + queue->mem_push_start,
+      .va_len = queue->mem_push_end - queue->mem_push_start,
    };
 
    struct drm_nouveau_sync sig = {
@@ -160,8 +160,8 @@ nvk_upload_queue_flush_locked(struct nvk_device *dev,
     */
    queue->last_time_point = time_point;
 
-   queue->bo->idle_time_point = time_point;
-   queue->bo_push_start = queue->bo_push_end;
+   queue->mem->idle_time_point = time_point;
+   queue->mem_push_start = queue->mem_push_end;
 
    if (time_point_out != NULL)
       *time_point_out = time_point;
@@ -222,15 +222,15 @@ nvk_upload_queue_sync(struct nvk_device *dev,
 static VkResult
 nvk_upload_queue_reserve(struct nvk_device *dev,
                          struct nvk_upload_queue *queue,
-                         uint32_t min_bo_size)
+                         uint32_t min_mem_size)
 {
    VkResult result;
 
-   assert(min_bo_size <= NVK_UPLOAD_BO_SIZE);
-   assert(queue->bo_push_end <= queue->bo_data_start);
+   assert(min_mem_size <= NVK_UPLOAD_MEM_SIZE);
+   assert(queue->mem_push_end <= queue->mem_data_start);
 
-   if (queue->bo != NULL) {
-      if (queue->bo_data_start - queue->bo_push_end >= min_bo_size)
+   if (queue->mem != NULL) {
+      if (queue->mem_data_start - queue->mem_push_end >= min_mem_size)
          return VK_SUCCESS;
 
       /* Not enough room in the BO.  Flush and add it to the recycle list */
@@ -238,17 +238,17 @@ nvk_upload_queue_reserve(struct nvk_device *dev,
       if (result != VK_SUCCESS)
          return result;
 
-      assert(queue->bo_push_start == queue->bo_push_end);
-      list_addtail(&queue->bo->link, &queue->bos);
-      queue->bo = NULL;
+      assert(queue->mem_push_start == queue->mem_push_end);
+      list_addtail(&queue->mem->link, &queue->recycle);
+      queue->mem = NULL;
    }
 
-   assert(queue->bo == NULL);
-   queue->bo_push_start = queue->bo_push_end = 0;
-   queue->bo_data_start = NVK_UPLOAD_BO_SIZE;
+   assert(queue->mem == NULL);
+   queue->mem_push_start = queue->mem_push_end = 0;
+   queue->mem_data_start = NVK_UPLOAD_MEM_SIZE;
 
    /* Try to pop an idle BO off the recycle list */
-   if (!list_is_empty(&queue->bos)) {
+   if (!list_is_empty(&queue->recycle)) {
       uint64_t time_point_passed = 0;
       int err = drmSyncobjQuery(dev->ws_dev->fd, &queue->drm.syncobj,
                                 &time_point_passed, 1);
@@ -257,16 +257,16 @@ nvk_upload_queue_reserve(struct nvk_device *dev,
                                    "DRM_IOCTL_SYNCOBJ_QUERY failed: %m");
       }
 
-      struct nvk_upload_bo *bo =
-         list_first_entry(&queue->bos, struct nvk_upload_bo, link);
-      if (time_point_passed >= bo->idle_time_point) {
-         list_del(&bo->link);
-         queue->bo = bo;
+      struct nvk_upload_mem *mem =
+         list_first_entry(&queue->recycle, struct nvk_upload_mem, link);
+      if (time_point_passed >= mem->idle_time_point) {
+         list_del(&mem->link);
+         queue->mem = mem;
          return VK_SUCCESS;
       }
    }
 
-   return nvk_upload_bo_create(dev, &queue->bo);
+   return nvk_upload_mem_create(dev, &queue->mem);
 }
 
 static VkResult
@@ -292,21 +292,21 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
       if (result != VK_SUCCESS)
          return result;
 
-      assert(queue->bo != NULL);
-      assert(queue->bo_data_start > queue->bo_push_end);
-      const uint32_t avail = queue->bo_data_start - queue->bo_push_end;
+      assert(queue->mem != NULL);
+      assert(queue->mem_data_start > queue->mem_push_end);
+      const uint32_t avail = queue->mem_data_start - queue->mem_push_end;
       assert(avail >= min_size);
 
       const uint32_t data_size = MIN2(size, avail - cmd_size);
 
-      const uint32_t data_bo_offset = queue->bo_data_start - data_size;
-      assert(queue->bo_push_end + cmd_size <= data_bo_offset);
-      const uint64_t data_addr = queue->bo->bo->offset + data_bo_offset;
-      memcpy(queue->bo->map + data_bo_offset, src, data_size);
-      queue->bo_data_start = data_bo_offset;
+      const uint32_t data_mem_offset = queue->mem_data_start - data_size;
+      assert(queue->mem_push_end + cmd_size <= data_mem_offset);
+      const uint64_t data_addr = queue->mem->mem->va->addr + data_mem_offset;
+      memcpy(queue->mem->mem->map + data_mem_offset, src, data_size);
+      queue->mem_data_start = data_mem_offset;
 
       struct nv_push p;
-      nv_push_init(&p, queue->bo->map + queue->bo_push_end, cmd_size_dw);
+      nv_push_init(&p, queue->mem->mem->map + queue->mem_push_end, cmd_size_dw);
 
       assert(data_size <= (1 << 17));
 
@@ -329,7 +329,7 @@ nvk_upload_queue_upload_locked(struct nvk_device *dev,
       });
 
       assert(nv_push_dw_count(&p) <= cmd_size_dw);
-      queue->bo_push_end += nv_push_dw_count(&p) * 4;
+      queue->mem_push_end += nv_push_dw_count(&p) * 4;
 
       dst_addr += data_size;
       src += data_size;
@@ -384,7 +384,7 @@ nvk_upload_queue_fill_locked(struct nvk_device *dev,
       assert(width_B * height <= size);
 
       struct nv_push p;
-      nv_push_init(&p, queue->bo->map + queue->bo_push_end, cmd_size_dw);
+      nv_push_init(&p, queue->mem->mem->map + queue->mem_push_end, cmd_size_dw);
 
       P_MTHD(&p, NV90B5, OFFSET_OUT_UPPER);
       P_NV90B5_OFFSET_OUT_UPPER(&p, dst_addr >> 32);
@@ -415,7 +415,7 @@ nvk_upload_queue_fill_locked(struct nvk_device *dev,
       });
 
       assert(nv_push_dw_count(&p) <= cmd_size_dw);
-      queue->bo_push_end += nv_push_dw_count(&p) * 4;
+      queue->mem_push_end += nv_push_dw_count(&p) * 4;
 
       dst_addr += width_B * height;
       size -= width_B * height;

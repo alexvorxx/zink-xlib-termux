@@ -12,7 +12,7 @@
 
 struct nouveau_ws_context;
 struct nvk_device;
-struct nvk_upload_bo;
+struct nvk_upload_mem;
 
 struct nvk_upload_queue {
    simple_mtx_t mutex;
@@ -24,17 +24,17 @@ struct nvk_upload_queue {
 
    uint64_t last_time_point;
 
-   struct nvk_upload_bo *bo;
+   struct nvk_upload_mem *mem;
 
    /* We grow the buffer from both ends.  Pushbuf data goes at the start of
     * the buffer and upload data at the tail.
     */
-   uint32_t bo_push_start;
-   uint32_t bo_push_end;
-   uint32_t bo_data_start;
+   uint32_t mem_push_start;
+   uint32_t mem_push_end;
+   uint32_t mem_data_start;
 
-   /* BO recycle pool */
-   struct list_head bos;
+   /* list of nvk_upload_mem */
+   struct list_head recycle;
 };
 
 VkResult nvk_upload_queue_init(struct nvk_device *dev,

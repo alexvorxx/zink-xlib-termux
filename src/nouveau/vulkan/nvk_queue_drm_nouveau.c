@@ -11,6 +11,8 @@
 #include "nvk_image.h"
 #include "nvk_device_memory.h"
 #include "nvk_physical_device.h"
+#include "nvkmd/nvkmd.h"
+#include "nvkmd/nouveau/nvkmd_nouveau.h"
 
 #include "nouveau_context.h"
 
@@ -125,6 +127,12 @@ push_bind(struct push_builder *pb, const struct drm_nouveau_vm_bind_op *bind)
    pb->bind_ops[pb->vmbind.op_count++] = *bind;
 }
 
+static uint32_t
+mem_handle(struct nvk_device_memory *mem)
+{
+   return nvkmd_nouveau_mem(mem->mem)->bo->handle;
+}
+
 static void
 push_add_buffer_bind(struct push_builder *pb,
                      VkSparseBufferMemoryBindInfo *bind_info)
@@ -134,13 +142,13 @@ push_add_buffer_bind(struct push_builder *pb,
       const VkSparseMemoryBind *bind = &bind_info->pBinds[i];
       VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
 
-      assert(bind->resourceOffset + bind->size <= buffer->vma_size_B);
+      assert(bind->resourceOffset + bind->size <= buffer->va->size_B);
       assert(!mem || bind->memoryOffset + bind->size <= mem->vk.size);
 
       push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
          .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                      DRM_NOUVEAU_VM_BIND_OP_UNMAP,
-         .handle = mem ? mem->bo->handle : 0,
+         .handle = mem ? mem_handle(mem) : 0,
          .addr = buffer->addr + bind->resourceOffset,
          .bo_offset = bind->memoryOffset,
          .range = bind->size,
@@ -234,7 +242,7 @@ push_add_image_plane_bind(struct push_builder *pb,
          push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
             .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                         DRM_NOUVEAU_VM_BIND_OP_UNMAP,
-            .handle = mem ? mem->bo->handle : 0,
+            .handle = mem ? mem_handle(mem) : 0,
             .addr = plane->addr + image_bind_offset_B +
                     image_row_start_tl * tile_size_B,
             .bo_offset = mem_bind_offset_B +
@@ -326,14 +334,14 @@ push_add_image_plane_opaque_bind(struct push_builder *pb,
 
    VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
 
-   assert(plane->vma_size_B == plane->nil.size_B);
-   assert(plane_offset_B + bind_size_B <= plane->vma_size_B);
+   assert(plane->va->size_B == plane->nil.size_B);
+   assert(plane_offset_B + bind_size_B <= plane->va->size_B);
    assert(!mem || mem_offset_B + bind_size_B <= mem->vk.size);
 
    push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
       .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                   DRM_NOUVEAU_VM_BIND_OP_UNMAP,
-      .handle = mem ? mem->bo->handle : 0,
+      .handle = mem ? mem_handle(mem) : 0,
       .addr = plane->addr + plane_offset_B,
       .bo_offset = mem_offset_B,
       .range = bind_size_B,
@@ -398,7 +406,7 @@ push_add_image_plane_mip_tail_bind(struct push_builder *pb,
       push_bind(pb, &(struct drm_nouveau_vm_bind_op) {
          .op = mem ? DRM_NOUVEAU_VM_BIND_OP_MAP :
                      DRM_NOUVEAU_VM_BIND_OP_UNMAP,
-         .handle = mem ? mem->bo->handle : 0,
+         .handle = mem ? mem_handle(mem) : 0,
          .addr = plane->addr + a_image_offset_B,
          .bo_offset = mem_offset_B + a_bind_offset_B,
          .range = a_range_B,

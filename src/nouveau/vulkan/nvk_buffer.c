@@ -8,6 +8,7 @@
 #include "nvk_device.h"
 #include "nvk_device_memory.h"
 #include "nvk_physical_device.h"
+#include "nvkmd/nvkmd.h"
 
 static uint32_t
 nvk_get_buffer_alignment(const struct nvk_physical_device *pdev,
@@ -81,6 +82,7 @@ nvk_CreateBuffer(VkDevice device,
 {
    VK_FROM_HANDLE(nvk_device, dev, device);
    struct nvk_buffer *buffer;
+   VkResult result;
 
    if (pCreateInfo->size > NVK_MAX_BUFFER_SIZE)
       return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
@@ -98,26 +100,31 @@ nvk_CreateBuffer(VkDevice device,
                                   buffer->vk.usage,
                                   buffer->vk.create_flags);
       assert(alignment >= 4096);
-      buffer->vma_size_B = align64(buffer->vk.size, alignment);
+      const uint64_t va_size_B = align64(buffer->vk.size, alignment);
 
-      const bool sparse_residency =
-         buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
-      const bool bda_capture_replay =
-         buffer->vk.create_flags & VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT;
+      enum nvkmd_va_flags va_flags = 0;
+      if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT)
+         va_flags |= NVKMD_VA_SPARSE;
 
-      uint64_t bda_replay_addr = 0;
-      if (bda_capture_replay)
-         bda_replay_addr = nvk_get_bda_replay_addr(pCreateInfo);
+      uint64_t fixed_addr = 0;
+      if (buffer->vk.create_flags & VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT) {
+         va_flags |= NVKMD_VA_REPLAY;
 
-      buffer->addr = nouveau_ws_alloc_vma(dev->ws_dev, bda_replay_addr,
-                                          buffer->vma_size_B,
-                                          alignment, bda_capture_replay,
-                                          sparse_residency);
-      if (buffer->addr == 0) {
-         vk_buffer_destroy(&dev->vk, pAllocator, &buffer->vk);
-         return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                          "Sparse VMA allocation failed");
+         fixed_addr = nvk_get_bda_replay_addr(pCreateInfo);
+         if (fixed_addr != 0)
+            va_flags |= NVKMD_VA_ALLOC_FIXED;
       }
+
+      result = nvkmd_dev_alloc_va(dev->nvkmd, &dev->vk.base,
+                                  va_flags, 0 /* pte_kind */,
+                                  va_size_B, alignment, fixed_addr,
+                                  &buffer->va);
+      if (result != VK_SUCCESS) {
+         vk_buffer_destroy(&dev->vk, pAllocator, &buffer->vk);
+         return result;
+      }
+
+      buffer->addr = buffer->va->addr;
    }
 
    *pBuffer = nvk_buffer_to_handle(buffer);
@@ -136,16 +143,8 @@ nvk_DestroyBuffer(VkDevice device,
    if (!buffer)
       return;
 
-   if (buffer->vma_size_B > 0) {
-      const bool sparse_residency =
-         buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
-      const bool bda_capture_replay =
-         buffer->vk.create_flags & VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT;
-
-      nouveau_ws_bo_unbind_vma(dev->ws_dev, buffer->addr, buffer->vma_size_B);
-      nouveau_ws_free_vma(dev->ws_dev, buffer->addr, buffer->vma_size_B,
-                          bda_capture_replay, sparse_residency);
-   }
+   if (buffer->va != NULL)
+      nvkmd_va_free(buffer->va);
 
    vk_buffer_destroy(&dev->vk, pAllocator, &buffer->vk);
 }
@@ -236,20 +235,19 @@ nvk_bind_buffer_memory(struct nvk_device *dev,
 {
    VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
    VK_FROM_HANDLE(nvk_buffer, buffer, info->buffer);
+   VkResult result = VK_SUCCESS;
 
-   buffer->is_local = !(mem->bo->flags & NOUVEAU_WS_BO_GART);
-   if (buffer->vma_size_B) {
-      nouveau_ws_bo_bind_vma(dev->ws_dev,
-                             mem->bo,
-                             buffer->addr,
-                             buffer->vma_size_B,
-                             info->memoryOffset,
-                             0 /* pte_kind */);
+   buffer->is_local = !(mem->mem->flags & NVKMD_MEM_GART);
+   if (buffer->va != NULL) {
+      result = nvkmd_va_bind_mem(buffer->va, &buffer->vk.base,
+                                 0 /* va_offset */,
+                                 mem->mem, info->memoryOffset,
+                                 buffer->va->size_B);
    } else {
-      buffer->addr = mem->bo->offset + info->memoryOffset;
+      buffer->addr = mem->mem->va->addr + info->memoryOffset;
    }
 
-   return VK_SUCCESS;
+   return result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

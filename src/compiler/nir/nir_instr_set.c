@@ -193,20 +193,9 @@ hash_phi(uint32_t hash, const nir_phi_instr *instr)
 {
    hash = HASH(hash, instr->instr.block);
 
-   /* sort sources by predecessor, since the order shouldn't matter */
-   unsigned num_preds = instr->instr.block->predecessors->entries;
-   NIR_VLA(nir_phi_src *, srcs, num_preds);
-   unsigned i = 0;
-   nir_foreach_phi_src(src, instr) {
-      srcs[i++] = src;
-   }
-
-   qsort(srcs, num_preds, sizeof(nir_phi_src *), cmp_phi_src);
-
-   for (i = 0; i < num_preds; i++) {
-      hash = hash_src(hash, &srcs[i]->src);
-      hash = HASH(hash, srcs[i]->pred);
-   }
+   /* Similar to hash_alu(), combine the hashes commutatively. */
+   nir_foreach_phi_src(src, instr)
+      hash *= HASH(hash_src(0, &src->src), src->pred);
 
    return hash;
 }

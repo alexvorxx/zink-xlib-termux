@@ -74,9 +74,6 @@
 #define GFX125_OAG_PERF_A36                (0xdb20)
 #define GFX125_OAG_PERF_A37                (0xdb28)
 
-#define XE2_N_OAG_PERF_PEC                 64
-#define XE2_OAG_PERF_PEC(idx)              (0x14200 + (idx) * 8)
-
 /* Pipeline statistic counters */
 #define IA_VERTICES_COUNT          0x2310
 #define IA_PRIMITIVES_COUNT        0x2318

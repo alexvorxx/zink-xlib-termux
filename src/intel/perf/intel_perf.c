@@ -1505,11 +1505,6 @@ intel_perf_init_query_fields(struct intel_perf_config *perf_cfg,
                add_query_register(perf_cfg, INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C,
                                   GFX12_OAG_PERF_C32(i), 4, i);
             }
-         } else if (devinfo->verx10 >= 200) {
-            for (uint32_t i = 0; i < XE2_N_OAG_PERF_PEC; i++) {
-               add_query_register(perf_cfg, INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC,
-                                  XE2_OAG_PERF_PEC(i), 8, i);
-            }
          }
       }
    }

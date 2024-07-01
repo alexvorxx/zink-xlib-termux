@@ -78,7 +78,7 @@ extern const struct vk_device_entrypoint_table ${tmpl_prefix}_device_entrypoints
 #ifdef ${e.guard}
   % endif
   % for p in physical_device_prefixes:
-  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()});
+  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) ATTR_WEAK;
   % endfor
   % if e.guard is not None:
 #endif // ${e.guard}
@@ -90,7 +90,7 @@ extern const struct vk_device_entrypoint_table ${tmpl_prefix}_device_entrypoints
 #ifdef ${e.guard}
   % endif
   % for p in physical_device_prefixes:
-  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()});
+  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) ATTR_WEAK;
   % endfor
   % if e.guard is not None:
 #endif // ${e.guard}

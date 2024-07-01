@@ -298,10 +298,8 @@ v3d_set_vertex_buffers(struct pipe_context *pctx,
         struct v3d_vertexbuf_stateobj *so = &v3d->vertexbuf;
 
         assert(BITSET_SIZE(so->enabled_mask) <= 32);
-        uint32_t enabled_mask;
-        util_set_vertex_buffers_mask(so->vb, &enabled_mask, vb,
+        util_set_vertex_buffers_mask(so->vb, &so->enabled_mask[0], vb,
                                      count, true);
-        memcpy(&so->enabled_mask, &enabled_mask, sizeof(enabled_mask));
 
         so->count = BITSET_LAST_BIT(so->enabled_mask);
 

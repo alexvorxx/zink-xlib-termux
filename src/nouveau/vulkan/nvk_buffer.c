@@ -230,34 +230,49 @@ unsupported:
       };
 }
 
+static VkResult
+nvk_bind_buffer_memory(struct nvk_device *dev,
+                       const VkBindBufferMemoryInfo *info)
+{
+   VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
+   VK_FROM_HANDLE(nvk_buffer, buffer, info->buffer);
+
+   buffer->is_local = !(mem->bo->flags & NOUVEAU_WS_BO_GART);
+   if (buffer->vma_size_B) {
+      nouveau_ws_bo_bind_vma(dev->ws_dev,
+                             mem->bo,
+                             buffer->addr,
+                             buffer->vma_size_B,
+                             info->memoryOffset,
+                             0 /* pte_kind */);
+   } else {
+      buffer->addr = mem->bo->offset + info->memoryOffset;
+   }
+
+   return VK_SUCCESS;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 nvk_BindBufferMemory2(VkDevice device,
                       uint32_t bindInfoCount,
                       const VkBindBufferMemoryInfo *pBindInfos)
 {
-   for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      VK_FROM_HANDLE(nvk_device_memory, mem, pBindInfos[i].memory);
-      VK_FROM_HANDLE(nvk_buffer, buffer, pBindInfos[i].buffer);
+   VK_FROM_HANDLE(nvk_device, dev, device);
+   VkResult first_error_or_success = VK_SUCCESS;
 
-      buffer->is_local = !(mem->bo->flags & NOUVEAU_WS_BO_GART);
-      if (buffer->vma_size_B) {
-         VK_FROM_HANDLE(nvk_device, dev, device);
-         nouveau_ws_bo_bind_vma(dev->ws_dev,
-                                mem->bo,
-                                buffer->addr,
-                                buffer->vma_size_B,
-                                pBindInfos[i].memoryOffset,
-                                0 /* pte_kind */);
-      } else {
-         buffer->addr = mem->bo->offset + pBindInfos[i].memoryOffset;
-      }
+   for (uint32_t i = 0; i < bindInfoCount; ++i) {
+      VkResult result = nvk_bind_buffer_memory(dev, &pBindInfos[i]);
 
       const VkBindMemoryStatusKHR *status =
          vk_find_struct_const(pBindInfos[i].pNext, BIND_MEMORY_STATUS_KHR);
       if (status != NULL && status->pResult != NULL)
-         *status->pResult = VK_SUCCESS;
+         *status->pResult = result;
+
+      if (first_error_or_success == VK_SUCCESS)
+         first_error_or_success = result;
    }
-   return VK_SUCCESS;
+
+   return first_error_or_success;
 }
 
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL

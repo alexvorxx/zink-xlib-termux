@@ -1276,62 +1276,78 @@ nvk_image_plane_bind(struct nvk_device *dev,
    *offset_B += plane_size_B;
 }
 
+static VkResult
+nvk_bind_image_memory(struct nvk_device *dev,
+                      const VkBindImageMemoryInfo *info)
+{
+   VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
+   VK_FROM_HANDLE(nvk_image, image, info->image);
+
+   /* Ignore this struct on Android, we cannot access swapchain structures there. */
+#ifdef NVK_USE_WSI_PLATFORM
+   const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
+      vk_find_struct_const(info->pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
+
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+      VkImage _wsi_image = wsi_common_get_image(swapchain_info->swapchain,
+                                                swapchain_info->imageIndex);
+      VK_FROM_HANDLE(nvk_image, wsi_img, _wsi_image);
+
+      assert(image->plane_count == 1);
+      assert(wsi_img->plane_count == 1);
+
+      struct nvk_image_plane *plane = &image->planes[0];
+      struct nvk_image_plane *swapchain_plane = &wsi_img->planes[0];
+
+      /* Copy memory binding information from swapchain image to the current image's plane. */
+      plane->addr = swapchain_plane->addr;
+
+      return VK_SUCCESS;
+   }
+#endif
+
+   uint64_t offset_B = info->memoryOffset;
+   if (image->disjoint) {
+      const VkBindImagePlaneMemoryInfo *plane_info =
+         vk_find_struct_const(info->pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
+      const uint8_t plane =
+         nvk_image_memory_aspects_to_plane(image, plane_info->planeAspect);
+      nvk_image_plane_bind(dev, image, &image->planes[plane],
+                           mem, &offset_B);
+   } else {
+      for (unsigned plane = 0; plane < image->plane_count; plane++) {
+         nvk_image_plane_bind(dev, image, &image->planes[plane],
+                              mem, &offset_B);
+      }
+   }
+
+   if (image->stencil_copy_temp.nil.size_B > 0) {
+      nvk_image_plane_bind(dev, image, &image->stencil_copy_temp,
+                           mem, &offset_B);
+   }
+
+   return VK_SUCCESS;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 nvk_BindImageMemory2(VkDevice device,
                      uint32_t bindInfoCount,
                      const VkBindImageMemoryInfo *pBindInfos)
 {
    VK_FROM_HANDLE(nvk_device, dev, device);
+   VkResult first_error_or_success = VK_SUCCESS;
+
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      VK_FROM_HANDLE(nvk_device_memory, mem, pBindInfos[i].memory);
-      VK_FROM_HANDLE(nvk_image, image, pBindInfos[i].image);
-
-      /* Ignore this struct on Android, we cannot access swapchain structures there. */
-#ifdef NVK_USE_WSI_PLATFORM
-      const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
-         vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
-
-      if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
-         VkImage _wsi_image = wsi_common_get_image(swapchain_info->swapchain,
-                                                   swapchain_info->imageIndex);
-         VK_FROM_HANDLE(nvk_image, wsi_img, _wsi_image);
-
-         assert(image->plane_count == 1);
-         assert(wsi_img->plane_count == 1);
-
-         struct nvk_image_plane *plane = &image->planes[0];
-         struct nvk_image_plane *swapchain_plane = &wsi_img->planes[0];
-
-         /* Copy memory binding information from swapchain image to the current image's plane. */
-         plane->addr = swapchain_plane->addr;
-         continue;
-      }
-#endif
-
-      uint64_t offset_B = pBindInfos[i].memoryOffset;
-      if (image->disjoint) {
-         const VkBindImagePlaneMemoryInfo *plane_info =
-            vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
-         uint8_t plane = nvk_image_memory_aspects_to_plane(image, plane_info->planeAspect);
-         nvk_image_plane_bind(dev, image, &image->planes[plane],
-                              mem, &offset_B);
-      } else {
-         for (unsigned plane = 0; plane < image->plane_count; plane++) {
-            nvk_image_plane_bind(dev, image, &image->planes[plane],
-                                 mem, &offset_B);
-         }
-      }
-
-      if (image->stencil_copy_temp.nil.size_B > 0) {
-         nvk_image_plane_bind(dev, image, &image->stencil_copy_temp,
-                              mem, &offset_B);
-      }
+      VkResult result = nvk_bind_image_memory(dev, &pBindInfos[i]);
 
       const VkBindMemoryStatusKHR *status =
          vk_find_struct_const(pBindInfos[i].pNext, BIND_MEMORY_STATUS_KHR);
       if (status != NULL && status->pResult != NULL)
          *status->pResult = VK_SUCCESS;
+
+      if (first_error_or_success == VK_SUCCESS)
+         first_error_or_success = result;
    }
 
-   return VK_SUCCESS;
+   return first_error_or_success;
 }

@@ -7,12 +7,8 @@
 
 #include "aco_ir.h"
 
-#include "util/u_math.h"
-
-#include <set>
-#include <vector>
-
 namespace aco {
+
 RegisterDemand
 get_live_changes(aco_ptr<Instruction>& instr)
 {

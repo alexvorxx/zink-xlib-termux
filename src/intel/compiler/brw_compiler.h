@@ -331,8 +331,9 @@ struct brw_wm_prog_key {
    bool coherent_fb_fetch:1;
    bool ignore_sample_mask_out:1;
    bool coarse_pixel:1;
+   bool null_push_constant_tbimr_workaround:1;
 
-   uint64_t padding:36;
+   uint64_t padding:35;
 };
 
 struct brw_cs_prog_key {

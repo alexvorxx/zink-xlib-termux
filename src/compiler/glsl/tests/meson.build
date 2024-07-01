@@ -5,7 +5,6 @@ general_ir_test_files = files(
   'array_refcount_test.cpp',
   'builtin_variable_test.cpp',
   'general_ir_test.cpp',
-  'opt_add_neg_to_sub_test.cpp',
 )
 general_ir_test_files += ir_expression_operation_h
 

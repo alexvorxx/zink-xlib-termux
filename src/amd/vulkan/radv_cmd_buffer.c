@@ -6331,25 +6331,18 @@ static void
 radv_emit_streamout_buffers(struct radv_cmd_buffer *cmd_buffer, uint64_t va)
 {
    const struct radv_shader *last_vgt_shader = cmd_buffer->state.last_vgt_shader;
-   const uint32_t streamout_buffers_offset = radv_get_user_sgpr_loc(last_vgt_shader, AC_UD_STREAMOUT_BUFFERS);
+   uint32_t streamout_buffers_offset = radv_get_user_sgpr_loc(last_vgt_shader, AC_UD_STREAMOUT_BUFFERS);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   uint32_t base_reg;
 
    if (!streamout_buffers_offset)
       return;
 
-   base_reg = last_vgt_shader->info.user_data_0;
-
    radv_emit_shader_pointer(device, cmd_buffer->cs, streamout_buffers_offset, va, false);
 
    if (cmd_buffer->state.gs_copy_shader) {
-      const struct radv_userdata_info *loc =
-         &cmd_buffer->state.gs_copy_shader->info.user_sgprs_locs.shader_data[AC_UD_STREAMOUT_BUFFERS];
-      if (loc->sgpr_idx != -1) {
-         base_reg = R_00B130_SPI_SHADER_USER_DATA_VS_0;
-
-         radv_emit_shader_pointer(device, cmd_buffer->cs, base_reg + loc->sgpr_idx * 4, va, false);
-      }
+      streamout_buffers_offset = radv_get_user_sgpr_loc(cmd_buffer->state.gs_copy_shader, AC_UD_STREAMOUT_BUFFERS);
+      if (streamout_buffers_offset)
+         radv_emit_shader_pointer(device, cmd_buffer->cs, streamout_buffers_offset, va, false);
    }
 }
 

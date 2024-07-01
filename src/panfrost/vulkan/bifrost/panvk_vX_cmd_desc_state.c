@@ -205,7 +205,10 @@ panvk_per_arch(cmd_prepare_shader_desc_tables)(
       if (i == PANVK_BIFROST_DESC_TABLE_UBO)
          panvk_cmd_fill_dyn_ubos(desc_state, shader, ptr.cpu, desc_count);
 
-      if (i == PANVK_BIFROST_DESC_TABLE_IMG) {
+      /* The image table being actually the attribute table, this is handled
+       * separately for vertex shaders. */
+      if (i == PANVK_BIFROST_DESC_TABLE_IMG &&
+          shader->info.stage != MESA_SHADER_VERTEX) {
          assert(!shader_desc_state->img_attrib_table);
 
          ptr = pan_pool_alloc_desc_array(desc_pool, desc_count, ATTRIBUTE);

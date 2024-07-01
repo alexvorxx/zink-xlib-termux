@@ -240,10 +240,8 @@ hash_tex(uint32_t hash, const nir_tex_instr *instr)
    memcpy(v + 20, &backend_flags, 4);
    hash = XXH32(v, sizeof(v), hash);
 
-   for (unsigned i = 0; i < instr->num_srcs; i++) {
-      hash = HASH(hash, instr->src[i].src_type);
-      hash = hash_src(hash, &instr->src[i].src);
-   }
+   for (unsigned i = 0; i < instr->num_srcs; i++)
+      hash *= hash_src(0, &instr->src[i].src);
 
    return hash;
 }

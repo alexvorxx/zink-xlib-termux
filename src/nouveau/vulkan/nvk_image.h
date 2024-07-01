@@ -37,6 +37,7 @@
 
 struct nvk_device_memory;
 struct nvk_physical_device;
+struct nvkmd_mem;
 struct nvkmd_va;
 
 VkFormatFeatureFlags2
@@ -87,7 +88,7 @@ struct nvk_image {
     * be used to fake support if the conditions aren't satisfied.
     */
    struct nvk_image_plane linear_tiled_shadow;
-   struct nouveau_ws_bo *linear_tiled_shadow_bo;
+   struct nvkmd_mem *linear_tiled_shadow_mem;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)

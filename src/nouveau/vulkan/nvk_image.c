@@ -880,10 +880,9 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
                              image->vk.create_flags, pAllocator);
    }
 
-   if (image->linear_tiled_shadow.nil.size_B > 0) {
-      assert(image->linear_tiled_shadow.va == NULL);
-      nouveau_ws_bo_destroy(image->linear_tiled_shadow_bo);
-   }
+   assert(image->linear_tiled_shadow.va == NULL);
+   if (image->linear_tiled_shadow_mem != NULL)
+      nvkmd_mem_unref(image->linear_tiled_shadow_mem);
 
    vk_image_finish(&image->vk);
 }
@@ -945,18 +944,17 @@ nvk_CreateImage(VkDevice _device,
 
    if (image->linear_tiled_shadow.nil.size_B > 0) {
       struct nvk_image_plane *shadow = &image->linear_tiled_shadow;
-      image->linear_tiled_shadow_bo =
-         nouveau_ws_bo_new_tiled(dev->ws_dev,
-                                 shadow->nil.size_B, shadow->nil.align_B,
-                                 shadow->nil.pte_kind, shadow->nil.tile_mode,
-                                 NOUVEAU_WS_BO_LOCAL);
-      if (image->linear_tiled_shadow_bo == NULL) {
+      result = nvkmd_dev_alloc_tiled_mem(dev->nvkmd, &dev->vk.base,
+                                         shadow->nil.size_B, shadow->nil.align_B,
+                                         shadow->nil.pte_kind, shadow->nil.tile_mode,
+                                         NVKMD_MEM_LOCAL,
+                                         &image->linear_tiled_shadow_mem);
+      if (result != VK_SUCCESS) {
          nvk_image_finish(dev, image, pAllocator);
          vk_free2(&dev->vk.alloc, pAllocator, image);
-         return vk_errorf(pdev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                          "Failed to allocate tiled shadow image");
+         return result;
       }
-      shadow->addr = image->linear_tiled_shadow_bo->offset;
+      shadow->addr = image->linear_tiled_shadow_mem->va->addr;
    }
 
    *pImage = nvk_image_to_handle(image);

@@ -62,15 +62,15 @@ vn_device_memory_wait_alloc(struct vn_device *dev,
    if (!mem->bo_ring_seqno_valid)
       return VK_SUCCESS;
 
+   /* fine to false it here since renderer submission failure is fatal */
+   mem->bo_ring_seqno_valid = false;
+
    /* no need to wait for ring if
     * - mem alloc is done upon bo map or export
     * - mem import is done upon bo destroy
     */
    if (vn_ring_get_seqno_status(dev->primary_ring, mem->bo_ring_seqno))
       return VK_SUCCESS;
-
-   /* fine to false it here since renderer submission failure is fatal */
-   mem->bo_ring_seqno_valid = false;
 
    const uint64_t ring_id = vn_ring_get_id(dev->primary_ring);
    uint32_t local_data[8];

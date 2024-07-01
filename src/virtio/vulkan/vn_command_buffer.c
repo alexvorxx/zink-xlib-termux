@@ -17,6 +17,7 @@
 #include "vn_device.h"
 #include "vn_feedback.h"
 #include "vn_image.h"
+#include "vn_physical_device.h"
 #include "vn_query_pool.h"
 #include "vn_render_pass.h"
 
@@ -77,6 +78,7 @@ vn_dependency_infos_needs_present_fix(uint32_t dep_count,
 struct vn_cmd_fix_image_memory_barrier_result {
    bool availability_op_needed; // set src access/stage (flush)
    bool visibility_op_needed;   // set dst access/stage (invalidate)
+   bool external_acquire_unmodified;
 };
 
 struct vn_cmd_cached_storage {
@@ -85,6 +87,9 @@ struct vn_cmd_cached_storage {
       VkImageMemoryBarrier *barriers;
       VkImageMemoryBarrier2 *barriers2;
    };
+   uint32_t acquire_unmodified_count;
+   uint32_t used_acquire_unmodified;
+   VkExternalMemoryAcquireUnmodifiedEXT *acquire_unmodified_infos;
 };
 
 static inline bool
@@ -109,7 +114,9 @@ vn_cmd_get_cached_storage(struct vn_command_buffer *cmd,
       unreachable("invalid barrier_type");
    }
 
-   size_t total_size = dep_infos_size + barriers_size;
+   size_t total_size =
+      dep_infos_size + barriers_size +
+      barrier_count * sizeof(VkExternalMemoryAcquireUnmodifiedEXT);
    void *data = vn_cached_storage_get(&cmd->pool->storage, total_size);
    if (!data)
       return false;
@@ -120,7 +127,21 @@ vn_cmd_get_cached_storage(struct vn_command_buffer *cmd,
       data += dep_infos_size;
    }
    out_storage->barriers = data;
+   data += barriers_size;
+
+   out_storage->acquire_unmodified_count = barrier_count;
+   out_storage->acquire_unmodified_infos = data;
    return true;
+}
+
+static inline VkExternalMemoryAcquireUnmodifiedEXT *
+vn_cached_get_acquire_unmodified(struct vn_cmd_cached_storage *storage)
+{
+   VkExternalMemoryAcquireUnmodifiedEXT *acquire_unmodified =
+      &storage->acquire_unmodified_infos[storage->used_acquire_unmodified++];
+   assert(storage->used_acquire_unmodified <=
+          storage->acquire_unmodified_count);
+   return acquire_unmodified;
 }
 
 /* About VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, the spec says
@@ -220,6 +241,7 @@ vn_cmd_fix_image_memory_barrier_common(const struct vn_image *img,
       *old_layout = VN_PRESENT_SRC_INTERNAL_LAYOUT;
 
       result.availability_op_needed = false;
+      result.external_acquire_unmodified = true;
 
       if (img->sharing_mode == VK_SHARING_MODE_CONCURRENT) {
          *src_qfi = VK_QUEUE_FAMILY_FOREIGN_EXT;
@@ -263,9 +285,31 @@ vn_cmd_fix_image_memory_barrier_common(const struct vn_image *img,
 }
 
 static void
-vn_cmd_fix_image_memory_barrier(const struct vn_command_buffer *cmd,
-                                VkImageMemoryBarrier *barrier)
+vn_cmd_set_external_acquire_unmodified(VkBaseOutStructure *chain,
+                                       struct vn_cmd_cached_storage *storage)
 {
+   VkExternalMemoryAcquireUnmodifiedEXT *acquire_unmodified =
+      vk_find_struct(chain->pNext, EXTERNAL_MEMORY_ACQUIRE_UNMODIFIED_EXT);
+   if (acquire_unmodified) {
+      acquire_unmodified->acquireUnmodifiedMemory = VK_TRUE;
+   } else {
+      acquire_unmodified = vn_cached_get_acquire_unmodified(storage);
+      *acquire_unmodified = (VkExternalMemoryAcquireUnmodifiedEXT){
+         .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_ACQUIRE_UNMODIFIED_EXT,
+         .pNext = chain->pNext,
+         .acquireUnmodifiedMemory = VK_TRUE,
+      };
+      chain->pNext = (void *)acquire_unmodified;
+   }
+}
+
+static void
+vn_cmd_fix_image_memory_barrier(const struct vn_command_buffer *cmd,
+                                VkImageMemoryBarrier *barrier,
+                                struct vn_cmd_cached_storage *storage)
+{
+   const struct vn_physical_device *physical_dev =
+      cmd->pool->device->physical_device;
    const struct vn_image *img = vn_image_from_handle(barrier->image);
 
    struct vn_cmd_fix_image_memory_barrier_result result =
@@ -277,12 +321,21 @@ vn_cmd_fix_image_memory_barrier(const struct vn_command_buffer *cmd,
       barrier->srcAccessMask = 0;
    if (!result.visibility_op_needed)
       barrier->dstAccessMask = 0;
+
+   if (result.external_acquire_unmodified &&
+       physical_dev->renderer_extensions
+          .EXT_external_memory_acquire_unmodified)
+      vn_cmd_set_external_acquire_unmodified((VkBaseOutStructure *)barrier,
+                                             storage);
 }
 
 static void
 vn_cmd_fix_image_memory_barrier2(const struct vn_command_buffer *cmd,
-                                 VkImageMemoryBarrier2 *barrier)
+                                 VkImageMemoryBarrier2 *barrier,
+                                 struct vn_cmd_cached_storage *storage)
 {
+   const struct vn_physical_device *physical_dev =
+      cmd->pool->device->physical_device;
    const struct vn_image *img = vn_image_from_handle(barrier->image);
 
    struct vn_cmd_fix_image_memory_barrier_result result =
@@ -297,6 +350,13 @@ vn_cmd_fix_image_memory_barrier2(const struct vn_command_buffer *cmd,
    if (!result.visibility_op_needed) {
       barrier->dstStageMask = 0;
       barrier->dstAccessMask = 0;
+   }
+
+   if (result.external_acquire_unmodified &&
+       physical_dev->renderer_extensions
+          .EXT_external_memory_acquire_unmodified) {
+      vn_cmd_set_external_acquire_unmodified((VkBaseOutStructure *)barrier,
+                                             storage);
    }
 }
 
@@ -333,7 +393,7 @@ vn_cmd_wait_events_fix_image_memory_barriers(
    for (uint32_t i = 0; i < count; i++) {
       VkImageMemoryBarrier *img_barrier = &img_barriers[valid_count];
       *img_barrier = src_barriers[i];
-      vn_cmd_fix_image_memory_barrier(cmd, img_barrier);
+      vn_cmd_fix_image_memory_barrier(cmd, img_barrier, &storage);
 
       if (img_barrier->srcQueueFamilyIndex ==
           img_barrier->dstQueueFamilyIndex) {
@@ -374,7 +434,7 @@ vn_cmd_pipeline_barrier_fix_image_memory_barriers(
    memcpy(storage.barriers, src_barriers,
           count * sizeof(VkImageMemoryBarrier));
    for (uint32_t i = 0; i < count; i++)
-      vn_cmd_fix_image_memory_barrier(cmd, &storage.barriers[i]);
+      vn_cmd_fix_image_memory_barrier(cmd, &storage.barriers[i], &storage);
 
    return storage.barriers;
 }
@@ -413,7 +473,7 @@ vn_cmd_fix_dependency_infos(struct vn_command_buffer *cmd,
       storage.dep_infos[i].pImageMemoryBarriers = new_barriers;
 
       for (uint32_t j = 0; j < barrier_count; j++) {
-         vn_cmd_fix_image_memory_barrier2(cmd, &new_barriers[j]);
+         vn_cmd_fix_image_memory_barrier2(cmd, &new_barriers[j], &storage);
       }
    }
 
@@ -484,7 +544,7 @@ vn_cmd_transfer_present_src_images(
 
       vn_present_src_attachment_to_image_memory_barrier(
          images[i], &atts[i], &storage.barriers[i], acquire);
-      vn_cmd_fix_image_memory_barrier(cmd, &storage.barriers[i]);
+      vn_cmd_fix_image_memory_barrier(cmd, &storage.barriers[i], &storage);
    }
 
    vn_cmd_encode_memory_barriers(cmd, src_stage_mask, dst_stage_mask, 0, NULL,

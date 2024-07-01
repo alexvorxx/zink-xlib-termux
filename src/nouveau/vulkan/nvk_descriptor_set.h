@@ -7,7 +7,6 @@
 
 #include "nvk_private.h"
 
-#include "nouveau_bo.h"
 #include "nvk_device.h"
 #include "nvk_physical_device.h"
 #include "vk_object.h"
@@ -17,6 +16,7 @@
 #include "util/list.h"
 
 struct nvk_descriptor_set_layout;
+struct nvkmd_mem;
 
 #define NVK_IMAGE_DESCRIPTOR_IMAGE_INDEX_MASK   0x000fffff
 #define NVK_IMAGE_DESCRIPTOR_SAMPLER_INDEX_MASK 0xfff00000
@@ -107,8 +107,7 @@ struct nvk_descriptor_pool {
 
    struct list_head sets;
 
-   struct nouveau_ws_bo *bo;
-   uint8_t *mapped_ptr;
+   struct nvkmd_mem *mem;
    struct util_vma_heap heap;
 };
 

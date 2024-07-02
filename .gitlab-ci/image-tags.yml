@@ -16,7 +16,7 @@ variables:
    DEBIAN_BASE_TAG: "20240704-libdir"
 
    DEBIAN_X86_64_BUILD_IMAGE_PATH: "debian/x86_64_build"
-   DEBIAN_BUILD_TAG: "20240704-libdir"
+   DEBIAN_BUILD_TAG: "20240704-libdrm"
 
    DEBIAN_X86_64_TEST_BASE_IMAGE: "debian/x86_64_test-base"
    DEBIAN_ARM64_TEST_BASE_IMAGE: "debian/arm64_test-base"
@@ -34,10 +34,10 @@ variables:
 
    ALPINE_X86_64_BUILD_TAG: "20240620-sphinx"
    ALPINE_X86_64_LAVA_SSH_TAG: "20240401-wlproto"
-   FEDORA_X86_64_BUILD_TAG: "20240612-mold"
+   FEDORA_X86_64_BUILD_TAG: "20240704-libdrm"
    KERNEL_TAG: "v6.6.21-mesa-f8ea"
    KERNEL_REPO: "gfx-ci/linux"
-   PKG_REPO_REV: "3cc12a2a"
+   PKG_REPO_REV: "bca9635d"
 
    WINDOWS_X64_MSVC_PATH: "windows/x86_64_msvc"
    WINDOWS_X64_MSVC_TAG: "20231222-msvc"

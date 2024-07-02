@@ -360,12 +360,8 @@ impl Program {
                 (
                     d,
                     ProgramDevBuild {
-                        spirv: None,
                         status: CL_BUILD_NONE,
-                        log: String::from(""),
-                        options: String::from(""),
-                        bin_type: CL_PROGRAM_BINARY_TYPE_NONE,
-                        kernels: HashMap::new(),
+                        ..Default::default()
                     },
                 )
             })
@@ -795,9 +791,8 @@ impl Program {
                     spirv: spirv,
                     status: status,
                     log: log,
-                    options: String::from(""),
                     bin_type: bin_type,
-                    kernels: HashMap::new(),
+                    ..Default::default()
                 },
             );
         }

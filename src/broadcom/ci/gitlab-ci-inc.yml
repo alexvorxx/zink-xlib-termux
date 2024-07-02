@@ -41,6 +41,7 @@
 
 .vc4-manual-rules:
   stage: broadcom
+  retry: !reference [.scheduled_pipeline-rules, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.igalia-farm-manual-rules, rules]
@@ -105,6 +106,7 @@
 
 .v3dv-manual-rules:
   stage: broadcom
+  retry: !reference [.scheduled_pipeline-rules, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.igalia-farm-manual-rules, rules]

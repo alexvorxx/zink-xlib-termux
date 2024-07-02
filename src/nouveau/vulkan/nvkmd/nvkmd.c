@@ -4,6 +4,7 @@
  */
 
 #include "nvkmd.h"
+#include "nouveau/nvkmd_nouveau.h"
 
 VkResult
 nvkmd_try_create_pdev_for_drm(struct _drmDevice *drm_device,
@@ -11,5 +12,6 @@ nvkmd_try_create_pdev_for_drm(struct _drmDevice *drm_device,
                               enum nvk_debug debug_flags,
                               struct nvkmd_pdev **pdev_out)
 {
-   return VK_ERROR_INCOMPATIBLE_DRIVER;
+   return nvkmd_nouveau_try_create_pdev(drm_device, log_obj,
+                                        debug_flags, pdev_out);
 }

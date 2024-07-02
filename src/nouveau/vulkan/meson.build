@@ -57,6 +57,9 @@ nvk_files = files(
   'nvk_upload_queue.h',
   'nvk_wsi.c',
   'nvk_wsi.h',
+  'nvkmd/nouveau/nvkmd_nouveau.h',
+  'nvkmd/nouveau/nvkmd_nouveau_dev.c',
+  'nvkmd/nouveau/nvkmd_nouveau_pdev.c',
   'nvkmd/nvkmd.c',
   'nvkmd/nvkmd.h',
 )

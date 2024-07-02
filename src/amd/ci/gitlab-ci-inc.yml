@@ -75,7 +75,7 @@
 
 .radv-valve-manual-rules:
   stage: amd
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.valve-farm-manual-rules, rules]

@@ -16,7 +16,7 @@
       when: on_success
 
 .zink-common-manual-rules:
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.gl-manual-rules, rules]
@@ -48,7 +48,7 @@
 
 .zink-anv-manual-rules:
   stage: layered-backends
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.anv-manual-rules, rules]
@@ -71,7 +71,7 @@
 
 .zink-nvk-manual-rules:
   stage: layered-backends
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.nvk-valve-manual-rules, rules]
@@ -88,7 +88,7 @@
 
 .zink-turnip-collabora-manual-rules:
   stage: layered-backends
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-turnip-manual-rules, rules]
@@ -96,7 +96,7 @@
 
 .zink-turnip-valve-manual-rules:
   stage: layered-backends
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.valve-freedreno-turnip-manual-rules, rules]
     - !reference [.zink-common-manual-rules, rules]
@@ -110,7 +110,7 @@
 
 .zink-radv-manual-rules:
   stage: layered-backends
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.radv-valve-manual-rules, rules]

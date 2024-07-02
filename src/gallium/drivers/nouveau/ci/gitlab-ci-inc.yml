@@ -25,7 +25,7 @@
 
 .nouveau-manual-rules:
   stage: nouveau
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.anholt-farm-manual-rules, rules]

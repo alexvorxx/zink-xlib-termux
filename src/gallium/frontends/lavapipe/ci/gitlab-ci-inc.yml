@@ -23,7 +23,7 @@
 
 .lavapipe-manual-rules:
   stage: software-renderer
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.vulkan-manual-rules, rules]

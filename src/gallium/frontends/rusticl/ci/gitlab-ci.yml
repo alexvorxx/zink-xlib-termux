@@ -6,7 +6,7 @@
       when: on_success
 
 .rusticl-manual-rules:
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.no_scheduled_pipelines-rules, rules]

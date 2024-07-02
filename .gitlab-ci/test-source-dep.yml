@@ -72,7 +72,7 @@
 
 # Same core dependencies for doing manual runs.
 .core-manual-rules:
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     # We only want manual jobs to show up when it's not marge's pre-merge CI
     # run, otherwise she'll wait until her timeout.  The exception is
@@ -179,7 +179,7 @@
     - !reference [.gallium-core-rules, rules]
 
 .gl-manual-rules:
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.core-manual-rules, rules]
     - changes:
@@ -198,7 +198,7 @@
       when: on_success
 
 .vulkan-manual-rules:
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.core-manual-rules, rules]
     - changes:

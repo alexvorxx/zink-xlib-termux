@@ -41,7 +41,7 @@
 
 .vc4-manual-rules:
   stage: broadcom
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.igalia-farm-manual-rules, rules]
@@ -68,7 +68,7 @@
 
 .v3d-manual-rules:
   stage: broadcom
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.igalia-farm-manual-rules, rules]
@@ -86,7 +86,7 @@
 
 .v3d-rusticl-manual-rules:
   stage: broadcom
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.v3d-manual-rules, rules]
     - !reference [.rusticl-manual-rules, rules]
@@ -106,7 +106,7 @@
 
 .v3dv-manual-rules:
   stage: broadcom
-  retry: !reference [.no-auto-retry, retry]
+  extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
     - !reference [.igalia-farm-manual-rules, rules]

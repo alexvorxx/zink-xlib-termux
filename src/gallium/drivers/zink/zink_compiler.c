@@ -1744,18 +1744,23 @@ lower_txf_lod_robustness_instr(nir_builder *b, nir_instr *in, void *data)
 
    int offset_idx = nir_tex_instr_src_index(txf, nir_tex_src_texture_offset);
    int handle_idx = nir_tex_instr_src_index(txf, nir_tex_src_texture_handle);
+   int deref_idx = nir_tex_instr_src_index(txf, nir_tex_src_texture_deref);
    nir_tex_instr *levels = nir_tex_instr_create(b->shader,
-                                                !!(offset_idx >= 0) + !!(handle_idx >= 0));
+                                                1 + !!(offset_idx >= 0) + !!(handle_idx >= 0));
+   unsigned src_idx = 0;
    levels->op = nir_texop_query_levels;
-   levels->texture_index = txf->texture_index;
    levels->dest_type = nir_type_int | lod->bit_size;
+   if (deref_idx >= 0) {
+      levels->src[src_idx].src_type = nir_tex_src_texture_deref;
+      levels->src[src_idx++].src = nir_src_for_ssa(txf->src[deref_idx].src.ssa);
+   }
    if (offset_idx >= 0) {
-      levels->src[0].src_type = nir_tex_src_texture_offset;
-      levels->src[0].src = nir_src_for_ssa(txf->src[offset_idx].src.ssa);
+      levels->src[src_idx].src_type = nir_tex_src_texture_offset;
+      levels->src[src_idx++].src = nir_src_for_ssa(txf->src[offset_idx].src.ssa);
    }
    if (handle_idx >= 0) {
-      levels->src[!!(offset_idx >= 0)].src_type = nir_tex_src_texture_handle;
-      levels->src[!!(offset_idx >= 0)].src = nir_src_for_ssa(txf->src[handle_idx].src.ssa);
+      levels->src[src_idx].src_type = nir_tex_src_texture_handle;
+      levels->src[src_idx++].src = nir_src_for_ssa(txf->src[handle_idx].src.ssa);
    }
    nir_def_init(&levels->instr, &levels->def,
                 nir_tex_instr_dest_size(levels), 32);
@@ -3588,16 +3593,7 @@ lower_zs_swizzle_tex_instr(nir_builder *b, nir_instr *instr, void *data)
    if (handle != -1)
       /* gtfo bindless depth texture mode */
       return false;
-   nir_foreach_variable_with_modes(img, b->shader, nir_var_uniform) {
-      if (glsl_type_is_sampler(glsl_without_array(img->type))) {
-         unsigned size = glsl_type_is_array(img->type) ? glsl_get_aoa_size(img->type) : 1;
-         if (tex->texture_index >= img->data.driver_location &&
-               tex->texture_index < img->data.driver_location + size) {
-            var = img;
-            break;
-         }
-      }
-   }
+   var = nir_deref_instr_get_variable(nir_instr_as_deref(tex->src[nir_tex_instr_src_index(tex, nir_tex_src_texture_deref)].src.ssa->parent_instr));
    assert(var);
    uint32_t sampler_id = var->data.binding - state->base_sampler_id;
    const struct glsl_type *type = glsl_without_array(var->type);
@@ -4407,15 +4403,11 @@ analyze_io(struct zink_shader *zs, nir_shader *shader)
          if (shader->info.stage != MESA_SHADER_KERNEL && instr->type == nir_instr_type_tex) {
             /* gl_nir_lower_samplers_as_deref is where this would normally be set, but zink doesn't use it */
             nir_tex_instr *tex = nir_instr_as_tex(instr);
-            nir_foreach_variable_with_modes(img, shader, nir_var_uniform) {
-               if (glsl_type_is_sampler(glsl_without_array(img->type))) {
-                  unsigned size = glsl_type_is_array(img->type) ? glsl_get_aoa_size(img->type) : 1;
-                  if (tex->texture_index >= img->data.driver_location &&
-                     tex->texture_index < img->data.driver_location + size) {
-                     BITSET_SET_RANGE(shader->info.textures_used, img->data.driver_location, img->data.driver_location + (size - 1));
-                     break;
-                  }
-               }
+            int deref_idx = nir_tex_instr_src_index(tex, nir_tex_src_texture_deref);
+            if (deref_idx >= 0) {
+               nir_variable *img = nir_deref_instr_get_variable(nir_instr_as_deref(tex->src[deref_idx].src.ssa->parent_instr));
+               unsigned size = glsl_type_is_array(img->type) ? glsl_get_aoa_size(img->type) : 1;
+               BITSET_SET_RANGE(shader->info.textures_used, img->data.driver_location, img->data.driver_location + (size - 1));
             }
             continue;
          }
@@ -4769,8 +4761,10 @@ lower_1d_shadow(nir_shader *shader, struct zink_screen *screen)
 
       found = true;
    }
-   if (found)
+   if (found) {
       nir_shader_instructions_pass(shader, convert_1d_shadow_tex, nir_metadata_dominance, screen);
+      nir_fixup_deref_types(shader);
+   }
    return found;
 }
 
@@ -4871,17 +4865,7 @@ match_tex_dests_instr(nir_builder *b, nir_instr *in, void *data, bool pre)
          return false;
       var = nir_deref_instr_get_variable(nir_src_as_deref(tex->src[handle].src));
    } else {
-      nir_foreach_variable_with_modes(img, b->shader, nir_var_uniform) {
-         if (glsl_type_is_sampler(glsl_without_array(img->type))) {
-            unsigned size = glsl_type_is_array(img->type) ? glsl_get_aoa_size(img->type) : 1;
-            int location = pre ? img->data.binding : img->data.driver_location;
-            if (tex->texture_index >= location &&
-                tex->texture_index < location + size) {
-               var = img;
-               break;
-            }
-         }
-      }
+      var = nir_deref_instr_get_variable(nir_instr_as_deref(tex->src[nir_tex_instr_src_index(tex, nir_tex_src_texture_deref)].src.ssa->parent_instr));
    }
    if (pre) {
       flag_shadow_tex_instr(b, tex, var, data);
@@ -5111,7 +5095,7 @@ type_image(nir_shader *nir, nir_variable *var)
 }
 
 static bool
-type_sampler_vars(nir_shader *nir, unsigned *sampler_mask)
+type_sampler_vars(nir_shader *nir)
 {
    bool progress = false;
    nir_foreach_function_impl(impl, nir) {
@@ -5120,9 +5104,7 @@ type_sampler_vars(nir_shader *nir, unsigned *sampler_mask)
             if (instr->type != nir_instr_type_tex)
                continue;
             nir_tex_instr *tex = nir_instr_as_tex(instr);
-            if (nir_tex_instr_need_sampler(tex))
-               *sampler_mask |= BITFIELD_BIT(tex->sampler_index);
-            nir_variable *var = nir_find_sampler_variable_with_tex_index(nir, tex->texture_index);
+            nir_variable *var = nir_deref_instr_get_variable(nir_instr_as_deref(tex->src[nir_tex_instr_src_index(tex, nir_tex_src_texture_deref)].src.ssa->parent_instr));
             assert(var);
             if (glsl_get_sampler_result_type(glsl_without_array(var->type)) != GLSL_TYPE_VOID &&
                 nir_tex_instr_is_query(tex))
@@ -5140,27 +5122,17 @@ type_sampler_vars(nir_shader *nir, unsigned *sampler_mask)
 }
 
 static bool
-delete_samplers(nir_shader *nir)
+type_images(nir_shader *nir)
 {
    bool progress = false;
-   nir_foreach_variable_with_modes(var, nir, nir_var_uniform) {
-      if (glsl_type_is_sampler(glsl_without_array(var->type))) {
-         var->data.mode = nir_var_shader_temp;
-         progress = true;
-      }
-   }
-   return progress;
-}
-
-static bool
-type_images(nir_shader *nir, unsigned *sampler_mask)
-{
-   bool progress = false;
-   progress |= delete_samplers(nir);
-   progress |= type_sampler_vars(nir, sampler_mask);
+   progress |= type_sampler_vars(nir);
    nir_foreach_variable_with_modes(var, nir, nir_var_image) {
       type_image(nir, var);
       progress = true;
+   }
+   if (progress) {
+      nir_fixup_deref_types(nir);
+      nir_fixup_deref_modes(nir);
    }
    return progress;
 }
@@ -6160,6 +6132,35 @@ flatten_image_arrays(nir_shader *nir)
    return progress;
 }
 
+static bool
+bound_image_arrays_instr(struct nir_builder *b, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_deref)
+      return false;
+
+   nir_deref_instr *deref = nir_instr_as_deref(instr);
+   if (deref->deref_type != nir_deref_type_array)
+      return false;
+
+   if (!nir_src_is_const(deref->arr.index))
+      return false;
+   nir_deref_instr *parent = nir_deref_instr_parent(deref);
+   int parent_size = glsl_array_size(parent->type);
+   unsigned idx = nir_src_as_uint(deref->arr.index);
+   if (idx >= parent_size) {
+      b->cursor = nir_before_instr(instr);
+      nir_src_rewrite(&deref->arr.index, nir_imm_zero(b, 1, 32));
+      return true;
+   }
+   return false;
+}
+
+static bool
+bound_image_arrays(nir_shader *nir)
+{
+   return nir_shader_instructions_pass(nir, bound_image_arrays_instr, nir_metadata_dominance, NULL);
+}
+
 struct zink_shader *
 zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 {
@@ -6232,8 +6233,9 @@ zink_shader_init(struct zink_screen *screen, struct zink_shader *zs)
    }
 
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_in | nir_var_shader_out, NULL, NULL);
-   NIR_PASS_V(nir, flatten_image_arrays);
    optimize_nir(nir, NULL, true);
+   NIR_PASS_V(nir, bound_image_arrays);
+   NIR_PASS_V(nir, flatten_image_arrays);
    nir_foreach_variable_with_modes(var, nir, nir_var_shader_in | nir_var_shader_out) {
       if (glsl_type_is_image(var->type) || glsl_type_is_sampler(var->type)) {
          NIR_PASS_V(nir, lower_bindless_io);
@@ -6317,19 +6319,8 @@ zink_shader_init(struct zink_screen *screen, struct zink_shader *zs)
    optimize_nir(nir, NULL, true);
    prune_io(nir);
 
-   unsigned sampler_mask = 0;
    if (nir->info.stage == MESA_SHADER_KERNEL) {
-      NIR_PASS_V(nir, type_images, &sampler_mask);
-      enum zink_descriptor_type ztype = ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW;
-      VkDescriptorType vktype = VK_DESCRIPTOR_TYPE_SAMPLER;
-      u_foreach_bit(s, sampler_mask) {
-         zs->bindings[ztype][zs->num_bindings[ztype]].index = s;
-         zs->bindings[ztype][zs->num_bindings[ztype]].binding = zink_binding(MESA_SHADER_KERNEL, vktype, s, screen->compact_descriptors);
-         zs->bindings[ztype][zs->num_bindings[ztype]].type = vktype;
-         zs->bindings[ztype][zs->num_bindings[ztype]].size = 1;
-         zs->num_bindings[ztype]++;
-      }
-      zs->sinfo.sampler_mask = sampler_mask;
+      NIR_PASS_V(nir, type_images);
    }
 
    unsigned ubo_binding_mask = 0;
@@ -6388,7 +6379,7 @@ zink_shader_init(struct zink_screen *screen, struct zink_shader *zs)
                zs->bindless = true;
                handle_bindless_var(nir, var, type, &bindless);
             } else if (glsl_type_is_sampler(type) || glsl_type_is_image(type)) {
-               VkDescriptorType vktype = glsl_type_is_image(type) ? zink_image_type(type) : zink_sampler_type(type);
+               VkDescriptorType vktype = glsl_type_is_image(type) ? zink_image_type(type) : glsl_type_is_bare_sampler(type) ? VK_DESCRIPTOR_TYPE_SAMPLER : zink_sampler_type(type);
                if (nir->info.stage == MESA_SHADER_KERNEL && vktype == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                   vktype = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
                ztype = zink_desc_type_from_vktype(vktype);

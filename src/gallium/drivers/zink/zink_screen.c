@@ -626,6 +626,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_LOAD_CONSTBUF:
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
    case PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT:
+   case PIPE_CAP_NIR_SAMPLERS_AS_DEREF:
       return 1;
 
    case PIPE_CAP_DRAW_VERTEX_STATE:

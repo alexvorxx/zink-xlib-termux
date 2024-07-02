@@ -1223,8 +1223,7 @@ get_scratch_surf(struct anv_pipeline *pipeline,
       anv_scratch_pool_alloc(pipeline->device, pool,
                              stage, bin->prog_data->total_scratch);
    anv_reloc_list_add_bo(pipeline->batch.relocs, bo);
-   return anv_scratch_pool_get_surf(pipeline->device,
-                                    &pipeline->device->scratch_pool,
+   return anv_scratch_pool_get_surf(pipeline->device, pool,
                                     bin->prog_data->total_scratch) >> ANV_SCRATCH_SPACE_SHIFT(GFX_VER);
 }
 

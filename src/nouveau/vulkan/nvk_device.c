@@ -9,6 +9,8 @@
 #include "nvk_instance.h"
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
+#include "nvkmd/nvkmd.h"
+#include "nvkmd/nouveau/nvkmd_nouveau.h"
 
 #include "vk_pipeline_cache.h"
 #include "vulkan/wsi/wsi_common.h"
@@ -150,28 +152,18 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    dev->vk.shader_ops = &nvk_device_shader_ops;
 
-   drmDevicePtr drm_device = NULL;
-   int ret = drmGetDeviceFromDevId(pdev->render_dev, 0, &drm_device);
-   if (ret != 0) {
-      result = vk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
-                         "Failed to get DRM device: %m");
+   result = nvkmd_pdev_create_dev(pdev->nvkmd, &pdev->vk.base, &dev->nvkmd);
+   if (result != VK_SUCCESS)
       goto fail_init;
-   }
 
-   dev->ws_dev = nouveau_ws_device_new(drm_device, pdev->ws_dev->debug_flags);
-   drmFreeDevice(&drm_device);
-   if (dev->ws_dev == NULL) {
-      result = vk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
-                         "Failed to get DRM device: %m");
-      goto fail_init;
-   }
+   dev->ws_dev = nvkmd_nouveau_dev(dev->nvkmd)->ws_dev;
 
-   vk_device_set_drm_fd(&dev->vk, dev->ws_dev->fd);
+   vk_device_set_drm_fd(&dev->vk, nvkmd_dev_get_drm_fd(dev->nvkmd));
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
 
    result = nvk_upload_queue_init(dev, &dev->upload);
    if (result != VK_SUCCESS)
-      goto fail_ws_dev;
+      goto fail_nvkmd;
 
    result = nvk_descriptor_table_init(dev, &dev->images,
                                       8 * 4 /* tic entry size */,
@@ -283,8 +275,8 @@ fail_images:
    nvk_descriptor_table_finish(dev, &dev->images);
 fail_upload:
    nvk_upload_queue_finish(dev, &dev->upload);
-fail_ws_dev:
-   nouveau_ws_device_destroy(dev->ws_dev);
+fail_nvkmd:
+   nvkmd_dev_destroy(dev->nvkmd);
 fail_init:
    vk_device_finish(&dev->vk);
 fail_alloc:
@@ -318,7 +310,7 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    nvk_descriptor_table_finish(dev, &dev->samplers);
    nvk_descriptor_table_finish(dev, &dev->images);
    nvk_upload_queue_finish(dev, &dev->upload);
-   nouveau_ws_device_destroy(dev->ws_dev);
+   nvkmd_dev_destroy(dev->nvkmd);
    vk_free(&dev->vk.alloc, dev);
 }
 
@@ -330,7 +322,6 @@ nvk_GetCalibratedTimestampsKHR(VkDevice _device,
                                uint64_t *pMaxDeviation)
 {
    VK_FROM_HANDLE(nvk_device, dev, _device);
-   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    uint64_t max_clock_period = 0;
    uint64_t begin, end;
    int d;
@@ -344,7 +335,7 @@ nvk_GetCalibratedTimestampsKHR(VkDevice _device,
    for (d = 0; d < timestampCount; d++) {
       switch (pTimestampInfos[d].timeDomain) {
       case VK_TIME_DOMAIN_DEVICE_KHR:
-         pTimestamps[d] = nouveau_ws_device_timestamp(pdev->ws_dev);
+         pTimestamps[d] = nvkmd_dev_get_gpu_timestamp(dev->nvkmd);
          max_clock_period = MAX2(max_clock_period, 1); /* FIXME: Is timestamp period actually 1? */
          break;
       case VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR:

@@ -16,6 +16,7 @@
 #include "vk_queue.h"
 
 struct nvk_physical_device;
+struct nvkmd_dev;
 struct vk_pipeline_cache;
 
 struct nvk_slm_area {
@@ -33,6 +34,9 @@ nvk_slm_area_get_bo_ref(struct nvk_slm_area *area,
 struct nvk_device {
    struct vk_device vk;
 
+   struct nvkmd_dev *nvkmd;
+
+   /* Leave this for now so we have less refactoring */
    struct nouveau_ws_device *ws_dev;
 
    struct nvk_upload_queue upload;

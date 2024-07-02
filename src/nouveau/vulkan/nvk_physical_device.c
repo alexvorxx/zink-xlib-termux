@@ -12,6 +12,8 @@
 #include "nvk_instance.h"
 #include "nvk_shader.h"
 #include "nvk_wsi.h"
+#include "nvkmd/nvkmd.h"
+#include "nvkmd/nouveau/nvkmd_nouveau.h"
 #include "git_sha1.h"
 #include "util/disk_cache.h"
 #include "util/mesa-sha1.h"
@@ -1088,32 +1090,11 @@ nvk_get_sysmem_heap_available(struct nvk_physical_device *pdev)
 static uint64_t
 nvk_get_vram_heap_available(struct nvk_physical_device *pdev)
 {
-   const uint64_t used = nouveau_ws_device_vram_used(pdev->ws_dev);
+   const uint64_t used = nvkmd_pdev_get_vram_used(pdev->nvkmd);
    if (used > pdev->info.vram_size_B)
       return 0;
 
    return pdev->info.vram_size_B - used;
-}
-
-static bool
-drm_device_is_nouveau(const char *path)
-{
-   int fd = open(path, O_RDWR | O_CLOEXEC);
-   if (fd < 0)
-      return false;
-
-   drmVersionPtr ver = drmGetVersion(fd);
-   if (!ver) {
-      close(fd);
-      return false;
-   }
-
-   const bool is_nouveau = !strncmp("nouveau", ver->name, ver->name_len);
-
-   drmFreeVersion(ver);
-   close(fd);
-
-   return is_nouveau;
 }
 
 VkResult
@@ -1123,56 +1104,23 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 {
    struct nvk_instance *instance = (struct nvk_instance *)_instance;
    VkResult result;
-   int master_fd = -1;
 
-   if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER)))
-      return VK_ERROR_INCOMPATIBLE_DRIVER;
-
-   switch (drm_device->bustype) {
-   case DRM_BUS_PCI:
-      if (drm_device->deviceinfo.pci->vendor_id != NVIDIA_VENDOR_ID)
-         return VK_ERROR_INCOMPATIBLE_DRIVER;
-      break;
-
-   case DRM_BUS_PLATFORM: {
-      const char *compat_prefix = "nvidia,";
-      bool found = false;
-      for (int i = 0; drm_device->deviceinfo.platform->compatible[i] != NULL; i++) {
-         if (strncmp(drm_device->deviceinfo.platform->compatible[0], compat_prefix, strlen(compat_prefix)) == 0) {
-            found = true;
-            break;
-         }
-      }
-      if (!found)
-         return VK_ERROR_INCOMPATIBLE_DRIVER;
-      break;
-   }
-
-   default:
-      return VK_ERROR_INCOMPATIBLE_DRIVER;
-   }
-
-   if (!drm_device_is_nouveau(drm_device->nodes[DRM_NODE_RENDER]))
-      return VK_ERROR_INCOMPATIBLE_DRIVER;
-
-   struct nouveau_ws_device *ws_dev =
-      nouveau_ws_device_new(drm_device, instance->debug_flags);
-   if (!ws_dev)
-      return vk_error(instance, VK_ERROR_INCOMPATIBLE_DRIVER);
-
-   const struct nv_device_info info = ws_dev->info;
-   const struct vk_sync_type syncobj_sync_type =
-      vk_drm_syncobj_get_type(ws_dev->fd);
+   struct nvkmd_pdev *nvkmd;
+   result = nvkmd_try_create_pdev_for_drm(drm_device, &instance->vk.base,
+                                          instance->debug_flags, &nvkmd);
+   if (result != VK_SUCCESS)
+      return result;
 
    /* We don't support anything pre-Kepler */
-   if (info.cls_eng3d < KEPLER_A) {
+   if (nvkmd->dev_info.cls_eng3d < KEPLER_A) {
       result = VK_ERROR_INCOMPATIBLE_DRIVER;
-      goto fail_ws_dev;
+      goto fail_nvkmd;
    }
 
    bool conformant =
-      info.type == NV_DEVICE_TYPE_DIS &&
-      info.cls_eng3d >= TURING_A && info.cls_eng3d <= ADA_A;
+      nvkmd->dev_info.type == NV_DEVICE_TYPE_DIS &&
+      nvkmd->dev_info.cls_eng3d >= TURING_A &&
+      nvkmd->dev_info.cls_eng3d <= ADA_A;
 
    if (!conformant &&
        !debug_get_bool_option("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", false)) {
@@ -1183,25 +1131,10 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
                          "WARNING: NVK is not well-tested on %s, pass "
                          "NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1 "
                          "if you know what you're doing.",
-                         info.device_name);
+                         nvkmd->dev_info.device_name);
 #endif
-      goto fail_ws_dev;
+      goto fail_nvkmd;
    }
-
-   if (!ws_dev->has_vm_bind) {
-      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
-                         "NVK Requires a Linux kernel version 6.6 or later");
-      goto fail_ws_dev;
-   }
-
-   struct stat st;
-   if (stat(drm_device->nodes[DRM_NODE_RENDER], &st)) {
-      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                         "fstat() failed on %s: %m",
-                         drm_device->nodes[DRM_NODE_RENDER]);
-      goto fail_ws_dev;
-   }
-   const dev_t render_dev = st.st_rdev;
 
    if (!conformant)
       vk_warn_non_conformant_implementation("NVK");
@@ -1212,7 +1145,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
    if (pdev == NULL) {
       result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_ws_dev;
+      goto fail_nvkmd;
    }
 
    struct vk_physical_device_dispatch_table dispatch_table;
@@ -1221,32 +1154,29 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    vk_physical_device_dispatch_table_from_entrypoints(
       &dispatch_table, &wsi_physical_device_entrypoints, false);
 
-   const bool has_tiled_bos = nouveau_ws_device_has_tiled_bo(ws_dev);
    struct vk_device_extension_table supported_extensions;
-   nvk_get_device_extensions(instance, &info, has_tiled_bos,
+   nvk_get_device_extensions(instance, &nvkmd->dev_info,
+                             nvkmd->kmd_info.has_alloc_tiled,
                              &supported_extensions);
 
    struct vk_features supported_features;
-   nvk_get_device_features(&info, &supported_extensions, &supported_features);
+   nvk_get_device_features(&nvkmd->dev_info, &supported_extensions,
+                           &supported_features);
 
    struct vk_properties properties;
-   nvk_get_device_properties(instance, &info, conformant, &properties);
+   nvk_get_device_properties(instance, &nvkmd->dev_info, conformant,
+                             &properties);
 
-   properties.drmHasRender = true;
-   properties.drmRenderMajor = major(render_dev);
-   properties.drmRenderMinor = minor(render_dev);
+   if (nvkmd->drm.render_dev) {
+      properties.drmHasRender = true;
+      properties.drmRenderMajor = major(nvkmd->drm.render_dev);
+      properties.drmRenderMinor = minor(nvkmd->drm.render_dev);
+   }
 
-   /* DRM primary is optional */
-   if ((drm_device->available_nodes & (1 << DRM_NODE_PRIMARY)) &&
-       !stat(drm_device->nodes[DRM_NODE_PRIMARY], &st)) {
-      assert(st.st_rdev != 0);
+   if (nvkmd->drm.primary_dev) {
       properties.drmHasPrimary = true;
-      properties.drmPrimaryMajor = major(st.st_rdev);
-      properties.drmPrimaryMinor = minor(st.st_rdev);
-
-      /* TODO: Test if the FD is usable? */
-      if (instance->vk.enabled_extensions.KHR_display)
-         master_fd = open(drm_device->nodes[DRM_NODE_PRIMARY], O_RDWR | O_CLOEXEC);
+      properties.drmPrimaryMajor = major(nvkmd->drm.primary_dev);
+      properties.drmPrimaryMinor = minor(nvkmd->drm.primary_dev);
    }
 
    result = vk_physical_device_init(&pdev->vk, &instance->vk,
@@ -1255,13 +1185,11 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
                                     &properties,
                                     &dispatch_table);
    if (result != VK_SUCCESS)
-      goto fail_master_fd;
+      goto fail_alloc;
 
-   pdev->info = info;
+   pdev->nvkmd = nvkmd;
+   pdev->info = nvkmd->dev_info;
    pdev->debug_flags = instance->debug_flags;
-   pdev->render_dev = render_dev;
-   pdev->master_fd = master_fd;
-   pdev->ws_dev = ws_dev;
 
    pdev->nak = nak_compiler_create(&pdev->info);
    if (pdev->nak == NULL) {
@@ -1296,7 +1224,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       }
 
       /* Only set available if we have the ioctl. */
-      if (nouveau_ws_device_vram_used(ws_dev) > 0)
+      if (nvkmd->kmd_info.has_get_vram_used)
          pdev->mem_heaps[vram_heap_idx].available = nvk_get_vram_heap_available;
 
       pdev->mem_types[pdev->mem_type_count++] = (VkMemoryType) {
@@ -1344,12 +1272,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    };
    assert(pdev->queue_family_count <= ARRAY_SIZE(pdev->queue_families));
 
-   unsigned st_idx = 0;
-   pdev->syncobj_sync_type = syncobj_sync_type;
-   pdev->sync_types[st_idx++] = &pdev->syncobj_sync_type;
-   pdev->sync_types[st_idx++] = NULL;
-   assert(st_idx <= ARRAY_SIZE(pdev->sync_types));
-   pdev->vk.supported_sync_types = pdev->sync_types;
+   pdev->vk.supported_sync_types = nvkmd->sync_types;
 
    result = nvk_init_wsi(pdev);
    if (result != VK_SUCCESS)
@@ -1364,12 +1287,10 @@ fail_disk_cache:
    nak_compiler_destroy(pdev->nak);
 fail_init:
    vk_physical_device_finish(&pdev->vk);
-fail_master_fd:
-   if (master_fd >= 0)
-      close(master_fd);
+fail_alloc:
    vk_free(&instance->vk.alloc, pdev);
-fail_ws_dev:
-   nouveau_ws_device_destroy(ws_dev);
+fail_nvkmd:
+   nvkmd_pdev_destroy(nvkmd);
    return result;
 }
 
@@ -1382,9 +1303,7 @@ nvk_physical_device_destroy(struct vk_physical_device *vk_pdev)
    nvk_finish_wsi(pdev);
    nvk_physical_device_free_disk_cache(pdev);
    nak_compiler_destroy(pdev->nak);
-   if (pdev->master_fd >= 0)
-      close(pdev->master_fd);
-   nouveau_ws_device_destroy(pdev->ws_dev);
+   nvkmd_pdev_destroy(pdev->nvkmd);
    vk_physical_device_finish(&pdev->vk);
    vk_free(&pdev->vk.instance->alloc, pdev);
 }

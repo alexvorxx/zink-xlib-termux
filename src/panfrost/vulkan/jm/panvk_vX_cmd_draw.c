@@ -778,11 +778,20 @@ static void
 panvk_draw_prepare_viewport(struct panvk_cmd_buffer *cmdbuf,
                             struct panvk_draw_info *draw)
 {
-   if (is_dirty(cmdbuf, VP_VIEWPORTS) || is_dirty(cmdbuf, VP_SCISSORS)) {
+   /* When rasterizerDiscardEnable is active, it is allowed to have viewport and
+    * scissor disabled.
+    * As a result, we define an empty one.
+    */
+   if (!cmdbuf->state.gfx.vpd || is_dirty(cmdbuf, VP_VIEWPORTS) ||
+       is_dirty(cmdbuf, VP_SCISSORS)) {
       struct panfrost_ptr vp =
          pan_pool_alloc_desc(&cmdbuf->desc_pool.base, VIEWPORT);
 
-      panvk_emit_viewport(&cmdbuf->vk.dynamic_graphics_state.vp, vp.cpu);
+      const struct vk_viewport_state *vps =
+         &cmdbuf->vk.dynamic_graphics_state.vp;
+
+      if (vps->viewport_count > 0)
+         panvk_emit_viewport(vps, vp.cpu);
       cmdbuf->state.gfx.vpd = vp.gpu;
    }
 

@@ -73,4 +73,8 @@ const struct nvkmd_dev_ops nvkmd_nouveau_dev_ops = {
    .destroy = nvkmd_nouveau_dev_destroy,
    .get_gpu_timestamp = nvkmd_nouveau_dev_get_gpu_timestamp,
    .get_drm_fd = nvkmd_nouveau_dev_get_drm_fd,
+   .alloc_mem = nvkmd_nouveau_alloc_mem,
+   .alloc_tiled_mem = nvkmd_nouveau_alloc_tiled_mem,
+   .import_dma_buf = nvkmd_nouveau_import_dma_buf,
+   .alloc_va = nvkmd_nouveau_alloc_va,
 };

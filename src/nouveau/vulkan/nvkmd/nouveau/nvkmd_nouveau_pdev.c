@@ -99,6 +99,7 @@ nvkmd_nouveau_try_create_pdev(struct _drmDevice *drm_device,
    pdev->base.ops = &nvkmd_nouveau_pdev_ops;
    pdev->base.dev_info = ws_dev->info;
    pdev->base.kmd_info = (struct nvkmd_info) {
+      .has_dma_buf = true,
       .has_get_vram_used = nouveau_ws_device_vram_used(ws_dev) != 0,
       .has_alloc_tiled = nouveau_ws_device_has_tiled_bo(ws_dev),
       .has_map_fixed = true,

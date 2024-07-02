@@ -128,6 +128,20 @@ v3d-rpi5-gl:arm64:
     DEQP_SUITE: broadcom-rpi5
     DEQP_FRACTION: 3
 
+# Disabled for now, because we don't have enough devices to be able to afford
+# all the users who run all the manual jobs.
+.v3d-rpi5-gl-full:arm64:
+  extends:
+    - v3d-rpi5-gl:arm64
+    - .v3d-manual-rules
+  tags:
+    - igalia-rpi5
+    - igalia-fullrun
+  timeout: 50m  # base run time = 39min test, 41min total
+  variables:
+    TEST_PHASE_TIMEOUT: 45
+    DEQP_FRACTION: 1
+
 v3d-rpi5-traces:arm64:
   extends:
     - .igalia-bcm2712-rpi-5

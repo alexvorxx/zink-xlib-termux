@@ -287,6 +287,7 @@ impl ProgramBuild {
     }
 }
 
+#[derive(Default)]
 pub struct ProgramDevBuild {
     spirv: Option<spirv::SPIRVBin>,
     status: cl_build_status,
@@ -378,8 +379,12 @@ impl Program {
         })
     }
 
-    fn spirv_from_bin_for_dev(bin: &[u8]) -> (SPIRVBin, cl_program_binary_type) {
+    fn spirv_from_bin_for_dev(bin: &[u8]) -> CLResult<(SPIRVBin, cl_program_binary_type)> {
         let mut ptr = bin.as_ptr();
+        if bin.is_empty() {
+            return Err(CL_INVALID_VALUE);
+        }
+
         unsafe {
             // 1. version
             let version = ptr.cast::<u32>().read();
@@ -397,13 +402,17 @@ impl Program {
 
                     // 4. the spirv
                     assert!(bin.as_ptr().add(BIN_HEADER_SIZE_V1) == ptr);
-                    assert!(bin.len() == BIN_HEADER_SIZE_V1 + spirv_size as usize);
+
+                    if bin.len() != BIN_HEADER_SIZE_V1 + spirv_size as usize {
+                        return Err(CL_INVALID_BINARY);
+                    }
+
                     let spirv =
                         spirv::SPIRVBin::from_bin(slice::from_raw_parts(ptr, spirv_size as usize));
 
-                    (spirv, bin_type)
+                    Ok((spirv, bin_type))
                 }
-                _ => panic!("unknown version"),
+                _ => Err(CL_INVALID_BINARY),
             }
         }
     }
@@ -412,28 +421,38 @@ impl Program {
         context: Arc<Context>,
         devs: Vec<&'static Device>,
         bins: &[&[u8]],
-    ) -> Arc<Program> {
+    ) -> Result<Arc<Program>, Vec<cl_int>> {
         let mut builds = HashMap::new();
         let mut kernels = HashSet::new();
 
-        for (&d, b) in devs.iter().zip(bins) {
-            let (spirv, bin_type) = Self::spirv_from_bin_for_dev(b);
+        let mut errors = vec![CL_SUCCESS as cl_int; devs.len()];
+        for (idx, (&d, b)) in devs.iter().zip(bins).enumerate() {
+            let build = match Self::spirv_from_bin_for_dev(b) {
+                Ok((spirv, bin_type)) => {
+                    for k in spirv.kernels() {
+                        kernels.insert(k);
+                    }
 
-            for k in spirv.kernels() {
-                kernels.insert(k);
-            }
+                    ProgramDevBuild {
+                        spirv: Some(spirv),
+                        bin_type: bin_type,
+                        ..Default::default()
+                    }
+                }
+                Err(err) => {
+                    errors[idx] = err;
+                    ProgramDevBuild {
+                        status: CL_BUILD_ERROR,
+                        ..Default::default()
+                    }
+                }
+            };
 
-            builds.insert(
-                d,
-                ProgramDevBuild {
-                    spirv: Some(spirv),
-                    status: CL_BUILD_SUCCESS as cl_build_status,
-                    log: String::from(""),
-                    options: String::from(""),
-                    bin_type: bin_type,
-                    kernels: HashMap::new(),
-                },
-            );
+            builds.insert(d, build);
+        }
+
+        if errors.iter().any(|&e| e != CL_SUCCESS as cl_int) {
+            return Err(errors);
         }
 
         let mut build = ProgramBuild {
@@ -444,13 +463,13 @@ impl Program {
         };
         build.build_nirs(false);
 
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             base: CLObjectBase::new(RusticlTypes::Program),
             context: context,
             devs: devs,
             src: ProgramSourceType::Binary,
             build: Mutex::new(build),
-        })
+        }))
     }
 
     pub fn from_spirv(context: Arc<Context>, spirv: &[u8]) -> Arc<Program> {
@@ -505,15 +524,15 @@ impl Program {
         res
     }
 
-    pub fn binaries(&self, vals: &[u8]) -> Vec<*mut u8> {
+    pub fn binaries(&self, vals: &[u8]) -> CLResult<Vec<*mut u8>> {
         // if the application didn't provide any pointers, just return the length of devices
         if vals.is_empty() {
-            return vec![std::ptr::null_mut(); self.devs.len()];
+            return Ok(vec![std::ptr::null_mut(); self.devs.len()]);
         }
 
         // vals is an array of pointers where we should write the device binaries into
         if vals.len() != self.devs.len() * size_of::<*const u8>() {
-            panic!("wrong size")
+            return Err(CL_INVALID_VALUE);
         }
 
         let ptrs: &[*mut u8] = unsafe {
@@ -550,7 +569,7 @@ impl Program {
             }
         }
 
-        ptrs.to_vec()
+        Ok(ptrs.to_vec())
     }
 
     // TODO: at the moment we do not support compiling programs with different signatures across

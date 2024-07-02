@@ -396,7 +396,7 @@ void vlVaHandlePictureParameterBufferAV1(vlVaDriver *drv, vlVaContext *context, 
   context->desc.av1.slice_parameter.slice_count = 0;
 }
 
-void vlVaHandleSliceParameterBufferAV1(vlVaContext *context, vlVaBuffer *buf, unsigned slice_offset)
+void vlVaHandleSliceParameterBufferAV1(vlVaContext *context, vlVaBuffer *buf)
 {
    VASliceParameterBufferAV1 *av1 = buf->data;
 
@@ -407,7 +407,8 @@ void vlVaHandleSliceParameterBufferAV1(vlVaContext *context, vlVaBuffer *buf, un
       assert(slice_index < max_pipe_av1_slices);
 
       context->desc.av1.slice_parameter.slice_data_size[slice_index] = av1->slice_data_size;
-      context->desc.av1.slice_parameter.slice_data_offset[slice_index] = slice_offset + av1->slice_data_offset;
+      context->desc.av1.slice_parameter.slice_data_offset[slice_index] =
+         context->slice_data_offset + av1->slice_data_offset;
       context->desc.av1.slice_parameter.slice_data_row[slice_index] = av1->tile_row;
       context->desc.av1.slice_parameter.slice_data_col[slice_index] = av1->tile_column;
       context->desc.av1.slice_parameter.slice_data_anchor_frame_idx[slice_index] = av1->anchor_frame_idx;

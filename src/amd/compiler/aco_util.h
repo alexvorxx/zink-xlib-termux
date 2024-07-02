@@ -514,6 +514,7 @@ struct IDSet {
    bool empty() const { return !size(); }
 
    explicit IDSet(monotonic_buffer_resource& m) : words(m) {}
+   explicit IDSet(const IDSet& other, monotonic_buffer_resource& m) : words(other.words, m) {}
 
 private:
    static uint32_t get_first_set(const block_t& words)

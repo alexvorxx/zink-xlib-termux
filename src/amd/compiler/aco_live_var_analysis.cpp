@@ -68,6 +68,7 @@ get_temp_registers(aco_ptr<Instruction>& instr)
 namespace {
 
 struct live_ctx {
+   monotonic_buffer_resource m;
    Program* program;
    int worklist;
 };
@@ -92,7 +93,7 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
 {
    RegisterDemand new_demand;
    block->register_demand = RegisterDemand();
-   IDSet live = ctx.program->live.live_out[block->index];
+   IDSet live(ctx.program->live.live_out[block->index], ctx.m);
 
    /* initialize register demand */
    for (unsigned t : live)

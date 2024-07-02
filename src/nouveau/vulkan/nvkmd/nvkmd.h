@@ -24,6 +24,8 @@ struct nvkmd_va;
 
 struct _drmDevice;
 struct vk_object_base;
+struct vk_sync_wait;
+struct vk_sync_signal;
 
 /*
  * Enums
@@ -53,6 +55,20 @@ enum nvkmd_va_flags {
 
    /** Attempt to place this VA at the requested address and fail otherwise */
    NVKMD_VA_ALLOC_FIXED = 1 << 2,
+};
+
+enum nvkmd_engines {
+   NVKMD_ENGINE_COPY    = 1 << 0,
+   NVKMD_ENGINE_2D      = 1 << 1,
+   NVKMD_ENGINE_3D      = 1 << 2,
+   NVKMD_ENGINE_M2MF    = 1 << 3,
+   NVKMD_ENGINE_COMPUTE = 1 << 4,
+   NVKMD_ENGINE_BIND    = 1 << 5,
+};
+
+enum nvkmd_bind_op {
+   NVKMD_BIND_OP_BIND,
+   NVKMD_BIND_OP_UNBIND,
 };
 
 /*
@@ -122,6 +138,11 @@ struct nvkmd_dev_ops {
                         enum nvkmd_va_flags flags, uint8_t pte_kind,
                         uint64_t size_B, uint64_t align_B,
                         uint64_t fixed_addr, struct nvkmd_va **va_out);
+
+   VkResult (*create_ctx)(struct nvkmd_dev *dev,
+                          struct vk_object_base *log_obj,
+                          enum nvkmd_engines engines,
+                          struct nvkmd_ctx **ctx_out);
 };
 
 struct nvkmd_dev {
@@ -180,6 +201,61 @@ struct nvkmd_va {
    uint8_t pte_kind;
    uint64_t addr;
    uint64_t size_B;
+};
+
+struct nvkmd_ctx_exec {
+   uint64_t addr;
+   uint32_t size_B;
+   bool no_prefetch;
+};
+
+struct nvkmd_ctx_bind {
+   enum nvkmd_bind_op op;
+
+   struct nvkmd_va *va;
+   uint64_t va_offset_B;
+
+   /* Ignored if op != NVK_BIND_OP_UNBIND */
+   struct nvkmd_mem *mem;
+   uint64_t mem_offset_B;
+
+   uint64_t range_B;
+};
+
+struct nvkmd_ctx_ops {
+   void (*destroy)(struct nvkmd_ctx *ctx);
+
+   VkResult (*wait)(struct nvkmd_ctx *ctx,
+                    struct vk_object_base *log_obj,
+                    uint32_t wait_count,
+                    const struct vk_sync_wait *waits);
+
+   VkResult (*exec)(struct nvkmd_ctx *ctx,
+                    struct vk_object_base *log_obj,
+                    uint32_t exec_count,
+                    const struct nvkmd_ctx_exec *execs);
+
+   VkResult (*bind)(struct nvkmd_ctx *ctx,
+                    struct vk_object_base *log_obj,
+                    uint32_t bind_count,
+                    const struct nvkmd_ctx_bind *binds);
+
+   /* Implies flush() */
+   VkResult (*signal)(struct nvkmd_ctx *ctx,
+                      struct vk_object_base *log_obj,
+                      uint32_t signal_count,
+                      const struct vk_sync_signal *signals);
+
+   VkResult (*flush)(struct nvkmd_ctx *ctx,
+                     struct vk_object_base *log_obj);
+
+   /* Implies flush() */
+   VkResult (*sync)(struct nvkmd_ctx *ctx,
+                    struct vk_object_base *log_obj);
+};
+
+struct nvkmd_ctx {
+   const struct nvkmd_ctx_ops *ops;
 };
 
 /*
@@ -311,6 +387,15 @@ nvkmd_dev_alloc_va(struct nvkmd_dev *dev,
                              fixed_addr, va_out);
 }
 
+static inline VkResult MUST_CHECK
+nvkmd_dev_create_ctx(struct nvkmd_dev *dev,
+                     struct vk_object_base *log_obj,
+                     enum nvkmd_engines engines,
+                     struct nvkmd_ctx **ctx_out)
+{
+   return dev->ops->create_ctx(dev, log_obj, engines, ctx_out);
+}
+
 static inline struct nvkmd_mem *
 nvkmd_mem_ref(struct nvkmd_mem *mem)
 {
@@ -396,6 +481,74 @@ nvkmd_va_unbind(struct nvkmd_va *va,
    assert(va_offset_B + range_B <= va->size_B);
 
    return va->ops->unbind(va, log_obj, va_offset_B, range_B);
+}
+
+static inline void
+nvkmd_ctx_destroy(struct nvkmd_ctx *ctx)
+{
+   ctx->ops->destroy(ctx);
+}
+
+static inline VkResult MUST_CHECK
+nvkmd_ctx_wait(struct nvkmd_ctx *ctx,
+               struct vk_object_base *log_obj,
+               uint32_t wait_count,
+               const struct vk_sync_wait *waits)
+{
+   return ctx->ops->wait(ctx, log_obj, wait_count, waits);
+}
+
+static inline VkResult MUST_CHECK
+nvkmd_ctx_exec(struct nvkmd_ctx *ctx,
+               struct vk_object_base *log_obj,
+               uint32_t exec_count,
+               const struct nvkmd_ctx_exec *execs)
+{
+   return ctx->ops->exec(ctx, log_obj, exec_count, execs);
+}
+
+static inline VkResult MUST_CHECK
+nvkmd_ctx_bind(struct nvkmd_ctx *ctx,
+               struct vk_object_base *log_obj,
+               uint32_t bind_count,
+               const struct nvkmd_ctx_bind *binds)
+{
+   for (uint32_t i = 0; i < bind_count; i++) {
+      assert(binds[i].va_offset_B <= binds[i].va->size_B);
+      assert(binds[i].va_offset_B + binds[i].range_B <= binds[i].va->size_B);
+      if (binds[i].op == NVKMD_BIND_OP_BIND) {
+         assert(binds[i].mem_offset_B <= binds[i].mem->size_B);
+         assert(binds[i].mem_offset_B + binds[i].range_B <=
+                binds[i].mem->size_B);
+      } else {
+         assert(binds[i].mem == NULL);
+      }
+   }
+
+   return ctx->ops->bind(ctx, log_obj, bind_count, binds);
+}
+
+static inline VkResult MUST_CHECK
+nvkmd_ctx_signal(struct nvkmd_ctx *ctx,
+                 struct vk_object_base *log_obj,
+                 uint32_t signal_count,
+                 const struct vk_sync_signal *signals)
+{
+   return ctx->ops->signal(ctx, log_obj, signal_count, signals);
+}
+
+static inline VkResult MUST_CHECK
+nvkmd_ctx_flush(struct nvkmd_ctx *ctx,
+                struct vk_object_base *log_obj)
+{
+   return ctx->ops->flush(ctx, log_obj);
+}
+
+static inline VkResult MUST_CHECK
+nvkmd_ctx_sync(struct nvkmd_ctx *ctx,
+               struct vk_object_base *log_obj)
+{
+   return ctx->ops->sync(ctx, log_obj);
 }
 
 #endif /* NVKMD_H */

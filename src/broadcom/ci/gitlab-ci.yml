@@ -142,6 +142,21 @@ v3d-rpi5-gl:arm64:
     TEST_PHASE_TIMEOUT: 45
     DEQP_FRACTION: 1
 
+# Disabled for now, because we don't have enough devices to be able to afford
+# all the users who run all the manual jobs.
+.v3d-rpi5-rusticl:arm64:
+  extends:
+    - .igalia-bcm2712-rpi-5
+    - .broadcom-test:arm64
+    - .v3d-rusticl-manual-rules
+  tags:
+    - igalia-rpi5
+    - igalia-fullrun
+  timeout: 20m  # base run time = 7min test, 9min total
+  variables:
+    DEQP_SUITE: v3d-rusticl
+    TEST_PHASE_TIMEOUT: 15
+
 v3d-rpi5-traces:arm64:
   extends:
     - .igalia-bcm2712-rpi-5

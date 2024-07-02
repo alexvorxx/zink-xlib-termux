@@ -14,6 +14,9 @@ spec@glsl-3.*
 spec@glsl-4.*
 spec@glsl-es-3.20.*
 
+# Slow CL tests (> 5 minute to run)
+program@execute@builtin@builtin-float-sincos-1.0.generated
+
 # Slow tests (> 1 minute to run)
 dEQP-VK.binding_model.buffer_device_address.set3.depth3.basessbo.convertcheckuv2.nostore.multi.std140.vert
 dEQP-VK.binding_model.buffer_device_address.set3.depth3.basessbo.convertcheckuv2.nostore.single.std140.vert

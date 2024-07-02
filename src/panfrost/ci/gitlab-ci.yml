@@ -28,7 +28,7 @@
 
 .panfrost-midgard-manual-rules:
   stage: arm
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  retry: !reference [.no-auto-retry, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]
@@ -59,7 +59,7 @@
 
 .panfrost-bifrost-gl-manual-rules:
   stage: arm
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  retry: !reference [.no-auto-retry, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]
@@ -92,7 +92,7 @@
 
 .panfrost-bifrost-vk-manual-rules:
   stage: arm
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  retry: !reference [.no-auto-retry, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.collabora-farm-manual-rules, rules]

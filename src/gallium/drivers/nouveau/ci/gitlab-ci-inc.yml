@@ -25,7 +25,7 @@
 
 .nouveau-manual-rules:
   stage: nouveau
-  retry: !reference [.scheduled_pipeline-rules, retry]
+  retry: !reference [.no-auto-retry, retry]
   rules:
     - !reference [.test, rules]
     - !reference [.anholt-farm-manual-rules, rules]

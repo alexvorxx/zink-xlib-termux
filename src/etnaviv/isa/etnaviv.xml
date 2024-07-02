@@ -1439,4 +1439,53 @@ SPDX-License-Identifier: MIT
 	<pattern low="0" high="5">110110</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
+
+<bitset name="#extended-instruction-alu" extends="#instruction-alu">
+	<pattern low="0" high="5">111111</pattern> <!-- OPC -->
+	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="#extended-instruction-alu-src0" extends="#extended-instruction-alu">
+	<meta has_dest="true" valid_srcs="0"/>
+
+	<display>
+		{INSTR_ALU} {DST:align=18}, {SRC0}, void, void
+	</display>
+
+	<!-- SRC0 -->
+	<pattern pos="43">1</pattern> <!-- SRC0_USE -->
+	<field name="SRC0_REG" low="44" high="52" type="uint"/>
+	<field name="SRC0" low="54" high="63" type="#instruction-src">
+		<param name="SRC0_REG" as="SRC_REG"/>
+		<param name="SRC0_AMODE" as="SRC_AMODE"/>
+		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
+	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
+
+	<!-- SRC1 -->
+	<pattern pos="70">0</pattern> <!-- SRC1_USE -->
+	<pattern low="71" high="79">000000000</pattern> <!-- SRC1_REG -->
+	<pattern low="81" high="88">00000000</pattern> <!-- SRC1_SWIZ -->
+	<pattern pos="89">0</pattern> <!-- SRC1_NEG -->
+	<pattern pos="90">0</pattern> <!-- SRC1_ABS -->
+	<pattern low="91" high="93">000</pattern> <!-- SRC1_AMODE -->
+	<pattern low="96" high="98">000</pattern> <!-- SRC1_RGROUP -->
+
+	<!-- SRC2 as IMMED (uint 20 bit). SRC2_REG is the extended opcode -->
+	<pattern pos="99">1</pattern> <!-- SRC2_USE -->
+	<pattern low="110" high="117">00000000</pattern> <!-- SRC2_SWIZ -->
+	<pattern pos="118">0</pattern> <!-- SRC2_NEG -->
+	<pattern pos="119">0</pattern> <!-- SRC2_ABS -->
+	<pattern low="121" high="123">100</pattern> <!-- SRC2_AMODE -->
+	<pattern low="124" high="126">111</pattern> <!-- SRC2_RGROUP -->
+</bitset>
+
+<bitset name="bit_findlsb" extends="#extended-instruction-alu-src0">
+	<pattern low="100" high="108">000001011</pattern> <!-- OPC -->
+</bitset>
+
+<bitset name="bit_findmsb" extends="#extended-instruction-alu-src0">
+	<pattern low="100" high="108">000001100</pattern> <!-- OPC -->
+</bitset>
 </isa>

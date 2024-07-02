@@ -251,7 +251,9 @@ static const struct v3d_qpu_sig v71_sig_map[] = {
         /* 23 reserved */
         [24] = {                   LDUNIFA},
         [25] = { LDUNIFARF                },
-        /* 26-29 reserved */
+        [26] = {           LDTMU,         WRTMUC },
+        [27] = { THRSW,    LDTMU,         WRTMUC },
+        /* 28-29 reserved */
         [30] = { SMIMM_C,                 },
         [31] = { SMIMM_D,                 },
 };

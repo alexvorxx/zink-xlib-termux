@@ -378,6 +378,36 @@ impl Program {
         })
     }
 
+    fn spirv_from_bin_for_dev(bin: &[u8]) -> (SPIRVBin, cl_program_binary_type) {
+        let mut ptr = bin.as_ptr();
+        unsafe {
+            // 1. version
+            let version = ptr.cast::<u32>().read();
+            ptr = ptr.add(size_of::<u32>());
+
+            match version {
+                1 => {
+                    // 2. size of the spirv
+                    let spirv_size = ptr.cast::<u32>().read();
+                    ptr = ptr.add(size_of::<u32>());
+
+                    // 3. binary_type
+                    let bin_type = ptr.cast::<cl_program_binary_type>().read();
+                    ptr = ptr.add(size_of::<cl_program_binary_type>());
+
+                    // 4. the spirv
+                    assert!(bin.as_ptr().add(BIN_HEADER_SIZE_V1) == ptr);
+                    assert!(bin.len() == BIN_HEADER_SIZE_V1 + spirv_size as usize);
+                    let spirv =
+                        spirv::SPIRVBin::from_bin(slice::from_raw_parts(ptr, spirv_size as usize));
+
+                    (spirv, bin_type)
+                }
+                _ => panic!("unknown version"),
+            }
+        }
+    }
+
     pub fn from_bins(
         context: Arc<Context>,
         devs: Vec<&'static Device>,
@@ -387,47 +417,16 @@ impl Program {
         let mut kernels = HashSet::new();
 
         for (&d, b) in devs.iter().zip(bins) {
-            let mut ptr = b.as_ptr();
-            let bin_type;
-            let spirv;
+            let (spirv, bin_type) = Self::spirv_from_bin_for_dev(b);
 
-            unsafe {
-                // 1. version
-                let version = ptr.cast::<u32>().read();
-                ptr = ptr.add(size_of::<u32>());
-
-                match version {
-                    1 => {
-                        // 2. size of the spirv
-                        let spirv_size = ptr.cast::<u32>().read();
-                        ptr = ptr.add(size_of::<u32>());
-
-                        // 3. binary_type
-                        bin_type = ptr.cast::<cl_program_binary_type>().read();
-                        ptr = ptr.add(size_of::<cl_program_binary_type>());
-
-                        // 4. the spirv
-                        assert!(b.as_ptr().add(BIN_HEADER_SIZE_V1) == ptr);
-                        assert!(b.len() == BIN_HEADER_SIZE_V1 + spirv_size as usize);
-                        spirv = Some(spirv::SPIRVBin::from_bin(slice::from_raw_parts(
-                            ptr,
-                            spirv_size as usize,
-                        )));
-                    }
-                    _ => panic!("unknown version"),
-                }
-            }
-
-            if let Some(spirv) = &spirv {
-                for k in spirv.kernels() {
-                    kernels.insert(k);
-                }
+            for k in spirv.kernels() {
+                kernels.insert(k);
             }
 
             builds.insert(
                 d,
                 ProgramDevBuild {
-                    spirv: spirv,
+                    spirv: Some(spirv),
                     status: CL_BUILD_SUCCESS as cl_build_status,
                     log: String::from(""),
                     options: String::from(""),

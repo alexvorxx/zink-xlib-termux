@@ -137,6 +137,7 @@ vlVaBeginPicture(VADriverContextP ctx, VAContextID context_id, VASurfaceID rende
       context->needs_begin_frame = true;
 
    context->slice_data_offset = 0;
+   context->have_slice_params = false;
 
    mtx_unlock(&drv->mutex);
    return VA_STATUS_SUCCESS;
@@ -973,7 +974,6 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
    VAStatus vaStatus = VA_STATUS_SUCCESS;
 
    unsigned i;
-   unsigned slice_idx = 0;
    vlVaBuffer *seq_param_buf = NULL;
 
    if (!ctx)
@@ -1024,12 +1024,14 @@ vlVaRenderPicture(VADriverContextP ctx, VAContextID context_id, VABufferID *buff
 
       case VASliceParameterBufferType:
          handleSliceParameterBuffer(context, buf);
-         slice_idx += buf->num_elements;
+         context->have_slice_params = true;
          break;
 
       case VASliceDataBufferType:
          vaStatus = handleVASliceDataBufferType(context, buf);
-         if (slice_idx)
+         /* Workaround for apps sending single slice data buffer followed
+          * by multiple slice parameter buffers. */
+         if (context->have_slice_params)
             context->slice_data_offset += buf->size;
          break;
 

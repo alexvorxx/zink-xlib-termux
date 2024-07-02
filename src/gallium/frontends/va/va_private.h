@@ -387,6 +387,7 @@ typedef struct {
    bool packed_header_emulation_bytes;
    struct set *surfaces;
    unsigned slice_data_offset;
+   bool have_slice_params;
 
    struct {
       void **buffers;

@@ -26,7 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include "brw_asm.h"
+#include "brw_asm_internal.h"
 
 #undef yyerror
 #ifdef YYBYACC

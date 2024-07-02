@@ -242,11 +242,32 @@ brw_lex_yy_c = custom_target(
   command : [prog_flex, '-o', '@OUTPUT@', '@INPUT@']
 )
 
+brw_asm_deps = [
+  dep_thread,
+  idep_intel_compiler_brw,
+  idep_intel_dev,
+  idep_mesautil,
+]
+
+brw_asm = static_library(
+  'brw_asm',
+  ['brw_asm.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
+  dependencies : brw_asm_deps,
+  include_directories : [inc_include, inc_src, inc_intel],
+  c_args : [no_override_init_args],
+  gnu_symbol_visibility : 'hidden',
+  build_by_default : false,
+)
+
+idep_brw_asm = declare_dependency(
+  link_with : brw_asm,
+  dependencies : brw_asm_deps,
+)
+
 brw_asm_tool = executable(
   'brw_asm',
-  ['brw_asm_tool.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
-                  idep_intel_compiler_brw],
+  ['brw_asm_tool.c'],
+  dependencies : idep_brw_asm,
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

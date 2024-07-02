@@ -2,7 +2,7 @@
 %option nounput
 %{
 #include <string.h>
-#include "brw_asm.h"
+#include "brw_asm_internal.h"
 #undef ALIGN16
 #include "brw_gram.tab.h"
 
@@ -10,7 +10,7 @@
 int yycolumn = 1;
 
 int saved_state = 0;
-extern char *input_filename;
+extern const char *input_filename;
 
 #define YY_NO_INPUT
 #define YY_USER_ACTION                                  	\

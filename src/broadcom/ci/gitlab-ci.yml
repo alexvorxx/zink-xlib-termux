@@ -64,7 +64,7 @@ v3d-rpi4-rusticl:arm64:
     - .v3d-rusticl-manual-rules
   timeout: 30m  # base run time = 17min test, 19min total
   variables:
-    DEQP_SUITE: broadcom-rpi4-cl
+    DEQP_SUITE: v3d-rusticl
     TEST_PHASE_TIMEOUT: 25
 
 v3d-rpi4-traces:arm64:

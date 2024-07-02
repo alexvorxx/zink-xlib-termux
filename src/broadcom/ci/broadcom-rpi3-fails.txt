@@ -1195,3 +1195,22 @@ spec@glsl-1.10@execution@glsl-1.10-built-in-uniform-state,Fail
 
 # Couldn't reproduce locally
 spec@oes_packed_depth_stencil@depth_stencil texture gles2,Fail
+
+# Failures from arm32
+arm32-KHR-GLES2.core.internalformat.texture2d.depth_component_unsigned_int_depth_component16,Fail
+arm32-KHR-GLES2.core.internalformat.texture2d.depth_component_unsigned_int_depth_component24,Fail
+arm32-KHR-GLES2.core.internalformat.texture2d.depth_component_unsigned_short_depth_component16,Fail
+arm32-dEQP-GLES2.functional.clipping.line.wide_line_clip_viewport_center,Fail
+arm32-dEQP-GLES2.functional.clipping.line.wide_line_clip_viewport_corner,Fail
+arm32-dEQP-GLES2.functional.depth_stencil_clear.depth_stencil_masked,Fail
+arm32-dEQP-GLES2.functional.texture.filtering.2d.nearest_mipmap_linear_linear_mirror_rgba8888,Fail
+arm32-dEQP-GLES2.functional.texture.filtering.2d.nearest_mipmap_linear_linear_repeat_rgba8888,Fail
+arm32-dEQP-GLES2.functional.texture.filtering.2d.nearest_mipmap_nearest_linear_mirror_rgba8888,Fail
+arm32-dEQP-GLES2.functional.texture.filtering.2d.nearest_mipmap_nearest_linear_repeat_rgba8888,Fail
+arm32-dEQP-GLES2.functional.texture.mipmap.2d.basic.linear_linear_repeat_non_square,Fail
+arm32-dEQP-GLES2.functional.texture.mipmap.2d.basic.nearest_linear_clamp_non_square,Fail
+arm32-dEQP-GLES2.functional.texture.mipmap.2d.basic.nearest_linear_mirror_non_square,Fail
+arm32-dEQP-GLES2.functional.texture.mipmap.2d.basic.nearest_linear_repeat_non_square,Fail
+arm32-dEQP-GLES2.functional.texture.wrap.clamp_clamp_nearest_npot_etc1,Fail
+arm32-dEQP-GLES2.functional.uniform_api.random.3,Fail
+arm32-dEQP-GLES2.functional.uniform_api.random.79,Fail

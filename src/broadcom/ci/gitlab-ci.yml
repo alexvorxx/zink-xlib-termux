@@ -21,6 +21,17 @@ vc4-rpi3-gl-piglit-full:arm64:
   variables:
     DEQP_SUITE: broadcom-rpi3-piglit-full
 
+vc4-rpi3-gl:arm32:
+  extends:
+    - .igalia-bcm2837-rpi-3-b
+    - .broadcom-test:arm32
+    - .vc4-manual-rules
+  tags:
+    - igalia-rpi3
+    - igalia-fullrun
+  variables:
+    DEQP_SUITE: broadcom-rpi3-arm32
+
 
 v3d-rpi4-gl:arm64:
   extends:
@@ -48,7 +59,7 @@ v3d-rpi4-gl-full:arm64:
 
 v3d-rpi4-rusticl:arm64:
   extends:
-    - .igalia-bcm2711-rpi-4:arm64
+    - .igalia-bcm2711-rpi-4
     - .broadcom-test:arm64
     - .v3d-rusticl-manual-rules
   timeout: 30m  # base run time = 17min test, 19min total
@@ -68,6 +79,16 @@ v3d-rpi4-traces:arm64:
     PIGLIT_REPLAY_DEVICE_NAME: "broadcom-rpi4"
     PIGLIT_RESULTS: "broadcom-rpi4-replay"
 
+v3d-rpi4-gl:arm32:
+  extends:
+    - .igalia-bcm2711-rpi-4
+    - .broadcom-test:arm32
+    - .v3d-manual-rules
+  tags:
+    - igalia-rpi4
+    - igalia-fullrun
+  variables:
+    DEQP_SUITE: broadcom-rpi4-arm32
 
 v3dv-rpi4-vk:arm64:
   extends:

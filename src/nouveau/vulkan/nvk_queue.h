@@ -34,8 +34,7 @@ struct nvk_queue_state {
    } slm;
 
    struct {
-      struct nouveau_ws_bo *bo;
-      void *bo_map;
+      struct nvkmd_mem *mem;
       uint32_t dw_count;
    } push;
 };

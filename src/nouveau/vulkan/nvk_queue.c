@@ -37,10 +37,8 @@ nvk_queue_state_finish(struct nvk_device *dev,
       nvkmd_mem_unref(qs->samplers.mem);
    if (qs->slm.mem)
       nvkmd_mem_unref(qs->slm.mem);
-   if (qs->push.bo) {
-      nouveau_ws_bo_unmap(qs->push.bo, qs->push.bo_map);
-      nouveau_ws_bo_destroy(qs->push.bo);
-   }
+   if (qs->push.mem)
+      nvkmd_mem_unref(qs->push.mem);
 }
 
 static void
@@ -50,8 +48,8 @@ nvk_queue_state_dump_push(struct nvk_device *dev,
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    struct nv_push push = {
-      .start = (uint32_t *)qs->push.bo_map,
-      .end = (uint32_t *)qs->push.bo_map + qs->push.dw_count,
+      .start = (uint32_t *)qs->push.mem->map,
+      .end = (uint32_t *)qs->push.mem->map + qs->push.dw_count,
    };
    vk_push_print(fp, &push, &pdev->info);
 }
@@ -116,18 +114,17 @@ nvk_queue_state_update(struct nvk_device *dev,
    if (!dirty)
       return VK_SUCCESS;
 
-   struct nouveau_ws_bo *push_bo;
-   void *push_map;
-   push_bo = nouveau_ws_bo_new_mapped(dev->ws_dev, 256 * 4, 0,
-                                      NOUVEAU_WS_BO_GART |
-                                      NOUVEAU_WS_BO_MAP |
-                                      NOUVEAU_WS_BO_NO_SHARE,
-                                      NOUVEAU_WS_BO_WR, &push_map);
-   if (push_bo == NULL)
-      return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+   struct nvkmd_mem *push_mem;
+   VkResult result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
+                                                256 * 4, 0,
+                                                NVKMD_MEM_GART |
+                                                NVKMD_MEM_NO_SHARE,
+                                                NVKMD_MEM_MAP_WR, &push_mem);
+   if (result != VK_SUCCESS)
+      return result;
 
    struct nv_push push;
-   nv_push_init(&push, push_map, 256);
+   nv_push_init(&push, push_mem->map, 256);
    struct nv_push *p = &push;
 
    if (qs->images.mem) {
@@ -236,13 +233,10 @@ nvk_queue_state_update(struct nvk_device *dev,
     */
    P_IMMD(p, NV9097, SET_SHADER_LOCAL_MEMORY_WINDOW, 0xff << 24);
 
-   if (qs->push.bo) {
-      nouveau_ws_bo_unmap(qs->push.bo, qs->push.bo_map);
-      nouveau_ws_bo_destroy(qs->push.bo);
-   }
+   if (qs->push.mem)
+      nvkmd_mem_unref(qs->push.mem);
 
-   qs->push.bo = push_bo;
-   qs->push.bo_map = push_map;
+   qs->push.mem = push_mem;
    qs->push.dw_count = nv_push_dw_count(&push);
 
    return VK_SUCCESS;

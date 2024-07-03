@@ -590,8 +590,8 @@ nvk_queue_submit_simple_drm_nouveau(struct nvk_queue *queue,
 static void
 push_add_queue_state(struct push_builder *pb, struct nvk_queue_state *qs)
 {
-   if (qs->push.bo)
-      push_add_push(pb, qs->push.bo->offset, qs->push.dw_count * 4, false);
+   if (qs->push.mem)
+      push_add_push(pb, qs->push.mem->va->addr, qs->push.dw_count * 4, false);
 }
 
 VkResult

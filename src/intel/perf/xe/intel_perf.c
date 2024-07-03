@@ -50,18 +50,18 @@ xe_oa_metrics_available(struct intel_perf_config *perf, int fd, bool use_registe
    struct stat sb;
 
    /* The existence of this file implies that this Xe KMD version supports
-    * perf interface.
+    * observation interface.
     */
-   if (stat("/proc/sys/dev/xe/perf_stream_paranoid", &sb) == 0) {
+   if (stat("/proc/sys/dev/xe/observation_paranoid", &sb) == 0) {
       uint64_t paranoid = 1;
 
-      /* Now we need to check if application has privileges to access perf
+      /* Now we need to check if application has privileges to access observation
        * interface.
        *
        * TODO: this approach does not takes into account applications running
        * with CAP_PERFMON privileges.
        */
-      read_file_uint64("/proc/sys/dev/xe/perf_stream_paranoid", &paranoid);
+      read_file_uint64("/proc/sys/dev/xe/observation_paranoid", &paranoid);
       if (paranoid == 0 || geteuid() == 0)
          perf_oa_available = true;
    }
@@ -80,9 +80,9 @@ xe_add_config(struct intel_perf_config *perf, int fd,
               const char *guid)
 {
    struct drm_xe_oa_config xe_config = {};
-   struct drm_xe_perf_param perf_param = {
-      .perf_type = DRM_XE_PERF_TYPE_OA,
-      .perf_op = DRM_XE_PERF_OP_ADD_CONFIG,
+   struct drm_xe_observation_param observation_param = {
+      .observation_type = DRM_XE_OBSERVATION_TYPE_OA,
+      .observation_op = DRM_XE_OBSERVATION_OP_ADD_CONFIG,
       .param = (uintptr_t)&xe_config,
    };
    uint32_t *regs;
@@ -102,7 +102,7 @@ xe_add_config(struct intel_perf_config *perf, int fd,
    regs += 2 * config->n_b_counter_regs;
    memcpy(regs, config->flex_regs, config->n_flex_regs * sizeof(uint64_t));
 
-   ret = intel_ioctl(fd, DRM_IOCTL_XE_PERF, &perf_param);
+   ret = intel_ioctl(fd, DRM_IOCTL_XE_OBSERVATION, &observation_param);
    free((void*)(uintptr_t)xe_config.regs_ptr);
    return ret > 0 ? ret : 0;
 }
@@ -110,18 +110,18 @@ xe_add_config(struct intel_perf_config *perf, int fd,
 void
 xe_remove_config(struct intel_perf_config *perf, int fd, uint64_t config_id)
 {
-   struct drm_xe_perf_param perf_param = {
-      .perf_type = DRM_XE_PERF_TYPE_OA,
-      .perf_op = DRM_XE_PERF_OP_REMOVE_CONFIG,
+   struct drm_xe_observation_param observation_param = {
+      .observation_type = DRM_XE_OBSERVATION_TYPE_OA,
+      .observation_op = DRM_XE_OBSERVATION_OP_REMOVE_CONFIG,
       .param = (uintptr_t)&config_id,
    };
 
-   intel_ioctl(fd, DRM_IOCTL_XE_PERF, &perf_param);
+   intel_ioctl(fd, DRM_IOCTL_XE_OBSERVATION, &observation_param);
 }
 
 static void
-perf_prop_set(struct drm_xe_ext_set_property *props, uint32_t *index,
-              enum drm_xe_oa_property_id prop_id, uint64_t value)
+oa_prop_set(struct drm_xe_ext_set_property *props, uint32_t *index,
+            enum drm_xe_oa_property_id prop_id, uint64_t value)
 {
    if (*index > 0)
       props[*index - 1].base.next_extension = (uintptr_t)&props[*index];
@@ -139,25 +139,25 @@ xe_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
                     bool hold_preemption, bool enable)
 {
    struct drm_xe_ext_set_property props[DRM_XE_OA_PROPERTY_NO_PREEMPT + 1] = {};
-   struct drm_xe_perf_param perf_param = {
-      .perf_type = DRM_XE_PERF_TYPE_OA,
-      .perf_op = DRM_XE_PERF_OP_STREAM_OPEN,
+   struct drm_xe_observation_param observation_param = {
+      .observation_type = DRM_XE_OBSERVATION_TYPE_OA,
+      .observation_op = DRM_XE_OBSERVATION_OP_STREAM_OPEN,
       .param = (uintptr_t)&props,
    };
    uint32_t i = 0;
    int fd, flags;
 
    if (exec_id)
-      perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_EXEC_QUEUE_ID, exec_id);
-   perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_DISABLED, !enable);
-   perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_SAMPLE_OA, true);
-   perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_METRIC_SET, metrics_set_id);
-   perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_FORMAT, report_format);
-   perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_PERIOD_EXPONENT, period_exponent);
+      oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_EXEC_QUEUE_ID, exec_id);
+   oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_DISABLED, !enable);
+   oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_SAMPLE_OA, true);
+   oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_METRIC_SET, metrics_set_id);
+   oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_FORMAT, report_format);
+   oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_OA_PERIOD_EXPONENT, period_exponent);
    if (hold_preemption)
-      perf_prop_set(props, &i, DRM_XE_OA_PROPERTY_NO_PREEMPT, hold_preemption);
+      oa_prop_set(props, &i, DRM_XE_OA_PROPERTY_NO_PREEMPT, hold_preemption);
 
-   fd = intel_ioctl(drm_fd, DRM_IOCTL_XE_PERF, &perf_param);
+   fd = intel_ioctl(drm_fd, DRM_IOCTL_XE_OBSERVATION, &observation_param);
    if (fd < 0)
       return fd;
 
@@ -174,7 +174,8 @@ xe_perf_stream_open(struct intel_perf_config *perf_config, int drm_fd,
 int
 xe_perf_stream_set_state(int perf_stream_fd, bool enable)
 {
-   unsigned long uapi = enable ? DRM_XE_PERF_IOCTL_ENABLE : DRM_XE_PERF_IOCTL_DISABLE;
+   unsigned long uapi = enable ? DRM_XE_OBSERVATION_IOCTL_ENABLE :
+                                 DRM_XE_OBSERVATION_IOCTL_DISABLE;
 
    return intel_ioctl(perf_stream_fd, uapi, 0);
 }
@@ -185,9 +186,9 @@ xe_perf_stream_set_metrics_id(int perf_stream_fd, uint64_t metrics_set_id)
    struct drm_xe_ext_set_property prop = {};
    uint32_t index = 0;
 
-   perf_prop_set(&prop, &index, DRM_XE_OA_PROPERTY_OA_METRIC_SET,
+   oa_prop_set(&prop, &index, DRM_XE_OA_PROPERTY_OA_METRIC_SET,
                  metrics_set_id);
-   return intel_ioctl(perf_stream_fd, DRM_XE_PERF_IOCTL_CONFIG,
+   return intel_ioctl(perf_stream_fd, DRM_XE_OBSERVATION_IOCTL_CONFIG,
                       (void *)(uintptr_t)&prop);
 }
 
@@ -198,7 +199,7 @@ xe_perf_stream_read_error(int perf_stream_fd, uint8_t *buffer, size_t buffer_len
    struct intel_perf_record_header *header;
    int ret;
 
-   ret = intel_ioctl(perf_stream_fd, DRM_XE_PERF_IOCTL_STATUS, &status);
+   ret = intel_ioctl(perf_stream_fd, DRM_XE_OBSERVATION_IOCTL_STATUS, &status);
    if (ret)
       return -errno;
 

@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "util/macros.h"
+#include "util/u_vector.h"
 
 #include "ir3.h"
 #include "ir3_assembler.h"
@@ -482,6 +483,11 @@ static const struct test {
 };
 
 static void
+add_generated_tests(struct u_vector *all_tests, void *ctx) {
+
+}
+
+static void
 trim(char *string)
 {
    for (int len = strlen(string); len > 0 && string[len - 1] == '\n'; len--)
@@ -501,11 +507,21 @@ main(int argc, char **argv)
       return 1;
    }
 
+   void *ctx = ralloc_context(NULL);
+
+   struct u_vector all_tests = { 0 };
+   u_vector_init(&all_tests, ARRAY_SIZE(tests), sizeof(struct test));
+   for (uint32_t i = 0; i < ARRAY_SIZE(tests); i++) {
+      *(struct test *) u_vector_add(&all_tests) = tests[i];
+   }
+
+   add_generated_tests(&all_tests, ctx);
+
    struct ir3_compiler *compilers[10] = {};
    struct fd_dev_id dev_ids[ARRAY_SIZE(compilers)];
 
-   for (int i = 0; i < ARRAY_SIZE(tests); i++) {
-      const struct test *test = &tests[i];
+   struct test *test;
+   u_vector_foreach (test, &all_tests) {
       uint32_t code[2];
       if (test->instr) {
          code[0] = strtoll(&test->instr[9], NULL, 16);
@@ -619,6 +635,8 @@ main(int argc, char **argv)
       ir3_compiler_destroy(compilers[i]);
    }
 
+   u_vector_finish(&all_tests);
+   ralloc_free(ctx);
    fclose(fdisasm);
    free(disasm_output);
 

@@ -332,7 +332,7 @@ lp_build_fill_mattrs(std::vector<std::string> &MAttrs)
    llvm::StringMap<bool> features;
    llvm::sys::getHostCPUFeatures(features);
 
-   for (StringMapIterator<bool> f = features.begin();
+   for (llvm::StringMapIterator<bool> f = features.begin();
         f != features.end();
         ++f) {
       MAttrs.push_back(((*f).second ? "+" : "-") + (*f).first().str());

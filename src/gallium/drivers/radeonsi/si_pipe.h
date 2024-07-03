@@ -1254,6 +1254,8 @@ struct si_context {
    struct util_idalloc bindless_used_slots;
    unsigned num_bindless_descriptors;
    bool bindless_descriptors_dirty;
+   bool graphics_internal_bindings_pointer_dirty;
+   bool compute_internal_bindings_pointer_dirty;
    bool graphics_bindless_pointer_dirty;
    bool compute_bindless_pointer_dirty;
    bool gs_attribute_ring_pointer_dirty;

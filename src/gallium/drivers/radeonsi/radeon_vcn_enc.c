@@ -195,6 +195,14 @@ static void radeon_vcn_enc_get_roi_param(struct radeon_encoder *enc,
    }
 }
 
+static void radeon_vcn_enc_get_latency_param(struct radeon_encoder *enc)
+{
+   struct si_screen *sscreen = (struct si_screen *)enc->screen;
+
+   enc->enc_pic.enc_latency.encode_latency =
+      sscreen->debug_flags & DBG(LOW_LATENCY_ENCODE) ? 1000 : 0;
+}
+
 static void radeon_vcn_enc_h264_get_cropping_param(struct radeon_encoder *enc,
                                                    struct pipe_h264_enc_picture_desc *pic)
 {
@@ -455,6 +463,7 @@ static void radeon_vcn_enc_h264_get_param(struct radeon_encoder *enc,
    use_filter = enc->enc_pic.h264_deblock.disable_deblocking_filter_idc != 1;
    radeon_vcn_enc_get_intra_refresh_param(enc, use_filter, &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
+   radeon_vcn_enc_get_latency_param(enc);
 }
 
 static void radeon_vcn_enc_hevc_get_cropping_param(struct radeon_encoder *enc,
@@ -679,6 +688,7 @@ static void radeon_vcn_enc_hevc_get_param(struct radeon_encoder *enc,
                                         !(enc->enc_pic.hevc_deblock.deblocking_filter_disabled),
                                          &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
+   radeon_vcn_enc_get_latency_param(enc);
 }
 
 static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
@@ -892,6 +902,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
                                          true,
                                          &pic->intra_refresh);
    radeon_vcn_enc_get_roi_param(enc, &pic->roi);
+   radeon_vcn_enc_get_latency_param(enc);
 }
 
 static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_picture_desc *picture)

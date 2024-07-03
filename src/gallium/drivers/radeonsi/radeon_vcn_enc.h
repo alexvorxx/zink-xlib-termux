@@ -187,6 +187,7 @@ struct radeon_enc_pic {
    rvcn_enc_output_format_t enc_output_format;
    rvcn_enc_qp_map_t enc_qp_map;
    rvcn_enc_metadata_buffer_t metadata;
+   rvcn_enc_latency_t enc_latency;
 };
 
 struct radeon_encoder {
@@ -237,6 +238,7 @@ struct radeon_encoder {
    void (*ctx_override)(struct radeon_encoder *enc);
    void (*metadata)(struct radeon_encoder *enc);
    void (*tile_config)(struct radeon_encoder *enc);
+   void (*encode_latency)(struct radeon_encoder *enc);
    /* mq is used for preversing multiple queue ibs */
    void (*mq_begin)(struct radeon_encoder *enc);
    void (*mq_encode)(struct radeon_encoder *enc);

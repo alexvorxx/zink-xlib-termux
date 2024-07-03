@@ -840,7 +840,6 @@ TEST_F(cmod_propagation_test, cmp_cmpg_D)
    fs_reg dst0 = bld.vgrf(BRW_TYPE_D);
    fs_reg src0 = bld.vgrf(BRW_TYPE_D);
    fs_reg zero(brw_imm_d(0));
-   fs_reg one(brw_imm_d(1));
 
    bld.CMP(dst0, src0, zero, BRW_CONDITIONAL_NZ);
    bld.CMP(bld.null_reg_d(), dst0, zero, BRW_CONDITIONAL_G);

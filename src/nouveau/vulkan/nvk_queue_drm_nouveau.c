@@ -577,9 +577,7 @@ nvk_queue_finish_drm_nouveau(struct nvk_device *dev,
 VkResult
 nvk_queue_submit_simple_drm_nouveau(struct nvk_queue *queue,
                                     uint32_t push_dw_count,
-                                    struct nouveau_ws_bo *push_bo,
-                                    uint32_t extra_bo_count,
-                                    struct nouveau_ws_bo **extra_bos)
+                                    struct nouveau_ws_bo *push_bo)
 {
    struct push_builder pb;
    push_builder_init(queue, &pb, false);

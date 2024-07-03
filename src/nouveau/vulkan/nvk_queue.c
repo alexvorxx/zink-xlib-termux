@@ -325,8 +325,7 @@ nvk_queue_init_context_state(struct nvk_queue *queue,
          return result;
    }
 
-   return nvk_queue_submit_simple(queue, nv_push_dw_count(&push),
-                                  push_data, 0, NULL);
+   return nvk_queue_submit_simple(queue, nv_push_dw_count(&push), push_data);
 }
 
 VkResult
@@ -411,9 +410,7 @@ nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue)
 
 VkResult
 nvk_queue_submit_simple(struct nvk_queue *queue,
-                        uint32_t dw_count, const uint32_t *dw,
-                        uint32_t extra_bo_count,
-                        struct nouveau_ws_bo **extra_bos)
+                        uint32_t dw_count, const uint32_t *dw)
 {
    struct nvk_device *dev = nvk_queue_device(queue);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
@@ -434,8 +431,7 @@ nvk_queue_submit_simple(struct nvk_queue *queue,
 
    memcpy(push_map, dw, dw_count * 4);
 
-   result = nvk_queue_submit_simple_drm_nouveau(queue, dw_count, push_bo,
-                                                extra_bo_count, extra_bos);
+   result = nvk_queue_submit_simple_drm_nouveau(queue, dw_count, push_bo);
 
    const bool debug_sync = pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
    if ((debug_sync && result != VK_SUCCESS) ||

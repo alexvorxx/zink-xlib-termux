@@ -501,6 +501,11 @@ static void scan_instruction(const struct nir_shader *nir, struct si_shader_info
           !nir_src_is_const(intr->src[0]))
          info->uses_indirect_descriptor = true;
 
+      if (nir_intrinsic_has_atomic_op(intr)) {
+         if (nir_intrinsic_atomic_op(intr) == nir_atomic_op_ordered_add_gfx12_amd)
+            info->uses_atomic_ordered_add = true;
+      }
+
       switch (intr->intrinsic) {
       case nir_intrinsic_store_ssbo:
          if (!nir_src_is_const(intr->src[1]))
@@ -608,6 +613,9 @@ static void scan_instruction(const struct nir_shader *nir, struct si_shader_info
       case nir_intrinsic_interp_deref_at_sample:
       case nir_intrinsic_interp_deref_at_offset:
          unreachable("these opcodes should have been lowered");
+         break;
+      case nir_intrinsic_ordered_add_loop_gfx12_amd:
+         info->uses_atomic_ordered_add = true;
          break;
       default:
          break;

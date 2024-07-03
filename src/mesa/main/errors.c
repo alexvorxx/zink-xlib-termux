@@ -66,18 +66,6 @@ output_if_debug(enum mesa_log_level level, const char *outputString)
       mesa_log(level, "Mesa", "%s", outputString);
 }
 
-
-/**
- * Return the file handle to use for debug/logging.  Defaults to stderr
- * unless MESA_LOG_FILE is defined.
- */
-FILE *
-_mesa_get_log_file(void)
-{
-   return mesa_log_get_file();
-}
-
-
 /**
  * When a new type of error is recorded, print a message describing
  * previous errors which were accumulated.

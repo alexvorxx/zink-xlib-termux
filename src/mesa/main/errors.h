@@ -70,9 +70,6 @@ extern void
 _mesa_log_direct(const char *string);
 
 
-extern FILE *
-_mesa_get_log_file(void);
-
 void
 _mesa_shader_debug(struct gl_context *ctx, GLenum type, GLuint *id,
                    const char *msg);

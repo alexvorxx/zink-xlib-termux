@@ -63,6 +63,7 @@
 #include "util/crc32.h"
 #include "util/os_file.h"
 #include "util/list.h"
+#include "util/log.h"
 #include "util/perf/cpu_trace.h"
 #include "util/u_process.h"
 #include "util/u_string.h"
@@ -1241,7 +1242,7 @@ _mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh)
          if (sh->CompileStatus) {
             if (sh->ir) {
                _mesa_log("GLSL IR for shader %d:\n", sh->Name);
-               _mesa_print_ir(_mesa_get_log_file(), sh->ir, NULL);
+               _mesa_print_ir(mesa_log_get_file(), sh->ir, NULL);
             } else {
                _mesa_log("No GLSL IR for shader %d (shader may be from "
                          "cache)\n", sh->Name);

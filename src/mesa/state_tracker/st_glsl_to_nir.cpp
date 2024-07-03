@@ -55,6 +55,8 @@
 #include "compiler/glsl/shader_cache.h"
 #include "compiler/glsl/string_to_uint_map.h"
 
+#include "util/log.h"
+
 static int
 type_size(const struct glsl_type *type)
 {
@@ -395,7 +397,7 @@ st_glsl_to_nir_post_opts(struct st_context *st, struct gl_program *prog,
       _mesa_log("NIR IR for linked %s program %d:\n",
              _mesa_shader_stage_to_string(prog->info.stage),
              shader_program->Name);
-      nir_print_shader(nir, _mesa_get_log_file());
+      nir_print_shader(nir, mesa_log_get_file());
       _mesa_log("\n\n");
    }
 
@@ -537,7 +539,7 @@ st_link_glsl_to_nir(struct gl_context *ctx,
             _mesa_log("GLSL IR for linked %s program %d:\n",
                       _mesa_shader_stage_to_string(shader->Stage),
                       shader_program->Name);
-            _mesa_print_ir(_mesa_get_log_file(), shader->ir, NULL);
+            _mesa_print_ir(mesa_log_get_file(), shader->ir, NULL);
             _mesa_log("\n\n");
          }
 

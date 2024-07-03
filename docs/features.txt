@@ -490,7 +490,7 @@ Vulkan 1.3 -- all DONE: anv, lvp, nvk, radv, tu, vn
   VK_EXT_inline_uniform_block                           DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_pipeline_creation_cache_control                DONE (anv, hasvk, lvp, nvk, panvk, radv, tu, v3dv, vn)
   VK_EXT_pipeline_creation_feedback                     DONE (anv, hasvk, lvp, nvk, panvk, radv, tu, v3dv, vn)
-  VK_EXT_private_data                                   DONE (anv, hasvk, lvp, nvk, pvr, radv, tu, v3dv, vn)
+  VK_EXT_private_data                                   DONE (anv, hasvk, lvp, nvk, panvk, pvr, radv, tu, v3dv, vn)
   VK_EXT_image_robustness                               DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_shader_demote_to_helper_invocation             DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)
   VK_EXT_subgroup_size_control                          DONE (anv, hasvk, lvp, nvk, radv, tu, v3dv, vn)

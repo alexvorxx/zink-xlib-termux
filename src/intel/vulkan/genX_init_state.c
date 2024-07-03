@@ -667,9 +667,6 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
       return result;
    }
 
-   if (!device->trtt.queue)
-      device->trtt.queue = queue;
-
    if (is_companion_rcs_batch)
       queue->init_companion_submit = submit;
    else
@@ -904,6 +901,10 @@ genX(init_device_state)(struct anv_device *device)
       }
       if (res != VK_SUCCESS)
          return res;
+
+      if (!device->trtt.queue &&
+          queue->family->queueFlags & VK_QUEUE_SPARSE_BINDING_BIT)
+         device->trtt.queue = queue;
    }
 
    return res;

@@ -35,8 +35,8 @@ nvk_queue_state_finish(struct nvk_device *dev,
       nvkmd_mem_unref(qs->images.mem);
    if (qs->samplers.mem)
       nvkmd_mem_unref(qs->samplers.mem);
-   if (qs->slm.bo)
-      nouveau_ws_bo_destroy(qs->slm.bo);
+   if (qs->slm.mem)
+      nvkmd_mem_unref(qs->slm.mem);
    if (qs->push.bo) {
       nouveau_ws_bo_unmap(qs->push.bo, qs->push.bo_map);
       nouveau_ws_bo_destroy(qs->push.bo);
@@ -61,7 +61,6 @@ nvk_queue_state_update(struct nvk_device *dev,
                        struct nvk_queue_state *qs)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
-   struct nouveau_ws_bo *bo;
    struct nvkmd_mem *mem;
    uint32_t alloc_count, bytes_per_warp, bytes_per_tpc;
    bool dirty = false;
@@ -92,19 +91,19 @@ nvk_queue_state_update(struct nvk_device *dev,
          nvkmd_mem_unref(mem);
    }
 
-   bo = nvk_slm_area_get_bo_ref(&dev->slm, &bytes_per_warp, &bytes_per_tpc);
-   if (qs->slm.bo != bo || qs->slm.bytes_per_warp != bytes_per_warp ||
+   mem = nvk_slm_area_get_mem_ref(&dev->slm, &bytes_per_warp, &bytes_per_tpc);
+   if (qs->slm.mem != mem || qs->slm.bytes_per_warp != bytes_per_warp ||
        qs->slm.bytes_per_tpc != bytes_per_tpc) {
-      if (qs->slm.bo)
-         nouveau_ws_bo_destroy(qs->slm.bo);
-      qs->slm.bo = bo;
+      if (qs->slm.mem)
+         nvkmd_mem_unref(qs->slm.mem);
+      qs->slm.mem = mem;
       qs->slm.bytes_per_warp = bytes_per_warp;
       qs->slm.bytes_per_tpc = bytes_per_tpc;
       dirty = true;
    } else {
       /* No change */
-      if (bo)
-         nouveau_ws_bo_destroy(bo);
+      if (mem)
+         nvkmd_mem_unref(mem);
    }
 
    /* TODO: We're currently depending on kernel reference counting to protect
@@ -171,9 +170,9 @@ nvk_queue_state_update(struct nvk_device *dev,
       });
    }
 
-   if (qs->slm.bo) {
-      const uint64_t slm_addr = qs->slm.bo->offset;
-      const uint64_t slm_size = qs->slm.bo->size;
+   if (qs->slm.mem) {
+      const uint64_t slm_addr = qs->slm.mem->va->addr;
+      const uint64_t slm_size = qs->slm.mem->size_B;
       const uint64_t slm_per_warp = qs->slm.bytes_per_warp;
       const uint64_t slm_per_tpc = qs->slm.bytes_per_tpc;
       assert(!(slm_per_tpc & 0x7fff));

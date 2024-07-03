@@ -35,24 +35,24 @@ static void
 nvk_slm_area_finish(struct nvk_slm_area *area)
 {
    simple_mtx_destroy(&area->mutex);
-   if (area->bo)
-      nouveau_ws_bo_destroy(area->bo);
+   if (area->mem)
+      nvkmd_mem_unref(area->mem);
 }
 
-struct nouveau_ws_bo *
-nvk_slm_area_get_bo_ref(struct nvk_slm_area *area,
-                        uint32_t *bytes_per_warp_out,
-                        uint32_t *bytes_per_tpc_out)
+struct nvkmd_mem *
+nvk_slm_area_get_mem_ref(struct nvk_slm_area *area,
+                         uint32_t *bytes_per_warp_out,
+                         uint32_t *bytes_per_tpc_out)
 {
    simple_mtx_lock(&area->mutex);
-   struct nouveau_ws_bo *bo = area->bo;
-   if (bo)
-      nouveau_ws_bo_ref(bo);
+   struct nvkmd_mem *mem = area->mem;
+   if (mem)
+      nvkmd_mem_ref(mem);
    *bytes_per_warp_out = area->bytes_per_warp;
    *bytes_per_tpc_out = area->bytes_per_tpc;
    simple_mtx_unlock(&area->mutex);
 
-   return bo;
+   return mem;
 }
 
 static VkResult
@@ -61,6 +61,8 @@ nvk_slm_area_ensure(struct nvk_device *dev,
                     uint32_t bytes_per_thread)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   VkResult result;
+
    assert(bytes_per_thread < (1 << 24));
 
    /* TODO: Volta+doesn't use CRC */
@@ -98,28 +100,28 @@ nvk_slm_area_ensure(struct nvk_device *dev,
     */
    size = align64(size, 0x20000);
 
-   struct nouveau_ws_bo *bo =
-      nouveau_ws_bo_new(dev->ws_dev, size, 0,
-                        NOUVEAU_WS_BO_LOCAL | NOUVEAU_WS_BO_NO_SHARE);
-   if (bo == NULL)
-      return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+   struct nvkmd_mem *mem;
+   result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base, size, 0,
+                                NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE, &mem);
+   if (result != VK_SUCCESS)
+      return result;
 
-   struct nouveau_ws_bo *unref_bo;
+   struct nvkmd_mem *unref_mem;
    simple_mtx_lock(&area->mutex);
    if (bytes_per_tpc <= area->bytes_per_tpc) {
       /* We lost the race, throw away our BO */
       assert(area->bytes_per_warp == bytes_per_warp);
-      unref_bo = bo;
+      unref_mem = mem;
    } else {
-      unref_bo = area->bo;
-      area->bo = bo;
+      unref_mem = area->mem;
+      area->mem = mem;
       area->bytes_per_warp = bytes_per_warp;
       area->bytes_per_tpc = bytes_per_tpc;
    }
    simple_mtx_unlock(&area->mutex);
 
-   if (unref_bo)
-      nouveau_ws_bo_destroy(unref_bo);
+   if (unref_mem)
+      nvkmd_mem_unref(unref_mem);
 
    return VK_SUCCESS;
 }

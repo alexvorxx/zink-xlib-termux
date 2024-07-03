@@ -17,19 +17,20 @@
 
 struct nvk_physical_device;
 struct nvkmd_dev;
+struct nvkmd_mem;
 struct vk_pipeline_cache;
 
 struct nvk_slm_area {
    simple_mtx_t mutex;
-   struct nouveau_ws_bo *bo;
+   struct nvkmd_mem *mem;
    uint32_t bytes_per_warp;
    uint32_t bytes_per_tpc;
 };
 
-struct nouveau_ws_bo *
-nvk_slm_area_get_bo_ref(struct nvk_slm_area *area,
-                        uint32_t *bytes_per_warp_out,
-                        uint32_t *bytes_per_mp_out);
+struct nvkmd_mem *
+nvk_slm_area_get_mem_ref(struct nvk_slm_area *area,
+                         uint32_t *bytes_per_warp_out,
+                         uint32_t *bytes_per_mp_out);
 
 struct nvk_device {
    struct vk_device vk;

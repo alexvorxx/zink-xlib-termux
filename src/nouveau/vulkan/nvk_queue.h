@@ -28,7 +28,7 @@ struct nvk_queue_state {
    } samplers;
 
    struct {
-      struct nouveau_ws_bo *bo;
+      struct nvkmd_mem *mem;
       uint32_t bytes_per_warp;
       uint32_t bytes_per_tpc;
    } slm;

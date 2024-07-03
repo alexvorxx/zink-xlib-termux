@@ -58,6 +58,7 @@ nvk_files = files(
   'nvk_wsi.c',
   'nvk_wsi.h',
   'nvkmd/nouveau/nvkmd_nouveau.h',
+  'nvkmd/nouveau/nvkmd_nouveau_ctx.c',
   'nvkmd/nouveau/nvkmd_nouveau_dev.c',
   'nvkmd/nouveau/nvkmd_nouveau_mem.c',
   'nvkmd/nouveau/nvkmd_nouveau_pdev.c',

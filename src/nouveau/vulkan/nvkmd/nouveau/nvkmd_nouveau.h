@@ -8,9 +8,12 @@
 #include "nvkmd/nvkmd.h"
 #include "vk_drm_syncobj.h"
 
+#include "drm-uapi/nouveau_drm.h"
+
 #include <sys/types.h>
 
 struct nouveau_ws_bo;
+struct nouveau_ws_context;
 struct nouveau_ws_device;
 
 struct nvkmd_nouveau_pdev {
@@ -89,5 +92,45 @@ VkResult nvkmd_nouveau_alloc_va(struct nvkmd_dev *dev,
                                 enum nvkmd_va_flags flags, uint8_t pte_kind,
                                 uint64_t size_B, uint64_t align_B,
                                 uint64_t fixed_addr, struct nvkmd_va **va_out);
+
+#define NVKMD_NOUVEAU_MAX_SYNCS 256
+#define NVKMD_NOUVEAU_MAX_BINDS 4096
+#define NVKMD_NOUVEAU_MAX_PUSH 1024
+
+struct nvkmd_nouveau_exec_ctx {
+   struct nvkmd_ctx base;
+
+   struct nouveau_ws_device *ws_dev;
+   struct nouveau_ws_context *ws_ctx;
+
+   uint32_t syncobj;
+
+   uint32_t max_push;
+
+   struct drm_nouveau_sync req_wait[NVKMD_NOUVEAU_MAX_SYNCS];
+   struct drm_nouveau_sync req_sig[NVKMD_NOUVEAU_MAX_SYNCS];
+   struct drm_nouveau_exec_push req_push[NVKMD_NOUVEAU_MAX_PUSH];
+   struct drm_nouveau_exec req;
+};
+
+NVKMD_DECL_SUBCLASS(ctx, nouveau_exec);
+
+struct nvkmd_nouveau_bind_ctx {
+   struct nvkmd_ctx base;
+
+   struct nouveau_ws_device *ws_dev;
+
+   struct drm_nouveau_sync req_wait[NVKMD_NOUVEAU_MAX_SYNCS];
+   struct drm_nouveau_sync req_sig[NVKMD_NOUVEAU_MAX_SYNCS];
+   struct drm_nouveau_vm_bind_op req_ops[NVKMD_NOUVEAU_MAX_BINDS];
+   struct drm_nouveau_vm_bind req;
+};
+
+NVKMD_DECL_SUBCLASS(ctx, nouveau_bind);
+
+VkResult nvkmd_nouveau_create_ctx(struct nvkmd_dev *dev,
+                                  struct vk_object_base *log_obj,
+                                  enum nvkmd_engines engines,
+                                  struct nvkmd_ctx **ctx_out);
 
 #endif /* NVKMD_DRM_H */

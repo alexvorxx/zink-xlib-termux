@@ -281,7 +281,10 @@ fn generate_peg_grammar_instructions(isa: &ISA) -> String {
 
         // Prepare rule parts
         let mut rule_parts = Vec::new();
-        rule_parts.push(format!("\"{}\"", instruction.name));
+        rule_parts.push(format!(
+            "\"{}\"",
+            instruction.displayname.unwrap_or(instruction.name)
+        ));
 
         let template_key = format!("INSTR_{}", type_.to_ascii_uppercase());
         let flags = isa

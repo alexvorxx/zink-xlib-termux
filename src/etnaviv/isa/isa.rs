@@ -9,6 +9,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Bitset<'a> {
     pub name: &'a str,
+    pub displayname: Option<&'a str>,
     pub extends: Option<&'a str>,
     pub meta: HashMap<&'a str, &'a str>,
 }
@@ -112,6 +113,7 @@ impl<'a> ISA<'a> {
             .filter(|node| node.is_element() && node.has_tag_name("bitset"))
             .for_each(|node| {
                 let name = node.attribute("name").unwrap();
+                let displayname = node.attribute("displayname");
                 let extends = node.attribute("extends");
                 let meta_nodes = node
                     .children()
@@ -127,6 +129,7 @@ impl<'a> ISA<'a> {
                     name,
                     Bitset {
                         name,
+                        displayname,
                         extends,
                         meta: combined_meta,
                     },

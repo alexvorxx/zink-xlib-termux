@@ -858,6 +858,9 @@ tu_BindImageMemory2(VkDevice _device,
          image->bo = wsi_img->bo;
          image->map = NULL;
          image->iova = wsi_img->iova;
+
+         TU_RMV(image_bind, device, image);
+
          continue;
       }
 #endif

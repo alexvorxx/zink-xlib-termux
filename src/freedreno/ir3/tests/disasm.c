@@ -44,16 +44,19 @@
 
 /* clang-format off */
 /* Note: @anholt's 4xx disasm was done on an a418 Nexus 5x */
-#define INSTR_4XX(i, d, ...) { .gpu_id = 420, .instr = #i, .expected = d, __VA_ARGS__ }
-#define INSTR_5XX(i, d, ...) { .gpu_id = 540, .instr = #i, .expected = d, __VA_ARGS__ }
-#define INSTR_6XX(i, d, ...) { .gpu_id = 630, .instr = #i, .expected = d, __VA_ARGS__ }
-#define INSTR_7XX(i, d, ...) { .chip_id = 0x07030001, .instr = #i, .expected = d, __VA_ARGS__ }
+#define INSTR_4XX(i, d, ...) { .gpu_id = 420, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_5XX(i, d, ...) { .gpu_id = 540, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_6XX(i, d, ...) { .gpu_id = 630, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_6XX_RAW(i, d, ...) { .gpu_id = 630, .instr = NULL, .instr_raw = i, .expected = d, __VA_ARGS__ }
+#define INSTR_7XX(i, d, ...) { .chip_id = 0x07030001, .instr = #i, .instr_raw = 0, .expected = d, __VA_ARGS__ }
+#define INSTR_7XX_RAW(i, d, ...) { .chip_id = 0x07030001, .instr = NULL, .instr_raw = i, .expected = d, __VA_ARGS__ }
 /* clang-format on */
 
 static const struct test {
    int gpu_id;
    int chip_id;
    const char *instr;
+   uint64_t instr_raw;
    const char *expected;
    /**
     * Do we expect asm parse fail (ie. for things not (yet) supported by
@@ -503,7 +506,16 @@ main(int argc, char **argv)
 
    for (int i = 0; i < ARRAY_SIZE(tests); i++) {
       const struct test *test = &tests[i];
-      printf("Testing a%d %s: \"%s\"...\n", test->gpu_id, test->instr,
+      uint32_t code[2];
+      if (test->instr) {
+         code[0] = strtoll(&test->instr[9], NULL, 16);
+         code[1] = strtoll(&test->instr[0], NULL, 16);
+      } else {
+         code[0] = test->instr_raw;
+         code[1] = test->instr_raw >> 32;
+      }
+
+      printf("Testing a%d %08x_%08x: \"%s\"...\n", test->gpu_id, code[1], code[0],
              test->expected);
 
       struct fd_dev_id dev_id = {
@@ -520,10 +532,6 @@ main(int argc, char **argv)
        * Test disassembly:
        */
 
-      uint32_t code[2] = {
-         strtoll(&test->instr[9], NULL, 16),
-         strtoll(&test->instr[0], NULL, 16),
-      };
       ir3_isa_disasm(code, 8, fdisasm,
                      &(struct isa_decode_options){
                         .gpu_id = dev_info->chip * 100,

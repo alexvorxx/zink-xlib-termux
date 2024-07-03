@@ -87,6 +87,7 @@ static const struct debug_named_value radeonsi_debug_options[] = {
 
    /* Multimedia options: */
    { "noefc", DBG(NO_EFC), "Disable hardware based encoder colour format conversion."},
+   {"lowlatencyenc", DBG(LOW_LATENCY_ENCODE), "Enable low latency encoding."},
 
    /* 3D engine options: */
    {"nongg", DBG(NO_NGG), "Disable NGG and use the legacy pipeline."},

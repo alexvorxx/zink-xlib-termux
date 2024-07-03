@@ -298,6 +298,14 @@ static bool lower_resource_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin
       nir_src_rewrite(&intrin->src[1], desc);
       break;
    }
+   case nir_intrinsic_load_ssbo_address: {
+      nir_def *desc = load_ssbo_desc(b, &intrin->src[0], s);
+      nir_def *lo = nir_channel(b, desc, 0);
+      nir_def *hi = nir_i2i32(b, nir_u2u16(b, nir_channel(b, desc, 1)));
+      nir_def_rewrite_uses(&intrin->def, nir_pack_64_2x32_split(b, lo, hi));
+      nir_instr_remove(&intrin->instr);
+      break;
+   }
    case nir_intrinsic_get_ssbo_size: {
       assert(!(nir_intrinsic_access(intrin) & ACCESS_NON_UNIFORM));
 

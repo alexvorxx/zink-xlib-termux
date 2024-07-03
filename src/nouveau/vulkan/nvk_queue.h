@@ -14,15 +14,16 @@ struct nouveau_ws_context;
 struct novueau_ws_push;
 struct nv_push;
 struct nvk_device;
+struct nvkmd_mem;
 
 struct nvk_queue_state {
    struct {
-      struct nouveau_ws_bo *bo;
+      struct nvkmd_mem *mem;
       uint32_t alloc_count;
    } images;
 
    struct {
-      struct nouveau_ws_bo *bo;
+      struct nvkmd_mem *mem;
       uint32_t alloc_count;
    } samplers;
 

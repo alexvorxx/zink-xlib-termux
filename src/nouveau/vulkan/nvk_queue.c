@@ -31,10 +31,10 @@ static void
 nvk_queue_state_finish(struct nvk_device *dev,
                        struct nvk_queue_state *qs)
 {
-   if (qs->images.bo)
-      nouveau_ws_bo_destroy(qs->images.bo);
-   if (qs->samplers.bo)
-      nouveau_ws_bo_destroy(qs->samplers.bo);
+   if (qs->images.mem)
+      nvkmd_mem_unref(qs->images.mem);
+   if (qs->samplers.mem)
+      nvkmd_mem_unref(qs->samplers.mem);
    if (qs->slm.bo)
       nouveau_ws_bo_destroy(qs->slm.bo);
    if (qs->push.bo) {
@@ -62,33 +62,34 @@ nvk_queue_state_update(struct nvk_device *dev,
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nouveau_ws_bo *bo;
+   struct nvkmd_mem *mem;
    uint32_t alloc_count, bytes_per_warp, bytes_per_tpc;
    bool dirty = false;
 
-   bo = nvk_descriptor_table_get_bo_ref(&dev->images, &alloc_count);
-   if (qs->images.bo != bo || qs->images.alloc_count != alloc_count) {
-      if (qs->images.bo)
-         nouveau_ws_bo_destroy(qs->images.bo);
-      qs->images.bo = bo;
+   mem = nvk_descriptor_table_get_mem_ref(&dev->images, &alloc_count);
+   if (qs->images.mem != mem || qs->images.alloc_count != alloc_count) {
+      if (qs->images.mem)
+         nvkmd_mem_unref(qs->images.mem);
+      qs->images.mem = mem;
       qs->images.alloc_count = alloc_count;
       dirty = true;
    } else {
       /* No change */
-      if (bo)
-         nouveau_ws_bo_destroy(bo);
+      if (mem)
+         nvkmd_mem_unref(mem);
    }
 
-   bo = nvk_descriptor_table_get_bo_ref(&dev->samplers, &alloc_count);
-   if (qs->samplers.bo != bo || qs->samplers.alloc_count != alloc_count) {
-      if (qs->samplers.bo)
-         nouveau_ws_bo_destroy(qs->samplers.bo);
-      qs->samplers.bo = bo;
+   mem = nvk_descriptor_table_get_mem_ref(&dev->samplers, &alloc_count);
+   if (qs->samplers.mem != mem || qs->samplers.alloc_count != alloc_count) {
+      if (qs->samplers.mem)
+         nvkmd_mem_unref(qs->samplers.mem);
+      qs->samplers.mem = mem;
       qs->samplers.alloc_count = alloc_count;
       dirty = true;
    } else {
       /* No change */
-      if (bo)
-         nouveau_ws_bo_destroy(bo);
+      if (mem)
+         nvkmd_mem_unref(mem);
    }
 
    bo = nvk_slm_area_get_bo_ref(&dev->slm, &bytes_per_warp, &bytes_per_tpc);
@@ -130,11 +131,11 @@ nvk_queue_state_update(struct nvk_device *dev,
    nv_push_init(&push, push_map, 256);
    struct nv_push *p = &push;
 
-   if (qs->images.bo) {
+   if (qs->images.mem) {
       /* Compute */
       P_MTHD(p, NVA0C0, SET_TEX_HEADER_POOL_A);
-      P_NVA0C0_SET_TEX_HEADER_POOL_A(p, qs->images.bo->offset >> 32);
-      P_NVA0C0_SET_TEX_HEADER_POOL_B(p, qs->images.bo->offset);
+      P_NVA0C0_SET_TEX_HEADER_POOL_A(p, qs->images.mem->va->addr >> 32);
+      P_NVA0C0_SET_TEX_HEADER_POOL_B(p, qs->images.mem->va->addr);
       P_NVA0C0_SET_TEX_HEADER_POOL_C(p, qs->images.alloc_count - 1);
       P_IMMD(p, NVA0C0, INVALIDATE_TEXTURE_HEADER_CACHE_NO_WFI, {
          .lines = LINES_ALL
@@ -142,19 +143,19 @@ nvk_queue_state_update(struct nvk_device *dev,
 
       /* 3D */
       P_MTHD(p, NV9097, SET_TEX_HEADER_POOL_A);
-      P_NV9097_SET_TEX_HEADER_POOL_A(p, qs->images.bo->offset >> 32);
-      P_NV9097_SET_TEX_HEADER_POOL_B(p, qs->images.bo->offset);
+      P_NV9097_SET_TEX_HEADER_POOL_A(p, qs->images.mem->va->addr >> 32);
+      P_NV9097_SET_TEX_HEADER_POOL_B(p, qs->images.mem->va->addr);
       P_NV9097_SET_TEX_HEADER_POOL_C(p, qs->images.alloc_count - 1);
       P_IMMD(p, NV9097, INVALIDATE_TEXTURE_HEADER_CACHE_NO_WFI, {
          .lines = LINES_ALL
       });
    }
 
-   if (qs->samplers.bo) {
+   if (qs->samplers.mem) {
       /* Compute */
       P_MTHD(p, NVA0C0, SET_TEX_SAMPLER_POOL_A);
-      P_NVA0C0_SET_TEX_SAMPLER_POOL_A(p, qs->samplers.bo->offset >> 32);
-      P_NVA0C0_SET_TEX_SAMPLER_POOL_B(p, qs->samplers.bo->offset);
+      P_NVA0C0_SET_TEX_SAMPLER_POOL_A(p, qs->samplers.mem->va->addr >> 32);
+      P_NVA0C0_SET_TEX_SAMPLER_POOL_B(p, qs->samplers.mem->va->addr);
       P_NVA0C0_SET_TEX_SAMPLER_POOL_C(p, qs->samplers.alloc_count - 1);
       P_IMMD(p, NVA0C0, INVALIDATE_SAMPLER_CACHE_NO_WFI, {
          .lines = LINES_ALL
@@ -162,8 +163,8 @@ nvk_queue_state_update(struct nvk_device *dev,
 
       /* 3D */
       P_MTHD(p, NV9097, SET_TEX_SAMPLER_POOL_A);
-      P_NV9097_SET_TEX_SAMPLER_POOL_A(p, qs->samplers.bo->offset >> 32);
-      P_NV9097_SET_TEX_SAMPLER_POOL_B(p, qs->samplers.bo->offset);
+      P_NV9097_SET_TEX_SAMPLER_POOL_A(p, qs->samplers.mem->va->addr >> 32);
+      P_NV9097_SET_TEX_SAMPLER_POOL_B(p, qs->samplers.mem->va->addr);
       P_NV9097_SET_TEX_SAMPLER_POOL_C(p, qs->samplers.alloc_count - 1);
       P_IMMD(p, NV9097, INVALIDATE_SAMPLER_CACHE_NO_WFI, {
          .lines = LINES_ALL

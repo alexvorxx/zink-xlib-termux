@@ -28,6 +28,7 @@ DEPS=(
     "clang-${LLVM_VERSION}"
     "clang-format-${LLVM_VERSION}"
     dpkg-cross
+    dpkg-dev
     findutils
     flex
     flatbuffers-compiler

@@ -484,7 +484,18 @@ static const struct test {
 
 static void
 add_generated_tests(struct u_vector *all_tests, void *ctx) {
+   /* stib.b/ldib.b OFFSET_LO aliases what other instructions use for opcode */
+   for (int offset = 1; offset < 0x1f; offset++) {
+      char *stib = ralloc_asprintf(
+         ctx, "stib.b.untyped.1d.u32.4.imm.base0 r2.y, r5.z+%u, 4", offset);
+      *(struct test *)u_vector_add(all_tests) = (struct test)INSTR_6XX_RAW(
+         0xc026080916e77100ull + ((uint64_t)offset << 54), stib);
 
+      char *ldib = ralloc_asprintf(
+         ctx, "ldib.b.untyped.1d.u32.4.imm.base0 r0.z, r0.y+%u, 0", offset);
+      *(struct test *)u_vector_add(all_tests) = (struct test)INSTR_6XX_RAW(
+         0xc026000201e1b100ull + ((uint64_t)offset << 54), ldib);
+   }
 }
 
 static void

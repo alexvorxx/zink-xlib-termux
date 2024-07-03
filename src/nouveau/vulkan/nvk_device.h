@@ -47,8 +47,8 @@ struct nvk_device {
    struct nvk_heap shader_heap;
    struct nvk_heap event_heap;
    struct nvk_slm_area slm;
-   struct nouveau_ws_bo *zero_page;
-   struct nouveau_ws_bo *vab_memory;
+   struct nvkmd_mem *zero_page;
+   struct nvkmd_mem *vab_memory;
 
    struct nvk_queue queue;
 

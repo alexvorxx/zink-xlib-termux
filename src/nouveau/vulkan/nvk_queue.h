@@ -9,7 +9,7 @@
 
 #include "vk_queue.h"
 
-struct novueau_ws_bo;
+struct nouveau_ws_bo;
 struct nouveau_ws_context;
 struct novueau_ws_push;
 struct nv_push;
@@ -53,7 +53,7 @@ struct nvk_queue {
    struct nvk_queue_state state;
 
    /* CB0 for all draw commands on this queue */
-   struct nouveau_ws_bo *draw_cb0;
+   struct nvkmd_mem *draw_cb0;
 };
 
 static inline struct nvk_device *

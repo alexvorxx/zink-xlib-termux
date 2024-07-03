@@ -214,24 +214,24 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    nvk_slm_area_init(&dev->slm);
 
-   void *zero_map;
-   dev->zero_page = nouveau_ws_bo_new_mapped(dev->ws_dev, 0x1000, 0,
-                                             NOUVEAU_WS_BO_LOCAL |
-                                             NOUVEAU_WS_BO_NO_SHARE,
-                                             NOUVEAU_WS_BO_WR, &zero_map);
-   if (dev->zero_page == NULL)
+   result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &pdev->vk.base,
+                                       0x1000, 0,
+                                       NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                                       NVKMD_MEM_MAP_WR, &dev->zero_page);
+   if (result != VK_SUCCESS)
       goto fail_slm;
 
-   memset(zero_map, 0, 0x1000);
-   nouveau_ws_bo_unmap(dev->zero_page, zero_map);
+   memset(dev->zero_page->map, 0, 0x1000);
+   nvkmd_mem_unmap(dev->zero_page);
 
    if (pdev->info.cls_eng3d >= FERMI_A &&
        pdev->info.cls_eng3d < MAXWELL_A) {
       /* max size is 256k */
-      dev->vab_memory = nouveau_ws_bo_new(dev->ws_dev, 1 << 17, 1 << 20,
-                                          NOUVEAU_WS_BO_LOCAL |
-                                          NOUVEAU_WS_BO_NO_SHARE);
-      if (dev->vab_memory == NULL)
+      result = nvkmd_dev_alloc_mem(dev->nvkmd, &pdev->vk.base,
+                                   1 << 17, 1 << 20,
+                                   NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                                   &dev->vab_memory);
+      if (result != VK_SUCCESS)
          goto fail_zero_page;
    }
 
@@ -263,9 +263,9 @@ fail_queue:
    nvk_queue_finish(dev, &dev->queue);
 fail_vab_memory:
    if (dev->vab_memory)
-      nouveau_ws_bo_destroy(dev->vab_memory);
+      nvkmd_mem_unref(dev->vab_memory);
 fail_zero_page:
-   nouveau_ws_bo_destroy(dev->zero_page);
+   nvkmd_mem_unref(dev->zero_page);
 fail_slm:
    nvk_slm_area_finish(&dev->slm);
    nvk_heap_finish(dev, &dev->event_heap);
@@ -299,8 +299,8 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    vk_pipeline_cache_destroy(dev->vk.mem_cache, NULL);
    nvk_queue_finish(dev, &dev->queue);
    if (dev->vab_memory)
-      nouveau_ws_bo_destroy(dev->vab_memory);
-   nouveau_ws_bo_destroy(dev->zero_page);
+      nvkmd_mem_unref(dev->vab_memory);
+   nvkmd_mem_unref(dev->zero_page);
    vk_device_finish(&dev->vk);
 
    /* Idle the upload queue before we tear down heaps */

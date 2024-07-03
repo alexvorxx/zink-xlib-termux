@@ -353,17 +353,16 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
    nvk_queue_state_init(&queue->state);
 
    if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
-      queue->draw_cb0 = nouveau_ws_bo_new(dev->ws_dev, 4096, 0,
-                                          NOUVEAU_WS_BO_LOCAL |
-                                          NOUVEAU_WS_BO_NO_SHARE);
-      if (queue->draw_cb0 == NULL) {
-         result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base,
+                                   4096, 0,
+                                   NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                                   &queue->draw_cb0);
+      if (result != VK_SUCCESS)
          goto fail_state;
-      }
 
       result = nvk_upload_queue_fill(dev, &dev->upload,
-                                     queue->draw_cb0->offset, 0,
-                                     queue->draw_cb0->size);
+                                     queue->draw_cb0->va->addr, 0,
+                                     queue->draw_cb0->size_B);
       if (result != VK_SUCCESS)
          goto fail_draw_cb0;
    }
@@ -382,7 +381,7 @@ fail_drm:
    nvk_queue_finish_drm_nouveau(dev, queue);
 fail_draw_cb0:
    if (queue->draw_cb0 != NULL)
-      nouveau_ws_bo_destroy(queue->draw_cb0);
+      nvkmd_mem_unref(queue->draw_cb0);
 fail_state:
    nvk_queue_state_finish(dev, &queue->state);
    vk_queue_finish(&queue->vk);
@@ -395,7 +394,7 @@ nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue)
 {
    if (queue->draw_cb0 != NULL) {
       nvk_upload_queue_sync(dev, &dev->upload);
-      nouveau_ws_bo_destroy(queue->draw_cb0);
+      nvkmd_mem_unref(queue->draw_cb0);
    }
    nvk_queue_state_finish(dev, &queue->state);
    nvk_queue_finish_drm_nouveau(dev, queue);

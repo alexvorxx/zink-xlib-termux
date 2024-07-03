@@ -486,7 +486,7 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
    P_IMMD(p, NV9097, SET_EDGE_FLAG, V_TRUE);
    P_IMMD(p, NV9097, SET_SAMPLER_BINDING, V_INDEPENDENTLY);
 
-   uint64_t zero_addr = dev->zero_page->offset;
+   uint64_t zero_addr = dev->zero_page->va->addr;
    P_MTHD(p, NV9097, SET_VERTEX_STREAM_SUBSTITUTE_A);
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_A(p, zero_addr >> 32);
    P_NV9097_SET_VERTEX_STREAM_SUBSTITUTE_B(p, zero_addr);
@@ -494,7 +494,7 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
    if (pdev->info.cls_eng3d >= FERMI_A &&
        pdev->info.cls_eng3d < MAXWELL_A) {
       assert(dev->vab_memory);
-      uint64_t vab_addr = dev->vab_memory->offset;
+      uint64_t vab_addr = dev->vab_memory->va->addr;
       P_MTHD(p, NV9097, SET_VAB_MEMORY_AREA_A);
       P_NV9097_SET_VAB_MEMORY_AREA_A(p, vab_addr >> 32);
       P_NV9097_SET_VAB_MEMORY_AREA_B(p, vab_addr);
@@ -505,7 +505,7 @@ nvk_push_draw_state_init(struct nvk_queue *queue, struct nv_push *p)
       P_IMMD(p, NVB097, SET_SELECT_MAXWELL_TEXTURE_HEADERS, V_TRUE);
 
    /* Store the address to CB0 in a pair of state registers */
-   uint64_t cb0_addr = queue->draw_cb0->offset;
+   uint64_t cb0_addr = queue->draw_cb0->va->addr;
    P_MTHD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_CB0_ADDR_HI));
    P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_ADDR_HI, cb0_addr >> 32);
    P_NV9097_SET_MME_SHADOW_SCRATCH(p, NVK_MME_SCRATCH_CB0_ADDR_LO, cb0_addr);

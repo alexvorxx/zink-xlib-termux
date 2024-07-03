@@ -63,12 +63,6 @@ _mesa_error_no_memory(const char *caller);
 extern void
 _mesa_debug( const struct gl_context *ctx, const char *fmtString, ... ) PRINTFLIKE(2, 3);
 
-extern void
-_mesa_log(const char *fmtString, ...) PRINTFLIKE(1, 2);
-
-extern void
-_mesa_log_direct(const char *string);
-
 
 void
 _mesa_shader_debug(struct gl_context *ctx, GLenum type, GLuint *id,

@@ -849,25 +849,15 @@ SPDX-License-Identifier: MIT
      ({SRC0_USE} != 0) &amp;&amp; ({SRC1_USE} == 0)
 </expr>
 
-<bitset name="#instruction-cf-maybe-src0-src1" extends="#instruction-cf">
+<bitset name="#instruction-cf-src0" extends="#instruction-cf">
+	<meta valid_srcs="0"/>
+
        <display>
-               {INSTR_CF} {:align=18}void, void, void, {TARGET}
+               {INSTR_CF} {:align=18}void, {SRC0}, void, {TARGET}
        </display>
 
-	<override expr="#instruction-has-src0-src1">
-		<display>
-			{INSTR_CF} {:align=18}void, {SRC0}, {SRC1}, {TARGET}
-		</display>
-	</override>
-
-	<override expr="#instruction-has-src0">
-		<display>
-			{INSTR_CF} {:align=18}void, {SRC0}, void, {TARGET}
-		</display>
-	</override>
-
        <!-- SRC0 -->
-       <field name="SRC0_USE" pos="43" type="bool"/>
+       <pattern pos="43">1</pattern> <!-- SRC0_USE -->
        <field name="SRC0_REG" low="44" high="52" type="uint"/>
        <field name="SRC0" low="54" high="63" type="#instruction-src">
                <param name="SRC0_REG" as="SRC_REG"/>
@@ -877,16 +867,44 @@ SPDX-License-Identifier: MIT
        <field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
        <field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
 
-       <!-- SRC1 -->
-       <field name="SRC1_USE" pos="70" type="bool"/>
-       <field name="SRC1_REG" low="71" high="79" type="uint"/>
-       <field name="SRC1" low="81" high="90" type="#instruction-src">
-               <param name="SRC1_REG" as="SRC_REG"/>
-               <param name="SRC1_AMODE" as="SRC_AMODE"/>
-               <param name="SRC1_RGROUP" as="SRC_RGROUP"/>
-       </field>
-       <field name="SRC1_AMODE" low="91" high="93" type="#reg_addressing_mode"/>
-       <field name="SRC1_RGROUP" low="96" high="98" type="#reg_group"/>
+	<!-- SRC1 -->
+	<pattern pos="70">0</pattern> <!-- SRC1_USE -->
+	<pattern low="71" high="79">000000000</pattern> <!-- SRC1_REG -->
+	<pattern low="81" high="88">00000000</pattern> <!-- SRC1_SWIZ -->
+	<pattern pos="89">0</pattern> <!-- SRC1_NEG -->
+	<pattern pos="90">0</pattern> <!-- SRC1_ABS -->
+	<pattern low="91" high="93">000</pattern> <!-- SRC1_AMODE -->
+	<pattern low="96" high="98">000</pattern> <!-- SRC1_RGROUP -->
+</bitset>
+
+<bitset name="#instruction-cf-src0-src1" extends="#instruction-cf">
+	<meta valid_srcs="0|1"/>
+
+	<display>
+		{INSTR_CF} {:align=18}void, {SRC0}, {SRC1}, {TARGET}
+	</display>
+
+	<!-- SRC0 -->
+	<pattern pos="43">1</pattern> <!-- SRC0_USE -->
+	<field name="SRC0_REG" low="44" high="52" type="uint"/>
+	<field name="SRC0" low="54" high="63" type="#instruction-src">
+		<param name="SRC0_REG" as="SRC_REG"/>
+		<param name="SRC0_AMODE" as="SRC_AMODE"/>
+		<param name="SRC0_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC0_AMODE" low="64" high="66" type="#reg_addressing_mode"/>
+	<field name="SRC0_RGROUP" low="67" high="69" type="#reg_group"/>
+
+	<!-- SRC1 -->
+	<pattern pos="70">1</pattern> <!-- SRC1_USE -->
+	<field name="SRC1_REG" low="71" high="79" type="uint"/>
+	<field name="SRC1" low="81" high="90" type="#instruction-src">
+		<param name="SRC1_REG" as="SRC_REG"/>
+		<param name="SRC1_AMODE" as="SRC_AMODE"/>
+		<param name="SRC1_RGROUP" as="SRC_RGROUP"/>
+	</field>
+	<field name="SRC1_AMODE" low="91" high="93" type="#reg_addressing_mode"/>
+	<field name="SRC1_RGROUP" low="96" high="98" type="#reg_group"/>
 </bitset>
 
 <bitset name="#left-shift" size="2">
@@ -1142,7 +1160,17 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="branch" extends="#instruction-cf-maybe-src0-src1">
+<bitset name="branch" extends="#instruction-cf-no-src">
+	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
+	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="branch_unary" extends="#instruction-cf-src0" displayname="branch">
+	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
+	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
+</bitset>
+
+<bitset name="branch_binary" extends="#instruction-cf-src0-src1" displayname="branch">
 	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
@@ -1195,7 +1223,7 @@ SPDX-License-Identifier: MIT
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>
 
-<bitset name="branch_any" extends="#instruction-cf-maybe-src0-src1">
+<bitset name="branch_any" extends="#instruction-cf-src0-src1">
 	<pattern low="0" high="5">100100</pattern> <!-- OPC -->
 	<pattern pos="80">0</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

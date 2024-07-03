@@ -233,7 +233,7 @@ etna_emit_jump(struct etna_compile *c, unsigned block, struct etna_inst_src cond
    }
 
    struct etna_inst inst = {
-      .opcode = ISA_OPC_BRANCH,
+      .opcode = ISA_OPC_BRANCH_UNARY,
       .cond = ISA_COND_NOT,
       .type = ISA_TYPE_U32,
       .src[0] = condition,

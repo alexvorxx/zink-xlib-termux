@@ -150,7 +150,7 @@ INSTANTIATE_TEST_SUITE_P(Opcodes, DisasmTest,
       disasm_state{ {0x00801021, 0x00000004, 0x00000000, 0x00000008}, "sqrt              t0.x___, void, void, t0.xxxx\n" },
       disasm_state{ {0x03001022, 0x00000005, 0x00000000, 0x00154008}, "sin.rtz           t0.zy, void, void, t0.yyyy\n" },
       disasm_state{ {0x01801023, 0x00000005, 0x00000000, 0x00000008}, "cos.rtz           t0.xy__, void, void, t0.xxxx\n" },
-      disasm_state{ {0x000001a4, 0x3e401804, 0x500000c0, 0x00000487}, "branch_any.ne.s32 void, t1.yzww, 1, 9\t; dontcare bits in branch_any: 00000000000000000000000400000000\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
+      disasm_state{ {0x000001a4, 0x3e401804, 0x500000c0, 0x00000487}, "branch_any.ne.s32 void, t1.yzww, 1, 9\t; dontcare bits in branch_any: 00000000000000000000000400000000\n", FLAG_FAILING_ASM},
       disasm_state{ {0x00801025, 0x00000004, 0x00000000, 0x00000008}, "floor             t0.x___, void, void, t0.xxxx\n"},
       disasm_state{ {0x00801026, 0x00000004, 0x00000000, 0x00000008}, "ceil              t0.x___, void, void, t0.xxxx\n"},
       disasm_state{ {0x00801027, 0x00000004, 0x00000000, 0x00000008}, "sign              t0.x___, void, void, t0.xxxx\n" },
@@ -206,13 +206,13 @@ INSTANTIATE_TEST_SUITE_P(Branch, DisasmTest,
    testing::Values(
       // taken from deqp2 run on GC2000
       disasm_state{ {0x00000016, 0x00000000, 0x00000000, 0x00001080}, "branch            void, void, void, 33\n"},
-      disasm_state{ {0x00000056, 0x00000800, 0x000000d0, 0x00000280}, "branch.gt         void, u0.xxxx, t1.xxxx, 5\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
-      disasm_state{ {0x00000056, 0x00000800, 0x000000d0, 0x00000280}, "branch.gt         void, u0.xxxx, t1.xxxx, 5\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
-      disasm_state{ {0x00000096, 0x15402800, 0x00000040, 0x00000082}, "branch.lt         void, t2.yyyy, u0.xxxx, 1\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
-      disasm_state{ {0x000000d6, 0x00001800, 0x01540250, 0x00000980}, "branch.ge         void, u1.xxxx, t4.zzzz, 19\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
-      disasm_state{ {0x00000116, 0x3fc01800, 0x000000c0, 0x00000482}, "branch.le         void, t1.wwww, u1.xxxx, 9\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
-      disasm_state{ {0x00000156, 0x39001800, 0x000002c0, 0x00001282}, "branch.eq         void, t1.xyzw, u5.xxxx, 37\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
-      disasm_state{ {0x00000196, 0x15401800, 0x00aa0040, 0x00000382}, "branch.ne         void, t1.yyyy, u0.yyyy, 7\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM}
+      disasm_state{ {0x00000056, 0x00000800, 0x000000d0, 0x00000280}, "branch.gt         void, u0.xxxx, t1.xxxx, 5\n"},
+      disasm_state{ {0x00000056, 0x00000800, 0x000000d0, 0x00000280}, "branch.gt         void, u0.xxxx, t1.xxxx, 5\n"},
+      disasm_state{ {0x00000096, 0x15402800, 0x00000040, 0x00000082}, "branch.lt         void, t2.yyyy, u0.xxxx, 1\n"},
+      disasm_state{ {0x000000d6, 0x00001800, 0x01540250, 0x00000980}, "branch.ge         void, u1.xxxx, t4.zzzz, 19\n"},
+      disasm_state{ {0x00000116, 0x3fc01800, 0x000000c0, 0x00000482}, "branch.le         void, t1.wwww, u1.xxxx, 9\n"},
+      disasm_state{ {0x00000156, 0x39001800, 0x000002c0, 0x00001282}, "branch.eq         void, t1.xyzw, u5.xxxx, 37\n"},
+      disasm_state{ {0x00000196, 0x15401800, 0x00aa0040, 0x00000382}, "branch.ne         void, t1.yyyy, u0.yyyy, 7\n"}
    )
 );
 // clang-format on
@@ -329,7 +329,7 @@ INSTANTIATE_TEST_SUITE_P(TFShader, DisasmTest,
       disasm_state{ {0x01831009, 0x00000000, 0x00000000, 0x00150008}, "mov.pack          t3.xy__, void, void, t0.xyyy\n"},
       disasm_state{ {0x03841009, 0x00000000, 0x00000000, 0x00290008}, "mov.pack          t4.xyz_, void, void, t0.xyzz\n"},
       disasm_state{ {0x0201102d, 0x00000800, 0x40000010, 0x00000000}, "i2f.s32.pack      t1.__z_, u0.xxxx, void, void\n"},
-      disasm_state{ {0x00000156, 0x2a801800, 0x01540040, 0x00000402}, "branch.eq         void, t1.zzzz, u0.zzzz, 8\n", FLAG_FAILING_PARSE | FLAG_FAILING_ASM},
+      disasm_state{ {0x00000156, 0x2a801800, 0x01540040, 0x00000402}, "branch.eq         void, t1.zzzz, u0.zzzz, 8\n"},
       disasm_state{ {0x0081100c, 0x3fc00800, 0x400100d0, 0x20154008}, "imadlo0.s32.pack  t1.x___, u0.wwww, t1.xxxx, u0.yyyy\n"},
       disasm_state{ {0x07820033, 0x00001800, 0x01540040, 0x0039002a}, "store.pack        mem, t1.xxxx, u0.zzzz, t2.xyzw\t; dontcare bits in store: 00000000000000000000000000020000\n", FLAG_FAILING_ASM}
    )

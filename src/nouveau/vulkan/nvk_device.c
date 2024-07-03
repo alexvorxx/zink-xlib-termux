@@ -192,11 +192,11 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
     * Also, the I-cache pre-fetches and we don't really know by how much.
     * Over-allocating shader BOs by 4K ensures we don't run past.
     */
-   enum nouveau_ws_bo_map_flags shader_map_flags = 0;
+   enum nvkmd_mem_map_flags shader_map_flags = 0;
    if (pdev->info.bar_size_B >= pdev->info.vram_size_B)
-      shader_map_flags = NOUVEAU_WS_BO_WR;
+      shader_map_flags = NVKMD_MEM_MAP_WR;
    result = nvk_heap_init(dev, &dev->shader_heap,
-                          NOUVEAU_WS_BO_LOCAL | NOUVEAU_WS_BO_NO_SHARE,
+                          NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
                           shader_map_flags,
                           4096 /* overalloc */,
                           pdev->info.cls_eng3d < VOLTA_A);
@@ -204,8 +204,8 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_samplers;
 
    result = nvk_heap_init(dev, &dev->event_heap,
-                          NOUVEAU_WS_BO_LOCAL | NOUVEAU_WS_BO_NO_SHARE,
-                          NOUVEAU_WS_BO_WR,
+                          NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                          NVKMD_MEM_MAP_WR,
                           0 /* overalloc */, false /* contiguous */);
    if (result != VK_SUCCESS)
       goto fail_shader_heap;

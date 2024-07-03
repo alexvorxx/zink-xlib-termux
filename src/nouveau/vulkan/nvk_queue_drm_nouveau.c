@@ -613,8 +613,13 @@ nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
                           submit->image_opaque_bind_count > 0;
    push_builder_init(queue, &pb, is_vmbind);
 
-   if (!is_vmbind && upload_time_point > 0)
-      push_add_syncobj_wait(&pb, dev->upload.drm.syncobj, upload_time_point);
+   if (!is_vmbind && upload_time_point > 0) {
+      push_add_sync_wait(&pb, &(struct vk_sync_wait) {
+         .sync = dev->upload.sync,
+         .stage_mask = ~0,
+         .wait_value = upload_time_point,
+      });
+   }
 
    for (uint32_t i = 0; i < submit->wait_count; i++)
       push_add_sync_wait(&pb, &submit->waits[i]);

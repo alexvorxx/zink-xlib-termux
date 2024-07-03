@@ -10,18 +10,18 @@
 #include "util/list.h"
 #include "util/simple_mtx.h"
 
-struct nouveau_ws_context;
 struct nvk_device;
 struct nvk_upload_mem;
+struct nvkmd_mem;
+struct nvkmd_ctx;
+struct vk_sync;
 
 struct nvk_upload_queue {
    simple_mtx_t mutex;
 
-   struct {
-      struct nouveau_ws_context *ws_ctx;
-      uint32_t syncobj;
-   } drm;
+   struct nvkmd_ctx *ctx;
 
+   struct vk_sync *sync;
    uint64_t last_time_point;
 
    struct nvk_upload_mem *mem;

@@ -6,13 +6,9 @@
 #include "nvk_upload_queue.h"
 
 #include "nvk_device.h"
+#include "nvk_physical_device.h"
 #include "nvkmd/nvkmd.h"
 #include "vk_alloc.h"
-
-#include <xf86drm.h>
-#include "nouveau_context.h"
-#include "nouveau_device.h"
-#include "drm-uapi/nouveau_drm.h"
 
 #include "nv_push.h"
 #include "nv_push_cl90b5.h"
@@ -67,36 +63,34 @@ VkResult
 nvk_upload_queue_init(struct nvk_device *dev,
                       struct nvk_upload_queue *queue)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VkResult result;
 
    memset(queue, 0, sizeof(*queue));
 
    simple_mtx_init(&queue->mutex, mtx_plain);
 
-   int err = nouveau_ws_context_create(dev->ws_dev, NOUVEAU_WS_ENGINE_COPY,
-                                       &queue->drm.ws_ctx);
-   if (err != 0) {
-      if (err == -ENOSPC)
-         result = vk_error(dev, VK_ERROR_TOO_MANY_OBJECTS);
-      else
-         result = vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+   result = nvkmd_dev_create_ctx(dev->nvkmd, &dev->vk.base,
+                                 NVKMD_ENGINE_COPY, &queue->ctx);
+   if (result != VK_SUCCESS)
       goto fail_mutex;
-   }
 
-   err = drmSyncobjCreate(dev->ws_dev->fd, 0, &queue->drm.syncobj);
-   if (err < 0) {
-      result = vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_context;
-   }
+   const struct vk_sync_type *sync_type = pdev->nvkmd->sync_types[0];
+   assert(sync_type->features & VK_SYNC_FEATURE_TIMELINE);
+
+   result = vk_sync_create(&dev->vk, sync_type, VK_SYNC_IS_TIMELINE,
+                           0, &queue->sync);
+   if (result != VK_SUCCESS)
+      goto fail_ctx;
 
    list_inithead(&queue->recycle);
 
    return VK_SUCCESS;
 
+fail_ctx:
+   nvkmd_ctx_destroy(queue->ctx);
 fail_mutex:
    simple_mtx_destroy(&queue->mutex);
-fail_context:
-   nouveau_ws_context_destroy(queue->drm.ws_ctx);
 
    return result;
 }
@@ -111,8 +105,8 @@ nvk_upload_queue_finish(struct nvk_device *dev,
    if (queue->mem != NULL)
       nvk_upload_mem_destroy(dev, queue->mem);
 
-   drmSyncobjDestroy(dev->ws_dev->fd, queue->drm.syncobj);
-   nouveau_ws_context_destroy(queue->drm.ws_ctx);
+   vk_sync_destroy(&dev->vk, queue->sync);
+   nvkmd_ctx_destroy(queue->ctx);
    simple_mtx_destroy(&queue->mutex);
 }
 
@@ -121,6 +115,8 @@ nvk_upload_queue_flush_locked(struct nvk_device *dev,
                               struct nvk_upload_queue *queue,
                               uint64_t *time_point_out)
 {
+   VkResult result;
+
    if (queue->mem == NULL || queue->mem_push_start == queue->mem_push_end) {
       if (time_point_out != NULL)
          *time_point_out = queue->last_time_point;
@@ -131,29 +127,22 @@ nvk_upload_queue_flush_locked(struct nvk_device *dev,
    if (time_point == UINT64_MAX)
       abort();
 
-   struct drm_nouveau_exec_push push = {
-      .va = queue->mem->mem->va->addr + queue->mem_push_start,
-      .va_len = queue->mem_push_end - queue->mem_push_start,
+   const struct nvkmd_ctx_exec exec = {
+      .addr = queue->mem->mem->va->addr + queue->mem_push_start,
+      .size_B = queue->mem_push_end - queue->mem_push_start,
    };
+   result = nvkmd_ctx_exec(queue->ctx, &dev->vk.base, 1, &exec);
+   if (result != VK_SUCCESS)
+      return result;
 
-   struct drm_nouveau_sync sig = {
-      .flags = DRM_NOUVEAU_SYNC_TIMELINE_SYNCOBJ,
-      .handle = queue->drm.syncobj,
-      .timeline_value = time_point,
+   const struct vk_sync_signal signal = {
+      .sync = queue->sync,
+      .stage_mask = ~0,
+      .signal_value = time_point,
    };
-
-   struct drm_nouveau_exec req = {
-      .channel = queue->drm.ws_ctx->channel,
-      .push_count = 1,
-      .sig_count = 1,
-      .push_ptr = (uintptr_t)&push,
-      .sig_ptr = (uintptr_t)&sig,
-   };
-
-   int err = drmCommandWriteRead(dev->ws_dev->fd, DRM_NOUVEAU_EXEC,
-                                 &req, sizeof(req));
-   if (err != 0)
-      return vk_device_set_lost(&dev->vk, "DRM_NOUVEAU_EXEC failed: %m");
+   result = nvkmd_ctx_signal(queue->ctx, &dev->vk.base, 1, &signal);
+   if (result != VK_SUCCESS)
+      return result;
 
    /* Wait until now to update last_time_point so that, if we do fail and lose
     * the device, nvk_upload_queue_sync won't wait forever on a time point
@@ -197,14 +186,8 @@ nvk_upload_queue_sync_locked(struct nvk_device *dev,
    if (queue->last_time_point == 0)
       return VK_SUCCESS;
 
-   int err = drmSyncobjTimelineWait(dev->ws_dev->fd, &queue->drm.syncobj,
-                                    &queue->last_time_point, 1, INT64_MAX,
-                                    DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
-                                    NULL);
-   if (err != 0)
-      return vk_device_set_lost(&dev->vk, "DRM_IOCTL_SYNCOBJ_WAIT failed: %m");
-
-   return VK_SUCCESS;
+   return vk_sync_wait(&dev->vk, queue->sync, queue->last_time_point,
+                       VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
 }
 
 VkResult
@@ -251,12 +234,9 @@ nvk_upload_queue_reserve(struct nvk_device *dev,
    /* Try to pop an idle BO off the recycle list */
    if (!list_is_empty(&queue->recycle)) {
       uint64_t time_point_passed = 0;
-      int err = drmSyncobjQuery(dev->ws_dev->fd, &queue->drm.syncobj,
-                                &time_point_passed, 1);
-      if (err) {
-         return vk_device_set_lost(&dev->vk,
-                                   "DRM_IOCTL_SYNCOBJ_QUERY failed: %m");
-      }
+      result = vk_sync_get_value(&dev->vk, queue->sync, &time_point_passed);
+      if (result != VK_SUCCESS)
+         return result;
 
       struct nvk_upload_mem *mem =
          list_first_entry(&queue->recycle, struct nvk_upload_mem, link);

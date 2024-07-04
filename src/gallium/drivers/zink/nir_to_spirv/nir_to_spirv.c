@@ -4053,26 +4053,6 @@ emit_deref_array(struct ntv_context *ctx, nir_deref_instr *deref)
    if (itype == nir_type_float)
       index = emit_bitcast(ctx, get_uvec_type(ctx, 32, 1), index);
 
-   if (var->data.mode == nir_var_uniform || var->data.mode == nir_var_image) {
-      nir_deref_instr *aoa_deref = nir_src_as_deref(deref->parent);
-      uint32_t inner_stride = glsl_array_size(aoa_deref->type);
-
-      while (aoa_deref->deref_type != nir_deref_type_var) {
-         assert(aoa_deref->deref_type == nir_deref_type_array);
-
-         SpvId aoa_index = get_src(ctx, &aoa_deref->arr.index, &itype);
-         if (itype == nir_type_float)
-            aoa_index = emit_bitcast(ctx, get_uvec_type(ctx, 32, 1), aoa_index);
-
-         aoa_deref = nir_src_as_deref(aoa_deref->parent);
-
-         uint32_t stride = glsl_get_aoa_size(aoa_deref->type) / inner_stride;
-         aoa_index = emit_binop(ctx, SpvOpIMul, get_uvec_type(ctx, 32, 1), aoa_index,
-                                emit_uint_const(ctx, 32, stride));
-         index = emit_binop(ctx, SpvOpIAdd, get_uvec_type(ctx, 32, 1), index, aoa_index);
-      }
-   }
-
    SpvId ptr_type = spirv_builder_type_pointer(&ctx->builder,
                                                storage_class,
                                                type);

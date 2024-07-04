@@ -6108,6 +6108,58 @@ trivial_revectorize(nir_shader *nir)
    return progress;
 }
 
+static bool
+flatten_image_arrays_intr(struct nir_builder *b, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_deref)
+      return false;
+
+   nir_deref_instr *deref = nir_instr_as_deref(instr);
+   if (deref->deref_type != nir_deref_type_array)
+      return false;
+   nir_deref_instr *parent = nir_deref_instr_parent(deref);
+   if (!parent || parent->deref_type != nir_deref_type_array)
+      return false;
+   nir_variable *var = nir_deref_instr_get_variable(deref);
+   const struct glsl_type *type = glsl_without_array(var->type);
+   if (type == var->type || (!glsl_type_is_sampler(type) && !glsl_type_is_image(type)))
+      return false;
+
+   nir_deref_instr *parent_parent = nir_deref_instr_parent(parent);
+   int parent_size = glsl_array_size(parent->type);
+   b->cursor = nir_after_instr(instr);
+   nir_deref_instr *new_deref = nir_build_deref_array(b, parent_parent, nir_iadd(b, nir_imul_imm(b, parent->arr.index.ssa, parent_size), deref->arr.index.ssa));
+   nir_def_rewrite_uses_after(&deref->def, &new_deref->def, &new_deref->instr);
+   _mesa_set_add(data, instr);
+   _mesa_set_add(data, &parent->instr);
+   return true;
+}
+
+static bool
+flatten_image_arrays(nir_shader *nir)
+{
+   bool progress = false;
+   nir_foreach_variable_with_modes(var, nir, nir_var_uniform | nir_var_image) {
+      const struct glsl_type *type = glsl_without_array(var->type);
+      if (!glsl_type_is_sampler(type) && !glsl_type_is_image(type))
+         continue;
+      if (type == var->type)
+         continue;
+      var->type = glsl_array_type(type, glsl_get_aoa_size(var->type), sizeof(void*));
+      progress = true;
+   }
+   struct set *deletions = _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
+   progress |= nir_shader_instructions_pass(nir, flatten_image_arrays_intr, nir_metadata_dominance, deletions);
+   set_foreach_remove(deletions, he) {
+      nir_instr *instr = (void*)he->key;
+      nir_instr_remove_v(instr);
+   }
+   _mesa_set_destroy(deletions, NULL);
+   if (progress)
+      nir_fixup_deref_types(nir);
+   return progress;
+}
+
 struct zink_shader *
 zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 {
@@ -6180,6 +6232,7 @@ zink_shader_init(struct zink_screen *screen, struct zink_shader *zs)
    }
 
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_in | nir_var_shader_out, NULL, NULL);
+   NIR_PASS_V(nir, flatten_image_arrays);
    optimize_nir(nir, NULL, true);
    nir_foreach_variable_with_modes(var, nir, nir_var_shader_in | nir_var_shader_out) {
       if (glsl_type_is_image(var->type) || glsl_type_is_sampler(var->type)) {

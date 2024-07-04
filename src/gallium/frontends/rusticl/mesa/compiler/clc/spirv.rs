@@ -175,7 +175,7 @@ impl SPIRVBin {
             None
         };
 
-        (res, msgs.join("\n"))
+        (res, msgs.join(""))
     }
 
     // TODO cache linking, parsing is around 25% of link time
@@ -206,7 +206,7 @@ impl SPIRVBin {
             spirv: out,
             info: info,
         });
-        (res, msgs.join("\n"))
+        (res, msgs.join(""))
     }
 
     pub fn validate(&self, options: &clc_validator_options) -> (bool, String) {
@@ -214,7 +214,7 @@ impl SPIRVBin {
         let logger = create_clc_logger(&mut msgs);
         let res = unsafe { clc_validate_spirv(&self.spirv, &logger, options) };
 
-        (res, msgs.join("\n"))
+        (res, msgs.join(""))
     }
 
     pub fn clone_on_validate(&self, options: &clc_validator_options) -> (Option<Self>, String) {

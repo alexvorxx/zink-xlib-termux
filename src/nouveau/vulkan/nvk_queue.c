@@ -254,6 +254,7 @@ nvk_queue_submit(struct vk_queue *vk_queue,
 {
    struct nvk_queue *queue = container_of(vk_queue, struct nvk_queue, vk);
    struct nvk_device *dev = nvk_queue_device(queue);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VkResult result;
 
    if (vk_queue_is_lost(&queue->vk))
@@ -265,12 +266,12 @@ nvk_queue_submit(struct vk_queue *vk_queue,
                                            "pointers pushbuf");
    }
 
-   const bool sync = dev->ws_dev->debug_flags & NVK_DEBUG_PUSH_SYNC;
+   const bool sync = pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
 
    result = nvk_queue_submit_drm_nouveau(queue, submit, sync);
 
    if ((sync && result != VK_SUCCESS) ||
-       (dev->ws_dev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
+       (pdev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
       nvk_queue_state_dump_push(dev, &queue->state, stderr);
 
       for (unsigned i = 0; i < submit->command_buffer_count; i++) {
@@ -436,9 +437,9 @@ nvk_queue_submit_simple(struct nvk_queue *queue,
    result = nvk_queue_submit_simple_drm_nouveau(queue, dw_count, push_bo,
                                                 extra_bo_count, extra_bos);
 
-   const bool debug_sync = dev->ws_dev->debug_flags & NVK_DEBUG_PUSH_SYNC;
+   const bool debug_sync = pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
    if ((debug_sync && result != VK_SUCCESS) ||
-       (dev->ws_dev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
+       (pdev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
       struct nv_push push = {
          .start = (uint32_t *)dw,
          .end = (uint32_t *)dw + dw_count,

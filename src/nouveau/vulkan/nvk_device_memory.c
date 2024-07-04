@@ -201,7 +201,7 @@ nvk_AllocateMemory(VkDevice device,
       }
    }
 
-   if (dev->ws_dev->debug_flags & NVK_DEBUG_ZERO_MEMORY) {
+   if (pdev->debug_flags & NVK_DEBUG_ZERO_MEMORY) {
       if (type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
          void *map = nouveau_ws_bo_map(mem->bo, NOUVEAU_WS_BO_RDWR, NULL);
          if (map == NULL) {

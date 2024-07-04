@@ -41,6 +41,7 @@ nvk_CreateQueryPool(VkDevice device,
                     VkQueryPool *pQueryPool)
 {
    VK_FROM_HANDLE(nvk_device, dev, device);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_query_pool *pool;
 
    pool = vk_query_pool_create(&dev->vk, pCreateInfo,
@@ -86,7 +87,7 @@ nvk_CreateQueryPool(VkDevice device,
          return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       }
 
-      if (dev->ws_dev->debug_flags & NVK_DEBUG_ZERO_MEMORY)
+      if (pdev->debug_flags & NVK_DEBUG_ZERO_MEMORY)
          memset(pool->bo_map, 0, bo_size);
    }
 

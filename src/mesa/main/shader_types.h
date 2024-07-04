@@ -446,16 +446,6 @@ struct gl_shader_program
     */
    unsigned NumExplicitUniformLocations;
 
-   /**
-    * Map of active uniform names to locations
-    *
-    * Maps any active uniform that is not an array element to a location.
-    * Each active uniform, including individual structure members will appear
-    * in this map.  This roughly corresponds to the set of names that would be
-    * enumerated by \c glGetActiveUniform.
-    */
-   struct string_to_uint_map *UniformHash;
-
    GLboolean SamplersValidated; /**< Samplers validated against texture units? */
 
    bool IsES;              /**< True if this program uses GLSL ES */

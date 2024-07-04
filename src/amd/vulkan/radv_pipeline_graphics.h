@@ -126,9 +126,6 @@ struct radv_graphics_pipeline {
    /* Whether the pipeline uses VRS coarse shading internally. */
    bool uses_vrs_coarse_shading;
 
-   /* For graphics pipeline library */
-   bool retain_shaders;
-
    /* For relocation of shaders with RGP. */
    struct radv_sqtt_shaders_reloc *sqtt_shaders_reloc;
 };

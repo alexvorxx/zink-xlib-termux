@@ -645,10 +645,16 @@ radv_pipeline_import_graphics_info(struct radv_device *device, struct radv_graph
    return result;
 }
 
+static bool
+radv_should_import_lib_binaries(const VkPipelineCreateFlags2KHR create_flags)
+{
+   return !(create_flags & (VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT |
+                            VK_PIPELINE_CREATE_2_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT));
+}
+
 static void
 radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                  struct vk_graphics_pipeline_state *state, struct radv_graphics_lib_pipeline *lib,
-                                  bool link_optimize)
+                                  struct vk_graphics_pipeline_state *state, struct radv_graphics_lib_pipeline *lib)
 {
    bool import_binaries = false;
 
@@ -663,7 +669,7 @@ radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_
    vk_graphics_pipeline_state_merge(state, &lib->graphics_state);
 
    /* Import binaries when LTO is disabled and when the library doesn't retain any shaders. */
-   if (!link_optimize && !pipeline->retain_shaders) {
+   if (radv_should_import_lib_binaries(pipeline->base.create_flags)) {
       import_binaries = true;
    }
 
@@ -2303,19 +2309,19 @@ radv_pipeline_import_retained_shaders(const struct radv_device *device, struct r
 }
 
 static void
-radv_pipeline_load_retained_shaders(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                    const VkGraphicsPipelineCreateInfo *pCreateInfo, struct radv_shader_stage *stages)
+radv_pipeline_load_retained_shaders(const struct radv_device *device, const VkGraphicsPipelineCreateInfo *pCreateInfo,
+                                    struct radv_shader_stage *stages)
 {
+   const VkPipelineCreateFlags2KHR create_flags = vk_graphics_pipeline_create_flags(pCreateInfo);
    const VkPipelineLibraryCreateInfoKHR *libs_info =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
-   const bool link_optimize = (pipeline->base.create_flags & VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT) != 0;
 
    /* Nothing to load if no libs are imported. */
    if (!libs_info)
       return;
 
    /* Nothing to load if fast-linking is enabled and if there is no retained shaders. */
-   if (!link_optimize && !pipeline->retain_shaders)
+   if (radv_should_import_lib_binaries(create_flags))
       return;
 
    for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
@@ -2624,7 +2630,7 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
       radv_pipeline_stage_init(sinfo, pipeline_layout, &pipeline_key->stage_info[stage], &stages[stage]);
    }
 
-   radv_pipeline_load_retained_shaders(device, pipeline, pCreateInfo, stages);
+   radv_pipeline_load_retained_shaders(device, pCreateInfo, stages);
 
    if (radv_should_compute_pipeline_hash(device, pipeline, fast_linking_enabled)) {
       radv_hash_shaders(device, pipeline->base.sha1, stages, MESA_VULKAN_SHADER_STAGES, pipeline_layout,
@@ -3067,21 +3073,13 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
 
    /* If we have libraries, import them first. */
    if (libs_info) {
-      const bool link_optimize =
-         (pipeline->base.create_flags & VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT) != 0;
-
       for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
          VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
          assert(pipeline_lib->type == RADV_PIPELINE_GRAPHICS_LIB);
 
-         /* If we have link time optimization, all libraries must be created with
-          * VK_PIPELINE_CREATE_2_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT.
-          */
-         assert(!link_optimize || gfx_pipeline_lib->base.retain_shaders);
-
-         radv_graphics_pipeline_import_lib(device, pipeline, &state, gfx_pipeline_lib, link_optimize);
+         radv_graphics_pipeline_import_lib(device, pipeline, &state, gfx_pipeline_lib);
 
          needed_lib_flags &= ~gfx_pipeline_lib->lib_flags;
       }
@@ -3214,22 +3212,17 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
    struct vk_graphics_pipeline_state *state = &pipeline->graphics_state;
 
    pipeline->base.last_vgt_api_stage = MESA_SHADER_NONE;
-   pipeline->base.retain_shaders =
-      (pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT) != 0;
    pipeline->lib_flags = needed_lib_flags;
 
    radv_pipeline_layout_init(device, &pipeline->base.layout, false);
 
    /* If we have libraries, import them first. */
    if (libs_info) {
-      const bool link_optimize =
-         (pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT) != 0;
-
       for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
          VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
-         radv_graphics_pipeline_import_lib(device, &pipeline->base, state, gfx_pipeline_lib, link_optimize);
+         radv_graphics_pipeline_import_lib(device, &pipeline->base, state, gfx_pipeline_lib);
 
          pipeline->lib_flags |= gfx_pipeline_lib->lib_flags;
 

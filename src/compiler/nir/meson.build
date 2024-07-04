@@ -45,8 +45,7 @@ nir_opt_algebraic_c = custom_target(
   'nir_opt_algebraic.c',
   input : 'nir_opt_algebraic.py',
   output : 'nir_opt_algebraic.c',
-  command : [prog_python, '@INPUT@'],
-  capture : true,
+  command : [prog_python, '@INPUT@', '--out', '@OUTPUT@'],
   depend_files : nir_algebraic_depends,
 )
 

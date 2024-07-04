@@ -103,7 +103,7 @@ xe_add_config(struct intel_perf_config *perf, int fd,
    memcpy(regs, config->flex_regs, config->n_flex_regs * sizeof(uint64_t));
 
    ret = intel_ioctl(fd, DRM_IOCTL_XE_PERF, &perf_param);
-   free(regs);
+   free((void*)(uintptr_t)xe_config.regs_ptr);
    return ret > 0 ? ret : 0;
 }
 

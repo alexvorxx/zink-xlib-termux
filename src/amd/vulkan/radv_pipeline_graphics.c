@@ -1708,8 +1708,7 @@ radv_generate_graphics_state_key(const struct radv_device *device, const struct 
    }
 
    /* Compile the pre-rasterization stages only when the vertex input interface is missing. */
-   if ((lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT) &&
-       !(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT)) {
+   if ((state->shader_stages && VK_SHADER_STAGE_VERTEX_BIT) && !state->vi) {
       key.vs.has_prolog = true;
    }
 

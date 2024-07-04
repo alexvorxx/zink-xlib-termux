@@ -1693,7 +1693,7 @@ radv_pipeline_generate_ps_epilog_key(const struct radv_device *device, const str
 
 static struct radv_graphics_state_key
 radv_generate_graphics_state_key(const struct radv_device *device, const struct vk_graphics_pipeline_state *state,
-                                 enum radv_pipeline_type pipeline_type, VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
+                                 VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_graphics_state_key key;
@@ -1777,9 +1777,8 @@ radv_generate_graphics_state_key(const struct radv_device *device, const struct 
       key.ia.topology = radv_translate_prim(state->ia->primitive_topology);
    }
 
-   if (pipeline_type == RADV_PIPELINE_GRAPHICS_LIB &&
-       (!(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT) ||
-        !(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT))) {
+   if (!state->vi || !(state->shader_stages & (VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
+                                               VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_MESH_BIT_EXT))) {
       key.unknown_rast_prim = true;
    }
 
@@ -1857,13 +1856,12 @@ radv_generate_graphics_state_key(const struct radv_device *device, const struct 
 static struct radv_graphics_pipeline_key
 radv_generate_graphics_pipeline_key(const struct radv_device *device, const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                     const struct vk_graphics_pipeline_state *state,
-                                    enum radv_pipeline_type pipeline_type,
                                     VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
 {
    VkPipelineCreateFlags2KHR create_flags = vk_graphics_pipeline_create_flags(pCreateInfo);
    struct radv_graphics_pipeline_key key = {0};
 
-   key.gfx_state = radv_generate_graphics_state_key(device, state, pipeline_type, lib_flags);
+   key.gfx_state = radv_generate_graphics_state_key(device, state, lib_flags);
 
    for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {
       const VkPipelineShaderStageCreateInfo *stage = &pCreateInfo->pStages[i];
@@ -3091,7 +3089,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
 
    if (!radv_skip_graphics_pipeline_compile(device, pipeline, fast_linking_enabled)) {
       struct radv_graphics_pipeline_key key =
-         radv_generate_graphics_pipeline_key(device, pCreateInfo, &state, pipeline->base.type, needed_lib_flags);
+         radv_generate_graphics_pipeline_key(device, pCreateInfo, &state, needed_lib_flags);
 
       result = radv_graphics_pipeline_compile(pipeline, pCreateInfo, &pipeline->layout, device, cache, &key,
                                               fast_linking_enabled);
@@ -3234,7 +3232,7 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
       radv_pipeline_layout_hash(&pipeline->base.layout);
 
    struct radv_graphics_pipeline_key key =
-      radv_generate_graphics_pipeline_key(device, pCreateInfo, state, pipeline->base.base.type, needed_lib_flags);
+      radv_generate_graphics_pipeline_key(device, pCreateInfo, state, needed_lib_flags);
 
    return radv_graphics_pipeline_compile(&pipeline->base, pCreateInfo, &pipeline->base.layout, device, cache, &key,
                                          fast_linking_enabled);

@@ -10,15 +10,9 @@
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
 #include "nvkmd/nvkmd.h"
-#include "nvkmd/nouveau/nvkmd_nouveau.h"
 
 #include "vk_pipeline_cache.h"
 #include "vulkan/wsi/wsi_common.h"
-
-#include "nouveau_context.h"
-
-#include <fcntl.h>
-#include <xf86drm.h>
 
 #include "cl9097.h"
 #include "clb097.h"
@@ -157,8 +151,6 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    result = nvkmd_pdev_create_dev(pdev->nvkmd, &pdev->vk.base, &dev->nvkmd);
    if (result != VK_SUCCESS)
       goto fail_init;
-
-   dev->ws_dev = nvkmd_nouveau_dev(dev->nvkmd)->ws_dev;
 
    vk_device_set_drm_fd(&dev->vk, nvkmd_dev_get_drm_fd(dev->nvkmd));
    dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;

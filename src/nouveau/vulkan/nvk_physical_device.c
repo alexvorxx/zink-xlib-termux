@@ -23,10 +23,7 @@
 #include "vk_shader_module.h"
 #include "vulkan/wsi/wsi_common.h"
 
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <sys/sysmacros.h>
-#include <xf86drm.h>
 
 #include "cl90c0.h"
 #include "cl91c0.h"
@@ -1099,7 +1096,7 @@ nvk_get_vram_heap_available(struct nvk_physical_device *pdev)
 
 VkResult
 nvk_create_drm_physical_device(struct vk_instance *_instance,
-                               drmDevicePtr drm_device,
+                               struct _drmDevice *drm_device,
                                struct vk_physical_device **pdev_out)
 {
    struct nvk_instance *instance = (struct nvk_instance *)_instance;

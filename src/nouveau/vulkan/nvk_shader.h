@@ -12,7 +12,6 @@
 
 #include "nak.h"
 #include "nir.h"
-#include "nouveau_bo.h"
 
 #include "vk_shader.h"
 

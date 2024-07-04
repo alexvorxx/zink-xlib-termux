@@ -37,9 +37,6 @@ struct nvk_device {
 
    struct nvkmd_dev *nvkmd;
 
-   /* Leave this for now so we have less refactoring */
-   struct nouveau_ws_device *ws_dev;
-
    struct nvk_upload_queue upload;
 
    struct nvk_descriptor_table images;

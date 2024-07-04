@@ -19,8 +19,6 @@
 #include "vk_pipeline_layout.h"
 #include "vk_synchronization.h"
 
-#include "nouveau_context.h"
-
 #include "nv_push_cl906f.h"
 #include "nv_push_cl90b5.h"
 #include "nv_push_cla097.h"

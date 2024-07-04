@@ -15,9 +15,6 @@
 
 #include "vk_format.h"
 
-#include "nouveau_bo.h"
-#include "nouveau_context.h"
-
 #include "nvtypes.h"
 #include "nv_push_cl902d.h"
 #include "nv_push_cl90b5.h"

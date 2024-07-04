@@ -1155,7 +1155,8 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    if (!drm_device_is_nouveau(drm_device->nodes[DRM_NODE_RENDER]))
       return VK_ERROR_INCOMPATIBLE_DRIVER;
 
-   struct nouveau_ws_device *ws_dev = nouveau_ws_device_new(drm_device);
+   struct nouveau_ws_device *ws_dev =
+      nouveau_ws_device_new(drm_device, instance->debug_flags);
    if (!ws_dev)
       return vk_error(instance, VK_ERROR_INCOMPATIBLE_DRIVER);
 
@@ -1257,7 +1258,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       goto fail_master_fd;
 
    pdev->info = info;
-   pdev->debug_flags = ws_dev->debug_flags;
+   pdev->debug_flags = instance->debug_flags;
    pdev->render_dev = render_dev;
    pdev->master_fd = master_fd;
    pdev->ws_dev = ws_dev;

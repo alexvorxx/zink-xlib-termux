@@ -158,7 +158,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_init;
    }
 
-   dev->ws_dev = nouveau_ws_device_new(drm_device);
+   dev->ws_dev = nouveau_ws_device_new(drm_device, pdev->ws_dev->debug_flags);
    drmFreeDevice(&drm_device);
    if (dev->ws_dev == NULL) {
       result = vk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,

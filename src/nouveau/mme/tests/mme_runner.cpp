@@ -71,7 +71,7 @@ mme_hw_runner::set_up_hw(uint16_t min_cls, uint16_t max_cls)
       if (devices[i]->available_nodes & 1 << DRM_NODE_RENDER &&
           devices[i]->bustype == DRM_BUS_PCI &&
           devices[i]->deviceinfo.pci->vendor_id == 0x10de) {
-         dev = nouveau_ws_device_new(devices[i]);
+         dev = nouveau_ws_device_new(devices[i], (enum nvk_debug)0);
          if (dev == NULL)
             continue;
 

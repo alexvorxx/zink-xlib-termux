@@ -156,22 +156,6 @@ mp_per_tpc_for_chipset(uint16_t chipset)
    return 1;
 }
 
-static void
-nouveau_ws_device_set_dbg_flags(struct nouveau_ws_device *dev)
-{
-   const struct debug_control flags[] = {
-      { "push_dump", NVK_DEBUG_PUSH_DUMP },
-      { "push", NVK_DEBUG_PUSH_DUMP },
-      { "push_sync", NVK_DEBUG_PUSH_SYNC },
-      { "zero_memory", NVK_DEBUG_ZERO_MEMORY },
-      { "vm", NVK_DEBUG_VM },
-      { "no_cbuf", NVK_DEBUG_NO_CBUF },
-      { NULL, 0 },
-   };
-
-   dev->debug_flags = parse_debug_string(getenv("NVK_DEBUG"), flags);
-}
-
 static int
 nouveau_ws_param(int fd, uint64_t param, uint64_t *value)
 {
@@ -272,7 +256,8 @@ nouveau_ws_device_info(int fd, struct nouveau_ws_device *dev)
 }
 
 struct nouveau_ws_device *
-nouveau_ws_device_new(drmDevicePtr drm_device)
+nouveau_ws_device_new(drmDevicePtr drm_device,
+                      enum nvk_debug debug_flags)
 {
    const char *path = drm_device->nodes[DRM_NODE_RENDER];
    struct nouveau_ws_device *device = CALLOC_STRUCT(nouveau_ws_device);
@@ -373,7 +358,7 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
    device->info.gpc_count = (value >> 0) & 0x000000ff;
    device->info.tpc_count = (value >> 8) & 0x0000ffff;
 
-   nouveau_ws_device_set_dbg_flags(device);
+   device->debug_flags = debug_flags;
 
    struct nouveau_ws_context *tmp_ctx;
    if (nouveau_ws_context_create(device, ~0, &tmp_ctx))

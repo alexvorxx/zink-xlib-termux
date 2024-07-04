@@ -22,8 +22,8 @@ enum nvk_debug {
 
    /* push buffer submissions wait on completion
     *
-    * This is useful to find the submission killing the GPU context. For easier debugging it also
-    * dumps the buffer leading to that.
+    * This is useful to find the submission killing the GPU context. For
+    * easier debugging it also dumps the buffer leading to that.
     */
    NVK_DEBUG_PUSH_SYNC = 1ull << 1,
 
@@ -61,7 +61,8 @@ struct nouveau_ws_device {
    simple_mtx_t vma_mutex;
 };
 
-struct nouveau_ws_device *nouveau_ws_device_new(struct _drmDevice *drm_device);
+struct nouveau_ws_device *nouveau_ws_device_new(struct _drmDevice *drm_device,
+                                                enum nvk_debug debug_flags);
 void nouveau_ws_device_destroy(struct nouveau_ws_device *);
 
 uint64_t nouveau_ws_device_vram_used(struct nouveau_ws_device *);

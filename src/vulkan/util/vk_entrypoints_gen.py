@@ -65,6 +65,17 @@ extern "C" {
 #define VK_ENTRY_WEAK
 #endif
 
+/* On Unix, we explicitly declare the symbols as hidden, as -fvisibility=hidden
+ * only applies to definitions, not declarations.
+ * Windows uses hidden visibility by default (requiring dllexport for public
+ * symbols), so we don't need to deal with visibility there.
+ */
+#ifndef _WIN32
+#define VK_ENTRY_HIDDEN __attribute__ ((visibility("hidden")))
+#else
+#define VK_ENTRY_HIDDEN
+#endif
+
 % for p in instance_prefixes:
 extern const struct vk_instance_entrypoint_table ${p}_instance_entrypoints;
 % endfor
@@ -87,7 +98,7 @@ extern const struct vk_device_entrypoint_table ${tmpl_prefix}_device_entrypoints
 #ifdef ${e.guard}
   % endif
   % for p in physical_device_prefixes:
-  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) VK_ENTRY_WEAK;
+  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) VK_ENTRY_WEAK VK_ENTRY_HIDDEN;
   % endfor
   % if e.guard is not None:
 #endif // ${e.guard}
@@ -99,7 +110,7 @@ extern const struct vk_device_entrypoint_table ${tmpl_prefix}_device_entrypoints
 #ifdef ${e.guard}
   % endif
   % for p in physical_device_prefixes:
-  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) VK_ENTRY_WEAK;
+  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) VK_ENTRY_WEAK VK_ENTRY_HIDDEN;
   % endfor
   % if e.guard is not None:
 #endif // ${e.guard}
@@ -111,7 +122,7 @@ extern const struct vk_device_entrypoint_table ${tmpl_prefix}_device_entrypoints
 #ifdef ${e.guard}
   % endif
   % for p in device_prefixes:
-  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) VK_ENTRY_WEAK;
+  VKAPI_ATTR ${e.return_type} VKAPI_CALL ${p}_${e.name}(${e.decl_params()}) VK_ENTRY_WEAK VK_ENTRY_HIDDEN;
   % endfor
 
   % if tmpl_prefix:

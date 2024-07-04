@@ -73,14 +73,6 @@ radv_pipeline_has_color_attachments(const struct vk_render_pass_state *rp)
    return false;
 }
 
-static bool
-radv_pipeline_has_ngg(const struct radv_graphics_pipeline *pipeline)
-{
-   struct radv_shader *shader = pipeline->base.shaders[pipeline->last_vgt_api_stage];
-
-   return shader->info.is_ngg;
-}
-
 /**
  * Get rid of DST in the blend factors by commuting the operands:
  *    func(src * DST, dst * 0) ---> func(src * 0, dst * SRC)
@@ -2970,8 +2962,7 @@ radv_pipeline_init_extra(struct radv_graphics_pipeline *pipeline,
       struct radv_dynamic_state *dynamic = &pipeline->dynamic_state;
       dynamic->vk.ia.primitive_topology = V_008958_DI_PT_RECTLIST;
 
-      pipeline->rast_prim =
-         radv_conv_prim_to_gs_out(dynamic->vk.ia.primitive_topology, radv_pipeline_has_ngg(pipeline));
+      pipeline->rast_prim = radv_conv_prim_to_gs_out(dynamic->vk.ia.primitive_topology, pipeline->is_ngg);
    }
 
    if (radv_pipeline_has_ds_attachments(state->rp)) {
@@ -3108,7 +3099,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
 
    radv_pipeline_init_shader_stages_state(device, pipeline);
 
-   pipeline->is_ngg = radv_pipeline_has_ngg(pipeline);
+   pipeline->is_ngg = pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.is_ngg;
    pipeline->has_ngg_culling =
       pipeline->is_ngg && pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.has_ngg_culling;
    pipeline->force_vrs_per_vertex = pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.force_vrs_per_vertex;

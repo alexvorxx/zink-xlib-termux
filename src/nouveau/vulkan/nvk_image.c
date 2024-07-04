@@ -805,7 +805,7 @@ nvk_image_init(struct nvk_device *dev,
    return VK_SUCCESS;
 }
 
-void
+static void
 nvk_image_plane_size_align_B(const struct nvk_image *image,
                              const struct nvk_image_plane *plane,
                              uint64_t *size_B_out, uint64_t *align_B_out)
@@ -1359,4 +1359,331 @@ nvk_BindImageMemory2(VkDevice device,
    }
 
    return first_error_or_success;
+}
+
+
+static VkResult
+queue_image_plane_bind(struct nvk_queue *queue,
+                       const struct nvk_image_plane *plane,
+                       const VkSparseImageMemoryBind *bind)
+{
+   VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
+   uint64_t image_bind_offset_B;
+
+   const uint64_t mem_bind_offset_B = bind->memoryOffset;
+   const uint32_t layer = bind->subresource.arrayLayer;
+   const uint32_t level = bind->subresource.mipLevel;
+
+   const struct nil_tiling plane_tiling = plane->nil.levels[level].tiling;
+   const uint32_t tile_size_B = nil_tiling_size_B(&plane_tiling);
+
+   const struct nil_Extent4D_Pixels bind_extent_px = {
+      .width = bind->extent.width,
+      .height = bind->extent.height,
+      .depth = bind->extent.depth,
+      .array_len = 1,
+   };
+   const struct nil_Offset4D_Pixels bind_offset_px = {
+      .x = bind->offset.x,
+      .y = bind->offset.y,
+      .z = bind->offset.z,
+      .a = layer,
+   };
+
+   const struct nil_Extent4D_Pixels level_extent_px =
+      nil_image_level_extent_px(&plane->nil, level);
+   const struct nil_Extent4D_Tiles level_extent_tl =
+      nil_extent4d_px_to_tl(level_extent_px, &plane_tiling,
+                            plane->nil.format,
+                            plane->nil.sample_layout);
+
+   /* Convert the extent and offset to tiles */
+   const struct nil_Extent4D_Tiles bind_extent_tl =
+      nil_extent4d_px_to_tl(bind_extent_px, &plane_tiling,
+                            plane->nil.format,
+                            plane->nil.sample_layout);
+   const struct nil_Offset4D_Tiles bind_offset_tl =
+      nil_offset4d_px_to_tl(bind_offset_px, &plane_tiling,
+                            plane->nil.format,
+                            plane->nil.sample_layout);
+
+   image_bind_offset_B =
+      nil_image_level_layer_offset_B(&plane->nil, level, layer);
+
+   /* We can only bind contiguous ranges, so we'll split the image into rows
+    * of tiles that are guaranteed to be contiguous, and bind in terms of
+    * these rows
+    */
+
+   /* First, get the size of the bind. Since we have the extent in terms of
+    * tiles already, we just need to multiply that by the tile size to get
+    * the size in bytes
+    */
+   uint64_t row_bind_size_B = bind_extent_tl.width * tile_size_B;
+
+   const uint32_t nvkmd_bind_count = bind_extent_tl.depth *
+                                     bind_extent_tl.height;
+   STACK_ARRAY(struct nvkmd_ctx_bind, nvkmd_binds, nvkmd_bind_count);
+   uint32_t nvkmd_bind_idx = 0;
+
+   /* Second, start walking the binding region in units of tiles, starting
+    * from the third dimension
+    */
+   for (uint32_t z_tl = 0; z_tl < bind_extent_tl.depth; z_tl++) {
+      /* Start walking the rows to be bound */
+      for (uint32_t y_tl = 0; y_tl < bind_extent_tl.height; y_tl++) {
+         /* For the bind offset, get a memory offset to the start of the row
+          * in terms of the bind extent
+          */
+         const uint64_t mem_row_start_tl =
+            y_tl * bind_extent_tl.width +
+            z_tl * bind_extent_tl.width * bind_extent_tl.height;
+
+         const uint32_t image_x_tl = bind_offset_tl.x;
+         const uint32_t image_y_tl = bind_offset_tl.y + y_tl;
+         const uint32_t image_z_tl = bind_offset_tl.z + z_tl;
+
+         /* The image offset is calculated in terms of the level extent */
+         const uint64_t image_row_start_tl =
+            image_x_tl +
+            image_y_tl * level_extent_tl.width +
+            image_z_tl * level_extent_tl.width * level_extent_tl.height;
+
+         nvkmd_binds[nvkmd_bind_idx++] = (struct nvkmd_ctx_bind) {
+            .op = mem ? NVKMD_BIND_OP_BIND : NVKMD_BIND_OP_UNBIND,
+            .va = plane->va,
+            .va_offset_B = image_bind_offset_B +
+                           image_row_start_tl * tile_size_B,
+            .mem = mem ? mem->mem : NULL,
+            .mem_offset_B = mem_bind_offset_B +
+                            mem_row_start_tl * tile_size_B,
+            .range_B = row_bind_size_B,
+         };
+      }
+   }
+
+   assert(nvkmd_bind_idx == nvkmd_bind_count);
+   VkResult result = nvkmd_ctx_bind(queue->bind_ctx, &queue->vk.base,
+                                    nvkmd_bind_count, nvkmd_binds);
+
+   STACK_ARRAY_FINISH(nvkmd_binds);
+
+   return result;
+}
+
+VkResult
+nvk_queue_image_bind(struct nvk_queue *queue,
+                     const VkSparseImageMemoryBindInfo *bind_info)
+{
+   VK_FROM_HANDLE(nvk_image, image, bind_info->image);
+   VkResult result;
+
+   /* Sparse residency with multiplane is currently not supported */
+   assert(image->plane_count == 1);
+
+   for (unsigned i = 0; i < bind_info->bindCount; i++) {
+      result = queue_image_plane_bind(queue, &image->planes[0],
+                                      &bind_info->pBinds[i]);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   return VK_SUCCESS;
+}
+
+static bool
+next_opaque_bind_plane(const VkSparseMemoryBind *bind,
+                       uint64_t size_B, uint32_t align_B,
+                       uint64_t *plane_offset_B,
+                       uint64_t *mem_offset_B,
+                       uint64_t *bind_size_B,
+                       uint64_t *image_plane_offset_B_iter)
+{
+   /* Figure out the offset to thise plane and increment _iter up-front so
+    * that we're free to early return elsewhere in the function.
+    */
+   *image_plane_offset_B_iter = align64(*image_plane_offset_B_iter, align_B);
+   const uint64_t image_plane_offset_B = *image_plane_offset_B_iter;
+   *image_plane_offset_B_iter += size_B;
+
+   /* Offset into the image or image mip tail, as appropriate */
+   uint64_t bind_offset_B = bind->resourceOffset;
+   if (bind_offset_B >= NVK_MIP_TAIL_START_OFFSET)
+      bind_offset_B -= NVK_MIP_TAIL_START_OFFSET;
+
+   if (bind_offset_B < image_plane_offset_B) {
+      /* The offset of the plane within the bind */
+      const uint64_t bind_plane_offset_B =
+         image_plane_offset_B - bind_offset_B;
+
+      /* If this plane lies above the bound range, skip this plane */
+      if (bind_plane_offset_B >= bind->size)
+         return false;
+
+      *plane_offset_B = 0;
+      *mem_offset_B = bind->memoryOffset + bind_plane_offset_B;
+      *bind_size_B = MIN2(bind->size - bind_plane_offset_B, size_B);
+   } else {
+      /* The offset of the bind within the plane */
+      const uint64_t plane_bind_offset_B =
+         bind_offset_B - image_plane_offset_B;
+
+      /* If this plane lies below the bound range, skip this plane */
+      if (plane_bind_offset_B >= size_B)
+         return false;
+
+      *plane_offset_B = plane_bind_offset_B;
+      *mem_offset_B = bind->memoryOffset;
+      *bind_size_B = MIN2(bind->size, size_B - plane_bind_offset_B);
+   }
+
+   return true;
+}
+
+static VkResult
+queue_image_plane_opaque_bind(struct nvk_queue *queue,
+                              struct nvk_image *image,
+                              struct nvk_image_plane *plane,
+                              const VkSparseMemoryBind *bind,
+                              uint64_t *image_plane_offset_B)
+{
+   uint64_t plane_size_B, plane_align_B;
+   nvk_image_plane_size_align_B(image, plane, &plane_size_B, &plane_align_B);
+
+   uint64_t plane_offset_B, mem_offset_B, bind_size_B;
+   if (!next_opaque_bind_plane(bind, plane_size_B, plane_align_B,
+                               &plane_offset_B, &mem_offset_B, &bind_size_B,
+                               image_plane_offset_B))
+      return VK_SUCCESS;
+
+   VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
+
+   assert(plane_offset_B + bind_size_B <= plane->va->size_B);
+   assert(!mem || mem_offset_B + bind_size_B <= mem->vk.size);
+
+   const struct nvkmd_ctx_bind nvkmd_bind = {
+      .op = mem ? NVKMD_BIND_OP_BIND : NVKMD_BIND_OP_UNBIND,
+      .va = plane->va,
+      .va_offset_B = plane_offset_B,
+      .mem = mem ? mem->mem : NULL,
+      .mem_offset_B = mem_offset_B,
+      .range_B = bind_size_B,
+   };
+   return nvkmd_ctx_bind(queue->bind_ctx, &queue->vk.base, 1, &nvkmd_bind);
+}
+
+static VkResult
+queue_image_plane_bind_mip_tail(struct nvk_queue *queue,
+                                struct nvk_image *image,
+                                struct nvk_image_plane *plane,
+                                const VkSparseMemoryBind *bind,
+                                uint64_t *image_plane_offset_B)
+{
+   uint64_t plane_size_B, plane_align_B;
+   nvk_image_plane_size_align_B(image, plane, &plane_size_B, &plane_align_B);
+
+   const uint64_t mip_tail_offset_B =
+      nil_image_mip_tail_offset_B(&plane->nil);
+   const uint64_t mip_tail_size_B =
+      nil_image_mip_tail_size_B(&plane->nil);
+   const uint64_t mip_tail_stride_B = plane->nil.array_stride_B;
+
+   const uint64_t whole_mip_tail_size_B =
+      mip_tail_size_B * plane->nil.extent_px.array_len;
+
+   uint64_t plane_offset_B, mem_offset_B, bind_size_B;
+   if (!next_opaque_bind_plane(bind, whole_mip_tail_size_B, plane_align_B,
+                               &plane_offset_B, &mem_offset_B, &bind_size_B,
+                               image_plane_offset_B))
+      return VK_SUCCESS;
+
+   VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
+
+   /* Range within the virtual mip_tail space */
+   const uint64_t mip_bind_start_B = plane_offset_B;
+   const uint64_t mip_bind_end_B = mip_bind_start_B + bind_size_B;
+
+   /* Range of array slices covered by this bind */
+   const uint32_t start_a = mip_bind_start_B / mip_tail_size_B;
+   const uint32_t end_a = DIV_ROUND_UP(mip_bind_end_B, mip_tail_size_B);
+
+   const uint32_t nvkmd_bind_count = end_a - start_a;
+   STACK_ARRAY(struct nvkmd_ctx_bind, nvkmd_binds, nvkmd_bind_count);
+   uint32_t nvkmd_bind_idx = 0;
+
+   for (uint32_t a = start_a; a < end_a; a++) {
+      /* Range within the virtual mip_tail space of this array slice */
+      const uint64_t a_mip_bind_start_B =
+         MAX2(a * mip_tail_size_B, mip_bind_start_B);
+      const uint64_t a_mip_bind_end_B =
+         MIN2((a + 1) * mip_tail_size_B, mip_bind_end_B);
+
+      /* Offset and range within this mip_tail slice */
+      const uint64_t a_offset_B = a_mip_bind_start_B - a * mip_tail_size_B;
+      const uint64_t a_range_B = a_mip_bind_end_B - a_mip_bind_start_B;
+
+      /* Offset within the current bind operation */
+      const uint64_t a_bind_offset_B =
+         a_mip_bind_start_B - mip_bind_start_B;
+
+      /* Offset within the image */
+      const uint64_t a_image_offset_B =
+         mip_tail_offset_B + (a * mip_tail_stride_B) + a_offset_B;
+
+      nvkmd_binds[nvkmd_bind_idx++] = (struct nvkmd_ctx_bind) {
+         .op = mem ? NVKMD_BIND_OP_BIND : NVKMD_BIND_OP_UNBIND,
+         .va = plane->va,
+         .va_offset_B = a_image_offset_B,
+         .mem = mem ? mem->mem : NULL,
+         .mem_offset_B = mem_offset_B + a_bind_offset_B,
+         .range_B = a_range_B,
+      };
+   }
+
+   assert(nvkmd_bind_idx == nvkmd_bind_count);
+   VkResult result = nvkmd_ctx_bind(queue->bind_ctx, &queue->vk.base,
+                                    nvkmd_bind_count, nvkmd_binds);
+
+   STACK_ARRAY_FINISH(nvkmd_binds);
+
+   return result;
+}
+
+VkResult
+nvk_queue_image_opaque_bind(struct nvk_queue *queue,
+                            const VkSparseImageOpaqueMemoryBindInfo *bind_info)
+{
+   VK_FROM_HANDLE(nvk_image, image, bind_info->image);
+   VkResult result;
+
+   for (unsigned i = 0; i < bind_info->bindCount; i++) {
+      const VkSparseMemoryBind *bind = &bind_info->pBinds[i];
+
+      uint64_t image_plane_offset_B = 0;
+      for (unsigned plane = 0; plane < image->plane_count; plane++) {
+         if (bind->resourceOffset >= NVK_MIP_TAIL_START_OFFSET) {
+            result = queue_image_plane_bind_mip_tail(queue, image,
+                                                     &image->planes[plane],
+                                                     bind,
+                                                     &image_plane_offset_B);
+         } else {
+            result = queue_image_plane_opaque_bind(queue, image,
+                                                   &image->planes[plane],
+                                                   bind,
+                                                   &image_plane_offset_B);
+         }
+         if (result != VK_SUCCESS)
+            return result;
+      }
+      if (image->stencil_copy_temp.nil.size_B > 0) {
+         result = queue_image_plane_opaque_bind(queue, image,
+                                                &image->stencil_copy_temp,
+                                                bind,
+                                                &image_plane_offset_B);
+         if (result != VK_SUCCESS)
+            return result;
+      }
+   }
+
+   return VK_SUCCESS;
 }

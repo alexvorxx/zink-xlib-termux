@@ -37,6 +37,7 @@
 
 struct nvk_device_memory;
 struct nvk_physical_device;
+struct nvk_queue;
 struct nvkmd_mem;
 struct nvkmd_va;
 
@@ -148,8 +149,10 @@ nvk_image_memory_aspects_to_plane(ASSERTED const struct nvk_image *image,
    }
 }
 
-void nvk_image_plane_size_align_B(const struct nvk_image *image,
-                                  const struct nvk_image_plane *plane,
-                                  uint64_t *size_B_out, uint64_t *align_B_out);
+VkResult nvk_queue_image_bind(struct nvk_queue *queue,
+                              const VkSparseImageMemoryBindInfo *bind_info);
+
+VkResult nvk_queue_image_opaque_bind(struct nvk_queue *queue,
+                                     const VkSparseImageOpaqueMemoryBindInfo *bind_info);
 
 #endif

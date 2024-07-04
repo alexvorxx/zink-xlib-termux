@@ -8,6 +8,7 @@
 #include "nvk_device.h"
 #include "nvk_device_memory.h"
 #include "nvk_physical_device.h"
+#include "nvk_queue.h"
 #include "nvkmd/nvkmd.h"
 
 static uint32_t
@@ -289,4 +290,39 @@ nvk_GetBufferOpaqueCaptureAddress(UNUSED VkDevice device,
    VK_FROM_HANDLE(nvk_buffer, buffer, pInfo->buffer);
 
    return nvk_buffer_address(buffer, 0);
+}
+
+VkResult
+nvk_queue_buffer_bind(struct nvk_queue *queue,
+                      const VkSparseBufferMemoryBindInfo *bind_info)
+{
+   VK_FROM_HANDLE(nvk_buffer, buffer, bind_info->buffer);
+   VkResult result;
+
+   const uint32_t bind_count = bind_info->bindCount;
+   if (bind_count == 0)
+      return VK_SUCCESS;
+
+   STACK_ARRAY(struct nvkmd_ctx_bind, binds, bind_count);
+
+   for (unsigned i = 0; i < bind_count; i++) {
+      const VkSparseMemoryBind *bind = &bind_info->pBinds[i];
+      VK_FROM_HANDLE(nvk_device_memory, mem, bind->memory);
+
+      binds[i] = (struct nvkmd_ctx_bind) {
+         .op = mem ? NVKMD_BIND_OP_BIND : NVKMD_BIND_OP_UNBIND,
+         .va = buffer->va,
+         .va_offset_B = bind->resourceOffset,
+         .mem = mem ? mem->mem : NULL,
+         .mem_offset_B = mem ? bind->memoryOffset : 0,
+         .range_B = bind->size,
+      };
+   }
+
+   result = nvkmd_ctx_bind(queue->bind_ctx, &queue->vk.base,
+                           bind_count, binds);
+
+   STACK_ARRAY_FINISH(binds);
+
+   return result;
 }

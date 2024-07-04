@@ -4,8 +4,10 @@
  */
 #include "nvk_queue.h"
 
+#include "nvk_buffer.h"
 #include "nvk_cmd_buffer.h"
 #include "nvk_device.h"
+#include "nvk_image.h"
 #include "nvk_physical_device.h"
 #include "nv_push.h"
 
@@ -243,6 +245,43 @@ nvk_queue_state_update(struct nvk_device *dev,
 }
 
 static VkResult
+nvk_queue_submit_bind(struct nvk_queue *queue,
+                      struct vk_queue_submit *submit)
+{
+   VkResult result;
+
+   result = nvkmd_ctx_wait(queue->bind_ctx, &queue->vk.base,
+                           submit->wait_count, submit->waits);
+   if (result != VK_SUCCESS)
+      return result;
+
+   for (uint32_t i = 0; i < submit->buffer_bind_count; i++) {
+      result = nvk_queue_buffer_bind(queue, &submit->buffer_binds[i]);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   for (uint32_t i = 0; i < submit->image_bind_count; i++) {
+      result = nvk_queue_image_bind(queue, &submit->image_binds[i]);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   for (uint32_t i = 0; i < submit->image_opaque_bind_count; i++) {
+      result = nvk_queue_image_opaque_bind(queue, &submit->image_opaque_binds[i]);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   result = nvkmd_ctx_signal(queue->bind_ctx, &queue->vk.base,
+                             submit->signal_count, submit->signals);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
 nvk_queue_submit(struct vk_queue *vk_queue,
                  struct vk_queue_submit *submit)
 {
@@ -253,6 +292,17 @@ nvk_queue_submit(struct vk_queue *vk_queue,
 
    if (vk_queue_is_lost(&queue->vk))
       return VK_ERROR_DEVICE_LOST;
+
+   if (submit->buffer_bind_count > 0 ||
+       submit->image_bind_count > 0  ||
+       submit->image_opaque_bind_count > 0) {
+      assert(submit->command_buffer_count == 0);
+      result = nvk_queue_submit_bind(queue, submit);
+      if (result != VK_SUCCESS)
+         return vk_queue_set_lost(&queue->vk, "Bind operation failed");
+
+      return VK_SUCCESS;
+   }
 
    result = nvk_queue_state_update(dev, &queue->state);
    if (result != VK_SUCCESS) {
@@ -367,9 +417,16 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
          goto fail_draw_cb0;
    }
 
+   if (queue_family->queue_flags & VK_QUEUE_SPARSE_BINDING_BIT) {
+      result = nvkmd_dev_create_ctx(dev->nvkmd, &dev->vk.base,
+                                    NVKMD_ENGINE_BIND, &queue->bind_ctx);
+      if (result != VK_SUCCESS)
+         goto fail_draw_cb0;
+   }
+
    result = nvk_queue_init_drm_nouveau(dev, queue, queue_flags);
    if (result != VK_SUCCESS)
-      goto fail_draw_cb0;
+      goto fail_bind_ctx;
 
    result = nvk_queue_init_context_state(queue, queue_flags);
    if (result != VK_SUCCESS)
@@ -379,6 +436,9 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
 
 fail_drm:
    nvk_queue_finish_drm_nouveau(dev, queue);
+fail_bind_ctx:
+   if (queue->bind_ctx != NULL)
+      nvkmd_ctx_destroy(queue->bind_ctx);
 fail_draw_cb0:
    if (queue->draw_cb0 != NULL)
       nvkmd_mem_unref(queue->draw_cb0);
@@ -398,6 +458,8 @@ nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue)
    }
    nvk_queue_state_finish(dev, &queue->state);
    nvk_queue_finish_drm_nouveau(dev, queue);
+   if (queue->bind_ctx != NULL)
+      nvkmd_ctx_destroy(queue->bind_ctx);
    vk_queue_finish(&queue->vk);
 }
 

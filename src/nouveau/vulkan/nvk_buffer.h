@@ -12,6 +12,7 @@
 
 struct nvk_device_memory;
 struct nvk_physical_device;
+struct nvk_queue;
 struct nvkmd_va;
 
 struct nvk_buffer {
@@ -44,5 +45,8 @@ nvk_buffer_addr_range(const struct nvk_buffer *buffer,
       .range = vk_buffer_range(&buffer->vk, offset, range),
    };
 }
+
+VkResult nvk_queue_buffer_bind(struct nvk_queue *queue,
+                               const VkSparseBufferMemoryBindInfo *bind_info);
 
 #endif

@@ -15,6 +15,7 @@ struct novueau_ws_push;
 struct nv_push;
 struct nvk_device;
 struct nvkmd_mem;
+struct nvkmd_ctx;
 
 struct nvk_queue_state {
    struct {
@@ -49,6 +50,8 @@ struct nvk_queue {
       struct nouveau_ws_context *ws_ctx;
       uint32_t syncobj;
    } drm;
+
+   struct nvkmd_ctx *bind_ctx;
 
    struct nvk_queue_state state;
 

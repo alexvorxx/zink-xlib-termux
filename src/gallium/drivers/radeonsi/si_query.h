@@ -158,7 +158,6 @@ struct si_query_buffer {
    struct si_query_buffer *previous;
    /* Offset of the next free result after current query data */
    unsigned results_end;
-   bool unprepared;
 };
 
 void si_query_buffer_destroy(struct si_screen *sctx, struct si_query_buffer *buffer);

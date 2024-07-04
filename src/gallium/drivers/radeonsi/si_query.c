@@ -520,8 +520,6 @@ void si_query_buffer_reset(struct si_context *sctx, struct si_query_buffer *buff
    if (si_cs_is_buffer_referenced(sctx, buffer->buf->buf, RADEON_USAGE_READWRITE) ||
        !sctx->ws->buffer_wait(sctx->ws, buffer->buf->buf, 0, RADEON_USAGE_READWRITE)) {
       si_resource_reference(&buffer->buf, NULL);
-   } else {
-      buffer->unprepared = true;
    }
 }
 
@@ -529,9 +527,6 @@ bool si_query_buffer_alloc(struct si_context *sctx, struct si_query_buffer *buff
                            bool (*prepare_buffer)(struct si_context *, struct si_query_buffer *),
                            unsigned size)
 {
-   bool unprepared = buffer->unprepared;
-   buffer->unprepared = false;
-
    if (!buffer->buf || buffer->results_end + size > buffer->buf->b.b.width0) {
       if (buffer->buf) {
          struct si_query_buffer *qbuf = MALLOC_STRUCT(si_query_buffer);
@@ -556,10 +551,9 @@ bool si_query_buffer_alloc(struct si_context *sctx, struct si_query_buffer *buff
                                               PIPE_USAGE_STAGING, buf_size, 256);
       if (unlikely(!buffer->buf))
          return false;
-      unprepared = true;
    }
 
-   if (unprepared && prepare_buffer) {
+   if (!buffer->results_end && prepare_buffer) {
       if (unlikely(!prepare_buffer(sctx, buffer))) {
          si_resource_reference(&buffer->buf, NULL);
          return false;

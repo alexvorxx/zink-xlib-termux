@@ -1060,28 +1060,6 @@ radv_get_shader(struct radv_shader *const *shaders, gl_shader_stage stage)
    return shaders[stage];
 }
 
-static const struct radv_shader *
-radv_get_last_vgt_shader(const struct radv_graphics_pipeline *pipeline)
-{
-   if (radv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY))
-      if (radv_pipeline_has_ngg(pipeline))
-         return pipeline->base.shaders[MESA_SHADER_GEOMETRY];
-      else
-         return pipeline->base.gs_copy_shader;
-   else if (radv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_CTRL))
-      return pipeline->base.shaders[MESA_SHADER_TESS_EVAL];
-   else if (radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH))
-      return pipeline->base.shaders[MESA_SHADER_MESH];
-   else
-      return pipeline->base.shaders[MESA_SHADER_VERTEX];
-}
-
-static const struct radv_vs_output_info *
-get_vs_output_info(const struct radv_graphics_pipeline *pipeline)
-{
-   return &radv_get_last_vgt_shader(pipeline)->info.outinfo;
-}
-
 static bool
 radv_should_export_multiview(const struct radv_shader_stage *stage, const struct radv_graphics_state_key *gfx_state)
 {

@@ -2261,8 +2261,8 @@ radv_pipeline_retain_shaders(struct radv_retained_shaders *retained_shaders, str
 }
 
 static void
-radv_pipeline_import_retained_shaders(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                      struct radv_graphics_lib_pipeline *lib, struct radv_shader_stage *stages)
+radv_pipeline_import_retained_shaders(const struct radv_device *device, struct radv_graphics_lib_pipeline *lib,
+                                      struct radv_shader_stage *stages)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_retained_shaders *retained_shaders = &lib->retained_shaders;
@@ -2322,7 +2322,7 @@ radv_pipeline_load_retained_shaders(const struct radv_device *device, struct rad
       VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
       struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
-      radv_pipeline_import_retained_shaders(device, pipeline, gfx_pipeline_lib, stages);
+      radv_pipeline_import_retained_shaders(device, gfx_pipeline_lib, stages);
    }
 }
 

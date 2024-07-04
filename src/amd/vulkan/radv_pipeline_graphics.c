@@ -2559,6 +2559,30 @@ radv_should_compute_pipeline_hash(const struct radv_device *device, const struct
           ((instance->vk.trace_mode & RADV_TRACE_MODE_RGP) && pipeline->base.type == RADV_PIPELINE_GRAPHICS);
 }
 
+static void
+radv_graphics_pipeline_hash(const struct radv_device *device, const struct radv_shader_stage *stages,
+                            uint32_t stage_count, const struct radv_pipeline_layout *layout,
+                            const struct radv_graphics_state_key *gfx_state, unsigned char *hash)
+{
+   struct mesa_sha1 ctx;
+
+   _mesa_sha1_init(&ctx);
+   radv_pipeline_hash(device, layout, &ctx);
+
+   if (gfx_state)
+      _mesa_sha1_update(&ctx, gfx_state, sizeof(*gfx_state));
+
+   for (unsigned s = 0; s < stage_count; s++) {
+      if (!stages[s].entrypoint)
+         continue;
+
+      _mesa_sha1_update(&ctx, stages[s].shader_sha1, sizeof(stages[s].shader_sha1));
+      _mesa_sha1_update(&ctx, &stages[s].key, sizeof(stages[s].key));
+   }
+
+   _mesa_sha1_final(&ctx, hash);
+}
+
 static VkResult
 radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                struct radv_pipeline_layout *pipeline_layout, struct radv_device *device,
@@ -2603,8 +2627,8 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
    radv_pipeline_load_retained_shaders(device, pCreateInfo, stages);
 
    if (radv_should_compute_pipeline_hash(device, pipeline, fast_linking_enabled)) {
-      radv_hash_shaders(device, pipeline->base.sha1, stages, MESA_VULKAN_SHADER_STAGES, pipeline_layout,
-                        &pipeline_key->gfx_state);
+      radv_graphics_pipeline_hash(device, stages, MESA_VULKAN_SHADER_STAGES, pipeline_layout, &pipeline_key->gfx_state,
+                                  pipeline->base.sha1);
 
       pipeline->base.pipeline_hash = *(uint64_t *)pipeline->base.sha1;
    }

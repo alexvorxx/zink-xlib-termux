@@ -307,6 +307,8 @@ standalone_create_shader_program(void)
    whole_program->FragDataBindings = new string_to_uint_map;
    whole_program->FragDataIndexBindings = new string_to_uint_map;
 
+   exec_list_make_empty(&whole_program->EmptyUniformLocations);
+
    return whole_program;
 }
 

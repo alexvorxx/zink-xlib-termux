@@ -58,7 +58,7 @@
 /* conflict with ObjectLinkingLayer.h */
 #include "util/u_memory.h"
 
-#if DETECT_ARCH_RISCV64 == 1 || DETECT_ARCH_RISCV32 == 1 || (defined(_WIN32) && LLVM_VERSION_MAJOR >= 15)
+#if DETECT_ARCH_RISCV64 == 1 || DETECT_ARCH_RISCV32 == 1 || DETECT_ARCH_LOONGARCH64 == 1 || (defined(_WIN32) && LLVM_VERSION_MAJOR >= 15)
 /* use ObjectLinkingLayer (JITLINK backend) */
 #define USE_JITLINK
 #endif
@@ -422,6 +422,14 @@ llvm::orc::JITTargetMachineBuilder LPJit::create_jtdb() {
    options.MCOptions.ABIName = "ilp32d";
 #else
 #error "GALLIVM: unknown target riscv float abi"
+#endif
+#endif
+
+#if DETECT_ARCH_LOONGARCH64 == 1
+#if defined(__loongarch_lp64) && defined(__loongarch_double_float)
+   options.MCOptions.ABIName = "lp64d";
+#else
+#error "GALLIVM: unknown target loongarch float abi"
 #endif
 #endif
 

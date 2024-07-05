@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "shaders/tessellator.h"
 #include "geometry.h"
 
 /* Compatible with util/u_math.h */
@@ -283,6 +284,17 @@ first_true_thread_in_workgroup(bool cond, local uint *scratch)
 }
 
 /*
+ * Allocate memory from the heap (thread-safe). Returns the offset into the
+ * heap. The allocation will be word-aligned.
+ */
+static inline uint
+libagx_atomic_alloc(global struct agx_geometry_state *heap, uint size_B)
+{
+   return atomic_fetch_add((volatile atomic_uint *)(&heap->heap_bottom),
+                           align(size_B, 8));
+}
+
+/*
  * When unrolling the index buffer for a draw, we translate the old indirect
  * draws to new indirect draws. This routine allocates the new index buffer and
  * sets up most of the new draw descriptor.
@@ -300,12 +312,11 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
    uint max_verts = max_prims * mesa_vertices_per_prim(mode);
    uint alloc_size = max_verts * index_size_B;
 
-   /* Allocate memory from the heap for the unrolled index buffer. Use an atomic
-    * since multiple threads may be running to handle multidraw in parallel.
+   /* Allocate unrolled index buffer. Atomic since multiple threads may be
+    * running to handle multidraw in parallel.
     */
    global struct agx_geometry_state *heap = p->heap;
-   uint old_heap_bottom_B = atomic_fetch_add(
-      (volatile atomic_uint *)(&heap->heap_bottom), align(alloc_size, 4));
+   uint old_heap_bottom_B = libagx_atomic_alloc(p->heap, alloc_size);
 
    /* Regardless of the input stride, we use tightly packed output draws */
    global uint *out = &p->out_draws[5 * draw];
@@ -610,6 +621,40 @@ libagx_prefix_sum(global uint *buffer, uint len, uint words, uint word)
    if (tid < len_remainder) {
       *ptr = count + scan;
    }
+}
+
+kernel void
+libagx_prefix_sum_tess(global struct libagx_tess_args *p)
+{
+   libagx_prefix_sum(p->counts, p->nr_patches, 1 /* words */, 0 /* word */);
+
+   /* After prefix summing, we know the total # of indices, so allocate the
+    * index buffer now. Elect a thread for the allocation.
+    */
+   barrier(CLK_LOCAL_MEM_FENCE);
+   if (get_local_id(0) != 0)
+      return;
+
+   /* The last element of an inclusive prefix sum is the total sum */
+   uint total = p->counts[p->nr_patches - 1];
+
+   /* Allocate 4-byte indices */
+   uint32_t elsize_B = sizeof(uint32_t);
+   uint32_t size_B = total * elsize_B;
+   uint alloc_B = p->heap->heap_bottom;
+   p->heap->heap_bottom += size_B;
+   p->heap->heap_bottom = align(p->heap->heap_bottom, 8);
+
+   p->index_buffer = (global uint32_t *)(((uintptr_t)p->heap->heap) + alloc_B);
+
+   /* ...and now we can generate the API indexed draw */
+   global uint32_t *desc = p->out_draws;
+
+   desc[0] = total;              /* count */
+   desc[1] = 1;                  /* instance_count */
+   desc[2] = alloc_B / elsize_B; /* start */
+   desc[3] = 0;                  /* index_bias */
+   desc[4] = 0;                  /* start_instance */
 }
 
 uintptr_t

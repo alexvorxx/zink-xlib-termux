@@ -203,47 +203,6 @@ struct agx_geometry_params {
 } PACKED;
 AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 78 * 4);
 
-struct agx_tess_params {
-   /* Persistent (cross-draw) geometry state */
-   GLOBAL(struct agx_geometry_state) state;
-
-   /* Patch coordinate offsets in patch_coord_buffer, indexed by patch ID. */
-   GLOBAL(uint) patch_coord_offs;
-
-   /* Patch coordinate buffer, indexed as:
-    *
-    *    patch_coord_offs[patch_ID] + vertex_in_patch
-    *
-    * Currently float2s, but we might be able to compact later?
-    */
-   GLOBAL(float2) patch_coord_buffer;
-
-   /* Tessellation control shader output buffer, indexed by patch ID. */
-   GLOBAL(uchar) tcs_buffer;
-
-   /* Bitfield of TCS per-vertex outputs */
-   uint64_t tcs_per_vertex_outputs;
-
-   /* Default tess levels used in OpenGL when there is no TCS in the pipeline.
-    * Unused in Vulkan and OpenGL ES.
-    */
-   float tess_level_outer_default[4];
-   float tess_level_inner_default[4];
-
-   /* Number of vertices in the input patch */
-   uint input_patch_size;
-
-   /* Number of vertices in the TCS output patch */
-   uint output_patch_size;
-
-   /* Number of patch constants written by TCS */
-   uint tcs_patch_constants;
-
-   /* Number of input patches per instance of the VS/TCS */
-   uint patches_per_instance;
-} PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_tess_params) == 22 * 4);
-
 /* TCS shared memory layout:
  *
  *    vec4 vs_outputs[VERTICES_IN_INPUT_PATCH][TOTAL_VERTEX_OUTPUTS];

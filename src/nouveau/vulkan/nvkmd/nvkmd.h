@@ -98,6 +98,8 @@ struct nvkmd_pdev_ops {
 struct nvkmd_pdev {
    const struct nvkmd_pdev_ops *ops;
 
+   enum nvk_debug debug_flags;
+
    struct nv_device_info dev_info;
    struct nvkmd_info kmd_info;
 
@@ -166,6 +168,9 @@ struct nvkmd_mem_ops {
    VkResult (*export_dma_buf)(struct nvkmd_mem *mem,
                               struct vk_object_base *log_obj,
                               int *fd_out);
+
+   /** Handle to use for NVK_DEBUG_VM logging */
+   uint32_t (*log_handle)(struct nvkmd_mem *mem);
 };
 
 struct nvkmd_mem {
@@ -381,16 +386,12 @@ nvkmd_dev_import_dma_buf(struct nvkmd_dev *dev,
    return dev->ops->import_dma_buf(dev, log_obj, fd, mem_out);
 }
 
-static inline VkResult MUST_CHECK
+VkResult MUST_CHECK
 nvkmd_dev_alloc_va(struct nvkmd_dev *dev,
                    struct vk_object_base *log_obj,
                    enum nvkmd_va_flags flags, uint8_t pte_kind,
                    uint64_t size_B, uint64_t align_B,
-                   uint64_t fixed_addr, struct nvkmd_va **va_out)
-{
-   return dev->ops->alloc_va(dev, log_obj, flags, pte_kind, size_B, align_B,
-                             fixed_addr, va_out);
-}
+                   uint64_t fixed_addr, struct nvkmd_va **va_out);
 
 static inline VkResult MUST_CHECK
 nvkmd_dev_create_ctx(struct nvkmd_dev *dev,
@@ -453,40 +454,22 @@ nvkmd_mem_export_dma_buf(struct nvkmd_mem *mem,
    return mem->ops->export_dma_buf(mem, log_obj, fd_out);
 }
 
-static inline void
-nvkmd_va_free(struct nvkmd_va *va)
-{
-   va->ops->free(va);
-}
+void
+nvkmd_va_free(struct nvkmd_va *va);
 
-static inline VkResult MUST_CHECK
+VkResult MUST_CHECK
 nvkmd_va_bind_mem(struct nvkmd_va *va,
                   struct vk_object_base *log_obj,
                   uint64_t va_offset_B,
                   struct nvkmd_mem *mem,
                   uint64_t mem_offset_B,
-                  uint64_t range_B)
-{
-   assert(va_offset_B <= va->size_B);
-   assert(va_offset_B + range_B <= va->size_B);
-   assert(mem_offset_B <= mem->size_B);
-   assert(mem_offset_B + range_B <= mem->size_B);
+                  uint64_t range_B);
 
-   return va->ops->bind_mem(va, log_obj, va_offset_B,
-                            mem, mem_offset_B, range_B);
-}
-
-static inline VkResult MUST_CHECK
+VkResult MUST_CHECK
 nvkmd_va_unbind(struct nvkmd_va *va,
                 struct vk_object_base *log_obj,
                 uint64_t va_offset_B,
-                uint64_t range_B)
-{
-   assert(va_offset_B <= va->size_B);
-   assert(va_offset_B + range_B <= va->size_B);
-
-   return va->ops->unbind(va, log_obj, va_offset_B, range_B);
-}
+                uint64_t range_B);
 
 static inline void
 nvkmd_ctx_destroy(struct nvkmd_ctx *ctx)
@@ -512,26 +495,11 @@ nvkmd_ctx_exec(struct nvkmd_ctx *ctx,
    return ctx->ops->exec(ctx, log_obj, exec_count, execs);
 }
 
-static inline VkResult MUST_CHECK
+VkResult MUST_CHECK
 nvkmd_ctx_bind(struct nvkmd_ctx *ctx,
                struct vk_object_base *log_obj,
                uint32_t bind_count,
-               const struct nvkmd_ctx_bind *binds)
-{
-   for (uint32_t i = 0; i < bind_count; i++) {
-      assert(binds[i].va_offset_B <= binds[i].va->size_B);
-      assert(binds[i].va_offset_B + binds[i].range_B <= binds[i].va->size_B);
-      if (binds[i].op == NVKMD_BIND_OP_BIND) {
-         assert(binds[i].mem_offset_B <= binds[i].mem->size_B);
-         assert(binds[i].mem_offset_B + binds[i].range_B <=
-                binds[i].mem->size_B);
-      } else {
-         assert(binds[i].mem == NULL);
-      }
-   }
-
-   return ctx->ops->bind(ctx, log_obj, bind_count, binds);
-}
+               const struct nvkmd_ctx_bind *binds);
 
 static inline VkResult MUST_CHECK
 nvkmd_ctx_signal(struct nvkmd_ctx *ctx,

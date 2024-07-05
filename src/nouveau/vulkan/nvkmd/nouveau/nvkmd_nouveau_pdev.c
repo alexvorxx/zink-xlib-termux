@@ -96,6 +96,7 @@ nvkmd_nouveau_try_create_pdev(struct _drmDevice *drm_device,
    }
 
    pdev->base.ops = &nvkmd_nouveau_pdev_ops;
+   pdev->base.debug_flags = debug_flags;
    pdev->base.dev_info = ws_dev->info;
    pdev->base.kmd_info = (struct nvkmd_info) {
       .has_dma_buf = true,

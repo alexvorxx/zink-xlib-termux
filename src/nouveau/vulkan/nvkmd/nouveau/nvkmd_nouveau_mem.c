@@ -189,10 +189,17 @@ nvkmd_nouveau_mem_export_dma_buf(struct nvkmd_mem *_mem,
    return VK_SUCCESS;
 }
 
+static uint32_t
+nvkmd_nouveau_mem_log_handle(struct nvkmd_mem *_mem)
+{
+   return nvkmd_nouveau_mem(_mem)->bo->handle;
+}
+
 const struct nvkmd_mem_ops nvkmd_nouveau_mem_ops = {
    .free = nvkmd_nouveau_mem_free,
    .map = nvkmd_nouveau_mem_map,
    .unmap = nvkmd_nouveau_mem_unmap,
    .overmap = nvkmd_nouveau_mem_overmap,
    .export_dma_buf = nvkmd_nouveau_mem_export_dma_buf,
+   .log_handle = nvkmd_nouveau_mem_log_handle,
 };

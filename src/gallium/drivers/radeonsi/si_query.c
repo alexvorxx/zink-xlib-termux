@@ -662,11 +662,13 @@ static struct pipe_query *si_query_hw_create(struct si_screen *sscreen, unsigned
       query->b.num_cs_dw_suspend = 6 + si_cp_write_fence_dwords(sscreen);
       break;
    case PIPE_QUERY_TIME_ELAPSED:
-      query->result_size = 24;
+      query->result_size = 16;
+      query->result_size += 8; /* for fence */
       query->b.num_cs_dw_suspend = 8 + si_cp_write_fence_dwords(sscreen);
       break;
    case PIPE_QUERY_TIMESTAMP:
-      query->result_size = 16;
+      query->result_size = 8;
+      query->result_size += 8; /* for fence */
       query->b.num_cs_dw_suspend = 8 + si_cp_write_fence_dwords(sscreen);
       query->flags = SI_QUERY_HW_FLAG_NO_START;
       break;
@@ -675,12 +677,14 @@ static struct pipe_query *si_query_hw_create(struct si_screen *sscreen, unsigned
    case PIPE_QUERY_SO_STATISTICS:
    case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
       /* NumPrimitivesWritten, PrimitiveStorageNeeded. */
+      /* the 64th bit in qw is used as fence. it is set by hardware in streamout stats event. */
       query->result_size = 32;
       query->b.num_cs_dw_suspend = 6;
       query->stream = index;
       break;
    case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
       /* NumPrimitivesWritten, PrimitiveStorageNeeded. */
+      /* the 64th bit in qw is used as fence. it is set by hardware in streamout stats event. */
       query->result_size = 32 * SI_MAX_STREAMS;
       query->b.num_cs_dw_suspend = 6 * SI_MAX_STREAMS;
       break;
@@ -930,6 +934,7 @@ static void si_query_hw_do_emit_stop(struct si_context *sctx, struct si_query_hw
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
    case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE: {
+      fence_va = va + sctx->screen->info.max_render_backends * 16;
       va += 8;
       radeon_begin(cs);
       if (sctx->gfx_level >= GFX11 &&
@@ -945,8 +950,6 @@ static void si_query_hw_do_emit_stop(struct si_context *sctx, struct si_query_hw
       radeon_emit(va);
       radeon_emit(va >> 32);
       radeon_end();
-
-      fence_va = va + sctx->screen->info.max_render_backends * 16 - 8;
       break;
    }
    case PIPE_QUERY_PRIMITIVES_EMITTED:
@@ -973,6 +976,7 @@ static void si_query_hw_do_emit_stop(struct si_context *sctx, struct si_query_hw
       unsigned sample_size = (query->result_size - 8) / 2;
 
       va += sample_size;
+      fence_va = va + sample_size;
 
       radeon_begin(cs);
       if (sctx->screen->use_ngg && query->flags & SI_QUERY_EMULATE_GS_COUNTERS) {
@@ -990,8 +994,6 @@ static void si_query_hw_do_emit_stop(struct si_context *sctx, struct si_query_hw
          radeon_emit(va >> 32);
       }
       radeon_end();
-
-      fence_va = va + sample_size;
       break;
    }
    default:
@@ -1274,8 +1276,9 @@ static bool si_query_hw_end(struct si_context *sctx, struct si_query *squery)
    return true;
 }
 
-static void si_get_hw_query_params(struct si_context *sctx, struct si_query_hw *squery, int index,
-                                   struct si_hw_query_params *params)
+static void si_get_hw_query_result_shader_params(struct si_context *sctx,
+                                                 struct si_query_hw *squery, int index,
+                                                 struct si_hw_query_params *params)
 {
    unsigned max_rbs = sctx->screen->info.max_render_backends;
 
@@ -1550,7 +1553,7 @@ static void si_query_hw_get_result_resource(struct si_context *sctx, struct si_q
 
    si_save_qbo_state(sctx, &saved_state);
 
-   si_get_hw_query_params(sctx, query, index >= 0 ? index : 0, &params);
+   si_get_hw_query_result_shader_params(sctx, query, index >= 0 ? index : 0, &params);
    consts.end_offset = params.end_offset - params.start_offset;
    consts.fence_offset = params.fence_offset - params.start_offset;
    consts.result_stride = query->result_size;

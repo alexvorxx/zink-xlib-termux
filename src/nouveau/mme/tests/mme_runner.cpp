@@ -48,6 +48,8 @@ mme_hw_runner::~mme_hw_runner()
 {
    if (syncobj)
       drmSyncobjDestroy(dev->fd, syncobj);
+   if (data_bo)
+      nouveau_ws_bo_destroy(data_bo);
    if (push_bo) {
       nouveau_ws_bo_unmap(push_bo, push_map);
       nouveau_ws_bo_destroy(push_bo);

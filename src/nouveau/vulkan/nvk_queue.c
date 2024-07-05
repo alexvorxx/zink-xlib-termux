@@ -11,10 +11,6 @@
 #include "nvk_physical_device.h"
 #include "nv_push.h"
 
-#include "nouveau_context.h"
-
-#include <xf86drm.h>
-
 #include "nv_push_cl9039.h"
 #include "nv_push_cl9097.h"
 #include "nv_push_cl90b5.h"
@@ -282,38 +278,87 @@ nvk_queue_submit_bind(struct nvk_queue *queue,
 }
 
 static VkResult
-nvk_queue_submit(struct vk_queue *vk_queue,
-                 struct vk_queue_submit *submit)
+nvk_queue_submit_exec(struct nvk_queue *queue,
+                      struct vk_queue_submit *submit)
 {
-   struct nvk_queue *queue = container_of(vk_queue, struct nvk_queue, vk);
    struct nvk_device *dev = nvk_queue_device(queue);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VkResult result;
 
-   if (vk_queue_is_lost(&queue->vk))
-      return VK_ERROR_DEVICE_LOST;
-
-   if (submit->buffer_bind_count > 0 ||
-       submit->image_bind_count > 0  ||
-       submit->image_opaque_bind_count > 0) {
-      assert(submit->command_buffer_count == 0);
-      result = nvk_queue_submit_bind(queue, submit);
-      if (result != VK_SUCCESS)
-         return vk_queue_set_lost(&queue->vk, "Bind operation failed");
-
-      return VK_SUCCESS;
-   }
-
-   result = nvk_queue_state_update(dev, &queue->state);
-   if (result != VK_SUCCESS) {
-      return vk_queue_set_lost(&queue->vk, "Failed to update queue base "
-                                           "pointers pushbuf");
-   }
-
    const bool sync = pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
 
-   result = nvk_queue_submit_drm_nouveau(queue, submit, sync);
+   uint64_t upload_time_point;
+   result = nvk_upload_queue_flush(dev, &dev->upload, &upload_time_point);
+   if (result != VK_SUCCESS)
+      return result;
 
+   if (upload_time_point > 0) {
+      struct vk_sync_wait wait = {
+         .sync = dev->upload.sync,
+         .stage_mask = ~0,
+         .wait_value = upload_time_point,
+      };
+      result = nvkmd_ctx_wait(queue->exec_ctx, &queue->vk.base, 1, &wait);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   result = nvkmd_ctx_wait(queue->exec_ctx, &queue->vk.base,
+                           submit->wait_count, submit->waits);
+   if (result != VK_SUCCESS)
+      goto fail;
+
+   if (queue->state.push.mem != NULL) {
+      struct nvkmd_ctx_exec exec = {
+         .addr = queue->state.push.mem->va->addr,
+         .size_B = queue->state.push.dw_count * 4,
+      };
+      result = nvkmd_ctx_exec(queue->exec_ctx, &queue->vk.base, 1, &exec);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   for (unsigned i = 0; i < submit->command_buffer_count; i++) {
+      struct nvk_cmd_buffer *cmd =
+         container_of(submit->command_buffers[i], struct nvk_cmd_buffer, vk);
+
+      const uint32_t max_execs =
+         util_dynarray_num_elements(&cmd->pushes, struct nvk_cmd_push);
+      STACK_ARRAY(struct nvkmd_ctx_exec, execs, max_execs);
+      uint32_t exec_count = 0;
+
+      util_dynarray_foreach(&cmd->pushes, struct nvk_cmd_push, push) {
+         if (push->range == 0)
+            continue;
+
+         execs[exec_count++] = (struct nvkmd_ctx_exec) {
+            .addr = push->addr,
+            .size_B = push->range,
+            .no_prefetch = push->no_prefetch,
+         };
+      }
+
+      result = nvkmd_ctx_exec(queue->exec_ctx, &queue->vk.base,
+                              exec_count, execs);
+
+      STACK_ARRAY_FINISH(execs);
+
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+   result = nvkmd_ctx_signal(queue->exec_ctx, &queue->vk.base,
+                             submit->signal_count, submit->signals);
+   if (result != VK_SUCCESS)
+      goto fail;
+
+   if (sync) {
+      result = nvkmd_ctx_sync(queue->exec_ctx, &queue->vk.base);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
+fail:
    if ((sync && result != VK_SUCCESS) ||
        (pdev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
       nvk_queue_state_dump_push(dev, &queue->state, stderr);
@@ -326,6 +371,83 @@ nvk_queue_submit(struct vk_queue *vk_queue,
       }
    }
 
+   return result;
+}
+
+static VkResult
+nvk_queue_submit(struct vk_queue *vk_queue,
+                 struct vk_queue_submit *submit)
+{
+   struct nvk_queue *queue = container_of(vk_queue, struct nvk_queue, vk);
+   struct nvk_device *dev = nvk_queue_device(queue);
+   VkResult result;
+
+   if (vk_queue_is_lost(&queue->vk))
+      return VK_ERROR_DEVICE_LOST;
+
+   if (submit->buffer_bind_count > 0 ||
+       submit->image_bind_count > 0  ||
+       submit->image_opaque_bind_count > 0) {
+      assert(submit->command_buffer_count == 0);
+      result = nvk_queue_submit_bind(queue, submit);
+      if (result != VK_SUCCESS)
+         return vk_queue_set_lost(&queue->vk, "Bind operation failed");
+   } else {
+      result = nvk_queue_state_update(dev, &queue->state);
+      if (result != VK_SUCCESS) {
+         return vk_queue_set_lost(&queue->vk, "Failed to update queue base "
+                                              "pointers pushbuf");
+      }
+
+      result = nvk_queue_submit_exec(queue, submit);
+      if (result != VK_SUCCESS)
+         return vk_queue_set_lost(&queue->vk, "Submit failed");
+   }
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+nvk_queue_submit_simple(struct nvk_queue *queue,
+                        uint32_t dw_count, const uint32_t *dw)
+{
+   struct nvk_device *dev = nvk_queue_device(queue);
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+   VkResult result;
+
+   if (vk_queue_is_lost(&queue->vk))
+      return VK_ERROR_DEVICE_LOST;
+
+   struct nvkmd_mem *push_mem;
+   result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
+                                       dw_count * 4, 0,
+                                       NVKMD_MEM_GART | NVKMD_MEM_NO_SHARE,
+                                       NVKMD_MEM_MAP_WR, &push_mem);
+   if (result != VK_SUCCESS)
+      return result;
+
+   memcpy(push_mem->map, dw, dw_count * 4);
+
+   const struct nvkmd_ctx_exec exec = {
+      .addr = push_mem->va->addr,
+      .size_B = dw_count * 4,
+   };
+   result = nvkmd_ctx_exec(queue->exec_ctx, &queue->vk.base, 1, &exec);
+   if (result == VK_SUCCESS)
+      result = nvkmd_ctx_sync(queue->exec_ctx, &queue->vk.base);
+
+   nvkmd_mem_unref(push_mem);
+
+   const bool debug_sync = pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
+   if ((debug_sync && result != VK_SUCCESS) ||
+       (pdev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
+      struct nv_push push = {
+         .start = (uint32_t *)dw,
+         .end = (uint32_t *)dw + dw_count,
+      };
+      vk_push_print(stderr, &push, &pdev->info);
+   }
+
    if (result != VK_SUCCESS)
       return vk_queue_set_lost(&queue->vk, "Submit failed");
 
@@ -334,7 +456,7 @@ nvk_queue_submit(struct vk_queue *vk_queue,
 
 static VkResult
 nvk_queue_init_context_state(struct nvk_queue *queue,
-                             VkQueueFlags queue_flags)
+                             enum nvkmd_engines engines)
 {
    struct nvk_device *dev = nvk_queue_device(queue);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
@@ -357,13 +479,13 @@ nvk_queue_init_context_state(struct nvk_queue *queue,
       });
    }
 
-   if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
+   if (engines & NVKMD_ENGINE_3D) {
       result = nvk_push_draw_state_init(queue, p);
       if (result != VK_SUCCESS)
          return result;
    }
 
-   if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
+   if (engines & NVKMD_ENGINE_COMPUTE) {
       result = nvk_push_dispatch_state_init(queue, p);
       if (result != VK_SUCCESS)
          return result;
@@ -384,31 +506,38 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
    const struct nvk_queue_family *queue_family =
       &pdev->queue_families[pCreateInfo->queueFamilyIndex];
 
-   VkQueueFlags queue_flags = queue_family->queue_flags;
-
-   /* We rely on compute shaders for queries */
-   if (queue_family->queue_flags & VK_QUEUE_GRAPHICS_BIT)
-      queue_flags |= VK_QUEUE_COMPUTE_BIT;
-
-   /* We currently rely on 3D engine MMEs for indirect dispatch */
-   if (queue_family->queue_flags & VK_QUEUE_COMPUTE_BIT)
-      queue_flags |= VK_QUEUE_GRAPHICS_BIT;
-
    result = vk_queue_init(&queue->vk, &dev->vk, pCreateInfo, index_in_family);
    if (result != VK_SUCCESS)
       return result;
 
-   queue->vk.driver_submit = nvk_queue_submit;
-
    nvk_queue_state_init(&queue->state);
 
-   if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
+   enum nvkmd_engines engines = 0;
+   if (queue_family->queue_flags & VK_QUEUE_GRAPHICS_BIT) {
+      engines |= NVKMD_ENGINE_3D;
+      /* We rely on compute shaders for queries */
+      engines |= NVKMD_ENGINE_COMPUTE;
+   }
+   if (queue_family->queue_flags & VK_QUEUE_COMPUTE_BIT) {
+      engines |= NVKMD_ENGINE_COMPUTE;
+      /* We currently rely on 3D engine MMEs for indirect dispatch */
+      engines |= NVKMD_ENGINE_3D;
+   }
+   if (queue_family->queue_flags & VK_QUEUE_TRANSFER_BIT)
+      engines |= NVKMD_ENGINE_COPY;
+
+   if (engines) {
+      result = nvkmd_dev_create_ctx(dev->nvkmd, &dev->vk.base,
+                                    engines, &queue->exec_ctx);
+      if (result != VK_SUCCESS)
+         goto fail_init;
+
       result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base,
                                    4096, 0,
                                    NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
                                    &queue->draw_cb0);
       if (result != VK_SUCCESS)
-         goto fail_state;
+         goto fail_exec_ctx;
 
       result = nvk_upload_queue_fill(dev, &dev->upload,
                                      queue->draw_cb0->va->addr, 0,
@@ -424,25 +553,24 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
          goto fail_draw_cb0;
    }
 
-   result = nvk_queue_init_drm_nouveau(dev, queue, queue_flags);
+   result = nvk_queue_init_context_state(queue, engines);
    if (result != VK_SUCCESS)
       goto fail_bind_ctx;
 
-   result = nvk_queue_init_context_state(queue, queue_flags);
-   if (result != VK_SUCCESS)
-      goto fail_drm;
+   queue->vk.driver_submit = nvk_queue_submit;
 
    return VK_SUCCESS;
 
-fail_drm:
-   nvk_queue_finish_drm_nouveau(dev, queue);
 fail_bind_ctx:
    if (queue->bind_ctx != NULL)
       nvkmd_ctx_destroy(queue->bind_ctx);
 fail_draw_cb0:
    if (queue->draw_cb0 != NULL)
       nvkmd_mem_unref(queue->draw_cb0);
-fail_state:
+fail_exec_ctx:
+   if (queue->exec_ctx != NULL)
+      nvkmd_ctx_destroy(queue->exec_ctx);
+fail_init:
    nvk_queue_state_finish(dev, &queue->state);
    vk_queue_finish(&queue->vk);
 
@@ -457,52 +585,9 @@ nvk_queue_finish(struct nvk_device *dev, struct nvk_queue *queue)
       nvkmd_mem_unref(queue->draw_cb0);
    }
    nvk_queue_state_finish(dev, &queue->state);
-   nvk_queue_finish_drm_nouveau(dev, queue);
    if (queue->bind_ctx != NULL)
       nvkmd_ctx_destroy(queue->bind_ctx);
+   if (queue->exec_ctx != NULL)
+      nvkmd_ctx_destroy(queue->exec_ctx);
    vk_queue_finish(&queue->vk);
-}
-
-VkResult
-nvk_queue_submit_simple(struct nvk_queue *queue,
-                        uint32_t dw_count, const uint32_t *dw)
-{
-   struct nvk_device *dev = nvk_queue_device(queue);
-   struct nvk_physical_device *pdev = nvk_device_physical(dev);
-   struct nouveau_ws_bo *push_bo;
-   VkResult result;
-
-   if (vk_queue_is_lost(&queue->vk))
-      return VK_ERROR_DEVICE_LOST;
-
-   void *push_map;
-   push_bo = nouveau_ws_bo_new_mapped(dev->ws_dev, dw_count * 4, 0,
-                                      NOUVEAU_WS_BO_GART |
-                                      NOUVEAU_WS_BO_MAP |
-                                      NOUVEAU_WS_BO_NO_SHARE,
-                                      NOUVEAU_WS_BO_WR, &push_map);
-   if (push_bo == NULL)
-      return vk_error(queue, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-
-   memcpy(push_map, dw, dw_count * 4);
-
-   result = nvk_queue_submit_simple_drm_nouveau(queue, dw_count, push_bo);
-
-   const bool debug_sync = pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
-   if ((debug_sync && result != VK_SUCCESS) ||
-       (pdev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
-      struct nv_push push = {
-         .start = (uint32_t *)dw,
-         .end = (uint32_t *)dw + dw_count,
-      };
-      vk_push_print(stderr, &push, &pdev->info);
-   }
-
-   nouveau_ws_bo_unmap(push_bo, push_map);
-   nouveau_ws_bo_destroy(push_bo);
-
-   if (result != VK_SUCCESS)
-      return vk_queue_set_lost(&queue->vk, "Submit failed");
-
-   return VK_SUCCESS;
 }

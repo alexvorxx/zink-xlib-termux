@@ -46,12 +46,8 @@ VkResult nvk_queue_state_update(struct nvk_device *dev,
 struct nvk_queue {
    struct vk_queue vk;
 
-   struct {
-      struct nouveau_ws_context *ws_ctx;
-      uint32_t syncobj;
-   } drm;
-
    struct nvkmd_ctx *bind_ctx;
+   struct nvkmd_ctx *exec_ctx;
 
    struct nvk_queue_state state;
 
@@ -76,24 +72,5 @@ VkResult nvk_push_draw_state_init(struct nvk_queue *queue,
 
 VkResult nvk_push_dispatch_state_init(struct nvk_queue *queue,
                                       struct nv_push *p);
-
-/* this always syncs, so only use when that doesn't matter */
-VkResult nvk_queue_submit_simple(struct nvk_queue *queue,
-                                 uint32_t dw_count, const uint32_t *dw);
-
-VkResult nvk_queue_init_drm_nouveau(struct nvk_device *dev,
-                                    struct nvk_queue *queue,
-                                    VkQueueFlags queue_flags);
-
-void nvk_queue_finish_drm_nouveau(struct nvk_device *dev,
-                                  struct nvk_queue *queue);
-
-VkResult nvk_queue_submit_simple_drm_nouveau(struct nvk_queue *queue,
-                                             uint32_t push_dw_count,
-                                             struct nouveau_ws_bo *push_bo);
-
-VkResult nvk_queue_submit_drm_nouveau(struct nvk_queue *queue,
-                                      struct vk_queue_submit *submit,
-                                      bool sync);
 
 #endif

@@ -1834,18 +1834,18 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
          uint32_t extra_overestimate =
             MIN2(3, dyn->rs.extra_primitive_overestimation_size * 4);
 
-         if (nvk_cmd_buffer_3d_cls(cmd)  < VOLTA_A) {
+         if (nvk_cmd_buffer_3d_cls(cmd) < VOLTA_A) {
             P_1INC(p, NVB197, CALL_MME_MACRO(NVK_MME_SET_CONSERVATIVE_RASTER_STATE));
             P_INLINE_DATA(p, extra_overestimate << 23);
          } else {
             P_IMMD(p, NVC397, SET_CONSERVATIVE_RASTER_CONTROL, {
-                      .extra_prim_bloat = extra_overestimate,
-                      .copy_inner_to_outer = 
-                        (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT),
-                      .triangle_snap_mode = TRIANGLE_SNAP_MODE_MODE_PRE_SNAP,
-                      .line_and_point_snap_mode = LINE_AND_POINT_SNAP_MODE_MODE_PRE_SNAP,
-                      .uncertainty_region_size = UNCERTAINTY_REGION_SIZE_SIZE_512,
-                     });
+               .extra_prim_bloat = extra_overestimate,
+               .copy_inner_to_outer =
+                  (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT),
+               .triangle_snap_mode = TRIANGLE_SNAP_MODE_MODE_PRE_SNAP,
+               .line_and_point_snap_mode = LINE_AND_POINT_SNAP_MODE_MODE_PRE_SNAP,
+               .uncertainty_region_size = UNCERTAINTY_REGION_SIZE_SIZE_512,
+            });
          }
          P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_TRUE);
       }

@@ -7,7 +7,7 @@
 
 #include "nvk_private.h"
 
-#include "nouveau_device.h"
+#include "nvk_debug.h"
 #include "nv_device_info.h"
 
 #include "vk_physical_device.h"

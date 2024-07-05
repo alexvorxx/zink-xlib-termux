@@ -31,7 +31,7 @@ nvkmd_nouveau_create_dev(struct nvkmd_pdev *_pdev,
                        "Failed to get DRM device: %m");
    }
 
-   dev->ws_dev = nouveau_ws_device_new(drm_device, pdev->ws_dev->debug_flags);
+   dev->ws_dev = nouveau_ws_device_new(drm_device);
    drmFreeDevice(&drm_device);
    if (dev->ws_dev == NULL) {
       FREE(dev);

@@ -256,8 +256,7 @@ nouveau_ws_device_info(int fd, struct nouveau_ws_device *dev)
 }
 
 struct nouveau_ws_device *
-nouveau_ws_device_new(drmDevicePtr drm_device,
-                      enum nvk_debug debug_flags)
+nouveau_ws_device_new(drmDevicePtr drm_device)
 {
    const char *path = drm_device->nodes[DRM_NODE_RENDER];
    struct nouveau_ws_device *device = CALLOC_STRUCT(nouveau_ws_device);
@@ -352,8 +351,6 @@ nouveau_ws_device_new(drmDevicePtr drm_device,
 
    device->info.gpc_count = (value >> 0) & 0x000000ff;
    device->info.tpc_count = (value >> 8) & 0x0000ffff;
-
-   device->debug_flags = debug_flags;
 
    struct nouveau_ws_context *tmp_ctx;
    if (nouveau_ws_context_create(device, ~0, &tmp_ctx))

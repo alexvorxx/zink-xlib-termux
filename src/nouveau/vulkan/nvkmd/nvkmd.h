@@ -8,8 +8,8 @@
 #include "nv_device_info.h"
 #include "util/u_atomic.h"
 
+#include "../nvk_debug.h"
 #include "vulkan/vulkan_core.h"
-#include "nouveau_device.h"
 
 #include <assert.h>
 #include <stdbool.h>

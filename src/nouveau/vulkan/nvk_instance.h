@@ -7,7 +7,7 @@
 
 #include "nvk_private.h"
 
-#include "nouveau_device.h"
+#include "nvk_debug.h"
 #include "vk_instance.h"
 #include "util/xmlconfig.h"
 

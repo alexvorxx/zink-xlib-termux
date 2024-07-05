@@ -70,8 +70,7 @@ nvkmd_nouveau_try_create_pdev(struct _drmDevice *drm_device,
    if (!drm_device_is_nouveau(drm_device->nodes[DRM_NODE_RENDER]))
       return VK_ERROR_INCOMPATIBLE_DRIVER;
 
-   struct nouveau_ws_device *ws_dev =
-      nouveau_ws_device_new(drm_device, debug_flags);
+   struct nouveau_ws_device *ws_dev = nouveau_ws_device_new(drm_device);
    if (!ws_dev)
       return vk_error(log_obj, VK_ERROR_INCOMPATIBLE_DRIVER);
 

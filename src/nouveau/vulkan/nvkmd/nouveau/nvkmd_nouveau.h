@@ -7,6 +7,8 @@
 
 #include "nvkmd/nvkmd.h"
 #include "vk_drm_syncobj.h"
+#include "util/simple_mtx.h"
+#include "util/vma.h"
 
 #include "drm-uapi/nouveau_drm.h"
 
@@ -35,10 +37,20 @@ VkResult nvkmd_nouveau_try_create_pdev(struct _drmDevice *drm_device,
                                        enum nvk_debug debug_flags,
                                        struct nvkmd_pdev **pdev_out);
 
+#define NVKMD_NOUVEAU_HEAP_START ((uint64_t)4096)
+#define NVKMD_NOUVEAU_HEAP_END ((uint64_t)(1ull << 38))
+#define NVKMD_NOUVEAU_REPLAY_HEAP_START NVKMD_NOUVEAU_HEAP_END
+#define NVKMD_NOUVEAU_REPLAY_HEAP_END \
+   ((uint64_t)NOUVEAU_WS_DEVICE_KERNEL_RESERVATION_START)
+
 struct nvkmd_nouveau_dev {
    struct nvkmd_dev base;
 
    struct nouveau_ws_device *ws_dev;
+
+   simple_mtx_t heap_mutex;
+   struct util_vma_heap heap;
+   struct util_vma_heap replay_heap;
 };
 
 NVKMD_DECL_SUBCLASS(dev, nouveau);
@@ -75,17 +87,10 @@ VkResult nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *dev,
 struct nvkmd_nouveau_va {
    struct nvkmd_va base;
 
-   struct nouveau_ws_device *dev;
+   struct nvkmd_nouveau_dev *dev;
 };
 
 NVKMD_DECL_SUBCLASS(va, nouveau);
-
-/* Internal helper to create a VA object for already allocated VA */
-VkResult nvkmd_nouveau_va_create(struct nvkmd_nouveau_dev *dev,
-                                 struct vk_object_base *log_obj,
-                                 enum nvkmd_va_flags flags, uint8_t pte_kind,
-                                 uint64_t addr, uint64_t size_B,
-                                 struct nvkmd_va **va_out);
 
 VkResult nvkmd_nouveau_alloc_va(struct nvkmd_dev *dev,
                                 struct vk_object_base *log_obj,

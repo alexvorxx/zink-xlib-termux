@@ -23,11 +23,12 @@ nvkmd_nouveau_alloc_mem(struct nvkmd_dev *dev,
 static VkResult
 create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
                        struct vk_object_base *log_obj,
+                       uint64_t va_align_B, uint8_t pte_kind,
                        enum nvkmd_mem_flags flags,
-                       uint8_t pte_kind,
                        struct nouveau_ws_bo *bo,
                        struct nvkmd_mem **mem_out)
 {
+   const uint64_t size_B = bo->size;
    VkResult result;
 
    struct nvkmd_nouveau_mem *mem = CALLOC_STRUCT(nvkmd_nouveau_mem);
@@ -36,23 +37,31 @@ create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
       goto fail_bo;
    }
 
-   struct nvkmd_va *va;
-   result = nvkmd_nouveau_va_create(dev, log_obj, 0 /* flags */, pte_kind,
-                                    bo->offset, bo->size, &va);
-   if (result != VK_SUCCESS)
-      goto fail_mem;
-
    mem->base.ops = &nvkmd_nouveau_mem_ops;
    mem->base.refcnt = 1;
    mem->base.flags = flags;
-   mem->base.size_B = bo->size;
-   mem->base.va = va;
+   mem->base.size_B = size_B;
    mem->bo = bo;
+
+   result = nvkmd_dev_alloc_va(&dev->base, log_obj,
+                               0 /* flags */, pte_kind,
+                               size_B, va_align_B,
+                               0 /* fixed_addr */,
+                               &mem->base.va);
+   if (result != VK_SUCCESS)
+      goto fail_mem;
+
+   result = nvkmd_va_bind_mem(mem->base.va, log_obj, 0 /* va_offset_B */,
+                              &mem->base, 0 /* mem_offset_B */, size_B);
+   if (result != VK_SUCCESS)
+      goto fail_va;
 
    *mem_out = &mem->base;
 
    return VK_SUCCESS;
 
+fail_va:
+   nvkmd_va_free(mem->base.va);
 fail_mem:
    FREE(mem);
 fail_bo:
@@ -83,8 +92,8 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_OUT_OF_DEVICE_MEMORY, "%m");
 
-   return create_mem_or_close_bo(dev, log_obj, flags,
-                                 pte_kind, bo, mem_out);
+   return create_mem_or_close_bo(dev, log_obj, align_B, pte_kind,
+                                 flags, bo, mem_out);
 }
 
 VkResult
@@ -98,8 +107,11 @@ nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *_dev,
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_INVALID_EXTERNAL_HANDLE, "%m");
 
-   return create_mem_or_close_bo(dev, log_obj, (int)bo->flags,
-                                 0 /* pte_kind */, bo, mem_out);
+   return create_mem_or_close_bo(dev, log_obj,
+                                 0 /* align_B */,
+                                 0 /* pte_kind */,
+                                 (int)bo->flags,
+                                 bo, mem_out);
 }
 
 static void
@@ -107,7 +119,7 @@ nvkmd_nouveau_mem_free(struct nvkmd_mem *_mem)
 {
    struct nvkmd_nouveau_mem *mem = nvkmd_nouveau_mem(_mem);
 
-   FREE((void *)mem->base.va);
+   nvkmd_va_free(mem->base.va);
    nouveau_ws_bo_destroy(mem->bo);
    FREE(mem);
 }

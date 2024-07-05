@@ -4,7 +4,6 @@
 #include "nouveau_private.h"
 #include "nv_device_info.h"
 #include "util/simple_mtx.h"
-#include "util/vma.h"
 
 #include <stddef.h>
 
@@ -42,6 +41,8 @@ enum nvk_debug {
    NVK_DEBUG_NO_CBUF = 1ull << 5,
 };
 
+#define NOUVEAU_WS_DEVICE_KERNEL_RESERVATION_START (1ull << 39)
+
 struct nouveau_ws_device {
    int fd;
 
@@ -56,9 +57,6 @@ struct nouveau_ws_device {
    struct hash_table *bos;
 
    bool has_vm_bind;
-   struct util_vma_heap vma_heap;
-   struct util_vma_heap bda_heap;
-   simple_mtx_t vma_mutex;
 };
 
 struct nouveau_ws_device *nouveau_ws_device_new(struct _drmDevice *drm_device,

@@ -175,7 +175,7 @@ struct nvkmd_mem {
    enum nvkmd_mem_flags flags;
 
    uint64_t size_B;
-   const struct nvkmd_va *va;
+   struct nvkmd_va *va;
    void *map;
 };
 

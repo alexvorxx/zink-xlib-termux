@@ -289,17 +289,12 @@ nouveau_ws_device_new(drmDevicePtr drm_device,
    if (version < 0x01000301)
       goto out_err;
 
-   const uint64_t BDA = 1ull << 38;
-   const uint64_t KERN = 1ull << 39;
+   const uint64_t KERN = NOUVEAU_WS_DEVICE_KERNEL_RESERVATION_START;
    const uint64_t TOP = 1ull << 40;
    struct drm_nouveau_vm_init vminit = { KERN, TOP-KERN };
    int ret = drmCommandWrite(fd, DRM_NOUVEAU_VM_INIT, &vminit, sizeof(vminit));
-   if (ret == 0) {
+   if (ret == 0)
       device->has_vm_bind = true;
-      util_vma_heap_init(&device->vma_heap, 4096, BDA - 4096);
-      util_vma_heap_init(&device->bda_heap, BDA, KERN - BDA);
-      simple_mtx_init(&device->vma_mutex, mtx_plain);
-   }
 
    if (nouveau_ws_device_alloc(fd, device))
       goto out_err;
@@ -384,11 +379,6 @@ nouveau_ws_device_new(drmDevicePtr drm_device,
    return device;
 
 out_err:
-   if (device->has_vm_bind) {
-      util_vma_heap_finish(&device->vma_heap);
-      util_vma_heap_finish(&device->bda_heap);
-      simple_mtx_destroy(&device->vma_mutex);
-   }
    if (ver)
       drmFreeVersion(ver);
 out_open:
@@ -405,12 +395,6 @@ nouveau_ws_device_destroy(struct nouveau_ws_device *device)
 
    _mesa_hash_table_destroy(device->bos, NULL);
    simple_mtx_destroy(&device->bos_lock);
-
-   if (device->has_vm_bind) {
-      util_vma_heap_finish(&device->vma_heap);
-      util_vma_heap_finish(&device->bda_heap);
-      simple_mtx_destroy(&device->vma_mutex);
-   }
 
    close(device->fd);
    FREE(device);

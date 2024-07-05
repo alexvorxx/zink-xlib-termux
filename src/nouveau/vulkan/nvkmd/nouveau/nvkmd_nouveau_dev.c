@@ -39,6 +39,18 @@ nvkmd_nouveau_create_dev(struct nvkmd_pdev *_pdev,
                        "Failed to get DRM device: %m");
    }
 
+   simple_mtx_init(&dev->heap_mutex, mtx_plain);
+
+   STATIC_ASSERT(NVKMD_NOUVEAU_HEAP_START < NVKMD_NOUVEAU_HEAP_END);
+   util_vma_heap_init(&dev->heap, NVKMD_NOUVEAU_HEAP_START,
+                      NVKMD_NOUVEAU_HEAP_END - NVKMD_NOUVEAU_HEAP_START);
+
+   STATIC_ASSERT(NVKMD_NOUVEAU_REPLAY_HEAP_START <
+                    NVKMD_NOUVEAU_REPLAY_HEAP_END);
+   util_vma_heap_init(&dev->replay_heap,
+      NVKMD_NOUVEAU_REPLAY_HEAP_START,
+      NVKMD_NOUVEAU_REPLAY_HEAP_END - NVKMD_NOUVEAU_REPLAY_HEAP_START);
+
    *dev_out = &dev->base;
 
    return VK_SUCCESS;

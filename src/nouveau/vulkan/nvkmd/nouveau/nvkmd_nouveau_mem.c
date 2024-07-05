@@ -38,6 +38,7 @@ create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
    }
 
    mem->base.ops = &nvkmd_nouveau_mem_ops;
+   mem->base.dev = &dev->base;
    mem->base.refcnt = 1;
    mem->base.flags = flags;
    mem->base.size_B = size_B;

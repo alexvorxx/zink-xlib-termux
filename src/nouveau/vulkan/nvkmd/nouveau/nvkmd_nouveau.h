@@ -86,8 +86,6 @@ VkResult nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *dev,
 
 struct nvkmd_nouveau_va {
    struct nvkmd_va base;
-
-   struct nvkmd_nouveau_dev *dev;
 };
 
 NVKMD_DECL_SUBCLASS(va, nouveau);

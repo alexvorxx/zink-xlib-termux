@@ -147,6 +147,7 @@ struct nvkmd_dev_ops {
 
 struct nvkmd_dev {
    const struct nvkmd_dev_ops *ops;
+   struct nvkmd_pdev *pdev;
 };
 
 struct nvkmd_mem_ops {
@@ -169,6 +170,7 @@ struct nvkmd_mem_ops {
 
 struct nvkmd_mem {
    const struct nvkmd_mem_ops *ops;
+   struct nvkmd_dev *dev;
 
    uint32_t refcnt;
 
@@ -197,6 +199,8 @@ struct nvkmd_va_ops {
 
 struct nvkmd_va {
    const struct nvkmd_va_ops *ops;
+   struct nvkmd_dev *dev;
+
    enum nvkmd_va_flags flags;
    uint8_t pte_kind;
    uint64_t addr;
@@ -256,6 +260,7 @@ struct nvkmd_ctx_ops {
 
 struct nvkmd_ctx {
    const struct nvkmd_ctx_ops *ops;
+   struct nvkmd_dev *dev;
 };
 
 /*

@@ -22,6 +22,7 @@ nvkmd_nouveau_create_dev(struct nvkmd_pdev *_pdev,
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    dev->base.ops = &nvkmd_nouveau_dev_ops;
+   dev->base.pdev = &pdev->base;
 
    drmDevicePtr drm_device = NULL;
    int ret = drmGetDeviceFromDevId(pdev->base.drm.render_dev, 0, &drm_device);

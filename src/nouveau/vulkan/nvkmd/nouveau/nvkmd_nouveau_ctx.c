@@ -54,6 +54,7 @@ nvkmd_nouveau_create_exec_ctx(struct nvkmd_dev *_dev,
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    ctx->base.ops = &nvkmd_nouveau_exec_ctx_ops;
+   ctx->base.dev = &dev->base;
    ctx->ws_dev = dev->ws_dev;
 
    STATIC_ASSERT(NVKMD_ENGINE_COPY     == (int)NOUVEAU_WS_ENGINE_COPY);
@@ -275,6 +276,7 @@ nvkmd_nouveau_create_bind_ctx(struct nvkmd_dev *_dev,
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    ctx->base.ops = &nvkmd_nouveau_bind_ctx_ops;
+   ctx->base.dev = &dev->base;
    ctx->ws_dev = dev->ws_dev;
 
    ctx->req = (struct drm_nouveau_vm_bind) {

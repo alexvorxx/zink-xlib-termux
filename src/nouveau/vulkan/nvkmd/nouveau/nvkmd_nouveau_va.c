@@ -149,10 +149,10 @@ nvkmd_nouveau_alloc_va(struct nvkmd_dev *_dev,
    }
 
    va->base.ops = &nvkmd_nouveau_va_ops;
+   va->base.dev = &dev->base;
    va->base.flags = flags;
    va->base.pte_kind = pte_kind;
    va->base.size_B = size_B;
-   va->dev = dev;
 
    *va_out = &va->base;
 
@@ -169,6 +169,7 @@ fail_alloc:
 static void
 nvkmd_nouveau_va_free(struct nvkmd_va *_va)
 {
+   struct nvkmd_nouveau_dev *dev = nvkmd_nouveau_dev(_va->dev);
    struct nvkmd_nouveau_va *va = nvkmd_nouveau_va(_va);
    VkResult result = VK_SUCCESS;
 
@@ -180,7 +181,7 @@ nvkmd_nouveau_va_free(struct nvkmd_va *_va)
          .addr = va->base.addr,
          .range = va->base.size_B,
       };
-      result |= vm_bind(va->dev, NULL, &bind);
+      result |= vm_bind(dev, NULL, &bind);
    }
 
    if (va->base.flags & NVKMD_VA_SPARSE) {
@@ -190,12 +191,12 @@ nvkmd_nouveau_va_free(struct nvkmd_va *_va)
          .range = va->base.size_B,
          .flags = DRM_NOUVEAU_VM_BIND_SPARSE,
       };
-      result |= vm_bind(va->dev, NULL, &bind);
+      result |= vm_bind(dev, NULL, &bind);
    }
 
    /* If unbinding fails, we leak the VA range */
    if (result == VK_SUCCESS)
-      free_heap_addr(va->dev, va->base.flags, va->base.addr, va->base.size_B);
+      free_heap_addr(dev, va->base.flags, va->base.addr, va->base.size_B);
 
    FREE(va);
 }
@@ -208,10 +209,11 @@ nvkmd_nouveau_va_bind_mem(struct nvkmd_va *_va,
                           uint64_t mem_offset_B,
                           uint64_t range_B)
 {
+   struct nvkmd_nouveau_dev *dev = nvkmd_nouveau_dev(_va->dev);
    struct nvkmd_nouveau_va *va = nvkmd_nouveau_va(_va);
    struct nvkmd_nouveau_mem *mem = nvkmd_nouveau_mem(_mem);
 
-   assert(mem->bo->dev == va->dev->ws_dev);
+   assert(_mem->dev == _va->dev);
 
    struct drm_nouveau_vm_bind_op bind = {
       .op = DRM_NOUVEAU_VM_BIND_OP_MAP,
@@ -221,7 +223,7 @@ nvkmd_nouveau_va_bind_mem(struct nvkmd_va *_va,
       .bo_offset = mem_offset_B,
       .flags = va->base.pte_kind,
    };
-   return vm_bind(va->dev, log_obj, &bind);
+   return vm_bind(dev, log_obj, &bind);
 }
 
 static VkResult
@@ -230,6 +232,7 @@ nvkmd_nouveau_va_unbind(struct nvkmd_va *_va,
                         uint64_t va_offset_B,
                         uint64_t range_B)
 {
+   struct nvkmd_nouveau_dev *dev = nvkmd_nouveau_dev(_va->dev);
    struct nvkmd_nouveau_va *va = nvkmd_nouveau_va(_va);
 
    struct drm_nouveau_vm_bind_op bind = {
@@ -237,7 +240,7 @@ nvkmd_nouveau_va_unbind(struct nvkmd_va *_va,
       .addr = va->base.addr + va_offset_B,
       .range = range_B,
    };
-   return vm_bind(va->dev, log_obj, &bind);
+   return vm_bind(dev, log_obj, &bind);
 }
 
 const struct nvkmd_va_ops nvkmd_nouveau_va_ops = {

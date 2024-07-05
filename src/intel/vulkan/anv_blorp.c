@@ -98,14 +98,9 @@ upload_dynamic_state(struct blorp_context *context,
 {
    struct anv_device *device = context->driver_ctx;
 
-   device->blorp.dynamic_states[name].state =
+   device->blorp.dynamic_states[name] =
       anv_state_pool_emit_data(&device->dynamic_state_pool,
                                size, alignment, data);
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      device->blorp.dynamic_states[name].db_state =
-         anv_state_pool_emit_data(&device->dynamic_state_db_pool,
-                                  size, alignment, data);
-   }
 }
 
 void
@@ -138,12 +133,7 @@ anv_device_finish_blorp(struct anv_device *device)
     */
    for (uint32_t i = 0; i < ARRAY_SIZE(device->blorp.dynamic_states); i++) {
       anv_state_pool_free(&device->dynamic_state_pool,
-                          device->blorp.dynamic_states[i].state);
-      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-         anv_state_pool_free(&device->dynamic_state_db_pool,
-                             device->blorp.dynamic_states[i].db_state);
-      }
-
+                          device->blorp.dynamic_states[i]);
    }
 #endif
    blorp_finish(&device->blorp.context);

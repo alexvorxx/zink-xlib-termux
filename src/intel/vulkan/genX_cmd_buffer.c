@@ -155,24 +155,24 @@ fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
    sba->BindlessSamplerStateBaseAddressModifyEnable = true;
 #endif
 
-   if (cmd_buffer->state.pending_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
-      sba->DynamicStateBaseAddress = (struct anv_address) {
-         .offset = device->physical->va.dynamic_state_db_pool.addr,
-      };
-      sba->DynamicStateBufferSize =
-         (device->physical->va.dynamic_state_db_pool.size +
-          device->physical->va.descriptor_buffer_pool.size +
-          device->physical->va.push_descriptor_buffer_pool.size) / 4096;
-      sba->DynamicStateMOCS = mocs;
-      sba->DynamicStateBaseAddressModifyEnable = true;
-      sba->DynamicStateBufferSizeModifyEnable = true;
+   sba->DynamicStateBaseAddress = (struct anv_address) {
+      .offset = device->physical->va.dynamic_state_pool.addr,
+   };
+   sba->DynamicStateBufferSize =
+      (device->physical->va.dynamic_state_pool.size +
+       device->physical->va.dynamic_visible_pool.size +
+       device->physical->va.push_descriptor_buffer_pool.size) / 4096;
+   sba->DynamicStateMOCS = mocs;
+   sba->DynamicStateBaseAddressModifyEnable = true;
+   sba->DynamicStateBufferSizeModifyEnable = true;
 
+   if (cmd_buffer->state.pending_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
 #if GFX_VERx10 >= 125
       sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
-         .offset = device->physical->va.descriptor_buffer_pool.addr,
+         .offset = device->physical->va.dynamic_visible_pool.addr,
       };
       sba->BindlessSurfaceStateSize =
-         (device->physical->va.descriptor_buffer_pool.size +
+         (device->physical->va.dynamic_visible_pool.size +
           device->physical->va.push_descriptor_buffer_pool.size) - 1;
       sba->BindlessSurfaceStateMOCS = mocs;
       sba->BindlessSurfaceStateBaseAddressModifyEnable = true;
@@ -183,9 +183,9 @@ fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
          anv_address_physical(device->workaround_address);
       const uint64_t surfaces_size =
          cmd_buffer->state.descriptor_buffers.surfaces_address != 0 ?
-         MIN2(device->physical->va.descriptor_buffer_pool.size -
+         MIN2(device->physical->va.dynamic_visible_pool.size -
               (cmd_buffer->state.descriptor_buffers.surfaces_address -
-               device->physical->va.descriptor_buffer_pool.addr),
+               device->physical->va.dynamic_visible_pool.addr),
               anv_physical_device_bindless_heap_size(device->physical, true)) :
          (device->workaround_bo->size - device->workaround_address.offset);
       sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
@@ -197,16 +197,6 @@ fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
 #endif /* GFX_VERx10 < 125 */
    } else if (!device->physical->indirect_descriptors) {
 #if GFX_VERx10 >= 125
-      sba->DynamicStateBaseAddress = (struct anv_address) {
-         .offset = device->physical->va.dynamic_state_pool.addr,
-      };
-      sba->DynamicStateBufferSize =
-         (device->physical->va.dynamic_state_pool.size +
-          device->physical->va.sampler_state_pool.size) / 4096;
-      sba->DynamicStateMOCS = mocs;
-      sba->DynamicStateBaseAddressModifyEnable = true;
-      sba->DynamicStateBufferSizeModifyEnable = true;
-
       sba->BindlessSurfaceStateBaseAddress = (struct anv_address) {
          .offset = device->physical->va.internal_surface_state_pool.addr,
       };
@@ -219,16 +209,6 @@ fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
       unreachable("Direct descriptor not supported");
 #endif
    } else {
-      sba->DynamicStateBaseAddress = (struct anv_address) {
-         .offset = device->physical->va.dynamic_state_pool.addr,
-      };
-      sba->DynamicStateBufferSize =
-         (device->physical->va.dynamic_state_pool.size +
-          device->physical->va.sampler_state_pool.size) / 4096;
-      sba->DynamicStateMOCS = mocs;
-      sba->DynamicStateBaseAddressModifyEnable = true;
-      sba->DynamicStateBufferSizeModifyEnable = true;
-
       sba->BindlessSurfaceStateBaseAddress =
          (struct anv_address) { .offset =
                                 device->physical->va.bindless_surface_state_pool.addr,
@@ -299,11 +279,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       _sba = sba;
    }
 
-   bool db_mode_changed = false;
-   if (cmd_buffer->state.current_db_mode != cmd_buffer->state.pending_db_mode) {
+   if (cmd_buffer->state.current_db_mode != cmd_buffer->state.pending_db_mode)
       cmd_buffer->state.current_db_mode = cmd_buffer->state.pending_db_mode;
-      db_mode_changed = true;
-   }
 
 #if INTEL_NEEDS_WA_1607854226
    /* Wa_1607854226:
@@ -382,40 +359,6 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 
    assert(cmd_buffer->state.current_db_mode !=
           ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-   if (db_mode_changed) {
-#if GFX_VER == 11 || GFX_VER == 125
-      anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_SLICE_TABLE_STATE_POINTERS), ptr) {
-         ptr.SliceHashStatePointerValid = true;
-         ptr.SliceHashTableStatePointer = cmd_buffer->state.current_db_mode ==
-                                          ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-                                          device->slice_hash_db.offset :
-                                          device->slice_hash.offset;
-      }
-#endif
-
-      /* Changing the dynamic state location affects all the states having
-       * offset relative to that pointer.
-       */
-      struct anv_gfx_dynamic_state *hw_state = &cmd_buffer->state.gfx.dyn_state;
-      BITSET_SET(hw_state->dirty, ANV_GFX_STATE_VIEWPORT_SF_CLIP);
-      BITSET_SET(hw_state->dirty, ANV_GFX_STATE_VIEWPORT_CC);
-      BITSET_SET(hw_state->dirty, ANV_GFX_STATE_SCISSOR);
-      BITSET_SET(hw_state->dirty, ANV_GFX_STATE_CC_STATE);
-      BITSET_SET(hw_state->dirty, ANV_GFX_STATE_BLEND_STATE);
-      if (device->vk.enabled_extensions.KHR_fragment_shading_rate) {
-         struct vk_dynamic_graphics_state *dyn =
-            &cmd_buffer->vk.dynamic_graphics_state;
-         BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_FSR);
-      }
-
-#if GFX_VERx10 < 125
-      /* The push constant data for compute shader is an offset in the dynamic
-       * state heap. If we change it, we need to reemit the push constants.
-       */
-      cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_COMPUTE_BIT;
-      cmd_buffer->state.compute.base.push_constants_data_dirty = true;
-#endif
-   }
 
 #if GFX_VERx10 >= 125
    assert(sba.BindlessSurfaceStateBaseAddress.offset != 0);
@@ -2349,11 +2292,7 @@ emit_samplers(struct anv_cmd_buffer *cmd_buffer,
       if (sampler == NULL)
          continue;
 
-      memcpy(state->map + (s * 16),
-             cmd_buffer->state.current_db_mode ==
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-             sampler->db_state[binding->plane] :
-             sampler->state[binding->plane],
+      memcpy(state->map + (s * 16), sampler->state[binding->plane],
              sizeof(sampler->state[0]));
    }
 
@@ -2707,7 +2646,7 @@ update_descriptor_set_surface_state(struct anv_cmd_buffer *cmd_buffer,
       &device->va.push_descriptor_buffer_pool :
       &device->va.internal_surface_state_pool;
    const struct anv_va_range *va_range =
-      buffer_index == -1 ? push_va_range : &device->va.descriptor_buffer_pool;
+      buffer_index == -1 ? push_va_range : &device->va.dynamic_visible_pool;
    const uint64_t descriptor_set_addr =
       (buffer_index == -1 ? va_range->addr :
        cmd_buffer->state.descriptor_buffers.address[buffer_index]) +
@@ -2750,7 +2689,7 @@ compute_descriptor_set_surface_offset(const struct anv_cmd_buffer *cmd_buffer,
          device->va.push_descriptor_buffer_pool.addr :
          cmd_buffer->state.descriptor_buffers.address[buffer_index];
 
-      return (buffer_address - device->va.descriptor_buffer_pool.addr) +
+      return (buffer_address - device->va.dynamic_visible_pool.addr) +
               pipe_state->descriptor_buffers[set_idx].buffer_offset;
    }
 
@@ -2770,7 +2709,7 @@ compute_descriptor_set_sampler_offset(const struct anv_cmd_buffer *cmd_buffer,
       device->va.push_descriptor_buffer_pool.addr :
       cmd_buffer->state.descriptor_buffers.address[buffer_index];
 
-   return (buffer_address - device->va.dynamic_state_db_pool.addr) +
+   return (buffer_address - device->va.dynamic_state_pool.addr) +
       pipe_state->descriptor_buffers[set_idx].buffer_offset;
 }
 
@@ -2812,7 +2751,7 @@ genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
       struct anv_device *device = cmd_buffer->device;
       push_constants->surfaces_base_offset =
          (cmd_buffer->state.descriptor_buffers.surfaces_address -
-          device->physical->va.descriptor_buffer_pool.addr);
+          device->physical->va.dynamic_visible_pool.addr);
 #endif
 
       cmd_buffer->state.push_constants_dirty |=

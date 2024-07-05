@@ -151,8 +151,6 @@ anv_create_cmd_buffer(struct vk_command_pool *pool,
                          &device->internal_surface_state_pool, 4096);
    anv_state_stream_init(&cmd_buffer->dynamic_state_stream,
                          &device->dynamic_state_pool, 16384);
-   anv_state_stream_init(&cmd_buffer->dynamic_state_db_stream,
-                         &device->dynamic_state_db_pool, 16384);
    anv_state_stream_init(&cmd_buffer->general_state_stream,
                          &device->general_state_pool, 16384);
    anv_state_stream_init(&cmd_buffer->indirect_push_descriptor_stream,
@@ -206,7 +204,6 @@ destroy_cmd_buffer(struct anv_cmd_buffer *cmd_buffer)
 
    anv_state_stream_finish(&cmd_buffer->surface_state_stream);
    anv_state_stream_finish(&cmd_buffer->dynamic_state_stream);
-   anv_state_stream_finish(&cmd_buffer->dynamic_state_db_stream);
    anv_state_stream_finish(&cmd_buffer->general_state_stream);
    anv_state_stream_finish(&cmd_buffer->indirect_push_descriptor_stream);
    anv_state_stream_finish(&cmd_buffer->push_descriptor_buffer_stream);
@@ -271,10 +268,6 @@ reset_cmd_buffer(struct anv_cmd_buffer *cmd_buffer,
    anv_state_stream_finish(&cmd_buffer->dynamic_state_stream);
    anv_state_stream_init(&cmd_buffer->dynamic_state_stream,
                          &cmd_buffer->device->dynamic_state_pool, 16384);
-
-   anv_state_stream_finish(&cmd_buffer->dynamic_state_db_stream);
-   anv_state_stream_init(&cmd_buffer->dynamic_state_db_stream,
-                         &cmd_buffer->device->dynamic_state_db_pool, 16384);
 
    anv_state_stream_finish(&cmd_buffer->general_state_stream);
    anv_state_stream_init(&cmd_buffer->general_state_stream,
@@ -999,9 +992,9 @@ void anv_CmdBindDescriptorBuffersEXT(
    struct anv_cmd_state *state = &cmd_buffer->state;
 
    for (uint32_t i = 0; i < bufferCount; i++) {
-      assert(pBindingInfos[i].address >= cmd_buffer->device->physical->va.descriptor_buffer_pool.addr &&
-             pBindingInfos[i].address < (cmd_buffer->device->physical->va.descriptor_buffer_pool.addr +
-                                         cmd_buffer->device->physical->va.descriptor_buffer_pool.size));
+      assert(pBindingInfos[i].address >= cmd_buffer->device->physical->va.dynamic_visible_pool.addr &&
+             pBindingInfos[i].address < (cmd_buffer->device->physical->va.dynamic_visible_pool.addr +
+                                         cmd_buffer->device->physical->va.dynamic_visible_pool.size));
 
       if (state->descriptor_buffers.address[i] != pBindingInfos[i].address) {
          state->descriptor_buffers.address[i] = pBindingInfos[i].address;

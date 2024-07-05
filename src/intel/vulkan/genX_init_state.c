@@ -256,7 +256,7 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
          device->physical->va.dynamic_state_pool.addr,
       };
       sba.DynamicStateBufferSize = (device->physical->va.dynamic_state_pool.size +
-                                    device->physical->va.sampler_state_pool.size) / 4096;
+                                    device->physical->va.dynamic_visible_pool.size) / 4096;
       sba.DynamicStateMOCS = mocs;
       sba.DynamicStateBaseAddressModifyEnable = true;
       sba.DynamicStateBufferSizeModifyEnable = true;
@@ -906,17 +906,6 @@ genX(init_device_state)(struct anv_device *device)
          return res;
    }
 
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
-       device->slice_hash.alloc_size) {
-      device->slice_hash_db =
-         anv_state_pool_alloc(&device->dynamic_state_db_pool,
-                              device->slice_hash.alloc_size, 64);
-
-      memcpy(device->slice_hash_db.map,
-             device->slice_hash.map,
-             device->slice_hash.alloc_size);
-   }
-
    return res;
 }
 
@@ -1199,21 +1188,35 @@ VkResult genX(CreateSampler)(
    sampler->n_planes = ycbcr_info ? ycbcr_info->n_planes : 1;
 
    uint32_t border_color_stride = 64;
-   uint32_t border_color_offset, border_color_db_offset = 0;
+   uint32_t border_color_offset;
    void *border_color_ptr;
    if (sampler->vk.border_color <= VK_BORDER_COLOR_INT_OPAQUE_WHITE) {
       border_color_offset = device->border_colors.offset +
                             pCreateInfo->borderColor *
                             border_color_stride;
-      border_color_db_offset = device->border_colors_db.offset +
-                               pCreateInfo->borderColor *
-                               border_color_stride;
       border_color_ptr = device->border_colors.map +
                          pCreateInfo->borderColor * border_color_stride;
    } else {
       assert(vk_border_color_is_custom(sampler->vk.border_color));
-      sampler->custom_border_color =
-         anv_state_reserved_array_pool_alloc(&device->custom_border_colors, false);
+      if (pCreateInfo->flags & VK_SAMPLER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
+         const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
+         if (opaque_info) {
+            uint32_t alloc_idx = *((const uint32_t *)opaque_info->opaqueCaptureDescriptorData);
+            sampler->custom_border_color =
+               anv_state_reserved_array_pool_alloc_index(&device->custom_border_colors, alloc_idx);
+         } else {
+            sampler->custom_border_color =
+               anv_state_reserved_array_pool_alloc(&device->custom_border_colors, true);
+         }
+      } else {
+         sampler->custom_border_color =
+            anv_state_reserved_array_pool_alloc(&device->custom_border_colors, false);
+      }
+      if (sampler->custom_border_color.alloc_size == 0)
+         return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+
       border_color_offset = sampler->custom_border_color.offset;
       border_color_ptr = sampler->custom_border_color.map;
 
@@ -1237,29 +1240,6 @@ VkResult genX(CreateSampler)(
       }
 
       memcpy(border_color_ptr, color.u32, sizeof(color));
-
-      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-         if (pCreateInfo->flags & VK_SAMPLER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
-            const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
-               vk_find_struct_const(pCreateInfo->pNext,
-                                    OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
-            if (opaque_info) {
-               uint32_t alloc_idx = *((const uint32_t *)opaque_info->opaqueCaptureDescriptorData);
-               sampler->custom_border_color_db =
-                  anv_state_reserved_array_pool_alloc_index(&device->custom_border_colors_db, alloc_idx);
-            } else {
-               sampler->custom_border_color_db =
-                  anv_state_reserved_array_pool_alloc(&device->custom_border_colors_db, true);
-            }
-         } else {
-            sampler->custom_border_color_db =
-               anv_state_reserved_array_pool_alloc(&device->custom_border_colors_db, false);
-         }
-         if (sampler->custom_border_color_db.alloc_size == 0)
-            return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-         border_color_db_offset = sampler->custom_border_color_db.offset;
-         memcpy(sampler->custom_border_color_db.map, color.u32, sizeof(color));
-      }
    }
 
    const bool seamless_cube =
@@ -1357,11 +1337,6 @@ VkResult genX(CreateSampler)(
        */
       sampler_state.BorderColorPointer = border_color_offset;
       GENX(SAMPLER_STATE_pack)(NULL, sampler->state[p], &sampler_state);
-
-      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-         sampler_state.BorderColorPointer = border_color_db_offset;
-         GENX(SAMPLER_STATE_pack)(NULL, sampler->db_state[p], &sampler_state);
-      }
    }
 
    /* If we have bindless, allocate enough samplers.  We allocate 32 bytes
@@ -1397,14 +1372,14 @@ genX(emit_embedded_sampler)(struct anv_device *device,
    memcpy(&sampler->key, &binding->key, sizeof(binding->key));
 
    sampler->border_color_state =
-      anv_state_pool_alloc(&device->dynamic_state_db_pool,
+      anv_state_pool_alloc(&device->dynamic_state_pool,
                            sizeof(struct gfx8_border_color), 64);
    memcpy(sampler->border_color_state.map,
           binding->key.color,
           sizeof(binding->key.color));
 
    sampler->sampler_state =
-      anv_state_pool_alloc(&device->dynamic_state_db_pool,
+      anv_state_pool_alloc(&device->dynamic_state_pool,
                            ANV_SAMPLER_STATE_SIZE, 32);
 
    struct GENX(SAMPLER_STATE) sampler_state = {

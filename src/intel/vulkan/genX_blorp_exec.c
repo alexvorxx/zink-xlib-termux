@@ -121,10 +121,7 @@ blorp_get_dynamic_state(struct blorp_batch *batch,
                         enum blorp_dynamic_state name)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
-   return (cmd_buffer->state.current_db_mode ==
-           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) ?
-      cmd_buffer->device->blorp.dynamic_states[name].db_state.offset :
-      cmd_buffer->device->blorp.dynamic_states[name].state.offset;
+   return cmd_buffer->device->blorp.dynamic_states[name].offset;
 }
 
 static void *

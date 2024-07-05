@@ -99,14 +99,8 @@ get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
 {
    struct anv_device *device = cmd_buffer->device;
 
-   if (!cps_enabled) {
-      assert(cmd_buffer->state.current_db_mode !=
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-      return cmd_buffer->state.current_db_mode ==
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-             device->cps_states_db.offset :
-             device->cps_states.offset;
-   }
+   if (!cps_enabled)
+      return device->cps_states.offset;
 
    uint32_t offset;
    static const uint32_t size_index[] = {
@@ -131,12 +125,7 @@ get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
 
    offset *= MAX_VIEWPORTS * GENX(CPS_STATE_length) * 4;
 
-   assert(cmd_buffer->state.current_db_mode !=
-          ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-   return (cmd_buffer->state.current_db_mode ==
-           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-           device->cps_states_db.offset :
-           device->cps_states.offset) + offset;
+   return device->cps_states.offset + offset;
 }
 #endif /* GFX_VER >= 12 */
 

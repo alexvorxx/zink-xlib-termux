@@ -425,8 +425,8 @@ enum anv_bo_alloc_flags {
    /** Specifies that the BO should be cached and incoherent. */
    ANV_BO_ALLOC_HOST_CACHED =             (1 << 16),
 
-   /** For sampler pools */
-   ANV_BO_ALLOC_SAMPLER_POOL =            (1 << 17),
+   /** For buffer addressable from the dynamic state heap */
+   ANV_BO_ALLOC_DYNAMIC_VISIBLE_POOL =    (1 << 17),
 
    /** Specifies that the BO is imported.
     *
@@ -444,11 +444,8 @@ enum anv_bo_alloc_flags {
     */
    ANV_BO_ALLOC_AUX_CCS =                 (1 << 20),
 
-   /** For descriptor buffer pools */
-   ANV_BO_ALLOC_DESCRIPTOR_BUFFER_POOL =  (1 << 21),
-
    /** Compressed buffer, only supported in Xe2+ */
-   ANV_BO_ALLOC_COMPRESSED =              (1 << 22),
+   ANV_BO_ALLOC_COMPRESSED =              (1 << 21),
 };
 
 /** Specifies that the BO should be cached and coherent. */
@@ -958,8 +955,8 @@ struct anv_memory_type {
    /* Standard bits passed on to the client */
    VkMemoryPropertyFlags   propertyFlags;
    uint32_t                heapIndex;
-   /* Whether this is the descriptor buffer memory type */
-   bool                    descriptor_buffer;
+   /* Whether this is the dynamic visible memory type */
+   bool                    dynamic_visible;
    bool                    compressed;
 };
 
@@ -1116,8 +1113,8 @@ struct anv_physical_device {
 #endif
       /** Mask of memory types of normal allocations */
       uint32_t                                  default_buffer_mem_types;
-      /** Mask of memory types of descriptor buffers */
-      uint32_t                                  desc_buffer_mem_types;
+      /** Mask of memory types of data indexable from the dynamic heap */
+      uint32_t                                  dynamic_visible_mem_types;
       /** Mask of memory types of protected buffers/images */
       uint32_t                                  protected_mem_types;
       /** Mask of memory types of compressed buffers/images */
@@ -1155,9 +1152,9 @@ struct anv_physical_device {
         */
        struct anv_va_range                      dynamic_state_pool;
        /**
-        * Sampler state pool
+        * Buffer pool that can be index from the dynamic state heap
         */
-       struct anv_va_range                      sampler_state_pool;
+       struct anv_va_range                      dynamic_visible_pool;
        /**
         * Indirect descriptor pool
         */
@@ -1170,14 +1167,6 @@ struct anv_physical_device {
         * Instruction state pool
         */
        struct anv_va_range                      instruction_state_pool;
-       /**
-        * Dynamic state pool when using descriptor buffers
-        */
-       struct anv_va_range                      dynamic_state_db_pool;
-       /**
-        * Descriptor buffers
-        */
-       struct anv_va_range                      descriptor_buffer_pool;
        /**
         * Push descriptor with descriptor buffers
         */
@@ -1247,7 +1236,7 @@ anv_physical_device_bindless_heap_size(const struct anv_physical_device *device,
     */
    return device->uses_ex_bso ?
       (descriptor_buffer ?
-       device->va.descriptor_buffer_pool.size :
+       device->va.dynamic_visible_pool.size :
        device->va.bindless_surface_state_pool.size) :
       64 * 1024 * 1024 /* 64 MiB */;
 }
@@ -1806,8 +1795,7 @@ struct anv_device {
     struct util_vma_heap                        vma_lo;
     struct util_vma_heap                        vma_hi;
     struct util_vma_heap                        vma_desc;
-    struct util_vma_heap                        vma_desc_buf;
-    struct util_vma_heap                        vma_samplers;
+    struct util_vma_heap                        vma_dynamic_visible;
     struct util_vma_heap                        vma_trtt;
 
     /** List of all anv_device_memory objects */
@@ -1832,7 +1820,6 @@ struct anv_device {
     struct anv_state_pool                       general_state_pool;
     struct anv_state_pool                       aux_tt_pool;
     struct anv_state_pool                       dynamic_state_pool;
-    struct anv_state_pool                       dynamic_state_db_pool;
     struct anv_state_pool                       instruction_state_pool;
     struct anv_state_pool                       binding_table_pool;
     struct anv_state_pool                       scratch_surface_state_pool;
@@ -1842,7 +1829,6 @@ struct anv_device {
     struct anv_state_pool                       push_descriptor_buffer_pool;
 
     struct anv_state_reserved_array_pool        custom_border_colors;
-    struct anv_state_reserved_array_pool        custom_border_colors_db;
 
     /** BO used for various workarounds
      *
@@ -1878,17 +1864,12 @@ struct anv_device {
 
     struct {
        struct blorp_context                     context;
-       struct {
-          struct anv_state                      state;
-          struct anv_state                      db_state;
-       }                                        dynamic_states[BLORP_DYNAMIC_STATE_COUNT];
+       struct anv_state                         dynamic_states[BLORP_DYNAMIC_STATE_COUNT];
     }                                           blorp;
 
     struct anv_state                            border_colors;
-    struct anv_state                            border_colors_db;
 
     struct anv_state                            slice_hash;
-    struct anv_state                            slice_hash_db;
 
     /** An array of CPS_STATE structures grouped by MAX_VIEWPORTS elements
      *
@@ -1899,7 +1880,6 @@ struct anv_device {
      * array.
      */
     struct anv_state                            cps_states;
-    struct anv_state                            cps_states_db;
 
     uint32_t                                    queue_count;
     struct anv_queue  *                         queues;
@@ -4065,7 +4045,6 @@ struct anv_cmd_buffer {
    /* Stream objects for storing temporary data */
    struct anv_state_stream                      surface_state_stream;
    struct anv_state_stream                      dynamic_state_stream;
-   struct anv_state_stream                      dynamic_state_db_stream;
    struct anv_state_stream                      general_state_stream;
    struct anv_state_stream                      indirect_push_descriptor_stream;
    struct anv_state_stream                      push_descriptor_buffer_stream;
@@ -4230,11 +4209,6 @@ static inline struct anv_address
 anv_cmd_buffer_dynamic_state_address(struct anv_cmd_buffer *cmd_buffer,
                                      struct anv_state state)
 {
-   if (cmd_buffer->state.current_db_mode ==
-       ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) {
-      return anv_state_pool_state_address(
-         &cmd_buffer->device->dynamic_state_db_pool, state);
-   }
    return anv_state_pool_state_address(
       &cmd_buffer->device->dynamic_state_pool, state);
 }
@@ -5994,7 +5968,6 @@ struct anv_sampler {
    unsigned char                sha1[20];
 
    uint32_t                     state[3][4];
-   uint32_t                     db_state[3][4];
    /* Packed SAMPLER_STATE without the border color pointer. */
    uint32_t                     state_no_bc[3][4];
    uint32_t                     n_planes;
@@ -6005,7 +5978,6 @@ struct anv_sampler {
    struct anv_state             bindless_state;
 
    struct anv_state             custom_border_color;
-   struct anv_state             custom_border_color_db;
 };
 
 

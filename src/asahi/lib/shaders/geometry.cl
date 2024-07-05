@@ -476,7 +476,7 @@ libagx_build_gs_draw(global struct agx_geometry_params *p, uint vertices,
    descriptor[3] = 0;                         /* index bias */
    descriptor[4] = 0;                         /* start instance */
 
-   if (state->heap_bottom > 1024 * 1024 * 128) {
+   if (state->heap_bottom > state->heap_size) {
       global uint *foo = (global uint *)(uintptr_t)0xdeadbeef;
       *foo = 0x1234;
    }
@@ -535,7 +535,7 @@ libagx_gs_setup_indirect(global struct agx_gs_setup_indirect_params *gsi,
    *(gsi->vertex_buffer) = (uintptr_t)(state->heap + state->heap_bottom);
    state->heap_bottom += align(vertex_buffer_size, 4);
 
-   if (state->heap_bottom > 1024 * 1024 * 128) {
+   if (state->heap_bottom > state->heap_size) {
       global uint *foo = (global uint *)(uintptr_t)0x1deadbeef;
       *foo = 0x1234;
    }

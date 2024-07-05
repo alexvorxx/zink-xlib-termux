@@ -3929,13 +3929,16 @@ agx_batch_geometry_state(struct agx_batch *batch)
    struct agx_context *ctx = batch->ctx;
 
    if (!batch->geometry_state) {
+      uint32_t size = 128 * 1024 * 1024;
+
       if (!ctx->heap) {
          ctx->heap = pipe_buffer_create(ctx->base.screen, PIPE_BIND_GLOBAL,
-                                        PIPE_USAGE_DEFAULT, 1024 * 1024 * 128);
+                                        PIPE_USAGE_DEFAULT, size);
       }
 
       struct agx_geometry_state state = {
          .heap = agx_resource(ctx->heap)->bo->ptr.gpu,
+         .heap_size = size,
       };
 
       agx_batch_writes(batch, agx_resource(ctx->heap), 0);

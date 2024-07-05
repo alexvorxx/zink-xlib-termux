@@ -16,7 +16,7 @@
 #include "util/u_suballoc.h"
 #include "util/u_upload_mgr.h"
 
-static const struct si_query_ops query_hw_ops;
+static const struct si_query_ops hw_query_ops;
 static const struct si_query_ops sw_query_ops;
 
 struct si_hw_query_params {
@@ -651,7 +651,7 @@ static struct pipe_query *si_query_hw_create(struct si_screen *sscreen, unsigned
       return NULL;
 
    query->b.type = query_type;
-   query->b.ops = &query_hw_ops;
+   query->b.ops = &hw_query_ops;
 
    switch (query_type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
@@ -1927,7 +1927,7 @@ static int si_get_driver_query_group_info(struct pipe_screen *screen, unsigned i
    return 1;
 }
 
-static const struct si_query_ops query_hw_ops = {
+static const struct si_query_ops hw_query_ops = {
    .destroy = si_query_hw_destroy,
    .begin = si_query_hw_begin,
    .end = si_query_hw_end,

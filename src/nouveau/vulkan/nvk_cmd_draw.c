@@ -1828,7 +1828,9 @@ nvk_flush_rs_state(struct nvk_cmd_buffer *cmd)
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_CONSERVATIVE_MODE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_EXTRA_PRIMITIVE_OVERESTIMATION_SIZE)) {
-      if (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
+      if (nvk_cmd_buffer_3d_cls(cmd) < MAXWELL_B) {
+         assert(dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT);
+      } else if (dyn->rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
          P_IMMD(p, NVB197, SET_CONSERVATIVE_RASTER, ENABLE_FALSE);
       } else {
          uint32_t extra_overestimate =

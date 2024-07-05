@@ -856,8 +856,7 @@
   <struct name="Index List" size="4">
     <field name="Index buffer hi" size="8" start="0" type="hex"/>
     <field name="Primitive" size="8" start="8" type="Primitive"/>
-    <!-- Metal sets this bit for strips, probably wrong though -->
-    <field name="Restart enable" size="1" start="16" type="bool"/> 
+    <field name="Restart enable" size="1" start="16" type="bool"/>
     <field name="Index size" size="3" start="17" type="Index size"/>
 
     <field name="Index buffer size present" size="1" start="20" type="bool"/>

@@ -601,13 +601,10 @@ radv_graphics_pipeline_import_layout(struct radv_pipeline_layout *dst, const str
    dst->push_constant_size = MAX2(dst->push_constant_size, src->push_constant_size);
 }
 
-static VkResult
+static void
 radv_pipeline_import_graphics_info(struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                   struct vk_graphics_pipeline_state *state,
                                    const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
-   VkResult result;
-
    /* Mark all states declared dynamic at pipeline creation. */
    if (pCreateInfo->pDynamicState) {
       uint32_t count = pCreateInfo->pDynamicState->dynamicStateCount;
@@ -623,18 +620,11 @@ radv_pipeline_import_graphics_info(struct radv_device *device, struct radv_graph
       pipeline->active_stages |= sinfo->stage;
    }
 
-   result = vk_graphics_pipeline_state_fill(&device->vk, state, pCreateInfo, NULL, 0, NULL, NULL,
-                                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &pipeline->state_data);
-   if (result != VK_SUCCESS)
-      return result;
-
    if (pipeline->active_stages & VK_SHADER_STAGE_MESH_BIT_EXT) {
       pipeline->last_vgt_api_stage = MESA_SHADER_MESH;
    } else {
       pipeline->last_vgt_api_stage = util_last_bit(pipeline->active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
    }
-
-   return result;
 }
 
 static bool
@@ -646,7 +636,7 @@ radv_should_import_lib_binaries(const VkPipelineCreateFlags2KHR create_flags)
 
 static void
 radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                  struct vk_graphics_pipeline_state *state, struct radv_graphics_lib_pipeline *lib)
+                                  struct radv_graphics_lib_pipeline *lib)
 {
    bool import_binaries = false;
 
@@ -657,8 +647,6 @@ radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_
 
    pipeline->dynamic_states |= lib->base.dynamic_states;
    pipeline->active_stages |= lib->base.active_stages;
-
-   vk_graphics_pipeline_state_merge(state, &lib->graphics_state);
 
    /* Import binaries when LTO is disabled and when the library doesn't retain any shaders. */
    if (radv_should_import_lib_binaries(pipeline->base.create_flags)) {
@@ -680,9 +668,6 @@ radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_
          pipeline->base.gs_copy_shader = radv_shader_ref(lib->base.base.gs_copy_shader);
       }
    }
-
-   /* Import the pipeline layout. */
-   radv_graphics_pipeline_import_layout(&pipeline->layout, &lib->base.layout);
 }
 
 static void
@@ -2245,7 +2230,7 @@ radv_pipeline_import_retained_shaders(const struct radv_device *device, struct r
       const VkPipelineShaderStageCreateInfo *sinfo = &lib->stages[i];
       gl_shader_stage s = vk_to_mesa_shader_stage(sinfo->stage);
 
-      radv_pipeline_stage_init(sinfo, &lib->base.layout, &lib->stage_keys[s], &stages[s]);
+      radv_pipeline_stage_init(sinfo, &lib->layout, &lib->stage_keys[s], &stages[s]);
    }
 
    /* Import the NIR shaders (after SPIRV->NIR). */
@@ -2267,7 +2252,7 @@ radv_pipeline_import_retained_shaders(const struct radv_device *device, struct r
       memcpy(stages[s].shader_sha1, retained_shaders->stages[s].shader_sha1, sizeof(stages[s].shader_sha1));
       memcpy(&stages[s].key, &retained_shaders->stages[s].key, sizeof(stages[s].key));
 
-      radv_shader_layout_init(&lib->base.layout, s, &stages[s].layout);
+      radv_shader_layout_init(&lib->layout, s, &stages[s].layout);
 
       stages[s].feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
 
@@ -2340,9 +2325,14 @@ radv_is_fast_linking_enabled(const VkGraphicsPipelineCreateInfo *pCreateInfo)
 static bool
 radv_skip_graphics_pipeline_compile(const struct radv_device *device, const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
+   const VkPipelineCreateFlags2KHR create_flags = vk_graphics_pipeline_create_flags(pCreateInfo);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    VkShaderStageFlagBits binary_stages = 0;
    VkShaderStageFlags active_stages = 0;
+
+   /* Do not skip for libraries. */
+   if (create_flags & VK_PIPELINE_CREATE_2_LIBRARY_BIT_KHR)
+      return false;
 
    /* Do not skip when fast-linking isn't enabled. */
    if (!radv_is_fast_linking_enabled(pCreateInfo))
@@ -2579,25 +2569,135 @@ radv_should_compute_pipeline_hash(const struct radv_device *device, const enum r
           ((instance->vk.trace_mode & RADV_TRACE_MODE_RGP) && pipeline_type == RADV_PIPELINE_GRAPHICS);
 }
 
+struct radv_graphics_pipeline_state {
+   struct vk_graphics_pipeline_state vk;
+   void *vk_data;
+
+   bool compilation_required;
+
+   struct radv_shader_stage *stages;
+
+   struct radv_graphics_pipeline_key key;
+
+   struct radv_pipeline_layout layout;
+};
+
 static void
-radv_graphics_pipeline_hash(const struct radv_device *device, const struct radv_shader_stage *stages,
-                            uint32_t stage_count, const struct radv_pipeline_layout *layout,
-                            const struct radv_graphics_state_key *gfx_state, unsigned char *hash)
+radv_graphics_pipeline_state_finish(struct radv_device *device, struct radv_graphics_pipeline_state *gfx_state)
+{
+   radv_pipeline_layout_finish(device, &gfx_state->layout);
+   vk_free(&device->vk.alloc, gfx_state->vk_data);
+
+   if (gfx_state->stages) {
+      for (uint32_t i = 0; i < MESA_VULKAN_SHADER_STAGES; i++)
+         ralloc_free(gfx_state->stages[i].nir);
+      free(gfx_state->stages);
+   }
+}
+
+static VkResult
+radv_generate_graphics_pipeline_state(struct radv_device *device, const VkGraphicsPipelineCreateInfo *pCreateInfo,
+                                      struct radv_graphics_pipeline_state *gfx_state)
+{
+   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   const VkPipelineCreateFlags2KHR create_flags = vk_graphics_pipeline_create_flags(pCreateInfo);
+   const bool fast_linking_enabled = radv_is_fast_linking_enabled(pCreateInfo);
+   enum radv_pipeline_type pipeline_type = RADV_PIPELINE_GRAPHICS;
+   VkResult result;
+
+   memset(gfx_state, 0, sizeof(*gfx_state));
+
+   VkGraphicsPipelineLibraryFlagBitsEXT needed_lib_flags = ALL_GRAPHICS_LIB_FLAGS;
+   if (create_flags & VK_PIPELINE_CREATE_2_LIBRARY_BIT_KHR) {
+      const VkGraphicsPipelineLibraryCreateInfoEXT *lib_info =
+         vk_find_struct_const(pCreateInfo->pNext, GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT);
+      needed_lib_flags = lib_info ? lib_info->flags : 0;
+      pipeline_type = RADV_PIPELINE_GRAPHICS_LIB;
+   }
+
+   radv_pipeline_layout_init(device, &gfx_state->layout, false);
+
+   /* If we have libraries, import them first. */
+   const VkPipelineLibraryCreateInfoKHR *libs_info =
+      vk_find_struct_const(pCreateInfo->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
+   if (libs_info) {
+      for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
+         VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
+         const struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
+
+         vk_graphics_pipeline_state_merge(&gfx_state->vk, &gfx_pipeline_lib->graphics_state);
+
+         radv_graphics_pipeline_import_layout(&gfx_state->layout, &gfx_pipeline_lib->layout);
+
+         needed_lib_flags &= ~gfx_pipeline_lib->lib_flags;
+      }
+   }
+
+   result = vk_graphics_pipeline_state_fill(&device->vk, &gfx_state->vk, pCreateInfo, NULL, 0, NULL, NULL,
+                                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &gfx_state->vk_data);
+   if (result != VK_SUCCESS)
+      goto fail;
+
+   if (pipeline_layout)
+      radv_graphics_pipeline_import_layout(&gfx_state->layout, pipeline_layout);
+
+   if (radv_should_compute_pipeline_hash(device, pipeline_type, fast_linking_enabled))
+      radv_pipeline_layout_hash(&gfx_state->layout);
+
+   gfx_state->compilation_required = !radv_skip_graphics_pipeline_compile(device, pCreateInfo);
+   if (gfx_state->compilation_required) {
+      gfx_state->key = radv_generate_graphics_pipeline_key(device, pCreateInfo, &gfx_state->vk, needed_lib_flags);
+
+      gfx_state->stages = malloc(sizeof(struct radv_shader_stage) * MESA_VULKAN_SHADER_STAGES);
+      if (!gfx_state->stages) {
+         result = VK_ERROR_OUT_OF_HOST_MEMORY;
+         goto fail;
+      }
+
+      for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
+         gfx_state->stages[i].entrypoint = NULL;
+         gfx_state->stages[i].nir = NULL;
+         gfx_state->stages[i].spirv.size = 0;
+         gfx_state->stages[i].next_stage = MESA_SHADER_NONE;
+      }
+
+      for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {
+         const VkPipelineShaderStageCreateInfo *sinfo = &pCreateInfo->pStages[i];
+         gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
+
+         radv_pipeline_stage_init(sinfo, &gfx_state->layout, &gfx_state->key.stage_info[stage],
+                                  &gfx_state->stages[stage]);
+      }
+
+      radv_pipeline_load_retained_shaders(device, pCreateInfo, gfx_state->stages);
+   }
+
+   return VK_SUCCESS;
+
+fail:
+   radv_graphics_pipeline_state_finish(device, gfx_state);
+   return result;
+}
+
+static void
+radv_graphics_pipeline_hash(const struct radv_device *device, const struct radv_graphics_pipeline_state *gfx_state,
+                            unsigned char *hash)
 {
    struct mesa_sha1 ctx;
 
    _mesa_sha1_init(&ctx);
-   radv_pipeline_hash(device, layout, &ctx);
+   radv_pipeline_hash(device, &gfx_state->layout, &ctx);
 
-   if (gfx_state)
-      _mesa_sha1_update(&ctx, gfx_state, sizeof(*gfx_state));
+   _mesa_sha1_update(&ctx, &gfx_state->key.gfx_state, sizeof(gfx_state->key.gfx_state));
 
-   for (unsigned s = 0; s < stage_count; s++) {
-      if (!stages[s].entrypoint)
+   for (unsigned s = 0; s < MESA_VULKAN_SHADER_STAGES; s++) {
+      const struct radv_shader_stage *stage = &gfx_state->stages[s];
+
+      if (!stage->entrypoint)
          continue;
 
-      _mesa_sha1_update(&ctx, stages[s].shader_sha1, sizeof(stages[s].shader_sha1));
-      _mesa_sha1_update(&ctx, &stages[s].key, sizeof(stages[s].key));
+      _mesa_sha1_update(&ctx, stage->shader_sha1, sizeof(stage->shader_sha1));
+      _mesa_sha1_update(&ctx, &stage->key, sizeof(stage->key));
    }
 
    _mesa_sha1_final(&ctx, hash);
@@ -2605,15 +2705,14 @@ radv_graphics_pipeline_hash(const struct radv_device *device, const struct radv_
 
 static VkResult
 radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const VkGraphicsPipelineCreateInfo *pCreateInfo,
-                               struct radv_pipeline_layout *pipeline_layout, struct radv_device *device,
-                               struct vk_pipeline_cache *cache, const struct radv_graphics_pipeline_key *pipeline_key,
-                               bool fast_linking_enabled)
+                               const struct radv_graphics_pipeline_state *gfx_state, struct radv_device *device,
+                               struct vk_pipeline_cache *cache, bool fast_linking_enabled)
 {
    struct radv_shader_binary *binaries[MESA_VULKAN_SHADER_STAGES] = {NULL};
    struct radv_shader_binary *gs_copy_binary = NULL;
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.create_flags);
-   struct radv_shader_stage *stages = malloc(sizeof(struct radv_shader_stage) * MESA_VULKAN_SHADER_STAGES);
+   struct radv_shader_stage *stages = gfx_state->stages;
    const VkPipelineCreationFeedbackCreateInfo *creation_feedback =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
    VkPipelineCreationFeedback pipeline_feedback = {
@@ -2625,30 +2724,10 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
       !!(pipeline->base.create_flags & VK_PIPELINE_CREATE_2_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT);
    struct radv_retained_shaders *retained_shaders = NULL;
 
-   if (!stages)
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
-
    int64_t pipeline_start = os_time_get_nano();
 
-   for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
-      stages[i].entrypoint = NULL;
-      stages[i].nir = NULL;
-      stages[i].spirv.size = 0;
-      stages[i].next_stage = MESA_SHADER_NONE;
-   }
-
-   for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {
-      const VkPipelineShaderStageCreateInfo *sinfo = &pCreateInfo->pStages[i];
-      gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
-
-      radv_pipeline_stage_init(sinfo, pipeline_layout, &pipeline_key->stage_info[stage], &stages[stage]);
-   }
-
-   radv_pipeline_load_retained_shaders(device, pCreateInfo, stages);
-
    if (radv_should_compute_pipeline_hash(device, pipeline->base.type, fast_linking_enabled)) {
-      radv_graphics_pipeline_hash(device, stages, MESA_VULKAN_SHADER_STAGES, pipeline_layout, &pipeline_key->gfx_state,
-                                  pipeline->base.sha1);
+      radv_graphics_pipeline_hash(device, gfx_state, pipeline->base.sha1);
 
       pipeline->base.pipeline_hash = *(uint64_t *)pipeline->base.sha1;
    }
@@ -2686,16 +2765,14 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
 
          gfx_pipeline_lib->stages = radv_copy_shader_stage_create_info(device, pCreateInfo->stageCount,
                                                                        pCreateInfo->pStages, gfx_pipeline_lib->mem_ctx);
-         if (!gfx_pipeline_lib->stages) {
-            free(stages);
+         if (!gfx_pipeline_lib->stages)
             return VK_ERROR_OUT_OF_HOST_MEMORY;
-         }
 
          gfx_pipeline_lib->stage_count = pCreateInfo->stageCount;
 
          for (unsigned i = 0; i < pCreateInfo->stageCount; i++) {
             gl_shader_stage s = vk_to_mesa_shader_stage(pCreateInfo->pStages[i].stage);
-            gfx_pipeline_lib->stage_keys[s] = pipeline_key->stage_info[s];
+            gfx_pipeline_lib->stage_keys[s] = gfx_state->key.stage_info[s];
          }
       }
 
@@ -2703,19 +2780,17 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
       goto done;
    }
 
-   if (pipeline->base.create_flags & VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR) {
-      free(stages);
+   if (pipeline->base.create_flags & VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR)
       return VK_PIPELINE_COMPILE_REQUIRED;
-   }
 
    if (retain_shaders) {
       struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(&pipeline->base);
       retained_shaders = &gfx_pipeline_lib->retained_shaders;
    }
 
-   const bool noop_fs = radv_pipeline_needs_noop_fs(pipeline, &pipeline_key->gfx_state);
+   const bool noop_fs = radv_pipeline_needs_noop_fs(pipeline, &gfx_state->key.gfx_state);
 
-   radv_graphics_shaders_compile(device, cache, stages, &pipeline_key->gfx_state, keep_executable_info,
+   radv_graphics_shaders_compile(device, cache, stages, &gfx_state->key.gfx_state, keep_executable_info,
                                  keep_statistic_info, pipeline->base.is_internal, retained_shaders, noop_fs,
                                  pipeline->base.shaders, binaries, &pipeline->base.gs_copy_shader, &gs_copy_binary);
 
@@ -2734,9 +2809,6 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
    }
 
 done:
-   for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
-      ralloc_free(stages[i].nir);
-   }
    pipeline_feedback.duration = os_time_get_nano() - pipeline_start;
 
    if (creation_feedback) {
@@ -2774,7 +2846,6 @@ done:
       }
    }
 
-   free(stages);
    return result;
 }
 
@@ -3058,18 +3129,14 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
                             struct vk_pipeline_cache *cache, const VkGraphicsPipelineCreateInfo *pCreateInfo,
                             const struct radv_graphics_pipeline_create_info *extra)
 {
-   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
-   VkGraphicsPipelineLibraryFlagBitsEXT needed_lib_flags = ALL_GRAPHICS_LIB_FLAGS;
    bool fast_linking_enabled = radv_is_fast_linking_enabled(pCreateInfo);
-   struct vk_graphics_pipeline_state state = {0};
+   struct radv_graphics_pipeline_state gfx_state;
    VkResult result = VK_SUCCESS;
 
    pipeline->last_vgt_api_stage = MESA_SHADER_NONE;
 
    const VkPipelineLibraryCreateInfoKHR *libs_info =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
-
-   radv_pipeline_layout_init(device, &pipeline->layout, false);
 
    /* If we have libraries, import them first. */
    if (libs_info) {
@@ -3079,40 +3146,31 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
 
          assert(pipeline_lib->type == RADV_PIPELINE_GRAPHICS_LIB);
 
-         radv_graphics_pipeline_import_lib(device, pipeline, &state, gfx_pipeline_lib);
-
-         needed_lib_flags &= ~gfx_pipeline_lib->lib_flags;
+         radv_graphics_pipeline_import_lib(device, pipeline, gfx_pipeline_lib);
       }
    }
 
-   /* Import graphics pipeline info that was not included in the libraries. */
-   result = radv_pipeline_import_graphics_info(device, pipeline, &state, pCreateInfo);
+   radv_pipeline_import_graphics_info(device, pipeline, pCreateInfo);
+
+   result = radv_generate_graphics_pipeline_state(device, pCreateInfo, &gfx_state);
    if (result != VK_SUCCESS)
       return result;
 
-   if (pipeline_layout)
-      radv_graphics_pipeline_import_layout(&pipeline->layout, pipeline_layout);
-
-   if (radv_should_compute_pipeline_hash(device, pipeline->base.type, fast_linking_enabled))
-      radv_pipeline_layout_hash(&pipeline->layout);
-
-   if (!radv_skip_graphics_pipeline_compile(device, pCreateInfo)) {
-      struct radv_graphics_pipeline_key key =
-         radv_generate_graphics_pipeline_key(device, pCreateInfo, &state, needed_lib_flags);
-
-      result = radv_graphics_pipeline_compile(pipeline, pCreateInfo, &pipeline->layout, device, cache, &key,
-                                              fast_linking_enabled);
-      if (result != VK_SUCCESS)
+   if (gfx_state.compilation_required) {
+      result = radv_graphics_pipeline_compile(pipeline, pCreateInfo, &gfx_state, device, cache, fast_linking_enabled);
+      if (result != VK_SUCCESS) {
+         radv_graphics_pipeline_state_finish(device, &gfx_state);
          return result;
+      }
    }
 
-   uint32_t vgt_gs_out_prim_type = radv_pipeline_init_vgt_gs_out(pipeline, &state);
+   uint32_t vgt_gs_out_prim_type = radv_pipeline_init_vgt_gs_out(pipeline, &gfx_state.vk);
 
-   radv_pipeline_init_multisample_state(device, pipeline, pCreateInfo, &state);
+   radv_pipeline_init_multisample_state(device, pipeline, pCreateInfo, &gfx_state.vk);
 
    if (!radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH))
       radv_pipeline_init_input_assembly_state(device, pipeline);
-   radv_pipeline_init_dynamic_state(device, pipeline, &state, pCreateInfo);
+   radv_pipeline_init_dynamic_state(device, pipeline, &gfx_state.vk, pCreateInfo);
 
    const struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    if (ps && !ps->info.has_epilog) {
@@ -3126,7 +3184,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    }
 
    if (!radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH))
-      radv_pipeline_init_vertex_input_state(device, pipeline, &state);
+      radv_pipeline_init_vertex_input_state(device, pipeline, &gfx_state.vk);
 
    radv_pipeline_init_shader_stages_state(device, pipeline);
 
@@ -3135,18 +3193,19 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       pipeline->is_ngg && pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.has_ngg_culling;
    pipeline->force_vrs_per_vertex = pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.force_vrs_per_vertex;
    pipeline->rast_prim = vgt_gs_out_prim_type;
-   pipeline->uses_out_of_order_rast = state.rs->rasterization_order_amd == VK_RASTERIZATION_ORDER_RELAXED_AMD;
-   pipeline->uses_vrs = radv_is_vrs_enabled(&state);
-   pipeline->uses_vrs_attachment = radv_pipeline_uses_vrs_attachment(pipeline, &state);
+   pipeline->uses_out_of_order_rast = gfx_state.vk.rs->rasterization_order_amd == VK_RASTERIZATION_ORDER_RELAXED_AMD;
+   pipeline->uses_vrs = radv_is_vrs_enabled(&gfx_state.vk);
+   pipeline->uses_vrs_attachment = radv_pipeline_uses_vrs_attachment(pipeline, &gfx_state.vk);
    pipeline->uses_vrs_coarse_shading = !pipeline->uses_vrs && gfx103_pipeline_vrs_coarse_shading(device, pipeline);
 
-   pipeline->base.push_constant_size = pipeline->layout.push_constant_size;
-   pipeline->base.dynamic_offset_count = pipeline->layout.dynamic_offset_count;
+   pipeline->base.push_constant_size = gfx_state.layout.push_constant_size;
+   pipeline->base.dynamic_offset_count = gfx_state.layout.dynamic_offset_count;
 
    if (extra) {
-      radv_pipeline_init_extra(pipeline, extra, &state);
+      radv_pipeline_init_extra(pipeline, extra, &gfx_state.vk);
    }
 
+   radv_graphics_pipeline_state_finish(device, &gfx_state);
    return result;
 }
 
@@ -3182,8 +3241,6 @@ radv_graphics_pipeline_create(VkDevice _device, VkPipelineCache _cache, const Vk
 void
 radv_destroy_graphics_pipeline(struct radv_device *device, struct radv_graphics_pipeline *pipeline)
 {
-   radv_pipeline_layout_finish(device, &pipeline->layout);
-
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
       if (pipeline->base.shaders[i])
          radv_shader_unref(device, pipeline->base.shaders[i]);
@@ -3191,8 +3248,6 @@ radv_destroy_graphics_pipeline(struct radv_device *device, struct radv_graphics_
 
    if (pipeline->base.gs_copy_shader)
       radv_shader_unref(device, pipeline->base.gs_copy_shader);
-
-   vk_free(&device->vk.alloc, pipeline->state_data);
 }
 
 static VkResult
@@ -3200,11 +3255,11 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
                                 struct vk_pipeline_cache *cache, const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
    VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   struct radv_graphics_pipeline_state gfx_state;
    VkResult result;
 
    const VkGraphicsPipelineLibraryCreateInfoEXT *lib_info =
       vk_find_struct_const(pCreateInfo->pNext, GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT);
-   VkGraphicsPipelineLibraryFlagBitsEXT needed_lib_flags = lib_info ? lib_info->flags : 0;
    const VkPipelineLibraryCreateInfoKHR *libs_info =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
    bool fast_linking_enabled = radv_is_fast_linking_enabled(pCreateInfo);
@@ -3212,9 +3267,9 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
    struct vk_graphics_pipeline_state *state = &pipeline->graphics_state;
 
    pipeline->base.last_vgt_api_stage = MESA_SHADER_NONE;
-   pipeline->lib_flags = needed_lib_flags;
+   pipeline->lib_flags = lib_info ? lib_info->flags : 0;
 
-   radv_pipeline_layout_init(device, &pipeline->base.layout, false);
+   radv_pipeline_layout_init(device, &pipeline->layout, false);
 
    /* If we have libraries, import them first. */
    if (libs_info) {
@@ -3222,29 +3277,35 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
          VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
-         radv_graphics_pipeline_import_lib(device, &pipeline->base, state, gfx_pipeline_lib);
+         vk_graphics_pipeline_state_merge(state, &gfx_pipeline_lib->graphics_state);
+
+         radv_graphics_pipeline_import_layout(&pipeline->layout, &gfx_pipeline_lib->layout);
+
+         radv_graphics_pipeline_import_lib(device, &pipeline->base, gfx_pipeline_lib);
 
          pipeline->lib_flags |= gfx_pipeline_lib->lib_flags;
-
-         needed_lib_flags &= ~gfx_pipeline_lib->lib_flags;
       }
    }
 
-   result = radv_pipeline_import_graphics_info(device, &pipeline->base, state, pCreateInfo);
+   result = vk_graphics_pipeline_state_fill(&device->vk, state, pCreateInfo, NULL, 0, NULL, NULL,
+                                            VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &pipeline->state_data);
    if (result != VK_SUCCESS)
       return result;
 
+   radv_pipeline_import_graphics_info(device, &pipeline->base, pCreateInfo);
+
    if (pipeline_layout)
-      radv_graphics_pipeline_import_layout(&pipeline->base.layout, pipeline_layout);
+      radv_graphics_pipeline_import_layout(&pipeline->layout, pipeline_layout);
 
-   if (radv_should_compute_pipeline_hash(device, pipeline->base.base.type, fast_linking_enabled))
-      radv_pipeline_layout_hash(&pipeline->base.layout);
+   result = radv_generate_graphics_pipeline_state(device, pCreateInfo, &gfx_state);
+   if (result != VK_SUCCESS)
+      return result;
 
-   struct radv_graphics_pipeline_key key =
-      radv_generate_graphics_pipeline_key(device, pCreateInfo, state, needed_lib_flags);
+   result =
+      radv_graphics_pipeline_compile(&pipeline->base, pCreateInfo, &gfx_state, device, cache, fast_linking_enabled);
 
-   return radv_graphics_pipeline_compile(&pipeline->base, pCreateInfo, &pipeline->base.layout, device, cache, &key,
-                                         fast_linking_enabled);
+   radv_graphics_pipeline_state_finish(device, &gfx_state);
+   return result;
 }
 
 static VkResult
@@ -3281,6 +3342,10 @@ void
 radv_destroy_graphics_lib_pipeline(struct radv_device *device, struct radv_graphics_lib_pipeline *pipeline)
 {
    struct radv_retained_shaders *retained_shaders = &pipeline->retained_shaders;
+
+   radv_pipeline_layout_finish(device, &pipeline->layout);
+
+   vk_free(&device->vk.alloc, pipeline->state_data);
 
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
       free(retained_shaders->stages[i].serialized_nir);

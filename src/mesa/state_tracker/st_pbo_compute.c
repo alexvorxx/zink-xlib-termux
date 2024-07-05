@@ -1348,6 +1348,7 @@ st_pbo_compute_deinit(struct st_context *st)
          if (async->cs)
             st->pipe->delete_compute_state(st->pipe, async->cs);
          util_queue_fence_destroy(&async->fence);
+         ralloc_free(async->nir);
          ralloc_free(async->copy);
          set_foreach_remove(&async->specialized, se) {
             struct pbo_spec_async_data *spec = (void*)se->key;

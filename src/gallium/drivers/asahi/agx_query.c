@@ -619,8 +619,12 @@ agx_get_oq_index(struct agx_batch *batch, struct agx_query *query)
 uint64_t
 agx_get_query_address(struct agx_batch *batch, struct agx_query *query)
 {
-   agx_add_query_to_batch(batch, query);
-   return query->ptr.gpu;
+   if (query) {
+      agx_add_query_to_batch(batch, query);
+      return query->ptr.gpu;
+   } else {
+      return 0;
+   }
 }
 
 void

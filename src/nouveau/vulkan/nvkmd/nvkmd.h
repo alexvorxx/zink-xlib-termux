@@ -35,7 +35,10 @@ enum nvkmd_mem_flags {
    /** VRAM on discrete GPUs or GART on integrated */
    NVKMD_MEM_LOCAL      = 1 << 0,
    NVKMD_MEM_GART       = 1 << 1,
+
+   /** This memory object may be mapped */
    NVKMD_MEM_CAN_MAP    = 1 << 2,
+
    NVKMD_MEM_NO_SHARE   = 1 << 3,
 };
 

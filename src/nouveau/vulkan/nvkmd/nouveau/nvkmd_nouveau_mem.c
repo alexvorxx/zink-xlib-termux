@@ -8,6 +8,8 @@
 #include "nouveau_bo.h"
 #include "vk_log.h"
 
+#include <sys/mman.h>
+
 VkResult
 nvkmd_nouveau_alloc_mem(struct nvkmd_dev *dev,
                         struct vk_object_base *log_obj,
@@ -132,19 +134,26 @@ nvkmd_nouveau_mem_map(struct nvkmd_mem *_mem,
                       void *fixed_addr)
 {
    struct nvkmd_nouveau_mem *mem = nvkmd_nouveau_mem(_mem);
+   struct nvkmd_nouveau_dev *dev = nvkmd_nouveau_dev(_mem->dev);
 
-   if (!(map_flags & NVKMD_MEM_MAP_FIXED))
-      fixed_addr = NULL;
+   assert((fixed_addr == NULL) == !(map_flags & NVKMD_MEM_MAP_FIXED));
 
-   STATIC_ASSERT(NVKMD_MEM_MAP_RD == (int)NOUVEAU_WS_BO_RD);
-   STATIC_ASSERT(NVKMD_MEM_MAP_WR == (int)NOUVEAU_WS_BO_WR);
+   int prot = 0;
+   if (map_flags & NVKMD_MEM_MAP_RD)
+      prot |= PROT_READ;
+   if (map_flags & NVKMD_MEM_MAP_WR)
+      prot |= PROT_WRITE;
 
-   enum nouveau_ws_bo_map_flags ws_map_flags =
-      map_flags & NOUVEAU_WS_BO_RDWR;
+   int flags = MAP_SHARED;
+   if (map_flags & NVKMD_MEM_MAP_FIXED)
+      flags |= MAP_FIXED;
 
-   mem->base.map = nouveau_ws_bo_map(mem->bo, ws_map_flags, fixed_addr);
-   if (mem->base.map == NULL)
+   void *map = mmap(fixed_addr, mem->base.size_B, prot, flags,
+                    dev->ws_dev->fd, mem->bo->map_handle);
+   if (map == MAP_FAILED)
       return vk_error(log_obj, VK_ERROR_MEMORY_MAP_FAILED);
+
+   mem->base.map = map;
 
    return VK_SUCCESS;
 }
@@ -154,7 +163,7 @@ nvkmd_nouveau_mem_unmap(struct nvkmd_mem *_mem)
 {
    struct nvkmd_nouveau_mem *mem = nvkmd_nouveau_mem(_mem);
 
-   nouveau_ws_bo_unmap(mem->bo, mem->base.map);
+   munmap(mem->base.map, mem->base.size_B);
    mem->base.map = NULL;
 }
 
@@ -164,11 +173,14 @@ nvkmd_nouveau_mem_overmap(struct nvkmd_mem *_mem,
 {
    struct nvkmd_nouveau_mem *mem = nvkmd_nouveau_mem(_mem);
 
-   if (nouveau_ws_bo_overmap(mem->bo, mem->base.map)) {
+   void *map = mmap(mem->base.map, mem->base.size_B, PROT_NONE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+   if (map == MAP_FAILED) {
       return vk_errorf(log_obj, VK_ERROR_MEMORY_MAP_FAILED,
                        "Failed to map over original mapping");
    }
 
+   assert(map == mem->base.map);
    mem->base.map = NULL;
 
    return VK_SUCCESS;

@@ -21,7 +21,6 @@ struct nvk_buffer {
 
    /** Reserved VA for sparse buffers, NULL otherwise. */
    struct nvkmd_va *va;
-   bool is_local;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_buffer, vk.base, VkBuffer,

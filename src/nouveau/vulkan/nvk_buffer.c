@@ -238,7 +238,6 @@ nvk_bind_buffer_memory(struct nvk_device *dev,
    VK_FROM_HANDLE(nvk_buffer, buffer, info->buffer);
    VkResult result = VK_SUCCESS;
 
-   buffer->is_local = !(mem->mem->flags & NVKMD_MEM_GART);
    if (buffer->va != NULL) {
       result = nvkmd_va_bind_mem(buffer->va, &buffer->vk.base,
                                  0 /* va_offset */,

@@ -1502,7 +1502,7 @@ directgenreg:
 	{
 		memset(&$$, '\0', sizeof($$));
 		$$.file = BRW_GENERAL_REGISTER_FILE;
-		$$.nr = $1;
+		$$.nr = $1 * reg_unit(p->devinfo);
 		$$.subnr = $2;
 	}
 	;

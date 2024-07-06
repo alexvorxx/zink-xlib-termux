@@ -67,6 +67,7 @@ struct predicate {
 enum instoption_type {
    INSTOPTION_FLAG,
    INSTOPTION_DEP_INFO,
+   INSTOPTION_CHAN_OFFSET,
 };
 
 struct instoption {
@@ -78,6 +79,7 @@ struct instoption {
 };
 
 struct options {
+   uint8_t chan_offset;
    unsigned access_mode:1;
    unsigned compression_control:2;
    unsigned thread_control:2;
@@ -88,8 +90,6 @@ struct options {
    unsigned acc_wr_control:1;
    unsigned end_of_thread:1;
    unsigned compaction:1;
-   unsigned qtr_ctrl:2;
-   unsigned nib_ctrl:1;
    unsigned is_compr:1;
    struct tgl_swsb depinfo;
 };

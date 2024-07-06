@@ -20,7 +20,7 @@ extern "C" {
 
 enum nouveau_ws_bo_flags {
    /* vram or gart depending on GPU */
-   NOUVEAU_WS_BO_LOCAL = 1 << 0,
+   NOUVEAU_WS_BO_VRAM  = 1 << 0,
    NOUVEAU_WS_BO_GART  = 1 << 1,
    NOUVEAU_WS_BO_MAP   = 1 << 2,
    NOUVEAU_WS_BO_NO_SHARE = 1 << 3,

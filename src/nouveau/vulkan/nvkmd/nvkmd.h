@@ -32,15 +32,25 @@ struct vk_sync_signal;
  */
 
 enum nvkmd_mem_flags {
-   /** VRAM on discrete GPUs or GART on integrated */
+   /** Place memory as local as possible.
+    *
+    * This should be the default for most memory allocations.  On discrete
+    * GPUs, it will default to be placed in VRAM but may be paged out to GART,
+    * depending on system memory pressure.
+    */
    NVKMD_MEM_LOCAL      = 1 << 0,
+
+   /** Place the memory in GART */
    NVKMD_MEM_GART       = 1 << 1,
 
+   /** Place the memory in VRAM */
+   NVKMD_MEM_VRAM       = 1 << 2,
+
    /** This memory object may be mapped */
-   NVKMD_MEM_CAN_MAP    = 1 << 2,
+   NVKMD_MEM_CAN_MAP    = 1 << 3,
 
    /** This memory object may be shared with other processes */
-   NVKMD_MEM_SHARED     = 1 << 3,
+   NVKMD_MEM_SHARED     = 1 << 4,
 };
 
 enum nvkmd_mem_map_flags {

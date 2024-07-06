@@ -22,7 +22,6 @@ struct nouveau_ws_device {
    struct nv_device_info info;
 
    uint32_t max_push;
-   uint32_t local_mem_domain;
 
    simple_mtx_t bos_lock;
    struct hash_table *bos;

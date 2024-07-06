@@ -82,15 +82,38 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
                               struct nvkmd_mem **mem_out)
 {
    struct nvkmd_nouveau_dev *dev = nvkmd_nouveau_dev(_dev);
+   const struct nv_device_info *dev_info = &dev->base.pdev->dev_info;
 
-   enum nouveau_ws_bo_flags nouveau_flags = 0;
-   if (flags & NVKMD_MEM_LOCAL)
-      nouveau_flags |= NOUVEAU_WS_BO_LOCAL;
-   if (flags & NVKMD_MEM_GART)
-      nouveau_flags |= NOUVEAU_WS_BO_GART;
+   /* Only one placement flag may be specified */
+   assert(util_bitcount(flags & (NVKMD_MEM_LOCAL |
+                                 NVKMD_MEM_GART |
+                                 NVKMD_MEM_VRAM)) == 1);
+   enum nouveau_ws_bo_flags domains = 0;
+   if (flags & NVKMD_MEM_LOCAL) {
+      domains |= NOUVEAU_WS_BO_GART;
+      if (dev_info->vram_size_B > 0)
+         domains |= NOUVEAU_WS_BO_VRAM;
+   } else if (flags & NVKMD_MEM_GART) {
+      domains |= NOUVEAU_WS_BO_GART;
+   } else if (flags & NVKMD_MEM_VRAM) {
+      domains |= NOUVEAU_WS_BO_VRAM;
+   }
+
+   /* TODO:
+    *
+    * VRAM maps on Kepler appear to be broken and we don't really know why.
+    * My NVIDIA contact doesn't remember them not working so they probably
+    * should but they don't today.  Force everything that may be mapped to
+    * use GART for now.
+    */
+   if (dev_info->chipset < 0x110 && (flags & NOUVEAU_WS_BO_MAP)) {
+      assert(domains & NOUVEAU_WS_BO_GART);
+      domains = NOUVEAU_WS_BO_GART;
+   }
+
+   enum nouveau_ws_bo_flags nouveau_flags = domains;
    if (flags & NVKMD_MEM_CAN_MAP)
       nouveau_flags |= NOUVEAU_WS_BO_MAP;
-
    if (!(flags & NVKMD_MEM_SHARED))
       nouveau_flags |= NOUVEAU_WS_BO_NO_SHARE;
 
@@ -117,10 +140,12 @@ nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *_dev,
       return vk_errorf(log_obj, VK_ERROR_INVALID_EXTERNAL_HANDLE, "%m");
 
    enum nvkmd_mem_flags flags = NVKMD_MEM_SHARED;
-   if (bo->flags & NOUVEAU_WS_BO_LOCAL)
-      flags |= NVKMD_MEM_LOCAL;
-   if (bo->flags & NOUVEAU_WS_BO_GART)
-      flags |= NVKMD_MEM_GART;
+
+   /* We always set LOCAL for shared things because we don't know where the
+    * kernel will place it.  The query only tells us where it is.
+    */
+   flags |= NVKMD_MEM_LOCAL;
+
    if (bo->flags & NOUVEAU_WS_BO_MAP)
       flags |= NVKMD_MEM_CAN_MAP;
 

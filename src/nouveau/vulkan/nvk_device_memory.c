@@ -52,12 +52,6 @@ nvk_memory_type_flags(const VkMemoryType *type,
    if (type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
       flags |= NVKMD_MEM_CAN_MAP;
 
-   /* For dma-bufs, we have to allow them to live in GART because they might
-    * get forced there by the kernel if they're shared with another GPU.
-    */
-   if (handle_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT)
-      flags |= NVKMD_MEM_GART;
-
    if (handle_types != 0)
       flags |= NVKMD_MEM_SHARED;
 

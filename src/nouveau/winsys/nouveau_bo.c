@@ -100,22 +100,12 @@ nouveau_ws_bo_new_tiled_locked(struct nouveau_ws_device *dev,
    req.info.domain = 0;
 
    /* It needs to live somewhere */
-   assert((flags & NOUVEAU_WS_BO_LOCAL) || (flags & NOUVEAU_WS_BO_GART));
+   assert((flags & NOUVEAU_WS_BO_VRAM) || (flags & NOUVEAU_WS_BO_GART));
 
-   if (flags & NOUVEAU_WS_BO_LOCAL)
-      req.info.domain |= dev->local_mem_domain;
+   if (flags & NOUVEAU_WS_BO_VRAM)
+      req.info.domain |= NOUVEAU_GEM_DOMAIN_VRAM;
 
    if (flags & NOUVEAU_WS_BO_GART)
-      req.info.domain |= NOUVEAU_GEM_DOMAIN_GART;
-
-   /* TODO:
-    *
-    * VRAM maps on Kepler appear to be broken and we don't really know why.
-    * My NVIDIA contact doesn't remember them not working so they probably
-    * should but they don't today.  Force everything that may be mapped to
-    * use GART for now.
-    */
-   else if (dev->info.chipset < 0x110 && (flags & NOUVEAU_WS_BO_MAP))
       req.info.domain |= NOUVEAU_GEM_DOMAIN_GART;
 
    if (flags & NOUVEAU_WS_BO_MAP)
@@ -201,8 +191,8 @@ nouveau_ws_bo_from_dma_buf_locked(struct nouveau_ws_device *dev, int fd)
       goto fail_fd_to_handle;
 
    enum nouveau_ws_bo_flags flags = 0;
-   if (info.domain & dev->local_mem_domain)
-      flags |= NOUVEAU_WS_BO_LOCAL;
+   if (info.domain & NOUVEAU_GEM_DOMAIN_VRAM)
+      flags |= NOUVEAU_WS_BO_VRAM;
    if (info.domain & NOUVEAU_GEM_DOMAIN_GART)
       flags |= NOUVEAU_WS_BO_GART;
    if (info.map_handle)

@@ -83,15 +83,20 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
 {
    struct nvkmd_nouveau_dev *dev = nvkmd_nouveau_dev(_dev);
 
-   STATIC_ASSERT(NVKMD_MEM_LOCAL    == (int)NOUVEAU_WS_BO_LOCAL);
-   STATIC_ASSERT(NVKMD_MEM_GART     == (int)NOUVEAU_WS_BO_GART);
-   STATIC_ASSERT(NVKMD_MEM_CAN_MAP  == (int)NOUVEAU_WS_BO_MAP);
-   STATIC_ASSERT(NVKMD_MEM_NO_SHARE == (int)NOUVEAU_WS_BO_NO_SHARE);
+   enum nouveau_ws_bo_flags nouveau_flags = 0;
+   if (flags & NVKMD_MEM_LOCAL)
+      nouveau_flags |= NOUVEAU_WS_BO_LOCAL;
+   if (flags & NVKMD_MEM_GART)
+      nouveau_flags |= NOUVEAU_WS_BO_GART;
+   if (flags & NVKMD_MEM_CAN_MAP)
+      nouveau_flags |= NOUVEAU_WS_BO_MAP;
+   if (flags & NVKMD_MEM_NO_SHARE)
+      nouveau_flags |= NOUVEAU_WS_BO_NO_SHARE;
 
    struct nouveau_ws_bo *bo = nouveau_ws_bo_new_tiled(dev->ws_dev,
                                                       size_B, align_B,
                                                       pte_kind, tile_mode,
-                                                      (int)flags);
+                                                      nouveau_flags);
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_OUT_OF_DEVICE_MEMORY, "%m");
 
@@ -110,11 +115,20 @@ nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *_dev,
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_INVALID_EXTERNAL_HANDLE, "%m");
 
+   enum nvkmd_mem_flags flags = 0;
+   if (bo->flags & NOUVEAU_WS_BO_LOCAL)
+      flags |= NVKMD_MEM_LOCAL;
+   if (bo->flags & NOUVEAU_WS_BO_GART)
+      flags |= NVKMD_MEM_GART;
+   if (bo->flags & NOUVEAU_WS_BO_MAP)
+      flags |= NVKMD_MEM_CAN_MAP;
+   if (bo->flags & NOUVEAU_WS_BO_NO_SHARE)
+      flags |= NVKMD_MEM_NO_SHARE;
+
    return create_mem_or_close_bo(dev, log_obj,
                                  0 /* align_B */,
                                  0 /* pte_kind */,
-                                 (int)bo->flags,
-                                 bo, mem_out);
+                                 flags, bo, mem_out);
 }
 
 static void

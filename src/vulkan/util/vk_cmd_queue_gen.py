@@ -57,6 +57,11 @@ MANUAL_COMMANDS = [
     'CmdPushDescriptorSetWithTemplateKHR',
     'CmdPushConstants2KHR',
     'CmdPushDescriptorSet2KHR',
+
+    # VkDispatchGraphCountInfoAMDX::infos is an array of
+    # VkDispatchGraphInfoAMDX, but the xml specifies that it is a
+    # VkDeviceOrHostAddressConstAMDX.
+    'CmdDispatchGraphAMDX',
 ]
 
 NO_ENQUEUE_COMMANDS = [

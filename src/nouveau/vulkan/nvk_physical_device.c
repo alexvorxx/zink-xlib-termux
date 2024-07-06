@@ -445,8 +445,8 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_KHR_workgroup_memory_explicit_layout */
       .workgroupMemoryExplicitLayout = true,
       .workgroupMemoryExplicitLayoutScalarBlockLayout = true,
-      .workgroupMemoryExplicitLayout8BitAccess = false,
-      .workgroupMemoryExplicitLayout16BitAccess = false,
+      .workgroupMemoryExplicitLayout8BitAccess = nvk_use_nak(info),
+      .workgroupMemoryExplicitLayout16BitAccess = nvk_use_nak(info),
 
       /* VK_EXT_4444_formats */
       .formatA4R4G4B4 = true,

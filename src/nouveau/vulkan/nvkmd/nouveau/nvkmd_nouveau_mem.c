@@ -111,6 +111,15 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
       domains = NOUVEAU_WS_BO_GART;
    }
 
+   uint32_t mem_align_B = NVKMD_NOUVEAU_GART_ALIGN_B;
+   if (domains & NOUVEAU_WS_BO_VRAM)
+      mem_align_B = NVKMD_NOUVEAU_VRAM_ALIGN_B;
+
+   size_B = align64(size_B, mem_align_B);
+
+   assert(util_is_power_of_two_or_zero64(align_B));
+   const uint64_t va_align_B = MAX2(mem_align_B, align_B);
+
    enum nouveau_ws_bo_flags nouveau_flags = domains;
    if (flags & NVKMD_MEM_CAN_MAP)
       nouveau_flags |= NOUVEAU_WS_BO_MAP;
@@ -118,13 +127,13 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
       nouveau_flags |= NOUVEAU_WS_BO_NO_SHARE;
 
    struct nouveau_ws_bo *bo = nouveau_ws_bo_new_tiled(dev->ws_dev,
-                                                      size_B, align_B,
+                                                      size_B, mem_align_B,
                                                       pte_kind, tile_mode,
                                                       nouveau_flags);
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_OUT_OF_DEVICE_MEMORY, "%m");
 
-   return create_mem_or_close_bo(dev, log_obj, align_B, pte_kind,
+   return create_mem_or_close_bo(dev, log_obj, va_align_B, pte_kind,
                                  flags, bo, mem_out);
 }
 

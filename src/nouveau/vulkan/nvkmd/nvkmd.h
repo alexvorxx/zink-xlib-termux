@@ -69,6 +69,12 @@ enum nvkmd_va_flags {
 
    /** Attempt to place this VA at the requested address and fail otherwise */
    NVKMD_VA_ALLOC_FIXED = 1 << 2,
+
+   /** This VA will only be used with GART.
+    *
+    * Alignment requirements for GART-only are lower.
+    */
+   NVKMD_VA_GART_ONLY = 1 << 3,
 };
 
 enum nvkmd_engines {

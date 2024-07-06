@@ -2123,6 +2123,7 @@ visit_intrinsic(struct lp_build_nir_context *bld_base,
       visit_store_reg(bld_base, instr);
       break;
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
       visit_load_input(bld_base, instr, result);
       break;
    case nir_intrinsic_store_output:

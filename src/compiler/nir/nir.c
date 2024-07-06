@@ -3008,6 +3008,7 @@ nir_intrinsic_instr_dest_type(const nir_intrinsic_instr *intrin)
    }
 
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_uniform:
       return nir_intrinsic_dest_type(intrin);
 

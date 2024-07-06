@@ -69,9 +69,6 @@ compare_is_not_vectorizable(nir_intrinsic_instr *a, nir_intrinsic_instr *b)
    if (sem0.interp_explicit_strict != sem1.interp_explicit_strict)
       return sem0.interp_explicit_strict > sem1.interp_explicit_strict ? 1 : -1;
 
-   if (sem0.per_primitive != sem1.per_primitive)
-      return sem0.per_primitive > sem1.per_primitive ? 1 : -1;
-
    /* Only load_interpolated_input can't merge low and high halves of 16-bit
     * loads/stores.
     */
@@ -488,6 +485,7 @@ nir_opt_vectorize_io(nir_shader *shader, nir_variable_mode modes)
 
             switch (intr->intrinsic) {
             case nir_intrinsic_load_input:
+            case nir_intrinsic_load_per_primitive_input:
             case nir_intrinsic_load_input_vertex:
             case nir_intrinsic_load_interpolated_input:
             case nir_intrinsic_load_per_vertex_input:

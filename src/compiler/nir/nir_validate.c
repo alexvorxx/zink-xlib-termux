@@ -613,6 +613,7 @@ validate_intrinsic_instr(nir_intrinsic_instr *instr, validate_state *state)
 
    case nir_intrinsic_load_uniform:
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_per_vertex_input:
    case nir_intrinsic_load_interpolated_input:
    case nir_intrinsic_load_output:

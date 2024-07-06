@@ -1090,6 +1090,7 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
 
    if (intr->intrinsic != nir_intrinsic_load_input &&
        intr->intrinsic != nir_intrinsic_load_per_vertex_input &&
+       intr->intrinsic != nir_intrinsic_load_per_primitive_input &&
        intr->intrinsic != nir_intrinsic_load_interpolated_input &&
        intr->intrinsic != nir_intrinsic_load_input_vertex)
       return false;
@@ -1127,10 +1128,10 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
    if (linkage->consumer_stage == MESA_SHADER_FRAGMENT) {
       switch (intr->intrinsic) {
       case nir_intrinsic_load_input:
-         if (sem.per_primitive)
-            fs_vec4_type = FS_VEC4_TYPE_PER_PRIMITIVE;
-         else
-            fs_vec4_type = FS_VEC4_TYPE_FLAT;
+         fs_vec4_type = FS_VEC4_TYPE_FLAT;
+         break;
+      case nir_intrinsic_load_per_primitive_input:
+         fs_vec4_type = FS_VEC4_TYPE_PER_PRIMITIVE;
          break;
       case nir_intrinsic_load_input_vertex:
          if (sem.interp_explicit_strict)
@@ -1176,19 +1177,20 @@ gather_inputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_d
    if (linkage->consumer_stage == MESA_SHADER_FRAGMENT) {
       switch (intr->intrinsic) {
       case nir_intrinsic_load_input:
-         if (intr->def.bit_size == 32) {
-            if (sem.per_primitive)
-               BITSET_SET(linkage->per_primitive32_mask, slot);
-            else
-               BITSET_SET(linkage->flat32_mask, slot);
-         } else if (intr->def.bit_size == 16) {
-            if (sem.per_primitive)
-               BITSET_SET(linkage->per_primitive16_mask, slot);
-            else
-               BITSET_SET(linkage->flat16_mask, slot);
-         } else {
+         if (intr->def.bit_size == 32)
+            BITSET_SET(linkage->flat32_mask, slot);
+         else if (intr->def.bit_size == 16)
+            BITSET_SET(linkage->flat16_mask, slot);
+         else
             unreachable("invalid load_input type");
-         }
+         break;
+      case nir_intrinsic_load_per_primitive_input:
+         if (intr->def.bit_size == 32)
+            BITSET_SET(linkage->per_primitive32_mask, slot);
+         else if (intr->def.bit_size == 16)
+            BITSET_SET(linkage->per_primitive16_mask, slot);
+         else
+            unreachable("invalid load_input type");
          break;
       case nir_intrinsic_load_input_vertex:
          if (sem.interp_explicit_strict) {
@@ -2009,6 +2011,7 @@ clone_ssa(struct linkage_info *linkage, nir_builder *b, nir_def *ssa)
       }
 
       case nir_intrinsic_load_input:
+      case nir_intrinsic_load_per_primitive_input:
       case nir_intrinsic_load_interpolated_input: {
          /* We are cloning load_input in the producer for backward
           * inter-shader code motion. Replace the input load with the stored
@@ -2263,11 +2266,11 @@ get_input_qualifier(struct linkage_info *linkage, unsigned i)
    nir_intrinsic_instr *load =
       list_first_entry(&slot->consumer.loads, struct list_node, head)->instr;
 
-   if (load->intrinsic == nir_intrinsic_load_input) {
-      if (nir_intrinsic_io_semantics(load).per_primitive)
-         return QUAL_PER_PRIMITIVE;
+   if (load->intrinsic == nir_intrinsic_load_input)
       return is_color ? QUAL_COLOR_FLAT : QUAL_VAR_FLAT;
-   }
+
+   if (load->intrinsic == nir_intrinsic_load_per_primitive_input)
+      return QUAL_PER_PRIMITIVE;
 
    if (load->intrinsic == nir_intrinsic_load_input_vertex) {
       return nir_intrinsic_io_semantics(load).interp_explicit_strict ?
@@ -3479,10 +3482,9 @@ backward_inter_shader_code_motion(struct linkage_info *linkage,
                load->instr.pass_flags |= FLAG_INTERP_FLAT;
             }
             break;
+         case nir_intrinsic_load_per_primitive_input:
          case nir_intrinsic_load_input_vertex:
-            /* Inter-shader code motion is unimplemented for explicit
-             * interpolation.
-             */
+            /* Inter-shader code motion is unimplemented these. */
             continue;
          default:
             unreachable("unexpected load intrinsic");
@@ -3704,12 +3706,11 @@ relocate_slot(struct linkage_info *linkage, struct scalar_slot *slot,
          if (fs_vec4_type == FS_VEC4_TYPE_PER_PRIMITIVE) {
             assert(intr->intrinsic == nir_intrinsic_store_per_primitive_output ||
                    intr->intrinsic == nir_intrinsic_load_per_primitive_output ||
-                   intr->intrinsic == nir_intrinsic_load_input);
-            assert(intr->intrinsic != nir_intrinsic_load_input || sem.per_primitive);
+                   intr->intrinsic == nir_intrinsic_load_per_primitive_input);
          } else {
-            assert(!sem.per_primitive);
             assert(intr->intrinsic != nir_intrinsic_store_per_primitive_output &&
-                   intr->intrinsic != nir_intrinsic_load_per_primitive_output);
+                   intr->intrinsic != nir_intrinsic_load_per_primitive_output &&
+                   intr->intrinsic != nir_intrinsic_load_per_primitive_input);
          }
 
          /* This path is used when promoting convergent interpolated

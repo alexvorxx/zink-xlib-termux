@@ -320,7 +320,12 @@ emit_load(struct lower_io_state *state,
             op = nir_intrinsic_load_interpolated_input;
          }
       } else {
-         op = array_index ? nir_intrinsic_load_per_vertex_input : nir_intrinsic_load_input;
+         if (var->data.per_primitive)
+            op = nir_intrinsic_load_per_primitive_input;
+         else if (array_index)
+            op = nir_intrinsic_load_per_vertex_input;
+         else
+            op = nir_intrinsic_load_input;
       }
       break;
    case nir_var_shader_out:
@@ -363,7 +368,6 @@ emit_load(struct lower_io_state *state,
       semantics.fb_fetch_output = var->data.fb_fetch_output;
       semantics.medium_precision = is_medium_precision(b->shader, var);
       semantics.high_dvec2 = high_dvec2;
-      semantics.per_primitive = var->data.per_primitive;
       /* "per_vertex" is misnamed. It means "explicit interpolation with
        * the original vertex order", which is a stricter version of
        * INTERP_MODE_EXPLICIT.
@@ -2741,6 +2745,7 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
 {
    switch (instr->intrinsic) {
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_output:
    case nir_intrinsic_load_shared:
    case nir_intrinsic_load_task_payload:
@@ -2941,6 +2946,7 @@ static bool
 is_input(nir_intrinsic_instr *intrin)
 {
    return intrin->intrinsic == nir_intrinsic_load_input ||
+          intrin->intrinsic == nir_intrinsic_load_per_primitive_input ||
           intrin->intrinsic == nir_intrinsic_load_input_vertex ||
           intrin->intrinsic == nir_intrinsic_load_per_vertex_input ||
           intrin->intrinsic == nir_intrinsic_load_interpolated_input ||

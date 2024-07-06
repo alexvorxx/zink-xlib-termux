@@ -294,6 +294,7 @@ gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr, s
       break;
    }
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_interpolated_input:
    case nir_intrinsic_load_input_vertex:
       gather_intrinsic_load_input_info(nir, instr, info, gfx_state, stage_key);

@@ -289,6 +289,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
       is_divergent = !(options & nir_divergence_single_frag_shading_rate_per_subgroup);
       break;
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
       is_divergent = instr->src[0].ssa->divergent;
 
       if (stage == MESA_SHADER_FRAGMENT) {

@@ -1876,6 +1876,22 @@ optimizations.extend([
    (('iadd', ('pack_half_2x16_rtz_split', a, 0), ('pack_half_2x16_rtz_split', 0, b)), ('pack_half_2x16_rtz_split', a, b)),
    (('ior',  ('pack_half_2x16_rtz_split', a, 0), ('pack_half_2x16_rtz_split', 0, b)), ('pack_half_2x16_rtz_split', a, b)),
 
+   (('bfi', 0xffff0000, ('pack_half_2x16_split', a, b), ('pack_half_2x16_split', c, d)),
+    ('pack_half_2x16_split', c, a)),
+
+   # Part of the BFI operation is src2&~src0. This expands to (b & 3) & ~0xc
+   # which is (b & 3) & 3.
+   (('bfi', 0x0000000c, a, ('iand', b, 3)), ('bfi', 0x0000000c, a, b)),
+
+   # The important part here is that ~0xf & 0xfffffffc = ~0xf.
+   (('iand', ('bfi', 0x0000000f, '#a', b), 0xfffffffc),
+    ('bfi', 0x0000000f, ('iand', a, 0xfffffffc), b)),
+   (('iand', ('bfi', 0x00000007, '#a', b), 0xfffffffc),
+    ('bfi', 0x00000007, ('iand', a, 0xfffffffc), b)),
+
+   # 0x0f << 3 == 0x78, so that's already the maximum possible value.
+   (('umin', ('ishl', ('iand', a, 0xf), 3), 0x78), ('ishl', ('iand', a, 0xf), 3)),
+
    (('extract_i8', ('pack_32_4x8_split', a, b, c, d), 0), ('i2i', a)),
    (('extract_i8', ('pack_32_4x8_split', a, b, c, d), 1), ('i2i', b)),
    (('extract_i8', ('pack_32_4x8_split', a, b, c, d), 2), ('i2i', c)),

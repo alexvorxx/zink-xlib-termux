@@ -296,8 +296,10 @@ i965_asm_set_instruction_options(struct brw_codegen *p,
 	}
 	brw_inst_set_debug_control(p->devinfo, brw_last_inst,
 			           options.debug_control);
-	brw_inst_set_acc_wr_control(p->devinfo, brw_last_inst,
-				    options.acc_wr_control);
+	if (p->devinfo->ver < 20) {
+		brw_inst_set_acc_wr_control(p->devinfo, brw_last_inst,
+					    options.acc_wr_control);
+	}
 	brw_inst_set_cmpt_control(p->devinfo, brw_last_inst,
 				  options.compaction);
 }
@@ -2144,7 +2146,13 @@ depinfo:
 instoption:
 	ALIGN1 	        { $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN1;}
 	| ALIGN16 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ALIGN16; }
-	| ACCWREN 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = ACCWREN; }
+	| ACCWREN
+	{
+		if (p->devinfo->ver >= 20)
+			error(&@1, "AccWrEnable not supported in Xe2+\n");
+		$$.type = INSTOPTION_FLAG;
+		$$.uint_value = ACCWREN;
+	}
 	| BREAKPOINT 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = BREAKPOINT; }
 	| NODDCLR 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCLR; }
 	| NODDCHK 	{ $$.type = INSTOPTION_FLAG; $$.uint_value = NODDCHK; }

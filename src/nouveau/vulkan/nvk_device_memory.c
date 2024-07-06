@@ -58,8 +58,8 @@ nvk_memory_type_flags(const VkMemoryType *type,
    if (handle_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT)
       flags |= NVKMD_MEM_GART;
 
-   if (handle_types == 0)
-      flags |= NVKMD_MEM_NO_SHARE;
+   if (handle_types != 0)
+      flags |= NVKMD_MEM_SHARED;
 
    return flags;
 }

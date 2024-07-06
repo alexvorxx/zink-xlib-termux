@@ -21,7 +21,7 @@ nvk_cmd_mem_create(struct nvk_cmd_pool *pool, bool force_gart, struct nvk_cmd_me
    if (mem == NULL)
       return vk_error(pool, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   uint32_t flags = NVKMD_MEM_GART | NVKMD_MEM_CAN_MAP | NVKMD_MEM_NO_SHARE;
+   uint32_t flags = NVKMD_MEM_GART;
    if (force_gart)
       assert(flags & NVKMD_MEM_GART);
    result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &pool->vk.base,

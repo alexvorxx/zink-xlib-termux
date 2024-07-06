@@ -37,10 +37,9 @@ nvk_upload_mem_create(struct nvk_device *dev,
    if (mem == NULL)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   uint32_t flags = NVKMD_MEM_GART | NVKMD_MEM_CAN_MAP | NVKMD_MEM_NO_SHARE;
    result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
-                                       NVK_UPLOAD_MEM_SIZE, 0,
-                                       flags, NVKMD_MEM_MAP_WR, &mem->mem);
+                                       NVK_UPLOAD_MEM_SIZE, 0, NVKMD_MEM_GART,
+                                       NVKMD_MEM_MAP_WR, &mem->mem);
    if (result != VK_SUCCESS) {
       vk_free(&dev->vk.alloc, mem);
       return result;

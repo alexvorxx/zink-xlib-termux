@@ -96,7 +96,7 @@ nvk_slm_area_ensure(struct nvk_device *dev,
 
    struct nvkmd_mem *mem;
    result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base, size, 0,
-                                NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE, &mem);
+                                NVKMD_MEM_LOCAL, &mem);
    if (result != VK_SUCCESS)
       return result;
 
@@ -190,16 +190,14 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    if (pdev->info.bar_size_B >= pdev->info.vram_size_B)
       shader_map_flags = NVKMD_MEM_MAP_WR;
    result = nvk_heap_init(dev, &dev->shader_heap,
-                          NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
-                          shader_map_flags,
+                          NVKMD_MEM_LOCAL, shader_map_flags,
                           4096 /* overalloc */,
                           pdev->info.cls_eng3d < VOLTA_A);
    if (result != VK_SUCCESS)
       goto fail_samplers;
 
    result = nvk_heap_init(dev, &dev->event_heap,
-                          NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
-                          NVKMD_MEM_MAP_WR,
+                          NVKMD_MEM_LOCAL, NVKMD_MEM_MAP_WR,
                           0 /* overalloc */, false /* contiguous */);
    if (result != VK_SUCCESS)
       goto fail_shader_heap;
@@ -207,8 +205,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    nvk_slm_area_init(&dev->slm);
 
    result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &pdev->vk.base,
-                                       0x1000, 0,
-                                       NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                                       0x1000, 0, NVKMD_MEM_LOCAL,
                                        NVKMD_MEM_MAP_WR, &dev->zero_page);
    if (result != VK_SUCCESS)
       goto fail_slm;
@@ -220,8 +217,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
        pdev->info.cls_eng3d < MAXWELL_A) {
       /* max size is 256k */
       result = nvkmd_dev_alloc_mem(dev->nvkmd, &pdev->vk.base,
-                                   1 << 17, 1 << 20,
-                                   NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                                   1 << 17, 1 << 20, NVKMD_MEM_LOCAL,
                                    &dev->vab_memory);
       if (result != VK_SUCCESS)
          goto fail_zero_page;

@@ -23,8 +23,7 @@ nvk_descriptor_table_grow_locked(struct nvk_device *dev,
    const uint32_t new_mem_size = new_alloc * table->desc_size;
    result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
                                        new_mem_size, 256,
-                                       NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
-                                       NVKMD_MEM_MAP_WR,
+                                       NVKMD_MEM_LOCAL, NVKMD_MEM_MAP_WR,
                                        &new_mem);
    if (result != VK_SUCCESS)
       return result;

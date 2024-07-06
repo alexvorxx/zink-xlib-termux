@@ -114,9 +114,7 @@ nvk_queue_state_update(struct nvk_device *dev,
 
    struct nvkmd_mem *push_mem;
    VkResult result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
-                                                256 * 4, 0,
-                                                NVKMD_MEM_GART |
-                                                NVKMD_MEM_NO_SHARE,
+                                                256 * 4, 0, NVKMD_MEM_GART,
                                                 NVKMD_MEM_MAP_WR, &push_mem);
    if (result != VK_SUCCESS)
       return result;
@@ -421,7 +419,7 @@ nvk_queue_submit_simple(struct nvk_queue *queue,
    struct nvkmd_mem *push_mem;
    result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
                                        dw_count * 4, 0,
-                                       NVKMD_MEM_GART | NVKMD_MEM_NO_SHARE,
+                                       NVKMD_MEM_GART,
                                        NVKMD_MEM_MAP_WR, &push_mem);
    if (result != VK_SUCCESS)
       return result;
@@ -533,8 +531,7 @@ nvk_queue_init(struct nvk_device *dev, struct nvk_queue *queue,
          goto fail_init;
 
       result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base,
-                                   4096, 0,
-                                   NVKMD_MEM_LOCAL | NVKMD_MEM_NO_SHARE,
+                                   4096, 0, NVKMD_MEM_LOCAL,
                                    &queue->draw_cb0);
       if (result != VK_SUCCESS)
          goto fail_exec_ctx;

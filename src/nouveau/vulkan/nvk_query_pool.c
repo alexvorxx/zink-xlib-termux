@@ -78,7 +78,7 @@ nvk_CreateQueryPool(VkDevice device,
                           pool->query_stride * pool->vk.query_count;
       result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
                                           mem_size, 0 /* align_B */,
-                                          NVKMD_MEM_GART | NVKMD_MEM_NO_SHARE,
+                                          NVKMD_MEM_GART,
                                           NVKMD_MEM_MAP_RDWR,
                                           &pool->mem);
       if (result != VK_SUCCESS) {

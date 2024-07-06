@@ -39,7 +39,8 @@ enum nvkmd_mem_flags {
    /** This memory object may be mapped */
    NVKMD_MEM_CAN_MAP    = 1 << 2,
 
-   NVKMD_MEM_NO_SHARE   = 1 << 3,
+   /** This memory object may be shared with other processes */
+   NVKMD_MEM_SHARED     = 1 << 3,
 };
 
 enum nvkmd_mem_map_flags {
@@ -452,7 +453,7 @@ nvkmd_mem_export_dma_buf(struct nvkmd_mem *mem,
                       struct vk_object_base *log_obj,
                       int *fd_out)
 {
-   assert(!(mem->flags & NVKMD_MEM_NO_SHARE));
+   assert(mem->flags & NVKMD_MEM_SHARED);
 
    return mem->ops->export_dma_buf(mem, log_obj, fd_out);
 }

@@ -90,7 +90,8 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
       nouveau_flags |= NOUVEAU_WS_BO_GART;
    if (flags & NVKMD_MEM_CAN_MAP)
       nouveau_flags |= NOUVEAU_WS_BO_MAP;
-   if (flags & NVKMD_MEM_NO_SHARE)
+
+   if (!(flags & NVKMD_MEM_SHARED))
       nouveau_flags |= NOUVEAU_WS_BO_NO_SHARE;
 
    struct nouveau_ws_bo *bo = nouveau_ws_bo_new_tiled(dev->ws_dev,
@@ -115,15 +116,13 @@ nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *_dev,
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_INVALID_EXTERNAL_HANDLE, "%m");
 
-   enum nvkmd_mem_flags flags = 0;
+   enum nvkmd_mem_flags flags = NVKMD_MEM_SHARED;
    if (bo->flags & NOUVEAU_WS_BO_LOCAL)
       flags |= NVKMD_MEM_LOCAL;
    if (bo->flags & NOUVEAU_WS_BO_GART)
       flags |= NVKMD_MEM_GART;
    if (bo->flags & NOUVEAU_WS_BO_MAP)
       flags |= NVKMD_MEM_CAN_MAP;
-   if (bo->flags & NOUVEAU_WS_BO_NO_SHARE)
-      flags |= NVKMD_MEM_NO_SHARE;
 
    return create_mem_or_close_bo(dev, log_obj,
                                  0 /* align_B */,

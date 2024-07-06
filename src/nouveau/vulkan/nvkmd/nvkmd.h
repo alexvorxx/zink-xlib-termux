@@ -74,7 +74,7 @@ enum nvkmd_va_flags {
     *
     * Alignment requirements for GART-only are lower.
     */
-   NVKMD_VA_GART_ONLY = 1 << 3,
+   NVKMD_VA_GART = 1 << 3,
 };
 
 enum nvkmd_engines {
@@ -200,6 +200,7 @@ struct nvkmd_mem {
    uint32_t refcnt;
 
    enum nvkmd_mem_flags flags;
+   uint32_t bind_align_B;
 
    uint64_t size_B;
    struct nvkmd_va *va;

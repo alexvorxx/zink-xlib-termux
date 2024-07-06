@@ -125,9 +125,13 @@ nvkmd_nouveau_alloc_va(struct nvkmd_dev *_dev,
    if (va == NULL)
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   /* if the caller doesn't care, use the GPU page size */
-   if (align_B == 0)
-      align_B = 0x1000;
+   const uint32_t min_align_B =
+      (flags & NVKMD_VA_GART) ? NVKMD_NOUVEAU_GART_ALIGN_B
+                              : NVKMD_NOUVEAU_VRAM_ALIGN_B;
+   size_B = align64(size_B, min_align_B);
+
+   assert(util_is_power_of_two_or_zero64(align_B));
+   align_B = MAX2(align_B, min_align_B);
 
    assert((fixed_addr == 0) == !(flags & NVKMD_VA_ALLOC_FIXED));
 

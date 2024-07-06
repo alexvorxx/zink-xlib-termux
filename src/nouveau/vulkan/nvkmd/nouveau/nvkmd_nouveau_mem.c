@@ -25,9 +25,11 @@ nvkmd_nouveau_alloc_mem(struct nvkmd_dev *dev,
 static VkResult
 create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
                        struct vk_object_base *log_obj,
-                       uint64_t va_align_B, uint8_t pte_kind,
-                       enum nvkmd_mem_flags flags,
+                       uint64_t mem_align_B,
+                       enum nvkmd_mem_flags mem_flags,
                        struct nouveau_ws_bo *bo,
+                       enum nvkmd_va_flags va_flags,
+                       uint8_t pte_kind, uint64_t va_align_B,
                        struct nvkmd_mem **mem_out)
 {
    const uint64_t size_B = bo->size;
@@ -42,12 +44,13 @@ create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
    mem->base.ops = &nvkmd_nouveau_mem_ops;
    mem->base.dev = &dev->base;
    mem->base.refcnt = 1;
-   mem->base.flags = flags;
+   mem->base.flags = mem_flags;
+   mem->base.bind_align_B = mem_align_B;
    mem->base.size_B = size_B;
    mem->bo = bo;
 
    result = nvkmd_dev_alloc_va(&dev->base, log_obj,
-                               0 /* flags */, pte_kind,
+                               va_flags, pte_kind,
                                size_B, va_align_B,
                                0 /* fixed_addr */,
                                &mem->base.va);
@@ -133,8 +136,13 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
    if (bo == NULL)
       return vk_errorf(log_obj, VK_ERROR_OUT_OF_DEVICE_MEMORY, "%m");
 
-   return create_mem_or_close_bo(dev, log_obj, va_align_B, pte_kind,
-                                 flags, bo, mem_out);
+   enum nvkmd_va_flags va_flags = 0;
+   if (domains == NOUVEAU_WS_BO_GART)
+      va_flags |= NVKMD_VA_GART;
+
+   return create_mem_or_close_bo(dev, log_obj, mem_align_B, flags, bo,
+                                 va_flags, pte_kind, va_align_B,
+                                 mem_out);
 }
 
 VkResult
@@ -158,10 +166,14 @@ nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *_dev,
    if (bo->flags & NOUVEAU_WS_BO_MAP)
       flags |= NVKMD_MEM_CAN_MAP;
 
-   return create_mem_or_close_bo(dev, log_obj,
-                                 0 /* align_B */,
+   /* We don't know so assume VRAM */
+   uint32_t mem_align_B = NVKMD_NOUVEAU_VRAM_ALIGN_B;
+
+   return create_mem_or_close_bo(dev, log_obj, mem_align_B, flags, bo,
+                                 0 /* va_flags */,
                                  0 /* pte_kind */,
-                                 flags, bo, mem_out);
+                                 0 /* va_align_B */,
+                                 mem_out);
 }
 
 static void

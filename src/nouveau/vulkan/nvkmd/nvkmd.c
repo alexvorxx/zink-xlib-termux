@@ -116,6 +116,11 @@ nvkmd_va_bind_mem(struct nvkmd_va *va,
    assert(mem_offset_B <= mem->size_B);
    assert(mem_offset_B + range_B <= mem->size_B);
 
+   assert(va->addr % mem->bind_align_B == 0);
+   assert(va_offset_B % mem->bind_align_B == 0);
+   assert(mem_offset_B % mem->bind_align_B == 0);
+   assert(range_B % mem->bind_align_B == 0);
+
    if (unlikely(va->dev->pdev->debug_flags & NVK_DEBUG_VM))
       log_va_bind_mem(va, va_offset_B, mem, mem_offset_B, range_B);
 
@@ -148,9 +153,15 @@ nvkmd_ctx_bind(struct nvkmd_ctx *ctx,
       assert(binds[i].va_offset_B <= binds[i].va->size_B);
       assert(binds[i].va_offset_B + binds[i].range_B <= binds[i].va->size_B);
       if (binds[i].op == NVKMD_BIND_OP_BIND) {
+         assert(binds[i].mem_offset_B % binds[i].mem->bind_align_B == 0);
          assert(binds[i].mem_offset_B <= binds[i].mem->size_B);
          assert(binds[i].mem_offset_B + binds[i].range_B <=
                 binds[i].mem->size_B);
+
+         assert(binds[i].va->addr % binds[i].mem->bind_align_B == 0);
+         assert(binds[i].va_offset_B % binds[i].mem->bind_align_B == 0);
+         assert(binds[i].mem_offset_B % binds[i].mem->bind_align_B == 0);
+         assert(binds[i].range_B % binds[i].mem->bind_align_B == 0);
       } else {
          assert(binds[i].mem == NULL);
       }

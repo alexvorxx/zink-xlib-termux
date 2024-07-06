@@ -26,6 +26,7 @@
  **************************************************************************/
 
 #include "util/u_debug.h"
+#include "util/u_memory.h"
 #include "util/os_time.h"
 #include "lp_bld_debug.h"
 #include "lp_bld_passmgr.h"
@@ -69,7 +70,7 @@ struct lp_passmgr;
 bool
 lp_passmgr_create(LLVMModuleRef module, struct lp_passmgr **mgr_p)
 {
-   void *mgr = NULL;
+   struct lp_passmgr *mgr = NULL;
 #if USE_NEW_PASS == 0
    mgr = CALLOC_STRUCT(lp_passmgr);
    if (!mgr)

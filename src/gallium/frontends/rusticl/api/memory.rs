@@ -353,7 +353,7 @@ fn create_sub_buffer(
 
             // CL_INVALID_VALUE if the region specified by the cl_buffer_region structure passed in
             // buffer_create_info is out of bounds in buffer.
-            if region.origin + region.size > b.size {
+            if region.origin >= b.size || region.size > b.size - region.origin {
                 return Err(CL_INVALID_VALUE);
             }
 
@@ -1670,7 +1670,7 @@ fn enqueue_map_buffer(
 
     // CL_INVALID_VALUE if region being mapped given by (offset, size) is out of bounds or if size
     // is 0
-    if offset + size > b.size || size == 0 {
+    if offset >= b.size || size > b.size - offset || size == 0 {
         return Err(CL_INVALID_VALUE);
     }
 

@@ -76,6 +76,25 @@ compare_is_not_vectorizable(nir_intrinsic_instr *a, nir_intrinsic_instr *b)
        sem0.high_16bits != sem1.high_16bits)
       return sem0.high_16bits > sem1.high_16bits ? 1 : -1;
 
+   nir_shader *shader =
+      nir_cf_node_get_function(&a->instr.block->cf_node)->function->shader;
+
+   /* Compare the types. */
+   if (!(shader->options->io_options & nir_io_vectorizer_ignores_types)) {
+      unsigned type_a, type_b;
+
+      if (nir_intrinsic_has_src_type(a)) {
+         type_a = nir_intrinsic_src_type(a);
+         type_b = nir_intrinsic_src_type(b);
+      } else {
+         type_a = nir_intrinsic_dest_type(a);
+         type_b = nir_intrinsic_dest_type(b);
+      }
+
+      if (type_a != type_b)
+         return type_a > type_b ? 1 : -1;
+   }
+
    return 0;
 }
 

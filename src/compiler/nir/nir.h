@@ -3727,6 +3727,14 @@ typedef enum {
     */
    nir_io_mix_convergent_flat_with_interpolated = BITFIELD_BIT(5),
 
+   /**
+    * Whether src_type and dest_type of IO intrinsics are irrelevant and
+    * should be ignored by nir_opt_vectorize_io. All drivers that always treat
+    * load_input and store_output as untyped and load_interpolated_input as
+    * float##bit_size should set this.
+    */
+   nir_io_vectorizer_ignores_types = BITFIELD_BIT(6),
+
    /* Options affecting the GLSL compiler are below. */
 
    /**

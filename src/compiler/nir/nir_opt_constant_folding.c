@@ -39,7 +39,7 @@ struct constant_fold_state {
 static bool
 try_fold_alu(nir_builder *b, nir_alu_instr *alu)
 {
-   nir_const_value src[NIR_MAX_VEC_COMPONENTS][NIR_MAX_VEC_COMPONENTS];
+   nir_const_value src[NIR_ALU_MAX_INPUTS][NIR_MAX_VEC_COMPONENTS];
 
    /* In the case that any outputs/inputs have unsized types, then we need to
     * guess the bit-size. In this case, the validator ensures that all

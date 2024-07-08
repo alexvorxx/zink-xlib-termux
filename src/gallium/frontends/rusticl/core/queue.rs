@@ -116,61 +116,59 @@ impl Queue {
                 last: Weak::new(),
                 chan_in: ManuallyDrop::new(tx_q),
             }),
-            thrd: ManuallyDrop::new(
-                thread::Builder::new()
-                    .name("rusticl queue thread".into())
-                    .spawn(move || loop {
-                        let r = rx_t.recv();
-                        if r.is_err() {
-                            break;
+            thrd: ManuallyDrop::new(thread::Builder::new()
+                .name("rusticl queue thread".into())
+                .spawn(move || loop {
+                    let r = rx_t.recv();
+                    if r.is_err() {
+                        break;
+                    }
+
+                    let new_events = r.unwrap();
+                    let mut flushed = Vec::new();
+
+                    for e in new_events {
+                        // If we hit any deps from another queue, flush so we don't risk a dead
+                        // lock.
+                        if e.deps.iter().any(|ev| ev.queue != e.queue) {
+                            flush_events(&mut flushed, &ctx);
                         }
 
-                        let new_events = r.unwrap();
-                        let mut flushed = Vec::new();
+                        // We have to wait on user events or events from other queues.
+                        let err = e
+                            .deps
+                            .iter()
+                            .filter(|ev| ev.is_user() || ev.queue != e.queue)
+                            .map(|e| e.wait())
+                            .find(|s| *s < 0);
 
-                        for e in new_events {
-                            // If we hit any deps from another queue, flush so we don't risk a dead
-                            // lock.
-                            if e.deps.iter().any(|ev| ev.queue != e.queue) {
-                                flush_events(&mut flushed, &ctx);
-                            }
-
-                            // We have to wait on user events or events from other queues.
-                            let err = e
-                                .deps
-                                .iter()
-                                .filter(|ev| ev.is_user() || ev.queue != e.queue)
-                                .map(|e| e.wait())
-                                .find(|s| *s < 0);
-
-                            if let Some(err) = err {
-                                // If a dependency failed, fail this event as well.
-                                e.set_user_status(err);
-                                continue;
-                            }
-
-                            e.call(&ctx);
-
-                            if e.is_user() {
-                                // On each user event we flush our events as application might
-                                // wait on them before signaling user events.
-                                flush_events(&mut flushed, &ctx);
-
-                                // Wait on user events as they are synchronization points in the
-                                // application's control.
-                                e.wait();
-                            } else if Platform::dbg().sync_every_event {
-                                flushed.push(e);
-                                flush_events(&mut flushed, &ctx);
-                            } else {
-                                flushed.push(e);
-                            }
+                        if let Some(err) = err {
+                            // If a dependency failed, fail this event as well.
+                            e.set_user_status(err);
+                            continue;
                         }
 
-                        flush_events(&mut flushed, &ctx);
-                    })
-                    .unwrap(),
-            ),
+                        e.call(&ctx);
+
+                        if e.is_user() {
+                            // On each user event we flush our events as application might
+                            // wait on them before signaling user events.
+                            flush_events(&mut flushed, &ctx);
+
+                            // Wait on user events as they are synchronization points in the
+                            // application's control.
+                            e.wait();
+                        } else if Platform::dbg().sync_every_event {
+                            flushed.push(e);
+                            flush_events(&mut flushed, &ctx);
+                        } else {
+                            flushed.push(e);
+                        }
+                    }
+
+                    flush_events(&mut flushed, &ctx);
+                })
+                .unwrap()),
         }))
     }
 

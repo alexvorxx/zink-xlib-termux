@@ -37,8 +37,6 @@
  * The shader must be in SSA for this pass.
  */
 
-#define LOWER_MUL_HIGH (1 << 0)
-
 static bool
 lower_alu_instr(nir_builder *b, nir_instr *instr_, UNUSED void *cb_data)
 {

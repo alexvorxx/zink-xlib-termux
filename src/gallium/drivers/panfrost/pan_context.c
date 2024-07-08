@@ -565,6 +565,12 @@ panfrost_destroy(struct pipe_context *pipe)
    panfrost_pool_cleanup(&panfrost->shaders);
    panfrost_afbc_context_destroy(panfrost);
 
+   util_dynarray_foreach(&panfrost->global_buffers, struct pipe_resource *, res) {
+      pipe_resource_reference(res, NULL);
+   }
+
+   util_dynarray_fini(&panfrost->global_buffers);
+
    drmSyncobjDestroy(panfrost_device_fd(dev), panfrost->in_sync_obj);
    if (panfrost->in_sync_fd != -1) {
       close(panfrost->in_sync_fd);
@@ -814,30 +820,41 @@ panfrost_set_global_binding(struct pipe_context *pctx, unsigned first,
                             unsigned count, struct pipe_resource **resources,
                             uint32_t **handles)
 {
-   if (!resources)
-      return;
-
    struct panfrost_context *ctx = pan_context(pctx);
-   struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
 
-   for (unsigned i = first; i < first + count; ++i) {
-      struct panfrost_resource *rsrc = pan_resource(resources[i]);
-      panfrost_batch_write_rsrc(batch, rsrc, PIPE_SHADER_COMPUTE);
+   unsigned old_size =
+      util_dynarray_num_elements(&ctx->global_buffers, *resources);
 
-      util_range_add(&rsrc->base, &rsrc->valid_buffer_range, 0,
-                     rsrc->base.width0);
+   if (old_size < first + count) {
+      /* we are screwed no matter what */
+      if (!util_dynarray_grow(&ctx->global_buffers, *resources,
+                              (first + count) - old_size))
+         unreachable("out of memory");
 
-      /* The handle points to uint32_t, but space is allocated for 64
-       * bits. We need to respect the offset passed in. This interface
-       * is so bad.
-       */
-      mali_ptr addr = 0;
-      static_assert(sizeof(addr) == 8, "size out of sync");
+      for (unsigned i = old_size; i < first + count; i++)
+         *util_dynarray_element(&ctx->global_buffers, struct pipe_resource *,
+                                i) = NULL;
+   }
 
-      memcpy(&addr, handles[i], sizeof(addr));
-      addr += rsrc->image.data.base;
+   for (unsigned i = 0; i < count; ++i) {
+      struct pipe_resource **res = util_dynarray_element(
+         &ctx->global_buffers, struct pipe_resource *, first + i);
+      if (resources && resources[i]) {
+         pipe_resource_reference(res, resources[i]);
 
-      memcpy(handles[i], &addr, sizeof(addr));
+         /* The handle points to uint32_t, but space is allocated for 64
+          * bits. We need to respect the offset passed in. This interface
+          * is so bad.
+          */
+         uint64_t addr = 0;
+         struct panfrost_resource *rsrc = pan_resource(resources[i]);
+
+         memcpy(&addr, handles[i], sizeof(addr));
+         addr += rsrc->bo->ptr.gpu;
+         memcpy(handles[i], &addr, sizeof(addr));
+      } else {
+         pipe_resource_reference(res, NULL);
+      }
    }
 }
 
@@ -988,6 +1005,8 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    /* By default mask everything on */
    ctx->sample_mask = ~0;
    ctx->active_queries = true;
+
+   util_dynarray_init(&ctx->global_buffers, ctx);
 
    /* Sync object/FD used for NATIVE_FENCE_FD. */
    ctx->in_sync_fd = -1;

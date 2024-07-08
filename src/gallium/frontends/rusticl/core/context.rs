@@ -200,7 +200,7 @@ impl Context {
     }
 
     pub fn remove_svm_ptr(&self, ptr: usize) -> Option<Layout> {
-        self.svm_ptrs.lock().unwrap().remove(&ptr)
+        self.svm_ptrs.lock().unwrap().remove(ptr)
     }
 
     pub fn import_gl_buffer(

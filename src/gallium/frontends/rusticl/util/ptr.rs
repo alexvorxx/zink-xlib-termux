@@ -1,6 +1,6 @@
 use std::{
     alloc::Layout,
-    collections::BTreeMap,
+    collections::{btree_map::Entry, BTreeMap},
     hash::{Hash, Hasher},
     mem,
     ops::{Add, Deref},
@@ -162,6 +162,14 @@ impl<P, T: AllocSize<P>> TrackedPointers<P, T>
 where
     P: Ord + Add<Output = P> + Copy,
 {
+    pub fn contains_key(&self, ptr: P) -> bool {
+        self.ptrs.contains_key(&ptr)
+    }
+
+    pub fn entry(&mut self, ptr: P) -> Entry<P, T> {
+        self.ptrs.entry(ptr)
+    }
+
     pub fn find_alloc(&self, ptr: P) -> Option<(P, &T)> {
         if let Some((&base, val)) = self.ptrs.range(..=ptr).next_back() {
             let size = val.size();
@@ -174,12 +182,16 @@ where
         None
     }
 
+    pub fn find_alloc_precise(&self, ptr: P) -> Option<&T> {
+        self.ptrs.get(&ptr)
+    }
+
     pub fn insert(&mut self, ptr: P, val: T) -> Option<T> {
         self.ptrs.insert(ptr, val)
     }
 
-    pub fn remove(&mut self, ptr: &P) -> Option<T> {
-        self.ptrs.remove(ptr)
+    pub fn remove(&mut self, ptr: P) -> Option<T> {
+        self.ptrs.remove(&ptr)
     }
 }
 

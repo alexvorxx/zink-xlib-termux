@@ -4503,6 +4503,8 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 static void
 bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
 {
+   NIR_PASS(_, nir, nir_lower_pack);
+
    bool progress;
 
    do {

@@ -78,13 +78,13 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    if (!dev->model)
       goto err_free_kmod_dev;
 
-   /* 32bit address space, with the lower 32MB reserved. We clamp
+   /* 48bit address space max, with the lower 32MB reserved. We clamp
     * things so it matches kmod VA range limitations.
     */
    uint64_t user_va_start = panfrost_clamp_to_usable_va_range(
       dev->kmod.dev, PANFROST_VA_RESERVE_BOTTOM);
    uint64_t user_va_end =
-      panfrost_clamp_to_usable_va_range(dev->kmod.dev, 1ull << 32);
+      panfrost_clamp_to_usable_va_range(dev->kmod.dev, 1ull << 48ull);
 
    dev->kmod.vm = pan_kmod_vm_create(
       dev->kmod.dev, PAN_KMOD_VM_FLAG_AUTO_VA | PAN_KMOD_VM_FLAG_TRACK_ACTIVITY,

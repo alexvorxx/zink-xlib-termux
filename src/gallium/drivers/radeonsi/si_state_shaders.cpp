@@ -4268,7 +4268,7 @@ static int si_update_scratch_buffer(struct si_context *sctx, struct si_shader *s
       return 0;
 
    /* Prevent race conditions when updating:
-    * - si_shader::scratch_bo
+    * - si_shader::scratch_va
     * - si_shader::binary::code
     * - si_shader::previous_stage::binary::code.
     */
@@ -4276,7 +4276,7 @@ static int si_update_scratch_buffer(struct si_context *sctx, struct si_shader *s
 
    /* This shader is already configured to use the current
     * scratch buffer. */
-   if (shader->scratch_bo == sctx->scratch_buffer) {
+   if (shader->scratch_va == scratch_va) {
       si_shader_unlock(shader);
       return 0;
    }
@@ -4291,8 +4291,7 @@ static int si_update_scratch_buffer(struct si_context *sctx, struct si_shader *s
 
    /* Update the shader state to use the new shader bo. */
    si_shader_init_pm4_state(sctx->screen, shader);
-
-   si_resource_reference(&shader->scratch_bo, sctx->scratch_buffer);
+   shader->scratch_va = scratch_va;
 
    si_shader_unlock(shader);
    return 1;

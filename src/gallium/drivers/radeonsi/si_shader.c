@@ -3423,7 +3423,7 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
             assert(sel->main_shader_part->gs_copy_shader);
             assert(sel->main_shader_part->gs_copy_shader->bo);
             assert(!sel->main_shader_part->gs_copy_shader->previous_stage_sel);
-            assert(!sel->main_shader_part->gs_copy_shader->scratch_bo);
+            assert(!sel->main_shader_part->gs_copy_shader->scratch_va);
 
             shader->gs_copy_shader = CALLOC_STRUCT(si_shader);
             memcpy(shader->gs_copy_shader, sel->main_shader_part->gs_copy_shader,
@@ -3559,9 +3559,6 @@ void si_shader_binary_clean(struct si_shader_binary *binary)
 
 void si_shader_destroy(struct si_shader *shader)
 {
-   if (shader->scratch_bo)
-      si_resource_reference(&shader->scratch_bo, NULL);
-
    si_resource_reference(&shader->bo, NULL);
 
    if (!shader->is_binary_shared)

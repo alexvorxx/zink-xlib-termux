@@ -383,13 +383,17 @@ static void si_set_global_binding(struct pipe_context *ctx, unsigned first, unsi
    }
 }
 
-static bool si_setup_compute_scratch_buffer(struct si_context *sctx, struct si_shader *shader)
+static bool si_setup_compute_scratch_buffer(struct si_context *sctx, struct si_shader *shader,
+                                            const struct ac_shader_config *config)
 {
    uint64_t scratch_bo_size, scratch_needed;
    scratch_bo_size = 0;
    scratch_needed = sctx->max_seen_compute_scratch_bytes_per_wave * sctx->screen->info.max_scratch_waves;
    if (sctx->compute_scratch_buffer)
       scratch_bo_size = sctx->compute_scratch_buffer->b.b.width0;
+
+   if (!scratch_needed)
+      return true;
 
    if (scratch_bo_size < scratch_needed) {
       si_resource_reference(&sctx->compute_scratch_buffer, NULL);
@@ -405,15 +409,17 @@ static bool si_setup_compute_scratch_buffer(struct si_context *sctx, struct si_s
          return false;
    }
 
-   if (sctx->compute_scratch_buffer != shader->scratch_bo && scratch_needed) {
-      if (sctx->gfx_level < GFX11 &&
-          (sctx->family < CHIP_GFX940 || sctx->screen->info.has_graphics)) {
-         uint64_t scratch_va = sctx->compute_scratch_buffer->gpu_address;
+   /* Set the scratch address in the shader binary. */
+   if (config->scratch_bytes_per_wave && sctx->gfx_level < GFX11 &&
+       (sctx->family < CHIP_GFX940 || sctx->screen->info.has_graphics)) {
+      uint64_t scratch_va = sctx->compute_scratch_buffer->gpu_address;
 
+      if (shader->scratch_va != scratch_va) {
          if (!si_shader_binary_upload(sctx->screen, shader, scratch_va))
             return false;
+
+         shader->scratch_va = scratch_va;
       }
-      si_resource_reference(&shader->scratch_bo, sctx->compute_scratch_buffer);
    }
 
    return true;
@@ -483,11 +489,11 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
                                config->scratch_bytes_per_wave,
                                &sctx->max_seen_compute_scratch_bytes_per_wave, &tmpring_size);
 
-   if (!si_setup_compute_scratch_buffer(sctx, shader))
+   if (!si_setup_compute_scratch_buffer(sctx, shader, config))
       return false;
 
-   if (shader->scratch_bo) {
-      radeon_add_to_buffer_list(sctx, &sctx->gfx_cs, shader->scratch_bo,
+   if (config->scratch_bytes_per_wave) {
+      radeon_add_to_buffer_list(sctx, &sctx->gfx_cs, sctx->compute_scratch_buffer,
                                 RADEON_USAGE_READWRITE | RADEON_PRIO_SCRATCH_BUFFER);
    }
 
@@ -513,7 +519,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
                                     SI_TRACKED_COMPUTE_PGM_RSRC3, rsrc3);
       gfx12_opt_push_compute_sh_reg(R_00B860_COMPUTE_TMPRING_SIZE,
                                     SI_TRACKED_COMPUTE_TMPRING_SIZE, tmpring_size);
-      if (shader->scratch_bo) {
+      if (config->scratch_bytes_per_wave) {
          gfx12_opt_push_compute_sh_reg(R_00B840_COMPUTE_DISPATCH_SCRATCH_BASE_LO,
                                        SI_TRACKED_COMPUTE_DISPATCH_SCRATCH_BASE_LO,
                                        sctx->compute_scratch_buffer->gpu_address >> 8);
@@ -533,7 +539,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
                                     SI_TRACKED_COMPUTE_PGM_RSRC3, rsrc3);
       gfx11_opt_push_compute_sh_reg(R_00B860_COMPUTE_TMPRING_SIZE,
                                     SI_TRACKED_COMPUTE_TMPRING_SIZE, tmpring_size);
-      if (shader->scratch_bo) {
+      if (config->scratch_bytes_per_wave) {
          gfx11_opt_push_compute_sh_reg(R_00B840_COMPUTE_DISPATCH_SCRATCH_BASE_LO,
                                        SI_TRACKED_COMPUTE_DISPATCH_SCRATCH_BASE_LO,
                                        sctx->compute_scratch_buffer->gpu_address >> 8);
@@ -550,7 +556,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
       radeon_opt_set_sh_reg(R_00B860_COMPUTE_TMPRING_SIZE,
                             SI_TRACKED_COMPUTE_TMPRING_SIZE, tmpring_size);
 
-      if (shader->scratch_bo &&
+      if (config->scratch_bytes_per_wave &&
           (sctx->gfx_level >= GFX11 ||
            (sctx->family >= CHIP_GFX940 && !sctx->screen->info.has_graphics))) {
          radeon_opt_set_sh_reg2(R_00B840_COMPUTE_DISPATCH_SCRATCH_BASE_LO,

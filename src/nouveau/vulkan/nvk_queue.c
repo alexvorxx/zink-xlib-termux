@@ -114,7 +114,7 @@ nvk_queue_state_update(struct nvk_device *dev,
 
    struct nvkmd_mem *push_mem;
    VkResult result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
-                                                256 * 4, 0, NVKMD_MEM_GART,
+                                                256 * 4, 0, NVKMD_MEM_LOCAL,
                                                 NVKMD_MEM_MAP_WR, &push_mem);
    if (result != VK_SUCCESS)
       return result;

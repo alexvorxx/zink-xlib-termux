@@ -165,32 +165,26 @@ struct spill_ctx {
  * Gathers information about the number of uses and point of last use
  * per SSA value.
  *
- * Live-out variables are converted to live-in.
+ * Phi definitions are added to live-ins.
  */
 void
 gather_ssa_use_info(spill_ctx& ctx)
 {
    unsigned instruction_idx = 0;
    for (Block& block : ctx.program->blocks) {
-      IDSet& live_set = ctx.program->live.live_out[block.index];
+      IDSet& live_set = ctx.program->live.live_in[block.index];
 
       for (int i = block.instructions.size() - 1; i >= 0; i--) {
          aco_ptr<Instruction>& instr = block.instructions[i];
-         const bool phi = is_phi(instr);
-
-         for (const Definition& def : instr->definitions) {
-            if (!phi && def.isTemp() && !def.isKill())
-               live_set.erase(def.tempId());
-         }
          for (const Operand& op : instr->operands) {
             if (op.isTemp()) {
                use_info& info = ctx.ssa_infos[op.tempId()];
                info.num_uses++;
                info.last_use = std::max(info.last_use, instruction_idx + i);
-               if (!phi && op.isFirstKill())
-                  live_set.insert(op.tempId());
             }
          }
+         if (is_phi(instr) && instr->definitions[0].isTemp() && !instr->definitions[0].isKill())
+            live_set.insert(instr->definitions[0].tempId());
       }
 
       /* All live-in variables at loop headers get an additional artificial use.
@@ -199,7 +193,7 @@ gather_ssa_use_info(spill_ctx& ctx)
        * (and the variables' live-ranges) end.
        */
       if (block.kind & block_kind_loop_header) {
-         for (unsigned t : live_set)
+         for (unsigned t : ctx.program->live.live_in[block.index])
             ctx.ssa_infos[t].num_uses++;
       }
 
@@ -305,7 +299,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       return {0, 0};
 
    /* live-in variables at the beginning of the current block */
-   const IDSet& live_in = ctx.program->live.live_out[block_idx];
+   const IDSet& live_in = ctx.program->live.live_in[block_idx];
 
    /* loop header block */
    if (block->kind & block_kind_loop_header) {
@@ -359,7 +353,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          for (unsigned t : live_in) {
             Temp var = Temp(t, ctx.program->temp_rc[t]);
             if (var.type() != type || ctx.spills_entry[block_idx].count(var) ||
-                !ctx.program->live.live_out[block_idx - 1].count(t) ||
+                !ctx.program->live.live_in[block_idx - 1].count(t) ||
                 var.regClass().is_linear_vgpr())
                continue;
 
@@ -470,7 +464,7 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       uint32_t spill_id = 0;
       for (unsigned pred_idx : preds) {
          /* variable is not even live at the predecessor: probably from a phi */
-         if (!ctx.program->live.live_out[pred_idx].count(t)) {
+         if (!ctx.program->live.live_in[pred_idx].count(t)) {
             spill = false;
             break;
          }
@@ -675,7 +669,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
 
       for (unsigned pred_idx : preds) {
          /* variable is dead at predecessor, it must be from a phi: this works because of CSSA form */
-         if (!ctx.program->live.live_out[pred_idx].count(pair.first.id()))
+         if (!ctx.program->live.live_in[pred_idx].count(pair.first.id()))
             continue;
 
          /* variable is already spilled at predecessor */
@@ -803,7 +797,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
       /* if a variable is dead at any predecessor, it must be from a phi */
       const bool is_dead = std::any_of(
          preds.begin(), preds.end(),
-         [&](unsigned pred) { return !ctx.program->live.live_out[pred].count(var.id()); });
+         [&](unsigned pred) { return !ctx.program->live.live_in[pred].count(var.id()); });
       if (is_dead)
          continue;
 
@@ -917,7 +911,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             continue;
 
          if (op.isFirstKill())
-            ctx.program->live.live_out[block_idx].erase(op.tempId());
+            ctx.program->live.live_in[block_idx].erase(op.tempId());
          ctx.ssa_infos[op.tempId()].num_uses--;
 
          if (!current_spills.count(op.getTemp()))
@@ -945,7 +939,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             if (new_demand.vgpr - spilled_registers.vgpr > ctx.target_pressure.vgpr)
                type = RegType::vgpr;
 
-            for (unsigned t : ctx.program->live.live_out[block_idx]) {
+            for (unsigned t : ctx.program->live.live_in[block_idx]) {
                RegClass rc = ctx.program->temp_rc[t];
                Temp var = Temp(t, rc);
                if (rc.type() != type || current_spills.count(var) || rc.is_linear_vgpr())
@@ -1003,7 +997,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
 
       for (const Definition& def : instr->definitions) {
          if (def.isTemp() && !def.isKill())
-            ctx.program->live.live_out[block_idx].insert(def.tempId());
+            ctx.program->live.live_in[block_idx].insert(def.tempId());
       }
       /* rename operands */
       for (Operand& op : instr->operands) {
@@ -1044,7 +1038,7 @@ spill_block(spill_ctx& ctx, unsigned block_idx)
 
    if (!(block->kind & block_kind_loop_header)) {
       /* add spill/reload code on incoming control flow edges */
-      add_coupling_code(ctx, block, ctx.program->live.live_out[block_idx]);
+      add_coupling_code(ctx, block, ctx.program->live.live_in[block_idx]);
    }
 
    assert(ctx.spills_exit[block_idx].empty());

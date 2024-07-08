@@ -229,7 +229,6 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
           * reserve it.
           */
          payload_last_use_ip[0] = use_ip;
-         payload_last_use_ip[1] = use_ip;
       }
 
       ip++;

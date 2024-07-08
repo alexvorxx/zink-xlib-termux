@@ -71,7 +71,7 @@ struct panfrost_vtable {
    void (*context_populate_vtbl)(struct pipe_context *pipe);
 
    /* Initialize/cleanup a Gallium context */
-   void (*context_init)(struct panfrost_context *ctx);
+   int (*context_init)(struct panfrost_context *ctx);
    void (*context_cleanup)(struct panfrost_context *ctx);
 
    /* Device-dependent initialization/cleanup of a panfrost_batch */

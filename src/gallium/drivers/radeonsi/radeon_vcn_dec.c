@@ -948,6 +948,12 @@ static rvcn_dec_message_av1_t get_av1_msg(struct radeon_decoder *dec,
    result.superres_upscaled_width = pic->picture_parameter.frame_width;
    result.order_hint_bits = pic->picture_parameter.order_hint_bits_minus_1 + 1;
 
+   /* Limit to target size in case applications try to decode into smaller
+    * target buffer. */
+   result.width = MIN2(target->width, result.width);
+   result.height = MIN2(target->height, result.height);
+   result.superres_upscaled_width = MIN2(target->width, result.superres_upscaled_width);
+
    for (i = 0; i < NUM_AV1_REFS; ++i) {
       uintptr_t ref_frame;
       if (pic->ref[i]) {

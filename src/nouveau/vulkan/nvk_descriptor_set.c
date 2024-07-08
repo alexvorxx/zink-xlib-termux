@@ -540,7 +540,7 @@ nvk_CreateDescriptorPool(VkDevice _device,
 
    if (mem_size) {
       result = nvkmd_dev_alloc_mapped_mem(dev->nvkmd, &dev->vk.base,
-                                          mem_size, 0, NVKMD_MEM_GART,
+                                          mem_size, 0, NVKMD_MEM_LOCAL,
                                           NVKMD_MEM_MAP_WR, &pool->mem);
       if (result != VK_SUCCESS) {
          nvk_destroy_descriptor_pool(dev, pAllocator, pool);

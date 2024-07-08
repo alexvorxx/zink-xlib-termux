@@ -3349,6 +3349,9 @@ anv_image_fill_surface_state(struct anv_device *device,
    }
    state_inout->clear_address = clear_address;
 
+   if (image->vk.create_flags & VK_IMAGE_CREATE_PROTECTED_BIT)
+      view_usage |= ISL_SURF_USAGE_PROTECTED_BIT;
+
    isl_surf_fill_state(&device->isl_dev, surface_state_map,
                        .surf = isl_surf,
                        .view = &view,

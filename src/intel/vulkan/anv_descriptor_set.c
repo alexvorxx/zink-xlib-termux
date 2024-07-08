@@ -2470,6 +2470,8 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
       enum isl_format format =
          anv_isl_format_for_descriptor_type(device, desc->type);
 
+      if (bind_addr.bo && bind_addr.bo->alloc_flags & ANV_BO_ALLOC_PROTECTED)
+         usage |= ISL_SURF_USAGE_PROTECTED_BIT;
       isl_buffer_fill_state(&device->isl_dev, desc_map,
                             .address = anv_address_physical(bind_addr),
                             .mocs = isl_mocs(&device->isl_dev, usage,

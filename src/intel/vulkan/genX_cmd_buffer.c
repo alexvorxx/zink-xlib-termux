@@ -107,7 +107,20 @@ fill_state_base_addr(struct anv_cmd_buffer *cmd_buffer,
    sba->GeneralStateBaseAddressModifyEnable = true;
    sba->GeneralStateBufferSizeModifyEnable = true;
 
-   sba->StatelessDataPortAccessMOCS = mocs;
+#if GFX_VERx10 == 120
+   /* Since DG2, scratch surfaces have their own surface state with its own
+    * MOCS setting, but prior to that, the MOCS for scratch accesses are
+    * governed by SBA.StatelessDataPortAccessMOCS.
+    */
+   const isl_surf_usage_flags_t protected_usage =
+      cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT ?
+      ISL_SURF_USAGE_PROTECTED_BIT : 0;
+   const uint32_t stateless_mocs = isl_mocs(&device->isl_dev, protected_usage, false);
+#else
+   const uint32_t stateless_mocs = mocs;
+#endif
+
+   sba->StatelessDataPortAccessMOCS = stateless_mocs;
 
 #if GFX_VERx10 >= 125
    sba->SurfaceStateBaseAddress =

@@ -5352,6 +5352,8 @@ anv_fill_buffer_surface_state(struct anv_device *device,
                               struct anv_address address,
                               uint32_t range, uint32_t stride)
 {
+   if (address.bo && address.bo->alloc_flags & ANV_BO_ALLOC_PROTECTED)
+      usage |= ISL_SURF_USAGE_PROTECTED_BIT;
    isl_buffer_fill_state(&device->isl_dev, surface_state_ptr,
                          .address = anv_address_physical(address),
                          .mocs = isl_mocs(&device->isl_dev, usage,

@@ -673,81 +673,90 @@ v3d_screen_is_format_supported(struct pipe_screen *pscreen,
         return true;
 }
 
-static const nir_shader_compiler_options v3d_nir_options = {
-        .compact_arrays = true,
-        .lower_uadd_sat = true,
-        .lower_usub_sat = true,
-        .lower_iadd_sat = true,
-        .lower_all_io_to_temps = true,
-        .lower_extract_byte = true,
-        .lower_extract_word = true,
-        .lower_insert_byte = true,
-        .lower_insert_word = true,
-        .lower_bitfield_insert = true,
-        .lower_bitfield_extract = true,
-        .lower_bitfield_reverse = true,
-        .lower_bit_count = true,
-        .lower_cs_local_id_to_index = true,
-        .lower_ffract = true,
-        .lower_fmod = true,
-        .lower_pack_unorm_2x16 = true,
-        .lower_pack_snorm_2x16 = true,
-        .lower_pack_unorm_4x8 = true,
-        .lower_pack_snorm_4x8 = true,
-        .lower_unpack_unorm_4x8 = true,
-        .lower_unpack_snorm_4x8 = true,
-        .lower_pack_half_2x16 = true,
-        .lower_unpack_half_2x16 = true,
-        .lower_pack_32_2x16 = true,
-        .lower_pack_32_2x16_split = true,
-        .lower_unpack_32_2x16_split = true,
-        .lower_fdiv = true,
-        .lower_find_lsb = true,
-        .lower_ffma16 = true,
-        .lower_ffma32 = true,
-        .lower_ffma64 = true,
-        .lower_flrp32 = true,
-        .lower_fpow = true,
-        .lower_fsat = true,
-        .lower_fsqrt = true,
-        .lower_ifind_msb = true,
-        .lower_isign = true,
-        .lower_ldexp = true,
-        .lower_hadd = true,
-        .lower_fisnormal = true,
-        .lower_mul_high = true,
-        .lower_wpos_pntc = true,
-        .lower_to_scalar = true,
-        .lower_int64_options =
-                nir_lower_bcsel64 |
-                nir_lower_conv64 |
-                nir_lower_iadd64 |
-                nir_lower_icmp64 |
-                nir_lower_imul_2x32_64 |
-                nir_lower_imul64 |
-                nir_lower_ineg64 |
-                nir_lower_logic64 |
-                nir_lower_shift64 |
-                nir_lower_ufind_msb64,
-        .lower_fquantize2f16 = true,
-        .has_fsub = true,
-        .has_isub = true,
-        .divergence_analysis_options =
-                nir_divergence_multiple_workgroup_per_compute_subgroup,
-        /* This will enable loop unrolling in the state tracker so we won't
-         * be able to selectively disable it in backend if it leads to
-         * lower thread counts or TMU spills. Choose a conservative maximum to
-         * limit register pressure impact.
-         */
-        .max_unroll_iterations = 16,
-        .force_indirect_unrolling_sampler = true,
-};
-
 static const void *
 v3d_screen_get_compiler_options(struct pipe_screen *pscreen,
-                                enum pipe_shader_ir ir, enum pipe_shader_type shader)
+                                enum pipe_shader_ir ir,
+                                enum pipe_shader_type shader)
 {
-        return &v3d_nir_options;
+        struct v3d_screen *screen = v3d_screen(pscreen);
+        const struct v3d_device_info *devinfo = &screen->devinfo;
+
+        static bool initialized = false;
+        static nir_shader_compiler_options options = {
+                .compact_arrays = true,
+                .lower_uadd_sat = true,
+                .lower_usub_sat = true,
+                .lower_iadd_sat = true,
+                .lower_all_io_to_temps = true,
+                .lower_extract_byte = true,
+                .lower_extract_word = true,
+                .lower_insert_byte = true,
+                .lower_insert_word = true,
+                .lower_bitfield_insert = true,
+                .lower_bitfield_extract = true,
+                .lower_bitfield_reverse = true,
+                .lower_bit_count = true,
+                .lower_cs_local_id_to_index = true,
+                .lower_ffract = true,
+                .lower_fmod = true,
+                .lower_pack_unorm_2x16 = true,
+                .lower_pack_snorm_2x16 = true,
+                .lower_pack_unorm_4x8 = true,
+                .lower_pack_snorm_4x8 = true,
+                .lower_unpack_unorm_4x8 = true,
+                .lower_unpack_snorm_4x8 = true,
+                .lower_pack_half_2x16 = true,
+                .lower_unpack_half_2x16 = true,
+                .lower_pack_32_2x16 = true,
+                .lower_pack_32_2x16_split = true,
+                .lower_unpack_32_2x16_split = true,
+                .lower_fdiv = true,
+                .lower_find_lsb = true,
+                .lower_ffma16 = true,
+                .lower_ffma32 = true,
+                .lower_ffma64 = true,
+                .lower_flrp32 = true,
+                .lower_fpow = true,
+                .lower_fsqrt = true,
+                .lower_ifind_msb = true,
+                .lower_isign = true,
+                .lower_ldexp = true,
+                .lower_hadd = true,
+                .lower_fisnormal = true,
+                .lower_mul_high = true,
+                .lower_wpos_pntc = true,
+                .lower_to_scalar = true,
+                .lower_int64_options =
+                        nir_lower_bcsel64 |
+                        nir_lower_conv64 |
+                        nir_lower_iadd64 |
+                        nir_lower_icmp64 |
+                        nir_lower_imul_2x32_64 |
+                        nir_lower_imul64 |
+                        nir_lower_ineg64 |
+                        nir_lower_logic64 |
+                        nir_lower_shift64 |
+                        nir_lower_ufind_msb64,
+                .lower_fquantize2f16 = true,
+                .has_fsub = true,
+                .has_isub = true,
+                .divergence_analysis_options =
+                       nir_divergence_multiple_workgroup_per_compute_subgroup,
+                /* This will enable loop unrolling in the state tracker so we won't
+                 * be able to selectively disable it in backend if it leads to
+                 * lower thread counts or TMU spills. Choose a conservative maximum to
+                 * limit register pressure impact.
+                 */
+                .max_unroll_iterations = 16,
+                .force_indirect_unrolling_sampler = true,
+        };
+
+        if (!initialized) {
+                options.lower_fsat = devinfo->ver < 71;
+                initialized = true;
+        }
+
+        return &options;
 }
 
 static const uint64_t v3d_available_modifiers[] = {

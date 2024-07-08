@@ -66,6 +66,10 @@ ac_simplify_cb_format(enum pipe_format format);
 bool
 ac_alpha_is_on_msb(const struct radeon_info *info, enum pipe_format format);
 
+bool
+ac_is_reduction_mode_supported(const struct radeon_info *info, enum pipe_format format,
+                               bool shadow_samplers);
+
 #ifdef __cplusplus
 }
 #endif

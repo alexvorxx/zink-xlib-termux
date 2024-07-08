@@ -1249,6 +1249,8 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
       return staging->bo->ptr.cpu;
    }
 
+   bool already_mapped = bo->ptr.cpu != NULL;
+
    /* If we haven't already mmaped, now's the time */
    panfrost_bo_mmap(bo);
 
@@ -1298,7 +1300,9 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
       copy_resource = false;
    }
 
-   if (create_new_bo) {
+   if (create_new_bo &&
+       (!(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) ||
+        !already_mapped)) {
       /* Make sure we re-emit any descriptors using this resource */
       panfrost_dirty_state_all(ctx);
 

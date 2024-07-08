@@ -62,6 +62,7 @@ void bifrost_compile_shader_nir(nir_shader *nir,
        */                                                                      \
       .vertex_id_zero_based = (arch <= 7),                                     \
                                                                                \
+      .lower_pack_64_4x16 = true,                                              \
       .lower_pack_half_2x16 = true,                                            \
       .lower_pack_unorm_2x16 = true,                                           \
       .lower_pack_snorm_2x16 = true,                                           \

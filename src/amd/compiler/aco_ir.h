@@ -2066,6 +2066,8 @@ public:
       monotonic_buffer_resource memory;
       /* live temps out per block */
       std::vector<IDSet> live_out;
+      /* live-in temps per block */
+      std::vector<IDSet> live_in;
    } live;
 
    struct {

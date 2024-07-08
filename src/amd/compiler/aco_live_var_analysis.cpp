@@ -246,6 +246,11 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
       }
    }
 
+   if (ctx.program->live.live_in[block->index].insert(live)) {
+      if (block->linear_preds.size())
+         ctx.worklist = std::max<int>(ctx.worklist, block->linear_preds.back());
+   }
+
    block->live_in_demand = new_demand;
    block->live_in_demand.sgpr += 2; /* Add 2 SGPRs for potential long-jumps. */
    block->register_demand.update(block->live_in_demand);
@@ -417,8 +422,10 @@ void
 live_var_analysis(Program* program)
 {
    program->live.live_out.clear();
+   program->live.live_in.clear();
    program->live.memory.release();
    program->live.live_out.resize(program->blocks.size(), IDSet(program->live.memory));
+   program->live.live_in.resize(program->blocks.size(), IDSet(program->live.memory));
    program->max_reg_demand = RegisterDemand();
    program->needs_vcc = program->gfx_level >= GFX10;
 

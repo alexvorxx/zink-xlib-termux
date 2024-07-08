@@ -3807,6 +3807,12 @@ typedef struct nir_shader_compiler_options {
    /** enable rules that avoid generating umin from signed integer ops */
    bool lower_umin;
 
+   /* lower fmin/fmax with signed zero preserve to fmin/fmax with
+    * no_signed_zero, for backends whose fmin/fmax implementations do not
+    * implement IEEE-754-2019 semantics for signed zero.
+    */
+   bool lower_fminmax_signed_zero;
+
    /* lower fdph to fdot4 */
    bool lower_fdph;
 

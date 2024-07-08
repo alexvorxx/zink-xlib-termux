@@ -4448,7 +4448,7 @@ bifrost_nir_lower_blend_components(struct nir_builder *b,
 
 static nir_mem_access_size_align
 mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
-                         uint8_t input_bit_size, uint32_t align_mul,
+                         uint8_t bit_size, uint32_t align_mul,
                          uint32_t align_offset, bool offset_is_const,
                          const void *cb_data)
 {
@@ -4460,19 +4460,19 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 
    /* If the number of bytes is a multiple of 4, use 32-bit loads. Else if it's
     * a multiple of 2, use 16-bit loads. Else use 8-bit loads.
-    */
-   unsigned bit_size = (bytes & 1) ? 8 : (bytes & 2) ? 16 : 32;
-
-   /* But if we're only aligned to 1 byte, use 8-bit loads. If we're only
+    *
+    * But if we're only aligned to 1 byte, use 8-bit loads. If we're only
     * aligned to 2 bytes, use 16-bit loads, unless we needed 8-bit loads due to
     * the size.
     */
-   if (align == 1)
+   if ((bytes & 1) || (align == 1))
       bit_size = 8;
-   else if (align == 2)
-      bit_size = MIN2(bit_size, 16);
+   else if ((bytes & 2) || (align == 2))
+      bit_size = 16;
+   else if (bit_size >= 32)
+      bit_size = 32;
 
-   unsigned num_comps = bytes / (bit_size / 8);
+   unsigned num_comps = MIN2(bytes / (bit_size / 8), 4);
 
    /* Push constants require 32-bit loads. */
    if (intrin == nir_intrinsic_load_push_constant) {

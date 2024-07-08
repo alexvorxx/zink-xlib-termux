@@ -831,7 +831,8 @@ lookup_opcode_from_packed(const struct v3d_device_info *devinfo,
 }
 
 static bool
-v3d_qpu_float32_unpack_unpack(uint32_t packed,
+v3d_qpu_float32_unpack_unpack(const struct v3d_device_info *devinfo,
+                              uint32_t packed,
                               enum v3d_qpu_input_unpack *unpacked)
 {
         switch (packed) {
@@ -847,13 +848,23 @@ v3d_qpu_float32_unpack_unpack(uint32_t packed,
         case 3:
                 *unpacked = V3D_QPU_UNPACK_H;
                 return true;
+        case 4:
+                *unpacked = V3D71_QPU_UNPACK_SAT;
+                return devinfo->ver >= 71;
+        case 5:
+                *unpacked = V3D71_QPU_UNPACK_NSAT;
+                return devinfo->ver >= 71;
+        case 6:
+                *unpacked = V3D71_QPU_UNPACK_MAX0;
+                return devinfo->ver >= 71;
         default:
                 return false;
         }
 }
 
 static bool
-v3d_qpu_float32_unpack_pack(enum v3d_qpu_input_unpack unpacked,
+v3d_qpu_float32_unpack_pack(const struct v3d_device_info *devinfo,
+                            enum v3d_qpu_input_unpack unpacked,
                             uint32_t *packed)
 {
         switch (unpacked) {
@@ -869,6 +880,15 @@ v3d_qpu_float32_unpack_pack(enum v3d_qpu_input_unpack unpacked,
         case V3D_QPU_UNPACK_H:
                 *packed = 3;
                 return true;
+        case V3D71_QPU_UNPACK_SAT:
+                *packed = 4;
+                return devinfo->ver >= 71;
+        case V3D71_QPU_UNPACK_NSAT:
+                *packed = 5;
+                return devinfo->ver >= 71;
+        case V3D71_QPU_UNPACK_MAX0:
+                *packed = 6;
+                return devinfo->ver >= 71;
         default:
                 return false;
         }
@@ -1069,12 +1089,12 @@ v3d42_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
                 else
                         instr->alu.add.output_pack = V3D_QPU_PACK_NONE;
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 0) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 0) & 0x3,
                                                    &instr->alu.add.b.unpack)) {
                         return false;
                 }
@@ -1088,7 +1108,7 @@ v3d42_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_A_FDY:
                 instr->alu.add.output_pack = mux_b & 0x3;
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
@@ -1100,7 +1120,7 @@ v3d42_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_A_FTOC:
                 instr->alu.add.output_pack = V3D_QPU_PACK_NONE;
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
@@ -1221,12 +1241,12 @@ v3d71_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
                         instr->alu.add.output_pack = V3D_QPU_PACK_NONE;
                 }
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 0) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 0) & 0x3,
                                                    &instr->alu.add.b.unpack)) {
                         return false;
                 }
@@ -1240,7 +1260,7 @@ v3d71_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_A_FDY:
                 instr->alu.add.output_pack = raddr_b & 0x3;
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
@@ -1252,7 +1272,7 @@ v3d71_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_A_FTOC:
                 instr->alu.add.output_pack = V3D_QPU_PACK_NONE;
 
-                if (!v3d_qpu_float32_unpack_unpack((raddr_b >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (raddr_b >> 2) & 0x3,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
@@ -1287,7 +1307,7 @@ v3d71_qpu_add_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
                 if (unpack == 7)
                         return false;
 
-                if (!v3d_qpu_float32_unpack_unpack(unpack,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, unpack,
                                                    &instr->alu.add.a.unpack)) {
                         return false;
                 }
@@ -1359,12 +1379,12 @@ v3d42_qpu_mul_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_M_FMUL:
                 instr->alu.mul.output_pack = ((op >> 4) & 0x3) - 1;
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.mul.a.unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 0) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 0) & 0x3,
                                                    &instr->alu.mul.b.unpack)) {
                         return false;
                 }
@@ -1375,7 +1395,7 @@ v3d42_qpu_mul_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
                 instr->alu.mul.output_pack = (((op & 1) << 1) +
                                               ((mux_b >> 2) & 1));
 
-                if (!v3d_qpu_float32_unpack_unpack(mux_b & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, mux_b & 0x3,
                                                    &instr->alu.mul.a.unpack)) {
                         return false;
                 }
@@ -1434,12 +1454,12 @@ v3d71_qpu_mul_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_M_FMUL:
                 instr->alu.mul.output_pack = ((op >> 4) & 0x3) - 1;
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 2) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 2) & 0x3,
                                                    &instr->alu.mul.a.unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_unpack((op >> 0) & 0x3,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (op >> 0) & 0x3,
                                                    &instr->alu.mul.b.unpack)) {
                         return false;
                 }
@@ -1449,7 +1469,7 @@ v3d71_qpu_mul_unpack(const struct v3d_device_info *devinfo, uint64_t packed_inst
         case V3D_QPU_M_FMOV:
                 instr->alu.mul.output_pack = raddr_d & 0x3;
 
-                if (!v3d_qpu_float32_unpack_unpack((raddr_d >> 2) & 0x7,
+                if (!v3d_qpu_float32_unpack_unpack(devinfo, (raddr_d >> 2) & 0x3,
                                                    &instr->alu.mul.a.unpack)) {
                         return false;
                 }
@@ -1601,12 +1621,14 @@ v3d42_qpu_add_pack(const struct v3d_device_info *devinfo,
                 }
                 opcode |= output_pack << 4;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &a_unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.b.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.b.unpack,
                                                  &b_unpack)) {
                         return false;
                 }
@@ -1645,12 +1667,14 @@ v3d42_qpu_add_pack(const struct v3d_device_info *devinfo,
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &a_unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.b.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.b.unpack,
                                                  &b_unpack)) {
                         return false;
                 }
@@ -1675,7 +1699,8 @@ v3d42_qpu_add_pack(const struct v3d_device_info *devinfo,
                 }
                 mux_b |= packed;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -1693,7 +1718,8 @@ v3d42_qpu_add_pack(const struct v3d_device_info *devinfo,
                         return false;
 
                 uint32_t packed;
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -1814,12 +1840,14 @@ v3d71_qpu_add_pack(const struct v3d_device_info *devinfo,
                         opcode |= output_pack << 4;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &a_unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.b.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.b.unpack,
                                                  &b_unpack)) {
                         return false;
                 }
@@ -1876,12 +1904,14 @@ v3d71_qpu_add_pack(const struct v3d_device_info *devinfo,
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &a_unpack)) {
                         return false;
                 }
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.b.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.b.unpack,
                                                  &b_unpack)) {
                         return false;
                 }
@@ -1906,7 +1936,8 @@ v3d71_qpu_add_pack(const struct v3d_device_info *devinfo,
                 }
                 raddr_b |= packed;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -1924,7 +1955,8 @@ v3d71_qpu_add_pack(const struct v3d_device_info *devinfo,
                         return false;
 
                 uint32_t packed;
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -1973,7 +2005,8 @@ v3d71_qpu_add_pack(const struct v3d_device_info *devinfo,
                 }
                 raddr_b = packed;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.add.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.add.a.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -2041,13 +2074,15 @@ v3d42_qpu_mul_pack(const struct v3d_device_info *devinfo,
                  */
                 opcode += packed << 4;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.mul.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.mul.a.unpack,
                                                  &packed)) {
                         return false;
                 }
                 opcode |= packed << 2;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.mul.b.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.mul.b.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -2065,7 +2100,8 @@ v3d42_qpu_mul_pack(const struct v3d_device_info *devinfo,
                 opcode |= (packed >> 1) & 1;
                 mux_b = (packed & 1) << 2;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.mul.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.mul.a.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -2151,13 +2187,15 @@ v3d71_qpu_mul_pack(const struct v3d_device_info *devinfo,
                  */
                 opcode += packed << 4;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.mul.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.mul.a.unpack,
                                                  &packed)) {
                         return false;
                 }
                 opcode |= packed << 2;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.mul.b.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.mul.b.unpack,
                                                  &packed)) {
                         return false;
                 }
@@ -2174,7 +2212,8 @@ v3d71_qpu_mul_pack(const struct v3d_device_info *devinfo,
                 }
                 raddr_d |= packed;
 
-                if (!v3d_qpu_float32_unpack_pack(instr->alu.mul.a.unpack,
+                if (!v3d_qpu_float32_unpack_pack(devinfo,
+                                                 instr->alu.mul.a.unpack,
                                                  &packed)) {
                         return false;
                 }

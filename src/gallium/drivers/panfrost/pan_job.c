@@ -399,6 +399,7 @@ panfrost_batch_create_bo(struct panfrost_batch *batch, size_t size,
 
    bo = panfrost_bo_create(pan_device(batch->ctx->base.screen), size,
                            create_flags, label);
+   assert(bo);
    panfrost_batch_add_bo(batch, bo, stage);
 
    /* panfrost_batch_add_bo() has retained a reference and

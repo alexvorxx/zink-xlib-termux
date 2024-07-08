@@ -714,6 +714,10 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
    struct panfrost_device *dev = pan_device(screen);
 
    struct panfrost_resource *so = CALLOC_STRUCT(panfrost_resource);
+
+   if (!so)
+      return NULL;
+
    so->base = *template;
    so->base.screen = screen;
 
@@ -802,7 +806,7 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
 
       if (!so->scanout) {
          fprintf(stderr, "Failed to create scanout resource\n");
-         free(so);
+         FREE(so);
          return NULL;
       }
       assert(handle.type == WINSYS_HANDLE_TYPE_FD);
@@ -810,7 +814,7 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
       close(handle.handle);
 
       if (!so->bo) {
-         free(so);
+         FREE(so);
          return NULL;
       }
 
@@ -826,6 +830,12 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
 
       so->bo =
          panfrost_bo_create(dev, so->image.layout.data_size, flags, label);
+
+      if (!so->bo) {
+         FREE(so);
+         return NULL;
+      }
+
       so->image.data.base = so->bo->ptr.gpu;
 
       so->constant_stencil = true;
@@ -1562,6 +1572,7 @@ panfrost_get_afbc_superblock_sizes(struct panfrost_context *ctx,
    panfrost_flush_batches_accessing_rsrc(ctx, rsrc, "AFBC before size flush");
    batch = panfrost_get_fresh_batch_for_fbo(ctx, "AFBC superblock sizes");
    bo = panfrost_bo_create(dev, metadata_size, 0, "AFBC superblock sizes");
+   assert(bo);
 
    for (int level = first_level; level <= last_level; ++level) {
       unsigned offset = out_offsets[level - first_level];
@@ -1658,6 +1669,7 @@ panfrost_pack_afbc(struct panfrost_context *ctx,
 
    struct panfrost_bo *dst =
       panfrost_bo_create(dev, new_size, 0, "AFBC compact texture");
+   assert(dst);
    struct panfrost_batch *batch =
       panfrost_get_fresh_batch_for_fbo(ctx, "AFBC compaction");
 

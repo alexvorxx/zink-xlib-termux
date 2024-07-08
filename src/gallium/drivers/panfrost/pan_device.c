@@ -127,6 +127,7 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    if (dev->arch < 10) {
       dev->tiler_heap = panfrost_bo_create(
          dev, 128 * 1024 * 1024, PAN_BO_INVISIBLE | PAN_BO_GROWABLE, "Tiler heap");
+      assert(dev->tiler_heap);
    }
 
    pthread_mutex_init(&dev->submit_lock, NULL);
@@ -134,6 +135,8 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    /* Done once on init */
    dev->sample_positions = panfrost_bo_create(
       dev, panfrost_sample_positions_buffer_size(), 0, "Sample positions");
+   assert(dev->sample_positions);
+
    panfrost_upload_sample_positions(dev->sample_positions->ptr.cpu);
    return;
 

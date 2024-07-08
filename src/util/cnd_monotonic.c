@@ -32,6 +32,11 @@
 
 #ifdef _WIN32
 #include <windows.h>
+
+static_assert(sizeof(struct u_cnd_monotonic) == sizeof(CONDITION_VARIABLE),
+              "The size of u_cnd_monotonic must equal to CONDITION_VARIABLE");
+static_assert(sizeof(mtx_t) == sizeof(CRITICAL_SECTION),
+              "The size of mtx_t must equal to CRITICAL_SECTION");
 #endif
 
 int
@@ -40,7 +45,7 @@ u_cnd_monotonic_init(struct u_cnd_monotonic *cond)
    assert(cond != NULL);
 
 #ifdef _WIN32
-   InitializeConditionVariable(&cond->condvar);
+   InitializeConditionVariable((PCONDITION_VARIABLE)cond);
    return thrd_success;
 #else
    int ret = thrd_error;
@@ -76,7 +81,7 @@ u_cnd_monotonic_broadcast(struct u_cnd_monotonic *cond)
    assert(cond != NULL);
 
 #ifdef _WIN32
-   WakeAllConditionVariable(&cond->condvar);
+   WakeAllConditionVariable((PCONDITION_VARIABLE)cond);
    return thrd_success;
 #else
    return (pthread_cond_broadcast(&cond->cond) == 0) ? thrd_success : thrd_error;
@@ -89,7 +94,7 @@ u_cnd_monotonic_signal(struct u_cnd_monotonic *cond)
    assert(cond != NULL);
 
 #ifdef _WIN32
-   WakeConditionVariable(&cond->condvar);
+   WakeConditionVariable((PCONDITION_VARIABLE)cond);
    return thrd_success;
 #else
    return (pthread_cond_signal(&cond->cond) == 0) ? thrd_success : thrd_error;
@@ -108,7 +113,8 @@ u_cnd_monotonic_timedwait(struct u_cnd_monotonic *cond, mtx_t *mtx,
    const uint64_t future = (abs_time->tv_sec * 1000) + (abs_time->tv_nsec / 1000000);
    const uint64_t now = os_time_get_nano() / 1000000;
    const DWORD timeout = (future > now) ? (DWORD)(future - now) : 0;
-   if (SleepConditionVariableCS(&cond->condvar, mtx, timeout))
+   if (SleepConditionVariableCS((PCONDITION_VARIABLE)cond,
+                                (PCRITICAL_SECTION)mtx, timeout))
       return thrd_success;
    return (GetLastError() == ERROR_TIMEOUT) ? thrd_timedout : thrd_error;
 #else
@@ -126,7 +132,8 @@ u_cnd_monotonic_wait(struct u_cnd_monotonic *cond, mtx_t *mtx)
    assert(mtx != NULL);
 
 #ifdef _WIN32
-   SleepConditionVariableCS(&cond->condvar, mtx, INFINITE);
+   SleepConditionVariableCS((PCONDITION_VARIABLE)cond,
+                            (PCRITICAL_SECTION)mtx, INFINITE);
    return thrd_success;
 #else
    return (pthread_cond_wait(&cond->cond, mtx) == 0) ? thrd_success : thrd_error;

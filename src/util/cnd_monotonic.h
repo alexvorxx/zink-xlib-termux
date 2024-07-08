@@ -41,7 +41,7 @@ extern "C" {
 struct u_cnd_monotonic
 {
 #ifdef _WIN32
-   CONDITION_VARIABLE condvar;
+   void *Ptr;
 #else
    pthread_cond_t cond;
 #endif

@@ -90,6 +90,12 @@ reindex_ssa(Program* program, bool update_live_out = false)
             new_set.insert(ctx.renames[id]);
          set = new_set;
       }
+      for (IDSet& set : program->live.live_in) {
+         IDSet new_set(program->live.memory);
+         for (uint32_t id : set)
+            new_set.insert(ctx.renames[id]);
+         set = new_set;
+      }
    }
 
    program->allocationID = program->temp_rc.size();

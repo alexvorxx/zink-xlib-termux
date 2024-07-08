@@ -1345,7 +1345,6 @@ zink_screen_init_compiler(struct zink_screen *screen)
       .lower_scmp = true,
       .lower_fdph = true,
       .lower_flrp32 = true,
-      .lower_fpow = true,
       .lower_fsat = true,
       .lower_hadd = true,
       .lower_iadd_sat = true,

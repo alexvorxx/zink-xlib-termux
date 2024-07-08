@@ -2001,6 +2001,7 @@ emit_alu(struct ntv_context *ctx, nir_alu_instr *alu)
    BUILTIN_BINOP(nir_op_umin, GLSLstd450UMin)
    BUILTIN_BINOP(nir_op_umax, GLSLstd450UMax)
    BUILTIN_BINOP(nir_op_ldexp, GLSLstd450Ldexp)
+   BUILTIN_BINOP(nir_op_fpow, GLSLstd450Pow)
 #undef BUILTIN_BINOP
 
 #define INTEL_BINOP(nir_op, spirv_op) \

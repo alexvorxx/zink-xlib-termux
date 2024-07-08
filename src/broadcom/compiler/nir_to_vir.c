@@ -1794,6 +1794,12 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 result = vir_FTOSNORM16(c, src[0]);
                 break;
 
+        case nir_op_fsat:
+                assert(c->devinfo->ver >= 71);
+                result = vir_FMOV(c, src[0]);
+                vir_set_unpack(c->defs[result.index], 0, V3D71_QPU_UNPACK_SAT);
+                break;
+
         default:
                 fprintf(stderr, "unknown NIR ALU inst: ");
                 nir_print_instr(&instr->instr, stderr);

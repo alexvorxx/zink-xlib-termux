@@ -54,9 +54,6 @@ panfrost_supports_compressed_format(struct panfrost_device *dev, unsigned fmt)
    return panfrost_query_compressed_formats(&dev->kmod.props) & (1 << idx);
 }
 
-/* Always reserve the lower 32MB. */
-#define PANFROST_VA_RESERVE_BOTTOM 0x2000000ull
-
 void
 panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
 {
@@ -81,10 +78,10 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
    /* 48bit address space max, with the lower 32MB reserved. We clamp
     * things so it matches kmod VA range limitations.
     */
-   uint64_t user_va_start = panfrost_clamp_to_usable_va_range(
-      dev->kmod.dev, PANFROST_VA_RESERVE_BOTTOM);
+   uint64_t user_va_start =
+      panfrost_clamp_to_usable_va_range(dev->kmod.dev, PAN_VA_USER_START);
    uint64_t user_va_end =
-      panfrost_clamp_to_usable_va_range(dev->kmod.dev, 1ull << 48ull);
+      panfrost_clamp_to_usable_va_range(dev->kmod.dev, PAN_VA_USER_END);
 
    dev->kmod.vm = pan_kmod_vm_create(
       dev->kmod.dev, PAN_KMOD_VM_FLAG_AUTO_VA | PAN_KMOD_VM_FLAG_TRACK_ACTIVITY,

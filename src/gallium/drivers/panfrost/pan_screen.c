@@ -787,7 +787,32 @@ panfrost_get_compute_param(struct pipe_screen *pscreen,
       RET((uint64_t[]){dev->arch >= 6 ? 256 : 128});
 
    case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE:
-      RET((uint64_t[]){1024 * 1024 * 512 /* Maybe get memory */});
+   case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE: {
+      uint64_t total_ram;
+
+      if (!os_get_total_physical_memory(&total_ram))
+         return 0;
+
+      /* We don't want to burn too much ram with the GPU. If the user has 4GiB
+       * or less, we use at most half. If they have more than 4GiB, we use 3/4.
+       */
+      uint64_t available_ram;
+      if (total_ram <= 4ull * 1024 * 1024 * 1024)
+         available_ram = total_ram / 2;
+      else
+         available_ram = total_ram * 3 / 4;
+
+      /* 48bit address space max, with the lower 32MB reserved. We clamp
+       * things so it matches kmod VA range limitations.
+       */
+      uint64_t user_va_start =
+         panfrost_clamp_to_usable_va_range(dev->kmod.dev, PAN_VA_USER_START);
+      uint64_t user_va_end =
+         panfrost_clamp_to_usable_va_range(dev->kmod.dev, PAN_VA_USER_END);
+
+      /* We cannot support more than the VA limit */
+      RET((uint64_t[]){MIN2(available_ram, user_va_end - user_va_start)});
+   }
 
    case PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE:
       RET((uint64_t[]){32768});
@@ -795,9 +820,6 @@ panfrost_get_compute_param(struct pipe_screen *pscreen,
    case PIPE_COMPUTE_CAP_MAX_PRIVATE_SIZE:
    case PIPE_COMPUTE_CAP_MAX_INPUT_SIZE:
       RET((uint64_t[]){4096});
-
-   case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE:
-      RET((uint64_t[]){1024 * 1024 * 512 /* Maybe get memory */});
 
    case PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY:
       RET((uint32_t[]){800 /* MHz -- TODO */});

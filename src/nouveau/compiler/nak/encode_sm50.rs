@@ -7,47 +7,18 @@ use bitview::*;
 use std::collections::HashMap;
 use std::ops::Range;
 
-pub struct ShaderModel50 {
-    sm: u8,
-}
-
-impl ShaderModel50 {
-    pub fn new(sm: u8) -> Self {
-        assert!(sm >= 50 && sm < 70);
-        Self { sm }
-    }
-}
-
-impl ShaderModel for ShaderModel50 {
-    fn sm(&self) -> u8 {
-        self.sm
-    }
-
-    fn num_regs(&self, file: RegFile) -> u32 {
-        match file {
-            RegFile::GPR => 255,
-            RegFile::UGPR => 0,
-            RegFile::Pred => 7,
-            RegFile::UPred => 0,
-            RegFile::Carry => 1,
-            RegFile::Bar => 0,
-            RegFile::Mem => RegRef::MAX_IDX + 1,
-        }
-    }
-
-    fn op_can_be_uniform(&self, _op: &Op) -> bool {
-        false
-    }
-
-    fn encode_shader(&self, s: &Shader<'_>) -> Vec<u32> {
-        encode_sm50_shader(self, s)
-    }
-}
-
 impl Src {
     fn is_reg_or_zero(&self) -> bool {
         matches!(self.src_ref, SrcRef::Zero | SrcRef::Reg(_))
     }
+}
+
+fn align_down(value: usize, align: usize) -> usize {
+    value / align * align
+}
+
+fn align_up(value: usize, align: usize) -> usize {
+    align_down(value + (align - 1), align)
 }
 
 struct SM50Instr {
@@ -2216,7 +2187,7 @@ fn encode_instr(
     res.inst
 }
 
-fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
+pub fn encode_sm50_shader(sm: &dyn ShaderModel, s: &Shader<'_>) -> Vec<u32> {
     assert!(s.functions.len() == 1);
     let func = &s.functions[0];
 
@@ -2228,7 +2199,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
         // to a schedule instruction, we account for that here.
         labels.insert(b.label, num_instrs + 8);
 
-        let block_num_instrs = b.instrs.len().next_multiple_of(3);
+        let block_num_instrs = align_up(b.instrs.len(), 3);
 
         // Every 3 instructions, we have a new schedule instruction so we
         // need to account for that.
@@ -2238,7 +2209,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
     let mut encoded = Vec::new();
     for b in &func.blocks {
         // A block is composed of groups of 3 instructions.
-        let block_num_instrs = b.instrs.len().next_multiple_of(3);
+        let block_num_instrs = align_up(b.instrs.len(), 3);
 
         let mut instrs_iter = b.instrs.iter();
 
@@ -2250,7 +2221,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
             let instr0 = encode_instr(
                 0,
                 instrs_iter.next(),
-                sm.sm,
+                sm.sm(),
                 &labels,
                 &mut ip,
                 &mut sched_instr,
@@ -2258,7 +2229,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
             let instr1 = encode_instr(
                 1,
                 instrs_iter.next(),
-                sm.sm,
+                sm.sm(),
                 &labels,
                 &mut ip,
                 &mut sched_instr,
@@ -2266,7 +2237,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
             let instr2 = encode_instr(
                 2,
                 instrs_iter.next(),
-                sm.sm,
+                sm.sm(),
                 &labels,
                 &mut ip,
                 &mut sched_instr,

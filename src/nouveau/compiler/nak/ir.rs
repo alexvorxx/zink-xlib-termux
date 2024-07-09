@@ -6251,6 +6251,8 @@ pub trait ShaderModel {
     fn num_regs(&self, file: RegFile) -> u32;
 
     fn op_can_be_uniform(&self, op: &Op) -> bool;
+
+    fn encode_shader(&self, s: &Shader<'_>) -> Vec<u32>;
 }
 
 pub struct Shader<'a> {

@@ -12,6 +12,8 @@ traces:
 
   behdad-glyphy/glyphy-v2.trace:
     broadcom-rpi4:
+      label: [skip, flakes]
+      text: "Often fails when running on xwayland, with what looks like an incorrect resolution"
       checksum: ea49462ff1545f21506dbd7b5028df45
     broadcom-rpi5:
       label: [skip, flakes]
@@ -102,6 +104,8 @@ traces:
 
   gputest/plot3d-v2.trace:
     broadcom-rpi4:
+      label: [skip, flakes]
+      text: "Often fails when running on xwayland, with what looks like an incorrect resolution"
       checksum: 1ef33ad22679107a256501c79bfd9e7c
     broadcom-rpi5:
       label: [skip, flakes]
@@ -118,6 +122,8 @@ traces:
 
   gputest/triangle-v2.trace:
     broadcom-rpi4:
+      label: [skip, flakes]
+      text: "Often fails when running on xwayland, with what looks like an incorrect resolution"
       checksum: df6df2af5fecfa42b5c2c332b726e93c
     broadcom-rpi5:
       label: [skip, flakes]
@@ -134,6 +140,8 @@ traces:
 
   humus/CelShading-v2.trace:
     broadcom-rpi4:
+      label: [skip, flakes]
+      text: "Often fails when running on xwayland, with what looks like an incorrect resolution"
       checksum: 1135888a0e8723bbcded5ef9f0925964
     broadcom-rpi5:
       label: [skip, flakes]
@@ -209,6 +217,7 @@ traces:
   valve/counterstrike-source-v2.trace:
     broadcom-rpi4:
       label: [skip, timeout]
+      checksum: a938ce83a2310634e0c122583af240ce
     broadcom-rpi5:
       label: [skip, timeout]
       checksum: 0426d669ddc1778610a898a807799f4d
@@ -221,14 +230,15 @@ traces:
 
   valve/half-life-2-v2.trace:
     broadcom-rpi4:
-      label: [crash]
-      text: v3d42_create_texture_shader_state_bo assertion abot serial_id
+      label: [skip, timeout]
+      checksum: 512c305e645e2ec62d94976d86f42f1b
     broadcom-rpi5:
       checksum: 512c305e645e2ec62d94976d86f42f1b
 
   valve/portal-2-v2.trace:
     broadcom-rpi4:
       label: [skip, timeout]
+      checksum: e3c05e899636c9698b3c41737132ff8c
     broadcom-rpi5:
       label: [skip, timeout]
       checksum: e3c05e899636c9698b3c41737132ff8c

@@ -198,7 +198,6 @@ radv_CreateDescriptorSetLayout(VkDevice _device, const VkDescriptorSetLayoutCrea
    }
 
    set_layout->binding_count = num_bindings;
-   set_layout->shader_stages = 0;
    set_layout->dynamic_shader_stages = 0;
    set_layout->has_immutable_samplers = false;
    set_layout->size = 0;
@@ -358,7 +357,6 @@ radv_CreateDescriptorSetLayout(VkDevice _device, const VkDescriptorSetLayoutCrea
          set_layout->size += descriptor_count * set_layout->binding[b].size;
          buffer_count += descriptor_count * binding_buffer_count;
          dynamic_offset_count += descriptor_count * set_layout->binding[b].dynamic_offset_count;
-         set_layout->shader_stages |= binding->stageFlags;
       }
    }
 

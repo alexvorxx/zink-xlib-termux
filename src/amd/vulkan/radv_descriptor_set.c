@@ -370,7 +370,7 @@ radv_CreateDescriptorSetLayout(VkDevice _device, const VkDescriptorSetLayoutCrea
     * should be ok.
     */
    uint32_t hash_offset = offsetof(struct radv_descriptor_set_layout, hash) + sizeof(set_layout->hash);
-   _mesa_sha1_compute((const char *)set_layout + hash_offset, size - hash_offset, set_layout->hash);
+   _mesa_blake3_compute((const char *)set_layout + hash_offset, size - hash_offset, set_layout->hash);
 
    *pSetLayout = radv_descriptor_set_layout_to_handle(set_layout);
 

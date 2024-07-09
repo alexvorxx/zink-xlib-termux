@@ -7,6 +7,7 @@
 #ifndef RADV_DESCRIPTOR_SET_H
 #define RADV_DESCRIPTOR_SET_H
 
+#include "util/mesa-blake3.h"
 #include "util/mesa-sha1.h"
 
 #include "radv_constants.h"
@@ -40,7 +41,7 @@ struct radv_descriptor_set_layout {
    struct vk_descriptor_set_layout vk;
 
    /* Hash of all fields below */
-   uint8_t hash[SHA1_DIGEST_LENGTH];
+   blake3_hash hash;
 
    /* Everything below is hashed and shouldn't contain any pointers. Be careful when modifying this
     * structure.

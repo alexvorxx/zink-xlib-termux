@@ -3182,6 +3182,10 @@ zink_prep_fb_attachment(struct zink_context *ctx, struct zink_surface *surf, uns
    else if (!screen->info.have_EXT_attachment_feedback_loop_layout &&
             layout == VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT)
       layout = VK_IMAGE_LAYOUT_GENERAL;
+   /* some drivers don't care about zs layouts for attachments, so this saves some layout transition cycles */
+   else if (layout != VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT &&
+            i >= ctx->fb_state.nr_cbufs && screen->driver_workarounds.general_depth_layout)
+      layout = VK_IMAGE_LAYOUT_GENERAL;
    if (res->valid || res->layout != layout)
       screen->image_barrier(ctx, res, layout, access, pipeline);
    if (!(res->aspect & VK_IMAGE_ASPECT_COLOR_BIT))

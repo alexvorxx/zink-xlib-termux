@@ -1287,66 +1287,18 @@ validate_ra(Program* program)
       std::array<unsigned, 2048> regs; /* register file in bytes */
       regs.fill(0);
 
-      IDSet live = program->live.live_out[block.index];
-      /* remove killed p_phi sgpr operands */
-      for (Temp tmp : phi_sgpr_ops[block.index])
-         live.erase(tmp.id());
-
-      /* check live out */
-      for (unsigned id : live) {
+      /* check live in */
+      for (unsigned id : program->live.live_in[block.index]) {
          Temp tmp(id, program->temp_rc[id]);
          PhysReg reg = assignments[id].reg;
          for (unsigned i = 0; i < tmp.bytes(); i++) {
             if (regs[reg.reg_b + i]) {
                err |= ra_fail(program, loc, Location(),
-                              "Assignment of element %d of %%%d already taken by %%%d in live-out",
+                              "Assignment of element %d of %%%d already taken by %%%d in live-in",
                               i, id, regs[reg.reg_b + i]);
             }
             regs[reg.reg_b + i] = id;
          }
-      }
-      regs.fill(0);
-
-      for (auto it = block.instructions.rbegin(); it != block.instructions.rend(); ++it) {
-         aco_ptr<Instruction>& instr = *it;
-
-         /* check killed p_phi sgpr operands */
-         if (instr->opcode == aco_opcode::p_logical_end) {
-            for (Temp tmp : phi_sgpr_ops[block.index]) {
-               PhysReg reg = assignments[tmp.id()].reg;
-               for (unsigned i = 0; i < tmp.bytes(); i++) {
-                  if (regs[reg.reg_b + i])
-                     err |= ra_fail(
-                        program, loc, Location(),
-                        "Assignment of element %d of %%%d already taken by %%%d in live-out", i,
-                        tmp.id(), regs[reg.reg_b + i]);
-               }
-               live.insert(tmp.id());
-            }
-         }
-
-         for (const Definition& def : instr->definitions) {
-            if (!def.isTemp())
-               continue;
-            live.erase(def.tempId());
-         }
-
-         /* don't count phi operands as live-in, since they are actually
-          * killed when they are copied at the predecessor */
-         if (instr->opcode != aco_opcode::p_phi && instr->opcode != aco_opcode::p_linear_phi) {
-            for (const Operand& op : instr->operands) {
-               if (!op.isTemp())
-                  continue;
-               live.insert(op.tempId());
-            }
-         }
-      }
-
-      for (unsigned id : live) {
-         Temp tmp(id, program->temp_rc[id]);
-         PhysReg reg = assignments[id].reg;
-         for (unsigned i = 0; i < tmp.bytes(); i++)
-            regs[reg.reg_b + i] = id;
       }
 
       for (aco_ptr<Instruction>& instr : block.instructions) {

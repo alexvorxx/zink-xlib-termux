@@ -624,8 +624,34 @@ anv_sparse_bind_trtt(struct anv_device *device,
    VkResult result;
 
    /* TR-TT submission needs a queue even when the API entry point doesn't
-    * give one, such as resource creation. */
-   assert(trtt->queue != NULL);
+    * provide one, such as resource creation. We pick this queue from the user
+    * created queues at init_device_state() under anv_CreateDevice.
+    *
+    * It is technically possible for the user to create sparse resources even
+    * when they don't have a sparse queue: they won't be able to bind the
+    * resource but they should still be able to use the resource and rely on
+    * its unbound behavior. We haven't spotted any real world application or
+    * even test suite that exercises this behavior.
+    *
+    * For now let's just print an error message and return, which means that
+    * resource creation will succeed but the behavior will be undefined if the
+    * resource is used, which goes against our claim that we support the
+    * sparseResidencyNonResidentStrict property.
+    *
+    * TODO: be fully spec-compliant here. Maybe have a device-internal queue
+    * independent of the application's queues for the TR-TT operations.
+    */
+   if (!trtt->queue) {
+      static bool warned = false;
+      if (unlikely(!warned)) {
+         fprintf(stderr, "FIXME: application has created a sparse resource "
+                 "but no queues capable of binding sparse resources were "
+                 "created. Using these resources will result in undefined "
+                 "behavior.\n");
+         warned = true;
+      }
+      return VK_SUCCESS;
+   }
    if (!sparse_submit->queue)
       sparse_submit->queue = trtt->queue;
 

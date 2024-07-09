@@ -701,19 +701,21 @@ pub trait SSABuilder: Builder {
     }
 }
 
-pub struct InstrBuilder {
+pub struct InstrBuilder<'a> {
     instrs: MappedInstrs,
-    sm: u8,
+    sm: &'a dyn ShaderModel,
 }
 
-impl InstrBuilder {
-    pub fn new(sm: u8) -> Self {
+impl<'a> InstrBuilder<'a> {
+    pub fn new(sm: &'a dyn ShaderModel) -> Self {
         Self {
             instrs: MappedInstrs::None,
             sm,
         }
     }
+}
 
+impl InstrBuilder<'_> {
     pub fn as_vec(self) -> Vec<Box<Instr>> {
         match self.instrs {
             MappedInstrs::None => Vec::new(),
@@ -727,30 +729,35 @@ impl InstrBuilder {
     }
 }
 
-impl Builder for InstrBuilder {
+impl Builder for InstrBuilder<'_> {
     fn push_instr(&mut self, instr: Box<Instr>) -> &mut Instr {
         self.instrs.push(instr);
         self.instrs.last_mut().unwrap().as_mut()
     }
 
     fn sm(&self) -> u8 {
-        self.sm
+        self.sm.sm()
     }
 }
 
 pub struct SSAInstrBuilder<'a> {
-    b: InstrBuilder,
+    b: InstrBuilder<'a>,
     alloc: &'a mut SSAValueAllocator,
 }
 
 impl<'a> SSAInstrBuilder<'a> {
-    pub fn new(sm: u8, alloc: &'a mut SSAValueAllocator) -> Self {
+    pub fn new(
+        sm: &'a dyn ShaderModel,
+        alloc: &'a mut SSAValueAllocator,
+    ) -> Self {
         Self {
             b: InstrBuilder::new(sm),
             alloc: alloc,
         }
     }
+}
 
+impl SSAInstrBuilder<'_> {
     pub fn as_vec(self) -> Vec<Box<Instr>> {
         self.b.as_vec()
     }

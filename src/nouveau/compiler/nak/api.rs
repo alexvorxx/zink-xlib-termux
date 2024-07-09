@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use crate::from_nir::*;
-use crate::ir::{ShaderIoInfo, ShaderStageInfo};
+use crate::ir::{ShaderIoInfo, ShaderModel, ShaderStageInfo};
+use crate::sm50::ShaderModel50;
+use crate::sm70::ShaderModel70;
 use crate::sph;
 
 use nak_bindings::*;
@@ -264,7 +266,15 @@ pub extern "C" fn nak_compile_shader(
         Some(unsafe { &*fs_key })
     };
 
-    let mut s = nak_shader_from_nir(nir, nak.sm);
+    let sm: Box<dyn ShaderModel> = if nak.sm >= 70 {
+        Box::new(ShaderModel70::new(nak.sm))
+    } else if nak.sm >= 50 {
+        Box::new(ShaderModel50::new(nak.sm))
+    } else {
+        panic!("Unsupported shader model");
+    };
+
+    let mut s = nak_shader_from_nir(nir, sm.as_ref());
 
     if DEBUG.print() {
         eprintln!("NAK IR:\n{}", &s);
@@ -323,8 +333,8 @@ pub extern "C" fn nak_compile_shader(
 
     let info = nak_shader_info {
         stage: nir.info.stage(),
-        sm: s.info.sm,
-        num_gprs: if s.info.sm >= 70 {
+        sm: s.sm.sm(),
+        num_gprs: if s.sm.sm() >= 70 {
             max(4, s.info.num_gprs + 2)
         } else {
             max(4, s.info.num_gprs)
@@ -429,7 +439,7 @@ pub extern "C" fn nak_compile_shader(
             }
             _ => unsafe { std::mem::zeroed() },
         },
-        hdr: sph::encode_header(&s.info, fs_key),
+        hdr: sph::encode_header(sm.as_ref(), &s.info, fs_key),
     };
 
     let mut asm = String::new();

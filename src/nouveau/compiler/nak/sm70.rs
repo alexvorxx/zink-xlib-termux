@@ -7,6 +7,23 @@ use bitview::*;
 use std::collections::HashMap;
 use std::ops::Range;
 
+pub struct ShaderModel70 {
+    sm: u8,
+}
+
+impl ShaderModel70 {
+    pub fn new(sm: u8) -> Self {
+        assert!(sm >= 70);
+        Self { sm }
+    }
+}
+
+impl ShaderModel for ShaderModel70 {
+    fn sm(&self) -> u8 {
+        self.sm
+    }
+}
+
 struct ALURegRef {
     pub reg: RegRef,
     pub abs: bool,
@@ -2570,7 +2587,7 @@ impl SM70Instr {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn encode_sm70(&self) -> Vec<u32> {
         assert!(self.functions.len() == 1);
         let func = &self.functions[0];
@@ -2594,7 +2611,7 @@ impl Shader {
             for instr in &b.instrs {
                 let e = SM70Instr::encode(
                     instr,
-                    self.info.sm,
+                    self.sm.sm(),
                     encoded.len(),
                     &labels,
                 );

@@ -722,7 +722,7 @@ impl CopyPropPass {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn opt_copy_prop(&mut self) {
         for f in &mut self.functions {
             CopyPropPass::new().run(f);

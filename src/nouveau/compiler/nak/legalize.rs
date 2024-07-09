@@ -1052,9 +1052,9 @@ fn legalize_instr(
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn legalize(&mut self) {
-        let sm = self.info.sm;
+        let sm = self.sm;
         for f in &mut self.functions {
             let live = SimpleLiveness::for_function(f);
             let mut pinned = HashSet::new();

@@ -6316,7 +6316,6 @@ pub enum ShaderIoInfo {
 
 #[derive(Debug)]
 pub struct ShaderInfo {
-    pub sm: u8,
     pub num_gprs: u8,
     pub num_barriers: u8,
     pub slm_size: u32,
@@ -6327,12 +6326,17 @@ pub struct ShaderInfo {
     pub io: ShaderIoInfo,
 }
 
-pub struct Shader {
+pub trait ShaderModel {
+    fn sm(&self) -> u8;
+}
+
+pub struct Shader<'a> {
+    pub sm: &'a dyn ShaderModel,
     pub info: ShaderInfo,
     pub functions: Vec<Function>,
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn for_each_instr(&self, f: &mut impl FnMut(&Instr)) {
         for func in &self.functions {
             for b in &func.blocks {
@@ -6386,7 +6390,7 @@ impl Shader {
     }
 }
 
-impl fmt::Display for Shader {
+impl fmt::Display for Shader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for func in &self.functions {
             write!(f, "{}", func)?;

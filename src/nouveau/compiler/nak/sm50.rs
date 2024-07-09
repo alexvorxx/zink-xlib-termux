@@ -7,6 +7,23 @@ use bitview::*;
 use std::collections::HashMap;
 use std::ops::Range;
 
+pub struct ShaderModel50 {
+    sm: u8,
+}
+
+impl ShaderModel50 {
+    pub fn new(sm: u8) -> Self {
+        assert!(sm >= 50 && sm < 70);
+        Self { sm }
+    }
+}
+
+impl ShaderModel for ShaderModel50 {
+    fn sm(&self) -> u8 {
+        self.sm
+    }
+}
+
 impl Src {
     fn is_reg_or_zero(&self) -> bool {
         matches!(self.src_ref, SrcRef::Zero | SrcRef::Reg(_))
@@ -2179,7 +2196,7 @@ fn encode_instr(
     res.inst
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn encode_sm50(&self) -> Vec<u32> {
         assert!(self.functions.len() == 1);
         let func = &self.functions[0];
@@ -2214,7 +2231,7 @@ impl Shader {
                 let instr0 = encode_instr(
                     0,
                     instrs_iter.next(),
-                    self.info.sm,
+                    self.sm.sm(),
                     &labels,
                     &mut ip,
                     &mut sched_instr,
@@ -2222,7 +2239,7 @@ impl Shader {
                 let instr1 = encode_instr(
                     1,
                     instrs_iter.next(),
-                    self.info.sm,
+                    self.sm.sm(),
                     &labels,
                     &mut ip,
                     &mut sched_instr,
@@ -2230,7 +2247,7 @@ impl Shader {
                 let instr2 = encode_instr(
                     2,
                     instrs_iter.next(),
-                    self.info.sm,
+                    self.sm.sm(),
                     &labels,
                     &mut ip,
                     &mut sched_instr,

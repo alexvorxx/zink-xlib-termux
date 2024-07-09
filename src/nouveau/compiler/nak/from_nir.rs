@@ -18,9 +18,8 @@ use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 
-fn init_info_from_nir(nir: &nir_shader, sm: u8) -> ShaderInfo {
+fn init_info_from_nir(nir: &nir_shader) -> ShaderInfo {
     ShaderInfo {
-        sm: sm,
         num_gprs: 0,
         num_barriers: 0,
         slm_size: nir.scratch_size,
@@ -233,6 +232,7 @@ impl Index<FloatType> for ShaderFloatControls {
 
 struct ShaderFromNir<'a> {
     nir: &'a nir_shader,
+    sm: &'a dyn ShaderModel,
     info: ShaderInfo,
     float_ctl: ShaderFloatControls,
     cfg: CFGBuilder<u32, BasicBlock>,
@@ -247,10 +247,11 @@ struct ShaderFromNir<'a> {
 }
 
 impl<'a> ShaderFromNir<'a> {
-    fn new(nir: &'a nir_shader, sm: u8) -> Self {
+    fn new(nir: &'a nir_shader, sm: &'a dyn ShaderModel) -> Self {
         Self {
             nir: nir,
-            info: init_info_from_nir(nir, sm),
+            sm: sm,
+            info: init_info_from_nir(nir),
             float_ctl: ShaderFloatControls::from_nir(nir),
             cfg: CFGBuilder::new(),
             label_alloc: LabelAllocator::new(),
@@ -1899,7 +1900,7 @@ impl<'a> ShaderFromNir<'a> {
         &mut self,
         access: gl_access_qualifier,
     ) -> MemEvictionPriority {
-        if self.info.sm >= 70 && access & ACCESS_NON_TEMPORAL != 0 {
+        if self.sm.sm() >= 70 && access & ACCESS_NON_TEMPORAL != 0 {
             MemEvictionPriority::First
         } else {
             MemEvictionPriority::Normal
@@ -2985,7 +2986,7 @@ impl<'a> ShaderFromNir<'a> {
             nir_intrinsic_final_primitive_nv => {
                 let handle = self.get_src(&srcs[0]);
 
-                if self.info.sm >= 70 {
+                if self.sm.sm() >= 70 {
                     b.push_op(OpOutFinal { handle: handle });
                 }
             }
@@ -3139,7 +3140,8 @@ impl<'a> ShaderFromNir<'a> {
         phi_map: &mut PhiAllocMap,
         nb: &nir_block,
     ) {
-        let mut b = SSAInstrBuilder::new(self.info.sm, ssa_alloc);
+        let sm = self.sm;
+        let mut b = SSAInstrBuilder::new(sm, ssa_alloc);
 
         if nb.index == 0 && self.nir.info.shared_size > 0 {
             // The blob seems to always do a BSYNC before accessing shared
@@ -3187,7 +3189,7 @@ impl<'a> ShaderFromNir<'a> {
             }
 
             let uniform = !nb.divergent
-                && self.info.sm >= 75
+                && self.sm.sm() >= 75
                 && !DEBUG.no_ugpr()
                 && !np.def.divergent;
 
@@ -3226,7 +3228,7 @@ impl<'a> ShaderFromNir<'a> {
             }
 
             let uniform = !nb.divergent
-                && self.info.sm >= 75
+                && self.sm.sm() >= 75
                 && !DEBUG.no_ugpr()
                 && ni.def().is_some_and(|d| !d.divergent);
             let mut b = UniformBuilder::new(&mut b, uniform);
@@ -3436,7 +3438,7 @@ impl<'a> ShaderFromNir<'a> {
         f
     }
 
-    pub fn parse_shader(mut self) -> Shader {
+    pub fn parse_shader(mut self) -> Shader<'a> {
         let mut functions = Vec::new();
         for nf in self.nir.iter_functions() {
             if let Some(nfi) = nf.get_impl() {
@@ -3458,12 +3460,16 @@ impl<'a> ShaderFromNir<'a> {
         }
 
         Shader {
+            sm: self.sm,
             info: self.info,
             functions: functions,
         }
     }
 }
 
-pub fn nak_shader_from_nir(ns: &nir_shader, sm: u8) -> Shader {
+pub fn nak_shader_from_nir<'a>(
+    ns: &'a nir_shader,
+    sm: &'a dyn ShaderModel,
+) -> Shader<'a> {
     ShaderFromNir::new(ns, sm).parse_shader()
 }

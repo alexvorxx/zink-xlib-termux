@@ -712,7 +712,7 @@ impl MemBase {
 
     fn is_pure_user_memory(&self, d: &Device) -> CLResult<bool> {
         let r = self.get_res_of_dev(d)?;
-        Ok(r.is_user)
+        Ok(r.is_user())
     }
 
     fn map<T>(

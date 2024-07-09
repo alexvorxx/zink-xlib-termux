@@ -42,8 +42,8 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
-#include <xf86drm.h>
 #include "drm-uapi/drm_fourcc.h"
+#include "util/libdrm.h"
 #include "util/cnd_monotonic.h"
 #include "util/hash_table.h"
 #include "util/mesa-blake3.h"

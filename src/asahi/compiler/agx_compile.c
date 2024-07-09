@@ -1680,8 +1680,14 @@ agx_fminmax_to(agx_builder *b, agx_index dst, agx_index s0, agx_index s1,
    /* Calculate min/max with the appropriate hardware instruction */
    agx_index tmp = agx_fcmpsel(b, s0, s1, s0, s1, fcond);
 
-   /* Flush denorms, as cmpsel will not. */
-   return agx_fadd_to(b, dst, tmp, agx_negzero());
+   /* G13 flushes fp32 denorms and preserves fp16 denorms. Since cmpsel
+    * preserves denorms, we need to canonicalize for fp32. Canonicalizing fp16
+    * would be harmless but wastes an instruction.
+    */
+   if (alu->def.bit_size == 32)
+      return agx_fadd_to(b, dst, tmp, agx_negzero());
+   else
+      return agx_mov_to(b, dst, tmp);
 }
 
 static agx_instr *

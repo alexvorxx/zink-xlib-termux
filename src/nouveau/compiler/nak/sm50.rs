@@ -22,6 +22,18 @@ impl ShaderModel for ShaderModel50 {
     fn sm(&self) -> u8 {
         self.sm
     }
+
+    fn num_regs(&self, file: RegFile) -> u32 {
+        match file {
+            RegFile::GPR => 255,
+            RegFile::UGPR => 0,
+            RegFile::Pred => 7,
+            RegFile::UPred => 0,
+            RegFile::Carry => 1,
+            RegFile::Bar => 0,
+            RegFile::Mem => RegRef::MAX_IDX + 1,
+        }
+    }
 }
 
 impl Src {

@@ -144,51 +144,6 @@ impl RegFile {
         }
     }
 
-    pub fn num_regs(&self, sm: u8) -> u32 {
-        match self {
-            RegFile::GPR => {
-                if sm >= 70 {
-                    // Volta+ has a maximum of 253 registers.  Presumably
-                    // because two registers get burned for UGPRs? Unclear
-                    // on why we need it on Volta though.
-                    253
-                } else {
-                    255
-                }
-            }
-            RegFile::UGPR => {
-                if sm >= 75 {
-                    63
-                } else {
-                    0
-                }
-            }
-            RegFile::Pred => 7,
-            RegFile::UPred => {
-                if sm >= 75 {
-                    7
-                } else {
-                    0
-                }
-            }
-            RegFile::Carry => {
-                if sm >= 70 {
-                    0
-                } else {
-                    1
-                }
-            }
-            RegFile::Bar => {
-                if sm >= 70 {
-                    16
-                } else {
-                    0
-                }
-            }
-            RegFile::Mem => RegRef::MAX_IDX + 1,
-        }
-    }
-
     fn fmt_prefix(&self) -> &'static str {
         match self {
             RegFile::GPR => "r",
@@ -6325,6 +6280,7 @@ pub struct ShaderInfo {
 
 pub trait ShaderModel {
     fn sm(&self) -> u8;
+    fn num_regs(&self, file: RegFile) -> u32;
 }
 
 pub struct Shader<'a> {

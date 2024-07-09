@@ -1316,7 +1316,7 @@ impl Shader<'_> {
         let spill_files =
             [RegFile::UPred, RegFile::Pred, RegFile::UGPR, RegFile::Bar];
         for file in spill_files {
-            let num_regs = file.num_regs(self.sm.sm());
+            let num_regs = self.sm.num_regs(file);
             if max_live[file] > num_regs {
                 f.spill_values(file, num_regs);
 
@@ -1341,7 +1341,7 @@ impl Shader<'_> {
             // texture ops and another 2 for parallel copy lowering
             18
         } else {
-            RegFile::GPR.num_regs(self.sm.sm())
+            self.sm.num_regs(RegFile::GPR)
         };
         if total_gprs > max_gprs {
             // If we're spilling GPRs, we need to reserve 2 GPRs for OpParCopy
@@ -1370,7 +1370,7 @@ impl Shader<'_> {
             if file == RegFile::GPR {
                 gpr_limit
             } else {
-                file.num_regs(self.sm.sm())
+                self.sm.num_regs(file)
             }
         });
 

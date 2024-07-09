@@ -16,11 +16,44 @@ impl ShaderModel70 {
         assert!(sm >= 70);
         Self { sm }
     }
+
+    fn has_uniform_alu(&self) -> bool {
+        self.sm >= 75
+    }
 }
 
 impl ShaderModel for ShaderModel70 {
     fn sm(&self) -> u8 {
         self.sm
+    }
+
+    fn num_regs(&self, file: RegFile) -> u32 {
+        match file {
+            RegFile::GPR => {
+                // Volta+ has a maximum of 253 registers.  Presumably
+                // because two registers get burned for UGPRs? Unclear
+                // on why we need it on Volta though.
+                253
+            }
+            RegFile::UGPR => {
+                if self.has_uniform_alu() {
+                    63
+                } else {
+                    0
+                }
+            }
+            RegFile::Pred => 7,
+            RegFile::UPred => {
+                if self.has_uniform_alu() {
+                    7
+                } else {
+                    0
+                }
+            }
+            RegFile::Carry => 0,
+            RegFile::Bar => 16,
+            RegFile::Mem => RegRef::MAX_IDX + 1,
+        }
     }
 }
 

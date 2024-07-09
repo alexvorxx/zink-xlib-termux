@@ -36,6 +36,13 @@
 #include "util/u_math.h"
 #include <stdlib.h>
 
+ASSERTED static bool
+util_idalloc_exists(struct util_idalloc *buf, unsigned id)
+{
+   return id / 32 < buf->num_set_elements &&
+          buf->data[id / 32] & BITFIELD_BIT(id % 32);
+}
+
 static void
 util_idalloc_resize(struct util_idalloc *buf, unsigned new_num_elements)
 {

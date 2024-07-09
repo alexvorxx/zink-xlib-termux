@@ -69,13 +69,6 @@ util_idalloc_free(struct util_idalloc *buf, unsigned id);
 void
 util_idalloc_reserve(struct util_idalloc *buf, unsigned id);
 
-static inline bool
-util_idalloc_exists(struct util_idalloc *buf, unsigned id)
-{
-   return id / 32 < buf->num_set_elements &&
-          buf->data[id / 32] & BITFIELD_BIT(id % 32);
-}
-
 #define util_idalloc_foreach(buf, id) \
    for (uint32_t i = 0, mask = (buf)->num_set_elements ? (buf)->data[0] : 0, id, \
                  count = (buf)->num_used; \

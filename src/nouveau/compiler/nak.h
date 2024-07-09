@@ -85,15 +85,7 @@ struct nak_xfb_info {
 };
 
 /* This struct MUST have explicit padding fields to ensure that all padding is
- * zeroed and the zeros get properly copied, even across API boundaries.  This
- * is ensured in two ways:
- *
- *  - Bindgen is invoked with --explicit-padding and if a __bindgen_paddingN
- *    member ever crops up, that tells us we need to add an explicit member
- *    here.
- *
- *  - There is a set of const asserts in nak/api.rs which ensure that all of
- *    the union fields are equal to NAK_SHADER_INFO_STAGE_UNION_SIZE.
+ * zeroed and the zeros get properly copied, even across API boundaries.
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wpadded"

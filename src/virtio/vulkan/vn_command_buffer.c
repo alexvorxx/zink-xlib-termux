@@ -40,9 +40,12 @@ vn_cmd_submit(struct vn_command_buffer *cmd);
    } while (0)
 
 static bool
-vn_image_memory_barrier_has_present_src(
+vn_image_memory_barriers_needs_present_fix(
    const VkImageMemoryBarrier *img_barriers, uint32_t count)
 {
+   if (VN_PRESENT_SRC_INTERNAL_LAYOUT == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+      return false;
+
    for (uint32_t i = 0; i < count; i++) {
       if (img_barriers[i].oldLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR ||
           img_barriers[i].newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
@@ -52,9 +55,12 @@ vn_image_memory_barrier_has_present_src(
 }
 
 static bool
-vn_dependency_info_has_present_src(uint32_t dep_count,
-                                   const VkDependencyInfo *dep_infos)
+vn_dependency_infos_needs_present_fix(uint32_t dep_count,
+                                      const VkDependencyInfo *dep_infos)
 {
+   if (VN_PRESENT_SRC_INTERNAL_LAYOUT == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+      return false;
+
    for (uint32_t i = 0; i < dep_count; i++) {
       for (uint32_t j = 0; j < dep_infos[i].imageMemoryBarrierCount; j++) {
          const VkImageMemoryBarrier2 *b =
@@ -65,7 +71,6 @@ vn_dependency_info_has_present_src(uint32_t dep_count,
          }
       }
    }
-
    return false;
 }
 
@@ -188,13 +193,12 @@ vn_cmd_fix_image_memory_barrier_common(const struct vn_image *img,
                                        uint32_t *src_qfi,
                                        uint32_t *dst_qfi)
 {
+   assert(VN_PRESENT_SRC_INTERNAL_LAYOUT != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
    struct vn_cmd_fix_image_memory_barrier_result result = {
       .availability_op_needed = true,
       .visibility_op_needed = true,
    };
-
-   if (VN_PRESENT_SRC_INTERNAL_LAYOUT == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
-      return result;
 
    /* no fix needed */
    if (*old_layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR &&
@@ -306,7 +310,7 @@ vn_cmd_wait_events_fix_image_memory_barriers(
    *out_transfer_count = 0;
 
    if (cmd->builder.in_render_pass ||
-       !vn_image_memory_barrier_has_present_src(src_barriers, count))
+       !vn_image_memory_barriers_needs_present_fix(src_barriers, count))
       return src_barriers;
 
    struct vn_cmd_cached_storage storage;
@@ -330,11 +334,6 @@ vn_cmd_wait_events_fix_image_memory_barriers(
       VkImageMemoryBarrier *img_barrier = &img_barriers[valid_count];
       *img_barrier = src_barriers[i];
       vn_cmd_fix_image_memory_barrier(cmd, img_barrier);
-
-      if (VN_PRESENT_SRC_INTERNAL_LAYOUT == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
-         valid_count++;
-         continue;
-      }
 
       if (img_barrier->srcQueueFamilyIndex ==
           img_barrier->dstQueueFamilyIndex) {
@@ -362,7 +361,7 @@ vn_cmd_pipeline_barrier_fix_image_memory_barriers(
    uint32_t count)
 {
    if (cmd->builder.in_render_pass ||
-       !vn_image_memory_barrier_has_present_src(src_barriers, count))
+       !vn_image_memory_barriers_needs_present_fix(src_barriers, count))
       return src_barriers;
 
    struct vn_cmd_cached_storage storage;
@@ -386,7 +385,7 @@ vn_cmd_fix_dependency_infos(struct vn_command_buffer *cmd,
                             const VkDependencyInfo *dep_infos)
 {
    if (cmd->builder.in_render_pass ||
-       !vn_dependency_info_has_present_src(dep_count, dep_infos))
+       !vn_dependency_infos_needs_present_fix(dep_count, dep_infos))
       return dep_infos;
 
    uint32_t total_barrier_count = 0;
@@ -487,9 +486,6 @@ vn_cmd_transfer_present_src_images(
          images[i], &atts[i], &storage.barriers[i], acquire);
       vn_cmd_fix_image_memory_barrier(cmd, &storage.barriers[i]);
    }
-
-   if (VN_PRESENT_SRC_INTERNAL_LAYOUT == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
-      return;
 
    vn_cmd_encode_memory_barriers(cmd, src_stage_mask, dst_stage_mask, 0, NULL,
                                  count, storage.barriers);

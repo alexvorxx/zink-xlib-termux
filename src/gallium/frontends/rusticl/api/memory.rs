@@ -1685,14 +1685,20 @@ fn enqueue_map_buffer(
         return Err(CL_INVALID_CONTEXT);
     }
 
-    let ptr = b.map(q.device, offset)?;
+    let ptr = b.map(size, offset, map_flags != CL_MAP_READ.into())?;
     create_and_queue(
         q,
         CL_COMMAND_MAP_BUFFER,
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.sync_shadow(q, ctx, ptr)),
+        Box::new(move |q, ctx| {
+            if map_flags != CL_MAP_WRITE_INVALIDATE_REGION.into() {
+                b.sync_map(q, ctx, ptr)
+            } else {
+                Ok(())
+            }
+        }),
     )?;
 
     Ok(ptr.as_ptr())
@@ -2141,24 +2147,29 @@ fn enqueue_map_image(
     };
 
     let ptr = i.map(
-        q.device,
-        &origin,
+        origin,
+        region,
         unsafe { image_row_pitch.as_mut().unwrap() },
         image_slice_pitch,
+        map_flags != CL_MAP_READ.into(),
     )?;
 
-    // SAFETY: it's required that applications do not cause data races
-    let sync_ptr = unsafe { MutMemoryPtr::from_ptr(ptr) };
     create_and_queue(
         q,
         CL_COMMAND_MAP_IMAGE,
         evs,
         event,
         block,
-        Box::new(move |q, ctx| i.sync_shadow(q, ctx, sync_ptr)),
+        Box::new(move |q, ctx| {
+            if map_flags != CL_MAP_WRITE_INVALIDATE_REGION.into() {
+                i.sync_map(q, ctx, ptr)
+            } else {
+                Ok(())
+            }
+        }),
     )?;
 
-    Ok(ptr)
+    Ok(ptr.as_ptr())
 
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.
     //• CL_IMAGE_FORMAT_NOT_SUPPORTED if image format (image channel order and data type) for image are not supported by device associated with queue.

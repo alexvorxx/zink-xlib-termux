@@ -27,6 +27,7 @@
 
 #include "cnd_monotonic.h"
 #include "util/os_time.h"
+#include "util/timespec.h"
 
 #include <assert.h>
 
@@ -51,7 +52,12 @@ u_cnd_monotonic_init(struct u_cnd_monotonic *cond)
    int ret = thrd_error;
    pthread_condattr_t condattr;
    if (pthread_condattr_init(&condattr) == 0) {
-      if ((pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC) == 0) &&
+      if (
+         // pthread_condattr_setclock is not supported on Apple platforms.
+         // Instead, they use a relative deadline. See u_cnd_monotonic_timedwait.
+#ifndef __APPLE__
+         (pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC) == 0) &&
+#endif
          (pthread_cond_init(&cond->cond, &condattr) == 0)) {
          ret = thrd_success;
       }
@@ -118,7 +124,16 @@ u_cnd_monotonic_timedwait(struct u_cnd_monotonic *cond, mtx_t *mtx,
       return thrd_success;
    return (GetLastError() == ERROR_TIMEOUT) ? thrd_timedout : thrd_error;
 #else
+#ifdef __APPLE__
+   // Convert to a relative wait as we can't use CLOCK_MONOTONIC deadlines on macOS.
+   struct timespec now_time;
+   timespec_get(&now_time, TIME_MONOTONIC);
+   struct timespec rel_time;
+   timespec_sub_saturate(&rel_time, abs_time, &now_time);
+   int rt = pthread_cond_timedwait_relative_np(&cond->cond, mtx, &rel_time);
+#else
    int rt = pthread_cond_timedwait(&cond->cond, mtx, abs_time);
+#endif
    if (rt == ETIMEDOUT)
       return thrd_timedout;
    return (rt == 0) ? thrd_success : thrd_error;

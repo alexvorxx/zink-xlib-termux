@@ -347,21 +347,36 @@ fn sw_copy(
     dst_slice_pitch: usize,
     pixel_size: u8,
 ) {
+    let pixel_size = pixel_size as usize;
     for z in 0..region[2] {
-        for y in 0..region[1] {
+        if src_row_pitch == dst_row_pitch && region[1] * pixel_size == src_row_pitch {
             unsafe {
                 ptr::copy(
                     src.add(
-                        (*src_origin + [0, y, z])
-                            * [pixel_size as usize, src_row_pitch, src_slice_pitch],
+                        (*src_origin + [0, 0, z]) * [pixel_size, src_row_pitch, src_slice_pitch],
                     ),
                     dst.add(
-                        (*dst_origin + [0, y, z])
-                            * [pixel_size as usize, dst_row_pitch, dst_slice_pitch],
+                        (*dst_origin + [0, 0, z]) * [pixel_size, dst_row_pitch, dst_slice_pitch],
                     ),
-                    region[0] * pixel_size as usize,
+                    region[0] * region[1] * pixel_size,
                 )
-            };
+            }
+        } else {
+            for y in 0..region[1] {
+                unsafe {
+                    ptr::copy(
+                        src.add(
+                            (*src_origin + [0, y, z])
+                                * [pixel_size, src_row_pitch, src_slice_pitch],
+                        ),
+                        dst.add(
+                            (*dst_origin + [0, y, z])
+                                * [pixel_size, dst_row_pitch, dst_slice_pitch],
+                        ),
+                        region[0] * pixel_size,
+                    )
+                };
+            }
         }
     }
 }

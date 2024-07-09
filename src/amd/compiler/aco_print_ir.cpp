@@ -901,8 +901,8 @@ aco_print_block(enum amd_gfx_level gfx_level, const Block* block, FILE* output, 
    fprintf(output, "*/\n");
 
    if (flags & print_live_vars) {
-      fprintf(output, "\tlive out:");
-      for (unsigned id : program->live.live_out[block->index])
+      fprintf(output, "\tlive in:");
+      for (unsigned id : program->live.live_in[block->index])
          fprintf(output, " %%%d", id);
       fprintf(output, "\n");
 

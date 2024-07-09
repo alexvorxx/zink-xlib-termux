@@ -1064,14 +1064,7 @@ static const struct intel_device_info intel_device_info_rpl_p = {
    .has_llc = false,                                     \
    .has_local_mem = true,                                \
    .urb.size = 768,                                      \
-   .simulator_id = 30,                                   \
-   /* There is no PAT table for DG1, using TGL one */    \
-   .pat = {                                              \
-         .cached_coherent = PAT_ENTRY(0, WB, 2WAY),      \
-         .scanout = PAT_ENTRY(1, WC, NONE),              \
-         .writeback_incoherent = PAT_ENTRY(0, WB, 2WAY), \
-         .writecombining = PAT_ENTRY(1, WC, NONE),       \
-   }
+   .simulator_id = 30
 
 static const struct intel_device_info intel_device_info_dg1 = {
    GFX12_DG1_SG1_FEATURES,

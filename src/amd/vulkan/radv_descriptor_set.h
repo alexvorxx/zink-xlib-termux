@@ -8,7 +8,6 @@
 #define RADV_DESCRIPTOR_SET_H
 
 #include "util/mesa-blake3.h"
-#include "util/mesa-sha1.h"
 
 #include "radv_constants.h"
 
@@ -186,7 +185,7 @@ struct radv_pipeline_layout {
 
    bool independent_sets;
 
-   unsigned char sha1[20];
+   blake3_hash hash;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline_layout, base, VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT)

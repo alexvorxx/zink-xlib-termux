@@ -1280,7 +1280,7 @@ radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_
 {
    _mesa_sha1_update(ctx, device->cache_hash, sizeof(device->cache_hash));
    if (pipeline_layout)
-      _mesa_sha1_update(ctx, pipeline_layout->sha1, sizeof(pipeline_layout->sha1));
+      _mesa_sha1_update(ctx, pipeline_layout->hash, sizeof(pipeline_layout->hash));
 }
 
 void

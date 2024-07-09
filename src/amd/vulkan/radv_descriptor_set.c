@@ -9,7 +9,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "util/mesa-sha1.h"
 #include "ac_descriptors.h"
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
@@ -532,19 +531,19 @@ radv_pipeline_layout_add_set(struct radv_pipeline_layout *layout, uint32_t set_i
 void
 radv_pipeline_layout_hash(struct radv_pipeline_layout *layout)
 {
-   struct mesa_sha1 ctx;
+   struct mesa_blake3 ctx;
 
-   _mesa_sha1_init(&ctx);
+   _mesa_blake3_init(&ctx);
    for (uint32_t i = 0; i < layout->num_sets; i++) {
       struct radv_descriptor_set_layout *set_layout = layout->set[i].layout;
 
       if (!set_layout)
          continue;
 
-      _mesa_sha1_update(&ctx, set_layout->hash, sizeof(set_layout->hash));
+      _mesa_blake3_update(&ctx, set_layout->hash, sizeof(set_layout->hash));
    }
-   _mesa_sha1_update(&ctx, &layout->push_constant_size, sizeof(layout->push_constant_size));
-   _mesa_sha1_final(&ctx, layout->sha1);
+   _mesa_blake3_update(&ctx, &layout->push_constant_size, sizeof(layout->push_constant_size));
+   _mesa_blake3_final(&ctx, layout->hash);
 }
 
 void

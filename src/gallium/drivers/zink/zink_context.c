@@ -3171,6 +3171,7 @@ zink_prep_fb_attachment(struct zink_context *ctx, struct zink_surface *surf, uns
             layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       }
    }
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
    /*
       The image subresources for a storage image must be in the VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
       VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a shader.
@@ -3178,11 +3179,11 @@ zink_prep_fb_attachment(struct zink_context *ctx, struct zink_surface *surf, uns
     */
    if (res->image_bind_count[0])
       layout = VK_IMAGE_LAYOUT_GENERAL;
-   else if (!zink_screen(ctx->base.screen)->info.have_EXT_attachment_feedback_loop_layout &&
+   else if (!screen->info.have_EXT_attachment_feedback_loop_layout &&
             layout == VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT)
       layout = VK_IMAGE_LAYOUT_GENERAL;
    if (res->valid || res->layout != layout)
-      zink_screen(ctx->base.screen)->image_barrier(ctx, res, layout, access, pipeline);
+      screen->image_barrier(ctx, res, layout, access, pipeline);
    if (!(res->aspect & VK_IMAGE_ASPECT_COLOR_BIT))
       ctx->zsbuf_readonly = res->layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
    res->obj->unordered_read = res->obj->unordered_write = false;

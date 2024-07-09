@@ -5665,38 +5665,6 @@ impl Instr {
         self.op.is_uniform()
     }
 
-    pub fn can_be_uniform(&self, sm: u8) -> bool {
-        match &self.op {
-            Op::R2UR(_)
-            | Op::S2R(_)
-            | Op::BMsk(_)
-            | Op::BRev(_)
-            | Op::Flo(_)
-            | Op::IAdd3(_)
-            | Op::IAdd3X(_)
-            | Op::IMad(_)
-            | Op::IMad64(_)
-            | Op::ISetP(_)
-            | Op::Lop3(_)
-            | Op::Mov(_)
-            | Op::PLop3(_)
-            | Op::PopC(_)
-            | Op::Prmt(_)
-            | Op::PSetP(_)
-            | Op::Sel(_)
-            | Op::Shf(_)
-            | Op::Shl(_)
-            | Op::Shr(_)
-            | Op::Vote(_)
-            | Op::Copy(_)
-            | Op::Pin(_)
-            | Op::Unpin(_) => sm >= 75,
-            Op::Ldc(op) => sm >= 75 && op.offset.is_zero(),
-            // UCLEA  USHL  USHR
-            _ => false,
-        }
-    }
-
     pub fn has_fixed_latency(&self, _sm: u8) -> bool {
         match &self.op {
             // Float ALU
@@ -6281,6 +6249,8 @@ pub struct ShaderInfo {
 pub trait ShaderModel {
     fn sm(&self) -> u8;
     fn num_regs(&self, file: RegFile) -> u32;
+
+    fn op_can_be_uniform(&self, op: &Op) -> bool;
 }
 
 pub struct Shader<'a> {

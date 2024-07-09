@@ -9,7 +9,7 @@ fn should_lower_to_warp(
     instr: &Instr,
     r2ur: &HashMap<SSAValue, SSAValue>,
 ) -> bool {
-    if !instr.can_be_uniform(sm.sm()) {
+    if !sm.op_can_be_uniform(&instr.op) {
         return true;
     }
 

@@ -55,6 +55,42 @@ impl ShaderModel for ShaderModel70 {
             RegFile::Mem => RegRef::MAX_IDX + 1,
         }
     }
+
+    fn op_can_be_uniform(&self, op: &Op) -> bool {
+        if !self.has_uniform_alu() {
+            return false;
+        }
+
+        match op {
+            Op::R2UR(_)
+            | Op::S2R(_)
+            | Op::BMsk(_)
+            | Op::BRev(_)
+            | Op::Flo(_)
+            | Op::IAdd3(_)
+            | Op::IAdd3X(_)
+            | Op::IMad(_)
+            | Op::IMad64(_)
+            | Op::ISetP(_)
+            | Op::Lop3(_)
+            | Op::Mov(_)
+            | Op::PLop3(_)
+            | Op::PopC(_)
+            | Op::Prmt(_)
+            | Op::PSetP(_)
+            | Op::Sel(_)
+            | Op::Shf(_)
+            | Op::Shl(_)
+            | Op::Shr(_)
+            | Op::Vote(_)
+            | Op::Copy(_)
+            | Op::Pin(_)
+            | Op::Unpin(_) => true,
+            Op::Ldc(op) => op.offset.is_zero(),
+            // UCLEA  USHL  USHR
+            _ => false,
+        }
+    }
 }
 
 struct ALURegRef {

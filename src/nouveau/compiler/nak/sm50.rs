@@ -34,6 +34,10 @@ impl ShaderModel for ShaderModel50 {
             RegFile::Mem => RegRef::MAX_IDX + 1,
         }
     }
+
+    fn op_can_be_uniform(&self, _op: &Op) -> bool {
+        false
+    }
 }
 
 impl Src {

@@ -1096,7 +1096,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(inst->conditional_mod == BRW_CONDITIONAL_NONE);
          assert(inst->mlen == 0);
          gfx6_math(p, dst, brw_math_function(inst->opcode),
-                   src[0], brw_null_reg());
+                   src[0], retype(brw_null_reg(), src[0].type));
 	 break;
       case SHADER_OPCODE_INT_QUOTIENT:
       case SHADER_OPCODE_INT_REMAINDER:

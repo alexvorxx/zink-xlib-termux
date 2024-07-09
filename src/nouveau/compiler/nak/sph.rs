@@ -73,7 +73,6 @@ impl From<PixelImap> for u8 {
 pub struct ShaderProgramHeader {
     pub data: [u32; CURRENT_MAX_SHADER_HEADER_SIZE],
     shader_type: ShaderType,
-    sm: u8,
 }
 
 impl BitViewable for ShaderProgramHeader {
@@ -103,7 +102,6 @@ impl ShaderProgramHeader {
         let mut res = Self {
             data: [0; CURRENT_MAX_SHADER_HEADER_SIZE],
             shader_type,
-            sm,
         };
 
         let sph_type = if shader_type == ShaderType::Fragment {
@@ -281,14 +279,12 @@ impl ShaderProgramHeader {
             per_patch_attribute_count,
         );
 
-        // Maxwell changed that encoding.
-        if self.sm > 35 {
-            self.set_field(
-                SPHV3_T1_RESERVED_COMMON_B,
-                per_patch_attribute_count & 0xf,
-            );
-            self.set_field(148..152, per_patch_attribute_count >> 4);
-        }
+        // This is Kepler+
+        self.set_field(
+            SPHV3_T1_RESERVED_COMMON_B,
+            per_patch_attribute_count & 0xf,
+        );
+        self.set_field(148..152, per_patch_attribute_count >> 4);
     }
 
     #[inline]

@@ -366,17 +366,6 @@ fn sw_copy(
     }
 }
 
-/// helper function to determine if we can just map the resource in question or if we have to go
-/// through a shdow buffer to let the CPU access the resources memory
-fn can_map_directly(dev: &Device, res: &PipeResource) -> bool {
-    // there are two aprts to this check:
-    //   1. is the resource located in system RAM
-    //   2. has the resource a linear memory layout
-    // we do not want to map memory over the PCIe bus as this generally leads to bad performance.
-    (dev.unified_memory() || res.is_staging() || res.is_user)
-        && (res.is_buffer() || res.is_linear())
-}
-
 impl MemBase {
     pub fn new_buffer(
         context: Arc<Context>,
@@ -702,11 +691,6 @@ impl MemBase {
         }
     }
 
-    fn has_user_shadow_buffer(&self, d: &Device) -> CLResult<bool> {
-        let r = self.get_res_of_dev(d)?;
-        Ok(!r.is_user && bit_check(self.flags, CL_MEM_USE_HOST_PTR))
-    }
-
     pub fn host_ptr(&self) -> *mut c_void {
         self.host_ptr as *mut c_void
     }
@@ -1001,20 +985,17 @@ impl Buffer {
         offset: usize,
         size: usize,
         rw: RWFlags,
-    ) -> CLResult<GuardedPipeTransfer<'a>> {
+    ) -> CLResult<PipeTransfer<'a>> {
         let offset = self.apply_offset(offset)?;
         let r = self.get_res_of_dev(q.device)?;
 
-        Ok(ctx
-            .buffer_map(
-                r,
-                offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-                size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
-                rw,
-                ResourceMapType::Normal,
-            )
-            .ok_or(CL_OUT_OF_RESOURCES)?
-            .with_ctx(ctx))
+        ctx.buffer_map(
+            r,
+            offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
+            rw,
+        )
+        .ok_or(CL_OUT_OF_RESOURCES)
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing
@@ -1428,12 +1409,9 @@ impl Image {
         ctx: &'a PipeContext,
         bx: &pipe_box,
         rw: RWFlags,
-    ) -> CLResult<GuardedPipeTransfer<'a>> {
+    ) -> CLResult<PipeTransfer<'a>> {
         let r = self.get_res_of_dev(q.device)?;
-        Ok(ctx
-            .texture_map(r, bx, rw, ResourceMapType::Normal)
-            .ok_or(CL_OUT_OF_RESOURCES)?
-            .with_ctx(ctx))
+        ctx.texture_map(r, bx, rw).ok_or(CL_OUT_OF_RESOURCES)
     }
 
     // TODO: only sync on unmap when the memory is not mapped for writing

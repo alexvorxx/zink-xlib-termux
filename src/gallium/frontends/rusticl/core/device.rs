@@ -13,7 +13,6 @@ use mesa_rust::pipe::device::load_screens;
 use mesa_rust::pipe::fence::*;
 use mesa_rust::pipe::resource::*;
 use mesa_rust::pipe::screen::*;
-use mesa_rust::pipe::transfer::*;
 use mesa_rust_gen::*;
 use mesa_rust_util::math::SetBitIndices;
 use mesa_rust_util::static_assert;
@@ -98,42 +97,10 @@ pub trait HelperContextWrapper {
     where
         F: Fn(&HelperContext);
 
-    fn buffer_map_directly(
-        &self,
-        res: &PipeResource,
-        offset: i32,
-        size: i32,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer>;
-
-    fn buffer_map_coherent(
-        &self,
-        res: &PipeResource,
-        offset: i32,
-        size: i32,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer>;
-
-    fn texture_map_directly(
-        &self,
-        res: &PipeResource,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer>;
-
-    fn texture_map_coherent(
-        &self,
-        res: &PipeResource,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer>;
-
     fn create_compute_state(&self, nir: &NirShader, static_local_mem: u32) -> *mut c_void;
     fn delete_compute_state(&self, cso: *mut c_void);
     fn compute_state_info(&self, state: *mut c_void) -> pipe_compute_state_object_info;
     fn compute_state_subgroup_size(&self, state: *mut c_void, block: &[u32; 3]) -> u32;
-
-    fn unmap(&self, tx: PipeTransfer);
 
     fn is_create_fence_fd_supported(&self) -> bool;
     fn import_fence(&self, fence_fd: &FenceFd) -> PipeFence;
@@ -186,46 +153,6 @@ impl<'a> HelperContextWrapper for HelperContext<'a> {
         self.lock.flush()
     }
 
-    fn buffer_map_directly(
-        &self,
-        res: &PipeResource,
-        offset: i32,
-        size: i32,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer> {
-        self.lock.buffer_map_directly(res, offset, size, rw)
-    }
-
-    fn buffer_map_coherent(
-        &self,
-        res: &PipeResource,
-        offset: i32,
-        size: i32,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer> {
-        self.lock
-            .buffer_map(res, offset, size, rw, ResourceMapType::Coherent)
-    }
-
-    fn texture_map_directly(
-        &self,
-        res: &PipeResource,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer> {
-        self.lock.texture_map_directly(res, bx, rw)
-    }
-
-    fn texture_map_coherent(
-        &self,
-        res: &PipeResource,
-        bx: &pipe_box,
-        rw: RWFlags,
-    ) -> Option<PipeTransfer> {
-        self.lock
-            .texture_map(res, bx, rw, ResourceMapType::Coherent)
-    }
-
     fn create_compute_state(&self, nir: &NirShader, static_local_mem: u32) -> *mut c_void {
         self.lock.create_compute_state(nir, static_local_mem)
     }
@@ -240,10 +167,6 @@ impl<'a> HelperContextWrapper for HelperContext<'a> {
 
     fn compute_state_subgroup_size(&self, state: *mut c_void, block: &[u32; 3]) -> u32 {
         self.lock.compute_state_subgroup_size(state, block)
-    }
-
-    fn unmap(&self, tx: PipeTransfer) {
-        tx.with_ctx(&self.lock);
     }
 
     fn is_create_fence_fd_supported(&self) -> bool {

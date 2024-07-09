@@ -11,7 +11,6 @@ use mesa_rust::compiler::clc::*;
 use mesa_rust::compiler::nir::*;
 use mesa_rust::nir_pass;
 use mesa_rust::pipe::context::RWFlags;
-use mesa_rust::pipe::context::ResourceMapType;
 use mesa_rust::pipe::resource::*;
 use mesa_rust::pipe::screen::ResourceType;
 use mesa_rust_gen::*;
@@ -1253,15 +1252,8 @@ impl Kernel {
 
             if let Some(printf_buf) = &printf_buf {
                 let tx = ctx
-                    .buffer_map(
-                        printf_buf,
-                        0,
-                        printf_size as i32,
-                        RWFlags::RD,
-                        ResourceMapType::Normal,
-                    )
-                    .ok_or(CL_OUT_OF_RESOURCES)?
-                    .with_ctx(ctx);
+                    .buffer_map(printf_buf, 0, printf_size as i32, RWFlags::RD)
+                    .ok_or(CL_OUT_OF_RESOURCES)?;
                 let mut buf: &[u8] =
                     unsafe { slice::from_raw_parts(tx.ptr().cast(), printf_size as usize) };
                 let length = u32::from_ne_bytes(*extract(&mut buf));

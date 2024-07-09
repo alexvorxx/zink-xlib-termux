@@ -952,6 +952,16 @@ tu6_emit_vpc(struct tu_cs *cs,
 
    tu6_setup_streamout<CHIP>(cs, last_shader, &linkage);
 
+   /* There is a hardware bug on a750 where STRIDE_IN_VPC of 5 to 8 in GS with
+    * an input primitive type with adjacency, an output primitive type of
+    * points, and a high enough vertex count causes a hang.
+    */
+   if (cs->device->physical_device->info->a7xx.gs_vpc_adjacency_quirk &&
+       gs && gs->gs.output_primitive == MESA_PRIM_POINTS &&
+       linkage.max_loc > 4) {
+      linkage.max_loc = MAX2(linkage.max_loc, 9);
+   }
+
    /* The GPU hangs on some models when there are no outputs (xs_pack::CNT),
     * at least when a DS is the last stage, so add a dummy output to keep it
     * happy if there aren't any. We do this late in order to avoid emitting

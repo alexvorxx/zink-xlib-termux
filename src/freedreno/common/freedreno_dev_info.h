@@ -265,6 +265,12 @@ struct fd_dev_info {
        */
       bool fs_must_have_non_zero_constlen_quirk;
 
+      /* On a750 there is a hardware bug where certain VPC sizes in a GS with
+       * an input primitive type that is a triangle with adjacency can hang
+       * with a high enough vertex count.
+       */
+      bool gs_vpc_adjacency_quirk;
+
       /* On a740 TPL1_DBG_ECO_CNTL1.TP_UBWC_FLAG_HINT must be the same between
        * all drivers in the system, somehow having different values affects
        * BLIT_OP_SCALE. We cannot automatically match blob's value, so the

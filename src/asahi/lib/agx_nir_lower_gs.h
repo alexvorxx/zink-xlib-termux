@@ -81,3 +81,5 @@ uint64_t agx_tcs_per_vertex_outputs(const struct nir_shader *nir);
 unsigned agx_tcs_output_stride(const struct nir_shader *nir);
 
 void agx_nir_tess_setup_indirect(struct nir_builder *b, const void *data);
+
+void agx_nir_increment_cs_invocations(struct nir_builder *b, const void *data);

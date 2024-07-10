@@ -27,3 +27,21 @@ struct libagx_xfb_counter_copy {
    GLOBAL(uint32_t) dest[4];
    GLOBAL(uint32_t) src[4];
 };
+
+struct libagx_cs_invocation_params {
+   /* Pointer to the indirect dispatch grid */
+   GLOBAL(uint32_t) grid;
+
+   /* Pointer to the compute shader invocation statistic */
+   GLOBAL(uint32_t) statistic;
+
+   /* Local workgroup size in threads */
+   uint32_t local_size_threads;
+};
+
+static inline uint32_t
+libagx_cs_invocations(uint32_t local_size_threads, uint32_t x, uint32_t y,
+                      uint32_t z)
+{
+   return local_size_threads * x * y * z;
+}

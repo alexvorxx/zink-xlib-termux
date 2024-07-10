@@ -50,3 +50,10 @@ libagx_copy_xfb_counters(constant struct libagx_xfb_counter_copy *push)
 
    *(push->dest[i]) = push->src[i] ? *(push->src[i]) : 0;
 }
+
+void
+libagx_increment_cs_invocations(constant struct libagx_cs_invocation_params *p)
+{
+   *(p->statistic) += libagx_cs_invocations(p->local_size_threads, p->grid[0],
+                                            p->grid[1], p->grid[2]);
+}

@@ -96,6 +96,10 @@ impl ShaderModel for ShaderModel70 {
         }
     }
 
+    fn legalize_op(&self, b: &mut LegalizeBuilder, op: &mut Op) {
+        as_sm70_op_mut(op).legalize(b);
+    }
+
     fn encode_shader(&self, s: &Shader<'_>) -> Vec<u32> {
         encode_sm70_shader(self, s)
     }
@@ -3459,8 +3463,4 @@ fn encode_sm70_shader(sm: &ShaderModel70, s: &Shader<'_>) -> Vec<u32> {
         }
     }
     encoded
-}
-
-pub fn legalize_sm70_instr(b: &mut LegalizeBuilder, instr: &mut Instr) {
-    as_sm70_op_mut(&mut instr.op).legalize(b);
 }

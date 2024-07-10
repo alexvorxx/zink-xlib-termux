@@ -8,6 +8,7 @@ use bitview::BitMutView;
 
 pub use crate::builder::{Builder, InstrBuilder, SSABuilder, SSAInstrBuilder};
 use crate::cfg::CFG;
+use crate::legalize::LegalizeBuilder;
 use crate::sph::{OutputTopology, PixelImap};
 use nak_ir_proc::*;
 use std::cmp::{max, min};
@@ -6252,6 +6253,7 @@ pub trait ShaderModel {
 
     fn op_can_be_uniform(&self, op: &Op) -> bool;
 
+    fn legalize_op(&self, b: &mut LegalizeBuilder, op: &mut Op);
     fn encode_shader(&self, s: &Shader<'_>) -> Vec<u32>;
 }
 

@@ -4,8 +4,6 @@
 use crate::api::{GetDebugFlags, DEBUG};
 use crate::ir::*;
 use crate::liveness::{BlockLiveness, Liveness, SimpleLiveness};
-use crate::sm50::legalize_sm50_instr;
-use crate::sm70::legalize_sm70_instr;
 
 use std::collections::{HashMap, HashSet};
 
@@ -284,6 +282,7 @@ pub trait LegalizeBuildHelpers: SSABuilder {
 impl LegalizeBuildHelpers for LegalizeBuilder<'_> {}
 
 fn legalize_instr(
+    sm: &dyn ShaderModel,
     b: &mut LegalizeBuilder,
     bl: &impl BlockLiveness,
     block_uniform: bool,
@@ -367,13 +366,7 @@ fn legalize_instr(
         _ => (),
     }
 
-    if b.sm() >= 70 {
-        legalize_sm70_instr(b, instr);
-    } else if b.sm() >= 50 {
-        legalize_sm50_instr(b, instr);
-    } else {
-        panic!("Unknown shader model SM{}", b.sm());
-    }
+    sm.legalize_op(b, &mut instr.op);
 
     let mut vec_src_map: HashMap<SSARef, SSARef> = HashMap::new();
     let mut vec_comps = HashSet::new();
@@ -433,7 +426,7 @@ impl Shader<'_> {
                     }
 
                     let mut b = SSAInstrBuilder::new(sm, &mut f.ssa_alloc);
-                    legalize_instr(&mut b, bl, bu, &pinned, ip, &mut instr);
+                    legalize_instr(sm, &mut b, bl, bu, &pinned, ip, &mut instr);
                     b.push_instr(instr);
                     instrs.append(&mut b.as_vec());
                 }

@@ -2374,7 +2374,7 @@ v3dv_cmd_buffer_get_descriptor_state(struct v3dv_cmd_buffer *cmd_buffer,
       return &cmd_buffer->state.gfx.descriptor_state;
 }
 
-const nir_shader_compiler_options *v3dv_pipeline_get_nir_options(void);
+const nir_shader_compiler_options *v3dv_pipeline_get_nir_options(const struct v3d_device_info *devinfo);
 
 uint32_t v3dv_physical_device_vendor_id(const struct v3dv_physical_device *dev);
 uint32_t v3dv_physical_device_device_id(const struct v3dv_physical_device *dev);

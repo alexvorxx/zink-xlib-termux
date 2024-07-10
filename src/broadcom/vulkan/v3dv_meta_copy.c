@@ -2431,7 +2431,7 @@ create_texel_buffer_copy_pipeline(struct v3dv_device *device,
    assert(vk_format_is_color(format));
 
    const nir_shader_compiler_options *options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    nir_shader *vs_nir = get_texel_buffer_copy_vs(options);
    nir_shader *fs_nir = get_texel_buffer_copy_fs(options, format, cswizzle);
@@ -4094,7 +4094,7 @@ create_blit_pipeline(struct v3dv_device *device,
    assert(vk_format_is_color(src_format));
 
    const nir_shader_compiler_options *options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    const enum glsl_sampler_dim sampler_dim =
       get_sampler_dim(src_type, src_samples);

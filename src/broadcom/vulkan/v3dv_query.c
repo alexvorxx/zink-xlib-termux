@@ -1097,7 +1097,7 @@ cmd_buffer_emit_copy_query_pool_results(struct v3dv_cmd_buffer *cmd_buffer,
    uint32_t pipeline_idx = copy_pipeline_index_from_flags(flags);
    if (!device->queries.copy_pipeline[pipeline_idx]) {
       const nir_shader_compiler_options *compiler_options =
-         v3dv_pipeline_get_nir_options();
+         v3dv_pipeline_get_nir_options(&device->devinfo);
       nir_shader *copy_query_results_cs_nir =
          get_copy_query_results_cs(compiler_options, flags);
       VkResult result =
@@ -1653,7 +1653,7 @@ create_query_pipelines(struct v3dv_device *device)
    }
 
    const nir_shader_compiler_options *compiler_options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    if (!device->queries.avail_pipeline) {
       nir_shader *set_query_availability_cs_nir =

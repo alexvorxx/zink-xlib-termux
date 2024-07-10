@@ -168,69 +168,74 @@ static const struct spirv_to_nir_options default_spirv_options =  {
    .shared_addr_format = nir_address_format_32bit_offset,
 };
 
-const nir_shader_compiler_options v3dv_nir_options = {
-   .lower_uadd_sat = true,
-   .lower_usub_sat = true,
-   .lower_iadd_sat = true,
-   .lower_all_io_to_temps = true,
-   .lower_extract_byte = true,
-   .lower_extract_word = true,
-   .lower_insert_byte = true,
-   .lower_insert_word = true,
-   .lower_bitfield_insert = true,
-   .lower_bitfield_extract = true,
-   .lower_bitfield_reverse = true,
-   .lower_bit_count = true,
-   .lower_cs_local_id_to_index = true,
-   .lower_ffract = true,
-   .lower_fmod = true,
-   .lower_pack_unorm_2x16 = true,
-   .lower_pack_snorm_2x16 = true,
-   .lower_unpack_unorm_2x16 = true,
-   .lower_unpack_snorm_2x16 = true,
-   .lower_pack_unorm_4x8 = true,
-   .lower_pack_snorm_4x8 = true,
-   .lower_unpack_unorm_4x8 = true,
-   .lower_unpack_snorm_4x8 = true,
-   .lower_pack_half_2x16 = true,
-   .lower_unpack_half_2x16 = true,
-   .lower_pack_32_2x16 = true,
-   .lower_pack_32_2x16_split = true,
-   .lower_unpack_32_2x16_split = true,
-   .lower_mul_2x32_64 = true,
-   .lower_fdiv = true,
-   .lower_find_lsb = true,
-   .lower_ffma16 = true,
-   .lower_ffma32 = true,
-   .lower_ffma64 = true,
-   .lower_flrp32 = true,
-   .lower_fpow = true,
-   .lower_fsat = true,
-   .lower_fsqrt = true,
-   .lower_ifind_msb = true,
-   .lower_isign = true,
-   .lower_ldexp = true,
-   .lower_mul_high = true,
-   .lower_wpos_pntc = false,
-   .lower_to_scalar = true,
-   .lower_device_index_to_zero = true,
-   .lower_fquantize2f16 = true,
-   .has_fsub = true,
-   .has_isub = true,
-   .vertex_id_zero_based = false, /* FIXME: to set this to true, the intrinsic
-                                   * needs to be supported */
-   .lower_interpolate_at = true,
-   .max_unroll_iterations = 16,
-   .force_indirect_unrolling = (nir_var_shader_in | nir_var_function_temp),
-   .divergence_analysis_options =
-      nir_divergence_multiple_workgroup_per_compute_subgroup,
-   .discard_is_demote = true,
-};
-
 const nir_shader_compiler_options *
-v3dv_pipeline_get_nir_options(void)
+v3dv_pipeline_get_nir_options(const struct v3d_device_info *devinfo)
 {
-   return &v3dv_nir_options;
+   static bool initialized = false;
+   static nir_shader_compiler_options options = {
+      .lower_uadd_sat = true,
+      .lower_usub_sat = true,
+      .lower_iadd_sat = true,
+      .lower_all_io_to_temps = true,
+      .lower_extract_byte = true,
+      .lower_extract_word = true,
+      .lower_insert_byte = true,
+      .lower_insert_word = true,
+      .lower_bitfield_insert = true,
+      .lower_bitfield_extract = true,
+      .lower_bitfield_reverse = true,
+      .lower_bit_count = true,
+      .lower_cs_local_id_to_index = true,
+      .lower_ffract = true,
+      .lower_fmod = true,
+      .lower_pack_unorm_2x16 = true,
+      .lower_pack_snorm_2x16 = true,
+      .lower_unpack_unorm_2x16 = true,
+      .lower_unpack_snorm_2x16 = true,
+      .lower_pack_unorm_4x8 = true,
+      .lower_pack_snorm_4x8 = true,
+      .lower_unpack_unorm_4x8 = true,
+      .lower_unpack_snorm_4x8 = true,
+      .lower_pack_half_2x16 = true,
+      .lower_unpack_half_2x16 = true,
+      .lower_pack_32_2x16 = true,
+      .lower_pack_32_2x16_split = true,
+      .lower_unpack_32_2x16_split = true,
+      .lower_mul_2x32_64 = true,
+      .lower_fdiv = true,
+      .lower_find_lsb = true,
+      .lower_ffma16 = true,
+      .lower_ffma32 = true,
+      .lower_ffma64 = true,
+      .lower_flrp32 = true,
+      .lower_fpow = true,
+      .lower_fsqrt = true,
+      .lower_ifind_msb = true,
+      .lower_isign = true,
+      .lower_ldexp = true,
+      .lower_mul_high = true,
+      .lower_wpos_pntc = false,
+      .lower_to_scalar = true,
+      .lower_device_index_to_zero = true,
+      .lower_fquantize2f16 = true,
+      .has_fsub = true,
+      .has_isub = true,
+      .vertex_id_zero_based = false, /* FIXME: to set this to true, the intrinsic
+                                      * needs to be supported */
+      .lower_interpolate_at = true,
+      .max_unroll_iterations = 16,
+      .force_indirect_unrolling = (nir_var_shader_in | nir_var_function_temp),
+      .divergence_analysis_options =
+         nir_divergence_multiple_workgroup_per_compute_subgroup,
+      .discard_is_demote = true,
+   };
+
+   if (!initialized) {
+      options.lower_fsat = devinfo->ver < 71;
+      initialized = true;
+    }
+
+   return &options;
 }
 
 static const struct vk_ycbcr_conversion_state *
@@ -340,7 +345,7 @@ shader_module_compile_to_nir(struct v3dv_device *device,
 
    nir_shader *nir;
    const nir_shader_compiler_options *nir_options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    gl_shader_stage gl_stage = broadcom_shader_stage_to_gl(stage->stage);
 
@@ -1830,7 +1835,7 @@ pipeline_stage_get_nir(struct v3dv_pipeline_stage *p_stage,
 
    nir_shader *nir = NULL;
    const nir_shader_compiler_options *nir_options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&pipeline->device->devinfo);
 
    nir = v3dv_pipeline_cache_search_for_nir(pipeline, cache,
                                             nir_options,
@@ -2239,7 +2244,7 @@ pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
    nir_shader *vs_nir = p_stage_vs->nir;
 
    const nir_shader_compiler_options *options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&pipeline->device->devinfo);
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_GEOMETRY, options,
                                                   "multiview broadcast gs");
    nir_shader *nir = b.shader;
@@ -2448,7 +2453,7 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
    /* Add a no-op fragment shader if needed */
    if (!pipeline->stages[BROADCOM_SHADER_FRAGMENT]) {
       const nir_shader_compiler_options *compiler_options =
-         v3dv_pipeline_get_nir_options();
+         v3dv_pipeline_get_nir_options(&pipeline->device->devinfo);
       nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT,
                                                      compiler_options,
                                                      "noop_fs");

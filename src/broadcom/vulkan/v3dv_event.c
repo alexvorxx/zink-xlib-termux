@@ -136,7 +136,7 @@ create_event_pipelines(struct v3dv_device *device)
    VkPipeline pipeline;
 
    const nir_shader_compiler_options *options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    if (!device->events.set_event_pipeline) {
       nir_shader *set_event_cs_nir = get_set_event_cs(options);

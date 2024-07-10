@@ -582,7 +582,7 @@ create_color_clear_pipeline(struct v3dv_device *device,
                             VkPipeline *pipeline)
 {
    const nir_shader_compiler_options *options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    nir_shader *vs_nir = get_clear_rect_vs(options);
    nir_shader *fs_nir = get_color_clear_rect_fs(options, rt_idx, format);
@@ -647,7 +647,7 @@ create_depth_clear_pipeline(struct v3dv_device *device,
    assert(has_depth || has_stencil);
 
    const nir_shader_compiler_options *options =
-      v3dv_pipeline_get_nir_options();
+      v3dv_pipeline_get_nir_options(&device->devinfo);
 
    nir_shader *vs_nir = get_clear_rect_vs(options);
    nir_shader *fs_nir = has_depth ? get_depth_clear_rect_fs(options) : NULL;

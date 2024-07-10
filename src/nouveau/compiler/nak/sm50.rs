@@ -13,14 +13,6 @@ impl Src {
     }
 }
 
-fn align_down(value: usize, align: usize) -> usize {
-    value / align * align
-}
-
-fn align_up(value: usize, align: usize) -> usize {
-    align_down(value + (align - 1), align)
-}
-
 struct SM50Instr {
     inst: [u32; 2],
     sched: u32,
@@ -2200,7 +2192,7 @@ impl Shader {
             // to a schedule instruction, we account for that here.
             labels.insert(b.label, num_instrs + 8);
 
-            let block_num_instrs = align_up(b.instrs.len(), 3);
+            let block_num_instrs = b.instrs.len().next_multiple_of(3);
 
             // Every 3 instructions, we have a new schedule instruction so we
             // need to account for that.
@@ -2210,7 +2202,7 @@ impl Shader {
         let mut encoded = Vec::new();
         for b in &func.blocks {
             // A block is composed of groups of 3 instructions.
-            let block_num_instrs = align_up(b.instrs.len(), 3);
+            let block_num_instrs = b.instrs.len().next_multiple_of(3);
 
             let mut instrs_iter = b.instrs.iter();
 

@@ -337,12 +337,7 @@ pub trait LegalizeBuildHelpers: SSABuilder {
 
 impl LegalizeBuildHelpers for LegalizeBuilder<'_> {}
 
-fn legalize_sm50_instr(
-    b: &mut LegalizeBuilder,
-    _bl: &impl BlockLiveness,
-    _ip: usize,
-    instr: &mut Instr,
-) {
+fn legalize_sm50_instr(b: &mut LegalizeBuilder, instr: &mut Instr) {
     debug_assert!(!instr.is_uniform());
 
     use RegFile::GPR;
@@ -596,12 +591,7 @@ fn legalize_sm50_instr(
     }
 }
 
-fn legalize_sm70_instr(
-    b: &mut LegalizeBuilder,
-    bl: &impl BlockLiveness,
-    ip: usize,
-    instr: &mut Instr,
-) {
+fn legalize_sm70_instr(b: &mut LegalizeBuilder, instr: &mut Instr) {
     let gpr = if instr.is_uniform() {
         RegFile::UGPR
     } else {
@@ -907,22 +897,7 @@ fn legalize_sm70_instr(
             b.copy_alu_src_if_not_reg(&mut op.handle, gpr, SrcType::GPR);
             b.copy_alu_src_if_not_reg_or_imm(&mut op.stream, gpr, SrcType::ALU);
         }
-        Op::Break(op) => {
-            let bar_in = op.bar_in.src_ref.as_ssa().unwrap();
-            if !op.bar_out.is_none() && bl.is_live_after_ip(&bar_in[0], ip) {
-                let gpr = b.bmov_to_gpr(op.bar_in);
-                let tmp = b.bmov_to_bar(gpr.into());
-                op.bar_in = tmp.into();
-            }
-        }
-        Op::BSSy(op) => {
-            let bar_in = op.bar_in.src_ref.as_ssa().unwrap();
-            if !op.bar_out.is_none() && bl.is_live_after_ip(&bar_in[0], ip) {
-                let gpr = b.bmov_to_gpr(op.bar_in);
-                let tmp = b.bmov_to_bar(gpr.into());
-                op.bar_in = tmp.into();
-            }
-        }
+        Op::Break(_) | Op::BSSy(_) => (), // Handled specially
         Op::OutFinal(op) => {
             b.copy_alu_src_if_not_reg(&mut op.handle, gpr, SrcType::GPR);
         }
@@ -1008,10 +983,28 @@ fn legalize_instr(
         }
     }
 
+    // OpBreak and OpBSsy impose additional RA constraints
+    match &mut instr.op {
+        Op::Break(OpBreak {
+            bar_in, bar_out, ..
+        })
+        | Op::BSSy(OpBSSy {
+            bar_in, bar_out, ..
+        }) => {
+            let bar_in_ssa = bar_in.src_ref.as_ssa().unwrap();
+            if !bar_out.is_none() && bl.is_live_after_ip(&bar_in_ssa[0], ip) {
+                let gpr = b.bmov_to_gpr(*bar_in);
+                let tmp = b.bmov_to_bar(gpr.into());
+                *bar_in = tmp.into();
+            }
+        }
+        _ => (),
+    }
+
     if b.sm() >= 70 {
-        legalize_sm70_instr(b, bl, ip, instr);
+        legalize_sm70_instr(b, instr);
     } else if b.sm() >= 50 {
-        legalize_sm50_instr(b, bl, ip, instr);
+        legalize_sm50_instr(b, instr);
     } else {
         panic!("Unknown shader model SM{}", b.sm());
     }

@@ -498,6 +498,7 @@ template<amd_gfx_level GFX_VERSION>
 static void si_cp_dma_prefetch_inline(struct si_context *sctx, uint64_t address, unsigned size)
 {
    assert(GFX_VERSION >= GFX7);
+   assert(sctx->screen->info.has_cp_dma);
 
    if (GFX_VERSION >= GFX11)
       size = MIN2(size, 32768 - SI_CPDMA_ALIGNMENT);

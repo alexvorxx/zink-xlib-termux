@@ -346,7 +346,8 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
            clear_value_size > 4 ||
            /* Use compute if the size is large enough. Always prefer compute on GFX12. */
            (clear_value_size == 4 && offset % 4 == 0 &&
-            (size > compute_min_size || sctx->screen->info.cp_sdma_ge_use_system_memory_scope))))
+            (!sctx->screen->info.has_cp_dma ||
+             sctx->screen->info.cp_sdma_ge_use_system_memory_scope || size > compute_min_size))))
          method = SI_COMPUTE_CLEAR_METHOD;
 
       if (method == SI_COMPUTE_CLEAR_METHOD) {
@@ -403,10 +404,10 @@ void si_copy_buffer(struct si_context *sctx, struct pipe_resource *dst, struct p
 
    /* Only use compute for VRAM copies on dGPUs. */
    /* TODO: use compute for unaligned big sizes */
-   if (sctx->screen->info.has_dedicated_vram && si_resource(dst)->domains & RADEON_DOMAIN_VRAM &&
-       si_resource(src)->domains & RADEON_DOMAIN_VRAM &&
-       dst_offset % 4 == 0 && src_offset % 4 == 0 && size % 4 == 0 &&
-       (size > compute_min_size || sctx->screen->info.cp_sdma_ge_use_system_memory_scope)) {
+   if (dst_offset % 4 == 0 && src_offset % 4 == 0 && size % 4 == 0 &&
+       (!sctx->screen->info.has_cp_dma || sctx->screen->info.cp_sdma_ge_use_system_memory_scope ||
+        (sctx->screen->info.has_dedicated_vram && si_resource(dst)->domains & RADEON_DOMAIN_VRAM &&
+         si_resource(src)->domains & RADEON_DOMAIN_VRAM && size > compute_min_size))) {
       si_compute_do_clear_or_copy(sctx, dst, dst_offset, src, src_offset, size, NULL, 0,
                                   flags, coher);
    } else {

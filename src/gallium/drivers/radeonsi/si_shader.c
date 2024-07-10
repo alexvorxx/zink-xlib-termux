@@ -1120,7 +1120,7 @@ static int upload_binary_raw(struct si_screen *sscreen, struct si_shader *shader
 int si_shader_binary_upload_at(struct si_screen *sscreen, struct si_shader *shader,
                                uint64_t scratch_va, int64_t bo_offset)
 {
-   bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS)) &&
+   bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS)) && sscreen->info.has_cp_dma &&
                      sscreen->info.has_dedicated_vram && !sscreen->info.all_vram_visible &&
                      bo_offset < 0;
 

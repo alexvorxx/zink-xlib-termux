@@ -183,6 +183,7 @@ struct radeon_info {
 
    /* CP info. */
    bool gfx_ib_pad_with_type2;
+   bool has_cp_dma;
    uint32_t me_fw_version;
    uint32_t me_fw_feature;
    uint32_t mec_fw_version;

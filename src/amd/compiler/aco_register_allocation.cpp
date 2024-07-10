@@ -3014,40 +3014,6 @@ register_allocation(Program* program, ra_test_policy policy)
          std::find_if(block.instructions.begin(), block.instructions.end(), NonPhi);
       for (; instr_it != block.instructions.end(); ++instr_it) {
          aco_ptr<Instruction>& instr = *instr_it;
-
-         /* parallelcopies from p_phi are inserted here which means
-          * live ranges of killed operands end here as well */
-         if (instr->opcode == aco_opcode::p_logical_end) {
-            /* no need to process this instruction any further */
-            if (block.logical_succs.size() != 1) {
-               instructions.emplace_back(std::move(instr));
-               continue;
-            }
-
-            Block& succ = program->blocks[block.logical_succs[0]];
-            unsigned idx = 0;
-            for (; idx < succ.logical_preds.size(); idx++) {
-               if (succ.logical_preds[idx] == block.index)
-                  break;
-            }
-            for (aco_ptr<Instruction>& phi : succ.instructions) {
-               if (phi->opcode == aco_opcode::p_phi) {
-                  if (phi->operands[idx].isTemp() &&
-                      phi->operands[idx].getTemp().type() == RegType::sgpr &&
-                      phi->operands[idx].isFirstKillBeforeDef()) {
-                     Definition phi_op(
-                        read_variable(ctx, phi->operands[idx].getTemp(), block.index));
-                     phi_op.setFixed(ctx.assignments[phi_op.tempId()].reg);
-                     register_file.clear(phi_op);
-                  }
-               } else if (phi->opcode != aco_opcode::p_linear_phi) {
-                  break;
-               }
-            }
-            instructions.emplace_back(std::move(instr));
-            continue;
-         }
-
          std::vector<std::pair<Operand, Definition>> parallelcopy;
          bool temp_in_scc = register_file[scc];
 

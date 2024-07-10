@@ -55,7 +55,6 @@
 #include "util/u_idalloc.h"
 #include "util/simple_mtx.h"
 #include "util/u_dynarray.h"
-#include "util/mesa-sha1.h"
 #include "vbo/vbo.h"
 
 #include "pipe/p_state.h"

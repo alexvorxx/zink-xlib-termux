@@ -416,6 +416,20 @@ static void radeon_vcn_enc_get_input_format_param(struct radeon_encoder *enc,
       enc->enc_pic.enc_input_format.input_color_packing_format = RENCODE_COLOR_PACKING_FORMAT_A8B8G8R8;
       enc->enc_pic.enc_input_format.input_color_space = RENCODE_COLOR_SPACE_RGB;
       break;
+   case PIPE_FORMAT_B10G10R10A2_UNORM:
+   case PIPE_FORMAT_B10G10R10X2_UNORM:
+      enc->enc_pic.enc_input_format.input_color_bit_depth = RENCODE_COLOR_BIT_DEPTH_10_BIT;
+      enc->enc_pic.enc_input_format.input_chroma_subsampling = RENCODE_CHROMA_SUBSAMPLING_4_4_4;
+      enc->enc_pic.enc_input_format.input_color_packing_format = RENCODE_COLOR_PACKING_FORMAT_A2R10G10B10;
+      enc->enc_pic.enc_input_format.input_color_space = RENCODE_COLOR_SPACE_RGB;
+      break;
+   case PIPE_FORMAT_R10G10B10A2_UNORM:
+   case PIPE_FORMAT_R10G10B10X2_UNORM:
+      enc->enc_pic.enc_input_format.input_color_bit_depth = RENCODE_COLOR_BIT_DEPTH_10_BIT;
+      enc->enc_pic.enc_input_format.input_chroma_subsampling = RENCODE_CHROMA_SUBSAMPLING_4_4_4;
+      enc->enc_pic.enc_input_format.input_color_packing_format = RENCODE_COLOR_PACKING_FORMAT_A2B10G10R10;
+      enc->enc_pic.enc_input_format.input_color_space = RENCODE_COLOR_SPACE_RGB;
+      break;
    case PIPE_FORMAT_NV12: /* FALL THROUGH */
    default:
       enc->enc_pic.enc_input_format.input_color_bit_depth = RENCODE_COLOR_BIT_DEPTH_8_BIT;

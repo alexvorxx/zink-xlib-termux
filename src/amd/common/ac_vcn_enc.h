@@ -203,7 +203,9 @@
 #define RENCODE_COLOR_PACKING_FORMAT_NV12                                           0
 #define RENCODE_COLOR_PACKING_FORMAT_P010                                           1
 #define RENCODE_COLOR_PACKING_FORMAT_A8R8G8B8                                       4
+#define RENCODE_COLOR_PACKING_FORMAT_A2R10G10B10                                    5
 #define RENCODE_COLOR_PACKING_FORMAT_A8B8G8R8                                       7
+#define RENCODE_COLOR_PACKING_FORMAT_A2B10G10R10                                    8
 
 #define RENCODE_COLOR_SPACE_YUV                                                     0
 #define RENCODE_COLOR_SPACE_RGB                                                     1

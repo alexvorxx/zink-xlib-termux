@@ -511,7 +511,8 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
          shader->info.writes_memory = true;
       break;
    }
-   case nir_intrinsic_image_deref_load: {
+   case nir_intrinsic_image_deref_load:
+   case nir_intrinsic_image_deref_sparse_load: {
       nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
       nir_variable *var = nir_deref_instr_get_variable(deref);
       enum glsl_sampler_dim dim = glsl_get_sampler_dim(glsl_without_array(var->type));
@@ -524,7 +525,8 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
       break;
    }
 
-   case nir_intrinsic_bindless_image_load: {
+   case nir_intrinsic_bindless_image_load:
+   case nir_intrinsic_bindless_image_sparse_load: {
       enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
       if (dim != GLSL_SAMPLER_DIM_SUBPASS &&
           dim != GLSL_SAMPLER_DIM_SUBPASS_MS)

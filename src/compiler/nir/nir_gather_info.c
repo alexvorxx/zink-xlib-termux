@@ -867,6 +867,11 @@ gather_tex_info(nir_tex_instr *instr, nir_shader *shader)
        nir_tex_instr_src_index(instr, nir_tex_src_sampler_handle) != -1)
       shader->info.uses_bindless = true;
 
+   if (!nir_tex_instr_is_query(instr) &&
+       (instr->sampler_dim == GLSL_SAMPLER_DIM_SUBPASS ||
+        instr->sampler_dim == GLSL_SAMPLER_DIM_SUBPASS_MS))
+      shader->info.fs.uses_fbfetch_output = true;
+
    switch (instr->op) {
    case nir_texop_tg4:
       shader->info.uses_texture_gather = true;

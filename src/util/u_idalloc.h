@@ -108,6 +108,51 @@ util_idalloc_mt_alloc(struct util_idalloc_mt *buf);
 void
 util_idalloc_mt_free(struct util_idalloc_mt *buf, unsigned id);
 
+/* util_idalloc_sparse: The 32-bit ID range is divided into separately managed
+ * segments. This reduces virtual memory usage when IDs are sparse.
+ * It's done by layering util_idalloc_sparse on top of util_idalloc.
+ *
+ * If the last ID is allocated:
+ * - "util_idalloc" occupies 512 MB of virtual memory
+ * - "util_idalloc_sparse" occupies only 512 KB of virtual memory
+ */
+struct util_idalloc_sparse {
+   struct util_idalloc segment[1024];
+};
+
+#define UTIL_IDALLOC_MAX_IDS_PER_SEGMENT(buf) \
+   ((uint32_t)(BITFIELD64_BIT(32) / ARRAY_SIZE((buf)->segment)))
+
+#define UTIL_IDALLOC_MAX_ELEMS_PER_SEGMENT(buf) \
+   (UTIL_IDALLOC_MAX_IDS_PER_SEGMENT(buf) / 32)
+
+void
+util_idalloc_sparse_init(struct util_idalloc_sparse *buf);
+
+void
+util_idalloc_sparse_fini(struct util_idalloc_sparse *buf);
+
+unsigned
+util_idalloc_sparse_alloc(struct util_idalloc_sparse *buf);
+
+unsigned
+util_idalloc_sparse_alloc_range(struct util_idalloc_sparse *buf, unsigned num);
+
+void
+util_idalloc_sparse_free(struct util_idalloc_sparse *buf, unsigned id);
+
+void
+util_idalloc_sparse_reserve(struct util_idalloc_sparse *buf, unsigned id);
+
+/* This allows freeing IDs while iterating, excluding ID=0. */
+#define util_idalloc_sparse_foreach_no_zero_safe(buf, id) \
+   for (uint32_t _s = 0; _s < ARRAY_SIZE((buf)->segment); _s++) \
+      for (uint32_t _i = 0, _bit, id, _count = (buf)->segment[_s].num_set_elements, \
+            _mask = _count ? (buf)->segment[_s].data[0] & ~0x1 : 0; \
+           _i < _count; _mask = ++_i < _count ? (buf)->segment[_s].data[_i] : 0) \
+         while (_mask) \
+            if ((_bit = u_bit_scan(&_mask), id = _s * UTIL_IDALLOC_MAX_IDS_PER_SEGMENT(buf) + _i * 32 + _bit), \
+                (buf)->segment[_s].data[_i] & BITFIELD_BIT(_bit))
 
 #ifdef __cplusplus
 }

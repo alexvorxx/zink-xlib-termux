@@ -97,9 +97,192 @@ impl ShaderModel for ShaderModel70 {
     }
 }
 
+/// A per-op trait that implements Volta+ opcode semantics
 trait SM70Op {
     fn encode(&self, e: &mut SM70Encoder<'_>);
 }
+
+struct SM70Encoder<'a> {
+    sm: &'a ShaderModel70,
+    ip: usize,
+    labels: &'a HashMap<Label, usize>,
+    inst: [u32; 4],
+}
+
+impl BitViewable for SM70Encoder<'_> {
+    fn bits(&self) -> usize {
+        BitView::new(&self.inst).bits()
+    }
+
+    fn get_bit_range_u64(&self, range: Range<usize>) -> u64 {
+        BitView::new(&self.inst).get_bit_range_u64(range)
+    }
+}
+
+impl BitMutViewable for SM70Encoder<'_> {
+    fn set_bit_range_u64(&mut self, range: Range<usize>, val: u64) {
+        BitMutView::new(&mut self.inst).set_bit_range_u64(range, val);
+    }
+}
+
+impl SetFieldU64 for SM70Encoder<'_> {
+    fn set_field_u64(&mut self, range: Range<usize>, val: u64) {
+        BitMutView::new(&mut self.inst).set_field_u64(range, val);
+    }
+}
+
+impl SM70Encoder<'_> {
+    fn set_opcode(&mut self, opcode: u16) {
+        self.set_field(0..12, opcode);
+    }
+
+    fn set_reg(&mut self, range: Range<usize>, reg: RegRef) {
+        assert!(range.len() == 8);
+        assert!(reg.file() == RegFile::GPR);
+        self.set_field(range, reg.base_idx());
+    }
+
+    fn set_ureg(&mut self, range: Range<usize>, reg: RegRef) {
+        assert!(self.sm.sm >= 75);
+        assert!(range.len() == 8);
+        assert!(reg.file() == RegFile::UGPR);
+        assert!(reg.base_idx() <= 63);
+        self.set_field(range, reg.base_idx());
+    }
+
+    fn set_pred_reg(&mut self, range: Range<usize>, reg: RegRef) {
+        assert!(range.len() == 3);
+        assert!(reg.base_idx() <= 7);
+        assert!(reg.comps() == 1);
+        self.set_field(range, reg.base_idx());
+    }
+
+    fn set_reg_src(&mut self, range: Range<usize>, src: Src) {
+        assert!(src.src_mod.is_none());
+        match src.src_ref {
+            SrcRef::Zero => self.set_reg(range, RegRef::zero(RegFile::GPR, 1)),
+            SrcRef::Reg(reg) => self.set_reg(range, reg),
+            _ => panic!("Not a register"),
+        }
+    }
+
+    fn set_pred_dst(&mut self, range: Range<usize>, dst: Dst) {
+        match dst {
+            Dst::None => {
+                self.set_pred_reg(range, RegRef::zero(RegFile::Pred, 1));
+            }
+            Dst::Reg(reg) => self.set_pred_reg(range, reg),
+            _ => panic!("Not a register"),
+        }
+    }
+
+    fn set_pred_src_file(
+        &mut self,
+        range: Range<usize>,
+        not_bit: usize,
+        src: Src,
+        file: RegFile,
+    ) {
+        // The default for predicates is true
+        let true_reg = RegRef::new(file, 7, 1);
+
+        let (not, reg) = match src.src_ref {
+            SrcRef::True => (false, true_reg),
+            SrcRef::False => (true, true_reg),
+            SrcRef::Reg(reg) => {
+                assert!(reg.file() == file);
+                (false, reg)
+            }
+            _ => panic!("Not a register"),
+        };
+        self.set_pred_reg(range, reg);
+        self.set_bit(not_bit, not ^ src_mod_is_bnot(src.src_mod));
+    }
+
+    fn set_pred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
+        self.set_pred_src_file(range, not_bit, src, RegFile::Pred);
+    }
+
+    fn set_upred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
+        self.set_pred_src_file(range, not_bit, src, RegFile::UPred);
+    }
+
+    fn set_src_cb(&mut self, range: Range<usize>, cx_bit: usize, cb: &CBufRef) {
+        let mut v = BitMutView::new_subset(self, range);
+        v.set_field(6..22, cb.offset);
+        match cb.buf {
+            CBuf::Binding(idx) => {
+                v.set_field(22..27, idx);
+                self.set_bit(cx_bit, false);
+            }
+            CBuf::BindlessUGPR(reg) => {
+                assert!(reg.base_idx() <= 63);
+                assert!(reg.file() == RegFile::UGPR);
+                v.set_field(0..6, reg.base_idx());
+                self.set_bit(cx_bit, true);
+            }
+            CBuf::BindlessSSA(_) => panic!("SSA values must be lowered"),
+        }
+    }
+
+    fn set_pred(&mut self, pred: &Pred) {
+        assert!(!pred.is_false());
+        self.set_pred_reg(
+            12..15,
+            match pred.pred_ref {
+                PredRef::None => RegRef::zero(RegFile::Pred, 1),
+                PredRef::Reg(reg) => reg,
+                PredRef::SSA(_) => panic!("SSA values must be lowered"),
+            },
+        );
+        self.set_bit(15, pred.pred_inv);
+    }
+
+    fn set_dst(&mut self, dst: Dst) {
+        match dst {
+            Dst::None => self.set_reg(16..24, RegRef::zero(RegFile::GPR, 1)),
+            Dst::Reg(reg) => self.set_reg(16..24, reg),
+            _ => panic!("Not a register"),
+        }
+    }
+
+    fn set_udst(&mut self, dst: Dst) {
+        match dst {
+            Dst::None => self.set_ureg(16..24, RegRef::zero(RegFile::UGPR, 1)),
+            Dst::Reg(reg) => self.set_ureg(16..24, reg),
+            _ => panic!("Not a register"),
+        }
+    }
+
+    fn set_bar_reg(&mut self, range: Range<usize>, reg: RegRef) {
+        assert!(range.len() == 4);
+        assert!(reg.file() == RegFile::Bar);
+        assert!(reg.comps() == 1);
+        self.set_field(range, reg.base_idx());
+    }
+
+    fn set_bar_dst(&mut self, range: Range<usize>, dst: Dst) {
+        self.set_bar_reg(range, *dst.as_reg().unwrap());
+    }
+
+    fn set_bar_src(&mut self, range: Range<usize>, src: Src) {
+        assert!(src.src_mod.is_none());
+        self.set_bar_reg(range, *src.src_ref.as_reg().unwrap());
+    }
+
+    fn set_instr_deps(&mut self, deps: &InstrDeps) {
+        self.set_field(105..109, deps.delay);
+        self.set_bit(109, deps.yld);
+        self.set_field(110..113, deps.wr_bar().unwrap_or(7));
+        self.set_field(113..116, deps.rd_bar().unwrap_or(7));
+        self.set_field(116..122, deps.wt_bar_mask);
+        self.set_field(122..126, deps.reuse_mask);
+    }
+}
+
+//
+// Helpers for encoding of ALU instructions
+//
 
 struct ALURegRef {
     pub reg: RegRef,
@@ -226,178 +409,7 @@ impl ALUSrc {
     }
 }
 
-struct SM70Encoder<'a> {
-    sm: &'a ShaderModel70,
-    ip: usize,
-    labels: &'a HashMap<Label, usize>,
-    inst: [u32; 4],
-}
-
-impl BitViewable for SM70Encoder<'_> {
-    fn bits(&self) -> usize {
-        BitView::new(&self.inst).bits()
-    }
-
-    fn get_bit_range_u64(&self, range: Range<usize>) -> u64 {
-        BitView::new(&self.inst).get_bit_range_u64(range)
-    }
-}
-
-impl BitMutViewable for SM70Encoder<'_> {
-    fn set_bit_range_u64(&mut self, range: Range<usize>, val: u64) {
-        BitMutView::new(&mut self.inst).set_bit_range_u64(range, val);
-    }
-}
-
-impl SetFieldU64 for SM70Encoder<'_> {
-    fn set_field_u64(&mut self, range: Range<usize>, val: u64) {
-        BitMutView::new(&mut self.inst).set_field_u64(range, val);
-    }
-}
-
 impl SM70Encoder<'_> {
-    fn set_bit(&mut self, bit: usize, val: bool) {
-        BitMutView::new(&mut self.inst).set_bit(bit, val);
-    }
-
-    fn set_reg(&mut self, range: Range<usize>, reg: RegRef) {
-        assert!(range.len() == 8);
-        assert!(reg.file() == RegFile::GPR);
-        self.set_field(range, reg.base_idx());
-    }
-
-    fn set_ureg(&mut self, range: Range<usize>, reg: RegRef) {
-        assert!(self.sm.sm >= 75);
-        assert!(range.len() == 8);
-        assert!(reg.file() == RegFile::UGPR);
-        assert!(reg.base_idx() <= 63);
-        self.set_field(range, reg.base_idx());
-    }
-
-    fn set_pred_reg(&mut self, range: Range<usize>, reg: RegRef) {
-        assert!(range.len() == 3);
-        assert!(reg.base_idx() <= 7);
-        assert!(reg.comps() == 1);
-        self.set_field(range, reg.base_idx());
-    }
-
-    fn set_reg_src(&mut self, range: Range<usize>, src: Src) {
-        assert!(src.src_mod.is_none());
-        match src.src_ref {
-            SrcRef::Zero => self.set_reg(range, RegRef::zero(RegFile::GPR, 1)),
-            SrcRef::Reg(reg) => self.set_reg(range, reg),
-            _ => panic!("Not a register"),
-        }
-    }
-
-    fn set_pred_dst(&mut self, range: Range<usize>, dst: Dst) {
-        match dst {
-            Dst::None => {
-                self.set_pred_reg(range, RegRef::zero(RegFile::Pred, 1));
-            }
-            Dst::Reg(reg) => self.set_pred_reg(range, reg),
-            _ => panic!("Not a register"),
-        }
-    }
-
-    fn set_pred_src_file(
-        &mut self,
-        range: Range<usize>,
-        not_bit: usize,
-        src: Src,
-        file: RegFile,
-    ) {
-        // The default for predicates is true
-        let true_reg = RegRef::new(file, 7, 1);
-
-        let (not, reg) = match src.src_ref {
-            SrcRef::True => (false, true_reg),
-            SrcRef::False => (true, true_reg),
-            SrcRef::Reg(reg) => {
-                assert!(reg.file() == file);
-                (false, reg)
-            }
-            _ => panic!("Not a register"),
-        };
-        self.set_pred_reg(range, reg);
-        self.set_bit(not_bit, not ^ src_mod_is_bnot(src.src_mod));
-    }
-
-    fn set_pred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
-        self.set_pred_src_file(range, not_bit, src, RegFile::Pred);
-    }
-
-    fn set_upred_src(&mut self, range: Range<usize>, not_bit: usize, src: Src) {
-        self.set_pred_src_file(range, not_bit, src, RegFile::UPred);
-    }
-
-    fn set_src_cb(&mut self, range: Range<usize>, cx_bit: usize, cb: &CBufRef) {
-        let mut v = BitMutView::new_subset(self, range);
-        v.set_field(6..22, cb.offset);
-        match cb.buf {
-            CBuf::Binding(idx) => {
-                v.set_field(22..27, idx);
-                self.set_bit(cx_bit, false);
-            }
-            CBuf::BindlessUGPR(reg) => {
-                assert!(reg.base_idx() <= 63);
-                assert!(reg.file() == RegFile::UGPR);
-                v.set_field(0..6, reg.base_idx());
-                self.set_bit(cx_bit, true);
-            }
-            CBuf::BindlessSSA(_) => panic!("SSA values must be lowered"),
-        }
-    }
-
-    fn set_opcode(&mut self, opcode: u16) {
-        self.set_field(0..12, opcode);
-    }
-
-    fn set_pred(&mut self, pred: &Pred) {
-        assert!(!pred.is_false());
-        self.set_pred_reg(
-            12..15,
-            match pred.pred_ref {
-                PredRef::None => RegRef::zero(RegFile::Pred, 1),
-                PredRef::Reg(reg) => reg,
-                PredRef::SSA(_) => panic!("SSA values must be lowered"),
-            },
-        );
-        self.set_bit(15, pred.pred_inv);
-    }
-
-    fn set_dst(&mut self, dst: Dst) {
-        match dst {
-            Dst::None => self.set_reg(16..24, RegRef::zero(RegFile::GPR, 1)),
-            Dst::Reg(reg) => self.set_reg(16..24, reg),
-            _ => panic!("Not a register"),
-        }
-    }
-
-    fn set_udst(&mut self, dst: Dst) {
-        match dst {
-            Dst::None => self.set_ureg(16..24, RegRef::zero(RegFile::UGPR, 1)),
-            Dst::Reg(reg) => self.set_ureg(16..24, reg),
-            _ => panic!("Not a register"),
-        }
-    }
-
-    fn set_bar_reg(&mut self, range: Range<usize>, reg: RegRef) {
-        assert!(range.len() == 4);
-        assert!(reg.file() == RegFile::Bar);
-        assert!(reg.comps() == 1);
-        self.set_field(range, reg.base_idx());
-    }
-
-    fn set_bar_dst(&mut self, range: Range<usize>, dst: Dst) {
-        self.set_bar_reg(range, *dst.as_reg().unwrap());
-    }
-
-    fn set_bar_src(&mut self, range: Range<usize>, src: Src) {
-        assert!(src.src_mod.is_none());
-        self.set_bar_reg(range, *src.src_ref.as_reg().unwrap());
-    }
-
     fn set_swizzle(&mut self, range: Range<usize>, swizzle: SrcSwizzle) {
         assert!(range.len() == 2);
 
@@ -688,15 +700,6 @@ impl SM70Encoder<'_> {
         self.set_field(9..12, form);
     }
 
-    fn set_instr_deps(&mut self, deps: &InstrDeps) {
-        self.set_field(105..109, deps.delay);
-        self.set_bit(109, deps.yld);
-        self.set_field(110..113, deps.wr_bar().unwrap_or(7));
-        self.set_field(113..116, deps.rd_bar().unwrap_or(7));
-        self.set_field(116..122, deps.wt_bar_mask);
-        self.set_field(122..126, deps.reuse_mask);
-    }
-
     fn set_rnd_mode(&mut self, range: Range<usize>, rnd_mode: FRndMode) {
         assert!(range.len() == 2);
         self.set_field(
@@ -710,6 +713,10 @@ impl SM70Encoder<'_> {
         );
     }
 }
+
+//
+// Implementations of SM70Op for each op we support on Volta+
+//
 
 impl SM70Op for OpFAdd {
     fn encode(&self, e: &mut SM70Encoder<'_>) {

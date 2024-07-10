@@ -24,6 +24,7 @@ libfreedreno_drm_includes = [
 libfreedreno_drm_deps = [
   dep_libdrm,
   dep_valgrind,
+  idep_mesautil,
 ]
 
 if with_perfetto

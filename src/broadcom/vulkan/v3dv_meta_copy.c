@@ -2210,9 +2210,8 @@ create_pipeline(struct v3dv_device *device,
                 VkPipeline *pipeline);
 
 static nir_shader *
-get_texel_buffer_copy_vs()
+get_texel_buffer_copy_vs(const nir_shader_compiler_options *options)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_VERTEX, options,
                                                   "meta texel buffer copy vs");
    nir_variable *vs_out_pos =
@@ -2227,7 +2226,7 @@ get_texel_buffer_copy_vs()
 }
 
 static nir_shader *
-get_texel_buffer_copy_gs()
+get_texel_buffer_copy_gs(const nir_shader_compiler_options *options)
 {
    /* FIXME: this creates a geometry shader that takes the index of a single
     * layer to clear from push constants, so we need to emit a draw call for
@@ -2236,7 +2235,6 @@ get_texel_buffer_copy_gs()
     * be careful not to exceed the maximum number of output vertices allowed in
     * a geometry shader.
     */
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_GEOMETRY, options,
                                                   "meta texel buffer copy gs");
    nir_shader *nir = b.shader;
@@ -2325,10 +2323,9 @@ component_swizzle_to_nir_swizzle(VkComponentSwizzle comp, VkComponentSwizzle swz
 }
 
 static nir_shader *
-get_texel_buffer_copy_fs(struct v3dv_device *device, VkFormat format,
-                         VkComponentMapping *cswizzle)
+get_texel_buffer_copy_fs(const nir_shader_compiler_options *options,
+                         VkFormat format, VkComponentMapping *cswizzle)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, options,
                                                   "meta texel buffer copy fs");
 
@@ -2433,9 +2430,12 @@ create_texel_buffer_copy_pipeline(struct v3dv_device *device,
 
    assert(vk_format_is_color(format));
 
-   nir_shader *vs_nir = get_texel_buffer_copy_vs();
-   nir_shader *fs_nir = get_texel_buffer_copy_fs(device, format, cswizzle);
-   nir_shader *gs_nir = is_layered ? get_texel_buffer_copy_gs() : NULL;
+   const nir_shader_compiler_options *options =
+      v3dv_pipeline_get_nir_options();
+
+   nir_shader *vs_nir = get_texel_buffer_copy_vs(options);
+   nir_shader *fs_nir = get_texel_buffer_copy_fs(options, format, cswizzle);
+   nir_shader *gs_nir = is_layered ? get_texel_buffer_copy_gs(options) : NULL;
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -3809,9 +3809,8 @@ build_nir_tex_op(struct nir_builder *b,
 }
 
 static nir_shader *
-get_blit_vs()
+get_blit_vs(const nir_shader_compiler_options *options)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_VERTEX, options,
                                                   "meta blit vs");
 
@@ -3849,14 +3848,14 @@ get_channel_mask_for_sampler_dim(enum glsl_sampler_dim sampler_dim)
 }
 
 static nir_shader *
-get_color_blit_fs(struct v3dv_device *device,
+get_color_blit_fs(const nir_shader_compiler_options *options,
+                  struct v3dv_device *device,
                   VkFormat dst_format,
                   VkFormat src_format,
                   VkSampleCountFlagBits dst_samples,
                   VkSampleCountFlagBits src_samples,
                   enum glsl_sampler_dim sampler_dim)
 {
-   const nir_shader_compiler_options *options = v3dv_pipeline_get_nir_options();
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, options,
                                                   "meta blit fs");
 
@@ -4094,12 +4093,15 @@ create_blit_pipeline(struct v3dv_device *device,
    assert(vk_format_is_color(dst_format));
    assert(vk_format_is_color(src_format));
 
+   const nir_shader_compiler_options *options =
+      v3dv_pipeline_get_nir_options();
+
    const enum glsl_sampler_dim sampler_dim =
       get_sampler_dim(src_type, src_samples);
 
-   nir_shader *vs_nir = get_blit_vs();
+   nir_shader *vs_nir = get_blit_vs(options);
    nir_shader *fs_nir =
-      get_color_blit_fs(device, dst_format, src_format,
+      get_color_blit_fs(options, device, dst_format, src_format,
                         dst_samples, src_samples, sampler_dim);
 
    const VkPipelineVertexInputStateCreateInfo vi_state = {

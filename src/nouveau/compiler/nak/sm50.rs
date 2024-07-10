@@ -50,13 +50,19 @@ impl Src {
     }
 }
 
-struct SM50Instr {
-    inst: [u32; 2],
-    sched: u32,
-    sm: u8,
+trait SM50Op {
+    fn encode(&self, e: &mut SM50Encoder<'_>);
 }
 
-impl BitViewable for SM50Instr {
+struct SM50Encoder<'a> {
+    sm: &'a ShaderModel50,
+    ip: usize,
+    labels: &'a HashMap<Label, usize>,
+    inst: [u32; 2],
+    sched: u32,
+}
+
+impl BitViewable for SM50Encoder<'_> {
     fn bits(&self) -> usize {
         BitView::new(&self.inst).bits()
     }
@@ -66,41 +72,19 @@ impl BitViewable for SM50Instr {
     }
 }
 
-impl BitMutViewable for SM50Instr {
+impl BitMutViewable for SM50Encoder<'_> {
     fn set_bit_range_u64(&mut self, range: Range<usize>, val: u64) {
         BitMutView::new(&mut self.inst).set_bit_range_u64(range, val);
     }
 }
 
-impl SetFieldU64 for SM50Instr {
+impl SetFieldU64 for SM50Encoder<'_> {
     fn set_field_u64(&mut self, range: Range<usize>, val: u64) {
         BitMutView::new(&mut self.inst).set_field_u64(range, val);
     }
 }
 
-impl SM50Instr {
-    fn new(sm: u8) -> Self {
-        Self {
-            inst: [0x0; 2],
-            sched: 0x7e0,
-            sm,
-        }
-    }
-
-    fn nop(sm: u8) -> Self {
-        let mut res = Self::new(sm);
-
-        res.encode_nop();
-
-        res.set_instr_deps(&InstrDeps::new());
-
-        res
-    }
-
-    fn set_bit(&mut self, bit: usize, val: bool) {
-        BitMutView::new(&mut self.inst).set_bit(bit, val);
-    }
-
+impl SM50Encoder<'_> {
     fn set_opcode(&mut self, opcode: u16) {
         self.set_field(48..64, opcode);
     }
@@ -286,85 +270,91 @@ impl SM50Instr {
 
         self.set_bit(neg_bit, src.src_mod.is_ineg());
     }
+}
 
-    fn encode_mov(&mut self, op: &OpMov) {
-        match &op.src.src_ref {
+impl SM50Op for OpMov {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.src.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c98);
-                self.set_reg_src(20..28, op.src);
-                self.set_field(39..43, op.quad_lanes);
+                e.set_opcode(0x5c98);
+                e.set_reg_src(20..28, self.src);
+                e.set_field(39..43, self.quad_lanes);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x0100);
-                self.set_src_imm32(20..52, *i);
-                self.set_field(12..16, op.quad_lanes);
+                e.set_opcode(0x0100);
+                e.set_src_imm32(20..52, *i);
+                e.set_field(12..16, self.quad_lanes);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4c98);
-                self.set_src_cb(20..39, cb);
-                self.set_field(39..43, op.quad_lanes);
+                e.set_opcode(0x4c98);
+                e.set_src_cb(20..39, cb);
+                e.set_field(39..43, self.quad_lanes);
             }
             src => panic!("Unsupported src type for MOV: {src}"),
         }
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_sel(&mut self, op: &OpSel) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpSel {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x38a0);
-                self.set_src_imm_i20(20..39, 56, *imm32);
+                e.set_opcode(0x38a0);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5ca0);
-                self.set_reg_src_ref(20..28, op.srcs[1].src_ref);
+                e.set_opcode(0x5ca0);
+                e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
             }
             SrcRef::CBuf(cbuf) => {
-                self.set_opcode(0x4ca0);
-                self.set_src_cb(20..39, cbuf);
+                e.set_opcode(0x4ca0);
+                e.set_src_cb(20..39, cbuf);
             }
             src => panic!("Unsupported src type for SEL: {src}"),
         }
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_pred_src(39..42, 42, op.cond);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_pred_src(39..42, 42, self.cond);
     }
+}
 
-    fn encode_shfl(&mut self, op: &OpShfl) {
-        self.set_opcode(0xef10);
+impl SM50Op for OpShfl {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xef10);
 
-        self.set_dst(op.dst);
-        self.set_pred_dst(48..51, op.in_bounds);
-        self.set_reg_src(8..16, op.src);
+        e.set_dst(self.dst);
+        e.set_pred_dst(48..51, self.in_bounds);
+        e.set_reg_src(8..16, self.src);
 
-        match op.lane.src_ref {
+        match self.lane.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_bit(28, false);
-                self.set_reg_src(20..28, op.lane);
+                e.set_bit(28, false);
+                e.set_reg_src(20..28, self.lane);
             }
             SrcRef::Imm32(imm) => {
-                self.set_bit(28, true);
-                self.set_field(20..25, imm & 0x1f);
+                e.set_bit(28, true);
+                e.set_field(20..25, imm & 0x1f);
             }
             lane => panic!("unsupported lane src type for SHFL: {lane}"),
         }
-        match op.c.src_ref {
+        match self.c.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_bit(29, false);
-                self.set_reg_src(39..47, op.c);
+                e.set_bit(29, false);
+                e.set_reg_src(39..47, self.c);
             }
             SrcRef::Imm32(imm) => {
-                self.set_bit(29, true);
-                self.set_field(34..47, imm & 0x1f1f);
+                e.set_bit(29, true);
+                e.set_field(34..47, imm & 0x1f1f);
             }
             c => panic!("unsupported c src type for SHFL: {c}"),
         }
 
-        self.set_field(
+        e.set_field(
             30..32,
-            match op.op {
+            match self.op {
                 ShflOp::Idx => 0u8,
                 ShflOp::Up => 1u8,
                 ShflOp::Down => 2u8,
@@ -372,38 +362,44 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_vote(&mut self, op: &OpVote) {
-        self.set_opcode(0x50d8);
+impl SM50Op for OpVote {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0x50d8);
 
-        self.set_dst(op.ballot);
-        self.set_pred_dst(45..48, op.vote);
-        self.set_pred_src(39..42, 42, op.pred);
+        e.set_dst(self.ballot);
+        e.set_pred_dst(45..48, self.vote);
+        e.set_pred_src(39..42, 42, self.pred);
 
-        self.set_field(
+        e.set_field(
             48..50,
-            match op.op {
+            match self.op {
                 VoteOp::All => 0u8,
                 VoteOp::Any => 1u8,
                 VoteOp::Eq => 2u8,
             },
         );
     }
+}
 
-    fn encode_psetp(&mut self, op: &OpPSetP) {
-        self.set_opcode(0x5090);
+impl SM50Op for OpPSetP {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0x5090);
 
-        self.set_pred_dst(3..6, op.dsts[0]);
-        self.set_pred_dst(0..3, op.dsts[1]);
+        e.set_pred_dst(3..6, self.dsts[0]);
+        e.set_pred_dst(0..3, self.dsts[1]);
 
-        self.set_pred_src(12..15, 15, op.srcs[0]);
-        self.set_pred_src(29..32, 32, op.srcs[1]);
-        self.set_pred_src(39..42, 42, op.srcs[2]);
+        e.set_pred_src(12..15, 15, self.srcs[0]);
+        e.set_pred_src(29..32, 32, self.srcs[1]);
+        e.set_pred_src(39..42, 42, self.srcs[2]);
 
-        self.set_pred_set_op(24..26, op.ops[0]);
-        self.set_pred_set_op(45..47, op.ops[1]);
+        e.set_pred_set_op(24..26, self.ops[0]);
+        e.set_pred_set_op(45..47, self.ops[1]);
     }
+}
 
+impl SM50Encoder<'_> {
     fn set_mem_type(&mut self, range: Range<usize>, mem_type: MemType) {
         assert!(range.len() == 3);
         self.set_field(
@@ -463,119 +459,81 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_ldg(&mut self, op: &OpLd) {
-        self.set_opcode(0xeed0);
+impl SM50Op for OpLd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(match self.access.space {
+            MemSpace::Global(_) => 0xeed0,
+            MemSpace::Local => 0xef40,
+            MemSpace::Shared => 0xef48,
+        });
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.addr);
-        self.set_field(20..44, op.offset);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.addr);
+        e.set_field(20..44, self.offset);
 
-        self.set_mem_access(&op.access);
+        e.set_mem_access(&self.access);
     }
+}
 
-    fn encode_ldl(&mut self, op: &OpLd) {
-        self.set_opcode(0xef40);
-
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.addr);
-        self.set_field(20..44, op.offset);
-
-        self.set_mem_access(&op.access);
-    }
-
-    fn encode_lds(&mut self, op: &OpLd) {
-        self.set_opcode(0xef48);
-
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.addr);
-        self.set_field(20..44, op.offset);
-
-        self.set_mem_access(&op.access);
-    }
-
-    fn encode_ld(&mut self, op: &OpLd) {
-        match op.access.space {
-            MemSpace::Global(_) => self.encode_ldg(op),
-            MemSpace::Local => self.encode_ldl(op),
-            MemSpace::Shared => self.encode_lds(op),
-        }
-    }
-
-    fn encode_ldc(&mut self, op: &OpLdc) {
-        assert!(op.cb.src_mod.is_none());
-        let SrcRef::CBuf(cb) = &op.cb.src_ref else {
+impl SM50Op for OpLdc {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(self.cb.src_mod.is_none());
+        let SrcRef::CBuf(cb) = &self.cb.src_ref else {
             panic!("Not a CBuf source");
         };
         let CBuf::Binding(cb_idx) = cb.buf else {
             panic!("Must be a bound constant buffer");
         };
 
-        self.set_opcode(0xef90);
+        e.set_opcode(0xef90);
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.offset);
-        self.set_field(20..36, cb.offset);
-        self.set_field(36..41, cb_idx);
-        self.set_field(
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.offset);
+        e.set_field(20..36, cb.offset);
+        e.set_field(36..41, cb_idx);
+        e.set_field(
             44..46,
-            match op.mode {
+            match self.mode {
                 LdcMode::Indexed => 0_u8,
                 LdcMode::IndexedLinear => 1_u8,
                 LdcMode::IndexedSegmented => 2_u8,
                 LdcMode::IndexedSegmentedLinear => 3_u8,
             },
         );
-        self.set_mem_type(48..51, op.mem_type);
+        e.set_mem_type(48..51, self.mem_type);
     }
+}
 
-    fn encode_stg(&mut self, op: &OpSt) {
-        self.set_opcode(0xeed8);
+impl SM50Op for OpSt {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(match self.access.space {
+            MemSpace::Global(_) => 0xeed8,
+            MemSpace::Local => 0xef50,
+            MemSpace::Shared => 0xef58,
+        });
 
-        self.set_reg_src(0..8, op.data);
-        self.set_reg_src(8..16, op.addr);
-        self.set_field(20..44, op.offset);
-        self.set_mem_access(&op.access);
+        e.set_reg_src(0..8, self.data);
+        e.set_reg_src(8..16, self.addr);
+        e.set_field(20..44, self.offset);
+        e.set_mem_access(&self.access);
     }
+}
 
-    fn encode_stl(&mut self, op: &OpSt) {
-        self.set_opcode(0xef50);
+impl SM50Op for OpLop2 {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        if let Some(imm32) = self.srcs[1].as_imm_not_i20() {
+            e.set_opcode(0x0400);
 
-        self.set_reg_src(0..8, op.data);
-        self.set_reg_src(8..16, op.addr);
-        self.set_field(20..44, op.offset);
-        self.set_mem_access(&op.access);
-    }
+            e.set_dst(self.dst);
+            e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
+            e.set_bit(55, self.srcs[0].src_mod.is_bnot());
+            e.set_src_imm32(20..52, imm32);
 
-    fn encode_sts(&mut self, op: &OpSt) {
-        self.set_opcode(0xef58);
-
-        self.set_reg_src(0..8, op.data);
-        self.set_reg_src(8..16, op.addr);
-        self.set_field(20..44, op.offset);
-        self.set_mem_access(&op.access);
-    }
-
-    fn encode_st(&mut self, op: &OpSt) {
-        match op.access.space {
-            MemSpace::Global(_) => self.encode_stg(op),
-            MemSpace::Local => self.encode_stl(op),
-            MemSpace::Shared => self.encode_sts(op),
-        }
-    }
-
-    fn encode_lop2(&mut self, op: &OpLop2) {
-        if let Some(imm32) = op.srcs[1].as_imm_not_i20() {
-            self.set_opcode(0x0400);
-
-            self.set_dst(op.dst);
-            self.set_reg_src_ref(8..16, op.srcs[0].src_ref);
-            self.set_bit(55, op.srcs[0].src_mod.is_bnot());
-            self.set_src_imm32(20..52, imm32);
-
-            self.set_field(
+            e.set_field(
                 53..55,
-                match op.op {
+                match self.op {
                     LogicOp2::And => 0_u8,
                     LogicOp2::Or => 1_u8,
                     LogicOp2::Xor => 2_u8,
@@ -585,31 +543,31 @@ impl SM50Instr {
                 },
             );
         } else {
-            match &op.srcs[1].src_ref {
+            match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
-                    self.set_opcode(0x5c40);
-                    self.set_reg_src_ref(20..28, op.srcs[1].src_ref);
+                    e.set_opcode(0x5c40);
+                    e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
                 }
                 SrcRef::Imm32(i) => {
-                    self.set_opcode(0x3840);
-                    self.set_src_imm_i20(20..39, 56, *i);
+                    e.set_opcode(0x3840);
+                    e.set_src_imm_i20(20..39, 56, *i);
                 }
                 SrcRef::CBuf(cb) => {
-                    self.set_opcode(0x4c40);
-                    self.set_src_cb(20..39, cb);
+                    e.set_opcode(0x4c40);
+                    e.set_src_cb(20..39, cb);
                 }
                 src1 => panic!("unsupported src1 type for IMUL: {src1}"),
             }
 
-            self.set_dst(op.dst);
-            self.set_reg_src_ref(8..16, op.srcs[0].src_ref);
+            e.set_dst(self.dst);
+            e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
 
-            self.set_bit(39, op.srcs[0].src_mod.is_bnot());
-            self.set_bit(40, op.srcs[1].src_mod.is_bnot());
+            e.set_bit(39, self.srcs[0].src_mod.is_bnot());
+            e.set_bit(40, self.srcs[1].src_mod.is_bnot());
 
-            self.set_field(
+            e.set_field(
                 41..43,
-                match op.op {
+                match self.op {
                     LogicOp2::And => 0_u8,
                     LogicOp2::Or => 1_u8,
                     LogicOp2::Xor => 2_u8,
@@ -617,27 +575,29 @@ impl SM50Instr {
                 },
             );
 
-            self.set_pred_dst(48..51, Dst::None);
+            e.set_pred_dst(48..51, Dst::None);
         }
     }
+}
 
-    fn encode_shf(&mut self, op: &OpShf) {
-        match &op.shift.src_ref {
+impl SM50Op for OpShf {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.shift.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5cf8);
-                self.set_reg_src(20..28, op.shift);
+                e.set_opcode(0x5cf8);
+                e.set_reg_src(20..28, self.shift);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x38f8);
-                assert!(op.shift.src_mod.is_none());
-                self.set_src_imm_i20(20..39, 56, *i);
+                e.set_opcode(0x38f8);
+                assert!(self.shift.src_mod.is_none());
+                e.set_src_imm_i20(20..39, 56, *i);
             }
             src1 => panic!("unsupported src1 type for SHF: {src1}"),
         }
 
-        self.set_field(
+        e.set_field(
             37..39,
-            match op.data_type {
+            match self.data_type {
                 IntType::I32 => 0_u8,
                 IntType::U32 => 0_u8,
                 IntType::U64 => 2_u8,
@@ -646,259 +606,309 @@ impl SM50Instr {
             },
         );
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.low);
-        self.set_reg_src(39..47, op.high);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.low);
+        e.set_reg_src(39..47, self.high);
 
-        self.set_bit(47, false); // .CC
-        self.set_bit(48, op.dst_high);
-        self.set_bit(49, false); // .X
-        self.set_bit(50, op.wrap);
+        e.set_bit(47, false); // .CC
+        e.set_bit(48, self.dst_high);
+        e.set_bit(49, false); // .X
+        e.set_bit(50, self.wrap);
     }
+}
 
-    fn encode_shl(&mut self, op: &OpShl) {
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.src);
-        match op.shift.src_ref {
+impl SM50Op for OpShl {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.src);
+        match self.shift.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c48);
-                self.set_reg_src(20..28, op.shift);
+                e.set_opcode(0x5c48);
+                e.set_reg_src(20..28, self.shift);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x3848);
-                self.set_src_imm_i20(20..39, 56, i);
+                e.set_opcode(0x3848);
+                e.set_src_imm_i20(20..39, 56, i);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4c48);
-                self.set_src_cb(20..39, &cb);
+                e.set_opcode(0x4c48);
+                e.set_src_cb(20..39, &cb);
             }
             src1 => panic!("unsupported src1 type for SHL: {src1}"),
         }
 
-        self.set_bit(39, op.wrap);
+        e.set_bit(39, self.wrap);
     }
+}
 
-    fn encode_shr(&mut self, op: &OpShr) {
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.src);
-        match op.shift.src_ref {
+impl SM50Op for OpShr {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.src);
+        match self.shift.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c28);
-                self.set_reg_src(20..28, op.shift);
+                e.set_opcode(0x5c28);
+                e.set_reg_src(20..28, self.shift);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x3828);
-                self.set_src_imm_i20(20..39, 56, i);
+                e.set_opcode(0x3828);
+                e.set_src_imm_i20(20..39, 56, i);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4c28);
-                self.set_src_cb(20..39, &cb);
+                e.set_opcode(0x4c28);
+                e.set_src_cb(20..39, &cb);
             }
             src1 => panic!("unsupported src1 type for SHL: {src1}"),
         }
 
-        self.set_bit(39, op.wrap);
-        self.set_bit(48, op.signed);
+        e.set_bit(39, self.wrap);
+        e.set_bit(48, self.signed);
     }
+}
 
-    fn encode_i2f(&mut self, op: &OpI2F) {
+impl SM50Op for OpI2F {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
         let abs_bit = 49;
         let neg_bit = 45;
 
-        match &op.src.src_ref {
+        match &self.src.src_ref {
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x38b8);
-                self.set_src_imm_i20(20..39, 56, *imm);
+                e.set_opcode(0x38b8);
+                e.set_src_imm_i20(20..39, 56, *imm);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5cb8);
-                self.set_reg_fmod_src(20..28, abs_bit, neg_bit, op.src);
+                e.set_opcode(0x5cb8);
+                e.set_reg_fmod_src(20..28, abs_bit, neg_bit, self.src);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4cb8);
-                self.set_cb_fmod_src(20..39, abs_bit, neg_bit, op.src);
+                e.set_opcode(0x4cb8);
+                e.set_cb_fmod_src(20..39, abs_bit, neg_bit, self.src);
             }
             src => panic!("Unsupported src type for I2F: {src}"),
         }
 
-        self.set_field(41..43, 0_u8); // TODO: subop
-        self.set_bit(13, op.src_type.is_signed());
-        self.set_field(8..10, (op.dst_type.bits() / 8).ilog2());
-        self.set_rnd_mode(39..41, op.rnd_mode);
-        self.set_field(10..12, (op.src_type.bits() / 8).ilog2());
+        e.set_field(41..43, 0_u8); // TODO: subop
+        e.set_bit(13, self.src_type.is_signed());
+        e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
+        e.set_rnd_mode(39..41, self.rnd_mode);
+        e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_f2f(&mut self, op: &OpF2F) {
-        assert!(op.src.is_reg_or_zero());
+impl SM50Op for OpF2F {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(self.src.is_reg_or_zero());
 
         let abs_bit = 49;
         let neg_bit = 45;
 
-        match &op.src.src_ref {
+        match &self.src.src_ref {
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x38a8);
-                self.set_src_imm_i20(20..39, 56, *imm);
+                e.set_opcode(0x38a8);
+                e.set_src_imm_i20(20..39, 56, *imm);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5ca8);
-                self.set_reg_fmod_src(20..28, abs_bit, neg_bit, op.src);
+                e.set_opcode(0x5ca8);
+                e.set_reg_fmod_src(20..28, abs_bit, neg_bit, self.src);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4ca8);
-                self.set_cb_fmod_src(20..39, abs_bit, neg_bit, op.src);
+                e.set_opcode(0x4ca8);
+                e.set_cb_fmod_src(20..39, abs_bit, neg_bit, self.src);
             }
             src => panic!("Unsupported src type for F2F: {src}"),
         }
 
         // no saturation in the IR, would be bit 50
-        self.set_field(8..10, (op.dst_type.bits() / 8).ilog2());
-        self.set_field(10..12, (op.src_type.bits() / 8).ilog2());
-        self.set_rnd_mode(39..41, op.rnd_mode);
-        self.set_bit(42, op.integer_rnd);
-        self.set_bit(44, op.ftz);
+        e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
+        e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
+        e.set_rnd_mode(39..41, self.rnd_mode);
+        e.set_bit(42, self.integer_rnd);
+        e.set_bit(44, self.ftz);
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_i2i(&mut self, op: &OpI2I) {
-        match &op.src.src_ref {
+impl SM50Op for OpI2I {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.src.src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x38e0);
-                self.set_src_imm_i20(20..39, 56, *imm32);
+                e.set_opcode(0x38e0);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5ce0);
-                self.set_reg_src(20..28, op.src);
+                e.set_opcode(0x5ce0);
+                e.set_reg_src(20..28, self.src);
             }
             SrcRef::CBuf(cbuf) => {
-                self.set_opcode(0x4ce0);
-                self.set_src_cb(20..39, cbuf);
+                e.set_opcode(0x4ce0);
+                e.set_src_cb(20..39, cbuf);
             }
             src => panic!("Unsupported src type for I2I: {src}"),
         }
 
-        self.set_bit(45, op.neg);
-        self.set_bit(49, op.abs);
-        self.set_bit(50, op.saturate);
-        self.set_bit(12, op.dst_type.is_signed());
-        self.set_bit(13, op.src_type.is_signed());
-        self.set_field(8..10, (op.dst_type.bits() / 8).ilog2());
-        self.set_field(10..12, (op.src_type.bits() / 8).ilog2());
-        self.set_field(41..43, 0u8); // src.B1-3
-        self.set_bit(47, false); // dst.CC
+        e.set_bit(45, self.neg);
+        e.set_bit(49, self.abs);
+        e.set_bit(50, self.saturate);
+        e.set_bit(12, self.dst_type.is_signed());
+        e.set_bit(13, self.src_type.is_signed());
+        e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
+        e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
+        e.set_field(41..43, 0u8); // src.B1-3
+        e.set_bit(47, false); // dst.CC
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_imad(&mut self, op: &OpIMad) {
+impl SM50Op for OpIMad {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
         let neg_1_bit = 51;
         let neg_2_bit = 52;
 
-        match &op.srcs[2].src_ref {
+        match &self.srcs[2].src_ref {
             SrcRef::Imm32(imm) => {
                 panic!("Invalid immediate src2 for IMAD {}", *imm)
             }
-            SrcRef::Reg(_) => match &op.srcs[1].src_ref {
+            SrcRef::Reg(_) => match &self.srcs[1].src_ref {
                 SrcRef::Imm32(imm) => {
-                    self.set_opcode(0x3400);
-                    self.set_src_imm_i20(20..39, 56, *imm);
+                    e.set_opcode(0x3400);
+                    e.set_src_imm_i20(20..39, 56, *imm);
                 }
                 SrcRef::Zero | SrcRef::Reg(_) => {
-                    self.set_opcode(0x5a00);
-                    self.set_reg_ineg_src(20..28, neg_1_bit, op.srcs[1]);
+                    e.set_opcode(0x5a00);
+                    e.set_reg_ineg_src(20..28, neg_1_bit, self.srcs[1]);
                 }
                 SrcRef::CBuf(_) => {
-                    self.set_opcode(0x4a00);
-                    self.set_cb_ineg_src(20..39, neg_1_bit, op.srcs[1]);
+                    e.set_opcode(0x4a00);
+                    e.set_cb_ineg_src(20..39, neg_1_bit, self.srcs[1]);
                 }
 
                 src => panic!("Invalid src1 for IMAD {src}"),
             },
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x5200);
-                self.set_reg_ineg_src(39..47, neg_1_bit, op.srcs[1]);
-                self.set_cb_ineg_src(20..39, neg_2_bit, op.srcs[2]);
+                e.set_opcode(0x5200);
+                e.set_reg_ineg_src(39..47, neg_1_bit, self.srcs[1]);
+                e.set_cb_ineg_src(20..39, neg_2_bit, self.srcs[2]);
             }
             src => panic!("Unsupported src2 type for F2F: {src}"),
         }
 
-        self.set_bit(48, op.signed); // src0 signed
-        self.set_bit(
+        e.set_bit(48, self.signed); // src0 signed
+        e.set_bit(
             51,
-            op.srcs[0].src_mod.is_ineg() ^ op.srcs[1].src_mod.is_ineg(),
+            self.srcs[0].src_mod.is_ineg() ^ self.srcs[1].src_mod.is_ineg(),
         );
-        self.set_bit(53, op.signed); // src1 signed
+        e.set_bit(53, self.signed); // src1 signed
 
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_dst(op.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_imul(&mut self, op: &OpIMul) {
-        assert!(op.srcs[0].src_mod.is_none());
-        assert!(op.srcs[1].src_mod.is_none());
+impl SM50Op for OpIMul {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(self.srcs[0].src_mod.is_none());
+        assert!(self.srcs[1].src_mod.is_none());
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.srcs[0]);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
 
-        if let Some(i) = op.srcs[1].as_imm_not_i20() {
-            self.set_opcode(0x1fc0);
-            self.set_src_imm32(20..52, i);
+        if let Some(i) = self.srcs[1].as_imm_not_i20() {
+            e.set_opcode(0x1fc0);
+            e.set_src_imm32(20..52, i);
 
-            self.set_bit(53, op.high);
-            self.set_bit(54, op.signed[0]);
-            self.set_bit(55, op.signed[1]);
+            e.set_bit(53, self.high);
+            e.set_bit(54, self.signed[0]);
+            e.set_bit(55, self.signed[1]);
         } else {
-            match op.srcs[1].src_ref {
+            match self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
-                    self.set_opcode(0x5c38);
-                    self.set_reg_src(20..28, op.srcs[1]);
+                    e.set_opcode(0x5c38);
+                    e.set_reg_src(20..28, self.srcs[1]);
                 }
                 SrcRef::Imm32(i) => {
-                    self.set_opcode(0x3838);
-                    self.set_src_imm_i20(20..39, 56, i);
+                    e.set_opcode(0x3838);
+                    e.set_src_imm_i20(20..39, 56, i);
                 }
                 SrcRef::CBuf(cb) => {
-                    self.set_opcode(0x4c38);
-                    self.set_src_cb(20..39, &cb);
+                    e.set_opcode(0x4c38);
+                    e.set_src_cb(20..39, &cb);
                 }
                 src1 => panic!("unsupported src1 type for IMUL: {src1}"),
             };
 
-            self.set_bit(39, op.high);
-            self.set_bit(40, op.signed[0]);
-            self.set_bit(41, op.signed[1]);
+            e.set_bit(39, self.high);
+            e.set_bit(40, self.signed[0]);
+            e.set_bit(41, self.signed[1]);
         }
     }
+}
 
-    fn encode_f2i(&mut self, op: &OpF2I) {
-        match &op.src.src_ref {
+impl SM50Op for OpF2I {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.src.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5cb0);
-                self.set_reg_fmod_src(20..28, 49, 45, op.src);
+                e.set_opcode(0x5cb0);
+                e.set_reg_fmod_src(20..28, 49, 45, self.src);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x38b0);
-                self.set_src_imm_f20(20..39, 56, *i);
+                e.set_opcode(0x38b0);
+                e.set_src_imm_f20(20..39, 56, *i);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4cb0);
-                self.set_cb_fmod_src(20..39, 49, 45, op.src);
+                e.set_opcode(0x4cb0);
+                e.set_cb_fmod_src(20..39, 49, 45, self.src);
             }
             src => panic!("Unsupported src type for F2I: {src}"),
         }
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
 
-        self.set_field(8..10, (op.dst_type.bits() / 8).ilog2());
-        self.set_field(10..12, (op.src_type.bits() / 8).ilog2());
-        self.set_bit(12, op.dst_type.is_signed());
-        self.set_rnd_mode(39..41, op.rnd_mode);
-        self.set_bit(44, op.ftz);
-        self.set_bit(47, false); // .CC
+        e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
+        e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
+        e.set_bit(12, self.dst_type.is_signed());
+        e.set_rnd_mode(39..41, self.rnd_mode);
+        e.set_bit(44, self.ftz);
+        e.set_bit(47, false); // .CC
     }
+}
 
+impl SM50Op for OpIMnMx {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                e.set_opcode(0x5c20);
+                e.set_reg_src(20..28, self.srcs[1]);
+            }
+            SrcRef::Imm32(i) => {
+                e.set_opcode(0x3820);
+                e.set_src_imm_f20(20..39, 56, *i);
+            }
+            SrcRef::CBuf(cb) => {
+                e.set_opcode(0x4c20);
+                e.set_src_cb(20..39, cb);
+            }
+            src1 => panic!("unsupported src1 type for IMNMX: {src1}"),
+        }
+
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_pred_src(39..42, 42, self.min);
+        e.set_bit(47, false); // .CC
+        e.set_bit(
+            48,
+            match self.cmp_type {
+                IntCmpType::U32 => false,
+                IntCmpType::I32 => true,
+            },
+        );
+    }
+}
+
+impl SM50Encoder<'_> {
     fn set_pred_set_op(&mut self, range: Range<usize>, op: PredSetOp) {
         assert!(range.len() == 2);
         self.set_field(
@@ -907,36 +917,6 @@ impl SM50Instr {
                 PredSetOp::And => 0_u8,
                 PredSetOp::Or => 1_u8,
                 PredSetOp::Xor => 2_u8,
-            },
-        );
-    }
-
-    fn encode_imnmx(&mut self, op: &OpIMnMx) {
-        match &op.srcs[1].src_ref {
-            SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c20);
-                self.set_reg_src(20..28, op.srcs[1]);
-            }
-            SrcRef::Imm32(i) => {
-                self.set_opcode(0x3820);
-                self.set_src_imm_f20(20..39, 56, *i);
-            }
-            SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4c20);
-                self.set_src_cb(20..39, cb);
-            }
-            src1 => panic!("unsupported src1 type for IMNMX: {src1}"),
-        }
-
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_pred_src(39..42, 42, op.min);
-        self.set_bit(47, false); // .CC
-        self.set_bit(
-            48,
-            match op.cmp_type {
-                IntCmpType::U32 => false,
-                IntCmpType::I32 => true,
             },
         );
     }
@@ -955,59 +935,65 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_isetp(&mut self, op: &OpISetP) {
-        assert!(op.srcs[0].src_mod.is_none());
-        assert!(op.srcs[1].src_mod.is_none());
+impl SM50Op for OpISetP {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(self.srcs[0].src_mod.is_none());
+        assert!(self.srcs[1].src_mod.is_none());
 
-        match &op.srcs[1].src_ref {
+        match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5b60);
-                self.set_reg_src(20..28, op.srcs[1]);
+                e.set_opcode(0x5b60);
+                e.set_reg_src(20..28, self.srcs[1]);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x3660);
-                self.set_src_imm_i20(20..39, 56, *i);
+                e.set_opcode(0x3660);
+                e.set_src_imm_i20(20..39, 56, *i);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4b60);
-                self.set_src_cb(20..39, cb);
+                e.set_opcode(0x4b60);
+                e.set_src_cb(20..39, cb);
             }
             _ => panic!("Unsupported src type"),
         }
 
-        self.set_pred_dst(0..3, Dst::None); // dst1
-        self.set_pred_dst(3..6, op.dst);
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_pred_src(39..42, 42, op.accum);
+        e.set_pred_dst(0..3, Dst::None); // dst1
+        e.set_pred_dst(3..6, self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_pred_src(39..42, 42, self.accum);
 
-        self.set_bit(43, false); // .X
-        self.set_pred_set_op(45..47, op.set_op);
+        e.set_bit(43, false); // .X
+        e.set_pred_set_op(45..47, self.set_op);
 
-        self.set_field(
+        e.set_field(
             48..49,
-            match op.cmp_type {
+            match self.cmp_type {
                 IntCmpType::U32 => 0_u32,
                 IntCmpType::I32 => 1_u32,
             },
         );
-        self.set_int_cmp_op(49..52, op.cmp_op);
+        e.set_int_cmp_op(49..52, self.cmp_op);
     }
+}
 
-    fn encode_sust(&mut self, op: &OpSuSt) {
-        self.set_opcode(0xeb20);
+impl SM50Op for OpSuSt {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xeb20);
 
-        self.set_reg_src(8..16, op.coord);
-        self.set_reg_src(0..8, op.data);
-        self.set_reg_src(39..47, op.handle);
+        e.set_reg_src(8..16, self.coord);
+        e.set_reg_src(0..8, self.data);
+        e.set_reg_src(39..47, self.handle);
 
-        self.set_image_dim(33..36, op.image_dim);
-        self.set_mem_order(&op.mem_order);
+        e.set_image_dim(33..36, self.image_dim);
+        e.set_mem_order(&self.mem_order);
 
-        assert!(op.mask == 0x1 || op.mask == 0x3 || op.mask == 0xf);
-        self.set_field(20..24, op.mask);
+        assert!(self.mask == 0x1 || self.mask == 0x3 || self.mask == 0xf);
+        e.set_field(20..24, self.mask);
     }
+}
 
+impl SM50Encoder<'_> {
     fn set_atom_op(&mut self, range: Range<usize>, atom_op: AtomOp) {
         assert!(range.len() == 4);
         self.set_field(
@@ -1026,69 +1012,69 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_atomg(&mut self, op: &OpAtom) {
-        self.set_opcode(0xed00);
-        self.set_mem_order(&op.mem_order);
+impl SM50Op for OpAtom {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match self.mem_space {
+            MemSpace::Global(_) => {
+                e.set_opcode(0xed00);
+                e.set_mem_order(&self.mem_order);
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.addr);
-        self.set_reg_src(20..28, op.data);
-        self.set_field(28..48, op.addr_offset);
-        self.set_field(
-            48..49,
-            match op.mem_space.addr_type() {
-                MemAddrType::A32 => 0_u8,
-                MemAddrType::A64 => 1_u8,
-            },
-        );
-        self.set_field(
-            49..52,
-            match op.atom_type {
-                AtomType::U32 => 0_u8,
-                AtomType::I32 => 1_u8,
-                AtomType::U64 => 2_u8,
-                AtomType::F32 => 3_u8,
-                // NOTE: U128 => 4_u8,
-                AtomType::I64 => 5_u8,
-                // TODO: do something about ATOMG.F64
-                other => panic!("ATOMG.{other} not supported on SM50"),
-            },
-        );
-        self.set_atom_op(52..56, op.atom_op);
-    }
-
-    fn encode_atoms(&mut self, op: &OpAtom) {
-        self.set_opcode(0xec00);
-        self.set_mem_order(&op.mem_order);
-
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.addr);
-        self.set_reg_src(20..28, op.data);
-        self.set_field(
-            28..30,
-            match op.atom_type {
-                AtomType::U32 => 0_u8,
-                AtomType::I32 => 1_u8,
-                AtomType::U64 => 2_u8,
-                AtomType::I64 => 3_u8,
-                // TODO: do something about ATOMS.F{32,64}
-                other => panic!("ATOMS.{other} not supported on SM50"),
-            },
-        );
-        assert_eq!(op.addr_offset % 4, 0);
-        self.set_field(30..52, op.addr_offset / 4);
-        self.set_atom_op(52..56, op.atom_op);
-    }
-
-    fn encode_atom(&mut self, op: &OpAtom) {
-        match op.mem_space {
-            MemSpace::Global(_) => self.encode_atomg(op),
+                e.set_dst(self.dst);
+                e.set_reg_src(8..16, self.addr);
+                e.set_reg_src(20..28, self.data);
+                e.set_field(28..48, self.addr_offset);
+                e.set_field(
+                    48..49,
+                    match self.mem_space.addr_type() {
+                        MemAddrType::A32 => 0_u8,
+                        MemAddrType::A64 => 1_u8,
+                    },
+                );
+                e.set_field(
+                    49..52,
+                    match self.atom_type {
+                        AtomType::U32 => 0_u8,
+                        AtomType::I32 => 1_u8,
+                        AtomType::U64 => 2_u8,
+                        AtomType::F32 => 3_u8,
+                        // NOTE: U128 => 4_u8,
+                        AtomType::I64 => 5_u8,
+                        // TODO: do something about ATOMG.F64
+                        other => panic!("ATOMG.{other} not supported on SM50"),
+                    },
+                );
+                e.set_atom_op(52..56, self.atom_op);
+            }
             MemSpace::Local => panic!("Atomics do not support local"),
-            MemSpace::Shared => self.encode_atoms(op),
+            MemSpace::Shared => {
+                e.set_opcode(0xec00);
+                e.set_mem_order(&self.mem_order);
+
+                e.set_dst(self.dst);
+                e.set_reg_src(8..16, self.addr);
+                e.set_reg_src(20..28, self.data);
+                e.set_field(
+                    28..30,
+                    match self.atom_type {
+                        AtomType::U32 => 0_u8,
+                        AtomType::I32 => 1_u8,
+                        AtomType::U64 => 2_u8,
+                        AtomType::I64 => 3_u8,
+                        // TODO: do something about ATOMS.F{32,64}
+                        other => panic!("ATOMS.{other} not supported on SM50"),
+                    },
+                );
+                assert_eq!(self.addr_offset % 4, 0);
+                e.set_field(30..52, self.addr_offset / 4);
+                e.set_atom_op(52..56, self.atom_op);
+            }
         }
     }
+}
 
+impl SM50Encoder<'_> {
     fn set_tex_dim(&mut self, range: Range<usize>, dim: TexDim) {
         assert!(range.len() == 3);
         self.set_field(
@@ -1118,110 +1104,123 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_tex(&mut self, op: &OpTex) {
-        self.set_opcode(0xdeb8);
+impl SM50Op for OpTex {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xdeb8);
 
-        self.set_dst(op.dsts[0]);
-        assert!(op.dsts[1].is_none());
-        assert!(op.fault.is_none());
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(20..28, op.srcs[1]);
+        e.set_dst(self.dsts[0]);
+        assert!(self.dsts[1].is_none());
+        assert!(self.fault.is_none());
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(20..28, self.srcs[1]);
 
-        self.set_tex_dim(28..31, op.dim);
-        self.set_field(31..35, op.mask);
-        self.set_bit(35, false); // ToDo: NDV
-        self.set_bit(36, op.offset);
-        self.set_tex_lod_mode(37..39, op.lod_mode);
-        self.set_bit(49, false); // TODO: .NODEP
-        self.set_bit(50, op.z_cmpr);
+        e.set_tex_dim(28..31, self.dim);
+        e.set_field(31..35, self.mask);
+        e.set_bit(35, false); // ToDo: NDV
+        e.set_bit(36, self.offset);
+        e.set_tex_lod_mode(37..39, self.lod_mode);
+        e.set_bit(49, false); // TODO: .NODEP
+        e.set_bit(50, self.z_cmpr);
     }
+}
 
-    fn encode_tld(&mut self, op: &OpTld) {
-        self.set_opcode(0xdd38);
+impl SM50Op for OpTld {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xdd38);
 
-        self.set_dst(op.dsts[0]);
-        assert!(op.dsts[1].is_none());
-        assert!(op.fault.is_none());
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(20..28, op.srcs[1]);
+        e.set_dst(self.dsts[0]);
+        assert!(self.dsts[1].is_none());
+        assert!(self.fault.is_none());
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(20..28, self.srcs[1]);
 
-        self.set_tex_dim(28..31, op.dim);
-        self.set_field(31..35, op.mask);
-        self.set_bit(35, op.offset);
-        self.set_bit(49, false); // TODO: .NODEP
-        self.set_bit(50, op.is_ms);
+        e.set_tex_dim(28..31, self.dim);
+        e.set_field(31..35, self.mask);
+        e.set_bit(35, self.offset);
+        e.set_bit(49, false); // TODO: .NODEP
+        e.set_bit(50, self.is_ms);
 
         assert!(
-            op.lod_mode == TexLodMode::Zero || op.lod_mode == TexLodMode::Lod
+            self.lod_mode == TexLodMode::Zero
+                || self.lod_mode == TexLodMode::Lod
         );
-        self.set_bit(55, op.lod_mode == TexLodMode::Lod);
+        e.set_bit(55, self.lod_mode == TexLodMode::Lod);
     }
+}
 
-    fn encode_tld4(&mut self, op: &OpTld4) {
-        self.set_opcode(0xdef8);
+impl SM50Op for OpTld4 {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xdef8);
 
-        self.set_dst(op.dsts[0]);
-        assert!(op.dsts[1].is_none());
-        assert!(op.fault.is_none());
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(20..28, op.srcs[1]);
+        e.set_dst(self.dsts[0]);
+        assert!(self.dsts[1].is_none());
+        assert!(self.fault.is_none());
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(20..28, self.srcs[1]);
 
-        self.set_tex_dim(28..31, op.dim);
-        self.set_field(31..35, op.mask);
-        self.set_bit(35, false); // ToDo: NDV
-        self.set_field(
+        e.set_tex_dim(28..31, self.dim);
+        e.set_field(31..35, self.mask);
+        e.set_bit(35, false); // ToDo: NDV
+        e.set_field(
             36..38,
-            match op.offset_mode {
+            match self.offset_mode {
                 Tld4OffsetMode::None => 0_u8,
                 Tld4OffsetMode::AddOffI => 1_u8,
                 Tld4OffsetMode::PerPx => 2_u8,
             },
         );
-        self.set_field(38..40, op.comp);
-        self.set_bit(49, false); // TODO: .NODEP
-        self.set_bit(50, op.z_cmpr);
+        e.set_field(38..40, self.comp);
+        e.set_bit(49, false); // TODO: .NODEP
+        e.set_bit(50, self.z_cmpr);
     }
+}
 
-    fn encode_tmml(&mut self, op: &OpTmml) {
-        self.set_opcode(0xdf60);
+impl SM50Op for OpTmml {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xdf60);
 
-        self.set_dst(op.dsts[0]);
-        assert!(op.dsts[1].is_none());
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(20..28, op.srcs[1]);
+        e.set_dst(self.dsts[0]);
+        assert!(self.dsts[1].is_none());
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(20..28, self.srcs[1]);
 
-        self.set_tex_dim(28..31, op.dim);
-        self.set_field(31..35, op.mask);
-        self.set_bit(35, false); // ToDo: NDV
-        self.set_bit(49, false); // TODO: .NODEP
+        e.set_tex_dim(28..31, self.dim);
+        e.set_field(31..35, self.mask);
+        e.set_bit(35, false); // ToDo: NDV
+        e.set_bit(49, false); // TODO: .NODEP
     }
+}
 
-    fn encode_txd(&mut self, op: &OpTxd) {
-        self.set_opcode(0xde78);
+impl SM50Op for OpTxd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xde78);
 
-        self.set_dst(op.dsts[0]);
-        assert!(op.dsts[1].is_none());
-        assert!(op.fault.is_none());
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(20..28, op.srcs[1]);
+        e.set_dst(self.dsts[0]);
+        assert!(self.dsts[1].is_none());
+        assert!(self.fault.is_none());
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(20..28, self.srcs[1]);
 
-        self.set_tex_dim(28..31, op.dim);
-        self.set_field(31..35, op.mask);
-        self.set_bit(35, op.offset);
-        self.set_bit(49, false); // TODO: .NODEP
+        e.set_tex_dim(28..31, self.dim);
+        e.set_field(31..35, self.mask);
+        e.set_bit(35, self.offset);
+        e.set_bit(49, false); // TODO: .NODEP
     }
+}
 
-    fn encode_txq(&mut self, op: &OpTxq) {
-        self.set_opcode(0xdf50);
+impl SM50Op for OpTxq {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xdf50);
 
-        self.set_dst(op.dsts[0]);
-        assert!(op.dsts[1].is_none());
-        self.set_reg_src(8..16, op.src);
+        e.set_dst(self.dsts[0]);
+        assert!(self.dsts[1].is_none());
+        e.set_reg_src(8..16, self.src);
 
-        self.set_field(
+        e.set_field(
             22..28,
-            match op.query {
+            match self.query {
                 TexQuery::Dimension => 1_u8,
                 TexQuery::TextureType => 2_u8,
                 TexQuery::SamplerPos => 5_u8,
@@ -1231,34 +1230,36 @@ impl SM50Instr {
                 // TexQuery::BorderColour => 0x16,
             },
         );
-        self.set_field(31..35, op.mask);
-        self.set_bit(49, false); // TODO: .NODEP
+        e.set_field(31..35, self.mask);
+        e.set_bit(49, false); // TODO: .NODEP
     }
+}
 
-    fn encode_ipa(&mut self, op: &OpIpa) {
-        self.set_opcode(0xe000);
+impl SM50Op for OpIpa {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe000);
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, 0.into()); // addr
-        self.set_reg_src(20..28, op.inv_w);
-        self.set_reg_src(39..47, op.offset);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, 0.into()); // addr
+        e.set_reg_src(20..28, self.inv_w);
+        e.set_reg_src(39..47, self.offset);
 
-        assert!(op.addr % 4 == 0);
-        self.set_field(28..38, op.addr);
-        self.set_bit(38, false); // .IDX
-        self.set_pred_dst(47..50, Dst::None); // TODO: What is this for?
-        self.set_bit(51, false); // .SAT
-        self.set_field(
+        assert!(self.addr % 4 == 0);
+        e.set_field(28..38, self.addr);
+        e.set_bit(38, false); // .IDX
+        e.set_pred_dst(47..50, Dst::None); // TODO: What is this for?
+        e.set_bit(51, false); // .SAT
+        e.set_field(
             52..54,
-            match op.loc {
+            match self.loc {
                 InterpLoc::Default => 0_u8,
                 InterpLoc::Centroid => 1_u8,
                 InterpLoc::Offset => 2_u8,
             },
         );
-        self.set_field(
+        e.set_field(
             54..56,
-            match op.freq {
+            match self.freq {
                 InterpFreq::Pass => 0_u8,
                 InterpFreq::PassMulW => 1_u8,
                 InterpFreq::Constant => 2_u8,
@@ -1266,60 +1267,62 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_ald(&mut self, op: &OpALd) {
-        self.set_opcode(0xefd8);
+impl SM50Op for OpALd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xefd8);
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.offset);
-        self.set_reg_src(39..47, op.vtx);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.offset);
+        e.set_reg_src(39..47, self.vtx);
 
-        assert!(!op.access.phys);
-        self.set_field(20..30, op.access.addr);
-        self.set_bit(31, op.access.patch);
-        self.set_bit(32, op.access.output);
-        self.set_field(47..49, op.access.comps - 1);
+        assert!(!self.access.phys);
+        e.set_field(20..30, self.access.addr);
+        e.set_bit(31, self.access.patch);
+        e.set_bit(32, self.access.output);
+        e.set_field(47..49, self.access.comps - 1);
     }
+}
 
-    fn encode_ast(&mut self, op: &OpASt) {
-        self.set_opcode(0xeff0);
+impl SM50Op for OpASt {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xeff0);
 
-        self.set_reg_src(0..8, op.data);
-        self.set_reg_src(8..16, op.offset);
-        self.set_reg_src(39..47, op.vtx);
+        e.set_reg_src(0..8, self.data);
+        e.set_reg_src(8..16, self.offset);
+        e.set_reg_src(39..47, self.vtx);
 
-        assert!(!op.access.phys);
-        assert!(op.access.output);
-        self.set_field(20..30, op.access.addr);
-        self.set_bit(31, op.access.patch);
-        self.set_bit(32, op.access.output);
-        self.set_field(47..49, op.access.comps - 1);
+        assert!(!self.access.phys);
+        assert!(self.access.output);
+        e.set_field(20..30, self.access.addr);
+        e.set_bit(31, self.access.patch);
+        e.set_bit(32, self.access.output);
+        e.set_field(47..49, self.access.comps - 1);
     }
+}
 
-    fn encode_membar(&mut self, op: &OpMemBar) {
-        self.set_opcode(0xef98);
+impl SM50Op for OpMemBar {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xef98);
 
-        self.set_field(
+        e.set_field(
             8..10,
-            match op.scope {
+            match self.scope {
                 MemScope::CTA => 0_u8,
                 MemScope::GPU => 1_u8,
                 MemScope::System => 2_u8,
             },
         );
     }
+}
 
-    fn set_rel_offset(
-        &mut self,
-        range: Range<usize>,
-        label: &Label,
-        ip: usize,
-        labels: &HashMap<Label, usize>,
-    ) {
-        let ip = u32::try_from(ip).unwrap();
+impl SM50Encoder<'_> {
+    fn set_rel_offset(&mut self, range: Range<usize>, label: &Label) {
+        let ip = u32::try_from(self.ip).unwrap();
         let ip = i32::try_from(ip).unwrap();
 
-        let target_ip = *labels.get(label).unwrap();
+        let target_ip = *self.labels.get(label).unwrap();
         let target_ip = u32::try_from(target_ip).unwrap();
         let target_ip = i32::try_from(target_ip).unwrap();
 
@@ -1327,244 +1330,255 @@ impl SM50Instr {
 
         self.set_field(range, rel_offset);
     }
+}
 
-    fn encode_bra(
-        &mut self,
-        op: &OpBra,
-        ip: usize,
-        labels: &HashMap<Label, usize>,
-    ) {
-        self.set_opcode(0xe240);
-        self.set_rel_offset(20..44, &op.target, ip, labels);
-        self.set_field(0..5, 0xF_u8); // TODO: Pred?
+impl SM50Op for OpBra {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe240);
+        e.set_rel_offset(20..44, &self.target);
+        e.set_field(0..5, 0xF_u8); // TODO: Pred?
     }
+}
 
-    fn encode_exit(&mut self, _op: &OpExit) {
-        self.set_opcode(0xe300);
-
-        // TODO: pred
-        self.set_pred(&Pred {
-            pred_ref: PredRef::None,
-            pred_inv: false,
-        });
+impl SM50Op for OpExit {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe300);
 
         // TODO: CC flags
-        self.set_field(0..4, 0xf_u8); // CC.T
+        e.set_field(0..4, 0xf_u8); // CC.T
     }
+}
 
-    fn encode_bar(&mut self, _op: &OpBar) {
-        self.set_opcode(0xf0a8);
+impl SM50Op for OpBar {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xf0a8);
 
-        self.set_reg_src(8..16, SrcRef::Zero.into());
+        e.set_reg_src(8..16, SrcRef::Zero.into());
 
         // 00: RED.POPC
         // 01: RED.AND
         // 02: RED.OR
-        self.set_field(35..37, 0_u8);
+        e.set_field(35..37, 0_u8);
 
         // 00: SYNC
         // 01: ARV
         // 02: RED
         // 03: SCAN
-        self.set_field(32..35, 0_u8);
+        e.set_field(32..35, 0_u8);
 
-        self.set_pred_src(39..42, 42, SrcRef::True.into());
+        e.set_pred_src(39..42, 42, SrcRef::True.into());
     }
+}
 
-    fn encode_cs2r(&mut self, op: &OpCS2R) {
-        self.set_opcode(0x50c8);
-        self.set_dst(op.dst);
-        self.set_field(20..28, op.idx);
+impl SM50Op for OpCS2R {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0x50c8);
+        e.set_dst(self.dst);
+        e.set_field(20..28, self.idx);
     }
+}
 
-    fn encode_kill(&mut self, _op: &OpKill) {
-        self.set_opcode(0xe330);
-        self.set_field(0..5, 0x0f_u8);
+impl SM50Op for OpKill {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xe330);
+        e.set_field(0..5, 0x0f_u8);
     }
+}
 
-    fn encode_nop(&mut self) {
-        self.set_opcode(0x50b0);
-
-        // TODO: pred
-        self.set_pred(&Pred {
-            pred_ref: PredRef::None,
-            pred_inv: false,
-        });
+impl SM50Op for OpNop {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0x50b0);
 
         // TODO: CC flags
-        self.set_field(8..12, 0xf_u8); // CC.T
+        e.set_field(8..12, 0xf_u8); // CC.T
     }
+}
 
-    fn encode_s2r(&mut self, op: &OpS2R) {
-        self.set_opcode(0xf0c8);
-        self.set_dst(op.dst);
-        self.set_field(20..28, op.idx);
+impl SM50Op for OpS2R {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xf0c8);
+        e.set_dst(self.dst);
+        e.set_field(20..28, self.idx);
     }
+}
 
-    fn encode_popc(&mut self, op: &OpPopC) {
-        assert!(op.src.is_reg_or_zero());
+impl SM50Op for OpPopC {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(self.src.is_reg_or_zero());
 
-        match &op.src.src_ref {
+        match &self.src.src_ref {
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x3808);
-                self.set_src_imm_i20(20..39, 56, *imm);
+                e.set_opcode(0x3808);
+                e.set_src_imm_i20(20..39, 56, *imm);
             }
             SrcRef::Reg(_) => {
-                self.set_opcode(0x5c08);
-                self.set_reg_src(20..28, op.src);
+                e.set_opcode(0x5c08);
+                e.set_reg_src(20..28, self.src);
             }
             SrcRef::CBuf(cbuf) => {
-                self.set_opcode(0x4c08);
-                self.set_src_cb(20..39, cbuf);
+                e.set_opcode(0x4c08);
+                e.set_src_cb(20..39, cbuf);
             }
             src => panic!("Invalid source for POPC: {src}"),
         }
 
-        let not_mod = matches!(op.src.src_mod, SrcMod::BNot);
-        self.set_bit(40, not_mod);
-        self.set_dst(op.dst);
+        let not_mod = matches!(self.src.src_mod, SrcMod::BNot);
+        e.set_bit(40, not_mod);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_fadd(&mut self, op: &OpFAdd) {
-        if let Some(imm32) = op.srcs[1].as_imm_not_f20() {
-            self.set_opcode(0x0800);
-            self.set_dst(op.dst);
-            self.set_reg_fmod_src(8..16, 54, 56, op.srcs[0]);
-            self.set_src_imm32(20..52, imm32);
-            self.set_bit(55, op.ftz);
+impl SM50Op for OpFAdd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        if let Some(imm32) = self.srcs[1].as_imm_not_f20() {
+            e.set_opcode(0x0800);
+            e.set_dst(self.dst);
+            e.set_reg_fmod_src(8..16, 54, 56, self.srcs[0]);
+            e.set_src_imm32(20..52, imm32);
+            e.set_bit(55, self.ftz);
         } else {
-            match &op.srcs[1].src_ref {
+            match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
-                    self.set_opcode(0x5c58);
-                    self.set_reg_fmod_src(20..28, 49, 45, op.srcs[1]);
+                    e.set_opcode(0x5c58);
+                    e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
                 }
                 SrcRef::Imm32(imm) => {
-                    self.set_opcode(0x3858);
-                    self.set_src_imm_f20(20..39, 56, *imm);
-                    assert!(op.srcs[1].src_mod.is_none());
+                    e.set_opcode(0x3858);
+                    e.set_src_imm_f20(20..39, 56, *imm);
+                    assert!(self.srcs[1].src_mod.is_none());
                 }
                 SrcRef::CBuf(_) => {
-                    self.set_opcode(0x4c58);
-                    self.set_cb_fmod_src(20..39, 49, 45, op.srcs[1]);
+                    e.set_opcode(0x4c58);
+                    e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
                 }
                 _ => panic!("Unsupported src type"),
             }
 
-            self.set_dst(op.dst);
-            self.set_reg_fmod_src(8..16, 46, 48, op.srcs[0]);
+            e.set_dst(self.dst);
+            e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
 
-            self.set_rnd_mode(39..41, op.rnd_mode);
-            self.set_bit(44, op.ftz);
-            self.set_bit(50, op.saturate);
+            e.set_rnd_mode(39..41, self.rnd_mode);
+            e.set_bit(44, self.ftz);
+            e.set_bit(50, self.saturate);
         }
     }
+}
 
-    fn encode_fmnmx(&mut self, op: &OpFMnMx) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpFMnMx {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x3860);
-                self.set_src_imm_f20(20..39, 56, *imm32);
+                e.set_opcode(0x3860);
+                e.set_src_imm_f20(20..39, 56, *imm32);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c60);
-                self.set_reg_fmod_src(20..28, 49, 45, op.srcs[1]);
+                e.set_opcode(0x5c60);
+                e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4c60);
-                self.set_cb_fmod_src(20..39, 49, 45, op.srcs[1]);
+                e.set_opcode(0x4c60);
+                e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
             }
             src => panic!("Unsupported src type for FMNMX: {src}"),
         }
 
-        self.set_reg_fmod_src(8..16, 46, 48, op.srcs[0]);
-        self.set_dst(op.dst);
-        self.set_pred_src(39..42, 42, op.min);
-        self.set_bit(44, op.ftz);
+        e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
+        e.set_dst(self.dst);
+        e.set_pred_src(39..42, 42, self.min);
+        e.set_bit(44, self.ftz);
     }
+}
 
-    fn encode_fmul(&mut self, op: &OpFMul) {
-        if let Some(imm32) = op.srcs[1].as_imm_not_f20() {
-            self.set_opcode(0x1e00);
+impl SM50Op for OpFMul {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        if let Some(imm32) = self.srcs[1].as_imm_not_f20() {
+            e.set_opcode(0x1e00);
 
-            self.set_bit(53, op.ftz);
-            self.set_bit(54, op.dnz);
-            self.set_bit(55, op.saturate);
+            e.set_bit(53, self.ftz);
+            e.set_bit(54, self.dnz);
+            e.set_bit(55, self.saturate);
 
-            self.set_src_imm32(20..52, imm32);
-            self.set_bit(
+            e.set_src_imm32(20..52, imm32);
+            e.set_bit(
                 19,
-                op.srcs[0].src_mod.has_fneg() ^ op.srcs[1].src_mod.has_fneg(),
+                self.srcs[0].src_mod.has_fneg()
+                    ^ self.srcs[1].src_mod.has_fneg(),
             );
         } else {
-            match &op.srcs[1].src_ref {
+            match &self.srcs[1].src_ref {
                 SrcRef::Imm32(imm32) => {
-                    self.set_opcode(0x3868);
-                    self.set_src_imm_f20(20..39, 56, *imm32);
+                    e.set_opcode(0x3868);
+                    e.set_src_imm_f20(20..39, 56, *imm32);
                 }
                 SrcRef::Zero | SrcRef::Reg(_) => {
-                    self.set_opcode(0x5c68);
-                    self.set_reg_src(20..28, op.srcs[1]);
+                    e.set_opcode(0x5c68);
+                    e.set_reg_src(20..28, self.srcs[1]);
                 }
                 SrcRef::CBuf(cbuf) => {
-                    self.set_opcode(0x4c68);
-                    self.set_src_cb(20..39, cbuf);
+                    e.set_opcode(0x4c68);
+                    e.set_src_cb(20..39, cbuf);
                 }
                 src => panic!("Unsupported src type for FMUL: {src}"),
             }
 
-            self.set_rnd_mode(39..41, op.rnd_mode);
-            self.set_field(41..44, 0x0_u8); // TODO: PDIV
-            self.set_bit(44, op.ftz);
-            self.set_bit(45, op.dnz);
-            self.set_bit(
+            e.set_rnd_mode(39..41, self.rnd_mode);
+            e.set_field(41..44, 0x0_u8); // TODO: PDIV
+            e.set_bit(44, self.ftz);
+            e.set_bit(45, self.dnz);
+            e.set_bit(
                 48,
-                op.srcs[0].src_mod.has_fneg() ^ op.srcs[1].src_mod.has_fneg(),
+                self.srcs[0].src_mod.has_fneg()
+                    ^ self.srcs[1].src_mod.has_fneg(),
             );
-            self.set_bit(50, op.saturate);
+            e.set_bit(50, self.saturate);
         }
 
-        self.set_reg_fmod_src(8..16, 46, 48, op.srcs[0]);
-        self.set_dst(op.dst);
+        e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_ffma(&mut self, op: &OpFFma) {
+impl SM50Op for OpFFma {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
         // FFMA doesn't have any abs flags.
-        assert!(!op.srcs[0].src_mod.has_fabs());
-        assert!(!op.srcs[1].src_mod.has_fabs());
-        assert!(!op.srcs[2].src_mod.has_fabs());
+        assert!(!self.srcs[0].src_mod.has_fabs());
+        assert!(!self.srcs[1].src_mod.has_fabs());
+        assert!(!self.srcs[2].src_mod.has_fabs());
 
-        match &op.srcs[1].src_ref {
+        match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5980);
-                self.set_reg_src_ref(20..28, op.srcs[1].src_ref);
+                e.set_opcode(0x5980);
+                e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
             }
             SrcRef::Imm32(i) => {
-                self.set_opcode(0x3280);
-                self.set_src_imm_f20(20..39, 56, *i);
+                e.set_opcode(0x3280);
+                e.set_src_imm_f20(20..39, 56, *i);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4980);
-                self.set_src_cb(20..39, cb);
+                e.set_opcode(0x4980);
+                e.set_src_cb(20..39, cb);
             }
             src1 => panic!("unsupported src1 type for IMUL: {src1}"),
         }
 
-        self.set_dst(op.dst);
-        self.set_reg_src_ref(8..16, op.srcs[0].src_ref);
-        self.set_reg_src_ref(39..47, op.srcs[2].src_ref);
+        e.set_dst(self.dst);
+        e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
+        e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
 
-        self.set_bit(
+        e.set_bit(
             48,
-            op.srcs[0].src_mod.has_fneg() ^ op.srcs[1].src_mod.has_fneg(),
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg(),
         );
-        self.set_bit(49, op.srcs[2].src_mod.has_fneg());
-        self.set_bit(50, op.saturate);
-        self.set_rnd_mode(51..53, op.rnd_mode);
+        e.set_bit(49, self.srcs[2].src_mod.has_fneg());
+        e.set_bit(50, self.saturate);
+        e.set_rnd_mode(51..53, self.rnd_mode);
 
-        self.set_bit(53, op.ftz);
-        self.set_bit(54, op.dnz);
+        e.set_bit(53, self.ftz);
+        e.set_bit(54, self.dnz);
     }
+}
 
+impl SM50Encoder<'_> {
     fn set_float_cmp_op(&mut self, range: Range<usize>, op: FloatCmpOp) {
         assert!(range.len() == 4);
         self.set_field(
@@ -1587,68 +1601,74 @@ impl SM50Instr {
             },
         );
     }
+}
 
-    fn encode_fset(&mut self, op: &OpFSet) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpFSet {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x3000);
-                self.set_src_imm_f20(20..39, 56, *imm32);
+                e.set_opcode(0x3000);
+                e.set_src_imm_f20(20..39, 56, *imm32);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5800);
-                self.set_reg_fmod_src(20..28, 44, 53, op.srcs[1]);
+                e.set_opcode(0x5800);
+                e.set_reg_fmod_src(20..28, 44, 53, self.srcs[1]);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4800);
-                self.set_cb_fmod_src(20..39, 44, 6, op.srcs[1]);
+                e.set_opcode(0x4800);
+                e.set_cb_fmod_src(20..39, 44, 6, self.srcs[1]);
             }
             src => panic!("Unsupported src type for FSET: {src}"),
         }
 
-        self.set_reg_fmod_src(8..16, 54, 43, op.srcs[0]);
-        self.set_pred_src(39..42, 42, SrcRef::True.into());
-        self.set_float_cmp_op(48..52, op.cmp_op);
-        self.set_bit(52, true); // bool float
-        self.set_bit(55, op.ftz);
-        self.set_dst(op.dst);
+        e.set_reg_fmod_src(8..16, 54, 43, self.srcs[0]);
+        e.set_pred_src(39..42, 42, SrcRef::True.into());
+        e.set_float_cmp_op(48..52, self.cmp_op);
+        e.set_bit(52, true); // bool float
+        e.set_bit(55, self.ftz);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_fsetp(&mut self, op: &OpFSetP) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpFSetP {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x36b0);
-                self.set_src_imm_f20(20..39, 56, *imm32);
+                e.set_opcode(0x36b0);
+                e.set_src_imm_f20(20..39, 56, *imm32);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5bb0);
-                self.set_reg_fmod_src(20..28, 44, 6, op.srcs[1]);
+                e.set_opcode(0x5bb0);
+                e.set_reg_fmod_src(20..28, 44, 6, self.srcs[1]);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4bb0);
-                self.set_cb_fmod_src(20..39, 44, 6, op.srcs[1]);
+                e.set_opcode(0x4bb0);
+                e.set_cb_fmod_src(20..39, 44, 6, self.srcs[1]);
             }
             src => panic!("Unsupported src type for FSETP: {src}"),
         }
 
-        self.set_pred_dst(3..6, op.dst);
-        self.set_pred_dst(0..3, Dst::None); // dst1
-        self.set_pred_src(39..42, 42, op.accum);
-        self.set_pred_set_op(45..47, op.set_op);
-        self.set_bit(47, op.ftz);
-        self.set_float_cmp_op(48..52, op.cmp_op);
-        self.set_reg_fmod_src(8..16, 7, 43, op.srcs[0]);
+        e.set_pred_dst(3..6, self.dst);
+        e.set_pred_dst(0..3, Dst::None); // dst1
+        e.set_pred_src(39..42, 42, self.accum);
+        e.set_pred_set_op(45..47, self.set_op);
+        e.set_bit(47, self.ftz);
+        e.set_float_cmp_op(48..52, self.cmp_op);
+        e.set_reg_fmod_src(8..16, 7, 43, self.srcs[0]);
     }
+}
 
-    fn encode_fswzadd(&mut self, op: &OpFSwzAdd) {
-        self.set_opcode(0x50f8);
+impl SM50Op for OpFSwzAdd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0x50f8);
 
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(20..28, op.srcs[1]);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(20..28, self.srcs[1]);
 
-        self.set_field(
+        e.set_field(
             39..41,
-            match op.rnd_mode {
+            match self.rnd_mode {
                 FRndMode::NearestEven => 0u8,
                 FRndMode::NegInf => 1u8,
                 FRndMode::PosInf => 2u8,
@@ -1656,8 +1676,8 @@ impl SM50Instr {
             },
         );
 
-        for (i, op) in op.ops.iter().enumerate() {
-            self.set_field(
+        for (i, op) in self.ops.iter().enumerate() {
+            e.set_field(
                 28 + i * 2..28 + (i + 1) * 2,
                 match op {
                     FSwzAddOp::Add => 0u8,
@@ -1668,50 +1688,54 @@ impl SM50Instr {
             );
         }
 
-        self.set_bit(38, false); /* .NDV */
-        self.set_bit(44, op.ftz);
-        self.set_bit(47, false); /* dst.CC */
+        e.set_bit(38, false); /* .NDV */
+        e.set_bit(44, self.ftz);
+        e.set_bit(47, false); /* dst.CC */
     }
+}
 
-    fn encode_rro(&mut self, op: &OpRro) {
-        match &op.src.src_ref {
+impl SM50Op for OpRro {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.src.src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x3890);
-                self.set_src_imm_f20(20..39, 56, *imm32);
+                e.set_opcode(0x3890);
+                e.set_src_imm_f20(20..39, 56, *imm32);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c90);
-                self.set_reg_fmod_src(20..28, 49, 45, op.src);
+                e.set_opcode(0x5c90);
+                e.set_reg_fmod_src(20..28, 49, 45, self.src);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4c90);
-                self.set_cb_fmod_src(20..39, 49, 45, op.src);
+                e.set_opcode(0x4c90);
+                e.set_cb_fmod_src(20..39, 49, 45, self.src);
             }
             src => panic!("Unsupported src type for RRO: {src}"),
         }
 
-        self.set_dst(op.dst);
-        self.set_field(
+        e.set_dst(self.dst);
+        e.set_field(
             39..40,
-            match op.op {
+            match self.op {
                 RroOp::SinCos => 0u8,
                 RroOp::Exp2 => 1u8,
             },
         );
     }
+}
 
-    fn encode_mufu(&mut self, op: &OpMuFu) {
-        assert!(op.src.is_reg_or_zero());
+impl SM50Op for OpMuFu {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(self.src.is_reg_or_zero());
 
         // TODO: This is following ALU encoding, figure out the correct form of this.
-        self.set_opcode(0x5080);
+        e.set_opcode(0x5080);
 
-        self.set_dst(op.dst);
-        self.set_reg_fmod_src(8..16, 46, 48, op.src);
+        e.set_dst(self.dst);
+        e.set_reg_fmod_src(8..16, 46, 48, self.src);
 
-        self.set_field(
+        e.set_field(
             20..24,
-            match op.op {
+            match self.op {
                 MuFuOp::Cos => 0_u8,
                 MuFuOp::Sin => 1_u8,
                 MuFuOp::Exp2 => 2_u8,
@@ -1721,268 +1745,286 @@ impl SM50Instr {
                 MuFuOp::Rcp64H => 6_u8,
                 MuFuOp::Rsq64H => 7_u8,
                 // SQRT is only on SM52 and later
-                MuFuOp::Sqrt if self.sm >= 52 => 8_u8,
+                MuFuOp::Sqrt if e.sm.sm >= 52 => 8_u8,
                 MuFuOp::Sqrt => panic!("MUFU.SQRT not supported on SM50"),
                 MuFuOp::Tanh => panic!("MUFU.TANH not supported on SM50"),
             },
         );
     }
+}
 
-    fn encode_flo(&mut self, op: &OpFlo) {
-        match op.src.src_ref {
+impl SM50Op for OpFlo {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match self.src.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c30);
-                self.set_reg_src_ref(20..28, op.src.src_ref);
+                e.set_opcode(0x5c30);
+                e.set_reg_src_ref(20..28, self.src.src_ref);
             }
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x3830);
-                self.set_src_imm_i20(20..39, 56, imm);
+                e.set_opcode(0x3830);
+                e.set_src_imm_i20(20..39, 56, imm);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4c30);
-                self.set_src_cb(20..39, &cb);
+                e.set_opcode(0x4c30);
+                e.set_src_cb(20..39, &cb);
             }
             src => panic!("Unsupported src type for FLO: {src}"),
         }
 
-        self.set_dst(op.dst);
-        self.set_bit(40, op.src.src_mod.is_bnot());
-        self.set_bit(48, op.signed);
-        self.set_bit(41, op.return_shift_amount);
-        self.set_bit(47, false); /* dst.CC */
+        e.set_dst(self.dst);
+        e.set_bit(40, self.src.src_mod.is_bnot());
+        e.set_bit(48, self.signed);
+        e.set_bit(41, self.return_shift_amount);
+        e.set_bit(47, false); /* dst.CC */
     }
+}
 
-    fn encode_dadd(&mut self, op: &OpDAdd) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpDAdd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c70);
-                self.set_reg_fmod_src(20..28, 49, 45, op.srcs[1]);
+                e.set_opcode(0x5c70);
+                e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
             }
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x3870);
-                self.set_src_imm_f20(20..39, 56, *imm);
-                assert!(op.srcs[1].src_mod.is_none());
+                e.set_opcode(0x3870);
+                e.set_src_imm_f20(20..39, 56, *imm);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4c70);
-                self.set_cb_fmod_src(20..39, 49, 45, op.srcs[1]);
+                e.set_opcode(0x4c70);
+                e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
             }
             _ => panic!("Unsupported src type"),
         }
 
-        self.set_dst(op.dst);
-        self.set_reg_fmod_src(8..16, 46, 48, op.srcs[0]);
-        self.set_rnd_mode(39..41, op.rnd_mode);
+        e.set_dst(self.dst);
+        e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
+        e.set_rnd_mode(39..41, self.rnd_mode);
     }
+}
 
-    fn encode_dfma(&mut self, op: &OpDFma) {
-        match &op.srcs[2].src_ref {
+impl SM50Op for OpDFma {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[2].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                match &op.srcs[1].src_ref {
+                match &self.srcs[1].src_ref {
                     SrcRef::Zero | SrcRef::Reg(_) => {
-                        self.set_opcode(0x5b70);
-                        self.set_reg_src_ref(20..28, op.srcs[1].src_ref);
+                        e.set_opcode(0x5b70);
+                        e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
                     }
                     SrcRef::Imm32(imm) => {
-                        self.set_opcode(0x3670);
-                        self.set_src_imm_f20(20..39, 56, *imm);
-                        assert!(op.srcs[1].src_mod.is_none());
+                        e.set_opcode(0x3670);
+                        e.set_src_imm_f20(20..39, 56, *imm);
+                        assert!(self.srcs[1].src_mod.is_none());
                     }
                     SrcRef::CBuf(cb) => {
-                        self.set_opcode(0x4b70);
-                        self.set_src_cb(20..39, cb);
+                        e.set_opcode(0x4b70);
+                        e.set_src_cb(20..39, cb);
                     }
-                    _ => panic!("Invalid dfma src1: {}", op.srcs[1]),
+                    _ => panic!("Invalid dfma src1: {}", self.srcs[1]),
                 }
-                self.set_reg_src_ref(39..47, op.srcs[2].src_ref);
+                e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x5370);
-                self.set_reg_src_ref(39..47, op.srcs[1].src_ref);
-                self.set_src_cb(20..39, cb);
+                e.set_opcode(0x5370);
+                e.set_reg_src_ref(39..47, self.srcs[1].src_ref);
+                e.set_src_cb(20..39, cb);
             }
-            _ => panic!("Invalid dfma src2: {}", op.srcs[2]),
+            _ => panic!("Invalid dfma src2: {}", self.srcs[2]),
         }
 
-        self.set_dst(op.dst);
-        self.set_reg_src_ref(8..16, op.srcs[0].src_ref);
+        e.set_dst(self.dst);
+        e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
 
-        assert!(!op.srcs[0].src_mod.has_fabs());
-        assert!(!op.srcs[1].src_mod.has_fabs());
-        assert!(!op.srcs[2].src_mod.has_fabs());
-        self.set_bit(
+        assert!(!self.srcs[0].src_mod.has_fabs());
+        assert!(!self.srcs[1].src_mod.has_fabs());
+        assert!(!self.srcs[2].src_mod.has_fabs());
+        e.set_bit(
             48,
-            op.srcs[0].src_mod.has_fneg() ^ op.srcs[1].src_mod.has_fneg(),
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg(),
         );
-        self.set_bit(49, op.srcs[2].src_mod.has_fneg());
+        e.set_bit(49, self.srcs[2].src_mod.has_fneg());
 
-        self.set_rnd_mode(50..52, op.rnd_mode);
+        e.set_rnd_mode(50..52, self.rnd_mode);
     }
+}
 
-    fn encode_dmnmx(&mut self, op: &OpDMnMx) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpDMnMx {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c50);
-                self.set_reg_fmod_src(20..28, 49, 45, op.srcs[1]);
+                e.set_opcode(0x5c50);
+                e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
             }
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x3850);
-                self.set_src_imm_f20(20..39, 56, *imm32);
+                e.set_opcode(0x3850);
+                e.set_src_imm_f20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4c50);
-                self.set_cb_fmod_src(20..39, 49, 45, op.srcs[1]);
+                e.set_opcode(0x4c50);
+                e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
             }
             src => panic!("Unsupported src type for FMNMX: {src}"),
         }
 
-        self.set_reg_fmod_src(8..16, 46, 48, op.srcs[0]);
-        self.set_dst(op.dst);
-        self.set_pred_src(39..42, 42, op.min);
+        e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
+        e.set_dst(self.dst);
+        e.set_pred_src(39..42, 42, self.min);
     }
+}
 
-    fn encode_dmul(&mut self, op: &OpDMul) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpDMul {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c80);
-                self.set_reg_src_ref(20..28, op.srcs[1].src_ref);
+                e.set_opcode(0x5c80);
+                e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
             }
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x3880);
-                self.set_src_imm_f20(20..39, 56, *imm);
-                assert!(op.srcs[1].src_mod.is_none());
+                e.set_opcode(0x3880);
+                e.set_src_imm_f20(20..39, 56, *imm);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(cb) => {
-                self.set_opcode(0x4c80);
-                self.set_src_cb(20..39, cb);
+                e.set_opcode(0x4c80);
+                e.set_src_cb(20..39, cb);
             }
-            _ => panic!("Invalid dmul src1: {}", op.srcs[1]),
+            _ => panic!("Invalid dmul src1: {}", self.srcs[1]),
         }
 
-        self.set_dst(op.dst);
-        self.set_reg_src_ref(8..16, op.srcs[0].src_ref);
+        e.set_dst(self.dst);
+        e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
 
-        self.set_rnd_mode(39..41, op.rnd_mode);
+        e.set_rnd_mode(39..41, self.rnd_mode);
 
-        assert!(!op.srcs[0].src_mod.has_fabs());
-        assert!(!op.srcs[1].src_mod.has_fabs());
-        self.set_bit(
+        assert!(!self.srcs[0].src_mod.has_fabs());
+        assert!(!self.srcs[1].src_mod.has_fabs());
+        e.set_bit(
             48,
-            op.srcs[0].src_mod.has_fneg() ^ op.srcs[1].src_mod.has_fneg(),
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg(),
         );
     }
+}
 
-    fn encode_dsetp(&mut self, op: &OpDSetP) {
-        match &op.srcs[1].src_ref {
+impl SM50Op for OpDSetP {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5b80);
-                self.set_reg_fmod_src(20..28, 44, 6, op.srcs[1]);
+                e.set_opcode(0x5b80);
+                e.set_reg_fmod_src(20..28, 44, 6, self.srcs[1]);
             }
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x3680);
-                self.set_src_imm_f20(20..39, 56, *imm);
-                assert!(op.srcs[1].src_mod.is_none());
+                e.set_opcode(0x3680);
+                e.set_src_imm_f20(20..39, 56, *imm);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
-                self.set_opcode(0x4b80);
-                self.set_reg_fmod_src(20..39, 44, 6, op.srcs[1]);
+                e.set_opcode(0x4b80);
+                e.set_reg_fmod_src(20..39, 44, 6, self.srcs[1]);
             }
-            _ => panic!("Invalid dmul src1: {}", op.srcs[1]),
+            _ => panic!("Invalid dmul src1: {}", self.srcs[1]),
         }
 
-        self.set_pred_dst(3..6, op.dst);
-        self.set_pred_dst(0..3, Dst::None); // dst1
-        self.set_pred_src(39..42, 42, op.accum);
-        self.set_pred_set_op(45..47, op.set_op);
-        self.set_float_cmp_op(48..52, op.cmp_op);
-        self.set_reg_fmod_src(8..16, 7, 43, op.srcs[0]);
+        e.set_pred_dst(3..6, self.dst);
+        e.set_pred_dst(0..3, Dst::None); // dst1
+        e.set_pred_src(39..42, 42, self.accum);
+        e.set_pred_set_op(45..47, self.set_op);
+        e.set_float_cmp_op(48..52, self.cmp_op);
+        e.set_reg_fmod_src(8..16, 7, 43, self.srcs[0]);
     }
+}
 
-    fn encode_iadd2(&mut self, op: &OpIAdd2) {
-        let carry_in = match op.carry_in.src_ref {
+impl SM50Op for OpIAdd2 {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        let carry_in = match self.carry_in.src_ref {
             SrcRef::Reg(reg) if reg.file() == RegFile::Carry => true,
             SrcRef::Zero => false,
             other => panic!("invalid carry_in src for IADD2 {other}"),
         };
-        let carry_out = match op.carry_out {
+        let carry_out = match self.carry_out {
             Dst::Reg(reg) if reg.file() == RegFile::Carry => true,
             Dst::None => false,
             other => panic!("invalid carry_out dst for IADD2 {other}"),
         };
 
-        if let Some(imm32) = op.srcs[1].as_imm_not_i20() {
-            self.set_opcode(0x1c00);
+        if let Some(imm32) = self.srcs[1].as_imm_not_i20() {
+            e.set_opcode(0x1c00);
 
-            self.set_dst(op.dst);
-            self.set_reg_ineg_src(8..16, 56, op.srcs[0]);
-            self.set_src_imm32(20..52, imm32);
+            e.set_dst(self.dst);
+            e.set_reg_ineg_src(8..16, 56, self.srcs[0]);
+            e.set_src_imm32(20..52, imm32);
 
-            self.set_bit(53, carry_in);
-            self.set_bit(52, carry_out);
+            e.set_bit(53, carry_in);
+            e.set_bit(52, carry_out);
         } else {
-            match &op.srcs[1].src_ref {
+            match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
-                    self.set_opcode(0x5c10);
-                    self.set_reg_ineg_src(20..28, 48, op.srcs[1]);
+                    e.set_opcode(0x5c10);
+                    e.set_reg_ineg_src(20..28, 48, self.srcs[1]);
                 }
                 SrcRef::Imm32(imm) => {
-                    self.set_opcode(0x3810);
-                    self.set_src_imm_i20(20..39, 56, *imm);
+                    e.set_opcode(0x3810);
+                    e.set_src_imm_i20(20..39, 56, *imm);
                 }
                 SrcRef::CBuf(_) => {
-                    self.set_opcode(0x4c10);
-                    self.set_cb_ineg_src(20..39, 48, op.srcs[1]);
+                    e.set_opcode(0x4c10);
+                    e.set_cb_ineg_src(20..39, 48, self.srcs[1]);
                 }
                 src => panic!("Unsupported src type for IADD: {src}"),
             }
 
-            self.set_dst(op.dst);
-            self.set_reg_ineg_src(8..16, 49, op.srcs[0]);
+            e.set_dst(self.dst);
+            e.set_reg_ineg_src(8..16, 49, self.srcs[0]);
 
-            self.set_bit(43, carry_in);
-            self.set_bit(47, carry_out);
+            e.set_bit(43, carry_in);
+            e.set_bit(47, carry_out);
         }
     }
+}
 
-    fn encode_prmt(&mut self, op: &OpPrmt) {
-        match &op.sel.src_ref {
+impl SM50Op for OpPrmt {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.sel.src_ref {
             SrcRef::Imm32(imm) => {
-                self.set_opcode(0x36c0);
-                self.set_src_imm_i20(20..39, 56, *imm);
+                e.set_opcode(0x36c0);
+                e.set_src_imm_i20(20..39, 56, *imm);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5bc0);
-                self.set_reg_src(20..28, op.sel);
+                e.set_opcode(0x5bc0);
+                e.set_reg_src(20..28, self.sel);
             }
             SrcRef::CBuf(cbuf) => {
-                self.set_opcode(0x4bc0);
-                self.set_src_cb(20..39, cbuf);
+                e.set_opcode(0x4bc0);
+                e.set_src_cb(20..39, cbuf);
             }
             src => panic!("Unsupported src type for PRMT: {src}"),
         }
 
-        self.set_reg_src(8..16, op.srcs[0]);
-        self.set_reg_src(39..47, op.srcs[1]);
-        self.set_dst(op.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+        e.set_reg_src(39..47, self.srcs[1]);
+        e.set_dst(self.dst);
         // TODO: subop?
     }
+}
 
-    fn encode_suld(&mut self, op: &OpSuLd) {
-        self.set_opcode(0xeb00);
+impl SM50Op for OpSuLd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xeb00);
 
-        assert!(op.mask == 0x1 || op.mask == 0x3 || op.mask == 0xf);
-        self.set_field(20..24, op.mask);
-        self.set_image_dim(33..36, op.image_dim);
+        assert!(self.mask == 0x1 || self.mask == 0x3 || self.mask == 0xf);
+        e.set_field(20..24, self.mask);
+        e.set_image_dim(33..36, self.image_dim);
 
         // mem_eviction_policy not a thing for sm < 70
 
-        let scope = match op.mem_order {
+        let scope = match self.mem_order {
             MemOrder::Constant => MemScope::System,
             MemOrder::Weak => MemScope::CTA,
             MemOrder::Strong(s) => s,
         };
 
-        self.set_field(
+        e.set_field(
             24..26,
             match scope {
                 MemScope::CTA => 0_u8,
@@ -1992,29 +2034,31 @@ impl SM50Instr {
             },
         );
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
 
-        self.set_reg_src(8..16, op.coord);
-        self.set_reg_src(39..47, op.handle);
+        e.set_reg_src(8..16, self.coord);
+        e.set_reg_src(39..47, self.handle);
     }
+}
 
-    fn encode_suatom(&mut self, op: &OpSuAtom) {
-        if matches!(op.atom_op, AtomOp::CmpExch) {
-            self.set_opcode(0xeac0);
+impl SM50Op for OpSuAtom {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        if matches!(self.atom_op, AtomOp::CmpExch) {
+            e.set_opcode(0xeac0);
         } else {
-            self.set_opcode(0xea60);
+            e.set_opcode(0xea60);
         }
 
-        let atom_type: u8 = match op.atom_type {
+        let atom_type: u8 = match self.atom_type {
             AtomType::U32 => 0,
             AtomType::I32 => 1,
             AtomType::F32 => 3,
             AtomType::U64 => 2,
             AtomType::I64 => 5,
-            _ => panic!("Unsupported atom type {}", op.atom_type),
+            _ => panic!("Unsupported atom type {}", self.atom_type),
         };
 
-        let atom_op: u8 = match op.atom_op {
+        let atom_op: u8 = match self.atom_op {
             AtomOp::Add => 0,
             AtomOp::Min => 1,
             AtomOp::Max => 2,
@@ -2027,9 +2071,9 @@ impl SM50Instr {
             AtomOp::CmpExch => 0,
         };
 
-        self.set_image_dim(33..36, op.image_dim);
-        self.set_field(36..39, atom_type);
-        self.set_field(29..33, atom_op);
+        e.set_image_dim(33..36, self.image_dim);
+        e.set_field(36..39, atom_type);
+        e.set_field(29..33, atom_op);
 
         // The hardware requires that we set .D on atomics.  This is safe to do
         // in in the emit code because it only affects format conversion, not
@@ -2037,183 +2081,199 @@ impl SM50Instr {
         // image formats that that exactly match the shader data type.  So, for
         // instance, a uint32_t atomic has to happen on an R32_UINT or R32_SINT
         // image.
-        self.set_bit(52, true); // .D
+        e.set_bit(52, true); // .D
 
-        self.set_dst(op.dst);
+        e.set_dst(self.dst);
 
-        self.set_reg_src(20..28, op.data);
-        self.set_reg_src(8..16, op.coord);
-        self.set_reg_src(39..47, op.handle);
+        e.set_reg_src(20..28, self.data);
+        e.set_reg_src(8..16, self.coord);
+        e.set_reg_src(39..47, self.handle);
     }
+}
 
-    fn encode_isberd(&mut self, op: &OpIsberd) {
-        self.set_opcode(0xefd0);
-        self.set_dst(op.dst);
-        self.set_reg_src(8..16, op.idx);
+impl SM50Op for OpIsberd {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        e.set_opcode(0xefd0);
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.idx);
     }
+}
 
-    fn encode_out(&mut self, op: &OpOut) {
-        match &op.stream.src_ref {
+impl SM50Op for OpOut {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.stream.src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0xf6e0);
-                self.set_src_imm_i20(20..39, 56, *imm32);
+                e.set_opcode(0xf6e0);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(cbuf) => {
-                self.set_opcode(0xebe0);
-                self.set_src_cb(20..39, cbuf);
+                e.set_opcode(0xebe0);
+                e.set_src_cb(20..39, cbuf);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0xfbe0);
-                self.set_reg_src(20..28, op.stream);
+                e.set_opcode(0xfbe0);
+                e.set_reg_src(20..28, self.stream);
             }
             src => panic!("Unsupported src type for OUT: {src}"),
         }
 
-        self.set_field(
+        e.set_field(
             39..41,
-            match op.out_type {
+            match self.out_type {
                 OutType::Emit => 1_u8,
                 OutType::Cut => 2_u8,
                 OutType::EmitThenCut => 3_u8,
             },
         );
 
-        self.set_reg_src(8..16, op.handle);
-        self.set_dst(op.dst);
+        e.set_reg_src(8..16, self.handle);
+        e.set_dst(self.dst);
     }
+}
 
-    fn encode_bfe(&mut self, op: &OpBfe) {
-        match &op.range.src_ref {
+impl SM50Op for OpBfe {
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match &self.range.src_ref {
             SrcRef::Imm32(imm32) => {
-                self.set_opcode(0x3800);
+                e.set_opcode(0x3800);
                 // We guarantee that imm32 is 16bits, as it's a result of a PRMT
                 // instruction that only fills the bottom two bytes.
-                self.set_src_imm_i20(20..39, 56, *imm32 & 0xffff);
+                e.set_src_imm_i20(20..39, 56, *imm32 & 0xffff);
             }
             SrcRef::CBuf(cbuf) => {
-                self.set_opcode(0x4c00);
-                self.set_src_cb(20..39, cbuf);
+                e.set_opcode(0x4c00);
+                e.set_src_cb(20..39, cbuf);
             }
             SrcRef::Zero | SrcRef::Reg(_) => {
-                self.set_opcode(0x5c00);
-                self.set_reg_src(20..28, op.range);
+                e.set_opcode(0x5c00);
+                e.set_reg_src(20..28, self.range);
             }
             src => panic!("Unsupported src type for BFE: {src}"),
         }
 
-        if op.signed {
-            self.set_bit(48, true);
+        if self.signed {
+            e.set_bit(48, true);
         }
 
-        if op.reverse {
-            self.set_bit(40, true);
+        if self.reverse {
+            e.set_bit(40, true);
         }
 
-        self.set_reg_src(8..16, op.base);
-        self.set_dst(op.dst);
+        e.set_reg_src(8..16, self.base);
+        e.set_dst(self.dst);
     }
+}
 
-    pub fn encode(
-        instr: &Instr,
-        sm: u8,
-        ip: usize,
-        labels: &HashMap<Label, usize>,
-    ) -> Self {
-        assert!(sm >= 50);
-
-        let mut si = SM50Instr::new(sm);
-
-        match &instr.op {
-            Op::FAdd(op) => si.encode_fadd(op),
-            Op::FMnMx(op) => si.encode_fmnmx(op),
-            Op::FMul(op) => si.encode_fmul(op),
-            Op::FFma(op) => si.encode_ffma(op),
-            Op::FSet(op) => si.encode_fset(op),
-            Op::FSetP(op) => si.encode_fsetp(op),
-            Op::FSwzAdd(op) => si.encode_fswzadd(op),
-            Op::Rro(op) => si.encode_rro(op),
-            Op::MuFu(op) => si.encode_mufu(op),
-            Op::Flo(op) => si.encode_flo(op),
-            Op::DAdd(op) => si.encode_dadd(op),
-            Op::DFma(op) => si.encode_dfma(op),
-            Op::DMnMx(op) => si.encode_dmnmx(op),
-            Op::DMul(op) => si.encode_dmul(op),
-            Op::DSetP(op) => si.encode_dsetp(op),
-            Op::IAdd2(op) => si.encode_iadd2(op),
-            Op::Mov(op) => si.encode_mov(op),
-            Op::Sel(op) => si.encode_sel(op),
-            Op::Shfl(op) => si.encode_shfl(op),
-            Op::Vote(op) => si.encode_vote(op),
-            Op::PSetP(op) => si.encode_psetp(op),
-            Op::SuSt(op) => si.encode_sust(op),
-            Op::S2R(op) => si.encode_s2r(op),
-            Op::PopC(op) => si.encode_popc(op),
-            Op::Prmt(op) => si.encode_prmt(op),
-            Op::Ld(op) => si.encode_ld(op),
-            Op::Ldc(op) => si.encode_ldc(op),
-            Op::St(op) => si.encode_st(op),
-            Op::Lop2(op) => si.encode_lop2(op),
-            Op::Shf(op) => si.encode_shf(op),
-            Op::Shl(op) => si.encode_shl(op),
-            Op::Shr(op) => si.encode_shr(op),
-            Op::F2F(op) => si.encode_f2f(op),
-            Op::F2I(op) => si.encode_f2i(op),
-            Op::I2F(op) => si.encode_i2f(op),
-            Op::I2I(op) => si.encode_i2i(op),
-            Op::IMad(op) => si.encode_imad(op),
-            Op::IMul(op) => si.encode_imul(op),
-            Op::IMnMx(op) => si.encode_imnmx(op),
-            Op::ISetP(op) => si.encode_isetp(op),
-            Op::Tex(op) => si.encode_tex(op),
-            Op::Tld(op) => si.encode_tld(op),
-            Op::Tld4(op) => si.encode_tld4(op),
-            Op::Tmml(op) => si.encode_tmml(op),
-            Op::Txd(op) => si.encode_txd(op),
-            Op::Txq(op) => si.encode_txq(op),
-            Op::Ipa(op) => si.encode_ipa(op),
-            Op::ALd(op) => si.encode_ald(op),
-            Op::ASt(op) => si.encode_ast(op),
-            Op::MemBar(op) => si.encode_membar(op),
-            Op::Atom(op) => si.encode_atom(op),
-            Op::Bra(op) => si.encode_bra(op, ip, labels),
-            Op::Exit(op) => si.encode_exit(op),
-            Op::Bar(op) => si.encode_bar(op),
-            Op::SuLd(op) => si.encode_suld(op),
-            Op::SuAtom(op) => si.encode_suatom(op),
-            Op::Kill(op) => si.encode_kill(op),
-            Op::CS2R(op) => si.encode_cs2r(op),
-            Op::Nop(_) => si.encode_nop(),
-            Op::Isberd(op) => si.encode_isberd(&op),
-            Op::Out(op) => si.encode_out(&op),
-            Op::Bfe(op) => si.encode_bfe(&op),
-            _ => panic!("Unhandled instruction {}", instr.op),
+macro_rules! as_sm50_op_match {
+    ($op: expr) => {
+        match $op {
+            Op::FAdd(op) => op,
+            Op::FMnMx(op) => op,
+            Op::FMul(op) => op,
+            Op::FFma(op) => op,
+            Op::FSet(op) => op,
+            Op::FSetP(op) => op,
+            Op::FSwzAdd(op) => op,
+            Op::Rro(op) => op,
+            Op::MuFu(op) => op,
+            Op::Flo(op) => op,
+            Op::DAdd(op) => op,
+            Op::DFma(op) => op,
+            Op::DMnMx(op) => op,
+            Op::DMul(op) => op,
+            Op::DSetP(op) => op,
+            Op::IAdd2(op) => op,
+            Op::Mov(op) => op,
+            Op::Sel(op) => op,
+            Op::Shfl(op) => op,
+            Op::Vote(op) => op,
+            Op::PSetP(op) => op,
+            Op::SuSt(op) => op,
+            Op::S2R(op) => op,
+            Op::PopC(op) => op,
+            Op::Prmt(op) => op,
+            Op::Ld(op) => op,
+            Op::Ldc(op) => op,
+            Op::St(op) => op,
+            Op::Lop2(op) => op,
+            Op::Shf(op) => op,
+            Op::Shl(op) => op,
+            Op::Shr(op) => op,
+            Op::F2F(op) => op,
+            Op::F2I(op) => op,
+            Op::I2F(op) => op,
+            Op::I2I(op) => op,
+            Op::IMad(op) => op,
+            Op::IMul(op) => op,
+            Op::IMnMx(op) => op,
+            Op::ISetP(op) => op,
+            Op::Tex(op) => op,
+            Op::Tld(op) => op,
+            Op::Tld4(op) => op,
+            Op::Tmml(op) => op,
+            Op::Txd(op) => op,
+            Op::Txq(op) => op,
+            Op::Ipa(op) => op,
+            Op::ALd(op) => op,
+            Op::ASt(op) => op,
+            Op::MemBar(op) => op,
+            Op::Atom(op) => op,
+            Op::Bra(op) => op,
+            Op::Exit(op) => op,
+            Op::Bar(op) => op,
+            Op::SuLd(op) => op,
+            Op::SuAtom(op) => op,
+            Op::Kill(op) => op,
+            Op::CS2R(op) => op,
+            Op::Nop(op) => op,
+            Op::Isberd(op) => op,
+            Op::Out(op) => op,
+            Op::Bfe(op) => op,
+            _ => panic!("Unhandled instruction {}", $op),
         }
+    };
+}
 
-        si.set_pred(&instr.pred);
-        si.set_instr_deps(&instr.deps);
-
-        si
-    }
+fn as_sm50_op(op: &Op) -> &dyn SM50Op {
+    as_sm50_op_match!(op)
 }
 
 fn encode_instr(
     instr_index: usize,
     instr: Option<&Box<Instr>>,
-    sm: u8,
+    sm: &ShaderModel50,
     labels: &HashMap<Label, usize>,
     ip: &mut usize,
     sched_instr: &mut [u32; 2],
 ) -> [u32; 2] {
-    let res = instr
-        .map(|x| SM50Instr::encode(x, sm, *ip, labels))
-        .unwrap_or_else(|| SM50Instr::nop(sm));
+    let mut e = SM50Encoder {
+        sm,
+        ip: *ip,
+        labels,
+        inst: [0_u32; 2],
+        sched: 0,
+    };
+
+    if let Some(instr) = instr {
+        as_sm50_op(&instr.op).encode(&mut e);
+        e.set_pred(&instr.pred);
+        e.set_instr_deps(&instr.deps);
+    } else {
+        let nop = OpNop { label: None };
+        nop.encode(&mut e);
+        e.set_pred(&Pred {
+            pred_ref: PredRef::None,
+            pred_inv: false,
+        });
+        e.set_instr_deps(&InstrDeps::new());
+    }
 
     *ip += 8;
 
     BitMutView::new(sched_instr)
-        .set_field(21 * instr_index..21 * (instr_index + 1), res.sched);
+        .set_field(21 * instr_index..21 * (instr_index + 1), e.sched);
 
-    res.inst
+    e.inst
 }
 
 fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
@@ -2250,7 +2310,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
             let instr0 = encode_instr(
                 0,
                 instrs_iter.next(),
-                sm.sm,
+                sm,
                 &labels,
                 &mut ip,
                 &mut sched_instr,
@@ -2258,7 +2318,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
             let instr1 = encode_instr(
                 1,
                 instrs_iter.next(),
-                sm.sm,
+                sm,
                 &labels,
                 &mut ip,
                 &mut sched_instr,
@@ -2266,7 +2326,7 @@ fn encode_sm50_shader(sm: &ShaderModel50, s: &Shader<'_>) -> Vec<u32> {
             let instr2 = encode_instr(
                 2,
                 instrs_iter.next(),
-                sm.sm,
+                sm,
                 &labels,
                 &mut ip,
                 &mut sched_instr,

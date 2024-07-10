@@ -3143,7 +3143,10 @@ late_optimizations = [
 
    # nir_lower_to_source_mods will collapse this, but its existence during the
    # optimization loop can prevent other optimizations.
-   (('fneg', ('fneg', a)), a)
+   (('fneg', ('fneg', a)), a),
+
+   # combine imul and iadd to imad
+   (('iadd@32', ('imul(is_only_used_by_iadd)', a, b), c), ('imad', a, b, c), 'options->has_imad32'),
 ]
 
 # re-combine inexact mul+add to ffma. Do this before fsub so that a * b - c

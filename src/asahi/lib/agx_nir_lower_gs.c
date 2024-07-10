@@ -1611,3 +1611,16 @@ agx_nir_increment_cs_invocations(nir_builder *b, const void *data)
 {
    libagx_increment_cs_invocations(b, nir_load_preamble(b, 1, 64, .base = 0));
 }
+
+void
+agx_nir_increment_ia_counters(nir_builder *b, const void *data)
+{
+   const struct agx_increment_ia_counters_key *key = data;
+   b->shader->info.workgroup_size[0] = key->index_size_B ? 1024 : 1;
+
+   nir_def *params = nir_load_preamble(b, 1, 64, .base = 0);
+   nir_def *index_size_B = nir_imm_int(b, key->index_size_B);
+   nir_def *thread = nir_channel(b, nir_load_global_invocation_id(b, 32), 0);
+
+   libagx_increment_ia_counters(b, params, index_size_B, thread);
+}

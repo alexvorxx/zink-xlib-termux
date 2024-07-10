@@ -11,11 +11,13 @@
 #include <stdint.h>
 #include "util/macros.h"
 #define GLOBAL(type_)            uint64_t
+#define CONSTANT(type_)          uint64_t
 #define AGX_STATIC_ASSERT(_COND) static_assert(_COND, #_COND)
 #else
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
-#define PACKED        __attribute__((packed, aligned(4)))
-#define GLOBAL(type_) global type_ *
+#define PACKED          __attribute__((packed, aligned(4)))
+#define GLOBAL(type_)   global type_ *
+#define CONSTANT(type_) constant type_ *
 
 typedef ulong uint64_t;
 typedef uint uint32_t;
@@ -37,6 +39,10 @@ uint32_t nir_load_helper_op_id_agx(void);
 uint32_t nir_load_helper_arg_lo_agx(void);
 uint32_t nir_load_helper_arg_hi_agx(void);
 uint32_t nir_fence_helper_exit_agx(void);
+
+uint libagx_load_index_buffer_internal(uintptr_t index_buffer,
+                                       uint32_t index_buffer_range_el, uint id,
+                                       uint index_size);
 
 /* I have no idea why CL doesn't have this */
 uint ballot(bool cond);

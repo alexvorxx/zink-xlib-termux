@@ -83,3 +83,11 @@ unsigned agx_tcs_output_stride(const struct nir_shader *nir);
 void agx_nir_tess_setup_indirect(struct nir_builder *b, const void *data);
 
 void agx_nir_increment_cs_invocations(struct nir_builder *b, const void *data);
+
+struct agx_increment_ia_counters_key {
+   /* Implies primitive restart */
+   uint8_t index_size_B;
+};
+static_assert(sizeof(struct agx_increment_ia_counters_key) == 1, "padded");
+
+void agx_nir_increment_ia_counters(struct nir_builder *b, const void *data);

@@ -45,3 +45,17 @@ libagx_cs_invocations(uint32_t local_size_threads, uint32_t x, uint32_t y,
 {
    return local_size_threads * x * y * z;
 }
+
+struct libagx_increment_ia_counters {
+   /* Statistics */
+   GLOBAL(uint32_t) ia_vertices;
+   GLOBAL(uint32_t) vs_invocations;
+
+   /* Input draw */
+   CONSTANT(uint32_t) draw;
+
+   /* Index buffer */
+   uint64_t index_buffer;
+   uint32_t index_buffer_range_el;
+   uint32_t restart_index;
+};

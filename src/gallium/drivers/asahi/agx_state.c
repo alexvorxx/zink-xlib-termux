@@ -3873,64 +3873,40 @@ agx_ensure_cmdbuf_has_space(struct agx_batch *batch, struct agx_encoder *enc,
    enc->end = enc->current + size;
 }
 
-#define COUNT_NONRESTART(T)                                                    \
-   static unsigned count_nonrestart_##T(const T *indices, T restart,           \
-                                        unsigned n)                            \
-   {                                                                           \
-      unsigned out = 0;                                                        \
-      for (int i = 0; i < n; ++i) {                                            \
-         if (indices[i] != restart)                                            \
-            out++;                                                             \
-      }                                                                        \
-      return out;                                                              \
-   }
-
-COUNT_NONRESTART(uint8_t)
-COUNT_NONRESTART(uint16_t)
-COUNT_NONRESTART(uint32_t)
-
-#undef COUNT_NONRESTART
-
 static void
-agx_ia_update_direct(struct agx_context *ctx, const struct pipe_draw_info *info,
-                     const struct pipe_draw_start_count_bias *draws)
+agx_ia_update(struct agx_batch *batch, const struct pipe_draw_info *info,
+              uint64_t draw, uint64_t ib, uint64_t ib_range_el)
 {
-   unsigned count = draws->count;
+   struct agx_context *ctx = batch->ctx;
+   struct agx_device *dev = agx_device(ctx->base.screen);
 
-   if (info->primitive_restart && info->index_size) {
-      struct pipe_transfer *transfer = NULL;
-      unsigned offset = draws->start * info->index_size;
+   struct agx_increment_ia_counters_key key = {
+      .index_size_B = info->primitive_restart ? info->index_size : 0,
+   };
 
-      const void *indices;
-      if (info->has_user_indices) {
-         indices = (uint8_t *)info->index.user + offset;
-      } else {
-         struct pipe_resource *rsrc = info->index.resource;
+   struct libagx_increment_ia_counters args = {
+      .ia_vertices = agx_get_query_address(
+         batch, ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES]),
 
-         indices =
-            pipe_buffer_map_range(&ctx->base, rsrc, offset,
-                                  agx_resource(rsrc)->layout.size_B - offset,
-                                  PIPE_MAP_READ, &transfer);
-      }
+      .vs_invocations = agx_get_query_address(
+         batch, ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]),
 
-      if (info->index_size == 1)
-         count = count_nonrestart_uint8_t(indices, info->restart_index, count);
-      else if (info->index_size == 2)
-         count = count_nonrestart_uint16_t(indices, info->restart_index, count);
-      else
-         count = count_nonrestart_uint32_t(indices, info->restart_index, count);
+      .restart_index = info->restart_index,
+      .index_buffer = ib,
+      .index_buffer_range_el = ib_range_el,
+      .draw = draw,
+   };
 
-      if (transfer)
-         pipe_buffer_unmap(&ctx->base, transfer);
+   uint64_t wg_size = key.index_size_B ? 1024 : 1;
+   struct agx_grid grid = agx_grid_direct(wg_size, 1, 1, wg_size, 1, 1);
+
+   if (!batch->cdm.bo) {
+      batch->cdm = agx_encoder_allocate(batch, dev);
    }
 
-   count *= info->instance_count;
-
-   agx_query_increment_cpu(
-      ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES], count);
-
-   agx_query_increment_cpu(
-      ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS], count);
+   perf_debug(dev, "Input assembly counters");
+   agx_launch_with_data(batch, &grid, agx_nir_increment_ia_counters, &key,
+                        sizeof(key), &args, sizeof(args));
 }
 
 static uint64_t
@@ -4917,17 +4893,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       return;
    }
 
-   /* TODO: stop cheating */
-   if (ctx->active_queries && !ctx->active_draw_without_restart &&
-       (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES] ||
-        ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS]) &&
-       indirect) {
-
-      perf_debug_ctx(ctx, "indirect IA queries");
-      util_draw_indirect(pctx, info, drawid_offset, indirect);
-      return;
-   }
-
    bool xfb_passthrough = false;
    if (agx_needs_passthrough_gs(ctx, info, indirect, &xfb_passthrough)) {
       agx_apply_passthrough_gs(ctx, info, drawid_offset, indirect, draws,
@@ -4950,14 +4915,31 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       agx_primitives_update_direct(ctx, info, draws);
    }
 
+   struct agx_batch *batch = agx_get_batch(ctx);
+
+   uint64_t ib = 0;
+   size_t ib_extent = 0;
+
+   if (info->index_size) {
+      ib =
+         agx_index_buffer_ptr(batch, info, indirect ? NULL : draws, &ib_extent);
+   }
+
    if (ctx->active_queries && !ctx->active_draw_without_restart &&
        (ctx->pipeline_statistics[PIPE_STAT_QUERY_IA_VERTICES] ||
         ctx->pipeline_statistics[PIPE_STAT_QUERY_VS_INVOCATIONS])) {
-      assert(!indirect && "lowered");
-      agx_ia_update_direct(ctx, info, draws);
-   }
 
-   struct agx_batch *batch = agx_get_batch(ctx);
+      uint64_t ptr;
+      if (indirect) {
+         ptr = agx_indirect_buffer_ptr(batch, indirect);
+      } else {
+         uint32_t desc[] = {draws->count, info->instance_count, 0};
+         ptr = agx_pool_upload(&batch->pool, &desc, sizeof(desc));
+      }
+
+      agx_ia_update(batch, info, ptr, ib,
+                    info->index_size ? ib_extent / info->index_size : 1);
+   }
 
    if (ctx->stage[PIPE_SHADER_GEOMETRY].shader && info->primitive_restart &&
        info->index_size) {
@@ -4967,14 +4949,6 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    }
 
    agx_batch_add_timestamp_query(batch, ctx->time_elapsed);
-
-   uint64_t ib = 0;
-   size_t ib_extent = 0;
-
-   if (info->index_size) {
-      ib =
-         agx_index_buffer_ptr(batch, info, indirect ? NULL : draws, &ib_extent);
-   }
 
 #ifndef NDEBUG
    if (unlikely(agx_device(pctx->screen)->debug & AGX_DBG_DIRTY))

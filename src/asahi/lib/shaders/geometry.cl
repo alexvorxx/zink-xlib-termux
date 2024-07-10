@@ -228,9 +228,10 @@ libagx_vertex_id_for_topology(enum mesa_prim mode, bool flatshade_first,
    }
 }
 
-static uint
-load_index_buffer(uintptr_t index_buffer, uint32_t index_buffer_range_el,
-                  uint id, uint index_size)
+uint
+libagx_load_index_buffer_internal(uintptr_t index_buffer,
+                                  uint32_t index_buffer_range_el, uint id,
+                                  uint index_size)
 {
    bool oob = id >= index_buffer_range_el;
 
@@ -263,8 +264,8 @@ uint
 libagx_load_index_buffer(constant struct agx_ia_state *p, uint id,
                          uint index_size)
 {
-   return load_index_buffer(p->index_buffer, p->index_buffer_range_el, id,
-                            index_size);
+   return libagx_load_index_buffer_internal(
+      p->index_buffer, p->index_buffer_range_el, id, index_size);
 }
 
 /*
@@ -375,9 +376,9 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
          for (;;) {                                                            \
             uint idx = next_restart + tid;                                     \
             bool restart =                                                     \
-               idx >= count ||                                                 \
-               load_index_buffer(in_ptr, p->index_buffer_size_el, idx,         \
-                                 sizeof(INDEX)) == restart_idx;                \
+               idx >= count || libagx_load_index_buffer_internal(              \
+                                  in_ptr, p->index_buffer_size_el, idx,        \
+                                  sizeof(INDEX)) == restart_idx;               \
                                                                                \
             uint next_offs = first_true_thread_in_workgroup(restart, scratch); \
                                                                                \
@@ -397,8 +398,8 @@ setup_unroll_for_draw(global struct agx_restart_unroll_params *p,
                uint offset = needle + id;                                      \
                                                                                \
                out[((out_prims_base + i) * per_prim) + vtx] =                  \
-                  load_index_buffer(in_ptr, p->index_buffer_size_el, offset,   \
-                                    sizeof(INDEX));                            \
+                  libagx_load_index_buffer_internal(                           \
+                     in_ptr, p->index_buffer_size_el, offset, sizeof(INDEX));  \
             }                                                                  \
          }                                                                     \
                                                                                \

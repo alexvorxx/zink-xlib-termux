@@ -70,20 +70,20 @@ void
 util_idalloc_reserve(struct util_idalloc *buf, unsigned id);
 
 #define util_idalloc_foreach(buf, id) \
-   for (uint32_t i = 0, mask = (buf)->num_set_elements ? (buf)->data[0] : 0, id, \
-                 count = (buf)->num_used; \
-        i < count; mask = ++i < count ? (buf)->data[i] : 0) \
-      while (mask) \
-         if ((id = i * 32 + u_bit_scan(&mask)), true)
+   for (uint32_t _i = 0, _mask = (buf)->num_set_elements ? (buf)->data[0] : 0, id, \
+                 _count = (buf)->num_used; \
+        _i < _count; _mask = ++_i < _count ? (buf)->data[_i] : 0) \
+      while (_mask) \
+         if ((id = _i * 32 + u_bit_scan(&_mask)), true)
 
 /* This allows freeing IDs while iterating, excluding ID=0. */
 #define util_idalloc_foreach_no_zero_safe(buf, id) \
-   for (uint32_t i = 0, bit, id, count = (buf)->num_set_elements, \
-         mask = count ? (buf)->data[0] & ~0x1 : 0; \
-        i < count; mask = ++i < count ? (buf)->data[i] : 0) \
-      while (mask) \
-         if ((bit = u_bit_scan(&mask), id = i * 32 + bit), \
-             (buf)->data[i] & BITFIELD_BIT(bit))
+   for (uint32_t _i = 0, _bit, id, _count = (buf)->num_set_elements, \
+         _mask = _count ? (buf)->data[0] & ~0x1 : 0; \
+        _i < _count; _mask = ++_i < _count ? (buf)->data[_i] : 0) \
+      while (_mask) \
+         if ((_bit = u_bit_scan(&_mask), id = _i * 32 + _bit), \
+             (buf)->data[_i] & BITFIELD_BIT(_bit))
 
 /* Thread-safe variant. */
 struct util_idalloc_mt {

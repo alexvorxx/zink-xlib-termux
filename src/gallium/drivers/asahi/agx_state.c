@@ -33,6 +33,7 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
+#include "shaders/query.h"
 #include "util/bitscan.h"
 #include "util/bitset.h"
 #include "util/blend.h"
@@ -5461,31 +5462,41 @@ agx_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
                 !agx_render_condition_check(ctx)))
       return;
 
-   /* Increment the pipeline stats query.
-    *
-    * TODO: Use the hardware counter for this, or at least an auxiliary compute
-    * job so it doesn't stall.
-    *
-    * This has to happen before getting the batch, because it will invalidate
-    * the batch due to the stall.
-    */
-   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS]) {
-      uint32_t grid[3] = {info->grid[0], info->grid[1], info->grid[2]};
-      if (info->indirect) {
-         perf_debug_ctx(ctx, "Emulated indirect compute invocation query");
-         pipe_buffer_read(pipe, info->indirect, info->indirect_offset,
-                          sizeof(grid), grid);
-      }
+   struct agx_batch *batch = agx_get_compute_batch(ctx);
 
-      unsigned workgroups = grid[0] * grid[1] * grid[2];
-      unsigned blocksize = info->block[0] * info->block[1] * info->block[2];
-      unsigned count = workgroups * blocksize;
-
-      agx_query_increment_cpu(
-         ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS], count);
+   uint64_t indirect = 0;
+   if (info->indirect) {
+      struct agx_resource *rsrc = agx_resource(info->indirect);
+      agx_batch_reads(batch, rsrc);
+      indirect = rsrc->bo->ptr.gpu + info->indirect_offset;
    }
 
-   struct agx_batch *batch = agx_get_compute_batch(ctx);
+   /* Increment the pipeline stats query.
+    *
+    * TODO: Can we use the hardware counter for this?
+    */
+   if (ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS]) {
+      unsigned blocksize = info->block[0] * info->block[1] * info->block[2];
+
+      if (info->indirect) {
+         struct libagx_cs_invocation_params p = {
+            .grid = indirect,
+            .local_size_threads = blocksize,
+            .statistic = agx_get_query_address(
+               batch, ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS]),
+         };
+
+         const struct agx_grid g = agx_grid_direct(1, 1, 1, 1, 1, 1);
+         agx_launch_with_data(batch, &g, agx_nir_increment_cs_invocations, NULL,
+                              0, &p, sizeof(p));
+      } else {
+         agx_query_increment_cpu(
+            ctx, ctx->pipeline_statistics[PIPE_STAT_QUERY_CS_INVOCATIONS],
+            libagx_cs_invocations(blocksize, info->grid[0], info->grid[1],
+                                  info->grid[2]));
+      }
+   }
+
    agx_batch_add_timestamp_query(batch, ctx->time_elapsed);
 
    agx_batch_init_state(batch);

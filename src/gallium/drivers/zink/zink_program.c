@@ -1183,13 +1183,13 @@ gfx_program_init(struct zink_context *ctx, struct zink_gfx_program *prog)
    if (prog->libs)
       p_atomic_inc(&prog->libs->refcount);
 
-   struct mesa_sha1 sctx;
-   _mesa_sha1_init(&sctx);
+   struct mesa_blake3 sctx;
+   _mesa_blake3_init(&sctx);
    for (int i = 0; i < ZINK_GFX_SHADER_COUNT; ++i) {
       if (prog->shaders[i])
-         _mesa_sha1_update(&sctx, prog->shaders[i]->base.sha1, sizeof(prog->shaders[i]->base.sha1));
+         _mesa_blake3_update(&sctx, prog->shaders[i]->base.sha1, sizeof(prog->shaders[i]->base.sha1));
    }
-   _mesa_sha1_final(&sctx, prog->base.sha1);
+   _mesa_blake3_final(&sctx, prog->base.blake3);
 
    if (!zink_descriptor_program_init(ctx, &prog->base))
       goto fail;
@@ -1498,10 +1498,10 @@ precompile_compute_job(void *data, void *gdata, int thread_index)
    util_dynarray_init(&comp->shader_cache[0], comp);
    util_dynarray_init(&comp->shader_cache[1], comp);
 
-   struct mesa_sha1 sha1_ctx;
-   _mesa_sha1_init(&sha1_ctx);
-   _mesa_sha1_update(&sha1_ctx, comp->shader->blob.data, comp->shader->blob.size);
-   _mesa_sha1_final(&sha1_ctx, comp->base.sha1);
+   struct mesa_blake3 blake3_ctx;
+   _mesa_blake3_init(&blake3_ctx);
+   _mesa_blake3_update(&blake3_ctx, comp->shader->blob.data, comp->shader->blob.size);
+   _mesa_blake3_final(&blake3_ctx, comp->base.blake3);
 
    zink_descriptor_program_init(comp->base.ctx, &comp->base);
 

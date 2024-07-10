@@ -256,7 +256,7 @@ get_video_mem(struct zink_screen *screen)
  * path.
  *
  * The output that gets stored in the frontend's cache is the result of
- * zink_shader_finalize().  So, our sha1 cache key here needs to include
+ * zink_shader_finalize().  So, our blake3 cache key here needs to include
  * everything that would change the NIR we generate from a given set of GLSL
  * source, including our driver build, the Vulkan device and driver (which could
  * affect the pipe caps we show the frontend), and any debug flags that change
@@ -272,16 +272,16 @@ disk_cache_init(struct zink_screen *screen)
       return true;
 
 #ifdef ENABLE_SHADER_CACHE
-   struct mesa_sha1 ctx;
-   _mesa_sha1_init(&ctx);
+   struct mesa_blake3 ctx;
+   _mesa_blake3_init(&ctx);
 
 #ifdef HAVE_DL_ITERATE_PHDR
    /* Hash in the zink driver build. */
    const struct build_id_note *note =
        build_id_find_nhdr_for_addr(disk_cache_init);
    unsigned build_id_len = build_id_length(note);
-   assert(note && build_id_len == 20); /* sha1 */
-   _mesa_sha1_update(&ctx, build_id_data(note), build_id_len);
+   assert(note && build_id_len == 20); /* blake3 */
+   _mesa_blake3_update(&ctx, build_id_data(note), build_id_len);
 #endif
 
    /* Hash in the Vulkan pipeline cache UUID to identify the combination of
@@ -295,29 +295,29 @@ disk_cache_init(struct zink_screen *screen)
    *  latter is used to identify a compatible device and driver combination to
    *  use when serializing and de-serializing pipeline state."
    */
-   _mesa_sha1_update(&ctx, screen->info.props.pipelineCacheUUID, VK_UUID_SIZE);
+   _mesa_blake3_update(&ctx, screen->info.props.pipelineCacheUUID, VK_UUID_SIZE);
 
    /* Hash in our debug flags that affect NIR generation as of finalize_nir */
    unsigned shader_debug_flags = zink_debug & ZINK_DEBUG_COMPACT;
-   _mesa_sha1_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
+   _mesa_blake3_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
 
    /* add in these shader keys */
-   _mesa_sha1_update(&ctx, &screen->driver_compiler_workarounds, sizeof(screen->driver_compiler_workarounds));
+   _mesa_blake3_update(&ctx, &screen->driver_compiler_workarounds, sizeof(screen->driver_compiler_workarounds));
 
    /* Some of the driconf options change shaders.  Let's just hash the whole
     * thing to not forget any (especially as options get added).
     */
-   _mesa_sha1_update(&ctx, &screen->driconf, sizeof(screen->driconf));
+   _mesa_blake3_update(&ctx, &screen->driconf, sizeof(screen->driconf));
 
    /* EXT_shader_object causes different descriptor layouts for separate shaders */
-   _mesa_sha1_update(&ctx, &screen->info.have_EXT_shader_object, sizeof(screen->info.have_EXT_shader_object));
+   _mesa_blake3_update(&ctx, &screen->info.have_EXT_shader_object, sizeof(screen->info.have_EXT_shader_object));
 
-   /* Finish the sha1 and format it as text. */
-   unsigned char sha1[20];
-   _mesa_sha1_final(&ctx, sha1);
+   /* Finish the blake3 and format it as text. */
+   blake3_hash blake3;
+   _mesa_blake3_final(&ctx, blake3);
 
    char cache_id[20 * 2 + 1];
-   mesa_bytes_to_hex(cache_id, sha1, 20);
+   mesa_bytes_to_hex(cache_id, blake3, 20);
 
    screen->disk_cache = disk_cache_create("zink", cache_id, 0);
 
@@ -366,7 +366,7 @@ cache_put_job(void *data, void *gdata, int thread_index)
       pg->pipeline_cache_size = size;
 
       cache_key key;
-      disk_cache_compute_key(screen->disk_cache, pg->sha1, sizeof(pg->sha1), key);
+      disk_cache_compute_key(screen->disk_cache, pg->blake3, sizeof(pg->blake3), key);
       disk_cache_put_nocopy(screen->disk_cache, key, pipeline_data, size, NULL);
    } else {
       mesa_loge("ZINK: vkGetPipelineCacheData failed (%s)", vk_Result_to_str(result));
@@ -399,7 +399,7 @@ cache_get_job(void *data, void *gdata, int thread_index)
    pcci.pInitialData = NULL;
 
    cache_key key;
-   disk_cache_compute_key(screen->disk_cache, pg->sha1, sizeof(pg->sha1), key);
+   disk_cache_compute_key(screen->disk_cache, pg->blake3, sizeof(pg->blake3), key);
    pcci.pInitialData = disk_cache_get(screen->disk_cache, key, &pg->pipeline_cache_size);
    pcci.initialDataSize = pg->pipeline_cache_size;
 

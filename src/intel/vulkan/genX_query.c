@@ -1604,28 +1604,12 @@ copy_query_results_with_cs(struct anv_cmd_buffer *cmd_buffer,
     * to ensure proper ordering of the commands from the 3d pipe and the
     * command streamer.
     */
-   if ((cmd_buffer->state.queries.buffer_write_bits |
-        cmd_buffer->state.queries.clear_bits) &
-       ANV_QUERY_WRITES_RT_FLUSH)
-      needed_flushes |= ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT;
 
-   if ((cmd_buffer->state.queries.buffer_write_bits |
-        cmd_buffer->state.queries.clear_bits) &
-       ANV_QUERY_WRITES_TILE_FLUSH)
-      needed_flushes |= ANV_PIPE_TILE_CACHE_FLUSH_BIT;
+   const enum anv_query_bits query_bits =
+      cmd_buffer->state.queries.buffer_write_bits |
+      cmd_buffer->state.queries.clear_bits;
 
-   if ((cmd_buffer->state.queries.buffer_write_bits |
-        cmd_buffer->state.queries.clear_bits) &
-       ANV_QUERY_WRITES_DATA_FLUSH) {
-      needed_flushes |= (ANV_PIPE_DATA_CACHE_FLUSH_BIT |
-                         ANV_PIPE_HDC_PIPELINE_FLUSH_BIT |
-                         ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT);
-   }
-
-   if ((cmd_buffer->state.queries.buffer_write_bits |
-        cmd_buffer->state.queries.clear_bits) &
-       ANV_QUERY_WRITES_CS_STALL)
-      needed_flushes |= ANV_PIPE_CS_STALL_BIT;
+   needed_flushes |= ANV_PIPE_QUERY_BITS(query_bits);
 
    /* Occlusion & timestamp queries are written using a PIPE_CONTROL and
     * because we're about to copy values from MI commands, we need to stall

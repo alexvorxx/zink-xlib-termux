@@ -421,6 +421,39 @@ pub trait SSABuilder: Builder {
         dst
     }
 
+    fn ineg64(&mut self, x: Src) -> SSARef {
+        let x = x.as_ssa().unwrap();
+        let dst = self.alloc_ssa(RegFile::GPR, 2);
+        if self.sm() >= 70 {
+            let carry = self.alloc_ssa(RegFile::Pred, 1);
+            self.push_op(OpIAdd3 {
+                dst: dst[0].into(),
+                overflow: [carry.into(), Dst::None],
+                srcs: [0.into(), Src::from(x[0]).ineg(), 0.into()],
+            });
+            self.push_op(OpIAdd3X {
+                dst: dst[1].into(),
+                overflow: [Dst::None, Dst::None],
+                srcs: [0.into(), Src::from(x[1]).bnot(), 0.into()],
+                carry: [carry.into(), SrcRef::False.into()],
+            });
+        } else {
+            let carry = self.alloc_ssa(RegFile::Carry, 1);
+            self.push_op(OpIAdd2 {
+                dst: dst[0].into(),
+                srcs: [0.into(), Src::from(x[0]).ineg()],
+                carry_out: carry.into(),
+            });
+            self.push_op(OpIAdd2X {
+                dst: dst[1].into(),
+                srcs: [0.into(), Src::from(x[1]).bnot()],
+                carry_out: Dst::None,
+                carry_in: carry.into(),
+            });
+        }
+        dst
+    }
+
     fn isetp(
         &mut self,
         cmp_type: IntCmpType,

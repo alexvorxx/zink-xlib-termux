@@ -172,8 +172,6 @@ gather_ssa_use_info(spill_ctx& ctx)
 {
    unsigned instruction_idx = 0;
    for (Block& block : ctx.program->blocks) {
-      IDSet& live_set = ctx.program->live.live_in[block.index];
-
       for (int i = block.instructions.size() - 1; i >= 0; i--) {
          aco_ptr<Instruction>& instr = block.instructions[i];
          for (const Operand& op : instr->operands) {
@@ -183,8 +181,6 @@ gather_ssa_use_info(spill_ctx& ctx)
                info.last_use = std::max(info.last_use, instruction_idx + i);
             }
          }
-         if (is_phi(instr) && instr->definitions[0].isTemp() && !instr->definitions[0].isKill())
-            live_set.insert(instr->definitions[0].tempId());
       }
 
       /* All live-in variables at loop headers get an additional artificial use.
@@ -353,7 +349,6 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          for (unsigned t : live_in) {
             Temp var = Temp(t, ctx.program->temp_rc[t]);
             if (var.type() != type || ctx.spills_entry[block_idx].count(var) ||
-                !ctx.program->live.live_in[block_idx - 1].count(t) ||
                 var.regClass().is_linear_vgpr())
                continue;
 
@@ -393,12 +388,16 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
          float score = 0;
          Temp to_spill;
          type = reg_pressure.vgpr > ctx.target_pressure.vgpr ? RegType::vgpr : RegType::sgpr;
-         for (unsigned t : live_in) {
-            Temp var = Temp(t, ctx.program->temp_rc[t]);
+         for (aco_ptr<Instruction>& phi : block->instructions) {
+            if (!is_phi(phi))
+               break;
+            if (!phi->definitions[0].isTemp())
+               continue;
+            Temp var = phi->definitions[0].getTemp();
             if (var.type() == type && !ctx.spills_entry[block_idx].count(var) &&
-                ctx.ssa_infos[t].score() > score) {
+                ctx.ssa_infos[var.id()].score() > score) {
                to_spill = var;
-               score = ctx.ssa_infos[t].score();
+               score = ctx.ssa_infos[var.id()].score();
             }
          }
          assert(score != 0.0);
@@ -463,12 +462,6 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       bool partial_spill = false;
       uint32_t spill_id = 0;
       for (unsigned pred_idx : preds) {
-         /* variable is not even live at the predecessor: probably from a phi */
-         if (!ctx.program->live.live_in[pred_idx].count(t)) {
-            spill = false;
-            break;
-         }
-
          if (!ctx.spills_exit[pred_idx].count(var)) {
             spill = false;
          } else {
@@ -665,13 +658,12 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
    /* iterate all (other) spilled variables for which to spill at the predecessor */
    // TODO: would be better to have them sorted: first vgprs and first with longest distance
    for (std::pair<Temp, uint32_t> pair : ctx.spills_entry[block_idx]) {
+      /* if variable is not live-in, it must be from a phi: this works because of CSSA form */
+      if (!live_in.count(pair.first.id()))
+         continue;
+
       Block::edge_vec& preds = pair.first.is_linear() ? block->linear_preds : block->logical_preds;
-
       for (unsigned pred_idx : preds) {
-         /* variable is dead at predecessor, it must be from a phi: this works because of CSSA form */
-         if (!ctx.program->live.live_in[pred_idx].count(pair.first.id()))
-            continue;
-
          /* variable is already spilled at predecessor */
          auto spilled = ctx.spills_exit[pred_idx].find(pair.first);
          if (spilled != ctx.spills_exit[pred_idx].end()) {
@@ -794,13 +786,6 @@ add_coupling_code(spill_ctx& ctx, Block* block, IDSet& live_in)
          continue;
 
       Block::edge_vec& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
-      /* if a variable is dead at any predecessor, it must be from a phi */
-      const bool is_dead = std::any_of(
-         preds.begin(), preds.end(),
-         [&](unsigned pred) { return !ctx.program->live.live_in[pred].count(var.id()); });
-      if (is_dead)
-         continue;
-
       for (unsigned pred_idx : preds) {
          /* skip if the variable is not spilled at the predecessor */
          if (!ctx.spills_exit[pred_idx].count(var))
@@ -886,6 +871,9 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
    /* phis are handled separately */
    while (block->instructions[idx]->opcode == aco_opcode::p_phi ||
           block->instructions[idx]->opcode == aco_opcode::p_linear_phi) {
+      const Definition def = block->instructions[idx]->definitions[0];
+      if (def.isTemp() && !def.isKill() && def.tempId() < ctx.ssa_infos.size())
+         ctx.program->live.live_in[block_idx].insert(def.tempId());
       instructions.emplace_back(std::move(block->instructions[idx++]));
    }
 

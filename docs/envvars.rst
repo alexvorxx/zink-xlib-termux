@@ -1465,6 +1465,20 @@ RADV driver environment variables
    decrease the resolution used for dumping the ray history resolution when capturing
    RRA traces. This allows for dumping every Nth invocation along each dispatch dimension.
 
+.. envvar:: RADV_PROFILE_PSTATE
+
+   choose the specific pstate to enter when using thread tracing or when acquiring the
+   profiling lock for performance queries.
+
+   ``standard``
+      force GPU clocks to an arbitrary fixed level
+   ``min_sclk``
+      force the shader clock to its minimum level
+   ``min_mclk``
+      force the memory clock to its minimum level
+   ``peak``
+      force GPU clocks to their maximum level, this is the default value
+
 .. envvar:: ACO_DEBUG
 
    a comma-separated list of named flags, which do various things:

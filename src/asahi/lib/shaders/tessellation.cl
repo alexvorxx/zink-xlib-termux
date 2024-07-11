@@ -19,6 +19,12 @@ libagx_tes_patch_vertices_in(constant struct libagx_tess_args *p)
    return p->output_patch_size;
 }
 
+uint
+libagx_tcs_unrolled_id(constant struct libagx_tess_args *p, uint3 wg_id)
+{
+   return (wg_id.y * p->patches_per_instance) + wg_id.x;
+}
+
 ushort
 libagx_tcs_in_offset(uint vtx, gl_varying_slot location,
                      uint64_t crosslane_vs_out_mask)

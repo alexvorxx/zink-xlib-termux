@@ -3314,7 +3314,7 @@ impl_display_for_op!(OpISetP);
 pub struct OpLop2 {
     pub dst: Dst,
 
-    #[src_type(ALU)]
+    #[src_type(B32)]
     pub srcs: [Src; 2],
 
     pub op: LogicOp2,

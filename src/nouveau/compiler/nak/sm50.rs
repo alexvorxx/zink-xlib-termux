@@ -51,12 +51,6 @@ impl ShaderModel for ShaderModel50 {
     }
 }
 
-impl Src {
-    fn is_reg_or_zero(&self) -> bool {
-        matches!(self.src_ref, SrcRef::Zero | SrcRef::Reg(_))
-    }
-}
-
 trait SM50Op {
     fn legalize(&mut self, b: &mut LegalizeBuilder);
     fn encode(&self, e: &mut SM50Encoder<'_>);
@@ -414,16 +408,16 @@ impl SM50Op for OpFAdd {
                     e.set_opcode(0x5c58);
                     e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
                 }
-                SrcRef::Imm32(imm) => {
+                SrcRef::Imm32(imm32) => {
                     e.set_opcode(0x3858);
-                    e.set_src_imm_f20(20..39, 56, *imm);
+                    e.set_src_imm_f20(20..39, 56, *imm32);
                     assert!(self.srcs[1].src_mod.is_none());
                 }
                 SrcRef::CBuf(_) => {
                     e.set_opcode(0x4c58);
                     e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
                 }
-                _ => panic!("Unsupported src type"),
+                src => panic!("Invalid fadd src1: {src}"),
             }
 
             e.set_dst(self.dst);
@@ -471,19 +465,19 @@ impl SM50Op for OpFFma {
                         e.set_opcode(0x5980);
                         e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
                     }
-                    SrcRef::Imm32(i) => {
+                    SrcRef::Imm32(imm32) => {
                         e.set_opcode(0x3280);
 
                         // Technically, ffma also supports a 32-bit immediate,
                         // but only in the case where the destination is the
                         // same as src2.  We don't support that right now.
-                        e.set_src_imm_f20(20..39, 56, *i);
+                        e.set_src_imm_f20(20..39, 56, *imm32);
                     }
                     SrcRef::CBuf(cb) => {
                         e.set_opcode(0x4980);
                         e.set_src_cb(20..39, cb);
                     }
-                    src1 => panic!("unsupported src1 for ffma: {src1}"),
+                    src => panic!("Invalid ffma src1: {src}"),
                 }
 
                 e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
@@ -493,7 +487,7 @@ impl SM50Op for OpFFma {
                 e.set_src_cb(20..39, cb);
                 e.set_reg_src_ref(39..47, self.srcs[1].src_ref);
             }
-            src2 => panic!("unsupported src2 for ffma: {src2}"),
+            src => panic!("Invalid ffma src2: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -520,19 +514,20 @@ impl SM50Op for OpFMnMx {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.srcs[1].src_ref {
-            SrcRef::Imm32(imm32) => {
-                e.set_opcode(0x3860);
-                e.set_src_imm_f20(20..39, 56, *imm32);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c60);
                 e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x3860);
+                e.set_src_imm_f20(20..39, 56, *imm32);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4c60);
                 e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
             }
-            src => panic!("Unsupported src type for FMNMX: {src}"),
+            src => panic!("Invalid fmnmx src2: {src}"),
         }
 
         e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
@@ -546,54 +541,59 @@ impl SM50Op for OpFMul {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
         use RegFile::GPR;
         let [src0, src1] = &mut self.srcs;
+        b.copy_alu_src_if_fabs(src0, SrcType::F32);
+        b.copy_alu_src_if_fabs(src1, SrcType::F32);
         swap_srcs_if_not_reg(src0, src1, GPR);
         b.copy_alu_src_if_not_reg(src0, GPR, SrcType::F32);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        if let Some(imm32) = self.srcs[1].as_imm_not_f20() {
+        // fmul doesn't have any abs flags.
+        assert!(!self.srcs[0].src_mod.has_fabs());
+        assert!(!self.srcs[1].src_mod.has_fabs());
+
+        // There is one fneg bit shared by both sources
+        let fneg =
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg();
+
+        if let Some(mut imm32) = self.srcs[1].as_imm_not_f20() {
             e.set_opcode(0x1e00);
 
             e.set_bit(53, self.ftz);
             e.set_bit(54, self.dnz);
             e.set_bit(55, self.saturate);
 
+            if fneg {
+                // Flip the immediate sign bit
+                imm32 ^= 0x80000000;
+            }
             e.set_src_imm32(20..52, imm32);
-            e.set_bit(
-                19,
-                self.srcs[0].src_mod.has_fneg()
-                    ^ self.srcs[1].src_mod.has_fneg(),
-            );
         } else {
             match &self.srcs[1].src_ref {
-                SrcRef::Imm32(imm32) => {
-                    e.set_opcode(0x3868);
-                    e.set_src_imm_f20(20..39, 56, *imm32);
-                }
                 SrcRef::Zero | SrcRef::Reg(_) => {
                     e.set_opcode(0x5c68);
                     e.set_reg_src(20..28, self.srcs[1]);
+                }
+                SrcRef::Imm32(imm32) => {
+                    e.set_opcode(0x3868);
+                    e.set_src_imm_f20(20..39, 56, *imm32);
                 }
                 SrcRef::CBuf(cbuf) => {
                     e.set_opcode(0x4c68);
                     e.set_src_cb(20..39, cbuf);
                 }
-                src => panic!("Unsupported src type for FMUL: {src}"),
+                src => panic!("Invalid fmul src1: {src}"),
             }
 
             e.set_rnd_mode(39..41, self.rnd_mode);
             e.set_field(41..44, 0x0_u8); // TODO: PDIV
             e.set_bit(44, self.ftz);
             e.set_bit(45, self.dnz);
-            e.set_bit(
-                48,
-                self.srcs[0].src_mod.has_fneg()
-                    ^ self.srcs[1].src_mod.has_fneg(),
-            );
+            e.set_bit(48, fneg);
             e.set_bit(50, self.saturate);
         }
 
-        e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
+        e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
         e.set_dst(self.dst);
     }
 }
@@ -606,19 +606,20 @@ impl SM50Op for OpRro {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.src.src_ref {
-            SrcRef::Imm32(imm32) => {
-                e.set_opcode(0x3890);
-                e.set_src_imm_f20(20..39, 56, *imm32);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c90);
                 e.set_reg_fmod_src(20..28, 49, 45, self.src);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x3890);
+                e.set_src_imm_f20(20..39, 56, *imm32);
+                assert!(self.src.src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4c90);
                 e.set_cb_fmod_src(20..39, 49, 45, self.src);
             }
-            src => panic!("Unsupported src type for RRO: {src}"),
+            src => panic!("Invalid rro src: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -638,9 +639,6 @@ impl SM50Op for OpMuFu {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        assert!(self.src.is_reg_or_zero());
-
-        // TODO: This is following ALU encoding, figure out the correct form of this.
         e.set_opcode(0x5080);
 
         e.set_dst(self.dst);
@@ -731,19 +729,20 @@ impl SM50Op for OpFSet {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.srcs[1].src_ref {
-            SrcRef::Imm32(imm32) => {
-                e.set_opcode(0x3000);
-                e.set_src_imm_f20(20..39, 56, *imm32);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5800);
                 e.set_reg_fmod_src(20..28, 44, 53, self.srcs[1]);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x3000);
+                e.set_src_imm_f20(20..39, 56, *imm32);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4800);
                 e.set_cb_fmod_src(20..39, 44, 6, self.srcs[1]);
             }
-            src => panic!("Unsupported src type for FSET: {src}"),
+            src => panic!("Invalid fset src1: {src}"),
         }
 
         e.set_reg_fmod_src(8..16, 54, 43, self.srcs[0]);
@@ -768,28 +767,29 @@ impl SM50Op for OpFSetP {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.srcs[1].src_ref {
-            SrcRef::Imm32(imm32) => {
-                e.set_opcode(0x36b0);
-                e.set_src_imm_f20(20..39, 56, *imm32);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5bb0);
                 e.set_reg_fmod_src(20..28, 44, 6, self.srcs[1]);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x36b0);
+                e.set_src_imm_f20(20..39, 56, *imm32);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4bb0);
                 e.set_cb_fmod_src(20..39, 44, 6, self.srcs[1]);
             }
-            src => panic!("Unsupported src type for FSETP: {src}"),
+            src => panic!("Invalid fsetp src1: {src}"),
         }
 
         e.set_pred_dst(3..6, self.dst);
         e.set_pred_dst(0..3, Dst::None); // dst1
+        e.set_reg_fmod_src(8..16, 7, 43, self.srcs[0]);
         e.set_pred_src(39..42, 42, self.accum);
         e.set_pred_set_op(45..47, self.set_op);
         e.set_bit(47, self.ftz);
         e.set_float_cmp_op(48..52, self.cmp_op);
-        e.set_reg_fmod_src(8..16, 7, 43, self.srcs[0]);
     }
 }
 
@@ -850,16 +850,16 @@ impl SM50Op for OpDAdd {
                 e.set_opcode(0x5c70);
                 e.set_reg_fmod_src(20..28, 49, 45, self.srcs[1]);
             }
-            SrcRef::Imm32(imm) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3870);
-                e.set_src_imm_f20(20..39, 56, *imm);
+                e.set_src_imm_f20(20..39, 56, *imm32);
                 assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4c70);
                 e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
             }
-            _ => panic!("Unsupported src type"),
+            src => panic!("Invalid dadd src1: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -886,6 +886,16 @@ impl SM50Op for OpDFma {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
+        // dfma doesn't have any abs flags.
+        assert!(!self.srcs[0].src_mod.has_fabs());
+        assert!(!self.srcs[1].src_mod.has_fabs());
+        assert!(!self.srcs[2].src_mod.has_fabs());
+
+        // There is one fneg bit shared by the two fmul sources
+        let fneg_fmul =
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg();
+        let fneg_src2 = self.srcs[2].src_mod.has_fneg();
+
         match &self.srcs[2].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 match &self.srcs[1].src_ref {
@@ -893,38 +903,32 @@ impl SM50Op for OpDFma {
                         e.set_opcode(0x5b70);
                         e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
                     }
-                    SrcRef::Imm32(imm) => {
+                    SrcRef::Imm32(imm32) => {
                         e.set_opcode(0x3670);
-                        e.set_src_imm_f20(20..39, 56, *imm);
-                        assert!(self.srcs[1].src_mod.is_none());
+                        e.set_src_imm_f20(20..39, 56, *imm32);
                     }
                     SrcRef::CBuf(cb) => {
                         e.set_opcode(0x4b70);
                         e.set_src_cb(20..39, cb);
                     }
-                    _ => panic!("Invalid dfma src1: {}", self.srcs[1]),
+                    src => panic!("Invalid dfma src1: {src}"),
                 }
+
                 e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x5370);
-                e.set_reg_src_ref(39..47, self.srcs[1].src_ref);
                 e.set_src_cb(20..39, cb);
+                e.set_reg_src_ref(39..47, self.srcs[1].src_ref);
             }
-            _ => panic!("Invalid dfma src2: {}", self.srcs[2]),
+            src => panic!("Invalid dfma src2: {src}"),
         }
 
         e.set_dst(self.dst);
         e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
 
-        assert!(!self.srcs[0].src_mod.has_fabs());
-        assert!(!self.srcs[1].src_mod.has_fabs());
-        assert!(!self.srcs[2].src_mod.has_fabs());
-        e.set_bit(
-            48,
-            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg(),
-        );
-        e.set_bit(49, self.srcs[2].src_mod.has_fneg());
+        e.set_bit(48, fneg_fmul);
+        e.set_bit(49, fneg_src2);
 
         e.set_rnd_mode(50..52, self.rnd_mode);
     }
@@ -948,12 +952,13 @@ impl SM50Op for OpDMnMx {
             SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3850);
                 e.set_src_imm_f20(20..39, 56, *imm32);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4c50);
                 e.set_cb_fmod_src(20..39, 49, 45, self.srcs[1]);
             }
-            src => panic!("Unsupported src type for FMNMX: {src}"),
+            src => panic!("Invalid dmnmx src1: {src}"),
         }
 
         e.set_reg_fmod_src(8..16, 46, 48, self.srcs[0]);
@@ -974,34 +979,34 @@ impl SM50Op for OpDMul {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
+        assert!(!self.srcs[0].src_mod.has_fabs());
+        assert!(!self.srcs[1].src_mod.has_fabs());
+
+        // There is one fneg bit shared by both sources
+        let fneg =
+            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg();
+
         match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c80);
                 e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
             }
-            SrcRef::Imm32(imm) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3880);
-                e.set_src_imm_f20(20..39, 56, *imm);
-                assert!(self.srcs[1].src_mod.is_none());
+                e.set_src_imm_f20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4c80);
                 e.set_src_cb(20..39, cb);
             }
-            _ => panic!("Invalid dmul src1: {}", self.srcs[1]),
+            src => panic!("Invalid dmul src1: {src}"),
         }
 
         e.set_dst(self.dst);
         e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
 
         e.set_rnd_mode(39..41, self.rnd_mode);
-
-        assert!(!self.srcs[0].src_mod.has_fabs());
-        assert!(!self.srcs[1].src_mod.has_fabs());
-        e.set_bit(
-            48,
-            self.srcs[0].src_mod.has_fneg() ^ self.srcs[1].src_mod.has_fneg(),
-        );
+        e.set_bit(48, fneg);
     }
 }
 
@@ -1022,16 +1027,16 @@ impl SM50Op for OpDSetP {
                 e.set_opcode(0x5b80);
                 e.set_reg_fmod_src(20..28, 44, 6, self.srcs[1]);
             }
-            SrcRef::Imm32(imm) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3680);
-                e.set_src_imm_f20(20..39, 56, *imm);
+                e.set_src_imm_f20(20..39, 56, *imm32);
                 assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4b80);
                 e.set_reg_fmod_src(20..39, 44, 6, self.srcs[1]);
             }
-            _ => panic!("Invalid dmul src1: {}", self.srcs[1]),
+            src => panic!("Invalid dsetp src1: {src}"),
         }
 
         e.set_pred_dst(3..6, self.dst);
@@ -1051,21 +1056,20 @@ impl SM50Op for OpBfe {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.range.src_ref {
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                e.set_opcode(0x5c00);
+                e.set_reg_src(20..28, self.range);
+            }
             SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3800);
-                // We guarantee that imm32 is 16bits, as it's a result of a PRMT
-                // instruction that only fills the bottom two bytes.
+                // Only the bottom 16 bits of the immediate matter
                 e.set_src_imm_i20(20..39, 56, *imm32 & 0xffff);
             }
             SrcRef::CBuf(cbuf) => {
                 e.set_opcode(0x4c00);
                 e.set_src_cb(20..39, cbuf);
             }
-            SrcRef::Zero | SrcRef::Reg(_) => {
-                e.set_opcode(0x5c00);
-                e.set_reg_src(20..28, self.range);
-            }
-            src => panic!("Unsupported src type for BFE: {src}"),
+            src => panic!("Invalid bfe range: {src}"),
         }
 
         if self.signed {
@@ -1082,25 +1086,27 @@ impl SM50Op for OpBfe {
 }
 
 impl SM50Op for OpFlo {
-    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
-        // Nothing to do
+    fn legalize(&mut self, b: &mut LegalizeBuilder) {
+        use RegFile::GPR;
+        b.copy_alu_src_if_i20_overflow(&mut self.src, GPR, SrcType::ALU);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        match self.src.src_ref {
+        match &self.src.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c30);
                 e.set_reg_src_ref(20..28, self.src.src_ref);
             }
-            SrcRef::Imm32(imm) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3830);
-                e.set_src_imm_i20(20..39, 56, imm);
+                e.set_src_imm_i20(20..39, 56, *imm32);
+                assert!(self.src.src_mod.is_none());
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4c30);
-                e.set_src_cb(20..39, &cb);
+                e.set_src_cb(20..39, cb);
             }
-            src => panic!("Unsupported src type for FLO: {src}"),
+            src => panic!("Invalid flo src: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -1123,7 +1129,7 @@ impl SM50Op for OpIAdd2 {
         let carry_out = match self.carry_out {
             Dst::Reg(reg) if reg.file() == RegFile::Carry => true,
             Dst::None => false,
-            other => panic!("invalid carry_out dst for IADD2 {other}"),
+            dst => panic!("Invalid iadd carry_out: {dst}"),
         };
 
         if let Some(imm32) = self.srcs[1].as_imm_not_i20() {
@@ -1133,23 +1139,24 @@ impl SM50Op for OpIAdd2 {
             e.set_reg_ineg_src(8..16, 56, self.srcs[0]);
             e.set_src_imm32(20..52, imm32);
 
-            e.set_bit(43, false); // .X
             e.set_bit(52, carry_out);
+            e.set_bit(53, false); // .X
         } else {
             match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
                     e.set_opcode(0x5c10);
                     e.set_reg_ineg_src(20..28, 48, self.srcs[1]);
                 }
-                SrcRef::Imm32(imm) => {
+                SrcRef::Imm32(imm32) => {
                     e.set_opcode(0x3810);
-                    e.set_src_imm_i20(20..39, 56, *imm);
+                    e.set_src_imm_i20(20..39, 56, *imm32);
+                    assert!(self.srcs[1].src_mod.is_none());
                 }
                 SrcRef::CBuf(_) => {
                     e.set_opcode(0x4c10);
                     e.set_cb_ineg_src(20..39, 48, self.srcs[1]);
                 }
-                src => panic!("Unsupported src type for IADD: {src}"),
+                src => panic!("Invalid iadd src1: {src}"),
             }
 
             e.set_dst(self.dst);
@@ -1172,13 +1179,13 @@ impl SM50Op for OpIAdd2X {
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match self.carry_in.src_ref {
             SrcRef::Reg(reg) if reg.file() == RegFile::Carry => (),
-            other => panic!("invalid carry_out dst for iadd2.x {other}"),
+            src => panic!("Invalid iadd.x carry_in: {src}"),
         }
 
         let carry_out = match self.carry_out {
             Dst::Reg(reg) if reg.file() == RegFile::Carry => true,
             Dst::None => false,
-            other => panic!("invalid carry_out dst for IADD2 {other}"),
+            dst => panic!("Invalid iadd.x carry_out: {dst}"),
         };
 
         if let Some(imm32) = self.srcs[1].as_imm_not_i20() {
@@ -1188,23 +1195,24 @@ impl SM50Op for OpIAdd2X {
             e.set_reg_bnot_src(8..16, 56, self.srcs[0]);
             e.set_src_imm32(20..52, imm32);
 
-            e.set_bit(43, true); // .X
             e.set_bit(52, carry_out);
+            e.set_bit(53, true); // .X
         } else {
             match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
                     e.set_opcode(0x5c10);
                     e.set_reg_bnot_src(20..28, 48, self.srcs[1]);
                 }
-                SrcRef::Imm32(imm) => {
+                SrcRef::Imm32(imm32) => {
                     e.set_opcode(0x3810);
-                    e.set_src_imm_i20(20..39, 56, *imm);
+                    e.set_src_imm_i20(20..39, 56, *imm32);
+                    assert!(self.srcs[1].src_mod.is_none());
                 }
                 SrcRef::CBuf(_) => {
                     e.set_opcode(0x4c10);
                     e.set_cb_bnot_src(20..39, 48, self.srcs[1]);
                 }
-                src => panic!("Unsupported src type for IADD: {src}"),
+                src => panic!("Invalid iadd.x src1: {src}"),
             }
 
             e.set_dst(self.dst);
@@ -1222,55 +1230,55 @@ impl SM50Op for OpIMad {
         let [src0, src1, src2] = &mut self.srcs;
         swap_srcs_if_not_reg(src0, src1, GPR);
         b.copy_alu_src_if_not_reg(src0, GPR, SrcType::ALU);
+        b.copy_alu_src_if_i20_overflow(src1, GPR, SrcType::ALU);
         if src_is_reg(src1, GPR) {
             b.copy_alu_src_if_imm(src2, GPR, SrcType::ALU);
         } else {
-            b.copy_alu_src_if_i20_overflow(src1, GPR, SrcType::ALU);
             b.copy_alu_src_if_not_reg(src2, GPR, SrcType::ALU);
         }
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        let neg_1_bit = 51;
-        let neg_2_bit = 52;
+        // There is one ineg bit shared by the two imul sources
+        let ineg_imul =
+            self.srcs[0].src_mod.is_ineg() ^ self.srcs[1].src_mod.is_ineg();
+        let ineg_src2 = self.srcs[2].src_mod.is_ineg();
 
         match &self.srcs[2].src_ref {
-            SrcRef::Imm32(imm) => {
-                panic!("Invalid immediate src2 for IMAD {}", *imm)
-            }
-            SrcRef::Reg(_) => match &self.srcs[1].src_ref {
-                SrcRef::Imm32(imm) => {
-                    e.set_opcode(0x3400);
-                    e.set_src_imm_i20(20..39, 56, *imm);
-                }
-                SrcRef::Zero | SrcRef::Reg(_) => {
-                    e.set_opcode(0x5a00);
-                    e.set_reg_ineg_src(20..28, neg_1_bit, self.srcs[1]);
-                }
-                SrcRef::CBuf(_) => {
-                    e.set_opcode(0x4a00);
-                    e.set_cb_ineg_src(20..39, neg_1_bit, self.srcs[1]);
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                match &self.srcs[1].src_ref {
+                    SrcRef::Zero | SrcRef::Reg(_) => {
+                        e.set_opcode(0x5a00);
+                        e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
+                    }
+                    SrcRef::Imm32(imm32) => {
+                        e.set_opcode(0x3400);
+                        e.set_src_imm_i20(20..39, 56, *imm32);
+                    }
+                    SrcRef::CBuf(cb) => {
+                        e.set_opcode(0x4a00);
+                        e.set_src_cb(20..39, cb);
+                    }
+                    src => panic!("Invalid imad src1: {src}"),
                 }
 
-                src => panic!("Invalid src1 for IMAD {src}"),
-            },
-            SrcRef::CBuf(_) => {
-                e.set_opcode(0x5200);
-                e.set_reg_ineg_src(39..47, neg_1_bit, self.srcs[1]);
-                e.set_cb_ineg_src(20..39, neg_2_bit, self.srcs[2]);
+                e.set_reg_src_ref(39..47, self.srcs[2].src_ref);
             }
-            src => panic!("Unsupported src2 type for F2F: {src}"),
+            SrcRef::CBuf(cb) => {
+                e.set_opcode(0x5200);
+                e.set_src_cb(20..39, cb);
+                e.set_reg_src_ref(39..47, self.srcs[1].src_ref);
+            }
+            src => panic!("Invalid imad src2: {src}"),
         }
 
-        e.set_bit(48, self.signed); // src0 signed
-        e.set_bit(
-            51,
-            self.srcs[0].src_mod.is_ineg() ^ self.srcs[1].src_mod.is_ineg(),
-        );
-        e.set_bit(53, self.signed); // src1 signed
-
-        e.set_reg_src(8..16, self.srcs[0]);
         e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
+
+        e.set_bit(48, self.signed); // src0 signed
+        e.set_bit(51, ineg_imul);
+        e.set_bit(52, ineg_src2);
+        e.set_bit(53, self.signed); // src1 signed
     }
 }
 
@@ -1288,9 +1296,6 @@ impl SM50Op for OpIMul {
         assert!(self.srcs[0].src_mod.is_none());
         assert!(self.srcs[1].src_mod.is_none());
 
-        e.set_dst(self.dst);
-        e.set_reg_src(8..16, self.srcs[0]);
-
         if let Some(i) = self.srcs[1].as_imm_not_i20() {
             e.set_opcode(0x1fc0);
             e.set_src_imm32(20..52, i);
@@ -1299,26 +1304,29 @@ impl SM50Op for OpIMul {
             e.set_bit(54, self.signed[0]);
             e.set_bit(55, self.signed[1]);
         } else {
-            match self.srcs[1].src_ref {
+            match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
                     e.set_opcode(0x5c38);
                     e.set_reg_src(20..28, self.srcs[1]);
                 }
-                SrcRef::Imm32(i) => {
+                SrcRef::Imm32(imm32) => {
                     e.set_opcode(0x3838);
-                    e.set_src_imm_i20(20..39, 56, i);
+                    e.set_src_imm_i20(20..39, 56, *imm32);
                 }
                 SrcRef::CBuf(cb) => {
                     e.set_opcode(0x4c38);
-                    e.set_src_cb(20..39, &cb);
+                    e.set_src_cb(20..39, cb);
                 }
-                src1 => panic!("unsupported src1 type for IMUL: {src1}"),
+                src => panic!("Invalid imul src1: {src}"),
             };
 
             e.set_bit(39, self.high);
             e.set_bit(40, self.signed[0]);
             e.set_bit(41, self.signed[1]);
         }
+
+        e.set_dst(self.dst);
+        e.set_reg_src(8..16, self.srcs[0]);
     }
 }
 
@@ -1337,15 +1345,16 @@ impl SM50Op for OpIMnMx {
                 e.set_opcode(0x5c20);
                 e.set_reg_src(20..28, self.srcs[1]);
             }
-            SrcRef::Imm32(i) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3820);
-                e.set_src_imm_i20(20..39, 56, *i);
+                e.set_src_imm_i20(20..39, 56, *imm32);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4c20);
                 e.set_src_cb(20..39, cb);
             }
-            src1 => panic!("unsupported src1 type for IMNMX: {src1}"),
+            src => panic!("Invalid imnmx src1: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -1374,23 +1383,21 @@ impl SM50Op for OpISetP {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        assert!(self.srcs[0].src_mod.is_none());
-        assert!(self.srcs[1].src_mod.is_none());
-
         match &self.srcs[1].src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5b60);
                 e.set_reg_src(20..28, self.srcs[1]);
             }
-            SrcRef::Imm32(i) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3660);
-                e.set_src_imm_i20(20..39, 56, *i);
+                e.set_src_imm_i20(20..39, 56, *imm32);
+                assert!(self.srcs[1].src_mod.is_none());
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4b60);
                 e.set_src_cb(20..39, cb);
             }
-            _ => panic!("Unsupported src type"),
+            src => panic!("Invalid isetp src1: {src}"),
         }
 
         e.set_pred_dst(0..3, Dst::None); // dst1
@@ -1416,8 +1423,16 @@ impl SM50Op for OpLop2 {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
         use RegFile::GPR;
         let [src0, src1] = &mut self.srcs;
-        swap_srcs_if_not_reg(src0, src1, GPR);
-        b.copy_alu_src_if_not_reg(src0, GPR, SrcType::ALU);
+        match self.op {
+            LogicOp2::PassB => {
+                *src0 = 0.into();
+                b.copy_alu_src_if_i20_overflow(src1, GPR, SrcType::ALU);
+            }
+            LogicOp2::And | LogicOp2::Or | LogicOp2::Xor => {
+                swap_srcs_if_not_reg(src0, src1, GPR);
+                b.copy_alu_src_if_not_reg(src0, GPR, SrcType::ALU);
+            }
+        }
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
@@ -1425,10 +1440,9 @@ impl SM50Op for OpLop2 {
             e.set_opcode(0x0400);
 
             e.set_dst(self.dst);
-            e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
-            e.set_bit(55, self.srcs[0].src_mod.is_bnot());
+            e.set_reg_bnot_src(8..16, 55, self.srcs[0]);
             e.set_src_imm32(20..52, imm32);
-
+            e.set_bit(43, false); // .X
             e.set_field(
                 53..55,
                 match self.op {
@@ -1440,28 +1454,27 @@ impl SM50Op for OpLop2 {
                     }
                 },
             );
+            e.set_bit(56, self.srcs[1].src_mod.is_bnot());
         } else {
             match &self.srcs[1].src_ref {
                 SrcRef::Zero | SrcRef::Reg(_) => {
                     e.set_opcode(0x5c40);
-                    e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
+                    e.set_reg_bnot_src(20..28, 40, self.srcs[1]);
                 }
-                SrcRef::Imm32(i) => {
+                SrcRef::Imm32(imm32) => {
                     e.set_opcode(0x3840);
-                    e.set_src_imm_i20(20..39, 56, *i);
+                    e.set_src_imm_i20(20..39, 56, *imm32);
+                    assert!(self.srcs[1].src_mod.is_none());
                 }
-                SrcRef::CBuf(cb) => {
+                SrcRef::CBuf(_) => {
                     e.set_opcode(0x4c40);
-                    e.set_src_cb(20..39, cb);
+                    e.set_cb_bnot_src(20..39, 40, self.srcs[1]);
                 }
-                src1 => panic!("unsupported src1 type for IMUL: {src1}"),
+                src => panic!("Invalid lop2 src1: {src}"),
             }
 
             e.set_dst(self.dst);
             e.set_reg_src_ref(8..16, self.srcs[0].src_ref);
-
-            e.set_bit(39, self.srcs[0].src_mod.is_bnot());
-            e.set_bit(40, self.srcs[1].src_mod.is_bnot());
 
             e.set_field(
                 41..43,
@@ -1479,31 +1492,29 @@ impl SM50Op for OpLop2 {
 }
 
 impl SM50Op for OpPopC {
-    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
-        // Nothing to do
+    fn legalize(&mut self, b: &mut LegalizeBuilder) {
+        use RegFile::GPR;
+        b.copy_alu_src_if_i20_overflow(&mut self.src, GPR, SrcType::ALU);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        assert!(self.src.is_reg_or_zero());
-
         match &self.src.src_ref {
-            SrcRef::Imm32(imm) => {
-                e.set_opcode(0x3808);
-                e.set_src_imm_i20(20..39, 56, *imm);
-            }
-            SrcRef::Reg(_) => {
+            SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c08);
-                e.set_reg_src(20..28, self.src);
+                e.set_reg_bnot_src(20..28, 40, self.src);
             }
-            SrcRef::CBuf(cbuf) => {
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x3808);
+                e.set_src_imm_i20(20..39, 56, *imm32);
+                e.set_bit(40, self.src.src_mod.is_bnot());
+            }
+            SrcRef::CBuf(_) => {
                 e.set_opcode(0x4c08);
-                e.set_src_cb(20..39, cbuf);
+                e.set_cb_bnot_src(20..39, 40, self.src);
             }
-            src => panic!("Invalid source for POPC: {src}"),
+            src => panic!("Invalid popc src1: {src}"),
         }
 
-        let not_mod = matches!(self.src.src_mod, SrcMod::BNot);
-        e.set_bit(40, not_mod);
         e.set_dst(self.dst);
     }
 }
@@ -1511,24 +1522,24 @@ impl SM50Op for OpPopC {
 impl SM50Op for OpShf {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
         use RegFile::GPR;
-        b.copy_alu_src_if_not_reg(&mut self.shift, GPR, SrcType::GPR);
         b.copy_alu_src_if_not_reg(&mut self.high, GPR, SrcType::ALU);
         b.copy_alu_src_if_not_reg(&mut self.low, GPR, SrcType::GPR);
+        b.copy_alu_src_if_not_reg_or_imm(&mut self.shift, GPR, SrcType::GPR);
         b.copy_alu_src_if_i20_overflow(&mut self.shift, GPR, SrcType::GPR);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.shift.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
-                e.set_opcode(0x5cf8);
+                e.set_opcode(if self.right { 0x5cf8 } else { 0x5bf8 });
                 e.set_reg_src(20..28, self.shift);
             }
-            SrcRef::Imm32(i) => {
-                e.set_opcode(0x38f8);
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(if self.right { 0x38f8 } else { 0x36f8 });
+                e.set_src_imm_i20(20..39, 56, *imm32);
                 assert!(self.shift.src_mod.is_none());
-                e.set_src_imm_i20(20..39, 56, *i);
             }
-            src1 => panic!("unsupported src1 type for SHF: {src1}"),
+            src => panic!("Invalid shf shift: {src}"),
         }
 
         e.set_field(
@@ -1563,20 +1574,20 @@ impl SM50Op for OpShl {
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         e.set_dst(self.dst);
         e.set_reg_src(8..16, self.src);
-        match self.shift.src_ref {
+        match &self.shift.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c48);
                 e.set_reg_src(20..28, self.shift);
             }
-            SrcRef::Imm32(i) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3848);
-                e.set_src_imm_i20(20..39, 56, i);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4c48);
-                e.set_src_cb(20..39, &cb);
+                e.set_src_cb(20..39, cb);
             }
-            src1 => panic!("unsupported src1 type for SHL: {src1}"),
+            src => panic!("Invalid shl shift: {src}"),
         }
 
         e.set_bit(39, self.wrap);
@@ -1593,20 +1604,20 @@ impl SM50Op for OpShr {
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         e.set_dst(self.dst);
         e.set_reg_src(8..16, self.src);
-        match self.shift.src_ref {
+        match &self.shift.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5c28);
                 e.set_reg_src(20..28, self.shift);
             }
-            SrcRef::Imm32(i) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x3828);
-                e.set_src_imm_i20(20..39, 56, i);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4c28);
-                e.set_src_cb(20..39, &cb);
+                e.set_src_cb(20..39, cb);
             }
-            src1 => panic!("unsupported src1 type for SHL: {src1}"),
+            src => panic!("Invalid shr shift: {src}"),
         }
 
         e.set_bit(39, self.wrap);
@@ -1621,33 +1632,35 @@ impl SM50Op for OpF2F {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        assert!(self.src.is_reg_or_zero());
-
-        let abs_bit = 49;
-        let neg_bit = 45;
-
         match &self.src.src_ref {
-            SrcRef::Imm32(imm) => {
-                e.set_opcode(0x38a8);
-                e.set_src_imm_i20(20..39, 56, *imm);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5ca8);
-                e.set_reg_fmod_src(20..28, abs_bit, neg_bit, self.src);
+                e.set_reg_fmod_src(20..28, 49, 45, self.src);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x38a8);
+                e.set_src_imm_i20(20..39, 56, *imm32);
+                assert!(self.src.src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4ca8);
-                e.set_cb_fmod_src(20..39, abs_bit, neg_bit, self.src);
+                e.set_cb_fmod_src(20..39, 49, 45, self.src);
             }
-            src => panic!("Unsupported src type for F2F: {src}"),
+            src => panic!("Invalid f2f src: {src}"),
         }
 
-        // no saturation in the IR, would be bit 50
+        // We can't span 32 bits
+        assert!(
+            (self.dst_type.bits() <= 32 && self.src_type.bits() <= 32)
+                || (self.dst_type.bits() >= 32 && self.src_type.bits() >= 32)
+        );
         e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
         e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
+
         e.set_rnd_mode(39..41, self.rnd_mode);
         e.set_bit(42, self.integer_rnd);
         e.set_bit(44, self.ftz);
+        e.set_bit(50, false); // saturate
 
         e.set_dst(self.dst);
     }
@@ -1665,22 +1678,29 @@ impl SM50Op for OpF2I {
                 e.set_opcode(0x5cb0);
                 e.set_reg_fmod_src(20..28, 49, 45, self.src);
             }
-            SrcRef::Imm32(i) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x38b0);
-                e.set_src_imm_f20(20..39, 56, *i);
+                e.set_src_imm_f20(20..39, 56, *imm32);
+                assert!(self.src.src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4cb0);
                 e.set_cb_fmod_src(20..39, 49, 45, self.src);
             }
-            src => panic!("Unsupported src type for F2I: {src}"),
+            src => panic!("Invalid f2i src: {src}"),
         }
 
         e.set_dst(self.dst);
 
+        // We can't span 32 bits
+        assert!(
+            (self.dst_type.bits() <= 32 && self.src_type.bits() <= 32)
+                || (self.dst_type.bits() >= 32 && self.src_type.bits() >= 32)
+        );
         e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
         e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
         e.set_bit(12, self.dst_type.is_signed());
+
         e.set_rnd_mode(39..41, self.rnd_mode);
         e.set_bit(44, self.ftz);
         e.set_bit(47, false); // .CC
@@ -1694,32 +1714,37 @@ impl SM50Op for OpI2F {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        let abs_bit = 49;
-        let neg_bit = 45;
-
         match &self.src.src_ref {
-            SrcRef::Imm32(imm) => {
-                e.set_opcode(0x38b8);
-                e.set_src_imm_i20(20..39, 56, *imm);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5cb8);
-                e.set_reg_fmod_src(20..28, abs_bit, neg_bit, self.src);
+                e.set_reg_ineg_src(20..28, 45, self.src);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x38b8);
+                e.set_src_imm_i20(20..39, 56, *imm32);
+                assert!(self.src.src_mod.is_none());
             }
             SrcRef::CBuf(_) => {
                 e.set_opcode(0x4cb8);
-                e.set_cb_fmod_src(20..39, abs_bit, neg_bit, self.src);
+                e.set_cb_ineg_src(20..39, 45, self.src);
             }
-            src => panic!("Unsupported src type for I2F: {src}"),
+            src => panic!("Invalid i2f src: {src}"),
         }
 
-        e.set_field(41..43, 0_u8); // TODO: subop
-        e.set_bit(13, self.src_type.is_signed());
-        e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
-        e.set_rnd_mode(39..41, self.rnd_mode);
-        e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
-
         e.set_dst(self.dst);
+
+        // We can't span 32 bits
+        assert!(
+            (self.dst_type.bits() <= 32 && self.src_type.bits() <= 32)
+                || (self.dst_type.bits() >= 32 && self.src_type.bits() >= 32)
+        );
+        e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
+        e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
+        e.set_bit(13, self.src_type.is_signed());
+
+        e.set_rnd_mode(39..41, self.rnd_mode);
+        e.set_field(41..43, 0_u8); // TODO: subop
+        e.set_bit(49, false); // iabs
     }
 }
 
@@ -1731,39 +1756,44 @@ impl SM50Op for OpI2I {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.src.src_ref {
-            SrcRef::Imm32(imm32) => {
-                e.set_opcode(0x38e0);
-                e.set_src_imm_i20(20..39, 56, *imm32);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5ce0);
                 e.set_reg_src(20..28, self.src);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x38e0);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(cbuf) => {
                 e.set_opcode(0x4ce0);
                 e.set_src_cb(20..39, cbuf);
             }
-            src => panic!("Unsupported src type for I2I: {src}"),
+            src => panic!("Invalid i2i src: {src}"),
         }
 
-        e.set_bit(45, self.neg);
-        e.set_bit(49, self.abs);
-        e.set_bit(50, self.saturate);
-        e.set_bit(12, self.dst_type.is_signed());
-        e.set_bit(13, self.src_type.is_signed());
+        e.set_dst(self.dst);
+
+        // We can't span 32 bits
+        assert!(
+            (self.dst_type.bits() <= 32 && self.src_type.bits() <= 32)
+                || (self.dst_type.bits() >= 32 && self.src_type.bits() >= 32)
+        );
         e.set_field(8..10, (self.dst_type.bits() / 8).ilog2());
         e.set_field(10..12, (self.src_type.bits() / 8).ilog2());
-        e.set_field(41..43, 0u8); // src.B1-3
-        e.set_bit(47, false); // dst.CC
+        e.set_bit(12, self.dst_type.is_signed());
+        e.set_bit(13, self.src_type.is_signed());
 
-        e.set_dst(self.dst);
+        e.set_field(41..43, 0u8); // src.B1-3
+        e.set_bit(45, self.neg);
+        e.set_bit(47, false); // dst.CC
+        e.set_bit(49, self.abs);
+        e.set_bit(50, self.saturate);
     }
 }
 
 impl SM50Op for OpMov {
-    fn legalize(&mut self, b: &mut LegalizeBuilder) {
-        use RegFile::GPR;
-        b.copy_alu_src_if_i20_overflow(&mut self.src, GPR, SrcType::ALU);
+    fn legalize(&mut self, _b: &mut LegalizeBuilder) {
+        // Nothing to do
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
@@ -1773,9 +1803,9 @@ impl SM50Op for OpMov {
                 e.set_reg_src(20..28, self.src);
                 e.set_field(39..43, self.quad_lanes);
             }
-            SrcRef::Imm32(i) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_opcode(0x0100);
-                e.set_src_imm32(20..52, *i);
+                e.set_src_imm32(20..52, *imm32);
                 e.set_field(12..16, self.quad_lanes);
             }
             SrcRef::CBuf(cb) => {
@@ -1783,7 +1813,7 @@ impl SM50Op for OpMov {
                 e.set_src_cb(20..39, cb);
                 e.set_field(39..43, self.quad_lanes);
             }
-            src => panic!("Unsupported src type for MOV: {src}"),
+            src => panic!("Invalid mov src: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -1795,30 +1825,41 @@ impl SM50Op for OpPrmt {
         use RegFile::GPR;
         b.copy_alu_src_if_not_reg(&mut self.srcs[0], GPR, SrcType::GPR);
         b.copy_alu_src_if_not_reg(&mut self.srcs[1], GPR, SrcType::GPR);
-        b.copy_alu_src_if_i20_overflow(&mut self.sel, GPR, SrcType::ALU);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.sel.src_ref {
-            SrcRef::Imm32(imm) => {
-                e.set_opcode(0x36c0);
-                e.set_src_imm_i20(20..39, 56, *imm);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5bc0);
                 e.set_reg_src(20..28, self.sel);
             }
-            SrcRef::CBuf(cbuf) => {
-                e.set_opcode(0x4bc0);
-                e.set_src_cb(20..39, cbuf);
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x36c0);
+                // Only the bottom 16 bits matter
+                e.set_src_imm_i20(20..39, 56, *imm32 & 0xffff);
             }
-            src => panic!("Unsupported src type for PRMT: {src}"),
+            SrcRef::CBuf(cb) => {
+                e.set_opcode(0x4bc0);
+                e.set_src_cb(20..39, cb);
+            }
+            src => panic!("Invalid prmt selector: {src}"),
         }
 
+        e.set_dst(self.dst);
         e.set_reg_src(8..16, self.srcs[0]);
         e.set_reg_src(39..47, self.srcs[1]);
-        e.set_dst(self.dst);
-        // TODO: subop?
+        e.set_field(
+            48..51,
+            match self.mode {
+                PrmtMode::Index => 0_u8,
+                PrmtMode::Forward4Extract => 1_u8,
+                PrmtMode::Backward4Extract => 2_u8,
+                PrmtMode::Replicate8 => 3_u8,
+                PrmtMode::EdgeClampLeft => 4_u8,
+                PrmtMode::EdgeClampRight => 5_u8,
+                PrmtMode::Replicate16 => 6_u8,
+            },
+        );
     }
 }
 
@@ -1835,19 +1876,19 @@ impl SM50Op for OpSel {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.srcs[1].src_ref {
-            SrcRef::Imm32(imm32) => {
-                e.set_opcode(0x38a0);
-                e.set_src_imm_i20(20..39, 56, *imm32);
-            }
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_opcode(0x5ca0);
                 e.set_reg_src_ref(20..28, self.srcs[1].src_ref);
+            }
+            SrcRef::Imm32(imm32) => {
+                e.set_opcode(0x38a0);
+                e.set_src_imm_i20(20..39, 56, *imm32);
             }
             SrcRef::CBuf(cbuf) => {
                 e.set_opcode(0x4ca0);
                 e.set_src_cb(20..39, cbuf);
             }
-            src => panic!("Unsupported src type for SEL: {src}"),
+            src => panic!("Invalid sel src1: {src}"),
         }
 
         e.set_dst(self.dst);
@@ -1871,27 +1912,27 @@ impl SM50Op for OpShfl {
         e.set_pred_dst(48..51, self.in_bounds);
         e.set_reg_src(8..16, self.src);
 
-        match self.lane.src_ref {
+        match &self.lane.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_bit(28, false);
                 e.set_reg_src(20..28, self.lane);
             }
-            SrcRef::Imm32(imm) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_bit(28, true);
-                e.set_field(20..25, imm & 0x1f);
+                e.set_field(20..25, *imm32 & 0x1f);
             }
-            lane => panic!("unsupported lane src type for SHFL: {lane}"),
+            src => panic!("Invalid shfl lane: {src}"),
         }
-        match self.c.src_ref {
+        match &self.c.src_ref {
             SrcRef::Zero | SrcRef::Reg(_) => {
                 e.set_bit(29, false);
                 e.set_reg_src(39..47, self.c);
             }
-            SrcRef::Imm32(imm) => {
+            SrcRef::Imm32(imm32) => {
                 e.set_bit(29, true);
-                e.set_field(34..47, imm & 0x1f1f);
+                e.set_field(34..47, *imm32 & 0x1f1f);
             }
-            c => panic!("unsupported c src type for SHFL: {c}"),
+            src => panic!("Invalid shfl c: {src}"),
         }
 
         e.set_field(
@@ -2162,9 +2203,7 @@ impl SM50Encoder<'_> {
 
 impl SM50Op for OpSuLd {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
-        use RegFile::GPR;
-        b.copy_alu_src_if_not_reg(&mut self.handle, GPR, SrcType::GPR);
-        b.copy_alu_src_if_not_reg(&mut self.coord, GPR, SrcType::GPR);
+        legalize_ext_instr(self, b);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
@@ -2242,10 +2281,7 @@ impl SM50Encoder<'_> {
 
 impl SM50Op for OpSuAtom {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
-        use RegFile::GPR;
-        b.copy_alu_src_if_not_reg(&mut self.coord, GPR, SrcType::GPR);
-        b.copy_alu_src_if_not_reg(&mut self.handle, GPR, SrcType::GPR);
-        b.copy_alu_src_if_not_reg(&mut self.data, GPR, SrcType::GPR);
+        legalize_ext_instr(self, b);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
@@ -2542,9 +2578,7 @@ impl SM50Op for OpASt {
 
 impl SM50Op for OpIpa {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
-        use RegFile::GPR;
-        b.copy_alu_src_if_not_reg(&mut self.offset, GPR, SrcType::GPR);
-        b.copy_alu_src_if_not_reg(&mut self.inv_w, GPR, SrcType::GPR);
+        legalize_ext_instr(self, b);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
@@ -2756,6 +2790,10 @@ impl SM50Op for OpOut {
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match &self.stream.src_ref {
+            SrcRef::Zero | SrcRef::Reg(_) => {
+                e.set_opcode(0xfbe0);
+                e.set_reg_src(20..28, self.stream);
+            }
             SrcRef::Imm32(imm32) => {
                 e.set_opcode(0xf6e0);
                 e.set_src_imm_i20(20..39, 56, *imm32);
@@ -2764,11 +2802,7 @@ impl SM50Op for OpOut {
                 e.set_opcode(0xebe0);
                 e.set_src_cb(20..39, cbuf);
             }
-            SrcRef::Zero | SrcRef::Reg(_) => {
-                e.set_opcode(0xfbe0);
-                e.set_reg_src(20..28, self.stream);
-            }
-            src => panic!("Unsupported src type for OUT: {src}"),
+            src => panic!("Invalid out stream: {src}"),
         }
 
         e.set_field(

@@ -169,17 +169,6 @@ pub trait LegalizeBuildHelpers: SSABuilder {
         src.src_ref = val.into();
     }
 
-    fn copy_alu_src_if_cbuf(
-        &mut self,
-        src: &mut Src,
-        reg_file: RegFile,
-        src_type: SrcType,
-    ) {
-        if matches!(src.src_ref, SrcRef::CBuf(_)) {
-            self.copy_alu_src(src, reg_file, src_type);
-        }
-    }
-
     fn copy_alu_src_if_not_reg(
         &mut self,
         src: &mut Src,

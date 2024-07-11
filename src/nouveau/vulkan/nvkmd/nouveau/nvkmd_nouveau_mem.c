@@ -25,7 +25,6 @@ nvkmd_nouveau_alloc_mem(struct nvkmd_dev *dev,
 static VkResult
 create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
                        struct vk_object_base *log_obj,
-                       uint64_t mem_align_B,
                        enum nvkmd_mem_flags mem_flags,
                        struct nouveau_ws_bo *bo,
                        enum nvkmd_va_flags va_flags,
@@ -45,7 +44,7 @@ create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
    mem->base.dev = &dev->base;
    mem->base.refcnt = 1;
    mem->base.flags = mem_flags;
-   mem->base.bind_align_B = mem_align_B;
+   mem->base.bind_align_B = dev->base.pdev->bind_align_B;
    mem->base.size_B = size_B;
    mem->bo = bo;
 
@@ -114,10 +113,7 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
       domains = NOUVEAU_WS_BO_GART;
    }
 
-   uint32_t mem_align_B = NVKMD_NOUVEAU_GART_ALIGN_B;
-   if (domains & NOUVEAU_WS_BO_VRAM)
-      mem_align_B = NVKMD_NOUVEAU_VRAM_ALIGN_B;
-
+   const uint32_t mem_align_B = _dev->pdev->bind_align_B;
    size_B = align64(size_B, mem_align_B);
 
    assert(util_is_power_of_two_or_zero64(align_B));
@@ -140,7 +136,7 @@ nvkmd_nouveau_alloc_tiled_mem(struct nvkmd_dev *_dev,
    if (domains == NOUVEAU_WS_BO_GART)
       va_flags |= NVKMD_VA_GART;
 
-   return create_mem_or_close_bo(dev, log_obj, mem_align_B, flags, bo,
+   return create_mem_or_close_bo(dev, log_obj, flags, bo,
                                  va_flags, pte_kind, va_align_B,
                                  mem_out);
 }
@@ -166,10 +162,7 @@ nvkmd_nouveau_import_dma_buf(struct nvkmd_dev *_dev,
    if (bo->flags & NOUVEAU_WS_BO_MAP)
       flags |= NVKMD_MEM_CAN_MAP;
 
-   /* We don't know so assume VRAM */
-   uint32_t mem_align_B = NVKMD_NOUVEAU_VRAM_ALIGN_B;
-
-   return create_mem_or_close_bo(dev, log_obj, mem_align_B, flags, bo,
+   return create_mem_or_close_bo(dev, log_obj, flags, bo,
                                  0 /* va_flags */,
                                  0 /* pte_kind */,
                                  0 /* va_align_B */,

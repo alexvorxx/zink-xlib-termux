@@ -123,6 +123,13 @@ struct nvkmd_pdev {
    struct nv_device_info dev_info;
    struct nvkmd_info kmd_info;
 
+   /** Device-wide GPU memory bind alignment
+    *
+    * Individual BOs may have a smaller alignment if, for instance, we know
+    * they are pinned to system ram.
+    */
+   uint32_t bind_align_B;
+
    struct {
       dev_t render_dev;
       dev_t primary_dev;

@@ -92,6 +92,81 @@ tu_bo_unmap(struct tu_device *dev, struct tu_bo *bo, bool reserve)
    return VK_SUCCESS;
 }
 
+static inline void
+tu_sync_cacheline_to_gpu(void const *p __attribute__((unused)))
+{
+#if DETECT_ARCH_AARCH64
+   /* Clean data cache. */
+   __asm volatile("dc cvac, %0" : : "r" (p) : "memory");
+#elif (DETECT_ARCH_X86 || DETECT_ARCH_X86_64)
+   __builtin_ia32_clflush(p);
+#elif DETECT_ARCH_ARM
+   /* DCCMVAC - same as DC CVAC on aarch64.
+    * Seems to be illegal to call from userspace.
+    */
+   //__asm volatile("mcr p15, 0, %0, c7, c10, 1" : : "r" (p) : "memory");
+   unreachable("Cache line clean is unsupported on ARMv7");
+#endif
+}
+
+static inline void
+tu_sync_cacheline_from_gpu(void const *p __attribute__((unused)))
+{
+#if DETECT_ARCH_AARCH64
+   /* Clean and Invalidate data cache, there is no separate Invalidate. */
+   __asm volatile("dc civac, %0" : : "r" (p) : "memory");
+#elif (DETECT_ARCH_X86 || DETECT_ARCH_X86_64)
+   __builtin_ia32_clflush(p);
+#elif DETECT_ARCH_ARM
+   /* DCCIMVAC - same as DC CIVAC on aarch64.
+    * Seems to be illegal to call from userspace.
+    */
+   //__asm volatile("mcr p15, 0, %0, c7, c14, 1" : : "r" (p) : "memory");
+   unreachable("Cache line invalidate is unsupported on ARMv7");
+#endif
+}
+
+void
+tu_bo_sync_cache(struct tu_device *dev,
+                 struct tu_bo *bo,
+                 VkDeviceSize offset,
+                 VkDeviceSize size,
+                 enum tu_mem_sync_op op)
+{
+   uintptr_t level1_dcache_size = dev->physical_device->level1_dcache_size;
+   char *start = (char *) bo->map + offset;
+   char *end = start + (size == VK_WHOLE_SIZE ? (bo->size - offset) : size);
+
+   start = (char *) ((uintptr_t) start & ~(level1_dcache_size - 1));
+
+   for (; start < end; start += level1_dcache_size) {
+      if (op == TU_MEM_SYNC_CACHE_TO_GPU) {
+         tu_sync_cacheline_to_gpu(start);
+      } else {
+         tu_sync_cacheline_from_gpu(start);
+      }
+   }
+}
+
+uint32_t
+tu_get_l1_dcache_size()
+{
+if (!(DETECT_ARCH_AARCH64 || DETECT_ARCH_X86 || DETECT_ARCH_X86_64))
+   return 0;
+
+#if DETECT_ARCH_AARCH64 &&                                                   \
+   (!defined(_SC_LEVEL1_DCACHE_LINESIZE) || DETECT_OS_ANDROID)
+   /* Bionic does not implement _SC_LEVEL1_DCACHE_LINESIZE properly: */
+   uint64_t ctr_el0;
+   asm("mrs\t%x0, ctr_el0" : "=r"(ctr_el0));
+   return 4 << ((ctr_el0 >> 16) & 0xf);
+#elif defined(_SC_LEVEL1_DCACHE_LINESIZE)
+   return sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+#else
+   return 0;
+#endif
+}
+
 void tu_bo_allow_dump(struct tu_device *dev, struct tu_bo *bo)
 {
    dev->instance->knl->bo_allow_dump(dev, bo);
@@ -212,25 +287,6 @@ tu_enumerate_devices(struct vk_instance *vk_instance)
 #endif
 }
 
-static long
-l1_dcache_size()
-{
-   if (!(DETECT_ARCH_AARCH64 || DETECT_ARCH_X86 || DETECT_ARCH_X86_64))
-      return 0;
-
-#if DETECT_ARCH_AARCH64 &&                                                   \
-   (!defined(_SC_LEVEL1_DCACHE_LINESIZE) || DETECT_OS_ANDROID)
-   /* Bionic does not implement _SC_LEVEL1_DCACHE_LINESIZE properly: */
-   uint64_t ctr_el0;
-   asm("mrs\t%x0, ctr_el0" : "=r"(ctr_el0));
-   return 4 << ((ctr_el0 >> 16) & 0xf);
-#elif defined(_SC_LEVEL1_DCACHE_LINESIZE)
-   return sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
-#else
-   return 0;
-#endif
-}
-
 /**
  * Enumeration entrypoint for drm devices
  */
@@ -289,9 +345,6 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
       goto out;
 
    assert(device);
-
-   device->level1_dcache_size = l1_dcache_size();
-   device->has_cached_non_coherent_memory = device->level1_dcache_size > 0;
 
    if (instance->vk.enabled_extensions.KHR_display) {
       master_fd = open(primary_path, O_RDWR | O_CLOEXEC);

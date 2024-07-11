@@ -41,6 +41,11 @@ enum tu_timeline_sync_state {
    TU_TIMELINE_SYNC_STATE_SIGNALED,
 };
 
+enum tu_mem_sync_op {
+   TU_MEM_SYNC_CACHE_TO_GPU,
+   TU_MEM_SYNC_CACHE_FROM_GPU,
+};
+
 struct tu_bo {
    uint32_t gem_handle;
 #ifdef TU_HAS_VIRTIO
@@ -154,6 +159,15 @@ tu_bo_map(struct tu_device *dev, struct tu_bo *bo, void *placed_addr);
 
 VkResult
 tu_bo_unmap(struct tu_device *dev, struct tu_bo *bo, bool reserve);
+
+void
+tu_bo_sync_cache(struct tu_device *dev,
+                 struct tu_bo *bo,
+                 VkDeviceSize offset,
+                 VkDeviceSize size,
+                 enum tu_mem_sync_op op);
+
+uint32_t tu_get_l1_dcache_size();
 
 void tu_bo_allow_dump(struct tu_device *dev, struct tu_bo *bo);
 

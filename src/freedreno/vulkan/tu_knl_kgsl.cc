@@ -390,66 +390,6 @@ kgsl_bo_finish(struct tu_device *dev, struct tu_bo *bo)
 }
 
 static VkResult
-kgsl_sync_cache(VkDevice _device,
-                uint32_t op,
-                uint32_t count,
-                const VkMappedMemoryRange *ranges)
-{
-   VK_FROM_HANDLE(tu_device, device, _device);
-
-   struct kgsl_gpuobj_sync_obj *sync_list =
-      (struct kgsl_gpuobj_sync_obj *) vk_zalloc(
-         &device->vk.alloc, sizeof(*sync_list)*count, 8,
-         VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
-
-   struct kgsl_gpuobj_sync gpuobj_sync = {
-      .objs = (uintptr_t) sync_list,
-      .obj_len = sizeof(*sync_list),
-      .count = count,
-   };
-
-   for (uint32_t i = 0; i < count; i++) {
-      VK_FROM_HANDLE(tu_device_memory, mem, ranges[i].memory);
-
-      sync_list[i].op = op;
-      sync_list[i].id = mem->bo->gem_handle;
-      sync_list[i].offset = ranges[i].offset;
-      sync_list[i].length = ranges[i].size == VK_WHOLE_SIZE
-                               ? (mem->bo->size - ranges[i].offset)
-                               : ranges[i].size;
-   }
-
-   /* There are two other KGSL ioctls for flushing/invalidation:
-    * - IOCTL_KGSL_GPUMEM_SYNC_CACHE - processes one memory range at a time;
-    * - IOCTL_KGSL_GPUMEM_SYNC_CACHE_BULK - processes several buffers but
-    *   not way to specify ranges.
-    *
-    * While IOCTL_KGSL_GPUOBJ_SYNC exactly maps to VK function.
-    */
-   safe_ioctl(device->fd, IOCTL_KGSL_GPUOBJ_SYNC, &gpuobj_sync);
-
-   vk_free(&device->vk.alloc, sync_list);
-
-   return VK_SUCCESS;
-}
-
-VkResult
-tu_FlushMappedMemoryRanges(VkDevice device,
-                           uint32_t count,
-                           const VkMappedMemoryRange *ranges)
-{
-   return kgsl_sync_cache(device, KGSL_GPUMEM_CACHE_TO_GPU, count, ranges);
-}
-
-VkResult
-tu_InvalidateMappedMemoryRanges(VkDevice device,
-                                uint32_t count,
-                                const VkMappedMemoryRange *ranges)
-{
-   return kgsl_sync_cache(device, KGSL_GPUMEM_CACHE_FROM_GPU, count, ranges);
-}
-
-static VkResult
 get_kgsl_prop(int fd, unsigned int type, void *value, size_t size)
 {
    struct kgsl_device_getproperty getprop = {
@@ -1648,7 +1588,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
    device->has_cached_coherent_memory = kgsl_is_memory_type_supported(
       fd, KGSL_MEMFLAGS_IOCOHERENT |
              (KGSL_CACHEMODE_WRITEBACK << KGSL_CACHEMODE_SHIFT));
-   device->has_cached_non_coherent_memory = true;
 
    instance->knl = &kgsl_knl_funcs;
 

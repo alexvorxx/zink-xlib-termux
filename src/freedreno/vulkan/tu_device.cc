@@ -1230,6 +1230,10 @@ tu_physical_device_init(struct tu_physical_device *device,
       goto fail_free_name;
    }
 
+   device->level1_dcache_size = tu_get_l1_dcache_size();
+   device->has_cached_non_coherent_memory =
+      device->level1_dcache_size > 0 && !DETECT_ARCH_ARM;
+
    device->memory.type_count = 1;
    device->memory.types[0] =
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
@@ -2958,6 +2962,45 @@ tu_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInf
       return VK_SUCCESS;
 
    return tu_bo_unmap(device, mem->bo, pMemoryUnmapInfo->flags & VK_MEMORY_UNMAP_RESERVE_BIT_EXT);
+}
+static VkResult
+sync_cache(VkDevice _device,
+           enum tu_mem_sync_op op,
+           uint32_t count,
+           const VkMappedMemoryRange *ranges)
+{
+   VK_FROM_HANDLE(tu_device, device, _device);
+
+   if (!device->physical_device->has_cached_non_coherent_memory) {
+      tu_finishme(
+         "data cache clean and invalidation are unsupported on this arch!");
+      return VK_SUCCESS;
+   }
+
+   for (uint32_t i = 0; i < count; i++) {
+      VK_FROM_HANDLE(tu_device_memory, mem, ranges[i].memory);
+      tu_bo_sync_cache(device, mem->bo, ranges[i].offset, ranges[i].size, op);
+   }
+
+   return VK_SUCCESS;
+}
+
+VkResult
+tu_FlushMappedMemoryRanges(VkDevice _device,
+                           uint32_t memoryRangeCount,
+                           const VkMappedMemoryRange *pMemoryRanges)
+{
+   return sync_cache(_device, TU_MEM_SYNC_CACHE_TO_GPU, memoryRangeCount,
+                     pMemoryRanges);
+}
+
+VkResult
+tu_InvalidateMappedMemoryRanges(VkDevice _device,
+                                uint32_t memoryRangeCount,
+                                const VkMappedMemoryRange *pMemoryRanges)
+{
+   return sync_cache(_device, TU_MEM_SYNC_CACHE_FROM_GPU, memoryRangeCount,
+                     pMemoryRanges);
 }
 
 VKAPI_ATTR void VKAPI_CALL

@@ -999,7 +999,7 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
 #if defined(HAVE_DRI3)
    if (pdpyp->zink) {
       bool err;
-      psc->has_multibuffer = dri3_check_multibuffer(priv->dpy, &err);
+      psc->has_multibuffer = loader_dri3_check_multibuffer(XGetXCBConnection(priv->dpy), &err);
       if (!psc->has_multibuffer &&
           !debug_get_bool_option("LIBGL_ALWAYS_SOFTWARE", false) &&
           !debug_get_bool_option("LIBGL_KOPPER_DRI2", false)) {

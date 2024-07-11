@@ -1532,11 +1532,17 @@ create_compute_program(struct zink_context *ctx, nir_shader *nir)
    _mesa_hash_table_init(&comp->pipelines, comp, NULL, comp->use_local_size ?
                                                        equals_compute_pipeline_state_local_size :
                                                        equals_compute_pipeline_state);
-   if (zink_debug & ZINK_DEBUG_NOBGC)
+
+   if (zink_debug & (ZINK_DEBUG_NOBGC|ZINK_DEBUG_SHADERDB))
       precompile_compute_job(comp, screen, 0);
    else
       util_queue_add_job(&screen->cache_get_thread, comp, &comp->base.cache_fence,
                         precompile_compute_job, NULL, 0);
+
+   if (zink_debug & ZINK_DEBUG_SHADERDB) {
+      print_pipeline_stats(screen, comp->base_pipeline, &ctx->dbg);
+   }
+
    return comp;
 }
 

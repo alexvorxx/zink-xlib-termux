@@ -2910,6 +2910,7 @@ kopperSetSurfaceCreateInfo(void *_draw, struct kopper_loader_info *out)
    wlsci->flags = 0;
    wlsci->display = dri2_dpy->wl_dpy;
    wlsci->surface = dri2_surf->wl_surface_wrapper;
+   out->present_opaque = dri2_surf->base.PresentOpaque;
 }
 
 static const __DRIkopperLoaderExtension kopper_loader_extension = {

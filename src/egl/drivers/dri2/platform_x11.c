@@ -1454,6 +1454,7 @@ kopperSetSurfaceCreateInfo(void *_draw, struct kopper_loader_info *ci)
    xcb->connection = dri2_dpy->conn;
    xcb->window = dri2_surf->drawable;
    ci->has_alpha = dri2_surf->depth == 32;
+   ci->present_opaque = dri2_surf->base.PresentOpaque;
 }
 
 static const __DRIkopperLoaderExtension kopper_loader_extension = {

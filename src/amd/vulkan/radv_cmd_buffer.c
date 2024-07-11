@@ -161,7 +161,7 @@ radv_bind_dynamic_state(struct radv_cmd_buffer *cmd_buffer, const struct radv_dy
 
    if (memcmp(&dest->vk.cal.color_map, &src->vk.cal.color_map, sizeof(src->vk.cal.color_map))) {
       typed_memcpy(dest->vk.cal.color_map, src->vk.cal.color_map, MAX_RTS);
-      cmd_buffer->state.dirty |= RADV_DYNAMIC_COLOR_ATTACHMENT_MAP;
+      dest_mask |= RADV_DYNAMIC_COLOR_ATTACHMENT_MAP;
    }
 
 #define RADV_CMP_COPY(field, flag)                                                                                     \
@@ -9161,7 +9161,7 @@ radv_CmdSetRenderingAttachmentLocationsKHR(VkCommandBuffer commandBuffer,
                                               : pLocationInfo->pColorAttachmentLocations[i];
    }
 
-   state->dirty |= RADV_DYNAMIC_COLOR_ATTACHMENT_MAP;
+   state->dirty_dynamic |= RADV_DYNAMIC_COLOR_ATTACHMENT_MAP;
 }
 
 VKAPI_ATTR void VKAPI_CALL

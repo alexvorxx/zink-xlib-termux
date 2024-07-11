@@ -3050,14 +3050,31 @@ pub struct OpIAdd2 {
     pub dst: Dst,
     pub carry_out: Dst,
 
-    #[src_type(ALU)]
+    #[src_type(I32)]
     pub srcs: [Src; 2],
-    pub carry_in: Src,
 }
 
 impl DisplayOp for OpIAdd2 {
     fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "iadd2 {} {}", self.srcs[0], self.srcs[1])?;
+        write!(f, "iadd2 {} {}", self.srcs[0], self.srcs[1])
+    }
+}
+
+/// Only used on SM50
+#[repr(C)]
+#[derive(SrcsAsSlice, DstsAsSlice)]
+pub struct OpIAdd2X {
+    pub dst: Dst,
+    pub carry_out: Dst,
+
+    #[src_type(B32)]
+    pub srcs: [Src; 2],
+    pub carry_in: Src,
+}
+
+impl DisplayOp for OpIAdd2X {
+    fn fmt_op(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "iadd2.x {} {}", self.srcs[0], self.srcs[1])?;
         if !self.carry_in.is_zero() {
             write!(f, " {}", self.carry_in)?;
         }
@@ -5359,6 +5376,7 @@ pub enum Op {
     Flo(OpFlo),
     IAbs(OpIAbs),
     IAdd2(OpIAdd2),
+    IAdd2X(OpIAdd2X),
     IAdd3(OpIAdd3),
     IAdd3X(OpIAdd3X),
     IDp4(OpIDp4),
@@ -5813,6 +5831,7 @@ impl Instr {
             Op::BMsk(_)
             | Op::IAbs(_)
             | Op::IAdd2(_)
+            | Op::IAdd2X(_)
             | Op::IAdd3(_)
             | Op::IAdd3X(_)
             | Op::IDp4(_)

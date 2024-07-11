@@ -288,7 +288,6 @@ pub trait SSABuilder: Builder {
             self.push_op(OpIAdd2 {
                 dst: dst.into(),
                 srcs: [x, y],
-                carry_in: 0.into(),
                 carry_out: Dst::None,
             });
         }
@@ -338,9 +337,8 @@ pub trait SSABuilder: Builder {
                 dst: dst[0].into(),
                 srcs: [x[0].into(), y[0].into()],
                 carry_out: carry.into(),
-                carry_in: 0.into(),
             });
-            self.push_op(OpIAdd2 {
+            self.push_op(OpIAdd2X {
                 dst: dst[1].into(),
                 srcs: [x[1].into(), y[1].into()],
                 carry_out: Dst::None,
@@ -417,7 +415,6 @@ pub trait SSABuilder: Builder {
             self.push_op(OpIAdd2 {
                 dst: dst.into(),
                 srcs: [0.into(), i.ineg()],
-                carry_in: 0.into(),
                 carry_out: Dst::None,
             });
         }

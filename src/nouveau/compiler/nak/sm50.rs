@@ -170,6 +170,16 @@ impl SM50Encoder<'_> {
         self.set_bit(neg_bit, src.src_mod.is_ineg());
     }
 
+    fn set_reg_bnot_src(
+        &mut self,
+        range: Range<usize>,
+        not_bit: usize,
+        src: Src,
+    ) {
+        self.set_reg_src_ref(range, src.src_ref);
+        self.set_bit(not_bit, src.src_mod.is_bnot());
+    }
+
     fn set_pred_dst(&mut self, range: Range<usize>, dst: Dst) {
         match dst {
             Dst::None => {
@@ -277,6 +287,21 @@ impl SM50Encoder<'_> {
         }
 
         self.set_bit(neg_bit, src.src_mod.is_ineg());
+    }
+
+    fn set_cb_bnot_src(
+        &mut self,
+        range: Range<usize>,
+        not_bit: usize,
+        src: Src,
+    ) {
+        if let SrcRef::CBuf(cb) = &src.src_ref {
+            self.set_src_cb(range, cb);
+        } else {
+            panic!("Not a CBuf source");
+        }
+
+        self.set_bit(not_bit, src.src_mod.is_bnot());
     }
 }
 
@@ -1074,11 +1099,6 @@ impl SM50Op for OpIAdd2 {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        let carry_in = match self.carry_in.src_ref {
-            SrcRef::Reg(reg) if reg.file() == RegFile::Carry => true,
-            SrcRef::Zero => false,
-            other => panic!("invalid carry_in src for IADD2 {other}"),
-        };
         let carry_out = match self.carry_out {
             Dst::Reg(reg) if reg.file() == RegFile::Carry => true,
             Dst::None => false,
@@ -1092,7 +1112,7 @@ impl SM50Op for OpIAdd2 {
             e.set_reg_ineg_src(8..16, 56, self.srcs[0]);
             e.set_src_imm32(20..52, imm32);
 
-            e.set_bit(53, carry_in);
+            e.set_bit(43, false); // .X
             e.set_bit(52, carry_out);
         } else {
             match &self.srcs[1].src_ref {
@@ -1114,7 +1134,62 @@ impl SM50Op for OpIAdd2 {
             e.set_dst(self.dst);
             e.set_reg_ineg_src(8..16, 49, self.srcs[0]);
 
-            e.set_bit(43, carry_in);
+            e.set_bit(43, false); // .X
+            e.set_bit(47, carry_out);
+        }
+    }
+}
+
+impl SM50Op for OpIAdd2X {
+    fn legalize(&mut self, b: &mut LegalizeBuilder) {
+        use RegFile::GPR;
+        let [src0, src1] = &mut self.srcs;
+        swap_srcs_if_not_reg(src0, src1, GPR);
+        b.copy_alu_src_if_not_reg(src0, GPR, SrcType::I32);
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match self.carry_in.src_ref {
+            SrcRef::Reg(reg) if reg.file() == RegFile::Carry => (),
+            other => panic!("invalid carry_out dst for iadd2.x {other}"),
+        }
+
+        let carry_out = match self.carry_out {
+            Dst::Reg(reg) if reg.file() == RegFile::Carry => true,
+            Dst::None => false,
+            other => panic!("invalid carry_out dst for IADD2 {other}"),
+        };
+
+        if let Some(imm32) = self.srcs[1].as_imm_not_i20() {
+            e.set_opcode(0x1c00);
+
+            e.set_dst(self.dst);
+            e.set_reg_bnot_src(8..16, 56, self.srcs[0]);
+            e.set_src_imm32(20..52, imm32);
+
+            e.set_bit(43, true); // .X
+            e.set_bit(52, carry_out);
+        } else {
+            match &self.srcs[1].src_ref {
+                SrcRef::Zero | SrcRef::Reg(_) => {
+                    e.set_opcode(0x5c10);
+                    e.set_reg_bnot_src(20..28, 48, self.srcs[1]);
+                }
+                SrcRef::Imm32(imm) => {
+                    e.set_opcode(0x3810);
+                    e.set_src_imm_i20(20..39, 56, *imm);
+                }
+                SrcRef::CBuf(_) => {
+                    e.set_opcode(0x4c10);
+                    e.set_cb_bnot_src(20..39, 48, self.srcs[1]);
+                }
+                src => panic!("Unsupported src type for IADD: {src}"),
+            }
+
+            e.set_dst(self.dst);
+            e.set_reg_bnot_src(8..16, 49, self.srcs[0]);
+
+            e.set_bit(43, true); // .X
             e.set_bit(47, carry_out);
         }
     }
@@ -2643,6 +2718,7 @@ macro_rules! as_sm50_op_match {
             Op::DMul(op) => op,
             Op::DSetP(op) => op,
             Op::IAdd2(op) => op,
+            Op::IAdd2X(op) => op,
             Op::Mov(op) => op,
             Op::Sel(op) => op,
             Op::Shfl(op) => op,

@@ -1350,6 +1350,83 @@ fail:
    return NULL;
 }
 
+static void
+print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct util_debug_callback *debug)
+{
+   VkPipelineInfoKHR pinfo = {
+     VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR,
+     NULL,
+     pipeline 
+   };
+   unsigned exe_count = 0;
+   VkPipelineExecutablePropertiesKHR props[10] = {0};
+   for (unsigned i = 0; i < ARRAY_SIZE(props); i++) {
+      props[i].sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR;
+      props[i].pNext = NULL;
+   }
+   VKSCR(GetPipelineExecutablePropertiesKHR)(screen->dev, &pinfo, &exe_count, NULL);
+   VKSCR(GetPipelineExecutablePropertiesKHR)(screen->dev, &pinfo, &exe_count, props);
+   for (unsigned e = 0; e < exe_count; e++) {
+      VkPipelineExecutableInfoKHR info = {
+         VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR,
+         NULL,
+         pipeline,
+         e
+      };
+      unsigned count = 0;
+
+      struct u_memstream stream;
+      char *print_buf;
+      size_t print_buf_sz;
+
+      if (!u_memstream_open(&stream, &print_buf, &print_buf_sz)) {
+         mesa_loge("ZINK: failed to open memstream!");
+         return;
+      }
+
+      FILE *f = u_memstream_get(&stream);
+      fprintf(f, "type: %s", props[e].name);
+      VkPipelineExecutableStatisticKHR *stats = NULL;
+      VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, NULL);
+      stats = calloc(count, sizeof(VkPipelineExecutableStatisticKHR));
+      if (!stats) {
+         mesa_loge("ZINK: failed to allocate stats!");
+         return;
+      }
+         
+      for (unsigned i = 0; i < count; i++)
+         stats[i].sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR;
+      VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, stats);
+
+      for (unsigned i = 0; i < count; i++) {
+         fprintf(f, ", ");
+         switch (stats[i].format) {
+         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
+            fprintf(f, "%s: %u", stats[i].name, stats[i].value.b32);
+            break;
+         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
+            fprintf(f, "%s: %" PRIi64, stats[i].name, stats[i].value.i64);
+            break;
+         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
+            fprintf(f, "%s: %" PRIu64, stats[i].name, stats[i].value.u64);
+            break;
+         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR:
+            fprintf(f, "%s: %g", stats[i].name, stats[i].value.f64);
+            break;
+         default:
+            unreachable("unknown statistic");
+         }
+      }
+
+      /* print_buf is only valid after flushing. */
+      fflush(f);
+      util_debug_message(debug, SHADER_INFO, "%s\n", print_buf);
+
+      u_memstream_close(&stream);
+      free(print_buf);
+   }
+}
+
 static uint32_t
 hash_compute_pipeline_state_local_size(const void *key)
 {
@@ -2080,83 +2157,6 @@ print_exe_stages(VkShaderStageFlags stages)
    if (stages == VK_SHADER_STAGE_COMPUTE_BIT)
       return "CS";
    unreachable("unhandled combination of stages!");
-}
-
-static void
-print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline, struct util_debug_callback *debug)
-{
-   VkPipelineInfoKHR pinfo = {
-     VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR,
-     NULL,
-     pipeline 
-   };
-   unsigned exe_count = 0;
-   VkPipelineExecutablePropertiesKHR props[10] = {0};
-   for (unsigned i = 0; i < ARRAY_SIZE(props); i++) {
-      props[i].sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR;
-      props[i].pNext = NULL;
-   }
-   VKSCR(GetPipelineExecutablePropertiesKHR)(screen->dev, &pinfo, &exe_count, NULL);
-   VKSCR(GetPipelineExecutablePropertiesKHR)(screen->dev, &pinfo, &exe_count, props);
-   for (unsigned e = 0; e < exe_count; e++) {
-      VkPipelineExecutableInfoKHR info = {
-         VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR,
-         NULL,
-         pipeline,
-         e
-      };
-      unsigned count = 0;
-
-      struct u_memstream stream;
-      char *print_buf;
-      size_t print_buf_sz;
-
-      if (!u_memstream_open(&stream, &print_buf, &print_buf_sz)) {
-         mesa_loge("ZINK: failed to open memstream!");
-         return;
-      }
-
-      FILE *f = u_memstream_get(&stream);
-      fprintf(f, "type: %s", props[e].name);
-      VkPipelineExecutableStatisticKHR *stats = NULL;
-      VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, NULL);
-      stats = calloc(count, sizeof(VkPipelineExecutableStatisticKHR));
-      if (!stats) {
-         mesa_loge("ZINK: failed to allocate stats!");
-         return;
-      }
-         
-      for (unsigned i = 0; i < count; i++)
-         stats[i].sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR;
-      VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, stats);
-
-      for (unsigned i = 0; i < count; i++) {
-         fprintf(f, ", ");
-         switch (stats[i].format) {
-         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
-            fprintf(f, "%s: %u", stats[i].name, stats[i].value.b32);
-            break;
-         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
-            fprintf(f, "%s: %" PRIi64, stats[i].name, stats[i].value.i64);
-            break;
-         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
-            fprintf(f, "%s: %" PRIu64, stats[i].name, stats[i].value.u64);
-            break;
-         case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR:
-            fprintf(f, "%s: %g", stats[i].name, stats[i].value.f64);
-            break;
-         default:
-            unreachable("unknown statistic");
-         }
-      }
-
-      /* print_buf is only valid after flushing. */
-      fflush(f);
-      util_debug_message(debug, SHADER_INFO, "%s\n", print_buf);
-
-      u_memstream_close(&stream);
-      free(print_buf);
-   }
 }
 
 static void

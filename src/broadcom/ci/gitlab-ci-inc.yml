@@ -136,7 +136,7 @@
   tags:
     - igalia-rpi4
 
-# 1 device (2024-01-02)
+# 4 device (2024-07-11)
 .igalia-bcm2712-rpi-5:
   variables:
     DEVICE_TYPE: rpi5

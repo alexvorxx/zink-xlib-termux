@@ -217,6 +217,18 @@ can_do_blit(const struct pipe_blit_info *info)
 
    fail_if(info->window_rectangle_include);
 
+   /* The blitter can't handle the needed swizzle gymnastics to convert
+    * to/from L/A formats:
+    */
+   if (info->src.format != info->dst.format) {
+      fail_if(util_format_is_luminance(info->dst.format));
+      fail_if(util_format_is_alpha(info->dst.format));
+      fail_if(util_format_is_luminance_alpha(info->dst.format));
+      fail_if(util_format_is_luminance(info->src.format));
+      fail_if(util_format_is_alpha(info->src.format));
+      fail_if(util_format_is_luminance_alpha(info->src.format));
+   }
+
    const struct util_format_description *src_desc =
       util_format_description(info->src.format);
    const struct util_format_description *dst_desc =

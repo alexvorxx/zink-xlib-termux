@@ -1232,6 +1232,7 @@ impl SM50Op for OpIMnMx {
         let [src0, src1] = &mut self.srcs;
         swap_srcs_if_not_reg(src0, src1, GPR);
         b.copy_alu_src_if_not_reg(src0, GPR, SrcType::ALU);
+        b.copy_alu_src_if_i20_overflow(src1, GPR, SrcType::ALU);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
@@ -1242,7 +1243,7 @@ impl SM50Op for OpIMnMx {
             }
             SrcRef::Imm32(i) => {
                 e.set_opcode(0x3820);
-                e.set_src_imm_f20(20..39, 56, *i);
+                e.set_src_imm_i20(20..39, 56, *i);
             }
             SrcRef::CBuf(cb) => {
                 e.set_opcode(0x4c20);

@@ -1311,6 +1311,10 @@ loader_dri3_open(xcb_connection_t *conn,
                                            XCB_XFIXES_MAJOR_VERSION,
                                            XCB_XFIXES_MINOR_VERSION);
    fixes_reply = xcb_xfixes_query_version_reply(conn, fixes_cookie, NULL);
+   if (fixes_reply->major_version < 2) {
+      close(fd);
+      fd = -1;
+   }
    free(fixes_reply);
 
    return fd;

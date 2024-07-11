@@ -960,16 +960,15 @@ dri2_setup_extensions(_EGLDisplay *disp)
    }
 
 #ifdef HAVE_DRI3_MODIFIERS
-   dri2_dpy->multibuffers_available =
-      (dri2_dpy->dri3_major_version > 1 ||
-       (dri2_dpy->dri3_major_version == 1 &&
-        dri2_dpy->dri3_minor_version >= 2)) &&
-      (dri2_dpy->present_major_version > 1 ||
-       (dri2_dpy->present_major_version == 1 &&
-        dri2_dpy->present_minor_version >= 2)) &&
-      (dri2_dpy->image && dri2_dpy->image->base.version >= 15);
+#ifdef HAVE_X11_PLATFORM
+   if (dri2_dpy->conn) {
+      bool err;
+      dri2_dpy->multibuffers_available = loader_dri3_check_multibuffer(dri2_dpy->conn, &err) &&
+                                         !err &&
+                                         (dri2_dpy->image && dri2_dpy->image->base.version >= 15);
+   }
+#endif
    if (disp->Options.Zink && !disp->Options.ForceSoftware &&
-       dri2_dpy->dri3_major_version != -1 &&
        !dri2_dpy->multibuffers_available &&
        /* this is enum _egl_platform_type */
        (disp->Platform == _EGL_PLATFORM_X11 ||
@@ -1191,13 +1190,6 @@ dri2_display_create(void)
 
    dri2_dpy->fd_render_gpu = -1;
    dri2_dpy->fd_display_gpu = -1;
-
-#ifdef HAVE_DRI3_MODIFIERS
-   dri2_dpy->dri3_major_version = -1;
-   dri2_dpy->dri3_minor_version = -1;
-   dri2_dpy->present_major_version = -1;
-   dri2_dpy->present_minor_version = -1;
-#endif
 
    return dri2_dpy;
 }

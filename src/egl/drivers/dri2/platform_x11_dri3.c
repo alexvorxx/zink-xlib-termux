@@ -29,7 +29,6 @@
 #include <xcb/dri3.h>
 #include <xcb/present.h>
 #include <xcb/xcb.h>
-#include <xcb/xfixes.h>
 
 #include <xf86drm.h>
 #include "drm-uapi/drm_fourcc.h"
@@ -527,105 +526,19 @@ struct dri2_egl_display_vtbl dri3_x11_display_vtbl = {
    .close_screen_notify = dri3_close_screen_notify,
 };
 
-/* Only request versions of these protocols which we actually support. */
-#define DRI3_SUPPORTED_MAJOR    1
-#define PRESENT_SUPPORTED_MAJOR 1
-
-#ifdef HAVE_DRI3_MODIFIERS
-#define DRI3_SUPPORTED_MINOR    2
-#define PRESENT_SUPPORTED_MINOR 2
-#else
-#define PRESENT_SUPPORTED_MINOR 0
-#define DRI3_SUPPORTED_MINOR    0
-#endif
-
 enum dri2_egl_driver_fail
-dri3_x11_connect(struct dri2_egl_display *dri2_dpy)
+dri3_x11_connect(struct dri2_egl_display *dri2_dpy, bool swrast)
 {
-   xcb_dri3_query_version_reply_t *dri3_query;
-   xcb_dri3_query_version_cookie_t dri3_query_cookie;
-   xcb_present_query_version_reply_t *present_query;
-   xcb_present_query_version_cookie_t present_query_cookie;
-   xcb_xfixes_query_version_reply_t *xfixes_query;
-   xcb_xfixes_query_version_cookie_t xfixes_query_cookie;
-   xcb_generic_error_t *error;
-   const xcb_query_extension_reply_t *extension;
-
-   dri2_dpy->dri3_major_version = 0;
-   dri2_dpy->dri3_minor_version = 0;
-   dri2_dpy->present_major_version = 0;
-   dri2_dpy->present_minor_version = 0;
-
-   xcb_prefetch_extension_data(dri2_dpy->conn, &xcb_dri3_id);
-   xcb_prefetch_extension_data(dri2_dpy->conn, &xcb_present_id);
-   xcb_prefetch_extension_data(dri2_dpy->conn, &xcb_xfixes_id);
-
-   extension = xcb_get_extension_data(dri2_dpy->conn, &xcb_dri3_id);
-   if (!(extension && extension->present))
-      return DRI2_EGL_DRIVER_FAILED;
-
-   extension = xcb_get_extension_data(dri2_dpy->conn, &xcb_present_id);
-   if (!(extension && extension->present))
-      return DRI2_EGL_DRIVER_FAILED;
-
-   extension = xcb_get_extension_data(dri2_dpy->conn, &xcb_xfixes_id);
-   if (!(extension && extension->present))
-      return DRI2_EGL_DRIVER_FAILED;
-
-   dri3_query_cookie = xcb_dri3_query_version(
-      dri2_dpy->conn, DRI3_SUPPORTED_MAJOR, DRI3_SUPPORTED_MINOR);
-
-   present_query_cookie = xcb_present_query_version(
-      dri2_dpy->conn, PRESENT_SUPPORTED_MAJOR, PRESENT_SUPPORTED_MINOR);
-
-   xfixes_query_cookie = xcb_xfixes_query_version(
-      dri2_dpy->conn, XCB_XFIXES_MAJOR_VERSION, XCB_XFIXES_MINOR_VERSION);
-
-   dri3_query =
-      xcb_dri3_query_version_reply(dri2_dpy->conn, dri3_query_cookie, &error);
-   if (dri3_query == NULL || error != NULL) {
-      _eglLog(_EGL_WARNING, "DRI3: failed to query the version");
-      free(dri3_query);
-      free(error);
-      return DRI2_EGL_DRIVER_FAILED;
-   }
-
-   dri2_dpy->dri3_major_version = dri3_query->major_version;
-   dri2_dpy->dri3_minor_version = dri3_query->minor_version;
-   free(dri3_query);
-
-   present_query = xcb_present_query_version_reply(
-      dri2_dpy->conn, present_query_cookie, &error);
-   if (present_query == NULL || error != NULL) {
-      _eglLog(_EGL_WARNING, "DRI3: failed to query Present version");
-      free(present_query);
-      free(error);
-      return DRI2_EGL_DRIVER_FAILED;
-   }
-
-   dri2_dpy->present_major_version = present_query->major_version;
-   dri2_dpy->present_minor_version = present_query->minor_version;
-   free(present_query);
-
-   xfixes_query = xcb_xfixes_query_version_reply(dri2_dpy->conn,
-                                                 xfixes_query_cookie, &error);
-   if (xfixes_query == NULL || error != NULL ||
-       xfixes_query->major_version < 2) {
-      _eglLog(_EGL_WARNING, "DRI3: failed to query xfixes version");
-      free(error);
-      free(xfixes_query);
-      return DRI2_EGL_DRIVER_FAILED;
-   }
-   free(xfixes_query);
-
    dri2_dpy->fd_render_gpu =
       loader_dri3_open(dri2_dpy->conn, dri2_dpy->screen->root, 0);
    if (dri2_dpy->fd_render_gpu < 0) {
       int conn_error = xcb_connection_has_error(dri2_dpy->conn);
-      _eglLog(_EGL_WARNING, "DRI3: Screen seems not DRI3 capable");
+      if (!swrast) {
+         _eglLog(_EGL_WARNING, "DRI3: Screen seems not DRI3 capable");
 
-      if (conn_error)
-         _eglLog(_EGL_WARNING, "DRI3: Failed to initialize");
+         if (conn_error)
+            _eglLog(_EGL_WARNING, "DRI3: Failed to initialize");
+      }
 
       return DRI2_EGL_DRIVER_FAILED;
    }

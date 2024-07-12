@@ -1597,6 +1597,8 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    const unsigned max_waves_per_tg = 32; /* 1024 threads in Wave32 */
    info->max_scratch_waves = MAX2(32 * info->min_good_cu_per_sa * info->max_sa_per_se * info->num_se,
                                   max_waves_per_tg);
+   info->has_scratch_base_registers = info->gfx_level >= GFX11 ||
+                                      (!info->has_graphics && info->family >= CHIP_GFX940);
    info->max_gflops = (info->gfx_level >= GFX11 ? 256 : 128) * info->num_cu * info->max_gpu_freq_mhz / 1000;
    info->memory_bandwidth_gbps = DIV_ROUND_UP(info->memory_freq_mhz_effective * info->memory_bus_width / 8, 1000);
    info->has_pcie_bandwidth_info = info->drm_minor >= 51;
@@ -2035,6 +2037,7 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
    fprintf(f, "    max_vgpr_alloc = %i\n", info->max_vgpr_alloc);
    fprintf(f, "    wave64_vgpr_alloc_granularity = %i\n", info->wave64_vgpr_alloc_granularity);
    fprintf(f, "    max_scratch_waves = %i\n", info->max_scratch_waves);
+   fprintf(f, "    has_scratch_base_registers = %i\n", info->has_scratch_base_registers);
    fprintf(f, "Ring info:\n");
    fprintf(f, "    attribute_ring_size_per_se = %u KB\n",
            DIV_ROUND_UP(info->attribute_ring_size_per_se, 1024));

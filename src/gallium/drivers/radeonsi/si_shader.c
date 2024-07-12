@@ -3014,8 +3014,7 @@ bool si_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *compi
    }
 
    /* Add/remove the scratch offset to/from input SGPRs. */
-   if (sel->screen->info.gfx_level < GFX11 &&
-       (sel->screen->info.family < CHIP_GFX940 || sel->screen->info.has_graphics) &&
+   if (!sel->screen->info.has_scratch_base_registers &&
        !si_is_merged_shader(shader)) {
       if (sel->info.base.use_aco_amd) {
          /* When aco scratch_offset arg is added explicitly at the beginning.

@@ -406,7 +406,7 @@ static bool si_setup_compute_scratch_buffer(struct si_context *sctx, struct si_s
    }
 
    /* Set the scratch address in the shader binary. */
-   if (sctx->gfx_level < GFX11 && (sctx->family < CHIP_GFX940 || sctx->screen->info.has_graphics)) {
+   if (!sctx->screen->info.has_scratch_base_registers) {
       uint64_t scratch_va = sctx->compute_scratch_buffer->gpu_address;
 
       if (shader->scratch_va != scratch_va) {
@@ -552,9 +552,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
       radeon_opt_set_sh_reg(R_00B860_COMPUTE_TMPRING_SIZE,
                             SI_TRACKED_COMPUTE_TMPRING_SIZE, sctx->compute_tmpring_size);
 
-      if (config->scratch_bytes_per_wave &&
-          (sctx->gfx_level >= GFX11 ||
-           (sctx->family >= CHIP_GFX940 && !sctx->screen->info.has_graphics))) {
+      if (config->scratch_bytes_per_wave && sctx->screen->info.has_scratch_base_registers) {
          radeon_opt_set_sh_reg2(R_00B840_COMPUTE_DISPATCH_SCRATCH_BASE_LO,
                                 SI_TRACKED_COMPUTE_DISPATCH_SCRATCH_BASE_LO,
                                 sctx->compute_scratch_buffer->gpu_address >> 8,

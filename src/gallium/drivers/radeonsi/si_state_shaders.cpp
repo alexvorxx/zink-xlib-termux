@@ -4379,7 +4379,7 @@ bool si_update_spi_tmpring_size(struct si_context *sctx, unsigned bytes)
             return false;
       }
 
-      if (sctx->gfx_level < GFX11 && !si_update_scratch_relocs(sctx))
+      if (!sctx->screen->info.has_scratch_base_registers && !si_update_scratch_relocs(sctx))
          return false;
    }
 

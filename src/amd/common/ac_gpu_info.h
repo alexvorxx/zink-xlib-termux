@@ -270,6 +270,7 @@ struct radeon_info {
    uint32_t max_vgpr_alloc;
    uint32_t wave64_vgpr_alloc_granularity;
    uint32_t max_scratch_waves;
+   bool has_scratch_base_registers;
 
    /* Pos, prim, and attribute rings. */
    uint32_t attribute_ring_size_per_se;   /* GFX11+ */

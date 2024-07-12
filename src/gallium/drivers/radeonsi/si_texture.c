@@ -1588,13 +1588,15 @@ si_get_dmabuf_modifier_planes(struct pipe_screen *pscreen, uint64_t modifier,
 {
    unsigned planes = util_format_get_num_planes(format);
 
-   if (IS_AMD_FMT_MOD(modifier) && planes == 1) {
-      if (AMD_FMT_MOD_GET(DCC_RETILE, modifier))
-         return 3;
-      else if (AMD_FMT_MOD_GET(DCC, modifier))
-         return 2;
-      else
-         return 1;
+   if (AMD_FMT_MOD_GET(TILE_VERSION, modifier) < AMD_FMT_MOD_TILE_VER_GFX12) {
+      if (IS_AMD_FMT_MOD(modifier) && planes == 1) {
+         if (AMD_FMT_MOD_GET(DCC_RETILE, modifier))
+            return 3;
+         else if (AMD_FMT_MOD_GET(DCC, modifier))
+            return 2;
+         else
+            return 1;
+      }
    }
 
    return planes;

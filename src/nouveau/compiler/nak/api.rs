@@ -101,6 +101,7 @@ fn nir_options(dev: &nv_device_info) -> nir_shader_compiler_options {
     op.lower_flrp16 = true;
     op.lower_flrp32 = true;
     op.lower_flrp64 = true;
+    op.lower_fsqrt = dev.sm < 52;
     op.lower_bitfield_extract = dev.sm >= 70;
     op.lower_bitfield_insert = true;
     op.lower_pack_half_2x16 = true;

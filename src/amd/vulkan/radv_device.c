@@ -515,8 +515,11 @@ radv_device_finish_notifier(struct radv_device *device)
 }
 
 static void
-radv_device_finish_perf_counter_lock_cs(struct radv_device *device)
+radv_device_finish_perf_counter(struct radv_device *device)
 {
+   if (device->perf_counter_bo)
+      radv_bo_destroy(device, NULL, device->perf_counter_bo);
+
    if (!device->perf_counter_lock_cs)
       return;
 
@@ -1251,9 +1254,8 @@ fail:
    radv_trap_handler_finish(device);
    radv_finish_trace(device);
 
-   radv_device_finish_perf_counter_lock_cs(device);
-   if (device->perf_counter_bo)
-      radv_bo_destroy(device, NULL, device->perf_counter_bo);
+   radv_device_finish_perf_counter(device);
+
    if (device->gfx_init)
       radv_bo_destroy(device, NULL, device->gfx_init);
 
@@ -1303,9 +1305,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    if (!device)
       return;
 
-   radv_device_finish_perf_counter_lock_cs(device);
-   if (device->perf_counter_bo)
-      radv_bo_destroy(device, NULL, device->perf_counter_bo);
+   radv_device_finish_perf_counter(device);
 
    if (device->gfx_init)
       radv_bo_destroy(device, NULL, device->gfx_init);

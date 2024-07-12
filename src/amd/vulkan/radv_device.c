@@ -623,6 +623,27 @@ radv_device_finish_rgp(struct radv_device *device)
    radv_spm_finish(device);
 }
 
+static VkResult
+radv_device_init_trap_handler(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (!radv_trap_handler_enabled())
+      return VK_SUCCESS;
+
+   /* TODO: Add support for more hardware. */
+   assert(pdev->info.gfx_level == GFX8);
+
+   fprintf(stderr, "**********************************************************************\n");
+   fprintf(stderr, "* WARNING: RADV_TRAP_HANDLER is experimental and only for debugging! *\n");
+   fprintf(stderr, "**********************************************************************\n");
+
+   if (!radv_trap_handler_init(device))
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   return VK_SUCCESS;
+}
+
 struct dispatch_table_builder {
    struct vk_device_dispatch_table *tables[RADV_DISPATCH_TABLE_COUNT];
    bool used[RADV_DISPATCH_TABLE_COUNT];
@@ -1160,19 +1181,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 #endif
 
-   if (radv_trap_handler_enabled()) {
-      /* TODO: Add support for more hardware. */
-      assert(pdev->info.gfx_level == GFX8);
-
-      fprintf(stderr, "**********************************************************************\n");
-      fprintf(stderr, "* WARNING: RADV_TRAP_HANDLER is experimental and only for debugging! *\n");
-      fprintf(stderr, "**********************************************************************\n");
-
-      if (!radv_trap_handler_init(device)) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail;
-      }
-   }
+   result = radv_device_init_trap_handler(device);
+   if (result != VK_SUCCESS)
+      goto fail;
 
    if (pdev->info.gfx_level == GFX10_3) {
       if (getenv("RADV_FORCE_VRS_CONFIG_FILE")) {

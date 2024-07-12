@@ -295,6 +295,9 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_NATIVE_FENCE_FD:
                 return true;
 
+        case PIPE_CAP_DEPTH_CLIP_DISABLE:
+                return screen->devinfo.ver >= 71;
+
         default:
                 return u_pipe_screen_get_param_defaults(pscreen, param);
         }

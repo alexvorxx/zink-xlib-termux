@@ -92,7 +92,7 @@ GL 3.2, GLSL 1.50 --- all DONE: freedreno, nv50, nvc0, r600, radeonsi, llvmpipe,
   GL_ARB_provoking_vertex (Provoking vertex)            DONE (v3d, vc4, panfrost, lima, crocus)
   GL_ARB_seamless_cube_map (Seamless cubemaps)          DONE (panfrost, crocus)
   GL_ARB_texture_multisample (Multisample textures)     DONE (freedreno/a5xx+, v3d, vc4, panfrost)
-  GL_ARB_depth_clamp (Frag depth clamp)                 DONE (panfrost, crocus)
+  GL_ARB_depth_clamp (Frag depth clamp)                 DONE (panfrost, crocus, v3d)
   GL_ARB_sync (Fence objects)                           DONE (v3d, vc4, panfrost, lima, crocus)
   GLX_ARB_create_context_profile                        DONE
 

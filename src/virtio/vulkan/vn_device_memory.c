@@ -358,15 +358,6 @@ vn_AllocateMemory(VkDevice device,
 {
    struct vn_device *dev = vn_device_from_handle(device);
 
-   /* see vn_physical_device_init_memory_properties */
-   VkMemoryAllocateInfo local_info;
-   if (pAllocateInfo->memoryTypeIndex ==
-       dev->physical_device->incoherent_cached) {
-      local_info = *pAllocateInfo;
-      local_info.memoryTypeIndex = dev->physical_device->coherent_uncached;
-      pAllocateInfo = &local_info;
-   }
-
    const VkImportMemoryFdInfoKHR *import_fd_info = NULL;
    const VkMemoryDedicatedAllocateInfo *dedicated_info = NULL;
    vk_foreach_struct_const(pnext, pAllocateInfo->pNext) {

@@ -2614,6 +2614,54 @@ impl SM50Op for OpIpa {
     }
 }
 
+impl SM50Op for OpCCtl {
+    fn legalize(&mut self, b: &mut LegalizeBuilder) {
+        legalize_ext_instr(self, b);
+    }
+
+    fn encode(&self, e: &mut SM50Encoder<'_>) {
+        match self.mem_space {
+            MemSpace::Global(addr_type) => {
+                e.set_opcode(0xef60);
+
+                e.set_field(
+                    52..53,
+                    match addr_type {
+                        MemAddrType::A32 => 0_u8,
+                        MemAddrType::A64 => 1_u8,
+                    },
+                );
+
+                assert!(self.addr_offset % 4 == 0);
+                e.set_field(22..52, self.addr_offset / 4);
+            }
+            MemSpace::Local => panic!("cctl does not support local"),
+            MemSpace::Shared => {
+                e.set_opcode(0xef80);
+
+                assert!(self.addr_offset % 4 == 0);
+                e.set_field(22..44, self.addr_offset / 4);
+            }
+        }
+
+        e.set_field(
+            0..4,
+            match self.op {
+                CCtlOp::PF1 => 0_u8,
+                CCtlOp::PF2 => 1_u8,
+                CCtlOp::WB => 2_u8,
+                CCtlOp::IV => 3_u8,
+                CCtlOp::IVAll => 4_u8,
+                CCtlOp::RS => 5_u8,
+                CCtlOp::IVAllP => 6_u8,
+                CCtlOp::WBAll => 7_u8,
+                CCtlOp::WBAllP => 8_u8,
+            },
+        );
+        e.set_reg_src(8..16, self.addr);
+    }
+}
+
 impl SM50Op for OpMemBar {
     fn legalize(&mut self, _b: &mut LegalizeBuilder) {
         // Nothing to do
@@ -2896,6 +2944,7 @@ macro_rules! as_sm50_op_match {
             Op::Ipa(op) => op,
             Op::ALd(op) => op,
             Op::ASt(op) => op,
+            Op::CCtl(op) => op,
             Op::MemBar(op) => op,
             Op::Atom(op) => op,
             Op::Bra(op) => op,

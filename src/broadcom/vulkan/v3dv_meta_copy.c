@@ -1431,6 +1431,10 @@ create_image_alias(struct v3dv_cmd_buffer *cmd_buffer,
        return NULL;
     }
 
+    v3dv_cmd_buffer_add_private_obj(
+       cmd_buffer, (uintptr_t)_image,
+       (v3dv_cmd_buffer_private_obj_destroy_cb)v3dv_DestroyImage);
+
     struct v3dv_image *image = v3dv_image_from_handle(_image);
     image->planes[0].mem = src->planes[0].mem;
     image->planes[0].mem_offset = src->planes[0].mem_offset;

@@ -2223,6 +2223,14 @@ impl AtomType {
             _ => panic!("Invalid int atomic type"),
         }
     }
+
+    pub fn bits(&self) -> usize {
+        match self {
+            AtomType::F16x2 | AtomType::F32 => 32,
+            AtomType::U32 | AtomType::I32 => 32,
+            AtomType::U64 | AtomType::I64 | AtomType::F64 => 64,
+        }
+    }
 }
 
 impl fmt::Display for AtomType {

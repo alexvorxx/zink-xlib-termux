@@ -2213,7 +2213,7 @@ impl SM50Encoder<'_> {
                 AtomOp::Or => 6_u8,
                 AtomOp::Xor => 7_u8,
                 AtomOp::Exch => 8_u8,
-                AtomOp::CmpExch(_) => panic!("CmpXchg not yet supported"),
+                AtomOp::CmpExch(_) => panic!("CmpExch not yet supported"),
             },
         );
     }
@@ -2244,22 +2244,9 @@ impl SM50Op for OpSuAtom {
             _ => panic!("Unsupported atom type {}", self.atom_type),
         };
 
-        let atom_op: u8 = match self.atom_op {
-            AtomOp::Add => 0,
-            AtomOp::Min => 1,
-            AtomOp::Max => 2,
-            AtomOp::Inc => 3,
-            AtomOp::Dec => 4,
-            AtomOp::And => 5,
-            AtomOp::Or => 6,
-            AtomOp::Xor => 7,
-            AtomOp::Exch => 8,
-            AtomOp::CmpExch(_) => 0,
-        };
-
         e.set_image_dim(33..36, self.image_dim);
         e.set_field(36..39, atom_type);
-        e.set_field(29..33, atom_op);
+        e.set_atom_op(29..33, self.atom_op);
 
         // The hardware requires that we set .D on atomics.  This is safe to do
         // in in the emit code because it only affects format conversion, not
@@ -2350,65 +2337,142 @@ impl SM50Op for OpSt {
     }
 }
 
+fn atom_src_as_ssa(
+    b: &mut LegalizeBuilder,
+    src: Src,
+    atom_type: AtomType,
+) -> SSARef {
+    if let Some(ssa) = src.as_ssa() {
+        return *ssa;
+    }
+
+    let tmp;
+    if atom_type.bits() == 32 {
+        tmp = b.alloc_ssa(RegFile::GPR, 1);
+        b.copy_to(tmp.into(), 0.into());
+    } else {
+        debug_assert!(atom_type.bits() == 64);
+        tmp = b.alloc_ssa(RegFile::GPR, 2);
+        b.copy_to(tmp[0].into(), 0.into());
+        b.copy_to(tmp[1].into(), 0.into());
+    }
+    tmp
+}
+
 impl SM50Op for OpAtom {
     fn legalize(&mut self, b: &mut LegalizeBuilder) {
+        if self.atom_op == AtomOp::CmpExch(AtomCmpSrc::Separate) {
+            let cmpr = atom_src_as_ssa(b, self.cmpr, self.atom_type);
+            let data = atom_src_as_ssa(b, self.data, self.atom_type);
+
+            let mut cmpr_data = Vec::new();
+            cmpr_data.extend_from_slice(&cmpr);
+            cmpr_data.extend_from_slice(&data);
+            let cmpr_data = SSARef::try_from(cmpr_data).unwrap();
+
+            self.cmpr = 0.into();
+            self.data = cmpr_data.into();
+            self.atom_op = AtomOp::CmpExch(AtomCmpSrc::Packed);
+        }
         legalize_ext_instr(self, b);
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
         match self.mem_space {
-            MemSpace::Global(_) => {
-                e.set_opcode(0xed00);
-                e.set_mem_order(&self.mem_order);
+            MemSpace::Global(addr_type) => {
+                if let AtomOp::CmpExch(cmp_src) = self.atom_op {
+                    e.set_opcode(0xee00);
 
-                e.set_dst(self.dst);
-                e.set_reg_src(8..16, self.addr);
-                e.set_reg_src(20..28, self.data);
-                e.set_field(28..48, self.addr_offset);
-                e.set_field(
-                    48..49,
-                    match self.mem_space.addr_type() {
-                        MemAddrType::A32 => 0_u8,
-                        MemAddrType::A64 => 1_u8,
-                    },
-                );
-                e.set_field(
-                    49..52,
-                    match self.atom_type {
+                    // TODO: These are all supported by the disassembler but
+                    // only the packed layout appears to be supported by real
+                    // hardware
+                    let (data_src, data_layout) = match cmp_src {
+                        AtomCmpSrc::Separate => {
+                            if self.data.is_zero() {
+                                (self.cmpr, 1_u8)
+                            } else {
+                                assert!(self.cmpr.is_zero());
+                                (self.data, 2_u8)
+                            }
+                        }
+                        AtomCmpSrc::Packed => (self.data, 0_u8),
+                    };
+                    e.set_reg_src(20..28, data_src);
+
+                    let data_type = match self.atom_type {
+                        AtomType::U32 => 0_u8,
+                        AtomType::U64 => 1_u8,
+                        _ => panic!("Unsupported data type"),
+                    };
+                    e.set_field(49..50, data_type);
+                    e.set_field(50..52, data_layout);
+                    e.set_field(52..56, 15_u8); // subOp
+                } else {
+                    e.set_opcode(0xed00);
+
+                    e.set_reg_src(20..28, self.data);
+
+                    let data_type = match self.atom_type {
                         AtomType::U32 => 0_u8,
                         AtomType::I32 => 1_u8,
                         AtomType::U64 => 2_u8,
                         AtomType::F32 => 3_u8,
                         // NOTE: U128 => 4_u8,
                         AtomType::I64 => 5_u8,
-                        // TODO: do something about ATOMG.F64
-                        other => panic!("ATOMG.{other} not supported on SM50"),
-                    },
-                );
-                e.set_atom_op(52..56, self.atom_op);
-            }
-            MemSpace::Local => panic!("Atomics do not support local"),
-            MemSpace::Shared => {
-                e.set_opcode(0xec00);
+                        _ => panic!("Unsupported data type"),
+                    };
+                    e.set_field(49..52, data_type);
+                    e.set_atom_op(52..56, self.atom_op);
+                }
+
                 e.set_mem_order(&self.mem_order);
 
                 e.set_dst(self.dst);
                 e.set_reg_src(8..16, self.addr);
-                e.set_reg_src(20..28, self.data);
+                e.set_field(28..48, self.addr_offset);
                 e.set_field(
-                    28..30,
-                    match self.atom_type {
+                    48..49,
+                    match addr_type {
+                        MemAddrType::A32 => 0_u8,
+                        MemAddrType::A64 => 1_u8,
+                    },
+                );
+            }
+            MemSpace::Local => panic!("Atomics do not support local"),
+            MemSpace::Shared => {
+                if let AtomOp::CmpExch(cmp_src) = self.atom_op {
+                    e.set_opcode(0xee00);
+
+                    assert!(cmp_src == AtomCmpSrc::Packed);
+                    assert!(self.cmpr.is_zero());
+                    e.set_reg_src(20..28, self.data);
+
+                    let subop = match self.atom_type {
+                        AtomType::U32 => 4_u8,
+                        AtomType::U64 => 5_u8,
+                        _ => panic!("Unsupported data type"),
+                    };
+                    e.set_field(52..56, subop);
+                } else {
+                    e.set_opcode(0xec00);
+
+                    e.set_reg_src(20..28, self.data);
+
+                    let data_type = match self.atom_type {
                         AtomType::U32 => 0_u8,
                         AtomType::I32 => 1_u8,
                         AtomType::U64 => 2_u8,
                         AtomType::I64 => 3_u8,
-                        // TODO: do something about ATOMS.F{32,64}
-                        other => panic!("ATOMS.{other} not supported on SM50"),
-                    },
-                );
+                        _ => panic!("Unsupported data type"),
+                    };
+                    e.set_field(28..30, data_type);
+                    e.set_atom_op(52..56, self.atom_op);
+                }
+
+                e.set_dst(self.dst);
+                e.set_reg_src(8..16, self.addr);
                 assert_eq!(self.addr_offset % 4, 0);
                 e.set_field(30..52, self.addr_offset / 4);
-                e.set_atom_op(52..56, self.atom_op);
             }
         }
     }

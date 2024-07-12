@@ -131,12 +131,6 @@ blit2d_bind_src(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
    }
 }
 
-struct blit2d_dst_temps {
-   VkImage image;
-   struct radv_image_view iview;
-   VkFramebuffer fb;
-};
-
 static void
 bind_pipeline(struct radv_cmd_buffer *cmd_buffer, enum blit2d_src_type src_type, unsigned fs_key, uint32_t log2_samples)
 {
@@ -202,8 +196,8 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
          blit2d_bind_src(cmd_buffer, src_img, src_buf, &src_temps, src_type, depth_format, src_aspect_mask,
                          log2_samples);
 
-         struct blit2d_dst_temps dst_temps;
-         create_iview(cmd_buffer, dst, &dst_temps.iview, depth_format, aspect_mask);
+         struct radv_image_view dst_iview;
+         create_iview(cmd_buffer, dst, &dst_iview, depth_format, aspect_mask);
 
          float vertex_push_constants[4] = {
             rects[r].src_x,
@@ -218,7 +212,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
 
          if (aspect_mask == VK_IMAGE_ASPECT_COLOR_BIT || aspect_mask == VK_IMAGE_ASPECT_PLANE_0_BIT ||
              aspect_mask == VK_IMAGE_ASPECT_PLANE_1_BIT || aspect_mask == VK_IMAGE_ASPECT_PLANE_2_BIT) {
-            unsigned fs_key = radv_format_meta_fs_key(device, dst_temps.iview.vk.format);
+            unsigned fs_key = radv_format_meta_fs_key(device, dst_iview.vk.format);
 
             if (device->meta_state.blit2d[log2_samples].pipelines[src_type][fs_key] == VK_NULL_HANDLE) {
                VkResult ret =
@@ -231,7 +225,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
 
             const VkRenderingAttachmentInfo color_att_info = {
                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-               .imageView = radv_image_view_to_handle(&dst_temps.iview),
+               .imageView = radv_image_view_to_handle(&dst_iview),
                .imageLayout = dst->current_layout,
                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -263,7 +257,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
 
             const VkRenderingAttachmentInfo depth_att_info = {
                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-               .imageView = radv_image_view_to_handle(&dst_temps.iview),
+               .imageView = radv_image_view_to_handle(&dst_iview),
                .imageLayout = dst->current_layout,
                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -296,7 +290,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
 
             const VkRenderingAttachmentInfo stencil_att_info = {
                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-               .imageView = radv_image_view_to_handle(&dst_temps.iview),
+               .imageView = radv_image_view_to_handle(&dst_iview),
                .imageLayout = dst->current_layout,
                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -331,7 +325,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
          else
             radv_image_view_finish(&src_temps.iview);
 
-         radv_image_view_finish(&dst_temps.iview);
+         radv_image_view_finish(&dst_iview);
       }
    }
 }

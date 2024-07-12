@@ -11,6 +11,7 @@
 #include "radeon_uvd.h"
 #include "si_public.h"
 #include "sid.h"
+#include "ac_shader_util.h"
 #include "ac_shadowed_regs.h"
 #include "compiler/nir/nir.h"
 #include "util/disk_cache.h"
@@ -885,6 +886,11 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->ps_resolve_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->ps_resolve_shaders)
       goto fail;
+
+   /* Initialize compute_tmpring_size. */
+   ac_get_scratch_tmpring_size(&sctx->screen->info, 0,
+                               &sctx->max_seen_compute_scratch_bytes_per_wave,
+                               &sctx->compute_tmpring_size);
 
    return &sctx->b;
 fail:

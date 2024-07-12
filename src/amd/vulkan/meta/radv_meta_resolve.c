@@ -289,9 +289,6 @@ build_resolve_pipeline(struct radv_device *device, unsigned fs_key)
 {
    VkResult result = VK_SUCCESS;
 
-   if (device->meta_state.resolve.pipeline[fs_key])
-      return result;
-
    mtx_lock(&device->meta_state.mtx);
    if (device->meta_state.resolve.pipeline[fs_key]) {
       mtx_unlock(&device->meta_state.mtx);

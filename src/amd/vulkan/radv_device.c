@@ -78,7 +78,7 @@ typedef void *drmDevicePtr;
 #include "ac_formats.h"
 
 static bool
-radv_spm_trace_enabled(struct radv_instance *instance)
+radv_spm_trace_enabled(const struct radv_instance *instance)
 {
    return (instance->vk.trace_mode & RADV_TRACE_MODE_RGP) &&
           debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", true);
@@ -570,6 +570,51 @@ static void
 radv_device_finish_memory_cache(struct radv_device *device)
 {
    vk_pipeline_cache_destroy(device->mem_cache, NULL);
+}
+
+static VkResult
+radv_device_init_rgp(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!(instance->vk.trace_mode & RADV_TRACE_MODE_RGP))
+      return VK_SUCCESS;
+
+   if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11) {
+      fprintf(stderr, "GPU hardware not supported: refer to "
+                      "the RGP documentation for the list of "
+                      "supported GPUs!\n");
+      abort();
+   }
+
+   if (!radv_sqtt_init(device))
+      return VK_ERROR_INITIALIZATION_FAILED;
+
+   fprintf(stderr,
+           "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
+           "instruction timing: %s, cache counters: %s, queue events: %s).\n",
+           device->sqtt.buffer_size / (1024 * 1024), radv_is_instruction_timing_enabled() ? "enabled" : "disabled",
+           radv_spm_trace_enabled(instance) ? "enabled" : "disabled",
+           radv_sqtt_queue_events_enabled() ? "enabled" : "disabled");
+
+   if (radv_spm_trace_enabled(instance)) {
+      if (pdev->info.gfx_level >= GFX10) {
+         if (!radv_spm_init(device))
+            return VK_ERROR_INITIALIZATION_FAILED;
+      } else {
+         fprintf(stderr, "radv: SPM isn't supported for this GPU (%s)!\n", pdev->name);
+      }
+   }
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_rgp(struct radv_device *device)
+{
+   radv_sqtt_finish(device);
+   radv_spm_finish(device);
 }
 
 struct dispatch_table_builder {
@@ -1101,37 +1146,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       radv_dump_enabled_options(device, stderr);
    }
 
-   if (instance->vk.trace_mode & RADV_TRACE_MODE_RGP) {
-      if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11) {
-         fprintf(stderr, "GPU hardware not supported: refer to "
-                         "the RGP documentation for the list of "
-                         "supported GPUs!\n");
-         abort();
-      }
-
-      if (!radv_sqtt_init(device)) {
-         result = VK_ERROR_INITIALIZATION_FAILED;
-         goto fail;
-      }
-
-      fprintf(stderr,
-              "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
-              "instruction timing: %s, cache counters: %s, queue events: %s).\n",
-              device->sqtt.buffer_size / (1024 * 1024), radv_is_instruction_timing_enabled() ? "enabled" : "disabled",
-              radv_spm_trace_enabled(instance) ? "enabled" : "disabled",
-              radv_sqtt_queue_events_enabled() ? "enabled" : "disabled");
-
-      if (radv_spm_trace_enabled(instance)) {
-         if (pdev->info.gfx_level >= GFX10) {
-            if (!radv_spm_init(device)) {
-               result = VK_ERROR_INITIALIZATION_FAILED;
-               goto fail;
-            }
-         } else {
-            fprintf(stderr, "radv: SPM isn't supported for this GPU (%s)!\n", pdev->name);
-         }
-      }
-   }
+   result = radv_device_init_rgp(device);
+   if (result != VK_SUCCESS)
+      goto fail;
 
 #ifndef _WIN32
    if (instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
@@ -1269,11 +1286,9 @@ fail_meta:
 fail:
    radv_printf_data_finish(device);
 
-   radv_sqtt_finish(device);
-
    radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
 
-   radv_spm_finish(device);
+   radv_device_finish_rgp(device);
 
    radv_trap_handler_finish(device);
    radv_finish_trace(device);
@@ -1382,13 +1397,10 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_printf_data_finish(device);
 
-   radv_sqtt_finish(device);
-
    radv_rra_trace_finish(_device, &device->rra_trace);
 
    radv_memory_trace_finish(device);
-
-   radv_spm_finish(device);
+   radv_device_finish_rgp(device);
 
    ralloc_free(device->gpu_hang_report);
 

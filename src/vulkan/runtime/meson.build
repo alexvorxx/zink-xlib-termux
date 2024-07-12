@@ -184,6 +184,7 @@ vulkan_lite_runtime_files += [
 # as a runtime library dep to ensure header gen order
 vulkan_lite_runtime_header_gen_deps = declare_dependency(
   sources : [
+    spirv_info_h,
     vk_cmd_enqueue_entrypoints[0],
     vk_cmd_queue[1],
     vk_common_entrypoints[0],

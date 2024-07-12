@@ -693,6 +693,51 @@ radv_device_finish_device_fault_detection(struct radv_device *device)
    ralloc_free(device->gpu_hang_report);
 }
 
+static VkResult
+radv_device_init_tools(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+   VkResult result;
+
+   result = radv_device_init_device_fault_detection(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = radv_device_init_rgp(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   radv_device_init_rmv(device);
+
+   result = radv_device_init_trap_handler(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
+      result = radv_rra_trace_init(device);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   result = radv_printf_data_init(device);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return VK_SUCCESS;
+}
+
+static void
+radv_device_finish_tools(struct radv_device *device)
+{
+   radv_printf_data_finish(device);
+   radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
+   radv_trap_handler_finish(device);
+   radv_memory_trace_finish(device);
+   radv_device_finish_rgp(device);
+   radv_device_finish_device_fault_detection(device);
+}
+
 struct dispatch_table_builder {
    struct vk_device_dispatch_table *tables[RADV_DISPATCH_TABLE_COUNT];
    bool used[RADV_DISPATCH_TABLE_COUNT];
@@ -1198,20 +1243,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
     */
    device->dispatch_initiator_task = device->dispatch_initiator | S_00B800_DISABLE_DISP_PREMPT_EN(1);
 
-   result = radv_device_init_device_fault_detection(device);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   result = radv_device_init_rgp(device);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   radv_device_init_rmv(device);
-
-   result = radv_device_init_trap_handler(device);
-   if (result != VK_SUCCESS)
-      goto fail;
-
    if (pdev->info.gfx_level == GFX10_3) {
       if (getenv("RADV_FORCE_VRS_CONFIG_FILE")) {
          const char *file = radv_get_force_vrs_config_file();
@@ -1289,17 +1320,11 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          goto fail_cache;
    }
 
-   if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
-      result = radv_rra_trace_init(device);
-      if (result != VK_SUCCESS)
-         goto fail;
-   }
-
    if (device->vk.enabled_features.rayTracingPipelineShaderGroupHandleCaptureReplay) {
       device->capture_replay_arena_vas = _mesa_hash_table_u64_create(NULL);
    }
 
-   result = radv_printf_data_init(device);
+   result = radv_device_init_tools(device);
    if (result != VK_SUCCESS)
       goto fail_cache;
 
@@ -1318,16 +1343,9 @@ fail_cache:
 fail_meta:
    radv_device_finish_meta(device);
 fail:
-   radv_printf_data_finish(device);
-
-   radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
-
-   radv_device_finish_rgp(device);
-
-   radv_trap_handler_finish(device);
-   radv_device_finish_device_fault_detection(device);
-
    radv_device_finish_perf_counter(device);
+
+   radv_device_finish_tools(device);
 
    if (device->gfx_init)
       radv_bo_destroy(device, NULL, device->gfx_init);
@@ -1422,19 +1440,9 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    simple_mtx_destroy(&device->compute_scratch_mtx);
    simple_mtx_destroy(&device->pso_cache_stats_mtx);
 
-   radv_trap_handler_finish(device);
-   radv_device_finish_device_fault_detection(device);
-
    radv_destroy_shader_arenas(device);
    if (device->capture_replay_arena_vas)
       _mesa_hash_table_u64_destroy(device->capture_replay_arena_vas);
-
-   radv_printf_data_finish(device);
-
-   radv_rra_trace_finish(_device, &device->rra_trace);
-
-   radv_memory_trace_finish(device);
-   radv_device_finish_rgp(device);
 
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);

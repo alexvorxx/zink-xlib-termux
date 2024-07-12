@@ -1874,7 +1874,11 @@ impl<'a> ShaderFromNir<'a> {
         }
     }
 
-    fn get_atomic_op(&self, intrin: &nir_intrinsic_instr) -> AtomOp {
+    fn get_atomic_op(
+        &self,
+        intrin: &nir_intrinsic_instr,
+        cmp_src: AtomCmpSrc,
+    ) -> AtomOp {
         match intrin.atomic_op() {
             nir_atomic_op_iadd => AtomOp::Add,
             nir_atomic_op_imin => AtomOp::Min,
@@ -1888,7 +1892,7 @@ impl<'a> ShaderFromNir<'a> {
             nir_atomic_op_fadd => AtomOp::Add,
             nir_atomic_op_fmin => AtomOp::Min,
             nir_atomic_op_fmax => AtomOp::Max,
-            nir_atomic_op_cmpxchg => AtomOp::CmpExch,
+            nir_atomic_op_cmpxchg => AtomOp::CmpExch(cmp_src),
             _ => panic!("Unsupported NIR atomic op"),
         }
     }
@@ -2137,7 +2141,7 @@ impl<'a> ShaderFromNir<'a> {
                 let coord = self.get_image_coord(intrin, dim);
                 // let sample = self.get_src(&srcs[2]);
                 let atom_type = self.get_atomic_type(intrin);
-                let atom_op = self.get_atomic_op(intrin);
+                let atom_op = self.get_atomic_op(intrin, AtomCmpSrc::Packed);
 
                 assert!(
                     intrin.def.bit_size() == 32 || intrin.def.bit_size() == 64
@@ -2331,7 +2335,7 @@ impl<'a> ShaderFromNir<'a> {
                 let (addr, offset) = self.get_io_addr_offset(&srcs[0], 24);
                 let data = self.get_src(&srcs[1]);
                 let atom_type = self.get_atomic_type(intrin);
-                let atom_op = self.get_atomic_op(intrin);
+                let atom_op = self.get_atomic_op(intrin, AtomCmpSrc::Separate);
 
                 assert!(intrin.def.num_components() == 1);
                 let dst = b.alloc_ssa(RegFile::GPR, bit_size.div_ceil(32));
@@ -2366,7 +2370,7 @@ impl<'a> ShaderFromNir<'a> {
                     addr: addr,
                     cmpr: cmpr,
                     data: data,
-                    atom_op: AtomOp::CmpExch,
+                    atom_op: AtomOp::CmpExch(AtomCmpSrc::Separate),
                     atom_type: atom_type,
                     addr_offset: offset,
                     mem_space: MemSpace::Global(MemAddrType::A64),
@@ -2837,7 +2841,7 @@ impl<'a> ShaderFromNir<'a> {
                 let (addr, offset) = self.get_io_addr_offset(&srcs[0], 24);
                 let data = self.get_src(&srcs[1]);
                 let atom_type = self.get_atomic_type(intrin);
-                let atom_op = self.get_atomic_op(intrin);
+                let atom_op = self.get_atomic_op(intrin, AtomCmpSrc::Separate);
 
                 assert!(intrin.def.num_components() == 1);
                 let dst = b.alloc_ssa(RegFile::GPR, bit_size.div_ceil(32));
@@ -2872,7 +2876,7 @@ impl<'a> ShaderFromNir<'a> {
                     addr: addr,
                     cmpr: cmpr,
                     data: data,
-                    atom_op: AtomOp::CmpExch,
+                    atom_op: AtomOp::CmpExch(AtomCmpSrc::Separate),
                     atom_type: atom_type,
                     addr_offset: offset,
                     mem_space: MemSpace::Shared,

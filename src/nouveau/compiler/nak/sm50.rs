@@ -2213,7 +2213,7 @@ impl SM50Encoder<'_> {
                 AtomOp::Or => 6_u8,
                 AtomOp::Xor => 7_u8,
                 AtomOp::Exch => 8_u8,
-                AtomOp::CmpExch => panic!("CmpXchg not yet supported"),
+                AtomOp::CmpExch(_) => panic!("CmpXchg not yet supported"),
             },
         );
     }
@@ -2228,8 +2228,9 @@ impl SM50Op for OpSuAtom {
     }
 
     fn encode(&self, e: &mut SM50Encoder<'_>) {
-        if matches!(self.atom_op, AtomOp::CmpExch) {
+        if let AtomOp::CmpExch(cmp_src) = self.atom_op {
             e.set_opcode(0xeac0);
+            assert!(cmp_src == AtomCmpSrc::Packed);
         } else {
             e.set_opcode(0xea60);
         }
@@ -2253,7 +2254,7 @@ impl SM50Op for OpSuAtom {
             AtomOp::Or => 6,
             AtomOp::Xor => 7,
             AtomOp::Exch => 8,
-            AtomOp::CmpExch => 0,
+            AtomOp::CmpExch(_) => 0,
         };
 
         e.set_image_dim(33..36, self.image_dim);

@@ -2585,8 +2585,9 @@ impl SM70Op for OpSuAtom {
     }
 
     fn encode(&self, e: &mut SM70Encoder<'_>) {
-        if matches!(self.atom_op, AtomOp::CmpExch) {
+        if let AtomOp::CmpExch(cmp_src) = self.atom_op {
             e.set_opcode(0x396);
+            assert!(cmp_src == AtomCmpSrc::Packed);
         } else {
             e.set_opcode(0x394);
         };
@@ -2759,7 +2760,7 @@ impl SM70Encoder<'_> {
         self.set_field(
             range,
             match atom_op {
-                AtomOp::Add | AtomOp::CmpExch => 0_u8,
+                AtomOp::Add | AtomOp::CmpExch(_) => 0_u8,
                 AtomOp::Min => 1_u8,
                 AtomOp::Max => 2_u8,
                 AtomOp::Inc => 3_u8,
@@ -2797,9 +2798,10 @@ impl SM70Op for OpAtom {
     fn encode(&self, e: &mut SM70Encoder<'_>) {
         match self.mem_space {
             MemSpace::Global(_) => {
-                if self.atom_op == AtomOp::CmpExch {
+                if let AtomOp::CmpExch(cmp_src) = self.atom_op {
                     e.set_opcode(0x3a9);
 
+                    assert!(cmp_src == AtomCmpSrc::Separate);
                     e.set_reg_src(32..40, self.cmpr);
                     e.set_reg_src(64..72, self.data);
                 } else {
@@ -2824,9 +2826,10 @@ impl SM70Op for OpAtom {
             }
             MemSpace::Local => panic!("Atomics do not support local"),
             MemSpace::Shared => {
-                if self.atom_op == AtomOp::CmpExch {
+                if let AtomOp::CmpExch(cmp_src) = self.atom_op {
                     e.set_opcode(0x38d);
 
+                    assert!(cmp_src == AtomCmpSrc::Separate);
                     e.set_reg_src(32..40, self.cmpr);
                     e.set_reg_src(64..72, self.data);
                 } else {

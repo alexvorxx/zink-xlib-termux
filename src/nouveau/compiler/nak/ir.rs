@@ -2239,6 +2239,14 @@ impl fmt::Display for AtomType {
     }
 }
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub enum AtomCmpSrc {
+    /// The cmpr value is passed as a separate source
+    Separate,
+    /// The cmpr value is packed in with the data with cmpr coming first
+    Packed,
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum AtomOp {
@@ -2251,7 +2259,7 @@ pub enum AtomOp {
     Or,
     Xor,
     Exch,
-    CmpExch,
+    CmpExch(AtomCmpSrc),
 }
 
 impl fmt::Display for AtomOp {
@@ -2266,7 +2274,8 @@ impl fmt::Display for AtomOp {
             AtomOp::Or => write!(f, ".or"),
             AtomOp::Xor => write!(f, ".xor"),
             AtomOp::Exch => write!(f, ".exch"),
-            AtomOp::CmpExch => write!(f, ".cmpexch"),
+            AtomOp::CmpExch(AtomCmpSrc::Separate) => write!(f, ".cmpexch"),
+            AtomOp::CmpExch(AtomCmpSrc::Packed) => write!(f, ".cmpexch.packed"),
         }
     }
 }
@@ -4369,7 +4378,11 @@ impl DisplayOp for OpAtom {
             }
             write!(f, "{:#x}", self.addr_offset)?;
         }
-        write!(f, "] {}", self.data)
+        write!(f, "]")?;
+        if self.atom_op == AtomOp::CmpExch(AtomCmpSrc::Separate) {
+            write!(f, " {}", self.cmpr)?;
+        }
+        write!(f, " {}", self.data)
     }
 }
 impl_display_for_op!(OpAtom);

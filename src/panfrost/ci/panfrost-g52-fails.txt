@@ -2742,6 +2742,10 @@ dEQP-VK.pipeline.pipeline_library.multisample_shader_builtin.sample_mask.write.1
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 
 # physical device and device needs more robustness in allocation handling
+dEQP-VK.api.object_management.alloc_callback_fail.device,Crash
+dEQP-VK.api.object_management.alloc_callback_fail.device_group,Crash
+dEQP-VK.api.object_management.max_concurrent.device,Fail
+dEQP-VK.api.object_management.max_concurrent.device_group,Fail
 dEQP-VK.api.device_init.create_instance_device_intentional_alloc_fail.basic,Crash
 
 # query pool not supported yet

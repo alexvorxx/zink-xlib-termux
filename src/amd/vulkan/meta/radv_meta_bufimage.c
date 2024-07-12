@@ -1276,7 +1276,7 @@ itob_bind_descriptors(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view
 
 void
 radv_meta_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
-                          struct radv_meta_blit2d_buffer *dst, unsigned num_rects, struct radv_meta_blit2d_rect *rects)
+                          struct radv_meta_blit2d_buffer *dst, struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkPipeline pipeline = device->meta_state.itob.pipeline;
@@ -1292,14 +1292,12 @@ radv_meta_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_b
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
-   for (unsigned r = 0; r < num_rects; ++r) {
-      unsigned push_constants[4] = {rects[r].src_x, rects[r].src_y, src->layer, dst->pitch};
-      vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.itob.img_p_layout,
-                                 VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, push_constants);
+   unsigned push_constants[4] = {rect->src_x, rect->src_y, src->layer, dst->pitch};
+   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.itob.img_p_layout,
+                              VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, push_constants);
 
-      radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
-      fixup_gfx9_cs_copy(cmd_buffer, dst, src, &rects[r], false);
-   }
+   radv_unaligned_dispatch(cmd_buffer, rect->width, rect->height, 1);
+   fixup_gfx9_cs_copy(cmd_buffer, dst, src, rect, false);
 
    radv_image_view_finish(&src_view);
    radv_buffer_view_finish(&dst_view);
@@ -1333,8 +1331,7 @@ btoi_r32g32b32_bind_descriptors(struct radv_cmd_buffer *cmd_buffer, struct radv_
 
 static void
 radv_meta_buffer_to_image_cs_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_buffer *src,
-                                       struct radv_meta_blit2d_surf *dst, unsigned num_rects,
-                                       struct radv_meta_blit2d_rect *rects)
+                                       struct radv_meta_blit2d_surf *dst, struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkPipeline pipeline = device->meta_state.btoi_r32g32b32.pipeline;
@@ -1357,19 +1354,17 @@ radv_meta_buffer_to_image_cs_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struc
 
    stride = get_image_stride_for_r32g32b32(cmd_buffer, dst);
 
-   for (unsigned r = 0; r < num_rects; ++r) {
-      unsigned push_constants[4] = {
-         rects[r].dst_x,
-         rects[r].dst_y,
-         stride,
-         src->pitch,
-      };
+   unsigned push_constants[4] = {
+      rect->dst_x,
+      rect->dst_y,
+      stride,
+      src->pitch,
+   };
 
-      vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.btoi_r32g32b32.img_p_layout,
-                                 VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, push_constants);
+   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.btoi_r32g32b32.img_p_layout,
+                              VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, push_constants);
 
-      radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
-   }
+   radv_unaligned_dispatch(cmd_buffer, rect->width, rect->height, 1);
 
    radv_buffer_view_finish(&src_view);
    radv_buffer_view_finish(&dst_view);
@@ -1407,7 +1402,7 @@ btoi_bind_descriptors(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer_vie
 
 void
 radv_meta_buffer_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_buffer *src,
-                             struct radv_meta_blit2d_surf *dst, unsigned num_rects, struct radv_meta_blit2d_rect *rects)
+                             struct radv_meta_blit2d_surf *dst, struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkPipeline pipeline = device->meta_state.btoi.pipeline;
@@ -1416,7 +1411,7 @@ radv_meta_buffer_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_met
 
    if (dst->image->vk.format == VK_FORMAT_R32G32B32_UINT || dst->image->vk.format == VK_FORMAT_R32G32B32_SINT ||
        dst->image->vk.format == VK_FORMAT_R32G32B32_SFLOAT) {
-      radv_meta_buffer_to_image_cs_r32g32b32(cmd_buffer, src, dst, num_rects, rects);
+      radv_meta_buffer_to_image_cs_r32g32b32(cmd_buffer, src, dst, rect);
       return;
    }
 
@@ -1428,19 +1423,17 @@ radv_meta_buffer_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_met
       pipeline = device->meta_state.btoi.pipeline_3d;
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
-   for (unsigned r = 0; r < num_rects; ++r) {
-      unsigned push_constants[4] = {
-         rects[r].dst_x,
-         rects[r].dst_y,
-         dst->layer,
-         src->pitch,
-      };
-      vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.btoi.img_p_layout,
-                                 VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, push_constants);
+   unsigned push_constants[4] = {
+      rect->dst_x,
+      rect->dst_y,
+      dst->layer,
+      src->pitch,
+   };
+   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.btoi.img_p_layout,
+                              VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, push_constants);
 
-      radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
-      fixup_gfx9_cs_copy(cmd_buffer, src, dst, &rects[r], true);
-   }
+   radv_unaligned_dispatch(cmd_buffer, rect->width, rect->height, 1);
+   fixup_gfx9_cs_copy(cmd_buffer, src, dst, rect, true);
 
    radv_image_view_finish(&dst_view);
    radv_buffer_view_finish(&src_view);
@@ -1474,8 +1467,7 @@ itoi_r32g32b32_bind_descriptors(struct radv_cmd_buffer *cmd_buffer, struct radv_
 
 static void
 radv_meta_image_to_image_cs_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
-                                      struct radv_meta_blit2d_surf *dst, unsigned num_rects,
-                                      struct radv_meta_blit2d_rect *rects)
+                                      struct radv_meta_blit2d_surf *dst, struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    VkPipeline pipeline = device->meta_state.itoi_r32g32b32.pipeline;
@@ -1504,15 +1496,13 @@ radv_meta_image_to_image_cs_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct
    src_stride = get_image_stride_for_r32g32b32(cmd_buffer, src);
    dst_stride = get_image_stride_for_r32g32b32(cmd_buffer, dst);
 
-   for (unsigned r = 0; r < num_rects; ++r) {
-      unsigned push_constants[6] = {
-         rects[r].src_x, rects[r].src_y, src_stride, rects[r].dst_x, rects[r].dst_y, dst_stride,
-      };
-      vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.itoi_r32g32b32.img_p_layout,
-                                 VK_SHADER_STAGE_COMPUTE_BIT, 0, 24, push_constants);
+   unsigned push_constants[6] = {
+      rect->src_x, rect->src_y, src_stride, rect->dst_x, rect->dst_y, dst_stride,
+   };
+   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.itoi_r32g32b32.img_p_layout,
+                              VK_SHADER_STAGE_COMPUTE_BIT, 0, 24, push_constants);
 
-      radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
-   }
+   radv_unaligned_dispatch(cmd_buffer, rect->width, rect->height, 1);
 
    radv_buffer_view_finish(&src_view);
    radv_buffer_view_finish(&dst_view);
@@ -1555,7 +1545,7 @@ itoi_bind_descriptors(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view
 
 void
 radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
-                            struct radv_meta_blit2d_surf *dst, unsigned num_rects, struct radv_meta_blit2d_rect *rects)
+                            struct radv_meta_blit2d_surf *dst, struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_image_view src_view, dst_view;
@@ -1564,7 +1554,7 @@ radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
 
    if (src->format == VK_FORMAT_R32G32B32_UINT || src->format == VK_FORMAT_R32G32B32_SINT ||
        src->format == VK_FORMAT_R32G32B32_SFLOAT) {
-      radv_meta_image_to_image_cs_r32g32b32(cmd_buffer, src, dst, num_rects, rects);
+      radv_meta_image_to_image_cs_r32g32b32(cmd_buffer, src, dst, rect);
       return;
    }
 
@@ -1602,15 +1592,13 @@ radv_meta_image_to_image_cs(struct radv_cmd_buffer *cmd_buffer, struct radv_meta
 
       radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
-      for (unsigned r = 0; r < num_rects; ++r) {
-         unsigned push_constants[6] = {
-            rects[r].src_x, rects[r].src_y, src->layer, rects[r].dst_x, rects[r].dst_y, dst->layer,
-         };
-         vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.itoi.img_p_layout,
-                                    VK_SHADER_STAGE_COMPUTE_BIT, 0, 24, push_constants);
+      unsigned push_constants[6] = {
+         rect->src_x, rect->src_y, src->layer, rect->dst_x, rect->dst_y, dst->layer,
+      };
+      vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.itoi.img_p_layout,
+                                 VK_SHADER_STAGE_COMPUTE_BIT, 0, 24, push_constants);
 
-         radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
-      }
+      radv_unaligned_dispatch(cmd_buffer, rect->width, rect->height, 1);
 
       radv_image_view_finish(&src_view);
       radv_image_view_finish(&dst_view);

@@ -212,8 +212,7 @@ radv_fixup_copy_dst_metadata(struct radv_cmd_buffer *cmd_buffer, const struct ra
 
 bool
 radv_can_use_fmask_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *src_image,
-                        const struct radv_image *dst_image, unsigned num_rects,
-                        const struct radv_meta_blit2d_rect *rects)
+                        const struct radv_image *dst_image, const struct radv_meta_blit2d_rect *rect)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -235,9 +234,8 @@ radv_can_use_fmask_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_im
       return false;
 
    /* The region must be a whole image copy. */
-   if (num_rects != 1 ||
-       (rects[0].src_x || rects[0].src_y || rects[0].dst_x || rects[0].dst_y ||
-        rects[0].width != src_image->vk.extent.width || rects[0].height != src_image->vk.extent.height))
+   if (rect->src_x || rect->src_y || rect->dst_x || rect->dst_y || rect->width != src_image->vk.extent.width ||
+       rect->height != src_image->vk.extent.height)
       return false;
 
    /* Source/destination images must have identical size. */
